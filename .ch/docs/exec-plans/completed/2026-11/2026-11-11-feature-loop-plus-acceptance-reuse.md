@@ -11,7 +11,7 @@
 
 ## 关联计划
 
-- 本计划只记录 Loop+ 验收行为变更；新增回归断言由 .ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json 跟踪，设计/规格/ontology 同步由 [`2026-11-11-docs-loop-plus-acceptance-reuse.md`](2026-11-11-docs-loop-plus-acceptance-reuse.md) 跟踪。三者共享同一已完成实现背景，测试与文档依据该行为变更，均保留原完成结果。
+- 本计划只记录 Loop+ 验收行为变更；新增回归断言的历史摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。设计/规格/ontology 同步原归 `2026-11-11-docs-loop-plus-acceptance-reuse.md`。该页已退役，保留原完成背景与分工，不据索引认领同步证据或新增通过结论。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -19,7 +19,7 @@ Loop+ 当前主提示要求不把子任务声明当作证据，同时无条件�
 
 ## 范围与非目标
 
-- 只修改Loop+主子任务提示与Loop+沟通模板；对应回归断言开发曾由独立 test 类型计划承接，该计划已移除；历史结果与限制摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-plus-acceptance-reuse.md），调度设计、清单、能力分册与ontology同步由关联docs计划承接。
+- 只修改Loop+主子任务提示与Loop+沟通模板；对应回归断言开发曾由独立 test 类型计划承接，该计划已移除；历史结果与限制摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-plus-acceptance-reuse.md），调度设计、清单、能力分册与ontology同步原由已退役 docs companion 承接（仅历史分工）。
 - 不修改经典 Loop、验收 JSON 字段、六项固定清单、附加审查配置、调度器、完成门禁、失败修复和会话恢复逻辑。
 - 工作区含已有未提交修改，保留式增量编辑，不创建分支或工作树，不覆盖已有行为基线。
 
@@ -62,7 +62,7 @@ Tasklist:
 
 ## 验证结果
 
-- 实现完成后 `npm run build` 通过；相关回归历史摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-plus-acceptance-reuse.md），文档结果见关联 docs 计划。这里保留原始完成结论，不把独立类型交付合并为 feature 工作。
+- 实现完成后 `npm run build` 通过；相关回归历史摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-11-loop-plus-acceptance-reuse.md），文档结果原指向已退役 docs companion（完整记录未恢复）。这里保留原始完成结论，不把独立类型交付合并为 feature 工作。
 - 未运行发布脚本、真实付费模型、浏览器或完整 Extension Development Host，未修改用户配置或既有报告。回归验证提示与协议边界，不宣称真实模型必然遵从或执行报告天然覆盖全部需求；加载更新插件后的实际派发效果仍需观察。
 
 ## 当前结论

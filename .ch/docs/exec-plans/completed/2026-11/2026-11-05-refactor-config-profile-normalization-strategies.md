@@ -11,7 +11,7 @@
 
 ## 范围与非目标
 
-- 范围：`src/config/configService.ts` 与纯 `configprofilenormalization.ts` 的行为保持重构。新增纯策略/服务特征测试的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-config-profile-normalization-strategies.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；`ARCHITECTURE.md` 实际边界说明由 [docs 计划](2026-11-05-docs-config-profile-normalization-strategies.md)承接。测试依赖策略契约，文档依据本计划确认的模块边界。
+- 范围：`src/config/configService.ts` 与纯 `configprofilenormalization.ts` 的行为保持重构。新增纯策略/服务特征测试的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-config-profile-normalization-strategies.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。历史文档范围：`ARCHITECTURE.md` 实际边界说明。测试依赖策略契约，历史文档分工依据本计划确认的模块边界。原 docs companion `2026-11-05-docs-config-profile-normalization-strategies.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 - 非目标：运行配置策略、Runner/启动参数、UI、业务规则、平台支持、路径/锁/重试/原子写盘、Loop 调度和宿主状态；不执行发布、不创建分支或提交。
 - 不修复缺失的旧 runtime 设计文档，不生成索引或热区记忆。
 
@@ -57,7 +57,7 @@
 
 - 结果：build 通过；纯策略 67/67、服务组 66/66（原 61 + 新增 5）、直接相关回归 81/81、额外边界回归 99/99，合计 313 项通过、0 失败、0 跳过；diff 空白检查通过。包含嵌套测试，使用 Node 汇总的 `tests` 而非顶层 `1..N` 计数。
 - 证据日志：`/tmp/config-normalization-pre-tests.log` 记录重构前 66 项；`/tmp/config-normalization-final-build.log` 和 `/tmp/config-normalization-final-{pure,service,related,boundary}.log` 记录最终结果。
-- FEATURE_INVENTORY 与 ontology 无需更新：用户可见行为、业务语义、平台/权限/状态/跨域契约和现有事实来源路径均不变；新增纯实现边界的实际架构文档写作由关联 docs 计划承接。
+- FEATURE_INVENTORY 与 ontology 无需更新：用户可见行为、业务语义、平台/权限/状态/跨域契约和现有事实来源路径均不变；新增纯实现边界的实际架构文档写作原由已退役 docs companion 承接（仅历史分工）。
 - 无 UI 变更，UI 外观审查和浏览器验证不适用。
 
 ## 任务列表

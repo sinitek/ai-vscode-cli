@@ -26,7 +26,7 @@ Loop 子任务运行在独立对话标签页中，现有提示词只要求子任
 - 增加提示词与模板回归测试。
 - 同步功能清单、能力规格和高复发踩坑记录。
 
-类型拆分后，本计划只追踪提示词/收口契约与调度边界。测试开发和历史验证证据见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；功能清单、能力规格与 PITFALLS 同步见 [`2026-07-12-docs-loop-subtask-question-handoff.md`](2026-07-12-docs-loop-subtask-question-handoff.md)。
+功能清单、能力规格与 PITFALLS 已同步。
 
 ## 非目标
 

@@ -12,7 +12,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-dsh-repair-resume.md`）。
-- 共同背景与依赖（docs）：[`2026-11-02-docs-loop-plus-dsh-repair-resume.md`](2026-11-02-docs-loop-plus-dsh-repair-resume.md)。
+- 历史文档依赖：原 docs companion `2026-11-02-docs-loop-plus-dsh-repair-resume.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景
 
@@ -20,7 +20,7 @@ DSH 在普通 Vibe 中关闭并重开 Tab 后可继续，但作为 Loop+ 子模�
 
 ## 目标与范围
 
-定位并修复 Loop+ 验收修复续接 DSH 会话的根因，使用本机真实 DSH 验证首次执行、关闭、重派、恢复及修复结果；独立回归开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-dsh-repair-resume.md`），设计/排障等文档由关联 `docs` 计划承接。
+定位并修复 Loop+ 验收修复续接 DSH 会话的根因，使用本机真实 DSH 验证首次执行、关闭、重派、恢复及修复结果；独立回归开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-dsh-repair-resume.md`），设计/排障等文档原由已退役 docs companion 承接（仅历史分工）。
 
 ## 非目标
 
@@ -32,12 +32,12 @@ DSH 在普通 Vibe 中关闭并重开 Tab 后可继续，但作为 Loop+ 子模�
 - [x] 验收失败后修复任务保留正确上下文并能执行，原项目规则仍隔离。
 - [x] 回归覆盖成功、边界及失败路径，构建通过。
 - [x] 真实 DSH 完成首次子任务和修复续接，记录命令与脱敏关键结果。
-- [x] 修复边界与原目录兼容性明确；设计、功能清单、本体和排障知识验收见关联 `docs` 计划。
+- [x] 修复边界与原目录兼容性明确；设计、功能清单、本体和排障知识验收原指向已退役 docs companion（完整记录未恢复）。
 
 ## 影响面与风险
 
 - 代码：DSH 启动、会话恢复与 Loop+ 子任务执行边界；最终范围随证据收敛。
-- 子任务会话设计、清单、本体及排障手册交付见关联 `docs` 计划。
+- 子任务会话设计、清单、本体及排障手册交付原指向已退役 docs companion（完整记录未恢复）。
 - 风险：DSH 恢复可能同时依赖 DSH_HOME 与 canonical workspace；不能仅保留 session ID，也不能静默新建会话伪装恢复成功。
 - 缓解：使用隔离测试目录与真实 DSH，用户配置仅在内存读取，日志不输出凭据和业务提示词。
 
@@ -83,7 +83,7 @@ DSH 在普通 Vibe 中关闭并重开 Tab 后可继续，但作为 Loop+ 子模�
   - 协议对照：`changedCwdRejected=true`、`originalCwdResumed=true`、`sameSession=true`。
   - 生产 Loop+ 适配器、真实 DSH 执行策略和 runner：脚本主模型验收失败 → 原 Tab 关闭 → 原 runner dispose → 新 Tab 继承原 session → 新进程 resume → 通过上一轮只在会话上下文提供、未写入文件的随机校验码修复 `src/value.txt`。`sameSession/sameHome/sameCwd/originalProcessDisposed/newTab/failedAcceptanceRepaired/contextNonceRecovered/workspaceUpdated` 全部为 true。
   - 同一真实文件修复链路已重复通过；主模型回复为脚本，不宣称验证了主模型推理质量或图形 Extension Development Host 点击。
-- 文档交付证据见 [`2026-11-02-docs-loop-plus-dsh-repair-resume.md`](2026-11-02-docs-loop-plus-dsh-repair-resume.md)。
+- 原 docs companion `2026-11-02-docs-loop-plus-dsh-repair-resume.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 未覆盖：Windows/Linux 原生真实 CLI、图形 VS Code 点击；Windows 链接与跨盘路径仅以现有平台模拟夹具验证。旧随机 cwd 会话需新建不复用子任务，目录异常保留现场后人工处理。
 
 ## 收尾结论

@@ -7,33 +7,7 @@
 - claimed_at：2026-09-29
 - claim_ttl：本计划已完成，不再占用
 - 类型：feature
-- 原计划：`.ch/docs/exec-plans/completed/2026-09/2026-09-29-loop-plus-subtask-control.md`
 
-## 本类型目标
-
-新增steer与controls对running/pending子任务close/reprompt，dry-run无副作用，restart序号不冲突；不新增按钮且不控制已入验收队列attempt。
-
-## 范围与所有权
-
-- 新增steer与controls对running/pending子任务close/reprompt，dry-run无副作用，restart序号不冲突；不新增按钮且不控制已入验收队列attempt。
-- 本记录只承担 新功能开发；其它存活类型的交付归下列具体关联计划，不作为本计划的附带事项；原独立 test 记录已删除，本计划不接回测试开发。
-- 保留原日期、负责人及 claim 元数据。状态继承原计划 `completed`，不是本轮重新完成或重新验证。
-
-## 验收标准
-
-- 新增steer与controls对running/pending子任务close/reprompt，dry-run无副作用，restart序号不冲突；不新增按钮且不控制已入验收队列attempt。
-- 本计划不承接其它类型范围；存在的失败、未执行与未发布结论继续有效。
-
-## 验证计划与证据边界
-
-按本类型范围核对原实现/治理结果与兼容边界；历史构建、测试或失败证据由[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)保管（没有测试开发时保留本类型原验证记录），迁移不产生新的产品通过声明。
-
-## 关联计划
-
-- [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [2026-09-29-docs-loop-plus-subtask-control.md](2026-09-29-docs-loop-plus-subtask-control.md)：文档交付及证据；各自保持历史状态，不由关联关系推定通过。
-
-## 本类型历史记录
 
 ### 背景
 

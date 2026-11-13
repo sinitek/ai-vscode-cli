@@ -11,7 +11,7 @@
 ## 关联计划
 
 - markerless / cross-Tab / unknown-session 安全回归开发见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-dsh-session-resume-after-close.md`）。
-- CLI runtime reference、FEATURE_INVENTORY、PITFALLS 与 ontology 的独立同步见 [`2026-11-01-docs-dsh-session-resume-after-close.md`](2026-11-01-docs-dsh-session-resume-after-close.md)。
+- 原文记录的历史文档分工：CLI runtime reference、FEATURE_INVENTORY、PITFALLS 与 ontology 的历史同步原归 `2026-11-01-docs-dsh-session-resume-after-close.md`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -32,13 +32,13 @@ DSH 的持久化会话保存在隔离 `DSH_HOME` 下。原宿主使用 Tab ID �
 - [x] 新会话绑定 ACP ID 后，不同 Tab 恢复得到相同 `DSH_HOME`。
 - [x] 修复前无标记会话可找回原目录，不误用未知会话或符号链接。
 - [x] 本机真实 DSH 新建、关闭进程、重启后严格 resume 验证通过，且不调用模型。
-- [x] 修复的最小回归与构建通过；独立回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-dsh-session-resume-after-close.md`），文档同步验收见关联 `docs` 计划。
+- [x] 修复的最小回归与构建通过；独立回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-dsh-session-resume-after-close.md`），文档同步验收原指向已退役 docs companion（完整记录未恢复）。
 
 ## 影响面与风险
 
 - 实现：`src/extensionHost/dshInteractiveLaunch.ts`、`promptInteractiveRuntime.ts`、`interactiveTurnDsh.ts` 及对应类型端口。
 - 测试：DSH launch、host wiring、plugin boundary；扩展验证 runner、manager、生命周期策略。
-- 文档交付：由关联 `docs` 计划负责CLI运行时参考、功能清单、PITFALLS与ontology，不属于本修复的实现范围。
+- 文档交付：原由已退役 docs companion 负责（仅历史分工）CLI运行时参考、功能清单、PITFALLS与ontology，不属于本修复的实现范围。
 - 兼容扫描固定为隔离 home / sessions / project / session / 规范日志，不遍历任意深度，不复制或解析历史正文。
 - 临时目录保留策略未改变；已删除的数据无法由本次修复重建。回滚仅撤回启动目录绑定，不修改用户历史日志。
 

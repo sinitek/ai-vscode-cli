@@ -27,7 +27,7 @@
 - Webview trace 工具标题的中英文映射。
 - 本计划只覆盖 OpenCode 命令解析、任务列表转发与 Webview 标题映射运行时。
 
-原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档与功能清单同步见 [`2026-07-12-docs-opencode-task-list-localized-traces.md`](2026-07-12-docs-opencode-task-list-localized-traces.md)。两项分别依赖本计划定义的 todowrite 解析与本地化行为；原计划的测试和文档结果由对应计划承接。
+原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档与功能清单已同步。两项分别依赖本计划定义的 todowrite 解析与本地化行为；原计划的测试和文档结果由对应计划承接。
 
 ## 非目标
 

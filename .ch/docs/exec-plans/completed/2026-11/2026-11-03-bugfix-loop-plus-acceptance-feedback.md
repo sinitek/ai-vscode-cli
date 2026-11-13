@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-plus-acceptance-feedback.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-loop-plus-acceptance-feedback.md`](2026-11-03-docs-loop-plus-acceptance-feedback.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-loop-plus-acceptance-feedback.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -16,7 +16,7 @@
 
 ## 范围与非目标
 
-- 范围：验收结果生成器及编排写入边界；实际回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-plus-acceptance-feedback.md`），清单、调度设计和业务本体维护见关联 `docs` 计划。
+- 范围：验收结果生成器及编排写入边界；实际回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-plus-acceptance-feedback.md`），清单、调度设计和业务本体维护原指向已退役 docs companion（完整记录未恢复）。
 - 非目标：不取消主任务收尾检查，不改调度状态、验收限额或协议，不改写用户已有群聊文件。
 
 ## 验收标准
@@ -29,7 +29,7 @@
 ## 影响面与风险
 
 - 代码：`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusOrchestration.ts` 及相关测试。
-- 功能清单、Loop+调度设计和ontology独立更新见关联 `docs` 计划。
+- 功能清单、Loop+调度设计和ontology独立更新原指向已退役 docs companion（完整记录未恢复）。
 - 风险：误隐藏新事件；仅以当前确认事件 ID 决定是否展示子任务验收表格，保持协议及完成条件不变。
 - 回滚：恢复结果生成器和写入边界，不迁移用户数据。
 
@@ -42,7 +42,7 @@
 ## 测试与清单同步
 
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-plus-acceptance-feedback.md`）。
-- 文档交付证据见 [`2026-11-03-docs-loop-plus-acceptance-feedback.md`](2026-11-03-docs-loop-plus-acceptance-feedback.md)。
+- 原 docs companion `2026-11-03-docs-loop-plus-acceptance-feedback.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 静态验证：`npm run validate:whitespace`、`git diff --check` 通过；Impeccable detector 无发现。
 - 本机页面验证：复用生产 `buildLoopGroupChatPanelStateWithDeps`、`buildLoopGroupChatPanelHtml` 与 Markdown 渲染器，使用模拟 VS Code 消息桥和合成任务，不写用户运行数据。通过 `chromium-playwright-smoke` runner 验证 1280×1000、640×1100 和批量含失败项三种场景；断言单表、10 行明细、任务名/整体验收结果在表外、无“验收事件”首行、无重叠。三次结果的 browserErrors/httpErrors/requestFailures 全为空。
 - 页面证据：`.tmp/loop-plus-acceptance-smoke/{desktop,narrow,batch}/result.json` 与 `success.png`；裁剪预览 `.tmp/loop-plus-acceptance-smoke/acceptance-preview.png`。任务专用服务器和场景文件验证后清理，证据保留在 ignored 目录。

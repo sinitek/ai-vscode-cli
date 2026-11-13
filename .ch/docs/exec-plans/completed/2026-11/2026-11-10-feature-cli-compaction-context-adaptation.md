@@ -16,7 +16,7 @@
 ## 关联计划
 
 - 历史回归证据已转入.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json；本计划不承接独立测试开发。
-- [2026-11-10-docs-cli-compaction-context-adaptation.md](2026-11-10-docs-cli-compaction-context-adaptation.md)：独立承接文档/事实源交付及其历史校验。
+- 文档事实依据见[CLI 上下文压缩审计](../../../references/cli-context-compaction-audit.md)；独立测试开发的历史范围与验证限制见[测试删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。原 docs companion 已废弃，不作为现行计划或链接目标。
 
 ## 验收标准
 
@@ -25,7 +25,7 @@
 
 ## 验证与真实状态
 
-验证计划：本类型的历史行为验证结果与未覆盖环境保留在下文或关联 docs 计划；独立测试开发及其已保留的结果/限制摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md），该计划已移除，不是当前验证入口，也不把测试开发并入本类型。本次不重跑历史业务验证。
+验证计划：本类型的历史行为验证结果与未覆盖环境以下文实际保留记录为准；原 docs companion 已退役，其完整记录未恢复；独立测试开发及其已保留的结果/限制摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md），该计划已移除，不是当前验证入口，也不把测试开发并入本类型。本次不重跑历史业务验证。
 
 原状态：completed。本类型已交付，保留原有完成语义和所有未验证边界；不表示宿主父任务或本次中央迁移已完成。
 
@@ -53,7 +53,7 @@
 
 ### 范围与非目标
 
-范围为runner、压缩策略与扩展接线；独立回归开发曾由 test 类型计划承接；该计划已移除，历史测试摘要与限制见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md）。资料同步由关联 docs 计划承接。不修改Loop调度状态、任务记录、active ids或通信主文件，不发布、不升级SDK或项目依赖，不用摘要换新会话冒充原生压缩。Node环境升级由独立任务交付，见`../../../references/node24-local-runtime-upgrade.md`，这里只登记验证边界。
+范围为runner、压缩策略与扩展接线；独立回归开发曾由 test 类型计划承接；该计划已移除，历史测试摘要与限制见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-10-cli-compaction-context-adaptation.md）。资料同步原归 docs companion（已退役，仅历史分工）。不修改Loop调度状态、任务记录、active ids或通信主文件，不发布、不升级SDK或项目依赖，不用摘要换新会话冒充原生压缩。Node环境升级由独立任务交付，见`../../../references/node24-local-runtime-upgrade.md`，这里只登记验证边界。
 
 ### 风险与缓解
 
@@ -78,19 +78,11 @@
 
 ### 主审批次历史证据与当时剩余边界（2026-11-10）
 
-以下保留前轮原始阶段结论；其中“待修复/复验”是当时状态，当前结论以最终主审复验节为准。
-
-- Webview 专项183项及12张 Chromium 截图来自真实生成页面、模拟 VS Code 桥，不是真实 Extension Development Host 点击。广域7项失败已由主审在修改前快照复现为基线，不在本轮扩大修复。
-- Kimi 隔离冷热压缩回放见 `/tmp/loopplus-batch-review.gg8wAs/kimi-live.log`：2.5.2、同会话、三个 loopback 请求、usage 2205/32768；不代表当前收尾身份防护与中文提示验收通过，两项问题交由独立修复任务，父任务需在合入后复验。
-- Node 独立交付为新登录 shell 默认 v24.22.2 / npm11.19.1，十个全局工具精确版本保留；已启动进程及 VS Code 内嵌 Node 不会即时切换。这里只导航独立参考，不改环境或公开私有备份。
-- 压缩摘要生成步骤账单不等于压缩后占用；无可信新测量则等下一主回合。压缩后立即刷新仍未完成，不用本轮公共登记替代后续可信测量接线。真实模型计数/摘要质量、Windows 实跑和真实宿主点击仍无本轮完成证据。
+前轮证据与最终复验分开记录；其中“待修复/复验”是当时状态，不覆盖最终复验节。前轮 Webview 专项 183 项和 12 张 Chromium 截图来自真实生成页面与模拟 VS Code 桥，不是 Extension Development Host 点击；广域 7 项失败在修改前快照可复现为基线，未扩大修复。Kimi 2.5.2 隔离冷热回放曾证明同会话压缩（3 个 loopback 请求，usage 2205/32768），但当时尚未验证收尾身份防护与中文提示，交由后续修复并由最终复验补证。Node 独立升级、既有进程不即时切换和私有备份边界见 `../../../references/node24-local-runtime-upgrade.md`。OpenCode 摘要步骤账单不等于压缩后占用；即时刷新当时未完成，真实模型计数、摘要质量、Windows 实跑和真实宿主点击均无前轮完成证据。
 
 ### Kimi 初版后台验证记录（2026-11-10，历史阶段证据）
 
-以下保留原交付记录，不覆盖历史审计结论；其中局部通过及当时未验证项不替代上述当前主审结论。
-
-- ontology validate、改动文件 trailing-whitespace 与 canonical 仓库 `git diff --check` 通过。
-- 未验证：真实模型摘要质量及 token 降幅、Windows 实跑、真实 VS Code 点击、Claude/OpenCode/Webview 边界集成；常规 build 由父任务串行执行。
+初版阶段的 ontology validate、改动文件 trailing-whitespace 与 canonical 仓库 `git diff --check` 通过；常规 build 由父任务串行执行。该阶段未验证真实模型摘要质量及 token 降幅、Windows 实跑、真实 VS Code 点击或 Claude/OpenCode/Webview 边界集成；这些限制不被初版局部通过覆盖，最终复验范围见上文。
 
 ### 关键接线与兼容性
 

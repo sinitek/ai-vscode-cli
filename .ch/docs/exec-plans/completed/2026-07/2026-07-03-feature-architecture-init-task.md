@@ -23,7 +23,7 @@
 
 - `src/extension.ts`
 - `src/i18n.ts`
-- Harness 初始化完成后发起 ARCHITECTURE.md 初始化的扩展行为；文档编写与事实来源同步由 [docs 计划](2026-07-03-docs-architecture-init-task.md) 独立交付。
+- Harness 初始化完成后发起 ARCHITECTURE.md 初始化的扩展行为；文档编写与事实来源同步由 docs 计划 独立交付。
 
 ## 非目标
 
@@ -63,7 +63,7 @@
 - 单元测试新增/更新：待实现后评估。
 - 单元自测结果：`npm run build` 通过；`node --test dist/test/longTermMemory.test.js dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js` 通过，16/16 passed。
 - 失败处理记录：无。
-- 功能清单与相关文档：实际编写由 [docs 计划](2026-07-03-docs-architecture-init-task.md)承接；本功能原结论记载该同步完成。
+- 功能清单与相关文档：实际编写由 docs 计划承接；本功能原结论记载该同步完成。
 
 ## 任务列表
 
@@ -79,7 +79,3 @@
 ## 当前结论
 
 已完成扩展侧二次确认、coding 模式切换与当前 CLI/模型复用；文档交付由关联 docs 计划承接。最终验证通过：`npm run build`；`node --test dist/test/longTermMemory.test.js dist/test/toolSettings.test.js dist/test/memoryRuntimeGate.test.js`，16/16 passed。本计划可归档。
-
-## 关联计划
-
-- [docs 计划](2026-07-03-docs-architecture-init-task.md)：承接功能清单、Harness/CLI 初始化事实文档的实际编写；与本计划共享二次确认后的 ARCHITECTURE 初始化行为，本计划提供行为接口事实。本计划记录的历史 build 与 16/16 测试是此功能的既有验证证据，不代表 docs 计划运行了这些命令。

@@ -10,6 +10,8 @@
 - `.ch/docs/runbooks/PITFALLS_HISTORY.md`：历史归档入口；只有真实历史条目达到拆分阈值后再展开专题文件。
 - `.ch/docs/runbooks/grok-model-config.md`：Grok 多模型配置、语义回放、任务列表与上下文用量口径。
 - `.ch/docs/runbooks/kimi-code-config.md`：Kimi Code 安装自检、隔离验证、配置模板、失败现象处置与不能做的事。
+- Codex Windows thread handoff 的隔离验证边界及清理故障证据见 [参考记录](../references/codex-thread-handoff-windows-validation.md)；当前用户可见契约以 [CLI runtime reference](../references/cli-runtime-reference.md) 为准，活动计划仍未完成。
+- Node、ACP 压缩探针和交付历史见 [references 索引](../references/index.md)，属于有日期的历史证据，不是通用操作授权或当前版本保证。
 
 ## 未来建议收录
 

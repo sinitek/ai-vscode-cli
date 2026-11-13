@@ -15,7 +15,7 @@
 ## 关联计划
 
 - 已移除 test 计划的历史回归开发、结果及边界见 `.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json` 对应来源审计项（按 `source_old_path` 定位）；该文件是历史证据审计入口，不是当前验证导航或存活 test 计划。本计划不承接独立测试开发。
-- [2026-11-11-docs-loop-main-tab-summary-fix.md](2026-11-11-docs-loop-main-tab-summary-fix.md)：独立承接文档/事实源交付及其历史校验。
+- 历史文档分工：文档/事实源交付及其历史校验。 原 docs companion `2026-11-11-docs-loop-main-tab-summary-fix.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 验收标准
 
@@ -24,7 +24,7 @@
 
 ## 验证与真实状态
 
-验证计划：本类型交付的原验证结果及未覆盖环境保留在下方；独立测试开发及其历史结果由 `.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json` 对应来源审计项追溯，文档事实源交付由关联 docs 计划负责。审计文件不是存活 test 计划，本计划不承接测试开发。本次不重跑历史业务验证。
+验证计划：本类型交付的原验证结果及未覆盖环境保留在下方；独立测试开发及其历史结果由 `.ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json` 对应来源审计项追溯，文档事实源交付原由已退役 docs companion 负责（仅历史分工）。审计文件不是存活 test 计划，本计划不承接测试开发。本次不重跑历史业务验证。
 
 原状态：completed。本类型已交付，保留原有完成语义和所有未验证边界；不表示宿主父任务或本次中央迁移已完成。
 

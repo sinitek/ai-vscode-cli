@@ -12,7 +12,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-group-chat-nested-scroll.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-loop-group-chat-nested-scroll.md`](2026-11-03-docs-loop-group-chat-nested-scroll.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-loop-group-chat-nested-scroll.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景
 
@@ -40,7 +40,7 @@ Loop 与 Loop+ 群聊刷新时保留气泡内部的水平、垂直阅读位置�
 
 - 代码：`src/webview/loopGroupChatPanel.ts`。
 - 测试：`src/test/loop/loopGroupChatPanel.test.ts`。
-- 功能清单、能力规格、本体渲染规则与PITFALLS维护见关联 `docs` 计划。
+- 功能清单、能力规格、本体渲染规则与PITFALLS维护原指向已退役 docs companion（完整记录未恢复）。
 - 风险：后代结构变化可能使原位置失效；按元素结构路径定位，节点不存在或类型不匹配时跳过，由浏览器夹紧超出内容范围的位置。
 
 ## 验证计划
@@ -64,7 +64,7 @@ Tasklist:
 - Chromium 结果：Loop（1280×900）与 Loop+（760×900）均通过，代码位置从 `(scrollLeft=250, scrollTop=180)` 在定时刷新和追加消息后保持不变，宽表 `scrollLeft=130` 不变；外层历史阅读位置 `scrollTop=240` 保持，接近底部仍跟随；提问回复更新后同样保留横纵位置。三组场景均无页面、控制台、请求或 HTTP 错误，成功截图已检查。
 - 旧实现对照：从 `HEAD` 取原 `replaceHtml` 替换进同一浏览器夹具，5 秒刷新后代码位置变为 `(0,0)`；baseline 场景以预期出现该回归为通过条件，证明覆盖原问题，而非证明旧实现正确。
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-group-chat-nested-scroll.md`）。
-- 文档交付证据见 [`2026-11-03-docs-loop-group-chat-nested-scroll.md`](2026-11-03-docs-loop-group-chat-nested-scroll.md)。
+- 原 docs companion `2026-11-03-docs-loop-group-chat-nested-scroll.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 记忆判断：根因与验证保存在本计划及对应规格，不自动更新滚动摘要。
 
 ## 验证边界

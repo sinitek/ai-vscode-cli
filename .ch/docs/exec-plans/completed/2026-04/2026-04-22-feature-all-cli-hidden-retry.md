@@ -4,16 +4,10 @@
 - 状态：validated
 - 负责人：Codex
 - 类型：feature
-- 迁移来源：`.ch/docs/exec-plans/completed/2026-04/2026-04-22-all-cli-hidden-retry.md`
 
 ## 关联计划
 
 - [bugfix：恢复重试链路缺失的辅助函数](2026-04-22-bugfix-retry-helper-restoration.md)
-- [docs：全 CLI 非主动中断隐式重试——文档同步](2026-04-22-docs-all-cli-hidden-retry-documentation.md)
-
-## 迁移说明
-
-2026-11-11 按实际工作类型拆分。日期、负责人及状态沿用原文；下列命令和结果均为历史记录，本次迁移不执行历史命令，也不新增验收结论。
 
 ## 背景
 

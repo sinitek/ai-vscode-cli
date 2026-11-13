@@ -17,7 +17,7 @@
 - 保留 macOS 的原生首次授权、Linux 说明、远程宿主边界、通知开关、前后台通知与后台闪烁规则。
 - 不改用户的系统通知开关、勿扰模式、依赖版本或发布流程。
 
-- 本计划仅承担 Windows transport/生产 host/通知 Webview 状态与引导；事实文档同步由关联 docs 计划承接，已完成回归开发按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
+- 本计划仅承担 Windows transport/生产 host/通知 Webview 状态与引导；事实文档同步原由已退役 docs companion 承接（仅历史分工），已完成回归开发按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
 
 ## 验收标准
 
@@ -51,7 +51,7 @@
 
 ## 验证计划与历史Windows结果
 
-历史验证为构建、93项相关回归和五浏览器场景；测试计划移除审计保留构建、浏览器 smoke 命令及五场景结果摘要，但长 `node --test` 命令被截断，且未保留测试开发细节。来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md`。文档/103条规则校验见 docs。以下是真实历史 host 与投递结果，不是本轮执行：
+历史验证为构建、93项相关回归和五浏览器场景；测试计划移除审计保留构建、浏览器 smoke 命令及五场景结果摘要，但长 `node --test` 命令被截断，且未保留测试开发细节。来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md`。文档/103条规则校验原指向 docs companion（已退役，完整记录未恢复）。以下是真实历史 host 与投递结果，不是本轮执行：
 
 - 真实 VS Code 验证：用 `code.cmd --extensionDevelopmentPath=<仓库>/.tmp/windows-notification-settings/extension --extensionTestsPath=<仓库>/.tmp/windows-notification-settings/native-tests.cjs --user-data-dir=<仓库>/.tmp/windows-notification-settings/vscode-user --extensions-dir=<仓库>/.tmp/windows-notification-settings/vscode-extensions --disable-extensions --skip-welcome --skip-release-notes --disable-workspace-trust --new-window` 加载编译后的生产 host。结果为 `settingsOpened=true`、`authorization.status=authorized`、`errors=[]`，首次打开记录成功；结果文件 `.tmp/windows-notification-settings/native-result.json`。
 - 原生展示：本机原生 `ToastNotifier.Setting=Enabled`，通知历史包含对应分组，系统日志显示送达当前会话；这些证据没有单独当作横幅成功。用户处理免打扰后重试，明确确认实际横幅显示。Windows 真实展示验收通过。
@@ -70,7 +70,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留 Windows 通知状态与首次引导回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-windows-notification-settings.md`；不再作为现行测试责任。
-- [docs：Windows 通知引导规格与免打扰排障同步](2026-11-05-docs-windows-notification-settings.md#背景与目标)：分别承接Windows 通知引导规格与免打扰排障同步，共享本来源的历史背景与接口。
+- 历史文档分工：Windows 通知引导规格与免打扰排障同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-windows-notification-settings.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

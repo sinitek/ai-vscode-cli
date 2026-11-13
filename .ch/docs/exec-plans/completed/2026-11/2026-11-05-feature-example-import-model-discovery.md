@@ -104,7 +104,7 @@
 
 **公开流程未变，功能清单与 ontology 无需再改**：本次只修正异步回写与生命周期隔离，用户可见的信息顺序、字段、状态文案、下拉/回退行为与宿主 API 契约均未变化，`FEATURE_INVENTORY.md` 与 `plugin.rule.cli_example_import_inputs` 已描述的「地址/密钥/协议变化作废旧请求」在本次补全为「目标变化同样作废」，属于既有规则的事实落地，不新增规则或流程节点。
 
-原文早期任务曾记录 FEATURE_INVENTORY 两段描述、ARCHITECTURE、ontology、本计划和上一轮计划补记；历史涉及 `.ch/docs/exec-plans/`、`.ch/docs/product-specs/`、`.ch/docs/ontology/`，其中 `cli-plugin-runtime` 路径为 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。后续主审明确上述既有产品/ontology 已覆盖，无需因异步修复再改。本轮不据这些早期清单强造新 docs 交付；平台策略架构说明的实际独立范围由同日 [model-import-platform-strategies docs](2026-11-05-docs-model-import-platform-strategies.md#背景与目标)承接。
+原文早期任务曾记录 FEATURE_INVENTORY 两段描述、ARCHITECTURE、ontology、本计划和上一轮计划补记；历史涉及 `.ch/docs/exec-plans/`、`.ch/docs/product-specs/`、`.ch/docs/ontology/`，其中 `cli-plugin-runtime` 路径为 `.ch/docs/ontology/domains/cli-plugin-runtime.json`。后续主审明确上述既有产品/ontology 已覆盖，无需因异步修复再改。本轮不据这些早期清单强造新 docs 交付。平台策略架构说明现见 [ARCHITECTURE 配置层](../../../../../ARCHITECTURE.md#cli--interactive--config-服务层)，其中明确静态策略表、兼容 Facade 与单向依赖。原 docs companion `2026-11-05-docs-model-import-platform-strategies.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。现存架构说明不替代原 companion 的历史校验日志。
 
 ## 验证计划与真实结果
 

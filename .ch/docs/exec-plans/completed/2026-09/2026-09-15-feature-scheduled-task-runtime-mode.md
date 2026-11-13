@@ -7,33 +7,7 @@
 - claimed_at：2026-09-15
 - claim_ttl：本次会话
 - 类型：feature
-- 原计划：`.ch/docs/exec-plans/completed/2026-09/2026-09-15-scheduled-task-runtime-mode.md`
 
-## 本类型目标
-
-定时任务到期按目标CLI当前interactiveMode及Loop配置路由，旧字段只兼容；保留9/19改为创建时选中模式的后续决定。
-
-## 范围与所有权
-
-- 定时任务到期按目标CLI当前interactiveMode及Loop配置路由，旧字段只兼容；保留9/19改为创建时选中模式的后续决定。
-- 本记录只承担 新功能开发；其它存活类型的交付归下列具体关联计划，不作为本计划的附带事项；原独立 test 记录已删除，本计划不接回测试开发。
-- 保留原日期、负责人及 claim 元数据。状态继承原计划 `completed`，不是本轮重新完成或重新验证。
-
-## 验收标准
-
-- 定时任务到期按目标CLI当前interactiveMode及Loop配置路由，旧字段只兼容；保留9/19改为创建时选中模式的后续决定。
-- 本计划不承接其它类型范围；存在的失败、未执行与未发布结论继续有效。
-
-## 验证计划与证据边界
-
-按本类型范围核对原实现/治理结果与兼容边界；历史构建、测试或失败证据由[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)保管（没有测试开发时保留本类型原验证记录），迁移不产生新的产品通过声明。
-
-## 关联计划
-
-- [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [2026-09-15-docs-scheduled-task-runtime-mode.md](2026-09-15-docs-scheduled-task-runtime-mode.md)：文档交付及证据；各自保持历史状态，不由关联关系推定通过。
-
-## 本类型历史记录
 
 ### 背景
 
@@ -78,7 +52,7 @@
 
 ### 当前结论
 
-后续说明：2026-09-19 起，定时任务改为按创建时选中的 Vibe/Loop 及该模式已保存配置执行；执行时工作区模式仅作为旧任务缺字段时的回退。详见 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-scheduled-task-selected-mode.md`。
+后续说明：2026-09-19 起，定时任务改为按创建时选中的 Vibe/Loop 及该模式已保存配置执行；执行时工作区模式仅作为旧任务缺字段时的回退。详见 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-feature-scheduled-task-selected-mode.md`。
 已完成：`executeScheduledTask` 在任务进入 running 后按 `task.cli` 读取 workspace 当前 `interactiveMode` 与 Loop 执行子模式；任务记录旧字段继续保留以兼容历史数据。构建、相关回归测试和 ontology 校验通过；全量单测仅保留一个范围外的既有 Tasklist 断言失败。本计划可归档。
 
 ## 分类依据与真实状态

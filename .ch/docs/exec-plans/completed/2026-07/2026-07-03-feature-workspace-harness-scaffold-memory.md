@@ -27,9 +27,9 @@
 - 生成索引改到 `.ch/docs/generated/memory-index/`
 - 踩坑记录改到 `.ch/docs/runbooks/PITFALLS.md`
 - 去掉“.ch 自动禁用长期记忆”的旧运行时门禁
-- 独立测试计划已删除，历史验证证据由 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json) 留存；文档事实来源同步由 [`2026-07-03-docs-workspace-harness-scaffold-memory.md`](2026-07-03-docs-workspace-harness-scaffold-memory.md) 承接。此计划仅记录功能实现及其验证证据。
+- 独立测试计划已删除，历史验证证据由 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json) 留存；事实来源文档已同步。此计划仅记录功能实现及其验证证据。
 
-原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；文档交付见 [`2026-07-03-docs-workspace-harness-scaffold-memory.md`](2026-07-03-docs-workspace-harness-scaffold-memory.md)。
+原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；文档交付已同步。
 
 ## 非目标
 

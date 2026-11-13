@@ -25,7 +25,6 @@
 
 - `src/memory/` 热区定义、索引、召回优先级、prompt label、自动沉淀逻辑。
 - 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 文档交付见 [`2026-07-03-docs-workspace-pitfall-memory.md`](2026-07-03-docs-workspace-pitfall-memory.md)。
 
 ## 非目标
 

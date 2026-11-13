@@ -13,13 +13,13 @@
 
 - 修复群聊续接弹窗的原配置/当前配置摘要，分别遵循各自的全栈或前后端模式。
 - 复用已有模式兼容规则和 CLI / 模型格式化逻辑；经典 Loop 文案不变。
-- 本计划只承接摘要取值与渲染修复，不承接面板状态与 HTML 回归开发；历史测试摘要见关联删除审计，功能清单和设计事实来源由关联 docs 计划承接。
+- 本计划只承接摘要取值与渲染修复，不承接面板状态与 HTML 回归开发；历史测试摘要见关联删除审计，功能清单和设计事实来源原由已退役 docs companion 承接（仅历史分工）。
 - 不修改调度协议、配置持久化、模型实际执行或依赖版本；保留工作区已有的模型导入改动。
 
 ## 关联计划
 
 - 历史测试摘要：[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，在 JSON 中以完整 `source_old_path` 值 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-loopplus-continue-model-summary.md` 定位历史记录；原 test 计划已删除，本计划不承接测试开发，审计不提供原计划完整正文。
-- 文档交付：[2026-11-04-docs-loopplus-continue-model-summary.md](2026-11-04-docs-loopplus-continue-model-summary.md)。本计划只承接摘要取值与渲染修复。
+- 历史文档分工：原 docs companion `2026-11-04-docs-loopplus-continue-model-summary.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。本计划只承接摘要取值与渲染修复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 验收标准
 
@@ -32,7 +32,7 @@
 ## 影响面与风险
 
 - 代码：`src/continueModelChoice.ts`、`src/panelDiagnostics.ts`、群聊 Webview 文案及渲染。
-- 历史测试影响面包括 `src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts` 等新增回归，删除审计仅保留摘要；`2026-11-04-docs-loopplus-continue-model-summary.md` 承接功能清单和 Loop+ 调度设计同步。本计划仅记录修复验证证据，不承接回归开发。
+- 历史测试影响面包括 `src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts` 等新增回归，删除审计仅保留摘要；`2026-11-04-docs-loopplus-continue-model-summary.md` 当时承担（该页已退役，仅历史分工）功能清单和 Loop+ 调度设计同步。本计划仅记录修复验证证据，不承接回归开发。
 - 风险：误把隐藏角色作为实际模型、预览与续跑配置不一致、影响经典 Loop。通过模式交叉矩阵及旧任务测试规避。
 
 ## 验证计划
@@ -62,7 +62,7 @@ Tasklist:
 
 ## 文档与记忆判断
 
-- 关联 docs 计划承接 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 与 `.ch/docs/design-docs/loop-plus-scheduling.md` 同步；本计划仅引用该交付结果。
+- 原 docs companion（已退役）曾承担 `.ch/docs/product-specs/FEATURE_INVENTORY.md` 与 `.ch/docs/design-docs/loop-plus-scheduling.md` 同步；本计划仅引用该交付结果。
 - 本次未改变业务概念、角色归属、模式状态机或执行契约，既有 ontology 的角色路由规则仍成立，无需改动 ontology 数据。
 - 根因及模式兼容边界已进入设计事实来源；单次 UI 修复不额外扩写热区记忆或新增 runbook，不写入 `ROLLING_SUMMARY.md` / `EVENT_MEMORY.md`。
 

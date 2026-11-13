@@ -4,16 +4,10 @@
 - 状态：completed
 - 负责人：Codex
 - 类型：bugfix
-- 迁移来源：`.ch/docs/exec-plans/completed/2026-06/2026-06-22-loop-question-conclusion.md`
 
 ## 关联计划
 
-- [docs：Loop任务问题结论展示修复——文档同步](2026-06-22-docs-loop-question-conclusion-documentation.md)
 - 历史测试证据：[删除审计](../../migrations/test-plan-removals/2026-11-11-apr-jun.json)（entries[3]；test 类型计划已删除，独立测试开发不并入本计划交付范围）。
-
-## 迁移说明
-
-2026-11-11 按实际工作类型拆分。日期、负责人及状态沿用原文；下列命令和结果均为历史记录，本次迁移不执行历史命令，也不新增验收结论。
 
 ## 背景
 

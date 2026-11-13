@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-same-cli-subtask-model.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-loop-same-cli-subtask-model.md`](2026-11-03-docs-loop-same-cli-subtask-model.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-loop-same-cli-subtask-model.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -25,7 +25,7 @@
 - 同 CLI 的子任务使用任务已绑定模型，不受主模型或旧 prompt 覆盖；新会话、连续会话行为一致。
 - Loop+ 全栈和前端实际提交的模型与下拉显示一致；独立设置优先，显式 CLI 默认不回落到子模型。
 - 跨 CLI 和无配置拒绝路径不回归；构建及相关测试通过。
-- 文档交付证据见 [`2026-11-03-docs-loop-same-cli-subtask-model.md`](2026-11-03-docs-loop-same-cli-subtask-model.md)。
+- 原 docs companion `2026-11-03-docs-loop-same-cli-subtask-model.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 
 ## 影响面与风险
 
@@ -45,7 +45,7 @@
 ## 测试与清单同步
 
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-same-cli-subtask-model.md`）。
-- 文档交付证据见 [`2026-11-03-docs-loop-same-cli-subtask-model.md`](2026-11-03-docs-loop-same-cli-subtask-model.md)。
+- 原 docs companion `2026-11-03-docs-loop-same-cli-subtask-model.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - Ontology：已补现有角色模型路由规则及代码/测试来源，结构校验通过，skill 的 9 条 Python 测试通过。
 
 ## 任务列表
@@ -53,7 +53,7 @@
 Tasklist:
 - [completed] 定位子模型参数覆盖与日志证据
 - [completed] 修复模型传递；回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-loop-same-cli-subtask-model.md`）。
-- [completed] 验证构建；相关事实文档由关联 `docs` 计划维护
+- [completed] 验证构建；相关事实文档原由已退役 docs companion 维护（仅历史分工）
 
 ## 当前结论
 

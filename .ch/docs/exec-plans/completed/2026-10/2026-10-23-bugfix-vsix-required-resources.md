@@ -6,7 +6,7 @@
 - 类型：bugfix
 
 - 迁移来源：`.ch/docs/exec-plans/completed/2026-10/2026-10-23-vsix-size-reduction.md`（历史标识，原文件已替换）
-- 关联计划：[维护/构建/发布治理](2026-10-23-chore-vsix-size-reduction.md); [文档](2026-10-23-docs-vsix-size-reduction.md)
+- 关联计划：[十月迁移归属审计](../../migrations/2026-11-11-oct.json)（原 `2026-10-23-chore-vsix-size-reduction.md` 已退役，仅历史追溯）; 原 docs companion `2026-10-23-docs-vsix-size-reduction.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 - 测试计划删除审计：[十月历史证据](../../migrations/test-plan-removals/2026-11-11-oct.json)（按本页迁移来源查项；仅保留历史事实，不承担独立测试开发）。
 
 ## 本子计划目标
@@ -25,11 +25,11 @@
 
 文档仍以关联实现、历史验证与追加决策的真实结果为依据。原 test companion 已于 2026-11-11 删除；测试开发不是本存活计划的现行职责。这里保留同一历史任务的依赖与边界，不声称重新执行。chore 平台导出成功依赖 bugfix 修正必需资源清单；原测试曾覆盖裁剪、目标依赖拒绝和资源存在性，仅作历史说明。
 
-共享背景和跨类型验收关系见[来源任务的归属记录](2026-10-23-chore-vsix-size-reduction.md)；原始作者、日期和状态语义沿用头部记录。
+共享背景和跨类型验收关系见[十月迁移归属审计](../../migrations/2026-11-11-oct.json)（原 `2026-10-23-chore-vsix-size-reduction.md` 已退役，仅历史追溯）；原始作者、日期和状态语义沿用头部记录。
 
 ## 历史验证与未决事项
 
-本类型交付的实际验证以[同源原任务验证与边界](2026-10-23-chore-vsix-size-reduction.md#历史验证与未决事项)及下列原文局部记录为准。此引用复用当时构建/定向测试/文档校验等证据，不表示单独重跑或新增通过结论；未覆盖和历史失败同样适用。
+原同源验证入口 `2026-10-23-chore-vsix-size-reduction.md#历史验证与未决事项` 已退役；[迁移归属审计](../../migrations/2026-11-11-oct.json)只记录历史身份与职责，不能恢复原 chore 全部构建/导出日志。下列本页实际保留的结果仍是历史证据，不表示本轮重跑或新增通过结论；未覆盖和历史失败同样适用。
 
 ## 原文归属记录
 
@@ -38,3 +38,7 @@
 - 原导出脚本的必需文件数组仍要求当前源码与原始 VSIX 均不存在的 `mcp_marketplace.json` 和 `official_skills_catalog.json`，会在生成包后错误失败；按 `src/webview/configView.ts` 当前事实替换为配置页三段脚本与 Monaco loader，并增加存在性回归。
 
 - 相关回归最初 62/62 通过，补充旧资源清单回归后 63/63 通过。扩大单测发现的 14 个失败已用干净 HEAD 副本核对为历史基线，未修改范围外业务逻辑。
+
+## 退役维护分工与未恢复证据
+
+原 `2026-10-23-chore-vsix-size-reduction.md` 负责包内容裁剪与平台导出，成功导出依赖本 bugfix 修正资源清单；[十月迁移审计](../../migrations/2026-11-11-oct.json)按本页迁移来源定位。测试删除审计仍将 `reference_path` 指向该退役页，那是历史身份，并非现存完整日志；不据此补造导出命令、包大小或所有平台通过。本文保留 62/62 后补回归 63/63、扩大测试 14 项历史失败的原记录。现行资源约束见[打包手册](../../../runbooks/local-development.md#打包-vsix)：Claude SDK `cli.js`、WASM、原生 ripgrep、sharp/libvips 不可盲删；平台包只能分发给对应平台。这些现行约束不代表 2026-10-23 已完成全部跨平台真实打包验收。

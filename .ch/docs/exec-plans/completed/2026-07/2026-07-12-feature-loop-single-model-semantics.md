@@ -30,7 +30,7 @@ Loop 当前沿用“主任务模型 / 子任务模型”双选择，但用户确
 - Claude / Codex / OpenCode 的模式切换显示规则。
 - 思考标签解析、历史消息修复与运行时行为。
 
-按类型拆分后，本计划仅跟踪运行时与界面行为；测试开发及其历史结果见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档同步见 [`2026-07-12-docs-loop-single-model-semantics.md`](2026-07-12-docs-loop-single-model-semantics.md)。这两项有独立实现/写作交付，分别依赖本计划定义的行为。
+测试开发及其历史结果见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档已同步。这两项有独立实现/写作交付，分别依赖本计划定义的行为。
 
 ## 非目标
 

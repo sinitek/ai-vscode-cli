@@ -13,7 +13,7 @@
 
 ## 范围与非目标
 
-- 范围：配置服务的忙碌修复结果、统一执行入口的 Loop 警告展示；不承接回归开发，历史测试摘要见关联删除审计，事实来源写作见关联 docs 计划。
+- 范围：配置服务的忙碌修复结果、统一执行入口的 Loop 警告展示；不承接回归开发，历史测试摘要见关联删除审计，事实来源写作原指向已退役 docs companion（完整记录未恢复）。
 - 非目标：不放开配置切换或当前档案保存/删除，不忽略所见版本过期、档案摘要变化、读取/写入/预检等其它失败，不改变普通对话行为，不修改用户真实配置。
 
 ## 验收标准
@@ -33,7 +33,7 @@
 ## 关联计划
 
 - 历史测试摘要：[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，在 JSON 中以完整 `source_old_path` 值 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-loop-config-drift-warning.md` 定位历史记录；原 test 计划已删除，本计划不承接测试开发，审计不提供原计划完整正文。
-- 文档交付：[2026-11-04-docs-loop-config-drift-warning.md](2026-11-04-docs-loop-config-drift-warning.md)。本计划保留中间实现及决策，不把关联交付并入实现范围。
+- 历史文档分工：原 docs companion `2026-11-04-docs-loop-config-drift-warning.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。本计划保留中间实现及决策，不把关联交付并入实现范围。[references 索引](../../../references/index.md)仅作导航。
 
 ## 验证计划
 

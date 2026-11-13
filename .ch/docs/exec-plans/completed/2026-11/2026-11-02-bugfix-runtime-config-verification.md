@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 结构化比较、冲突边界与队列恢复新增回归开发见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-runtime-config-verification.md`）。
-- 功能清单、运行参考和 ontology 更新见 [`2026-11-02-docs-runtime-config-verification.md`](2026-11-02-docs-runtime-config-verification.md)。
+- 原文记录的历史文档分工：功能清单、运行参考和 ontology 历史更新原归 `2026-11-02-docs-runtime-config-verification.md`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -16,7 +16,7 @@
 
 ## 范围与非目标
 
-- 范围：运行配置语义校验、冲突有限重试与错误定位。独立回归开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-runtime-config-verification.md`）；事实文档同步见关联 `docs` 计划。
+- 范围：运行配置语义校验、冲突有限重试与错误定位。独立回归开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-runtime-config-verification.md`）；事实文档同步原指向已退役 docs companion（完整记录未恢复）。
 - 非目标：改变任务档案选择规则、长期文件锁、跨进程启动原子性、修改用户真实配置、升级依赖或界面改版。
 - 当前工作区干净，沿用当前分支原地修复；不额外创建分支或 worktree。
 

@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 最近方案、默认保护及旧默认无损迁移的测试开发见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`）。
-- FEATURE_INVENTORY、能力规格、Loop+调度设计和ontology实际同步见 [`2026-11-02-docs-loop-plus-plan-selection.md`](2026-11-02-docs-loop-plus-plan-selection.md)。
+- 原文记录的历史文档分工：FEATURE_INVENTORY、能力规格、Loop+调度设计和ontology历史同步原归 `2026-11-02-docs-loop-plus-plan-selection.md`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -16,7 +16,7 @@ Loop+ 已按工作区持久化最近选择，但前端会用已保存的「默�
 
 ## 范围与非目标
 
-- 范围：共享方案规范化、工作区设置和弹窗交互；独立测试开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`）；产品/本体文档同步见关联 `docs` 计划。
+- 范围：共享方案规范化、工作区设置和弹窗交互；独立测试开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`）；产品/本体文档同步原指向已退役 docs companion（完整记录未恢复）。
 - 非目标：不修改任务调度、已有任务快照、CLI 调用或其他未提交改动；不新增依赖或配置项。
 
 ## 验收标准
@@ -30,7 +30,7 @@ Loop+ 已按工作区持久化最近选择，但前端会用已保存的「默�
 ## 影响面与风险
 
 - 代码：`src/loopPlusAcceptancePlan.ts`、`src/workspaceSettingsStore.ts`、`src/webview/`；宿主设置逻辑按需补测。
-- 功能清单、能力规格、调度设计和本体规则编辑由关联 `docs` 计划承接。
+- 功能清单、能力规格、调度设计和本体规则编辑原由已退役 docs companion 承接（仅历史分工）。
 - 风险：重名迁移造成覆盖、默认误保存、项目串选；通过稳定 ID、幂等迁移、前后端双重校验与工作区隔离测试缓解。
 
 ## 验证计划
@@ -45,7 +45,7 @@ Loop+ 已按工作区持久化最近选择，但前端会用已保存的「默�
 Tasklist:
 - [completed] 确认方案选择与保存逻辑
 - [completed] 实现项目记忆与新建规则
-- [completed] 完成方案选择功能；测试开发历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`），文档维护见关联 `docs` 计划。
+- [completed] 完成方案选择功能；测试开发历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`），文档维护原指向已退役 docs companion（完整记录未恢复）。
 - [completed] 执行构建与相关验证
 
 ## 决策记录
@@ -59,7 +59,7 @@ Tasklist:
 - 浏览器验证：通过仓库 Chromium smoke runner 验证编译后完整 Webview（模拟 VS Code 消息桥），旧默认迁移及恢复、选回内置默认后重开、新建预填名称及保存后重开三个场景通过，桌面 1280×900 和窄屏 390×844 均检查控件不重叠；浏览器、网络错误均为空。未启动真实 Extension Development Host。
 - 浏览器证据：`.tmp/playwright-smoke/loop-plus-plan-selection-migrated/result.json`、`.tmp/playwright-smoke/loop-plus-plan-selection-default/result.json`、`.tmp/playwright-smoke/loop-plus-plan-selection-create/result.json`，各目录保留成功截图。
 - 静态验证：`python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 通过；界面机械检测无发现；改动范围 `node scripts/check_trailing_whitespace.js ...` 和 `git diff --check` 通过。
-- 文档交付证据见 [`2026-11-02-docs-loop-plus-plan-selection.md`](2026-11-02-docs-loop-plus-plan-selection.md)。
+- 原 docs companion `2026-11-02-docs-loop-plus-plan-selection.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-loop-plus-plan-selection.md`）。
 
 ## 当前结论

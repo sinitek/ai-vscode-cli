@@ -22,7 +22,7 @@
 - 删除工具设置中的最终答复策略控件、面板状态字段与 Webview 运行时绑定。
 - 将普通任务的显式最终答复要求固定为启用，保留 Loop 豁免。
 - 删除 Codex completed-turn commentary 提升逻辑。
-- 协议功能实现；测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档编写归 [docs 计划](2026-07-13-docs-strict-final-answer-protocol.md)。
+- 协议功能实现；测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，事实文档编写归 docs 计划。
 
 ## 非目标
 
@@ -63,7 +63,7 @@
 ## 测试与清单同步
 
 - 测试断言变化及131/131历史结果归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 功能清单、运行时参考、PITFALLS 与技能目录 description 同步归 [docs 计划](2026-07-13-docs-strict-final-answer-protocol.md)。
+- 功能清单、运行时参考、PITFALLS 与技能目录 description 同步归 docs 计划。
 
 ## 任务列表
 
@@ -80,7 +80,6 @@
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-13-docs-strict-final-answer-protocol.md)：承接功能清单、运行时/PITFALLS及技能目录本地化事实同步。
 
 ## 当前结论
 

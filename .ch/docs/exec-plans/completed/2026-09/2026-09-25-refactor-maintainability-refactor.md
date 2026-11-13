@@ -9,33 +9,7 @@
 - 当前阶段：本类型阶段 4、5、6 的行为保持实现已在历史工作区落地并复核。原计划第 1–7 阶段完成是共同历史背景；阶段 1–3 设计与阶段 7 文档回写独归关联 docs，三组独立测试开发不归本记录（原test计划已删除）。
 - 设计：`docs/MAINTAINABILITY_REFACTOR.md`。其中历史行号保留为锚点，并已注明工作区前移。本文件收尾时曾留在 `active/`，之后已归档到 `.ch/docs/exec-plans/completed/2026-09/`。
 - 类型：refactor
-- 原计划：`.ch/docs/exec-plans/completed/2026-09/2026-09-25-maintainability-refactor.md`
 
-## 本类型目标
-
-阶段4共享技能发现、阶段5共享JSON对象扫描、阶段6显式端口OpenCode Template Method，保留空description差异、两套决策协议及host工厂签名。
-
-## 范围与所有权
-
-- 阶段4共享技能发现、阶段5共享JSON对象扫描、阶段6显式端口OpenCode Template Method，保留空description差异、两套决策协议及host工厂签名。
-- 本记录只承担 行为保持重构；其它存活类型的交付归下列具体关联计划，不作为本计划的附带事项；原独立 test 记录已删除，本计划不接回测试开发。
-- 保留原日期、负责人及 claim 元数据。状态继承原计划 `completed`，不是本轮重新完成或重新验证。
-
-## 验收标准
-
-- 阶段4共享技能发现、阶段5共享JSON对象扫描、阶段6显式端口OpenCode Template Method，保留空description差异、两套决策协议及host工厂签名。
-- 本计划不承接其它类型范围；存在的失败、未执行与未发布结论继续有效。
-
-## 验证计划与证据边界
-
-按阶段 4–6 的实现路径和调用点核对共享函数、算法与 host 兼容边界；历史完成依据是源码对照复核，文档收尾未执行 build 或单测。测试开发与既有命令记录由[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)保管，迁移不产生新的产品通过声明。
-
-## 关联计划
-
-- [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [2026-09-25-docs-maintainability-refactor.md](2026-09-25-docs-maintainability-refactor.md)：文档交付及证据；各自保持历史状态，不由关联关系推定通过。
-
-## 本类型历史记录
 
 ### 背景
 

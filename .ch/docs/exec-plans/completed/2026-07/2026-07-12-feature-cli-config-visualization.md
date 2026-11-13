@@ -27,7 +27,7 @@
 - 三种原生配置的解析、校验、定向合并、未知字段保留、无效源码保护和用户可见错误反馈。
 - 适合改为 select / multi-select 的既有文本输入，以及已核验新增稳定字段的控件选择。
 - 配置中心扩展宿主、Webview 协议、受版本控制的 Webview runtime asset 与国际化。
-- 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品事实来源同步见 [`2026-07-12-docs-cli-config-visualization.md`](2026-07-12-docs-cli-config-visualization.md)。
+- 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品事实来源已同步。
 
 ## 非目标
 

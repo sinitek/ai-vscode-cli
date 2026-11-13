@@ -28,7 +28,7 @@
 - `src/extension.ts` 接入长期记忆 runtime gate、prompt 注入、成功后摘要落盘、`.ch` 自动关闭兼容。
 - `src/webview/viewContent.ts`、`src/webview/types.ts` 增加长期记忆被 `.ch` 接管时的状态展示。
 - 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 关联文档交付见 [`2026-07-03-docs-workspace-long-term-memory.md`](2026-07-03-docs-workspace-long-term-memory.md)。
+- 关联文档交付已同步。
 
 ## 非目标
 

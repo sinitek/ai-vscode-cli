@@ -16,7 +16,7 @@
 - 旧 settings.json 中的上限字段读取时忽略；不主动改写用户文件。
 - 不修改工作区已有的模型导入、群聊弹窗等未提交改动，不发布扩展。
 
-- 本计划只承担设置 UI/协议/持久化/宿主及执行链路移除；产品/规则文档由关联 docs 计划承接。测试与验证脚本维护属于已完成历史工作，证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-thinking-uncapped.md` 见[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
+- 本计划只承担设置 UI/协议/持久化/宿主及执行链路移除；产品/规则文档原由已退役 docs companion 承接（仅历史分工）。测试与验证脚本维护属于已完成历史工作，证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-thinking-uncapped.md` 见[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
 
 ## 验收标准
 
@@ -47,7 +47,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留 Loop 子任务力度保留与旧配置回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-thinking-uncapped.md`；不再作为现行测试责任。
-- [docs：Loop 子任务思考力度规格与角色规则同步](2026-11-05-docs-loop-thinking-uncapped.md#背景与目标)：分别承接Loop 子任务思考力度规格与角色规则同步，共享本来源的历史背景与接口。
+- 历史文档分工：Loop 子任务思考力度规格与角色规则同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-loop-thinking-uncapped.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

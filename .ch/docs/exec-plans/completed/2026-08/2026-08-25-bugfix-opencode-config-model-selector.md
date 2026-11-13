@@ -8,34 +8,7 @@
 - claim_ttl：已完成
 - handoff_to：
 - 类型：bugfix
-- 原计划：`.ch/docs/exec-plans/completed/2026-08/2026-08-25-opencode-config-model-selector.md`
 
-## 本类型目标
-
-修复既有 OpenCode 面板模型选择被异步旧配置快照覆盖；发送显式 configId，暂存角色选择直至确认快照到达。
-
-## 范围与所有权
-
-- 修复既有 OpenCode 面板模型选择被异步旧配置快照覆盖；发送显式 configId，暂存角色选择直至确认快照到达。
-- 本记录只承担 既有缺陷修复；其它存活类型的交付归下列具体关联计划，不作为本计划的附带事项；原独立 test 记录已删除，本计划不接回测试开发。
-- 保留原日期、负责人及 claim 元数据。状态继承原计划 `completed`，不是本轮重新完成或重新验证。
-
-## 验收标准
-
-- 修复既有 OpenCode 面板模型选择被异步旧配置快照覆盖；发送显式 configId，暂存角色选择直至确认快照到达。
-- 本计划不承接其它类型范围；存在的失败、未执行与未发布结论继续有效。
-
-## 验证计划与证据边界
-
-按本类型范围核对原实现/治理结果与兼容边界；历史构建、测试或失败证据由[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)保管（没有测试开发时保留本类型原验证记录），迁移不产生新的产品通过声明。
-
-## 关联计划
-
-- [2026-08-25-feature-opencode-config-model-selector.md](2026-08-25-feature-opencode-config-model-selector.md)：实现/治理接口及共同背景；各自保持历史状态，不由关联关系推定通过。
-- [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [2026-08-25-docs-opencode-config-model-selector.md](2026-08-25-docs-opencode-config-model-selector.md)：文档交付及证据；各自保持历史状态，不由关联关系推定通过。
-
-## 本类型历史记录
 
 ### 背景
 

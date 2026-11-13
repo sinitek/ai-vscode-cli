@@ -14,7 +14,7 @@ Loop / Loop+ 子任务的运行入口等待自动压缩后才返回，导致完�
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留异步门闩/VM 夹具及失败修复的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-loop-subtask-notify-before-compact.md`；历史工作依赖本计划的完成通知、后台压缩和会话等待契约，不再作为现行测试责任。
-- [产品与调度说明](2026-11-06-docs-loop-subtask-notify-before-compact.md#验收标准)：按实现和测试边界更新能力、设计与本体；测试开发和文档写作均不属本计划范围。
+- 历史文档分工：按实现和测试边界更新能力、设计与本体；测试开发和文档写作均不属本计划范围。 原 docs companion `2026-11-06-docs-loop-subtask-notify-before-compact.md#验收标准` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 范围与非目标
 
@@ -33,14 +33,14 @@ Loop / Loop+ 子任务的运行入口等待自动压缩后才返回，导致完�
 ## 影响面与风险
 
 - 代码：运行时收尾、子任务生命周期、Loop+ 完成事件、上下文压缩依赖与会话互斥。
-- 文档影响：功能清单、能力说明、压缩相关 ontology 的实际写作由关联 docs 计划负责，不以事实同步作为实现验收。
+- 文档影响：功能清单、能力说明、压缩相关 ontology 的实际写作原由已退役 docs companion 负责（仅历史分工），不以事实同步作为实现验收。
 - 风险：同会话重入、跨 Tab 续接、主任务状态被后台压缩覆盖；用会话级等待与独立依赖适配器消除。
 
 ## 验证计划
 
 - `npm run build`
 - 执行历史新增的压缩调度与隔离单测，以及相关运行时、Loop / Loop+ 生命周期和会话续接单测；本计划只使用结果验证实现，测试开发证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-loop-subtask-notify-before-compact.md` 见测试计划移除审计。
-- ontology 校验与其 Python 单测由关联 docs 计划保留历史记录；实现差异检查使用 `git diff --check`。
+- ontology 校验与其 Python 单测原由已退役 docs companion 保留历史记录（仅历史分工）；实现差异检查使用 `git diff --check`。
 - 本次不改变真实 CLI 协议或页面，使用生产收尾入口与可控异步压缩门闩做确定性顺序验证。
 - 以下关联结果是历史记录，本轮不执行构建、测试或真实 CLI。
 
@@ -54,7 +54,7 @@ Loop / Loop+ 子任务的运行入口等待自动压缩后才返回，导致完�
 ## 测试与清单同步
 
 - 原测试计划正文记录 `npm run build`、314项相关测试、全量3082通过/3跳过、56项VM依赖失败及 `never[]` 构建修复；来源审计条目实际只保留关联、开发范围和非目标，没有这些结果或失败摘要。完整证据未保留。本计划不认领回归/夹具开发。
-- 产品功能清单、能力说明、Loop+ 调度设计和压缩 ontology 的实际同步与历史校验由 [docs 计划](2026-11-06-docs-loop-subtask-notify-before-compact.md#测试与清单同步)独立交付。
+- 原文记录的历史文档分工：产品功能清单、能力说明、Loop+ 调度设计和压缩 ontology 的历史同步与校验原归 `2026-11-06-docs-loop-subtask-notify-before-compact.md#测试与清单同步`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 决策记录
 

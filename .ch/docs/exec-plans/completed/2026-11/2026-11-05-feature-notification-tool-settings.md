@@ -12,7 +12,7 @@
 ## 范围与非目标
 
 - 生产Webview HTML/脚本、状态协议、会话设置处理及组合根：迁移授权页签、两个独立系统通知开关与全局保存/失败恢复。
-- 本计划不承担测试开发；已完成测试断言与场景的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-tool-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。产品、排障与 ontology 文档由关联 docs 计划独立交付。
+- 本计划不承担测试开发；已完成测试断言与场景的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-tool-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。产品、排障与 ontology 文档原由已退役 docs companion 独立交付（仅历史分工）。
 - 沿用既有主题、开关、应用级设置及通知宿主；不改权限、投递条件、默认值或窗口图标提醒。
 
 ## 验收标准
@@ -36,7 +36,7 @@
 
 ## 验证计划与历史结果
 
-历史计划正文记载构建、289/289相关单测、406/406页面测试和五场景Chromium通过；其中289/289并未出现在测试计划移除审计条目内。审计列有 `npm run build`、`npm run test:page`、ontology 校验命令及其结果摘要，也列有五场景Chromium结果、失败分类摘要和一条被截断的长 `node --test` 命令；未保留完整命令或完整证据。289/289仍仅为原正文历史记录，不补作审计字段。来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-tool-settings.md`。文档与 ontology 见关联 docs 计划。
+历史计划正文记载构建、289/289相关单测、406/406页面测试和五场景Chromium通过；其中289/289并未出现在测试计划移除审计条目内。审计列有 `npm run build`、`npm run test:page`、ontology 校验命令及其结果摘要，也列有五场景Chromium结果、失败分类摘要和一条被截断的长 `node --test` 命令；未保留完整命令或完整证据。289/289仍仅为原正文历史记录，不补作审计字段。来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-tool-settings.md`。文档与 ontology 原指向已退役 docs companion（完整记录未恢复）。
 
 - 沿用既有主题、开关、应用级设置及通知宿主，不改变原生通知实现；未更改系统权限、未发送通知、未修改真实编辑器设置。首次系统授权弹窗和 Windows/Linux 原生通知未在本轮真机重验。架构边界未变化，无需更新 `ARCHITECTURE.md`；无新可复用经验，未更新 memory 热区或事件记忆。
 - 工作区出现并行的 Loop+ 排查文档与 PITFALLS 导航修改，均保留，不纳入本任务。
@@ -48,7 +48,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留通知授权页签与独立开关回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-tool-settings.md`；不再作为现行测试开发责任。
-- [docs：工具设置通知授权规格与排障同步](2026-11-05-docs-notification-tool-settings.md#背景与目标)：分别承接工具设置通知授权规格与排障同步，共享本来源的历史背景与接口。
+- 历史文档分工：工具设置通知授权规格与排障同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-notification-tool-settings.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

@@ -13,14 +13,14 @@
 
 ## 范围与非目标
 
-- 范围：前端执行路由与运行时命名角色身份；不承接回归开发，历史测试摘要见关联删除审计，设计/功能清单/本体规则写作由关联 docs 计划承接。
+- 范围：前端执行路由与运行时命名角色身份；不承接回归开发，历史测试摘要见关联删除审计，设计/功能清单/本体规则写作原由已退役 docs companion 承接（仅历史分工）。
 - 非目标：不修改正在运行的后端任务、真实任务记录、用户配置或凭据；不发布、安装、重启扩展，不启动收费模型请求。
 - 保留工作区已有及并发变更，不修改模型发现功能。
 
 ## 关联计划
 
 - 历史测试摘要：[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，在 JSON 中以完整 `source_old_path` 值 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-loopplus-frontend-route-identity.md` 定位历史记录；原 test 计划已删除，本计划不承接测试开发，审计不提供原计划完整正文。
-- 文档交付：[2026-11-04-docs-loopplus-frontend-route-identity.md](2026-11-04-docs-loopplus-frontend-route-identity.md)。本计划只承接路由与运行时身份修复。
+- 历史文档分工：原 docs companion `2026-11-04-docs-loopplus-frontend-route-identity.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。本计划只承接路由与运行时身份修复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 验收标准
 
@@ -32,7 +32,7 @@
 ## 影响面与风险
 
 - 代码：`src/subtaskCliRoute.ts`、`src/extensionHost/promptRunRuntime.ts`。
-- 历史测试影响面包括 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopModelRouting.test.ts` 等回归，删除审计仅保留摘要；`2026-11-04-docs-loopplus-frontend-route-identity.md` 承接 Loop+ 调度设计、功能清单和 CLI 运行时 ontology 规则。本计划仅记录修复验证证据，不承接回归开发。
+- 历史测试影响面包括 `src/test/loop/loopPlusSubtaskMode.test.ts`、`src/test/extensionHost/loopModelRouting.test.ts` 等回归，删除审计仅保留摘要；`2026-11-04-docs-loopplus-frontend-route-identity.md` 当时承担（该页已退役，仅历史分工） Loop+ 调度设计、功能清单和 CLI 运行时 ontology 规则。本计划仅记录修复验证证据，不承接回归开发。
 - 风险：缺 CLI 不等于缺路由；只允许已有前端模型/档案证明身份时按同 CLI 兼容，不将思考档或主配置单独视为前端配置。
 - 回滚：只撤销本计划的路由与绑定补丁，无持久化迁移。
 
@@ -46,7 +46,7 @@
 
 ## 测试与清单同步
 
-- 七种 CLI、历史快照、拒绝边界和同 CLI 角色绑定回归属于历史测试工作，相关结果保留于本节，删除审计仅保留摘要；`2026-11-04-docs-loopplus-frontend-route-identity.md` 承接设计/功能清单/ontology 同步。本计划不承接回归开发。
+- 七种 CLI、历史快照、拒绝边界和同 CLI 角色绑定回归属于历史测试工作，相关结果保留于本节，删除审计仅保留摘要；`2026-11-04-docs-loopplus-frontend-route-identity.md` 当时承担（该页已退役，仅历史分工）设计/功能清单/ontology 同步。本计划不承接回归开发。
 - 修复前：`npm run build` 通过，最小相关测试 42 项中 18 项失败，确认问题可复现。
 - 修复后：`npm run build` 通过，最小相关测试 42/42 通过。
 - 扩展测试：`node --test dist/test/loop/loopPlusSubtaskMode.test.js dist/test/loop/subtaskCliRoute.test.js dist/test/loop/continueModelChoice.test.js dist/test/loop/loopTaskStore.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopModelRouting.test.js dist/test/extensionHost/loopPlusRuntimeWiring.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusOrchestration.test.js`：206/206 通过，无跳过。

@@ -8,32 +8,7 @@
 - claim_ttl：本次任务完成前
 - handoff_to：已归档，无后续 active handoff
 - 类型：refactor
-- 原计划：`.ch/docs/exec-plans/completed/2026-08/2026-08-01-reusable-logic-refactor.md`
 
-## 本类型目标
-
-抽取 pathSegments 与 writeScope 值级纯函数；保留 Loop 兼容导出、fallback、路径布局、冲突结果与调度行为。
-
-## 范围与所有权
-
-- 抽取 pathSegments 与 writeScope 值级纯函数；保留 Loop 兼容导出、fallback、路径布局、冲突结果与调度行为。
-- 本记录只承担 行为保持重构；其它存活类型的交付归下列具体关联计划，不作为本计划的附带事项；原独立 test 记录已删除，本计划不接回测试开发。
-- 保留原日期、负责人及 claim 元数据。状态继承原计划 `completed`，不是本轮重新完成或重新验证。
-
-## 验收标准
-
-- 抽取 pathSegments 与 writeScope 值级纯函数；保留 Loop 兼容导出、fallback、路径布局、冲突结果与调度行为。
-- 本计划不承接其它类型范围；存在的失败、未执行与未发布结论继续有效。
-
-## 验证计划与证据边界
-
-按本类型范围核对原实现/治理结果与兼容边界；历史构建、测试或失败证据由[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)保管（没有测试开发时保留本类型原验证记录），迁移不产生新的产品通过声明。
-
-## 关联计划
-
-- [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-
-## 本类型历史记录
 
 ### 背景
 

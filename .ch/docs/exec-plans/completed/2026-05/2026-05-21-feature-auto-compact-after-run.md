@@ -4,16 +4,10 @@
 - 状态：completed
 - 负责人：Codex
 - 类型：feature
-- 迁移来源：`.ch/docs/exec-plans/completed/2026-05/2026-05-21-auto-compact-after-run.md`
 
 ## 关联计划
 
 - [bugfix：自动压缩标签绑定与停止收尾修复](2026-05-21-bugfix-auto-compact-tab-lifecycle.md)
-- [docs：执行后自动上下文压缩切换——文档同步](2026-05-21-docs-auto-compact-after-run-documentation.md)
-
-## 迁移说明
-
-2026-11-11 按实际工作类型拆分。日期、负责人及状态沿用原文；下列命令和结果均为历史记录，本次迁移不执行历史命令，也不新增验收结论。
 
 ## 背景
 

@@ -23,7 +23,7 @@ OpenCode `run --format json` 主要转发父会话事件，父会话等待内部
 - OpenCode one-shot 与并行 tab 两条运行链路。
 - Codex App Server 子线程 delta、协作代理生命周期和子线程完成事件分流。
 - 对话 Webview 对并发、交错子代理气泡的定向增量更新。
-- 中英文界面文案。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；运行时、功能清单与产品文档编写归 [docs 计划](2026-07-13-docs-cli-subagent-stream-bubbles.md)。
+- 中英文界面文案。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；运行时、功能清单与产品文档编写归 docs 计划。
 
 ## 非目标
 
@@ -67,7 +67,7 @@ OpenCode `run --format json` 主要转发父会话事件，父会话等待内部
 ## 测试与清单同步
 
 - 测试开发、首轮过期断言失败及修复、结构复核缺陷修正和112/112历史结果归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 功能清单、CLI runtime reference、runtime design、能力规格和 PITFALLS 的写作归 [docs 计划](2026-07-13-docs-cli-subagent-stream-bubbles.md)。
+- 功能清单、CLI runtime reference、runtime design、能力规格和 PITFALLS 的写作归 docs 计划。
 
 ## 任务列表
 
@@ -89,7 +89,6 @@ OpenCode `run --format json` 主要转发父会话事件，父会话等待内部
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-13-docs-cli-subagent-stream-bubbles.md)：承接功能清单和runtime/产品事实文档更新，依赖本计划定义的气泡行为。
 
 ## 当前结论
 

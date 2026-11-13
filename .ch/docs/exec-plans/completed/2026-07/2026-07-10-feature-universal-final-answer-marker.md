@@ -29,7 +29,6 @@
 - Codex / Claude 交互模式和 OpenCode one-shot / parallel 模式的终态检查。
 - 全局工具设置、PanelState、Webview 控件和中英文文案。
 - 原测试记录已删除，历史验证证据：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 文档交付依赖：[`2026-07-10-docs-universal-final-answer-marker.md`](2026-07-10-docs-universal-final-answer-marker.md)。
 
 ## 非目标
 
@@ -76,7 +75,7 @@
 
 - 单元自测结果：`npm run build` 通过；加入 Webview 展示过滤回归后的最小相关回归 47/47 通过，补充 Webview 回归 31/31 通过；排除两个已知失败文件后的上一轮扩展回归 336/336 通过。
 - 失败处理记录：测试重命名前遗留的 `dist/test/codexFinalAnswerPolicy.test.js` 曾重复执行并造成 2 个过期断言失败，删除该生成产物后通过；最终全量 392 项中 369 通过、23 项范围外历史失败（`configService.test.js` 1 项、`loopBoundaryRecord.test.js` 22 项）。详情见测试计划删除审计。
-- 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品规格、runtime reference 与 `PITFALLS.md` 同步见 [`2026-07-10-docs-universal-final-answer-marker.md`](2026-07-10-docs-universal-final-answer-marker.md)。
+- 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品规格、runtime reference 与 `PITFALLS.md` 已同步。
 - 记忆金字塔检查：通用行为已进入产品规格，复发根因与机器协议豁免已进入 `PITFALLS.md`；无需在热区记忆重复维护同一事实。
 
 ## 任务列表

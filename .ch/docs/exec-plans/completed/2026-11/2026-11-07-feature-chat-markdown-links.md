@@ -7,7 +7,7 @@
 
 ## 关联计划
 
-- 功能实现及安全链接协议由本计划记录；独立回归开发的历史结果见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-chat-markdown-links.md），功能清单、能力说明、运行时设计和 ontology 同步见 [`2026-11-07-docs-chat-markdown-links.md`](2026-11-07-docs-chat-markdown-links.md)。测试和文档以本计划功能边界为共同背景，不在此重复完整范围。
+- 功能实现及安全链接协议由本计划记录；独立回归开发的历史结果见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-chat-markdown-links.md）。历史文档范围：功能清单、能力说明、运行时设计和 ontology 同步。原 docs companion `2026-11-07-docs-chat-markdown-links.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -29,7 +29,7 @@
 ## 影响面与风险
 
 - 代码：`src/webview/`；`src/test/webview/`的开发范围曾由独立 test 类型计划承接；该计划已移除，历史证据摘要见[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-chat-markdown-links.md）。
-- 功能清单、产品能力说明、运行时设计及ontology交付独立由关联docs计划承接。
+- 功能清单、产品能力说明、运行时设计及ontology交付独立原由已退役 docs companion 承接（仅历史分工）。
 - 风险：模型生成的地址跨越 Webview/宿主信任边界；前后端均校验地址，仅用户点击触发打开，不执行任意协议。
 - 回滚：撤回共享链接渲染及消息路由，不影响现有图片能力。
 
@@ -42,7 +42,7 @@
 
 ## 实现结论
 
-- 独立回归与历史验证结果见已移除 test 类型计划的历史审计摘要[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-chat-markdown-links.md）；文档同步与 ontology 结果见关联 docs 计划。真实功能实现不由测试或文档记录替代。
+- 独立回归与历史验证结果见已移除 test 类型计划的历史审计摘要[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-07-chat-markdown-links.md）；文档同步与 ontology 结果原指向已退役 docs companion（完整记录未恢复）。真实功能实现不由测试或文档记录替代。
 
 ## 决策与当前结论
 

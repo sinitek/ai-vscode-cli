@@ -34,7 +34,7 @@
 - 不新增依赖，不改 `package.json`，不提交、不建分支，不执行发布脚本。
 - 不为协议认证/分页差异强行建策略（网络协议 switch 保留在 discovery 内）。
 
-- 实际策略回归为历史测试开发记录，证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-model-import-platform-strategies.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；ARCHITECTURE 写作由关联 docs 计划承接，本计划不承接测试或文档任务。
+- 实际策略回归为历史测试开发记录，证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-model-import-platform-strategies.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；ARCHITECTURE 写作原由已退役 docs companion 承接（仅历史分工），本计划不承接测试或文档任务。
 
 ## 设计
 
@@ -93,7 +93,7 @@ modelimport.ts (Facade)
 
 ## 验证计划与历史结果
 
-历史构建、104项定向、2926项全量与最终2949项全量结果，按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-model-import-platform-strategies.md` 见测试计划移除审计；文档校验与既有 AGENTS 空白失败见 docs。本计划的行为保持实证如下：
+历史构建、104项定向、2926项全量与最终2949项全量结果，按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-model-import-platform-strategies.md` 见测试计划移除审计；文档校验与既有 AGENTS 空白失败原指向 docs companion（已退役，完整记录未恢复；不据退役抹去失败）。本计划的行为保持实证如下：
 
 - 差分对照（临时脚本，未入库）：对 HEAD 原实现与重构后 Facade 逐平台比较 `getModelImportProviders`、`applyModelImport`（含全部已存在、空选择、单/多模型、Claude fields）与 `discoverImportModels`（含两页分页与请求失败），七平台结果与错误文本一致；最终代码上复跑一次（7 平台 × providers/apply（新模型、全部已存在、空选择）/discover 分页/discover 失败 + 3 组非法 payload），全部一致。临时基线与脚本已删除，清理后重新 `npm run build`，`dist/config/modelimportbaseline.js` 不再存在。
 
@@ -125,7 +125,7 @@ ontology 未新增概念，原 `plugin.rule.model_import_host_draft_boundary` �
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留模型导入七平台策略与架构边界测试的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-model-import-platform-strategies.md`；不再作为现行测试责任。
-- [docs：模型导入 Facade 与平台扩展架构说明](2026-11-05-docs-model-import-platform-strategies.md#背景与目标)：分别承接模型导入 Facade 与平台扩展架构说明，共享本来源的历史背景与接口。
+- 历史文档分工：模型导入 Facade 与平台扩展架构说明，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-model-import-platform-strategies.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

@@ -15,7 +15,7 @@
 - 打通工具设置的读取、全局保存、回显和失败恢复；精简说明，仅显示当前平台的操作提示。
 - 不改变原生通知投递、授权流程、后台提醒触发规则，不新增依赖。
 
-- 本计划仅承担 Webview/面板状态/消息保存协议与设置页提示；产品/ontology 事实文档由关联 docs 计划承接。已完成测试开发的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-attention-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
+- 本计划仅承担 Webview/面板状态/消息保存协议与设置页提示；产品/ontology 事实文档原由已退役 docs companion 承接（仅历史分工）。已完成测试开发的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-attention-settings.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
 
 ## 验收标准
 
@@ -38,12 +38,12 @@
 
 ## 验证计划与历史结果
 
-原构建通过、125+226项相关回归及五场景离线 Chromium 通过；命令、Playwright/脚本拼装失败与平台限制按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-attention-settings.md` 见[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，文档/ontology 校验见 docs。未运行全量单测；当前 macOS 不能实测 Windows 原生任务栏闪烁，仍需 Windows 本机验收。
+原构建通过、125+226项相关回归及五场景离线 Chromium 通过；命令、Playwright/脚本拼装失败与平台限制按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-attention-settings.md` 见[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，文档/ontology 校验原指向 docs companion（已退役，完整记录未恢复）。未运行全量单测；当前 macOS 不能实测 Windows 原生任务栏闪烁，仍需 Windows 本机验收。
 
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留通知与闪烁独立设置回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-notification-attention-settings.md`；不再作为现行测试责任。
-- [docs：通知闪烁开关功能规格与本体同步](2026-11-05-docs-notification-attention-settings.md#背景与目标)：分别承接通知闪烁开关功能规格与本体同步，共享本来源的历史背景与接口。
+- 历史文档分工：通知闪烁开关功能规格与本体同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-notification-attention-settings.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

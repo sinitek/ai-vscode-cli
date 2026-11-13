@@ -20,7 +20,7 @@
 ## 关联计划
 
 - 历史测试摘要：[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，在 JSON 中以完整 `source_old_path` 值 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-task-completion-desktop-attention.md` 定位历史记录；原 test 计划已删除，本计划不承接测试开发，审计不提供原计划完整正文。
-- 文档交付：[2026-11-04-docs-task-completion-desktop-attention.md](2026-11-04-docs-task-completion-desktop-attention.md)。本计划只承接完成提醒实现和业务过滤。
+- 历史文档分工：原 docs companion `2026-11-04-docs-task-completion-desktop-attention.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。本计划只承接完成提醒实现和业务过滤。[references 索引](../../../references/index.md)仅作导航。
 
 ## 验收标准
 

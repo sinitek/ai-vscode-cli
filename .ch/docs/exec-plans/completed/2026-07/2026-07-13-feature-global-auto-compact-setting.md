@@ -22,7 +22,7 @@
 - 把 UI 控件从“工作区”页移到“全局”页，并同步中英文说明。
 - 兼容迁移工作区 `autoCompactContextAfterRun` 和旧 `autoCompactContextBeforeRun`；全局值优先。
 - 将运行时 getter、PanelState 依赖与自动压缩触发链路改为全局语义。
-- 设置功能实现；测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，产品/运行时事实文档编写归 [docs 计划](2026-07-13-docs-global-auto-compact-setting.md)。
+- 设置功能实现；测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，产品/运行时事实文档编写归 docs 计划。
 
 ## 非目标
 
@@ -61,7 +61,7 @@
 
 - 测试更新及78/78历史结果归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
 - 失败处理记录：无测试失败。
-- 功能清单、能力规格、运行时参考/设计及隐式子代理迁移说明归 [docs 计划](2026-07-13-docs-global-auto-compact-setting.md)。
+- 功能清单、能力规格、运行时参考/设计及隐式子代理迁移说明归 docs 计划。
 
 ## 任务列表
 
@@ -79,7 +79,6 @@
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-13-docs-global-auto-compact-setting.md)：承接功能清单与事实文档写作，依赖最终设置语义。
 
 ## 当前结论
 

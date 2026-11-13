@@ -14,7 +14,7 @@
 ## 范围与非目标
 
 - 仅 `src/panelDiagnostics.ts`、`src/webview/loopGroupChatPanel*.ts` 的气泡样式、主模型 Tab 忙碌初始状态与局部补丁、前后端发送守卫。
-- 本计划仅实现缺陷修复，不承担历史回归开发；其历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-ask-dialog-busy.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。功能清单与已有 ontology 规则同步由关联 docs 计划独立承接；不改变持久化或调度。
+- 本计划仅实现缺陷修复，不承担历史回归开发；其历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-ask-dialog-busy.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。功能清单与已有 ontology 规则同步原由已退役 docs companion 独立承接（仅历史分工）；不改变持久化或调度。
 - 保留工作区已有模型导入改动，不改范围外文件。
 
 ## 验收标准
@@ -47,7 +47,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留主模型提问忙碌与留白回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loop-ask-dialog-busy.md`；不再作为现行测试开发责任。
-- [docs：主模型提问忙碌规则与功能清单同步](2026-11-05-docs-loop-ask-dialog-busy.md#背景与目标)：分别承接主模型提问忙碌规则与功能清单同步，共享本来源的历史背景与接口。
+- 历史文档分工：主模型提问忙碌规则与功能清单同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-loop-ask-dialog-busy.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

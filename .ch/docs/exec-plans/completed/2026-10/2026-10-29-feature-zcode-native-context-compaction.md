@@ -6,7 +6,7 @@
 - 类型：feature
 
 - 迁移来源：`.ch/docs/exec-plans/completed/2026-10/2026-10-29-zcode-context-compaction.md`（历史标识，原文件已替换）
-- 关联计划：[已发布行为修复](2026-10-29-bugfix-zcode-context-usage.md); [文档](2026-10-29-docs-zcode-context-compaction.md)
+- 关联计划：[已发布行为修复](2026-10-29-bugfix-zcode-context-usage.md); 原 docs companion `2026-10-29-docs-zcode-context-compaction.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 - 测试计划删除审计：[十月历史证据](../../migrations/test-plan-removals/2026-11-11-oct.json)（按本页迁移来源查项；仅保留历史事实，不承担独立测试开发）。
 
 ## 本子计划目标

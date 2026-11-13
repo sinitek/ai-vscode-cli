@@ -17,7 +17,7 @@
 - 采用健康检查通过的受管 `opencode serve`，通过 `run --attach` 读取 HTTP/SSE 事件；服务按运行尝试管理并清理。
 - 监控不可用时展示一次低噪音降级反馈；SSE 重连指数退避最长 60 秒。
 - 不改 Loop 子任务父 tab 进度桥接（见 [feature 计划](2026-07-13-feature-loop-opencode-progress-monitor-repair.md)），不把 OpenCode 子任务伪装为 Codex App Server child session。
-- 文档同步独立记录在 [docs 计划](2026-07-13-docs-progress-monitor-references.md)。
+- 文档同步独立记录在 docs 计划。
 
 ## 验收与实际结果
 

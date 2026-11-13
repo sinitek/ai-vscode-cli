@@ -16,7 +16,7 @@
 - 非目标：修改真实任务记录、自动恢复正在执行的用户任务、移除业务门禁、改写 scheduler、升级依赖、提交 Git 或发布插件。
 - 隐私：只使用合成任务做测试，不将真实日志、用户配置、会话正文或私有数据写入仓库。
 
-- 回归开发为已完成历史工作，按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loopplus-block-review.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；新增规则/专题文档由关联 docs 计划承接，不属于本计划范围。
+- 回归开发为已完成历史工作，按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loopplus-block-review.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；新增规则/专题文档原由已退役 docs companion 承接（仅历史分工），不属于本计划范围。
 
 ## 验收标准
 
@@ -52,7 +52,7 @@
 
 ## 验证计划与历史结果
 
-原文以构建、139/139最小回归、主工作区2910项/2907通过/3跳过/0失败以及1280/390群聊离线展示验证。测试计划移除审计保留最小相关命令及具体失败分类摘要，但不保留完整命令集合或全部夹具细节；来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loopplus-block-review.md`。文档、105条规则校验见 docs。主工作区为最终交付和验证事实来源，不将 worktree 或浏览器当真实任务回放。
+原文以构建、139/139最小回归、主工作区2910项/2907通过/3跳过/0失败以及1280/390群聊离线展示验证。测试计划移除审计保留最小相关命令及具体失败分类摘要，但不保留完整命令集合或全部夹具细节；来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loopplus-block-review.md`。文档与105条规则校验原指向 docs companion（已退役，完整记录未恢复）。主工作区为最终交付和验证事实来源，不将 worktree 或浏览器当真实任务回放。
 
 ## 实现失败与修正
 
@@ -65,7 +65,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留 Loop+ 阻塞复核与完成提示回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-loopplus-block-review.md`；不再作为现行测试责任。
-- [docs：Loop+ 阻塞复核与分层提示文档规则](2026-11-05-docs-loopplus-block-review.md#背景与目标)：分别承接Loop+ 阻塞复核与分层提示文档规则，共享本来源的历史背景与接口。
+- 历史文档分工：Loop+ 阻塞复核与分层提示文档规则，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-loopplus-block-review.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

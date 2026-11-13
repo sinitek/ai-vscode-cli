@@ -21,7 +21,7 @@ AI 对话中的任务列表已有任务项渲染与原生 `details` 状态，但
 - 调整聊天 Webview 任务列表摘要 DOM 与主题变量样式。
 - 在任务列表渲染时计算完成数量并显示 `completed/total`。
 - 独立测试计划已删除，历史验证证据由 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json) 留存。
-- 产品规格与功能清单文档更新由 [task-list 文档计划](2026-07-13-docs-task-list-collapse.md) 承接。
+- 产品规格与功能清单文档更新由 task-list 文档计划 承接。
 
 ## 非目标
 
@@ -60,7 +60,7 @@ AI 对话中的任务列表已有任务项渲染与原生 `details` 状态，但
 - 单元测试新增/更新：见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
 - 单元自测结果：`node --test dist/test/openCodeTaskListOverlay.test.js` 通过，4 个子测试全部通过；该计划记载的是功能验证证据。
 - 失败处理记录：`npm run build` 执行到 `tsc` 后因范围外的 multi-agent API 重命名失败：`src/test/contextCompactionRunner.test.ts` 与 `src/test/opencodethinkingintegration.test.ts` 仍使用已被工作区改名的 `getWorkspaceCodexMultiAgentEnabled`，而依赖接口已改为 `getWorkspaceMultiAgentEnabled`。未修改该并行工作，避免覆盖用户未完成改动。
-- 功能清单与能力规格同步：见 [task-list 文档计划](2026-07-13-docs-task-list-collapse.md)。
+- 功能清单与能力规格同步：见 task-list 文档计划。
 
 ## 任务列表
 
@@ -81,7 +81,6 @@ AI 对话中的任务列表已有任务项渲染与原生 `details` 状态，但
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [文档同步](2026-07-13-docs-task-list-collapse.md)：共同背景是新增进度与折叠行为；实现完成后同步能力规格和功能清单。
 
 ## 测试类型记录清理
 

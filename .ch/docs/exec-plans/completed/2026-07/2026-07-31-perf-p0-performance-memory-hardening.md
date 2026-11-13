@@ -6,15 +6,12 @@
 - owner：msg_1785460421595_9a96966a875c9 / p0-exec-plan-inventory
 - claimed_at：2026-07-31
 - claim_ttl：本轮 P0 全部验收前
-- handoff_to：`.ch/docs/exec-plans/completed/2026-07/2026-07-31-perf-p0-performance-memory-hardening.md`
 - 类型：perf
 
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs：产品、运行时或审计文档写作](./2026-07-31-docs-p0-performance-memory-hardening.md)：同源历史任务；文档计划承接审计回写、状态汇总和产品/运行时说明，本实现不承担文档写作。
 
-以上记录按原计划的实际交付拆分，日期、完成状态与各项验证限制沿用历史记录；下列历史命令及结果不是2026-11-11重新执行的证明。
 
 ## 背景
 
@@ -113,7 +110,7 @@
 ## 测试与清单同步
 
 - 测试开发与原始验证/失败明细见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，本实现记录仅消费验证证据。
-- 产品/运行时/审计文档及功能清单写作见关联[docs计划](./2026-07-31-docs-p0-performance-memory-hardening.md#范围与非目标)，不属于本实现范围。
+- 产品/运行时/审计文档及功能清单写作见关联docs计划，不属于本实现范围。
 
 ## 决策记录
 

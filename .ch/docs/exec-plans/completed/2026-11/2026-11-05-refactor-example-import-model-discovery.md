@@ -17,7 +17,7 @@
 
 - `src/config/modelimport.ts`、`src/config/modelimportshared.ts`：Facade 与策略共用 `CLAUDE_FIELD_KEYS`，平台白名单由策略表键推导。
 - 不承担范例弹窗新发现流程、异步状态修复或回归开发；相应实现范围见关联 feature 计划，已完成回归开发的历史证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-example-import-model-discovery.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。
-- 原文早期记录同步 `ARCHITECTURE.md` 平台扩展说明并向上一轮计划补记，实际平台架构文档统一见 [model-import-platform-strategies docs](2026-11-05-docs-model-import-platform-strategies.md#背景与目标)，不重复建立范例导入 docs 交付。
+- 原文早期记录了平台扩展说明和向上一轮计划补记；现存平台结构见 [ARCHITECTURE 配置层](../../../../../ARCHITECTURE.md#cli--interactive--config-服务层)，不重复建立范例导入 docs 交付。原 docs companion `2026-11-05-docs-model-import-platform-strategies.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。
 
 ## 验收标准
 

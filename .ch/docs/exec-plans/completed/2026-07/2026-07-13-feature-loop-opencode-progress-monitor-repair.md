@@ -8,7 +8,7 @@
 - claim_ttl：1 day
 - handoff_to：
 
-本原计划覆盖两个功能域及其文档同步。为避免把已交付 OpenCode 监控故障、Loop 新能力和文档交付合并：本文件仅代表 Loop 子任务主对话进度能力；OpenCode 监控修复见 [bugfix 计划](2026-07-13-bugfix-opencode-progress-monitor.md)，跨域事实来源更新见 [文档计划](2026-07-13-docs-progress-monitor-references.md)。原始共同验证结果在本计划按证据归属说明，不重复宣称独立运行。
+本原计划覆盖两个功能域及其文档同步。为避免把已交付 OpenCode 监控故障、Loop 新能力和文档交付合并：本文件仅代表 Loop 子任务主对话进度能力；OpenCode 监控修复见 [bugfix 计划](2026-07-13-bugfix-opencode-progress-monitor.md)，跨域事实来源更新见 文档计划。原始共同验证结果在本计划按证据归属说明，不重复宣称独立运行。
 
 ## 背景
 
@@ -67,7 +67,7 @@
 - 单元自测结果：`npm run build` 通过；10 个相关测试文件共 100/100 通过；`git diff --check` 通过。
 - 失败处理记录：首轮仅有新测试回调变量被 TypeScript 推断为 `never`，归类为测试夹具类型问题，改为回调数组后重跑通过。真实 CLI 冒烟确认 `/global/health` 与 `run --attach` JSONL 传输可用；手工服务未注入插件私有配置环境，模型请求返回 OpenCode `UnknownError`，未将其误判为 attach 传输失败。
 - 功能清单：已同步 `.ch/docs/product-specs/FEATURE_INVENTORY.md`。
-- 相关文档同步：来源记载已同步 CLI runtime reference、VS Code runtime 设计、能力规格和 PITFALLS；详见 [文档计划](2026-07-13-docs-progress-monitor-references.md)，来源未提供逐文档差异或独立验证输出。
+- 相关文档同步：来源记载已同步 CLI runtime reference、VS Code runtime 设计、能力规格和 PITFALLS；详见 文档计划，来源未提供逐文档差异或独立验证输出。
 
 ## 任务列表
 
@@ -86,4 +86,4 @@
 
 ## 当前结论
 
-Loop 子任务现在启动即在主对话显示独立进度气泡，并每秒从子 tab 权威消息存储同步可见 assistant 快照。原计划报告构建、10 个相关测试文件共 100/100、差异检查通过；还报告真实 attach 传输和 VSIX 强制安装，但没有逐项命令/退出码，故该合并记录不能单独证明具体发布版本或安装范围。OpenCode 监控行为已移至 [bugfix 计划](2026-07-13-bugfix-opencode-progress-monitor.md)，文档同步已移至 [文档计划](2026-07-13-docs-progress-monitor-references.md)。当前窗口需重载后才会使用新 Extension Host，重载前已运行旧任务不会被新逻辑追溯接管。
+Loop 子任务现在启动即在主对话显示独立进度气泡，并每秒从子 tab 权威消息存储同步可见 assistant 快照。原计划报告构建、10 个相关测试文件共 100/100、差异检查通过；还报告真实 attach 传输和 VSIX 强制安装，但没有逐项命令/退出码，故该合并记录不能单独证明具体发布版本或安装范围。OpenCode 监控行为已移至 [bugfix 计划](2026-07-13-bugfix-opencode-progress-monitor.md)，文档同步已移至 文档计划。当前窗口需重载后才会使用新 Extension Host，重载前已运行旧任务不会被新逻辑追溯接管。

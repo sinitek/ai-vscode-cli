@@ -4,16 +4,10 @@
 - 状态：completed
 - 负责人：Codex
 - 类型：bugfix
-- 迁移来源：`.ch/docs/exec-plans/completed/2026-06/2026-06-14-history-message-export.md`
 
 ## 关联计划
 
 - [feature：历史消息查看与流式日志导出](2026-06-14-feature-history-message-export.md)
-- [docs：历史消息查看与流式日志导出——文档同步](2026-06-14-docs-history-message-export-documentation.md)
-
-## 迁移说明
-
-2026-11-11 按实际工作类型拆分。日期、负责人及状态沿用原文；下列命令和结果均为历史记录，本次迁移不执行历史命令，也不新增验收结论。
 
 ## 独立目标与实施范围
 

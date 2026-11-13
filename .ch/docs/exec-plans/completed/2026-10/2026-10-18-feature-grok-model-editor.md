@@ -6,7 +6,7 @@
 - 类型：feature
 
 - 迁移来源：`.ch/docs/exec-plans/completed/2026-10/2026-10-18-grok-stream-error-and-model-editor.md`（历史标识，原文件已替换）
-- 关联计划：[已发布行为修复](2026-10-18-bugfix-grok-stream-errors.md); [文档](2026-10-18-docs-grok-stream-error-and-model-editor.md)
+- 关联计划：[已发布行为修复](2026-10-18-bugfix-grok-stream-errors.md); 原 docs companion `2026-10-18-docs-grok-stream-error-and-model-editor.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 - 测试计划删除审计：[十月历史证据](../../migrations/test-plan-removals/2026-11-11-oct.json)（按本页迁移来源查项；仅保留历史事实，不承担独立测试开发）。
 
 ## 本子计划目标
@@ -23,7 +23,7 @@
 
 ## 依赖与背景
 
-文档仍以关联实现、历史验证与追加决策的真实结果为依据。原 test companion 已于 2026-11-11 删除；测试开发不是本存活计划的现行职责。这里保留同一历史任务的依赖与边界，不声称重新执行。feature 编辑器与流协议 bugfix 独立；保存后候选即时同步依赖 bugfix 的保存/应用通知修正。docs 仍依赖两者及后续可选 name 裁定；原测试依赖仅作历史说明。
+文档仍以关联实现、历史验证与追加决策的真实结果为依据。原 test companion 已于 2026-11-11 删除；测试开发不是本存活计划的现行职责。这里保留同一历史任务的依赖与边界，不声称重新执行。feature 编辑器与流协议 bugfix 独立；保存后候选即时同步依赖 bugfix 的保存/应用通知修正。历史文档分工依赖两者及后续可选 name 裁定；原测试依赖仅作历史说明。
 
 共享背景和跨类型验收关系见[来源任务的归属记录](2026-10-18-bugfix-grok-stream-errors.md)；原始作者、日期和状态语义沿用头部记录。
 

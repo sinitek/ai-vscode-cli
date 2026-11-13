@@ -22,7 +22,7 @@
 - 聊天面板中静态思考力度下拉的完整选项。
 - 中英文国际化文案、相关单元测试与功能事实文档。
 
-类型拆分后，本计划跟踪 provider/思考力度交互；测试开发及首次断言修正证据见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，功能清单与能力规格同步见 [`2026-07-12-docs-opencode-provider-selects.md`](2026-07-12-docs-opencode-provider-selects.md)。
+测试开发及首次断言修正证据见 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，功能清单与能力规格已同步。
 
 ## 非目标
 

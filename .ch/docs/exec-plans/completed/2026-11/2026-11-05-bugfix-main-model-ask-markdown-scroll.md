@@ -14,7 +14,7 @@
 - 范围：提问气泡共享 Markdown 挂载与自动滚动。
 - 非目标：不改变主模型调用、忙碌锁、历史持久化、群聊主时间线滚动策略或技术栈；保留当前工作区其他修改。
 
-- 本计划仅记录既有入口缺陷修复，不承担回归开发；历史测试证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-main-model-ask-markdown-scroll.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。清单/本体/图片延迟加载 runbook 编写由关联 docs 计划承接。原文没有发布版本，不补造版本号。
+- 本计划仅记录既有入口缺陷修复，不承担回归开发；历史测试证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-main-model-ask-markdown-scroll.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。清单/本体/图片延迟加载 runbook 编写原由已退役 docs companion 承接（仅历史分工）。原文没有发布版本，不补造版本号。
 
 ## 验收标准
 
@@ -45,7 +45,7 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留主模型提问共享挂载与滚动回归开发的历史证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-05-main-model-ask-markdown-scroll.md`；不再作为现行测试责任。
-- [docs：主模型提问 Markdown 与图片加载文档同步](2026-11-05-docs-main-model-ask-markdown-scroll.md#背景与目标)：分别承接主模型提问 Markdown 与图片加载文档同步，共享本来源的历史背景与接口。
+- 历史文档分工：主模型提问 Markdown 与图片加载文档同步，共享本来源的历史背景与接口。 原 docs companion `2026-11-05-docs-main-model-ask-markdown-scroll.md#背景与目标` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 迁移说明
 

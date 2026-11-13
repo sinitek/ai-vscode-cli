@@ -12,7 +12,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-global-prompt-history-favorites.md`](2026-11-03-docs-global-prompt-history-favorites.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-global-prompt-history-favorites.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -20,7 +20,7 @@
 
 ## 范围与非目标
 
-- 覆盖提示词存储、Host消息路由和Webview控件；独立单测开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`），产品/本体文档由关联 `docs` 计划承接。
+- 覆盖提示词存储、Host消息路由和Webview控件；独立单测开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`），产品/本体文档原由已退役 docs companion 承接（仅历史分工）。
 - 不改变历史会话、当前会话提示词弹层、普通历史的项目隔离、保留期和数量上限。
 - 不新增跨设备同步、配置项、语言包或依赖。
 
@@ -38,7 +38,7 @@
 
 - `src/promptHistoryStore.ts`、`src/extensionHost/modelSettings.ts`、消息协议与会话消息处理器。
 - `src/webview/viewContentScript/historyPanels.ts`、历史弹窗事件、现有主题样式与中文文案。
-- session/webview回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`）；关联 `docs` 计划承接产品规格和本体事实维护。
+- session/webview回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`）；原 docs companion（已退役）曾承担产品规格和本体事实维护。
 
 ## 风险与缓解
 
@@ -57,7 +57,7 @@
 ## 测试与清单同步
 
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-global-prompt-history-favorites.md`）。
-- 文档交付证据见 [`2026-11-03-docs-global-prompt-history-favorites.md`](2026-11-03-docs-global-prompt-history-favorites.md)。
+- 原 docs companion `2026-11-03-docs-global-prompt-history-favorites.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 记忆：稳定语义写入产品规格/本体；无须自动追加热区记忆。
 
 ## 任务列表

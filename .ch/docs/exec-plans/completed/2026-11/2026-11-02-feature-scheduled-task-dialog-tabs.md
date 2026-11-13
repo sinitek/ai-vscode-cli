@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 五条新增页签行为回归和既有断言基线核验见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-scheduled-task-dialog-tabs.md`）。
-- FEATURE_INVENTORY 界面组织说明更新见 [`2026-11-02-docs-scheduled-task-dialog-tabs.md`](2026-11-02-docs-scheduled-task-dialog-tabs.md)。
+- 原文记录的历史文档分工：FEATURE_INVENTORY 界面组织说明历史更新原归 `2026-11-02-docs-scheduled-task-dialog-tabs.md`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -31,7 +31,7 @@
 ## 影响面与风险
 
 - 代码：Webview HTML、中文文案、元素绑定、弹窗事件与样式。
-- 独立测试开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-scheduled-task-dialog-tabs.md`）；本计划保留交互及布局验收。功能清单更新见关联 `docs` 计划。本次不改变业务概念、状态机、权限或事实来源，因此无需更新 ontology。
+- 独立测试开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-scheduled-task-dialog-tabs.md`）；本计划保留交互及布局验收。功能清单更新原指向已退役 docs companion（完整记录未恢复）。本次不改变业务概念、状态机、权限或事实来源，因此无需更新 ontology。
 - 风险：隐藏面板可能被 flex 样式覆盖；使用显式 `[hidden]` 样式并用浏览器核对。
 
 ## 验证计划
@@ -48,5 +48,5 @@
 - Chromium Playwright 使用当前构建的完整 Webview 与隔离合成宿主数据验证，7/7 场景通过：桌面提交、桌面列表、390px 草稿保留与键盘导航、390px 列表、空列表、添加成功、添加失败。所有场景无浏览器错误、请求失败或 HTTP 错误，无横向溢出或页签重叠。
 - 截图与结果：`.tmp/playwright-smoke/scheduled-task-tabs-*/`；已视觉检查桌面提交和窄屏列表，修正了页签与正文间距。任务专用页面、场景与服务在验证后清理。
 - `git diff --check`、ontology `--validate` 通过；UI 机械扫描无发现。
-- 文档交付证据见 [`2026-11-02-docs-scheduled-task-dialog-tabs.md`](2026-11-02-docs-scheduled-task-dialog-tabs.md)。
+- 原 docs companion `2026-11-02-docs-scheduled-task-dialog-tabs.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 任务级记忆保留在本计划；无新跨会话风险或可复用踩坑，不写入热区记忆。

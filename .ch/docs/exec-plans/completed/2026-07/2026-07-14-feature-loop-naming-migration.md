@@ -22,7 +22,7 @@
 - 将新任务存储迁移为 `~/.sinitek_cli/loop-tasks/.../loop-tasks.json`。
 - 将新通信 artifact 迁移为 `~/.sinitek_cli/loop-communications/<taskId>/`。
 - 将公开群聊命令迁移为 `sinitek-cli-tools.openLoopGroupChat`。
-- 更新中英文 i18n。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品规格、运行时参考、架构、安全、runbook、设计文档和历史计划引用归 [docs 计划](2026-07-14-docs-loop-naming-migration.md)。
+- 更新中英文 i18n。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；产品规格、运行时参考、架构、安全、runbook、设计文档和历史计划引用归 docs 计划。
 - 对旧目录、旧存储文件、旧模式值、旧持久化字段和旧命令 ID 提供显式 `LEGACY_` 兼容读取或别名。
 
 ## 非目标
@@ -65,7 +65,7 @@
 
 - 测试文件迁移、旧任务/通信目录兼容覆盖以及566/566历史结果归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
 - 失败处理记录：首次全量测试发现 `loopPromptQueue.test.ts` 的历史正则仍假设 orchestration 只有两个参数，而 HEAD 实现早已有第三个 ownership 回调；分类为测试断言过期，更新断言后定向测试与全量测试均通过。
-- 功能清单及架构、运行时、设计、产品规格、PITFALLS、runbook、兼容入口和历史路径文档编写归 [docs 计划](2026-07-14-docs-loop-naming-migration.md)。
+- 功能清单及架构、运行时、设计、产品规格、PITFALLS、runbook、兼容入口和历史路径文档编写归 docs 计划。
 
 ## 任务列表
 
@@ -85,7 +85,6 @@
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-14-docs-loop-naming-migration.md)：承接能力清单、架构/运行时/安全/兼容文档及历史引用更新，依赖迁移边界与 `LEGACY_` 规则。
 
 ## 当前结论
 

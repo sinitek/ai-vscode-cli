@@ -22,12 +22,12 @@
 - [x] undefined/null、CLI/档案/实例隔离、字段优先级、失败覆盖旧值、错误形状/事件和非等待日志保持。
 - [x] DSH 激活档案在读取前确定；Grok/Kimi/ZCode 运行新鲜读取及缓存写入时点不变。
 - [x] 行为单测覆盖仓储并核对宿主活委托、非当前 Grok/DSH 首次跨 CLI 路由预载。
-- [x] 构建、相关 dist 单测及 ontology 校验通过；架构文档与运行时设计说明的写作验收由关联 docs 计划负责。
+- [x] 构建、相关 dist 单测及 ontology 校验通过；架构文档与运行时设计说明的写作验收原由已退役 docs companion 负责（仅历史分工）。
 
 ## 影响面与风险
 
 - 代码：`src/config/configuredModelRepository.ts`、`src/extensionHost/modelSettings.ts`、相关配置/宿主单测。
-- 独立新增仓储行为测试的历史开发及验证证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-configured-model-repository.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；`ARCHITECTURE.md`、运行时设计说明及 ontology 来源引用的实际同步由 [docs 计划](2026-11-06-docs-configured-model-repository.md)承接。测试依赖仓储委托契约，文档依赖本计划确认的依赖方向。
+- 独立新增仓储行为测试的历史开发及验证证据按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-configured-model-repository.md` 定位于[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。历史文档范围：`ARCHITECTURE.md`、运行时设计说明及 ontology 来源引用的实际同步。测试依赖仓储委托契约，历史文档分工依赖本计划确认的依赖方向。原 docs companion `2026-11-06-docs-configured-model-repository.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 - 风险：把缓存快照误接入策略、错误降级字段丢失、运行读取/缓存时序变化。使用活 getter、复用现有解析器与运行 resolve helper，测试成功/失败/时序。
 - 回滚：撤销本次有限抽取及其文档/测试；不含持久化迁移。
 
@@ -50,7 +50,7 @@
 
 - [x] 按 execution-plan/ontology 规则核对 plugin.config_profile 和跨 CLI 子路由 source_refs；CodeGraph 查询后实际核对宿主/服务/测试引用。
 - [x] 实现仓储和宿主委托。
-- [x] 实现仓储与宿主委托；历史测试开发按来源审计追溯，文档交付由存活 docs 计划独立记录。
+- [x] 实现仓储与宿主委托；历史测试开发按来源审计追溯，文档交付原由已退役 docs companion 独立记录（仅历史分工）。
 - [x] 记录实现验证并按月份归档。
 
 ## 决策记录

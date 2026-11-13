@@ -28,7 +28,7 @@ OpenCode 官方文档（2026-07-13 访问）说明主代理可通过 `task` 工�
 - Codex 保持既有 app-server 禁用路径，默认值显式改为关闭。
 - OpenCode 复用现有临时 `OPENCODE_CONFIG` overlay；关闭时在顶层 `permission.task` 写入 `deny`，并以高优先级 `OPENCODE_CONFIG_CONTENT` 内联覆盖重申该拒绝；开启时保持用户原有 OpenCode 权限和默认行为。
 - 为持久化迁移、Codex 默认值、OpenCode overlay 和设置消息补充定向单测。
-- 设置实现。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；功能清单、能力规格、运行时参考及设计文档编写归 [docs 计划](2026-07-13-docs-unified-codex-opencode-multi-agent-toggle.md)。
+- 设置实现。测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)；功能清单、能力规格、运行时参考及设计文档编写归 docs 计划。
 
 ## 非目标
 
@@ -76,7 +76,7 @@ OpenCode 官方文档（2026-07-13 访问）说明主代理可通过 `task` 工�
 - 命名调整复测：界面改名为“隐式子代理 / Implicit Subagents”后，`npm run build` 通过；Codex runtime、OpenCode runtime/config、工作区设置、设置消息和 Webview 定向测试共 42/42 通过。
 - 全局作用域调整：控件迁入全局页，`multiAgentEnabled` 迁入 `settings.json`，旧工作区字段仅用于兼容迁移；`npm run build` 通过，ToolSettings、迁移、设置消息、Webview、Codex/OpenCode runtime/config 和上下文压缩定向测试共 68/68 通过。
 - 失败处理记录：无测试失败。生成 Webview runtime script 已通过 `node:vm` 语法解析，`git diff --check` 通过。
-- 功能清单、能力规格、运行时参考和设计文档写作归 [docs 计划](2026-07-13-docs-unified-codex-opencode-multi-agent-toggle.md)。
+- 功能清单、能力规格、运行时参考和设计文档写作归 docs 计划。
 
 ## 任务列表
 
@@ -97,7 +97,6 @@ OpenCode 官方文档（2026-07-13 访问）说明主代理可通过 `task` 工�
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-13-docs-unified-codex-opencode-multi-agent-toggle.md)：承接用户能力及运行时/设计事实文档，记录全局默认、旧字段迁移、OpenCode overlay 与 Loop 边界。
 
 ## 当前结论
 

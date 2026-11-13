@@ -19,7 +19,7 @@
 
 ## 范围
 
-modelSelectionStore.ts、modelSelectionStoreTypes.ts、modelSelectionStoreNormalization.ts。新增特征测试开发是已完成的历史工作，其摘要见来源审计；ARCHITECTURE 与 ontology 来源文档的实际同步由关联 docs 计划承接。
+modelSelectionStore.ts、modelSelectionStoreTypes.ts、modelSelectionStoreNormalization.ts。新增特征测试开发是已完成的历史工作，其摘要见来源审计；ARCHITECTURE 与 ontology 来源文档的实际同步原归 docs companion（已退役，仅历史分工）。
 
 ## 非目标
 
@@ -44,7 +44,7 @@ modelSelectionStore.ts、modelSelectionStoreTypes.ts、modelSelectionStoreNormal
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留纯规范化边界的13个独立特征用例及其运行结果，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-model-store-normalization.md`；测试依赖被抽离的纯模块和保持兼容的 Facade。
-- `.ch/docs/exec-plans/completed/2026-11/2026-11-06-docs-model-store-normalization.md`：ARCHITECTURE职责/依赖方向更新及既有 ontology 规则的 source_refs 更新；文档仅记录重构后的事实边界，不改变用户行为或本体规则。
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-06-docs-model-store-normalization.md`（已退役，仅历史身份）：原分工为ARCHITECTURE职责/依赖方向更新及既有 ontology 规则的 source_refs 更新；文档仅记录重构后的事实边界，不改变用户行为或本体规则。
 
 ## 风险与缓解
 
@@ -63,7 +63,7 @@ modelSelectionStore.ts、modelSelectionStoreTypes.ts、modelSelectionStoreNormal
 ## 关联交付归属
 
 - 新增13个特征用例、原实现/重构后测试结果、全量测试3项真实DSH跳过与未执行边界均按 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-model-store-normalization.md` 见[测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)；本计划范围仅为代码重构。
-- ARCHITECTURE职责/依赖说明及三条既有 ontology 规则的 source_refs 实际更新由 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-docs-model-store-normalization.md` 承接；功能清单无需更新。本计划不再把文档写作列为实现收尾。
+- ARCHITECTURE职责/依赖说明及三条既有 ontology 规则的 source_refs 实际更新由 `.ch/docs/exec-plans/completed/2026-11/2026-11-06-docs-model-store-normalization.md` 当时承担（已退役，仅历史分工）；功能清单无需更新。本计划不再把文档写作列为实现收尾。
 
 ## 任务列表
 

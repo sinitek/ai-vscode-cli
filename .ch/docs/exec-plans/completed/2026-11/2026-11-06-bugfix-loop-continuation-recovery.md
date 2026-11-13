@@ -14,12 +14,12 @@
 ## 关联计划
 
 - [测试计划移除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：保留真实进程夹具、Webview/宿主回归与历史失败证据，来源为 `source_old_path=.ch/docs/exec-plans/completed/2026-11/2026-11-06-loop-continuation-recovery.md`；测试依赖本计划的配置复用、租约互斥和按钮收尾契约，但不再作为现行测试责任。
-- [能力与排障文档](2026-11-06-docs-loop-continuation-recovery.md#验收标准)：依赖本计划确认的恢复边界，同步清单、规格、ontology 和按钮状态避坑条目。三份计划均继承原 completed，不以关联关系扩大真实验收范围。
+- 历史文档分工：依赖本计划确认的恢复边界，同步清单、规格、ontology 和按钮状态避坑条目。三份计划均继承原 completed，不以关联关系扩大真实验收范围。 原 docs companion `2026-11-06-docs-loop-continuation-recovery.md#验收标准` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 范围与非目标
 
 - 覆盖共享配置事务、原配置续跑入口、群聊续跑请求收尾的生产实现。
-- 本计划不承接回归用例/夹具开发；历史开发证据见上述来源审计。清单、规格、本体与 runbook 写作由关联 docs 计划负责，不作为本计划实施任务。
+- 本计划不承接回归用例/夹具开发；历史开发证据见上述来源审计。清单、规格、本体与 runbook 写作原由已退役 docs companion 负责（仅历史分工），不作为本计划实施任务。
 - 不清除有效进程租约，不放开任务运行时切换档案或编辑当前配置，不改调度协议，不发布扩展。
 
 ## 验收标准
@@ -32,7 +32,7 @@
 ## 影响面与风险
 
 - 代码：`src/config/`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/webview/loopGroupChatPanel.ts`。
-- 文档影响由关联 docs 计划独立承接；本计划不编辑产品事实或排障手册。
+- 文档影响原由已退役 docs companion 独立承接（仅历史分工）；本计划不编辑产品事实或排障手册。
 - 风险：跨窗口检查与应用之间存在竞态。复用判定放在共享互斥事务内；保留显式重新应用档案的原有行为。
 
 ## 验证计划
@@ -44,7 +44,7 @@
 ## 测试与清单同步
 
 - 原测试计划正文记录了测试开发、114/114、全量3055通过/3跳过、97/99初次夹具结果及浏览器验证；来源审计条目实际仅保留关联计划与开发范围，没有这些测试数值、失败或浏览器结果。完整浏览器证据未保留。此处沿用原计划历史记录，不在本计划认领回归开发。
-- 实际功能清单、能力规格、ontology、runbook 同步和无需改架构/记忆的理由由 [docs 计划](2026-11-06-docs-loop-continuation-recovery.md#测试与清单同步)承接。
+- 原文记录的历史文档分工：功能清单、能力规格、ontology、runbook 同步和无需改架构/记忆的理由原归 `2026-11-06-docs-loop-continuation-recovery.md#测试与清单同步`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 任务列表
 

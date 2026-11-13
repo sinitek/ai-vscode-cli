@@ -26,7 +26,6 @@
 - `src/toolSettings.ts`、`src/memory/runtimeGate.ts`：默认关闭口径。
 - `src/webview/viewContent.ts` / `src/webview/types.ts`：工具设置文案、默认状态、开启流程回滚。
 - 原历史验证证据见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 文档交付见 [`2026-07-03-docs-harness-setting-init.md`](2026-07-03-docs-harness-setting-init.md)。
 
 ## 非目标
 

@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 独立测试开发与测试结果见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)：新增六项转换/弹窗测试，并更新既有 CLI 契约和后续样式回归；这些不是单纯运行功能计划中的验证命令（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`）。
-- 文档和使用说明交付见 [`2026-11-02-docs-cli-example-import-guidance.md`](2026-11-02-docs-cli-example-import-guidance.md)：共同背景为范例导入交互，独立承接功能清单、ontology 规则和 PITFALLS 指南，不复制本计划的实现细节。
+- 原文记录的历史文档分工：文档和使用说明交付见 `2026-11-02-docs-cli-example-import-guidance.md`：共同背景为范例导入交互，独立承接功能清单、ontology 规则和 PITFALLS 指南，不复制本计划的实现细节。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -17,7 +17,7 @@
 ## 范围与非目标
 
 - 覆盖 Claude、Codex（含 config/auth 两个范例入口）、OpenCode、Grok、DSH、KimiCode、ZCode 的必填输入、转换与草稿写入功能。
-- 本计划保留功能交互验收；六项转换/弹窗及后续样式回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`），不再指向存活测试计划。规格/清单/ontology 与 PITFALLS 实际维护归关联 `docs` 计划。
+- 本计划保留功能交互验收；六项转换/弹窗及后续样式回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`），不再指向存活测试计划。规格/清单/ontology 与 PITFALLS 实际维护原归已退役 docs companion（仅历史分工）。
 - 复用当前弹窗、主题与 JSON/TOML 工具；不改新增配置行为、不调用远端模型、不自动保存或激活。
 - 当前工作区已有用户改动，直接保留式修改，不创建分支或工作树。
 
@@ -33,7 +33,7 @@
 
 - 代码：media/config/assets/config-app-ui.js。
 - 测试：本计划仅记录功能验收结果；回归用例开发和夹具调整的历史范围见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`）。
-- 文档：规格、清单、ontology 与 PITFALLS 的独立更新由关联 `docs` 计划承接。
+- 文档：规格、清单、ontology 与 PITFALLS 的独立更新原由已退役 docs companion 承接（仅历史分工）。
 - 风险：OpenCode 双模型合并和 TOML 特殊字符转义；使用结构化对象操作和现有序列化工具，并覆盖回归。
 - 回滚：撤销本任务的局部补丁，不覆盖工作区原有改动。
 
@@ -54,7 +54,7 @@
 ## 测试和文档交付指针
 
 - 单元测试开发、增量结果及失败处理的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`）；本计划中的构建、页面和八入口交互验证仍是功能验收证据。
-- `FEATURE_INVENTORY.md`、`plugin.rule.cli_example_import_inputs` 与 `runbooks/PITFALLS.md` 的实际同步内容见关联 `docs` 计划。
+- `FEATURE_INVENTORY.md`、`plugin.rule.cli_example_import_inputs` 与 `runbooks/PITFALLS.md` 的实际同步内容原指向已退役 docs companion（完整记录未恢复）。
 
 ## 浏览器验证证据
 
@@ -70,12 +70,12 @@
 
 全部验收标准已满足。统一在共享“一键导入”入口拦截；每个平台独立转换，转换与编辑器校验成功后才关闭弹窗和抽屉。OpenCode 单次输入只保留一份模型定义，主/小模型均引用该定义。关闭、取消和切换档案会清空弹窗输入。
 
-稳定行为已进入功能清单与 ontology，相关文档实质工作见关联 `docs` 计划；无架构边界变化，不重复写入长期记忆或 EVENT_MEMORY；保留工作区原有修改。临时浏览器夹具和场景已移除，仅保留本地验证结果与截图。
+稳定行为已进入功能清单与 ontology，相关文档实质工作原指向已退役 docs companion（完整记录未恢复）；无架构边界变化，不重复写入长期记忆或 EVENT_MEMORY；保留工作区原有修改。临时浏览器夹具和场景已移除，仅保留本地验证结果与截图。
 
 ## 2026-11-02 追加：导入后统一进入源码页签
 
 - 按用户要求，将 Claude、OpenCode 的导入模式改为 JSON，Codex（两个范例入口）与 Grok 改为 TOML；DSH、ZCode 继续使用 JSON，KimiCode 继续使用 TOML。
-- 八入口源码页签回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`）；清单/ontology更新见关联 `docs` 计划。
+- 八入口源码页签回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-cli-example-import-dialog.md`）；清单/ontology更新原指向已退役 docs companion（完整记录未恢复）。
 - `npm run build` 通过；`node --test dist/test/config/*.test.js` 320 项全部通过；JS 语法、ontology 与空白校验通过。
 - Headless Chromium 使用实际生成页面及内存合成宿主，八个入口导入后直接断言源码 tab 的 `aria-selected=true`，不手工切换 tab；同时确认 Monaco 草稿含输入模型，无自动保存/激活或浏览器错误。
 - 浏览器证据：`.tmp/playwright-smoke/cli-example-import-source-tabs.json`。无新增样式，无需重复视觉截图；未运行真实 Extension Development Host 或全仓测试。
@@ -88,5 +88,5 @@
 - Chromium runner 在 1280×900、390×844 的实际生成页面验证按钮可见、图标、视口与按钮/源码无重叠；另按八个范例入口×两个视口验证实际尺寸、内边距、主题颜色、圆角均与“保存”一致，确认弹窗仍能导入且直接落在 JSON/TOML 页签。已查看桌面和窄屏截图。
 - 失败分流：初版测试误以为所有保存按钮均为简单内联结构，修正测试提取范围；装饰图标影响按钮无障碍名称，已修复；浏览器夹具补齐 VS Code 主题变量，等待加载及颜色过渡完成后再比较。多 CLI 共用页面触发 Monaco `Canceled`，改为每入口独立页面、仅加载目标合成档案并等待编辑器就绪后消失，未修改产品编辑器。严格视口检查曾覆盖抽屉整框，最终聚焦本次按钮的视口与无重叠验收，不改既有抽屉布局。
 - 最终 browser/page/network/HTTP 错误均为零；所有 `save`/`apply` 请求均为零。浏览器结果：`.tmp/playwright-smoke/cli-example-buttons-desktop/result.json`、`.tmp/playwright-smoke/cli-example-buttons-mobile/result.json`、`.tmp/playwright-smoke/cli-example-buttons-integration.json`；两设备目录均保留 `editor.png` 与 `success.png`。
-- 按钮样式清单同步与Portal主题作用域经验的PITFALLS写作见关联 `docs` 计划。
+- 按钮样式清单同步与Portal主题作用域经验的PITFALLS写作原指向已退役 docs companion（完整记录未恢复）。
 - 任务专用浏览器脚本与场景已清理，保留验证结果和截图；工作区原有修改保留。

@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 原独立测试计划已按迁移要求删除；五项新增分页行为回归测试的开发及旧实现下失败情况，仅以摘要保留在[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-prompt-history-pagination.md`）。该审计仅用于定位历史证据，不承接测试开发职责，也不包含原测试计划正文。
-- 功能规格、清单及 ontology 的分页规则更新见 [`2026-11-02-docs-prompt-history-pagination.md`](2026-11-02-docs-prompt-history-pagination.md)；本计划只承接分页功能实现与 UI 验收。
+- 原文记录的历史文档分工：功能规格、清单及 ontology 的分页规则历史更新原归 `2026-11-02-docs-prompt-history-pagination.md`；本计划只承接分页功能实现与 UI 验收。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -34,7 +34,7 @@
 
 - 实现：`src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/`、`src/webview/viewContentStyles/overlaysModals.ts`。
 - 测试：回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-prompt-history-pagination.md`）；本计划保留功能验证结果。
-- 文档：规格、功能清单和 ontology 的实际编辑由关联 `docs` 计划承接。
+- 文档：规格、功能清单和 ontology 的实际编辑原由已退役 docs companion 承接（仅历史分工）。
 - 风险：筛选与分页顺序错误、数据缩减后停留空页、底部控件被长列表挤出；分别以回归用例和桌面/窄屏 Chromium 验证覆盖。
 
 ## 验证计划
@@ -47,7 +47,7 @@
 ## 任务列表
 
 - [completed] 核实保留规则、数量上限与现有列表结构
-- [completed] 实现分页与边界功能；回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-prompt-history-pagination.md`），文档同步见关联 `docs` 计划。
+- [completed] 实现分页与边界功能；回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-prompt-history-pagination.md`），文档同步原指向已退役 docs companion（完整记录未恢复）。
 - [completed] 完成页面验证
 
 ## 验证记录与当前结论

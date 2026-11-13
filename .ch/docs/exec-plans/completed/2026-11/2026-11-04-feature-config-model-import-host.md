@@ -22,7 +22,7 @@
 - `src/config/modelimport.ts`：草稿解析、供应商识别、HTTP(S) 模型查询、结果约束和草稿合并。
 - `src/webview/configProtocol.ts`、`configPanel.ts`、`configView.ts`：类型契约、宿主分发和 webview API bridge。
 - 本轮补充：现有弹窗错误文案处理，不改布局或组件结构；处理器回归属于历史测试工作，仅保留验证证据，不归入 feature 开发范围。
-- 实施交付不包含测试开发或事实来源文档编写；历史测试摘要见关联删除审计，文档编写由关联 docs 计划承接。
+- 实施交付不包含测试开发或事实来源文档编写；历史测试摘要见关联删除审计，文档编写原归 docs companion（已退役，仅历史分工）。
 
 ## 非目标
 
@@ -37,7 +37,7 @@
 - [x] 严格校验输入、HTTP(S) 目标、编码路径/同源重定向、超时、响应/分页/结果大小及不可信文本。
 - [x] 导入保留现有配置数据，只追加未配置模型；单模型需显式单选替换；Claude 可独立映射字段。
 - [x] DSH key/env 边界不变，不将 env 展开回写；导入不保存或激活。
-- [x] 实现满足本计划安全与草稿导入契约；历史验证证据见下文及关联删除审计，本计划不承接测试开发；产品与 ontology 文档归属见 docs 计划。整体前端集成仍待主任务收口。
+- [x] 实现满足本计划安全与草稿导入契约；历史验证证据见下文及关联删除审计，本计划不承接测试开发；产品与 ontology 文档归属原指向 docs companion（已退役，完整记录未恢复）。整体前端集成仍待主任务收口。
 
 ## 影响面
 
@@ -48,7 +48,7 @@
 ## 关联计划
 
 - 历史测试摘要：[删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，在 JSON 中以完整 `source_old_path` 值 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-config-model-import-host.md` 定位历史记录；原 test 计划已删除，本计划不承接测试开发，审计不提供原计划完整正文。
-- `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-config-model-import-host.md`：配置管理功能清单及 `cli-plugin-runtime` ontology 的实际更新；文档以本计划已确认的产品与安全边界为事实输入。
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-config-model-import-host.md`（已退役，仅历史身份）：原分工为配置管理功能清单及 `cli-plugin-runtime` ontology 的实际更新；文档以本计划已确认的产品与安全边界为事实输入。
 
 ## 风险与缓解
 
@@ -68,14 +68,14 @@
 ## 关联交付归属
 
 - 删除审计仅保留历史测试摘要，不承接测试开发或补存完整正文；下方历次结果、夹具失败/修正和未决前端复测仍作为既有历史记录保留，前端整体集成由主任务收口。本计划不将测试开发列为 feature 范围。
-- 功能清单与配置档案 ontology 的实际编写由 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-config-model-import-host.md` 承接；本计划不把文档写作作为实现收尾。
+- 功能清单与配置档案 ontology 的实际编写由 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-config-model-import-host.md` 当时承担（已退役，仅历史分工）；本计划不把文档写作作为实现收尾。
 
 ## 任务列表
 
 - [x] 校准平台 schema 与安全策略
 - [x] 实现协议发现和草稿导入
 - [x] 接入 webview 宿主桥接（host side；前端资源接入待主任务验证）
-- [x] 完成宿主实现；历史测试摘要见关联删除审计，文档交付状态见关联 docs 计划
+- [x] 完成宿主实现；历史测试摘要见关联删除审计，文档交付状态原指向 docs companion（已退役，完整记录未恢复）
 - [x] 验证并记录集成待办
 - [ ] 主任务完成前端资源集成与整体验收
 

@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 独立异步动画帧回归开发：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)。该测试暴露并验证本计划中的运行时修复（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-final-markdown-idle-frame.md`）。
-- 运行时渲染契约文档：[`2026-11-01-docs-final-markdown-rendering-contract.md`](2026-11-01-docs-final-markdown-rendering-contract.md)。共同背景是最终 Markdown 渲染时序；文档只记录契约，不承接实现或测试开发。
+- 原文记录的历史文档分工：运行时渲染契约文档：`2026-11-01-docs-final-markdown-rendering-contract.md`。共同背景是最终 Markdown 渲染时序；文档只记录契约，不承接实现或测试开发。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与证据
 
@@ -20,7 +20,7 @@
 
 - 复现空闲格式化后旧动画帧导致纯文本恢复、直到下一轮重绘才恢复的情况。
 - 修复助手格式化调度，并按日志证据修复 Codex 最终答复收口及同消息晚到最终阶段的重复气泡；保留三秒空闲窗口和其他已有工作区改动。
-- 修复最终答复与空闲 Markdown 渲染时序；渲染契约文档由关联 `docs` 计划独立维护。独立测试开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-final-markdown-idle-frame.md`）。
+- 修复最终答复与空闲 Markdown 渲染时序；渲染契约文档原由已退役 docs companion 独立维护（仅历史分工）。独立测试开发已从计划目录移除，其历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-01-final-markdown-idle-frame.md`）。
 
 ## 非目标
 
@@ -60,5 +60,5 @@
 
 ## 文档与记忆判断
 
-- `.ch/docs/references/cli-runtime-reference.md` 中 Codex 最终答复和渲染契约说明见关联 `docs` 计划；功能清单与 ontology 的现有变更属于其他任务，本任务未混入。
+- `.ch/docs/references/cli-runtime-reference.md` 中 Codex 最终答复和渲染契约说明原指向已退役 docs companion（完整记录未恢复）；功能清单与 ontology 的现有变更属于其他任务，本任务未混入。
 - 不写入 `ROLLING_SUMMARY.md`；本次可复用排障结论已记录在本计划和回归测试中。

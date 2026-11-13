@@ -12,7 +12,7 @@
 ## 关联计划
 
 - 新增通知路由回归开发见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)，独立验证提取前后通知分发契约（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`）。
-- `ARCHITECTURE.md` 的通知入口与处理器职责说明见 [`2026-11-03-docs-codex-notification-dispatch.md`](2026-11-03-docs-codex-notification-dispatch.md)。三份记录共同追踪同一无行为变化的内部重构，不复制混合范围。
+- 原文记录的历史文档分工：`ARCHITECTURE.md` 的通知入口与处理器职责历史说明原归 `2026-11-03-docs-codex-notification-dispatch.md`。三份记录共同追踪同一无行为变化的内部重构，不复制混合范围。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景
 
@@ -26,7 +26,7 @@
 
 - `src/interactive/codexRunner.ts` 的通知分发与事件处理拆分。
 - 复用现有 Codex Runner 生命周期和运行时辅助函数。
-- 内部策略提取保持行为；通知路由回归用例的独立开发历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`），ARCHITECTURE 文档更新见关联 `docs` 计划。
+- 内部策略提取保持行为；通知路由回归用例的独立开发历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`），ARCHITECTURE 文档更新原指向已退役 docs companion（完整记录未恢复）。
 
 ## 非目标
 
@@ -44,7 +44,7 @@
 ## 影响面
 
 - 代码目录：`src/interactive/codexRunner.ts`
-- 回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`）；`ARCHITECTURE.md` 维护见关联 `docs` 计划。用户可见功能清单无需更新。
+- 回归开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`）；`ARCHITECTURE.md` 维护原指向已退役 docs companion（完整记录未恢复）。用户可见功能清单无需更新。
 
 ## 风险与缓解
 
@@ -63,7 +63,7 @@
 ## 测试与文档交付指针
 
 - 三条通知路由回归、63项与134项历史结果、HEAD 基线对照和失败处理见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-codex-notification-dispatch-refactor.md`）；这些测试验证重构行为保持。
-- `ARCHITECTURE.md` 通知入口与处理器职责说明由关联 `docs` 计划承接。功能清单无需更新，用户可见行为不变。
+- `ARCHITECTURE.md` 通知入口与处理器职责说明原由已退役 docs companion 承接（仅历史分工）。功能清单无需更新，用户可见行为不变。
 
 Tasklist:
 

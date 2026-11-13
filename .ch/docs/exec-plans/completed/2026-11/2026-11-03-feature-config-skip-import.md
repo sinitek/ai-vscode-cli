@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-config-skip-import.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-config-skip-import.md`](2026-11-03-docs-config-skip-import.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-config-skip-import.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -27,7 +27,7 @@
 
 ## 影响面与风险
 
-- 本计划范围为配置列表、弹窗和前端store；单测修改的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-config-skip-import.md`），功能清单/规格维护归关联 `docs` 计划。
+- 本计划范围为配置列表、弹窗和前端store；单测修改的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-config-skip-import.md`），功能清单/规格维护原归已退役 docs companion（仅历史分工）。
 - 页面关闭会丢弃未保存草稿，需在产品规格中说明；各 CLI 保存校验保持不变。
 
 ## 验证计划

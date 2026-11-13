@@ -23,7 +23,6 @@
 - 核心环境变量、默认模型、权限和常用运行设置。
 - 中英文界面文本。
 - 原测试记录已删除，历史验证证据：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
-- 文档交付依赖：[`2026-07-10-docs-claude-config-visual-editor.md`](2026-07-10-docs-claude-config-visual-editor.md)。
 
 ## 非目标
 
@@ -63,7 +62,7 @@
 ## 测试与清单同步
 
 - 单元自测结果：`npm run build`、`node --check media/config/assets/config-app-ui.js`、配置中心相关 42 个 Node 测试全部通过。
-- 关联计划 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json) 记录新增测试及过期断言修正；[`2026-07-10-docs-claude-config-visual-editor.md`](2026-07-10-docs-claude-config-visual-editor.md) 记录产品与运行时文档同步。
+- 关联计划 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json) 记录新增测试及过期断言修正；产品与运行时文档已同步。
 
 ## 任务列表
 

@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 本计划记录不改变展示行为的渲染优化；新增运行时回归及 VM 夹具由 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json) 记录。测试是本优化的独立交付，不是单纯执行既有测试（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）。
-- `ARCHITECTURE.md` 中缓存失效边界与实现踩坑的独立文档交付见 [`2026-11-02-docs-chat-rendering-cache-guidance.md`](2026-11-02-docs-chat-rendering-cache-guidance.md)。
+- 原文记录的历史文档分工：`ARCHITECTURE.md` 中缓存失效边界与实现踩坑的历史文档范围原归 `2026-11-02-docs-chat-rendering-cache-guidance.md`。 该 companion 已退役；完整写作及校验记录无法由索引复核。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -37,7 +37,7 @@
 ## 影响面与风险
 
 - 代码：`src/webview/viewContentScript/messageRendering.ts`、`traceRendering.ts`，及相应 Webview 测试。
-- 独立ARCHITECTURE架构说明由关联 `docs` 计划维护；回归用例/VM夹具开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）。
+- 独立ARCHITECTURE架构说明原由已退役 docs companion 维护（仅历史分工）；回归用例/VM夹具开发的历史职责见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）。
 - 风险：缓存遗漏展示依赖、重排影响焦点或分组、过期节点与 ResizeObserver 引用残留。
 - 缓解：完整重绘保留原有路径；增量复用显式校验原文、元信息及 CLI/索引/流式/相邻工具展示上下文；清理不再可见的缓存和观察器。
 - 回滚：仅撤销本计划渲染实现；关联测试和架构文档需按各自计划协调，不动其它任务既有修改。
@@ -55,7 +55,7 @@
 - 单元自测历史结果：基线构建和 141 条运行时测试通过；新增回归后的 146 条运行时测试通过；页面分组 389 条通过；扩大 Webview 与 Tab 分页范围后 352 条通过，详见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）。
 - 失败处理历史证据：首轮 6 条流式结束断言属于实现缺陷，原因是同步动画帧可能先于定时器标记，已显式记录实际纯文本状态并通过原有结束/出错/停止回归。扩大范围的 2 条 Loop+ 失败属于夹具依赖缺失，已补齐新缓存变量及函数，不降低断言。浏览器首次选择文本失败属于夹具选择器错误，已改为实际气泡节点；测试开发计划保留了完整上下文。
 - 功能清单：无需新增条目；全部气泡、折叠规则、筛选、消息协议、回放与导出内容保持不变，仅优化内部节点更新，避免混入其他任务正在修改的功能清单。
-- 文档交付：`ARCHITECTURE.md` 记录增量渲染与缓存失效边界，以及实际纯文本状态不能等同于定时器状态的踩坑；独立文档范围见关联 docs 计划。
+- 文档交付：`ARCHITECTURE.md` 记录增量渲染与缓存失效边界，以及实际纯文本状态不能等同于定时器状态的踩坑；独立文档范围原指向已退役 docs companion（完整记录未恢复）。
 - Ontology：已核对消息分组、思考气泡及任务操作入口规则；没有改变业务概念、生命周期或输入输出协议，无需变更本体。
 
 ## 任务列表
@@ -98,4 +98,4 @@
 
 ## 当前结论
 
-不改变行为的渲染优化已交付，历史测试证据见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）；历史构建、Chromium 与本体结果按各自范围分别记录在本计划及关联 docs 计划。本计划只记录优化交付及真实边界；全部气泡、消息内容、回放和既有操作语义保留，真实多 CLI 长时资源竞争仍为未覆盖事项。
+不改变行为的渲染优化已交付，历史测试证据见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-02-chat-rendering-performance.md`）；历史构建、Chromium 与本体结果按各自范围分别记录在本计划及原 docs companion（已退役，完整记录未恢复）。本计划只记录优化交付及真实边界；全部气泡、消息内容、回放和既有操作语义保留，真实多 CLI 长时资源竞争仍为未覆盖事项。

@@ -22,7 +22,7 @@
 - Loop 当前尝试与历史对话正文的隔离
 - OpenCode 空成功响应的诊断日志
 - Loop 主任务 fresh-session recovery、tab/任务记录改绑与恢复提示
-- 有界恢复行为实现；回归测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，运行时事实文档编写归 [docs 计划](2026-07-14-docs-opencode-loop-empty-main-response.md)。
+- 有界恢复行为实现；回归测试开发归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)，运行时事实文档编写归 docs 计划。
 
 ## 非目标
 
@@ -66,7 +66,7 @@
 
 - 测试扩展及103/103历史结果归 [历史验证证据](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)。
 - 失败处理记录：无测试失败；无需调整断言或隔离环境问题
-- 功能清单、运行时设计、CLI 参考与 PITFALLS 写作归 [docs 计划](2026-07-14-docs-opencode-loop-empty-main-response.md)。
+- 功能清单、运行时设计、CLI 参考与 PITFALLS 写作归 docs 计划。
 
 ## 任务列表
 
@@ -90,7 +90,6 @@
 ## 关联计划
 
 - [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-jul-sep.json)：按用户授权删除 test 类型记录，仅留存历史验证证据；本计划不承接独立测试开发。
-- [docs 计划](2026-07-14-docs-opencode-loop-empty-main-response.md)：承接能力清单、运行时设计、CLI参考与PITFALLS更新，依赖本计划的边界决策。原记录现场数据与恢复限制在实现计划中保留。
 
 ## 最终结论
 

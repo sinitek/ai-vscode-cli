@@ -8,7 +8,7 @@
 ## 关联计划
 
 - 共同背景与依赖（测试证据）：[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-new-config-import-dialog.md`）。
-- 共同背景与依赖（docs）：[`2026-11-03-docs-new-config-import-dialog.md`](2026-11-03-docs-new-config-import-dialog.md)。
+- 历史文档依赖：原 docs companion `2026-11-03-docs-new-config-import-dialog.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。[references 索引](../../../references/index.md)仅作导航。
 
 ## 背景与目标
 
@@ -32,7 +32,7 @@
 
 - 实现：`media/config/assets/config-app-ui.js`。
 - 回归：`src/test/config/newConfigFromExample.test.ts`、`src/test/config/cliExampleImport.test.ts`。
-- 功能清单、配置中心能力规格和CLI业务本体维护见关联 `docs` 计划。
+- 功能清单、配置中心能力规格和CLI业务本体维护原指向已退役 docs companion（完整记录未恢复）。
 - 风险：共享弹窗异步提交改变旧测试时序；统一等待提交并覆盖保存失败与重复提交。
 
 ## 验证计划
@@ -49,14 +49,14 @@
 - 浏览器证据：`.tmp/playwright-smoke/new-config-import-desktop/result.json`、`.tmp/playwright-smoke/new-config-import-mobile/result.json` 和窄屏 `success.png`；任务临时脚本和场景已清理，证据仅留在忽略目录。
 - 测试开发/历史结果及失败分类见 [测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（source_old_path：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-new-config-import-dialog.md`）。
 - 结构验证：ontology `--validate`、界面机械检测与 `git diff --check` 均通过。
-- 文档交付证据见 [`2026-11-03-docs-new-config-import-dialog.md`](2026-11-03-docs-new-config-import-dialog.md)。
+- 原 docs companion `2026-11-03-docs-new-config-import-dialog.md` 已退役；仅留历史身份与分工，完整校验记录未恢复。原文曾以该页为文档交付证据入口；此处无法复核其完整记录。[references 索引](../../../references/index.md)仅作导航。
 - 记忆维护：本次局部行为变更优先保留在能力规格和本计划，不自动写入热区记忆。
 
 ## 任务列表
 
 - 已完成：定位配置新增与一键导入流程。
 - [completed] 复用导入弹窗；回归开发的历史记录见[测试计划删除审计](../../migrations/test-plan-removals/2026-11-11-nov-active.json)（`source_old_path`：`.ch/docs/exec-plans/completed/2026-11/2026-11-03-new-config-import-dialog.md`）。
-- [completed] 构建、浏览器验证及功能计划归档；文档编辑见关联 `docs` 计划。
+- [completed] 构建、浏览器验证及功能计划归档；文档编辑原指向已退役 docs companion（完整记录未恢复）。
 
 ## 当前结论
 

@@ -4,15 +4,8 @@
 - 状态：completed
 - 负责人：Codex
 - 类型：feature
-- 迁移来源：`.ch/docs/exec-plans/completed/2026-05/2026-05-01-loop-mode.md`
 
-## 关联计划
 
-- [docs：Loop模式——文档同步](2026-05-01-docs-loop-mode-documentation.md)
-
-## 迁移说明
-
-2026-11-11 按实际工作类型拆分。日期、负责人及状态沿用原文；下列命令和结果均为历史记录，本次迁移不执行历史命令，也不新增验收结论。
 
 ## 背景
 
