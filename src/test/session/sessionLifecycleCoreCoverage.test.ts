@@ -342,6 +342,55 @@ test("bubble pruning leaves memory intact and reports failure when the history c
   }
 });
 
+test("failed pruning leaves distinct stored, live, primary and runtime arrays and the active index intact", () => {
+  const harness = createLifecycleHarness({ messageDirIsFile: true });
+  try {
+    const sessionId = "blocked-live";
+    harness.state.tabs[0].sessionId = sessionId;
+    harness.state.tabs[0].sessionIdByCli.codex = sessionId;
+    const original = [createMessage("old", "trace", "old command"), createMessage("active", "assistant", "running")];
+    harness.controller.saveSessionMessages("codex", sessionId, original);
+    const stored = harness.controller.loadSessionMessages("codex", sessionId);
+    const live = original.map((message) => ({ ...message }));
+    const primary = original.map((message) => ({ ...message }));
+    const runtime = original.map((message) => ({ ...message }));
+    harness.state.liveMessages.set("tab-1", live);
+    harness.state.primary = { cli: "codex", tabId: "tab-1", sessionId, messageTarget: primary, messageIndex: 1 };
+    harness.state.runtimeRuns.push({ tabId: "tab-1", cli: "codex", sessionId, messageTarget: runtime });
+    harness.controller.pruneChatMessages({ type: "pruneChatMessages", requestId: "fail-live", tabId: "tab-1", cli: "codex", sessionId,
+      messages: [{ id: "old", content: "old command" }] });
+    for (const messages of [stored, live, primary, runtime]) {
+      assert.deepEqual(messages, original);
+    }
+    assert.equal(harness.controller.loadSessionMessages("codex", sessionId), stored);
+    assert.equal(harness.state.primary.messageIndex, 1);
+    assert.equal(harness.state.primary.messageTarget, primary);
+    assert.equal(harness.state.runtimeRuns[0].messageTarget, runtime);
+    assert.equal(harness.calls.panelMessages.at(-1)?.messages, live);
+    assert.match(String(harness.calls.panelMessages.at(-1)?.error), /原消息未删除/);
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test("cache hits preserve the array and refresh lifecycle-owned session health after live mutation", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const record = createRecord("health-cache");
+    harness.state.store.codex.sessions.push(record);
+    harness.controller.saveSessionMessages("codex", record.id, [createMessage("failure", "system", "执行失败")]);
+    const cached = harness.controller.loadSessionMessages("codex", record.id);
+    assert.equal(record.health, "abnormal");
+    cached.push(createMessage("answer", "assistant", "已完成"));
+    const persisted = harness.calls.persistedStores;
+    assert.equal(harness.controller.loadSessionMessages("codex", record.id), cached);
+    assert.equal(record.health, "normal");
+    assert.equal(harness.calls.persistedStores, persisted + 1);
+  } finally {
+    harness.cleanup();
+  }
+});
+
 test("pruned draft history keeps its deletion marker through session binding and migration", () => {
   const harness = createLifecycleHarness();
   try {

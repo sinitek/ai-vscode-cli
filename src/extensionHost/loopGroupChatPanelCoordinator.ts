@@ -34,8 +34,8 @@ import {
 } from "../webview/loopGroupChatPanel";
 import {
   buildLoopGroupChatMessageAction,
-  buildLoopGroupChatPanelStateWithDeps,
 } from "../panelStateBuilder";
+import { buildLoopGroupChatPanelStateWithDeps } from "../loopGroupChatPanelState";
 import {
   collectLoopCommunicationPreviewRoots,
   readLoopCommunicationFilePreview,

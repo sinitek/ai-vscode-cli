@@ -10,7 +10,7 @@ import {
   writeSessionMeta,
 } from "./interactive/metaStore";
 import type { CodexRunSelection } from "./interactive/codexThreadSelection";
-import { collapseGrokConsecutiveThinkingMessages } from "./interactive/grokThinkingBubbles";
+import { createSessionMessageRepository } from "./sessionMessageRepository";
 import {
   findSupersedingSessionId,
   isLocalSessionId,
@@ -25,12 +25,8 @@ import {
   deleteSessionFile,
   ensureSessionStore,
   getMessageFile,
-  getSessionKey,
   isSessionStoreEmpty,
-  readMessageFile,
   readSessionFile,
-  sanitizeMessages,
-  writeMessageFile,
   writeSessionFile,
   type SessionRecord,
   type SessionStore,
@@ -208,8 +204,6 @@ export function createSessionLifecycleController(deps: {
     options?: { freezePrevious?: string; codexSelection?: CodexRunSelection | null }
   ) => void;
 } {
-  const retentionPrunedSessions = new Set<string>();
-  const retentionPrunedArrays = new WeakSet<ChatMessage[]>();
   const messagePathOptions = () => ({
     workspaceKeyFallback: deps.workspaceKeyFallback,
     legacyMessageDir: deps.legacyMessageDir,
@@ -306,10 +300,7 @@ export function createSessionLifecycleController(deps: {
 
     for (const cli of CLI_LIST) {
       for (const sessionId of staleSessionIds[cli]) {
-        const key = getSessionKey(workspaceKey, cli, sessionId);
-        deps.sessionMessageCache.delete(key);
-        retentionPrunedSessions.delete(key);
-        deps.sessionMessageLoadErrors.delete(key);
+        messageRepository.evictSession(cli, sessionId, { workspaceKey, clearLoadError: true });
         try {
           const filePath = getMessageFile(cli, sessionId, workspaceKey, messagePathOptions());
           if (fs.existsSync(filePath)) {
@@ -358,99 +349,19 @@ export function createSessionLifecycleController(deps: {
     return health;
   };
 
-  const loadMessages = (cli: CliName, sessionId: string): ChatMessage[] => {
-    const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
-    const cached = deps.sessionMessageCache.get(key);
-    if (cached) {
-      updateSessionHealth(cli, sessionId, cached);
-      return cached;
-    }
-    const messages = readMessageFile(cli, sessionId, {
-      activeWorkspaceKey: deps.activeWorkspaceKey(),
-      ...messagePathOptions(),
-      buildErrorDetail,
-      loadErrors: deps.sessionMessageLoadErrors,
-      logError: (event, payload) => deps.logError(event, payload),
-      onRetentionPruned: () => retentionPrunedSessions.add(key),
-    });
-    const sanitized = sanitizeMessages(messages, cli);
-    const recovered = retentionPrunedSessions.has(key)
-      ? null
-      : maybeRecoverClaudeSessionMessages(cli, sessionId, sanitized.messages);
-    const resolvedMessages = recovered ?? sanitized.messages;
-    const collapsed = cli === "grok"
-      ? collapseGrokConsecutiveThinkingMessages(resolvedMessages)
-      : { messages: resolvedMessages, changed: false };
-    const storedMessages = collapsed.messages;
-    if (recovered || sanitized.changed || collapsed.changed) {
-      writeMessageFile(cli, sessionId, storedMessages, {
-        activeWorkspaceKey: deps.activeWorkspaceKey(),
-        ...messagePathOptions(),
-        logError: (event, payload) => deps.logError(event, payload),
-        retentionPruned: retentionPrunedSessions.has(key),
-      });
-    }
-    if (retentionPrunedSessions.has(key)) {
-      retentionPrunedArrays.add(storedMessages);
-    }
-    deps.sessionMessageCache.set(key, storedMessages);
-    updateSessionHealth(cli, sessionId, storedMessages);
-    return storedMessages;
-  };
-
-  const maybeRecoverClaudeSessionMessages = (
-    cli: CliName,
-    sessionId: string,
-    messages: ChatMessage[]
-  ): ChatMessage[] | null => {
-    if (cli !== "claude") {
-      return null;
-    }
-    const hasConversationContent = messages.some((message) => message.role === "assistant" || message.role === "trace");
-    if (hasConversationContent) {
-      return null;
-    }
-    const hasAnyUserMessage = messages.some((message) => message.role === "user" && message.content.trim());
-    if (!hasAnyUserMessage) {
-      return null;
-    }
-    try {
-      const recovered = deps.recoverClaudeMessagesFromTranscript(sessionId, messages);
-      if (recovered) {
-        deps.logInfo("claude-session-recovered-from-transcript", {
-          sessionId,
-          originalSize: messages.length,
-          recoveredSize: recovered.length,
-        });
-      }
-      return recovered;
-    } catch (error) {
-      deps.logError("claude-session-recover-failed", {
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
-  };
-
-  const saveMessages = (cli: CliName, sessionId: string, messages: ChatMessage[]): void => {
-    const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
-    if (retentionPrunedArrays.has(messages)) {
-      retentionPrunedSessions.add(key);
-    }
-    const sanitized = sanitizeMessages(messages, cli);
-    if (retentionPrunedSessions.has(key)) {
-      retentionPrunedArrays.add(sanitized.messages);
-    }
-    updateSessionHealth(cli, sessionId, sanitized.messages);
-    deps.sessionMessageCache.set(key, sanitized.messages);
-    writeMessageFile(cli, sessionId, sanitized.messages, {
-      activeWorkspaceKey: deps.activeWorkspaceKey(),
-      ...messagePathOptions(),
-      logError: (event, payload) => deps.logError(event, payload),
-      retentionPruned: retentionPrunedSessions.has(key),
-    });
-  };
+  const messageRepository = createSessionMessageRepository({
+    activeWorkspaceKey: () => deps.activeWorkspaceKey(),
+    workspaceKeyFallback: deps.workspaceKeyFallback,
+    legacyMessageDir: deps.legacyMessageDir,
+    messageDirRoot: deps.messageDirRoot,
+    sessionMessageCache: deps.sessionMessageCache,
+    sessionMessageLoadErrors: deps.sessionMessageLoadErrors,
+    recoverClaudeMessagesFromTranscript: (sessionId, messages) => deps.recoverClaudeMessagesFromTranscript(sessionId, messages),
+    updateSessionHealth,
+    logInfo: (event, payload) => deps.logInfo(event, payload),
+    logError: (event, payload) => deps.logError(event, payload),
+  });
+  const { loadMessages, saveMessages } = messageRepository;
 
   const pruneChatMessages = (request: Extract<PanelMessage, { type: "pruneChatMessages" }>): void => {
     const respond = (messages?: ChatMessage[], error?: string): void => deps.sendPanelMessage({
@@ -519,12 +430,7 @@ export function createSessionLifecycleController(deps: {
       return;
     }
     const remaining = source.filter((message) => !deletedIds.has(message.id));
-    if (request.sessionId && !writeMessageFile(request.cli, request.sessionId, remaining, {
-      activeWorkspaceKey: deps.activeWorkspaceKey(),
-      ...messagePathOptions(),
-      retentionPruned: true,
-      logError: (event, payload) => deps.logError(event, payload),
-    })) {
+    if (request.sessionId && !messageRepository.persistPrunedMessages(request.cli, request.sessionId, remaining)) {
       respond(source, "气泡清理失败：无法保存会话历史，原消息未删除。");
       return;
     }
@@ -536,12 +442,10 @@ export function createSessionLifecycleController(deps: {
         }
       }
       messages.length = retainedCount;
-      retentionPrunedArrays.add(messages);
+      messageRepository.markPrunedArray(messages);
     }
     if (request.sessionId) {
-      const key = getSessionKey(deps.activeWorkspaceKey(), request.cli, request.sessionId);
-      retentionPrunedSessions.add(key);
-      deps.sessionMessageCache.set(key, source);
+      messageRepository.rememberPrunedSession(request.cli, request.sessionId, source);
     }
     if (matchingPrimary && primary.messageIndex != null) {
       const nextIndex = activeMessage ? matchingPrimary.findIndex((message) => message.id === activeMessage.id) : -1;
@@ -584,9 +488,7 @@ export function createSessionLifecycleController(deps: {
   };
 
   const deleteArtifacts = (cli: CliName, sessionId: string): void => {
-    const key = getSessionKey(deps.activeWorkspaceKey(), cli, sessionId);
-    deps.sessionMessageCache.delete(key);
-    retentionPrunedSessions.delete(key);
+    messageRepository.evictSession(cli, sessionId);
     const filePath = getMessageFile(cli, sessionId, deps.activeWorkspaceKey(), messagePathOptions());
     try {
       if (fs.existsSync(filePath)) {
@@ -641,9 +543,7 @@ export function createSessionLifecycleController(deps: {
     }
     const existing = loadMessages(cli, sessionId);
     const merged = [...existing, ...pending];
-    if (retentionPrunedArrays.has(existing) || retentionPrunedArrays.has(pending)) {
-      retentionPrunedArrays.add(merged);
-    }
+    messageRepository.inheritPruning(merged, existing, pending);
     draft.messages = [];
     saveMessages(cli, sessionId, merged);
     const primary = deps.getPrimaryRunSessionState();
@@ -770,8 +670,7 @@ export function createSessionLifecycleController(deps: {
     assignPendingLabel,
     attachPendingMessages,
     clearAllSessions: () => {
-      deps.sessionMessageCache.clear();
-      retentionPrunedSessions.clear();
+      messageRepository.clearCachedSessions();
       const store = deps.sessionStore();
       for (const cli of CLI_LIST) {
         store[cli].currentId = null;
@@ -896,9 +795,7 @@ export function createSessionLifecycleController(deps: {
       const localMessages = loadMessages(cli, localSessionId);
       const targetMessages = loadMessages(cli, targetSessionId);
       const mergedMessages = mergeSessionMessages(targetMessages, localMessages);
-      if (retentionPrunedArrays.has(targetMessages) || retentionPrunedArrays.has(localMessages)) {
-        retentionPrunedArrays.add(mergedMessages);
-      }
+      messageRepository.inheritPruning(mergedMessages, targetMessages, localMessages);
       saveMessages(cli, targetSessionId, mergedMessages);
 
       const targetIndex = sessions.findIndex((session) => session.id === targetSessionId);
@@ -1064,7 +961,7 @@ export function createSessionLifecycleController(deps: {
           acc[role] = (acc[role] ?? 0) + 1;
           return acc;
         }, {} as Record<string, number>);
-        const loadError = deps.sessionMessageLoadErrors.get(getSessionKey(deps.activeWorkspaceKey(), cli, sessionId));
+        const loadError = messageRepository.getLoadError(cli, sessionId);
         deps.sendPanelMessage({
           type: "setMessages",
           messages: sessionMessages,
