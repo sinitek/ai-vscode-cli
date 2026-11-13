@@ -98,6 +98,27 @@ export type LoopPlusDecisionOptions = {
   requireProgressPercent?: boolean;
 };
 
+type LoopPlusDecisionNormalizer = (
+  raw: Record<string, unknown>,
+  estimatedRemainingRounds: number | undefined,
+  subtaskMax: number,
+  options?: LoopPlusDecisionOptions,
+) => LoopPlusDecision | null;
+
+const LOOP_PLUS_DECISION_NORMALIZERS: Readonly<Record<LoopPlusDecisionStatus, LoopPlusDecisionNormalizer>> = {
+  dispatch: normalizeDispatchDecision,
+  accept: normalizeAcceptDecision,
+  wait: normalizeWaitDecision,
+  steer: normalizeSteerDecision,
+  blocked: normalizeBlockedDecision,
+  completed: normalizeCompletedDecision,
+  clarify: normalizeClarifyDecision,
+};
+
+function isLoopPlusDecisionStatus(value: unknown): value is LoopPlusDecisionStatus {
+  return typeof value === "string" && hasOwn(LOOP_PLUS_DECISION_NORMALIZERS, value);
+}
+
 export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
   const numeric = typeof value === "number"
     ? value
@@ -159,24 +180,11 @@ export function normalizeLoopPlusDecision(
   }
   const estimatedRemainingRounds = normalizeEstimatedRemainingRounds(value.estimatedRemainingRounds);
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(options?.subtaskMax);
-  switch (value.status) {
-    case "dispatch":
-      return normalizeDispatchDecision(value, estimatedRemainingRounds, subtaskMax);
-    case "accept":
-      return normalizeAcceptDecision(value, estimatedRemainingRounds, subtaskMax, options);
-    case "wait":
-      return normalizeWaitDecision(value, estimatedRemainingRounds, subtaskMax);
-    case "steer":
-      return normalizeSteerDecision(value, estimatedRemainingRounds, subtaskMax);
-    case "blocked":
-      return normalizeBlockedDecision(value, estimatedRemainingRounds, subtaskMax);
-    case "clarify":
-      return normalizeClarifyDecision(value, estimatedRemainingRounds, subtaskMax);
-    case "completed":
-      return normalizeCompletedDecision(value, estimatedRemainingRounds, subtaskMax, options);
-    default:
-      return null;
+  const status = value.status;
+  if (!isLoopPlusDecisionStatus(status)) {
+    return null;
   }
+  return LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
 }
 
 function normalizeDispatchDecision(

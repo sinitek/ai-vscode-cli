@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
+  LOOP_PLUS_DECISION_STATUSES,
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
@@ -13,6 +14,7 @@ import {
   resolveLoopPlusDecisionSubtaskMax,
   resolveLoopPlusMaxAcceptances,
   type LoopPlusDecision,
+  type LoopPlusDecisionStatus,
 } from "../../loopPlusDecision";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
@@ -82,6 +84,70 @@ function completedFields(reviewEventId?: string) {
     requirementCoverage: [{ name: "原始需求", passed: true, detail: "完成即验收、等待和增量派发已区分。" }],
   };
 }
+
+test("every declared status normalizes through its strategy and retains shared guards", () => {
+  const candidates: Record<LoopPlusDecisionStatus, Record<string, unknown>> = {
+    dispatch: { status: "dispatch", subtasks: [subtask("alpha")] },
+    accept: {
+      status: "accept",
+      reviewEventId: "event-alpha",
+      reviews: [{ reviewEventId: "event-alpha", acceptance: "passed" }],
+    },
+    wait: { status: "wait" },
+    steer: { status: "steer", controls: [{ id: "alpha", action: "close" }] },
+    blocked: { status: "blocked", finalSummary: "需要用户确认" },
+    completed: completedFields(),
+    clarify: {
+      status: "clarify",
+      clarification: { formFields: [{ id: "scope", label: "范围", type: "text" }] },
+    },
+  };
+  for (const status of LOOP_PLUS_DECISION_STATUSES) {
+    const candidate = { ...candidates[status], estimatedRemainingRounds: "3.9" };
+    for (const decision of [
+      normalizeLoopPlusDecision(candidate),
+      parseLoopPlusDecision(JSON.stringify(candidate)),
+    ]) {
+      assert.equal(decision?.status, status);
+      assert.equal(decision?.estimatedRemainingRounds, 3, status);
+    }
+    for (const key of ["confirmedEventIds", "acceptedEventIds"]) {
+      assert.equal(normalizeLoopPlusDecision({ ...candidate, [key]: [] }), null, `${status}: ${key}`);
+    }
+    assert.equal(normalizeLoopPlusDecision({ ...candidate, directCompletion: false }), null, status);
+    if (status !== "completed") {
+      assert.equal(normalizeLoopPlusDecision({ ...candidate, directCompletion: true }, {
+        allowDirectCompletion: true,
+      }), null, status);
+    }
+  }
+});
+
+test("rejects unknown statuses including prototype keys without coercing them", () => {
+  const statuses: unknown[] = [
+    ...Object.getOwnPropertyNames(Object.prototype),
+    "sleeping", "DISPATCH", " wait ", "", null, undefined, 0, true, [], {}, ["wait"],
+    { toString: () => "wait" },
+    { toString: () => { throw new Error("status must not be coerced"); } },
+    Symbol("wait"),
+  ];
+  for (const status of statuses) {
+    assert.equal(normalizeLoopPlusDecision({ status }), null, `unknown status of type ${typeof status}`);
+    assert.equal(parseLoopPlusDecision(JSON.stringify({ status })), null);
+  }
+});
+
+test("scans past malformed, unknown and rejected candidates and returns the first valid decision", () => {
+  const content = [
+    '{"status": invalid}',
+    ...Object.getOwnPropertyNames(Object.prototype).map((status) => JSON.stringify({ status })),
+    JSON.stringify({ status: "accept", reviewEventId: "event-without-verdict" }),
+    JSON.stringify({ status: "wait", confirmedEventIds: [] }),
+    JSON.stringify({ status: "wait", estimatedRemainingRounds: "2.9" }),
+    JSON.stringify({ status: "blocked", finalSummary: "后续候选" }),
+  ].join("\n");
+  assert.deepEqual(parseLoopPlusDecision(content), { status: "wait", estimatedRemainingRounds: 2 });
+});
 
 test("parses a dispatch with one through six self-contained Chinese prompts", () => {
   assert.ok(CHINESE_PROMPT.length >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH);
