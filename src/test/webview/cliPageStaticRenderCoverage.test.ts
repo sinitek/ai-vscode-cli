@@ -91,6 +91,15 @@ test("conversation tabs use compact horizontal padding and close-button spacing"
   assert.match(HEADER_TABS_STYLES, /\.conversation-tab-close\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/);
 });
 
+test("history session actions sit in one row under the session text", () => {
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*\{[^}]*flex-direction:\s*column;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*>\s*\.session-info\s*\{[^}]*width:\s*100%;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*>\s*\.session-actions\s*\{[^}]*flex-direction:\s*row;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*>\s*\.session-actions\s*\{[^}]*flex-wrap:\s*nowrap;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*>\s*\.session-actions\s*\{[^}]*max-width:\s*none;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.session-item\s*>\s*\.session-actions\s*>\s*button\.secondary[\s\S]*white-space:\s*nowrap;/);
+});
+
 test("renders accessible prompt history pagination below the scrollable list", () => {
   const html = buildHtml();
   const promptPanel = html.split('id="historyPanelPrompts"')[1].split('id="historyPanelSessions"')[0];

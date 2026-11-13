@@ -1113,8 +1113,8 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         border-radius: 8px;
         margin-bottom: 8px;
         display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
+        flex-direction: column;
+        align-items: stretch;
         gap: 8px;
         background: var(--vscode-editor-background);
       }
@@ -1124,6 +1124,10 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         gap: 4px;
         flex: 1;
         min-width: 0;
+      }
+      .session-item > .session-info {
+        flex: 0 1 auto;
+        width: 100%;
       }
       .session-label {
         font-weight: 600;
@@ -1170,6 +1174,20 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         flex-wrap: wrap;
         justify-content: flex-end;
         max-width: 180px;
+      }
+      .session-item > .session-actions {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: flex-start;
+        width: 100%;
+        max-width: none;
+        overflow-x: auto;
+      }
+      .session-item > .session-actions > button.secondary,
+      .session-item > .session-actions > button.ghost {
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
 
       .prompt-list {
