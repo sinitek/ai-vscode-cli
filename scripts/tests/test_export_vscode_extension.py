@@ -218,8 +218,9 @@ class VsixAuditTests(unittest.TestCase):
                     export_script.audit_vsix(package, "universal")
 
     def test_audit_rejects_developer_files_and_missing_runtime(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "开发态文件"):
-            self.audit([*export_script.REQUIRED_ENTRIES, "scripts/publish_vscode_extension.py"])
+        for entry in ("scripts/publish_vscode_extension.py", ".local/verification/report.json", "verify_mac.py", "verify_win.py"):
+            with self.subTest(entry=entry), self.assertRaisesRegex(RuntimeError, "开发态文件"):
+                self.audit([*export_script.REQUIRED_ENTRIES, entry])
         with self.assertRaisesRegex(RuntimeError, "缺少必需运行时文件"):
             self.audit(list(export_script.REQUIRED_ENTRIES[:-1]))
 

@@ -1,6 +1,7 @@
 .git/**
 .codegraph/**
 .tmp/**
+.local/**
 .agents/**
 .ch/**
 docs/**
@@ -35,5 +36,7 @@ __pycache__/**
 AGENTS.md
 ARCHITECTURE.md
 run_dev.py
+verify_mac.py
+verify_win.py
 pnpm-lock.yaml
 tsconfig.json

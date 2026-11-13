@@ -43,9 +43,9 @@ REQUIRED_ENTRIES = (
 )
 FORBIDDEN_ENTRY_PATTERN = re.compile(
     r"^(?:"
-    r"(?:\.agents|\.ch|\.codegraph|\.tmp|docs|scripts|dist/test)(?:/.*)?|"
+    r"(?:\.agents|\.ch|\.codegraph|\.tmp|\.local|docs|scripts|dist/test)(?:/.*)?|"
     r"(?:AGENTS\.md|ARCHITECTURE\.md|export_vscode_extension\.(?:py|sh)|"
-    r"publish_vscode_extension\.(?:py|sh)|run_dev\.(?:py|sh)|vscode_extension_process\.py|to)$|"
+    r"publish_vscode_extension\.(?:py|sh)|run_dev\.(?:py|sh)|verify_(?:mac|win)\.py|vscode_extension_process\.py|to)$|"
     r"dist/.*\.map$|"
     r"node_modules/@anthropic-ai/claude-agent-sdk/[^/]+\.d\.ts$|"
     r"(?:.*/)?__pycache__/|.*\.pyc$"
