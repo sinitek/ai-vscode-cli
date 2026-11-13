@@ -53,7 +53,7 @@ function fixture(t: TestContext) {
 }
 
 for (const [version, reason] of [
-  ["0.162.1", "supported"], ["0.167.0", "supported"], ["0.100.0", "unsupported"],
+  ["0.162.1", "supported"], ["0.167.0", "supported"], ["0.100.0", "unsupported"], ["0.145.0", "unsupported"],
   ["0.166.0", "unknown"], ["0.168.0", "unknown"], ["0.167.0-beta.1", "unknown"],
   ["0.167.0+custom", "unknown"],
 ] as const) {

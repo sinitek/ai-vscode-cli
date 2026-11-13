@@ -54,7 +54,7 @@ import {
   type CodexRuntimeTraceMeta,
 } from "./codexRunnerRuntime";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
-import { resolveCodexThreadUnloadCapability } from "./codexAppServerCapabilities";
+import { canShareCodexAppServer, resolveCodexThreadUnloadCapability } from "./codexAppServerCapabilities";
 import {
   acquireCodexAppServer,
   buildCodexAppServerConnectionKey,
@@ -492,19 +492,23 @@ export class CodexInteractiveRunner {
     // This runner only acquires plugin-owned app-servers. Probe the resolved target,
     // not a bare command that could resolve differently in the child's environment.
     // A login shell's eventual executable identity is unknown: keep compatible args.
+    let shareConnection = false;
     if (!spawnCommand.usesShell) {
       const capability = await resolveCodexThreadUnloadCapability({
         command: spawnCommand.command, cwd, env: childEnvResult.env,
       });
       // stop/dispose may settle the operation while the bounded probe is in flight.
       checkActive();
-      if (capability.supported === true && capability.reason === "supported") {
+      if (canShareCodexAppServer(capability)) {
+        shareConnection = true;
         spawnCommand.args = buildCodexAppServerArgs(configOverrides, {
           requestUserInputEnabled, immediateThreadUnload: true,
         });
       }
     }
+    const exclusiveOwnerId = shareConnection ? undefined : this.listenerId;
     const key = buildCodexAppServerConnectionKey({
+      exclusiveOwnerId,
       command: spawnCommand.command,
       args: spawnCommand.args,
       cwd,
@@ -529,6 +533,7 @@ export class CodexInteractiveRunner {
     if (!this.connection) {
       this.connection = acquireCodexAppServer({
         key,
+        exclusiveOwnerId,
         command: spawnCommand.command,
         args: spawnCommand.args,
         cwd,

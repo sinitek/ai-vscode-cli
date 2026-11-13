@@ -15,6 +15,8 @@
 ## Codex unsubscribe 不等于写入锁立即释放
 
 - 状态：`有效`。现象：原 thread 从另一 app-server 恢复时报 `already has an active writer`，即使原连接没有正在执行的 turn。
+- 版本差异：0.145.0 上游 `thread_lifecycle.rs` 的 THREAD_UNLOADING_DELAY 为 30 分钟，不能套用新版本约 60 秒的默认值；隔离旧源码实测 75 秒连续 ACK/notSubscribed、没有 closed/notLoaded，未发起迁移后的模型请求。非模型故障，却会被旧 Loop+ 外层计入五次主 AI 失败。仅已确认即时卸载能力的版本共享池；其它版本使用归属隔离的专属连接并等待原进程退出，不增加超时或删除写锁。
+- 暂停原因：先查 mainAiLastFailureMessage / mainAiFailureCount，不以 currentRound=0 判断 Loop+ 从未运行。编排不得丢弃不可重试错误码后重新调用五次；首次安全错误暂停，普通错误保留五次门槛，旧记录无摘要时仍展示实际错误。详见 [暂停排查](loop-plus-stop-diagnosis.md)。
 - 触发条件/根因：共享进程保留已加载 thread；进程 key 因配置身份/启动能力变化而切换。`thread/unsubscribe` 的 `unsubscribed` / `notSubscribed` 仅表示订阅状态，本机 0.167.0 实测 `thread/closed` 约 60 秒后才到达；Windows `taskkill` 已启动同样不表示目标已退出。
 - 长期规避：恢复前按目标 thread 交接，等待 closed / notLoaded 或原进程实际退出；不能删除锁、杀共享进程、丢掉配置指纹或反复 resume。未知外部 writer 由用户确认原任务释放，不强制接管。
 - 共享读取阻塞：readLoop 等待交互处理器时，另一 Tab 的问题会挡住后续 RPC/closed，并非只能归为丢通知。仅将原生交互请求异步分离，按原连接/thread/listener/操作身份回复一次；热停止与关闭用原生取消响应收口，迟到答案不可发送，不能取消其它 Tab 的问题来疏通读取。回归见 codexThreadHandoff 与 codexRunnerReuse；排障依据 CODEX_THREAD_HANDOFF_FAILED 的 stage/reason，只有明确 -32601 才称协议不支持。

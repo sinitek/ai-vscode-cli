@@ -84,3 +84,12 @@ test("partial transcript writes are deduplicated when recording is retried", () 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("main failure transcript uses persisted error and reconstructs old missing summaries", () => {
+  const paused = { ...task(os.tmpdir()), mainAiFailureCount: 5, mainAiFailureLimitReached: true,
+    mainAiLastFailureMessage: "交接超时，尚未确认释放" };
+  assert.match(buildLoopPlusPauseText(paused, "loop-plus-main-failure-limit"), /交接超时，尚未确认释放/);
+  const immediate = { ...paused, mainAiFailureCount: 1, mainAiFailureLimitReached: false,
+    finalSummary: "不可重试：CODEX_THREAD_HANDOFF_FAILED" };
+  assert.match(buildLoopPlusPauseText(immediate, "loop-plus-main-non-retryable"), /CODEX_THREAD_HANDOFF_FAILED/);
+});

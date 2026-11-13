@@ -12,8 +12,19 @@ test("runner evidence accepts real release, original thread, retained peer, and 
   assert.equal(verifyRunnerEvidence(fixture()).immediateThreadUnload, true);
   const compatible = fixture(false);
   assert.equal(verifyRunnerEvidence(compatible).immediateThreadUnload, false);
+  assert.equal(verifyRunnerEvidence(compatible).releaseEvidence, "process/exit");
   compatible.capabilities[0].reason = "unsupported";
   assert.equal(verifyRunnerEvidence(compatible).immediateThreadUnload, false);
+});
+
+test("legacy runner evidence cannot share processes, fake an exit, or terminate the peer", () => {
+  const shared = fixture(false); shared.processes.pop();
+  assert.throws(() => verifyRunnerEvidence(shared));
+  const missing = fixture(false); missing.events = missing.events.filter((event) => event.method !== "process/exit");
+  assert.throws(() => verifyRunnerEvidence(missing));
+  const killedPeer = fixture(false);
+  killedPeer.events.push({ process: 1, method: "process/exit", direction: "lifecycle", threadId: "", seq: killedPeer.peerCheckSeq });
+  assert.throws(() => verifyRunnerEvidence(killedPeer));
 });
 
 test("runner evidence requires actual version probe and capability for the spawned target", () => {

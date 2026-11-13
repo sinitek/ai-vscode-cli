@@ -1,3 +1,5 @@
+import { buildLoopMainAiFailureSummary, isLoopMainAiFailureLimitReached, type LoopMainAiFailureState } from "./loopMainFailure";
+
 export const LOOP_BLOCKED_SUMMARY_INSTRUCTION = [
   "status=blocked 的 finalSummary 是直接展示给用户的阻塞答复，必须用简体中文、通俗短句说明，不能只写 blocked、需要人工复核、等待外部结果或内部错误码。",
   "按以下 Markdown 小节组织：### 当前结论；### 阻塞原因与未完成事项；### 继续前需要解决的事项。",
@@ -36,7 +38,13 @@ export function normalizeLoopBlockedSummary(summary: string | null | undefined):
 export function buildLoopBlockedPauseText(task: {
   schedulingMode?: string;
   finalSummary?: string | null;
-}): string {
+} & LoopMainAiFailureState): string {
   const mode = task.schedulingMode === "event_driven" ? "Loop+" : "Loop";
-  return `${mode} 已暂停，整体任务尚未完成。\n\n${normalizeLoopBlockedSummary(task.finalSummary)}`;
+  return `${mode} 已暂停，整体任务尚未完成。\n\n${resolveLoopNeedsReviewSummary(task)}`;
+}
+
+export function resolveLoopNeedsReviewSummary(task: LoopMainAiFailureState & { finalSummary?: string | null }): string {
+  return isLoopMainAiFailureLimitReached(task)
+    ? buildLoopMainAiFailureSummary(task)
+    : normalizeLoopBlockedSummary(task.finalSummary);
 }

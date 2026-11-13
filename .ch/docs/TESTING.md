@@ -15,6 +15,7 @@
 - 静态空白校验：`npm run validate:whitespace`，也可在必要时用脚本参数限制到本次改动范围。
 - Python 开发、导出与发布脚本：`python3 -m unittest discover -s scripts/tests -p 'test_*.py'`（Windows 可用 `python`），覆盖依赖布局、失败中止、macOS 路径选择、Windows `.cmd` 参数传递、发布鉴权与 VSIX ZIP 审计。
 - 根目录检测入口：macOS 用 `python3 verify_mac.py`，Windows 用 `python verify_win.py`；均转发到同一 Loop+/Codex 验收脚本。入口最小回归：`python3 -m unittest discover -s scripts/tests -p 'test_verify_loop_plus.py'`，覆盖含空格路径、参数/退出码透传、缺工具、人工中断，以及从其它目录调用两个入口的帮助与非法参数检查；帮助检查不运行真实检测。
+- 暂停/旧 CLI 回归已纳入上述统一入口：不可重试会话错误一次暂停、普通错误五次门槛、旧记录原因重建及事件驱动轮次展示；确认支持即时卸载时验证共享池，否则验证专属 owner 隔离及原进程实际退出。不得用终端另一 Codex 版本的通过结果覆盖插件默认路径失败。临时 HOME 的多个 app-server 依次完成首次初始化，避免 SQLite 初始化竞争被误认为产品交接缺陷。
 - 依赖真实 CLI、用户配置、日志、Webview 或 Extension Development Host 状态的问题，单元测试之外还要补充最小本机真实验证，并记录命令、关键输出和结论。
 - Loop+ 双模型真实门禁：`npm run build && node scripts/verify_loop_model_routing.js --live`。该命令使用真实 Codex runner 调用 `gpt-6.1-sol` / high 与 `gpt-6.1-terra` / low，会产生模型费用，使用系统临时工作区和隔离任务存储；只有完整派发、子任务执行、验收收口、session 参数及产物都通过才成功。429 等上游错误必须保持失败，不能用参数正确替代完整真实验收；此脚本不发布扩展。
 

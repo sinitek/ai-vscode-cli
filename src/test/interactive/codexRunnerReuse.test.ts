@@ -11,7 +11,7 @@ test.beforeEach((t) => {
   assert.ok("mock" in t);
   // These fake executables implement RPC only; capability probes have their own suite.
   t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
-    async () => ({ supported: false, reason: "unknown" }));
+    async () => ({ supported: true, reason: "supported" }));
 });
 
 const crossSpawn = require("cross-spawn") as {

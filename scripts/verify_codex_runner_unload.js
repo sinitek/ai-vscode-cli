@@ -13,9 +13,12 @@ const { cleanup, trackChild } = require("./verify_codex_thread_handoff");
 
 function verifyRunnerEvidence(evidence) {
   const { processes, capabilities, probes, events, targetThread, peerThread, migrationSeq, peerCheckSeq } = evidence;
-  assert.equal(processes.length, 2, "必须由公共 runner 启动两个配置身份的真实 app-server");
+  const shared = capabilities[0]?.supported === true && capabilities[0]?.reason === "supported";
+  const nextProcess = shared ? 1 : 2;
+  const peerProcess = shared ? 0 : 1;
+  assert.equal(processes.length, shared ? 2 : 3, "共享或专属策略必须匹配实际 app-server 数量");
   assert.ok(processes.every((entry) => Number.isInteger(entry.pid) && entry.pid > 0));
-  assert.notEqual(processes[0].pid, processes[1].pid);
+  assert.equal(new Set(processes.map((entry) => entry.pid)).size, processes.length, "必须使用独立真实进程");
   assert.ok(targetThread && peerThread && targetThread !== peerThread, "必须保留两个不同的原 thread");
   for (const child of processes) {
     const capability = capabilities.find((entry) => entry.command === child.command && entry.seq < child.seq);
@@ -32,25 +35,26 @@ function verifyRunnerEvidence(evidence) {
     event.process === process && event.method === method && event.direction === direction
     && event.threadId === threadId && event.seq > after);
   const targetStart = find(0, "thread/start", "response", targetThread);
-  const peerStart = find(0, "thread/start", "response", peerThread);
-  assert.ok(targetStart?.persisted && peerStart, "原会话必须持久化，另一会话必须在旧进程加载");
+  const peerStart = find(peerProcess, "thread/start", "response", peerThread);
+  assert.ok(targetStart?.persisted && peerStart, "原会话必须持久化，另一会话必须在原进程加载");
   assert.ok(targetStart.seq < migrationSeq && peerStart.seq < migrationSeq);
   const unsubscribe = find(0, "thread/unsubscribe", "request", targetThread, migrationSeq);
-  const resume = find(1, "thread/resume", "request", targetThread, migrationSeq);
-  const resumed = find(1, "thread/resume", "response", targetThread, migrationSeq);
-  assert.ok(unsubscribe && resume && resumed && !resumed.failed && resume.seq < resumed.seq, "必须恢复原 thread，不换 thread 或隐式重试");
+  const resume = find(nextProcess, "thread/resume", "request", targetThread, migrationSeq);
+  const resumed = find(nextProcess, "thread/resume", "response", targetThread, migrationSeq);
+  assert.ok((!shared || unsubscribe) && resume && resumed && !resumed.failed && resume.seq < resumed.seq, "必须恢复原 thread，不换 thread 或隐式重试");
   assert.equal(events.filter((event) => event.method === "thread/resume" && event.direction === "request" && event.threadId === targetThread).length, 1);
-  const release = events.find((event) => event.process === 0 && event.seq > unsubscribe.seq && event.seq < resume.seq
+  const release = events.find((event) => event.process === 0 && event.seq > (unsubscribe?.seq ?? migrationSeq) && event.seq < resume.seq
     && ((event.threadId === targetThread && ((event.method === "thread/closed" && event.direction === "notification")
       || (event.method === "thread/unsubscribe" && event.direction === "response" && event.status === "notLoaded")))
       || event.method === "process/exit"));
   assert.ok(release, "ACK、参数、逻辑关闭或 kill 请求不能代替真实释放证据");
-  const continued = find(0, "turn/start", "request", peerThread, peerCheckSeq);
+  if (!shared) assert.equal(release.method, "process/exit", "专属兼容策略必须确认原进程实际退出");
+  const continued = find(peerProcess, "turn/start", "request", peerThread, peerCheckSeq);
   assert.ok(continued && continued.seq > resumed.seq, "另一原 thread 必须继续在旧进程运行");
   assert.ok(!events.some((event) => event.seq > migrationSeq && event.threadId === peerThread
     && ["thread/start", "thread/resume", "thread/closed", "thread/unsubscribe"].includes(event.method)), "另一会话不得重新加载、迁移或卸载");
-  assert.ok(!events.some((event) => event.process === 0 && event.method === "process/exit" && event.seq < continued.seq));
-  for (const [process, threadId, after] of [[0, targetThread, targetStart.seq], [0, peerThread, peerStart.seq], [1, targetThread, resumed.seq], [0, peerThread, peerCheckSeq]]) {
+  assert.ok(!events.some((event) => event.process === peerProcess && event.method === "process/exit" && event.seq < continued.seq));
+  for (const [process, threadId, after] of [[0, targetThread, targetStart.seq], [peerProcess, peerThread, peerStart.seq], [nextProcess, targetThread, resumed.seq], [peerProcess, peerThread, peerCheckSeq]]) {
     const turn = find(process, "turn/start", "request", threadId, after);
     assert.ok(turn && find(process, "turn/completed", "notification", threadId, turn.seq)?.status === "failed", "每次公共 runner 调用必须完成隔离模型回合");
   }
@@ -224,8 +228,10 @@ async function main(args = process.argv.slice(2)) {
     }
     await turn(target); evidence.targetThread = target.getThreadId();
     await turn(peer); evidence.peerThread = peer.getThreadId();
-    assert.equal(evidence.processes.length, 1, "两个初始 runner 必须共享旧进程");
+    const shared = evidence.capabilities[0].supported === true && evidence.capabilities[0].reason === "supported";
+    assert.equal(evidence.processes.length, shared ? 1 : 2, "初始连接隔离策略不一致");
     evidence.migrationSeq = ++sequence;
+    const migrationAt = Date.now();
     target.updateOptions({ ...options, threadId: evidence.targetThread, configFingerprint: "isolated-after" });
     await turn(target);
     assert.equal(target.getThreadId(), evidence.targetThread);
@@ -234,8 +240,9 @@ async function main(args = process.argv.slice(2)) {
     assert.equal(peer.getThreadId(), evidence.peerThread);
     const unsubscribe = evidence.events.find((event) => event.seq > evidence.migrationSeq && event.method === "thread/unsubscribe" && event.direction === "request");
     const resume = evidence.events.find((event) => event.seq > evidence.migrationSeq && event.method === "thread/resume" && event.direction === "request");
-    assert.ok(unsubscribe && resume);
-    evidence.elapsedMs = resume.at - unsubscribe.at;
+    const releaseStart = evidence.events.find((event) => event.seq > evidence.migrationSeq && event.method === "process/exit" && event.process === 0);
+    assert.ok(resume && (unsubscribe || releaseStart));
+    evidence.elapsedMs = resume.at - (shared ? unsubscribe.at : migrationAt);
   } catch (error) { failure = error; }
   finally {
     try {

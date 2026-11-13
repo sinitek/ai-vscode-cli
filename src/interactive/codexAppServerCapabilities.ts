@@ -32,8 +32,13 @@ const MAX_PENDING_PROBES = 4;
 const VERSION_CONTRACTS = new Map<string, boolean>([
   ["0.162.1", true],
   ["0.167.0", true],
+  ["0.145.0", false],
   ["0.100.0", false],
 ]);
+
+export function canShareCodexAppServer(capability: CodexThreadUnloadCapability): boolean {
+  return capability.supported === true && capability.reason === "supported";
+}
 
 const cache = new Map<string, { expires: number; result: CodexThreadUnloadCapability }>();
 const pending = new Map<string, Promise<CodexThreadUnloadCapability>>();

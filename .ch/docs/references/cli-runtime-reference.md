@@ -5,7 +5,9 @@
 ## Codex 会话跨连接交接
 
 - app-server 按命令、启动参数、cwd、CODEX_HOME、provider 和配置指纹复用；不同项目通常具有不同进程身份，但不能据此推断同一宿主内不会发生原 thread 跨进程迁移。配置指纹隔离保留，不能通过删除指纹或全局串行规避写锁。
-- 插件自启 app-server 前，`resolveCodexThreadUnloadCapability({ command, cwd, env })` 探测已解析目标的 `--version`，仅准确核对的 0.162.1 / 0.167.0 契约启用进程级 `-c thread_unload_delay_secs=0`；0.100.0 明确不支持，其它版本、失败、超时及无法确认最终可执行身份的 macOS 登录 shell 保持兼容参数。不写用户卸载配置，不依据 npm 包版本或启动未报错推断支持。最终参数进入连接身份；探测 await 后复核操作和 runner 状态，停止/释放后不迟到启动。
+- 插件自启 app-server 前，`resolveCodexThreadUnloadCapability({ command, cwd, env })` 探测已解析目标的 `--version`，仅准确核对的 0.162.1 / 0.167.0 契约启用进程级 `-c thread_unload_delay_secs=0` 并共享连接；0.145.0 / 0.100.0 明确不支持，其它版本、失败、超时及无法确认最终可执行身份的 macOS 登录 shell 保持兼容参数并使用按 listenerId 隔离的专属连接。最终参数及专属 owner 进入连接身份；探测 await 后复核活动状态。不写用户卸载配置，不依据 npm 包版本或启动未报错推断支持。
+- 专属连接拒绝其它 listener retain/withThread；跨 runner 交接时仅当原专属连接无活动操作、无待处理 RPC/交互且只持有目标 thread，才释放该插件自有进程，并等待实际退出。共享连接仍只能卸载目标 thread，不能终止其它会话/外部进程。上游 [0.145.0 thread_lifecycle.rs](https://github.com/openai/codex/blob/rust-v0.145.0/codex-rs/app-server/src/request_processors/thread_lifecycle.rs) 的默认卸载常量是 30 分钟，不是新版约 60 秒；不能用延长 75 秒期限弥补错误的进程共享策略。
+- Loop+ 对 busy / handoff / writer / SESSION_RUN_ACTIVE 错误保留不可重试语义，第一次失败即暂停，普通执行失败才使用五次上限；持久化具体原因，显式继续清旧失败摘要后重新检查条件。群聊/聊天/暂停文件统一展示，旧任务空摘要从 mainAiLastFailureMessage 重建。
 - 能力探测仅使用临时 HOME/workspace 和环境白名单，3 秒返回上限、4096 字节输出限额、最多 4 个在途/未关闭自有子进程；缓存为 64 项、60 秒且区分可执行身份和解析上下文。超时/错误/超量只请求终止该探测自有进程，继续等其 `close` 后才删除目录、释放进程名额；未 close 的目录保留，不能宣称清理完成。零延迟策略和探测终止请求均不是 writer 已释放证据。
 - 同一扩展宿主按规范化 CODEX_HOME + threadId 对完整 turn / compact 操作互斥；重复执行明确返回 `CODEX_THREAD_BUSY`，不排队重试。新建 thread 的首次操作同样保护活动归属，不影响其它 thread / HOME 并行。
 - 恢复前检查旧进程的已加载及未完成 resume。共享旧进程仅对目标发送 `thread/unsubscribe`；`unsubscribed` / `notSubscribed` 回包不代表卸载。收到这两种回执后，以 250 ms 间隔、最多一个在途请求继续确认，只有 `thread/closed`、原生 `notLoaded` 或实际进程退出才放行。确认失败或无响应不重试，未知状态安全拒绝；期间新加载使旧查询结果失效，取消后迟到回包不修改占用。Windows Codex 0.162.1 实测闲置卸载约 60 秒，总上限仍为 75 秒。

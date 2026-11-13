@@ -69,6 +69,7 @@ async function main() {
   assert.ok(path.isAbsolute(moduleRoot), "隔离编译目录必须使用绝对路径");
   require(path.join(moduleRoot, "test/vscodeMock")).installVscodeMock();
   const { acquireCodexAppServer, shutdownCodexAppServerPool } = require(path.join(moduleRoot, "interactive/codexAppServerPool"));
+  const { resolveCodexThreadUnloadCapability, canShareCodexAppServer } = require(path.join(moduleRoot, "interactive/codexAppServerCapabilities"));
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-codex-handoff-"));
   const home = path.join(root, "home");
   const workspace = path.join(root, "workspace");
@@ -82,11 +83,13 @@ async function main() {
     response.end(JSON.stringify({ error: { message: "仅用于隔离写锁验证，不调用真实模型", type: "invalid_request_error" } }));
   });
   const children = [];
+  const appChildren = [];
   const tracked = [];
   const originalSpawn = crossSpawn.spawn;
   crossSpawn.spawn = (...args) => {
     const child = originalSpawn(...args);
     children.push(child);
+    if (args[1]?.includes("app-server")) appChildren.push(child);
     tracked.push(trackChild(child, args[0]));
     return child;
   };
@@ -117,8 +120,9 @@ async function main() {
         if (message.method === "turn/completed") completeTurn();
       },
     });
-    const old = acquireCodexAppServer({ ...spec, key: "probe-before" }, listener("a"));
-    acquireCodexAppServer({ ...spec, key: "probe-before" }, listener("b"));
+    const capability = await resolveCodexThreadUnloadCapability({ command: spec.command, env, cwd: workspace });
+    const shared = canShareCodexAppServer(capability);
+    const old = acquireCodexAppServer({ ...spec, key: "probe-before", ...(shared ? {} : { exclusiveOwnerId: "a" }) }, listener("a"));
     await within(old.whenReady(), 10000);
     const threadParams = { cwd: workspace, approvalPolicy: "never", sandbox: "read-only", model: "local-test", modelProvider: "local_test", persistExtendedHistory: true };
     const started = await within(old.request("a", "thread/start", threadParams), 10000);
@@ -127,22 +131,35 @@ async function main() {
     await within(turnCompleted, 15000);
     assert.ok(localRequests > 0, "必须确认请求发到了本机测试服务器");
     assert.ok(started.thread.path && fs.existsSync(started.thread.path), "必须先创建真实的持久会话");
-    const retained = await within(old.request("b", "thread/start", threadParams), 10000, "保留另一会话");
+    const retainedConnection = acquireCodexAppServer({ ...spec, key: shared ? "probe-before" : "probe-peer",
+      ...(shared ? {} : { exclusiveOwnerId: "b" }) }, listener("b"));
+    await retainedConnection.whenReady();
+    const retained = await within(retainedConnection.request("b", "thread/start", threadParams), 10000, "保留另一会话");
     const next = acquireCodexAppServer({ ...spec, key: "probe-after" }, listener("a-next"));
     await within(next.whenReady(), 10000);
-    await assert.rejects(within(next.request("a-next", "thread/resume", { ...threadParams, threadId }), 10000, "复现写锁冲突"), { code: "CODEX_THREAD_WRITER_CONFLICT" });
-    console.log(JSON.stringify({ phase: "writer_conflict_reproduced", differentProcesses: children[0].pid !== children[1].pid }));
+    if (shared) {
+      await assert.rejects(within(next.request("a-next", "thread/resume", { ...threadParams, threadId }), 10000, "复现写锁冲突"), { code: "CODEX_THREAD_WRITER_CONFLICT" });
+      console.log(JSON.stringify({ phase: "writer_conflict_reproduced", differentProcesses: appChildren[0].pid !== appChildren.at(-1).pid }));
+    } else {
+      assert.throws(() => acquireCodexAppServer({ ...spec, key: "probe-before" }, listener("intruder")), { code: "CODEX_THREAD_BUSY" });
+      await assert.rejects(old.withThread("intruder", threadId, async () => assert.fail("禁止接管专属连接")), { code: "CODEX_THREAD_BUSY" });
+      console.log(JSON.stringify({ phase: "writer_conflict_prevented", ownershipGuard: true,
+        differentProcesses: appChildren[0].pid !== appChildren.at(-1).pid }));
+    }
     old.release("a");
     const start = Date.now();
     await next.withThread("a-next", threadId, async () => {
       const resumed = await within(next.request("a-next", "thread/resume", { ...threadParams, threadId }), 10000, "恢复原会话");
       assert.equal(resumed.thread.id, threadId);
     });
-    assert.equal(old.isAlive(), true);
-    const loaded = await within(old.request("b", "thread/loaded/list", {}), 10000, "核对已加载会话");
+    assert.equal(retainedConnection.isAlive(), true);
+    const loaded = await within(retainedConnection.request("b", "thread/loaded/list", {}), 10000, "核对已加载会话");
     assert.ok(loaded.data.includes(retained.thread.id), "另一会话必须仍在旧进程内");
     assert.ok(!loaded.data.includes(threadId), "目标会话必须已从旧进程卸载");
-    console.log(JSON.stringify({ phase: "handoff_verified", elapsedMs: Date.now() - start, sameThread: true, otherThreadRetained: true, localRequests }));
+    const exited = tracked.find((entry) => entry.state.pid === appChildren[0].pid)?.state.exited === true;
+    if (!shared) assert.ok(exited, "专属连接交接必须观察到原进程实际退出");
+    console.log(JSON.stringify({ phase: "handoff_verified", elapsedMs: Date.now() - start, sameThread: true, otherThreadRetained: true,
+      connectionPolicy: shared ? "shared" : "exclusive", ...(shared ? {} : { releaseEvidence: "process/exit", originalProcessExited: exited }), localRequests }));
   } finally {
     try {
       await cleanup({

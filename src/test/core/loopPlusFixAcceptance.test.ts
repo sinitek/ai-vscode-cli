@@ -100,7 +100,7 @@ test("regression selection includes the Loop+ ownership, completion, tab lifecyc
   let missingStatusTest = false;
   context.mock.method(fs, "existsSync", (filename: fs.PathLike) => !missingStatusTest || !String(filename).endsWith("tabRunStatus.test.js"));
   const tests: string[] = regressionTests();
-  for (const required of ["promptInteractiveRuntime", "tabRunStatus", "conversationTabClose", "loopSubtaskSession", "loopPlusRuntimeIntegration", "codexRunnerUnloadAcceptance", "loopPlusFixAcceptance"]) {
+  for (const required of ["promptInteractiveRuntime", "tabRunStatus", "conversationTabClose", "loopSubtaskSession", "loopPlusRuntimeIntegration", "codexRunnerUnloadAcceptance", "loopPlusFixAcceptance", "loopMainFailure", "loopPlusPause", "loopBlockedSummary", "loopFinalSummary", "loopGroupChat"]) {
     assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
   }
   assert.equal(new Set(tests).size, tests.length);

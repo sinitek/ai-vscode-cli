@@ -26,6 +26,7 @@ const CODEX_APP_SERVER_PROCESS_LABEL = "sinitek-ai-vscode-cli-codex-app-server";
 
 export type CodexAppServerConnectionSpec = {
   key: string;
+  exclusiveOwnerId?: string;
   command: string;
   args: string[];
   cwd?: string;
@@ -98,6 +99,7 @@ function normalizeCodexHome(home: string): string {
 }
 
 export function buildCodexAppServerConnectionKey(input: {
+  exclusiveOwnerId?: string;
   configFingerprint?: string;
   command: string;
   args: string[];
@@ -112,6 +114,7 @@ export function buildCodexAppServerConnectionKey(input: {
     codexHomeDir: input.codexHomeDir,
     modelProvider: input.modelProvider ?? "",
     configFingerprint: input.configFingerprint ?? "",
+    ...(input.exclusiveOwnerId ? { exclusiveOwnerId: input.exclusiveOwnerId } : {}),
   });
 }
 
@@ -216,6 +219,9 @@ export class CodexAppServerConnection {
   }
 
   public retain(listener: CodexAppServerListener): void {
+    if (this.spec.exclusiveOwnerId && this.spec.exclusiveOwnerId !== listener.id) {
+      throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 连接为专属连接，不能由其它会话共用。");
+    }
     if (this.listeners.get(listener.id) !== listener) {
       this.cancelServerRequests(listener.id);
     }
@@ -236,6 +242,9 @@ export class CodexAppServerConnection {
     operation: () => Promise<T>,
     options: CodexThreadHandoffOptions = {},
   ): Promise<T> {
+    if (this.spec.exclusiveOwnerId && this.spec.exclusiveOwnerId !== ownerId) {
+      throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 连接为专属连接，不能由其它会话执行操作。");
+    }
     const leaseKey = threadId ? JSON.stringify([this.homeScope, threadId]) : null;
     if (leaseKey && threadLeases.has(leaseKey)) {
       throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 会话正在执行另一项操作，请等待完成后再继续。");
@@ -309,6 +318,12 @@ export class CodexAppServerConnection {
       await new Promise<void>((resolve) => setTimeout(resolve, 25));
     };
     try {
+      options.checkActive?.();
+      if (this.spec.exclusiveOwnerId && this.listeners.size <= 1
+        && this.activeOwners.size === 0 && this.pending.size === 0 && this.inbound.size === 0
+        && this.loadedThreads.size === 1 && this.loadedThreads.has(threadId)) {
+        this.shutdown("terminate");
+      }
       while (!this.closed && this.hasPendingThreadLoad(threadId)) {
         await waitStep();
       }

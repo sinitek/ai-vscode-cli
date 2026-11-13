@@ -5,7 +5,7 @@ import { buildLoopBlockedPauseText } from "./loopBlockedSummary";
 import type { LoopTaskRecord } from "./loopTaskStore";
 
 export function buildLoopPlusPauseText(task: LoopTaskRecord, message: string): string {
-  if (message === "loop-plus-blocked") {
+  if (["loop-plus-blocked", "loop-plus-main-failure-limit", "loop-plus-main-non-retryable"].includes(message)) {
     return buildLoopBlockedPauseText(task);
   }
   return [

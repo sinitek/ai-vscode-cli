@@ -1,4 +1,5 @@
-import { normalizeLoopBlockedSummary } from "./loopBlockedSummary";
+import { resolveLoopNeedsReviewSummary } from "./loopBlockedSummary";
+import type { LoopMainAiFailureState } from "./loopMainFailure";
 
 export type LoopGroupChatFinalStatusSection = {
   heading: "任务成功完成" | "任务中断";
@@ -44,12 +45,13 @@ export type LoopFinalSummaryDecision = {
 export function buildLoopGroupChatFinalStatusSection(task: {
   id: string;
   status: string;
+  schedulingMode?: "classic" | "event_driven";
   currentRound?: number | null;
   updatedAt?: number | null;
   finalSummary?: string | null;
   answerConclusion?: string | null;
   estimatedRemainingRounds?: number | null;
-}): LoopGroupChatFinalStatusSection | null {
+} & LoopMainAiFailureState): LoopGroupChatFinalStatusSection | null {
   const status = String(task.status || "").trim();
   if (status === "completed") {
     const finalSummary = normalizeLoopGroupChatFinalSummary(task.finalSummary, "主任务已完成。");
@@ -75,7 +77,7 @@ export function buildLoopGroupChatFinalStatusSection(task: {
         status === "needs-review" ? "任务已暂停，整体任务尚未完成。" : "任务已中断，需要人工复核或继续。",
         status === "needs-review" ? "### 暂停说明" : "### 中断说明",
         status === "needs-review"
-          ? normalizeLoopBlockedSummary(task.finalSummary)
+          ? resolveLoopNeedsReviewSummary(task)
           : normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status)),
       ),
     };
@@ -87,6 +89,7 @@ function buildLoopGroupChatFinalStatusBody(
   task: {
     id: string;
     status: string;
+    schedulingMode?: "classic" | "event_driven";
     currentRound?: number | null;
     updatedAt?: number | null;
     estimatedRemainingRounds?: number | null;
@@ -101,7 +104,9 @@ function buildLoopGroupChatFinalStatusBody(
     `- 状态：${task.status || "unknown"}`,
     `- Loop 任务：${task.id}`,
   ];
-  if (typeof task.currentRound === "number" && Number.isFinite(task.currentRound)) {
+  if (task.schedulingMode === "event_driven") {
+    lines.push("- 调度模式：Loop+ 事件驱动（不使用经典主任务轮次）");
+  } else if (typeof task.currentRound === "number" && Number.isFinite(task.currentRound)) {
     lines.push(`- 当前主任务轮次：${Math.max(0, Math.floor(task.currentRound))}`);
   }
   if (typeof task.estimatedRemainingRounds === "number" && Number.isFinite(task.estimatedRemainingRounds)) {

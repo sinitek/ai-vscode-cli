@@ -52,7 +52,7 @@ function verifyLiveResult(result) {
     if (event) events.push(event);
   }
   assert.ok(![...events, ...result.stderr.split(/\r?\n/).map(parseEvent)].some((event) => event?.phase === "cleanup_failed"), "cleanup_failed：资源清理未完成，不能判定通过");
-  const conflicts = events.filter((event) => event.phase === "writer_conflict_reproduced");
+  const conflicts = events.filter((event) => ["writer_conflict_reproduced", "writer_conflict_prevented"].includes(event.phase));
   const handoffs = events.filter((event) => event.phase === "handoff_verified");
   const cleanups = events.filter((event) => event.phase === "cleanup_verified");
   assert.equal(conflicts.length, 1, "必须且只能成功复现一次真实写锁冲突");
@@ -63,6 +63,12 @@ function verifyLiveResult(result) {
   const cleanup = cleanups[0];
   assert.ok(events.indexOf(conflict) < events.indexOf(handoff) && events.indexOf(handoff) < events.indexOf(cleanup), "验证阶段顺序错误：必须依次冲突、交接、清理");
   assert.equal(conflict.differentProcesses, true, "必须使用两个不同的真实进程");
+  if (conflict.phase === "writer_conflict_prevented") {
+    assert.equal(conflict.ownershipGuard, true, "专属连接必须实际拒绝其它 owner");
+    assert.equal(handoff.connectionPolicy, "exclusive");
+    assert.equal(handoff.releaseEvidence, "process/exit");
+    assert.equal(handoff.originalProcessExited, true, "专属策略必须确认原进程退出");
+  }
   assert.equal(handoff.sameThread, true, "必须恢复原会话，不能新建会话绕过问题");
   assert.equal(handoff.otherThreadRetained, true, "旧进程中的另一会话必须保留");
   assert.ok(Number.isInteger(handoff.localRequests) && handoff.localRequests > 0, "必须实际访问本机模拟服务");

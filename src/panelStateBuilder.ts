@@ -440,7 +440,8 @@ export function buildLoopTaskNeedsReviewText(
   const failureSuffix = isBlockedByMainAiFailureLimit(task)
     ? `\n主任务 AI 调用已连续失败 ${normalizeLoopMainAiFailureCount(task.mainAiFailureCount)}/${LOOP_MAIN_AI_FAILURE_LIMIT} 次，自动派发已停止。`
     : "";
-  return `${buildLoopBlockedPauseText(task)}${failureSuffix}\n\nLoop 任务：${task.id}\n记录文件：${task.taskStoreFile}`;
+  const pauseText = buildLoopBlockedPauseText(task);
+  return `${pauseText}${failureSuffix && !pauseText.includes(failureSuffix.trim()) ? failureSuffix : ""}\n\nLoop 任务：${task.id}\n记录文件：${task.taskStoreFile}`;
 }
 
 export function buildLoopMainResumeText(

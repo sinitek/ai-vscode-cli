@@ -410,7 +410,7 @@
     {
       "id": "plugin.rule.codex_immediate_thread_unload_policy",
       "name": "Codex 自启服务按已确认能力启用即时卸载",
-      "description": "仅插件自启 app-server 对已解析目标进行隔离 --version 探测，空白命令直接返回 unknown，不默认探测其它 Codex。准确版本契约 0.162.1/0.167.0 支持时加入进程级 thread_unload_delay_secs=0，0.100.0 不支持，其它版本、失败、超时及身份未知的登录 shell 保持兼容参数。最终参数参与连接身份，能力 await 后复核操作活动及 runner 未释放，停止/释放后不迟到启动。探测不接触用户配置、认证或会话，最多 3 秒返回、4096 字节输出、4 个未关闭自有进程，64 项/60 秒缓存区分实际身份和解析上下文；只终止本探测创建的进程，超时后保留临时 HOME 和进程名额直到 close，不能以终止请求或管道销毁代替清理证据。策略、unsubscribe 回执及逻辑关闭均不证明 writer 已释放，原 thread 互斥、其它会话并行和 75 秒交接期限不变。",
+      "description": "仅插件自启 app-server 对已解析目标进行隔离 --version 探测，空白命令直接返回 unknown，不默认探测其它 Codex。准确版本契约 0.162.1/0.167.0 支持时加入进程级 thread_unload_delay_secs=0 并共享连接；0.145.0/0.100.0 不支持，其它版本、失败、超时及身份未知的 shell 保持兼容参数并按 listener owner 隔离专属连接。专属 retain/withThread 拒绝其它 owner，只有无活动操作/请求且只持有目标 thread 时才能释放原自有进程并等待实际退出，不终止共享/其它会话/外部进程。最终参数和专属 owner 参与连接身份，能力 await 后复核活动及未释放状态。探测不接触用户配置、认证或会话，最多 3 秒返回、4096 字节输出、4 个未关闭自有进程，64 项/60 秒缓存区分实际身份和上下文；超时仅终止自有 probe，保留 HOME 和名额直到 close。ACK、逻辑关闭、kill 请求都不证明释放，原 thread 互斥、其它会话并行和 75 秒期限不变。",
       "status": "active",
       "applies_to": ["plugin.extension_host", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [
@@ -420,6 +420,24 @@
         {"path": "src/test/interactive/codexAppServerCapabilities.test.ts"},
         {"path": "src/test/interactive/codexRunnerLifecycle.test.ts"},
         {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Codex 会话跨连接交接"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_main_non_retryable_pause",
+      "name": "Loop+ 不可重试的本地会话错误一次暂停并显示原因",
+      "description": "Loop+ 编排保留 CODEX_THREAD_BUSY、CODEX_THREAD_HANDOFF_FAILED、CODEX_THREAD_WRITER_CONFLICT、active writer 与 SESSION_RUN_ACTIVE 的不可重试语义，首次失败 needs-review 而不是重复执行五次；普通失败仍遵守五次上限。保留当前验收与队列、持久化具体错误和安全恢复条件，不等同模型服务故障。显式继续清旧失败摘要后重新检查，不能自动移除安全门禁。群聊、聊天与暂停文件复用说明，旧空摘要从失败字段重建。事件驱动调度不显示经典 currentRound=0。统一跨平台验证入口必须覆盖此回归。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/loopMainFailure.ts"},
+        {"path": "src/loopBlockedSummary.ts"},
+        {"path": "src/loopFinalSummary.ts"},
+        {"path": "src/loopPlusPause.ts"},
+        {"path": "src/test/extensionHost/loopPlusOrchestration.test.ts"},
+        {"path": "src/test/loop/loopBlockedSummary.test.ts"},
+        {"path": "scripts/verify_loop_plus_fix.js"},
+        {"path": ".ch/docs/runbooks/loop-plus-stop-diagnosis.md"}
       ]
     },
     {

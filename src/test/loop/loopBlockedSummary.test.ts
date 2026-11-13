@@ -87,3 +87,18 @@ test("group interruption summaries preserve impossibility and avoid promising co
   const missing = buildLoopGroupChatFinalStatusSection(pausedTask());
   assert.match(missing?.body ?? "", /未提供具体阻塞原因/);
 });
+
+test("legacy main failure pauses rebuild the actual error for group and chat instead of a generic summary", () => {
+  const task = { ...pausedTask("过期业务摘要"), mainAiFailureCount: 5, mainAiFailureLimitReached: true,
+    mainAiLastFailureMessage: "Codex 会话交接失败：等待会话关闭确认超时。" };
+  for (const text of [buildLoopBlockedPauseText(task), buildLoopTaskNeedsReviewText(task, () => true),
+    buildLoopGroupChatFinalStatusSection(task)?.body ?? ""]) {
+    assert.match(text, /5\/5/);
+    assert.match(text, /等待会话关闭确认超时/);
+    assert.match(text, /不等于模型服务故障/);
+    assert.doesNotMatch(text, /过期业务摘要|未提供具体阻塞原因/);
+  }
+  const group = buildLoopGroupChatFinalStatusSection({ ...task, schedulingMode: "event_driven", currentRound: 0 });
+  assert.match(group?.body ?? "", /Loop\+ 事件驱动/);
+  assert.doesNotMatch(group?.body ?? "", /当前主任务轮次：0/);
+});

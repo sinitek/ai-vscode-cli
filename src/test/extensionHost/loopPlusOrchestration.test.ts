@@ -2046,6 +2046,7 @@ test("resumes a blocked review and a main-failure pause without reviving attempt
   assert.equal(failed.mainCalls(), 5);
   assert.equal(failed.tasks.get(failedRun.taskId ?? "")?.status, "needs-review");
   assert.equal(failed.tasks.get(failedRun.taskId ?? "")?.mainAiFailureCount, 5);
+  assert.match(failed.tasks.get(failedRun.taskId ?? "")?.finalSummary ?? "", /sync down 5/);
   assert.equal(await isSettled(failedRun.done), true);
   failed.host.tryRun({ displayPrompt: "continue" }, failed.target, {
     resumeTaskId: failedRun.taskId,
@@ -2059,6 +2060,42 @@ test("resumes a blocked review and a main-failure pause without reviving attempt
   assert.equal(failed.tasks.get(failedRun.taskId ?? "")?.status, "running");
   assert.equal(failed.messages.filter((item) => item === "loop-plus-main-failure-limit").length, 1);
 });
+
+for (const code of ["CODEX_THREAD_HANDOFF_FAILED", "CODEX_THREAD_BUSY", "CODEX_THREAD_WRITER_CONFLICT", "SESSION_RUN_ACTIVE"]) {
+  test(`pauses once for ${code} without retrying or consuming review work`, async () => {
+    let fail = false;
+    const env = harness({ adaptMain: () => {
+      if (fail) throw Object.assign(new Error("原会话仍未释放，不能写入"), { code });
+      return undefined;
+    } });
+    const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+    await flush();
+    fail = true;
+    env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+    await flush();
+    const paused = env.tasks.get(run.taskId ?? "")!;
+    assert.equal(env.mainCalls(), 2);
+    assert.equal(paused.status, "needs-review");
+    assert.equal(paused.mainAiFailureCount, 1);
+    assert.equal(paused.mainAiFailureLimitReached, false);
+    assert.match(paused.finalSummary ?? "", /禁止自动重试/);
+    assert.ok(paused.finalSummary?.includes(code));
+    assert.match(paused.finalSummary ?? "", /原会话仍未释放/);
+    const before = snapshotOf(paused);
+    assert.equal(before.reviewQueue.length + Number(Boolean(before.currentReview)), 1);
+    assert.equal(await isSettled(run.done), true);
+    fail = false;
+    env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: run.taskId, resumeRequested: true });
+    await flush();
+    assert.equal(env.mainCalls(), 3);
+    assert.equal(env.attempts.length, 1);
+    assert.equal(env.tasks.get(paused.id)?.mainAiFailureCount, 0);
+    assert.equal(env.tasks.get(paused.id)?.finalSummary, undefined);
+    assert.equal(env.tasks.get(paused.id)?.status, "running");
+  });
+}
 
 test("finishes a synchronously thrown attempt without hanging the controller", async () => {
   const env = harness({ throwOnStart: true });

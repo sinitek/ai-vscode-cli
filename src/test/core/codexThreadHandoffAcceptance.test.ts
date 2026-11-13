@@ -138,6 +138,20 @@ function liveResult(overrides: Partial<CommandResult> = {}): CommandResult {
   };
 }
 
+test("legacy acceptance requires ownership rejection plus actual original-process exit", () => {
+  const result = liveResult();
+  const events = result.stdout.split(/\r?\n/).map((line) => JSON.parse(line));
+  events[0] = { phase: "writer_conflict_prevented", differentProcesses: true, ownershipGuard: true };
+  Object.assign(events[1], { connectionPolicy: "exclusive", releaseEvidence: "process/exit", originalProcessExited: true });
+  const encode = () => ({ ...result, stdout: events.map((event) => JSON.stringify(event)).join("\n") });
+  assert.equal(verifyLiveResult(encode()).connectionPolicy, "exclusive");
+  events[1].originalProcessExited = false;
+  assert.throws(() => verifyLiveResult(encode()), /原进程退出/);
+  events[1].originalProcessExited = true;
+  events[0].ownershipGuard = false;
+  assert.throws(() => verifyLiveResult(encode()), /实际拒绝/);
+});
+
 test("acceptance requires explicit live consent and bounded repeat counts", () => {
   assert.deepEqual(parseOptions(["--live"]), { live: true, help: false, runs: 3, report: null });
   assert.equal(parseOptions(["--help"]).help, true);

@@ -13,10 +13,11 @@
 
 - 状态：`active`（2026-11-12）。普通对话、Loop / Loop+ 和原生压缩复用同一连接生命周期保护；同一扩展宿主内同 CODEX_HOME + threadId 不允许重复操作，不限制不同项目/会话并发。
 - 配置或启动能力改变导致原会话跨连接恢复前，共享旧进程仅卸载目标 thread，等待真实关闭确认；最后一个引用释放则等待实际进程退出。不会删除锁、换新会话或终止其它 Tab / 外部进程。
-- 插件自启 app-server 仅在已解析目标的实际版本准确确认支持时，加入进程级零延迟卸载参数；已核对 0.162.1 / 0.167.0，未知/不支持版本及无法确认目标身份的 shell 保留兼容路径。策略不代表 writer 已释放；兼容路径可能等待约 60 秒，总上限仍为 75 秒且支持停止。失败/未知写入者使用稳定错误码并停止隐式重试。跨宿主的外部写入者不强行接管。
+- 插件自启 app-server 仅在已解析目标的实际版本准确确认支持时，加入进程级零延迟卸载参数并共享连接；已核对 0.162.1 / 0.167.0。0.145.0 / 0.100.0、未知能力及无法确认目标身份的 shell 使用按 runner 归属隔离的专属连接，不把旧版默认卸载延迟假定成 60 秒。专属旧连接仅在无活动操作/请求且只持有目标 thread 时释放自有进程，仍等待实际退出；不得终止共享/其它会话/外部进程。总上限仍为 75 秒且支持停止。
+- Loop+ 外层保留不可重试语义：会话 busy、交接失败、writer 冲突和 SESSION_RUN_ACTIVE 首次失败即 needs-review，保留待验收结果；普通运行错误仍遵守连续 5 次门槛。暂停持久化真实原因，聊天、群聊、沟通文件共用说明；旧任务无 finalSummary 时从失败字段重建。显式继续清旧失败摘要后重新核对安全条件，不自动放宽门禁。事件驱动群聊不再显示经典主任务第 0 轮。
 - 关闭通知未观测到时，通过目标 thread 的原生 unsubscribe 状态继续确认；只有 notLoaded 才补充证明释放，回执、无效状态、查询失败或无响应均不放行。不使用 loaded/list 缺失推断释放；新加载与取消会使旧查询失效。Windows 单轮通过不代表 macOS/Linux 原生验收完成。
 - 共享连接的原生提问/审批独立等待用户，RPC 回包与生命周期通知保持有序读取；另一 Tab 未回答时不阻塞本会话交接，也不取消另一 Tab 的问题。回答绑定原请求 ID、连接、thread、listener 与操作身份；停止（含热停止）、完成、关闭、释放或操作替换后按原生协议取消，迟到答案无效，单个处理器失败不终止共享进程。
-- 交接失败保留 CODEX_THREAD_HANDOFF_FAILED 与禁止隐式重试，中文文案和安全诊断区分协议明确不支持、卸载失败/未返回、等待加载/关闭/实际进程退出；一般超时不伪称协议不支持，取消继续沿用原语义。立即卸载能力已接入公共 runner，能力等待后停止/释放不再启动。最终集成验收尚未完成，需汇合有效配置指纹等交付后统一执行。
+- 交接失败保留 CODEX_THREAD_HANDOFF_FAILED 与禁止隐式重试，中文文案和安全诊断区分协议明确不支持、卸载失败/未返回、等待加载/关闭/实际进程退出；一般超时不伪称协议不支持，取消继续沿用原语义。能力等待后停止/释放不再启动。本机 macOS 的 0.145.0 / 0.167.0 已分别通过 768 项回归及三轮隔离交接，原生 Windows/Linux 与真实 VS Code 安装态仍需独立验收；见 `.ch/docs/exec-plans/completed/2026-11/2026-11-13-bugfix-loop-main-failure-pause.md`。
 - 原生压缩保留配置指纹与现有提问能力，避免无意义连接迁移；真实配置变化仍按新身份启动。连接切换诊断不记录完整 key 或凭据。
 - 实现：`src/interactive/codexAppServerPool.ts`、`src/interactive/codexRunner.ts`、`src/interactive/codexAppServerCapabilities.ts`、`src/interactive/codexRunnerRuntime.ts`、`src/interactive/codexRunnerProcess.ts`、`src/interactive/codexThreadErrors.ts`、`src/contextCompactionRunner.ts`、`src/promptRetry.ts`；真实验证入口：`scripts/verify_codex_thread_handoff.js`。
 

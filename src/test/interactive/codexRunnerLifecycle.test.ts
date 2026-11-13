@@ -15,7 +15,7 @@ test.beforeEach((t) => {
   // Lifecycle fake servers model app-server RPC, not a real executable's --version.
   assert.ok("mock" in t);
   t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
-    async () => ({ supported: false, reason: "unknown" }));
+    async () => ({ supported: true, reason: "supported" }));
 });
 
 const crossSpawn = require("cross-spawn") as {
@@ -471,6 +471,8 @@ for (const reason of ["supported", "unsupported", "unknown"] as const) {
     assert.deepEqual(probes[0].env, specs[0].env);
     const spec = specs[0];
     assert.equal(spec.args.includes("thread_unload_delay_secs=0"), reason === "supported");
+    assert.equal(Boolean(spec.exclusiveOwnerId), reason !== "supported");
+    assert.equal(JSON.parse(spec.key).exclusiveOwnerId, spec.exclusiveOwnerId);
     assert.deepEqual(spec.args.slice(-2), ["--listen", "stdio://"]);
     assert.ok(spec.args.includes("default_mode_request_user_input"));
     assert.ok(spec.args.some((arg) => arg.startsWith("projects.") && arg.endsWith('.trust_level="trusted"')));

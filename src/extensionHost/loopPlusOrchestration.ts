@@ -4,9 +4,12 @@ import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
+  buildLoopMainAiFailureSummary,
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
 } from "../loopMainFailure";
+import { getErrorInfo, type ErrorInfo } from "../promptRetry";
+import { isNonRetryableCodexThreadError } from "../interactive/codexThreadErrors";
 import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
@@ -605,9 +608,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (task?.loopPlusBlockReview) {
       deps.updateTask(runtime.taskId, { loopPlusBlockReview: undefined });
     }
-    if (task && isLoopMainAiFailureLimitReached(task)) {
+    if (task && (task.mainAiFailureCount || isLoopMainAiFailureLimitReached(task))) {
       deps.updateTask(runtime.taskId, {
         ...buildResetLoopMainAiFailureState(),
+        finalSummary: undefined,
         status: "running",
         schedulingMode: "event_driven",
         updatedAt: now(),
@@ -789,6 +793,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       let content: string | null = null;
       let failed = false;
       let failureMessage = "";
+      let failureInfo: ErrorInfo | undefined;
       try {
         if (step.kind === "user") {
           deps.appendMessage(runtime.target, "loop-plus-user-messages", runtime.taskId);
@@ -799,7 +804,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         content = await handle.promise;
       } catch (error) {
         failed = true;
-        failureMessage = error instanceof Error ? error.message : String(error);
+        failureInfo = getErrorInfo(error);
+        failureMessage = failureInfo.message;
       } finally {
         if (handle && runtime.currentMain === handle) {
           runtime.currentMain = null;
@@ -821,8 +827,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           schedulingMode: "event_driven",
           updatedAt: now(),
         });
-        if (isLoopMainAiFailureLimitReached(failure)) {
-          pause(runtime, "needs-review", "loop-plus-main-failure-limit");
+        const nonRetryable = failureInfo?.code === "SESSION_RUN_ACTIVE"
+          || isNonRetryableCodexThreadError(failureInfo?.code, failureMessage);
+        if (nonRetryable || isLoopMainAiFailureLimitReached(failure)) {
+          pause(runtime, "needs-review", nonRetryable ? "loop-plus-main-non-retryable" : "loop-plus-main-failure-limit",
+            buildLoopMainAiFailureSummary(failure, { nonRetryable, code: failureInfo?.code }));
           return;
         }
         if (!hasReview(runtime)) {

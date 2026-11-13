@@ -86,8 +86,8 @@ function createHarness() {
     handleServerRequest: () => null, onClosed: () => undefined,
   });
   const acquire = (key: string, owner: string, home = "/synthetic-handoff-home",
-    overrides: Partial<import("../../interactive/codexAppServerPool").CodexAppServerListener> = {}) => acquireCodexAppServer({
-    key, command: "fake-codex", args: [], env: {}, codexHomeDir: home, initializeParams: {},
+    overrides: Partial<import("../../interactive/codexAppServerPool").CodexAppServerListener> = {}, exclusiveOwnerId?: string) => acquireCodexAppServer({
+    key, command: "fake-codex", args: [], env: {}, codexHomeDir: home, initializeParams: {}, exclusiveOwnerId,
   }, { ...listener(owner), ...overrides });
   return {
     children, acquire,
@@ -109,6 +109,48 @@ async function waitFor(condition: () => boolean): Promise<void> {
     await new Promise<void>((resolve) => setTimeout(resolve, 5));
   }
 }
+
+test("exclusive legacy connection waits for actual exit and never terminates a peer", async () => {
+  const harness = createHarness();
+  try {
+    const old = harness.acquire("exclusive-old", "owner", undefined, {}, "owner");
+    await old.whenReady();
+    await old.request("owner", "thread/resume", { threadId: "target" });
+    assert.throws(() => harness.acquire("exclusive-old", "intruder"), { code: "CODEX_THREAD_BUSY" });
+    const peer = harness.acquire("exclusive-peer", "peer", undefined, {}, "peer");
+    await peer.whenReady();
+    await peer.request("peer", "thread/resume", { threadId: "peer-thread" });
+    const next = harness.acquire("exclusive-next", "next", undefined, {}, "next");
+    await next.whenReady();
+    let resumed = false;
+    const pending = next.withThread("next", "target", async () => { resumed = true; }, { timeoutMs: 1000 });
+    await waitFor(() => harness.children[0].terminationRequests > 0);
+    assert.equal(resumed, false);
+    assert.equal(harness.children[1].terminationRequests, 0);
+    harness.children[0].close();
+    await pending;
+    assert.equal(resumed, true);
+    assert.equal(peer.isAlive(), true);
+    assert.equal(peer.hasLoadedThread("peer-thread"), true);
+    assert.equal(harness.children[1].terminationRequests, 0);
+  } finally { harness.cleanup(); }
+});
+
+test("exclusive marker cannot terminate an idle connection holding another thread", async () => {
+  const harness = createHarness();
+  try {
+    const old = harness.acquire("exclusive-multi", "owner", undefined, {}, "owner");
+    await old.whenReady();
+    await old.request("owner", "thread/resume", { threadId: "target" });
+    await old.request("owner", "thread/resume", { threadId: "other" });
+    const next = harness.acquire("exclusive-multi-next", "next");
+    await next.whenReady();
+    await assert.rejects(next.withThread("next", "target", async () => assert.fail("must not resume"), { timeoutMs: 60 }),
+      { code: "CODEX_THREAD_HANDOFF_FAILED" });
+    assert.equal(harness.children[0].terminationRequests, 0);
+    assert.equal(old.hasLoadedThread("other"), true);
+  } finally { harness.cleanup(); }
+});
 
 for (const acknowledgement of ["unsubscribed", "notSubscribed"]) {
   test(`handoff reconciles ${acknowledgement} with native notLoaded when closed is absent`, async () => {
