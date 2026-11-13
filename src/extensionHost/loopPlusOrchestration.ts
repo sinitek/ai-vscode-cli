@@ -14,7 +14,13 @@ import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
-import { parseLoopPlusDecision, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import {
+  buildLoopPlusProtocolPauseSummary,
+  buildLoopPlusProtocolRepairPrompt,
+  LOOP_PLUS_PROTOCOL_PAUSE_HEADING,
+  type LoopPlusProtocolRepair,
+} from "../loopPlusProtocolRepair";
 import {
   ORCHESTRATOR_CLARIFICATION_LIMIT,
   abortOrchestratorClarification,
@@ -268,6 +274,7 @@ type ParentRuntime = {
   closeoutBudget: number;
   decisionCount: number;
   protocolRetries: number;
+  protocolRepair: LoopPlusProtocolRepair | null;
   currentMain: LoopPlusMainHandle | null;
   currentMainRequest: LoopPlusMainRequest | null;
   launching: Set<string>;
@@ -552,6 +559,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       closeoutBudget: 0,
       decisionCount: 0,
       protocolRetries: 0,
+      protocolRepair: null,
       currentMain: null,
       currentMainRequest: null,
       launching: new Set<string>(),
@@ -605,6 +613,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.forcePrompt = false;
     armLifecycle(runtime);
     const task = deps.readTask(runtime.taskId);
+    if (task?.finalSummary?.startsWith(LOOP_PLUS_PROTOCOL_PAUSE_HEADING)) {
+      // A reloaded host can recover the reason even though the rejected response is ephemeral.
+      runtime.protocolRepair ??= { reason: task.finalSummary, response: null };
+      deps.updateTask(runtime.taskId, { finalSummary: undefined });
+    }
     if (task?.loopPlusBlockReview) {
       deps.updateTask(runtime.taskId, { loopPlusBlockReview: undefined });
     }
@@ -846,21 +859,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const task = deps.readTask(runtime.taskId);
       const acceptancePlanKeys = listLoopPlusAcceptancePlanFeedbackItems(task?.loopPlusAcceptancePlan)
         .map((item) => item.key);
-      const decision = parseLoopPlusDecision(content, {
+      const parsed = parseLoopPlusDecisionWithFeedback(content, {
         subtaskMax: decisionSubtaskMax(),
         acceptancePlanKeys,
         requireAcceptanceFeedback: true,
         requireProgressPercent: true,
         allowDirectCompletion: canCompleteDirectly(runtime),
       });
+      const decision = parsed.decision;
       if (decision?.status === "clarify") {
+        runtime.protocolRepair = null;
         const outcome = await waitForLoopPlusClarification(runtime, decision);
         if (outcome === "stop") {
           return;
         }
         continue;
       }
-      const applied = applyDecision(runtime, step, decision);
+      const applied = applyDecision(runtime, step, decision, content, parsed.rejectionReason);
       if (applied === "stop") {
         return;
       }
@@ -938,7 +953,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return { kind, eventId: null, eventIds: [], userMessageCount };
   }
 
-  function createDecisionPort(runtime: ParentRuntime): LoopPlusDecisionStrategyPort {
+  function createDecisionPort(runtime: ParentRuntime, response: string | null): LoopPlusDecisionStrategyPort {
     const controlPlans = new WeakMap<LoopPlusDecisionControlPlan, ControlPlan>();
     return {
       queueView() {
@@ -959,16 +974,18 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           pendingCount: waited.pending.length,
         };
       },
-      protocolMiss(held: boolean): LoopPlusDecisionOutcome {
-        return protocolMiss(runtime, held);
+      protocolMiss(held: boolean, reason?: string): LoopPlusDecisionOutcome {
+        return protocolMiss(runtime, held, reason, response);
       },
       markDecisionAccepted() {
         runtime.protocolRetries = 0;
+        runtime.protocolRepair = null;
         runtime.decomposing = false;
         resetMainFailure(runtime);
       },
       clearProtocolRetries() {
         runtime.protocolRetries = 0;
+        runtime.protocolRepair = null;
       },
       acknowledgeUserMessages(count: number) {
         if (count <= 0) {
@@ -1161,7 +1178,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
   }
 
-  function applyDecision(runtime: ParentRuntime, step: MainStep, decision: LoopPlusDecision | null): LoopPlusDecisionOutcome {
+  function applyDecision(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision | null,
+    response: string | null,
+    rejectionReason: string | null,
+  ): LoopPlusDecisionOutcome {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
     if (step.kind === "review" && !heldBatchIntact(snapshot, step)) {
@@ -1171,7 +1194,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return "wait";
     }
     if (!decision) {
-      return protocolMiss(runtime, Boolean(held));
+      return protocolMiss(runtime, Boolean(held), rejectionReason ?? undefined, response);
     }
     const blockReview = deps.readTask(runtime.taskId)?.loopPlusBlockReview;
     if (blockReview?.state === "pending") {
@@ -1200,7 +1223,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       };
     }
     return loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
-      createDecisionPort(runtime),
+      createDecisionPort(runtime, response),
       step,
       inheritLoopPlusRepairSessions(decision, [snapshot.currentReview, ...snapshot.reviewQueue].filter((event): event is LoopPlusReviewItem => event !== null)),
     );
@@ -1251,6 +1274,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       updatedAt: now(),
     });
     runtime.protocolRetries = 0;
+    runtime.protocolRepair = null;
     resetMainFailure(runtime);
     if (runtime.scheduler.snapshot().currentReview || runtime.scheduler.snapshot().reviewQueue.length > 0) {
       return "continue";
@@ -1259,15 +1283,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return "continue";
   }
 
-  function protocolMiss(runtime: ParentRuntime, held: boolean): "continue" | "stop" {
+  function protocolMiss(
+    runtime: ParentRuntime,
+    held: boolean,
+    reason = "决策与当前调度状态不一致，请核对当前验收批次、运行中及排队任务，并重新返回合法决策。",
+    response: string | null = null,
+  ): "continue" | "stop" {
     runtime.protocolRetries += 1;
+    runtime.protocolRepair = { reason, response };
     deps.log?.("loop-plus-protocol-miss", {
       taskId: runtime.taskId,
       held,
       protocolRetries: runtime.protocolRetries,
+      reason,
     });
     if (runtime.protocolRetries > protocolRetryLimit) {
-      pause(runtime, "needs-review", "loop-plus-protocol-paused");
+      pause(runtime, "needs-review", "loop-plus-protocol-paused",
+        buildLoopPlusProtocolPauseSummary(reason, runtime.protocolRetries - 1));
       return "stop";
     }
     if (!hasReview(runtime)) {
@@ -1917,7 +1949,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function buildMainRequest(runtime: ParentRuntime, step: MainStep): LoopPlusMainRequest {
     const task = deps.readTask(runtime.taskId);
     const routing = describeLoopPlusRouting(task);
-    const prompt = buildLoopPlusMainModelPrompt({
+    const basePrompt = buildLoopPlusMainModelPrompt({
       taskId: runtime.taskId,
       rootPrompt: task?.rootPrompt ?? runtime.prompt.displayPrompt,
       taskStoreFile: task?.taskStoreFile ?? "",
@@ -1946,6 +1978,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         ? { blockedReviewSummary: task.loopPlusBlockReview.summary ?? "" }
         : {}),
     });
+    const prompt = runtime.protocolRepair
+      ? `${basePrompt}\n\n${buildLoopPlusProtocolRepairPrompt(runtime.protocolRepair)}`
+      : basePrompt;
     return {
       taskId: runtime.taskId,
       kind: step.kind,

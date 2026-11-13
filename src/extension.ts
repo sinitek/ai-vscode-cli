@@ -4129,7 +4129,7 @@ function loopPlusHostMessage(message: string, taskId: string): string {
   if (message === "loop-plus-block-review") {
     return "Loop+ 正在复核剩余要求，检查是否还有可独立推进的工作；本次复核不会放宽安全门槛。";
   }
-  if (["loop-plus-blocked", "loop-plus-main-failure-limit", "loop-plus-main-non-retryable"].includes(message) && task) {
+  if (["loop-plus-blocked", "loop-plus-main-failure-limit", "loop-plus-main-non-retryable", "loop-plus-protocol-paused"].includes(message) && task) {
     return buildLoopPlusPauseText(task, message);
   }
   if (message === "loop-plus-resume-blocked") {

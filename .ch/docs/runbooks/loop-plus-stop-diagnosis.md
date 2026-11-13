@@ -10,6 +10,7 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 - **子任务验收通过**：只确认本次派发范围，工具、文档或诊断交付通过不能代替产品整体运行验收。
 - **父任务完成**：需要有效的 `completed` 决策与父任务持久化完成状态。
 - **主模型报告阻塞**：首次全局 `blocked` 会触发一次有限的剩余工作复核，不立即等同父任务暂停；复核后仍阻塞才将父任务持久化为 `needs-review`。暂停保留未完成状态，不等于主任务完成。
+- **主模型协议矛盾**：`loop-plus-protocol-miss` 会附具体原因自动请求重写 JSON，默认最多纠正 2 次；耗尽才出现 `loop-plus-protocol-paused`，与业务 `blocked` 区分。`finalSummary`、主聊天和沟通文件应展示实际校验原因；历史记录缺失时不能猜成业务无法完成。
 
 当前调用链为 `applyBlockedDecision` → `loopPlusBlockReview=pending` → 带 `Bounded blocked review` 的一次主任务复核。若复核发现安全、独立的工作，继续派发并清除该复核状态；否则 `pauseForReview` → 编排宿主 `pause`，设置 `autoPaused`，持久化 `needs-review`、阻塞摘要与已复核状态，通知用户并记录到主任务沟通文件和群聊 transcript。该状态跨宿主重建保留；没有新的用户补充、派发或验收进展时，不会重复复核或自动发起相同阻塞调用。
 
@@ -24,6 +25,8 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 ## 典型误判与后续处理
 
+- 子任务全部执行结束且 `phase=reviewing`，不代表验收决策已被接收。读取原主模型 JSON，用 `parseLoopPlusDecisionWithFeedback` 按运行时选项只读回放，核对 `reviewEventId(s)`、`reviews` 和 `subtasks`；补充需求的新任务也必须恰好关联一个 `reviews[].subtaskIds`，可关联通过项而保留其真实结论。不要直接改持久化任务或替主模型伪造通过。
+- 协议纠错请求应含 `Loop+ protocol correction required`、具体原因、旧回复及最新批次。确认有效决策后可继续派发或完成；持续失败暂停后，按记录原因补充信息或显式继续重新判断，不需要重做仍有效的业务审阅和测试。旧版本只有通用重试、没有具体原因时，先对照实际最终 JSON 与暂停前快照，而不是反复点击继续。
 - `mainAiFailureCount=5` 不等于模型服务连续报错。先核对 `mainAiLastFailureMessage`：若为 CODEX_THREAD_HANDOFF_FAILED / waiting_close，失败可能发生在发起模型请求之前。0.145.0 原生默认卸载为 30 分钟，旧共享策略的 75 秒交接等待不能收敛；原生会话 metadata 的创建版本只证明创建时版本，历史启动版本仍应与实际可执行路径证据区分。
 - 兼容策略仅共享已确认支持即时卸载的版本，其余连接按 runner 归属专用；恢复前等待原进程实际退出，不强杀共享或外部 writer。Loop+ 对不可重试的会话错误第一次就暂停，保留当前验收与队列；其它错误最多连续五次。群聊、主聊天、暂停文件展示相同原因，旧空摘要从失败字段重建。
 - Loop+ 是事件驱动调度，不使用经典 `currentRound` 计数；历史记录中的 0 不能证明主任务从未派发或执行。
@@ -42,6 +45,7 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 - [决策策略](../../../src/extensionHost/loopPlusDecisionStrategies.ts)：`applyBlockedDecision`。
 - [宿主编排](../../../src/extensionHost/loopPlusOrchestration.ts)：有界阻塞复核、`pause` 与显式继续路径。
 - [协议提示](../../../src/extensionHost/loopPlusPromptBuilders.ts)：`blocked` 复核、`clarify`、`completed` 的契约。
+- [协议诊断](../../../src/loopPlusDecision.ts)与[纠错上下文](../../../src/loopPlusProtocolRepair.ts)：拒绝原因、旧回复长度限制和协议暂停说明。
 - [暂停沟通记录](../../../src/loopPlusPause.ts)：主聊天、主任务沟通文件与群聊 transcript 的暂停说明。
 - [单次调用完成文案](../../../src/promptRunState.ts)：`buildTaskRunCompletionText`。
 - [消息映射](../../../src/extension.ts)：`loopPlusHostMessage`。

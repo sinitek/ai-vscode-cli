@@ -745,7 +745,7 @@ test("adapter gives saved Loop+ mode priority and does not capture classic or vi
       mainCommunicationFile: path.join(fixture.rootDir, "comm", "saved-classic", "main.md"),
     });
     fixture.queueMain(async (input, tabId) => {
-      fixture.publish(input, tabId, { status: "end", content: decision({ status: "wait", subtasks: [] }) });
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(null) });
     });
     assert.equal(await fixture.adapter.runEventDriven(prompt("manual without mode"), {
       resumeTaskId: "saved-plus",

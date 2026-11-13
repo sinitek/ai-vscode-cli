@@ -691,12 +691,16 @@ test("wait uses the pre-ack snapshot for in-flight work and a later read for mes
   });
   assert.equal(registry.wait(idleMessage.port, decisionStep(), decision("wait")), "continue");
   assert.equal(names(idleMessage.calls).includes("pauseForReview"), false);
+  assert.equal(names(idleMessage.calls).includes("markDecisionAccepted"), false);
+  assert.equal(names(idleMessage.calls).includes("acknowledgeUserMessages"), false);
 
   const idle = createPort({
     views: [view({ hasUserMessages: true }), view(), view({ hasUserMessages: false })],
   });
-  assert.equal(registry.wait(idle.port, decisionStep(), decision("wait")), "stop");
-  assert.deepEqual(idle.calls.at(-1)?.args, ["loop-plus-idle-wait"]);
+  assert.equal(registry.wait(idle.port, decisionStep(), decision("wait")), "continue");
+  assert.deepEqual(idle.calls.at(-1)?.args, [false]);
+  assert.equal(names(idle.calls).includes("markDecisionAccepted"), false);
+  assert.equal(names(idle.calls).includes("acknowledgeUserMessages"), false);
   assert.equal(names(idle.calls).includes("persistRunning"), false);
   assert.equal(names(idle.calls).includes("submitReviewBatch"), false);
 });

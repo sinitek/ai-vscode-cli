@@ -83,6 +83,16 @@ Loop / Loop+ 群聊允许主模型忙碌时连续提问，显示“主模型正�
 
 `dispatch` 决策把 pending 原因归为运行中 `writeFiles` / `conflictGroup` 冲突或 `max_concurrency`。宿主 `loop-plus-dispatched` 日志为每个 pending attempt 记录 `subtaskId`、`attemptId` 和 `blockedBy`，冲突项附带冲突值及对应活动 attempt；异常未分类项使用 `scheduler`。pending 项之间不再报告互相阻塞。
 
+## 协议矛盾后的自动纠错
+
+主模型回复无法解析、验收关联不完整、确认事件与当前批次不匹配，或无运行/排队/待验收工作却返回 `wait` 时，宿主立即在同一 consumer 中再次调用主模型。请求附带具体拒绝原因和上一份回复（最多 24000 字符），以本次最新快照和协议为准，要求只重新生成完整 JSON，复用仍有效的审阅与验证证据。协议错误不转为业务 `blocked` 或用户澄清；后续合法决策按原流程确认验收、派发剩余工作或完成。
+
+`accept.subtasks` 中每个任务 ID 必须恰好关联一个 `reviews[].subtaskIds`，补充需求产生的后续任务也适用。补充任务可以关联到 `passed` 的验收项，并保留真实通过结论；不能为补齐关联伪造失败。解析失败不消耗验收事件或启动子任务；策略应用途中已提交的事件和已启动任务以最新快照为准，纠错不得重复处理。
+
+沿用协议重试上限，默认首答之后最多自动纠正 2 次，不放宽验收、完成或安全门禁。有效决策清除纠错上下文；持续无效才进入 `needs-review`，`finalSummary` 保存真实协议原因，主聊天、群聊和沟通文件复用同一说明，不再套用“主模型未提供阻塞原因”。显式继续或宿主重建后可从暂停摘要恢复纠错原因；旧记录未保存原因时明确指出证据缺失。当前待验收结果保留。
+
+实现与回归：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
+
 ## 全局阻塞复核与暂停留证
 
 主模型返回 `blocked` 不等于所有剩余要求均无法推进。每个无进展阶段首次出现全局阻塞时，宿主先将任务的 `loopPlusBlockReview` 保存为 `pending`，不确认原验收事件，再发起一轮带 `Bounded blocked review` 标记的复核。提示要求逐项核对根需求、补充需求与未完成事项，分辨外部依赖和仍可独立实施的工作；不能以删除门禁、重复失败诊断或编造成功替代推进。

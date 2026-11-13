@@ -2,9 +2,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { buildLoopMainSubChatTranscriptFile } from "./loopGroupChat";
 import { buildLoopBlockedPauseText } from "./loopBlockedSummary";
+import { buildLoopPlusProtocolPauseSummary, LOOP_PLUS_PROTOCOL_PAUSE_HEADING } from "./loopPlusProtocolRepair";
 import type { LoopTaskRecord } from "./loopTaskStore";
 
 export function buildLoopPlusPauseText(task: LoopTaskRecord, message: string): string {
+  if (message === "loop-plus-protocol-paused") {
+    const summary = task.finalSummary?.startsWith(LOOP_PLUS_PROTOCOL_PAUSE_HEADING)
+      ? task.finalSummary
+      : buildLoopPlusProtocolPauseSummary("历史记录未保存具体协议错误；请核对最近主模型 JSON 与当前验收批次。");
+    return `Loop+ 已暂停，整体任务尚未完成。\n\n${summary}`;
+  }
   if (["loop-plus-blocked", "loop-plus-main-failure-limit", "loop-plus-main-non-retryable"].includes(message)) {
     return buildLoopBlockedPauseText(task);
   }

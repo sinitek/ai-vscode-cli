@@ -98,11 +98,20 @@ export type LoopPlusDecisionOptions = {
   requireProgressPercent?: boolean;
 };
 
+type LoopPlusDecisionValidationOptions = LoopPlusDecisionOptions & {
+  reject?: (reason: string) => void;
+};
+
+export type LoopPlusDecisionParseResult = {
+  decision: LoopPlusDecision | null;
+  rejectionReason: string | null;
+};
+
 type LoopPlusDecisionNormalizer = (
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
-  options?: LoopPlusDecisionOptions,
+  options?: LoopPlusDecisionValidationOptions,
 ) => LoopPlusDecision | null;
 
 const LOOP_PLUS_DECISION_NORMALIZERS: Readonly<Record<LoopPlusDecisionStatus, LoopPlusDecisionNormalizer>> = {
@@ -149,25 +158,43 @@ export function parseLoopPlusDecision(
   content: string | null | undefined,
   options?: LoopPlusDecisionOptions,
 ): LoopPlusDecision | null {
+  return parseLoopPlusDecisionWithFeedback(content, options).decision;
+}
+
+export function parseLoopPlusDecisionWithFeedback(
+  content: string | null | undefined,
+  options?: LoopPlusDecisionOptions,
+): LoopPlusDecisionParseResult {
   if (typeof content !== "string" || !content.trim()) {
-    return null;
+    return { decision: null, rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。" };
   }
+  let rejectionReason = "未找到合法的 Loop+ 决策 JSON。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
   for (const jsonText of extractJsonObjectTexts(content)) {
     try {
-      const decision = normalizeLoopPlusDecision(JSON.parse(jsonText), options);
+      const decision = normalizeDecision(JSON.parse(jsonText), {
+        ...options,
+        reject: (reason) => { rejectionReason = reason; },
+      });
       if (decision) {
-        return decision;
+        return { decision, rejectionReason: null };
       }
     } catch {
       // A prompt may contain malformed or illustrative JSON before the decision.
     }
   }
-  return null;
+  return { decision: null, rejectionReason };
 }
 
 export function normalizeLoopPlusDecision(
   value: unknown,
   options?: LoopPlusDecisionOptions,
+): LoopPlusDecision | null {
+  return normalizeDecision(value, options);
+}
+
+function normalizeDecision(
+  value: unknown,
+  options?: LoopPlusDecisionValidationOptions,
 ): LoopPlusDecision | null {
   if (!isRecord(value)) {
     return null;
@@ -214,21 +241,24 @@ function normalizeAcceptDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
-  options?: LoopPlusDecisionOptions,
+  options?: LoopPlusDecisionValidationOptions,
 ): LoopPlusDecision | null {
   const progressPercent = normalizeLoopPlusProgressPercent(raw.progressPercent);
   if (
     (hasOwn(raw, "progressPercent") && (progressPercent === undefined || progressPercent === 100))
     || (options?.requireProgressPercent === true && progressPercent === undefined)
   ) {
+    options?.reject?.("accept.progressPercent 必须是 0 到 99 的整数，不能缺失或填写 100。");
     return null;
   }
   const reviewEvents = readReviewConfirmation(raw, true);
   if (!reviewEvents) {
+    options?.reject?.("accept 必须使用 reviewEventId 或 reviewEventIds 确认当前批次，不能同时填写两者或重复事件。");
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks) {
+    options?.reject?.(`accept.subtasks 必须包含不超过 ${subtaskMax} 项有效任务；每项须有独立 ID、标题和至少 ${LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH} 字的 prompt，并使用合法的任务分类。`);
     return null;
   }
   const controls = readControls(raw, subtaskMax);
@@ -239,18 +269,20 @@ function normalizeAcceptDecision(
     reviewEvents.reviewEventId ? [reviewEvents.reviewEventId] : []
   );
   const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
-  const reviews = readAcceptReviews(raw, eventIds, subtasks, requireAcceptanceFeedback);
+  const reviews = readAcceptReviews(raw, eventIds, subtasks, requireAcceptanceFeedback, options?.reject);
   if (!reviews) {
     return null;
   }
   const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
   if (!matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
+    options?.reject?.(`acceptancePlanResults 必须按顺序覆盖已选项：${options?.acceptancePlanKeys?.join(", ") ?? "当前验收方案"}，并提供不超过 50 字的原因。`);
     return null;
   }
   const acceptance = hasOwn(raw, "acceptance")
     ? normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback)
     : undefined;
   if (requireAcceptanceFeedback && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
+    options?.reject?.(`accept.acceptance 必须包含六项默认检查：${LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.join(", ")}；每项提供 passed 和不超过 50 字的 detail，失败项可以保留并派发修复。`);
     return null;
   }
   return withEstimatedRemainingRounds({
@@ -350,9 +382,10 @@ function normalizeCompletedDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
-  options?: LoopPlusDecisionOptions,
+  options?: LoopPlusDecisionValidationOptions,
 ): LoopPlusDecision | null {
   if (hasOwn(raw, "controls") || hasOwn(raw, "reviews")) {
+    options?.reject?.("completed 不能携带 controls 或 reviews；有失败或后续工作时应使用 accept 并继续派发。");
     return null;
   }
   const reviewEvents = readReviewConfirmation(raw, false);
@@ -361,6 +394,7 @@ function normalizeCompletedDecision(
   }
   const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length > 0) {
+    options?.reject?.("completed 不能包含待派发子任务；请先通过 accept 或 dispatch 派发未完成工作。");
     return null;
   }
   const answerConclusion = readOptionalText(raw.answerConclusion);
@@ -378,6 +412,7 @@ function normalizeCompletedDecision(
       || hasOwn(raw, "acceptancePlanResults")
       || (options.acceptancePlanKeys?.length ?? 0) > 0
     ) {
+      options?.reject?.("directCompletion 未获当前宿主授权或混入了验收字段；请按当前开放工作和完成门禁返回正常决策。");
       return null;
     }
     return withEstimatedRemainingRounds({
@@ -404,6 +439,7 @@ function normalizeCompletedDecision(
     || requirementCoverage.some((item) => item.passed !== true)
     || !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)
   ) {
+    options?.reject?.("completed 需要非空 answerConclusion、finalSummary、全部通过的验收检查和 requirementCoverage，以及完整的已选附加验收结果；存在未完成工作时请继续派发，不能伪造通过。");
     return null;
   }
   return withEstimatedRemainingRounds({
@@ -723,8 +759,10 @@ function readAcceptReviews(
   eventIds: readonly string[],
   subtasks: readonly LoopSubtaskDecision[],
   requireReason = false,
+  reject?: (reason: string) => void,
 ): LoopPlusAcceptReview[] | null {
   if (!hasOwn(raw, "reviews") || !Array.isArray(raw.reviews) || raw.reviews.length !== eventIds.length) {
+    reject?.("accept.reviews 必须逐项覆盖确认的整个验收批次，数量和顺序与 reviewEventId/reviewEventIds 一致。");
     return null;
   }
   const reviews: LoopPlusAcceptReview[] = [];
@@ -736,17 +774,21 @@ function readAcceptReviews(
     }
     const reviewEventId = readOptionalText(item.reviewEventId);
     if (!reviewEventId || reviewEventId !== eventIds[index]) {
+      reject?.(`reviews[${index}].reviewEventId 必须是 ${eventIds[index]}，不能遗漏或调换顺序。`);
       return null;
     }
     if (item.acceptance !== "passed" && item.acceptance !== "failed") {
+      reject?.(`reviews[${index}].acceptance 只能是 passed 或 failed。`);
       return null;
     }
     const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
     if (requireReason && !reason) {
+      reject?.(`reviews[${index}].reason 必须是非空且不超过 50 字的验收依据。`);
       return null;
     }
     const subtaskIds = readAcceptSubtaskIds(item);
     if (!subtaskIds) {
+      reject?.(`reviews[${index}].subtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。`);
       return null;
     }
     linkedIds.push(...subtaskIds);
@@ -759,6 +801,16 @@ function readAcceptReviews(
   }
   const subtaskIds = subtasks.map((subtask) => subtask.id).filter((id): id is string => Boolean(id));
   if (!sameIdSet(linkedIds, subtaskIds)) {
+    const unlinked = subtaskIds.filter((id) => !linkedIds.includes(id));
+    const unknown = linkedIds.filter((id) => !subtaskIds.includes(id));
+    const duplicates = [...new Set(linkedIds.filter((id, index) => linkedIds.indexOf(id) !== index))];
+    reject?.([
+      "accept.subtasks 中的每个任务 ID 必须恰好关联一个 reviews[].subtaskIds。",
+      ...(unlinked.length ? [`未关联任务：${unlinked.join(", ")}。`] : []),
+      ...(unknown.length ? [`关联了不存在的任务：${unknown.join(", ")}。`] : []),
+      ...(duplicates.length ? [`重复关联任务：${duplicates.join(", ")}。`] : []),
+      "补充需求产生的独立后续任务也要关联；可挂在 passed 的验收项上并保持该项 passed，不要为补齐关联而伪造失败。",
+    ].join(""));
     return null;
   }
   return reviews;

@@ -8,6 +8,7 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_MIN,
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
+  parseLoopPlusDecisionWithFeedback,
   LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
   LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
   LOOP_PLUS_MAX_ACCEPTANCES_MIN,
@@ -311,6 +312,39 @@ test("accept records each review verdict and the subtasks that review launches",
   ];
   rejected.forEach((value) => {
     assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
+  });
+});
+
+test("protocol feedback identifies orphan, unknown and duplicate follow-up links without accepting them", () => {
+  const candidate = {
+    status: "accept", reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", subtaskIds: ["repair"] },
+      { reviewEventId: "event-beta", acceptance: "failed", subtaskIds: ["repair", "unknown"] },
+    ],
+    subtasks: [subtask("repair"), subtask("independent-research")],
+  };
+  const rejected = parseLoopPlusDecisionWithFeedback(JSON.stringify(candidate));
+  assert.equal(rejected.decision, null);
+  assert.match(rejected.rejectionReason ?? "", /未关联任务：independent-research/);
+  assert.match(rejected.rejectionReason ?? "", /不存在的任务：unknown/);
+  assert.match(rejected.rejectionReason ?? "", /重复关联任务：repair/);
+  candidate.reviews[0].subtaskIds = ["independent-research"];
+  candidate.reviews[1].subtaskIds = ["repair"];
+  const corrected = parseLoopPlusDecisionWithFeedback(JSON.stringify(candidate));
+  assert.equal(corrected.decision?.status, "accept");
+  assert.equal(corrected.decision?.reviews?.[0].acceptance, "passed");
+  assert.equal(corrected.rejectionReason, null);
+});
+
+test("protocol feedback distinguishes empty and incomplete replies and clears earlier candidate errors", () => {
+  for (const content of [null, undefined, " "]) {
+    assert.match(parseLoopPlusDecisionWithFeedback(content).rejectionReason ?? "", /未返回决策 JSON/);
+  }
+  assert.match(parseLoopPlusDecisionWithFeedback('{"status":').rejectionReason ?? "", /未找到合法/);
+  assert.match(parseLoopPlusDecisionWithFeedback('{"status":"completed"}').rejectionReason ?? "", /requirementCoverage/);
+  assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"accept"}\n{"status":"wait"}'), {
+    decision: { status: "wait" }, rejectionReason: null,
   });
 });
 

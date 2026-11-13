@@ -2979,6 +2979,116 @@ test("retries invalid Loop+ decisions instead of dispatching them as a status st
   assert.equal(await isSettled(run.done), true);
 });
 
+test("automatically corrects unlinked supplemental work and dispatches it without consuming review early", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "实现并交付报告" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "实现和针对性测试通过" });
+  await flush();
+  const review = env.mains[1];
+  const eventId = review.request.reviewEventId;
+  const rejected = decisionJson({
+    status: "accept", reviewEventId: eventId,
+    reviews: [{ reviewEventId: eventId, acceptance: "passed", reason: "实现及测试符合要求" }],
+    subtasks: [subtask("independent-research", ["reports/research.md"])],
+  });
+  review.resolve(rejected);
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.acceptanceFeedback.length, 0);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, eventId);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts[0].disposition, "finished");
+  const retry = env.mains[2];
+  assert.equal(retry.request.kind, "review");
+  assert.match(retry.request.prompt, /未关联任务：independent-research/);
+  assert.ok(retry.request.prompt.includes(rejected));
+  assert.match(retry.request.modelPrompt, /只修正决策 JSON/);
+  const corrected = JSON.parse(rejected);
+  corrected.reviews[0].subtaskIds = ["independent-research"];
+  retry.resolve(JSON.stringify(corrected));
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.attempts[1].request.subtaskId, "independent-research");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts[0].acceptance, "passed");
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), false);
+  env.attempts[1].resolve({ outcome: "completed", detail: "报告和来源检查通过" });
+  await flush();
+  const finalReview = env.mains[3];
+  assert.doesNotMatch(finalReview.request.prompt, /Loop\+ protocol correction required/);
+  finalReview.resolve(completedDecision({ reviewEventId: finalReview.request.reviewEventId }));
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+});
+
+test("corrects contradictory completion ids and completes from the preserved acceptance batch", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成实现" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "全部要求及验证完成" });
+  await flush();
+  const eventId = env.mains[1].request.reviewEventId;
+  env.mains[1].resolve(completedDecision({ reviewEventId: "stale-event" }));
+  await flush();
+  const retry = env.mains[2];
+  assert.match(retry.request.prompt, /completed 确认的事件必须/);
+  assert.ok(retry.request.prompt.includes(eventId ?? ""));
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.equal(env.attempts.length, 1);
+  retry.resolve(completedDecision({ reviewEventId: eventId }));
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+});
+
+test("persistent protocol errors pause with the actual reason and carry repair context across explicit reload", async () => {
+  const pauses: LoopTaskRecord[] = [];
+  const env = harness({ recordPause: (task) => { pauses.push({ ...task }); } });
+  const run = env.host.tryRun({ displayPrompt: "完成实现" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  for (let index = 0; index < 3; index += 1) {
+    env.mains[index].resolve('{"status":"accept","progressPercent":23}');
+    await flush();
+  }
+  await run.done;
+  const task = env.tasks.get(run.taskId ?? "");
+  assert.equal(task?.status, "needs-review");
+  assert.match(task?.finalSummary ?? "", /调度协议校验失败/);
+  assert.match(task?.finalSummary ?? "", /reviewEventId/);
+  assert.doesNotMatch(task?.finalSummary ?? "", /主模型未提供具体阻塞原因/);
+  assert.equal(pauses[0].finalSummary, task?.finalSummary);
+  assert.equal(env.mains.length, 3);
+  const reloaded = env.reloadHost();
+  const resumed = reloaded.tryRun({ displayPrompt: "继续" }, env.target, {
+    schedulingMode: "event_driven", resumeTaskId: run.taskId, resumeRequested: true,
+  });
+  await flush();
+  assert.match(env.mains[3].request.prompt, /Loop\+ protocol correction required/);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.finalSummary, undefined);
+  env.mains[3].resolve(directCompletionDecision());
+  await resumed.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+});
+
+test("persistent idle wait decisions stop at the protocol retry limit", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成剩余要求" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  for (let index = 0; index < 3; index += 1) {
+    env.mains[index].resolve(decisionJson({ status: "wait" }));
+    await flush();
+  }
+  await run.done;
+  assert.equal(env.mains.length, 3);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.match(env.tasks.get(run.taskId ?? "")?.finalSummary ?? "", /wait 无法推进/);
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), true);
+});
+
 test("routes wait, dispatch, and blocked decisions through separate strategies", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
@@ -2986,19 +3096,15 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   env.mains[0].resolve(decisionJson({ status: "wait", estimatedRemainingRounds: 9 }));
   await flush();
   const taskId = run.taskId ?? "";
-  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.tasks.get(taskId)?.status, "running");
   assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, undefined);
   assert.equal(env.tasks.get(taskId)?.finalSummary, undefined);
-  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 1);
+  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 0);
   assert.equal(env.messages.includes("loop-plus-waiting"), false);
   assert.equal(env.attempts.length, 0);
 
-  env.host.tryRun({ displayPrompt: "continue" }, env.target, {
-    resumeTaskId: taskId,
-    resumeRequested: true,
-  });
-  await flush();
   assert.equal(env.mains[1]?.request.kind, "continue");
+  assert.match(env.mains[1].request.prompt, /wait 无法推进/);
   env.mains[1].resolve(decisionJson({
     status: "dispatch",
     estimatedRemainingRounds: 3,
@@ -3025,15 +3131,15 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   await flush();
   assert.equal(env.attempts.length, 1);
   assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, eventId);
-  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 2);
   assert.equal(reviews()[1]?.request.reviewEventId, eventId);
 
   reviews()[1].resolve(decisionJson({ status: "wait" }));
   await flush();
   assert.equal(env.tasks.get(taskId)?.status, "running");
-  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 1);
+  assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 0);
   assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, eventId);
-  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 2);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 3);
   assert.equal(reviews()[2]?.request.reviewEventId, eventId);
 
   reviews()[2].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));

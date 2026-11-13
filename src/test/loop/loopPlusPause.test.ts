@@ -6,6 +6,7 @@ import * as path from "path";
 import { buildLoopPlusPauseText, recordLoopPlusPause } from "../../loopPlusPause";
 import { parseLoopGroupChatTranscript } from "../../loopGroupChat";
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { buildLoopPlusProtocolPauseSummary } from "../../loopPlusProtocolRepair";
 
 function task(root: string): LoopTaskRecord {
   return {
@@ -49,6 +50,23 @@ test("missing reasons have a safe fallback while other pause causes cannot reuse
   const paused = task(os.tmpdir());
   assert.match(buildLoopPlusPauseText({ ...paused, finalSummary: " " }, "loop-plus-blocked"), /未提供具体阻塞原因/);
   assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /平台维护方/);
+  assert.match(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /历史记录未保存具体协议错误/);
+  assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /已自动请求纠正/);
+});
+
+test("protocol exhaustion records its actual rejection and does not invent a model business block", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loopplus-protocol-pause-"));
+  try {
+    const paused = { ...task(root), finalSummary: buildLoopPlusProtocolPauseSummary("未关联任务：independent-research", 2) };
+    recordLoopPlusPause(paused, "loop-plus-protocol-paused");
+    for (const file of [paused.mainCommunicationFile, path.join(root, "group-chat.md")]) {
+      assert.match(fs.readFileSync(file, "utf8"), /未关联任务：independent-research/);
+      assert.match(fs.readFileSync(file, "utf8"), /已自动请求纠正 2 次/);
+      assert.doesNotMatch(fs.readFileSync(file, "utf8"), /主模型未提供具体阻塞原因/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("impossible work is explained without appending an ineffective continue instruction", () => {

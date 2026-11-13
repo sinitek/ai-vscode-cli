@@ -37,7 +37,7 @@ export type LoopPlusDecisionInFlightView = {
 export interface LoopPlusDecisionStrategyPort {
   queueView(): LoopPlusDecisionQueueView;
   waitForInFlightWork(): LoopPlusDecisionInFlightView;
-  protocolMiss(held: boolean): LoopPlusDecisionOutcome;
+  protocolMiss(held: boolean, reason?: string): LoopPlusDecisionOutcome;
   markDecisionAccepted(): void;
   clearProtocolRetries(): void;
   acknowledgeUserMessages(count: number): void;
@@ -162,7 +162,7 @@ function applyDispatchDecision(
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   if (port.queueView().hasCurrentReview) {
-    return port.protocolMiss(true);
+    return port.protocolMiss(true, "当前有开放验收批次，不能 dispatch；请返回 accept 确认整批，并在同一决策中派发后续任务。");
   }
   const controls = decision.controls ?? [];
   if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
@@ -230,11 +230,12 @@ function applyAcceptDecision(
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   if (step.kind !== "review" || !sameLoopPlusReviewIds(confirmedLoopPlusReviewIds(decision), step.eventIds)) {
-    return port.protocolMiss(step.eventIds.length > 0);
+    return port.protocolMiss(step.eventIds.length > 0,
+      `accept 确认的事件必须与当前验收批次数量及顺序一致：${JSON.stringify(step.eventIds)}。`);
   }
   const verdicts = loopPlusAcceptVerdicts(decision, step.eventIds);
   if (!verdicts) {
-    return port.protocolMiss(true);
+    return port.protocolMiss(true, "accept.reviews 必须与当前批次逐项对应，且每项保留真实 passed 或 failed 结论。");
   }
   if (!port.confirmReviewWithinAcceptanceLimit(step.eventIds)) {
     return "stop";
@@ -279,20 +280,16 @@ function applyWaitDecision(
 ): LoopPlusDecisionOutcome {
   const snapshot = port.queueView();
   if (snapshot.hasCurrentReview) {
-    return port.protocolMiss(true);
+    return port.protocolMiss(true, "当前有开放验收批次，不能 wait；请返回 accept 确认整批并继续派发剩余工作，或在满足全部完成门禁时返回 completed。");
+  }
+  if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview) {
+    return port.protocolMiss(false, "当前没有运行中或排队任务，wait 无法推进。请完成满足全部门禁的任务，或用 dispatch 派发未完成工作；不要因这项矛盾请求用户继续。");
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   if (port.queueView().hasReview) {
     return "continue";
   }
   port.markDecisionAccepted();
-  if (snapshot.runningCount === 0 && snapshot.pendingCount === 0) {
-    if (port.queueView().hasUserMessages) {
-      return "continue";
-    }
-    port.pauseForReview("loop-plus-idle-wait");
-    return "stop";
-  }
   port.persistRunning();
   port.noteWaiting(snapshot.runningCount);
   return "wait";
@@ -324,7 +321,8 @@ function applyCompletedDecision(
   let submittedReview = false;
   if (step.eventIds.length > 0) {
     if (!sameLoopPlusReviewIds(confirmed, step.eventIds)) {
-      return port.protocolMiss(true);
+      return port.protocolMiss(true,
+        `completed 确认的事件必须与当前验收批次数量及顺序一致：${JSON.stringify(step.eventIds)}。`);
     }
     if (!port.confirmReviewWithinAcceptanceLimit(step.eventIds)) {
       return "stop";
@@ -336,7 +334,7 @@ function applyCompletedDecision(
     }
     submittedReview = true;
   } else if (confirmed.length > 0) {
-    return port.protocolMiss(false);
+    return port.protocolMiss(false, "当前没有验收事件，completed 不得携带 reviewEventId 或 reviewEventIds。");
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   const pending = port.queueView();

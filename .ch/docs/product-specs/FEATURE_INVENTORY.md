@@ -2,6 +2,12 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Loop+ 协议矛盾自动纠错
+
+- 状态：`active`（2026-11-13，源码实现）。决策 JSON 无效、验收关联或事件批次矛盾、空队列返回 `wait` 时，立即把具体错误、旧回复和最新快照交回主模型重新生成完整 JSON，复用有效证据，继续派发或合法完成，无需用户反复点击继续。
+- 保留既有校验及默认 2 次自动纠错上限；accept 中所有新任务（含补充需求）恰好关联一个验收项，可关联通过项而不改写真实结论。持续错误暂停时持久化真实协议原因，主聊天、群聊和沟通文件一致展示；恢复保留待验收结果和纠错原因。
+- 实现：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/loopPlusPause.ts`；回归覆盖诊断、纠正后派发/完成、重试上限及跨宿主显式继续。未发布或更新已安装扩展。
+
 ## Loop+ 活跃会话与完成状态隔离
 
 - 状态：`active`（2026-11-13，源码实现；未安装到当前运行中的扩展）。同一 CLI 会话已有活跃交互时，另一 Tab 的继续请求明确拒绝，不因临时 cwd 或配置指纹变化释放原 runner；不同会话仍可并行，显式停止后允许继续。

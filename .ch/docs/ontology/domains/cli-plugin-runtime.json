@@ -441,6 +441,23 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_protocol_repair",
+      "name": "Loop+ 协议矛盾自动请求主模型纠正 JSON",
+      "description": "无效决策、验收关联或批次矛盾及空队列 wait 立即携带具体原因、有限长度旧回复和最新快照再次调用主模型，复用有效证据，纠正后继续派发或合法完成。accept 中所有新任务含补充需求须恰好关联一个 review，可关联通过项且不伪造结论。沿用默认两次纠错上限和完成安全门禁；耗尽保存真实协议原因，聊天、群聊、沟通文件一致展示，显式继续可恢复原因及待验收队列。协议错误不作为业务 blocked 或用户澄清。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.extension_host", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/loopPlusDecision.ts", "anchor": "parseLoopPlusDecisionWithFeedback"},
+        {"path": "src/loopPlusProtocolRepair.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusDecisionStrategies.ts"},
+        {"path": "src/loopPlusPause.ts"},
+        {"path": "src/test/extensionHost/loopPlusOrchestration.test.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "协议矛盾后的自动纠错"},
+        {"path": ".ch/docs/runbooks/loop-plus-stop-diagnosis.md"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_codex_fix_acceptance_scope",
       "name": "Loop+ 修复检测区分本机源码通过与完整验收",
       "description": "macOS/Windows 使用 npm run verify:loop-plus、同名原生启动器或根目录 verify_mac.py/verify_win.py；Python 入口共用参数转发与退出码处理，不重复检测逻辑。顺序构建、必要回归、默认三轮 pool 原会话交接和一次公共 runner 协议验收。固定同一实际 Codex 路径与版本，临时 HOME 和本机模拟模型不触碰用户任务；不跳过失败、缺证据或未确认清理，不以强杀当成功。报告和日志拒绝覆盖。passed 仅代表所记录源码/平台/CLI 的隔离检测，fullyVerified 始终为 false；其它原生平台、已安装扩展与真实 VS Code 多窗口/成功自动关闭 Tab、真实模型任务须分别验证。",
