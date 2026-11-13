@@ -527,21 +527,33 @@ test("uses only mocked macOS-shell resolution for stream and capture commands", 
     }
     return child;
   };
+  const previousPrefix = process.env.npm_config_prefix;
+  process.env.npm_config_prefix = "/tmp/sinitek-npm-prefix";
   try {
     const stream = runCliStream("codex", "quoted prompt", {
       onStdout: () => undefined,
       onStderr: () => undefined,
       onError: () => undefined,
       onExit: () => undefined,
+    }, {
+      processLabel: "sinitek-ai-vscode-cli-codex-app-server",
     });
     assert.equal(stream.resolvedCommand, "sinitek-missing-mac-command");
     assert.equal(spawnCalls[0]?.[0], "/bin/zsh");
     assert.match(String((spawnCalls[0]?.[1] as string[])[1]), /sinitek-missing-mac-command/);
+    const streamOptions = spawnCalls[0]?.[2] as { argv0?: string; env?: NodeJS.ProcessEnv };
+    assert.equal(streamOptions.argv0, undefined);
+    assert.equal(Object.prototype.hasOwnProperty.call(streamOptions.env ?? {}, "npm_config_prefix"), false);
 
     const captured = await captureCliOutput("sinitek-missing-mac-command", ["arg with space"]);
     assert.equal(captured.resolvedCommand, "sinitek-missing-mac-command");
     assert.equal(spawnCalls[1]?.[0], "/bin/zsh");
   } finally {
+    if (previousPrefix === undefined) {
+      delete process.env.npm_config_prefix;
+    } else {
+      process.env.npm_config_prefix = previousPrefix;
+    }
     crossSpawn.spawn = originalSpawn;
     restoreConfiguration();
     restorePlatform();

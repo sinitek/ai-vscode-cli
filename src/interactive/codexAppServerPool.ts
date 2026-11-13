@@ -12,6 +12,7 @@ import {
   buildAppServerRequestResolution,
   type JsonRpcResolution,
 } from "./codexAppServerProtocol";
+import { resolveChildArgv0 } from "../cli/processArgv";
 import { requestChildShutdown } from "./codexRunnerProcess";
 import {
   CODEX_THREAD_BUSY,
@@ -528,7 +529,7 @@ export class CodexAppServerConnection {
       child = spawn(this.spec.command, this.spec.args, {
         cwd: this.spec.cwd,
         env: this.spec.env,
-        argv0: CODEX_APP_SERVER_PROCESS_LABEL,
+        argv0: resolveChildArgv0(this.spec.command, CODEX_APP_SERVER_PROCESS_LABEL),
         detached: process.platform !== "win32",
         windowsHide: true,
         stdio: ["pipe", "pipe", "pipe"],

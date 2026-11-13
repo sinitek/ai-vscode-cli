@@ -35,6 +35,13 @@
 
 ## 当前有效条目
 
+### macOS 登录 shell 不能改 argv0（有效）
+
+- 现象：工具设置已选 zsh，交互式 zsh 里能运行 `codex`，插件仍报 `Codex app-server 异常退出（code 127）：zsh:1: command not found: codex`。这不是误用 bash。
+- 根因：app-server 在 PATH 找不到命令时回退到 `/bin/zsh -lc`。启动参数把 argv0 改成 `sinitek-ai-vscode-cli-codex-app-server` 后，zsh 仍算 login shell，但不再读取 `~/.zprofile`。nvm 因此不会把 Codex 加入 PATH。若环境里还有 `npm_config_prefix` / `NPM_CONFIG_PREFIX`，即使用户启动文件被读取，`nvm use` 也会撤销 Node 路径。
+- 长期规避：登录 shell 的 argv0 必须保持 shell 自身名称；探测和通过该 shell 启动 CLI 时去掉上述 npm prefix 变量。直接启动已解析的可执行文件时才使用进程标签。
+- 验证：`npm run build && node --test dist/test/cli/processArgv.test.js`。回归要同时覆盖改名 argv0 找不到命令、保持 zsh 能找到，以及 prefix 被去掉后登录 shell 才能找到。
+
 ### Webview 标签切换的重复消息重建（已规避）
 
 - 现象：长对话切换标签后短暂卡顿，宿主回传时再次阻塞。

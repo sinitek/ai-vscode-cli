@@ -1,9 +1,10 @@
 import * as vscode from "vscode";
-import { type ChildProcess } from "child_process";
+import { type ChildProcess, type SpawnOptions } from "child_process";
 import { spawn } from "cross-spawn";
 import { CliName, MacTaskShell, ThinkingMode } from "./types";
 import { getCliCommand, getMacTaskShell } from "./config";
 import { normalizeCommandInput, resolveCliCommand, splitConfiguredCliCommand } from "./commandResolution";
+import { isLoginShellCommand, resolveChildArgv0, stripNvmIncompatibleEnv } from "./processArgv";
 import { applyOpenCodeVariantArg, buildCliArgs } from "./cliRunArgStrategies";
 import { createOpenCodeRuntimeConfigOverlay } from "./opencoderuntimeconfig";
 import {
@@ -69,7 +70,7 @@ function checkCommandAvailableOnMacShell(command: string, shell: MacTaskShell): 
     const shellPath = resolveMacTaskShellExecutable(shell);
     const commandLine = `command -v ${escapeShellArg(command)} >/dev/null 2>&1`;
     const child = spawn(shellPath, ["-lc", commandLine], {
-      env: process.env,
+      env: stripNvmIncompatibleEnv(process.env),
       stdio: "ignore",
       windowsHide: true,
     });
@@ -206,6 +207,18 @@ function resolveMacTaskShellExecutable(shell: MacTaskShell): string {
   return shell === "bash" ? "/bin/bash" : "/bin/zsh";
 }
 
+function finalizeSpawnOptions(
+  command: string,
+  options: SpawnOptions,
+  processLabel?: string,
+): SpawnOptions {
+  return {
+    ...options,
+    env: options.env && isLoginShellCommand(command) ? stripNvmIncompatibleEnv(options.env) : options.env,
+    argv0: resolveChildArgv0(command, processLabel),
+  };
+}
+
 function resolveSpawnCommand(command: string, args: string[]): {
   commandToSpawn: string;
   argsToSpawn: string[];
@@ -304,14 +317,13 @@ export function startOpenCodeServer(
     return { pid: undefined, resolvedCommand: undefined, kill: () => false };
   }
 
-  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
+  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, finalizeSpawnOptions(spawnCommand.commandToSpawn, {
     cwd: options.cwd,
     env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides),
-    argv0: options.processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
-  });
+  }, options.processLabel));
 
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (data) => handlers.onStdout?.(data));
@@ -370,14 +382,13 @@ export function runCliStream(
     };
   }
 
-  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
+  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, finalizeSpawnOptions(spawnCommand.commandToSpawn, {
     cwd: options.cwd,
     env: buildSpawnEnvironment(options.cwd, options.envOverrides, overlay?.envOverrides, options.environment),
-    argv0: processLabel,
     detached: process.platform !== "win32",
     windowsHide: true,
     stdio: ["pipe", "pipe", "pipe"],
-  });
+  }, processLabel));
   child.stdin?.end();
 
   child.stdout?.setEncoding("utf8");
@@ -421,13 +432,13 @@ export function captureCliOutput(
       return;
     }
 
-    const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, {
+    const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, finalizeSpawnOptions(spawnCommand.commandToSpawn, {
       cwd: options.cwd,
       env: buildSpawnEnvironment(options.cwd, options.envOverrides),
       detached: process.platform !== "win32",
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
-    });
+    }));
 
     let stdout = "";
     let stderr = "";
