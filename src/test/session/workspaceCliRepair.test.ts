@@ -66,7 +66,7 @@ test("repair inspection does not report an available Kimi executable as missing"
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "workspace-kimi-repair-"));
   context.after(() => fs.rm(directory, { recursive: true, force: true }));
   const executablePath = path.join(directory, process.platform === "win32" ? "kimi.cmd" : "kimi");
-  await fs.writeFile(executablePath, "kimi test executable\n");
+  await fs.writeFile(executablePath, "kimi test executable\n", { mode: 0o755 });
   context.mock.method(commandResolution, "resolveCliCommand", (command: string) => (
     command === "kimi" ? { command: executablePath, resolvedFrom: "path" } : null
   ));

@@ -1,3 +1,4 @@
+import { marked } from "marked";
 import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { renderChatModal } from "./modalComponents";
 import { CLI_LIST } from "../cli/types";
@@ -996,11 +997,7 @@ ${renderChatModal({
         },
         contentHtml: `          <div id="helpPanelModes" class="help-panel active">
             <div class="help-section">
-              <ul>
-                <li>${i18n.helpModeVibe}</li>
-                <li>${i18n.helpModeLoop}</li>
-                <li>${i18n.helpModeLoopPlus}</li>
-              </ul>
+              ${marked.parse(i18n.helpModesMarkdown, { async: false, gfm: true })}
             </div>
           </div>
         `,

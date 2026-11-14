@@ -316,7 +316,11 @@ function isUsableCommandFile(targetPath: string, platform: NodeJS.Platform): boo
     if (!stat.isFile()) {
       return false;
     }
-    return platform !== "win32" || stat.size > 0;
+    if (platform === "win32") {
+      return stat.size > 0;
+    }
+    fs.accessSync(targetPath, fs.constants.X_OK);
+    return true;
   } catch {
     return false;
   }

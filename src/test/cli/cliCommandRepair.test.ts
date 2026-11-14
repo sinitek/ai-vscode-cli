@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import { splitConfiguredCliCommand } from "../../cli/commandResolution";
 
 import {
   beginCliCommandAutoRepair,
@@ -188,6 +189,64 @@ test("repairs codex from a user bin directory that the normal resolver does not 
     assert.equal(located, bunPath);
   } finally {
     restorePlatform();
+    restoreEnv();
+    await fs.rm(homeDir, { recursive: true, force: true });
+  }
+});
+
+for (const platform of ["darwin", "linux"] as const) {
+  for (const installation of [".bun", ".volta"]) {
+    test(`repairs a ${platform} CLI installed by ${installation} outside PATH and preserves arguments`, async () => {
+      const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli repair unix-"));
+      const restoreEnv = setCommandRepairEnvironment(homeDir);
+      const restorePlatform = setPlatform(platform);
+      try {
+        const executablePath = path.join(homeDir, installation, "bin", "codex");
+        await writeCommand(executablePath, "#!/bin/sh\nexit 0\n");
+        await fs.chmod(executablePath, 0o755);
+        const commands = { codex: "codex --profile work" };
+        assert.equal(shouldAwaitCliCommandAutoRepair("codex", commands, platform), true);
+        const plans = await planUnresolvedCliCommandRepairs(commands, {
+          platform,
+          homeDir,
+          env: process.env,
+          onlyBareCommands: true,
+          readRegistryPath: async () => assert.fail("Unix repair must not query the Windows registry"),
+        });
+        const plan = plans.find((entry) => entry.cli === "codex");
+        assert.equal(plan?.status, "repaired");
+        assert.deepEqual(splitConfiguredCliCommand(plan?.nextCommand ?? ""), [executablePath, "--profile", "work"]);
+        assert.equal(inspectUnresolvedCliCommands({ codex: plan?.nextCommand ?? "" }, platform)
+          .some((issue) => issue.cli === "codex"), false);
+        assert.equal(plans.find((entry) => entry.cli === "claude")?.status, "not-found");
+      } finally {
+        restorePlatform();
+        restoreEnv();
+        await fs.rm(homeDir, { recursive: true, force: true });
+      }
+    });
+  }
+}
+
+test("Unix repair rejects files without execute permission and continues to a usable installation", {
+  skip: process.platform === "win32" ? "POSIX execute permissions are unavailable on Windows" : false,
+}, async () => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-repair-permissions-"));
+  const restoreEnv = setCommandRepairEnvironment(homeDir);
+  try {
+    const blockedPath = path.join(homeDir, ".bun", "bin", "codex");
+    await writeCommand(blockedPath, "#!/bin/sh\nexit 0\n");
+    await fs.chmod(blockedPath, 0o644);
+    const deps = { homeDir, env: process.env };
+    assert.equal(await locateCliExecutableForRepair("codex", "codex", deps), null);
+    assert.equal(inspectUnresolvedCliCommands({ codex: blockedPath }).some((issue) => issue.cli === "codex"), true);
+    const plans = await planUnresolvedCliCommandRepairs({ codex: "codex" }, deps);
+    assert.equal(plans.find((entry) => entry.cli === "codex")?.status, "not-found");
+    const usablePath = path.join(homeDir, ".volta", "bin", "codex");
+    await writeCommand(usablePath, "#!/bin/sh\nexit 0\n");
+    await fs.chmod(usablePath, 0o755);
+    assert.equal(await locateCliExecutableForRepair("codex", "codex", deps), usablePath);
+  } finally {
     restoreEnv();
     await fs.rm(homeDir, { recursive: true, force: true });
   }

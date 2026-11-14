@@ -103,6 +103,7 @@ manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生�
 
 ### 任务执行时自动修复与单次重试
 
+- “自动修复”是跨平台命令路径修复入口，macOS/Linux 不隐藏：例如 Bun、Volta 安装的 CLI 未加入扩展宿主 PATH 时，仍可从其用户目录找回。Unix 候选文件必须通过执行权限检查，无执行权限的文件不报告修复成功，继续搜索后续目录。Windows 保留用户/系统 PATH 读取及 WindowsApps 空桩过滤。界面按宿主平台显示说明，未安装的 CLI 需要先安装。
 - `src/extensionHost/promptAutoRepair.ts` 包装统一 `runPrompt` 的三条执行分支。首次收到启动命令 ENOENT 后重新检查目标 CLI 命令是否仍不可用，复用查找与 `persistCliCommand`；命令已正常解析时不把不存在的 cwd 或普通文件错误误判成可修复项。
 - 修复成功通过 `prepareSessionForPromptRun(..., { forceNewSession: true })` 在同一 Tab 清除旧会话绑定和草稿，保留旧消息文件，释放不再引用的旧 runner，再以 `sessionId=null` 重放完整输入。清除旧 `preloadedUserMessageId`，新会话重新追加用户消息；保留显式模型、思考力度、图片、执行目录和 Loop/Loop+ 追踪字段。
 - 重放标记 `cliCommandRepairAttempted=true`，交互及 OpenCode one-shot/parallel 不再进入 hidden retry。OpenCode 的启动 ENOENT 收口后仍抛出原始错误供统一入口识别，不转换丢失错误码。修复或第二次执行失败停止，不递归重试。

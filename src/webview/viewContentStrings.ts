@@ -267,13 +267,13 @@ export const WEBVIEW_STRINGS = {
     toolSettingsTaskCompletionWindowAttentionLabel: "任务完成图标闪烁",
     toolSettingsHumanInteractionWindowAttentionLabel: "人机交互图标闪烁",
     toolSettingsRepairTab: "自动修复",
-    toolSettingsCliRepairHint: "插件启动时会自动修复一次找不到的 codex、claude、opencode 裸命令。任务执行遇到同类问题时也会自动修复，成功后在新会话重试原任务一次，修复或重试失败则停止。这里仍列出没修好的项；一键修复会重新读取 Windows 当前的用户和系统 PATH，并把命令的绝对路径写入设置。",
+    toolSettingsCliRepairHint: "修复已安装但插件找不到的 CLI 命令，找到后将绝对路径写入设置。不会安装 CLI；插件启动和任务执行时也会自动尝试修复，原任务最多重试一次。",
     toolSettingsCliRepairSummaryHeader: "报错摘要",
     toolSettingsCliRepairActionHeader: "操作",
     toolSettingsCliRepairButton: "一键修复",
     toolSettingsCliRepairWorking: "修复中...",
-    toolSettingsCliRepairEmpty: "当前没有可自动修复的问题。",
-    toolSettingsCliRepairDetail: "扩展宿主找不到 {command}。终端里仍能运行，通常是因为 PATH 只在新终端或 shell profile 中生效。",
+    toolSettingsCliRepairEmpty: "当前未发现无法解析的 CLI 命令。",
+    toolSettingsCliRepairDetail: "插件找不到可执行的 {command}。若已安装，可尝试修复路径；若未安装，请先安装。仅在终端配置的别名或函数无法直接使用。",
     toolSettingsHistoryRetentionDaysLabel: "历史保留天数",
     toolSettingsHistoryRetentionDaysTitle: "插件管理历史数据的全局保留期限",
     toolSettingsHistoryRetentionDaysHint: `适用于 ${SINITEK_RUNTIME_HINT} 下的日志、会话、提示词历史、任务记录和 Loop 记录。默认 30 天，可设置 1–3650 天。`,
@@ -435,9 +435,13 @@ export const WEBVIEW_STRINGS = {
     helpNotificationNotRequired: "当前系统无需单独申请通知权限，请确认系统通知设置已开启。",
     helpNotificationUnavailable: "暂时无法读取通知授权状态，请刷新重试。",
     helpNotificationTimeout: "通知授权操作等待超时，请刷新状态后重试。",
-    helpModeVibe: "Vibe 模式，直接执行目标 cli 任务",
-    helpModeLoop: "Loop 模式，主模型相当于任务分发的项目经理调度多个子模型共用完成任务",
-    helpModeLoopPlus: "Loop+ 模式（主推），主模型除了分发任务还充当组长角色进行功能验收，如果发现有缺陷会再发起整改",
+    helpModesMarkdown: `| 模式 | 使用说明 |
+| --- | --- |
+| **Vibe** | 直接执行目标 CLI 任务。 |
+| **Loop** | 主模型作为项目经理分发任务，调度多个子模型共同完成任务。 |
+| **Loop+（主推）** | 主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。 |
+
+[《携宁 CLI 助手 - 教程》：点击进入详细教程](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)`,
     noConfigOption: "暂无配置",
     historyEmptySessions: "暂无会话历史",
     historyNoMatchingSessions: "没有匹配的历史会话。",
@@ -564,6 +568,12 @@ export const WEBVIEW_STRINGS = {
 
 export type WebviewStringKey = keyof typeof WEBVIEW_STRINGS;
 
-export function getWebviewStrings(): Record<WebviewStringKey, string> {
-  return WEBVIEW_STRINGS;
+export function getWebviewStrings(platform: NodeJS.Platform = process.platform): Record<WebviewStringKey, string> {
+  const searchHint = platform === "win32"
+    ? "Windows 会重新读取用户和系统 PATH，并搜索常见安装目录。"
+    : "会搜索 Bun、Volta 等常见用户安装目录，找回未加入插件 PATH 的命令。";
+  return {
+    ...WEBVIEW_STRINGS,
+    toolSettingsCliRepairHint: `${WEBVIEW_STRINGS.toolSettingsCliRepairHint} ${searchHint}`,
+  };
 }

@@ -1,4 +1,5 @@
 import { DIALOG_SHELL_STYLES } from "../modalComponents";
+import { getMarkdownStyles } from "./markdown";
 
 export const ACCEPTANCE_PLAN_DIALOG_STYLES = `
       [id="acceptancePlanOverlay"] { z-index: 120; }
@@ -750,7 +751,35 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       }
 
       .help-modal {
-        height: 600px;
+        width: min(640px, 90vw);
+      }
+${getMarkdownStyles(".help-section")}
+      .help-section table {
+        width: 100%;
+        table-layout: fixed;
+        text-align: left;
+        line-height: 1.7;
+        margin-bottom: 16px;
+      }
+      .help-section th,
+      .help-section td {
+        padding: 12px;
+        overflow-wrap: anywhere;
+      }
+      .help-section th:first-child,
+      .help-section td:first-child {
+        width: 100px;
+      }
+      .help-section a {
+        color: var(--vscode-textLink-foreground);
+        text-underline-offset: 3px;
+      }
+      .help-section a:hover {
+        color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+      }
+      .help-section a:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
       }
       .notification-authorization-actions {
         display: flex;

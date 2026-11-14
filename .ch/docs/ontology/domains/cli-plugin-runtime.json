@@ -2147,7 +2147,7 @@
     {
       "id": "plugin.rule.cli_command_auto_repair",
       "name": "CLI ENOENT 自动修复写入绝对路径",
-      "description": "插件初始化时，对扩展宿主当前无法解析的 Codex/Claude/OpenCode 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”仍列出未解决项并保留一键修复。任务执行遇到启动命令 ENOENT 时复用修复，仅当命令不可用且找到可执行文件并成功写入设置，才在原任务 Tab 解除旧会话、保留历史后以新会话重放原输入一次；覆盖交互、OpenCode one-shot 与并行执行及当前所有 CLI。第二次执行关闭通用 hidden retry，修复或重试失败即停止；用户停止、目标消失、工作区变化或同 Tab 新请求替代时不重放。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
+      "description": "插件初始化时，对扩展宿主当前无法解析的各 CLI 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”在 Windows、macOS、Linux 均保留，按宿主平台展示说明，列出未解决项并保留一键修复。macOS/Linux 额外搜索 Bun、Volta 等用户目录，只接受具有执行权限的文件，跳过无执行权限文件继续查找；不自动安装 CLI。任务执行遇到启动命令 ENOENT 时复用修复，仅当命令不可用且找到可执行文件并成功写入设置，才在原任务 Tab 解除旧会话、保留历史后以新会话重放原输入一次；覆盖交互、OpenCode one-shot 与并行执行及当前所有 CLI。第二次执行关闭通用 hidden retry，修复或重试失败即停止；用户停止、目标消失、工作区变化或同 Tab 新请求替代时不重放。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [

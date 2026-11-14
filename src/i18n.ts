@@ -63,7 +63,7 @@ const MESSAGES = {
     "rules.saveFailed": "保存规则失败，请重试。",
     "rules.invalidCli": "未选择有效的 CLI。",
     "cliRepair.invalidCli": "未选择有效的 CLI。",
-    "cliRepair.notFound": "没有找到 {command}。它不在 Windows 用户/系统 PATH，也不在已知安装目录。如果它只存在于 WSL 或 shell profile，请把对应 CLI 命令设成绝对路径。",
+    "cliRepair.notFound": "没有找到可执行的 {command}。请确认已在当前系统安装，并将对应 CLI 命令设置为可执行文件的绝对路径；仅在终端配置的别名或函数无法直接使用。",
     "cliRepair.repaired": "已将 {cli} 命令更新为 {command}。",
     "cliRepair.persistFailed": "已找到命令，但写入设置失败。",
     "cliRepair.taskRepairStarted": "{cli} 启动命令不可用，正在自动修复；修复成功后将新建会话重试一次。",
