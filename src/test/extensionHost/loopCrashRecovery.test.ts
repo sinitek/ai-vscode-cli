@@ -22,7 +22,7 @@ const { createLoopPlusScheduler, buildLoopPlusFinishEventId } = require("../../l
 test.after(() => fs.rmSync(taskHome, { recursive: true, force: true }));
 
 let sequence = 0;
-function harness(mode: "classic" | "event_driven" = "classic") {
+function harness(mode: "classic" | "event_driven" = "classic", resumeWaitingClassicBatch?: (taskId: string) => boolean) {
   const id = `recovery-${++sequence}`;
   const dir = path.join(taskHome, id);
   fs.mkdirSync(dir, { recursive: true });
@@ -56,6 +56,7 @@ function harness(mode: "classic" | "event_driven" = "classic") {
   let reconcileOnClose = false;
   let host: ReturnType<typeof createPromptRunRuntimeHost>;
   const createHost = () => createPromptRunRuntimeHost({
+    resumeWaitingClassicBatch,
     getActiveWorkspaceKey: () => "workspace", getConversationTabById: (tabId) => tabs.find((tab) => tab.id === tabId) ?? null,
     getConversationTabs: () => tabs, createConversationTabId: () => "restored-main", persistConversationTabsToWorkspaceSettings: () => undefined,
     postPanelState: async () => undefined, loadSessionMessages: (_cli, sessionId) => messages.get(sessionId) ?? [],
@@ -252,4 +253,17 @@ test("a real host process killed after dispatch leaves recoverable Loop+ complet
     if (worker.exitCode === null && worker.signalCode === null) worker.kill("SIGKILL");
     await exited;
   }
+});
+
+
+test("经典手动续跑交回已有等待控制器，不重复启动主任务", async () => {
+  const resumed: string[] = [];
+  const env = harness("classic", (taskId) => { resumed.push(taskId); return true; });
+  await env.finish("alpha");
+  assert.deepEqual(resumed, []);
+  await env.finish("beta");
+  assert.deepEqual(resumed, [env.id]);
+  assert.deepEqual(env.wakeups, []);
+  assert.deepEqual(env.reports, ["alpha", "beta"]);
+  assert.deepEqual(env.read().activeSubtaskIds, []);
 });

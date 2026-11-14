@@ -1,4 +1,5 @@
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
+import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import type { ThinkingMode } from "../cli/types";
 import { applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile } from "../loopModelSwitch";
 import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
@@ -51,6 +52,8 @@ export type LoopPlusRuntimeAdapterDeps = {
   acceptanceLimit?: LoopPlusOrchestrationDeps["acceptanceLimit"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
+  isInvocationActive?: (tabId: string) => boolean;
+  hasActiveSubtasks?: (taskId: string) => boolean;
   readTask: (taskId: string) => LoopTaskRecord | null;
   createTask: LoopPlusOrchestrationDeps["createTask"];
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
@@ -338,7 +341,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     promptInput: PromptRunInput,
     target: LoopPlusPromptTarget,
     role: "main" | "subtask",
-    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal },
+    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal; lostInvocationSignal?: AbortSignal },
   ): Promise<AttemptExecution> {
     const boundary = captureBoundary(target);
     const query: LoopPlusInvocationQuery = {
@@ -359,7 +362,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (options.signal) {
         const signal = options.signal;
         signal.throwIfAborted();
-        await new Promise<void>((resolve, reject) => {
+        await waitForLoopInvocation(new Promise<void>((resolve, reject) => {
           const onAbort = (): void => { reject(signal.reason); };
           removePreparationAbort = () => signal.removeEventListener("abort", onAbort);
           signal.addEventListener("abort", onAbort, { once: true });
@@ -376,7 +379,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
               },
             });
           }).then(resolve, reject);
-        });
+        }), options.lostInvocationSignal);
       } else {
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
       }
@@ -439,7 +442,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     let aborted = false;
     let closeTabAfterAbort = false;
     const preparationAbort = new AbortController();
+    const lostInvocationAbort = new AbortController();
     let settled = false;
+    let invocationStarted = false;
+    let invocationFinished = false;
+    let invocationStartedAt: number | null = null;
     let tabClosePromise: Promise<void> | null = null;
     let preparedClose: (() => Promise<void>) | undefined;
     const closeTab = (reason: "completed" | "main-abort"): Promise<void> => {
@@ -474,8 +481,13 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     })();
     return {
       promise,
+      isActive: () => !settled && (invocationStartedAt === null || now() - invocationStartedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS
+        || invocationFinished || deps.isInvocationActive?.(subtaskTarget.tabId) !== false),
       onCompleted: () => closeTab("completed"),
       abort: (options) => {
+        if (invocationStarted && deps.isInvocationActive?.(subtaskTarget.tabId) === false) {
+          lostInvocationAbort.abort();
+        }
         closeTabAfterAbort ||= options?.closeTab === true;
         if (aborted) {
           if (settled && closeTabAfterAbort) {
@@ -530,10 +542,16 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           const root = executionRoot as { cwd?: string; dispose: () => void } | null;
           promptInput.executionCwd = root?.cwd;
           promptInput.isolateProjectInstructions = Boolean(root);
-          return runInvocation(promptInput, subtaskTarget, "subtask", {
-            isAborted: () => aborted,
-            signal: preparationAbort.signal,
-          });
+          try {
+            return await runInvocation(promptInput, subtaskTarget, "subtask", {
+              isAborted: () => aborted,
+              signal: preparationAbort.signal,
+              lostInvocationSignal: lostInvocationAbort.signal,
+              onStarted: () => { invocationStarted = true; invocationStartedAt = now(); },
+            });
+          } finally {
+            invocationFinished = true;
+          }
         },
       );
       if (!rootResult.ok) {
@@ -582,6 +600,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         acceptanceLimit: deps.acceptanceLimit,
         delay: deps.delay,
         now,
+        hasActiveSubtasks: deps.hasActiveSubtasks,
         readTask: deps.readTask,
         createTask: (input) => {
           const task = deps.createTask(input);

@@ -94,6 +94,7 @@ export function createLoopPlusRuntimeFixture(options: {
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
   beforeRun?: (input: PromptRunInput) => Promise<void>;
+  isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
@@ -254,6 +255,7 @@ export function createLoopPlusRuntimeFixture(options: {
   }
 
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+    isInvocationActive: options.isInvocationActive,
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,

@@ -449,6 +449,8 @@ function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRec
 }
 
 function harness(options: {
+  isAttemptActive?: () => boolean;
+  hasActiveSubtasks?: (taskId: string) => boolean;
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
   acceptanceLimit?: () => number;
@@ -488,6 +490,7 @@ function harness(options: {
   let mainCalls = 0;
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
+    hasActiveSubtasks: options.hasActiveSubtasks,
     closeSubtaskTabs: options.closeSubtaskTabs,
     maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
@@ -571,6 +574,7 @@ function harness(options: {
       return {
         promise: gate.promise,
         onCompleted: options.onAttemptCompleted,
+        isActive: options.isAttemptActive,
         abort: (abortOptions) => {
           abortedAttemptIds.push(request.attemptId);
           if (abortOptions?.closeTab === true) {
@@ -4072,4 +4076,95 @@ test("a task started without an acceptance plan falls back to the fixed baseline
   env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   assert.doesNotMatch(env.mains[0].request.modelPrompt, /Additional acceptance reviews/);
+});
+
+
+test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后仅验收一次", async () => {
+  let active = true;
+  const env = harness({ isAttemptActive: () => active, deferAttemptAbort: true });
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("lost", ["src/lost.ts"])] }));
+  await flush();
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains.length, 1);
+  active = false;
+  env.host.checkWaitingTasks();
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1].request.kind, "review");
+  const snapshot = snapshotOf(env.tasks.get(run.taskId!));
+  assert.equal(snapshot.running.length, 0);
+  assert.equal(snapshot.currentReview?.outcome, "failed");
+  assert.match(snapshot.currentReview?.detail ?? "", /不能视为成功/);
+  assert.equal(env.reports.length, 1);
+  env.attempts[0].resolve({ outcome: "completed", detail: "迟到的旧结果" });
+  await flush();
+  assert.equal(env.reports.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "failed");
+  assert.equal(env.maxMains(), 1);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("Loop+ 中断预留在没有其它活动子任务时交回主任务验收", async () => {
+  let manualRun = true;
+  const env = harness({ hasActiveSubtasks: () => manualRun });
+  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("stopped", ["src/a.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "stopped", detail: "runner interrupted" });
+  await flush();
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains.length, 1);
+  manualRun = false;
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains[1].request.kind, "review");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "failed");
+  env.host.stopParent(run.taskId!);
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.tasks.get(run.taskId!)?.status, "stopped");
+  await run.done;
+});
+
+test("Loop+ 巡检不复活暂停、等待澄清、失败上限和已完成任务", async () => {
+  for (const state of ["needs-review", "error", "stopped", "completed", "clarification", "failure-limit"] as const) {
+    const env = harness({ isAttemptActive: () => false });
+    const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("work", ["src/a.ts"])] }));
+    await flush();
+    const task = env.tasks.get(run.taskId!)!;
+    if (state === "clarification") task.pendingClarification = { interactionId: "pending" } as never;
+    else if (state === "failure-limit") task.mainAiFailureLimitReached = true;
+    else task.status = state;
+    env.host.checkWaitingTasks();
+    await flush();
+    assert.equal(env.mains.length, 1, state);
+    assert.equal(env.reports.length, 0, state);
+    env.host.stopParent(run.taskId!);
+  }
+});
+
+test("Loop+ 同次巡检的多个失联子任务合并为一轮验收", async () => {
+  const env = harness({ isAttemptActive: () => false, deferAttemptAbort: true });
+  const run = env.host.tryRun({ displayPrompt: "并行实现功能" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("A", ["src/a.ts"]), subtask("B", ["src/b.ts"])] }));
+  await flush();
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1].request.reviewEventIds?.length, 2);
+  assert.equal(env.reports.length, 2);
+  assert.equal(env.maxMains(), 1);
+  env.host.stopParent(run.taskId!);
+  await run.done;
 });

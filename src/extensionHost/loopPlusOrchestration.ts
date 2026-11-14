@@ -176,6 +176,8 @@ export type LoopPlusAttemptHandle = {
   abort: (options?: LoopPlusAttemptAbortOptions) => void;
   /** Successful report acknowledged and optional session compaction settled. */
   onCompleted?: () => Promise<void>;
+  /** 准备和收尾仍算活动；已启动调用则以宿主执行所有权为准。 */
+  isActive?: () => boolean;
 };
 
 export type LoopPlusOrchestrationDeps = {
@@ -187,6 +189,7 @@ export type LoopPlusOrchestrationDeps = {
   acceptanceLimit?: () => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
+  hasActiveSubtasks?: (taskId: string) => boolean;
   readTask: (taskId: string) => LoopTaskRecord | null;
   createTask: (input: {
     cli: LoopPlusPromptTarget["cli"];
@@ -239,6 +242,7 @@ type InFlightAttempt = {
   attemptId: string;
   abort: (options?: LoopPlusAttemptAbortOptions) => void;
   settled: boolean;
+  isActive?: () => boolean;
 };
 
 type MainStep = {
@@ -284,6 +288,7 @@ type ParentRuntime = {
   /** 群聊修改验收方案时递增；进行中的验收据此丢弃旧提示并重问。 */
   acceptancePlanEpoch: number;
   pumpRequested: boolean;
+  recoveringWait: boolean;
   released: boolean;
   decomposing: boolean;
   completionPatch: Partial<LoopTaskRecord> | null;
@@ -491,6 +496,57 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && !runtime.scheduler.snapshot().parentStopped).map((runtime) => runtime.taskId);
   }
 
+  function checkWaitingTasks(): void {
+    for (const runtime of runtimes.values()) {
+      try {
+        const snapshot = runtime.scheduler.snapshot();
+        const task = deps.readTask(runtime.taskId);
+        if (!task || task.status !== "running" || task.pendingClarification || isLoopMainAiFailureLimitReached(task)
+          || runtime.released || runtime.autoPaused || runtime.stopRequested || runtime.stopping
+          || snapshot.completed || snapshot.parentStopped || runtime.currentMain || runtime.consumer
+          || runtime.launching.size > 0 || deps.hasActiveSubtasks?.(runtime.taskId)) continue;
+        if (snapshot.running.some((record) => {
+          const attempt = runtime.attempts.get(record.attemptId);
+          return attempt && !attempt.settled && (attempt.isActive?.() ?? true);
+        })) continue;
+        runtime.recoveringWait = true;
+        try {
+          for (const record of snapshot.running) {
+            const attempt = runtime.attempts.get(record.attemptId);
+            if (attempt) {
+              attempt.settled = true;
+              try {
+                attempt.abort();
+              } catch (error) {
+                deps.log?.("loop-plus-wait-watchdog-abort-failed", { taskId: runtime.taskId, attemptId: record.attemptId, error: errorText(error) });
+              }
+            }
+            safeApplyFinish(runtime, {
+              subtaskId: record.subtaskId,
+              attemptId: record.attemptId,
+              outcome: "failed",
+              detail: "定时检查发现子任务已无执行进程或完成回报，现有产物需要主任务验收，不能视为成功。",
+            });
+          }
+        } finally {
+          runtime.recoveringWait = false;
+        }
+        if (runtime.autoPaused || runtime.stopRequested || runtime.released) continue;
+        const promoted = runtime.scheduler.promotePending();
+        launchAll(runtime, promoted.started);
+        const current = runtime.scheduler.snapshot();
+        if (current.running.length === 0 && current.pending.length === 0) {
+          runtime.closeoutBudget = Math.max(runtime.closeoutBudget, 1);
+        }
+        persist(runtime);
+        deps.log?.("loop-plus-wait-watchdog-recovered", { taskId: runtime.taskId, lostAttempts: snapshot.running.length });
+        if (hasReview(runtime) || hasUserMessages(runtime) || runtime.closeoutBudget > 0) requestPump(runtime);
+      } catch (error) {
+        deps.log?.("loop-plus-wait-watchdog-check-failed", { taskId: runtime.taskId, error: errorText(error) });
+      }
+    }
+  }
+
   function reportAttempt(
     taskId: string,
     input: { subtaskId: string; attemptId: string; outcome: LoopPlusExecutionOutcome; detail?: string | null },
@@ -620,6 +676,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       mainGeneration: 0,
       acceptancePlanEpoch: 0,
       pumpRequested: false,
+      recoveringWait: false,
       released: false,
       decomposing: false,
       completionPatch: null,
@@ -819,7 +876,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function pump(runtime: ParentRuntime): void {
-    if (runtime.released || runtime.consumer || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
+    if (runtime.released || runtime.consumer || runtime.recoveringWait || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
       return;
     }
     runtime.pumpRequested = false;
@@ -1688,6 +1745,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         attemptId: record.attemptId,
         abort: handle.abort,
         settled: false,
+        isActive: handle.isActive,
       };
       runtime.attempts.set(record.attemptId, inFlight);
       void handle.promise.then((result) => {
@@ -2687,6 +2745,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   return {
+    checkWaitingTasks,
     tryRun,
     stopParent,
     notifySubtaskContinuation,

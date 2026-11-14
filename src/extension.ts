@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
 import { closeLoopSubtaskConversationTabs, prepareLoopSubtaskConversationTabClose } from "./extensionHost/loopSubtaskTabs";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
@@ -621,6 +622,10 @@ export function activate(context: vscode.ExtensionContext): void {
   }
   startTempCleanup(context);
   startHistoryArtifactRetentionCleanup(context);
+  context.subscriptions.push(new vscode.Disposable(startLoopWaitWatchdog([
+    () => { if (!isExtensionDeactivating) loopOrchestrationHost?.checkWaitingTasks(); },
+    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingTasks(); },
+  ], (error) => { void logError("loop-wait-watchdog-failed", { error: errorToMessage(error) }); })));
   startConfigHeartbeat(context);
   void refreshCliInstallStatuses();
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -1560,6 +1565,8 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
 }
 
 const promptRunRuntimeHost = createPromptRunRuntimeHost({
+  resumeWaitingClassicBatch: (taskId) => requireLoopOrchestrationHost().resumeWaitingBatch(taskId)
+    || loopOrchestrationOwnership.getCount(taskId) > 0,
   decisionSubtaskMax: () => getGlobalLoopPlusDecisionSubtaskMax(),
   getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopGroupChatMessageAction: (taskId, round) => buildLoopGroupChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId), prepareSubtaskTabClose: prepareLoopSubtaskTabClose, handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
@@ -1592,6 +1599,8 @@ const sessionTabsHost = createExtensionSessionTabsHost({
 const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
+  isTabRunActive,
+  hasActiveSubtasks: hasActiveLoopSubtasks,
   decisionSubtaskMax: () => getGlobalLoopPlusDecisionSubtaskMax(),
   getActiveConfigIdForCli,
   appendLoopRound,
@@ -2822,7 +2831,9 @@ const loopModelSwitchResumeCoordinator = createLoopModelSwitchResumeCoordinator(
   updateTask: updateLoopTaskRecord,
   resumeEventDrivenSubtasks: (taskId) => getLoopPlusOrchestrationHost().resumeInterruptedSubtasks(taskId),
   hasClassicController: (taskId) => loopOrchestrationOwnership.getCount(taskId) > 0,
-  waitForClassicIdle: (taskId) => loopOrchestrationOwnership.waitForIdle(taskId),
+  waitForClassicIdle: async (taskId) => {
+    if (!requireLoopOrchestrationHost().resumeWaitingBatch(taskId)) await loopOrchestrationOwnership.waitForIdle(taskId);
+  },
   isSubtaskRunning: (taskId, subtaskId) => {
     if (requireLoopOrchestrationHost().isSubtaskRunning(taskId, subtaskId)) return true;
     return ensureConversationTabs().tabs.some((tab) => {
@@ -3212,6 +3223,14 @@ function isTabRunActive(tabId: string | null): boolean {
     return true;
   }
   return getPrimaryRunTabId() === tabId;
+}
+
+function hasActiveLoopSubtasks(taskId: string): boolean {
+  return ensureConversationTabs().tabs.some((tab) => {
+    if (!isTabRunActive(tab.id)) return false;
+    const context = resolveConversationTabLoopContext(tab);
+    return context.taskRole === "subtask" && context.loopTaskId === taskId;
+  });
 }
 
 function resolveLoopConversationTabContextFromParallelRun(
@@ -3856,6 +3875,8 @@ function persistLoopPlusTaskUpdate(taskId: string, patch: Partial<LoopTaskRecord
 function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAdapter> {
   if (!loopPlusRuntimeAdapter) {
     loopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+      isInvocationActive: (tabId) => isTabRunActive(tabId),
+      hasActiveSubtasks: hasActiveLoopSubtasks,
       getActiveConfigIdForCli,
       decisionSubtaskMax: () => getGlobalLoopPlusDecisionSubtaskMax(),
       acceptanceLimit: () => getGlobalLoopPlusMaxAcceptances(),
@@ -4553,7 +4574,7 @@ async function runLoopPromptOrchestration(
       subtasks,
     });
     const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
-    if (interrupted) {
+    if (interrupted && !interrupted.watchdogRecovered) {
       appendSystemMessageForLoop(
         target,
         interrupted.status === "stopped"
@@ -4567,7 +4588,7 @@ async function runLoopPromptOrchestration(
     if (nextMainRound <= decisionRunResult.task.maxRounds) {
       appendSystemMessageForLoop(
         target,
-        buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtasks)
+        buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask))
       );
     }
     round = nextMainRound;

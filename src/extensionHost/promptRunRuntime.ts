@@ -303,6 +303,7 @@ export type PromptRunRuntimeHostDeps = {
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
   prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   handleLoopPlusSubtaskContinuation?: (context: LoopSubtaskConversationContext, tabId: string) => Promise<void>;
+  resumeWaitingClassicBatch?: (taskId: string) => boolean;
   stopLoopPlusParent?: (taskId: string) => void;
 };
 
@@ -1316,6 +1317,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
   ) {
     return;
   }
+
+  if (deps.resumeWaitingClassicBatch?.(latestTask.id)) return;
 
   const mainTarget = resolveLoopMainPromptTarget(latestTask);
   if (!mainTarget || isTabRunActive(mainTarget.tabId) || wakingLoopMainTasks.has(latestTask.id)) {
