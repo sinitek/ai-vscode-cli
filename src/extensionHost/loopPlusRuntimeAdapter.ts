@@ -338,7 +338,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     promptInput: PromptRunInput,
     target: LoopPlusPromptTarget,
     role: "main" | "subtask",
-    options: { isAborted: () => boolean; onStarted?: () => void },
+    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal },
   ): Promise<AttemptExecution> {
     const boundary = captureBoundary(target);
     const query: LoopPlusInvocationQuery = {
@@ -354,12 +354,37 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         completedRun = run;
       }
     });
+    let removePreparationAbort: (() => void) | undefined;
     try {
-      await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
+      if (options.signal) {
+        const signal = options.signal;
+        signal.throwIfAborted();
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = (): void => { reject(signal.reason); };
+          removePreparationAbort = () => signal.removeEventListener("abort", onAbort);
+          signal.addEventListener("abort", onAbort, { once: true });
+          // Preparation may outlive a closed tab. Its late return must still
+          // observe isAborted before dispatching; an actual runner must settle.
+          Promise.resolve().then(() => {
+            signal.throwIfAborted();
+            return deps.runPrompt(promptInput, {
+              targetTabId: target.tabId,
+              isAborted: options.isAborted,
+              onStarted: () => {
+                removePreparationAbort?.();
+                options.onStarted?.();
+              },
+            });
+          }).then(resolve, reject);
+        });
+      } else {
+        await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
+      }
       return { thrown: false, error: null, completedRun, boundary, promptInput, target };
     } catch (error) {
       return { thrown: true, error, completedRun, boundary, promptInput, target };
     } finally {
+      removePreparationAbort?.();
       unsubscribe?.();
     }
   }
@@ -413,6 +438,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
     let closeTabAfterAbort = false;
+    const preparationAbort = new AbortController();
     let settled = false;
     let tabClosePromise: Promise<void> | null = null;
     let preparedClose: (() => Promise<void>) | undefined;
@@ -424,6 +450,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       try {
         const result = await withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
           taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
+          signal: preparationAbort.signal,
         });
         if (result.outcome === "completed") {
           try {
@@ -433,6 +460,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           }
         }
         return result;
+      } catch (error) {
+        if (aborted) {
+          return { outcome: "stopped", detail: "stopped" };
+        }
+        throw error;
       } finally {
         settled = true;
         if (closeTabAfterAbort) {
@@ -453,6 +485,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }
         persistSession();
         aborted = true;
+        preparationAbort.abort();
         deps.cancelInvocation(subtaskTarget.tabId);
         if (settled && closeTabAfterAbort) {
           void closeTab("main-abort");
@@ -499,6 +532,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           promptInput.isolateProjectInstructions = Boolean(root);
           return runInvocation(promptInput, subtaskTarget, "subtask", {
             isAborted: () => aborted,
+            signal: preparationAbort.signal,
           });
         },
       );

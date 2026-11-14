@@ -40,6 +40,20 @@ test("identifies command startup ENOENT without treating ordinary file errors or
   }
 });
 
+test("识别 Codex shell 启动的 command-not-found，不把工具正文或普通退出误判为命令缺失", () => {
+  const message = "Codex app-server 异常退出（code 127）：zsh:1: command not found: codex\n";
+  assert.equal(isCliCommandRepairableError(new Error(message)), true);
+  assert.equal(isCliCommandRepairableError(message), true);
+  for (const error of [
+    new Error("Codex app-server 异常退出（code 127）：missing shared library"),
+    new Error("Codex app-server 异常退出（code 1）：command not found: codex"),
+    new Error("工具执行失败：zsh:1: command not found: rg"),
+    Object.assign(new Error(message), { name: "AbortError" }),
+  ]) {
+    assert.equal(isCliCommandRepairableError(error), false);
+  }
+});
+
 function setCommandRepairEnvironment(homeDir: string): () => void {
   const original: CommandRepairEnvironment = {
     HOME: process.env.HOME,

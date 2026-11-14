@@ -74,6 +74,14 @@ test("stops after the single fresh-session retry even when the same error repeat
   assert.equal(harness.events.filter((event) => event === "repair").length, 1);
 });
 
+test("Codex shell 启动缺命令也只修复并重放一次原任务", async () => {
+  const failure = new Error("Codex app-server 异常退出（code 127）：zsh:1: command not found: codex");
+  const harness = createHarness({ failures: [failure, failure] });
+  await assert.rejects(harness.controller.run(harness.input, harness.target, harness.ports), (error) => error === failure);
+  assert.equal(harness.executions.length, 2);
+  assert.deepEqual(harness.events, ["repair-started", "repair", "fresh-session"]);
+});
+
 test("does not repair ordinary failures, successful runs, or already retried inputs", async () => {
   for (const failure of [new Error("Authentication failed"), Object.assign(new Error("aborted"), { name: "AbortError" }), new Error("open /tmp/data ENOENT")]) {
     const harness = createHarness({ failures: [failure] });

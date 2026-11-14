@@ -1685,6 +1685,42 @@ test("restored interrupted reservations survive reconciliation and allow indepen
   assert.equal(env.mains[1].request.reviewEventId, buildLoopPlusFinishEventId("alpha", "alpha-1"));
 });
 
+test("原子任务与句柄已不存在时，显式继续结算残留预留并保留旧验收，允许重新派发", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
+  scheduler.dispatch([
+    { subtaskId: "reviewed-later", attemptId: "prior-1", writeFiles: ["src/old.ts"] },
+    { subtaskId: "missing-a", attemptId: "lost-2", writeFiles: ["src/a.ts"] },
+    { subtaskId: "missing-b", attemptId: "lost-3", writeFiles: ["src/b.ts"] },
+  ]);
+  scheduler.finish({ subtaskId: "reviewed-later", attemptId: "prior-1", outcome: "completed", detail: "原验收证据" });
+  scheduler.stopParent();
+  const task = baseTask("missing-stopped-children", scheduler.snapshot());
+  task.status = "stopped";
+  assert.deepEqual(task.subTasks, []);
+  env.tasks.set(task.id, task);
+  env.host.tryRun({ displayPrompt: "继续" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
+  await flush();
+  const snapshot = snapshotOf(env.tasks.get(task.id));
+  assert.equal(snapshot.running.length, 0);
+  assert.equal(snapshot.parentStopped, false);
+  assert.equal(env.messages.includes("loop-plus-resume-blocked"), false);
+  const events = [snapshot.currentReview!, ...snapshot.reviewQueue];
+  assert.equal(events.length, 3);
+  assert.equal(events[0].detail, "原验收证据");
+  assert.deepEqual(events.slice(1).map((item) => [item.outcome, item.detail]), [["stopped", "lost-process"], ["stopped", "lost-process"]]);
+  env.mains[0].resolve(decisionJson({
+    status: "accept", reviewEventIds: events.map((item) => item.eventId),
+    subtasks: [subtask("repair-missing", ["src/b.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0].request.subtaskId, "repair-missing");
+  assert.equal(env.tasks.get(task.id)?.status, "running");
+  env.host.stopParent(task.id);
+  await flush();
+});
+
 test("does not let a subtask continuation revive a finished attempt", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

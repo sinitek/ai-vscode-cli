@@ -20,6 +20,7 @@ const {
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
 
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { withLoopSubtaskSession } from "../../loopSubtaskSession";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 
 function longPrompt(id: string, file: string): string {
@@ -56,6 +57,128 @@ function completedDecision(reviewEventId?: string | null): string {
     requirementCoverage: [{ name: "scope", passed: true }],
   });
 }
+
+test("父任务停止能结束来源会话等待，保留停止事件且不启动 CLI", { timeout: 3000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  let release!: () => void;
+  let previous: Promise<void> | undefined;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      previous = withLoopSubtaskSession("codex", null, () => hold, {
+        taskId: input.loopTaskId!, subtaskId: "waiting-child",
+      });
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("waiting-child", "src/a.ts")] }),
+      });
+    });
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.createdSubtaskTargets.length === 1, "attempt waiting for source lease");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    assert.equal(fixture.attemptCalls.length, 0);
+    fixture.adapter.host().stopParent(taskId);
+    await running;
+    await waitForLoopPlus(() => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot().running.length === 0, "cancelled reservation settled");
+    const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+    assert.equal(snapshot.parentStopped, true);
+    assert.equal(snapshot.reviewQueue.length, 1);
+    assert.equal(snapshot.reviewQueue[0].outcome, "stopped");
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(fixture.attemptCalls.length, 0);
+    release();
+    await previous;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fixture.attemptCalls.length, 0);
+  } finally {
+    release();
+    await previous;
+    fixture.dispose();
+  }
+});
+
+test("子任务尚无 CLI 且启动准备未返回时，停止后仍能继续主任务，迟到准备不会再启动", { timeout: 3000 }, async () => {
+  let release!: () => void;
+  let preparing = false;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const fixture = createLoopPlusRuntimeFixture({ beforeRun: async (input) => {
+    if (input.taskRole === "subtask") { preparing = true; await hold; }
+  } });
+  try {
+    fixture.queueMain(async (input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("unstarted", "src/a.ts")] }),
+      });
+    });
+    const first = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => preparing, "invocation preparation");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    fixture.adapter.host().stopParent(taskId);
+    await first;
+    await waitForLoopPlus(() => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot().running.length === 0, "preparation cancelled");
+    fixture.queueMain(async (input, tabId) => {
+      assert.match(input.displayPrompt, /Prompt kind: review/);
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [] }),
+      });
+    });
+    fixture.queueMain(async (input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: completedDecision() });
+    });
+    await fixture.adapter.runEventDriven(prompt("继续"), { resumeTaskId: taskId, resumeRequested: true }, fixture.target);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.hostMessages.includes("loop-plus-resume-blocked"), false);
+    assert.equal(fixture.attemptCalls.length, 0);
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fixture.attemptCalls.length, 0);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    fixture.dispose();
+  }
+});
+
+test("等待后台压缩的 attempt 可取消，原压缩与后续会话保护继续有效", { timeout: 3000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture({ configId: "profile" });
+  const taskId = "cancel-compaction-parent";
+  const sessionId = "cancel-compaction-session";
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    fixture.saveTask({
+      id: taskId, cli: "codex", rootPrompt: "继续", status: "running", createdAt: Date.now(), updatedAt: Date.now(),
+      workspaceKey: "workspace", taskStoreFile: fixture.storeFile, sessionId: fixture.target.sessionId,
+      communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      completionRoundSummaries: [], completionRequirementCoverage: [],
+      maxRounds: 20, currentRound: 1, rounds: [], activeSubtaskId: null,
+      subTasks: [{ id: "source", title: "来源", status: "completed", executionSession: { cli: "codex", configId: "profile", sessionId } }],
+    });
+    loopSubtaskAutoCompactions.defer({
+      ...prompt(), taskRole: "subtask", loopTaskId: taskId, loopSubtaskId: "source",
+    }, { cli: "codex", tabId: "source-tab", sessionId }, () => hold);
+    loopSubtaskAutoCompactions.notify(taskId, "source", true);
+    assert.equal(fixture.readTask(taskId)?.subTasks[0]?.executionSession?.sessionId, sessionId);
+    const attempt = fixture.adapter.startAttempt({
+      taskId, subtaskId: "follow-up", continueFromSubtaskId: "source", attemptId: "follow-up-1", title: "续接",
+      prompt: longPrompt("follow-up", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(fixture.attemptCalls.length, 0);
+    attempt.abort();
+    assert.equal((await attempt.promise).outcome, "stopped");
+    assert.equal(loopSubtaskAutoCompactions.has("codex", sessionId), true);
+    assert.equal(fixture.attemptCalls.length, 0);
+    release();
+    await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    assert.equal(fixture.attemptCalls.length, 0);
+  } finally {
+    release();
+    loopSubtaskAutoCompactions.notify(taskId, "source", false);
+    await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    fixture.dispose();
+  }
+});
 
 test("冷启动后子任务完成重建编排并经真实适配器验收至父任务完成", async () => {
   const fixture = createLoopPlusRuntimeFixture();

@@ -662,7 +662,7 @@
       "name": "Loop 连续任务与验收修补复用子会话",
       "applies_to": ["plugin.loop_task", "plugin.cli_session"],
       "status": "active",
-      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。成功后先持久化并汇报主任务，再按原条件压缩子会话，最后按完成时的标签顺序及对象、CLI、会话、子任务快照清理旧 Tab；同会话直到关页结束才放行，主任务验收与独立任务不等待。压缩失败或跳过仍关页，回报失败保留 Tab；关闭未生效记录失败，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
+      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。Loop+ 可取消来源租约、后台压缩和 CLI 启动前的准备等待，结算等待者而不取消前驱或原压缩；后继仍等待前驱，迟到准备不再启动。实际调用开始后仍等待执行收尾。停止后显式继续可把无宿主句柄的预留记为 stopped/lost-process 并保留验收，原子任务或 Tab 缺失不构成永久阻塞。成功后先持久化并汇报主任务，再按原条件压缩子会话，最后按完成时的标签顺序及对象、CLI、会话、子任务快照清理旧 Tab；同会话直到关页结束才放行，主任务验收与独立任务不等待。压缩失败或跳过仍关页，回报失败保留 Tab；关闭未生效记录失败，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
       "source_refs": [
         {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"},
         {"path": "src/extensionHost/loopSubtaskTabs.ts"},
@@ -2151,7 +2151,7 @@
     {
       "id": "plugin.rule.cli_command_auto_repair",
       "name": "CLI ENOENT 自动修复写入绝对路径",
-      "description": "插件初始化时，对扩展宿主当前无法解析的各 CLI 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”在 Windows、macOS、Linux 均保留，按宿主平台展示说明，列出未解决项并保留一键修复。macOS/Linux 额外搜索 Bun、Volta 等用户目录，只接受具有执行权限的文件，跳过无执行权限文件继续查找；不自动安装 CLI。任务执行遇到启动命令 ENOENT 时复用修复，仅当命令不可用且找到可执行文件并成功写入设置，才在原任务 Tab 解除旧会话、保留历史后以新会话重放原输入一次；覆盖交互、OpenCode one-shot 与并行执行及当前所有 CLI。第二次执行关闭通用 hidden retry，修复或重试失败即停止；用户停止、目标消失、工作区变化或同 Tab 新请求替代时不重放。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
+      "description": "插件初始化时，对扩展宿主当前无法解析的各 CLI 裸命令自动执行一次修复，启动该 CLI 的任务会等待这次修复。工具设置“自动修复”在 Windows、macOS、Linux 均保留，按宿主平台展示说明，列出未解决项并保留一键修复。macOS/Linux 额外搜索 Bun、Volta 等用户目录，只接受具有执行权限的文件，跳过无执行权限文件继续查找；不自动安装 CLI。任务执行遇到启动命令 ENOENT 或 Codex app-server shell 127 缺命令时复用修复；后者即使宿主 PATH 可解析，也允许固定发现的绝对路径，普通工具正文和其它退出码不触发。找到可执行文件并成功写入不同命令后，才在原任务 Tab 解除旧会话、保留历史后以新会话重放原输入一次；覆盖交互、OpenCode one-shot 与并行执行及当前所有 CLI。第二次执行关闭通用 hidden retry，修复或重试失败即停止；用户停止、目标消失、工作区变化或同 Tab 新请求替代时不重放。Windows 修复读取用户和系统 PATH，跳过 WindowsApps 空桩，并把可执行文件绝对路径写入 sinitek-cli-tools.commands.<cli>。已配置的绝对路径不会被初始化自动改写。只存在于 WSL 或 shell profile 的命令不视为已修复。",
       "status": "active",
       "applies_to": ["plugin.local_cli", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [

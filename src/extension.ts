@@ -26,6 +26,7 @@ import {
   beginCliCommandAutoRepair,
   buildRepairedCliCommand,
   inspectUnresolvedCliCommands,
+  isCliShellCommandNotFoundError,
   locateCliExecutableForRepair,
   planUnresolvedCliCommandRepairs,
   shouldAwaitCliCommandAutoRepair,
@@ -4157,7 +4158,7 @@ function loopPlusHostMessage(message: string, taskId: string): string {
     return buildLoopPlusPauseText(task, message);
   }
   if (message === "loop-plus-resume-blocked") {
-    return t("run.loopPlusPaused", { detail: "running executions are still live" });
+    return t("run.loopPlusPaused", { detail: "上次停止的子任务仍在结束执行或等待资源释放。请等待收尾完成后再次继续；当前不会重复派发这些子任务。" });
   }
   if (message === "loop-plus-acceptance-limit") {
     return t("run.loopPlusAcceptanceLimit", loopPlusAcceptanceLimitDetail(task));
@@ -5105,15 +5106,18 @@ async function runPromptNow(
         }, t("cliRepair.taskRepairStarted", { cli: target.cli }));
         sendRunStatusForTab(target.tabId, "start", { prompt });
       },
-      repairCommand: async () => {
+      repairCommand: async (error) => {
         await waitForCliCommandAutoRepair();
         const command = getCliCommand(target.cli);
-        if (!inspectUnresolvedCliCommands({ [target.cli]: command }).some((issue) => issue.cli === target.cli)) {
+        if (!inspectUnresolvedCliCommands({ [target.cli]: command }).some((issue) => issue.cli === target.cli)
+          && !isCliShellCommandNotFoundError(error)) {
           return command !== startupCommand;
         }
         if (command !== startupCommand) {
-          return false;
+          return !inspectUnresolvedCliCommands({ [target.cli]: command }).some((issue) => issue.cli === target.cli);
         }
+        // A login shell can lose a bare command even when the host PATH resolves
+        // it. Pin the discovered executable for the single repair attempt.
         const executablePath = await locateCliExecutableForRepair(command, target.cli);
         if (!executablePath) {
           return false;
@@ -5123,6 +5127,9 @@ async function runPromptNow(
             .some((issue) => issue.cli === target.cli);
         }
         const repairedCommand = buildRepairedCliCommand(command, target.cli, executablePath);
+        if (repairedCommand === command) {
+          return false;
+        }
         await persistCliCommand(target.cli, repairedCommand);
         void logInfo("task-cli-command-auto-repaired", { cli: target.cli, tabId: target.tabId });
         return true;

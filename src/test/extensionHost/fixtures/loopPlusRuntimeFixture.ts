@@ -93,6 +93,7 @@ export function createLoopPlusRuntimeFixture(options: {
   executionRootFactory?: () => { cwd: string; dispose: () => void };
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
+  beforeRun?: (input: PromptRunInput) => Promise<void>;
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
@@ -341,6 +342,7 @@ export function createLoopPlusRuntimeFixture(options: {
       fs.appendFileSync(filePath, content, "utf8");
     },
     runPrompt: async (input, promptOptions) => {
+      await options.beforeRun?.(input);
       if (promptOptions?.isAborted?.()) {
         return;
       }

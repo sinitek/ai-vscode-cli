@@ -10,14 +10,27 @@ const REGISTRY_PATH_SEPARATOR = "---SINITEK-PATH---";
 
 export function isCliCommandRepairableError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
-    return typeof error === "string" && /\bspawn\b[^\r\n]*\bENOENT\b/i.test(error);
+    return typeof error === "string" && isCommandStartupFailure(error);
   }
   const info = error as { code?: unknown; name?: unknown; message?: unknown };
   if (info.name === "AbortError") {
     return false;
   }
   return info.code === "ENOENT"
-    || (typeof info.message === "string" && /\bspawn\b[^\r\n]*\bENOENT\b/i.test(info.message));
+    || (typeof info.message === "string" && isCommandStartupFailure(info.message));
+}
+
+function isCommandStartupFailure(message: string): boolean {
+  return /\bspawn\b[^\r\n]*\bENOENT\b/i.test(message)
+    || isCliShellCommandNotFoundError(message);
+}
+
+export function isCliShellCommandNotFoundError(error: unknown): boolean {
+  const info = error && typeof error === "object" ? error as { name?: unknown; message?: unknown } : null;
+  if (info?.name === "AbortError") return false;
+  const message = typeof error === "string" ? error : info?.message;
+  return typeof message === "string"
+    && /^Codex app-server 异常退出（code 127）：[^\r\n]*\b(?:command not found|not found)\b/i.test(message);
 }
 
 export type CliCommandRepairIssue = {

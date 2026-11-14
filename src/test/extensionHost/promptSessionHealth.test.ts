@@ -8,6 +8,7 @@ import type { CliName } from "../../cli/types";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { shouldUseClassicLoopProjectInstructions } from "../../extensionHost/promptExecutionShared";
 import { createPromptAutoRepairController } from "../../extensionHost/promptAutoRepair";
+import { isCliShellCommandNotFoundError } from "../../cli/cliCommandRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
 import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
@@ -78,6 +79,7 @@ function createHarness(options: {
     activeWorkspaceKey: "test-workspace",
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
+    isCliShellCommandNotFoundError,
     loopMainQuestionQueue: questionQueue,
     applyLoopInvocationModelRouting,
     shouldUseClassicLoopProjectInstructions,
@@ -484,6 +486,16 @@ test("an ENOENT with a usable CLI command does not repair a missing cwd or unrel
   await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), (error) => error === failure);
   assert.equal(harness.dispatched.length, 1);
   assert.equal(harness.events.includes("persist-command"), false);
+});
+
+test("宿主 PATH 可解析但登录 shell 找不到 Codex 时固定绝对路径并仅重试一次", async () => {
+  const failure = new Error("Codex app-server 异常退出（code 127）：zsh:1: command not found: codex");
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", failures: [failure], commandUnresolved: false });
+  await harness.runPrompt({ displayPrompt: "继续原任务", modelPrompt: "原始指令", contextTags: [], throwOnError: true });
+  assert.equal(harness.dispatched.length, 2);
+  assert.equal(harness.dispatched[1].input.cliCommandRepairAttempted, true);
+  assert.equal(harness.dispatched[1].target.sessionId, null);
+  assert.equal(harness.events.filter((event) => event === "persist-command").length, 1);
 });
 
 for (const cli of CLI_LIST) {
