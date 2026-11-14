@@ -23,6 +23,7 @@ type HistorySessionTaskRoleInput = {
 type HistorySessionTaskRoleCacheEntry = {
   isLoopMainSession: boolean;
   isLoopSubtaskSession: boolean;
+  messageCount: number;
   role: HistorySessionTaskRole | null;
 };
 
@@ -83,6 +84,7 @@ export function resolveHistorySessionTaskRole(
       cached
       && cached.isLoopMainSession === isLoopMainSession
       && cached.isLoopSubtaskSession === isLoopSubtaskSession
+      && cached.messageCount === messages.length
     ) {
       return cached.role;
     }
@@ -96,6 +98,7 @@ export function resolveHistorySessionTaskRole(
     historySessionTaskRoleCache.set(messages, {
       isLoopMainSession,
       isLoopSubtaskSession,
+      messageCount: messages.length,
       role,
     });
   }

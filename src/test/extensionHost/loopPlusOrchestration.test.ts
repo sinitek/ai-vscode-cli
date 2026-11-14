@@ -638,6 +638,17 @@ test("Loop+ records completion and starts main review without waiting for subtas
     env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
     await flush();
     const attempt = env.attempts[0].request;
+    let rejectedCloseCalled = false;
+    assert.equal(env.host.notifySubtaskContinuation(
+      attempt.taskId,
+      "unknown-subtask",
+      "completed",
+      "不应关页",
+      undefined,
+      async () => { rejectedCloseCalled = true; },
+    ), false);
+    await flush();
+    assert.equal(rejectedCloseCalled, false);
     if (viaContinuation) {
       env.attempts[0].resolve({ outcome: "stopped", detail: "等待人工续接" });
       await flush();
@@ -3088,6 +3099,44 @@ test("corrects contradictory completion ids and completes from the preserved acc
   retry.resolve(completedDecision({ reviewEventId: eventId }));
   await run.done;
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+});
+
+test("accepted block review clears protocol repair and gives later rejection a fresh bounded budget", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成实现" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "实现完成，外部验收环境尚不可用" });
+  await flush();
+  const taskId = run.taskId ?? "";
+  const eventId = env.mains[1].request.reviewEventId;
+  env.mains[1].resolve(completedDecision({ reviewEventId: "stale-event" }));
+  await flush();
+  assert.match(env.mains[2].request.prompt, /Loop\+ protocol correction required/);
+  env.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "外部验收环境不可用，需要恢复环境后继续核验。" }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview?.state, "pending");
+  assert.equal(env.mains[3].request.reviewEventId, eventId);
+  assert.doesNotMatch(env.mains[3].request.prompt, /Loop\+ protocol correction required|stale-event/);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.acceptanceFeedback.length, 0);
+
+  for (let index = 0; index < 3; index += 1) {
+    env.mains[3 + index].resolve(completedDecision({ reviewEventId: "another-stale-event" }));
+    await flush();
+    const snapshot = snapshotOf(env.tasks.get(taskId));
+    assert.equal(snapshot.currentReview?.eventId, eventId);
+    assert.equal(snapshot.seenAttempts[0].disposition, "finished");
+    assert.equal(env.attempts.length, 1);
+    assert.equal(env.acceptanceFeedback.length, 0);
+    assert.equal(env.tasks.get(taskId)?.status, index < 2 ? "running" : "needs-review");
+  }
+  await run.done;
+  assert.equal(env.mains.length, 6);
+  assert.deepEqual(env.logs.filter((item) => item.event === "loop-plus-protocol-miss")
+    .map((item) => (item.payload as { protocolRetries: number }).protocolRetries), [1, 1, 2, 3]);
+  assert.match(env.tasks.get(taskId)?.finalSummary ?? "", /已自动请求纠正 2 次/);
 });
 
 test("persistent protocol errors pause with the actual reason and carry repair context across explicit reload", async () => {

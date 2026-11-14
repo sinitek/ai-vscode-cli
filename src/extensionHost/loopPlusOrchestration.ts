@@ -1259,6 +1259,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     if (decision.status === "blocked" && !blockReview
       && snapshot.userMessageQueue.length <= step.userMessageCount) {
+      runtime.protocolRetries = 0;
+      runtime.protocolRepair = null;
       if (held) {
         runtime.scheduler.requeueCurrentReview();
       }

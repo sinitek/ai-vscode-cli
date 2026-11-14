@@ -422,17 +422,18 @@ test("runtime errors release the config lease rather than permanently blocking o
   assert.equal(harness.events.filter((event) => event === "release-config").length, 1);
 });
 
-test("checks the current tab session instead of the snapshot taken before waiting for compaction", async () => {
+test("rejects a rebound tab before its health check after waiting for compaction", async () => {
   const harness = createHarness({ cli: "grok", health: "abnormal", runtime: "interactive", sessionIdAfterWait: "newly-adopted-session" });
   await harness.runPrompt({ displayPrompt: "重试", modelPrompt: "重试", contextTags: [] });
-  assert.equal(harness.dispatched[0].target.sessionId, null);
-  assert.equal(harness.events.includes("dispose-old-runner"), true);
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(harness.events.includes("health-check"), false);
+  assert.equal(harness.events.includes("dispose-old-runner"), false);
 });
 
 test("does not restore an old session ID when the target was cleared while waiting", async () => {
   const harness = createHarness({ cli: "grok", health: "normal", runtime: "interactive", sessionIdAfterWait: null });
   await harness.runPrompt({ displayPrompt: "新任务", modelPrompt: "新任务", contextTags: [] });
-  assert.equal(harness.dispatched[0].target.sessionId, null);
+  assert.equal(harness.dispatched.length, 0);
   assert.equal(harness.events.includes("dispose-old-runner"), false);
 });
 
@@ -440,19 +441,42 @@ test("the unified entry waits for the current subtask session before acquiring c
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const sessions: Array<string | null> = [];
-  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", sessionIdAfterWait: "current-child-session", waitForSubtaskCompact: async (cli, sessionId) => {
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", waitForSubtaskCompact: async (cli, sessionId) => {
     assert.equal(cli, "codex");
     sessions.push(sessionId);
     await gate;
   } });
   const run = harness.runPrompt({ displayPrompt: "续接", modelPrompt: "续接", contextTags: [] });
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(sessions, ["current-child-session"]);
+  assert.deepEqual(sessions, ["previous-session"]);
   assert.equal(harness.dispatched.length, 0);
   assert.equal(harness.leasedConfigs.length, 0);
   release();
   await run;
-  assert.equal(harness.dispatched[0].target.sessionId, "current-child-session");
+  assert.equal(harness.dispatched[0].target.sessionId, "previous-session");
+});
+
+test("a target rebound during configuration preparation never dispatches on any runtime route", async () => {
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<boolean>((resolve) => { release = () => resolve(true); });
+    const h = createHarness({ cli: "codex", health: "normal", runtime,
+      waitForConfigApply: () => { entered(); return gate; } });
+    let started = false;
+    const pending = h.runPrompt({ displayPrompt: "continue", modelPrompt: "continue", contextTags: [] }, {
+      onStarted: () => { started = true; },
+    });
+    await waiting;
+    h.tabs[0].sessionId = "replacement";
+    h.tabs[0].sessionIdByCli.codex = "replacement";
+    release();
+    await pending;
+    assert.equal(h.dispatched.length, 0, runtime);
+    assert.equal(started, false, runtime);
+    assert.equal(h.events.at(-1), "release-config", runtime);
+  }
 });
 
 test("the unified entry repairs ENOENT and uses a fresh session across all execution routes", async () => {

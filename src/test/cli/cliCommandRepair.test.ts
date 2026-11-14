@@ -35,7 +35,7 @@ test("identifies command startup ENOENT without treating ordinary file errors or
   assert.equal(isCliCommandRepairableError(Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" })), true);
   assert.equal(isCliCommandRepairableError(new Error("spawn C:\\Tools\\codex.exe ENOENT")), true);
   assert.equal(isCliCommandRepairableError("spawn claude ENOENT"), true);
-  for (const error of [null, undefined, "open data.json ENOENT", new Error("ENOENT while reading configuration"), new Error("HTTP 401"), Object.assign(new Error("spawn codex ENOENT"), { name: "AbortError" })]) {
+  for (const error of [null, undefined, "open data.json ENOENT", new Error("ENOENT while reading configuration"), Object.assign(new Error("open data.json ENOENT"), { code: "ENOENT", syscall: "open" }), new Error("HTTP 401"), Object.assign(new Error("spawn codex ENOENT"), { name: "AbortError" })]) {
     assert.equal(isCliCommandRepairableError(error), false);
   }
 });

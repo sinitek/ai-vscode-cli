@@ -496,6 +496,31 @@ test("an aborted Loop question does not start after asynchronous runtime prepara
   assert.equal(harness.activeRunsByTabId.size, 0);
 });
 
+test("interactive preparation cannot start a closed, replaced or rebound target", async () => {
+  for (const change of ["closed", "object", "cli", "session", "mapped-session", "workspace"] as const) {
+    const preparing = createDeferred();
+    const release = createDeferred();
+    let workspace = "original";
+    const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+      getWorkspaceKey: () => workspace,
+      readRuntimeConfigFingerprint: async () => { preparing.resolve(); await release.promise; return "identity"; },
+    } });
+    const pending = h.host.runPromptInteractive(createPromptInput(), createTarget());
+    await preparing.promise;
+    const tab = h.tabs.get("tab-1")!;
+    if (change === "closed") h.tabs.delete(tab.id);
+    if (change === "object") h.tabs.set(tab.id, { ...tab });
+    if (change === "cli") tab.cli = "claude";
+    if (change === "session") tab.sessionId = "another";
+    if (change === "mapped-session") tab.sessionIdByCli.codex = "another";
+    if (change === "workspace") workspace = "changed";
+    release.resolve();
+    await pending;
+    assert.equal(h.codexRunnerCreateCalls, 0, change);
+    assert.deepEqual(h.runStatusEvents, [], change);
+  }
+});
+
 test("a replaced Claude tab cannot publish late session or task-list updates", async () => {
   const started = createDeferred();
   const finish = createDeferred();

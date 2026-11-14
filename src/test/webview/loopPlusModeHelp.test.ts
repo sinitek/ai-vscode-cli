@@ -4,11 +4,11 @@ import { test } from "node:test";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
-function buildHtml(): string {
+function buildHtml(helpModesMarkdown: string = WEBVIEW_STRINGS.helpModesMarkdown): string {
   return buildWebviewStaticHtml({
     cspSource: "vscode-resource://test-authority",
     nonce: "loop-plus-help-nonce",
-    i18n: getWebviewStrings(),
+    i18n: { ...getWebviewStrings(), helpModesMarkdown },
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -59,6 +59,24 @@ test("将中文模式说明的 Markdown 渲染为两列表格", () => {
   ]);
   assert.doesNotMatch(chinese, /<ul>|<li>|\| ---/);
   assert.match(chinese, /<\/table>\s*<p><a href="https:\/\/www\.yuque\.com\/hunjfang\/ul749m\/pkxei0ie9gc8bmim\?singleDoc#">《携宁 CLI 助手 - 教程》：点击进入详细教程<\/a><\/p>/);
+  assert.doesNotMatch(chinese, /\[object Promise\]|undefined/);
+});
+
+test("帮助 Markdown 将原始 HTML 转为文本并拒绝可执行链接", () => {
+  const panel = helpModesPanel(buildHtml([
+    '<img src="x" onerror="alert(1)">',
+    '<script>alert(1)</script>',
+    '[不安全](javascript:alert%281%29)',
+    '[编码协议](jav&#x61;script:alert%281%29)',
+    '[教程](https://example.com/guide?first=1&second=2 "教程说明")',
+  ].join("\n\n")));
+
+  assert.match(panel, /&lt;img src=&quot;x&quot; onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(panel, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(panel, /<img|<script|href="(?:javascript|jav&#x61;script):/i);
+  assert.match(panel, /<p>不安全<\/p>/);
+  assert.match(panel, /<p>编码协议<\/p>/);
+  assert.match(panel, /<a href="https:\/\/example\.com\/guide\?first=1&amp;second=2" title="教程说明">教程<\/a>/);
 });
 
 test("使用说明仅保留模式说明，通知授权和四个默认开启的开关位于工具设置", () => {

@@ -510,6 +510,26 @@ test("concatenates all static style modules and keeps key selectors available", 
   ]);
 });
 
+test("help table and tutorial wrap within the compact modal and retain themed link states", () => {
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-modal\s*\{[^}]*width:\s*min\(640px, 90vw\);/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section\s*\{[^}]*overflow-wrap:\s*anywhere;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section table\s*\{[^}]*width:\s*100%;[^}]*table-layout:\s*fixed;[^}]*margin-bottom:\s*16px;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section th,\s*\.help-section td\s*\{[^}]*padding:\s*12px;[^}]*overflow-wrap:\s*anywhere;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section th:first-child,\s*\.help-section td:first-child\s*\{[^}]*width:\s*100px;/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section a\s*\{[^}]*color:\s*var\(--vscode-textLink-foreground\);/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section a:hover\s*\{[^}]*color:\s*var\(--vscode-textLink-activeForeground, var\(--vscode-textLink-foreground\)\);/);
+  assert.match(OVERLAYS_MODALS_STYLES, /\.help-section a:focus-visible\s*\{[^}]*outline:\s*1px solid var\(--vscode-focusBorder\);[^}]*outline-offset:\s*2px;/);
+  for (const selector of ["session-label", "prompt-preview"]) {
+    const rule = OVERLAYS_MODALS_STYLES.match(new RegExp(`\\.${selector}\\s*\\{([^}]*)\\}`))?.[1];
+    assert.ok(rule);
+    assert.match(rule, /font-size:\s*inherit;/);
+    assert.match(rule, /font-weight:\s*400;/);
+    assert.match(rule, /-webkit-line-clamp:\s*3;/);
+    assert.match(rule, /overflow-wrap:\s*anywhere;/);
+    assert.match(rule, /line-height:\s*1\.5;/);
+  }
+});
+
 test("reuses the AI chat interactive mode select for scheduled tasks", () => {
   const html = buildHtml();
   assert.match(

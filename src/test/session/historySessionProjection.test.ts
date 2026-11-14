@@ -6,14 +6,14 @@ import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs"
 import type { SessionStore } from "../../sessionStore";
 import type { ChatMessage } from "../../webview/types";
 
-function projectSession(options: { sessionId: string; loopTasks?: unknown[]; messages?: ChatMessage[] }) {
+function projectSession(options: { sessionId: string; loopTasks?: unknown[]; messages?: ChatMessage[]; missingFirstPrompt?: boolean }) {
   const store = createCliRecord(() => ({ currentId: null, sessions: [] })) as SessionStore;
   store.codex.sessions.push({
     id: options.sessionId,
     label: "Codex · 2026-11-13 · You are the Loop+ main reviewer.",
     createdAt: 1,
     lastUsedAt: 2,
-    firstPrompt: "You are the Loop+ main reviewer. Review the task.",
+    firstPrompt: options.missingFirstPrompt ? undefined : "You are the Loop+ main reviewer. Review the task.",
   });
   const host = createExtensionSessionTabsHost({
     getSessionTabsController: () => ({ buildOpenConversationTabSessionMap: () => new Map() }),
@@ -74,4 +74,28 @@ test("does not expose an orphaned internal reviewer prompt", () => {
   assert.equal(session.firstPrompt, undefined);
   assert.equal(session.label, "未命名会话");
   assert.equal(session.taskRole, null);
+});
+
+test("filters a protocol prompt recovered from messages on the first projection", () => {
+  for (const bound of [false, true]) {
+    const session = projectSession({
+      sessionId: "child", missingFirstPrompt: true,
+      loopTasks: bound ? [{ id: "parent", cli: "codex", sessionId: "main", rootPrompt: "parent request",
+        subTasks: [{ id: "sub", prompt: "child request", executionSession: { cli: "codex", sessionId: "child" } }] }] : [],
+      messages: [{ id: "protocol", role: "user", content: "You are the Loop+ main reviewer.", taskRole: "main", loopTaskId: "parent" }],
+    });
+    assert.equal(session.firstPrompt, bound ? "child request" : undefined);
+    if (!bound) assert.equal(session.label, "未命名会话");
+    assert.equal(session.taskRole, bound ? "subtask" : "main");
+  }
+});
+
+test("history bindings with the same session ID in another CLI do not assign a child role or prompt", () => {
+  const session = projectSession({ sessionId: "shared", loopTasks: [{
+    id: "parent", cli: "claude", sessionId: "shared", rootPrompt: "other main",
+    subTasks: [{ id: "sub", prompt: "other child", executionSession: { cli: "claude", sessionId: "shared" } }],
+  }] });
+  assert.equal(session.firstPrompt, undefined);
+  assert.equal(session.taskRole, null);
+  assert.equal(session.isLoopSession, false);
 });

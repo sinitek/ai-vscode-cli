@@ -754,6 +754,9 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         width: min(640px, 90vw);
       }
 ${getMarkdownStyles(".help-section")}
+      .help-section {
+        overflow-wrap: anywhere;
+      }
       .help-section table {
         width: 100%;
         table-layout: fixed;
@@ -768,6 +771,7 @@ ${getMarkdownStyles(".help-section")}
       }
       .help-section th:first-child,
       .help-section td:first-child {
+        box-sizing: border-box;
         width: 100px;
       }
       .help-section a {

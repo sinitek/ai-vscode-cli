@@ -739,6 +739,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          '"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span></div></article>';
 	      }
 
+	      function updateAskAnimationVisibility() {
+	        if (askChatBackdrop) {
+	          askChatBackdrop.classList.toggle("page-hidden", document.visibilityState !== "visible");
+	        }
+	      }
+
 	      function scrollAskToBottom() {
 	        if (askDialogOpen && askChatMessages) {
 	          askChatMessages.scrollTop = askChatMessages.scrollHeight;
@@ -1390,6 +1396,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }, { passive: true });
 	      }
 	      document.addEventListener("visibilitychange", () => {
+	        updateAskAnimationVisibility();
+	      });
+	      document.addEventListener("visibilitychange", () => {
 	        if (shouldAutoRefresh()) {
 	          requestRefresh();
 	        }
@@ -1407,6 +1416,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
+	      updateAskAnimationVisibility();
           mountGroupChatMarkdown(document);
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}

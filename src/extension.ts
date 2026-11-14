@@ -1728,6 +1728,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   AI_TASK_RAW_OUTPUT_MAX_BYTES,
   activeRunsByTabId: interactiveRunsByTabId,
   takeOverSessionForTab,
+  getWorkspaceKey: () => activeWorkspaceKey,
   adoptSessionId,
   applyProcessTitle,
   applyThinkingWorkspaceFiles,
@@ -4894,8 +4895,14 @@ async function runPromptNow(
     return;
   }
   const targetTab = getConversationTabById(target.tabId);
-  if (!await takeOverSessionForTab(target, options.isAborted)
-    || getConversationTabById(target.tabId) !== targetTab) {
+  const executionWorkspaceKey = activeWorkspaceKey;
+  let preparingSessionId = targetTab ? getConversationTabSessionIdForCli(targetTab, target.cli) : null;
+  const isPreparationAborted = (): boolean => isExtensionDeactivating || options.isAborted?.() === true
+    || activeWorkspaceKey !== executionWorkspaceKey
+    || !targetTab || getConversationTabById(target.tabId) !== targetTab
+    || targetTab.cli !== target.cli
+    || getConversationTabSessionIdForCli(targetTab, target.cli) !== preparingSessionId;
+  if (!await takeOverSessionForTab(target, isPreparationAborted) || isPreparationAborted()) {
     return;
   }
   const summarySubmissionTab = getConversationTabById(target.tabId);
@@ -4911,10 +4918,11 @@ async function runPromptNow(
   }
 
   await loopMainAutoCompactFlights.wait(target.tabId);
+  if (isPreparationAborted()) return;
   const compactWaitTab = getConversationTabById(target.tabId);
   await loopSubtaskAutoCompactions.wait(target.cli, compactWaitTab ? getConversationTabSessionIdForCli(compactWaitTab, target.cli) : null);
 
-  if (isExtensionDeactivating || options.isAborted?.()) {
+  if (isPreparationAborted()) {
     return;
   }
   if (isTabRunActive(target.tabId)) {
@@ -4929,6 +4937,7 @@ async function runPromptNow(
   const currentSummaryTask = Boolean(summarySubmission && activeWorkspaceKey === summarySubmission.workspace
     && currentTab === summarySubmissionTab);
   target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
+  preparingSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
   if (previousSessionId && target.sessionId !== previousSessionId) {
     disposeInteractiveRunnerIfUnused({ cli: target.cli, sessionId: previousSessionId });
     await postPanelState();
@@ -4964,6 +4973,7 @@ async function runPromptNow(
     }
   }
 
+  if (isPreparationAborted()) return;
   const useClassicLoopProjectInstructions = shouldUseClassicLoopProjectInstructions(
     input,
     input.taskRole === "subtask" && input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null,
@@ -4975,13 +4985,9 @@ async function runPromptNow(
       })()
     : null;
   const shouldUseInteractive = isInteractiveSupported(target.cli);
-  const executionWorkspaceKey = activeWorkspaceKey;
   try {
     const executionOptions = {
-      isAborted: () => isExtensionDeactivating || options.isAborted?.() === true
-        || activeWorkspaceKey !== executionWorkspaceKey
-        || getConversationTabById(target.tabId) !== currentTab
-        || currentTab.cli !== target.cli,
+      isAborted: isPreparationAborted,
       cwd: useClassicLoopProjectInstructions ? resolveWorkspaceCwd() : input.executionCwd ?? subtaskExecutionRoot?.cwd,
       isolateProjectInstructions: useClassicLoopProjectInstructions
         ? false
@@ -5051,7 +5057,7 @@ async function runPromptNow(
           throw error;
         }
         try {
-          if (isExtensionDeactivating || options.isAborted?.()) {
+          if (executionOptions.isAborted()) {
             return;
           }
           options.onStarted?.();
@@ -5095,9 +5101,7 @@ async function runPromptNow(
           }
         }
       },
-      isTargetCurrent: () => !isExtensionDeactivating && !options.isAborted?.()
-        && activeWorkspaceKey === workspaceKey
-        && getConversationTabById(target.tabId)?.cli === target.cli,
+      isTargetCurrent: () => !isPreparationAborted() && activeWorkspaceKey === workspaceKey,
       onRepairStarted: () => {
         const tab = getConversationTabById(target.tabId);
         appendSystemMessageForPromptTarget({
@@ -5141,6 +5145,7 @@ async function runPromptNow(
         }
         const failedSessionId = getConversationTabSessionIdForCli(tab, target.cli);
         sessionLifecycleController.prepareSessionForPromptRun(target.cli, failedSessionId, target.tabId, { forceNewSession: true });
+        preparingSessionId = getConversationTabSessionIdForCli(tab, target.cli);
         if (failedSessionId) {
           disposeInteractiveRunnerIfUnused({ cli: target.cli, sessionId: failedSessionId });
         }

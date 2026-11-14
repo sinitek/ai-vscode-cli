@@ -198,17 +198,21 @@ ${DIALOG_SHELL_STYLES}
         font-size: 12px;
         line-height: 1.5;
       }
+      .ask-chat-queued > span:last-child {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .ask-chat-backdrop .ask-chat-queued .typing-dots span {
+        animation-play-state: paused;
+      }
+      .ask-chat-backdrop.visible:not(.page-hidden) .ask-chat-queued .typing-dots span {
+        animation-play-state: running;
+      }
       .ask-chat-queued .typing-dots {
         flex-shrink: 0;
       }
-      .ask-chat-queued .typing-dots span {
-        animation-play-state: paused;
-      }
-      .ask-chat-backdrop.visible .ask-chat-queued .typing-dots span {
-        animation-play-state: running;
-      }
       @media (prefers-reduced-motion: reduce) {
-        .ask-chat-queued .typing-dots span {
+        .ask-chat-backdrop .ask-chat-queued .typing-dots span {
           animation: none;
         }
       }

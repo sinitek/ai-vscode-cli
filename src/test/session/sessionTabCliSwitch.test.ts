@@ -337,22 +337,26 @@ test("subtask cleanup supports an explicit tab without metadata and propagates c
 
 test("压缩后的关页仅清理完成时快照，保护新增及换绑标签", async () => {
   const context = { taskId: "task", subtaskId: "child", tabId: "completed-sub" };
-  for (const change of ["new-tab", "session", "object", "context"] as const) {
+  for (const change of ["new-tab", "cli", "session", "object", "task", "context"] as const) {
     const tabs: ConversationTabRecord[] = ["old-sub", "completed-sub"].map((id) => ({
       id, cli: "codex", sessionId: "session", sessionIdByCli: { codex: "session" }, createdAt: 1,
     }));
     const closed: string[] = [];
-    let changedContext = false;
     const close = prepareLoopSubtaskConversationTabClose(context, {
       getTabs: () => tabs,
-      resolveContext: (tab) => changedContext && tab.id === "completed-sub" ? { ...context, subtaskId: "replacement" } : context,
+      resolveContext: (tab) => {
+        if (tab.id !== "completed-sub") return context;
+        if (change === "task") return { ...context, taskId: "replacement-task" };
+        if (change === "context") return { ...context, subtaskId: "replacement" };
+        return context;
+      },
       isTabRunActive: () => false,
       closeTab: async (id) => { closed.push(id); tabs.splice(tabs.findIndex((tab) => tab.id === id), 1); },
     });
     if (change === "new-tab") tabs.push({ ...tabs[1], id: "replacement-sub" });
+    if (change === "cli") tabs[1].cli = "claude";
     if (change === "session") tabs[1].sessionIdByCli.codex = "new-session";
     if (change === "object") tabs[1] = { ...tabs[1] };
-    if (change === "context") changedContext = true;
     await close();
     assert.deepEqual(closed, change === "new-tab" ? ["old-sub", "completed-sub"] : ["old-sub"], change);
   }

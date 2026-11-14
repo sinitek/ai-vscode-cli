@@ -91,3 +91,60 @@ test("concurrent preparation cannot resurrect the tab removed by another takeove
   assert.deepEqual(result, [true, false]);
   assert.deepEqual(h.tabs.map((item) => item.id), ["new"]);
 });
+
+test("a stale stored binding cannot stop a runner executing another CLI or session", async () => {
+  for (const run of [{ ...target, tabId: "old", cli: "claude" as const },
+    { ...target, tabId: "old", sessionId: "different" }]) {
+    const h = harness([tab("old"), tab("new")], [run]);
+    assert.equal(await takeOverSessionTab(target, h.deps), true);
+    assert.deepEqual(h.events, []);
+  }
+});
+
+test("a duplicate rebound while another tab closes is preserved", async () => {
+  for (const change of ["cli", "session", "object"] as const) {
+    const h = harness([tab("old"), tab("idle"), tab("new")]);
+    const close = h.deps.closeTab;
+    h.deps.closeTab = async (id) => {
+      await close(id);
+      if (id !== "old") return;
+      const index = h.tabs.findIndex((item) => item.id === "idle");
+      if (change === "cli") h.tabs[index].cli = "claude";
+      if (change === "session") h.tabs[index].sessionIdByCli.codex = "different";
+      if (change === "object") h.tabs[index] = { ...h.tabs[index] };
+    };
+    if (change === "object") await assert.rejects(takeOverSessionTab(target, h.deps), { code: "SESSION_RUN_ACTIVE" });
+    else assert.equal(await takeOverSessionTab(target, h.deps), true);
+    assert.deepEqual(h.events, ["stop:old", "close:old"], change);
+    assert.deepEqual(h.tabs.map((item) => item.id), ["idle", "new"]);
+  }
+});
+
+test("a newly appearing owner or a run surviving tab closure prevents takeover", async () => {
+  for (const change of ["new-owner", "surviving-run"] as const) {
+    const runs: PromptRunTarget[] = [];
+    const h = harness([tab("old"), tab("new")], runs);
+    const close = h.deps.closeTab;
+    h.deps.closeTab = async (id) => {
+      await close(id);
+      if (change === "new-owner") h.tabs.push(tab("late"));
+      else runs.push({ ...target, tabId: id });
+    };
+    await assert.rejects(takeOverSessionTab(target, h.deps), { code: "SESSION_RUN_ACTIVE" });
+  }
+});
+
+test("takeover refuses an actual owner whose tab changed CLI or session without closing it", async () => {
+  const differentCli = harness([tab("old", "session", "claude"), tab("new")], [{ ...target, tabId: "old" }]);
+  await assert.rejects(takeOverSessionTab(target, differentCli.deps), { code: "SESSION_RUN_ACTIVE" });
+  assert.deepEqual(differentCli.events, []);
+
+  const h = harness([tab("old"), tab("lagging", "other"), tab("new")], [{ ...target, tabId: "lagging" }]);
+  const close = h.deps.closeTab;
+  h.deps.closeTab = async (id) => {
+    await close(id);
+    h.tabs.find((item) => item.id === "lagging")!.sessionIdByCli.codex = "replacement";
+  };
+  await assert.rejects(takeOverSessionTab(target, h.deps), { code: "SESSION_RUN_ACTIVE" });
+  assert.deepEqual(h.events, ["stop:old", "close:old"]);
+});

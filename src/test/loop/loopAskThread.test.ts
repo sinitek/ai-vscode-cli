@@ -78,6 +78,38 @@ test("persists queued questions and clears the waiting state when settled", () =
   assert.equal(parseLoopAskThread(JSON.stringify({ ...thread, running: false }))?.messages.some((bubble) => bubble.queued), false);
 });
 
+test("clears stale queue indicators on recovery and retention keeps only visible queued messages", () => {
+  const restored = parseLoopAskThread(JSON.stringify({
+    version: 1,
+    running: false,
+    dialogOpen: true,
+    updatedAt: 4,
+    messages: [{ id: "old-queued", role: "user", content: "旧排队消息", createdAt: 1, queued: true }],
+  }));
+  assert.equal(restored?.running, false);
+  assert.equal(restored?.messages[0]?.queued, undefined);
+
+  const capped = parseLoopAskThread(JSON.stringify({
+    version: 1,
+    running: true,
+    queued: true,
+    dialogOpen: true,
+    updatedAt: 5,
+    messages: [
+      { id: "cropped-queued", role: "user", content: "已裁剪的问题", createdAt: 1, queued: true },
+      ...Array.from({ length: 200 }, (_item, index) => ({
+        id: `history-${index}`,
+        role: "user",
+        content: `历史 ${index}`,
+        createdAt: index + 2,
+      })),
+    ],
+  }));
+  assert.equal(capped?.messages.length, 200);
+  assert.equal(capped?.messages.some((bubble) => bubble.id === "cropped-queued"), false);
+  assert.equal(capped?.messages.some((bubble) => bubble.queued), false);
+});
+
 test("projects only new or updated thinking and ignores unchanged or tool text", () => {
   const before = [
     message("same", "thinking 没变", { kind: "thinking" }),

@@ -94,3 +94,14 @@ test("marks a child session as subtask even when its recorded prompt was run by 
     messages: [...messages, message({ id: "vibe", role: "user", content: "Continue chatting" })],
   }), null);
 });
+
+test("role caching follows messages appended to the same transcript and both binding flags", () => {
+  const messages = [message({ id: "main", role: "user", content: "plan", taskRole: "main", loopTaskId: "loop" })];
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), "main");
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopSubtaskSession: true }), "subtask");
+  messages.push(message({ id: "vibe", role: "user", content: "chat" }));
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopSubtaskSession: true }), null);
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), null);
+  messages.push(message({ id: "sub", role: "user", content: "implement", taskRole: "subtask", loopTaskId: "loop" }));
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), "subtask");
+});

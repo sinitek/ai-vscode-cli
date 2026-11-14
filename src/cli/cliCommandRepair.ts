@@ -16,8 +16,7 @@ export function isCliCommandRepairableError(error: unknown): boolean {
   if (info.name === "AbortError") {
     return false;
   }
-  return info.code === "ENOENT"
-    || (typeof info.message === "string" && isCommandStartupFailure(info.message));
+  return typeof info.message === "string" && isCommandStartupFailure(info.message);
 }
 
 function isCommandStartupFailure(message: string): boolean {

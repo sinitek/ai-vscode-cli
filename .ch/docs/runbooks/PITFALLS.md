@@ -4,6 +4,13 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## 临时 outDir 的 NODE_PATH 不补齐 Webview 相对资源
+
+- 现象：为隔离共享 `dist` 而将 TypeScript 编译到临时 `outDir` 后，设置仓库 `node_modules` 到 `NODE_PATH` 可以帮助 Node 解析裸包名，但不能让按相对文件路径读取的 Webview 资源从临时编译目录正确定位。
+- 长期规避：测试若需读取相对路径资源，显式提供源码/资源根或使用包含所需资源的夹具目录；不要把 `NODE_PATH` 可解析模块等同于 outDir 资源布局完整。
+- 验证边界：这是测试夹具/运行时路径的前置条件，不构成真实 Webview 或浏览器验收证据。
+- 事实来源：`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/TESTING.md`。
+
 ## Loop+ 假完成必须核对轮次与会话所有权
 
 - 症状：子任务仍在推理或调用工具，界面却展示完成，且 Tab 不关闭。先对照任务记录、runStatus 和原生最终答复/完成事件；不可凭历史系统摘要判定成功，也不可用失败时关 Tab 掩盖问题。

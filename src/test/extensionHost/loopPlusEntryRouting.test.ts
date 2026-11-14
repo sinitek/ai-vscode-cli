@@ -215,11 +215,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
     true,
   );
   assert.equal(
-    continuation.indexOf("if (!reported) return;") > continuation.indexOf("notifySubtaskContinuation("),
-    true,
-  );
-  assert.equal(
-    continuation.indexOf("if (!reported) return;") < continuation.indexOf("closeLoopPlusSubtaskTab(tabId,"),
+    continuation.indexOf("() => closeLoopPlusSubtaskTab(tabId,") > continuation.indexOf("notifySubtaskContinuation("),
     true,
   );
 });

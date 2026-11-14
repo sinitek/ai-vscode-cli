@@ -85,6 +85,16 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
     const records = sessionStore[item]?.sessions ?? [];
     records.forEach((record) => {
       let firstPrompt = record.firstPrompt;
+      if (!firstPrompt) {
+        const resolved = resolveSessionFirstPrompt(item, record.id);
+        if (resolved) {
+          firstPrompt = resolved;
+          if (!isHiddenLoopPlusProtocolPrompt(resolved)) {
+            record.firstPrompt = resolved;
+            shouldPersist = true;
+          }
+        }
+      }
       const loopMainTask = loopTasks.find((task) => task.cli === item && task.sessionId === record.id);
       const loopSubtaskOwner = loopTasks.find((task) => task.subTasks.some((subtask) => (
         subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
@@ -93,22 +103,11 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
         subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
       ));
       const hasHiddenProtocolPrompt = isHiddenLoopPlusProtocolPrompt(firstPrompt);
-      if (hasHiddenProtocolPrompt || (!firstPrompt && loopMainTask)) {
+      if (hasHiddenProtocolPrompt || (!firstPrompt && (loopMainTask || loopSubtask))) {
         firstPrompt = loopSubtask?.prompt ?? loopMainTask?.rootPrompt ?? firstPrompt;
       }
       if (hasHiddenProtocolPrompt && isHiddenLoopPlusProtocolPrompt(firstPrompt)) {
         firstPrompt = undefined;
-      }
-      const displayLabel = hasHiddenProtocolPrompt && !firstPrompt
-        ? t("session.unnamed")
-        : record.label;
-      if (!firstPrompt && !hasHiddenProtocolPrompt) {
-        const resolved = resolveSessionFirstPrompt(item, record.id);
-        if (resolved) {
-          record.firstPrompt = resolved;
-          firstPrompt = resolved;
-          shouldPersist = true;
-        }
       }
       const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
       if (fallbackLabel && shouldUseFallbackSessionLabel(record.label)) {
@@ -126,7 +125,7 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       });
       allSessions.push({
         id: record.id,
-        label: displayLabel,
+        label: hasHiddenProtocolPrompt && !firstPrompt ? t("session.unnamed") : record.label,
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,

@@ -37,6 +37,12 @@ manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生�
 
 除 Codex pool 外，manager 没有跨 runner/native session 的统一 writer 证明；本次没有发现足以将其它 CLI 机械迁移到 Codex 机制的协议依据。ZCode dispose 的完成可被等待，但 manager 的同步登记替换不构成跨宿主或所有 CLI 的进程退出屏障。
 
+## 命令启动错误与自动修复
+
+任务执行中的自动 CLI 修复只识别可确认的命令启动缺失：`spawn ... ENOENT`，以及 Codex app-server shell 以 code 127 报告 command not found。`open` / `read` 等普通文件系统操作即使返回 `code: ENOENT` 也不代表 CLI 命令缺失，不启动命令搜索或重放。修复重放使用新 CLI 会话；此主动换绑会更新本次启动预期身份。其它异步准备期间目标 Tab、CLI、会话绑定或工作区发生外部变化时，原启动取消。
+
+历史会话投影先从同 CLI 消息补齐旧记录缺失的 `firstPrompt`，再隐藏 Loop+ reviewer 内部协议提示并生成标签；内部协议不写入首提示或角色缓存。原位追加消息会使按消息数量缓存失效。
+
 ## 对话标签消息视图
 
 - `syncActiveMessagesFromRuntime` 和活动标签 `setMessages` 使用增量渲染；`messageRenderState` 对比内容、元数据、最终结果过滤与流式上下文，只替换发生变化的气泡。点击标签后立即刷新选中态，不等待宿主构建配置状态。
