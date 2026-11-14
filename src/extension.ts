@@ -3277,6 +3277,7 @@ function collectRunningLoopTaskIds(): Set<string> {
   };
 
   loopOrchestrationOwnership.collectTaskIds().forEach(addTaskId);
+  loopPlusRuntimeAdapter?.host().collectRunningTaskIds().forEach(addTaskId);
 
   if (isPrimaryRunActive()) {
     const primaryTaskId = normalizeLoopTaskId(primaryPromptRunController.activeTaskRun?.loopTaskId)
@@ -4059,13 +4060,26 @@ async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subt
     role: "subtask",
     subtaskId: context.subtaskId,
   });
+  const task = readLoopTaskRecord(context.taskId);
+  if (!task || task.workspaceKey !== activeWorkspaceKey) return;
+  const host = getLoopPlusOrchestrationHost();
+  const mainTarget = host.hasController(task.id) ? null : resolveLoopMainPromptTarget(task, { createIfMissing: true });
+  const reported = host.notifySubtaskContinuation(context.taskId, context.subtaskId, "completed", summary,
+    mainTarget?.tabId ? {
+      target: { ...mainTarget, tabId: mainTarget.tabId },
+      input: applyLoopModelRoutingToPrompt({
+        displayPrompt: task.rootPrompt,
+        modelPrompt: task.rootPrompt,
+        contextTags: [],
+      }, task.modelRouting, task.originProfile),
+    } : undefined);
+  if (!reported) return;
   await closeLoopPlusSubtaskTab(tabId, {
     taskId: context.taskId,
     round: context.round,
     subtaskId: context.subtaskId,
     source: "continuation",
   });
-  getLoopPlusOrchestrationHost().notifySubtaskContinuation(context.taskId, context.subtaskId, "completed", summary);
 }
 
 async function closeLoopPlusSubtaskTab(
@@ -4325,6 +4339,7 @@ async function runLoopPromptOrchestration(
       const resumeConfigId = getActiveConfigIdForCli(target.cli);
       task = updateLoopTaskRecord(existingTask.id, {
         status: "running",
+        runtimeInterrupted: undefined,
         activeSubtaskId: null,
         activeSubtaskIds: [],
         ...(resumeRequested && !preserveLoopOrigin ? {

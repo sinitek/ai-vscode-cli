@@ -112,6 +112,8 @@ cli / interactive / config 服务层
 
 #### Loop 生命周期状态转移
 
+- 宿主崩溃恢复以持久化任务和 Loop+ 快照为依据，区分宿主中断与用户停止，保留活动子任务关联并恢复完成回报；详见 [Loop / Loop+ 宿主中断后的完成回报](.ch/docs/design-docs/loop-crash-recovery.md)。
+
 - Loop 固定使用主从多智能体；辩论专属运行器、提示词、数据模型和模式选择入口已移除。群聊共用能力由 `src/loopGroupChat.ts`、`src/loopFinalSummary.ts` 和 `src/webview/loopGroupChatPanel*.ts` 承载，旧持久化模式字段读取时忽略。
 
 - Loop/Loop+ 主决策、停止和运行中断由纯状态转移策略计算；主从调度、群聊、澄清和停止行为保持不变。任务持久化不再保留已停用的执行模式和辩论专属字段。

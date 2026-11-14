@@ -615,6 +615,10 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 
 定时任务模式历史说明：`.ch/docs/exec-plans/completed/2026-09/2026-09-15-feature-scheduled-task-runtime-mode.md` 记录的 9 月 15 日创建/执行模式策略已被 9 月 19 日 `.ch/docs/exec-plans/completed/2026-09/2026-09-19-feature-scheduled-task-selected-mode.md` 的已保存模式选择取代；本清单以后一项为当前行为，不把早期策略恢复为现行规则。
 
+## 2026-11-14 Loop / Loop+ 崩溃恢复修复
+
+Loop / Loop+ 宿主崩溃恢复修复：重新打开后核对真实运行所有权，保留未完成子任务关联并区分宿主中断与用户主动停止。手动继续原子任务成功后，经典 Loop 在全部活动子任务结束后恢复主任务；Loop+ 从持久化快照重建原 attempt 的完成回报，继续验收并同步主任务状态。失联兄弟任务保留待续跑，重复结果不重复验收，已完成、主动停止和非法快照不被意外复活。详见 [恢复设计](../design-docs/loop-crash-recovery.md)；验证为 `npm run build`、`dist/test/extensionHost/loopCrashRecovery.test.js` 与 `loopPlusRuntimeIntegration.test.js`，覆盖磁盘重建、真实子进程强制退出和验收至父任务完成，未替代图形宿主崩溃验收。
+
 ## 2026-11-01 DSH 会话恢复修复
 
 本次为既有 DSH ACP 会话续接能力的兼容性修复，不新增用户功能：会话关闭、进程释放或历史会话在新 Tab 加载后，按稳定 ACP session ID 找回原隔离 `DSH_HOME`；修复前创建且没有会话标记的持久化目录按 DSH 原生会话日志布局兼容发现，未知 ID 不借用其它会话目录。实现与回归见 `src/extensionHost/dshInteractiveLaunch.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/extensionHost/interactiveTurnDsh.ts`、`src/test/extensionHost/dshInteractiveHostWire.test.ts`、`src/test/extensionHost/dshPluginLiveBoundary.test.ts`。

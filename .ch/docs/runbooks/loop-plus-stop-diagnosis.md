@@ -25,6 +25,8 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 ## 典型误判与后续处理
 
+- VS Code 崩溃后不能只凭持久化 running / activeSubtaskIds 认定还有进程。新运行核对保留子任务关联并记 `runtimeInterrupted=true`；手动继续原子任务，成功结果会重建 Loop+ 完成回报并通知主任务验收，其余失联子任务仍需继续。不要删除快照、修改 attempt ID 或伪造完成。旧版 stopped 记录若没有中断标记，需显式继续父任务；不得把用户主动停止猜成崩溃。实现与验收边界见 [恢复设计](../design-docs/loop-crash-recovery.md)。
+
 - 子任务全部执行结束且 `phase=reviewing`，不代表验收决策已被接收。读取原主模型 JSON，用 `parseLoopPlusDecisionWithFeedback` 按运行时选项只读回放，核对 `reviewEventId(s)`、`reviews` 和 `subtasks`；补充需求的新任务也必须恰好关联一个 `reviews[].subtaskIds`，可关联通过项而保留其真实结论。不要直接改持久化任务或替主模型伪造通过。
 - 协议纠错请求应含 `Loop+ protocol correction required`、具体原因、旧回复及最新批次。确认有效决策后可继续派发或完成；持续失败暂停后，按记录原因补充信息或显式继续重新判断，不需要重做仍有效的业务审阅和测试。旧版本只有通用重试、没有具体原因时，先对照实际最终 JSON 与暂停前快照，而不是反复点击继续。
 - `mainAiFailureCount=5` 不等于模型服务连续报错。先核对 `mainAiLastFailureMessage`：若为 CODEX_THREAD_HANDOFF_FAILED / waiting_close，失败可能发生在发起模型请求之前。0.145.0 原生默认卸载为 30 分钟，旧共享策略的 75 秒交接等待不能收敛；原生会话 metadata 的创建版本只证明创建时版本，历史启动版本仍应与实际可执行路径证据区分。

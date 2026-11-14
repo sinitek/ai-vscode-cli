@@ -6,5 +6,6 @@
 - `config-center-request-commands.md`：配置中心请求命令和服务/宿主边界。
 - `vscode-cli-extension-runtime.md`：VS Code CLI 扩展运行时。
 - `loop-plus-scheduling.md`、`loop-subtask-session-reuse.md`：Loop+ 调度及子任务会话复用。
+- `loop-crash-recovery.md`：宿主崩溃后的子任务状态、完成回报与主任务恢复。
 - `chat-bubble-retention.md`、`loop-group-chat-bubble-limit.md`：主对话及群聊消息保留。
 - `skill-archive-installation.md`：Skills 归档安装边界。

@@ -181,6 +181,8 @@ export type LoopTaskRecord = {
   /** 记录里的模式是非法非空值。执行必须拒绝，不能猜成 fullstack 或 split。 */
   loopSubtaskModeInvalid?: boolean;
   status: LoopTaskStatus;
+  /** 宿主已失去运行所有权，保留子任务关联以供手动续跑回报。用户主动停止时清除。 */
+  runtimeInterrupted?: boolean;
   createdAt: number;
   updatedAt: number;
   maxRounds: number;
@@ -942,6 +944,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
     ...(loopSubtaskMode === null ? { loopSubtaskModeInvalid: true } : {}),
     status,
+    ...(raw.runtimeInterrupted === true ? { runtimeInterrupted: true } : {}),
     createdAt,
     updatedAt,
     maxRounds: normalizeStoredLoopMaxRounds(raw.maxRounds),

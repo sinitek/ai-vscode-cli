@@ -57,8 +57,7 @@ export function isLoopTaskRunOrphaned(
   runningTaskIds: ReadonlySet<string>,
 ): boolean {
   return task.status === "running"
-    && !runningTaskIds.has(task.id)
-    && (task.activeSubtaskIds?.length ?? 0) === 0;
+    && !runningTaskIds.has(task.id);
 }
 
 export function resolveLoopTaskRunControlState(

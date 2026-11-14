@@ -317,6 +317,7 @@ const isLoopTaskBlockedByMainAiFailureLimit = deps.isLoopTaskBlockedByMainAiFail
 const appendLoopMainSubChatSubtaskFinished = deps.appendLoopMainSubChatSubtaskFinished;
 const closeConversationTabAndRefreshPanel = deps.closeConversationTabAndRefreshPanel;
 const ensureConversationTabs = () => ({ tabs: deps.getConversationTabs() });
+const wakingLoopMainTasks = new Set<string>();
 const buildLoopTaskNeedsReviewText = (task: LoopTaskRecord): string => buildLoopTaskNeedsReviewTextWithLimit(task, isLoopTaskBlockedByMainAiFailureLimit);
 function syncFromDeps(): void { activeWorkspaceKey = deps.getActiveWorkspaceKey(); }
 function wrap<T extends (...args: any[]) => any>(fn: T): T { return ((...args: Parameters<T>) => { syncFromDeps(); return fn(...args); }) as T; }
@@ -1109,7 +1110,7 @@ function markLoopTaskStopped(
   if (transition.abortClarification) {
     abortOrchestratorClarification(loopClarificationScope(taskId));
   }
-  const record = updateLoopTaskRecord(taskId, transition.patch);
+  const record = updateLoopTaskRecord(taskId, { ...transition.patch, runtimeInterrupted: undefined });
   if (transition.refreshGroupChat) {
     refreshOpenLoopGroupChatPanelForTask(taskId);
   }
@@ -1124,7 +1125,20 @@ function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
 }
 
 function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | null {
-  const record = markLoopTaskStopped(taskId);
+  const task = readLoopTaskRecord(taskId);
+  if (!task || task.status !== "running") {
+    return task;
+  }
+  // Losing host ownership is not a user stop. In particular, do not clear the
+  // active IDs or stop the persisted Loop+ scheduler before results can return.
+  const record = updateLoopTaskRecord(taskId, {
+    status: "stopped",
+    runtimeInterrupted: true,
+    subTasks: task.subTasks.map((subtask) => subtask.status === "running"
+      ? { ...subtask, status: "blocked", updatedAt: Date.now() }
+      : subtask),
+    updatedAt: Date.now(),
+  });
   if (record) {
     void logInfo("loop-task-runtime-state-reconciled", {
       taskId,
@@ -1269,6 +1283,11 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     await deps.handleLoopPlusSubtaskContinuation?.(context, options.tabId);
     return;
   }
+  if (wakingLoopMainTasks.has(context.taskId) && loopPlusTask
+    && !getActiveLoopSubtaskIds(loopPlusTask).includes(context.subtaskId)
+    && loopPlusTask.subTasks.some((item) => item.id === context.subtaskId && item.status === "completed")) {
+    return;
+  }
 
   const subtaskTarget = resolvePromptRunTarget(options.tabId);
   const summary = subtaskTarget
@@ -1283,7 +1302,11 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     tabId: subtaskTarget?.tabId ?? null,
   });
 
-  const latestTask = readLoopTaskRecord(context.taskId);
+  let latestTask = readLoopTaskRecord(context.taskId);
+  if (latestTask?.status === "stopped" && latestTask.runtimeInterrupted === true
+    && getActiveLoopSubtaskIds(latestTask).length === 0) {
+    latestTask = updateLoopTaskRecord(latestTask.id, { status: "running", runtimeInterrupted: undefined });
+  }
   if (
     !latestTask
     || !shouldWakeLoopMainAfterSubtaskCompletion(latestTask)
@@ -1293,33 +1316,38 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
   }
 
   const mainTarget = resolveLoopMainPromptTarget(latestTask);
-  if (!mainTarget || isTabRunActive(mainTarget.tabId)) {
+  if (!mainTarget || isTabRunActive(mainTarget.tabId) || wakingLoopMainTasks.has(latestTask.id)) {
     return;
   }
 
-  const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
-  appendSystemMessageForLoop(
-    mainTarget,
-    buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
-  );
+  wakingLoopMainTasks.add(latestTask.id);
+  try {
+    const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
+    appendSystemMessageForLoop(
+      mainTarget,
+      buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
+    );
 
-  const resumePrompt = t("run.hiddenContinuePrompt");
-  await runLoopPrompt({
-    displayPrompt: resumePrompt,
-    modelPrompt: resumePrompt,
-    contextTags: [],
-    model: options.model,
-    loopMainModel: options.loopMainModel,
-    loopSubtaskModel: options.loopSubtaskModel,
-    ...(options.loopSubtaskCli ? { loopSubtaskCli: options.loopSubtaskCli } : {}),
-    ...(options.loopSubtaskConfigId ? { loopSubtaskConfigId: options.loopSubtaskConfigId } : {}),
-    loopMainThinkingMode: options.loopMainThinkingMode,
-    loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
-  }, {
-    targetTabId: mainTarget.tabId,
-    resumeTaskId: latestTask.id,
-    resumeRequested: true,
-  });
+    const resumePrompt = t("run.hiddenContinuePrompt");
+    await runLoopPrompt({
+      displayPrompt: resumePrompt,
+      modelPrompt: resumePrompt,
+      contextTags: [],
+      model: options.model,
+      loopMainModel: options.loopMainModel,
+      loopSubtaskModel: options.loopSubtaskModel,
+      ...(options.loopSubtaskCli ? { loopSubtaskCli: options.loopSubtaskCli } : {}),
+      ...(options.loopSubtaskConfigId ? { loopSubtaskConfigId: options.loopSubtaskConfigId } : {}),
+      loopMainThinkingMode: options.loopMainThinkingMode,
+      loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
+    }, {
+      targetTabId: mainTarget.tabId,
+      resumeTaskId: latestTask.id,
+      resumeRequested: true,
+    });
+  } finally {
+    wakingLoopMainTasks.delete(latestTask.id);
+  }
 }
 
 function getLoopTargetSessionId(target: PromptRunTarget): string | null {

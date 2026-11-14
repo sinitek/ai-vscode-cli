@@ -407,6 +407,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       deps.updateTask(task.id, {
         status: "stopped",
+        runtimeInterrupted: undefined,
         schedulingMode: "event_driven",
         loopPlus: scheduler.snapshot(),
         updatedAt: now(),
@@ -421,18 +422,51 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     subtaskId: string,
     outcome: LoopPlusExecutionOutcome,
     detail?: string | null,
-  ): void {
-    const runtime = runtimes.get(taskId);
+    recovery?: { target: LoopPlusPromptTarget; input: LoopPlusRunInput },
+  ): boolean {
+    let runtime = runtimes.get(taskId);
+    if (!runtime && recovery) {
+      const task = deps.readTask(taskId);
+      if (!task || task.schedulingMode !== "event_driven"
+        || (task.status !== "running" && !(task.status === "stopped" && task.runtimeInterrupted === true))
+        || isLoopMainAiFailureLimitReached(task)) {
+        return false;
+      }
+      const invalid = invalidSnapshotReason(task);
+      if (invalid) {
+        rejectSnapshot(task, invalid);
+        return false;
+      }
+      const snapshot = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();
+      if (snapshot.completed || snapshot.parentStopped || !snapshot.running.some((item) => item.subtaskId === subtaskId)) {
+        return false;
+      }
+      // The old host's runners no longer belong to this controller. Keep every
+      // other reservation open for manual continuation instead of emitting a
+      // synthetic stopped result and allowing the parent to finish without it.
+      const runningIds = new Set(snapshot.running.map((item) => item.subtaskId));
+      const recovered: LoopTaskRecord = {
+        ...task,
+        status: "running",
+        runtimeInterrupted: undefined,
+        subTasks: task.subTasks.map((item) => runningIds.has(item.id)
+          ? { ...item, status: "blocked", updatedAt: now() }
+          : item),
+        updatedAt: now(),
+      };
+      runtime = ensureRuntime(recovered, recovery.target, recovery.input);
+      persist(runtime, { status: "running", runtimeInterrupted: undefined });
+    }
     if (!runtime || runtime.released || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
-      return;
+      return false;
     }
     const running = runtime.scheduler.snapshot().running.find((item) => item.subtaskId === subtaskId);
     if (!running) {
-      return;
+      return false;
     }
     const inFlight = runtime.attempts.get(running.attemptId);
     if (inFlight && !inFlight.settled) {
-      return;
+      return false;
     }
     applyFinish(runtime, {
       subtaskId: running.subtaskId,
@@ -440,10 +474,18 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       outcome,
       detail: detail ?? null,
     });
+    const snapshot = runtime.scheduler.snapshot();
+    return !runtime.autoPaused && !snapshot.running.some((item) => item.attemptId === running.attemptId);
   }
 
   function hasController(taskId: string): boolean {
     return runtimes.has(taskId);
+  }
+
+  function collectRunningTaskIds(): string[] {
+    return [...runtimes.values()].filter((runtime) => !runtime.released && !runtime.autoPaused
+      && !runtime.stopRequested && !runtime.scheduler.snapshot().completed
+      && !runtime.scheduler.snapshot().parentStopped).map((runtime) => runtime.taskId);
   }
 
   function reportAttempt(
@@ -493,6 +535,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() });
     const runtime = buildRuntime(task, target, input, scheduler);
+    // No attempt handles survive a host restart. Preserve their reservations
+    // and expose the interruption to the main model on explicit parent resume.
+    if (!scheduler.snapshot().parentStopped) {
+      scheduler.snapshot().running.forEach((attempt) => {
+        const meta = runtime.meta.get(attempt.subtaskId);
+        if (meta) meta.executionStatus = "blocked";
+      });
+    }
     runtime.initialPromptDone = scheduler.snapshot().seenAttempts.length > 0
       || scheduler.snapshot().running.length > 0
       || scheduler.snapshot().pending.length > 0
@@ -505,7 +555,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && !scheduler.snapshot().completed
       && !scheduler.snapshot().parentStopped;
     runtimes.set(task.id, runtime);
-    if ((task.loopPlusMainPhase === "decomposing") !== runtime.decomposing) {
+    if ((task.loopPlusMainPhase === "decomposing") !== runtime.decomposing || scheduler.snapshot().running.length > 0) {
       persist(runtime);
     }
     return runtime;
@@ -633,7 +683,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (runtime.scheduler.snapshot().parentStopped || runtime.stopRequested) {
       const resumed = runtime.scheduler.resumeParent();
       runtime.stopRequested = false;
-      persist(runtime, { status: resumed.ok ? "running" : "stopped" });
+      persist(runtime, { status: resumed.ok ? "running" : "stopped", runtimeInterrupted: undefined });
       launchAll(runtime, resumed.started);
       deps.appendMessage(runtime.target, "loop-plus-resumed", runtime.taskId);
       if (resumed.ok && isIdle(runtime)) {
@@ -654,7 +704,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return;
     }
     runtime.forcePrompt = isIdle(runtime);
-    persist(runtime, { status: "running" });
+    persist(runtime, { status: "running", runtimeInterrupted: undefined });
     deps.appendMessage(runtime.target, "loop-plus-resumed", runtime.taskId);
     requestPump(runtime);
   }
@@ -727,6 +777,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.scheduler.stopParent();
     persist(runtime, {
       status: "stopped",
+      runtimeInterrupted: undefined,
       finalSummary: "Loop+ parent scheduling is stopped.",
       pendingClarification: undefined,
     });
@@ -2620,6 +2671,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     stopParent,
     notifySubtaskContinuation,
     hasController,
+    collectRunningTaskIds,
     reportAttempt,
     submitUserMessage,
     hasPendingMainWork,

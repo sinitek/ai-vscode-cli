@@ -56,6 +56,51 @@ function completedDecision(reviewEventId?: string | null): string {
   });
 }
 
+test("冷启动后子任务完成重建编排并经真实适配器验收至父任务完成", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  const taskId = "cold-manual-completion";
+  try {
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
+    scheduler.dispatch([{ subtaskId: "A", attemptId: "A-1", writeFiles: ["src/a.ts"] }]);
+    const communicationFile = path.join(fixture.rootDir, "a-report.md");
+    fs.writeFileSync(communicationFile, "子任务恢复后完成，验证证据已记录。\n");
+    fixture.saveTask({
+      id: taskId, cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
+      rootPrompt: "实现并验收功能", schedulingMode: "event_driven", loopPlus: scheduler.snapshot(),
+      status: "stopped", runtimeInterrupted: true, createdAt: Date.now(), updatedAt: Date.now(),
+      maxRounds: 20, currentRound: 1, sessionId: fixture.target.sessionId,
+      communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      activeSubtaskId: "A", activeSubtaskIds: ["A"],
+      subTasks: [{ id: "A", title: "功能实现", status: "blocked", communicationFile }],
+      rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
+      modelRouting: { main: { model: "original-main" }, subtask: { model: "original-sub" } },
+      originProfile: { configId: "original-config", mainThinkingMode: "high" },
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.equal(input.loopTaskId, taskId);
+      assert.equal(input.loopMainModel, "original-main");
+      assert.equal(input.loopMainThinkingMode, "high");
+      assert.match(input.displayPrompt, /恢复后实现完成/);
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    const host = fixture.adapter.host();
+    assert.equal(host.hasController(taskId), false);
+    assert.equal(host.notifySubtaskContinuation(taskId, "A", "completed", "恢复后实现完成", {
+      target: fixture.target, input: { displayPrompt: "实现并验收功能" },
+    }), true);
+    await waitForLoopPlus(() => fixture.readTask(taskId)?.status === "completed", "恢复后的父任务完成验收");
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(fixture.attemptCalls.length, 0);
+    assert.equal(fixture.readTask(taskId)?.subTasks[0].status, "completed");
+    assert.match(fs.readFileSync(communicationFile, "utf8"), /attempt: A-1[\s\S]*恢复后实现完成/);
+    assert.equal(fixture.completionMessages.length, 1);
+    assert.equal(host.hasController(taskId), false);
+    assert.deepEqual(host.collectRunningTaskIds(), []);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 
 function currentEventId(promptText: string): string {
   const match = promptText.match(/Current review eventId: (\S+)/);

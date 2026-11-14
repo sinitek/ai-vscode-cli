@@ -1,5 +1,7 @@
 # Loop+ 子任务调度
 
+宿主崩溃后手动续跑子任务的状态、完成回报与主任务重建规则见 [Loop / Loop+ 宿主中断后的完成回报](loop-crash-recovery.md)。
+
 会话连续性：每次 attempt 可以新建展示 Tab，但不必新建 CLI 会话。验收失败 review 关联的修补项自动续接原子任务，主模型也可用 `continueFromSubtaskId` 显式选择连续工作来源；控制重派保留原子任务来源。持久化绑定、配置兼容、串行执行及边界见 [Loop 子任务会话复用](loop-subtask-session-reuse.md)，原有调度和验收条件保持不变。
 
 控制清理：主模型 `close` / `reprompt` 的关页要求不会被此前的普通停止吞掉；attempt 句柄丢失时仍按父任务和子任务身份清理旧闲置 Tab。自动完成与手动继续完成共用旧标签清理入口，跳过仍在执行的 Tab，并以清理快照及当前 attempt 的标签位置保护之后创建、尚在等待启动的替代 Tab。

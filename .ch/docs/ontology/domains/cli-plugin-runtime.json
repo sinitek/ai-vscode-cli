@@ -1799,12 +1799,14 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 3 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 3 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。全部活动子任务成功完成后才可唤醒主任务复核；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。手动续跑成功后经典 Loop 等全部活动任务完成再恢复主任务；Loop+ 可从持久化快照重建原开放 attempt 的完成事件与验收链，失联兄弟预留不制造完成结果。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/references/cli-runtime-reference.md"}
+        {"path": ".ch/docs/references/cli-runtime-reference.md"},
+        {"path": ".ch/docs/design-docs/loop-crash-recovery.md"},
+        {"path": "src/test/extensionHost/loopCrashRecovery.test.ts"}
       ]
     },
     {

@@ -779,6 +779,7 @@ export function createLoopPlusExtensionStopHarness(options: {
     loopOrchestrationOwnership: {
       collectTaskIds: (): string[] => [],
     },
+    loopPlusRuntimeAdapter: null,
     parentStopIds,
     fallbackTaskIds,
     stoppedTabs,
