@@ -15,6 +15,8 @@ import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
 import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
+import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import type { ConversationTabRecord } from "../../sessionTabs";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
@@ -52,7 +54,9 @@ function createHarness(options: {
   loopSessionId?: string;
   loopModelRouting?: LoopTaskModelRouting;
 }) {
-  const tab = { id: "target-tab", cli: options.cli, sessionId: "previous-session" as string | null };
+  const tab: ConversationTabRecord = { id: "target-tab", cli: options.cli, sessionId: "previous-session",
+    sessionIdByCli: { [options.cli]: "previous-session" }, createdAt: 1 };
+  const tabs = [tab];
   const events: string[] = [];
   const leasedConfigs: Array<{ cli: CliName; configId: string }> = [];
   const systemMessages: string[] = [];
@@ -89,7 +93,19 @@ function createHarness(options: {
     updateLoopTaskRecord: () => undefined,
     getActiveConversationTabId: () => tab.id,
     resolvePromptRunTarget: () => ({ tabId: tab.id, cli: tab.cli, sessionId: tab.sessionId }),
-    getConversationTabById: () => tab,
+    getConversationTabById: (tabId: string) => tabs.find((item) => item.id === tabId) ?? null,
+    takeOverSessionForTab: (target: PromptRunTarget, isAborted?: () => boolean) => takeOverSessionTab(target, {
+      getWorkspaceKey: () => "test-workspace",
+      getTabs: () => tabs,
+      getActiveRuns: () => [],
+      isTabRunActive: () => false,
+      stopTab: (tabId) => { events.push(`stop:${tabId}`); },
+      closeTab: async (tabId) => {
+        events.push(`close:${tabId}`);
+        const index = tabs.findIndex((item) => item.id === tabId);
+        if (index >= 0) tabs.splice(index, 1);
+      },
+    }, isAborted),
     getConversationTabSessionIdForCli: () => tab.sessionId,
     shouldAwaitCliCommandAutoRepair: () => false,
     getCliCommand: () => "cli",
@@ -134,6 +150,8 @@ function createHarness(options: {
     loopMainAutoCompactFlights: { wait: async () => {
       if (options.sessionIdAfterWait !== undefined) {
         tab.sessionId = options.sessionIdAfterWait;
+        if (tab.sessionId) tab.sessionIdByCli[tab.cli] = tab.sessionId;
+        else delete tab.sessionIdByCli[tab.cli];
       }
     } },
     loopSubtaskAutoCompactions: { wait: async (cli: CliName, sessionId: string | null) => {
@@ -147,6 +165,7 @@ function createHarness(options: {
       events.push("health-check");
       if (options.health === "abnormal" || prepareOptions?.forceNewSession) {
         tab.sessionId = null;
+        delete tab.sessionIdByCli[tab.cli];
       }
       return tab.sessionId;
     } },
@@ -169,7 +188,7 @@ function createHarness(options: {
     runPromptParallel: dispatch,
     runPromptOneShot: dispatch,
   }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
-  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs,
+  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs, tabs,
     questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
@@ -206,6 +225,20 @@ test("Loop question cancellation reaches every dispatched runtime", async () => 
     assert.equal(executionOptions.isAborted?.(), false);
     aborted = true;
     assert.equal(executionOptions.isAborted?.(), true);
+  }
+});
+
+test("every public runtime takes over duplicate tabs before health checks and rejects a later closed target", async () => {
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    const h = createHarness({ cli: runtime === "interactive" ? "codex" : "opencode", health: "normal", runtime });
+    h.tabs.unshift({ ...h.tabs[0], id: "old-tab" });
+    await h.runPrompt({ displayPrompt: "继续会话", modelPrompt: "继续会话", contextTags: [] });
+    assert.deepEqual(h.events.slice(0, 2), ["stop:old-tab", "close:old-tab"]);
+    assert.equal(h.dispatched.length, 1);
+    assert.deepEqual(h.tabs.map((item) => item.id), ["target-tab"]);
+    assert.equal(h.dispatched[0].executionOptions.isAborted?.(), false);
+    h.tabs.splice(0);
+    assert.equal(h.dispatched[0].executionOptions.isAborted?.(), true);
   }
 });
 

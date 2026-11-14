@@ -127,6 +127,12 @@
 - 运行中标签、运行中 Loop 主标签和最后一个标签仍不可关闭；重复确认无副作用，迟到确认不覆盖新的本地标签选择。重置会话使用完整状态一次性发布新标签，避免先切到邻居或丢失待提交配置。
 - 实现：`src/extensionHost/sessionTabs.ts`、`src/sessionTabs.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
 
+## 同会话标签自动接管
+
+- 普通对话及 Loop / Loop+ 启动时，同一 CLI 会话只保留本次目标 Tab；先停止旧 Tab 的任务，再关闭旧 Tab 并继续执行。空闲重复 Tab 一并关闭，会话历史与停止记录保留，不要求用户手动切换或停止原标签。
+- 公共入口与 CLI 启动前复核会话占用，实际运行绑定优先参与检查。不同会话、不同 CLI 保持并行；同标签交互重入仍受保护。接管期间取消、切换工作区、换绑或关闭目标时不再迟到启动；原任务未停止或旧标签未关闭则拒绝启动，CLI 原有写锁与真实进程交接规则继续生效。
+- 实现：`src/extensionHost/sessionTabOwnership.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/extension.ts`；回归：`src/test/extensionHost/sessionTabOwnership.test.ts`、`src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/session/sessionTabCliSwitch.test.ts`，纳入 `npm run verify:loop-plus`。
+
 ## 隐藏指令气泡
 
 - 工具设置 → AI任务配置新增“隐藏指令气泡”复选框，默认关闭；全局工具设置 `hideInstructionBubbles` 持久化到 `~/.sinitek_cli/settings.json`，缺失或非布尔值视为关闭，不新增工作区覆盖项。

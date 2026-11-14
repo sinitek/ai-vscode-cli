@@ -348,12 +348,14 @@
   "rules": [
     {
       "id": "plugin.rule.interactive_turn_tab_ownership",
-      "name": "交互调用不得抢占其它标签的活跃会话",
-      "description": "异步启动准备完成后、运行登记及 runner 获取前，按 Tab 和同 CLI + session 检查活跃调用；重复提交明确拒绝，不追加新用户轮次、不释放原 runner。不同会话可并行，显式停止后可重新提交。旧 runId 收尾和迟到 Codex thread/taskList 回调不得覆盖替代调用。该宿主门禁不替代 HOME + thread 的真实写入者释放确认。Loop+ 正常完成自动关闭子任务 Tab，失败或中断保留诊断，不伪装成功。主、子调用在执行期间直接捕获匹配本次身份及时间边界的宿主真实完成记录，收口后释放订阅；共享历史缺失不再将已捕获的成功误判为失败，不按答复文案推断成功，不追溯改写旧快照。",
+      "name": "同会话由目标标签自动接管且仅保留一个标签",
+      "description": "公共执行入口及 CLI 启动前按同 CLI + session 检查标签与实际运行绑定，新目标先停止旧任务并关闭全部重复标签，包含空闲旧标签，保留会话历史和停止记录。准备期间取消、切换工作区、关闭或换绑目标不得迟到启动；停止或关闭失败保留 SESSION_RUN_ACTIVE 门禁，不继续启动。不同会话与不同 CLI 可并行，同标签交互重入仍拒绝。旧 runId 收尾和迟到 Codex thread/taskList 回调不得覆盖替代调用。宿主接管不替代 HOME + thread 的真实写入者释放确认。Loop+ 正常完成自动关闭子任务 Tab，失败或中断保留诊断，被同会话新标签接管时关闭旧标签但不伪装成功。主、子调用在执行期间直接捕获匹配本次身份及时间边界的宿主真实完成记录，收口后释放订阅；共享历史缺失不再将已捕获的成功误判为失败，不按答复文案推断成功，不追溯改写旧快照。",
       "status": "active",
       "applies_to": ["plugin.extension_host", "plugin.cli_session"],
       "source_refs": [
         {"path": "src/extensionHost/promptInteractiveRuntime.ts", "anchor": "runPromptInteractive"},
+        {"path": "src/extensionHost/sessionTabOwnership.ts", "anchor": "takeOverSessionTab"},
+        {"path": "src/test/extensionHost/sessionTabOwnership.test.ts"},
         {"path": "src/extensionHost/interactiveTurnCodex.ts"},
         {"path": "src/test/extensionHost/promptInteractiveRuntime.test.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts", "anchor": "startAttempt"},

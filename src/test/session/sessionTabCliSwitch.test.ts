@@ -8,6 +8,7 @@ import { createSessionTabsController, type ConversationTabRecord, type Conversat
 import type { SessionStore } from "../../sessionStore";
 import { closeLoopSubtaskConversationTabs } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
+import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 
 function createHost(initial: {
   state: ConversationTabsState;
@@ -174,6 +175,33 @@ test("closing a background tab does not restore configuration for the unchanged 
   assert.deepEqual(env.selectedSessions, []);
   assert.deepEqual(env.disposedTabIds, ["background-tab"]);
   assert.equal(state.activeTabId, "main-tab");
+});
+
+test("session takeover stops a running duplicate before the real tab host closes it", async () => {
+  const runningTabIds = new Set(["old-sub"]);
+  const state: ConversationTabsState = {
+    activeTabId: "new-sub",
+    tabs: [
+      { id: "old-sub", cli: "codex", sessionId: "shared", sessionIdByCli: { codex: "shared" }, createdAt: 1 },
+      { id: "new-sub", cli: "codex", sessionId: "shared", sessionIdByCli: { codex: "shared" }, createdAt: 2 },
+    ],
+  };
+  const env = createHost({ state, currentCli: "codex", modes: { codex: "coding" }, runningTabIds });
+  const stopped: string[] = [];
+  assert.equal(await takeOverSessionTab({ tabId: "new-sub", cli: "codex", sessionId: "shared" }, {
+    getWorkspaceKey: () => "workspace",
+    getTabs: () => state.tabs,
+    getActiveRuns: () => [...runningTabIds].map((tabId) => ({ tabId, cli: "codex", sessionId: "shared" })),
+    isTabRunActive: (id) => runningTabIds.has(id),
+    stopTab: (id) => { stopped.push(id); runningTabIds.delete(id); },
+    closeTab: env.host.closeConversationTabAndRefreshPanel,
+  }), true);
+  assert.deepEqual(stopped, ["old-sub"]);
+  assert.deepEqual(state.tabs.map((item) => item.id), ["new-sub"]);
+  assert.equal(state.tabs[0].sessionId, "shared");
+  assert.equal(state.activeTabId, "new-sub");
+  assert.deepEqual(env.closedTabs, [{ tabId: "old-sub", activeTabId: "new-sub" }]);
+  assert.deepEqual(env.restoredTabIds, []);
 });
 
 test("closing an active tab acknowledges removal before slow fallback configuration restoration", async () => {

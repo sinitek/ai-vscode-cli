@@ -83,6 +83,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   createMessageId: () => string;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
   getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName } | null | undefined;
+  takeOverSessionForTab?: (target: PromptRunTarget, isAborted?: () => boolean) => Promise<boolean>;
   getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalHumanInteractionEnabled: () => boolean;
@@ -221,6 +222,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (!prompt || executionOptions.isAborted?.()) {
       return;
     }
+    if (interactiveRunsByTabId.get(target.tabId)?.stopped === false) {
+      throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
+    }
+    if (deps.takeOverSessionForTab
+      && (!await deps.takeOverSessionForTab(target, executionOptions.isAborted)
+        || !getConversationTabById(target.tabId))) {
+      return;
+    }
 
     const interactiveRunnerManager = getInteractiveRunnerManager();
 
@@ -341,12 +350,28 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return;
     }
 
+    const tabOwner = interactiveRunsByTabId.get(tabId);
+    if (tabOwner && !tabOwner.stopped) {
+      throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
+    }
+    if (deps.takeOverSessionForTab
+      && (!await deps.takeOverSessionForTab({ ...target, sessionId: uiSessionId }, executionOptions.isAborted)
+        || !getConversationTabById(tabId))) {
+      return;
+    }
+    if (executionOptions.isAborted?.()) {
+      return;
+    }
     const sessionOwner = Array.from(interactiveRunsByTabId.values()).find((run) => !run.stopped
       && (run.tabId === tabId || (uiSessionId && run.cli === cli && run.sessionId === uiSessionId)));
     if (sessionOwner) {
       throw Object.assign(new Error(`会话仍在标签 ${sessionOwner.tabId} 中运行，请切换到该标签查看，或先停止原任务再重试。`), {
         code: "SESSION_RUN_ACTIVE",
       });
+    }
+    // Stopping the previous owner flushes its last messages before this turn.
+    if (uiSessionId) {
+      messageTarget = loadSessionMessages(cli, uiSessionId);
     }
 
     logCliStartup({

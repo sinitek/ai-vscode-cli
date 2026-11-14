@@ -190,6 +190,7 @@ import {
 } from "./extensionHost/promptRunRuntime";
 import { createPromptParallelRuntimeHost } from "./extensionHost/promptParallelRuntime";
 import { createPromptInteractiveRuntimeHost } from "./extensionHost/promptInteractiveRuntime";
+import { takeOverSessionTab } from "./extensionHost/sessionTabOwnership";
 import { createPromptOneShotRuntimeHost } from "./extensionHost/promptOneShotRuntime";
 import {
   createDisabledOpenCodeSubagentMonitor,
@@ -1725,6 +1726,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   readRuntimeConfigFingerprint: configService.readRuntimeConfigFingerprint,
   AI_TASK_RAW_OUTPUT_MAX_BYTES,
   activeRunsByTabId: interactiveRunsByTabId,
+  takeOverSessionForTab,
   adoptSessionId,
   applyProcessTitle,
   applyThinkingWorkspaceFiles,
@@ -4793,6 +4795,25 @@ function preemptActivePromptRun(tabId: string): void {
   stopRunForTab(tabId);
 }
 
+async function takeOverSessionForTab(target: PromptRunTarget, isAborted?: () => boolean): Promise<boolean> {
+  return takeOverSessionTab(target, {
+    getWorkspaceKey: () => activeWorkspaceKey,
+    getTabs: () => ensureConversationTabs().tabs,
+    getActiveRuns: () => {
+      const runs: PromptRunTarget[] = [...interactiveRunsByTabId.values(), ...parallelRunsByTabId.values()];
+      const primaryTabId = getPrimaryRunTabId();
+      if (primaryTabId && primaryPromptRunController.activeCliForRun) {
+        runs.push({ tabId: primaryTabId, cli: primaryPromptRunController.activeCliForRun,
+          sessionId: primaryPromptRunController.activeSessionId });
+      }
+      return runs;
+    },
+    stopTab: stopRunForTab,
+    isTabRunActive,
+    closeTab: closeConversationTabAndRefreshPanel,
+  }, () => isExtensionDeactivating || isAborted?.() === true);
+}
+
 async function closeLoopSubtaskTabs(taskId: string, subtaskId: string, tabId?: string): Promise<void> {
   await closeLoopSubtaskConversationTabs({ taskId, subtaskId, tabId }, {
     getTabs: () => ensureConversationTabs().tabs,
@@ -4845,6 +4866,11 @@ async function runPromptNow(
   if (!target) {
     return;
   }
+  const targetTab = getConversationTabById(target.tabId);
+  if (!await takeOverSessionForTab(target, options.isAborted)
+    || getConversationTabById(target.tabId) !== targetTab) {
+    return;
+  }
   const summarySubmissionTab = getConversationTabById(target.tabId);
   const summarySubmission = rememberConversationTaskSummarySubmission(input, target);
   promptAutoRepairController.cancel(target.tabId);
@@ -4869,7 +4895,7 @@ async function runPromptNow(
   }
 
   const currentTab = getConversationTabById(target.tabId);
-  if (!currentTab) {
+  if (!currentTab || currentTab !== targetTab || currentTab.cli !== target.cli) {
     return;
   }
   const previousSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
@@ -4922,9 +4948,13 @@ async function runPromptNow(
       })()
     : null;
   const shouldUseInteractive = isInteractiveSupported(target.cli);
+  const executionWorkspaceKey = activeWorkspaceKey;
   try {
     const executionOptions = {
-      isAborted: options.isAborted,
+      isAborted: () => isExtensionDeactivating || options.isAborted?.() === true
+        || activeWorkspaceKey !== executionWorkspaceKey
+        || getConversationTabById(target.tabId) !== currentTab
+        || currentTab.cli !== target.cli,
       cwd: useClassicLoopProjectInstructions ? resolveWorkspaceCwd() : input.executionCwd ?? subtaskExecutionRoot?.cwd,
       isolateProjectInstructions: useClassicLoopProjectInstructions
         ? false
@@ -5015,6 +5045,9 @@ async function runPromptNow(
                 });
               },
             });
+          }
+          if (!shouldUseInteractive && !await takeOverSessionForTab(attemptTarget, executionOptions.isAborted)) {
+            return;
           }
           if (shouldUseInteractive) {
             await runPromptInteractive(currentAttemptInput, attemptTarget, executionOptions);
