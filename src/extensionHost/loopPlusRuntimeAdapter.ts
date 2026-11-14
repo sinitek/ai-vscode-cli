@@ -84,6 +84,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
   createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
   closeSubtaskTab: (tabId: string) => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
   cancelInvocation: (tabId: string) => void;
   resolveSessionId: (target: LoopPlusPromptTarget) => string | null;
@@ -414,8 +415,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     let closeTabAfterAbort = false;
     let settled = false;
     let tabClosePromise: Promise<void> | null = null;
+    let preparedClose: (() => Promise<void>) | undefined;
     const closeTab = (reason: "completed" | "main-abort"): Promise<void> => {
-      tabClosePromise ??= closeLoopPlusSubtaskTab(deps, request, subtaskTarget.tabId, reason);
+      tabClosePromise ??= closeLoopPlusSubtaskTab(deps, request, subtaskTarget.tabId, reason, preparedClose);
       return tabClosePromise;
     };
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
@@ -424,7 +426,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
         });
         if (result.outcome === "completed") {
-          await closeTab("completed");
+          try {
+            preparedClose = deps.prepareSubtaskTabClose?.(subtaskTarget.tabId);
+          } catch (error) {
+            preparedClose = async () => { throw error; };
+          }
         }
         return result;
       } finally {
@@ -436,6 +442,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     })();
     return {
       promise,
+      onCompleted: () => closeTab("completed"),
       abort: (options) => {
         closeTabAfterAbort ||= options?.closeTab === true;
         if (aborted) {
@@ -695,9 +702,10 @@ async function closeLoopPlusSubtaskTab(
   request: Pick<LoopPlusAttemptRequest, "taskId" | "round" | "subtaskId" | "attemptId">,
   tabId: string,
   reason: "completed" | "main-abort",
+  preparedClose?: () => Promise<void>,
 ): Promise<void> {
   try {
-    await deps.closeSubtaskTab(tabId);
+    await (preparedClose ? preparedClose() : deps.closeSubtaskTab(tabId));
     deps.log?.("loop-plus-subtask-tab-auto-closed", {
       taskId: request.taskId,
       round: request.round,

@@ -99,6 +99,7 @@ test("classic Loop reports completion before background compaction and gates cro
   });
   await started.promise;
   assert.ok(events.indexOf("reported") < events.indexOf("compact"));
+  assert.equal(events.includes("closed"), false);
   let continued = false;
   const continuation = withLoopSubtaskSession("codex", "child-session", async () => { continued = true; });
   await withLoopSubtaskSession("codex", "another-session", async () => {});
@@ -107,6 +108,30 @@ test("classic Loop reports completion before background compaction and gates cro
   await continuation;
   await loopSubtaskAutoCompactions.wait("codex", "child-session");
   assert.equal(continued, true);
+  assert.deepEqual(events, ["reported", "compact", "closed"]);
+});
+
+test("压缩失败后仍关闭成功标签，关页结束前不放行同会话", async () => {
+  const errors: unknown[] = [];
+  const compactions = new LoopSubtaskAutoCompactions((error) => { errors.push(error); });
+  const failure = new Error("压缩超时");
+  const closing = createDeferred();
+  const started = createDeferred();
+  compactions.defer(input(), target(), async () => { throw failure; });
+  compactions.notify("task", "child", true, async () => {
+    started.resolve();
+    await closing.promise;
+  });
+  await started.promise;
+  let resumed = false;
+  const waiter = compactions.wait("codex", "child-session").then(() => { resumed = true; });
+  await Promise.resolve();
+  assert.equal(resumed, false);
+  assert.equal(compactions.has("codex", "child-session"), true);
+  assert.deepEqual(errors, [failure]);
+  closing.resolve();
+  await waiter;
+  assert.equal(resumed, true);
 });
 
 test("failed classic completion reporting cancels compaction and releases its session", async () => {

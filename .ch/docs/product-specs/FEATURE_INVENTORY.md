@@ -181,6 +181,12 @@
 - 共享只读上下文不构成写冲突，局部附带修改不必让所有工作串行；子任务写入前重读并保留并发改动，小冲突自行协调并汇报。已知同路径写入和相同冲突组仍串行，不允许隐瞒范围；同符号、共享契约或大量竞争修改仍由主模型重排。
 - 实现与验证：`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`；提示、编排、scheduler 和 parallel 回归测试。边界详见 `.ch/docs/design-docs/loop-plus-scheduling.md`；提示引导不保证真实模型每轮必定派发固定数量。
 
+## Loop / Loop+ 子任务完成收尾
+
+- 子任务成功后依次持久化结果并通知主任务、按原条件压缩子会话、关闭原子任务 Tab，覆盖自动派发和人工续接。主任务验收和独立子任务继续推进；同会话等待压缩及旧标签清理结束。
+- 压缩失败或跳过仍关页；回报失败保留现场。清理使用完成时标签快照，保护新增、换绑、替代及运行中标签；关闭未生效记录失败，不伪报成功。会话及聊天历史继续保留。
+- 实现：`src/loopSubtaskAutoCompact.ts`、`src/loopSubtaskLifecycle.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopSubtaskTabs.ts`；回归覆盖顺序、压缩失败、回报失败、会话串行和标签保护，纳入 `npm run verify:loop-plus`。
+
 ## Loop / Loop+ 中断后继续执行
 
 - 子任务停止或失败时仍保留 Tab；重新执行并成功完成后，自动清理同一父任务、同一子任务的当前及更早闲置 Tab，不删除 CLI 会话和聊天记录，不关闭运行中或更新的替代 Tab。Loop+ 主模型 `close` / `reprompt` 可以升级此前停止请求；恢复后缺少旧 attempt 句柄时仍清理对应旧 Tab。实现：`src/extensionHost/loopSubtaskTabs.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。

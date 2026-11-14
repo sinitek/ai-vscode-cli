@@ -1,6 +1,7 @@
 import type { TaskRunStatus } from "./promptRunState";
 import type { LoopTaskRecord } from "./loopTaskStore";
 import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
+import { logError } from "./logger";
 
 export type LoopSubtaskCompletionOptions = {
   taskId: string;
@@ -26,6 +27,7 @@ export type LoopSubtaskCompletionDeps = {
     assistantContent: string | null,
   ) => void;
   closeSubtaskTab: (tabId: string) => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   logSubtaskTabAutoClosed: (event: LoopSubtaskTabAutoClosedEvent) => void;
 };
 
@@ -57,20 +59,36 @@ export async function finalizeLoopSubtaskRun(
     assistantContent,
     tabId,
   } = options;
+  let closeTab: (() => Promise<void>) | undefined;
+  try {
+    closeTab = tabId ? deps.prepareSubtaskTabClose?.(tabId) ?? (() => deps.closeSubtaskTab(tabId)) : undefined;
+  } catch (error) {
+    closeTab = async () => { throw error; };
+  }
+  const closeCompletedTab = async (): Promise<void> => {
+    if (!tabId || !closeTab) return;
+    try {
+      await closeTab();
+      deps.logSubtaskTabAutoClosed({ taskId, round, subtaskId, tabId });
+    } catch (error) {
+      await logError("loop-subtask-tab-auto-close-error", { taskId, round, subtaskId, tabId,
+        error: error instanceof Error ? error.message : String(error) }).catch(() => undefined);
+    }
+  };
   let reported = false;
+  let cleanup: Promise<void> | undefined;
   try {
     deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
     reported = runStatus === "end";
   } finally {
-    loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported);
+    cleanup = loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported, closeCompletedTab);
   }
 
   if (runStatus !== "end" || !tabId) {
     return;
   }
 
-  await deps.closeSubtaskTab(tabId);
-  deps.logSubtaskTabAutoClosed({ taskId, round, subtaskId, tabId });
+  if (!cleanup) await closeCompletedTab();
 }
 
 export function shouldDelegateSubtaskContinuationToLoopPlus(

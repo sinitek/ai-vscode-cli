@@ -6,7 +6,7 @@ import { createCliRecord } from "../../cli/types";
 import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs";
 import { createSessionTabsController, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft } from "../../sessionTabs";
 import type { SessionStore } from "../../sessionStore";
-import { closeLoopSubtaskConversationTabs } from "../../extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, prepareLoopSubtaskConversationTabClose } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 
@@ -324,14 +324,46 @@ test("control cleanup without an attempt tab uses a snapshot and keeps a newly d
 
 test("subtask cleanup supports an explicit tab without metadata and propagates close errors", async () => {
   const context = { taskId: "task-1", subtaskId: "A", tabId: "sub-tab" };
+  const tabs: ConversationTabRecord[] = [{ id: "sub-tab", cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 }];
   const deps = {
-    getTabs: () => [{ id: "sub-tab", cli: "codex" as const, sessionId: null, sessionIdByCli: {}, createdAt: 1 }],
+    getTabs: () => tabs,
     resolveContext: () => null,
     isTabRunActive: () => false,
     closeTab: async () => { throw new Error("panel refresh failed"); },
   };
   await assert.rejects(closeLoopSubtaskConversationTabs(context, deps), /panel refresh failed/);
   await closeLoopSubtaskConversationTabs({ ...context, tabId: "missing" }, deps);
+});
+
+test("压缩后的关页仅清理完成时快照，保护新增及换绑标签", async () => {
+  const context = { taskId: "task", subtaskId: "child", tabId: "completed-sub" };
+  for (const change of ["new-tab", "session", "object", "context"] as const) {
+    const tabs: ConversationTabRecord[] = ["old-sub", "completed-sub"].map((id) => ({
+      id, cli: "codex", sessionId: "session", sessionIdByCli: { codex: "session" }, createdAt: 1,
+    }));
+    const closed: string[] = [];
+    let changedContext = false;
+    const close = prepareLoopSubtaskConversationTabClose(context, {
+      getTabs: () => tabs,
+      resolveContext: (tab) => changedContext && tab.id === "completed-sub" ? { ...context, subtaskId: "replacement" } : context,
+      isTabRunActive: () => false,
+      closeTab: async (id) => { closed.push(id); tabs.splice(tabs.findIndex((tab) => tab.id === id), 1); },
+    });
+    if (change === "new-tab") tabs.push({ ...tabs[1], id: "replacement-sub" });
+    if (change === "session") tabs[1].sessionIdByCli.codex = "new-session";
+    if (change === "object") tabs[1] = { ...tabs[1] };
+    if (change === "context") changedContext = true;
+    await close();
+    assert.deepEqual(closed, change === "new-tab" ? ["old-sub", "completed-sub"] : ["old-sub"], change);
+  }
+});
+
+test("关页被宿主拒绝时明确失败，不能伪报关闭成功", async () => {
+  const tab: ConversationTabRecord = { id: "completed", cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 };
+  const context = { taskId: "task", subtaskId: "child", tabId: tab.id };
+  await assert.rejects(closeLoopSubtaskConversationTabs(context, {
+    getTabs: () => [tab], resolveContext: () => context, isTabRunActive: () => false, closeTab: async () => {},
+  }), /关闭未生效/);
 });
 
 test("an old attempt cannot close a newer replacement tab waiting to start", async () => {

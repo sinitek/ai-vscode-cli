@@ -5,7 +5,8 @@ import { shouldOverlapLoopMainContextCompaction, type LoopMainAutoCompactRequest
 import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
 
 type DeferredCompaction = {
-  start: (completed: boolean) => void;
+  start: (completed: boolean, onCompleted?: () => Promise<void>) => void;
+  flight: Promise<void>;
 };
 
 type CompactionOrigin = {
@@ -35,12 +36,21 @@ export class LoopSubtaskAutoCompactions {
       cli: target.cli, tabId: target.tabId, sessionId: target.sessionId,
     };
     const previous = this.flights.get(sessionKey);
-    let start!: (completed: boolean) => void;
-    const notified = new Promise<boolean>((resolve) => { start = resolve; });
-    const flight = notified.then(async (completed) => {
+    let start!: DeferredCompaction["start"];
+    const notified = new Promise<{ completed: boolean; onCompleted?: () => Promise<void> }>((resolve) => {
+      start = (completed, onCompleted) => resolve({ completed, onCompleted });
+    });
+    const flight = notified.then(async ({ completed, onCompleted }) => {
       await previous;
       if (completed) {
-        await run();
+        try {
+          await run();
+        } catch (error) {
+          this.onError(error, origin);
+        } finally {
+          // Keep this session reserved until its completed tab has been retired.
+          await onCompleted?.();
+        }
       }
     }).catch((error) => this.onError(error, origin)).finally(() => {
       if (this.flights.get(sessionKey) === flight) {
@@ -48,16 +58,17 @@ export class LoopSubtaskAutoCompactions {
       }
     });
     this.pending.get(taskKey)?.start(false);
-    this.pending.set(taskKey, { start });
+    this.pending.set(taskKey, { start, flight });
     this.flights.set(sessionKey, flight);
     return true;
   }
 
-  notify(taskId: string, subtaskId: string, completed: boolean): void {
+  notify(taskId: string, subtaskId: string, completed: boolean, onCompleted?: () => Promise<void>): Promise<void> | undefined {
     const taskKey = JSON.stringify([taskId, subtaskId]);
     const pending = this.pending.get(taskKey);
     this.pending.delete(taskKey);
-    pending?.start(completed);
+    pending?.start(completed, onCompleted);
+    return pending?.flight;
   }
 
   async wait(cli: CliName, sessionId: string | null): Promise<void> {

@@ -79,6 +79,24 @@ test("does not automatically close a successful Loop subtask without a tab id", 
   assert.deepEqual(harness.calls, ["mark:end"]);
 });
 
+test("关页准备或执行失败不影响经典 Loop 完成回报且不伪报关闭", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  const errors: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logError", async (event: string, data: unknown) => { errors.push({ event, data }); });
+  for (const phase of ["prepare", "close"] as const) {
+    const harness = createCompletionHarness();
+    const failure = () => { throw new Error(`受控 ${phase} 失败`); };
+    if (phase === "prepare") harness.deps.prepareSubtaskTabClose = failure;
+    else harness.deps.closeSubtaskTab = async () => failure();
+    await finalizeLoopSubtaskRun({
+      taskId: "task", subtaskId: "child", round: 1, runStatus: "end", assistantContent: "已完成", tabId: "child-tab",
+    }, harness.deps);
+    assert.deepEqual(harness.calls, ["mark:end"]);
+  }
+  assert.equal(errors.length, 2);
+  assert.equal(errors.every((item) => item.event === "loop-subtask-tab-auto-close-error"), true);
+});
+
 test("does not automatically close stopped or failed Loop subtask tabs", async () => {
   const stopped = createCompletionHarness();
   const failed = createCompletionHarness();

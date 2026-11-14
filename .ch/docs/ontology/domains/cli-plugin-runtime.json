@@ -662,7 +662,7 @@
       "name": "Loop 连续任务与验收修补复用子会话",
       "applies_to": ["plugin.loop_task", "plugin.cli_session"],
       "status": "active",
-      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。成功后按父任务和子任务身份清理当前及更早闲置 Tab，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
+      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。成功后先持久化并汇报主任务，再按原条件压缩子会话，最后按完成时的标签顺序及对象、CLI、会话、子任务快照清理旧 Tab；同会话直到关页结束才放行，主任务验收与独立任务不等待。压缩失败或跳过仍关页，回报失败保留 Tab；关闭未生效记录失败，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
       "source_refs": [
         {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"},
         {"path": "src/extensionHost/loopSubtaskTabs.ts"},

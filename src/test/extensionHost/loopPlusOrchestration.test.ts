@@ -471,6 +471,7 @@ function harness(options: {
   appendMessage?: LoopPlusOrchestrationDeps["appendMessage"];
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
+  onAttemptCompleted?: () => Promise<void>;
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -569,6 +570,7 @@ function harness(options: {
       attempts.push({ request, resolve: gate.resolve });
       return {
         promise: gate.promise,
+        onCompleted: options.onAttemptCompleted,
         abort: (abortOptions) => {
           abortedAttemptIds.push(request.attemptId);
           if (abortOptions?.closeTab === true) {
@@ -628,12 +630,18 @@ test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current 
 
 test("Loop+ records completion and starts main review without waiting for subtask compaction", { timeout: 3000 }, async () => {
   for (const viaContinuation of [false, true]) {
-    const env = harness();
+    let closed = false;
+    const close = async () => { closed = true; };
+    const env = harness({ onAttemptCompleted: close });
     const run = env.host.tryRun({ displayPrompt: "完成任务" }, env.target, { schedulingMode: "event_driven" });
     await flush();
     env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
     await flush();
     const attempt = env.attempts[0].request;
+    if (viaContinuation) {
+      env.attempts[0].resolve({ outcome: "stopped", detail: "等待人工续接" });
+      await flush();
+    }
     const gate = deferred<void>();
     let compactStarted = false;
     const sessionId = viaContinuation ? "continued-session" : "attempt-session";
@@ -648,16 +656,18 @@ test("Loop+ records completion and starts main review without waiting for subtas
     await flush();
     assert.equal(compactStarted, false);
     if (viaContinuation) {
-      env.host.reportAttempt(attempt.taskId, { subtaskId: attempt.subtaskId, attemptId: attempt.attemptId, outcome: "completed", detail: "已完成续接" });
+      assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, attempt.subtaskId, "completed", "已完成续接", undefined, close), true);
     } else {
       env.attempts[0].resolve({ outcome: "completed", detail: "已完成" });
     }
     await flush();
     assert.equal(compactStarted, true);
+    assert.equal(closed, false);
     assert.equal(env.mains.length, 2);
     assert.equal(env.mains[1].request.kind, "review");
     gate.resolve();
     await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    assert.equal(closed, true);
     env.host.stopParent(run.taskId ?? "");
     await run.done;
   }

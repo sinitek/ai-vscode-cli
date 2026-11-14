@@ -301,6 +301,7 @@ export type PromptRunRuntimeHostDeps = {
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   handleLoopPlusSubtaskContinuation?: (context: LoopSubtaskConversationContext, tabId: string) => Promise<void>;
   stopLoopPlusParent?: (taskId: string) => void;
 };
@@ -946,6 +947,7 @@ async function finalizeLoopSubtaskRun(options: LoopSubtaskCompletionOptions): Pr
   await finalizeLoopSubtaskRunWithDeps(options, {
     markSubtaskRunFinished: markLoopSubtaskRunFinished,
     closeSubtaskTab: closeConversationTabAndRefreshPanel,
+    prepareSubtaskTabClose: deps.prepareSubtaskTabClose,
     logSubtaskTabAutoClosed: ({ taskId, round, subtaskId, tabId }) => {
       void logInfo("loop-subtask-tab-auto-closed", {
         taskId,

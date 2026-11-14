@@ -175,6 +175,8 @@ export type LoopPlusAttemptAbortOptions = {
 export type LoopPlusAttemptHandle = {
   promise: Promise<LoopPlusAttemptResult>;
   abort: (options?: LoopPlusAttemptAbortOptions) => void;
+  /** Successful report acknowledged and optional session compaction settled. */
+  onCompleted?: () => Promise<void>;
 };
 
 export type LoopPlusOrchestrationDeps = {
@@ -423,6 +425,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     outcome: LoopPlusExecutionOutcome,
     detail?: string | null,
     recovery?: { target: LoopPlusPromptTarget; input: LoopPlusRunInput },
+    onCompleted?: () => Promise<void>,
   ): boolean {
     let runtime = runtimes.get(taskId);
     if (!runtime && recovery) {
@@ -473,6 +476,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       attemptId: running.attemptId,
       outcome,
       detail: detail ?? null,
+      onCompleted,
     });
     const snapshot = runtime.scheduler.snapshot();
     return !runtime.autoPaused && !snapshot.running.some((item) => item.attemptId === running.attemptId);
@@ -1693,6 +1697,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           attemptId: record.attemptId,
           outcome: result.outcome,
           detail: result.detail,
+          onCompleted: handle.onCompleted,
         });
       }, (error: unknown) => {
         if (inFlight.settled) {
@@ -1783,6 +1788,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     attemptId: string;
     outcome: LoopPlusExecutionOutcome;
     detail: string | null;
+    onCompleted?: () => Promise<void>;
   }): void {
     try {
       applyFinish(runtime, input);
@@ -1806,15 +1812,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     attemptId: string;
     outcome: LoopPlusExecutionOutcome;
     detail: string | null;
+    onCompleted?: () => Promise<void>;
   }): void {
     const currentAttempt = runtime.scheduler.snapshot().running.find((item) => item.subtaskId === input.subtaskId);
     let completed = false;
     try {
-      applyFinishResult(runtime, input);
-      completed = input.outcome === "completed";
+      completed = applyFinishResult(runtime, input) && input.outcome === "completed";
     } finally {
       if (!currentAttempt || currentAttempt.attemptId === input.attemptId) {
-        loopSubtaskAutoCompactions.notify(runtime.taskId, input.subtaskId, completed);
+        const cleanup = completed ? input.onCompleted : undefined;
+        const flight = loopSubtaskAutoCompactions.notify(runtime.taskId, input.subtaskId, completed, cleanup);
+        if (!flight && cleanup) {
+          void cleanup().catch((error: unknown) => {
+            deps.log?.("loop-plus-subtask-tab-auto-close-error", {
+              taskId: runtime.taskId, subtaskId: input.subtaskId, attemptId: input.attemptId, error: errorText(error),
+            });
+          });
+        }
       }
     }
   }
@@ -1824,7 +1838,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     attemptId: string;
     outcome: LoopPlusExecutionOutcome;
     detail: string | null;
-  }): void {
+  }): boolean {
     if (runtime.released || runtime.scheduler.snapshot().completed) {
       deps.log?.("loop-plus-finish-ignored", {
         taskId: runtime.taskId,
@@ -1832,7 +1846,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         attemptId: input.attemptId,
         reason: "completed",
       });
-      return;
+      return false;
     }
     const snapshot = runtime.scheduler.snapshot();
     const openAttempt = snapshot.running.find((item) => item.subtaskId === input.subtaskId && item.attemptId === input.attemptId);
@@ -1849,7 +1863,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         subtaskId: input.subtaskId,
         attemptId: input.attemptId,
       });
-      return;
+      return false;
     }
     const result = runtime.scheduler.finish({
       subtaskId: input.subtaskId,
@@ -1864,7 +1878,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         attemptId: input.attemptId,
         reason: result.reason,
       });
-      return;
+      return false;
     }
     const meta = runtime.meta.get(input.subtaskId);
     if (meta) {
@@ -1884,7 +1898,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
       notifySubtaskChat(runtime, finishedChatNotice(input, meta));
-      return;
+      return false;
     }
     if (task && deps.recordAttempt) {
       try {
@@ -1907,7 +1921,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         releaseUnstartedReservations(runtime, result.started);
         retainFinishFailure(runtime, "loop-plus-report-failed", `Loop+ attempt report failed: ${detail}`);
         notifySubtaskChat(runtime, finishedChatNotice(input, meta));
-        return;
+        return false;
       }
     }
     if (runtime.autoPaused) {
@@ -1925,7 +1939,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
       notifySubtaskChat(runtime, finishedChatNotice(input, meta));
-      return;
+      return false;
     }
     notifySubtaskChat(runtime, finishedChatNotice(input, meta));
     if (
@@ -1935,13 +1949,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       || runtime.scheduler.snapshot().parentStopped
       || runtime.scheduler.snapshot().completed
     ) {
-      return;
+      return true;
     }
     launchAll(runtime, result.started);
     if (result.wake && !runtime.autoPaused && !runtime.released && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped && !runtime.scheduler.snapshot().completed) {
       pump(runtime);
     }
     restartReviewIfBatchGrew(runtime);
+    return true;
   }
 
   function retainFinishFailure(runtime: ParentRuntime, message: string, finalSummary: string): void {

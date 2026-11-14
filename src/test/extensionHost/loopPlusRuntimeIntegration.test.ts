@@ -20,6 +20,7 @@ const {
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
 
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
+import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 
 function longPrompt(id: string, file: string): string {
   return `Implement ${id} without editing the parent task record or scheduler snapshot. Write scope: ${file}. Report only the attempt result.`;
@@ -119,7 +120,6 @@ test("本次完成记录从共享历史丢失后仍进入验收并自动关闭�
       fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
     });
     fixture.queueMain((input, tabId) => {
-      assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
       fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
     });
     fixture.setAttemptAction((input, tabId) => {
@@ -128,6 +128,8 @@ test("本次完成记录从共享历史丢失后仍进入验收并自动关闭�
     await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
     assert.equal(fixture.readTask(taskId)?.status, "completed");
     assert.equal(fixture.readTask(taskId)?.subTasks[0].status, "completed");
+    await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId), "成功回报后关闭子任务标签");
+    assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
     assert.equal(fixture.completionSubscriptionCount(), 0);
   } finally {
     fixture.dispose();
@@ -141,10 +143,13 @@ for (const status of ["end", "error", "stopped", null] as const) {
       fixture.setAttemptAction((input, tabId) => {
         fixture.publish(input, tabId, { status, content: "任务已完成，执行报告已写入本轮报告。" });
       });
-      const result = await fixture.adapter.startAttempt({
+      const handle = fixture.adapter.startAttempt({
         taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
         prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
-      }).promise;
+      });
+      const result = await handle.promise;
+      assert.equal(fixture.closedSubtaskTabs.length, 0);
+      if (result.outcome === "completed") await handle.onCompleted?.();
       assert.equal(result.outcome, status === "end" ? "completed" : status === "stopped" ? "stopped" : "failed");
       assert.equal(fixture.closedSubtaskTabs.length, status === "end" ? 1 : 0);
       assert.equal(fixture.completionSubscriptionCount(), 0);
@@ -167,6 +172,8 @@ test("并行调用的完成事件不能替代本次缺失的结果，结束后�
     assert.equal(fixture.completionSubscriptionCount(), 2);
     fixture.finishParked("B", { status: "end", content: "B 已完成" });
     assert.equal((await second.promise).outcome, "completed");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+    await second.onCompleted?.();
     assert.equal(fixture.completionSubscriptionCount(), 1);
     fixture.releaseParked("A");
     assert.equal((await first.promise).outcome, "failed");
@@ -190,10 +197,13 @@ test("完成后共享历史读取异常不影响结果，CLI 收口异常仍为�
         completed = true;
         if (throwsAfterCompletion) throw new Error("CLI 收口失败");
       });
-      const result = await fixture.adapter.startAttempt({
+      const handle = fixture.adapter.startAttempt({
         taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
         prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
-      }).promise;
+      });
+      const result = await handle.promise;
+      assert.equal(fixture.closedSubtaskTabs.length, 0);
+      if (result.outcome === "completed") await handle.onCompleted?.();
       assert.equal(result.outcome, throwsAfterCompletion ? "failed" : "completed");
       assert.equal(result.detail, throwsAfterCompletion ? "CLI 收口失败" : "本次真实完成结果");
       assert.equal(fixture.closedSubtaskTabs.length, throwsAfterCompletion ? 0 : 1);
@@ -210,10 +220,13 @@ test("未提供完成事件端口的适配器继续读取历史记录", async ()
     fixture.setAttemptAction((input, tabId) => {
       fixture.publish(input, tabId, { status: "end", content: "兼容历史读取" });
     });
-    const result = await fixture.adapter.startAttempt({
+    const handle = fixture.adapter.startAttempt({
       taskId: "task-main", subtaskId: "A", attemptId: "attempt-A", title: "A",
       prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
-    }).promise;
+    });
+    const result = await handle.promise;
+    assert.equal(fixture.closedSubtaskTabs.length, 0);
+    await handle.onCompleted?.();
     assert.deepEqual(result, { outcome: "completed", detail: "兼容历史读取" });
     assert.equal(fixture.closedSubtaskTabs.length, 1);
     assert.equal(fixture.completionSubscriptionCount(), 0);
@@ -232,8 +245,8 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
         taskId = input.loopTaskId ?? "";
         fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
       });
-      fixture.queueMain((input, tabId) => {
-        assert.ok(fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId));
+      fixture.queueMain(async (input, tabId) => {
+        await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId), "复用会话前原子任务标签已关闭");
         assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "A")?.executionSession?.sessionId, "original-subtask-thread");
         fixture.publish(input, tabId, { status: "end", content: decision({
           status: "accept", reviewEventId: currentEventId(input.displayPrompt),
@@ -281,6 +294,73 @@ function prompt(text = "ship the feature") {
     loopSubtaskThinkingMode: "low" as const,
   };
 }
+
+for (const compactFails of [false, true]) {
+  test(`Loop+ 先汇报并验收，压缩${compactFails ? "失败" : "成功"}后再关闭子任务标签`, { timeout: 3000 }, async () => {
+    const fixture = createLoopPlusRuntimeFixture();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const sessionId = `completion-order-${compactFails}`;
+    let taskId = "";
+    let compactStarted = false;
+    try {
+      fixture.queueMain((input, tabId) => {
+        taskId = input.loopTaskId!;
+        fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+      });
+      fixture.queueMain((input, tabId) => {
+        assert.equal(fixture.closedSubtaskTabs.length, 0);
+        fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+      });
+      fixture.setAttemptAction((input, tabId) => {
+        fixture.createdSubtaskTargets.find((target) => target.tabId === tabId)!.sessionId = sessionId;
+        fixture.publish(input, tabId, { status: "end", content: "本轮子任务已完成" });
+        loopSubtaskAutoCompactions.defer(input, { cli: "codex", tabId, sessionId }, async () => {
+          assert.match(reportText(fixture.rootDir), /Attempt result/);
+          assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "A")?.status, "completed");
+          assert.equal(fixture.closedSubtaskTabs.length, 0);
+          compactStarted = true;
+          await gate;
+          if (compactFails) throw new Error("受控压缩失败");
+        });
+      });
+      await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+      assert.equal(fixture.readTask(taskId)?.status, "completed");
+      assert.equal(compactStarted, true);
+      assert.equal(fixture.closedSubtaskTabs.length, 0);
+      release();
+      await loopSubtaskAutoCompactions.wait("codex", sessionId);
+      assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
+    } finally {
+      release();
+      await loopSubtaskAutoCompactions.wait("codex", sessionId);
+      fixture.dispose();
+    }
+  });
+}
+
+test("Loop+ 汇报落盘失败时保留完成标签且取消压缩", { timeout: 3000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  const sessionId = "report-failure-retains-tab";
+  let taskId = "";
+  try {
+    fixture.setReportFailure("受控报告落盘失败");
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId!;
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "执行完成" });
+      loopSubtaskAutoCompactions.defer(input, { cli: "codex", tabId, sessionId }, async () => assert.fail("未回报成功不得压缩"));
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await loopSubtaskAutoCompactions.wait("codex", sessionId);
+    assert.equal(fixture.readTask(taskId)?.status, "error");
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+  } finally {
+    fixture.dispose();
+  }
+});
 
 function reportText(rootDir: string): string {
   const commDir = path.join(rootDir, "comm");
@@ -1173,7 +1253,7 @@ test("adapter releases execution roots after success, failure, and creation fail
   }
 });
 
-test("closes a Loop+ subtask tab only after a completed attempt", async () => {
+test("closes a Loop+ subtask tab only after its completed result is reported", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
     const request = {
@@ -1211,7 +1291,10 @@ test("closes a Loop+ subtask tab only after a completed attempt", async () => {
     fixture.setAttemptAction(async (input, tabId) => {
       fixture.publish(input, tabId, { status: "end", content: "kept before close" });
     });
-    const closed = await fixture.adapter.startAttempt({ ...request, attemptId: "close-ok" }).promise;
+    const handle = fixture.adapter.startAttempt({ ...request, attemptId: "close-ok" });
+    const closed = await handle.promise;
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+    await handle.onCompleted?.();
     assert.equal(closed.outcome, "completed");
     assert.equal(closed.detail, "kept before close");
     assert.equal(fixture.closedSubtaskTabs.length, 1);
