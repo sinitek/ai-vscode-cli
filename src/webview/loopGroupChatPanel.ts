@@ -674,6 +674,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      const ASK_WAITING_LABEL = "${escapeJsString(strings.askChatWaiting)}";
+	      const ASK_QUEUED_LABEL = "${escapeJsString(strings.askChatQueued)}";
 	      const ASK_EMPTY_LABEL = "${escapeJsString(strings.askChatEmpty)}";
 
 	      function askEscape(value) {
@@ -727,7 +728,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const content = askEscape(message.content || "");
 	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body" data-markdown-source="' + content + '">' +
 	          content +
-	          "</div></article>";
+	          "</div>" + (role === "user" && message.queued === true
+	            ? '<div class="ask-chat-queued" role="status"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>' + askEscape(ASK_QUEUED_LABEL) + '</span></div>'
+	            : "") + "</article>";
 	      }
 
 	      function renderAskWaiting() {

@@ -766,11 +766,11 @@ test("asks the current main model session and shows the answer without supplemen
   const vscode = require("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
-  const posted: Array<{ type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }> = [];
+  const posted: Array<{ type?: string; thread?: { messages?: Array<{ content?: string; role?: string; queued?: boolean }>; running?: boolean; queued?: boolean } }> = [];
   const webview = {
     cspSource: "self",
     html: "",
-    postMessage(message: { type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }) {
+    postMessage(message: { type?: string; thread?: { messages?: Array<{ content?: string; role?: string; queued?: boolean }>; running?: boolean; queued?: boolean } }) {
       posted.push(message);
       return undefined;
     },
@@ -896,6 +896,7 @@ test("asks the current main model session and shows the answer without supplemen
     assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题", "可以合并吗", "再确认当前进度"]);
     assert.equal(panelWhileBusy?.getAskThread().running, true);
     assert.equal(panelWhileBusy?.getAskThread().queued, true);
+    assert.deepEqual(panelWhileBusy?.getAskThread().messages.filter((message) => message.queued).map((message) => message.content), ["可以合并吗", "再确认当前进度"]);
     mainModelBusy = false;
     await coordinator.refresh(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, false);
@@ -905,10 +906,13 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(webview.html, installedHtml);
     const askThreads = posted.filter((message) => message.type === "loopGroupChatChat:askThread");
     const latestAsk = askThreads.at(-1)?.thread;
+    const answeringFirst = askThreads.find((message) => message.thread?.running && !message.thread.queued);
+    assert.deepEqual(answeringFirst?.thread?.messages?.filter((message) => message.queued).map((message) => message.content), ["再确认当前进度"]);
     const askText = latestAsk?.messages?.map((message) => message.content ?? "").join("\n") ?? "";
     assert.match(askText, /可以合并吗/u);
     assert.doesNotMatch(askText, /先看冲突/u);
     assert.equal(latestAsk?.running, false);
+    assert.equal(panelWhileBusy?.getAskThread().messages.some((message) => message.queued), false);
     assert.match(askText, /可以先合并冲突文件。/u);
     assert.doesNotMatch(installedHtml, /ask-chat-thinking/u);
     assert.ok(savedThreads.every((entry) => !entry.includes("先看冲突")));
@@ -936,17 +940,20 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(aborts, 0);
     assert.equal(panel?.getAskThread().running, false);
     assert.doesNotMatch(questions.join("\n"), /取消排队的问题/u);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
 
     mainModelBusy = false;
     holdAnswer = true;
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "中止正在回答的问题" });
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "同时清空后续问题" });
     await delay(5);
+    assert.deepEqual(panel?.getAskThread().messages.filter((message) => message.queued).map((message) => message.content), ["同时清空后续问题"]);
     messageHandler?.({ type: "loopGroupChatChat:abortMainModelQuestion" });
     await delay(5);
     assert.equal(aborts, 1);
     assert.equal(panel?.getAskThread().running, false);
     assert.doesNotMatch(questions.join("\n"), /同时清空后续问题/u);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
 
     holdAnswer = false;
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败的问题" });
@@ -954,6 +961,7 @@ test("asks the current main model session and shows the answer without supplemen
     await delay(5);
     assert.deepEqual(questions.slice(-2), ["失败的问题", "失败后继续"]);
     assert.equal(panel?.getAskThread().running, false);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }

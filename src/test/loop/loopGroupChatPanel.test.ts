@@ -1262,6 +1262,27 @@ test("mounts ask bubbles through the shared group chat Markdown renderer", () =>
   assert.equal(vm.runInContext("renderAskBubble(message)", context), "");
 });
 
+test("shows a queue indicator below only queued user bubbles", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function askEscape"), html.indexOf("function renderAskWaiting"));
+  const context = vm.createContext({ ASK_QUEUED_LABEL: "排队中，等待主模型空闲" });
+  vm.runInContext(source, context);
+  for (const role of ["user", "assistant", "system"]) {
+    for (const queued of [true, false, undefined]) {
+      context.message = { role, queued, content: "问题 <script>" };
+      const bubble = vm.runInContext("renderAskBubble(message)", context);
+      if (role === "user" && queued) {
+        assert.match(bubble, /<\/div><div class="ask-chat-queued" role="status">/u);
+        assert.match(bubble, /排队中，等待主模型空闲/u);
+        assert.match(bubble, /class="typing-dots" aria-hidden="true"/u);
+      } else {
+        assert.doesNotMatch(bubble, /ask-chat-queued/u);
+      }
+      assert.doesNotMatch(bubble, /<script>/u);
+    }
+  }
+});
+
 test("scrolls new ask bubbles and reopened dialogs to the bottom without disturbing unchanged history", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   assert.match(html, /askChatMessages.addEventListener\("load", scrollAskToBottom, true\)/u);

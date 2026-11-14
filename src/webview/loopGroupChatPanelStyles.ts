@@ -185,7 +185,32 @@ ${DIALOG_SHELL_STYLES}
         min-width: 0;
       }
       .ask-chat-message.user {
-        justify-content: flex-end;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .ask-chat-queued {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 85%;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .ask-chat-queued .typing-dots {
+        flex-shrink: 0;
+      }
+      .ask-chat-queued .typing-dots span {
+        animation-play-state: paused;
+      }
+      .ask-chat-backdrop.visible .ask-chat-queued .typing-dots span {
+        animation-play-state: running;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ask-chat-queued .typing-dots span {
+          animation: none;
+        }
       }
       .ask-chat-message.user .ask-chat-bubble {
         max-width: 85%;

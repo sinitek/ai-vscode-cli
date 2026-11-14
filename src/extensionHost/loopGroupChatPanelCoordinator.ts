@@ -246,6 +246,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
   const askRuns = new Map<string, {
     aborted: boolean;
     started: boolean;
+    activeTurnId?: string;
     questions: Array<{ question: string; turnId: string }>;
   }>();
   const continuingTaskIds = new Set<string>();
@@ -256,6 +257,20 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     thread: LoopAskThread,
     mode: "remember" | "publish" | "render",
   ): void => {
+    const run = askRuns.get(task.id);
+    const queuedIds = new Set(run?.questions.map((question) => question.turnId));
+    if (run?.activeTurnId && !run.started) {
+      queuedIds.add(run.activeTurnId);
+    }
+    thread = {
+      ...thread,
+      messages: thread.messages.map((message) => {
+        const { queued: _queued, ...bubble } = message;
+        return thread.running && message.role === "user" && queuedIds.has(message.id)
+          ? { ...bubble, queued: true }
+          : bubble;
+      }),
+    };
     askThreads.set(task.id, thread);
     try {
       deps.writeAskThread?.(task, thread);
@@ -556,8 +571,9 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
     const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
     const existingRun = askRuns.get(task.id);
-    const run = existingRun ?? { aborted: false, started: false, questions: [] };
+    const run: NonNullable<ReturnType<typeof askRuns.get>> = existingRun ?? { aborted: false, started: false, questions: [] };
     run.questions.push({ question, turnId });
+    askRuns.set(task.id, run);
     const started = {
       ...beginLoopAskTurn(current, question, Date.now(), turnId),
       queued: !run.started,
@@ -566,9 +582,9 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     if (existingRun) {
       return;
     }
-    askRuns.set(task.id, run);
     while (run.questions.length > 0 && !run.aborted && askRuns.get(task.id) === run) {
       const next = run.questions.shift()!;
+      run.activeTurnId = next.turnId;
       let result: LoopMainModelAnswerResult;
       try {
         result = await deps.askMainModel(deps.readTaskRecord(task.id) ?? task, next.question, {
@@ -589,6 +605,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         return;
       }
       run.started = false;
+      run.activeTurnId = undefined;
       const thread = askThreads.get(task.id) ?? started;
       const settled = settleLoopAskTurn(thread, {
         ...(result.status === "ready" ? { answer: result.answer } : {}),
