@@ -73,7 +73,6 @@ import {
 import { inheritLoopPlusRepairSessions } from "../loopSubtaskSession";
 import type { LoopPlusReviewItem } from "../loopPlusScheduler";
 
-export const LOOP_PLUS_MAX_CONCURRENCY = 6;
 const DECISION_SAFETY_LIMIT = 200;
 const PROTOCOL_RETRY_LIMIT = 2;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
@@ -914,6 +913,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const task = deps.readTask(runtime.taskId);
       const acceptancePlanKeys = listLoopPlusAcceptancePlanFeedbackItems(task?.loopPlusAcceptancePlan)
         .map((item) => item.key);
+      // 用户可在主模型执行期间改设置，提交决策前同步准入容量。
+      runtime.scheduler.updateMaxConcurrency(maxConcurrency());
       const parsed = parseLoopPlusDecisionWithFeedback(content, {
         subtaskMax: decisionSubtaskMax(),
         acceptancePlanKeys,
@@ -1865,6 +1866,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       return false;
     }
+    runtime.scheduler.updateMaxConcurrency(maxConcurrency());
     const result = runtime.scheduler.finish({
       subtaskId: input.subtaskId,
       attemptId: input.attemptId,
@@ -2013,6 +2015,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function buildMainRequest(runtime: ParentRuntime, step: MainStep): LoopPlusMainRequest {
+    runtime.scheduler.updateMaxConcurrency(maxConcurrency());
     const task = deps.readTask(runtime.taskId);
     const routing = describeLoopPlusRouting(task);
     const basePrompt = buildLoopPlusMainModelPrompt({

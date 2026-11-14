@@ -300,6 +300,8 @@ export type LoopPlusControlResult = {
 };
 
 export type LoopPlusScheduler = {
+  /** 更新准入容量；不取消已有预留，也不自行启动排队任务。 */
+  updateMaxConcurrency: (value: number) => void;
   dispatch: (specs: readonly unknown[]) => LoopPlusDispatchResult;
   applyControls: (
     commands: readonly LoopPlusControlCommand[],
@@ -352,7 +354,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   const restored = options.snapshot === undefined ? null : readSnapshot(options.snapshot);
   let maxConcurrency: number;
   if (isPositiveInteger(options.maxConcurrency)) {
-    maxConcurrency = Math.max(options.maxConcurrency, restored?.running.length ?? 0);
+    maxConcurrency = options.maxConcurrency;
   } else if (restored) {
     maxConcurrency = restored.maxConcurrency;
   } else {
@@ -371,10 +373,21 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   let userMessageQueue = restored?.userMessageQueue.slice() ?? [];
   normalizeWake();
 
+  function updateMaxConcurrency(value: number): void {
+    if (!isPositiveInteger(value)) {
+      throw new Error("Invalid Loop+ maxConcurrency");
+    }
+    if (maxConcurrency !== value) {
+      maxConcurrency = value;
+      commit();
+    }
+  }
+
   function snapshot(): LoopPlusSchedulerSnapshot {
     return {
       version: LOOP_PLUS_SCHEDULER_VERSION,
-      maxConcurrency,
+      // 快照必须能容纳已有预留；新准入仍使用配置容量，随运行结束逐步收敛。
+      maxConcurrency: Math.max(maxConcurrency, running.length),
       phase: phase(),
       parentStopped,
       completed,
@@ -1027,6 +1040,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   return {
+    updateMaxConcurrency,
     dispatch,
     applyControls,
     finish,

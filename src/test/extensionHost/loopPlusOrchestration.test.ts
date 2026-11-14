@@ -1102,6 +1102,107 @@ test("refreshes concurrency from the configured dispatch limit when continuing l
   }
 });
 
+test("refreshes capacity when the dispatch limit changes during an active main call", async () => {
+  let maximum = 6;
+  const env = harness({ decisionSubtaskMax: () => maximum });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  maximum = 10;
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: Array.from({ length: 10 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
+  }));
+  await flush();
+  try {
+    assert.equal(env.attempts.length, 10);
+    assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).maxConcurrency, 10);
+    env.attempts[0].resolve({ outcome: "completed", detail: "done" });
+    await flush();
+    assert.match(env.mains.at(-1)!.request.modelPrompt, /Scheduler concurrency limit: 10/);
+    assert.match(env.mains.at(-1)!.request.modelPrompt, /Decision subtask limit: 10/);
+  } finally {
+    env.host.stopParent(run.taskId ?? "");
+    await run.done;
+  }
+});
+
+test("refreshes pending admission on a finish notification while honoring explicit host limits", async () => {
+  for (const hostLimit of [undefined, 3]) {
+    let maximum = 2;
+    const env = harness({ decisionSubtaskMax: () => maximum, maxConcurrency: hostLimit });
+    const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({
+      status: "dispatch", subtasks: [subtask("a", ["src/a.ts"]), subtask("b", ["src/b.ts"])],
+    }));
+    await flush();
+    env.attempts[0].resolve({ outcome: "completed", detail: "done" });
+    await flush();
+    const review = env.mains.at(-1)!;
+    review.resolve(decisionJson({
+      status: "accept", reviewEventIds: review.request.reviewEventIds,
+      subtasks: [subtask("c", ["src/c.ts"]), subtask("d", ["src/d.ts"])],
+    }));
+    await flush();
+    const snapshotBefore = snapshotOf(env.tasks.get(run.taskId ?? ""));
+    maximum = 10;
+    env.attempts[1].resolve({ outcome: "completed", detail: "done" });
+    await flush();
+    try {
+      const snapshot = snapshotOf(env.tasks.get(run.taskId ?? ""));
+      assert.equal(snapshot.maxConcurrency, hostLimit ?? 10);
+      assert.equal(snapshot.pending.length, 0);
+      assert.equal(env.attempts.length, 4);
+      assert.deepEqual(snapshot.seenAttempts.map((item) => item.attemptId), snapshotBefore.seenAttempts.map((item) => item.attemptId));
+      assert.match(env.mains.at(-1)!.request.modelPrompt, new RegExp(`Scheduler concurrency limit: ${hostLimit ?? 10}`));
+      assert.match(env.mains.at(-1)!.request.modelPrompt, /Decision subtask limit: 10/);
+    } finally {
+      env.host.stopParent(run.taskId ?? "");
+      await run.done;
+    }
+  }
+});
+
+test("lowering the active dispatch limit preserves running work and drains to the new capacity", async () => {
+  let maximum = 6;
+  const env = harness({ decisionSubtaskMax: () => maximum });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: Array.from({ length: 6 }, (_, index) => subtask(`item-${index}`, [`src/item-${index}.ts`])),
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "done" });
+  await flush();
+  maximum = 2;
+  const review = env.mains.at(-1)!;
+  review.resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: review.request.reviewEventIds,
+    subtasks: [subtask("next-a", ["src/next-a.ts"]), subtask("next-b", ["src/next-b.ts"])],
+  }));
+  await flush();
+  try {
+    assert.equal(env.attempts.length, 6, "do not backfill while already above the new limit");
+    assert.equal(env.abortedAttemptIds.length, 0);
+    assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).pending.length, 2);
+    for (let index = 1; index <= 4; index += 1) {
+      env.attempts[index].resolve({ outcome: "completed", detail: "done" });
+      await flush();
+      assert.equal(env.attempts.length, index < 4 ? 6 : 7);
+      assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot: snapshotOf(env.tasks.get(run.taskId ?? "")) }));
+    }
+    const snapshot = snapshotOf(env.tasks.get(run.taskId ?? ""));
+    assert.equal(snapshot.maxConcurrency, 2);
+    assert.equal(snapshot.running.length, 2);
+    assert.equal(snapshot.pending.length, 1);
+  } finally {
+    env.host.stopParent(run.taskId ?? "");
+    await run.done;
+  }
+});
+
 test("uses the configured Loop+ dispatch subtask maximum", async () => {
   const limited = harness({ decisionSubtaskMax: () => 1 });
   limited.host.tryRun({ displayPrompt: "ship the feature" }, limited.target, { schedulingMode: "event_driven" });

@@ -1927,7 +1927,7 @@
     {
       "id": "plugin.rule.loop_plus_dispatch_subtask_max",
       "name": "Loop/Loop+ 单次派发子任务上限可配置",
-      "description": "工具设置 AI任务配置中的 Loop/Loop+ 单次派发上限兼容保留 loopPlusDecisionSubtaskMax 键，默认 6、范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。经典 Loop 每批提示与解析、Loop+ 一次 dispatch 或 accept 附带子任务数共用当前值；Loop+ 新建或继续任务的生产并发容量也读取该配置，不再固定为 6。继续时刷新旧快照及内存实例容量，先验证原快照，不丢失调度状态；降低配置不取消已有运行预留，有效容量至少覆盖这些运行项。主提示显示实际容量，冲突保护与显式宿主并发限制不变；上限不要求模型必须派满。",
+      "description": "工具设置 AI任务配置中的 Loop/Loop+ 单次派发上限兼容保留 loopPlusDecisionSubtaskMax 键，默认 6、范围 1 到 20，保存在 ~/.sinitek_cli/settings.json。经典 Loop 每批提示与解析、Loop+ 一次 dispatch 或 accept 附带子任务数共用当前值；Loop+ 新建或继续任务的生产并发容量也读取该配置，不再固定为 6。继续时刷新旧快照及内存实例容量，先验证原快照，不丢失调度状态；运行中在下一次主模型请求、决策提交和子任务结束调度前刷新容量，无需停止或显式继续。降低配置不取消已有运行预留，快照容量至少覆盖这些运行项，但新准入遵守降低后的配置，运行数低于新上限后才提升排队任务。主提示显示实际容量，冲突保护与显式宿主并发限制不变；上限不要求模型必须派满。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
