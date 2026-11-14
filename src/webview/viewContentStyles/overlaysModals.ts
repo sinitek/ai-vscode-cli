@@ -1130,7 +1130,8 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         width: 100%;
       }
       .session-label {
-        font-weight: 600;
+        font-size: inherit;
+        font-weight: 400;
         flex: 1;
         min-width: 0;
         display: -webkit-box;
@@ -1139,7 +1140,7 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         overflow: hidden;
         white-space: normal;
         overflow-wrap: anywhere;
-        line-height: 1.35;
+        line-height: 1.5;
       }
       .session-title-row {
         display: flex;
@@ -1264,14 +1265,15 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         min-width: 0;
       }
       .prompt-preview {
-        font-weight: 600;
+        font-size: inherit;
+        font-weight: 400;
         display: -webkit-box;
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
         white-space: normal;
         overflow-wrap: anywhere;
-        line-height: 1.35;
+        line-height: 1.5;
       }
       .prompt-meta {
         font-size: 12px;
