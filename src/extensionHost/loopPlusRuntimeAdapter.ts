@@ -113,7 +113,7 @@ export type LoopPlusRuntimeAdapter = {
   host: () => ReturnType<typeof createLoopPlusOrchestrationHost>;
   runEventDriven: (
     input: PromptRunInput,
-    options: LoopPlusRunOptions & { targetTabId?: string | null },
+    options: LoopPlusRunOptions & { targetTabId?: string | null; resumeUserMessage?: string },
     target: LoopPlusPromptTarget,
     onTaskOwnershipAcquired?: (taskId: string, target: LoopPlusPromptTarget) => void,
   ) => Promise<boolean>;
@@ -737,6 +737,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }, target, {
       resumeTaskId,
       resumeRequested,
+      ...(typeof options.resumeUserMessage === "string" ? { resumeUserMessage: options.resumeUserMessage } : {}),
       preserveLoopOrigin,
       schedulingMode: options.schedulingMode,
       sessionId: targetSessionId,

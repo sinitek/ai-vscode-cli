@@ -60,6 +60,7 @@ type LoopPromptRunOptions = {
   targetTabId: string | null;
   resumeTaskId: string;
   resumeRequested: boolean;
+  resumeUserMessage?: string;
   preserveLoopOrigin?: boolean;
   schedulingMode?: "classic" | "event_driven";
 };
@@ -184,6 +185,7 @@ export function buildLoopGroupChatPanelState(
     t: deps.t,
   });
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
+  const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -193,9 +195,13 @@ export function buildLoopGroupChatPanelState(
     : {};
   return {
     ...state,
+    task: {
+      ...state.task,
+      canContinue: canContinueLoopTaskWithDeps(task, deps),
+    },
     ...acceptancePlanState,
     messageLimit: deps.getMessageLimit?.(),
-    mainModelBusy: Boolean(target && deps.isTabRunActive(target.tabId)),
+    mainModelBusy,
     modelSwitch: buildLoopModelSwitchState(task, deps),
   };
 }
@@ -242,6 +248,19 @@ function canStopLoopTaskWithRunningTaskIds(
   runningTaskIds: ReadonlySet<string>,
 ): boolean {
   return resolveLoopTaskRunControlState(task, runningTaskIds).canStop;
+}
+
+function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps): boolean {
+  if (resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue) {
+    return true;
+  }
+  if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven"
+    || task.status === "completed"
+    || task.mainAiFailureLimitReached) {
+    return false;
+  }
+  const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
+  return !(target && deps.isTabRunActive(target.tabId));
 }
 
 export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps) {
@@ -353,8 +372,12 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
     const runningTaskIds = deps.collectRunningTaskIds();
     const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
-    const canResumeIdle = resumeIdle && task.status !== "completed"
-      && (task.schedulingMode === "event_driven" || !runningTaskIds.has(task.id));
+    const availabilityTarget = deps.resolveMainPromptTarget(task, { createIfMissing: false });
+    const isLoopPlus = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven";
+    const canResumeIdle = task.status !== "completed"
+      && !task.mainAiFailureLimitReached
+      && (isLoopPlus || (resumeIdle && !runningTaskIds.has(task.id)))
+      && !(availabilityTarget && deps.isTabRunActive(availabilityTarget.tabId));
     if (!controlState.canContinue && !canResumeIdle) {
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
@@ -392,6 +415,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         targetTabId: restored.target.tabId,
         resumeTaskId: task.id,
         resumeRequested: true,
+        ...(task.schedulingMode === "event_driven" ? { resumeUserMessage: resumePrompt } : {}),
         preserveLoopOrigin: true,
         ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
       });
@@ -438,6 +462,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       targetTabId: target.tabId,
       resumeTaskId: task.id,
       resumeRequested: true,
+      ...(task.schedulingMode === "event_driven" ? { resumeUserMessage: resumePrompt } : {}),
       ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
     });
     await refresh(normalizedTaskId);
@@ -463,7 +488,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         const task = deps.readTaskRecord(normalizedTaskId);
         postToPanel(normalizedTaskId, {
           type: "loopGroupChatChat:continueTaskSettled",
-          canContinue: task ? resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue : false,
+          canContinue: task ? canContinueLoopTaskWithDeps(task, deps) : false,
         });
       }
     }
@@ -1010,6 +1035,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
 
   return {
     open,
+    handleMessage,
     continueTask,
     switchModels,
     refresh,

@@ -180,6 +180,7 @@ test("model switch resumes a cold task despite stale persisted running status", 
   env.deps.resumeLoopSubtasks = () => false;
   await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
   await delay(0);
+  await delay(0);
   assert.equal(env.runs, 1);
   assert.deepEqual(env.warnings, []);
 });
@@ -194,6 +195,57 @@ test("model switch can resume paused Loop+ control while a sibling child remains
   await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
   await delay(0);
   assert.equal(env.runs, 1);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("继续通过面板消息唤醒仍持有控制器但主模型空闲的 Loop+ 任务", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  let runOptions: Parameters<typeof env.deps.runLoopPrompt>[1] | undefined;
+  env.deps.runLoopPrompt = async (_input, options) => { runOptions = options; };
+
+  await env.coordinator.handleMessage(env.task.id, {
+    type: "loopGroupChatChat:continueTask",
+    prompt: "继续执行",
+  } as never);
+
+  assert.equal(env.runs, 0);
+  assert.equal(runOptions?.resumeRequested, true);
+  assert.equal(runOptions?.resumeUserMessage, "继续执行");
+  assert.equal(env.messages.find((message) => message.type === "loopGroupChatChat:continueTaskSettled")?.canContinue, true);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("Loop+ 面板只在主模型空闲时显示继续入口，即使后台控制器仍存在", () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  const idle = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(idle.mainModelBusy, false);
+  assert.equal(idle.task.canContinue, true);
+
+  env.deps.isTabRunActive = () => true;
+  const busy = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(busy.mainModelBusy, true);
+  assert.equal(busy.task.canContinue, false);
+});
+
+test("切模型在没有可恢复子任务时会把继续消息交给主任务调度", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  env.deps.resumeLoopSubtasks = () => false;
+  let runOptions: Parameters<typeof env.deps.runLoopPrompt>[1] | undefined;
+  env.deps.runLoopPrompt = async (_input, options) => { runOptions = options; };
+
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+  await delay(0);
+
+  assert.equal(runOptions?.resumeRequested, true);
+  assert.equal(runOptions?.resumeUserMessage, "run.hiddenContinuePrompt");
   assert.deepEqual(env.warnings, []);
 });
 
@@ -250,9 +302,26 @@ test("missing and already-running tasks still acknowledge continuation requests"
   const running = createContinuationRecoveryHarness();
   running.task.status = "running";
   running.deps.collectRunningTaskIds = () => new Set([running.task.id]);
+  running.deps.isTabRunActive = () => true;
   await running.coordinator.continueTask(running.task.id, "继续执行", "original");
   assert.deepEqual(running.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: false }]);
   assert.equal(running.runs, 0);
+});
+
+test("continues a persisted-running Loop+ task when its host owns an idle controller", async () => {
+  const orphaned = createContinuationRecoveryHarness();
+  orphaned.task.status = "running";
+  orphaned.deps.collectRunningTaskIds = () => new Set();
+  await orphaned.coordinator.continueTask(orphaned.task.id, "继续执行");
+  assert.equal(orphaned.runs, 1);
+
+  const active = createContinuationRecoveryHarness();
+  active.task.status = "running";
+  active.deps.collectRunningTaskIds = () => new Set([active.task.id]);
+  active.deps.isTabRunActive = () => true;
+  await active.coordinator.continueTask(active.task.id, "继续执行");
+  assert.equal(active.runs, 0);
+  assert.deepEqual(active.warnings, []);
 });
 
 test("duplicate continuation requests cannot start a task twice while original runtime restoration is pending", async () => {

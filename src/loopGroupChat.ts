@@ -61,13 +61,14 @@ export function isLoopTaskRunOrphaned(
 }
 
 export function resolveLoopTaskRunControlState(
-  task: { id: string; status: string; mainAiFailureLimitReached?: boolean | null },
+  task: { id: string; status: string; schedulingMode?: string | null; mainAiFailureLimitReached?: boolean | null },
   runningTaskIds: ReadonlySet<string>,
 ): LoopTaskRunControlState {
   const hasRunningProcess = runningTaskIds.has(task.id);
   const isCompleted = task.status === "completed";
   const isInterrupted = task.status === "needs-review" || task.status === "error" || task.status === "stopped";
-  const isRunning = !isInterrupted && (hasRunningProcess || (!isCompleted && task.status === "running"));
+  const isLoopPlus = task.schedulingMode === "event_driven";
+  const isRunning = !isInterrupted && (hasRunningProcess || (!isLoopPlus && !isCompleted && task.status === "running"));
   const blockedByFailureLimit = Boolean(task.mainAiFailureLimitReached);
   return {
     isRunning,

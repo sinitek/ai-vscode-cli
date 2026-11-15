@@ -2953,9 +2953,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   runLoopPrompt,
   stopRunsForTask: stopLoopRunsForTask,
   markTaskStoppedByUser: markLoopTaskStoppedByUser,
-  notifyLoopPlusUserMessage: (taskId, text) => {
-    getLoopPlusOrchestrationHost().submitUserMessage(taskId, text);
-  },
+  notifyLoopPlusUserMessage: (taskId, text) => getLoopPlusOrchestrationHost().submitUserMessage(taskId, text),
   readLoopPlusAcceptancePlans: () => buildLoopPlusAcceptancePlansPanelValue(workspaceSettings),
   readLoopPlusAcceptancePlanSelection: () => buildLoopPlusAcceptancePlanSelectionPanelValue(workspaceSettings),
   saveLoopPlusAcceptancePlan: (input) => saveLoopPlusAcceptancePlan(createAcceptancePlanSettingsHost(), input),
@@ -4227,7 +4225,7 @@ function loopPlusAcceptanceLimitDetail(task: LoopTaskRecord | null): {
 
 async function runEventDrivenLoopPrompt(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven" },
+  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; resumeUserMessage?: string; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven" },
   target: PromptRunTarget,
   onTaskOwnershipAcquired?: (taskId: string, target: PromptRunTarget) => void,
 ): Promise<boolean> {
@@ -4236,7 +4234,7 @@ async function runEventDrivenLoopPrompt(
 
 async function runLoopPrompt(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven" } = {}
+  options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; resumeUserMessage?: string; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven" } = {}
 ): Promise<void> {
   const ownership: {
     taskId: string | null;

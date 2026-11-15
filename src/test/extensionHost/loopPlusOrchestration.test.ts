@@ -1882,7 +1882,7 @@ test("model switch reconstructs a cold controller and resumes its interrupted re
   assert.equal(env.attempts.length, 2);
   assert.equal(env.attempts[1].request.attemptId, attemptId);
   assert.equal(env.tasks.get(taskId)?.subTasks[0].status, "running");
-  assert.equal(cold.resumeInterruptedSubtasks(taskId), true);
+  assert.equal(cold.resumeInterruptedSubtasks(taskId), false);
   await flush();
   assert.equal(env.attempts.length, 2);
 });

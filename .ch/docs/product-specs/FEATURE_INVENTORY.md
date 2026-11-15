@@ -9,6 +9,11 @@
 - 准备启动、会话/来源锁、压缩和重试等待仍算活动；调用刚开始的 5 分钟内保留启动交接宽限，运行中的兄弟或手动续跑子任务也阻止误唤醒。主任务停止、暂停、完成、等待澄清或达到连续失败上限时不自动复活；关闭宿主后仍须按原流程显式恢复。
 - 实现：`src/loopWaitWatchdog.ts`、`src/extension.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`。回归：巡检时钟、两种模式等待/失联/迟到回调，以及本机子进程异常退出后恢复验收的隔离集成测试。
 
+## Loop+ 遗留运行状态的显式继续
+
+- 状态：`active`（2026-11-15，源码实现）。Loop+ 群聊继续入口按主模型调用忙闲展示和执行，后台控制器仍可等待子任务；继续文本与对话输入一样进入 `userMessageQueue`，由现有调度器唤醒主模型。切模型先更新路由和思考力度再排队继续，确实重启中断子任务时保留其原 attempt；没有可恢复子任务时唤醒主模型。真实主模型忙时不重复启动，完成、无效快照及主模型失败上限仍阻止继续；无控制器时显式重建调度快照。经典 Loop 保持所有权保护。
+- 实现：`src/loopGroupChat.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。回归覆盖面板入口、真实 adapter 和磁盘任务存储，断言继续/切模型确实调用主模型、切模型使用新路由且活动子任务不被中断。
+
 ## Loop+ 协议矛盾自动纠错
 
 - 状态：`active`（2026-11-13，源码实现）。决策 JSON 无效、验收关联或事件批次矛盾、空队列返回 `wait` 时，立即把具体错误、旧回复和最新快照交回主模型重新生成完整 JSON，复用有效证据，继续派发或合法完成，无需用户反复点击继续。

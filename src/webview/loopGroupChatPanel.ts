@@ -1452,7 +1452,7 @@ function renderPanelActions(
     state.task.status !== "completed"
       ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
       : "",
-    state.task.canContinue && !state.task.canStop
+    state.task.canContinue
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
       : "",
   ].join("");

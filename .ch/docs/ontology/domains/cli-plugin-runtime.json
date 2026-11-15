@@ -1867,7 +1867,7 @@
     {
       "id": "plugin.rule.loop_plus_user_message_wake",
       "name": "Loop+ 用户消息唤醒或进入主任务队列",
-      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。Loop+ 父任务正常完成并成功持久化后，主任务对话追加回答结论和最终总结 assistant 气泡；同一会话的后续普通 prompt 仍新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
+      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。群聊“继续”也将用户消息排入该队列，控制器仍在等待子任务时由同一调度器唤醒主模型；继续按钮按主模型真实忙闲展示，不把后台控制器所有权误当作主模型忙。切模型先同步运行时提示、模型路由和思考力度，再排入继续消息；有实际中断子任务可恢复时启动其原 attempt，否则唤醒主模型，仍运行的兄弟 attempt 不受影响。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。Loop+ 控制状态以宿主运行所有权判断真实运行；无控制器时允许用户通过群聊显式重建原快照并继续，真实主模型忙、失败上限、完成或无效快照仍受保护；重新打开不自动运行。Loop+ 父任务正常完成并成功持久化后，主任务对话追加回答结论和最终总结 assistant 气泡；同一会话的后续普通 prompt 仍新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1879,7 +1879,10 @@
         {"path": "src/loopTaskMessagePolicy.ts", "anchor": "isLoopTaskPromptResumeCandidate"},
         {"path": "src/extensionHost/promptRunRuntime.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
-        {"path": "src/extension.ts"}
+        {"path": "src/extension.ts"},
+        {"path": "src/loopGroupChat.ts"},
+        {"path": "src/loopGroupChatPanelState.ts"},
+        {"path": ".ch/docs/design-docs/loop-crash-recovery.md"}
       ]
     },
     {

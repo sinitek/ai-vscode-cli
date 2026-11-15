@@ -18,6 +18,7 @@ const {
   selectLoopPlusInvocationAssistant,
   selectLoopPlusInvocationRun,
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
+const { createLoopGroupChatPanelCoordinator } = require("../../extensionHost/loopGroupChatPanelCoordinator") as typeof import("../../extensionHost/loopGroupChatPanelCoordinator");
 
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { withLoopSubtaskSession } from "../../loopSubtaskSession";
@@ -2089,6 +2090,133 @@ test("adapter manual stop waits for continuation notification before review", as
     assert.equal(finished.seenAttempts[0]?.disposition, "reviewed");
     assert.equal((reportText(fixture.rootDir).match(/## Attempt result/g) ?? []).length, 1);
   } finally {
+    fixture.dispose();
+  }
+});
+
+test("群聊继续消息经真实 adapter 唤醒空闲 Loop+ 控制器并调用主模型", { timeout: 5000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  let originalRun: Promise<boolean> | undefined;
+  let continuationRun: Promise<void> | undefined;
+  try {
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+      });
+    });
+    fixture.queueMain(async (input) => {
+      assert.match(input.displayPrompt, /继续执行/u);
+      await fixture.holdMain();
+    });
+    originalRun = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "初始子任务启动");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    fixture.finishParked("A", { status: "stopped", content: "手动中断" });
+    await waitForLoopPlus(() => fixture.readTask(taskId)?.subTasks[0]?.status === "blocked", "中断状态落盘");
+
+    const coordinator = createLoopGroupChatPanelCoordinator({
+      panelsByTaskId: new Map(),
+      normalizeTaskId: (value: unknown) => typeof value === "string" ? value : null,
+      readTaskRecord: fixture.readTask,
+      updateTaskRecord: (id: string, patch: Record<string, unknown>) => {
+        const task = fixture.readTask(id);
+        if (!task) return null;
+        const updated = { ...task, ...patch, updatedAt: Date.now() };
+        fixture.saveTask(updated);
+        return updated;
+      },
+      collectRunningTaskIds: () => new Set(fixture.adapter.host().collectRunningTaskIds()),
+      resolveMainPromptTarget: () => fixture.target,
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => false,
+      getActiveConfigIdForCli: () => null,
+      getSelectedCliModel: () => "main-model",
+      runLoopPrompt: (input: unknown, options: Record<string, unknown>) => {
+        continuationRun = fixture.adapter.runEventDriven(input as any, options as any, fixture.target).then(() => undefined);
+        return continuationRun;
+      },
+      showInformationMessage: () => undefined,
+      showWarningMessage: (message: string) => { throw new Error(message); },
+      t: (key: string) => key,
+    } as any);
+
+    const beforeCalls = fixture.mainCalls.length;
+    const handled = coordinator.handleMessage(taskId, { type: "loopGroupChatChat:continueTask", prompt: "继续执行" });
+    await waitForLoopPlus(() => fixture.mainCalls.length === beforeCalls + 1, "继续消息触发真实主模型调用");
+    assert.equal(fixture.mainCalls.at(-1)?.taskRole, "main");
+    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot().userMessageQueue.length, 1);
+    fixture.adapter.host().stopParent(taskId);
+    fixture.releaseHeldMain();
+    await Promise.all([handled, originalRun, continuationRun]);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.adapter.host().stopParent(fixture.mainCalls[0]?.loopTaskId ?? "");
+    await Promise.allSettled([originalRun, continuationRun].filter((run): run is Promise<any> => Boolean(run)));
+    fixture.dispose();
+  }
+});
+
+test("切模型消息经真实 adapter 唤醒主模型并保留正在运行的子任务", { timeout: 5000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture({ configId: "profile" });
+  let originalRun: Promise<boolean> | undefined;
+  let switchingRun: Promise<void> | undefined;
+  try {
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+      });
+    });
+    fixture.queueMain(async () => { await fixture.holdMain(); });
+    originalRun = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "切模型前子任务已启动");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    const coordinator = createLoopGroupChatPanelCoordinator({
+      panelsByTaskId: new Map(),
+      normalizeTaskId: (value: unknown) => typeof value === "string" ? value : null,
+      readTaskRecord: fixture.readTask,
+      updateTaskRecord: (id: string, patch: Record<string, unknown>) => {
+        const task = fixture.readTask(id);
+        if (!task) return null;
+        const updated = { ...task, ...patch, updatedAt: Date.now() };
+        fixture.saveTask(updated);
+        return updated;
+      },
+      collectRunningTaskIds: () => new Set(fixture.adapter.host().collectRunningTaskIds()),
+      resolveMainPromptTarget: () => fixture.target,
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      isTabRunActive: () => false,
+      getActiveConfigIdForCli: () => "profile",
+      getSelectedCliModel: () => "main-model",
+      getLoopModelSwitchOptions: () => ["new-main", "main-model", "sub-model"].map((value) => ({ value, label: value })),
+      restoreOriginalLoopRuntime: async () => ({ ok: true, target: fixture.target }),
+      resumeLoopSubtasks: (id: string) => fixture.adapter.host().resumeInterruptedSubtasks(id),
+      runLoopPrompt: (input: unknown, options: Record<string, unknown>) => {
+        switchingRun = fixture.adapter.runEventDriven(input as any, options as any, fixture.target).then(() => undefined);
+        return switchingRun;
+      },
+      showInformationMessage: () => undefined,
+      showWarningMessage: (message: string) => { throw new Error(message); },
+      t: (key: string) => key,
+    } as any);
+
+    const handling = coordinator.handleMessage(taskId, {
+      type: "loopGroupChatChat:switchModels",
+      models: { main: "new-main", fullstack: "new-main" },
+    });
+    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "切模型触发主模型执行");
+    assert.equal(fixture.mainCalls[1]?.loopMainModel, "new-main");
+    assert.deepEqual(fixture.parkedSubtaskIds(), ["A"]);
+    fixture.adapter.host().stopParent(taskId);
+    fixture.releaseHeldMain();
+    await Promise.all([handling, originalRun, switchingRun]);
+    await waitForLoopPlus(() => fixture.completionSubscriptionCount() === 0, "停止后释放完成订阅");
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.adapter.host().stopParent(fixture.mainCalls[0]?.loopTaskId ?? "");
+    fixture.releaseHeldMain();
+    await Promise.allSettled([originalRun, switchingRun].filter((run): run is Promise<any> => Boolean(run)));
     fixture.dispose();
   }
 });

@@ -55,6 +55,22 @@ test("resolves loop task run controls from persisted running status", () => {
   assert.equal(controlState.canContinue, false);
 });
 
+test("offers explicit resume for a Loop+ task whose persisted running status has no runtime owner", () => {
+  const orphaned = resolveLoopTaskRunControlState(
+    { id: "task-plus", status: "running", schedulingMode: "event_driven" },
+    new Set(),
+  );
+  const active = resolveLoopTaskRunControlState(
+    { id: "task-plus", status: "running", schedulingMode: "event_driven" },
+    new Set(["task-plus"]),
+  );
+
+  assert.equal(orphaned.canContinue, true);
+  assert.equal(orphaned.canStop, false);
+  assert.equal(active.canContinue, false);
+  assert.equal(active.canStop, true);
+});
+
 test("allows a review Loop task to continue without showing stop", () => {
   assert.deepEqual(
     resolveLoopTaskRunControlState({ id: "task-review", status: "needs-review" }, new Set()),

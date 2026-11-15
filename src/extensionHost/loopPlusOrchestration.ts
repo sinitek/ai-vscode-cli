@@ -111,6 +111,7 @@ export type LoopPlusRunInput = {
 export type LoopPlusRunOptions = {
   resumeTaskId?: string | null;
   resumeRequested?: boolean;
+  resumeUserMessage?: string;
   preserveLoopOrigin?: boolean;
   schedulingMode?: LoopSchedulingMode;
   sessionId?: string | null;
@@ -366,6 +367,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return { handled: true, taskId: runtime.taskId, done };
       }
       if (options.resumeRequested === true) {
+        if (typeof options.resumeUserMessage === "string" && options.resumeUserMessage.trim()) {
+          runtime.scheduler.enqueueUserMessage(options.resumeUserMessage.trim());
+        }
         continueExplicitly(runtime);
         if (interruptedSubtaskResumeRequests.has(runtime.taskId)) {
           resumeInterruptedSubtasks(runtime.taskId);
@@ -802,6 +806,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && runtime.attempts.get(record.attemptId)?.settled !== false
       && !runtime.launching.has(record.attemptId)
     ));
+    if (interrupted.length === 0) {
+      return false;
+    }
     interrupted.forEach((record) => runtime.attempts.delete(record.attemptId));
     launchAll(runtime, interrupted);
     requestPump(runtime);
