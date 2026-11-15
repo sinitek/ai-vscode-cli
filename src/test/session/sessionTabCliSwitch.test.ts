@@ -239,7 +239,7 @@ test("session takeover stops a running duplicate before the real tab host closes
   assert.deepEqual(env.restoredTabIds, []);
 });
 
-test("closing an active tab acknowledges removal before slow fallback configuration restoration", async () => {
+test("closing an active tab switches its conversation before slow fallback configuration restoration", async () => {
   const state: ConversationTabsState = {
     activeTabId: "closing-tab",
     tabs: [
@@ -255,7 +255,7 @@ test("closing an active tab acknowledges removal before slow fallback configurat
     assert.deepEqual(env.closedTabs, [{ tabId: "closing-tab", activeTabId: "fallback-tab" }]);
     assert.deepEqual(env.restoredTabIds, ["fallback-tab"]);
     assert.deepEqual(env.postedClis, []);
-    assert.deepEqual(env.sentTabIds, []);
+    assert.deepEqual(env.sentTabIds, ["fallback-tab"]);
   } finally {
     finishRestore();
     await closing;
@@ -473,7 +473,7 @@ test("closing an active tab stops stale refresh when another tab becomes active 
   await env.host.closeConversationTabAndRefreshPanel("closing-tab");
   assert.deepEqual(env.restoredTabIds, ["main-tab"]);
   assert.deepEqual(env.postedTabIds, []);
-  assert.deepEqual(env.sentTabIds, []);
+  assert.deepEqual(env.sentTabIds, ["main-tab"]);
 });
 
 test("a rejected main-tab switch does not change the current CLI or mode", async () => {

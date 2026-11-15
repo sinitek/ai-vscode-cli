@@ -2948,3 +2948,11 @@ rm -r "$result_directory"
 - `src/webview/viewContentScript/coreRuntimeState.ts`
 - `src/webview/viewContentScript/runStreamAndQueue.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+
+## 用户停止与内部抢占不能共用父任务停止语义
+
+- 2026-11-15：修复主标签停止只命中本标签运行器、未连带停止子任务后，内部抢占若继续调用同一个用户停止入口，会意外终止整个经典 Loop。
+- 用户中止携带点击时的 `tabId`，主标签先停止同一父任务全部活动执行；`preemptActivePromptRun` 优先局部取消当前运行器。Loop+ 先关闭内存调度门并取消请求，再保存停止快照。
+- 标签切换和关闭回退先发送目标消息，再等待配置恢复；长历史和连续指令组都须分批，不能为维持折叠组把整个指令长串塞入一批。
+- 回归入口：`src/test/extensionHost/loopPlusRuntimeWiring.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。页面验收复用 `chromium-playwright-smoke` skill：`.agents/skills/chromium-playwright-smoke/SKILL.md`。

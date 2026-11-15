@@ -1618,7 +1618,7 @@
     {
       "id": "plugin.rule.conversation_tab_close_fast_path",
       "name": "非运行标签关闭确认与配置恢复分离",
-      "description": "宿主通过运行锁和最后标签保护并移除标签后，立即发送 conversationTabClosed 轻量确认并释放对应缓存，不删除真实会话。后台关闭不重载 CLI 配置、不重选活动会话、不重放正文；活动关闭先显示回退标签缓存，再完成既有配置恢复和权威消息同步。重复或迟到确认不覆盖新的本地选择。重置会话禁用提前确认，以完整状态一次性发布新标签，保留待提交配置并避免临时切到邻居。",
+      "description": "宿主通过运行锁和最后标签保护并移除标签后，立即发送 conversationTabClosed 轻量确认并释放对应缓存，不删除真实会话。后台关闭不重载 CLI 配置、不重选活动会话、不重放正文；活动关闭先显示回退标签缓存，并在配置恢复和全量面板刷新前发送带目标 tabId 的权威消息快照；尚未加载时显示中文加载提示。重复或迟到确认不覆盖新的本地选择。重置会话禁用提前确认，以完整状态一次性发布新标签，保留待提交配置并避免临时切到邻居。",
       "status": "active",
       "applies_to": ["plugin.cli_session", "plugin.chat_panel"],
       "source_refs": [
@@ -1629,6 +1629,22 @@
         {"path": "src/test/session/sessionTabCliSwitch.test.ts"},
         {"path": "src/test/webview/conversationTabClose.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "非运行对话标签关闭性能"}
+      ]
+    },
+    {
+      "id": "plugin.rule.conversation_tab_message_loading",
+      "name": "标签消息加载反馈与可取消分批渲染",
+      "description": "切换标签的消息快照先于配置恢复与全量状态发送。Webview 区分尚未加载与已加载空会话，等待首个快照或长历史渲染时显示主题化中文加载状态；减少动态效果时不旋转。长历史每批最多创建 48 条消息，连续指令跨批保持同一折叠组。切换、筛选或新快照使旧渲染代际失效，旧批次不能覆盖当前内容，未完成视图不缓存；消息完整性与现有清理规则保留。",
+      "status": "active",
+      "applies_to": ["plugin.cli_session", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/panelMessageHandlers/session.ts"},
+        {"path": "src/extensionHost/sessionTabs.ts"},
+        {"path": "src/webview/viewContentScript/coreRuntimeState.ts"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": "src/webview/viewContentStyles/chatArea.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话标签切换性能"}
       ]
     },
     {
@@ -1814,7 +1830,7 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。正常完成回调在全部活动子任务成功完成后唤醒主任务复核；当前宿主另每 5 分钟巡检真实执行所有权，主模型空闲且没有活动子任务时，经典 Loop 取消失联批次等待并保留未完成项为 blocked，Loop+ 将失联预留提交为失败验收事件后唤醒主任务，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。手动续跑成功后经典 Loop 等全部活动任务完成再恢复主任务；Loop+ 可从持久化快照重建原开放 attempt 的完成事件与验收链，失联兄弟预留不制造完成结果。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。正常完成回调在全部活动子任务成功完成后唤醒主任务复核；当前宿主另每 5 分钟巡检真实执行所有权，主模型空闲且没有活动子任务时，经典 Loop 取消失联批次等待并保留未完成项为 blocked，Loop+ 将失联预留提交为失败验收事件后唤醒主任务，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。手动续跑成功后经典 Loop 等全部活动任务完成再恢复主任务；Loop+ 可从持久化快照重建原开放 attempt 的完成事件与验收链，失联兄弟预留不制造完成结果。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [

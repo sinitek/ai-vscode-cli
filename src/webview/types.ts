@@ -144,7 +144,7 @@ export type PanelMessage =
       type: "deleteLoopPlusAcceptancePlan";
       planId: string;
     }
-  | { type: "stopRun" }
+  | { type: "stopRun"; tabId?: string | null }
   | { type: "runCommonCommand"; command: "compactContext" }
   | { type: "openLoopGroupChat"; taskId?: string | null; roundKey?: string | null }
   | { type: "openConfig"; cli?: CliName; configId?: string | null }

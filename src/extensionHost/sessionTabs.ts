@@ -347,6 +347,12 @@ async function closeConversationTabAndRefreshPanel(
   if (nextActiveTabId === previousActiveTabId) {
     return;
   }
+  // Keep the active conversation responsive while config and panel state refresh.
+  if (next) {
+    sendSessionMessagesToPanel(next.cli, next.sessionId, nextActiveTabId);
+  } else {
+    sendSessionMessagesToPanel(currentCli, null, nextActiveTabId);
+  }
   if (next && currentCli !== next.cli) {
     currentCli = next.cli;
     deps.setCurrentCli(currentCli);
@@ -370,11 +376,6 @@ async function closeConversationTabAndRefreshPanel(
   if (nextActiveTabId && getActiveConversationTabId() !== nextActiveTabId) {
     return;
   }
-  if (next) {
-    sendSessionMessagesToPanel(next.cli, next.sessionId);
-    return;
-  }
-  sendSessionMessagesToPanel(currentCli, null);
 }
 
 function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {

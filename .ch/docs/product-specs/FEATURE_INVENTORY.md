@@ -135,6 +135,7 @@
 ## AI 对话标签切换性能
 
 - 切换时立即更新选中标签并显示该标签的已加载消息；宿主 `state` 和 `setMessages` 回传采用增量对比，未变化的气泡与指令组不重复解析或重建。
+- 2026-11-15：目标标签的消息快照先于配置恢复和全量面板刷新发送。历史尚未到达或长对话尚在渲染时显示主题色加载动画与「正在加载对话」，减少动态效果时保留静态提示。长历史每批最多创建 48 条消息，连续指令跨批仍保持同一折叠组；快速切换取消旧批次，完整消息和原有清理策略保留。
 - 按 CLI 与标签 ID 隔离近期消息视图，最多缓存两个非活动视图、合计不超过 5000 条消息，超限按最近使用顺序淘汰；关闭标签释放对应缓存，不改变磁盘会话格式或 CLI 执行逻辑。
 - 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
@@ -142,9 +143,14 @@
 ## 非运行对话标签关闭性能
 
 - 宿主确认允许关闭并移除标签后立即发送轻量 `conversationTabClosed` 消息，Webview 释放对应运行态和视图缓存；关闭不是删除磁盘会话。
-- 关闭后台标签不重载全部 CLI 配置、不重选活动会话、不重放当前对话，保持正文 DOM、滚动位置和指令组展开状态；关闭当前非运行标签先显示相邻标签的缓存消息，再完成既有配置恢复和权威消息同步。
+- 关闭后台标签不重载全部 CLI 配置、不重选活动会话、不重放当前对话，保持正文 DOM、滚动位置和指令组展开状态；关闭当前非运行标签先显示相邻标签的缓存消息，并在配置恢复前发送该标签的权威消息快照，尚未加载时显示加载提示。
 - 运行中标签、运行中 Loop 主标签和最后一个标签仍不可关闭；重复确认无副作用，迟到确认不覆盖新的本地标签选择。重置会话使用完整状态一次性发布新标签，避免先切到邻居或丢失待提交配置。
 - 实现：`src/extensionHost/sessionTabs.ts`、`src/sessionTabs.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
+
+## 主任务停止响应
+
+- 2026-11-15：中止请求绑定用户点击时的标签，避免随后切换标签改变停止目标。经典 Loop 主标签停止覆盖同一父任务的所有活动执行；Loop+ 先关闭调度门并触发主、子请求取消，再保存停止状态，持久化和面板刷新不再前置阻塞取消。内部模型调用抢占保持局部取消语义。
+- 实现：`src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/panelMessageHandlers/prompt.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`；回归：`src/test/session/sessionMessageActions.test.ts`、`src/test/extensionHost/loopPlusRuntimeWiring.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 
 ## 同会话标签自动接管
 

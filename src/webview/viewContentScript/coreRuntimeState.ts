@@ -16,6 +16,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
       function createConversationRuntimeState() {
         return {
           messages: [],
+          messagesLoaded: false,
+          messagesLoading: false,
           pendingPromptQueue: [],
           queueEditingIndex: -1,
           queueEditingDraft: "",
@@ -155,6 +157,10 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
 
       function syncActiveMessagesFromRuntime(options = {}) {
         const runtimeState = getActiveConversationRuntimeState({ create: true });
+        const tab = getConversationTabSummary(getActiveConversationTabId());
+        if (!runtimeState.messagesLoaded && tab && tab.sessionId) {
+          runtimeState.messagesLoading = true;
+        }
         const nextMessages = ensureRuntimeStateMessages(runtimeState);
         state.messages = nextMessages;
         if (options.render !== false) {
@@ -166,6 +172,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         try {
           const runtimeState = getConversationRuntimeState(tabId, { create: true });
           runtimeState.messages = Array.isArray(messages) ? messages : [];
+          runtimeState.messagesLoaded = true;
+          runtimeState.messagesLoading = false;
           const loopMetaChanged = updateLoopMetaForTabFromMessages(tabId, runtimeState.messages);
           const taskListState = ensureRuntimeTaskList(runtimeState);
           const loopMainTab = typeof isLoopMainTaskListTab === "function" && isLoopMainTaskListTab(tabId);
@@ -295,6 +303,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         }
         resetTaskListState(ensureRuntimeTaskList(runtimeState), 0);
         ensureRuntimeStateMessages(runtimeState).length = 0;
+        runtimeState.messagesLoaded = true;
+        runtimeState.messagesLoading = false;
         runtimeState.pendingPromptQueue.length = 0;
         runtimeState.queueEditingIndex = -1;
         runtimeState.queueEditingDraft = "";

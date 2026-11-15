@@ -191,6 +191,30 @@ test("question readiness yields to main control, supplemental requirements and a
   assert.equal(env.host.hasPendingMainWork("missing-task"), false);
 });
 
+test("stopping Loop+ aborts live requests before persisting the stopped state", async () => {
+  const events: string[] = [];
+  const main = deferred<string | null>();
+  const env = harness({
+    beforeUpdateTask: (patch) => {
+      if (patch.status === "stopped") events.push("persist-stopped");
+    },
+    adaptMain: () => ({
+      promise: main.promise,
+      abort: () => {
+        events.push("abort-main");
+        main.resolve(null);
+      },
+    }),
+  });
+  const run = env.host.tryRun({ displayPrompt: "实现并检查改动" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+
+  env.host.stopParent(run.taskId ?? "");
+
+  assert.deepEqual(events.slice(0, 2), ["abort-main", "persist-stopped"]);
+  await run.done;
+});
+
 test("Loop+ drains acceptance and supplemental work before the next queued question", async () => {
   const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
   const calls: string[] = [];

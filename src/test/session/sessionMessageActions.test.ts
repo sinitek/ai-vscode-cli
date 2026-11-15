@@ -1373,9 +1373,9 @@ test("AI-dialogue OpenCode final hidden retry failure remains a visible system e
 test("stopRun stops active OpenCode tab without creating a provider error", async () => {
   const { deps, calls } = createSendPromptHarness();
 
-  await handlePanelMessageWithDeps({ type: "stopRun" }, deps);
+  await handlePanelMessageWithDeps({ type: "stopRun", tabId: "clicked-tab" }, deps);
 
-  assert.deepEqual(calls.stoppedTabs, ["tab-opencode-smoke"]);
+  assert.deepEqual(calls.stoppedTabs, ["clicked-tab"]);
   assert.equal(calls.runPrompt.length, 0);
   assert.equal(calls.runLoopPrompt.length, 0);
 });

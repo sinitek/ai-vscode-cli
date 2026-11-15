@@ -599,7 +599,7 @@ test("reports config and rules failures while preserving successful rule contrac
   assert.equal(harness.calls.errors.at(-1)?.detail, harness.state.applyConfigFailure);
 });
 
-test("tab selection restores the execution configuration before publishing the panel state", async (t) => {
+test("tab selection publishes messages before waiting for execution configuration restoration", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);
   const events: string[] = [];
@@ -610,10 +610,10 @@ test("tab selection restores the execution configuration before publishing the p
   harness.deps.postPanelState = async () => { events.push("state"); };
   harness.deps.sendSessionMessagesToPanel = () => { events.push("messages"); };
   await handlePanelMessageWithDeps({ type: "selectConversationTab", cli: "codex", tabId: "tab-codex" }, harness.deps);
-  assert.deepEqual(events, ["restore:tab-codex", "state", "messages"]);
+  assert.deepEqual(events, ["messages", "restore:tab-codex", "state"]);
 });
 
-test("tab selection does not publish stale messages after another tab becomes active", async (t) => {
+test("tab selection does not publish stale panel state after another tab becomes active", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);
   const events: string[] = [];
@@ -621,7 +621,7 @@ test("tab selection does not publish stale messages after another tab becomes ac
   harness.deps.postPanelState = async () => { events.push("state"); };
   harness.deps.sendSessionMessagesToPanel = () => { events.push("messages"); };
   await handlePanelMessageWithDeps({ type: "selectConversationTab", cli: "codex", tabId: "tab-codex" }, harness.deps);
-  assert.deepEqual(events, []);
+  assert.deepEqual(events, ["messages"]);
 });
 
 test("opening a history session restores its execution configuration but choosing a CLI group does not", async (t) => {

@@ -1666,7 +1666,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       });
 
       elements.stopRun.addEventListener("click", () => {
-        vscode.postMessage({ type: "stopRun" });
+        vscode.postMessage({ type: "stopRun", tabId: getActiveConversationTabId() });
       });
 
       elements.promptInput.addEventListener("compositionstart", () => {

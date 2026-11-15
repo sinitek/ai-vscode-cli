@@ -848,12 +848,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.decomposing = false;
     runtime.mainGeneration += 1;
     runtime.scheduler.stopParent();
-    persist(runtime, {
-      status: "stopped",
-      runtimeInterrupted: undefined,
-      finalSummary: "Loop+ parent scheduling is stopped.",
-      pendingClarification: undefined,
-    });
     abortOrchestratorClarification(loopClarificationScope(runtime.taskId));
     const main = runtime.currentMain;
     runtime.currentMain = null;
@@ -863,6 +857,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (!attempt.settled) {
         attempt.abort();
       }
+    });
+    persist(runtime, {
+      status: "stopped",
+      runtimeInterrupted: undefined,
+      finalSummary: "Loop+ parent scheduling is stopped.",
+      pendingClarification: undefined,
     });
     runtime.stopping = false;
     settle(runtime);

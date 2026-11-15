@@ -81,8 +81,8 @@ export function createPromptPanelMessageHandlers(
       });
     },
 
-    stopRun: () => {
-      deps.stopRunForTab(deps.getActiveConversationTabId());
+    stopRun: (message) => {
+      deps.stopRunForTab(message.tabId === undefined ? deps.getActiveConversationTabId() : message.tabId);
     },
   };
 }
