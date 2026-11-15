@@ -2883,6 +2883,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   normalizeSupplementalRequirement: normalizeLoopSupplementalRequirement,
   appendSupplementalRequirement: appendLoopSupplementalRequirement,
   appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
+  recordPromptHistory,
   readTaskRecord: readLoopTaskRecord,
   updateTaskRecord: updateLoopTaskRecord,
   listTaskStoreFiles: listLoopTaskStoreFiles,

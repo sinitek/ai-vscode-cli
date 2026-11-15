@@ -205,9 +205,10 @@
 ## Loop / Loop+ 随时补充需求
 
 - 群聊「补充需求」弹窗不依赖主模型空闲；提交后入口始终可再次打开，不等待群聊刷新。可连续提交多条需求，按提交顺序持久化并显示在群聊中，不打断当前主模型或子任务调用，也不另起并发主模型提问。
+- Loop 与 Loop+ 提交的非空补充提示词同时写入当前工作区的历史提示词，并立即刷新历史列表；只记录补充正文，CLI 取任务所属 CLI，沿用已有去重、复用置顶、收藏和保留规则。空白输入和任务不存在时不记录。
 - Loop+ 复用持久化用户消息队列；主模型忙碌时先排队，之后按既有调度顺序处理。经典 Loop 在下一次主任务判断时读取补充需求；若当前调用返回完成结论但调用期间收到新需求，先重新判断，不能直接收口漏掉新要求。
 - 空白内容不提交；弹窗关闭后重复点击确认或快捷键不重复发送；刷新保留已打开弹窗的草稿和焦点。已完成且无运行进程的任务仍按既有「继续执行」规则处理，不因补充入口修复自动重启。
-- 实现：`src/webview/loopGroupChatPanel.ts`、`src/panelDiagnostics.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
+- 实现：`src/webview/loopGroupChatPanel.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/promptHistoryStore.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/session/promptHistoryStore.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 
 ## 人工交互系统提醒
 

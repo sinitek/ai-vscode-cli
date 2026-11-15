@@ -384,7 +384,7 @@ test("只渲染固定中文静态页面文案", () => {
     "Loop",
     "右键文件或目录，在菜单中单击“加入到携宁 CLI 引用”即可引用",
     "执行模式",
-    "Loop+（主推）",
+    "Loop+",
     "工作区 Harness 骨架",
     "Codex Loop/Loop+ 主模型选择",
     "Codex Loop/Loop+ 子模型选择",

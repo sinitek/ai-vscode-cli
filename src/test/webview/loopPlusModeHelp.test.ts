@@ -55,7 +55,7 @@ test("将中文模式说明的 Markdown 渲染为两列表格", () => {
   assert.deepEqual([...chinese.matchAll(/<td>(.*?)<\/td>/g)].map((match) => match[1]), [
     "<strong>Vibe</strong>", "直接执行目标 CLI 任务。",
     "<strong>Loop</strong>", "主模型作为项目经理分发任务，调度多个子模型共同完成任务。",
-    "<strong>Loop+（主推）</strong>", "主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。",
+    "<strong>Loop+</strong>", "主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。",
   ]);
   assert.doesNotMatch(chinese, /<ul>|<li>|\| ---/);
   assert.match(chinese, /<\/table>\s*<p><a href="https:\/\/www\.yuque\.com\/hunjfang\/ul749m\/pkxei0ie9gc8bmim\?singleDoc#">《携宁 CLI 助手 - 教程》：点击进入详细教程<\/a><\/p>/);

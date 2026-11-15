@@ -1,6 +1,15 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { installVscodeMock } from "../vscodeMock";
+import {
+  loadPromptHistoryStore,
+  recordPromptHistoryInStore,
+  type PromptHistoryStore,
+  type PromptHistoryStoreOptions,
+} from "../../promptHistoryStore";
 
 installVscodeMock();
 
@@ -57,6 +66,7 @@ function createContinuationRecoveryHarness() {
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: () => task,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -274,6 +284,7 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -332,6 +343,7 @@ for (const originalMode of ["split", "fullstack"] as const) {
       normalizeSupplementalRequirement: () => null,
       appendSupplementalRequirement: () => [],
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: () => task,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],
@@ -384,6 +396,7 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -452,6 +465,7 @@ test("legacy tasks without a runtime profile continue without choosing a model s
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: (_taskId, patch) => {
       patches.push(patch);
@@ -521,6 +535,7 @@ test("Loop group chat original runtime restores recorded selections and rejects 
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => { sideEffects.push("update"); return task; },
     listTaskStoreFiles: () => [],
@@ -627,6 +642,7 @@ test("previews a communication file from the open Loop group chat", async () => 
       normalizeSupplementalRequirement: () => null,
       appendSupplementalRequirement: (existing) => [...(existing ?? [])],
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],
@@ -671,7 +687,9 @@ test("previews a communication file from the open Loop group chat", async () => 
   }
 });
 
-test("persists consecutive supplements while the main task is busy and queues only Loop+ messages", async () => {
+test("persists Loop and Loop+ supplements in prompt history while busy and queues only Loop+ messages", async (context) => {
+  const historyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-supplement-history-"));
+  context.after(() => fs.rmSync(historyRoot, { recursive: true, force: true }));
   const vscode = require("vscode") as typeof import("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
@@ -701,6 +719,19 @@ test("persists consecutive supplements while the main task is busy and queues on
     task.schedulingMode = "event_driven";
     const notices: string[] = [];
     const communication: string[] = [];
+    const historyCalls: Array<{ prompt: string; cli: string }> = [];
+    const historyOptions: PromptHistoryStoreOptions = {
+      promptHistoryDir: path.join(historyRoot, "prompt-history"),
+      legacyPromptHistoryFile: path.join(historyRoot, "prompt-history.json"),
+      workspaceKey: task.workspaceKey,
+      workspaceKeyFallback: "no-workspace",
+      promptHistoryLimit: 200,
+      currentCli: "codex",
+      isCliName: (value): value is "codex" | "claude" => value === "codex" || value === "claude",
+      isTimestampWithinHistoryRetention: () => true,
+    };
+    let historyStore: PromptHistoryStore = { items: [] };
+    let historyRefreshes = 0;
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -709,6 +740,10 @@ test("persists consecutive supplements while the main task is busy and queues on
       normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       appendSupplementalRequirement: (existing, nextItem) => [...(existing ?? []), nextItem],
       appendSupplementalRequirementToCommunication: (_task, requirement) => { communication.push(requirement); },
+      recordPromptHistory: (prompt, cli) => {
+        historyCalls.push({ prompt, cli });
+        historyStore = recordPromptHistoryInStore(historyStore, prompt, cli, historyOptions);
+      },
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: (_taskId, patch) => Object.assign(task, patch),
       listTaskStoreFiles: () => [],
@@ -728,7 +763,7 @@ test("persists consecutive supplements while the main task is busy and queues on
       runLoopPrompt: async () => { assert.fail("补充需求不应启动并发主模型调用"); },
       stopRunsForTask: () => undefined,
       markTaskStoppedByUser: () => task,
-      postPanelState: async () => undefined,
+      postPanelState: async () => { historyRefreshes += 1; },
       getActiveConversationTaskId: () => task.id,
       showInformationMessage: () => undefined,
       showWarningMessage: () => undefined,
@@ -748,14 +783,39 @@ test("persists consecutive supplements while the main task is busy and queues on
     assert.deepEqual(notices, ["please check the running subtask", "then check another requirement"]);
     assert.deepEqual(task.supplementalRequirements, notices);
     assert.deepEqual(communication, notices);
+    assert.deepEqual(historyCalls, notices.map((prompt) => ({ prompt, cli: "codex" })));
+    assert.equal(historyRefreshes, 2);
+    assert.deepEqual(loadPromptHistoryStore(historyOptions).items.map((item) => item.prompt).sort(), [...notices].sort());
+    const originalHistoryId = historyStore.items.find((item) => item.prompt === notices[0])?.id;
 
     notices.length = 0;
     task.schedulingMode = "classic";
+    task.cli = "claude";
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "classic only" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(notices, []);
     assert.deepEqual(task.supplementalRequirements, ["please check the running subtask", "then check another requirement", "classic only"]);
     assert.deepEqual(communication, task.supplementalRequirements);
+
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "  please check the running subtask  " });
+    await new Promise((resolve) => setImmediate(resolve));
+    const reloadedHistory = loadPromptHistoryStore(historyOptions);
+    assert.equal(reloadedHistory.items.length, 3);
+    assert.deepEqual(historyCalls.slice(2), [
+      { prompt: "classic only", cli: "claude" },
+      { prompt: "please check the running subtask", cli: "claude" },
+    ]);
+    assert.equal(reloadedHistory.items.find((item) => item.prompt === "classic only")?.cli, "claude");
+    assert.equal(reloadedHistory.items[0].id, originalHistoryId);
+    assert.equal(reloadedHistory.items[0].cli, "claude");
+    assert.equal(historyRefreshes, 4);
+    assert.deepEqual(notices, []);
+
+    deps.readTaskRecord = () => null;
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "missing task" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(historyCalls.length, 4);
+    assert.equal(historyRefreshes, 4);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }
@@ -812,6 +872,7 @@ test("asks the current main model session and shows the answer without supplemen
         return [...(existing ?? []), nextItem];
       },
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],

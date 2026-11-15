@@ -1670,15 +1670,18 @@
     {
       "id": "plugin.rule.loop_supplement_queue",
       "name": "Loop 与 Loop+ 忙碌时可连续补充需求",
-      "description": "群聊补充需求弹窗独立于主模型运行锁，入口提交后不禁用且不等待增量补丁，可连续提交并按顺序持久化到任务记录和群聊。Loop+ 复用持久化 userMessageQueue，忙碌时排队且不打断当前调用；经典 Loop 随下次判断读取，完成结论若未覆盖调用期间新到的需求则返回 pending-requirements，原轮次重新判断。空白输入和弹窗关闭后的重复确认不提交，不改变终态任务与停止任务的恢复边界。",
+      "description": "群聊补充需求弹窗独立于主模型运行锁，入口提交后不禁用且不等待增量补丁，可连续提交并按顺序持久化到任务记录和群聊。Loop 与 Loop+ 的非空补充正文同时按任务所属 CLI 写入当前工作区历史提示词并立即刷新列表，沿用既有去重、复用置顶、收藏和保留规则；空白输入或任务不存在时不记录。Loop+ 复用持久化 userMessageQueue，忙碌时排队且不打断当前调用；经典 Loop 随下次判断读取，完成结论若未覆盖调用期间新到的需求则返回 pending-requirements，原轮次重新判断。弹窗关闭后的重复确认不提交，不改变终态任务与停止任务的恢复边界。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/webview/loopGroupChatPanel.ts"},
         {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts", "anchor": "createLoopGroupChatPanelCoordinator"},
+        {"path": "src/promptHistoryStore.ts", "anchor": "recordPromptHistoryInStore"},
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/test/loop/loopGroupChatPanel.test.ts"},
+        {"path": "src/test/loop/loopGroupChatCoordinator.test.ts"},
+        {"path": "src/test/session/promptHistoryStore.test.ts"},
         {"path": "src/test/extensionHost/subtaskCliExecution.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 随时补充需求"}
       ]

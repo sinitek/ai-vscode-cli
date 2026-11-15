@@ -207,7 +207,7 @@ async function main() {
       assert.deepEqual(m.rows, [
         ['Vibe', '直接执行目标 CLI 任务。'],
         ['Loop', '主模型作为项目经理分发任务，调度多个子模型共同完成任务。'],
-        ['Loop+（主推）', '主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。'],
+        ['Loop+', '主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。'],
       ]);
       assert.equal(m.href, 'https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#');
       assert.equal(m.linkText, '《携宁 CLI 助手 - 教程》：点击进入详细教程');

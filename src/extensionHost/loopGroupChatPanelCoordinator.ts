@@ -84,6 +84,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   normalizeSupplementalRequirement: (value: unknown) => string | null;
   appendSupplementalRequirement: (existing: readonly string[] | undefined, nextItem: string) => string[];
   appendSupplementalRequirementToCommunication: (task: LoopTaskRecord, requirement: string) => void;
+  recordPromptHistory: (prompt: string, cli: CliName) => void;
   readTaskRecord: (taskId: string) => LoopTaskRecord | null;
   updateTaskRecord: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   listTaskStoreFiles: () => string[];
@@ -538,9 +539,11 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       updatedAt: Date.now(),
     });
     deps.appendSupplementalRequirementToCommunication(task, supplementalRequirement);
+    deps.recordPromptHistory(supplementalRequirement, task.cli);
     if (resolveLoopSchedulingMode(task.schedulingMode) === "event_driven") {
       deps.notifyLoopPlusUserMessage?.(task.id, supplementalRequirement);
     }
+    await deps.postPanelState();
     await refresh(normalizedTaskId);
   };
 
