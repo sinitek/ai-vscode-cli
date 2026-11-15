@@ -1,6 +1,15 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { installVscodeMock } from "../vscodeMock";
+import {
+  loadPromptHistoryStore,
+  recordPromptHistoryInStore,
+  type PromptHistoryStore,
+  type PromptHistoryStoreOptions,
+} from "../../promptHistoryStore";
 
 installVscodeMock();
 
@@ -57,6 +66,7 @@ function createContinuationRecoveryHarness() {
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: () => task,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -170,6 +180,7 @@ test("model switch resumes a cold task despite stale persisted running status", 
   env.deps.resumeLoopSubtasks = () => false;
   await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
   await delay(0);
+  await delay(0);
   assert.equal(env.runs, 1);
   assert.deepEqual(env.warnings, []);
 });
@@ -184,6 +195,57 @@ test("model switch can resume paused Loop+ control while a sibling child remains
   await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
   await delay(0);
   assert.equal(env.runs, 1);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("继续通过面板消息唤醒仍持有控制器但主模型空闲的 Loop+ 任务", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  let runOptions: Parameters<typeof env.deps.runLoopPrompt>[1] | undefined;
+  env.deps.runLoopPrompt = async (_input, options) => { runOptions = options; };
+
+  await env.coordinator.handleMessage(env.task.id, {
+    type: "loopGroupChatChat:continueTask",
+    prompt: "继续执行",
+  } as never);
+
+  assert.equal(env.runs, 0);
+  assert.equal(runOptions?.resumeRequested, true);
+  assert.equal(runOptions?.resumeUserMessage, "继续执行");
+  assert.equal(env.messages.find((message) => message.type === "loopGroupChatChat:continueTaskSettled")?.canContinue, true);
+  assert.deepEqual(env.warnings, []);
+});
+
+test("Loop+ 面板只在主模型空闲时显示继续入口，即使后台控制器仍存在", () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  const idle = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(idle.mainModelBusy, false);
+  assert.equal(idle.task.canContinue, true);
+
+  env.deps.isTabRunActive = () => true;
+  const busy = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(busy.mainModelBusy, true);
+  assert.equal(busy.task.canContinue, false);
+});
+
+test("切模型在没有可恢复子任务时会把继续消息交给主任务调度", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  env.deps.updateTaskRecord = (_taskId, patch) => Object.assign(env.task, patch);
+  env.deps.getLoopModelSwitchOptions = () => [{ value: "new-model", label: "新模型" }];
+  env.deps.resumeLoopSubtasks = () => false;
+  let runOptions: Parameters<typeof env.deps.runLoopPrompt>[1] | undefined;
+  env.deps.runLoopPrompt = async (_input, options) => { runOptions = options; };
+
+  await env.coordinator.switchModels(env.task.id, { main: "new-model", fullstack: "new-model" });
+  await delay(0);
+
+  assert.equal(runOptions?.resumeRequested, true);
+  assert.equal(runOptions?.resumeUserMessage, "run.hiddenContinuePrompt");
   assert.deepEqual(env.warnings, []);
 });
 
@@ -240,9 +302,26 @@ test("missing and already-running tasks still acknowledge continuation requests"
   const running = createContinuationRecoveryHarness();
   running.task.status = "running";
   running.deps.collectRunningTaskIds = () => new Set([running.task.id]);
+  running.deps.isTabRunActive = () => true;
   await running.coordinator.continueTask(running.task.id, "继续执行", "original");
   assert.deepEqual(running.messages, [{ type: "loopGroupChatChat:continueTaskSettled", canContinue: false }]);
   assert.equal(running.runs, 0);
+});
+
+test("continues a persisted-running Loop+ task when its host owns an idle controller", async () => {
+  const orphaned = createContinuationRecoveryHarness();
+  orphaned.task.status = "running";
+  orphaned.deps.collectRunningTaskIds = () => new Set();
+  await orphaned.coordinator.continueTask(orphaned.task.id, "继续执行");
+  assert.equal(orphaned.runs, 1);
+
+  const active = createContinuationRecoveryHarness();
+  active.task.status = "running";
+  active.deps.collectRunningTaskIds = () => new Set([active.task.id]);
+  active.deps.isTabRunActive = () => true;
+  await active.coordinator.continueTask(active.task.id, "继续执行");
+  assert.equal(active.runs, 0);
+  assert.deepEqual(active.warnings, []);
 });
 
 test("duplicate continuation requests cannot start a task twice while original runtime restoration is pending", async () => {
@@ -274,6 +353,7 @@ test("does not recreate a closed main tab while rendering a terminal Loop panel"
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -332,6 +412,7 @@ for (const originalMode of ["split", "fullstack"] as const) {
       normalizeSupplementalRequirement: () => null,
       appendSupplementalRequirement: () => [],
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: () => task,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],
@@ -384,6 +465,7 @@ test("Loop group chat continuation uses the main tab current CLI config and mode
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => task,
     listTaskStoreFiles: () => [],
@@ -452,6 +534,7 @@ test("legacy tasks without a runtime profile continue without choosing a model s
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: (_taskId, patch) => {
       patches.push(patch);
@@ -521,6 +604,7 @@ test("Loop group chat original runtime restores recorded selections and rejects 
     normalizeSupplementalRequirement: () => null,
     appendSupplementalRequirement: (existing) => [...(existing ?? [])],
     appendSupplementalRequirementToCommunication: () => undefined,
+    recordPromptHistory: () => undefined,
     readTaskRecord: (taskId) => taskId === task.id ? task : null,
     updateTaskRecord: () => { sideEffects.push("update"); return task; },
     listTaskStoreFiles: () => [],
@@ -627,6 +711,7 @@ test("previews a communication file from the open Loop group chat", async () => 
       normalizeSupplementalRequirement: () => null,
       appendSupplementalRequirement: (existing) => [...(existing ?? [])],
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],
@@ -671,7 +756,9 @@ test("previews a communication file from the open Loop group chat", async () => 
   }
 });
 
-test("persists consecutive supplements while the main task is busy and queues only Loop+ messages", async () => {
+test("persists Loop and Loop+ supplements in prompt history while busy and queues only Loop+ messages", async (context) => {
+  const historyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-supplement-history-"));
+  context.after(() => fs.rmSync(historyRoot, { recursive: true, force: true }));
   const vscode = require("vscode") as typeof import("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
@@ -701,6 +788,19 @@ test("persists consecutive supplements while the main task is busy and queues on
     task.schedulingMode = "event_driven";
     const notices: string[] = [];
     const communication: string[] = [];
+    const historyCalls: Array<{ prompt: string; cli: string }> = [];
+    const historyOptions: PromptHistoryStoreOptions = {
+      promptHistoryDir: path.join(historyRoot, "prompt-history"),
+      legacyPromptHistoryFile: path.join(historyRoot, "prompt-history.json"),
+      workspaceKey: task.workspaceKey,
+      workspaceKeyFallback: "no-workspace",
+      promptHistoryLimit: 200,
+      currentCli: "codex",
+      isCliName: (value): value is "codex" | "claude" => value === "codex" || value === "claude",
+      isTimestampWithinHistoryRetention: () => true,
+    };
+    let historyStore: PromptHistoryStore = { items: [] };
+    let historyRefreshes = 0;
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
       getExtensionUri: () => ({ fsPath: "/extension" } as any),
@@ -709,6 +809,10 @@ test("persists consecutive supplements while the main task is busy and queues on
       normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
       appendSupplementalRequirement: (existing, nextItem) => [...(existing ?? []), nextItem],
       appendSupplementalRequirementToCommunication: (_task, requirement) => { communication.push(requirement); },
+      recordPromptHistory: (prompt, cli) => {
+        historyCalls.push({ prompt, cli });
+        historyStore = recordPromptHistoryInStore(historyStore, prompt, cli, historyOptions);
+      },
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: (_taskId, patch) => Object.assign(task, patch),
       listTaskStoreFiles: () => [],
@@ -728,7 +832,7 @@ test("persists consecutive supplements while the main task is busy and queues on
       runLoopPrompt: async () => { assert.fail("补充需求不应启动并发主模型调用"); },
       stopRunsForTask: () => undefined,
       markTaskStoppedByUser: () => task,
-      postPanelState: async () => undefined,
+      postPanelState: async () => { historyRefreshes += 1; },
       getActiveConversationTaskId: () => task.id,
       showInformationMessage: () => undefined,
       showWarningMessage: () => undefined,
@@ -748,14 +852,39 @@ test("persists consecutive supplements while the main task is busy and queues on
     assert.deepEqual(notices, ["please check the running subtask", "then check another requirement"]);
     assert.deepEqual(task.supplementalRequirements, notices);
     assert.deepEqual(communication, notices);
+    assert.deepEqual(historyCalls, notices.map((prompt) => ({ prompt, cli: "codex" })));
+    assert.equal(historyRefreshes, 2);
+    assert.deepEqual(loadPromptHistoryStore(historyOptions).items.map((item) => item.prompt).sort(), [...notices].sort());
+    const originalHistoryId = historyStore.items.find((item) => item.prompt === notices[0])?.id;
 
     notices.length = 0;
     task.schedulingMode = "classic";
+    task.cli = "claude";
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "classic only" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(notices, []);
     assert.deepEqual(task.supplementalRequirements, ["please check the running subtask", "then check another requirement", "classic only"]);
     assert.deepEqual(communication, task.supplementalRequirements);
+
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "  please check the running subtask  " });
+    await new Promise((resolve) => setImmediate(resolve));
+    const reloadedHistory = loadPromptHistoryStore(historyOptions);
+    assert.equal(reloadedHistory.items.length, 3);
+    assert.deepEqual(historyCalls.slice(2), [
+      { prompt: "classic only", cli: "claude" },
+      { prompt: "please check the running subtask", cli: "claude" },
+    ]);
+    assert.equal(reloadedHistory.items.find((item) => item.prompt === "classic only")?.cli, "claude");
+    assert.equal(reloadedHistory.items[0].id, originalHistoryId);
+    assert.equal(reloadedHistory.items[0].cli, "claude");
+    assert.equal(historyRefreshes, 4);
+    assert.deepEqual(notices, []);
+
+    deps.readTaskRecord = () => null;
+    messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "missing task" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(historyCalls.length, 4);
+    assert.equal(historyRefreshes, 4);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }
@@ -766,11 +895,11 @@ test("asks the current main model session and shows the answer without supplemen
   const vscode = require("vscode");
   const previousCreate = vscode.window.createWebviewPanel;
   let messageHandler: ((message: unknown) => void) | undefined;
-  const posted: Array<{ type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }> = [];
+  const posted: Array<{ type?: string; thread?: { messages?: Array<{ content?: string; role?: string; queued?: boolean }>; running?: boolean; queued?: boolean } }> = [];
   const webview = {
     cspSource: "self",
     html: "",
-    postMessage(message: { type?: string; thread?: { messages?: Array<{ content?: string; role?: string }>; running?: boolean } }) {
+    postMessage(message: { type?: string; thread?: { messages?: Array<{ content?: string; role?: string; queued?: boolean }>; running?: boolean; queued?: boolean } }) {
       posted.push(message);
       return undefined;
     },
@@ -812,6 +941,7 @@ test("asks the current main model session and shows the answer without supplemen
         return [...(existing ?? []), nextItem];
       },
       appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
       readTaskRecord: (taskId) => taskId === task.id ? task : null,
       updateTaskRecord: () => task,
       listTaskStoreFiles: () => [],
@@ -896,6 +1026,7 @@ test("asks the current main model session and shows the answer without supplemen
     assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题", "可以合并吗", "再确认当前进度"]);
     assert.equal(panelWhileBusy?.getAskThread().running, true);
     assert.equal(panelWhileBusy?.getAskThread().queued, true);
+    assert.deepEqual(panelWhileBusy?.getAskThread().messages.filter((message) => message.queued).map((message) => message.content), ["可以合并吗", "再确认当前进度"]);
     mainModelBusy = false;
     await coordinator.refresh(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, false);
@@ -905,10 +1036,13 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(webview.html, installedHtml);
     const askThreads = posted.filter((message) => message.type === "loopGroupChatChat:askThread");
     const latestAsk = askThreads.at(-1)?.thread;
+    const answeringFirst = askThreads.find((message) => message.thread?.running && !message.thread.queued);
+    assert.deepEqual(answeringFirst?.thread?.messages?.filter((message) => message.queued).map((message) => message.content), ["再确认当前进度"]);
     const askText = latestAsk?.messages?.map((message) => message.content ?? "").join("\n") ?? "";
     assert.match(askText, /可以合并吗/u);
     assert.doesNotMatch(askText, /先看冲突/u);
     assert.equal(latestAsk?.running, false);
+    assert.equal(panelWhileBusy?.getAskThread().messages.some((message) => message.queued), false);
     assert.match(askText, /可以先合并冲突文件。/u);
     assert.doesNotMatch(installedHtml, /ask-chat-thinking/u);
     assert.ok(savedThreads.every((entry) => !entry.includes("先看冲突")));
@@ -936,17 +1070,20 @@ test("asks the current main model session and shows the answer without supplemen
     assert.equal(aborts, 0);
     assert.equal(panel?.getAskThread().running, false);
     assert.doesNotMatch(questions.join("\n"), /取消排队的问题/u);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
 
     mainModelBusy = false;
     holdAnswer = true;
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "中止正在回答的问题" });
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "同时清空后续问题" });
     await delay(5);
+    assert.deepEqual(panel?.getAskThread().messages.filter((message) => message.queued).map((message) => message.content), ["同时清空后续问题"]);
     messageHandler?.({ type: "loopGroupChatChat:abortMainModelQuestion" });
     await delay(5);
     assert.equal(aborts, 1);
     assert.equal(panel?.getAskThread().running, false);
     assert.doesNotMatch(questions.join("\n"), /同时清空后续问题/u);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
 
     holdAnswer = false;
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败的问题" });
@@ -954,6 +1091,7 @@ test("asks the current main model session and shows the answer without supplemen
     await delay(5);
     assert.deepEqual(questions.slice(-2), ["失败的问题", "失败后继续"]);
     assert.equal(panel?.getAskThread().running, false);
+    assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
   } finally {
     vscode.window.createWebviewPanel = previousCreate;
   }

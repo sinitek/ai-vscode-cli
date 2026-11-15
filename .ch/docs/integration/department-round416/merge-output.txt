@@ -1,0 +1,56 @@
+Auto-merging .ch/docs/design-docs/loop-subtask-session-reuse.md
+Auto-merging .ch/docs/ontology/domains/cli-plugin-runtime.json
+Auto-merging .ch/docs/product-specs/FEATURE_INVENTORY.md
+CONFLICT (content): Merge conflict in .ch/docs/product-specs/FEATURE_INVENTORY.md
+Auto-merging ARCHITECTURE.md
+Auto-merging src/config/sharedRuntimeConfig.ts
+Auto-merging src/extension.ts
+CONFLICT (content): Merge conflict in src/extension.ts
+Auto-merging src/extensionHost/loopGroupChatPanelCoordinator.ts
+CONFLICT (content): Merge conflict in src/extensionHost/loopGroupChatPanelCoordinator.ts
+Auto-merging src/extensionHost/loopOrchestration.ts
+Auto-merging src/extensionHost/loopPlusDecisionStrategies.ts
+Auto-merging src/extensionHost/loopPlusOrchestration.ts
+Auto-merging src/extensionHost/loopPlusPromptBuilders.ts
+Auto-merging src/extensionHost/loopPlusRuntimeAdapter.ts
+CONFLICT (content): Merge conflict in src/extensionHost/loopPlusRuntimeAdapter.ts
+Auto-merging src/extensionHost/promptInteractiveRuntime.ts
+CONFLICT (content): Merge conflict in src/extensionHost/promptInteractiveRuntime.ts
+Auto-merging src/extensionHost/promptOneShotRuntime.ts
+Auto-merging src/extensionHost/promptParallelRuntime.ts
+Auto-merging src/extensionHost/promptRunRuntime.ts
+Auto-merging src/extensionHost/sessionTabs.ts
+Auto-merging src/i18n.ts
+Auto-merging src/loopPlusDecision.ts
+Auto-merging src/loopTaskStore.ts
+Auto-merging src/panelStateBuilder.ts
+Auto-merging src/promptRunState.ts
+CONFLICT (content): Merge conflict in src/promptRunState.ts
+Auto-merging src/promptRunTypes.ts
+Auto-merging src/sessionMessageActions.ts
+Auto-merging src/sessionMessageHandlers.ts
+Auto-merging src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts
+CONFLICT (content): Merge conflict in src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts
+Auto-merging src/test/extensionHost/loopPlusEntryRouting.test.ts
+Auto-merging src/test/extensionHost/loopPlusOrchestration.test.ts
+CONFLICT (content): Merge conflict in src/test/extensionHost/loopPlusOrchestration.test.ts
+Auto-merging src/test/extensionHost/loopPlusPromptBuilders.test.ts
+Auto-merging src/test/extensionHost/loopPlusRuntimeIntegration.test.ts
+CONFLICT (content): Merge conflict in src/test/extensionHost/loopPlusRuntimeIntegration.test.ts
+Auto-merging src/test/extensionHost/promptInteractiveRuntime.test.ts
+CONFLICT (content): Merge conflict in src/test/extensionHost/promptInteractiveRuntime.test.ts
+Auto-merging src/test/loop/loopGroupChatPanel.test.ts
+Auto-merging src/test/session/sessionMessageActions.test.ts
+Auto-merging src/test/session/sessionTabCliSwitch.test.ts
+CONFLICT (content): Merge conflict in src/test/session/sessionTabCliSwitch.test.ts
+Auto-merging src/webview/loopGroupChatPanel.ts
+Auto-merging src/webview/loopGroupChatPanelRenderer.ts
+Auto-merging src/webview/loopGroupChatPanelStyles.ts
+Auto-merging src/webview/loopGroupChatPanelTypes.ts
+Auto-merging src/webview/types.ts
+Auto-merging src/webview/viewContentHtml.ts
+Auto-merging src/webview/viewContentScript/coreRuntimeState.ts
+Auto-merging src/webview/viewContentScript/messageRendering.ts
+Auto-merging src/webview/viewContentScript/settingsAndOverlays.ts
+Auto-merging src/webview/viewContentStrings.ts
+Automatic merge failed; fix conflicts and then commit the result.

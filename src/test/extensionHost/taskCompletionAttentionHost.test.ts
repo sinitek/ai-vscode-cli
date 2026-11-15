@@ -25,6 +25,7 @@ function runRecord(patch: Partial<TaskRunRecord> = {}): TaskRunRecord {
 
 function harness() {
   const completions: string[] = [];
+  const runCompletionEvents: TaskRunRecord[] = [];
   const store = { runs: [] as TaskRunRecord[] };
   const primaryPromptRunController = {
     activeRunId: "run",
@@ -34,6 +35,7 @@ function harness() {
   };
   const sandbox = {
     primaryPromptRunController,
+    taskRunCompletionEmitter: { fire: (record: TaskRunRecord) => { runCompletionEvents.push(record); } },
     humanInteractionAttention: { taskCompleted: async (eventId: string) => { completions.push(eventId); } },
     notifyTaskRunCompletion,
     readTaskStore: () => store,
@@ -46,7 +48,7 @@ function harness() {
     appendCompletionMessage: (_status: string, _options?: { notifyCompletion?: boolean }) => undefined,
   };
   vm.runInNewContext(script, sandbox);
-  return { ...sandbox, completions, store };
+  return { ...sandbox, completions, runCompletionEvents, store };
 }
 
 test("shared persisted run recording notifies successful Vibe once and filters Loop intermediate calls", () => {
@@ -57,6 +59,7 @@ test("shared persisted run recording notifies successful Vibe once and filters L
   env.appendTaskRun(runRecord({ id: "error", status: "error" }));
   env.appendTaskRun(runRecord({ id: "stopped", status: "stopped" }));
   assert.equal(env.store.runs.length, 5);
+  assert.deepEqual(env.runCompletionEvents, env.store.runs);
   assert.deepEqual(env.completions, ["vibe:run"]);
 });
 
@@ -65,19 +68,25 @@ test("one-shot completion finalization notifies only once and context compaction
   ordinary.appendCompletionMessage("end");
   ordinary.appendCompletionMessage("end");
   assert.equal(ordinary.store.runs.length, 1);
+  assert.deepEqual(ordinary.runCompletionEvents, ordinary.store.runs);
   assert.deepEqual(ordinary.completions, ["vibe:run"]);
   const compact = harness();
   compact.appendCompletionMessage("end", { notifyCompletion: false });
   assert.equal(compact.store.runs.length, 1);
+  assert.deepEqual(compact.runCompletionEvents, compact.store.runs);
   assert.deepEqual(compact.completions, []);
 });
 
 test("persist failures do not emit a successful completion notification", () => {
   const env = harness();
-  env.writeTaskStore = () => { throw new Error("存储写入失败"); };
+  const storageError = new Error("存储写入失败");
+  env.writeTaskStore = () => { throw storageError; };
   const sandbox = { ...env };
   vm.runInNewContext(script, sandbox);
-  assert.throws(() => sandbox.appendTaskRun(runRecord()), /存储写入失败/);
+  const record = runRecord();
+  assert.throws(() => sandbox.appendTaskRun(record), (error) => error === storageError);
+  // Run events precede persistence; user success notifications require a successful write.
+  assert.deepEqual(env.runCompletionEvents, [record]);
   assert.deepEqual(env.completions, []);
 });
 

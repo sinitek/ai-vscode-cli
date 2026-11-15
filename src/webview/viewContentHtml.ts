@@ -1,3 +1,4 @@
+import { Marked, Renderer } from "marked";
 import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { renderChatModal } from "./modalComponents";
 import { CLI_LIST } from "../cli/types";
@@ -16,6 +17,27 @@ type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
 export function neutralizeInlineScriptEndTags(source: string): string {
   return source.replace(/<\/script/gi, "<\\/script");
+}
+
+function renderHelpMarkdown(markdown: string): string {
+  const escapeHtml = (value: string): string => value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  const renderer = new Renderer();
+  renderer.html = ({ text }) => escapeHtml(text);
+  renderer.link = function ({ href, title, tokens }) {
+    const label = this.parser.parseInline(tokens);
+    if (!/^https?:\/\//i.test(href)) {
+      return label;
+    }
+    const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
+    return `<a href="${escapeHtml(href)}"${titleAttribute}>${label}</a>`;
+  };
+  // Keep help rendering synchronous and independent of shared marked defaults.
+  return new Marked().parse(markdown, { async: false, gfm: true, renderer });
 }
 
 function renderInteractiveModeSelect(
@@ -1043,11 +1065,7 @@ ${renderChatModal({
         },
         contentHtml: `          <div id="helpPanelModes" class="help-panel active">
             <div class="help-section">
-              <ul>
-                <li>${i18n.helpModeVibe}</li>
-                <li>${i18n.helpModeLoop}</li>
-                <li>${i18n.helpModeLoopPlus}</li>
-              </ul>
+              ${renderHelpMarkdown(i18n.helpModesMarkdown)}
             </div>
           </div>
         `,

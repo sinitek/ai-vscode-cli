@@ -97,15 +97,18 @@ test("unified acceptance requires live consent and accepts quoted Windows/macOS 
 
 test("regression selection includes the Loop+ ownership, completion, tab lifecycle and runner guards", (context) => {
   context.mock.method(fs, "readdirSync", () => ["codexThreadHandoff.test.js", "codexRunnerProcess.test.js", "promptInteractiveRuntime.test.js"]);
-  let missingStatusTest = false;
-  context.mock.method(fs, "existsSync", (filename: fs.PathLike) => !missingStatusTest || !String(filename).endsWith("tabRunStatus.test.js"));
+  let missingTest: string | null = null;
+  context.mock.method(fs, "existsSync", (filename: fs.PathLike) => missingTest === null || !String(filename).endsWith(`${missingTest}.test.js`));
   const tests: string[] = regressionTests();
   for (const required of ["promptInteractiveRuntime", "tabRunStatus", "conversationTabClose", "loopSubtaskSession", "loopPlusRuntimeIntegration", "codexRunnerUnloadAcceptance", "loopPlusFixAcceptance", "loopMainFailure", "loopPlusPause", "loopBlockedSummary", "loopFinalSummary", "loopGroupChat"]) {
     assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
   }
   assert.equal(new Set(tests).size, tests.length);
-  missingStatusTest = true;
-  assert.throws(() => regressionTests(), /tabRunStatus/);
+  for (const required of ["tabRunStatus", "loopPlusAttemptIdentity", "loopWaitWatchdog"]) {
+    assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
+    missingTest = required;
+    assert.throws(() => regressionTests(), new RegExp(required));
+  }
 });
 
 test("zero exit is insufficient without complete, non-skipped TAP evidence", () => {

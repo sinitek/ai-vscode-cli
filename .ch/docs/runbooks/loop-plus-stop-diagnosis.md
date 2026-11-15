@@ -11,6 +11,7 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 - **父任务完成**：需要有效的 `completed` 决策与父任务持久化完成状态。
 - **主模型报告阻塞**：首次全局 `blocked` 会触发一次有限的剩余工作复核，不立即等同父任务暂停；复核后仍阻塞才将父任务持久化为 `needs-review`。暂停保留未完成状态，不等于主任务完成。
 - **主模型协议矛盾**：`loop-plus-protocol-miss` 会附具体原因自动请求重写 JSON，默认最多纠正 2 次；耗尽才出现 `loop-plus-protocol-paused`，与业务 `blocked` 区分。`finalSummary`、主聊天和沟通文件应展示实际校验原因；历史记录缺失时不能猜成业务无法完成。
+- **停止后的继续被拒绝**：历史提示 `running executions are still live` 对应 `loop-plus-resume-blocked`，表示编排仍有未结算 attempt，并不证明模型调用失败或 CLI 一定存活。分别核对当前宿主句柄、真实执行与启动准备，不以 Tab 缺失或旧快照推定结果。
 
 当前调用链为 `applyBlockedDecision` → `loopPlusBlockReview=pending` → 带 `Bounded blocked review` 的一次主任务复核。若复核发现安全、独立的工作，继续派发并清除该复核状态；否则 `pauseForReview` → 编排宿主 `pause`，设置 `autoPaused`，持久化 `needs-review`、阻塞摘要与已复核状态，通知用户并记录到主任务沟通文件和群聊 transcript。该状态跨宿主重建保留；没有新的用户补充、派发或验收进展时，不会重复复核或自动发起相同阻塞调用。
 
@@ -25,10 +26,15 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 ## 典型误判与后续处理
 
-- 子任务全部执行结束且 `phase=reviewing`，不代表验收决策已被接收。读取原主模型 JSON，用 `parseLoopPlusDecisionWithFeedback` 按运行时选项只读回放，核对 `reviewEventId(s)`、`reviews` 和 `subtasks`；补充需求的新任务也必须恰好关联一个 `reviews[].subtaskIds`，可关联通过项而保留其真实结论。不要直接改持久化任务或替主模型伪造通过。
+- VS Code 崩溃后不能只凭持久化 running / activeSubtaskIds 认定还有进程。新运行核对保留子任务关联并记 `runtimeInterrupted=true`；手动继续原子任务，成功结果会重建 Loop+ 完成回报并通知主任务验收，其余失联子任务仍需继续。不要删除快照、修改 attempt ID 或伪造完成。旧版 stopped 记录若没有中断标记，需显式继续父任务；不得把用户主动停止猜成崩溃。实现与验收边界见 [恢复设计](../design-docs/loop-crash-recovery.md)。
+
+- 子任务全部执行结束且 `phase=reviewing`，不代表验收决策已被接收。读取原主模型 JSON，用 `parseLoopPlusDecisionWithFeedback` 按运行时选项只读回放，核对 `reviewEventId(s)`、`reviews` 和 `subtasks`；新任务须恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`。事件相关任务可关联通过项并保留真实结论，独立剩余交付使用独立列表。只派修复时检查沟通文件中的剩余目标、空槽及依赖说明，避免把局部验收缺口当全局屏障。不要直接改持久化任务或替主模型伪造通过。
 - 协议纠错请求应含 `Loop+ protocol correction required`、具体原因、旧回复及最新批次。确认有效决策后可继续派发或完成；持续失败暂停后，按记录原因补充信息或显式继续重新判断，不需要重做仍有效的业务审阅和测试。旧版本只有通用重试、没有具体原因时，先对照实际最终 JSON 与暂停前快照，而不是反复点击继续。
 - `mainAiFailureCount=5` 不等于模型服务连续报错。先核对 `mainAiLastFailureMessage`：若为 CODEX_THREAD_HANDOFF_FAILED / waiting_close，失败可能发生在发起模型请求之前。0.145.0 原生默认卸载为 30 分钟，旧共享策略的 75 秒交接等待不能收敛；原生会话 metadata 的创建版本只证明创建时版本，历史启动版本仍应与实际可执行路径证据区分。
 - 兼容策略仅共享已确认支持即时卸载的版本，其余连接按 runner 归属专用；恢复前等待原进程实际退出，不强杀共享或外部 writer。Loop+ 对不可重试的会话错误第一次就暂停，保留当前验收与队列；其它错误最多连续五次。群聊、主聊天、暂停文件展示相同原因，旧空摘要从失败字段重建。
+- 停止后若子任务已不存在，显式继续应把无句柄的开放预留结算为 `stopped / lost-process`，保留原验收事件，由主模型重新评审或派发；不要求恢复已经消失的子 Tab。当前源码另支持取消来源租约、后台压缩及 CLI 启动前的准备等待；取消只释放等待者，不停止前驱/原压缩，迟到准备不启动 CLI。已开始的实际调用仍需确认收尾。旧扩展中的内存等待不会因修改源码自动消失，应在其余任务允许重载后使用新源码验证；不要直接清空 running 或修改运行 JSON。
+- `Codex app-server 异常退出（code 127）：...command not found...` 是 shell 启动缺命令，应与普通工具执行正文区分。宿主 PATH 能解析不保证登录 shell 能找到；自动修复可固定发现的可执行文件绝对路径，在原 Tab 新会话重放原输入一次，停止/被替代时不重放。已有明确可用命令时，普通文件或 cwd 的 ENOENT 不应触发该修复。
+- `ENOSPC` 先用当前磁盘空间与写入错误核对是否仍存在；历史磁盘满不能解释空间恢复后的所有暂停，也不能因当前空间充足否定历史失败。
 - Loop+ 是事件驱动调度，不使用经典 `currentRound` 计数；历史记录中的 0 不能证明主任务从未派发或执行。
 
 - `run.completedWithDuration` 反映单次执行状态；与父任务暂停通知相邻出现时，应以父任务决策和状态解释整体进度。
@@ -37,6 +43,20 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 - 部分恢复执行被前置条件阻塞时，仍需检查是否存在独立且安全的实现、测试或文档任务；整体排队为空只说明当前没有已派发工作，不证明所有剩余目标均无法推进。
 - 无新证据时不要无限重复同一失败诊断，也不要通过删除门禁、伪造成功或修改任务记录强制“继续”。需要人工条件时明确缺失证据、负责人及恢复触发方式。
 - 核对任务是否已被后续用户消息恢复；只读调查不能打断正在执行的 attempt，也不能用恢复后的 `running` 否定历史暂停。
+
+## 子任务完成但标签仍保留
+
+完成收尾顺序为：主任务接收完成回报并持久化 → 按现有开关和时长条件压缩子会话 → 关闭完成时捕获的原标签。主任务验收不等待后台压缩，同会话再次执行需等待收尾；压缩失败仍执行关页。失败、中断、回报失败及过期完成事件保留现场。
+
+排查时对齐 `loop-subtask-auto-compact-failed`、`loop-subtask-tab-auto-close-error` / `loop-plus-subtask-tab-auto-close-error` 与对应 `tab-auto-closed` 日志。旧实现中经典 Loop 未等待压缩便关页，Loop+ 则在完成回报前关页；遇到活跃任务时共享清理可能跳过关页，调用方仍记录成功。当前实现会核对关闭是否生效，并保护压缩期间新增、替代、换绑或仍在运行的标签。关闭失败不会改写已成功的完成回报，应按错误原因核对原标签与当前任务，不要强关正在使用该会话的新任务。
+
+## 子任务 Tab 报等待其他窗口配置操作超时
+
+先按 `runPrompt-failed` 的 `tabId`、`loopTaskId`、`loopSubtaskId`、`loopAttemptId` 对齐调用，不能仅凭 `cli-startup` 推断是哪一个并行子任务失败。新版错误码为 `RUNTIME_CONFIG_LOCK_TIMEOUT`，`configLock` 提供 `operation`、`ownerPid`、`ownerAlive`、`waitedMs` 和 `timeoutMs`。`acquire` 表示还未取得执行租约；`release` 表示请求收尾阶段超时，不能据此认定 CLI 没有执行。
+
+共享协调目录在对应原生配置文件旁的 `.sinitek-runtime-coordination/<文件名>/`。只读检查 `mutex` 的 PID 存活与任务状态；当前没有锁不能证明历史没有争用，残留的 `owner-*` 候选文件也不等同仍持锁。活进程锁不按时间删除，执行租约也不应手动清空。等待到期后宿主会再做一次原子获取，处理锁刚释放或死进程锁刚回收的竞态；最终仍被占用才拒绝。旧日志只有中文错误且没有任务/持锁信息时，只能确认超时发生，不能反推出唯一根因。
+
+回归：构建后运行 `node --test dist/test/config/sharedRuntimeConfig.test.js dist/test/extensionHost/promptSessionHealth.test.js`；覆盖截止时释放、死锁回收、活锁保护、最终尝试被其它进程抢先以及子任务失败日志/状态。更新源码后需让 VS Code 加载包含修复的新构建；仓库构建通过不代表已安装扩展已生效。
 
 ## 验证与事实来源
 

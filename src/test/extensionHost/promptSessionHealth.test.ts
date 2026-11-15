@@ -8,13 +8,16 @@ import type { CliName } from "../../cli/types";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { shouldUseClassicLoopProjectInstructions } from "../../extensionHost/promptExecutionShared";
 import { createPromptAutoRepairController } from "../../extensionHost/promptAutoRepair";
+import { isCliShellCommandNotFoundError } from "../../cli/cliCommandRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
-import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
+import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
 import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
+import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import type { ConversationTabRecord } from "../../sessionTabs";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
@@ -47,15 +50,19 @@ function createHarness(options: {
   loadedActiveConfigId?: string;
   waitForConfigApply?: () => Promise<boolean>;
   acquireConfigLease?: (cli: CliName, configId: string) => Promise<ConfigLeaseResult>;
+  releaseConfigLeaseError?: Error;
   configExists?: boolean;
   preflightMessage?: string;
   loopSessionId?: string;
   loopModelRouting?: LoopTaskModelRouting;
 }) {
-  const tab = { id: "target-tab", cli: options.cli, sessionId: "previous-session" as string | null };
+  const tab: ConversationTabRecord = { id: "target-tab", cli: options.cli, sessionId: "previous-session",
+    sessionIdByCli: { [options.cli]: "previous-session" }, createdAt: 1 };
+  const tabs = [tab];
   const events: string[] = [];
   const leasedConfigs: Array<{ cli: CliName; configId: string }> = [];
   const systemMessages: string[] = [];
+  const errorLogs: Array<{ event: string; payload: Record<string, unknown> }> = [];
   const statuses: string[] = [];
   const boundConfigs: Array<{ cli: CliName; sessionId: string; configId: string | null }> = [];
   const questionQueue = createLoopMainQuestionQueue();
@@ -74,6 +81,7 @@ function createHarness(options: {
     activeWorkspaceKey: "test-workspace",
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
+    isCliShellCommandNotFoundError,
     loopMainQuestionQueue: questionQueue,
     applyLoopInvocationModelRouting,
     shouldUseClassicLoopProjectInstructions,
@@ -89,7 +97,19 @@ function createHarness(options: {
     updateLoopTaskRecord: () => undefined,
     getActiveConversationTabId: () => tab.id,
     resolvePromptRunTarget: () => ({ tabId: tab.id, cli: tab.cli, sessionId: tab.sessionId }),
-    getConversationTabById: () => tab,
+    getConversationTabById: (tabId: string) => tabs.find((item) => item.id === tabId) ?? null,
+    takeOverSessionForTab: (target: PromptRunTarget, isAborted?: () => boolean) => takeOverSessionTab(target, {
+      getWorkspaceKey: () => "test-workspace",
+      getTabs: () => tabs,
+      getActiveRuns: () => [],
+      isTabRunActive: () => false,
+      stopTab: (tabId) => { events.push(`stop:${tabId}`); },
+      closeTab: async (tabId) => {
+        events.push(`close:${tabId}`);
+        const index = tabs.findIndex((item) => item.id === tabId);
+        if (index >= 0) tabs.splice(index, 1);
+      },
+    }, isAborted),
     getConversationTabSessionIdForCli: () => tab.sessionId,
     shouldAwaitCliCommandAutoRepair: () => false,
     getCliCommand: () => "cli",
@@ -109,6 +129,7 @@ function createHarness(options: {
     getSelectedCliModel: () => "current-model",
     getSelectedLoopCliModel: () => "current-loop-model",
     ConfigSelectionChangedError,
+    releaseRuntimeConfigExecutionLease,
     loadConfigState: async () => ({ activeConfigId, revision: `${activeConfigId ?? "native"}-revision`,
       configs: options.fallbackConfigId ? [{ id: options.fallbackConfigId }] : [] }),
     configService: {
@@ -121,19 +142,25 @@ function createHarness(options: {
           const result = options.acquireConfigLease ? await options.acquireConfigLease(cli, expected.configId) : "acquired";
           if (result === "superseded") throw new ConfigSelectionChangedError();
         }
-        return { selection: expected, release: async () => { events.push("release-config"); } };
+        return { selection: expected, release: async () => {
+          events.push("release-config");
+          if (options.releaseConfigLeaseError) throw options.releaseConfigLeaseError;
+        } };
       },
     },
     planBoundSubtaskConfigApply,
     resolveWorkspaceCwd: () => null,
     t: (key: string) => key,
     logInfo: () => undefined,
-    logError: () => undefined,
+    logError: (event: string, payload: Record<string, unknown>) => { errorLogs.push({ event, payload }); },
+    RuntimeConfigLockTimeoutError,
     getErrorInfo: (error: Error & { code?: string }) => ({ message: error.message, name: error.name, code: error.code }),
     isAbortErrorInfo: (info: { name?: string }) => info.name === "AbortError",
     loopMainAutoCompactFlights: { wait: async () => {
       if (options.sessionIdAfterWait !== undefined) {
         tab.sessionId = options.sessionIdAfterWait;
+        if (tab.sessionId) tab.sessionIdByCli[tab.cli] = tab.sessionId;
+        else delete tab.sessionIdByCli[tab.cli];
       }
     } },
     loopSubtaskAutoCompactions: { wait: async (cli: CliName, sessionId: string | null) => {
@@ -147,6 +174,7 @@ function createHarness(options: {
       events.push("health-check");
       if (options.health === "abnormal" || prepareOptions?.forceNewSession) {
         tab.sessionId = null;
+        delete tab.sessionIdByCli[tab.cli];
       }
       return tab.sessionId;
     } },
@@ -169,10 +197,35 @@ function createHarness(options: {
     runPromptParallel: dispatch,
     runPromptOneShot: dispatch,
   }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
-  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs,
+  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs, tabs, errorLogs,
     questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
+
+test("Loop subtask configuration timeouts preserve tab failure and correlated lock diagnostics", async () => {
+  const diagnostic = { operation: "acquire" as const, ownerPid: process.pid, ownerAlive: true, waitedMs: 15001, timeoutMs: 15000 };
+  const failure = new RuntimeConfigLockTimeoutError(diagnostic);
+  const harness = createHarness({
+    cli: "codex", health: "normal", runtime: "interactive",
+    acquireConfigLease: async () => { throw failure; },
+  });
+  await assert.rejects(harness.runPrompt({
+    displayPrompt: "执行子任务", modelPrompt: "执行子任务", contextTags: [], taskRole: "subtask", throwOnError: true,
+    loopTaskId: "parent-loop", loopSubtaskId: "child-1", loopAttemptId: "attempt-1",
+  }), (error) => error === failure);
+  assert.equal(harness.dispatched.length, 0);
+  assert.deepEqual(harness.statuses, ["error"]);
+  assert.deepEqual(harness.boundConfigs, []);
+  const log = harness.errorLogs.find((entry) => entry.event === "runPrompt-failed")!;
+  assert.ok(log);
+  assert.equal(log.payload.tabId, "target-tab");
+  assert.equal(log.payload.taskRole, "subtask");
+  assert.equal(log.payload.loopTaskId, "parent-loop");
+  assert.equal(log.payload.loopSubtaskId, "child-1");
+  assert.equal(log.payload.loopAttemptId, "attempt-1");
+  assert.equal(log.payload.errorCode, "RUNTIME_CONFIG_LOCK_TIMEOUT");
+  assert.deepEqual(log.payload.configLock, diagnostic);
+});
 
 test("cancelling main work queued behind a question prevents a late CLI start", async () => {
   const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session" });
@@ -206,6 +259,20 @@ test("Loop question cancellation reaches every dispatched runtime", async () => 
     assert.equal(executionOptions.isAborted?.(), false);
     aborted = true;
     assert.equal(executionOptions.isAborted?.(), true);
+  }
+});
+
+test("every public runtime takes over duplicate tabs before health checks and rejects a later closed target", async () => {
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    const h = createHarness({ cli: runtime === "interactive" ? "codex" : "opencode", health: "normal", runtime });
+    h.tabs.unshift({ ...h.tabs[0], id: "old-tab" });
+    await h.runPrompt({ displayPrompt: "继续会话", modelPrompt: "继续会话", contextTags: [] });
+    assert.deepEqual(h.events.slice(0, 2), ["stop:old-tab", "close:old-tab"]);
+    assert.equal(h.dispatched.length, 1);
+    assert.deepEqual(h.tabs.map((item) => item.id), ["target-tab"]);
+    assert.equal(h.dispatched[0].executionOptions.isAborted?.(), false);
+    h.tabs.splice(0);
+    assert.equal(h.dispatched[0].executionOptions.isAborted?.(), true);
   }
 });
 
@@ -258,6 +325,30 @@ test("a question cancelled during config preparation releases its lease without 
   assert.equal(harness.leasedConfigs.length, 1);
   assert.equal(harness.events.at(-1), "release-config");
   assert.equal(started, false);
+});
+
+test("config lease release timeout does not turn a successful subtask run into an execution error", async () => {
+  const harness = createHarness({
+    cli: "codex",
+    health: "normal",
+    runtime: "interactive",
+    loopSessionId: "subtask-session",
+    releaseConfigLeaseError: new RuntimeConfigLockTimeoutError({
+      operation: "release", ownerPid: process.pid, ownerAlive: true, waitedMs: 15000, timeoutMs: 15000,
+    }),
+  });
+  await harness.runPrompt({
+    displayPrompt: "完成子任务",
+    modelPrompt: "完成子任务",
+    contextTags: [],
+    taskRole: "subtask",
+    loopTaskId: "parent-loop",
+    loopSubtaskId: "child",
+    loopAttemptId: "attempt-child",
+  });
+  assert.equal(harness.events.includes("dispatch"), true);
+  assert.equal(harness.errorLogs.some(({ event }) => event === "runPrompt-failed"), false);
+  assert.deepEqual(harness.statuses, []);
 });
 
 test("Kimi model editing never reapplies or reactivates a stale profile after the coordinated save", async () => {
@@ -387,17 +478,18 @@ test("runtime errors release the config lease rather than permanently blocking o
   assert.equal(harness.events.filter((event) => event === "release-config").length, 1);
 });
 
-test("checks the current tab session instead of the snapshot taken before waiting for compaction", async () => {
+test("rejects a rebound tab before its health check after waiting for compaction", async () => {
   const harness = createHarness({ cli: "grok", health: "abnormal", runtime: "interactive", sessionIdAfterWait: "newly-adopted-session" });
   await harness.runPrompt({ displayPrompt: "重试", modelPrompt: "重试", contextTags: [] });
-  assert.equal(harness.dispatched[0].target.sessionId, null);
-  assert.equal(harness.events.includes("dispose-old-runner"), true);
+  assert.equal(harness.dispatched.length, 0);
+  assert.equal(harness.events.includes("health-check"), false);
+  assert.equal(harness.events.includes("dispose-old-runner"), false);
 });
 
 test("does not restore an old session ID when the target was cleared while waiting", async () => {
   const harness = createHarness({ cli: "grok", health: "normal", runtime: "interactive", sessionIdAfterWait: null });
   await harness.runPrompt({ displayPrompt: "新任务", modelPrompt: "新任务", contextTags: [] });
-  assert.equal(harness.dispatched[0].target.sessionId, null);
+  assert.equal(harness.dispatched.length, 0);
   assert.equal(harness.events.includes("dispose-old-runner"), false);
 });
 
@@ -405,19 +497,42 @@ test("the unified entry waits for the current subtask session before acquiring c
   let release!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
   const sessions: Array<string | null> = [];
-  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", sessionIdAfterWait: "current-child-session", waitForSubtaskCompact: async (cli, sessionId) => {
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", waitForSubtaskCompact: async (cli, sessionId) => {
     assert.equal(cli, "codex");
     sessions.push(sessionId);
     await gate;
   } });
   const run = harness.runPrompt({ displayPrompt: "续接", modelPrompt: "续接", contextTags: [] });
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(sessions, ["current-child-session"]);
+  assert.deepEqual(sessions, ["previous-session"]);
   assert.equal(harness.dispatched.length, 0);
   assert.equal(harness.leasedConfigs.length, 0);
   release();
   await run;
-  assert.equal(harness.dispatched[0].target.sessionId, "current-child-session");
+  assert.equal(harness.dispatched[0].target.sessionId, "previous-session");
+});
+
+test("a target rebound during configuration preparation never dispatches on any runtime route", async () => {
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<boolean>((resolve) => { release = () => resolve(true); });
+    const h = createHarness({ cli: "codex", health: "normal", runtime,
+      waitForConfigApply: () => { entered(); return gate; } });
+    let started = false;
+    const pending = h.runPrompt({ displayPrompt: "continue", modelPrompt: "continue", contextTags: [] }, {
+      onStarted: () => { started = true; },
+    });
+    await waiting;
+    h.tabs[0].sessionId = "replacement";
+    h.tabs[0].sessionIdByCli.codex = "replacement";
+    release();
+    await pending;
+    assert.equal(h.dispatched.length, 0, runtime);
+    assert.equal(started, false, runtime);
+    assert.equal(h.events.at(-1), "release-config", runtime);
+  }
 });
 
 test("the unified entry repairs ENOENT and uses a fresh session across all execution routes", async () => {
@@ -451,6 +566,16 @@ test("an ENOENT with a usable CLI command does not repair a missing cwd or unrel
   await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), (error) => error === failure);
   assert.equal(harness.dispatched.length, 1);
   assert.equal(harness.events.includes("persist-command"), false);
+});
+
+test("宿主 PATH 可解析但登录 shell 找不到 Codex 时固定绝对路径并仅重试一次", async () => {
+  const failure = new Error("Codex app-server 异常退出（code 127）：zsh:1: command not found: codex");
+  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", failures: [failure], commandUnresolved: false });
+  await harness.runPrompt({ displayPrompt: "继续原任务", modelPrompt: "原始指令", contextTags: [], throwOnError: true });
+  assert.equal(harness.dispatched.length, 2);
+  assert.equal(harness.dispatched[1].input.cliCommandRepairAttempted, true);
+  assert.equal(harness.dispatched[1].target.sessionId, null);
+  assert.equal(harness.events.filter((event) => event === "persist-command").length, 1);
 });
 
 for (const cli of CLI_LIST) {

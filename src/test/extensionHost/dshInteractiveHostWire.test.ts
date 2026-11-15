@@ -77,6 +77,9 @@ function createHostHarness(options: {
   configuredProfile.acpModel = configuredModelIds[0] ?? "";
   const configuredModels = parseDshConfigModels(JSON.stringify(configuredProfile));
   const configuredWires = configuredModelIds.map(toDshModelWireValue);
+  const tabs = new Map<string, { sessionId: string | null; cli: CliName; sessionIdByCli?: Partial<Record<CliName, string>> }>([
+    ["tab-dsh", { sessionId: "local_1", cli: "dsh" }],
+  ]);
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
@@ -143,8 +146,10 @@ function createHostHarness(options: {
   const deps: RuntimeDeps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
     activeRunsByTabId,
-    adoptSessionId: (_cli, sessionId) => {
+    adoptSessionId: (_cli, sessionId, tabId) => {
       adopted.push(sessionId);
+      const tab = tabs.get(tabId ?? "");
+      if (tab) tab.sessionId = sessionId;
     },
     applyProcessTitle: () => undefined,
     applyThinkingWorkspaceFiles: () => undefined,
@@ -158,7 +163,7 @@ function createHostHarness(options: {
     buildTaskRunCompletionText: (status) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => ({ sessionId: "local_1", cli: "dsh" }),
+    getConversationTabById: (tabId) => tabs.get(tabId),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => options.thinkingMode ?? "off",
     getGlobalHumanInteractionEnabled: () => false,
@@ -224,6 +229,8 @@ function createHostHarness(options: {
   };
   return {
     host: createPromptInteractiveRuntimeHost(deps),
+    deps,
+    tabs,
     panelMessages,
     runStatus,
     adopted,
@@ -248,6 +255,52 @@ function targetFor(sessionId: string | null): PromptRunTarget {
   return { tabId: "tab-dsh", cli: "dsh", sessionId };
 }
 
+for (const invalidation of ["closed", "replaced", "cli", "session", "cli-session", "workspace", "stopped"] as const) {
+  test(`DSH preparation does not create a runner after its Tab is ${invalidation}`, { timeout: 5000 }, async () => {
+    const harness = createHostHarness({});
+    const original = harness.tabs.get("tab-dsh");
+    assert.ok(original);
+    let beginPreparation!: () => void;
+    const preparationStarted = new Promise<void>((resolve) => { beginPreparation = resolve; });
+    let finishPreparation!: () => void;
+    const preparationGate = new Promise<void>((resolve) => { finishPreparation = resolve; });
+    let workspace = "workspace-original";
+    let stopped = false;
+    harness.deps.getWorkspaceKey = () => workspace;
+    harness.deps.readRuntimeConfigFingerprint = async () => {
+      beginPreparation();
+      await preparationGate;
+      return "config-fingerprint";
+    };
+    const completion = harness.host.runPromptInteractive(inputFor("hello"), targetFor("local_1"), {
+      isAborted: () => stopped,
+    });
+    try {
+      await preparationStarted;
+      assert.equal(harness.deps.getConversationTabById("tab-dsh"), original);
+      switch (invalidation) {
+        case "closed": harness.tabs.delete("tab-dsh"); break;
+        case "replaced": harness.tabs.set("tab-dsh", { ...original }); break;
+        case "cli": original.cli = "grok"; break;
+        case "session": original.sessionId = "replacement-session"; break;
+        case "cli-session": original.sessionIdByCli = { dsh: "replacement-session" }; break;
+        case "workspace": workspace = "workspace-replacement"; break;
+        case "stopped": stopped = true; break;
+      }
+    } finally {
+      finishPreparation();
+      await completion;
+    }
+    assert.equal(harness.created.length, 0);
+    assert.equal(harness.starts.length, 0);
+    assert.deepEqual(harness.runStatus, []);
+    assert.equal(harness.activeRunsByTabId.size, 0);
+    if (invalidation === "closed") {
+      assert.equal(harness.deps.getConversationTabById("tab-dsh"), undefined);
+    }
+  });
+}
+
 test("DSH host maps assistant, thinking, tool, raw events, activity, and stop reason", async () => {
   const harness = createHostHarness({
     requireExplicitFinalAnswer: true,
@@ -262,7 +315,10 @@ test("DSH host maps assistant, thinking, tool, raw events, activity, and stop re
       handlers.onComplete?.({ stopReason: "end_turn" });
     },
   });
+  const tab = harness.deps.getConversationTabById("tab-dsh");
   await harness.host.runPromptInteractive(inputFor("Say hello"), targetFor("local_1792000000000_abc"));
+  assert.equal(harness.deps.getConversationTabById("tab-dsh"), tab);
+  assert.equal(tab?.sessionId, ACP_ID);
   assert.equal(harness.starts[0]?.requireResume, false);
   assert.equal(harness.created[0]?.localSessionId, null);
   assert.equal(harness.created[0]?.model, WIRE);
@@ -480,6 +536,7 @@ test("DSH startup failure does not create assistant text", async () => {
 });
 
 test("missing DSH wire resolution does not create a runner", async () => {
+  const tab = { sessionId: "local_1", cli: "dsh" as const };
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   let created = 0;
   const deps = {
@@ -498,7 +555,7 @@ test("missing DSH wire resolution does not create a runner", async () => {
     buildTaskRunCompletionText: () => "",
     createMessageId: () => "id",
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => null,
+    getConversationTabById: (tabId: string) => tabId === "tab-dsh" ? tab : null,
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "off" as const,
     getGlobalHumanInteractionEnabled: () => false,
@@ -796,7 +853,11 @@ test("copied DSH example prepares a launch after changing only apiKey and baseUR
 
 test("DSH isolated launch mirrors global skills and AGENTS.md without prompt injection or secrets", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-mirror-"));
-  const outside = path.join(home, "outside-secret");
+  const outsideDirectory = path.join(home, "outside-skills");
+  const outside = path.join(outsideDirectory, "outside-secret");
+  const escape = path.join(home, "skills", "escape");
+  const sessionKey = path.basename(home);
+  const isolatedHome = path.join(os.tmpdir(), "sinitek-dsh-acp", sessionKey);
   const previousHome = process.env.DSH_HOME;
   const previousKey = process.env.SINITEK_DSH_API_KEY;
   const secret = "sk-fixturekey123456";
@@ -806,18 +867,24 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     await fs.writeFile(path.join(home, "AGENTS.md"), "global dsh rules\n", "utf8");
     await fs.mkdir(path.join(home, "workspace"), { recursive: true });
     await fs.writeFile(path.join(home, "workspace", "AGENTS.md"), "workspace rules stay put\n", "utf8");
+    await fs.mkdir(outsideDirectory);
     await fs.writeFile(outside, secret, "utf8");
     await fs.mkdir(path.join(home, "skills", "demo"), { recursive: true });
     await fs.writeFile(path.join(home, "skills", "demo", "SKILL.md"), "---\ndescription: demo\n---\n# demo\n", "utf8");
     await fs.writeFile(path.join(home, "skills", "demo", "marker.txt"), "first\n", "utf8");
     await fs.writeFile(path.join(home, "skills", ".credentials.yaml"), "apiKey: should-not-copy\n", "utf8");
-    await fs.symlink(outside, path.join(home, "skills", "escape"));
+    await fs.symlink(process.platform === "win32" ? outsideDirectory : outside, escape,
+      process.platform === "win32" ? "junction" : "file");
+    assert.equal((await fs.lstat(escape)).isSymbolicLink(), true);
+    assert.equal(await fs.realpath(escape), await fs.realpath(process.platform === "win32" ? outsideDirectory : outside));
+    assert.equal(await fs.readFile(process.platform === "win32" ? path.join(escape, "outside-secret") : escape, "utf8"), secret);
     const activated = await activateDshProfile({
       profileId: "acme",
       content: createDshExampleProfileText(),
     });
     assert.equal(activated.ok, true);
-    const launch = await prepareDshIsolatedLaunch({ sessionKey: "mirror-skills" });
+    const launch = await prepareDshIsolatedLaunch({ sessionKey });
+    assert.equal(launch.isolatedHome, isolatedHome);
     assert.equal(launch.env.DSH_HOME, launch.isolatedHome);
     assert.equal(await fs.readFile(path.join(launch.isolatedHome, "AGENTS.md"), "utf8"), "global dsh rules\n");
     assert.equal(await fs.readFile(path.join(launch.isolatedHome, "skills", "demo", "marker.txt"), "utf8"), "first\n");
@@ -829,12 +896,16 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     assert.equal(launch.agentArgs.join("\n").includes("global dsh rules"), false);
     await fs.writeFile(path.join(home, "skills", "demo", "marker.txt"), "second\n", "utf8");
     await fs.writeFile(path.join(home, "AGENTS.md"), "updated global rules\n", "utf8");
-    const again = await prepareDshIsolatedLaunch({ sessionKey: "mirror-skills" });
+    const again = await prepareDshIsolatedLaunch({ sessionKey });
+    assert.equal(again.isolatedHome, isolatedHome);
+    assert.equal(await fs.access(path.join(again.isolatedHome, "skills", "escape")).then(() => true, () => false), false);
     assert.equal(await fs.readFile(path.join(again.isolatedHome, "skills", "demo", "marker.txt"), "utf8"), "second\n");
     assert.equal(await fs.readFile(path.join(again.isolatedHome, "AGENTS.md"), "utf8"), "updated global rules\n");
     assert.equal(await fs.access(path.join(again.isolatedHome, "skills.sinitek-replacing")).then(() => true, () => false), false);
     assert.equal(await fs.access(path.join(again.isolatedHome, "AGENTS.md.sinitek-replacing")).then(() => true, () => false), false);
-    await fs.rm(launch.isolatedHome, { recursive: true, force: true });
+    assert.equal(await fs.readFile(outside, "utf8"), secret);
+    assert.equal(again.agentArgs.join("\n").includes(secret), false);
+    assert.equal(again.agentArgs.join("\n").includes("updated global rules"), false);
   } finally {
     if (previousHome === undefined) {
       delete process.env.DSH_HOME;
@@ -846,7 +917,19 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     } else {
       process.env.SINITEK_DSH_API_KEY = previousKey;
     }
+    // Only remove this fixture's roots; unlink the escape before recursive cleanup.
+    assert.equal(path.dirname(home), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(home).startsWith("sinitek-dsh-mirror-"));
+    assert.notEqual(path.resolve(home), path.resolve(os.homedir()));
+    assert.equal(path.dirname(isolatedHome), path.join(os.tmpdir(), "sinitek-dsh-acp"));
+    assert.equal(path.basename(isolatedHome), path.basename(home));
+    await fs.unlink(escape).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+    await fs.rm(isolatedHome, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
+    await assert.rejects(fs.lstat(isolatedHome), { code: "ENOENT" });
+    await assert.rejects(fs.lstat(home), { code: "ENOENT" });
   }
 });
 

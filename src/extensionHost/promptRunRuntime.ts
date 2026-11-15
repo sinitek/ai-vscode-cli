@@ -303,7 +303,9 @@ export type PromptRunRuntimeHostDeps = {
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   handleLoopPlusSubtaskContinuation?: (context: LoopSubtaskConversationContext, tabId: string) => Promise<void>;
+  resumeWaitingClassicBatch?: (taskId: string) => boolean;
   stopLoopPlusParent?: (taskId: string) => void;
 };
 
@@ -319,6 +321,7 @@ const isLoopTaskBlockedByMainAiFailureLimit = deps.isLoopTaskBlockedByMainAiFail
 const appendLoopMainSubChatSubtaskFinished = deps.appendLoopMainSubChatSubtaskFinished;
 const closeConversationTabAndRefreshPanel = deps.closeConversationTabAndRefreshPanel;
 const ensureConversationTabs = () => ({ tabs: deps.getConversationTabs() });
+const wakingLoopMainTasks = new Set<string>();
 const buildLoopTaskNeedsReviewText = (task: LoopTaskRecord): string => buildLoopTaskNeedsReviewTextWithLimit(task, isLoopTaskBlockedByMainAiFailureLimit);
 function syncFromDeps(): void { activeWorkspaceKey = deps.getActiveWorkspaceKey(); }
 function wrap<T extends (...args: any[]) => any>(fn: T): T { return ((...args: Parameters<T>) => { syncFromDeps(); return fn(...args); }) as T; }
@@ -947,6 +950,7 @@ async function finalizeLoopSubtaskRun(options: LoopSubtaskCompletionOptions): Pr
   await finalizeLoopSubtaskRunWithDeps(options, {
     markSubtaskRunFinished: markLoopSubtaskRunFinished,
     closeSubtaskTab: closeConversationTabAndRefreshPanel,
+    prepareSubtaskTabClose: deps.prepareSubtaskTabClose,
     logSubtaskTabAutoClosed: ({ taskId, round, subtaskId, tabId }) => {
       void logInfo("loop-subtask-tab-auto-closed", {
         taskId,
@@ -1111,7 +1115,7 @@ function markLoopTaskStopped(
   if (transition.abortClarification) {
     abortOrchestratorClarification(loopClarificationScope(taskId));
   }
-  const record = updateLoopTaskRecord(taskId, transition.patch);
+  const record = updateLoopTaskRecord(taskId, { ...transition.patch, runtimeInterrupted: undefined });
   if (transition.refreshGroupChat) {
     refreshOpenLoopGroupChatPanelForTask(taskId);
   }
@@ -1126,7 +1130,20 @@ function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
 }
 
 function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | null {
-  const record = markLoopTaskStopped(taskId);
+  const task = readLoopTaskRecord(taskId);
+  if (!task || task.status !== "running") {
+    return task;
+  }
+  // Losing host ownership is not a user stop. In particular, do not clear the
+  // active IDs or stop the persisted Loop+ scheduler before results can return.
+  const record = updateLoopTaskRecord(taskId, {
+    status: "stopped",
+    runtimeInterrupted: true,
+    subTasks: task.subTasks.map((subtask) => subtask.status === "running"
+      ? { ...subtask, status: "blocked", updatedAt: Date.now() }
+      : subtask),
+    updatedAt: Date.now(),
+  });
   if (record) {
     void logInfo("loop-task-runtime-state-reconciled", {
       taskId,
@@ -1260,7 +1277,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     context.taskId,
     context.round,
     "subtask",
-    context.subtaskId
+    context.subtaskId,
+    context.attemptId,
   );
   if (!latestRun || latestRun.endedAt <= options.previousRunEndedAt || latestRun.status !== "end") {
     return;
@@ -1269,6 +1287,11 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
   const loopPlusTask = readLoopTaskRecord(context.taskId);
   if (shouldDelegateSubtaskContinuationToLoopPlus(loopPlusTask)) {
     await deps.handleLoopPlusSubtaskContinuation?.(context, options.tabId);
+    return;
+  }
+  if (wakingLoopMainTasks.has(context.taskId) && loopPlusTask
+    && !getActiveLoopSubtaskIds(loopPlusTask).includes(context.subtaskId)
+    && loopPlusTask.subTasks.some((item) => item.id === context.subtaskId && item.status === "completed")) {
     return;
   }
 
@@ -1285,7 +1308,11 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     tabId: subtaskTarget?.tabId ?? null,
   });
 
-  const latestTask = readLoopTaskRecord(context.taskId);
+  let latestTask = readLoopTaskRecord(context.taskId);
+  if (latestTask?.status === "stopped" && latestTask.runtimeInterrupted === true
+    && getActiveLoopSubtaskIds(latestTask).length === 0) {
+    latestTask = updateLoopTaskRecord(latestTask.id, { status: "running", runtimeInterrupted: undefined });
+  }
   if (
     !latestTask
     || !shouldWakeLoopMainAfterSubtaskCompletion(latestTask)
@@ -1294,34 +1321,41 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     return;
   }
 
+  if (deps.resumeWaitingClassicBatch?.(latestTask.id)) return;
+
   const mainTarget = resolveLoopMainPromptTarget(latestTask);
-  if (!mainTarget || isTabRunActive(mainTarget.tabId)) {
+  if (!mainTarget || isTabRunActive(mainTarget.tabId) || wakingLoopMainTasks.has(latestTask.id)) {
     return;
   }
 
-  const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
-  appendSystemMessageForLoop(
-    mainTarget,
-    buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
-  );
+  wakingLoopMainTasks.add(latestTask.id);
+  try {
+    const resumedSubtask = latestTask.subTasks.find((item) => item.id === context.subtaskId);
+    appendSystemMessageForLoop(
+      mainTarget,
+      buildLoopMainResumeText(latestTask.id, resolveLoopResumeRound(latestTask), resumedSubtask ? [resumedSubtask] : [])
+    );
 
-  const resumePrompt = t("run.hiddenContinuePrompt");
-  await runLoopPrompt({
-    displayPrompt: resumePrompt,
-    modelPrompt: resumePrompt,
-    contextTags: [],
-    model: options.model,
-    loopMainModel: options.loopMainModel,
-    loopSubtaskModel: options.loopSubtaskModel,
-    ...(options.loopSubtaskCli ? { loopSubtaskCli: options.loopSubtaskCli } : {}),
-    ...(options.loopSubtaskConfigId ? { loopSubtaskConfigId: options.loopSubtaskConfigId } : {}),
-    loopMainThinkingMode: options.loopMainThinkingMode,
-    loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
-  }, {
-    targetTabId: mainTarget.tabId,
-    resumeTaskId: latestTask.id,
-    resumeRequested: true,
-  });
+    const resumePrompt = t("run.hiddenContinuePrompt");
+    await runLoopPrompt({
+      displayPrompt: resumePrompt,
+      modelPrompt: resumePrompt,
+      contextTags: [],
+      model: options.model,
+      loopMainModel: options.loopMainModel,
+      loopSubtaskModel: options.loopSubtaskModel,
+      ...(options.loopSubtaskCli ? { loopSubtaskCli: options.loopSubtaskCli } : {}),
+      ...(options.loopSubtaskConfigId ? { loopSubtaskConfigId: options.loopSubtaskConfigId } : {}),
+      loopMainThinkingMode: options.loopMainThinkingMode,
+      loopSubtaskThinkingMode: options.loopSubtaskThinkingMode,
+    }, {
+      targetTabId: mainTarget.tabId,
+      resumeTaskId: latestTask.id,
+      resumeRequested: true,
+    });
+  } finally {
+    wakingLoopMainTasks.delete(latestTask.id);
+  }
 }
 
 function getLoopTargetSessionId(target: PromptRunTarget): string | null {
@@ -1548,8 +1582,9 @@ function getLoopRoundRunStatus(
   round: number,
   role: LoopTaskRole,
   subtaskId?: string,
+  attemptId?: string,
 ): TaskRunStatus | null {
-  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId);
+  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId, attemptId);
   return record ? record.status : null;
 }
 
@@ -1558,6 +1593,7 @@ function getLatestLoopRoundRunRecord(
   round: number,
   role: LoopTaskRole,
   subtaskId?: string,
+  attemptId?: string,
 ): TaskRunRecord | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
@@ -1566,6 +1602,7 @@ function getLatestLoopRoundRunRecord(
       run.loopTaskId === taskId
       && run.loopRound === round
       && run.taskRole === role
+      && (attemptId === undefined || run.loopAttemptId === attemptId)
       && (role !== "subtask" || run.loopSubtaskId === subtaskId)
     ) {
       return run;

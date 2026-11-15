@@ -97,7 +97,7 @@ export async function withLoopSubtaskSession<T>(
   cli: CliName,
   sessionId: string | null,
   run: () => Promise<T>,
-  context?: { taskId: string; subtaskId: string; sourceSubtaskId?: string | null },
+  context?: { taskId: string; subtaskId: string; sourceSubtaskId?: string | null; signal?: AbortSignal },
 ): Promise<T> {
   const keys = new Set<string>();
   if (sessionId) {
@@ -110,24 +110,55 @@ export async function withLoopSubtaskSession<T>(
     }
   }
   const ordered = Array.from(keys).sort();
+  const signal = context?.signal;
   const acquire = (index: number): Promise<T> => index === ordered.length
-    ? loopSubtaskAutoCompactions.runWhenReady(cli, sessionId, run)
-    : withSessionLease(ordered[index], () => acquire(index + 1));
+    ? signal
+      ? waitForPreparation(loopSubtaskAutoCompactions.wait(cli, sessionId), signal).then(() => {
+          signal.throwIfAborted();
+          return run();
+        })
+      : loopSubtaskAutoCompactions.runWhenReady(cli, sessionId, run)
+    : withSessionLease(ordered[index], () => acquire(index + 1), signal);
   return acquire(0);
 }
 
-async function withSessionLease<T>(key: string, run: () => Promise<T>): Promise<T> {
-  const previous = sessionLeases.get(key);
+async function withSessionLease<T>(key: string, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const previous = sessionLeases.get(key) ?? Promise.resolve();
   let release!: () => void;
   const lease = new Promise<void>((resolve) => { release = resolve; });
-  sessionLeases.set(key, lease);
-  await previous;
+  // A cancelled waiter must settle promptly without letting its successors
+  // overtake the operation which still owns this session.
+  const tail = previous.then(() => lease);
+  sessionLeases.set(key, tail);
   try {
+    await waitForPreparation(previous, signal);
+    signal?.throwIfAborted();
     return await run();
   } finally {
     release();
-    if (sessionLeases.get(key) === lease) {
-      sessionLeases.delete(key);
-    }
+    void tail.then(() => {
+      if (sessionLeases.get(key) === tail) {
+        sessionLeases.delete(key);
+      }
+    });
   }
+}
+
+function waitForPreparation(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return promise;
+  signal.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = (): void => {
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, (error) => {
+      signal.removeEventListener("abort", onAbort);
+      reject(error);
+    });
+  });
 }

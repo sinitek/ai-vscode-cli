@@ -40,6 +40,7 @@ export type PromptRunInput = {
   loopAsk?: boolean;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
   executionCwd?: string;
   isolateProjectInstructions?: boolean;
   skipLongTermMemoryPersist?: boolean;

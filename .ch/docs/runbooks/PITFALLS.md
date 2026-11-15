@@ -4,6 +4,19 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## 执行配置租约释放失败不能改写 CLI 终态
+
+- 现象：子任务 CLI 已成功结束并通知主任务，但跨窗口执行租约释放在配置互斥锁等待中超时。若让清理异常继续冒泡，Loop+ 会收到执行失败结果、面板标错，并跳过成功关页回调；这与随后可选的上下文压缩是否触发无关。
+- 长期规避：主执行和隔离压缩都必须将租约释放作为资源清理处理。首次释放失败记录包含 CLI、Tab、Loop 身份和释放阶段的错误，并对原租约作有界后台重试；失败不能改变真实任务结果。持锁写入仍有效期间不得强拆锁、丢弃租约或允许配置切换。成功回报后，无压缩、压缩失败和压缩成功都沿用原有安全关页生命周期。
+- 验证：`src/test/config/sharedRuntimeConfig.test.ts` 覆盖释放重试与耗尽；`src/test/extensionHost/promptSessionHealth.test.ts` 覆盖 release 超时不变成执行失败；`src/test/loop/loopSubtaskLifecycle.test.ts` 覆盖未安排压缩时仍关闭；Loop+ 压缩成功/失败及关页保护由 `src/test/extensionHost/loopPlusRuntimeIntegration.test.ts` 覆盖。
+
+## 临时 outDir 的 NODE_PATH 不补齐 Webview 相对资源
+
+- 现象：为隔离共享 `dist` 而将 TypeScript 编译到临时 `outDir` 后，设置仓库 `node_modules` 到 `NODE_PATH` 可以帮助 Node 解析裸包名，但不能让按相对文件路径读取的 Webview 资源从临时编译目录正确定位。
+- 长期规避：测试若需读取相对路径资源，显式提供源码/资源根或使用包含所需资源的夹具目录；不要把 `NODE_PATH` 可解析模块等同于 outDir 资源布局完整。
+- 验证边界：这是测试夹具/运行时路径的前置条件，不构成真实 Webview 或浏览器验收证据。
+- 事实来源：`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/TESTING.md`。
+
 ## Loop+ 假完成必须核对轮次与会话所有权
 
 - 症状：子任务仍在推理或调用工具，界面却展示完成，且 Tab 不关闭。先对照任务记录、runStatus 和原生最终答复/完成事件；不可凭历史系统摘要判定成功，也不可用失败时关 Tab 掩盖问题。
@@ -2935,3 +2948,11 @@ rm -r "$result_directory"
 - `src/webview/viewContentScript/coreRuntimeState.ts`
 - `src/webview/viewContentScript/runStreamAndQueue.ts`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
+
+
+## 用户停止与内部抢占不能共用父任务停止语义
+
+- 2026-11-15：修复主标签停止只命中本标签运行器、未连带停止子任务后，内部抢占若继续调用同一个用户停止入口，会意外终止整个经典 Loop。
+- 用户中止携带点击时的 `tabId`，主标签先停止同一父任务全部活动执行；`preemptActivePromptRun` 优先局部取消当前运行器。Loop+ 先关闭内存调度门并取消请求，再保存停止快照。
+- 标签切换和关闭回退先发送目标消息，再等待配置恢复；长历史和连续指令组都须分批，不能为维持折叠组把整个指令长串塞入一批。
+- 回归入口：`src/test/extensionHost/loopPlusRuntimeWiring.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。页面验收复用 `chromium-playwright-smoke` skill：`.agents/skills/chromium-playwright-smoke/SKILL.md`。

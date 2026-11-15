@@ -7,9 +7,54 @@ import { writeFileAtomically } from "../shared/atomicWrite";
 export type VisibleConfigSelection = { configId: string | null; revision: string };
 export type SharedConfigSelection = VisibleConfigSelection & { profileDigest: string | null; ready: boolean };
 type ExecutionLease = { id: string; pid: number };
+export type RuntimeConfigExecutionLease = { selection: SharedConfigSelection; release: () => Promise<void> };
 type SharedState = SharedConfigSelection & { version: 1; leases: ExecutionLease[] };
 type LockOwner = { pid: number; token: string };
+type ConfigLockOperation = "initialize" | "change" | "edit" | "acquire" | "release";
 const localOperations = new Map<string, Promise<unknown>>();
+
+export async function releaseRuntimeConfigExecutionLease(
+  lease: RuntimeConfigExecutionLease,
+  onError: (error: unknown, attempt: number) => void,
+  options: { retryDelaysMs?: readonly number[]; delay?: (ms: number) => Promise<void> } = {},
+): Promise<void> {
+  const delays = options.retryDelaysMs ?? [250, 1000, 3000];
+  const delay = options.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  try {
+    await lease.release();
+    return;
+  } catch (error) {
+    try { onError(error, 0); } catch {}
+  }
+  void (async () => {
+    for (let index = 0; index < delays.length; index += 1) {
+      await delay(delays[index]);
+      try {
+        await lease.release();
+        return;
+      } catch (error) {
+        try { onError(error, index + 1); } catch {}
+      }
+    }
+  })().catch((error) => {
+    try { onError(error, delays.length); } catch {}
+  });
+}
+
+export class RuntimeConfigLockTimeoutError extends Error {
+  readonly code = "RUNTIME_CONFIG_LOCK_TIMEOUT";
+
+  constructor(readonly diagnostic: {
+    operation: ConfigLockOperation;
+    ownerPid: number | null;
+    ownerAlive: boolean | null;
+    waitedMs: number;
+    timeoutMs: number;
+  }) {
+    super("等待其他窗口配置操作超时，任务未启动，请稍后重试。");
+    this.name = "RuntimeConfigLockTimeoutError";
+  }
+}
 
 export class ConfigSelectionChangedError extends Error {
   constructor() {
@@ -67,22 +112,23 @@ export class SharedRuntimeConfig {
     }
   }
 
-  private locked<Result>(operation: () => Promise<Result>): Promise<Result> {
+  private locked<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>): Promise<Result> {
     const key = path.resolve(this.directory);
     const previous = localOperations.get(key) ?? Promise.resolve();
-    const pending = previous.catch(() => undefined).then(() => this.lockedAcrossProcesses(operation));
+    const pending = previous.catch(() => undefined).then(() => this.lockedAcrossProcesses(purpose, operation));
     localOperations.set(key, pending);
     return pending.finally(() => {
       if (localOperations.get(key) === pending) localOperations.delete(key);
     });
   }
 
-  private async lockedAcrossProcesses<Result>(operation: () => Promise<Result>): Promise<Result> {
+  private async lockedAcrossProcesses<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>): Promise<Result> {
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
     const owner: LockOwner = { pid: process.pid, token: randomUUID() };
     const candidate = path.join(this.directory, `owner-${owner.token}`);
     await fs.writeFile(candidate, JSON.stringify(owner), { mode: 0o600, flag: "wx" });
-    const deadline = Date.now() + this.timeoutMs;
+    const startedAt = Date.now();
+    const deadline = startedAt + this.timeoutMs;
     let acquired = false;
     try {
       while (!acquired) {
@@ -93,7 +139,26 @@ export class SharedRuntimeConfig {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const current = await this.readOwner();
           if (current && !isAlive(current.pid)) await this.recoverLock(current);
-          if (Date.now() >= deadline) throw new Error("等待其他窗口配置操作超时，任务未启动，请稍后重试。");
+          if (Date.now() >= deadline) {
+            // The owner may have released while we were reading it, or recovery
+            // may just have removed a dead writer. Confirm contention atomically
+            // once more before rejecting, including after host scheduling delays.
+            try {
+              await fs.link(candidate, this.lockPath);
+              acquired = true;
+            } catch (lastError) {
+              if ((lastError as NodeJS.ErrnoException).code !== "EEXIST") throw lastError;
+              const blocker = await this.readOwner();
+              throw new RuntimeConfigLockTimeoutError({
+                operation: purpose,
+                ownerPid: blocker?.pid ?? null,
+                ownerAlive: blocker ? isAlive(blocker.pid) : null,
+                waitedMs: Date.now() - startedAt,
+                timeoutMs: this.timeoutMs,
+              });
+            }
+            continue;
+          }
           await new Promise<void>((resolve) => setTimeout(resolve, 20));
         }
       }
@@ -148,7 +213,7 @@ export class SharedRuntimeConfig {
   async read(initialize?: () => Promise<{ configId: string | null; profileDigest: string | null }>): Promise<SharedConfigSelection | null> {
     const snapshot = await this.readState(false);
     if (snapshot || !initialize) return snapshot ? this.selection(snapshot) : null;
-    return this.locked(async () => {
+    return this.locked("initialize", async () => {
       let state = await this.readState();
       if (!state && initialize) {
         state = { version: 1, ...await initialize(), revision: randomUUID(), ready: true, leases: [] };
@@ -162,7 +227,7 @@ export class SharedRuntimeConfig {
     operation: () => Promise<{ configId: string | null; profileDigest: string | null }>,
     options: { reuseConfigId?: string } = {},
   ): Promise<SharedConfigSelection> {
-    return this.locked(async () => {
+    return this.locked("change", async () => {
       const previous = await this.readState();
       if (options.reuseConfigId && previous?.ready && previous.configId === options.reuseConfigId) {
         return this.selection(previous);
@@ -180,7 +245,7 @@ export class SharedRuntimeConfig {
   }
 
   async edit(configId: string, operation: () => Promise<void>, describe: () => Promise<string | null>): Promise<void> {
-    await this.locked(async () => {
+    await this.locked("edit", async () => {
       const state = await this.readState();
       const active = state?.configId === configId;
       if (active) {
@@ -202,7 +267,7 @@ export class SharedRuntimeConfig {
     expected: VisibleConfigSelection,
   ): Promise<{ selection: SharedConfigSelection; release: () => Promise<void> }> {
     const lease: ExecutionLease = { id: randomUUID(), pid: process.pid };
-    const selection = await this.locked(async () => {
+    const selection = await this.locked("acquire", async () => {
       const state = await this.readState();
       if (!state || state.configId !== expected.configId) throw new ConfigSelectionChangedError();
       if (!state.ready) throw new Error("上次配置应用未成功，任务未启动，请重新应用所需档案。");
@@ -215,7 +280,7 @@ export class SharedRuntimeConfig {
       selection,
       release: async () => {
         if (released) return;
-        await this.locked(async () => {
+        await this.locked("release", async () => {
           const state = await this.readState();
           if (state) {
             state.leases = state.leases.filter((entry) => entry.id !== lease.id);

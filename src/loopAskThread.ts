@@ -14,6 +14,7 @@ export type LoopAskBubble = {
   content: string;
   createdAt: number;
   streaming?: boolean;
+  queued?: boolean;
 };
 
 export type LoopAskThread = {
@@ -290,6 +291,7 @@ function parseBubble(value: unknown): LoopAskBubble | null {
     content: record.content,
     createdAt: finiteTime(record.createdAt),
     ...(record.streaming === true ? { streaming: true } : {}),
+    ...(record.role === "user" && record.queued === true ? { queued: true } : {}),
   };
 }
 
@@ -300,7 +302,13 @@ function finiteTime(value: unknown): number {
 function normalizeThread(thread: LoopAskThread): LoopAskThread {
   return {
     version: LOOP_ASK_THREAD_VERSION,
-    messages: thread.messages.slice(-MAX_ASK_MESSAGES),
+    messages: thread.messages.slice(-MAX_ASK_MESSAGES).map((message) => {
+      if (thread.running || !message.queued) {
+        return message;
+      }
+      const { queued: _queued, ...settled } = message;
+      return settled;
+    }),
     running: thread.running === true,
     ...(thread.queued === true && thread.running ? { queued: true } : {}),
     dialogOpen: thread.dialogOpen === true,

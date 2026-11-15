@@ -45,7 +45,7 @@ function extractAsyncFunctionSection(source: string, name: string, nextFunctionN
   return source.slice(start, end);
 }
 
-test("records a successful Loop subtask before automatically closing its tab", async () => {
+test("records success and closes the Loop subtask tab when no context compaction was scheduled", async () => {
   const harness = createCompletionHarness();
 
   await finalizeLoopSubtaskRun({
@@ -77,6 +77,24 @@ test("does not automatically close a successful Loop subtask without a tab id", 
   }, harness.deps);
 
   assert.deepEqual(harness.calls, ["mark:end"]);
+});
+
+test("关页准备或执行失败不影响经典 Loop 完成回报且不伪报关闭", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  const errors: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logError", async (event: string, data: unknown) => { errors.push({ event, data }); });
+  for (const phase of ["prepare", "close"] as const) {
+    const harness = createCompletionHarness();
+    const failure = () => { throw new Error(`受控 ${phase} 失败`); };
+    if (phase === "prepare") harness.deps.prepareSubtaskTabClose = failure;
+    else harness.deps.closeSubtaskTab = async () => failure();
+    await finalizeLoopSubtaskRun({
+      taskId: "task", subtaskId: "child", round: 1, runStatus: "end", assistantContent: "已完成", tabId: "child-tab",
+    }, harness.deps);
+    assert.deepEqual(harness.calls, ["mark:end"]);
+  }
+  assert.equal(errors.length, 2);
+  assert.equal(errors.every((item) => item.event === "loop-subtask-tab-auto-close-error"), true);
 });
 
 test("does not automatically close stopped or failed Loop subtask tabs", async () => {
@@ -118,11 +136,13 @@ test("keeps the parent Loop task waiting until every active subtask is completed
   assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [], mainAiFailureLimitReached: true }), false);
 });
 
-test("calculates a three-second gap between staggered Loop subtask launches", () => {
+test("Loop/Loop+ 首次派发不等待，后续子任务按一秒间隔启动", () => {
+  assert.equal(LOOP_SUBTASK_LAUNCH_INTERVAL_MS, 1000);
   assert.equal(getLoopSubtaskLaunchDelayMs(null, 1_000), 0);
   assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 1_000), LOOP_SUBTASK_LAUNCH_INTERVAL_MS);
-  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_500), 1_500);
-  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 4_000), 0);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 1_400), 600);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_000), 0);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_500), 0);
 });
 
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {

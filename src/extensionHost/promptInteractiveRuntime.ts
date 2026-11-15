@@ -82,7 +82,9 @@ export type PromptInteractiveRuntimeHostDeps = {
   buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord) => string;
   createMessageId: () => string;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
-  getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName } | null | undefined;
+  getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName; sessionIdByCli?: Partial<Record<CliName, string>> } | null | undefined;
+  getWorkspaceKey?: () => string;
+  takeOverSessionForTab?: (target: PromptRunTarget, isAborted?: () => boolean) => Promise<boolean>;
   getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalHumanInteractionEnabled: () => boolean;
@@ -221,6 +223,25 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (!prompt || executionOptions.isAborted?.()) {
       return;
     }
+    const preparingTab = getConversationTabById(target.tabId);
+    const preparingSessionId = preparingTab?.sessionId;
+    const preparingCliSessionId = preparingTab?.sessionIdByCli?.[target.cli];
+    const preparingWorkspace = deps.getWorkspaceKey?.();
+    const isPreparationAborted = (): boolean => executionOptions.isAborted?.() === true
+      || !preparingTab || getConversationTabById(target.tabId) !== preparingTab
+      || (preparingTab.cli !== undefined && preparingTab.cli !== target.cli)
+      || preparingTab.sessionId !== preparingSessionId
+      || preparingTab.sessionIdByCli?.[target.cli] !== preparingCliSessionId
+      || deps.getWorkspaceKey?.() !== preparingWorkspace;
+    if (isPreparationAborted()) return;
+    if (interactiveRunsByTabId.get(target.tabId)?.stopped === false) {
+      throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
+    }
+    if (deps.takeOverSessionForTab
+      && !await deps.takeOverSessionForTab(target, isPreparationAborted)) {
+      return;
+    }
+    if (isPreparationAborted()) return;
 
     const interactiveRunnerManager = getInteractiveRunnerManager();
 
@@ -228,9 +249,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = getActiveConfigIdForCli(cli);
     const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId, cwd);
+    if (isPreparationAborted()) return;
     const requestedModel = input.executionProfile
       ? input.executionProfile.model
       : input.model || getSelectedCliModel(cli, activeConfigId);
+
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)
       : requestedModel;
@@ -343,16 +366,31 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
       : undefined;
 
-    if (executionOptions.isAborted?.()) {
+    if (isPreparationAborted()) {
       return;
     }
 
+    const tabOwner = interactiveRunsByTabId.get(tabId);
+    if (tabOwner && !tabOwner.stopped) {
+      throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
+    }
+    if (deps.takeOverSessionForTab
+      && !await deps.takeOverSessionForTab({ ...target, sessionId: uiSessionId }, isPreparationAborted)) {
+      return;
+    }
+    if (isPreparationAborted()) {
+      return;
+    }
     const sessionOwner = Array.from(interactiveRunsByTabId.values()).find((run) => !run.stopped
       && (run.tabId === tabId || (uiSessionId && run.cli === cli && run.sessionId === uiSessionId)));
     if (sessionOwner) {
       throw Object.assign(new Error(`会话仍在标签 ${sessionOwner.tabId} 中运行，请切换到该标签查看，或先停止原任务再重试。`), {
         code: "SESSION_RUN_ACTIVE",
       });
+    }
+    // Stopping the previous owner flushes its last messages before this turn.
+    if (uiSessionId) {
+      messageTarget = loadSessionMessages(cli, uiSessionId);
     }
 
     logCliStartup({
@@ -560,6 +598,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       },
       appendMessage: appendMessageForTab,
       replaceMessage: (message) => {
@@ -642,6 +681,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       };
       appendMessageToStore(messageTarget, message);
       if (assistantItemId) {
@@ -881,6 +921,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       };
       appendTaskRun(taskRecord);
       appendSystemMessageForTab(

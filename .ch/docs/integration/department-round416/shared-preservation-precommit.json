@@ -1,0 +1,12 @@
+{
+  "shared_head": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+  "shared_master": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+  "origin": "8f396c1b809c43320aad9c4c43eb05c9cf2a3c58",
+  "candidate_branch": "c53f9defc811e5fddcf87e2d052ab0c6069c3087",
+  "index_sha256": "b4c56b0612d033a5b6386ae842c2426bd70edf086fd6d69ac87769074513ef2f",
+  "handoff_sha256_before_write": "3f6329849983d27d78bd25acd92d21321c62f079f628d7fc415b0466e7e92211",
+  "status_added_lines": [],
+  "status_removed_lines": [],
+  "scope": "read-only refs/index checksum/status paths; no shared platform file bytes read; intended handoff write follows commit",
+  "status_command": "git status --porcelain --untracked-files=all (same granularity as baseline)"
+}

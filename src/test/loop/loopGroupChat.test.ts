@@ -55,6 +55,22 @@ test("resolves loop task run controls from persisted running status", () => {
   assert.equal(controlState.canContinue, false);
 });
 
+test("offers explicit resume for a Loop+ task whose persisted running status has no runtime owner", () => {
+  const orphaned = resolveLoopTaskRunControlState(
+    { id: "task-plus", status: "running", schedulingMode: "event_driven" },
+    new Set(),
+  );
+  const active = resolveLoopTaskRunControlState(
+    { id: "task-plus", status: "running", schedulingMode: "event_driven" },
+    new Set(["task-plus"]),
+  );
+
+  assert.equal(orphaned.canContinue, true);
+  assert.equal(orphaned.canStop, false);
+  assert.equal(active.canContinue, false);
+  assert.equal(active.canStop, true);
+});
+
 test("allows a review Loop task to continue without showing stop", () => {
   assert.deepEqual(
     resolveLoopTaskRunControlState({ id: "task-review", status: "needs-review" }, new Set()),
@@ -71,7 +87,7 @@ test("identifies a persisted running Loop task without runtime ownership as orph
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set()), true);
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running" }, new Set(["task-1"])), false);
   assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "stopped" }, new Set()), false);
-  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running", activeSubtaskIds: ["subtask-1"] }, new Set()), false);
+  assert.equal(isLoopTaskRunOrphaned({ id: "task-1", status: "running", activeSubtaskIds: ["subtask-1"] }, new Set()), true);
 });
 
 test("keeps loop continue available only for incomplete non-running tasks", () => {

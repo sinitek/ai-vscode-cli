@@ -252,6 +252,8 @@ export function createSessionPanelMessageHandlers(
         workspaceSettings.currentCli = deps.getCurrentCli();
         deps.saveWorkspaceSettings(workspaceSettings);
       }
+      // Render the selected conversation while configuration restoration runs.
+      deps.sendSessionMessagesToPanel(switched.cli, switched.sessionId, message.tabId);
       if (previousCli !== switched.cli) {
         await deps.maybePromptInstallOnCliGroupSwitch(switched.cli);
       }
@@ -263,7 +265,6 @@ export function createSessionPanelMessageHandlers(
       if (deps.getActiveConversationTabId() !== message.tabId) {
         return;
       }
-      deps.sendSessionMessagesToPanel(switched.cli, switched.sessionId, message.tabId);
     },
 
     closeConversationTab: async (message) => {

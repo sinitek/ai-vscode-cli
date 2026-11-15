@@ -52,7 +52,8 @@ for (const scenario of cases) {
         const snapshot = f.readTask(taskId)!.loopPlus as import("../../loopPlusScheduler").LoopPlusSchedulerSnapshot;
         assert.equal(snapshot.currentReview?.subtaskId, "A");
         assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === "A")!.executionSession?.sessionId, h.originalThread());
-        assert.ok(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId));
+        assert.equal(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId), false,
+          "A stays open until its background compaction settles");
         originalReport = fs.readFileSync(path.join(f.readTask(taskId)!.communicationDir, "round-1-A.md"), "utf8");
         assert.match(originalReport, /outcome: completed/);
         assert.ok(originalReport.includes(`result:${h.originalThread()}:`));
@@ -68,6 +69,8 @@ for (const scenario of cases) {
       f.queueMain((input, tabId) => {
         reviewCount += 1;
         assert.equal((f.readTask(taskId)!.loopPlus as import("../../loopPlusScheduler").LoopPlusSchedulerSnapshot).currentReview?.subtaskId, "B");
+        assert.ok(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId),
+          "A is retired after its background compaction settles");
         // Completion is submitted through the main protocol only after the runner's B result.
         assert.equal(f.attemptCalls.length, 2);
         assert.equal(h.pendingCompact(), false);

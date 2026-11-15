@@ -77,3 +77,31 @@ test("keeps a bound main session marked when messages do not show a newer vibe p
   }), "main");
   assert.equal(resolveHistorySessionTaskRole({ messages: [] }), null);
 });
+
+test("marks a child session as subtask even when its recorded prompt was run by the main model", () => {
+  const messages = [message({
+    id: "main-model-dispatch",
+    role: "user",
+    content: "You are the Loop+ main reviewer.\nReview the task.",
+    taskRole: "main",
+    loopTaskId: "loop-1",
+  })];
+  assert.equal(resolveHistorySessionTaskRole({ messages }), "main");
+  assert.equal(resolveHistorySessionTaskRole({ isLoopSubtaskSession: true, messages }), "subtask");
+  assert.equal(resolveHistorySessionTaskRole({ isLoopMainSession: true, messages }), "main");
+  assert.equal(resolveHistorySessionTaskRole({
+    isLoopSubtaskSession: true,
+    messages: [...messages, message({ id: "vibe", role: "user", content: "Continue chatting" })],
+  }), null);
+});
+
+test("role caching follows messages appended to the same transcript and both binding flags", () => {
+  const messages = [message({ id: "main", role: "user", content: "plan", taskRole: "main", loopTaskId: "loop" })];
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), "main");
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopSubtaskSession: true }), "subtask");
+  messages.push(message({ id: "vibe", role: "user", content: "chat" }));
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopSubtaskSession: true }), null);
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), null);
+  messages.push(message({ id: "sub", role: "user", content: "implement", taskRole: "subtask", loopTaskId: "loop" }));
+  assert.equal(resolveHistorySessionTaskRole({ messages, isLoopMainSession: true }), "subtask");
+});

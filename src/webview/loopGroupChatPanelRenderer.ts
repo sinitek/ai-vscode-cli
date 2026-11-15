@@ -25,6 +25,7 @@ const STRINGS = {
     askChatBusy: "主模型正在处理，你的问题会放入队列。",
     askChatAbort: "中止",
     askChatWaiting: "正在回答",
+    askChatQueued: "排队中，等待主模型空闲",
     continueDialogTitle: "继续 Loop 任务",
     continueDialogDescription: "确认后会把这段内容发给主任务继续判断，可先修改或补充说明。",
     continuePromptLabel: "消息内容",

@@ -38,9 +38,11 @@ function regressionTests() {
   for (const name of fs.readdirSync(host).filter((name) => /^prompt.*\.test\.js$/.test(name))) tests.add(path.join(host, name));
   for (const name of [
     "core/codexRunnerUnloadAcceptance.test.js", "core/loopPlusFixAcceptance.test.js",
-    "extensionHost/promptInteractiveRuntime.test.js", "extensionHost/interactiveTurnStrategy.test.js",
+    "extensionHost/promptInteractiveRuntime.test.js", "extensionHost/sessionTabOwnership.test.js", "extensionHost/interactiveTurnStrategy.test.js",
     "extensionHost/extensionHostExtractionContracts.test.js", "extensionHost/loopPlusRuntimeIntegration.test.js",
-    "extensionHost/loopPlusOrchestration.test.js", "loop/loopSubtaskSession.test.js",
+    "extensionHost/loopPlusOrchestration.test.js", "extensionHost/loopPlusEntryRouting.test.js",
+    "extensionHost/loopPlusAttemptIdentity.test.js", "extensionHost/loopWaitWatchdog.test.js",
+    "loop/loopPlusScheduler.test.js", "loop/loopSubtaskSession.test.js",
     "loop/loopSubtaskAutoCompact.test.js", "session/conversationTabRunningFlow.test.js",
     "loop/loopMainFailure.test.js", "loop/loopPlusPause.test.js", "loop/loopBlockedSummary.test.js",
     "loop/loopFinalSummary.test.js", "loop/loopGroupChat.test.js",

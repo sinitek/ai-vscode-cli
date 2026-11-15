@@ -22,6 +22,7 @@ type PublishOptions = {
   runEndedAt?: number;
   userCreatedAt?: number;
   assistantId?: string;
+  attemptId?: string;
 };
 
 type ParkedAttempt = {
@@ -117,6 +118,10 @@ export function createLoopPlusRuntimeFixture(options: {
   observeRunCompletions?: boolean;
   taskPersistence?: LoopPlusTaskPersistence;
   taskPersistenceFactory?: (rootDir: string) => LoopPlusTaskPersistence;
+  beforeRun?: (input: PromptRunInput) => Promise<void>;
+  onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
+  isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
+
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
@@ -234,6 +239,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       });
     }
     if (typeof options.content === "string") {
@@ -246,6 +252,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       });
     }
     if (options.status) {
@@ -263,6 +270,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       };
       runs.push(run);
       completionListeners.forEach((listener) => listener(run));
@@ -289,6 +297,7 @@ export function createLoopPlusRuntimeFixture(options: {
 
   const fixturePrompt: LoopPlusRuntimeAdapterDeps["runPrompt"] = async (input, promptOptions) => {
       if (options.runPromptOverride) return options.runPromptOverride(input, promptOptions);
+      await options.beforeRun?.(input);
       if (options.beforePromptStart) {
         await options.beforePromptStart(input);
       }
@@ -324,6 +333,8 @@ export function createLoopPlusRuntimeFixture(options: {
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
     acquireAttemptExecution: options.acquireAttemptExecution,
     log: (event, detail) => { logs.push({ event, detail }); },
+    isInvocationActive: options.isInvocationActive,
+
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,
@@ -428,6 +439,7 @@ export function createLoopPlusRuntimeFixture(options: {
     // wiring tests override these with the actual producer/native host.
     runDepartmentMain: options.runDepartmentMain ?? ((input, opts) => fixturePrompt(input, opts)),
     closeDepartmentCoordinator: options.closeDepartmentCoordinator ?? (async () => undefined),
+
     getMessages: (promptTarget) => bucket(promptTarget.tabId),
     readRuns: options.readRuns ?? (() => runs),
     subscribeRunCompletion: options.observeRunCompletions === false ? undefined : (listener) => {
@@ -462,6 +474,7 @@ export function createLoopPlusRuntimeFixture(options: {
       options.onSubtaskTargetCreated?.(created);
       return created;
     },
+    onSubtaskPreparationFailed: options.onSubtaskPreparationFailed,
     closeSubtaskTab: async (tabId) => {
       closedSubtaskTabs.push(tabId);
       messages.delete(tabId);
@@ -858,6 +871,7 @@ export function createLoopPlusExtensionStopHarness(options: {
     loopOrchestrationOwnership: {
       collectTaskIds: (): string[] => [],
     },
+    loopPlusRuntimeAdapter: null,
     parentStopIds,
     fallbackTaskIds,
     stoppedTabs,

@@ -37,6 +37,12 @@ manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生�
 
 除 Codex pool 外，manager 没有跨 runner/native session 的统一 writer 证明；本次没有发现足以将其它 CLI 机械迁移到 Codex 机制的协议依据。ZCode dispose 的完成可被等待，但 manager 的同步登记替换不构成跨宿主或所有 CLI 的进程退出屏障。
 
+## 命令启动错误与自动修复
+
+任务执行中的自动 CLI 修复只识别可确认的命令启动缺失：`spawn ... ENOENT`，以及 Codex app-server shell 以 code 127 报告 command not found。`open` / `read` 等普通文件系统操作即使返回 `code: ENOENT` 也不代表 CLI 命令缺失，不启动命令搜索或重放。修复重放使用新 CLI 会话；此主动换绑会更新本次启动预期身份。其它异步准备期间目标 Tab、CLI、会话绑定或工作区发生外部变化时，原启动取消。
+
+历史会话投影先从同 CLI 消息补齐旧记录缺失的 `firstPrompt`，再隐藏 Loop+ reviewer 内部协议提示并生成标签；内部协议不写入首提示或角色缓存。原位追加消息会使按消息数量缓存失效。
+
 ## 对话标签消息视图
 
 - `syncActiveMessagesFromRuntime` 和活动标签 `setMessages` 使用增量渲染；`messageRenderState` 对比内容、元数据、最终结果过滤与流式上下文，只替换发生变化的气泡。点击标签后立即刷新选中态，不等待宿主构建配置状态。
@@ -50,6 +56,7 @@ manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生�
 - 显式应用/保存配置时，`configService.applyConfig` 保持同一进程内按 CLI 串行写入。`runtimeConfigVerification.ts` 优先比较原文，不同再按 JSON / TOML 的结构和值判断；OpenCode 使用 JSONC 解析。对象键顺序、格式、注释或换行差异不算失败，数组顺序与实际字段差异仍算失败。Claude MCP 仅允许无关的顶层字段保留，不递归放宽嵌套对象校验。
 - 读回校验冲突最多完整应用 3 次，重试前分别等待 25 / 50 毫秒，且重试不离开当前 CLI 队列。DSH 档案激活在提交激活标记前同样有限重试。权限、文件写入、档案格式校验等其它错误不重试。
 - 跨进程互斥使用完整 owner 文件的原子硬链接发布锁；状态写入使用现有原子写工具。配置应用、当前档案保存/删除、档案身份核对和执行租约获取共享该互斥边界；显式应用先标记不可执行，成功后才发布新版本。应用失败后的不可执行状态及 OpenCode 预检失败仍阻止启动；失败的部分写入不自动回滚。
+- 配置锁等待到期后，先再尝试一次原子硬链接；锁恰好释放或死进程锁已回收时允许继续，避免调度延迟导致误报。最终仍冲突返回 `RUNTIME_CONFIG_LOCK_TIMEOUT`，诊断含操作阶段（initialize/change/edit/acquire/release）、持锁 PID/存活状态、实际等待及等待上限。`runPrompt-failed` 同时记录 Tab、角色、Loop 主/子任务与 attempt ID；不记录配置内容或凭据，不强拆活进程锁。
 - 保存档案时由配置服务在锁内判断是否为当前选择，只有当前档案才同时应用原生文件并更新版本；配置卡片和 Kimi 模型管理不再保存后二次应用或提交选择，避免旧界面编辑隐式切换档案。`applyConfigById` 只服务明确切换，不再承载执行准备。
 - `configService.acquireRuntimeConfigExecution` 在锁内确认档案 ID 和共享状态后直接取得租约，不读取或比较档案内容、模型、连接、认证和原生文件，也不自动修复原生配置。普通对话、Loop、Loop+ 主子任务遵循同一规则；面板模型下拉切换不属于档案切换，原生内容变化不产生配置漂移警告或中断。需要恢复档案内容时由用户在任务结束后显式重新应用。
 - 执行租约直到请求结束或失败才释放，以覆盖 CLI 延迟读取配置的情况。同档案任务可并行；存在执行租约时，切换、保存或删除当前档案立即中文报错，不等待长任务；未激活档案可编辑。死进程锁和租约通过 PID 存活检测保守清理，不因耗时长而抢占活进程；不同目标路径互不影响。只协调新版扩展窗口，旧版本或外部直接写入不受约束。
@@ -103,6 +110,7 @@ manager 的配置指纹检查先于各 CLI 的 canReuse；stop 仅委托原生�
 
 ### 任务执行时自动修复与单次重试
 
+- “自动修复”是跨平台命令路径修复入口，macOS/Linux 不隐藏：例如 Bun、Volta 安装的 CLI 未加入扩展宿主 PATH 时，仍可从其用户目录找回。Unix 候选文件必须通过执行权限检查，无执行权限的文件不报告修复成功，继续搜索后续目录。Windows 保留用户/系统 PATH 读取及 WindowsApps 空桩过滤。界面按宿主平台显示说明，未安装的 CLI 需要先安装。
 - `src/extensionHost/promptAutoRepair.ts` 包装统一 `runPrompt` 的三条执行分支。首次收到启动命令 ENOENT 后重新检查目标 CLI 命令是否仍不可用，复用查找与 `persistCliCommand`；命令已正常解析时不把不存在的 cwd 或普通文件错误误判成可修复项。
 - 修复成功通过 `prepareSessionForPromptRun(..., { forceNewSession: true })` 在同一 Tab 清除旧会话绑定和草稿，保留旧消息文件，释放不再引用的旧 runner，再以 `sessionId=null` 重放完整输入。清除旧 `preloadedUserMessageId`，新会话重新追加用户消息；保留显式模型、思考力度、图片、执行目录和 Loop/Loop+ 追踪字段。
 - 重放标记 `cliCommandRepairAttempted=true`，交互及 OpenCode one-shot/parallel 不再进入 hidden retry。OpenCode 的启动 ENOENT 收口后仍抛出原始错误供统一入口识别，不转换丢失错误码。修复或第二次执行失败停止，不递归重试。

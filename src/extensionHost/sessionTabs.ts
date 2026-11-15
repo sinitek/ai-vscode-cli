@@ -2,6 +2,7 @@ import type { CliName } from "../cli/types";
 import { CLI_LIST, type InteractiveMode } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
 import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
+import { isHiddenLoopPlusProtocolPrompt } from "../loopPlusProtocolPrompt";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, type LoopTaskRecord } from "../loopTaskStore";
@@ -46,6 +47,7 @@ export type ExtensionSessionTabsHostDeps = {
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
+  onSubtaskTabCreated?: (tabId: string) => void;
   postConversationTabClosed: (tabId: string, activeTabId: string | null) => void;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
@@ -81,9 +83,8 @@ async function cleanupSessionRetentionAcrossWorkspaces(): Promise<void> {
 function buildSessionState(cli: CliName): { currentSessionId: string | null; sessions: SessionSummary[] } {
   const allSessions: SessionSummary[] = [];
   const openConversationTabSessionMap = buildOpenConversationTabSessionMap();
-  const loopSessionIdsByCli = buildLoopSessionIdsByCli(
-    loopGroupChatChatPanelCoordinator.listGroupChatTasks()
-  );
+  const loopTasks: LoopTaskRecord[] = loopGroupChatChatPanelCoordinator.listGroupChatTasks();
+  const loopSessionIdsByCli = buildLoopSessionIdsByCli(loopTasks);
   let shouldPersist = false;
   for (const item of CLI_LIST) {
     const records = sessionStore[item]?.sessions ?? [];
@@ -92,10 +93,26 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       if (!firstPrompt) {
         const resolved = resolveSessionFirstPrompt(item, record.id);
         if (resolved) {
-          record.firstPrompt = resolved;
           firstPrompt = resolved;
-          shouldPersist = true;
+          if (!isHiddenLoopPlusProtocolPrompt(resolved)) {
+            record.firstPrompt = resolved;
+            shouldPersist = true;
+          }
         }
+      }
+      const loopMainTask = loopTasks.find((task) => task.cli === item && task.sessionId === record.id);
+      const loopSubtaskOwner = loopTasks.find((task) => task.subTasks.some((subtask) => (
+        subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
+      )));
+      const loopSubtask = loopSubtaskOwner?.subTasks.find((subtask) => (
+        subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
+      ));
+      const hasHiddenProtocolPrompt = isHiddenLoopPlusProtocolPrompt(firstPrompt);
+      if (hasHiddenProtocolPrompt || (!firstPrompt && (loopMainTask || loopSubtask))) {
+        firstPrompt = loopSubtask?.prompt ?? loopMainTask?.rootPrompt ?? firstPrompt;
+      }
+      if (hasHiddenProtocolPrompt && isHiddenLoopPlusProtocolPrompt(firstPrompt)) {
+        firstPrompt = undefined;
       }
       const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
       if (fallbackLabel && shouldUseFallbackSessionLabel(record.label)) {
@@ -108,11 +125,12 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       const isLoopSession = loopSessionIdsByCli[item].has(record.id);
       const taskRole = resolveHistorySessionTaskRole({
         isLoopMainSession: isLoopSession,
+        isLoopSubtaskSession: Boolean(loopSubtask),
         messages: loadSessionMessages(item, record.id),
       });
       allSessions.push({
         id: record.id,
-        label: record.label,
+        label: hasHiddenProtocolPrompt && !firstPrompt ? t("session.unnamed") : record.label,
         createdAt: record.createdAt,
         lastUsedAt: record.lastUsedAt,
         cli: item,
@@ -296,6 +314,7 @@ function createLoopSubtaskRunTarget(
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
+  deps.onSubtaskTabCreated?.(tab.id);
   persistConversationTabsToWorkspaceSettings();
   void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
   void postPanelState();
@@ -349,6 +368,12 @@ async function closeConversationTabAndRefreshPanel(
   if (nextActiveTabId === previousActiveTabId) {
     return;
   }
+  // Keep the active conversation responsive while config and panel state refresh.
+  if (next) {
+    sendSessionMessagesToPanel(next.cli, next.sessionId, nextActiveTabId);
+  } else {
+    sendSessionMessagesToPanel(currentCli, null, nextActiveTabId);
+  }
   if (next && currentCli !== next.cli) {
     currentCli = next.cli;
     deps.setCurrentCli(currentCli);
@@ -372,11 +397,6 @@ async function closeConversationTabAndRefreshPanel(
   if (nextActiveTabId && getActiveConversationTabId() !== nextActiveTabId) {
     return;
   }
-  if (next) {
-    sendSessionMessagesToPanel(next.cli, next.sessionId);
-    return;
-  }
-  sendSessionMessagesToPanel(currentCli, null);
 }
 
 function detachConversationTabsFromSession(cli: CliName, sessionId: string): void {

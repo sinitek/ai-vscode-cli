@@ -49,6 +49,7 @@ type PromptParallelTabRun = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
 };
 
 type PromptParallelRuntimeRequiredHostDeps = {
@@ -280,6 +281,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       },
     };
     let attemptSubagentMonitor: OpenCodeSubagentMonitor | null = null;
@@ -331,6 +333,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       });
     };
 
@@ -451,6 +454,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       };
     };
 
@@ -1143,6 +1147,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       loopTaskId: run.loopTaskId,
       loopRound: run.loopRound,
       loopSubtaskId: run.loopSubtaskId,
+      loopAttemptId: run.loopAttemptId,
     };
     appendTaskRun(taskRecord);
     sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });

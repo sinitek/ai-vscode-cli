@@ -16,8 +16,10 @@ import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../loopDirectExecutionPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
+import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
+import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 
-export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 3 * 1000;
+export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
 export const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 
@@ -102,6 +104,8 @@ type LoopOrchestrationRequiredHostDeps =
   >
   & {
     decisionSubtaskMax?: () => number;
+    isTabRunActive?: (tabId: string) => boolean;
+    hasActiveSubtasks?: (taskId: string) => boolean;
     buildSubagentProgressLabels: () => SubagentProgressLabels;
     buildLoopSubtaskRetryText: (taskId: string, subtaskId: string, retryCount: number) => string;
     closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
@@ -126,7 +130,7 @@ type LoopOrchestrationRequiredHostDeps =
     ) => ThinkingMode | undefined;
     runPrompt: (
       input: PromptRunInput,
-      options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean },
+      options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean; isAborted?: () => boolean; onStarted?: () => void },
     ) => Promise<void>;
     sendPanelMessage: (payload: Record<string, unknown>) => void;
     switchVisibleConversationTabForLoop: (tabId: string) => Promise<{ cli: CliName; sessionId: string | null } | null>;
@@ -172,6 +176,13 @@ export async function resolveLoopTaskAtCreationBoundary<T>(options: {
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
+  const subtaskExecutions = new Map<string, { taskId: string; tabId: string | null; startedAt: number | null }>();
+  const waitingBatches = new Map<string, {
+    taskId: string;
+    target: PromptRunTarget;
+    subtasks: LoopSubtaskRecord[];
+    recover: (recovered: boolean) => void;
+  }>();
   const requiredDeps = deps as LoopOrchestrationRequiredHostDeps;
   const {
     appendLoopRound,
@@ -527,6 +538,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number;
     subtask: LoopSubtaskRecord;
     switchVisible?: boolean;
+    signal?: AbortSignal;
   };
 
   type LoopSubtaskBatchOptions = {
@@ -535,17 +547,103 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     task: LoopTaskRecord;
     round: number;
     subtasks: LoopSubtaskRecord[];
+    signal?: AbortSignal;
   };
 
   type LoopSubtaskRunResult = {
     subtask: LoopSubtaskRecord;
     status: TaskRunStatus;
+    watchdogRecovered?: boolean;
   };
 
   type LoopMainDecisionRunResult = ClassicLoopDecisionResult;
 
   async function runLoopSubtasksBatchWithRetry(
     options: LoopSubtaskBatchOptions
+  ): Promise<LoopSubtaskRunResult[]> {
+    if (!deps.isTabRunActive || options.subtasks.length === 0) {
+      return executeLoopSubtasksBatchWithRetry(options);
+    }
+    const controller = new AbortController();
+    let resolveRecovery!: (results: LoopSubtaskRunResult[]) => void;
+    const recovery = new Promise<LoopSubtaskRunResult[]>((resolve) => { resolveRecovery = resolve; });
+    const waiting = {
+      taskId: options.task.id,
+      target: options.target,
+      subtasks: options.subtasks,
+      recover: (recovered: boolean): void => {
+        if (waitingBatches.get(options.task.id) !== waiting) return;
+        const task = readLoopTaskRecord(options.task.id);
+        waitingBatches.delete(options.task.id);
+        controller.abort();
+        resolveRecovery(options.subtasks.map((subtask) => ({
+          subtask,
+          status: task?.subTasks.find((item) => item.id === subtask.id)?.status === "completed" ? "end" : "stopped",
+          ...(recovered ? { watchdogRecovered: true } : {}),
+        })));
+      },
+    };
+    waitingBatches.set(options.task.id, waiting);
+    try {
+      const batch = executeLoopSubtasksBatchWithRetry({ ...options, signal: controller.signal }).then((results) => (
+        results.some((result) => result.status === "error" || result.status === "stopped")
+          && readLoopTaskRecord(options.task.id)?.status === "running"
+          ? recovery
+          : results
+      ));
+      return await Promise.race([batch, recovery]);
+    } finally {
+      if (waitingBatches.get(options.task.id) === waiting) waitingBatches.delete(options.task.id);
+      controller.abort();
+    }
+  }
+
+  function checkWaitingTasks(): void {
+    for (const waiting of waitingBatches.values()) {
+      try {
+        const task = readLoopTaskRecord(waiting.taskId);
+        if (!task || task.status !== "running" || task.pendingClarification
+          || isLoopMainAiFailureLimitReached(task)) {
+          waiting.recover(false);
+          continue;
+        }
+        if (deps.hasActiveSubtasks?.(task.id) || deps.isTabRunActive?.(waiting.target.tabId)) continue;
+        const active = [...subtaskExecutions.values()].some((execution) => execution.taskId === task.id
+          && (execution.startedAt === null || Date.now() - execution.startedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS
+            || (execution.tabId !== null && deps.isTabRunActive?.(execution.tabId))));
+        if (active) continue;
+        const batchIds = new Set(waiting.subtasks.map((item) => item.id));
+        const detail = "定时检查发现已无活动子任务，主任务将检查现有结果；未完成或失联的子任务不视为成功。";
+        const activeIds = getActiveLoopSubtaskIds(task).filter((id) => !batchIds.has(id));
+        updateLoopTaskRecord(task.id, {
+          activeSubtaskId: activeIds[0] ?? null,
+          activeSubtaskIds: activeIds,
+          subTasks: task.subTasks.map((item) => batchIds.has(item.id) && item.status !== "completed" && item.status !== "skipped"
+            ? { ...item, status: "blocked", summary: [item.summary, detail].filter(Boolean).join("\n"), updatedAt: Date.now() }
+            : item),
+          updatedAt: Date.now(),
+        });
+        appendSystemMessageForLoop(waiting.target, detail);
+        refreshOpenLoopGroupChatPanelForTask(task.id);
+        waiting.recover(true);
+      } catch (error) {
+        void logError("loop-wait-watchdog-check-failed", { taskId: waiting.taskId, error: errorToMessage(error) });
+      }
+    }
+  }
+
+  function resumeWaitingBatch(taskId: string): boolean {
+    const waiting = waitingBatches.get(taskId);
+    const task = readLoopTaskRecord(taskId);
+    if (!waiting || !task || task.status !== "running" || task.pendingClarification
+      || isLoopMainAiFailureLimitReached(task) || getActiveLoopSubtaskIds(task).length > 0
+      || !waiting.subtasks.every((subtask) => task.subTasks.some((item) => item.id === subtask.id && item.status === "completed"))) return false;
+    waiting.recover(true);
+    return true;
+  }
+
+  async function executeLoopSubtasksBatchWithRetry(
+    options: LoopSubtaskBatchOptions,
   ): Promise<LoopSubtaskRunResult[]> {
     const { input, target, task, round, subtasks } = options;
     if (subtasks.length <= 1) {
@@ -560,6 +658,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         round,
         subtask,
         switchVisible: true,
+        signal: options.signal,
       });
       return [{ subtask, status }];
     }
@@ -588,6 +687,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         if (!subtask) {
           continue;
         }
+        if (options.signal?.aborted) return results;
         if (isLoopTaskExecutionInterrupted(task.id)) {
           undispatchedGroups = [
             group.slice(subtaskIndex),
@@ -598,6 +698,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         const launchDelayMs = getLoopSubtaskLaunchDelayMs(lastSubtaskLaunchAt);
         if (launchDelayMs > 0) {
           await waitForLoopSubtaskLaunchDelay(launchDelayMs);
+          if (options.signal?.aborted) return results;
           if (isLoopTaskExecutionInterrupted(task.id)) {
             undispatchedGroups = [
               group.slice(subtaskIndex),
@@ -616,9 +717,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               round,
               subtask,
               switchVisible: false,
+              signal: options.signal,
             });
             return { subtask, status };
           } catch (error) {
+            if (options.signal?.aborted) return { subtask, status: "stopped" };
             void logError("loop-subtask-batch-run-error", {
               taskId: task.id,
               round,
@@ -632,6 +735,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       }
 
       const groupResults = await Promise.all(groupRuns);
+      if (options.signal?.aborted) return results;
       results.push(...groupResults);
       if (undispatchedGroups) {
         markUndispatchedLoopSubtasksSkipped(task, undispatchedGroups);
@@ -701,14 +805,22 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const key = `${options.task.id}:${options.subtask.id}`;
     const existing = subtaskRuns.get(key);
     if (existing) return existing;
-    const run = executeLoopSubtaskWithRetry(options).finally(() => {
-      if (subtaskRuns.get(key) === run) subtaskRuns.delete(key);
+    const execution = { taskId: options.task.id, tabId: null as string | null, startedAt: null as number | null };
+    subtaskExecutions.set(key, execution);
+    const run = executeLoopSubtaskWithRetry(options, execution).finally(() => {
+      if (subtaskRuns.get(key) === run) {
+        subtaskRuns.delete(key);
+        subtaskExecutions.delete(key);
+      }
     });
     subtaskRuns.set(key, run);
     return run;
   }
 
-  async function executeLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
+  async function executeLoopSubtaskWithRetry(
+    options: LoopSubtaskRetryOptions,
+    executionState: { tabId: string | null; startedAt: number | null },
+  ): Promise<TaskRunStatus> {
     const { input, target, task, round, subtask } = options;
     const latestTask = readLoopTaskRecord(task.id) ?? task;
     let execution = resolveStoredSubtaskExecution({
@@ -729,6 +841,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const progressId = `${task.id}:${round}:${subtask.id}`;
     let currentSubtaskTarget: PromptRunTarget | null = null;
     let terminalProgressStatus: "completed" | "failed" | "interrupted" | null = null;
+    let invocationStarted = false;
     let parentProgress: SubagentProgressController | null = null;
 
     const persistParentProgressMessage = (message: ChatMessage): void => {
@@ -790,7 +903,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     let subtaskTarget: PromptRunTarget | null = null;
     try {
       while (true) {
-        if (isLoopTaskExecutionInterrupted(task.id)) {
+        if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
           terminalProgressStatus = "interrupted";
           return "stopped";
         }
@@ -814,6 +927,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             appendSystemMessageForLoop(target, `子任务 ${subtask.id}：${continuation.reason}（来源：${continuation.sourceSubtaskId}）。`);
           }
           currentSubtaskTarget = subtaskTarget;
+          executionState.tabId = subtaskTarget.tabId;
         } else {
           const refreshedSessionId = resolvePromptRunTargetSessionId(subtaskTarget);
           if (refreshedSessionId) {
@@ -833,7 +947,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         let status: TaskRunStatus = "error";
         try {
           status = await withLoopSubtaskSession(subtaskTarget.cli, subtaskTarget.sessionId, async () => {
-            if (isLoopTaskExecutionInterrupted(task.id)) {
+            if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
               return "stopped";
             }
             return runLoopRound({
@@ -856,8 +970,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               boundSubtaskModel: execution.model,
               boundThinkingMode: execution.thinkingMode,
               crossCli: execution.crossCli,
+              signal: options.signal,
+              onStarted: () => { invocationStarted = true; executionState.startedAt = Date.now(); },
             });
-          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId });
+          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.signal });
+          if (options.signal?.aborted) return "stopped";
+          executionState.startedAt = null;
           const sessionId = resolvePromptRunTargetSessionId(subtaskTarget);
           if (sessionId) {
             const latest = readLoopTaskRecord(task.id) ?? task;
@@ -866,6 +984,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, subtask.id, { cli: execution.cli, sessionId, configId }) });
           }
         } catch (error) {
+          if (options.signal?.aborted) return "stopped";
+          executionState.startedAt = null;
           status = "error";
           void logError("loop-subtask-run-error", {
             taskId: task.id,
@@ -875,8 +995,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             error: error instanceof Error ? error.message : String(error),
           });
         } finally {
-          progressMonitor.sync();
-          if (shouldSwitchVisible) {
+          if (!options.signal?.aborted) progressMonitor.sync();
+          if (shouldSwitchVisible && !options.signal?.aborted) {
             await switchVisibleConversationTabForLoop(mainTabId);
           }
         }
@@ -916,6 +1036,13 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         await waitForLoopSubtaskRetryDelay();
       }
     } finally {
+      if (subtaskTarget && !invocationStarted) {
+        sendPanelMessage({
+          type: "runStatus",
+          tabId: subtaskTarget.tabId,
+          status: options.signal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
+        });
+      }
       progressMonitor.finish(terminalProgressStatus ?? "interrupted");
     }
   }
@@ -942,6 +1069,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     boundSubtaskModel?: string;
     boundThinkingMode?: ThinkingMode;
     crossCli?: boolean;
+    signal?: AbortSignal;
+    onStarted?: () => void;
   };
 
   async function runLoopRound(options: LoopRoundRunOptions): Promise<TaskRunStatus> {
@@ -984,7 +1113,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const thinkingModeOverride = resolvePromptRunThinkingModeForRole(routedInput, thinkingCli, role, roleModel, {
       configId: role === "subtask" ? options.executionConfigId : undefined,
     });
-    await runPrompt({
+    await waitForLoopInvocation(runPrompt({
       ...routedInput,
       displayPrompt,
       modelPrompt,
@@ -994,7 +1123,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       loopRound: round,
       loopSubtaskId: subtaskId,
       thinkingModeOverride,
-    }, { targetTabId: target.tabId });
+    }, { targetTabId: target.tabId, isAborted: () => options.signal?.aborted === true, onStarted: options.onStarted }), options.signal);
 
     if (role === "main") {
       const mainSessionId = resolveLoopTaskSessionId(target);
@@ -1203,6 +1332,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   }
 
   return {
+    checkWaitingTasks,
+    resumeWaitingBatch,
     appendLoopMainSubChatMainDecision,
     appendLoopMainSubChatSubtaskFinished,
     appendLoopSupplementalRequirement,

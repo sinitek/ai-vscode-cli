@@ -432,7 +432,9 @@ test("generated protocol examples satisfy the current parser and live event id",
 
   const accept = parseExample(examples, "accept");
   assert.equal(accept.reviewEventId, "event-live-42");
-  assert.deepEqual(accept.reviews, [{ reviewEventId: "event-live-42", acceptance: "passed", reason: "实现符合需求且验证证据通过" }]);
+  assert.deepEqual(accept.reviews, [{
+    reviewEventId: "event-live-42", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["example-subtask"],
+  }]);
   assert.ok(accept.acceptance);
   assert.ok(!accept.subtasks || accept.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
 
@@ -556,8 +558,11 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   assert.match(prompt, /classic Loop status continue/);
   assert.match(prompt, /roundSummaries/);
   assert.match(prompt, /estimatedRemainingRounds is optional/);
-  assert.match(prompt, /snapshot captured when the CLI started/);
-  assert.match(prompt, /host re-reads that record and is the final gate/);
+  assert.match(prompt, /Acceptance batch listed at request start is frozen and is the only batch to confirm/);
+  assert.match(prompt, /those belong to the next batch/);
+  assert.match(prompt, /Never add them to or otherwise change the reviewEventId or reviewEventIds/);
+  assert.doesNotMatch(prompt, /host discards this answer|asks again with every queued event/);
+  assert.match(prompt, /host submits this batch first, then checks its latest state/);
   assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
   assert.match(prompt, /You may run tests or start produced artifacts only to close an identified verification gap/);
   assert.match(prompt, /Skipping an unnecessary rerun is not a failure/);
@@ -671,7 +676,7 @@ test("shows real concurrency capacity and encourages useful multi-task delivery 
     assert.match(prompt, /never create tiny or artificial tasks just to fill capacity/);
     assert.match(prompt, /On dispatch and accept, look for ready independent work to refill free slots/);
     assert.match(prompt, /Do not duplicate running or pending tasks/);
-    assert.match(prompt, /not a fixed task count or a role quota/);
+    assert.match(prompt, /not actual review verdicts, a fixed task count, or a role quota/);
     assert.doesNotMatch(prompt, /Keep one coding subtask when the work shares files/);
     assert.doesNotMatch(prompt, /keep shared or dependent work together/);
   }
@@ -742,6 +747,44 @@ test("allows rare incidental edits without weakening known write-conflict protec
       assert.match(subtaskPrompt, /do not revert or overwrite their work/);
       assert.match(subtaskPrompt, /Reconcile small disjoint edits locally/);
       assert.match(subtaskPrompt, /report the dependency to the main model/);
+    }
+  }
+});
+
+test("every main mode and decision kind plans remaining-goal delivery alongside acceptance repairs", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, loopSubtaskMode }));
+      assert.match(prompt, /Every accept is also a remaining-goal planning decision/);
+      assert.match(prompt, /re-read all unfinished root and supplemental requirements/);
+      assert.match(prompt, /dispatch ready independent deliverables alongside necessary repairs in the same accept/);
+      assert.match(prompt, /A failed check or a repair in progress is not a global barrier/);
+      assert.match(prompt, /Before dispatching only a repair or leaving usable slots idle, record the concrete reason/);
+      assert.match(prompt, /Every accept\.subtasks id must appear exactly once across reviews\[\*\]\.subtaskIds and independentSubtaskIds/);
+      assert.match(prompt, /Never attach independent work to a failed review just to satisfy linkage/);
+      assert.match(prompt, /independentSubtaskIds do not inherit a failed event's session/);
+      assert.doesNotMatch(prompt, /If a failed event cannot be repaired by a subtask, send blocked/);
+    }
+  }
+});
+
+test("single and batched accept examples combine a focused repair with independent deliveries within limits", () => {
+  for (const eventIds of [["event-one"], ["event-one", "event-two"]]) {
+    for (const capacity of [1, 2, 3, 6]) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({
+        acceptanceEventIds: eventIds, subtaskMax: capacity, maxConcurrency: capacity,
+      }));
+      const json = extractProtocolExamples(prompt).get("accept");
+      const decision = parseLoopPlusDecision(json, { subtaskMax: capacity, requireAcceptanceFeedback: true, requireProgressPercent: true });
+      assert.ok(decision);
+      assert.equal(decision.subtasks?.length, Math.min(4, capacity));
+      const repairs = decision.reviews?.filter((item) => item.acceptance === "failed").flatMap((item) => item.subtaskIds ?? []);
+      assert.deepEqual(repairs, ["example-subtask"]);
+      assert.match(decision.subtasks![0].prompt, /Repair the failed validation check/);
+      assert.deepEqual(decision.independentSubtaskIds ?? [], decision.subtasks!.slice(1).map((item) => item.id));
+      assert.equal(new Set(decision.subtasks?.map((item) => item.conflictGroup)).size, decision.subtasks!.length);
+      assert.equal(decision.acceptance?.passed, false);
+      assert.match(prompt, /judge real events from evidence/);
     }
   }
 });
@@ -903,7 +946,7 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
   assert.doesNotMatch(prompt, /Do not implement that work yourself/);
   assert.match(prompt, /accept\.reviews is required/);
   assert.match(prompt, /Do not mark a successful event failed because another event fails or launches a subtask/);
-  assert.match(prompt, /send blocked, which confirms nothing/);
+  assert.match(prompt, /Return blocked, confirming nothing, only when no safe independent work or live dependency can advance the goal/);
   const completed = parseExample(extractProtocolExamples(prompt), "completed");
   assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), names);
   assert.equal(completed.acceptance?.checks.every((check) => check.passed === true), true);

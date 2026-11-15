@@ -195,7 +195,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   assert.equal(wiring.includes("cancelInvocation: (tabId) => {"), true);
   assert.equal(wiring.includes("cancelLoopPlusInvocation(tabId)"), true);
   assert.equal(wiring.includes("closeSubtaskTab: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId)"), true);
-  assert.equal(wiring.includes("closeSubtaskTabs: (taskId, subtaskId) => closeLoopSubtaskTabs(taskId, subtaskId)"), true);
+  assert.equal(wiring.includes("closeSubtaskTabs: (taskId, subtaskId, attemptId) => closeLoopSubtaskTabs(taskId, subtaskId, undefined, attemptId)"), true);
   assert.equal(wiring.includes("stopRunForTab"), false);
   const eventDriven = functionBody(extensionSource, "runEventDrivenLoopPrompt");
   assert.equal(eventDriven.includes("getLoopPlusRuntimeAdapter().runEventDriven("), true);
@@ -204,13 +204,23 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const continuation = functionBody(extensionSource, "handleLoopPlusSubtaskContinuation");
   assert.equal(continuation.includes("selectLoopPlusContinuationDetail("), true);
   assert.equal(continuation.includes("getLastLoopAssistantContent("), false);
+  const notifyCall = extensionSource.indexOf("host.notifySubtaskContinuation(context.taskId, context.subtaskId, \"completed\", summary,");
+  const completionCallback = extensionSource.indexOf("undefined, () => closeLoopPlusSubtaskTab(tabId,", notifyCall);
+  const attemptArgument = extensionSource.indexOf("}, closeTab), context.attemptId);", completionCallback);
+  assert.equal(notifyCall >= 0, true);
+  assert.equal(completionCallback > notifyCall, true);
+  assert.equal(attemptArgument > completionCallback, true);
   assert.equal(continuation.includes("closeLoopPlusSubtaskTab(tabId,"), true);
   assert.equal(
     continuation.indexOf("selectLoopPlusContinuationDetail(") < continuation.indexOf("closeLoopPlusSubtaskTab(tabId,"),
     true,
   );
   assert.equal(
-    continuation.indexOf("closeLoopPlusSubtaskTab(tabId,") < continuation.indexOf("notifySubtaskContinuation("),
+    continuation.indexOf("notifySubtaskContinuation(") < continuation.indexOf("closeLoopPlusSubtaskTab(tabId,"),
+    true,
+  );
+  assert.equal(
+    continuation.indexOf("() => closeLoopPlusSubtaskTab(tabId,") > continuation.indexOf("notifySubtaskContinuation("),
     true,
   );
 });

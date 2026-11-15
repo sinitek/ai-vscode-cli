@@ -33,6 +33,7 @@ export function createLoopModelSwitchResumeCoordinator(deps: LoopModelSwitchResu
     subtasks.forEach((subtask) => activeIds.add(subtask.id));
     const updated = deps.updateTask(taskId, {
       status: "running",
+      runtimeInterrupted: undefined,
       activeSubtaskId: [...activeIds][0] ?? null,
       activeSubtaskIds: [...activeIds],
       updatedAt: Date.now(),

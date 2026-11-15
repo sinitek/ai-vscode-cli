@@ -36,6 +36,7 @@ export type TaskRunDraft = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
 };
 
 export type TaskRunRecord = TaskRunDraft & {
@@ -227,6 +228,8 @@ export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps
     loopSubtaskId: typeof raw.loopSubtaskId === "string" ? raw.loopSubtaskId : undefined,
     ...(raw.departmentConfiguration && normalizeDepartmentConfigurationSnapshot(raw.departmentConfiguration)
       ? { departmentConfiguration: normalizeDepartmentConfigurationSnapshot(raw.departmentConfiguration)! } : {}),
+    loopAttemptId: typeof raw.loopAttemptId === "string" ? raw.loopAttemptId : undefined,
+
   };
 }
 

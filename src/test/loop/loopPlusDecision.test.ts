@@ -315,6 +315,56 @@ test("accept records each review verdict and the subtasks that review launches",
   });
 });
 
+test("accept combines event repairs with explicitly independent remaining-goal work", () => {
+  const candidate = {
+    status: "accept", reviewEventId: "event-alpha", progressPercent: 45,
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "failed", reason: "校验分支有遗漏", subtaskIds: ["repair"] }],
+    subtasks: [subtask("repair"), subtask("independent-feature"), subtask("independent-docs")],
+    independentSubtaskIds: ["independent-feature", "independent-docs"],
+    acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture().map((check) => ({ ...check, passed: false })) },
+  };
+  const accepted = normalizeLoopPlusDecision(candidate, { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.equal(accepted?.status, "accept");
+  assert.deepEqual(accepted?.independentSubtaskIds, ["independent-feature", "independent-docs"]);
+  assert.deepEqual(accepted?.reviews, candidate.reviews);
+  assert.deepEqual(accepted?.subtasks?.map((item) => item.id), ["repair", "independent-feature", "independent-docs"]);
+
+  const withoutRepair = normalizeLoopPlusDecision({
+    ...candidate,
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "passed" }],
+    subtasks: [subtask("independent-feature")],
+    independentSubtaskIds: ["independent-feature"],
+  });
+  assert.equal(withoutRepair?.reviews?.[0].acceptance, "passed");
+  assert.deepEqual(withoutRepair?.independentSubtaskIds, ["independent-feature"]);
+  const empty = normalizeLoopPlusDecision({
+    ...candidate, subtasks: [], independentSubtaskIds: [],
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "passed" }],
+  });
+  assert.equal(empty?.status, "accept");
+  assert.equal(empty?.independentSubtaskIds, undefined);
+});
+
+test("independent accept tasks still require unique complete ownership and share the decision limit", () => {
+  const candidate = {
+    status: "accept", reviewEventId: "event-alpha",
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "failed", subtaskIds: ["repair"] }],
+    subtasks: [subtask("repair"), subtask("delivery")],
+    independentSubtaskIds: ["delivery"],
+  };
+  for (const independentSubtaskIds of [null, "delivery", [""], [1], ["delivery", "delivery"], ["unknown"], ["repair", "delivery"], []]) {
+    const rejected = parseLoopPlusDecisionWithFeedback(JSON.stringify({ ...candidate, independentSubtaskIds }));
+    assert.equal(rejected.decision, null, JSON.stringify(independentSubtaskIds));
+    assert.match(rejected.rejectionReason ?? "", /independentSubtaskIds/);
+  }
+  assert.equal(normalizeLoopPlusDecision(candidate, { subtaskMax: 1 }), null);
+  assert.equal(normalizeLoopPlusDecision(candidate, { subtaskMax: 2 })?.status, "accept");
+  for (const value of [{ status: "wait" }, { status: "dispatch", subtasks: [subtask("delivery")] }, completedFields()]) {
+    assert.ok(normalizeLoopPlusDecision(value));
+    assert.equal(normalizeLoopPlusDecision({ ...value, independentSubtaskIds: [] }), null);
+  }
+});
+
 test("protocol feedback identifies orphan, unknown and duplicate follow-up links without accepting them", () => {
   const candidate = {
     status: "accept", reviewEventIds: ["event-alpha", "event-beta"],

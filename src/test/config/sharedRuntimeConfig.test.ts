@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
 import { once } from "events";
-import { SharedRuntimeConfig, ConfigSelectionChangedError, type SharedConfigSelection } from "../../config/sharedRuntimeConfig";
+import { SharedRuntimeConfig, ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease, type SharedConfigSelection } from "../../config/sharedRuntimeConfig";
 
 async function withDirectory(run: (directory: string) => Promise<void>): Promise<void> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-shared-config-"));
@@ -17,6 +17,43 @@ function createSignal(): { promise: Promise<void>; resolve: () => void } {
   const promise = new Promise<void>((resolvePromise) => { resolve = resolvePromise; });
   return { promise, resolve };
 }
+
+test("a delayed config lease release cannot replace the completed run result", async () => {
+  let releaseAttempts = 0;
+  let resumeRetry!: () => void;
+  const retryGate = new Promise<void>((resolve) => { resumeRetry = resolve; });
+  const errors: Array<{ attempt: number; message: string }> = [];
+  const completed: string[] = [];
+  await releaseRuntimeConfigExecutionLease({
+    selection: { configId: "selected", revision: "r1", profileDigest: null, ready: true },
+    release: async () => {
+      releaseAttempts += 1;
+      if (releaseAttempts === 1) throw new Error("release lock timeout");
+    },
+  }, (error, attempt) => errors.push({ attempt, message: String(error) }), {
+    retryDelaysMs: [1], delay: async () => retryGate,
+  });
+  completed.push("subtask-success-reported");
+  assert.deepEqual(completed, ["subtask-success-reported"]);
+  assert.equal(releaseAttempts, 1);
+  assert.deepEqual(errors.map(({ attempt }) => attempt), [0]);
+  resumeRetry();
+  for (let index = 0; index < 10 && releaseAttempts < 2; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(releaseAttempts, 2);
+  assert.deepEqual(errors.map(({ attempt }) => attempt), [0]);
+});
+
+test("a config lease release retry reports exhaustion without rejecting completion cleanup", async () => {
+  const errors: number[] = [];
+  await releaseRuntimeConfigExecutionLease({
+    selection: { configId: "selected", revision: "r1", profileDigest: null, ready: true },
+    release: async () => { throw new Error("still locked"); },
+  }, (_error, attempt) => errors.push(attempt), {
+    retryDelaysMs: [0, 0], delay: async () => undefined,
+  });
+  for (let index = 0; index < 10 && errors.length < 3; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(errors, [0, 1, 2]);
+});
 
 test("panel snapshots do not wait for a configuration writer or initialize again", async () => {
   await withDirectory(async (directory) => {
@@ -63,6 +100,103 @@ test("local configuration transactions queue instead of timing out behind each o
     await assert.rejects(first.change(async () => { throw new Error("write failed"); }), /write failed/);
     await second.change(async () => ({ configId: "recovered", profileDigest: "recovered" }));
     assert.equal((await first.read())?.ready, true);
+  });
+});
+
+test("execution retries atomically when a competing lock disappears at the deadline", async (t) => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory, 0);
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
+    const mutex = path.join(directory, "mutex");
+    await fs.writeFile(mutex, JSON.stringify({ pid: process.pid, token: "competing-writer" }));
+    const originalLink = fs.link;
+    let contested = false;
+    const link = t.mock.method(fs, "link", async (existingPath: string, newPath: string) => {
+      if (newPath === mutex && !contested) {
+        contested = true;
+        // The competing writer releases after link saw EEXIST, before readOwner.
+        await fs.unlink(mutex);
+        throw Object.assign(new Error("competing lock"), { code: "EEXIST" });
+      }
+      return originalLink(existingPath, newPath);
+    });
+    try {
+      const lease = await shared.acquire(selected);
+      assert.equal(contested, true);
+      assert.equal(lease.selection.configId, "selected");
+      await lease.release();
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "selection.json"), "utf8")).leases, []);
+      assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json"]);
+    } finally {
+      link.mock.restore();
+    }
+  });
+});
+
+test("execution acquires a dead writer lock recovered at the deadline", async () => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory, 0);
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
+    const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    const pid = child.pid!;
+    await once(child, "exit");
+    await fs.writeFile(path.join(directory, "mutex"), JSON.stringify({ pid, token: "dead-writer" }));
+    const lease = await shared.acquire(selected);
+    assert.equal(lease.selection.configId, "selected");
+    await lease.release();
+    assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json"]);
+  });
+});
+
+test("a live writer still blocks the final atomic attempt and exposes safe timeout diagnostics", async () => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory, 0);
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
+    const owner = { pid: process.pid, token: "live-writer" };
+    const mutex = path.join(directory, "mutex");
+    await fs.writeFile(mutex, JSON.stringify(owner));
+    await assert.rejects(shared.acquire(selected), (error: unknown) => {
+      assert.ok(error instanceof RuntimeConfigLockTimeoutError);
+      assert.equal(error.code, "RUNTIME_CONFIG_LOCK_TIMEOUT");
+      assert.equal(error.diagnostic.operation, "acquire");
+      assert.equal(error.diagnostic.ownerPid, process.pid);
+      assert.equal(error.diagnostic.ownerAlive, true);
+      assert.equal(error.diagnostic.timeoutMs, 0);
+      assert.ok(error.diagnostic.waitedMs >= 0);
+      return true;
+    });
+    assert.deepEqual(JSON.parse(await fs.readFile(mutex, "utf8")), owner);
+    assert.deepEqual((await fs.readdir(directory)).sort(), ["mutex", "selection.json"]);
+    await fs.unlink(mutex);
+    const lease = await shared.acquire(selected);
+    await lease.release();
+  });
+});
+
+test("a different live writer winning the final attempt is never bypassed", async (t) => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory, 0);
+    const mutex = path.join(directory, "mutex");
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
+    const originalLink = fs.link;
+    const owner = { pid: process.pid, token: "replacement-writer" };
+    let attempts = 0;
+    const link = t.mock.method(fs, "link", async (existingPath: string, newPath: string) => {
+      if (newPath === mutex) {
+        attempts += 1;
+        if (attempts === 1) throw Object.assign(new Error("released writer"), { code: "EEXIST" });
+        if (attempts === 2) await fs.writeFile(mutex, JSON.stringify(owner));
+      }
+      return originalLink(existingPath, newPath);
+    });
+    try {
+      await assert.rejects(shared.acquire(selected), RuntimeConfigLockTimeoutError);
+      assert.equal(attempts, 2);
+      assert.deepEqual(JSON.parse(await fs.readFile(mutex, "utf8")), owner);
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(directory, "selection.json"), "utf8")).leases, []);
+    } finally {
+      link.mock.restore();
+    }
   });
 });
 

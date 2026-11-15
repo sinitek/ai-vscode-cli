@@ -82,3 +82,49 @@ test("a follow-up waits for its source even when the first execution acquired it
   await Promise.all([first, next]);
   assert.deepEqual(events, ["source", "follow-up"]);
 });
+
+test("取消等待中的续接立即返回，后继仍等待原会话释放", { timeout: 2000 }, async () => {
+  let release!: () => void;
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const events: string[] = [];
+  const first = withLoopSubtaskSession("codex", "cancel-wait-session", async () => {
+    events.push("first");
+    await hold;
+  });
+  const controller = new AbortController();
+  const cancelled = withLoopSubtaskSession("codex", "cancel-wait-session", async () => {
+    assert.fail("取消后不能启动等待中的执行");
+  }, { taskId: "cancel-parent", subtaskId: "cancel-child", signal: controller.signal });
+  const rejection = assert.rejects(cancelled, { name: "AbortError" });
+  const next = withLoopSubtaskSession("codex", "cancel-wait-session", async () => { events.push("next"); });
+  try {
+    controller.abort();
+    await rejection;
+    assert.deepEqual(events, ["first"]);
+  } finally {
+    release();
+    await Promise.all([first, next]);
+  }
+  assert.deepEqual(events, ["first", "next"]);
+});
+
+test("执行开始后的取消不会提前释放会话租约", { timeout: 2000 }, async () => {
+  let release!: () => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const hold = new Promise<void>((resolve) => { release = resolve; });
+  const controller = new AbortController();
+  const first = withLoopSubtaskSession("codex", "cancel-active-session", async () => {
+    started();
+    await hold;
+  }, { taskId: "active-parent", subtaskId: "active-child", signal: controller.signal });
+  await ready;
+  controller.abort();
+  let nextStarted = false;
+  const next = withLoopSubtaskSession("codex", "cancel-active-session", async () => { nextStarted = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(nextStarted, false);
+  release();
+  await Promise.all([first, next]);
+  assert.equal(nextStarted, true);
+});

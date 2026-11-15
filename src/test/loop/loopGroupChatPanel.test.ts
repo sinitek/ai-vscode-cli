@@ -1262,6 +1262,57 @@ test("mounts ask bubbles through the shared group chat Markdown renderer", () =>
   assert.equal(vm.runInContext("renderAskBubble(message)", context), "");
 });
 
+test("shows a queue indicator below only queued user bubbles", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function askEscape"), html.indexOf("function renderAskWaiting"));
+  const context = vm.createContext({ ASK_QUEUED_LABEL: "排队中，等待主模型空闲" });
+  vm.runInContext(source, context);
+  for (const role of ["user", "assistant", "system"]) {
+    for (const queued of [true, false, undefined]) {
+      context.message = { role, queued, content: "问题 <script>" };
+      const bubble = vm.runInContext("renderAskBubble(message)", context);
+      if (role === "user" && queued) {
+        assert.match(bubble, /<\/div><div class="ask-chat-queued" role="status">/u);
+        assert.match(bubble, /排队中，等待主模型空闲/u);
+        assert.match(bubble, /class="typing-dots" aria-hidden="true"/u);
+      } else {
+        assert.doesNotMatch(bubble, /ask-chat-queued/u);
+      }
+      assert.doesNotMatch(bubble, /<script>/u);
+    }
+  }
+});
+
+test("ask queue animations follow page visibility and retain narrow text wrapping", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function updateAskAnimationVisibility"), html.indexOf("function getStoredAskDialogState"));
+  const classes = new Set<string>();
+  const document = { visibilityState: "hidden" };
+  const context = vm.createContext({
+    document,
+    askChatBackdrop: { classList: { toggle: (name: string, enabled: boolean) => enabled ? classes.add(name) : classes.delete(name) } },
+  });
+  vm.runInContext(source, context);
+  vm.runInContext("updateAskAnimationVisibility()", context);
+  assert.equal(classes.has("page-hidden"), true);
+  document.visibilityState = "visible";
+  vm.runInContext("updateAskAnimationVisibility()", context);
+  assert.equal(classes.has("page-hidden"), false);
+  document.visibilityState = "hidden";
+  vm.runInContext("updateAskAnimationVisibility()", context);
+  assert.equal(classes.has("page-hidden"), true);
+  vm.runInContext("askChatBackdrop = null; updateAskAnimationVisibility()", context);
+  assert.match(html, /document\.addEventListener\("visibilitychange", \(\) => \{\s*updateAskAnimationVisibility\(\);/u);
+  assert.match(html, /updateAskAnimationVisibility\(\);/u);
+  assert.match(html, /startAutoRefresh\(\);/u);
+  assert.match(html, /\.ask-chat-backdrop \.ask-chat-queued \.typing-dots span\s*\{\s*animation-play-state: paused;/u);
+  assert.match(html, /\.ask-chat-backdrop\.visible:not\(\.page-hidden\) \.ask-chat-queued \.typing-dots span\s*\{\s*animation-play-state: running;/u);
+  assert.match(html, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.ask-chat-backdrop \.ask-chat-queued \.typing-dots span\s*\{\s*animation: none;/u);
+  assert.match(html, /\.ask-chat-queued > span:last-child\s*\{[^}]*min-width: 0;[^}]*overflow-wrap: anywhere;/u);
+  assert.match(html, /\.ask-chat-message\.user\s*\{[^}]*align-items: flex-end;/u);
+  assert.match(html, /\.ask-chat-queued\s*\{[^}]*color: var\(--vscode-descriptionForeground\);/u);
+});
+
 test("scrolls new ask bubbles and reopened dialogs to the bottom without disturbing unchanged history", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   assert.match(html, /askChatMessages.addEventListener\("load", scrollAskToBottom, true\)/u);

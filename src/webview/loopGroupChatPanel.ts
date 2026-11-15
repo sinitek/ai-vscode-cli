@@ -797,6 +797,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      }
 
 	      const ASK_WAITING_LABEL = "${escapeJsString(strings.askChatWaiting)}";
+	      const ASK_QUEUED_LABEL = "${escapeJsString(strings.askChatQueued)}";
 	      const ASK_EMPTY_LABEL = "${escapeJsString(strings.askChatEmpty)}";
 
 	      function askEscape(value) {
@@ -850,13 +851,21 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const content = askEscape(message.content || "");
 	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body" data-markdown-source="' + content + '">' +
 	          content +
-	          "</div></article>";
+	          "</div>" + (role === "user" && message.queued === true
+	            ? '<div class="ask-chat-queued" role="status"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>' + askEscape(ASK_QUEUED_LABEL) + '</span></div>'
+	            : "") + "</article>";
 	      }
 
 	      function renderAskWaiting() {
 	        return '<article class="ask-chat-message waiting"><div class="ask-chat-bubble ask-chat-waiting" role="status" aria-label="' +
 	          askEscape(ASK_WAITING_LABEL) +
 	          '"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span></div></article>';
+	      }
+
+	      function updateAskAnimationVisibility() {
+	        if (askChatBackdrop) {
+	          askChatBackdrop.classList.toggle("page-hidden", document.visibilityState !== "visible");
+	        }
 	      }
 
 	      function scrollAskToBottom() {
@@ -1545,6 +1554,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }, { passive: true });
 	      }
 	      document.addEventListener("visibilitychange", () => {
+	        updateAskAnimationVisibility();
+	      });
+	      document.addEventListener("visibilitychange", () => {
 	        if (shouldAutoRefresh()) {
 	          requestRefresh();
 	        }
@@ -1562,6 +1574,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
 	      });
+	      updateAskAnimationVisibility();
           mountGroupChatMarkdown(document);
 	      startAutoRefresh();
 ${orchestratorClarificationDialogScript()}
@@ -1604,7 +1617,7 @@ function renderPanelActions(
     state.task.status !== "completed"
       ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
       : "",
-    state.task.canContinue && !state.task.canStop
+    state.task.canContinue
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
       : "",
   ].join("");
@@ -1676,7 +1689,7 @@ function loopPlusActivityText(
     case "reviewing":
       return formatTemplate(strings.loopPlusActivityReviewing, {
         subtask: [projection.currentReview, ...projection.reviewQueue]
-          .filter((item): item is LoopPlusPanelReviewItem => item !== null)
+          .filter((item): item is LoopPlusPanelReviewItem => item !== null && (projection.activeReviewEventIds ?? []).includes(item.eventId))
           .map((item) => loopPlusSubtaskLabel(state, item.subtaskId))
           .join("、"),
       });

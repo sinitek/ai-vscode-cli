@@ -100,6 +100,9 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           port.appendDebugEvent(event);
         },
         onTaskListUpdate: (items: { text: string; done: boolean }[]) => {
+          if (!port.isCurrentRunActive()) {
+            return;
+          }
           port.sendPanelMessage({ type: "taskListUpdate", items, tabId: port.tabId });
         },
         onSessionId: (newSessionId: string) => {

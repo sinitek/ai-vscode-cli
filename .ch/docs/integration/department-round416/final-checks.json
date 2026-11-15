@@ -1,0 +1,16 @@
+{
+  "first_full_status_after_draft_commit": {
+    "result": "failed clean-worktree assertion",
+    "only_untracked_path": "node_modules",
+    "cause": "directory-only ignore rule did not ignore temporary dependency symlink",
+    "remediation": "unlink only this attempt-created symlink; installed dependency target preserved"
+  },
+  "implementation_source_changes_after_build_06": false,
+  "expected_merge_parents": [
+    "c53f9defc811e5fddcf87e2d052ab0c6069c3087",
+    "8f396c1b809c43320aad9c4c43eb05c9cf2a3c58"
+  ],
+  "final_candidate_and_origin_whitespace_check": "both exit 0 after lossless evidence compression; evidence-only correction follows",
+  "source_manifest_recheck": "1413 entries matched after final tests",
+  "historical_candidate_modified": false
+}

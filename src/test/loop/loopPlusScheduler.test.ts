@@ -59,6 +59,44 @@ test("refreshes restored concurrency from host policy without losing queued work
   assert.throws(() => createLoopPlusScheduler({ snapshot: invalid, maxConcurrency: 10 }), /Invalid Loop\+ scheduler snapshot/);
 });
 
+test("updates admission capacity without changing queues or starting work outside a host transition", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
+  scheduler.dispatch(Array.from({ length: 10 }, (_, index) => spec(`item-${index}`)));
+  const before = scheduler.snapshot();
+  scheduler.updateMaxConcurrency(10);
+  assert.deepEqual(scheduler.snapshot(), { ...before, maxConcurrency: 10, seq: before.seq + 1 });
+  assert.equal(scheduler.promotePending().started.length, 4);
+  const raised = scheduler.snapshot();
+  scheduler.updateMaxConcurrency(10);
+  assert.deepEqual(scheduler.snapshot(), raised);
+  for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(() => scheduler.updateMaxConcurrency(invalid), /Invalid Loop\+ maxConcurrency/);
+    assert.deepEqual(scheduler.snapshot(), raised);
+  }
+});
+
+test("lowered admission capacity drains running reservations before promoting pending work", () => {
+  for (const restored of [false, true]) {
+    let scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
+    scheduler.dispatch(Array.from({ length: 10 }, (_, index) => spec(`item-${index}`)));
+    if (restored) {
+      scheduler = createLoopPlusScheduler({ snapshot: scheduler.snapshot(), maxConcurrency: 2 });
+    } else {
+      scheduler.updateMaxConcurrency(2);
+    }
+    for (let index = 0; index < 5; index += 1) {
+      const result = scheduler.finish({ subtaskId: `item-${index}`, attemptId: `item-${index}-1`, outcome: "completed" });
+      assert.equal(result.started.length, index < 4 ? 0 : 1);
+      assert.equal(result.view.running.length, Math.max(5 - index, 2));
+      const snapshot = scheduler.snapshot();
+      assert.equal(snapshot.maxConcurrency, Math.max(5 - index, 2));
+      assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot }));
+    }
+    assert.equal(scheduler.snapshot().pending.length, 3);
+    assert.equal(scheduler.snapshot().seenAttempts.filter((item) => item.disposition === "open").length, 5);
+  }
+});
+
 test("reviews the first finished sibling immediately while the other keeps running", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   const dispatched = scheduler.dispatch([spec("alpha"), spec("beta")]);

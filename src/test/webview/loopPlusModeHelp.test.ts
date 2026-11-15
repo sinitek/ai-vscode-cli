@@ -4,11 +4,11 @@ import { test } from "node:test";
 import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings, WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
 
-function buildHtml(): string {
+function buildHtml(helpModesMarkdown: string = WEBVIEW_STRINGS.helpModesMarkdown): string {
   return buildWebviewStaticHtml({
     cspSource: "vscode-resource://test-authority",
     nonce: "loop-plus-help-nonce",
-    i18n: getWebviewStrings(),
+    i18n: { ...getWebviewStrings(), helpModesMarkdown },
     cliOptions: "",
     markedScript: "",
     webviewStyles: "",
@@ -43,19 +43,40 @@ function interactiveModeSelects(html: string): string[] {
 
 test("使用固定中文帮助文案", () => {
   assert.ok(Object.keys(WEBVIEW_STRINGS).length > 0);
-  assert.equal(WEBVIEW_STRINGS.helpModeVibe, "Vibe 模式，直接执行目标 cli 任务");
+  assert.match(WEBVIEW_STRINGS.helpModesMarkdown, /^\| 模式 \| 使用说明 \|/);
   assert.equal(getWebviewStrings().toolSettingsNotificationsTab, "通知设置");
 });
 
-test("渲染简洁准确的中文模式说明", () => {
+test("将中文模式说明的 Markdown 渲染为两列表格", () => {
   const chinese = helpModesPanel(buildHtml());
 
-  const descriptions = [
-    "Vibe 模式，直接执行目标 cli 任务",
-    "Loop 模式，主模型相当于任务分发的项目经理调度多个子模型共用完成任务",
-    "Loop+ 模式（主推），主模型除了分发任务还充当组长角色进行功能验收，如果发现有缺陷会再发起整改",
-  ];
-  assert.deepEqual([...chinese.matchAll(/<li>(.*?)<\/li>/g)].map((match) => match[1]), descriptions);
+  assert.match(chinese, /<table>[\s\S]*<thead>[\s\S]*<tbody>/);
+  assert.deepEqual([...chinese.matchAll(/<th>(.*?)<\/th>/g)].map((match) => match[1]), ["模式", "使用说明"]);
+  assert.deepEqual([...chinese.matchAll(/<td>(.*?)<\/td>/g)].map((match) => match[1]), [
+    "<strong>Vibe</strong>", "直接执行目标 CLI 任务。",
+    "<strong>Loop</strong>", "主模型作为项目经理分发任务，调度多个子模型共同完成任务。",
+    "<strong>Loop+</strong>", "主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。",
+  ]);
+  assert.doesNotMatch(chinese, /<ul>|<li>|\| ---/);
+  assert.match(chinese, /<\/table>\s*<p><a href="https:\/\/www\.yuque\.com\/hunjfang\/ul749m\/pkxei0ie9gc8bmim\?singleDoc#">《携宁 CLI 助手 - 教程》：点击进入详细教程<\/a><\/p>/);
+  assert.doesNotMatch(chinese, /\[object Promise\]|undefined/);
+});
+
+test("帮助 Markdown 将原始 HTML 转为文本并拒绝可执行链接", () => {
+  const panel = helpModesPanel(buildHtml([
+    '<img src="x" onerror="alert(1)">',
+    '<script>alert(1)</script>',
+    '[不安全](javascript:alert%281%29)',
+    '[编码协议](jav&#x61;script:alert%281%29)',
+    '[教程](https://example.com/guide?first=1&second=2 "教程说明")',
+  ].join("\n\n")));
+
+  assert.match(panel, /&lt;img src=&quot;x&quot; onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.match(panel, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.doesNotMatch(panel, /<img|<script|href="(?:javascript|jav&#x61;script):/i);
+  assert.match(panel, /<p>不安全<\/p>/);
+  assert.match(panel, /<p>编码协议<\/p>/);
+  assert.match(panel, /<a href="https:\/\/example\.com\/guide\?first=1&amp;second=2" title="教程说明">教程<\/a>/);
 });
 
 test("使用说明仅保留模式说明，通知授权和四个默认开启的开关位于工具设置", () => {

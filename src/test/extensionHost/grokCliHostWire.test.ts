@@ -109,6 +109,9 @@ function createHostHarness(options: {
   humanInteractionEnabled?: boolean;
   requestHumanInteraction?: RuntimeDeps["requestHumanInteraction"];
 } ) {
+  const tabs = new Map<string, { sessionId: string | null; cli: CliName }>([
+    ["tab-grok", { sessionId: "local-session", cli: "grok" }],
+  ]);
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
@@ -141,8 +144,10 @@ function createHostHarness(options: {
   const deps: RuntimeDeps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
     activeRunsByTabId,
-    adoptSessionId: (_cli, sessionId) => {
+    adoptSessionId: (_cli, sessionId, tabId) => {
       adopted.push(sessionId);
+      const tab = tabs.get(tabId ?? "");
+      if (tab) tab.sessionId = sessionId;
     },
     applyProcessTitle: () => undefined,
     applyThinkingWorkspaceFiles: () => undefined,
@@ -156,7 +161,7 @@ function createHostHarness(options: {
     buildTaskRunCompletionText: (status) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => ({ sessionId: "local-session" }),
+    getConversationTabById: (tabId) => tabs.get(tabId),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "xhigh",
     getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled === true,

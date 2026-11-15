@@ -127,10 +127,16 @@ test("exec plan completed archives use month directories in repo and scaffold", 
   assert.deepEqual(flatCompletedPlans, []);
 });
 
-const executionPlanTypes = ["feature", "bugfix", "refactor", "chore", "docs", "test", "perf"];
+const executionPlanTypes = ["feature", "bugfix", "refactor", "perf"];
 const harnessRoots = ["", "media/workspace-scaffold/"];
 
-test("execution plan typed contracts keep strict names, seven types and real cross-type splits", () => {
+function assertExcludedExecutionPlanTypes(content: string, relativePath: string): void {
+  assert.match(content, /`test`、`chore`、`doc`（含 `docs`）(?:类型)?任务[^。\n]*不在[^。\n]*创建或归档计划/u, relativePath);
+  assert.match(content, /`test`、`chore`、`doc`（含 `docs`）[^。\n]*不参与(?:计划)?拆分/u, relativePath);
+  assert.match(content, /(?:测试、验证和文档同步要求仍需执行|不免除(?:相应)?(?:测试、)?验证和文档同步要求)/u, relativePath);
+}
+
+test("execution plan typed contracts keep strict names, four allowed types and real cross-type splits", () => {
   for (const prefix of harnessRoots) {
     const relativePath = `${prefix}.ch/docs/exec-plans/README.md`;
     const content = readRepoText(relativePath);
@@ -140,26 +146,31 @@ test("execution plan typed contracts keep strict names, seven types and real cro
     assert.deepEqual(tableTypes, executionPlanTypes, relativePath);
     assert.match(content, /(?:不要使用|不得缩写为) `feat` 或 `fix`/u, relativePath);
     assert.match(content, /`bugfix`[^\n]*已发布版本/u, relativePath);
-    assert.match(content, /多个实质工作类型[^。]*按类型分别(?:建立计划文件|建计划)/u, relativePath);
+    assert.match(content, /多个允许的实质工作类型[^。]*按允许类型分别(?:建立计划文件|建计划)/u, relativePath);
     assert.match(content, /关联计划[^。]*具体相对路径[^。]*共同背景[^。]*依赖/u, relativePath);
     assert.match(content, /(?:禁止|不)[^。]*复制[^。]*混合正文/u, relativePath);
     assert.match(content, /实际跨类型工作不得[^。]*附带事项/u, relativePath);
-    assert.match(content, /仅记录验证证据[^。]*(?:不构成|不等于)[^。]*测试开发/u, relativePath);
+    assertExcludedExecutionPlanTypes(content, relativePath);
+    assert.match(content, /不得改名为允许类型[^。]*绕过排除规则/u, relativePath);
     assert.match(content, /真实状态/u, relativePath);
     assert.match(content, /(?:不因关联关系伪造完成|拆分不伪造完成)/u, relativePath);
     assert.match(content, /不(?:得)?改变既有阻塞状态/u, relativePath);
     const examplePaths = Array.from(
-      content.matchAll(/`(active\/\d{4}-\d{2}-\d{2}-(?:feature|test)-[a-z0-9]+(?:-[a-z0-9]+)*\.md)`/gu),
+      content.matchAll(/`(active\/\d{4}-\d{2}-\d{2}-[a-z]+-[a-z0-9]+(?:-[a-z0-9]+)*\.md)`/gu),
       (match) => match[1],
     );
     assert.ok(examplePaths.some((planPath) => planPath.includes("-feature-")), relativePath);
-    assert.ok(examplePaths.some((planPath) => planPath.includes("-test-")), relativePath);
+    assert.ok(examplePaths.some((planPath) => planPath.includes("-perf-")), relativePath);
+    for (const planPath of examplePaths) {
+      const planType = planPath.match(/^active\/\d{4}-\d{2}-\d{2}-([a-z]+)-/u)?.[1];
+      assert.ok(planType && executionPlanTypes.includes(planType), `${relativePath}: ${planPath}`);
+    }
     assert.match(content, /互链[^。]*依赖/u, relativePath);
-    assert.match(content, /(?:只运行|只执行)既有测试[^。]*不额外创建 `test` 计划/u, relativePath);
+    assert.match(content, /回归测试开发和文档同步直接记入功能计划，不创建 `test` 或 `doc` \/ `docs` 计划/u, relativePath);
   }
 });
 
-test("execution plan typed contracts retain skill workflow and independent state", () => {
+test("execution plan typed contracts retain four-type skill scope, exclusions and independent state", () => {
   for (const prefix of harnessRoots) {
     const relativePath = `${prefix}.agents/skills/execution-plan/SKILL.md`;
     const content = readRepoText(relativePath);
@@ -167,27 +178,30 @@ test("execution plan typed contracts retain skill workflow and independent state
     assert.ok(content.includes(".ch/docs/exec-plans/TEMPLATE.md"), relativePath);
     assert.ok(content.includes("active/YYYY-MM-DD-<type>-<kebab-case-slug>.md"), relativePath);
     assert.match(content, /日期后只能(?:有|出现)一个 type/u, relativePath);
-    for (const planType of executionPlanTypes) {
-      assert.ok(content.includes(`\`${planType}\``), `${relativePath}: ${planType}`);
-    }
+    const allowedScope = content.match(/^仅适用于 (.+?) 类型/gmu)?.[0] ?? "";
+    const scopeTypes = Array.from(allowedScope.matchAll(/`([a-z]+)`/gu), (match) => match[1]);
+    assert.deepEqual(scopeTypes, executionPlanTypes, relativePath);
+    assertExcludedExecutionPlanTypes(content, relativePath);
+    assert.match(content, /不得改名为允许类型绕过排除规则/u, relativePath);
     assert.match(content, /不要使用 `feat` (?:\/|或) `fix`/u, relativePath);
-    assert.match(content, /多个实质工作类型[^。;；]*按类型分别建计划/u, relativePath);
+    assert.match(content, /多个允许的实质工作类型[^。;；]*按允许类型分别建计划/u, relativePath);
     assert.match(content, /关联计划[^。]*具体(?:相对)?路径[^。]*依赖/u, relativePath);
     assert.match(content, /目标、范围、验收、验证和真实状态/u, relativePath);
     assert.match(content, /不伪造完成[^。]*不改变既有阻塞/u, relativePath);
     assert.match(content, /(?:禁止|不)[^。]*复制[^。]*混合正文/u, relativePath);
-    assert.match(content, /仅记录验证执行证据不[^。]*开发计划/u, relativePath);
+    assert.match(content, /测试、维护和文档工作直接记录在所属计划，不拆出上述类型的计划/u, relativePath);
     assert.match(content, /失败[^。\n]*处理结论/u, relativePath);
   }
 });
 
-test("execution plan typed contracts preserve template handoff and verification fields", () => {
+test("execution plan typed contracts preserve four-type templates, exclusions, handoff and verification fields", () => {
   for (const prefix of harnessRoots) {
     const relativePath = `${prefix}.ch/docs/exec-plans/TEMPLATE.md`;
-    const content = readRepoText(relativePath);
+    const content = readRepoText(relativePath).replace(/\r\n/g, "\n");
     assert.ok(content.includes("YYYY-MM-DD-<type>-<kebab-case-slug>.md"), relativePath);
     const typeLine = content.match(/^- 类型：(.+)$/mu)?.[1];
     assert.deepEqual(typeLine?.split(" / "), executionPlanTypes, relativePath);
+    assertExcludedExecutionPlanTypes(content, relativePath);
     for (const field of [
       "日期", "状态", "关联计划", "owner", "claimed_at", "claim_ttl", "handoff_to",
       "单元自测命令", "单元测试新增/更新", "单元自测结果", "失败处理记录", "功能清单", "相关文档同步",

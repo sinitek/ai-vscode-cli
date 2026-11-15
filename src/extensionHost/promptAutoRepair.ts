@@ -3,7 +3,7 @@ import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 
 type PromptAutoRepairOptions = {
   execute: (input: PromptRunInput, target: PromptRunTarget) => Promise<void>;
-  repairCommand: () => Promise<boolean>;
+  repairCommand: (error: unknown) => Promise<boolean>;
   startFreshSession: () => Promise<void>;
   isTargetCurrent: () => boolean;
   onRepairStarted: () => void;
@@ -37,7 +37,7 @@ export function createPromptAutoRepairController() {
           options.onRepairStarted();
           let repaired = false;
           try {
-            repaired = await options.repairCommand();
+            repaired = await options.repairCommand(error);
           } catch (repairError) {
             options.onRepairFailed(repairError);
           }

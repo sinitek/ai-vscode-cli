@@ -32,6 +32,7 @@ function harness() {
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     normalizeSupplementalRequirement: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
     appendSupplementalRequirement: (previous, next) => [...(previous ?? []), next],
+    recordPromptHistory: () => undefined,
     appendSupplementalRequirementToCommunication: (task) => { effects.push(["supplement", task.id]); },
     readTaskRecord: (id) => data.records.get(id) ?? null,
     readDepartmentLeaderTaskIds: (rootId, moduleId) => fixtureDepartmentLeaderTaskIds(data.records, rootId, moduleId),

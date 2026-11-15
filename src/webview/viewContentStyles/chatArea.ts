@@ -72,5 +72,29 @@ export const CHAT_AREA_STYLES = `      /* Chat Area */
         max-width: 100%;
         padding-bottom: 10px;
       }
+      .conversation-messages-loading {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+      }
+      .conversation-messages-loading-spinner {
+        width: 14px;
+        height: 14px;
+        flex: 0 0 14px;
+        border: 2px solid var(--vscode-widget-border);
+        border-top-color: var(--vscode-progressBar-background, var(--vscode-focusBorder));
+        border-radius: 50%;
+        box-sizing: border-box;
+        animation: conversationMessagesSpin 0.8s linear infinite;
+      }
+      @keyframes conversationMessagesSpin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .conversation-messages-loading-spinner { animation: none; }
+      }
 
 `;

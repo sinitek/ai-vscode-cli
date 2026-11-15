@@ -65,13 +65,49 @@ test("keeps ask history and settles only the final answer", () => {
 });
 
 test("persists queued questions and clears the waiting state when settled", () => {
-  const thread = { ...beginLoopAskTurn(createEmptyLoopAskThread(), "等待的问题", 1, "queued"), queued: true };
+  const started = beginLoopAskTurn(createEmptyLoopAskThread(), "等待的问题", 1, "queued");
+  const thread = { ...started, queued: true, messages: started.messages.map((bubble) => ({ ...bubble, queued: true })) };
   const restored = parseLoopAskThread(JSON.stringify(thread));
   assert.equal(restored?.queued, true);
+  assert.equal(restored?.messages[0]?.queued, true);
   const settled = settleLoopAskTurn(thread, { answer: "已回答", now: 2, noticeId: "answer" });
   assert.equal(settled.running, false);
   assert.notEqual(settled.queued, true);
+  assert.equal(settled.messages.some((bubble) => bubble.queued), false);
   assert.notEqual(parseLoopAskThread(JSON.stringify({ ...thread, running: false }))?.queued, true);
+  assert.equal(parseLoopAskThread(JSON.stringify({ ...thread, running: false }))?.messages.some((bubble) => bubble.queued), false);
+});
+
+test("clears stale queue indicators on recovery and retention keeps only visible queued messages", () => {
+  const restored = parseLoopAskThread(JSON.stringify({
+    version: 1,
+    running: false,
+    dialogOpen: true,
+    updatedAt: 4,
+    messages: [{ id: "old-queued", role: "user", content: "旧排队消息", createdAt: 1, queued: true }],
+  }));
+  assert.equal(restored?.running, false);
+  assert.equal(restored?.messages[0]?.queued, undefined);
+
+  const capped = parseLoopAskThread(JSON.stringify({
+    version: 1,
+    running: true,
+    queued: true,
+    dialogOpen: true,
+    updatedAt: 5,
+    messages: [
+      { id: "cropped-queued", role: "user", content: "已裁剪的问题", createdAt: 1, queued: true },
+      ...Array.from({ length: 200 }, (_item, index) => ({
+        id: `history-${index}`,
+        role: "user",
+        content: `历史 ${index}`,
+        createdAt: index + 2,
+      })),
+    ],
+  }));
+  assert.equal(capped?.messages.length, 200);
+  assert.equal(capped?.messages.some((bubble) => bubble.id === "cropped-queued"), false);
+  assert.equal(capped?.messages.some((bubble) => bubble.queued), false);
 });
 
 test("projects only new or updated thinking and ignores unchanged or tool text", () => {

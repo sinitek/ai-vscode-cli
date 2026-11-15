@@ -1,4 +1,5 @@
 import { DIALOG_SHELL_STYLES } from "../modalComponents";
+import { getMarkdownStyles } from "./markdown";
 
 export const ACCEPTANCE_PLAN_DIALOG_STYLES = `
       [id="acceptancePlanOverlay"] { z-index: 120; }
@@ -750,7 +751,39 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
       }
 
       .help-modal {
-        height: 600px;
+        width: min(640px, 90vw);
+      }
+${getMarkdownStyles(".help-section")}
+      .help-section {
+        overflow-wrap: anywhere;
+      }
+      .help-section table {
+        width: 100%;
+        table-layout: fixed;
+        text-align: left;
+        line-height: 1.7;
+        margin-bottom: 16px;
+      }
+      .help-section th,
+      .help-section td {
+        padding: 12px;
+        overflow-wrap: anywhere;
+      }
+      .help-section th:first-child,
+      .help-section td:first-child {
+        box-sizing: border-box;
+        width: 100px;
+      }
+      .help-section a {
+        color: var(--vscode-textLink-foreground);
+        text-underline-offset: 3px;
+      }
+      .help-section a:hover {
+        color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+      }
+      .help-section a:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
       }
       .notification-authorization-actions {
         display: flex;
@@ -1130,7 +1163,8 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         width: 100%;
       }
       .session-label {
-        font-weight: 600;
+        font-size: inherit;
+        font-weight: 400;
         flex: 1;
         min-width: 0;
         display: -webkit-box;
@@ -1139,7 +1173,7 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         overflow: hidden;
         white-space: normal;
         overflow-wrap: anywhere;
-        line-height: 1.35;
+        line-height: 1.5;
       }
       .session-title-row {
         display: flex;
@@ -1264,14 +1298,15 @@ ${ACCEPTANCE_PLAN_DIALOG_STYLES}
         min-width: 0;
       }
       .prompt-preview {
-        font-weight: 600;
+        font-size: inherit;
+        font-weight: 400;
         display: -webkit-box;
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
         white-space: normal;
         overflow-wrap: anywhere;
-        line-height: 1.35;
+        line-height: 1.5;
       }
       .prompt-meta {
         font-size: 12px;

@@ -282,6 +282,17 @@ class FakeElement {
   replaceChildren(...children: FakeElement[]): void {
     this.children.splice(0, this.children.length);
     this.innerHtmlValue = "";
+    children.forEach((child) => {
+      if (child.tagName === "#DOCUMENT-FRAGMENT") {
+        [...child.children].forEach((fragmentChild) => this.appendChild(fragmentChild));
+        child.children.splice(0, child.children.length);
+        return;
+      }
+      this.appendChild(child);
+    });
+  }
+
+  append(...children: FakeElement[]): void {
     children.forEach((child) => this.appendChild(child));
   }
 
@@ -421,6 +432,9 @@ function createFakeDocument(): any {
     createElement(tagName: string): FakeElement {
       return new FakeElement(tagName);
     },
+    createDocumentFragment(): FakeElement {
+      return new FakeElement("#document-fragment");
+    },
     querySelector(selector: string): FakeElement | null {
       return document.querySelectorAll(selector)[0] || null;
     },
@@ -510,7 +524,24 @@ function runLatestTimer(fakeWindow: { timers: Map<number, Listener>; timerDelays
     .at(-1);
   assert.ok(latest, "Expected a pending timer");
   fakeWindow.timers.delete(latest[0]);
+  fakeWindow.timerDelays.delete(latest[0]);
   latest[1]();
+}
+
+function runNextRenderTimer(fakeWindow: { timers: Map<number, Listener>; timerDelays: Map<number, number> }): void {
+  const next = Array.from(fakeWindow.timers.entries()).find(([id]) => fakeWindow.timerDelays.get(id) === 0);
+  assert.ok(next, "Expected a pending render timer");
+  fakeWindow.timers.delete(next[0]);
+  fakeWindow.timerDelays.delete(next[0]);
+  next[1]();
+}
+
+function runRenderTimers(fakeWindow: { timers: Map<number, Listener>; timerDelays: Map<number, number> }): void {
+  for (let count = 0; count < 1000; count += 1) {
+    if (!Array.from(fakeWindow.timers.keys()).some((id) => fakeWindow.timerDelays.get(id) === 0)) return;
+    runNextRenderTimer(fakeWindow);
+  }
+  assert.fail("Render timers did not settle");
 }
 
 function createRuntimeHarness(
@@ -2973,6 +3004,7 @@ test("live appends reuse every unchanged history bubble and expanded instruction
     { id: "command-1", role: "trace", content: "exec first", merge: false },
     { id: "command-2", role: "trace", content: "exec second", merge: false },
   ] });
+  runRenderTimers(window);
   const messages = document.getElementById("messages");
   const historicalNodes = history.map((message) => api.findRenderedMessageElement(message.id));
   const group = messages.querySelector("details.instruction-group");
@@ -3180,17 +3212,21 @@ test("cached message totals stay bounded and result-only changes invalidate rest
       ...Array.from({ length: 2500 }, (_, index) => ({ id: `user-${index}`, role: "user", content: tab.id })),
       { id: "trace", role: "trace", content: "exec pwd" },
     ] });
+    runRenderTimers(window);
   }
   const firstUser = api.findRenderedMessageElement("user-0");
   assert.ok(api.findRenderedMessageElement("trace"));
   select("tab-2");
+  runRenderTimers(window);
   select("tab-3");
   assert.equal(api.renderedConversationViewCacheSize(), 1);
   api.state.onlyShowFinalResults = true;
   select("tab-2");
+  runRenderTimers(window);
   assert.ok(api.findRenderedMessageElement("user-0"));
   assert.equal(api.findRenderedMessageElement("trace"), null);
   select("tab-1");
+  runRenderTimers(window);
   assert.notEqual(api.findRenderedMessageElement("user-0"), firstUser);
   assert.equal(api.findRenderedMessageElement("trace"), null);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
@@ -3286,6 +3322,129 @@ test("message lookup caches are bounded to visible messages and reset across fil
   assert.equal(api.renderedMessageCacheSize(), 0);
   assert.equal(api.findRenderedMessageElement("shared-id"), null);
   assert.equal(document.getElementById("messages").children.length, 0);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("cold tab switches show a loading state until its first message snapshot arrives", () => {
+  const { api, document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    conversationTabs: {
+      activeTabId: "tab-1",
+      tabs: [
+        { id: "tab-1", cli: "codex", sessionId: "first" },
+        { id: "tab-2", cli: "codex", sessionId: "second" },
+      ],
+    },
+  }) });
+
+  conversationTabByLabel(document, "Codex2")?.click();
+
+  const messages = document.getElementById("messages");
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-2");
+  assert.equal(messages.querySelector(".conversation-messages-loading")?.children[1].textContent, "正在加载对话");
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [] });
+  assert.equal(messages.querySelector(".conversation-messages-loading"), null);
+  assert.equal(messages.getAttribute("aria-busy"), null);
+});
+
+test("large conversations render in yielding batches and keep every message", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const history = Array.from({ length: 120 }, (_, index) => ({
+    id: `history-${index}`,
+    role: index % 2 === 0 ? "user" : "assistant",
+    content: `历史消息 ${index}`,
+  }));
+
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: history });
+
+  const messages = document.getElementById("messages");
+  assert.equal(messages.querySelector(".conversation-messages-loading")?.children[1].textContent, "正在加载对话");
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  assert.equal(messages.querySelectorAll(".message").length, 0);
+  runRenderTimers(window);
+  assert.equal(messages.querySelectorAll(".message").length, history.length);
+  assert.equal(messages.getAttribute("aria-busy"), null);
+  assert.equal(api.renderedMessageCacheSize(), history.length);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("switching tabs during a history render cancels obsolete batches and preserves the next snapshot", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    conversationTabs: {
+      activeTabId: "tab-1",
+      tabs: [
+        { id: "tab-1", cli: "codex", sessionId: "first" },
+        { id: "tab-2", cli: "codex", sessionId: "second" },
+      ],
+    },
+  }) });
+  api.state.onlyShowFinalResults = false;
+  const history = Array.from({ length: 120 }, (_, index) => ({
+    id: `history-${index}`, role: "user", content: `历史消息 ${index}`,
+  }));
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: history });
+  runNextRenderTimer(window);
+
+  document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[1].click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-2");
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [
+    { id: "next-message", role: "user", content: "新标签的完整内容" },
+  ] });
+  runRenderTimers(window);
+
+  const messages = document.getElementById("messages");
+  assert.equal(messages.querySelectorAll(".message").length, 1);
+  assert.ok(api.findRenderedMessageElement("next-message"));
+  assert.equal(api.findRenderedMessageElement("history-0"), null);
+  assert.equal(messages.getAttribute("aria-busy"), null);
+
+  document.getElementById("conversationTabs")
+    .querySelectorAll(".conversation-tab")
+    .find((tab: FakeElement) => !tab.classList.contains("active"))
+    ?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  runRenderTimers(window);
+  assert.equal(messages.querySelectorAll(".message").length, history.length);
+  assert.ok(api.findRenderedMessageElement("history-119"));
+  assert.equal(api.findRenderedMessageElement("next-message"), null);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("long instruction runs yield between batches while keeping their group and standalone instructions", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  api.state.onlyShowFinalResults = false;
+  const commands = Array.from({ length: 120 }, (_, index) => ({
+    id: `command-${index}`, role: "trace", content: `exec command-${index}`,
+  }));
+  const history = [
+    { id: "standalone-start", role: "trace", content: "exec start" },
+    { id: "request", role: "user", content: "检查这些命令" },
+    ...commands,
+    { id: "reply", role: "assistant", content: "执行完成", codexFinalAnswer: true },
+    { id: "standalone-end", role: "trace", content: "exec finish" },
+  ];
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: history });
+  runNextRenderTimer(window);
+  assert.equal(api.renderedMessageCacheSize(), 48);
+  assert.equal(document.getElementById("messages").getAttribute("aria-busy"), "true");
+  runRenderTimers(window);
+  const messages = document.getElementById("messages");
+  const groups = messages.querySelectorAll("details.instruction-group");
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].dataset.instructionCount, "120");
+  assert.equal(groups[0].querySelector(".instruction-group-body").children.length, 120);
+  assert.equal(messages.querySelectorAll(".message").length, history.length);
+  assert.equal(api.findRenderedMessageElement("standalone-start").parentNode, messages);
+  assert.equal(api.findRenderedMessageElement("standalone-end").parentNode, messages);
+  groups[0].querySelector("summary").click();
+  api.renderMessages({ incremental: true });
+  assert.equal(messages.querySelector("details.instruction-group"), groups[0]);
+  assert.equal(groups[0].open, true);
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 

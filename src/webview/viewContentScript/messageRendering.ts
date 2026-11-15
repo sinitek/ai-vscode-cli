@@ -11,6 +11,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       var renderedConversationViews = new Map();
       const MAX_CACHED_CONVERSATION_VIEWS = 2;
       const MAX_CACHED_CONVERSATION_MESSAGES = 5000;
+      const MESSAGE_RENDER_BATCH_SIZE = 48;
+      var messageRenderGeneration = 0;
+      var messageRenderPending = false;
       var thinkingBubbleResizeObserver = typeof ResizeObserver === "function"
         ? new ResizeObserver((entries) => entries.forEach((entry) => syncThinkingBubbleViewport(entry.target, false)))
         : null;
@@ -504,6 +507,28 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             renderedInstructionGroupsByKey.delete(key);
           }
         });
+      }
+
+      function showConversationMessagesLoading() {
+        if (!elements.messages || elements.messages.querySelector(".conversation-messages-loading")) {
+          return;
+        }
+        const loading = document.createElement("div");
+        loading.className = "conversation-messages-loading";
+        loading.setAttribute("role", "status");
+        loading.setAttribute("aria-live", "polite");
+        const spinner = document.createElement("span");
+        spinner.className = "conversation-messages-loading-spinner";
+        spinner.setAttribute("aria-hidden", "true");
+        const label = document.createElement("span");
+        label.textContent = "正在加载对话";
+        loading.append(spinner, label);
+        elements.messages.replaceChildren(loading);
+        elements.messages.setAttribute("aria-busy", "true");
+      }
+
+      function clearConversationMessagesLoading() {
+        elements.messages.removeAttribute("aria-busy");
       }
 
       function forceCollapseToolResultBubbles() {
@@ -1098,7 +1123,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         }
         const previousKey = renderedConversationKey;
         const previousTabId = previousKey ? JSON.parse(previousKey)[1] : null;
-        if (previousTabId && getConversationTabSummary(previousTabId)
+        if (!messageRenderPending && previousTabId && getConversationTabSummary(previousTabId)
           && renderedMessageCount <= MAX_CACHED_CONVERSATION_MESSAGES) {
           renderedConversationViews.set(previousKey, {
             tabId: previousTabId,
@@ -1152,11 +1177,15 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function renderMessages(options = {}) {
         try {
+          const generation = ++messageRenderGeneration;
           const conversationKey = getMessageConversationKey();
           const restoredView = activateRenderedConversation(conversationKey);
+          const wasRendering = messageRenderPending;
+          messageRenderPending = false;
           const visibleMessages = getVisibleMessages();
           const visibleIds = visibleMessages.map((entry) => entry.message.id).filter(Boolean);
           const reuseMessages = options.incremental === true
+            && !wasRendering
             && renderedConversationKey === conversationKey
             && new Set(visibleIds).size === visibleIds.length;
           const chatSearchAnchored = typeof isChatSearchAnchored === "function" && isChatSearchAnchored();
@@ -1177,6 +1206,113 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             renderedInstructionGroupsByKey.clear();
             elements.messages.innerHTML = "";
           }
+          if (visibleMessages.length === 0) {
+            const runtimeState = getActiveConversationRuntimeState({ create: false });
+            if (runtimeState && runtimeState.messagesLoading) {
+              showConversationMessagesLoading();
+              renderedConversationKey = conversationKey;
+              renderedMessageCount = 0;
+              elements.emptyState.style.display = "none";
+              updateRunWait();
+              updateTaskList();
+              return;
+            } else {
+              clearConversationMessagesLoading();
+              elements.messages.replaceChildren();
+            }
+          }
+          if (visibleMessages.length > MESSAGE_RENDER_BATCH_SIZE
+            && (!reuseMessages || visibleMessages.length - renderedMessageCount > MESSAGE_RENDER_BATCH_SIZE)) {
+            showConversationMessagesLoading();
+            messageRenderPending = true;
+            renderedConversationKey = conversationKey;
+            renderedMessageCount = 0;
+            renderedMessagesById.clear();
+            renderedInstructionGroupsByKey.clear();
+            const fragment = document.createDocumentFragment();
+            let offset = 0;
+            let instructionRun = null;
+            const finishInstructionRun = () => {
+              if (!instructionRun) {
+                return;
+              }
+              const { group, body, key } = instructionRun;
+              if (body.children.length === 1) {
+                fragment.insertBefore(body.children[0], group);
+                fragment.removeChild(group);
+                renderedInstructionGroupsByKey.delete(key);
+              } else {
+                syncInstructionGroupSummary(group);
+              }
+              instructionRun = null;
+            };
+            const renderBatch = () => {
+              try {
+                if (generation !== messageRenderGeneration || getMessageConversationKey() !== conversationKey) {
+                  return;
+                }
+                const end = Math.min(offset + MESSAGE_RENDER_BATCH_SIZE, visibleMessages.length);
+                visibleMessages.slice(offset, end).forEach((entry) => {
+                  if (!isInstructionBubble(entry.message, entry.index)) {
+                    finishInstructionRun();
+                    fragment.appendChild(createMessageElement(entry.message, entry.index));
+                    return;
+                  }
+                  if (!instructionRun) {
+                    const group = createInstructionGroupElement([entry], false);
+                    instructionRun = { group, body: group.querySelector(".instruction-group-body"), key: entry.index };
+                    renderedInstructionGroupsByKey.set(entry.index, group);
+                    fragment.appendChild(group);
+                  } else {
+                    instructionRun.body.appendChild(createMessageElement(entry.message, entry.index));
+                    instructionRun.group.setAttribute("data-instruction-count", String(instructionRun.body.children.length));
+                  }
+                });
+                offset = end;
+                if (offset < visibleMessages.length) {
+                  if (instructionRun) {
+                    syncInstructionGroupSummary(instructionRun.group);
+                  }
+                  setTimeout(renderBatch, 0);
+                  return;
+                }
+                finishInstructionRun();
+                elements.messages.replaceChildren(fragment);
+                messageRenderPending = false;
+                clearConversationMessagesLoading();
+                renderedConversationKey = conversationKey;
+                renderedMessageCount = visibleMessages.length;
+                const visibleThinkingKeys = new Set(visibleMessages.map(({ message, index }) => String(message.id || "index-" + index)));
+                thinkingBubbleViewStates.forEach((_value, key) => {
+                  if (!visibleThinkingKeys.has(key)) {
+                    thinkingBubbleViewStates.delete(key);
+                  }
+                });
+                forceCollapseToolResultBubbles();
+                elements.emptyState.style.display = "none";
+                if (shouldAutoScroll) {
+                  stickChatToBottom("auto");
+                } else {
+                  const scrollAdjustment = scrollAnchor && scrollAnchor.element.isConnected
+                    ? scrollAnchor.element.getBoundingClientRect().top - scrollAnchor.top
+                    : 0;
+                  restoreChatScrollTop(previousScrollTop + scrollAdjustment);
+                  updateScrollToBottomButton();
+                }
+                updateTaskList();
+                updateRunWait();
+                if (typeof refreshChatSearchHighlights === "function") {
+                  refreshChatSearchHighlights();
+                }
+              } catch (error) {
+                handleMessageRenderFailure(error);
+              }
+            };
+            setTimeout(renderBatch, 0);
+            elements.emptyState.style.display = "none";
+            return;
+          }
+          clearConversationMessagesLoading();
           renderedConversationKey = conversationKey;
           appendVisibleMessageEntries(visibleMessages, reuseMessages);
           renderedMessageCount = visibleMessages.length;
@@ -1204,22 +1340,29 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             refreshChatSearchHighlights();
           }
         } catch (error) {
-          renderedMessagesById.clear();
-          renderedInstructionGroupsByKey.clear();
-          renderedConversationKey = "";
-          renderedMessageCount = 0;
-          if (thinkingBubbleResizeObserver) {
-            thinkingBubbleResizeObserver.disconnect();
-          }
-          reportWebviewFailure("renderMessages-failed", error, {
-            activeTabId: getActiveConversationTabId(),
-            messageCount: Array.isArray(state.messages) ? state.messages.length : -1,
-          });
-          elements.messages.innerHTML = '<div class="message system"><div class="bubble"><div class="system-line"><span class="system-text">' + escapeHtml(t("session.loadFailedMessage")) + '</span></div></div></div>';
-          elements.emptyState.style.display = "none";
-          if (typeof refreshChatSearchHighlights === "function") {
-            refreshChatSearchHighlights();
-          }
+          handleMessageRenderFailure(error);
+        }
+      }
+
+      function handleMessageRenderFailure(error) {
+        messageRenderGeneration += 1;
+        messageRenderPending = false;
+        clearConversationMessagesLoading();
+        renderedMessagesById.clear();
+        renderedInstructionGroupsByKey.clear();
+        renderedConversationKey = "";
+        renderedMessageCount = 0;
+        if (thinkingBubbleResizeObserver) {
+          thinkingBubbleResizeObserver.disconnect();
+        }
+        reportWebviewFailure("renderMessages-failed", error, {
+          activeTabId: getActiveConversationTabId(),
+          messageCount: Array.isArray(state.messages) ? state.messages.length : -1,
+        });
+        elements.messages.innerHTML = '<div class="message system"><div class="bubble"><div class="system-line"><span class="system-text">' + escapeHtml(t("session.loadFailedMessage")) + '</span></div></div></div>';
+        elements.emptyState.style.display = "none";
+        if (typeof refreshChatSearchHighlights === "function") {
+          refreshChatSearchHighlights();
         }
       }
 

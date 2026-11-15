@@ -96,7 +96,9 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
   const panelMessages: Array<Record<string, unknown>> = [];
-  const sessionIdByTabId = new Map<string, string>();
+  const tabs = new Map<string, { sessionId: string | null; cli: CliName }>([
+    ["tab-kimi", { sessionId: "local_1", cli: "kimi-code" }],
+  ]);
   const runStatus: string[] = [];
   const created: Array<Record<string, unknown>> = [];
   let runnerCreated = false;
@@ -125,7 +127,10 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
   const deps: RuntimeDeps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
     activeRunsByTabId,
-    adoptSessionId: () => undefined,
+    adoptSessionId: (_cli, sessionId, tabId) => {
+      const tab = tabs.get(tabId ?? "");
+      if (tab) tab.sessionId = sessionId;
+    },
     applyProcessTitle: () => undefined,
     applyThinkingWorkspaceFiles: () => undefined,
     appendTaskRun: () => undefined,
@@ -138,7 +143,7 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
     buildTaskRunCompletionText: (status) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: (tabId) => ({ sessionId: sessionIdByTabId.get(tabId) ?? "local_1", cli: "kimi-code" }),
+    getConversationTabById: (tabId) => tabs.get(tabId),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => options.effectiveThinkingMode ?? "high",
     getGlobalHumanInteractionEnabled: () => false,
@@ -179,14 +184,12 @@ function createHostHarness(options: FakeRunnerOptions = {}) {
     maybePersistLongTermMemoryFromRun: () => undefined,
     migrateLocalSessionToTargetSession: (_cli: CliName, previousSessionId: string, newSessionId: string) => {
       messagesBySession.set(newSessionId, messagesBySession.get(previousSessionId) ?? []);
-      sessionIdByTabId.set("tab-kimi", newSessionId);
     },
     persistMessagesForTab: (_cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]) => {
       if (!sessionId) {
         return;
       }
       messagesBySession.set(sessionId, messages);
-      sessionIdByTabId.set(tabId, sessionId);
     },
     preparePendingLabel: () => undefined,
     resolveClaudeInteractiveEntrypoint: () => undefined,

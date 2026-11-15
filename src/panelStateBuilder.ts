@@ -399,6 +399,7 @@ export type UserChatMessageInput = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
   loopAsk?: boolean;
 };
 
@@ -416,6 +417,7 @@ export function buildUserChatMessage(input: UserChatMessageInput, createdAt: num
     loopTaskId: input.loopTaskId,
     loopRound: input.loopRound,
     loopSubtaskId: input.loopSubtaskId,
+    loopAttemptId: input.loopAttemptId,
     ...(input.loopAsk === true ? { loopAsk: true } : {}),
   };
 }

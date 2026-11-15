@@ -15,6 +15,9 @@ import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 import { withCodexIdentityFixture } from "../config/codexRuntimeConfigFixture";
 import { t as translate } from "../../i18n";
 import { buildTaskRunCompletionText } from "../../promptRunState";
+import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import type { ConversationTabRecord } from "../../sessionTabs";
+
 
 installVscodeMock();
 
@@ -66,6 +69,8 @@ function createInteractiveRuntimeHarness(options: {
   humanInteractionSubmission?: HumanInteractionSubmission | ((request: HumanInteractionRequest) => Promise<HumanInteractionSubmission> | HumanInteractionSubmission);
 } = {}) {
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
+  const tabs = new Map<string, ConversationTabRecord>();
+  const closedTabs: string[] = [];
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
   const panelMessages: Array<Record<string, unknown>> = [];
@@ -175,7 +180,15 @@ function createInteractiveRuntimeHarness(options: {
     buildTaskRunCompletionText: (status, durationMs) => `completion:${status}:${durationMs ?? "none"}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => "config-main",
-    getConversationTabById: () => ({ sessionId: null }),
+    getConversationTabById: (tabId) => tabs.get(tabId),
+    takeOverSessionForTab: (target, isAborted) => takeOverSessionTab(target, {
+      getWorkspaceKey: () => "workspace",
+      getTabs: () => [...tabs.values()],
+      getActiveRuns: () => [...activeRunsByTabId.values()],
+      stopTab: (tabId) => activeRunsByTabId.get(tabId)?.stop(),
+      isTabRunActive: (tabId) => activeRunsByTabId.has(tabId),
+      closeTab: async (tabId) => { tabs.delete(tabId); closedTabs.push(tabId); },
+    }, isAborted),
     getEffectiveCliArgs: () => ["--effective"],
     getEffectiveThinkingMode: () => "medium",
     getGlobalHumanInteractionEnabled: () => options.humanInteractionEnabled !== false,
@@ -249,8 +262,20 @@ function createInteractiveRuntimeHarness(options: {
     ...options.runtimeDeps,
   };
 
+  const host = createPromptInteractiveRuntimeHost(deps);
   return {
-    host: createPromptInteractiveRuntimeHost(deps),
+    host: {
+      runPromptInteractive: (...args: Parameters<typeof host.runPromptInteractive>) => {
+        const target = args[1];
+        if (!tabs.has(target.tabId)) {
+          tabs.set(target.tabId, { id: target.tabId, cli: target.cli, sessionId: target.sessionId,
+            sessionIdByCli: { [target.cli]: target.sessionId }, createdAt: Date.now() });
+        }
+        return host.runPromptInteractive(...args);
+      },
+    },
+    tabs,
+    closedTabs,
     activeRunsByTabId,
     messagesBySession,
     panelMessages,
@@ -306,7 +331,7 @@ function createTarget(overrides: Partial<PromptRunTarget> = {}): PromptRunTarget
   };
 }
 
-test("a second tab cannot replace a live same-session runner when its execution cwd changes", async () => {
+test("a second tab stops and closes the previous same-session owner before continuing with a new cwd", async () => {
   const started = createDeferred();
   const finish = createDeferred();
   let attempt = 0;
@@ -316,6 +341,8 @@ test("a second tab cannot replace a live same-session runner when its execution 
       started.resolve();
       if (attempt === 1) {
         await finish.promise;
+        handlers.onThreadId("stale-thread");
+        handlers.onTaskListUpdate?.([{ text: "过期任务", done: true }]);
       }
       handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
     },
@@ -323,22 +350,24 @@ test("a second tab cannot replace a live same-session runner when its execution 
   const first = harness.host.runPromptInteractive(createPromptInput(), createTarget(), { cwd: "/tmp/first-subtask" });
   await started.promise;
   try {
-    await assert.rejects(harness.host.runPromptInteractive(
+    await harness.host.runPromptInteractive(
       createPromptInput({ displayPrompt: "继续", modelPrompt: "继续" }),
       createTarget({ tabId: "tab-2" }), { cwd: "/tmp/next-subtask" },
-    ), /会话仍在.*运行/);
-    assert.equal(harness.codexRunnerCreateCalls, 1);
-    assert.equal(harness.activeRunsByTabId.has("tab-1"), true);
+    );
+    assert.equal(harness.codexStopCalls, 1);
+    assert.deepEqual(harness.closedTabs, ["tab-1"]);
+    assert.equal(harness.codexRunnerCreateCalls, 2);
+    assert.equal(harness.activeRunsByTabId.has("tab-1"), false);
     assert.equal(harness.activeRunsByTabId.has("tab-2"), false);
-    assert.equal(harness.taskRecords.length, 0);
-    assert.equal(harness.messagesBySession.get("session-1")?.filter((message) => message.role === "user").length, 1);
+    assert.deepEqual(harness.taskRecords.map((record) => record.status), ["stopped", "end"]);
+    assert.equal(harness.messagesBySession.get("session-1")?.filter((message) => message.role === "user").length, 2);
   } finally {
     finish.resolve();
     await first;
   }
-  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
-  await harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2" }));
-  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end", "end"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["stopped", "end"]);
+  assert.equal(harness.processTitles.some((item) => item.sessionId === "stale-thread"), false);
+  assert.equal(harness.panelMessages.some((item) => item.type === "taskListUpdate"), false);
 });
 
 test("asynchronous preparation cannot admit two runs for the same session", async () => {
@@ -358,16 +387,14 @@ test("asynchronous preparation cannot admit two runs for the same session", asyn
     },
   });
   const first = harness.host.runPromptInteractive(createPromptInput(), createTarget());
-  const second = assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2" })), /会话仍在.*运行/);
+  const second = harness.host.runPromptInteractive(createPromptInput(), createTarget({ tabId: "tab-2" }));
   preparation.resolve();
   await started.promise;
-  try {
-    await second;
-    assert.equal(harness.codexRunnerCreateCalls, 1);
-  } finally {
-    finish.resolve();
-    await first;
-  }
+  assert.equal(harness.codexRunnerCreateCalls, 1);
+  assert.equal(harness.activeRunsByTabId.has("tab-1"), false);
+  assert.equal(harness.activeRunsByTabId.has("tab-2"), true);
+  finish.resolve();
+  await Promise.all([first, second]);
 });
 
 test("another session remains runnable while a subtask owns its session", async () => {
@@ -395,6 +422,26 @@ test("another session remains runnable while a subtask owns its session", async 
     await first;
   }
   assert.equal(harness.taskRecords.length, 2);
+});
+
+test("same-tab duplicate submission cannot interrupt its active turn", async () => {
+  const started = createDeferred();
+  const finish = createDeferred();
+  const harness = createInteractiveRuntimeHarness({ codexRunBehavior: async (_prompt, handlers) => {
+    started.resolve();
+    await finish.promise;
+    handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
+  } });
+  const first = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  await started.promise;
+  try {
+    await assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget()), { code: "SESSION_RUN_ACTIVE" });
+    assert.equal(harness.codexStopCalls, 0);
+    assert.deepEqual(harness.closedTabs, []);
+  } finally {
+    finish.resolve();
+    await first;
+  }
 });
 
 test("a stopped Codex turn cannot register a late thread or task list over its replacement", async () => {
@@ -450,6 +497,61 @@ test("an aborted Loop question does not start after asynchronous runtime prepara
   assert.deepEqual(harness.codexPrompts, []);
   assert.deepEqual(harness.runStatusEvents, []);
   assert.equal(harness.activeRunsByTabId.size, 0);
+});
+
+test("interactive preparation cannot start a closed, replaced or rebound target", async () => {
+  for (const change of ["closed", "object", "cli", "session", "mapped-session", "workspace"] as const) {
+    const preparing = createDeferred();
+    const release = createDeferred();
+    let workspace = "original";
+    const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+      getWorkspaceKey: () => workspace,
+      readRuntimeConfigFingerprint: async () => { preparing.resolve(); await release.promise; return "identity"; },
+    } });
+    const pending = h.host.runPromptInteractive(createPromptInput(), createTarget());
+    await preparing.promise;
+    const tab = h.tabs.get("tab-1")!;
+    if (change === "closed") h.tabs.delete(tab.id);
+    if (change === "object") h.tabs.set(tab.id, { ...tab });
+    if (change === "cli") tab.cli = "claude";
+    if (change === "session") tab.sessionId = "another";
+    if (change === "mapped-session") tab.sessionIdByCli.codex = "another";
+    if (change === "workspace") workspace = "changed";
+    release.resolve();
+    await pending;
+    assert.equal(h.codexRunnerCreateCalls, 0, change);
+    assert.deepEqual(h.runStatusEvents, [], change);
+  }
+});
+
+test("a replaced Claude tab cannot publish late session or task-list updates", async () => {
+  const started = createDeferred();
+  const finish = createDeferred();
+  let attempt = 0;
+  const h = createInteractiveRuntimeHarness({ claudeRunBehavior: async (_prompt, handlers) => {
+    attempt += 1;
+    if (attempt === 1) {
+      started.resolve();
+      await finish.promise;
+      handlers.onSessionId("stale-claude-session");
+      handlers.onTaskListUpdate?.([{ text: "旧任务", done: true }]);
+    } else {
+      handlers.onAssistantDelta("[final_answer] 完成");
+    }
+  } });
+  const first = h.host.runPromptInteractive(createPromptInput(), createTarget({ cli: "claude" }));
+  await started.promise;
+  try {
+    await h.host.runPromptInteractive(createPromptInput(), createTarget({ cli: "claude", tabId: "tab-2" }));
+    assert.equal(h.claudeStopCalls, 1);
+    assert.deepEqual(h.closedTabs, ["tab-1"]);
+  } finally {
+    finish.resolve();
+    await first;
+  }
+  assert.deepEqual(h.taskRecords.map((record) => record.status), ["stopped", "end"]);
+  assert.equal(h.processTitles.some((item) => item.sessionId === "stale-claude-session"), false);
+  assert.equal(h.panelMessages.some((item) => item.type === "taskListUpdate"), false);
 });
 
 test("the interactive host passes the verified native identity through creation and registration", async () => {
@@ -683,6 +785,8 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   const finalMessage = messages.find((message) => message.role === "assistant" && message.codexFinalAnswer === true);
   assert.ok(finalMessage);
   assert.equal(finalMessage.content, "[final_answer] completed");
+  assert.equal(finalMessage.loopAttemptId, undefined);
+  assert.equal(harness.taskRecords.at(-1)?.loopAttemptId, undefined);
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
   assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
   assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
@@ -706,6 +810,35 @@ test("interactive runtime host completes a successful Codex runner turn", async 
     { cli: "codex", sessionId: "session-1", mappedId: "thread-success" },
   );
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
+});
+
+test("interactive runtime carries Loop+ attempt identity to assistant, thinking, subagent messages and run record", async () => {
+  const attemptId = "interactive-attempt-17";
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("thinking details", { kind: "thinking", reasoningItemId: "reasoning-1" });
+      handlers.onSubagentUpdate?.({ threadId: "agent-1", status: "running", delta: "checking files" });
+      handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput({
+    taskRole: "subtask",
+    loopTaskId: "loop-task-17",
+    loopRound: 3,
+    loopSubtaskId: "A",
+    loopAttemptId: attemptId,
+  }), createTarget());
+
+  const messages = harness.messagesBySession.get("session-1") ?? [];
+  const finalMessage = messages.find((message) => message.codexFinalAnswer === true);
+  const thinkingMessage = messages.find((message) => message.kind === "thinking");
+  const subagentMessage = messages.find((message) => message.subagentId === "agent-1");
+  assert.equal(harness.taskRecords.at(-1)?.loopAttemptId, attemptId);
+  assert.equal(finalMessage?.loopAttemptId, attemptId);
+  assert.equal(thinkingMessage?.loopAttemptId, attemptId);
+  assert.equal(subagentMessage?.loopAttemptId, attemptId);
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
 });
 
 test("interactive runtime host reuses a final bubble when its native final phase arrives late", async () => {

@@ -89,6 +89,8 @@ for (const role of ["backend", "frontend", "general"] as const) {
     const handle = fixture.adapter.startAttempt(input);
     assert.deepEqual(await handle.promise, { outcome: "completed", detail: "done" });
     assert.deepEqual(events, ["acquire", "root", "CLI", "dispose", "release"]);
+    assert.equal(fixture.closedSubtaskTabs.length, 0, "ordinary tabs wait for report/compaction acknowledgement");
+    await handle.onCompleted?.();
     assert.equal(fixture.closedSubtaskTabs.length, 1);
     handle.abort({ closeTab: true });
     assert.deepEqual(fixture.cancelledTabs, []);
@@ -347,4 +349,38 @@ test("settled attempt cannot cancel another invocation reusing the same tab", as
   assert.deepEqual(fixture.cancelledTabs, []);
   finish.resolve();
   await current.promise;
+});
+
+
+test("Department Owner finalization stays active despite an ordinary lost-invocation probe", async (t) => {
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const ownerDone = deferred<void>();
+  const issued = deferred<void>();
+  let releases = 0;
+  const fixture = createLoopPlusRuntimeFixture({
+    ownsDepartmentAttemptResources: () => true,
+    isInvocationActive: () => false,
+    observeAttemptTermination: () => ({ done: ownerDone.promise }),
+  });
+  t.after(() => fixture.dispose());
+  fixture.saveTask({ id: "admission-task", cli: "opencode", status: "running", subTasks: [],
+    department: { role: "leader" } } as unknown as import("../../loopTaskStore").LoopTaskRecord);
+  fixture.adapter.setDepartmentExecutionAdmission!(async () => ({ release() { releases++; } }));
+  fixture.setAttemptAction((input, tabId) => {
+    fixture.publish(input, tabId, { status: "end", content: "business result" });
+    issued.resolve();
+  });
+  const attempt = fixture.adapter.startAttempt({ ...request(), targetCli: "opencode" });
+  await issued.promise;
+  await new Promise((resolve) => setImmediate(resolve));
+  now += 10 * 60 * 1000;
+  assert.equal(attempt.isActive?.(), true, "Owner cleanup still owns execution capacity");
+  assert.equal(releases, 0);
+  assert.deepEqual(fixture.closedSubtaskTabs, []);
+  ownerDone.resolve();
+  assert.equal((await attempt.promise).outcome, "completed");
+  assert.equal(attempt.isActive?.(), false);
+  assert.equal(releases, 1);
+  assert.deepEqual(fixture.closedSubtaskTabs, [], "EH never duplicates Owner tab cleanup");
 });

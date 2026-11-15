@@ -186,7 +186,36 @@ ${DIALOG_SHELL_STYLES}
         min-width: 0;
       }
       .ask-chat-message.user {
-        justify-content: flex-end;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+      }
+      .ask-chat-queued {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 85%;
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .ask-chat-queued > span:last-child {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .ask-chat-backdrop .ask-chat-queued .typing-dots span {
+        animation-play-state: paused;
+      }
+      .ask-chat-backdrop.visible:not(.page-hidden) .ask-chat-queued .typing-dots span {
+        animation-play-state: running;
+      }
+      .ask-chat-queued .typing-dots {
+        flex-shrink: 0;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .ask-chat-backdrop .ask-chat-queued .typing-dots span {
+          animation: none;
+        }
       }
       .ask-chat-message.user .ask-chat-bubble {
         max-width: 85%;
