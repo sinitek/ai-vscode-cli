@@ -853,7 +853,11 @@ test("copied DSH example prepares a launch after changing only apiKey and baseUR
 
 test("DSH isolated launch mirrors global skills and AGENTS.md without prompt injection or secrets", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-mirror-"));
-  const outside = path.join(home, "outside-secret");
+  const outsideDirectory = path.join(home, "outside-skills");
+  const outside = path.join(outsideDirectory, "outside-secret");
+  const escape = path.join(home, "skills", "escape");
+  const sessionKey = path.basename(home);
+  const isolatedHome = path.join(os.tmpdir(), "sinitek-dsh-acp", sessionKey);
   const previousHome = process.env.DSH_HOME;
   const previousKey = process.env.SINITEK_DSH_API_KEY;
   const secret = "sk-fixturekey123456";
@@ -863,18 +867,24 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     await fs.writeFile(path.join(home, "AGENTS.md"), "global dsh rules\n", "utf8");
     await fs.mkdir(path.join(home, "workspace"), { recursive: true });
     await fs.writeFile(path.join(home, "workspace", "AGENTS.md"), "workspace rules stay put\n", "utf8");
+    await fs.mkdir(outsideDirectory);
     await fs.writeFile(outside, secret, "utf8");
     await fs.mkdir(path.join(home, "skills", "demo"), { recursive: true });
     await fs.writeFile(path.join(home, "skills", "demo", "SKILL.md"), "---\ndescription: demo\n---\n# demo\n", "utf8");
     await fs.writeFile(path.join(home, "skills", "demo", "marker.txt"), "first\n", "utf8");
     await fs.writeFile(path.join(home, "skills", ".credentials.yaml"), "apiKey: should-not-copy\n", "utf8");
-    await fs.symlink(outside, path.join(home, "skills", "escape"));
+    await fs.symlink(process.platform === "win32" ? outsideDirectory : outside, escape,
+      process.platform === "win32" ? "junction" : "file");
+    assert.equal((await fs.lstat(escape)).isSymbolicLink(), true);
+    assert.equal(await fs.realpath(escape), await fs.realpath(process.platform === "win32" ? outsideDirectory : outside));
+    assert.equal(await fs.readFile(process.platform === "win32" ? path.join(escape, "outside-secret") : escape, "utf8"), secret);
     const activated = await activateDshProfile({
       profileId: "acme",
       content: createDshExampleProfileText(),
     });
     assert.equal(activated.ok, true);
-    const launch = await prepareDshIsolatedLaunch({ sessionKey: "mirror-skills" });
+    const launch = await prepareDshIsolatedLaunch({ sessionKey });
+    assert.equal(launch.isolatedHome, isolatedHome);
     assert.equal(launch.env.DSH_HOME, launch.isolatedHome);
     assert.equal(await fs.readFile(path.join(launch.isolatedHome, "AGENTS.md"), "utf8"), "global dsh rules\n");
     assert.equal(await fs.readFile(path.join(launch.isolatedHome, "skills", "demo", "marker.txt"), "utf8"), "first\n");
@@ -886,12 +896,16 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     assert.equal(launch.agentArgs.join("\n").includes("global dsh rules"), false);
     await fs.writeFile(path.join(home, "skills", "demo", "marker.txt"), "second\n", "utf8");
     await fs.writeFile(path.join(home, "AGENTS.md"), "updated global rules\n", "utf8");
-    const again = await prepareDshIsolatedLaunch({ sessionKey: "mirror-skills" });
+    const again = await prepareDshIsolatedLaunch({ sessionKey });
+    assert.equal(again.isolatedHome, isolatedHome);
+    assert.equal(await fs.access(path.join(again.isolatedHome, "skills", "escape")).then(() => true, () => false), false);
     assert.equal(await fs.readFile(path.join(again.isolatedHome, "skills", "demo", "marker.txt"), "utf8"), "second\n");
     assert.equal(await fs.readFile(path.join(again.isolatedHome, "AGENTS.md"), "utf8"), "updated global rules\n");
     assert.equal(await fs.access(path.join(again.isolatedHome, "skills.sinitek-replacing")).then(() => true, () => false), false);
     assert.equal(await fs.access(path.join(again.isolatedHome, "AGENTS.md.sinitek-replacing")).then(() => true, () => false), false);
-    await fs.rm(launch.isolatedHome, { recursive: true, force: true });
+    assert.equal(await fs.readFile(outside, "utf8"), secret);
+    assert.equal(again.agentArgs.join("\n").includes(secret), false);
+    assert.equal(again.agentArgs.join("\n").includes("updated global rules"), false);
   } finally {
     if (previousHome === undefined) {
       delete process.env.DSH_HOME;
@@ -903,7 +917,19 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     } else {
       process.env.SINITEK_DSH_API_KEY = previousKey;
     }
+    // Only remove this fixture's roots; unlink the escape before recursive cleanup.
+    assert.equal(path.dirname(home), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(home).startsWith("sinitek-dsh-mirror-"));
+    assert.notEqual(path.resolve(home), path.resolve(os.homedir()));
+    assert.equal(path.dirname(isolatedHome), path.join(os.tmpdir(), "sinitek-dsh-acp"));
+    assert.equal(path.basename(isolatedHome), path.basename(home));
+    await fs.unlink(escape).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+    await fs.rm(isolatedHome, { recursive: true, force: true });
     await fs.rm(home, { recursive: true, force: true });
+    await assert.rejects(fs.lstat(isolatedHome), { code: "ENOENT" });
+    await assert.rejects(fs.lstat(home), { code: "ENOENT" });
   }
 });
 

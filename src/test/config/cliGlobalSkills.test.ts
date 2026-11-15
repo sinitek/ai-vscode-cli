@@ -94,7 +94,11 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
     } else {
       process.env.SINITEK_DSH_API_KEY = originalDshApiKey;
     }
+    assert.equal(path.dirname(temp), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(temp).startsWith("sinitek-cli-global-skills-"));
+    assert.notEqual(path.resolve(temp), path.resolve(originalHomedir()));
     await fs.promises.rm(temp, { recursive: true, force: true });
+    await assert.rejects(fs.promises.lstat(temp), { code: "ENOENT" });
   }
 }
 
@@ -121,7 +125,7 @@ test.describe("cli global skills", { concurrency: false }, () => {
 
       const listed = await getCliSkillsList("claude");
       assert.equal(listed.directory, directory);
-      assert.equal(listed.displayDirectory, "~/.claude/skills");
+      assert.equal(listed.displayDirectory, process.platform === "win32" ? directory : "~/.claude/skills");
       assert.deepEqual(listed.skills, []);
       await assert.rejects(() => getCliSkillsList("gemini"), { message: t("skill.global.invalidPlatform") });
     });
@@ -147,7 +151,7 @@ test.describe("cli global skills", { concurrency: false }, () => {
       assert.equal(listed.skills[0]?.description, undefined);
       assert.equal(listed.skills[1]?.path, zeta);
       assert.equal(listed.skills[1]?.description, "Zeta skill");
-      assert.equal(listed.displayDirectory, "~/.codex/skills");
+      assert.equal(listed.displayDirectory, process.platform === "win32" ? codexRoot : "~/.codex/skills");
     });
   });
 
@@ -214,15 +218,22 @@ test.describe("cli global skills", { concurrency: false }, () => {
       const root = path.join(homeDir, ".claude", "skills");
       await fs.promises.mkdir(root, { recursive: true });
       const linkPath = path.join(root, "linked-skill");
-      await fs.promises.symlink(external, linkPath, "dir");
+      const skillBefore = await fs.promises.readFile(path.join(external, "SKILL.md"), "utf8");
+      await fs.promises.symlink(external, linkPath, process.platform === "win32" ? "junction" : "dir");
+      assert.equal((await fs.promises.lstat(linkPath)).isSymbolicLink(), true);
+      assert.equal(await fs.promises.realpath(linkPath), await fs.promises.realpath(external));
+      assert.equal(await fs.promises.readFile(path.join(linkPath, "SKILL.md"), "utf8"), skillBefore);
 
       const listed = await getCliSkillsList("claude");
       assert.deepEqual(listed.skills.map((skill) => skill.name), ["linked-skill"]);
 
       const after = await deleteCliSkill("claude", "linked-skill");
       assert.equal(fs.existsSync(linkPath), false);
+      await assert.rejects(fs.promises.lstat(linkPath), { code: "ENOENT" });
       assert.equal(fs.existsSync(path.join(external, "SKILL.md")), true);
       assert.equal(fs.existsSync(path.join(external, "marker.txt")), true);
+      assert.equal(await fs.promises.readFile(path.join(external, "SKILL.md"), "utf8"), skillBefore);
+      assert.equal(await fs.promises.readFile(path.join(external, "marker.txt"), "utf8"), "external-skill-marker");
       assert.deepEqual(after.skills, []);
     });
   });

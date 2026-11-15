@@ -41,6 +41,7 @@ function regressionTests() {
     "extensionHost/promptInteractiveRuntime.test.js", "extensionHost/sessionTabOwnership.test.js", "extensionHost/interactiveTurnStrategy.test.js",
     "extensionHost/extensionHostExtractionContracts.test.js", "extensionHost/loopPlusRuntimeIntegration.test.js",
     "extensionHost/loopPlusOrchestration.test.js", "extensionHost/loopPlusEntryRouting.test.js",
+    "extensionHost/loopPlusAttemptIdentity.test.js", "extensionHost/loopWaitWatchdog.test.js",
     "loop/loopPlusScheduler.test.js", "loop/loopSubtaskSession.test.js",
     "loop/loopSubtaskAutoCompact.test.js", "session/conversationTabRunningFlow.test.js",
     "loop/loopMainFailure.test.js", "loop/loopPlusPause.test.js", "loop/loopBlockedSummary.test.js",

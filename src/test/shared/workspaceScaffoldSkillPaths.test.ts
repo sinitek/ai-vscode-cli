@@ -197,7 +197,7 @@ test("execution plan typed contracts retain four-type skill scope, exclusions an
 test("execution plan typed contracts preserve four-type templates, exclusions, handoff and verification fields", () => {
   for (const prefix of harnessRoots) {
     const relativePath = `${prefix}.ch/docs/exec-plans/TEMPLATE.md`;
-    const content = readRepoText(relativePath);
+    const content = readRepoText(relativePath).replace(/\r\n/g, "\n");
     assert.ok(content.includes("YYYY-MM-DD-<type>-<kebab-case-slug>.md"), relativePath);
     const typeLine = content.match(/^- 类型：(.+)$/mu)?.[1];
     assert.deepEqual(typeLine?.split(" / "), executionPlanTypes, relativePath);
