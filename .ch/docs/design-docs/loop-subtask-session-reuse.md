@@ -54,7 +54,7 @@ DSH ACP 恢复同时依赖原 `DSH_HOME` 和持久化会话的 canonical cwd，�
 
 生命周期三文件 186/186、压缩库 14/14、入口路由 2/2 的结果按各自范围复用。后续真实 Extension Development Host 身份检查已通过并获主审接受：VS Code 激活、命令及 openPanel 成功，源码与产物对齐；冷宿主拒绝显式旧 attempt 且零写入、保留替代 reservation，匹配完成先持久化再压缩清理，重复通知不重复提交或清理。生产 Tab 关闭守卫实际执行并保留替代 attempt 的 Tab，最终启动器退出 0 且 `harnessCompleted:true`；最小 Tab 夹具不代替完整 GUI、浏览器或真实 CLI 验证。
 
-原 Node 全量 4,221 项（4,172 通过、46 失败、3 跳过）及 Python 88 通过、1 跳过已执行；六项定向修复覆盖全部 46 项失败并获主审接受。socket 轮最新构建覆盖全部源码修复，其后没有源码修改；没有重新拼接为一次全量全绿运行，live 与平台跳过仍保留。round-24 文档最终差异已获主任务审阅接受，Git 提交推送仍待交付，两份计划保持 in-progress；分项证据与归档交接见[身份交接计划](../exec-plans/active/2026-11-15-bugfix-loop-plus-attempt-identity-handoff.md)。
+原 Node 全量 4,221 项（4,172 通过、46 失败、3 跳过）及 Python 88 通过、1 跳过已执行；六项定向修复覆盖全部 46 项失败并获主审接受。socket 轮最新构建覆盖全部源码修复，其后没有源码修改；没有重新拼接为一次全量全绿运行，live 与平台跳过仍保留。round-24 文档最终差异已获主任务审阅接受；实施提交 `1b3dfb1f1ce68da4d09fb1c7f38764b2f2710958` 已推送并核对 `origin/master`，两份计划标记 completed 并按 2026-11 归档。分项证据与实施 Git 结果见[身份交接计划](../exec-plans/completed/2026-11/2026-11-15-bugfix-loop-plus-attempt-identity-handoff.md)；归档收尾提交及推送结果见 round-25-loop-plus-final-git-delivery.md 报告。
 
 实现入口：`src/loopSubtaskSession.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。
 
