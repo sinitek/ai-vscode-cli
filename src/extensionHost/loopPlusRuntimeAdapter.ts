@@ -87,6 +87,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   ) => ThinkingMode | undefined;
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
   createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
+  onSubtaskPreparationFailed?: (tabId: string, status: "stopped" | "error") => void;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
@@ -480,6 +481,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         throw error;
       } finally {
         settled = true;
+        if (!invocationStarted) {
+          deps.onSubtaskPreparationFailed?.(subtaskTarget.tabId, aborted ? "stopped" : "error");
+        }
         if (closeTabAfterAbort) {
           await closeTab("main-abort");
         }

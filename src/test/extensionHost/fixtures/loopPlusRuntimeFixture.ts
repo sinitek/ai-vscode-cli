@@ -95,6 +95,7 @@ export function createLoopPlusRuntimeFixture(options: {
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
   beforeRun?: (input: PromptRunInput) => Promise<void>;
+  onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
   isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
@@ -408,6 +409,7 @@ export function createLoopPlusRuntimeFixture(options: {
       createdSubtaskTargets.push(created);
       return created;
     },
+    onSubtaskPreparationFailed: options.onSubtaskPreparationFailed,
     closeSubtaskTab: async (tabId) => {
       closedSubtaskTabs.push(tabId);
       messages.delete(tabId);

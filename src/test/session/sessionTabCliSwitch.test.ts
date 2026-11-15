@@ -9,6 +9,7 @@ import type { SessionStore } from "../../sessionStore";
 import { closeLoopSubtaskConversationTabs, prepareLoopSubtaskConversationTabClose } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 
 function createHost(initial: {
   state: ConversationTabsState;
@@ -18,6 +19,7 @@ function createHost(initial: {
   runningTabIds?: ReadonlySet<string>;
   lockedTabIds?: ReadonlySet<string>;
   onPostPanelState?: () => Promise<void>;
+  onSubtaskTabCreated?: (tabId: string) => void;
 }) {
   let currentCli = initial.currentCli;
   const modes = { ...initial.modes };
@@ -58,6 +60,7 @@ function createHost(initial: {
   });
   const sessionStore = createCliRecord((): SessionStore[CliName] => ({ currentId: null, sessions: [] }));
   const host = createExtensionSessionTabsHost({
+    onSubtaskTabCreated: initial.onSubtaskTabCreated,
     getSessionTabsController: () => controller,
     getSessionLifecycleController: () => ({
       loadSessionStore: () => sessionStore,
@@ -116,6 +119,38 @@ function createHost(initial: {
   });
   return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, currentCli: () => currentCli };
 }
+
+test("Loop/Loop+ 派发新会话或续接会话时，首次刷新前子任务标签已显示运行中", async () => {
+  for (const cli of ["codex", "claude"] as const) {
+    for (const sessionId of [null, "existing-session"]) {
+      const view = createRunStatusHarness();
+      let createdId: string | undefined;
+      let checkedRefresh = false;
+      const env = createHost({
+        state: { activeTabId: "main-tab", tabs: [{ id: "main-tab", cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 }] },
+        currentCli: "codex", modes: {},
+        onSubtaskTabCreated: (tabId) => {
+          createdId = tabId;
+          view.send({ type: "runStatus", status: "start", tabId });
+        },
+        onPostPanelState: async () => {
+          assert.ok(createdId);
+          assert.equal(view.tabState(createdId).running, true);
+          checkedRefresh = true;
+        },
+      });
+      const target = env.host.createLoopSubtaskRunTarget(cli, { sessionId });
+      assert.equal(target.tabId, createdId);
+      assert.equal(target.sessionId, sessionId);
+      assert.equal(view.tabState(target.tabId).running, true);
+      assert.equal(view.tabState("active").running, false);
+      await Promise.resolve();
+      assert.equal(checkedRefresh, true);
+      view.send({ type: "runStatus", status: "error", tabId: target.tabId });
+      assert.equal(view.tabState(target.tabId).running, false);
+    }
+  }
+});
 
 test("returning from a cross-CLI Loop+ subtask restores the main CLI and Loop+ mode", async () => {
   const state: ConversationTabsState = {

@@ -43,6 +43,7 @@ export type ExtensionSessionTabsHostDeps = {
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
+  onSubtaskTabCreated?: (tabId: string) => void;
   postConversationTabClosed: (tabId: string, activeTabId: string | null) => void;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
@@ -294,6 +295,7 @@ function createLoopSubtaskRunTarget(
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
+  deps.onSubtaskTabCreated?.(tab.id);
   persistConversationTabsToWorkspaceSettings();
   void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
   void postPanelState();

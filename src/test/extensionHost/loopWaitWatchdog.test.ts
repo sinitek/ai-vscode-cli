@@ -60,6 +60,7 @@ function classicHarness(t: TestContext) {
   const active = new Set<string>();
   const calls: Array<{ input: PromptRunInput; start: () => void; finish: () => void; fail: () => void; isAborted: () => boolean }> = [];
   const messages: string[] = [];
+  const statuses: Array<{ tabId?: string; status?: string }> = [];
   let finalized = 0;
   let roundReports = 0;
   let manualActive = false;
@@ -74,7 +75,7 @@ function classicHarness(t: TestContext) {
     getLoopMessagesForTarget: () => [],
     appendMessageToStore: () => undefined,
     persistLoopMessagesForTarget: () => undefined,
-    sendPanelMessage: () => undefined,
+    sendPanelMessage: (message) => { if (message.type === "runStatus") statuses.push(message); },
     buildSubagentProgressLabels: () => ({} as never),
     createSubagentProgressController: () => ({ getMessage: () => null, update: () => undefined } as never),
     createLoopSubtaskProgressMonitor: () => ({ start: () => undefined, sync: () => undefined, finish: () => undefined } as never),
@@ -108,7 +109,7 @@ function classicHarness(t: TestContext) {
     input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
     target: { tabId: "main", cli: "codex", sessionId: "parent" }, task, round: 1, subtasks: [task.subTasks[0]],
   });
-  return { host, active, calls, messages, run, task: () => task,
+  return { host, active, calls, messages, statuses, run, task: () => task,
     setTask: (patch: Partial<LoopTaskRecord>) => { task = { ...task, ...patch }; },
     setManualActive: (value: boolean) => { manualActive = value; },
     counts: () => ({ finalized, roundReports }),
@@ -148,6 +149,21 @@ test("经典 Loop 准备或执行时继续等，实际失联后解除批次并�
   await flush();
   assert.deepEqual(env.counts(), counts);
   assert.equal(env.messages.filter((message) => message.includes("定时检查")).length, 1);
+});
+
+test("经典 Loop 在 CLI 启动前停止会清除派发时的运行状态", async (t) => {
+  const env = classicHarness(t);
+  const pending = env.run();
+  await flush();
+  assert.equal(env.calls.length, 1);
+  env.setTask({ status: "stopped" });
+  env.host.checkWaitingTasks();
+  await pending;
+  await flush();
+  assert.deepEqual(env.statuses, [{ type: "runStatus", tabId: "child-0", status: "stopped" }]);
+  env.calls[0].finish();
+  await flush();
+  assert.equal(env.statuses.length, 1);
 });
 
 test("经典 Loop 中断批次等待其它活动子任务，随后恢复主任务检查", async (t) => {

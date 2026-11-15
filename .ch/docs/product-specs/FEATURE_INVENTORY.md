@@ -62,6 +62,12 @@
 - 原本自由输入的文本字段与布尔确认框保持不变；超时继续复用原始选项和默认值，不自动选中临时添加的其它选项。Grok 不再重复显示独立的其它回答字段，旧版答案格式仍兼容。
 - 实现：`src/webview/humanInteractionOtherChoice.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/webview/orchestratorClarificationDialog.ts`、`src/orchestratorClarification.ts`、`src/interactive/grokUserQuestion.ts`；回归：`src/test/webview/humanInteractionOtherChoice.test.ts`、主任务澄清与 Grok 提问测试。
 
+## Loop/Loop+ 子任务派发反馈
+
+- 子任务标签创建后立即显示运行中，首次页面刷新即可看到运行反馈，涵盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时及时显示停止或错误。
+- 两种模式共用子任务启动间隔为 1 秒，首个子任务无需等待；调度并发、冲突排队与实际执行时间沿用现有规则。
+- 实现：`src/extensionHost/sessionTabs.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归覆盖新建/续接会话、跨 CLI 标签、准备取消/失败及一秒间隔。
+
 ## Loop 群聊成员状态
 
 - 成员卡片统一主任务、普通子任务与可点击验收子任务的内边距和网格布局，头像与文字信息块垂直居中；长标题自然换行，保留验收定位、悬停及键盘焦点效果（2026-11-12）。

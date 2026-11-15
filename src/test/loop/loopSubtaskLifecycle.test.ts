@@ -136,11 +136,13 @@ test("keeps the parent Loop task waiting until every active subtask is completed
   assert.equal(shouldWakeLoopMainAfterSubtaskCompletion({ ...base, activeSubtaskIds: [], mainAiFailureLimitReached: true }), false);
 });
 
-test("calculates a three-second gap between staggered Loop subtask launches", () => {
+test("Loop/Loop+ 首次派发不等待，后续子任务按一秒间隔启动", () => {
+  assert.equal(LOOP_SUBTASK_LAUNCH_INTERVAL_MS, 1000);
   assert.equal(getLoopSubtaskLaunchDelayMs(null, 1_000), 0);
   assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 1_000), LOOP_SUBTASK_LAUNCH_INTERVAL_MS);
-  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_500), 1_500);
-  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 4_000), 0);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 1_400), 600);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_000), 0);
+  assert.equal(getLoopSubtaskLaunchDelayMs(1_000, 2_500), 0);
 });
 
 test("uses the same completion lifecycle for automatic retries and manual subtask resumes", () => {

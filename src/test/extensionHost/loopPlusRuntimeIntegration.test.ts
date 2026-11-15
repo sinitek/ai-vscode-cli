@@ -59,7 +59,8 @@ function completedDecision(reviewEventId?: string | null): string {
 }
 
 test("父任务停止能结束来源会话等待，保留停止事件且不启动 CLI", { timeout: 3000 }, async () => {
-  const fixture = createLoopPlusRuntimeFixture();
+  const statuses: string[] = [];
+  const fixture = createLoopPlusRuntimeFixture({ onSubtaskPreparationFailed: (_tabId, status) => { statuses.push(status); } });
   let release!: () => void;
   let previous: Promise<void> | undefined;
   const hold = new Promise<void>((resolve) => { release = resolve; });
@@ -85,6 +86,7 @@ test("父任务停止能结束来源会话等待，保留停止事件且不启�
     assert.equal(snapshot.reviewQueue[0].outcome, "stopped");
     assert.equal(fixture.mainCalls.length, 1);
     assert.equal(fixture.attemptCalls.length, 0);
+    assert.deepEqual(statuses, ["stopped"]);
     release();
     await previous;
     await new Promise((resolve) => setImmediate(resolve));
@@ -1354,7 +1356,8 @@ test("adapter isolates this invocation from old, missing, failed, retried, and l
 });
 
 test("adapter releases execution roots after success, failure, and creation failure", async () => {
-  const fixture = createLoopPlusRuntimeFixture();
+  const statuses: string[] = [];
+  const fixture = createLoopPlusRuntimeFixture({ onSubtaskPreparationFailed: (_tabId, status) => { statuses.push(status); } });
   try {
     fixture.setAttemptAction(async (input, tabId) => {
       fixture.publish(input, tabId, { status: "end", content: "root ran" });
@@ -1390,6 +1393,7 @@ test("adapter releases execution roots after success, failure, and creation fail
     assert.equal(failed.outcome, "failed");
     assert.equal(failed.detail, "prompt failed");
     assert.deepEqual(fixture.rootsDisposed, [1, 2]);
+    assert.deepEqual(statuses, []);
 
     fixture.setRootFailure("root failed");
     const unavailable = await fixture.adapter.startAttempt({
@@ -1406,6 +1410,7 @@ test("adapter releases execution roots after success, failure, and creation fail
     assert.equal(unavailable.outcome, "failed");
     assert.equal(unavailable.detail, "root failed");
     assert.deepEqual(fixture.rootsDisposed, [1, 2]);
+    assert.deepEqual(statuses, ["error"]);
   } finally {
     fixture.dispose();
   }

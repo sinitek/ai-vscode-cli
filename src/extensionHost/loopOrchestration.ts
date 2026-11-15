@@ -18,7 +18,7 @@ import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 
-export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 3 * 1000;
+export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
 export const LOOP_SUBTASK_RETRY_DELAY_MS = 60 * 1000;
 
@@ -805,6 +805,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const progressId = `${task.id}:${round}:${subtask.id}`;
     let currentSubtaskTarget: PromptRunTarget | null = null;
     let terminalProgressStatus: "completed" | "failed" | "interrupted" | null = null;
+    let invocationStarted = false;
     let parentProgress: SubagentProgressController | null = null;
 
     const persistParentProgressMessage = (message: ChatMessage): void => {
@@ -934,7 +935,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               boundThinkingMode: execution.thinkingMode,
               crossCli: execution.crossCli,
               signal: options.signal,
-              onStarted: () => { executionState.startedAt = Date.now(); },
+              onStarted: () => { invocationStarted = true; executionState.startedAt = Date.now(); },
             });
           }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.signal });
           if (options.signal?.aborted) return "stopped";
@@ -999,6 +1000,13 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         await waitForLoopSubtaskRetryDelay();
       }
     } finally {
+      if (subtaskTarget && !invocationStarted) {
+        sendPanelMessage({
+          type: "runStatus",
+          tabId: subtaskTarget.tabId,
+          status: options.signal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
+        });
+      }
       progressMonitor.finish(terminalProgressStatus ?? "interrupted");
     }
   }
