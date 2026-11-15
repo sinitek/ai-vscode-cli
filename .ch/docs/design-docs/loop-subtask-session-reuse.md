@@ -20,11 +20,19 @@ Loop+ 的主、子调用在 `runPrompt` 执行期间订阅宿主直接发布的 
 
 ## Loop+ 验收修补与重派
 
+### 执行尝试身份
+
+Loop+ 宿主为每次 attempt 分配唯一 `attemptId`，并将它映射为运行输入、`TaskRunDraft` / `TaskRunRecord` 与聊天消息上的可选 `loopAttemptId`。运行选择、助手消息选择和续接详情查询在调用方提供明确 `attemptId` 时必须要求字段相等；候选缺失或不匹配时不按 prompt、时间、轮次或子任务回退。订阅的完成事件和事后扫描复用相同判定。没有新字段的旧记录及 classic Loop 流继续兼容，不做全量迁移。
+
+从子任务会话最近的有效消息解析到的 `attemptId` 可用于构造续接 `PromptRunInput` 和过滤对应运行记录。Loop+ 手动续接通知在原有 `onCompleted` 参数后追加可选 `attemptId`；明确提供身份时，宿主只接受与开放 reservation 完全相同的 attempt，并在冷恢复状态写入前完成核对。旧无身份调用保留原兼容边界，不通过提示词、时间或 subtaskId 补猜身份。完成、停止及控制清理的自动压缩通知都传入对应 attempt；成功结果先持久化，再放行该 attempt 的压缩与标签清理。控制清理按父任务、子任务和 attempt 过滤标签，替代 attempt 不受旧通知影响；父任务主动停止、重复通知和 reprompt 前的迟到通知不能结算新 attempt。
+
+自动压缩 `defer` 保存输入 `loopAttemptId` 的值快照，不随输入对象复用而改变；`notify(taskId, subtaskId, completed, onCompleted?, attemptId?)` 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending。不匹配或重复通知不消费 pending，也不运行其压缩或清理回调。同一 CLI/session 的压缩和成功后的关页保持串行，独立会话继续推进；失败或停止只取消对应身份的 pending，不改变真实执行所有权及现有停止边界。
+
 `accept.reviews[*].subtaskIds` 表示本次验收事件关联的新任务。失败 review 的修补项若未显式声明来源，由宿主通过 `reviewEventId` 找到原 `subtaskId`，自动继承它的会话。不同失败项分别绑定自己的来源，不能把多个原会话任意合并；来源不唯一时需要主模型显式选择。
 
 `controls.reprompt` 仍中断旧 attempt 并创建新 attempt，但设置来源为原子任务 ID。中断前先保存已有真实会话；新 attempt 不等于新 CLI 会话。新的独立工作不因处于同一模式就共享上下文。
 
-`controls.close` / `controls.reprompt` 的关页要求可升级此前普通停止请求，不能因 attempt 已经中止而直接忽略；无论停止结果尚未结算还是已经结算，旧标签最多清理一次。恢复调度后若旧 attempt 句柄已不存在，按父任务和子任务身份清理旧闲置标签，不将“没有句柄”视为“没有标签”。
+`controls.close` / `controls.reprompt` 的关页要求可升级此前普通停止请求，不能因 attempt 已经中止而直接忽略；无论停止结果尚未结算还是已经结算，旧标签最多清理一次。恢复调度后若旧 attempt 句柄已不存在，按父任务和子任务清理旧闲置标签；Loop+ 在已有身份时进一步限定原 `attemptId`，不将“没有句柄”视为“没有标签”，也不触碰替代 attempt。
 
 来源子任务应先结束；若要调整仍在运行的工作，使用既有控制重派。执行锁同时按父任务下的来源/目标子任务和 CLI 会话排序获取，防止同一线程并行接收两条请求，也覆盖最初尚未获得 sessionId 的执行。失败后释放锁，原有写入冲突约束继续生效。
 
@@ -43,6 +51,10 @@ DSH ACP 恢复同时依赖原 `DSH_HOME` 和持久化会话的 canonical cwd，�
 自动回归见 `src/test/extensionHost/dshLoopSessionResume.test.ts`、`src/test/loop/loopSubtaskExecutionRoot.test.ts` 和 DSH host 边界测试。`src/test/extensionHost/dshLoopSessionResumeLive.test.ts` 提供显式 opt-in 的本机真实验证：协议对照检查 cwd 约束，脚本主模型触发验收失败，真实 DSH 子模型在原 Tab 关闭且进程销毁后恢复原上下文并修复文件。它不是图形 Extension Development Host 点击验收，也不是主模型推理质量评测；调用方式与配置读取边界见本地开发 runbook。
 
 经典 Loop 继续读取真实工作区规则、按汇报完成且不由主模型验收。Loop+ 的验收条件、次数限制、隔离执行目录、停止与恢复协议不变。续接上下文时必须使用本轮宿主指定的执行目录与沟通文件，不重复旧任务或使用已清理的历史临时目录。
+
+生命周期三文件 186/186、压缩库 14/14、入口路由 2/2 的结果按各自范围复用。后续真实 Extension Development Host 身份检查已通过并获主审接受：VS Code 激活、命令及 openPanel 成功，源码与产物对齐；冷宿主拒绝显式旧 attempt 且零写入、保留替代 reservation，匹配完成先持久化再压缩清理，重复通知不重复提交或清理。生产 Tab 关闭守卫实际执行并保留替代 attempt 的 Tab，最终启动器退出 0 且 `harnessCompleted:true`；最小 Tab 夹具不代替完整 GUI、浏览器或真实 CLI 验证。
+
+原 Node 全量 4,221 项（4,172 通过、46 失败、3 跳过）及 Python 88 通过、1 跳过已执行；六项定向修复覆盖全部 46 项失败并获主审接受。socket 轮最新构建覆盖全部源码修复，其后没有源码修改；没有重新拼接为一次全量全绿运行，live 与平台跳过仍保留。round-24 文档最终差异已获主任务审阅接受，Git 提交推送仍待交付，两份计划保持 in-progress；分项证据与归档交接见[身份交接计划](../exec-plans/active/2026-11-15-bugfix-loop-plus-attempt-identity-handoff.md)。
 
 实现入口：`src/loopSubtaskSession.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。
 

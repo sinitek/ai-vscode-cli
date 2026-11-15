@@ -459,6 +459,9 @@ export async function handleSendPromptMessage(
     promptInput.loopTaskId = loopSubtaskContext.taskId;
     promptInput.loopRound = loopSubtaskContext.round;
     promptInput.loopSubtaskId = loopSubtaskContext.subtaskId;
+    if (loopSubtaskContext.attemptId) {
+      promptInput.loopAttemptId = loopSubtaskContext.attemptId;
+    }
   }
   const loopResumeTask = shouldRunLoop
     ? deps.resolveLoopResumeTaskFromPrompt(trimmed, promptTargetTabId)
@@ -472,7 +475,8 @@ export async function handleSendPromptMessage(
         loopSubtaskContext.taskId,
         loopSubtaskContext.round,
         "subtask",
-        loopSubtaskContext.subtaskId
+        loopSubtaskContext.subtaskId,
+        loopSubtaskContext.attemptId,
       )?.endedAt ?? 0)
     : 0;
   if (isLoopSubtaskContinuation && requestedLoopFamily) {

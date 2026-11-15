@@ -436,8 +436,11 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   assert.match(prompt, /classic Loop status continue/);
   assert.match(prompt, /roundSummaries/);
   assert.match(prompt, /estimatedRemainingRounds is optional/);
-  assert.match(prompt, /snapshot captured when the CLI started/);
-  assert.match(prompt, /host re-reads that record and is the final gate/);
+  assert.match(prompt, /Acceptance batch listed at request start is frozen and is the only batch to confirm/);
+  assert.match(prompt, /those belong to the next batch/);
+  assert.match(prompt, /Never add them to or otherwise change the reviewEventId or reviewEventIds/);
+  assert.doesNotMatch(prompt, /host discards this answer|asks again with every queued event/);
+  assert.match(prompt, /host submits this batch first, then checks its latest state/);
   assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
   assert.match(prompt, /You may run tests or start produced artifacts only to close an identified verification gap/);
   assert.match(prompt, /Skipping an unnecessary rerun is not a failure/);

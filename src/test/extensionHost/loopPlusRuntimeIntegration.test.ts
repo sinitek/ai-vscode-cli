@@ -209,9 +209,14 @@ test("冷启动后子任务完成重建编排并经真实适配器验收至父�
     });
     const host = fixture.adapter.host();
     assert.equal(host.hasController(taskId), false);
+    assert.equal(host.notifySubtaskContinuation(taskId, "A", "completed", "旧 attempt 的迟到续接", {
+      target: fixture.target, input: { displayPrompt: "实现并验收功能" },
+    }, undefined, "A-previous"), false);
+    assert.equal(fixture.readTask(taskId)?.status, "stopped");
+    assert.equal(fixture.mainCalls.length, 0);
     assert.equal(host.notifySubtaskContinuation(taskId, "A", "completed", "恢复后实现完成", {
       target: fixture.target, input: { displayPrompt: "实现并验收功能" },
-    }), true);
+    }, undefined, "A-1"), true);
     await waitForLoopPlus(() => fixture.readTask(taskId)?.status === "completed", "恢复后的父任务完成验收");
     assert.equal(fixture.mainCalls.length, 1);
     assert.equal(fixture.attemptCalls.length, 0);
@@ -281,6 +286,29 @@ for (const status of ["end", "error", "stopped", null] as const) {
     }
   });
 }
+
+test("completion subscription and history scan both reject a run owned by another attempt", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, {
+        status: "end",
+        content: "stale attempt result",
+        attemptId: "attempt-old",
+      });
+    });
+    const handle = fixture.adapter.startAttempt({
+      taskId: "task-main", subtaskId: "A", attemptId: "attempt-current", title: "A",
+      prompt: longPrompt("A", "src/a.ts"), modelPrompt: "model", writeFiles: ["src/a.ts"], round: 1, targetCli: "codex",
+    });
+    const result = await handle.promise;
+    assert.equal(result.outcome, "failed");
+    assert.equal(fixture.closedSubtaskTabs.length, 0);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
 
 test("并行调用的完成事件不能替代本次缺失的结果，结束后释放各自订阅", async () => {
   const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });
@@ -661,6 +689,9 @@ test("adapter creates only the normal user prompt bubble in a subtask conversati
     assert.equal(promptMessages[0]?.loopTaskId, fixture.mainCalls[0]?.loopTaskId);
     assert.equal(promptMessages[0]?.loopRound, fixture.attemptCalls[0]?.loopRound);
     assert.equal(promptMessages[0]?.loopSubtaskId, "A");
+    assert.equal(typeof fixture.attemptCalls[0]?.loopAttemptId, "string");
+    assert.equal(promptMessages[0]?.loopAttemptId, fixture.attemptCalls[0]?.loopAttemptId);
+    assert.equal(messages.find((message) => message.role === "assistant")?.loopAttemptId, fixture.attemptCalls[0]?.loopAttemptId);
     assert.equal(messages.some((message) => message.role === "system"), false);
     assert.equal(fixture.getMessages(fixture.target.tabId).filter((message) => (
       message.role === "user" && message.content === fixture.mainCalls[0]?.displayPrompt
@@ -1717,6 +1748,21 @@ test("assistant text must fall inside the actual run window and invocation ancho
     content: "FRESH",
     createdAt: 250,
   }], boundary, subtaskQuery, run), "FRESH");
+  const identifiedQuery = { ...subtaskQuery, attemptId: "attempt-current" };
+  const identifiedRun = { ...run, loopAttemptId: "attempt-current" };
+  const identifiedAssistant = { ...assistant, loopAttemptId: "attempt-current" };
+  const identifiedMessage = { ...identifiedAssistant, id: "identified", content: "IDENTIFIED", createdAt: 250 };
+  assert.equal(selectLoopPlusInvocationRun([identifiedRun], boundary, identifiedQuery), identifiedRun);
+  assert.equal(selectLoopPlusInvocationRun([run], boundary, identifiedQuery), null);
+  assert.equal(selectLoopPlusInvocationAssistant([identifiedMessage], boundary, identifiedQuery, identifiedRun), "IDENTIFIED");
+  assert.equal(selectLoopPlusInvocationAssistant([{
+    ...identifiedMessage,
+    loopAttemptId: undefined,
+  }], boundary, identifiedQuery, identifiedRun), null);
+  assert.equal(selectLoopPlusInvocationAssistant([{
+    ...identifiedMessage,
+    loopAttemptId: "attempt-old",
+  }], boundary, identifiedQuery, identifiedRun), null);
   assert.equal(selectLoopPlusInvocationAssistant([{
     ...assistant,
     id: "old-assistant",

@@ -429,6 +429,7 @@ type ParallelTabRun = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
 };
 type InspectModelManagerMessage = Extract<PanelMessage, { type: "inspectModelManager" }>;
 type CliInstallStatus = {
@@ -2891,6 +2892,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   fileExists: (filePath) => fs.existsSync(filePath),
   writeTextFileEnsuringDir,
   getActiveSubtaskIds: getActiveLoopSubtaskIds,
+  getActiveReviewEventIds: (taskId) => loopPlusRuntimeAdapter?.host().getActiveReviewEventIds(taskId) ?? [],
   buildCompletedConclusionAndSummaryMarkdown: buildLoopCompletedConclusionAndSummaryMarkdown,
   resolveMainPromptTarget: resolveLoopMainPromptTarget,
   revealPanelView,
@@ -3723,6 +3725,7 @@ function stopParallelRunForTab(tabId: string, message?: string): boolean {
     loopTaskId: run.loopTaskId,
     loopRound: run.loopRound,
     loopSubtaskId: run.loopSubtaskId,
+    loopAttemptId: run.loopAttemptId,
   };
   appendTaskRun(taskRecord);
   sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
@@ -4001,7 +4004,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       createSubtaskTarget: (cli, options) => createLoopSubtaskRunTarget(cli, options),
       closeSubtaskTab: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId),
       prepareSubtaskTabClose: prepareLoopSubtaskTabClose,
-      closeSubtaskTabs: (taskId, subtaskId) => closeLoopSubtaskTabs(taskId, subtaskId),
+      closeSubtaskTabs: (taskId, subtaskId, attemptId) => closeLoopSubtaskTabs(taskId, subtaskId, undefined, attemptId),
       cancelInvocation: (tabId) => {
         cancelLoopPlusInvocation(tabId);
       },
@@ -4071,12 +4074,12 @@ function resolveLoopPlusParentStopContext(tabId: string): {
   };
 }
 
-async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subtaskId: string; round: number }, tabId: string): Promise<void> {
+async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subtaskId: string; round: number; attemptId?: string }, tabId: string): Promise<void> {
   const target = resolvePromptRunTarget(tabId);
   if (!target) {
     return;
   }
-  const run = getLatestLoopRoundRunRecord(context.taskId, context.round, "subtask", context.subtaskId);
+  const run = getLatestLoopRoundRunRecord(context.taskId, context.round, "subtask", context.subtaskId, context.attemptId);
   if (!run || run.status !== "end") {
     return;
   }
@@ -4085,6 +4088,7 @@ async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subt
     round: context.round,
     role: "subtask",
     subtaskId: context.subtaskId,
+    attemptId: context.attemptId,
   });
   const task = readLoopTaskRecord(context.taskId);
   if (!task || task.workspaceKey !== activeWorkspaceKey) return;
@@ -4106,7 +4110,7 @@ async function handleLoopPlusSubtaskContinuation(context: { taskId: string; subt
       }, task.modelRouting, task.originProfile),
     } : undefined, () => closeLoopPlusSubtaskTab(tabId, {
       taskId: context.taskId, round: context.round, subtaskId: context.subtaskId, source: "continuation",
-    }, closeTab));
+    }, closeTab), context.attemptId);
 }
 
 async function closeLoopPlusSubtaskTab(
@@ -4840,8 +4844,8 @@ async function takeOverSessionForTab(target: PromptRunTarget, isAborted?: () => 
   }, () => isExtensionDeactivating || isAborted?.() === true);
 }
 
-async function closeLoopSubtaskTabs(taskId: string, subtaskId: string, tabId?: string): Promise<void> {
-  await closeLoopSubtaskConversationTabs({ taskId, subtaskId, tabId }, {
+async function closeLoopSubtaskTabs(taskId: string, subtaskId: string, tabId?: string, attemptId?: string): Promise<void> {
+  await closeLoopSubtaskConversationTabs({ taskId, subtaskId, tabId, attemptId }, {
     getTabs: () => ensureConversationTabs().tabs,
     resolveContext: (tab) => resolveLoopSubtaskConversationContext(tab.cli, tab.id),
     isTabRunActive,
@@ -5116,7 +5120,7 @@ async function runPromptNow(
         if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);
           const sessionId = resolvePromptRunTargetSessionId(attemptTarget)
-            ?? getLatestLoopRoundRunRecord(attemptInput.loopTaskId, attemptInput.loopRound ?? 1, "subtask", attemptInput.loopSubtaskId)?.sessionId;
+            ?? getLatestLoopRoundRunRecord(attemptInput.loopTaskId, attemptInput.loopRound ?? 1, "subtask", attemptInput.loopSubtaskId, attemptInput.loopAttemptId)?.sessionId;
           if (task && sessionId) {
             updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(task.subTasks, attemptInput.loopSubtaskId, { cli: attemptTarget.cli, sessionId, configId: appliedExecutionConfigId }) });
           }
@@ -5768,6 +5772,7 @@ function ensureAssistantMessage(kind?: ChatMessage["kind"]): void {
     loopTaskId: primaryPromptRunController.activeTaskRun?.loopTaskId,
     loopRound: primaryPromptRunController.activeTaskRun?.loopRound,
     loopSubtaskId: primaryPromptRunController.activeTaskRun?.loopSubtaskId,
+    loopAttemptId: primaryPromptRunController.activeTaskRun?.loopAttemptId,
   };
   appendMessageToStore(primaryPromptRunController.activeMessageTarget, message);
   primaryPromptRunController.activeMessageIndex = primaryPromptRunController.activeMessageTarget.length - 1;
@@ -5869,7 +5874,7 @@ function startTaskRun(
   cli: CliName,
   sessionId: string | null,
   prompt: string,
-  options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string } = {}
+  options: { taskRole?: LoopTaskRole; loopTaskId?: string; loopRound?: number; loopSubtaskId?: string; loopAttemptId?: string } = {}
 ): void {
   primaryPromptRunController.activeTaskRun = {
     id: runId,
@@ -5881,6 +5886,7 @@ function startTaskRun(
     loopTaskId: options.loopTaskId,
     loopRound: options.loopRound,
     loopSubtaskId: options.loopSubtaskId,
+    loopAttemptId: options.loopAttemptId,
   };
 }
 

@@ -6,6 +6,7 @@ export type LoopSubtaskConversationContext = {
   taskId: string;
   subtaskId: string;
   round: number;
+  attemptId?: string;
 };
 
 export function getLoopMainSubChatMainTitle(): string {
@@ -54,7 +55,8 @@ export function resolveLoopSubtaskConversationContextFromMessages(
     const subtaskId = normalizeLoopSubtaskId(message?.loopSubtaskId);
     const round = normalizeLoopRound(message?.loopRound);
     if (message?.taskRole === "subtask" && taskId && subtaskId && round) {
-      return { taskId, subtaskId, round };
+      const attemptId = normalizeLoopTaskId(message?.loopAttemptId) ?? undefined;
+      return { taskId, subtaskId, round, ...(attemptId ? { attemptId } : {}) };
     }
     if (message?.role === "user" && String(message.content || "").trim()) {
       return null;

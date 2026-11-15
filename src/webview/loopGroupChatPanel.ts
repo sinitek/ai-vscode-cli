@@ -1522,7 +1522,7 @@ function loopPlusActivityText(
     case "reviewing":
       return formatTemplate(strings.loopPlusActivityReviewing, {
         subtask: [projection.currentReview, ...projection.reviewQueue]
-          .filter((item): item is LoopPlusPanelReviewItem => item !== null)
+          .filter((item): item is LoopPlusPanelReviewItem => item !== null && (projection.activeReviewEventIds ?? []).includes(item.eventId))
           .map((item) => loopPlusSubtaskLabel(state, item.subtaskId))
           .join("、"),
       });

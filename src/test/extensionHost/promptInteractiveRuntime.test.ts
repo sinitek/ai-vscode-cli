@@ -782,6 +782,8 @@ test("interactive runtime host completes a successful Codex runner turn", async 
   const finalMessage = messages.find((message) => message.role === "assistant" && message.codexFinalAnswer === true);
   assert.ok(finalMessage);
   assert.equal(finalMessage.content, "[final_answer] completed");
+  assert.equal(finalMessage.loopAttemptId, undefined);
+  assert.equal(harness.taskRecords.at(-1)?.loopAttemptId, undefined);
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
   assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
   assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
@@ -805,6 +807,35 @@ test("interactive runtime host completes a successful Codex runner turn", async 
     { cli: "codex", sessionId: "session-1", mappedId: "thread-success" },
   );
   assert.deepEqual(harness.processTitles, [{ cli: "codex", sessionId: "thread-success" }]);
+});
+
+test("interactive runtime carries Loop+ attempt identity to assistant, thinking, subagent messages and run record", async () => {
+  const attemptId = "interactive-attempt-17";
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta("thinking details", { kind: "thinking", reasoningItemId: "reasoning-1" });
+      handlers.onSubagentUpdate?.({ threadId: "agent-1", status: "running", delta: "checking files" });
+      handlers.onAssistantDelta("[final_answer] completed", { codexFinalAnswer: true });
+    },
+  });
+
+  await harness.host.runPromptInteractive(createPromptInput({
+    taskRole: "subtask",
+    loopTaskId: "loop-task-17",
+    loopRound: 3,
+    loopSubtaskId: "A",
+    loopAttemptId: attemptId,
+  }), createTarget());
+
+  const messages = harness.messagesBySession.get("session-1") ?? [];
+  const finalMessage = messages.find((message) => message.codexFinalAnswer === true);
+  const thinkingMessage = messages.find((message) => message.kind === "thinking");
+  const subagentMessage = messages.find((message) => message.subagentId === "agent-1");
+  assert.equal(harness.taskRecords.at(-1)?.loopAttemptId, attemptId);
+  assert.equal(finalMessage?.loopAttemptId, attemptId);
+  assert.equal(thinkingMessage?.loopAttemptId, attemptId);
+  assert.equal(subagentMessage?.loopAttemptId, attemptId);
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
 });
 
 test("interactive runtime host reuses a final bubble when its native final phase arrives late", async () => {

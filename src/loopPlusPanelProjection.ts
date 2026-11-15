@@ -6,6 +6,7 @@ export function projectLoopPlusPanel(
   task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "loopPlusMainPhase"> & {
     subTasks?: LoopTaskRecord["subTasks"];
   },
+  activeReviewEventIds: readonly string[] = [],
 ): LoopPlusPanelProjection | null {
   if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
     return null;
@@ -24,7 +25,12 @@ export function projectLoopPlusPanel(
     if (view.visibleReviewCount !== currentReviewCount + reviewQueueCount) {
       return invalidLoopPlusProjection("visibleReviewCount");
     }
-    const activity = loopPlusActivityForPhase(view.phase, task.status);
+    const queuedIds = [currentReview?.eventId, ...reviewQueue.map((item) => item.eventId)].filter((id): id is string => Boolean(id));
+    const activeBatchMatches = activeReviewEventIds.length > 0
+      && activeReviewEventIds.every((id, index) => queuedIds[index] === id);
+    const activeIds = activeBatchMatches ? [...activeReviewEventIds] : [];
+    let activity = loopPlusActivityForPhase(view.phase, task.status);
+    if (activity === "reviewing" && activeIds.length === 0) activity = "review_pending";
     const running = view.running.map((item) => ({
       ...copyLoopPlusExecutionItem(item),
       ...(task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
@@ -39,6 +45,7 @@ export function projectLoopPlusPanel(
       wakePending: snapshot.wakePending,
       currentReview,
       reviewQueue,
+      activeReviewEventIds: activeIds,
       currentReviewCount,
       reviewQueueCount,
       visibleReviewCount: view.visibleReviewCount,

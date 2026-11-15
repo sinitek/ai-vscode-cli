@@ -431,7 +431,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     pendingUserText,
     "Root request:",
     context.rootPrompt,
-    "This prompt is a snapshot captured when the CLI started. The acceptance batch already includes every finished event waiting in the FIFO review queue; confirm that whole batch together. If another execution finishes before this decision is applied, and the larger batch still fits the acceptance limit, the host discards this answer and asks again with every queued event. User messages that arrive after this snapshot wait for the next decision. Read the latest task record before choosing a status. The host re-reads that record and is the final gate; your JSON does not mutate scheduling state.",
+    "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair and retries. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the FIFO review queue, but those belong to the next batch. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- " + LOOP_DIRECT_EXECUTION_RULE_EN,

@@ -985,6 +985,11 @@ test("ignores retired final-answer policy setting messages", async () => {
 
 test("forces a manual OpenCode Loop subtask continuation through coding runPrompt", async () => {
   const { deps, calls } = createSendPromptHarness();
+  let runLookup: unknown[] = [];
+  deps.getLatestLoopRoundRunRecord = (...args) => {
+    runLookup = args;
+    return { endedAt: 250 };
+  };
   deps.getSelectedLoopCliModel = (_cli, role) => role === "main"
     ? "opencode-main-model"
     : "opencode-subtask-model";
@@ -992,6 +997,7 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
     taskId: "task-opencode-loop",
     subtaskId: "subtask-routing",
     round: 2,
+    attemptId: "attempt-opencode-2",
   });
 
   await handlePanelMessageWithDeps({
@@ -1021,6 +1027,7 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
     loopTaskId: "task-opencode-loop",
     loopRound: 2,
     loopSubtaskId: "subtask-routing",
+    loopAttemptId: "attempt-opencode-2",
     preloadedUserMessageId: "user-preloaded",
   });
   assert.deepEqual(calls.wakeMain, [{
@@ -1028,15 +1035,17 @@ test("forces a manual OpenCode Loop subtask continuation through coding runPromp
       taskId: "task-opencode-loop",
       subtaskId: "subtask-routing",
       round: 2,
+      attemptId: "attempt-opencode-2",
     },
     options: {
       tabId: "tab-opencode-smoke",
-      previousRunEndedAt: 0,
+      previousRunEndedAt: 250,
       model: "opencode-main-model",
       loopMainModel: "opencode-main-model",
       loopSubtaskModel: "opencode-subtask-model",
     },
   }]);
+  assert.deepEqual(runLookup, ["task-opencode-loop", 2, "subtask", "subtask-routing", "attempt-opencode-2"]);
 });
 
 test("forces a manual Codex Loop subtask continuation through the subtask model and wakes the main model", async () => {

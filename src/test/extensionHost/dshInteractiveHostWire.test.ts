@@ -77,6 +77,9 @@ function createHostHarness(options: {
   configuredProfile.acpModel = configuredModelIds[0] ?? "";
   const configuredModels = parseDshConfigModels(JSON.stringify(configuredProfile));
   const configuredWires = configuredModelIds.map(toDshModelWireValue);
+  const tabs = new Map<string, { sessionId: string | null; cli: CliName; sessionIdByCli?: Partial<Record<CliName, string>> }>([
+    ["tab-dsh", { sessionId: "local_1", cli: "dsh" }],
+  ]);
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
   const pendingMessagesByTab = new Map<string, ChatMessage[]>();
@@ -143,8 +146,10 @@ function createHostHarness(options: {
   const deps: RuntimeDeps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
     activeRunsByTabId,
-    adoptSessionId: (_cli, sessionId) => {
+    adoptSessionId: (_cli, sessionId, tabId) => {
       adopted.push(sessionId);
+      const tab = tabs.get(tabId ?? "");
+      if (tab) tab.sessionId = sessionId;
     },
     applyProcessTitle: () => undefined,
     applyThinkingWorkspaceFiles: () => undefined,
@@ -158,7 +163,7 @@ function createHostHarness(options: {
     buildTaskRunCompletionText: (status) => `completion:${status}`,
     createMessageId: () => `msg-${++idCounter}`,
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => ({ sessionId: "local_1", cli: "dsh" }),
+    getConversationTabById: (tabId) => tabs.get(tabId),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => options.thinkingMode ?? "off",
     getGlobalHumanInteractionEnabled: () => false,
@@ -224,6 +229,8 @@ function createHostHarness(options: {
   };
   return {
     host: createPromptInteractiveRuntimeHost(deps),
+    deps,
+    tabs,
     panelMessages,
     runStatus,
     adopted,
@@ -248,6 +255,52 @@ function targetFor(sessionId: string | null): PromptRunTarget {
   return { tabId: "tab-dsh", cli: "dsh", sessionId };
 }
 
+for (const invalidation of ["closed", "replaced", "cli", "session", "cli-session", "workspace", "stopped"] as const) {
+  test(`DSH preparation does not create a runner after its Tab is ${invalidation}`, { timeout: 5000 }, async () => {
+    const harness = createHostHarness({});
+    const original = harness.tabs.get("tab-dsh");
+    assert.ok(original);
+    let beginPreparation!: () => void;
+    const preparationStarted = new Promise<void>((resolve) => { beginPreparation = resolve; });
+    let finishPreparation!: () => void;
+    const preparationGate = new Promise<void>((resolve) => { finishPreparation = resolve; });
+    let workspace = "workspace-original";
+    let stopped = false;
+    harness.deps.getWorkspaceKey = () => workspace;
+    harness.deps.readRuntimeConfigFingerprint = async () => {
+      beginPreparation();
+      await preparationGate;
+      return "config-fingerprint";
+    };
+    const completion = harness.host.runPromptInteractive(inputFor("hello"), targetFor("local_1"), {
+      isAborted: () => stopped,
+    });
+    try {
+      await preparationStarted;
+      assert.equal(harness.deps.getConversationTabById("tab-dsh"), original);
+      switch (invalidation) {
+        case "closed": harness.tabs.delete("tab-dsh"); break;
+        case "replaced": harness.tabs.set("tab-dsh", { ...original }); break;
+        case "cli": original.cli = "grok"; break;
+        case "session": original.sessionId = "replacement-session"; break;
+        case "cli-session": original.sessionIdByCli = { dsh: "replacement-session" }; break;
+        case "workspace": workspace = "workspace-replacement"; break;
+        case "stopped": stopped = true; break;
+      }
+    } finally {
+      finishPreparation();
+      await completion;
+    }
+    assert.equal(harness.created.length, 0);
+    assert.equal(harness.starts.length, 0);
+    assert.deepEqual(harness.runStatus, []);
+    assert.equal(harness.activeRunsByTabId.size, 0);
+    if (invalidation === "closed") {
+      assert.equal(harness.deps.getConversationTabById("tab-dsh"), undefined);
+    }
+  });
+}
+
 test("DSH host maps assistant, thinking, tool, raw events, activity, and stop reason", async () => {
   const harness = createHostHarness({
     requireExplicitFinalAnswer: true,
@@ -262,7 +315,10 @@ test("DSH host maps assistant, thinking, tool, raw events, activity, and stop re
       handlers.onComplete?.({ stopReason: "end_turn" });
     },
   });
+  const tab = harness.deps.getConversationTabById("tab-dsh");
   await harness.host.runPromptInteractive(inputFor("Say hello"), targetFor("local_1792000000000_abc"));
+  assert.equal(harness.deps.getConversationTabById("tab-dsh"), tab);
+  assert.equal(tab?.sessionId, ACP_ID);
   assert.equal(harness.starts[0]?.requireResume, false);
   assert.equal(harness.created[0]?.localSessionId, null);
   assert.equal(harness.created[0]?.model, WIRE);
@@ -480,6 +536,7 @@ test("DSH startup failure does not create assistant text", async () => {
 });
 
 test("missing DSH wire resolution does not create a runner", async () => {
+  const tab = { sessionId: "local_1", cli: "dsh" as const };
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   let created = 0;
   const deps = {
@@ -498,7 +555,7 @@ test("missing DSH wire resolution does not create a runner", async () => {
     buildTaskRunCompletionText: () => "",
     createMessageId: () => "id",
     getActiveConfigIdForCli: () => null,
-    getConversationTabById: () => null,
+    getConversationTabById: (tabId: string) => tabId === "tab-dsh" ? tab : null,
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "off" as const,
     getGlobalHumanInteractionEnabled: () => false,

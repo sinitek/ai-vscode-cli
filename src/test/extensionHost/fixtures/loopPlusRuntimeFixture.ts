@@ -21,6 +21,7 @@ type PublishOptions = {
   runEndedAt?: number;
   userCreatedAt?: number;
   assistantId?: string;
+  attemptId?: string;
 };
 
 type ParkedAttempt = {
@@ -201,6 +202,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       });
     }
     if (typeof options.content === "string") {
@@ -213,6 +215,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       });
     }
     if (options.status) {
@@ -230,6 +233,7 @@ export function createLoopPlusRuntimeFixture(options: {
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: options.attemptId ?? input.loopAttemptId,
       };
       runs.push(run);
       completionListeners.forEach((listener) => listener(run));

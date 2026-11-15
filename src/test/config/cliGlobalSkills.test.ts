@@ -452,37 +452,49 @@ test.describe("cli global skills", { concurrency: false }, () => {
       const root = path.join(homeDir, "skills");
       await writeSkill(root, "demo", "original");
       await fs.promises.writeFile(path.join(root, "demo", "marker.txt"), "original-marker", "utf8");
-      const source = await fs.promises.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-skill-fail-"));
-      const sourceSkill = path.join(source, "demo");
-      await writeSkill(sourceSkill, "nested", "ignored");
-      await fs.promises.writeFile(
-        path.join(source, "demo", "SKILL.md"),
-        `---\ndescription: next\n---\n${secret}\n`,
-        "utf8",
-      );
+      // Unix socket paths have a small byte limit; macOS os.tmpdir() can exceed it.
+      const source = await fs.promises.mkdtemp(path.join("/tmp", "sinitek-dsh-skill-fail-"));
       const socketName = `blocked-${secret}.sock`;
       const server = net.createServer();
       try {
+        const sourceSkill = path.join(source, "demo");
+        await writeSkill(sourceSkill, "nested", "ignored");
+        await fs.promises.writeFile(
+          path.join(sourceSkill, "SKILL.md"),
+          `---\ndescription: next\n---\n${secret}\n`,
+          "utf8",
+        );
         await new Promise<void>((resolve, reject) => {
           server.once("error", reject);
-          server.listen(path.join(source, "demo", socketName), () => resolve());
+          server.listen(path.join(sourceSkill, socketName), () => resolve());
         });
+        assert.equal((await fs.promises.lstat(path.join(sourceSkill, socketName))).isSocket(), true);
         await assert.rejects(
-          () => installCliSkillDirectory("dsh", "demo", path.join(source, "demo")),
+          () => installCliSkillDirectory("dsh", "demo", sourceSkill),
           (error: Error) => {
+            assert.match(error.message, /socket/i);
             assert.equal(error.message.includes(secret), false);
             assert.match(error.message, /\[redacted\]/);
             return true;
           },
         );
       } finally {
-        await new Promise<void>((resolve) => server.close(() => resolve()));
-        await fs.promises.rm(source, { recursive: true, force: true });
+        try {
+          await new Promise<void>((resolve) => server.close(() => resolve()));
+        } finally {
+          await fs.promises.rm(source, { recursive: true, force: true });
+        }
       }
+      assert.equal(server.listening, false);
+      assert.equal(fs.existsSync(source), false);
+      assert.match(await fs.promises.readFile(path.join(root, "demo", "SKILL.md"), "utf8"), /original/);
       assert.equal(await fs.promises.readFile(path.join(root, "demo", "marker.txt"), "utf8"), "original-marker");
       assert.equal(fs.existsSync(path.join(root, "demo", socketName)), false);
       assert.equal(fs.existsSync(path.join(root, ".demo.sinitek-replacing")), false);
       assert.equal(fs.existsSync(path.join(homeDir, ".claude", "skills")), false);
+      assert.equal(fs.existsSync(path.join(homeDir, ".codex", "skills")), false);
+      assert.equal(fs.existsSync(path.join(homeDir, ".grok", "skills")), false);
+      assert.equal(fs.existsSync(path.join(homeDir, ".config", "opencode", "skills")), false);
     });
   });
 

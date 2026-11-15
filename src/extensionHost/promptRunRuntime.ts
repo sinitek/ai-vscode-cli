@@ -1275,7 +1275,8 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     context.taskId,
     context.round,
     "subtask",
-    context.subtaskId
+    context.subtaskId,
+    context.attemptId,
   );
   if (!latestRun || latestRun.endedAt <= options.previousRunEndedAt || latestRun.status !== "end") {
     return;
@@ -1579,8 +1580,9 @@ function getLoopRoundRunStatus(
   round: number,
   role: LoopTaskRole,
   subtaskId?: string,
+  attemptId?: string,
 ): TaskRunStatus | null {
-  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId);
+  const record = getLatestLoopRoundRunRecord(taskId, round, role, subtaskId, attemptId);
   return record ? record.status : null;
 }
 
@@ -1589,6 +1591,7 @@ function getLatestLoopRoundRunRecord(
   round: number,
   role: LoopTaskRole,
   subtaskId?: string,
+  attemptId?: string,
 ): TaskRunRecord | null {
   const runs = readTaskStore().runs;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
@@ -1597,6 +1600,7 @@ function getLatestLoopRoundRunRecord(
       run.loopTaskId === taskId
       && run.loopRound === round
       && run.taskRole === role
+      && (attemptId === undefined || run.loopAttemptId === attemptId)
       && (role !== "subtask" || run.loopSubtaskId === subtaskId)
     ) {
       return run;

@@ -3,6 +3,7 @@ import { getConversationTabSessionIdForCli, type ConversationTabRecord } from ".
 type LoopSubtaskTabContext = {
   taskId: string;
   subtaskId: string;
+  attemptId?: string;
 };
 
 export function prepareLoopSubtaskConversationTabClose(
@@ -18,10 +19,12 @@ export function prepareLoopSubtaskConversationTabClose(
   const currentIndex = context.tabId ? tabs.findIndex((tab) => tab.id === context.tabId) : tabs.length - 1;
   const candidates = tabs.slice(0, currentIndex + 1).filter((tab) => {
     if (tab.id === context.tabId) {
-      return true;
+      const candidate = deps.resolveContext(tab);
+      return context.attemptId === undefined || candidate?.attemptId === context.attemptId;
     }
     const candidate = deps.resolveContext(tab);
-    return candidate?.taskId === context.taskId && candidate.subtaskId === context.subtaskId;
+    return candidate?.taskId === context.taskId && candidate.subtaskId === context.subtaskId
+      && (context.attemptId === undefined || candidate.attemptId === context.attemptId);
   }).map((tab) => ({ tab, cli: tab.cli, sessionId: getConversationTabSessionIdForCli(tab, tab.cli) }));
   return async () => {
     for (const { tab, cli, sessionId } of candidates) {
@@ -29,7 +32,9 @@ export function prepareLoopSubtaskConversationTabClose(
       if (!current) continue;
       const candidate = deps.resolveContext(current);
       if (current !== tab || current.cli !== cli || getConversationTabSessionIdForCli(current, cli) !== sessionId
-        || (candidate && (candidate.taskId !== context.taskId || candidate.subtaskId !== context.subtaskId))) {
+        || (candidate && (candidate.taskId !== context.taskId || candidate.subtaskId !== context.subtaskId
+          || (context.attemptId !== undefined && candidate.attemptId !== context.attemptId)))
+        || (context.attemptId !== undefined && candidate?.attemptId !== context.attemptId)) {
         continue;
       }
       if (deps.isTabRunActive(tab.id)) {

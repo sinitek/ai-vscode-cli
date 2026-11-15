@@ -41,6 +41,7 @@ export interface LoopPlusDecisionStrategyPort {
   markDecisionAccepted(): void;
   clearProtocolRetries(): void;
   acknowledgeUserMessages(count: number): void;
+  captureRemainingUserMessagesForHeldReview(): void;
   refuseDispatchPastAcceptanceLimit(plannedLaunches: number): boolean;
   confirmReviewWithinAcceptanceLimit(eventIds: readonly string[]): boolean;
   applyControls(controls: readonly LoopPlusControlDecision[]): boolean;
@@ -306,6 +307,7 @@ function applyBlockedDecision(
   port.acknowledgeUserMessages(step.userMessageCount);
   port.clearProtocolRetries();
   if (port.queueView().hasUserMessages) {
+    port.captureRemainingUserMessagesForHeldReview();
     return "continue";
   }
   port.pauseForReview("loop-plus-blocked", decision.finalSummary);
@@ -337,6 +339,7 @@ function applyCompletedDecision(
     return port.protocolMiss(false, "当前没有验收事件，completed 不得携带 reviewEventId 或 reviewEventIds。");
   }
   port.acknowledgeUserMessages(step.userMessageCount);
+  port.persistSnapshot();
   const pending = port.queueView();
   if (
     pending.hasReview

@@ -84,6 +84,7 @@ export type LoopPlusPanelProjection = {
   wakePending: boolean;
   currentReview: LoopPlusPanelReviewItem | null;
   reviewQueue: LoopPlusPanelReviewItem[];
+  activeReviewEventIds?: string[];
   currentReviewCount: number;
   reviewQueueCount: number;
   visibleReviewCount: number;

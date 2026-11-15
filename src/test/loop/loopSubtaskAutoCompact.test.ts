@@ -57,6 +57,63 @@ test("failed or stopped reporting discards pending compaction and releases the s
   compactions.notify("task", "child", true);
 });
 
+test("stale attempt notifications cannot consume its replacement, regardless of outcome", async () => {
+  for (const staleOutcome of [true, false]) {
+    const events: string[] = [];
+    const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected compaction failure"));
+    const runInput = input({ loopAttemptId: "attempt-a" });
+    compactions.defer(runInput, target(), async () => { events.push("A compact"); });
+    runInput.loopAttemptId = "attempt-b";
+    compactions.defer(runInput, target(), async () => { events.push("B compact"); });
+
+    assert.equal(compactions.notify("task", "child", staleOutcome, async () => { events.push("stale callback"); }, "attempt-a"), undefined);
+    assert.equal(compactions.notify("task", "child", true, async () => { events.push("missing callback"); }), undefined);
+    assert.deepEqual(events, []);
+    assert.equal(compactions.has("codex", "child-session"), true);
+
+    let callbacks = 0;
+    const flight = compactions.notify("task", "child", true, async () => { callbacks += 1; }, "attempt-b");
+    assert.ok(flight);
+    assert.equal(compactions.notify("task", "child", true, async () => { callbacks += 1; }, "attempt-b"), undefined);
+    await flight;
+    assert.deepEqual(events, ["B compact"]);
+    assert.equal(callbacks, 1);
+    assert.equal(compactions.has("codex", "child-session"), false);
+  }
+});
+
+test("attempt identity is captured at defer time and mismatches do not cancel pending work", async () => {
+  const events: string[] = [];
+  const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected compaction failure"));
+  const runInput = input({ loopAttemptId: "captured-at-defer" });
+  compactions.defer(runInput, target(), async () => { events.push("compact"); });
+  runInput.loopAttemptId = "mutated-after-defer";
+  assert.equal(compactions.notify("task", "child", false, undefined, "mutated-after-defer"), undefined);
+  const flight = compactions.notify("task", "child", true, undefined, "captured-at-defer");
+  assert.ok(flight);
+  await flight;
+  assert.deepEqual(events, ["compact"]);
+});
+
+test("identity-less notifications only retain compatibility with identity-less pending entries", async () => {
+  const events: string[] = [];
+  let legacyRan = false;
+  const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected compaction failure"));
+  compactions.defer(input({ loopAttemptId: "modern" }), target(), async () => { events.push("modern"); });
+  assert.equal(compactions.notify("task", "child", true), undefined);
+  assert.deepEqual(events, []);
+  const modern = compactions.notify("task", "child", true, undefined, "modern");
+  assert.ok(modern);
+  await modern;
+
+  compactions.defer(input(), target(), async () => { legacyRan = true; });
+  const legacy = compactions.notify("task", "child", true);
+  assert.ok(legacy);
+  await legacy;
+  assert.deepEqual(events, ["modern"]);
+  assert.equal(legacyRan, true);
+});
+
 test("compaction rejection is recorded without failing a completed subtask or its continuation", async () => {
   const errors: unknown[] = [];
   const compactions = new LoopSubtaskAutoCompactions((error) => { errors.push(error); });
@@ -156,6 +213,32 @@ test("compactions sharing a session remain serialized even when notifications ar
   compactions.notify("task", "child", true);
   await compactions.wait("codex", "child-session");
   assert.deepEqual(events, ["first", "second"]);
+});
+
+test("same-session replacement waits for canceled predecessor while an independent session proceeds", async () => {
+  const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected failure"));
+  const firstStarted = createDeferred();
+  const releaseFirst = createDeferred();
+  const events: string[] = [];
+  compactions.defer(input({ loopSubtaskId: "first", loopAttemptId: "first-attempt" }), target(), async () => {
+    events.push("first");
+    firstStarted.resolve();
+    await releaseFirst.promise;
+  });
+  const secondInput = input({ loopSubtaskId: "second", loopAttemptId: "second-attempt" });
+  compactions.defer(secondInput, target(), async () => { events.push("second"); });
+  compactions.notify("task", "first", true, undefined, "first-attempt");
+  await firstStarted.promise;
+  const secondFlight = compactions.notify("task", "second", true, undefined, "second-attempt");
+  assert.ok(secondFlight);
+  compactions.defer(input({ loopTaskId: "other", loopAttemptId: "other-attempt" }), target({ sessionId: "other-session" }), async () => { events.push("other"); });
+  const independent = compactions.notify("other", "child", true, undefined, "other-attempt");
+  assert.ok(independent);
+  await independent;
+  assert.deepEqual(events, ["first", "other"]);
+  releaseFirst.resolve();
+  await secondFlight;
+  assert.deepEqual(events, ["first", "other", "second"]);
 });
 
 test("subtask compaction retains the execution config, model and thinking snapshot", async () => {

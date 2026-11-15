@@ -591,6 +591,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       },
       appendMessage: appendMessageForTab,
       replaceMessage: (message) => {
@@ -673,6 +674,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       };
       appendMessageToStore(messageTarget, message);
       if (assistantItemId) {
@@ -912,6 +914,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       };
       appendTaskRun(taskRecord);
       appendSystemMessageForTab(

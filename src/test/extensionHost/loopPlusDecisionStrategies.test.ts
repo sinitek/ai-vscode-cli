@@ -145,6 +145,9 @@ function createPort(options: {
     acknowledgeUserMessages(count) {
       record("acknowledgeUserMessages", [count]);
     },
+    captureRemainingUserMessagesForHeldReview() {
+      record("captureRemainingUserMessagesForHeldReview");
+    },
     refuseDispatchPastAcceptanceLimit(plannedLaunches) {
       record("refuseDispatchPastAcceptanceLimit", [plannedLaunches]);
       const refused = next(refuse, refuseIndex);
@@ -726,6 +729,7 @@ test("blocked requeues a held review and does not reset the main failure state",
 
   const queued = createPort({ views: [view(), view({ hasUserMessages: true })] });
   assert.equal(registry.blocked(queued.port, decisionStep(), decision("blocked")), "continue");
+  assert.equal(names(queued.calls).includes("captureRemainingUserMessagesForHeldReview"), true);
   assert.equal(names(queued.calls).includes("requeueCurrentReview"), false);
   assert.equal(names(queued.calls).includes("pauseForReview"), false);
   assert.equal(names(queued.calls).includes("dispatchSubtasks"), false);
@@ -894,6 +898,7 @@ test("completed finishes only after the scheduler accepts an idle parent", () =>
   assert.equal(registry.completed(blocked.port, step, accepted), "continue");
   assert.deepEqual(names(blocked.calls), [
     "acknowledgeUserMessages",
+    "persistSnapshot",
     "queueView",
     "tryFinishParent",
     "queueView",
@@ -903,10 +908,12 @@ test("completed finishes only after the scheduler accepts an idle parent", () =>
 
   const waiting = createPort({ tryFinish: false, views: [view(), view()] });
   assert.equal(registry.completed(waiting.port, step, accepted), "wait");
+  assert.equal(names(waiting.calls)[1], "persistSnapshot");
   assert.equal(names(waiting.calls).at(-1), "persistRunning");
 
   const done = createPort({ finish: "stop", views: [view()] });
   assert.equal(registry.completed(done.port, step, accepted), "stop");
+  assert.equal(names(done.calls)[1], "persistSnapshot");
   assert.deepEqual(names(done.calls).slice(-2), ["markDecisionAccepted", "finishParent"]);
   assert.equal(names(done.calls).includes("dispatchSubtasks"), false);
   assert.equal(names(done.calls).includes("armCloseout"), false);

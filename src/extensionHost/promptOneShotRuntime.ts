@@ -171,6 +171,7 @@ type PromptOneShotRuntimeHostDeps = {
       loopTaskId?: string;
       loopRound?: number;
       loopSubtaskId?: string;
+      loopAttemptId?: string;
     },
   ) => void;
   startTraceMessage: (cli: CliName) => void;
@@ -659,6 +660,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           loopTaskId: input.loopTaskId,
           loopRound: input.loopRound,
           loopSubtaskId: input.loopSubtaskId,
+          loopAttemptId: input.loopAttemptId,
         });
         setActiveMessageTarget(prepared.messageTarget);
         setActiveSessionId(target.sessionId);
@@ -689,6 +691,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
             loopTaskId: input.loopTaskId,
             loopRound: input.loopRound,
             loopSubtaskId: input.loopSubtaskId,
+            loopAttemptId: input.loopAttemptId,
           },
           appendMessage: (message) => {
             if (!activeMessageTarget || getActiveRunId() !== runId) {

@@ -122,6 +122,9 @@ test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home 
   const registered: Array<Record<string, unknown>> = [];
   const starts: Array<{ requireResume?: boolean }> = [];
   let tabSessionId = "local_stable_1";
+  const tabs = new Map<string, { sessionId: string; cli: CliName }>([
+    ["tab-stable", { sessionId: tabSessionId, cli: "dsh" }],
+  ]);
   const mapped = new Map<string, string>();
   const activeRunsByTabId = new Map<string, InteractiveTabRun>();
   const messagesBySession = new Map<string, ChatMessage[]>();
@@ -161,8 +164,10 @@ test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home 
   const deps = {
     AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
     activeRunsByTabId,
-    adoptSessionId: (_cli: CliName, sessionId: string) => {
+    adoptSessionId: (_cli: CliName, sessionId: string, tabId?: string | null) => {
       tabSessionId = sessionId;
+      const tab = tabs.get(tabId ?? "");
+      if (tab) tab.sessionId = sessionId;
     },
     applyProcessTitle: () => undefined,
     applyThinkingWorkspaceFiles: () => undefined,
@@ -179,7 +184,7 @@ test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home 
       return () => `msg-${++id}`;
     })(),
     getActiveConfigIdForCli: () => "dsh_plugin_profile",
-    getConversationTabById: () => ({ sessionId: tabSessionId, cli: "dsh" as const }),
+    getConversationTabById: (tabId: string) => tabs.get(tabId),
     getEffectiveCliArgs: () => [],
     getEffectiveThinkingMode: () => "off" as const,
     getGlobalHumanInteractionEnabled: () => false,
@@ -253,6 +258,9 @@ test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home 
     };
     await run("tab-stable");
     await run("tab-stable");
+    // Reload creates a distinct Tab; lookups never recreate a closed Tab.
+    tabs.delete("tab-stable");
+    tabs.set("tab-reloaded", { sessionId: tabSessionId, cli: "dsh" });
     await run("tab-reloaded");
     assert.equal(created.length, 3);
     assert.equal(created[0]?.localSessionId ?? null, null);
@@ -294,7 +302,7 @@ test(`DSH ${isolateProjectInstructions ? "Loop+" : "Vibe"} host reuses its home 
     assert.equal(starts[1]?.requireResume, true);
     assert.equal(starts[2]?.requireResume, true);
     await assert.rejects(
-      () => host.runPromptInteractive(inputFor("no", "not-configured-model"), targetFor(ACP_ID, "tab-stable")),
+      () => host.runPromptInteractive(inputFor("no", "not-configured-model"), targetFor(ACP_ID, "tab-reloaded")),
       /wire value/,
     );
     assert.equal(created.length, 3);
@@ -517,7 +525,10 @@ test("DSH plugin runner and extension host talk to the configured loopback model
 
     const panel: Array<Record<string, unknown>> = [];
     const adopted: string[] = [];
-    let tabSessionId = "local_live_host";
+    const tabs = new Map<string, { sessionId: string; cli: CliName }>([
+      ["tab-live-dsh", { sessionId: "local_live_host", cli: "dsh" }],
+      ["tab-alias", { sessionId: "local_alias", cli: "dsh" }],
+    ]);
     const mapped = new Map<string, string>();
     const activeRunsByTabId = new Map<string, InteractiveTabRun>();
     const messagesBySession = new Map<string, ChatMessage[]>();
@@ -525,9 +536,10 @@ test("DSH plugin runner and extension host talk to the configured loopback model
     const host = createPromptInteractiveRuntimeHost({
       AI_TASK_RAW_OUTPUT_MAX_BYTES: 1024,
       activeRunsByTabId,
-      adoptSessionId: (_cli: CliName, sessionId: string) => {
+      adoptSessionId: (_cli: CliName, sessionId: string, tabId?: string | null) => {
         adopted.push(sessionId);
-        tabSessionId = sessionId;
+        const tab = tabs.get(tabId ?? "");
+        if (tab) tab.sessionId = sessionId;
       },
       applyProcessTitle: () => undefined,
       applyThinkingWorkspaceFiles: () => undefined,
@@ -544,7 +556,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
         return () => `live-${++id}`;
       })(),
       getActiveConfigIdForCli: () => "dsh_plugin_profile",
-      getConversationTabById: () => ({ sessionId: tabSessionId, cli: "dsh" as const }),
+      getConversationTabById: (tabId: string) => tabs.get(tabId),
       getEffectiveCliArgs: () => [],
       getEffectiveThinkingMode: () => "off" as const,
       getGlobalHumanInteractionEnabled: () => false,

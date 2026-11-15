@@ -371,7 +371,7 @@ test("关页被宿主拒绝时明确失败，不能伪报关闭成功", async ()
 });
 
 test("an old attempt cannot close a newer replacement tab waiting to start", async () => {
-  const context = { taskId: "task-1", subtaskId: "A" };
+  const context = { taskId: "task-1", subtaskId: "A", attemptId: "attempt-old" };
   const state: ConversationTabsState = {
     activeTabId: "main-tab",
     tabs: ["main-tab", "stopped-sub", "queued-sub"].map((id) => ({
@@ -381,7 +381,9 @@ test("an old attempt cannot close a newer replacement tab waiting to start", asy
   const env = createHost({ state, currentCli: "codex", modes: {} });
   await closeLoopSubtaskConversationTabs({ ...context, tabId: "stopped-sub" }, {
     getTabs: () => state.tabs,
-    resolveContext: (tab) => tab.id === "main-tab" ? null : context,
+    resolveContext: (tab) => tab.id === "main-tab" ? null
+      : tab.id === "queued-sub" ? { ...context, attemptId: "attempt-new" }
+        : context,
     isTabRunActive: () => false,
     closeTab: env.host.closeConversationTabAndRefreshPanel,
   });

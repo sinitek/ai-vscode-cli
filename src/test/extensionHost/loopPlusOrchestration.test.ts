@@ -35,6 +35,8 @@ type MainCall = {
   request: LoopPlusMainRequest;
   resolve: (value: string | null) => void;
   releaseAbort: (value?: string | null) => void;
+  reject: (error: Error) => void;
+  abortCount: number;
 };
 
 type AttemptReport = {
@@ -368,10 +370,14 @@ test("new user input rearms one review while malformed answers keep the existing
   await flush();
   assert.equal(env.host.submitUserMessage(run.taskId ?? "", "new platform evidence supplied"), true);
   await flush();
+  assert.equal(env.mains[2].request.userMessageCount, 1);
+  assert.match(env.mains[2].request.prompt, /new platform evidence supplied/u);
   env.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "evidence still incomplete" }));
   await flush();
   assert.match(env.mains[3].request.prompt, /Bounded blocked review/);
-  assert.equal(env.mains[3].request.userMessageCount, 1);
+  assert.equal(env.mains[3].request.userMessageCount, 0);
+  const boundedMessageSection = env.mains[3].request.prompt.split("New user messages, oldest first.")[1]?.split("Root request:")[0] ?? "";
+  assert.doesNotMatch(boundedMessageSection, /new platform evidence supplied/u);
   env.mains[3].resolve("invalid protocol");
   await flush();
   env.mains[4].resolve("invalid protocol again");
@@ -396,7 +402,7 @@ test("user input received without a live host rearms the persisted block review"
   assert.equal(env.mains.length, 0);
 });
 
-test("block review preserves every acceptance event and a running attempt", async () => {
+test("blocked review preserves its event and later completions for resumed FIFO review", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -412,13 +418,65 @@ test("block review preserves every acceptance event and a running attempt", asyn
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts[0]?.disposition, "finished");
   env.attempts[1].resolve({ outcome: "completed", detail: "b done during review" });
   await flush();
-  const expanded = env.mains[env.mains.length - 1];
-  assert.equal(expanded.request.reviewEventIds?.length, 2);
-  expanded.resolve(decisionJson({ status: "accept", reviewEventIds: expanded.request.reviewEventIds, subtasks: [] }));
-  await flush();
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.every((attempt) => attempt.disposition === "reviewed"), true);
-  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusBlockReview, undefined);
+  const snapshot = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.deepEqual([snapshot.currentReview?.eventId, ...snapshot.reviewQueue.map((item) => item.eventId)], [
+    eventId,
+    buildLoopPlusFinishEventId("b", env.attempts[1].request.attemptId),
+  ]);
+  assert.equal(env.mains.length, 3, "new queued work starts a bounded follow-up decision after the blocked review");
+  assert.deepEqual(env.mains[2].request.reviewEventIds, [eventId]);
+  assert.equal(env.mains[2].request.userMessageCount, 0);
   env.host.stopParent(run.taskId ?? "");
+});
+
+test("blocked frozen review exposes messages arriving after its captured prefix exactly once", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "alpha", attemptId: "alpha-1", title: "alpha", writeFiles: ["a.ts"] }]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  scheduler.enqueueUserMessage("before review");
+  const task = baseTask("blocked-frozen-review", scheduler.snapshot());
+  task.status = "needs-review";
+  env.tasks.set(task.id, task);
+  const taskId = task.id;
+  const run = env.host.tryRun({ displayPrompt: "continue" }, env.target, {
+    resumeTaskId: taskId,
+    resumeRequested: true,
+  });
+  await flush();
+  const first = env.mains[0];
+  const eventId = first.request.reviewEventId;
+  assert.equal(first.request.userMessageCount, 1);
+  assert.match(first.request.prompt, /before review/u);
+  env.host.submitUserMessage(taskId, "arrived during review");
+  assert.deepEqual(first.request.reviewEventIds, [eventId]);
+  assert.equal(first.request.userMessageCount, 1);
+  first.resolve(decisionJson({ status: "blocked", finalSummary: "blocked by external evidence" }));
+  await flush();
+  const second = env.mains[1];
+  assert.deepEqual(second.request.reviewEventIds, [eventId]);
+  assert.equal(second.request.userMessageCount, 1);
+  assert.match(second.request.prompt, /arrived during review/u);
+  const secondMessageSection = second.request.prompt.split("New user messages, oldest first.")[1]?.split("Root request:")[0] ?? "";
+  assert.doesNotMatch(secondMessageSection, /before review/u);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts[0]?.disposition, "finished");
+  second.resolve(decisionJson({ status: "blocked", finalSummary: "still blocked" }));
+  await flush();
+  const bounded = env.mains[2];
+  assert.match(bounded.request.prompt, /Bounded blocked review/u);
+  assert.deepEqual(bounded.request.reviewEventIds, [eventId]);
+  assert.equal(bounded.request.userMessageCount, 0);
+  bounded.resolve(decisionJson({ status: "blocked", finalSummary: "still blocked" }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, []);
+  const pausedSnapshot = snapshotOf(env.tasks.get(taskId));
+  assert.deepEqual(
+    [pausedSnapshot.currentReview?.eventId, ...pausedSnapshot.reviewQueue.map((item) => item.eventId)].filter(Boolean),
+    [eventId],
+  );
+  assert.equal(env.mains.length, 3, "without a newer message the held batch receives one bounded review before pause");
+  await run.done;
 });
 
 function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRecord {
@@ -550,6 +608,8 @@ function harness(options: {
       const call: MainCall = {
         request,
         resolve: gate.resolve,
+        reject: gate.reject,
+        abortCount: 0,
         releaseAbort: (value) => gate.resolve(value ?? null),
       };
       mains.push(call);
@@ -558,6 +618,7 @@ function harness(options: {
           activeMains -= 1;
         }),
         abort: () => {
+          call.abortCount += 1;
           if (options.deferMainAbort) {
             return;
           }
@@ -660,7 +721,7 @@ test("Loop+ records completion and starts main review without waiting for subtas
     const gate = deferred<void>();
     let compactStarted = false;
     const sessionId = viaContinuation ? "continued-session" : "attempt-session";
-    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成子任务", modelPrompt: "完成子任务", contextTags: [], taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
+    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成子任务", modelPrompt: "完成子任务", contextTags: [], taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId, loopAttemptId: attempt.attemptId }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
       assert.equal(env.reports.some((report) => report.subtaskId === "alpha"), true);
       assert.ok(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview || snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length > 0);
       compactStarted = true;
@@ -671,7 +732,7 @@ test("Loop+ records completion and starts main review without waiting for subtas
     await flush();
     assert.equal(compactStarted, false);
     if (viaContinuation) {
-      assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, attempt.subtaskId, "completed", "已完成续接", undefined, close), true);
+      assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, attempt.subtaskId, "completed", "已完成续接", undefined, close, attempt.attemptId), true);
     } else {
       env.attempts[0].resolve({ outcome: "completed", detail: "已完成" });
     }
@@ -729,9 +790,10 @@ async function verifyCompletedCompaction(t: import("node:test").TestContext, vie
   const statuses: Array<{ tabId: string | null; status: string }> = [];
   const published: unknown[] = [];
   const sessionId = "late-handoff-child-session";
+  let attemptId: string | undefined;
   t.after(async () => {
     gate.resolve({ compacted: true, threadId: "thread-child" });
-    loopSubtaskAutoCompactions.notify(run.taskId!, "alpha", false);
+    loopSubtaskAutoCompactions.notify(run.taskId!, "alpha", false, undefined, attemptId);
     await loopSubtaskAutoCompactions.wait("codex", sessionId);
     env.host.stopParent(run.taskId!);
     await run.done;
@@ -784,9 +846,10 @@ async function verifyCompletedCompaction(t: import("node:test").TestContext, vie
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
   await flush();
   const attempt = env.attempts[0].request;
+  attemptId = attempt.attemptId;
   let compacted: boolean | undefined;
   await scheduleAutoCompactAfterPrompt({ displayPrompt: "done", modelPrompt: "done", contextTags: [],
-    taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId,
+    taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId, loopAttemptId: attempt.attemptId,
   }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
     assert.equal(env.reports[0]?.outcome, "completed");
     compacted = await runContextCompactionWithDeps(isolated, { silent: true, cli: "codex", tabId: "child-tab", sessionId });
@@ -1290,7 +1353,7 @@ test("starts one main review when A finishes while B is still running", async ()
   assert.equal(beta.request.attemptId.length > 0, true);
 });
 
-test("accepts every review queued before the decision lands, including ones that finish during it", async () => {
+test("freezes the active acceptance batch and reviews later completions in the next FIFO batch", async () => {
   const env = harness({ maxConcurrency: 3 });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -1312,24 +1375,25 @@ test("accepts every review queued before the decision lands, including ones that
   env.attempts[2].resolve({ outcome: "failed", detail: "gamma" });
   assert.equal(env.host.submitUserMessage(run.taskId ?? "", "cover the new failure"), true);
   await flush();
-  assert.equal(reviews().length, 2);
+  assert.equal(reviews().length, 1);
   assert.equal(env.activeMains(), 1);
   const alphaEventId = buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId);
   const betaEventId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
   const gammaEventId = buildLoopPlusFinishEventId("gamma", env.attempts[2].request.attemptId);
-  const batch = reviews()[1];
-  assert.deepEqual(batch.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
-  assert.match(batch.request.modelPrompt, /Acceptance batch count: 3/);
-  assert.match(batch.request.prompt, /cover the new failure/);
-  batch.resolve(decisionJson({ status: "accept", reviewEventId: alphaEventId }));
+  const first = reviews()[0];
+  assert.deepEqual(first.request.reviewEventIds, [alphaEventId]);
+  assert.equal(first.request.userMessageCount, 0);
+  assert.deepEqual(env.host.getActiveReviewEventIds(run.taskId ?? ""), [alphaEventId]);
+  first.resolve(decisionJson({ status: "accept", reviewEventId: alphaEventId }));
   await flush();
-  assert.equal(reviews().length, 3);
-  const retried = reviews()[2];
-  assert.deepEqual(retried.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
-  assert.match(retried.request.prompt, /cover the new failure/);
-  retried.resolve(decisionJson({
+  assert.equal(reviews().length, 2);
+  const second = reviews()[1];
+  assert.deepEqual(second.request.reviewEventIds, [betaEventId, gammaEventId]);
+  assert.deepEqual(env.host.getActiveReviewEventIds(run.taskId ?? ""), [betaEventId, gammaEventId]);
+  assert.match(second.request.prompt, /cover the new failure/);
+  second.resolve(decisionJson({
     status: "accept",
-    reviewEventIds: [alphaEventId, betaEventId, gammaEventId],
+    reviewEventIds: [betaEventId, gammaEventId],
     subtasks: [],
   }));
   await flush();
@@ -1453,15 +1517,14 @@ test("records each accept review without failing a successful sibling", async ()
   const betaEventId = buildLoopPlusFinishEventId("beta", betaAttempt.request.attemptId);
   const batch = reviews().at(-1);
   assert.ok(batch);
-  assert.deepEqual(batch.request.reviewEventIds, [alphaEventId, betaEventId]);
+  assert.deepEqual(batch.request.reviewEventIds, [alphaEventId]);
+  assert.equal(batch.abortCount, 0, "later finishes stay queued without aborting the active review");
   batch.resolve(decisionJson({
     status: "accept",
-    reviewEventIds: [alphaEventId, betaEventId],
-    reviews: [
-      { reviewEventId: alphaEventId, acceptance: "passed", subtaskIds: ["follow-up"] },
-      { reviewEventId: betaEventId, acceptance: "failed", subtaskIds: ["repair"] },
-    ],
-    subtasks: [subtask("follow-up", ["src/follow-up.ts"]), subtask("repair", ["src/repair.ts"])],
+    reviewEventId: alphaEventId,
+    reviews: [{ reviewEventId: alphaEventId, acceptance: "passed", subtaskIds: ["follow-up"] }],
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    subtasks: [subtask("follow-up", ["src/follow-up.ts"])],
   }));
   await flush();
   const taskId = run.taskId ?? "";
@@ -1469,24 +1532,48 @@ test("records each accept review without failing a successful sibling", async ()
   assert.equal(seen("alpha")?.outcome, "completed");
   assert.equal(seen("alpha")?.acceptance, "passed");
   assert.equal(seen("beta")?.outcome, "completed");
-  assert.equal(seen("beta")?.acceptance, "failed");
+  assert.equal(seen("beta")?.acceptance, undefined);
   assert.equal(seen("follow-up")?.acceptance, undefined);
   assert.equal(seen("repair")?.acceptance, undefined);
+
+  assert.equal(reviews().filter((item) => item.request.reviewEventIds?.includes(alphaEventId) === true).length, 1);
+  const betaReview = reviews().at(-1);
+  assert.ok(betaReview);
+  assert.deepEqual(betaReview.request.reviewEventIds, [betaEventId]);
+  assert.equal(reviews().filter((item) => item.request.reviewEventIds?.includes(betaEventId) === true).length, 1);
+  betaReview.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: betaEventId,
+    reviews: [{ reviewEventId: betaEventId, acceptance: "failed", subtaskIds: ["repair"] }],
+    acceptance: {
+      passed: false,
+      checks: loopPlusAcceptanceChecksFixture().map((check) => ({ ...check, passed: false })),
+    },
+    subtasks: [subtask("repair", ["src/repair.ts"])],
+  }));
+  await flush();
 
   env.attempts.find((item) => item.request.subtaskId === "repair")?.resolve({ outcome: "completed", detail: "repair" });
   await flush();
   const repairReview = reviews().at(-1);
   assert.ok(repairReview);
+  assert.notEqual(repairReview, betaReview);
+  assert.deepEqual(repairReview.request.reviewEventIds, [buildLoopPlusFinishEventId("repair", env.attempts.find((item) => item.request.subtaskId === "repair")!.request.attemptId)]);
   repairReview.resolve(decisionJson({
     status: "accept",
     reviewEventId: repairReview.request.reviewEventId,
     reviews: [{ reviewEventId: repairReview.request.reviewEventId, acceptance: "passed" }],
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     subtasks: [],
   }));
   await flush();
   assert.equal(seen("alpha")?.acceptance, "passed");
   assert.equal(seen("beta")?.acceptance, "failed");
   assert.equal(seen("repair")?.acceptance, "passed");
+  assert.equal(seen("beta")?.acceptance, "failed");
+  assert.equal(reviews().filter((item) => item.request.reviewEventIds?.includes(alphaEventId) === true).length, 1);
+  env.host.stopParent(taskId);
+  await run.done;
 });
 
 test("does not complete from a stale review after another finish joins the batch", async () => {
@@ -1504,10 +1591,10 @@ test("does not complete from a stale review after another finish joins the batch
   env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
   await flush();
   const reviews = () => env.mains.filter((item) => item.request.kind === "review");
-  assert.equal(reviews().length, 2);
+  assert.equal(reviews().length, 1);
   const alphaEventId = buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId);
   const betaEventId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
-  assert.deepEqual(reviews()[1].request.reviewEventIds, [alphaEventId, betaEventId]);
+  assert.deepEqual(reviews()[0].request.reviewEventIds, [alphaEventId]);
   stale.resolve(decisionJson({
     status: "completed",
     reviewEventId: alphaEventId,
@@ -1519,8 +1606,14 @@ test("does not complete from a stale review after another finish joins the batch
   await flush();
   assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(reviews().length, 2);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, alphaEventId);
-  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.map((item) => item.eventId), [betaEventId]);
+  assert.deepEqual(reviews()[1].request.reviewEventIds, [betaEventId]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, betaEventId);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.find((item) => item.subtaskId === "alpha")?.disposition, "reviewed");
+  reviews()[1].resolve(decisionJson({ status: "accept", reviewEventId: betaEventId }));
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.filter((item) => item.disposition === "reviewed").length, 2);
+  env.host.stopParent(run.taskId ?? "");
+  await run.done;
 });
 
 test("ignores duplicate and stale attempt callbacks", async () => {
@@ -1756,8 +1849,9 @@ test("manual interruption keeps an open reservation until a successful continuat
   assert.equal(env.mains.length, 1);
   assert.equal(env.attempts.length, 1);
 
-  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "resumed successfully");
-  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "duplicate");
+  assert.equal(env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "stale continuation", undefined, undefined, "older-attempt"), false);
+  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "resumed successfully", undefined, undefined, attemptId);
+  env.host.notifySubtaskContinuation(taskId, "alpha", "completed", "duplicate", undefined, undefined, attemptId);
   await flush();
   assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.attemptId, attemptId);
   assert.equal(env.mains.length, 2);
@@ -2579,7 +2673,8 @@ test("keeps the persisted finish queue when refreshing an in-flight main prompt 
   assert.equal(snapshotOf(task).currentReview?.subtaskId, "alpha");
   assert.deepEqual(snapshotOf(task).reviewQueue.map((item) => item.subtaskId), ["beta"]);
   const reviews = env.mains.filter((item) => item.request.kind === "review");
-  assert.deepEqual(reviews.at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId]);
+  assert.deepEqual(reviews.at(-1)?.request.reviewEventIds, [alphaEventId],
+    "a later finish must remain queued while the in-flight review keeps its captured batch");
   assert.equal(env.logs.some((item) => item.event === "loop-plus-refresh-failed"), true);
   assert.equal(await isSettled(run.done), false);
   assert.equal(task?.mainAiFailureCount ?? 0, 0);
@@ -3356,60 +3451,151 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   assert.equal(env.attempts.length, 1);
 });
 
-test("reasks with every queued finish and keeps a finish that lands after accept", async () => {
-  const env = harness();
+test("freezes in-flight review, then confirms the next FIFO batch in its original order", async () => {
+  const env = harness({ decisionSafetyLimit: 5 });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
   await flush();
-  env.mains[0].resolve(decisionJson({
-    status: "dispatch",
-    subtasks: [
-      subtask("alpha", ["src/alpha.ts"]),
-      subtask("beta", ["src/beta.ts"]),
-      subtask("gamma", ["src/gamma.ts"]),
-      subtask("delta", ["src/delta.ts"]),
-    ],
-  }));
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+    subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"]),
+    subtask("gamma", ["src/gamma.ts"]), subtask("delta", ["src/delta.ts"]),
+  ] }));
   await flush();
   assert.equal(env.attempts.length, 4);
-  const attempt = (subtaskId: string) => env.attempts.find((item) => item.request.subtaskId === subtaskId);
-  const alpha = attempt("alpha");
-  const beta = attempt("beta");
-  const gamma = attempt("gamma");
-  const delta = attempt("delta");
-  assert.ok(alpha && beta && gamma && delta);
+  const [alpha, beta, gamma, delta] = env.attempts;
+  const id = (attempt: AttemptCall) => buildLoopPlusFinishEventId(attempt.request.subtaskId, attempt.request.attemptId);
+  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
+  const reviewed = () => snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed");
   alpha.resolve({ outcome: "completed", detail: "alpha" });
   await flush();
-  const reviews = () => env.mains.filter((item) => item.request.kind === "review");
-  const alphaEventId = buildLoopPlusFinishEventId("alpha", alpha.request.attemptId);
-  assert.deepEqual(reviews()[0]?.request.reviewEventIds, [alphaEventId]);
+  const first = reviews()[0];
+  assert.deepEqual(first.request.reviewEventIds, [id(alpha)]);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).running.length, 3, "first finish starts review without a barrier");
   beta.resolve({ outcome: "completed", detail: "beta" });
   gamma.resolve({ outcome: "completed", detail: "gamma" });
   await flush();
-  const betaEventId = buildLoopPlusFinishEventId("beta", beta.request.attemptId);
-  const gammaEventId = buildLoopPlusFinishEventId("gamma", gamma.request.attemptId);
-  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
-  reviews().at(-1)?.resolve(decisionJson({
-    status: "accept",
-    reviewEventIds: [gammaEventId, betaEventId, alphaEventId],
-    subtasks: [],
-  }));
+  assert.equal(first.abortCount, 0);
+  assert.equal(reviews().length, 1);
+  assert.deepEqual(first.request.reviewEventIds, [id(alpha)]);
+  assert.match(first.request.prompt, /Acceptance batch count: 1/);
+  assert.ok(first.request.prompt.includes("1. " + id(alpha) + "\nFIFO review queue count: 2"));
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).reviewQueue.map((item) => item.eventId), [id(beta), id(gamma)]);
+  first.resolve(decisionJson({ status: "accept", reviewEventId: id(alpha), subtasks: [] }));
   await flush();
-  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [alphaEventId, betaEventId, gammaEventId]);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, alphaEventId);
-  reviews().at(-1)?.resolve(decisionJson({
-    status: "accept",
-    reviewEventIds: [alphaEventId, betaEventId, gammaEventId],
-    subtasks: [],
-  }));
-  await flush();
+  assert.equal(reviewed().length, 1);
+  const second = reviews()[1];
+  assert.deepEqual(second.request.reviewEventIds, [id(beta), id(gamma)]);
   delta.resolve({ outcome: "failed", detail: "delta" });
   await flush();
-  const deltaEventId = buildLoopPlusFinishEventId("delta", delta.request.attemptId);
-  assert.deepEqual(reviews().at(-1)?.request.reviewEventIds, [deltaEventId]);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview?.eventId, deltaEventId);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length, 0);
-  assert.notEqual(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(second.abortCount, 0);
+  assert.deepEqual(second.request.reviewEventIds, [id(beta), id(gamma)]);
+  second.resolve(decisionJson({ status: "accept", reviewEventIds: [id(gamma), id(beta)], subtasks: [] }));
+  await flush();
+  assert.equal(reviewed().length, 1, "reordering confirms no events");
+  assert.deepEqual(reviews()[2].request.reviewEventIds, [id(beta), id(gamma)], "protocol repair keeps the original batch");
+  reviews()[2].resolve(decisionJson({ status: "accept", reviewEventIds: [id(beta), id(gamma)], subtasks: [] }));
+  await flush();
+  assert.deepEqual(reviewed().map((item) => item.subtaskId), ["alpha", "beta", "gamma"]);
+  assert.deepEqual(reviews()[3].request.reviewEventIds, [id(delta)]);
+  reviews()[3].resolve(decisionJson({ status: "accept", reviewEventId: id(delta), subtasks: [], reviews: [
+    { reviewEventId: id(delta), acceptance: "failed", reason: "execution failed", subtaskIds: [] },
+  ] }));
+  await flush();
+  assert.equal(reviewed().length, 4);
+  assert.equal(reviewed().find((item) => item.subtaskId === "delta")?.acceptance, "failed");
+  assert.equal(env.acceptanceFeedback.length, 3);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(env.tasks.get(taskId)?.mainAiFailureCount ?? 0, 0);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("completed submits a frozen batch once while late events and messages block global completion", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["a.ts"]), subtask("beta", ["b.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const first = env.mains[1];
+  assert.equal(first.request.userMessageCount, 0);
+  env.host.submitUserMessage(taskId, "late requirement");
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
+  await flush();
+  first.resolve(completedDecision({ reviewEventId: first.request.reviewEventId }));
+  await flush();
+  const second = env.mains[2];
+  const snapshot = snapshotOf(env.tasks.get(taskId));
+  assert.equal(snapshot.seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
+  assert.deepEqual(second.request.reviewEventIds, [buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId)]);
+  assert.deepEqual(snapshot.userMessageQueue, ["late requirement"]);
+  assert.equal(second.request.userMessageCount, 1);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(env.tasks.get(taskId)?.answerConclusion, undefined);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+  env.host.submitUserMessage(taskId, "newer requirement");
+  second.resolve(completedDecision({ reviewEventId: second.request.reviewEventId }));
+  await flush();
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["newer requirement"]);
+  assert.equal(env.mains[3].request.kind, "user");
+  assert.equal(env.mains[3].request.userMessageCount, 1);
+  env.mains[3].resolve(completedDecision());
+  await run.done;
+  assert.equal(snapshotOf(env.tasks.get(taskId)).completed, true);
+  assert.equal(env.acceptanceFeedback.length, 2);
+});
+
+test("main failure, protocol pause and explicit resume retain the unconfirmed batch and message prefix", async () => {
+  let limit = 2;
+  const env = harness({ acceptanceLimit: () => limit });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["a.ts"]), subtask("beta", ["b.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  await flush();
+  const first = env.mains[1];
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
+  env.host.submitUserMessage(taskId, "after frozen prefix");
+  await flush();
+  limit = 1;
+  env.tasks.set(taskId, { ...env.tasks.get(taskId)!, loopPlusMaxAcceptances: 1 });
+  first.reject(new Error("temporary main failure"));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.mainAiFailureCount, 1);
+  for (let retry = 2; retry <= 4; retry += 1) {
+    assert.deepEqual(env.mains[retry].request.reviewEventIds, first.request.reviewEventIds);
+    assert.equal(env.mains[retry].request.userMessageCount, 0);
+    env.mains[retry].resolve("invalid JSON");
+    await flush();
+  }
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed").length, 0);
+  const resumed = env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
+  await flush();
+  const retry = env.mains[5];
+  assert.deepEqual(retry.request.reviewEventIds, first.request.reviewEventIds);
+  assert.equal(retry.request.userMessageCount, 0);
+  retry.resolve(decisionJson({ status: "accept", reviewEventId: retry.request.reviewEventId, subtasks: [] }));
+  await resumed.done;
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["after frozen prefix"]);
+  assert.equal(env.mains.length, 6, "late event remains unconfirmed at the acceptance limit");
+  limit = 2;
+  const lastRun = env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
+  await flush();
+  const last = env.mains[6];
+  assert.deepEqual(last.request.reviewEventIds, [buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId)]);
+  assert.equal(last.request.userMessageCount, 1);
+  last.resolve(completedDecision({ reviewEventId: last.request.reviewEventId }));
+  await lastRun.done;
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed").length, 2);
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
 });
 
 test("does not let completed bypass running work or user messages the request did not capture", async () => {
@@ -3662,7 +3848,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
   const nextPrompt = longPrompt("beta-next", ["src/beta-next.ts"]);
   const nextTitle = "按补充需求修正 beta";
   for (const attempt of [alpha, beta]) {
-    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成", modelPrompt: "完成", contextTags: [], taskRole: "subtask", loopTaskId: attempt.request.taskId, loopSubtaskId: attempt.request.subtaskId }, { cli: "codex", tabId: "controlled-tab", sessionId: `controlled-${attempt.request.subtaskId}` }, async () => assert.fail("retired attempts must not compact"));
+    await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成", modelPrompt: "完成", contextTags: [], taskRole: "subtask", loopTaskId: attempt.request.taskId, loopSubtaskId: attempt.request.subtaskId, loopAttemptId: attempt.request.attemptId }, { cli: "codex", tabId: "controlled-tab", sessionId: `controlled-${attempt.request.subtaskId}` }, async () => assert.fail("retired attempts must not compact"));
   }
   steer.resolve(decisionJson({
     status: "steer",
@@ -4024,7 +4210,7 @@ test("passes the confirmed acceptance plan into the created task and every main 
 });
 
 test("a group-chat acceptance plan change restarts the in-flight review with the new snapshot", async () => {
-  const env = harness();
+  const env = harness({ deferMainAbort: true });
   const run = env.host.tryRun({
     displayPrompt: "ship the feature",
     loopPlusAcceptancePlan: {
@@ -4038,10 +4224,10 @@ test("a group-chat acceptance plan change restarts the in-flight review with the
   await flush();
   env.mains[0].resolve(decisionJson({
     status: "dispatch",
-    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
   }));
   await flush();
-  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts.length, 2);
   env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
   await flush();
   const firstReview = env.mains.find((call) => call.request.kind === "review");
@@ -4056,10 +4242,18 @@ test("a group-chat acceptance plan change restarts the in-flight review with the
     systemDefault: false,
   });
   assert.equal(applied.ok, true);
+  assert.equal(firstReview.abortCount, 1);
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta arrived after the frozen batch" });
+  firstReview.releaseAbort(completedDecision({ reviewEventId: firstReview.request.reviewEventId }));
   await flush();
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.filter((item) => item.disposition === "reviewed").length, 0);
+  assert.equal(env.acceptanceFeedback.length, 0);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
 
   const reviews = env.mains.filter((call) => call.request.kind === "review");
   assert.equal(reviews.length, 2);
+  assert.deepEqual(reviews[1].request.reviewEventIds, firstReview.request.reviewEventIds);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length, 1);
   assert.match(reviews[1].request.modelPrompt, /Performance review:/);
   assert.doesNotMatch(reviews[1].request.modelPrompt, /Security review: defensive code review only/);
   assert.deepEqual(env.tasks.get(run.taskId ?? "")?.loopPlusAcceptancePlan, {

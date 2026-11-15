@@ -16,6 +16,7 @@ const {
 type LoopPlusScheduler = ReturnType<typeof createLoopPlusScheduler>;
 type LoopPlusSchedulerSnapshot = ReturnType<LoopPlusScheduler["snapshot"]>;
 type LoopTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
+let activeReviewIds: string[] = [];
 
 function spec(subtaskId: string, attemptId: string, title?: string) {
   return {
@@ -87,7 +88,17 @@ function stoppedAndResumed(): { stopped: LoopPlusSchedulerSnapshot; resumed: Loo
   return { stopped, resumed: scheduler.snapshot() };
 }
 
-function task(loopPlus: unknown, overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
+function task(
+  loopPlus: unknown,
+  overrides: Partial<LoopTaskRecord> = {},
+  frozenEventIds?: readonly string[],
+): LoopTaskRecord {
+  const value = loopPlus as { currentReview?: { eventId?: string } | null } | null;
+  activeReviewIds = value?.currentReview?.eventId
+    ? frozenEventIds
+      ? [...frozenEventIds]
+      : [value.currentReview.eventId]
+    : [];
   return {
     id: "loop-plus-task",
     cli: "codex",
@@ -128,6 +139,7 @@ function deps(writes: { count: number } = { count: 0 }) {
       return true;
     },
     getActiveLoopSubtaskIds: () => [],
+    getActiveReviewEventIds: () => activeReviewIds,
     buildLoopCompletedConclusionAndSummaryMarkdown: () => "done",
     t: (key: string) => key,
   };
@@ -168,8 +180,8 @@ test("projects the current review, FIFO queue, running work, and pending work fr
   assert.equal(state.rounds[0]?.completedAt, undefined);
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "main")?.status, "reviewing");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "reviewing");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "B")?.status, "reviewing");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "C")?.status, "reviewing");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "C")?.status, "queued_review");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "D")?.status, "running");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "E")?.status, "pending");
   assert.equal(state.task.canStop, true);
@@ -487,7 +499,7 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(continuedProjection.visibleReviewCount, 2);
   assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "main")?.status, "reviewing");
   assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "A")?.status, "reviewing");
-  assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "B")?.status, "reviewing");
+  assert.equal(continued.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
   assert.equal(continued.rounds[0]?.activeSpeaker, undefined);
 
   const queueScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });

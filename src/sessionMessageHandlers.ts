@@ -40,6 +40,7 @@ export type PromptRunInputForPanel = {
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
   skipLongTermMemoryPersist?: boolean;
 };
 
@@ -53,6 +54,7 @@ export type LoopSubtaskConversationContextForPanel = {
   taskId: string;
   subtaskId: string;
   round: number;
+  attemptId?: string;
 };
 
 export type ConversationTabRecordForPanel = {
@@ -185,7 +187,7 @@ export type PanelMessageHandlerDeps = {
   buildPromptWithAutoContext: (prompt: string, options?: PromptContextOptions) => { modelPrompt: string; contextTags: string[] };
   maybeInjectLongTermMemoryForPrompt: (displayPrompt: string, modelPrompt: string, contextTags: string[]) => string;
   resolveCodexImagePathsForPrompt: (prompt: string) => Promise<string[]>;
-  getLatestLoopRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string) => { endedAt: number } | null;
+  getLatestLoopRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string, attemptId?: string) => { endedAt: number } | null;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
   preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;

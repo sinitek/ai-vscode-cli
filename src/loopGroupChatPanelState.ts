@@ -11,6 +11,7 @@ export type LoopGroupChatPanelStateBuilderDeps = {
   fileExists: (filePath: string) => boolean;
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
   getActiveLoopSubtaskIds: (task: LoopTaskRecord) => string[];
+  getActiveReviewEventIds?: (taskId: string) => readonly string[];
   buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
@@ -21,7 +22,7 @@ export function buildLoopGroupChatPanelStateWithDeps(
 ): LoopGroupChatPanelState {
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
-  const loopPlus = projectLoopPlusPanel(task);
+  const loopPlus = projectLoopPlusPanel(task, deps.getActiveReviewEventIds?.(task.id) ?? []);
   const rounds = buildLoopMainSubChatPanelRounds(task, deps, loopPlus);
   const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, deps);
   const missingChatFiles = rounds
@@ -335,11 +336,13 @@ function loopPlusMemberStatus(
         return "decomposing";
     }
   }
+  const activeEventIds = new Set(projection.activeReviewEventIds ?? []);
   if (projection.currentReview?.subtaskId === subtaskId) {
-    return projection.activity === "reviewing" ? "reviewing" : "held_review";
+    return projection.activity === "reviewing" && activeEventIds.has(projection.currentReview.eventId) ? "reviewing" : "held_review";
   }
-  if (projection.reviewQueue.some((item) => item.subtaskId === subtaskId)) {
-    return projection.activity === "reviewing" ? "reviewing" : "queued_review";
+  const queued = projection.reviewQueue.find((item) => item.subtaskId === subtaskId);
+  if (queued) {
+    return projection.activity === "reviewing" && activeEventIds.has(queued.eventId) ? "reviewing" : "queued_review";
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {

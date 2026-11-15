@@ -5,6 +5,7 @@ import { shouldOverlapLoopMainContextCompaction, type LoopMainAutoCompactRequest
 import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
 
 type DeferredCompaction = {
+  attemptId?: string;
   start: (completed: boolean, onCompleted?: () => Promise<void>) => void;
   flight: Promise<void>;
 };
@@ -30,6 +31,7 @@ export class LoopSubtaskAutoCompactions {
     }
     const taskKey = JSON.stringify([input.loopTaskId, input.loopSubtaskId]);
     const sessionKey = JSON.stringify([target.cli, target.sessionId]);
+    const attemptId = input.loopAttemptId;
     // Capture the completed invocation before callers reuse input/target objects.
     const origin: CompactionOrigin = {
       activity: "contextCompaction", taskId: input.loopTaskId, subtaskId: input.loopSubtaskId,
@@ -58,17 +60,20 @@ export class LoopSubtaskAutoCompactions {
       }
     });
     this.pending.get(taskKey)?.start(false);
-    this.pending.set(taskKey, { start, flight });
+    this.pending.set(taskKey, { attemptId, start, flight });
     this.flights.set(sessionKey, flight);
     return true;
   }
 
-  notify(taskId: string, subtaskId: string, completed: boolean, onCompleted?: () => Promise<void>): Promise<void> | undefined {
+  notify(taskId: string, subtaskId: string, completed: boolean, onCompleted?: () => Promise<void>, attemptId?: string): Promise<void> | undefined {
     const taskKey = JSON.stringify([taskId, subtaskId]);
     const pending = this.pending.get(taskKey);
+    if (!pending || pending.attemptId !== attemptId) {
+      return undefined;
+    }
     this.pending.delete(taskKey);
-    pending?.start(completed, onCompleted);
-    return pending?.flight;
+    pending.start(completed, onCompleted);
+    return pending.flight;
   }
 
   async wait(cli: CliName, sessionId: string | null): Promise<void> {

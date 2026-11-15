@@ -93,6 +93,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   fileExists: (filePath: string) => boolean;
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
   getActiveSubtaskIds: (task: LoopTaskRecord) => string[];
+  getActiveReviewEventIds?: (taskId: string) => readonly string[];
   buildCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   resolveMainPromptTarget: (
     task: LoopTaskRecord,
@@ -177,6 +178,7 @@ export function buildLoopGroupChatPanelState(
     fileExists: deps.fileExists,
     writeTextFileEnsuringDir: deps.writeTextFileEnsuringDir,
     getActiveLoopSubtaskIds: deps.getActiveSubtaskIds,
+    getActiveReviewEventIds: deps.getActiveReviewEventIds ?? (() => []),
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });

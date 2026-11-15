@@ -327,6 +327,7 @@ export type ChatMessage = {
   loopAsk?: boolean;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
   loopAnswerConclusion?: boolean;
   loopFinalSummary?: boolean;
   codexFinalAnswer?: boolean;

@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-13",
+  "as_of": "2026-11-15",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -662,7 +662,7 @@
       "name": "Loop 连续任务与验收修补复用子会话",
       "applies_to": ["plugin.loop_task", "plugin.cli_session"],
       "status": "active",
-      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。Loop+ 可取消来源租约、后台压缩和 CLI 启动前的准备等待，结算等待者而不取消前驱或原压缩；后继仍等待前驱，迟到准备不再启动。实际调用开始后仍等待执行收尾。停止后显式继续可把无宿主句柄的预留记为 stopped/lost-process 并保留验收，原子任务或 Tab 缺失不构成永久阻塞。成功后先持久化并汇报主任务，再按原条件压缩子会话，最后按完成时的标签顺序及对象、CLI、会话、子任务快照清理旧 Tab；同会话直到关页结束才放行，主任务验收与独立任务不等待。压缩失败或跳过仍关页，回报失败保留 Tab；关闭未生效记录失败，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。",
+      "description": "经典 Loop 与 Loop+ 由主模型通过 continueFromSubtaskId 指定同一父任务下的连续任务来源；Loop+ 失败 review 关联修补项自动继承原子任务来源，控制 reprompt 续接原子任务。子任务持久化真实 CLI/session/config 绑定，Tab 关闭不等于会话删除；仅同 CLI 与配置兼容时恢复，旧记录缺失或不兼容绑定记录原因后新建。同一来源或会话串行执行，独立任务保持隔离。Loop+ 可取消来源租约、后台压缩和 CLI 启动前的准备等待，结算等待者而不取消前驱或原压缩；后继仍等待前驱，迟到准备不再启动。实际调用开始后仍等待执行收尾。停止后显式继续可把无宿主句柄的预留记为 stopped/lost-process 并保留验收，原子任务或 Tab 缺失不构成永久阻塞。成功后先持久化并汇报主任务，再按原条件压缩子会话，最后按完成时的标签顺序及对象、CLI、会话、子任务快照清理旧 Tab；同会话直到关页结束才放行，主任务验收与独立任务不等待。压缩失败或跳过仍关页，回报失败保留 Tab；关闭未生效记录失败，跳过运行中及更新的替代 Tab，不删除真实会话，不改变经典汇报驱动或 Loop+ 验收门槛。Loop+ 的 request.attemptId 映射为运行输入、TaskRunDraft/TaskRunRecord 和消息上的可选 loopAttemptId；显式 attempt 查询严格匹配，候选缺失或不匹配时不按提示词、时间、轮次或子任务回退，旧无字段流程兼容。身份基础设施及停止/reprompt/续接通知/自动压缩尝试隔离的生产接线和相关单测已落地。notifySubtaskContinuation 在原 onCompleted 后追加可选 attemptId，extension 传 context.attemptId，唤醒前运行查询按身份过滤；显式身份必须匹配开放 reservation，冷恢复在状态写入前拒绝不匹配，旧无身份调用兼容且不猜测或生成身份。完成结果先持久化，再放行对应压缩与标签清理，迟到或重复通知不能结算或关闭替代 attempt；停止及真实执行所有权边界不变。真实 Extension Development Host 身份检查已通过并获主审接受，不替代完整 UI、浏览器或真实 CLI 验证。原全量已执行，其 46 项失败已分别定向修复并获主审接受；保留原失败统计，不拼接为一次全量全绿。验证收口见既有会话设计及其关联计划；round-24 文档最终审阅已获主任务接受，Git 提交推送仍待交付，两份计划暂保持 in-progress。",
       "source_refs": [
         {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"},
         {"path": "src/extensionHost/loopSubtaskTabs.ts"},
@@ -670,7 +670,17 @@
         {"path": "src/extensionHost/loopOrchestration.ts"},
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
         {"path": "src/test/loop/loopSubtaskSession.test.ts"},
-        {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"}
+        {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"},
+        {"path": "src/promptRunTypes.ts"},
+        {"path": "src/promptRunState.ts"},
+        {"path": "src/webview/types.ts"},
+        {"path": "src/loopConversationPresentation.ts"},
+        {"path": "src/test/extensionHost/loopPlusAttemptIdentity.test.ts"},
+        {"path": "src/extension.ts"},
+        {"path": "src/extensionHost/promptRunRuntime.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/test/session/sessionTabCliSwitch.test.ts"},
+        {"path": "src/test/extensionHost/loopPlusEntryRouting.test.ts"}
       ]
     },
     {
@@ -1897,7 +1907,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 主任务和子任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 主任务和子任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。群聊活动验收 ID 取宿主只读副本并校验 FIFO 前缀，仅冻结成员显示正在验收，后续成员保留既有待验收文案；说明仅列冻结成员，计数仍含完整队列。暂停、停止、释放或无有效元数据时不把整队列显示正在验收，classic 和既有视觉设计不变。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1911,7 +1921,12 @@
         {"path": "src/panelStateBuilder.ts"},
         {"path": "src/loopTaskStore.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": ".ch/docs/design-docs/loop-group-chat-state-boundaries.md"},
+        {"path": "src/loopPlusPanelProjection.ts"},
+        {"path": "src/loopGroupChatPanelState.ts"},
+        {"path": "src/test/loop/loopPlusPanelState.test.ts"},
+        {"path": "src/test/loop/loopPlusGroupChatPanel.test.ts"}
       ]
     },
     {
@@ -2007,7 +2022,7 @@
     {
       "id": "plugin.rule.loop_plus_bounded_block_review",
       "name": "Loop+ 全局阻塞只做一次有界复核",
-      "description": "主模型首次返回全局 blocked 后，宿主持久化待复核状态并显式复核所有未完成根需求和补充需求；若发现安全且独立的工作则继续派发，否则复核后仍阻塞才进入 needs-review。待复核/已复核状态跨宿主重建保留，无新用户补充、派发或验收进展时不重复复核；复核不得确认或丢弃开放 attempt、验收事件，也不得放宽安全门槛或协议重试上限。暂停原因与恢复条件显示在主聊天，并去重写入主任务沟通文件及群聊 transcript。",
+      "description": "主模型首次返回全局 blocked 后，宿主持久化待复核状态并显式复核所有未完成根需求和补充需求；若发现安全且独立的工作则继续派发，否则复核后仍阻塞才进入 needs-review。待复核/已复核状态跨宿主重建保留，无新用户补充、派发或验收进展时不重复复核；复核不得确认或丢弃开放 attempt、验收事件，也不得放宽安全门槛或协议重试上限。暂停原因与恢复条件显示在主聊天，并去重写入主任务沟通文件及群聊 transcript。blocked 只消费该请求已见用户消息前缀并扣除冻结批次中的相应计数，保留未确认事件；后到消息由后续有界决策显式捕获，不重复展示已消费消息，无新消息最终暂停。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
       "source_refs": [
@@ -2058,7 +2073,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。不能修时 blocked 且不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结有序 eventId 与已见用户消息前缀；后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，额度按新确认 attempt 计算。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2070,7 +2085,10 @@
         {"path": "src/test/loop/loopTaskStore.test.ts"},
         {"path": "src/test/extensionHost/loopPlusOrchestration.test.ts"},
         {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"},
-        {"path": "src/webview/viewContentStrings.ts"}
+        {"path": "src/webview/viewContentStrings.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
+        {"path": "src/extensionHost/loopPlusDecisionStrategies.ts"},
+        {"path": "src/loopPlusScheduler.ts"}
       ]
     },
     {
@@ -2273,7 +2291,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。子任务先持久化完成汇报或验收事件，再在独立运行状态中后台压缩自己的会话，不阻塞主任务；原 Tab 或新 Tab 续接同一子任务会话时等待压缩。过期 attempt 不能放行新 attempt 的压缩；压缩复用原配置、模型和思考快照并持有配置执行租约，配置档案切换、失败或超时不撤销已上报结果。成功且超过五分钟及三分钟超时条件不变，普通对话策略不变。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。子任务先持久化完成汇报或验收事件，再在独立运行状态中后台压缩自己的会话，不阻塞主任务；原 Tab 或新 Tab 续接同一子任务会话时等待压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理；同会话等待前驱压缩与关页完成，独立会话继续推进；压缩复用原配置、模型和思考快照并持有配置执行租约，配置档案切换、失败或超时不撤销已上报结果。成功且超过五分钟及三分钟超时条件不变，普通对话策略不变。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -2283,7 +2301,9 @@
         {"path": "src/extensionHost/isolatedContextCompaction.ts"},
         {"path": "src/extensionHost/loopPlusOrchestration.ts"},
         {"path": "src/contextCompactionRunner.ts"},
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
+        {"path": "src/test/loop/loopSubtaskAutoCompact.test.ts"},
+        {"path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"}
       ]
     },
     {

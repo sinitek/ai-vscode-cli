@@ -42,6 +42,7 @@ export type LoopPlusInvocationQuery = {
   role: LoopTaskRole;
   subtaskId?: string;
   displayPrompt: string;
+  attemptId?: string;
 };
 
 export type LoopPlusRuntimeAdapterDeps = {
@@ -179,6 +180,7 @@ export function selectLoopPlusContinuationDetail(
     || run.loopTaskId !== query.taskId
     || run.loopRound !== query.round
     || run.taskRole !== query.role
+    || (query.attemptId !== undefined && run.loopAttemptId !== query.attemptId)
     || (query.role === "subtask" && run.loopSubtaskId !== query.subtaskId)
   ) {
     return null;
@@ -245,6 +247,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     cli: PromptRunTarget["cli"],
     executionRole?: "backend" | "frontend" | "general",
     execution?: { configId: string | null; model?: string; thinkingMode?: ThinkingMode },
+    attemptId?: string,
   ): PromptRunInput {
     const task = deps.readTask(taskId);
     const live = livePrompts.get(taskId) ?? null;
@@ -277,6 +280,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       taskRole: role,
       loopTaskId: taskId,
       loopRound: 1,
+      ...(attemptId !== undefined ? { loopAttemptId: attemptId } : {}),
       throwOnError: true,
     };
     promptInput.thinkingModeOverride = deps.resolveThinkingMode(
@@ -326,6 +330,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       role,
       subtaskId,
       displayPrompt: promptInput.displayPrompt,
+      attemptId: promptInput.loopAttemptId,
     };
     const run = completedRun ?? selectLoopPlusInvocationRun(deps.readRuns(), boundary, query);
     if (!run) {
@@ -350,6 +355,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       role,
       subtaskId: promptInput.loopSubtaskId,
       displayPrompt: promptInput.displayPrompt,
+      attemptId: promptInput.loopAttemptId,
     };
     let completedRun: TaskRunRecord | null = null;
     const unsubscribe = deps.subscribeRunCompletion?.((run) => {
@@ -530,6 +536,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
             request.targetCli,
             request.execution?.role,
             request.execution,
+            request.attemptId,
           );
           if (continuation.sessionId) {
             promptInput.modelPrompt += "\n本次续接此前子任务会话。只完成本轮新指令并写入本轮沟通文件，不重复旧任务；执行目录以本轮宿主提供的 cwd 为准，不继续使用历史临时目录。";
@@ -539,6 +546,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           }
           promptInput.loopRound = request.round;
           promptInput.loopSubtaskId = request.subtaskId;
+          promptInput.loopAttemptId = request.attemptId;
           const root = executionRoot as { cwd?: string; dispose: () => void } | null;
           promptInput.executionCwd = root?.cwd;
           promptInput.isolateProjectInstructions = Boolean(root);
@@ -813,6 +821,7 @@ function isInvocationRun(
     && run.loopTaskId === query.taskId
     && run.loopRound === query.round
     && run.taskRole === query.role
+    && (query.attemptId === undefined || run.loopAttemptId === query.attemptId)
     && (query.role !== "subtask" || run.loopSubtaskId === query.subtaskId);
 }
 
@@ -835,6 +844,7 @@ function isInvocationAssistant(
     && message.createdAt >= invocationAssistantEarliestAt(boundary, run)
     && message.createdAt <= run.endedAt
     && message.taskRole === query.role
+    && (query.attemptId === undefined || message.loopAttemptId === query.attemptId)
     && message.loopTaskId === query.taskId
     && message.loopRound === query.round
     && (query.role !== "subtask" || message.loopSubtaskId === query.subtaskId)
@@ -875,6 +885,7 @@ function isInvocationUserAnchor(
     && message.content === query.displayPrompt
     && message.loopTaskId === query.taskId
     && message.taskRole === query.role
+    && (query.attemptId === undefined || message.loopAttemptId === query.attemptId)
     && message.loopRound === query.round
     && (query.role !== "subtask" || message.loopSubtaskId === query.subtaskId);
 }
