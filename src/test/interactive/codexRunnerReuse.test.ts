@@ -10,7 +10,7 @@ test.beforeEach(blockRealProcessSignals);
 test.beforeEach((t) => {
   assert.ok("mock" in t);
   // These fake executables implement RPC only; capability probes have their own suite.
-  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+  t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
     async () => ({ supported: true, reason: "supported" }));
 });
 

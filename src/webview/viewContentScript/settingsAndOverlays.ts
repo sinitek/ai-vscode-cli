@@ -2,6 +2,23 @@ import { humanInteractionOtherChoiceScript } from "../humanInteractionOtherChoic
 
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
+      function commitDepartmentCapacitySetting(input, key, state) {
+        const fallback = key === "departmentMaxLeaders" ? \${DEPARTMENT_MAX_LEADERS_DEFAULT} : \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};
+        const nextValue = normalizeDepartmentCapacity(input.value, fallback);
+        const changed = state[key] !== nextValue;
+        state[key] = nextValue;
+        input.value = String(nextValue);
+        if (changed) vscode.postMessage({ type: "updateSetting", key, value: nextValue });
+        return { changed, value: nextValue };
+      }
+
+      function bindDepartmentCapacityInput(input, key, state) {
+        const commit = () => commitDepartmentCapacitySetting(input, key, state);
+        input.addEventListener("change", commit);
+        input.addEventListener("blur", commit);
+        return commit;
+      }
+
       function setToolSettingsTab(scope) {
         const selected = ["aiTask", "workspace", "notifications", "repair"].includes(scope) ? scope : "general";
         [["general", elements.toolSettingsGeneralTab, elements.toolSettingsGeneralPanel],
@@ -175,6 +192,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         }
         if (mode === "loop_plus") {
           return t("interactiveModeLoopPlus");
+        }
+        if (mode === "department") {
+          return t("interactiveModeDepartment");
         }
         if (mode === "coding") {
           return t("interactiveModeCoding");
@@ -497,6 +517,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.loopMaxRounds.addEventListener("change", commitLoopMaxRounds);
         elements.loopMaxRounds.addEventListener("blur", commitLoopMaxRounds);
       }
+      ["departmentMaxLeaders", "departmentMaxEmployees"].forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        bindDepartmentCapacityInput(input, key, state);
+      });
       if (elements.loopPlusDecisionSubtaskMax) {
         const commitLoopPlusDecisionSubtaskMax = () => {
           const nextValue = normalizeLoopPlusDecisionSubtaskMax(elements.loopPlusDecisionSubtaskMax.value);
@@ -536,6 +561,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.historyRetentionDays.addEventListener("change", commitHistoryRetentionDays);
         elements.historyRetentionDays.addEventListener("blur", commitHistoryRetentionDays);
       }
+      ["loopEnabled", "loopPlusEnabled", "departmentEnabled"].forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        input.addEventListener("change", () => {
+          input.disabled = true;
+          vscode.postMessage({ type: "updateSetting", key, value: input.checked });
+        });
+      });
       if (elements.macTaskShell) {
         elements.macTaskShell.addEventListener("change", (event) => {
           const nextValue = event.target.value === "bash" ? "bash" : "zsh";

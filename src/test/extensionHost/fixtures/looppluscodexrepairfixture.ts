@@ -38,7 +38,7 @@ export function createLoopPlusCodexRepairFixture(context: TestContext, newConnec
   const logger = require("../../../logger") as typeof import("../../../logger");
   context.mock.method(logger, "logError", async (message: string, data: unknown) => { errors.push({ message, data }); });
   context.mock.method(logger, "logInfo", async () => undefined);
-  context.mock.method(require("../../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+  context.mock.method(require("../../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
     async () => ({ supported: true, reason: "supported", version: "0.167.0" }));
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "loopplus-codex-repair-"));

@@ -7,6 +7,7 @@
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md`
 - `.ch/docs/design-docs/config-center-request-commands.md`：配置中心实例级 24 动作命令表、局部 typed router 与领域/宿主边界。
 - `.ch/docs/design-docs/skill-archive-installation.md`：技能 ZIP 安装的兼容 Facade、来源发现与共享安全安装模板，用户行为不变。
+- `.ch/docs/design-docs/department-mode.md`：产研部中央生产装配、Owner 观察与容量释放的已审查阶段，以及可信来源、续接、冷恢复和最终组合门禁（开发中）。
 - `.ch/docs/references/cli-runtime-reference.md`
 - `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`
 
@@ -120,6 +121,13 @@ cli / interactive / config 服务层
 - host 边界留在 `promptRunRuntime.ts`：`applyLoopMainDecision` 写任务存储，并仅在 `appendDecisionMessages` 时追加沟通文件和子会话消息；`markLoopTaskInterrupted` 先中止澄清，event_driven 再停止 Loop+ 父任务，classic 主任务 error 才由 host 计算失败次数并合并 `loopInterruptFailureLimitPatch`；`markLoopTaskStopped` 在缺失或已完成时直接返回，否则写 patch，并按标志中止澄清、刷新已打开群聊。`createPromptRunRuntimeHost` 的公开方法名不变。
 - 兼容不变量：`completed`、`blocked` 和超限 `clarify` 清空活动子任务；未超限 `clarify` 保持 `running` 并递增 `clarificationCount`；无子任务的 `continue` 进入 `needs-review` 且不追加决策消息；有子任务的 `continue` 保留 `activeSubtaskIds`。classic 停止把活动、running 或 pending 子任务写入 `blocked`，并清空活动子任务；event_driven 停止和中断不把活动子任务写入 patch。已完成任务再次停止幂等。策略不拼接路径，Windows、macOS 和 Linux 的既有副作用顺序不变。
 - 回归入口：`src/test/extensionHost/loopTaskStateMachine.test.ts`、`src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`；失败计数算法仍由 `src/test/loop/loopMainFailure.test.ts` 覆盖。先 `npm run build`，再 `node --test dist/test/extensionHost/loopTaskStateMachine.test.js dist/test/extensionHost/loopMainDecisionParsing.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js`。详细事实来源见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md`。
+
+#### 产研部模块与可信来源边界（开发中）
+
+- `department.ts` / `departmentcapacity.ts` 定义可选三层身份及部门内共享租约；`extensionHost/departmentorchestration.ts` 通过注入端口复用 `LoopPlusRuntimeAdapter` 和既有 Loop+ 调度/验收/runner。中央 production composition、runtime store、组织/容量 host、根创建/启动/协调入口及 Loop+ adapter 已装配；`extension.ts#getDepartmentOwnershipIndex` 实际创建 production task store，经 Controller、Repository、identity catalog 与普通 store 路由；round-100/103/351 已接受接口/关闭屏障、正常激活退出与真实仓储协作/删除及后继 runtime 回归，round-101/102 整项失败不改写。仍需证明所有直接/旧版/外部写者遵循可信来源 lease 和跨进程生命周期，缺失授权时保持 fail closed。真实新建组长的 CREATE 凭据、容量/成员持久化后首次 pump 前 `Ledger.open`、同一 producer 注入 Codex/OpenCode 员工准入，以及 Codex 组长多轮原生 Owner 已按专题审查；本地 `sessionId` 与原生 `executionSession` 分开保存，关闭时撤销迟到 grant。round-228/234 限定 Codex 资源释放及完整 Codex 集合清理/容量消费已接线；round-350 macOS 安装版 EH 使用真实 Codex 0.167.2 binary、worker/parser/仓储及原 Owner，在本机确定性 Responses fixture 下通过新建、四项完整 receipt、自然清理及容量归还后再派发，不证明远程模型质量、全部 CLI 或跨平台。round-320/321 真实 Codex 双轮自然 EOF/stdio/NDJSON/drain 证据不证明生产双持久绑定、完整 Owner receipt 或容量。round-357 续接准备撤销 token 有20个不同 composition 用例分批证据；round-359 冲突失败保留历史，round-366 后续公开 Codex stop→continue EH 已通过完整续接、六原 Owner receipt、三代 CLOSED、容量归还、总监再派发和最终汇报。OpenCode leader 使用 tab-isolated parallel consumer；只读 validator 每次核验持久 `executionSession`、调用内固定首个成功 ID、不写普通 metaStore，8 项与1项接线检查不证明真实 OpenCode 全树容量。round-372 finalizing、employee root capability 和默认模型快照均有各自限定接受证据。tracker/token 仅表示编排/准备责任，不证明 native drain、完整 receipt、CLOSED 或容量。OpenCode 员工/全角色生产容量、跨代冷恢复、必要平台、最终真实 EH/UI 组合及 Git 合并后全量回归仍为根门禁。总监仍为经典 Loop，只协调及确认汇报、不验收代码；容量仍是共享常规20、默认最多4名组长、零余额每组最多一个未释放超额。详见[部门设计](.ch/docs/design-docs/department-mode.md)、[逐项覆盖表](.ch/docs/runbooks/department-acceptance-coverage.md)与[执行 Owner 清理凭证](.ch/docs/design-docs/department-execution-owner.md)。
+- `departmentConfiguration.ts` / `extensionHost/departmentConfigurationHost.ts` / `modelSettings.ts` 解析权威角色配置和根固化验收方案；配置 scope 包含工作区代次，异步候选/保存及新根发送复核作用域和保存屏障。浏览器最终路由不授予执行权。
+- `extensionHost/departmentOwnershipIndex.ts` 按物理文件维护 workspace/root/module 贡献，保留重复身份/模块歧义，唯一来源重读真实记录；`loopTaskStore.ts` 只有实际写成功才同步发布贡献，迁移部分失败保留恢复材料。production store 已在 extension 装配 Controller/Repository、identity catalog 与普通任务 store 路由，round-101/102 按相应范围审查。仍须覆盖全部直接/旧版/外部写者及跨进程生命周期；失效时显式完整重建，异步 watcher 或恒真 `isCurrent` 不能证明同步可信。
+- 群聊投影/协调器按根、模块与当前弹窗实例逐次授权，关闭展示独立于任务停止。中央生产根/启动/协作端口已装配；未知外部写者交接、OpenCode 全角色公开组合、未覆盖全树停止继续、冷恢复及必要平台仍待验收；已有真实 Codex 新建 EH 与真实会话 tab 投影按各自范围保留。详细合同与范围见[产研部设计](.ch/docs/design-docs/department-mode.md)和[群聊接口](.ch/docs/design-docs/department-group-chat-ui-contract.md)。
 
 #### CLI / Interactive / Config 服务层
 

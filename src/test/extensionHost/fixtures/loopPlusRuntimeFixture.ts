@@ -5,6 +5,7 @@ import vm = require("vm");
 import ts = require("typescript");
 import type { ChatMessage } from "../../../webview/types";
 import type { PromptRunInput } from "../../../promptRunTypes";
+import { prepareDepartmentTaskRecord } from "../../../extensionHost/departmentOwnedTaskRepository";
 import type { LoopTaskRecord } from "../../../loopTaskStore";
 import type { TaskRunRecord, TaskRunStatus } from "../../../promptRunState";
 import type { LoopPlusPromptTarget } from "../../../extensionHost/loopPlusOrchestration";
@@ -43,8 +44,11 @@ export type LoopPlusRuntimeFixture = {
   refusals: string[];
   mainCalls: PromptRunInput[];
   attemptCalls: PromptRunInput[];
+  createdTaskIds: string[];
   createdSubtaskTargets: LoopPlusPromptTarget[];
   rootsDisposed: number[];
+  rootsCreated: number[];
+  logs: Array<{ event: string; detail: unknown }>;
   executionCwds: Array<string | undefined>;
   queueMain: (action: MainAction) => void;
   setAttemptAction: (action: AttemptAction | null) => void;
@@ -67,11 +71,20 @@ export type LoopPlusRuntimeFixture = {
   setCloseSubtaskTabError: (message: string | null) => void;
   finishParked: (subtaskId: string, options?: PublishOptions) => void;
   releaseParked: (subtaskId: string) => void;
+  releaseParkedIfPresent: (subtaskId: string) => boolean;
   releaseHeldMain: () => void;
   holdMain: () => Promise<void>;
   readTask: (taskId: string) => LoopTaskRecord | null;
   saveTask: (task: LoopTaskRecord) => void;
+  removeTask: (taskId: string) => void;
   dispose: () => void;
+};
+
+type LoopPlusTaskPersistence = {
+  create(task: LoopTaskRecord): LoopTaskRecord;
+  read(taskId: string): LoopTaskRecord | null;
+  save(task: LoopTaskRecord): void;
+  remove(taskId: string): void | boolean;
 };
 
 export async function waitForLoopPlus(predicate: () => boolean, label: string): Promise<void> {
@@ -90,15 +103,27 @@ export function createLoopPlusRuntimeFixture(options: {
   decisionSubtaskMax?: () => number;
   configId?: string | null;
   resolveThinkingMode?: LoopPlusRuntimeAdapterDeps["resolveThinkingMode"];
-  executionRootFactory?: () => { cwd: string; dispose: () => void };
+  executionRootFactory?: LoopPlusRuntimeAdapterDeps["createExecutionRoot"];
+  observeAttemptTermination?: LoopPlusRuntimeAdapterDeps["observeAttemptTermination"] | false;
+  ownsDepartmentAttemptResources?: LoopPlusRuntimeAdapterDeps["ownsDepartmentAttemptResources"];
+  acquireAttemptExecution?: LoopPlusRuntimeAdapterDeps["acquireAttemptExecution"];
+  beforePromptStart?: (input: PromptRunInput) => Promise<void>;
+  runPromptOverride?: LoopPlusRuntimeAdapterDeps["runPrompt"];
+  runDepartmentMain?: LoopPlusRuntimeAdapterDeps["runDepartmentMain"];
+  closeDepartmentCoordinator?: LoopPlusRuntimeAdapterDeps["closeDepartmentCoordinator"];
+  assertNewTaskModeAvailable?: LoopPlusRuntimeAdapterDeps["assertNewTaskModeAvailable"];
+  onSubtaskTargetCreated?: (target: LoopPlusPromptTarget) => void;
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
+  taskPersistence?: LoopPlusTaskPersistence;
+  taskPersistenceFactory?: (rootDir: string) => LoopPlusTaskPersistence;
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
   const { createLoopPlusPersistedTaskRefresher } = require("../../../extensionHost/promptRunRuntime") as typeof import("../../../extensionHost/promptRunRuntime");
-  const { readLoopTaskStore, writeLoopTaskStore } = require("../../../loopTaskStore") as typeof import("../../../loopTaskStore");
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "loop-plus-runtime-"));
   const storeFile = path.join(rootDir, "loop-tasks.json");
+  const taskPersistence = options.taskPersistenceFactory?.(rootDir) ?? options.taskPersistence;
+  const taskRecords = new Map<string, LoopTaskRecord>();
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: options.cli ?? "codex", sessionId: "session" };
   const messages = new Map<string, ChatMessage[]>();
   const runs: TaskRunRecord[] = [];
@@ -109,11 +134,16 @@ export function createLoopPlusRuntimeFixture(options: {
   const refusals: string[] = [];
   const mainCalls: PromptRunInput[] = [];
   const attemptCalls: PromptRunInput[] = [];
+  const createdTaskIds: string[] = [];
   const createdSubtaskTargets: LoopPlusPromptTarget[] = [];
   const executionCwds: Array<string | undefined> = [];
   const rootsDisposed: number[] = [];
+  const rootsCreated: number[] = [];
+  const logs: LoopPlusRuntimeFixture["logs"] = [];
   const mainQueue: MainAction[] = [];
   const parked = new Map<string, ParkedAttempt>();
+  const terminationObservers = new Map<string, { done: Promise<void>; finish(): void }>();
+  const terminationKey = (taskId: string, subtaskId: string, tabId: string) => JSON.stringify([taskId, subtaskId, tabId]);
   let sequence = 0;
   let rootSequence = 0;
   let attemptAction: AttemptAction | null = null;
@@ -126,6 +156,7 @@ export function createLoopPlusRuntimeFixture(options: {
   let taskSequence = 0;
   let reportFailure: string | null = null;
   let cancelOverride: ((tabId: string) => void) | null = null;
+  const removedTaskIds = new Set<string>();
   const cancelledTabs: string[] = [];
   const closedSubtaskTabs: string[] = [];
   let closeSubtaskTabError: string | null = null;
@@ -146,18 +177,22 @@ export function createLoopPlusRuntimeFixture(options: {
   }
 
   function readTasks(): LoopTaskRecord[] {
-    return readLoopTaskStore(storeFile).tasks;
+    return [...taskRecords.values()];
   }
 
   function writeTasks(tasks: LoopTaskRecord[]): void {
-    writeLoopTaskStore(storeFile, { tasks });
+    taskRecords.clear();
+    for (const task of tasks) taskRecords.set(task.id, task);
   }
 
   function readTask(taskId: string): LoopTaskRecord | null {
-    return readTasks().find((task) => task.id === taskId) ?? null;
+    if (removedTaskIds.has(taskId)) return null;
+    return taskPersistence ? taskPersistence.read(taskId) : taskRecords.get(taskId) ?? null;
   }
 
   function saveTask(task: LoopTaskRecord): void {
+    removedTaskIds.delete(task.id);
+    if (taskPersistence) { taskPersistence.save(task); return; }
     const tasks = readTasks().filter((item) => item.id !== task.id);
     tasks.push(task);
     writeTasks(tasks);
@@ -252,16 +287,54 @@ export function createLoopPlusRuntimeFixture(options: {
     releaseParked(subtaskId);
   }
 
+  const fixturePrompt: LoopPlusRuntimeAdapterDeps["runPrompt"] = async (input, promptOptions) => {
+      if (options.runPromptOverride) return options.runPromptOverride(input, promptOptions);
+      if (options.beforePromptStart) {
+        await options.beforePromptStart(input);
+      }
+      if (promptOptions?.isAborted?.()) {
+        return;
+      }
+      promptOptions?.onStarted?.();
+      const tabId = promptOptions?.targetTabId ?? target.tabId;
+      executionCwds.push(input.executionCwd);
+      if (input.taskRole === "subtask") {
+        attemptCalls.push(input);
+        // This fixture is the bottom runner: its action/park owns all simulated execution resources.
+        // Business TaskRunRecord publication deliberately does not settle termination.
+        try {
+          if (attemptAction) { await attemptAction(input, tabId); return; }
+          await new Promise<void>((resolve) => {
+            parked.set(input.loopSubtaskId ?? input.displayPrompt, { input, tabId, done: resolve });
+          });
+        } finally {
+          const key = terminationKey(input.loopTaskId!, input.loopSubtaskId!, tabId);
+          terminationObservers.get(key)?.finish();
+          terminationObservers.delete(key);
+        }
+        return;
+      }
+      mainCalls.push(input);
+      const action = mainQueue.shift();
+      if (!action) {
+        throw new Error(`unexpected Loop+ main call ${mainCalls.length}`);
+      }
+      await action(input, tabId);
+    };
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+    acquireAttemptExecution: options.acquireAttemptExecution,
+    log: (event, detail) => { logs.push({ event, detail }); },
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,
     launchDelayMs: () => 0,
     delay: async () => undefined,
     readTask,
-    createTask: ({ cli, rootPrompt, sessionId, snapshot }) => {
+    assertNewTaskModeAvailable: options.assertNewTaskModeAvailable ?? (() => undefined),
+    createTask: ({ cli, rootPrompt, sessionId, snapshot, prompt, departmentMetadata }) => {
       taskSequence += 1;
       const taskId = `${path.basename(rootDir)}-${taskSequence}`;
+      createdTaskIds.push(taskId);
       const now = Date.now();
       const communicationDir = path.join(rootDir, "comm", taskId);
       fs.mkdirSync(communicationDir, { recursive: true });
@@ -289,8 +362,10 @@ export function createLoopPlusRuntimeFixture(options: {
         completionRoundSummaries: [],
         completionRequirementCoverage: [],
       };
-      saveTask(task);
-      return readTask(taskId) ?? task;
+      const complete = departmentMetadata ? prepareDepartmentTaskRecord(task, departmentMetadata, prompt.loopPlusAcceptancePlan!) : task;
+      if (taskPersistence) return taskPersistence.create(complete);
+      saveTask(complete);
+      return readTask(taskId) ?? complete;
     },
     updateTask: createLoopPlusPersistedTaskRefresher({
       updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => {
@@ -340,35 +415,19 @@ export function createLoopPlusRuntimeFixture(options: {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.appendFileSync(filePath, content, "utf8");
     },
-    runPrompt: async (input, promptOptions) => {
-      if (promptOptions?.isAborted?.()) {
-        return;
-      }
-      promptOptions?.onStarted?.();
-      const tabId = promptOptions?.targetTabId ?? target.tabId;
-      executionCwds.push(input.executionCwd);
-      if (input.taskRole === "subtask") {
-        attemptCalls.push(input);
-        if (attemptAction) {
-          await attemptAction(input, tabId);
-          return;
-        }
-        await new Promise<void>((resolve) => {
-          parked.set(input.loopSubtaskId ?? input.displayPrompt, {
-            input,
-            tabId,
-            done: resolve,
-          });
-        });
-        return;
-      }
-      mainCalls.push(input);
-      const action = mainQueue.shift();
-      if (!action) {
-        throw new Error(`unexpected Loop+ main call ${mainCalls.length}`);
-      }
-      await action(input, tabId);
-    },
+    ownsDepartmentAttemptResources: options.ownsDepartmentAttemptResources,
+    observeAttemptTermination: options.observeAttemptTermination === false ? undefined : options.observeAttemptTermination ?? ((request, target) => {
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => { finish = resolve; });
+      const observation = { done, finish };
+      terminationObservers.set(terminationKey(request.taskId, request.subtaskId, target.tabId), observation);
+      return observation;
+    }),
+    runPrompt: fixturePrompt,
+    // Legacy scheduling tests simulate the transport explicitly. Production
+    // wiring tests override these with the actual producer/native host.
+    runDepartmentMain: options.runDepartmentMain ?? ((input, opts) => fixturePrompt(input, opts)),
+    closeDepartmentCoordinator: options.closeDepartmentCoordinator ?? (async () => undefined),
     getMessages: (promptTarget) => bucket(promptTarget.tabId),
     readRuns: options.readRuns ?? (() => runs),
     subscribeRunCompletion: options.observeRunCompletions === false ? undefined : (listener) => {
@@ -382,22 +441,25 @@ export function createLoopPlusRuntimeFixture(options: {
       }
       rootSequence += 1;
       const rootId = rootSequence;
+      rootsCreated.push(rootId);
       const root = options.executionRootFactory?.();
       return {
         cwd: root?.cwd ?? path.join(rootDir, `root-${rootId}`),
-        dispose: () => {
-          root?.dispose();
+        dispose: async () => {
+          const result = root ? await root.dispose() : { ok: true as const, retainedDirectory: false };
           rootsDisposed.push(rootId);
+          return result;
         },
       };
     },
-    createSubtaskTarget: (cli, options) => {
+    createSubtaskTarget: (cli, targetOptions) => {
       const created = {
         tabId: subtaskTabOverride ?? nextId("subtab"),
         cli,
-        sessionId: options?.sessionId ?? null,
+        sessionId: targetOptions?.sessionId ?? null,
       };
       createdSubtaskTargets.push(created);
+      options.onSubtaskTargetCreated?.(created);
       return created;
     },
     closeSubtaskTab: async (tabId) => {
@@ -448,8 +510,11 @@ export function createLoopPlusRuntimeFixture(options: {
     refusals,
     mainCalls,
     attemptCalls,
+    createdTaskIds,
     createdSubtaskTargets,
     rootsDisposed,
+    rootsCreated,
+    logs,
     executionCwds,
     getMessages: bucket,
     completionSubscriptionCount: () => completionListeners.size,
@@ -528,6 +593,11 @@ export function createLoopPlusRuntimeFixture(options: {
     },
     finishParked,
     releaseParked,
+    releaseParkedIfPresent: (subtaskId) => {
+      if (!parked.has(subtaskId)) return false;
+      releaseParked(subtaskId);
+      return true;
+    },
     releaseHeldMain: () => {
       const release = releaseMain;
       releaseMain = null;
@@ -538,6 +608,15 @@ export function createLoopPlusRuntimeFixture(options: {
     }),
     readTask,
     saveTask,
+    removeTask: (taskId) => {
+      if (taskPersistence) {
+        if (taskPersistence.remove(taskId) === false) throw new Error(`task persistence refused removal: ${taskId}`);
+        removedTaskIds.add(taskId);
+        return;
+      }
+      writeTasks(readTasks().filter((item) => item.id !== taskId));
+      removedTaskIds.add(taskId);
+    },
     dispose: () => {
       fs.rmSync(rootDir, { recursive: true, force: true });
     },

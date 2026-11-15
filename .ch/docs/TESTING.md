@@ -8,6 +8,7 @@
 - 全量单元入口：`npm run test:unit`，会先构建，再通过 `scripts/run_unit_tests.js` 枚举 `dist/test/**/*.test.js` 的编译后 JavaScript 清单并交给 Node 原生 `node --test` 执行；该入口不得退回裸 `node --test` 自动扫描仓库。
 - 单测发现范围核对：`node scripts/run_unit_tests.js --list` 只应输出 `dist/test/**/*.test.js`，不应包含 `src/test/**/*.ts`。
 - 最小相关单测：先 `npm run build`，再运行 `node --test dist/test/<相关测试>.js ...`。
+- 产研部 Windows/Linux 实际主机验证入口、`owner-core` 与 `public-codex` 的证据边界见[产研部平台验证手册](runbooks/department-platform-verification.md)。入口自身行为回归：`node --test scripts/verify_department_platform.test.js`；该测试只使用临时子程序，不能作为部门生产套件或跨平台通过证据。
 - Loop+/Codex 跨平台修复检测：macOS / Windows 均执行 `npm run verify:loop-plus`，或双击 `scripts/verify_loop_plus_fix.command` / `scripts/verify_loop_plus_fix.cmd`。自动构建、执行所有权/完成状态/Tab/交接回归、默认三轮真实 pool 交接和一次公共 runner 交接；仅使用临时 HOME 与本机模拟模型，不使用用户会话或产生真实模型费用。参数、报告与验收边界见[本地开发手册](runbooks/local-development.md#loopcodex-一键修复检测macos--windows)。单测跳过、缺证据、异常退出或资源清理未确认均失败；退出 0 仅表示当前平台源码与隔离运行时通过，不表示已安装扩展或其它平台完全修复。
 - 构建会先清理 `dist/`；不要将构建（包括自带构建的测试命令）与读取 `dist/` 的测试并行执行，以免出现模块暂时缺失的 `ENOENT` 或 `MODULE_NOT_FOUND`。多个含构建的入口应串行执行。
 - 常用分组：`npm run test:core` 覆盖核心运行时，`npm run test:page` 覆盖 Webview / 配置页相关测试。

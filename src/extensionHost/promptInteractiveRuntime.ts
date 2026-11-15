@@ -228,7 +228,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = getActiveConfigIdForCli(cli);
     const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId, cwd);
-    const requestedModel = input.model || getSelectedCliModel(cli, activeConfigId);
+    const requestedModel = input.executionProfile
+      ? input.executionProfile.model
+      : input.model || getSelectedCliModel(cli, activeConfigId);
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)
       : requestedModel;
@@ -236,11 +238,15 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
     const executionProfile = buildConversationExecutionProfile(activeConfigId, selectedModel, thinkingMode);
     const interactiveMode = getWorkspaceInteractiveMode(cli);
-    applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
+    if (!executionOptions.departmentCodexRun) applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
     const tabId = target.tabId;
     const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
-    const resolvedSessionId = await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
+    // The trusted Owner prepares/resumes and durably binds its native thread.
+    // Its local transcript key is not a shared-runner resume credential.
+    const resolvedSessionId = cli === "codex" && executionOptions.departmentCodexRun
+      ? target.sessionId
+      : await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
     if (resolvedSessionId === undefined) {
       return;
     }
@@ -285,7 +291,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       kimiModelWire = await deps.resolveKimiModelWireForRun(requestedModel);
       kimiLaunch = await (deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
-        interactiveMode,
+        interactiveMode: interactiveMode === "department" ? "coding" : interactiveMode,
         selectedModel: kimiModelWire,
         thinkingMode,
       });
@@ -1039,6 +1045,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       newId: string,
       options: { freezePrevious?: string | null; codexSelection?: CodexRunSelection | null } = {}
     ): void => {
+      // The department main task owns a stable local tab key. Its native
+      // thread has already passed the dedicated durable executionSession
+      // gates; a display callback may map it, but must not rebind that key.
+      if (executionOptions.departmentCodexRun && input.taskRole === "main" && input.loopTaskId) {
+        if (!uiSessionId) throw new Error("部门组长缺少本地会话关联。");
+        upsertInteractiveMapping(cli, uiSessionId, newId, { codexSelection: options.codexSelection });
+        return;
+      }
       const localSessionIdToPromote = !uiSessionId
         ? (getConversationTabById(tabId)?.sessionId ?? null)
         : (isLocalSessionId(uiSessionId) ? uiSessionId : null);
@@ -1113,6 +1127,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         requireExplicitFinalAnswer: shouldRequireExplicitFinalAnswerForRun(input),
       })) {
         return { action: "ok" };
+      }
+      // The department Owner port consumes a single execution. Missing output
+      // must settle as an error before queuing or waiting for another attempt.
+      if (executionOptions.departmentCodexRun) {
+        return { action: "error", message: t("run.missingFinalConclusion") };
       }
       const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
       if (!input.cliCommandRepairAttempted && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
@@ -1374,6 +1393,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           handleStructuredHumanInteractionRequest,
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
+          departmentCodexRun: executionOptions.departmentCodexRun,
+          cancelDepartmentCodexPreparation: executionOptions.cancelDepartmentCodexPreparation,
           resolveCodexInteractiveSelection,
           getConversationTabById,
           createMessageId,
@@ -1422,7 +1443,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
         const canContinueCurrentConversation = Boolean(uiSessionId);
         hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-        const shouldRetry = canContinueCurrentConversation
+        const shouldRetry = !executionOptions.departmentCodexRun && canContinueCurrentConversation
           && !input.cliCommandRepairAttempted
           && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
           && isHiddenRetryEligibleErrorInfo(info);

@@ -297,7 +297,25 @@ export const HEADER_TABS_STYLES = `      /* Header - Minimalist */
         z-index: 3;
       }
       .conversation-tab-label {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
         font-size: 12px;
+      }
+      .conversation-tab-department-role,
+      .conversation-tab-department-id {
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+      .conversation-tab-department-module {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .conversation-tab-close {
         border: none;

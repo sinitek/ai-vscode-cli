@@ -57,6 +57,9 @@ function createHost(initial: {
   });
   const sessionStore = createCliRecord((): SessionStore[CliName] => ({ currentId: null, sessions: [] }));
   const host = createExtensionSessionTabsHost({
+    readOrdinaryConversationTabTaskRecord: () => null,
+    readDepartmentTaskRecord: () => null,
+    readDepartmentLeaderTaskIds: () => null,
     getSessionTabsController: () => controller,
     getSessionLifecycleController: () => ({
       loadSessionStore: () => sessionStore,

@@ -29,6 +29,7 @@ import { CLI_LIST, type CliName, type InteractiveMode, type MacTaskShell, type T
 import type { CliEnabledByName, ToolSettingsState } from "../../toolSettings";
 import type { ChatMessage, PanelMessage } from "../../webview/types";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
+import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 
 type SentPromptRun = {
   input: PromptRunInputForPanel;
@@ -161,6 +162,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
   };
 
   const deps: PanelMessageHandlerDeps = {
+    readStoredToolSettings: () => ({ departmentEnabled: true }),
     ensureWorkspaceSessionStore: () => {
       calls.ensured += 1;
     },
@@ -308,6 +310,59 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
 
   return { deps, calls, state };
 }
+
+test("department prompts never fall through when explicit or inherited on the target CLI", async () => {
+  for (const explicit of [false, true]) {
+    const h = createSendPromptHarness("opencode");
+    h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+    h.deps.isInteractiveMode = (value): value is InteractiveMode => ["coding", "loop", "loop_plus", "department"].includes(String(value));
+    await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "部门目标", ...(explicit ? { interactiveMode: "department" as const } : {}) }, h.deps);
+    assert.equal(h.calls.runPrompt.length, 0); assert.equal(h.calls.runLoopPrompt.length, 0);
+    assert.equal(h.calls.preloaded.length, 0); assert.match(h.calls.webviewErrors[0], /组织启动入口尚未接入/);
+  }
+});
+
+test("department start port receives only host-resolved snapshot; browser routes cannot authorize execution", async () => {
+  const h = createSendPromptHarness("opencode");
+  h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+  const snapshot = { routes: { director: { cli: "opencode" as const }, leader: { cli: "codex" as const }, employee: { cli: "claude" as const } },
+    limits: { maxLeaders: 4, maxEmployees: 20 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
+  const starts: unknown[] = [];
+  h.deps.resolveDepartmentPromptConfiguration = async (request) => { assert.equal(request.cli, "opencode"); return snapshot; };
+  h.deps.startDepartmentPrompt = async (request) => { starts.push(request); };
+  await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "部门目标", loopSubtaskCli: "codex", loopSubtaskModel: "untrusted-model" }, h.deps);
+  assert.equal(starts.length, 1);
+  assert.equal((starts[0] as { departmentConfiguration: unknown }).departmentConfiguration, snapshot);
+  assert.equal("loopSubtaskModel" in (starts[0] as object), false);
+  assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
+  h.deps.resolveDepartmentPromptConfiguration = async () => { throw new Error("员工配置无效"); };
+  await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "再试" }, h.deps);
+  assert.equal(starts.length, 1); assert.match(h.calls.webviewErrors.slice(-1)[0], /员工配置无效/);
+});
+
+test("typed department role save validates exact candidates, preserves other roles and rolls back on failure", async () => {
+  const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  const results: Record<string, unknown>[] = [];
+  h.deps.postWebviewMessage = (message) => { results.push(message); };
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => ({ cli, configId, configs: [{ id: "role-profile", name: "档案" }], models: ["model"],
+    defaultModel: "model", supportsDefaultModel: true, thinkingByModel: { model: ["high"] }, variantsByModel: {} });
+  let canSave = true;
+  h.deps.saveWorkspaceSettingsWithResult = () => canSave ? { ok: true } : { ok: false, error: "disk full" };
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const preference = { cli: "codex" as const, configId: "role-profile", model: null, thinkingMode: "high" as const, openCodeVariant: null };
+  const send = () => handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", requestId: "save-1", directorConfigId: "config-opencode", role: "leader", preference }, h.deps);
+  await send();
+  assert.deepEqual(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["config-opencode"], { leader: preference });
+  const original = h.state.workspaceSettings;
+  canSave = false; await send();
+  assert.equal(h.state.workspaceSettings, original);
+  assert.match(h.calls.webviewErrors.slice(-1)[0], /保存失败/);
+  assert.equal(results.slice(-1)[0].ok, false);
+  canSave = true; await send(); assert.equal(results.slice(-1)[0].ok, true);
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", requestId: "stale", directorConfigId: "other-director", role: "employee", preference }, h.deps);
+  assert.equal(results.slice(-1)[0].ok, false);
+  assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["other-director"], undefined);
+});
 
 test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", async () => {
   const { deps, calls, state } = createSendPromptHarness();
@@ -1396,6 +1451,68 @@ test("routes a new Loop+ send through runLoopPrompt as event_driven without a lo
   assert.equal(calls.runLoopPrompt[0].input.loopSubtaskModel, "provider/general-model");
 });
 
+test("rechecks Loop and Loop+ availability after the panel-state await before dispatch", async () => {
+  for (const interactiveMode of ["loop", "loop_plus"] as const) {
+    const h = createSendPromptHarness();
+    let settings: ToolSettingsState = { loopEnabled: true, loopPlusEnabled: true };
+    h.deps.readStoredToolSettings = () => settings;
+    const enteredPost = createDeferred<void>();
+    const releasePost = createDeferred<void>();
+    h.deps.postPanelState = async () => {
+      h.calls.postPanelState += 1;
+      enteredPost.resolve();
+      await releasePost.promise;
+    };
+
+    const sending = handlePanelMessageWithDeps({
+      type: "sendPrompt", prompt: "等待刷新期间关闭模式", interactiveMode,
+      tabId: "tab-opencode-smoke", cli: "opencode",
+    }, h.deps);
+    await enteredPost.promise;
+    settings = interactiveMode === "loop"
+      ? { ...settings, loopEnabled: false }
+      : { ...settings, loopPlusEnabled: false };
+    releasePost.resolve();
+    await sending;
+
+    assert.equal(h.calls.runPrompt.length, 0, interactiveMode);
+    assert.equal(h.calls.runLoopPrompt.length, 0, interactiveMode);
+    assert.match(h.calls.webviewErrors.at(-1) ?? "", /已在工具设置中关闭/);
+  }
+});
+
+test("keeps an existing Loop subtask continuation dispatchable when Loop is disabled during panel refresh", async () => {
+  const h = createSendPromptHarness();
+  let settings: ToolSettingsState = { loopEnabled: true };
+  h.deps.readStoredToolSettings = () => settings;
+  h.deps.resolveLoopSubtaskConversationContext = () => ({
+    taskId: "existing-loop",
+    subtaskId: "existing-subtask",
+    round: 1,
+  });
+  const enteredPost = createDeferred<void>();
+  const releasePost = createDeferred<void>();
+  h.deps.postPanelState = async () => {
+    h.calls.postPanelState += 1;
+    enteredPost.resolve();
+    await releasePost.promise;
+  };
+
+  const sending = handlePanelMessageWithDeps({
+    type: "sendPrompt", prompt: "继续既有子任务", interactiveMode: "loop",
+    tabId: "tab-opencode-smoke", cli: "opencode",
+  }, h.deps);
+  await enteredPost.promise;
+  settings = { loopEnabled: false };
+  releasePost.resolve();
+  await sending;
+
+  assert.equal(h.calls.runPrompt.length, 1);
+  assert.equal(h.calls.runPrompt[0].input.taskRole, "subtask");
+  assert.equal(h.calls.runLoopPrompt.length, 0);
+  assert.equal(h.calls.webviewErrors.length, 0);
+});
+
 test("does not start Loop+ from a Loop+ subtask tab", async () => {
   const { deps, calls } = createSendPromptHarness();
   deps.resolveLoopSubtaskConversationContext = () => ({
@@ -1476,4 +1593,105 @@ test("ignores acceptance plan payloads outside event-driven Loop+", async () => 
 
   assert.equal(calls.runLoopPrompt.length, 1);
   assert.equal(calls.runLoopPrompt[0].input.loopPlusAcceptancePlan, undefined);
+});
+
+test("same CLI/profile late save and candidate responses stay in the captured workspace generation", async () => {
+  const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  let scope = "workspace-a:1";
+  h.deps.getDepartmentConfigurationScope = () => scope;
+  const pending = createDeferred<void>(); const results: Record<string, unknown>[] = [];
+  h.deps.postWebviewMessage = (message) => { results.push(message); };
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => { await pending.promise; return { cli, configId,
+    configs: [{ id: "profile", name: "角色" }], models: ["model"], supportsDefaultModel: true, defaultModel: "model", thinkingByModel: {}, variantsByModel: {} }; };
+  let writes = 0;
+  h.deps.saveWorkspaceSettingsWithResult = () => { writes++; return { ok: true }; };
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const preference = { cli: "codex" as const, configId: "profile", model: null, thinkingMode: null, openCodeVariant: null };
+  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope, role: "leader", preference, requestId: "old-save", directorConfigId: "config-opencode" }, h.deps);
+  const query = handlePanelMessageWithDeps({ type: "requestDepartmentRoleCandidates", scope, role: "employee", cli: "codex", configId: "profile", requestId: "old-query" }, h.deps);
+  scope = "workspace-a:3"; h.state.workspaceSettings = {}; // A -> B -> A, same CLI and profile
+  pending.resolve(); await Promise.all([save, query]);
+  assert.equal(writes, 0); assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig, undefined);
+  assert.equal(results.find((result) => result.requestId === "old-save")?.ok, false);
+  assert.match(String(results.find((result) => result.requestId === "old-query")?.error), /作用域已变化/);
+  assert.ok(results.every((result) => result.scope === "workspace-a:1"));
+});
+
+test("host save barrier prevents new roots during save/failure and starts with freshly saved configuration after retry", async () => {
+  const { DepartmentConfigurationSaveBarrier } = await import("../../departmentConfiguration");
+  const barrier = new DepartmentConfigurationSaveBarrier(); const scope = "workspace-a:1";
+  const h = createSendPromptHarness("opencode"); h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+  h.deps.getDepartmentConfigurationScope = () => scope;
+  h.deps.getDepartmentConfigurationIssue = () => barrier.issue(scope);
+  h.deps.beginDepartmentConfigurationSave = (key, role) => barrier.begin(key, role);
+  const starts: string[] = [];
+  const snapshot = (model: string) => ({ routes: { director: { cli: "opencode" as const, model }, leader: {}, employee: {} },
+    limits: { maxLeaders: 4, maxEmployees: 20 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() });
+  h.deps.resolveDepartmentPromptConfiguration = async () => snapshot(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["config-opencode"]?.leader?.model ?? "old");
+  h.deps.startDepartmentPrompt = async (request) => { starts.push(request.departmentConfiguration.routes.director.model!); };
+  const send = () => handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "新根目标", departmentConfigurationScope: scope }, h.deps);
+  const pending = createDeferred<void>();
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => { await pending.promise; return { cli, configId, configs: [{ id: "profile", name: "角色" }],
+    models: ["new"], supportsDefaultModel: false, defaultModel: null, thinkingByModel: {}, variantsByModel: {} }; };
+  let canSave = false;
+  h.deps.saveWorkspaceSettingsWithResult = () => ({ ok: canSave });
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const save = () => handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope, role: "leader", requestId: "save", directorConfigId: "config-opencode",
+    preference: { cli: "codex", configId: "profile", model: "new", thinkingMode: null, openCodeVariant: null } }, h.deps);
+  const saving = save(); await send(); assert.match(h.calls.webviewErrors[h.calls.webviewErrors.length - 1], /正在保存/);
+  pending.resolve(); await saving; await send(); assert.match(h.calls.webviewErrors[h.calls.webviewErrors.length - 1], /保存失败/);
+  assert.deepEqual(starts, []);
+  // Trusted continuation is independent of editable new-root drafts and keeps its frozen routes.
+  h.deps.isDepartmentContinuation = () => true;
+  const supplements: unknown[] = [];
+  h.deps.continueDepartmentPrompt = async (request) => { supplements.push(request); };
+  await send(); assert.equal(supplements.length, 1); assert.deepEqual(starts, []);
+  await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "已绑定任务的补充需求", interactiveMode: "coding" }, h.deps);
+  assert.equal(supplements.length, 2, "trusted task binding overrides editable mode and does not call coding");
+  h.deps.isDepartmentContinuation = () => false;
+  canSave = true; await save(); await send(); assert.deepEqual(starts, ["new"]);
+  assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
+});
+
+test("department sends reject changed workspace, target session and active selection across awaits", async () => {
+  for (const change of ["workspace", "session", "selection", "message-scope"] as const) {
+    const h = createSendPromptHarness("opencode"); h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+    let scope = "a:1"; h.deps.getDepartmentConfigurationScope = () => scope;
+    let starts = 0;
+    h.deps.startDepartmentPrompt = async () => { starts++; };
+    h.deps.resolveDepartmentPromptConfiguration = async () => {
+      if (change === "workspace") scope = "a:3";
+      if (change === "session") h.deps.getActiveConversationTab()!.sessionId = "replaced-session";
+      if (change === "selection") h.deps.getActiveConfigIdForCli = () => "changed-profile";
+      return { routes: { director: {}, leader: {}, employee: {} }, limits: { maxLeaders: 4, maxEmployees: 20 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
+    };
+    await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "旧请求", departmentConfigurationScope: change === "message-scope" ? "old:0" : scope }, h.deps);
+    assert.equal(starts, 0, change); assert.match(h.calls.webviewErrors[h.calls.webviewErrors.length - 1], /作用域已变化|会话或有效配置已变化/);
+    assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
+  }
+});
+
+test("department start port retains a trusted final freshness guard across its own await", async () => {
+  const h = createSendPromptHarness("opencode"); h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+  h.deps.resolveDepartmentPromptConfiguration = async () => ({ routes: { director: {}, leader: {}, employee: {} },
+    limits: { maxLeaders: 4, maxEmployees: 20 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() });
+  let mutations = 0;
+  h.deps.startDepartmentPrompt = async (request) => {
+    await Promise.resolve();
+    h.deps.getActiveConversationTab()!.sessionId = "changed-inside-start";
+    assert.equal(typeof request.assertCurrent, "function"); request.assertCurrent!(); mutations++;
+  };
+  await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "不得使用过期目标" }, h.deps);
+  assert.equal(mutations, 0); assert.match(h.calls.webviewErrors.at(-1)!, /会话或有效配置已变化/);
+});
+
+test("department continuation bypasses a failing unrelated new-root configuration draft", async () => {
+  const h = createSendPromptHarness("opencode");
+  h.deps.isDepartmentContinuation = () => true;
+  h.deps.resolveDepartmentPromptConfiguration = async () => { throw new Error("new-root draft failed"); };
+  let continued = 0;
+  h.deps.continueDepartmentPrompt = async (request) => { request.assertCurrent!(); continued++; };
+  await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "补充既有组织" }, h.deps);
+  assert.equal(continued, 1); assert.equal(h.calls.webviewErrors.length, 0);
+  assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
 });

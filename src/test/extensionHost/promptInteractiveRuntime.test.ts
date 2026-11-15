@@ -13,6 +13,8 @@ import type { InteractiveTabRun } from "../../extensionHost/promptExecutionShare
 import type { HumanInteractionRequest, HumanInteractionSubmission } from "../../humanInteraction";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 import { withCodexIdentityFixture } from "../config/codexRuntimeConfigFixture";
+import { t as translate } from "../../i18n";
+import { buildTaskRunCompletionText } from "../../promptRunState";
 
 installVscodeMock();
 
@@ -1547,4 +1549,189 @@ test("records unresolved CLI defaults explicitly and keeps the model after a fai
   await assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget()), /ENOENT/);
   assert.equal(harness.persistedMessages.at(-1)?.messages.find((message) => message.role === "user")?.executionModel, null);
   assert.ok(harness.runStatusEvents.some((event) => event.status === "error"));
+});
+
+test("host-pinned CLI default and Claude off do not inherit a different visible model or thinking mode", async () => {
+  const codex = createInteractiveRuntimeHarness({ selectedModel: "visible-model" });
+  await codex.host.runPromptInteractive(createPromptInput({ executionProfile: { configId: "config-1", model: null, thinkingMode: "high" }, thinkingModeOverride: "high" }), createTarget());
+  assert.equal(codex.persistedMessages.at(-1)?.messages.find((message) => message.role === "user")?.executionProfile?.model, null);
+  const claude = createInteractiveRuntimeHarness({ runtimeDeps: { getEffectiveThinkingMode: () => "on" } });
+  await claude.host.runPromptInteractive(createPromptInput({ model: "claude-model", thinkingModeOverride: "off",
+    executionProfile: { configId: "config-1", model: "claude-model", thinkingMode: "off" } }), { ...createTarget(), cli: "claude" });
+  assert.equal(claude.persistedMessages.at(-1)?.messages.find((message) => message.role === "user")?.executionProfile?.thinkingMode, "off");
+});
+
+test("department Codex uses the injected interactive Owner port and existing session message path without a local runner", async () => {
+  const harness = createInteractiveRuntimeHarness(); let calls = 0;
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget(), {
+    departmentCodexRun: async (_prompt, handlers) => {
+      calls++;
+      await handlers.onThreadId("native-owned-thread");
+      await handlers.onAssistantDelta("[final_answer] Owner answer", { codexFinalAnswer: true });
+      await handlers.onTaskListUpdate([{ text: "owned work", done: true }]);
+    },
+  });
+  assert.equal(calls, 1); assert.equal(harness.codexRunnerCreateCalls, 0);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.ok(harness.persistedMessages.some((record) => record.messages.some((m) => m.content.includes("Owner answer"))));
+  assert.equal(harness.mappingUpserts[0].mappedId, "native-owned-thread");
+});
+
+test("department native main keeps its local task session while mapping two rounds to the original thread", async () => {
+  let resumeChecks = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
+  } }); let calls = 0;
+  const input = createPromptInput({ taskRole: "main", loopTaskId: "leader-task", loopRound: 1 });
+  const target = createTarget({ sessionId: "local_leader" });
+  for (let round = 0; round < 2; round++) {
+    await harness.host.runPromptInteractive(input, target, {
+      departmentCodexRun: async (_prompt, handlers) => {
+        calls++; await handlers.onThreadId("native-owned-thread");
+        await handlers.onAssistantDelta("[final_answer] Native coordination answer", { codexFinalAnswer: true });
+      },
+    });
+  }
+  assert.equal(calls, 2); assert.equal(harness.codexRunnerCreateCalls, 0);
+  assert.equal(resumeChecks, 0, "a local transcript key must reach the trusted native preparation port");
+  assert.deepEqual(harness.adoptedSessions, []); assert.deepEqual(harness.migratedSessions, []);
+  assert.deepEqual(harness.mappingUpserts.map(({ sessionId, mappedId }) => [sessionId, mappedId]),
+    [["local_leader", "native-owned-thread"], ["local_leader", "native-owned-thread"]]);
+  assert.ok(harness.taskRecords.every((record) => record.sessionId === "local_leader"));
+  assert.ok(harness.persistedMessages.every((record) => record.sessionId === "local_leader"));
+});
+
+test("ordinary local-only Codex history still requires the shared resume check", async () => {
+  let resumeChecks = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveSessionForResume: async (_cli, sessionId) => {
+      resumeChecks++; assert.equal(sessionId, "local_leader"); return undefined;
+    },
+  } });
+  await harness.host.runPromptInteractive(createPromptInput({ taskRole: "main", loopTaskId: "leader-task" }),
+    createTarget({ sessionId: "local_leader" }));
+  assert.equal(resumeChecks, 1);
+  assert.equal(harness.codexRunnerCreateCalls, 0);
+  assert.deepEqual(harness.taskRecords, []);
+});
+
+test("department Codex errors do not enter the general hidden retry path", async (t) => {
+  const retries = observeHiddenRetries(t);
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps }); let calls = 0;
+  await assert.rejects(harness.host.runPromptInteractive(createDepartmentEmployeeInput(), createTarget(), {
+    departmentCodexRun: async () => { calls++; throw new Error("connection reset by peer"); },
+  }), /connection reset by peer/);
+  assert.equal(calls, 1); assert.equal(harness.codexRunnerCreateCalls, 0);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+  assertNoHiddenRetries(retries, harness);
+  assert.ok(harness.messagesBySession.get("session-1")?.some((m) => m.content === "connection reset by peer"));
+});
+
+// Match the production Loop policy: a native completed turn needs no explicit
+// final marker. Use real translations and the shared completion formatter.
+const productionConclusionDeps: Partial<PromptInteractiveRuntimeDeps> = {
+  shouldRequireExplicitFinalAnswerForRun: (input) => !input.loopTaskId,
+  t: translate,
+  buildTaskRunCompletionText: (status, duration) => buildTaskRunCompletionText(status, duration, {
+    failed: translate("run.failed"), stopped: translate("run.stopped"), completed: translate("run.completed"),
+    failedWithDuration: (duration) => translate("run.failedWithDuration", { duration }),
+    stoppedWithDuration: (duration) => translate("run.stoppedWithDuration", { duration }),
+    completedWithDuration: (duration) => translate("run.completedWithDuration", { duration }),
+  }),
+};
+
+function createDepartmentEmployeeInput(): PromptRunInput {
+  return createPromptInput({ taskRole: "subtask", loopTaskId: "leader-task", loopSubtaskId: "employee", loopRound: 1 });
+}
+
+function observeHiddenRetries(t: test.TestContext) {
+  const retry = require("../../promptRetry") as typeof import("../../promptRetry");
+  return {
+    // Keep a regression deterministic: the old loop would perform all retries
+    // without sleeping, rather than pass because a one-use closure throws.
+    wait: t.mock.method(retry, "waitForHiddenRetryDelay", async () => true),
+    queued: t.mock.method(retry, "buildHiddenRetryQueuedMessage"),
+    started: t.mock.method(retry, "buildHiddenRetryStartedMessage"),
+  };
+}
+
+function assertNoHiddenRetries(retries: ReturnType<typeof observeHiddenRetries>, harness: ReturnType<typeof createInteractiveRuntimeHarness>) {
+  assert.equal(retries.wait.mock.callCount(), 0);
+  assert.equal(retries.queued.mock.callCount(), 0);
+  assert.equal(retries.started.mock.callCount(), 0);
+  const messages = harness.messagesBySession.get("session-1") ?? [];
+  assert.equal(messages.some((m) => /自动继续|自动重试|替换 Owner/.test(m.content)), false);
+}
+
+for (const output of ["empty", "thinking"] as const) test(`department Codex ${output} without a conclusion settles once without retry costs`, async (t) => {
+  const retries = observeHiddenRetries(t);
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps });
+  let calls = 0;
+  await harness.host.runPromptInteractive(createDepartmentEmployeeInput(), createTarget(), {
+    departmentCodexRun: async (_prompt, handlers) => {
+      calls++;
+      await handlers.onThreadId("native-owned-thread");
+      if (output === "thinking") await handlers.onTrace("仍在分析员工任务", "thinking");
+      // No conclusion or primary turn completion; this port is freely callable.
+    },
+  });
+  assert.equal(calls, 1);
+  assert.equal(harness.codexRunnerCreateCalls, 0);
+  assertNoHiddenRetries(retries, harness);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["error"]);
+  assert.equal(harness.activeRunsByTabId.size, 0);
+  const messages = harness.persistedMessages.at(-1)!.messages;
+  assert.ok(messages.some((m) => m.role === "system" && m.content === translate("run.missingFinalConclusion")));
+  assert.ok(messages.some((m) => m.role === "system" && m.content.startsWith("任务失败")));
+  assert.equal(messages.some((m) => m.codexFinalAnswer || m.role === "assistant" && m.kind !== "thinking" && m.content.trim()), false);
+  assert.equal(harness.humanInteractionRequests.length, 0);
+});
+
+test("department Codex primary completion preserves the Loop success policy without a final bubble", async (t) => {
+  const retries = observeHiddenRetries(t);
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps }); let calls = 0;
+  await harness.host.runPromptInteractive(createDepartmentEmployeeInput(), createTarget(), {
+    departmentCodexRun: async (_prompt, handlers) => {
+      calls++;
+      await handlers.onTurnCompleted?.({ threadId: "native-owned-thread", turnId: "turn", status: "completed" });
+    },
+  });
+  assert.equal(calls, 1); assert.equal(harness.codexRunnerCreateCalls, 0);
+  assertNoHiddenRetries(retries, harness);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["end"]);
+  assert.equal(harness.messagesBySession.get("session-1")?.some((m) => m.codexFinalAnswer), false);
+});
+
+test("department Codex single invocation does not relax an explicit final requirement", async (t) => {
+  const retries = observeHiddenRetries(t);
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: { ...productionConclusionDeps, shouldRequireExplicitFinalAnswerForRun: () => true } }); let calls = 0;
+  await harness.host.runPromptInteractive(createDepartmentEmployeeInput(), createTarget(), {
+    departmentCodexRun: async (_prompt, handlers) => {
+      calls++;
+      await handlers.onTurnCompleted?.({ threadId: "native-owned-thread", turnId: "turn", status: "completed" });
+    },
+  });
+  assert.equal(calls, 1); assert.equal(harness.codexRunnerCreateCalls, 0);
+  assertNoHiddenRetries(retries, harness);
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+});
+
+for (const loop of [false, true]) test(`ordinary ${loop ? "Loop employee" : "interactive"} missing conclusion still queues and starts a retry`, async (t) => {
+  const retries = observeHiddenRetries(t);
+  let calls = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps, codexRunBehavior: async (_prompt, handlers) => {
+    calls++;
+    if (calls === 2) await handlers.onAssistantDelta("[final_answer] 完成", { codexFinalAnswer: true });
+  } });
+  await harness.host.runPromptInteractive(loop ? createDepartmentEmployeeInput() : createPromptInput(), createTarget());
+  assert.equal(calls, 2);
+  assert.equal(retries.wait.mock.callCount(), 1);
+  assert.equal(retries.queued.mock.callCount(), 1);
+  assert.equal(retries.started.mock.callCount(), 1);
+  const messages = harness.messagesBySession.get("session-1") ?? [];
+  assert.ok(messages.some((m) => m.content.includes("自动继续")));
+  assert.ok(messages.some((m) => m.content.includes("次自动重试")));
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
 });

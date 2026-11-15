@@ -1,3 +1,4 @@
+import { splitConfiguredCliCommand } from "../cli/commandResolution";
 import { appendBoundedUtf8Text } from "../boundedText";
 import {
   buildCliArgs,
@@ -12,7 +13,7 @@ import {
   type OpenCodeVisibleStreamEvent,
   type RunProcess,
 } from "../cli/commandRunner";
-import { getCliCommand, getDebugLogging } from "../cli/config";
+import { getCliArgs, getCliCommand, getDebugLogging } from "../cli/config";
 import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import {
@@ -514,6 +515,11 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     const syncDetectedSessionTargetFromBuffer = (buffer: string, stream: "stdout" | "stderr"): void => {
       const detectedSessionId = extractSessionId(runCli, buffer);
       const previousSessionId = activeSessionId;
+      if (executionOptions.departmentProcessStream && executionOptions.departmentLeaderNativeSession
+        && input.taskRole === "main" && input.loopTaskId) {
+        if (detectedSessionId) executionOptions.departmentLeaderNativeSession(detectedSessionId);
+        return;
+      }
       captureSessionFromBuffer(runCli, buffer);
       if (!detectedSessionId || detectedSessionId === previousSessionId) {
         return;
@@ -814,6 +820,12 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
         });
       },
+      getManagedPromptArgs: (runtime, execution) => [
+        ...splitConfiguredCliCommand(getCliCommand("opencode")).slice(1),
+        ...buildCliArgs("opencode", { baseArgs: getCliArgs("opencode"), model: runtime.effectiveModel,
+          openCodeVariant: runtime.effectiveVariant, openCodeConfigContent: runtime.configContent,
+          isolateProjectInstructions: execution.isolateProjectInstructions }),
+      ],
       createStartupWatchdog: (context) => {
         let startupTimeoutHandle: NodeJS.Timeout | null = null;
         let sawOpenCodeActivity = false;
@@ -856,8 +868,11 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
               stdoutLength: context.getOutputLengths().stdout,
               stderrLength: context.getOutputLengths().stderr,
             });
-            killActiveProcess();
+            // Managed cancellation can report synchronously. Settle the actual
+            // watchdog error first so cancellation cannot replace its diagnosis
+            // or change the existing timeout retry classification.
             context.settle({ type: "error", error });
+            killActiveProcess();
           }, timeoutMs);
         };
         noteStartupOutputActivity = (active) => {
@@ -871,6 +886,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           refreshStartupTimeout();
         };
         return {
+          noteActivity: () => markExternalStartupActivity(),
           arm: () => {
             refreshStartupTimeout();
           },
@@ -922,11 +938,11 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         attemptSubagentMonitor = subagentMonitor;
         return subagentMonitor;
       },
-      runCliStream,
+      runCliStream: executionOptions.departmentProcessStream ?? runCliStream,
       buildProcessLabel,
       appendBoundedUtf8Text,
       maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
-      maxHiddenRetries: input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
+      maxHiddenRetries: executionOptions.departmentProcessStream || input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
       onStdoutChunk: (chunk, stream) => {
         const activity = openCodeActivityTracker.updateStdout(chunk);
         if (activity.hasAssistantAnswer) {

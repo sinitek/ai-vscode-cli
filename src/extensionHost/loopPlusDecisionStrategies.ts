@@ -50,7 +50,7 @@ export interface LoopPlusDecisionStrategyPort {
     controls: readonly LoopPlusControlDecision[],
     plan: LoopPlusDecisionControlPlan,
   ): boolean;
-  dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]): void;
+  dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[], reviews?: LoopPlusDecision["reviews"]): void;
   submitReviewBatch(
     eventIds: readonly string[],
     acceptance: "passed" | "failed" | readonly LoopPlusDecisionReviewVerdict[],
@@ -260,7 +260,7 @@ function applyAcceptDecision(
   if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
     return port.protocolMiss(false);
   }
-  port.dispatchSubtasks(decision.subtasks ?? []);
+  port.dispatchSubtasks(decision.subtasks ?? [], decision.reviews);
   port.persistEstimatedRounds(decision);
   if (port.queueView().hasReview) {
     return "continue";

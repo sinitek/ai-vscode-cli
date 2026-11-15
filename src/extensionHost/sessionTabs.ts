@@ -4,8 +4,9 @@ import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../web
 import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
-import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { bindLoopTaskToSession, buildLoopSessionIdsByCli, type LoopTaskRecord } from "../loopTaskStore";
 import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
+import { projectDepartmentConversationTab, projectDepartmentEmployeeConversationTab } from "./departmentConversationTabs";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
 
@@ -31,8 +32,11 @@ export function attachConversationTabLoopMemberTitle(
 }
 
 export type ExtensionSessionTabsHostDeps = {
+  readOrdinaryConversationTabTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  readDepartmentTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  readDepartmentLeaderTaskIds: (rootTaskId: string, leaderSubtaskId: string) => readonly string[] | null;
   getSessionTabsController: () => SessionTabsController;
-  getSessionLifecycleController: () => { loadSessionStore: () => SessionStore; cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>; ensureLocalSession: (cli: CliName, tabId: string) => void; assignPendingLabel: (cli: CliName, tabId: string, sessionId: string) => void; persistActiveMessages: () => void; attachPendingMessages: (cli: CliName, tabId: string, sessionId: string) => void; };
+  getSessionLifecycleController: () => { loadSessionStore: () => SessionStore; cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>; ensureLocalSession: (cli: CliName, tabId: string, createForEmptyDraft?: boolean) => void; assignPendingLabel: (cli: CliName, tabId: string, sessionId: string) => void; persistActiveMessages: () => void; attachPendingMessages: (cli: CliName, tabId: string, sessionId: string) => void; };
   getSessionStore: () => SessionStore; setSessionStore: (store: SessionStore) => void;
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void; getActiveWorkspaceKey: () => string;
   getWorkspaceSettings: () => { currentCli?: CliName }; saveWorkspaceSettings: (settings: any) => void;
@@ -164,10 +168,22 @@ function buildConversationTabsState(): {
   tabs: ConversationTabSummary[];
 } {
   const tabState = sessionTabsController.buildConversationTabsState();
+  const taskRecords = new Map<string, LoopTaskRecord | null>();
+  const readTaskRecord = (taskId: string): LoopTaskRecord | null => {
+    if (!taskRecords.has(taskId)) {
+      try { taskRecords.set(taskId, deps.readDepartmentTaskRecord(taskId)); }
+      catch { taskRecords.set(taskId, null); }
+    }
+    return taskRecords.get(taskId) ?? null;
+  };
+  const readPort = { readTaskRecord, readDepartmentLeaderTaskIds: deps.readDepartmentLeaderTaskIds };
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
-      const task = summary.loopTaskId ? readLoopTaskRecord(summary.loopTaskId) : null;
+      let task = summary.loopTaskId ? readTaskRecord(summary.loopTaskId) : null;
+      if (!task && summary.loopTaskId) {
+        try { task = deps.readOrdinaryConversationTabTaskRecord(summary.loopTaskId); } catch { task = null; }
+      }
       const withSchedulingMode = summary.loopTaskId
         ? attachConversationTabLoopSchedulingMode(
           summary,
@@ -179,7 +195,10 @@ function buildConversationTabsState(): {
           ? loadSessionMessages(summary.cli, summary.sessionId)
           : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
         : [];
-      return attachConversationTabLoopMemberTitle(withSchedulingMode, task, messages);
+      const withMemberTitle = attachConversationTabLoopMemberTitle(withSchedulingMode, task, messages);
+      return summary.loopTaskRole === "subtask"
+        ? projectDepartmentEmployeeConversationTab(withMemberTitle, task, messages, readPort)
+        : projectDepartmentConversationTab(withMemberTitle, task, messages, readPort);
     }),
   };
 }
@@ -302,8 +321,10 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
   options: { notifyTabClosed?: boolean } = {},
+  ownedTarget?: ConversationTabRecord,
 ): Promise<void> {
-  if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
+  if (ownedTarget && getConversationTabById(tabId) !== ownedTarget) throw new Error("department-owned-tab-target-changed");
+  if (isTabRunActive(tabId) || !ownedTarget && isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
     return;
   }
@@ -518,8 +539,8 @@ function clearPendingSessionDraft(tabId: string, cli?: CliName): void {
   sessionTabsController.clearPendingSessionDraft(tabId, cli);
 }
 
-function ensureLocalSession(cli: CliName, tabId: string): void {
-  sessionLifecycleController.ensureLocalSession(cli, tabId);
+function ensureLocalSession(cli: CliName, tabId: string, createForEmptyDraft = false): void {
+  sessionLifecycleController.ensureLocalSession(cli, tabId, createForEmptyDraft);
 }
 
 function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void {
@@ -560,6 +581,8 @@ return {
   addConversationTab: wrap(addConversationTab),
   closeConversationTab: wrap(closeConversationTab),
   closeConversationTabAndRefreshPanel: wrap(closeConversationTabAndRefreshPanel),
+  // In-process host capability only; no UI message route exposes this port.
+  closeOwnedConversationTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, tab)),
   detachConversationTabsFromSession: wrap(detachConversationTabsFromSession),
   syncCurrentSessionWithActiveTab: wrap(syncCurrentSessionWithActiveTab),
   setCurrentSession: wrap(setCurrentSession),

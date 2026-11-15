@@ -4,6 +4,7 @@ import assert = require("node:assert/strict");
 import {
   buildLoopPlusMainModelPrompt,
   buildLoopPlusSubtaskModelPrompt,
+  type LoopPlusDepartmentEmployeeCapacitySnapshot,
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
 import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
@@ -41,6 +42,125 @@ test("all Loop+ modes and main prompt kinds reuse reported execution without rep
       assert.doesNotMatch(prompt, /do not treat the subtask claim as proof/);
     }
   }
+});
+
+test("department leaders receive a validated live employee balance for every main prompt kind", () => {
+  const snapshot = {
+    rootTaskId: "root-task",
+    leaderTaskId: "leader-task",
+    maxEmployees: 4,
+    activeEmployees: 3,
+    availableEmployees: 1,
+    leaderOverflowActive: false,
+    canAcquireOverflow: false,
+  };
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({
+      kind,
+      departmentEmployeeCapacity: {
+        rootTaskId: "root-task",
+        leaderTaskId: "leader-task",
+        maxEmployees: 4,
+        snapshot,
+      },
+    }));
+    assert.match(prompt, /Regular employee total: 4/);
+    assert.match(prompt, /Active employees in this department across all leaders, including overflow employees: 3/);
+    assert.match(prompt, /Available regular employee balance: 1/);
+    assert.match(prompt, /This leader group already has an overflow employee: no/);
+    assert.match(prompt, /This leader may acquire an overflow employee now: no/);
+    assert.match(prompt, /shared by all leaders within this department/);
+    assert.match(prompt, /departments with different root task ids have separate balances/);
+    assert.doesNotMatch(prompt, /across all departments/);
+    assert.match(prompt, /host must atomically recheck before launch/);
+  }
+});
+
+test("department balance zero permits only one leader overflow and invalid or missing data stays unknown", () => {
+  const base = {
+    rootTaskId: "root-task",
+    leaderTaskId: "leader-task",
+    maxEmployees: 2,
+    activeEmployees: 2,
+    availableEmployees: 0,
+    leaderOverflowActive: false,
+    canAcquireOverflow: true,
+  };
+  const promptFor = (snapshot: unknown) => buildLoopPlusMainModelPrompt(mainContext({
+    departmentEmployeeCapacity: {
+      rootTaskId: "root-task",
+      leaderTaskId: "leader-task",
+      maxEmployees: 2,
+      snapshot: snapshot as LoopPlusDepartmentEmployeeCapacitySnapshot | null | undefined,
+    },
+  }));
+  const open = promptFor(base);
+  assert.match(open, /Available regular employee balance: 0/);
+  assert.match(open, /This leader may acquire an overflow employee now: yes/);
+
+  const unknownSnapshots: unknown[] = [
+    undefined,
+    null,
+    { ...base, rootTaskId: "other-root" },
+    { ...base, leaderTaskId: "other-leader" },
+    { ...base, maxEmployees: -1 },
+    { ...base, maxEmployees: 2.5 },
+    { ...base, maxEmployees: Number.MAX_SAFE_INTEGER + 1 },
+    { ...base, maxEmployees: 3 },
+    { ...base, activeEmployees: -1 },
+    { ...base, activeEmployees: 1.5 },
+    { ...base, activeEmployees: Number.MAX_SAFE_INTEGER + 1 },
+    { ...base, availableEmployees: -1 },
+    { ...base, availableEmployees: 0.5 },
+    { ...base, availableEmployees: Number.MAX_SAFE_INTEGER + 1 },
+    { ...base, availableEmployees: 1 },
+    { ...base, leaderOverflowActive: "no" },
+    { ...base, canAcquireOverflow: false },
+    { ...base, activeEmployees: 0, availableEmployees: 2, leaderOverflowActive: true, canAcquireOverflow: false },
+    Object.defineProperty({}, "rootTaskId", { get: () => { throw new Error("snapshot getter failed"); } }),
+  ];
+  for (const candidate of unknownSnapshots) {
+    const prompt = promptFor(candidate);
+    assert.match(prompt, /employee balance unknown/);
+    assert.match(prompt, /Do not treat unknown as zero balance or as permission to use an overflow exception/);
+    assert.doesNotMatch(prompt, /Available regular employee balance: 0/);
+  }
+
+  const atLimitWithOverflow = promptFor({ ...base, leaderOverflowActive: true, canAcquireOverflow: false });
+  assert.match(atLimitWithOverflow, /Regular employee total: 2/);
+  assert.match(atLimitWithOverflow, /Available regular employee balance: 0/);
+  assert.match(atLimitWithOverflow, /This leader group already has an overflow employee: yes/);
+  assert.match(atLimitWithOverflow, /This leader may acquire an overflow employee now: no/);
+
+  const expandedCapacityWithOutstandingOverflow = promptFor({
+    ...base,
+    maxEmployees: 4,
+    activeEmployees: 3,
+    availableEmployees: 1,
+    leaderOverflowActive: true,
+    canAcquireOverflow: false,
+  });
+  assert.match(expandedCapacityWithOutstandingOverflow, /Regular employee total: 4/);
+  assert.match(expandedCapacityWithOutstandingOverflow, /Available regular employee balance: 1/);
+  assert.match(expandedCapacityWithOutstandingOverflow, /This leader group already has an overflow employee: yes/);
+  assert.match(expandedCapacityWithOutstandingOverflow, /This leader may acquire an overflow employee now: no/);
+
+  const overflowPrompt = buildLoopPlusMainModelPrompt(mainContext({
+    departmentEmployeeCapacity: {
+      rootTaskId: "root-task",
+      leaderTaskId: "leader-task",
+      maxEmployees: 2,
+      snapshot: { ...base, activeEmployees: 3, leaderOverflowActive: true, canAcquireOverflow: false },
+    },
+  }));
+  assert.match(overflowPrompt, /This leader group already has an overflow employee: yes/);
+  assert.match(overflowPrompt, /This leader may acquire an overflow employee now: no/);
+});
+
+test("ordinary Loop+ prompt contract omits department capacity context", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind: "initial" }));
+  assert.doesNotMatch(prompt, /Department employee capacity/);
+  assert.doesNotMatch(prompt, /employee balance unknown/);
 });
 
 test("execution result reuse preserves event-level code review and every selected acceptance review", () => {

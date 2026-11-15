@@ -755,7 +755,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       var lastAutoInteractiveModeTabKey = "";
 
       function normalizeInteractiveMode(value) {
-        if (value === "loop" || value === "loop_plus") {
+        if (value === "loop" || value === "loop_plus" || value === "department") {
           return value;
         }
         return "coding";
@@ -1442,6 +1442,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function formatConversationTabLabel(tab, baseLabel) {
+        const department = getDepartmentConversationTabPresentation(tab);
+        if (department) {
+          const roleIcon = department.role === "director" ? "👴🏻"
+            : department.role === "leader" ? "👨🏻" : "👶🏻";
+          return roleIcon + " " + baseLabel;
+        }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
           if (meta.taskRole === "main") {
@@ -1454,7 +1460,30 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         return baseLabel;
       }
 
+      function getDepartmentConversationTabPresentation(tab) {
+        const value = tab && tab.departmentPresentation;
+        if (!value || (value.role !== "director" && value.role !== "leader" && value.role !== "employee")
+          || typeof value.rootTaskId !== "string" || !value.rootTaskId.trim()
+          || typeof value.taskId !== "string" || !value.taskId.trim()
+          || typeof value.moduleTitle !== "string" || !value.moduleTitle.trim()
+          || (value.role === "employee" && (typeof value.employeeSubtaskId !== "string" || !value.employeeSubtaskId.trim()))) {
+          return null;
+        }
+        if (value.taskId !== tab.loopTaskId
+          || (value.role === "director" && (tab.loopTaskRole !== "main" || value.taskId !== value.rootTaskId))
+          || (value.role === "leader" && tab.loopTaskRole !== "main")
+          || (value.role === "employee" && tab.loopTaskRole !== "subtask")) {
+          return null;
+        }
+        return value;
+      }
+
       function resolveAutoInteractiveModeForTab(tab) {
+        const department = getDepartmentConversationTabPresentation(tab);
+        if (department) {
+          return department.role === "director" ? "department"
+            : department.role === "leader" ? "loop_plus" : "coding";
+        }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta && meta.taskRole === "main") {
           const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
@@ -1475,11 +1504,17 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"
           ? tab.loopSchedulingMode.trim()
           : "";
+        const department = getDepartmentConversationTabPresentation(tab);
         return [
           tab.id,
           meta && meta.taskRole ? meta.taskRole : "",
           meta && meta.loopTaskId ? meta.loopTaskId : "",
           schedulingMode === "event_driven" ? "event_driven" : "classic",
+          department ? department.role : "",
+          department ? department.rootTaskId : "",
+          department ? department.taskId : "",
+          department ? department.moduleTitle : "",
+          department && department.role === "employee" ? department.employeeSubtaskId : "",
         ].join("|");
       }
 
@@ -1498,7 +1533,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         const meta = typeof getLoopMetaForTabSummary === "function"
           ? getLoopMetaForTabSummary(activeTab)
           : null;
-        if (!(meta && (meta.taskRole === "main" || meta.taskRole === "subtask"))) {
+        if (!(getDepartmentConversationTabPresentation(activeTab)
+          || meta && (meta.taskRole === "main" || meta.taskRole === "subtask"))) {
           return false;
         }
         if (typeof applyAutoInteractiveModeForTab !== "function") {
@@ -1754,7 +1790,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function getConversationTabPageCount(totalCount) {
         const normalizedCount = Number.isFinite(totalCount) ? Math.max(0, Math.floor(totalCount)) : 0;
-        return Math.max(1, Math.ceil(normalizedCount / CONVERSATION_TAB_PAGE_SIZE));
+        return Math.max(1, Math.ceil(normalizedCount / getConversationTabPageSize()));
+      }
+
+      function getConversationTabPageSize() {
+        return typeof window !== "undefined" && window.innerWidth <= 360
+          ? 1
+          : CONVERSATION_TAB_PAGE_SIZE;
       }
 
       function clampConversationTabPageIndex(nextPageIndex, totalCount) {
@@ -1773,7 +1815,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (!Number.isFinite(tabIndex) || tabIndex < 0) {
           return 0;
         }
-        return Math.floor(tabIndex / CONVERSATION_TAB_PAGE_SIZE);
+        return Math.floor(tabIndex / getConversationTabPageSize());
       }
 
       function setConversationTabPageIndex(nextPageIndex, totalCount) {
@@ -1809,6 +1851,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       var conversationTabSummaryTooltipController = null;
+      var conversationTabRenderedPageSize = 0;
 
       function createConversationTabSummaryTooltipController(root) {
         const tooltipId = "conversationTabSummaryTooltip";
@@ -1946,7 +1989,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           }
         });
         document.addEventListener("visibilitychange", hide);
-        window.addEventListener("resize", hide);
+        window.addEventListener("resize", () => {
+          hide();
+          if (root.classList.contains("visible")) {
+            renderConversationTabs();
+          }
+        });
         window.addEventListener("scroll", () => {
           if (!current || rebuilding) {
             return;
@@ -2062,16 +2110,18 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         }
         const activeTabIndex = tabs.findIndex((tab) => tab && tab.id === activeTabId);
         const activeTabChanged = activeTabId !== conversationTabPageAnchorTabId;
-        if (activeTabChanged) {
+        const pageSize = getConversationTabPageSize();
+        if (activeTabChanged || pageSize !== conversationTabRenderedPageSize) {
           const activePageIndex = getConversationTabPageForTabIndex(activeTabIndex);
           setConversationTabPageIndex(activePageIndex, tabs.length);
         } else {
           setConversationTabPageIndex(conversationTabPageIndex, tabs.length);
         }
+        conversationTabRenderedPageSize = pageSize;
         conversationTabPageAnchorTabId = activeTabId;
         const pageCount = getConversationTabPageCount(tabs.length);
-        const pageStartIndex = conversationTabPageIndex * CONVERSATION_TAB_PAGE_SIZE;
-        const pageEndIndex = pageStartIndex + CONVERSATION_TAB_PAGE_SIZE;
+        const pageStartIndex = conversationTabPageIndex * pageSize;
+        const pageEndIndex = pageStartIndex + pageSize;
 
         if (shouldShowConversationTabPagerButton("prev", conversationTabPageIndex, pageCount)) {
           const prevButton = createConversationTabPagerButton(
@@ -2114,9 +2164,15 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
           const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
           const labelText = formatConversationTabLabel(tab, tabBaseLabel);
+          const department = getDepartmentConversationTabPresentation(tab);
+          tabItem.setAttribute("aria-label", labelText);
           const label = document.createElement("span");
           label.className = "conversation-tab-label";
-          label.textContent = labelText;
+          if (department) {
+            label.textContent = labelText;
+          } else {
+            label.textContent = labelText;
+          }
           tabItem.appendChild(label);
 
           if (tabs.length > 1) {

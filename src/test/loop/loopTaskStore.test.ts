@@ -24,6 +24,75 @@ test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
 });
 
+test("production ownership adapter rebuilds from real task stores and synchronizes retention with zero query discovery", () => {
+  const { createLoopTaskStoreDepartmentOwnershipIndex } = require("../../extensionHost/departmentOwnershipIndex") as typeof import("../../extensionHost/departmentOwnershipIndex");
+  const { departmentRecords } = require("./departmentGroupChatHost.fixture") as typeof import("./departmentGroupChatHost.fixture");
+  const { authorizeDepartmentLeader, buildDepartmentGroupChatProjection } = require("../../extensionHost/departmentGroupChatProjection") as typeof import("../../extensionHost/departmentGroupChatProjection");
+  const data = departmentRecords();
+  const file = loopTaskStore.buildLoopTaskStoreFile("codex", "production-index", null, data.root.id);
+  for (const task of data.records.values()) { task.createdAt = task.updatedAt = Date.now(); task.taskStoreFile = file; }
+  assert.equal(loopTaskStore.tryWriteLoopTaskStore(file, { tasks: [...data.records.values()] }), true);
+  let external!: () => void;
+  const index = createLoopTaskStoreDepartmentOwnershipIndex({ isCurrent: () => true, subscribe: (callback) => { external = callback; return { dispose() {} }; } });
+  const fsModule = require("fs") as typeof import("fs"); const originalReadDir = fsModule.readdirSync;
+  try {
+    assert.equal(index.rebuild(), true);
+    let discoveries = 0;
+    fsModule.readdirSync = ((...args: Parameters<typeof fs.readdirSync>) => { discoveries++; return (originalReadDir as any)(...args); }) as typeof fs.readdirSync;
+    const port = { readTaskRecord: index.readTaskRecord, readLeaderTaskIds: index.readDepartmentLeaderTaskIds };
+    for (let i = 0; i < 10; i++) {
+      const root = index.readTaskRecord(data.root.id)!; const leader = index.readTaskRecord(data.leader.id)!;
+      assert.equal(authorizeDepartmentLeader(root, leader, port, port.readLeaderTaskIds), true);
+      assert.equal(buildDepartmentGroupChatProjection(root, port)!.leaders.length, 2);
+    }
+    assert.equal(discoveries, 0);
+    fsModule.readdirSync = originalReadDir;
+    external(); assert.equal(index.readDepartmentLeaderTaskIds(data.root.id, "module-A"), null);
+    assert.equal(index.rebuild(), true);
+    // Retention removal is a confirmed store mutation, not a false empty result after a read error.
+    for (const task of data.records.values()) task.updatedAt = 0;
+    loopTaskStore.writeLoopTaskStore(file, { tasks: [...data.records.values()] });
+    assert.equal(index.readDepartmentLeaderTaskIds(data.root.id, "module-A"), null);
+    loopTaskStore.cleanupLoopTaskStoreRetention(); assert.equal(fs.existsSync(file), false);
+    assert.equal(index.readTaskRecord(data.root.id), null);
+  } finally { fsModule.readdirSync = originalReadDir; index.dispose(); loopTaskStore.deleteLoopTaskStoreFile(file); }
+});
+
+test("production ownership source rejects directory discovery failures and invalidates after legacy swallowed discovery errors", () => {
+  const { createLoopTaskStoreDepartmentOwnershipIndex } = require("../../extensionHost/departmentOwnershipIndex") as typeof import("../../extensionHost/departmentOwnershipIndex");
+  const directory = path.join(testHome, ".sinitek_cli", "loop-tasks"); fs.mkdirSync(directory, { recursive: true });
+  const index = createLoopTaskStoreDepartmentOwnershipIndex({ isCurrent: () => true, subscribe: () => ({ dispose() {} }) });
+  const fsModule = require("fs") as typeof import("fs"); const original = fsModule.readdirSync;
+  try {
+    assert.equal(index.rebuild(), true);
+    fsModule.readdirSync = ((target: fs.PathLike, options?: any) => {
+      if (String(target) === directory) throw Error("simulated unreadable directory");
+      return (original as any)(target, options);
+    }) as typeof fs.readdirSync;
+    assert.doesNotThrow(() => loopTaskStore.listLoopTaskStoreFiles()); // Ordinary API remains tolerant.
+    assert.equal(index.state, "invalid");
+    assert.equal(index.rebuild(), false); assert.equal(index.state, "invalid");
+    fsModule.readdirSync = original; assert.equal(index.rebuild(), true);
+  } finally { fsModule.readdirSync = original; index.dispose(); }
+});
+
+test("department classic root keeps explicit baseline plan and atomic collaboration delivery receipts", () => {
+  const task = createLegacyTask();
+  const plan = require("../../loopPlusAcceptancePlan").buildSystemLoopPlusAcceptancePlanSnapshot();
+  task.schedulingMode = "classic";
+  task.loopPlusAcceptancePlan = plan;
+  task.department = { version: 1, rootTaskId: task.id, parentTaskId: null, leaderSubtaskId: null, role: "director", moduleTitle: "部门",
+    routes: { director: { cli: "codex" }, leader: { cli: "codex" }, employee: { cli: "codex" } }, limits: { maxLeaders: 4, maxEmployees: 20 } };
+  task.departmentDeliveries = { "message-1": "补充要求" };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusAcceptancePlan, plan);
+  assert.equal(readSkillTask(task.taskStoreFile).schedulingMode, "classic");
+  assert.deepEqual(readSkillTask(task.taskStoreFile).departmentDeliveries, { "message-1": "补充要求" });
+  loopTaskStore.updateLoopTaskRecord(task.id, { finalSummary: "unrelated update" });
+  assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusAcceptancePlan, plan);
+  assert.deepEqual(readSkillTask(task.taskStoreFile).departmentDeliveries, { "message-1": "补充要求" });
+});
+
 test("bounded Loop+ block review persists and rejects malformed state", () => {
   const task = createLegacyTask();
   task.loopPlusBlockReview = { state: "pending", summary: "need independent work check" };
@@ -39,6 +108,52 @@ test("bounded Loop+ block review persists and rejects malformed state", () => {
   delete raw.tasks[0].loopPlusBlockReview;
   fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
   assert.equal(readSkillTask(task.taskStoreFile).loopPlusBlockReview, undefined);
+});
+
+test("department metadata persists when valid and marks explicit malformed metadata for execution refusal", () => {
+  const task = createLegacyTask();
+  task.department = {
+    version: 1,
+    rootTaskId: "department-root",
+    parentTaskId: null,
+    leaderSubtaskId: null,
+    role: "director",
+    moduleTitle: "账号",
+    routes: { director: { cli: "codex" }, leader: { cli: "opencode", openCodeVariant: "reasoning" }, employee: { cli: "claude" } },
+    limits: { maxLeaders: 4, maxEmployees: 20 },
+  };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.equal(readSkillTask(task.taskStoreFile).department?.rootTaskId, "department-root");
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].department = { ...task.department, version: 9 };
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  const malformed = readSkillTask(task.taskStoreFile);
+  assert.equal(malformed.department, undefined);
+  assert.equal(malformed.departmentInvalid, true);
+});
+
+test("department refusal marker survives null, writes, and unrelated updates until valid metadata restores it", () => {
+  const task = createLegacyTask();
+  task.department = {
+    version: 1, rootTaskId: "department-root", parentTaskId: null, leaderSubtaskId: null, role: "director", moduleTitle: "账号",
+    routes: { director: { cli: "codex" }, leader: { cli: "opencode" }, employee: { cli: "claude" } }, limits: { maxLeaders: 4, maxEmployees: 20 },
+  };
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].department = null;
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.equal(readSkillTask(task.taskStoreFile).departmentInvalid, true);
+  const updated = loopTaskStore.updateLoopTaskRecord(task.id, { updatedAt: Date.now() + 1 });
+  assert.equal(updated?.departmentInvalid, true);
+  assert.equal(readSkillTask(task.taskStoreFile).departmentInvalid, true);
+  const restored = loopTaskStore.updateLoopTaskRecord(task.id, { department: task.department });
+  assert.equal(restored?.departmentInvalid, undefined);
+  assert.equal(restored?.department?.rootTaskId, "department-root");
+  const persisted = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  delete persisted.tasks[0].department;
+  persisted.tasks[0].departmentInvalid = true;
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(persisted));
+  assert.equal(readSkillTask(task.taskStoreFile).departmentInvalid, true);
 });
 
 function hasOwnProperty(value: object, property: string): boolean {
@@ -627,4 +742,43 @@ test("legacy or corrupt acceptance plan snapshots fall back to the fixed baselin
     }],
   }), "utf8");
   assert.equal(readSkillTask(corruptPath).loopPlusAcceptancePlan, undefined);
+});
+
+test("host router ownership is final even when handler declines, throws, or is disposed", () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "loop-owned-router-")));
+  const task = createLegacyTask();
+  assert.equal(loopTaskStore.tryWriteLoopTaskStore(task.taskStoreFile, { tasks: [task] }), true);
+  const before = fs.readFileSync(task.taskStoreFile, "utf8");
+  let mode: "decline" | "throw" = "decline";
+  const registration = loopTaskStore.registerLoopTaskStoreHostRouter({ root, knownTaskIds: [task.id], route: () => {
+    if (mode === "throw") throw Error("source unavailable");
+    return { handled: false };
+  } });
+  try {
+    for (const phase of ["decline", "throw", "disposed"]) {
+      if (phase === "throw") mode = "throw";
+      if (phase === "disposed") registration.dispose();
+      assert.equal(loopTaskStore.readLoopTaskRecord(task.id), null);
+      assert.equal(loopTaskStore.readKnownOrdinaryLoopTaskRecord(task.id), null);
+      assert.equal(loopTaskStore.updateLoopTaskRecord(task.id, { status: "completed" }), null);
+      assert.equal(loopTaskStore.tryAppendLoopRound(task.id, { round: 1, role: "main", status: "end", startedAt: 1, endedAt: 2 }), false);
+      assert.equal(loopTaskStore.bindLoopTaskToSession(task.id, "must-not-move"), null);
+      assert.equal(loopTaskStore.tryWriteLoopTaskStore(path.join(root, "nested", "new.json"), { tasks: [] }), false);
+      assert.equal(fs.existsSync(path.join(root, "nested")), false);
+      assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), before);
+    }
+  } finally { registration.dispose(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("repair provenance normalization preserves exact host identity and rejects corrupt recovery", () => {
+  const task = createLegacyTask();
+  const source = { subtaskId: "source", attemptId: "a1", finishEventId: "finish:source:a1" };
+  task.subTasks = [{ id: "repair", title: "repair", status: "completed", repairSource: source }];
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.deepEqual(readSkillTask(task.taskStoreFile).subTasks[0].repairSource, source);
+  for (const invalid of [null, [], {}, { ...source, attemptId: " " }, { ...source, injected: true }, { ...source, finishEventId: 3 }]) {
+    const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")); raw.tasks[0].subTasks[0].repairSource = invalid;
+    fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+    assert.deepEqual(readSkillTask(task.taskStoreFile).subTasks[0].repairSource, { subtaskId: "", attemptId: "", finishEventId: "" });
+  }
 });

@@ -570,7 +570,7 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         const mode = typeof resolveDispatchInteractiveMode === "function"
           ? resolveDispatchInteractiveMode(payload.interactiveMode, tab, false)
           : payload.interactiveMode;
-        if (mode !== "loop_plus") {
+        if (mode !== "loop_plus" && mode !== "department") {
           return false;
         }
         // 已有 Loop+ 主任务或子任务绑定的标签页属于续跑/恢复/补充，不再弹验收方案。

@@ -4,6 +4,7 @@ import * as path from "path";
 import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -17,9 +18,14 @@ export type ToolSettingsState = {
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
+  loopEnabled?: boolean;
+  loopPlusEnabled?: boolean;
+  departmentEnabled?: boolean;
   loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
   loopPlusMaxAcceptances?: number;
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
@@ -90,6 +96,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.humanInteractionEnabled === "boolean") {
     normalized.humanInteractionEnabled = record.humanInteractionEnabled;
   }
+  if (typeof record.loopEnabled === "boolean") normalized.loopEnabled = record.loopEnabled;
+  if (typeof record.loopPlusEnabled === "boolean") normalized.loopPlusEnabled = record.loopPlusEnabled;
+  if (typeof record.departmentEnabled === "boolean") normalized.departmentEnabled = record.departmentEnabled;
   if (typeof record.historyRetentionDays === "number" || typeof record.historyRetentionDays === "string") {
     const parsed = typeof record.historyRetentionDays === "number"
       ? record.historyRetentionDays
@@ -127,6 +136,12 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     if (Number.isFinite(parsed)) {
       normalized.loopPlusMaxAcceptances = Math.floor(parsed);
     }
+  }
+  if ("departmentMaxLeaders" in record) {
+    normalized.departmentMaxLeaders = normalizeDepartmentMaxLeaders(record.departmentMaxLeaders);
+  }
+  if ("departmentMaxEmployees" in record) {
+    normalized.departmentMaxEmployees = normalizeDepartmentMaxEmployees(record.departmentMaxEmployees);
   }
   if (
     typeof record.humanInteractionTimeoutMinutes === "number"

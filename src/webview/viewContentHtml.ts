@@ -10,6 +10,7 @@ import {
 } from "../loopPlusDecision";
 import { WebviewStringKey } from "./viewContentStrings";
 import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 
 type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
@@ -25,6 +26,7 @@ function renderInteractiveModeSelect(
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="loop">${i18n.interactiveModeLoop}</option>
             <option value="loop_plus" title="${i18n.interactiveModeLoopPlusHint}">${i18n.interactiveModeLoopPlus}</option>
+            <option value="department">${i18n.interactiveModeDepartment}</option>
           </select>`;
 }
 
@@ -53,6 +55,20 @@ function renderLoopPlusFrontendRouteRow(i18n: WebviewHtmlStrings, ids: {
                 ${renderLoopSubtaskCliSelect(i18n, ids.cli, i18n.loopPlusFrontendCliSelectAria)}
                 <select id="${ids.model}" class="model-select" aria-label="${i18n.loopPlusFrontendModelSelectAria}"${describedBy} title="${i18n.loopPlusFrontendModelSelectAria}"></select>
                 <select id="${ids.thinking}" class="thinking-select" aria-label="${i18n.loopPlusFrontendThinkingModeAria}" title="${i18n.loopPlusFrontendThinkingModeAria}"></select>
+              </div>`;
+}
+
+function renderDepartmentRoleRow(i18n: WebviewHtmlStrings, role: "leader" | "employee", label: string): string {
+  const prefix = `department-${role}`;
+  return `<div class="open-code-model-row loop-subtask-route-row department-role-row" data-department-role="${role}">
+                <label class="open-code-model-label" for="${prefix}-cli">${label}</label>
+                <select id="${prefix}-cli" class="cli-select loop-subtask-cli-select" aria-label="${label} ${i18n.departmentRoleCliLabel}"></select>
+                <select id="${prefix}-config" class="config-select" aria-label="${label} ${i18n.departmentRoleConfigLabel}"></select>
+                <select id="${prefix}-model" class="model-select" aria-label="${label} ${i18n.departmentRoleModelLabel}"></select>
+                <select id="${prefix}-thinking" class="thinking-select" aria-label="${label} ${i18n.departmentRoleThinkingLabel}"></select>
+                <select id="${prefix}-variant" class="thinking-select" aria-label="${label} ${i18n.departmentRoleVariantLabel}" hidden></select>
+                <span id="${prefix}-message" class="open-code-model-issue" role="status" aria-live="polite"></span>
+                <button id="${prefix}-retry" type="button" class="secondary" hidden>重试</button>
               </div>`;
 }
 
@@ -221,6 +237,16 @@ ${webviewStyles}    </style>
           <select id="currentCli" class="cli-select" aria-label="${i18n.cliSelectAria}">${cliOptions}</select>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
           ${renderInteractiveModeSelect(i18n, { id: "interactiveModeSelect", ariaLabel: i18n.interactiveModeSelectAria })}
+        </div>
+        <div id="departmentRoleConfiguration" class="open-code-model-group" hidden>
+          <div class="tool-settings-note department-performance-warning" role="note">${i18n.departmentPerformanceWarning}</div>
+          <div class="open-code-model-row loop-subtask-route-row department-role-row">
+            <span class="open-code-model-label">${i18n.departmentDirectorLabel}</span>
+            <span id="departmentDirectorSummary" class="tool-settings-note"></span>
+          </div>
+          ${renderDepartmentRoleRow(i18n, "leader", i18n.departmentLeaderLabel)}
+          ${renderDepartmentRoleRow(i18n, "employee", i18n.departmentEmployeeLabel)}
+          <span id="departmentRoleMessage" class="open-code-model-issue" role="status" aria-live="polite"></span>
         </div>
         <div class="input-box">
           <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
@@ -621,6 +647,13 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   </label>
                 </div>`).join("\n")}
               </section>
+              <section id="taskModesCard" class="tool-settings-card">
+                <div class="tool-settings-label">${i18n.toolSettingsModesLabel}</div>
+                ${[["loopEnabled", i18n.toolSettingsLoopEnabled], ["loopPlusEnabled", i18n.toolSettingsLoopPlusEnabled], ["departmentEnabled", i18n.toolSettingsDepartmentEnabled]].map(([key, label]) => `                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="${key}">${label}</label>
+                  <label class="debug-toggle"><input type="checkbox" id="${key}" aria-label="${label}" /></label>
+                </div>${key === "departmentEnabled" ? `<div class="tool-settings-note department-performance-warning" role="note">${i18n.departmentPerformanceWarning}</div>` : ""}`).join("\n")}
+              </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
               <section class="tool-settings-card">
@@ -713,6 +746,20 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
                   />
                 </div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="departmentMaxLeaders">${i18n.departmentMaxLeadersLabel}</label>
+                  <input type="number" id="departmentMaxLeaders" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_LEADERS_DEFAULT}" aria-describedby="departmentMaxLeadersNote" />
+                </div>
+                <div id="departmentMaxLeadersNote" class="tool-settings-note">${i18n.departmentMaxLeadersNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="departmentMaxEmployees">${i18n.departmentMaxEmployeesLabel}</label>
+                  <input type="number" id="departmentMaxEmployees" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_EMPLOYEES_DEFAULT}" aria-describedby="departmentMaxEmployeesNote" />
+                </div>
+                <div id="departmentMaxEmployeesNote" class="tool-settings-note">${i18n.departmentMaxEmployeesNote}</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">

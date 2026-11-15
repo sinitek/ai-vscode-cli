@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
+import * as fs from "fs";
 import { installVscodeMock } from "../vscodeMock";
 import { buildClaudePrompt } from "../../cli/claudeToolPolicy";
 
@@ -34,7 +35,7 @@ type FakeStream = EventEmitter & {
 type FakeChild = EventEmitter & {
   stdout: FakeStream;
   stderr: FakeStream;
-  stdin: { end: () => void };
+  stdin?: FakeStream & { end: () => void };
   pid?: number;
   stdinEndCalls: number;
   kill: (signal?: NodeJS.Signals | number) => boolean;
@@ -63,14 +64,24 @@ function createFakeChild(pid?: number): FakeChild {
   child.stdout = createFakeStream();
   child.stderr = createFakeStream();
   child.stdinEndCalls = 0;
-  child.stdin = {
-    end: () => {
-      child.stdinEndCalls += 1;
-    },
+  const stdin = createFakeStream() as FakeStream & { end: () => void };
+  stdin.end = () => {
+    child.stdinEndCalls += 1;
   };
+  child.stdin = stdin;
   child.pid = pid;
   child.kill = () => true;
   return child;
+}
+
+function closeFakeChild(child: FakeChild, code: number): void {
+  child.stdin?.emit("finish");
+  child.stdin?.emit("close");
+  child.stdout.emit("end");
+  child.stdout.emit("close");
+  child.stderr.emit("end");
+  child.stderr.emit("close");
+  child.emit("close", code);
 }
 
 function installConfiguration(values: Record<string, unknown>): () => void {
@@ -168,6 +179,101 @@ test("runs a resolved stream command with mocked process output and termination"
   } finally {
     crossSpawn.spawn = originalSpawn;
     restoreConfiguration();
+  }
+});
+
+test("preserves explicit base environment precedence through the facade and real OpenCode overlay", async () => {
+  const restoreConfiguration = installConfiguration({
+    "commands.opencode": process.execPath,
+    "args.opencode": [],
+  });
+  const hostOnlyKey = "SINITEK_FACADE_HOST_ONLY_SENTINEL";
+  const previousHostOnly = process.env[hostOnlyKey];
+  const previousConfigDir = process.env.OPENCODE_CONFIG_DIR;
+  process.env[hostOnlyKey] = "host-only-value";
+  process.env.OPENCODE_CONFIG_DIR = "/host/opencode-config-dir-sentinel";
+
+  const baseEnvironment: NodeJS.ProcessEnv = {
+    SINITEK_FACADE_BASE_ONLY: "base-value",
+    SINITEK_FACADE_OVERRIDE: "base-value",
+    OPENCODE_CONFIG: "/base/config.json",
+    PWD: "/base/pwd",
+  };
+  const envOverrides = {
+    SINITEK_FACADE_OVERRIDE: "task-value",
+    OPENCODE_CONFIG: "/task/config.json",
+  };
+  const baseSnapshot = { ...baseEnvironment };
+  const overridesSnapshot = { ...envOverrides };
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const errors: Error[] = [];
+  const exits: Array<number | null> = [];
+  const configContent = JSON.stringify({
+    model: "provider/model",
+    provider: { provider: { models: { model: {} } } },
+  });
+  const script = [
+    "const fs = require('fs');",
+    "const configPath = process.env.OPENCODE_CONFIG;",
+    "process.stdout.write(JSON.stringify({",
+    "base: process.env.SINITEK_FACADE_BASE_ONLY,",
+    "override: process.env.SINITEK_FACADE_OVERRIDE,",
+    "hostOnly: process.env.SINITEK_FACADE_HOST_ONLY_SENTINEL ?? null,",
+    "configDir: process.env.OPENCODE_CONFIG_DIR ?? null,",
+    "configPath, configContent: fs.readFileSync(configPath, 'utf8'), pwd: process.env.PWD",
+    "}));",
+  ].join("");
+
+  try {
+    const handle = runCliStream("opencode", "ignored prompt", {
+      onStdout: (chunk) => stdout.push(chunk),
+      onStderr: (chunk) => stderr.push(chunk),
+      onError: (error) => errors.push(error),
+      onExit: (code) => exits.push(code),
+    }, {
+      commandOverride: process.execPath,
+      argsOverride: ["-e", script],
+      cwd: process.cwd(),
+      environment: baseEnvironment,
+      envOverrides,
+      model: "provider/model",
+      openCodeConfigContent: configContent,
+    });
+
+    const lifecycle = await handle.lifecycle;
+    assert.deepEqual(errors, []);
+    assert.deepEqual(exits, [0]);
+    assert.equal(stderr.join(""), "");
+    const result = JSON.parse(stdout.join("")) as {
+      base: string;
+      override: string;
+      hostOnly: string | null;
+      configDir: string | null;
+      configPath: string;
+      configContent: string;
+      pwd: string;
+    };
+    assert.equal(result.base, "base-value");
+    assert.equal(result.override, "task-value");
+    assert.equal(result.hostOnly, null);
+    assert.equal(result.configDir, null);
+    assert.notEqual(result.configPath, "/base/config.json");
+    assert.notEqual(result.configPath, "/task/config.json");
+    assert.equal(JSON.parse(result.configContent).model, "provider/model");
+    assert.equal(result.pwd, process.cwd());
+    assert.deepEqual(baseEnvironment, baseSnapshot);
+    assert.deepEqual(envOverrides, overridesSnapshot);
+    assert.equal(lifecycle?.processTerminal.status, "confirmed");
+    assert.equal(lifecycle?.streams.status, "confirmed");
+    assert.equal(lifecycle?.temp.status, "confirmed");
+    assert.equal(fs.existsSync(result.configPath), false);
+  } finally {
+    restoreConfiguration();
+    if (previousHostOnly === undefined) delete process.env[hostOnlyKey];
+    else process.env[hostOnlyKey] = previousHostOnly;
+    if (previousConfigDir === undefined) delete process.env.OPENCODE_CONFIG_DIR;
+    else process.env.OPENCODE_CONFIG_DIR = previousConfigDir;
   }
 });
 
@@ -608,7 +714,7 @@ test("reports unresolved server and capture commands without leaving a process h
   }
 });
 
-test("cleans OpenCode overlays on unresolved and child error paths", () => {
+test("cleans OpenCode overlays on unresolved commands but retains a live child's overlay after error until close", async () => {
   const activeConfig = JSON.stringify({
     model: "valid/model",
     provider: { valid: { models: { model: {} } } },
@@ -643,19 +749,22 @@ test("cleans OpenCode overlays on unresolved and child error paths", () => {
   });
   const originalSpawn = crossSpawn.spawn;
   const serverChild = createFakeChild();
+  serverChild.stdin = undefined;
   const streamChild = createFakeChild();
   let invocation = 0;
-  crossSpawn.spawn = (): unknown => {
+  const overlays: string[] = [];
+  crossSpawn.spawn = (...args: unknown[]): unknown => {
+    overlays.push((args[2] as { env: Record<string, string> }).env.OPENCODE_CONFIG);
     invocation += 1;
     return invocation === 1 ? serverChild : streamChild;
   };
   try {
     const errors: Error[] = [];
-    startOpenCodeServer(43126, {
+    const server = startOpenCodeServer(43126, {
       onError: (error) => errors.push(error),
       onExit: () => undefined,
     }, { model: "valid/model", openCodeConfigContent: activeConfig });
-    runCliStream("opencode", "prompt", {
+    const stream = runCliStream("opencode", "prompt", {
       onStdout: () => undefined,
       onStderr: () => undefined,
       onError: (error) => errors.push(error),
@@ -665,6 +774,12 @@ test("cleans OpenCode overlays on unresolved and child error paths", () => {
     serverChild.emit("error", new Error("server overlay child error"));
     streamChild.emit("error", new Error("stream overlay child error"));
     assert.deepEqual(errors.map((error) => error.message), ["server overlay child error", "stream overlay child error"]);
+    assert.equal(overlays.length, 2);
+    assert.ok(overlays.every((file) => fs.existsSync(file)), "an error is not a child terminal");
+    closeFakeChild(serverChild, 1);
+    closeFakeChild(streamChild, 1);
+    await Promise.all([server.lifecycle, stream.lifecycle]);
+    assert.ok(overlays.every((file) => !fs.existsSync(file)));
   } finally {
     crossSpawn.spawn = originalSpawn;
     restoreConfiguration();

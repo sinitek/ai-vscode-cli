@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { buildDepartmentRolePrompt } from "../departmentprompts";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { I18nKey } from "../i18n";
@@ -132,7 +133,42 @@ type LoopOrchestrationRequiredHostDeps =
     t: (key: I18nKey, params?: Record<string, string | number | boolean>) => string;
   };
 
-export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps>;
+export type ClassicLoopDecisionResult =
+    | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
+    | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
+    | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "pending-requirements"; task: LoopTaskRecord }
+    | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
+export type DepartmentDirectorDecisionRequest = {
+  task: LoopTaskRecord; decision: LoopMainDecision; content: string | null; requirements: string[];
+};
+export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps> & {
+  handleDepartmentDecision?: (request: DepartmentDirectorDecisionRequest) => ClassicLoopDecisionResult | Promise<ClassicLoopDecisionResult>;
+};
+
+export async function resolveLoopTaskAtCreationBoundary<T>(options: {
+  candidateId?: string | null;
+  prepareRunner: () => Promise<void>;
+  readTask: (taskId: string) => T | null;
+  isReusableContinuation: (task: T) => boolean;
+  allowFallbackCreation: boolean;
+  assertNewTaskAvailable: () => void;
+  createTask: () => T;
+  beforeFallbackCreation?: () => void;
+}): Promise<{ task: T | null; created: boolean }> {
+  await options.prepareRunner();
+  const candidate = options.candidateId ? options.readTask(options.candidateId) : null;
+  if (candidate && options.isReusableContinuation(candidate)) {
+    return { task: candidate, created: false };
+  }
+  if (!options.allowFallbackCreation) {
+    return { task: null, created: false };
+  }
+  options.assertNewTaskAvailable();
+  options.beforeFallbackCreation?.();
+  return { task: options.createTask(), created: true };
+}
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
@@ -265,6 +301,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       }
     }
 
+    if (task.department !== undefined || task.departmentInvalid) {
+      if (task.departmentInvalid || task.department?.role !== "director" || !deps.handleDepartmentDecision) {
+        throw new Error("部门总监组织入口不可用，任务不会退化为普通 Loop。");
+      }
+      return deps.handleDepartmentDecision({ task: readLoopTaskRecord(task.id) ?? task, decision, content: mainContent, requirements: requirementsAtStart });
+    }
     return applyLoopMainDecisionForRun(task.id, decision);
   }
 
@@ -500,13 +542,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     status: TaskRunStatus;
   };
 
-  type LoopMainDecisionRunResult =
-    | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
-    | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
-    | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "pending-requirements"; task: LoopTaskRecord }
-    | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
+  type LoopMainDecisionRunResult = ClassicLoopDecisionResult;
 
   async function runLoopSubtasksBatchWithRetry(
     options: LoopSubtaskBatchOptions
@@ -1031,6 +1067,18 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number,
     continuePrompt?: string,
   ): string {
+    if (task.department?.role === "director") return [
+      buildDepartmentRolePrompt("director"),
+      `任务 ID：${task.id}；轮次：${round}`,
+      "使用经典 Loop JSON 决策。continue 的 subtasks 是模块，各模块启动唯一真实 Loop+ 组长；不得直接实施。",
+      '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","prompt":"自包含模块需求"}]}',
+      '等待汇报使用 {"status":"blocked","finalSummary":"等待组长汇报"}。有用户疑问使用标准 clarify 表单。',
+      '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
+      '完成使用 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}；宿主检查全组织门禁后才会写入完成。',
+      "组长汇报、协作和补充会及时唤醒你，无需等待所有组长结束。不得检查代码或验收。",
+      ...buildLoopSupplementalRequirementsLines(task),
+      "原始目标：", rootPrompt, continuePrompt ?? "",
+    ].join("\n");
     const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
     const taskId = task.id;
     const taskFile = task.taskStoreFile;

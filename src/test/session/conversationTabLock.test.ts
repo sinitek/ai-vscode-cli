@@ -153,8 +153,9 @@ function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: 
 
   return new Function(
     "getLoopMetaForTabSummary",
+    "getDepartmentConversationTabPresentation",
     `${functionSource}; return formatConversationTabLabel;`,
-  )(getLoopMetaForTabSummary) as (tab: TabSummary | null, baseLabel: string) => string;
+  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null, baseLabel: string) => string;
 }
 
 function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => string {
@@ -173,8 +174,9 @@ function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => 
 
   return new Function(
     "getLoopMetaForTabSummary",
+    "getDepartmentConversationTabPresentation",
     `${functionSource}; return resolveAutoInteractiveModeForTab;`,
-  )(getLoopMetaForTabSummary) as (tab: TabSummary | null) => string;
+  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null) => string;
 }
 
 function buildResetConversationTabSessionRequest(
@@ -597,13 +599,14 @@ function buildLoopTabIdentityRuntime(): {
     .join("\n");
   return new Function(
     "loopMetaByTabId",
+    "getDepartmentConversationTabPresentation",
     `${sources}
     return {
       updateFromMessage: updateLoopMetaForTabFromMessage,
       updateFromMessages: updateLoopMetaForTabFromMessages,
       formatLabel: formatConversationTabLabel,
     };`,
-  )(Object.create(null)) as {
+  )(Object.create(null), () => null) as {
     updateFromMessage: (tabId: string, message: Record<string, unknown>) => boolean;
     updateFromMessages: (tabId: string, messages: Record<string, unknown>[]) => boolean;
     formatLabel: (tab: TabSummary, baseLabel: string) => string;

@@ -67,6 +67,7 @@ export type LoopPlusAcceptReview = {
 
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
+  departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>;
   progressPercent?: number;
   directCompletion?: true;
   reviewEventId?: string;
@@ -211,7 +212,14 @@ function normalizeDecision(
   if (!isLoopPlusDecisionStatus(status)) {
     return null;
   }
-  return LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
+  const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
+  if (!decision || value.departmentCollaborations === undefined) return decision;
+  // Coordination accompanies a normal wait decision; it never confirms/skips a review batch.
+  const messages = value.departmentCollaborations;
+  if (status !== "wait" || !Array.isArray(messages) || messages.length > 20 || messages.some((item) => !item || typeof item !== "object"
+    || ["id", "targetLeaderTaskId", "body"].some((key) => typeof item[key] !== "string" || !item[key].trim()))
+    || new Set(messages.map((item) => item.id)).size !== messages.length) return null;
+  return { ...decision, departmentCollaborations: messages.map(({ id, targetLeaderTaskId, body }) => ({ id, targetLeaderTaskId, body })) };
 }
 
 function normalizeDispatchDecision(

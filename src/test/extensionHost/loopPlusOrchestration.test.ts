@@ -33,6 +33,8 @@ type Deferred<T> = {
 
 type MainCall = {
   request: LoopPlusMainRequest;
+  invocationPrompt: string;
+  invocationModelPrompt: string;
   resolve: (value: string | null) => void;
   releaseAbort: (value?: string | null) => void;
 };
@@ -469,6 +471,9 @@ function harness(options: {
   waitForClarification?: LoopPlusOrchestrationDeps["waitForClarification"];
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendMessage?: LoopPlusOrchestrationDeps["appendMessage"];
+  department?: LoopTaskRecord["department"];
+  departmentInvalid?: boolean;
+  getDepartmentEmployeeCapacity?: LoopPlusOrchestrationDeps["getDepartmentEmployeeCapacity"];
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
 } = {}) {
@@ -488,6 +493,7 @@ function harness(options: {
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
     closeSubtaskTabs: options.closeSubtaskTabs,
+    getDepartmentEmployeeCapacity: options.getDepartmentEmployeeCapacity,
     maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.acceptanceLimit ? { acceptanceLimit: options.acceptanceLimit } : {}),
@@ -513,6 +519,8 @@ function harness(options: {
       const task = baseTask(`task-${taskSeq}`, input.snapshot);
       task.rootPrompt = input.rootPrompt;
       task.sessionId = input.sessionId;
+      if (options.department) task.department = options.department;
+      if (options.departmentInvalid) task.departmentInvalid = true;
       if (input.prompt.loopPlusAcceptancePlan) {
         task.loopPlusAcceptancePlan = input.prompt.loopPlusAcceptancePlan;
       }
@@ -545,6 +553,8 @@ function harness(options: {
       const gate = deferred<string | null>();
       const call: MainCall = {
         request,
+        invocationPrompt: request.prompt,
+        invocationModelPrompt: request.modelPrompt,
         resolve: gate.resolve,
         releaseAbort: (value) => gate.resolve(value ?? null),
       };
@@ -616,6 +626,128 @@ function harness(options: {
 function snapshotOf(task: LoopTaskRecord | undefined): LoopPlusSchedulerSnapshot {
   return task?.loopPlus as LoopPlusSchedulerSnapshot;
 }
+
+test("leader capacity is read per decision while an issued invocation keeps its original prompt", async () => {
+  const reads: Array<[string, string]> = [];
+  let live = {
+    rootTaskId: "department-root",
+    leaderTaskId: "task-1",
+    maxEmployees: 3,
+    activeEmployees: 2,
+    availableEmployees: 1,
+    leaderOverflowActive: false,
+    canAcquireOverflow: false,
+  };
+  const env = harness({
+    department: {
+      version: 1,
+      rootTaskId: "department-root",
+      parentTaskId: null,
+      leaderSubtaskId: null,
+      role: "leader",
+      moduleTitle: "module",
+      routes: { director: {}, leader: {}, employee: {} },
+      limits: { maxLeaders: 2, maxEmployees: 3 },
+    },
+    getDepartmentEmployeeCapacity: (rootTaskId, leaderTaskId) => {
+      reads.push([rootTaskId, leaderTaskId]);
+      return live;
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.deepEqual(reads, [["department-root", run.taskId ?? ""]]);
+  assert.match(env.mains[0].invocationPrompt, /Available regular employee balance: 1/);
+
+  live = { ...live, activeEmployees: 3, availableEmployees: 0, canAcquireOverflow: true };
+  assert.equal(env.host.submitUserMessage(run.taskId ?? "", "add one more requirement"), true);
+  assert.equal(reads.length, 1, "queuing a message does not change the already-issued invocation");
+  assert.match(env.mains[0].invocationPrompt, /Available regular employee balance: 1/);
+  assert.match(env.mains[0].invocationPrompt, /This leader may acquire an overflow employee now: no/);
+  assert.match(env.mains[0].invocationModelPrompt, /Available regular employee balance: 1/);
+
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+  await flush();
+  const userRequest = env.mains.find((call) => call.request.kind === "user");
+  assert.ok(userRequest);
+  assert.match(userRequest?.invocationPrompt ?? "", /Available regular employee balance: 0/);
+  assert.match(userRequest?.invocationPrompt ?? "", /This leader may acquire an overflow employee now: yes/);
+  assert.equal(reads.length, 4, "refreshes and the supplemental decision each read current capacity");
+  assert.ok(reads.every(([root, leader]) => root === "department-root" && leader === run.taskId));
+
+  userRequest?.resolve(decisionJson({ status: "wait" }));
+  await flush();
+  env.host.stopParent(run.taskId ?? "");
+});
+
+test("invalid department identity and ordinary Loop+ do not query employee capacity", async () => {
+  const makeDepartment = (): NonNullable<LoopTaskRecord["department"]> => ({
+    version: 1,
+    rootTaskId: "department-root",
+    parentTaskId: null,
+    leaderSubtaskId: null,
+    role: "leader",
+    moduleTitle: "module",
+    routes: { director: {}, leader: {}, employee: {} },
+    limits: { maxLeaders: 2, maxEmployees: 3 },
+  });
+  for (const options of [{ departmentInvalid: true, department: makeDepartment() }, {}] as const) {
+    let reads = 0;
+    const env = harness({
+      ...options,
+      getDepartmentEmployeeCapacity: () => {
+        reads += 1;
+        return null;
+      },
+    });
+    const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    assert.equal(reads, 0);
+    assert.doesNotMatch(env.mains[0].request.prompt, /Department employee capacity/);
+    env.host.stopParent(run.taskId ?? "");
+  }
+});
+
+test("department capacity provider failures keep leader request generation available", async () => {
+  const env = harness({
+    department: {
+      version: 1,
+      rootTaskId: "department-root",
+      parentTaskId: null,
+      leaderSubtaskId: null,
+      role: "leader",
+      moduleTitle: "module",
+      routes: { director: {}, leader: {}, employee: {} },
+      limits: { maxLeaders: 2, maxEmployees: 3 },
+    },
+    getDepartmentEmployeeCapacity: () => { throw new Error("capacity unavailable"); },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.match(env.mains[0].request.prompt, /employee balance unknown/);
+  env.host.stopParent(run.taskId ?? "");
+});
+
+test("missing department capacity provider renders unknown for a validated leader", async () => {
+  const env = harness({
+    department: {
+      version: 1,
+      rootTaskId: "department-root",
+      parentTaskId: null,
+      leaderSubtaskId: null,
+      role: "leader",
+      moduleTitle: "module",
+      routes: { director: {}, leader: {}, employee: {} },
+      limits: { maxLeaders: 2, maxEmployees: 3 },
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.match(env.mains[0].request.prompt, /employee balance unknown/);
+  env.host.stopParent(run.taskId ?? "");
+});
 
 test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current dropdown", () => {
   assert.equal(resolveLoopPlusEntry(null, "event_driven"), "event_driven");
@@ -1346,6 +1478,9 @@ test("records each accept review without failing a successful sibling", async ()
   assert.equal(seen("beta")?.acceptance, "failed");
   assert.equal(seen("follow-up")?.acceptance, undefined);
   assert.equal(seen("repair")?.acceptance, undefined);
+  assert.deepEqual(env.tasks.get(taskId)!.subTasks.find((item) => item.id === "repair")!.repairSource,
+    { subtaskId: "beta", attemptId: betaAttempt.request.attemptId, finishEventId: betaEventId });
+  assert.equal(env.tasks.get(taskId)!.subTasks.find((item) => item.id === "follow-up")!.repairSource, undefined);
 
   env.attempts.find((item) => item.request.subtaskId === "repair")?.resolve({ outcome: "completed", detail: "repair" });
   await flush();
@@ -3876,4 +4011,62 @@ test("a task started without an acceptance plan falls back to the fixed baseline
   env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   assert.doesNotMatch(env.mains[0].request.modelPrompt, /Additional acceptance reviews/);
+});
+
+for (const failure of ["none", "save", "readback", "invalid-review", "forged-dispatch"] as const) test(`repair provenance host commit ${failure}`, async () => {
+  let rejectSave = false;
+  const env = harness({ beforeUpdateTask: (patch) => {
+    if (!rejectSave || !patch.subTasks?.some((item) => item.repairSource)) return;
+    if (failure === "save") throw new Error("repair save rejected");
+    if (failure === "readback") patch.subTasks = patch.subTasks.map(({ repairSource: _source, ...rest }) => rest);
+  } });
+  const run = env.host.tryRun({ displayPrompt: "repair interrupted delivery" }, env.target, { schedulingMode: "event_driven" });
+  await flush(); const taskId = run.taskId!;
+  const fake = { subtaskId: "forged", attemptId: "fake", finishEventId: "fake" };
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [{ ...subtask("source", []), repairSource: fake }] }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)!.subTasks[0].repairSource, undefined, "model provenance cannot enter the store");
+  env.attempts[0].resolve({ outcome: "completed", detail: "incomplete delivery" }); await flush();
+  const event = env.mains[1].request.reviewEventId!;
+  rejectSave = true;
+  env.mains[1].resolve(decisionJson({ status: failure === "forged-dispatch" ? "dispatch" : "accept",
+    reviewEventId: failure === "invalid-review" ? "wrong-event" : event,
+    reviews: [{ reviewEventId: failure === "invalid-review" ? "wrong-event" : event, acceptance: "failed", subtaskIds: ["repair"] }],
+    subtasks: [{ ...subtask("repair", []), continueFromSubtaskId: "source", repairSource: fake }] }));
+  await flush();
+  const repair = env.tasks.get(taskId)!.subTasks.find((item) => item.id === "repair");
+  if (failure === "none") {
+    assert.deepEqual(repair!.repairSource, { subtaskId: "source", attemptId: env.attempts[0].request.attemptId, finishEventId: event });
+    assert.equal(env.attempts.length, 2);
+    env.attempts[1].resolve({ outcome: "completed", detail: "repaired" }); await flush();
+    const review = env.mains.at(-1)!;
+    review.resolve(decisionJson({ status: "accept", reviewEventId: review.request.reviewEventId, reviews: [{ reviewEventId: review.request.reviewEventId, acceptance: "passed" }], subtasks: [] }));
+    await flush(); env.mains.at(-1)!.resolve(completedDecision()); await flush(); await run.done;
+    const { isDepartmentLeaderCompleted } = require("../../loopPlusCompletion") as typeof import("../../loopPlusCompletion");
+    assert.equal(isDepartmentLeaderCompleted(env.tasks.get(taskId)!), true);
+    assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts[0].acceptance, "failed");
+  } else {
+    assert.equal(repair?.repairSource, undefined);
+    assert.equal(env.attempts.length, 1, "failed review/dispatch never launches repair");
+    env.host.stopParent(taskId); await flush(); await run.done;
+    assert.equal(env.tasks.get(taskId)!.subTasks.some((item) => item.repairSource), false, "late final persistence cannot restore provenance");
+  }
+});
+
+test("repair provenance preserves ordinary same-subtask retry without replacement metadata", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "ordinary retry" }, env.target, { schedulingMode: "event_driven" });
+  await flush(); env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("same", [])] })); await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "requires repair" }); await flush();
+  const event = env.mains[1].request.reviewEventId!;
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: event,
+    reviews: [{ reviewEventId: event, acceptance: "failed", subtaskIds: ["same"] }], subtasks: [subtask("same", [])] })); await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.tasks.get(run.taskId!)!.subTasks[0].repairSource, undefined);
+  env.attempts[1].resolve({ outcome: "completed", detail: "fixed" }); await flush();
+  const review = env.mains.at(-1)!; review.resolve(decisionJson({ status: "accept", reviewEventId: review.request.reviewEventId,
+    reviews: [{ reviewEventId: review.request.reviewEventId, acceptance: "passed" }], subtasks: [] })); await flush();
+  env.mains.at(-1)!.resolve(completedDecision()); await flush(); await run.done;
+  const { isDepartmentLeaderCompleted } = require("../../loopPlusCompletion") as typeof import("../../loopPlusCompletion");
+  assert.equal(isDepartmentLeaderCompleted(env.tasks.get(run.taskId!)!), true);
 });

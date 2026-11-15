@@ -35,19 +35,21 @@ function fixture(t: TestContext) {
     queueMicrotask(() => respond(call));
     return child;
   });
-  const processModule = require("../../interactive/codexRunnerProcess");
+  const processModule = require("../../interactive/codexRunnerProcessCore");
   t.mock.method(processModule, "killProcessTree", (child: unknown) => { kills.push(child); return true; });
   // A regression must never send a fake PID to the OS, even on a failure path.
   t.mock.method(process, "kill", () => assert.fail("OS process.kill is forbidden for fixture PIDs"));
   const modulePath = require.resolve("../../interactive/codexAppServerCapabilities");
+  const corePath = require.resolve("../../interactive/codexAppServerCapabilitiesCore");
   delete require.cache[modulePath];
+  delete require.cache[corePath];
   const api = require(modulePath) as CapabilityModule;
   t.after(() => {
     for (const { child } of calls) {
       child.emit("close", null);
       child.stdout.destroy(); child.stderr.destroy();
     }
-    delete require.cache[modulePath]; fs.rmSync(temp, { recursive: true, force: true });
+    delete require.cache[modulePath]; delete require.cache[corePath]; fs.rmSync(temp, { recursive: true, force: true });
   });
   return { ...api, temp, command, env, calls, kills, respond: (fn: typeof respond) => { respond = fn; } };
 }
@@ -113,7 +115,7 @@ test("probe cleanup waits for close after bounded timeout, even if termination f
   t.mock.method(global, "setTimeout", ((callback: (...args: unknown[]) => void, delay: number, ...args: unknown[]) =>
     originalSetTimeout(callback, delay === 3000 ? 5 : delay, ...args)) as typeof setTimeout);
   f.respond(() => undefined);
-  t.mock.method(require("../../interactive/codexRunnerProcess"), "killProcessTree", (child: unknown) => {
+  t.mock.method(require("../../interactive/codexRunnerProcessCore"), "killProcessTree", (child: unknown) => {
     assert.equal(child, f.calls[0].child);
     throw new Error("termination request failed");
   });

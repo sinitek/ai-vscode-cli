@@ -1,0 +1,530 @@
+{
+  "markdown_links": [
+    {
+      "from": ".ch/docs/TESTING.md",
+      "target": "runbooks/department-platform-verification.md",
+      "resolved": ".ch/docs/runbooks/department-platform-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/TESTING.md",
+      "target": "runbooks/local-development.md",
+      "resolved": ".ch/docs/runbooks/local-development.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/TESTING.md",
+      "target": "exec-plans/tech-debt-tracker.md",
+      "resolved": ".ch/docs/exec-plans/tech-debt-tracker.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-codex-node-runtime.md",
+      "target": "department-codex-owned-execution.md",
+      "resolved": ".ch/docs/design-docs/department-codex-owned-execution.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
+      "target": "department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-process-production-bootstrap.md",
+      "resolved": ".ch/docs/design-docs/department-process-production-bootstrap.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-codex-execution-launcher.md",
+      "resolved": ".ch/docs/design-docs/department-codex-execution-launcher.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-production-execution-wiring.md",
+      "resolved": ".ch/docs/design-docs/department-production-execution-wiring.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-codex-owned-execution.md",
+      "resolved": ".ch/docs/design-docs/department-codex-owned-execution.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-codex-execution-launcher.md",
+      "resolved": ".ch/docs/design-docs/department-codex-execution-launcher.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-codex-production-bootstrap.md",
+      "resolved": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-leader-native-owner.md",
+      "resolved": ".ch/docs/design-docs/department-leader-native-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-execution-owner.md",
+      "target": "department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-leader-native-owner.md",
+      "target": "department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../exec-plans/active/2026-11-13-feature-department-mode.md",
+      "resolved": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../product-specs/FEATURE_INVENTORY.md",
+      "resolved": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "loop-plus-scheduling.md",
+      "resolved": ".ch/docs/design-docs/loop-plus-scheduling.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "loop-subtask-session-reuse.md",
+      "resolved": ".ch/docs/design-docs/loop-subtask-session-reuse.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-codex-native-drain-verification.md",
+      "resolved": ".ch/docs/runbooks/department-codex-native-drain-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "loop-plus-scheduling.md",
+      "resolved": ".ch/docs/design-docs/loop-plus-scheduling.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-conversation-verification.md",
+      "resolved": ".ch/docs/runbooks/department-conversation-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "department-group-chat-ui-contract.md",
+      "resolved": ".ch/docs/design-docs/department-group-chat-ui-contract.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/design-docs/department-mode.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../product-specs/FEATURE_INVENTORY.md",
+      "resolved": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-group-chat-ui-contract.md",
+      "resolved": ".ch/docs/design-docs/department-group-chat-ui-contract.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../runbooks/department-conversation-verification.md",
+      "resolved": ".ch/docs/runbooks/department-conversation-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-codex-execution-launcher.md",
+      "resolved": ".ch/docs/design-docs/department-codex-execution-launcher.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-codex-production-bootstrap.md",
+      "resolved": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../design-docs/department-leader-native-owner.md",
+      "resolved": ".ch/docs/design-docs/department-leader-native-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../runbooks/department-codex-native-drain-verification.md",
+      "resolved": ".ch/docs/runbooks/department-codex-native-drain-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "target": "../../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-loopplus-regression-contracts.md",
+      "resolved": ".ch/docs/design-docs/department-loopplus-regression-contracts.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-conversation-verification.md",
+      "resolved": ".ch/docs/runbooks/department-conversation-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-process-production-bootstrap.md",
+      "resolved": ".ch/docs/design-docs/department-process-production-bootstrap.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-codex-execution-launcher.md",
+      "resolved": ".ch/docs/design-docs/department-codex-execution-launcher.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-employee-execution-admission.md",
+      "resolved": ".ch/docs/design-docs/department-employee-execution-admission.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-leader-native-owner.md",
+      "resolved": ".ch/docs/design-docs/department-leader-native-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-production-execution-wiring.md",
+      "resolved": ".ch/docs/design-docs/department-production-execution-wiring.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-codex-production-bootstrap.md",
+      "resolved": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-leader-native-owner.md",
+      "resolved": ".ch/docs/design-docs/department-leader-native-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-leader-execution-cleanup.md",
+      "resolved": ".ch/docs/design-docs/department-leader-execution-cleanup.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-production-tree-control-verification.md",
+      "resolved": ".ch/docs/design-docs/department-production-tree-control-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/active/2026-11-13-feature-department-mode.md",
+      "resolved": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-production-tree-control-verification.md",
+      "resolved": ".ch/docs/design-docs/department-production-tree-control-verification.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "resolved": ".ch/docs/exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "图片地址",
+      "resolved": ".ch/docs/product-specs/图片地址",
+      "present_exact_case": false
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-full-eh-integration.md",
+      "resolved": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "../runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "target": "../exec-plans/active/2026-11-13-feature-department-mode.md",
+      "resolved": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "target": "../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "target": "../design-docs/department-owned-source.md",
+      "resolved": ".ch/docs/design-docs/department-owned-source.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "target": "../design-docs/department-production-execution-wiring.md",
+      "resolved": ".ch/docs/design-docs/department-production-execution-wiring.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "target": "../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": ".ch/docs/runbooks/department-full-eh-integration.md",
+      "target": "../design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": "ARCHITECTURE.md",
+      "target": ".ch/docs/design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": "ARCHITECTURE.md",
+      "target": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "resolved": ".ch/docs/runbooks/department-acceptance-coverage.md",
+      "present_exact_case": true
+    },
+    {
+      "from": "ARCHITECTURE.md",
+      "target": ".ch/docs/design-docs/department-execution-owner.md",
+      "resolved": ".ch/docs/design-docs/department-execution-owner.md",
+      "present_exact_case": true
+    },
+    {
+      "from": "ARCHITECTURE.md",
+      "target": ".ch/docs/design-docs/department-mode.md",
+      "resolved": ".ch/docs/design-docs/department-mode.md",
+      "present_exact_case": true
+    },
+    {
+      "from": "ARCHITECTURE.md",
+      "target": ".ch/docs/design-docs/department-group-chat-ui-contract.md",
+      "resolved": ".ch/docs/design-docs/department-group-chat-ui-contract.md",
+      "present_exact_case": true
+    }
+  ],
+  "missing_or_wrong_case": [
+    {
+      "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "target": "图片地址",
+      "resolved": ".ch/docs/product-specs/图片地址",
+      "present_exact_case": false,
+      "classification": "inherited-inline-Markdown-example-placeholder",
+      "action": "not a real navigation target; retained baseline example, no source edit"
+    }
+  ]
+}

@@ -178,7 +178,7 @@ export function createSessionLifecycleController(deps: {
   deleteSession: (cli: CliName, sessionId: string) => void;
   deleteSessionMessageArtifacts: (cli: CliName, sessionId: string) => void;
   findSupersedingLocalSessionTarget: (cli: CliName, sessionId: string) => string | null;
-  ensureLocalSession: (cli: CliName, tabId: string) => void;
+  ensureLocalSession: (cli: CliName, tabId: string, createForEmptyDraft?: boolean) => void;
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
   loadSessionStore: () => SessionStore;
   cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>;
@@ -593,12 +593,14 @@ export function createSessionLifecycleController(deps: {
     void deps.postPanelState();
   };
 
-  const ensureLocalSession = (cli: CliName, tabId: string): void => {
-    if (deps.getCurrentSessionId(cli)) {
+  const ensureLocalSession = (cli: CliName, tabId: string, createForEmptyDraft = false): void => {
+    const tab = deps.getConversationTabById(tabId);
+    if (tab && getConversationTabSessionIdForCli(tab, cli)) {
       return;
     }
+    if (!createForEmptyDraft && deps.getCurrentSessionId(cli)) return;
     const draft = deps.getPendingSessionDraft(tabId, cli);
-    if (!draft.messages.length) {
+    if (!draft.messages.length && !createForEmptyDraft) {
       return;
     }
     lifecycle.adoptSessionId(cli, createLocalSessionId(), tabId);

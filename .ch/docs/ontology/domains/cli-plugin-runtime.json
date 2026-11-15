@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-13",
+  "as_of": "2026-11-15",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -28,6 +28,23 @@
         {"path": "ARCHITECTURE.md", "anchor": "扩展编排层"},
         {"path": ".ch/docs/design-docs/settings-message-commands.md"}
       ]
+    },
+    {
+      "id": "plugin.task_mode_availability",
+      "name": "任务模式可用性开关",
+      "kind": "capability",
+      "description": "全局模式可用性设置以严格布尔值控制用户新建 Loop、Loop+、产研部任务；缺失或非法值回退开、开、关。常规设置卡片提供三项开关及产研部本机并行执行性能警告。宿主在面板新任务和定时任务入口校验并在配置异步屏障后复核；现有任务续接及可信组长 Loop+ 内部派发不由开关中断。round-332 定向测试覆盖持久化、关闭拒绝、异步开关变化与定时入口；隔离 Chromium 设置面板 smoke 通过，部门会话 smoke 因既有角色 Tab fixture 文案断言不匹配而未通过。未证明完整 VS Code 真实 CLI 派发链。",
+      "status": "active",
+      "implementation_paths": ["src/modeAvailability.ts", "src/toolSettings.ts", "src/sessionMessageActions.ts", "src/extension.ts", "src/settingMessageHandlers/preferences.ts", "src/webview/viewContentHtml.ts"],
+      "source_refs": [{
+        "path": "src/test/core/modeavailability.test.ts"
+      }, {
+        "path": "src/test/session/sessionMessageActions.test.ts"
+      }, {
+        "path": "src/test/extensionHost/scheduledTaskConfigOwnership.test.ts"
+      }, {
+        "path": "src/test/webview/modeavailability.test.ts"
+      }]
     },
     {
       "id": "plugin.chat_panel",
@@ -198,6 +215,298 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "一次性 AI 对话定时执行与附件管理"},
         {"path": "src/webview/panelFileActions.ts", "anchor": "saveScheduledTaskAttachments"}
       ]
+    },
+    {
+      "id": "plugin.department_task",
+      "name": "产研部组织任务",
+      "description": "开发中三层组织：总监经典 Loop 仅派发/协调及依据汇报完成，不验收代码；真实 Loop+ 组长保留统一根方案和全部验收，员工可跨 CLI。中央 composition/组织容量 host/adapter/生产来源 store 已装配。默认最多4组长、全部门共享常规20同时员工，零余额每组最多一个未释放超额；每次决策新余额仅参考，启动原子重判，未知留责。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 已接受三角色全 OpenCode 默认模型公开新建 EH，范围是两模块、四原 Owner 完整凭证、两个精确 CLOSED、容量归还后第二实际派发及总监汇报；不证明跨代续接、冷恢复、全部 CLI/平台或远程模型质量。冷宿主缺原 producer provenance/完整聚合时仍不接管 running leader。round-376 managed-main 工具交互是单独的 headless one-shot 证据，不构成 Department Owner/容量证明。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
+      "status": "active",
+      "kind": "aggregate",
+      "aliases": ["产研部", "department", "总监", "组长", "员工"],
+      "implementation_paths": ["src/department.ts", "src/extensionHost/departmentorchestration.ts", "src/extensionHost/departmentruntimestate.ts", "src/departmentConfiguration.ts", "src/extensionHost/departmentexecutionproducer.ts", "src/extensionHost/departmentleaderproductionhost.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleadercodexbootstrap.ts"
+      }, {
+        "path": "src/runtime/departmentleadercodexowner.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-native-owner.md"
+      }, {
+        "path": "src/extensionHost/departmentemployeeexecutionadmission.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-employee-execution-admission.md"
+      }, {
+        "path": "src/department.ts"
+      }, {
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }, {
+        "path": "src/extensionHost/departmentConversationTabs.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-conversation-verification.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderproductionhost.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
+    },
+    {
+      "id": "plugin.department_leader_execution_set",
+      "name": "组长代次执行集合",
+      "kind": "ledger",
+      "description": "精确 rootTaskId/workspace/leaderTaskId/moduleId/generation 的持久责任全集。真实新代生产 producer 在首次 scheduler pump 前 Ledger.open；组长协调与既有两条员工链在 builder/原生准备前登记责任，完整 binding 与引用原子保存。旧记录、未知准备、已有绑定或历史代次不自动收养。关闭持久化不可逆 closure；封闭集合不证明每项清理，null/unknown 留责，session/tab 不可观察不归还容量。",
+      "status": "active",
+      "aliases": ["leaderExecutionSets", "执行集合", "DepartmentLeaderExecutionSet"],
+      "implementation_paths": ["src/extensionHost/departmentleaderexecutionledger.ts", "src/extensionHost/departmentruntimestore.ts", "src/extensionHost/departmentexecutionproducer.ts", "src/extensionHost/departmentleaderproductionhost.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderproductionhost.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+      }]
+    },
+    {
+      "id": "plugin.department_execution_responsibility",
+      "name": "原生准备前执行责任",
+      "kind": "value_object",
+      "description": "固定 registrationId、组长或员工 subtask/attempt、原 selection 和 requirements；先落盘再准备。组织 binding 目标将员工 attemptId 加入 Owner executionSlot+generation 以分别保留同 subtask 不同 attempt；组长仍每 scope/generation 一个目标，同精确 attempt 只能幂等绑定一个原身份。bindLeaderExecution 将 binding 与责任引用一次原子持久化后才允许启动。未绑定、准备失败或 unsupported 责任保留 executionId:null/unknown，不删除、不伪造 subtask/generation。Owner slot、identity v1、receipt index 和同 Owner 同代启动栅栏不变。 两条员工生产准备链通过不可序列化的可信宿主能力复用 Ledger.admit：builder/原生准备前登记固定策略，首次 session 持久化后通过 admit.bind 原子提交并精确回读，commit/最终同步复核和一次性 grant 仍在同次准入内。无能力在 builder 前拒绝，不回退 bindExecution；同 subtask 不同 attempt 分别留责。 OpenCode 员工根创建返回后先保存原 assert/dispose 能力，再首次 realpath/assert；核验异常沿原 dispose，清理失败保留根/配置租约/责任容量。round-372 新增4项接受，非完整整组或全角色EH证明。",
+      "status": "active",
+      "aliases": ["DepartmentExecutionResponsibility", "责任项", "registrationId"],
+      "implementation_paths": ["src/extensionHost/departmentleaderexecutionledger.ts", "src/extensionHost/departmentruntimestore.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentemployeeexecutionadmission.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-employee-execution-admission.md"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionidentity.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutionledger.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/runtime/departmentopencodesessionpreparation.ts"
+      }, {
+        "path": "src/runtime/departmentprocessownerworker.ts"
+      }, {
+        "path": "src/test/runtime/departmentopencodesessionpreparation.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
+    },
+    {
+      "id": "plugin.department_execution_producer",
+      "name": "可信宿主执行准入 producer",
+      "kind": "capability",
+      "description": "真实新根 CREATE 内存凭据、精确 root/workspace/leader/module/generation 与容量/成员落盘授权首次 scheduler pump 前 Ledger.open；同一 producer 注入原生多轮组长与 Codex/OpenCode 员工 Ledger.admit，builder/原生准备前登记责任，binding/引用原子保存。withAdmission 保留准备/绑定/最终 grant，关闭同步撤销 canLaunch 并封闭原 Owner，排空原 native/准备责任后持久不可逆 closure；isCurrent 仅用于最终回验，旧代/未知/冷恢复不收养。completed/idle/空集合/Promise 或 tracker/token 不证明 drain/receipt/CLOSED/容量。原 client 精确观察完整集合并最终冷读成功后，组织层先持久移除租约再 release，失败/未知保留占用。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 已接受三角色全 OpenCode 默认模型公开新建及其凭证/集合/容量再派发场景；不覆盖 OpenCode 跨代续接、冷恢复或必要平台。冷宿主缺原 producer provenance/完整聚合时仍不接管 running leader。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
+      "status": "active",
+      "aliases": ["DepartmentLeaderExecutionProducer", "producer", "准入栅栏"],
+      "implementation_paths": ["src/extensionHost/departmentleaderexecutionledger.ts", "src/extensionHost/departmentexecutionproducer.ts", "src/extensionHost/departmentleaderproductionhost.ts"],
+      "source_refs": [{
+        "path": "scripts/verify_department_full_eh_integration.js"
+      }, {
+        "path": "scripts/fixtures/department_full_eh_scenario.js"
+      }, {
+        "path": "scripts/fixtures/opencode_local_provider_server.js"
+      }, {
+        "path": ".ch/docs/runbooks/department-full-eh-integration.md"
+      }, {
+        "path": "src/runtime/departmentopencodesessionpreparation.ts"
+      }, {
+        "path": "src/runtime/departmentleaderprocessownerworker.ts"
+      }, {
+        "path": "src/extensionHost/departmentleadercodexbootstrap.ts"
+      }, {
+        "path": "src/runtime/departmentleadercodexowner.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-native-owner.md"
+      }, {
+        "path": "src/extensionHost/departmentemployeeexecutionadmission.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-employee-execution-admission.md"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/test/extensionHost/fixtures/departmentleaderexecutionfixture.ts"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderproductionhost.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
+    },
+    {
+      "id": "plugin.department_execution_closure",
+      "name": "可信执行集合封闭事实",
+      "kind": "value_object",
+      "description": "真实 producer 栅栏/drain 后持久化 version/scope/producerId/admissionFence，封闭不可逆，同一 closure 可重试；封闭后迟到登记/绑定均拒绝。封闭本身不证明每项已绑定或已清理，持久失败不成功。低层 store 仅是单 EH 可信内部端口，不能对 UI/模型开放为直接封闭权限。",
+      "status": "active",
+      "aliases": ["DepartmentLeaderProducerClosure", "closure", "admissionFence"],
+      "implementation_paths": ["src/extensionHost/departmentleaderexecutionledger.ts", "src/extensionHost/departmentruntimestore.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutionledger.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }]
+    },
+    {
+      "id": "plugin.department_owner_cleanup_aggregation",
+      "name": "全部原 Owner 凭证聚合",
+      "kind": "capability",
+      "description": "仅当前代、持久封闭、含组长且逐项精确 binding 的完整集合可观察；先核 selection，再串行复用原 client/requirements，成功后 cold reread 集合、代次、身份、策略及 closure fingerprint。缺失、错误、取消或变化不成功；不启动替代 Owner、不从磁盘 cleaned 补成功、不直接释放资源/容量。原 socket 严格取得的私有完成观察可在原 Owner 退出后使用，没观察且失联仍 unknown；组织层仅完整聚合后持久移除组长租约再 release。协议 v1 finalizing 严格仅 status/identity/claimGeneration、无 receipt：原 Server 仍持精确 entry/handle、terminal/drain 已核验且正在原 cleanup，并与持久 live identity/revision/claim/requirements 一致。原 client 仅对 live/finalizing 串行沿用 250ms→5s 退避；unknown/conflict/失联/坏证据立即拒绝。finalizing 不缓存成功、不释放容量、不 spawn、不递增 handoff claim；close 拒绝并保留锁。员工 done 仍需原完整 required receipt 与原 stopped。round-372 最终 Owner/facade 27 项与未变 client/verifier 17 项为分批有效结果，不是一次44项运行或最新全角色 EH。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 已接受三角色全 OpenCode 默认模型公开新建中的完整原 Owner receipt、两个 CLOSED 全集、容量持久归还后再派发及总监汇报；此新建快照不证明跨代续接、冷恢复或必要平台。冷宿主缺原 producer provenance/完整聚合时仍不接管 running leader。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
+      "status": "active",
+      "aliases": ["DepartmentLeaderExecutionCleanup", "全部 Owner receipts", "清理聚合"],
+      "implementation_paths": ["src/extensionHost/departmentleaderexecutioncleanup.ts", "src/runtime/departmentexecutionownerclient.ts"],
+      "source_refs": [{
+        "path": "scripts/verify_department_full_eh_integration.js"
+      }, {
+        "path": "scripts/fixtures/department_full_eh_scenario.js"
+      }, {
+        "path": "scripts/fixtures/opencode_local_provider_server.js"
+      }, {
+        "path": ".ch/docs/runbooks/department-full-eh-integration.md"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutioncleanup.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }, {
+        "path": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionowner.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-execution-owner.md"
+      }, {
+        "path": "src/test/extensionHost/departmentprocessfinalizingobservation.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
+    },
+    {
+      "id": "plugin.department_cold_execution_observation",
+      "name": "部门冷宿主执行只读观察",
+      "kind": "capability",
+      "description": "新 Extension Host 仅能依据权威任务、完整精确 employee binding、固定 CLI/session/selection 和原 Owner endpoint 对既有 Codex/OpenCode 员工作只读观察；观察不重放、不重新授权或单独释放容量，未知、冲突、配置漂移及 Owner 不可达均保留占用并阻塞。running leader 在缺少原 producer generation provenance 与完整 Owner aggregate 时由 recoverRoot 明确拒绝并保留容量，不能从 CLOSED set 或磁盘 receipt 重建 producer。受控 Node Owner fixture 不是真实 EH 冷启动或组长跨宿主恢复证据。",
+      "status": "active",
+      "aliases": ["DepartmentExecutionRecovery", "冷宿主执行观察", "cold recovery"],
+      "implementation_paths": ["src/extensionHost/departmentexecutionrecovery.ts", "src/extensionHost/departmentorchestration.ts", "src/extension.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentexecutionrecovery.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentexecutionrecovery.test.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-tree-control-verification.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }]
+    },
+    {
+      "id": "plugin.department_ownership_index",
+      "name": "部门文件贡献归属索引",
+      "description": "extension.getDepartmentOwnershipIndex 实际创建 production task store，经 Controller/Repository、identity catalog 和普通 store router；物理重复身份与模块歧义保留，唯一来源重读/同步事务后完整重建/关闭屏障才可授权。公共 update/append/rebind/delete/retention 受控，未支持 import/restore/legacy 写前拒绝；持久 catalog 墓碑及共享 writer gate 保护跨进程部门身份/通信。round-100 接口/屏障、round-103 自动激活正常退出、round-351 真实存储协作/删除及后继 runtime 回归已接受；round-101/102 分批存储执行事实复用但整项失败历史保留。不能用旧 lifecycle host 拒绝推断当前未装配，不能以一次 create 证明所有 writer；未知外部写者交接、损坏显式恢复及真实冷宿主仍无完整接受证据。",
+      "status": "active",
+      "kind": "ledger",
+      "aliases": ["DepartmentOwnershipIndex", "归属索引", "来源租约"],
+      "implementation_paths": ["src/extensionHost/departmentOwnedSourceController.ts", "src/extensionHost/departmentOwnershipIndex.ts", "src/loopTaskStore.ts", "src/extensionHost/departmentGroupChatProjection.ts"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentOwnershipIndex.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": "src/extensionHost/departmentProductionTaskStore.ts"
+      }, {
+        "path": "src/extensionHost/departmentOwnedSourceController.ts"
+      }, {
+        "path": "src/extensionHost/departmentOwnedTaskRepository.ts"
+      }, {
+        "path": "src/loopTaskIdentityCatalog.ts"
+      }, {
+        "path": "src/loopTaskStore.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentProductionTaskStore.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-owned-source.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-owned-task-repository.md"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
     }
   ],
   "relations": [
@@ -343,6 +652,144 @@
       "to": "plugin.scheduled_attachment",
       "cardinality": "1:N",
       "source_refs": [{"path": "src/webview/panelFileActions.ts", "anchor": "saveScheduledTaskAttachments"}]
+    },
+    {
+      "id": "plugin.department_tracks_leader_execution_set",
+      "name": "组织按组长代次持有执行集合",
+      "description": "集合存于组织运行文件，精确约束 root/workspace/leader/module/generation，不改父任务调度状态。",
+      "status": "active",
+      "from": "plugin.department_task",
+      "type": "contains",
+      "to": "plugin.department_leader_execution_set",
+      "cardinality": "1:N",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }]
+    },
+    {
+      "id": "plugin.department_execution_set_contains_responsibility",
+      "name": "执行集合保留全部协调及员工责任",
+      "description": "从首次准备前逐项登记组长协调执行和该代全部员工 attempt，未绑定和失败责任仍保留，不能只收最后一轮。",
+      "status": "active",
+      "from": "plugin.department_leader_execution_set",
+      "type": "contains",
+      "to": "plugin.department_execution_responsibility",
+      "cardinality": "1:N",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }]
+    },
+    {
+      "id": "plugin.department_producer_produces_closure",
+      "name": "可信 producer 产出准入封闭事实",
+      "description": "生产专用宿主同步封闭全部新准入/最终 grant，封闭原生协调 Owner 并真实排空 retained 原始准备及消费者责任后，才返回同 scope closure；Ledger 仍最终 cold 回验身份。不是 completed/idle/计数归零或普通 Promise 的替代证明。",
+      "status": "active",
+      "from": "plugin.department_execution_producer",
+      "type": "produces",
+      "to": "plugin.department_execution_closure",
+      "cardinality": "1:N",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderproductionhost.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+      }]
+    },
+    {
+      "id": "plugin.department_closure_scopes_execution_set",
+      "name": "封闭事实约束精确不可重开集合",
+      "description": "封闭绑定原 scope 和 producer，持久化后不可逆，不能更换成员、身份、策略或重开。",
+      "status": "active",
+      "from": "plugin.department_execution_closure",
+      "type": "scopes",
+      "to": "plugin.department_leader_execution_set",
+      "cardinality": "1:1",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }]
+    },
+    {
+      "id": "plugin.department_aggregation_observes_execution_set",
+      "name": "聚合观察完整集合全部原 Owner",
+      "description": "逐项精确身份和策略串行观察，全部凭证成功后冷重读同代集合及 fingerprint；结果没有资源或容量释放权限。",
+      "status": "active",
+      "from": "plugin.department_owner_cleanup_aggregation",
+      "type": "observes",
+      "to": "plugin.department_leader_execution_set",
+      "cardinality": "N:1",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutioncleanup.test.ts"
+      }]
+    },
+    {
+      "id": "plugin.department_aggregation_requires_closure",
+      "name": "全部凭证聚合要求可信持久封闭",
+      "description": "未持久封闭、缺组长、任一责任未绑定时不能聚合成功；封闭不替代每项真实 Owner 清理凭证。",
+      "status": "active",
+      "from": "plugin.department_owner_cleanup_aggregation",
+      "type": "depends_on",
+      "to": "plugin.department_execution_closure",
+      "cardinality": "N:1",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }]
+    },
+    {
+      "id": "plugin.department_uses_loop_task",
+      "name": "产研部复用独立 Loop 任务",
+      "description": "组织 host 将根和真实 event_driven 组长分开归属，复用已有 Loop+ 执行与验收；生产根控制装配仍待验收。",
+      "status": "active",
+      "from": "plugin.department_task",
+      "type": "uses",
+      "to": "plugin.loop_task",
+      "cardinality": "1:N",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }]
+    },
+    {
+      "id": "plugin.department_panel_depends_on_ownership",
+      "name": "部门群聊依赖可信归属查询",
+      "description": "记录驱动的展示与弹窗授权依赖完整模块索引及当前记录重读；浏览器 taskId/实例或旧投影不授予权限，索引不可用时拒绝部门加载。",
+      "status": "active",
+      "from": "plugin.chat_panel",
+      "type": "depends_on",
+      "to": "plugin.department_ownership_index",
+      "cardinality": "N:1",
+      "source_refs": [{
+        "path": "src/extensionHost/departmentGroupChatProjection.ts"
+      }, {
+        "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
+      }]
     }
   ],
   "rules": [
@@ -667,6 +1114,25 @@
         {"path": "src/extensionHost/loopPlusRuntimeAdapter.ts"},
         {"path": "src/test/loop/loopSubtaskSession.test.ts"},
         {"path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_attempt_execution_admission",
+      "name": "Loop+ 子任务可注入执行准入租约",
+      "applies_to": ["plugin.loop_task", "plugin.cli_session"],
+      "status": "active",
+      "description": "Loop+ 适配器提供可选 acquireAttemptExecution(request, signal) 内部端口，backend/frontend/general 子任务均经过准入，主审不消耗租约。等待准入不建 Tab 或执行目录、不持有 session 锁；null 停止，异常形成可观察失败。取消停止等待，迟到租约释放且不启动执行。获准后复用原 session、execution-root、PromptRunInput 和结果归属路径；CLI Promise 及目录清理结束后才释放一次，释放异常保留原错误。已由部门组织 host 安装共享额度/实时余额端口，普通任务 undefined 委托原准入、null 明确拒绝；组织的生产中央注册/恢复仍待验收，不改变嵌套入口校验。",
+      "source_refs": [
+        {
+          "path": ".ch/docs/design-docs/loop-subtask-session-reuse.md",
+          "anchor": "Loop+ attempt 执行准入端口"
+        },
+        {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusRuntimeAdmission.test.ts"
+        }
       ]
     },
     {
@@ -2470,6 +2936,382 @@
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "决策记录"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "用户反馈修复：复用可执行配置的凭据"}
       ]
+    },
+    {
+      "id": "plugin.rule.department_identity_and_frozen_plan",
+      "name": "部门身份独立且统一继承根验收方案",
+      "description": "可选 version 1 department 元信息缺失兼容旧记录，无效标记拒绝部门动作。根/组长任务与 session 独立，组长须为同 workspace/root/module 的真实 event_driven Loop+；根保存统一验收快照，组长创建/恢复必须一致且运行时不能独立覆盖。总监不做代码/测试验收；模板编辑不改变快照，根层运行时统一变更尚未支持为现行保证。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.loop_task", "plugin.cli_session"],
+      "source_refs": [{
+        "path": "src/department.ts"
+      }, {
+        "path": "src/loopTaskStore.ts"
+      }, {
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusOrchestration.ts"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_shared_capacity",
+      "name": "部门共享常规额度与每组限量超额",
+      "description": "设置默认同时 4 名组长无例外、全部门共享常规 20 员工，非累计/每组数量。全部实际员工含超额占用，余额=max(0,常规额度-实际占用)；零余额每位组长最多一个未释放超额，身份/恢复标记保留至真实执行结束清理。等待不占执行额，降低额度不强杀；扩容/余额回正不改标或抹去超额，取消/重复/迟到及根局部恢复隔离租约，不承诺跨 VS Code 宿主共享。 同部门余额为零且已有本组未释放超额时，不同新 attempt 经 tryAcquireEmployeeWithOverflow 的同一同步授予边界明确拒绝，不保留新 waiter；host 前后校验当前权威身份，adapter 将明确部门拒绝作为 failed finish 送验收而不启动 root/tab/worker。原等待 API 与同身份 held/pending 幂等保留，冲突身份拒绝；余额回正仍可获常规名额且不抹去原超额。受控宿主回归不构成真实原生资源或整组释放验收。",
+      "status": "active",
+      "applies_to": ["plugin.department_task"],
+      "source_refs": [{
+        "path": "src/departmentSettings.ts"
+      }, {
+        "path": "src/departmentcapacity.ts"
+      }, {
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/test/departmentcapacity.test.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-loopplus-regression-contracts.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_execution_authority",
+      "name": "保留占用与新执行授权分离",
+      "description": "组长每次决策重读参考余额，缺失/非法为未知，不能伪造 0/20，快照不预留。组织准入在等待前后核对当前关联、running、代次、组长租约及真实 attempt；blocked 拒绝新准入并返回 null 余额，迟到新租约归还但既有占用保留。恢复/停止观察必须证明执行和清理，拒绝不清池、不隐式 continue；owner receipt 索引迁移须先验证全部历史记录，损坏、同代身份冲突或未清理旧代次保持 unknown，只有完整迁移可由新 owner 重试；生产存活观察端口仍待中央验收。Runner 新增 process/stdio/overlay 与 Codex reader/thread 的分项观察：主动 reader.close、child error 和共享 reader 活动不能升级为完整清理，Owner live 等待采用上限 5s 的逐步退避。Codex runner 提供执行前注册的 typed observation handle，以不可变 token 关联实际 connection/listener、消息游标及 operation/abort/dispose 代次；turn 身份只由原始 start 请求响应绑定一次，终态先到有界暂存，业务 settled 或取消后仍对账，普通通知不能改绑。冲突或来源不足保持 unobservable；最多 16 项注册，满额拒绝，不淘汰未知历史。未明终态阻塞后续执行，已发送执行不可观察则永久拒绝 runner 重入；abort/dispose 唤醒排队并移除监听，不制造原生事实。cleanup 幂等并封口，复用唯一 thread owner、pending request、未完成异步 handler、子线程、活动操作与 lease 的 release 门禁；共享 reader 或协议不能证明执行范围静默时仍为 unobservable，不构成独立 Owner、完整 receipt 或容量恢复。已有无凭据选择投影、append-only bound identity 存储与生产员工只读恢复消费者；缺绑定或 owner 不可达保持 unknown。生产组长缺少整组清理证明时 blocked 并保留租约，不能用 EH Map/idle 解锁。Codex exit 清空 loadedThreads 不等于原生卸载，必须等真实 close。round 117 补充已原生绑定的 OpenCode 员工 process 窄范围生产调用：可信固定 Node worker 自持现有配置执行租约、核对 ready/configId/revision、原生 export 核验 session；EH 作为任务/组织唯一写者先保存并回读 executionSession、首次 bindExecution 并回读后才 commit/start。公开 IPC 仍仅严格 identity。round 121 将可信 adapter AbortSignal/待启动 stream.kill 接入准备，builder/prepared/commit ACK 后及 worker launch-request 到达时重读有意义的 root/leader/workspace/module/generation/attempt/容量/session 和精确持久 binding，不以自身 updatedAt 变化误拒。同步最终复核与一次性私有 grant 发出为取消/启动线性化点；此前取消或撤权禁止任务 prompt，迟到 ACK 不复活；此后执行仍独立于 EH，断连不取消，未送达则 unknown，不删绑定、不重发。准备只读探针仍须实际 close/drain 后释放租约，取消不证明清理。已有绑定只读观察不替代重跑；有界输出绑定身份和序号并沿用解析/会话端口；Owner 模式不发起自动压缩，自定义思考工作区文件尚未迁入 Owner 准备时拒绝，禁止 EH 改写原工作区。round-117/121 当时真实 root/links/overlay 由 Owner 收尾，runner/session 与 tab 尚不可观察，不生成 cleaned、不释放容量；这是该阶段限制，当前限定资源/整组观察范围见独立 launcher 和全部原 Owner 聚合规则。round 122 已将 CodexOwnedExecution 专属事实接入可信 Owner launcher 的受控组合，详见独立 launcher 规则；这不改变上述共享观察的不可观察限制，也不代表生产 bootstrap 或首次生产绑定。执行集合与全部 Owner 凭证聚合基础库已验收，详见独立集合/聚合规则；生产 Codex 组长与既有员工准备链已装配 producer/原子绑定；其余入口及非 Codex 容量凭证消费仍缺，未覆盖路径 observeLeaderCleanup 仍拒绝。round-228 补齐已装配 Codex 员工/组长资源释放接线，细节见独立 Codex launcher 规则；已有员工消费者可凭原完整 receipt 归还该员工租约。其余角色及 OpenCode 资源释放、非 Codex 生产整组清理/容量消费、全树 stop/continue 及冷恢复仍待验收，Codex 分项事实不授予组长/整组容量释放。 round-231 当前增量：extension 已装配仅同宿主新建且全部覆盖的 Codex 组长/Codex 员工生产整组观察；真实 producer 封闭全部准入/grant、排空并持久 closure，复用各原 client 经原 socket 严格验证后私有保存的不可注入完成观察；逐项核对当前 selection/完整 binding，最终冷重读原集合后持久移除租约，再释放原组长名额。无原观察且 socket 不可达仍 unknown，禁止磁盘 cleaned 补成功。成功组回收有界引用，失败/未知保留占用；OpenCode/其它角色、全树控制、冷恢复和最终根集成继续门禁。 round-237：OpenCode 员工 process 的私有首次准备允许 session-only unbound→bound；Ledger 责任先登记，固定 worker 持原配置租约，以自己创建的认证 loopback server 无 prompt POST/GET 创建并核验一次原生 ID，真实关闭排空后由既有 builder 生成精确最终 session argv。EH 唯一写者保存并回读 session、原子 binding/责任引用并回读，之后才 commit 和同步复核授权/配置的一次 grant。双向私有序号/token/身份及快照防漂移；原生准备和首次 ID 的无凭据持久记录阻止失联替代重跑，失败保留未知容量/责任及历史。已有 binding 仅观察。无模型本机协议和免费 worker 夹具不证明模型/完整 EH/UI；OpenCode runner/session/tab required/unobservable、整组观察 null、容量/全树控制/冷恢复门禁不变。 round-239：OpenCode employee process 新增原 Owner 资源释放与混合 CLI employee 集合观察；任一 runner close/drain、root/links、temp/config lease、tab capability 或完整集合证据缺失/失败仍保留责任和容量。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.cli_session"],
+      "source_refs": [{
+        "path": "src/runtime/departmentprocessownerworker.ts"
+      }, {
+        "path": "src/extensionHost/departmentprocessbootstrap.ts"
+      }, {
+        "path": "src/extensionHost/departmentprocesspreparation.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-process-production-bootstrap.md"
+      }, {
+        "path": "src/test/runtime/departmentprocessbootstrap.test.ts"
+      }, {
+        "path": "scripts/verify_department_process_owner_host.js"
+      }, {
+        "path": "src/extensionHost/departmentexecutionrecovery.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionidentity.ts"
+      }, {
+        "path": "src/cli/processLifecycle.ts"
+      }, {
+        "path": "src/cli/commandRunner.ts"
+      }, {
+        "path": "src/cli/opencoderuntimeconfig.ts"
+      }, {
+        "path": "src/interactive/codexAppServerNdjson.ts"
+      }, {
+        "path": "src/interactive/codexAppServerPool.ts"
+      }, {
+        "path": "src/interactive/codexRunner.ts"
+      }, {
+        "path": "src/test/interactive/codexExecutionEvidence.test.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-execution-owner.md"
+      }, {
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusOrchestration.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusPromptBuilders.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionreceiptstore.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-codex-execution-launcher.md"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }, {
+        "path": "src/runtime/departmentopencodesessionpreparation.ts"
+      }, {
+        "path": "src/runtime/departmentprocesspreparationcontract.ts"
+      }, {
+        "path": "src/config/sharedRuntimeConfig.ts"
+      }, {
+        "path": "src/test/runtime/departmentopencodesessionpreparation.test.ts"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_execution_responsibility_registration",
+      "name": "首次准备前登记全部责任并保留未知身份",
+      "description": "可信生产新代由唯一 CREATE 来源凭据与权威组织/容量事实 open，在首次 builder/原生准备前登记组长和同代员工 attempt。原生 session 唯一写者精确回读及原子 binding/责任引用后，原 Owner 确认并最终同步 canLaunch 复核才授权一次任务。isCurrent 在封闭阶段仅供身份回验，不能绕过启动栅栏。失败、取消、unsupported、迟到准备继续保留 null/原 binding；不同 attempt 独立保存。原 identity v1/slot/receipt 不变，不以 completed/idle/空 Map/普通 Promise 制造 closure。已装配原生组长 Owner 与既有 Codex/OpenCode 员工准备链；原 runner/session/tab 资源桥、原 Owner receipt 及限定集合观察/容量消费各有独立门禁，不将未覆盖入口、真实 OpenCode 整树或冷恢复写为通过。",
+      "status": "active",
+      "applies_to": ["plugin.department_leader_execution_set", "plugin.department_execution_responsibility", "plugin.department_execution_producer"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionidentity.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutionledger.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderproductionhost.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_execution_set_persistence",
+      "name": "执行集合不可逆与原存储成本边界",
+      "description": "封闭不可逆，迟到登记/绑定拒绝；旧 controller 省略 leaderExecutionSets 保留集合，通用 write 不能创建、删除、重开或改写成员/身份/策略/closure。已跟踪代次拒绝旧 bindExecution 追加未登记身份，既有重复绑定仍幂等。缺失/旧/坏记录与持久失败不能补空或成功；沿用单 EH 同步写者、临时文件 fsync+rename，操作复用一次验证/线性索引，controller 当前/候选各一次，不新增两两比较或 Owner 扫描，不声称跨进程 CAS 或目录项掉电持久性。",
+      "status": "active",
+      "applies_to": ["plugin.department_leader_execution_set", "plugin.department_execution_closure"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/extensionHost/departmentleaderexecutionledger.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutionledger.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_all_owner_cleanup_aggregation",
+      "name": "全部原 Owner 凭证及最终冷重读才完成聚合",
+      "description": "仅当前代已持久封闭、含组长且逐项精确绑定的全集可验证 selection，串行复用原 OwnerClient.waitForCleanup/原 requirements；全部完整 receipt 后最终冷读代次/身份/策略/closure fingerprint，才由组织层先持久移除 lease 再 release。失败、未知、取消或变化保留占用；不替代 Owner、不读磁盘 cleaned、不直接停止/释放。基础库106项分批证据及 round-234 有界阶段索引/可移除订阅仍有效，不新增 launch 授权。协议 v1 finalizing 严格仅 status/identity/claimGeneration、无 receipt：原 Server 仍持精确 entry/handle、terminal/drain 已核验且正在原 cleanup，并与持久 live identity/revision/claim/requirements 一致。原 client 仅对 live/finalizing 串行沿用 250ms→5s 退避；unknown/conflict/失联/坏证据立即拒绝。finalizing 不缓存成功、不释放容量、不 spawn、不递增 handoff claim；close 拒绝并保留锁。员工 done 仍需原完整 required receipt 与原 stopped。round-372 最终 Owner/facade 27 项与未变 client/verifier 17 项为分批有效结果，不是一次44项运行或最新全角色 EH。tracker/token 仅表示活跃编排责任，封闭不等于 cleaned。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 三角色全 OpenCode 默认模型公开新建已按限定场景接受；跨代旧 session directory 不匹配仍拒绝，冷宿主缺原 producer provenance/完整聚合不接管 running leader。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
+      "status": "active",
+      "applies_to": ["plugin.department_owner_cleanup_aggregation", "plugin.department_leader_execution_set", "plugin.department_task"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentleaderexecutioncleanup.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentleaderexecutioncleanup.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-execution-owner.md"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }, {
+        "path": ".ch/docs/runbooks/department-full-eh-integration.md"
+      }, {
+        "path": "src/runtime/departmentexecutionowner.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentprocessfinalizingobservation.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_codex_owner_launcher",
+      "name": "Codex 专属可信 Owner launcher 保留精确绑定和逐项清理门禁",
+      "description": "复用 CodexOwnedExecution 和 TrustedExecutionLauncher；requirements 在 resolver 前占位并取得一次可信快照，最多 256 项含失败注册不淘汰，launch 只消费注册并复用首次 Promise/原执行。新建须 unbound/new，resume 须精确 bound thread；原生 prepare 后先确认同一冻结 thread/connection/token 的可信持久化，再等待 Owner bindSession，之后才发唯一 turn/start。Owner signal 不随 EH/socket 断连取消，不新增公开执行权限。kind=both；processTerminal/turnTerminal/streams/runner 恒必需，Owner streams 同时要求物理 streams 与 executionDrain confirmed，源实际结束/消费确认后逐项释放 runner/root/links/temp/tab 的真实附加责任。未创建才 not-applicable，缺能力/非法返回或失败不生成 cleaned。隔离标准 build、33 项组合及 4 项 Owner 定向回归通过；普通 Node Owner 在启动 client 退出后继续持有原执行。原 launcher 基线为模拟 NDJSON 和测试资源；后续生产 bootstrap/首次原子绑定由独立专题覆盖。round-228 已将专属执行实际 close、自然 pipe/readLoop、原 thread/execution lease 和消费者排空事实接入已装配 Codex 员工及多轮组长 runner/session 附加释放，保留可恢复历史。extension 在真实创建时登记不可序列化精确 tab 能力，原固定 worker 通过严格私有 token/identity/阶段/序号请求一次释放，宿主等原交互消费者结算、核对原 binding/代次/对象/session 并实际关闭回读，再由原 Owner 按原 required 策略生成 receipt。挂起、拒绝、失联、错误确认不成功；资源表有界、未知不淘汰、成功释放登记槽位，重复能力不能关闭后继资源。免费模拟 CLI 与安装版 EH 实际 tab 端口验证不证明真实 Codex EOF/模型或完整 UI。共享观察 drain 仍不可观察，不能以专属能力关闭共享 peer；Codex 生产启动/准入及唯一 producer/真实 Loop+ 已有窄范围接线证据，OpenCode/其它角色资源释放和非 Codex 生产整组清理仍未完成，未覆盖路径 observeLeaderCleanup 继续拒绝，容量恢复/全树控制/冷恢复仍为根门禁。 round-231 当前增量：extension 已装配仅同宿主新建且全部覆盖的 Codex 组长/Codex 员工生产整组观察；真实 producer 封闭全部准入/grant、排空并持久 closure，复用各原 client 经原 socket 严格验证后私有保存的不可注入完成观察；逐项核对当前 selection/完整 binding，最终冷重读原集合后持久移除租约，再释放原组长名额。无原观察且 socket 不可达仍 unknown，禁止磁盘 cleaned 补成功。成功组回收有界引用，失败/未知保留占用；OpenCode/其它角色、全树控制、冷恢复和最终根集成继续门禁。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [{
+        "path": "src/runtime/departmentcodexexecutionlauncher.ts"
+      }, {
+        "path": "src/interactive/codexOwnedExecution.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionowner.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionidentity.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionreceiptstore.ts"
+      }, {
+        "path": "src/test/runtime/departmentcodexexecutionlauncher.test.ts"
+      }, {
+        "path": "src/test/runtime/fixtures/departmentcodexownerworker.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-codex-execution-launcher.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-codex-owned-execution.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-execution-owner.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-execution-cleanup.md"
+      }, {
+        "path": "src/extensionHost/departmentexecutionresources.ts"
+      }, {
+        "path": "src/runtime/departmentcodexownerworker.ts"
+      }, {
+        "path": "src/runtime/departmentleadercodexowner.ts"
+      }, {
+        "path": "src/extensionHost/sessionTabs.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": "src/test/runtime/departmentcodexresourcerelease.test.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentcodextabrelease.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-codex-production-bootstrap.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-leader-native-owner.md"
+      }, {
+        "path": "src/extensionHost/departmentproductioncleanup.ts"
+      }, {
+        "path": "src/runtime/departmentexecutionownerclient.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_director_collaboration_completion",
+      "name": "运行中协作经总监转发并阻塞未清根完成",
+      "description": "组织 host 保存来源/目标/正文/stable ID 与 pending/awaiting-director，可信总监端口批准后向同部门真实运行 Loop+ 提交补充需求；不可用目标及失败可观察，显式 dismiss 留痕。departmentDeliveries 随目标队列保存，同 ID 同文幂等、冲突拒绝，delivered 只代表入队。根完成需全部组长 Loop+ 门禁通过、无开放工作/澄清/未确认补充需求/未处置协作及占用；总监生产控制、协调及完成确认入口已在中央 composition 装配，round-350 真实 Codex binary/确定性 Responses 新建 EH 只覆盖其限定流程，不扩大总监职责或完整恢复验收。 交付结算与清理独立：仅成功提交当前 failed review 后按 reviews[].subtaskIds 派发并持久回读的新子任务保存宿主 repairSource（源 subtask/attempt/finish event），会话 continueFrom 不证明替代。保留失败历史，精确源当前 attempt 的全部后继最新 reviewed/completed/passed 才可结算；关系缺失/伪造/重复/循环、源新失败、无关失败或未通过后继继续拒绝。task/scheduler 终态、非空通过最终需求覆盖和无开放工作门禁同时成立；多级有界解析，普通同子任务新 attempt 不建边。此规则不授权清理、容量释放或冷恢复。 新建/显式续接各代组长由统一 track 收尾幂等通知真实状态并唤醒总监；blocked 不代表完成或容量释放。总监 run 包含错误收尾与 ownership 释放，显式继续持有自身责任等待旧 run 完成，再复核请求/stopRevision/归属并移交；旧代迟到结果不完成或停止新代，模型调用期间 wake revision 不丢失，同根仅一个循环。首次本地占位 session 原生绑定须模型返回、持久任务、真实 tab 一致；已绑定变化拒绝。 round-366 macOS 安装版 VS Code/Codex 公开 stop-continue 在免费本机 Responses 下完整通过：后继组长结算唤醒总监，六原 Owner 完整 receipt、三代集合 CLOSED、持久容量移除后下一模块实际执行及总监最终汇报；不外推冷恢复、真实 OpenCode、其它平台、真实模型质量或合并后全量回归。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.loop_task"],
+      "source_refs": [{
+        "path": "src/loopPlusCompletion.ts"
+      }, {
+        "path": "src/loopTaskStore.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentcompletion.test.ts"
+      }, {
+        "path": "src/extensionHost/departmentorchestration.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestate.ts"
+      }, {
+        "path": "src/extensionHost/loopPlusOrchestration.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_modal_authorization",
+      "name": "部门弹窗绑定与执行生命周期分离",
+      "description": "总监页内组长弹窗复用完整 Loop+ 操作和根只读方案；动作及 await 后副作用/回包重核真实记录、唯一模块归属、workspace 和当前 taskId/instanceId。普通内容更新与 modal 共用精确同源 VS Code shell 的 active-frame 归属判定；opaque child 仍须精确 source、null origin、channel、task/instance 和 allow-scripts sandbox，宿主授权不放宽。关闭仅释放展示/提问/资源订阅，不停止已提交执行，恢复原入口焦点及阅读位置；根控制缺失拒绝，不回落普通任务。tab 原名/编号/重命名及持久化保持，仅装饰 👴🏻/👨🏻/👶🏻，完整身份在 tooltip。隔离 macOS 深色真实 EH 已验证精确组长历史 srcdoc/适用操作栏、单次 load/close 无 stop、120→120、可见 275px/完整 tooltip/无溢出及正常退出无残留/owner marker；失败中间运行仍属失败，未证明运行态操作栏、跨主题 EH、模型或冷恢复。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.chat_panel"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentGroupChatProjection.ts"
+      }, {
+        "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
+      }, {
+        "path": "src/webview/departmentGroupChatModal.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md"
+      }, {
+        "path": "src/webview/loopGroupChatPanel.ts"
+      }, {
+        "path": "src/extensionHost/departmentConversationTabs.ts"
+      }, {
+        "path": "scripts/verify_department_conversation_host.js"
+      }, {
+        "path": ".ch/docs/runbooks/department-conversation-verification.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_ownership_source",
+      "name": "部门归属按文件贡献及可信来源授权",
+      "description": "文件贡献增量替换，物理重复身份与同模块多任务保留歧义；授权须唯一 ID 且从唯一物理来源重读。new/rebuilding/invalid/disposed 拒绝，失败/未知变更或来源租约撤销使完整性失效，仅显式完整 rebuild 恢复。外部写入公开前同步撤销 isCurrent；异步 watcher、恒真租约、UI 修订或全库扫描回退均不满足生产合同。中央 activate 已使用专用 department-tasks-v1 owner/controller/repository，完整总监与组长首次 owner 创建，readRevision 缓存和同步 commitSync 均实际连接；普通/部门身份目录经共享 wx writer gate 在同步闭包返回前共同发布。目录持久保留已删除部门 ID 的原文件墓碑；未取得来源的宿主也在普通发现和写入前拒绝这些身份，过期输入不能绕过此边界。受控 reader 保留完整过期记录用于关系校验，公开路由仍隐藏过期任务，retention 不孤立有效组长。未知 marker/锁或未提交身份目录保持拒绝；close 证明的是已撤销且排空的存储写者，不代表 runner 结束。普通通信 GC 在共享 writer gate 内依据持久部门身份及删除墓碑保留 artifact；catalog 缺失、锁定、损坏或未发布则整次删除拒绝，无 source 的另一宿主也不能删除。仓储以一次当前批量查询校验全部缓存贡献，不逐条重读 catalog，重复贡献及 readRevision 撤销继续生效。早期 macOS 隔离 Extension Host 已观察激活、source/owner marker、ready catalog 及 deactivation owner 释放；该次独立主进程未自行退出，历史 smoke 保持失败。后续 round 103 激活及 round 121 生产历史会话/精确组长弹窗场景各有正常退出证据，后者无残留或 owner marker，不反推真实执行或冷恢复通过。round-351 另接受真实 production source/仓储协作、删除/事务失败与后继 runtime 回归；公共受控writer有具体覆盖，不泛称未装配。旧版或直接外部写者的协调交接、损坏身份目录显式恢复和冷宿主仍无完整证据；当前未支持路径写前拒绝。",
+      "status": "active",
+      "applies_to": ["plugin.department_ownership_index", "plugin.chat_panel"],
+      "source_refs": [{
+        "path": "src/extensionHost/departmentProductionTaskStore.ts"
+      }, {
+        "path": "src/loopTaskIdentityCatalog.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-owned-task-repository.md"
+      }, {
+        "path": ".ch/docs/runbooks/department-conversation-verification.md"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }, {
+        "path": "src/test/extensionHost/departmentProductionTaskStore.test.ts"
+      }]
+    },
+    {
+      "id": "plugin.rule.loop_store_confirmed_contributions",
+      "name": "任务存储确认后发布贡献且部分迁移保留材料",
+      "description": "结果式读取/写入、确认删除和严格发现向索引提供同步事件。实际 writeFileSync 成功才发布规范化贡献，旧 void 写接口不代表成功；读写删除失败使来源失效。update 写失败返回 null；迁移目标写入和源重写/删除均确认后才返回身份，部分失败保留恢复材料，不伪称事务回滚。完整读取不吞坏记录或将消失文件伪装空库。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.department_ownership_index"],
+      "source_refs": [{
+        "path": "src/loopTaskStore.ts"
+      }, {
+        "path": "src/test/loop/loopTaskStore.test.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentOwnershipIndex.test.ts"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_configuration_scope",
+      "name": "部门配置作用域及新根保存屏障",
+      "description": "宿主作用域含 workspace key/代次/CLI/总监档案，ABA 不复用；候选及保存 await 后/落盘前核对 scope，浏览器同时核对 requestId，迟到回执不污染新工作区。按 scope/角色保存屏障拒绝同角色重入，pending/failed 阻止新根，成功落盘才更新内存并允许重试。发送/确认/队列保留 scope，宿主 await 后重核目标和选择；可信既有部门补充独立于新建草稿门禁，中央根创建/启动/协调与受限原生绑定端口已装配，缺失能力或可信来源授权仍拒绝而不降级。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [{
+        "path": "src/departmentConfiguration.ts"
+      }, {
+        "path": "src/settingMessageHandlers/preferences.ts"
+      }, {
+        "path": "src/sessionMessageActions.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": "src/webview/viewContentScript/departmentConfiguration.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_role_model_authority",
+      "name": "部门模型能力按确切档案与角色读取",
+      "description": "Claude off 仍按 CLI 规范化过滤。Department UI/持久偏好 model:null 保留所选 CLI 默认语义；新根可信宿主将总监/组长/员工三角色 OpenCode 默认解析成同 CLI/configId 的具体有效模型，显式及 Codex 默认不变。确切档案默认/模型/variant/力度校验，档案内容读取标记及共享选择修订在 await 前后复核，工作区/目标/会话/模型偏好/heartbeat/保存屏障漂移拒绝；读取标记不是执行权限且不进入 root。固化 root 不随默认变化重解析，selection/argv/overlay/原 Owner 精确核对同模型，不能回写旧任务或接管未知 Owner。缺失/非法默认、错档案、不适用变体/力度拒绝，不激活配置或泄漏正文凭据。round-372 默认模型 Codex 总监/OpenCode 组长/Codex 员工公开新建 EH 两模块/四原 receipt/CLOSED/持久容量归还后实际再派发及最终汇报通过；round-375 已接受三角色全 OpenCode 默认模型公开新建 EH；round-372 的混合 EH 使用较早 Owner 快照，不证明最新 finalizing Owner。 26项分批定向与默认模型混合公开EH分别有效；该EH用较早Owner快照，不验证最新finalizing或全部角色。员工根能力/Owner观察另按独立接受报告核对，不再记为并行待验收。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.config_profile"],
+      "source_refs": [{
+        "path": "src/test/extensionHost/departmentopencodedefaultmodel.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-full-eh-integration.md"
+      }, {
+        "path": "src/extensionHost/departmentConfigurationHost.ts"
+      }, {
+        "path": "src/extensionHost/modelSettings.ts"
+      }, {
+        "path": "src/departmentConfiguration.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentConfigurationHost.test.ts"
+      }, {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }]
     }
   ]
 }

@@ -1,4 +1,5 @@
 import * as fs from "fs/promises";
+import { readFileSync } from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import { writeFileAtomically } from "../shared/atomicWrite";
@@ -133,6 +134,15 @@ export class SharedRuntimeConfig {
 
   private assertIdle(state: SharedState | null): void {
     if (state?.leases.length) throw new Error("此 CLI 在其他窗口或当前窗口仍有执行中的任务，暂不能切换或修改配置，请任务结束后重试。");
+  }
+
+  /** Synchronous final grant guard while the caller/worker hold execution leases.
+   * Reads only selection metadata; does not prune leases, adopt configuration or expose its body. */
+  isCurrentSelection(expected: VisibleConfigSelection): boolean {
+    try {
+      const state = JSON.parse(readFileSync(this.statePath, "utf8")) as SharedState;
+      return state.version === 1 && state.ready === true && state.configId === expected.configId && state.revision === expected.revision;
+    } catch { return false; }
   }
 
   async read(initialize?: () => Promise<{ configId: string | null; profileDigest: string | null }>): Promise<SharedConfigSelection | null> {

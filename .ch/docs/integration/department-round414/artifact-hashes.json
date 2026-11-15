@@ -1,0 +1,56 @@
+{
+  "scope": "candidate snapshot artifacts only; selected source files in manifest.json",
+  "self_hash": "not embedded; Git tree/commit binds this file",
+  "files": [
+    {
+      "path": ".ch/docs/integration/department-round414/README.md",
+      "sha256": "ddff5ef0b32a2bc6743cd1e07784644d69368a1784a1f756d6b3ff6f3d9298e2",
+      "bytes": 8082
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/build-source-correspondence.json",
+      "sha256": "2161edbfa45f9ae61235583285b79ca0754d6ed3ad0c9581077afe2467997a76",
+      "bytes": 127093
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/checks.json",
+      "sha256": "47dd8ffeb5885f80104d5c1e6187135ea8430cffa9a8527d7f400e26a7995657",
+      "bytes": 7066
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/conflict-risk.json",
+      "sha256": "cfa80ffb92c9fac8fc89c3ed48fd7073704f963f82b0f8d507621c5b311bab05",
+      "bytes": 8480
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/dependencies.json",
+      "sha256": "0212e613aa22b4ecd460bbd85a6b1191a0735525ed36d6860583541bd3de26e9",
+      "bytes": 522870
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/exclusions.json",
+      "sha256": "f0576873b582916c8e3f48dfb5c240997c1f1488378ae525915c4a1910b87a76",
+      "bytes": 17471
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/hunks.json",
+      "sha256": "a3c1a0a078a1053c622f817ffe429f084a40c1727f0677c718e6bdaf86b096b0",
+      "bytes": 570364
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/manifest.json",
+      "sha256": "a847d1ab3b0f458be6d9fbd281725d9889dfa59fa60cdc4541a434422df74b1f",
+      "bytes": 1542407
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/path-review.json",
+      "sha256": "9ff49ddd1bdf6e5e9c6fabaa330093adaf019ec300e26c89e697cebecf09c9ac",
+      "bytes": 22154
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/reports.json",
+      "sha256": "20e1d83ba4c656184f5bb393f76d4fa70fc988761279c6b7d2f0b1273df5cd0a",
+      "bytes": 266222
+    }
+  ]
+}

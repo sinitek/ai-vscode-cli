@@ -641,6 +641,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const shouldResyncRunningClock = isRunning && startedAt > 0 && runWaitStartAt > 0 && runWaitStartAt !== startedAt;
         state.isRunning = isRunning;
         elements.sendPrompt.disabled = false;
+        if (typeof syncDepartmentSendReadiness === "function") syncDepartmentSendReadiness();
         elements.promptInput.disabled = false;
         elements.newSession.disabled = false;
         syncResetSessionAvailability();
@@ -1156,6 +1157,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           targetTab,
           isBackgroundDispatch,
         );
+        if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch({ ...basePayload, interactiveMode: targetInteractiveMode }, targetTabId)) return false;
         const normalizedPayload = applyCodexLoopRoleModelsToPromptPayload(
           basePayload,
           targetCli,
@@ -1200,6 +1202,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           : "";
         const sendPromptMessage = {
           type: "sendPrompt",
+          departmentConfigurationScope: normalizedPayload.departmentConfigurationScope,
           configSelections: normalizedPayload.configSelections || readVisibleConfigSelections(),
           prompt,
           interactiveMode: targetInteractiveMode,

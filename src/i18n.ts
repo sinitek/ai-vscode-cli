@@ -107,6 +107,7 @@ const MESSAGES = {
     "run.humanInteractionWaiting": "等待你补充信息后继续执行。",
     "run.humanInteractionRejected": "已拒绝补充信息，当前任务已终止。",
     "run.hiddenContinuePrompt": "继续",
+    "run.missingFinalConclusion": "任务已退出，但没有有效的最终结论，无法确认任务完成。",
     "run.missingFinalConclusionRetryReason": "任务已退出，但没有产生最终结论气泡，自动继续。",
     "run.hiddenRetryQueued": "任务已中断，将在 {delay} 后开始第 {attempt}/{attempts} 次自动重试。",
     "run.hiddenRetryStarted": "第 {attempt}/{attempts} 次自动重试已开始。",

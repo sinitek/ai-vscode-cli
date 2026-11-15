@@ -105,6 +105,7 @@ async function runOverlayLifecycleTest(cancel: boolean): Promise<void> {
         stopWhenReady();
       }
     });
+    await (processHandle as ReturnType<typeof runCliStream> | null)?.lifecycle;
     const overlayPath = fs.readFileSync(markerPath, "utf8");
     assert.ok(overlayPath);
     assert.equal(fs.existsSync(overlayPath), false);
