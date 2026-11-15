@@ -13,7 +13,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError } from "./config/sharedRuntimeConfig";
+import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease } from "./config/sharedRuntimeConfig";
 import {
   cleanupHumanInteractionHistory,
   cleanupHumanInteractionHistoryAcrossWorkspaces,
@@ -5116,7 +5116,22 @@ async function runPromptNow(
             await runPromptOneShot(currentAttemptInput, attemptTarget, executionOptions);
           }
         } finally {
-          await executionLease?.release();
+          if (executionLease) {
+            await releaseRuntimeConfigExecutionLease(executionLease, (releaseError, attempt) => {
+              const info = getErrorInfo(releaseError);
+              void logError("runtime-config-execution-lease-release-failed", {
+                cli: attemptTarget.cli,
+                tabId: attemptTarget.tabId,
+                taskRole: currentAttemptInput.taskRole,
+                loopTaskId: currentAttemptInput.loopTaskId,
+                loopSubtaskId: currentAttemptInput.loopSubtaskId,
+                loopAttemptId: currentAttemptInput.loopAttemptId,
+                error: info.message,
+                errorCode: info.code,
+                attempt,
+              });
+            });
+          }
         }
         if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);
@@ -5593,7 +5608,19 @@ async function maybeAutoCompactContextAfterPromptSuccess(
     try {
       await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
     } finally {
-      await lease?.release();
+      if (lease) {
+        await releaseRuntimeConfigExecutionLease(lease, (releaseError, attempt) => {
+          const info = getErrorInfo(releaseError);
+          void logError("runtime-config-execution-lease-release-failed", {
+            cli: target.cli,
+            tabId: target.tabId,
+            activity: "contextCompaction",
+            error: info.message,
+            errorCode: info.code,
+            attempt,
+          });
+        });
+      }
     }
     return;
   }

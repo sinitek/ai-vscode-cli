@@ -11,7 +11,7 @@ import { createPromptAutoRepairController } from "../../extensionHost/promptAuto
 import { isCliShellCommandNotFoundError } from "../../cli/cliCommandRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
-import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
+import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
@@ -50,6 +50,7 @@ function createHarness(options: {
   loadedActiveConfigId?: string;
   waitForConfigApply?: () => Promise<boolean>;
   acquireConfigLease?: (cli: CliName, configId: string) => Promise<ConfigLeaseResult>;
+  releaseConfigLeaseError?: Error;
   configExists?: boolean;
   preflightMessage?: string;
   loopSessionId?: string;
@@ -128,6 +129,7 @@ function createHarness(options: {
     getSelectedCliModel: () => "current-model",
     getSelectedLoopCliModel: () => "current-loop-model",
     ConfigSelectionChangedError,
+    releaseRuntimeConfigExecutionLease,
     loadConfigState: async () => ({ activeConfigId, revision: `${activeConfigId ?? "native"}-revision`,
       configs: options.fallbackConfigId ? [{ id: options.fallbackConfigId }] : [] }),
     configService: {
@@ -140,7 +142,10 @@ function createHarness(options: {
           const result = options.acquireConfigLease ? await options.acquireConfigLease(cli, expected.configId) : "acquired";
           if (result === "superseded") throw new ConfigSelectionChangedError();
         }
-        return { selection: expected, release: async () => { events.push("release-config"); } };
+        return { selection: expected, release: async () => {
+          events.push("release-config");
+          if (options.releaseConfigLeaseError) throw options.releaseConfigLeaseError;
+        } };
       },
     },
     planBoundSubtaskConfigApply,
@@ -320,6 +325,30 @@ test("a question cancelled during config preparation releases its lease without 
   assert.equal(harness.leasedConfigs.length, 1);
   assert.equal(harness.events.at(-1), "release-config");
   assert.equal(started, false);
+});
+
+test("config lease release timeout does not turn a successful subtask run into an execution error", async () => {
+  const harness = createHarness({
+    cli: "codex",
+    health: "normal",
+    runtime: "interactive",
+    loopSessionId: "subtask-session",
+    releaseConfigLeaseError: new RuntimeConfigLockTimeoutError({
+      operation: "release", ownerPid: process.pid, ownerAlive: true, waitedMs: 15000, timeoutMs: 15000,
+    }),
+  });
+  await harness.runPrompt({
+    displayPrompt: "完成子任务",
+    modelPrompt: "完成子任务",
+    contextTags: [],
+    taskRole: "subtask",
+    loopTaskId: "parent-loop",
+    loopSubtaskId: "child",
+    loopAttemptId: "attempt-child",
+  });
+  assert.equal(harness.events.includes("dispatch"), true);
+  assert.equal(harness.errorLogs.some(({ event }) => event === "runPrompt-failed"), false);
+  assert.deepEqual(harness.statuses, []);
 });
 
 test("Kimi model editing never reapplies or reactivates a stale profile after the coordinated save", async () => {

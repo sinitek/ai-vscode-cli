@@ -4,6 +4,12 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## 执行配置租约释放失败不能改写 CLI 终态
+
+- 现象：子任务 CLI 已成功结束并通知主任务，但跨窗口执行租约释放在配置互斥锁等待中超时。若让清理异常继续冒泡，Loop+ 会收到执行失败结果、面板标错，并跳过成功关页回调；这与随后可选的上下文压缩是否触发无关。
+- 长期规避：主执行和隔离压缩都必须将租约释放作为资源清理处理。首次释放失败记录包含 CLI、Tab、Loop 身份和释放阶段的错误，并对原租约作有界后台重试；失败不能改变真实任务结果。持锁写入仍有效期间不得强拆锁、丢弃租约或允许配置切换。成功回报后，无压缩、压缩失败和压缩成功都沿用原有安全关页生命周期。
+- 验证：`src/test/config/sharedRuntimeConfig.test.ts` 覆盖释放重试与耗尽；`src/test/extensionHost/promptSessionHealth.test.ts` 覆盖 release 超时不变成执行失败；`src/test/loop/loopSubtaskLifecycle.test.ts` 覆盖未安排压缩时仍关闭；Loop+ 压缩成功/失败及关页保护由 `src/test/extensionHost/loopPlusRuntimeIntegration.test.ts` 覆盖。
+
 ## 临时 outDir 的 NODE_PATH 不补齐 Webview 相对资源
 
 - 现象：为隔离共享 `dist` 而将 TypeScript 编译到临时 `outDir` 后，设置仓库 `node_modules` 到 `NODE_PATH` 可以帮助 Node 解析裸包名，但不能让按相对文件路径读取的 Webview 资源从临时编译目录正确定位。

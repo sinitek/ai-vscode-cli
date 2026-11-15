@@ -6,10 +6,39 @@ import { writeFileAtomically } from "../shared/atomicWrite";
 export type VisibleConfigSelection = { configId: string | null; revision: string };
 export type SharedConfigSelection = VisibleConfigSelection & { profileDigest: string | null; ready: boolean };
 type ExecutionLease = { id: string; pid: number };
+export type RuntimeConfigExecutionLease = { selection: SharedConfigSelection; release: () => Promise<void> };
 type SharedState = SharedConfigSelection & { version: 1; leases: ExecutionLease[] };
 type LockOwner = { pid: number; token: string };
 type ConfigLockOperation = "initialize" | "change" | "edit" | "acquire" | "release";
 const localOperations = new Map<string, Promise<unknown>>();
+
+export async function releaseRuntimeConfigExecutionLease(
+  lease: RuntimeConfigExecutionLease,
+  onError: (error: unknown, attempt: number) => void,
+  options: { retryDelaysMs?: readonly number[]; delay?: (ms: number) => Promise<void> } = {},
+): Promise<void> {
+  const delays = options.retryDelaysMs ?? [250, 1000, 3000];
+  const delay = options.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  try {
+    await lease.release();
+    return;
+  } catch (error) {
+    try { onError(error, 0); } catch {}
+  }
+  void (async () => {
+    for (let index = 0; index < delays.length; index += 1) {
+      await delay(delays[index]);
+      try {
+        await lease.release();
+        return;
+      } catch (error) {
+        try { onError(error, index + 1); } catch {}
+      }
+    }
+  })().catch((error) => {
+    try { onError(error, delays.length); } catch {}
+  });
+}
 
 export class RuntimeConfigLockTimeoutError extends Error {
   readonly code = "RUNTIME_CONFIG_LOCK_TIMEOUT";

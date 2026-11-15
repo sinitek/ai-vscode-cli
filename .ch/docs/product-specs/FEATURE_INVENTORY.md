@@ -204,7 +204,7 @@
 ## Loop / Loop+ 子任务完成收尾
 
 - 子任务成功后依次持久化结果并通知主任务、按原条件压缩子会话、关闭原子任务 Tab，覆盖自动派发和人工续接。主任务验收和独立子任务继续推进；同会话等待压缩及旧标签清理结束。
-- 压缩失败或跳过仍关页；回报失败保留现场。清理使用完成时标签快照，保护新增、换绑、替代及运行中标签；关闭未生效记录失败，不伪报成功。会话及聊天历史继续保留。
+- 压缩失败或跳过仍关页；回报失败保留现场。清理配置执行租约失败只记录并有限后台重试，不把已完成的 CLI 运行改判为失败。清理使用完成时标签快照，保护新增、换绑、替代及运行中标签；关闭未生效记录失败，不伪报成功。会话及聊天历史继续保留。
 - 实现：`src/loopSubtaskAutoCompact.ts`、`src/loopSubtaskLifecycle.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopSubtaskTabs.ts`；回归覆盖顺序、压缩失败、回报失败、会话串行和标签保护，纳入 `npm run verify:loop-plus`。
 
 ## Loop / Loop+ 中断后继续执行

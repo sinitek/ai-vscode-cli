@@ -45,7 +45,7 @@ function extractAsyncFunctionSection(source: string, name: string, nextFunctionN
   return source.slice(start, end);
 }
 
-test("records a successful Loop subtask before automatically closing its tab", async () => {
+test("records success and closes the Loop subtask tab when no context compaction was scheduled", async () => {
   const harness = createCompletionHarness();
 
   await finalizeLoopSubtaskRun({

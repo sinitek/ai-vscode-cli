@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { spawn } from "child_process";
 import { once } from "events";
-import { SharedRuntimeConfig, ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, type SharedConfigSelection } from "../../config/sharedRuntimeConfig";
+import { SharedRuntimeConfig, ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease, type SharedConfigSelection } from "../../config/sharedRuntimeConfig";
 
 async function withDirectory(run: (directory: string) => Promise<void>): Promise<void> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-shared-config-"));
@@ -17,6 +17,43 @@ function createSignal(): { promise: Promise<void>; resolve: () => void } {
   const promise = new Promise<void>((resolvePromise) => { resolve = resolvePromise; });
   return { promise, resolve };
 }
+
+test("a delayed config lease release cannot replace the completed run result", async () => {
+  let releaseAttempts = 0;
+  let resumeRetry!: () => void;
+  const retryGate = new Promise<void>((resolve) => { resumeRetry = resolve; });
+  const errors: Array<{ attempt: number; message: string }> = [];
+  const completed: string[] = [];
+  await releaseRuntimeConfigExecutionLease({
+    selection: { configId: "selected", revision: "r1", profileDigest: null, ready: true },
+    release: async () => {
+      releaseAttempts += 1;
+      if (releaseAttempts === 1) throw new Error("release lock timeout");
+    },
+  }, (error, attempt) => errors.push({ attempt, message: String(error) }), {
+    retryDelaysMs: [1], delay: async () => retryGate,
+  });
+  completed.push("subtask-success-reported");
+  assert.deepEqual(completed, ["subtask-success-reported"]);
+  assert.equal(releaseAttempts, 1);
+  assert.deepEqual(errors.map(({ attempt }) => attempt), [0]);
+  resumeRetry();
+  for (let index = 0; index < 10 && releaseAttempts < 2; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(releaseAttempts, 2);
+  assert.deepEqual(errors.map(({ attempt }) => attempt), [0]);
+});
+
+test("a config lease release retry reports exhaustion without rejecting completion cleanup", async () => {
+  const errors: number[] = [];
+  await releaseRuntimeConfigExecutionLease({
+    selection: { configId: "selected", revision: "r1", profileDigest: null, ready: true },
+    release: async () => { throw new Error("still locked"); },
+  }, (_error, attempt) => errors.push(attempt), {
+    retryDelaysMs: [0, 0], delay: async () => undefined,
+  });
+  for (let index = 0; index < 10 && errors.length < 3; index += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(errors, [0, 1, 2]);
+});
 
 test("panel snapshots do not wait for a configuration writer or initialize again", async () => {
   await withDirectory(async (directory) => {
