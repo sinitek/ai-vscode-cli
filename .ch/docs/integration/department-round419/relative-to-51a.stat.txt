@@ -1,0 +1,4 @@
+ .../runbooks/department-platform-verification.md   | 36 +++++++-
+ scripts/verify_department_platform.js              | 98 +++++++++++++++-------
+ scripts/verify_department_platform.test.js         | 60 +++++++++++--
+ 3 files changed, 158 insertions(+), 36 deletions(-)

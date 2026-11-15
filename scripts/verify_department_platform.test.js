@@ -130,6 +130,18 @@ test("Windows recovery never upgrades an unverified PID and direct close does no
   assert.equal(active.treeCloseConfirmed, "unconfirmed");
 });
 
+test("POSIX can confirm an observed direct child is absent without claiming its tree closed", async (t) => {
+  const file = trackerFile(t, [{ type: "tracker-ready", pid: 5 }, { type: "spawn-request", pid: 42, detached: false, source: "fork" },
+    { type: "spawn", pid: 42, detached: false, source: "fork" }]);
+  const result = await recoverTrackedChildren(file, { platform: "linux", snapshotProcesses: () => new Map(),
+    terminateProcess: () => assert.fail("an absent PID must not be signalled") });
+  assert.equal(result.trackedProcessesCloseConfirmed, true);
+  assert.equal(result.children[0].closeObserved, false);
+  assert.equal(result.children[0].closeBySnapshotObserved, true);
+  assert.equal(result.treeCloseConfirmed, "unconfirmed");
+  assert.equal(result.recoveryAttempted, false);
+});
+
 test("real preload sidecar write failure remains unconfirmed after later complete parsing", async (t) => {
   const f = fixture(t);
   fs.writeFileSync(f.driver, `const fs=require('node:fs');const cp=require('node:child_process');
@@ -192,7 +204,7 @@ test("structurally invalid or incomplete records cannot prove zero spawn; prepar
   const file = trackerFile(t, [{ type: "tracker-ready", pid: 5 }]);
   const ports = { snapshotProcesses: () => new Map(), terminateProcess: () => assert.fail("must not signal") };
   const zero = await recoverTrackedChildren(file, ports);
-  assert.equal(zero.treeCloseConfirmed, process.platform === "win32" ? "unconfirmed" : true);
+  assert.equal(zero.treeCloseConfirmed, "unconfirmed");
   for (const bad of [null, {}, [], { type: "unknown" }, { type: "spawn", pid: "42", detached: false },
     { type: "process-observed", pid: 42 }, { type: "tracker-ready", pid: "invalid" }]) {
     fs.writeFileSync(file, `${JSON.stringify({ type: "tracker-ready", pid: 5 })}\n${JSON.stringify(bad)}\n`);
@@ -410,16 +422,53 @@ test("product validation rejects shared, linked, escaping, incomplete, and stale
 
 test("owner-core spawns argv directly with a whitespace path and consumes a non-empty passing TAP suite", async (t) => {
   const f = fixture(t);
+  const worker = path.join(f.product, "dist/test/runtime", "tracked-worker.cjs");
+  fs.writeFileSync(worker, "process.exit(0);\n");
   for (const name of OWNER_TESTS) fs.writeFileSync(path.join(f.product, "dist/test/runtime", name),
     "const test=require('node:test');test('one controlled test',()=>{});\n");
+  fs.writeFileSync(path.join(f.product, "dist/test/runtime", OWNER_TESTS[0]), `const test=require('node:test');
+const cp=require('node:child_process');
+test('tracks child_process spawn and fork from the real node:test process',async()=>{
+  const children=[cp.spawn(process.execPath,['-e','process.exit(0)']),cp.fork(${JSON.stringify(worker)},[])];
+  await Promise.all(children.map(child=>new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',resolve);})));});\n`);
   const result = await run({ product: f.product, report: f.report, scope: "owner-core" }, { timeoutMs: 5000 });
   assert.equal(result.result, "passed", JSON.stringify(result));
   assert.equal(result.tests.length, OWNER_TESTS.length);
   assert.ok(result.tests.every((entry) => entry.tests.tests === 1 && entry.result === "passed"));
+  assert.equal(result.tests[0].trackerIntegrity, "complete");
+  assert.equal(result.tests[0].trackedProcessesCloseConfirmed, true);
+  assert.deepEqual(new Set(result.tests[0].trackedChildren.map((child) => child.source)), new Set(["spawn", "fork"]));
+  assert.ok(result.tests[0].trackedChildren.some((child) => child.source === "fork"));
+  assert.ok(result.tests[0].trackedChildren.every((child) => child.closeObserved));
   assert.ok(result.execution.cleanup.ownerTestProcesses.every((entry) => entry.closeObserved));
+  assert.equal(result.execution.cleanup.trackerIntegrity, "complete");
+  assert.equal(result.execution.cleanup.trackedProcessesCloseConfirmed, true);
+  assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
+  assert.ok(result.execution.cleanup.detachedChildren.some((child) => child.source === "fork"));
   assert.deepEqual(result.execution.argv[0].slice(1, 3), ["--test", "--test-reporter=tap"]);
   assert.ok(result.entry.realpath.endsWith("verify_department_platform.js"));
   assert.equal(result.sourceDistEvidence.length, SOURCE_DIST_PAIRS.length);
+});
+
+test("owner-core rejects a passing TAP result when the tracker sidecar records a write failure", async (t) => {
+  const f = fixture(t);
+  for (const name of OWNER_TESTS) fs.writeFileSync(path.join(f.product, "dist/test/runtime", name),
+    "require('node:test').test('TAP passed despite tracker error',()=>{});\n");
+  let tracker;
+  const result = await run({ product: f.product, report: f.report, scope: "owner-core" }, { timeoutMs: 5000,
+    spawnBoundedSettings: { createSpawnTracker: () => {
+      tracker = createSpawnTracker();
+      fs.writeFileSync(tracker.errorFile, "controlled-write-failure");
+      return tracker;
+    } } });
+  assert.equal(result.tests[0].tests.pass, 1);
+  assert.equal(result.tests[0].tests.fail, 0);
+  assert.equal(result.tests[0].trackerIntegrity, "write-failed");
+  assert.equal(result.tests[0].trackedProcessesCloseConfirmed, "unconfirmed");
+  assert.equal(result.tests[0].result, "failed");
+  assert.equal(result.result, "failed");
+  assert.equal(result.execution.cleanup.trackerIntegrity, "write-failed");
+  assert.equal(fs.existsSync(tracker.directory), false);
 });
 
 test("owner-core rejects nonzero, zero-test, and skipped subprocess results", async (t) => {
@@ -458,11 +507,12 @@ test("public-codex consumes only a complete all-Codex child report", async (t) =
   process.env.FIXTURE_REPORT = JSON.stringify(publicReport());
   t.after(() => { if (previous === undefined) delete process.env.FIXTURE_REPORT; else process.env.FIXTURE_REPORT = previous; });
   const result = await run({ product: f.product, report: f.report, scope: "public-codex" }, { timeoutMs: 5000 });
-  assert.equal(result.result, "passed");
+  assert.equal(result.result, "failed");
   assert.equal(result.execution.argv[1], fs.realpathSync(f.driver));
-  assert.equal(result.coverageGates.publicEh, "passed");
+  assert.equal(result.coverageGates.publicEh, "unconfirmed");
   assert.equal(result.coverageGates.realTabAndRootCleanup, "not-covered");
-  assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, true);
+  assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
+  assert.match(result.childReportError, /complete detached tree closure is unconfirmed/);
   assert.equal(result.publicEhSummary.stages.directorExecution, "completed");
 });
 
@@ -516,7 +566,7 @@ test("timed out child is terminated and cannot be promoted to a pass", async (t)
   assert.equal(result.result, "failed");
   assert.equal(result.execution.timedOut, true);
   assert.equal(result.execution.cleanup.driverCloseObserved, true);
-  assert.notEqual(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
+  assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
   assert.notEqual(result.coverageGates.publicEh, "passed");
   if (process.platform !== "win32") {
     fs.writeFileSync(f.driver, "process.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n");

@@ -1,0 +1,71 @@
+{
+  "algorithm": "sha256",
+  "scope": "all other round419 evidence files; manifest self-hash belongs in report",
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 3588,
+      "sha256": "3546d6a8e106fd51ecbb5b608875fd569b4fe07f4db61a4cecbff630b8fc9c0f"
+    },
+    {
+      "path": "check-results.json",
+      "bytes": 2482,
+      "sha256": "de3f12a354c21519bcb18fc287de089649713a00377559840c9addf9c4be8b92"
+    },
+    {
+      "path": "checks.md",
+      "bytes": 3613,
+      "sha256": "574e4595829fddb21af69c75ceb0b159beffb530951130cb5bc4feebbc5444fa"
+    },
+    {
+      "path": "delta-patch.json",
+      "bytes": 386,
+      "sha256": "8d3bcaa04db43a9b06fbbfcfd45f8d231da34835278f33d5257a5bb5185ab50a"
+    },
+    {
+      "path": "final-checks.json",
+      "bytes": 1590,
+      "sha256": "b50c24da0b3cde6b6318e52182ed06c4e31da1e0b41cd9c374b5f465b0f1f4eb"
+    },
+    {
+      "path": "isolation.json",
+      "bytes": 1449,
+      "sha256": "bb5b982a7b77adce4103b1cd755de323d1723d263fd5c2dd4805c08e65494fe8"
+    },
+    {
+      "path": "preserved-materials.json",
+      "bytes": 11745,
+      "sha256": "db7d72f5ae8b7e26131f3c06c97ba0ac16fd695968cc8ec64acc65a4a409f00f"
+    },
+    {
+      "path": "relative-to-51a.name-status.txt",
+      "bytes": 141,
+      "sha256": "2ddc141dcfbc7f8db37744f306c2e9f7ab27651cb87fa2cac8cc47e787367098"
+    },
+    {
+      "path": "relative-to-51a.patch.gz",
+      "bytes": 12235,
+      "sha256": "6852b614a56391ba16d34150017a63f621731c20a803f6b2809670f763b654bf"
+    },
+    {
+      "path": "relative-to-51a.stat.txt",
+      "bytes": 270,
+      "sha256": "7ad87ed0617ddcbdda9bb2e4fb0d0f2dad09620d0a753579831ec3433bb9a702"
+    },
+    {
+      "path": "reused-evidence.json",
+      "bytes": 5227,
+      "sha256": "1a3313930467a8499445604970f3d3deeeba49f7eabc658dce377f55b5e62065"
+    },
+    {
+      "path": "sources.json",
+      "bytes": 3781,
+      "sha256": "0f335778a34eb37e0f017053fe7e957a4ecfff518d85d896ecb8cee78dbcaca6"
+    },
+    {
+      "path": "write-paths.json",
+      "bytes": 3020,
+      "sha256": "52a2b787a26008ab9c2707857174731d544c096ef4bec7bbb1cb931d867ddaa6"
+    }
+  ]
+}

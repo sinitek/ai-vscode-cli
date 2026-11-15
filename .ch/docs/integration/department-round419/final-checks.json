@@ -1,0 +1,39 @@
+{
+  "phase": "precommit packaging, before final stage/commit and before shared handoff append",
+  "checks": [
+    {
+      "action": "JSON parsing, UTF-8/newline/Markdown fence and trailing-space checks for existing evidence",
+      "result": "PASS; metadata created after this pass is covered by final all-evidence audit in attempt report"
+    },
+    {
+      "action": "Relative path/casefold collision check across inherited tracked files and all new paths",
+      "result": "PASS"
+    },
+    {
+      "action": "Lossless gzip delta-patch SHA/size audit",
+      "result": "PASS"
+    },
+    {
+      "action": "Known original shared refs, shared index SHA and complete porcelain status compared with baseline",
+      "result": "PASS"
+    },
+    {
+      "action": "Original c53 and 51a worktree HEAD and complete clean status",
+      "result": "PASS"
+    }
+  ],
+  "old_worktrees": [
+    {
+      "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-candidate-round414-20261116",
+      "head": "c53f9defc811e5fddcf87e2d052ab0c6069c3087",
+      "status_clean": true
+    },
+    {
+      "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-local-integration-round416-20261116",
+      "head": "51a5e7b15c54921611721fe14863e60361d64e72",
+      "status_clean": true
+    }
+  ],
+  "source_checks_reused_without_rerun": "Source files were unchanged after passing verify_delta.py; metadata-only evidence packaging does not invalidate them.",
+  "postcommit_facts": "Recorded separately in round-419 attempt report; not predicted here."
+}

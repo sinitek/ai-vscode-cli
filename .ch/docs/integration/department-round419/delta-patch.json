@@ -1,0 +1,7 @@
+{
+  "file": "relative-to-51a.patch.gz",
+  "uncompressed_sha256": "23c187ec26be028803449a0b74d230ffabf5719704a3196e8a6a2b9394b047da",
+  "uncompressed_bytes": 42873,
+  "compressed_sha256": "6852b614a56391ba16d34150017a63f621731c20a803f6b2809670f763b654bf",
+  "scope": "complete three-path implementation diff relative to 51a; new evidence deliberately excluded to avoid self-reference"
+}

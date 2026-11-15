@@ -96,14 +96,12 @@ function createSpawnTracker() {
   fs.writeFileSync(preload, [
     "const fs=require('node:fs');const cp=require('node:child_process');",
     "const parent=Number(process.env.DEPARTMENT_PLATFORM_TRACKER_PARENT_PID);const file=process.env.DEPARTMENT_PLATFORM_TRACKER_FILE;const errorFile=process.env.DEPARTMENT_PLATFORM_TRACKER_ERROR_FILE;",
-    "if(process.ppid===parent&&file){delete process.env.DEPARTMENT_PLATFORM_TRACKER_PARENT_PID;delete process.env.DEPARTMENT_PLATFORM_TRACKER_FILE;delete process.env.DEPARTMENT_PLATFORM_TRACKER_ERROR_FILE;",
+    "if(parent&&file){",
     "const append=(event)=>{try{const stat=fs.existsSync(file)?fs.statSync(file):null;if((stat?.size||0)>=262144){if(!globalThis.__departmentTrackerOverflow){globalThis.__departmentTrackerOverflow=true;fs.appendFileSync(file,JSON.stringify({type:'overflow'})+'\\n');}return;}fs.appendFileSync(file,JSON.stringify(event)+'\\n');}catch(error){try{fs.writeFileSync(errorFile,String(error.code||'write-failed'));}catch{try{fs.writeSync(2,'DEPARTMENT_PLATFORM_TRACKER_WRITE_FAILED\\n');}finally{process.exit(74);}}}};",
-    "append({type:'tracker-ready',pid:process.pid});",
-    "const original=cp.spawn;cp.spawn=function(){const argv=Array.from(arguments);const options=Array.isArray(argv[1])?argv[2]:argv[1];const child=Reflect.apply(original,this,argv);",
-    "const base={pid:child.pid||null,detached:options?.detached===true};append({type:'spawn-request',...base});",
-    "child.once('spawn',()=>append({type:'spawn',pid:child.pid,detached:base.detached}));",
-    "child.once('error',error=>append({type:'error',pid:child.pid||null,detached:base.detached,error:error.code||'spawn-error'}));",
-    "child.once('close',(code,signal)=>append({type:'close',pid:child.pid||null,detached:base.detached,code,signal}));return child;};}",
+    "append(process.ppid===parent?{type:'tracker-ready',pid:process.pid}:{type:'tracker-attached',pid:process.pid,ppid:process.ppid});",
+    "const originalSpawn=cp.spawn;const originalFork=cp.fork;let forkDepth=0;const watch=(child,options,source)=>{const base={pid:child.pid||null,detached:options?.detached===true,source};append({type:'spawn-request',...base});child.once('spawn',()=>append({type:'spawn',pid:child.pid,detached:base.detached,source}));child.once('error',error=>append({type:'error',pid:child.pid||null,detached:base.detached,source,error:error.code||'spawn-error'}));child.once('close',(code,signal)=>append({type:'close',pid:child.pid||null,detached:base.detached,source,code,signal}));return child;};",
+    "cp.spawn=function(){const argv=Array.from(arguments);const options=Array.isArray(argv[1])?argv[2]:argv[1];const child=Reflect.apply(originalSpawn,this,argv);return forkDepth?child:watch(child,options,'spawn');};",
+    "cp.fork=function(){const argv=Array.from(arguments);const options=Array.isArray(argv[1])?argv[2]:argv[1];let child;forkDepth++;try{child=Reflect.apply(originalFork,this,argv);}finally{forkDepth--;}return watch(child,options,'fork');};}",
   ].join("\n"));
   return { directory, eventFile, errorFile, preload };
 }
@@ -111,12 +109,17 @@ function createSpawnTracker() {
 function validSpawnEvent(event) {
   if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.type !== "string") return false;
   if (event.type === "tracker-ready") return Number.isInteger(event.pid) && event.pid > 0;
+  if (event.type === "tracker-attached") return Number.isInteger(event.pid) && event.pid > 0 && Number.isInteger(event.ppid) && event.ppid > 0;
   if (event.type === "overflow") return true;
-  if (event.type === "spawn-request") return event.pid === null || (Number.isInteger(event.pid) && event.pid > 0);
-  if (event.type === "spawn") return Number.isInteger(event.pid) && event.pid > 0 && typeof event.detached === "boolean";
+  if (event.type === "spawn-request") return (event.pid === null || (Number.isInteger(event.pid) && event.pid > 0))
+    && (event.source === undefined || event.source === "spawn" || event.source === "fork");
+  if (event.type === "spawn") return Number.isInteger(event.pid) && event.pid > 0 && typeof event.detached === "boolean"
+    && (event.source === undefined || event.source === "spawn" || event.source === "fork");
   if (event.type === "close") return (event.pid === null || (Number.isInteger(event.pid) && event.pid > 0))
-    && (event.code === null || Number.isInteger(event.code)) && (event.signal === null || typeof event.signal === "string");
-  if (event.type === "error") return (event.pid === null || (Number.isInteger(event.pid) && event.pid > 0)) && typeof event.error === "string";
+    && (event.code === null || Number.isInteger(event.code)) && (event.signal === null || typeof event.signal === "string")
+    && (event.source === undefined || event.source === "spawn" || event.source === "fork");
+  if (event.type === "error") return (event.pid === null || (Number.isInteger(event.pid) && event.pid > 0)) && typeof event.error === "string"
+    && (event.source === undefined || event.source === "spawn" || event.source === "fork");
   if (event.type === "process-observed") return Number.isInteger(event.pid) && event.pid > 0
     && Number.isInteger(event.ppid) && event.ppid > 0 && typeof event.started === "string" && event.started.length > 0;
   return false;
@@ -197,7 +200,8 @@ function trackedChildren(events) {
   for (const event of events) {
     if (!["spawn-request", "spawn", "close", "error"].includes(event.type)) continue;
     if (!Number.isInteger(event.pid)) continue;
-    const current = children.get(event.pid) || { pid: event.pid, detached: event.detached === true, spawnObserved: false, closeObserved: false };
+    const current = children.get(event.pid) || { pid: event.pid, detached: event.detached === true, source: event.source || "spawn",
+      spawnObserved: false, closeObserved: false, closeBySnapshotObserved: false };
     current.detached ||= event.detached === true;
     if (event.type === "spawn") current.spawnObserved = true;
     if (event.type === "close") { current.closeObserved = true; current.exitCode = event.code; current.signal = event.signal; }
@@ -262,7 +266,8 @@ async function recoverTrackedChildren(eventFile, settings = {}) {
     trackedProcessesCloseConfirmed: children.every((child) => child.closeObserved || child.spawnError) ? true : "unconfirmed",
     treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: active.length ? "Windows process identity is unavailable; termination was not attempted" : "Windows tracker does not prove detached descendants closed" };
   if (!children.length) return { children, recoveryAttempted: false, forcedActions: [], trackerIntegrity: integrity,
-    trackedProcessesCloseConfirmed: true, treeCloseConfirmed: true, recoveryUnconfirmedReason: null, observedProcessCount: 0 };
+    trackedProcessesCloseConfirmed: true, treeCloseConfirmed: "unconfirmed",
+    recoveryUnconfirmedReason: "no direct child events do not prove Node test-runner workers or arbitrary descendants were absent", observedProcessCount: 0 };
   const forcedActions = [];
   let processes = snapshot();
   if (!processes) return { children, recoveryAttempted: false, forcedActions, trackerIntegrity: integrity,
@@ -270,9 +275,15 @@ async function recoverTrackedChildren(eventFile, settings = {}) {
   const known = processObservations(events);
   for (const child of children) if (child.closeObserved) known.delete(child.pid);
   // Never discover descendants by reusing a root PID after its original process has exited.
-  for (const child of active) if (!known.has(child.pid) || !sameLiveProcess(processes, child.pid, known.get(child.pid)))
-    return { children, recoveryAttempted: false, forcedActions, trackerIntegrity: integrity, trackedProcessesCloseConfirmed: "unconfirmed",
-      treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: "active child identity unavailable or changed" };
+  for (const child of active) {
+    if (!processes.has(child.pid)) {
+      child.closeBySnapshotObserved = true;
+      continue;
+    }
+    if (!known.has(child.pid) || !sameLiveProcess(processes, child.pid, known.get(child.pid)))
+      return { children, recoveryAttempted: false, forcedActions, trackerIntegrity: integrity, trackedProcessesCloseConfirmed: "unconfirmed",
+        treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: "active child identity unavailable or changed" };
+  }
   const signalKnown = (signal) => {
     const latest = readTracker();
     if (latest.integrity !== "complete") return false;
@@ -290,7 +301,8 @@ async function recoverTrackedChildren(eventFile, settings = {}) {
   };
   const initiallyAlive = [...known].some(([pid, identity]) => sameLiveProcess(processes, pid, identity));
   if (!initiallyAlive) return { children, recoveryAttempted: false, forcedActions, trackerIntegrity: integrity,
-    trackedProcessesCloseConfirmed: true, treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: "tracked descendants may not be completely observable",
+    trackedProcessesCloseConfirmed: children.every((child) => child.closeObserved || child.spawnError || child.closeBySnapshotObserved),
+    treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: "direct children were closed or absent at the final snapshot; arbitrary descendants may not be completely observable",
     observedProcessCount: known.size };
   signalKnown("SIGTERM");
   const waitUntil = async (deadline) => {
@@ -315,8 +327,10 @@ async function recoverTrackedChildren(eventFile, settings = {}) {
   const finalChildren = trackedChildren(finalEvents.events);
   const finalProcesses = snapshot();
   if (!finalProcesses) closed = false;
+  if (finalProcesses) for (const child of finalChildren) if (child.spawnObserved && !child.closeObserved && !finalProcesses.has(child.pid)) child.closeBySnapshotObserved = true;
   const knownAlive = finalProcesses && [...known].some(([pid, identity]) => sameLiveProcess(finalProcesses, pid, identity));
-  const trackedProcessesCloseConfirmed = closed && !knownAlive && finalEvents.integrity === "complete" ? true : "unconfirmed";
+  const trackedProcessesCloseConfirmed = closed && !knownAlive && finalEvents.integrity === "complete"
+    && finalChildren.every((child) => child.closeObserved || child.spawnError || child.closeBySnapshotObserved) ? true : "unconfirmed";
   return { children: finalChildren, recoveryAttempted: initiallyAlive, forcedActions, trackerIntegrity: finalEvents.integrity,
     trackedProcessesCloseConfirmed, treeCloseConfirmed: "unconfirmed", recoveryUnconfirmedReason: "spawn preload tracks direct child processes only; complete descendant closure is not provable",
     observedProcessCount: known.size };
@@ -630,15 +644,21 @@ async function run(options, settings = {}) {
         runs.push({ file: path.relative(product.product, file), result: "not-run", exitCode: null, signal: null, timedOut: false, tests: null });
         continue;
       }
-      const child = await spawnBounded(["--test", "--test-reporter=tap", file], remaining);
+      const child = await spawnBounded(["--test", "--test-reporter=tap", file], remaining,
+        { ...(settings.spawnBoundedSettings || {}), trackSpawnedChildren: true });
       const summary = parseTapSummary(`${child.stdout}\n${child.stderr}`, file);
       const entry = { file: path.relative(product.product, file), result: "failed", exitCode: child.code,
         signal: child.signal, timedOut: child.timedOut, forcedCleanup: child.forcedCleanup,
         processCloseObserved: child.cleanup.driverCloseObserved, processExitObserved: child.cleanup.driverExitObserved,
-        localHandleRelease: child.cleanup.localHandleRelease, error: child.error || null, tests: summary };
+        localHandleRelease: child.cleanup.localHandleRelease, trackerIntegrity: child.cleanup.trackerIntegrity,
+        trackedChildren: child.cleanup.detachedChildren, trackedProcessesCloseConfirmed: child.cleanup.trackedProcessesCloseConfirmed,
+        detachedTreeCloseConfirmed: child.cleanup.detachedTreeCloseConfirmed, recoveryAttempted: child.cleanup.recoveryAttempted,
+        driverTermination: child.cleanup.driverTermination, forcedActions: child.cleanup.forcedActions,
+        recoveryUnconfirmedReason: child.cleanup.recoveryUnconfirmedReason, error: child.error || null, tests: summary };
       if (child.code === 0 && !child.error && child.cleanup.driverCloseObserved && !child.signal && !child.timedOut && !child.forcedCleanup && summary.complete && summary.unique
         && summary.registeredTests > 0 && summary.pass === summary.tests && summary.fail === 0 && summary.cancelled === 0
-        && summary.skipped === 0 && summary.todo === 0) entry.result = "passed";
+        && summary.skipped === 0 && summary.todo === 0 && child.cleanup.trackerIntegrity === "complete"
+        && child.cleanup.trackedProcessesCloseConfirmed === true && child.cleanup.forcedActions.length === 0) entry.result = "passed";
       runs.push(entry);
       stdout = addBounded(stdout, child.stdout);
       stderr = addBounded(stderr, child.stderr);
@@ -649,10 +669,27 @@ async function run(options, settings = {}) {
       if (child.timedOut || child.error) report.execution.error = child.error || null;
     }
     report.tests = runs;
-    report.execution.cleanup.ownerTestProcesses = runs.map(({ file, processCloseObserved, processExitObserved, localHandleRelease, timedOut, forcedCleanup }) =>
-      ({ file, closeObserved: processCloseObserved === true, exitObserved: processExitObserved === true, localHandleRelease,
-        timedOut: timedOut === true, forcedTermination: forcedCleanup === true }));
-    report.execution.cleanup.recoveryAttempted = runs.some((entry) => entry.timedOut);
+    report.execution.cleanup.ownerTestProcesses = runs.map(({ file, processCloseObserved, processExitObserved, localHandleRelease,
+      timedOut, forcedCleanup, trackerIntegrity, trackedChildren, trackedProcessesCloseConfirmed, detachedTreeCloseConfirmed,
+      recoveryAttempted, driverTermination, forcedActions, recoveryUnconfirmedReason }) => ({ file,
+      closeObserved: processCloseObserved === true, exitObserved: processExitObserved === true,
+      localHandleRelease, trackerIntegrity, trackedChildren, trackedProcessesCloseConfirmed: trackedProcessesCloseConfirmed ?? "unconfirmed",
+      detachedTreeCloseConfirmed: detachedTreeCloseConfirmed ?? "unconfirmed", recoveryAttempted: recoveryAttempted === true,
+      driverTermination: driverTermination || null, forcedActions: forcedActions || [], recoveryUnconfirmedReason: recoveryUnconfirmedReason || null,
+      timedOut: timedOut === true, forcedTermination: forcedCleanup === true }));
+    const cleanupRecords = report.execution.cleanup.ownerTestProcesses;
+    report.execution.cleanup.driverExitObserved = runs.length === testPaths.length && runs.every((entry) => entry.processExitObserved === true);
+    report.execution.cleanup.driverCloseObserved = runs.length === testPaths.length && runs.every((entry) => entry.processCloseObserved === true);
+    report.execution.cleanup.trackerIntegrity = cleanupRecords.length === testPaths.length && cleanupRecords.every((entry) => entry.trackerIntegrity === "complete")
+      ? "complete" : cleanupRecords.find((entry) => entry.trackerIntegrity !== "complete")?.trackerIntegrity || "not-run";
+    report.execution.cleanup.detachedChildren = cleanupRecords.flatMap((entry) => (entry.trackedChildren || []).map((child) => ({ file: entry.file, ...child })));
+    report.execution.cleanup.trackedProcessesCloseConfirmed = cleanupRecords.length === testPaths.length
+      && cleanupRecords.every((entry) => entry.trackedProcessesCloseConfirmed === true) ? true : "unconfirmed";
+    report.execution.cleanup.detachedTreeCloseConfirmed = cleanupRecords.length === testPaths.length
+      && cleanupRecords.every((entry) => entry.detachedTreeCloseConfirmed === true) ? true : "unconfirmed";
+    report.execution.cleanup.recoveryAttempted = cleanupRecords.some((entry) => entry.recoveryAttempted);
+    report.execution.cleanup.forcedActions = cleanupRecords.flatMap((entry) => entry.forcedActions.map((action) => ({ file: entry.file, ...action })));
+    report.execution.cleanup.recoveryUnconfirmedReason = cleanupRecords.find((entry) => entry.recoveryUnconfirmedReason)?.recoveryUnconfirmedReason || null;
     report.execution.diagnostics.stdoutTail = redactDiagnostic(stdout);
     report.execution.diagnostics.stderrTail = redactDiagnostic(stderr);
     if (runs.length === testPaths.length && runs.every((entry) => entry.result === "passed")) {
@@ -672,13 +709,18 @@ async function run(options, settings = {}) {
     report.execution.diagnostics.stdoutTail = redactDiagnostic(child.stdout);
     report.execution.diagnostics.stderrTail = redactDiagnostic(child.stderr);
     if (child.code === 0 && !child.error && !child.signal && !child.timedOut && !child.forcedCleanup
-      && child.cleanup.detachedTreeCloseConfirmed === true && !child.cleanup.recoveryAttempted) {
+      && child.cleanup.trackerIntegrity === "complete" && child.cleanup.trackedProcessesCloseConfirmed === true) {
       try {
         const result = validatePublicReport(childReport, product.publicDriver);
         report.publicEhSummary = { result: result.result, forcedTeardown: result.forcedTeardown, scenarioName: result.scenarioName,
           roles: result.roles, stages: result.stages, failureCount: result.failures.length };
-        report.coverageGates.publicEh = "passed";
-        report.result = "passed";
+        if (child.cleanup.detachedTreeCloseConfirmed === true && !child.cleanup.recoveryAttempted) {
+          report.coverageGates.publicEh = "passed";
+          report.result = "passed";
+        } else {
+          report.coverageGates.publicEh = "unconfirmed";
+          report.childReportError = "tracked process closure was observed, but complete detached tree closure is unconfirmed";
+        }
       } catch (error) { report.childReportError = error.message; }
     }
     report.childReportPath = childReport;
