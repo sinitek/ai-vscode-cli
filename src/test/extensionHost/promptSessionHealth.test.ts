@@ -11,7 +11,7 @@ import { createPromptAutoRepairController } from "../../extensionHost/promptAuto
 import { isCliShellCommandNotFoundError } from "../../cli/cliCommandRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
-import { ConfigSelectionChangedError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
+import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
@@ -61,6 +61,7 @@ function createHarness(options: {
   const events: string[] = [];
   const leasedConfigs: Array<{ cli: CliName; configId: string }> = [];
   const systemMessages: string[] = [];
+  const errorLogs: Array<{ event: string; payload: Record<string, unknown> }> = [];
   const statuses: string[] = [];
   const boundConfigs: Array<{ cli: CliName; sessionId: string; configId: string | null }> = [];
   const questionQueue = createLoopMainQuestionQueue();
@@ -146,7 +147,8 @@ function createHarness(options: {
     resolveWorkspaceCwd: () => null,
     t: (key: string) => key,
     logInfo: () => undefined,
-    logError: () => undefined,
+    logError: (event: string, payload: Record<string, unknown>) => { errorLogs.push({ event, payload }); },
+    RuntimeConfigLockTimeoutError,
     getErrorInfo: (error: Error & { code?: string }) => ({ message: error.message, name: error.name, code: error.code }),
     isAbortErrorInfo: (info: { name?: string }) => info.name === "AbortError",
     loopMainAutoCompactFlights: { wait: async () => {
@@ -190,10 +192,35 @@ function createHarness(options: {
     runPromptParallel: dispatch,
     runPromptOneShot: dispatch,
   }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
-  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs, tabs,
+  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs, tabs, errorLogs,
     questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
+
+test("Loop subtask configuration timeouts preserve tab failure and correlated lock diagnostics", async () => {
+  const diagnostic = { operation: "acquire" as const, ownerPid: process.pid, ownerAlive: true, waitedMs: 15001, timeoutMs: 15000 };
+  const failure = new RuntimeConfigLockTimeoutError(diagnostic);
+  const harness = createHarness({
+    cli: "codex", health: "normal", runtime: "interactive",
+    acquireConfigLease: async () => { throw failure; },
+  });
+  await assert.rejects(harness.runPrompt({
+    displayPrompt: "执行子任务", modelPrompt: "执行子任务", contextTags: [], taskRole: "subtask", throwOnError: true,
+    loopTaskId: "parent-loop", loopSubtaskId: "child-1", loopAttemptId: "attempt-1",
+  }), (error) => error === failure);
+  assert.equal(harness.dispatched.length, 0);
+  assert.deepEqual(harness.statuses, ["error"]);
+  assert.deepEqual(harness.boundConfigs, []);
+  const log = harness.errorLogs.find((entry) => entry.event === "runPrompt-failed")!;
+  assert.ok(log);
+  assert.equal(log.payload.tabId, "target-tab");
+  assert.equal(log.payload.taskRole, "subtask");
+  assert.equal(log.payload.loopTaskId, "parent-loop");
+  assert.equal(log.payload.loopSubtaskId, "child-1");
+  assert.equal(log.payload.loopAttemptId, "attempt-1");
+  assert.equal(log.payload.errorCode, "RUNTIME_CONFIG_LOCK_TIMEOUT");
+  assert.deepEqual(log.payload.configLock, diagnostic);
+});
 
 test("cancelling main work queued behind a question prevents a late CLI start", async () => {
   const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session" });

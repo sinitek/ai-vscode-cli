@@ -50,6 +50,14 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 排查时对齐 `loop-subtask-auto-compact-failed`、`loop-subtask-tab-auto-close-error` / `loop-plus-subtask-tab-auto-close-error` 与对应 `tab-auto-closed` 日志。旧实现中经典 Loop 未等待压缩便关页，Loop+ 则在完成回报前关页；遇到活跃任务时共享清理可能跳过关页，调用方仍记录成功。当前实现会核对关闭是否生效，并保护压缩期间新增、替代、换绑或仍在运行的标签。关闭失败不会改写已成功的完成回报，应按错误原因核对原标签与当前任务，不要强关正在使用该会话的新任务。
 
+## 子任务 Tab 报等待其他窗口配置操作超时
+
+先按 `runPrompt-failed` 的 `tabId`、`loopTaskId`、`loopSubtaskId`、`loopAttemptId` 对齐调用，不能仅凭 `cli-startup` 推断是哪一个并行子任务失败。新版错误码为 `RUNTIME_CONFIG_LOCK_TIMEOUT`，`configLock` 提供 `operation`、`ownerPid`、`ownerAlive`、`waitedMs` 和 `timeoutMs`。`acquire` 表示还未取得执行租约；`release` 表示请求收尾阶段超时，不能据此认定 CLI 没有执行。
+
+共享协调目录在对应原生配置文件旁的 `.sinitek-runtime-coordination/<文件名>/`。只读检查 `mutex` 的 PID 存活与任务状态；当前没有锁不能证明历史没有争用，残留的 `owner-*` 候选文件也不等同仍持锁。活进程锁不按时间删除，执行租约也不应手动清空。等待到期后宿主会再做一次原子获取，处理锁刚释放或死进程锁刚回收的竞态；最终仍被占用才拒绝。旧日志只有中文错误且没有任务/持锁信息时，只能确认超时发生，不能反推出唯一根因。
+
+回归：构建后运行 `node --test dist/test/config/sharedRuntimeConfig.test.js dist/test/extensionHost/promptSessionHealth.test.js`；覆盖截止时释放、死锁回收、活锁保护、最终尝试被其它进程抢先以及子任务失败日志/状态。更新源码后需让 VS Code 加载包含修复的新构建；仓库构建通过不代表已安装扩展已生效。
+
 ## 验证与事实来源
 
 单次事故应同时有最终决策、暂停/完成通知、沟通记录与相应状态的证据。结构查询用于定位，当前源码用于确认，历史运行记录用于证明事件发生；不要以当前源码或测试代替历史证据。

@@ -13,7 +13,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { ConfigSelectionChangedError } from "./config/sharedRuntimeConfig";
+import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError } from "./config/sharedRuntimeConfig";
 import {
   cleanupHumanInteractionHistory,
   cleanupHumanInteractionHistoryAcrossWorkspaces,
@@ -5188,7 +5188,17 @@ async function runPromptNow(
       void logInfo("runPrompt-abort-ignored", { cli: target.cli, error: info.message });
       return;
     }
-    void logError("runPrompt-failed", { cli: target.cli, error: info.message, errorCode: info.code });
+    void logError("runPrompt-failed", {
+      cli: target.cli,
+      tabId: target.tabId,
+      taskRole: promptInput.taskRole,
+      loopTaskId: promptInput.loopTaskId,
+      loopSubtaskId: promptInput.loopSubtaskId,
+      loopAttemptId: promptInput.loopAttemptId,
+      error: info.message,
+      errorCode: info.code,
+      ...(error instanceof RuntimeConfigLockTimeoutError ? { configLock: error.diagnostic } : {}),
+    });
     if (!isTabRunActive(target.tabId)) {
       if (info.code === "SESSION_RUN_ACTIVE") {
         appendSystemMessageForPromptTarget(target, info.message);

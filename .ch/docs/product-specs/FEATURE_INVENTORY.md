@@ -52,6 +52,7 @@
 - 状态：`active`（2026-11-11）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态。每 Tab 记录宿主最新运行状态，`runStatus:end` 后迟到的新增/替换错误消息、trace 片段和自动重试排队提示不再重新标红；新用户消息、新运行或会话重置释放上一轮成功保护。明确的 `runStatus:error` 仍标记失败，未运行过的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理，不改变错误气泡或磁盘会话格式。
 - 共享配置已有状态通过只读快照获取，面板刷新不获取配置写锁、不回写执行租约。首次初始化、配置应用/编辑和执行租约仍使用跨进程互斥锁；同进程同目录的事务顺序排队，不彼此轮询到超时。
 - 读取到未就绪状态不视为配置可用；任务启动仍在互斥事务中核对所选档案及就绪状态。存活进程持有的写锁不按时间强拆，真实跨窗口写操作超时仍明确拒绝启动。
+- 配置锁等待到期后补一次原子获取，锁刚释放或死进程锁刚回收时可继续启动，防止 Loop+ 子任务误报超时；最终仍冲突则保留拒绝，并以 `RUNTIME_CONFIG_LOCK_TIMEOUT` 记录操作阶段、持锁 PID/存活状态和等待时长。启动错误日志关联 Tab、Loop 主/子任务及 attempt，便于区分真实占锁与启动/释放阶段的超时。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/config/sharedRuntimeConfig.ts`；回归：`src/test/webview/tabRunStatus.test.ts`、`src/test/webview/conversationtabsummarytooltip.test.ts`、`src/test/config/sharedRuntimeConfig.test.ts`。
 
 ## 人机交互其它回答
