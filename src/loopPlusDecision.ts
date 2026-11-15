@@ -73,6 +73,8 @@ export type LoopPlusDecision = {
   reviewEventIds?: string[];
   reviews?: LoopPlusAcceptReview[];
   subtasks?: LoopSubtaskDecision[];
+  /** accept 中独立推进剩余目标、不归属本批验收事件的新任务 ID。 */
+  independentSubtaskIds?: string[];
   controls?: LoopPlusControlDecision[];
   answerConclusion?: string;
   finalSummary?: string;
@@ -202,6 +204,10 @@ function normalizeDecision(
   if (hasImplicitQueueConfirmation(value)) {
     return null;
   }
+  if (hasOwn(value, "independentSubtaskIds") && value.status !== "accept") {
+    options?.reject?.("independentSubtaskIds 只用于 accept 中独立推进剩余目标的子任务。");
+    return null;
+  }
   if (hasOwn(value, "directCompletion") && (value.status !== "completed" || value.directCompletion !== true)) {
     return null;
   }
@@ -269,7 +275,12 @@ function normalizeAcceptDecision(
     reviewEvents.reviewEventId ? [reviewEvents.reviewEventId] : []
   );
   const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
-  const reviews = readAcceptReviews(raw, eventIds, subtasks, requireAcceptanceFeedback, options?.reject);
+  const independentSubtaskIds = readAcceptSubtaskIds(raw, "independentSubtaskIds");
+  if (!independentSubtaskIds) {
+    options?.reject?.("accept.independentSubtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。");
+    return null;
+  }
+  const reviews = readAcceptReviews(raw, eventIds, subtasks, independentSubtaskIds, requireAcceptanceFeedback, options?.reject);
   if (!reviews) {
     return null;
   }
@@ -291,6 +302,7 @@ function normalizeAcceptDecision(
     ...reviewEvents,
     reviews,
     ...(subtasks.length > 0 ? { subtasks } : {}),
+    ...(independentSubtaskIds.length > 0 ? { independentSubtaskIds } : {}),
     ...(controls.length > 0 ? { controls } : {}),
     ...(acceptance ? { acceptance } : {}),
     ...(acceptancePlanResults ? { acceptancePlanResults } : {}),
@@ -758,6 +770,7 @@ function readAcceptReviews(
   raw: Record<string, unknown>,
   eventIds: readonly string[],
   subtasks: readonly LoopSubtaskDecision[],
+  independentSubtaskIds: readonly string[],
   requireReason = false,
   reject?: (reason: string) => void,
 ): LoopPlusAcceptReview[] | null {
@@ -766,7 +779,7 @@ function readAcceptReviews(
     return null;
   }
   const reviews: LoopPlusAcceptReview[] = [];
-  const linkedIds: string[] = [];
+  const linkedIds: string[] = [...independentSubtaskIds];
   for (let index = 0; index < raw.reviews.length; index += 1) {
     const item = raw.reviews[index];
     if (!isRecord(item)) {
@@ -805,11 +818,11 @@ function readAcceptReviews(
     const unknown = linkedIds.filter((id) => !subtaskIds.includes(id));
     const duplicates = [...new Set(linkedIds.filter((id, index) => linkedIds.indexOf(id) !== index))];
     reject?.([
-      "accept.subtasks 中的每个任务 ID 必须恰好关联一个 reviews[].subtaskIds。",
+      "accept.subtasks 中的每个任务 ID 必须恰好归属一个 reviews[].subtaskIds 或 independentSubtaskIds，不能重复。",
       ...(unlinked.length ? [`未关联任务：${unlinked.join(", ")}。`] : []),
       ...(unknown.length ? [`关联了不存在的任务：${unknown.join(", ")}。`] : []),
       ...(duplicates.length ? [`重复关联任务：${duplicates.join(", ")}。`] : []),
-      "补充需求产生的独立后续任务也要关联；可挂在 passed 的验收项上并保持该项 passed，不要为补齐关联而伪造失败。",
+      "修复和相关后续任务关联真实验收事件；独立的剩余目标任务列入 independentSubtaskIds，不要为补齐关联而伪造失败或继承无关修复会话。",
     ].join(""));
     return null;
   }
@@ -832,16 +845,20 @@ function readRequiredShortReason(value: unknown): string | null {
   return normalized;
 }
 
-function readAcceptSubtaskIds(review: Record<string, unknown>): string[] | null {
-  if (!hasOwn(review, "subtaskIds")) {
+function readAcceptSubtaskIds(
+  value: Record<string, unknown>,
+  key: "subtaskIds" | "independentSubtaskIds" = "subtaskIds",
+): string[] | null {
+  if (!hasOwn(value, key)) {
     return [];
   }
-  if (!Array.isArray(review.subtaskIds)) {
+  const items = value[key];
+  if (!Array.isArray(items)) {
     return null;
   }
   const ids: string[] = [];
   const seen = new Set<string>();
-  for (const item of review.subtaskIds) {
+  for (const item of items) {
     const id = readOptionalText(item);
     if (!id || seen.has(id)) {
       return null;

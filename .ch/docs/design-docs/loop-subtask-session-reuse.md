@@ -30,6 +30,8 @@ Loop+ 宿主为每次 attempt 分配唯一 `attemptId`，并将它映射为运�
 
 `accept.reviews[*].subtaskIds` 表示本次验收事件关联的新任务。失败 review 的修补项若未显式声明来源，由宿主通过 `reviewEventId` 找到原 `subtaskId`，自动继承它的会话。不同失败项分别绑定自己的来源，不能把多个原会话任意合并；来源不唯一时需要主模型显式选择。
 
+与当前验收事件无关的剩余目标交付放在 `accept.independentSubtaskIds`，同轮仍通过 `subtasks` 派发，不自动继承失败事件会话。真正独立的交付省略 `continueFromSubtaskId`，避免误用修复会话造成不必要串行；继续其它已有工作时可明确指定兼容来源。任务须恰好归属一个事件或独立列表，原冲突和会话串行保护不变。
+
 `controls.reprompt` 仍中断旧 attempt 并创建新 attempt，但设置来源为原子任务 ID。中断前先保存已有真实会话；新 attempt 不等于新 CLI 会话。新的独立工作不因处于同一模式就共享上下文。
 
 `controls.close` / `controls.reprompt` 的关页要求可升级此前普通停止请求，不能因 attempt 已经中止而直接忽略；无论停止结果尚未结算还是已经结算，旧标签最多清理一次。恢复调度后若旧 attempt 句柄已不存在，按父任务和子任务清理旧闲置标签；Loop+ 在已有身份时进一步限定原 `attemptId`，不将“没有句柄”视为“没有标签”，也不触碰替代 attempt。

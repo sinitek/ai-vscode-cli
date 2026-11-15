@@ -12,7 +12,7 @@
 ## Loop+ 协议矛盾自动纠错
 
 - 状态：`active`（2026-11-13，源码实现）。决策 JSON 无效、验收关联或事件批次矛盾、空队列返回 `wait` 时，立即把具体错误、旧回复和最新快照交回主模型重新生成完整 JSON，复用有效证据，继续派发或合法完成，无需用户反复点击继续。
-- 保留既有校验及默认 2 次自动纠错上限；accept 中所有新任务（含补充需求）恰好关联一个验收项，可关联通过项而不改写真实结论。持续错误暂停时持久化真实协议原因，主聊天、群聊和沟通文件一致展示；恢复保留待验收结果和纠错原因。
+- 保留既有校验及默认 2 次自动纠错上限；accept 中所有新任务（含补充需求）恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，未知、重复或遗漏归属均拒绝。事件相关任务可关联通过项而不改写真实结论；独立剩余交付无需挂到验收事件。持续错误暂停时持久化真实协议原因，主聊天、群聊和沟通文件一致展示；恢复保留待验收结果和纠错原因。
 - 实现：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/loopPlusPause.ts`；回归覆盖诊断、纠正后派发/完成、重试上限及跨宿主显式继续。未发布或更新已安装扩展。
 
 ## Loop+ 活跃会话与完成状态隔离
@@ -186,8 +186,9 @@
 
 - 生产并发容量使用“Loop/Loop+ 单次派发上限”（默认 6、范围 1–20），不再固定为 6；主模型可见真实上限、剩余槽位和单次派发上限。存在至少三个有收益的独立交付边界且容量允许时争取 3 到当前容量上限路并行，不按一个全栈角色或两个前后端角色限制任务数；边界不足、真实依赖或容量不足时允许少派，不为凑数拆分。
 - 按主要写入所有权和可独立验收的实现、测试、文档、配置等边界拆分，`dispatch` / `accept` 主动回填空槽，不重复派发已有 running / pending。默认协议示例展示四个独立交付，并尊重用户单次上限和宿主并发上限。
+- 每次 `accept` 同时复核原始及补充需求的剩余目标：验收修复通过 `reviews[].subtaskIds` 关联失败事件并复用原会话；独立交付通过可选 `independentSubtaskIds` 声明，与修复同轮派发且不自动继承修复会话。不能因出现验收缺口就让整体目标串行等待；只派修复或留空槽时，主模型在沟通文件说明真实依赖、写入占用、已排队容量或没有可推进独立工作的原因。不为回填重复有效验证或制造微任务。单事件及批量验收示例均展示修复与独立交付，容量为 1 时仍允许只派修复。
 - 共享只读上下文不构成写冲突，局部附带修改不必让所有工作串行；子任务写入前重读并保留并发改动，小冲突自行协调并汇报。已知同路径写入和相同冲突组仍串行，不允许隐瞒范围；同符号、共享契约或大量竞争修改仍由主模型重排。
-- 实现与验证：`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`；提示、编排、scheduler 和 parallel 回归测试。边界详见 `.ch/docs/design-docs/loop-plus-scheduling.md`；提示引导不保证真实模型每轮必定派发固定数量。
+- 实现与验证：`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`；协议归属、提示、修复与独立交付并发、会话来源、文件/冲突组/容量保护及独立回填回归。边界详见 `.ch/docs/design-docs/loop-plus-scheduling.md`；提示引导不保证真实模型每轮必定派发固定数量。
 
 ## Loop / Loop+ 子任务完成收尾
 

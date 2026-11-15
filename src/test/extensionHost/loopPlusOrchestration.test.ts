@@ -1496,6 +1496,100 @@ test("fills six production slots while serializing only a conflicting follow-up"
   assert.equal(snapshotOf(task()).pending.length, 0);
 });
 
+test("accept launches a repair and independent remaining-goal deliveries together without sharing the repair source", async () => {
+  const env = harness({ maxConcurrency: 3 });
+  const run = env.host.tryRun({ displayPrompt: "修复验收缺口并完成其余独立交付" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("original", ["src/original.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "验收发现校验遗漏" });
+  await flush();
+  const review = env.mains[1];
+  review.resolve(decisionJson({
+    status: "accept", reviewEventId: review.request.reviewEventId,
+    reviews: [{ reviewEventId: review.request.reviewEventId, acceptance: "failed", reason: "校验分支遗漏", subtaskIds: ["repair"] }],
+    subtasks: [subtask("repair", ["src/original.ts"]), subtask("feature", ["src/feature.ts"]), subtask("docs", ["docs/usage.md"])],
+    independentSubtaskIds: ["feature", "docs"],
+    acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture().map((check) => ({ ...check, passed: false })) },
+  }));
+  await flush();
+  assert.deepEqual(env.attempts.slice(1).map((item) => item.request.subtaskId), ["repair", "feature", "docs"]);
+  assert.equal(env.attempts[1].request.continueFromSubtaskId, "original");
+  assert.equal(env.attempts[2].request.continueFromSubtaskId, undefined);
+  assert.equal(env.attempts[3].request.continueFromSubtaskId, undefined);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).running.length, 3);
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts[0].acceptance, "failed");
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+
+  env.attempts[2].resolve({ outcome: "completed", detail: "独立功能完成并通过针对性验证" });
+  await flush();
+  const featureReview = env.mains[2];
+  assert.equal(featureReview.request.kind, "review");
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).running.map((item) => item.subtaskId), ["repair", "docs"]);
+  featureReview.resolve(completedDecision({ reviewEventId: featureReview.request.reviewEventId }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "running", "live repair and independent work still prevent parent completion");
+
+  env.attempts[1].resolve({ outcome: "completed", detail: "遗漏已修复，针对性验证通过" });
+  env.attempts[3].resolve({ outcome: "completed", detail: "使用说明已交付" });
+  await flush();
+  for (let index = 0; index < 3 && env.tasks.get(taskId)?.status !== "completed"; index += 1) {
+    const next = env.mains.at(-1)!;
+    const ids = next.request.reviewEventIds ?? [];
+    const confirmation = ids.length === 1 ? { reviewEventId: ids[0] } : ids.length > 1 ? { reviewEventIds: ids } : {};
+    next.resolve(completedDecision(confirmation));
+    await flush();
+  }
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), false);
+  await run.done;
+});
+
+for (const conflict of ["writeFiles", "conflictGroup", "capacity"] as const) {
+  test(`independent accept delivery preserves ${conflict} reservations while safe work backfills`, async () => {
+    const env = harness({ maxConcurrency: conflict === "capacity" ? 2 : 4 });
+    const run = env.host.tryRun({ displayPrompt: "有边界地并行交付" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId ?? "";
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+      subtask("original", ["src/original.ts"]), subtask("owner", ["src/shared.ts"], "shared-resource"),
+    ] }));
+    await flush();
+    env.attempts[0].resolve({ outcome: "completed", detail: "发现可修复遗漏" });
+    await flush();
+    const review = env.mains[1];
+    review.resolve(decisionJson({
+      status: "accept", reviewEventId: review.request.reviewEventId,
+      reviews: [{ reviewEventId: review.request.reviewEventId, acceptance: "failed", subtaskIds: ["repair"] }],
+      subtasks: [
+        subtask("repair", ["src/original.ts"]),
+        subtask("reserved", conflict === "writeFiles" ? ["src\\shared.ts"] : ["src/reserved.ts"], conflict === "conflictGroup" ? "shared-resource" : undefined),
+        subtask("independent", ["docs/independent.md"]),
+      ],
+      independentSubtaskIds: ["reserved", "independent"],
+    }));
+    await flush();
+    const snapshot = () => snapshotOf(env.tasks.get(taskId));
+    assert.equal(env.attempts[2].request.subtaskId, "repair");
+    if (conflict === "capacity") {
+      assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["reserved", "independent"]);
+      assert.equal(snapshot().running.length, 2);
+    } else {
+      assert.equal(env.attempts[3].request.subtaskId, "independent", "safe work bypasses the blocked independent delivery");
+      assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["reserved"]);
+      assert.equal(snapshot().running.length, 3);
+    }
+    env.attempts[1].resolve({ outcome: "completed", detail: "共享资源释放" });
+    await flush();
+    assert.equal(env.attempts.at(-1)?.request.subtaskId, "reserved");
+    assert.ok(snapshot().running.some((item) => item.subtaskId === "repair"));
+    assert.equal(env.tasks.get(taskId)?.status, "running");
+    env.host.stopParent(taskId);
+    await run.done;
+  });
+}
+
 test("records each accept review without failing a successful sibling", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
@@ -3261,10 +3355,11 @@ test("automatically corrects unlinked supplemental work and dispatches it withou
   const retry = env.mains[2];
   assert.equal(retry.request.kind, "review");
   assert.match(retry.request.prompt, /未关联任务：independent-research/);
+  assert.match(retry.request.prompt, /independentSubtaskIds/);
   assert.ok(retry.request.prompt.includes(rejected));
   assert.match(retry.request.modelPrompt, /只修正决策 JSON/);
   const corrected = JSON.parse(rejected);
-  corrected.reviews[0].subtaskIds = ["independent-research"];
+  corrected.independentSubtaskIds = ["independent-research"];
   retry.resolve(JSON.stringify(corrected));
   await flush();
   assert.equal(env.attempts.length, 2);

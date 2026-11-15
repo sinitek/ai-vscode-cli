@@ -227,7 +227,23 @@ function buildLoopPlusProtocolExamples(
   const acceptConfirmation = eventIds.length > 1
     ? { reviewEventIds: acceptEventIds }
     : { reviewEventId: acceptEventIds[0] };
-  const repairExample = eventIds.length > 1;
+  const repairExample = eventIds.length > 0;
+  const repairSubtask = {
+    ...subtask,
+    title: "Example acceptance-failure repair",
+    prompt: [
+      "Repair the failed validation check in the reviewed backend delivery. Suggested write scope: src/example-backend.ts; record the failed check and the targeted verification result in the attempt report.",
+      "Design key point: correct the existing validator while preserving its agreed public contract. This repair does not block the independent frontend, configuration, or documentation deliverables.",
+    ].join(" "),
+  };
+  const acceptSubtasks = [
+    repairExample ? repairSubtask : subtask,
+    parallelFrontendSubtask,
+    ...parallelSupportSubtasks,
+  ].slice(0, dispatchExampleCount);
+  const independentSubtaskIds = acceptSubtasks
+    .filter((item) => !repairExample || item.id !== repairSubtask.id)
+    .map((item) => item.id);
   const acceptReviews = acceptEventIds.map((reviewEventId, index) => {
     const launchesRepair = repairExample && index === acceptEventIds.length - 1;
     return {
@@ -268,7 +284,8 @@ function buildLoopPlusProtocolExamples(
           })),
         },
         ...planFeedback,
-        subtasks: repairExample ? [subtask] : [],
+        subtasks: acceptSubtasks,
+        ...(independentSubtaskIds.length > 0 ? { independentSubtaskIds } : {}),
       },
     },
     {
@@ -446,6 +463,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       ? `- When at least three useful independent delivery boundaries are ready, aim for 3 to ${parallelCapacity} concurrent subtasks, bounded by available slots and the decision subtask limit. Do not default to only one or two. Use fewer when there are fewer useful boundaries, real prerequisite dependencies, or insufficient free slots; never create tiny or artificial tasks just to fill capacity.`
       : `- Use up to ${parallelCapacity} useful independent subtasks within the configured limits and available slots. Never create tiny or artificial tasks just to fill capacity.`,
     "- On dispatch and accept, look for ready independent work to refill free slots instead of waiting for all siblings. Review the whole open acceptance batch first and attach follow-up work to accept. Do not duplicate running or pending tasks; pending work already owns its place in the queue and may consume released slots.",
+    "- Every accept is also a remaining-goal planning decision: re-read all unfinished root and supplemental requirements, not just this batch's acceptance defects. When the overall goal is unfinished, dispatch ready independent deliverables alongside necessary repairs in the same accept, within capacity and ownership limits. A failed check or a repair in progress is not a global barrier. Keep repairs focused on the failed criterion; independent delivery must advance a distinct unmet requirement, not repeat still-valid verification.",
+    "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
     "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
@@ -458,13 +477,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Every accept.reviews reason must briefly summarize the evidence-backed result of the default acceptance checklist for that event, no more than 50 characters. Do not reuse generic filler; name the decisive evidence or failed criterion.",
     "- Write each acceptance reason and check detail in the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory. Keep each within 50 characters, state the decisive evidence, failure, or not-applicable reason, and never invent evidence or use a bare passed/failed claim.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
-    "- When an event launches new subtasks, list those ids in that review's subtaskIds. Every subtask id must appear in exactly one subtaskIds array. A passed event may launch follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt.",
+    "- When an event launches repairs or related follow-up subtasks, list those ids in that review's subtaskIds. For independent remaining-goal deliveries unrelated to this batch's events, list their ids in accept.independentSubtaskIds instead. Every accept.subtasks id must appear exactly once across reviews[*].subtaskIds and independentSubtaskIds; unknown, duplicate, or missing links are rejected. independentSubtaskIds is optional and allowed only on accept. A passed event may launch related follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt. Never attach independent work to a failed review just to satisfy linkage: that would inherit the repair session.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
     "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence of execution in the attempt report or an identified targeted check. Reported execution results are sufficient evidence for checks that still cover the current changes. The presence of test code alone does not establish a passing execution. Keep every fixed and selected review; reusing execution facts does not remove any review item.",
     ...acceptancePlanLines,
-    "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and launch a repair only from the failed event. If a failed event cannot be repaired by a subtask, send blocked, which confirms nothing.",
+    "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and link each repair only to its failed event. Also dispatch ready independent remaining-goal work through independentSubtaskIds. If a failed event cannot be repaired by a subtask, check the whole remaining goal before choosing blocked: continue safe independent work with accept, retain the failed verdict, and record its unresolved blocker. Return blocked, confirming nothing, only when no safe independent work or live dependency can advance the goal.",
     "- Decide whether each next subtask continues an earlier subtask. Set continueFromSubtaskId to that earlier subtask id for follow-up work; omit it for independent work. Wait for that source to finish; use controls.reprompt to redirect work that is still running. The host restores only a session recorded under this parent with the same CLI and configuration. Do not run two tasks concurrently on one source session.",
     "- Repairs linked by failed reviews[*].subtaskIds automatically inherit the failed event's subtask session. Prefer that original session for acceptance-failure fixes, not a fresh context. A new attempt or conversation tab does not imply a new CLI session. Missing sessions or incompatible CLI/configuration are recorded and fall back to a fresh session.",
+    "- independentSubtaskIds do not inherit a failed event's session. Omit continueFromSubtaskId for genuinely independent work; only set it when deliberately continuing a different compatible earlier subtask. Independent delivery can run alongside a repair while real write conflicts and per-session serialization remain enforced.",
     "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is a concise evidence-backed reason of no more than 50 characters.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
@@ -477,7 +497,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- reprompt requires a non-empty title describing the corrected task in Simplified Chinese. Do not reuse the old title when the task goal or scope has changed; update the title together with the prompt. A reprompt without a valid title is rejected.",
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when other work is still running or pending, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
-    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept, and list its subtask ids on the review that needs the work. Passed reviews stay passed. If the new work must wait for a still-running or pending execution, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
+    "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept; use independentSubtaskIds for independent deliveries or reviews[*].subtaskIds for event-related work. Passed reviews stay passed. If all new work must wait for a still-running or pending execution and no other independent work is ready, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
     "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms nothing. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
     LOOP_BLOCKED_SUMMARY_INSTRUCTION,
@@ -490,7 +510,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
-    "Protocol examples illustrate JSON shape, not a fixed task count or a role quota. Size real work using the rules and live capacity above.",
+    "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan),
   ].join("\n");
 }
