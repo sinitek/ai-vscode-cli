@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 import re
@@ -174,16 +175,35 @@ class ExecutionPlanContractsTests(unittest.TestCase):
                 self.assertIn("repository-relative", "\n".join(errors))
 
     def test_symlink_target_and_mapping_cannot_escape_root(self) -> None:
-        with tempfile.TemporaryDirectory() as outside:
-            outside_file = Path(outside) / "external.md"
-            outside_file.write_text("outside", encoding="utf-8")
+        with tempfile.TemporaryDirectory() as outside, contextlib.ExitStack() as links:
+            def link_outside(link: Path) -> None:
+                outside_file = Path(outside) / link.name
+                outside_file.write_text("outside", encoding="utf-8")
+                try:
+                    link.symlink_to(outside_file)
+                except OSError as error:
+                    if sys.platform != "win32" or error.winerror != 1314:
+                        raise
+                    # Windows without symlink privilege still supports directory junctions.
+                    # Keep a real filesystem escape instead of mocking resolve() or skipping.
+                    self.assertTrue(link.parent.is_relative_to(self.root))
+                    link.parent.rmdir()
+                    subprocess.run(
+                        ["cmd.exe", "/d", "/c", "mklink", "/J", str(link.parent), outside],
+                        check=True, capture_output=True,
+                    )
+                    links.callback(link.parent.rmdir)
+                else:
+                    links.callback(link.unlink)
+                self.assertEqual(link.resolve(), outside_file.resolve())
+
             target_file = self.root / self.target
             target_file.unlink()
-            target_file.symlink_to(outside_file)
+            link_outside(target_file)
             self.assert_rejected("escapes repository root")
             mapping_file = self.root / self.mapping_path
             mapping_file.unlink()
-            mapping_file.symlink_to(outside_file)
+            link_outside(mapping_file)
             errors = contracts.check_mappings(self.root, [self.mapping_path])
             self.assertIn("escapes repository root", "\n".join(errors))
 
@@ -431,16 +451,16 @@ class ExecutionPlanContractsTests(unittest.TestCase):
     def test_cli_is_read_only_and_reports_success_failure_and_limits(self) -> None:
         self.write_mapping()
         before = {target.relative_to(self.root): target.read_bytes() for target in self.root.rglob("*") if target.is_file()}
-        command = [sys.executable, str(ROOT_DIR / "scripts/check_execution_plan_contracts.py"),
+        command = [sys.executable, "-X", "utf8", str(ROOT_DIR / "scripts/check_execution_plan_contracts.py"),
                    "--root", str(self.root), "--mapping", self.mapping_path]
-        success = subprocess.run(command, capture_output=True, text=True, cwd=self.root, check=False)
+        success = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", cwd=self.root, check=False)
         self.assertEqual(success.returncode, 0, success.stdout + success.stderr)
         self.assertIn("PASS:", success.stdout)
         self.assertIn(contracts.LIMITATIONS, success.stdout)
         after = {target.relative_to(self.root): target.read_bytes() for target in self.root.rglob("*") if target.is_file()}
         self.assertEqual(after, before)
         (self.root / self.target).unlink()
-        failure = subprocess.run(command, capture_output=True, text=True, cwd=self.root, check=False)
+        failure = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", cwd=self.root, check=False)
         self.assertEqual(failure.returncode, 1)
         self.assertIn("target does not exist", failure.stdout)
         self.assertNotIn("Traceback", failure.stderr)

@@ -406,7 +406,15 @@ test("reports orphan deletion errors and sanitizes persisted messages into a sta
     const cliDir = path.join(paths.messageDirRoot, "project-a", "codex");
     fs.mkdirSync(cliDir, { recursive: true });
     fs.writeFileSync(path.join(cliDir, "locked.json"), "{}", "utf8");
-    fs.chmodSync(cliDir, 0o555);
+    const lockedFile = path.join(cliDir, "locked.json");
+    const fsModule = require("fs") as { unlinkSync: typeof fs.unlinkSync };
+    const originalUnlink = fsModule.unlinkSync;
+    fsModule.unlinkSync = ((filePath: fs.PathLike) => {
+      if (path.resolve(String(filePath)) === path.resolve(lockedFile)) {
+        throw Object.assign(new Error("access denied"), { code: "EACCES" });
+      }
+      return originalUnlink(filePath);
+    }) as typeof fs.unlinkSync;
     try {
       cleanupWorkspaceMessageFiles("project-a", createStore(), {
         ...paths,
@@ -414,7 +422,7 @@ test("reports orphan deletion errors and sanitizes persisted messages into a sta
         logError: (event: string) => errors.push(event),
       });
     } finally {
-      fs.chmodSync(cliDir, 0o755);
+      fsModule.unlinkSync = originalUnlink;
     }
     assert.deepEqual(errors, ["session-message-orphan-delete-error"]);
     assert.equal(fs.existsSync(path.join(cliDir, "locked.json")), true);

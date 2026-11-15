@@ -4,23 +4,36 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+// Isolate before importing modules that capture os.homedir() at load time.
 const originalHome = process.env.HOME;
-const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-core-"));
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-core-coverage-"));
+const migrationLinks = new Map<string, string>();
 process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-task-store-core-coverage-"));
+    unlinkMigrationFixtures();
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
+
 const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
-if (originalHome === undefined) {
-  delete process.env.HOME;
-} else {
-  process.env.HOME = originalHome;
-}
+assert.equal(loopTaskStore.getLoopCommunicationPaths("isolation-probe").dir,
+  path.join(testHome, ".sinitek_cli", "loop-communications", "isolation-probe"));
 
 type LoopTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
 
 let taskSequence = 0;
-
-test.after(() => {
-  fs.rmSync(testHome, { recursive: true, force: true });
-});
 
 function createTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
   taskSequence += 1;
@@ -68,7 +81,7 @@ function readPersistedTask(filePath: string, taskId: string): LoopTaskRecord {
 }
 
 test("round-trips classic Loop progress separately from Loop+ and discards malformed values", () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "loop-progress-store-"));
+  const directory = fs.mkdtempSync(path.join(testHome, "loop-progress-store-"));
   const filePath = path.join(directory, "loop-tasks.json");
   try {
     for (const progressPercent of [0, 42, 99, 100]) {
@@ -89,6 +102,8 @@ test("round-trips classic Loop progress separately from Loop+ and discards malfo
 
 function resetLoopStorage(): void {
   const dataDir = path.join(testHome, ".sinitek_cli");
+  assert.equal(os.homedir(), testHome);
+  unlinkMigrationFixtures();
   [
     "loop-tasks",
     "loop-tasks.json",
@@ -100,6 +115,33 @@ function resetLoopStorage(): void {
     fs.rmSync(path.join(dataDir, entry), { recursive: true, force: true });
   });
   fs.mkdirSync(dataDir, { recursive: true });
+}
+
+function linkMigrationFixture(targetFile: string, link: string): void {
+  let target = targetFile;
+  let readableTarget = targetFile;
+  if (process.platform === "win32") {
+    target = fs.mkdtempSync(path.join(testHome, "external-link-target-"));
+    readableTarget = path.join(target, "marker.md");
+    fs.writeFileSync(readableTarget, fs.readFileSync(targetFile));
+  }
+  fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "file");
+  migrationLinks.set(link, readableTarget);
+  assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+  assert.equal(fs.realpathSync(link), fs.realpathSync(target));
+  assert.equal(fs.readFileSync(process.platform === "win32" ? path.join(link, "marker.md") : link, "utf8"), "target");
+}
+
+function unlinkMigrationFixtures(): void {
+  for (const [link, targetFile] of migrationLinks) {
+    assert.ok(path.relative(testHome, link) && !path.relative(testHome, link).startsWith(".."));
+    assert.equal(fs.readFileSync(targetFile, "utf8"), "target");
+    assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+    fs.unlinkSync(link);
+    assert.equal(fs.existsSync(link), false);
+    assert.equal(fs.readFileSync(targetFile, "utf8"), "target");
+  }
+  migrationLinks.clear();
 }
 
 function getLegacyPaths(): { taskDir: string; flatTaskFile: string; communicationDir: string; loopCommunicationDir: string } {
@@ -782,7 +824,7 @@ test("covers legacy Loop migration failure and conflict boundaries", () => {
   const sourceSymlink = path.join(legacy.communicationDir, "symlink-source", "link.md");
   const sourceLinkTarget = path.join(legacy.communicationDir, "symlink-source", "target.md");
   fs.writeFileSync(sourceLinkTarget, "target", "utf8");
-  fs.symlinkSync(sourceLinkTarget, sourceSymlink);
+  linkMigrationFixture(sourceLinkTarget, sourceSymlink);
   const fsModuleForSourceLink = require("fs") as typeof import("fs");
   const originalSourceLinkReaddir = fsModuleForSourceLink.readdirSync;
   let sourceDirReads = 0;
@@ -797,6 +839,8 @@ test("covers legacy Loop migration failure and conflict boundaries", () => {
   }) as typeof fs.readdirSync;
   try {
     assert.doesNotThrow(() => loopTaskStore.listLoopTaskStoreFiles());
+    assert.equal(fs.existsSync(sourceSymlinkDir), true);
+    assert.equal(fs.existsSync(path.join(legacy.loopCommunicationDir, "symlink-source", "link.md")), false);
   } finally {
     fsModuleForSourceLink.readdirSync = originalSourceLinkReaddir;
   }
@@ -805,8 +849,10 @@ test("covers legacy Loop migration failure and conflict boundaries", () => {
   fs.mkdirSync(path.join(legacy.communicationDir, "assert-symlink"), { recursive: true });
   const assertSymlinkTarget = path.join(legacy.communicationDir, "assert-symlink", "target.md");
   fs.writeFileSync(assertSymlinkTarget, "target", "utf8");
-  fs.symlinkSync(assertSymlinkTarget, path.join(legacy.communicationDir, "assert-symlink", "link.md"));
+  linkMigrationFixture(assertSymlinkTarget, path.join(legacy.communicationDir, "assert-symlink", "link.md"));
   assert.doesNotThrow(() => loopTaskStore.listLoopTaskStoreFiles());
+  assert.equal(fs.existsSync(legacy.communicationDir), true);
+  assert.equal(fs.existsSync(legacy.loopCommunicationDir), false);
 
   resetLoopStorage();
   fs.mkdirSync(path.join(legacy.communicationDir, "target-link"), { recursive: true });
@@ -814,8 +860,9 @@ test("covers legacy Loop migration failure and conflict boundaries", () => {
   fs.mkdirSync(path.join(legacy.loopCommunicationDir, "target-link"), { recursive: true });
   const targetLinkTarget = path.join(legacy.loopCommunicationDir, "target-link", "target.md");
   fs.writeFileSync(targetLinkTarget, "target", "utf8");
-  fs.symlinkSync(targetLinkTarget, path.join(legacy.loopCommunicationDir, "target-link", "shared.md"));
+  linkMigrationFixture(targetLinkTarget, path.join(legacy.loopCommunicationDir, "target-link", "shared.md"));
   assert.doesNotThrow(() => loopTaskStore.listLoopTaskStoreFiles());
+  assert.equal(fs.readFileSync(path.join(legacy.communicationDir, "target-link", "shared.md"), "utf8"), "legacy");
 
   resetLoopStorage();
   fs.mkdirSync(path.join(legacy.communicationDir, "conflict"), { recursive: true });
@@ -824,8 +871,10 @@ test("covers legacy Loop migration failure and conflict boundaries", () => {
   fs.writeFileSync(path.join(legacy.loopCommunicationDir, "conflict", "shared.md"), "current", "utf8");
   const conflictLinkTarget = path.join(legacy.loopCommunicationDir, "conflict", "target.md");
   fs.writeFileSync(conflictLinkTarget, "target", "utf8");
-  fs.symlinkSync(conflictLinkTarget, path.join(legacy.loopCommunicationDir, "conflict", "shared.pre-loop-migration.md"));
+  linkMigrationFixture(conflictLinkTarget, path.join(legacy.loopCommunicationDir, "conflict", "shared.pre-loop-migration.md"));
   assert.doesNotThrow(() => loopTaskStore.listLoopTaskStoreFiles());
+  assert.equal(fs.readFileSync(path.join(legacy.communicationDir, "conflict", "shared.md"), "utf8"), "legacy");
+  assert.equal(fs.readFileSync(path.join(legacy.loopCommunicationDir, "conflict", "shared.md"), "utf8"), "current");
 
   resetLoopStorage();
   fs.mkdirSync(path.join(legacy.communicationDir, "sequence-candidate"), { recursive: true });

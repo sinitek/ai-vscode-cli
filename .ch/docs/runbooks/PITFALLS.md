@@ -17,6 +17,39 @@
 - 验证边界：这是测试夹具/运行时路径的前置条件，不构成真实 Webview 或浏览器验收证据。
 - 事实来源：`.ch/docs/design-docs/vscode-cli-extension-runtime.md`、`.ch/docs/TESTING.md`。
 
+## Windows 文件系统测试夹具必须隔离用户根并保留链接边界
+
+- 状态：有效
+- 适用范围：使用 `os.homedir()`、用户级配置或 Loop 通信目录的 Node 测试，以及链接/权限边界夹具。
+
+### 现象与根因
+
+- 只设置临时 `HOME` 时，Windows 的 `os.homedir()` 仍可能读取真实 `USERPROFILE`；模块若在加载时缓存 `os.homedir()`，后设置环境变量也不会改变已经捕获的路径。
+- Windows 文件 symlink 可能因权限或 Developer Mode 不可用；`chmod(0)` 也不保证 Windows 或特权 POSIX 用户无法读取文件。
+- 只观察链接创建成功、异常发生或清理结束，无法证明链接身份、路径越界拒绝、迁移失败保留和外部目标内容未被改动。
+
+### 长期规避
+
+- 在加载会捕获用户根的仓库模块之前，先创建本测试拥有的临时根，再同时设置 `HOME` 与 `USERPROFILE` 并确认 `os.homedir()` 指向该根。测试结束时在 `finally` / `test.after` 中分别恢复原值；原变量不存在时删除它。
+- 文件 symlink 不可用时，可用真实目录 junction 指向夹具外部目录，并在目标目录放 marker 文件。仍须断言链接身份、`realpath`、内部文件可访问、越界访问被拒绝或迁移失败并保留源数据；撤链后再次核对外部 marker 内容不变。不能用 hardlink 冒充 symlink，也不能把链接创建失败当作场景通过或无依据跳过。
+- 不可读场景应在生产代码实际调用的最窄文件系统依赖处，对指定临时路径注入 `EACCES`；断言注入命中、恢复原依赖后仍可读且内容未变。这证明容错分支，不证明 Windows ACL 已拒绝访问。
+- 保留其他平台的原始 symlink 分支。本机通过结果只说明本机实际执行的平台，不能替代其它平台验证。
+- 这些做法只约束测试夹具。生产 Loop legacy communication migration 仍拒绝旧目录树中的 symlink；communication preview 仍解析真实路径并要求目标位于允许根内，不能因夹具使用 junction 而改变这些契约。
+
+### 验证方式
+
+- `npm run build`
+- `node --test dist/test/loop/loopCommunicationFilePreview.test.js dist/test/loop/loopTaskStoreCoreCoverage.test.js`
+- 检查项包括：测试根在模块加载前隔离、junction/symlink 的身份与真实目标、marker 可访问及保留、preview 越界拒绝、migration 拒绝链接、权限 mock 命中并恢复。单平台运行不代表其他平台已验证。
+
+### 事实来源
+
+- `src/test/loop/loopCommunicationFilePreview.test.ts`
+- `src/test/loop/loopTaskStoreCoreCoverage.test.ts`
+- `src/loopCommunicationFilePreview.ts`
+- `src/loopTaskStore.ts`
+- `src/shared/userHomePaths.ts`
+
 ## Loop+ 假完成必须核对轮次与会话所有权
 
 - 症状：子任务仍在推理或调用工具，界面却展示完成，且 Tab 不关闭。先对照任务记录、runStatus 和原生最终答复/完成事件；不可凭历史系统摘要判定成功，也不可用失败时关 Tab 掩盖问题。

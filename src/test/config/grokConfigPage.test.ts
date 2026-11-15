@@ -8,7 +8,8 @@ const storePath = path.join(process.cwd(), "media", "config", "assets", "config-
 const uiPath = path.join(process.cwd(), "media", "config", "assets", "config-app-ui.js");
 
 function read(filePath: string): string {
-  return fs.readFileSync(filePath, "utf8");
+  // Normalize checkout line endings for structural source extraction only.
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
 }
 
 function loadStoreUtilities(): { utils: Record<string, (...args: unknown[]) => unknown>; storage: Map<string, string> } {

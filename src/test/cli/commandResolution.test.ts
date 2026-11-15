@@ -94,9 +94,9 @@ test("prefers the npm global user bin before later PATH entries", async () => {
   await fs.writeFile(npmOpenCode, "");
   await fs.writeFile(brewOpenCode, "");
 
+  const restorePlatform = setPlatform("linux");
   const restoreEnvironment = setCommandResolutionEnvironment(homeDir, brewBin);
   try {
-
     const resolved = resolveCliCommand("opencode");
     assert.deepEqual(resolved, {
       command: npmOpenCode,
@@ -104,6 +104,7 @@ test("prefers the npm global user bin before later PATH entries", async () => {
     });
   } finally {
     restoreEnvironment();
+    restorePlatform();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
@@ -117,9 +118,9 @@ test("falls back to PATH when no preferred user-bin executable exists", async ()
   await fs.mkdir(brewBin, { recursive: true });
   await fs.writeFile(brewOpenCode, "");
 
+  const restorePlatform = setPlatform("linux");
   const restoreEnvironment = setCommandResolutionEnvironment(homeDir, brewBin);
   try {
-
     const resolved = resolveCliCommand("opencode");
     assert.deepEqual(resolved, {
       command: brewOpenCode,
@@ -127,6 +128,7 @@ test("falls back to PATH when no preferred user-bin executable exists", async ()
     });
   } finally {
     restoreEnvironment();
+    restorePlatform();
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });

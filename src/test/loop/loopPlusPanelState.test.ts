@@ -1,5 +1,29 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+// Isolate before importing modules that capture os.homedir() at load time.
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-plus-panel-state-"));
+process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-plus-panel-state-"));
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
 
 import { installVscodeMock } from "../vscodeMock";
 
@@ -129,9 +153,9 @@ function task(
   };
 }
 
-function deps(writes: { count: number } = { count: 0 }) {
+function deps(writes: { count: number } = { count: 0 }, runningTaskIds: readonly string[] = ["loop-plus-task"]) {
   return {
-    collectRunningLoopTaskIds: () => new Set<string>(),
+    collectRunningLoopTaskIds: () => new Set(runningTaskIds),
     readTextFileIfNonEmpty: () => "# Loop chat\n\nstatus line\n",
     fileExists: () => true,
     writeTextFileEnsuringDir: () => {
@@ -187,6 +211,27 @@ test("projects the current review, FIFO queue, running work, and pending work fr
   assert.equal(state.task.canStop, true);
   assert.equal(state.task.canSupplement, true);
   assert.equal(state.task.canContinue, false);
+});
+
+test("keeps snapshot projection read-only while host ownership controls stop and continue", () => {
+  const snapshot = parallelSnapshot();
+  const before = JSON.stringify(snapshot);
+  const writes = { count: 0 };
+  const orphan = buildLoopGroupChatPanelStateWithDeps(task(snapshot), deps(writes, []));
+  const wrongOwner = buildLoopGroupChatPanelStateWithDeps(task(snapshot), deps(writes, ["another-task"]));
+  for (const state of [orphan, wrongOwner]) {
+    assert.equal(state.loopPlus?.ok, true);
+    assert.equal(state.loopPlus?.ok && state.loopPlus.runningCount, 1);
+    assert.equal(state.task.canStop, false);
+    assert.equal(state.task.canContinue, true);
+  }
+  const limited = buildLoopGroupChatPanelStateWithDeps(task(snapshot, {
+    mainAiFailureLimitReached: true,
+  }), deps(writes, []));
+  assert.equal(limited.task.canContinue, false);
+  assert.equal(limited.task.canSupplement, false);
+  assert.equal(JSON.stringify(snapshot), before);
+  assert.equal(writes.count, 0);
 });
 
 test("reprompt shows the corrected title for the same subtask in the group chat", () => {

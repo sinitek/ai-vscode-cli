@@ -226,9 +226,18 @@ test("installs a downloaded skill and replaces an existing directory", async () 
     const external = path.join(homeDir, "external-pdf");
     await fs.promises.mkdir(external, { recursive: true });
     await fs.promises.writeFile(path.join(external, "marker.txt"), "keep\n", "utf8");
-    await fs.promises.symlink(path.join(external, "marker.txt"), path.join(claudePdfDir, "outside-link"));
+    const outsideLink = path.join(claudePdfDir, "outside-link");
+    if (process.platform === "win32") {
+      await fs.promises.symlink(external, outsideLink, "junction");
+    } else {
+      await fs.promises.symlink(path.join(external, "marker.txt"), outsideLink);
+    }
     await fs.promises.rm(codexAlphaDir, { recursive: true, force: true });
-    await fs.promises.symlink(external, codexAlphaDir, "dir");
+    if (process.platform === "win32") {
+      await fs.promises.symlink(external, codexAlphaDir, "junction");
+    } else {
+      await fs.promises.symlink(external, codexAlphaDir, "dir");
+    }
 
     const again = await installLobehubSkill(
       { identifier: "anthropics-skills-pdf", platforms: ["claude", "codex"] },
@@ -236,6 +245,7 @@ test("installs a downloaded skill and replaces an existing directory", async () 
     );
     assert.ok(again.targets.every((target) => target.status === "installed"));
     assert.equal(fs.existsSync(path.join(claudePdfDir, "old-note.txt")), false);
+    assert.equal(fs.existsSync(outsideLink), false);
     assert.equal(await fs.promises.readFile(claudePdf, "utf8"), "print('pdf')\n");
     assert.equal(await fs.promises.readFile(path.join(external, "marker.txt"), "utf8"), "keep\n");
     const replacedAlpha = await fs.promises.lstat(codexAlphaDir);

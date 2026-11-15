@@ -10,10 +10,16 @@ import { createChatImageResource, loadChatImageResource, MAX_CHAT_IMAGE_BYTES, r
 const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWZkAAAAASUVORK5CYII=", "base64");
 
 test("resolves POSIX, Windows, UNC, home, encoded and file URI image paths", () => {
-  assert.equal(resolveChatImagePath("../图.png", "/work/project"), "/work/图.png");
-  assert.equal(resolveChatImagePath("my%20folder/image.png", "/work"), "/work/my folder/image.png");
-  assert.equal(resolveChatImagePath("~/图.png", "/work", "/home/user"), "/home/user/图.png");
-  assert.equal(resolveChatImagePath("file:///tmp/%E5%9B%BE%20%E7%89%87.png", "/work"), "/tmp/图 片.png");
+  // Slash-rooted filesystem paths use the current drive on Windows; file URLs must name a drive there.
+  const windows = process.platform === "win32";
+  const driveRoot = path.parse(process.cwd()).root;
+  assert.equal(resolveChatImagePath("../图.png", "/work/project"), windows ? `${driveRoot}work\\图.png` : "/work/图.png");
+  assert.equal(resolveChatImagePath("my%20folder/image.png", "/work"), windows ? `${driveRoot}work\\my folder\\image.png` : "/work/my folder/image.png");
+  assert.equal(resolveChatImagePath("~/图.png", "/work", "/home/user"), windows ? `${driveRoot}home\\user\\图.png` : "/home/user/图.png");
+  assert.equal(
+    resolveChatImagePath(windows ? "file:///C:/tmp/%E5%9B%BE%20%E7%89%87.png" : "file:///tmp/%E5%9B%BE%20%E7%89%87.png", "/work"),
+    windows ? "C:\\tmp\\图 片.png" : "/tmp/图 片.png",
+  );
   assert.equal(resolveChatImagePath("C:/images/图.png", "/work"), "C:\\images\\图.png");
   assert.equal(resolveChatImagePath("file:///C:/images/a%20b.png", "/work"), "C:\\images\\a b.png");
   assert.equal(resolveChatImagePath("images/图.png", "C:\\work"), "C:\\work\\images\\图.png");

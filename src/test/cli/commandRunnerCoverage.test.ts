@@ -247,7 +247,7 @@ test("validates OpenCode server ports before starting a child process", () => {
 
 test("starts an OpenCode server through the mock and forwards its lifecycle events", () => {
   const restoreConfiguration = installConfiguration({
-    "commands.opencode": process.execPath,
+    "commands.opencode": `"${process.execPath}"`,
     "args.opencode": [],
   });
   const originalSpawn = crossSpawn.spawn;
@@ -333,7 +333,7 @@ test("rejects captured output on timeout without retaining a child or timer", as
 
   try {
     await assert.rejects(
-      captureCliOutput(process.execPath, ["--version"], { timeoutMs: 5 }),
+      captureCliOutput(`"${process.execPath}"`, ["--version"], { timeoutMs: 5 }),
       /capture-cli-output-timeout:5/u,
     );
     assert.equal(spawnAttempts, 1);
@@ -356,7 +356,7 @@ test("clears capture output timeout after a fast successful close", async () => 
   };
 
   try {
-    const output = await captureCliOutput(process.execPath, ["--version"], { timeoutMs: 1000 });
+    const output = await captureCliOutput(`"${process.execPath}"`, ["--version"], { timeoutMs: 1000 });
 
     assert.equal(output.stdout, "fast output");
     assert.equal(output.exitCode, 0);
@@ -638,7 +638,7 @@ test("cleans OpenCode overlays on unresolved and child error paths", () => {
   }
 
   restoreConfiguration = installConfiguration({
-    "commands.opencode": process.execPath,
+    "commands.opencode": `"${process.execPath}"`,
     "args.opencode": [],
   });
   const originalSpawn = crossSpawn.spawn;
@@ -816,7 +816,7 @@ test("parses nested OpenCode output, structured finals, provider errors, and str
 
 test("covers command-resolution, terminal escaping, and malformed OpenCode JSON boundaries", async () => {
   const restoreConfiguration = installConfiguration({
-    "commands.codex": process.execPath,
+    "commands.codex": `"${process.execPath}"`,
     "args.codex": [""],
   });
   const vscode = require("vscode") as {
@@ -827,7 +827,7 @@ test("covers command-resolution, terminal escaping, and malformed OpenCode JSON 
   vscode.window.createTerminal = () => ({ sendText: (value) => sent.push(value) });
   const restorePlatform = setPlatform("linux");
   try {
-    assert.equal(await isCliCommandAvailable(process.execPath), true);
+    assert.equal(await isCliCommandAvailable(`"${process.execPath}"`), true);
     assert.equal(await isCliCommandAvailable("/sinitek-command-runner-coverage/missing"), false);
     await runCli("codex");
     assert.match(sent[0] ?? "", /''/u);
@@ -862,9 +862,10 @@ test("covers command-resolution, terminal escaping, and malformed OpenCode JSON 
 test("terminates mocked process trees through direct, child, and Windows fallbacks", async () => {
   const originalSpawn = crossSpawn.spawn;
   const originalKill = process.kill;
-  const restoreConfiguration = installConfiguration({ "commands.codex": process.execPath, "args.codex": [] });
+  const restoreConfiguration = installConfiguration({ "commands.codex": `"${process.execPath}"`, "args.codex": [] });
   const child = createFakeChild(4242);
   const spawned: unknown[][] = [];
+  const restorePlatform = setPlatform("linux");
   let childKillCalls = 0;
   child.kill = () => {
     childKillCalls += 1;
@@ -887,12 +888,12 @@ test("terminates mocked process trees through direct, child, and Windows fallbac
     assert.equal(handle.kill("SIGINT"), true);
     assert.equal(childKillCalls, 1);
 
-    const restorePlatform = setPlatform("win32");
+    const restoreWindowsPlatform = setPlatform("win32");
     try {
       assert.equal(handle.kill("SIGKILL"), true);
       assert.equal(spawned.at(-1)?.[0], "taskkill");
     } finally {
-      restorePlatform();
+      restoreWindowsPlatform();
     }
 
     const noPid = createFakeChild();
@@ -938,6 +939,7 @@ test("terminates mocked process trees through direct, child, and Windows fallbac
     await new Promise((resolve) => setTimeout(resolve, 2050));
     assert.deepEqual(escalationSignals, ["SIGTERM", "SIGKILL"]);
   } finally {
+    restorePlatform();
     process.kill = originalKill;
     crossSpawn.spawn = originalSpawn;
     restoreConfiguration();

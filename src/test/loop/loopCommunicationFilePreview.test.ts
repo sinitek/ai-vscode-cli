@@ -3,6 +3,28 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+
+// Isolate before importing modules that capture os.homedir() at load time.
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-communication-file-preview-"));
+process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-communication-file-preview-"));
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
+
 import {
   collectLoopCommunicationPreviewRoots,
   isLoopCommunicationPreviewPath,
@@ -60,8 +82,9 @@ test("renders communication markdown and escapes raw html", () => {
 });
 
 test("reads a markdown file inside the task communication directory and blocks escapes", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "loop-communication-preview-"));
-  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "loop-communication-outside-"));
+  const root = fs.mkdtempSync(path.join(testHome, "loop-communication-preview-"));
+  const outside = fs.mkdtempSync(path.join(testHome, "loop-communication-outside-"));
+  const link = path.join(root, "subtasks", process.platform === "win32" ? "linked" : "linked.md");
   try {
     const subtasksDir = path.join(root, "subtasks");
     fs.mkdirSync(subtasksDir, { recursive: true });
@@ -69,7 +92,12 @@ test("reads a markdown file inside the task communication directory and blocks e
     fs.writeFileSync(filePath, "# 子任务沟通记录\n\n执行完成。\n", "utf8");
     fs.writeFileSync(path.join(subtasksDir, "empty.md"), "   \n", "utf8");
     fs.writeFileSync(path.join(outside, "secret.md"), "# secret\n", "utf8");
-    fs.symlinkSync(path.join(outside, "secret.md"), path.join(subtasksDir, "linked.md"));
+    const target = process.platform === "win32" ? outside : path.join(outside, "secret.md");
+    fs.symlinkSync(target, link, process.platform === "win32" ? "junction" : "file");
+    assert.equal(fs.lstatSync(link).isSymbolicLink(), true);
+    assert.equal(fs.realpathSync(link), fs.realpathSync(target));
+    const linkedFile = process.platform === "win32" ? path.join(link, "secret.md") : link;
+    assert.equal(fs.readFileSync(linkedFile, "utf8"), "# secret\n");
     const roots = [root];
 
     const allowed = readLoopCommunicationFilePreview(filePath, roots);
@@ -81,28 +109,35 @@ test("reads a markdown file inside the task communication directory and blocks e
     assert.equal(previewError(readLoopCommunicationFilePreview(path.join(subtasksDir, "missing.md"), roots)), "missing");
     assert.equal(previewError(readLoopCommunicationFilePreview(path.join(subtasksDir, "empty.md"), roots)), "empty");
     assert.equal(previewError(readLoopCommunicationFilePreview(path.join(outside, "secret.md"), roots)), "forbidden");
-    assert.equal(previewError(readLoopCommunicationFilePreview(path.join(subtasksDir, "linked.md"), roots)), "forbidden");
+    assert.equal(previewError(readLoopCommunicationFilePreview(linkedFile, roots)), "forbidden");
     assert.equal(previewError(readLoopCommunicationFilePreview(path.join(root, "..", "secret.md"), roots)), "forbidden");
     assert.equal(previewError(readLoopCommunicationFilePreview("relative.md", roots)), "invalid");
     assert.equal(previewError(readLoopCommunicationFilePreview(12, roots)), "invalid");
+    assert.equal(fs.readFileSync(filePath, "utf8"), "# 子任务沟通记录\n\n执行完成。\n");
+    assert.equal(fs.readFileSync(path.join(outside, "secret.md"), "utf8"), "# secret\n");
   } finally {
+    if (fs.existsSync(link)) fs.unlinkSync(link);
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(outside, { recursive: true, force: true });
   }
 });
 
 test("treats a realpath alias of the communication directory as the same root", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "loop-communication-alias-"));
-  const aliasParent = fs.mkdtempSync(path.join(os.tmpdir(), "loop-communication-alias-parent-"));
+  const root = fs.mkdtempSync(path.join(testHome, "loop-communication-alias-"));
+  const aliasParent = fs.mkdtempSync(path.join(testHome, "loop-communication-alias-parent-"));
+  const alias = path.join(aliasParent, "communication");
   try {
     const filePath = path.join(root, "main-task.md");
     fs.writeFileSync(filePath, "# 主任务\n", "utf8");
-    const alias = path.join(aliasParent, "communication");
-    fs.symlinkSync(root, alias);
+    fs.symlinkSync(root, alias, process.platform === "win32" ? "junction" : "dir");
+    assert.equal(fs.lstatSync(alias).isSymbolicLink(), true);
+    assert.equal(fs.realpathSync(alias), fs.realpathSync(root));
     const aliasFile = path.join(alias, "main-task.md");
     const preview = readLoopCommunicationFilePreview(aliasFile, [root]);
     assert.equal(preview.ok, true);
+    assert.equal(fs.readFileSync(filePath, "utf8"), "# 主任务\n");
   } finally {
+    if (fs.existsSync(alias)) fs.unlinkSync(alias);
     fs.rmSync(root, { recursive: true, force: true });
     fs.rmSync(aliasParent, { recursive: true, force: true });
   }
@@ -125,8 +160,8 @@ test("collects the task communication directory and canonical loop directory", (
   assert.ok(widened.every((root) => root.split(path.sep).includes("task-1")));
 });
 
-test("rejects an unreadable communication file and a file above the preview limit", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "loop-communication-limits-"));
+test("rejects an unreadable communication file and a file above the preview limit", (context) => {
+  const root = fs.mkdtempSync(path.join(testHome, "loop-communication-limits-"));
   try {
     const directoryPath = path.join(root, "not-a-file.md");
     fs.mkdirSync(directoryPath);
@@ -134,11 +169,28 @@ test("rejects an unreadable communication file and a file above the preview limi
     fs.writeFileSync(hugePath, "a".repeat(1024 * 1024 + 1));
     const lockedPath = path.join(root, "locked.md");
     fs.writeFileSync(lockedPath, "# locked\n");
-    fs.chmodSync(lockedPath, 0);
     assert.equal(previewError(readLoopCommunicationFilePreview(directoryPath, [root])), "forbidden");
     assert.equal(previewError(readLoopCommunicationFilePreview(hugePath, [root])), "too_large");
-    assert.equal(previewError(readLoopCommunicationFilePreview(lockedPath, [root])), "unreadable");
-    fs.chmodSync(lockedPath, 0o644);
+    // chmod(0) does not deny reads on Windows (or under a privileged POSIX user).
+    const fsModule = require("fs") as typeof import("fs");
+    const readFileSync = fsModule.readFileSync;
+    const realLockedPath = fs.realpathSync(lockedPath);
+    let deniedReads = 0;
+    const readMock = context.mock.method(fsModule, "readFileSync", ((target: fs.PathOrFileDescriptor, options: any) => {
+      if (String(target) === realLockedPath) {
+        deniedReads += 1;
+        throw Object.assign(new Error("fixture read denied"), { code: "EACCES" });
+      }
+      return readFileSync(target, options);
+    }) as typeof fs.readFileSync);
+    try {
+      assert.equal(previewError(readLoopCommunicationFilePreview(lockedPath, [root])), "unreadable");
+      assert.equal(deniedReads, 1);
+    } finally {
+      readMock.mock.restore();
+    }
+    assert.equal(readLoopCommunicationFilePreview(lockedPath, [root]).ok, true);
+    assert.equal(fs.readFileSync(lockedPath, "utf8"), "# locked\n");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -3,10 +3,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
 
+// Normalize checkout line endings for structural CSS selectors only.
 const css = fs.readFileSync(
   path.join(process.cwd(), "media", "config", "assets", "index-Dl7d6WMN.css"),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 
 function rule(source: string, selector: string): string {
   const selectorStart = source.indexOf(`${selector} {`);

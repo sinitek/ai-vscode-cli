@@ -217,7 +217,9 @@ test("rejects stale asynchronous OpenCode capability results", () => {
 test("clears stale OpenCode main model override that mirrors the config subtask default", () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-model-settings-"));
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   process.env.HOME = tempHome;
+  process.env.USERPROFILE = tempHome;
   try {
     const {
       createModelSettingsHost,
@@ -316,6 +318,11 @@ test("clears stale OpenCode main model override that mirrors the config subtask 
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     fs.rmSync(tempHome, { recursive: true, force: true });
   }

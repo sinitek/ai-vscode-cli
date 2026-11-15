@@ -1,5 +1,29 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+
+// Isolate before importing modules that capture os.homedir() at load time.
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-plus-group-chat-panel-"));
+process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-plus-group-chat-panel-"));
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
 
 import { installVscodeMock } from "../vscodeMock";
 import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptancePlan";
@@ -91,6 +115,7 @@ function buildWithChat(
   overrides: Partial<LoopTaskRecord>,
   chat: string,
   frozenEventIds?: readonly string[],
+  runningTaskIds: readonly string[] = ["loop-plus-visible-task"],
 ): PanelState {
   let snapshot = loopPlus;
   let activeReviewEventIds = frozenEventIds ? [...frozenEventIds] : [];
@@ -112,7 +137,7 @@ function buildWithChat(
     }
   }
   return buildLoopGroupChatPanelStateWithDeps(task(snapshot, overrides), {
-    collectRunningLoopTaskIds: () => new Set<string>(),
+    collectRunningLoopTaskIds: () => new Set(runningTaskIds),
     readTextFileIfNonEmpty: () => chat,
     fileExists: () => true,
     writeTextFileEnsuringDir: () => {
@@ -193,6 +218,15 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.match(page, /主任务 0% 思考中/u);
     assert.doesNotMatch(page, /已全部收口/u);
   }
+});
+
+test("shows continue instead of stop when the host no longer owns the Loop+ run", () => {
+  const snapshot = parallelSnapshot();
+  const page = html(buildWithChat(snapshot, {}, "# chat\n", undefined, []));
+  assert.doesNotMatch(page, /<button[^>]*data-action="stopTask"/u);
+  assert.match(page, /<button[^>]*data-action="continueTask"/u);
+  assert.match(page, /loopGroupChatChat:stopTask/u);
+  assert.equal(countValue(page, "running"), "1");
 });
 
 test("renders a single review in blue and includes new batch members without marking running work", () => {
@@ -430,7 +464,6 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(missingPage, /快照缺失或损坏（missing）/u);
   assert.doesNotMatch(missingPage, /自动验收已暂停|正在验收|data-loop-plus-count=/u);
 });
-
 
 test("shows one execution animation for every running Loop+ subtask without pretending the waiting main task is generating", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
@@ -694,7 +727,6 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
   assert.match(stale, /data-loop-plus-status="idle"/u);
   assert.doesNotMatch(stale, /分解子任务|data-thinking-kind="main"/u);
 });
-
 
 test("pause evidence is visible while persistence metadata stays out of rendered messages", () => {
   const snapshot = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();

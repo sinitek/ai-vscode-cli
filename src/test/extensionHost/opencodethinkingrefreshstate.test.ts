@@ -76,8 +76,10 @@ function writeOpenCodeConfig(tempHome: string, configId: string, content: string
 test("publishes fixed OpenCode thinking efforts without using configured variants", async () => {
   const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-opencode-thinking-refresh-"));
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   const originalPath = process.env.PATH;
   process.env.HOME = tempHome;
+  process.env.USERPROFILE = tempHome;
   process.env.PATH = `${writeFakeOpenCodeCommand(tempHome)}${path.delimiter}${originalPath ?? ""}`;
 
   try {
@@ -223,6 +225,11 @@ test("publishes fixed OpenCode thinking efforts without using configured variant
       delete process.env.HOME;
     } else {
       process.env.HOME = originalHome;
+    }
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
     }
     if (originalPath === undefined) {
       delete process.env.PATH;

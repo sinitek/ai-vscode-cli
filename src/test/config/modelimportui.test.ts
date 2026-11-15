@@ -10,7 +10,8 @@ type AnyRecord = Record<string, any>;
 const repoRoot = path.resolve(__dirname, "../../..");
 
 function readAsset(relativePath: string): string {
-  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+  // Normalize checkout line endings for structural source extraction only.
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 
 function extractBetween(source: string, startMarker: string, endMarker: string): string {

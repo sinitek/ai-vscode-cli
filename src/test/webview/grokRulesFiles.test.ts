@@ -171,7 +171,11 @@ test("global rules loader includes an independent grok file option", () => {
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveLabel: document\.getElementById\("rulesSaveLabel"\)/);
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveClaudeLabel: document\.getElementById\("rulesSaveClaudeLabel"\)/);
   assert.equal(html.split('id="rulesSaveGrok"').length - 1, 1);
-  assert.doesNotMatch(html, /~\/\.grok|[A-Za-z]:\\/);
+  const rulesOverlay = html.match(/<div id="rulesOverlay"[\s\S]*?(?=<div id="toolSettingsOverlay")/);
+  assert.ok(rulesOverlay, "complete rules overlay should precede tool settings");
+  // Rules controls must not hard-code user paths; other settings can display native Windows paths.
+  assert.doesNotMatch(rulesOverlay[0], /~\/\.grok|[A-Za-z]:\\/);
+  assert.match(rulesOverlay[0], /<div id="rulesPath" class="rules-path"><\/div>/);
   assert.doesNotMatch(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, /~\/\.grok|[A-Za-z]:\\/);
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveGrokOption: document\.getElementById\("rulesSaveGrokOption"\)/);
   assert.match(VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP, /rulesSaveGrok: document\.getElementById\("rulesSaveGrok"\)/);

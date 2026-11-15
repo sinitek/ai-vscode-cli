@@ -58,15 +58,70 @@ test("lists skill directories, directory symlinks, and ignores other entries", a
     fs.mkdirSync(path.join(root, "beta"));
     fs.mkdirSync(path.join(root, ".hidden"));
     fs.writeFileSync(path.join(root, "notes.txt"), "ignore");
-    fs.symlinkSync(path.join(root, "alpha"), path.join(root, "linked-dir"));
-    fs.symlinkSync(path.join(root, "notes.txt"), path.join(root, "linked-file"));
-    fs.symlinkSync(path.join(root, "missing-target"), path.join(root, "broken-link"));
-    fs.symlinkSync(path.join(root, "beta"), path.join(root, ".hidden-link"));
+    fs.writeFileSync(path.join(root, "alpha", "marker.txt"), "linked target");
+    const linkedDir = path.join(root, "linked-dir");
+    if (process.platform === "win32") {
+      fs.symlinkSync(path.join(root, "alpha"), linkedDir, "junction");
+      fs.writeFileSync(path.join(root, "linked-file"), "ignore");
+      fs.symlinkSync(path.join(root, "beta"), path.join(root, ".hidden-link"), "junction");
+      const danglingTarget = path.join(root, "temporary-target");
+      const brokenLink = path.join(root, "broken-link");
+      fs.mkdirSync(danglingTarget);
+      fs.symlinkSync(danglingTarget, brokenLink, "junction");
+      fs.rmSync(danglingTarget, { recursive: true });
+      assert.equal(fs.lstatSync(brokenLink).isSymbolicLink(), true);
+      await assert.rejects(fs.promises.stat(brokenLink), { code: "ENOENT" });
+    } else {
+      fs.symlinkSync(path.join(root, "alpha"), linkedDir);
+      fs.symlinkSync(path.join(root, "notes.txt"), path.join(root, "linked-file"));
+      fs.symlinkSync(path.join(root, "missing-target"), path.join(root, "broken-link"));
+      fs.symlinkSync(path.join(root, "beta"), path.join(root, ".hidden-link"));
+    }
 
     const names = await listSkillDirNames(root);
     assert.deepEqual(names.slice().sort(), ["alpha", "beta", "linked-dir"]);
+    assert.equal(fs.readFileSync(path.join(linkedDir, "marker.txt"), "utf8"), "linked target");
+    fs.rmSync(linkedDir, { recursive: true, force: true });
+    assert.equal(fs.existsSync(path.join(root, "alpha")), true);
     assert.deepEqual(await listSkillDirNames(path.join(root, "empty-missing")), []);
   } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("excludes a symbolic-link entry when its target is not a directory", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-skill-discovery-link-contract-"));
+  const filePath = path.join(root, "linked-file");
+  const originalReaddir = fs.promises.readdir;
+  const originalStat = fs.promises.stat;
+  let statCalledForLink = false;
+  try {
+    fs.mkdirSync(path.join(root, "visible"));
+    fs.writeFileSync(filePath, "ordinary file used as a stat target");
+    fs.promises.readdir = (async (requestedPath, options) => {
+      const entries = await originalReaddir.call(fs.promises, requestedPath as never, options as never);
+      if (path.resolve(String(requestedPath)) !== path.resolve(root)) {
+        return entries;
+      }
+      const linkedFileEntry = {
+        name: "linked-file",
+        isDirectory: () => false,
+        isSymbolicLink: () => true,
+      } as fs.Dirent;
+      return [...entries, linkedFileEntry];
+    }) as typeof fs.promises.readdir;
+    fs.promises.stat = (async (requestedPath, options) => {
+      if (path.resolve(String(requestedPath)) === path.resolve(filePath)) {
+        statCalledForLink = true;
+      }
+      return originalStat.call(fs.promises, requestedPath as never, options as never);
+    }) as typeof fs.promises.stat;
+
+    assert.deepEqual(await listSkillDirNames(root), ["visible"]);
+    assert.equal(statCalledForLink, true);
+  } finally {
+    fs.promises.readdir = originalReaddir;
+    fs.promises.stat = originalStat;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
@@ -76,11 +131,17 @@ test("treats unreadable skill roots as having no directories", async () => {
   const blocked = path.join(root, "blocked");
   fs.mkdirSync(blocked);
   fs.mkdirSync(path.join(blocked, "visible"));
-  fs.chmodSync(blocked, 0);
+  const originalReaddir = fs.promises.readdir;
+  fs.promises.readdir = (async (requestedPath, options) => {
+    if (path.resolve(String(requestedPath)) === path.resolve(blocked)) {
+      throw Object.assign(new Error("access denied"), { code: "EACCES" });
+    }
+    return originalReaddir.call(fs.promises, requestedPath as never, options as never);
+  }) as typeof fs.promises.readdir;
   try {
     assert.deepEqual(await listSkillDirNames(blocked), []);
   } finally {
-    fs.chmodSync(blocked, 0o755);
+    fs.promises.readdir = originalReaddir;
     fs.rmSync(root, { recursive: true, force: true });
   }
 });

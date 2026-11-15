@@ -3,26 +3,38 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { getLegacyLoopStoragePaths } from "../../loopLegacyMigration";
 
+// Isolate before importing modules that capture os.homedir() at load time.
 const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-task-store-"));
 process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-task-store-"));
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
+
+import { getLegacyLoopStoragePaths } from "../../loopLegacyMigration";
+
 const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
-if (originalHome === undefined) {
-  delete process.env.HOME;
-} else {
-  process.env.HOME = originalHome;
-}
+assert.equal(loopTaskStore.getLoopCommunicationPaths("isolation-probe").dir,
+  path.join(testHome, ".sinitek_cli", "loop-communications", "isolation-probe"));
 
 let recordSequence = 0;
 
 type SkillTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
 type SkillSubtaskDecision = import("../../loopTaskStore").LoopSubtaskDecision;
-
-test.after(() => {
-  fs.rmSync(testHome, { recursive: true, force: true });
-});
 
 test("bounded Loop+ block review persists and rejects malformed state", () => {
   const task = createLegacyTask();
@@ -555,27 +567,36 @@ test("keeps legacy task paths intact when the communication root is unsafe to mi
   fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
   fs.mkdirSync(path.join(externalCommunicationDir, task.id), { recursive: true });
   fs.writeFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "# Unsafe migration source\n", "utf8");
+  assert.equal(fs.existsSync(legacyPaths.communicationDir), false);
   fs.symlinkSync(
     externalCommunicationDir,
     legacyPaths.communicationDir,
     process.platform === "win32" ? "junction" : "dir",
   );
-  fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
+  try {
+    assert.equal(fs.lstatSync(legacyPaths.communicationDir).isSymbolicLink(), true);
+    assert.equal(fs.realpathSync(legacyPaths.communicationDir), fs.realpathSync(externalCommunicationDir));
+    assert.equal(fs.readFileSync(legacyMainFile, "utf8"), "# Unsafe migration source\n");
+    fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
 
-  const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
-  const loaded = loopTaskStore.readLoopTaskStore(legacyStoreFile).tasks[0];
+    const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
+    const loaded = loopTaskStore.readLoopTaskStore(legacyStoreFile).tasks[0];
 
-  assert.equal(listedFiles.includes(legacyStoreFile), true);
-  assert.equal(fs.existsSync(legacyStoreFile), true);
-  assert.equal(loaded.taskStoreFile, legacyStoreFile);
-  assert.equal(loaded.communicationDir, legacyTaskCommunicationDir);
-  assert.equal(loaded.mainCommunicationFile, legacyMainFile);
-  assert.equal(
-    fs.existsSync(loopTaskStore.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id)),
-    false,
-  );
+    assert.equal(listedFiles.includes(legacyStoreFile), true);
+    assert.equal(fs.existsSync(legacyStoreFile), true);
+    assert.equal(loaded.taskStoreFile, legacyStoreFile);
+    assert.equal(loaded.communicationDir, legacyTaskCommunicationDir);
+    assert.equal(loaded.mainCommunicationFile, legacyMainFile);
+    assert.equal(
+      fs.existsSync(loopTaskStore.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id)),
+      false,
+    );
 
-  fs.unlinkSync(legacyPaths.communicationDir);
+    assert.equal(fs.readFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "utf8"), "# Unsafe migration source\n");
+  } finally {
+    fs.unlinkSync(legacyPaths.communicationDir);
+    assert.equal(fs.readFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "utf8"), "# Unsafe migration source\n");
+  }
 });
 
 test("snapshots the confirmed acceptance plan on the task and normalizes it on read", () => {

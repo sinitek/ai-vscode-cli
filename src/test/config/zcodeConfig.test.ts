@@ -18,7 +18,8 @@ import {
 type AnyRecord = Record<string, any>;
 
 function loadZcodeUiSource(): string {
-  return fs.readFileSync(path.join(process.cwd(), "media/config/assets/config-app-ui.js"), "utf8");
+  // Normalize checkout line endings for structural source extraction only.
+  return fs.readFileSync(path.join(process.cwd(), "media/config/assets/config-app-ui.js"), "utf8").replace(/\r\n/g, "\n");
 }
 
 function extractBetween(source: string, startMarker: string, endMarker: string): string {

@@ -7,7 +7,8 @@ import * as vm from "node:vm";
 const uiPath = path.join(process.cwd(), "media", "config", "assets", "config-app-ui.js");
 
 function loadUiSource(): string {
-  return fs.readFileSync(uiPath, "utf8");
+  // Normalize checkout line endings for structural source extraction only.
+  return fs.readFileSync(uiPath, "utf8").replace(/\r\n/g, "\n");
 }
 
 function loadVisualUtils(sandbox: Record<string, any> = {}): any {

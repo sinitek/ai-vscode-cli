@@ -67,12 +67,13 @@ type ModuleLoader = {
 const moduleLoader = require("module") as ModuleLoader;
 const originalLoad = moduleLoader._load;
 moduleLoader._load = function mockedLoad(this: unknown, request: string, parent?: { filename?: string }, isMain?: boolean): unknown {
+  const normalizedRequest = request.replace(/\\/g, "/").replace(/\.js$/, "");
+  const parentPath = parent?.filename?.replace(/\\/g, "/");
   if (
-    request.endsWith("webview/panelFileActions")
+    normalizedRequest.endsWith("webview/panelFileActions")
     && (
-      parent?.filename?.endsWith("sessionMessageHandlers.js")
-      || parent?.filename?.endsWith("panelMessageHandlers/session.js")
-      || parent?.filename?.endsWith("panelMessageHandlers/workspace.js")
+      parentPath?.endsWith("panelMessageHandlers/session.js")
+      || parentPath?.endsWith("panelMessageHandlers/workspace.js")
     )
   ) {
     return panelFileActionsMock;
@@ -696,6 +697,11 @@ test("returns path and upload results through isolated file-action adapters", as
   });
   assert.equal(harness.calls.webviewMessages[1].type, "uploadResult");
   assert.deepEqual(harness.calls.webviewMessages[1].paths, ["/virtual/note.txt"]);
+  assert.deepEqual(fileActions.uploadedFiles, [[{
+    name: "note.txt",
+    type: "text/plain",
+    dataUrl: "data:text/plain;base64,bm90ZQ==",
+  }]]);
   assert.deepEqual(fileActions.runStreamExports[0].options, { cli: "claude", tabId: "tab-1" });
   assert.equal(harness.calls.webviewMessages[2].path, "/virtual/run-stream.jsonl");
   assert.equal(harness.calls.webviewMessages[3].error, "export blocked");

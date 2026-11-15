@@ -3,6 +3,28 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+
+// Isolate before importing modules that capture os.homedir() at load time.
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-plus-contracts-"));
+process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+assert.equal(os.homedir(), testHome);
+test.after(() => {
+  try {
+    assert.equal(path.dirname(testHome), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(testHome).startsWith("sinitek-loop-plus-contracts-"));
+    fs.rmSync(testHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(testHome), false);
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
+});
+
 import {
   LOOP_PLUS_DISPLAY_NAME,
   LOOP_PLUS_INTERACTIVE_MODE,
@@ -29,15 +51,9 @@ import {
   type WorkspaceSettingsStoreOptions,
 } from "../../workspaceSettingsStore";
 
-const originalHome = process.env.HOME;
-const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-plus-contract-"));
-process.env.HOME = testHome;
 const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
-if (originalHome === undefined) {
-  delete process.env.HOME;
-} else {
-  process.env.HOME = originalHome;
-}
+assert.equal(loopTaskStore.getLoopCommunicationPaths("isolation-probe").dir,
+  path.join(testHome, ".sinitek_cli", "loop-communications", "isolation-probe"));
 
 const scheduledDeps = {
   isCliName: (value: string): value is CliName => (
@@ -48,10 +64,6 @@ const scheduledDeps = {
   ),
   isThinkingMode: (value: unknown): value is ThinkingMode => value === "high" || value === "medium",
 };
-
-test.after(() => {
-  fs.rmSync(testHome, { recursive: true, force: true });
-});
 
 test("keeps loop_plus visible and preserves plan-to-coding plus legacy loop migration", () => {
   assert.equal(LOOP_PLUS_INTERACTIVE_MODE, "loop_plus");
@@ -379,6 +391,7 @@ function writeRawTask(id: string, extra: Record<string, unknown>): { id: string;
     `session-${id}`,
     id,
   );
+  assert.ok(!path.relative(testHome, taskStoreFile).startsWith(".."));
   const task = {
     id,
     cli: "codex",

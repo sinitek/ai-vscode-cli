@@ -21,13 +21,15 @@ import export_vscode_extension as export_script
 class ScriptLocationTests(unittest.TestCase):
     def test_absolute_entrypoint_imports_run_dev_outside_repository(self) -> None:
         result = subprocess.run(
-            [sys.executable, str(ROOT_DIR / "scripts" / "export_vscode_extension.py"), "--help"],
+            [sys.executable, "-X", "utf8", str(ROOT_DIR / "scripts" / "export_vscode_extension.py"), "--help"],
             cwd=tempfile.gettempdir(),
             capture_output=True,
             text=True,
             encoding="utf-8",
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--target", result.stdout)
+        self.assertEqual(result.stderr, "")
 
 
 class PackageOptionsTests(unittest.TestCase):

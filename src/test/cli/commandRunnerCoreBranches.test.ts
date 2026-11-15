@@ -183,7 +183,7 @@ test("captures mocked stdout and stderr for a non-zero CLI exit", async () => {
   };
 
   try {
-    const output = await captureCliOutput(process.execPath, ["--version"], { cwd: process.cwd() });
+    const output = await captureCliOutput(`"${process.execPath}"`, ["--version"], { cwd: process.cwd() });
 
     assert.deepEqual(output, {
       stdout: "partial response",
@@ -214,7 +214,7 @@ test("rejects capture output when the mocked child process emits an error", asyn
 
   try {
     await assert.rejects(
-      captureCliOutput(process.execPath, ["--version"]),
+      captureCliOutput(`"${process.execPath}"`, ["--version"]),
       expectedError,
     );
   } finally {

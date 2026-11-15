@@ -27,6 +27,7 @@ function createHarness(persistent = false) {
   const chatArea = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0 }) };
   const unobserved: unknown[] = [];
   const timers = new Map<number, () => void>();
+  const renderTimers = new Map<number, () => void>();
   const posted: Record<string, any>[] = [];
   const runtimes: Record<string, any> = {};
   let timerId = 0;
@@ -35,11 +36,25 @@ function createHarness(persistent = false) {
   let nearBottom = true;
   let searchAnchored = false;
   class Node {
+    constructor(readonly nodeType = 1, readonly tagName = "DIV") {}
     children: Node[] = [];
     parentNode: Node | null = null;
     dataset: Record<string, string> = {};
+    attributes = new Map<string, string>();
+    className = "";
+    textContent = "";
+    listeners = new Map<string, Array<(...args: unknown[]) => void>>();
     bubble: Node | null = null;
     viewport: Node | null = null;
+    setAttribute(name: string, value: string) {
+      const key = name.toLowerCase();
+      this.attributes.set(key, String(value));
+      if (key.startsWith("data-")) {
+        this.dataset[key.slice(5).replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase())] = String(value);
+      }
+    }
+    getAttribute(name: string) { return this.attributes.get(name.toLowerCase()) ?? null; }
+    removeAttribute(name: string) { this.attributes.delete(name.toLowerCase()); }
     get parentElement() { return this.parentNode; }
     get isConnected(): boolean { return this === root || Boolean(this.parentNode?.isConnected); }
     getBoundingClientRect() {
@@ -47,18 +62,36 @@ function createHarness(persistent = false) {
       return { top, bottom: top + 30 };
     }
     querySelector(selector: string): Node | null {
-      return selector === ".bubble" ? this.bubble : selector === ".thinking-bubble-viewport" ? this.viewport : null;
+      if (selector === ".bubble") return this.bubble;
+      if (selector === ".thinking-bubble-viewport") return this.viewport;
+      return this.querySelectorAll(selector)[0] || null;
     }
     querySelectorAll(selector: string): Node[] {
       if (selector === ".bubble") { return this.children.flatMap((child) => child.bubble ? [child.bubble] : []); }
       if (selector === ".thinking-bubble-viewport") { return this.children.flatMap((child) => child.bubble?.viewport ? [child.bubble.viewport] : []); }
-      return [];
+      const [tag, ...classes] = selector.split(".");
+      const matches = (node: Node) => (!tag || node.tagName.toLowerCase() === tag)
+        && classes.every((name) => node.className.split(/\s+/).includes(name));
+      return this.children.flatMap((child) => [
+        ...(matches(child) ? [child] : []), ...child.querySelectorAll(selector),
+      ]);
+    }
+    addEventListener(type: string, callback: (...args: unknown[]) => void) {
+      const callbacks = this.listeners.get(type) || [];
+      callbacks.push(callback);
+      this.listeners.set(type, callbacks);
     }
     insertBefore(child: Node, before: Node | null) {
+      if (child.nodeType === 11) {
+        child.children.slice().forEach((entry) => this.insertBefore(entry, before));
+        return;
+      }
       child.parentNode?.removeChild(child);
       this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, child);
       child.parentNode = this;
     }
+    appendChild(child: Node) { this.insertBefore(child, null); return child; }
+    append(...children: Node[]) { children.forEach((child) => this.appendChild(child)); }
     removeChild(child: Node) {
       this.children.splice(this.children.indexOf(child), 1);
       child.parentNode = null;
@@ -72,6 +105,8 @@ function createHarness(persistent = false) {
   const root = new Node();
   const sandbox: Record<string, any> = {
     state, elements: { messages: root, chatArea, emptyState: { style: {} } },
+    document: { createElement: (tag: string) => new Node(1, tag.toUpperCase()), createDocumentFragment: () => new Node(11) },
+    getActiveConversationRuntimeState: () => runtimes[state.conversationTabs.activeTabId] || null,
     ResizeObserver: class {
       observe() {}
       unobserve(viewport: unknown) { unobserved.push(viewport); }
@@ -96,8 +131,12 @@ function createHarness(persistent = false) {
     t: (value: string) => value, escapeHtml: (value: string) => value,
     assistantRedirects: {}, assistantDeltaRenderTimers: {}, assistantStreamingMarkdownPending: {}, assistantStreamingRenderFrames: {},
     ASSISTANT_FINAL_MARKDOWN_IDLE_MS: 100, ASSISTANT_DELTA_MARKDOWN_IDLE_MS: 50,
-    setTimeout: (callback: () => void) => { timers.set(++timerId, callback); return timerId; },
-    clearTimeout: (id: number) => timers.delete(id), requestAnimationFrame: (callback: () => void) => callback(),
+    setTimeout: (callback: () => void, delay = 0) => {
+      (delay === 0 ? renderTimers : timers).set(++timerId, callback);
+      return timerId;
+    },
+    clearTimeout: (id: number) => { timers.delete(id); renderTimers.delete(id); },
+    requestAnimationFrame: (callback: () => void) => callback(),
     createMessageId: () => `stream-${++timerId}`,
     isSameAssistantKind: (message: Message, kind: string) => (message.kind || "normal") === (kind || "normal"),
     isToolResultLikeMessage: () => false,
@@ -122,6 +161,16 @@ function createHarness(persistent = false) {
     functionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "isFinalAssistantSummaryMessage"),
     ...helpers.map((name) => functionSource(VIEW_CONTENT_SCRIPT_TRACE_RENDERING, name)),
   ].join("\n").replace(/\$\{FINAL_ANSWER_TEXT_MARKER\}/g, "[final_answer]"), sandbox);
+  const renderMessages = sandbox.renderMessages;
+  sandbox.renderMessages = (...args: unknown[]) => {
+    renderMessages(...args);
+    // Finish only zero-delay render batches; Markdown idle timers remain explicitly controlled by each test.
+    while (renderTimers.size > 0) {
+      const callbacks = [...renderTimers.values()];
+      renderTimers.clear();
+      callbacks.forEach((callback) => callback());
+    }
+  };
   if (persistent) sandbox.isConversationTabBusy = () => false;
   sandbox.rememberThinkingBubbleViewState = () => undefined;
   sandbox.createMessageElement = (message: Message, index: number, renderState: unknown) => {
@@ -169,11 +218,15 @@ function createHarness(persistent = false) {
 
 test("webview counts base display entries before result filtering and preserves raw message indices", () => {
   const harness = createHarness();
+  harness.root.setAttribute("aria-busy", "true");
+  harness.root.setAttribute("role", "log");
   const messages = history(497);
   messages.splice(0, 0, { id: "empty", role: "assistant", content: "" }, { id: "protocol", role: "user", content: "hidden protocol" }, { id: "status", role: "system", content: "Task completed" }, { id: "tasks", role: "assistant", content: "parsed task list" });
   messages.push({ id: "user", role: "user", content: "request" }, { id: "final", role: "assistant", content: "answer", codexFinalAnswer: true });
   harness.state.messages = messages;
   harness.render();
+  assert.equal(harness.root.getAttribute("aria-busy"), null);
+  assert.equal(harness.root.getAttribute("role"), "log");
   assert.equal(harness.ids().length, 499);
   assert.equal(harness.visible()[0].index, 4);
   messages.push({ id: "process-new", role: "system", content: "new process" });
