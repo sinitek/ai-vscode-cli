@@ -8,9 +8,19 @@
 - owner：产研部根 feature 集成负责人；本轮文档尝试维护规格与交接
 - claimed_at：2026-11-13
 - claim_ttl：下一次根 feature 集成前重新核对
-- handoff_to：0817共享存储＋真实混合冷链最小补验的独立所有者；原master既存脏内容保全/分类、安全切准确接受HEAD的交付分支与干净交接；必要异平台条件及最终主审（lp715实际统一树官方全量已接受，不再列未执行）
+- handoff_to：准确最终接受HEAD的原目录安全切交付分支及干净交接；临近重验与变化追加保全、同分支占用协调、必要异平台条件及最终主审（lp719特定mixed冷链、lp718保全及lp720文档合入已接受）
 
-## 当前接受结论（round-718同步，截止lp715）
+## 当前交接（Round721，截止已接受 lp719 / lp720）
+
+- [completed] lp718保全、lp717三文档均已接受，lp720已正常合入c651并保留2db两份保全材料；本轮不改保全快照或将分类解释为清理许可。
+- [completed] lp719完整产品闭包与唯一180秒mixed冷恢复已接受；本轮正常合入完整0817→6313→1fe10c6历史，保留lp716装配失败。新共享store/catalog与真实mixed冷链的特定组合缺口关闭，见[冷恢复记录](../../runbooks/department-cold-start-verification.md)。原完整receipts/CLOSED、持久容量移除、原authority自然退役、仅公开continue唯一后继、OpenCode原session及move/readback、最终公开stop均按原场景成立，直接worker观察不外推全部后代或总监最终业务汇报。
+- [completed] lp715一次标准build及官方397文件/5472项（5469过、0失败/取消、3门控跳过、自然exit0）仍覆盖未变生产输入；lp707/717/718各按未变范围复用，本轮没有新增运行验证。
+- [pending] 原目录临近重验、变化追加保全后，按准确最终接受HEAD独立授权安全切分支和干净交接；处理同分支占用，保护ignored/.tmp、私有备份和其它树，不以本整合树clean冒充原master clean。本轮仅提供方案，不执行归档/恢复/切换。
+- [pending] 必要Windows/Linux条件及三个DSH live门控仍按原限制，任意平台/付费模型/崩溃/外部writer不由上述限定结果证明。根计划继续active / `in_progress`，最终接受由主审判断，不归档。
+
+下方截至lp715的原结论和历史待办保留，其“新共享store/catalog补验”和“保全未审”由本段更新；完整22项映射仍见[覆盖表](../../runbooks/department-acceptance-coverage.md)。本轮实际来源/合并身份见[整合记录](../../integration/department-mainline-integration/README.md)。
+
+## 历史接受结论（round-718同步，截止lp715，保留原文）
 
 本计划保留 `active / in_progress` 和全部历史章节，不另建/归档根feature。基线为已接受 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`；原始目标及最新22条补充的逐项映射、报告真实轮次/执行ID、原输入/范围和后继修复见[当前验收覆盖表](../../runbooks/department-acceptance-coverage.md)。下方标明轮次的旧“待做”是历史时点，不能视为现行待办。
 
@@ -39,9 +49,9 @@ Round698官方5439项5265过/165失败/6取消/3跳过和Round711官方5462项54
 
 ## 范围
 
-已有独立交付涵盖组织元信息/容量池、人数设置、模式及三角色配置、实时余额提示、组织 host/Loop+ 适配、统一根方案继承、总监中转协作、全树生命周期端口、群聊展示/授权及生产归属索引。round-26 中央 composition 已装配；当前 `extension.ts#getDepartmentOwnershipIndex` 实际经 `createDepartmentProductionTaskStore` 挂载 Controller/Repository、identity catalog 和普通 store 路由，round-101/102 的限定执行事实按后继审查复用（两份整项失败保留）；round-100/103/351 分别接受接口、正常退出及真实存储/删除/后继 runtime 回归。全部直接/旧版/外部写者与真实跨进程压力未获覆盖，但不扩为本轮新增无限门禁；旧冷链已接受，新共享store/catalog下的mixed最小组合补验单独开放，不将其描述成来源模块完全未装配或冷宿主从未验证。受限角色/代次的 Owner 与真实 EH 证据也不能替代完整根验收。
+已有独立交付涵盖组织元信息/容量池、人数设置、模式及三角色配置、实时余额提示、组织 host/Loop+ 适配、统一根方案继承、总监中转协作、全树生命周期端口、群聊展示/授权及生产归属索引。round-26 中央 composition 已装配；当前 `extension.ts#getDepartmentOwnershipIndex` 实际经 `createDepartmentProductionTaskStore` 挂载 Controller/Repository、identity catalog 和普通 store 路由，round-101/102 的限定执行事实按后继审查复用（两份整项失败保留）；round-100/103/351 分别接受接口、正常退出及真实存储/删除/后继 runtime 回归。全部直接/旧版/外部写者与真实跨进程压力未获覆盖，但不扩为本轮新增无限门禁；旧冷链及lp719新共享store/catalog下的特定mixed组合现均已接受，不将其描述成来源模块完全未装配或冷宿主从未验证。受限角色/代次的 Owner 与真实 EH 证据也不能替代完整根验收。
 
-现行接受范围已经推进到lp715，不能再把OpenCode公开续接、冷恢复、真实UI人数/额度或最终合并全量笼统列为未做。round-350/366/369/372/375及后继lp697/698/699分别保留真实binary、确定性免费provider、精确角色/平台/场景范围；lp715官方全量独立覆盖统一测试输入。当前开放项仅按上方交接与覆盖表区分，不扩为所有CLI/模型/平台通过。tracker/token仍只是编排责任，不能替代原完整receipt/CLOSED、持久容量移除或authority退役证明。
+现行接受范围已经推进到lp719及lp720实际合入，不能再把OpenCode公开续接、冷恢复、真实UI人数/额度或最终合并全量笼统列为未做。round-350/366/369/372/375及后继lp697/698/699分别保留真实binary、确定性免费provider、精确角色/平台/场景范围；lp715官方全量独立覆盖统一测试输入。当前开放项仅按上方交接与覆盖表区分，不扩为所有CLI/模型/平台通过。tracker/token仍只是编排责任，不能替代原完整receipt/CLOSED、持久容量移除或authority退役证明。
 
 ## 非目标
 
@@ -100,7 +110,7 @@ Round698官方5439项5265过/165失败/6取消/3跳过和Round711官方5462项54
 
 ## 验证计划
 
-以下早期测试命令/重点用例为验证入口与历史规划，**不要求重跑已接受结果**；当前已执行与尚未覆盖范围以lp715结论及覆盖表为准。本轮仅文档结构、仓内相对链接、source_refs与历史保留检查，未变ontology数据/工具不复验。
+以下早期测试命令/重点用例为验证入口与历史规划，**不要求重跑已接受结果**；当前已执行与尚未覆盖范围以上方Round721交接及覆盖表为准。本轮仅文档结构、仓内相对链接、source_refs与历史保留检查，未变ontology数据/工具不复验。
 
 - round-400 中央事实同步验证：受影响 Markdown 结构/仓内链接/空白、active 文件及 `in_progress` 核对通过；更新既有 workflow 事实/source_ref 后执行 `python3 .agents/skills/ontology/scripts/search_ontology.py --validate` 和 `python3 -m unittest discover -s .agents/skills/ontology/tests -p 'test_*.py'`，9 项 ontology helper 测试通过。schema/框架未改；不运行应用 build、运行时单测、EH 或浏览器。
 - 后续单元自测命令：先 `npm run build`，再按落地测试名执行 `node --test dist/test/<相关测试>.js`；具体新增文件由对应实现尝试提供。本次不执行占位命令。

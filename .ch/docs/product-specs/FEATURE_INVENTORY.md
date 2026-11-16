@@ -4,6 +4,12 @@
 
 ## 产研部三层协作模式
 
+- **当前接受状态（Round721，截止已接受lp719/lp720）**：lp718原目录保全及lp717三文档已接受，lp720已将c651三文档与2db保全材料正常统一；本轮正常合入完整0817→6313→1fe10c6冷恢复来源。下方lp715索引及全部22项映射作为历史保留，当前开放项以本段及[覆盖表](../runbooks/department-acceptance-coverage.md)为准；根feature继续active / in_progress，不归档。
+- **指定最终组合已接受**：lp719完整产品闭包及唯一180秒mixed cold-recovery exit0，保留lp716装配失败；原完整receipts/CLOSED后持久容量移除、原authority自然退役，仅公开continue生成唯一后继，OpenCode原native session及move/readback保持，最终公开stop收尾。直接worker退出观察不外推全部后代或总监最终业务汇报，详见[冷恢复记录](../runbooks/department-cold-start-verification.md)。新共享store/catalog与真实mixed冷链的特定缺口已关闭。
+- **复用与剩余交付**：生产仍对应lp715实际测试输入c66439cb/tree4fa24544；复用一次build及官方397文件/5472项中5469通过、0失败/取消、3门控跳过、自然exit0，lp707/717/718按未变范围复用。本轮不跑运行验证。原目录安全切准确最终接受分支及干净交接仍开放；保全接受不授予清理许可，ignored/.tmp、私有备份和其它树保护。Windows/Linux、三DSH live门控、付费模型、任意崩溃/外部writer限制不因本场景消失；原失败、受控中断、manifest勘误和强制卫生/自然退出区别保留，最终根接受仍由主审判断。
+
+### 截至lp715的接受快照（lp717来源，保留原文）
+
 - **当前接受状态（2026-11-16，lp715；round-718事实同步）**：仍为开发中/active，不归档根feature。原始目标及**全部22项补充**见[逐项覆盖表](../runbooks/department-acceptance-coverage.md)。下列旧轮次条目的“待做”仅保留当时范围，由本条及覆盖表给出当前结论。最终角色图标为部门☀️/🌛/⭐️、普通Loop/Loop+主🌛/子⭐️，成员树总/组/员及tab原名保持；早期人形图标只是历史要求。
 - **已接受后继**：lp693语义合并、lp694工作区人数、lp695主干/人数合理合并；lp697真实UI保存workspace2/6且global4/20保持、新根冻结2/6、额度3→0→3下一attempt生效、原四完整receipts/CLOSED/容量归还；lp698全Codex第二EH、lp699混合第二EH及精确旧根公开stop/原authority正常退出均已有有效结果。工作区人数逐项优先全局，只作用于新根冻结快照，旧根/恢复不热迁移。旧主题/窄屏/真实历史弹窗按未变范围复用，不再笼统称这些未运行。
 - **合理合并后官方全量已完成**：lp705冷夹具、lp707严格存储及lp709合同、lp712/713/714三修复已实际统一，测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a` 一次标准build与官方397文件/5472项自然exit0，5469通过、0失败/取消、3环境门控跳过。仅五文档后继形成已接受 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。不是分批测试加总；Round698/711原失败、受控中断、manifest勘误和Owner历史超时首次停点未知保留。

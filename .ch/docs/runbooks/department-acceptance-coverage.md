@@ -1,5 +1,16 @@
 # 产研部逐项验收覆盖
 
+## 当前结论（Round721，截止已接受 lp719 / lp720）
+
+lp718 原目录保全及 lp717 需求事实文档已接受；lp720 已正常合入 c651 三文档并保留 2db 两份保全材料。lp719 的完整产品闭包与唯一 mixed 冷恢复也已正式接受，本轮正常合入完整 `0817→6313→1fe10c6` 来源，保留 lp716 装配失败和 lp719 成功两段，见[冷恢复记录](department-cold-start-verification.md)。因此下方截至 lp715 的“当前独立补验”和“保全任务未审”是历史快照，不再作为现行待办；其原索引、全部 22 项映射和失败记录原样保留。
+
+- **特定组合缺口已关闭**：lp719 在 `6313d889450cb4e6f802acd86ef07137fff40b53` / tree `542799c4a3587f02de489da2ae87e7a99c78747d` 的完整物理产品执行一次 180 秒 mixed cold-recovery，exit0、无强制回收。第二 EH 无 prompt 重放；原完整 required receipts / 精确 CLOSED 后持久容量移除、原 authority 自然退役；仅公开 continue 创建唯一后继，保留 OpenCode 原 native session 并完成 move/readback，最终公开 stop 完整收尾。worker 退出仅限直接观察集合，不能外推全部后代或总监最终业务汇报。
+- **未变证据复用**：6313 与0817只有文档差异，生产代码仍对应 lp715 测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a`。复用一次标准 build 与官方397文件/5472项：5469通过、0失败/取消、3环境门控跳过、自然exit0；lp707存储、lp717文档及lp718保全各按未变范围复用。本轮不重跑这些检查。
+- **仍开放的交付**：原目录安全切换到准确最终接受交付分支及干净交接尚未执行；操作前须临近重验并按变化追加保全，解决同分支 worktree 占用，分类不是丢弃许可。[保全快照](../integration/department-mainline-integration/original-checkout-preservation.md)保持原字节；本整合树 clean 不等于原 master clean。
+- **限制继续有效**：Windows/Linux实际目标条件、三项DSH门控跳过、付费模型、任意崩溃/外部writer和所有后代不由本场景证明。原Round698/711失败、受控中断、manifest勘误、强制卫生与自然退出区别保留。根feature继续active / `in_progress`，不归档、不宣称全部完成。准确本轮合并身份见[整合交接](../integration/department-mainline-integration/README.md)与[来源记录](../integration/department-mainline-integration/sources.json#round721AcceptedColdFinalFactsMerge)。
+
+## 截至 lp715 的接受快照（lp717来源，保留原文）
+
 截至 2026-11-16 **lp715 主审接受**；本轮 round-718 只同步已接受事实。文档基线为 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。根功能仍为**开发中**，[原 feature 计划](../exec-plans/active/2026-11-13-feature-department-mode.md)保持 active / `in_progress`，不新增平行计划或提前归档。
 
 原始要求及补充 **1–22** 按最新父记录 `rootPrompt` / 全部 `supplementalRequirements` 顺序核对。报告从相关 `subTasks[].communicationFile` 定位；lp 编号是执行 ID，报告文件轮次可能不同，以下同时列出，不能仅凭文件轮次推断接受状态。主通信 `main-task.md` 的 lp715 审查是本次接受范围截止点；不消费本批共享存储＋真实混合冷链补验或原目录保全任务的未审结果。

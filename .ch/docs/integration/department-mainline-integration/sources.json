@@ -932,5 +932,99 @@
       "Three unresolved installation/ZCode ontology references, ignored paths including .tmp, all other worktrees and the external preservation backup remain protected. Classification and ancestor identities are not deletion permission; integration-tree clean is not original-master clean.",
       "Native Linux/Windows conditions, three live DSH skips and all other documented real UI/EH/CLI/platform limits remain; no overall feature completion or plan archival is claimed."
     ]
+  },
+  "round721AcceptedColdFinalFactsMerge": {
+    "round": 721,
+    "acceptanceCutoff": "Formal lp719 review 2026-11-16T15:32:33.100158+00:00 and lp720 review 2026-11-16T15:41:24.586298+00:00 in main-task.md. lp718 preservation/lp717 documentation accepted; lp720 actual union retained; lp719 source now imported.",
+    "base": {
+      "commit": "c2d352da3de4f69987adbbc9676f49f33f8a0198",
+      "tree": "ee86c7a749c5d94dfbd9a94e0ee25c7b1cd14568"
+    },
+    "acceptedColdSource": {
+      "commit": "1fe10c603041671dfcd52fd8c39ad8e233825924",
+      "tree": "890e5d5c0d224db35ae23c43e164a0c9a92d098a",
+      "parent": "6313d889450cb4e6f802acd86ef07137fff40b53",
+      "parentTree": "542799c4a3587f02de489da2ae87e7a99c78747d",
+      "ancestor": "0817f4519f3d5aa481af9ea64e848019da480b0e",
+      "history": "Complete 21-line lp716 assembly failure and 22-line lp719 success retained; historical failure is not changed to pass."
+    },
+    "merge": {
+      "commit": "7a8ba23671df350a62be21c2cf9c446bd24cdeaf",
+      "tree": "4b871c308ba7a83703ab69234c4687c51b58cf76",
+      "parents": [
+        "c2d352da3de4f69987adbbc9676f49f33f8a0198",
+        "1fe10c603041671dfcd52fd8c39ad8e233825924"
+      ],
+      "strategy": "ort",
+      "conflicts": 0,
+      "manualResolutions": []
+    },
+    "importedPaths": [
+      {
+        "path": ".ch/docs/runbooks/department-cold-start-verification.md",
+        "sourceBlob": "6c737900419c49b3504303738ecc627eeab16a3f",
+        "mergedBlob": "6c737900419c49b3504303738ecc627eeab16a3f",
+        "identicalToSource": true
+      }
+    ],
+    "preservedCheckoutMaterials": [
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.md",
+        "sourceBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "mergedBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.json",
+        "sourceBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "mergedBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "identicalToSource": true
+      }
+    ],
+    "currentFactPaths": [
+      ".ch/docs/runbooks/department-acceptance-coverage.md",
+      ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      ".ch/docs/integration/department-mainline-integration/README.md",
+      ".ch/docs/integration/department-mainline-integration/sources.json"
+    ],
+    "pathBoundary": "Only the accepted cold runbook is merged; afterward only five current-fact/handoff documents change. No production/test/script/dist/ontology/UI changes. lp715 snapshots, all 22 mappings and historical JSON values retained; final evidence commit/tree live in the external Round721 report to avoid self-reference.",
+    "reusedEvidence": {
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural",
+        "scope": "Unchanged runtime only; no rerun. Three DSH live cases remain environment-gated."
+      },
+      "lp719": {
+        "inputCommit": "6313d889450cb4e6f802acd86ef07137fff40b53",
+        "inputTree": "542799c4a3587f02de489da2ae87e7a99c78747d",
+        "scenario": "cold-recovery --leader-cli opencode --leader-model default",
+        "budgetMs": 180000,
+        "exitCode": 0,
+        "result": "passed",
+        "forcedTeardown": false,
+        "scope": "Complete product closure; no replay; original full receipts/CLOSED, persisted capacity removal, original authority natural retirement; public continue only, unique successor and original OpenCode native session/move/readback; final public stop. Exit observations limited to directly observed workers, not every descendant or director final business reporting."
+      },
+      "lp707": "Accepted store 110 distinct cases within unchanged scope, not rerun or added to official totals.",
+      "lp717": "Accepted 22-mapping documentation checks reused for unchanged historical source sections; only new current facts/links checked, no repeat 86-link audit.",
+      "lp718": "Accepted protected preservation/classification snapshot unchanged; no repeat 334-item backup/restore audit or current-original completeness claim."
+    },
+    "remainingGates": [
+      "Original checkout safe path-specific handoff to exact final accepted branch/HEAD remains separately authorized future work. Revalidate HEAD/index/status/content/new nonignored paths/links/parents/ignored collisions immediately before acting; preserve changes by append, never overwrite backup. Integration clean is not master clean.",
+      "Resolve same-branch worktree occupancy only after final accepted HEAD is fixed and integration clean; preserve its contents and all other worktrees. No detach, original restore/archive/switch or cleanup occurs in this attempt.",
+      "Current accepted installation/ZCode symbol definitions exist; three original anchor versions remain in protected backup. No ontology changes, ownership inference, old whole-file reinsertion or deletion permission.",
+      "Protect ignored dist/node_modules/.tmp/.codegraph, private backup and independent trees. Zero collision is not cleanup permission; original ignored dist is neither updated nor revalidated.",
+      "Windows/Linux native conditions, three DSH live gates, paid models/arbitrary crash/external writer/all descendants remain outside the specific accepted scenario. Root feature active/in_progress; final root acceptance open."
+    ]
   }
 }
