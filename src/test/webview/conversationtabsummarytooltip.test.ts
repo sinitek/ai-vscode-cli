@@ -47,6 +47,7 @@ class ElementDouble extends EventTargetDouble {
   parentElement: ElementDouble | null = null;
   rect = { left: 20, top: 20, width: 100, height: 24 };
   classList = {
+    contains: (token: string) => this.className.split(/\s+/).includes(token),
     add: (token: string) => { this.className += ` ${token}`; },
     toggle: (token: string, enabled: boolean) => {
       this.className = this.className.split(/\s+/).filter((item) => item !== token).join(" ");
@@ -168,7 +169,13 @@ function createHarness(tabs: Tab[] = [
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(start), sandbox);
+  // Include the real department projection helper now called by the renderer;
+  // these tooltip records remain ordinary tabs.
+  const helperStart = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      function getDepartmentConversationTabPresentation(");
+  const helperEnd = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      function resolveAutoInteractiveModeForTab(", helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart);
+  vm.runInContext(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(helperStart, helperEnd)
+    + VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(start), sandbox);
   const render = () => vm.runInContext("renderConversationTabs()", sandbox);
   render();
   const tab = (id: string): ElementDouble => {

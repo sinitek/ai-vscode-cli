@@ -116,7 +116,7 @@ test("使用说明仅保留模式说明，通知授权和四个默认开启的�
       assert.match(select, /value="loop"/);
       assert.match(select, /value="loop_plus"/);
       assert.doesNotMatch(select, /value="graph"/);
-      assert.equal((select.match(/<option /g) || []).length, 3);
+      assert.deepEqual(Array.from(select.matchAll(/<option value="([^"]+)"/g), (match) => match[1]), ["coding", "loop", "loop_plus", "department"]);
     }
   }
 

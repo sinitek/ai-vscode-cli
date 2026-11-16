@@ -155,3 +155,20 @@ Workspace leader/employee limits are now optional independent overrides in the m
 Round 695 performed no full regression or real installed UI-to-EH/CLI/cold-recovery acceptance. Its new combined-tree build and focused contract tests are recorded only in the round-695 attempt report. Preserve prior historical failures and platform limits; do not promote focused tests or one macOS result to full or cross-platform acceptance.
 
 Round-695 source audit: the existing `/tmp/round674-delivery-manifest.json` measures SHA-256 `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412`, differing from the historical handoff value `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`. Preserve both and leave provenance reconciliation open; do not claim a matching manifest. All 55 entity paths and source/result identities are in `round695-path-identities.json`.
+
+## Round 698：官方完整回归与交接
+
+基线为已接受 `464d1113f13b1bc0f2b59ea1ba4c09976ebed713` / tree `cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4`，仍使用 round676 整合分支及 worktree。已有标准 build 和末次夹具 tsc 按原范围复用；核对 clean HEAD、838 TS 输出及 source map/mtime 后，直接执行编译后的官方阶段，不再为同输入重复 build：
+
+```sh
+node scripts/run_unit_tests.js --list
+node scripts/run_unit_tests.js
+```
+
+发现397个 `dist/test/**/*.test.js`，全量首次 exit=1，5439项中5265通过、165失败、6取消、3跳过。完整输出为 `/tmp/round698-unit-first.log`；日志SHA、完整发现清单、171项失败/取消名称及分类、进程处置和复测命令见[回归证据](../integration/department-mainline-integration/round698-full-regression.json)。六个10秒超时的 ownedExecution 用例遗留本次夹具子进程和 watcher；核实归属后只回收本次六个子进程及该测试文件进程，官方runner自行返回。强制回收不能作为完整清理或通过证据。
+
+只修七个测试文件的真实依赖、DOM接口、常量生成及四模式断言；生产源码不变。历次 tsc 成功，受影响最小复测最终共121项通过；中间失败保留。原全量中105个失败项已有文件级通过覆盖，仍有60失败、6取消/24文件未解决，这是原结果对账，不是二次全量。无变化的全量不为刷新证据重复执行；后继生产修复需按影响复测，再完成最终官方全量。中央存储/暂停恢复/模式撤销问题交单一修复所有者，容量和冷恢复专属用例交并行所有者协调，不能绕过受控写入、RPC确认归属、receipt/CLOSED或运行容量证明来换取通过。
+
+来源勘误：原round674报告第109行是 `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412`，与round695实测一致。此前本手册round676/694保留的 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412` 是后继交接抄录错误，不是原报告值。历史差异观察不删除；55条来源与原closure不变，没有重跑整个来源审计或修改旧报告。
+
+本次不改功能清单/ontology/现行功能计划，因为没有产品语义变化；以专用整合材料记录测试结果。后继commit/tree及完整路径见round698报告。真实UI-EH/CLI、额度/冷恢复组合、必要异平台及最终原目录分类保护/切换/clean交付仍开放，待所有修改验证收尾后统一处理；不得在原master脏树checkout/reset/clean/stash。

@@ -42,7 +42,7 @@
     ],
     "original55PathColdEntityClosurePreserved": true,
     "round674ManifestSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
-    "round674ManifestSha256Scope": "Historical round-694 handoff value; see round695ManifestIdentity for the differing current file measurement."
+    "round674ManifestSha256Scope": "Historical round-694 handoff transcription error; original round-674 report line 109 and round-695 measurement agree. See round698ManifestReconciliation."
   },
   "integration": {
     "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116",
@@ -97,8 +97,9 @@
       },
       "deliveryManifest": {
         "path": "/tmp/round674-delivery-manifest.json",
-        "sha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
-        "sha256Scope": "Historical handoff value, not the round-695 measured file hash; see round695ManifestIdentity."
+        "sha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+        "sha256Scope": "Original round-674 report line 109, independently matching the existing round-695 measurement; corrected in round 698 without rehashing the old entity.",
+        "historicalHandoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412"
       },
       "trackedPathDeltaCount": 55,
       "excludedLocalArtifact": ".ch/docs/generated/memory-index/.local",
@@ -183,6 +184,33 @@
     "handoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
     "measuredSha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
     "matchesHandoff": false,
-    "scope": "Read-only round-695 measurement of existing source artifact; mismatch is an open provenance concern, not silently reconciled. Original cold source closure and all 55 path records retained."
+    "scope": "Historical read-only round-695 measurement; matchesHandoff=false remains true for the erroneous later handoff. Round 698 reconciles the original report in round698ManifestReconciliation. Original closure and all 55 path records retained."
+  },
+  "round698ManifestReconciliation": {
+    "originalReport": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-674-department-cold-mixed-guard-exit-repair.md",
+    "originalReportLine": 109,
+    "originalSha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "historicalErroneousHandoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "matchesRound695Measurement": true,
+    "conclusion": "Later lp676/lp694 handoff transcription error. Original report and round-695 measured file agree; no evidence of source manifest mutation. Historical mismatch, measurements and prior failures remain unchanged. No closure audit or source execution rerun."
+  },
+  "round698FullRegression": {
+    "baseCommit": "464d1113f13b1bc0f2b59ea1ba4c09976ebed713",
+    "baseTree": "cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4",
+    "evidenceFile": ".ch/docs/integration/department-mainline-integration/round698-full-regression.json",
+    "officialCommand": "node scripts/run_unit_tests.js",
+    "officialExitCode": 1,
+    "firstRun": {
+      "tests": 5439,
+      "pass": 5265,
+      "fail": 165,
+      "cancelled": 6,
+      "skipped": 3
+    },
+    "finalTargetedCasesPass": 121,
+    "productionSourceChanged": false,
+    "fullRegressionPassed": false,
+    "sourceIdentityScope": "Existing round-695 identities remain snapshots of their named commits; round698 repaired test input identities are separate. Original 55 cold paths unchanged.",
+    "remainingGate": "Central/exclusive failures need coordinated repair; no second full result or final tree acceptance claimed."
   }
 }

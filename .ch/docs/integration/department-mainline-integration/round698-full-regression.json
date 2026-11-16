@@ -1,0 +1,2305 @@
+{
+  "round": 698,
+  "baseCommit": "464d1113f13b1bc0f2b59ea1ba4c09976ebed713",
+  "baseTree": "cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4",
+  "branch": "codex/department-mainline-integration-round676-20261116",
+  "productionSourceChanged": false,
+  "acceptedBuildReuse": "Reuse round-695 accepted standard build and final test-fixture tsc; no same-input build rerun. Initial clean HEAD, output/map/mtime audit supports reuse, not a byte match to a prior archived dist manifest.",
+  "initialDist": {
+    "commit": "464d1113f13b1bc0f2b59ea1ba4c09976ebed713",
+    "tsCount": 838,
+    "missingOutputs": [],
+    "sourceNewerThanOutput": [],
+    "missingOrWrongSourceMaps": [],
+    "distFileCount": 1674,
+    "distSha256": "957a64ba83397d9b3c6ee3675863274698c5a178554d66f81b31f7485d7b1563"
+  },
+  "discoveredFiles": [
+    "dist/test/cli/claudeToolPolicy.test.js",
+    "dist/test/cli/cliCommandRepair.test.js",
+    "dist/test/cli/cliProcessRuntime.test.js",
+    "dist/test/cli/cliRunArgStrategies.test.js",
+    "dist/test/cli/codegraphInstaller.test.js",
+    "dist/test/cli/codegraphStatus.test.js",
+    "dist/test/cli/codexConfigModel.test.js",
+    "dist/test/cli/commandResolution.test.js",
+    "dist/test/cli/commandRunnerCoreBranches.test.js",
+    "dist/test/cli/commandRunnerCoverage.test.js",
+    "dist/test/cli/dshConfigModels.test.js",
+    "dist/test/cli/geminiThinking.test.js",
+    "dist/test/cli/grokCliEnum.test.js",
+    "dist/test/cli/grokConfigModels.test.js",
+    "dist/test/cli/grokmodelselection.test.js",
+    "dist/test/cli/installer.test.js",
+    "dist/test/cli/modelArgs.test.js",
+    "dist/test/cli/opencodeCommandRunner.test.js",
+    "dist/test/cli/opencodeconfigmodels.test.js",
+    "dist/test/cli/openCodeContextUsage.test.js",
+    "dist/test/cli/openCodeManagedPrompt.test.js",
+    "dist/test/cli/openCodeModelCapabilities.test.js",
+    "dist/test/cli/openCodeRunOutput.test.js",
+    "dist/test/cli/opencoderuntimeconfig.test.js",
+    "dist/test/cli/openCodeSubagentMonitor.test.js",
+    "dist/test/cli/openCodeTaskList.test.js",
+    "dist/test/cli/processArgv.test.js",
+    "dist/test/cli/processLifecycle.test.js",
+    "dist/test/cli/processTermination.test.js",
+    "dist/test/config/claudeConfigVisualEditor.test.js",
+    "dist/test/config/cliExampleImport.test.js",
+    "dist/test/config/cliexampleimportmodeldiscovery.test.js",
+    "dist/test/config/cliGlobalSkills.test.js",
+    "dist/test/config/cliPageConfigCoverage.test.js",
+    "dist/test/config/cliruntimeconfigstrategies.test.js",
+    "dist/test/config/codexConfigVisualEditor.test.js",
+    "dist/test/config/codexRuntimeConfigIdentity.test.js",
+    "dist/test/config/configappcompactcontrols.test.js",
+    "dist/test/config/configappcompactlayoutstyles.test.js",
+    "dist/test/config/configApplyQueue.test.js",
+    "dist/test/config/configcopy.test.js",
+    "dist/test/config/configCopyCompatibility.test.js",
+    "dist/test/config/configPaths.test.js",
+    "dist/test/config/configprofilenormalization.test.js",
+    "dist/test/config/configProfileRequestHandlers.test.js",
+    "dist/test/config/configRequestRouter.test.js",
+    "dist/test/config/configService.test.js",
+    "dist/test/config/configSkillRequestHandlers.test.js",
+    "dist/test/config/configSourceValidation.test.js",
+    "dist/test/config/configuredModelRepository.test.js",
+    "dist/test/config/currentConfigOwnership.test.js",
+    "dist/test/config/dshConfig.test.js",
+    "dist/test/config/dshconfigpage.test.js",
+    "dist/test/config/grokConfigMapping.test.js",
+    "dist/test/config/grokConfigPage.test.js",
+    "dist/test/config/grokReasoningConfig.test.js",
+    "dist/test/config/grokSkills.test.js",
+    "dist/test/config/kimiCodeConfig.test.js",
+    "dist/test/config/kimiCodeConfigPage.test.js",
+    "dist/test/config/kimiCodeDocContract.test.js",
+    "dist/test/config/lobehubSkillMarket.test.js",
+    "dist/test/config/modelimport.test.js",
+    "dist/test/config/modelimportplatformstrategies.test.js",
+    "dist/test/config/modelimportui.test.js",
+    "dist/test/config/newConfigFromExample.test.js",
+    "dist/test/config/opencodeAutoCommandUi.test.js",
+    "dist/test/config/opencodeconfigexample.test.js",
+    "dist/test/config/opencodeConfigService.test.js",
+    "dist/test/config/opencodeconfigvisualeditor.test.js",
+    "dist/test/config/openCodeMcpConfig.test.js",
+    "dist/test/config/runtimeConfigVerification.test.js",
+    "dist/test/config/sharedRuntimeConfig.test.js",
+    "dist/test/config/skillArchiveInstaller.test.js",
+    "dist/test/config/skillDiscovery.test.js",
+    "dist/test/config/skillsCopyModal.test.js",
+    "dist/test/config/zcodeConfig.test.js",
+    "dist/test/core/chatMessageLimit.test.js",
+    "dist/test/core/codexReasoningContent.test.js",
+    "dist/test/core/codexRunnerUnloadAcceptance.test.js",
+    "dist/test/core/codexThreadHandoffAcceptance.test.js",
+    "dist/test/core/contextCompactionRunner.test.js",
+    "dist/test/core/departmentconfiguration.test.js",
+    "dist/test/core/departmentsettings.test.js",
+    "dist/test/core/desktopAttention.test.js",
+    "dist/test/core/finalConclusion.test.js",
+    "dist/test/core/hiddenRetry.test.js",
+    "dist/test/core/humanInteraction.test.js",
+    "dist/test/core/humanInteractionAttention.test.js",
+    "dist/test/core/humanInteractionHistory.test.js",
+    "dist/test/core/i18n.test.js",
+    "dist/test/core/loopPlusAcceptancePlan.test.js",
+    "dist/test/core/loopPlusFixAcceptance.test.js",
+    "dist/test/core/macosDesktopNotifications.test.js",
+    "dist/test/core/modeavailability.test.js",
+    "dist/test/core/modelSelectionStoreNormalization.test.js",
+    "dist/test/core/openCodeRunCompletion.test.js",
+    "dist/test/core/openCodeTabStream.test.js",
+    "dist/test/core/orchestratorClarification.test.js",
+    "dist/test/core/panelDiagnostics.test.js",
+    "dist/test/core/panelDiagnosticsFacade.test.js",
+    "dist/test/core/promptRetry.test.js",
+    "dist/test/core/promptRunCompletionText.test.js",
+    "dist/test/core/subagentProgress.test.js",
+    "dist/test/core/taskCompletionAttention.test.js",
+    "dist/test/core/toolSettings.test.js",
+    "dist/test/core/workspaceSettingsStore.test.js",
+    "dist/test/core/zcodeRunnerLifecycleAcceptance.test.js",
+    "dist/test/departmentcapacity.test.js",
+    "dist/test/departmentemployeeallocation.test.js",
+    "dist/test/extensionHost/claudeContextUsage.test.js",
+    "dist/test/extensionHost/cliInstallation.test.js",
+    "dist/test/extensionHost/cliModelSelectionStrategies.test.js",
+    "dist/test/extensionHost/codexruntimeconfighandoffintegration.test.js",
+    "dist/test/extensionHost/commandRegistry.test.js",
+    "dist/test/extensionHost/departmentcodextabrelease.test.js",
+    "dist/test/extensionHost/departmentcoldgenerationrecovery.test.js",
+    "dist/test/extensionHost/departmentcoldrecoveryehhost.test.js",
+    "dist/test/extensionHost/departmentcoldstartproductionhost.test.js",
+    "dist/test/extensionHost/departmentcompletion.test.js",
+    "dist/test/extensionHost/departmentConfigurationHost.test.js",
+    "dist/test/extensionHost/departmentcontinuationlifecycle.test.js",
+    "dist/test/extensionHost/departmentemployeeallocationehhost.test.js",
+    "dist/test/extensionHost/departmentemployeeallocationhost.test.js",
+    "dist/test/extensionHost/departmentexecutionrecovery.test.js",
+    "dist/test/extensionHost/departmentfullehproductionhost.test.js",
+    "dist/test/extensionHost/departmentgroupcapacity.test.js",
+    "dist/test/extensionHost/departmentleaderexecutioncleanup.test.js",
+    "dist/test/extensionHost/departmentleaderexecutionledger.test.js",
+    "dist/test/extensionHost/departmentleadernativesessionvalidation.test.js",
+    "dist/test/extensionHost/departmentleaderprocessbootstrap.test.js",
+    "dist/test/extensionHost/departmentleaderproductionhost.test.js",
+    "dist/test/extensionHost/departmentopencodedefaultmodel.test.js",
+    "dist/test/extensionHost/departmentopencodegroupcapacity.test.js",
+    "dist/test/extensionHost/departmentorchestration.test.js",
+    "dist/test/extensionHost/departmentOwnedSourceController.test.js",
+    "dist/test/extensionHost/departmentOwnedTaskRepository.test.js",
+    "dist/test/extensionHost/departmentOwnedTaskSource.test.js",
+    "dist/test/extensionHost/departmentOwnershipIndex.test.js",
+    "dist/test/extensionHost/departmentprocessfinalizingobservation.test.js",
+    "dist/test/extensionHost/departmentproductioncleanupperformance.test.js",
+    "dist/test/extensionHost/departmentproductioncomposition.test.js",
+    "dist/test/extensionHost/departmentProductionTaskStore.test.js",
+    "dist/test/extensionHost/departmentproductionwiring.test.js",
+    "dist/test/extensionHost/departmentruntimebindingperformance.test.js",
+    "dist/test/extensionHost/departmentruntimecomposition.test.js",
+    "dist/test/extensionHost/departmentruntimeintegration.test.js",
+    "dist/test/extensionHost/departmentruntimestore.test.js",
+    "dist/test/extensionHost/departmenttreecontrolintegration.test.js",
+    "dist/test/extensionHost/departmentWorkspaceCapacitySettings.test.js",
+    "dist/test/extensionHost/dshInteractiveHostWire.test.js",
+    "dist/test/extensionHost/dshLoopSessionResume.test.js",
+    "dist/test/extensionHost/dshLoopSessionResumeLive.test.js",
+    "dist/test/extensionHost/dshModelSelection.test.js",
+    "dist/test/extensionHost/dshPluginLiveBoundary.test.js",
+    "dist/test/extensionHost/extensionDeactivateStopAll.test.js",
+    "dist/test/extensionHost/extensionHostExtractionContracts.test.js",
+    "dist/test/extensionHost/fixtures/departmentlocalresponses.test.js",
+    "dist/test/extensionHost/grokCliHostWire.test.js",
+    "dist/test/extensionHost/grokConfigModels.test.js",
+    "dist/test/extensionHost/humanInteractionAttentionHost.test.js",
+    "dist/test/extensionHost/interactiveTurnStrategy.test.js",
+    "dist/test/extensionHost/interactiveTurnZcode.test.js",
+    "dist/test/extensionHost/kimiCodeModelSelection.test.js",
+    "dist/test/extensionHost/kimiInteractiveHostWire.test.js",
+    "dist/test/extensionHost/kimiInteractiveLaunch.test.js",
+    "dist/test/extensionHost/loopCrashRecovery.test.js",
+    "dist/test/extensionHost/loopMainDecisionParsing.test.js",
+    "dist/test/extensionHost/loopModelRouting.test.js",
+    "dist/test/extensionHost/loopModelSwitchResume.test.js",
+    "dist/test/extensionHost/loopPlusAcceptanceCompletionGate.test.js",
+    "dist/test/extensionHost/loopPlusAcceptancePlanHost.test.js",
+    "dist/test/extensionHost/loopPlusAttemptIdentity.test.js",
+    "dist/test/extensionHost/looppluscodexrepairintegration.test.js",
+    "dist/test/extensionHost/loopPlusDecisionStrategies.test.js",
+    "dist/test/extensionHost/loopPlusEntryRouting.test.js",
+    "dist/test/extensionHost/loopPlusHandoffContracts.test.js",
+    "dist/test/extensionHost/loopPlusOrchestration.test.js",
+    "dist/test/extensionHost/loopPlusPromptBuilders.test.js",
+    "dist/test/extensionHost/loopPlusRuntimeAdmission.test.js",
+    "dist/test/extensionHost/loopPlusRuntimeIntegration.test.js",
+    "dist/test/extensionHost/loopPlusRuntimeWiring.test.js",
+    "dist/test/extensionHost/loopPlusSubtaskChat.test.js",
+    "dist/test/extensionHost/loopTaskEntryAuthority.test.js",
+    "dist/test/extensionHost/loopTaskStateMachine.test.js",
+    "dist/test/extensionHost/loopWaitWatchdog.test.js",
+    "dist/test/extensionHost/openCodePromptRunTemplate.test.js",
+    "dist/test/extensionHost/opencoderolemodelruntime.test.js",
+    "dist/test/extensionHost/opencodethinkingintegration.test.js",
+    "dist/test/extensionHost/opencodethinkingrefreshstate.test.js",
+    "dist/test/extensionHost/primaryPromptRunController.test.js",
+    "dist/test/extensionHost/promptAutoRepair.test.js",
+    "dist/test/extensionHost/promptExecutionShared.test.js",
+    "dist/test/extensionHost/promptInteractiveRuntime.test.js",
+    "dist/test/extensionHost/promptOneShotRuntime.test.js",
+    "dist/test/extensionHost/promptParallelRuntime.test.js",
+    "dist/test/extensionHost/promptRunHandoff.test.js",
+    "dist/test/extensionHost/promptRuntime.test.js",
+    "dist/test/extensionHost/promptRuntimeCoreCoverage.test.js",
+    "dist/test/extensionHost/promptSessionHealth.test.js",
+    "dist/test/extensionHost/scheduledTaskConfigOwnership.test.js",
+    "dist/test/extensionHost/sessionTabOwnership.test.js",
+    "dist/test/extensionHost/subtaskCliExecution.test.js",
+    "dist/test/extensionHost/taskCompletionAttentionHost.test.js",
+    "dist/test/extensionHost/workspaceHarnessInitialization.test.js",
+    "dist/test/interactive/claudeContextUsage.test.js",
+    "dist/test/interactive/claudeRunner.test.js",
+    "dist/test/interactive/claudeTaskList.test.js",
+    "dist/test/interactive/codexAppServerCapabilities.test.js",
+    "dist/test/interactive/codexAppServerEvents.test.js",
+    "dist/test/interactive/codexAppServerNdjson.test.js",
+    "dist/test/interactive/codexAppServerPool.test.js",
+    "dist/test/interactive/codexAppServerProtocol.test.js",
+    "dist/test/interactive/codexErrorClassifier.test.js",
+    "dist/test/interactive/codexExecutionEvidence.test.js",
+    "dist/test/interactive/codexHandoffCleanup.test.js",
+    "dist/test/interactive/codexNodeRuntime.test.js",
+    "dist/test/interactive/codexOwnedExecution.test.js",
+    "dist/test/interactive/codexRunnerLifecycle.test.js",
+    "dist/test/interactive/codexRunnerProcess.test.js",
+    "dist/test/interactive/codexRunnerReuse.test.js",
+    "dist/test/interactive/codexRunnerRuntime.test.js",
+    "dist/test/interactive/codexRunnerSubagent.test.js",
+    "dist/test/interactive/codexRuntimeConfig.test.js",
+    "dist/test/interactive/codexThreadHandoff.test.js",
+    "dist/test/interactive/codexThreadSelection.test.js",
+    "dist/test/interactive/codexTokenUsage.test.js",
+    "dist/test/interactive/dshAppServerProtocol.test.js",
+    "dist/test/interactive/dshRunner.test.js",
+    "dist/test/interactive/grokAcpClient.test.js",
+    "dist/test/interactive/grokAppServerProtocol.test.js",
+    "dist/test/interactive/grokReplayStream.test.js",
+    "dist/test/interactive/grokRunner.test.js",
+    "dist/test/interactive/grokThinkingBubbles.test.js",
+    "dist/test/interactive/grokThinkingText.test.js",
+    "dist/test/interactive/grokToolCallStream.test.js",
+    "dist/test/interactive/grokUserQuestion.test.js",
+    "dist/test/interactive/kimiAppServerProtocol.test.js",
+    "dist/test/interactive/kimiReplayStream.test.js",
+    "dist/test/interactive/kimiRunner.test.js",
+    "dist/test/interactive/managedZcodeDisposal.test.js",
+    "dist/test/interactive/manager.test.js",
+    "dist/test/interactive/runnerLifecycleStrategies.test.js",
+    "dist/test/interactive/runnerRetention.test.js",
+    "dist/test/interactive/zcodeAppServerProtocol.test.js",
+    "dist/test/interactive/zcodeReplayStream.test.js",
+    "dist/test/interactive/zcodeRunner.test.js",
+    "dist/test/interactive/zcodeTrace.test.js",
+    "dist/test/loop/continueModelChoice.test.js",
+    "dist/test/loop/department.test.js",
+    "dist/test/loop/departmentGroupChatHost.test.js",
+    "dist/test/loop/departmentGroupChatPanel.test.js",
+    "dist/test/loop/loopAskThread.test.js",
+    "dist/test/loop/loopBlockedSummary.test.js",
+    "dist/test/loop/loopCommunicationFilePreview.test.js",
+    "dist/test/loop/loopFinalSummary.test.js",
+    "dist/test/loop/loopGroupChat.test.js",
+    "dist/test/loop/loopGroupChatAcceptance.test.js",
+    "dist/test/loop/loopGroupChatBubbleRetention.test.js",
+    "dist/test/loop/loopGroupChatCoordinator.test.js",
+    "dist/test/loop/loopGroupChatPanel.test.js",
+    "dist/test/loop/loopGroupChatPanelState.test.js",
+    "dist/test/loop/loopLegacyMigration.test.js",
+    "dist/test/loop/loopMainAutoCompact.test.js",
+    "dist/test/loop/loopMainFailure.test.js",
+    "dist/test/loop/loopmaingroupchatbutton.test.js",
+    "dist/test/loop/loopMainQuestion.test.js",
+    "dist/test/loop/loopMainQuestionQueue.test.js",
+    "dist/test/loop/loopMainTaskListPolicy.test.js",
+    "dist/test/loop/loopModelSwitch.test.js",
+    "dist/test/loop/loopOrchestrationOwnership.test.js",
+    "dist/test/loop/loopParallel.test.js",
+    "dist/test/loop/loopPlusContracts.test.js",
+    "dist/test/loop/loopPlusDecision.test.js",
+    "dist/test/loop/loopPlusGroupChatPanel.test.js",
+    "dist/test/loop/loopPlusPanelState.test.js",
+    "dist/test/loop/loopPlusPause.test.js",
+    "dist/test/loop/loopPlusProtocolRepair.test.js",
+    "dist/test/loop/loopPlusScheduler.test.js",
+    "dist/test/loop/loopPlusSubtaskMode.test.js",
+    "dist/test/loop/loopPromptBuilders.test.js",
+    "dist/test/loop/loopPromptQueue.test.js",
+    "dist/test/loop/loopSubtaskAutoCompact.test.js",
+    "dist/test/loop/loopSubtaskExecutionRoot.test.js",
+    "dist/test/loop/loopSubtaskLifecycle.test.js",
+    "dist/test/loop/loopSubtaskProgress.test.js",
+    "dist/test/loop/loopSubtaskSession.test.js",
+    "dist/test/loop/loopSubtaskThinking.test.js",
+    "dist/test/loop/loopTaskIdentityCatalog.test.js",
+    "dist/test/loop/loopTaskMessagePolicy.test.js",
+    "dist/test/loop/loopTaskStore.test.js",
+    "dist/test/loop/loopTaskStoreCoreCoverage.test.js",
+    "dist/test/loop/loopTaskStorePersistence.test.js",
+    "dist/test/loop/opencodeloopmodewebview.test.js",
+    "dist/test/loop/subtaskCliRoute.test.js",
+    "dist/test/loop/subtaskDesignBriefPolicy.test.js",
+    "dist/test/memory/longTermMemory.test.js",
+    "dist/test/memory/memoryRuntimeGate.test.js",
+    "dist/test/runtime/departmentcodexbootstrap.test.js",
+    "dist/test/runtime/departmentcodexexecutionlauncher.test.js",
+    "dist/test/runtime/departmentcodexresourcerelease.test.js",
+    "dist/test/runtime/departmentexecutionowner.test.js",
+    "dist/test/runtime/departmentexecutionownerclient.test.js",
+    "dist/test/runtime/departmentgenerationauthority.test.js",
+    "dist/test/runtime/departmentleadercodexowner.test.js",
+    "dist/test/runtime/departmentleaderprocessowner.test.js",
+    "dist/test/runtime/departmentopencodesessiondirectory.test.js",
+    "dist/test/runtime/departmentopencodesessionpreparation.test.js",
+    "dist/test/runtime/departmentprocessbootstrap.test.js",
+    "dist/test/runtime/departmentprocessexecutionlauncher.test.js",
+    "dist/test/scheduledTaskStore.test.js",
+    "dist/test/session/conversationTabConfiguration.test.js",
+    "dist/test/session/conversationTabLock.test.js",
+    "dist/test/session/conversationTabModelSelection.test.js",
+    "dist/test/session/conversationTabPagination.test.js",
+    "dist/test/session/conversationTabRunningFlow.test.js",
+    "dist/test/session/conversationTaskSummary.test.js",
+    "dist/test/session/departmentConversationTabs.test.js",
+    "dist/test/session/historySessionLoop.test.js",
+    "dist/test/session/historySessionProjection.test.js",
+    "dist/test/session/historySessionTaskRole.test.js",
+    "dist/test/session/kimiModelMessageHandlers.test.js",
+    "dist/test/session/loopAskConversationContext.test.js",
+    "dist/test/session/loopPlusSessionTabs.test.js",
+    "dist/test/session/loopTabMemberTooltip.test.js",
+    "dist/test/session/promptHistoryStore.test.js",
+    "dist/test/session/sessionHealth.test.js",
+    "dist/test/session/sessionLifecycleCoreCoverage.test.js",
+    "dist/test/session/sessionMessageActions.test.js",
+    "dist/test/session/sessionMessageActionsCoreCoverage.test.js",
+    "dist/test/session/sessionMessageHandlersCoreCoverage.test.js",
+    "dist/test/session/sessionMessagePruningPolicy.test.js",
+    "dist/test/session/sessionMessageRepository.test.js",
+    "dist/test/session/sessionMessageRouter.test.js",
+    "dist/test/session/sessionPersistenceWiring.test.js",
+    "dist/test/session/sessionStoreCoreCoverage.test.js",
+    "dist/test/session/sessionTabCliSwitch.test.js",
+    "dist/test/session/workspaceCliRepair.test.js",
+    "dist/test/shared/atomicWrite.test.js",
+    "dist/test/shared/boundedText.test.js",
+    "dist/test/shared/countEffectiveLoc.test.js",
+    "dist/test/shared/fsCleanup.test.js",
+    "dist/test/shared/jsonContainer.test.js",
+    "dist/test/shared/jsonObjectText.test.js",
+    "dist/test/shared/pathSegments.test.js",
+    "dist/test/shared/trailingWhitespaceCheck.test.js",
+    "dist/test/shared/userHomePaths.test.js",
+    "dist/test/shared/vsixPackaging.test.js",
+    "dist/test/shared/workspaceScaffoldSkillPaths.test.js",
+    "dist/test/shared/writeScope.test.js",
+    "dist/test/webview/chatBubbleRetention.test.js",
+    "dist/test/webview/chatBubbleRetentionWebview.test.js",
+    "dist/test/webview/chatCopy.test.js",
+    "dist/test/webview/chatImagePreview.test.js",
+    "dist/test/webview/chatImageResource.test.js",
+    "dist/test/webview/chatLink.test.js",
+    "dist/test/webview/chatLinkHost.test.js",
+    "dist/test/webview/chatMarkdown.test.js",
+    "dist/test/webview/chatTranscriptSearch.test.js",
+    "dist/test/webview/clipagescriptruntimecoverage.test.js",
+    "dist/test/webview/cliPageStaticRenderCoverage.test.js",
+    "dist/test/webview/codexdualmodelwebview.test.js",
+    "dist/test/webview/codexLongConnectionTooltip.test.js",
+    "dist/test/webview/codexThinkingPlaceholder.test.js",
+    "dist/test/webview/conversationTabClose.test.js",
+    "dist/test/webview/conversationtabsummarytooltip.test.js",
+    "dist/test/webview/departmentconfigurationwebview.test.js",
+    "dist/test/webview/departmentConversationTabsWebview.test.js",
+    "dist/test/webview/departmentsettingswebview.test.js",
+    "dist/test/webview/finalAnswerPolicy.test.js",
+    "dist/test/webview/grokmodelselection.test.js",
+    "dist/test/webview/grokRulesFiles.test.js",
+    "dist/test/webview/grokToolTraceTitle.test.js",
+    "dist/test/webview/hideInstructionBubbles.test.js",
+    "dist/test/webview/humanInteractionOtherChoice.test.js",
+    "dist/test/webview/instructionGroupSummary.test.js",
+    "dist/test/webview/jsonTreeMessageRender.test.js",
+    "dist/test/webview/kimiModelManager.test.js",
+    "dist/test/webview/loopMainTaskList.test.js",
+    "dist/test/webview/loopPlusAcceptancePlanDialog.test.js",
+    "dist/test/webview/loopPlusFullstackMode.test.js",
+    "dist/test/webview/loopPlusModeEntry.test.js",
+    "dist/test/webview/loopPlusModeHelp.test.js",
+    "dist/test/webview/looppluswebviewintegration.test.js",
+    "dist/test/webview/loopSubtaskCliRoute.test.js",
+    "dist/test/webview/modeavailability.test.js",
+    "dist/test/webview/modelManagerIme.test.js",
+    "dist/test/webview/multiAgentSettingWebview.test.js",
+    "dist/test/webview/notificationAuthorization.test.js",
+    "dist/test/webview/opencodedualmodelwebview.test.js",
+    "dist/test/webview/openCodeTaskListOverlay.test.js",
+    "dist/test/webview/openCodeThinkingWebview.test.js",
+    "dist/test/webview/panelFileActions.test.js",
+    "dist/test/webview/panelViewLocation.test.js",
+    "dist/test/webview/runPromptHistoryWebview.test.js",
+    "dist/test/webview/tabRunStatus.test.js",
+    "dist/test/webview/traceToolTitleLocalization.test.js",
+    "dist/test/webview/viewProvider.test.js"
+  ],
+  "artifactIdentities": [
+    {
+      "path": "/tmp/round698-unit-first.log",
+      "sha256": "76201d06f0e93c26db89717221d8c7295ff2cbfa34ffa23264ed151648353585",
+      "bytes": 789792
+    },
+    {
+      "path": "/tmp/round698-unit-first-process.json",
+      "sha256": "ab718fa654aeb247223d9a6e5614feff76142a9a8255cbc65da8b136a833b745",
+      "bytes": 220
+    },
+    {
+      "path": "/tmp/round698-unit-first-result.json",
+      "sha256": "754f6193a298025ed813903929b8fa0190bd4bc3fac5305c7d184f096661d619",
+      "bytes": 94
+    },
+    {
+      "path": "/tmp/round698-unit-first-cleanup.json",
+      "sha256": "2d6f9a34d17117bddac6818a5ae305c768f199d4811d26f4297a9916572bd654",
+      "bytes": 2379
+    },
+    {
+      "path": "/tmp/round698-unit-files.txt",
+      "sha256": "ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a",
+      "bytes": 19350
+    },
+    {
+      "path": "/tmp/round698-dist-initial.json",
+      "sha256": "d8e36c26b26a34da1a8c761d6bb9411bc2bc45a55d92388ba173203917ec3af1",
+      "bytes": 275
+    },
+    {
+      "path": "/tmp/round698-failure-digest.txt",
+      "sha256": "4d5cb6b648564f96c06080df9017c8f5035879cc431fcb23acf56e7d0e8f1c63",
+      "bytes": 37297
+    },
+    {
+      "path": "/tmp/round698-tsc-first.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/tmp/round698-fixtures-first.log",
+      "sha256": "026e5a72da162e2c78a703ccf110036cb114f8789d7d5ee584635d425e531294",
+      "bytes": 9363
+    },
+    {
+      "path": "/tmp/round698-fixtures-first-cleanup.json",
+      "sha256": "4a008c49044b25f457b89915c4a38772e6ca5229a432be0a1d231d0639e488b6",
+      "bytes": 197
+    },
+    {
+      "path": "/tmp/round698-prompt-diagnostic.log",
+      "sha256": "ffe3c5395da37ca03a2b4fb30293f1cf1c3456658bbcb4cf75d319052375b398",
+      "bytes": 1159
+    },
+    {
+      "path": "/tmp/round698-tsc-second.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/tmp/round698-fixtures-second.log",
+      "sha256": "6ef2ed5df293f204fdbea3c68cba4008f8b4ae86f2aa24ca0d40bef5b70b5d64",
+      "bytes": 24217
+    },
+    {
+      "path": "/tmp/round698-fixtures-second-result.json",
+      "sha256": "57466a00e2f5ed44360a8a589a900ca69528690efcf769bd8139f64addae9dec",
+      "bytes": 417
+    },
+    {
+      "path": "/tmp/round698-tsc-third.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/tmp/round698-fixtures-final.log",
+      "sha256": "e217c02cff2873df01425dd878a77518ac70c353a164bfd17b470ae4498ada5d",
+      "bytes": 6438
+    },
+    {
+      "path": "/tmp/round698-tsc-fourth.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "/tmp/round698-mode-fixtures.log",
+      "sha256": "ac8de13d4507216cd1eb439a65967ef97dbe13f39172893aeabb9c540e8c8062",
+      "bytes": 4191
+    },
+    {
+      "path": "/tmp/round698-ontology-status.json",
+      "sha256": "0fb12a73d09f6bd7c54a996c1f8b353d0443ac5b44f959c10beaee8086ba6390",
+      "bytes": 236
+    },
+    {
+      "path": "/tmp/round698-ontology-query.txt",
+      "sha256": "d3557e1ce1193cd6d27ca2df152fa67b7dd3179103504e1e5bb7080d4d33b5c8",
+      "bytes": 62435
+    }
+  ],
+  "checks": [
+    {
+      "scope": "accepted dist consistency",
+      "command": "Python source/output existence, mtime and source-map correspondence audit",
+      "result": "838 TS inputs, no missing/stale/mismapped output; 1674 dist files",
+      "log": "/tmp/round698-dist-initial.json"
+    },
+    {
+      "scope": "official discovery",
+      "command": "node scripts/run_unit_tests.js --list > /tmp/round698-unit-files.txt",
+      "exitCode": 0,
+      "result": "397 compiled JS test files"
+    },
+    {
+      "scope": "official full compiled unit stage",
+      "command": "node scripts/run_unit_tests.js",
+      "exitCode": 1,
+      "result": {
+        "tests": 5439,
+        "pass": 5265,
+        "fail": 165,
+        "cancelled": 6,
+        "skipped": 3,
+        "todo": 0,
+        "suites": 2
+      },
+      "log": "/tmp/round698-unit-first.log",
+      "seconds": 215.47547888755798,
+      "intervention": "See firstRunCleanup; failure remains failure."
+    },
+    {
+      "scope": "first fixture compilation",
+      "command": "./node_modules/.bin/tsc -p ./ > /tmp/round698-tsc-first.log 2>&1",
+      "exitCode": 0,
+      "supersededForChangedTests": true
+    },
+    {
+      "scope": "first four-file fixture run",
+      "command": "node --test --test-reporter=spec dist/test/extensionHost/promptSessionHealth.test.js dist/test/loop/loopmaingroupchatbutton.test.js dist/test/webview/conversationtabsummarytooltip.test.js dist/test/webview/notificationAuthorization.test.js",
+      "result": "missing AbortController; run incomplete; only owned runner/file processes terminated; no green claim",
+      "log": "/tmp/round698-fixtures-first.log",
+      "cleanup": "/tmp/round698-fixtures-first-cleanup.json"
+    },
+    {
+      "scope": "single failure diagnosis",
+      "command": "node --test --test-reporter=tap --test-name-pattern='Loop subtask configuration timeouts' dist/test/extensionHost/promptSessionHealth.test.js > /tmp/round698-prompt-diagnostic.log 2>&1",
+      "exitCode": 1,
+      "result": "missing AbortController in VM"
+    },
+    {
+      "scope": "second fixture compilation",
+      "command": "./node_modules/.bin/tsc -p ./ > /tmp/round698-tsc-second.log 2>&1",
+      "exitCode": 0,
+      "supersededForLaterChangedTests": true
+    },
+    {
+      "scope": "four-file bounded retest",
+      "command": "node --test --test-reporter=tap --test-timeout=15000 dist/test/extensionHost/promptSessionHealth.test.js dist/test/loop/loopmaingroupchatbutton.test.js dist/test/webview/conversationtabsummarytooltip.test.js dist/test/webview/notificationAuthorization.test.js",
+      "exitCode": 1,
+      "result": "94 tests: 92 pass, 2 fail, 0 cancel/skip. 69 prompt + 4 button remain final valid; tooltip and notification failures subsequently repaired. No supervisor termination.",
+      "log": "/tmp/round698-fixtures-second.log"
+    },
+    {
+      "scope": "third fixture compilation",
+      "command": "./node_modules/.bin/tsc -p ./ > /tmp/round698-tsc-third.log 2>&1",
+      "exitCode": 0
+    },
+    {
+      "scope": "final affected tooltip/notification retest",
+      "command": "node --test --test-reporter=tap dist/test/webview/conversationtabsummarytooltip.test.js dist/test/webview/notificationAuthorization.test.js > /tmp/round698-fixtures-final.log 2>&1",
+      "exitCode": 0,
+      "result": "28/28; no fail/cancel/skip"
+    },
+    {
+      "scope": "mode fixture compilation",
+      "command": "./node_modules/.bin/tsc -p ./ > /tmp/round698-tsc-fourth.log 2>&1",
+      "exitCode": 0,
+      "result": "last source/test edit compiled; subsequent edits docs only"
+    },
+    {
+      "scope": "mode fixture retest",
+      "command": "node --test --test-reporter=tap --test-timeout=15000 dist/test/webview/loopPlusModeEntry.test.js dist/test/webview/loopPlusModeHelp.test.js dist/test/loop/opencodeloopmodewebview.test.js > /tmp/round698-mode-fixtures.log 2>&1",
+      "exitCode": 0,
+      "result": "20/20; no fail/cancel/skip"
+    },
+    {
+      "scope": "ontology navigation, no data change",
+      "command": "python3 .agents/skills/ontology/scripts/search_ontology.py --status-report; python3 .agents/skills/ontology/scripts/search_ontology.py 'department Loop' --related 1",
+      "exitCode": 0,
+      "result": "ready, 19 query hits; does not constitute a new structure validation"
+    }
+  ],
+  "firstRunCleanup": {
+    "reason": "Six 10s timed-out tests left six owned fixture children alive, log idle >60s after last case. SIGTERM only these descendants to let official runner finish; not behavior success. Fixture descendants exited after SIGTERM; failed tests left fs.watch handles, so SIGTERM the exact file process as well to unblock summary.",
+    "time": 1794823694.460636,
+    "parent": [
+      73439
+    ],
+    "children": [
+      [
+        "73700",
+        "73439",
+        "02:27",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-BFtubk/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-BFtubk\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ],
+      [
+        "74973",
+        "73439",
+        "02:17",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-3iVyJt/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-3iVyJt\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ],
+      [
+        "76299",
+        "73439",
+        "02:07",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-1ANKok/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-1ANKok\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ],
+      [
+        "77949",
+        "73439",
+        "01:57",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-b8TOpH/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-b8TOpH\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ],
+      [
+        "79230",
+        "73439",
+        "01:47",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-Ut3oJd/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-Ut3oJd\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ],
+      [
+        "79608",
+        "73439",
+        "01:36",
+        "node /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-TrCIPt/fixture app-server -c projects.\"/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/codex-owned-TrCIPt\".trust_level=\"trusted\" -c thread_unload_delay_secs=0 --listen stdio://"
+      ]
+    ],
+    "fileProcessTerminated": 73439
+  },
+  "failureFiles": [
+    {
+      "path": "dist/test/cli/commandRunnerCoverage.test.js",
+      "count": 1,
+      "classification": "fixture hypothesis",
+      "evidence": "Platform mock changes linux to win32 on one live controller, while the controller captures platform at creation. No native Windows conclusion.",
+      "nextOwnerOrAction": "main review; isolate a controller per platform before any repair"
+    },
+    {
+      "path": "dist/test/cli/opencodeCommandRunner.test.js",
+      "count": 1,
+      "classification": "fixture/lifecycle hypothesis",
+      "evidence": "Exit callback is observed before overlay cleanup assertion. Natural cleanup ordering not established by this failed assertion.",
+      "nextOwnerOrAction": "main review; inspect callback versus lifecycle settlement"
+    },
+    {
+      "path": "dist/test/core/contextCompactionRunner.test.js",
+      "count": 1,
+      "classification": "unclassified implementation/fixture",
+      "evidence": "Semantic identity/reuse case returns false; cause not established.",
+      "nextOwnerOrAction": "main review; isolate semantic identity fixture"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentOwnedTaskSource.test.js",
+      "count": 2,
+      "classification": "unclassified controlled-store boundary",
+      "evidence": "Ordinary writes expected true return false. Do not bypass protected root/identity rules.",
+      "nextOwnerOrAction": "central store repair owner"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentOwnershipIndex.test.js",
+      "count": 5,
+      "classification": "fixture/contract mismatch hypothesis",
+      "evidence": "diskSource seeds department records via ordinary tryWrite now rejected by controlled source rules.",
+      "nextOwnerOrAction": "central store repair owner; use authorized fixture path without weakening writer protection"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentProductionTaskStore.test.js",
+      "count": 1,
+      "classification": "unclassified store routing",
+      "evidence": "Ordinary read expected empty returns a routed department task.",
+      "nextOwnerOrAction": "central store repair owner"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentcoldgenerationrecovery.test.js",
+      "count": 1,
+      "classification": "implementation/fixture unresolved; parallel boundary",
+      "evidence": "Cleanup remains unverified and capacity must be retained.",
+      "nextOwnerOrAction": "parallel cold-recovery owner/main review; preserve receipt/CLOSED proof"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentcontinuationlifecycle.test.js",
+      "count": 3,
+      "classification": "confirmed fixture omission; further behavior untested",
+      "evidence": "treeControl replaces TestContext with after-only object, omitting mock used by captureDepartmentTestWorkers.",
+      "nextOwnerOrAction": "main review; coordinate shared production-wiring fixture ownership"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentgroupcapacity.test.js",
+      "count": 2,
+      "classification": "implementation/fixture unresolved; parallel boundary",
+      "evidence": "OpenCode occupancy expected 1 is 0; 20 employee case times out.",
+      "nextOwnerOrAction": "parallel allocation owner/main review"
+    },
+    {
+      "path": "dist/test/extensionHost/departmentproductionwiring.test.js",
+      "count": 1,
+      "classification": "implementation/fixture unresolved; parallel boundary",
+      "evidence": "session-persistence-or-binding-failed then deadline; forced fixture reclamation is not natural cleanup.",
+      "nextOwnerOrAction": "main review/cold owner; no exclusive fixture edits here"
+    },
+    {
+      "path": "dist/test/extensionHost/departmenttreecontrolintegration.test.js",
+      "count": 3,
+      "classification": "confirmed fixture omission; further behavior untested",
+      "evidence": "Same missing TestContext.mock in treeControl as continuation lifecycle.",
+      "nextOwnerOrAction": "main review; coordinate shared production-wiring fixture ownership"
+    },
+    {
+      "path": "dist/test/extensionHost/loopPlusEntryRouting.test.js",
+      "count": 1,
+      "classification": "confirmed extraction fixture failure",
+      "evidence": "Handwritten brace scanner reports Unclosed brace on current source.",
+      "nextOwnerOrAction": "main review; replace extraction with TypeScript AST while preserving assertions"
+    },
+    {
+      "path": "dist/test/extensionHost/loopPlusHandoffContracts.test.js",
+      "count": 6,
+      "classification": "central implementation/contract conflict",
+      "evidence": "Partial batch/repair dispatch assertions fail; ENOSPC/EACCES replaced by generic did-not-commit error.",
+      "nextOwnerOrAction": "single central store/handoff repair owner"
+    },
+    {
+      "path": "dist/test/extensionHost/promptExecutionShared.test.js",
+      "count": 1,
+      "classification": "stale static assertion hypothesis",
+      "evidence": "Exact three-argument runner spelling predates department execution options.",
+      "nextOwnerOrAction": "main review; assert current call contract without dropping execution/instruction checks"
+    },
+    {
+      "path": "dist/test/extensionHost/promptSessionHealth.test.js",
+      "count": 67,
+      "classification": "repaired fixture",
+      "evidence": "Include actual department admission/preparer dependencies plus AbortController in VM; ordinary metadata remains ordinary.",
+      "nextOwnerOrAction": "repaired; 69 final cases pass"
+    },
+    {
+      "path": "dist/test/interactive/codexOwnedExecution.test.js",
+      "count": 6,
+      "classification": "confirmed handshake expectation conflict; cancelled",
+      "evidence": "Six cases await explicit unconfirmed-thread notification before RPC confirmation; accepted ownership rules buffer it. Do not restore sole-listener claiming.",
+      "nextOwnerOrAction": "main review; handshake-aware fake transport and bounded teardown; preserve raw credential assertions"
+    },
+    {
+      "path": "dist/test/loop/continueModelChoice.test.js",
+      "count": 1,
+      "classification": "stale source-order assertion hypothesis",
+      "evidence": "Exact transcript initialization source-order assertion fails; behavior not yet diagnosed.",
+      "nextOwnerOrAction": "main review"
+    },
+    {
+      "path": "dist/test/loop/departmentGroupChatHost.test.js",
+      "count": 2,
+      "classification": "implementation/fixture unresolved; parallel boundary",
+      "evidence": "Invalid allocation payload error absent and late receipt membership expected 0 is 1.",
+      "nextOwnerOrAction": "parallel allocation owner/main review"
+    },
+    {
+      "path": "dist/test/loop/loopPromptQueue.test.js",
+      "count": 2,
+      "classification": "stale payload/static assertion hypothesis",
+      "evidence": "Payload adds departmentConfigurationScope:undefined and conflict-path source pattern changed.",
+      "nextOwnerOrAction": "main review; verify queue conflict contract"
+    },
+    {
+      "path": "dist/test/loop/loopTaskStoreCoreCoverage.test.js",
+      "count": 5,
+      "classification": "central implementation/contract conflict",
+      "evidence": "Original write/append errors lost; migration binding and malformed record behavior differ.",
+      "nextOwnerOrAction": "single central store repair owner"
+    },
+    {
+      "path": "dist/test/loop/loopTaskStorePersistence.test.js",
+      "count": 16,
+      "classification": "confirmed source divergence; central implementation concern",
+      "evidence": "Integrated updateLoopTaskRecord uses failed-read -> null and boolean write ports; mainline strict reads throw original errors. Source/target unreadability and errno/migration assertions fail.",
+      "nextOwnerOrAction": "single central store repair owner; preserve department catalog/authority protection"
+    },
+    {
+      "path": "dist/test/loop/loopmaingroupchatbutton.test.js",
+      "count": 2,
+      "classification": "repaired fixture",
+      "evidence": "Extract actual syncPromptSubmissionWait dependency before updateRunWait.",
+      "nextOwnerOrAction": "repaired; 4 final cases pass"
+    },
+    {
+      "path": "dist/test/loop/opencodeloopmodewebview.test.js",
+      "count": 3,
+      "classification": "repaired fixture",
+      "evidence": "Provide select.options matching actual four mode choices; production selector unchanged.",
+      "nextOwnerOrAction": "repaired; final mode group passes"
+    },
+    {
+      "path": "dist/test/runtime/departmentleadercodexowner.test.js",
+      "count": 2,
+      "classification": "unclassified native owner contract",
+      "evidence": "leader-owner-channel-or-delivery-unknown in both owner cases.",
+      "nextOwnerOrAction": "main review/cold owner; do not infer cleanup"
+    },
+    {
+      "path": "dist/test/session/sessionMessageActions.test.js",
+      "count": 1,
+      "classification": "implementation authorization concern",
+      "evidence": "Mode disabled during awaited postPanelState still dispatches; test expects no run.",
+      "nextOwnerOrAction": "single central authorization repair owner; recheck immediately before send"
+    },
+    {
+      "path": "dist/test/webview/conversationtabsummarytooltip.test.js",
+      "count": 20,
+      "classification": "repaired fixture",
+      "evidence": "Include actual department presentation helper and classList.contains; tooltip assertions unchanged.",
+      "nextOwnerOrAction": "repaired; 20 final cases pass"
+    },
+    {
+      "path": "dist/test/webview/loopPlusModeEntry.test.js",
+      "count": 4,
+      "classification": "repaired fixture and stale assertion",
+      "evidence": "Include actual department helper/select.options; assert exactly coding/loop/loop_plus/department.",
+      "nextOwnerOrAction": "repaired; final mode group passes"
+    },
+    {
+      "path": "dist/test/webview/loopPlusModeHelp.test.js",
+      "count": 1,
+      "classification": "repaired stale assertion",
+      "evidence": "Assert exact accepted four-mode list, retaining graph rejection and all help assertions.",
+      "nextOwnerOrAction": "repaired; final mode group passes"
+    },
+    {
+      "path": "dist/test/webview/notificationAuthorization.test.js",
+      "count": 8,
+      "classification": "repaired fixture",
+      "evidence": "Evaluate generated runtime after constants substitution; retain notification authorization/scoping assertions.",
+      "nextOwnerOrAction": "repaired; 8 final cases pass"
+    },
+    {
+      "path": "dist/test/webview/opencodedualmodelwebview.test.js",
+      "count": 1,
+      "classification": "CSS extraction fixture hypothesis",
+      "evidence": "Test selects final white-space rule rather than earlier color rule in cascade. No UI redesign.",
+      "nextOwnerOrAction": "main review; inspect selector aggregation"
+    },
+    {
+      "path": "dist/test/webview/panelViewLocation.test.js",
+      "count": 1,
+      "classification": "environment/repository-input failure",
+      "evidence": "Required package-lock.json absent in tracked input; ENOENT. No install or arbitrary lock copy.",
+      "nextOwnerOrAction": "main review; resolve tracked lockfile expectation"
+    }
+  ],
+  "failuresAndCancellations": [
+    {
+      "location": "dist/test/cli/commandRunnerCoverage.test.js:854:1",
+      "test": "✖ terminates mocked process trees through direct, child, and Windows fallbacks (5.116667ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + '/Users/fangjiawei/.nvm/versions/node/v24.22.2/bin/node'\n  - 'taskkill'\n  ",
+      "fullLogBlockSha256": "183a0e38053004241159825aca5fafa6d91c7579dbbfcd4afcc70d1fd34ec07e",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/cli/opencodeCommandRunner.test.js:150:1",
+      "test": "✖ starts a dedicated OpenCode serve process and cleans its runtime overlay (91.939834ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  true !== false\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/cli/opencodeCommandRunner.test.js:202:16)\n      at async Test.run (node:internal/test_runner/test:1409:7)",
+      "fullLogBlockSha256": "98de47f00b8daab8dab70065a3bff03fd2132687505c5eb086ab4e657e28eb27",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/core/contextCompactionRunner.test.js:283:1",
+      "test": "✖ Codex compact passes cwd to the real semantic identity and preserves reuse isolation (104.817042ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/core/contextCompactionRunner.test.js:309:20\n      at async withCodexIdentityFixture (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/config/codexRuntimeConfigFixture.js:23:9)",
+      "fullLogBlockSha256": "7bdc3fca588102d4e650b3598db8a397b52bebba66b03a881635a04badfa8a8e",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnedTaskSource.test.js:192:1",
+      "test": "✖ ordinary writes reject registered roots and ordinary storage remains compatible (77.8635ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnedTaskSource.test.js:204:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "963ed4a05cd5e45f4f204ecec6fd25ddd0fa6e06d0050a062c94721612f759d7",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnedTaskSource.test.js:215:1",
+      "test": "✖ ordinary writes reject a final symlink into a controlled root but allow directory aliases (9.407584ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnedTaskSource.test.js:231:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "d9212d44e22599becd5d66fe56cc66867ff260371024ae04af1b998e8240862d",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnershipIndex.test.js:175:1",
+      "test": "✖ confirmed real writes, updates, root/module/workspace changes, path migration and deletion update before return (3.817ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at diskSource (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:170:12)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:176:15)",
+      "fullLogBlockSha256": "781bde16bb6d6d930ed473a85d993226633a02ad3b2515b08e0fb78b6ea0f724",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnershipIndex.test.js:201:1",
+      "test": "✖ real write/delete failures revoke completeness, void wrapper remains compatible and rebuild failure keeps it revoked (1.062833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at diskSource (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:170:12)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:202:15)",
+      "fullLogBlockSha256": "c61db079fc9b430a700376a035443549ae42196a2f4a549fe166055977a17fe7",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnershipIndex.test.js:225:1",
+      "test": "✖ external file creation and restart require invalidation and explicit complete rebuild, never an incremental heal (0.809584ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at diskSource (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:170:12)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:226:15)",
+      "fullLogBlockSha256": "00a66dc352ddc7c66893e55f0a9a642e6fdc00f6b05f67ac73c59e705f7a213c",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnershipIndex.test.js:277:1",
+      "test": "✖ indexed fresh record reads never enumerate, detect unexpected same-file changes and reject removed sources (2.6445ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at diskSource (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:170:12)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:278:15)",
+      "fullLogBlockSha256": "c29de2342ac1cb1d0e9ff156ad203ac79f90a4501caa8fa9a148b1e6d0a6c60a",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentOwnershipIndex.test.js:303:1",
+      "test": "✖ partially failed real migration cannot publish a successful identity or keep authorization available (7.754833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  false !== true\n  \n      at diskSource (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:170:12)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/departmentOwnershipIndex.test.js:304:15)",
+      "fullLogBlockSha256": "d34f20e2ba418d2b307a6a06c9555d47731f05c0e0edc8480c4fe828720b3841",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentProductionTaskStore.test.js:30:1",
+      "test": "✖ production source + central composition + real Loop+ adapter persist complete owned tasks and share admission (1981.352708ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n    {\n  +   tasks: [\n  +     {",
+      "fullLogBlockSha256": "0235b23c4c41fd4e442517439d5697fbc7bb713f464237a9c53df93b0b851460",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentcoldgenerationrecovery.test.js:19:5",
+      "test": "✖ cold production repository authenticates original complete generation and durably releases before unique successor (5981.916833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # [department-test-hygiene] terminating unresolved owned worker /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/runtime/departmentgenerationauthorityworker.js\n  # [department-test-hygiene] terminating unresolved owned worker /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/runtime/departmentleadercodexownerworker.js\n  # Subtest: cold production repository authenticates original complete generation and durably releases before unique successor\n  not ok 1 - cold production repository authenticates original complete generation and durably releases before unique successor\n    ---",
+      "fullLogBlockSha256": "ed452ef0809493a5e8a87f891c34e75151ae28761b5c43bf7eb9deabff32f90e",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentcontinuationlifecycle.test.js:33:5",
+      "test": "✖ new task creation does not read a retained continuation proof from another task (636.587792ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: new task creation does not read a retained continuation proof from another task\n  not ok 1 - new task creation does not read a retained continuation proof from another task\n    ---\n    duration_ms: 2.318541\n    type: 'test'",
+      "fullLogBlockSha256": "523b43ab80115258fdb7a1b9cccfc063a47d9f84c0ddfd26523932b30b792709",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentcontinuationlifecycle.test.js:33:5",
+      "test": "✖ continued leader owns preparation and coordination until its real stopped generation retires (766.691541ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: continued leader owns preparation and coordination until its real stopped generation retires\n  not ok 1 - continued leader owns preparation and coordination until its real stopped generation retires\n    ---\n    duration_ms: 2.483167\n    type: 'test'",
+      "fullLogBlockSha256": "b20cd55d3d2b55a65510855c9289211d2a9e9c77682d8f347c473c899a060c2f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentcontinuationlifecycle.test.js:33:5",
+      "test": "✖ cancelled continued preparation releases orchestration ownership but retains unbound cleanup responsibility (522.895583ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: cancelled continued preparation releases orchestration ownership but retains unbound cleanup responsibility\n  not ok 1 - cancelled continued preparation releases orchestration ownership but retains unbound cleanup responsibility\n    ---\n    duration_ms: 1.098541\n    type: 'test'",
+      "fullLogBlockSha256": "b0d9f05ca9b16000932aead8a10a3d8eeee0ac66e6d935bdef3f15b5f2bac239",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentgroupcapacity.test.js:20:5",
+      "test": "✖ production OpenCode coverage and foreign generations cannot consume a leader slot (3052.103375ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: ✖ production OpenCode coverage and foreign generations cannot consume a leader slot (2197.426542ms)\n  ℹ tests 1\n  ℹ suites 0\n  ℹ pass 0\n  ℹ fail 1\n  ℹ cancelled 0",
+      "fullLogBlockSha256": "7871813de4bbf471baa77733649d57850a1c145cd282d4ff7151b4da3cfc3e60",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentgroupcapacity.test.js:20:5",
+      "test": "✖ two production leaders share twenty employee leases and retain one unresolved overflow per group (13429.129625ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: ✖ two production leaders share twenty employee leases and retain one unresolved overflow per group (12892.008666ms)\n  ℹ tests 1\n  ℹ suites 0\n  ℹ pass 0\n  ℹ fail 1\n  ℹ cancelled 0",
+      "fullLogBlockSha256": "1ea696b8dacc49f24e54514c6f3c7013f0e4adc7abc0617b4d507729fff0e726",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmentproductionwiring.test.js:16:5",
+      "test": "✖ production composition uses one producer for two native mains and opencode employee admission (16061.617667ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # [department-leader-native] stage=session-persistence-or-binding-failed\n  # [department-test-hygiene] terminating unresolved owned worker /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/runtime/departmentleadercodexownerworker.js\n  # [department-test-hygiene] terminating unresolved owned worker /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/runtime/departmentprocessownerworker.js\n  # Subtest: production composition uses one producer for two native mains and opencode employee admission\n  not ok 1 - production composition uses one producer for two native mains and opencode employee admission",
+      "fullLogBlockSha256": "123bfff43f8548f5166b2f01861e54fb0665a66afc6f70792d2215a3ae7ee15e",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmenttreecontrolintegration.test.js:26:5",
+      "test": "✖ production root stop drains an already-granted leader callback before continuation (1493.001334ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: captured old leader callback delegate cannot reach a successor consumer\n  ok 1 - captured old leader callback delegate cannot reach a successor consumer\n    ---\n    duration_ms: 1.913334\n    type: 'test'",
+      "fullLogBlockSha256": "19a4a03d87f1744eb69c20013fcd58ebbeee380bfd64f16dcf29cee40e107019",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmenttreecontrolintegration.test.js:26:5",
+      "test": "✖ production root stop drains two original groups before explicit continuation (718.354416ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: captured old leader callback delegate cannot reach a successor consumer\n  ok 1 - captured old leader callback delegate cannot reach a successor consumer\n    ---\n    duration_ms: 0.803458\n    type: 'test'",
+      "fullLogBlockSha256": "a965ef9b125ec9e99d4483795906913ab7a21ba0e5edb0ff4f50638fb63609f9",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/departmenttreecontrolintegration.test.js:26:5",
+      "test": "✖ production root stop before binding fences late preparation and retains unknown responsibility (790.930959ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: TAP version 13\n  # Subtest: captured old leader callback delegate cannot reach a successor consumer\n  ok 1 - captured old leader callback delegate cannot reach a successor consumer\n    ---\n    duration_ms: 0.820542\n    type: 'test'",
+      "fullLogBlockSha256": "438f7f8b8ff391e1019894099447a66b1c9163620ef136059ae4fd1c2c23b65f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusEntryRouting.test.js:137:1",
+      "test": "✖ calls Loop+ before classic initialization and the round loop (5.188291ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Unclosed brace\n      at matchingBrace (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/loopPlusEntryRouting.test.js:135:11)\n      at functionBody (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/loopPlusEntryRouting.test.js:87:34)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/loopPlusEntryRouting.test.js:184:20)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "492cde76e589ee5309c0ef6e95a64b28a6872bf26d9d995f2189b7a7265e8d4c",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:291:1",
+      "test": "✖ partial accept/dispatch rejection repairs only remaining work with bounded retries and no repeated acceptance (338.445208ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  2 !== 3\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/loopPlusHandoffContracts.test.js:302:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)",
+      "fullLogBlockSha256": "3b450ca5aa80858cf2075e80a8d072bc0a8cc07fc7997ecda87dcede3b2a0376",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:324:1",
+      "test": "✖ rejected repair dispatch is corrected successfully from the latest snapshot without re-accepting A (263.351833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected \"actual\" to be strictly unequal to:\n  \n  'review'\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/loopPlusHandoffContracts.test.js:335:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {",
+      "fullLogBlockSha256": "bb0c241f6a498be6964a0c53c883810d8b3b479da3a95d041500af154da8012a",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:400:9",
+      "test": "✖ paused parent resume write failure retains pending attempt until commit (190.401584ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n  + Comparison {}\n  - Comparison {\n  -   code: 'ENOSPC'",
+      "fullLogBlockSha256": "846e64a16fa5f76b1cf368c374d5efadc42ff1ed0e5f28cce740461c6748497a",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:400:9",
+      "test": "✖ paused parent resume rename failure retains pending attempt until commit (176.572917ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n  + Comparison {}\n  - Comparison {\n  -   code: 'EACCES'",
+      "fullLogBlockSha256": "bbe0a8bc1673212e5c41452e1f7f93649484ec915581da4cc716e390c43e87f0",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:400:9",
+      "test": "✖ stopped parent resume write failure retains pending attempt until commit (145.287791ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n  + Comparison {}\n  - Comparison {\n  -   code: 'ENOSPC'",
+      "fullLogBlockSha256": "a55c7bce7e979895f6528caae3f1a896d3fec232d2fb80c9e826e1189b5b1953",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/loopPlusHandoffContracts.test.js:400:9",
+      "test": "✖ stopped parent resume rename failure retains pending attempt until commit (329.135083ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  \n  + Comparison {}\n  - Comparison {\n  -   code: 'EACCES'",
+      "fullLogBlockSha256": "e9e41703b33ee0a69c98e5b78ba2b051051302a93d12b9ff58e9fd1c67cd9895",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/promptExecutionShared.test.js:38:1",
+      "test": "✖ the shared prompt entry applies classic project instructions before all runtime paths (8.060084ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n  \n    assert.ok(entry.includes(`${runner}(currentAttemptInput, attemptTarget, executionOptions)`))\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptExecutionShared.test.js:46:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "fe65c39aeb2c45f582e86a5eaa54d612a42eb8063e9200a252da7e9bced6287f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:183:22",
+      "test": "✖ Loop subtask configuration timeouts preserve tab failure and correlated lock diagnostics (5.505208ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  ReferenceError: runPromptWithDepartmentAdmission is not defined\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:190:5)",
+      "fullLogBlockSha256": "bb743628ac2e4a2952f7da96d886f90c44daedc317be18317c745f3cb9046d35",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:207:22",
+      "test": "✖ cancelling main work queued behind a question prevents a late CLI start (2.444125ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:213:26)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "124acea3dd950efedd37413769cf50bcedce233c0e618fb71d168adf723a392b",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:224:22",
+      "test": "✖ Loop question cancellation reaches every dispatched runtime (0.779667ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:228:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "e6466fb45338f5aa05731dda673285838e8d74885441fd9aa3b42f650e57e4a6",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:238:22",
+      "test": "✖ every public runtime takes over duplicate tabs before health checks and rejects a later closed target (1.12575ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:242:17)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "bab9fa8cffa4fa30930cbb0ec77d079f92366e87b532d347c8a4de7753146582",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:251:22",
+      "test": "✖ a model switch during config wait reaches the next main CLI invocation (10.496792ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:263:25)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "2e804de0afe0cfda23232e52c42e2ab1a2aba6505aa999d409cafd474c31524f",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:277:22",
+      "test": "✖ a question cancelled while waiting for compaction never dispatches (0.997041ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:281:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "4ca58d7caebc441a7e2c47e41e0302ef2caa1d9051a5bb8f7caf19bc09846d0c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:285:22",
+      "test": "✖ a question cancelled during config preparation releases its lease without dispatching (3.709625ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:290:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "a0477c1e06fe880ccca751da86b4ea08dc12adb7d50e3d1f2a470dd0ab85e8fa",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:299:22",
+      "test": "✖ config lease release timeout does not turn a successful subtask run into an execution error (0.66025ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:309:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "bb184dbec36ffedbfff070972b2fe2c18f19930b86d3dbcc6a0e964aac4c779b",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:348:22",
+      "test": "✖ dispatches a fresh session after the health gate across interactive, one-shot and parallel execution (2.950875ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:351:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "249f6a41eea26d83f95722728430997a0edaa3122743889d687a91f653d63679",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:362:22",
+      "test": "✖ continues normal sessions without disposing their runners (2.486167ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:365:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "29bdfc91d267afa432ee69c2b8619a7cdf1649a3aba8a58996be6a56e5d66b16",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:370:22",
+      "test": "✖ all runtime routes reject switched profiles but accept revisions within the same profile (3.263875ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /本次任务未启动/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:373:9)",
+      "fullLogBlockSha256": "979d7d48e34dce164a53137fec92ccf45a6adef38e7510104e30dac5628e9be5",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:417:22",
+      "test": "✖ all CLIs and task roles accept the same profile with an older revision without warnings (5.602458ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:422:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "ca5e352e7e54f52a1a14a7ba85d176f98dd82bbc231cd0f0e6db0e42b14bb7bd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:435:22",
+      "test": "✖ runtime errors release the config lease rather than permanently blocking other windows (9.292458ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /synthetic runtime failure/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:437:5)",
+      "fullLogBlockSha256": "f986912003db422af85d63d0133121b4f3151cd5f0a0ca7fb9d7fd21a3e43873",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:440:22",
+      "test": "✖ rejects a rebound tab before its health check after waiting for compaction (1.483792ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:442:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "56a59a0ceaa4a6acacaca0e659c0b82d9dda9d23af1df10da8afc94ed475e8e8",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:447:22",
+      "test": "✖ does not restore an old session ID when the target was cleared while waiting (11.075708ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:449:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "9a0f9b88bfe0cc42fd79409ee5d87a5ef23c3e42692bfa1e8e4e10cf7bf6d8cd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:453:22",
+      "test": "✖ the unified entry waits for the current subtask session before acquiring config or dispatching (42.416ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:462:25)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "f4a3e6228966a98e2df50fa510e065c7d518795a66dfa4d9ba693124b758226e",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:471:22",
+      "test": "✖ a target rebound during configuration preparation never dispatches on any runtime route (1.550042ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:480:27)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "2e0fbe2df7e25ac2cfd2cc8550412fe40e1e22b8e09b2d18cd0fcc87a097f78a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:493:22",
+      "test": "✖ the unified entry repairs ENOENT and uses a fresh session across all execution routes (1.469ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:497:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "3f9f829455822745db3d16dd7a255c231342fa6fc5e6b822a3de07c115322630",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:507:22",
+      "test": "✖ the unified entry stops when repair is unavailable or its single retry fails (1.505208ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  ReferenceError: runPromptWithDepartmentAdmission is not defined\n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "fullLogBlockSha256": "8d54e7a8cafdcc4ff557f0b90868827e68efdfed824510ebf6f3894d76d09c97",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:516:22",
+      "test": "✖ an ENOENT with a usable CLI command does not repair a missing cwd or unrelated file (2.450625ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  ReferenceError: runPromptWithDepartmentAdmission is not defined\n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "fullLogBlockSha256": "2e961b3f67789a31ee5b73c58e6681839be1b770e0e655b010d65805caf808f1",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:523:22",
+      "test": "✖ 宿主 PATH 可解析但登录 shell 找不到 Codex 时固定绝对路径并仅重试一次 (3.140459ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:526:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "be5ba67816cec0893e28cd70520ffed5d5739a8086fae3a0b360b7aa58a5e1c2",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ codex acquires the selected profile lease on every run across all execution routes (1.27975ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "f8610a1cd225169ccc416c500d2b15f8374303ba6645a22e9cb3c0e7d97f257f",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ codex waits for pending activation and lease acquisition before dispatch (5.3205ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "71d4c593eec8ab9635149e91e43b5f7ded757127e085bb13992530b5b735c6ac",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ codex stops dispatch when configuration activation or lease acquisition fails (1.704833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "36634fe49fd3652dfa4536d87c0aff4e6cb870db1652e6a65e4def45c00afef8",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ codex stops dispatch when another profile supersedes lease acquisition (1.410625ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "16131440f9109eadb0b7cf625baac2911285dd2c23a3ee925cfb7d9e2d422f0a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ codex acquires the current subtask profile lease instead of trusting the cached active ID (1.299709ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "87170c72c4f774bce47cf536e02e5f1b702086868be00359743427aa9b920f42",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ claude acquires the selected profile lease on every run across all execution routes (0.960209ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "540adc13c906f98268e19c0b3a0e47810a6d126740e0a84f1f94bca5fb63e254",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ claude waits for pending activation and lease acquisition before dispatch (2.415916ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "c01c0339e63cc0a43e5c82c2d2515e6d102212bd8320c74d4e04e2ce6ad4dca1",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ claude stops dispatch when configuration activation or lease acquisition fails (1.530542ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "136a7fb60d24ec61335364ba16336ac3b04ee7288d6820016f0f042a34ffb223",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ claude stops dispatch when another profile supersedes lease acquisition (1.211833ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "57c6173f1363873b8f71fd8c3fd623c942ae313927033e03cc6ca390b539a89e",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ claude acquires the current subtask profile lease instead of trusting the cached active ID (2.569791ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "16f3d83bed14a122c919915b689b1d75519c054ed15a2d1f9366fa7c6d8a0dca",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ opencode acquires the selected profile lease on every run across all execution routes (0.726959ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "8913326fb5e693640403794106d47ac66b4331f28c087f60c7ec060845dd5376",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ opencode waits for pending activation and lease acquisition before dispatch (4.009375ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "7b2de73d27c9c535b50f5961b286db5263dae4ddebb919be7be5f1f135b0ce00",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ opencode stops dispatch when configuration activation or lease acquisition fails (1.643084ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "8a926b2e289b74a3e642b9438a4c816aebece3dc452080cc4a3b757be91275cd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ opencode stops dispatch when another profile supersedes lease acquisition (1.577416ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "bf3bb1d2b6a04e60992e923a87b85aa3ccad1300a8f4724f00ca8d25b6972c4c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ opencode acquires the current subtask profile lease instead of trusting the cached active ID (1.230791ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "f5e8f4ccd035061532b262ee65afe3058ba586f42e8b08e9cfb5877e55da84cb",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ grok acquires the selected profile lease on every run across all execution routes (1.38825ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "ab83190a56f115ec9f0d5678478c74797d6934e932675b4784112cd576c3e086",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ grok waits for pending activation and lease acquisition before dispatch (3.901125ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "c15133374eb05bf696dbed02599d9271bf9c315b4fc46fc18cb3e82a8e8d0bb0",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ grok stops dispatch when configuration activation or lease acquisition fails (0.8135ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "828cd3fe6173586ec6386742375801d839deeadecfa52a5b94c0d3f41e198315",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ grok stops dispatch when another profile supersedes lease acquisition (0.626666ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "84bc4c5f4081fb08319e381105e9a896c154f8b6d98cad9eed680dec40c6ffa0",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ grok acquires the current subtask profile lease instead of trusting the cached active ID (0.8345ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "f71b4a4060e74ae2678811edb574183369e75d3af26bf7df0bfb37b163d8797c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ dsh acquires the selected profile lease on every run across all execution routes (0.883708ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "c3d3065fa5fb3e0e9821b677673873209ebf05fe1c200f0cefc3acece0d04285",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ dsh waits for pending activation and lease acquisition before dispatch (1.804667ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "17dcf6cb3e3967a3f0ab59c31ad3733aedcb20a79419e62d3c76bea7e3c7be7f",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ dsh stops dispatch when configuration activation or lease acquisition fails (1.155708ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "fd10c10c3f5a3c0275bf78dc7fd11fa71cbae9282774ffb2dd995ed988964dc4",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ dsh stops dispatch when another profile supersedes lease acquisition (0.883084ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "176f4e2c6b45a7a063b1a41d0ccfa16c457822e87600c3009ba73b0a4d1c0b6b",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ dsh acquires the current subtask profile lease instead of trusting the cached active ID (0.407125ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "a80cffadda1d9c549b05ad46985a81d3d67465e713158576faba0f3dad5a86ee",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ kimi-code acquires the selected profile lease on every run across all execution routes (0.406209ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "28d2d465b20dea771d6c561ad2a5c99e45e241e34bde1192cc9cab9e31762afe",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ kimi-code waits for pending activation and lease acquisition before dispatch (2.369667ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "825c170edba5a40df29c6622304697b742c0d8d2e54cf75ee40bf829b4d822b1",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ kimi-code stops dispatch when configuration activation or lease acquisition fails (1.584084ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "1081104eed7ff9ddbb16af0aaa1a1ce4e023ad65718b08586166c7d5ee0d71e5",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ kimi-code stops dispatch when another profile supersedes lease acquisition (0.658875ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "0431c0b34f376ecaa3b58e131b8d30d29d91283afafab0aa75e44ac84eb410f1",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ kimi-code acquires the current subtask profile lease instead of trusting the cached active ID (0.409667ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "26614dddcf96c3a918be640f678366ecff170f494ded95a9306e040ec21f0064",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:533:26",
+      "test": "✖ zcode acquires the selected profile lease on every run across all execution routes (0.518459ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:537:31)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "f276fec9c953b58152f4d7725f4ec30754da37c1b94db495158a0b438f0d6cdd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:550:26",
+      "test": "✖ zcode waits for pending activation and lease acquisition before dispatch (1.297792ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:557:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "c0d64107d2135605d966fe7b690765e68881c6dd9b5ab41a74e74a4a9e7efafd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:570:26",
+      "test": "✖ zcode stops dispatch when configuration activation or lease acquisition fails (0.55375ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置.*失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:576:17)",
+      "fullLogBlockSha256": "cc67ba892b2a19ef20a98ede6444db95aa5256f65ef8e05bae97f6981638dfdf",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:586:26",
+      "test": "✖ zcode stops dispatch when another profile supersedes lease acquisition (0.808791ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + undefined\n  - 'error'\n  ",
+      "fullLogBlockSha256": "fc0fb3e763f503fd4ff89d54c1caff9056ba3d87f959a603376267bfda912995",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:595:26",
+      "test": "✖ zcode acquires the current subtask profile lease instead of trusting the cached active ID (0.584167ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:597:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "224646ab0764c5b6d0457d0927c49efe2c752623a6efe9fd549d621e67c6609c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:603:22",
+      "test": "✖ command-repair retries use the latest selection instead of restoring the original profile (1.202708ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:608:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "01f19ab53b0d77ba0a4675b905a19bf8484e1e8592b27522b76a42be92ddb799",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:612:22",
+      "test": "✖ failed lease acquisition never dispatches or triggers command repair (1.563875ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置租约获取失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:616:5)",
+      "fullLogBlockSha256": "06540105e0b5c30fbd68acbf33f6548fb59487f2ae2974965316a3d07a364c16",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:625:22",
+      "test": "✖ an aborted configuration lease acquisition never dispatches a task (0.94725ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:629:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "800f7e0953cee8c2eccf40a5f58c6584bda13db93bf02d415d424524589ad996",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:634:22",
+      "test": "✖ configuration failures take precedence over runtime errors without dispatching (0.53225ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置租约获取失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:638:5)",
+      "fullLogBlockSha256": "66ac02b3fd2e3d7e40bbab196d906a36119c1d53084c20bf1d1a5f65ccdc6adc",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:643:22",
+      "test": "✖ a historical execution snapshot cannot override the current selection (0.499792ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:645:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "cc7fd019ad9bcf99ed92a1c8b3174becdd980bb9bb14414597977e3be597be55",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:650:22",
+      "test": "✖ subtasks use the current profile rather than saved bindings and reject unavailable current profiles (1.116375ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:653:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "a3467aa34974bc3331c911cba08ad880d4d152803361242e0816ccef0bc87ba1",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:663:22",
+      "test": "✖ subtask session bindings only record a config ID after successful lease acquisition (0.604834ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:673:29)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "a1e76f84da96f3907931fb366a960188a38c4247bdc53667ccc90f3db18a2177",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:689:22",
+      "test": "✖ startup never activates the first profile when using unmanaged native config (0.5125ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:692:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "d0be7ef6b74baf60bf4973efe3422324006d8119c7e592955d8f679b154f02a2",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:697:22",
+      "test": "✖ startup does not adopt a native matched profile when no user selection exists (1.014083ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: runPromptWithDepartmentAdmission is not defined\n      at Object.runPrompt (evalmachine.<anonymous>:8:5)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:700:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "51e58bbb62b7f520c1786719347d9b9796bc107d982a01dee311217ff959b43f",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:703:22",
+      "test": "✖ OpenCode preflight errors are visible and stop dispatch after acquiring the profile lease (0.614875ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置检查失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:705:5)",
+      "fullLogBlockSha256": "4e2baaba37144d3c947c616d5dffd5e5bb009d6e862a5cab4491f4d447dd8f7d",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/extensionHost/promptSessionHealth.test.js:710:22",
+      "test": "✖ OpenCode configuration lease failure stops before preflight and dispatch (0.869458ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /配置租约获取失败/. Input:\n  \n  'ReferenceError: runPromptWithDepartmentAdmission is not defined'\n  \n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n      at async TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/extensionHost/promptSessionHealth.test.js:713:5)",
+      "fullLogBlockSha256": "a07b9cd855beda029892b835d120062cef39cf8b3534ce0ff0c4d58e089f5f9b",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:495:9",
+      "test": "✖ owned before-readiness notification cannot replace raw start credential (10007.013875ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "850a026772a729bc0b1afb99f53d52b0e665799422ce28b220b0f3da5dbde863",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:495:9",
+      "test": "✖ owned before-readiness notification cannot replace raw resume credential (10002.175042ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "de495deec94bef63d8104181da8227fdee61d8fcda8cfee03cafd89738853b41",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:529:9",
+      "test": "✖ owned before-readiness notification cannot hide missing start response (10001.596625ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "1b30da6908a5b203298864c09e90b264afec341783fafac0060600b2aa61d93b",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:495:9",
+      "test": "✖ owned after-readiness notification cannot replace raw start credential (10002.007916ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "b9eae7f1c40c96ed848d8544d174299f7487600d3889dae45ba342f4a8e04558",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:495:9",
+      "test": "✖ owned after-readiness notification cannot replace raw resume credential (10002.335542ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "67dbaa81c416bf123208d123452a86e531dabb5e8b89704aa2adabcf505c062f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/interactive/codexOwnedExecution.test.js:545:1",
+      "test": "✖ owned notification during cancelled preparation cannot revive a late raw credential (10003.966583ms)",
+      "result": "cancelled",
+      "errorExcerpt": "  'test timed out after 10000ms'",
+      "fullLogBlockSha256": "1c26007aad6f9c795c19647a564439609fd5f52d265df218ac012fc0c020eb47",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/continueModelChoice.test.js:77:1",
+      "test": "✖ new Loop tasks snapshot the prompt main and subtask models (5.211375ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n  \n    assert.ok(originIndex < source.indexOf(\"ensureLoopMainSubChatTranscript(task)\", createTaskIndex))\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/continueModelChoice.test.js:85:12)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "f3da6747bb630fa626232aa0dde1d19dd7ea36ea1a0658d06e40dcb3412da7e3",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/departmentGroupChatHost.test.js:836:1",
+      "test": "✖ allocation message rejects invalid payloads, absent ports, stale records and cross-root/role/ambiguous membership (25.911791ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The \"string\" argument must be of type string. Received type undefined (undefined)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/departmentGroupChatHost.test.js:850:20)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',",
+      "fullLogBlockSha256": "bc6cb6e1529b34ce25fd1fa0aeff300118cfdbb5f92805b07b7f16bba2358901",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/departmentGroupChatHost.test.js:892:1",
+      "test": "✖ allocation async receipt is discarded after membership, workspace or panel binding changes (9.107375ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: member\n  \n  1 !== 0\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/departmentGroupChatHost.test.js:920:20)\n      at async Test.run (node:internal/test_runner/test:1409:7)",
+      "fullLogBlockSha256": "3bb6802e60e3afd3b067e65d217bb662cbafbbc36a22a2959c8a3c0943b2ed58",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopPromptQueue.test.js:128:1",
+      "test": "✖ forwards queued prompt history skip flag when dispatching (2.479167ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n  + actual - expected\n  ... Skipped lines\n  \n    [\n      {",
+      "fullLogBlockSha256": "e4e7536849b350e2bbb79eec431d9c1a74cdd8b92abb1d353c65e554eb42ed5b",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopPromptQueue.test.js:159:1",
+      "test": "✖ prevents the conflict overlay from bypassing a running Loop main tab (1.152416ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /isLoopMainConversationTabRunning\\(getActiveConversationTabId\\(\\)\\)[\\s\\S]*queuePromptForLater\\(promptPayload\\)[\\s\\S]*return;[\\s\\S]*dispatchPrompt\\(promptPayload\\)/. Input:\n  \n  '\\n' +\n    '      function bindHumanInteractionOtherChoice(container, fieldId, label, kind, controls, inputClass, optionClass) {\\n' +\n    '        if (![\"radio\", \"checkbox\", \"select\", \"multiselect\"].includes(kind) || !controls.length\\n' +\n    '          || container.querySelector(\"[data-interaction-other-field]\")) return;\\n' +",
+      "fullLogBlockSha256": "5437355e63f1d0e40342d10ca101b8f1e0f6ebdd8f0c4fb1715e673b3017c993",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStoreCoreCoverage.test.js:302:1",
+      "test": "✖ writes normalized data and propagates write failures at the persistence boundary (14.15675ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  Error: Loop task store write was not confirmed\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStoreCoreCoverage.test.js:308:12)",
+      "fullLogBlockSha256": "6c17851f6a06babf7bf0c6db9a6da325ad3cbbe79cd0bc007b83fbfed212c8ef",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStoreCoreCoverage.test.js:349:1",
+      "test": "✖ updates task state, protects completed tasks, and appends rounds idempotently (25.185ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Loop round append was not confirmed\n      at Object.appendLoopRound (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:868:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStoreCoreCoverage.test.js:367:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "7ccfdb97beee8d713f47dd66de543397dd347d0eee08c5a362945618703242c5",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStoreCoreCoverage.test.js:462:1",
+      "test": "✖ contains Loop communication init failures and store read races (15.122125ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Loop round append was not confirmed\n      at Object.appendLoopRound (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:868:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStoreCoreCoverage.test.js:512:23)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "264eaa3760864a1c6db9861a2d90a5717187257319628a06bf306bcb7bfd481b",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStoreCoreCoverage.test.js:892:1",
+      "test": "✖ moves task records between pending and session stores through public binding APIs (63.4035ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + {\n  +   activeSubtaskId: 'persist-subtask',\n  +   activeSubtaskIds: [",
+      "fullLogBlockSha256": "0289053008f1ad294ad50403ab6cb989fd92acfb9c56f8022f37a9aebe17b669",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStoreCoreCoverage.test.js:973:1",
+      "test": "✖ normalizes malformed optional Loop records without preserving invalid details (125.777625ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Loop task store write was not confirmed\n      at Object.writeLoopTaskStore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1425:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStoreCoreCoverage.test.js:1078:19)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "186a65c548ef3b2f7241fb14de53728e388245ee9da7cae631655ecf51f98c9f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:130:5",
+      "test": "✖ migration target EACCES fails before replacing either file or dropping its sibling (11.571ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:152:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "3c347deec091a1c5a2ba73447ca86ede139f224798c2f5153fe301ad6078505f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:130:5",
+      "test": "✖ migration target syntax fails before replacing either file or dropping its sibling (7.3115ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:152:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "9a1e339ed86062d3c0a3b4b5c7e5e9de427f349097b5475d22db592ce79e1a42",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:130:5",
+      "test": "✖ migration target shape fails before replacing either file or dropping its sibling (100.128ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:152:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "1aaba8f6af7d761df7ebc6bb8163a43d0f310f208633cad9824617f1d7abb112",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:130:5",
+      "test": "✖ migration target record fails before replacing either file or dropping its sibling (23.608166ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:152:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "6b74bd07f03d47413fe70988186dc50a4cd75b0dc858c9623387e0be7622b962",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:168:5",
+      "test": "✖ source EACCES propagates through every commit entry with a cold cache (41.196333ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  Error: Loop round append was not confirmed\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:188:20)",
+      "fullLogBlockSha256": "3f5cdbe321f3c277e3c5f37e845d70db1383647d15cdd931d2655bb6ad97d094",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:168:5",
+      "test": "✖ source EACCES propagates through every commit entry with a warm cache (58.580791ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  Error: Loop round append was not confirmed\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:188:20)",
+      "fullLogBlockSha256": "2110838e3c72cbed467cfb57e9e37598bd8210c61e218e97513aec4aea4ad742",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:195:1",
+      "test": "✖ a source that becomes unreadable after lookup cannot be returned as a missing task (13.860625ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:207:12)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "19b535704b6733c484291a02523523b20d021441315e89a74473c5f90c778f41",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:275:5",
+      "test": "✖ legacy retry preserves committed update and append when the clock offset is 0ms (26.574125ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Invalid Loop task store\n      at readLoopTaskStoreResult (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1352:19)\n      at readLoopTaskStore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1369:20)\n      at resolveLoopTaskStoreFileForTask (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:584:23)\n      at Object.updateLoopTaskRecord (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:716:23)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:289:28)",
+      "fullLogBlockSha256": "de13c7798777ca8758fc91e47159fa7732a6a8b31a77a30b5606906864754f2f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:275:5",
+      "test": "✖ legacy retry preserves committed update and append when the clock offset is -1000ms (27.745667ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Invalid Loop task store\n      at readLoopTaskStoreResult (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1352:19)\n      at readLoopTaskStore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1369:20)\n      at resolveLoopTaskStoreFileForTask (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:584:23)\n      at Object.updateLoopTaskRecord (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:716:23)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:289:28)",
+      "fullLogBlockSha256": "b5bbac2c3d9c644a16eaab60dd9783d003d41559663d493d103016f52118b217",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:308:1",
+      "test": "✖ normal return commits readable JSON, and only a missing task returns null (38.75525ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: Invalid Loop task store\n      at readLoopTaskStoreResult (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1352:19)\n      at readLoopTaskStore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:1369:20)\n      at resolveLoopTaskStoreFileForTask (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:584:23)\n      at Object.updateLoopTaskRecord (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/loopTaskStore.js:716:23)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:317:24)",
+      "fullLogBlockSha256": "d793410e44c7787ae57285a1d9a867a80be9b50f42458821c5342774b3b5073d",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:321:5",
+      "test": "✖ write failure propagates the original error, preserves the running record and removes temporary files (101.694209ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:345:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "71c5c6c358bd1af756006054e420777a3a76690bc7b186f79a1f4c1313bd7437",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:321:5",
+      "test": "✖ rename failure propagates the original error, preserves the running record and removes temporary files (7.040125ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The validation function is expected to return \"true\". Received false\n  \n  Caught error:\n  \n  Error: Loop task store write was not confirmed\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:345:16)",
+      "fullLogBlockSha256": "30ed295b7959a8abd7a621b1f34626fb7a355f7aa9c37c8fdab066df3ee8b12d",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:364:5",
+      "test": "✖ migration target failure retains the source, then a retry commits (10.339125ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:381:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "2c2b0eff43c3486ea3a5cf3fc159c007452c83fa1240172917c47eef90049ef3",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:364:5",
+      "test": "✖ migration target failure retains the source and its sibling, then a retry commits (133.3475ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Missing expected exception.\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopTaskStorePersistence.test.js:381:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)\n      at Test.postRun (node:internal/test_runner/test:1542:19)",
+      "fullLogBlockSha256": "d31a828147680d8a2655de9624db0185dd3089b1649b6b96b17910f11764f39c",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:437:5",
+      "test": "✖ committed migration survives source unlink failure, retention and cold retry (59.467041ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + '/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-store-persistence-wEB7e4/.sinitek_cli/loop-tasks/persistence-47/codex/__pending__/persistence-47/loop-tasks.json'\n  - '/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-store-persistence-wEB7e4/.sinitek_cli/loop-tasks/persistence-47/opencode/moved/loop-tasks.json'\n  ",
+      "fullLogBlockSha256": "3f9a4063fafa9e1b83a2ccc2f0e4f65eeb835df48bfafacb93992ef37a489e1f",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopTaskStorePersistence.test.js:437:5",
+      "test": "✖ committed migration survives source rewrite failure, retention and cold retry (98.574917ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  + actual - expected\n  \n  + '/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-store-persistence-wEB7e4/.sinitek_cli/loop-tasks/persistence-49/codex/__pending__/persistence-49/loop-tasks.json'\n  - '/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-store-persistence-wEB7e4/.sinitek_cli/loop-tasks/persistence-49/opencode/moved/loop-tasks.json'\n  ",
+      "fullLogBlockSha256": "31ed6a656003aa963e4eab33197a123ebf5063615781c4c286ef3b3f4f17d9b3",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/loop/loopmaingroupchatbutton.test.js:103:1",
+      "test": "✖ shows only for the active Loop main tab and survives every task status (1.23575ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: syncPromptSubmissionWait is not defined\n      at updateRunWait (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:74:21), <anonymous>:6:9)\n      at Object.syncOpenCurrentLoopGroupChatButton (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:74:21), <anonymous>:71:11)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:116:17)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "3663bba0589e20f53d882c6ca18bf0bc59af195b8625424f14ee398d9aea881a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/loop/loopmaingroupchatbutton.test.js:132:1",
+      "test": "✖ keeps the main-task group chat entry when the composer mode is Loop+ (0.877ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: syncPromptSubmissionWait is not defined\n      at updateRunWait (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:74:21), <anonymous>:6:9)\n      at Object.syncOpenCurrentLoopGroupChatButton (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:74:21), <anonymous>:71:11)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/loopmaingroupchatbutton.test.js:139:13)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "48d532294af1eb7011f740c2894d4af4cfc5c909bb2f3723c21a5a25b1f1fde9",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/loop/opencodeloopmodewebview.test.js:140:1",
+      "test": "✖ shows the mode selector and compact command for OpenCode (2.010833ms)",
+      "result": "failed",
+      "errorExcerpt": "  TypeError [Error]: undefined is not iterable (cannot read property Symbol(Symbol.iterator))\n      at Array.from (<anonymous>)\n      at Object.syncInteractiveModeSelector (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:121:41), <anonymous>:10:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:142:13)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "503e4204eadae6b0bf3287b0fdb3ddfe0be7a17956c6fd140641438c62556895",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/loop/opencodeloopmodewebview.test.js:168:1",
+      "test": "✖ switches OpenCode between coding and Loop model layouts and persists the mode (0.850792ms)",
+      "result": "failed",
+      "errorExcerpt": "  TypeError [Error]: undefined is not iterable (cannot read property Symbol(Symbol.iterator))\n      at Array.from (<anonymous>)\n      at Object.syncInteractiveModeSelector (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:121:41), <anonymous>:10:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:170:13)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "f8707d5212e3b1db70b0a41eacdd13a2c05558c3bd98b00c9685916f8fb0f247",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/loop/opencodeloopmodewebview.test.js:209:1",
+      "test": "✖ switches Codex between coding, Loop, and Loop+ model layouts and persists the mode (1.278667ms)",
+      "result": "failed",
+      "errorExcerpt": "  TypeError [Error]: undefined is not iterable (cannot read property Symbol(Symbol.iterator))\n      at Array.from (<anonymous>)\n      at Object.syncInteractiveModeSelector (eval at buildHarness (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:121:41), <anonymous>:10:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/loop/opencodeloopmodewebview.test.js:213:13)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "ed9239659d8677995cf89a5417bb9664cda60f52b44b5ba6aa58daf911c1012a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/runtime/departmentleadercodexowner.test.js:53:5",
+      "test": "✖ leader new holds one identity/thread through two immutable invocations (452.472166ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: leader-owner-channel-or-delivery-unknown\n      at fail (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/extensionHost/departmentleadercodexbootstrap.js:95:19)\n      at /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/extensionHost/departmentleadercodexbootstrap.js:247:117\n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "fullLogBlockSha256": "f250a7fd04c8dbd93008a272f90a16354e28f6be2b24d16047ac60a3b053fe53",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/runtime/departmentleadercodexowner.test.js:53:5",
+      "test": "✖ leader precise resume holds one identity/thread through two immutable invocations (501.376375ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: leader-owner-channel-or-delivery-unknown\n      at fail (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/extensionHost/departmentleadercodexbootstrap.js:95:19)\n      at /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/extensionHost/departmentleadercodexbootstrap.js:247:117\n      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)",
+      "fullLogBlockSha256": "d42bfa69451ed81163cb56db7852d017a9c2e3cf43a855607188465bfda4d830",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/session/sessionMessageActions.test.js:1321:1",
+      "test": "✖ rechecks Loop and Loop+ availability after the panel-state await before dispatch (0.590958ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: loop\n  \n  1 !== 0\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/session/sessionMessageActions.test.js:1344:16)\n      at async Test.run (node:internal/test_runner/test:1409:7)",
+      "fullLogBlockSha256": "fd7fcfa2d6bb1ef713fdc77f39ce052f1fc8a0e1710cc4f9e4cfcb6fa01a134e",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:213:22",
+      "test": "✖ summary appears at 300ms, never 299ms, as a single accessible plain text tooltip (4.092875ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "83766f5d62f311872de2bd3255a4ad533ad09b24da8ac6b2dc386bee318ce24a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:228:22",
+      "test": "✖ leave cancels pending work; stale canceled callbacks and quick cross-tab moves cannot leak A (0.603292ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "c615d738d7672581937b5bbfcb89d50bc0cca449d9f913b9482697a5a9dfce8d",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:242:22",
+      "test": "✖ unrelated redraws preserve elapsed dwell and transfer a visible tooltip to the new anchor (11.05275ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "4be0069141c1f74539442a30b1977df70d80f0456f6a84b16333d49aca25dde4",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:262:22",
+      "test": "✖ redraws keep listener counts bounded and do not attach listeners to detached tabs (0.465708ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "701d49607227b94ef8de3242122b6955708657f62c9d5f50c381f95966ea2dcd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:273:22",
+      "test": "✖ deleted, paged-out, pointer-displaced and detached anchors cannot show late (0.430292ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "7772a7cf77a094269e900ecea33345553a839d3f65cfdce27b90f375764e7384",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:303:22",
+      "test": "✖ missing, whitespace and non-string fields never fall back to labels or other tasks (2.372917ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "28231e270a3abcee89c109a54db114bc3a1c8c03154e379fc792b6d3af00b697",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:315:22",
+      "test": "✖ summary renders markup-like input as text, not HTML (0.798209ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "a3b6103ad9d91eae4fda1c681d63091617930f7ef2712760469ccf286af96fce",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:323:22",
+      "test": "✖ keyboard focus uses the same delay, survives redraw, and blur or Escape dismisses (0.374291ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "6efbf7939e793daa4512f0d3b8651cfbdedb36c6c391fee18b5836b6edc21777",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:341:22",
+      "test": "✖ Escape cancels pending focus dwell without selecting or posting hover requests (1.374625ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "8f78edf75b7f1e39ee84004b0cf20068e08923fa54ea9898864318cd085e638b",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:351:22",
+      "test": "✖ click selection, Enter/Space selection, and close retain the original messages and dismiss (1.333292ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "fbc05ea4111c896b7c5f4b5a2208daa43667a59c3f8678180cc0ddfe1f83f675",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:367:22",
+      "test": "✖ opening a main-task group chat precedes selection and avoids its redundant eager message repaint (0.507041ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "4bd639669fff25867df417130a25ae75da3d2755796688699173481dba4b4257",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:384:22",
+      "test": "✖ running, errored and locked tabs remain readable while close stays disabled when required (0.511834ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "4fd93b4757e45f9fd22a1a99f63653d7e672846a9c079647628170dcb2b74fcd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:398:22",
+      "test": "✖ running tabs take precedence over an intermediate or stale error marker (0.391417ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "2f9bd45f0f0a825a06c602b68f39d66238e73121e06676d0114563bae6540d45",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:408:22",
+      "test": "✖ viewport invalidation dismisses visible and pending tooltips (0.389667ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "11ca8a3635ad3c72487b2b73b586e67ff305341ae15dad1035e20c77626ec61a",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:425:22",
+      "test": "✖ positioning keeps 8px margins, wraps narrow content and flips above near the bottom (0.3485ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "3489438bf845a619722a0b1b1ace41adb688e6d137fc9ea76409b0dbe992fa61",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:448:22",
+      "test": "✖ selecting the already active tab by keyboard still dismisses the summary (1.064041ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "419183d6ea0d73363a2e66688f85ee04d5b548bb44ecba07e0e88150bb1fbe92",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:458:22",
+      "test": "✖ a queued focus scroll that leaves the anchor unchanged does not starve keyboard dwell (1.334917ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "64c518c2e6d59676de69e4a2e258833363407045e2b147215ff5eb32182e50ef",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:467:22",
+      "test": "✖ removing a summary during redraw cancels both pending and visible tooltips (0.832458ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "e3db4aaf5837ef8f722660528d3a45e8f3914b08987fadb7bc1568352609288c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:480:22",
+      "test": "✖ paging away dismisses a visible tooltip without changing the selected tab (1.061041ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "ca253a25dd0ee4db39af84db48348ed277e76e12e6e65869b4737d23dec58287",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/conversationtabsummarytooltip.test.js:492:22",
+      "test": "✖ tiny viewports clamp vertically; hidden or zero-sized anchors cannot schedule (1.505208ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:377\n            const department = getDepartmentConversationTabPresentation(tab);\n                               ^\n  \n  ReferenceError: getDepartmentConversationTabPresentation is not defined\n      at evalmachine.<anonymous>:377:30",
+      "fullLogBlockSha256": "a30f9f47e7b54541d0061fa278c917558422ad1c20005904e782373624f9ea3d",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/loopPlusModeEntry.test.js:98:22",
+      "test": "✖ renders Loop+ in both interactive mode selects without extra Loop mode choices (34.048416ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  4 !== 3\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:110:16)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "d6fc1a9ee0928e368b6773173b5d7e265e5502780eaa98ea093d4dfbc6e719fe",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/loopPlusModeEntry.test.js:129:22",
+      "test": "✖ restores Loop+, posts the setting, and keeps role selectors in sync (7.87225ms)",
+      "result": "failed",
+      "errorExcerpt": "  TypeError [Error]: undefined is not iterable (cannot read property Symbol(Symbol.iterator))\n      at Array.from (<anonymous>)\n      at syncInteractiveModeSelector (eval at <anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:163:41), <anonymous>:10:15)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:165:5)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "134194335d6662f278bef37ef483c61da22dd76d9b2665b1b0edd39786e700dd",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/loopPlusModeEntry.test.js:203:22",
+      "test": "✖ switches classic and Loop+ main tabs from loopSchedulingMode without cross-tab pollution (1.495375ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: getDepartmentConversationTabPresentation is not defined\n      at Object.resolveAutoInteractiveModeForTab (eval at <anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:245:17), <anonymous>:12:28)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:270:22)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)\n      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)",
+      "fullLogBlockSha256": "8ec420600218734055d1ec8953219100b46f9dd12171c769788181d854fd7900",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/loopPlusModeEntry.test.js:297:22",
+      "test": "✖ restores each main tab mode from its summary after a fresh page load (2.95425ms)",
+      "result": "failed",
+      "errorExcerpt": "  ReferenceError [Error]: getDepartmentConversationTabPresentation is not defined\n      at autoInteractiveModeTabKey (eval at restore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:319:21), <anonymous>:48:28)\n      at syncAutoInteractiveModeForActiveTab (eval at restore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:319:21), <anonymous>:65:25)\n      at Object.renderConversationTabs (eval at restore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:319:21), <anonymous>:87:9)\n      at restore (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:342:13)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeEntry.test.js:345:22)",
+      "fullLogBlockSha256": "aa1018ac0d8a7798965f35d25af8cde12d355ba441f4fc8b456114f6cad7f98e",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/loopPlusModeHelp.test.js:75:22",
+      "test": "✖ 使用说明仅保留模式说明，通知授权和四个默认开启的开关位于工具设置 (5.387541ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  \n  4 !== 3\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/loopPlusModeHelp.test.js:111:20)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "5fc2c5d5301762359601ce8c98289c12284ae424a9f34556d4afd8a06e9ebf77",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:51:22",
+      "test": "✖ 工具设置默认常规配置，仅通知设置页签查询权限 (4.217542ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "c0bff81ea0fbcdeb9c73eefbb1c3c6ba18481657ff7a4cd52fec44ca291fa1d8",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:64:22",
+      "test": "✖ 工具设置支持鼠标、方向键及 Home/End 切换五个页签 (1.217916ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "bfa0be86cd5f99de87d02f5050470758d9fee17036baa2882b96a1fefd04e3fc",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:84:22",
+      "test": "✖ 通知和图标闪烁四项开关默认开启且独立更新 (0.527625ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "462961e6be4abcd517c97f645c857563191693f971288bbba96051a1735c2e42",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:101:22",
+      "test": "✖ 两个通知开关只发送各自配置更新 (0.399792ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "76a77b594a9d172f691449d82dcf43b82bdc8aa39ccc6d1fe1ec59a41bbdac51",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:118:22",
+      "test": "✖ 通知开关回显真实配置，缺省开启并可恢复保存失败后的状态 (0.393584ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "b0e1f86c70405a06a4284c163b44e18db700b1d2e4d8d6a407bf5453820ff426",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:136:22",
+      "test": "✖ Mac permission statuses provide correct actions and Linux hides authorization controls (0.380875ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "b3723c9ee48b82605dbe9b2c525ae0ef8ea687421ba1fce035a3c2f0747ba640",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:158:22",
+      "test": "✖ Windows offers system notification settings for enabled, disabled and unavailable states (0.36325ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "d46c9a6ab9956164ed6e1e382930203c3c9a80bd3f1aa78058568106ff9a190c",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/notificationAuthorization.test.js:179:22",
+      "test": "✖ permission actions correlate responses, render details as text and recover after timeout (0.328416ms)",
+      "result": "failed",
+      "errorExcerpt": "  evalmachine.<anonymous>:92\n          const fallback = key === \"departmentMaxLeaders\" ? ${DEPARTMENT_MAX_LEADERS_DEFAULT} : ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};\n                                                             ^\n  \n  SyntaxError: Unexpected token '{'\n      at new Script (node:vm:117:7)",
+      "fullLogBlockSha256": "6d364351b56fd341121e2ea09dcf334575598b62202aabc06363e6455553bb15",
+      "resolvedByThisAttempt": true
+    },
+    {
+      "location": "dist/test/webview/opencodedualmodelwebview.test.js:228:1",
+      "test": "✖ lays out OpenCode selectors as two full-width model rows (1.564958ms)",
+      "result": "failed",
+      "errorExcerpt": "  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /color:\\s*var\\(--vscode-descriptionForeground\\);/. Input:\n  \n  ' white-space: normal; '\n  \n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/opencodedualmodelwebview.test.js:244:12)\n      at Test.runInAsyncScope (node:async_hooks:227:14)",
+      "fullLogBlockSha256": "7b2a498c2353654cd81fe8b26bbc5148b39c4045f3c85b8aa6f6d9b0ebb29d52",
+      "resolvedByThisAttempt": false
+    },
+    {
+      "location": "dist/test/webview/panelViewLocation.test.js:10:22",
+      "test": "✖ chat container is registered only in the secondary sidebar (3.820041ms)",
+      "result": "failed",
+      "errorExcerpt": "  Error: ENOENT: no such file or directory, open '/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/package-lock.json'\n      at Object.readFileSync (node:fs:483:20)\n      at readJson (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/panelViewLocation.test.js:8:26)\n      at TestContext.<anonymous> (/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116/dist/test/webview/panelViewLocation.test.js:21:18)\n      at Test.runInAsyncScope (node:async_hooks:227:14)\n      at Test.run (node:internal/test_runner/test:1402:25)",
+      "fullLogBlockSha256": "af25964028e962597ba1369517ccde9b492cbd8ef6a3ca24071f710f165fd4c8",
+      "resolvedByThisAttempt": false
+    }
+  ],
+  "repairedTestInputs": [
+    {
+      "path": "src/test/extensionHost/promptSessionHealth.test.ts",
+      "baseSha256": "05a61dfdb4a1a99af4f08a17c79957769e4755ba333ef46b5f6d80a78717ef2b",
+      "resultSha256": "6e11fa3a2f0370c0c0d2cf726c6cbf168c2e1506f7f31ecdab31521b567fb030"
+    },
+    {
+      "path": "src/test/loop/loopmaingroupchatbutton.test.ts",
+      "baseSha256": "aecddc45a9713a52b671a646681768c5338b346b91bba07c1726dc921f52be41",
+      "resultSha256": "226754395b9b47b22c36fe67f7dc4c7ace0c0ed081481d78cc69858ad31f5b9e"
+    },
+    {
+      "path": "src/test/loop/opencodeloopmodewebview.test.ts",
+      "baseSha256": "61a85daf9a00615bdfcdc37c04b7decf032c8d5dcebd332135f404095c8dca64",
+      "resultSha256": "57791b830674277ed304469217448da117073e45c5946b32c27ecda4266adf4f"
+    },
+    {
+      "path": "src/test/webview/conversationtabsummarytooltip.test.ts",
+      "baseSha256": "0631a3d4e9c2cd147480bc95fbf8a71ee553d4fa00905551e2b644d19184b82a",
+      "resultSha256": "2190f4a8e227dedc31d8bab6e5beca6d81d4363865fbce7f1ccbd1d346ca0038"
+    },
+    {
+      "path": "src/test/webview/loopPlusModeEntry.test.ts",
+      "baseSha256": "90008df3b8ba2d365939cd7beb1ed6578a7b27557c3bce6b0b2b8a7f1c6096fb",
+      "resultSha256": "c5fc08ac242f7426234ebc915e4621db1b6900babf515597cd5da01238f8fbbc"
+    },
+    {
+      "path": "src/test/webview/loopPlusModeHelp.test.ts",
+      "baseSha256": "4b4fec5cabfa121eacb30aa4c0f8f1170e151b7d7b8f9d06f1fb81c1e9c65a50",
+      "resultSha256": "ddeb7c2b7efc722da441fada7de88d78f3932c58226b69ebcc8fae425c10b8e4"
+    },
+    {
+      "path": "src/test/webview/notificationAuthorization.test.ts",
+      "baseSha256": "b8d8bf9b11f3d1e3f9a48b4a2d05bdd02f0bf323da40093d925c3b0c69c8473c",
+      "resultSha256": "45a1278bf455115b18891a6003eb9e1622e57a983a04d05da8ee7c526eead81c"
+    }
+  ],
+  "finalTargetedEvidence": {
+    "distinctCasesPass": 121,
+    "files": 7,
+    "firstRunFailuresNowCoveredByPassingFileRetests": 105,
+    "firstRunUnresolvedFailures": 60,
+    "firstRunUnresolvedCancellations": 6,
+    "remainingFirstRunFiles": 24,
+    "warning": "Counts of resolved/open first-run entries are reconciliation arithmetic, NOT a second official full run."
+  },
+  "fullRerunDecision": "No second official run: only seven isolated test files changed, production and runner unchanged; all seven recompiled and retested, unrelated first-run evidence retained and unresolved central/parallel defects handed off. A later production repair requires impacted retests and a final official full regression on its new input.",
+  "skips": [
+    "Real DSH cwd/original-cwd session",
+    "Real DSH Loop+ resume after failed review/tab closure/disposal",
+    "DSH plugin/EH loopback requires SINITEK_DSH_LIVE=1 and configured URL/key"
+  ],
+  "openGates": [
+    "60 first-run failed and 6 cancelled entries unresolved; central single repair owner and parallel ownership coordination",
+    "Real integrated UI-EH/CLI, allocation and cold recovery composition acceptance",
+    "Native Linux/Windows evidence where required; macOS/mock is not equivalent",
+    "Final original-directory classification/preservation, branch switch and clean handoff after all work accepted"
+  ],
+  "noHistoricalAttribution": "No old-baseline execution establishes remaining failures as historical. Provisional diagnoses stay provisional; no full regression pass is claimed.",
+  "postCheckChanges": "After fourth tsc/mode pass: one leading-indentation-only correction in loopPlusModeEntry source; generated JS content/behavior unchanged. Remaining changes are documentation/evidence only; no production edits."
+}

@@ -28,6 +28,7 @@ function extractFunctionSource(script: string, name: string): string {
 
 function buildHarness() {
   const functionSource = [
+    extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "syncPromptSubmissionWait"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "updateRunWait"),
     ...[
       "getActiveLoopMainTaskId",
