@@ -1,9 +1,11 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
-const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup } = require("./verify_department_employee_allocation_eh_integration");
+const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved, publicDepartmentEntry } = require("./verify_department_employee_allocation_eh_integration");
 
 test("allocation driver accepts only the dedicated product/report command", () => {
   assert.equal(argumentsFor(["--product", ".", "--report", "report.json"]).product, process.cwd());
+  assert.equal(argumentsFor(["--product", ".", "--report", "report.json", "--workspace-capacity"]).workspaceCapacity, true);
+  assert.throws(() => argumentsFor(["--product", ".", "--report", "r", "--arbitrary"]));
   assert.throws(() => argumentsFor(["--product", ".", "--scenario", "cold-start"]));
 });
 test("observer reader preserves LF and legacy literal separators without splitting JSON strings", () => {
@@ -51,4 +53,48 @@ test("cleanup requires all original policies, CLOSED entries and natural exit, w
   assert.throws(() => assertCleanup(saved, observations.slice(1), protocol, identityApi, receiptApi, workers));
   const partial = structuredClone(observations); partial[0].receipt.cleanup.streams = "unknown";
   assert.throws(() => assertCleanup(saved, partial, protocol, identityApi, receiptApi, workers), /incomplete/);
+});
+
+test("workspace UI proof rejects unmatched scope/request, missing durable save and global mutation", () => {
+  const key = "workspaceDepartmentMaxEmployees", scope = JSON.stringify(["workspace", 1, "codex", "local"]);
+  const durable = { departmentMaxLeaders: 2, departmentMaxEmployees: 6 }, global = { departmentMaxLeaders: 4, departmentMaxEmployees: 20 };
+  const events = [{ event: "settings-request", message: { type: "updateSetting", key, value: { scope, requestId: "ui-2", value: 6 } } },
+    { event: "settings-saved", message: { type: "workspaceDepartmentCapacitySaved", key, scope, requestId: "ui-2", ok: true }, workspaceSettings: { "workspace.json": durable } },
+    { event: "settings-state", state: { departmentConfigurationScope: scope, departmentMaxLeaders: 4, departmentMaxEmployees: 20, [key]: 6 } }];
+  const check = (items = events, disk = durable, settings = global) => assertWorkspaceSaved(items, key, 6, "workspace", disk, settings);
+  check();
+  for (const field of ["scope", "requestId", "key", "ok"]) {
+    const bad = structuredClone(events); bad[1].message[field] = "wrong"; assert.throws(() => check(bad));
+  }
+  const unsaved = structuredClone(events); unsaved[1].workspaceSettings["workspace.json"].departmentMaxEmployees = 20;
+  assert.throws(() => check(unsaved)); assert.throws(() => check(events, {}));
+  assert.throws(() => check(events, durable, { ...global, departmentMaxEmployees: 6 }));
+  const stale = structuredClone(events); stale[2].state.departmentConfigurationScope = "old"; assert.throws(() => check(stale));
+});
+
+test("restored settled uses the snapshot-derived default quota for 2/6", () => {
+  const events = [{ event: "webview-request", message: { requestId: "restore", leaderTaskId: "leader", expectedRevision: 4, employeeLimit: null } },
+    { event: "webview-settled", message: { type: "loopGroupChatChat:departmentEmployeeLimitSettled", rootTaskId: "root", leaderTaskId: "leader", requestId: "restore", ok: true, revision: 5, desiredLimit: 3 } }];
+  assertSettled(events, "root", "leader", 4, null, 5, 3);
+  assert.throws(() => assertSettled(events, "root", "leader", 4, null, 5));
+});
+
+test("public entry saves workspace before enable and selects all three roles through existing controls", async () => {
+  const actions = [];
+  const view = { locator(selector) { return {
+    click: async () => actions.push([selector, "click"]), check: async () => actions.push([selector, "check"]),
+    waitFor: async () => {}, isEnabled: async () => true, isDisabled: async () => false,
+    fill: async value => actions.push([selector, value]), innerText: async () => "", inputValue: async () => "plan",
+    locator: () => ({ evaluateAll: async () => selector === "#modelSelect" ? ["gpt-5"] : ["codex-local", "__default__"] }),
+    selectOption: async value => {
+      if (selector === "#modelSelect") assert.equal(value, "gpt-5", "configured Codex model has no empty default option");
+      actions.push([selector, value]);
+    },
+  }; } };
+  await publicDepartmentEntry(view, "create", async (_label, check) => assert.ok(await check()), async () => actions.push(["workspace", "saved"]));
+  assert.ok(actions.findIndex(a => a[0] === "workspace") < actions.findIndex(a => a[0] === "#departmentEnabled"));
+  for (const [selector, value] of [["#configSelect", "codex-local"], ["#modelSelect", "gpt-5"], ["#department-leader-model", "__default__"], ["#department-employee-model", "__default__"]]) {
+    assert.ok(actions.some(a => a[0] === selector && a[1] === value));
+    assert.ok(actions.findIndex(a => a[0] === selector) < actions.findIndex(a => a[0] === "#sendPrompt"));
+  }
 });

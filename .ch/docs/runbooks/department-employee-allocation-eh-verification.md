@@ -69,3 +69,46 @@ JS
 ## 开放边界
 
 本轮只关闭实际嵌套 reader→提示和总监真实 UI→EH 保存→下次准入两个集成缺口；不是最终产品接受审查。最终额度/提示/冷恢复统一树、第二 EH 与恢复证明、必要平台、远端 Git 同步合理合并、实际最终合并树全量回归仍开放。没有改 Owner/Ledger、receipt、CLOSED、墓碑、恢复回调或清理标准；没有 fetch/pull/push/发布。
+
+
+## Round-698：最终接受树上的工作区人数与额度组合
+
+本节独立于上述 round-440 历史。旧 run4 的只读重评、40c 的 53 项与双视口 router/store 烟测均不覆盖最终树的实际设置 UI→安装版 EH/CLI。本轮只补工作区 2/6 的这个缺口，不重跑旧默认实机矩阵，不代表整个部门功能或最终全量回归完成。
+
+生产起点为已接受 `464d1113f13b1bc0f2b59ea1ba4c09976ebed713`，tree `cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4`。独立工作树 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-workspace-allocation-eh-round698-20261116`，分支 `codex/department-workspace-allocation-eh-round698-20261116`。只改专属 driver/scenario/被动 fixture、对应测试与本手册；公共 full EH driver 和所有生产源码保持基线字节。
+
+从只读整合工作树 `department-mainline-integration-round676-20261116` 物理复制 1674 个 dist 文件，复制前、来源复制后及目标 SHA-256 manifest 相同。依赖也物理复制并解引用，不安装、不升级、不共用链接。来源/输入记录 `/private/tmp/department-round698-product-copy.json`；新增 TS 夹具用 `node node_modules/typescript/bin/tsc -p ./` 编译，成功。编译后与来源 manifest 比较，仅本轮 fixture/test 的两个 JS 和两个 map 不同，其余所有产物相同；记录 `/private/tmp/department-round698-compiled-identity.json`。标准 build 的生产基线证据复用 lp695，本轮没有重新执行 `npm run build`。
+
+新增 `--workspace-capacity` 可选参数；无参数仍保留 4/20 入口，并以单测保留默认行为。通过 `#toolSettingsWorkspaceTab` 和原 number/change 控件分别输入 2、6；初始工作区文件不含人数，初始全局显式为 4/20。每项等待实际原宿主 `workspaceDepartmentCapacitySaved` 的匹配 scope/requestId/key、回执时磁盘值、后续原 panel state 及控件恢复，再通过原控件启用部门、选择总监 CLI/profile/config-declared model、组长/员工角色并创建部门。不直接发送桥消息、不调用配置解析或 composition 代替创建。
+
+被动 fixture 旁听实际 `CliBridgeViewProvider` 接收/发送、原 composition 返回的 `readEmployeeCapacity`、准入返回和原 worker exit。读方法仅在产品原调用时旁听，保留 receiver、参数、返回值/Promise 身份和原异常；不调用 writer、授权、释放或制造 receipts/CLOSED。provider 的四个组长决策保存完整实际提示、当时持久快照与原 reader 返回，核对 source/revision/desired/applied/pending、全局和本组真实余额。
+
+最小验证（按变更后有效结果分组复用，共 19 个测试）：
+
+```sh
+node --test scripts/verify_department_employee_allocation_eh_integration.test.js scripts/fixtures/department_employee_allocation_eh_scenario.test.js
+node node_modules/typescript/bin/tsc -p ./
+node --test dist/test/extensionHost/departmentemployeeallocationehhost.test.js
+# 总监模型 harness 修正后，仅重跑受影响 driver，scenario/TS 夹具输入未变
+node --test scripts/verify_department_employee_allocation_eh_integration.test.js
+SINITEK_ALLOCATION_EH_TIMEOUT_MS=240000 PLAYWRIGHT_MODULE=/tmp/zq-playwright-smoke/node_modules/playwright node scripts/verify_department_employee_allocation_eh_integration.js --product /Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-workspace-allocation-eh-round698-20261116 --report /private/tmp/department-allocation-round698-run2.json --workspace-capacity
+```
+
+保留首错：首次脚本检查有新增 held-binding 断言多余右括号，driver 解析失败；scenario 5 项已通过，修正后脚本 12 项全通过。首次真实运行 `/private/tmp/department-allocation-round698-run1.json` 于 `ab99922e7fbda0669f22a4adbffeb28ffec21bfc`（tree `1e44d31d7f41edd5879db4de0468fc20cce3324b`）已通过工作区 2/6 UI 保存，但 harness 错把总监配置声明模型当成空值默认选项。失败于 `#modelSelect=`，未创建根任务或启动绑定 worker；正常宿主退出。修正为等待并选择真实 `gpt-5` 选项，补公开操作顺序单测；最终 driver 8、scenario 5、TS fixture/真实 reader composition 6 项通过。保留 `/private/tmp/department-round698-script-tests-fixed.log`、`department-round698-driver-tests-final.log`、`department-round698-driver-tests-model-fix.log`、`department-round698-host-tests.log`、`department-round698-tsc.log`。
+
+第二次为真正的新运行，源码 commit `b992d3b668c495f398fa20d4620166733a0bf86b`，tree `4c81a722d26544eed4c7d0402b446ba7e192ed3d`；2026-11-16T10:16:17.221Z 至 10:16:37.266Z，命令 exit 0、报告 passed、failures 空。macOS、Node v24.22.2、安装版 VS Code 1.144.0、codex-cli 0.167.2，11 个免费 loopback 请求、provider failures 0。运行目录 `/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/s-allocation-eh-aCwmnY`；所有 HOME/USERPROFILE/CODEX_HOME/XDG/workspace/VS Code profile/extensions/CDP/provider 均新建隔离，无用户凭据或付费模型。
+
+| 边界 | revision | desired | applied | 实际员工占用 | 事实 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 新根，两个员工实际准入 | 2 | 3 | 3 | 2 | root/capacity/allocation 均 2/6，全局仍 4/20 |
+| 原总监 UI 保存 0 | 3 | 0 | 3 | 2 | 原 binding/责任/容量逐值不变，UI 下次生效 |
+| pulse 完成，下一真实 attempt | 4 | 0 | 0 | 1 | group-limit；全局余额 5；被拒 attempt 无 Owner、租约、责任 |
+| 原 UI 恢复均分 | 5 | 3 | 0 | 1 | 匹配 settled，下次生效；held 保留 |
+| 后续真实 attempt | 6 | 3 | 3 | 2 | 正常准入；原 held binding 与身份保持，无 overflow |
+| 公开 stop | 6 | 3 | 3 | 0 | 4 原完整 required receipts、1 精确 CLOSED 集合、容量全归还 |
+
+provider 实际决策 initial/zero-pending/zero-applied/restored-applied 的 revision 分别 1/3/4/6，本组与全局活动员工分别 0/1/1/1；额度余额分别 3/0/0/2，全局余额 6/5/5/5，source 为 default/manual/manual/default，与同刻生产 reader 和持久快照一致。restored-applied 提示是在恢复员工完成后生成，因此该时点只剩 held；不能与前一行准入瞬间占用 2 混同，也不用历史 attempt 数推算人数。
+
+严格原清理证明已在实际 driver 内通过：4 个绑定 worker pid 32605、33286、32500、32572 全部实际 `exit(0,null)`，时间都早于正常 `host-finish.signal`。宿主随后 exit(0,null)，CDP 断开和 provider 正常关闭，没有强杀。额外只读身份/清理核对 `/private/tmp/department-round698-run2-identity-and-cleanup.json` 记录原报告/原始事件哈希、全部 1674 产物和运行输入哈希一致、上述退出先于 finish、四份实际 reader/快照存在，以及本轮 provider 51964/CDP 51965 端口已关闭；端口关闭不充当容量清理证明。
+
+本轮成功后只更新本手册/交付报告，不改运行源码或产物，已有成功输入仍有效，不再实机重跑。没有重新执行空值继承/非法输入/旧 scope/双主题、Tabs/头像矩阵、旧默认 EH 场景、其它 CLI、第二 EH 或全量回归；既有未变覆盖由其原报告承担。本轮没有新增截图或独立浏览器 console 审计，原 VS Code 日志保留（其中内置扩展有无凭据和阻断网络诊断），不能宣称整个工作台零 console 消息。冷恢复与最终全量接受审查仍归其它门禁。本分支提交应合理合入原整合分支，未修改该分支或共享 master，未发布/推送。

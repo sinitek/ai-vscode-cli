@@ -57,6 +57,40 @@ exports.run = async () => {
     const saved = new DepartmentRuntimeStore(path.join(process.env.HOME, '.sinitek_cli/department-runtime')).read(occupancy.rootTaskId, workspace);
     record({ event: 'admission', occupancy, result, saved, tasks: tasks(), at: Date.now() });
   }, diagnostic));
+  // Observe original composition readers; never invoke them on behalf of production.
+  const allocationModule = require(path.join(extension.extensionPath, 'dist/extensionHost/departmentemployeeallocationhost.js'));
+  restores.push((${observeAllocationMethod.toString()})(allocationModule, 'createDepartmentEmployeeAllocationHost', (args, host) => {
+    restores.push((${observeAllocationMethod.toString()})(host, 'readEmployeeCapacity', (ids, result) => {
+      record({ event: 'capacity-reader', rootTaskId: ids[0], leaderTaskId: ids[1], result, at: Date.now() });
+    }, diagnostic));
+  }, diagnostic));
+  const workspaceSettings = () => {
+    const dir = path.join(process.env.HOME, '.sinitek_cli/workspace-settings');
+    return fs.existsSync(dir) ? Object.fromEntries(fs.readdirSync(dir).filter(n => n.endsWith('.json'))
+      .map(n => [n, JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8'))])) : {};
+  };
+  const { CliBridgeViewProvider } = require(path.join(extension.extensionPath, 'dist/webview/viewProvider.js'));
+  const settingsObserved = new WeakSet();
+  restores.push((${observeAllocationMethod.toString()})(CliBridgeViewProvider.prototype, 'resolveWebviewView', (args) => {
+    const webview = args[0].webview;
+    if (settingsObserved.has(webview)) return;
+    settingsObserved.add(webview);
+    subscriptions.push(webview.onDidReceiveMessage(message => {
+      if (message?.type === 'updateSetting' && /^workspaceDepartmentMax(Leaders|Employees)$/.test(message.key)) {
+        try { record({ event: 'settings-request', message, at: Date.now() }); } catch (error) { diagnostic(error); }
+      }
+    }));
+  }, diagnostic));
+  restores.push((${observeAllocationMethod.toString()})(CliBridgeViewProvider.prototype, 'postMessage', (args) => {
+    const message = args[0];
+    if (message?.type === 'workspaceDepartmentCapacitySaved') record({ event: 'settings-saved', message, workspaceSettings: workspaceSettings(), at: Date.now() });
+  }, diagnostic));
+  restores.push((${observeAllocationMethod.toString()})(CliBridgeViewProvider.prototype, 'postState', (args) => {
+    const state = args[0];
+    record({ event: 'settings-state', state: { departmentConfigurationScope: state.departmentConfigurationScope,
+      departmentMaxLeaders: state.departmentMaxLeaders, departmentMaxEmployees: state.departmentMaxEmployees,
+      workspaceDepartmentMaxLeaders: state.workspaceDepartmentMaxLeaders, workspaceDepartmentMaxEmployees: state.workspaceDepartmentMaxEmployees }, at: Date.now() });
+  }, diagnostic));
   const { LoopGroupChatPanel } = require(path.join(extension.extensionPath, 'dist/webview/loopGroupChatPanel.js'));
   const observed = new WeakSet();
   restores.push((${observeAllocationMethod.toString()})(LoopGroupChatPanel.prototype, 'show', (args, result, panel) => {
