@@ -73,6 +73,12 @@ export class InteractiveRunnerManager {
     this.disposeEntry(key);
   }
 
+  public async waitForCodexSessionStopped(sessionId: string | null, isCurrent: () => boolean): Promise<void> {
+    await this.waitForPendingDisposal("codex", sessionId);
+    const entry = this.getEntry("codex", sessionId);
+    if (entry?.cli === "codex") await entry.runner.waitForStopped(isCurrent);
+  }
+
   public disposeForCli(cli: CliName): void {
     for (const [key, entry] of this.entries.entries()) {
       if (entry.cli === cli) {

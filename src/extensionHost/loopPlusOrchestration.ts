@@ -67,6 +67,7 @@ import {
   confirmedLoopPlusReviewIds,
   createLoopPlusDecisionStrategyRegistry,
   loopPlusDecisionStrategyFor,
+  sameLoopPlusReportIds,
   type LoopPlusDecisionControlPlan,
   type LoopPlusDecisionOutcome,
   type LoopPlusDecisionStrategyPort,
@@ -137,6 +138,7 @@ export type LoopPlusMainRequest = {
   modelPrompt: string;
   reviewEventId: string | null;
   reviewEventIds?: string[];
+  reportEventIds?: string[];
   userMessageCount?: number;
   target: LoopPlusPromptTarget;
 };
@@ -262,6 +264,7 @@ type MainStep = {
   kind: LoopPlusMainKind;
   eventId: string | null;
   eventIds: string[];
+  reportEventIds: string[];
   userMessageCount: number;
 };
 
@@ -588,7 +591,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         persist(runtime);
         deps.log?.("loop-plus-wait-watchdog-recovered", { taskId: runtime.taskId, lostAttempts: snapshot.running.length });
-        if (hasReview(runtime) || hasUserMessages(runtime) || runtime.closeoutBudget > 0) requestPump(runtime);
+        if (hasReview(runtime) || hasReports(runtime) || hasUserMessages(runtime) || runtime.closeoutBudget > 0) requestPump(runtime);
       } catch (error) {
         deps.log?.("loop-plus-wait-watchdog-check-failed", { taskId: runtime.taskId, error: errorText(error) });
       }
@@ -686,6 +689,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           writeFiles: subtask.writeFiles,
           taskType: subtask.taskType,
           codingDelivery: subtask.codingDelivery,
+          requiresAcceptance: subtask.requiresAcceptance,
         },
         communicationFile: subtask.communicationFile,
         summary: subtask.summary,
@@ -799,7 +803,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (resumed.ok && isIdle(runtime)) {
         runtime.forcePrompt = true;
       }
-      if (resumed.wake || hasReview(runtime) || runtime.forcePrompt) {
+      if (resumed.wake || hasReview(runtime) || hasReports(runtime) || runtime.forcePrompt) {
         requestPump(runtime);
       }
       return;
@@ -969,7 +973,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
     }).finally(() => {
       runtime.consumer = null;
-      const followUp = runtime.pumpRequested || runtime.forcePrompt || hasReview(runtime);
+      const followUp = runtime.pumpRequested || runtime.forcePrompt || hasReview(runtime) || hasReports(runtime);
       runtime.pumpRequested = false;
       if (!followUp || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
         return;
@@ -1068,7 +1072,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return;
       }
       if (applied === "wait") {
-        if (hasUserMessages(runtime) || hasReview(runtime)) {
+        if (hasUserMessages(runtime) || hasReview(runtime) || hasReports(runtime)) {
           continue;
         }
         return;
@@ -1116,22 +1120,27 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       return planReview(runtime);
     }
+    const reportEventIds = (snapshot.reportQueue ?? []).map((item) => item.eventId);
+    if (reportEventIds.length > 0) {
+      runtime.forcePrompt = false;
+      return plainStep("continue", snapshot.userMessageQueue.length, reportEventIds);
+    }
     if (!runtime.initialPromptDone) {
       runtime.initialPromptDone = true;
-      return plainStep("initial");
+      return plainStep("initial", 0, reportEventIds);
     }
     const pendingUserMessages = runtime.scheduler.snapshot().userMessageQueue.length;
     if (pendingUserMessages > 0) {
       runtime.forcePrompt = false;
-      return plainStep("user", pendingUserMessages);
+      return plainStep("user", pendingUserMessages, reportEventIds);
     }
     if (runtime.forcePrompt) {
       runtime.forcePrompt = false;
-      return plainStep("continue");
+      return plainStep("continue", 0, reportEventIds);
     }
     if (runtime.closeoutBudget > 0 && snapshot.running.length === 0 && snapshot.pending.length === 0) {
       runtime.closeoutBudget -= 1;
-      return plainStep("closeout");
+      return plainStep("closeout", 0, reportEventIds);
     }
     return null;
   }
@@ -1158,14 +1167,19 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       kind: "review",
       eventId: claimed.item.eventId,
       eventIds,
+      reportEventIds: (claimed.view.reportQueue ?? []).map((item) => item.eventId),
       userMessageCount: claimed.view.userMessageQueue.length,
     };
     persist(runtime);
     return runtime.reviewStep;
   }
 
-  function plainStep(kind: Exclude<LoopPlusMainKind, "review">, userMessageCount = 0): MainStep {
-    return { kind, eventId: null, eventIds: [], userMessageCount };
+  function plainStep(
+    kind: Exclude<LoopPlusMainKind, "review">,
+    userMessageCount = 0,
+    reportEventIds: string[] = [],
+  ): MainStep {
+    return { kind, eventId: null, eventIds: [], reportEventIds, userMessageCount };
   }
 
   function createDecisionPort(runtime: ParentRuntime, response: string | null): LoopPlusDecisionStrategyPort {
@@ -1176,6 +1190,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return {
           hasCurrentReview: Boolean(snapshot.currentReview),
           hasReview: Boolean(snapshot.currentReview) || snapshot.reviewQueue.length > 0,
+          hasReports: (snapshot.reportQueue?.length ?? 0) > 0,
           hasUserMessages: snapshot.userMessageQueue.length > 0,
           runningCount: snapshot.running.length,
           pendingCount: snapshot.pending.length,
@@ -1213,6 +1228,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             ...runtime.reviewStep,
             userMessageCount: Math.max(0, runtime.reviewStep.userMessageCount - count),
           };
+        }
+      },
+      acknowledgeReports(eventIds: readonly string[]) {
+        const before = runtime.scheduler.snapshot();
+        if (!runtime.scheduler.acknowledgeReports(eventIds)) return false;
+        try {
+          persist(runtime);
+          if (runtime.reviewStep) {
+            runtime.reviewStep = {
+              ...runtime.reviewStep,
+              reportEventIds: runtime.reviewStep.reportEventIds.filter((id) => !eventIds.includes(id)),
+            };
+          }
+          return true;
+        } catch (error) {
+          runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+          throw error;
         }
       },
       captureRemainingUserMessagesForHeldReview() {
@@ -1326,7 +1358,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         };
         try {
           if (!runtime.scheduler.complete().ok) {
-            return hasReview(runtime) || hasUserMessages(runtime) ? "continue" : "wait";
+            return hasReview(runtime) || hasReports(runtime) || hasUserMessages(runtime) ? "continue" : "wait";
           }
           persist(runtime, patch);
         } catch (error) {
@@ -1438,6 +1470,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     if (!decision) {
       return protocolMiss(runtime, Boolean(held), rejectionReason ?? undefined, response);
+    }
+    if (!sameLoopPlusReportIds(decision.reportEventIds ?? [], step.reportEventIds)) {
+      return protocolMiss(runtime, Boolean(held), "reportEventIds 必须逐项确认当前提示中的无需验收报告，且不能跳过或重排。");
     }
     if (decision.departmentCollaborations?.length) {
       const task = deps.readTask(runtime.taskId);
@@ -1656,6 +1691,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       subtaskId: string;
       attemptId: string;
       title: string;
+      requiresAcceptance?: boolean;
       conflictGroup?: string;
       writeFiles?: string[];
     };
@@ -1669,6 +1705,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         subtaskId,
         attemptId,
         title: subtask.title,
+        ...(subtask.requiresAcceptance !== undefined ? { requiresAcceptance: subtask.requiresAcceptance } : {}),
         conflictGroup: subtask.conflictGroup,
         writeFiles: subtask.writeFiles,
       },
@@ -2273,6 +2310,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && snapshot.running.length === 0
       && snapshot.pending.length === 0
       && snapshot.reviewQueue.length === 0
+      && (snapshot.reportQueue?.length ?? 0) === 0
       && snapshot.currentReview === null
       && listLoopPlusAcceptancePlanFeedbackItems(task.loopPlusAcceptancePlan).length === 0;
   }
@@ -2306,6 +2344,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           })(),
         }
       : undefined;
+    const frozenReportIds = new Set(step.reportEventIds);
     const basePrompt = buildLoopPlusMainModelPrompt({
       taskId: runtime.taskId,
       rootPrompt: task?.rootPrompt ?? runtime.prompt.displayPrompt,
@@ -2318,6 +2357,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       currentEventId: step.eventId,
       supplementalRequirements: task?.supplementalRequirements ?? [],
       acceptanceEventIds: step.eventIds,
+      reportEventIds: step.reportEventIds,
+      reportQueue: (runtime.scheduler.snapshot().reportQueue ?? [])
+        .filter((item) => frozenReportIds.has(item.eventId)),
       interruptedSubtaskIds: runtime.scheduler.snapshot().running
         .filter((item) => runtime.meta.get(item.subtaskId)?.executionStatus === "blocked")
         .map((item) => item.subtaskId),
@@ -2346,6 +2388,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       modelPrompt: prompt,
       reviewEventId: step.eventId,
       reviewEventIds: step.eventIds.slice(),
+      reportEventIds: step.reportEventIds.slice(),
       userMessageCount: step.userMessageCount,
       target: runtime.target,
     };
@@ -2386,6 +2429,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       kind: request.kind,
       eventId: request.reviewEventId,
       eventIds: request.reviewEventIds ?? (request.reviewEventId ? [request.reviewEventId] : []),
+      reportEventIds: request.reportEventIds ?? [],
       userMessageCount: request.userMessageCount ?? 0,
     });
     request.prompt = refreshed.prompt;
@@ -2435,6 +2479,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         writeFiles: meta.decision.writeFiles,
         ...(meta.decision.taskType ? { taskType: meta.decision.taskType } : {}),
         ...(meta.decision.codingDelivery ? { codingDelivery: true } : {}),
+        ...(meta.decision.requiresAcceptance !== undefined
+          ? { requiresAcceptance: meta.decision.requiresAcceptance }
+          : {}),
         status: active,
         summary: meta.summary ?? previous?.summary,
         communicationFile: meta.communicationFile ?? previous?.communicationFile,
@@ -2670,6 +2717,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const conflictGroup = control.conflictGroup ?? meta?.decision.conflictGroup;
       const taskType = control.taskType ?? meta?.decision.taskType;
       const codingDelivery = control.taskType ? control.codingDelivery : (control.codingDelivery ?? meta?.decision.codingDelivery);
+      const requiresAcceptance = control.requiresAcceptance;
       commands.push({
         subtaskId: control.id,
         action: "reprompt",
@@ -2681,6 +2729,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           ...(conflictGroup ? { conflictGroup } : {}),
           ...(taskType ? { taskType } : {}),
           ...(codingDelivery ? { codingDelivery } : {}),
+          ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
         },
       });
     }
@@ -2719,11 +2768,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const prompt = action === "reprompt"
       ? (control?.prompt ?? previous?.decision.prompt ?? title)
       : (previous?.decision.prompt ?? title);
+    const requiresAcceptance = action === "reprompt"
+      ? control?.requiresAcceptance
+      : previous?.decision.requiresAcceptance;
     const meta: SubtaskMeta = {
       decision: {
         id: closed.subtaskId,
         title,
         prompt,
+        ...(requiresAcceptance !== undefined
+          ? { requiresAcceptance }
+          : {}),
         continueFromSubtaskId: closed.subtaskId,
         conflictGroup: control?.conflictGroup ?? previous?.decision.conflictGroup,
         writeFiles: control?.writeFiles ?? previous?.decision.writeFiles,
@@ -2780,6 +2835,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function hasReview(runtime: ParentRuntime): boolean {
     const snapshot = runtime.scheduler.snapshot();
     return Boolean(snapshot.currentReview) || snapshot.reviewQueue.length > 0;
+  }
+
+  function hasReports(runtime: ParentRuntime): boolean {
+    return (runtime.scheduler.snapshot().reportQueue?.length ?? 0) > 0;
   }
 
   function hasUserMessages(runtime: ParentRuntime): boolean {
@@ -2865,7 +2924,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return false;
     }
     return !runtime.initialPromptDone || runtime.forcePrompt || runtime.pumpRequested
-      || hasReview(runtime) || hasUserMessages(runtime)
+      || hasReview(runtime) || hasReports(runtime) || hasUserMessages(runtime)
       || (runtime.closeoutBudget > 0 && snapshot.running.length === 0 && snapshot.pending.length === 0);
   }
 

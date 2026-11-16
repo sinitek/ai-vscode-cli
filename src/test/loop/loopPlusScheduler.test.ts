@@ -136,6 +136,92 @@ test("reviews the first finished sibling immediately while the other keeps runni
   assert.equal(scheduler.complete().ok, false);
 });
 
+test("reports successful no-acceptance attempts to the parent and preserves FIFO acknowledgement across restore", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  const dispatched = scheduler.dispatch([
+    { ...spec("report-a"), requiresAcceptance: false },
+    { ...spec("report-b"), requiresAcceptance: false },
+  ]);
+  assert.deepEqual(attemptIds(dispatched.started), ["report-a-1", "report-b-1"]);
+
+  const first = scheduler.finish({ subtaskId: "report-a", attemptId: "report-a-1", outcome: "completed", detail: "命令和结果已记录" });
+  assert.equal(first.wake, true);
+  assert.equal(first.view.currentReview, null);
+  assert.deepEqual(attemptIds(first.view.reviewQueue), []);
+  assert.deepEqual(attemptIds(first.view.reportQueue ?? []), ["report-a-1"]);
+  assert.equal(first.view.canComplete, false);
+
+  scheduler.finish({ subtaskId: "report-b", attemptId: "report-b-1", outcome: "completed" });
+  const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
+  const reportIds = (restored.snapshot().reportQueue ?? []).map((item) => item.eventId);
+  assert.deepEqual(reportIds, [reviewEvent("report-a"), reviewEvent("report-b")]);
+  assert.equal(restored.acknowledgeReports([reportIds[1] ?? ""]), false);
+  assert.deepEqual((restored.snapshot().reportQueue ?? []).map((item) => item.eventId), reportIds);
+  assert.equal(restored.complete().blockers.includes("report_queue"), true);
+
+  assert.equal(restored.acknowledgeReports([reportIds[0] ?? ""]), true);
+  assert.deepEqual((restored.snapshot().reportQueue ?? []).map((item) => item.eventId), [reviewEvent("report-b")]);
+  assert.equal(restored.complete().blockers.includes("report_queue"), true);
+  assert.equal(restored.acknowledgeReports([reportIds[1] ?? ""]), true);
+  assert.equal(restored.snapshot().seenAttempts.every((item) => item.disposition === "reported"), true);
+  assert.equal(restored.snapshot().seenAttempts.some((item) => item.acceptance !== undefined), false);
+  assert.equal(restored.complete().ok, true);
+});
+
+test("routes failed or stopped no-acceptance attempts through the normal acceptance queue", () => {
+  for (const outcome of ["failed", "stopped"] as const) {
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+    scheduler.dispatch([spec("first-review")]);
+    scheduler.finish({ subtaskId: "first-review", attemptId: "first-review-1", outcome: "completed" });
+    scheduler.dispatch([{ ...spec(`not-exempt-${outcome}`), requiresAcceptance: false }]);
+    const result = scheduler.finish({
+      subtaskId: `not-exempt-${outcome}`,
+      attemptId: `not-exempt-${outcome}-1`,
+      outcome,
+    });
+    assert.equal(result.wake, false);
+    assert.ok(result.view.currentReview);
+    assert.equal(result.view.reportQueue?.length ?? 0, 0);
+    assert.equal(result.view.blockers.includes("current_review"), true);
+    assert.equal(result.view.reviewQueue[0]?.outcome, outcome);
+    const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
+    assert.deepEqual(restored.snapshot(), scheduler.snapshot());
+    assert.equal(restored.submitReview(reviewEvent("first-review")).ok, true);
+    restored.claimNextReview();
+    assert.equal(restored.snapshot().currentReview?.outcome, outcome);
+    const currentRestored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(restored.snapshot())) });
+    assert.deepEqual(currentRestored.snapshot(), restored.snapshot());
+    assert.equal(currentRestored.submitReviewBatch([reviewEvent(`not-exempt-${outcome}`)], "failed").ok, true);
+    assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot: currentRestored.snapshot() }));
+  }
+});
+
+test("rejects unsuccessful reports and successful exempt attempts placed into acceptance on restore", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ ...spec("report"), requiresAcceptance: false }]);
+  scheduler.finish({ subtaskId: "report", attemptId: "report-1", outcome: "completed" });
+  for (const outcome of ["failed", "stopped"] as const) {
+    const invalidReport = scheduler.snapshot();
+    invalidReport.reportQueue![0].outcome = outcome;
+    invalidReport.seenAttempts[0].outcome = outcome;
+    assert.throws(() => createLoopPlusScheduler({ snapshot: invalidReport }), /snapshot: reportQueue/);
+  }
+  for (const placement of ["currentReview", "reviewQueue"] as const) {
+    const invalidReview = scheduler.snapshot();
+    const item = invalidReview.reportQueue!.shift()!;
+    if (placement === "currentReview") invalidReview.currentReview = item;
+    else invalidReview.reviewQueue.push(item);
+    assert.throws(() => createLoopPlusScheduler({ snapshot: invalidReview }), new RegExp(`snapshot: ${placement}`));
+  }
+  scheduler.acknowledgeReports([reviewEvent("report")]);
+  assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot: scheduler.snapshot() }));
+  for (const outcome of ["failed", "stopped"] as const) {
+    const invalidSettled = scheduler.snapshot();
+    invalidSettled.seenAttempts[0].outcome = outcome;
+    assert.throws(() => createLoopPlusScheduler({ snapshot: invalidSettled }), /snapshot: seenAttempts/);
+  }
+});
+
 test("keeps completions that arrive during review in a stable FIFO queue", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
   scheduler.dispatch([spec("alpha"), spec("beta"), spec("gamma")]);

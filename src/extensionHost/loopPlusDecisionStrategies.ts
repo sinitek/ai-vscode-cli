@@ -24,6 +24,7 @@ export type LoopPlusDecisionControlPlan = {
 export type LoopPlusDecisionQueueView = {
   hasCurrentReview: boolean;
   hasReview: boolean;
+  hasReports: boolean;
   hasUserMessages: boolean;
   runningCount: number;
   pendingCount: number;
@@ -42,6 +43,7 @@ export interface LoopPlusDecisionStrategyPort {
   markDecisionAccepted(): void;
   clearProtocolRetries(): void;
   acknowledgeUserMessages(count: number): void;
+  acknowledgeReports(eventIds: readonly string[]): boolean;
   captureRemainingUserMessagesForHeldReview(): void;
   refuseDispatchPastAcceptanceLimit(plannedLaunches: number): boolean;
   confirmReviewWithinAcceptanceLimit(eventIds: readonly string[]): boolean;
@@ -98,6 +100,8 @@ export function sameLoopPlusReviewIds(left: readonly string[], right: readonly s
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
+export const sameLoopPlusReportIds = sameLoopPlusReviewIds;
+
 export type LoopPlusDecisionReviewVerdict = {
   eventId: string;
   acceptance: "passed" | "failed";
@@ -127,8 +131,22 @@ export function loopPlusAcceptVerdicts(
 }
 
 export function plannedLoopPlusLaunchCount(decision: LoopPlusDecision): number {
-  const continues = (decision.controls ?? []).filter((control) => control.action === "reprompt").length;
+  const continues = (decision.controls ?? []).filter((control) => (
+    control.action === "reprompt"
+  )).length;
   return (decision.subtasks?.length ?? 0) + continues;
+}
+
+function hasPendingDecisionWork(view: LoopPlusDecisionQueueView): boolean {
+  return view.hasReview || view.hasReports;
+}
+
+function acknowledgeDecisionReports(
+  port: LoopPlusDecisionStrategyPort,
+  decision: LoopPlusDecision,
+): boolean {
+  const reportEventIds = decision.reportEventIds ?? [];
+  return reportEventIds.length === 0 || port.acknowledgeReports(reportEventIds);
 }
 
 export function createLoopPlusDecisionStrategyRegistry(): LoopPlusDecisionStrategyRegistry {
@@ -181,9 +199,10 @@ function applyDispatchDecision(
   if (dispatched.rejected.length > 0) {
     return port.protocolMiss(false, dispatchRejectionReason(dispatched));
   }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
-  if (port.queueView().hasReview) {
+  if (hasPendingDecisionWork(port.queueView())) {
     return "continue";
   }
   const after = port.queueView();
@@ -215,10 +234,11 @@ function applySteerDecision(
   if (!port.applyControls(controls)) {
     return port.protocolMiss(false);
   }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
   port.persistEstimatedRounds(decision);
-  if (port.queueView().hasReview) {
+  if (hasPendingDecisionWork(port.queueView())) {
     return "continue";
   }
   const after = port.queueView();
@@ -258,6 +278,7 @@ function applyAcceptDecision(
     port.persistSnapshot();
     return port.queueView().parentStopped ? "stop" : port.protocolMiss(true);
   }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(true);
   port.acknowledgeUserMessages(step.userMessageCount);
   port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
@@ -273,7 +294,7 @@ function applyAcceptDecision(
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
-  if (port.queueView().hasReview) {
+  if (hasPendingDecisionWork(port.queueView())) {
     return "continue";
   }
   const inFlight = port.waitForInFlightWork();
@@ -288,6 +309,7 @@ function applyAcceptDecision(
 function applyWaitDecision(
   port: LoopPlusDecisionStrategyPort,
   step: LoopPlusDecisionStepView,
+  decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   const snapshot = port.queueView();
   if (snapshot.hasCurrentReview) {
@@ -296,8 +318,9 @@ function applyWaitDecision(
   if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview) {
     return port.protocolMiss(false, "当前没有运行中或排队任务，wait 无法推进。请完成满足全部门禁的任务，或用 dispatch 派发未完成工作；不要因这项矛盾请求用户继续。");
   }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.acknowledgeUserMessages(step.userMessageCount);
-  if (port.queueView().hasReview) {
+  if (hasPendingDecisionWork(port.queueView())) {
     return "continue";
   }
   port.markDecisionAccepted();
@@ -311,12 +334,14 @@ function applyBlockedDecision(
   step: LoopPlusDecisionStepView,
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   if (port.queueView().hasCurrentReview) {
     port.requeueCurrentReview();
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   port.clearProtocolRetries();
-  if (port.queueView().hasUserMessages) {
+  const pending = port.queueView();
+  if (pending.hasUserMessages || pending.hasReports) {
     port.captureRemainingUserMessagesForHeldReview();
     return "continue";
   }
@@ -348,11 +373,12 @@ function applyCompletedDecision(
   } else if (confirmed.length > 0) {
     return port.protocolMiss(false, "当前没有验收事件，completed 不得携带 reviewEventId 或 reviewEventIds。");
   }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(step.eventIds.length > 0);
   port.acknowledgeUserMessages(step.userMessageCount);
   port.persistSnapshot();
   const pending = port.queueView();
   if (
-    pending.hasReview
+    hasPendingDecisionWork(pending)
     || pending.hasUserMessages
     || pending.runningCount > 0
     || pending.pendingCount > 0
@@ -364,7 +390,7 @@ function applyCompletedDecision(
       port.clearProtocolRetries();
     }
     const latest = port.queueView();
-    if (latest.hasReview || latest.hasUserMessages) {
+    if (hasPendingDecisionWork(latest) || latest.hasUserMessages) {
       return "continue";
     }
     port.persistRunning();
@@ -372,7 +398,7 @@ function applyCompletedDecision(
   }
   if (!port.tryFinishParent()) {
     const latest = port.queueView();
-    if (latest.hasReview || latest.hasUserMessages) {
+    if (hasPendingDecisionWork(latest) || latest.hasUserMessages) {
       return "continue";
     }
     port.persistRunning();

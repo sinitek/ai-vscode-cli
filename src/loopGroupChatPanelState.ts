@@ -12,6 +12,7 @@ export type LoopGroupChatPanelStateBuilderDeps = {
   writeTextFileEnsuringDir: (filePath: string, content: string) => boolean;
   getActiveLoopSubtaskIds: (task: LoopTaskRecord) => string[];
   getActiveReviewEventIds?: (taskId: string) => readonly string[];
+  mainModelRunning?: boolean;
   buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
@@ -32,7 +33,11 @@ export function buildLoopGroupChatPanelStateWithDeps(
   };
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
-  const loopPlus = projectLoopPlusPanel(task, deps.getActiveReviewEventIds?.(task.id) ?? []);
+  const loopPlus = projectLoopPlusPanel(
+    task,
+    deps.getActiveReviewEventIds?.(task.id) ?? [],
+    deps.mainModelRunning === true,
+  );
   const rounds = buildLoopMainSubChatPanelRounds(task, snapshotDeps, loopPlus);
   const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, snapshotDeps);
   const missingChatFiles = rounds
@@ -328,6 +333,8 @@ function loopPlusMemberStatus(
   }
   if (kind === "main") {
     switch (projection.activity) {
+      case "running":
+        return "running";
       case "waiting":
         return "waiting";
       case "review_pending":
@@ -365,6 +372,11 @@ function loopPlusMemberStatus(
   const latestAttempt = attemptsForSubtask[attemptsForSubtask.length - 1];
   if (latestAttempt?.disposition === "closed") {
     return "stopped";
+  }
+  if (latestAttempt?.requiresAcceptance === false
+    && latestAttempt.outcome === "completed"
+    && (latestAttempt.disposition === "finished" || latestAttempt.disposition === "reported")) {
+    return "no_acceptance";
   }
   const reviewed = attemptsForSubtask.filter((item) => item.disposition === "reviewed");
   const latestReviewed = reviewed[reviewed.length - 1];

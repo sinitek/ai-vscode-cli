@@ -570,6 +570,24 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assert.doesNotMatch(legacyPassed, /子任务 1：Alpha · 验收成功/u);
 });
 
+test("shows no-acceptance status as soon as a marked successful attempt finishes", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ ...spec("report-only", "report-only-1"), requiresAcceptance: false }]);
+  const finished = scheduler.finish({
+    subtaskId: "report-only",
+    attemptId: "report-only-1",
+    outcome: "completed",
+    detail: "命令 npm test 已通过，未覆盖集成场景",
+  });
+  assert.equal(finished.applied, true);
+  assert.equal(finished.view.reportQueue?.length, 1);
+  const page = html(build(scheduler.snapshot(), {
+    subTasks: [{ id: "report-only", title: "测试报告", status: "completed", updatedAt: 21 }],
+  }));
+  assert.match(page, /<span class="member-status-inactive">无需验收<\/span>/u);
+  assert.doesNotMatch(page, /验收成功/u);
+});
+
 test("shows a completed attempt as acceptance failed when the review starts a repair", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   dispatchAndFinish(scheduler, "A", "a-1");

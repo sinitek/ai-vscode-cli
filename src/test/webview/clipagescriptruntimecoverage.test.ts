@@ -828,6 +828,46 @@ test("Loop+ submission immediately shows a transient waiting bubble through star
   assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission, null);
 });
 
+test("Vibe pause keeps input until host confirmation and ignores stale acknowledgements", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } }) });
+  const input = document.getElementById("promptInput");
+  input.value = "补充需求";
+  assert.equal(api.dispatchPrompt({ prompt: input.value }, { pauseBeforeSend: true }), true);
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.equal(request.pauseBeforeSend, true);
+  assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "正在等待原任务完全暂停");
+  assert.equal(api.dispatchPrompt({ prompt: input.value }, { pauseBeforeSend: true }), false);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "stopped" });
+  assert.equal(input.value, "补充需求");
+  window.dispatchMessage({ type: "promptPauseReady", tabId: "tab-1", requestId: "old", prompt: input.value });
+  assert.equal(input.value, "补充需求");
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: request.requestId });
+  assert.equal(input.value, "补充需求", "failure keeps input");
+  api.dispatchPrompt({ prompt: input.value }, { pauseBeforeSend: true });
+  const retry = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  window.dispatchMessage({ type: "promptPauseReady", tabId: "tab-1", requestId: retry.requestId, prompt: input.value });
+  assert.equal(input.value, "");
+  assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission.pausing, false);
+  assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "正在发送补充任务");
+});
+
+test("pause acknowledgement preserves newer input and updates a background tab", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }];
+  const show = (activeTabId: string) => window.dispatchMessage({ type: "state",
+    payload: createPanelState({ interactiveMode: "coding", conversationTabs: { activeTabId, tabs } }) });
+  show("tab-1");
+  api.dispatchPrompt({ prompt: "补充需求" }, { pauseBeforeSend: true });
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  show("tab-2");
+  document.getElementById("promptInput").value = "新输入";
+  window.dispatchMessage({ type: "promptPauseReady", tabId: "tab-1", requestId: request.requestId, prompt: "补充需求" });
+  assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission.pausing, false);
+  assert.equal(document.getElementById("promptInput").value, "新输入");
+});
+
 test("Loop+ waiting state follows its tab and only the matching receipt clears a newer submission", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }];

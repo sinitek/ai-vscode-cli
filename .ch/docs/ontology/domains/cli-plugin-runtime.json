@@ -983,12 +983,14 @@
     {
       "id": "plugin.rule.shared_config_snapshot_coordination",
       "name": "共享配置只读快照不竞争写锁",
-      "description": "面板读取已有共享配置只校验原子快照，不获取写锁或回写租约。首次初始化仍互斥并二次读取；配置应用、编辑与执行租约按目录在同进程顺序排队，跨进程保留文件锁。任务启动在锁内重新核对档案和 ready，未就绪或真实跨进程超时仍拒绝启动，不强拆存活进程的锁。真实 CLI 终态不由执行租约清理错误改写；释放失败记录诊断并有限重试，租约移除前继续阻止不安全配置切换。",
+      "description": "面板读取已有共享配置只校验原子快照，不获取写锁或回写租约。首次初始化仍互斥并二次读取；配置应用、编辑与执行租约按目录在同进程顺序排队，跨进程保留文件锁。任务启动在锁内重新核对档案和 ready，未就绪或真实跨进程超时仍拒绝启动，不强拆存活进程的锁。真实 CLI 终态不由执行租约清理错误改写；释放失败记录诊断并有限重试，租约移除前继续阻止不安全配置切换。Vibe 显式暂停发送等待旧调用、Codex 原生会话卸载或进程退出确认及租约清理，90 秒超时或会话变化拒绝迟到发送并保留输入，Loop 主任务仍按原方式排队。",
       "status": "active",
       "applies_to": ["plugin.config_profile", "plugin.cli_session"],
       "source_refs": [
         {"path": "src/config/sharedRuntimeConfig.ts", "anchor": "read"},
         {"path": "src/config/sharedRuntimeConfig.ts", "anchor": "acquire"},
+        {"path": "src/extensionHost/promptRunHandoff.ts"},
+        {"path": "src/interactive/codexAppServerPool.ts", "anchor": "releaseStoppedThread"},
         {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Tab 运行状态与配置协调"}
       ]
     },
@@ -2439,7 +2441,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。等待、排队未开始、暂停、停止和完成不把主任务显示成正在生成；暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 子任务 Tab 创建时立即显示运行流水动画，覆盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时清除为停止或错误，实际执行及终态沿用运行时。Loop 主任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。群聊活动验收 ID 取宿主只读副本并校验 FIFO 前缀，仅冻结成员显示正在验收，后续成员保留既有待验收文案；说明仅列冻结成员，计数仍含完整队列。暂停、停止、释放或无有效元数据时不把整队列显示正在验收，classic 和既有视觉设计不变。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。主模型实际运行或已开始回答提问时，若快照 activity 为 idle、waiting 或 review_pending，则以 running 覆盖展示状态，并同步显示主任务成员运行中、活动说明和思考气泡；仅提问真正开始 CLI 调用后计为运行，排队不计。分解、验收、暂停、停止、完成和无效快照保持优先级。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。主模型实际未运行时，等待或排队尚未开始不把主任务显示成正在生成；暂停、停止和完成仍优先保留原状态。暂停或停止后尚未结束的 running 子任务仍保留执行动画。普通对话面板的 Loop 子任务 Tab 创建时立即显示运行流水动画，覆盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时清除为停止或错误，实际执行及终态沿用运行时。Loop 主任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。群聊活动验收 ID 取宿主只读副本并校验 FIFO 前缀，仅冻结成员显示正在验收，后续成员保留既有待验收文案；说明仅列冻结成员，计数仍含完整队列。暂停、停止、释放或无有效元数据时不把整队列显示正在验收，classic 和既有视觉设计不变。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2641,6 +2643,22 @@
         {"path": ".ch/docs/design-docs/loop-plus-scheduling.md"},
         {"path": "src/extensionHost/loopPlusDecisionStrategies.ts"},
         {"path": "src/loopPlusScheduler.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_optional_acceptance",
+      "name": "Loop+ 按交付结果决定子任务是否完整验收",
+      "description": "主任务在派发子任务或 reprompt 新 attempt 时逐项决定 requiresAcceptance，每个新 attempt 缺省需要完整验收以兼容旧记录，reprompt 省略标记不继承旧免验收。仅当输出是边界明确、证据充分、可直接供主任务决策使用的报告，且无需独立判断交付质量时才设 false；依据报告内容、改动/契约、残余风险、集成判断及用户/项目独立复核要求判断，不按任务类型或复杂度单独决定。可适用明确范围的测试/构建执行、带来源的只读盘点、机械报告生成、隔离诊断；需判断的代码/测试/文档/配置交付、失败归因、含糊报告、安全/契约/集成风险及明确独立复核仍需验收。简单请求是否由主任务直办是另一项判断：目标明确、局部低风险且可直接核对、无测试、构建、委派或独立验证要求时直办，不派微任务绕过验收。免验收成功 attempt 进入可恢复 FIFO 报告队列、唤醒主任务并显示“无需验收”；主任务确认报告前仍阻止整体完成，不记验收通过或次数。失败和停止沿用原验收流程。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.extension_host", "plugin.chat_panel"],
+      "source_refs": [
+        {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/loopPlusScheduler.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/extensionHost/loopPlusPromptBuilders.ts"},
+        {"path": "src/loopGroupChatPanelState.ts"},
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "子任务是否需要完整验收"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 子任务按需完整验收"}
       ]
     },
     {

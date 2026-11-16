@@ -53,6 +53,7 @@ export type LoopPlusControlDecision = {
   /** 省略时 reprompt 保留原子任务分类。 */
   taskType?: LoopPlusTaskType;
   codingDelivery?: boolean;
+  requiresAcceptance?: boolean;
 } & (
   | { action: "close"; prompt?: string; title?: string }
   | { action: "reprompt"; prompt: string; title: string }
@@ -85,6 +86,8 @@ export type LoopPlusDecision = {
   /** 已勾选审查项和“其它”的逐项结论。缺失表示这次没有做这些验收。 */
   acceptancePlanResults?: LoopPlusAcceptancePlanResult[];
   estimatedRemainingRounds?: number;
+  /** 当前提示报告均已阅读；宿主只会确认冻结批次的 FIFO 前缀。 */
+  reportEventIds?: string[];
 };
 
 export type LoopPlusAcceptancePlanResult = {
@@ -219,13 +222,18 @@ function normalizeDecision(
     return null;
   }
   const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
-  if (!decision || value.departmentCollaborations === undefined) return decision;
+  if (!decision) return null;
+  const reportEventIds = readOptionalReportEventIds(value);
+  if (reportEventIds === null) return null;
+  let normalized = reportEventIds !== undefined ? { ...decision, reportEventIds } : decision;
+  if (value.departmentCollaborations === undefined) return normalized;
   // Coordination accompanies a normal wait decision; it never confirms/skips a review batch.
   const messages = value.departmentCollaborations;
   if (status !== "wait" || !Array.isArray(messages) || messages.length > 20 || messages.some((item) => !item || typeof item !== "object"
     || ["id", "targetLeaderTaskId", "body"].some((key) => typeof item[key] !== "string" || !item[key].trim()))
     || new Set(messages.map((item) => item.id)).size !== messages.length) return null;
-  return { ...decision, departmentCollaborations: messages.map(({ id, targetLeaderTaskId, body }) => ({ id, targetLeaderTaskId, body })) };
+  normalized = { ...normalized, departmentCollaborations: messages.map(({ id, targetLeaderTaskId, body }) => ({ id, targetLeaderTaskId, body })) };
+  return normalized;
 }
 
 function normalizeDispatchDecision(
@@ -571,9 +579,10 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
   const conflictGroup = readOptionalText(value.conflictGroup);
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
   const classification = readLoopPlusWorkClassification(value);
-  if (classification === null) {
+  if (classification === null || (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean")) {
     return null;
   }
+  const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   if (value.action === "close") {
     return {
       id,
@@ -582,6 +591,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
       ...(conflictGroup ? { conflictGroup } : {}),
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
       ...classification,
+      ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
@@ -596,6 +606,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
+    ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
   };
 }
 
@@ -656,9 +667,10 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     return null;
   }
   const classification = readLoopPlusWorkClassification(value);
-  if (classification === null) {
+  if (classification === null || (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean")) {
     return null;
   }
+  const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   return {
     id,
     title,
@@ -666,9 +678,24 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
+    ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(skillIds.length > 0 ? { skillIds } : {}),
   };
+}
+
+function readOptionalReportEventIds(value: Record<string, unknown>): string[] | undefined | null {
+  if (!hasOwn(value, "reportEventIds")) return undefined;
+  if (!Array.isArray(value.reportEventIds)) return null;
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value.reportEventIds) {
+    const id = readOptionalText(item);
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 function readLoopPlusWorkClassification(

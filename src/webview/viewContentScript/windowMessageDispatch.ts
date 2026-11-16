@@ -4,6 +4,20 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           const data = event.data;
           if (data.type === "departmentRoleCandidates") applyDepartmentRoleCandidates(data);
           if (data.type === "departmentRolePreferenceSaved") applyDepartmentRolePreferenceSaved(data);
+          if (data.type === "promptPauseReady") {
+            const runtimeState = getConversationRuntimeState(data.tabId, { create: false });
+            if (runtimeState && runtimeState.promptSubmission && runtimeState.promptSubmission.requestId === data.requestId) {
+              runtimeState.promptSubmission.pausing = false;
+              runtimeState.promptSubmission.pauseReady = true;
+              if (isRuntimeStateForActiveTab(data.tabId)) {
+                syncPromptSubmissionWait();
+                if (typeof data.prompt === "string" && elements.promptInput.value.trim() === data.prompt.trim()) {
+                  elements.promptInput.value = "";
+                  resetPromptContextForNextPrompt();
+                }
+              }
+            }
+          }
           if (data.type === "promptSubmissionSettled" && typeof data.requestId === "string" && data.requestId) {
             settlePromptSubmission(data.tabId, data.requestId);
           }

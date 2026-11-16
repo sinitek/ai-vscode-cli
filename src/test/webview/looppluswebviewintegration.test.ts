@@ -59,6 +59,7 @@ type RuntimeState = {
 };
 
 type PostedMessage = {
+  pauseBeforeSend?: boolean;
   type?: string;
   requestId?: string;
   prompt?: string;
@@ -950,8 +951,9 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   assert.equal(immediate.loopSubtaskModel, "entry-sub");
   assert.equal(immediate.loopMainThinkingMode, "high");
   assert.equal(immediate.loopSubtaskThinkingMode, "medium");
+  assert.equal(immediate.pauseBeforeSend, true);
   assert.equal(Object.prototype.hasOwnProperty.call(immediate, "loopExecutionMode"), false);
-  assert.equal(browser.elements.promptInput.value, "");
+  assert.equal(browser.elements.promptInput.value, "pause me");
 
   state.conversationTabs.activeTabId = "vibe-tab";
   api.renderConversationTabs();

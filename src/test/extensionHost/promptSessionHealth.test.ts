@@ -17,6 +17,7 @@ import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
 import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
 import type { ConversationTabRecord } from "../../sessionTabs";
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
@@ -83,6 +84,7 @@ function createHarness(options: {
     promptAutoRepairController: createPromptAutoRepairController(),
     isCliShellCommandNotFoundError,
     loopMainQuestionQueue: questionQueue,
+    promptRunHandoff: new PromptRunHandoff(),
     applyLoopInvocationModelRouting,
     shouldUseClassicLoopProjectInstructions,
     readLoopTaskRecord: () => options.loopSessionId

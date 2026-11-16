@@ -47,10 +47,22 @@
 - 正常 completed 要求所有已选附加项 passed；accept 仍可携带失败证据并派修复。pending 不预留写入范围，独立任务可越过冲突 pending 回填，running 与本轮新启动项仍约束后续准入。
 - 实现/事实来源：`src/loopTaskStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`；回归：`loopPlusHandoffContracts`、`loopTaskStorePersistence`、`loopPlusAcceptanceCompletionGate`、scheduler。范围与恢复限制见 [调度设计](../design-docs/loop-plus-scheduling.md#提交与展示交接契约) 和 [崩溃恢复](../design-docs/loop-crash-recovery.md#提交失败与展示刷新失败)。
 
+## Vibe 暂停后发送补充任务
+
+- 点击“暂停并发送”后显示“正在等待原任务完全暂停”，等待旧调用完整收尾及配置执行租约释放，再启动补充任务；仅收到 `stopped` 或运行标记消失不能作为确认。
+- Codex 复用现有原生交接：共享连接确认目标会话 `closed` / `notLoaded`，旧版专属连接等待进程实际退出；其它会话继续运行。暂停等待上限 90 秒，关闭/换绑会话、停止确认失败或超时均不迟到发送，保留输入并提示原因；等待期间禁止重复提交。
+- 保留 Loop 主任务既有补充需求排队方式，不强拆其它存活宿主的配置锁。实现：`src/extensionHost/promptRunHandoff.ts`、`src/sessionMessageActions.ts`、`src/interactive/codexAppServerPool.ts`。
+
 ## Loop+ 发送后即时等待反馈
 
 - 状态：`active`（2026-11-16，源码实现）。验收方案确认并实际发送后，助手气泡立即显示三点动画与“正在准备 Loop+ 任务”；开始调用后显示“等待模型响应”，首次助手正文/思考输出或调用结束时清除。配置拒绝、提前返回及异常通过请求回执清除；切换 Tab 与迟到回执不会串状态。临时气泡不写入历史，减少动态效果模式保留文字与静态三点；取消弹窗或本地拒绝不产生气泡。
 - 启动前的完整面板刷新改为后台展示，不再让读取全部 CLI 配置和模型阻塞 Loop+ 编排；真实配置校验、CLI 初始化、会话所有权和压缩等待保留。实现与回归见[发送与启动反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)。
+
+## Loop+ 子任务按需完整验收
+
+- 主任务在派发或 reprompt 新 attempt 时逐项设置 `requiresAcceptance`。每个新 attempt 缺省需要完整验收，`reprompt` 省略标记不继承旧免验收；显式 `false` 仅跳过独立交付审查。成功结果显示“无需验收”，进入可恢复报告 FIFO 并唤醒主任务；主任务读取报告后确认准确的 FIFO 前缀并继续调度。报告未确认阻止父任务完成，不产生验收通过记录或验收次数；失败/停止仍走原验收。
+- 判断是否免验收看结果能否直接作为报告消费、是否仍需交付质量/契约/风险/集成判断及用户或项目是否要求独立复核。可免验收例子包括有明确命令、范围、结果和未覆盖项的 bounded 测试/构建执行、带来源的只读盘点、机械报告生成、隔离诊断；需验收例子包括需要判断的代码/测试/文档/配置交付、失败归因、含糊汇报、跨任务或安全/契约风险、明确要求的复核。任务类型和复杂度都不能单独决定。简单任务直办另行判断：整项请求明确、局部低风险、结果可直接核对且无测试/构建/委派/独立验证要求时由主任务直办，不派微任务绕过验收。
+- 实现：`src/loopPlusScheduler.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopGroupChatPanelState.ts`；回归覆盖派发解析、调度/恢复、报告确认门禁与群聊展示。详细规则见[Loop+ 子任务调度](../design-docs/loop-plus-scheduling.md#子任务是否需要完整验收)。
 
 ## Loop / Loop+ 等待巡检
 
@@ -724,6 +736,12 @@ Loop / Loop+ 宿主崩溃恢复修复：重新打开后核对真实运行所有�
 修复 DSH 作为 Loop+ 子模型时，原子任务结束、Tab 关闭、主模型验收失败后，修复任务虽然继承相同 session ID 与 `DSH_HOME`，却因每轮随机 cwd 被 ACP 拒绝的问题。同一 DSH 会话改用稳定的隔离执行根，每轮重建并安全清理工作区链接，保留空目录；普通 Vibe 和其他 CLI 不变。Windows 跨盘使用真实工作区同卷目录。旧版随机 cwd 会话不能安全迁移时明确提示重新派发新子任务，不创建替代会话丢失上下文。未知文件或替换目录均保留并拒绝覆盖。
 
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
+
+## 2026-11-16 Loop+ 群聊主任务实时活动状态
+
+Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回答真正开始时，若调度快照仍为 idle、waiting 或 review_pending，主任务状态改为“运行中”，活动说明与主任务思考气泡同步更新；并行运行的子任务继续显示各自的思考气泡。排队提问不会提前显示运行中；分解、验收、暂停、停止、完成及无效快照保持原优先级，经典 Loop 不变。
+
+实现：`src/loopPlusPanelProjection.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`；验证：`npm run build`；`node --test --test-reporter=dot dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanelState.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 140 加载真实群聊 HTML 并接收运行态 `contentPatch`，检查 waiting → running、主/子思考气泡及 480px 无横向溢出。
 
 ## 2026-11-14 主模型提问气泡排队动画
 

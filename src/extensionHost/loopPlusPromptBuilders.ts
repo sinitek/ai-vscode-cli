@@ -34,6 +34,8 @@ export type LoopPlusMainPromptContext = {
   view: LoopPlusSchedulerView;
   currentEventId: string | null;
   acceptanceEventIds?: readonly string[];
+  reportEventIds?: readonly string[];
+  reportQueue?: readonly LoopPlusReviewItem[];
   interruptedSubtaskIds?: readonly string[];
   supplementalRequirements: readonly string[];
   pendingUserMessages?: readonly string[];
@@ -249,6 +251,7 @@ function buildLoopPlusProtocolExamples(
   eventIds: readonly string[],
   dispatchExampleCount: number,
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null,
+  reportEventIds: readonly string[] = [],
 ): string {
   const planReasons = {
     maintainability: "复用既有模块，未引入重复实现",
@@ -268,6 +271,7 @@ function buildLoopPlusProtocolExamples(
     title: "Example backend coding subtask",
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
     taskType: "backend",
+    requiresAcceptance: true,
     conflictGroup: "example-backend-scope",
     writeFiles: ["src/example-backend.ts"],
   };
@@ -280,6 +284,7 @@ function buildLoopPlusProtocolExamples(
       "Record the command and result in the attempt report.",
     ].join(" "),
     taskType: "frontend",
+    requiresAcceptance: true,
     conflictGroup: "example-frontend-scope",
     writeFiles: ["src/example-frontend.ts"],
   };
@@ -292,19 +297,20 @@ function buildLoopPlusProtocolExamples(
         "Design key point: reuse the existing schema and keep the public configuration contract stable. Record verification commands and results in the attempt report.",
       ].join(" "),
       taskType: "backend",
+      requiresAcceptance: true,
       conflictGroup: "example-config-scope",
       writeFiles: ["src/example-config.ts", "src/test/example-config.test.ts"],
     },
     {
-      id: "example-docs-subtask",
-      title: "Example independent documentation subtask",
+      id: "example-verification-report-subtask",
+      title: "Example bounded verification report",
       prompt: [
-        "Document the already agreed user workflow. Suggested write scope: docs/example-usage.md. Use the existing contract and requirements, so this task does not wait for implementation changes.",
-        "Design key point: keep examples consistent with the agreed contract and do not edit implementation files. Record documentation checks and results in the attempt report.",
+        "Run only the named, bounded verification command against the existing delivery. Write scope: none. Do not edit source or test files. In the attempt report, state the exact command, covered scope, result, and uncovered cases so the main task can decide the next step directly.",
       ].join(" "),
-      taskType: "backend",
-      conflictGroup: "example-docs-scope",
-      writeFiles: ["docs/example-usage.md"],
+      taskType: "general",
+      requiresAcceptance: false,
+      conflictGroup: "example-report-scope",
+      writeFiles: [],
     },
   ];
   const completed: Record<string, unknown> = {
@@ -453,7 +459,10 @@ function buildLoopPlusProtocolExamples(
   return examples.map((example) => [
     `LOOP_PLUS_PROTOCOL_EXAMPLE ${example.status}`,
     "```json",
-    JSON.stringify(example.value, null, 2),
+    JSON.stringify({
+      ...example.value,
+      ...(reportEventIds.length > 0 && example.status !== "clarify" ? { reportEventIds } : {}),
+    }, null, 2),
     "```",
   ].join("\n")).join("\n");
 }
@@ -491,6 +500,11 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const batchText = batchIds.length > 0
     ? batchIds.map((eventId, index) => `${index + 1}. ${eventId}`).join("\n")
     : "(none)";
+  const reportIds = context.reportEventIds?.filter((id) => typeof id === "string" && id.trim()) ?? [];
+  const reportBatchText = reportIds.length > 0 ? reportIds.map((id, index) => `${index + 1}. ${id}`).join("\n") : "(none)";
+  const reports = context.reportQueue?.length
+    ? context.reportQueue.map((item, index) => `${index + 1}. eventId=${item.eventId} subtask=${item.subtaskId} attempt=${item.attemptId} outcome=${item.outcome} detail=${item.detail ?? ""}`).join("\n")
+    : "(none)";
   const acceptExampleRule = batchIds.length > 1
     ? "- The accept example copies the open acceptance batch in order. Do not replace, drop, or reorder it."
     : batchIds.length === 1
@@ -509,6 +523,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Before deciding, read these sources, in order: the current attempt report, the main communication file, and the latest task record.",
     "Trust the attempt report's concrete execution facts, including test, build, and startup results. Reuse reported checks that cover the current changes and remain valid. Do not rerun them yourself or dispatch another attempt solely to reproduce those results.",
     "Before accepting an event, inspect its relevant code, diff, or other deliverables and judge implementation completeness, agreed contracts, change relevance, omissions, regression risks, and boundary handling. Apply every selected additional review. Passing tests or an overall done claim is not a substitute for acceptance review. Do not implement or repair that dispatched work yourself.",
+    "For every dispatched subtask, decide requiresAcceptance at dispatch time. Omission means true for compatibility and safety. Reassess every reprompt as a new attempt: omission resets to true instead of inheriting the previous attempt's exemption. Use false only if the exact output is a sufficiently complete report that the main task can use directly without independently judging a deliverable. Consider what the output will contain, whether it changes a deliverable or contract, whether its result is clear, what risk or integration judgment remains, and whether the user or project requires independent review; task type and complexity alone never decide it. False may fit a bounded test/build run that makes no unrelated edits and reports exact command, scope, result and uncovered cases; read-only inventory/fact collection with sources; mechanical report generation from named inputs; or isolated diagnostics with clear findings. Keep true for implementation or documentation deliverables that need judgment, tests whose failure needs triage or whose scope changes code, unclear reports, integration/security/contract risk, or explicit independent review. A test is not automatically exempt, and a document is not automatically exempt.",
+    "The general simple-task rule is separate from requiresAcceptance: when the whole request is clear, local, low-risk and directly verifiable, and neither the user nor project requires tests, builds, delegation or an independent check, the main task may do it directly. Do not delegate a trivial task just to avoid review. A subtask can be simple and still require acceptance when its deliverable needs judgment; a large bounded report can skip the separate acceptance cycle when its evidence is directly usable.",
+    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". It does not count toward acceptance limits.`,
+    `Pending no-acceptance reports (oldest first):\n${reports}`,
     "Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check. Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check. Already completed independent checks that remain valid are reusable too. A passing unit suite does not establish untested integration behavior.",
     "Clarify an unclear report using existing output or the source subtask before considering a rerun. Do not demand raw logs or independent reproduction merely to trust a clear execution report. You may run tests or start produced artifacts only to close an identified verification gap under the rules above. Skipping an unnecessary rerun is not a failure; an unmet required check still needs resolution.",
     "At closeout or continuation, reuse unchanged accepted execution and review results. Focus review on new or changed requirements, affected deliverables, and unresolved cross-task integration. Keep final requirement coverage and all open-event completion gates. A result from one event does not prove an unrelated event passes.",
@@ -568,7 +586,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ...departmentCapacityLines,
     "- Eligible independent trivial work may be executed directly in every decision, even when Direct completion available is no. That flag controls only the simplified final response, not permission to handle trivial supplemental work. Preserve the existing dispatch, wait, and accept rules for other work.",
     "- Only when Direct completion available is yes, the trivial-work rule is satisfied, and all original and supplemental requirements are finished, return {\"status\":\"completed\",\"directCompletion\":true,\"answerConclusion\":\"实际结果\",\"finalSummary\":\"实际操作与结果\"}. Omit subtasks, review ids, reviews, acceptance, requirementCoverage, and acceptancePlanResults. No extra independent acceptance or fabricated evidence is needed. Earlier reviewed work does not prohibit this path. Never use it to skip unreviewed events, failed or unfinished requirements, or user/project verification requirements. Otherwise use the normal completion protocol below.",
-    "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms nothing. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
+    "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms no acceptance events; acknowledge supplied reports with reportEventIds. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
     "- Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default. Do not dispatch general for a small or medium question, a single analysis track, ordinary inspection, making a plan, or explaining work. If the request is answer-only/read-only and needs no separate evidence report or parallel analysis, return completed directly with no subtasks.",
     "- Dispatch general subtasks only when the thinking workload is large enough to split into at least two independent analysis tracks, each needing substantial investigation, and parallel execution has a clear material benefit in wall-clock time or coverage. If so, dispatch at least two general subtasks together with distinct evidence scopes; general is read-only and never carries coding delivery.",
     "- For non-trivial coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks with separate deliverables, primary write ownership, and verification. Decompose by delivery boundary, not by model role: multiple backend, frontend, or fullstack subtasks can run together. Two roles do not mean a two-task limit.",
@@ -604,7 +622,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
     "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
-    "- steer interrupts open subtasks and confirms nothing. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
+    "- steer interrupts open subtasks and confirms no acceptance events. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
     "- Every accept must include progressPercent, an integer from 0 to 99. Reassess overall completion of all root and supplemental requirements using accepted evidence and remaining work, not subtask counts or acceptance counts. This is your judgment, not a scheduler calculation. New requirements may require lowering the estimate. The host updates progress only after the acceptance batch is successfully confirmed. Reserve 100% for the host after final completed succeeds; do not report 100 on accept. wait, dispatch, steer, blocked, and clarify do not update progress.",
     "- controls actions are close or reprompt. close aborts that subtask, closes its conversation tab, and drops it without an acceptance event or acceptance count. reprompt aborts it, closes that attempt's conversation tab, and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt and closes the tab; JSON alone does not stop a process.",
     "- reprompt requires a non-empty title describing the corrected task in Simplified Chinese. Do not reuse the old title when the task goal or scope has changed; update the title together with the prompt. A reprompt without a valid title is rejected.",
@@ -612,9 +630,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when other work is still running or pending, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept; use independentSubtaskIds for independent deliveries or reviews[*].subtaskIds for event-related work. Passed reviews stay passed. If all new work must wait for a still-running or pending execution and no other independent work is ready, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
-    "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms nothing. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
+    "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms no acceptance events. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
     LOOP_BLOCKED_SUMMARY_INSTRUCTION,
-    "- clarify asks the user to fill a form in the group chat and confirms nothing. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
+    "- clarify asks the user to fill a form in the group chat and confirms no acceptance events. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
     "- Except for the explicitly permitted directCompletion path above, completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
     buildStructuredSvgSummaryPromptInstruction("finalSummary"),
     "- When the acceptance batch has one event, completed must include that reviewEventId. When it has more than one, completed must include reviewEventIds in that order and must not include reviewEventId. When the acceptance batch is (none), omit both. A completed object missing any required field, or containing a failed check, is rejected.",
@@ -624,7 +642,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
-    buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan),
+    buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),
   ].join("\n");
 }
 

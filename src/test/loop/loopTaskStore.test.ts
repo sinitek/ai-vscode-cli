@@ -172,6 +172,19 @@ test("department refusal marker survives null, writes, and unrelated updates unt
   assert.equal(readSkillTask(task.taskStoreFile).departmentInvalid, true);
 });
 
+test("persists per-subtask acceptance flags and keeps legacy or invalid flags on the default path", () => {
+  const task = createLegacyTask();
+  for (const requiresAcceptance of [false, true, undefined]) {
+    task.subTasks[0].requiresAcceptance = requiresAcceptance;
+    loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+    assert.equal(readSkillTask(task.taskStoreFile).subTasks[0].requiresAcceptance, requiresAcceptance);
+  }
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].subTasks[0].requiresAcceptance = "false";
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.equal(readSkillTask(task.taskStoreFile).subTasks[0].requiresAcceptance, undefined);
+});
+
 function hasOwnProperty(value: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }

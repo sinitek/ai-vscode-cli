@@ -1797,6 +1797,8 @@ function loopPlusActivityText(
   strings: LoopGroupChatPanelStrings,
 ): string {
   switch (projection.activity) {
+    case "running":
+      return strings.loopPlusActivityRunning;
     case "waiting":
       return projection.running.some((item) => item.interrupted)
         ? strings.loopPlusActivityAwaitingContinuation
@@ -1862,6 +1864,8 @@ function participantStatusClass(status: string): string {
     case "acceptance_passed":
     case "reviewed":
       return "member-status-passed";
+    case "no_acceptance":
+      return "member-status-inactive";
     case "pending":
     case "blocked":
     case "needs-review":
@@ -1910,6 +1914,8 @@ function formatParticipantStatus(
       return strings.loopPlusAcceptancePassed;
     case "acceptance_failed":
       return strings.loopPlusAcceptanceFailed;
+    case "no_acceptance":
+      return strings.loopPlusStatusNoAcceptance;
     case "review_pending":
       return strings.loopPlusStatusReviewPending;
     case "waiting":
@@ -2167,7 +2173,7 @@ function getLoopPlusRuntimeSpeakers(state: LoopGroupChatPanelState): RuntimeThin
       ...(attemptId ? { attemptId } : {}),
     });
   }
-  if (projection.activity === "reviewing" || projection.activity === "decomposing") {
+  if (projection.activity === "running" || projection.activity === "reviewing" || projection.activity === "decomposing") {
     speakers.push({
       kind: "main",
       id: "main",

@@ -1518,18 +1518,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           closeRunConflictOverlay();
           return false;
         }
-        elements.promptInput.value = "";
         closeRunConflictOverlay();
         if (isLoopMainConversationTabRunning(getActiveConversationTabId())) {
+          elements.promptInput.value = "";
           queuePromptForLater(promptPayload);
           resetPromptContextForNextPrompt();
           return;
         }
-        const sent = dispatchPrompt(promptPayload);
-        if (sent) {
-          resetPromptContextForNextPrompt();
-        }
-        return sent;
+        return dispatchPrompt(promptPayload, { pauseBeforeSend: true });
       }
 
       elements.queuePrompt.addEventListener("click", () => {

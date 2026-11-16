@@ -120,6 +120,7 @@ export function createLoopPlusRuntimeFixture(options: {
   taskPersistenceFactory?: (rootDir: string) => LoopPlusTaskPersistence;
   beforeRun?: (input: PromptRunInput) => Promise<void>;
   onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
+  onMainActivityChange?: LoopPlusRuntimeAdapterDeps["onMainActivityChange"];
   isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
 
 } = {}): LoopPlusRuntimeFixture {
@@ -334,7 +335,7 @@ export function createLoopPlusRuntimeFixture(options: {
     acquireAttemptExecution: options.acquireAttemptExecution,
     log: (event, detail) => { logs.push({ event, detail }); },
     isInvocationActive: options.isInvocationActive,
-
+    onMainActivityChange: options.onMainActivityChange,
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,

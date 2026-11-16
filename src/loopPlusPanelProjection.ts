@@ -7,6 +7,7 @@ export function projectLoopPlusPanel(
     subTasks?: LoopTaskRecord["subTasks"];
   },
   activeReviewEventIds: readonly string[] = [],
+  mainModelRunning = false,
 ): LoopPlusPanelProjection | null {
   if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
     return null;
@@ -31,6 +32,9 @@ export function projectLoopPlusPanel(
     const activeIds = activeBatchMatches ? [...activeReviewEventIds] : [];
     let activity = loopPlusActivityForPhase(view.phase, task.status);
     if (activity === "reviewing" && activeIds.length === 0) activity = "review_pending";
+    if (mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
+      activity = "running";
+    }
     const running = view.running.map((item) => ({
       ...copyLoopPlusExecutionItem(item),
       ...(task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
@@ -58,6 +62,7 @@ export function projectLoopPlusPanel(
         return {
           subtaskId: item.subtaskId,
           attemptId: item.attemptId,
+          ...(item.requiresAcceptance !== undefined ? { requiresAcceptance: item.requiresAcceptance } : {}),
           disposition: item.disposition,
           ...(item.outcome ? { outcome: item.outcome } : {}),
           ...(item.disposition === "reviewed"

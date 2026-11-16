@@ -454,6 +454,7 @@ test("restores each main tab mode from its summary after a fresh page load", () 
 });
 
 type SendMessage = {
+  pauseBeforeSend?: boolean;
   type?: string;
   prompt?: string;
   interactiveMode?: string;
@@ -798,6 +799,7 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   const runtime = {
     pendingPromptQueue: [] as Array<Record<string, unknown>>,
     pendingRunPrompt: null as Record<string, unknown> | null,
+    promptSubmission: null as { requestId: string; started: boolean } | null,
     queueEditingIndex: -1,
     queueEditingDraft: "",
     suppressQueueFlushOnce: false,
@@ -965,6 +967,7 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   state.selectedLoopModels = { main: "changed-main", subtask: "changed-sub" };
   loopMainRunning = false;
   elements.promptInput.value = "pause me";
+  runtime.promptSubmission = null;
   assert.equal(api.pauseAndSendConflictPrompt(), true);
   const pausedSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
   assert.ok(pausedSend);
@@ -974,8 +977,9 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   assert.equal(pausedSend.loopSubtaskModel, "entry-sub");
   assert.equal(pausedSend.loopMainThinkingMode, "high");
   assert.equal(pausedSend.loopSubtaskThinkingMode, "medium");
+  assert.equal(pausedSend.pauseBeforeSend, true);
   assert.equal(Object.prototype.hasOwnProperty.call(pausedSend, "loopExecutionMode"), false);
-  assert.equal(elements.promptInput.value, "");
+  assert.equal(elements.promptInput.value, "pause me");
 });
 
 test("labels scheduled Loop+ tasks with the existing Loop+ copy", () => {
