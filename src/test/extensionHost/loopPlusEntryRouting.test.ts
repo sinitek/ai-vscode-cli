@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("node:fs");
 import path = require("node:path");
+import * as ts from "typescript";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -18,120 +19,11 @@ function readSource(...relativePath: string[]): string {
 }
 
 function functionBody(source: string, name: string): string {
-  const asyncStart = source.indexOf(`async function ${name}`);
-  const start = asyncStart >= 0 ? asyncStart : source.indexOf(`function ${name}`);
-  assert.equal(start >= 0, true, name);
-  const parenAt = source.indexOf("(", start);
-  let cursor = parenAt;
-  let depthParen = 0;
-  let quote: "'" | "\"" | "`" | null = null;
-  let paramsClosedAt = -1;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    const previous = source[cursor - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
-      }
-      cursor += 1;
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      cursor += 1;
-      continue;
-    }
-    if (char === "(") {
-      depthParen += 1;
-    } else if (char === ")") {
-      depthParen -= 1;
-      if (depthParen === 0) {
-        paramsClosedAt = cursor;
-        break;
-      }
-    }
-    cursor += 1;
-  }
-  assert.equal(paramsClosedAt >= 0, true, name);
-  cursor = paramsClosedAt + 1;
-  depthParen = 0;
-  let depthBrace = 0;
-  let depthAngle = 0;
-  quote = null;
-  let bodyOpen = -1;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    const previous = source[cursor - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
-      }
-      cursor += 1;
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      cursor += 1;
-      continue;
-    }
-    if (char === "<") {
-      depthAngle += 1;
-    } else if (char === ">" && depthAngle > 0) {
-      depthAngle -= 1;
-    } else if (char === "(") {
-      depthParen += 1;
-    } else if (char === ")") {
-      depthParen -= 1;
-    } else if (char === "{") {
-      if (depthParen === 0 && depthBrace === 0 && depthAngle === 0) {
-        const groupEnd = matchingBrace(source, cursor);
-        let next = groupEnd + 1;
-        while (next < source.length && /\s/.test(source[next])) {
-          next += 1;
-        }
-        if (source[next] === "{") {
-          cursor = next;
-          continue;
-        }
-        bodyOpen = cursor;
-        break;
-      }
-      depthBrace += 1;
-    } else if (char === "}") {
-      depthBrace -= 1;
-    }
-    cursor += 1;
-  }
-  assert.equal(bodyOpen >= 0, true, name);
-  return source.slice(bodyOpen, matchingBrace(source, bodyOpen) + 1);
-}
-
-function matchingBrace(source: string, open: number): number {
-  let depth = 0;
-  let quote: "'" | "\"" | "`" | null = null;
-  for (let index = open; index < source.length; index += 1) {
-    const char = source[index];
-    const previous = source[index - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
-      }
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      continue;
-    }
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-  throw new Error("Unclosed brace");
+  const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaration = file.statements.find((node): node is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(node) && node.name?.text === name);
+  assert.ok(declaration?.body, `${name} should have a function body`);
+  return declaration.body.getText(file);
 }
 
 test("calls Loop+ before classic initialization and the round loop", () => {

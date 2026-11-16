@@ -172,3 +172,15 @@ node scripts/run_unit_tests.js
 来源勘误：原round674报告第109行是 `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412`，与round695实测一致。此前本手册round676/694保留的 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412` 是后继交接抄录错误，不是原报告值。历史差异观察不删除；55条来源与原closure不变，没有重跑整个来源审计或修改旧报告。
 
 本次不改功能清单/ontology/现行功能计划，因为没有产品语义变化；以专用整合材料记录测试结果。后继commit/tree及完整路径见round698报告。真实UI-EH/CLI、额度/冷恢复组合、必要异平台及最终原目录分类保护/切换/clean交付仍开放，待所有修改验证收尾后统一处理；不得在原master脏树checkout/reset/clean/stash。
+
+## Round 704：通用夹具修复与已接受额度来源合入
+
+从 `c5395f834c6892dea743e513aa860f6f35f03226` 续接，完整 merge 已接受额度三提交 `ab99922e7fbda0669f22a4adbffeb28ffec21bfc` → `b992d3b668c495f398fa20d4620166733a0bf86b` → `b02cfe1a34c427937efd625735cf267bc67ac711`，merge `2f6caca23a6389da016905fe1cf238b78bbe44db`，无冲突。七路径与 b02 逐文件相同，未改产品运行逻辑；复用其19项及真实工作区2/6→额度3/0/3、原4份receipt/精确CLOSED/容量归还和4 worker自然退出的已接受范围。不是只拿最终runbook，也没有合入未正式接受的lp701/lp702。
+
+九个普通测试文件修复：loopPlusEntryRouting以TypeScript AST取函数；promptExecutionShared保留展开executionOptions与部门附加参数；continueModelChoice精确定位classic创建边界的createTask回调/createdTask，断言路由和origin持久化先于该任务transcript；loopPromptQueue验证scope/历史标志和运行Loop排队、busy非Loop冲突、普通派发及pause发送保留草稿；OpenCode CSS按完整同选择器聚合并顺序覆盖属性，保留主题/布局断言，拒绝把部门/Loop+带父选择器规则误作普通规则；panelViewLocation仅可选核对ignored/untracked锁文件，其余manifest注册/引擎/中文/icon断言不变；commandRunnerCoverage每平台创建自己的controller并恢复mock，非原生Windows证据；OpenCode serve及role-model用例等待真实process/stdio lifecycle、temp confirmed后检查overlay；contextCompactionRunner保留真实manager/cwd/fingerprint/trust及配置隔离，补VS Code mock的inspect。单case诊断实际异常为 `config.inspect is not a function`，不是生产身份算法失败。
+
+必要编译三次tsc均exit0。九文件首次定向195项193过2失败（CSS suffix和第二overlay同类等待缺口），修复两文件后只复测75/75；其余七文件120项仍有效，最终九文件195个不同case通过。两次单case诊断均exit1，原false和随后捕获异常均保留。精确命令/日志SHA/九输入base及result SHA在 `round698-full-regression.json` 的 `round704Followup`。末次编译后只改文档/证据，不使测试失效；生产源码没有变化。复用有效build、旧七文件121项与额度19项，不重复browser/EH/全量。
+
+round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，强制回收自有fake worker的事实不变。本轮覆盖其10个原失败，剩余50失败、6取消/15文件只是对账，不是新官方运行或全量通过。store/cold/capacity各有唯一所有者；lp701发送/lp702传输虽done，尚未正式接受/合入。groupChatHost两项原失败也保留待组合判断，不因额度实机成功就标解决。统一生产修复正式合入后才安排最终官方全量。
+
+55路径冷累计来源、manifest原始round674第109行正确SHA `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412` 及后继错误 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`、round695测量及历史失败全部保留。未重做导入/来源审计。最终commit/tree见round704报告；真实混合冷恢复/遗留authority、必要原生Linux/Windows、最终原打开目录分类保护/切换分支/clean仍开放。原master脏树和其它来源未写入，不提前归档根feature。

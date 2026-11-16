@@ -2301,5 +2301,165 @@
     "Final original-directory classification/preservation, branch switch and clean handoff after all work accepted"
   ],
   "noHistoricalAttribution": "No old-baseline execution establishes remaining failures as historical. Provisional diagnoses stay provisional; no full regression pass is claimed.",
-  "postCheckChanges": "After fourth tsc/mode pass: one leading-indentation-only correction in loopPlusModeEntry source; generated JS content/behavior unchanged. Remaining changes are documentation/evidence only; no production edits."
+  "postCheckChanges": "After fourth tsc/mode pass: one leading-indentation-only correction in loopPlusModeEntry source; generated JS content/behavior unchanged. Remaining changes are documentation/evidence only; no production edits.",
+  "round704Followup": {
+    "round": 704,
+    "baseCommit": "c5395f834c6892dea743e513aa860f6f35f03226",
+    "allocationMergeCommit": "2f6caca23a6389da016905fe1cf238b78bbe44db",
+    "allocationMergeTree": "73e05e2ab434c802234494ec307a8ff5139bdce8",
+    "allocationMergeParents": [
+      "c5395f834c6892dea743e513aa860f6f35f03226",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "acceptedAllocationCommits": [
+      "ab99922e7fbda0669f22a4adbffeb28ffec21bfc",
+      "b992d3b668c495f398fa20d4620166733a0bf86b",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "mergeConflicts": 0,
+    "productionSourceChanged": false,
+    "reusedAllocationEvidence": {
+      "distinctTests": 19,
+      "realRun": "/private/tmp/department-allocation-round698-run2.json",
+      "inputCommit": "b992d3b668c495f398fa20d4620166733a0bf86b",
+      "scope": "UI workspace2/6,default3,save0,next-attempt denied,restore3,next-attempt admitted,original4receipts/exactCLOSED/capacity returned/4workers natural exit; source seven paths byte-identical to b02"
+    },
+    "checks": [
+      {
+        "scope": "unmodified single-case diagnostic",
+        "command": "node --test --test-reporter=tap --test-name-pattern='Codex compact passes cwd to the real semantic identity' dist/test/core/contextCompactionRunner.test.js",
+        "log": "/tmp/round704-context-diagnostic-first.log",
+        "logSha256": "3da6571c254186b2d02d5568a33365727090e0c2fbf053946864e837bd1eccfa",
+        "exitCode": 1,
+        "result": "1 case failed false; still no exception detail"
+      },
+      {
+        "scope": "diagnostic fixture compilation",
+        "command": "./node_modules/.bin/tsc -p ./",
+        "log": "/tmp/round704-tsc-diagnostic.log",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "exitCode": 0,
+        "result": "diagnostic and initial fixture edits compile"
+      },
+      {
+        "scope": "exception-aware single-case diagnostic",
+        "command": "node --test --test-reporter=tap --test-name-pattern='Codex compact passes cwd to the real semantic identity' dist/test/core/contextCompactionRunner.test.js",
+        "log": "/tmp/round704-context-diagnostic-error.log",
+        "logSha256": "9a249e91e9098c82d2e841785f4667d9cd0854753fa02e5b27341888545a2026",
+        "exitCode": 1,
+        "result": "1 case failed; captured config.inspect is not a function"
+      },
+      {
+        "scope": "nine-file compilation",
+        "command": "./node_modules/.bin/tsc -p ./",
+        "log": "/tmp/round704-tsc-final.log",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "exitCode": 0,
+        "result": "all nine initial repairs compile"
+      },
+      {
+        "scope": "nine-file targeted tests",
+        "command": "node --test --test-reporter=tap --test-timeout=15000 dist/test/extensionHost/loopPlusEntryRouting.test.js dist/test/extensionHost/promptExecutionShared.test.js dist/test/loop/continueModelChoice.test.js dist/test/loop/loopPromptQueue.test.js dist/test/webview/opencodedualmodelwebview.test.js dist/test/webview/panelViewLocation.test.js dist/test/cli/commandRunnerCoverage.test.js dist/test/cli/opencodeCommandRunner.test.js dist/test/core/contextCompactionRunner.test.js",
+        "log": "/tmp/round704-nine-files.log",
+        "logSha256": "e0f55cbc60a1d78742e324fc36d4b3160a10a2e59f27820c5f3654e5c03afd5f",
+        "exitCode": 1,
+        "result": "195 tests,193 pass,2 fail,0 cancelled/skipped; two affected files later repaired"
+      },
+      {
+        "scope": "two-file final compilation",
+        "command": "./node_modules/.bin/tsc -p ./",
+        "log": "/tmp/round704-tsc-retest.log",
+        "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "exitCode": 0,
+        "result": "final TS inputs compile"
+      },
+      {
+        "scope": "two-file final tests",
+        "command": "node --test --test-reporter=tap --test-timeout=15000 dist/test/cli/opencodeCommandRunner.test.js dist/test/webview/opencodedualmodelwebview.test.js",
+        "log": "/tmp/round704-two-files-final.log",
+        "logSha256": "d39fd2d2ca7393805caf9a5751db8085c8d262fbd33c031e52c3b5ec620e6966",
+        "exitCode": 0,
+        "result": "75/75 pass,0 fail/cancel/skip; remaining seven files120 cases retain prior pass"
+      }
+    ],
+    "repairedInputs": [
+      {
+        "path": "src/test/cli/commandRunnerCoverage.test.ts",
+        "baseSha256": "2d949bcf193ac71b03eeb2009f3abca6a06f4ad2d0a32d99a3003b275fa8e07c",
+        "resultSha256": "a22b4d05b176cc6f7fbdcf6b5f96155eb5402495cb8b4ed01b67ad8141e363eb"
+      },
+      {
+        "path": "src/test/cli/opencodeCommandRunner.test.ts",
+        "baseSha256": "ee462c8e4ee1d2034cc3e8bb73151c55f2c909bcc66d037ba9e13e0ebdcd91f9",
+        "resultSha256": "6c61808ec9c1f854e2bc98ca2fa6c4a5c6750571f4d7db018fb0ee27344a45ff"
+      },
+      {
+        "path": "src/test/core/contextCompactionRunner.test.ts",
+        "baseSha256": "23d29a8ff6f6ecbd038624048b066b4bccff5405fd4736c28b12fc1a11859daa",
+        "resultSha256": "680427f2fcdb1e7f447b21a502b4ed06f28000abb095856fc55314b680a645ef"
+      },
+      {
+        "path": "src/test/extensionHost/loopPlusEntryRouting.test.ts",
+        "baseSha256": "fe4ad8fd51db08d66132b2aded5881709e9763cfe10e9d7b8982227b9f9f8b60",
+        "resultSha256": "2764518e6db3a43e3668c873594e0083db9ac7e30b63b564d79f91f757a0f585"
+      },
+      {
+        "path": "src/test/extensionHost/promptExecutionShared.test.ts",
+        "baseSha256": "2661399c6e92eb860b730ba0e1acfc11ca6a05f9005184f8aaf02568555779ab",
+        "resultSha256": "58a02f8e5c1a2bb19d324563719668a59a0d2c4e14fc1d1a121e254e172b1720"
+      },
+      {
+        "path": "src/test/loop/continueModelChoice.test.ts",
+        "baseSha256": "05c91463f25a50193b565a5b30156700eb7a904bd11eda685d989b5747b23e7b",
+        "resultSha256": "71cf951ed3868074bdb2c2ad5a255332842a89c5f490c3194ec2f6f04a6186c5"
+      },
+      {
+        "path": "src/test/loop/loopPromptQueue.test.ts",
+        "baseSha256": "45e56c91788614924d07d847f282c04be1a5e2ff6e93648d99cfda090149616f",
+        "resultSha256": "9b02bd7dba35813d583a306639f9ce71f9beddfd43cb935435100cc416380e4c"
+      },
+      {
+        "path": "src/test/webview/opencodedualmodelwebview.test.ts",
+        "baseSha256": "f312707b2e27ae41e5a1f64a70a4bbf85887550937da0027d71c517473ca215c",
+        "resultSha256": "900d59a66dff493fc7d88e4b9c88b0cc3d3b833d1bf6a749b7fccae7f3b36dc3"
+      },
+      {
+        "path": "src/test/webview/panelViewLocation.test.ts",
+        "baseSha256": "9d8400809ab9520d21c0265cd09ea75cf6c1b012e63a28a75258bf0957612254",
+        "resultSha256": "62f063303202224feca692429369d4fa1ecd258d5ca5522a7906c25e07300a94"
+      }
+    ],
+    "finalTargetedEvidence": {
+      "distinctCasesPass": 195,
+      "files": 9,
+      "composedOf": "seven unchanged file results120 plus two final file results75; not a single all-green nine-file invocation",
+      "firstRunFailuresNowCovered": 10,
+      "firstRunUnresolvedFailures": 50,
+      "firstRunUnresolvedCancellations": 6,
+      "remainingFirstRunFiles": 15,
+      "fullRegressionPassed": false
+    },
+    "contextRootCause": "VS Code mock omitted inspect; real manager captures Codex host macTaskShell through config.inspect. Added mock API; real fingerprint/cwd/trust/reuse assertions preserved. No production contract change.",
+    "intermediateFailures": [
+      "original false-only diagnostic",
+      "exception-aware diagnostic config.inspect missing",
+      "nine-file retest: CSS selector suffix contamination and second OpenCode overlay assertion before lifecycle"
+    ],
+    "postCheckChanges": "After final tsc and75-case run, only documentation/evidence edits; no TS/production/runner changes.",
+    "openOwnership": {
+      "strictStore": "store owner: ownedTaskSource/ownershipIndex/productionTaskStore/handoff/storeCore/storePersistence",
+      "cold": "cold owner: coldgenerationrecovery/continuationlifecycle/productionwiring/treecontrolintegration/leadercodexowner; extension and shared worker helpers remain exclusive",
+      "capacity": "allocation successor: departmentgroupcapacity.test.ts untouched",
+      "send": "lp701 done but not formally accepted or merged",
+      "transport": "lp702 done but not formally accepted or merged",
+      "groupChatHost": "two original failures retained; coordinate allocation/cold/store effects after accepted inputs, no unverified resolution claim"
+    },
+    "openGates": [
+      "accepted production repairs must be integrated before final official full regression",
+      "remaining real mixed cold recovery and retained authority cleanup",
+      "native Linux/Windows evidence where required",
+      "final original-directory preservation/classification/branch switch and clean handoff"
+    ],
+    "skippedChecks": "No repeated full regression/build/old121/accepted19/browser/EH/ontology validation; only tests/docs changed and allocation source identical. Existing production build and specific real evidence reused within original scopes."
+  }
 }

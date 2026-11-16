@@ -231,6 +231,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
           prompt: payload.prompt,
           contextOptions: payload.contextOptions || {},
           skipPromptHistory: payload.skipPromptHistory === true,
+          departmentConfigurationScope: payload.departmentConfigurationScope,
         }
       : null,
     () => "tab-loop",
@@ -253,7 +254,10 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     { postMessage: (message: unknown) => posted.push(message) },
   ) as (payload: unknown) => boolean;
 
-  assert.equal(dispatchPrompt({ prompt: "queued task", contextOptions: {}, skipPromptHistory: true }), true);
+  assert.equal(dispatchPrompt({
+    prompt: "queued task", contextOptions: {}, skipPromptHistory: true,
+    departmentConfigurationScope: "workspace-scope",
+  }), true);
   assert.deepEqual(posted, [{
     type: "sendPrompt",
     configSelections: { opencode: { configId: "config-opencode", revision: "visible-revision" } },
@@ -265,14 +269,45 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     model: undefined,
     preserveActiveTab: false,
     skipPromptHistory: true,
+    departmentConfigurationScope: "workspace-scope",
   }]);
 });
 
 test("prevents the conflict overlay from bypassing a running Loop main tab", () => {
-  assert.match(
-    VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS,
-    /isLoopMainConversationTabRunning\(getActiveConversationTabId\(\)\)[\s\S]*queuePromptForLater\(promptPayload\)[\s\S]*return;[\s\S]*dispatchPrompt\(promptPayload\)/,
-  );
+  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, "pauseAndSendConflictPrompt");
+  for (const loopRunning of [true, false]) {
+    const payload = { prompt: "pending task", departmentConfigurationScope: "workspace-scope", skipPromptHistory: true };
+    const queued: unknown[] = [];
+    const dispatched: unknown[] = [];
+    const elements = { promptInput: { value: "pending task" } };
+    let closed = 0;
+    let reset = 0;
+    const pauseAndSend = new Function(
+      "getActiveConversationRuntimeState", "normalizePromptPayload", "closeRunConflictOverlay",
+      "isLoopMainConversationTabRunning", "getActiveConversationTabId", "elements",
+      "queuePromptForLater", "resetPromptContextForNextPrompt", "dispatchPrompt",
+      `${functionSource}; return pauseAndSendConflictPrompt;`,
+    )(
+      () => ({ pendingRunPrompt: payload }), (value: unknown) => value, () => { closed += 1; },
+      () => loopRunning, () => "tab-1", elements,
+      (value: unknown) => queued.push(value), () => { reset += 1; },
+      (value: unknown, options: unknown) => { dispatched.push({ value, options }); return true; },
+    ) as () => unknown;
+    const result = pauseAndSend();
+    assert.equal(closed, 1);
+    if (loopRunning) {
+      assert.deepEqual(queued, [payload]);
+      assert.deepEqual(dispatched, []);
+      assert.equal(elements.promptInput.value, "");
+      assert.equal(reset, 1);
+    } else {
+      assert.deepEqual(queued, []);
+      assert.deepEqual(dispatched, [{ value: payload, options: { pauseBeforeSend: true } }]);
+      assert.equal(elements.promptInput.value, "pending task", "pause/send waits for matching acknowledgement");
+      assert.equal(reset, 0);
+      assert.equal(result, true);
+    }
+  }
 });
 
 test("auto-continues only a Loop queue that transitions from running to completed", () => {

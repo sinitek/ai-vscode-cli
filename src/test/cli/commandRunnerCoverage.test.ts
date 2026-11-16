@@ -1005,7 +1005,14 @@ test("terminates mocked process trees through direct, child, and Windows fallbac
 
     const restoreWindowsPlatform = setPlatform("win32");
     try {
-      assert.equal(handle.kill("SIGKILL"), true);
+      // Controllers capture platform when created; do not mutate a live Linux controller.
+      const windowsHandle = runCliStream("codex", "stop-windows", {
+        onStdout: () => undefined,
+        onStderr: () => undefined,
+        onError: () => undefined,
+        onExit: () => undefined,
+      });
+      assert.equal(windowsHandle.kill("SIGKILL"), true);
       assert.equal(spawned.at(-1)?.[0], "taskkill");
     } finally {
       restoreWindowsPlatform();

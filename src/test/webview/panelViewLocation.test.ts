@@ -18,7 +18,10 @@ test("chat container is registered only in the secondary sidebar", () => {
   }]);
   assert.equal(containers.activitybar, undefined);
   assert.equal(manifest.engines.vscode, "^1.104.0");
-  assert.equal(readJson("package-lock.json").packages[""].engines.vscode, manifest.engines.vscode);
+  // The ignored, untracked lockfile is optional in a source worktree.
+  if (fs.existsSync(path.join(process.cwd(), "package-lock.json"))) {
+    assert.equal(readJson("package-lock.json").packages[""].engines.vscode, manifest.engines.vscode);
+  }
 });
 
 test("chat view identity and startup opening preference remain unchanged", () => {

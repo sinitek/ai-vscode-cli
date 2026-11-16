@@ -261,6 +261,12 @@ test("starts a dedicated OpenCode serve process and cleans its runtime overlay",
       stopWhenReady();
     });
 
+    const lifecycle = (processHandle as ReturnType<typeof startOpenCodeServer> | null)?.lifecycle;
+    assert.ok(lifecycle, "serve handle must expose actual process/stdio lifecycle");
+    const evidence = await lifecycle;
+    assert.equal(evidence.processTerminal.status, "confirmed");
+    assert.equal(evidence.streams.status, "confirmed");
+    assert.equal(evidence.temp.status, "confirmed");
     const marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { args: string[]; config: string };
     assert.deepEqual(marker.args, ["serve", "--hostname", "127.0.0.1", "--port", "41873"]);
     assert.ok(marker.config);
@@ -515,8 +521,9 @@ test("passes independent OpenCode role models and reasoning efforts to the child
   });
 
   try {
+    let processHandle: ReturnType<typeof runCliStream> | null = null;
     await new Promise<void>((resolve, reject) => {
-      runCliStream("opencode", "hello", {
+      processHandle = runCliStream("opencode", "hello", {
         onStdout: () => undefined,
         onStderr: () => undefined,
         onError: reject,
@@ -534,6 +541,12 @@ test("passes independent OpenCode role models and reasoning efforts to the child
       });
     });
 
+    const lifecycle = (processHandle as ReturnType<typeof runCliStream> | null)?.lifecycle;
+    assert.ok(lifecycle, "role-model handle must expose actual process/stdio lifecycle");
+    const evidence = await lifecycle;
+    assert.equal(evidence.processTerminal.status, "confirmed");
+    assert.equal(evidence.streams.status, "confirmed");
+    assert.equal(evidence.temp.status, "confirmed");
     const overlayPath = fs.readFileSync(overlayPathMarker, "utf8");
     const overlay = JSON.parse(fs.readFileSync(overlayContentCopy, "utf8")) as {
       model?: string;

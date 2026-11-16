@@ -48,10 +48,18 @@ function extractFunctionSource(script: string, name: string): string {
 }
 
 function extractCssRule(styles: string, selector: string): string {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = styles.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`));
-  assert.ok(match, `${selector} should exist in input control styles`);
-  return match[1];
+  // Match complete selectors, not a suffix of department/Loop+ scoped rules.
+  const matches = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((match) => match[1].split(",").some((entry) => entry.trim() === selector));
+  assert.ok(matches.length, `${selector} should exist in input control styles`);
+  const declarations = new Map<string, string>();
+  for (const match of matches) {
+    for (const declaration of match[2].split(";")) {
+      const colon = declaration.indexOf(":");
+      if (colon >= 0) declarations.set(declaration.slice(0, colon).trim(), declaration.slice(colon + 1).trim());
+    }
+  }
+  return [...declarations].map(([property, value]) => `${property}: ${value};`).join(" ");
 }
 
 function createSelect(): FakeSelect {
@@ -319,6 +327,8 @@ test("lays out OpenCode selectors as two full-width model rows", () => {
   assert.match(openCodeRowRule, /display:\s*grid;/);
   assert.match(openCodeRowRule, /grid-template-columns:\s*minmax\(52px, auto\) minmax\(92px, 1fr\) calc\(70px \* 1\.15\);/);
   assert.match(openCodeLabelRule, /color:\s*var\(--vscode-descriptionForeground\);/);
+  assert.match(openCodeLabelRule, /white-space:\s*nowrap;/);
+  assert.match(extractCssRule(INPUT_CONTROLS_STYLES, ".department-role-row .open-code-model-label"), /white-space:\s*normal;/);
   assert.match(openCodeModelRule, /width:\s*100%;/);
   assert.match(openCodeModelRule, /min-width:\s*0;/);
   assert.match(openCodeThinkingRule, /width:\s*calc\(70px \* 1\.15\);/);

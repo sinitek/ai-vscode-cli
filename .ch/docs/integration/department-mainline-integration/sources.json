@@ -212,5 +212,47 @@
     "fullRegressionPassed": false,
     "sourceIdentityScope": "Existing round-695 identities remain snapshots of their named commits; round698 repaired test input identities are separate. Original 55 cold paths unchanged.",
     "remainingGate": "Central/exclusive failures need coordinated repair; no second full result or final tree acceptance claimed."
+  },
+  "round704CommonRegressionRepair": {
+    "baseCommit": "c5395f834c6892dea743e513aa860f6f35f03226",
+    "allocationMergeCommit": "2f6caca23a6389da016905fe1cf238b78bbe44db",
+    "allocationMergeTree": "73e05e2ab434c802234494ec307a8ff5139bdce8",
+    "allocationMergeParents": [
+      "c5395f834c6892dea743e513aa860f6f35f03226",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "acceptedAllocationCommits": [
+      "ab99922e7fbda0669f22a4adbffeb28ffec21bfc",
+      "b992d3b668c495f398fa20d4620166733a0bf86b",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "mergeConflicts": 0,
+    "productionSourceChanged": false,
+    "finalTargetedEvidence": {
+      "distinctCasesPass": 195,
+      "files": 9,
+      "composedOf": "seven unchanged file results120 plus two final file results75; not a single all-green nine-file invocation",
+      "firstRunFailuresNowCovered": 10,
+      "firstRunUnresolvedFailures": 50,
+      "firstRunUnresolvedCancellations": 6,
+      "remainingFirstRunFiles": 15,
+      "fullRegressionPassed": false
+    },
+    "openOwnership": {
+      "strictStore": "store owner: ownedTaskSource/ownershipIndex/productionTaskStore/handoff/storeCore/storePersistence",
+      "cold": "cold owner: coldgenerationrecovery/continuationlifecycle/productionwiring/treecontrolintegration/leadercodexowner; extension and shared worker helpers remain exclusive",
+      "capacity": "allocation successor: departmentgroupcapacity.test.ts untouched",
+      "send": "lp701 done but not formally accepted or merged",
+      "transport": "lp702 done but not formally accepted or merged",
+      "groupChatHost": "two original failures retained; coordinate allocation/cold/store effects after accepted inputs, no unverified resolution claim"
+    },
+    "openGates": [
+      "accepted production repairs must be integrated before final official full regression",
+      "remaining real mixed cold recovery and retained authority cleanup",
+      "native Linux/Windows evidence where required",
+      "final original-directory preservation/classification/branch switch and clean handoff"
+    ],
+    "evidenceFile": ".ch/docs/integration/department-mainline-integration/round698-full-regression.json#round704Followup",
+    "resultIdentityScope": "Per-file base/result SHA are the round704 snapshot in evidence; prior c40/round695/round698 hashes remain named historical snapshots. Final commit/tree in round704 report."
   }
 }
