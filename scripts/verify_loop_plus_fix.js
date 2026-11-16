@@ -42,6 +42,14 @@ function regressionTests() {
     "extensionHost/extensionHostExtractionContracts.test.js", "extensionHost/loopPlusRuntimeIntegration.test.js",
     "extensionHost/loopPlusOrchestration.test.js", "extensionHost/loopPlusEntryRouting.test.js",
     "extensionHost/loopPlusAttemptIdentity.test.js", "extensionHost/loopWaitWatchdog.test.js",
+    "extensionHost/loopPlusDecisionStrategies.test.js", "extensionHost/loopPlusPromptBuilders.test.js",
+    "extensionHost/loopPlusRuntimeWiring.test.js", "extensionHost/loopCrashRecovery.test.js",
+    "extensionHost/loopModelRouting.test.js", "extensionHost/loopModelSwitchResume.test.js",
+    "extensionHost/loopPlusAcceptancePlanHost.test.js", "core/loopPlusAcceptancePlan.test.js",
+    "loop/loopPlusDecision.test.js", "loop/loopPlusProtocolRepair.test.js",
+    "loop/loopPlusContracts.test.js", "loop/loopSubtaskLifecycle.test.js",
+    "loop/subtaskCliRoute.test.js", "loop/loopPlusSubtaskMode.test.js",
+    "session/loopPlusSessionTabs.test.js",
     "loop/loopPlusScheduler.test.js", "loop/loopSubtaskSession.test.js",
     "loop/loopSubtaskAutoCompact.test.js", "session/conversationTabRunningFlow.test.js",
     "loop/loopMainFailure.test.js", "loop/loopPlusPause.test.js", "loop/loopBlockedSummary.test.js",
@@ -177,7 +185,11 @@ async function runVerification(options, runtime = {}) {
     report.environment.dirty = Boolean(status.stdout.trim());
     const tests = (runtime.regressionTests || regressionTests)();
     assert.ok(tests.length > 0, "没有发现回归测试");
-    await check("regression", process.execPath, ["--test", "--test-reporter=tap", ...tests], verifyRegressionResult);
+    log(`必要回归：${tests.length} 个测试文件（含主子交接、验收协议与完成门禁）；详细清单写入报告。`);
+    await check("regression", process.execPath, ["--test", "--test-reporter=tap", ...tests], (result) => ({
+      ...verifyRegressionResult(result),
+      files: tests.map((filename) => path.relative(repoRoot, filename).split(path.sep).join("/")),
+    }));
     report.coverage.regression = true;
     const env = { ...process.env, CODEX_COMMAND: resolved.command, SINITEK_CODEX_HANDOFF_MODULE_ROOT: path.join(repoRoot, "dist") };
     for (let run = 1; run <= options.runs; run += 1) {
@@ -220,7 +232,7 @@ function printHelp() {
   console.log("用法：npm run verify:loop-plus -- [--codex 可执行文件路径] [--runs 3] [--report 报告.json]");
   console.log("或：node scripts/verify_loop_plus_fix.js --live [同上参数]；macOS/Windows 可双击同名 .command/.cmd。");
   console.log("需要 Node.js、npm、git、已安装的项目依赖和 Codex；只访问本机模拟模型，使用临时 HOME，不修改用户任务或会话。");
-  console.log("自动构建、检查 Loop+ 所有权/完成状态/暂停/Tab 回归、重复原会话交接、验证公共 runner 与资源清理；共享策略默认 3 轮约 3–5 分钟。");
+  console.log("自动构建、检查 Loop+ 所有权/主子模型路由/验收协议与方案/完成门禁/暂停恢复/Tab 回归、重复原会话交接、验证公共 runner 与资源清理；共享策略默认 3 轮约 3–5 分钟。");
   console.log("默认按插件的命令解析规则固定 Codex 路径；--codex 优先于 CODEX_COMMAND。带空格路径请加引号。未知能力不强行开启零延迟。");
   console.log("确认支持即时卸载的版本验证共享池；旧版/未知能力验证专属进程、原进程实际退出和其它会话保留。不会换用另一版本让检测通过。");
   console.log("报告与日志拒绝覆盖；任一步失败、跳过、缺协议或清理证据均退出 1。退出 0 仅代表本机源码/隔离验证通过，不代表其它平台或真实 VS Code 已验收。");

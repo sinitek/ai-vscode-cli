@@ -95,17 +95,23 @@ test("unified acceptance requires live consent and accepts quoted Windows/macOS 
   }
 });
 
-test("regression selection includes the Loop+ ownership, completion, tab lifecycle and runner guards", (context) => {
+test("regression selection requires handoff, acceptance gates, recovery, routing and runner guards", (context) => {
   context.mock.method(fs, "readdirSync", () => ["codexThreadHandoff.test.js", "codexRunnerProcess.test.js", "promptInteractiveRuntime.test.js"]);
   let missingTest: string | null = null;
   context.mock.method(fs, "existsSync", (filename: fs.PathLike) => missingTest === null || !String(filename).endsWith(`${missingTest}.test.js`));
   const tests: string[] = regressionTests();
-  for (const required of ["promptInteractiveRuntime", "tabRunStatus", "conversationTabClose", "loopSubtaskSession", "loopPlusRuntimeIntegration", "codexRunnerUnloadAcceptance", "loopPlusFixAcceptance", "loopMainFailure", "loopPlusPause", "loopBlockedSummary", "loopFinalSummary", "loopGroupChat"]) {
+  const requiredTests = ["promptInteractiveRuntime", "tabRunStatus", "conversationTabClose", "loopSubtaskSession",
+    "loopPlusRuntimeIntegration", "codexRunnerUnloadAcceptance", "loopPlusFixAcceptance", "loopMainFailure",
+    "loopPlusPause", "loopBlockedSummary", "loopFinalSummary", "loopGroupChat", "loopPlusAttemptIdentity", "loopWaitWatchdog",
+    "loopPlusDecisionStrategies", "loopPlusPromptBuilders", "loopPlusRuntimeWiring", "loopCrashRecovery",
+    "loopModelRouting", "loopModelSwitchResume", "loopPlusAcceptancePlanHost", "loopPlusAcceptancePlan",
+    "loopPlusDecision", "loopPlusProtocolRepair", "loopPlusContracts", "loopSubtaskLifecycle",
+    "subtaskCliRoute", "loopPlusSubtaskMode", "loopPlusSessionTabs"];
+  for (const required of requiredTests) {
     assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
   }
   assert.equal(new Set(tests).size, tests.length);
-  for (const required of ["tabRunStatus", "loopPlusAttemptIdentity", "loopWaitWatchdog"]) {
-    assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
+  for (const required of requiredTests) {
     missingTest = required;
     assert.throws(() => regressionTests(), new RegExp(required));
   }
@@ -173,6 +179,11 @@ test("unified acceptance pins one executable and isolated build for every native
   assert.ok(state.calls.findIndex((call) => call.args.includes("--test")) < state.calls.findIndex((call) => call.args.includes("--live")));
   const persisted = JSON.parse(fs.readFileSync(state.reportPath, "utf8"));
   assert.equal(persisted.verdict, "scoped-checks-passed");
+  const regression = persisted.checks.find((check: { name: string }) => check.name === "regression");
+  assert.equal(regression.evidence.tests, 3);
+  assert.deepEqual(regression.evidence.files, [
+    path.relative(path.resolve(__dirname, "../../.."), state.runtime.regressionTests()[0]).split(path.sep).join("/"),
+  ]);
   assert.ok(fs.readFileSync(report.logPath, "utf8").includes("public_runner_handoff"));
 });
 
