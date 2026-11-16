@@ -249,7 +249,7 @@ async function verifyWebview(root, port, fixture, report) {
     await workbenchPage.screenshot({ path: path.join(root, name), fullPage: true });
   };
   await waitFor("document.querySelectorAll('.conversation-tab').length > 0", "tab renderer");
-  const expectedLabels = ["👴🏻 Codex", "👨🏻 Codex2", "👨🏻 Codex3", "👶🏻 Codex4", "Codex5"];
+  const expectedLabels = ["☀️ Codex", "🌛 Codex2", "🌛 Codex3", "⭐️ Codex4", "Codex5"];
   const currentTabIndex = async () => evaluate(`(() => { const label=document.querySelector('.conversation-tab-label')?.textContent.trim() || ''; return ${JSON.stringify(expectedLabels)}.indexOf(label); })()`);
   const goToTab = async (index) => {
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -337,7 +337,7 @@ async function verifyWebview(root, port, fixture, report) {
       const webviewId = new URL(candidate.url).searchParams.get("id");
       const surface = visibleWebviews.find((item) => item.id === webviewId);
       candidateSummaries.set(candidate.id, { id: candidate.id, webviewId, url: candidate.url, visibleSurface: surface ?? null, text: inspected.text.slice(0, 1200) });
-      if (surface?.visible && inspected.text.includes("产研部 · 总监 👴🏻") && inspected.text.includes(fixture.ids.rootTaskId)) {
+      if (surface?.visible && inspected.text.includes("产研部 · 总监 ☀️") && inspected.text.includes(fixture.ids.rootTaskId)) {
         groupWebview = inspected; break;
       }
     }

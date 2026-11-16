@@ -19,7 +19,10 @@ for (const role of ["director", "leader"] as const) {
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.rosterPanelHtml));
     assert.ok(html.includes(patch.actionsHtml));
-    assert.equal(patch.headingText, role === "director" ? "产研部 · 总监 👴🏻" : `产研部 · 组长 👨🏻 · ${projection.title}`);
+    assert.equal(patch.headingText, role === "director" ? "产研部 · 总监 ☀️" : `产研部 · 组长 🌛 · ${projection.title}`);
+    assert.ok(patch.tabTitle.startsWith(role === "director" ? "☀️ " : "🌛 "));
+    assert.deepEqual(Array.from(patch.rosterPanelHtml.matchAll(/<span class="avatar">([^<]*)<\/span>/gu), match => match[1]), ["总", "组", "员", "组", "员", "组"]);
+    for (const label of ["☀️ 总监", "🌛 组长", "⭐️ 员工"]) assert.ok(patch.rosterPanelHtml.includes(label));
     assert.equal(patch.subtitleText, `${projection.title} · ${state.task.id}`);
     assert.ok(patch.tabTitle.endsWith(` · #${state.task.id.slice(-12)}`));
     assert.equal(patch.tabTitle, buildLoopGroupChatPanelTitle(state, getStrings()));
@@ -132,9 +135,9 @@ test("ordinary Loop and Loop+ retain their roster, title and acceptance behavior
 
 
 test("role identity is reusable for employee session integration", () => {
-  assert.deepEqual(getDepartmentRoleIdentity("director"), { icon: "👴🏻", label: "总监" });
-  assert.deepEqual(getDepartmentRoleIdentity("leader"), { icon: "👨🏻", label: "组长" });
-  assert.deepEqual(getDepartmentRoleIdentity("employee"), { icon: "👶🏻", label: "员工" });
+  assert.deepEqual(getDepartmentRoleIdentity("director"), { icon: "☀️", label: "总监" });
+  assert.deepEqual(getDepartmentRoleIdentity("leader"), { icon: "🌛", label: "组长" });
+  assert.deepEqual(getDepartmentRoleIdentity("employee"), { icon: "⭐️", label: "员工" });
 });
 
 test("modal host API binds state, patches, questions, previews and close to the current task and instance", async () => {

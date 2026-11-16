@@ -110,3 +110,14 @@ iframe sandbox、消息身份校验、同步 inert/关闭归焦、无 bridge fal
 本轮只对新组合运行一次标准 `npm run build`（exit0通过，clean+tsc）与来源/差异/JSON/文档/空白检查，不重跑有效单测、浏览器、CLI或EH。按原输入复用845标准build及新增13项、da47定向11、策略13、提示builder34、原UI/host和头像3渲染/两视口fixture。run4原命令仍failed，只读复核通过证明真实保存/下次准入、四份原required receipts、完整CLOSED、容量归还与四worker自然退出；最新完整driver未第五次运行，run1/2清理未知，历史原始记录不改写。本组合不宣称新真实UI-EH通过。
 
 没有合入并行冷恢复生产代码、full EH driver或能力链，也不竞争改其所有者符号。根feature保持active/in_progress；最终统一产品及真实UI-EH、冷恢复合入、必要平台、全部完成测试后的远端同步合理合并与真实最终合并树全量回归继续开放。原来源物理树、共享HEAD/index、调度/active ids/Loop+快照及父记录均未修改，未fetch/pull/push或发布。
+
+
+## Round-675：额度/头像候选的新显示图标后继
+
+从已审 `e0ec605fc0b38ab0a59bb2268faac84efbeb3668` / tree `f2400710a8fdc0d5b26e9116802feefad113594e` 建立独立树 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675`，分支 `codex/department-role-icons-round675`，不重做旧e9fea merge。round-443具体完成事实与后附配置等待超时outcome=failed并存，原报告不改写。当前按宿主既定fullstack配置启动，不删除锁/改用户配置/改路由，不切模型或委派。
+
+本后继仅显示映射：部门☀️/🌛/⭐️，普通Loop/Loop+主🌛/子⭐️；原名、身份、模式、tooltip及总/组/员头像保持。来源清单仅追加round675Continuation，不覆盖原来源或旧执行段落；新标准build、既有定向用例、有界1440深色/280浅色fixture结果及完整增量hash以round-675报告和[角色会话说明](department-conversation-verification.md#round-675新角色图标显示后继)为准。最终commit/tree在外部报告，避免自引用。
+
+没有合入并行冷恢复未审代码或改其full EH driver/证明链，未重跑额度EH/真实CLI/冷恢复。旧run4原failed与只读复核passed、run1/2清理未知及旧emoji快照边界保留。根feature为active/in_progress；统一产品/冷恢复组合、必要异平台、实现测试完成后的远端同步合理合并与真实最终合并树全量回归继续开放，不发布。
+
+round-675实际结果：后继标准build通过；定向首轮12/14（两项因旧fake DOM options缺失失败），补齐该测试夹具并tsc后仅重跑受影响3项，3/3通过，其余11项不重跑。成员树两视口首次通过，Tabs首轮场景模式key等待超时保留，修正场景后两视口通过且browserErrors=[]。这些是显示fixture证据，不是生产EH重验。

@@ -29,6 +29,7 @@ async function inspectRoster(context) {
       background: style.backgroundColor, foreground: style.color };
   }));
   assert.deepEqual(rows.map((row) => row.avatar), ["总", "组", "员", "组", "员", "组"]);
+  assert.deepEqual(rows.map((row) => row.title.split(" ")[0]), ["☀️", "🌛", "⭐️", "🌛", "⭐️", "🌛"]);
   for (const row of rows) {
     assert.equal(row.width, 28); assert.equal(row.height, 28); assert.equal(row.fontSize, "12px");
     assert.equal(row.radius, "50%"); assert.equal(row.align, "center"); assert.equal(row.justify, "center");
@@ -49,6 +50,8 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
     await settle();
     await page.screenshot({ path: path.join(output, `${name}-${label}.png`) });
   };
+  assert.equal(await page.locator("#panelHeading").textContent(), "产研部 · 总监 ☀️");
+  assert.ok((await page.title()).startsWith("☀️ 产研部 · 总监"));
   await showMembers(page); await overflow(page);
   const directorInitial = await inspectRoster(page);
   assert.match(directorInitial.rows[0].title, /总监 · 星河计划/u);
@@ -57,7 +60,10 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   const open = page.locator('.department-group').first().getByRole("button", { name: "打开组长群聊", exact: true });
   await open.click();
   const target = await targetReady();
+  assert.ok((await page.locator("#departmentChatTitle").textContent()).startsWith("🌛 产研部 · 组长"));
   const { frame, state } = await inject(target);
+  assert.ok((await frame.locator("#panelHeading").textContent()).startsWith("产研部 · 组长 🌛"));
+  assert.ok((await page.locator("#departmentChatTitle").textContent()).startsWith("🌛 产研部 · 组长"));
   assert.equal(await page.locator("#departmentChatContent iframe").getAttribute("sandbox"), "allow-scripts");
   await showMembers(frame); await overflow(frame);
   const leaderInitial = await inspectRoster(frame);
@@ -69,6 +75,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await frame.waitForFunction(() => document.querySelector(".department-group .member-name").textContent.includes("API契约"));
   assert.equal(await frame.evaluate(() => window.__roleAvatarDocument), "same-document", "child contentPatch must not reload iframe");
   const leaderPatched = await inspectRoster(frame); await overflow(frame);
+  assert.ok((await frame.locator("#panelHeading").textContent()).startsWith("产研部 · 组长 🌛"));
   fs.writeFileSync(path.join(output, `${name}-leader-patched.html`), await frame.content());
   await captureRoster(frame, "leader-patched");
   // Existing employee acceptance and return controls retain their accessible names and routes.
@@ -86,10 +93,12 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await page.evaluate(() => window.__roleAvatarDocument), "same-document", "parent contentPatch must not reload page");
   await showMembers(page); await overflow(page);
   const directorPatched = await inspectRoster(page);
+  assert.equal(await page.locator("#panelHeading").textContent(), "产研部 · 总监 ☀️");
+  assert.ok((await page.title()).startsWith("☀️ 产研部 · 总监"));
   fs.writeFileSync(path.join(output, `${name}-director-patched.html`), await page.content());
   await captureRoster(page, "director-patched");
   assert.equal(sent.filter((message) => message.type === "loopGroupChatChat:updateDepartmentEmployeeLimit").length, 0);
-  return { checks: ["explicit hierarchy roles independent of main/subtask and empty/duplicate/arbitrary titles", "director and opaque leader iframe initial HTML", "same-document real contentPatch on both surfaces", "28px circle, 12px centered glyph, 8px gap, 4px padding", "narrow root/sidebar/iframe overflow", "leader navigation, employee acceptance and return focus"],
+  return { checks: ["sun/moon/star role labels and group dialog/heading on initial HTML and patch", "explicit hierarchy roles independent of main/subtask and empty/duplicate/arbitrary titles", "director and opaque leader iframe initial HTML", "same-document real contentPatch on both surfaces", "28px circle, 12px centered glyph, 8px gap, 4px padding", "narrow root/sidebar/iframe overflow", "leader navigation, employee acceptance and return focus"],
     target, directorInitial, leaderInitial, directorPatched, leaderPatched };
 }
 module.exports = { roleAvatarFixture, runRoleAvatarScenario };

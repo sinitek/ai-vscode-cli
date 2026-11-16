@@ -113,7 +113,7 @@ test("department host loads in-page leader and routes actions, ask thread, previ
     const content = h.posted.find((item) => item.type === "loopGroupChatChat:departmentModalContent" && item.html);
     assert.equal(content.taskId, h.leader.id);
     assert.deepEqual(Object.keys(content).sort(), ["html", "instanceId", "taskId", "title", "type"]);
-    assert.doesNotMatch(content.html, /rootTaskId.*panel.*handlers/); assert.match(content.html, /组长 👨🏻/); assert.match(content.html, /根固化快照/);
+    assert.doesNotMatch(content.html, /rootTaskId.*panel.*handlers/); assert.match(content.html, /组长 🌛/); assert.match(content.html, /根固化快照/);
     assert.doesNotMatch(content.html, /data-action="acceptancePlan"/);
     assert.match(content.html, /id="askChatSend"[^>]*type="button"/);
     assert.equal(h.panel().getState()?.department?.activeEmployees, null);

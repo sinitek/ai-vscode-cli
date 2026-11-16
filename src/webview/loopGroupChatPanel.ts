@@ -1917,7 +1917,7 @@ function renderDepartmentRosterPanel(
       : `<div class="member">${content}</div>`;
   };
   const leaders = department.leaders.map((leader) => {
-    const navigation = renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, `👨🏻 产研部 · 组长 · ${leader.participant.title} · #${leader.taskId.slice(-12)}`);
+    const navigation = renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, `🌛 产研部 · 组长 · ${leader.participant.title} · #${leader.taskId.slice(-12)}`);
     const employees = leader.employees.map((employee) => `<li>${member(employee, "员工", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">

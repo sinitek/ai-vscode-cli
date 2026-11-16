@@ -170,8 +170,8 @@ export function buildLoopGroupChatPanelTitle(
 export function buildLoopGroupChatPanelHeading(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
   if (!state.department) return state.loopPlus ? strings.titleLoopPlus : strings.title;
   return state.department.role === "director"
-    ? "产研部 · 总监 👴🏻"
-    : `产研部 · 组长 👨🏻 · ${state.department.title}`;
+    ? "产研部 · 总监 ☀️"
+    : `产研部 · 组长 🌛 · ${state.department.title}`;
 }
 
 export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState): string {
@@ -180,5 +180,5 @@ export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState):
 
 /** Reusable for session-tab integration; employee sessions are not wired by this view. */
 export function getDepartmentRoleIdentity(role: "director" | "leader" | "employee"): { icon: string; label: string } {
-  return { director: { icon: "👴🏻", label: "总监" }, leader: { icon: "👨🏻", label: "组长" }, employee: { icon: "👶🏻", label: "员工" } }[role];
+  return { director: { icon: "☀️", label: "总监" }, leader: { icon: "🌛", label: "组长" }, employee: { icon: "⭐️", label: "员工" } }[role];
 }

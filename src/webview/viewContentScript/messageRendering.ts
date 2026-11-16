@@ -1587,17 +1587,17 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       function formatConversationTabLabel(tab, baseLabel) {
         const department = getDepartmentConversationTabPresentation(tab);
         if (department) {
-          const roleIcon = department.role === "director" ? "👴🏻"
-            : department.role === "leader" ? "👨🏻" : "👶🏻";
+          const roleIcon = department.role === "director" ? "☀️"
+            : department.role === "leader" ? "🌛" : "⭐️";
           return roleIcon + " " + baseLabel;
         }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
           if (meta.taskRole === "main") {
-            return "☀️ " + baseLabel;
+            return "🌛 " + baseLabel;
           }
           if (meta.taskRole === "subtask") {
-            return "🌛 " + baseLabel;
+            return "⭐️ " + baseLabel;
           }
         }
         return baseLabel;

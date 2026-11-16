@@ -25,14 +25,19 @@ test("department tab labels add only the role icon and preserve the ordinary tab
   const getPresentation = getFunction("getDepartmentConversationTabPresentation") as (tab: unknown) => unknown;
   const format = getFunction("formatConversationTabLabel", ["getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary"],
     [getPresentation, (tab: any) => tab.loopTaskRole ? { taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId } : null]) as (tab: unknown, base: string) => string;
-  assert.equal(format({ loopTaskRole: "main", loopTaskId: valid.taskId, departmentPresentation: valid }, "Codex"), "👴🏻 Codex");
+  assert.equal(format({ loopTaskRole: "main", loopTaskId: valid.taskId, departmentPresentation: valid }, "Codex"), "☀️ Codex");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "leader-id-12345678", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id-12345678", moduleTitle: "同名模块" } }, "Codex"),
-    "👨🏻 Codex");
+    "🌛 Codex");
   assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "root-long-abcdef01", departmentPresentation: { ...valid, role: "employee", employeeSubtaskId: "employee-87654321" } }, "Codex"),
-    "👶🏻 Codex");
+    "⭐️ Codex");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "leader-id-12345678", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id-12345678" } }, "Codex2"),
-    "👨🏻 Codex2");
-  assert.equal(format({ loopTaskRole: "main", loopTaskId: "task" }, "Codex"), "☀️ Codex");
+    "🌛 Codex2");
+  assert.equal(format({ loopTaskRole: "main", loopTaskId: "task" }, "Codex"), "🌛 Codex");
+  for (const loopSchedulingMode of ["classic", "event_driven"]) {
+    assert.equal(format({ loopTaskRole: "main", loopTaskId: "task", loopSchedulingMode }, "Codex2"), "🌛 Codex2");
+    assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "task", loopSchedulingMode }, "Codex3"), "⭐️ Codex3");
+  }
+  assert.equal(format({}, "总监 Codex"), "总监 Codex", "names do not grant a role decoration");
   assert.equal(format({}, "Codex"), "Codex");
 });
 

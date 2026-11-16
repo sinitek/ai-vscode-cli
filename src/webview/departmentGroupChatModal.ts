@@ -104,7 +104,7 @@ ${LOOP_GROUP_CHAT_HOST_MESSAGE_SCRIPT}
           active = { taskId, instanceId: crypto.randomUUID() };
           frame = null;
           content.replaceChildren();
-          title.textContent = label || "👨🏻 产研部 · 组长 · #" + taskId.slice(-12);
+          title.textContent = label || "🌛 产研部 · 组长 · #" + taskId.slice(-12);
           title.title = title.textContent;
           status.textContent = "正在加载组长群聊…";
           status.hidden = false;

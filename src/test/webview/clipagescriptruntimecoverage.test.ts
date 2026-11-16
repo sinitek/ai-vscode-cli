@@ -229,6 +229,11 @@ class FakeElement {
     this.classList.setFromClassName(value);
   }
 
+  // HTMLSelectElement.options is a live descendant collection in the real Webview.
+  get options(): FakeElement[] {
+    return this.querySelectorAll("option");
+  }
+
   get childElementCount(): number {
     return this.children.length;
   }
@@ -955,8 +960,9 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   };
   window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: tabs }) });
 
+  assert.equal(posted.some(message => message.type === "webviewError"), false);
   const beforeMain = posted.length;
-  const mainTab = conversationTabByLabel(document, "☀️ Codex");
+  const mainTab = conversationTabByLabel(document, "🌛 Codex");
   assert.ok(mainTab);
   mainTab.click();
   assert.deepEqual(postedTabActions(posted, beforeMain), [
@@ -969,7 +975,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeRepeat = posted.length;
-  const activeMainTab = conversationTabByLabel(document, "☀️ Codex");
+  const activeMainTab = conversationTabByLabel(document, "🌛 Codex");
   assert.ok(activeMainTab);
   activeMainTab.click();
   activeMainTab.dispatchEvent({ type: "keydown", key: "Enter" });
@@ -981,7 +987,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   ]);
 
   const beforeOthers = posted.length;
-  conversationTabByLabel(document, "🌛 Codex2")?.click();
+  conversationTabByLabel(document, "⭐️ Codex2")?.click();
   conversationTabByLabel(document, "Claude")?.click();
   conversationTabByLabel(document, "Codex3")?.click();
   assert.deepEqual(postedTabActions(posted, beforeOthers), [
@@ -995,7 +1001,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeClose = posted.length;
-  conversationTabByLabel(document, "☀️ Codex")?.querySelector(".conversation-tab-close")?.click();
+  conversationTabByLabel(document, "🌛 Codex")?.querySelector(".conversation-tab-close")?.click();
   assert.deepEqual(postedTabActions(posted, beforeClose), [
     { type: "closeConversationTab", tabId: "main-tab", cli: "codex" },
   ]);
@@ -2334,13 +2340,13 @@ test("默认过滤子任务并保留主任务、普通及旧会话，取消勾�
   const labels = () => list.children.map((item: FakeElement) => item.querySelector(".session-label")?.textContent);
   assert.equal(api.state.historySessionFilterSubtasks, true);
   assert.equal(filter.checked, true);
-  assert.deepEqual(labels(), ["☀️ [Codex] 主任务", "[Claude] 普通会话", "[OpenCode] 旧会话"]);
+  assert.deepEqual(labels(), ["🌛 [Codex] 主任务", "[Claude] 普通会话", "[OpenCode] 旧会话"]);
   filter.checked = false;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(api.state.historySessionFilterSubtasks, false);
   assert.equal(list.children.length, 5);
-  assert.equal(labels()[1], "🌛 [Codex] 子任务");
-  assert.equal(labels()[2], "🌛 [Claude] 其它子任务");
+  assert.equal(labels()[1], "⭐️ [Codex] 子任务");
+  assert.equal(labels()[2], "⭐️ [Claude] 其它子任务");
   assert.equal(api.state.sessionState.sessions.length, 5);
   document.getElementById("historyTabPrompts").click();
   document.getElementById("historyTabSessions").click();
@@ -2370,13 +2376,13 @@ test("子任务过滤叠加关键词搜索且不影响历史提示词", () => {
   search.value = "发布";
   search.dispatchEvent({ type: "input", target: search });
   assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "☀️ [Codex] 发布主任务");
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "🌛 [Codex] 发布主任务");
   filter.checked = false;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(list.children.length, 2);
   search.value = "子任务";
   search.dispatchEvent({ type: "input", target: search });
-  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "🌛 [Codex] 发布子任务");
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "⭐️ [Codex] 发布子任务");
   filter.checked = true;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(list.children[0].textContent, "没有匹配的历史会话。");

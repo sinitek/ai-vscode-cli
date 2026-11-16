@@ -22,7 +22,7 @@ const { departmentState } = require(path.join(compiled, "test/loop/departmentGro
 fs.mkdirSync(output, { recursive: true });
 if (allocationOnly || roleAvatarOnly) {
   const files = [__filename, path.join(__dirname, roleAvatarOnly ? "department_member_role_avatar_scenario.cjs" : "department_employee_allocation_scenario.cjs"),
-    ...["webview/loopGroupChatPanel.js", "webview/departmentEmployeeAllocation.js", "webview/loopGroupChatPanelStyles.js",
+    ...["webview/loopGroupChatPanel.js", "webview/loopGroupChatPanelRenderer.js", "webview/departmentEmployeeAllocation.js", "webview/loopGroupChatPanelStyles.js",
       "webview/departmentGroupChatModal.js", "webview/loopModelSwitchDialog.js", "test/loop/departmentGroupChatPanel.fixture.js"].map((file) => path.join(compiled, file))];
   fs.writeFileSync(path.join(output, "inputs.json"), JSON.stringify({ scope: roleAvatarOnly ? "department member role avatar display fixture" : "display fixture, no production allocation writer",
     inputs: files.map((file) => ({ file, sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") })) }, null, 2));
@@ -214,7 +214,7 @@ function theme(dark) {
           results.push({ name: "dynamic-dark-light-dark", result: "passed", colors, parentTop, childTop, target, serverPort: server.address().port, browserErrors: errors });
           continue;
         }
-        assert.match(await page.title(), /👴🏻.*#-root-abcdef/u);
+        assert.match(await page.title(), /☀️.*#-root-abcdef/u);
         await overflow(page);
         await showMembers(page);
         const groups = page.locator(".department-group");
@@ -318,7 +318,7 @@ function theme(dark) {
           assert.equal((await frame.locator(".timeline").innerText()).match(/合并增量消息 \d+/gu)?.length, 49,
             "all 49 transcript entries render across the retention batch threshold");
         }
-        assert.match(await frame.locator("#panelHeading").innerText(), /组长 👨🏻/u);
+        assert.match(await frame.locator("#panelHeading").innerText(), /组长 🌛/u);
         assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);
         await showMembers(frame);
         assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案.*\n产研部统一规则 <严格>/u);

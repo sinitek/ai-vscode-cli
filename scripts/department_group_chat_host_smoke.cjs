@@ -73,7 +73,7 @@ fs.mkdirSync(output, { recursive: true });
     await opener.click();
     const frameHandle = await page.locator("#departmentChatContent iframe").elementHandle({ timeout: 10000 });
     const frame = await frameHandle.contentFrame(); await frame.locator(".department-roster").waitFor();
-    assert.match(await frame.locator("#panelHeading").innerText(), /组长 👨🏻/);
+    assert.match(await frame.locator("#panelHeading").innerText(), /组长 🌛/);
     assert.match(await frame.locator(".department-roster").innerText(), /真实员工/);
     assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案[\s\S]*根固化快照/);
     assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);

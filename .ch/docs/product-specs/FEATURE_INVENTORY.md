@@ -4,6 +4,8 @@
 
 ## 产研部三层协作模式
 
+- 当前显示补充合同（round-675，覆盖旧图标要求）：部门总监☀️、组长🌛、员工⭐️；普通Loop/Loop+主任务🌛、子任务⭐️。沿用部门展示优先及既有main/subtask和模式判断，不按会话名称推断；无角色普通会话不加图标。原Tab名称（如Codex2）、tooltip完整层级、身份/模式及持久会话数据不迁移。部门成员树圆形头像仍固定总/组/员，28px/12px/8px gap/4px行内边距和主题、布局、各状态/导航/关闭归焦保持不变。以下旧条目及旧emoji执行证据保留原时点事实，由本条覆盖其显示要求，不追认为新emoji通过。e0ec组合已审成果继续复用，原报告后附配置操作超时outcome=failed同样保留；本后继只做新字符的标准build、既有定向测试和1440深色/280浅色显示fixture检查，标准build通过，定向14个不同用例以未变11项+夹具修复后3项覆盖，两入口双视口通过（browserErrors=[]）；原14项首轮2失败及Tabs夹具首轮超时保留，实际结果见[角色会话说明](../runbooks/department-conversation-verification.md#round-675新角色图标显示后继)。不为图标重跑真实CLI、额度EH或冷恢复；根feature仍active/in_progress，统一产品/冷恢复合入、必要异平台、实现测试完成后的远端同步合理合并与最终合并树全量回归继续开放。
+
 - 已审额度/提示/UI-EH与角色头像局部组合（round-443，2026-11-16）：根 feature 仍为 **active / in_progress**，不是最终统一产品。保留 round-436 下述生产合同及 da47 线性历史同步修复，已纳入 e613 提示与84518c专属薄harness；不再属于“提示后继尚未合入”的旧快照。84518c标准build与新增13项（5+5+3分组）通过，run4只读复核充分证明真实总监Webview请求/匹配settled、desired/revision持久保存、下次真实新attempt应用0并在全局有余额时按本组拒绝、恢复默认后再准入，以及四份原required receipts、完整CLOSED、容量归还和四worker自然退出。原run1–4命令仍failed，修正完整driver未第五次运行；run1/2清理未知，不能用run4为早期失败清理背书。本组合标准build通过，仅补来源检查，不宣称新EH通过。详见[独立来源与证据边界](../integration/department-reviewed-allocation-avatar/README.md)。
 
 - 部门成员树角色头像补充要求（round-441已审，本候选纳入）：总监固定“总”、组长固定“组”、员工固定“员”，仅由renderDepartmentRosterPanel的明确层级角色决定；总监页与组长弹窗初始HTML/contentPatch一致，空标题、同名及待创建组长不依赖标题首字或participant.role。保留总监→组长→员工嵌套、标题左侧28px圆形、12px居中字、8px gap、4px行内边距和badge主题变量；默认/hover/focus/disabled/loading/error/空状态、组长打开、员工验收定位与返回归焦沿用原结构。普通Loop/Loop+头像、消息头像、Tab原名及👴🏻👨🏻👶🏻不变。来源标准build、3项渲染和1440深色/280浅色有界浏览器通过（browserErrors=[]），仅为显示fixture证据；详见[角色头像验证手册](../runbooks/department-member-role-avatar-verification.md)。冷恢复及第二EH后继未合入，最终额度/提示/头像/冷恢复统一产品、必要平台、远端同步合理合并和最终合并树全量回归仍开放。

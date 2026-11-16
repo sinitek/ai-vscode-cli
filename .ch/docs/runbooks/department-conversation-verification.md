@@ -30,3 +30,63 @@ node scripts/verify_department_conversation_host.js
 round-117 的 `3FWefU` / `XXgudT` 以及本轮中间失败目录仍是失败诊断，不记为正常退出或弹窗通过。根因是 VS Code 的 API 注入将产品 `window.parent` 重写为本窗口，真实宿主消息来源却是外层 shell；产品现在要求同源且发送源文档的 `#active-frame.contentWindow` 精确等于当前窗口，子 frame 的 opaque origin、精确 source、channel 和 task/instance 校验保持独立。验证器固定使用 default execution world，通过 CDP 观察冻结的生产 API 函数调用，并按精确 parent-frame / target 身份附加可能不在父 Page tree 中的 srcdoc OOPIF；不能因 isolated-world trace 为空或父 frame tree 缺少 OOPIF 就断言未发送。临时宿主诊断只存在独立构建副本，最终构建不含诊断注入。
 
 该夹具不会读取真实用户会话、配置或系统凭据，不发送模型请求，也不证明真实 CLI/模型启动、冷恢复、容量释放、跨进程 owner 恢复或完整生产组织组合。浏览器运行在 VS Code 的 Chromium/Webview 中；CDP 检查真实生产页面，不以手工 PanelState 或 mock bridge 代替宿主。主题窄屏结果只覆盖实际报告列明的平台与主题。本轮未调整布局、CSS 或交互设计；真实宿主成功证据仅覆盖本段列出的 macOS 深色历史 fixture。未变的 round-26 深浅主题和 round-27 窄屏 tooltip 结果仍是浏览器夹具证据，不是这次真实 EH 的跨主题证明。该展示修复不改变业务 ontology。
+
+
+## Round-675：新角色图标显示后继
+
+本节是当前显示合同，覆盖前述历史段落中的旧emoji要求；原命令、截图及旧运行段落保留原时点事实，不追认为新emoji通过。部门总监☀️、组长🌛、员工⭐️；普通Loop/Loop+主任务🌛、子任务⭐️。原部门优先及main/subtask、模式判断不变，不按名称猜角色，无角色普通会话不装饰。Tab原名（Codex2等）、完整层级tooltip、身份和持久会话值不迁移。成员树头像仍总/组/员，28px圆形、12px居中、8px gap、4px行内边距及主题/布局/省略/状态/导航/关闭归焦结构均保留。
+
+独立后继从已审e0ec605fc0b38ab0a59bb2268faac84efbeb3668建立于 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675`，分支 `codex/department-role-icons-round675`。没有重做e9fea旧合并或刷新其build。round-443报告的具体完成事实和后附配置操作等待超时outcome=failed并存，本轮不改旧报告，不删除配置锁、改用户配置或路由。最终commit/tree及完整源码hash在round-675报告，sources.json仅追加后继事实。
+
+### 本轮范围与首错
+
+只替换现有显示字面值，并同步既有测试/smoke。公开面板观察器仍精确要求“产研部 · 总监 ☀️”和合法root字幕，保留foreign/unbound/duplicate/missing拒绝；在原负例中增加仅图标、组长caption加合法root和非法root验证，不能用图标授予权限。没有改部门授权、执行、CAS/联合准入、Owner/Ledger/receipt/CLOSED、冷恢复能力链或共享full EH driver。
+
+- 两次后继标准build均exit0：第一次对应最初图标/测试输入；随后补齐观察器精确caption负例和测试标题后再做标准build。不是重跑已审e0ec旧build。新增负例后生产TS未再改变。
+- 首轮既有定向14项：12通过、2失败，完整日志保留。根因是既有VM FakeElement缺少HTMLSelectElement.options，状态消息处理提前抛错，导致Tab/历史checkbox未渲染；没有为适配测试改生产模式逻辑。在原测试夹具补动态option后代集合，并在群聊定向用例断言没有webviewError。
+- 仅重新编译测试夹具后重跑受影响的3项，3/3通过且无原窗口消息异常；其它11项的通过结果输入未变，直接复用。因此最终14个不同定向用例由未变11项+修复后3项覆盖，不是一次14/14全绿命令。未扩展到该大文件的全量用例。
+- 成员树有界浏览器首次即通过1440深色/280浅色，browserErrors=[]。Tabs有界首轮在同活动director重复发送coding模式快照后等待auto-mode超时；这是场景重复身份未触发模式key变化，截图/日志/errors=[]均保留。场景改为每视口先切普通Tab，再按八个真实角色元数据身份切换；不改变生产模式判断。只重跑Tabs有界入口，最终两视口通过，browserErrors=[]。
+
+### 实际命令与结果
+
+以下cwd均为本轮新实体树。依赖用临时node_modules链接复用已有安装，未安装升级；dist为本树自产物。
+
+```sh
+npm run build > /private/tmp/department-role-icons-round675-evidence/build.log 2>&1
+npm run build > /private/tmp/department-role-icons-round675-evidence/build-final.log 2>&1
+node --test --test-reporter=spec --test-name-pattern='department tab labels|trusted department projection|moon and star|keeps the moon icon|prefixes non-vibe|opens the Loop group chat when|默认过滤子任务|子任务过滤叠加|initial HTML and content patch|role identity is reusable|department host loads in-page|cold public observer' dist/test/webview/departmentConversationTabsWebview.test.js dist/test/session/conversationTabLock.test.js dist/test/session/historySessionLoop.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/loop/departmentGroupChatPanel.test.js dist/test/loop/departmentGroupChatHost.test.js dist/test/extensionHost/departmentcoldstartproductionhost.test.js > /private/tmp/department-role-icons-round675-evidence/directed-tests.log 2>&1
+./node_modules/.bin/tsc -p ./ > /private/tmp/department-role-icons-round675-evidence/fixture-recompile.log 2>&1
+node --test --test-reporter=spec --test-name-pattern='opens the Loop group chat when|默认过滤子任务|子任务过滤叠加' dist/test/webview/clipagescriptruntimecoverage.test.js > /private/tmp/department-role-icons-round675-evidence/runtime-tests-final.log 2>&1
+```
+
+前两次标准build均通过；首轮定向命令exit1（12/14），最后重编译exit0、3/3命令exit0。只有测试假DOM在标准build之后改变，最后tsc覆盖其编译；生产TS及模板未改，不再刷新有效build或11项结果。JS语法通过：node --check分别检查department_conversation_tabs_smoke.cjs、department_group_chat_smoke.cjs、department_member_role_avatar_scenario.cjs、department_group_chat_host_smoke.cjs、verify_department_conversation_host.js；Tabs场景修正后仅重新检查该脚本语法。
+
+浏览器复用仓库chromium-playwright-smoke严格错误采集原则及原专用Webview入口（无登录或用户凭据）。实际命令：
+
+```sh
+NODE_PATH=/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/node_modules \
+DEPARTMENT_UI_DIST=/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675/dist \
+DEPARTMENT_UI_EVIDENCE=/private/tmp/department-role-icons-round675-evidence/group-browser \
+DEPARTMENT_UI_ROLE_AVATAR_ONLY=1 \
+PLAYWRIGHT_MODULE=/tmp/zq-playwright-smoke/node_modules/playwright \
+CHROMIUM_PATH='/Users/fangjiawei/Library/Caches/ms-playwright/chromium-1255/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' \
+node scripts/department_group_chat_smoke.cjs
+
+NODE_PATH=/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/node_modules \
+DEPARTMENT_TABS_DIST=/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675/dist \
+DEPARTMENT_TABS_EVIDENCE=/private/tmp/department-role-icons-round675-evidence/tabs-browser-final \
+DEPARTMENT_TABS_ROLE_ICONS_ONLY=1 \
+PLAYWRIGHT_MODULE=/tmp/zq-playwright-smoke/node_modules/playwright \
+CHROMIUM_PATH='/Users/fangjiawei/Library/Caches/ms-playwright/chromium-1255/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing' \
+node scripts/department_conversation_tabs_smoke.cjs
+```
+
+首轮Tabs相同环境命令的输出目录为tabs-browser，日志tabs-browser.log，exit1；最终为tabs-browser-final，exit0；成员树为group-browser，exit0。均位于本轮独立evidence根，未覆盖旧证据。两个入口仅执行1440深色、280浅色；动态端口、结果、生成HTML、实际输入hash、截图分别留在其目录。pageerror、console error、requestfailed及HTTP>=400严格收集，不加忽略项。
+
+成员树两表面初始HTML及真实contentPatch均核对☀️/🌛/⭐️，圆形头像顺序仍[总,组,员,组,员,组]、尺寸/对齐/间距不变；总监heading、群聊title、组长modal标题和子iframe heading、原验收定位/关闭归焦及窄屏无溢出通过。Tabs两视口核对[☀️ Codex,🌛 Codex2,⭐️ Codex3,Codex4,🌛 Codex5,⭐️ Codex6,🌛 Codex7,⭐️ Codex8]，覆盖部门优先、无角色、普通Loop和Loop+主/子、既有模式与完整tooltip、Tab/根无横向溢出。查看最终桌面部门Tab与窄屏普通子Tab、总监patch与组长patch截图确认可读；没有重做设计。
+
+### 复用与开放门禁
+
+e0ec旧组合/源码检查/build、额度纯策略13、845新增13及真实run4只读复核、5e5头像3渲染和双视口结果按未变输入继续复用；旧emoji显示部分由本轮结果更新，旧运行段落/截图不追认新emoji。run4原driver仍failed，修正完整driver未第五次运行；run1/2清理未知，不由run4成功背书。本轮浏览器只属生成HTML+显示fixture，不宣称新的真实CLI、额度EH、冷恢复或生产执行证明；并未启动这些场景。
+
+仅字符显示改变，无新业务语义、权限或生命周期，因此无需更新ontology，不竞争并行任务文件。根feature保持active/in_progress。冷恢复已有开放所有者，不接管或重复派发；统一产品及最终组合验证依赖两项交付。必要异平台缺真实授权执行端口，Git同步合理合并与最终合并树全量回归须在实现测试完成后继续推进。本轮不fetch/pull/push、不发布，不改调度/active ids/Loop+快照或父记录。

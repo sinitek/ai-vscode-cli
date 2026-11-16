@@ -5,6 +5,8 @@ const path = require("node:path");
 const dist = path.resolve(process.env.DEPARTMENT_TABS_DIST || path.join(__dirname, "../dist"));
 const output = path.resolve(process.env.DEPARTMENT_TABS_EVIDENCE || "/tmp/sinitek-loop-round26-evidence");
 const deltaOnly = process.env.DEPARTMENT_TABS_DELTA_ONLY === "1";
+const roleIconsOnly = process.env.DEPARTMENT_TABS_ROLE_ICONS_ONLY === "1";
+const crypto = require("node:crypto");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
 require(path.join(dist, "test/vscodeMock.js")).installVscodeMock();
 const { getWebviewHtml } = require(path.join(dist, "webview/viewContent.js"));
@@ -65,6 +67,8 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("response", (response) => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
+  page.on("requestfailed", (request) => errors.push(`${request.url()} ${request.failure()?.errorText}`));
   const html = getWebviewHtml({ cspSource: "'self'" }).replace("<head>", `<head><style>${css}</style>`);
   const server = http.createServer((_request, response) => { response.setHeader("Content-Type", "text/html; charset=utf-8"); response.end(html); });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -77,6 +81,60 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.evaluate((state) => window.postMessage({ type: "state", payload: state }, "*"), payload);
     await page.locator(".conversation-tab").first().waitFor();
+    if (roleIconsOnly) {
+      const iconTabs = [...tabs, ...["classic", "event_driven"].flatMap((mode, index) => ["main", "subtask"].map((role, offset) => ({
+        id: `${mode}-${role}`, cli: "codex", sessionId: `${mode}-${role}-session`, createdAt: 5 + index * 2 + offset,
+        loopTaskRole: role, loopTaskId: `${mode}-task`, loopSchedulingMode: mode,
+      })))];
+      const originalTabs = JSON.stringify(iconTabs);
+      const expected = ["☀️ Codex", "🌛 Codex2", "⭐️ Codex3", "Codex4", "🌛 Codex5", "⭐️ Codex6", "🌛 Codex7", "⭐️ Codex8"];
+      const modes = ["department", "loop_plus", "coding", "coding", "loop", "coding", "loop_plus", "coding"];
+      const inputs = [__filename, ...["webview/viewContent.js", "webview/viewContentScript.js", "webview/viewContentScript/messageRendering.js",
+        "webview/viewContentStrings.js", "extensionHost/departmentConversationTabs.js"].map((file) => path.join(dist, file))];
+      fs.writeFileSync(path.join(output, "inputs.json"), JSON.stringify({ scope: "role icon display fixture", inputs: inputs.map((file) => ({ file,
+        sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") })) }, null, 2));
+      fs.writeFileSync(path.join(output, "generated-input.html"), html);
+      const results = [];
+      for (const [width, theme] of [[1440, "dark"], [280, "light"]]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.locator("body").evaluate((body, theme) => { body.className = `vscode-${theme}`; }, theme);
+        // Begin from a different active identity: a repeated snapshot for the
+        // already-active director would intentionally preserve its auto-mode key.
+        await page.evaluate((state) => window.postMessage({ type: "state", payload: state }, "*"),
+          { ...payload, conversationTabs: { activeTabId: "ordinary-tab", tabs: iconTabs } });
+        await page.locator('.conversation-tab[aria-selected="true"]').filter({ hasText: "Codex4" }).waitFor();
+        const labels = [];
+        for (const [index, tab] of iconTabs.entries()) {
+          await page.evaluate((state) => window.postMessage({ type: "state", payload: state }, "*"),
+            { ...payload, conversationTabs: { activeTabId: tab.id, tabs: iconTabs } });
+          const selected = page.locator('.conversation-tab[aria-selected="true"]');
+          await selected.filter({ hasText: expected[index] }).waitFor();
+          assert.equal(await selected.locator(".conversation-tab-label").textContent(), expected[index]);
+          await page.waitForFunction((mode) => document.getElementById("interactiveModeSelect").value === mode, modes[index]);
+          const geometry = await selected.evaluate((element) => ({ client: element.clientWidth, scroll: element.scrollWidth,
+            root: document.documentElement.scrollWidth, body: document.body.scrollWidth, viewport: innerWidth }));
+          assert.ok(geometry.scroll <= geometry.client + 1 && geometry.root <= geometry.viewport + 1 && geometry.body <= geometry.viewport + 1, JSON.stringify(geometry));
+          if (index < 3) {
+            await selected.focus();
+            const tooltip = page.locator("#conversationTabSummaryTooltip"); await tooltip.waitFor({ state: "visible" });
+            for (const part of [["总监", rootId], ["组长", rootId, leaderId], ["员工", rootId, leaderId, employeeId]][index]) {
+              assert.ok((await tooltip.innerText()).includes(part), `role tooltip retains ${part}`);
+            }
+          }
+          if (index === 1 || index === 7) await page.screenshot({ path: path.join(output, `${width}-${theme}-${index === 1 ? "department" : "loop-plus"}.png`), fullPage: true });
+          labels.push(expected[index]);
+        }
+        results.push({ width, theme, labels, browserErrors: [...errors] });
+      }
+      assert.equal(JSON.stringify(iconTabs), originalTabs, "display formatting does not rename or migrate the input sessions");
+      assert.deepEqual(errors, []);
+      assert.deepEqual(await page.evaluate(() => window.__postedMessages.filter((message) => message.type === "webviewError")), []);
+      const result = { status: "passed", mode: "role-icons-only", results, serverPort: server.address().port,
+        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "mode and exact hierarchy tooltip retained", "1440 dark and280 light no tab/root overflow"],
+        boundary: "Generated full Webview and production role projection with fixture state; not real EH or CLI evidence" };
+      fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
+      console.log(JSON.stringify(result)); return;
+    }
     if (deltaOnly) {
       const directorMessages = Array.from({ length: 49 }, (_, index) => ({ id: `director-message-${index + 1}`, role: index % 2 ? "assistant" : "user", content: `总监历史消息 ${index + 1}`, createdAt: index + 1 }));
       await page.evaluate((messages) => window.postMessage({ type: "setMessages", tabId: "director-tab", messages }, "*"), directorMessages);
@@ -118,7 +176,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     await page.evaluate(() => window.postMessage({ type: "runStatus", status: "start", tabId: "employee-tab" }, "*"));
     await page.waitForTimeout(400);
     assert.equal(await page.locator(".conversation-tab").count(), 4);
-    const expectedRoleLabels = ["👴🏻 Codex", "👨🏻 Codex2", "👶🏻 Codex3"];
+    const expectedRoleLabels = ["☀️ Codex", "🌛 Codex2", "⭐️ Codex3"];
     for (const [index, expected] of expectedRoleLabels.entries()) {
       const visibleLabel = await page.locator(".conversation-tab-label").nth(index).textContent();
       assert.equal(visibleLabel, expected,

@@ -171,5 +171,140 @@
       "logSha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7"
     },
     "additionalChecks": "Complete source/parent/blob/diff/JSON/UTF-8/EOF/whitespace checks; external round-443 report records commands and results."
+  },
+  "round675Continuation": {
+    "attempt": "round-675-department-allocation-avatar-role-icons-continuation",
+    "baseCommit": "e0ec605fc0b38ab0a59bb2268faac84efbeb3668",
+    "baseTree": "f2400710a8fdc0d5b26e9116802feefad113594e",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675",
+    "branch": "codex/department-role-icons-round675",
+    "sourceReport": {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-443-department-reviewed-allocation-avatar-integration.md",
+      "sha256": "037d1a2ea4c62712d6b7cfa247265c9e2f85bc45b08cf48cd4d19504c1b516a1"
+    },
+    "history": "Round443 contains completed source/build facts and a later host configuration-operation timeout outcome=failed. Both are preserved; no previous merge/build is repeated or relabelled successful.",
+    "displayContract": {
+      "department": {
+        "director": "☀️",
+        "leader": "🌛",
+        "employee": "⭐️"
+      },
+      "ordinaryLoopAndLoopPlus": {
+        "main": "🌛",
+        "subtask": "⭐️"
+      },
+      "rosterAvatar": {
+        "director": "总",
+        "leader": "组",
+        "employee": "员"
+      },
+      "priority": "existing trusted department role, then ordinary Loop metadata, then undecorated session; never infer from name",
+      "supersedes": "Old department 👴🏻/👨🏻/👶🏻 and ordinary main☀️/subtask🌛 display requirements only; no session data migration."
+    },
+    "implementationPaths": [
+      "scripts/department_conversation_tabs_smoke.cjs",
+      "scripts/department_group_chat_host_smoke.cjs",
+      "scripts/department_group_chat_smoke.cjs",
+      "scripts/department_member_role_avatar_scenario.cjs",
+      "scripts/verify_department_conversation_host.js",
+      "src/test/extensionHost/departmentcoldstartproductionhost.test.ts",
+      "src/test/extensionHost/fixtures/departmentcoldstartproductionhost.ts",
+      "src/test/loop/departmentGroupChatHost.test.ts",
+      "src/test/loop/departmentGroupChatPanel.test.ts",
+      "src/test/session/conversationTabLock.test.ts",
+      "src/test/session/historySessionLoop.test.ts",
+      "src/test/webview/clipagescriptruntimecoverage.test.ts",
+      "src/test/webview/departmentConversationTabsWebview.test.ts",
+      "src/webview/departmentGroupChatModal.ts",
+      "src/webview/loopGroupChatPanel.ts",
+      "src/webview/loopGroupChatPanelRenderer.ts",
+      "src/webview/viewContentScript/messageRendering.ts",
+      "src/webview/viewContentStrings.ts"
+    ],
+    "additionalScope": "scripts/department_member_role_avatar_scenario.cjs extends the existing bounded fixture to assert new headings/icons and unchanged 总/组/员 geometry, rather than duplicating the page or adding a suite.",
+    "verification": "Actual final build, directed tests, bounded display fixture browser and source hashes are recorded in round675 report and appended runbook. Older emoji runs are not evidence for new glyphs.",
+    "preserved": "Allocation CAS/admission/prompt/linear history synchronization, all original receipts/CLOSED rules, full EH driver and cold repair ownership are unchanged. Round440 run1/2 cleanup unknown; original run4 failed, read-only review passed, no fifth complete driver run.",
+    "openGates": [
+      "Existing cold mixed guard/exit repair owner remains open; not imported or re-dispatched",
+      "Unified product and final composition verification depend on both deliveries",
+      "Necessary other platforms lack a real authorized execution endpoint",
+      "Remote Git synchronization/reasonable merge after implementation/tests, then full regression on actual merged tree"
+    ],
+    "finalIdentity": "Final successor commit/tree and all source SHA-256 are in the external round675 report to avoid self-reference.",
+    "ontology": "Only glyph/display changes; no business concepts, permissions, role identities or lifecycle changes, so ontology is unchanged.",
+    "verificationResults": {
+      "builds": [
+        {
+          "log": "build.log",
+          "exitCode": 0
+        },
+        {
+          "log": "build-final.log",
+          "exitCode": 0
+        }
+      ],
+      "directedFirst": {
+        "log": "directed-tests.log",
+        "pass": 12,
+        "fail": 2,
+        "exitCode": 1,
+        "reason": "Existing VM fake DOM lacked HTMLSelectElement.options; original failure preserved."
+      },
+      "fixtureRecompile": {
+        "command": "./node_modules/.bin/tsc -p ./",
+        "exitCode": 0
+      },
+      "directedFinalAffected": {
+        "log": "runtime-tests-final.log",
+        "pass": 3,
+        "fail": 0,
+        "exitCode": 0,
+        "totalValidDistinct": "11 unchanged from first run plus3 affected cases; not a new all14 pass run"
+      },
+      "browserGroup": {
+        "directory": "group-browser",
+        "viewports": [
+          "1440-dark",
+          "280-light"
+        ],
+        "exitCode": 0,
+        "browserErrors": []
+      },
+      "browserTabsFirst": {
+        "directory": "tabs-browser",
+        "exitCode": 1,
+        "reason": "Repeated active identity retained auto-mode key; fixture corrected, product unchanged."
+      },
+      "browserTabsFinal": {
+        "directory": "tabs-browser-final",
+        "viewports": [
+          "1440-dark",
+          "280-light"
+        ],
+        "exitCode": 0,
+        "browserErrors": []
+      },
+      "evidenceRoot": "/private/tmp/department-role-icons-round675-evidence"
+    },
+    "implementationSha256": {
+      "scripts/department_conversation_tabs_smoke.cjs": "8ebff4c963f6cf9c5dc4cd1608c06618d764d87bd4290c031098318a6a2927e7",
+      "scripts/department_group_chat_host_smoke.cjs": "3430ea3e99cb4b3561eefade10d10472c01a36f45930d7f4802592441c63a1e4",
+      "scripts/department_group_chat_smoke.cjs": "b3e3cda9a351b54e3cb3c6f720c884e09b0bfe594944ce604a51da22fd7741ce",
+      "scripts/department_member_role_avatar_scenario.cjs": "520e0b7c2195ea630005bd78bf48ae4287e957602964e8cb2d0e48c25bc193b0",
+      "scripts/verify_department_conversation_host.js": "639da1a298e35da605cb338a049b5745ba65ee3e6986efdd116ba4bf04ca1712",
+      "src/test/extensionHost/departmentcoldstartproductionhost.test.ts": "1442575da8c794c38814497a7647d9af8f7141edbd38d155cf916654802e2d8d",
+      "src/test/extensionHost/fixtures/departmentcoldstartproductionhost.ts": "6e67ed78bfab9726158b5f289658c0eacc7ae5b6bbd360e883e8fd44a271b271",
+      "src/test/loop/departmentGroupChatHost.test.ts": "347e127be98492c460ff9b8f68bc23b5b9260084caa94e6d78871c2b4b807461",
+      "src/test/loop/departmentGroupChatPanel.test.ts": "6e24f0503beeaf03188407b4a3b2b4db5a6189eff1265d520d391b94f3f4987f",
+      "src/test/session/conversationTabLock.test.ts": "5ec74c4eef4937ef6220dfd649755296c2e7af52b51c2be3cc8638dda2246653",
+      "src/test/session/historySessionLoop.test.ts": "9d58a3d4c50b0131df75142e841093a58cb4c553463750b045ceaaa2837e8ca6",
+      "src/test/webview/clipagescriptruntimecoverage.test.ts": "80a48429a3d288b0ff56c74e9da7a708820c8a316f202ce62d50de73b5c580d5",
+      "src/test/webview/departmentConversationTabsWebview.test.ts": "8d81c01480e3c53aadfc402eb7cbb1b31d6895ef4432debebba30b95c5ac29da",
+      "src/webview/departmentGroupChatModal.ts": "febd2c99dd1e6294385915007669de588ba035bb5e26637d8f83b17b2cc923fa",
+      "src/webview/loopGroupChatPanel.ts": "949eab8eaef9b4e09144268b83fc3fc3d0a2833549216eea2e2ef1dce3ce9b4f",
+      "src/webview/loopGroupChatPanelRenderer.ts": "c270cfb73210ab1bf4352e59a33e972ecaeb4c6a74cba23a8e94f7fc8dccb70e",
+      "src/webview/viewContentScript/messageRendering.ts": "5d990e44c85dee5a70afa6a08dc4dfe83ee1de4a1c59b6b19764590d140f13f7",
+      "src/webview/viewContentStrings.ts": "6cee8f1d1b340365404db6ac40928db1ab5cec3ef0b5d693ad6c6b37cebe4e9a"
+    }
   }
 }
