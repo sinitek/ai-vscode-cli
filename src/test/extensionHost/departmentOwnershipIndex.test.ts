@@ -3,14 +3,24 @@ import assert = require("node:assert/strict");
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { DepartmentOwnershipIndex, type DepartmentOwnershipSource } from "../../extensionHost/departmentOwnershipIndex";
+const previousHome = process.env.HOME, previousProfile = process.env.USERPROFILE;
+const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), "department-ownership-home-"));
+process.env.HOME = isolatedHome; process.env.USERPROFILE = isolatedHome;
+const { DepartmentOwnershipIndex } = require("../../extensionHost/departmentOwnershipIndex") as typeof import("../../extensionHost/departmentOwnershipIndex");
+const { DepartmentOwnedTaskSource } = require("../../extensionHost/departmentOwnedTaskSource") as typeof import("../../extensionHost/departmentOwnedTaskSource");
+const store = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
+type DepartmentOwnershipSource = import("../../extensionHost/departmentOwnershipIndex").DepartmentOwnershipSource;
 import { authorizeDepartmentLeader, buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
 import { departmentRecords } from "../loop/departmentGroupChatHost.fixture";
-import {
-  tryWriteLoopTaskStore, writeLoopTaskStore, readLoopTaskStore, readLoopTaskStoreResult,
-  updateLoopTaskRecord, deleteLoopTaskStoreFile, subscribeLoopTaskStoreChanges,
-  type LoopTaskRecord, type LoopTaskStoreChange,
-} from "../../loopTaskStore";
+type LoopTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
+type LoopTaskStoreChange = import("../../loopTaskStore").LoopTaskStoreChange;
+const { tryWriteLoopTaskStore, writeLoopTaskStore, readLoopTaskStore, readLoopTaskStoreResult,
+  updateLoopTaskRecord, deleteLoopTaskStoreFile, subscribeLoopTaskStoreChanges } = store;
+test.after(() => {
+  if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+  if (previousProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = previousProfile;
+  fs.rmSync(isolatedHome, { recursive: true, force: true });
+});
 
 function memorySource() {
   const data = departmentRecords();
@@ -121,77 +131,78 @@ test("projection and fresh authorization use indexed modules repeatedly without 
   } finally { h.index.dispose(); }
 });
 
-/** Real storage calls on isolated temporary files; only the directory discovery and external lease are fixtures. */
+/** Registered owner transactions, with a complete source and explicit rebuild barriers. */
 function diskSource() {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-index-"));
+  const directory = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "department-index-")));
   const data = departmentRecords();
   for (const task of data.records.values()) { task.createdAt = task.updatedAt = Date.now(); task.taskStoreFile = path.join(directory, "tasks.json"); }
+  const source = DepartmentOwnedTaskSource.register("department-index-test", directory);
+  const owner = source.claim(); assert.ok(owner); assert.equal(source.prepareRebuild(), true);
+  assert.equal(source.transact(owner, new Map([[data.root.taskStoreFile, [...data.records.values()]]])), true);
   let scans = 0;
-  const source: DepartmentOwnershipSource = {
-    listFiles: () => { scans++; return fs.readdirSync(directory).filter((name) => name.endsWith(".json")).map((name) => path.join(directory, name)); },
-    readFile: (file) => { const read = readLoopTaskStoreResult(file, true, true); return read.ok ? read.store.tasks : null; },
-    subscribe: subscribeLoopTaskStoreChanges,
-    lifecycle: { isCurrent: () => true, subscribe: () => ({ dispose() {} }) },
-  };
-  assert.equal(tryWriteLoopTaskStore(data.root.taskStoreFile, { tasks: [...data.records.values()] }), true);
-  const index = new DepartmentOwnershipIndex(source); assert.equal(index.rebuild(), true);
-  return { ...data, directory, index, scans: () => scans, cleanup: () => { index.dispose(); fs.rmSync(directory, { recursive: true, force: true }); } };
+  const indexedSource: DepartmentOwnershipSource = { lifecycle: source.lifecycle,
+    listFiles: () => { scans++; return source.listFiles(); }, readFile: (file) => source.readFile(file),
+    subscribe: (listener) => source.subscribe(listener) };
+  const index = new DepartmentOwnershipIndex(indexedSource); assert.equal(index.rebuild(), true);
+  return { ...data, directory, source, owner, indexedSource, index, scans: () => scans,
+    cleanup: () => { index.dispose(); source.dispose(); fs.rmSync(directory, { recursive: true, force: true }); } };
 }
 
-test("confirmed real writes, updates, root/module/workspace changes, path migration and deletion update before return", () => {
+test("confirmed owner transactions require complete rebuild after root/module/workspace changes and path migration", () => {
   const h = diskSource();
   try {
     const query = h.index.readDepartmentLeaderTaskIds;
     assert.deepEqual(query(h.root.id, "module-A"), [h.leader.id]);
-    assert.ok(updateLoopTaskRecord(h.leader.id, { department: { ...h.leader.department!, leaderSubtaskId: "module-B" } }));
+    // Public ordinary writers cannot mutate an owned identity; owner capability is required.
+    assert.equal(updateLoopTaskRecord(h.leader.id, { department: { ...h.leader.department!, leaderSubtaskId: "module-B" } }), null);
+    const changed = { ...h.leader, department: { ...h.leader.department!, leaderSubtaskId: "module-B" } };
+    assert.equal(h.source.transact(h.owner, new Map([[h.root.taskStoreFile, [h.root, changed, h.other]]])), true);
+    assert.equal(query(h.root.id, "module-A"), null, "incremental success cannot heal transaction invalidation");
+    assert.equal(h.index.rebuild(), true);
     assert.deepEqual(query(h.root.id, "module-A"), []); assert.equal(query(h.root.id, "module-B")!.length, 2);
     const target = path.join(h.directory, "moved.json");
-    const moved = updateLoopTaskRecord(h.leader.id, { department: h.leader.department, taskStoreFile: target }); assert.ok(moved);
+    assert.equal(h.source.transact(h.owner, new Map([[target, [{ ...h.leader, taskStoreFile: target }]], [h.root.taskStoreFile, [h.root, h.other]]])), true);
+    assert.equal(query(h.root.id, "module-A"), null); assert.equal(h.index.rebuild(), true);
     assert.deepEqual(query(h.root.id, "module-A"), [h.leader.id]);
-    assert.equal(readLoopTaskStore(h.root.taskStoreFile).tasks.some((task) => task.id === h.leader.id), false);
-    assert.equal(readLoopTaskStore(target).tasks[0].id, h.leader.id);
-    assert.ok(updateLoopTaskRecord(h.leader.id, { workspaceKey: "other" })); assert.deepEqual(query(h.root.id, "module-A"), []);
-    assert.ok(updateLoopTaskRecord(h.leader.id, { workspaceKey: h.root.workspaceKey }));
-    assert.deepEqual(query(h.root.id, "module-A"), [h.leader.id]);
-    assert.equal(deleteLoopTaskStoreFile(target), true); assert.deepEqual(query(h.root.id, "module-A"), []);
-    assert.equal(h.scans(), 1);
+    assert.equal(h.source.readFile(h.root.taskStoreFile)!.some((task) => task.id === h.leader.id), false);
+    assert.equal(h.source.transact(h.owner, new Map([[target, [{ ...h.leader, taskStoreFile: target, workspaceKey: "other" }]]])), true);
+    assert.equal(h.index.rebuild(), true); assert.deepEqual(query(h.root.id, "module-A"), []);
+    assert.equal(h.source.transact(h.owner, new Map([[target, []]])), true);
+    assert.equal(h.index.rebuild(), true); assert.deepEqual(query(h.root.id, "module-A"), []);
   } finally { h.cleanup(); }
 });
 
-test("real write/delete failures revoke completeness, void wrapper remains compatible and rebuild failure keeps it revoked", () => {
+test("real owner write failure revokes completeness until explicit recovery and complete rebuild", (t) => {
   const h = diskSource();
   try {
-    const blocker = path.join(h.directory, "blocker"); fs.writeFileSync(blocker, "not a directory");
-    const target = path.join(blocker, "tasks.json");
-    assert.equal(updateLoopTaskRecord(h.leader.id, { taskStoreFile: target }), null);
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
-    assert.ok(readLoopTaskStore(h.root.taskStoreFile).tasks.some((task) => task.id === h.leader.id));
-    assert.equal(h.index.rebuild(), true);
-    assert.equal(tryWriteLoopTaskStore(target, { tasks: [h.leader] }), false);
-    assert.equal(writeLoopTaskStore(target, { tasks: [h.leader] }), undefined);
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
-    fs.writeFileSync(path.join(h.directory, "broken.json"), "{broken");
-    assert.equal(h.index.rebuild(), false); fs.unlinkSync(path.join(h.directory, "broken.json"));
-    assert.equal(h.index.rebuild(), true);
-    assert.equal(deleteLoopTaskStoreFile(h.directory), false);
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
-  } finally { h.cleanup(); }
+    const before = fs.readFileSync(h.root.taskStoreFile, "utf8"), rename = fs.renameSync;
+    t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+      if (String(args[1]) === h.root.taskStoreFile) throw Object.assign(new Error("owner rename denied"), { code: "EACCES" });
+      return rename(...args);
+    });
+    assert.equal(h.source.transact(h.owner, new Map([[h.root.taskStoreFile, [h.root, { ...h.leader, finalSummary: "uncommitted" }, h.other]]])), false);
+    assert.equal(fs.readFileSync(h.root.taskStoreFile, "utf8"), before);
+    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null); assert.equal(h.index.rebuild(), false);
+    t.mock.restoreAll(); assert.equal(h.source.recover(h.owner), true); assert.equal(h.source.prepareRebuild(), true);
+    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null); assert.equal(h.index.rebuild(), true);
+    assert.deepEqual(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), [h.leader.id]);
+    assert.equal(tryWriteLoopTaskStore(h.root.taskStoreFile, { tasks: [h.root] }), false);
+    assert.throws(() => writeLoopTaskStore(h.root.taskStoreFile, { tasks: [h.root] }), /owner transactions/);
+  } finally { t.mock.restoreAll(); h.cleanup(); }
 });
 
 test("external file creation and restart require invalidation and explicit complete rebuild, never an incremental heal", () => {
   const h = diskSource();
   try {
-    h.index.invalidate(); // Central writer barrier BEFORE a non-store import/restore or external publish.
-    const duplicate = { ...h.leader, id: "external-duplicate" };
-    fs.writeFileSync(path.join(h.directory, "external.json"), JSON.stringify({ tasks: [duplicate] }));
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
-    assert.equal(h.index.rebuild(), true); assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A")!.length, 2);
-    assert.equal(deleteLoopTaskStoreFile(path.join(h.directory, "external.json")), true);
+    h.source.beforeSourceChange();
+    const file = path.join(h.directory, "external.json"), duplicate = { ...h.leader, id: "external-duplicate", taskStoreFile: file };
+    fs.writeFileSync(file, JSON.stringify({ tasks: [duplicate] }));
+    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null); assert.equal(h.index.rebuild(), false);
+    assert.equal(h.source.prepareRebuild(), true); assert.equal(h.index.rebuild(), true);
+    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A")!.length, 2);
+    assert.equal(h.source.transact(h.owner, new Map([[file, []]])), true); assert.equal(h.index.rebuild(), true);
     assert.deepEqual(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), [h.leader.id]);
-    h.index.dispose();
-    const restarted = new DepartmentOwnershipIndex({ listFiles: () => [h.root.taskStoreFile],
-      readFile: (file) => { const result = readLoopTaskStoreResult(file, true, true); return result.ok ? result.store.tasks : null; },
-      subscribe: subscribeLoopTaskStoreChanges, lifecycle: { isCurrent: () => true, subscribe: () => ({ dispose() {} }) } });
+    h.index.dispose(); const restarted = new DepartmentOwnershipIndex(h.indexedSource);
     try { assert.equal(restarted.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
       assert.equal(restarted.rebuild(), true); assert.deepEqual(restarted.readDepartmentLeaderTaskIds(h.root.id, "module-A"), [h.leader.id]);
     } finally { restarted.dispose(); }
@@ -234,26 +245,19 @@ test("indexed fresh record reads never enumerate, detect unexpected same-file ch
   } finally { h.cleanup(); }
 });
 
-test("partially failed real migration cannot publish a successful identity or keep authorization available", () => {
+test("partially failed owner migration cannot publish successful authorization before recovery and rebuild", (t) => {
   const h = diskSource();
-  const fsModule = require("node:fs") as typeof import("node:fs");
-  const originalUnlink = fsModule.unlinkSync;
   try {
-    // Move root/other out first so source contains just this leader and deletion is required.
-    const leaderFile = path.join(h.directory, "leader.json");
-    assert.ok(updateLoopTaskRecord(h.leader.id, { taskStoreFile: leaderFile }));
-    const target = path.join(h.directory, "target.json");
-    fsModule.unlinkSync = ((file: fs.PathLike) => {
-      if (String(file) === leaderFile) throw Error("simulated delete failure");
-      return originalUnlink(file);
-    }) as typeof fs.unlinkSync;
-    assert.equal(updateLoopTaskRecord(h.leader.id, { taskStoreFile: target }), null);
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null);
-    assert.equal(fs.existsSync(leaderFile), true); assert.equal(fs.existsSync(target), true);
-    assert.equal(h.index.rebuild(), true);
-    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null); // Same identity in two physical files.
-    fsModule.unlinkSync = originalUnlink;
-    assert.equal(deleteLoopTaskStoreFile(target), true);
+    const target = path.join(h.directory, "target.json"), rename = fs.renameSync;
+    t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => {
+      if (String(args[1]) === h.root.taskStoreFile) throw Error("simulated source publication failure");
+      return rename(...args);
+    });
+    assert.equal(h.source.transact(h.owner, new Map([[target, [{ ...h.leader, taskStoreFile: target }]], [h.root.taskStoreFile, [h.root, h.other]]])), false);
+    assert.equal(fs.existsSync(target), true);
+    assert.equal(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), null); assert.equal(h.index.rebuild(), false);
+    t.mock.restoreAll(); assert.equal(h.source.recover(h.owner), true); assert.equal(h.source.prepareRebuild(), true);
+    assert.equal(fs.existsSync(target), false); assert.equal(h.index.rebuild(), true);
     assert.deepEqual(h.index.readDepartmentLeaderTaskIds(h.root.id, "module-A"), [h.leader.id]);
-  } finally { fsModule.unlinkSync = originalUnlink; h.cleanup(); }
+  } finally { t.mock.restoreAll(); h.cleanup(); }
 });

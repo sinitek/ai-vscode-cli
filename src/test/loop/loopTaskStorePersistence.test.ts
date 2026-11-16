@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { spawnSync } from "node:child_process";
 
 // Set HOME before loading the store, including in cold-module restart checks.
 const originalHome = process.env.HOME;
@@ -31,6 +32,7 @@ test.after(() => {
   }
 });
 
+test.beforeEach(() => fs.rmSync(path.join(testHome, ".sinitek_cli", "loop-task-identities"), { recursive: true, force: true }));
 let sequence = 0;
 function createTask(): LoopTaskRecord {
   const id = `persistence-${++sequence}`;
@@ -53,7 +55,7 @@ function coldStore(): StoreModule {
 }
 
 function assertNoTempFiles(filePath: string): void {
-  assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp")), []);
+  assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp") || name.endsWith(".stage")), []);
 }
 
 for (const withSibling of [false, true]) {
@@ -336,7 +338,7 @@ for (const failure of ["write", "rename"] as const) {
     if (failure === "write") {
       const originalWrite = fs.writeFileSync;
       t.mock.method(fs, "writeFileSync", (...args: Parameters<typeof fs.writeFileSync>) => {
-        if (String(args[0]).endsWith(".tmp")) {
+        if (String(args[0]).endsWith(".stage")) {
           originalWrite(args[0], "partial JSON", "utf8");
           throw error;
         }
@@ -490,7 +492,139 @@ for (const withSibling of [false, true]) {
     const afterRound = coldStore().readLoopTaskRecord(task.id);
     assert.equal(afterRound?.taskStoreFile, target);
     assert.equal(afterRound?.rounds.length, 1);
-    assert.equal(afterRound?.updatedAt, committed?.updatedAt);
-    assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.find((item) => item.id === task.id)?.status, "running");
+    assert.ok(afterRound!.updatedAt > retried!.updatedAt);
+    assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.find((item) => item.id === task.id), undefined);
   });
 }
+
+test("invalid source records reject strict commits and retention without dropping valid siblings", () => {
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const raw = JSON.stringify({ tasks: [task, { id: "invalid-sibling" }] });
+  fs.writeFileSync(task.taskStoreFile, raw);
+  assert.throws(() => store.updateLoopTaskRecord(task.id, { finalSummary: "uncommitted" }), /Invalid Loop task record/);
+  assert.throws(() => store.appendLoopRound(task.id, { round: 1, role: "main", status: "end", startedAt: 1, endedAt: 2 }), /Invalid Loop task record/);
+  assert.equal(store.tryAppendLoopRound(task.id, { round: 1, role: "main", status: "end", startedAt: 1, endedAt: 2 }), false);
+  store.cleanupLoopTaskStoreRetention();
+  assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), raw);
+  assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks[0]?.id, task.id, "tolerant queries retain compatibility");
+});
+
+
+// Separate HOME and module instance model another supported host without any real CLI.
+function checkOrdinaryAuthority(body: string): void {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "loop-store-authority-"));
+  const child = spawnSync(process.execPath, ["-e", `
+    const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+    const store=require(${JSON.stringify(storeModulePath)});
+    const catalog=require(${JSON.stringify(require.resolve("../../loopTaskIdentityCatalog"))});
+    const directory=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities');
+    const catalogFile=path.join(directory,'catalog.json'),lock=path.join(directory,'transaction.lock');
+    function task(id,file) {
+      return {id,cli:'codex',workspaceKey:id,sessionId:null,
+        taskStoreFile:file??store.buildLoopTaskStoreFile('codex',id,null,id),
+        rootPrompt:'ordinary authority',status:'running',createdAt:Date.now(),updatedAt:Date.now(),
+        maxRounds:5,currentRound:0,communicationDir:process.env.HOME,mainCommunicationFile:path.join(process.env.HOME,'main.md'),
+        subTasks:[],rounds:[],completionRoundSummaries:[],completionRequirementCoverage:[]};
+    }
+    ${body}
+  `], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" });
+  try { assert.equal(child.status, 0, child.stdout + child.stderr); }
+  finally { fs.rmSync(home, { recursive: true, force: true }); }
+}
+
+for (const release of ["before-acquire", "after-refusal"]) {
+  test(`retention preserves valid tasks and siblings when an unknown writer lock releases ${release}`, () => {
+    checkOrdinaryAuthority(`
+      const a=task('retained'),b=task('sibling',a.taskStoreFile);
+      store.writeLoopTaskStore(a.taskStoreFile,{tasks:[a,b]});
+      catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[a.taskStoreFile,[a,b]]]));
+      const before=fs.readFileSync(a.taskStoreFile,'utf8');
+      fs.writeFileSync(lock,'another supported writer');
+      const open=fs.openSync;let acquired=0;
+      fs.openSync=(file,...args)=>{
+        if(file===lock && ++acquired===1) {
+          if(${JSON.stringify(release)}==='before-acquire') fs.unlinkSync(lock);
+          else { try { return open(file,...args); } finally { fs.unlinkSync(lock); } }
+        }
+        return open(file,...args);
+      };
+      store.cleanupLoopTaskStoreRetention();fs.openSync=open;
+      assert.equal(acquired,1,'one gate attempt for the file; never retry with a stale classification');
+      assert.equal(fs.readFileSync(a.taskStoreFile,'utf8'),before);
+      assert.deepEqual(store.readLoopTaskStore(a.taskStoreFile).tasks.map(t=>t.id),[a.id,b.id]);
+      assert.equal(fs.existsSync(lock),false,'the other writer released its own lock');
+      store.cleanupLoopTaskStoreRetention();
+      assert.deepEqual(store.readLoopTaskStore(a.taskStoreFile).tasks.map(t=>t.id),[a.id,b.id]);
+    `);
+  });
+}
+
+test("known ordinary reads follow migration authority across stale host cache and sibling rewrites without enumeration", () => {
+  checkOrdinaryAuthority(`
+    const a=task('moving'),b=task('sibling',a.taskStoreFile);
+    store.writeLoopTaskStore(a.taskStoreFile,{tasks:[a,b]});
+    delete require.cache[require.resolve(${JSON.stringify(storeModulePath)})];
+    const other=require(${JSON.stringify(storeModulePath)});
+    assert.equal(other.readLoopTaskRecord(a.id).taskStoreFile,a.taskStoreFile);
+    const target=store.getLoopTaskStoreSessionFile(a.workspaceKey,'codex','moved');
+    const rename=fs.renameSync;
+    fs.renameSync=(from,to)=>{if(to===a.taskStoreFile)throw Error('keep stale source');return rename(from,to)};
+    const moved=store.updateLoopTaskRecord(a.id,{taskStoreFile:target,sessionId:'moved',finalSummary:'committed target'});
+    fs.renameSync=rename;
+    assert.equal(fs.existsSync(a.taskStoreFile),true);
+    const readdir=fs.readdirSync;
+    fs.readdirSync=()=>assert.fail('known fallback must not enumerate stores');
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id).finalSummary,'committed target');
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id).taskStoreFile,target);
+    // A supported whole-source sibling write reintroduces the stale cache entry locally.
+    store.writeLoopTaskStore(a.taskStoreFile,{tasks:[a,{...b,finalSummary:'sibling edit'}]});
+    assert.equal(store.readKnownOrdinaryLoopTaskRecord(a.id).finalSummary,'committed target');
+    fs.writeFileSync(lock,'unknown');
+    assert.equal(store.readKnownOrdinaryLoopTaskRecord(a.id),null);
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id),null);
+    fs.unlinkSync(lock);
+    const read=fs.readFileSync;
+    fs.readFileSync=(file,...args)=>{if(file===target)throw Object.assign(Error('target unavailable'),{code:'EACCES'});return read(file,...args)};
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id),null,'unconfirmed target must not fall back');
+    fs.readFileSync=read;
+    const before=fs.readFileSync(target,'utf8');fs.writeFileSync(target,JSON.stringify({tasks:[b]}));
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id),null,'missing exact task must not fall back');
+    fs.writeFileSync(target,before);
+    const snapshot=fs.readFileSync(catalogFile,'utf8');fs.writeFileSync(catalogFile,'broken');
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id),null);fs.writeFileSync(catalogFile,snapshot);
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id).finalSummary,'committed target');
+    fs.readdirSync=readdir;
+  `);
+});
+
+test("retention holds the writer gate from authority classification through cleanup and reads one catalog per file batch", () => {
+  checkOrdinaryAuthority(`
+    const a=task('batch-0');const tasks=Array.from({length:24},(_,i)=>task('batch-'+i,a.taskStoreFile));
+    store.writeLoopTaskStore(a.taskStoreFile,{tasks});
+    catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[a.taskStoreFile,tasks]]));
+    const read=fs.readFileSync,open=fs.openSync;let catalogReads=0,gateAttempts=0,competingWrites=0;
+    fs.openSync=(file,...args)=>{if(file===lock)gateAttempts++;return open(file,...args)};
+    fs.readFileSync=(file,...args)=>{
+      if(file===catalogFile)catalogReads++;
+      const bytes=read(file,...args);
+      if(file===a.taskStoreFile) {
+        // A competing supported migration cannot change authority after this read
+        // but before destructive filtering/replacement. No reentrant gate is allowed.
+        assert.equal(fs.existsSync(lock),true);
+        assert.throws(()=>catalog.commitLoopTaskIdentities(new Map([[a.taskStoreFile,[]]]),()=>{competingWrites++;return true}),e=>e.code==='EEXIST');
+      }
+      return bytes;
+    };
+    store.cleanupLoopTaskStoreRetention();fs.readFileSync=read;fs.openSync=open;
+    assert.equal(competingWrites,0);assert.equal(gateAttempts,2,'one retention gate plus the rejected competing writer');
+    assert.equal(catalogReads,1,'24 tasks share one current snapshot, including publication');
+    assert.deepEqual(store.readLoopTaskStore(a.taskStoreFile).tasks.map(t=>t.id),tasks.map(t=>t.id));
+    // A later complete transaction is visible in the next call, never a cached snapshot.
+    const destination=store.getLoopTaskStoreSessionFile(a.workspaceKey,'codex','next');
+    store.updateLoopTaskRecord(a.id,{taskStoreFile:destination,sessionId:'next'});
+    store.cleanupLoopTaskStoreRetention();
+    assert.equal(store.readKnownOrdinaryLoopTaskRecord(a.id).taskStoreFile,destination);
+    assert.equal(store.readLoopTaskStore(a.taskStoreFile).tasks.some(t=>t.id===a.id),false);
+  `);
+});

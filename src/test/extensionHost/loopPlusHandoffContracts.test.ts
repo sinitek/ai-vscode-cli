@@ -299,7 +299,9 @@ test("partial accept/dispatch rejection repairs only remaining work with bounded
   await flush();
   const review = env.mains.at(-1)!;
   env.host.submitUserMessage(env.id, "只确认一次");
-  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds, subtasks: [child("repair-C"), child("B")] }));
+  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
+    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: ["repair-C"] }],
+    independentSubtaskIds: ["B"], subtasks: [child("repair-C"), child("B")] }));
   await flush();
   assert.equal(env.attempts.length, 3);
   assert.equal(env.feedback.length, 1);
@@ -332,7 +334,9 @@ test("rejected repair dispatch is corrected successfully from the latest snapsho
   env.attempts[0].resolve({ outcome: "completed", detail: "A needs repair" });
   await flush();
   const review = env.mains.at(-1)!;
-  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds, subtasks: [child("B")] }));
+  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
+    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: [] }],
+    independentSubtaskIds: ["B"], subtasks: [child("B")] }));
   await flush();
   const correction = env.mains.at(-1)!;
   assert.notEqual(correction.request.kind, "review");

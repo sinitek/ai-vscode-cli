@@ -17,6 +17,7 @@ const store = require("../../loopTaskStore") as typeof import("../../loopTaskSto
 const { createDepartmentProductionTaskStore } = require("../../extensionHost/departmentProductionTaskStore") as typeof import("../../extensionHost/departmentProductionTaskStore");
 const { prepareDepartmentTaskRecord } = require("../../extensionHost/departmentOwnedTaskRepository") as typeof import("../../extensionHost/departmentOwnedTaskRepository");
 const { locateLoopTaskIdentity } = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+const { getHistoryRetentionMs } = require("../../historyRetention") as typeof import("../../historyRetention");
 const { createDepartmentRuntimeComposition } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
 const { DepartmentRuntimeStore } = require("../../extensionHost/departmentruntimestore") as typeof import("../../extensionHost/departmentruntimestore");
 const { createLoopOrchestrationHost } = require("../../extensionHost/loopOrchestration") as typeof import("../../extensionHost/loopOrchestration");
@@ -192,7 +193,7 @@ test("production source + central composition + real Loop+ adapter persist compl
     } finally { Date.now = now; }
     assert.ok(store.updateLoopTaskRecord(a.taskId, { updatedAt: now() }));
     try {
-      Date.now = () => future;
+      Date.now = () => future + getHistoryRetentionMs() + 1000;
       store.cleanupLoopTaskStoreRetention();
       for (const file of source.listTaskStoreFiles()) assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")), { tasks: [] });
       const tombstone = spawnSync(process.execPath, ["-e", `
