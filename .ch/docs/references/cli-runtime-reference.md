@@ -10,6 +10,7 @@
 - Loop+ 对 busy / handoff / writer / SESSION_RUN_ACTIVE 错误保留不可重试语义，第一次失败即暂停，普通执行失败才使用五次上限；持久化具体原因，显式继续清旧失败摘要后重新检查条件。群聊/聊天/暂停文件统一展示，旧任务空摘要从 mainAiLastFailureMessage 重建。
 - 能力探测仅使用临时 HOME/workspace 和环境白名单，3 秒返回上限、4096 字节输出限额、最多 4 个在途/未关闭自有子进程；缓存为 64 项、60 秒且区分可执行身份和解析上下文。超时/错误/超量只请求终止该探测自有进程，继续等其 `close` 后才删除目录、释放进程名额；未 close 的目录保留，不能宣称清理完成。零延迟策略和探测终止请求均不是 writer 已释放证据。
 - 同一扩展宿主按规范化 CODEX_HOME + threadId 对完整 turn / compact 操作互斥；重复执行明确返回 `CODEX_THREAD_BUSY`，不排队重试。新建 thread 的首次操作同样保护活动归属，不影响其它 thread / HOME 并行。
+- 带 thread 标识的通知只按已确认 owner 或显式父子关系路由；仅有一个活动 listener 不能证明外来 thread 属于它。未知 thread 通知暂存，待 start/resume 回包或显式子线程绑定确认后重放，包括先于回包到达的 thread/started；不凭状态通知标记 loaded/owner，避免主任务误领已完成子会话并阻断 Loop+ 续接。无 thread 的连接级通知仍广播给活动 listener。
 - 恢复前检查旧进程的已加载及未完成 resume。共享旧进程仅对目标发送 `thread/unsubscribe`；`unsubscribed` / `notSubscribed` 回包不代表卸载。收到这两种回执后，以 250 ms 间隔、最多一个在途请求继续确认，只有 `thread/closed`、原生 `notLoaded` 或实际进程退出才放行。确认失败或无响应不重试，未知状态安全拒绝；期间新加载使旧查询结果失效，取消后迟到回包不修改占用。Windows Codex 0.162.1 实测闲置卸载约 60 秒，总上限仍为 75 秒。
 - 已确认公共读取缺陷：读取循环等待用户提问/审批处理器，导致另一会话的 RPC 回包和 thread/closed 无法被读取。仅原生交互请求异步分离，响应与生命周期通知继续按接收顺序处理；未知请求立即按协议拒绝，不让单个用户处理器失败关闭共享进程。受控回归验证 B 未回答时 A 可交接，B 问题仍保留并能回答；尚未执行 macOS/Linux 原生复验。
 - 每个交互请求绑定原连接、原始字符串/数字 ID、thread、listener 对象与操作身份，最多回复一次。热停止、完成、detach/dispose、thread 关闭、归属/操作变化取消所属请求，使用原生 decline/denied、空 answers/permissions 或 elicitation cancel；serverRequest/resolved 按 thread+原始 ID 收口，实际进程退出后不再回写。取消释放等待闭包，迟到答案/拒绝均被消费，不能写入新操作或影响其它会话；旧版审批按 conversationId 路由。

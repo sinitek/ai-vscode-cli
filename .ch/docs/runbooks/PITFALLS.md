@@ -58,6 +58,13 @@
 - 统一检测使用 `npm run verify:loop-plus`（macOS / Windows 同命令）；不要用旧 pool 专项脚本的通过代替所有权、状态、Tab 和公共 runner 验证。报告只证明当前源码与本机隔离运行时，`fullyVerified=false`，已安装扩展和其它平台必须另验；详见本地开发手册。
 - 平台验证先固定实际二进制绝对路径并记录版本；终端 `codex --version` 不等于插件默认解析的版本。本机曾同时解析出 0.145.0 与 0.167.0，不能由此直接推断历史事故使用了哪一个。隔离验证脚本的临时根须 realpath，macOS `/var` 与 `/private/var` 别名会使安全路径归属检查误报；不能放宽归属校验或假造持久化成功。
 
+## Codex 外来线程通知不能证明会话归属
+
+- 现象：Loop+ 来源子任务和自动压缩均已完成，续接子任务仍立即报 `CODEX_THREAD_BUSY`（“仍由另一项操作使用，不能强制交接”）。本机日志确认三个不同来源会话出现相同错误；消息历史有执行结束与压缩完成记录。
+- 根因：pool 将未知 thread 通知交给唯一活动 listener，并写入 loaded/owner。主任务因此可能误领外来会话，续接时被错误的活动 owner 拦截；不是延长卸载等待能解决的问题。
+- 规则：thread 通知必须经加载回包、已有 owner 或明确父子关系确认归属，未知通知暂存并在确认后重放。禁止靠活动 listener 数量推断归属；真实互斥和 writer 释放证据仍须保留。
+- 验证：`codexThreadHandoff.test.ts` 覆盖三个来源会话的共享/跨连接续接，以及先通知后回包与显式父子关系；`codexRunnerLifecycle.test.ts` 的子线程夹具也必须建立真实关系。最小用例通过不代表已安装扩展已更新，真实验证入口为 `npm run verify:loop-plus`。
+
 ## Codex unsubscribe 不等于写入锁立即释放
 
 - 状态：`有效`。现象：原 thread 从另一 app-server 恢复时报 `already has an active writer`，即使原连接没有正在执行的 turn。

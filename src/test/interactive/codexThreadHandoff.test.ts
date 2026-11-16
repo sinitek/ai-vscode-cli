@@ -440,6 +440,68 @@ test("a newly started thread cannot be stolen before its first turn finishes", a
   }
 });
 
+for (const reuseConnection of [true, false]) {
+  test(`foreign thread notifications cannot block three Loop+ continuations (${reuseConnection ? "shared" : "new"} connection)`, async () => {
+    const harness = createHarness();
+    let finish!: () => void;
+    let running: Promise<void> | undefined;
+    try {
+      const received: Record<string, unknown>[] = [];
+      const main = harness.acquire("main", "main-owner", undefined, {
+        isActive: () => true,
+        handleNotification: (message) => { received.push(message); },
+      });
+      await main.request("main-owner", "thread/resume", { threadId: "main-thread" });
+      running = main.withThread("main-owner", "main-thread", () => new Promise<void>((resolve) => { finish = resolve; }));
+      const next = harness.acquire(reuseConnection ? "main" : "next", "subtask-owner");
+      for (const threadId of ["source-a", "source-b", "source-c"]) {
+        harness.children[0].send({ method: "thread/status/changed", params: { threadId, status: { type: "idle" } } });
+        // A response is a wire-order barrier: the notification has been processed.
+        await main.request("main-owner", "test/ping", {});
+        await next.withThread("subtask-owner", threadId, async () => {
+          await next.request("subtask-owner", "thread/resume", { threadId });
+        }, { timeoutMs: 300 });
+      }
+      assert.deepEqual(received, [], "foreign status events must not enter the active main conversation");
+      if (!reuseConnection) {
+        for (const threadId of ["source-a", "source-b", "source-c"]) assert.equal(main.hasLoadedThread(threadId), false);
+      }
+      assert.equal(harness.children[0].messages.some((message) => message.method === "thread/unsubscribe"), false);
+      assert.equal(harness.children[0].terminationRequests, 0);
+    } finally {
+      finish?.();
+      await running;
+      harness.cleanup();
+    }
+  });
+}
+
+test("thread/start notifications before the response are replayed only after confirmed ownership", async () => {
+  const harness = createHarness();
+  try {
+    const received: Record<string, unknown>[] = [];
+    const connection = harness.acquire("starting", "owner", undefined, {
+      isActive: () => true,
+      handleNotification: (message) => { received.push(message); },
+    });
+    harness.children[0].handle = (message) => {
+      if (message.method !== "thread/start") return false;
+      harness.children[0].send({ method: "thread/started", params: { thread: { id: "started" } } });
+      harness.children[0].send({ method: "thread/status/changed", params: { threadId: "foreign", status: { type: "idle" } } });
+      harness.children[0].reply(message, { thread: { id: "started" } });
+      return true;
+    };
+    await connection.withThread("owner", null, () => connection.request("owner", "thread/start", {}));
+    assert.equal(connection.hasLoadedThread("started"), true);
+    assert.equal(connection.hasLoadedThread("foreign"), false);
+    assert.deepEqual(received.map((message) => message.method), ["thread/started"]);
+    harness.children[0].send({ method: "thread/started", params: { thread: { id: "child", parentThreadId: "started" } } });
+    await connection.request("owner", "test/ping", {});
+    assert.equal(connection.hasLoadedThread("child"), true);
+    assert.equal(received.length, 2, "explicit parent-child notifications must still be routed");
+  } finally { harness.cleanup(); }
+});
+
 test("abandoned resume responses are tracked before unloading a shared process", async () => {
   const harness = createHarness();
   try {

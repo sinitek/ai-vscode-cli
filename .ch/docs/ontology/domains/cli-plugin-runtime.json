@@ -396,7 +396,7 @@
     {
       "id": "plugin.rule.codex_thread_writer_handoff",
       "name": "Codex 原会话跨连接恢复前确认写入者释放",
-      "description": "同一扩展宿主内按规范化 CODEX_HOME 与 threadId 对完整 turn/compact 互斥，重复操作明确拒绝且不重试，不限制其它 thread/home 并发。配置指纹隔离及压缩入口保留，真实身份变化仍迁移。已加载、未完成 resume 与逻辑关闭但未退出的进程仍是占用事实；放弃 listener 后跟踪迟到加载。共享旧进程仅 unsubscribe 目标 thread，unsubscribed/notSubscribed 不算释放，仅 thread/closed、原生 notLoaded 或实际 exit/close 放行。成功回执后单个在途状态确认不重置 0.162.1 的卸载计时；无效、失败、无响应、新加载或取消不构成释放，不用 loaded/list 缺失证明。75 秒总期限及取消语义不变，taskkill 请求成功不等于退出。CODEX_THREAD_HANDOFF_FAILED 保留 stage/reason、连接/thread/RPC代码和安全原因分类，区分明确 -32601 不支持、卸载失败/未返回、等待加载/关闭/实际退出，普通超时不伪称不支持。busy、交接失败、未知 writer 均停止隐式重试；不删锁、不换thread、不杀共享/外部进程，不声称覆盖跨宿主协调。日志不输出原始敏感错误、配置全文或用户回答。",
+      "description": "同一扩展宿主内按规范化 CODEX_HOME 与 threadId 对完整 turn/compact 互斥，重复操作明确拒绝且不重试，不限制其它 thread/home 并发。thread 通知只按已确认 owner、加载回包或显式父子关系绑定；未知通知等待绑定后重放，不凭唯一活动 listener 推断归属或 loaded，防止外来状态通知误占 Loop+ 来源会话。无 thread 通知仍发给活动 listener。配置指纹隔离及压缩入口保留，真实身份变化仍迁移。已加载、未完成 resume 与逻辑关闭但未退出的进程仍是占用事实；放弃 listener 后跟踪迟到加载。共享旧进程仅 unsubscribe 目标 thread，unsubscribed/notSubscribed 不算释放，仅 thread/closed、原生 notLoaded 或实际 exit/close 放行。成功回执后单个在途状态确认不重置 0.162.1 的卸载计时；无效、失败、无响应、新加载或取消不构成释放，不用 loaded/list 缺失证明。75 秒总期限及取消语义不变，taskkill 请求成功不等于退出。CODEX_THREAD_HANDOFF_FAILED 保留 stage/reason、连接/thread/RPC代码和安全原因分类，区分明确 -32601 不支持、卸载失败/未返回、等待加载/关闭/实际退出，普通超时不伪称不支持。busy、交接失败、未知 writer 均停止隐式重试；不删锁、不换thread、不杀共享/外部进程，不声称覆盖跨宿主协调。日志不输出原始敏感错误、配置全文或用户回答。",
       "status": "active",
       "applies_to": ["plugin.extension_host", "plugin.local_cli", "plugin.cli_session"],
       "source_refs": [

@@ -1216,6 +1216,9 @@ test("Codex notification routing keeps child failures isolated and fails the pri
   const originalSpawn = crossSpawn.spawn;
   const child = createFakeChild(61232);
   attachTurnStatusAppServer(child, "completed", [
+    // Establish a real child relationship; an arbitrary foreign error alone
+    // must never be assigned to the sole active parent runner.
+    { method: "thread/started", params: { thread: { id: "child-thread", parentThreadId: "parent-thread" } } },
     { method: "error", params: { threadId: "child-thread", error: { message: "子任务失败" } } },
     { method: "error", params: { threadId: "parent-thread", message: "Reconnecting... 1/5" } },
     {
@@ -1243,7 +1246,10 @@ test("Codex notification routing keeps child failures isolated and fails the pri
         onSubagentUpdate: (update) => subagents.push(update),
         onTurnCompleted: () => { completed += 1; },
       }), /Concurrency limit exceeded/u);
-      assert.deepEqual(subagents, [{ threadId: "child-thread", status: "failed", error: "子任务失败" }]);
+      assert.deepEqual(subagents, [
+        { threadId: "child-thread", status: "running" },
+        { threadId: "child-thread", status: "failed", error: "子任务失败" },
+      ]);
       assert.ok(traces.some((content) => content === "warning Reconnecting... 1/5"));
       assert.ok(traces.some((content) => content.includes("Concurrency limit exceeded")));
       assert.equal(completed, 0);

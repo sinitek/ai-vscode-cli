@@ -803,14 +803,6 @@ export class CodexAppServerConnection {
         return;
       }
     }
-    const active = this.singleActiveListener();
-    if (active) {
-      if (routing.threadId) {
-        this.claimThread(routing.threadId, active.id);
-      }
-      active.handleNotification(message);
-      return;
-    }
     if (!routing.threadId) {
       for (const listener of this.listeners.values()) {
         if (listener.isActive()) {
@@ -819,6 +811,10 @@ export class CodexAppServerConnection {
       }
       return;
     }
+    // A notification for an unknown thread is not ownership evidence, even
+    // when exactly one listener is active. Buffer until a load response or an
+    // explicit parent/child binding confirms its owner (including thread/start
+    // notifications which arrive before their RPC response).
     const queued = this.buffered.get(routing.threadId) ?? [];
     queued.push(message);
     this.buffered.set(routing.threadId, queued.slice(-40));
