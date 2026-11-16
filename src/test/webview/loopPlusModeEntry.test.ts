@@ -488,6 +488,8 @@ function buildDispatchHarness() {
   let activeTabId = "tab-active";
   const posted: SendMessage[] = [];
   const source = [
+    "function syncPromptSubmissionWait() {}",
+    "function stickChatToBottom() {}",
     extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "normalizePromptPayload"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeModelSelection"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeThinkingModeSelection"),
@@ -810,6 +812,8 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   let loopMainRunning = false;
   let activeTabId = "tab-active";
   const source = [
+    "function syncPromptSubmissionWait() {}",
+    "function stickChatToBottom() {}",
     extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "normalizePromptPayload"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeModelSelection"),
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "normalizeThinkingModeSelection"),

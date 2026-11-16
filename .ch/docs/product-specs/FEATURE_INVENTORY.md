@@ -12,6 +12,11 @@
 - 正常 completed 要求所有已选附加项 passed；accept 仍可携带失败证据并派修复。pending 不预留写入范围，独立任务可越过冲突 pending 回填，running 与本轮新启动项仍约束后续准入。
 - 实现/事实来源：`src/loopTaskStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`；回归：`loopPlusHandoffContracts`、`loopTaskStorePersistence`、`loopPlusAcceptanceCompletionGate`、scheduler。范围与恢复限制见 [调度设计](../design-docs/loop-plus-scheduling.md#提交与展示交接契约) 和 [崩溃恢复](../design-docs/loop-crash-recovery.md#提交失败与展示刷新失败)。
 
+## Loop+ 发送后即时等待反馈
+
+- 状态：`active`（2026-11-16，源码实现）。验收方案确认并实际发送后，助手气泡立即显示三点动画与“正在准备 Loop+ 任务”；开始调用后显示“等待模型响应”，首次助手正文/思考输出或调用结束时清除。配置拒绝、提前返回及异常通过请求回执清除；切换 Tab 与迟到回执不会串状态。临时气泡不写入历史，减少动态效果模式保留文字与静态三点；取消弹窗或本地拒绝不产生气泡。
+- 启动前的完整面板刷新改为后台展示，不再让读取全部 CLI 配置和模型阻塞 Loop+ 编排；真实配置校验、CLI 初始化、会话所有权和压缩等待保留。实现与回归见[发送与启动反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)。
+
 ## Loop / Loop+ 等待巡检
 
 - 状态：`active`（2026-11-15，源码实现）。扩展宿主每 5 分钟检查经典 Loop 与 Loop+ 的等待任务；主模型空闲且没有真实活动子任务时，唤醒主任务检查现有产物、未完成要求及后续动作。

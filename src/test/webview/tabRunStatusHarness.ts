@@ -89,7 +89,9 @@ export function createRunStatusHarness() {
       "normalizeLoopTaskRole", "normalizeLoopTaskId", "getLoopMetaForTabSummary", "isLoopMainTab",
       "startConversationTabRunningFlow", "syncRunningStateForActiveTab",
     ]],
-    [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, ["updateRunningState", "updateRunWait"]],
+    [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, [
+      "updateRunningState", "updateRunWait", "syncPromptSubmissionWait", "settlePromptSubmission",
+    ]],
     [VIEW_CONTENT_SCRIPT_TRACE_RENDERING, [
       "getTracePresentation", "getTraceTypeDefinition", "expandFileChangeTraceContent", "stripLeadingEmptyLines",
     ]],

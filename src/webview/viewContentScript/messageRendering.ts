@@ -1810,7 +1810,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function isConversationTabBusy(tabId) {
         const tab = getConversationTabSummary(tabId);
-        return isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        return Boolean(runtimeState && runtimeState.promptSubmission)
+          || isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
       }
 
       function isLoopMainConversationTabRunning(tabId) {

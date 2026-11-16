@@ -22,6 +22,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
           queueEditingIndex: -1,
           queueEditingDraft: "",
           pendingRunPrompt: null,
+          promptSubmission: null,
           suppressQueueFlushOnce: false,
           currentRunPrompt: "",
           lastRunStatus: "",

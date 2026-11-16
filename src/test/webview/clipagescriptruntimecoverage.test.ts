@@ -799,6 +799,65 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
+test("Loop+ submission immediately shows a transient waiting bubble through startup and first output", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const panel = createPanelState({
+    interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] },
+  });
+  window.dispatchMessage({ type: "state", payload: panel });
+  const messagesBefore = api.getConversationRuntimeState("tab-1").messages.length;
+  assert.equal(api.dispatchPrompt({ prompt: "启动 Loop+", interactiveMode: "loop_plus" }), true);
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.ok(request.requestId);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "正在准备 Loop+ 任务");
+  assert.equal(api.getConversationRuntimeState("tab-1").messages.length, messagesBefore);
+  window.dispatchMessage({ type: "state", payload: panel });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  assert.equal(document.getElementById("emptyState").style.display, "none");
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start", startedAt: Date.now() });
+  assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "等待模型响应");
+  window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "response-1", content: "开始分析" });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+  assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission, null);
+});
+
+test("Loop+ waiting state follows its tab and only the matching receipt clears a newer submission", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }];
+  const showTab = (activeTabId: string) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ interactiveMode: "loop_plus", conversationTabs: { activeTabId, tabs } }),
+  });
+  showTab("tab-1");
+  api.dispatchPrompt({ prompt: "等待任务一", interactiveMode: "loop_plus" });
+  const first = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  showTab("tab-2");
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+  assert.ok(api.getConversationRuntimeState("tab-1").promptSubmission);
+  showTab("tab-1");
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: first.requestId });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+  api.dispatchPrompt({ prompt: "等待任务二", interactiveMode: "loop_plus" });
+  const second = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.notEqual(first.requestId, second.requestId);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: first.requestId });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "error" });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false, "old terminal status must not clear preparation");
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: second.requestId });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+  api.dispatchPrompt({ prompt: "等待思考输出", interactiveMode: "loop_plus" });
+  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+  window.dispatchMessage({ type: "appendMessage", tabId: "tab-1", message: { id: "thinking", role: "trace", kind: "thinking", content: "正在分析" } });
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+  api.state.selectedConfigId = "";
+  api.state.configState.activeConfigId = null;
+  assert.equal(api.dispatchPrompt({ prompt: "没有配置", interactiveMode: "loop_plus" }), false);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+});
+
 function childValueTextPairs(element: FakeElement): Array<[string, string]> {
   return element.children.map((child) => [child.value, child.textContent]);
 }
@@ -5356,6 +5415,7 @@ test("routes window message handler branches without a real webview", () => {
     "isHiddenRetryQueuedMessage",
     "setTabErrored",
     "syncTabErrorFromMessage",
+    "settlePromptSubmission",
     "isHiddenRetryStartedMessage",
     "isRunStatusSummaryText",
     "appendMessage",
@@ -5408,6 +5468,7 @@ test("routes window message handler branches without a real webview", () => {
     (content: string) => /retry/.test(content),
     () => calls.push("errored"),
     (_tabId: string, message: any) => calls.push(message?.role === "trace" && String(message?.content || "").startsWith("error") ? "errorMessage" : "syncMessage"),
+    () => calls.push("settleSubmission"),
     () => false,
     (content: string) => /Task completed|Run stopped/.test(content),
     () => calls.push("append"),

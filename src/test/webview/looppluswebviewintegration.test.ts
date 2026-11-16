@@ -51,6 +51,7 @@ type BrowserState = {
 
 type RuntimeState = {
   messages: RoleMessage[];
+  promptSubmission: { requestId: string; started: boolean } | null;
   pendingPromptQueue: Array<Record<string, unknown>>;
   pendingRunPrompt: Record<string, unknown> | null;
   queueEditingIndex: number;
@@ -59,6 +60,7 @@ type RuntimeState = {
 
 type PostedMessage = {
   type?: string;
+  requestId?: string;
   prompt?: string;
   interactiveMode?: string;
   loopMainModel?: string;
@@ -76,6 +78,7 @@ type BrowserApi = {
   syncActiveMessagesFromRuntime(): void;
   resetAutoInteractiveModeMemoryForTest(): void;
   getConversationRuntimeState(tabId: string): RuntimeState;
+  settlePromptSubmission(tabId: string, requestId: string): void;
   openRunConflictOverlay(payload: Record<string, unknown>): void;
   queueConflictPromptForLater(): boolean;
   pauseAndSendConflictPrompt(): boolean | undefined;
@@ -428,6 +431,8 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "snapshotPromptPayloadForQueue"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "isConfigApplyPendingForCli"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "dispatchPrompt"],
+    [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "syncPromptSubmissionWait"],
+    [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "settlePromptSubmission"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "resolveDispatchInteractiveMode"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "syncRunConflictOverlay"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "openRunConflictOverlay"],
@@ -496,6 +501,7 @@ function browserScript(): string {
     "  syncActiveMessagesFromRuntime: syncActiveMessagesFromRuntime,",
     "  resetAutoInteractiveModeMemoryForTest: resetAutoInteractiveModeMemoryForTest,",
     "  getConversationRuntimeState: getConversationRuntimeState,",
+    "  settlePromptSubmission: settlePromptSubmission,",
     "  openRunConflictOverlay: openRunConflictOverlay,",
     "  queueConflictPromptForLater: queueConflictPromptForLater,",
     "  pauseAndSendConflictPrompt: pauseAndSendConflictPrompt,",
@@ -877,6 +883,11 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   assert.equal(queuedSend.loopMainThinkingMode, "xhigh");
   assert.equal(queuedSend.loopSubtaskThinkingMode, "low");
   assert.equal(Object.prototype.hasOwnProperty.call(queuedSend, "loopExecutionMode"), false);
+  assert.ok(queuedSend.requestId);
+  assert.equal(plusRuntime.promptSubmission?.requestId, queuedSend.requestId);
+  // 模拟上一条请求的宿主回执，再验证后续暂停与发送。
+  api.settlePromptSubmission("plus-main", queuedSend.requestId);
+  assert.equal(plusRuntime.promptSubmission, null);
 
   assert.equal(api.dispatchPrompt({
     prompt: "classic loop",
@@ -916,6 +927,8 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   assert.equal(pausedLater.interactiveMode, "loop_plus");
   assert.equal(pausedLater.loopMainThinkingMode, "high");
   assert.equal(Object.prototype.hasOwnProperty.call(pausedLater, "loopExecutionMode"), false);
+  assert.ok(pausedLater.requestId);
+  api.settlePromptSubmission("plus-main", pausedLater.requestId);
 
   state.selectedLoopModelsByCli.codex = { main: "entry-main", subtask: "entry-sub" };
   state.selectedLoopThinkingByCli.codex = { main: "high", subtask: "medium" };

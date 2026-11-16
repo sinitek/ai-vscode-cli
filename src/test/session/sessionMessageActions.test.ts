@@ -444,6 +444,62 @@ test("waits for pending config apply before sending a prompt", async () => {
   assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
 });
 
+test("Loop+ starts without waiting for the full panel refresh and settles its submission", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const panelReady = createDeferred();
+  const executionDone = createDeferred();
+  const receipts: Record<string, unknown>[] = [];
+  deps.postPanelState = () => panelReady.promise;
+  deps.postWebviewMessage = (message) => { receipts.push(message); };
+  const runLoopPrompt = deps.runLoopPrompt;
+  deps.runLoopPrompt = async (...args) => {
+    await runLoopPrompt(...args);
+    await executionDone.promise;
+  };
+  const submission = handlePanelMessageWithDeps({
+    type: "sendPrompt", requestId: "submit-loop-plus", prompt: "立即开始任务",
+    interactiveMode: "loop_plus", tabId: "tab-opencode-smoke", cli: "opencode",
+  }, deps);
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(calls.preloaded.length, 1);
+    assert.equal(calls.runLoopPrompt.length, 1, "display refresh must not gate execution");
+    assert.deepEqual(receipts, []);
+  } finally {
+    panelReady.resolve();
+    executionDone.resolve();
+    await submission;
+  }
+  assert.deepEqual(receipts, [{
+    type: "promptSubmissionSettled", requestId: "submit-loop-plus", tabId: "tab-opencode-smoke",
+  }]);
+});
+
+test("Loop+ submission settles on config refusal, early return and execution failure", async () => {
+  for (const failure of ["config", "disabled", "execution"] as const) {
+    const { deps, calls } = createSendPromptHarness();
+    const receipts: Record<string, unknown>[] = [];
+    deps.postWebviewMessage = (message) => { receipts.push(message); };
+    if (failure === "config") {
+      deps.validateVisibleConfigSelections = async () => { throw new Error("配置已变化"); };
+    } else if (failure === "disabled") {
+      deps.readStoredToolSettings = () => ({ cliEnabledByName: { opencode: false } });
+    } else {
+      deps.runLoopPrompt = async () => { throw new Error("启动失败"); };
+    }
+    const submission = handlePanelMessageWithDeps({
+      type: "sendPrompt", requestId: failure, prompt: "等待失败回执",
+      interactiveMode: "loop_plus", tabId: "tab-opencode-smoke", cli: "opencode",
+    }, deps);
+    if (failure === "execution") await assert.rejects(submission, /启动失败/);
+    else await submission;
+    assert.equal(calls.runPrompt.length, 0);
+    assert.deepEqual(receipts, [{
+      type: "promptSubmissionSettled", requestId: failure, tabId: "tab-opencode-smoke",
+    }]);
+  }
+});
+
 test("stale visible configuration refuses both ordinary and Loop dispatch before recording history", async () => {
   for (const interactiveMode of ["coding", "loop"] as const) {
     const { deps, calls } = createSendPromptHarness();

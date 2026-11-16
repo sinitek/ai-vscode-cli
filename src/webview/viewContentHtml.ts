@@ -185,6 +185,12 @@ ${webviewStyles}    </style>
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
+        <div id="promptSubmissionWait" class="message assistant prompt-submission-wait" hidden>
+          <div class="bubble" role="status" aria-live="polite" aria-atomic="true">
+            <span class="typing" aria-hidden="true"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>
+            <span id="promptSubmissionWaitText"></span>
+          </div>
+        </div>
         <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
           <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

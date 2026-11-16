@@ -77,6 +77,7 @@ export type PanelMessage =
   | { type: "repairCliCommand"; cli: CliName }
   | {
       type: "sendPrompt";
+      requestId?: string;
       configSelections?: Partial<Record<CliName, import("../config/sharedRuntimeConfig").VisibleConfigSelection>>;
       prompt: string;
       interactiveMode?: InteractiveMode;

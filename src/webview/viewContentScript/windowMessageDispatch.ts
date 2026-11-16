@@ -2,6 +2,9 @@
 export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEventListener("message", (event) => {
         try {
           const data = event.data;
+          if (data.type === "promptSubmissionSettled" && typeof data.requestId === "string" && data.requestId) {
+            settlePromptSubmission(data.tabId, data.requestId);
+          }
           if (data.type === "notificationAuthorization") {
             applyNotificationAuthorization(data);
           }
@@ -75,6 +78,10 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
                 statusSummaryUpdated = true;
               }
             }
+            if (data.message && (data.message.role === "assistant" || data.message.role === "trace")
+              && String(data.message.content || "").trim()) {
+              settlePromptSubmission(eventTabId, null, true);
+            }
             if (data.message && data.message.role === "assistant" && String(data.message.content || "").trim()) {
               setTabErrored(eventTabId, false);
             }
@@ -112,6 +119,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           if (data.type === "assistantDelta") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
             if (String(data.content || "").trim()) {
+              settlePromptSubmission(eventTabId, null, true);
               setTabErrored(eventTabId, false);
             }
             if (!shouldHandleTabScopedEvent(data)) {
@@ -146,6 +154,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
           }
           if (data.type === "traceSegment") {
             const eventTabId = typeof data.tabId === "string" ? data.tabId : getActiveConversationTabId();
+            if (String(data.content || "").trim()) {
+              settlePromptSubmission(eventTabId, null, true);
+            }
             syncTabErrorFromMessage(eventTabId, { role: "trace", content: data.content });
             if (!shouldHandleTabScopedEvent(data)) {
               return;
@@ -170,6 +181,9 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
             const shouldHandleActiveTabEvent = shouldHandleTabScopedEvent(data);
             let queuePausedNotice = "";
             if (data.status === "start") {
+              if (runtimeState && runtimeState.promptSubmission) {
+                runtimeState.promptSubmission.started = true;
+              }
               if (
                 typeof runningFlowStoppedTabIds !== "undefined"
                 && runningFlowStoppedTabIds
@@ -193,6 +207,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               }
               resetTaskListForRunStart(targetTabId);
             } else {
+              settlePromptSubmission(targetTabId, null, true);
               if (data.status === "error") {
                 setTabErrored(targetTabId, true);
               } else {

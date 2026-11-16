@@ -681,7 +681,37 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         updateRunStreamButton();
       }
 
+      function syncPromptSubmissionWait() {
+        const node = elements.promptSubmissionWait;
+        if (!node) {
+          return;
+        }
+        const runtimeState = getActiveConversationRuntimeState({ create: false });
+        const submission = runtimeState && runtimeState.promptSubmission;
+        node.hidden = !submission;
+        if (submission) {
+          elements.promptSubmissionWaitText.textContent = submission.started
+            ? "等待模型响应"
+            : "正在准备 Loop+ 任务";
+          elements.emptyState.style.display = "none";
+        }
+      }
+
+      function settlePromptSubmission(tabId, requestId, fromRun = false) {
+        const runtimeState = getConversationRuntimeState(tabId, { create: false });
+        if (!runtimeState || !runtimeState.promptSubmission
+          || (fromRun && !runtimeState.promptSubmission.started)
+          || (requestId && runtimeState.promptSubmission.requestId !== requestId)) {
+          return;
+        }
+        runtimeState.promptSubmission = null;
+        if (isRuntimeStateForActiveTab(tabId)) {
+          renderMessages({ incremental: true });
+        }
+      }
+
       function updateRunWait() {
+        syncPromptSubmissionWait();
         if (!elements.runWait) {
           return;
         }
@@ -1260,7 +1290,22 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (normalizedPayload.loopPlusAcceptancePlan) {
           sendPromptMessage.loopPlusAcceptancePlan = normalizedPayload.loopPlusAcceptancePlan;
         }
-        vscode.postMessage(sendPromptMessage);
+        if (targetInteractiveMode === "loop_plus") {
+          const runtimeState = getConversationRuntimeState(targetTabId);
+          const requestId = createMessageId();
+          runtimeState.promptSubmission = { requestId, started: false };
+          sendPromptMessage.requestId = requestId;
+          if (isRuntimeStateForActiveTab(targetTabId)) {
+            syncPromptSubmissionWait();
+            stickChatToBottom("auto");
+          }
+        }
+        try {
+          vscode.postMessage(sendPromptMessage);
+        } catch (error) {
+          settlePromptSubmission(targetTabId, sendPromptMessage.requestId);
+          throw error;
+        }
         return true;
       }
 

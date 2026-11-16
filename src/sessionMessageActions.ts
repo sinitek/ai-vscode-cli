@@ -1,7 +1,7 @@
 
 import { type CliName, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
-import { logInfo } from "./logger";
+import { logError, logInfo } from "./logger";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 import { routeSettingMessage } from "./settingMessageRouter";
 import { PanelMessage } from "./webview/types";
@@ -261,6 +261,25 @@ export async function handleSendPromptMessage(
   message: Extract<PanelMessage, { type: "sendPrompt" }>,
   deps: PanelMessageHandlerDeps
 ): Promise<void> {
+  // A submission can exit before a runtime emits runStatus (for example stale config).
+  // Always settle its local waiting bubble, including exceptions and early returns.
+  if (typeof message.requestId !== "string" || !message.requestId) {
+    return executeSendPromptMessage(message, deps);
+  }
+  const tabId = message.tabId || deps.getActiveConversationTabId();
+  try {
+    await executeSendPromptMessage(message, deps);
+  } finally {
+    if (typeof message.requestId === "string" && message.requestId) {
+      deps.postWebviewMessage({ type: "promptSubmissionSettled", requestId: message.requestId, tabId });
+    }
+  }
+}
+
+async function executeSendPromptMessage(
+  message: Extract<PanelMessage, { type: "sendPrompt" }>,
+  deps: PanelMessageHandlerDeps
+): Promise<void> {
   const trimmed = message.prompt.trim();
   if (!trimmed) {
     return;
@@ -488,7 +507,20 @@ export async function handleSendPromptMessage(
   if (message.skipPromptHistory !== true) {
     deps.recordPromptHistory(trimmed, targetCli);
   }
-  await deps.postPanelState();
+  if (loopPlusSchedulingMode === "event_driven") {
+    // This refresh reads every CLI's configuration/models. It is a UI projection,
+    // not a prerequisite for execution; visible config validation already ran.
+    const reportRefreshFailure = (error: unknown) => {
+      void logError("loop-plus-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
+    };
+    try {
+      void deps.postPanelState().catch(reportRefreshFailure);
+    } catch (error) {
+      reportRefreshFailure(error);
+    }
+  } else {
+    await deps.postPanelState();
+  }
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget
     ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget)

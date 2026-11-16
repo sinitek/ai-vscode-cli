@@ -1,4 +1,24 @@
 export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
+      .prompt-submission-wait[hidden] {
+        display: none;
+      }
+      .prompt-submission-wait {
+        margin-top: 16px;
+      }
+      .message.prompt-submission-wait .bubble {
+        display: inline-flex;
+        align-items: center;
+        align-self: flex-start;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 16px 16px 16px 4px;
+        background: var(--vscode-editor-inactiveSelectionBackground);
+        color: var(--vscode-descriptionForeground);
+      }
+      .prompt-submission-wait .typing {
+        padding: 0;
+        background: transparent;
+      }
       .run-wait {
         flex-shrink: 0;
         margin: 4px var(--panel-content-padding) 0;
@@ -140,6 +160,10 @@ export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
         100% { width: 1.5em; }
       }
       @media (prefers-reduced-motion: reduce) {
+        .prompt-submission-wait .typing-dot {
+          animation: none;
+          transform: none;
+        }
         .run-status-text.compacting {
           animation: none;
         }

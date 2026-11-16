@@ -347,6 +347,22 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.loop_plus_submission_feedback",
+      "name": "Loop+ 实际发送立即展示等待气泡且展示刷新不阻塞启动",
+      "description": "验收方案确认且通过本地检查并发送后，在当前 Tab 独立临时气泡显示准备等待；runStatus.start 后等待模型响应，首次助手正文或思考输出及调用终态清除。气泡不入历史或模型上下文，减少动态效果保留文字与静态三点。宿主以原 requestId 和目标 Tab 回传 promptSubmissionSettled，覆盖拒绝、提前返回和异常；旧回执及未 start 时旧调用的输出/终态不清除新准备。完整面板配置与模型刷新仅为展示投影，后台执行且失败不阻断 Loop+；执行前真实配置校验、所有权及压缩等待保持。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "发送与启动反馈"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 发送后即时等待反馈"},
+        {"path": "src/sessionMessageActions.ts", "anchor": "handleSendPromptMessage"},
+        {"path": "src/webview/viewContentScript/taskListAndUi.ts", "anchor": "syncPromptSubmissionWait"},
+        {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
+        {"path": "src/test/session/sessionMessageActions.test.ts"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.interactive_turn_tab_ownership",
       "name": "同会话由目标标签自动接管且仅保留一个标签",
       "description": "公共执行入口及 CLI 启动前按同 CLI + session 检查标签与实际运行绑定，真实运行绑定优先于过期标签存储。逐个复核候选标签对象及 CLI/session 绑定，每次异步关闭后再确认候选仍有效，并在接管结束时复查最终所有者；矛盾绑定或新增所有者时拒绝启动。准备期间取消、切换工作区、关闭或换绑目标不得迟到启动；停止或关闭失败保留 SESSION_RUN_ACTIVE 门禁，不继续启动。不同会话与不同 CLI 可并行，同标签交互重入仍拒绝。旧 runId 收尾和迟到 Codex thread/taskList 回调不得覆盖替代调用。宿主接管不替代 HOME + thread 的真实写入者释放确认。Loop+ 正常完成自动关闭子任务 Tab，失败或中断保留诊断，被同会话新标签接管时关闭旧标签但不伪装成功。主、子调用在执行期间直接捕获匹配本次身份及时间边界的宿主真实完成记录，收口后释放订阅；共享历史缺失不再将已捕获的成功误判为失败，不按答复文案推断成功，不追溯改写旧快照。异步准备返回后重新核验目标对象、CLI、会话绑定、工作区和取消状态；自身健康检查或命令修复主动换新会话时同步更新预期身份后仍可重试。",

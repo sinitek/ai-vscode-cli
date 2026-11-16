@@ -1,5 +1,15 @@
 # Loop+ 子任务调度
 
+## 发送与启动反馈
+
+Loop+ 在验收方案确认、通过本地配置/路由检查并实际发送 `sendPrompt` 时，立即在助手气泡显示三点等待动画和“正在准备 Loop+ 任务”；收到 `runStatus.start` 后显示“等待模型响应”，直到首次助手正文/思考输出或该调用结束。气泡独立于持久化消息，不进入历史、导出或模型上下文。每个 Tab 保存自己的临时提交状态，切换时只展示当前 Tab；减少动态效果模式保留静态三点与文字。
+
+请求使用可选 `requestId`，宿主无论正常返回、配置拒绝、提前退出还是异常，都以 `promptSubmissionSettled` 回传同一 ID 和提交时的目标 Tab。旧回执不能清除新请求；未收到本次 start 时，旧运行输出和终态也不能清除准备状态。取消验收方案、本地配置/路由拒绝不创建等待气泡。宿主拒绝保持既有错误提示，真实配置校验仍在执行之前。
+
+发送处理器在配置校验、角色快照和历史记录完成后异步刷新完整面板，随后立即预加载用户消息并进入编排。完整面板读取所有 CLI 配置和模型，仅为展示投影，不作为 Loop+ 启动条件；同步异常或异步刷新拒绝独立记日志，不阻断执行。CLI 初始化、配置应用、会话所有权和压缩等待仍遵循原有执行约束，等待气泡覆盖这些真实等待。
+
+实现：`src/sessionMessageActions.ts`、`src/webview/viewContentScript/taskListAndUi.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`。回归：`src/test/session/sessionMessageActions.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。
+
 宿主崩溃后手动续跑子任务的状态、完成回报与主任务重建规则见 [Loop / Loop+ 宿主中断后的完成回报](loop-crash-recovery.md)。
 
 会话连续性：每次 attempt 可以新建展示 Tab，但不必新建 CLI 会话。验收失败 review 关联的修补项自动续接原子任务，主模型也可用 `continueFromSubtaskId` 显式选择连续工作来源；控制重派保留原子任务来源。持久化绑定、配置兼容、串行执行及边界见 [Loop 子任务会话复用](loop-subtask-session-reuse.md)，原有调度和验收条件保持不变。
