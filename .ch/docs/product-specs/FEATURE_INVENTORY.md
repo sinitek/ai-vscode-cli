@@ -4,7 +4,9 @@
 
 ## 产研部三层协作模式
 
-- round-676主干累计整合交接：来源、55条完整冷恢复实体差异路径、closure和冲突决策见[整合来源清单](../integration/department-mainline-integration/sources.json)。当前分支组合标准build通过，本轮未运行单测、CLI、EH或浏览器。组长/成员人数的工作区覆盖优先于全局配置是整合开始后新增的用户要求，尚未实现或验证；真实UI-EH/CLI组合、必要异平台、冷恢复剩余门禁和分支全量回归继续开放。根feature仍active/in_progress。
+- round-694 工作区人数覆盖：工具设置－工作区的可选派发上限卡之后、长期记忆卡之前增加组长/员工两张同构卡，沿用原主题及响应布局。两项分别以 optional `departmentMaxLeaders`/`departmentMaxEmployees` 持久化；空值删除该项覆盖。有效值逐项按合法工作区值→合法全局值→4/20解析，数字字符串及正数取整复用公共规则，不安全/非正/布尔/空白读取继承，非空非法保存中文拒绝，无任意新增上限。原面板全局字段保持，新 `workspaceDepartmentMaxLeaders`/`workspaceDepartmentMaxEmployees` 为 number/null。scope/requestId隔离迟到保存/回执；保存复制最新设置，完整临时文件替换成功后才发布内存，失败保留已存配置并可重试。真实生产 `resolveDepartmentPromptConfiguration` 接入有效值，新根快照及后续原准入沿用该人数；本设置不热迁移已有根、不取消运行或释放未知租约。标准build、定向测试与生成Webview的Chromium fixture验证结果见现行计划本轮记录；不是最终真实EH/CLI或全量回归结论，历史失败和其它开放门禁全部保留。
+
+- round-676主干累计整合交接：来源、55条完整冷恢复实体差异路径、closure和冲突决策见[整合来源清单](../integration/department-mainline-integration/sources.json)。当前分支组合标准build通过，本轮未运行单测、CLI、EH或浏览器。组长/成员人数的工作区覆盖优先于全局配置在该整合时点尚未实现或验证（后续见round-694）；真实UI-EH/CLI组合、必要异平台、冷恢复剩余门禁和分支全量回归继续开放。根feature仍active/in_progress。
 
 - 当前显示补充合同（round-675，覆盖旧图标要求）：部门总监☀️、组长🌛、员工⭐️；普通Loop/Loop+主任务🌛、子任务⭐️。沿用部门展示优先及既有main/subtask和模式判断，不按会话名称推断；无角色普通会话不加图标。原Tab名称（如Codex2）、tooltip完整层级、身份/模式及持久会话数据不迁移。部门成员树圆形头像仍固定总/组/员，28px/12px/8px gap/4px行内边距和主题、布局、各状态/导航/关闭归焦保持不变。以下旧条目及旧emoji执行证据保留原时点事实，由本条覆盖其显示要求，不追认为新emoji通过。e0ec组合已审成果继续复用，原报告后附配置操作超时outcome=failed同样保留；本后继只做新字符的标准build、既有定向测试和1440深色/280浅色显示fixture检查，标准build通过，定向14个不同用例以未变11项+夹具修复后3项覆盖，两入口双视口通过（browserErrors=[]）；原14项首轮2失败及Tabs夹具首轮超时保留，实际结果见[角色会话说明](../runbooks/department-conversation-verification.md#round-675新角色图标显示后继)。不为图标重跑真实CLI、额度EH或冷恢复；根feature仍active/in_progress，统一产品/冷恢复合入、必要异平台、实现测试完成后的远端同步合理合并与最终合并树全量回归继续开放。
 

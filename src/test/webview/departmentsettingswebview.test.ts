@@ -102,3 +102,48 @@ test("generated browser normalizer matches host rules for refresh and submitted 
   listeners.get("blur")?.();
   assert.equal(posted.length, 2);
 });
+
+test("workspace capacity cards are independent siblings between dispatch and memory cards", () => {
+  const html = buildStaticHtml();
+  for (const key of ["workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"]) {
+    assert.match(html, new RegExp(`for="${key}"`));
+    assert.match(html, new RegExp(`id="${key}"[^>]*min="1" step="1"[^>]*disabled`));
+    assert.doesNotMatch(html.match(new RegExp(`<input[^>]*id="${key}"[^>]*>`))![0], /\bmax=/);
+  }
+  assert.ok(html.indexOf('id="workspaceLoopPlusDecisionSubtaskMax"') < html.indexOf('id="workspaceDepartmentMaxLeaders"'));
+  assert.ok(html.indexOf('id="workspaceDepartmentMaxEmployees"') < html.indexOf('id="longTermMemoryEnabled"'));
+});
+
+test("workspace generated runtime deduplicates saves, restores failure and rejects responses after ABA scope switch", () => {
+  const runtime = buildWebviewRuntimeScript({ i18n: getWebviewStrings(), cliList: CLI_LIST, loopMaxRoundsDefault: 20,
+    loopMaxRoundsMin: 1, loopMaxRoundsMax: 100, finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER });
+  const posted: any[] = [];
+  const makeInput = () => ({ value: "", disabled: true, placeholder: "", validity: {}, setAttribute() {}, removeAttribute() {} });
+  const elements = { workspaceDepartmentMaxLeaders: makeInput(), workspaceDepartmentMaxEmployees: makeInput() };
+  const status: Record<string, { textContent: string }> = {};
+  const sandbox: any = { vscode: { postMessage: (m: unknown) => posted.push(m) }, elements,
+    state: { departmentMaxLeaders: 8, departmentMaxEmployees: 40 }, document: { getElementById: (id: string) => status[id] ??= { textContent: "" } } };
+  vm.runInNewContext(`const workspaceCapacityUi = { scope: null, sequence: 0, pending: {}, values: {} };
+    const workspaceCapacityKeys = ["workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"];\n` + [
+    "normalizeDepartmentCapacity", "workspaceCapacityStatus", "syncWorkspaceDepartmentCapacityPanelState", "commitWorkspaceDepartmentCapacity", "applyWorkspaceDepartmentCapacitySaved",
+  ].map((name) => readFunction(runtime, name)).join("\n"), sandbox);
+  const panel = (scope: string, leaders: number | null = null) => sandbox.syncWorkspaceDepartmentCapacityPanelState({ departmentConfigurationScope: scope, workspaceDepartmentMaxLeaders: leaders, workspaceDepartmentMaxEmployees: 12 });
+  panel("a:1"); assert.equal(elements.workspaceDepartmentMaxLeaders.placeholder, "全局：8");
+  elements.workspaceDepartmentMaxLeaders.value = "2.8";
+  sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders"); sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders");
+  assert.equal(posted.length, 1); assert.equal(elements.workspaceDepartmentMaxLeaders.disabled, true);
+  const reply = (m: any, ok: boolean) => sandbox.applyWorkspaceDepartmentCapacitySaved({ ...m.value, key: m.key, ok, error: "保存失败" });
+  reply(posted[0], false); assert.equal(elements.workspaceDepartmentMaxLeaders.value, ""); assert.equal(elements.workspaceDepartmentMaxLeaders.disabled, false);
+  assert.equal(status.workspaceDepartmentMaxLeadersStatus.textContent, "保存失败");
+  elements.workspaceDepartmentMaxLeaders.value = "2"; sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders"); reply(posted[1], true);
+  assert.equal(elements.workspaceDepartmentMaxLeaders.value, "2");
+  elements.workspaceDepartmentMaxLeaders.value = ""; sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders"); reply(posted[2], true);
+  assert.equal(elements.workspaceDepartmentMaxLeaders.value, "");
+  elements.workspaceDepartmentMaxLeaders.value = "0.5"; sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders"); assert.equal(posted.length, 3);
+  panel("b:2", 7); assert.equal(status.workspaceDepartmentMaxLeadersStatus.textContent, "");
+  panel("a:3"); elements.workspaceDepartmentMaxLeaders.value = "5"; sandbox.commitWorkspaceDepartmentCapacity("workspaceDepartmentMaxLeaders");
+  reply(posted[0], true); assert.equal(elements.workspaceDepartmentMaxLeaders.disabled, true);
+  reply(posted[3], true); assert.equal(elements.workspaceDepartmentMaxLeaders.value, "5");
+  sandbox.state.departmentMaxLeaders = 10; panel("a:3", 5); assert.equal(elements.workspaceDepartmentMaxLeaders.placeholder, "全局：10");
+  assert.equal(elements.workspaceDepartmentMaxEmployees.value, "12");
+});

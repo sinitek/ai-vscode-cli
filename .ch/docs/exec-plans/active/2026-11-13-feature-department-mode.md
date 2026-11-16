@@ -252,3 +252,14 @@ round-228 生产 producer/ledger 事实同步见 round-228 attempt；round-231 �
 - [pending] 真实UI→EH、冷恢复/原代真实端点与完整清理凭证、Windows/Linux必要平台、最终分支全量回归及剩余原始功能验收仍开放。round-675首轮失败/Tabs超时、额度run1/2清理未知/run4 driver失败及只读复核通过、旧cold guard分支未直接捕获等历史不重写。
 
 计划仍保持 `active / in_progress`，本次不是根任务归档或整体完成。
+
+
+## round-694：工作区组长/员工人数覆盖（2026-11-16）
+
+- [completed] 从已整合主干 `ac1b8199d3c164f76c1043bc21bfffc13a0ae60e` 创建隔离分支 `codex/department-workspace-capacity-round694-20261116`；不使用整合返修index/dist或依赖链接，不改coordinator/pool。
+- [completed] 工具设置－工作区两张同构卡分别覆盖组长/员工人数；空值继承，全局占位随全局变化，change/blur去重，保存中禁用、失败中文恢复及scope/request隔离。存储optional同名字段，损坏值继承，公共正值取整/safe integer规则，无任意上限。
+- [completed] 生产modelSettings真实读取工作区有效值，逐项工作区→全局→4/20；原全局PanelState语义保持，新增workspace前缀number/null。保存最新副本、持久化成功才发布内存；共享工作区保存接口改为临时文件写完后替换，覆盖部分写入/替换失败保留旧文档。
+- [completed] 本地标准 `npm run build` 通过；8个直接相关测试文件53/53通过，覆盖存储/部分写入与替换失败/消息路由/面板投影/真实生产配置解析及原角色回归；ontology结构校验和9项工具测试通过。生成Webview＋真实设置router/store的Chromium fixture在1440深色、280浅色两场景通过，检查继承/保存/去重/重载/清除/非法/失败恢复/全局变化和几何，无浏览器错误；截图已人工复核。首次旧scope错误提示用例26/27、缺默认浏览器、旧网格断言、CSP桥接夹具及新增单域workflow校验失败保留在外部attempt报告；均由本轮修复或纠正。最终53项、结构9项及最终浏览器结果分别有效，不重复旧CLI/EH矩阵，不替代真实安装版EH或全量回归。
+- [pending] 本提交合理合回同一round-676整合分支后，由主审复核最终组合；真实安装版UI-EH/CLI、必要异平台及合并树全量回归保留。工作区覆盖只作用于新部门快照，既有准入按冻结原根人数执行；不引入运行容量热迁移，不取消既有执行、不释放未知租约、不重写原代快照。默认均分、全部门共享及完整证明释放、下一次派发应用总监额度、零余额每组一次未释放应急名额均不变。
+
+保留round-676语义遗漏、历史失败和各次未覆盖边界；根feature仍为active/in_progress，不归档。

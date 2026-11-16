@@ -335,6 +335,7 @@ export const WEBVIEW_STRINGS = {
     departmentMaxLeadersNote: "同时运行的组长上限，任务结束后释放名额。",
     departmentMaxEmployeesLabel: "产研部员工最多人数",
     departmentMaxEmployeesNote: "全产研部共享的员工并发上限，所有组长合计计算。",
+    workspaceDepartmentCapacityNote: "工作区配置优先；留空继承全局。新部门启动时生效，不调整已有运行任务。",
     departmentMaxLeadersSaveError: "产研部组长人数设置保存失败，请重试。",
     departmentMaxEmployeesSaveError: "产研部员工人数设置保存失败，请重试。",
     toolSettingsLoopMaxRoundsTitle:

@@ -3494,6 +3494,42 @@
           "path": ".ch/docs/runbooks/department-cold-recovery-eh-verification.md"
         }
       ]
+    },
+    {
+      "id": "plugin.rule.department_workspace_capacity",
+      "name": "工作区人数逐项覆盖及新根快照边界",
+      "description": "工具设置－工作区使用 optional departmentMaxLeaders/departmentMaxEmployees；空输入删除单项覆盖，有效值逐项为合法工作区值、合法全局值、4/20默认。公共归一化只接受数字或非空数字字符串，正数向下取整后须为safe integer；损坏读取不产生默认覆盖，非空非法保存中文拒绝。PanelState保留原全局字段并增加workspace前缀number/null投影。保存复制最新设置，校验宿主scope/requestId，经完整临时文件替换成功后更新内存；失败保留已保存值，迟到消息不写入或显示到新工作区。生产modelSettings读取实际工作区有效值；只用于新根配置快照，后续原准入使用该冻结快照，不迁移活跃组织或释放未知租约。浏览器fixture与host测试不等于真实EH/CLI或最终全量回归。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.chat_panel"
+      ],
+      "source_refs": [
+        {
+          "path": "src/departmentSettings.ts"
+        },
+        {
+          "path": "src/workspaceSettingsStore.ts"
+        },
+        {
+          "path": "src/extensionHost/modelSettings.ts"
+        },
+        {
+          "path": "src/settingMessageHandlers/preferences.ts"
+        },
+        {
+          "path": "src/panelStateBuilder.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentWorkspaceCapacitySettings.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentConfigurationHost.test.ts"
+        },
+        {
+          "path": "scripts/department_workspace_capacity_settings_smoke.cjs"
+        }
+      ]
     }
   ]
 }

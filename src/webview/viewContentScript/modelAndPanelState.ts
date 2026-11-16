@@ -661,6 +661,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           panelState.loopPlusMaxAcceptances
         );
         syncDepartmentCapacityPanelState(panelState);
+        syncWorkspaceDepartmentCapacityPanelState(panelState);
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;

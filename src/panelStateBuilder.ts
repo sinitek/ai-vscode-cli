@@ -61,7 +61,7 @@ import {
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
-import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import { resolveModeAvailability } from "./modeAvailability";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
@@ -233,6 +233,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     ),
     departmentMaxLeaders: normalizeDepartmentMaxLeaders(deps.getGlobalDepartmentMaxLeaders?.()),
     departmentMaxEmployees: normalizeDepartmentMaxEmployees(deps.getGlobalDepartmentMaxEmployees?.()),
+    workspaceDepartmentMaxLeaders: normalizeWorkspaceDepartmentCapacity(deps.workspaceSettings.departmentMaxLeaders) ?? null,
+    workspaceDepartmentMaxEmployees: normalizeWorkspaceDepartmentCapacity(deps.workspaceSettings.departmentMaxEmployees) ?? null,
     departmentRolePreferences: deps.workspaceSettings.departmentRoleRoutesByDirectorConfig?.[modelConfigId ?? ""],
     departmentConfigurationScope: deps.getDepartmentConfigurationScope?.(),
     departmentConfigurationIssue: deps.getDepartmentConfigurationIssue?.(),

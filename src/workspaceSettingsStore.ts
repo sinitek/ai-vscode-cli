@@ -1,5 +1,7 @@
 import * as fs from "fs";
+import { normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import * as path from "path";
+import { randomUUID } from "crypto";
 import { resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
 import {
   CLI_LIST,
@@ -48,6 +50,9 @@ export type WorkspaceSettings = {
   loopMaxRounds?: number;
   /** 当前工作区的 Loop/Loop+ 派发上限；缺省时继承全局。 */
   loopPlusDecisionSubtaskMax?: number;
+  /** 工作区产研部人数覆盖；缺省逐项继承全局。 */
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
   /** Loop+ 验收方案模板；“系统默认”是内置基线，不存于此字段。 */
@@ -144,6 +149,10 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     if (typeof loopMaxRounds === "number" || typeof loopMaxRounds === "string") {
       result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
     }
+    for (const key of ["departmentMaxLeaders", "departmentMaxEmployees"] as const) {
+      const value = normalizeWorkspaceDepartmentCapacity((parsed as WorkspaceSettings)[key]);
+      if (value !== undefined) result[key] = value;
+    }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     const loopPlusDecisionSubtaskMax = normalizeWorkspaceLoopPlusDecisionSubtaskMax(
       (parsed as WorkspaceSettings).loopPlusDecisionSubtaskMax,
@@ -231,13 +240,18 @@ export function trySaveWorkspaceSettings(
   if (!filePath) {
     return { ok: false, error: "当前工作区没有可用的设置存储位置。" };
   }
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
+    // Replace only a complete document: a failed/partial write must preserve the saved configuration.
+    fs.writeFileSync(temporaryPath, JSON.stringify(next, null, 2), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    fs.renameSync(temporaryPath, filePath);
     return { ok: true };
   } catch (error) {
     options.logError?.("workspace-settings-write-error", { error: String(error) });
     return { ok: false, error: String(error) };
+  } finally {
+    try { fs.unlinkSync(temporaryPath); } catch { /* Already renamed, or the write never created it. */ }
   }
 }
 

@@ -162,3 +162,43 @@ test("real host default resolution rejects target, save barrier, director select
     configService.readSharedConfigSelection = originalShared;
   }
 });
+
+test("production model settings resolves persisted workspace limits over changing global values and freezes old snapshots", async () => {
+  const toolSettings = require("../../toolSettings") as typeof import("../../toolSettings");
+  const originalRead = toolSettings.readToolSettings, originalList = configService.getConfigList, originalGet = configService.getConfigById;
+  const fs = require("node:fs") as typeof import("node:fs");
+  const os = require("node:os") as typeof import("node:os");
+  const path = require("node:path") as typeof import("node:path");
+  const { loadWorkspaceSettings, trySaveWorkspaceSettings } = require("../../workspaceSettingsStore") as typeof import("../../workspaceSettingsStore");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-production-settings-"));
+  const options = { workspaceSettingsDir: directory, workspaceKey: "a", isCliName: (v: string): v is CliName => v === "opencode",
+    isThinkingMode: (_v: unknown): _v is import("../../cli/types").ThinkingMode => false,
+    isInteractiveMode: (_v: unknown): _v is import("../../cli/types").InteractiveMode => false,
+    normalizeVisibleInteractiveMode: () => "coding" as const, normalizeLoopMaxRounds: () => 20, sanitizeConversationTabRecord: () => null };
+  let global = { departmentMaxLeaders: 8, departmentMaxEmployees: 40 };
+  const profile = { id: "profile", name: "OpenCode", platform: "opencode" as const, createdAt: 1, updatedAt: 1,
+    content: JSON.stringify({ model: "p/default", provider: { p: { models: { default: {} } } } }) };
+  try {
+    toolSettings.readToolSettings = () => global;
+    configService.getConfigList = async () => [profile];
+    configService.getConfigById = async () => profile;
+    const role = { cli: "opencode" as const, configId: "profile", model: null, thinkingMode: null, openCodeVariant: null };
+    const routes = { profile: { leader: role, employee: role } };
+    const saveAndResolve = async (limits: import("../../workspaceSettingsStore").WorkspaceSettings, key = "a") => {
+      assert.equal(trySaveWorkspaceSettings({ departmentRoleRoutesByDirectorConfig: routes, ...limits }, { ...options, workspaceKey: key }).ok, true);
+      return createHost({ store: ensureCliModelStore(null), settings: loadWorkspaceSettings({ ...options, workspaceKey: key }), currentCli: "opencode" }).host.resolveDepartmentPromptConfiguration("opencode");
+    };
+    assert.deepEqual((await saveAndResolve({})).limits, { maxLeaders: 8, maxEmployees: 40 });
+    assert.deepEqual((await saveAndResolve({ departmentMaxLeaders: 2 })).limits, { maxLeaders: 2, maxEmployees: 40 });
+    assert.deepEqual((await saveAndResolve({ departmentMaxEmployees: 13 })).limits, { maxLeaders: 8, maxEmployees: 13 });
+    const frozen = await saveAndResolve({ departmentMaxLeaders: 3, departmentMaxEmployees: 12 });
+    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 12 });
+    global = { departmentMaxLeaders: 9, departmentMaxEmployees: 50 };
+    assert.deepEqual((await saveAndResolve({ departmentMaxEmployees: 12 })).limits, { maxLeaders: 9, maxEmployees: 12 });
+    assert.deepEqual((await saveAndResolve({}, "b")).limits, { maxLeaders: 9, maxEmployees: 50 });
+    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 12 });
+  } finally {
+    toolSettings.readToolSettings = originalRead; configService.getConfigList = originalList; configService.getConfigById = originalGet;
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

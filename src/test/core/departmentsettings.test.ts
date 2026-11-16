@@ -111,3 +111,16 @@ test("task mode preference has one strict boolean handler and reports failed per
   assert.deepEqual(patches, []);
   assert.equal(errors.length, 1);
 });
+
+test("workspace capacities resolve independently without turning corrupt overrides into defaults", () => {
+  const { normalizeWorkspaceDepartmentCapacity: normalize, resolveEffectiveDepartmentLimits: resolve } = require("../../departmentSettings") as typeof import("../../departmentSettings");
+  const global = { departmentMaxLeaders: "8.9", departmentMaxEmployees: 40 };
+  for (const value of [undefined, null, "", " ", true, false, {}, [], "oops", 0, -1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(normalize(value), undefined);
+    assert.deepEqual(resolve({ departmentMaxLeaders: value, departmentMaxEmployees: value }, global), { maxLeaders: 8, maxEmployees: 40 });
+  }
+  assert.deepEqual(resolve({}, {}), { maxLeaders: 4, maxEmployees: 20 });
+  assert.deepEqual(resolve({ departmentMaxLeaders: "2.8" }, global), { maxLeaders: 2, maxEmployees: 40 });
+  assert.deepEqual(resolve({ departmentMaxEmployees: "11.9" }, global), { maxLeaders: 8, maxEmployees: 11 });
+  assert.deepEqual(resolve({ departmentMaxLeaders: 2, departmentMaxEmployees: Number.MAX_SAFE_INTEGER }, global), { maxLeaders: 2, maxEmployees: Number.MAX_SAFE_INTEGER });
+});

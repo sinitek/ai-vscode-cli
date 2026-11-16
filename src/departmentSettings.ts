@@ -20,3 +20,19 @@ export function normalizeDepartmentMaxLeaders(value: unknown): number {
 export function normalizeDepartmentMaxEmployees(value: unknown): number {
   return normalizeDepartmentCapacity(value, DEPARTMENT_MAX_EMPLOYEES_DEFAULT);
 }
+
+/** Invalid workspace values inherit; they must never become default overrides. */
+export function normalizeWorkspaceDepartmentCapacity(value: unknown): number | undefined {
+  const normalized = normalizeDepartmentCapacity(value, Number.NaN);
+  return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+export function resolveEffectiveDepartmentLimits(
+  workspace: { departmentMaxLeaders?: unknown; departmentMaxEmployees?: unknown },
+  global: { departmentMaxLeaders?: unknown; departmentMaxEmployees?: unknown },
+): { maxLeaders: number; maxEmployees: number } {
+  return {
+    maxLeaders: normalizeWorkspaceDepartmentCapacity(workspace.departmentMaxLeaders) ?? normalizeDepartmentMaxLeaders(global.departmentMaxLeaders),
+    maxEmployees: normalizeWorkspaceDepartmentCapacity(workspace.departmentMaxEmployees) ?? normalizeDepartmentMaxEmployees(global.departmentMaxEmployees),
+  };
+}
