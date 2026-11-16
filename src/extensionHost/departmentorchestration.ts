@@ -1,6 +1,6 @@
 import { isDepartmentLeaderCompleted } from "../loopPlusCompletion";
 import { normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
-import type { CapacityLease, DepartmentCapacityPool, DepartmentCapacitySnapshot } from "../departmentcapacity";
+import type { CapacityLease, DepartmentCapacityPool, DepartmentCapacitySnapshot, DepartmentEmployeeCapacity } from "../departmentcapacity";
 import { normalizeLoopPlusAcceptancePlanSnapshot, type LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 import { createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../loopPlusScheduler";
 import type { LoopMainDecision, LoopTaskRecord } from "../loopTaskStore";
@@ -19,6 +19,9 @@ export type DepartmentRecoveryResult = { ok: true } | { ok: false; reason: strin
 export type DepartmentExecutionObservation = { done: Promise<void> };
 export type DepartmentOrchestrationDeps = {
   capacity: DepartmentCapacityPool;
+  /** Production installs durable application + latest lease-based policy evaluation. Synchronous, immediately before grant. */
+  beginEmployeeAdmission?(rootTaskId: string, leaderTaskId: string): boolean;
+  readEmployeeCapacity?(rootTaskId: string, leaderTaskId: string): DepartmentEmployeeCapacity | null;
   canExecuteRoot?(rootTaskId: string): boolean;
   readTask(taskId: string): LoopTaskRecord | null;
   updateTask(taskId: string, patch: Partial<LoopTaskRecord>): LoopTaskRecord | null;
@@ -339,7 +342,11 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     if (held) return Promise.resolve(held.subtaskId === request.subtaskId && !held.recovered ? held : null);
     const pending = root.pending.get(identity);
     if (pending) return pending.subtaskId === request.subtaskId ? pending.promise : Promise.resolve(null);
+    if (signal.aborted || root.abort.signal.aborted) return Promise.resolve(null);
     const generation = member.generation, leaderLease = member.lease;
+    // No await between applying the newest group quota, evaluating both balances,
+    // and the existing pool's synchronous grant. Held/pending identities above remain idempotent.
+    if (deps.beginEmployeeAdmission && !deps.beginEmployeeAdmission(root.id, request.taskId)) return Promise.resolve(null);
     const admission = (async (): Promise<Employee | null> => {
       const lease = await deps.capacity.tryAcquireEmployeeWithOverflow(root.id, request.taskId, request.attemptId, undefined,
         AbortSignal.any([signal, root.abort.signal]));
@@ -624,7 +631,8 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
   deps.runtime.setDepartmentExecutionAdmission?.(acquireAttemptExecution);
   deps.runtime.setDepartmentEmployeeCapacityReader?.((rootTaskId, leaderTaskId) => {
     const root = owners.get(leaderTaskId), member = root?.members.get(leaderTaskId);
-    return root?.id === rootTaskId && member && executableMember(root, member) ? deps.capacity.getEmployeeCapacity(rootTaskId, leaderTaskId) : null;
+    return root?.id === rootTaskId && member && executableMember(root, member)
+      ? deps.readEmployeeCapacity ? deps.readEmployeeCapacity(rootTaskId, leaderTaskId) : deps.capacity.getEmployeeCapacity(rootTaskId, leaderTaskId) : null;
   });
   return { registerRoot, recoverRoot, startLeader, continueRoot, stopRoot, acquireAttemptExecution, coordinateCollaboration,
     processDirectorCollaboration, acknowledgeRootRequirements, canCompleteRoot, confirmRootComplete, runtimeSnapshot, directorCoordinationContext };

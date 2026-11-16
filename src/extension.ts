@@ -2967,6 +2967,8 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
   readTaskRecord: readDepartmentAwareGroupChatTask,
   readDepartmentCapacity: (root) => getDepartmentRuntimeComposition().readCapacity(root),
+  readDepartmentEmployeeAllocation: (root) => getDepartmentRuntimeComposition().readDepartmentEmployeeAllocation(root),
+  updateDepartmentEmployeeLimit: async (root, request) => getDepartmentRuntimeComposition().updateDepartmentEmployeeLimit(root, request),
   readDepartmentLeaderTaskIds: (root, module) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(root, module) ?? null,
   departmentOrganizationControl: {
     continue: (root, prompt) => getDepartmentRuntimeComposition().organizationControl.continue(root, prompt),
@@ -4062,6 +4064,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
   departmentRuntimeComposition = createDepartmentRuntimeComposition({
     runtime,
     store: runtimeStore,
+    readLeaderTaskIds: (root, module) => getDepartmentOwnershipIndex().readDepartmentLeaderTaskIds(root, module),
     workspaceKey: () => activeWorkspaceKey,
     readTask: readLoopTaskRecord,
     updateTask: updateLoopTaskRecord,

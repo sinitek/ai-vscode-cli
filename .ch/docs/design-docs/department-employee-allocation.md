@@ -1,6 +1,6 @@
 # 产研部逐组员工额度领域策略
 
-本专题的事实来源为 `src/departmentemployeeallocation.ts` 和本模块行为测试。它交付纯领域函数，尚未接入生产容量池、组织宿主、持久化或总监页面写端口；不能据此宣称生产逐组额度已经生效。
+本专题的领域事实来源为 `src/departmentemployeeallocation.ts`；round-436 候选已通过 `departmentemployeeallocationhost.ts`、`departmentruntimestore.ts`、`departmentruntimecomposition.ts` 和 `extension.ts` 安装生产端口。以下策略合同保持不变，新增接线范围及验证限制见末节；独立候选不代表最终合并树或真实 EH 已验收。
 
 ## 状态与输入边界
 
@@ -61,7 +61,7 @@
 
 计数参数为可信宿主的根绑定成员列表；缺参、缺组或该组 null 时只展示未知，拒绝重复/未知成员及错根计数。DTO 为独立副本，TypeScript readonly；不使用运行时冻结，因此 UI 改写副本也不能改写持久状态。读取没有激活、准入或预留副作用。
 
-## 验证与待集成边界
+## 纯策略交付时的验证与待集成边界（round-431 历史）
 
 本模块验证入口：`npm run build` 后执行 `node --test dist/test/departmentemployeeallocation.test.js`。测试覆盖均分/非整除/零、手动及恢复、降低与保留占用、拒绝时仍应用、跨组版本隔离、非法输入、未知计数、序列化往返及版本溢出。
 
@@ -71,3 +71,30 @@
 - 将版本化状态接入 runtime state/store、冷恢复，序列化同根操作并处理保存确认及持久失败；配置/成员变化通过可信宿主调用领域函数。
 - 给 UI 写端口安装授权保存服务和确认 revision；给投影及提示 reader 提供可信实时计数，应用后刷新读取；不将提示或浏览器 DTO 当作授权。
 - 与冷恢复交付协调更新中央功能清单、`.ch/docs/ontology/domains/cli-plugin-runtime.json` 相关共享容量规则/场景和 `.ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md`，以及必要的设计文档索引。这些中央文件本次按明确写域边界不修改。
+
+
+## round-436 生产接线候选
+
+### 权威状态与保存
+
+`DepartmentStoredRuntime.employeeAllocation` 与组织、容量、bindings、execution sets 保存在同一根组织原子快照。普通 controller 的旧快照省略该字段时保留最新额度；显式传入不同额度被拒绝，不能覆盖 CAS 端口的新保存。已有额度严格规范化失败时整个读取失败，不回退为空组织或默认额度。
+
+只有 composition 核验当前总监、workspace 和有效 routes 后的组织持久化生命周期调用 `synchronizeEmployeeAllocation`：无旧字段时初始化；配置变化复用领域函数重算默认及 clamp manual，保留历史 applied；真实成员登记复用领域 revision 规则。普通只读投影不迁移、不恢复执行权限。历史成员额度保留，当前 UI 投影及保存只接受当前 runtime 和独立 ownership index 同时认可的成员。
+
+`saveEmployeeLimit` 和 `beginEmployeeAdmission` 均同步读取最新快照、调用既有纯函数并原子写回；单 EH 写者内没有 await 交错，保存以全局 revision 做 CAS，不声称跨进程 CAS。总监 UI 的 `{requestId,leaderTaskId,employeeLimit,expectedRevision}` 经当前真实总监、workspace、成员及 revision 校验，持久化成功且确认读取后才返回 DTO。保存只改变 desired；幂等请求不递增 revision。保存失败不回传成功，也不释放、停止或取消已有员工。
+
+### 真实联合准入与清理
+
+原 `acquireAttemptExecution` 的身份、代次、held/pending 幂等及取消门禁后，调用宿主 `beginEmployeeAdmission`。它从当前 `DepartmentCapacityPool` 的实际 held leases（包含 overflow）取得全局及本组占用，复用 `beginDepartmentEmployeeAdmission`，先持久化该组 applied，再决定资格；随后即使组满拒绝，也已经应用。首次未尝试仍为 null，重复 held/pending 不当作新尝试激活。
+
+资格复核与原 `tryAcquireEmployeeWithOverflow` 的同步实际保留之间没有 await；各组竞争仍共享原池，无第二派发器。策略复核不是租约，容量授予和异步后身份复核仍由原路径承担。应用持久失败拒绝新执行并封闭该根，保留之前的 live/unknown 占用。全局零余额每组一次 overflow 例外仍适用（包括常规额度零），单独本组耗尽不能 overflow。额度降低不改变原 Owner/Ledger 清理、receipt、CLOSED、墓碑或恢复证明；原消费者/资源完整清理后才沿原路径释放。身份撤销后可持久记录真实释放，但不能借释放迁移额度或恢复派发许可。
+
+### 安装与只读计数
+
+extension 安装既有总监 reader/writer，composition 安装 orchestration/Loop+ 每轮容量 reader。DTO 保持上文形状，未知计数为 null；容量 reader 的 `leaderAllocation` 严格为 `{revision,source,desiredLimit,appliedLimit,activeEmployees,availableEmployees,pending}`，`availableEmployees=min(全局常规余额,max(0,desiredLimit-activeEmployees))`。pending 来自本组 desired/applied；未知或矛盾占用返回未知，不给出本组准入结论。该余额仅为提示，不是预留或执行权。布局、主题、草稿、Enter 保存、blur 不提交及 iframe 边界的 11 条已审 UI 文件未修改。
+
+### 本候选证据与开放门禁
+
+标准 `npm run build` 通过。新增定向验证覆盖真实 store 的 CAS/旧写保留/损坏拒绝/缩容历史、host 的授权/未知计数/失败确认、composition 的默认 5/下一次拒绝时应用/重复 attempt/竞争及全局零 overflow，并以生产 producer、adapter、Owner 和免费模拟 CLI 生命周期证明保存零后下一轮不创建第二执行、旧员工等待原清理才释放。共 9 个不同新增用例通过，其中 composition 中手工构造合法 scheduler 快照的准入测试不冒充自动派发证据；自动派发证据来自单独 production lifecycle 用例。具体命令和中间失败见 round-436 外部报告。
+
+本树以 d352 为基线，未合入返修冷恢复或已审提示 Git 后继；reader 的嵌套对象已提供，后继提示渲染组合仍需验收。复用既有策略 13、UI 40/最后 host 5、浏览器及提示 builder 34 项的原输入证据，不重新执行或合成为本树全量结论。真实 UI→EH 保存、第二 EH、冷恢复所有权/跨进程写者、必要平台、远端同步、合理合并及真实最终合并树全量回归继续开放。

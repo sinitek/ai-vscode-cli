@@ -1,3 +1,5 @@
+import { createDepartmentEmployeeAllocationHost } from "./departmentemployeeallocationhost";
+import type { DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
 import { normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "../departmentConfiguration";
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
@@ -26,8 +28,9 @@ export function freezeDepartmentThinkingDefaults(configuration: DepartmentConfig
 }
 
 export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
-  "capacity" | "persistRuntime" | "notifyDirector" | "buildLeaderInput" | "validateRoutes" | "canExecuteRoot" | "leaderSettled"> & {
+  "capacity" | "persistRuntime" | "notifyDirector" | "buildLeaderInput" | "validateRoutes" | "canExecuteRoot" | "leaderSettled" | "beginEmployeeAdmission" | "readEmployeeCapacity"> & {
   store: DepartmentRuntimeStore;
+  readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   workspaceKey(): string;
   /** Resolves live capabilities and shared profile availability without switching any profile. */
   prepareRoutes(routes: DepartmentMetadata["routes"]): Promise<void>;
@@ -71,9 +74,25 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     if (releaseLeaderModuleId) occupancy.leaders = occupancy.leaders.filter((id) => id !== releaseLeaderModuleId);
     const result = deps.store.write({ version: 1, rootTaskId: root, workspaceKey: task.workspaceKey, runtime: clone(runtime), capacity: occupancy });
     if (!result.ok) { failed.add(root); throw new Error(`部门运行状态保存失败：${result.error}`); }
+    // Real releases must still be persisted after revocation, but revocation is
+    // never permission to migrate/register policy or heal an execution fence.
+    const meta = normalizeDepartmentMetadata(task.department);
+    if (task.departmentInvalid || !meta || meta.role !== "director" || meta.rootTaskId !== root
+      || meta.parentTaskId !== null || meta.leaderSubtaskId !== null || task.workspaceKey !== deps.workspaceKey()
+      || !deps.validateRoutes(meta.routes)) { failed.add(root); return; }
+    // Only this verified organization lifecycle migrates/registers allocation state.
+    const allocation = deps.store.synchronizeEmployeeAllocation(root, task.workspaceKey);
+    if (!allocation.ok) { failed.add(root); throw new Error(`部门员工额度保存失败：${allocation.error}`); }
     failed.delete(root);
   }
+  const allocation = createDepartmentEmployeeAllocationHost({ ...deps, capacity,
+    runtimeSnapshot: (root) => host.runtimeSnapshot(root),
+    current: (root) => !disposed && !failed.has(root) && host.runtimeSnapshot(root) !== null,
+    persistenceFailed: (root) => { failed.add(root); },
+  });
   const host = createDepartmentOrchestrationHost({ ...deps, capacity,
+    beginEmployeeAdmission: allocation.beginEmployeeAdmission,
+    readEmployeeCapacity: allocation.readEmployeeCapacity,
     canExecuteRoot: (root) => !disposed && !failed.has(root) && deps.readTask(root)?.workspaceKey === deps.workspaceKey(),
     persistRuntime: (snapshot, releaseLeaderModuleId) => { snapshots.set(snapshot.rootTaskId, clone(snapshot)); save(snapshot.rootTaskId, releaseLeaderModuleId); },
     leaderSettled: (root, taskId, generation) => {
@@ -362,7 +381,9 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     stop,
     complete: async (root: LoopTaskRecord) => { ensure(root); const result = host.confirmRootComplete(root.id, root.finalSummary || "按组长汇报确认整体完成"); if (!result.ok) throw new Error(`整体完成被拒绝：${result.reason}`); },
   };
-  return { host, capacity, startDepartmentPrompt, isDepartmentContinuation, continueDepartmentPrompt, handleDirectorDecision, organizationControl,
+  return { host, capacity, readDepartmentEmployeeAllocation: allocation.readDepartmentEmployeeAllocation,
+    updateDepartmentEmployeeLimit: allocation.updateDepartmentEmployeeLimit,
+    readEmployeeCapacity: allocation.readEmployeeCapacity, startDepartmentPrompt, isDepartmentContinuation, continueDepartmentPrompt, handleDirectorDecision, organizationControl,
     wakeDirector: wake,
     recoverRoot: (root: LoopTaskRecord) => { ensure(root); },
     readCapacity: (root: string): DepartmentCapacitySnapshot | null => {

@@ -1,3 +1,7 @@
+import { beginDepartmentEmployeeAdmission, createDepartmentEmployeeAllocation, normalizeDepartmentEmployeeAllocation,
+  registerDepartmentEmployeeAllocationLeader, saveDepartmentEmployeeLimit, updateDepartmentEmployeeAllocationLimits,
+  type DepartmentEmployeeAllocationState, type DepartmentEmployeeAdmissionOccupancy,
+  type DepartmentEmployeeAdmissionEvaluation } from "../departmentemployeeallocation";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -19,6 +23,8 @@ export type DepartmentStoredRuntime = {
   /** Append-only, separate from controller snapshots so a stale controller
    * cannot discard execution ownership when persisting organization state. */
   executionBindings?: DepartmentExecutionBinding[];
+  /** Owned by synchronous allocation lifecycle/CAS ports, never controller snapshots. */
+  employeeAllocation?: DepartmentEmployeeAllocationState;
   /** Trusted host facts, independent of stale controller scheduling snapshots. */
   leaderExecutionSets?: DepartmentLeaderExecutionSet[];
 };
@@ -53,6 +59,10 @@ function validate(value: unknown, root: string, workspace: string): ValidatedRun
     || !isDepartmentRuntimeSnapshot(v.runtime, root) || v.capacity?.rootTaskId !== root) return null;
   try { new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 20 }).restore([v.capacity]); }
   catch { return null; }
+  if (v.employeeAllocation !== undefined) {
+    try { v.employeeAllocation = normalizeDepartmentEmployeeAllocation(v.employeeAllocation, root); }
+    catch { return null; }
+  }
   const members = new Map(v.runtime.leaders.map((member) => [memberKey(member.taskId, member.leaderSubtaskId), member]));
   const bindings = new Map<string, DepartmentExecutionBinding>(), slots = new Set<string>(), bindingScopes = new Set<string>();
   if (v.executionBindings !== undefined) {
@@ -133,6 +143,11 @@ export class DepartmentRuntimeStore {
       // host are synchronous, with no await between read and atomic rename.
       const previous = this.readSnapshot(value.rootTaskId, value.workspaceKey);
       if (!previous.ok) throw new Error(previous.error);
+      const allocation = previous.snapshot?.value.employeeAllocation;
+      if (value.employeeAllocation !== undefined && JSON.stringify(value.employeeAllocation) !== JSON.stringify(allocation)) {
+        throw new Error("department-allocation-host-port-required");
+      }
+      if (allocation !== undefined) value.employeeAllocation = allocation;
       const retained = previous.snapshot?.value.executionBindings;
       if (retained?.length && value.executionBindings === undefined) value.executionBindings = retained;
       const retainedSets = previous.snapshot?.value.leaderExecutionSets;
@@ -173,6 +188,57 @@ export class DepartmentRuntimeStore {
       return { ok: true };
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
     finally { if (temporary) { try { fs.unlinkSync(temporary); } catch { /* rename already consumed it */ } } }
+  }
+
+  /** Explicit verified lifecycle ONLY. Readers and generic controller writes never migrate legacy state.
+   * One EH writer; these read/modify/rename operations are synchronous, not cross-process CAS. */
+  synchronizeEmployeeAllocation(root: string, workspace: string): DepartmentRuntimeWriteResult {
+    try {
+      const read = this.readSnapshot(root, workspace);
+      if (!read.ok || !read.snapshot) throw new Error(read.ok ? "部门运行快照缺失。" : read.error);
+      const value = read.snapshot.value;
+      let state = value.employeeAllocation ?? createDepartmentEmployeeAllocation(root, value.capacity, []);
+      state = updateDepartmentEmployeeAllocationLimits(state, { rootTaskId: root, expectedRevision: state.revision,
+        maxLeaders: value.capacity.maxLeaders, maxEmployees: value.capacity.maxEmployees });
+      for (const member of value.runtime.leaders) state = registerDepartmentEmployeeAllocationLeader(state, root, member.taskId);
+      if (JSON.stringify(state) === JSON.stringify(value.employeeAllocation)) return { ok: true };
+      value.employeeAllocation = state;
+      return this.commitValidated(value);
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  }
+  saveEmployeeLimit(root: string, workspace: string, request: {
+    leaderTaskId: string; employeeLimit: number | null; expectedRevision: number;
+  }): DepartmentRuntimeWriteResult {
+    try {
+      const read = this.readSnapshot(root, workspace);
+      if (!read.ok || !read.snapshot?.value.employeeAllocation) throw new Error(read.ok ? "部门员工额度尚未初始化。" : read.error);
+      const value = read.snapshot.value;
+      if (!value.runtime.leaders.some((member) => member.taskId === request.leaderTaskId)) throw new Error("部门组长身份无效。");
+      const state = saveDepartmentEmployeeLimit(value.employeeAllocation!, { ...request, rootTaskId: root });
+      if (state.maxEmployees !== value.capacity.maxEmployees || state.maxLeaders !== value.capacity.maxLeaders) throw new Error("部门额度配置尚未同步。");
+      if (JSON.stringify(state) === JSON.stringify(value.employeeAllocation)) return { ok: true };
+      value.employeeAllocation = state;
+      return this.commitValidated(value);
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  }
+  /** Occupancy comes from live leases at the synchronous grant boundary, never disk history. */
+  beginEmployeeAdmission(workspace: string, occupancy: DepartmentEmployeeAdmissionOccupancy):
+    { ok: true; evaluation: DepartmentEmployeeAdmissionEvaluation } | { ok: false; error: string } {
+    try {
+      const read = this.readSnapshot(occupancy.rootTaskId, workspace);
+      if (!read.ok || !read.snapshot?.value.employeeAllocation) throw new Error(read.ok ? "部门员工额度尚未初始化。" : read.error);
+      const value = read.snapshot.value;
+      if (!value.runtime.leaders.some((member) => member.taskId === occupancy.leaderTaskId)) throw new Error("部门组长身份无效。");
+      if (value.employeeAllocation!.maxEmployees !== value.capacity.maxEmployees
+        || value.employeeAllocation!.maxLeaders !== value.capacity.maxLeaders) throw new Error("部门额度配置尚未同步。");
+      const result = beginDepartmentEmployeeAdmission(value.employeeAllocation!, occupancy);
+      if (JSON.stringify(result.state) !== JSON.stringify(value.employeeAllocation)) {
+        value.employeeAllocation = result.state;
+        const commit = this.commitValidated(value);
+        if (!commit.ok) return commit;
+      }
+      return { ok: true, evaluation: result.evaluation };
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   }
 
   /** Trusted host port. Returns only after the bound identity is durable. It

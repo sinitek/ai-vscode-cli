@@ -228,3 +228,15 @@ round-228 生产 producer/ledger 事实同步见 round-228 attempt；round-231 �
 - [completed] 物理隔离标准 build 和 26 个不同直接相关用例通过；总监/员工默认限直接宿主与真实 argv/overlay builder 回归，组长另有生产 launch/binding/cleanup 及真实 EH。未改 helper 的本轮 9 项继续按原范围复用。
 - [completed] `/tmp/round372-mixed-default-public-eh.json` passed：真实 UI 默认模型新建，Codex 总监/OpenCode 组长/Codex 员工，两模块、四原 Owner 完整 receipt、两个 CLOSED 全集、容量持久归还后实际下一模块与总监最终汇报。9 次 Responses/8 次 Chat Completions 无协议失败；首份 round-369 默认模型 failed 不覆盖。源码/产物与并发共享 Owner 新修订的边界见本轮报告，不能称整个当前仓库已验证。
 - [completed] round-372 阶段交付的根能力、finalizing 与默认模型修复均已接受；其时全角色公开 EH 尚待审查的状态由 round-375 后继新建场景关闭。round-121 弹窗/275px/焦点/滚动恢复、动态主题及 round-338 深浅主题 tab 证据按未变范围复用，不笼统重开主题/窄屏；远程付费模型质量不是额外用户要求。当前未关闭门禁见本计划 round-378 决策及[验收覆盖表](../../runbooks/department-acceptance-coverage.md)。
+
+
+## round-436：逐组额度生产接线候选（2026-11-16）
+
+- [completed] 以已接受 d352（父083d纯策略）建立独立外置实体树；复用策略、保留11条UI字节，不导入返修冷恢复或提示Git后继。
+- [completed] RuntimeStore 同根原子快照维护版本化额度；单EH同步CAS、旧controller保留、可信生命周期初始化/登记/配置clamp、损坏拒绝和只读不迁移。
+- [completed] 原真实准入路径在身份/幂等/取消门禁后应用最新desired并持久化，即使拒绝仍应用；与原同步pool保留之间无await。真实租约含overflow计数，额度降低保留原员工/责任/清理标准。
+- [completed] extension 安装已有总监reader/writer及独立ownership index，composition安装Loop+每轮精确容量reader；未改布局、文案、主题或iframe消息边界。
+- [completed] 本实体树标准 `npm run build` 通过；2个store、3个host、3个composition及1个production lifecycle不同新增用例通过。覆盖默认5、保存/下次尝试、CAS竞争、缩容历史、未知/错根/错成员、持久失败、重复attempt、共享总额/overflow和原清理后释放。composition准入夹具手工建立合法scheduler快照；单独生产生命周期使用真实producer/adapter/Owner和免费模拟CLI自动派发，不是安装版EH或真实模型验证。
+- [pending] 合并后继提示渲染和返修冷恢复；复核恢复/所有权标准及所有写者，真实UI→EH保存、第二EH、必要平台、最终远端同步、合理合并与真实最终合并树全量回归。策略13、UI40/最后host5、浏览器和提示builder34只复用原输入证据，不重跑刷新或冒称本候选全量通过。
+
+根计划保持 `active / in_progress`。本轮命令、中间夹具失败、源码哈希和本地候选身份记在round-436外部attempt报告；不改变历史失败或根验收结果。详细持久化及准入边界见[逐组员工额度设计](../../design-docs/department-employee-allocation.md)。

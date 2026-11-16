@@ -1,7 +1,10 @@
+import type { DepartmentEmployeeAdmissionOccupancy } from "./departmentemployeeallocation";
 export type DepartmentCapacityLease = { rootTaskId: string; kind: "leader" | "employee"; identity: string };
 export type DepartmentCapacitySnapshot = { rootTaskId: string; maxLeaders: number; maxEmployees: number; leaders: string[]; employees: string[]; employeeOverflow?: string[] };
 export type DepartmentCapacityLimits = { maxLeaders: number; maxEmployees: number };
-export type DepartmentEmployeeCapacity = { rootTaskId: string; leaderTaskId: string; maxEmployees: number; activeEmployees: number; availableEmployees: number; leaderOverflowActive: boolean; canAcquireOverflow: boolean };
+export type DepartmentLeaderEmployeeAllocation = { revision: number; source: "default" | "manual"; desiredLimit: number;
+  appliedLimit: number | null; activeEmployees: number; availableEmployees: number; pending: boolean };
+export type DepartmentEmployeeCapacity = { rootTaskId: string; leaderTaskId: string; maxEmployees: number; activeEmployees: number; availableEmployees: number; leaderOverflowActive: boolean; canAcquireOverflow: boolean; leaderAllocation?: DepartmentLeaderEmployeeAllocation };
 type Pool = DepartmentCapacityLimits & {
   leases: Map<string, DepartmentCapacityLease>;
   leaderCount: number;
@@ -61,6 +64,16 @@ export class DepartmentCapacityPool {
     const availableEmployees = Math.max(0, pool.maxEmployees - pool.employeeCount);
     return { rootTaskId, leaderTaskId, maxEmployees: pool.maxEmployees, activeEmployees: pool.employeeCount,
       availableEmployees, leaderOverflowActive, canAcquireOverflow: availableEmployees === 0 && !leaderOverflowActive };
+  }
+
+  /** Authoritative per-group occupancy from actual held leases, including overflow. Never task history. */
+  getEmployeeAllocationOccupancy(rootTaskId: string, leaderTaskId: string): DepartmentEmployeeAdmissionOccupancy | null {
+    const pool = this.pools.get(rootTaskId);
+    if (!pool || !validText(leaderTaskId)) return null;
+    let activeEmployees = 0;
+    for (const lease of pool.leases.values()) if (lease.kind === "employee" && this.employeeLeader(lease.identity) === leaderTaskId) activeEmployees++;
+    return { rootTaskId, leaderTaskId, globalActiveEmployees: pool.employeeCount, activeEmployees,
+      leaderOverflowActive: [...pool.overflowEmployees].some((identity) => this.employeeLeader(identity) === leaderTaskId) };
   }
 
   snapshot(rootTaskId?: string): DepartmentCapacitySnapshot[] {

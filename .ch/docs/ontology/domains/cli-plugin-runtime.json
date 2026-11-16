@@ -3016,7 +3016,7 @@
     {
       "id": "plugin.rule.department_shared_capacity",
       "name": "部门共享常规额度与每组限量超额",
-      "description": "设置默认同时 4 名组长无例外、全部门共享常规 20 员工，非累计/每组数量。全部实际员工含超额占用，余额=max(0,常规额度-实际占用)；零余额每位组长最多一个未释放超额，身份/恢复标记保留至真实执行结束清理。等待不占执行额，降低额度不强杀；扩容/余额回正不改标或抹去超额，取消/重复/迟到及根局部恢复隔离租约，不承诺跨 VS Code 宿主共享。 同部门余额为零且已有本组未释放超额时，不同新 attempt 经 tryAcquireEmployeeWithOverflow 的同一同步授予边界明确拒绝，不保留新 waiter；host 前后校验当前权威身份，adapter 将明确部门拒绝作为 failed finish 送验收而不启动 root/tab/worker。原等待 API 与同身份 held/pending 幂等保留，冲突身份拒绝；余额回正仍可获常规名额且不抹去原超额。受控宿主回归不构成真实原生资源或整组释放验收。",
+      "description": "设置默认同时 4 名组长无例外、全部门共享常规 20 员工，非累计/每组数量。全部实际员工含超额占用，余额=max(0,常规额度-实际占用)；零余额每位组长最多一个未释放超额，身份/恢复标记保留至真实执行结束清理。等待不占执行额，降低额度不强杀；扩容/余额回正不改标或抹去超额，取消/重复/迟到及根局部恢复隔离租约，不承诺跨 VS Code 宿主共享。 同部门余额为零且已有本组未释放超额时，不同新 attempt 经 tryAcquireEmployeeWithOverflow 的同一同步授予边界明确拒绝，不保留新 waiter；host 前后校验当前权威身份，adapter 将明确部门拒绝作为 failed finish 送验收而不启动 root/tab/worker。原等待 API 与同身份 held/pending 幂等保留，冲突身份拒绝；余额回正仍可获常规名额且不抹去原超额。受控宿主回归不构成真实原生资源或整组释放验收。 round-436 额度接线候选：每组默认 ceil(maxEmployees/maxLeaders)，分母为配置值，maxLeaders=0 时为0；手动额度不是预留或新增容量，各组上限和可超过共享总额。常规准入同时要求本组和全局余额；仅本组满且全局有余不触发 overflow，常规额度0保留既有全局零例外。权威额度在同根 RuntimeStore 原子快照由单 EH 同步 CAS 端口维护，旧 controller 不覆盖，损坏拒绝、只读不迁移；可信组织生命周期登记成员/同步配置及 manual clamp，保留历史 applied。总监保存只改变 desired，下一次真实新 attempt 持久应用后再经原同步授予路径保留，即使拒绝也生效；持久失败不启动，既有 live/unknown 租约不因额度调整释放。计数来自 held leases 含 overflow，未知不当零；extension 安装总监端口和 Loop+ 精确 leaderAllocation reader，pending 按本组 desired/applied。候选未合入返修冷恢复及提示 Git 后继，不认证跨进程 CAS、第二 EH 或最终组合。",
       "status": "active",
       "applies_to": ["plugin.department_task"],
       "source_refs": [{
@@ -3033,6 +3033,20 @@
         "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
       }, {
         "path": ".ch/docs/design-docs/department-loopplus-regression-contracts.md"
+      }, {
+        "path": "src/departmentemployeeallocation.ts"
+      }, {
+        "path": "src/extensionHost/departmentemployeeallocationhost.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimestore.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": "src/extension.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentproductionwiring.test.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-employee-allocation.md"
       }]
     },
     {

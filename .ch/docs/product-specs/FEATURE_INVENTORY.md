@@ -4,6 +4,8 @@
 
 ## 产研部三层协作模式
 
+- 逐组员工额度生产接线候选（round-436）：默认按配置 `maxLeaders` 向上取整均分（20/4 为 5），总监手动/恢复默认经当前身份及同步持久 CAS 保存 desired；下一次真实新 attempt 先持久应用，即使随后因占用拒绝。实际 held leases 含 overflow 同时受本组/部门余额约束，仅全局零余额保留每组一次未释放 overflow。额度不是预留，保存/降低不取消员工或释放原责任。旧 controller 不覆盖额度，读端不初始化，extension 已安装既有总监端口及 Loop+ 容量 reader。独立实体标准 build、9 个不同新增 store/host/composition/生产生命周期用例通过；免费模拟 CLI 证据不等于真实 EH/UI 或最终组合。11 条已审 UI 字节保持；未合入返修冷恢复及提示 Git 后继，第二 EH、平台及最终同步/合并/全量回归仍开放。详见[逐组额度设计](../design-docs/department-employee-allocation.md)。
+
 - 模式可用性设置：全局 `settings.json` 提供 `loopEnabled` / `loopPlusEnabled` / `departmentEnabled`，仅接受布尔值，缺失或非法分别按开/开/关解析。常规设置卡片提供三个开关及产研部性能警告；宿主对新建面板任务与定时任务拒绝已关闭模式，等待配置后复核。已有 Loop/部门续接与可信组长 Loop+ producer 不受开关影响。round-332 的设置面板 Chromium smoke（1280px/280px、默认值、键盘切换、保存禁用、警告与溢出）通过；部门会话 smoke 未通过，因现有角色 Tab fixture 文案不匹配（实际 `👴🏻 Codex`，fixture 期望组织总览名称）。未证明完整 VS Code 真实 CLI 派发链。
 
 - Round 234 准入收口：同一部门余额为零且该组已有未释放超额时，不同新 attempt 在权威池同一同步授予边界明确拒绝，不留新 waiter；adapter 将明确部门拒绝作为未启动的 failed finish 送入 Loop+ 验收，不创建执行 root/tab/worker。原 held/pending 身份幂等、冲突拒绝、普通等待 API、取消及迟到复核保持；原超额尚在但余额回正时可取得常规名额，既有超额标记不提前归还。实体副本标准 build、新容量 5 项、等待兼容 9 项及定向宿主 9 项通过；宿主具名场景使用隔离受控存储和真实 pool/host/adapter，底层执行仍是确定性夹具，不代表真实原生资源、生产全树停止恢复、冷恢复、其它 CLI 或跨平台根验收。契约与命令见[部门 Loop+ 回归契约](../design-docs/department-loopplus-regression-contracts.md)。

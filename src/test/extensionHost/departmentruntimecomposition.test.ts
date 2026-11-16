@@ -1,3 +1,4 @@
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("node:fs");
@@ -644,4 +645,102 @@ test("warm stop closes admission synchronously without route preparation or wait
   assert.equal(h.fixture.mainCalls.length, 0);
   release.resolve(); await stopping;
   assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+});
+
+const allocationMainReleases = new WeakMap<object, Array<() => void>>();
+async function disposeAllocationHarness(h: ReturnType<typeof harness>) {
+  for (const taskId of h.fixture.createdTaskIds) h.fixture.adapter.host().stopParent(taskId);
+  for (const release of allocationMainReleases.get(h) ?? []) release();
+  await Promise.all(h.fixture.createdTaskIds.map((taskId) => h.fixture.adapter.waitForTaskIdle(taskId)));
+  h.dispose();
+}
+async function allocationLeader(h: ReturnType<typeof harness>, moduleId: string) {
+  const root = h.fixture.readTask("root-1")!;
+  h.deps.updateTask(root.id, { subTasks: [...root.subTasks, { id: moduleId, title: moduleId, status: "running", prompt: "Implement and verify the complete isolated module." }] });
+  const gate = latch(), releases = allocationMainReleases.get(h) ?? [];
+  releases.push(gate.resolve); allocationMainReleases.set(h, releases);
+  h.fixture.queueMain(() => gate.promise);
+  const started = await h.composition.host.startLeader(root.id, { leaderSubtaskId: moduleId, moduleTitle: moduleId, prompt: "Implement and verify the complete isolated module." });
+  assert.ok(started.ok);
+  await waitForLoopPlus(() => h.fixture.mainCalls.length > 0, "allocation leader first turn");
+  return started.taskId;
+}
+function allocationAttempt(h: ReturnType<typeof harness>, taskId: string, id: string) {
+  const task = h.fixture.readTask(taskId)!;
+  const loopPlus = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();
+  loopPlus.running.push({ subtaskId: id, attemptId: id, title: id, conflictGroup: null, writeFiles: [], state: "running" });
+  loopPlus.seenAttempts.push({ subtaskId: id, attemptId: id, disposition: "open" });
+  loopPlus.maxConcurrency = Math.max(loopPlus.maxConcurrency, loopPlus.running.length);
+  h.deps.updateTask(taskId, { subTasks: [...task.subTasks, { id, title: id, status: "running", prompt: "Implement the complete independent task." }], loopPlus });
+  return { taskId, subtaskId: id, attemptId: id };
+}
+
+test("allocation production ports enforce default five from live leases, save CAS and apply even on refusal", async (t) => {
+  const h = harness(); t.after(() => disposeAllocationHarness(h)); h.configuration.limits.maxEmployees = 20; await h.start();
+  const leader = await allocationLeader(h, "allocation-a");
+  const root = h.fixture.readTask("root-1")!;
+  const first = h.composition.readDepartmentEmployeeAllocation(root.id)!;
+  assert.equal(first.defaultLimit, 5); assert.equal(first.leaders[0].appliedLimit, null);
+  const leases = [];
+  for (let i = 0; i < 5; i++) {
+    const lease = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, `held-${i}`), new AbortController().signal);
+    assert.ok(lease, JSON.stringify({task:h.fixture.readTask(leader), runtime:h.composition.host.runtimeSnapshot(root.id), policy:h.composition.readDepartmentEmployeeAllocation(root.id), logs:h.fixture.logs})); leases.push(lease);
+  }
+  const denied = allocationAttempt(h, leader, "group-full");
+  assert.equal(await h.composition.host.acquireAttemptExecution(denied, new AbortController().signal), null);
+  assert.equal(h.composition.readCapacity(root.id)!.employees.length, 5);
+  const latest = h.composition.readDepartmentEmployeeAllocation(root.id)!;
+  const request = { requestId: "save-a", leaderTaskId: leader, employeeLimit: 2, expectedRevision: latest.revision };
+  const saved = h.composition.updateDepartmentEmployeeLimit(root, request); assert.ok(saved.ok);
+  assert.equal(h.composition.updateDepartmentEmployeeLimit(root, { ...request, requestId: "competitor", employeeLimit: 3 }).ok, false);
+  assert.equal(saved.allocation.leaders[0].appliedLimit, 5); assert.equal(saved.allocation.leaders[0].pending, true);
+  assert.equal(saved.allocation.leaders[0].activeEmployees, 5);
+  const repeated = { taskId: leader, subtaskId: "held-0", attemptId: "held-0" };
+  assert.equal(await h.composition.host.acquireAttemptExecution(repeated, new AbortController().signal), leases[0]);
+  assert.equal(h.composition.readDepartmentEmployeeAllocation(root.id)!.leaders[0].appliedLimit, 5, "held identity is not a new attempt");
+  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "lowered"), new AbortController().signal), null);
+  const applied = h.composition.readDepartmentEmployeeAllocation(root.id)!;
+  assert.equal(applied.leaders[0].appliedLimit, 2); assert.equal(applied.leaders[0].pending, false);
+  assert.equal(applied.leaders[0].activeEmployees, 5, "saving and refusal never release prior employees");
+  assert.equal(h.composition.readEmployeeCapacity(root.id, leader)!.leaderAllocation!.availableEmployees, 0);
+  assert.equal(h.composition.updateDepartmentEmployeeLimit(h.fixture.readTask(leader)!, { ...request, expectedRevision: applied.revision }).ok, false);
+  assert.equal(h.composition.updateDepartmentEmployeeLimit(root, { ...request, leaderTaskId: "foreign", expectedRevision: applied.revision }).ok, false);
+  assert.equal(h.composition.readEmployeeCapacity("foreign", leader), null);
+  const cancelled = new AbortController(); cancelled.abort();
+  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "cancelled"), cancelled.signal), null);
+  leases.forEach((lease) => lease.release());
+  assert.equal(h.composition.readCapacity(root.id)!.employees.length, 0);
+});
+
+test("allocation persistence failure blocks the next attempt without releasing earlier live occupancy", async (t) => {
+  const h = harness(); t.after(() => disposeAllocationHarness(h)); h.configuration.limits.maxEmployees = 20; await h.start();
+  const leader = await allocationLeader(h, "allocation-failure"), root = h.fixture.readTask("root-1")!;
+  const held = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "held"), new AbortController().signal); assert.ok(held);
+  const view = h.composition.readDepartmentEmployeeAllocation(root.id)!;
+  assert.equal(h.composition.updateDepartmentEmployeeLimit(root, { requestId: "pending", leaderTaskId: leader, employeeLimit: 3, expectedRevision: view.revision }).ok, true);
+  const rename = fs.renameSync;
+  t.mock.method(fs, "renameSync", () => { throw new Error("allocation-fsync-rename-failure"); });
+  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "not-started"), new AbortController().signal), null);
+  assert.equal(h.composition.capacity.snapshot(root.id)[0].employees.length, 1);
+  assert.equal(h.fixture.attemptCalls.length, 0);
+  t.mock.restoreAll(); assert.ok(rename);
+  assert.equal(h.composition.readDepartmentEmployeeAllocation(root.id)!.leaders[0].appliedLimit, 5, "failed activation was never confirmed");
+  held.release();
+});
+
+test("allocation simultaneous group competition shares total and preserves one overflow per leader only at global zero", async (t) => {
+  const h = harness(); t.after(() => disposeAllocationHarness(h)); h.configuration.limits.maxEmployees = 1; await h.start();
+  const a = await allocationLeader(h, "allocation-a"), b = await allocationLeader(h, "allocation-b");
+  const signal = new AbortController().signal;
+  const first = h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-first"), signal);
+  const second = h.composition.host.acquireAttemptExecution(allocationAttempt(h, b, "b-first"), signal);
+  const [regular, overflowB] = await Promise.all([first, second]); assert.ok(regular); assert.ok(overflowB);
+  const overflowA = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-overflow"), signal); assert.ok(overflowA);
+  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-refused"), signal), null);
+  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, b, "b-refused"), signal), null);
+  const occupancy = h.composition.readCapacity("root-1")!;
+  assert.equal(occupancy.employees.length, 3); assert.equal(occupancy.employeeOverflow!.length, 2);
+  assert.equal(h.composition.readEmployeeCapacity("root-1", a)!.leaderAllocation!.activeEmployees, 2);
+  regular.release(); overflowA.release(); overflowB.release();
+  assert.equal(h.composition.readCapacity("root-1")!.employees.length, 0);
 });

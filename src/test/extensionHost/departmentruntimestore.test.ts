@@ -159,3 +159,51 @@ test("production source lifecycle revokes real stored index authorization before
   authority = true; assert.equal(index.rebuild(), false);
   assert.equal(source.prepareRebuild(), true); assert.equal(index.rebuild(), true);
 });
+
+test("allocation store initializes only via explicit lifecycle, preserves saved state across stale controllers and serializes CAS", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "department-allocation-store-"));
+  try {
+    const store = new DepartmentRuntimeStore(dir), old = value();
+    old.runtime.leaders.push({ taskId: "leader", leaderSubtaskId: "module", status: "running", generation: 1 });
+    assert.equal(store.write(old).ok, true);
+    assert.equal(store.read("root", "workspace").ok, true);
+    assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "leader", employeeLimit: 2, expectedRevision: 0 }).ok, false);
+    assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
+    const read = store.read("root", "workspace"); assert.ok(read.ok && read.value?.employeeAllocation);
+    const revision = read.value.employeeAllocation.revision;
+    assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "leader", employeeLimit: 2, expectedRevision: revision }).ok, true);
+    assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "leader", employeeLimit: 3, expectedRevision: revision }).ok, false);
+    assert.equal(store.write(old).ok, true, "legacy controller omits allocation but cannot drop it");
+    const saved = store.read("root", "workspace"); assert.ok(saved.ok && saved.value?.employeeAllocation);
+    assert.equal(saved.value.employeeAllocation.leaders[0].manualLimit, 2);
+    assert.equal(saved.value.employeeAllocation.revision, revision + 1);
+    assert.equal(store.write({ ...old, employeeAllocation: read.value.employeeAllocation }).ok, false, "stale explicit allocation cannot overwrite a later save");
+    assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "foreign", employeeLimit: 1, expectedRevision: revision + 1 }).ok, false);
+    assert.equal(store.synchronizeEmployeeAllocation("root", "foreign").ok, false);
+    const cold = new DepartmentRuntimeStore(dir).read("root", "workspace"); assert.deepEqual(cold, saved);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("allocation shrink clamps manual desired, retains historical applied and refuses corrupt policy rather than defaulting", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "department-allocation-shrink-"));
+  try {
+    const store = new DepartmentRuntimeStore(dir), old = value();
+    old.runtime.leaders.push({ taskId: "leader", leaderSubtaskId: "module", status: "running", generation: 1 });
+    assert.equal(store.write(old).ok, true); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
+    assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "leader", employeeLimit: 12, expectedRevision: 1 }).ok, true);
+    const before = { rootTaskId: "root", leaderTaskId: "leader", globalActiveEmployees: 0, activeEmployees: 0, leaderOverflowActive: false };
+    assert.equal(store.beginEmployeeAdmission("workspace", before).ok, true);
+    old.capacity.maxEmployees = 6;
+    assert.equal(store.write(old).ok, true); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
+    const shrunk = store.read("root", "workspace"); assert.ok(shrunk.ok && shrunk.value?.employeeAllocation);
+    assert.deepEqual(shrunk.value.employeeAllocation.leaders[0], { leaderTaskId: "leader", manualLimit: 6, appliedLimit: 12 });
+    const refused = store.beginEmployeeAdmission("workspace", { ...before, activeEmployees: 6, globalActiveEmployees: 6, leaderOverflowActive: true });
+    assert.ok(refused.ok && !refused.evaluation.eligible);
+    const after = store.read("root", "workspace"); assert.ok(after.ok && after.value?.employeeAllocation);
+    assert.equal(after.value.employeeAllocation.leaders[0].appliedLimit, 6);
+    const file = path.join(dir, Buffer.from("root").toString("hex") + ".json");
+    fs.writeFileSync(file, JSON.stringify({ ...after.value, employeeAllocation: { ...after.value.employeeAllocation, revision: "4" } }));
+    assert.equal(store.read("root", "workspace").ok, false);
+    assert.equal(store.write(old).ok, false); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, false);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
