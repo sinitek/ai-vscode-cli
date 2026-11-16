@@ -1,6 +1,15 @@
 # 产研部逐项验收覆盖
 
-## 当前结论（Round721，截止已接受 lp719 / lp720）
+## 收尾结论（Round723，截止 lp722 已独立接受）
+
+现有 feature 的实现、合理主干合并后官方全量、指定真实 mixed 组合与原目录交接均已有接受结果。[原 feature 计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)标记 `completed` 并按 2026-11 归档；本次收尾记录待主审独立接受，最终主任务完成由主审决定，未发布。下方 Round721 及更早正文均为历史快照，原索引、全部 22 项映射、失败/取消/受控中断和 manifest 勘误保留，不将历史待办全局改绿。
+
+- **已接受交接**：lp721 正常合入已接受；lp722 原打开目录已安全切至 `codex/department-mainline-integration-round676-20261116` / `f78706a8a541c389799fa617f7a80d1892f62a70` / tree `477723271a956a786605cf9088c8e98ad9222b64`，切换前 master 实际 clean，master ref 仍 `f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95`；原整合 worktree detached 于同一 f787、内容 clean。其它 34 个 worktree 登记及全部 refs 在 lp722 记录范围保持，原目录交接不再待操作。
+- **原件与失败诊断**：228 个非ignored untracked（3416383 字节）精确归档，106 个 tracked 精确恢复，334 条完整回滚映射。归档 `/Users/fangjiawei/.cache/round722-original-handoff-dt2oahtr` 的 `rollback-map.json` SHA256 为 `8f0761489f13ab3d708660937d4bed81b70798b1759cf82c8baa78ab672c38f4`；旧备份 `/Users/fangjiawei/.cache/round718-original-checkout-ggf4x1v6` 继续保护，不复制原内容。restore 本身 exit0 后，raw-index 封口曾 exit1 并暂停；后续三个稳定窗口及 1151 条 index 比较确认仅 106 条 stat-cache 变化，零 blob/mode/path/flags/stage 语义变化，extensions 相同；actor 未确认，未猜测。补完验证后普通安全切换通过，不隐去中间失败。
+- **复用运行证据**：lp715 实际输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a`，一次标准 `npm run build` exit0；一次官方 `node scripts/run_unit_tests.js`，397 文件、5472 项中 5469 通过、0 失败、0 取消、3 门控跳过，自然 exit0。lp719 完整物理产品唯一 180 秒 mixed cold-recovery exit0 仅证明原完整 receipts/CLOSED、持久容量移除、原 authority 自然退役、公开 continue 唯一后继、OpenCode 原 session 与 move/readback、最终公开 stop 及直接观察 workers；不外推总监最终业务汇报，后者复用 round-366/375 等已有相应历史接受证据。本轮不重跑运行、来源或备份验证。
+- **覆盖限制与保护**：原生 Windows/Linux 无目标条件、三个 DSH live 环境门控未运行，付费模型、任意崩溃/外部 writer、所有后代及其它未覆盖矩阵仍有限制；强制卫生回收与 authority 自然退出分开。ignored dist/node_modules/.tmp/.codegraph、私有备份及独立树继续保护，旧 dist 可能与交付源码不同，未更新或验证匹配。本轮只有文档/本体路径引用后继，既有运行结果未失效；不清理、不重新交接、不宣称发布。
+
+## 历史结论（Round721，截止已接受 lp719 / lp720；保留原文）
 
 lp718 原目录保全及 lp717 需求事实文档已接受；lp720 已正常合入 c651 三文档并保留 2db 两份保全材料。lp719 的完整产品闭包与唯一 mixed 冷恢复也已正式接受，本轮正常合入完整 `0817→6313→1fe10c6` 来源，保留 lp716 装配失败和 lp719 成功两段，见[冷恢复记录](department-cold-start-verification.md)。因此下方截至 lp715 的“当前独立补验”和“保全任务未审”是历史快照，不再作为现行待办；其原索引、全部 22 项映射和失败记录原样保留。
 
@@ -11,7 +20,7 @@ lp718 原目录保全及 lp717 需求事实文档已接受；lp720 已正常合�
 
 ## 截至 lp715 的接受快照（lp717来源，保留原文）
 
-截至 2026-11-16 **lp715 主审接受**；本轮 round-718 只同步已接受事实。文档基线为 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。根功能仍为**开发中**，[原 feature 计划](../exec-plans/active/2026-11-13-feature-department-mode.md)保持 active / `in_progress`，不新增平行计划或提前归档。
+截至 2026-11-16 **lp715 主审接受**；本轮 round-718 只同步已接受事实。文档基线为 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。根功能仍为**开发中**，[原 feature 计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)保持 active / `in_progress`，不新增平行计划或提前归档。
 
 原始要求及补充 **1–22** 按最新父记录 `rootPrompt` / 全部 `supplementalRequirements` 顺序核对。报告从相关 `subTasks[].communicationFile` 定位；lp 编号是执行 ID，报告文件轮次可能不同，以下同时列出，不能仅凭文件轮次推断接受状态。主通信 `main-task.md` 的 lp715 审查是本次接受范围截止点；不消费本批共享存储＋真实混合冷链补验或原目录保全任务的未审结果。
 
@@ -92,7 +101,7 @@ lp718 原目录保全及 lp717 需求事实文档已接受；lp720 已正常合�
 
 以下保留原覆盖表时点、当时14项补充和失败边界；当前22项、最终图标、已关闭门禁及仍开放范围以上文为准。
 
-截至 2026-11-16 round-410 中央事实同步。根功能仍为**开发中**，[现有计划](../exec-plans/active/2026-11-13-feature-department-mode.md)保持 active / `in_progress`。本表是需求与接受证据的映射，不是新的执行计划或根验收结论。原始目标及补充 1–14 的顺序取自父任务的 `rootPrompt` / `supplementalRequirements`；报告位置由同一父记录各 `subTasks[].communicationFile` 解析，以下用轮次与子任务 ID 定位，不复制运行时身份或原始日志。
+截至 2026-11-16 round-410 中央事实同步。根功能仍为**开发中**，[现有计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)保持 active / `in_progress`。本表是需求与接受证据的映射，不是新的执行计划或根验收结论。原始目标及补充 1–14 的顺序取自父任务的 `rootPrompt` / `supplementalRequirements`；报告位置由同一父记录各 `subTasks[].communicationFile` 解析，以下用轮次与子任务 ID 定位，不复制运行时身份或原始日志。
 
 ## 已接受证据索引
 

@@ -1,5 +1,9 @@
 # 产研部逐组员工额度领域策略
 
+## 当前记录与计划导航（Round723）
+
+逐组额度及工作区人数的接受范围见[收尾覆盖](../runbooks/department-acceptance-coverage.md)；原 feature 的实现与既定交付范围已完成，[计划已归档](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)。lp721 合入及 lp722 交接已接受，本轮仅同步导航，不改变额度、授权、CAS、准入或清理合同；最终主任务接受仍由主审决定，未发布。以下 round-431/436 候选说明保留原历史时点，旧 literal 计划路径不是当前导航。
+
 本专题的领域事实来源为 `src/departmentemployeeallocation.ts`；round-436 候选已通过 `departmentemployeeallocationhost.ts`、`departmentruntimestore.ts`、`departmentruntimecomposition.ts` 和 `extension.ts` 安装生产端口。以下策略合同保持不变，新增接线范围及验证限制见末节；独立候选不代表最终合并树或真实 EH 已验收。
 
 ## 状态与输入边界

@@ -1026,5 +1026,71 @@
       "Protect ignored dist/node_modules/.tmp/.codegraph, private backup and independent trees. Zero collision is not cleanup permission; original ignored dist is neither updated nor revalidated.",
       "Windows/Linux native conditions, three DSH live gates, paid models/arbitrary crash/external writer/all descendants remain outside the specific accepted scenario. Root feature active/in_progress; final root acceptance open."
     ]
+  },
+  "round723FeatureCloseoutRecords": {
+    "round": 723,
+    "acceptanceCutoff": "Formal lp722 review 2026-11-16T16:22:32.322831+00:00; lp721 actual integration and lp722 handoff accepted. Closeout records require independent acceptance; no publication.",
+    "base": {
+      "commit": "f78706a8a541c389799fa617f7a80d1892f62a70",
+      "tree": "477723271a956a786605cf9088c8e98ad9222b64"
+    },
+    "delivery": {
+      "branch": "codex/department-mainline-integration-round676-20261116",
+      "checkout": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+      "masterRef": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+      "masterCleanBeforeSwitch": true,
+      "integrationWorktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116",
+      "integrationDetachedCommit": "f78706a8a541c389799fa617f7a80d1892f62a70"
+    },
+    "planMigration": {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "to": ".ch/docs/exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md",
+      "status": "completed",
+      "scope": "Existing feature implementation and defined delivery scope; final main-task acceptance remains independent. Historical snapshots and pending items retained, current links/source_refs migrated; historical literal paths are not rewritten."
+    },
+    "acceptedHandoff": {
+      "archivedUntrackedFiles": 228,
+      "restoredTrackedPaths": 106,
+      "rollbackPaths": 334,
+      "archive": "/Users/fangjiawei/.cache/round722-original-handoff-dt2oahtr",
+      "rollbackMapSha256": "8f0761489f13ab3d708660937d4bed81b70798b1759cf82c8baa78ab672c38f4",
+      "oldBackup": "/Users/fangjiawei/.cache/round718-original-checkout-ggf4x1v6",
+      "intermediateIndexSealExitCode": 1,
+      "diagnosis": {
+        "stableWindows": 3,
+        "indexEntries": 1151,
+        "statCacheChanges": 106,
+        "stageSemanticChanges": 0,
+        "actor": "unknown"
+      },
+      "protection": "Old backup and two preservation documents unchanged; no original private contents copied into this record. No repeat handoff or archive validation."
+    },
+    "reusedEvidence": {
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural"
+      },
+      "lp719": "Single 180-second complete-product mixed cold-recovery exit0, within original receipts/CLOSED, persisted capacity, authority retirement, public continue unique successor, OpenCode session/move-readback, final stop and directly observed worker scope.",
+      "directorFinalBusinessReport": "Reuse corresponding accepted round-366/375 evidence, not inferred from cold recovery.",
+      "runtimeRerun": false
+    },
+    "verificationScope": "Plan archive/status/month; affected Markdown links and rebased plan links; two source_refs, duplicate-free JSON and old-value retention; historical text/22 mappings; ontology validate and diff hygiene. No build/tsc/tests/browser/CLI/EH or old audit/restore reruns.",
+    "remainingLimits": [
+      "Final main-task acceptance by reviewer; no push or release.",
+      "Native Windows/Linux targets unavailable; three live DSH environment gates not executed.",
+      "Paid models, arbitrary crashes, external writers, all descendants and other uncovered matrices not established by these scenarios.",
+      "Ignored dist may differ from source; not updated or validated. Backups, ignored/private content and independent trees remain protected."
+    ],
+    "finalIdentity": "Only in external Round723 attempt report; this object records its parent input, not a self-referential commit."
   }
 }

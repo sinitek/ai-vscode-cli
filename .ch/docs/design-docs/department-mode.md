@@ -1,11 +1,19 @@
 # 产研部模式：需求与设计边界
 
 - 日期：2026-11-13
-- 状态：开发中；记录已确认需求、已审查的生产装配阶段及剩余集成门禁，不代表完整运行链路已验收或发布。
-- 根 feature：[执行计划](../exec-plans/active/2026-11-13-feature-department-mode.md)
+- 状态：实现与既定交付范围 completed（Round723，截止 lp722 已独立接受）；最终主任务接受由主审决定，未发布。
+- 根 feature：[执行计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)
 - 当前清单：[功能总表](../product-specs/FEATURE_INVENTORY.md)
 
-## 需求与交付边界
+## 当前交付状态（Round723）
+
+lp721 正常合入及 lp722 原目录安全交接已接受，原 feature 计划已按 2026-11 归档。原目录占用交付分支，本轮基线 f787/tree4777；master ref 未改且切换前 clean，原整合树 detached f787。228 原 untracked 受限归档、106 tracked 精确恢复，334 完整回滚映射和原件保全继续有效。中间 raw-index 封口 exit1 与三个稳定窗口/1151 条仅 106 stat-cache 变化、零 stage 语义变化的诊断保留，actor 未知，见[收尾覆盖](../runbooks/department-acceptance-coverage.md)。
+
+复用 lp715 一次标准 build 及官方 397 文件/5472 项（5469 通过、0 失败/取消、3 门控跳过、自然 exit0）和 lp719 唯一 180 秒 mixed 冷链 exit0，按原 receipts/CLOSED、持久容量、authority 自然退役、公开 continue 唯一后继、OpenCode 原 session/move-readback、最终公开 stop 及直接 workers 观察范围成立。总监最终业务汇报沿用 round-366/375 等相应历史接受证据，不由冷链推导。原生 Windows/Linux、三 DSH live 门控、模型/任意崩溃/外部 writer/全部后代限制仍有效，ignored dist 可能与交付源码不同且未更新/验证。本轮无业务合同或运行实现变化，不重跑运行验证。
+
+下方旧开发阶段及“待验收”叙述均保留为其时点的历史事实，由本段和覆盖表给出现行截止；不改写失败历史，不把强制卫生回收称自然退出。
+
+## 历史需求与交付边界（保留原文）
 
 在现有 Loop、Loop+ 之外提供“产研部”，形成总监→组长→员工三层。人数设置、模式/角色配置与就绪门禁、中央组织 host/Loop+ 装配、容量策略与余额提示、记录驱动群聊、生产来源 Controller/Repository/identity catalog 路由和若干真实公开宿主场景已有分范围实现及审查证据。仍须区分生产接线、特定平台/角色/执行代次的端到端证据与完整根门禁；本设计状态仍为开发中。
 
