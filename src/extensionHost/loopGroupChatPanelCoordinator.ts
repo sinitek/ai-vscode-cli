@@ -425,10 +425,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
     const panel = deps.panelsByTaskId.get(normalizedTaskId);
-    if (!panel) {
-      return;
-    }
-    if (openingPanels.has(panel)) return;
+    if (panel && openingPanels.has(panel)) return;
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task || task.id !== normalizedTaskId) return;
     if ((task.department || task.departmentInvalid) && !resolveDepartmentRoot(task, deps)) {

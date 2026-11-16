@@ -1000,14 +1000,6 @@ export class CodexAppServerConnection {
       if (owner) this.deliverNotification(owner, message);
       return;
     }
-    const active = this.singleActiveListener();
-    if (active) {
-      if (routing.threadId) {
-        this.claimThread(routing.threadId, active.id);
-      }
-      this.deliverNotification(active, message);
-      return;
-    }
     if (!routing.threadId) {
       for (const listener of this.listeners.values()) {
         if (listener.isActive()) {
@@ -1016,6 +1008,8 @@ export class CodexAppServerConnection {
       }
       return;
     }
+    // Unknown explicit thread ids are not ownership evidence. Keep them
+    // buffered until a load response or explicit parent/child link claims them.
     const queued = this.buffered.get(routing.threadId) ?? [];
     queued.push(message);
     if (this.spec.ownedExecution && queued.length > 40) {

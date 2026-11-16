@@ -458,6 +458,8 @@ for (const reuseConnection of [true, false]) {
         harness.children[0].send({ method: "thread/status/changed", params: { threadId, status: { type: "idle" } } });
         // A response is a wire-order barrier: the notification has been processed.
         await main.request("main-owner", "test/ping", {});
+        assert.equal(main.hasLoadedThread(threadId), false, "a sole active listener must not claim an unknown thread");
+        assert.deepEqual(received, [], "unknown thread notifications stay buffered until ownership is confirmed");
         await next.withThread("subtask-owner", threadId, async () => {
           await next.request("subtask-owner", "thread/resume", { threadId });
         }, { timeoutMs: 300 });

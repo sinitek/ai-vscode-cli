@@ -16,6 +16,16 @@ const vscode = require("vscode") as typeof import("vscode");
 type Deps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function deferred() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
+async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 2000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([promise, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function harness() {
   const data = departmentRecords();
@@ -23,10 +33,20 @@ function harness() {
   let receive!: (message: any) => void;
   let dispose!: () => void;
   const previous = vscode.window.createWebviewPanel;
-  (vscode.window as any).createWebviewPanel = () => ({ title: "", webview: { cspSource: "self", html: "",
+  (vscode.window as any).createWebviewPanel = () => {
+    let html = "";
+    return { title: "", webview: { cspSource: "self", get html() { return html; }, set html(value: string) {
+      html = value;
+      if (value.includes('vscode.postMessage({ type: "loopGroupChatChat:loadingReady" })')) {
+        setTimeout(() => receive?.({ type: "loopGroupChatChat:loadingReady" }), 0);
+      }
+      const generation = /const PANEL_GENERATION = (\d+)/.exec(value)?.[1];
+      if (generation) setTimeout(() => receive?.({ type: "loopGroupChatChat:domReady", generation: Number(generation) }), 0);
+    },
     onDidReceiveMessage: (handler: typeof receive) => { receive = handler; return { dispose() {} }; },
     postMessage: (message: any) => { posted.push(structuredClone(message)); return Promise.resolve(true); },
-  }, reveal() {}, onDidDispose: (handler: () => void) => { dispose = handler; return { dispose() {} }; } });
+    }, reveal() {}, onDidDispose: (handler: () => void) => { dispose = handler; return { dispose() {} }; } };
+  };
   const deps: Deps = {
     getExtensionUri: () => ({ fsPath: "/fixture" } as any), panelsByTaskId: new Map(),
     normalizeTaskId: (value) => typeof value === "string" && value.trim() ? value.trim() : null,
@@ -108,7 +128,7 @@ test("department host loads in-page leader and routes actions, ask thread, previ
   try {
     h.leader.communicationDir = path.join(temp, h.leader.id); fs.mkdirSync(h.leader.communicationDir);
     h.leader.mainCommunicationFile = path.join(h.leader.communicationDir, "main.md"); fs.writeFileSync(h.leader.mainCommunicationFile, "# 组长内容\n");
-    await h.coordinator.open(h.root.id); const target = await h.load();
+    await withTimeout(h.coordinator.open(h.root.id), "loadingReady and DOM-ready handshake"); const target = await h.load();
     assert.equal(h.deps.panelsByTaskId.size, 1); assert.equal(h.deps.panelsByTaskId.has(h.leader.id), false);
     const content = h.posted.find((item) => item.type === "loopGroupChatChat:departmentModalContent" && item.html);
     assert.equal(content.taskId, h.leader.id);

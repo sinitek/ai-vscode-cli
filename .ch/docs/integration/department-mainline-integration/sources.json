@@ -1,5 +1,46 @@
 {
   "version": 1,
+  "semanticRepair": {
+    "attempt": "round-694-department-mainline-semantic-merge-repair",
+    "baseCommit": "ac1b8199d3c164f76c1043bc21bfffc13a0ae60e",
+    "mainlineContractSource": {
+      "commit": "f1e15cee57ed5e93492a0b6fbb6ac8693fd64b2a",
+      "file": "src/interactive/codexAppServerPool.ts",
+      "rule": "unknown explicit thread notifications are buffered until ownership is confirmed"
+    },
+    "originalMergeBlobs": {
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts": "8b824b9d3ffe98988bab8861fd63688114bd6cae",
+      "src/interactive/codexAppServerPoolCore.ts": "b2730eebcb4b1210169f92ae96f4da37a25a3c96",
+      "src/test/loop/departmentGroupChatHost.test.ts": "f955dad1b2aee1887754afe134e7fcdd805597bf"
+    },
+    "repairedPaths": [
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+      "src/interactive/codexAppServerPoolCore.ts",
+      "src/test/loop/departmentGroupChatHost.test.ts",
+      "src/test/interactive/codexThreadHandoff.test.ts",
+      "scripts/department_group_chat_host_smoke.cjs",
+      ".ch/docs/integration/department-mainline-integration/readme.md",
+      ".ch/docs/integration/department-mainline-integration/semantic-review.md",
+      ".ch/docs/integration/department-mainline-integration/sources.json",
+      ".ch/docs/runbooks/department-git-integration.md"
+    ],
+    "repairedPathSha256": {
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts": "3df006203d60806552a4cde1667a4a6321a1d3626c97079d52b115537520fc2e",
+      "src/interactive/codexAppServerPoolCore.ts": "6925d176f39c91eb21cf2353188ea1f3c87b3b4ba6a038d4ee2518c6d7f86dd3",
+      "src/test/loop/departmentGroupChatHost.test.ts": "9818c28b15dc89caf366b8660d7acb0caf1599a9de3dc7040282c919c1eaa481",
+      "src/test/interactive/codexThreadHandoff.test.ts": "74ff57fb6b236c1706823ef96cf83c33eb50e192800fdd85fd34e96f5649adec",
+      "scripts/department_group_chat_host_smoke.cjs": "8a0eb9f56bdc807980b7c5892895ff0af6d7e3fd02631952f3487241a89a7cd7",
+      ".ch/docs/integration/department-mainline-integration/README.md": "f15ec66170be39cae1a02fe4e8bd6c5c5a6a50d73f503778bc6508a06b940089",
+      ".ch/docs/integration/department-mainline-integration/semantic-review.md": "dfd4fee7360ae2b14e02bf3597bf567a3254e80a1ecaa7a27db9e15a95c8b805",
+      ".ch/docs/runbooks/department-git-integration.md": "5db60f6a0781e7c0badea8c435fd2dea11c2687f518ad1128249faba82d2c8fd"
+    },
+    "behaviorCorrections": [
+      "modal-only leader refresh reaches validated modal subscribers without registering a leader panel alias",
+      "unknown explicit threadId notifications remain bounded-buffered until RPC or known parent confirms ownership"
+    ],
+    "original55PathColdEntityClosurePreserved": true,
+    "round674ManifestSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412"
+  },
   "integration": {
     "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116",
     "branch": "codex/department-mainline-integration-round676-20261116",

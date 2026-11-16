@@ -12,6 +12,12 @@ const vscode = require("vscode");
 const { departmentRecords, fixtureDepartmentLeaderTaskIds } = require(path.join(dist, "test/loop/departmentGroupChatHost.fixture.js"));
 const { createLoopGroupChatPanelCoordinator } = require(path.join(dist, "extensionHost/loopGroupChatPanelCoordinator.js"));
 fs.mkdirSync(output, { recursive: true });
+function withTimeout(promise, label, timeoutMs = 5000) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  })]).finally(() => clearTimeout(timer));
+}
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
@@ -21,7 +27,12 @@ fs.mkdirSync(output, { recursive: true });
   page.on("requestfailed", (request) => errors.push(request.url() + " " + request.failure()?.errorText));
   const data = departmentRecords(); let receive, html;
   vscode.window.createWebviewPanel = () => ({ title: "", webview: {
-    cspSource: "'self'", set html(value) { html = value; }, get html() { return html; },
+    cspSource: "'self'", set html(value) {
+      html = value;
+      if (value.includes('vscode.postMessage({ type: "loopGroupChatChat:loadingReady" })')) {
+        setTimeout(() => receive?.({ type: "loopGroupChatChat:loadingReady" }), 0);
+      }
+    }, get html() { return html; },
     onDidReceiveMessage(callback) { receive = callback; },
     postMessage: (message) => { messages.push(message); return page.evaluate((value) => window.dispatchEvent(new MessageEvent("message", { data: value })), message); },
   }, reveal() {}, onDidDispose() {} });
@@ -48,7 +59,7 @@ fs.mkdirSync(output, { recursive: true });
     t: (key) => key,
   };
   const coordinator = createLoopGroupChatPanelCoordinator(deps);
-  await coordinator.open(data.root.id);
+  await withTimeout(coordinator.open(data.root.id), "loadingReady handshake");
   const css = "--vscode-editorWidget-background:#1f1f1f;--vscode-button-secondaryBackground:#3d3d3d;--vscode-button-secondaryForeground:#ededed;--vscode-button-secondaryHoverBackground:#505050;--vscode-button-hoverBackground:#00539f;--vscode-input-border:#777777;--vscode-list-hoverBackground:#353535;--vscode-toolbar-hoverBackground:#353535;--vscode-badge-background:#404040;--vscode-badge-foreground:#ededed;--vscode-textLink-foreground:#85c4ff;--vscode-icon-foreground:#ededed;--vscode-charts-green:#89d185;--vscode-charts-blue:#85c4ff;--vscode-charts-orange:#ffc679;--vscode-errorForeground:#ff9999;--vscode-editor-background:#1f1f1f;--vscode-editor-foreground:#ededed;--vscode-foreground:#ededed;--vscode-descriptionForeground:#c0c0c0;--vscode-sideBar-background:#252526;--vscode-widget-border:#656565;--vscode-focusBorder:#6db9ff;--vscode-button-background:#005fb8;--vscode-button-foreground:#ffffff;--vscode-input-background:#1f1f1f;--vscode-input-foreground:#ededed;--vscode-font-family:Arial,sans-serif;--vscode-font-size:13px";
   html = html.replace("<head>", `<head><style>:root{${css}}</style>`);
   const server = http.createServer((request, response) => {
@@ -65,6 +76,7 @@ fs.mkdirSync(output, { recursive: true });
     });
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.locator(".department-roster").waitFor();
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--vscode-editor-background").trim()), "#1f1f1f");
     assert.match(await page.locator(".department-occupancy").innerText(), /组长 未知\/4 · 员工 未知\/20/);
     assert.equal(await page.locator('[data-action="acceptancePlan"]').count(), 0);
     assert.match(await page.locator("#taskPanelSlot").innerText(), /统一验收方案（只读）/);
@@ -90,6 +102,9 @@ fs.mkdirSync(output, { recursive: true });
     const before = messages.length; data.leader.updatedAt += 10; coordinator.refreshOpenPanelForTask(data.leader.id);
     await page.waitForTimeout(100);
     assert.ok(messages.slice(before).some((message) => message.instanceId === binding.instanceId && message.message?.type === "loopGroupChatChat:contentPatch"));
+    await page.setViewportSize({ width: 280, height: 720 });
+    assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true);
+    await page.setViewportSize({ width: 1440, height: 960 });
     await frame.locator(`[data-department-task-id="${data.root.id}"]`).first().click();
     await page.waitForFunction(() => !document.getElementById("departmentChatBackdrop").classList.contains("visible"));
     assert.equal(await page.locator(".main").evaluate((element) => element.scrollTop), parentScroll);
