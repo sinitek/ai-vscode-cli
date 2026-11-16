@@ -1666,6 +1666,8 @@ function participantStatusClass(status: string): string {
     case "acceptance_passed":
     case "reviewed":
       return "member-status-passed";
+    case "no_acceptance":
+      return "member-status-inactive";
     case "pending":
     case "blocked":
     case "needs-review":
@@ -1714,6 +1716,8 @@ function formatParticipantStatus(
       return strings.loopPlusAcceptancePassed;
     case "acceptance_failed":
       return strings.loopPlusAcceptanceFailed;
+    case "no_acceptance":
+      return strings.loopPlusStatusNoAcceptance;
     case "review_pending":
       return strings.loopPlusStatusReviewPending;
     case "waiting":

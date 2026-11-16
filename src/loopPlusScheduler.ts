@@ -17,10 +17,11 @@ export type LoopPlusSchedulerPhase =
 
 export type LoopPlusExecutionOutcome = "completed" | "failed" | "stopped";
 export type LoopPlusExecutionState = "pending" | "running";
-export type LoopPlusAttemptDisposition = "open" | "finished" | "reviewed" | "closed";
+export type LoopPlusAttemptDisposition = "open" | "finished" | "reviewed" | "reported" | "closed";
 export type LoopPlusCompletionBlocker =
   | "running"
   | "pending"
+  | "report_queue"
   | "review_queue"
   | "current_review"
   | "user_messages"
@@ -32,6 +33,8 @@ export type LoopPlusWaitAction = "review" | "wait" | "idle" | "stopped" | "compl
 export type LoopPlusSubtaskSpec = {
   subtaskId: string;
   attemptId: string;
+  /** 缺省沿用完整验收；false 只要求主任务读取报告并继续。 */
+  requiresAcceptance?: boolean;
   title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
@@ -40,6 +43,7 @@ export type LoopPlusSubtaskSpec = {
 export type LoopPlusExecutionRecord = {
   subtaskId: string;
   attemptId: string;
+  requiresAcceptance?: boolean;
   title: string | null;
   conflictGroup: string | null;
   writeFiles: string[];
@@ -64,6 +68,7 @@ export type LoopPlusReviewVerdict = {
 export type LoopPlusSeenAttempt = {
   subtaskId: string;
   attemptId: string;
+  requiresAcceptance?: boolean;
   disposition: LoopPlusAttemptDisposition;
   outcome?: LoopPlusExecutionOutcome;
   acceptance?: LoopPlusReviewAcceptance;
@@ -81,6 +86,8 @@ export type LoopPlusSchedulerSnapshot = {
   userMessageQueue: string[];
   running: LoopPlusExecutionRecord[];
   pending: LoopPlusExecutionRecord[];
+  /** 无需完整验收但仍等待主任务读取的完成报告。旧快照可省略。 */
+  reportQueue?: LoopPlusReviewItem[];
   reviewQueue: LoopPlusReviewItem[];
   currentReview: LoopPlusReviewItem | null;
   seenAttempts: LoopPlusSeenAttempt[];
@@ -101,6 +108,7 @@ export type LoopPlusSchedulerView = {
   userMessageQueue: string[];
   running: LoopPlusExecutionRecord[];
   pending: LoopPlusExecutionRecord[];
+  reportQueue?: LoopPlusReviewItem[];
   reviewQueue: LoopPlusReviewItem[];
   currentReview: LoopPlusReviewItem | null;
   visibleReviewCount: number;
@@ -111,7 +119,7 @@ export type LoopPlusSchedulerView = {
 /**
  * Host-owned integration contract. The scheduler never calls these methods and
  * never touches VS Code, a CLI, or disk. The host must launch only `started`,
- * wake the single main reviewer only on a new finish wake edge, and persist
+ * wake the single main task on a new finish/report wake edge, and persist
  * snapshots itself. `maxConcurrency` is a required host policy; this kernel
  * does not invent a numeric cap or a launch delay. Write and conflict-group
  * overlap stay in loopParallel. A stopped parent stays stopped until
@@ -308,6 +316,7 @@ export type LoopPlusScheduler = {
     options?: { dryRun?: boolean },
   ) => LoopPlusControlResult;
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
+  acknowledgeReports: (eventIds: readonly string[]) => boolean;
   claimNextReview: () => LoopPlusClaimResult;
   submitReview: (eventId: string) => LoopPlusSubmitReviewResult;
   submitReviewBatch: (
@@ -330,6 +339,7 @@ export type LoopPlusScheduler = {
 type ParsedSpec = {
   subtaskId: string;
   attemptId: string;
+  requiresAcceptance?: boolean;
   title: string | null;
   conflictGroup: string | null;
   writeFiles: string[];
@@ -367,6 +377,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   let wakePending = restored?.wakePending ?? false;
   let running = restored?.running.map(copyExecution) ?? [];
   let pending = restored?.pending.map(copyExecution) ?? [];
+  let reportQueue = restored?.reportQueue?.map(copyReview) ?? [];
   let reviewQueue = restored?.reviewQueue.map(copyReview) ?? [];
   let currentReview = restored?.currentReview ? copyReview(restored.currentReview) : null;
   let seenAttempts = restored?.seenAttempts.map(copySeen) ?? [];
@@ -397,6 +408,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       userMessageQueue: userMessageQueue.slice(),
       running: running.map(copyExecution),
       pending: pending.map(copyExecution),
+      ...(reportQueue.length > 0 ? { reportQueue: reportQueue.map(copyReview) } : {}),
       reviewQueue: reviewQueue.map(copyReview),
       currentReview: currentReview ? copyReview(currentReview) : null,
       seenAttempts: seenAttempts.map(copySeen),
@@ -415,6 +427,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       userMessageQueue: userMessageQueue.slice(),
       running: running.map(copyExecution),
       pending: pending.map(copyExecution),
+      ...(reportQueue.length > 0 ? { reportQueue: reportQueue.map(copyReview) } : {}),
       reviewQueue: queue,
       currentReview: current,
       visibleReviewCount: queue.length + (current ? 1 : 0),
@@ -463,6 +476,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         subtaskId: parsed.subtaskId,
         attemptId: parsed.attemptId,
         disposition: "open",
+        ...(parsed.requiresAcceptance !== undefined ? { requiresAcceptance: parsed.requiresAcceptance } : {}),
       });
       accepted.push(record);
     }
@@ -525,6 +539,13 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       outcome: input.outcome,
       detail: typeof input.detail === "string" && input.detail.trim() ? input.detail.trim() : null,
     };
+    if (seen.requiresAcceptance === false && input.outcome === "completed") {
+      reportQueue.push(item);
+      const wake = latchWake();
+      const started = promote();
+      commit();
+      return finishResult("applied", true, eventId, item, wake, started);
+    }
     reviewQueue.push(item);
     const openedReview = !currentReview && !parentStopped && !completed;
     if (openedReview) {
@@ -534,6 +555,20 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     const started = promote();
     commit();
     return finishResult("applied", true, eventId, item, wake, started);
+  }
+
+  function acknowledgeReports(eventIds: readonly string[]): boolean {
+    if (parentStopped || completed || eventIds.length > reportQueue.length
+      || !eventIds.every((id, index) => reportQueue[index].eventId === id)) return false;
+    if (eventIds.length === 0) return true;
+    const consumed = reportQueue.splice(0, eventIds.length);
+    for (const item of consumed) {
+      const seen = seenAttempts.find((entry) => entry.attemptId === item.attemptId);
+      if (seen) seen.disposition = "reported";
+    }
+    normalizeWake();
+    commit();
+    return true;
   }
 
   function claimNextReview(): LoopPlusClaimResult {
@@ -621,6 +656,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     currentReview = null;
     reviewQueue = reviewQueue.slice(queued.length);
     wakePending = false;
+    if (reportQueue.length > 0) latchWake();
     commit();
     return { ok: true, reason: "submitted", followUp: followUp(), view: view() };
   }
@@ -803,7 +839,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   function latchWake(): boolean {
-    if (parentStopped || completed || wakePending || (!currentReview && reviewQueue.length === 0)) {
+    if (parentStopped || completed || wakePending || (!currentReview && reviewQueue.length === 0 && reportQueue.length === 0)) {
       return false;
     }
     wakePending = true;
@@ -820,7 +856,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   function normalizeWake(): void {
-    if (parentStopped || completed || (!currentReview && reviewQueue.length === 0)) {
+    if (parentStopped || completed || (!currentReview && reviewQueue.length === 0 && reportQueue.length === 0)) {
       wakePending = false;
     }
   }
@@ -829,7 +865,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return wakePending
       && !parentStopped
       && !completed
-      && (currentReview !== null || reviewQueue.length > 0);
+      && (currentReview !== null || reviewQueue.length > 0 || reportQueue.length > 0);
   }
 
   function phase(): LoopPlusSchedulerPhase {
@@ -845,7 +881,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     if (reviewQueue.length > 0) {
       return "review_ready";
     }
-    if (running.length > 0 || pending.length > 0) {
+    if (reportQueue.length > 0 || running.length > 0 || pending.length > 0) {
       return "waiting";
     }
     return "idle";
@@ -864,6 +900,9 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     }
     if (pending.length > 0) {
       blockers.push("pending");
+    }
+    if (reportQueue.length > 0) {
+      blockers.push("report_queue");
     }
     if (reviewQueue.length > 0) {
       blockers.push("review_queue");
@@ -1019,6 +1058,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         subtaskId: spec.subtaskId,
         attemptId: spec.attemptId,
         disposition: "open",
+        ...(spec.requiresAcceptance !== undefined ? { requiresAcceptance: spec.requiresAcceptance } : {}),
       });
     }
     const started = promote();
@@ -1050,6 +1090,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     ackUserMessages,
     releaseUnstarted,
     promotePending,
+    acknowledgeReports,
     getCompletionBlockers: completionBlockers,
     snapshot,
   };
@@ -1105,9 +1146,11 @@ function parseSpec(value: unknown): ParsedSpec | null {
   if (!subtaskId || !attemptId) {
     return null;
   }
+  if (value.requiresAcceptance !== undefined && typeof value.requiresAcceptance !== "boolean") return null;
   return {
     subtaskId,
     attemptId,
+    ...(value.requiresAcceptance !== undefined ? { requiresAcceptance: value.requiresAcceptance } : {}),
     title: cleanText(value.title),
     conflictGroup: cleanText(value.conflictGroup),
     writeFiles: normalizeLoopWriteFiles(value.writeFiles),
@@ -1128,6 +1171,7 @@ function createExecution(spec: ParsedSpec, state: LoopPlusExecutionState): LoopP
   return {
     subtaskId: spec.subtaskId,
     attemptId: spec.attemptId,
+    ...(spec.requiresAcceptance !== undefined ? { requiresAcceptance: spec.requiresAcceptance } : {}),
     title: spec.title,
     conflictGroup: spec.conflictGroup,
     writeFiles: spec.writeFiles.slice(),
@@ -1205,6 +1249,7 @@ function readSnapshot(value: unknown): LoopPlusSchedulerSnapshot {
   }
   const running = readExecutions(value.running, "running");
   const pending = readExecutions(value.pending, "pending");
+  const reportQueue = value.reportQueue === undefined ? [] : readReviews(value.reportQueue, "reportQueue");
   const reviewQueue = readReviews(value.reviewQueue, "reviewQueue");
   const currentReview = value.currentReview === null ? null : readReview(value.currentReview, "currentReview");
   const seenAttempts = readSeenAttempts(value.seenAttempts);
@@ -1212,6 +1257,7 @@ function readSnapshot(value: unknown): LoopPlusSchedulerSnapshot {
     maxConcurrency: value.maxConcurrency,
     running,
     pending,
+    reportQueue,
     reviewQueue,
     currentReview,
     seenAttempts,
@@ -1230,6 +1276,7 @@ function readSnapshot(value: unknown): LoopPlusSchedulerSnapshot {
     userMessageQueue: readUserMessages(value.userMessageQueue),
     running,
     pending,
+    ...(reportQueue.length > 0 ? { reportQueue } : {}),
     reviewQueue,
     currentReview,
     seenAttempts,
@@ -1265,6 +1312,7 @@ function readExecution(value: unknown, field: string, state: LoopPlusExecutionSt
   return {
     subtaskId: readRequiredId(value.subtaskId, field),
     attemptId: readRequiredId(value.attemptId, field),
+    ...readOptionalBoolean(value.requiresAcceptance, `${field}.requiresAcceptance`),
     title: readNullableString(value.title, field),
     conflictGroup: readNullableString(value.conflictGroup, field),
     writeFiles: readWriteFiles(value.writeFiles, field),
@@ -1324,6 +1372,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       subtaskId: readRequiredId(item.subtaskId, `seenAttempts[${index}]`),
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
       disposition: item.disposition,
+      ...readOptionalBoolean(item.requiresAcceptance, `seenAttempts[${index}].requiresAcceptance`),
       ...(outcome ? { outcome } : {}),
       ...(acceptance ? { acceptance } : {}),
     };
@@ -1335,6 +1384,7 @@ function validateAttemptGraph(input: {
   running: LoopPlusExecutionRecord[];
   pending: LoopPlusExecutionRecord[];
   reviewQueue: LoopPlusReviewItem[];
+  reportQueue?: LoopPlusReviewItem[];
   currentReview: LoopPlusReviewItem | null;
   seenAttempts: LoopPlusSeenAttempt[];
   parentStopped: boolean;
@@ -1357,10 +1407,25 @@ function validateAttemptGraph(input: {
   for (const record of input.pending) {
     placeAttempt(placed, record.attemptId, record.subtaskId, "open");
   }
+  for (const item of input.reportQueue ?? []) {
+    placeAttempt(placed, item.attemptId, item.subtaskId, "finished");
+    const seen = input.seenAttempts.find((entry) => entry.attemptId === item.attemptId);
+    if (item.outcome !== "completed" || seen?.requiresAcceptance !== false || seen.outcome !== item.outcome) {
+      invalidSnapshot("reportQueue");
+    }
+  }
   for (const item of input.reviewQueue) {
+    if (item.outcome === "completed"
+      && input.seenAttempts.some((seen) => seen.attemptId === item.attemptId && seen.requiresAcceptance === false)) {
+      invalidSnapshot("reviewQueue");
+    }
     placeAttempt(placed, item.attemptId, item.subtaskId, "finished");
   }
   if (input.currentReview) {
+    if (input.currentReview.outcome === "completed"
+      && input.seenAttempts.some((seen) => seen.attemptId === input.currentReview?.attemptId && seen.requiresAcceptance === false)) {
+      invalidSnapshot("currentReview");
+    }
     placeAttempt(placed, input.currentReview.attemptId, input.currentReview.subtaskId, "finished");
   }
   const unreviewedSubtasks = new Set<string>();
@@ -1381,10 +1446,17 @@ function validateAttemptGraph(input: {
       if (actual) {
         invalidSnapshot("seenAttempts");
       }
+      if (seen.disposition === "reported" && (seen.requiresAcceptance !== false || seen.outcome !== "completed")) {
+        invalidSnapshot("seenAttempts");
+      }
       continue;
     }
     if (!actual || actual.kind !== seen.disposition || actual.subtaskId !== seen.subtaskId) {
       invalidSnapshot("seenAttempts");
+    }
+    const execution = input.running.concat(input.pending).find((item) => item.attemptId === seen.attemptId);
+    if (execution && (execution.requiresAcceptance !== false) !== (seen.requiresAcceptance !== false)) {
+      invalidSnapshot("requiresAcceptance");
     }
   }
   for (const attemptId of placed.keys()) {
@@ -1394,6 +1466,7 @@ function validateAttemptGraph(input: {
   }
   const workLeft = input.running.length > 0
     || input.pending.length > 0
+    || (input.reportQueue?.length ?? 0) > 0
     || input.reviewQueue.length > 0
     || input.currentReview !== null;
   if (input.completed && (workLeft || input.parentStopped)) {
@@ -1450,6 +1523,7 @@ function copyExecution(record: LoopPlusExecutionRecord): LoopPlusExecutionRecord
   return {
     subtaskId: record.subtaskId,
     attemptId: record.attemptId,
+    ...(record.requiresAcceptance !== undefined ? { requiresAcceptance: record.requiresAcceptance } : {}),
     title: record.title,
     conflictGroup: record.conflictGroup,
     writeFiles: record.writeFiles.slice(),
@@ -1472,6 +1546,7 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     subtaskId: record.subtaskId,
     attemptId: record.attemptId,
     disposition: record.disposition,
+    ...(record.requiresAcceptance !== undefined ? { requiresAcceptance: record.requiresAcceptance } : {}),
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
   };
@@ -1541,11 +1616,17 @@ function isOutcome(value: unknown): value is LoopPlusExecutionOutcome {
 }
 
 function isDisposition(value: unknown): value is LoopPlusAttemptDisposition {
-  return value === "open" || value === "finished" || value === "reviewed" || value === "closed";
+  return value === "open" || value === "finished" || value === "reviewed" || value === "reported" || value === "closed";
 }
 
 function isSettledLoopPlusAttempt(disposition: LoopPlusAttemptDisposition): boolean {
-  return disposition === "reviewed" || disposition === "closed";
+  return disposition === "reviewed" || disposition === "reported" || disposition === "closed";
+}
+
+function readOptionalBoolean(value: unknown, field: string): { requiresAcceptance?: boolean } {
+  if (value === undefined) return {};
+  if (typeof value !== "boolean") invalidSnapshot(field);
+  return { requiresAcceptance: value };
 }
 
 function isPositiveInteger(value: unknown): value is number {

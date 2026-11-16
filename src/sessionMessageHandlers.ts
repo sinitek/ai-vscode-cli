@@ -183,6 +183,7 @@ export type PanelMessageHandlerDeps = {
   openLoopGroupChatPanel: (arg?: unknown) => Promise<void>;
   getActiveConversationTabId: () => string | null;
   getActiveConversationTab: () => ConversationTabRecordForPanel | null;
+  pausePromptForTab?: (tabId: string) => Promise<void>;
   resolveLoopSubtaskConversationContext: (cli: CliName, tabId: string | null) => LoopSubtaskConversationContextForPanel | null;
   buildPromptWithAutoContext: (prompt: string, options?: PromptContextOptions) => { modelPrompt: string; contextTags: string[] };
   maybeInjectLongTermMemoryForPrompt: (displayPrompt: string, modelPrompt: string, contextTags: string[]) => string;

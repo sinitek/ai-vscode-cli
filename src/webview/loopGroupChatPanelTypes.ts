@@ -51,7 +51,8 @@ export type LoopPlusPanelReviewItem = {
 export type LoopPlusPanelSeenAttempt = {
   subtaskId: string;
   attemptId: string;
-  disposition: "open" | "finished" | "reviewed" | "closed";
+  requiresAcceptance?: boolean;
+  disposition: "open" | "finished" | "reviewed" | "reported" | "closed";
   outcome?: "completed" | "failed" | "stopped";
   acceptance?: "passed" | "failed";
 };

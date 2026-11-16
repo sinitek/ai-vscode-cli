@@ -2,6 +2,20 @@
 export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEventListener("message", (event) => {
         try {
           const data = event.data;
+          if (data.type === "promptPauseReady") {
+            const runtimeState = getConversationRuntimeState(data.tabId, { create: false });
+            if (runtimeState && runtimeState.promptSubmission && runtimeState.promptSubmission.requestId === data.requestId) {
+              runtimeState.promptSubmission.pausing = false;
+              runtimeState.promptSubmission.pauseReady = true;
+              if (isRuntimeStateForActiveTab(data.tabId)) {
+                syncPromptSubmissionWait();
+                if (typeof data.prompt === "string" && elements.promptInput.value.trim() === data.prompt.trim()) {
+                  elements.promptInput.value = "";
+                  resetPromptContextForNextPrompt();
+                }
+              }
+            }
+          }
           if (data.type === "promptSubmissionSettled" && typeof data.requestId === "string" && data.requestId) {
             settlePromptSubmission(data.tabId, data.requestId);
           }

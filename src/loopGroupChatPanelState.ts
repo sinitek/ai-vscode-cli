@@ -366,6 +366,11 @@ function loopPlusMemberStatus(
   if (latestAttempt?.disposition === "closed") {
     return "stopped";
   }
+  if (latestAttempt?.requiresAcceptance === false
+    && latestAttempt.outcome === "completed"
+    && (latestAttempt.disposition === "finished" || latestAttempt.disposition === "reported")) {
+    return "no_acceptance";
+  }
   const reviewed = attemptsForSubtask.filter((item) => item.disposition === "reviewed");
   const latestReviewed = reviewed[reviewed.length - 1];
   if (latestReviewed) {

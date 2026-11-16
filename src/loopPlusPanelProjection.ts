@@ -58,6 +58,7 @@ export function projectLoopPlusPanel(
         return {
           subtaskId: item.subtaskId,
           attemptId: item.attemptId,
+          ...(item.requiresAcceptance !== undefined ? { requiresAcceptance: item.requiresAcceptance } : {}),
           disposition: item.disposition,
           ...(item.outcome ? { outcome: item.outcome } : {}),
           ...(item.disposition === "reviewed"

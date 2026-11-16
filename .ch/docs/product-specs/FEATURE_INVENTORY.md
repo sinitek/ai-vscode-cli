@@ -12,10 +12,22 @@
 - 正常 completed 要求所有已选附加项 passed；accept 仍可携带失败证据并派修复。pending 不预留写入范围，独立任务可越过冲突 pending 回填，running 与本轮新启动项仍约束后续准入。
 - 实现/事实来源：`src/loopTaskStore.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`；回归：`loopPlusHandoffContracts`、`loopTaskStorePersistence`、`loopPlusAcceptanceCompletionGate`、scheduler。范围与恢复限制见 [调度设计](../design-docs/loop-plus-scheduling.md#提交与展示交接契约) 和 [崩溃恢复](../design-docs/loop-crash-recovery.md#提交失败与展示刷新失败)。
 
+## Vibe 暂停后发送补充任务
+
+- 点击“暂停并发送”后显示“正在等待原任务完全暂停”，等待旧调用完整收尾及配置执行租约释放，再启动补充任务；仅收到 `stopped` 或运行标记消失不能作为确认。
+- Codex 复用现有原生交接：共享连接确认目标会话 `closed` / `notLoaded`，旧版专属连接等待进程实际退出；其它会话继续运行。暂停等待上限 90 秒，关闭/换绑会话、停止确认失败或超时均不迟到发送，保留输入并提示原因；等待期间禁止重复提交。
+- 保留 Loop 主任务既有补充需求排队方式，不强拆其它存活宿主的配置锁。实现：`src/extensionHost/promptRunHandoff.ts`、`src/sessionMessageActions.ts`、`src/interactive/codexAppServerPool.ts`。
+
 ## Loop+ 发送后即时等待反馈
 
 - 状态：`active`（2026-11-16，源码实现）。验收方案确认并实际发送后，助手气泡立即显示三点动画与“正在准备 Loop+ 任务”；开始调用后显示“等待模型响应”，首次助手正文/思考输出或调用结束时清除。配置拒绝、提前返回及异常通过请求回执清除；切换 Tab 与迟到回执不会串状态。临时气泡不写入历史，减少动态效果模式保留文字与静态三点；取消弹窗或本地拒绝不产生气泡。
 - 启动前的完整面板刷新改为后台展示，不再让读取全部 CLI 配置和模型阻塞 Loop+ 编排；真实配置校验、CLI 初始化、会话所有权和压缩等待保留。实现与回归见[发送与启动反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)。
+
+## Loop+ 子任务按需完整验收
+
+- 主任务在派发或 reprompt 新 attempt 时逐项设置 `requiresAcceptance`。每个新 attempt 缺省需要完整验收，`reprompt` 省略标记不继承旧免验收；显式 `false` 仅跳过独立交付审查。成功结果显示“无需验收”，进入可恢复报告 FIFO 并唤醒主任务；主任务读取报告后确认准确的 FIFO 前缀并继续调度。报告未确认阻止父任务完成，不产生验收通过记录或验收次数；失败/停止仍走原验收。
+- 判断是否免验收看结果能否直接作为报告消费、是否仍需交付质量/契约/风险/集成判断及用户或项目是否要求独立复核。可免验收例子包括有明确命令、范围、结果和未覆盖项的 bounded 测试/构建执行、带来源的只读盘点、机械报告生成、隔离诊断；需验收例子包括需要判断的代码/测试/文档/配置交付、失败归因、含糊汇报、跨任务或安全/契约风险、明确要求的复核。任务类型和复杂度都不能单独决定。简单任务直办另行判断：整项请求明确、局部低风险、结果可直接核对且无测试/构建/委派/独立验证要求时由主任务直办，不派微任务绕过验收。
+- 实现：`src/loopPlusScheduler.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopGroupChatPanelState.ts`；回归覆盖派发解析、调度/恢复、报告确认门禁与群聊展示。详细规则见[Loop+ 子任务调度](../design-docs/loop-plus-scheduling.md#子任务是否需要完整验收)。
 
 ## Loop / Loop+ 等待巡检
 

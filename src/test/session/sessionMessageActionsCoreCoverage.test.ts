@@ -492,6 +492,60 @@ test("returns before querying dependencies for an empty prompt", async () => {
   await handleSendPromptMessage({ type: "sendPrompt", prompt: " \n " }, {} as PanelMessageHandlerDeps);
 });
 
+test("pause and send waits for full host confirmation before context, history or new execution", async () => {
+  const { deps, calls, tabs } = createPromptHarness("codex");
+  tabs.set("target", { id: "target", cli: "codex", sessionId: "session", sessionIdByCli: { codex: "session" }, createdAt: 1 });
+  let confirm!: () => void;
+  const posted: Record<string, unknown>[] = [];
+  deps.postWebviewMessage = (message) => { posted.push(message); };
+  deps.pausePromptForTab = async (tabId) => {
+    assert.equal(tabId, "target");
+    await new Promise<void>((resolve) => { confirm = resolve; });
+  };
+  const submission = handleSendPromptMessage({ type: "sendPrompt", prompt: "补充任务", tabId: "target",
+    pauseBeforeSend: true, requestId: "pause-request", interactiveMode: "coding" }, deps);
+  assert.deepEqual(calls.resolveImagePrompts, []);
+  assert.deepEqual(calls.promptHistory, []);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.equal(posted.length, 0);
+  confirm();
+  await submission;
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(posted.map((message) => message.type), ["promptPauseReady", "promptSubmissionSettled"]);
+  assert.equal(posted[0].requestId, "pause-request");
+});
+
+test("pause failure retains the draft and never records or starts the replacement", async () => {
+  for (const supported of [true, false]) {
+    const { deps, calls } = createPromptHarness("codex");
+    const posted: Record<string, unknown>[] = [];
+    const errors: string[] = [];
+    deps.postWebviewMessage = (message) => { posted.push(message); };
+    deps.showWebviewError = (_title, detail) => { errors.push(String(detail)); };
+    if (supported) deps.pausePromptForTab = async () => { throw new Error("旧任务尚未暂停"); };
+    await handleSendPromptMessage({ type: "sendPrompt", prompt: "保留补充内容", pauseBeforeSend: true, requestId: "failed" }, deps);
+    assert.equal(errors.length, 1);
+    assert.deepEqual(calls.promptHistory, []);
+    assert.deepEqual(calls.runPrompt, []);
+    assert.deepEqual(posted.map((message) => message.type), ["promptSubmissionSettled"]);
+  }
+});
+
+test("pause targeting a closed tab never falls back to stopping the active tab", async () => {
+  const { deps, calls } = createPromptHarness("codex");
+  const errors: string[] = [];
+  const posted: Record<string, unknown>[] = [];
+  deps.showWebviewError = (_title, detail) => { errors.push(String(detail)); };
+  deps.postWebviewMessage = (message) => { posted.push(message); };
+  deps.pausePromptForTab = async () => assert.fail("must not stop another tab");
+  await handleSendPromptMessage({ type: "sendPrompt", prompt: "保留补充内容", tabId: "closed",
+    pauseBeforeSend: true, requestId: "closed-request" }, deps);
+  assert.match(errors[0], /已关闭/);
+  assert.deepEqual(calls.runPrompt, []);
+  assert.deepEqual(calls.promptHistory, []);
+  assert.deepEqual(posted.map((message) => message.type), ["promptSubmissionSettled"]);
+});
+
 test("updates visible state before propagating a normal prompt runner failure", async () => {
   const { deps, calls, state, tabs } = createPromptHarness("claude");
   tabs.set("codex-tab", {

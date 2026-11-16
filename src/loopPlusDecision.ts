@@ -53,6 +53,7 @@ export type LoopPlusControlDecision = {
   /** 省略时 reprompt 保留原子任务分类。 */
   taskType?: LoopPlusTaskType;
   codingDelivery?: boolean;
+  requiresAcceptance?: boolean;
 } & (
   | { action: "close"; prompt?: string; title?: string }
   | { action: "reprompt"; prompt: string; title: string }
@@ -84,6 +85,8 @@ export type LoopPlusDecision = {
   /** 已勾选审查项和“其它”的逐项结论。缺失表示这次没有做这些验收。 */
   acceptancePlanResults?: LoopPlusAcceptancePlanResult[];
   estimatedRemainingRounds?: number;
+  /** 当前提示报告均已阅读；宿主只会确认冻结批次的 FIFO 前缀。 */
+  reportEventIds?: string[];
 };
 
 export type LoopPlusAcceptancePlanResult = {
@@ -217,7 +220,10 @@ function normalizeDecision(
   if (!isLoopPlusDecisionStatus(status)) {
     return null;
   }
-  return LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
+  const reportEventIds = readOptionalReportEventIds(value);
+  if (reportEventIds === null) return null;
+  const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
+  return decision && reportEventIds !== undefined ? { ...decision, reportEventIds } : decision;
 }
 
 function normalizeDispatchDecision(
@@ -563,9 +569,10 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
   const conflictGroup = readOptionalText(value.conflictGroup);
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
   const classification = readLoopPlusWorkClassification(value);
-  if (classification === null) {
+  if (classification === null || (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean")) {
     return null;
   }
+  const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   if (value.action === "close") {
     return {
       id,
@@ -574,6 +581,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
       ...(conflictGroup ? { conflictGroup } : {}),
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
       ...classification,
+      ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
@@ -588,6 +596,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
+    ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
   };
 }
 
@@ -648,9 +657,10 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     return null;
   }
   const classification = readLoopPlusWorkClassification(value);
-  if (classification === null) {
+  if (classification === null || (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean")) {
     return null;
   }
+  const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   return {
     id,
     title,
@@ -658,9 +668,24 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
+    ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(skillIds.length > 0 ? { skillIds } : {}),
   };
+}
+
+function readOptionalReportEventIds(value: Record<string, unknown>): string[] | undefined | null {
+  if (!hasOwn(value, "reportEventIds")) return undefined;
+  if (!Array.isArray(value.reportEventIds)) return null;
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value.reportEventIds) {
+    const id = readOptionalText(item);
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }
 
 function readLoopPlusWorkClassification(

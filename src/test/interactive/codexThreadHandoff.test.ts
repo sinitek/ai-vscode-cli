@@ -110,6 +110,94 @@ async function waitFor(condition: () => boolean): Promise<void> {
   }
 }
 
+test("explicit pause waits for native thread closure before a replacement can use the same connection", async () => {
+  const harness = createHarness();
+  try {
+    const connection = harness.acquire("pause-shared", "owner");
+    await connection.whenReady();
+    await connection.request("owner", "thread/resume", { threadId: "paused-thread" });
+    let stopped = false;
+    const pending = connection.releaseStoppedThread("owner", "paused-thread", { timeoutMs: 1000 })
+      .then(() => { stopped = true; });
+    await waitFor(() => harness.children[0].messages.some((message) => message.method === "thread/unsubscribe"));
+    assert.equal(stopped, false);
+    await assert.rejects(connection.withThread("owner", "paused-thread", async () => undefined), { code: "CODEX_THREAD_BUSY" });
+    harness.children[0].send({ method: "thread/closed", params: { threadId: "paused-thread" } });
+    await pending;
+    assert.equal(stopped, true);
+    assert.equal(connection.hasLoadedThread("paused-thread"), false);
+    assert.equal(connection.isAlive(), true);
+  } finally { harness.cleanup(); }
+});
+
+test("explicit pause of a legacy exclusive connection waits for process exit", async () => {
+  const harness = createHarness();
+  try {
+    const connection = harness.acquire("pause-exclusive", "owner", undefined, {}, "owner");
+    await connection.whenReady();
+    await connection.request("owner", "thread/resume", { threadId: "paused-thread" });
+    let stopped = false;
+    const pending = connection.releaseStoppedThread("owner", "paused-thread", { timeoutMs: 1000 })
+      .then(() => { stopped = true; });
+    await waitFor(() => harness.children[0].terminationRequests > 0);
+    assert.equal(stopped, false);
+    harness.children[0].close();
+    await pending;
+    assert.equal(stopped, true);
+  } finally { harness.cleanup(); }
+});
+
+test("runner pause waits for the interrupt response before choosing exclusive process release", async () => {
+  const harness = createHarness();
+  const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
+  const runner = new CodexInteractiveRunner({
+    command: "fake-codex", args: [], env: {}, threadId: "paused-thread",
+    thinkingMode: "medium", interactiveMode: "coding", readOnly: false,
+  });
+  const state = runner as unknown as {
+    connection: import("../../interactive/codexAppServerPool").CodexAppServerConnection;
+    activeConnectionId: number;
+    listener: import("../../interactive/codexAppServerPool").CodexAppServerListener;
+  };
+  try {
+    const owner = state.listener.id;
+    const connection = harness.acquire("pause-pending-interrupt", owner, undefined, state.listener, owner);
+    state.connection = connection;
+    state.activeConnectionId = connection.id;
+    await connection.whenReady();
+    await connection.request(owner, "thread/resume", { threadId: "paused-thread" });
+    const child = harness.children[0];
+    child.handle = (message) => message.method === "turn/interrupt";
+    runner.stopAndRebuild();
+    let stopped = false;
+    const pausing = runner.waitForStopped(() => true).then(() => { stopped = true; });
+    await waitFor(() => child.messages.some((message) => message.method === "turn/interrupt"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(stopped, false);
+    assert.equal(child.messages.some((message) => message.method === "thread/unsubscribe"), false);
+    assert.equal(child.terminationRequests, 0);
+    child.reply(child.messages.find((message) => message.method === "turn/interrupt")!, {});
+    await waitFor(() => child.terminationRequests > 0);
+    assert.equal(stopped, false);
+    child.close();
+    await pausing;
+    assert.equal(stopped, true);
+  } finally { runner.dispose(); harness.cleanup(); }
+});
+
+test("explicit pause refuses a native thread which is still owned by an active invocation", async () => {
+  const harness = createHarness();
+  try {
+    const connection = harness.acquire("pause-active", "owner");
+    await connection.whenReady();
+    let finish!: () => void;
+    const running = connection.withThread("owner", "paused-thread", async () => new Promise<void>((resolve) => { finish = resolve; }));
+    await assert.rejects(connection.releaseStoppedThread("owner", "paused-thread"), { code: "CODEX_THREAD_BUSY" });
+    finish();
+    await running;
+  } finally { harness.cleanup(); }
+});
+
 test("exclusive legacy connection waits for actual exit and never terminates a peer", async () => {
   const harness = createHarness();
   try {

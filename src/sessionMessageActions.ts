@@ -296,6 +296,11 @@ async function executeSendPromptMessage(
   const preserveActiveTab = Boolean(message.preserveActiveTab && requestedTabId);
   const requestedTab = requestedTabId ? deps.getConversationTabById(requestedTabId) : null;
 
+  if (message.pauseBeforeSend && requestedTabId && !requestedTab) {
+    deps.showWebviewError("暂停并发送失败", "目标会话已关闭，补充任务未发送，输入已保留。");
+    return;
+  }
+
   if (requestedTabId && requestedTab && !preserveActiveTab) {
     const switched = deps.setActiveConversationTab(requestedTabId);
     if (switched && deps.getCurrentCli() !== switched.cli) {
@@ -330,6 +335,16 @@ async function executeSendPromptMessage(
   }
 
   const promptTargetTabId = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
+  if (message.pauseBeforeSend) {
+    try {
+      if (!promptTargetTabId || !deps.pausePromptForTab) throw new Error("当前无法确认任务已完全暂停，补充任务未发送，输入已保留。");
+      await deps.pausePromptForTab(promptTargetTabId);
+    } catch (error) {
+      deps.showWebviewError("暂停并发送失败", error instanceof Error ? error.message : String(error));
+      return;
+    }
+    deps.postWebviewMessage({ type: "promptPauseReady", tabId: promptTargetTabId, requestId: message.requestId, prompt: message.prompt });
+  }
   const loopSubtaskContext = deps.resolveLoopSubtaskConversationContext(targetCli, promptTargetTabId);
   const isLoopSubtaskContinuation = Boolean(loopSubtaskContext);
   const effectiveInteractiveMode = isLoopSubtaskContinuation && requestedLoopFamily

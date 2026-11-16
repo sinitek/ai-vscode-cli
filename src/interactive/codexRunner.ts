@@ -192,6 +192,7 @@ export class CodexInteractiveRunner {
   private connectionRequestUserInputEnabled = false;
   private activeConnectionId: number | null = null;
   private operationTail: Promise<unknown> = Promise.resolve();
+  private pendingInterrupt: Promise<unknown> = Promise.resolve();
   private activeOperation: CodexRunnerOperation | null = null;
   private abortGeneration = 0;
   private disposeGeneration = 0;
@@ -261,7 +262,7 @@ export class CodexInteractiveRunner {
       && this.connection.hasLoadedThread(threadId),
     );
     if (hot && this.connection) {
-      void this.connection.request(this.listenerId, "turn/interrupt", {
+      this.pendingInterrupt = this.connection.request(this.listenerId, "turn/interrupt", {
         threadId,
         turnId: this.activeOperation?.activeTurnId || "",
       }).catch(() => undefined);
@@ -286,6 +287,20 @@ export class CodexInteractiveRunner {
     this.connection = null;
     this.activeConnectionId = null;
     connection?.release(this.listenerId);
+  }
+
+  public async waitForStopped(isCurrent: () => boolean): Promise<void> {
+    await this.operationTail;
+    await this.pendingInterrupt;
+    const connection = this.connection;
+    const threadId = this.options.threadId;
+    if (connection && threadId) {
+      await connection.releaseStoppedThread(this.listenerId, threadId, {
+        checkActive: () => {
+          if (!isCurrent()) throw createAbortError();
+        },
+      });
+    }
   }
 
   public async runForText(prompt: string): Promise<{ threadId: string | null; text: string }> {

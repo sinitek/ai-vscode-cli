@@ -125,6 +125,234 @@ test("trivial work completes in one main call without subtasks or acceptance fee
   assert.equal(env.acceptanceFeedback.length, 0);
 });
 
+test("no-acceptance completion wakes the main task to read its report and continue dispatching", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "汇总验证结果并完成交付" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [{ ...subtask("report-a", []), requiresAcceptance: false }],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 1);
+  const firstAttemptId = env.attempts[0].request.attemptId;
+
+  env.attempts[0].resolve({ outcome: "completed", detail: "npm test 通过；未覆盖真实宿主集成" });
+  await flush();
+  const reportDecision = env.mains[1];
+  const firstReportId = buildLoopPlusFinishEventId("report-a", firstAttemptId);
+  assert.equal(reportDecision.request.kind, "continue");
+  assert.deepEqual(reportDecision.request.reportEventIds, [firstReportId]);
+  assert.match(reportDecision.request.prompt, /npm test 通过；未覆盖真实宿主集成/);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reportQueue?.length, 1);
+
+  env.mains[1].resolve(decisionJson({
+    status: "dispatch",
+    reportEventIds: [firstReportId],
+    subtasks: [{ ...subtask("report-b", []), requiresAcceptance: false }],
+  }));
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reportQueue?.length ?? 0, 0);
+  assert.equal(env.attempts.length, 2);
+  const secondAttemptId = env.attempts[1].request.attemptId;
+
+  env.attempts[1].resolve({ outcome: "completed", detail: "报告生成完成" });
+  await flush();
+  const secondReportId = buildLoopPlusFinishEventId("report-b", secondAttemptId);
+  assert.deepEqual(env.mains[2].request.reportEventIds, [secondReportId]);
+  env.mains[2].resolve(completedDecision({ reportEventIds: [secondReportId] }));
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.every((item) => item.disposition === "reported"), true);
+  assert.equal(env.acceptanceFeedback.length, 0);
+});
+
+test("keeps reports arriving during a frozen acceptance for the next main decision", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成实现并读取独立验证报告" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [
+      subtask("reviewed-delivery", ["src/delivery.ts"]),
+      { ...subtask("late-report", []), requiresAcceptance: false },
+    ],
+  }));
+  await flush();
+  const reviewedAttemptId = env.attempts[0].request.attemptId;
+  const reportAttemptId = env.attempts[1].request.attemptId;
+  env.attempts[0].resolve({ outcome: "completed", detail: "实现交付完成" });
+  await flush();
+  const review = env.mains[1];
+  assert.equal(review.request.kind, "review");
+  assert.deepEqual(review.request.reportEventIds, []);
+
+  env.attempts[1].resolve({ outcome: "completed", detail: "late report evidence" });
+  await flush();
+  assert.doesNotMatch(review.request.prompt, /late report evidence/);
+  review.resolve(decisionJson({
+    status: "accept",
+    reviewEventId: buildLoopPlusFinishEventId("reviewed-delivery", reviewedAttemptId),
+    subtasks: [],
+  }));
+  await flush();
+
+  const report = env.mains[2];
+  const reportEventId = buildLoopPlusFinishEventId("late-report", reportAttemptId);
+  assert.equal(report.request.kind, "continue");
+  assert.deepEqual(report.request.reportEventIds, [reportEventId]);
+  assert.match(report.request.prompt, /late report evidence/);
+  report.resolve(completedDecision({ reportEventIds: [reportEventId] }));
+  await flush();
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  await run.done;
+});
+
+test("report continuation consumes visible user messages and preserves late reports and messages", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "汇总两个报告" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+    { ...subtask("report-a", []), requiresAcceptance: false },
+    { ...subtask("report-b", []), requiresAcceptance: false },
+  ] }));
+  await flush();
+  env.host.submitUserMessage(taskId, "先检查报告范围");
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "报告 A" });
+  env.host.submitUserMessage(taskId, "随后汇总报告");
+  await flush();
+  env.mains[1].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  const firstReport = env.mains[2];
+  const firstId = buildLoopPlusFinishEventId("report-a", env.attempts[0].request.attemptId);
+  assert.equal(firstReport.request.kind, "continue");
+  assert.equal(firstReport.request.userMessageCount, 1);
+  assert.deepEqual(firstReport.request.reportEventIds, [firstId]);
+  assert.match(firstReport.request.prompt, /随后汇总报告/);
+  env.host.submitUserMessage(taskId, "补充最终说明");
+  env.attempts[1].resolve({ outcome: "completed", detail: "报告 B" });
+  await flush();
+  firstReport.resolve(completedDecision({ reportEventIds: [firstId] }));
+  await flush();
+  const secondReport = env.mains[3];
+  const secondId = buildLoopPlusFinishEventId("report-b", env.attempts[1].request.attemptId);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(secondReport.request.kind, "continue");
+  assert.equal(secondReport.request.userMessageCount, 1);
+  assert.deepEqual(secondReport.request.reportEventIds, [secondId]);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["补充最终说明"]);
+  assert.equal(env.host.hasPendingMainWork(taskId), true);
+  secondReport.resolve(completedDecision({ reportEventIds: [secondId] }));
+  await flush();
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.mains.length, 4);
+  assert.equal(env.acceptanceFeedback.length, 0);
+});
+
+test("reprompt decides acceptance for the new attempt instead of inheriting the old exemption", async () => {
+  for (const requiresAcceptance of [undefined, false, true]) {
+    const env = harness();
+    const run = env.host.tryRun({ displayPrompt: "先调查再调整工作" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId ?? "";
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+      { ...subtask("redirected", []), requiresAcceptance: false },
+    ] }));
+    await flush();
+    env.host.submitUserMessage(taskId, "重新安排此任务");
+    await flush();
+    env.mains[1].resolve(decisionJson({ status: "steer", controls: [{
+      id: "redirected", action: "reprompt", title: "调整后任务", prompt: longPrompt("adjusted", []),
+      ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+    }] }));
+    await flush();
+    assert.equal(env.attempts.length, 2);
+    const snapshot = snapshotOf(env.tasks.get(taskId));
+    assert.equal(snapshot.running[0]?.requiresAcceptance, requiresAcceptance);
+    assert.equal(env.tasks.get(taskId)?.subTasks[0]?.requiresAcceptance, requiresAcceptance);
+    env.attempts[1].resolve({ outcome: "completed", detail: "新 attempt 结果" });
+    await flush();
+    assert.equal(env.mains[2].request.kind, requiresAcceptance === false ? "continue" : "review");
+    env.host.stopParent(taskId);
+    await flush();
+    await run.done;
+  }
+});
+
+test("restores a pending no-acceptance report and wakes the resumed main task", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "restored-report", attemptId: "restored-report-1", requiresAcceptance: false }]);
+  scheduler.finish({
+    subtaskId: "restored-report",
+    attemptId: "restored-report-1",
+    outcome: "completed",
+    detail: "恢复后仍需读取的报告",
+  });
+  const task = baseTask("restored-report-task", scheduler.snapshot());
+  task.subTasks = [{
+    id: "restored-report",
+    title: "恢复报告",
+    prompt: longPrompt("恢复报告", []),
+    status: "completed",
+    requiresAcceptance: false,
+    summary: "恢复后仍需读取的报告",
+  }];
+  env.tasks.set(task.id, task);
+
+  const cold = env.reloadHost();
+  const run = cold.tryRun({ displayPrompt: "继续处理" }, env.target, {
+    resumeTaskId: task.id,
+    resumeRequested: true,
+  });
+  await flush();
+  const reportId = buildLoopPlusFinishEventId("restored-report", "restored-report-1");
+  assert.equal(env.mains[0].request.kind, "continue");
+  assert.deepEqual(env.mains[0].request.reportEventIds, [reportId]);
+  assert.match(env.mains[0].request.prompt, /恢复后仍需读取的报告/);
+  env.mains[0].resolve(completedDecision({ reportEventIds: [reportId] }));
+  await flush();
+  assert.equal(env.tasks.get(task.id)?.status, "completed");
+  await run.done;
+  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts[0]?.disposition, "reported");
+});
+
+test("blocked review consumes reports once while preserving the held acceptance batch", async () => {
+  const env = harness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([
+    { subtaskId: "delivery", attemptId: "delivery-1" },
+    { subtaskId: "report", attemptId: "report-1", requiresAcceptance: false },
+  ]);
+  scheduler.finish({ subtaskId: "report", attemptId: "report-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "delivery", attemptId: "delivery-1", outcome: "completed" });
+  const task = baseTask("blocked-report-task", scheduler.snapshot());
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: "继续" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
+  await flush();
+  const reportId = buildLoopPlusFinishEventId("report", "report-1");
+  assert.deepEqual(env.mains[0].request.reportEventIds, [reportId]);
+  env.host.submitUserMessage(task.id, "补充可继续推进的要求");
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "需要更多信息", reportEventIds: [reportId] }));
+  await flush();
+  const continuedReview = env.mains[1];
+  assert.equal(continuedReview.request.kind, "review");
+  assert.deepEqual(continuedReview.request.reportEventIds, []);
+  assert.equal(continuedReview.request.userMessageCount, 1);
+  assert.deepEqual(continuedReview.request.reviewEventIds, [buildLoopPlusFinishEventId("delivery", "delivery-1")]);
+  continuedReview.resolve(completedDecision({ reviewEventIds: continuedReview.request.reviewEventIds }));
+  await flush();
+  await run.done;
+  assert.equal(env.tasks.get(task.id)?.status, "completed");
+  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.find((attempt) => attempt.subtaskId === "report")?.disposition, "reported");
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-protocol-miss"), false);
+});
+
 test("simple supplemental work is handled during live work and after earlier acceptance", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });

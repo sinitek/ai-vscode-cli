@@ -14,6 +14,7 @@ import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
 import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease } from "./config/sharedRuntimeConfig";
+import { PromptRunHandoff } from "./extensionHost/promptRunHandoff";
 import {
   cleanupHumanInteractionHistory,
   cleanupHumanInteractionHistoryAcrossWorkspaces,
@@ -131,6 +132,7 @@ import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./lo
 import { resolveLoopSchedulingMode } from "./loopTaskStore";
 import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { getSelectedLoopFrontendThinkingFromStore, getSelectedLoopFullstackThinkingFromStore } from "./modelSelectionStore";
 import { readLoopSubtaskModeField } from "./loopPlusSubtaskMode";
@@ -254,6 +256,7 @@ let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
 let viewProvider: CliBridgeViewProvider | undefined;
 let interactiveRunnerManager: InteractiveRunnerManager;
+const promptRunHandoff = new PromptRunHandoff();
 const activeTraceLineFilterState = createTraceLineFilterState();
 const primaryPromptRunController = createPrimaryPromptRunController();
 let activeProcessTitleRunId: string | null = null;
@@ -1146,6 +1149,20 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getConfigManagerPanel: () => configManagerPanel,
     applyConfigById,
     waitForConfigApply: (cli) => configApplyQueue.waitForIdle(cli),
+    pausePromptForTab: async (tabId) => {
+      const workspaceKey = activeWorkspaceKey;
+      const tab = getConversationTabById(tabId);
+      const cli = tab?.cli;
+      const sessionId = tab && cli ? getConversationTabSessionIdForCli(tab, cli) : null;
+      const isCurrent = (): boolean => {
+        const current = getConversationTabById(tabId);
+        return !isExtensionDeactivating && workspaceKey === activeWorkspaceKey && !!tab && current === tab
+          && current.cli === cli && getConversationTabSessionIdForCli(current, current.cli) === sessionId;
+      };
+      await promptRunHandoff.pause(tabId, () => stopRunForTab(tabId), isCurrent, async (isStillCurrent) => {
+        if (cli === "codex") await interactiveRunnerManager?.waitForCodexSessionStopped(sessionId, isStillCurrent);
+      });
+    },
     validateVisibleConfigSelections: async (cli, selections) => {
       const visible = selections?.[cli];
       const current = await loadConfigState(cli);
@@ -4891,13 +4908,15 @@ async function runPrompt(
   const tabId = options.targetTabId ?? getActiveConversationTabId();
   if (input.taskRole === "main" && input.loopTaskId && !input.loopAsk && tabId) {
     const taskId = input.loopTaskId;
-    return loopMainQuestionQueue.runMain(tabId, () => runPromptNow(input, {
+    return loopMainQuestionQueue.runMain(tabId, () => promptRunHandoff.run(tabId, (isAborted) => runPromptNow(input, {
       ...options,
       targetTabId: tabId,
-      isAborted: () => options.isAborted?.() === true || readLoopTaskRecord(taskId)?.status !== "running",
-    }));
+      isAborted: () => isAborted() || options.isAborted?.() === true || readLoopTaskRecord(taskId)?.status !== "running",
+    })));
   }
-  return runPromptNow(input, options);
+  return tabId ? promptRunHandoff.run(tabId, (isAborted) => runPromptNow(input, {
+    ...options, targetTabId: tabId, isAborted: () => isAborted() || options.isAborted?.() === true,
+  })) : runPromptNow(input, options);
 }
 
 async function runPromptNow(
@@ -5036,7 +5055,8 @@ async function runPromptNow(
             ?? (!attemptInput.configSelections && configState.revision
               ? { configId: configState.activeConfigId, revision: configState.revision } : null);
           if (!expected || configState.configurationError) throw new ConfigSelectionChangedError();
-          executionLease = await configService.acquireRuntimeConfigExecution(attemptTarget.cli, expected);
+          executionLease = promptRunHandoff.trackLease(attemptTarget.tabId,
+            await configService.acquireRuntimeConfigExecution(attemptTarget.cli, expected));
           const executionConfigId = executionLease.selection.configId;
           const previousConfigId = attemptInput.taskRole === "subtask"
             ? attemptInput.loopSubtaskConfigId
@@ -5966,8 +5986,18 @@ function sendRunStatus(
 }
 
 function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord): string {
-  const loopPlus = Boolean(record?.loopTaskId
-    && readLoopTaskRecord(record.loopTaskId)?.schedulingMode === "event_driven");
+  const task = record?.loopTaskId ? readLoopTaskRecord(record.loopTaskId) : undefined;
+  const loopPlus = task?.schedulingMode === "event_driven";
+  let requiresAcceptance: boolean | undefined;
+  if (loopPlus && record?.taskRole === "subtask" && record.loopAttemptId) {
+    try {
+      requiresAcceptance = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot().seenAttempts
+        .find((attempt) => attempt.attemptId === record.loopAttemptId && attempt.subtaskId === record.loopSubtaskId)
+        ?.requiresAcceptance;
+    } catch {
+      // 无法核对本次 attempt 时保留默认验收文案，不沿用其它 attempt 的免验收标记。
+    }
+  }
   return buildTaskRunCompletionTextWithLabels(status, durationMs, {
     failed: t("run.failed"),
     stopped: t("run.stopped"),
@@ -5979,7 +6009,9 @@ function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number |
     loopMainWithDuration: (duration) => `本轮调度已结束，用时 ${duration}；整体任务状态以 Loop+ 主任务为准。`,
     loopSubtask: "子任务执行结束，等待主任务验收。",
     loopSubtaskWithDuration: (duration) => `子任务执行结束，用时 ${duration}，等待主任务验收。`,
-  }, { loopPlus, taskRole: record?.taskRole });
+    loopSubtaskNoAcceptance: "子任务执行结束，无需验收。",
+    loopSubtaskNoAcceptanceWithDuration: (duration) => `子任务执行结束，用时 ${duration}，无需验收。`,
+  }, { loopPlus, taskRole: record?.taskRole, requiresAcceptance });
 }
 
 function sendRawStreamDelta(

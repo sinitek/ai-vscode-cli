@@ -81,6 +81,32 @@ test("execution result reuse preserves event-level code review and every selecte
   }
 });
 
+test("all main prompt kinds distinguish report-only work from the general simple-task rule", () => {
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
+    assert.match(prompt, /For every dispatched subtask, decide requiresAcceptance at dispatch time/);
+    assert.match(prompt, /Reassess every reprompt as a new attempt: omission resets to true/);
+    assert.match(prompt, /what the output will contain, whether it changes a deliverable or contract/);
+    assert.match(prompt, /A test is not automatically exempt, and a document is not automatically exempt/);
+    assert.match(prompt, /The general simple-task rule is separate from requiresAcceptance/);
+    assert.match(prompt, /Do not delegate a trivial task just to avoid review/);
+    assert.match(prompt, /Reports marked no-acceptance must be explicitly acknowledged/);
+    const dispatch = parseExample(extractProtocolExamples(prompt), "dispatch");
+    assert.equal(dispatch.subtasks?.some((item) => item.requiresAcceptance === false), true);
+    assert.equal(dispatch.subtasks?.filter((item) => item.requiresAcceptance === true).length, 3);
+  }
+});
+
+test("protocol examples acknowledge the frozen report prefix when resuming scheduling", () => {
+  const reportEventIds = ["report-event-a", "report-event-b"];
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({ reportEventIds }));
+  const examples = extractProtocolExamples(prompt);
+  for (const status of PROTOCOL_STATUSES) {
+    const parsed = parseExample(examples, status);
+    assert.deepEqual(parsed.reportEventIds, status === "clarify" ? undefined : reportEventIds);
+  }
+});
+
 test("Loop+ subtask reports identify reusable verification scope without claiming to replace main review", () => {
   for (const loopSubtaskMode of ["fullstack", "split"] as const) {
     for (const executionRole of ["backend", "frontend", "general"] as const) {
@@ -534,7 +560,7 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.equal(parseExample(examples, "blocked").status, "blocked");
   const dispatch = parseExample(examples, "dispatch");
   assert.equal(dispatch.subtasks?.length, 4);
-  assert.deepEqual(dispatch.subtasks?.map((subtask) => subtask.taskType), ["backend", "frontend", "backend", "backend"]);
+  assert.deepEqual(dispatch.subtasks?.map((subtask) => subtask.taskType), ["backend", "frontend", "backend", "general"]);
   assert.equal(new Set(dispatch.subtasks?.map((subtask) => subtask.conflictGroup)).size, 4);
   assert.match(prompt, /Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default/);
   assert.match(prompt, /large enough to split into at least two independent analysis tracks/);

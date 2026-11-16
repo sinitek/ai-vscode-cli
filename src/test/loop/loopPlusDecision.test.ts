@@ -176,6 +176,30 @@ test("parses a dispatch with one through six self-contained Chinese prompts", ()
   assert.equal(full?.subtasks?.some((item) => item.id === "ignored-because-array-wins"), false);
 });
 
+test("retains per-attempt acceptance decisions and rejects non-boolean markers", () => {
+  const base = { status: "dispatch", subtasks: [subtask("report")] };
+  const parsed = parseLoopPlusDecision(JSON.stringify({
+    ...base,
+    subtasks: [{ ...subtask("report"), requiresAcceptance: false }],
+  }));
+  assert.equal(parsed?.subtasks?.[0].requiresAcceptance, false);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    ...base,
+    subtasks: [{ ...subtask("report"), requiresAcceptance: "false" }],
+  })), null);
+
+  const reprompt = "继续处理同一子任务并修正已知问题，保留任务约定和现有接口。".padEnd(80, "。");
+  const controlled = parseLoopPlusDecision(JSON.stringify({
+    status: "steer",
+    controls: [{ id: "report", action: "reprompt", title: "补充核对", prompt: reprompt, requiresAcceptance: false }],
+  }));
+  assert.equal(controlled?.controls?.[0].requiresAcceptance, false);
+  assert.equal(parseLoopPlusDecision(JSON.stringify({
+    status: "steer",
+    controls: [{ id: "report", action: "reprompt", title: "补充核对", prompt: reprompt, requiresAcceptance: 0 }],
+  })), null);
+});
+
 
 test("Loop+ preserves continuation sources and rejects malformed source fields", () => {
   const candidate = { id: "repair", title: "修补", prompt: "根据此前子任务的执行上下文，修复验收反馈中的具体问题并汇报处理结果。".repeat(5), continueFromSubtaskId: " previous " };

@@ -285,6 +285,21 @@ export class CodexAppServerConnection {
     }
   }
 
+  public async releaseStoppedThread(ownerId: string, threadId: string, options: CodexThreadHandoffOptions = {}): Promise<void> {
+    const leaseKey = JSON.stringify([this.homeScope, threadId]);
+    const owner = this.threadOwners.get(threadId);
+    if (threadLeases.has(leaseKey) || this.activeOwners.has(ownerId)
+      || (owner && owner !== ownerId && this.activeOwners.has(owner))) {
+      throw createCodexThreadError(CODEX_THREAD_BUSY, "该 Codex 会话尚未结束，不能确认暂停。");
+    }
+    threadLeases.add(leaseKey);
+    try {
+      await this.releaseThreadForHandoff(threadId, options);
+    } finally {
+      threadLeases.delete(leaseKey);
+    }
+  }
+
   private async releaseThreadForHandoff(threadId: string, options: CodexThreadHandoffOptions): Promise<void> {
     const deadline = Date.now() + (options.timeoutMs ?? CODEX_THREAD_HANDOFF_TIMEOUT_MS);
     const ownerId = `handoff-${this.id}-${threadId}`;

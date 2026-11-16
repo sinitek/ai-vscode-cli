@@ -96,6 +96,8 @@ export type LoopSubtaskRecord = {
   taskType?: LoopPlusTaskType;
   /** reprompt 显式声明本次交付包含编码。不从标题或正文猜测。 */
   codingDelivery?: boolean;
+  /** Loop+ 主任务派发时的快照；缺省表示需要完整验收。 */
+  requiresAcceptance?: boolean;
   skillIds?: string[];
   skillGuidance?: string;
   status: "pending" | "running" | "completed" | "skipped" | "blocked";
@@ -133,6 +135,8 @@ export type LoopSubtaskDecision = {
   writeFiles?: string[];
   taskType?: LoopPlusTaskType;
   codingDelivery?: boolean;
+  /** false 仅跳过完整验收，子任务结果仍须由主任务读取并处理。 */
+  requiresAcceptance?: boolean;
   skillIds?: string[];
 };
 
@@ -1125,6 +1129,9 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   const skillGuidance = normalizeLoopSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
   const taskType = readLoopPlusTaskTypeField((raw as { taskType?: unknown }).taskType);
   const codingDelivery = (raw as { codingDelivery?: unknown }).codingDelivery === true;
+  const requiresAcceptance = typeof (raw as { requiresAcceptance?: unknown }).requiresAcceptance === "boolean"
+    ? (raw as { requiresAcceptance: boolean }).requiresAcceptance
+    : undefined;
   const continueFromSubtaskId = readLoopContinuationSource(raw.continueFromSubtaskId);
   const executionSession = normalizeLoopSubtaskSession(raw.executionSession);
   return {
@@ -1137,6 +1144,7 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     writeFiles: normalizeLoopWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
     ...(taskType ? { taskType } : {}),
     ...(codingDelivery ? { codingDelivery } : {}),
+    ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
     ...(skillIds && skillGuidance ? { skillIds, skillGuidance } : {}),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,

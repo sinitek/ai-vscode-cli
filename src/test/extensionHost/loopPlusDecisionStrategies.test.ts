@@ -52,6 +52,7 @@ function view(overrides: Partial<LoopPlusDecisionQueueView> = {}): LoopPlusDecis
   return {
     hasCurrentReview: false,
     hasReview: false,
+    hasReports: false,
     hasUserMessages: false,
     runningCount: 0,
     pendingCount: 0,
@@ -144,6 +145,10 @@ function createPort(options: {
     },
     acknowledgeUserMessages(count) {
       record("acknowledgeUserMessages", [count]);
+    },
+    acknowledgeReports(eventIds) {
+      record("acknowledgeReports", [eventIds]);
+      return true;
     },
     captureRemainingUserMessagesForHeldReview() {
       record("captureRemainingUserMessagesForHeldReview");

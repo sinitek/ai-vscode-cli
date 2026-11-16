@@ -129,6 +129,7 @@ const STRINGS = {
     loopPlusStatusPaused: "自动验收已暂停",
     loopPlusStatusInvalid: "快照不可用",
     loopPlusStatusExecutionCompleted: "执行结束，尚未验收",
+    loopPlusStatusNoAcceptance: "无需验收",
     loopPlusStatusHeldReview: "验收已暂停",
     loopPlusStatusNotInSnapshot: "不在当前快照中",
     communicationFileOpen: "查看沟通文件",
