@@ -200,7 +200,14 @@ export class DepartmentRuntimeStore {
       let state = value.employeeAllocation ?? createDepartmentEmployeeAllocation(root, value.capacity, []);
       state = updateDepartmentEmployeeAllocationLimits(state, { rootTaskId: root, expectedRevision: state.revision,
         maxLeaders: value.capacity.maxLeaders, maxEmployees: value.capacity.maxEmployees });
-      for (const member of value.runtime.leaders) state = registerDepartmentEmployeeAllocationLeader(state, root, member.taskId);
+      // Completed leaders remain in history beyond maxLeaders. Index this cold
+      // snapshot once so unchanged members do not each normalize the whole policy.
+      const registered = new Set(state.leaders.map((leader) => leader.leaderTaskId));
+      for (const member of value.runtime.leaders) {
+        if (registered.has(member.taskId)) continue;
+        state = registerDepartmentEmployeeAllocationLeader(state, root, member.taskId);
+        registered.add(member.taskId);
+      }
       if (JSON.stringify(state) === JSON.stringify(value.employeeAllocation)) return { ok: true };
       value.employeeAllocation = state;
       return this.commitValidated(value);

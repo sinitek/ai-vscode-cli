@@ -4,6 +4,7 @@ import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
 import { DepartmentRuntimeStore, type DepartmentStoredRuntime } from "../../extensionHost/departmentruntimestore";
+import { createDepartmentEmployeeAllocation } from "../../departmentemployeeallocation";
 import { createDepartmentRuntimeSnapshot } from "../../extensionHost/departmentruntimestate";
 import { DepartmentOwnershipSourceLifecycleHost } from "../../extensionHost/departmentownershipsourcelifecycle";
 import { DepartmentOwnershipIndex } from "../../extensionHost/departmentOwnershipIndex";
@@ -206,4 +207,102 @@ test("allocation shrink clamps manual desired, retains historical applied and re
     assert.equal(store.read("root", "workspace").ok, false);
     assert.equal(store.write(old).ok, false); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, false);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+/** A valid persisted history can outgrow maxLeaders: completed members are retained. */
+function allocationHistory(t: import("node:test").TestContext, size: number, revision = 17) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "department-allocation-history-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const store = new DepartmentRuntimeStore(dir), saved = value();
+  saved.runtime.leaders = Array.from({ length: size }, (_, i) => ({
+    taskId: `history-${i}`, leaderSubtaskId: `module-${i}`, status: "completed", generation: 1,
+  }));
+  saved.employeeAllocation = createDepartmentEmployeeAllocation("root", saved.capacity, saved.runtime.leaders.map((m) => m.taskId));
+  saved.employeeAllocation.revision = revision;
+  saved.employeeAllocation.leaders[0] = { leaderTaskId: "history-0", manualLimit: 12, appliedLimit: 18 };
+  const file = path.join(dir, Buffer.from("root").toString("hex") + ".json");
+  fs.writeFileSync(file, JSON.stringify(saved));
+  return { store, saved, file };
+}
+
+test("allocation history synchronization scales linearly for unchanged history and one new member without redundant writes", (t) => {
+  // Count actual member-field validation work across all copies, not elapsed time
+  // or calls to a particular registration helper. File parsing/validation stays real.
+  const keys = Object.keys, rename = fs.renameSync;
+  let inspections = 0, writes = 0;
+  t.mock.method(fs, "renameSync", (...args: Parameters<typeof fs.renameSync>) => { writes++; return rename(...args); });
+  const workloads = [256, 1024].map((size) => {
+    const { store, saved, file } = allocationHistory(t, size), original = fs.readFileSync(file);
+    const measure = (repeats: number) => {
+      inspections = 0;
+      // Avoid mock call recording: retaining every argument would itself grow
+      // quadratically on the unfixed implementation and distort this probe.
+      Object.keys = ((object: object) => {
+        const result = keys(object);
+        if (result.includes("leaderTaskId") && result.includes("manualLimit") && result.includes("appliedLimit")) inspections++;
+        return result;
+      }) as typeof Object.keys;
+      try {
+        for (let i = 0; i < repeats; i++) assert.deepEqual(store.synchronizeEmployeeAllocation("root", "workspace"), { ok: true });
+        return inspections;
+      } finally { Object.keys = keys; }
+    };
+    writes = 0;
+    const unchanged = measure(3);
+    assert.equal(writes, 0); assert.deepEqual(fs.readFileSync(file), original);
+    saved.runtime.leaders.push({ taskId: "new-leader", leaderSubtaskId: "new-module", status: "running", generation: 1 });
+    assert.equal(store.write(saved).ok, true);
+    writes = 0;
+    const added = measure(1);
+    assert.equal(writes, 1, "one real membership change commits once");
+    const read = store.read("root", "workspace"); assert.ok(read.ok && read.value?.employeeAllocation);
+    const allocation = read.value.employeeAllocation;
+    assert.equal(allocation.revision, 18);
+    assert.deepEqual(allocation.leaders.slice(0, size), saved.employeeAllocation!.leaders);
+    assert.deepEqual(allocation.leaders[size], { leaderTaskId: "new-leader", manualLimit: null, appliedLimit: null });
+    const addedBytes = fs.readFileSync(file);
+    writes = 0;
+    const repeated = measure(2);
+    assert.equal(writes, 0); assert.deepEqual(fs.readFileSync(file), addedBytes);
+    // Configuration changes still use the domain clamp and keep historical applied.
+    read.value.capacity.maxEmployees = 6; read.value.capacity.maxLeaders = 3;
+    assert.equal(store.write(read.value).ok, true);
+    assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
+    const shrunk = store.read("root", "workspace"); assert.ok(shrunk.ok && shrunk.value?.employeeAllocation);
+    assert.equal(shrunk.value.employeeAllocation.revision, 19);
+    assert.equal(shrunk.value.employeeAllocation.maxLeaders, 3);
+    assert.equal(shrunk.value.employeeAllocation.maxEmployees, 6);
+    assert.deepEqual(shrunk.value.employeeAllocation.leaders[0], { leaderTaskId: "history-0", manualLimit: 6, appliedLimit: 18 });
+    return { unchanged, added, repeated };
+  });
+  t.diagnostic(`member-field validations for histories 256/1024: ${JSON.stringify(workloads)}`);
+  for (const stage of ["unchanged", "added", "repeated"] as const) {
+    assert.ok(workloads[0][stage] > 0, "cold persisted members must still be validated");
+    assert.ok(workloads[1][stage] <= workloads[0][stage] * 5,
+      `${stage}: quadrupling history exceeded linear work allowance: ${JSON.stringify(workloads)}`);
+  }
+});
+
+test("allocation history synchronization cold-validates each operation and preserves bytes on revision exhaustion", (t) => {
+  const { store, saved, file } = allocationHistory(t, 256, Number.MAX_SAFE_INTEGER);
+  const original = fs.readFileSync(file);
+  assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
+  assert.deepEqual(fs.readFileSync(file), original);
+  saved.runtime.leaders.push({ taskId: "new-leader", leaderSubtaskId: "new-module", status: "running", generation: 1 });
+  assert.equal(store.write(saved).ok, true);
+  const added = fs.readFileSync(file);
+  const refused = store.synchronizeEmployeeAllocation("root", "workspace");
+  assert.ok(!refused.ok && /revision overflow/.test(refused.error));
+  assert.deepEqual(fs.readFileSync(file), added);
+  saved.runtime.leaders.pop(); saved.capacity.maxEmployees = 6;
+  assert.equal(store.write(saved).ok, true);
+  const changed = fs.readFileSync(file);
+  assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, false);
+  assert.deepEqual(fs.readFileSync(file), changed);
+  // An external edit after successful reads must be validated, not served from a cache.
+  saved.employeeAllocation!.leaders.push(saved.employeeAllocation!.leaders[0]);
+  fs.writeFileSync(file, JSON.stringify(saved));
+  const corrupt = fs.readFileSync(file);
+  assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, false);
+  assert.deepEqual(fs.readFileSync(file), corrupt);
 });
