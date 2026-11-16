@@ -135,6 +135,7 @@ export type LoopGroupChatPanelMessage =
   | import("./chatLinkHost").ChatLinkMessage
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
+  | { type: "loopGroupChatChat:loadingReady" }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }
   | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string>; thinkingModes?: Record<string, string> }
   | { type: "loopGroupChatChat:supplementTask"; prompt?: string }

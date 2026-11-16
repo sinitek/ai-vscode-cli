@@ -60,6 +60,8 @@ export class LoopGroupChatPanel {
   private domReady = false;
   private htmlInstalled = false;
   private renderGeneration = 0;
+  private loadingReady: Promise<boolean> | undefined;
+  private resolveLoadingReady: ((ready: boolean) => void) | undefined;
   private readonly bubbleWindow: LoopGroupChatBubbleWindow = { start: 0 };
   private readonly imageHost = new ChatImageHost(() => this.panel?.webview);
 
@@ -68,12 +70,11 @@ export class LoopGroupChatPanel {
     private readonly handlers: LoopGroupChatPanelHandlers,
   ) {}
 
-  public show(state: LoopGroupChatPanelState): void {
-    const strings = getStrings();
+  private revealOrCreate(title: string): void {
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "sinitek-cli-tools.loopGroupChatChat",
-        buildLoopGroupChatPanelTitle(state, strings),
+        title,
         vscode.ViewColumn.Active,
         {
           enableScripts: true,
@@ -81,7 +82,14 @@ export class LoopGroupChatPanel {
           localResourceRoots: [this.extensionUri],
         },
       );
+      const panel = this.panel;
       this.panel.webview.onDidReceiveMessage(async (message: LoopGroupChatPanelMessage) => {
+        if (this.panel !== panel) return;
+        if (message?.type === "loopGroupChatChat:loadingReady") {
+          this.resolveLoadingReady?.(true);
+          this.resolveLoadingReady = undefined;
+          return;
+        }
         if (isChatImageMessage(message)) {
           return this.imageHost.handleMessage(message);
         }
@@ -95,6 +103,10 @@ export class LoopGroupChatPanel {
         this.handlers.onMessage(message);
       });
       this.panel.onDidDispose(() => {
+        if (this.panel !== panel) return;
+        this.resolveLoadingReady?.(false);
+        this.resolveLoadingReady = undefined;
+        this.loadingReady = undefined;
         this.imageHost.invalidate();
         this.panel = undefined;
         this.state = undefined;
@@ -107,6 +119,25 @@ export class LoopGroupChatPanel {
     } else {
       this.panel.reveal(vscode.ViewColumn.Active, true);
     }
+  }
+
+  public showLoading(taskId: string, loopPlus: boolean): Promise<boolean> {
+    const title = loopPlus ? getStrings().titleLoopPlus : getStrings().title;
+    this.revealOrCreate(`${title}: ${taskId.slice(0, 12)}`);
+    if (this.htmlInstalled) return Promise.resolve(true);
+    if (!this.loadingReady) {
+      this.loadingReady = new Promise((resolve) => { this.resolveLoadingReady = resolve; });
+      this.panel!.webview.html = buildLoopGroupChatLoadingHtml(this.panel!.webview, taskId, title);
+    }
+    return this.loadingReady;
+  }
+
+  public showLoadingError(error: unknown): void {
+    this.post({ type: "loopGroupChatChat:loadingError", error: error instanceof Error ? error.message : String(error) });
+  }
+
+  public show(state: LoopGroupChatPanelState): void {
+    this.revealOrCreate(buildLoopGroupChatPanelTitle(state, getStrings()));
     this.update(state);
   }
 
@@ -121,7 +152,6 @@ export class LoopGroupChatPanel {
     this.panel.title = buildLoopGroupChatPanelTitle(state, getStrings());
     this.renderGeneration += 1;
     if (!this.htmlInstalled) {
-      this.htmlInstalled = true;
       this.panel.webview.html = buildLoopGroupChatPanelHtml(
         this.panel.webview,
         state,
@@ -129,6 +159,7 @@ export class LoopGroupChatPanel {
         this.renderGeneration,
         this.bubbleWindow,
       );
+      this.htmlInstalled = true;
       return;
     }
     if (!this.domReady) {
@@ -190,6 +221,43 @@ export class LoopGroupChatPanel {
     }
     void panel.webview.postMessage(message);
   }
+}
+
+function renderGroupChatLoading(): string {
+  return `<div id="groupChatLoading" class="group-chat-loading" role="status" aria-live="polite">
+    <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span id="groupChatLoadingText">正在加载群聊…</span>
+    <button id="groupChatLoadingRetry" class="button" type="button" hidden>重试</button>
+  </div>`;
+}
+
+export function buildLoopGroupChatLoadingHtml(webview: vscode.Webview, taskId: string, title: string): string {
+  const nonce = getNonce();
+  return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(title)}</title><style>${LOOP_GROUP_CHAT_PANEL_STYLES}</style></head>
+    <body><header class="topbar"><div class="title"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(taskId)}</p></div></header>
+    ${renderGroupChatLoading()}
+    <script nonce="${nonce}">
+      const vscode = acquireVsCodeApi();
+      const retry = document.getElementById("groupChatLoadingRetry");
+      window.addEventListener("message", ({ data }) => {
+        if (data?.type !== "loopGroupChatChat:loadingError") return;
+        document.getElementById("groupChatLoadingText").textContent = "群聊加载失败：" + data.error;
+        document.querySelector(".typing-dots").hidden = true;
+        retry.hidden = false;
+      });
+      retry.addEventListener("click", () => {
+        retry.hidden = true;
+        document.querySelector(".typing-dots").hidden = false;
+        document.getElementById("groupChatLoadingText").textContent = "正在加载群聊…";
+        vscode.postMessage({ type: "loopGroupChatChat:refresh" });
+      });
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setTimeout(() => vscode.postMessage({ type: "loopGroupChatChat:loadingReady" }), 0);
+      }));
+    </script></body></html>`;
 }
 
 export type LoopGroupChatPanelContentPatch = {
@@ -265,6 +333,7 @@ ${getMarkdownStyles(".markdown-body")}
     </style>
   </head>
   <body>
+    ${renderGroupChatLoading()}
     <div class="shell">
       <header class="topbar">
         <div class="title">
@@ -686,8 +755,11 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          .replace(/'/g, "&#39;");
 	      }
 
-          function mountGroupChatMarkdown(root) {
-            root.querySelectorAll("[data-markdown-source]").forEach((element) => {
+          function mountGroupChatMarkdown(root, onComplete) {
+            const elements = Array.from(root.querySelectorAll("[data-markdown-source]"));
+            let index = 0;
+            function mountElement(element) {
+              if (element.isConnected === false) return;
               const links = Array.from(element.querySelectorAll(".communication-file-link"));
               element.innerHTML = renderMarkdown(element.getAttribute("data-markdown-source") || "");
               element.removeAttribute("data-markdown-source");
@@ -712,8 +784,21 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
                   text.replaceWith(fragment);
                 });
               });
-            });
-            mountJsonTreeHosts(root);
+              mountJsonTreeHosts(element);
+            }
+            function mountBatch() {
+              const start = onComplete ? performance.now() : 0;
+              do {
+                if (index >= elements.length) break;
+                mountElement(elements[index++]);
+              } while (!onComplete || performance.now() - start < 8);
+              if (index < elements.length) {
+                window.setTimeout(mountBatch, 0);
+              } else {
+                if (onComplete) onComplete();
+              }
+            }
+            mountBatch();
           }
 
 	      function renderAskBubble(message) {
@@ -1411,18 +1496,21 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          window.clearInterval(autoRefreshTimer);
 	        }
 	      });
-	      window.requestAnimationFrame(() => {
+	      function finishInitialRender() {
+	        document.getElementById("groupChatLoading").hidden = true;
 	        restoreScrollState();
 	        restoreCommunicationFilePreview();
 	        window.requestAnimationFrame(() => updateScrollToBottomButton());
-	      });
+	        startAutoRefresh();
+	        vscode.postMessage({ type: "loopGroupChatChat:domReady", generation: PANEL_GENERATION });
+	      }
 	      updateAskAnimationVisibility();
-          mountGroupChatMarkdown(document);
-	      startAutoRefresh();
+          window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+            window.setTimeout(() => mountGroupChatMarkdown(document, finishInitialRender), 0);
+          }));
 ${orchestratorClarificationDialogScript()}
 ${LOOP_MODEL_SWITCH_SCRIPT}
 ${state.loopPlus ? renderGroupAcceptancePlanScript(state) : ""}
-	      vscode.postMessage({ type: "loopGroupChatChat:domReady", generation: PANEL_GENERATION });
 	    </script>
   </body>
 </html>`;

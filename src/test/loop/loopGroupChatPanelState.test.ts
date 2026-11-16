@@ -83,3 +83,21 @@ test("direct group chat state creates the initial transcript and reports a missi
   assert.match(missing.writes[0]!.content, /^# Loop 主从群聊记录/mu);
   assert.match(state.error ?? "", /loopGroupChatChat\.transcriptMissing/u);
 });
+
+test("one state build reads each transcript once while a later refresh sees updated content", () => {
+  const env = dependencies();
+  let reads = 0;
+  let content: string | null = "# 群聊\n\n## 任务事件\n首次内容\n";
+  env.deps.readTextFileIfNonEmpty = () => { reads += 1; return content; };
+  const source = task(undefined);
+  const first = buildLoopGroupChatPanelStateWithDeps(source, env.deps);
+  assert.match(first.chatMarkdown, /首次内容/u);
+  assert.equal(reads, 1);
+  content = "# 群聊\n\n## 任务事件\n刷新内容\n";
+  assert.match(buildLoopGroupChatPanelStateWithDeps(source, env.deps).chatMarkdown, /刷新内容/u);
+  assert.equal(reads, 2);
+  content = null;
+  const missing = buildLoopGroupChatPanelStateWithDeps(source, env.deps);
+  assert.match(missing.error ?? "", /transcriptMissing/u);
+  assert.equal(reads, 3);
+});

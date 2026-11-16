@@ -363,6 +363,8 @@ Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份
 
 点击 Loop / Loop+ 主任务标签会打开该任务的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`；回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+打开群聊时优先切换页面：首次打开先显示“正在加载群聊…”及动画，首帧绘制后再准备模型选项、读取群聊并构建内容；大量 Markdown 分批挂载，完成后收起加载提示。已打开的群聊立即显示已有内容，连续点击合并加载，关闭页面后丢弃迟到结果。加载失败显示原因并可重试。主任务入口同步标签状态时省去普通聊天的即时重复重绘；每次群聊状态构建对同一 transcript 仅读取一次，下次刷新重新读取。实现与验证边界见 `.ch/docs/design-docs/loop-group-chat-state-boundaries.md`。
+
 ## Kimi 多模型与精简回放
 
 | 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |

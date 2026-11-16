@@ -1569,9 +1569,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       function openLoopGroupChatForMainTaskTab(tab) {
         const meta = getLoopMetaForTabSummary(tab);
         if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
-          return;
+          return false;
         }
         vscode.postMessage({ type: "openLoopGroupChat", taskId: meta.loopTaskId });
+        return true;
       }
 
       function formatConversationTabCliLabel(cli) {
@@ -2279,12 +2280,13 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           }
 
           const selectTab = () => {
+            const opensGroupChat = openLoopGroupChatForMainTaskTab(tab);
             if (tab.id !== activeTabId) {
               applyAutoInteractiveModeForTab(tab);
               if (state.conversationTabs) {
                 state.conversationTabs.activeTabId = tab.id;
               }
-              syncActiveMessagesFromRuntime();
+              syncActiveMessagesFromRuntime({ render: !opensGroupChat });
               renderConversationTabs();
               syncRunningStateForActiveTab();
               if (typeof updateContextTokenUsage === "function") {
@@ -2293,7 +2295,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
               armPromptContextForConversationStart();
               vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
             }
-            openLoopGroupChatForMainTaskTab(tab);
           };
 
           tabItem.addEventListener("click", () => {

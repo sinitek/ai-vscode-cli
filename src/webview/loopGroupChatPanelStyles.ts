@@ -33,6 +33,22 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         display: flex;
         flex-direction: column;
       }
+      .group-chat-loading {
+        position: fixed;
+        inset: 64px 0 0;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: var(--gap);
+        padding: 24px;
+        background: var(--vscode-editor-background);
+        color: var(--vscode-editor-foreground);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .group-chat-loading .typing-dots span { animation: none; }
+      }
       .topbar {
         flex-shrink: 0;
         display: flex;

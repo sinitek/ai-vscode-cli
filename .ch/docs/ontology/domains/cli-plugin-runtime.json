@@ -1904,11 +1904,14 @@
     {
       "id": "plugin.rule.loop_main_tab_opens_group_chat",
       "name": "点击 Loop 主任务 Tab 打开群聊",
-      "description": "用户点击普通对话面板中的 Loop 或 Loop+ 主任务 Tab 时，自动打开该任务已有的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务 Tab、普通会话 Tab 和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。",
+      "description": "用户点击普通对话面板中的 Loop 或 Loop+ 主任务 Tab 时，自动打开该任务已有的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务 Tab、普通会话 Tab 和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。打开请求优先于普通聊天重绘；首次先显示加载动画，经 loadingReady 首帧握手后才准备模型选项和构建内容，Markdown 分批挂载完成后发送 domReady。已有页面立即 reveal，连续打开合并，关闭释放等待并丢弃迟到结果，加载失败可重试。每次群聊状态构建仅读取一次同路径 transcript，刷新重新读取。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": "src/webview/viewContentScript/messageRendering.ts"},
+        {"path": "src/webview/loopGroupChatPanel.ts"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"},
+        {"path": ".ch/docs/design-docs/loop-group-chat-state-boundaries.md"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"}
       ]

@@ -765,6 +765,78 @@ function createState(overrides: any = {}) {
   };
 }
 
+test("loading shell waits for the first paint handshake and reveals existing content immediately", async () => {
+  const harness = createPanelHarness();
+  const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
+  let ready = false;
+  const loading = panel.showLoading("task-1", true).then((value) => { ready = value; });
+  assert.match(harness.panel.webview.html, /Loop\+ 群聊/u);
+  assert.match(harness.panel.webview.html, /正在加载群聊/u);
+  assert.doesNotMatch(harness.panel.webview.html, /data-markdown-source|marked\.parse/u);
+  await Promise.resolve();
+  assert.equal(ready, false);
+  await harness.messageHandler({ type: "loopGroupChatChat:loadingReady" });
+  await loading;
+  assert.equal(ready, true);
+  panel.show(createState());
+  const html = harness.panel.webview.html;
+  assert.equal(await panel.showLoading("task-1", true), true);
+  assert.equal(harness.panel.webview.html, html);
+  assert.deepEqual(harness.reveal, { column: -1, preserveFocus: true });
+});
+
+test("closing a loading shell releases the waiter and ignores an old page after reopening", async () => {
+  const harness = createPanelHarness();
+  const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
+  const loading = panel.showLoading("task-1", false);
+  const oldMessageHandler = harness.messageHandler;
+  harness.disposeHandler();
+  assert.equal(await loading, false);
+  // The harness normally reuses its fake panel; use a distinct identity for this lifecycle check.
+  harness.panel = { ...harness.panel };
+  const reopened = panel.showLoading("task-1", false);
+  let settled = false;
+  void reopened.then(() => { settled = true; });
+  await oldMessageHandler({ type: "loopGroupChatChat:loadingReady" });
+  assert.equal(settled, false);
+  await harness.messageHandler({ type: "loopGroupChatChat:loadingReady" });
+  assert.equal(await reopened, true);
+  panel.showLoadingError(new Error("读取失败"));
+  assert.deepEqual(harness.messages.at(-1), { type: "loopGroupChatChat:loadingError", error: "读取失败" });
+});
+
+test("initial Markdown mounting yields between batches and completes every connected bubble", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const source = html.slice(html.indexOf("function mountGroupChatMarkdown("));
+  // Only execute the mounting function; following helpers are unrelated to this regression.
+  const end = source.indexOf("            mountBatch();") + "            mountBatch();\n          }".length;
+  const queued: Array<() => void> = [];
+  let now = 0;
+  let completed = 0;
+  let mounted = 0;
+  const elements = Array.from({ length: 30 }, (_, index) => ({
+    isConnected: index !== 10,
+    innerHTML: "",
+    querySelectorAll: () => [],
+    getAttribute: () => `内容${index}`,
+    removeAttribute: () => undefined,
+  }));
+  const mount = new Function("window", "performance", "renderMarkdown", "mountJsonTreeHosts", `${source.slice(0, end)}; return mountGroupChatMarkdown;`)(
+    { setTimeout: (callback: () => void) => queued.push(callback) },
+    { now: () => now++ },
+    (text: string) => text,
+    () => { mounted += 1; },
+  );
+  mount({ querySelectorAll: () => elements }, () => { completed += 1; });
+  assert.ok(mounted > 0 && mounted < 29);
+  assert.equal(completed, 0);
+  while (queued.length) queued.shift()!();
+  assert.equal(mounted, 29);
+  assert.equal(completed, 1);
+  mount({ querySelectorAll: () => [] }, () => { completed += 1; });
+  assert.equal(completed, 2);
+});
+
 for (const { status, label, statusClass } of [
   { status: "running", label: "运行中", statusClass: "member-status-running" },
   { status: "pending", label: "待启动", statusClass: "member-status-pending" },

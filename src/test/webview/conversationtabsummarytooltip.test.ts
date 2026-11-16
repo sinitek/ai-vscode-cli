@@ -152,8 +152,8 @@ function createHarness(tabs: Tab[] = [
     isTabErrored: (id: string) => tabs.find((tab) => tab.id === id)?.errored,
     isConversationTabRunning: (tab: Tab) => Boolean(tab.running),
     isLoopMainTabCloseLocked: (tab: Tab) => Boolean(tab.locked),
-    applyAutoInteractiveModeForTab() {}, syncActiveMessagesFromRuntime() {}, syncRunningStateForActiveTab() {},
-    armPromptContextForConversationStart() {}, openLoopGroupChatForMainTaskTab() {},
+    applyAutoInteractiveModeForTab() {}, syncActiveMessagesFromRuntime(_options?: { render: boolean }) {}, syncRunningStateForActiveTab() {},
+    armPromptContextForConversationStart() {}, openLoopGroupChatForMainTaskTab() { return false; },
     t: (key: string) => key,
     vscode: { postMessage: (message: { type: string; tabId: string }) => posted.push(message) },
     setTimeout: (callback: () => void, delay: number) => {
@@ -200,7 +200,7 @@ function createHarness(tabs: Tab[] = [
   };
   const tooltip = () => document.body.children.find((element) => element.id === "conversationTabSummaryTooltip");
   const visible = () => Boolean(tooltip() && !tooltip()?.hidden);
-  return { document, root, window, timers, canceled, state, posted, render, refresh, tab, hover, advance, tooltip, visible };
+  return { document, root, window, timers, canceled, state, posted, render, refresh, tab, hover, advance, tooltip, visible, sandbox };
 }
 
 test("summary appears at 300ms, never 299ms, as a single accessible plain text tooltip", () => {
@@ -357,6 +357,24 @@ test("click selection, Enter/Space selection, and close retain the original mess
     assert.equal(harness.visible(), false, operation);
     assert.equal(harness.posted[0]?.type, operation === "close" ? "closeConversationTab" : "selectConversationTab");
     assert.equal(harness.posted[0]?.tabId, "b");
+  }
+});
+
+test("opening a main-task group chat precedes selection and avoids its redundant eager message repaint", () => {
+  for (const operation of ["click", "Enter", " "]) {
+    const harness = createHarness();
+    const events: string[] = [];
+    harness.sandbox.openLoopGroupChatForMainTaskTab = () => { events.push("open"); return true; };
+    harness.sandbox.syncActiveMessagesFromRuntime = (options?: { render: boolean }) => {
+      events.push("sync");
+      assert.equal(options?.render, false);
+    };
+    harness.tab("b").dispatch(operation === "click" ? "click" : "keydown", { key: operation });
+    assert.deepEqual(events, ["open", "sync"]);
+    assert.equal(harness.state.conversationTabs.activeTabId, "b");
+    assert.equal(harness.posted[0]?.type, "selectConversationTab");
+    harness.tab("b").dispatch("click");
+    assert.deepEqual(events, ["open", "sync", "open"]);
   }
 });
 

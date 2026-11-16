@@ -20,14 +20,24 @@ export function buildLoopGroupChatPanelStateWithDeps(
   task: LoopTaskRecord,
   deps: LoopGroupChatPanelStateBuilderDeps,
 ): LoopGroupChatPanelState {
+  // Share one transcript snapshot across member timestamps, timeline and missing-file checks.
+  // Keep this cache local to a single build so the next refresh always reads current content.
+  const contentByPath = new Map<string, string | null>();
+  const snapshotDeps: LoopGroupChatPanelStateBuilderDeps = {
+    ...deps,
+    readTextFileIfNonEmpty: (filePath) => {
+      if (!contentByPath.has(filePath)) contentByPath.set(filePath, deps.readTextFileIfNonEmpty(filePath));
+      return contentByPath.get(filePath) ?? null;
+    },
+  };
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
   const loopPlus = projectLoopPlusPanel(task, deps.getActiveReviewEventIds?.(task.id) ?? []);
-  const rounds = buildLoopMainSubChatPanelRounds(task, deps, loopPlus);
-  const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, deps);
+  const rounds = buildLoopMainSubChatPanelRounds(task, snapshotDeps, loopPlus);
+  const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, snapshotDeps);
   const missingChatFiles = rounds
     .map((round) => round.chatFile)
-    .filter((filePath): filePath is string => Boolean(filePath && !deps.readTextFileIfNonEmpty(filePath)));
+    .filter((filePath): filePath is string => Boolean(filePath && !snapshotDeps.readTextFileIfNonEmpty(filePath)));
   const error = missingChatFiles.length > 0 && !chatMarkdown.trim()
     ? deps.t("loopGroupChatChat.transcriptMissing", { path: missingChatFiles[0] ?? "" })
     : null;

@@ -127,6 +127,61 @@ for (const running of [true, false]) {
   });
 }
 
+test("opening reveals before model preparation, coalesces clicks and reads the latest task", async () => {
+  const env = createContinuationRecoveryHarness();
+  const events: string[] = [];
+  let releasePaint!: (ready: boolean) => void;
+  const paint = new Promise<boolean>((resolve) => { releasePaint = resolve; });
+  let releaseModels!: () => void;
+  const models = new Promise<void>((resolve) => { releaseModels = resolve; });
+  let shownPrompt = "";
+  const panel = {
+    showLoading: () => { events.push("reveal"); return paint; },
+    setAskThread: () => undefined,
+    show: (state: import("../../webview/loopGroupChatPanel").LoopGroupChatPanelState) => {
+      events.push("show"); shownPrompt = state.task.rootPrompt;
+    },
+  };
+  env.deps.panelsByTaskId.set(env.task.id, panel as never);
+  env.deps.prepareModelSwitchOptions = async () => { events.push("models"); await models; };
+  const first = env.coordinator.open(env.task.id);
+  const second = env.coordinator.open(env.task.id);
+  await delay(0);
+  assert.deepEqual(events, ["reveal", "reveal"]);
+  releasePaint(true);
+  await delay(0);
+  assert.equal(events.filter((event) => event === "models").length, 1);
+  await env.coordinator.refresh(env.task.id);
+  env.task.rootPrompt = "加载期间更新后的任务";
+  releaseModels();
+  await Promise.all([first, second]);
+  assert.equal(shownPrompt, "加载期间更新后的任务");
+  assert.equal(events.filter((event) => event === "show").length, 1);
+});
+
+for (const outcome of ["closed-before-paint", "closed-during-models", "failed"] as const) {
+  test(`opening handles ${outcome} without reviving a disposed page`, async () => {
+    const env = createContinuationRecoveryHarness();
+    let shown = 0;
+    let failed = 0;
+    const panel = {
+      showLoading: async () => outcome !== "closed-before-paint",
+      getState: () => undefined,
+      setAskThread: () => undefined,
+      show: () => { shown += 1; },
+      showLoadingError: () => { failed += 1; },
+    };
+    env.deps.panelsByTaskId.set(env.task.id, panel as never);
+    env.deps.prepareModelSwitchOptions = async () => {
+      if (outcome === "failed") throw new Error("读取模型失败");
+      env.deps.panelsByTaskId.delete(env.task.id);
+    };
+    await env.coordinator.open(env.task.id);
+    assert.equal(shown, 0);
+    assert.equal(failed, outcome === "failed" ? 1 : 0);
+  });
+}
+
 test("invalid thinking switch does not persist or resume any role", async () => {
   const env = createContinuationRecoveryHarness();
   let writes = 0;
@@ -739,7 +794,10 @@ test("previews a communication file from the open Loop group chat", async () => 
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
     const coordinator = createLoopGroupChatPanelCoordinator(deps);
-    await coordinator.open(task.id);
+    const opening = coordinator.open(task.id);
+    await delay(0);
+    messageHandler?.({ type: "loopGroupChatChat:loadingReady" });
+    await opening;
     assert.equal(typeof messageHandler, "function");
     messageHandler?.({ type: "loopGroupChatChat:openCommunicationFile", requestId: " ", path: filePath });
     messageHandler?.({ type: "loopGroupChatChat:openCommunicationFile", requestId: "x".repeat(81), path: filePath });
@@ -843,7 +901,10 @@ test("persists Loop and Loop+ supplements in prompt history while busy and queue
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
     const coordinator = createLoopGroupChatPanelCoordinator(deps);
-    await coordinator.open(task.id);
+    const opening = coordinator.open(task.id);
+    await delay(0);
+    messageHandler?.({ type: "loopGroupChatChat:loadingReady" });
+    await opening;
     assert.equal(typeof messageHandler, "function");
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "  please check the running subtask  " });
     messageHandler?.({ type: "loopGroupChatChat:supplementTask", prompt: "then check another requirement" });
@@ -1010,7 +1071,10 @@ test("asks the current main model session and shows the answer without supplemen
       t: ((key: string) => key) as CoordinatorDeps["t"],
     };
     const coordinator = createLoopGroupChatPanelCoordinator(deps);
-    await coordinator.open(task.id);
+    const opening = coordinator.open(task.id);
+    await delay(0);
+    messageHandler?.({ type: "loopGroupChatChat:loadingReady" });
+    await opening;
     const installedHtml = webview.html;
     assert.match(installedHtml, /上次的问题/u);
     assert.doesNotMatch(installedHtml, /id="askChatSend"[^>]*disabled/u);

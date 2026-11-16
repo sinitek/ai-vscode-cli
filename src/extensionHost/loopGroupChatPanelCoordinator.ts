@@ -264,6 +264,7 @@ function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPa
 }
 
 export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps) {
+  const openingPanels = new WeakMap<LoopGroupChatPanel, Promise<void>>();
   const askThreads = new Map<string, LoopAskThread>();
   const askRuns = new Map<string, {
     aborted: boolean;
@@ -347,14 +348,21 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     if (!panel) {
       return;
     }
+    if (openingPanels.has(panel)) return;
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
       deps.showWarningMessage(deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
-    await deps.prepareModelSwitchOptions?.(task);
-    panel.setAskThread(ensureAskThread(task));
-    panel.update(buildLoopGroupChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
+    try {
+      await deps.prepareModelSwitchOptions?.(task);
+      if (deps.panelsByTaskId.get(normalizedTaskId) !== panel) return;
+      panel.setAskThread(ensureAskThread(task));
+      panel.update(buildLoopGroupChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
+    } catch (error) {
+      panel.showLoadingError(error);
+      if (panel.getState()) deps.showWarningMessage(String(error));
+    }
   };
 
   const runContinuation = async (taskId: string, prompt?: unknown, resumeIdle = false): Promise<void> => {
@@ -1000,8 +1008,6 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showInformationMessage(deps.t("loopGroupChatChat.noTask"));
       return;
     }
-    await deps.prepareModelSwitchOptions?.(task);
-    const state = buildLoopGroupChatPanelState(task, deps);
     let panel = deps.panelsByTaskId.get(task.id);
     if (!panel) {
       const taskId = task.id;
@@ -1018,8 +1024,31 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       });
       deps.panelsByTaskId.set(task.id, panel);
     }
-    panel.setAskThread(ensureAskThread(task));
-    panel.show(state);
+    const targetPanel = panel;
+    const ready = targetPanel.showLoading(task.id, resolveLoopSchedulingMode(task.schedulingMode) === "event_driven");
+    const pending = openingPanels.get(targetPanel);
+    if (pending) return pending;
+    const loading = (async () => {
+      if (!await ready || deps.panelsByTaskId.get(task.id) !== targetPanel) return;
+      try {
+        await deps.prepareModelSwitchOptions?.(task);
+        if (deps.panelsByTaskId.get(task.id) !== targetPanel) return;
+        const latestTask = deps.readTaskRecord(task.id) ?? task;
+        targetPanel.setAskThread(ensureAskThread(latestTask));
+        targetPanel.show(buildLoopGroupChatPanelState(latestTask, deps));
+      } catch (error) {
+        if (deps.panelsByTaskId.get(task.id) === targetPanel) {
+          targetPanel.showLoadingError(error);
+          if (targetPanel.getState()) deps.showWarningMessage(String(error));
+        }
+      }
+    })();
+    openingPanels.set(targetPanel, loading);
+    try {
+      await loading;
+    } finally {
+      if (openingPanels.get(targetPanel) === loading) openingPanels.delete(targetPanel);
+    }
   };
 
   const refreshOpenPanelForTask = (taskId: string): void => {

@@ -960,8 +960,8 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   assert.ok(mainTab);
   mainTab.click();
   assert.deepEqual(postedTabActions(posted, beforeMain), [
-    { type: "selectConversationTab", tabId: "main-tab", cli: "codex" },
     { type: "openLoopGroupChat", taskId: "task-main" },
+    { type: "selectConversationTab", tabId: "main-tab", cli: "codex" },
   ]);
 
   window.dispatchMessage({

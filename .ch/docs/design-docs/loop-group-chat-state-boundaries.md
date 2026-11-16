@@ -20,3 +20,13 @@
 ## 验证边界
 
 共享输出目录的 build 与显式 `node --test` 覆盖投影、群聊状态和呈现回归。冻结批次通过单项及多项前缀夹具检查；没有真实模型调用、浏览器检查或扩展宿主运行。此投影仅呈现宿主状态，不改变执行协议或调度页面结构。
+
+## 群聊打开与加载反馈
+
+主任务 Tab 优先发送打开群聊请求，再同步标签状态；同步消息只更新运行时引用，普通面板后续状态同步负责展示，省去切换群聊前的即时重复重绘。
+
+`LoopGroupChatPanel.showLoading` 立即创建或 reveal 面板。首次仅安装轻量加载壳；浏览器经过两个动画帧及一个独立任务，发送 `loopGroupChatChat:loadingReady`。协调器收到该通知后才准备模型选项、读取最新任务和问答记录、构建完整群聊。完整页面保留加载提示，首次 Markdown 挂载以约 8ms 为批次预算，通过计时器让出主线程；全部完成后恢复滚动位置、收起加载提示，再发送既有 `domReady`。单个极长气泡的解析仍不可在气泡内部拆分。
+
+已安装的群聊保持原 DOM 并立即 reveal，异步刷新继续复用既有内容补丁。协调器按面板实例合并连续打开请求，加载期间的普通刷新由最终最新任务快照覆盖；每个异步阶段核对面板身份，关闭会释放加载壳等待，迟到结果不重建页面。加载错误通过文本显示并提供重试，沿用原刷新入口。状态构建在单次调用内共享 transcript 读取快照，成员时间、正文和缺失检查复用同一次读取；不跨刷新缓存，保留新增内容可见性。
+
+回归入口：`loopGroupChatPanel.test.ts`、`loopGroupChatCoordinator.test.ts`、`loopGroupChatPanelState.test.ts`、`conversationtabsummarytooltip.test.ts`、`chatMarkdown.test.ts`。2026-11-16 使用生成的真实 Webview HTML 和模拟 VS Code 消息桥在 headless Chromium 检查加载首帧、失败重试、181 个气泡及 4320 个 Markdown 小节、问答 Markdown、宽窄屏和减少动态效果；该验证不等同于已安装扩展内的实测。测量、测试命令和历史失败对照见[性能执行计划](../exec-plans/completed/2026-11/2026-11-16-perf-loop-group-chat-opening.md)。
