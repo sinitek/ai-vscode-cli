@@ -1516,11 +1516,100 @@ test("routes a new Loop+ send through runLoopPrompt as event_driven without a lo
   assert.equal(calls.runLoopPrompt[0].input.loopSubtaskModel, "provider/general-model");
 });
 
-test("rechecks Loop and Loop+ availability after the panel-state await before dispatch", async () => {
+test("rechecks Loop and Loop+ availability after the last dispatch prerequisite await", async () => {
   for (const interactiveMode of ["loop", "loop_plus"] as const) {
     const h = createSendPromptHarness();
     let settings: ToolSettingsState = { loopEnabled: true, loopPlusEnabled: true };
     h.deps.readStoredToolSettings = () => settings;
+    const enteredWait = createDeferred<void>();
+    const releaseWait = createDeferred<void>();
+    const wait = async () => {
+      enteredWait.resolve();
+      await releaseWait.promise;
+    };
+    if (interactiveMode === "loop") {
+      h.deps.postPanelState = async () => {
+        h.calls.postPanelState += 1;
+        await wait();
+      };
+    } else {
+      // Loop+ awaits visible configuration validation, never the full UI refresh.
+      h.deps.validateVisibleConfigSelections = wait;
+    }
+
+    const sending = handlePanelMessageWithDeps({
+      type: "sendPrompt", prompt: "等待期间关闭模式", interactiveMode,
+      tabId: "tab-opencode-smoke", cli: "opencode",
+    }, h.deps);
+    await enteredWait.promise;
+    assert.equal(h.calls.preloaded.length, 0, interactiveMode);
+    assert.equal(h.calls.runLoopPrompt.length, 0, interactiveMode);
+    settings = interactiveMode === "loop"
+      ? { ...settings, loopEnabled: false }
+      : { ...settings, loopPlusEnabled: false };
+    releaseWait.resolve();
+    await sending;
+
+    assert.equal(h.calls.runPrompt.length, 0, interactiveMode);
+    assert.equal(h.calls.runLoopPrompt.length, 0, interactiveMode);
+    assert.equal(h.calls.preloaded.length, 0, interactiveMode);
+    assert.match(h.calls.webviewErrors.at(-1) ?? "", /已在工具设置中关闭/);
+  }
+});
+
+test("Loop+ checks current mode availability without waiting for pending or failed panel projection", async () => {
+  for (const refresh of ["pending", "reject", "throw"] as const) {
+    for (const disableMode of [false, true]) {
+      const h = createSendPromptHarness();
+      let settings: ToolSettingsState = { loopPlusEnabled: true };
+      h.deps.readStoredToolSettings = () => settings;
+      const releasePost = createDeferred<void>();
+      const receipts: Record<string, unknown>[] = [];
+      h.deps.postWebviewMessage = (message) => { receipts.push(message); };
+      h.deps.postPanelState = () => {
+        h.calls.postPanelState += 1;
+        if (disableMode) settings = { loopPlusEnabled: false };
+        if (refresh === "throw") throw new Error("面板投影同步失败");
+        if (refresh === "reject") return Promise.reject(new Error("面板投影异步失败"));
+        return releasePost.promise;
+      };
+      const sending = handlePanelMessageWithDeps({
+        type: "sendPrompt", requestId: "mode-check", prompt: "新建 Loop+",
+        interactiveMode: "loop_plus", tabId: "tab-opencode-smoke", cli: "opencode",
+      }, h.deps);
+      try {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(h.calls.postPanelState, 1);
+        assert.equal(h.calls.runPrompt.length, 0);
+        assert.equal(h.calls.runLoopPrompt.length, disableMode ? 0 : 1);
+        assert.equal(h.calls.preloaded.length, disableMode ? 0 : 1);
+        assert.deepEqual(receipts, [{
+          type: "promptSubmissionSettled", requestId: "mode-check", tabId: "tab-opencode-smoke",
+        }]);
+        if (disableMode) {
+          assert.match(h.calls.webviewErrors.at(-1) ?? "", /Loop\+已在工具设置中关闭/);
+        } else {
+          assert.equal(h.calls.webviewErrors.length, 0);
+          assert.equal(h.calls.runLoopPrompt[0].options.schedulingMode, "event_driven");
+        }
+      } finally {
+        releasePost.resolve();
+        await sending;
+      }
+    }
+  }
+});
+
+test("keeps existing Loop and Loop+ subtask continuations dispatchable when modes close during panel refresh", async () => {
+  for (const interactiveMode of ["loop", "loop_plus"] as const) {
+    const h = createSendPromptHarness();
+    let settings: ToolSettingsState = { loopEnabled: true, loopPlusEnabled: true };
+    h.deps.readStoredToolSettings = () => settings;
+    h.deps.resolveLoopSubtaskConversationContext = () => ({
+      taskId: "existing-loop",
+      subtaskId: "existing-subtask",
+      round: 1,
+    });
     const enteredPost = createDeferred<void>();
     const releasePost = createDeferred<void>();
     h.deps.postPanelState = async () => {
@@ -1530,52 +1619,22 @@ test("rechecks Loop and Loop+ availability after the panel-state await before di
     };
 
     const sending = handlePanelMessageWithDeps({
-      type: "sendPrompt", prompt: "等待刷新期间关闭模式", interactiveMode,
+      type: "sendPrompt", prompt: "继续既有子任务", interactiveMode,
       tabId: "tab-opencode-smoke", cli: "opencode",
     }, h.deps);
     await enteredPost.promise;
-    settings = interactiveMode === "loop"
-      ? { ...settings, loopEnabled: false }
-      : { ...settings, loopPlusEnabled: false };
+    settings = { loopEnabled: false, loopPlusEnabled: false };
     releasePost.resolve();
     await sending;
 
-    assert.equal(h.calls.runPrompt.length, 0, interactiveMode);
-    assert.equal(h.calls.runLoopPrompt.length, 0, interactiveMode);
-    assert.match(h.calls.webviewErrors.at(-1) ?? "", /已在工具设置中关闭/);
+    assert.equal(h.calls.runPrompt.length, 1);
+    assert.equal(h.calls.runPrompt[0].input.taskRole, "subtask");
+    assert.equal(h.calls.runPrompt[0].input.loopTaskId, "existing-loop");
+    assert.equal(h.calls.preloaded.length, 1);
+    assert.equal(h.calls.wakeMain.length, 1);
+    assert.equal(h.calls.runLoopPrompt.length, 0);
+    assert.equal(h.calls.webviewErrors.length, 0);
   }
-});
-
-test("keeps an existing Loop subtask continuation dispatchable when Loop is disabled during panel refresh", async () => {
-  const h = createSendPromptHarness();
-  let settings: ToolSettingsState = { loopEnabled: true };
-  h.deps.readStoredToolSettings = () => settings;
-  h.deps.resolveLoopSubtaskConversationContext = () => ({
-    taskId: "existing-loop",
-    subtaskId: "existing-subtask",
-    round: 1,
-  });
-  const enteredPost = createDeferred<void>();
-  const releasePost = createDeferred<void>();
-  h.deps.postPanelState = async () => {
-    h.calls.postPanelState += 1;
-    enteredPost.resolve();
-    await releasePost.promise;
-  };
-
-  const sending = handlePanelMessageWithDeps({
-    type: "sendPrompt", prompt: "继续既有子任务", interactiveMode: "loop",
-    tabId: "tab-opencode-smoke", cli: "opencode",
-  }, h.deps);
-  await enteredPost.promise;
-  settings = { loopEnabled: false };
-  releasePost.resolve();
-  await sending;
-
-  assert.equal(h.calls.runPrompt.length, 1);
-  assert.equal(h.calls.runPrompt[0].input.taskRole, "subtask");
-  assert.equal(h.calls.runLoopPrompt.length, 0);
-  assert.equal(h.calls.webviewErrors.length, 0);
 });
 
 test("does not start Loop+ from a Loop+ subtask tab", async () => {
