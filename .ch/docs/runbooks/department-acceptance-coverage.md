@@ -1,5 +1,86 @@
 # 产研部逐项验收覆盖
 
+截至 2026-11-16 **lp715 主审接受**；本轮 round-718 只同步已接受事实。文档基线为 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。根功能仍为**开发中**，[原 feature 计划](../exec-plans/active/2026-11-13-feature-department-mode.md)保持 active / `in_progress`，不新增平行计划或提前归档。
+
+原始要求及补充 **1–22** 按最新父记录 `rootPrompt` / 全部 `supplementalRequirements` 顺序核对。报告从相关 `subTasks[].communicationFile` 定位；lp 编号是执行 ID，报告文件轮次可能不同，以下同时列出，不能仅凭文件轮次推断接受状态。主通信 `main-task.md` 的 lp715 审查是本次接受范围截止点；不消费本批共享存储＋真实混合冷链补验或原目录保全任务的未审结果。
+
+**当前结论：用户要求的合理合并后官方全量已经完成。** 实际测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a`，一次标准 `npm run build` exit0；一次官方 `node scripts/run_unit_tests.js` exit0，397 个编译文件、5472 项中 5469 通过、0 失败、0 取消、3 环境门控跳过，63770.400166ms，自然退出。随后仅五份中央文档形成 0817，结果继续覆盖其代码。此处复用执行事实，本轮没有运行这些命令，不将来源定向结果相加为全量。
+
+## 当前事实来源与后续证据索引
+
+业务语义先按 ontology 查询并打开 `source_refs` 核对：`plugin.department_task`、`plugin.rule.department_workspace_capacity`、`plugin.rule.loop_store_confirmed_contributions` 等提供导航，当前代码、明确规格及已接受报告为核对依据。旧压缩描述或下方 round-410 快照中的“待做”只代表其时点，不能推翻后继接受结果。稳定角色、权限、状态机及路径未变，本轮不改 ontology 数据或重跑未变工具 9 项。
+
+| 索引 | 报告定位与原输入 | 已接受范围及限制 |
+| --- | --- | --- |
+| U：既有弹窗/主题 | 下方历史索引 U：round-121、round-338；[会话验证](department-conversation-verification.md) | 真实历史组长弹窗、适用完整操作栏、275px 可见面、关闭不 stop、焦点/非零滚动恢复；深浅主题及宽窄屏显示 fixture 按未变输入复用。历史终态可用动作不等于全部运行态操作，不笼统重开旧证据。 |
+| V675：最终角色图标 | lp675 `department-allocation-avatar-role-icons-continuation`，`round-675-department-allocation-avatar-role-icons-continuation.md`；`a3a0d37a0723791645259c4abebbd6d129d52b79` / tree `87f0009e53b5aebd14f206ebad73993a4b38c492` | 部门☀️/🌛/⭐️、普通 Loop/Loop+ 主🌛/子⭐️，总/组/员及 tab 原名保持。标准 build、不同14项为未变11＋修复3、两入口1440深/280浅 fixture；首轮2失败/Tabs超时保留，不称新真实 EH。 |
+| M693：语义合并修复 | lp693 `department-mainline-semantic-merge-repair`，报告 **round-694** 同 ID；`c40acbfc78c7bdd6bf54d036b07dbdaaac0fe443` / tree `39990e005069af63fad598248915801f3efe4335` | modal-only refresh 与未知显式 threadId 有界缓冲/确认后路由；build、2/3/1 定向及系统 Chrome smoke 分别有效。旧加载探针受控中止未达刷新断言、默认浏览器缺失保留，非真实 EH。 |
+| W694：工作区配置 | lp694 `department-workspace-count-overrides`，`round-694-department-workspace-count-overrides.md`；`40c77d3eb7eabd511ab569cdc25e08e6ed348d5a` / tree `39e191a4482b40f75072ea44463df0f7e7a4da68` | 合法 workspace→global→4/20，空值单项继承，scope/requestId、原子保存，新根冻结。最终 build、8 文件53/53、1440深/280浅 Webview→真实 router/store fixture；原首错保留，不代替实机。 |
+| G695：主干/工作区合并 | lp695 `department-final-mainline-workspace-merge`，round-695 同 ID；`464d1113f13b1bc0f2b59ea1ba4c09976ebed713` / tree `cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4` | 独立主干分支后继续；fetch 确认 `origin/master=2cda37b568465c3ace4c5cbe3c953471260496e2`，真实 merge `4b47d0a7`、`b7524181` 保留 c40/40c 历史，11 文本冲突逐项合并。build、329/137/95/8/2 分批结果不合称一次全量；来源/冲突见[整合材料](../integration/department-mainline-integration/README.md)。 |
+| A697：真实人数/额度 | lp697 `department-final-workspace-allocation-eh`，报告 **round-698** 同 ID；实际 run2 `b992d3b668c495f398fa20d4620166733a0bf86b` / tree `4c81a722d26544eed4c7d0402b446ba7e192ed3d`；最终仅 runbook 后继 `b02cfe1a34c427937efd625735cf267bc67ac711` | [真实 UI→EH/CLI](department-employee-allocation-eh-verification.md)：全局4/20保持，workspace保存2/6，新根冻结2/6，默认3→保存0→下一 attempt应用/拒绝→恢复3→下一 attempt准入；四份真实提示/reader/持久快照对照。原四完整 receipts、精确 CLOSED、持久容量归还、四 worker 先于宿主自然退出；19不同测试分组有效。首轮模型选择 harness 失败保留，非整个工作台无 console 或新主题截图审计。 |
+| K698：全 Codex 第二 EH | lp698 `department-final-cold-recovery-composition`，round-698 同 ID；运行输入464/tree cb6e；文档后继 `1c1c25d6ecb54fcb77689fe71cd8d721bf0cef2c` | [冷链 runbook](department-cold-recovery-eh-verification.md)：全 Codex 一次 passed，原完整 receipt/CLOSED、第二 EH 公开 stop、容量持久移除、原 authority 认证退役/内核退出早于唯一显式后继；最终 stop清理，五登记 worker/双 EH 自然0/null。**同报告 mixed beforeControl failed 保留**，不能称该 attempt 双组合通过；通用阶段模板 pending 不证明总监最终业务报告。 |
+| K699：混合第二 EH/旧根 | lp699 `department-cold-orphan-control-repair`，报告 **round-702** 同 ID；实现 `fa6e1ddea02096bfc4f96b9f6e42513c5addbe48`，仅计数文档后继 `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d` / tree `44ad9aaf293649332b438b9574b016cb16a58e2f` | 可信部门根不再仅因本地 runner 缺席被普通 orphan 改停止；保留原 stop入口及未确认停止屏障。一次 mixed 第二 EH passed：真实 move/readback、新 canonical root、原 native/local session保持、完整3 receipts及2＋1 CLOSED、空容量、五 worker/双 EH自然退出。精确 round698 旧根另由公开 stop正常收尾，原 authority真实0/null。实机后 stop竞态/settled负例仅由最终 build/22定向覆盖，不冒称这些分支 E2E；旧88项中另2项失败不改写。 |
+| T705：冷生命周期夹具 | lp705 `department-cold-lifecycle-regression-repair`，报告 **round-706** 同 ID；`6879fc01ecc440a17b40f5bc50ae47ebe825a58d` / tree `96b8c2bb8ec55406ef4d0cfda033ef875316d97d` | 六测试/夹具修复十项旧失败，必要 tsc、五文件60/60；生产794产物同字节。真实 gate/adapter idle/t.mock和原凭证断言保持。三次自有 worker强制卫生回收不是自然退出、receipt或容量证明；旧 OpenCode 内部首抛未追溯，不新增 EH。 |
+| S707：严格存储后继 | lp707 `department-store-authority-retention-repair`，round-707 同 ID；完整 `74be413f→94267bb3f4343c9ccee0f9f75e99c6a2f492df50` / tree `f96fbea2fc801dac1b28487d7eb582a61439fff9` | 普通严格异常/errno、目标 commit/ordinaryMoves权威；同 gate单文件分类/提交、一次 catalog读；未知整文件保留，known-reader不退旧副本；owned未确认仍ready=false。build、81普通/handoff＋29共享 owned边界分别通过；不与历史103累加。旧祖先未接受事实保留，不声称真实多进程压力、断电/崩溃或旧外部 writer已验。 |
+| D709：存储合同文档 | lp709 `department-store-contract-facts-sync`，round-709 同 ID；`2999a3b0589eaab2f52b355e41487cc44a2331c6` / tree `f2166f380da2d914ba1530317fb5f2ac21c82623` | [中央存储合同](../design-docs/department-mode.md#生产归属索引与存储事实)及 ontology confirmed_contributions 同步普通/owned区别；两文档、validate/工具9项。该独立文档树本身无94267源码；lp715已确认二者实际统一，不再列为未合入。 |
+| F712：旧迁移夹具 | lp712 `department-legacy-store-migration-regression-repair`，报告 **round-714** 同 ID；测试 `4d36ef021aa88bd2f5e12aeeeb8c26105c624ee6`，仅五文档后继 `f1c499f36cfc06d604a10716ca7c2354fd3c3a05` / tree `b025197d0949d1a368e2828f33c9c335b0b65a30` | build与文件26/26，导入前隔离 HOME的无catalog兼容、真实 writer登记的已知源/兄弟及真实unsafe-root拒绝；finally不污染相邻例。生产未改；不把 Round711失败改绿。 |
+| F713：群聊撤销夹具 | lp713 `department-group-chat-revocation-regression-repair`，报告 **round-714** 同 ID；`53fc392b4c4563537e935f9c307d90257e344a5e` / tree `a5de04cfa4a0abc6d87c1995241de55c85f629dd` | 完整 dispatcher结算后再refresh，精确失效DTO、根state/generation、七种归属变化零迟到副作用/旧实例不复活。37/37后仅撤销顺序改变，由最终8项替代该范围，其它29不变；**不是45项**。模拟宿主单测、生产未改，无新浏览器/EH。 |
+| F714：Owner等待夹具 | lp714 `department-codex-owner-wait-regression-repair`，报告 round-714 同 ID；`bbed2d585fad47652f0099b8576bed2c2a627bea` / tree `aa1dd6ffd6a4bf7b1f74242ef8ff56305ae37d17` | 最终build、launcher35/35及未变正常路径消费者76/76；有界等待/取消/漏文件事件和自有资源收尾。双持久/原session/terminal/EOF/callback/drain及失败不释放均保留。35个直接登记ChildProcess自然0/null、forced空，不外推所有孙进程；原两历史超时首次停点未知。 |
+| F715：三修复统一官方全量 | lp715 `department-final-accepted-repairs-full-regression`，round-715 同 ID；精确测试及最终身份见页首 | 正常合入53fc与bbed，迁移f1/严格存储/冷/额度/发送/transport历史保留，三测试字节等同接受来源；一次build及官方全量5472/5469/0失败/0取消/3跳过已接受。五材料仅文档后继；[来源机器记录](../integration/department-mainline-integration/round698-full-regression.json)中的 `round715Followup` 是本次独立结果，不覆盖历史字段。 |
+
+## 原始目标与当前接受范围
+
+| 原始目标 | 当前实现与证据 | 适用边界 |
+| --- | --- | --- |
+| R1 三层组织及三角色 AI | `src/department.ts`、`src/departmentConfiguration.ts`、`src/extensionHost/departmentConfigurationHost.ts`、`src/extensionHost/modelSettings.ts`；总监使用当前所选 CLI 分组的模型/思考力度，组长和员工可选其它 CLI/档案/模型/力度。M/D/E/G历史接受及 A697/K698/K699真实链路。 | 接受相应 Codex/OpenCode角色与冻结快照；不能推断所有 CLI/任意模型/平台。 |
+| R2 总监 Loop、组长复用真实 Loop+ | `src/extensionHost/departmentruntimecomposition.ts`、`src/extensionHost/departmentorchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；提示保留“例如按模块给各组长、组长再拆子功能”的粗粒度例子，例子不限制唯一拆分方式。统一方案、组长事件验收与总监依据汇报结束沿 P/E/G及后继。 | 总监负责派发/协调/最终确认，**无需代码或测试验收**；不能用单轮返回、tracker清零替代组长门禁。 |
+| R3 默认4/20同时运行 | `src/departmentSettings.ts`、`src/departmentcapacity.ts`、组织host/cleanup；C/A697，工作区覆盖见W694。 | 默认4组长、全部门共享常规20员工；不是累计人数或每组20。完整清理及持久移除后释放，未知留责；新根冻结人数。 |
+| R4 层级群聊/独立组长页/tab识别 | `src/extensionHost/departmentGroupChatProjection.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/departmentConversationTabs.ts`、`src/webview/departmentGroupChatModal.ts`；U/V675/M693/F713。 | 总监页面内弹窗打开精确组长；保留现有 tab原名。真实历史弹窗、显示fixture、运行控制/EH分别按原场景，不互相替代。 |
+
+上列源码使用仓库根相对路径。进一步语义见[中央设计](../design-docs/department-mode.md)、[额度策略](../design-docs/department-employee-allocation.md)、[生产接线](../design-docs/department-production-execution-wiring.md)及[群聊合同](../design-docs/department-group-chat-ui-contract.md)。
+
+## 全部22项补充要求：最终要求与接受事实
+
+| 编号与原意（按记录顺序） | 当前合同、入口及接受证据 | 剩余范围或历史解释 |
+| --- | --- | --- |
+| 1 组长随时请求总监通知另一组协作 | 组织host/composition在运行中中转至同部门目标 Loop+补充队列；P的真实仓储投递、持久回执/幂等及既有wake。 | 根完成须无未处理协作；不是仅结束总结，不承诺任意 CLI恢复组合。 |
+| 2 人数限同时运行、完成释放，全部门共享20员工 | C/E/G、A697/K698/K699及原pool/production cleanup；员工含overflow计实际占用。 | 需原资源完整清理、原完整receipt、精确CLOSED/最终冷读及持久容量移除；停止请求、业务completed或EH退出本身不释放。 |
+| 3 尽量复用已有能力，Loop+作为组长 | 同一adapter/scheduler/验收器/runner，P/E/G、G695。 | 不另造调度器；总监仍Loop职责。 |
+| 4 验收方案配一次、各组统一 | 根配置/持久快照→所有组长同一方案，P/E/G。 | 组长不可独立覆盖，总监不验收；未要求任意修改所有已冻结方案。 |
+| 5 总监群聊打开组长用弹窗 | coordinator/内嵌bridge，U/M693/F713。 | 精确task/instance/归属、await后复核；关闭不stop，恢复阅读/焦点。 |
+| 6 👴🏻👨🏻👶🏻作为角色tab图标 | **历史要求**，旧U与下方历史快照保留。 | 被补充19的☀️🌛⭐️替代，不再是现行验收标准。 |
+| 7 组长弹窗有Loop+同排操作栏，总监页专门做 | 原projection/panel/host；U真实历史适用工具栏、M693刷新、K699公开控制及F713撤销。 | 历史终态隐藏不适用动作合理；不从历史fixture外推所有运行操作已E2E。 |
+| 8 零余额每组最多再派1名，避免干等 | `DepartmentCapacityPool`→host准入/adapter，C及额度策略、已接受容量后继。 | **全部门余额零**才允许每组一个未释放应急；只有本组额度耗尽、全局有余额不触发。原overflow未释放不得再领，不因余额回正或扩容抹掉。 |
+| 9 每次派发先知道当前余额 | 原生产reader/prompt每轮最新快照，A697四决策对照；真实启动同步原子重判。 | 余额仅参考不预留，未知明确未知；不从历史任务数估算。 |
+| 10 tab保持原名，如codex2，只加图标 | U/V675，`formatConversationTabLabel`只前置可信角色图标。 | 不追加角色/模块/编号，原编号/重命名/持久值保持，身份在tooltip。 |
+| 11 同步Git、合理合并后全量回归，修问题或夹具 | G695主干/工作区合理合并，S707/T705/F712/F713/F714修复；F715实际统一树官方全量已接受。 | **该官方全量门禁已完成，不再列未执行**；历史失败/3跳过保留。最终原目录安全切交付分支/干净交接另开放，不等于推送发布要求。 |
+| 12 常规设置三模式开关，默认Loop/Loop+开、部门关 | `src/modeAvailability.ts`/`src/toolSettings.ts`及设置router，新建/定时异步后复核，M及真实公开设置。 | 已有任务继续、可信内部组长不被公共新建开关误伤。 |
+| 13 警告本机须并行20多个CLI的性能 | 常规设置卡/角色区中文性能警告，M的1280/280可见性。 | 产品警告已覆盖，不新增所有硬件/20多个付费模型性能承诺。 |
+| 14 尽量多任务推进，无需等所有验收修复 | 独立写域与逐项接受，各来源就绪后推进，G695及后继来源历史。 | 不设共享round gate，不以并行跳过主审；本轮不改调度或启动子代理。 |
+| 15 默认平均分配，20/4每组最多5 | `src/departmentemployeeallocation.ts`，默认 `ceil(maxEmployees/maxLeaders)`，分母是配置组长数；20/4=5，A697的6/2=3。 | 组额度不预留/扩大共享池；所有员工含overflow仍计占用，原有限应急例外保持。 |
+| 16 最好由总监发起时要求，灵活可人为控制 | 已接受额度/提示生产接线及A697：总监配置根人数、提示传当前本组/全局余额与默认来源。 | 补充17给出直接UI数字调配的最终做法；不新增另一套模型直接写容量或按活跃组数重均分机制。 |
+| 17 总监UI数字调配，下次组长派发才生效 | 原总监reader/writer与真实CAS，A697真实UI 3→0→3。save只改desired/revision；下一真实新attempt先持久applied，即使随后拒绝。 | 不取消旧员工、不改原Owner/责任；已held/pending幂等不当新attempt。全局有余而本组0时拒绝无新Owner/租约。 |
+| 18 成员面板头像改总/组/员 | 原renderDepartmentRosterPanel明确层级角色映射，V675继承round441/443来源与新字符fixture。 | 初始/patch、总监/组长modal一致，不从任务名首字或任意participant.role推身份。 |
+| 19 ☀️🌛⭐️代替人形图标 | V675：部门总监☀️/组长🌛/员工⭐️，优先于普通main/subtask展示。 | 最终现行要求；补充6及旧截图只作历史，不追认为新emoji已验。 |
+| 20 原Loop/Loop+主/子图标改🌛⭐️ | V675：经典/事件驱动main🌛、subtask⭐️，历史列表同映射。 | 无角色普通会话不装饰，不按名称推断；tab原名/tooltip/模式保持。 |
+| 21 先从主干分支合理合并/处理冲突，再在分支续做 | round676从fetch后主干e890建独立分支，G695再合2cda/40c，保留来源历史和语义冲突处理，后续同分支修复到F715。 | 步骤已有接受事实；原master脏内容不能丢弃，最终交付切换须保全/接受HEAD并解决另一worktree占用。 |
+| 22 工作区可配组长/员工人数，优先全局 | W694 `resolveEffectiveDepartmentLimits`，逐项workspace→global→4/20；A697真实UI2/6→生产新根及准入。 | 空值继承、非法读继承/写拒绝、scope/requestId隔离；**仅作用于新根冻结快照**，旧根/恢复不热迁移容量、不释放未知租约。 |
+
+## 已关闭事实、历史失败与仍开放门禁
+
+- **已关闭且不重开**：旧主题/窄屏/真实历史弹窗、最终图标、工作区人数和额度真实UI链、全Codex第二EH、mixed第二EH及旧根公开stop正常收尾、主干合理合并与三修复统一官方全量。各结果仍受上表原输入/平台/具体场景限制；单测自然退出不替代历史worker、receipt/CLOSED或容量证明。
+- **必须保留的失败历史**：Round698原464输入官方5439项中5265过/165失败/6取消/3跳过/exit1；后续121个不同case是分批修复，不是第二次全量。Round711官方5462项中5454过/3失败/2取消/3跳过/exit1及精确自有PID74508受控中断保留，Owner两历史超时的首次停点仍未知。lp712/713/714关闭指定回归，lp715证明新统一输入绿，不追改旧失败。round675首错/Tabs超时、额度run1/2清理未知/run4 driver failed与只读审计、旧cold/guard限制均留在原历史及报告。
+- **manifest勘误**：round695把历史抄录 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412` 与实测 `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412` 分开；round698回读原round674第109行确认原始值与实测一致，是交接抄录勘误。保留原matches=false及勘误字段，不称原来源损坏，也不重算未变实体来刷新证据。
+- **当前独立补验**：lp715接受截止点，`department-final-store-cold-composition`尚未完成/接受；唯一新缺口是在0817的新共享store/catalog提交主体下，用既有mixed场景验证第二EH持久身份、原完整receipt/CLOSED、容量移除、原authority退役及显式后继。由独立所有者执行，不重跑全Codex、workspace额度、主题/窄屏或官方全量；本表不预记它通过，也不把旧冷链重新统称未运行。
+- **最终目录交付开放**：原打开目录master/f5b5ac57既存tracked/untracked脏内容须保全/分类；保全任务有独立所有者，本轮不消费未审结果。最后安全切准确接受HEAD的交付分支、处理另一worktree占用、达到干净交接仍开放。不得据0817独立树干净推断原目录干净；本轮不推送发布。
+- **平台限制**：现有真实场景是macOS arm64、对应VS Code/Codex/OpenCode版本与隔离免费确定性provider。Windows/Linux仍缺实际目标主机/执行端口，必要进程/路径/tab/root清理差异未原生验证；恢复条件见[平台入口](department-platform-verification.md)。入口fixture、POSIX快照/有限直接进程观察不等于完整后代树或异平台证据，不重复诊断工具缺失，不猜测连接或扩大任意平台矩阵。
+- **三个DSH环境跳过**：`dshLoopSessionResumeLive`中的changed cwd/original cwd resume及failed acceptance/tab closure/process disposal后Loop+续接，需 `SINITEK_DSH_LOOP_LIVE=1`；`dshPluginLiveBoundary`需显式DSH live及loopback配置。lp715未开启条件，不能称真实DSH集成通过；它们与Windows/Linux缺主机是不同限制，不要求凭据或任意模型矩阵。
+- **其它未覆盖范围**：远程付费模型质量、真实多进程压力、崩溃/断电、旧二进制/直接外部writer、损坏catalog的任意接管均未由本次证据证明；不把这些范围限制新增成无限验收承诺。未知/冲突/失联继续fail closed、留责，不以PID缺席、磁盘cleaned或EH退出补权限。最终接受及组合影响审查仍由主审完成。
+
+## round-410 历史快照（保留原文，非现行待办）
+
+以下保留原覆盖表时点、当时14项补充和失败边界；当前22项、最终图标、已关闭门禁及仍开放范围以上文为准。
+
 截至 2026-11-16 round-410 中央事实同步。根功能仍为**开发中**，[现有计划](../exec-plans/active/2026-11-13-feature-department-mode.md)保持 active / `in_progress`。本表是需求与接受证据的映射，不是新的执行计划或根验收结论。原始目标及补充 1–14 的顺序取自父任务的 `rootPrompt` / `supplementalRequirements`；报告位置由同一父记录各 `subTasks[].communicationFile` 解析，以下用轮次与子任务 ID 定位，不复制运行时身份或原始日志。
 
 ## 已接受证据索引

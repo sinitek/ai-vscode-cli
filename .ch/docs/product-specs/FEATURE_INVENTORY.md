@@ -4,6 +4,11 @@
 
 ## 产研部三层协作模式
 
+- **当前接受状态（2026-11-16，lp715；round-718事实同步）**：仍为开发中/active，不归档根feature。原始目标及**全部22项补充**见[逐项覆盖表](../runbooks/department-acceptance-coverage.md)。下列旧轮次条目的“待做”仅保留当时范围，由本条及覆盖表给出当前结论。最终角色图标为部门☀️/🌛/⭐️、普通Loop/Loop+主🌛/子⭐️，成员树总/组/员及tab原名保持；早期人形图标只是历史要求。
+- **已接受后继**：lp693语义合并、lp694工作区人数、lp695主干/人数合理合并；lp697真实UI保存workspace2/6且global4/20保持、新根冻结2/6、额度3→0→3下一attempt生效、原四完整receipts/CLOSED/容量归还；lp698全Codex第二EH、lp699混合第二EH及精确旧根公开stop/原authority正常退出均已有有效结果。工作区人数逐项优先全局，只作用于新根冻结快照，旧根/恢复不热迁移。旧主题/窄屏/真实历史弹窗按未变范围复用，不再笼统称这些未运行。
+- **合理合并后官方全量已完成**：lp705冷夹具、lp707严格存储及lp709合同、lp712/713/714三修复已实际统一，测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a` 一次标准build与官方397文件/5472项自然exit0，5469通过、0失败/取消、3环境门控跳过。仅五文档后继形成已接受 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。不是分批测试加总；Round698/711原失败、受控中断、manifest勘误和Owner历史超时首次停点未知保留。
+- **仍开放**：0817新共享存储提交主体与既有mixed真实冷链的最小组合补验有独立所有者，本条不消费其未审结果；原master既存脏内容保全/分类、最终安全切准确接受HEAD的交付分支与干净交接仍开放。Windows/Linux缺真实目标条件，三项DSH live/loopback门控未启用，各按其条件保留；macOS免费确定性provider结果不证明付费模型质量、任意平台/模型或崩溃/外部writer矩阵。最终根接受仍由主审判断，详见[原计划](../exec-plans/active/2026-11-13-feature-department-mode.md)。
+
 - round-694 工作区人数覆盖：工具设置－工作区的可选派发上限卡之后、长期记忆卡之前增加组长/员工两张同构卡，沿用原主题及响应布局。两项分别以 optional `departmentMaxLeaders`/`departmentMaxEmployees` 持久化；空值删除该项覆盖。有效值逐项按合法工作区值→合法全局值→4/20解析，数字字符串及正数取整复用公共规则，不安全/非正/布尔/空白读取继承，非空非法保存中文拒绝，无任意新增上限。原面板全局字段保持，新 `workspaceDepartmentMaxLeaders`/`workspaceDepartmentMaxEmployees` 为 number/null。scope/requestId隔离迟到保存/回执；保存复制最新设置，完整临时文件替换成功后才发布内存，失败保留已存配置并可重试。真实生产 `resolveDepartmentPromptConfiguration` 接入有效值，新根快照及后续原准入沿用该人数；本设置不热迁移已有根、不取消运行或释放未知租约。标准build、定向测试与生成Webview的Chromium fixture验证结果见现行计划本轮记录；不是最终真实EH/CLI或全量回归结论，历史失败和其它开放门禁全部保留。
 
 - round-676主干累计整合交接：来源、55条完整冷恢复实体差异路径、closure和冲突决策见[整合来源清单](../integration/department-mainline-integration/sources.json)。当前分支组合标准build通过，本轮未运行单测、CLI、EH或浏览器。组长/成员人数的工作区覆盖优先于全局配置在该整合时点尚未实现或验证（后续见round-694）；真实UI-EH/CLI组合、必要异平台、冷恢复剩余门禁和分支全量回归继续开放。根feature仍active/in_progress。
@@ -854,4 +859,4 @@ round-378 整项交付未通过主审的历史保留：永久 reservation 阻断
 
 部门仍为开发中。round-400 successive EH 原机器报告及整体主审 failed 的历史保留；三项修正后只读审计不构成新 EH pass，且执行快照与 observer 最终源码不同。round-403 CDP 清理失败传播/迟到 detach 门禁已接受，仅证明 harness 自有资源门禁。round-405/408 的 cold warning、缺失对照、第二 EH 强制回收/自然失败退出及整体 failed 均按各自时点保留，不回写为通过。round-410 后继只读身份修复已主审接受：精确 `live-leader-unverifiable`、完整四阶段身份/责任/容量与无新 grant/request 对照成立，双 EH 自然退出；仅证明安全拒绝，不证明恢复接管、Owner 清理或容量归还。macOS owner-core 58/58 仍只覆盖原固定入口，后代追踪和整树关闭未确认；必要平台、未覆盖来源/角色、可恢复接管及最终 Git 合理合并/合并树全量回归仍开放。各批构建、用例与执行快照不累计为全量通过。
 
-部门原始及 14 项补充要求的逐项实现入口、已接受报告、有效验证范围和剩余门禁见[部门逐项验收覆盖](../runbooks/department-acceptance-coverage.md)。该表不替代功能状态，本条仍为开发中。
+部门原始及全部 22 项补充要求的逐项实现入口、已接受报告、有效验证范围和剩余门禁见[部门逐项验收覆盖](../runbooks/department-acceptance-coverage.md)。该表不替代功能状态，本条仍为开发中。
