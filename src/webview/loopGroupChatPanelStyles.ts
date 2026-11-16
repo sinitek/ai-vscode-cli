@@ -568,6 +568,33 @@ ${DIALOG_SHELL_STYLES}
         cursor: default;
         opacity: 0.6;
       }
+      .department-allocation,
+      .department-allocation-controls,
+      .department-allocation-controls label { min-width: 0; max-width: 100%; }
+      .department-allocation-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .department-allocation-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .department-allocation-input {
+        width: 64px;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 4px;
+        padding: 4px;
+        color: var(--vscode-input-foreground);
+        background: var(--vscode-input-background);
+        font: inherit;
+      }
+      .department-allocation-controls button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+      .department-allocation-controls :focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+      .department-allocation-controls :disabled { cursor: default; opacity: 0.6; }
+      .department-allocation-error { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
       .member-acceptance-link {
         border: 0;
         border-radius: 6px;

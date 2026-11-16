@@ -521,3 +521,154 @@ test("ordinary image host keeps preview reuse and invalidate semantics with opti
     assert.equal(creates, 1); assert.equal(disposes, 0); host.dispose(); assert.equal(disposes, 1);
   } finally { vscode.window.createWebviewPanel = previous; }
 });
+
+function allocationFixture(h: ReturnType<typeof harness>) {
+  return { rootTaskId: h.root.id, revision: 3, defaultLimit: 5,
+    leaders: [h.leader, h.other].map((leader) => ({ leaderTaskId: leader.id, source: "default" as "default" | "manual",
+      desiredLimit: 5, appliedLimit: null as number | null, activeEmployees: null as number | null, pending: false })) };
+}
+
+const limitRequest = (leaderTaskId: string, patch = {}) => ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit",
+  requestId: "allocation-request-1", leaderTaskId, employeeLimit: 0, expectedRevision: 3, ...patch });
+
+test("allocation projection copies validated host DTO, preserves null/zero and fails unknown closed", () => {
+  const h = harness();
+  try {
+    const data = allocationFixture(h);
+    h.deps.readDepartmentEmployeeAllocation = () => data;
+    let state = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(state.department?.employeeAllocation?.defaultLimit, 5);
+    assert.equal(state.department?.employeeAllocationEditable, false, "a reader is not a write capability");
+    data.leaders[0] = { ...data.leaders[0], source: "manual", desiredLimit: 0, appliedLimit: null, pending: true };
+    h.deps.updateDepartmentEmployeeLimit = async () => ({ ok: true, allocation: data });
+    state = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(state.department?.employeeAllocationEditable, true);
+    assert.equal(state.department?.employeeAllocation?.leaders[0].desiredLimit, 0);
+    assert.equal(state.department?.employeeAllocation?.leaders[0].appliedLimit, null);
+    assert.notEqual(state.department?.employeeAllocation, data);
+    assert.equal(buildLoopGroupChatPanelState(h.leader, h.deps).department?.employeeAllocationEditable, false);
+    const broken: any[] = [null, { ...data, rootTaskId: "other" }, { ...data, revision: "3" }, { ...data, defaultLimit: 21 },
+      { ...data, leaders: [data.leaders[0], data.leaders[0]] }, { ...data, leaders: [{ ...data.leaders[0], desiredLimit: -1 }] },
+      { ...data, leaders: [{ ...data.leaders[0], activeEmployees: -1 }] }, { ...data, leaders: [{ ...data.leaders[0], source: "default", desiredLimit: 0 }] },
+      { ...data, leaders: [{ ...data.leaders[0], leaderTaskId: "unknown" }] }];
+    for (const value of broken) {
+      h.deps.readDepartmentEmployeeAllocation = () => value;
+      const department = buildLoopGroupChatPanelState(h.root, h.deps).department!;
+      assert.equal(department.employeeAllocation, undefined); assert.equal(department.employeeAllocationEditable, false);
+    }
+    h.deps.readDepartmentEmployeeAllocation = () => { throw Error("offline"); };
+    assert.equal(buildLoopGroupChatPanelState(h.root, h.deps).department?.employeeAllocation, undefined);
+  } finally { h.restore(); }
+});
+
+test("director allocation writer receives exact CAS payload; zero/reset, pending, duplicate and failure have no task effects", async () => {
+  const h = harness();
+  let data = allocationFixture(h), writes = 0;
+  const gate = deferred();
+  try {
+    h.deps.readDepartmentEmployeeAllocation = () => data;
+    h.deps.updateDepartmentEmployeeLimit = async (root, request) => {
+      writes += 1; assert.equal(root.id, h.root.id);
+      assert.deepEqual(Object.keys(request).sort(), ["employeeLimit", "expectedRevision", "leaderTaskId", "requestId"]);
+      await gate.promise;
+      data = { ...data, revision: data.revision + 1, leaders: data.leaders.map((row) => row.leaderTaskId === request.leaderTaskId
+        ? { ...row, source: request.employeeLimit === null ? "default" : "manual", desiredLimit: request.employeeLimit ?? data.defaultLimit, pending: true } : row) };
+      return { ok: true, allocation: data };
+    };
+    await h.coordinator.open(h.root.id);
+    const request = limitRequest(h.leader.id, { rootTaskId: "browser-lie" });
+    h.receive(request); h.receive(request); await tick(); assert.equal(writes, 1);
+    gate.resolve(); await tick();
+    const receipt = h.posted.filter((row) => row.type === "loopGroupChatChat:departmentEmployeeLimitSettled").at(-1);
+    assert.equal(receipt.ok, true); assert.equal(receipt.desiredLimit, 0); assert.equal(receipt.revision, 4);
+    assert.equal(h.panel().getState()?.department?.employeeAllocation?.leaders[0].appliedLimit, null);
+    h.receive(request); await tick(); assert.equal(writes, 1, "stale CAS cannot replay a write");
+    h.receive(limitRequest(h.leader.id, { requestId: "reset", expectedRevision: 4, employeeLimit: null })); await tick();
+    assert.equal(writes, 2); assert.equal(data.leaders[0].source, "default"); assert.equal(data.leaders[0].desiredLimit, 5);
+    h.deps.updateDepartmentEmployeeLimit = async () => { throw Error("持久保存失败"); };
+    h.receive(limitRequest(h.leader.id, { requestId: "fail", expectedRevision: 5 })); await tick();
+    assert.match(h.posted.at(-1).error, /持久保存失败/);
+    assert.deepEqual(h.effects, [], "no task creation, run, stop, supplement or task-store writes");
+  } finally { gate.resolve(); h.restore(); }
+});
+
+test("allocation message rejects invalid payloads, absent ports, stale records and cross-root/role/ambiguous membership", async () => {
+  const h = harness(); let writes = 0;
+  try {
+    const data = allocationFixture(h);
+    h.deps.readDepartmentEmployeeAllocation = () => data;
+    await h.coordinator.open(h.root.id);
+    h.receive(limitRequest(h.leader.id)); await tick(); assert.match(h.posted.at(-1).error, /不可用/);
+    h.deps.updateDepartmentEmployeeLimit = async () => { writes += 1; return { ok: true, allocation: data }; };
+    for (const employeeLimit of [-1, 21, 1.5, "5", undefined, NaN, Infinity, true]) {
+      h.receive(limitRequest(h.leader.id, { employeeLimit })); await tick();
+      assert.match(h.posted.at(-1).error, /无效/);
+    }
+    for (const expectedRevision of [-1, 2, "3", Number.MAX_SAFE_INTEGER]) {
+      h.receive(limitRequest(h.leader.id, { expectedRevision })); await tick(); assert.match(h.posted.at(-1).error, /无效/);
+    }
+    const original = structuredClone(h.leader);
+    for (const mutate of [
+      (t: LoopTaskRecord) => { t.department!.rootTaskId = "other-root"; },
+      (t: LoopTaskRecord) => { t.workspaceKey = "other-workspace"; },
+      (t: LoopTaskRecord) => { t.departmentInvalid = true; },
+      (t: LoopTaskRecord) => { t.department!.role = "employee"; },
+    ]) {
+      const record = structuredClone(original); mutate(record); h.records.set(record.id, record);
+      h.receive(limitRequest(record.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+    }
+    h.records.set(original.id, original);
+    h.deps.readDepartmentLeaderTaskIds = () => [h.leader.id, "duplicate"];
+    h.receive(limitRequest(h.leader.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+    h.deps.readDepartmentLeaderTaskIds = (rootId, moduleId) => fixtureDepartmentLeaderTaskIds(h.records, rootId, moduleId);
+    const target = await h.load(); const count = h.posted.length;
+    await h.send(target, limitRequest(h.leader.id)); assert.equal(h.posted.length, count, "child message is excluded before dispatch");
+    await h.coordinator.open(h.leader.id);
+    h.receive(limitRequest(h.other.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+    assert.equal(writes, 0); assert.deepEqual(h.effects, []);
+  } finally { h.restore(); }
+});
+
+test("allocation async receipt is discarded after membership, workspace or panel binding changes", async () => {
+  for (const change of ["member", "workspace", "binding", "dispose"]) {
+    const h = harness(); const gate = deferred();
+    try {
+      const data = allocationFixture(h);
+      h.deps.readDepartmentEmployeeAllocation = () => data;
+      h.deps.updateDepartmentEmployeeLimit = async () => { await gate.promise; return { ok: true, allocation: { ...data, revision: 4,
+        leaders: data.leaders.map((row, index) => index ? row : { ...row, source: "manual", desiredLimit: 0, pending: true }) } }; };
+      await h.coordinator.open(h.root.id); h.receive(limitRequest(h.leader.id)); await tick();
+      if (change === "member") h.records.delete(h.leader.id);
+      if (change === "workspace") { h.root.workspaceKey = "new"; h.leader.workspaceKey = "new"; }
+      if (change === "binding") h.panel().update({ ...h.panel().getState()!, task: { ...h.panel().getState()!.task, id: "other-root" } });
+      if (change === "dispose") h.dispose();
+      const count = h.posted.length;
+      gate.resolve(); await tick(); assert.equal(h.posted.length, count, change);
+      assert.deepEqual(h.effects, []);
+    } finally { gate.resolve(); h.restore(); }
+  }
+});
+
+
+test("allocation duplicate cannot prematurely settle an in-flight request after another group advances revision", async () => {
+  const h = harness(); const gate = deferred(); let writes = 0;
+  try {
+    let data = allocationFixture(h);
+    h.deps.readDepartmentEmployeeAllocation = () => data;
+    h.deps.updateDepartmentEmployeeLimit = async () => {
+      writes += 1; await gate.promise;
+      data = { ...data, revision: 5, leaders: data.leaders.map((row, index) => index ? row : { ...row, source: "manual", desiredLimit: 0, pending: true }) };
+      return { ok: true, allocation: data };
+    };
+    await h.coordinator.open(h.root.id);
+    const request = limitRequest(h.leader.id);
+    h.receive(request); await tick();
+    data = { ...data, revision: 4 }; // trusted service revision advanced by a different group
+    h.receive(request); await tick();
+    assert.equal(writes, 1);
+    assert.equal(h.posted.filter((row) => row.type === "loopGroupChatChat:departmentEmployeeLimitSettled").length, 0);
+    gate.resolve(); await tick();
+    const receipts = h.posted.filter((row) => row.type === "loopGroupChatChat:departmentEmployeeLimitSettled");
+    assert.equal(receipts.length, 1); assert.equal(receipts[0].ok, true); assert.equal(receipts[0].revision, 5);
+  } finally { gate.resolve(); h.restore(); }
+});

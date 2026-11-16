@@ -1,3 +1,4 @@
+import { DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT, renderDepartmentEmployeeAllocation } from "./departmentEmployeeAllocation";
 import * as vscode from "vscode";
 import { buildDepartmentChildBridge, DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, renderDepartmentGroupChatModal } from "./departmentGroupChatModal";
 import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES } from "./loopGroupChatPanelTypes";
@@ -476,6 +477,7 @@ ${renderPanelDialog({
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
           const escapeHtml = askEscape;
+${DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT}
 ${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
 ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
@@ -1233,12 +1235,13 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
         const slot = document.getElementById("rosterPanelSlot");
         const focused = document.activeElement;
         const focusKey = slot && focused && slot.contains(focused)
-          ? focused.getAttribute("data-department-nav-key") : null;
+          ? focused.getAttribute("data-department-nav-key") || focused.getAttribute("data-department-focus-key") : null;
         const sidebarTop = sidebarElement ? sidebarElement.scrollTop : 0;
         replaceHtml(slot, html);
+        departmentEmployeeAllocation.sync();
         if (focusKey && slot) {
-          const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key]"))
-            .find((element) => element.getAttribute("data-department-nav-key") === focusKey && !element.disabled);
+          const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key], [data-department-focus-key]"))
+            .find((element) => (element.getAttribute("data-department-nav-key") || element.getAttribute("data-department-focus-key")) === focusKey && !element.disabled);
           if (replacement) replacement.focus({ preventScroll: true });
         }
         if (sidebarElement) sidebarElement.scrollTop = sidebarTop;
@@ -1419,6 +1422,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      window.addEventListener("message", (event) => {
             ${options.embedded ? "" : "if (!isLoopGroupChatHostMessage(event)) return;"}
 	        const message = event.data;
+        if (departmentEmployeeAllocation.settled(message)) return;
 	        if (message && message.type === "loopGroupChatChat:continueTaskSettled") {
 	          applyContinueTaskSettled(message);
 	          return;
@@ -1916,7 +1920,7 @@ function renderDepartmentRosterPanel(
     const employees = leader.employees.map((employee) => `<li>${member(employee, "员工", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
-      ${member(leader.participant, "组长", navigation)}
+      ${member(leader.participant, "组长", navigation + renderDepartmentEmployeeAllocation(department, leader.taskId, escapeAttribute))}
       <ul class="department-employees" aria-label="${escapeAttribute(`${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
     </li>`;
   }).join("");
@@ -1924,6 +1928,7 @@ function renderDepartmentRosterPanel(
     <h2>${escapeHtml(strings.participants)}</h2>
     ${department.role === "leader" ? renderDepartmentNavigation(department.rootTaskId, "返回总监群聊", `director:${department.rootTaskId}`) : ""}
     <p class="member-meta department-occupancy">组长 ${escapeHtml(department.activeLeaders === null ? "未知" : String(department.activeLeaders))}/${escapeHtml(String(department.maxLeaders))} · 员工 ${escapeHtml(department.activeEmployees === null ? "未知" : String(department.activeEmployees))}/${escapeHtml(String(department.maxEmployees))}（全部门共享）</p>
+    <p class="member-meta">员工上限不增加全部门共享总额，当前员工继续执行；全局零余额时每组一个例外保留。调整从组长下次派发生效。</p>
     <ul class="roster department-tree"><li>${member(department.director, "总监")}
       <ul class="department-leaders" aria-label="组长">${leaders || '<li class="member-meta department-empty">尚未分配组长</li>'}</ul>
     </li></ul>

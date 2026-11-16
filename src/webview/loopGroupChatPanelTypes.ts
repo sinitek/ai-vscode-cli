@@ -14,6 +14,28 @@ export type LoopGroupChatPanelParticipant = {
   lastStartedAt?: number | null;
 };
 
+/** Trusted read-only snapshot; no allocation policy or reservation is computed in the Webview. */
+export type DepartmentEmployeeAllocationProjection = {
+  rootTaskId: string;
+  revision: number;
+  defaultLimit: number;
+  leaders: Array<{
+    leaderTaskId: string;
+    source: "default" | "manual";
+    desiredLimit: number;
+    appliedLimit: number | null;
+    activeEmployees: number | null;
+    pending: boolean;
+  }>;
+};
+
+export type DepartmentEmployeeLimitRequest = {
+  requestId: string;
+  leaderTaskId: string;
+  employeeLimit: number | null;
+  expectedRevision: number;
+};
+
 /** Read-only department UI contract. Employees are supplied by their actual leader.
  * A blank taskId means that leader chat has not been created; sessionId is a CLI
  * session identifier and is deliberately not used as chat availability evidence.
@@ -33,6 +55,8 @@ export type DepartmentGroupChatProjection = {
   maxEmployees: number;
   activeLeaders: number | null;
   activeEmployees: number | null;
+  employeeAllocation?: DepartmentEmployeeAllocationProjection;
+  employeeAllocationEditable?: boolean;
 };
 
 export type LoopGroupChatPanelActiveSpeaker = {
@@ -160,6 +184,7 @@ export type LoopGroupChatPanelBaseMessage =
   | import("./chatLinkHost").ChatLinkMessage
   /** Target only; the host must validate membership in the same department. */
   | { type: "loopGroupChatChat:openDepartmentTask"; taskId?: unknown }
+  | ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit" } & DepartmentEmployeeLimitRequest)
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }
@@ -193,7 +218,7 @@ export type DepartmentGroupChatModalTarget = { taskId: string; instanceId: strin
 
 export type DepartmentGroupChatTaskMessage = Exclude<LoopGroupChatPanelBaseMessage,
   | { type: "saveLoopPlusAcceptancePlan" | "selectLoopPlusAcceptancePlan" | "deleteLoopPlusAcceptancePlan" | "loopGroupChatChat:updateAcceptancePlan" }
-  | { type: "loopGroupChatChat:openDepartmentTask" }>;
+  | { type: "loopGroupChatChat:openDepartmentTask" | "loopGroupChatChat:updateDepartmentEmployeeLimit" }>;
 
 export type LoopGroupChatPanelMessage = LoopGroupChatPanelBaseMessage
   | (DepartmentGroupChatModalTarget & { type: "loopGroupChatChat:departmentModal"; action: "load" | "retry" | "close" })

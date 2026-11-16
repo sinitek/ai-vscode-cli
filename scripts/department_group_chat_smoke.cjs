@@ -3,9 +3,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
+const crypto = require("node:crypto");
 const root = path.resolve(__dirname, "..");
 const compiled = path.resolve(root, process.env.DEPARTMENT_UI_DIST || ".tmp/department-group-ui-dist/dist");
 const output = path.resolve(root, process.env.DEPARTMENT_UI_EVIDENCE || ".tmp/department-group-ui-dist/browser");
+const allocationOnly = process.env.DEPARTMENT_UI_ALLOCATION_ONLY === "1";
+const { allocationFixture, runAllocationScenario } = require("./department_employee_allocation_scenario.cjs");
 const themeOnly = process.env.DEPARTMENT_UI_THEME_ONLY === "1";
 const deltaOnly = process.env.DEPARTMENT_UI_DELTA_ONLY === "1";
 const focusLifecycleOnly = process.env.DEPARTMENT_UI_FOCUS_LIFECYCLE_ONLY === "1";
@@ -15,6 +18,13 @@ const vscode = require("vscode");
 const { LoopGroupChatPanel } = require(path.join(compiled, "webview/loopGroupChatPanel.js"));
 const { departmentState } = require(path.join(compiled, "test/loop/departmentGroupChatPanel.fixture.js"));
 fs.mkdirSync(output, { recursive: true });
+if (allocationOnly) {
+  const files = [__filename, path.join(__dirname, "department_employee_allocation_scenario.cjs"),
+    ...["webview/loopGroupChatPanel.js", "webview/departmentEmployeeAllocation.js", "webview/loopGroupChatPanelStyles.js",
+      "webview/departmentGroupChatModal.js", "webview/loopModelSwitchDialog.js", "test/loop/departmentGroupChatPanel.fixture.js"].map((file) => path.join(compiled, file))];
+  fs.writeFileSync(path.join(output, "inputs.json"), JSON.stringify({ scope: "display fixture, no production allocation writer",
+    inputs: files.map((file) => ({ file, sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") })) }, null, 2));
+}
 
 function theme(dark) {
   const bg = dark ? "#1f1f1f" : "#ffffff";
@@ -45,7 +55,7 @@ function theme(dark) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const results = [];
   try {
-    const viewports = focusLifecycleOnly || themeOnly ? [[1440, true]] : (deltaOnly ? [[1440, true], [280, false]] : [[1440, true], [1440, false], [280, true], [280, false]]);
+    const viewports = focusLifecycleOnly || themeOnly ? [[1440, true]] : (deltaOnly || allocationOnly ? [[1440, true], [280, false]] : [[1440, true], [1440, false], [280, true], [280, false]]);
     for (const [width, dark] of viewports) {
       const name = `${width}-${dark ? "dark" : "light"}`;
       const page = await browser.newPage({ viewport: { width, height: 960 } });
@@ -53,6 +63,7 @@ function theme(dark) {
       const deltaFindings = [];
       page.on("pageerror", (error) => errors.push(error.message));
       page.on("console", (message) => { if (message.type() === "error") errors.push(`${message.text()} @ ${JSON.stringify(message.location())}`); });
+      page.on("response", (response) => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
       page.on("requestfailed", (request) => errors.push(request.url() + " " + request.failure()?.errorText));
       const sent = [];
       let receive;
@@ -64,9 +75,11 @@ function theme(dark) {
       });
       const panel = new LoopGroupChatPanel({ fsPath: root }, { onMessage: (message) => sent.push(message) });
       const parentState = departmentState();
+      if (allocationOnly) allocationFixture(parentState);
       panel.show(parentState);
       const css = Object.entries(theme(dark)).map(([key, value]) => `--vscode-${key}:${value}`).join(";");
       currentHtml = currentHtml.replace("<head>", `<head><style id="departmentFixtureTheme">:root{${css}}</style>`);
+      if (allocationOnly) fs.writeFileSync(path.join(output, `${name}-generated-input.html`), currentHtml);
       await page.exposeFunction("fixtureHostMessage", (message) => receive(message));
       await page.addInitScript(() => {
         if (window !== window.top) return;
@@ -104,6 +117,13 @@ function theme(dark) {
       try {
         await page.goto(`http://127.0.0.1:${server.address().port}/`);
         await page.locator("#panelHeading").waitFor();
+        if (allocationOnly) {
+          const findings = await runAllocationScenario({ page, panel, parentState, sent, showMembers, overflow, settle, output, name });
+          assert.deepEqual(errors, []);
+          results.push({ name, result: "passed", scope: "employee-allocation-ui-only", ...findings,
+            serverPort: server.address().port, browserErrors: errors });
+          continue;
+        }
         if (themeOnly) {
           const changeTheme = async (isDark) => {
             await page.evaluate(({ tokens, isDark }) => {
@@ -500,7 +520,7 @@ function theme(dark) {
       } finally { await page.close(); }
     }
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
+  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: allocationOnly ? "employee-allocation-ui-only" : focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
   if (results.some((result) => result.result !== "passed")) process.exitCode = 1;
 })().catch((error) => { console.error(error); process.exitCode = 1; });

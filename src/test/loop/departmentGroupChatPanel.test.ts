@@ -295,3 +295,33 @@ test("VS Code shell messages survive the parent alias and reject unrelated frame
   assert.match(directorHtml, /if \(!isLoopGroupChatHostMessage\(event\)\) return;/u,
     "ordinary content patches and modal content use the same owning-shell boundary");
 });
+
+test("allocation UI is director-only editable, honest when unavailable and escapes labels", () => {
+  const state = departmentState();
+  const projection = state.department!;
+  let html = buildLoopGroupChatPanelContentPatch(state, 1).rosterPanelHtml;
+  assert.match(html, /员工额度未知，额度服务不可用/);
+  assert.match(html, /class="department-allocation-input"[^>]*disabled/);
+  projection.employeeAllocation = { rootTaskId: projection.rootTaskId, revision: 3, defaultLimit: 5,
+    leaders: [{ leaderTaskId: projection.leaders[0].taskId, source: "manual", desiredLimit: 0, appliedLimit: null, activeEmployees: 2, pending: true }] };
+  html = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
+  assert.match(html, /额度写入服务不可用/);
+  projection.employeeAllocationEditable = true;
+  html = buildLoopGroupChatPanelContentPatch(state, 3).rosterPanelHtml;
+  assert.match(html, /实际占用 2 · 待首次派发 · 已保存，下次派发生效/);
+  assert.match(html, /type="number"[^>]*min="0"[^>]*max="20"[^>]*step="1"/);
+  assert.match(html, /data-allocation-action="reset"/);
+  assert.match(html, /aria-live="polite"/);
+  projection.role = "leader";
+  html = buildLoopGroupChatPanelContentPatch(state, 4).rosterPanelHtml;
+  assert.doesNotMatch(html, /data-allocation-action|class="department-allocation-input"/);
+  assert.match(html, /期望上限 0 · 实际占用 2/);
+});
+
+test("allocation writes are explicitly absent from child forwarding contracts", () => {
+  const { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES } = require("../../webview/loopGroupChatPanelTypes") as typeof import("../../webview/loopGroupChatPanelTypes");
+  assert.equal(DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES.has("loopGroupChatChat:updateDepartmentEmployeeLimit"), false);
+  // @ts-expect-error director writes must never become a child-forwardable message
+  const child: import("../../webview/loopGroupChatPanelTypes").DepartmentGroupChatTaskMessage = { type: "loopGroupChatChat:updateDepartmentEmployeeLimit", requestId: "x", leaderTaskId: "y", employeeLimit: 1, expectedRevision: 0 };
+  assert.equal(child.type, "loopGroupChatChat:updateDepartmentEmployeeLimit");
+});

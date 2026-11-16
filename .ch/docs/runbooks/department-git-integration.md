@@ -65,3 +65,16 @@ round-410 冷宿主 `live-leader-unverifiable` 仅是安全只读拒绝，不是
 iframe sandbox、消息身份校验、同步 inert/关闭归焦、无 bridge fallback 和异步模型成功不抢焦按接受来源保留，没有重新设计 UI。根 feature 保持 active/in_progress；round-410 冷安全拒绝不是恢复接管。运行时冷恢复、第二 EH、必要平台及最终远端同步/合理合并/真实最终合并树全量回归均继续开放。没有 fetch/pull/push、发布或共享 HEAD/index 操作。
 
 本轮报告：`/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-428-department-git-accepted-ui-delta-integration.md`。
+
+
+## Round 433：已审额度策略与总监 UI 后继候选
+
+本轮从已审策略提交 `083d5da06b4cc9d91434935616b7cecd6a7c5b19` 建立单父后继；该策略提交的唯一父为 `37d5847758a3ca1679be9eebdd8bd49e5a523c3d`。分支 `codex/department-reviewed-allocation-round433-20261116`，实体 worktree 为 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-reviewed-allocation-round433-20261116`。最终 commit/tree 由外部本轮报告记录，避免提交内循环引用。
+
+保留父树全部策略与历史材料，仅逐字节导入 `/private/tmp/department-allocation-ui-round431-20261116` 已审 11 条产品、测试、脚本及 runbook 路径，再追加本交接与 `.ch/docs/integration/department-reviewed-allocation/sources.json`，相对唯一父共 13 路径。清单记录来源报告、全部路径和 SHA-256；包含新增 webview 额度模块、scenario helper 和实际 `departmentGroupChatHost.test.ts`，使用 Git 现有大小写。来源 UI 树、策略树、共享树和提示修复树均未写入；未读取提示修复树字节，未吸入冷恢复增量。
+
+本轮没有修改已审产品字节或安装依赖，也不重跑 build、单测、浏览器、CLI 或 EH。复用策略最终标准 build 与 13 项、UI 最后标准 build、相关 40 项中的未变范围和最后宿主 5 项，以及 1440 深色 / 280 浅色 fixture 浏览器结果；保留原构建首错、修复与各快照边界。这些分树结果不证明新增生产组合已构建或通过，也不证明真实额度已经执行。新增清单和交接仅做 JSON/文档格式、来源稳定哈希、差异、路径/大小写和提交状态检查。
+
+实际 reader/writer 安装、持久 CAS、同步联合准入、中央功能清单/ontology/active 计划、冷恢复、第二 EH、必要平台以及最终远端同步/合理合并/真实合并树全量回归全部继续开放；不调整 Owner 证明、回收或容量标准。根 feature 保持 active/in_progress，round-410 冷安全拒绝仍不是恢复接管。本轮不 fetch/pull/push、发布或修改共享 HEAD/index、父记录与调度状态。
+
+本轮报告：`/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-433-department-git-reviewed-allocation-delta-integration.md`。

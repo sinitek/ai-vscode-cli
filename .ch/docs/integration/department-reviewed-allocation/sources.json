@@ -1,0 +1,232 @@
+{
+  "schemaVersion": 1,
+  "attempt": "round-433-department-git-reviewed-allocation-delta-integration",
+  "candidate": {
+    "baseCommit": "083d5da06b4cc9d91434935616b7cecd6a7c5b19",
+    "baseTree": "cf23265d10f5c23c3126094a17192d69abd709b7",
+    "baseParent": "37d5847758a3ca1679be9eebdd8bd49e5a523c3d",
+    "branch": "codex/department-reviewed-allocation-round433-20261116",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-reviewed-allocation-round433-20261116",
+    "initialClean": true,
+    "commitAndTree": "Recorded in external attempt report; no self-reference"
+  },
+  "sources": {
+    "policy": {
+      "commit": "083d5da06b4cc9d91434935616b7cecd6a7c5b19",
+      "parent": "37d5847758a3ca1679be9eebdd8bd49e5a523c3d",
+      "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-employee-allocation-policy-round431-20261116",
+      "report": {
+        "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-431-department-employee-allocation-policy.md",
+        "sha256": "59a186a3562029d4f3afd454b01e67c89e7f59fee4c97b5810e86b081c0f41ad"
+      },
+      "inheritedFiles": [
+        {
+          "path": ".ch/docs/design-docs/department-employee-allocation.md",
+          "sha256": "a67b0eed389b3c786cc2fb7e3a04b306b59e3f5b36b1883fa3cd0926ff85dd99",
+          "size": 8045
+        },
+        {
+          "path": "src/departmentemployeeallocation.ts",
+          "sha256": "824e610b55dab6f228a41307aa409b3f75206e86409179add14447379ef1d0ea",
+          "size": 13427
+        },
+        {
+          "path": "src/test/departmentemployeeallocation.test.ts",
+          "sha256": "35921c1053546503cc9c5e565ab64a41181a6c539bb3d00e9462d79995a6c7ba",
+          "size": 12935
+        }
+      ]
+    },
+    "ui": {
+      "head": "37d5847758a3ca1679be9eebdd8bd49e5a523c3d",
+      "worktree": "/private/tmp/department-allocation-ui-round431-20261116",
+      "report": {
+        "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-431-department-director-employee-allocation-ui.md",
+        "sha256": "1d14d373150d6e5b795a84756dc919474d2870479853f355643024b48f47221a"
+      },
+      "reviewAcceptance": "Current round-433 host instruction accepts these final round-431 report bytes",
+      "files": [
+        {
+          "path": "src/webview/loopGroupChatPanel.ts",
+          "sha256": "42beb303df60049d8937ba9d63c8b93c417b7c35016864ee5f6010976b381c8b",
+          "size": 103337,
+          "base_sha256": "7eb9b77a4bb90ebee0476c0d40c8a4c128b96c2823591758c1f8386476406671"
+        },
+        {
+          "path": "src/webview/loopGroupChatPanelTypes.ts",
+          "sha256": "edef2cf0ba136825bf43fc94fea4675da17ec83e484b3fb770ea6d46bcfc2692",
+          "size": 8443,
+          "base_sha256": "f31fa268517266d0959a2b04ff890ba423ecd32c8b02eaed97eb266e48a8cee8"
+        },
+        {
+          "path": "src/webview/loopGroupChatPanelStyles.ts",
+          "sha256": "f8861c77abb79a9e64d0c19b3b23411607c7b458a48e57a80aad03e1398012e0",
+          "size": 29721,
+          "base_sha256": "0c44b16385d254331eb7bdffbe28a2cd457b546159ca98944a8be85fd25cdd2e"
+        },
+        {
+          "path": "src/webview/departmentEmployeeAllocation.ts",
+          "sha256": "92c01978383734c328722abcb0b21cd673e558a9b129bf750a109520bd40b677",
+          "size": 8042,
+          "base_sha256": null
+        },
+        {
+          "path": "src/extensionHost/departmentGroupChatProjection.ts",
+          "sha256": "0c30f052f75e98cb73a746320fb5bdb44a54890aaa85414d96e3efae306bb9b8",
+          "size": 9811,
+          "base_sha256": "d94644dedfdee105f162215842da31f4cc45411d4fbe2419a008719ef55f957b"
+        },
+        {
+          "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+          "sha256": "684947947c939bd31c25b58bfde0270470059c825955c4b04f8f4ea0d08f9e0f",
+          "size": 66099,
+          "base_sha256": "3a68ba4da6e89ac4dfa9e9e2a0cf1357c53ac4b9e067138b5fe6f8aa0cd391d1"
+        },
+        {
+          "path": "src/test/loop/departmentGroupChatPanel.test.ts",
+          "sha256": "2884eea2c840071d965302bcd1e1b1153f7584a6ff666b55741a46fdabe5d681",
+          "size": 22490,
+          "base_sha256": "e3cae72dcdd9aa01fead563f4fb14d1b15d7bf84bb8b79769bd9fa284b87b996"
+        },
+        {
+          "path": "src/test/loop/departmentGroupChatHost.test.ts",
+          "sha256": "f2310c489bd47e129337545d0b532580e73127c588e52343cdc88ebde9b4d4bb",
+          "size": 48670,
+          "base_sha256": "e4056c8a52470d8a5c6a68cea9d31c02ba6c46e4d7dbc3747829b8b6a76a977f"
+        },
+        {
+          "path": "scripts/department_group_chat_smoke.cjs",
+          "sha256": "8035df1066f78682cc11ff2addbaf61cd9e4168c2a80ffd12b68c2b6802a25d7",
+          "size": 43113,
+          "base_sha256": "53775e05884aa295cae4a53b183d9e0420e6c7e866cbca77c4b02232a8a6f04c"
+        },
+        {
+          "path": "scripts/department_employee_allocation_scenario.cjs",
+          "sha256": "63be1598544d67ddb0cec372cdd259dcc732df39fb8275c40e2629c068c4d968",
+          "size": 9232,
+          "base_sha256": null
+        },
+        {
+          "path": ".ch/docs/runbooks/department-employee-allocation-ui-verification.md",
+          "sha256": "3bbc34a8e3c3a9944677841fee1a0c1b4e5e36ad71b74afd373495be76616986",
+          "size": 8821,
+          "base_sha256": null
+        }
+      ],
+      "untrackedIncluded": [
+        ".ch/docs/runbooks/department-employee-allocation-ui-verification.md",
+        "scripts/department_employee_allocation_scenario.cjs",
+        "src/webview/departmentEmployeeAllocation.ts"
+      ]
+    }
+  },
+  "closure": {
+    "base_tracked_files": 1477,
+    "ui_actual_src_files": 815,
+    "unchanged_base_paths_equal": 1469,
+    "tracked_changed": [
+      "scripts/department_group_chat_smoke.cjs",
+      "src/extensionHost/departmentGroupChatProjection.ts",
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+      "src/test/loop/departmentGroupChatHost.test.ts",
+      "src/test/loop/departmentGroupChatPanel.test.ts",
+      "src/webview/loopGroupChatPanel.ts",
+      "src/webview/loopGroupChatPanelStyles.ts",
+      "src/webview/loopGroupChatPanelTypes.ts"
+    ],
+    "untracked": [
+      ".ch/docs/runbooks/department-employee-allocation-ui-verification.md",
+      "scripts/department_employee_allocation_scenario.cjs",
+      "src/webview/departmentEmployeeAllocation.ts"
+    ],
+    "extra_src_files": [],
+    "candidateRule": "All base paths unchanged except exact 11 UI imports, appended handoff and this manifest; no other actual src files",
+    "combinedProductionVerification": false
+  },
+  "handoff": {
+    "path": ".ch/docs/runbooks/department-git-integration.md",
+    "baseSha256": "1b6fb8092f2c82e82db25dc1f46b9b8ddb20380df7d65d69f29567d863dc0c38",
+    "sha256": "375506cf6082678e65f993de8e217c2207c47b7d577faa6244ea7971a987dadb",
+    "preservesBaseAsPrefix": true
+  },
+  "relativeToParentPaths": [
+    ".ch/docs/integration/department-reviewed-allocation/sources.json",
+    ".ch/docs/runbooks/department-employee-allocation-ui-verification.md",
+    ".ch/docs/runbooks/department-git-integration.md",
+    "scripts/department_employee_allocation_scenario.cjs",
+    "scripts/department_group_chat_smoke.cjs",
+    "src/extensionHost/departmentGroupChatProjection.ts",
+    "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+    "src/test/loop/departmentGroupChatHost.test.ts",
+    "src/test/loop/departmentGroupChatPanel.test.ts",
+    "src/webview/departmentEmployeeAllocation.ts",
+    "src/webview/loopGroupChatPanel.ts",
+    "src/webview/loopGroupChatPanelStyles.ts",
+    "src/webview/loopGroupChatPanelTypes.ts"
+  ],
+  "reusedEvidence": [
+    {
+      "scope": "policy isolated final bytes",
+      "report": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-431-department-employee-allocation-policy.md",
+      "results": [
+        "final standard npm run build passed",
+        "13/13 module tests passed"
+      ],
+      "boundary": "First fixture failure retained in original report; no production wiring"
+    },
+    {
+      "scope": "UI isolated final bytes",
+      "report": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-431-department-director-employee-allocation-ui.md",
+      "results": [
+        "last standard npm run build passed",
+        "40/40 related tests, only unchanged scope after final host change",
+        "final host allocation 5/5 passed",
+        "1440 dark and 280 light fixture browser passed; browserErrors=[]"
+      ],
+      "boundary": "Last coordinator/host-test change covered by final host build and 5 tests; original browser inputs unchanged, not a production writer or policy integration proof; original build failures retained"
+    }
+  ],
+  "newChecks": [
+    "reported source hashes before/after copy",
+    "parent identity and exact UI path/untracked set",
+    "base/source closure and inherited policy byte identity",
+    "candidate/source/staged/commit blob equality",
+    "new manifest JSON and handoff UTF-8/newline/whitespace/fences",
+    "canonical path casefold uniqueness",
+    "exact staged diff and whitespace",
+    "commit parent/tree/path set and clean worktree"
+  ],
+  "notRun": [
+    "dependency installation",
+    "build",
+    "unit tests",
+    "browser",
+    "CLI",
+    "EH",
+    "platform execution",
+    "publish",
+    "fetch/pull/push"
+  ],
+  "excluded": [
+    "unaccepted prompt task repair bytes (not read)",
+    "cold recovery and shared working-tree deltas",
+    "node_modules",
+    "dist",
+    "credentials",
+    "runtime private data",
+    "raw logs/screenshots/old audit copies"
+  ],
+  "openGates": [
+    "production reader/writer",
+    "durable CAS and confirmed revision",
+    "synchronous joint group/global admission",
+    "central FEATURE_INVENTORY/ontology/active plan updates",
+    "cold recovery takeover",
+    "second EH",
+    "necessary platform checks",
+    "final remote synchronization and reasonable integration",
+    "full regression on actual final merged tree"
+  ],
+  "featureStatus": "active/in_progress",
+  "coldSafetyRefusalIsTakeover": false
+}

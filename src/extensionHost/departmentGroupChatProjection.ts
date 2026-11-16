@@ -2,13 +2,15 @@ import { normalizeDepartmentMetadata } from "../department";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
 import type { LoopTaskRecord } from "../loopTaskStore";
-import type { DepartmentGroupChatProjection, LoopGroupChatPanelParticipant } from "../webview/loopGroupChatPanelTypes";
+import type { DepartmentEmployeeAllocationProjection, DepartmentGroupChatProjection, LoopGroupChatPanelParticipant } from "../webview/loopGroupChatPanelTypes";
 
 export type DepartmentGroupChatReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   /** Read only: absence/failure means unknown, never an empty lease pool. */
   readCapacity?(rootTaskId: string): DepartmentCapacitySnapshot | null;
+  readEmployeeAllocation?(rootTaskId: string): DepartmentEmployeeAllocationProjection | null;
+  employeeAllocationWritable?: boolean;
 };
 
 /** Trusted, exhaustive current membership index, never a browser assertion or a view cache.
@@ -81,6 +83,28 @@ function employees(task: LoopTaskRecord): LoopGroupChatPanelParticipant[] {
   });
 }
 
+/** Validate and copy at the projection boundary. Missing/malformed data remains unknown. */
+export function normalizeDepartmentEmployeeAllocation(value: unknown, rootTaskId: string,
+  leaderTaskIds: readonly string[], maxEmployees: number): DepartmentEmployeeAllocationProjection | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const data = value as DepartmentEmployeeAllocationProjection;
+  const count = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  if (data.rootTaskId !== rootTaskId || !count(data.revision) || !count(data.defaultLimit)
+    || data.defaultLimit > maxEmployees || !Array.isArray(data.leaders)) return undefined;
+  const seen = new Set<string>();
+  for (const row of data.leaders) {
+    if (!row || !leaderTaskIds.includes(row.leaderTaskId) || seen.has(row.leaderTaskId)
+      || !["default", "manual"].includes(row.source) || !count(row.desiredLimit) || row.desiredLimit > maxEmployees
+      || (row.source === "default" && row.desiredLimit !== data.defaultLimit)
+      || (row.appliedLimit !== null && !count(row.appliedLimit))
+      || (row.activeEmployees !== null && !count(row.activeEmployees)) || typeof row.pending !== "boolean") return undefined;
+    seen.add(row.leaderTaskId);
+  }
+  return { rootTaskId, revision: data.revision, defaultLimit: data.defaultLimit,
+    leaders: data.leaders.map((row) => ({ leaderTaskId: row.leaderTaskId, source: row.source,
+      desiredLimit: row.desiredLimit, appliedLimit: row.appliedLimit, activeEmployees: row.activeEmployees, pending: row.pending })) };
+}
+
 export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: DepartmentGroupChatReadPort): DepartmentGroupChatProjection | undefined {
   const root = resolveDepartmentRoot(task, port);
   if (!root) return undefined;
@@ -108,7 +132,12 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     && capacity.leaders.every((id) => typeof id === "string" && id.trim())
     && capacity.employees.every((id) => typeof id === "string" && id.trim())
     && new Set(capacity.leaders).size === capacity.leaders.length && new Set(capacity.employees).size === capacity.employees.length;
+  let employeeAllocation: DepartmentEmployeeAllocationProjection | undefined;
+  try { employeeAllocation = normalizeDepartmentEmployeeAllocation(port.readEmployeeAllocation?.(root.id), root.id,
+    leaders.map((leader) => leader.id), valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees); } catch { /* Unknown, never fabricated. */ }
   return {
+    ...(employeeAllocation ? { employeeAllocation } : {}),
+    employeeAllocationEditable: meta.role === "director" && Boolean(employeeAllocation && port.employeeAllocationWritable),
     role: meta.role as "director" | "leader", rootTaskId: root.id,
     ...(meta.parentTaskId ? { parentTaskId: meta.parentTaskId } : {}), title: meta.moduleTitle,
     director: participant(root, "director"),

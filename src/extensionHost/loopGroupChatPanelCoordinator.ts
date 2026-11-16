@@ -1,8 +1,8 @@
 import * as fs from "fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
-import { buildDepartmentGroupChatProjection, departmentMetadata, resolveDepartmentRoot, authorizeDepartmentLeader, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
-import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES, type DepartmentGroupChatModalTarget } from "../webview/loopGroupChatPanelTypes";
+import { buildDepartmentGroupChatProjection, normalizeDepartmentEmployeeAllocation, departmentMetadata, resolveDepartmentRoot, authorizeDepartmentLeader, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
+import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES, type DepartmentGroupChatModalTarget, type DepartmentEmployeeAllocationProjection, type DepartmentEmployeeLimitRequest } from "../webview/loopGroupChatPanelTypes";
 import * as path from "path";
 import { ChatImageHost, isChatImageMessage } from "../webview/chatImageHost";
 import { isChatLinkMessage, openChatLink } from "../webview/chatLinkHost";
@@ -91,7 +91,13 @@ export type DepartmentOrganizationControl = {
   complete(root: LoopTaskRecord): Promise<void>;
 };
 
+/** Integration installs a durable CAS writer. This seam never writes a task or starts work. */
+export type DepartmentEmployeeAllocationWritePort = (root: LoopTaskRecord, request: DepartmentEmployeeLimitRequest) => Promise<
+  { ok: true; allocation: DepartmentEmployeeAllocationProjection } | { ok: false; error: string }>;
+
 type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
+  readDepartmentEmployeeAllocation?: (rootTaskId: string) => DepartmentEmployeeAllocationProjection | null;
+  updateDepartmentEmployeeLimit?: DepartmentEmployeeAllocationWritePort;
   readDepartmentCapacity?: (rootTaskId: string) => DepartmentCapacitySnapshot | null;
   readDepartmentLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   departmentOrganizationControl?: DepartmentOrganizationControl;
@@ -204,6 +210,7 @@ export function buildLoopGroupChatPanelState(
   });
   const department = buildDepartmentGroupChatProjection(task, {
     readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
+    readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
   });
   const departmentRoot = resolveDepartmentRoot(task, deps);
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
@@ -933,9 +940,83 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     deps.showInformationMessage(deps.t("loopGroupChatChat.clarificationRejected"));
   };
 
+  const allocationRequests = new Map<string, { panel: LoopGroupChatPanel; requestId: string }>();
+  const allocationRequestIds = new WeakMap<LoopGroupChatPanel, Set<string>>();
+  const updateDepartmentEmployeeLimit = async (taskId: string, request: DepartmentEmployeeLimitRequest): Promise<void> => {
+    // This message is deliberately absent from both iframe forwarding allowlists.
+    if (requestScope.getStore()) return;
+    const panel = deps.panelsByTaskId.get(taskId);
+    if (!panel || typeof request.requestId !== "string" || !request.requestId.trim() || request.requestId.length > 160) return;
+    const reply = (result: object) => panel.post({ type: "loopGroupChatChat:departmentEmployeeLimitSettled",
+      rootTaskId: taskId, leaderTaskId: request.leaderTaskId, requestId: request.requestId, ...result });
+    const authorize = () => {
+      const root = deps.readTaskRecord(taskId), leader = typeof request.leaderTaskId === "string" ? deps.readTaskRecord(request.leaderTaskId) : null;
+      const state = panel.getState();
+      if (deps.panelsByTaskId.get(taskId) !== panel || state?.task.id !== taskId || state.department?.role !== "director"
+        || state.department.rootTaskId !== taskId || !root || root.id !== taskId || !root.workspaceKey
+        || resolveDepartmentRoot(root, deps)?.id !== taskId || departmentMetadata(root)?.role !== "director"
+        || !leader || leader.id !== request.leaderTaskId
+        || !authorizeDepartmentLeader(root, leader, deps, deps.readDepartmentLeaderTaskIds)) return null;
+      return root;
+    };
+    const root = authorize();
+    if (!root) { reply({ ok: false, error: "仅当前产研部总监可调整本部门有效组长额度。" }); return; }
+    const workspaceKey = root.workspaceKey;
+    const key = JSON.stringify([taskId, request.leaderTaskId]);
+    const seen = allocationRequestIds.get(panel) ?? new Set<string>();
+    // Another group's save can advance the shared revision while this writer is awaiting.
+    // A duplicate must not settle the original request early with a stale-version error.
+    if (allocationRequests.get(key)?.panel === panel || seen.has(request.requestId)) return;
+    if (!deps.updateDepartmentEmployeeLimit || !deps.readDepartmentEmployeeAllocation) {
+      reply({ ok: false, error: "额度服务不可用，暂不可编辑。" }); return;
+    }
+    const projection = buildLoopGroupChatPanelState(root, deps).department;
+    const snapshot = projection?.employeeAllocation;
+    if (!snapshot || !snapshot.leaders.some((row) => row.leaderTaskId === request.leaderTaskId)) {
+      reply({ ok: false, error: "员工额度未知，请刷新后重试。" }); return;
+    }
+    if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 0
+      || request.expectedRevision >= Number.MAX_SAFE_INTEGER || request.expectedRevision !== snapshot.revision
+      || (request.employeeLimit !== null && (!Number.isSafeInteger(request.employeeLimit)
+        || request.employeeLimit < 0 || request.employeeLimit > projection!.maxEmployees))) {
+      reply({ ok: false, error: "额度或版本无效，请刷新后输入有效整数重试。" }); return;
+    }
+    allocationRequestIds.set(panel, seen);
+    seen.add(request.requestId);
+    const token = { panel, requestId: request.requestId };
+    allocationRequests.set(key, token);
+    const current = () => allocationRequests.get(key) === token && authorize()?.workspaceKey === workspaceKey;
+    try {
+      // Copy exact validated fields; extra browser properties cannot become authority.
+      const result = await deps.updateDepartmentEmployeeLimit(root, { requestId: request.requestId, leaderTaskId: request.leaderTaskId,
+        employeeLimit: request.employeeLimit, expectedRevision: request.expectedRevision });
+      if (!current()) return;
+      if (!result.ok) { reply({ ok: false, error: result.error || "保存失败，请重试。" }); return; }
+      const latest = buildLoopGroupChatPanelState(deps.readTaskRecord(taskId)!, deps);
+      const department = latest.department;
+      const confirmed = department && normalizeDepartmentEmployeeAllocation(result.allocation, taskId,
+        department.leaders.map((leader) => leader.taskId), department.maxEmployees);
+      const row = confirmed?.leaders.find((item) => item.leaderTaskId === request.leaderTaskId);
+      if (!confirmed || !row || confirmed.revision < request.expectedRevision
+        || (department?.employeeAllocation && department.employeeAllocation.revision > confirmed.revision)
+        || (request.employeeLimit === null ? row.source !== "default" : row.source !== "manual" || row.desiredLimit !== request.employeeLimit)) {
+        reply({ ok: false, error: "宿主确认额度或版本无效，请刷新后重试。" }); return;
+      }
+      if (!current()) return;
+      // Install only a durable host confirmation, never an optimistic browser value.
+      panel.update({ ...latest, department: { ...department!, employeeAllocation: confirmed } });
+      reply({ ok: true, revision: confirmed.revision, desiredLimit: row.desiredLimit });
+    } catch (error) {
+      if (current()) reply({ ok: false, error: error instanceof Error ? error.message : "保存失败，请重试。" });
+    } finally { if (allocationRequests.get(key) === token) allocationRequests.delete(key); }
+  };
+
   const handleMessage = async (taskId: string, message: LoopGroupChatPanelMessage): Promise<void> => {
     if (!message || typeof message.type !== "string") {
       return;
+    }
+    if (message.type === "loopGroupChatChat:updateDepartmentEmployeeLimit") {
+      await updateDepartmentEmployeeLimit(taskId, message); return;
     }
     if (message.type === "loopGroupChatChat:departmentModal") {
       const panel = deps.panelsByTaskId.get(taskId);
@@ -1281,6 +1362,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
           void handleMessage(taskId, message).catch((error) => { if (error !== obsoleteRequest) deps.showWarningMessage(error instanceof Error ? error.message : String(error)); });
         },
         onDispose: () => {
+          for (const [key, token] of allocationRequests) if (token.panel === panel) allocationRequests.delete(key);
           const binding = bindings.get(taskId);
           if (binding) releaseBinding(binding);
           const currentPanel = deps.panelsByTaskId.get(taskId);
