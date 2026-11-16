@@ -54,7 +54,8 @@ function regressionTests() {
     "loop/loopPlusScheduler.test.js", "loop/loopSubtaskSession.test.js",
     "loop/loopTaskStore.test.js", "loop/loopTaskStoreCoreCoverage.test.js", "loop/loopTaskStorePersistence.test.js",
     "loop/loopSubtaskAutoCompact.test.js", "session/conversationTabRunningFlow.test.js",
-    "loop/loopMainFailure.test.js", "loop/loopPlusPause.test.js", "loop/loopBlockedSummary.test.js",
+    "loop/loopMainFailure.test.js", "loop/loopPlusPause.test.js", "loop/loopBlockedSummary.test.js", "loop/loopBlocker.test.js",
+    "extensionHost/loopMainDecisionParsing.test.js", "extensionHost/subtaskCliExecution.test.js",
     "loop/loopFinalSummary.test.js", "loop/loopGroupChat.test.js",
     "session/sessionTabCliSwitch.test.js", "webview/tabRunStatus.test.js", "webview/conversationTabClose.test.js",
   ]) tests.add(path.join(repoRoot, "dist/test", name));

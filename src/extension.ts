@@ -1664,6 +1664,7 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   markLoopTaskInterrupted,
   normalizeLoopContinuePromptForPrompt,
   parseLoopMainDecision,
+  removeLoopMainDecisionMessage,
   persistLoopMessagesForTarget,
   prepareLoopSubtaskCommunicationFile,
   readLoopTaskRecord,

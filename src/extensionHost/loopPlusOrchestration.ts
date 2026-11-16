@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
-import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
+import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
@@ -1472,11 +1472,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       deps.log?.("loop-plus-block-review", { taskId: runtime.taskId });
       return "continue";
     }
-    if (decision.status === "blocked") {
-      decision = {
-        ...decision,
-        finalSummary: normalizeLoopBlockedSummary(decision.finalSummary),
-      };
+    if (decision.status === "blocked" && !decision.blocker) {
+      return protocolMiss(runtime, Boolean(held), buildLoopBlockerDiagnosticFailure(
+        decision.finalSummary || blockReview?.summary, decision.blockerIssue,
+      ), response);
     }
     return loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
       createDecisionPort(runtime, response),

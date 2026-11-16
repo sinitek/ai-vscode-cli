@@ -15,6 +15,16 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 当前调用链为 `applyBlockedDecision` → `loopPlusBlockReview=pending` → 带 `Bounded blocked review` 的一次主任务复核。若复核发现安全、独立的工作，继续派发并清除该复核状态；否则 `pauseForReview` → 编排宿主 `pause`，设置 `autoPaused`，持久化 `needs-review`、阻塞摘要与已复核状态，通知用户并记录到主任务沟通文件和群聊 transcript。该状态跨宿主重建保留；没有新的用户补充、派发或验收进展时，不会重复复核或自动发起相同阻塞调用。
 
+## 熔断说明不完整或环境缺依赖
+
+业务 `blocked` 气泡统一显示“熔断”，说明子任务多次尝试仍无法解决问题，整体任务尚未完成。具体原因、已尝试动作、推荐方案和恢复条件仍需逐项核对；文案不代表宿主新增了子任务失败计数门槛。主模型调用失败与协议错误保持独立说明，历史记录中的“受阻”“阻塞”原文仍可用于排查。
+
+先确认是否已经经过自动补充诊断：经典 Loop 同轮至多一次；Loop+ 先做一次剩余工作复核，再沿用最多两次协议纠错。最终说明应包含具体卡点、因果解释、未完成要求、证据、已尝试处理、首选解决方案、责任方、确认方式和恢复条件。“熔断诊断未补齐”表示主模型没有交付这些信息，不能据此推定业务无法完成；保留的原说明只作为待核实数据。
+
+缺依赖时要明确缺的软件/包/版本和运行环境，区分未安装、PATH 不可见及版本不兼容。安装/配置步骤必须适用于已确认的平台、包管理器和授权，附验证命令和预期结果；未知信息明确列出，不猜包名或默认存在 brew/winget/sudo。检查实际执行任务的扩展宿主、远程环境或容器，另一个终端可用不能证明该环境可用。条件满足后继续同一任务，先确认解阻，只补未完成工作并复用有效结果。能在现有授权内安全修复的应继续执行或派发修复；确需用户选择/授权时使用 clarify，不把问题直接丢给用户。
+
+回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。旧任务只保存 `finalSummary`，仍可展示；新决策的 `blocker` 不完整会被要求补齐。
+
 ## 只读取证顺序
 
 1. 从 `~/.sinitek_cli/loop-tasks/` 定位 workspace、CLI、session 与父任务 ID，读取 `taskStoreFile`、`communicationDir` 及各子任务 `communicationFile`，不要拼造 attempt 文件名。

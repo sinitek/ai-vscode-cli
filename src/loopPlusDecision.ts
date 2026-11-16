@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
@@ -79,6 +80,9 @@ export type LoopPlusDecision = {
   controls?: LoopPlusControlDecision[];
   answerConclusion?: string;
   finalSummary?: string;
+  blocker?: LoopBlocker;
+  /** 宿主解析得到的诊断缺项。 */
+  blockerIssue?: string;
   clarification?: OrchestratorClarification;
   acceptance?: LoopAcceptance;
   requirementCoverage?: LoopAcceptanceCheck[];
@@ -389,10 +393,9 @@ function normalizeBlockedDecision(
   if (!subtasks || subtasks.length > 0) {
     return null;
   }
-  const finalSummary = readOptionalText(raw.finalSummary);
   return withEstimatedRemainingRounds({
     status: "blocked",
-    ...(finalSummary ? { finalSummary } : {}),
+    ...readLoopBlockedDecisionFields(raw),
   }, estimatedRemainingRounds);
 }
 

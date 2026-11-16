@@ -2094,11 +2094,15 @@
     },
     {
       "id": "plugin.rule.loop_blocked_user_explanation",
-      "name": "Loop 阻塞答复说明原因与恢复条件或不可完成理由",
-      "description": "Loop / Loop+ 的 blocked 答复复用 finalSummary，以简体中文说明当前结论、具体原因、证据及未完成要求；可恢复时逐项给出前置条件、责任方、动作和确认方式，模型可自行处理的工作不转嫁给用户。确有依据表明当前要求无法完成时明确限制和可行替代方案或无替代路径，不附带无效继续指引；信息不足不得断言不可能。经典 Loop 复核气泡显示实际说明并移除本轮阻塞 JSON；Loop+ 主聊天及暂停记录复用说明，群聊中断摘要不再统一建议继续。缺失说明使用诚实中文兜底，提示向主模型索取原因而不编造。任务状态、验收及有界复核不变。",
+      "name": "Loop 熔断说明原因与恢复条件或不可完成理由",
+      "description": "Loop / Loop+ 业务 blocked 的聊天、群聊与暂停说明统一称熔断，说明子任务多次尝试仍无法解决触发熔断、整体任务尚未完成；主模型调用失败与协议错误独立说明，不新增重试阈值或更改状态机，历史原文保留。最终 blocked 需结构化 blocker：可恢复/无法完成、具体原因、未完成要求、证据、已尝试动作、按推荐顺序的责任方/操作/验证方式及恢复条件或替代方案，宿主统一生成中文 finalSummary。缺软件明确依赖/版本/环境、安装或配置命令或官方入口、执行位置、授权及验证结果，区分缺安装、PATH 与版本；不猜平台、包管理器或证据。优先授权内安全修复或独立工作，需用户决策用 clarify。经典 Loop 缺诊断时同轮补充一次，仍缺失/非法暂停留原说明及缺项。Loop+ 在一次剩余工作复核后复用最多两次协议纠错，耗尽保留原说明、缺项及未确认事件，不无限复核或标记完成。旧 finalSummary 仍可读，字段完整不代表宿主核验证据。聊天、群聊与暂停文件复用说明。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel", "plugin.extension_host"],
       "source_refs": [
+        {"path": "src/loopBlocker.ts"},
+        {"path": "src/loopPlusDecision.ts"},
+        {"path": "src/extensionHost/loopPlusOrchestration.ts"},
+        {"path": "src/test/loop/loopBlocker.test.ts"},
         {"path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md"},
         {"path": "src/loopBlockedSummary.ts"},
         {"path": "src/extension.ts"},

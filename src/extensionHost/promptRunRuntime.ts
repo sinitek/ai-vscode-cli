@@ -36,6 +36,7 @@ import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap,
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
 import { readLoopContinuationSource } from "../loopSubtaskSession";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
+import { readLoopBlockedDecisionFields } from "../loopBlocker";
 
 export type LoopPlusPromptRoleBinding = {
   model?: string;
@@ -528,7 +529,7 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
     return {
       status: "blocked",
       ...(progressPercent !== undefined ? { progressPercent } : {}),
-      finalSummary: typeof raw.finalSummary === "string" ? raw.finalSummary : undefined,
+      ...readLoopBlockedDecisionFields(raw),
       estimatedRemainingRounds,
     };
   }

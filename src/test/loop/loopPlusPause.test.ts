@@ -31,6 +31,7 @@ test("pause records the same evidence and recovery action once in both communica
       const content = fs.readFileSync(file, "utf8");
       assert.equal((content.match(/## 主任务暂停/g) ?? []).length, 1);
       assert.ok(content.includes(paused.finalSummary ?? ""));
+      assert.match(content, /Loop\+ 已熔断：子任务多次尝试仍无法解决问题/);
       assert.match(content, /整体任务尚未完成/);
       assert.match(content, /继续执行/);
     }
@@ -48,10 +49,11 @@ test("pause records the same evidence and recovery action once in both communica
 
 test("missing reasons have a safe fallback while other pause causes cannot reuse a stale business summary", () => {
   const paused = task(os.tmpdir());
-  assert.match(buildLoopPlusPauseText({ ...paused, finalSummary: " " }, "loop-plus-blocked"), /未提供具体阻塞原因/);
+  assert.match(buildLoopPlusPauseText({ ...paused, finalSummary: " " }, "loop-plus-blocked"), /未提供具体熔断原因/);
   assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /平台维护方/);
   assert.match(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /历史记录未保存具体协议错误/);
   assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /已自动请求纠正/);
+  assert.doesNotMatch(buildLoopPlusPauseText(paused, "loop-plus-protocol-paused"), /子任务多次|已熔断/);
 });
 
 test("protocol exhaustion records its actual rejection and does not invent a model business block", () => {
@@ -62,7 +64,7 @@ test("protocol exhaustion records its actual rejection and does not invent a mod
     for (const file of [paused.mainCommunicationFile, path.join(root, "group-chat.md")]) {
       assert.match(fs.readFileSync(file, "utf8"), /未关联任务：independent-research/);
       assert.match(fs.readFileSync(file, "utf8"), /已自动请求纠正 2 次/);
-      assert.doesNotMatch(fs.readFileSync(file, "utf8"), /主模型未提供具体阻塞原因/);
+      assert.doesNotMatch(fs.readFileSync(file, "utf8"), /主模型未提供具体熔断原因/);
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -110,4 +112,7 @@ test("main failure transcript uses persisted error and reconstructs old missing 
   const immediate = { ...paused, mainAiFailureCount: 1, mainAiFailureLimitReached: false,
     finalSummary: "不可重试：CODEX_THREAD_HANDOFF_FAILED" };
   assert.match(buildLoopPlusPauseText(immediate, "loop-plus-main-non-retryable"), /CODEX_THREAD_HANDOFF_FAILED/);
+  for (const [record, message] of [[paused, "loop-plus-main-failure-limit"], [immediate, "loop-plus-main-non-retryable"]] as const) {
+    assert.doesNotMatch(buildLoopPlusPauseText(record, message), /子任务多次|已熔断/);
+  }
 });

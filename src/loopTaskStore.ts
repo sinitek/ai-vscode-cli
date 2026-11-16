@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import type { LoopBlocker } from "./loopBlocker";
 import {
   CLI_LIST,
   createCliRecord,
@@ -145,6 +146,9 @@ export type LoopMainDecision = {
   progressPercent?: number;
   answerConclusion?: string;
   finalSummary?: string;
+  blocker?: LoopBlocker;
+  /** 宿主解析得到的诊断缺项，不采信模型提供的同名字段。 */
+  blockerIssue?: string;
   roundSummaries?: LoopRoundSummary[];
   requirementCoverage?: LoopAcceptanceCheck[];
   acceptance?: LoopAcceptance;

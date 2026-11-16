@@ -668,6 +668,7 @@ test("parses blocked and completed without requiring estimated rounds", () => {
   assert.deepEqual(blocked, {
     status: "blocked",
     finalSummary: "需要人工确认外部依赖。",
+    blockerIssue: "blocked 缺少 blocker 诊断对象，不能只提供一句 finalSummary。",
   });
 
   const completed = parseLoopPlusDecision(JSON.stringify(completedFields(" event-current ")));
