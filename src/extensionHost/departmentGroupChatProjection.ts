@@ -50,6 +50,32 @@ export function resolveDepartmentRoot(task: LoopTaskRecord, port: Pick<Departmen
   return meta.role === "director" || isDepartmentLeader(root, task) ? root : null;
 }
 
+/** Read-only organizational control, independent of a host-local model invocation.
+ * The reader MUST be the trusted department source, never ordinary task discovery.
+ * Unknown capacity retains the stop route; only an exact empty snapshot proves
+ * there is no remaining capacity to reconcile. This grants no execution right. */
+export function readDepartmentOrganizationControlState(task: LoopTaskRecord, workspaceKey: string,
+  port: Pick<DepartmentGroupChatReadPort, "readTaskRecord" | "readCapacity">): { needsCleanup: boolean } | null {
+  const current = port.readTaskRecord(task.id);
+  if (!current || !workspaceKey || current.workspaceKey !== workspaceKey || task.workspaceKey !== workspaceKey
+    || current.id !== task.id || current.taskStoreFile !== task.taskStoreFile
+    || JSON.stringify(current.department) !== JSON.stringify(task.department)
+    || current.departmentInvalid !== task.departmentInvalid) return null;
+  const root = resolveDepartmentRoot(current, port);
+  if (!root || root.id !== current.id) return null;
+  let capacity: DepartmentCapacitySnapshot | null = null;
+  try { capacity = port.readCapacity?.(root.id) ?? null; } catch { /* Unknown is not released. */ }
+  const valid = capacity && capacity.rootTaskId === root.id
+    && Number.isSafeInteger(capacity.maxLeaders) && capacity.maxLeaders >= 0
+    && Number.isSafeInteger(capacity.maxEmployees) && capacity.maxEmployees >= 0
+    && Array.isArray(capacity.leaders) && Array.isArray(capacity.employees)
+    && capacity.leaders.every(id => typeof id === "string" && id.trim())
+    && capacity.employees.every(id => typeof id === "string" && id.trim())
+    && new Set(capacity.leaders).size === capacity.leaders.length
+    && new Set(capacity.employees).size === capacity.employees.length;
+  return { needsCleanup: !valid || capacity!.leaders.length > 0 || capacity!.employees.length > 0 };
+}
+
 /** Neither labels, sessions nor browser IDs establish membership. */
 export function isDepartmentLeader(root: LoopTaskRecord, leader: LoopTaskRecord): boolean {
   const rootMeta = departmentMetadata(root), meta = departmentMetadata(leader);

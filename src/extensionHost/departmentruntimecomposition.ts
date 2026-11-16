@@ -67,6 +67,9 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   // A cold stop owns preparation only, never execution. Keep it separate from
   // continuation tokens so a late continuation/finalizer cannot clear its fence.
   const coldStops = new Map<string, object>();
+  // Capacity removal precedes original-service retirement. Keep public continue
+  // fenced until the WHOLE explicit stop returns; failures retain this fence.
+  const unconfirmedStops = new Map<string, object>();
   let disposed = false;
   function save(root: string, releaseLeaderModuleId?: string): void {
     const runtime = snapshots.get(root), task = deps.readTask(root);
@@ -333,6 +336,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     }
   }
   async function stop(root: LoopTaskRecord): Promise<void> {
+    const request = {};
+    unconfirmedStops.set(root.id, request);
+    await stopOrganization(root);
+    if (unconfirmedStops.get(root.id) === request) unconfirmedStops.delete(root.id);
+  }
+  async function stopOrganization(root: LoopTaskRecord): Promise<void> {
     // Revoke even when recovery/ensure fails: a pending request must never adopt
     // this stop as its new baseline after preparation returns.
     continuations.delete(root.id);
@@ -389,6 +398,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     readEmployeeCapacity: allocation.readEmployeeCapacity, startDepartmentPrompt, isDepartmentContinuation, continueDepartmentPrompt, handleDirectorDecision, organizationControl,
     wakeDirector: wake,
     recoverRoot: (root: LoopTaskRecord) => { ensure(root); },
+    isOrganizationStopUnconfirmed: (root: string) => unconfirmedStops.has(root),
     readCapacity: (root: string): DepartmentCapacitySnapshot | null => {
       const live = capacity.snapshot(root)[0]; if (live) return live;
       const task = deps.readTask(root); if (!task) return null;

@@ -107,3 +107,57 @@ Codex只为旧输出确实缺失的两项退出事实补一次跨EH场景，mach
 最小回归共7个不同用例：真实生产环境迟到变更1、受影响OpenCode原绑定多轮1、生成入口和被动worker观察3、内核跨父进程状态与严格退出门禁2。标准build最终exit0；首次build仅因新测试ProcessEnv类型缺PATH失败，已修正，未进入真实EH。完整命令/日志和产物哈希见round674报告。未重跑旧19项、483项、旧冷安全拒绝或同宿主EH刷新证据。ontology数据新增两条精确规则，按现有工具校验。
 
 这些是两个限定macOS/free-loopback快照的增量结果。中央功能清单文案交主任务整合：原代环境首次固化、跨EH真实worker退出单独核验、限定混合冷恢复正例通过。最终额度组合、其它平台、远端Git合理合并及最终合并树全量回归仍开放；不宣称最终统一产品通过，不猜测或处理旧未知worker。
+
+## Round-698：464 最终组合的新增实机证据及混合失败
+
+本节对应主审 lp695 接受的统一输入 **`464d1113f13b1bc0f2b59ea1ba4c09976ebed713` / tree `cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4`**，包含当前主干暂停/原生停止交接、逐 attempt 报告合同、部门 core、c40 语义修复和工作区配置。round674 两组合仍只证明其旧物理输入；历史437/440失败及旧guard具体分支未直接捕获的限制不变。
+
+从指定整合树建立分支 `department-final-cold-recovery-round698-20261116`，独立 worktree 位于 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-final-cold-recovery-round698-20261116`。实际执行产品为 **`/tmp/department-final-cold-recovery-round698-product`**：跟踪文件来自464，dist从指定整合树有效产物物理复制并逐项核对，没有共享可变dist链接。仅node_modules复用既有安装。输入清单 `/tmp/round698-input-manifest.json` 记录每项SHA及闭包；没有导入并行额度任务增量。
+
+本次没有修改生产源码、TS fixture或harness，因此复用464标准build和随后夹具tsc，不重建或重跑旧定向用例。两次执行使用完全相同的src/scripts/dist字节，执行后仅追加本runbook。macOS、Node24.22.2、VS Code1.144.0、Codex0.167.2、OpenCode1.19.5及原免费loopback provider；各场景新建HOME/USERPROFILE/CODEX_HOME/XDG、workspace、VS Code user-data/extensions/profile、CDP端口和独立观察器，180秒绝对deadline及10秒清理预算不变。
+
+```sh
+node /tmp/department-final-cold-recovery-round698-product/scripts/verify_department_full_eh_integration.js --product /tmp/department-final-cold-recovery-round698-product --report /tmp/round698-codex-report.json --scenario cold-recovery
+node /tmp/department-final-cold-recovery-round698-product/scripts/verify_department_full_eh_integration.js --product /tmp/department-final-cold-recovery-round698-product --report /tmp/round698-mixed-report.json --scenario cold-recovery --leader-cli opencode --leader-model default
+```
+
+准确argv、最小环境allowlist和cwd分别保存在 `/tmp/round698-{codex,mixed}-command.json`；其中设置 `PLAYWRIGHT_MODULE=/tmp/round384-playwright/node_modules/playwright` 及 `SINITEK_DEPARTMENT_FULL_EH_TIMEOUT_MS=180000`。没有读取用户凭据、安装依赖或调用付费模型；业务操作保持真实公开UI入口，没有改写任务/容量/authority文件或由fixture登记资源。
+
+| 组合 / UTC时间 | 机器结果及真实证据 | 未证明或保留边界 |
+| --- | --- | --- |
+| 全Codex，10:06:30–10:06:50 | `/tmp/round698-codex-report.json`，driver0 / passed / coldRecoveryComplete。原2项required receipts、完整CLOSED及持久容量移除；原authority认证retirement及独立kernel exit0/null早于新代初始化；唯一generation3新producer/Owner/execution，原native与独立本地transcript保持，实际后继provider请求。最终公开stop取得累计3份完整receipt、两CLOSED集合2+1项和空容量。全部5个原/后继worker均实际kernel code0/null；两EH exit0/null，forcedTeardown=false，CDP/observer/provider错误均空。隔离根 `/tmp/s-dept-eh-M8dg0v`。 | 只证明当前464的限定macOS组合；通用stages中的directorExecution等仍为pending，是cold分支未更新的通用模板字段，不据此声称完整总监最终报告或全业务矩阵通过。 |
+| Codex/OpenCode/Codex，10:07:09–10:09:59 | `/tmp/round698-mixed-report.json`，driver1 / failed / beforeControl，首错 `Webview locator wait exceeded its absolute deadline`。首EH完成真实Loop+员工及leader-accept，原2项完整receipt/CLOSED、OpenCode原session真实stop/原canonical目录退役；原组长与员工kernel exit0/null，首EH自然退出。第二EH激活及真实loadingReady/domReady已观察到，但未送达stop/continue。隔离根 `/tmp/s-dept-eh-7L3BVs`。 | beforeControl时总监已被普通运行状态协调改成stopped、runtimeInterrupted=true，stop按钮不可用。原leader容量保留，原authority未退役；无后继、无move/readback、无最终组织清理证明。两EH仍exit0/null、forcedTeardown=false、CDP诊断空；这些不能替代缺失的部门清理。未重试至绿。 |
+
+混合生产缺口的最小交接：第二EH原afterActivation快照仍为running；隔离扩展日志在 **10:07:41.457Z** 明确记录 `loop-task-runtime-state-reconciled`，同一root从running转stopped。beforeControl快照还保留 `runtimeInterrupted=true`、原CLOSED两项集合和 `capacity.leaders=[protocol-module-1]`。公开observer只有loadingReady/domReady/refresh，actions为空，不是用户公开stop。源码唯一对应写入点为 `promptRunRuntime.markLoopTaskStoppedAfterRuntimeEnded`；调用链为 `extension.isLoopMainTabCloseLocked → isLoopTaskRunning → isLoopTaskRunOrphaned → markLoopTaskStoppedAfterRuntimeEnded`。群聊 `resolveLoopTaskRunControlState` 对stopped给出canStop=false，renderer不生成stop按钮。冷宿主本地无运行者不能证明部门原责任或容量已归还；中央修复由主审指定唯一所有者，本树未修改这些符号、伪造运行者或绕过公开stop。
+
+同时保留观测限制：第二EH afterActivation文件约10:07:36发布，ready约10:09:51发布；loading握手延迟的精确原因未由现有材料证明。临时只读CDP Target.getTargets取得真实群聊iframe目标，已detach/close；后续DOM诊断在EH退出后收到ECONNREFUSED，未取得DOM内容。这些诊断不构成业务成功，也不能将握手延迟径直定性成OpenCode或新的guard失败。没有再次执行场景来猜测。
+
+失败后仅经精确原endpoint发送只读observe，原服务仍为sealed、2个tickets均released；结果 `/tmp/round698-mixed-retained-authority.json` 不含claim/proof。没有发送seal/claim/release/retire或直接调用恢复来补清理。原authority PID83157未取得退出事件，容量未归还，保留给唯一修复所有者；不以EH退出、端点/PID状态或服务响应冒充自然退出，不强杀任何未知或保留责任的worker。
+
+汇总 `/tmp/round698-evidence-summary.json`，最小中央缺口 `/tmp/round698-mixed-diagnostic.json`，两次日志 `/tmp/round698-{codex,mixed}.log`。src closure `36ae4ad388abe2831b3dc57283d109dadd390f2c2e5b44b348c4b0e4b962627a`；scripts closure `26c6acc256eba7450e35edb80415ee6a5ea05657d17c42f0a2e90e009cf82ac9`；dist closure `e7aa9cb5cafdf9a8aae415ca0b4a5752ebc1985149355fabbad7c1a846b43a12`。算法为相对路径→SHA256的排序紧凑JSON再SHA256，排除__pycache__。后改文档不使两次运行的源码/产物证据失效。
+
+当前两组合最终统一通过尚未成立。保留混合中央修复及受影响重验、工作区额度组合、真实Windows/Linux、最终整合和最终树全量回归门禁；不改中央功能清单、ontology或根计划，也不宣称根任务完成。
+
+
+## Round-702：部门根 orphan 协调与遗留组织公开停止
+
+本轮继续 `department-final-cold-recovery-round698-20261116` 独立分支，保留 `1c1c25d6` 文档提交及唯一生产基线 `464d1113`（tree `cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4`）；实体产品 `/tmp/department-cold-orphan-round702-product` 从该分支跟踪文件物理复制，自有 dist 通过标准构建生成。没有编辑原 master 或整合树/index，没有导入并行额度/store/send 增量。
+
+根因修复在生产控制边界：`readDepartmentOrganizationControlState` 只接受原可信部门仓储重读且与当前 workspace、root/总监角色、parent/module、源文件和 metadata 一致的根。本地 running 集合只描述模型调用；`extension.isLoopTaskRunning` 与 `promptRunRuntime.markLoopTaskStoppedAfterRuntimeEnded` 不再据其缺席改写这类根的组织状态。原容量非空或不可读时，旧 stopped/runtimeInterrupted 根仍使用原工具栏的停止按钮，沿既有 `organizationControl.stop` 收尾。该读取不产生 runner、grant、原生会话或容量变更。停止完整返回前（包括容量移除后的原服务退役）保留 unconfirmed 屏障；失败保留，请求身份保护迟到成功不清除后请求。继续失败 settled 回包也复用该屏障。普通 Loop/Loop+ orphan 与显式用户停止不变；没有改 renderer/CSS、间距、颜色、按钮结构、握手或期限。
+
+### 新执行与证据范围
+
+```sh
+node /tmp/department-cold-orphan-round702-product/scripts/verify_department_full_eh_integration.js --product /tmp/department-cold-orphan-round702-product --report /tmp/round702-mixed-report.json --scenario cold-recovery --leader-cli opencode --leader-model default
+node /tmp/round702-legacy-public-stop.js
+```
+
+第一条按 `/tmp/round702-mixed-command.json` 保存的最小环境执行，继续采用免费 loopback provider、安装版 CLI/VS Code、全新隔离配置、180 秒绝对 deadline 与 10 秒清理预算。10:54:56–10:55:16 UTC，一次 driver0 / machine passed / coldRecoveryComplete；隔离根 `/tmp/s-dept-eh-Qc72SM`。原两份 required receipts、两项完整 CLOSED、持久容量移除及原 authority 认证退役/真实 kernel code0-null 先于新代初始化；唯一 generation3 OpenCode 新 Owner/execution，原 native 与独立 local transcript 分别保持。真实后继请求、一次 move/readback、新 canonical root 成立。最后公开 stop：三份完整 receipt、CLOSED 集合 2+1、空容量，全部五个部门 worker 实际 kernel code0/null，两 EH exit0/null，forcedTeardown=false，CDP/provider/observer 错误均空。loadingReady/domReady 各两次，公开 stop 两次、continue 一次均实际送达精确根。原 698 mixed 首错和未定位的握手延迟限制继续保留；没有把它改判为新的 guard 失败。
+
+第二条是仅本轮使用的外部 stop-only 驱动，复用未修改的真实第二 EH 被动 fixture、精确 root Webview adapter、公开 stop 和独立 Python 内核观察器。重用原 `/tmp/s-dept-eh-7L3BVs` 保存的 home/workspace/profile/config，从原报告、生产 store、原生命周期登记及认证只读 observe 核验 `msg_1794823638240_0bb9e9de19a3d` / workspace `workspace_3b4fa28ee368` / 原 generation1 / producer `aa43fa9f-2605-4718-8538-e0f7f9dff076`，不按历史 PID 执行清理。诊断另写 `/tmp/round702-legacy-stop-CQQTua`，未改历史文件或凭证。10:58:12–10:58:16 UTC，原两份完整 required receipts/原 CLOSED 保持，公开 stop 实际送达，持久容量归空、原服务退役；原 authority 的精确原始登记 PID83157 得到真实 kernel code0/null。重开的 EH exit0/null，无 continue、后继 worker、grant/native preparation 或直接 seal/release/retire。报告 `/tmp/round702-legacy-stop-report.json`，驱动和准确 argv 均保留；不是新混合场景代替旧根收尾。
+
+上述实机输入冻结在 `/tmp/round702-execution-input.json`，运行后又补了两个只影响负向/并发投影的收尾：continueTaskSettled 的共同屏障及带请求身份的 unconfirmed-stop Map；单次合法成功的条件和业务 IPC 不变。最终源码重新标准 build，22 项受影响回归全部通过。实机结果对应其准确执行字节；后补分支仅由新单测证明，不声称已重新执行最终字节的第二 EH。依不刷新已通过证据的要求没有重复实机场景，主审可按该差异决定最终合并门禁。
+
+最初三文件定向运行 88 项：86 pass、2 fail；两失败名称与已有官方全量一致（`department ownership port unavailable...` 的旧 late-post 数量断言，以及 `allocation message rejects invalid payloads...` 的旧 revision 断言），本轮没有改其逻辑或迁就断言。新增回归全部通过；最终范围 22/22，另一次中间投影范围 4/4，不将重复项累计为更多覆盖。首次 build 的新增 renderer 测试参数缺失已修正，后续标准 build/夹具 tsc 均通过。ontology 既有普通 orphan 规则补充部门例外及 source refs，结构校验和 9 项工具测试通过；设计见 `loop-crash-recovery.md`。无新增业务能力，恢复原公开组织 stop 合同；中央功能清单由整合所有者消费本段，不争写。
+
+全 Codex round698 业务与五 worker 退出按未变范围复用，本轮不重跑。当前实机仅 macOS；额度/store/send 其它所有者的交付、上述两项旧测试、真实 Windows/Linux、最终合理合入及最终树全量回归、原打开目录安全切分支/脏树交接仍由主审统一收口。本轮不宣称根任务或最终统一产品验收完成。

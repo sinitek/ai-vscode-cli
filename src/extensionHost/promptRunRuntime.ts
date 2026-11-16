@@ -293,6 +293,8 @@ export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => v
 
 export type PromptRunRuntimeHostDeps = {
   decisionSubtaskMax?: () => number;
+  /** Trusted organizational ownership check; local absence cannot stop an organization. */
+  isDepartmentOrganizationTask?: (task: LoopTaskRecord) => boolean;
   getActiveWorkspaceKey: () => string;
   getConversationTabById: (tabId: string) => ConversationTabRecord | null;
   getConversationTabs: () => ConversationTabRecord[];
@@ -1148,6 +1150,7 @@ function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | 
   if (!task || task.status !== "running") {
     return task;
   }
+  if (deps.isDepartmentOrganizationTask?.(task)) return task;
   // Losing host ownership is not a user stop. In particular, do not clear the
   // active IDs or stop the persisted Loop+ scheduler before results can return.
   const record = updateLoopTaskRecord(taskId, {
