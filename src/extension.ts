@@ -1,3 +1,4 @@
+import { readDepartmentOrganizationControlState } from "./extensionHost/departmentGroupChatProjection";
 import { createDepartmentProductionCleanup } from "./extensionHost/departmentproductioncleanup";
 import { fingerprintDepartmentExecutionSelection } from "./runtime/departmentexecutionidentity";
 import { createDepartmentCodexPreparation } from "./extensionHost/departmentcodexpreparation";
@@ -1655,6 +1656,7 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
 }
 
 const promptRunRuntimeHost = createPromptRunRuntimeHost({
+  isDepartmentOrganizationTask: (task) => readDepartmentRootControl(task) !== null,
   resumeWaitingClassicBatch: (taskId) => requireLoopOrchestrationHost().resumeWaitingBatch(taskId)
     || loopOrchestrationOwnership.getCount(taskId) > 0,
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
@@ -2985,6 +2987,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
   readTaskRecord: readDepartmentAwareGroupChatTask,
   readDepartmentCapacity: (root) => getDepartmentRuntimeComposition().readCapacity(root),
+  readDepartmentOrganizationControlState: readDepartmentRootControl,
   readDepartmentEmployeeAllocation: (root) => getDepartmentRuntimeComposition().readDepartmentEmployeeAllocation(root),
   updateDepartmentEmployeeLimit: async (root, request) => getDepartmentRuntimeComposition().updateDepartmentEmployeeLimit(root, request),
   readDepartmentLeaderTaskIds: (root, module) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(root, module) ?? null,
@@ -3444,7 +3447,7 @@ function isLoopTaskRunning(
   if (!task) {
     return runningTaskIds.has(taskId);
   }
-  if (isLoopTaskRunOrphaned(task, runningTaskIds)) {
+  if (isLoopTaskRunOrphaned(task, runningTaskIds) && readDepartmentRootControl(task) === null) {
     markLoopTaskStoppedAfterRuntimeEnded(taskId);
     return false;
   }
@@ -4241,6 +4244,19 @@ function getDepartmentOwnershipIndex(): ReturnType<typeof createDepartmentProduc
     departmentOwnershipIndex = createDepartmentProductionTaskStore(path.join(DATA_DIR, "department-tasks-v1"));
   }
   return departmentOwnershipIndex;
+}
+function readDepartmentRootControl(task: LoopTaskRecord): { needsCleanup: boolean } | null {
+  const state = readDepartmentOrganizationControlState(task, activeWorkspaceKey, {
+    readTaskRecord: (id) => departmentOwnershipIndex?.readTaskRecord(id) ?? null,
+    readCapacity: (id) => {
+      if (departmentRuntimeComposition) return departmentRuntimeComposition.readCapacity(id);
+      const current = departmentOwnershipIndex?.readTaskRecord(id);
+      if (!current) return null;
+      const stored = getDepartmentExecutionStore().read(id, current.workspaceKey);
+      return stored.ok ? stored.value?.capacity ?? null : null;
+    },
+  });
+  return state && { needsCleanup: state.needsCleanup || departmentRuntimeComposition?.isOrganizationStopUnconfirmed(task.id) === true };
 }
 function readDepartmentAwareGroupChatTask(taskId: string): LoopTaskRecord | null {
   const indexed = departmentOwnershipIndex?.readTaskRecord(taskId) ?? null;

@@ -748,3 +748,44 @@ test("allocation simultaneous group competition shares total and preserves one o
   regular.release(); overflowA.release(); overflowB.release();
   assert.equal(h.composition.readCapacity("root-1")!.employees.length, 0);
 });
+
+for (const fail of [false, true]) {
+  test(`organization control remains unconfirmed across empty capacity until original stop settles: failure=${fail}`, async (t) => {
+    const entered = latch(), release = latch();
+    const h = harness({ stopDirector: async () => { entered.resolve(); await release.promise; if (fail) throw new Error("original-stop-unverified"); } });
+    t.after(() => { release.resolve(); h.dispose(); });
+    await h.start();
+    const root = h.fixture.readTask("root-1")!;
+    const pending = h.composition.organizationControl.stop(root);
+    const outcome = pending.then(() => null, error => error);
+    await entered.promise;
+    assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+    assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+    assert.equal(h.composition.readCapacity(root.id)?.leaders.length, 0);
+    release.resolve();
+    const error = await outcome;
+    assert.equal(Boolean(error), fail);
+    assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), fail, "failed stop is never a confirmed release");
+  });
+}
+
+test("late successful stop cannot clear a newer unconfirmed organization stop", async (t) => {
+  const firstEntered = latch(), firstRelease = latch(), secondEntered = latch(), secondRelease = latch();
+  let calls = 0;
+  const h = harness({ stopDirector: async () => {
+    const call = ++calls;
+    if (call === 1) { firstEntered.resolve(); await firstRelease.promise; }
+    if (call === 2) { secondEntered.resolve(); await secondRelease.promise; throw new Error("second-stop-unverified"); }
+  } });
+  t.after(() => { firstRelease.resolve(); secondRelease.resolve(); h.dispose(); });
+  await h.start(); const root = h.fixture.readTask("root-1")!;
+  const first = h.composition.organizationControl.stop(root); await firstEntered.promise;
+  const second = h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
+  const secondResult = second.then(() => null, error => error); await secondEntered.promise;
+  firstRelease.resolve(); await first;
+  assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+  secondRelease.resolve(); assert.ok(await secondResult);
+  assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+  await h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
+  assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), false);
+});

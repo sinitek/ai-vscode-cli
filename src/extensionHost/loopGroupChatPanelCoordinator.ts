@@ -101,6 +101,8 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   readDepartmentCapacity?: (rootTaskId: string) => DepartmentCapacitySnapshot | null;
   readDepartmentLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   departmentOrganizationControl?: DepartmentOrganizationControl;
+  /** Validates the fresh root against the trusted source and active workspace. */
+  readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean } | null;
   prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
   getExtensionUri: () => vscode.Uri;
   getMessageLimit?: () => number;
@@ -216,6 +218,8 @@ export function buildLoopGroupChatPanelState(
     readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
   });
   const departmentRoot = resolveDepartmentRoot(task, deps);
+  const organization = deps.readDepartmentOrganizationControlState?.(task);
+  const needsOrganizationStop = Boolean(departmentRoot?.id === task.id && organization?.needsCleanup);
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -227,7 +231,8 @@ export function buildLoopGroupChatPanelState(
     ...state,
     task: {
       ...state.task,
-      canContinue: canContinueLoopTaskWithDeps(task, deps),
+      canContinue: canContinueLoopTaskWithDeps(task, deps, needsOrganizationStop),
+      ...(needsOrganizationStop ? { canStop: true } : {}),
     },
     ...acceptancePlanState,
     ...(departmentRoot ? { ...(department ? { department } : {}), acceptancePlan: departmentRoot?.loopPlusAcceptancePlan ?? null, acceptancePlans: [], acceptancePlanReadOnly: true } : {}),
@@ -281,7 +286,9 @@ function canStopLoopTaskWithRunningTaskIds(
   return resolveLoopTaskRunControlState(task, runningTaskIds).canStop;
 }
 
-function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps): boolean {
+function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps,
+  needsOrganizationStop = Boolean(deps.readDepartmentOrganizationControlState?.(task)?.needsCleanup)): boolean {
+  if (needsOrganizationStop) return false;
   if (resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue) {
     return true;
   }

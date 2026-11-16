@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { installVscodeMock } from "../vscodeMock";
 import { departmentRecords, fixtureDepartmentLeaderTaskIds } from "./departmentGroupChatHost.fixture";
 import { waitForOrchestratorClarification, abortOrchestratorClarification, loopClarificationScope } from "../../orchestratorClarification";
-import { buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
+import { readDepartmentOrganizationControlState, buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
 
 import type { LoopTaskRecord } from "../../loopTaskStore";
 installVscodeMock();
@@ -691,4 +691,71 @@ test("allocation duplicate cannot prematurely settle an in-flight request after 
     const receipts = h.posted.filter((row) => row.type === "loopGroupChatChat:departmentEmployeeLimitSettled");
     assert.equal(receipts.length, 1); assert.equal(receipts[0].ok, true); assert.equal(receipts[0].revision, 5);
   } finally { gate.resolve(); h.restore(); }
+});
+
+for (const status of ["running", "stopped"] as const) {
+  test(`cold organization stop remains public without a local runner: ${status}`, async () => {
+    const h = harness();
+    try {
+      h.root.status = status; h.root.runtimeInterrupted = status === "stopped" ? true : undefined;
+      const capacity = { rootTaskId: h.root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["module-A"], employees: [] as string[] };
+      h.deps.readDepartmentOrganizationControlState = task => readDepartmentOrganizationControlState(task, "workspace-A", {
+        readTaskRecord: h.deps.readTaskRecord, readCapacity: () => capacity,
+      });
+      let stops = 0;
+      h.deps.departmentOrganizationControl = { stop: async root => { assert.equal(root.id, h.root.id); stops++; }, continue: async () => {}, complete: async () => {} };
+      // Ordinary reconciliation has already happened before the delayed Webview handshake.
+      assert.equal(h.deps.collectRunningTaskIds().size, 0);
+      const state = buildLoopGroupChatPanelState(h.root, h.deps);
+      assert.equal(state.task.canStop, true); assert.equal(state.task.canContinue, false);
+      assert.match(buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml, /data-action="stopTask"/);
+      assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml, /data-action="continueTask"/);
+      await h.coordinator.open(h.root.id);
+      h.receive({ type: "loopGroupChatChat:stopTask" }); await tick();
+      assert.equal(stops, 1); assert.equal(h.effects.length, 0, "never dispatch a single-task runner or ordinary stop");
+      capacity.leaders = [];
+      h.root.status = "stopped";
+      const cleaned = buildLoopGroupChatPanelState(h.root, h.deps);
+      assert.equal(cleaned.task.canStop, false); assert.equal(cleaned.task.canContinue, true);
+    } finally { h.restore(); }
+  });
+}
+
+test("organization control projection requires trusted source, exact root/workspace and keeps unknown capacity pending", () => {
+  const { root, leader, records } = departmentRecords();
+  const port = { readTaskRecord: (id: string) => records.get(id) ?? null,
+    readCapacity: () => ({ rootTaskId: root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["module-A"], employees: [] }) };
+  assert.deepEqual(readDepartmentOrganizationControlState(root, "workspace-A", port), { needsCleanup: true });
+  assert.equal(readDepartmentOrganizationControlState(root, "workspace-B", port), null);
+  assert.equal(readDepartmentOrganizationControlState(root, "workspace-A", { ...port, readTaskRecord: () => null }), null);
+  assert.equal(readDepartmentOrganizationControlState(leader, "workspace-A", port), null);
+  for (const mutate of [(t: LoopTaskRecord) => { t.departmentInvalid = true; },
+    (t: LoopTaskRecord) => { t.department!.parentTaskId = "foreign"; },
+    (t: LoopTaskRecord) => { t.department!.rootTaskId = "foreign"; },
+    (t: LoopTaskRecord) => { t.department!.leaderSubtaskId = "module-A"; },
+    (t: LoopTaskRecord) => { t.workspaceKey = "foreign"; },
+    (t: LoopTaskRecord) => { t.taskStoreFile = "/untrusted/tasks.json"; }]) {
+    const bad = structuredClone(root); mutate(bad);
+    assert.equal(readDepartmentOrganizationControlState(bad, "workspace-A", port), null);
+  }
+  for (const readCapacity of [() => null, () => { throw new Error("offline"); }, () => ({ ...port.readCapacity(), rootTaskId: "foreign" })]) {
+    assert.deepEqual(readDepartmentOrganizationControlState(root, "workspace-A", { ...port, readCapacity }), { needsCleanup: true });
+  }
+});
+
+test("a refused continuation settlement cannot re-enable continue while organization cleanup is unconfirmed", async () => {
+  const h = harness();
+  try {
+    h.root.status = "stopped"; h.root.runtimeInterrupted = true;
+    h.deps.readDepartmentOrganizationControlState = () => ({ needsCleanup: true });
+    h.deps.departmentOrganizationControl = { continue: async () => { throw new Error("original-retirement-unconfirmed"); },
+      stop: async () => {}, complete: async () => {} };
+    await h.coordinator.open(h.root.id);
+    await h.coordinator.continueTask(h.root.id);
+    const settled = h.posted.filter(message => message.type === "loopGroupChatChat:continueTaskSettled").at(-1);
+    assert.equal(settled?.canContinue, false);
+    assert.equal(h.panel().getState()?.task.canContinue, false);
+    assert.equal(h.panel().getState()?.task.canStop, true);
+    assert.equal(h.effects.length, 0);
+  } finally { h.restore(); }
 });
