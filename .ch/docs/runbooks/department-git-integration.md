@@ -99,3 +99,14 @@ iframe sandbox、消息身份校验、同步 inert/关闭归焦、无 bridge fal
 新专属薄 harness 复用现有隔离环境、精确 Webview 适配器、免费 Responses provider 与原 Owner 观察器；只增加额度消息/真实准入/进程退出旁听及最小场景。构建、定向测试、真实场景首错与只读证据复核见 [专属验证手册](department-employee-allocation-eh-verification.md)。最终交付 commit/tree 与全部路径哈希记在 round-440 attempt 报告，避免文档自身提交身份循环。
 
 这是局部组合候选，未导入正在返修的冷恢复、第二 EH 或其它未验收增量；未修改恢复回调、executionresources、coldgenerationrecovery 或其证明标准。最终统一产品、平台、远端同步合理合并及最终合并树全量回归继续开放。未 fetch/pull/push/发布，也未改共享 HEAD/index 或任何历史来源报告。
+
+
+## Round-443：已审额度/提示/UI-EH 与固定角色头像候选
+
+从 `84518c13758eb7b972ee4ca405543a91b75c8ca3` 在 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-allocation-avatar-round443` 建立外置独立树，分支 `codex/department-allocation-avatar-round443`。核对头像 `5e5cca4f232bc4bd98db753aeb3489ca0e2024d9` 的唯一父和双方merge-base均为 `da47ec72295416fd4a7ff7c877bc483d658e77ff`，无冲突合入完整四路径增量。真实merge commit `e9fea635adb966f7e743221c45fd793e37f07cf5`，tree `a8a29e15265b6e0d31fb713b17751ff38f01f078`，两父依次84518c、5e5cca；四条来源字节均保持。最终文档交接后继身份及全部八路径哈希在round-443外部报告，不作自引用。
+
+新材料为 [README](../integration/department-reviewed-allocation-avatar/README.md) 和同目录sources.json：列明两个来源报告/哈希、父提交、全部来源增量、blob/SHA-256、组合身份、复用结果及开放门禁。追加本节并维护本候选中央FEATURE_INVENTORY；旧sources.json和旧报告均未覆盖。保留845的da47线性历史同步、持久CAS、同步联合准入、e613五条提示及所有薄harness。头像仅局部成员层级映射总/组/员，不改全局头像、Tab/emoji、样式/交互、权限或执行链。
+
+本轮只对新组合运行一次标准 `npm run build`（exit0通过，clean+tsc）与来源/差异/JSON/文档/空白检查，不重跑有效单测、浏览器、CLI或EH。按原输入复用845标准build及新增13项、da47定向11、策略13、提示builder34、原UI/host和头像3渲染/两视口fixture。run4原命令仍failed，只读复核通过证明真实保存/下次准入、四份原required receipts、完整CLOSED、容量归还与四worker自然退出；最新完整driver未第五次运行，run1/2清理未知，历史原始记录不改写。本组合不宣称新真实UI-EH通过。
+
+没有合入并行冷恢复生产代码、full EH driver或能力链，也不竞争改其所有者符号。根feature保持active/in_progress；最终统一产品及真实UI-EH、冷恢复合入、必要平台、全部完成测试后的远端同步合理合并与真实最终合并树全量回归继续开放。原来源物理树、共享HEAD/index、调度/active ids/Loop+快照及父记录均未修改，未fetch/pull/push或发布。

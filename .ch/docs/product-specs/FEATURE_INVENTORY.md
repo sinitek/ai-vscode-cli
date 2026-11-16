@@ -4,6 +4,10 @@
 
 ## 产研部三层协作模式
 
+- 已审额度/提示/UI-EH与角色头像局部组合（round-443，2026-11-16）：根 feature 仍为 **active / in_progress**，不是最终统一产品。保留 round-436 下述生产合同及 da47 线性历史同步修复，已纳入 e613 提示与84518c专属薄harness；不再属于“提示后继尚未合入”的旧快照。84518c标准build与新增13项（5+5+3分组）通过，run4只读复核充分证明真实总监Webview请求/匹配settled、desired/revision持久保存、下次真实新attempt应用0并在全局有余额时按本组拒绝、恢复默认后再准入，以及四份原required receipts、完整CLOSED、容量归还和四worker自然退出。原run1–4命令仍failed，修正完整driver未第五次运行；run1/2清理未知，不能用run4为早期失败清理背书。本组合标准build通过，仅补来源检查，不宣称新EH通过。详见[独立来源与证据边界](../integration/department-reviewed-allocation-avatar/README.md)。
+
+- 部门成员树角色头像补充要求（round-441已审，本候选纳入）：总监固定“总”、组长固定“组”、员工固定“员”，仅由renderDepartmentRosterPanel的明确层级角色决定；总监页与组长弹窗初始HTML/contentPatch一致，空标题、同名及待创建组长不依赖标题首字或participant.role。保留总监→组长→员工嵌套、标题左侧28px圆形、12px居中字、8px gap、4px行内边距和badge主题变量；默认/hover/focus/disabled/loading/error/空状态、组长打开、员工验收定位与返回归焦沿用原结构。普通Loop/Loop+头像、消息头像、Tab原名及👴🏻👨🏻👶🏻不变。来源标准build、3项渲染和1440深色/280浅色有界浏览器通过（browserErrors=[]），仅为显示fixture证据；详见[角色头像验证手册](../runbooks/department-member-role-avatar-verification.md)。冷恢复及第二EH后继未合入，最终额度/提示/头像/冷恢复统一产品、必要平台、远端同步合理合并和最终合并树全量回归仍开放。
+
 - 逐组员工额度生产接线候选（round-436）：默认按配置 `maxLeaders` 向上取整均分（20/4 为 5），总监手动/恢复默认经当前身份及同步持久 CAS 保存 desired；下一次真实新 attempt 先持久应用，即使随后因占用拒绝。实际 held leases 含 overflow 同时受本组/部门余额约束，仅全局零余额保留每组一次未释放 overflow。额度不是预留，保存/降低不取消员工或释放原责任。旧 controller 不覆盖额度，读端不初始化，extension 已安装既有总监端口及 Loop+ 容量 reader。独立实体标准 build、9 个不同新增 store/host/composition/生产生命周期用例通过；免费模拟 CLI 证据不等于真实 EH/UI 或最终组合。11 条已审 UI 字节保持；未合入返修冷恢复及提示 Git 后继，第二 EH、平台及最终同步/合并/全量回归仍开放。详见[逐组额度设计](../design-docs/department-employee-allocation.md)。
 
 - 模式可用性设置：全局 `settings.json` 提供 `loopEnabled` / `loopPlusEnabled` / `departmentEnabled`，仅接受布尔值，缺失或非法分别按开/开/关解析。常规设置卡片提供三个开关及产研部性能警告；宿主对新建面板任务与定时任务拒绝已关闭模式，等待配置后复核。已有 Loop/部门续接与可信组长 Loop+ producer 不受开关影响。round-332 的设置面板 Chromium smoke（1280px/280px、默认值、键盘切换、保存禁用、警告与溢出）通过；部门会话 smoke 未通过，因现有角色 Tab fixture 文案不匹配（实际 `👴🏻 Codex`，fixture 期望组织总览名称）。未证明完整 VS Code 真实 CLI 派发链。
