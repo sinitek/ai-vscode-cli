@@ -131,11 +131,15 @@ ${LOOP_GROUP_CHAT_HOST_MESSAGE_SCRIPT}
             event.preventDefault(); event.stopImmediatePropagation(); closeModal();
           } else if (event.key === "Tab") {
             const buttons = [close, ...(retry.hidden ? [] : [retry])];
-            if (frame) {
+            if (event.shiftKey && document.activeElement === buttons[0]) {
               event.preventDefault();
-              child({ control: "focus", edge: event.shiftKey ? "last" : "first" });
-            } else if (buttons.length === 1 || (event.shiftKey && document.activeElement === buttons[0]) || (!event.shiftKey && document.activeElement === buttons[buttons.length - 1])) {
-              event.preventDefault(); buttons[event.shiftKey ? buttons.length - 1 : 0].focus();
+              if (frame) {
+                frame.contentWindow.focus();
+                child({ control: "focusLast" });
+              }
+              else buttons[buttons.length - 1].focus();
+            } else if (!frame && (buttons.length === 1 || document.activeElement === buttons[buttons.length - 1])) {
+              event.preventDefault(); buttons[0].focus();
             }
           }
         }, true);
@@ -179,7 +183,6 @@ ${LOOP_GROUP_CHAT_HOST_MESSAGE_SCRIPT}
             if (frame !== installedFrame || active !== installedTarget) return;
             // Theme mutations can race srcdoc parsing: always resend the latest snapshot on load.
             syncTheme(true);
-            child({ control: "focus", edge: "first" });
           });
           frame.srcdoc = data.html;
           content.replaceChildren(frame);
@@ -227,6 +230,7 @@ export function buildDepartmentChildBridge(target: DepartmentGroupChatModalTarge
     });
     const controls = () => Array.from(document.querySelectorAll('button:not(:disabled), textarea:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]'))
       .filter((element) => element.getClientRects().length && !element.closest('[inert], [aria-hidden="true"]'));
+    let lastFocused = null;
     window.addEventListener("message", (event) => {
       const data = event.data;
       if (event.source !== parent || !data || data.channel !== "department-host" || data.taskId !== binding.taskId || data.instanceId !== binding.instanceId) {
@@ -238,9 +242,10 @@ export function buildDepartmentChildBridge(target: DepartmentGroupChatModalTarge
         if (message.control === "theme") {
           applyTheme(message.theme);
         }
-        if (message.control === "focus") {
+        if (message.control === "focusLast") {
           const list = controls();
-          list[message.edge === "last" ? list.length - 1 : 0]?.focus();
+          const target = lastFocused?.isConnected && list.includes(lastFocused) ? lastFocused : list[list.length - 1];
+          target?.focus({ preventScroll: true });
         }
         return;
       }
@@ -248,21 +253,30 @@ export function buildDepartmentChildBridge(target: DepartmentGroupChatModalTarge
     }, true);
     document.addEventListener("DOMContentLoaded", () => {
       let stack = [];
-      let opener = null;
-      document.addEventListener("click", (event) => {
-        const target = event.target.closest("[data-action]");
-        if (target) opener = target;
+      const dialogOpeners = new Map();
+      document.addEventListener("focusin", (event) => {
+        if (controls().includes(event.target)) lastFocused = event.target;
       }, true);
       const sync = () => {
         const visible = Array.from(document.querySelectorAll(".dialog-backdrop.visible, .overlay.visible"));
-        const previous = stack[stack.length - 1];
         stack = stack.filter((item) => visible.includes(item));
         visible.forEach((item) => { if (!stack.includes(item)) stack.push(item); });
         const top = stack[stack.length - 1];
         document.querySelectorAll(".topbar, .layout").forEach((element) => { element.inert = Boolean(top); });
         visible.forEach((element) => { element.inert = element !== top; element.style.zIndex = element === top ? "102" : "101"; });
-        if (previous && !top && opener?.isConnected) opener.focus({ preventScroll: true });
-        if (top && top !== previous && !top.contains(document.activeElement)) top.querySelector("button, textarea, input, select")?.focus();
+      };
+      window.__departmentDialogOpened = (element, opener) => {
+        if (element && opener?.isConnected) dialogOpeners.set(element, opener);
+        sync();
+      };
+      window.__departmentDialogClosed = (element, restoreFocus = true) => {
+        const wasTop = stack[stack.length - 1] === element;
+        sync();
+        const opener = dialogOpeners.get(element);
+        dialogOpeners.delete(element);
+        if (restoreFocus && wasTop && !element.classList.contains("visible") && opener?.isConnected && !opener.closest("[inert]")) {
+          opener.focus({ preventScroll: true });
+        }
       };
       new MutationObserver(sync).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
       sync();

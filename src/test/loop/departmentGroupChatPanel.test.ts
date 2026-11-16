@@ -57,6 +57,25 @@ test("task suffix distinguishes modules sharing title and public timestamp prefi
   assert.notEqual(buildLoopGroupChatPanelTitle(a, getStrings()), buildLoopGroupChatPanelTitle(b, getStrings()));
 });
 
+test("modal refresh does not force iframe focus and keeps the opaque child bridge bound", () => {
+  const target = { taskId: "department-20261113-leader-111111", instanceId: "instance-a" };
+  const bridge = buildDepartmentChildBridge(target);
+  const sync = bridge.slice(bridge.indexOf("const sync = () =>"), bridge.indexOf("window.__departmentDialogOpened"));
+  const observer = bridge.slice(bridge.indexOf("new MutationObserver(sync)"), bridge.indexOf('document.addEventListener("keydown"'));
+  assert.match(DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, /setAttribute\("sandbox", "allow-scripts"\)/u);
+  assert.doesNotMatch(DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, /child\(\{ control: "focus"/u);
+  assert.match(bridge, /event\.source !== parent[\s\S]*data\.taskId !== binding\.taskId[\s\S]*data\.instanceId !== binding\.instanceId/u);
+  assert.doesNotMatch(bridge, /message\.control === "focus"/u);
+  assert.doesNotMatch(sync, /\.focus\(/u);
+  assert.doesNotMatch(observer, /\.focus\(/u, "asynchronous mutation refresh never moves focus");
+  assert.match(sync, /element\.inert = element !== top/u, "dialog lifecycle synchronizes inert state before returning focus");
+  const close = bridge.slice(bridge.indexOf("window.__departmentDialogClosed"), bridge.indexOf("new MutationObserver(sync)"));
+  assert.match(close, /restoreFocus = true/u);
+  assert.match(close, /sync\(\);[\s\S]*if \(restoreFocus && wasTop/u, "focus restoration follows layer synchronization and can be suppressed for async close");
+  assert.match(close, /opener\.focus\(\{ preventScroll: true \}\)/u);
+  assert.match(bridge, /event\.key !== "Tab"/u);
+});
+
 test("known hierarchy survives missing rounds and read errors; empty tree stays honest", () => {
   const state = departmentState();
   state.rounds = [];

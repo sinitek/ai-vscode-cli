@@ -7,6 +7,8 @@ const root = path.resolve(__dirname, "..");
 const compiled = path.resolve(root, process.env.DEPARTMENT_UI_DIST || ".tmp/department-group-ui-dist/dist");
 const output = path.resolve(root, process.env.DEPARTMENT_UI_EVIDENCE || ".tmp/department-group-ui-dist/browser");
 const themeOnly = process.env.DEPARTMENT_UI_THEME_ONLY === "1";
+const deltaOnly = process.env.DEPARTMENT_UI_DELTA_ONLY === "1";
+const focusLifecycleOnly = process.env.DEPARTMENT_UI_FOCUS_LIFECYCLE_ONLY === "1";
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
 require(path.join(compiled, "test/vscodeMock.js")).installVscodeMock();
 const vscode = require("vscode");
@@ -43,12 +45,14 @@ function theme(dark) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const results = [];
   try {
-    for (const width of (themeOnly ? [1440] : [1440, 280])) for (const dark of (themeOnly ? [true] : [true, false])) {
+    const viewports = focusLifecycleOnly || themeOnly ? [[1440, true]] : (deltaOnly ? [[1440, true], [280, false]] : [[1440, true], [1440, false], [280, true], [280, false]]);
+    for (const [width, dark] of viewports) {
       const name = `${width}-${dark ? "dark" : "light"}`;
       const page = await browser.newPage({ viewport: { width, height: 960 } });
       const errors = [];
+      const deltaFindings = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+      page.on("console", (message) => { if (message.type() === "error") errors.push(`${message.text()} @ ${JSON.stringify(message.location())}`); });
       page.on("requestfailed", (request) => errors.push(request.url() + " " + request.failure()?.errorText));
       const sent = [];
       let receive;
@@ -80,6 +84,9 @@ function theme(dark) {
         const state = departmentState("leader"); state.task.id = target.taskId;
         state.department.title += target.taskId.endsWith("222222") ? " · B组" : " · A组";
         state.acceptancePlan = parentState.acceptancePlan;
+        if (deltaOnly && target.taskId.endsWith("111111")) {
+          state.chatMarkdown = Array.from({ length: 49 }, (_, index) => `## 主任务发言\n\n合并增量消息 ${index + 1}\n\n`).join("");
+        }
         assert.equal(panel.setDepartmentModalState(target, state), true);
         await page.locator("#departmentChatContent iframe").waitFor();
         const handle = await page.locator("#departmentChatContent iframe").elementHandle();
@@ -173,7 +180,7 @@ function theme(dark) {
           assert.equal(question?.message.prompt, "主题切换保留的组长草稿");
           await overflow(page); await overflow(frame);
           assert.deepEqual(errors, []);
-          results.push({ name: "dynamic-dark-light-dark", result: "passed", colors, parentTop, childTop, target, browserErrors: errors });
+          results.push({ name: "dynamic-dark-light-dark", result: "passed", colors, parentTop, childTop, target, serverPort: server.address().port, browserErrors: errors });
           continue;
         }
         assert.match(await page.title(), /👴🏻.*#-root-abcdef/u);
@@ -189,7 +196,7 @@ function theme(dark) {
         const parentTop = await page.locator(".main").evaluate((element) => element.scrollTop);
         await page.screenshot({ path: path.join(output, `${name}-tree.png`) });
         const openA = groups.nth(0).locator('[data-action="openDepartmentTask"]');
-        await openA.focus(); await openA.press("Enter");
+        await openA.press("Enter");
         const loading = await targetReady();
         assert.equal(await page.locator("#departmentChatStatus").innerText(), "正在加载组长群聊…");
         assert.equal(await page.locator("#departmentChatContent iframe").count(), 0);
@@ -201,7 +208,85 @@ function theme(dark) {
         await page.locator("#departmentChatRetry").click();
         const a = await targetReady(); assert.notEqual(a.instanceId, loading.instanceId);
         let { frame, state } = await inject(a);
+        if (focusLifecycleOnly) {
+          const askOpener = frame.locator('[data-action="askMainModel"]');
+          await askOpener.click();
+          await frame.locator("#askChatInput").waitFor({ state: "visible" });
+          await frame.locator("#askChatClose").click();
+          assert.equal(await frame.locator("#askChatBackdrop").getAttribute("aria-hidden"), "true");
+          assert.equal(await askOpener.evaluate((element) => element.isConnected && !element.closest("[inert]") && document.activeElement === element), true,
+            "click close returns focus to a visible, non-inert ask opener");
+
+          await askOpener.click();
+          await frame.locator("#askChatInput").press("Escape");
+          assert.equal(await frame.locator("#askChatBackdrop").getAttribute("aria-hidden"), "true");
+          assert.equal(await askOpener.evaluate((element) => element.isConnected && !element.closest("[inert]") && document.activeElement === element), true,
+            "Escape returns focus to a visible, non-inert ask opener");
+
+          await frame.evaluate(() => {
+            const opener = document.createElement("button");
+            opener.type = "button";
+            opener.dataset.action = "openCommunicationFile";
+            opener.dataset.filePath = "/display-only/focus-preview.md";
+            opener.textContent = "预览入口";
+            document.getElementById("panelActions").append(opener);
+          });
+          const previewOpener = frame.locator('[data-action="openCommunicationFile"][data-file-path="/display-only/focus-preview.md"]');
+          await previewOpener.click();
+          await frame.locator("#filePreviewBackdrop").waitFor({ state: "visible" });
+          await frame.locator("#filePreviewClose").click();
+          assert.equal(await frame.locator("#filePreviewBackdrop").getAttribute("aria-hidden"), "true");
+          assert.equal(await previewOpener.evaluate((element) => element.isConnected && !element.closest("[inert]") && document.activeElement === element), true,
+            "file preview close returns focus to a visible, non-inert opener");
+
+          await frame.evaluate(() => {
+            window.switchModelsOpenerFocuses = 0;
+            document.addEventListener("focusin", (event) => {
+              if (event.target?.getAttribute("data-action") === "switchModels") window.switchModelsOpenerFocuses += 1;
+            }, true);
+          });
+          const modelOpener = frame.locator('[data-action="switchModels"]');
+          await modelOpener.click();
+          await frame.locator("#modelSwitchBackdrop").waitFor({ state: "visible" });
+          await frame.locator("#modelSwitchCancel").press("Escape");
+          assert.equal(await frame.locator("#modelSwitchBackdrop").getAttribute("aria-hidden"), "true");
+          assert.equal(await modelOpener.evaluate((element) => element.isConnected && !element.closest("[inert]") && document.activeElement === element), true,
+            "model switch Escape returns focus to a visible, non-inert opener");
+
+          await modelOpener.click();
+          await frame.locator("#modelSwitchConfirm").click();
+          const modelOpenerFocusesBeforeSettled = await frame.evaluate(() => window.switchModelsOpenerFocuses);
+          assert.equal(await modelOpener.evaluate((element) => element.isConnected && !element.closest("[inert]")), false,
+            "model switch remains modal while its request is pending");
+          panel.postDepartmentModalMessage(a, { type: "loopGroupChatChat:switchModelsSettled", ok: true });
+          await frame.locator("#modelSwitchBackdrop").waitFor({ state: "hidden" });
+          assert.equal(await frame.evaluate(() => window.switchModelsOpenerFocuses), modelOpenerFocusesBeforeSettled,
+            "asynchronous success closes the dialog without taking focus from its prior destination");
+          assert.deepEqual(errors, []);
+          results.push({ name, result: "passed", scope: "dialog-focus-lifecycle-only", target: a, serverPort: server.address().port, browserErrors: errors });
+          await page.screenshot({ path: path.join(output, `${name}-focus-lifecycle.png`) });
+          continue;
+        }
         await overflow(page); await overflow(frame);
+        await page.locator("#departmentChatClose").press("Tab");
+        assert.equal(await page.locator("#departmentChatContent iframe").evaluate((element) => document.activeElement === element), true,
+          "keyboard Tab enters the loaded modal iframe through native focus traversal");
+        await page.locator("#departmentChatClose").press("Tab");
+        assert.equal(await page.locator("#departmentChatContent iframe").evaluate((element) => document.activeElement === element), true,
+          "keyboard Tab enters the modal iframe through native focus traversal");
+        await frame.locator('[data-action="refresh"]').focus();
+        await frame.locator('[data-action="refresh"]').press("Shift+Tab");
+        await page.waitForFunction(() => document.activeElement.id === "departmentChatClose");
+        await page.locator("#departmentChatClose").press("Shift+Tab");
+        assert.equal(await page.locator("#departmentChatContent iframe").evaluate((element) => document.activeElement === element), true,
+          "reverse Tab from the outer close control returns to the iframe");
+        assert.equal(await frame.evaluate(() => document.hasFocus() && document.activeElement.getAttribute("data-action") === "refresh"), true,
+          "reverse Tab restores the last focused child control inside the iframe");
+        if (deltaOnly) {
+          await frame.getByText("合并增量消息 49", { exact: true }).waitFor();
+          assert.equal((await frame.locator(".timeline").innerText()).match(/合并增量消息 \d+/gu)?.length, 49,
+            "all 49 transcript entries render across the retention batch threshold");
+        }
         assert.match(await frame.locator("#panelHeading").innerText(), /组长 👨🏻/u);
         assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);
         await showMembers(frame);
@@ -212,18 +297,50 @@ function theme(dark) {
         if (width === 280) await frame.locator("#sidebarToggle").click();
         await frame.locator('[data-action="supplementTask"]').click();
         await frame.locator("#continueDialogInput").fill("A组独立补充草稿");
-        await frame.locator("#continueDialogConfirm").focus(); await frame.locator("#continueDialogConfirm").press("Tab");
+        await frame.locator("#continueDialogInput").click();
+        await frame.locator("#continueDialogInput").press("Shift+Tab");
+        await frame.locator("#continueDialogConfirm").press("Tab");
         assert.equal(await frame.evaluate(() => document.activeElement.id), "continueDialogInput");
         await frame.locator("#continueDialogInput").press("Escape");
         assert.equal(await frame.locator("#continueDialogBackdrop").getAttribute("aria-hidden"), "true");
         assert.equal(await page.locator("#departmentChatBackdrop").getAttribute("aria-hidden"), "false");
         assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "supplementTask");
         await frame.locator('[data-action="supplementTask"]').click();
-        await frame.locator("#continueDialogInput").fill("提交给A组的补充");
+        const supplementBeforeEmptySubmit = sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:supplementTask").length;
+        await frame.locator("#continueDialogInput").fill("   ");
+        await frame.locator("#continueDialogInput").press("Control+Enter");
+        assert.equal(await frame.locator("#continueDialogBackdrop").getAttribute("aria-hidden"), "false",
+          "empty keyboard submission keeps the dialog open");
+        assert.equal(await frame.evaluate(() => document.activeElement.id), "continueDialogInput",
+          "empty keyboard submission retains input focus");
+        assert.equal(sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:supplementTask").length,
+          supplementBeforeEmptySubmit, "invalid input does not dispatch a supplement request");
+        await frame.locator("#continueDialogInput").fill("键盘提交给A组的补充");
+        const supplementBeforeKeyboard = sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:supplementTask").length;
+        await frame.locator("#continueDialogInput").press("Control+Enter");
+        await settle();
+        assert.equal(await frame.locator("#continueDialogBackdrop").getAttribute("aria-hidden"), "true");
+        assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "supplementTask",
+          "keyboard submission restores focus to the current supplement opener");
+        const keyboardSupplements = sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:supplementTask");
+        assert.equal(keyboardSupplements.length, supplementBeforeKeyboard + 1, "Ctrl+Enter submits one supplement request");
+        assert.equal(keyboardSupplements.at(-1).taskId, a.taskId);
+        assert.equal(keyboardSupplements.at(-1).instanceId, a.instanceId);
+        assert.equal(keyboardSupplements.at(-1).message.prompt, "键盘提交给A组的补充");
+        await frame.locator('[data-action="supplementTask"]').click();
+        await frame.locator("#continueDialogInput").fill("点击提交给A组的补充");
         await frame.locator("#continueDialogConfirm").click();
+        assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "supplementTask",
+          "button confirmation restores focus to its opener");
+        await frame.locator('[data-action="supplementTask"]').click();
+        await frame.locator("#continueDialogCancel").click();
+        assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "supplementTask",
+          "cancel restores focus to its opener");
         await frame.locator('[data-action="continueTask"]').click();
         await frame.locator("#continueDialogInput").fill("继续A组任务");
-        await frame.locator("#continueDialogConfirm").click();
+        await frame.locator("#continueDialogInput").press("Control+Enter");
+        assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "continueTask",
+          "continue keyboard submission restores focus to its opener");
         panel.postDepartmentModalMessage(a, { type: "loopGroupChatChat:continueTaskSettled", canContinue: true });
         await frame.locator('[data-action="switchModels"]').click();
         await frame.locator("#modelSwitchConfirm").click();
@@ -235,6 +352,16 @@ function theme(dark) {
           const action = sent.find((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:" + type);
           assert.equal(action?.taskId, a.taskId, type); assert.equal(action?.instanceId, a.instanceId, type);
         }
+        if (deltaOnly) {
+          state.mainModelBusy = true;
+          panel.setDepartmentModalState(a, state);
+          const continuedBeforeBusySubmit = sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:continueTask").length;
+          await settle();
+          const busyContinue = frame.locator('[data-action="continueTask"]');
+          if (await busyContinue.count()) assert.equal(await busyContinue.isDisabled(), true, "continue action stays disabled while the main model is busy");
+          const continuedAfterBusySubmit = sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:continueTask");
+          assert.equal(continuedAfterBusySubmit.length, continuedBeforeBusySubmit, "busy state dispatches no duplicate continue request");
+        }
         await frame.locator('[data-action="askMainModel"]').click();
         await frame.locator("#askChatInput").fill("组长A问题"); await frame.locator("#askChatInput").press("Control+Enter");
         await frame.locator("#askChatInput").fill("只属于A的草稿");
@@ -242,6 +369,79 @@ function theme(dark) {
         const question = sent.find((message) => message.type === "loopGroupChatChat:departmentTaskMessage" && message.message.type === "loopGroupChatChat:askMainModel");
         assert.equal(question.taskId, a.taskId); assert.equal(question.instanceId, a.instanceId);
         assert.equal(question.message.prompt, "组长A问题");
+        if (deltaOnly) {
+          await frame.locator("#askChatBusy").waitFor({ state: "visible" });
+          panel.publishDepartmentModalAskThread(a, { version: 1, queued: false, running: true, dialogOpen: true, updatedAt: 2,
+            messages: [
+              { id: "answered-question", role: "user", content: "已经回答的问题", createdAt: 1 },
+              { id: "answered-response", role: "assistant", content: "历史答案", createdAt: 1 },
+              { id: "active-question", role: "user", content: "正在回答的问题", createdAt: 2 },
+              { id: "queued-question", role: "user", content: "忙碌时排队问题", createdAt: 3, queued: true },
+            ] });
+          await frame.getByText("忙碌时排队问题", { exact: true }).waitFor();
+          await page.screenshot({ path: path.join(output, `${name}-queued-ask.png`) });
+          assert.match(await frame.locator("#askChatMessages").innerText(), /已经回答的问题[\s\S]*历史答案[\s\S]*正在回答的问题[\s\S]*忙碌时排队问题/u);
+          assert.equal(await frame.locator(".ask-chat-message.user").filter({ hasText: "已经回答的问题" }).locator(".ask-chat-queued").count(), 0,
+            "answered history does not retain a queued notice");
+          assert.equal(await frame.locator(".ask-chat-message.user").filter({ hasText: "正在回答的问题" }).locator(".ask-chat-queued").count(), 0,
+            "the active question is not marked queued");
+          const queuedNoticeCount = await frame.locator(".ask-chat-message.user .ask-chat-queued").count();
+          assert.equal(queuedNoticeCount, 1, "only the future user question carries the queued notice");
+          const geometry = await frame.locator(".ask-chat-message.user").filter({ hasText: "忙碌时排队问题" }).evaluate((message) => {
+            const notice = message.querySelector(".ask-chat-queued");
+            const label = notice.querySelector(":scope > span:last-child");
+            return {
+              outerGap: getComputedStyle(message).gap,
+              dotTextGap: getComputedStyle(notice).gap,
+              maxWidth: getComputedStyle(notice).maxWidth,
+              wrap: getComputedStyle(label).overflowWrap,
+              width: notice.getBoundingClientRect().width,
+              parentWidth: message.getBoundingClientRect().width,
+            };
+          });
+          assert.equal(geometry.outerGap, "6px");
+          assert.equal(geometry.dotTextGap, "8px");
+          assert.equal(geometry.maxWidth, "85%");
+          assert.equal(geometry.wrap, "anywhere");
+          await frame.locator(".ask-chat-queued > span:last-child").evaluate((label) => { label.textContent = "超长排队提示".repeat(80); });
+          const wrapped = await frame.locator(".ask-chat-queued > span:last-child").evaluate((label) => ({
+            clientWidth: label.clientWidth, scrollWidth: label.scrollWidth, clientHeight: label.clientHeight,
+            lineHeight: Number.parseFloat(getComputedStyle(label).lineHeight),
+            noticeWidth: label.parentElement.getBoundingClientRect().width,
+            parentWidth: label.parentElement.parentElement.getBoundingClientRect().width,
+          }));
+          assert.ok(wrapped.clientWidth > 0 && wrapped.scrollWidth <= wrapped.clientWidth + 1, JSON.stringify(wrapped));
+          assert.ok(wrapped.clientHeight > wrapped.lineHeight, "long queue label wraps to multiple lines");
+          assert.ok(wrapped.noticeWidth <= wrapped.parentWidth * 0.85 + 1, JSON.stringify(wrapped));
+          await page.emulateMedia({ reducedMotion: "reduce" });
+          assert.equal(await frame.locator(".ask-chat-queued .typing-dots span").first().evaluate((element) => getComputedStyle(element).animationName), "none");
+          await page.emulateMedia({ reducedMotion: "no-preference" });
+          state.mainModelBusy = false;
+          panel.setDepartmentModalState(a, state);
+          panel.publishDepartmentModalAskThread(a, { version: 1, queued: false, running: true, dialogOpen: true, updatedAt: 3,
+            messages: [
+              { id: "answered-question", role: "user", content: "已经回答的问题", createdAt: 1 },
+              { id: "answered-response", role: "assistant", content: "历史答案", createdAt: 1 },
+              { id: "active-question", role: "user", content: "正在回答的问题", createdAt: 2 },
+              { id: "active-response", role: "assistant", content: "当前答案进行中", createdAt: 3 },
+              { id: "queued-question", role: "user", content: "忙碌时排队问题", createdAt: 4, queued: true },
+            ] });
+          await frame.locator(".ask-chat-message.waiting").waitFor({ state: "visible" });
+          assert.equal(await frame.locator(".ask-chat-message.user").filter({ hasText: "忙碌时排队问题" }).locator(".ask-chat-queued").count(), 1,
+            "a later queued question remains distinguished while an answer is active");
+          panel.publishDepartmentModalAskThread(a, { version: 1, queued: false, running: false, dialogOpen: true, updatedAt: 4,
+            messages: [
+              { id: "answered-question", role: "user", content: "已经回答的问题", createdAt: 1 },
+              { id: "answered-response", role: "assistant", content: "历史答案", createdAt: 1 },
+              { id: "active-question", role: "user", content: "正在回答的问题", createdAt: 2 },
+              { id: "active-response", role: "assistant", content: "当前答案进行中", createdAt: 3 },
+              { id: "queued-question", role: "user", content: "忙碌时排队问题", createdAt: 4 },
+              { id: "answer", role: "assistant", content: "问题回答已结束", createdAt: 5 },
+            ] });
+          await frame.getByText("问题回答已结束", { exact: true }).waitFor();
+          assert.equal(await frame.locator(".ask-chat-message.waiting").count(), 0);
+          assert.equal(await frame.locator(".ask-chat-message.user .ask-chat-queued").count(), 0, "finished questions clear the queued marker");
+        }
         panel.publishDepartmentModalAskThread(a, { version: 1, messages: [{ id: "answer-a", role: "assistant", content: "只属于A的回答", createdAt: 1 }], running: false, dialogOpen: true, updatedAt: 1 });
         await settle(); assert.match(await frame.locator("#askChatMessages").innerText(), /只属于A的回答/u);
         state.chatMarkdown += "\n## 主任务发言\n\n组长增量内容\n";
@@ -263,6 +463,12 @@ function theme(dark) {
         assert.equal(panel.publishDepartmentModalAskThread(a, { version: 1, messages: [], running: false, dialogOpen: false, updatedAt: 0 }), false);
         await page.evaluate((target) => window.dispatchEvent(new MessageEvent("message", { data: { type: "loopGroupChatChat:departmentModalContent", ...target, error: "迟到的A错误" } })), a);
         ({ frame } = await inject(b));
+        if (deltaOnly) {
+          const lateState = { ...state, chatMarkdown: "\n## 主任务发言\n\n旧A批次迟到响应不应渲染\n" };
+          setTimeout(() => panel.setDepartmentModalState(a, lateState), 20);
+          await settle();
+          assert.doesNotMatch(await frame.locator(".timeline").innerText(), /旧A批次迟到响应/u);
+        }
         assert.equal(await frame.locator("#askChatInput").inputValue(), "");
         assert.doesNotMatch(await frame.locator("#askChatMessages").innerText(), /只属于A/u);
         assert.doesNotMatch(await page.locator("#departmentChatStatus").innerText(), /迟到/u);
@@ -279,18 +485,22 @@ function theme(dark) {
         assert.equal(await frame.locator("#askChatInput").inputValue(), "只属于A的草稿", "the restored draft belongs to A only");
         assert.equal(await frame.locator(".main").evaluate((element) => element.scrollTop), childTop);
         await page.screenshot({ path: path.join(output, `${name}-modal.png`) });
-        await page.locator("#departmentChatClose").focus(); await page.locator("#departmentChatClose").press("Enter");
+        await page.locator("#departmentChatClose").press("Enter");
         await settle(); assert.equal(panel.getDepartmentModalTarget(), undefined);
         await overflow(page);
+        assert.deepEqual(deltaFindings, []);
         assert.deepEqual(errors, []);
-        results.push({ name, result: "passed", spacing, parentTop, childTop, taskMessages: sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage").length });
+        results.push({ name, result: "passed", spacing, parentTop, childTop, taskMessages: sent.filter((message) => message.type === "loopGroupChatChat:departmentTaskMessage").length,
+          serverPort: server.address().port, deltaOnly, deltaChecks: ["49 transcript entries", "busy continue is unavailable and dispatch count is unchanged", "idle continue route remains bound to active leader", "answered/active/queued bubble state and queued notice sizing/wrapping/reduced-motion behavior", "keyboard modal entry, nested dialog Tab/Escape and focus return", "late inactive leader update is ignored"],
+          deltaFindings, browserErrors: errors, screenshots: fs.readdirSync(output).filter((file) => file.endsWith(".png")) });
       } catch (error) {
         await page.screenshot({ path: path.join(output, `${name}-failure.png`) });
-        results.push({ name, result: "failed", error: error.stack, browserErrors: errors });
+        results.push({ name, result: "failed", error: error.stack, serverPort: server.address().port, deltaOnly,
+          deltaFindings, screenshots: fs.readdirSync(output).filter((file) => file.endsWith(".png")), browserErrors: errors });
       } finally { await page.close(); }
     }
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", results }, null, 2));
+  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
   if (results.some((result) => result.result !== "passed")) process.exitCode = 1;
 })().catch((error) => { console.error(error); process.exitCode = 1; });

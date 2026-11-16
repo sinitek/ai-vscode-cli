@@ -522,11 +522,14 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let continueDialogOpen = false;
 	      let continueRequestPending = false;
 	      let continueDialogMode = undefined;
+	      let continueDialogOpener = null;
 	      let dialogStateRestored = false;
 	      let askDialogOpen = ${askThread.dialogOpen ? "true" : "false"};
+	      let askDialogOpener = null;
 	      let askThread = ${embedJson(askThread)};
 	      let mainModelBusy = ${state.mainModelBusy === true};
 	      let communicationPreviewOpen = false;
+	      let communicationPreviewOpener = null;
 	      let communicationPreviewSeq = 0;
 
 	      function setSidebarOpen(open, restoreFocus = false) {
@@ -694,23 +697,26 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogError.textContent = message || "";
 	      }
 
-	      function openContinueDialog(preservedPrompt) {
+	      function openContinueDialog(preservedPrompt, focusInput = true) {
 	        if (!continueDialogBackdrop || !continueDialogInput || continueRequestPending) {
 	          return;
 	        }
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        continueDialogOpener = dialogOpener;
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
 	        continueDialogMode = "continue";
 	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.continuePromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        window.__departmentDialogOpened && window.__departmentDialogOpened(continueDialogBackdrop, dialogOpener);
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
 	        saveDialogState();
 	        requestRefresh();
-	        window.setTimeout(() => {
+	        if (focusInput) {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
-	        }, 0);
+	        }
 	      }
 
 	      function closeContinueDialog() {
@@ -721,6 +727,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogMode = undefined;
 	        continueDialogBackdrop.classList.remove("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "true");
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(continueDialogBackdrop);
+	        else if (continueDialogOpener?.isConnected) continueDialogOpener.focus({ preventScroll: true });
+	        continueDialogOpener = null;
 	        setContinueDialogError("");
 	        clearDialogState();
 	      }
@@ -766,10 +776,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        vscode.postMessage({ type: "loopGroupChatChat:supplementTask", prompt });
 	      }
 
-	      function openSupplementDialog(preservedPrompt) {
+	      function openSupplementDialog(preservedPrompt, focusInput = true) {
 	        if (!continueDialogBackdrop || !continueDialogInput) {
 	          return;
 	        }
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        continueDialogOpener = dialogOpener;
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
 	        continueDialogMode = "supplement";
@@ -788,12 +800,13 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.supplementPromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        window.__departmentDialogOpened && window.__departmentDialogOpened(continueDialogBackdrop, dialogOpener);
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
 	        saveDialogState();
-	        window.setTimeout(() => {
+	        if (focusInput) {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
-	        }, 0);
+	        }
 	      }
 
 	      const ASK_WAITING_LABEL = "${escapeJsString(strings.askChatWaiting)}";
@@ -960,19 +973,24 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	      }
 
-	      function openAskDialog() {
+	      function openAskDialog(focusInput = true) {
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        askDialogOpener = dialogOpener;
 	        showAskDialog();
+	        if (focusInput && askChatBackdrop) {
+	          window.__departmentDialogOpened && window.__departmentDialogOpened(askChatBackdrop, dialogOpener);
+	        }
 	        saveAskDialogState();
 	        vscode.postMessage({ type: "loopGroupChatChat:openAskDialog" });
-	        window.setTimeout(() => {
-	          if (askChatInput) {
-	            askChatInput.focus();
-	          }
-	        }, 0);
+	        if (focusInput && askChatInput) askChatInput.focus();
 	      }
 
 	      function closeAskDialog() {
 	        hideAskDialog();
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(askChatBackdrop);
+	        else if (askDialogOpener?.isConnected) askDialogOpener.focus({ preventScroll: true });
+	        askDialogOpener = null;
 	        saveAskDialogState();
 	        vscode.postMessage({ type: "loopGroupChatChat:closeAskDialog" });
 	      }
@@ -1024,9 +1042,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        const preservedPrompt = typeof dialog.prompt === "string" ? dialog.prompt : undefined;
 	        if (dialog.mode === "supplement") {
-	          openSupplementDialog(preservedPrompt);
+	          openSupplementDialog(preservedPrompt, false);
 	        } else if (dialog.mode === "continue") {
-	          openContinueDialog(preservedPrompt);
+	          openContinueDialog(preservedPrompt, false);
 	        } else {
 	          return;
 	        }
@@ -1095,6 +1113,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const existing = getStoredCommunicationFile();
 	        const cachedHtml = existing && existing.path === filePath && typeof existing.html === "string" ? existing.html : "";
 	        showCommunicationFilePreview(filePath, cachedHtml, cachedHtml ? "" : "${escapeJsString(strings.communicationFileLoading)}");
+	        if (focusClose !== false) {
+	          communicationPreviewOpener = document.activeElement;
+	          window.__departmentDialogOpened && window.__departmentDialogOpened(filePreviewBackdrop, communicationPreviewOpener);
+	        }
 	        rememberCommunicationFilePreview(filePath, requestId, cachedHtml);
 	        vscode.postMessage({ type: "loopGroupChatChat:openCommunicationFile", requestId: requestId, path: filePath });
 	        if (focusClose !== false && filePreviewClose) {
@@ -1108,6 +1130,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          filePreviewBackdrop.classList.remove("visible");
 	          filePreviewBackdrop.setAttribute("aria-hidden", "true");
 	        }
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(filePreviewBackdrop);
+	        else if (communicationPreviewOpener?.isConnected) communicationPreviewOpener.focus({ preventScroll: true });
+	        communicationPreviewOpener = null;
 	        if (filePreviewError) {
 	          filePreviewError.textContent = "";
 	        }

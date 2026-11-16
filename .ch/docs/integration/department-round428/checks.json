@@ -1,0 +1,63 @@
+{
+  "checks": [
+    {
+      "scope": "initial implementation and handoff whitespace",
+      "action": "git diff --cached --check c76b5132d6c0430dfb03f150fb8220010265e32f",
+      "result": "passed",
+      "detail": "Nine exact paths; no source edits after copy."
+    },
+    {
+      "scope": "accepted source bytes",
+      "action": "Python SHA-256 before/after copy and report-pinned hash assertions",
+      "result": "passed",
+      "detail": "Round-425 seven hashes and Round-422 tabs hash match; modes preserved; actual path casing used."
+    },
+    {
+      "scope": "historical artifacts (read-only)",
+      "action": "SHA-256 historical compiled JS/results/screenshot; json.loads and scoped result assertions",
+      "result": "passed",
+      "detail": "Nine report-pinned artifacts match. Old failures remain failures. No tests or browser run."
+    },
+    {
+      "scope": "inherited evidence",
+      "action": "Compare every existing .ch/docs/integration path against c76 Git blob",
+      "result": "passed",
+      "detail": "63 files unchanged, without reclassifying them as evidence for this tree."
+    },
+    {
+      "scope": "accepted execution-tree source closure",
+      "action": "Compare all 1,465 parent-tracked paths and enumerate all actual src files; no extra src inputs; package.json/tsconfig included",
+      "result": "passed",
+      "detail": "All 814 src and all tracked package/resource/script inputs equal accepted UI tree. No dependencies/dist copied. This is source equality, not a new build or proof of historical dependency install reproducibility."
+    },
+    {
+      "scope": "shared/original candidates isolation",
+      "action": "Compare shared and c53/51a/c76/UI HEAD, index SHA and complete porcelain state; compare all pre-existing local branch refs; shared handoff hash",
+      "result": "passed",
+      "detail": "All unchanged. Only the new branch/worktree created. No runtime round420 tree read or copied."
+    },
+    {
+      "scope": "review patch",
+      "action": "git diff --cached --binary/name-status/stat c76; gzip decompress equality",
+      "result": "passed",
+      "detail": "Full nine-path UI + handoff delta; evidence is listed separately, not mixed into implementation patch."
+    },
+    {
+      "scope": "new and accepted documents/JSON",
+      "action": "UTF-8/newline/trailing-space/fence checks; json.loads; scoped historical JSON assertions",
+      "result": "passed",
+      "detail": "Passed; no changes to the accepted eight source files."
+    }
+  ],
+  "patch_uncompressed_sha256": "4002dbb1f0787a96481640442258b7347c16ecbfc52e5196f3aaee58ba745c26",
+  "performed_runtime_checks": [],
+  "not_run": [
+    "npm/build/clean",
+    "unit/runtime/full tests",
+    "Playwright/browser",
+    "platform probes",
+    "CLI/models/EH",
+    "remote Git operations"
+  ],
+  "postcheck_changes": "Only evidence packaging/staging and local commit follow these checks; no accepted-source modifications."
+}

@@ -46,12 +46,17 @@ export const LOOP_MODEL_SWITCH_SCRIPT = `
           }
           thinking.disabled = pending || !options.length;
         }
-        function close() {
+        function close(restoreFocus = true) {
           if (pending) return;
           backdrop.classList.remove("visible");
           backdrop.setAttribute("aria-hidden", "true");
-          if (opener && opener.isConnected) opener.focus();
-          else document.querySelector('[data-action="switchModels"]')?.focus();
+          const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+          if (lifecycleManaged) window.__departmentDialogClosed(backdrop, restoreFocus);
+          if (restoreFocus && !lifecycleManaged) {
+            if (opener && opener.isConnected) opener.focus();
+            else document.querySelector('[data-action="switchModels"]')?.focus();
+          }
+          opener = null;
         }
         function updateError() {
           const fields = document.getElementById("modelSwitchFields");
@@ -72,6 +77,7 @@ export const LOOP_MODEL_SWITCH_SCRIPT = `
           updateError();
           backdrop.classList.add("visible");
           backdrop.setAttribute("aria-hidden", "false");
+          window.__departmentDialogOpened && window.__departmentDialogOpened(backdrop, opener);
           document.querySelector("#modelSwitchFields select")?.focus();
           vscode.postMessage({ type: "loopGroupChatChat:refresh" });
         });
@@ -116,7 +122,7 @@ export const LOOP_MODEL_SWITCH_SCRIPT = `
             confirm.textContent = "提交";
             confirm.disabled = false;
             updateError();
-            if (message.ok) close();
+            if (message.ok) close(false);
             else error.textContent = message.error || "切换失败，请重试。";
           }
           if (message?.type !== "loopGroupChatChat:contentPatch" || typeof message.modelSwitchHtml !== "string") return;

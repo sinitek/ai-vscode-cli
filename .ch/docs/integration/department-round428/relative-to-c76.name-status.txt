@@ -1,0 +1,9 @@
+A	.ch/docs/runbooks/department-git-integration.md
+A	.ch/docs/runbooks/department-merge-ui-delta-verification.md
+M	scripts/department_conversation_tabs_smoke.cjs
+M	scripts/department_group_chat_smoke.cjs
+M	src/test/loop/departmentGroupChatPanel.test.ts
+M	src/test/loop/loopGroupChatPanel.test.ts
+M	src/webview/departmentGroupChatModal.ts
+M	src/webview/loopGroupChatPanel.ts
+M	src/webview/loopModelSwitchDialog.ts
