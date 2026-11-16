@@ -4,7 +4,7 @@ import * as path from "path";
 import { randomBytes } from "crypto";
 
 type Identity = { id: string };
-type Snapshot = { version: 1; ready: boolean; roots: string[]; owned: Record<string, string>; files: Record<string, string[]> };
+type Snapshot = { version: 1; ready: boolean; roots: string[]; owned: Record<string, string>; files: Record<string, string[]>; ordinaryMoves?: Record<string, { file: string; sources: string[] }> };
 const directory = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities");
 const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
@@ -20,7 +20,12 @@ function read(): Snapshot | null {
         || !value.roots.some((root) => inside(root, file)))
       || !value.files || typeof value.files !== "object" || Array.isArray(value.files)
       || Object.entries(value.files).some(([file, ids]) => !path.isAbsolute(file) || !Array.isArray(ids)
-        || ids.some((id) => typeof id !== "string" || !id.trim()))) throw new Error("任务身份目录无效或尚未提交");
+        || ids.some((id) => typeof id !== "string" || !id.trim()))
+      || (value.ordinaryMoves !== undefined && (!value.ordinaryMoves || typeof value.ordinaryMoves !== "object" || Array.isArray(value.ordinaryMoves)
+        || Object.entries(value.ordinaryMoves).some(([id, move]) => !id.trim() || !move || typeof move !== "object"
+          || typeof move.file !== "string" || !path.isAbsolute(move.file) || !Array.isArray(move.sources)
+          || move.sources.some((file) => typeof file !== "string" || !path.isAbsolute(file))
+          || value.roots.some((root) => inside(root, move.file) || move.sources.some((file) => inside(root, file))))))) throw new Error("任务身份目录无效或尚未提交");
     return value;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -58,15 +63,24 @@ function locked<T>(action: () => T): T {
 export function initializeLoopTaskIdentityCatalog(root: string, load: () => ReadonlyMap<string, readonly Identity[]>): void {
   locked(() => {
     const existing = read();
-    if (existing) {
+    if (existing && existing.roots.length > 0) {
       if (!existing.roots.includes(root)) throw new Error("任务身份目录未登记此受控来源");
       return;
     }
     const files: Record<string, string[]> = Object.create(null);
-    for (const [file, tasks] of load()) files[path.resolve(file)] = tasks.map((task) => task.id);
+    if (Object.values(existing?.ordinaryMoves ?? {}).some((move) => inside(root, move.file) || move.sources.some((file) => inside(root, file)))) {
+      throw new Error("普通任务历史来源不可提升为部门来源");
+    }
+    for (const [name, tasks] of load()) {
+      const file = path.resolve(name);
+      files[file] = tasks.filter((task) => {
+        const move = existing?.ordinaryMoves?.[task.id];
+        return !move || file === move.file || !move.sources.includes(file);
+      }).map((task) => task.id);
+    }
     const owned: Record<string, string> = Object.create(null);
     for (const [file, ids] of Object.entries(files)) if (inside(root, file)) for (const id of ids) owned[id] = file;
-    publish({ version: 1, ready: true, roots: [root], owned, files });
+    publish({ version: 1, ready: true, roots: [root], owned, files, ordinaryMoves: existing?.ordinaryMoves });
   });
 }
 
@@ -100,6 +114,18 @@ export function locateLoopTaskIdentity(taskId: string): { available: false } | {
   return result.available ? { available: true, files: [...result.locations.get(taskId)!] } : result;
 }
 
+/** A committed ordinary destination survives stale source bytes and process restarts.
+ * Absence is ordinary compatibility; a locked/damaged catalog is never a fallback permit.
+ */
+export function locateOrdinaryLoopTaskMove(taskId: string): { available: false } | { available: true; file?: string } {
+  try {
+    if (fs.existsSync(lockFile)) return { available: false };
+    const snapshot = read();
+    const file = snapshot?.ordinaryMoves?.[taskId]?.file;
+    return fs.existsSync(lockFile) ? { available: false } : { available: true, file };
+  } catch { return { available: false }; }
+}
+
 /** Ordinary communication GC has no authority to delete department artifacts. Hold the
  * supported-writer gate through classification AND deletion, including across Node hosts.
  * Missing, locked, damaged or unpublished catalogs reject GC; absence is not ordinary identity.
@@ -107,7 +133,7 @@ export function locateLoopTaskIdentity(taskId: string): { available: false } | {
 export function withLoopTaskIdentityRetention(action: (ownedTaskIds: ReadonlySet<string>) => void): void {
   locked(() => {
     const snapshot = read();
-    if (!snapshot) throw new Error("任务身份目录不可用，跳过通信清理");
+    if (!snapshot || snapshot.roots.length === 0) throw new Error("任务身份目录不可用，跳过通信清理");
     const owned = new Set(Object.keys(snapshot.owned));
     for (const [file, ids] of Object.entries(snapshot.files)) {
       if (snapshot.roots.some((root) => inside(root, file))) for (const id of ids) owned.add(id);
@@ -139,8 +165,10 @@ export function canMigrateOrdinaryLoopTaskIdentity(taskId: string, sourceFile: s
     const snapshot = read();
     if (!snapshot) return true; // Existing ordinary migration before catalog bootstrap.
     const files = Object.entries(snapshot.files).flatMap(([file, ids]) => ids.filter((id) => id === taskId).map(() => file));
-    return !Object.prototype.hasOwnProperty.call(snapshot.owned, taskId) && files.length === 1 && files[0] === path.resolve(sourceFile)
-      && !snapshot.roots.some((root) => inside(root, files[0])) && !fs.existsSync(lockFile);
+    const move = snapshot.ordinaryMoves?.[taskId];
+    const known = move ? move.sources.includes(path.resolve(sourceFile)) : files.length === 1 && files[0] === path.resolve(sourceFile);
+    return !Object.prototype.hasOwnProperty.call(snapshot.owned, taskId) && known
+      && !snapshot.roots.some((root) => inside(root, path.resolve(sourceFile))) && !fs.existsSync(lockFile);
   } catch { return false; }
 }
 
@@ -152,38 +180,57 @@ export function commitLoopTaskIdentities(
   updates: ReadonlyMap<string, readonly Identity[]>,
   write: () => boolean,
   ownedRoot?: string,
+  ordinary?: { atomicWrite: true; move?: { taskId: string; sourceFile: string; sourceTasks: readonly Identity[]; targetFile: string } },
 ): boolean {
   return locked(() => {
     const previous = read();
-    if (!previous) {
-      if (ownedRoot) throw new Error("部门身份目录未初始化");
-      return write();
+    if (!previous && ownedRoot) throw new Error("部门身份目录未初始化");
+    if (!previous && !ordinary?.move) return write();
+    const prior: Snapshot = previous ?? { version: 1, ready: true, roots: [], owned: Object.create(null), files: Object.create(null) };
+    if (ownedRoot && !prior.roots.includes(ownedRoot)) throw new Error("未登记的部门来源");
+    const next = structuredClone(prior);
+    const move = ordinary?.move;
+    if (move) {
+      const source = path.resolve(move.sourceFile), target = path.resolve(move.targetFile);
+      if (ownedRoot || source === target || prior.roots.some((root) => inside(root, source) || inside(root, target))
+        || Object.prototype.hasOwnProperty.call(prior.owned, move.taskId)
+        || !updates.get(move.targetFile)?.some((task) => task.id === move.taskId)
+        || move.sourceTasks.some((task) => task.id === move.taskId)) throw new Error("普通任务迁移身份无效");
+      next.files[source] = move.sourceTasks.map((task) => task.id);
+      next.ordinaryMoves = { ...(next.ordinaryMoves ?? {}), [move.taskId]: {
+        file: target, sources: [...new Set([...(next.ordinaryMoves?.[move.taskId]?.sources ?? []), source])],
+      } };
     }
-    if (ownedRoot && !previous.roots.includes(ownedRoot)) throw new Error("未登记的部门来源");
-    const next = structuredClone(previous);
     for (const [name, tasks] of updates) {
       const file = path.resolve(name);
       if (ownedRoot && !inside(ownedRoot, file)) throw new Error("部门文件迁出受控来源");
-      if (!ownedRoot && previous.roots.some((root) => inside(root, file))) throw new Error("普通 writer 无权写入部门来源");
+      if (!ownedRoot && prior.roots.some((root) => inside(root, file))) throw new Error("普通 writer 无权写入部门来源");
       for (const task of tasks) {
         if (typeof task.id !== "string" || !task.id.trim()) throw new Error("任务 ID 无效");
-        const reserved = Object.prototype.hasOwnProperty.call(previous.owned, task.id) ? previous.owned[task.id] : undefined;
+        const reserved = Object.prototype.hasOwnProperty.call(prior.owned, task.id) ? prior.owned[task.id] : undefined;
         if (reserved && (!ownedRoot || reserved !== file)) throw new Error("部门任务历史身份已保留，拒绝普通写入或迁移");
         if (ownedRoot) Object.defineProperty(next.owned, task.id, { value: file, enumerable: true, configurable: true, writable: true });
-        const conflicts = Object.entries(previous.files).filter(([other, ids]) => other !== file && ids.includes(task.id));
-        if (conflicts.some(([other]) => ownedRoot || previous.roots.some((root) => inside(root, other)))) throw new Error("普通/部门任务身份冲突");
+        const conflicts = Object.entries(prior.files).filter(([other, ids]) => other !== file && ids.includes(task.id));
+        if (conflicts.some(([other]) => ownedRoot || prior.roots.some((root) => inside(root, other)))) throw new Error("普通/部门任务身份冲突");
       }
       next.files[file] = tasks.map((task) => task.id);
     }
     // Validate the complete proposed owned contribution, including multi-file transactions.
     const ids = new Map<string, string>();
     for (const [file, values] of Object.entries(next.files)) for (const id of values) {
-      const prior = ids.get(id);
-      if (prior && (previous.roots.some((root) => inside(root, file) || inside(root, prior)))) throw new Error("受控任务 ID 重复");
+      const other = ids.get(id);
+      if (other && prior.roots.some((root) => inside(root, file) || inside(root, other))) throw new Error("受控任务 ID 重复");
       ids.set(id, file);
     }
-    publish({ ...previous, ready: false });
-    if (!write()) return false;
+    if (previous) publish({ ...previous, ready: false });
+    try {
+      if (!write()) return false;
+    } catch (error) {
+      // Ordinary atomic replacement failed before rename: original file bytes still hold.
+      // Owner/multi-file writers retain the original uncertain ready=false behavior.
+      if (ordinary && previous) { try { publish(previous); } catch { /* Keep uncertainty closed. */ } }
+      throw error;
+    }
     publish(next);
     return true;
   });

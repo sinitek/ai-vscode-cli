@@ -105,6 +105,7 @@ function resetLoopStorage(): void {
   assert.equal(os.homedir(), testHome);
   unlinkMigrationFixtures();
   [
+    "loop-task-identities",
     "loop-tasks",
     "loop-tasks.json",
     "loop-communications",
@@ -1043,8 +1044,8 @@ test("moves task records between pending and session stores through public bindi
     return originalUnlinkSync(target);
   }) as typeof fs.unlinkSync;
   try {
-    // A partial move cannot return a confirmed identity; both files remain for explicit recovery.
-    assert.equal(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target"), null);
+    // The target commit is authoritative; failed source cleanup is maintenance.
+    assert.equal(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target")?.sessionId, "unlink-target");
     assert.equal(fs.existsSync(unlinkTask.taskStoreFile), true);
     assert.equal(fs.existsSync(loopTaskStore.getLoopTaskStoreSessionFile(unlinkTask.workspaceKey, unlinkTask.cli, "unlink-target")), true);
   } finally {
@@ -1179,8 +1180,8 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   assert.match(legacyTask.taskStoreFile, /loop-tasks/);
 
   const undefinedStoreFile = path.join(testHome, "optional-normalization", "undefined-store.json");
-  loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../../loopTaskStore").LoopTaskStore);
-  assert.deepEqual(loopTaskStore.readLoopTaskStore(undefinedStoreFile), { tasks: [] });
+  assert.throws(() => loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../../loopTaskStore").LoopTaskStore), /Invalid Loop task store/);
+  assert.equal(fs.existsSync(undefinedStoreFile), false);
 
   fs.mkdirSync(legacy.communicationDir, { recursive: true });
   const retainedTask = createTask({

@@ -4,10 +4,21 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { DepartmentOwnedTaskSource } from "../../extensionHost/departmentOwnedTaskSource";
-import { DepartmentOwnershipIndex } from "../../extensionHost/departmentOwnershipIndex";
-import { deleteLoopTaskStoreFile, tryWriteLoopTaskStore } from "../../loopTaskStore";
-import { departmentRecords } from "../loop/departmentGroupChatHost.fixture";
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
+const testHome = fs.mkdtempSync(path.join(os.tmpdir(), "department-source-home-"));
+process.env.HOME = testHome;
+process.env.USERPROFILE = testHome;
+const { DepartmentOwnedTaskSource } = require("../../extensionHost/departmentOwnedTaskSource") as typeof import("../../extensionHost/departmentOwnedTaskSource");
+const { DepartmentOwnershipIndex } = require("../../extensionHost/departmentOwnershipIndex") as typeof import("../../extensionHost/departmentOwnershipIndex");
+const { deleteLoopTaskStoreFile, tryWriteLoopTaskStore } = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
+const { departmentRecords } = require("../loop/departmentGroupChatHost.fixture") as typeof import("../loop/departmentGroupChatHost.fixture");
+
+test.after(() => {
+  fs.rmSync(testHome, { recursive: true, force: true });
+  if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;
+});
 
 function fixture() {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "department-source-"));

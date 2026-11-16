@@ -31,6 +31,7 @@ test.after(() => {
   }
 });
 
+test.beforeEach(() => fs.rmSync(path.join(testHome, ".sinitek_cli", "loop-task-identities"), { recursive: true, force: true }));
 let sequence = 0;
 function createTask(): LoopTaskRecord {
   const id = `persistence-${++sequence}`;
@@ -53,7 +54,7 @@ function coldStore(): StoreModule {
 }
 
 function assertNoTempFiles(filePath: string): void {
-  assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp")), []);
+  assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp") || name.endsWith(".stage")), []);
 }
 
 for (const withSibling of [false, true]) {
@@ -336,7 +337,7 @@ for (const failure of ["write", "rename"] as const) {
     if (failure === "write") {
       const originalWrite = fs.writeFileSync;
       t.mock.method(fs, "writeFileSync", (...args: Parameters<typeof fs.writeFileSync>) => {
-        if (String(args[0]).endsWith(".tmp")) {
+        if (String(args[0]).endsWith(".stage")) {
           originalWrite(args[0], "partial JSON", "utf8");
           throw error;
         }
@@ -490,7 +491,20 @@ for (const withSibling of [false, true]) {
     const afterRound = coldStore().readLoopTaskRecord(task.id);
     assert.equal(afterRound?.taskStoreFile, target);
     assert.equal(afterRound?.rounds.length, 1);
-    assert.equal(afterRound?.updatedAt, committed?.updatedAt);
-    assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.find((item) => item.id === task.id)?.status, "running");
+    assert.ok(afterRound!.updatedAt > retried!.updatedAt);
+    assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.find((item) => item.id === task.id), undefined);
   });
 }
+
+test("invalid source records reject strict commits and retention without dropping valid siblings", () => {
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const raw = JSON.stringify({ tasks: [task, { id: "invalid-sibling" }] });
+  fs.writeFileSync(task.taskStoreFile, raw);
+  assert.throws(() => store.updateLoopTaskRecord(task.id, { finalSummary: "uncommitted" }), /Invalid Loop task record/);
+  assert.throws(() => store.appendLoopRound(task.id, { round: 1, role: "main", status: "end", startedAt: 1, endedAt: 2 }), /Invalid Loop task record/);
+  assert.equal(store.tryAppendLoopRound(task.id, { round: 1, role: "main", status: "end", startedAt: 1, endedAt: 2 }), false);
+  store.cleanupLoopTaskStoreRetention();
+  assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), raw);
+  assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks[0]?.id, task.id, "tolerant queries retain compatibility");
+});
