@@ -174,7 +174,15 @@ round-121 已在隔离 macOS Extension Host 的真实生产任务/会话恢复�
 
 `new`、`rebuilding`、`invalid`、`disposed` 均不授权；订阅/读写失败、未知来源变更或租约撤销使完整性失效，仅显式成功的完整 `rebuild` 恢复可用，单次成功写不能自愈。生产入口 `createDepartmentProductionTaskStore` 将 `DepartmentOwnedSourceController`、`DepartmentOwnedTaskRepository`、identity catalog、正常任务写入与 owner router 连到 `extension.ts#getDepartmentOwnershipIndex`；round-101/102 已审查生产挂载、读取/写入确认、持久身份和清理保留语义。更早的 lifecycle host 拒绝测试不是当前 extension 未装配证据。仍开放的是所有旧二进制/外部直接 writer、跨进程代际交接、冷启动重建与真实退出完整性；在来源失效、无法确认或授权缺失时继续 fail closed，不回退全库扫描授权。
 
-`src/loopTaskStore.ts` 已提供结果式读写、确认删除、严格发现和同步变更事件。只有实际 `writeFileSync` 成功后才发布规范化文件贡献；旧 `writeLoopTaskStore(): void` 保留兼容，不能据其返回值宣称保存成功。`updateLoopTaskRecord` 写失败返回 null；迁移先确认目标写入，再确认源重写/删除，两步成功才返回身份。部分失败保留恢复材料并使来源失效，不宣称事务回滚；完整索引读取不把坏文件/消失的文件伪装为空库。存储成功仅表示当前端口确认，不代表外部写者生命周期已受控。
+`src/loopTaskStore.ts` 提供结果式读写、确认删除、严格发现和同步变更事件。普通严格 `writeLoopTaskStore` / `updateLoopTaskRecord` / `appendLoopRound` 在真实读取或写入失败时传播原异常及 errno；`writeLoopTaskStore(): void` 正常返回表示提交已确认，void 签名不表示静默失败。显式 boolean try 端口在未提交时返回 false；真实缺失任务保留原 null/no-op 语义，身份或输入拒绝边界不因此放宽。普通宽容查询仍兼容，不能把容错读取结果当作提交依据：提交读取完整拒绝损坏 JSON、错误 shape 和无效记录；完整索引读取也不把坏文件或已发现后消失的文件伪装为空库。字节写入采用同目录 stage 加原子 rename，rename 前失败保留旧字节并尝试清理临时文件；文件持久化及 identity catalog 发布确认后才发布成功贡献与缓存，失败使来源失效。
+
+普通跨文件迁移先完整校验 source 和 target、保留兄弟记录，以目标持久写入及 catalog 发布为 commit，再维护旧源。之后源重写/删除失败属于维护失败，记录错误并保留恢复材料，但仍返回已提交身份，不撤销目标权威或让缓存、冷查找、时钟回退重选旧副本。catalog 的 `ordinaryMoves` 是可选内部元数据，形如 `{ taskId: { file: 已提交普通目标绝对路径, sources: 已知旧源链 } }`；旧无字段 snapshot 仍兼容，普通历史来源不能据此提升为 owned。相对/绝对/dot/大小写等别名须按规范路径及文件系统身份判断；确认同一文件时保留实际已知位置，不删源或重复迁移，不按平台盲目统一大小写。最终文件 symlink 仍拒绝，合法目录别名兼容；这些实现约束不表示全部 Windows/Linux 文件系统组合已实测。
+
+已知普通读口 `readKnownOrdinaryLoopTaskRecord` 在同一非重入 writer gate 内按当前 catalog 服从已提交目标；仅无 move 时使用精确已知来源。目标读取失败、缺少任务或目录无法确认即 null，不枚举全库、不回退旧副本、不缓存旧授权；owned、墓碑、受控来源及无效部门身份继续拒绝。短暂锁竞争立即拒绝，后续调用重新读取，不盗锁、等待或自动恢复。
+
+普通任务 retention 以单个已发现文件为有界批次，在同一 writer gate 和当前 snapshot 内完整校验（包括过期记录）、分类、过滤及提交；每文件一次 catalog 读取，不分类后另起 writer，也不嵌套同一非重入锁。锁未知、catalog 损坏或未发布时整文件保留，恢复后须重新分类，不依据未知取得删除权；已确认旧源可清理，兄弟及当前有效目标保留。首次普通安装真实无 catalog 保持兼容，不授权部门通信 GC；后者缺失、锁定、损坏或未发布目录时整次删除拒绝。此批次不是全库原子快照，不跨调用缓存授权，也不增量修复未知 catalog。
+
+普通原子提交及提交后的维护失败，不等同 owned 多文件事务：owned 写入未确认或部分提交仍保留 `ready=false`，不能以普通旧目录恢复或源清理合同宣称 owned 成功/回滚。受控根、持久 marker、catalog/tombstone、未知身份 fail-closed、owner 交易、普通记录不可提升、最终文件 symlink 拒绝及合法目录别名保护均保留；未知目录恢复和失效索引恢复仍须显式 `recover` / 完整 `rebuild`，单次成功贡献不能冒充完整重建。存储成功仅表示当前受支持端口确认，不代表旧二进制/外部直接 writer、真实多进程压力、崩溃断电、冷恢复或全部平台门禁已通过。
 
 ## 给 AI 的提示示例
 
