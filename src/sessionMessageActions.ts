@@ -616,14 +616,6 @@ async function executeSendPromptMessage(
   if (message.skipPromptHistory !== true) {
     deps.recordPromptHistory(trimmed, targetCli);
   }
-  if (!isExistingLoopContinuation) {
-    try {
-      assertModeAvailable(requestedMode, deps.readStoredToolSettings?.());
-    } catch (error) {
-      deps.showWebviewError("任务模式不可用", error instanceof Error ? error.message : String(error));
-      return;
-    }
-  }
   if (loopPlusSchedulingMode === "event_driven") {
     // This refresh reads every CLI's configuration/models. It is a UI projection,
     // not a prerequisite for execution; visible config validation already ran.
@@ -637,6 +629,16 @@ async function executeSendPromptMessage(
     }
   } else {
     await deps.postPanelState();
+  }
+  // Refresh can outlive the earlier checks; authorize new work from current settings
+  // before preloading or dispatching, without waiting for the Loop+ UI projection.
+  if (!isExistingLoopContinuation) {
+    try {
+      assertModeAvailable(requestedMode, deps.readStoredToolSettings?.());
+    } catch (error) {
+      deps.showWebviewError("任务模式不可用", error instanceof Error ? error.message : String(error));
+      return;
+    }
   }
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget
