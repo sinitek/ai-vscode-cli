@@ -199,3 +199,24 @@ round-428 同宿主失败日志只有通用 stop 拒绝，不能反推出具体�
 本轮不运行旧 EH 或旧冷拒绝刷新证据。OpenCode 正例由原生命周期先完成完整收尾，再断开原宿主通道，使用免费确定性 CLI、真实 authority/Owner 子进程及受控 tab 管理；不是安装版 CLI 或完整第二 EH。未知 tab/consumer/root/准备、旧记录缺来源、原端点丢失、身份漂移和写失败仍保留占用。真实第二 EH、必要平台、最终 Git 合理整合及最终树全量回归继续开放。
 
 最终组件检查另暴露了新夹具的前置条件竞态：原组观察被关闭、员工完成后仍返回 wait，正常原宿主投影会进入 blocked；冷 stop 正确拒绝。夹具已改为启用真实组观察，并仅将原宿主观察返回暂停在确定的断连边界；屏障不提交凭证、不返回清理成功。冷方仍须验证真实原 Owner/服务及持久仓储。本轮保留这次失败和诊断日志，未放宽生产 blocked 或持久化失败规则。最终自有标准 build 与 27 个不同受影响 TypeScript 用例、ontology 校验和 9 个技能测试通过（分批命令，非一次全量）；未变 Codex 冷正例、58 项及历史 EH 不为刷新重跑。
+
+## lp716：最终存储输入的混合冷恢复补验
+
+本次唯一源码输入为已接受 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。它是官方构建/全量测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` 的文档后继；其后仅有五份交接文档变化，因此复用标准 build 和官方入口 5469 passed、3 skipped、0 failed、0 cancelled 的既有证据。本轮没有重建或重跑全量。
+
+从该提交建立独立 worktree，并物理复制 `src`、`scripts`、与整合树一致的既有 `dist` 和已安装 `node_modules` 到独立产品。源码、脚本和 `dist` 的逐文件比较一致，副本均与来源为不同实体路径；没有安装或升级依赖。执行只运行一次既有混合 `cold-recovery` 场景：
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/round384-playwright/node_modules/playwright \
+SINITEK_DEPARTMENT_FULL_EH_TIMEOUT_MS=180000 \
+node /tmp/department-final-store-cold-composition-round718-product/scripts/verify_department_full_eh_integration.js \
+  --product /tmp/department-final-store-cold-composition-round718-product \
+  --report /tmp/round718-mixed-cold-recovery-report.json \
+  --scenario cold-recovery --leader-cli opencode --leader-model default
+```
+
+这次执行在 extension host ready 前失败，driver exit 1：`prerequisites` 和 `emptyStore` 已通过，`extensionHost` 仍 pending，`publicUi`、任务创建、执行、receipt/CLOSED、容量归还和 authority 退役均未到达或确认。隔离报告的首错是 `Extension Host did not become ready: {"exitCode":1,"signal":null}`。隔离 VS Code renderer 随后记录 `production extension is missing`；核查发现本轮物理产品目录缺少 Extension Development Path 所需的 `package.json`。因此失败责任属于本轮产品装配不完整，不是生产冷恢复合同的结果。场景未重试，也未修补产品或共享 harness 后重跑。
+
+报告记载 `forcedTeardown=false`、host exit code 1/signal null、worker exit events/errors 为空；这些事实不证明所有后代进程都已退出，也不构成 Owner 清理。没有建立部门 root 或后继，原 binding、requirements、native session、transcript、required receipts、精确 CLOSED、持久容量移除、原 authority 退役、OpenCode move/readback 和真实 worker 退出组合均未验证。此前 lp698、lp702 的旧输入通过结果仍按其各自快照保留，不能替代本轮最终输入检查。Windows/Linux、任意崩溃及根任务整体完成也不在本次证据范围内。
+
+本次产品目录、隔离报告与 EH 日志留在本机 `/tmp` 供复核；文档不包含凭据或私有运行数据。lp716 没有产品源码、UI、脚本或测试改动，只有本段文档追加；下一次有效混合验证需由唯一所有者先完整装配产品闭包，再基于获准的新 attempt 决定是否重新执行。
