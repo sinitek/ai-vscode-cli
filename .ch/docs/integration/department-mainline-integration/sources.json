@@ -614,5 +614,80 @@
     "verificationReuse": "Reused accepted Round707 standard build and 110 distinct cases, Round708 cold tsc/60 cases/794 byte-identical non-test artifacts, and Round709 ontology validation/9 tool tests within source snapshots. The merged ontology/document files are byte-identical to source; no repeated source-only checks.",
     "officialRegression": {"inputCommit":"30627ab9eb86b3a484737e92161f517e8f3b5f13","inputTree":"f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d","command":"node scripts/run_unit_tests.js","exitCode":1,"testFiles":397,"tests":5462,"passed":5454,"failed":3,"cancelled":2,"skipped":3,"durationMs":774393,"log":"/tmp/round711-unit.log","logSha256":"dae408ed87c1e726d52d232257dff1aa06faaf67458837ff29b2d5392dc6f5c2","discoveryList":"/tmp/round711-unit-discovery.txt","discoveryListSha256":"ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a","buildCommand":"npm run build","buildExitCode":0,"buildLog":"/tmp/round711-build.log","buildLogSha256":"448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07","controlledProcessHandling":"Two departmentcodexexecutionlauncher cases timed out at the existing 10s limit; the file process then hung about 12 minutes without child processes, temp fixtures or log progress. Only this invocation's exact PID 74508 was SIGTERM'ed so the official runner could finish and report. This controlled interruption is not a pass or natural cleanup.","failures":["departmentGroupChatHost owner-change case expected 1 post but received 2; attribution unresolved.","loopTaskStore legacy migration success case did not discover the expected target store.","loopTaskStore unsafe-root case found the prior legacy path already present after the preceding failure; dependent fixture precondition, not independent contract result.","departmentcodexexecutionlauncher resume raw-session persistence-confirmation case timed out at 10s.","departmentcodexexecutionlauncher Owner callback-failure case timed out at 10s."],"failureClassification":"Store migration is a source/fixture root-cause item. Group-chat and two Owner timeouts remain unclassified pending their independent owners. The unsafe-root assertion is contaminated by the preceding migration failure.","fullRegressionPassed":false},
     "round698HistoricalResultUnchanged": {"tests":5439,"passed":5265,"failed":165,"cancelled":6,"skipped":3,"exitCode":1}
+  },
+  "round714LegacyStoreMigrationRepair": {
+    "round": 714,
+    "baseCommit": "bc0b066fd318db984ffe7191db0bac86eaeab217",
+    "baseTree": "5b4efaab43c12b49a4f37d3e5f4acb793022addb",
+    "testedInputCommit": "4d36ef021aa88bd2f5e12aeeeb8c26105c624ee6",
+    "testedInputTree": "11c08b5428b487ebc1f46021ac1768bde48be634",
+    "testedInputNote": "Build/tests ran on the working bytes subsequently committed as this input; only handoff documents changed afterward. Final delivery commit/tree are in the Round714 attempt report.",
+    "productionSourceChanged": false,
+    "changedTestPaths": [
+      {
+        "path": "src/test/loop/loopTaskStore.test.ts",
+        "blob": "615914000e99f42c38652bc9a8efad2077d68b22",
+        "sha256": "6f3ed3757618371a129fc2a1eb47b69c97ea4763eb2ef5155fbceb7365e02daf"
+      }
+    ],
+    "rootCauseClassification": "Fixture authorization and failure isolation. An earlier real ownership rebuild established the catalog. The legacy success case then imported unknown IDs with fs.writeFileSync; canMigrateOrdinaryLoopTaskIdentity correctly refused the unknown source before moving communications. Its unguarded assertion left the legacy communication root behind, contaminating the next case. No production defect was established.",
+    "repair": [
+      "New bounded child process with HOME/USERPROFILE set before importing store/catalog covers ordinary pre-catalog migration; parent finally removes its own temporary home.",
+      "Existing-catalog success registers both ordinary sibling IDs via writeLoopTaskStore, confirms migration permission, then seeds only legacy payload fields without changing registered identities. Communication bytes, target paths, sibling preservation, obsolete-field normalization and subsequent update persistence remain asserted.",
+      "Unsafe symlink/junction source is registered via the supported writer; migration permission and a delegating lstatSync observer prove it reaches the real communication-root refusal. Original paths/content and absent target remain asserted.",
+      "Setup and assertions are protected by finally; source directories, own link/external target and mocks are cleaned even on assertion failure. No user data or catalog identity is fabricated."
+    ],
+    "checks": [
+      {
+        "scope": "intermediate fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "intermediate legacy file and adjacent cases",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "log": "/tmp/round714-loop-task-store.log",
+        "logSha256": "95cabf06682ba708da6586547ef9de49643b11f1a5c620dc79022595650908ad"
+      },
+      {
+        "scope": "final fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build-final.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "final legacy file and adjacent isolation",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 266.316,
+        "log": "/tmp/round714-loop-task-store-final.log",
+        "logSha256": "dc7ab457da618098e48b5e3ccd4f709c4f8cf3e34bd373f9f191f400e00681ae"
+      }
+    ],
+    "intermediateResultLimit": "After the first successful build and 26/26, final review added explicit child HOME assertion and cleanup of the complete owned legacy communication root on failure. Those TS changes invalidate the intermediate fixture evidence for the final bytes; final build and the same file were rerun once.",
+    "reuseAndSkips": "Production store/catalog, shared helpers, ontology and other tests are unchanged; prior accepted source110, cold60 and other scoped evidence remain valid. No official full rerun, browser, CLI/EH, ontology validation, 110-case or cold60 repetition in this attempt.",
+    "officialFullRegressionPassed": false,
+    "remainingGates": [
+      "Round711 official full remains failed: 5462 tests / 5454 passed / 3 failed / 2 cancelled / 3 skipped / exit1, including its controlled interruption. Round698 original failed result is unchanged.",
+      "Group-chat revocation and Codex Owner wait repairs belong to independent owners; this attempt neither modifies nor accepts them.",
+      "After accepted repairs are actually unified, run the official full suite on that input.",
+      "Native Linux/Windows, real UI/EH/CLI and final authority/capacity/cold composition evidence retain their existing limits.",
+      "Original master dirty-content classification/preservation and safe final clean checkout handoff remain later work."
+    ]
   }
 }

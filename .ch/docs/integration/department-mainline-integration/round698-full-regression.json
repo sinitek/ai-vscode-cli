@@ -2839,5 +2839,80 @@
     "processHandling": "The departmentcodexexecutionlauncher test-file process remained hung for about twelve minutes after the two timeouts with no children, temporary fixtures or log progress. PID 74508 was the exact process from this run and was SIGTERM'ed to allow the official runner to report. This run is failed and controlled-interrupted, not complete-pass evidence.",
     "scopeAndLimitations": "This is the first official full run on the unified accepted store plus contract-doc input. Round698's original 5439/5265/165/6/3 result remains unchanged. Reused store 110, cold 60/794-artifact, and docs ontology 9 checks remain scoped to their original accepted source snapshots. No real UI/EH/CLI or native Linux/Windows claim follows from this unit run.",
     "openGates": ["Diagnose and repair/retest the migration success-path failure and dependent unsafe-root fixture as appropriate.","Group-chat extra-post and two Owner timeout cases need their responsible owners to classify.","Rerun affected tests and final official full regression after accepted repairs.","Native Linux/Windows, real UI/EH/CLI, final authority/capacity/cold composition and original-checkout clean handoff remain open."]
+  },
+  "round714Followup": {
+    "round": 714,
+    "baseCommit": "bc0b066fd318db984ffe7191db0bac86eaeab217",
+    "baseTree": "5b4efaab43c12b49a4f37d3e5f4acb793022addb",
+    "testedInputCommit": "4d36ef021aa88bd2f5e12aeeeb8c26105c624ee6",
+    "testedInputTree": "11c08b5428b487ebc1f46021ac1768bde48be634",
+    "testedInputNote": "Build/tests ran on the working bytes subsequently committed as this input; only handoff documents changed afterward. Final delivery commit/tree are in the Round714 attempt report.",
+    "productionSourceChanged": false,
+    "changedTestPaths": [
+      {
+        "path": "src/test/loop/loopTaskStore.test.ts",
+        "blob": "615914000e99f42c38652bc9a8efad2077d68b22",
+        "sha256": "6f3ed3757618371a129fc2a1eb47b69c97ea4763eb2ef5155fbceb7365e02daf"
+      }
+    ],
+    "rootCauseClassification": "Fixture authorization and failure isolation. An earlier real ownership rebuild established the catalog. The legacy success case then imported unknown IDs with fs.writeFileSync; canMigrateOrdinaryLoopTaskIdentity correctly refused the unknown source before moving communications. Its unguarded assertion left the legacy communication root behind, contaminating the next case. No production defect was established.",
+    "repair": [
+      "New bounded child process with HOME/USERPROFILE set before importing store/catalog covers ordinary pre-catalog migration; parent finally removes its own temporary home.",
+      "Existing-catalog success registers both ordinary sibling IDs via writeLoopTaskStore, confirms migration permission, then seeds only legacy payload fields without changing registered identities. Communication bytes, target paths, sibling preservation, obsolete-field normalization and subsequent update persistence remain asserted.",
+      "Unsafe symlink/junction source is registered via the supported writer; migration permission and a delegating lstatSync observer prove it reaches the real communication-root refusal. Original paths/content and absent target remain asserted.",
+      "Setup and assertions are protected by finally; source directories, own link/external target and mocks are cleaned even on assertion failure. No user data or catalog identity is fabricated."
+    ],
+    "checks": [
+      {
+        "scope": "intermediate fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "intermediate legacy file and adjacent cases",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "log": "/tmp/round714-loop-task-store.log",
+        "logSha256": "95cabf06682ba708da6586547ef9de49643b11f1a5c620dc79022595650908ad"
+      },
+      {
+        "scope": "final fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build-final.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "final legacy file and adjacent isolation",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 266.316,
+        "log": "/tmp/round714-loop-task-store-final.log",
+        "logSha256": "dc7ab457da618098e48b5e3ccd4f709c4f8cf3e34bd373f9f191f400e00681ae"
+      }
+    ],
+    "intermediateResultLimit": "After the first successful build and 26/26, final review added explicit child HOME assertion and cleanup of the complete owned legacy communication root on failure. Those TS changes invalidate the intermediate fixture evidence for the final bytes; final build and the same file were rerun once.",
+    "reuseAndSkips": "Production store/catalog, shared helpers, ontology and other tests are unchanged; prior accepted source110, cold60 and other scoped evidence remain valid. No official full rerun, browser, CLI/EH, ontology validation, 110-case or cold60 repetition in this attempt.",
+    "officialFullRegressionPassed": false,
+    "remainingGates": [
+      "Round711 official full remains failed: 5462 tests / 5454 passed / 3 failed / 2 cancelled / 3 skipped / exit1, including its controlled interruption. Round698 original failed result is unchanged.",
+      "Group-chat revocation and Codex Owner wait repairs belong to independent owners; this attempt neither modifies nor accepts them.",
+      "After accepted repairs are actually unified, run the official full suite on that input.",
+      "Native Linux/Windows, real UI/EH/CLI and final authority/capacity/cold composition evidence retain their existing limits.",
+      "Original master dirty-content classification/preservation and safe final clean checkout handoff remain later work."
+    ]
   }
 }
