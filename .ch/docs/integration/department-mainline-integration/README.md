@@ -105,7 +105,7 @@ round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1；
 
 ## Round 708：已接受冷生命周期夹具修复合入
 
-从round706最终提交 `929bcec39cd268c4e5f716cf2833ea9db6cf05d7` / tree `81c533bb5652e0ed7432baaa85666e2a2410247f` 续接。已合入正式接受来源 `6879fc01ecc440a17b40f5bc50ae47ebe825a58d`（source tree `96b8c2bb8ec55406ef4d0cfda033ef875316d97d`，base `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`），merge `60908f513dc979982893e2d94853c3a4174a614e`，tree `78dade6a6fbf37c7815133239fb4c7b64a734d35`，父为round706整合提交及6879来源。该来源相对a90的六项测试/夹具差异与整合树在共同基点后的路径差异无重叠；`ort`合并无冲突，未修改生产源码、授权、容量、receipt或群聊控制合同。逐路径源blob及结果SHA见 `sources.json#round708AcceptedColdLifecycleIntegration.sourcePathIdentities`。
+从round706最终提交 `929bcec39cd268c4e5f716cf2833ea9db6cf05d7` / tree `81c533bb5652e0ed7432baaa85666e2a2410247f` 续接。已合入正式接受来源 `6879fc01ecc440a17b40f5bc50ae47ebe825a58d`（source tree `96b8c2bb8ec55406ef4d0cfda033ef875316d97d`，base `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`），merge `60908f513dc979982893e2d94853c3a4174a614e`，tree `78dade6a6fbf37c7815133239fb4c7b64a734d35`，父为round706整合提交及6879来源。该来源相对a90的六项测试/夹具差异与整合树在共同基点后的路径差异无重叠；`ort`合并无冲突，未修改生产源码、授权、容量、receipt或群聊控制合同。逐路径源blob及结果SHA见 `sources.json#round708AcceptedColdLifecycleIntegration.changedPaths`。
 
 按来源报告复用有效结果：该六文件输入最终 `tsc -p tsconfig.json` exit0，五相关编译测试文件60/60通过，794个非test产物与来源产品字节相同；没有在仅改变merge hash后重复build或60项测试。该证据只覆盖cold生命周期夹具/相关回归，不是整合树全量结果。三处强制卫生回收与成功场景原/后继authority自然exit(0,null)分别记载，不能将回收当完整清理证明；历史OpenCode首抛限制保留。旧cold实现及55路径累计实体没有重新复制、哈希或补丁导入。
 
