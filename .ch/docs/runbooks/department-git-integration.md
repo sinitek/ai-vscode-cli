@@ -78,3 +78,15 @@ iframe sandbox、消息身份校验、同步 inert/关闭归焦、无 bridge fal
 实际 reader/writer 安装、持久 CAS、同步联合准入、中央功能清单/ontology/active 计划、冷恢复、第二 EH、必要平台以及最终远端同步/合理合并/真实合并树全量回归全部继续开放；不调整 Owner 证明、回收或容量标准。根 feature 保持 active/in_progress，round-410 冷安全拒绝仍不是恢复接管。本轮不 fetch/pull/push、发布或修改共享 HEAD/index、父记录与调度状态。
 
 本轮报告：`/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-433-department-git-reviewed-allocation-delta-integration.md`。
+
+## Round 436：已审额度提示修复单父后继
+
+本轮从已接受 `d35263a5f7d150b57b10668f2ad1c3bf0b066d43` 保存最终提示字节，分支 `codex/department-reviewed-allocation-prompt-round436-20261116`，外置实体树 `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-reviewed-allocation-prompt-round436-20261116`。最终 commit/tree 见本轮外部报告，避免提交内循环引用。原候选和提示来源树保持只读。
+
+仅导入 `/private/tmp/department-employee-allocation-prompt-round431-20261116` 的五条完整已审交付，包括未跟踪的提示契约；实际路径和 SHA-256 见 `.ch/docs/integration/department-reviewed-allocation-prompt/sources.json`。角色提示及角色测试按 round-431 未变哈希核对，builder、builder 测试及契约按 round-433 修复后的最终哈希核对。round-431 原验收失败及构建首错继续保留，旧失败 builder 字节未导入。相对唯一父仅五条来源路径、新清单和本交接，共七条；策略/UI 及全部历史材料不变。
+
+复用 round-433 最终标准构建和提示 builder 34/34；未变角色测试、策略和 UI 证据只按原输入范围复用。本轮只检查来源稳定性、候选/暂存/提交 blob、完整差异路径、未跟踪集合、JSON/文档格式、大小写、空白和提交后状态，不安装依赖、不 build、不跑单测、浏览器、CLI 或 EH。这些复用证据没有证明新的生产组合通过；未扩展提示行为或修改已审字节。
+
+真实 reader/writer、持久 CAS 和同步联合准入由另一所有者交付；中央功能清单/ontology/active 计划、冷恢复返修、第二 EH、必要平台、最终远端同步/合理合并与最终合并树全量回归全部继续开放。Owner、容量释放及清理标准不变；根 feature 仍 active/in_progress，round-410 冷安全拒绝不等于恢复接管。未吸入生产接线或冷恢复返修增量，未 fetch/pull/push、发布、修改共享 HEAD/index、父记录或调度状态。
+
+本轮报告：`/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-436-department-git-reviewed-allocation-prompt-candidate.md`。
