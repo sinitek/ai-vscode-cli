@@ -64,6 +64,15 @@ export type LoopPlusDepartmentEmployeeCapacitySnapshot = {
   availableEmployees: number;
   leaderOverflowActive: boolean;
   canAcquireOverflow: boolean;
+  leaderAllocation?: {
+    revision: number;
+    source: "default" | "manual";
+    desiredLimit: number;
+    appliedLimit: number | null;
+    activeEmployees: number;
+    availableEmployees: number;
+    pending: boolean;
+  };
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -137,15 +146,19 @@ function departmentEmployeeCapacityLines(
   context: LoopPlusMainPromptContext["departmentEmployeeCapacity"],
 ): string[] {
   if (!context) return [];
-  const unknown = [
-    "Department employee capacity: employee balance unknown (the latest host snapshot is unavailable or invalid).",
+  const unknownGlobal = [
+    "Department-wide employee capacity: employee balance unknown (the latest host snapshot is unavailable or invalid).",
     "Do not treat unknown as zero balance or as permission to use an overflow exception.",
   ];
+  const unknownLeader = "This leader group's employee allocation: unknown; regular/overflow admission eligibility is also unknown (the host did not provide a valid allocation snapshot). Do not infer that this leader may dispatch or acquire overflow; the host must obtain a valid current allocation snapshot and recheck before launch.";
   try {
     const snapshot = context.snapshot;
-    const valid = snapshot
-      && snapshot.rootTaskId === context.rootTaskId
-      && snapshot.leaderTaskId === context.leaderTaskId
+    if (!snapshot || typeof snapshot !== "object") return [...unknownGlobal, unknownLeader];
+
+    const rootMatches = snapshot.rootTaskId === context.rootTaskId;
+    const leaderMatches = snapshot.leaderTaskId === context.leaderTaskId;
+    const globalValid = rootMatches
+      && leaderMatches
       && Number.isSafeInteger(snapshot.maxEmployees) && snapshot.maxEmployees >= 0
       && Number.isSafeInteger(snapshot.activeEmployees) && snapshot.activeEmployees >= 0
       && Number.isSafeInteger(snapshot.availableEmployees) && snapshot.availableEmployees >= 0
@@ -154,22 +167,62 @@ function departmentEmployeeCapacityLines(
       && typeof snapshot.canAcquireOverflow === "boolean"
       && (!snapshot.leaderOverflowActive || snapshot.activeEmployees > 0)
       && snapshot.canAcquireOverflow === (snapshot.availableEmployees === 0 && !snapshot.leaderOverflowActive);
-    if (!valid) return unknown;
-    return [
+    if (!globalValid) return [...unknownGlobal, unknownLeader];
+
+    const lines = [
       "Department employee capacity (latest decision-time snapshot):",
       `- Regular employee total: ${snapshot.maxEmployees}`,
       `- Active employees in this department across all leaders, including overflow employees: ${snapshot.activeEmployees}`,
       `- Available regular employee balance: ${snapshot.availableEmployees}`,
       `- This leader group already has an overflow employee: ${snapshot.leaderOverflowActive ? "yes" : "no"}`,
-      `- This leader may acquire an overflow employee now: ${snapshot.canAcquireOverflow ? "yes" : "no"}`,
+      `- Department-wide regular employee balance is zero: ${snapshot.availableEmployees === 0 ? "yes" : "no"}`,
       "- Regular employee capacity is shared by all leaders within this department; departments with different root task ids have separate balances. Every active employee in this department, including overflow employees, counts as occupied.",
-      "- When the regular balance is zero, each leader may hold at most one unreleased overflow employee. An existing overflow lease remains active after capacity expansion and cannot be stacked.",
+      "- Only a zero department-wide regular balance can permit the existing one-unreleased-overflow-per-leader exception. A full local allocation does not permit overflow while department-wide regular balance remains.",
+      "- An existing overflow lease remains active after capacity expansion and cannot be stacked.",
       "- The director model does not consume employee capacity.",
       "- This is an advisory decision-time snapshot. The host must atomically recheck before launch; another leader in this department may consume positive balance concurrently.",
       "- Local concurrency, file conflicts, pause, cancellation, and acceptance gates remain in force.",
     ];
+
+    try {
+      const allocation = snapshot.leaderAllocation;
+      const validAllocation = allocation
+        && typeof allocation === "object"
+        && Number.isSafeInteger(allocation.revision) && allocation.revision >= 0
+        && (allocation.source === "default" || allocation.source === "manual")
+        && Number.isSafeInteger(allocation.desiredLimit) && allocation.desiredLimit >= 0
+        && (allocation.appliedLimit === null
+          || (Number.isSafeInteger(allocation.appliedLimit) && allocation.appliedLimit >= 0))
+        && Number.isSafeInteger(allocation.activeEmployees) && allocation.activeEmployees >= 0
+        && allocation.activeEmployees <= snapshot.activeEmployees
+        && (!snapshot.leaderOverflowActive || allocation.activeEmployees > 0)
+        && Number.isSafeInteger(allocation.availableEmployees) && allocation.availableEmployees >= 0
+        && allocation.availableEmployees === Math.min(
+          snapshot.availableEmployees,
+          Math.max(0, allocation.desiredLimit - allocation.activeEmployees),
+        )
+        && typeof allocation.pending === "boolean";
+      if (!validAllocation) return [...lines, unknownLeader];
+      lines.push(
+        "This leader group's employee allocation (host-provided, for the next admission decision):",
+        `- Allocation source: ${allocation.source}`,
+        `- Desired regular employee limit for this group: ${allocation.desiredLimit}`,
+        `- Applied group limit: ${allocation.appliedLimit === null ? "not yet applied" : allocation.appliedLimit}`,
+        `- Active employees in this leader group, including overflow employees: ${allocation.activeEmployees}`,
+        `- Regular employee balance available to this leader's next dispatch: ${allocation.availableEmployees}`,
+        `- Host allocation revision: ${allocation.revision}`,
+        `- Host reports this allocation pending: ${allocation.pending ? "yes" : "no"}`,
+        `- This leader may acquire an overflow employee now: ${snapshot.canAcquireOverflow ? "yes" : "no"}`,
+        "- Pending status comes from the host allocation snapshot; do not infer it from department-wide capacity changes.",
+        "- Saving a changed limit does not interrupt employees that have already started. The latest desired limit applies at the next real employee admission attempt.",
+        "- If active group occupancy exceeds the desired limit, wait for real execution cleanup to release employees before normal dispatch resumes.",
+      );
+    } catch {
+      lines.push(unknownLeader);
+    }
+    return lines;
   } catch {
-    return unknown;
+    return [...unknownGlobal, unknownLeader];
   }
 }
 

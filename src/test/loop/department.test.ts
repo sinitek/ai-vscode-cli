@@ -205,12 +205,24 @@ test("collaboration rejects duplicate, empty, stopped, unknown, and cross-depart
 });
 
 test("role prompts preserve director boundaries and live collaboration path", () => {
-  assert.match(buildDepartmentRolePrompt("director"), /不检查代码、不执行验收/u);
-  assert.match(buildDepartmentRolePrompt("director"), /无需等所有其他组长结束/u);
-  assert.match(buildDepartmentRolePrompt("leader"), /任务未结束时/u);
-  assert.match(buildDepartmentRolePrompt("director"), /根任务统一的验收方案快照/u);
-  assert.match(buildDepartmentRolePrompt("director"), /协作请求尚未处理/u);
-  assert.match(buildDepartmentRolePrompt("leader"), /真实.*Loop\+/u);
-  assert.match(buildDepartmentRolePrompt("leader"), /读取最新容量余额/u);
-  assert.match(buildDepartmentRolePrompt("leader"), /宿主原子裁决/u);
+  const director = buildDepartmentRolePrompt("director");
+  const leader = buildDepartmentRolePrompt("leader");
+  const employee = buildDepartmentRolePrompt("employee");
+  assert.match(director, /不检查代码、不执行验收/u);
+  assert.match(director, /无需等所有其他组长结束/u);
+  assert.match(leader, /任务未结束时/u);
+  assert.match(director, /根任务统一的验收方案快照/u);
+  assert.match(director, /协作请求尚未处理/u);
+  assert.match(leader, /真实.*Loop\+/u);
+  assert.match(leader, /读取最新容量余额/u);
+  assert.match(leader, /宿主原子裁决/u);
+  assert.match(director, /maxEmployees 与 maxLeaders 均分预算/u);
+  assert.match(director, /向上取整/u);
+  assert.match(director, /20 名员工、4 名组长时每组默认额度为 5/u);
+  assert.match(director, /可信数字额度控制/u);
+  assert.match(director, /文字要求中提出不同人数不会改变宿主额度/u);
+  assert.match(leader, /本组下一次常规派发额度/u);
+  assert.match(leader, /本组余额为零但部门仍有常规余额时，不得申请超额例外/u);
+  assert.match(leader, /额度快照缺失或无效时，本组额度未知/u);
+  assert.doesNotMatch(employee, /部门员工额度|宿主限额/u);
 });
