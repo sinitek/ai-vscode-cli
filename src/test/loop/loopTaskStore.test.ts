@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -35,6 +36,73 @@ let recordSequence = 0;
 
 type SkillTaskRecord = import("../../loopTaskStore").LoopTaskRecord;
 type SkillSubtaskDecision = import("../../loopTaskStore").LoopSubtaskDecision;
+
+test("moves legacy task stores before identity catalog bootstrap in isolated home", () => {
+  const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loop-legacy-migration-"));
+  const task = createLegacyTask();
+  const modulePath = require.resolve("../../loopTaskStore");
+  const legacyMigrationPath = require.resolve("../../loopLegacyMigration");
+  const script = `
+    const assert = require("node:assert/strict");
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const os = require("node:os");
+    assert.equal(os.homedir(), process.env.HOME);
+    const store = require(process.argv[1]);
+    const { getLegacyLoopStoragePaths } = require(process.argv[2]);
+    const task = JSON.parse(process.env.LOOP_LEGACY_TASK);
+    const dataDir = path.join(os.homedir(), ".sinitek_cli");
+    const legacyPaths = getLegacyLoopStoragePaths(dataDir);
+    const legacyStoreFile = path.join(legacyPaths.taskStoreDir, task.workspaceKey, task.cli, task.sessionId, path.basename(legacyPaths.taskStoreFlatFile));
+    const legacyCommunicationDir = path.join(legacyPaths.communicationDir, task.id);
+    const legacyMainFile = path.join(legacyCommunicationDir, "main-task.md");
+    task.taskStoreFile = legacyStoreFile;
+    task.communicationDir = legacyCommunicationDir;
+    task.mainCommunicationFile = legacyMainFile;
+    task.subTasks[0].communicationFile = path.join(legacyCommunicationDir, "subtasks", "round-1-legacy-subtask.md");
+    task.executionMode = "debate_multi_agent";
+    task.debateRounds = [{ round: 1, status: "running", participants: [] }];
+    const catalogFile = path.join(dataDir, "loop-task-identities", "catalog.json");
+    assert.equal(fs.existsSync(catalogFile), false);
+    fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
+    fs.mkdirSync(path.dirname(task.subTasks[0].communicationFile), { recursive: true });
+    fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [task] }, null, 2), "utf8");
+    fs.writeFileSync(legacyMainFile, "# Existing Loop communication\\n", "utf8");
+    fs.writeFileSync(task.subTasks[0].communicationFile, "# Existing subtask artifact\\n", "utf8");
+    const expectedStoreFile = store.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId, task.id);
+    const expectedCommunicationDir = path.join(dataDir, "loop-communications", task.id);
+    const migrated = store.readLoopTaskRecord(task.id);
+    assert.ok(fs.existsSync(catalogFile));
+    assert.equal(store.listLoopTaskStoreFiles().includes(expectedStoreFile), true);
+    assert.equal(fs.existsSync(legacyStoreFile), false);
+    assert.equal(fs.existsSync(legacyCommunicationDir), false);
+    assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "main-task.md"), "utf8"), "# Existing Loop communication\\n");
+    assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"), "utf8"), "# Existing subtask artifact\\n");
+    assert.equal(migrated.taskStoreFile, expectedStoreFile);
+    assert.equal(migrated.communicationDir, expectedCommunicationDir);
+    assert.equal(migrated.subTasks[0].communicationFile, path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"));
+    assert.equal(Object.prototype.hasOwnProperty.call(migrated, "executionMode"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(migrated, "debateRounds"), false);
+    store.updateLoopTaskRecord(task.id, { finalSummary: "已按主从模式恢复" });
+    const persisted = JSON.parse(fs.readFileSync(expectedStoreFile, "utf8")).tasks[0];
+    assert.equal(persisted.finalSummary, "已按主从模式恢复");
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "executionMode"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persisted, "debateRounds"), false);
+  `;
+
+  try {
+    const result = spawnSync(process.execPath, ["-e", script, modulePath, legacyMigrationPath], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      timeout: 10_000,
+      env: { ...process.env, HOME: isolatedHome, USERPROFILE: isolatedHome, LOOP_LEGACY_TASK: JSON.stringify(task) },
+    });
+    assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
+  } finally {
+    fs.rmSync(isolatedHome, { recursive: true, force: true });
+    assert.equal(fs.existsSync(isolatedHome), false);
+  }
+});
 
 test.after(() => {
   fs.rmSync(testHome, { recursive: true, force: true });
@@ -637,45 +705,52 @@ test("moves legacy task stores and communication artifacts into Loop storage", (
     }],
   };
 
-  fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
-  fs.mkdirSync(path.dirname(legacySubtaskFile), { recursive: true });
-  fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
-  fs.writeFileSync(legacyMainFile, "# Existing Loop communication\n", "utf8");
-  fs.writeFileSync(legacySubtaskFile, "# Existing subtask artifact\n", "utf8");
-
-  const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
-  const expectedStoreFile = loopTaskStore.buildLoopTaskStoreFile(
-    task.cli,
-    task.workspaceKey,
-    task.sessionId ?? null,
-    task.id,
-  );
+  const expectedStoreFile = loopTaskStore.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id);
   const expectedCommunicationDir = path.join(dataDir, "loop-communications", task.id);
-  const migrated = loopTaskStore.readLoopTaskRecord(task.id);
+  const sibling = { ...createLegacyTask(), sessionId: task.sessionId, taskStoreFile: legacyStoreFile };
+  try {
+    fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
+    fs.mkdirSync(path.dirname(legacySubtaskFile), { recursive: true });
+    fs.writeFileSync(legacyMainFile, "# Existing Loop communication\n", "utf8");
+    fs.writeFileSync(legacySubtaskFile, "# Existing subtask artifact\n", "utf8");
+    // Register this ordinary legacy source through the supported writer before migration.
+    loopTaskStore.writeLoopTaskStore(legacyStoreFile, { tasks: [rawTask, sibling] });
+    const { canMigrateOrdinaryLoopTaskIdentity } = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+    assert.equal(canMigrateOrdinaryLoopTaskIdentity(task.id, legacyStoreFile), true);
+    assert.equal(canMigrateOrdinaryLoopTaskIdentity(sibling.id, legacyStoreFile), true);
+    // Seed obsolete payload fields without changing the supported writer's registered identities.
+    fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask, sibling] }, null, 2), "utf8");
 
-  assert.equal(listedFiles.includes(expectedStoreFile), true);
-  assert.equal(fs.existsSync(legacyStoreFile), false);
-  assert.equal(fs.existsSync(legacyCommunicationDir), false);
-  assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "main-task.md"), "utf8"), "# Existing Loop communication\n");
-  assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"), "utf8"), "# Existing subtask artifact\n");
-  assert.equal(migrated?.taskStoreFile, expectedStoreFile);
-  assert.equal(migrated?.communicationDir, expectedCommunicationDir);
-  assert.equal(
-    migrated?.subTasks[0]?.communicationFile,
-    path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"),
-  );
-  assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "executionMode"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "debateRounds"), false);
-  loopTaskStore.updateLoopTaskRecord(task.id, { finalSummary: "已按主从模式恢复" });
-  const persisted = JSON.parse(fs.readFileSync(expectedStoreFile, "utf8")) as {
-    tasks: Array<Record<string, unknown>>;
-  };
-  assert.equal(persisted.tasks[0].finalSummary, "已按主从模式恢复");
-  assert.equal(Object.prototype.hasOwnProperty.call(persisted.tasks[0], "executionMode"), false);
-  assert.equal(Object.prototype.hasOwnProperty.call(persisted.tasks[0], "debateRounds"), false);
+    const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
+    const migrated = loopTaskStore.readLoopTaskRecord(task.id);
+
+    assert.equal(listedFiles.includes(expectedStoreFile), true);
+    assert.equal(fs.existsSync(legacyStoreFile), false);
+    assert.equal(fs.existsSync(legacyCommunicationDir), false);
+    assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "main-task.md"), "utf8"), "# Existing Loop communication\n");
+    assert.equal(fs.readFileSync(path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"), "utf8"), "# Existing subtask artifact\n");
+    assert.equal(migrated?.taskStoreFile, expectedStoreFile);
+    assert.equal(migrated?.communicationDir, expectedCommunicationDir);
+    assert.equal(migrated?.subTasks[0]?.communicationFile, path.join(expectedCommunicationDir, "subtasks", "round-1-legacy-subtask.md"));
+    assert.equal(loopTaskStore.readLoopTaskRecord(sibling.id)?.taskStoreFile, expectedStoreFile);
+    assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "executionMode"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(migrated ?? {}, "debateRounds"), false);
+    loopTaskStore.updateLoopTaskRecord(task.id, { finalSummary: "已按主从模式恢复" });
+    const persisted = JSON.parse(fs.readFileSync(expectedStoreFile, "utf8")) as { tasks: Array<Record<string, unknown>> };
+    const persistedTask = persisted.tasks.find((record) => record.id === task.id)!;
+    assert.equal(persistedTask.finalSummary, "已按主从模式恢复");
+    assert.equal(Object.prototype.hasOwnProperty.call(persistedTask, "executionMode"), false);
+    assert.equal(Object.prototype.hasOwnProperty.call(persistedTask, "debateRounds"), false);
+    assert.equal(persisted.tasks.find((record) => record.id === sibling.id)?.rootPrompt, sibling.rootPrompt);
+  } finally {
+    fs.rmSync(legacyPaths.taskStoreDir, { recursive: true, force: true });
+    fs.rmSync(legacyPaths.communicationDir, { recursive: true, force: true });
+    fs.rmSync(path.dirname(expectedStoreFile), { recursive: true, force: true });
+    fs.rmSync(expectedCommunicationDir, { recursive: true, force: true });
+  }
 });
 
-test("keeps legacy task paths intact when the communication root is unsafe to migrate", () => {
+test("keeps legacy task paths intact when the communication root is unsafe to migrate", (t) => {
   const dataDir = path.join(testHome, ".sinitek_cli");
   const legacyPaths = getLegacyLoopStoragePaths(dataDir);
   const task = createLegacyTask();
@@ -696,22 +771,31 @@ test("keeps legacy task paths intact when the communication root is unsafe to mi
     mainCommunicationFile: legacyMainFile,
   };
 
-  fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
-  fs.mkdirSync(path.join(externalCommunicationDir, task.id), { recursive: true });
-  fs.writeFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "# Unsafe migration source\n", "utf8");
-  assert.equal(fs.existsSync(legacyPaths.communicationDir), false);
-  fs.symlinkSync(
-    externalCommunicationDir,
-    legacyPaths.communicationDir,
-    process.platform === "win32" ? "junction" : "dir",
-  );
+  let linked = false;
   try {
+    fs.mkdirSync(path.dirname(legacyStoreFile), { recursive: true });
+    fs.mkdirSync(path.join(externalCommunicationDir, task.id), { recursive: true });
+    fs.writeFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "# Unsafe migration source\n", "utf8");
+    assert.equal(fs.existsSync(legacyPaths.communicationDir), false);
+    fs.symlinkSync(externalCommunicationDir, legacyPaths.communicationDir, process.platform === "win32" ? "junction" : "dir");
+    linked = true;
     assert.equal(fs.lstatSync(legacyPaths.communicationDir).isSymbolicLink(), true);
     assert.equal(fs.realpathSync(legacyPaths.communicationDir), fs.realpathSync(externalCommunicationDir));
     assert.equal(fs.readFileSync(legacyMainFile, "utf8"), "# Unsafe migration source\n");
-    fs.writeFileSync(legacyStoreFile, JSON.stringify({ tasks: [rawTask] }, null, 2), "utf8");
+    // Register the source before exercising the unsafe communication-root refusal.
+    loopTaskStore.writeLoopTaskStore(legacyStoreFile, { tasks: [rawTask] });
+    const { canMigrateOrdinaryLoopTaskIdentity } = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+    assert.equal(canMigrateOrdinaryLoopTaskIdentity(task.id, legacyStoreFile), true);
+    const fsModule = require("fs") as typeof import("fs");
+    const originalLstat = fsModule.lstatSync;
+    let inspectedUnsafeRoot = false;
+    t.mock.method(fsModule, "lstatSync", ((file: fs.PathLike, ...args: any[]) => {
+      if (String(file) === legacyPaths.communicationDir) inspectedUnsafeRoot = true;
+      return (originalLstat as any)(file, ...args);
+    }) as typeof fs.lstatSync);
 
     const listedFiles = loopTaskStore.listLoopTaskStoreFiles();
+    assert.equal(inspectedUnsafeRoot, true, "migration must reach the real unsafe communication-root check");
     const loaded = loopTaskStore.readLoopTaskStore(legacyStoreFile).tasks[0];
 
     assert.equal(listedFiles.includes(legacyStoreFile), true);
@@ -726,8 +810,16 @@ test("keeps legacy task paths intact when the communication root is unsafe to mi
 
     assert.equal(fs.readFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "utf8"), "# Unsafe migration source\n");
   } finally {
-    fs.unlinkSync(legacyPaths.communicationDir);
-    assert.equal(fs.readFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "utf8"), "# Unsafe migration source\n");
+    try {
+      if (linked) {
+        fs.unlinkSync(legacyPaths.communicationDir);
+        assert.equal(fs.readFileSync(path.join(externalCommunicationDir, task.id, "main-task.md"), "utf8"), "# Unsafe migration source\n");
+      }
+    } finally {
+      t.mock.restoreAll();
+      fs.rmSync(legacyPaths.taskStoreDir, { recursive: true, force: true });
+      fs.rmSync(externalCommunicationDir, { recursive: true, force: true });
+    }
   }
 });
 
