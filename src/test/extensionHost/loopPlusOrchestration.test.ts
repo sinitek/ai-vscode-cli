@@ -987,6 +987,10 @@ test("leader capacity is read per decision while an issued invocation keeps its 
     availableEmployees: 1,
     leaderOverflowActive: false,
     canAcquireOverflow: false,
+    leaderAllocation: {
+      revision: 0, source: "default" as const, desiredLimit: 3, appliedLimit: 3,
+      activeEmployees: 2, availableEmployees: 1, pending: false,
+    },
   };
   const env = harness({
     department: {
@@ -1009,7 +1013,9 @@ test("leader capacity is read per decision while an issued invocation keeps its 
   assert.deepEqual(reads, [["department-root", run.taskId ?? ""]]);
   assert.match(env.mains[0].invocationPrompt, /Available regular employee balance: 1/);
 
-  live = { ...live, activeEmployees: 3, availableEmployees: 0, canAcquireOverflow: true };
+  live = { ...live, activeEmployees: 3, availableEmployees: 0, canAcquireOverflow: true,
+    leaderAllocation: { ...live.leaderAllocation, activeEmployees: 3, availableEmployees: 0 },
+  };
   assert.equal(env.host.submitUserMessage(run.taskId ?? "", "add one more requirement"), true);
   assert.equal(reads.length, 1, "queuing a message does not change the already-issued invocation");
   assert.match(env.mains[0].invocationPrompt, /Available regular employee balance: 1/);

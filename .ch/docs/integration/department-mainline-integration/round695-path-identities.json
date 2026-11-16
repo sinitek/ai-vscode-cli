@@ -1,0 +1,3219 @@
+{
+  "version": 1,
+  "attempt": "round-695-department-final-mainline-workspace-merge",
+  "refs": {
+    "originalIntegration": "ac1b8199d3c164f76c1043bc21bfffc13a0ae60e",
+    "acceptedSemanticRepair": "c40acbfc78c7bdd6bf54d036b07dbdaaac0fe443",
+    "mainlineBase": "e890e36352570b6cda9fc531df06ca2007a09ec6",
+    "fetchedMainline": "2cda37b568465c3ace4c5cbe3c953471260496e2",
+    "acceptedWorkspace": "40c77d3eb7eabd511ab569cdc25e08e6ed348d5a",
+    "mainlineMerge": "4b47d0a76d36c3bb973c48a74d52825e66a0f8b6",
+    "workspaceMerge": "b7524181b4b96f68d2fd51ebc9a7c2685e4f6a86"
+  },
+  "resultScope": "Final working files after both merges, test-only allocation fixture correction and integration material updates. changedPaths excludes this self-referencing manifest; unchangedConflictResults separately includes the adapter whose resolution equals c40. Final commit/tree are in the attempt report.",
+  "originalTextConflicts": [
+    "src/extension.ts",
+    "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+    "src/extensionHost/loopPlusOrchestration.ts",
+    "src/extensionHost/loopPlusRuntimeAdapter.ts",
+    "src/interactive/codexAppServerPool.ts",
+    "src/interactive/codexRunner.ts",
+    "src/loopPlusDecision.ts",
+    "src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts",
+    "src/test/loop/loopTaskStore.test.ts",
+    "src/webview/viewContentScript/taskListAndUi.ts",
+    "src/webview/viewContentScript/windowMessageDispatch.ts"
+  ],
+  "mainlineOverlappingPaths": [
+    ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+    ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+    "src/extension.ts",
+    "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+    "src/extensionHost/loopPlusDecisionStrategies.ts",
+    "src/extensionHost/loopPlusOrchestration.ts",
+    "src/extensionHost/loopPlusPromptBuilders.ts",
+    "src/extensionHost/loopPlusRuntimeAdapter.ts",
+    "src/interactive/codexAppServerPool.ts",
+    "src/interactive/codexRunner.ts",
+    "src/loopPlusDecision.ts",
+    "src/loopTaskStore.ts",
+    "src/promptRunState.ts",
+    "src/sessionMessageActions.ts",
+    "src/sessionMessageHandlers.ts",
+    "src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts",
+    "src/test/extensionHost/loopPlusOrchestration.test.ts",
+    "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+    "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts",
+    "src/test/interactive/codexThreadHandoff.test.ts",
+    "src/test/loop/loopGroupChatPanel.test.ts",
+    "src/test/loop/loopTaskStore.test.ts",
+    "src/test/session/sessionMessageActionsCoreCoverage.test.ts",
+    "src/test/webview/clipagescriptruntimecoverage.test.ts",
+    "src/test/webview/looppluswebviewintegration.test.ts",
+    "src/webview/loopGroupChatPanel.ts",
+    "src/webview/loopGroupChatPanelRenderer.ts",
+    "src/webview/loopGroupChatPanelTypes.ts",
+    "src/webview/types.ts",
+    "src/webview/viewContentScript/settingsAndOverlays.ts",
+    "src/webview/viewContentScript/taskListAndUi.ts",
+    "src/webview/viewContentScript/windowMessageDispatch.ts"
+  ],
+  "workspaceMergeOverlappingPaths": [
+    ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+    ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+    "src/webview/types.ts",
+    "src/webview/viewContentScript/settingsAndOverlays.ts",
+    "src/webview/viewContentScript/windowMessageDispatch.ts"
+  ],
+  "changedPathCount": 78,
+  "changedPaths": [
+    {
+      "path": ".ch/docs/design-docs/department-mode.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "5ff419af930c57670e647f9ea777652de2cf10ea",
+          "sha256": "affb84a9e1aab9cc31bdcd91c8690d8a4c1fa299dfc309ea208104112434b2cf"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "5ff419af930c57670e647f9ea777652de2cf10ea",
+          "sha256": "affb84a9e1aab9cc31bdcd91c8690d8a4c1fa299dfc309ea208104112434b2cf"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "27b06867810f792c8b5d6d1eb25951795ed2150b",
+          "sha256": "e60a37c2104ad3839d5705971f8bd9b232f388c1ee9f3fcbfe09ccc2723c5b44"
+        },
+        "mainlineMerge": {
+          "blob": "5ff419af930c57670e647f9ea777652de2cf10ea",
+          "sha256": "affb84a9e1aab9cc31bdcd91c8690d8a4c1fa299dfc309ea208104112434b2cf"
+        },
+        "workspaceMerge": {
+          "blob": "27b06867810f792c8b5d6d1eb25951795ed2150b",
+          "sha256": "e60a37c2104ad3839d5705971f8bd9b232f388c1ee9f3fcbfe09ccc2723c5b44"
+        }
+      },
+      "resultSha256": "e60a37c2104ad3839d5705971f8bd9b232f388c1ee9f3fcbfe09ccc2723c5b44"
+    },
+    {
+      "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "9ce44ad209c59f1d343bdaa6abb242dc9d2ca070",
+          "sha256": "7acdb21f23c1d5609e9f1da4abed6bb1c99ee130dec540c635a607a15c6f571f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "9ce44ad209c59f1d343bdaa6abb242dc9d2ca070",
+          "sha256": "7acdb21f23c1d5609e9f1da4abed6bb1c99ee130dec540c635a607a15c6f571f"
+        },
+        "mainlineBase": {
+          "blob": "9ce44ad209c59f1d343bdaa6abb242dc9d2ca070",
+          "sha256": "7acdb21f23c1d5609e9f1da4abed6bb1c99ee130dec540c635a607a15c6f571f"
+        },
+        "fetchedMainline": {
+          "blob": "6205265c51486bec1001706377311fb12ed15a69",
+          "sha256": "eebd075b301499f3a535483292375db156dd5a013aebe62ecebd4bcd6b87ee86"
+        },
+        "acceptedWorkspace": {
+          "blob": "9ce44ad209c59f1d343bdaa6abb242dc9d2ca070",
+          "sha256": "7acdb21f23c1d5609e9f1da4abed6bb1c99ee130dec540c635a607a15c6f571f"
+        },
+        "mainlineMerge": {
+          "blob": "6205265c51486bec1001706377311fb12ed15a69",
+          "sha256": "eebd075b301499f3a535483292375db156dd5a013aebe62ecebd4bcd6b87ee86"
+        },
+        "workspaceMerge": {
+          "blob": "6205265c51486bec1001706377311fb12ed15a69",
+          "sha256": "eebd075b301499f3a535483292375db156dd5a013aebe62ecebd4bcd6b87ee86"
+        }
+      },
+      "resultSha256": "eebd075b301499f3a535483292375db156dd5a013aebe62ecebd4bcd6b87ee86"
+    },
+    {
+      "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "687433a3b7cda10824e096848ff0042992dfc783",
+          "sha256": "1454563f9bb37ecc8b1753aa3864f35b6fd180cebd7ff66426f75fdb3d553aeb"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "687433a3b7cda10824e096848ff0042992dfc783",
+          "sha256": "1454563f9bb37ecc8b1753aa3864f35b6fd180cebd7ff66426f75fdb3d553aeb"
+        },
+        "mainlineBase": {
+          "blob": "687433a3b7cda10824e096848ff0042992dfc783",
+          "sha256": "1454563f9bb37ecc8b1753aa3864f35b6fd180cebd7ff66426f75fdb3d553aeb"
+        },
+        "fetchedMainline": {
+          "blob": "5c243c136b0b58d8d5a8371945922491d21caf8a",
+          "sha256": "8534ada4f29b53614363299e3a4e2a4fde0bbdb01c7b69c78882d84ea8f0764c"
+        },
+        "acceptedWorkspace": {
+          "blob": "687433a3b7cda10824e096848ff0042992dfc783",
+          "sha256": "1454563f9bb37ecc8b1753aa3864f35b6fd180cebd7ff66426f75fdb3d553aeb"
+        },
+        "mainlineMerge": {
+          "blob": "5c243c136b0b58d8d5a8371945922491d21caf8a",
+          "sha256": "8534ada4f29b53614363299e3a4e2a4fde0bbdb01c7b69c78882d84ea8f0764c"
+        },
+        "workspaceMerge": {
+          "blob": "5c243c136b0b58d8d5a8371945922491d21caf8a",
+          "sha256": "8534ada4f29b53614363299e3a4e2a4fde0bbdb01c7b69c78882d84ea8f0764c"
+        }
+      },
+      "resultSha256": "8534ada4f29b53614363299e3a4e2a4fde0bbdb01c7b69c78882d84ea8f0764c"
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "7b9ae8bc5e9cd11d64c9429a2da42fc7c3e2984e",
+          "sha256": "2cb767ce4db4e8b8574b3fa02854f8bdf3c28e5704926f12edada0c2fa7a89f6"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "7b9ae8bc5e9cd11d64c9429a2da42fc7c3e2984e",
+          "sha256": "2cb767ce4db4e8b8574b3fa02854f8bdf3c28e5704926f12edada0c2fa7a89f6"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "5d2169d4e3ef464ecd0f62a9f6688b2614e7fce3",
+          "sha256": "5353c9e6249e4b2ffd058138ea45678b3318ea57081631d24b688fa87c5ed340"
+        },
+        "mainlineMerge": {
+          "blob": "7b9ae8bc5e9cd11d64c9429a2da42fc7c3e2984e",
+          "sha256": "2cb767ce4db4e8b8574b3fa02854f8bdf3c28e5704926f12edada0c2fa7a89f6"
+        },
+        "workspaceMerge": {
+          "blob": "5d2169d4e3ef464ecd0f62a9f6688b2614e7fce3",
+          "sha256": "5353c9e6249e4b2ffd058138ea45678b3318ea57081631d24b688fa87c5ed340"
+        }
+      },
+      "resultSha256": "5353c9e6249e4b2ffd058138ea45678b3318ea57081631d24b688fa87c5ed340"
+    },
+    {
+      "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-16-bugfix-loop-plus-main-activity.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": {
+          "blob": "650c0350a1988f6ea8b2cc34cea119c840a54ed8",
+          "sha256": "a24158bee3f20f579ee89263557f0801f3892645f20b5cbe68d88e332f08b4b2"
+        },
+        "acceptedWorkspace": null,
+        "mainlineMerge": {
+          "blob": "650c0350a1988f6ea8b2cc34cea119c840a54ed8",
+          "sha256": "a24158bee3f20f579ee89263557f0801f3892645f20b5cbe68d88e332f08b4b2"
+        },
+        "workspaceMerge": {
+          "blob": "650c0350a1988f6ea8b2cc34cea119c840a54ed8",
+          "sha256": "a24158bee3f20f579ee89263557f0801f3892645f20b5cbe68d88e332f08b4b2"
+        }
+      },
+      "resultSha256": "a24158bee3f20f579ee89263557f0801f3892645f20b5cbe68d88e332f08b4b2"
+    },
+    {
+      "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-16-bugfix-pause-before-send.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": {
+          "blob": "92ea3facdde2dd90c0aeeeee6532d5f931017739",
+          "sha256": "db9ef30cf5fdb38e169eed5b00cff0ce998e76261d4abe220e390a3780595aa5"
+        },
+        "acceptedWorkspace": null,
+        "mainlineMerge": {
+          "blob": "92ea3facdde2dd90c0aeeeee6532d5f931017739",
+          "sha256": "db9ef30cf5fdb38e169eed5b00cff0ce998e76261d4abe220e390a3780595aa5"
+        },
+        "workspaceMerge": {
+          "blob": "92ea3facdde2dd90c0aeeeee6532d5f931017739",
+          "sha256": "db9ef30cf5fdb38e169eed5b00cff0ce998e76261d4abe220e390a3780595aa5"
+        }
+      },
+      "resultSha256": "db9ef30cf5fdb38e169eed5b00cff0ce998e76261d4abe220e390a3780595aa5"
+    },
+    {
+      "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-16-feature-loop-plus-optional-acceptance.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": {
+          "blob": "039958c6bde33ccb1c2bb47a61df805bf7b828d9",
+          "sha256": "a51e5d9efdfe31e5f06808039362c9759b9a84665d845378f1891533e1ac29a8"
+        },
+        "acceptedWorkspace": null,
+        "mainlineMerge": {
+          "blob": "039958c6bde33ccb1c2bb47a61df805bf7b828d9",
+          "sha256": "a51e5d9efdfe31e5f06808039362c9759b9a84665d845378f1891533e1ac29a8"
+        },
+        "workspaceMerge": {
+          "blob": "039958c6bde33ccb1c2bb47a61df805bf7b828d9",
+          "sha256": "a51e5d9efdfe31e5f06808039362c9759b9a84665d845378f1891533e1ac29a8"
+        }
+      },
+      "resultSha256": "a51e5d9efdfe31e5f06808039362c9759b9a84665d845378f1891533e1ac29a8"
+    },
+    {
+      "path": ".ch/docs/integration/department-mainline-integration/README.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "2a5e786f65c9ec8b80e224dea508e34d369445bc",
+          "sha256": "1e3f5bc0ae1c324ee45b7d12c89f40b26e6a42db2b676e4e3ddc693c7eaba6f4"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "937b88c25db28e007093aef9a3795caa7f780c56",
+          "sha256": "f15ec66170be39cae1a02fe4e8bd6c5c5a6a50d73f503778bc6508a06b940089"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "2a5e786f65c9ec8b80e224dea508e34d369445bc",
+          "sha256": "1e3f5bc0ae1c324ee45b7d12c89f40b26e6a42db2b676e4e3ddc693c7eaba6f4"
+        },
+        "mainlineMerge": {
+          "blob": "937b88c25db28e007093aef9a3795caa7f780c56",
+          "sha256": "f15ec66170be39cae1a02fe4e8bd6c5c5a6a50d73f503778bc6508a06b940089"
+        },
+        "workspaceMerge": {
+          "blob": "937b88c25db28e007093aef9a3795caa7f780c56",
+          "sha256": "f15ec66170be39cae1a02fe4e8bd6c5c5a6a50d73f503778bc6508a06b940089"
+        }
+      },
+      "resultSha256": "a319e4847992fbef40aebd223113b0ed15ae81e19fffe06aa01dd446427df1b8"
+    },
+    {
+      "path": ".ch/docs/integration/department-mainline-integration/semantic-review.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "84bdfcaf347f932dc47182da78eb5638c2d68e8e",
+          "sha256": "d70d675b4ee699377d71ad409a6e53e1fb2e559363f1d5fc2f5d1a434cf515ac"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "8724f0d5d7d1e818709c826c50fdc04db21bead5",
+          "sha256": "dfd4fee7360ae2b14e02bf3597bf567a3254e80a1ecaa7a27db9e15a95c8b805"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "84bdfcaf347f932dc47182da78eb5638c2d68e8e",
+          "sha256": "d70d675b4ee699377d71ad409a6e53e1fb2e559363f1d5fc2f5d1a434cf515ac"
+        },
+        "mainlineMerge": {
+          "blob": "8724f0d5d7d1e818709c826c50fdc04db21bead5",
+          "sha256": "dfd4fee7360ae2b14e02bf3597bf567a3254e80a1ecaa7a27db9e15a95c8b805"
+        },
+        "workspaceMerge": {
+          "blob": "8724f0d5d7d1e818709c826c50fdc04db21bead5",
+          "sha256": "dfd4fee7360ae2b14e02bf3597bf567a3254e80a1ecaa7a27db9e15a95c8b805"
+        }
+      },
+      "resultSha256": "57726b6bb1154175cf4af20662ed55d4c7d5f6087909a1ef2f8419a37c4ffe54"
+    },
+    {
+      "path": ".ch/docs/integration/department-mainline-integration/sources.json",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "c626930f7892fc678263aba5caf80be3a31c6c91",
+          "sha256": "f5dc485123aaf6e3e8bc67a2381ce44188321caee60077253595aa8d7c6433f1"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "49aead1253315c82c876019fa915b46c491abdb7",
+          "sha256": "78230cc32b006f7484d41fe7a1b3d90252a31672eec24daa90ff46f4a63b380f"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "c626930f7892fc678263aba5caf80be3a31c6c91",
+          "sha256": "f5dc485123aaf6e3e8bc67a2381ce44188321caee60077253595aa8d7c6433f1"
+        },
+        "mainlineMerge": {
+          "blob": "49aead1253315c82c876019fa915b46c491abdb7",
+          "sha256": "78230cc32b006f7484d41fe7a1b3d90252a31672eec24daa90ff46f4a63b380f"
+        },
+        "workspaceMerge": {
+          "blob": "49aead1253315c82c876019fa915b46c491abdb7",
+          "sha256": "78230cc32b006f7484d41fe7a1b3d90252a31672eec24daa90ff46f4a63b380f"
+        }
+      },
+      "resultSha256": "1e9a465b721f18dab8fc05f2dd05cbe86e10524f370e6195ac4edbc98cf7d90b"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "9cfba1855c676a2a8686af2417999e8c77f84438",
+          "sha256": "95a0cd03fd69f451d5c1ddba2f8ed2a07f3b7096294a21c5e110f5ffc9f9e3bf"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "9cfba1855c676a2a8686af2417999e8c77f84438",
+          "sha256": "95a0cd03fd69f451d5c1ddba2f8ed2a07f3b7096294a21c5e110f5ffc9f9e3bf"
+        },
+        "mainlineBase": {
+          "blob": "9e59c2cc638c9e9966a786402c50ba78e0f887ad",
+          "sha256": "9f7be6e8bb0979b082b39b52f9bcb91032be1eff65ec315c5f81e5200845781d"
+        },
+        "fetchedMainline": {
+          "blob": "d749ff343ee7c847989e9c63bbd25296d638487a",
+          "sha256": "56a3a4ef3642dd8fccc53a332eec802cbb2c39443b4dd4128b42ac5d1f77c49a"
+        },
+        "acceptedWorkspace": {
+          "blob": "eee75b7941672801c0881dde2b3850efeee1f9db",
+          "sha256": "d8a69c056beb87fb81e8f8a4c5902e1d0be7575b91890b55f61b2bd0510c7d0f"
+        },
+        "mainlineMerge": {
+          "blob": "5f7aa1a1f7ffabd92f46539e8816e63dac0557a0",
+          "sha256": "dba2fa01ce8592adcb3c3c7541f71dddfdc7635154739ca6de1f0f463818437c"
+        },
+        "workspaceMerge": {
+          "blob": "976094a635be4ffff97f9d9c18389338f68856bc",
+          "sha256": "984941ca43b9308112c7f694aa1740f37765ff5b8c6c5a1a469ede4e9cffc391"
+        }
+      },
+      "resultSha256": "984941ca43b9308112c7f694aa1740f37765ff5b8c6c5a1a469ede4e9cffc391",
+      "overlapResolution": "Union mainline pause/optional acceptance/activity facts with department workspace-capacity rules; merged structure validated."
+    },
+    {
+      "path": ".ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "8f63d720ec1b37cca7d94113c04f2e1f44ab6a13",
+          "sha256": "04ee2c429b9d3466658e833a0801ccad2a9ab2b6785271c56da176afb620d58d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "8f63d720ec1b37cca7d94113c04f2e1f44ab6a13",
+          "sha256": "04ee2c429b9d3466658e833a0801ccad2a9ab2b6785271c56da176afb620d58d"
+        },
+        "mainlineBase": {
+          "blob": "18b7255926a18325a93e4e4676cd7be0887664d0",
+          "sha256": "7e45f13d615268fe1cb33ae55695c693c1b6d5173b5634fbc4a6926919c72fc1"
+        },
+        "fetchedMainline": {
+          "blob": "18b7255926a18325a93e4e4676cd7be0887664d0",
+          "sha256": "7e45f13d615268fe1cb33ae55695c693c1b6d5173b5634fbc4a6926919c72fc1"
+        },
+        "acceptedWorkspace": {
+          "blob": "67d2e4deb2ce0af99111a9d8204e362ca503de21",
+          "sha256": "3ec178366ec3a5e5806d6b073b677bf23a9cf86445de7bbe94ae1969bacf5dff"
+        },
+        "mainlineMerge": {
+          "blob": "8f63d720ec1b37cca7d94113c04f2e1f44ab6a13",
+          "sha256": "04ee2c429b9d3466658e833a0801ccad2a9ab2b6785271c56da176afb620d58d"
+        },
+        "workspaceMerge": {
+          "blob": "67d2e4deb2ce0af99111a9d8204e362ca503de21",
+          "sha256": "3ec178366ec3a5e5806d6b073b677bf23a9cf86445de7bbe94ae1969bacf5dff"
+        }
+      },
+      "resultSha256": "3ec178366ec3a5e5806d6b073b677bf23a9cf86445de7bbe94ae1969bacf5dff"
+    },
+    {
+      "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "d55eae40ee4df24a1b7a5704770647693bee6a4b",
+          "sha256": "6f83c08a1a9a40166e6ddc87a85ec401435f2e5f6eba03b9ddcd08bf3e138647"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "d55eae40ee4df24a1b7a5704770647693bee6a4b",
+          "sha256": "6f83c08a1a9a40166e6ddc87a85ec401435f2e5f6eba03b9ddcd08bf3e138647"
+        },
+        "mainlineBase": {
+          "blob": "5e038101018502e9ff7e7857b4742d7a13f6261d",
+          "sha256": "efc48a2bbdc7955d08fe6768f9e2981ef13dac351ef0bd6eeb33089366f20042"
+        },
+        "fetchedMainline": {
+          "blob": "4dc552d0320439885afad8f6e45b9e7f7e32fb01",
+          "sha256": "602d52197a6f16f6c5bd464e508321e8966ef0e3dfb10578282fcc8d80ad3be8"
+        },
+        "acceptedWorkspace": {
+          "blob": "c07e8c141f34d49457ddea58f7e9120331f4cdd4",
+          "sha256": "114f9ceb6daaf1dc0c00e4766a407a955853b1601dc469f77896d2a5ed7f44b6"
+        },
+        "mainlineMerge": {
+          "blob": "033d873c9463b8f7d527e4a6954f8437a357ec03",
+          "sha256": "2d12cb04e8b135a1625c5b054b4613195b077764b0906b14306d8e56fe6b29b0"
+        },
+        "workspaceMerge": {
+          "blob": "ee7cdfe4f8f31a95b8d204972ce89204864defa7",
+          "sha256": "8e20fe9df26fd22d3661ac4f7e53016939da392f1a470ccfaf08ddc04dcae52b"
+        }
+      },
+      "resultSha256": "8e20fe9df26fd22d3661ac4f7e53016939da392f1a470ccfaf08ddc04dcae52b",
+      "overlapResolution": "Union newer mainline contracts and implemented workspace overrides; preserve historical gates and root in-progress status."
+    },
+    {
+      "path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "65e6cddc3d65fa009f356d25df31668e5586b043",
+          "sha256": "cd78d3940b5012116b7910dd8eb2558028ac7f331c6980605089f544c21f8589"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "65e6cddc3d65fa009f356d25df31668e5586b043",
+          "sha256": "cd78d3940b5012116b7910dd8eb2558028ac7f331c6980605089f544c21f8589"
+        },
+        "mainlineBase": {
+          "blob": "65e6cddc3d65fa009f356d25df31668e5586b043",
+          "sha256": "cd78d3940b5012116b7910dd8eb2558028ac7f331c6980605089f544c21f8589"
+        },
+        "fetchedMainline": {
+          "blob": "d35fb1a93a3a375733c5ba31961923c6869d84f4",
+          "sha256": "3b0002ce7c51e3466acbfbf22c300120ea59b1ce00401ba91dd1f164fc0cca40"
+        },
+        "acceptedWorkspace": {
+          "blob": "65e6cddc3d65fa009f356d25df31668e5586b043",
+          "sha256": "cd78d3940b5012116b7910dd8eb2558028ac7f331c6980605089f544c21f8589"
+        },
+        "mainlineMerge": {
+          "blob": "d35fb1a93a3a375733c5ba31961923c6869d84f4",
+          "sha256": "3b0002ce7c51e3466acbfbf22c300120ea59b1ce00401ba91dd1f164fc0cca40"
+        },
+        "workspaceMerge": {
+          "blob": "d35fb1a93a3a375733c5ba31961923c6869d84f4",
+          "sha256": "3b0002ce7c51e3466acbfbf22c300120ea59b1ce00401ba91dd1f164fc0cca40"
+        }
+      },
+      "resultSha256": "3b0002ce7c51e3466acbfbf22c300120ea59b1ce00401ba91dd1f164fc0cca40"
+    },
+    {
+      "path": ".ch/docs/runbooks/PITFALLS.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "31475bb773a01da20ae8170e9e75aa792faa65fa",
+          "sha256": "af921c98b4bc081e54f73d81115202c45df58541474d3bb11b3d6d28c3aae999"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "31475bb773a01da20ae8170e9e75aa792faa65fa",
+          "sha256": "af921c98b4bc081e54f73d81115202c45df58541474d3bb11b3d6d28c3aae999"
+        },
+        "mainlineBase": {
+          "blob": "31475bb773a01da20ae8170e9e75aa792faa65fa",
+          "sha256": "af921c98b4bc081e54f73d81115202c45df58541474d3bb11b3d6d28c3aae999"
+        },
+        "fetchedMainline": {
+          "blob": "7b669432b498dbb169350d221d5acb9a26a3afde",
+          "sha256": "eded06a64dbb17dbfc73f252f4f836d7d5ae6976b93b8a8e913f9923b196e485"
+        },
+        "acceptedWorkspace": {
+          "blob": "31475bb773a01da20ae8170e9e75aa792faa65fa",
+          "sha256": "af921c98b4bc081e54f73d81115202c45df58541474d3bb11b3d6d28c3aae999"
+        },
+        "mainlineMerge": {
+          "blob": "7b669432b498dbb169350d221d5acb9a26a3afde",
+          "sha256": "eded06a64dbb17dbfc73f252f4f836d7d5ae6976b93b8a8e913f9923b196e485"
+        },
+        "workspaceMerge": {
+          "blob": "7b669432b498dbb169350d221d5acb9a26a3afde",
+          "sha256": "eded06a64dbb17dbfc73f252f4f836d7d5ae6976b93b8a8e913f9923b196e485"
+        }
+      },
+      "resultSha256": "eded06a64dbb17dbfc73f252f4f836d7d5ae6976b93b8a8e913f9923b196e485"
+    },
+    {
+      "path": ".ch/docs/runbooks/department-git-integration.md",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "675f0f5b5ec369496f8ff0a6bc7c45155e48d53b",
+          "sha256": "20b46a1bbe359de249646f38be2b2f143d72d12a92a1d93bd22dd04872215416"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "1abef5524aa5ddd847875f12ec58bf0703210ee4",
+          "sha256": "5db60f6a0781e7c0badea8c435fd2dea11c2687f518ad1128249faba82d2c8fd"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "675f0f5b5ec369496f8ff0a6bc7c45155e48d53b",
+          "sha256": "20b46a1bbe359de249646f38be2b2f143d72d12a92a1d93bd22dd04872215416"
+        },
+        "mainlineMerge": {
+          "blob": "1abef5524aa5ddd847875f12ec58bf0703210ee4",
+          "sha256": "5db60f6a0781e7c0badea8c435fd2dea11c2687f518ad1128249faba82d2c8fd"
+        },
+        "workspaceMerge": {
+          "blob": "1abef5524aa5ddd847875f12ec58bf0703210ee4",
+          "sha256": "5db60f6a0781e7c0badea8c435fd2dea11c2687f518ad1128249faba82d2c8fd"
+        }
+      },
+      "resultSha256": "b64ccac7bb5119f6c365762adbcfe86faa9f868de37e2dc46c9043e1de337c36"
+    },
+    {
+      "path": "scripts/department_workspace_capacity_settings_smoke.cjs",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "33f1dd728b312600d440f613f71b5ea079db290d",
+          "sha256": "b53f6625fc4fb3b49ab3a7cadeebfc3c2f2150d9e25be4f0d60504586173c269"
+        },
+        "mainlineMerge": null,
+        "workspaceMerge": {
+          "blob": "33f1dd728b312600d440f613f71b5ea079db290d",
+          "sha256": "b53f6625fc4fb3b49ab3a7cadeebfc3c2f2150d9e25be4f0d60504586173c269"
+        }
+      },
+      "resultSha256": "b53f6625fc4fb3b49ab3a7cadeebfc3c2f2150d9e25be4f0d60504586173c269"
+    },
+    {
+      "path": "src/departmentSettings.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "9818c7372f3f32a27b426ea2fe41b025cc933b25",
+          "sha256": "26f87e6bf172cca05aef10b639d8801cd8793dc1e671e4b45023a01c65081949"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "9818c7372f3f32a27b426ea2fe41b025cc933b25",
+          "sha256": "26f87e6bf172cca05aef10b639d8801cd8793dc1e671e4b45023a01c65081949"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "9978ea08a56e4e238dc131ae8b1211aeb29ce97d",
+          "sha256": "a4efb2161452552ab7b2b2d75335204dc8cd3831107475aff68686e7f52e316f"
+        },
+        "mainlineMerge": {
+          "blob": "9818c7372f3f32a27b426ea2fe41b025cc933b25",
+          "sha256": "26f87e6bf172cca05aef10b639d8801cd8793dc1e671e4b45023a01c65081949"
+        },
+        "workspaceMerge": {
+          "blob": "9978ea08a56e4e238dc131ae8b1211aeb29ce97d",
+          "sha256": "a4efb2161452552ab7b2b2d75335204dc8cd3831107475aff68686e7f52e316f"
+        }
+      },
+      "resultSha256": "a4efb2161452552ab7b2b2d75335204dc8cd3831107475aff68686e7f52e316f"
+    },
+    {
+      "path": "src/extension.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "12e7b8454d6dc9a711350c8b80e3ba33d90d8e48",
+          "sha256": "2aa3e9049271ad790125d4545865986bbd0dc2253c90fd49a701a58b420dbce9"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "12e7b8454d6dc9a711350c8b80e3ba33d90d8e48",
+          "sha256": "2aa3e9049271ad790125d4545865986bbd0dc2253c90fd49a701a58b420dbce9"
+        },
+        "mainlineBase": {
+          "blob": "5e0d849fd496927eaaf11d1dfc76cb528d2e178d",
+          "sha256": "d1310356b8c089119e221b06b776d64c0e51afb5cc27f902b99c21d686a22d24"
+        },
+        "fetchedMainline": {
+          "blob": "f2668209b78cc76c6017f1e4d4df8f092f0f4d67",
+          "sha256": "79a2177d40c1f0985b0614739dd671b529245044592582c23f0f7decba84854d"
+        },
+        "acceptedWorkspace": {
+          "blob": "12e7b8454d6dc9a711350c8b80e3ba33d90d8e48",
+          "sha256": "2aa3e9049271ad790125d4545865986bbd0dc2253c90fd49a701a58b420dbce9"
+        },
+        "mainlineMerge": {
+          "blob": "15bd3b92dfe7bce6d0317b025b4807874d879cf3",
+          "sha256": "68570f87825bcc5914e477238a266939082e103d0634823bff6b42cebe91ff09"
+        },
+        "workspaceMerge": {
+          "blob": "15bd3b92dfe7bce6d0317b025b4807874d879cf3",
+          "sha256": "68570f87825bcc5914e477238a266939082e103d0634823bff6b42cebe91ff09"
+        }
+      },
+      "resultSha256": "68570f87825bcc5914e477238a266939082e103d0634823bff6b42cebe91ff09",
+      "overlapResolution": "Combined department preparation/admission and rejectUnstarted finally with per-tab/main prompt handoff and configuration lease tracking."
+    },
+    {
+      "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "8b824b9d3ffe98988bab8861fd63688114bd6cae",
+          "sha256": "209d0a23f95a271421cc54007a9ae96310ab4b450d319e147908697201923a17"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "70fceee1a5108c720a7870982b4915207c585963",
+          "sha256": "3df006203d60806552a4cde1667a4a6321a1d3626c97079d52b115537520fc2e"
+        },
+        "mainlineBase": {
+          "blob": "45b574401fa58a9c4fec5d2cb24e6296369663cb",
+          "sha256": "dc356a6829d00a0ffd847e312b556f00ce1094f1e7a9246cc60c6d0441cb356b"
+        },
+        "fetchedMainline": {
+          "blob": "77ee2a902909f1a15566bee71fee251acd643a04",
+          "sha256": "98bcbaa6c205e898bb9d969a4931b967f685befcda74dd614b044a07304a8198"
+        },
+        "acceptedWorkspace": {
+          "blob": "8b824b9d3ffe98988bab8861fd63688114bd6cae",
+          "sha256": "209d0a23f95a271421cc54007a9ae96310ab4b450d319e147908697201923a17"
+        },
+        "mainlineMerge": {
+          "blob": "7400db101e3c8e8bf831bcd158f0f72a50d17f96",
+          "sha256": "044642317def791c08dab1b7e6aeab82907f4ef679814c56f6c657d3abb63240"
+        },
+        "workspaceMerge": {
+          "blob": "7400db101e3c8e8bf831bcd158f0f72a50d17f96",
+          "sha256": "044642317def791c08dab1b7e6aeab82907f4ef679814c56f6c657d3abb63240"
+        }
+      },
+      "resultSha256": "044642317def791c08dab1b7e6aeab82907f4ef679814c56f6c657d3abb63240",
+      "overlapResolution": "Use a single busy/target snapshot for main activity; retain department projection and c40 modal-only subscriber/auth/opening guard."
+    },
+    {
+      "path": "src/extensionHost/loopPlusDecisionStrategies.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "54e7b17d42093e9d6139469665de2bc7133e4d9a",
+          "sha256": "58f94070a2a84af8d35a1a22a3ac3bc93dce3a8660afe95f3e49fe62f06fda52"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "54e7b17d42093e9d6139469665de2bc7133e4d9a",
+          "sha256": "58f94070a2a84af8d35a1a22a3ac3bc93dce3a8660afe95f3e49fe62f06fda52"
+        },
+        "mainlineBase": {
+          "blob": "4b8157bcafed0a698eb66544b7ae453fe2be45ec",
+          "sha256": "226e7216a7d46a18ca3ac4bb365629d605a9410524b8704a9622c9686d8ef2f1"
+        },
+        "fetchedMainline": {
+          "blob": "f2cb30f96d5b0a1cdeff2a3aa825fdeb4e5f4c07",
+          "sha256": "fa32dc8cf47b795359e1f313a70cc24b5c303490441457df2358945fa0e0083b"
+        },
+        "acceptedWorkspace": {
+          "blob": "54e7b17d42093e9d6139469665de2bc7133e4d9a",
+          "sha256": "58f94070a2a84af8d35a1a22a3ac3bc93dce3a8660afe95f3e49fe62f06fda52"
+        },
+        "mainlineMerge": {
+          "blob": "5ce9456afc99f991d7d99f5c6610c06caaa78bf0",
+          "sha256": "b6f4b54547f05be3594544a3907c581d2063486691cd2ee00dcd510413eb2b1d"
+        },
+        "workspaceMerge": {
+          "blob": "5ce9456afc99f991d7d99f5c6610c06caaa78bf0",
+          "sha256": "b6f4b54547f05be3594544a3907c581d2063486691cd2ee00dcd510413eb2b1d"
+        }
+      },
+      "resultSha256": "b6f4b54547f05be3594544a3907c581d2063486691cd2ee00dcd510413eb2b1d",
+      "overlapResolution": "Add report FIFO acknowledgement and completion blockers alongside existing department callbacks and exact review handling."
+    },
+    {
+      "path": "src/extensionHost/loopPlusOrchestration.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "a957851081b8cc8a213c8d7bfa97810144a407bd",
+          "sha256": "cb3587a1d0b66e9dfcc45f8e154f7563abb1118d9ecb5ee4007a054c3314e4fb"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "a957851081b8cc8a213c8d7bfa97810144a407bd",
+          "sha256": "cb3587a1d0b66e9dfcc45f8e154f7563abb1118d9ecb5ee4007a054c3314e4fb"
+        },
+        "mainlineBase": {
+          "blob": "918f73c582436ad1f5ca343dcafcceef52dd8c03",
+          "sha256": "5757f2eba80b10b1bbb3fe82c660794b4325428892b476a83b14aafc38e3e005"
+        },
+        "fetchedMainline": {
+          "blob": "250fa499545425d28bee4bfdf9c470eb05bae409",
+          "sha256": "5d544610a3037d618fa9e1bd1e421176c9e06055bdf2c124e31de65f199644e1"
+        },
+        "acceptedWorkspace": {
+          "blob": "a957851081b8cc8a213c8d7bfa97810144a407bd",
+          "sha256": "cb3587a1d0b66e9dfcc45f8e154f7563abb1118d9ecb5ee4007a054c3314e4fb"
+        },
+        "mainlineMerge": {
+          "blob": "4be66b463bbe9e6e357ed9dad8c7596037ec2112",
+          "sha256": "fbb79ef093b9d1721eb98e1bec220a72b3a4042d4de6c2a2d745aeb8b77da976"
+        },
+        "workspaceMerge": {
+          "blob": "4be66b463bbe9e6e357ed9dad8c7596037ec2112",
+          "sha256": "fbb79ef093b9d1721eb98e1bec220a72b3a4042d4de6c2a2d745aeb8b77da976"
+        }
+      },
+      "resultSha256": "fbb79ef093b9d1721eb98e1bec220a72b3a4042d4de6c2a2d745aeb8b77da976",
+      "overlapResolution": "Validate frozen report IDs before collaboration; retain wait-only collaboration/Ledger routing, include reportQueue in pending work and keep capacity prompt."
+    },
+    {
+      "path": "src/extensionHost/loopPlusPromptBuilders.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "ba4ddbec220c517ccf5caa34bfe36611fcd97145",
+          "sha256": "8c63b8cdf5f55353f468e18637edde9e67da75db9e7f61b14a61d0bb33a8db24"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "ba4ddbec220c517ccf5caa34bfe36611fcd97145",
+          "sha256": "8c63b8cdf5f55353f468e18637edde9e67da75db9e7f61b14a61d0bb33a8db24"
+        },
+        "mainlineBase": {
+          "blob": "5def304e2fc63ecb5391e9f37195e119e46b42f5",
+          "sha256": "a58990b37f082430317b44ab1c0b678777570010d2864615cbe580908cf67e28"
+        },
+        "fetchedMainline": {
+          "blob": "d4016604a6efb43e369fa3193022dbfcc4e40d23",
+          "sha256": "b98b3a2045fb19c3c858ab5ba39dc967c8f391fcfb69f124b989e34e84392413"
+        },
+        "acceptedWorkspace": {
+          "blob": "ba4ddbec220c517ccf5caa34bfe36611fcd97145",
+          "sha256": "8c63b8cdf5f55353f468e18637edde9e67da75db9e7f61b14a61d0bb33a8db24"
+        },
+        "mainlineMerge": {
+          "blob": "694dbfb0b0849ae3f5c8bd176182230024cba666",
+          "sha256": "6c3dc6728948f8f27e9172205809908fa527ded62ba5a9b6bcdc1610c4ed1a1c"
+        },
+        "workspaceMerge": {
+          "blob": "694dbfb0b0849ae3f5c8bd176182230024cba666",
+          "sha256": "6c3dc6728948f8f27e9172205809908fa527ded62ba5a9b6bcdc1610c4ed1a1c"
+        }
+      },
+      "resultSha256": "6c3dc6728948f8f27e9172205809908fa527ded62ba5a9b6bcdc1610c4ed1a1c",
+      "overlapResolution": "Add frozen report prompt/acceptance-per-attempt instructions while retaining department capacity/allocation/collaboration context."
+    },
+    {
+      "path": "src/extensionHost/loopPlusRuntimeAdapter.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "6af41a381f8b94b7a177fc293310b35916b34ae8",
+          "sha256": "dbe6a7c39a4e861a9ac21e7a3e2084ad9d5343df45a99898684d364effbc4dc3"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "6af41a381f8b94b7a177fc293310b35916b34ae8",
+          "sha256": "dbe6a7c39a4e861a9ac21e7a3e2084ad9d5343df45a99898684d364effbc4dc3"
+        },
+        "mainlineBase": {
+          "blob": "6811dd96adeefb71c56673f66caa55be9af4c229",
+          "sha256": "8945e77a3568c03b101a56f8774fc6e8cc24690d5eafcdb4411e0647f6f103af"
+        },
+        "fetchedMainline": {
+          "blob": "e03874f3c7573e13f81693c3ab5788a8487d137e",
+          "sha256": "ed2d795d3caef2f15dca7c06dd29718073971dd0100b4d9171f489ffaa6214d2"
+        },
+        "acceptedWorkspace": {
+          "blob": "6af41a381f8b94b7a177fc293310b35916b34ae8",
+          "sha256": "dbe6a7c39a4e861a9ac21e7a3e2084ad9d5343df45a99898684d364effbc4dc3"
+        },
+        "mainlineMerge": {
+          "blob": "89afd42836cf1c3f27a4826a0062f5fd62b2748c",
+          "sha256": "06dafc136a1ff6547ad8d61325f39d12d83c5c71c21530113373aba9680e144b"
+        },
+        "workspaceMerge": {
+          "blob": "89afd42836cf1c3f27a4826a0062f5fd62b2748c",
+          "sha256": "06dafc136a1ff6547ad8d61325f39d12d83c5c71c21530113373aba9680e144b"
+        }
+      },
+      "resultSha256": "06dafc136a1ff6547ad8d61325f39d12d83c5c71c21530113373aba9680e144b",
+      "overlapResolution": "Combine department abort signal with mainActivity callback; no bypass of owned execution cancellation."
+    },
+    {
+      "path": "src/extensionHost/modelSettings.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "455d0aae1829a09fef27481fbf5a6a275cd594c2",
+          "sha256": "fd7643121e958fb1c2ff7a322bfb4dbd84ed0b5542ce5cf8a75c4b5ee604fa49"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "455d0aae1829a09fef27481fbf5a6a275cd594c2",
+          "sha256": "fd7643121e958fb1c2ff7a322bfb4dbd84ed0b5542ce5cf8a75c4b5ee604fa49"
+        },
+        "mainlineBase": {
+          "blob": "32f5ad8c0b5cb9122321e0bfae75c327e962dbe1",
+          "sha256": "d2a45d486afad72b52b8683432ba85e606b169482f262a62204101c77b1f1aae"
+        },
+        "fetchedMainline": {
+          "blob": "32f5ad8c0b5cb9122321e0bfae75c327e962dbe1",
+          "sha256": "d2a45d486afad72b52b8683432ba85e606b169482f262a62204101c77b1f1aae"
+        },
+        "acceptedWorkspace": {
+          "blob": "83c6a5cad93c7bc4e4f31ccd57fca308e8524f3f",
+          "sha256": "21d344b5fe01f6fb2f71191f3cb9b328cb366c1f1b4128249c332449454ad1e4"
+        },
+        "mainlineMerge": {
+          "blob": "455d0aae1829a09fef27481fbf5a6a275cd594c2",
+          "sha256": "fd7643121e958fb1c2ff7a322bfb4dbd84ed0b5542ce5cf8a75c4b5ee604fa49"
+        },
+        "workspaceMerge": {
+          "blob": "83c6a5cad93c7bc4e4f31ccd57fca308e8524f3f",
+          "sha256": "21d344b5fe01f6fb2f71191f3cb9b328cb366c1f1b4128249c332449454ad1e4"
+        }
+      },
+      "resultSha256": "21d344b5fe01f6fb2f71191f3cb9b328cb366c1f1b4128249c332449454ad1e4"
+    },
+    {
+      "path": "src/extensionHost/promptRunHandoff.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": {
+          "blob": "02bd709fcf0a2c4f9e06379f42395c413e7c1d0d",
+          "sha256": "59c33fc2342fd34abbd779fae1883574ec81e0ed5c3a22a8d981c42e38c57675"
+        },
+        "acceptedWorkspace": null,
+        "mainlineMerge": {
+          "blob": "02bd709fcf0a2c4f9e06379f42395c413e7c1d0d",
+          "sha256": "59c33fc2342fd34abbd779fae1883574ec81e0ed5c3a22a8d981c42e38c57675"
+        },
+        "workspaceMerge": {
+          "blob": "02bd709fcf0a2c4f9e06379f42395c413e7c1d0d",
+          "sha256": "59c33fc2342fd34abbd779fae1883574ec81e0ed5c3a22a8d981c42e38c57675"
+        }
+      },
+      "resultSha256": "59c33fc2342fd34abbd779fae1883574ec81e0ed5c3a22a8d981c42e38c57675"
+    },
+    {
+      "path": "src/interactive/codexAppServerPool.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "9b0a7dd6f3971f694373c3532635500b931b41f1",
+          "sha256": "aa0e2215ba3edd3ee7985c2d3899c5ed6a356f25f6dd9d82948ca972920531bb"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "9b0a7dd6f3971f694373c3532635500b931b41f1",
+          "sha256": "aa0e2215ba3edd3ee7985c2d3899c5ed6a356f25f6dd9d82948ca972920531bb"
+        },
+        "mainlineBase": {
+          "blob": "9582a1e30022ba8c50aabf6d543c5ac7a0f6b6fb",
+          "sha256": "c5272306635365f825a40ff093c51cb9a8740329eb2d33832e68b2e3f3988ff8"
+        },
+        "fetchedMainline": {
+          "blob": "035c272e3adac79737e471e3630b2c0220a9c0eb",
+          "sha256": "74152656e9cbdd84794f5cce19e3c96d5d6a5cd56db2841b342f9cd721b914c6"
+        },
+        "acceptedWorkspace": {
+          "blob": "9b0a7dd6f3971f694373c3532635500b931b41f1",
+          "sha256": "aa0e2215ba3edd3ee7985c2d3899c5ed6a356f25f6dd9d82948ca972920531bb"
+        },
+        "mainlineMerge": {
+          "blob": "e0eea9e1f4fd75092fdfe9fb275a35be442b0d74",
+          "sha256": "2f8a913107f87cb3b9f518e2647922d140de6e9a8c1da071b2c6c731d77de7c8"
+        },
+        "workspaceMerge": {
+          "blob": "e0eea9e1f4fd75092fdfe9fb275a35be442b0d74",
+          "sha256": "2f8a913107f87cb3b9f518e2647922d140de6e9a8c1da071b2c6c731d77de7c8"
+        }
+      },
+      "resultSha256": "2f8a913107f87cb3b9f518e2647922d140de6e9a8c1da071b2c6c731d77de7c8",
+      "overlapResolution": "Keep injected adapter to active core; move upstream releaseStoppedThread implementation to codexAppServerPoolCore instead of retaining monolithic duplicate."
+    },
+    {
+      "path": "src/interactive/codexAppServerPoolCore.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "b2730eebcb4b1210169f92ae96f4da37a25a3c96",
+          "sha256": "8c7dc8da244ce06c295a4d86f142160b955fae907e1df5e9744eb0023ebe94fa"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "77a651e08396d45e439a26b567720f6673d81813",
+          "sha256": "6925d176f39c91eb21cf2353188ea1f3c87b3b4ba6a038d4ee2518c6d7f86dd3"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "b2730eebcb4b1210169f92ae96f4da37a25a3c96",
+          "sha256": "8c7dc8da244ce06c295a4d86f142160b955fae907e1df5e9744eb0023ebe94fa"
+        },
+        "mainlineMerge": {
+          "blob": "973def0463555ddfaf27c986754a548e1090dcb1",
+          "sha256": "54e6811192afa4e5a72fecaef18238a3c799e15fa4cd5ce2fd781e2e1d2aac20"
+        },
+        "workspaceMerge": {
+          "blob": "973def0463555ddfaf27c986754a548e1090dcb1",
+          "sha256": "54e6811192afa4e5a72fecaef18238a3c799e15fa4cd5ce2fd781e2e1d2aac20"
+        }
+      },
+      "resultSha256": "54e6811192afa4e5a72fecaef18238a3c799e15fa4cd5ce2fd781e2e1d2aac20"
+    },
+    {
+      "path": "src/interactive/codexRunnerCore.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "8364d9be9061a2630b5783b72d0abc16c55f5b3a",
+          "sha256": "b9f82701d5fd8bd50dbcbc67801b1561a3f4654c9b935c525ed8b07275ab524c"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "8364d9be9061a2630b5783b72d0abc16c55f5b3a",
+          "sha256": "b9f82701d5fd8bd50dbcbc67801b1561a3f4654c9b935c525ed8b07275ab524c"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "8364d9be9061a2630b5783b72d0abc16c55f5b3a",
+          "sha256": "b9f82701d5fd8bd50dbcbc67801b1561a3f4654c9b935c525ed8b07275ab524c"
+        },
+        "mainlineMerge": {
+          "blob": "547dfaf21bd646c120228fc5ad1189b0bc9549f3",
+          "sha256": "7817046d84d2913d58b001bd086f69e8e6dd65195cdfe592c2908753aaa51d0d"
+        },
+        "workspaceMerge": {
+          "blob": "547dfaf21bd646c120228fc5ad1189b0bc9549f3",
+          "sha256": "7817046d84d2913d58b001bd086f69e8e6dd65195cdfe592c2908753aaa51d0d"
+        }
+      },
+      "resultSha256": "7817046d84d2913d58b001bd086f69e8e6dd65195cdfe592c2908753aaa51d0d"
+    },
+    {
+      "path": "src/interactive/manager.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "34311ed76ce88cc5e524f8564c0605159f30a463",
+          "sha256": "b44cebc1d879019699a5d1be81940bc8079e0e07d4ecee88b0018e1aad278007"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "34311ed76ce88cc5e524f8564c0605159f30a463",
+          "sha256": "b44cebc1d879019699a5d1be81940bc8079e0e07d4ecee88b0018e1aad278007"
+        },
+        "mainlineBase": {
+          "blob": "34311ed76ce88cc5e524f8564c0605159f30a463",
+          "sha256": "b44cebc1d879019699a5d1be81940bc8079e0e07d4ecee88b0018e1aad278007"
+        },
+        "fetchedMainline": {
+          "blob": "4dad5ca8487a6854bf3bd2b8ddba802be66200ef",
+          "sha256": "4e3be8be2f70518adff664dd2006d183ce247be264a3f369adfe6c0eb08d19ab"
+        },
+        "acceptedWorkspace": {
+          "blob": "34311ed76ce88cc5e524f8564c0605159f30a463",
+          "sha256": "b44cebc1d879019699a5d1be81940bc8079e0e07d4ecee88b0018e1aad278007"
+        },
+        "mainlineMerge": {
+          "blob": "4dad5ca8487a6854bf3bd2b8ddba802be66200ef",
+          "sha256": "4e3be8be2f70518adff664dd2006d183ce247be264a3f369adfe6c0eb08d19ab"
+        },
+        "workspaceMerge": {
+          "blob": "4dad5ca8487a6854bf3bd2b8ddba802be66200ef",
+          "sha256": "4e3be8be2f70518adff664dd2006d183ce247be264a3f369adfe6c0eb08d19ab"
+        }
+      },
+      "resultSha256": "4e3be8be2f70518adff664dd2006d183ce247be264a3f369adfe6c0eb08d19ab"
+    },
+    {
+      "path": "src/loopGroupChatPanelState.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "bbd4b2cd54067e0624e3dfc44a6a4081fa90e717",
+          "sha256": "cee1c7cd84b00d9b41726f03dc0fbfa0b5c2524ddd075df58da0b527fb55a598"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "bbd4b2cd54067e0624e3dfc44a6a4081fa90e717",
+          "sha256": "cee1c7cd84b00d9b41726f03dc0fbfa0b5c2524ddd075df58da0b527fb55a598"
+        },
+        "mainlineBase": {
+          "blob": "bbd4b2cd54067e0624e3dfc44a6a4081fa90e717",
+          "sha256": "cee1c7cd84b00d9b41726f03dc0fbfa0b5c2524ddd075df58da0b527fb55a598"
+        },
+        "fetchedMainline": {
+          "blob": "bf1d8267d206ce02e3301c52922daf523d65c465",
+          "sha256": "40007ddef88ab802658476017b5ff64d33a9502c342183308bd5f0f1ee7c514d"
+        },
+        "acceptedWorkspace": {
+          "blob": "bbd4b2cd54067e0624e3dfc44a6a4081fa90e717",
+          "sha256": "cee1c7cd84b00d9b41726f03dc0fbfa0b5c2524ddd075df58da0b527fb55a598"
+        },
+        "mainlineMerge": {
+          "blob": "bf1d8267d206ce02e3301c52922daf523d65c465",
+          "sha256": "40007ddef88ab802658476017b5ff64d33a9502c342183308bd5f0f1ee7c514d"
+        },
+        "workspaceMerge": {
+          "blob": "bf1d8267d206ce02e3301c52922daf523d65c465",
+          "sha256": "40007ddef88ab802658476017b5ff64d33a9502c342183308bd5f0f1ee7c514d"
+        }
+      },
+      "resultSha256": "40007ddef88ab802658476017b5ff64d33a9502c342183308bd5f0f1ee7c514d"
+    },
+    {
+      "path": "src/loopPlusDecision.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "a989bc56e72e99029ffcf98bca67c78388bff500",
+          "sha256": "3ec1873504b55ca57e0894a5c66dda3dd63dc925c7b1319d692e0c0d464bba28"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "a989bc56e72e99029ffcf98bca67c78388bff500",
+          "sha256": "3ec1873504b55ca57e0894a5c66dda3dd63dc925c7b1319d692e0c0d464bba28"
+        },
+        "mainlineBase": {
+          "blob": "a5c4970d2e4b1d0227c82be2327335d26d6ca7d1",
+          "sha256": "033061fef5f7f2415d14567609ea8f9be9694ce48b1bd5e2cd0ffc5ca55630ed"
+        },
+        "fetchedMainline": {
+          "blob": "230dc8487e2221fa653d81185f97acc14e1e0a61",
+          "sha256": "1d0f9da13e4360b756f7fd18a85a557d39dc33080b8c31fcca8a8df05793cc78"
+        },
+        "acceptedWorkspace": {
+          "blob": "a989bc56e72e99029ffcf98bca67c78388bff500",
+          "sha256": "3ec1873504b55ca57e0894a5c66dda3dd63dc925c7b1319d692e0c0d464bba28"
+        },
+        "mainlineMerge": {
+          "blob": "ff5d3c83d7fd4b96c426bcf02b0561dc0fe859c1",
+          "sha256": "e4bb86fd5b811decf5a55cd2aad2e4cad2ebd43d9c1503a4064072a646c11b5b"
+        },
+        "workspaceMerge": {
+          "blob": "ff5d3c83d7fd4b96c426bcf02b0561dc0fe859c1",
+          "sha256": "e4bb86fd5b811decf5a55cd2aad2e4cad2ebd43d9c1503a4064072a646c11b5b"
+        }
+      },
+      "resultSha256": "e4bb86fd5b811decf5a55cd2aad2e4cad2ebd43d9c1503a4064072a646c11b5b",
+      "overlapResolution": "Retain strict reportEventIds parsing and departmentCollaborations validation independently."
+    },
+    {
+      "path": "src/loopPlusPanelProjection.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "ce827b9ad907bc7c70573efe2217c78ae532180d",
+          "sha256": "268e4cfce149797e91961d614b592b44163a2545fe20adb3f9e84170d324e193"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "ce827b9ad907bc7c70573efe2217c78ae532180d",
+          "sha256": "268e4cfce149797e91961d614b592b44163a2545fe20adb3f9e84170d324e193"
+        },
+        "mainlineBase": {
+          "blob": "ce827b9ad907bc7c70573efe2217c78ae532180d",
+          "sha256": "268e4cfce149797e91961d614b592b44163a2545fe20adb3f9e84170d324e193"
+        },
+        "fetchedMainline": {
+          "blob": "e941f861fcbbd07f170723d47e53aa1fdb6a4e81",
+          "sha256": "e1c569e6467421a3d58a039112c36b01279d76d61e3d3dec93229444a082950d"
+        },
+        "acceptedWorkspace": {
+          "blob": "ce827b9ad907bc7c70573efe2217c78ae532180d",
+          "sha256": "268e4cfce149797e91961d614b592b44163a2545fe20adb3f9e84170d324e193"
+        },
+        "mainlineMerge": {
+          "blob": "e941f861fcbbd07f170723d47e53aa1fdb6a4e81",
+          "sha256": "e1c569e6467421a3d58a039112c36b01279d76d61e3d3dec93229444a082950d"
+        },
+        "workspaceMerge": {
+          "blob": "e941f861fcbbd07f170723d47e53aa1fdb6a4e81",
+          "sha256": "e1c569e6467421a3d58a039112c36b01279d76d61e3d3dec93229444a082950d"
+        }
+      },
+      "resultSha256": "e1c569e6467421a3d58a039112c36b01279d76d61e3d3dec93229444a082950d"
+    },
+    {
+      "path": "src/loopPlusScheduler.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "205a6779c622e197652b2eb3f59444a0bd9c192b",
+          "sha256": "482ce4fbbe2d05444dcd2eb8a28ff31367af3dac3e0eaa13adbc33cd18ec3b1e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "205a6779c622e197652b2eb3f59444a0bd9c192b",
+          "sha256": "482ce4fbbe2d05444dcd2eb8a28ff31367af3dac3e0eaa13adbc33cd18ec3b1e"
+        },
+        "mainlineBase": {
+          "blob": "205a6779c622e197652b2eb3f59444a0bd9c192b",
+          "sha256": "482ce4fbbe2d05444dcd2eb8a28ff31367af3dac3e0eaa13adbc33cd18ec3b1e"
+        },
+        "fetchedMainline": {
+          "blob": "1a179a10bd42a3c441b1a8e91d6adf275fe84ff4",
+          "sha256": "bc935104231b9480528b4a67fa5f89a9bb57dbaea424a0d049b9084bebe54073"
+        },
+        "acceptedWorkspace": {
+          "blob": "205a6779c622e197652b2eb3f59444a0bd9c192b",
+          "sha256": "482ce4fbbe2d05444dcd2eb8a28ff31367af3dac3e0eaa13adbc33cd18ec3b1e"
+        },
+        "mainlineMerge": {
+          "blob": "1a179a10bd42a3c441b1a8e91d6adf275fe84ff4",
+          "sha256": "bc935104231b9480528b4a67fa5f89a9bb57dbaea424a0d049b9084bebe54073"
+        },
+        "workspaceMerge": {
+          "blob": "1a179a10bd42a3c441b1a8e91d6adf275fe84ff4",
+          "sha256": "bc935104231b9480528b4a67fa5f89a9bb57dbaea424a0d049b9084bebe54073"
+        }
+      },
+      "resultSha256": "bc935104231b9480528b4a67fa5f89a9bb57dbaea424a0d049b9084bebe54073"
+    },
+    {
+      "path": "src/loopTaskStore.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "b3f8c50765c07d920c2e13b6ba46c3e9c01d0656",
+          "sha256": "e461c174f7f82d198cc715f5322b0dc1403d7eac35762bf04b72d16f25d57046"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "b3f8c50765c07d920c2e13b6ba46c3e9c01d0656",
+          "sha256": "e461c174f7f82d198cc715f5322b0dc1403d7eac35762bf04b72d16f25d57046"
+        },
+        "mainlineBase": {
+          "blob": "e91dcdfc262df230efe7c68cc2c3ca4c01e5c3ba",
+          "sha256": "6c5f7cb20a30fac6929075adb9cfb89666f2a12921eeef43cbc4609d71a776af"
+        },
+        "fetchedMainline": {
+          "blob": "3f50ac6cd6d9b76b9a59a14d8d39f10a1990329c",
+          "sha256": "4ab1d7f57906860fbef127e2b742f38d243373cd846146a6bfe62159082373b0"
+        },
+        "acceptedWorkspace": {
+          "blob": "b3f8c50765c07d920c2e13b6ba46c3e9c01d0656",
+          "sha256": "e461c174f7f82d198cc715f5322b0dc1403d7eac35762bf04b72d16f25d57046"
+        },
+        "mainlineMerge": {
+          "blob": "2c5e9178f4de3ea82edb668840aaa9136efa2d99",
+          "sha256": "b7b03ead3c600bbcf075f59a72d73db32e1eb42984c204f1f253d5a8621079bc"
+        },
+        "workspaceMerge": {
+          "blob": "2c5e9178f4de3ea82edb668840aaa9136efa2d99",
+          "sha256": "b7b03ead3c600bbcf075f59a72d73db32e1eb42984c204f1f253d5a8621079bc"
+        }
+      },
+      "resultSha256": "b7b03ead3c600bbcf075f59a72d73db32e1eb42984c204f1f253d5a8621079bc",
+      "overlapResolution": "Add normalized optional requiresAcceptance metadata alongside department identity and legacy persistence normalization."
+    },
+    {
+      "path": "src/panelStateBuilder.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "ffaf541686c1801638a934d6179f9e12e9404032",
+          "sha256": "ed2041ae29f40cf7a4c7376353a81a87338af11a33fa67623588e9cd445c08cb"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "ffaf541686c1801638a934d6179f9e12e9404032",
+          "sha256": "ed2041ae29f40cf7a4c7376353a81a87338af11a33fa67623588e9cd445c08cb"
+        },
+        "mainlineBase": {
+          "blob": "e13a09e3f29fee8a7f26fa9237873a976cbe60f1",
+          "sha256": "a1da58c9a2d3a3f71e1225b5289a35b884fecfb16d6ccf2e1a1a689533d2d322"
+        },
+        "fetchedMainline": {
+          "blob": "e13a09e3f29fee8a7f26fa9237873a976cbe60f1",
+          "sha256": "a1da58c9a2d3a3f71e1225b5289a35b884fecfb16d6ccf2e1a1a689533d2d322"
+        },
+        "acceptedWorkspace": {
+          "blob": "f53c9070037c3a4cc2d3c73068fa3660bf59f74b",
+          "sha256": "199e9f4a1f13040936d5890d823dde23f2b8ad5b3881fdbc49e99151f37d8442"
+        },
+        "mainlineMerge": {
+          "blob": "ffaf541686c1801638a934d6179f9e12e9404032",
+          "sha256": "ed2041ae29f40cf7a4c7376353a81a87338af11a33fa67623588e9cd445c08cb"
+        },
+        "workspaceMerge": {
+          "blob": "f53c9070037c3a4cc2d3c73068fa3660bf59f74b",
+          "sha256": "199e9f4a1f13040936d5890d823dde23f2b8ad5b3881fdbc49e99151f37d8442"
+        }
+      },
+      "resultSha256": "199e9f4a1f13040936d5890d823dde23f2b8ad5b3881fdbc49e99151f37d8442"
+    },
+    {
+      "path": "src/promptRunState.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "a5f6e7a4f9856de36a9b6c48d09f97d14e75f9c1",
+          "sha256": "e5d84b792c951a0e80c5dea8c3b96f45bf49405e6a263efc15015d23b78bd2d8"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "a5f6e7a4f9856de36a9b6c48d09f97d14e75f9c1",
+          "sha256": "e5d84b792c951a0e80c5dea8c3b96f45bf49405e6a263efc15015d23b78bd2d8"
+        },
+        "mainlineBase": {
+          "blob": "7ddf08e0a6db046782445bf127806a4f518ac00d",
+          "sha256": "484e1ffe7dd04450caef147aa93a41acda2d16f9773e029b6c3adec248341153"
+        },
+        "fetchedMainline": {
+          "blob": "115330e17c13e555a42c3da5684be1cb772f8ec0",
+          "sha256": "a953f210b53405aab6ea7625c4c6866f2c7b397581727143a0ddfec477e04ad0"
+        },
+        "acceptedWorkspace": {
+          "blob": "a5f6e7a4f9856de36a9b6c48d09f97d14e75f9c1",
+          "sha256": "e5d84b792c951a0e80c5dea8c3b96f45bf49405e6a263efc15015d23b78bd2d8"
+        },
+        "mainlineMerge": {
+          "blob": "c010bda59a14f083b8ea1da23841bdf5ad7e4092",
+          "sha256": "1260bb185ba85e2bc5fabefa195b3735db2474e39b2d73b44c5521ff9f425ade"
+        },
+        "workspaceMerge": {
+          "blob": "c010bda59a14f083b8ea1da23841bdf5ad7e4092",
+          "sha256": "1260bb185ba85e2bc5fabefa195b3735db2474e39b2d73b44c5521ff9f425ade"
+        }
+      },
+      "resultSha256": "1260bb185ba85e2bc5fabefa195b3735db2474e39b2d73b44c5521ff9f425ade",
+      "overlapResolution": "Add optional no-acceptance completion text to existing task-role completion formatter."
+    },
+    {
+      "path": "src/sessionMessageActions.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "e696996bf8b5a43bfb98f7e24dcdbf484d15b146",
+          "sha256": "f99c2b8d1d0e5fab6b40187d45cfc43aae1832fd10b2c5a217082e57a8e00fac"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "e696996bf8b5a43bfb98f7e24dcdbf484d15b146",
+          "sha256": "f99c2b8d1d0e5fab6b40187d45cfc43aae1832fd10b2c5a217082e57a8e00fac"
+        },
+        "mainlineBase": {
+          "blob": "60cc3429ea9c154db22104079d144741fbfbf3e2",
+          "sha256": "1adc3cb34e7af34b42375d39f38009e0da27eb468dc18d650b5dbd620fb33ae1"
+        },
+        "fetchedMainline": {
+          "blob": "22331269487a8352a06af1b79ca6108b6d2e12da",
+          "sha256": "cfc09d4e803996bb5072f8deea83ebaca317341a175d135052ac1466aeecfab2"
+        },
+        "acceptedWorkspace": {
+          "blob": "e696996bf8b5a43bfb98f7e24dcdbf484d15b146",
+          "sha256": "f99c2b8d1d0e5fab6b40187d45cfc43aae1832fd10b2c5a217082e57a8e00fac"
+        },
+        "mainlineMerge": {
+          "blob": "82eeab2483b565296c37cf67f57fd1766595ff8a",
+          "sha256": "c48b29c36e60436e841cfa4b75f98a2637b0d0d96b51eb4f4b9d88c739994ea5"
+        },
+        "workspaceMerge": {
+          "blob": "82eeab2483b565296c37cf67f57fd1766595ff8a",
+          "sha256": "c48b29c36e60436e841cfa4b75f98a2637b0d0d96b51eb4f4b9d88c739994ea5"
+        }
+      },
+      "resultSha256": "c48b29c36e60436e841cfa4b75f98a2637b0d0d96b51eb4f4b9d88c739994ea5",
+      "overlapResolution": "Add target existence check and awaited pause before scoped prompt dispatch; preserve department configuration route and request identity."
+    },
+    {
+      "path": "src/sessionMessageHandlers.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "899b8ac3a4010e0da66a1e8911fb79cf555a5bd1",
+          "sha256": "cdd4d1bc2cfdce13fc4ac578543869d7daadd8633c4cb19fdcc813b0a43923fe"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "899b8ac3a4010e0da66a1e8911fb79cf555a5bd1",
+          "sha256": "cdd4d1bc2cfdce13fc4ac578543869d7daadd8633c4cb19fdcc813b0a43923fe"
+        },
+        "mainlineBase": {
+          "blob": "ed89d7b2f8f6fbf5eed777fb8f968a530138366f",
+          "sha256": "2080d0da9226430d12ac0a9beefc2f279d79503555db25d904e412136c8ae1ce"
+        },
+        "fetchedMainline": {
+          "blob": "43d7918093164bb09437c264d6d6782d0003f44c",
+          "sha256": "e55f8eb7af7972f031f1d264b6e0b1b018adb3e4de9f7c0e523581c5f3dad072"
+        },
+        "acceptedWorkspace": {
+          "blob": "899b8ac3a4010e0da66a1e8911fb79cf555a5bd1",
+          "sha256": "cdd4d1bc2cfdce13fc4ac578543869d7daadd8633c4cb19fdcc813b0a43923fe"
+        },
+        "mainlineMerge": {
+          "blob": "5c88fc0f89a0ceb448149bbeceab0b2a7dd6da47",
+          "sha256": "372407599b2f8ac7ccd482f6cbcd17946312eaf76443b60ad9a29035ee324467"
+        },
+        "workspaceMerge": {
+          "blob": "5c88fc0f89a0ceb448149bbeceab0b2a7dd6da47",
+          "sha256": "372407599b2f8ac7ccd482f6cbcd17946312eaf76443b60ad9a29035ee324467"
+        }
+      },
+      "resultSha256": "372407599b2f8ac7ccd482f6cbcd17946312eaf76443b60ad9a29035ee324467",
+      "overlapResolution": "Extend dependency type with pausePromptForTab; preserve department configuration handler dependencies."
+    },
+    {
+      "path": "src/settingMessageHandlers/preferences.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "b72d2b89476729da7cbff9f591ba782a4700a93c",
+          "sha256": "b350b3c3763991981e28709bdd7a78e91f2d5c926504581f80b36c2f807211af"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "b72d2b89476729da7cbff9f591ba782a4700a93c",
+          "sha256": "b350b3c3763991981e28709bdd7a78e91f2d5c926504581f80b36c2f807211af"
+        },
+        "mainlineBase": {
+          "blob": "a99c4fe60421b7dcde4631e7e16bb9cfbdf330cc",
+          "sha256": "2435260a364d0b65a9198a80a7870e1453c58b5f28499bd176a17090f40b113c"
+        },
+        "fetchedMainline": {
+          "blob": "a99c4fe60421b7dcde4631e7e16bb9cfbdf330cc",
+          "sha256": "2435260a364d0b65a9198a80a7870e1453c58b5f28499bd176a17090f40b113c"
+        },
+        "acceptedWorkspace": {
+          "blob": "d9f6d23cd57e5a34543d808e01ad6d7b6cebcaea",
+          "sha256": "038563930a5a6484e293ac08071ebdeb14626ce826df8570923d53d9a9df347c"
+        },
+        "mainlineMerge": {
+          "blob": "b72d2b89476729da7cbff9f591ba782a4700a93c",
+          "sha256": "b350b3c3763991981e28709bdd7a78e91f2d5c926504581f80b36c2f807211af"
+        },
+        "workspaceMerge": {
+          "blob": "d9f6d23cd57e5a34543d808e01ad6d7b6cebcaea",
+          "sha256": "038563930a5a6484e293ac08071ebdeb14626ce826df8570923d53d9a9df347c"
+        }
+      },
+      "resultSha256": "038563930a5a6484e293ac08071ebdeb14626ce826df8570923d53d9a9df347c"
+    },
+    {
+      "path": "src/test/core/departmentsettings.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "a9690622500ef06ef21ec93c3d7d8ef4fe0c0583",
+          "sha256": "cdf9c5fd87f21eacb2e0ff5c567e4f444f8809a05d8abeae18799b1470bbf446"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "a9690622500ef06ef21ec93c3d7d8ef4fe0c0583",
+          "sha256": "cdf9c5fd87f21eacb2e0ff5c567e4f444f8809a05d8abeae18799b1470bbf446"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "421025c982132687d87fc37915b6a4ab9dd2b2e2",
+          "sha256": "04058d8d3b433c237e936130e75d32f001797f94cd1686a1ce7c7324c4b8c656"
+        },
+        "mainlineMerge": {
+          "blob": "a9690622500ef06ef21ec93c3d7d8ef4fe0c0583",
+          "sha256": "cdf9c5fd87f21eacb2e0ff5c567e4f444f8809a05d8abeae18799b1470bbf446"
+        },
+        "workspaceMerge": {
+          "blob": "421025c982132687d87fc37915b6a4ab9dd2b2e2",
+          "sha256": "04058d8d3b433c237e936130e75d32f001797f94cd1686a1ce7c7324c4b8c656"
+        }
+      },
+      "resultSha256": "04058d8d3b433c237e936130e75d32f001797f94cd1686a1ce7c7324c4b8c656"
+    },
+    {
+      "path": "src/test/core/promptRunCompletionText.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "df3ccc896cd8e4e71784230c1edf9597d7a7c8bd",
+          "sha256": "e9d36d65830c98ad38f14fa6ae9b277b46d11644f17664fb4a2466c94601c2b3"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "df3ccc896cd8e4e71784230c1edf9597d7a7c8bd",
+          "sha256": "e9d36d65830c98ad38f14fa6ae9b277b46d11644f17664fb4a2466c94601c2b3"
+        },
+        "mainlineBase": {
+          "blob": "df3ccc896cd8e4e71784230c1edf9597d7a7c8bd",
+          "sha256": "e9d36d65830c98ad38f14fa6ae9b277b46d11644f17664fb4a2466c94601c2b3"
+        },
+        "fetchedMainline": {
+          "blob": "0070e44a518a7c3244c6e77dbce0a1f521ed3694",
+          "sha256": "6ec148ab1f10004d42a96ccdbc2a6fe0c01cf16270d432d464af7698e70b266a"
+        },
+        "acceptedWorkspace": {
+          "blob": "df3ccc896cd8e4e71784230c1edf9597d7a7c8bd",
+          "sha256": "e9d36d65830c98ad38f14fa6ae9b277b46d11644f17664fb4a2466c94601c2b3"
+        },
+        "mainlineMerge": {
+          "blob": "0070e44a518a7c3244c6e77dbce0a1f521ed3694",
+          "sha256": "6ec148ab1f10004d42a96ccdbc2a6fe0c01cf16270d432d464af7698e70b266a"
+        },
+        "workspaceMerge": {
+          "blob": "0070e44a518a7c3244c6e77dbce0a1f521ed3694",
+          "sha256": "6ec148ab1f10004d42a96ccdbc2a6fe0c01cf16270d432d464af7698e70b266a"
+        }
+      },
+      "resultSha256": "6ec148ab1f10004d42a96ccdbc2a6fe0c01cf16270d432d464af7698e70b266a"
+    },
+    {
+      "path": "src/test/core/workspaceSettingsStore.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "120ecba814858fa69225d4e2b9253d5d04869e5e",
+          "sha256": "4cd0bf2fc0463c44815fe6145674d8f87176ea869a4d75efa430938100873a9e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "120ecba814858fa69225d4e2b9253d5d04869e5e",
+          "sha256": "4cd0bf2fc0463c44815fe6145674d8f87176ea869a4d75efa430938100873a9e"
+        },
+        "mainlineBase": {
+          "blob": "78843d2e8dd0a12d9e2bda91f9c2eb0a8698045a",
+          "sha256": "b37f7f213e2427dddb2d3195c15ec9fc2101f69634ea74005b4efe58da3a9ff0"
+        },
+        "fetchedMainline": {
+          "blob": "78843d2e8dd0a12d9e2bda91f9c2eb0a8698045a",
+          "sha256": "b37f7f213e2427dddb2d3195c15ec9fc2101f69634ea74005b4efe58da3a9ff0"
+        },
+        "acceptedWorkspace": {
+          "blob": "3a44cc2c8c34ac54fb5968d8f7f5dfbee7c9bea4",
+          "sha256": "e0910fc74bf4cc25802a740a23e18953b9a51a759520f040e942378de2e4e669"
+        },
+        "mainlineMerge": {
+          "blob": "120ecba814858fa69225d4e2b9253d5d04869e5e",
+          "sha256": "4cd0bf2fc0463c44815fe6145674d8f87176ea869a4d75efa430938100873a9e"
+        },
+        "workspaceMerge": {
+          "blob": "3a44cc2c8c34ac54fb5968d8f7f5dfbee7c9bea4",
+          "sha256": "e0910fc74bf4cc25802a740a23e18953b9a51a759520f040e942378de2e4e669"
+        }
+      },
+      "resultSha256": "e0910fc74bf4cc25802a740a23e18953b9a51a759520f040e942378de2e4e669"
+    },
+    {
+      "path": "src/test/extensionHost/departmentConfigurationHost.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "3b6b190ff240c749cd0ab1280b2382a4059fef94",
+          "sha256": "038a3a4ef9a6f8fdcc801e323d521f9d17049abaad24a7cefaa82a4c08c2e212"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "3b6b190ff240c749cd0ab1280b2382a4059fef94",
+          "sha256": "038a3a4ef9a6f8fdcc801e323d521f9d17049abaad24a7cefaa82a4c08c2e212"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "8410d9017836335fbae7ba60f6aa45c75d29ebd0",
+          "sha256": "fdef97389521378812c7fcad7b23c399a1fbd82fe28f672fee28bba8689e61f0"
+        },
+        "mainlineMerge": {
+          "blob": "3b6b190ff240c749cd0ab1280b2382a4059fef94",
+          "sha256": "038a3a4ef9a6f8fdcc801e323d521f9d17049abaad24a7cefaa82a4c08c2e212"
+        },
+        "workspaceMerge": {
+          "blob": "8410d9017836335fbae7ba60f6aa45c75d29ebd0",
+          "sha256": "fdef97389521378812c7fcad7b23c399a1fbd82fe28f672fee28bba8689e61f0"
+        }
+      },
+      "resultSha256": "fdef97389521378812c7fcad7b23c399a1fbd82fe28f672fee28bba8689e61f0"
+    },
+    {
+      "path": "src/test/extensionHost/departmentWorkspaceCapacitySettings.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "1a7571957465c2c843949d7576132ad8c6d62011",
+          "sha256": "d14cc168d67547b86a7d0116c18d555f62329ca40dd15297f9f3f12c8443d28c"
+        },
+        "mainlineMerge": null,
+        "workspaceMerge": {
+          "blob": "1a7571957465c2c843949d7576132ad8c6d62011",
+          "sha256": "d14cc168d67547b86a7d0116c18d555f62329ca40dd15297f9f3f12c8443d28c"
+        }
+      },
+      "resultSha256": "d14cc168d67547b86a7d0116c18d555f62329ca40dd15297f9f3f12c8443d28c"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "651e5dbcad04c35a8157f17585f69bd2a531e886",
+          "sha256": "740d7ed85ec99cd556ca9912633427bc5cdf16f95ecfc59c003b7f93978a813d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "651e5dbcad04c35a8157f17585f69bd2a531e886",
+          "sha256": "740d7ed85ec99cd556ca9912633427bc5cdf16f95ecfc59c003b7f93978a813d"
+        },
+        "mainlineBase": {
+          "blob": "d066d648dd4ae41cb1ce58828fe0fbd2a07c376b",
+          "sha256": "46306b64bb1f2d926cee7ddac17b88d3973bf31acbdf5905372c713e775a9a51"
+        },
+        "fetchedMainline": {
+          "blob": "4a2766ea8c8c6d5a164264a59eb979fd65122573",
+          "sha256": "6bf28fdd1395054815d8bfa4ca28f5848ff60cc0f3584028d4380ec3acd80c33"
+        },
+        "acceptedWorkspace": {
+          "blob": "651e5dbcad04c35a8157f17585f69bd2a531e886",
+          "sha256": "740d7ed85ec99cd556ca9912633427bc5cdf16f95ecfc59c003b7f93978a813d"
+        },
+        "mainlineMerge": {
+          "blob": "106dbae60e3f4cc91c4580e752822eeac38da467",
+          "sha256": "676f4faa6c9ed26923477e5314dcbad7fe96b42ebe80e38416e06b1a0ee25a44"
+        },
+        "workspaceMerge": {
+          "blob": "106dbae60e3f4cc91c4580e752822eeac38da467",
+          "sha256": "676f4faa6c9ed26923477e5314dcbad7fe96b42ebe80e38416e06b1a0ee25a44"
+        }
+      },
+      "resultSha256": "676f4faa6c9ed26923477e5314dcbad7fe96b42ebe80e38416e06b1a0ee25a44",
+      "overlapResolution": "Retain department fixture behavior; pass mainActivity callback for new upstream runtime contract."
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusDecisionStrategies.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "77ff32a7c7918d878187908156e3c08e968c18d3",
+          "sha256": "286704a5a56c6998a1d3c88ab9dff20dd32fcb99f57078f71963661f37196b4e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "77ff32a7c7918d878187908156e3c08e968c18d3",
+          "sha256": "286704a5a56c6998a1d3c88ab9dff20dd32fcb99f57078f71963661f37196b4e"
+        },
+        "mainlineBase": {
+          "blob": "77ff32a7c7918d878187908156e3c08e968c18d3",
+          "sha256": "286704a5a56c6998a1d3c88ab9dff20dd32fcb99f57078f71963661f37196b4e"
+        },
+        "fetchedMainline": {
+          "blob": "517dc8fb3d7c449ca50648969300ff2b23e434ac",
+          "sha256": "eab3c0479a05af5e37b897d8bd0407313d53b730f8c055de7f78c302b8202672"
+        },
+        "acceptedWorkspace": {
+          "blob": "77ff32a7c7918d878187908156e3c08e968c18d3",
+          "sha256": "286704a5a56c6998a1d3c88ab9dff20dd32fcb99f57078f71963661f37196b4e"
+        },
+        "mainlineMerge": {
+          "blob": "517dc8fb3d7c449ca50648969300ff2b23e434ac",
+          "sha256": "eab3c0479a05af5e37b897d8bd0407313d53b730f8c055de7f78c302b8202672"
+        },
+        "workspaceMerge": {
+          "blob": "517dc8fb3d7c449ca50648969300ff2b23e434ac",
+          "sha256": "eab3c0479a05af5e37b897d8bd0407313d53b730f8c055de7f78c302b8202672"
+        }
+      },
+      "resultSha256": "eab3c0479a05af5e37b897d8bd0407313d53b730f8c055de7f78c302b8202672"
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusOrchestration.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "5bfaf50b5759f8ce2ae9f0e8887f9c710c218cb9",
+          "sha256": "e90bb951a79a1bbc75d2ce40c8fb720d953564bafd09c834d11b14050cda9325"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "5bfaf50b5759f8ce2ae9f0e8887f9c710c218cb9",
+          "sha256": "e90bb951a79a1bbc75d2ce40c8fb720d953564bafd09c834d11b14050cda9325"
+        },
+        "mainlineBase": {
+          "blob": "ce0131d608bfd5f111154482af7d4bb466e99d73",
+          "sha256": "eba1d3f357971eaa694dc651078a0feec67b2cafebff0ab75a9a7e973085ae1d"
+        },
+        "fetchedMainline": {
+          "blob": "ec5b11e538e2e21ca16da43ef9839a64844b7f41",
+          "sha256": "aa1e7816afe80314003616cc125ffda68c470c2c32c454ea673f196e425450db"
+        },
+        "acceptedWorkspace": {
+          "blob": "5bfaf50b5759f8ce2ae9f0e8887f9c710c218cb9",
+          "sha256": "e90bb951a79a1bbc75d2ce40c8fb720d953564bafd09c834d11b14050cda9325"
+        },
+        "mainlineMerge": {
+          "blob": "a5efb5f46dc89d5f49fb525ac5b85c9800ab546d",
+          "sha256": "be0b0c1577c9a9072e11ed1c24fba6b5bd2755366f3f768685c32963779525a6"
+        },
+        "workspaceMerge": {
+          "blob": "a5efb5f46dc89d5f49fb525ac5b85c9800ab546d",
+          "sha256": "be0b0c1577c9a9072e11ed1c24fba6b5bd2755366f3f768685c32963779525a6"
+        }
+      },
+      "resultSha256": "e7a18f2bf709299ac0378b9efb81a2a4ad61f76130cf6b98006e4805de014efb",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "458c176ff6809c2df167dd6674445770d9933389",
+          "sha256": "684b1094b703b4af0e9b6c9e36064263b4f8a11b4da354029d9894d4dd244b7f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "458c176ff6809c2df167dd6674445770d9933389",
+          "sha256": "684b1094b703b4af0e9b6c9e36064263b4f8a11b4da354029d9894d4dd244b7f"
+        },
+        "mainlineBase": {
+          "blob": "e2222e0d2dd2f4a59fd5af396b418affa7c29545",
+          "sha256": "2420a7fe2876879040143e26cc20a624a990241db3b60da17557c35996ea56be"
+        },
+        "fetchedMainline": {
+          "blob": "b800e1b5ba1d38c885a0f55c72e166fe3507e631",
+          "sha256": "2e9dab6c8fd86176a99481e0d57722c3b3c4fb44e6e56417886d1e32dd236aba"
+        },
+        "acceptedWorkspace": {
+          "blob": "458c176ff6809c2df167dd6674445770d9933389",
+          "sha256": "684b1094b703b4af0e9b6c9e36064263b4f8a11b4da354029d9894d4dd244b7f"
+        },
+        "mainlineMerge": {
+          "blob": "5f98291b758a9b8eac48e6be7d8e0abbcdb78a8e",
+          "sha256": "9b7f54298dfe2a4deb10828ea815ebc158c8d927d18577968ebca4fdf61dc73d"
+        },
+        "workspaceMerge": {
+          "blob": "5f98291b758a9b8eac48e6be7d8e0abbcdb78a8e",
+          "sha256": "9b7f54298dfe2a4deb10828ea815ebc158c8d927d18577968ebca4fdf61dc73d"
+        }
+      },
+      "resultSha256": "9b7f54298dfe2a4deb10828ea815ebc158c8d927d18577968ebca4fdf61dc73d",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "232778d319b1b023cff1160dee8b5e52123c5194",
+          "sha256": "34b613150859e2ad97a3261a753ae4e1129041fc62f7e712c63b077d6fc92a1f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "232778d319b1b023cff1160dee8b5e52123c5194",
+          "sha256": "34b613150859e2ad97a3261a753ae4e1129041fc62f7e712c63b077d6fc92a1f"
+        },
+        "mainlineBase": {
+          "blob": "bdc43982031b654d755770323a56b0944a1f40c7",
+          "sha256": "07e8b69b4f25955e4be78082a0ef8908fd5b35cc596ec38d1a2dc12a3bc0a1d8"
+        },
+        "fetchedMainline": {
+          "blob": "f04b0ee3d811e2f6bd3a73e91d5729c2e4074e3e",
+          "sha256": "8cf57b32833ff0933f94cfda939df191acdbdf2592e9544d99000cd24ef3ceef"
+        },
+        "acceptedWorkspace": {
+          "blob": "232778d319b1b023cff1160dee8b5e52123c5194",
+          "sha256": "34b613150859e2ad97a3261a753ae4e1129041fc62f7e712c63b077d6fc92a1f"
+        },
+        "mainlineMerge": {
+          "blob": "eff8122ab2e16c1d30eade8a486d3c467331d017",
+          "sha256": "afca6ed19a77917465b74a23e7db707a1be98329268b61b59abe889f6088a587"
+        },
+        "workspaceMerge": {
+          "blob": "eff8122ab2e16c1d30eade8a486d3c467331d017",
+          "sha256": "afca6ed19a77917465b74a23e7db707a1be98329268b61b59abe889f6088a587"
+        }
+      },
+      "resultSha256": "afca6ed19a77917465b74a23e7db707a1be98329268b61b59abe889f6088a587",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/extensionHost/opencodethinkingintegration.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "242399dd39fd4ecb20bf0bdc5f52108455ee6fbc",
+          "sha256": "3c66052fae66e6a4260f7a6f41894ae97b173a56bd551505154ca0a3a18db5e8"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "242399dd39fd4ecb20bf0bdc5f52108455ee6fbc",
+          "sha256": "3c66052fae66e6a4260f7a6f41894ae97b173a56bd551505154ca0a3a18db5e8"
+        },
+        "mainlineBase": {
+          "blob": "242399dd39fd4ecb20bf0bdc5f52108455ee6fbc",
+          "sha256": "3c66052fae66e6a4260f7a6f41894ae97b173a56bd551505154ca0a3a18db5e8"
+        },
+        "fetchedMainline": {
+          "blob": "242399dd39fd4ecb20bf0bdc5f52108455ee6fbc",
+          "sha256": "3c66052fae66e6a4260f7a6f41894ae97b173a56bd551505154ca0a3a18db5e8"
+        },
+        "acceptedWorkspace": {
+          "blob": "cbc95115c304ac2a97e295d5e2776f173b179009",
+          "sha256": "82829a5b83104b24fe8954b024a083d3b572579d94e68376d2dfdd15baa57f7d"
+        },
+        "mainlineMerge": {
+          "blob": "242399dd39fd4ecb20bf0bdc5f52108455ee6fbc",
+          "sha256": "3c66052fae66e6a4260f7a6f41894ae97b173a56bd551505154ca0a3a18db5e8"
+        },
+        "workspaceMerge": {
+          "blob": "cbc95115c304ac2a97e295d5e2776f173b179009",
+          "sha256": "82829a5b83104b24fe8954b024a083d3b572579d94e68376d2dfdd15baa57f7d"
+        }
+      },
+      "resultSha256": "82829a5b83104b24fe8954b024a083d3b572579d94e68376d2dfdd15baa57f7d"
+    },
+    {
+      "path": "src/test/extensionHost/promptRunHandoff.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": null,
+        "acceptedSemanticRepair": null,
+        "mainlineBase": null,
+        "fetchedMainline": {
+          "blob": "1d26f9e9c3d1167cc09e55b986c09d5e1dcb4cf1",
+          "sha256": "a277cac940041791686d53a392982b15c7936d1c604b22e2fafc6c2ef76d125c"
+        },
+        "acceptedWorkspace": null,
+        "mainlineMerge": {
+          "blob": "1d26f9e9c3d1167cc09e55b986c09d5e1dcb4cf1",
+          "sha256": "a277cac940041791686d53a392982b15c7936d1c604b22e2fafc6c2ef76d125c"
+        },
+        "workspaceMerge": {
+          "blob": "1d26f9e9c3d1167cc09e55b986c09d5e1dcb4cf1",
+          "sha256": "a277cac940041791686d53a392982b15c7936d1c604b22e2fafc6c2ef76d125c"
+        }
+      },
+      "resultSha256": "a277cac940041791686d53a392982b15c7936d1c604b22e2fafc6c2ef76d125c"
+    },
+    {
+      "path": "src/test/extensionHost/promptSessionHealth.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "8a9af8c1b7cc3b707cfe5ad57807b2680f0c6631",
+          "sha256": "43face55a0d72c829ec69bfb007cbd8d7b43b69a62a5867f155887ab67b6fb35"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "8a9af8c1b7cc3b707cfe5ad57807b2680f0c6631",
+          "sha256": "43face55a0d72c829ec69bfb007cbd8d7b43b69a62a5867f155887ab67b6fb35"
+        },
+        "mainlineBase": {
+          "blob": "8a9af8c1b7cc3b707cfe5ad57807b2680f0c6631",
+          "sha256": "43face55a0d72c829ec69bfb007cbd8d7b43b69a62a5867f155887ab67b6fb35"
+        },
+        "fetchedMainline": {
+          "blob": "cdbcd117c6d4e9d21d06d2e45453fc16a482056f",
+          "sha256": "05a61dfdb4a1a99af4f08a17c79957769e4755ba333ef46b5f6d80a78717ef2b"
+        },
+        "acceptedWorkspace": {
+          "blob": "8a9af8c1b7cc3b707cfe5ad57807b2680f0c6631",
+          "sha256": "43face55a0d72c829ec69bfb007cbd8d7b43b69a62a5867f155887ab67b6fb35"
+        },
+        "mainlineMerge": {
+          "blob": "cdbcd117c6d4e9d21d06d2e45453fc16a482056f",
+          "sha256": "05a61dfdb4a1a99af4f08a17c79957769e4755ba333ef46b5f6d80a78717ef2b"
+        },
+        "workspaceMerge": {
+          "blob": "cdbcd117c6d4e9d21d06d2e45453fc16a482056f",
+          "sha256": "05a61dfdb4a1a99af4f08a17c79957769e4755ba333ef46b5f6d80a78717ef2b"
+        }
+      },
+      "resultSha256": "05a61dfdb4a1a99af4f08a17c79957769e4755ba333ef46b5f6d80a78717ef2b"
+    },
+    {
+      "path": "src/test/interactive/codexThreadHandoff.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "e3b3f87adb6b1c329405d5f3c96ad5b6840a3d90",
+          "sha256": "2dd5028619cdf6845344634110c49e7b8524710fbae647b4667d33584069fe72"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "da509ea983dcfe0a4539c54765fa6b424ffafc82",
+          "sha256": "74ff57fb6b236c1706823ef96cf83c33eb50e192800fdd85fd34e96f5649adec"
+        },
+        "mainlineBase": {
+          "blob": "e3b3f87adb6b1c329405d5f3c96ad5b6840a3d90",
+          "sha256": "2dd5028619cdf6845344634110c49e7b8524710fbae647b4667d33584069fe72"
+        },
+        "fetchedMainline": {
+          "blob": "a70c64ca157499f618e33f68be6f8515aba39eac",
+          "sha256": "dbe18b46d3212de6c88a950adee55b90f8163931434622ab9c4b51041411b31b"
+        },
+        "acceptedWorkspace": {
+          "blob": "e3b3f87adb6b1c329405d5f3c96ad5b6840a3d90",
+          "sha256": "2dd5028619cdf6845344634110c49e7b8524710fbae647b4667d33584069fe72"
+        },
+        "mainlineMerge": {
+          "blob": "f04ea2dc259b789f3e9ef01cb703471a9d3a8aab",
+          "sha256": "5d921425d5fdb48f5d2b6fde84b482cecd80146b4c8aab5e6bf67c0334ad002a"
+        },
+        "workspaceMerge": {
+          "blob": "f04ea2dc259b789f3e9ef01cb703471a9d3a8aab",
+          "sha256": "5d921425d5fdb48f5d2b6fde84b482cecd80146b4c8aab5e6bf67c0334ad002a"
+        }
+      },
+      "resultSha256": "5d921425d5fdb48f5d2b6fde84b482cecd80146b4c8aab5e6bf67c0334ad002a",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/loop/loopGroupChatCoordinator.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "ef53ab9510f175e0a3e0351f3d3a1375edbc12cd",
+          "sha256": "71b5678e329081cd9bff7e90d2be6eaddc44e5e5957a10c235d542f77a3334f7"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "ef53ab9510f175e0a3e0351f3d3a1375edbc12cd",
+          "sha256": "71b5678e329081cd9bff7e90d2be6eaddc44e5e5957a10c235d542f77a3334f7"
+        },
+        "mainlineBase": {
+          "blob": "ef53ab9510f175e0a3e0351f3d3a1375edbc12cd",
+          "sha256": "71b5678e329081cd9bff7e90d2be6eaddc44e5e5957a10c235d542f77a3334f7"
+        },
+        "fetchedMainline": {
+          "blob": "552cf42358db6cbb63aa7fa94d7daca658746ee3",
+          "sha256": "11cb551ded89f90bc0028a4843e0258d3f97b3578aa0cf4af5f810b22f871e9b"
+        },
+        "acceptedWorkspace": {
+          "blob": "ef53ab9510f175e0a3e0351f3d3a1375edbc12cd",
+          "sha256": "71b5678e329081cd9bff7e90d2be6eaddc44e5e5957a10c235d542f77a3334f7"
+        },
+        "mainlineMerge": {
+          "blob": "552cf42358db6cbb63aa7fa94d7daca658746ee3",
+          "sha256": "11cb551ded89f90bc0028a4843e0258d3f97b3578aa0cf4af5f810b22f871e9b"
+        },
+        "workspaceMerge": {
+          "blob": "552cf42358db6cbb63aa7fa94d7daca658746ee3",
+          "sha256": "11cb551ded89f90bc0028a4843e0258d3f97b3578aa0cf4af5f810b22f871e9b"
+        }
+      },
+      "resultSha256": "11cb551ded89f90bc0028a4843e0258d3f97b3578aa0cf4af5f810b22f871e9b"
+    },
+    {
+      "path": "src/test/loop/loopGroupChatPanel.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "50383e9cb6ede4edbcd24a8f78fd858d20eaf4cc",
+          "sha256": "df7bb6e63495579bb8ee50de4456832017f0aba4b71b8025594bba9c577e53d2"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "50383e9cb6ede4edbcd24a8f78fd858d20eaf4cc",
+          "sha256": "df7bb6e63495579bb8ee50de4456832017f0aba4b71b8025594bba9c577e53d2"
+        },
+        "mainlineBase": {
+          "blob": "3ead3519c419e920e1efa62f56a7d04698d8d5d8",
+          "sha256": "f869d266eddb88f310c31cb40c734b2b6fdb78ea0a1a0c5678821ad9ac4a9b70"
+        },
+        "fetchedMainline": {
+          "blob": "3849f6fee11d7e3f79ff2752af080c4229fb87b6",
+          "sha256": "c59f36de02cb173aba0e5aa4251300551c7f6777ec02fd28bb1e2dc2baa88e49"
+        },
+        "acceptedWorkspace": {
+          "blob": "50383e9cb6ede4edbcd24a8f78fd858d20eaf4cc",
+          "sha256": "df7bb6e63495579bb8ee50de4456832017f0aba4b71b8025594bba9c577e53d2"
+        },
+        "mainlineMerge": {
+          "blob": "86b7fc6b757d5c1dd625d0866d684b3f326f703d",
+          "sha256": "f29dcf15a431f2f74d497f7419938969324180bceafac71bc72a6b82aab8cad5"
+        },
+        "workspaceMerge": {
+          "blob": "86b7fc6b757d5c1dd625d0866d684b3f326f703d",
+          "sha256": "f29dcf15a431f2f74d497f7419938969324180bceafac71bc72a6b82aab8cad5"
+        }
+      },
+      "resultSha256": "f29dcf15a431f2f74d497f7419938969324180bceafac71bc72a6b82aab8cad5",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/loop/loopGroupChatPanelState.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "2f4bdc1d8148b3a809284722d6402f54ab421e98",
+          "sha256": "c51bc1afefef3fb2d60333ab550802b6a03260f539d6d458b6a6437639ba5b5d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "2f4bdc1d8148b3a809284722d6402f54ab421e98",
+          "sha256": "c51bc1afefef3fb2d60333ab550802b6a03260f539d6d458b6a6437639ba5b5d"
+        },
+        "mainlineBase": {
+          "blob": "2f4bdc1d8148b3a809284722d6402f54ab421e98",
+          "sha256": "c51bc1afefef3fb2d60333ab550802b6a03260f539d6d458b6a6437639ba5b5d"
+        },
+        "fetchedMainline": {
+          "blob": "423c5b8c95604cdbadea668f783bda5610c19004",
+          "sha256": "9fa60d5923d9c754ddfa0d960291bb0c14eec1c15f953b24a939033a4f7226e9"
+        },
+        "acceptedWorkspace": {
+          "blob": "2f4bdc1d8148b3a809284722d6402f54ab421e98",
+          "sha256": "c51bc1afefef3fb2d60333ab550802b6a03260f539d6d458b6a6437639ba5b5d"
+        },
+        "mainlineMerge": {
+          "blob": "423c5b8c95604cdbadea668f783bda5610c19004",
+          "sha256": "9fa60d5923d9c754ddfa0d960291bb0c14eec1c15f953b24a939033a4f7226e9"
+        },
+        "workspaceMerge": {
+          "blob": "423c5b8c95604cdbadea668f783bda5610c19004",
+          "sha256": "9fa60d5923d9c754ddfa0d960291bb0c14eec1c15f953b24a939033a4f7226e9"
+        }
+      },
+      "resultSha256": "9fa60d5923d9c754ddfa0d960291bb0c14eec1c15f953b24a939033a4f7226e9"
+    },
+    {
+      "path": "src/test/loop/loopPlusDecision.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "80752612202a00791f13d44196fb3c6962c26ba6",
+          "sha256": "ce621354a7c0f69557634a7816c9542b3c5d5a1cb67f79346d9cd698989bf704"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "80752612202a00791f13d44196fb3c6962c26ba6",
+          "sha256": "ce621354a7c0f69557634a7816c9542b3c5d5a1cb67f79346d9cd698989bf704"
+        },
+        "mainlineBase": {
+          "blob": "80752612202a00791f13d44196fb3c6962c26ba6",
+          "sha256": "ce621354a7c0f69557634a7816c9542b3c5d5a1cb67f79346d9cd698989bf704"
+        },
+        "fetchedMainline": {
+          "blob": "deffbe960ad5e1dc156564932abbe88c8722f2df",
+          "sha256": "fbef209fa51f07a98e6b682c6fbc3508470c9295520c17c15e89cdad74fd3ca6"
+        },
+        "acceptedWorkspace": {
+          "blob": "80752612202a00791f13d44196fb3c6962c26ba6",
+          "sha256": "ce621354a7c0f69557634a7816c9542b3c5d5a1cb67f79346d9cd698989bf704"
+        },
+        "mainlineMerge": {
+          "blob": "deffbe960ad5e1dc156564932abbe88c8722f2df",
+          "sha256": "fbef209fa51f07a98e6b682c6fbc3508470c9295520c17c15e89cdad74fd3ca6"
+        },
+        "workspaceMerge": {
+          "blob": "deffbe960ad5e1dc156564932abbe88c8722f2df",
+          "sha256": "fbef209fa51f07a98e6b682c6fbc3508470c9295520c17c15e89cdad74fd3ca6"
+        }
+      },
+      "resultSha256": "fbef209fa51f07a98e6b682c6fbc3508470c9295520c17c15e89cdad74fd3ca6"
+    },
+    {
+      "path": "src/test/loop/loopPlusGroupChatPanel.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "02327ecb18a33de257cc4df45895cc613a88a12b",
+          "sha256": "a84d03bb5706a0f89949214a3047c45000698a6742cd2c017576aaa215e10979"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "02327ecb18a33de257cc4df45895cc613a88a12b",
+          "sha256": "a84d03bb5706a0f89949214a3047c45000698a6742cd2c017576aaa215e10979"
+        },
+        "mainlineBase": {
+          "blob": "02327ecb18a33de257cc4df45895cc613a88a12b",
+          "sha256": "a84d03bb5706a0f89949214a3047c45000698a6742cd2c017576aaa215e10979"
+        },
+        "fetchedMainline": {
+          "blob": "d05934f8d660d91acefcaa8b4356f9a1e90fe4e2",
+          "sha256": "c60787d1fad0ae0c850baaf6acfd1e8528314f0720cccd7f45683c970034d9bd"
+        },
+        "acceptedWorkspace": {
+          "blob": "02327ecb18a33de257cc4df45895cc613a88a12b",
+          "sha256": "a84d03bb5706a0f89949214a3047c45000698a6742cd2c017576aaa215e10979"
+        },
+        "mainlineMerge": {
+          "blob": "d05934f8d660d91acefcaa8b4356f9a1e90fe4e2",
+          "sha256": "c60787d1fad0ae0c850baaf6acfd1e8528314f0720cccd7f45683c970034d9bd"
+        },
+        "workspaceMerge": {
+          "blob": "d05934f8d660d91acefcaa8b4356f9a1e90fe4e2",
+          "sha256": "c60787d1fad0ae0c850baaf6acfd1e8528314f0720cccd7f45683c970034d9bd"
+        }
+      },
+      "resultSha256": "c60787d1fad0ae0c850baaf6acfd1e8528314f0720cccd7f45683c970034d9bd"
+    },
+    {
+      "path": "src/test/loop/loopPlusScheduler.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "a525b7d7a9e697d80b43852195bc203b8b55d5a8",
+          "sha256": "a686043b5fc00103765da4cab80b77e083864cdb08b418a1dfc69b1ced47e05e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "a525b7d7a9e697d80b43852195bc203b8b55d5a8",
+          "sha256": "a686043b5fc00103765da4cab80b77e083864cdb08b418a1dfc69b1ced47e05e"
+        },
+        "mainlineBase": {
+          "blob": "a525b7d7a9e697d80b43852195bc203b8b55d5a8",
+          "sha256": "a686043b5fc00103765da4cab80b77e083864cdb08b418a1dfc69b1ced47e05e"
+        },
+        "fetchedMainline": {
+          "blob": "8ee05235745c443ab3df9e5f8c518f0ce1cc978f",
+          "sha256": "d5d03dd8b1b559093b4f43d0ae3311e43ce9faad829bd5ed56585bb282b44469"
+        },
+        "acceptedWorkspace": {
+          "blob": "a525b7d7a9e697d80b43852195bc203b8b55d5a8",
+          "sha256": "a686043b5fc00103765da4cab80b77e083864cdb08b418a1dfc69b1ced47e05e"
+        },
+        "mainlineMerge": {
+          "blob": "8ee05235745c443ab3df9e5f8c518f0ce1cc978f",
+          "sha256": "d5d03dd8b1b559093b4f43d0ae3311e43ce9faad829bd5ed56585bb282b44469"
+        },
+        "workspaceMerge": {
+          "blob": "8ee05235745c443ab3df9e5f8c518f0ce1cc978f",
+          "sha256": "d5d03dd8b1b559093b4f43d0ae3311e43ce9faad829bd5ed56585bb282b44469"
+        }
+      },
+      "resultSha256": "d5d03dd8b1b559093b4f43d0ae3311e43ce9faad829bd5ed56585bb282b44469"
+    },
+    {
+      "path": "src/test/loop/loopTaskStore.test.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "404b3325ab8ff04b9ebab474a2bf617f297ca5e0",
+          "sha256": "9f7493cff2372c866d44fe4d9c4293d9f5b2daebd6805e4abcf140bf9723ec95"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "404b3325ab8ff04b9ebab474a2bf617f297ca5e0",
+          "sha256": "9f7493cff2372c866d44fe4d9c4293d9f5b2daebd6805e4abcf140bf9723ec95"
+        },
+        "mainlineBase": {
+          "blob": "2edc3d6bd472f09fa2cc2c2bcdb037fb625fc5b9",
+          "sha256": "7944f87edf16efece7f55167ff6e038f3d7801c21904ade17715fd0fd6e83d9d"
+        },
+        "fetchedMainline": {
+          "blob": "64588642e67d93734b3c4469b81c9cdf16b3e107",
+          "sha256": "27358286376e59c52936881c7c148c06629e39e4f700dfce083546304294daed"
+        },
+        "acceptedWorkspace": {
+          "blob": "404b3325ab8ff04b9ebab474a2bf617f297ca5e0",
+          "sha256": "9f7493cff2372c866d44fe4d9c4293d9f5b2daebd6805e4abcf140bf9723ec95"
+        },
+        "mainlineMerge": {
+          "blob": "957cb4cecd06ffbb2b410a418c171ec3e3db8d91",
+          "sha256": "4f0b094aadb10177d9cf789e4de04d04ec86d5e2b3f24a8573f37a0a2ad9d29e"
+        },
+        "workspaceMerge": {
+          "blob": "957cb4cecd06ffbb2b410a418c171ec3e3db8d91",
+          "sha256": "4f0b094aadb10177d9cf789e4de04d04ec86d5e2b3f24a8573f37a0a2ad9d29e"
+        }
+      },
+      "resultSha256": "4f0b094aadb10177d9cf789e4de04d04ec86d5e2b3f24a8573f37a0a2ad9d29e",
+      "overlapResolution": "Union optional requiresAcceptance persistence tests and invalid department metadata tests."
+    },
+    {
+      "path": "src/test/session/sessionMessageActionsCoreCoverage.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "0bb6f250fb63b76f4684a394d2071ea9160d6acb",
+          "sha256": "748745535ab34bc62dd59341de779a3095593cf39d1daeea5ae88b7d671f1b2f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "0bb6f250fb63b76f4684a394d2071ea9160d6acb",
+          "sha256": "748745535ab34bc62dd59341de779a3095593cf39d1daeea5ae88b7d671f1b2f"
+        },
+        "mainlineBase": {
+          "blob": "f6cd74880b2c8ae3b43d0d4f83446ec5a281c602",
+          "sha256": "73bc7f9fb1ee05b1a689f96feb3af767c487dc5b24fecbd259124ffa8f0d6587"
+        },
+        "fetchedMainline": {
+          "blob": "4e6e4456f08a53f7c1eabd79ea53837888f44d5e",
+          "sha256": "11354306e6b78a6ea4f9d05b2fb7c6acc648ce625a58b4963cf15993f2ff957d"
+        },
+        "acceptedWorkspace": {
+          "blob": "0bb6f250fb63b76f4684a394d2071ea9160d6acb",
+          "sha256": "748745535ab34bc62dd59341de779a3095593cf39d1daeea5ae88b7d671f1b2f"
+        },
+        "mainlineMerge": {
+          "blob": "fdfe3c0c99103eae953b945c341bc0871e0ee3c4",
+          "sha256": "f81fa0acd5db47e841567add4f5b8cfc15a757470793ad06dedd3335f470b2f2"
+        },
+        "workspaceMerge": {
+          "blob": "fdfe3c0c99103eae953b945c341bc0871e0ee3c4",
+          "sha256": "f81fa0acd5db47e841567add4f5b8cfc15a757470793ad06dedd3335f470b2f2"
+        }
+      },
+      "resultSha256": "f81fa0acd5db47e841567add4f5b8cfc15a757470793ad06dedd3335f470b2f2",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/webview/clipagescriptruntimecoverage.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "343456a4272a7aa6f55cc0e9ad141569f631c64f",
+          "sha256": "79bbca82ab86e1d94b6bec6a95854ecf27d9e1723d3dfd9f1d977a8bec4c6b15"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "343456a4272a7aa6f55cc0e9ad141569f631c64f",
+          "sha256": "79bbca82ab86e1d94b6bec6a95854ecf27d9e1723d3dfd9f1d977a8bec4c6b15"
+        },
+        "mainlineBase": {
+          "blob": "9d0e1bef188e61df910dd32889a41b62890dd0d2",
+          "sha256": "37f034bdc0e59af6b838e4f3e25b1928210d537509f9cfbab6d086bb86658ded"
+        },
+        "fetchedMainline": {
+          "blob": "e37d4de8f5a4cb5a943f6fb3ce9549433179f025",
+          "sha256": "018d0ab619fe49ed1d19161ea3730cda09e3b97a4e1836d1bdbe53cd41f6583f"
+        },
+        "acceptedWorkspace": {
+          "blob": "343456a4272a7aa6f55cc0e9ad141569f631c64f",
+          "sha256": "79bbca82ab86e1d94b6bec6a95854ecf27d9e1723d3dfd9f1d977a8bec4c6b15"
+        },
+        "mainlineMerge": {
+          "blob": "ce97fdaca6574478126e92a13e9cdd98853015a2",
+          "sha256": "bc25cccb75647a0fada7b7203ddb284d94eef7ddb4cc95557207f11cc10c668c"
+        },
+        "workspaceMerge": {
+          "blob": "ce97fdaca6574478126e92a13e9cdd98853015a2",
+          "sha256": "bc25cccb75647a0fada7b7203ddb284d94eef7ddb4cc95557207f11cc10c668c"
+        }
+      },
+      "resultSha256": "bc25cccb75647a0fada7b7203ddb284d94eef7ddb4cc95557207f11cc10c668c",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/test/webview/departmentsettingswebview.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "115021c59b6d501e014644c46c6eb72be8d8b7dc",
+          "sha256": "fccac5c56b94cb910e14282eea6f8ef64db24b99e46b3e58b4d5e74e877b2d9d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "115021c59b6d501e014644c46c6eb72be8d8b7dc",
+          "sha256": "fccac5c56b94cb910e14282eea6f8ef64db24b99e46b3e58b4d5e74e877b2d9d"
+        },
+        "mainlineBase": null,
+        "fetchedMainline": null,
+        "acceptedWorkspace": {
+          "blob": "bf55e0b74dd2b056a08fa9634ba572cca2989d93",
+          "sha256": "2a97ad8492e1cfc392a860246d286c0619e108c95fa0840d4236d4bbf8811686"
+        },
+        "mainlineMerge": {
+          "blob": "115021c59b6d501e014644c46c6eb72be8d8b7dc",
+          "sha256": "fccac5c56b94cb910e14282eea6f8ef64db24b99e46b3e58b4d5e74e877b2d9d"
+        },
+        "workspaceMerge": {
+          "blob": "bf55e0b74dd2b056a08fa9634ba572cca2989d93",
+          "sha256": "2a97ad8492e1cfc392a860246d286c0619e108c95fa0840d4236d4bbf8811686"
+        }
+      },
+      "resultSha256": "2a97ad8492e1cfc392a860246d286c0619e108c95fa0840d4236d4bbf8811686"
+    },
+    {
+      "path": "src/test/webview/loopPlusModeEntry.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "9951ce412b1b6330fc60d755e6e3e4458fa68010",
+          "sha256": "82dbd69b8b92b494855ba27ce55a64524b2d7da2e08c02077b2998877cb68e1f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "9951ce412b1b6330fc60d755e6e3e4458fa68010",
+          "sha256": "82dbd69b8b92b494855ba27ce55a64524b2d7da2e08c02077b2998877cb68e1f"
+        },
+        "mainlineBase": {
+          "blob": "9951ce412b1b6330fc60d755e6e3e4458fa68010",
+          "sha256": "82dbd69b8b92b494855ba27ce55a64524b2d7da2e08c02077b2998877cb68e1f"
+        },
+        "fetchedMainline": {
+          "blob": "efd76102147dd54c966bf2ada38df8d16f9baf71",
+          "sha256": "90008df3b8ba2d365939cd7beb1ed6578a7b27557c3bce6b0b2b8a7f1c6096fb"
+        },
+        "acceptedWorkspace": {
+          "blob": "9951ce412b1b6330fc60d755e6e3e4458fa68010",
+          "sha256": "82dbd69b8b92b494855ba27ce55a64524b2d7da2e08c02077b2998877cb68e1f"
+        },
+        "mainlineMerge": {
+          "blob": "efd76102147dd54c966bf2ada38df8d16f9baf71",
+          "sha256": "90008df3b8ba2d365939cd7beb1ed6578a7b27557c3bce6b0b2b8a7f1c6096fb"
+        },
+        "workspaceMerge": {
+          "blob": "efd76102147dd54c966bf2ada38df8d16f9baf71",
+          "sha256": "90008df3b8ba2d365939cd7beb1ed6578a7b27557c3bce6b0b2b8a7f1c6096fb"
+        }
+      },
+      "resultSha256": "90008df3b8ba2d365939cd7beb1ed6578a7b27557c3bce6b0b2b8a7f1c6096fb"
+    },
+    {
+      "path": "src/test/webview/looppluswebviewintegration.test.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "f7f5de079f625bb9f096e3fb698f4edfb991d5df",
+          "sha256": "7330836afb5af02f5c11708a2066f5f7e5cb738237edaad22660d319f084c85e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "f7f5de079f625bb9f096e3fb698f4edfb991d5df",
+          "sha256": "7330836afb5af02f5c11708a2066f5f7e5cb738237edaad22660d319f084c85e"
+        },
+        "mainlineBase": {
+          "blob": "500efe2396694d60887dd5a2a726787cfa7f6445",
+          "sha256": "4ba87b39b7a8ba615b17f26c44729d5bb9baaaa976b73ba300bd32e393547ce4"
+        },
+        "fetchedMainline": {
+          "blob": "bbe9261fd78c689d9d1ec82b64f60c01125a9e20",
+          "sha256": "d74fbe077c8f38686dbea1af5e35c962f187d232cf48824e0577b029c4b9d20f"
+        },
+        "acceptedWorkspace": {
+          "blob": "f7f5de079f625bb9f096e3fb698f4edfb991d5df",
+          "sha256": "7330836afb5af02f5c11708a2066f5f7e5cb738237edaad22660d319f084c85e"
+        },
+        "mainlineMerge": {
+          "blob": "5a033fd5329b728b8c4a5cb94468cae6025a5825",
+          "sha256": "2b28de624944ffb8a2a6850a523d0f368d23bb4eacd87f30338d6c2132d52a4a"
+        },
+        "workspaceMerge": {
+          "blob": "5a033fd5329b728b8c4a5cb94468cae6025a5825",
+          "sha256": "2b28de624944ffb8a2a6850a523d0f368d23bb4eacd87f30338d6c2132d52a4a"
+        }
+      },
+      "resultSha256": "2b28de624944ffb8a2a6850a523d0f368d23bb4eacd87f30338d6c2132d52a4a",
+      "overlapResolution": "Retain both source test additions via disjoint hunk merge. Coverage/rerun scope is stated in semantic-review and the round-695 report; unchanged assertions are not treated as newly executed."
+    },
+    {
+      "path": "src/webview/loopGroupChatPanel.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "1688532ecd35d2071bb816994fef6e568a71c750",
+          "sha256": "23508b97480eee6ae0ffac39365d459217adf80fd0414a52dea6d1d938343db1"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "1688532ecd35d2071bb816994fef6e568a71c750",
+          "sha256": "23508b97480eee6ae0ffac39365d459217adf80fd0414a52dea6d1d938343db1"
+        },
+        "mainlineBase": {
+          "blob": "765727bd08cbf29a72fdcc50d52f9dffdd364ecc",
+          "sha256": "5cb6a69683ab49fb981760015e9a660d99d09a3f29cf6d428035487d32491601"
+        },
+        "fetchedMainline": {
+          "blob": "e4f674e79a8dbec520ae115825938fb6151c2c18",
+          "sha256": "c411d9d3cf3b9818e0ca4179b73ccbe5bfc2ff35ddc59a9ff7ae32e63e6f1bdc"
+        },
+        "acceptedWorkspace": {
+          "blob": "1688532ecd35d2071bb816994fef6e568a71c750",
+          "sha256": "23508b97480eee6ae0ffac39365d459217adf80fd0414a52dea6d1d938343db1"
+        },
+        "mainlineMerge": {
+          "blob": "23d89e2bef7530c9f786538f101de2b8b84f5c25",
+          "sha256": "3ea2f6a1b1ee8d5b88db860a0c29e4d855110d896bd5e2232afb566129a14f3b"
+        },
+        "workspaceMerge": {
+          "blob": "23d89e2bef7530c9f786538f101de2b8b84f5c25",
+          "sha256": "3ea2f6a1b1ee8d5b88db860a0c29e4d855110d896bd5e2232afb566129a14f3b"
+        }
+      },
+      "resultSha256": "3ea2f6a1b1ee8d5b88db860a0c29e4d855110d896bd5e2232afb566129a14f3b",
+      "overlapResolution": "Add running main activity and inactive no_acceptance disposition while retaining modal rendering/handshakes/root authorization."
+    },
+    {
+      "path": "src/webview/loopGroupChatPanelRenderer.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "5f36cbed265a0ec9c232b7124bf044017bfb83bd",
+          "sha256": "c270cfb73210ab1bf4352e59a33e972ecaeb4c6a74cba23a8e94f7fc8dccb70e"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "5f36cbed265a0ec9c232b7124bf044017bfb83bd",
+          "sha256": "c270cfb73210ab1bf4352e59a33e972ecaeb4c6a74cba23a8e94f7fc8dccb70e"
+        },
+        "mainlineBase": {
+          "blob": "56212e5c258433b60cda9674ab0801599973c767",
+          "sha256": "1a005acdfede7deaf513c1c7b97acb5c07c45848d3ebdbf37f20b7d7ccdbc74c"
+        },
+        "fetchedMainline": {
+          "blob": "8345c07bfb5bf4fe1c1c821fa4d2d78913022858",
+          "sha256": "4912662f76a31f4b3a9d7601b7854c03b82d7e87b15c4815da94f805d895e1c1"
+        },
+        "acceptedWorkspace": {
+          "blob": "5f36cbed265a0ec9c232b7124bf044017bfb83bd",
+          "sha256": "c270cfb73210ab1bf4352e59a33e972ecaeb4c6a74cba23a8e94f7fc8dccb70e"
+        },
+        "mainlineMerge": {
+          "blob": "bd3fc28ef3e4395aa049bfaeaee650a0ad63db13",
+          "sha256": "ed4cf4b9776c2f3df7355158594ee5d1b7b79f9638f477990a9068ceb99595f9"
+        },
+        "workspaceMerge": {
+          "blob": "bd3fc28ef3e4395aa049bfaeaee650a0ad63db13",
+          "sha256": "ed4cf4b9776c2f3df7355158594ee5d1b7b79f9638f477990a9068ceb99595f9"
+        }
+      },
+      "resultSha256": "ed4cf4b9776c2f3df7355158594ee5d1b7b79f9638f477990a9068ceb99595f9",
+      "overlapResolution": "Union new activity/no-acceptance captions with existing department strings; no new status styling."
+    },
+    {
+      "path": "src/webview/loopGroupChatPanelTypes.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "bf751796ac6aaa78e9d1b58e17c6ce8b59d4ba75",
+          "sha256": "3a11c2751ad0231000dd976ebe6adbd4d70969dddce392200a1dd2e354f3a022"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "bf751796ac6aaa78e9d1b58e17c6ce8b59d4ba75",
+          "sha256": "3a11c2751ad0231000dd976ebe6adbd4d70969dddce392200a1dd2e354f3a022"
+        },
+        "mainlineBase": {
+          "blob": "e8ffc700a3fd2c50638a5ae8896cff7fe1ca4bdf",
+          "sha256": "990d3d5e23331eaebe5857f7d8fc23cfada0a9fb70d28e2a3dd24655bb1264fd"
+        },
+        "fetchedMainline": {
+          "blob": "02f8c709d827fd640bcb022da5b73b6c4b0eb3bd",
+          "sha256": "e60ef9d482e235232bb084830177277089697de16a1ba940a5c75ce88f36214f"
+        },
+        "acceptedWorkspace": {
+          "blob": "bf751796ac6aaa78e9d1b58e17c6ce8b59d4ba75",
+          "sha256": "3a11c2751ad0231000dd976ebe6adbd4d70969dddce392200a1dd2e354f3a022"
+        },
+        "mainlineMerge": {
+          "blob": "4c8f1f20f496a2b08a049c4fb49a37a4fc991a12",
+          "sha256": "d2017a90cd4a888b88b41dce3f136447bfc30cdaad75106db4c0a5e36d24d921"
+        },
+        "workspaceMerge": {
+          "blob": "4c8f1f20f496a2b08a049c4fb49a37a4fc991a12",
+          "sha256": "d2017a90cd4a888b88b41dce3f136447bfc30cdaad75106db4c0a5e36d24d921"
+        }
+      },
+      "resultSha256": "d2017a90cd4a888b88b41dce3f136447bfc30cdaad75106db4c0a5e36d24d921",
+      "overlapResolution": "Add report disposition and running activity types without removing department projected state."
+    },
+    {
+      "path": "src/webview/types.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "73f88d37e2ad0c09d4c57fabe7feeae056558a4f",
+          "sha256": "2f39201a409b8a846df15318358520c0a0f342b62ed257002248ec12c2908be5"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "73f88d37e2ad0c09d4c57fabe7feeae056558a4f",
+          "sha256": "2f39201a409b8a846df15318358520c0a0f342b62ed257002248ec12c2908be5"
+        },
+        "mainlineBase": {
+          "blob": "1a2bb05a808fb803f67733ae277c822f1b85b58a",
+          "sha256": "60f2d9f636cef7f986a1499a0a6bf89bcb82e96dcba3305b887a0b20919e8519"
+        },
+        "fetchedMainline": {
+          "blob": "e772323b3469806cfaaf0d9c21e6b2740a4c187b",
+          "sha256": "e1e9554c6e8ff2783c838fa24bb23570a44bd48479abd92df57594e46a108099"
+        },
+        "acceptedWorkspace": {
+          "blob": "64f445c35701eb7723099992a422cb05e21f30f4",
+          "sha256": "add7b8d57b9a6d419be668c871b665b2387acf23297525d6f888c519df244f12"
+        },
+        "mainlineMerge": {
+          "blob": "d5e8ca48ca63fa033196ab7ce7705888674990a0",
+          "sha256": "9363c5e3ef6a2e41fbc7a5ecab3825f40827120e380bea524f75e686c08d3594"
+        },
+        "workspaceMerge": {
+          "blob": "b38613f51bad823a22f52569d4382c215b6ed809",
+          "sha256": "14ff86c0e7f1e1d66e9f116e8045f719fb320ccc3b77f8f070034a2a5e692a8e"
+        }
+      },
+      "resultSha256": "14ff86c0e7f1e1d66e9f116e8045f719fb320ccc3b77f8f070034a2a5e692a8e",
+      "overlapResolution": "Keep workspace-prefixed optional capacities separate from global capacities and add pauseBeforeSend beside department scope/requestId."
+    },
+    {
+      "path": "src/webview/viewContentHtml.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "b4968294d87f06f6b0372e3f9bae5d996e5d7d21",
+          "sha256": "46b72f0c22ae83e9d5559ec7272719c4227649e762022caaca7dbf6b8ed531e0"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "b4968294d87f06f6b0372e3f9bae5d996e5d7d21",
+          "sha256": "46b72f0c22ae83e9d5559ec7272719c4227649e762022caaca7dbf6b8ed531e0"
+        },
+        "mainlineBase": {
+          "blob": "4fdbeb5d0cc91ae84135fdbc1509690034960a3b",
+          "sha256": "9b5badf559e00778d67ff2f6ed6bbd6009b0d8d399a0e6a0f05262c9e43315c9"
+        },
+        "fetchedMainline": {
+          "blob": "4fdbeb5d0cc91ae84135fdbc1509690034960a3b",
+          "sha256": "9b5badf559e00778d67ff2f6ed6bbd6009b0d8d399a0e6a0f05262c9e43315c9"
+        },
+        "acceptedWorkspace": {
+          "blob": "aaa8294d0e67c2bec557b433e6d624c635111c3a",
+          "sha256": "a5d9ba52eb3eccb914b9767d51f3f0bc241e856c82c5908c638341ee06bdcf48"
+        },
+        "mainlineMerge": {
+          "blob": "b4968294d87f06f6b0372e3f9bae5d996e5d7d21",
+          "sha256": "46b72f0c22ae83e9d5559ec7272719c4227649e762022caaca7dbf6b8ed531e0"
+        },
+        "workspaceMerge": {
+          "blob": "aaa8294d0e67c2bec557b433e6d624c635111c3a",
+          "sha256": "a5d9ba52eb3eccb914b9767d51f3f0bc241e856c82c5908c638341ee06bdcf48"
+        }
+      },
+      "resultSha256": "a5d9ba52eb3eccb914b9767d51f3f0bc241e856c82c5908c638341ee06bdcf48"
+    },
+    {
+      "path": "src/webview/viewContentScript/coreBootstrap.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "e9bc8749d6d67a3e86ba477e6151bcb17771fda3",
+          "sha256": "0bfbe7823822520b6c852e994b5748dbf6b9d18fab758697121bd9385c49afc3"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "e9bc8749d6d67a3e86ba477e6151bcb17771fda3",
+          "sha256": "0bfbe7823822520b6c852e994b5748dbf6b9d18fab758697121bd9385c49afc3"
+        },
+        "mainlineBase": {
+          "blob": "faeb3be62a39e9ecc8a18da4e893042cc3e78d53",
+          "sha256": "95f52ccc59e4b6429efdbaf4070263e4fd58b76a6fd4c3931f635614a8e2e122"
+        },
+        "fetchedMainline": {
+          "blob": "faeb3be62a39e9ecc8a18da4e893042cc3e78d53",
+          "sha256": "95f52ccc59e4b6429efdbaf4070263e4fd58b76a6fd4c3931f635614a8e2e122"
+        },
+        "acceptedWorkspace": {
+          "blob": "9b1cc21023a462d6baf5424cc33d1075d40cba80",
+          "sha256": "d0dba831bdfccd2d2d61674f9df4719c904d06fc3ae94bec8613db5b9847e5e6"
+        },
+        "mainlineMerge": {
+          "blob": "e9bc8749d6d67a3e86ba477e6151bcb17771fda3",
+          "sha256": "0bfbe7823822520b6c852e994b5748dbf6b9d18fab758697121bd9385c49afc3"
+        },
+        "workspaceMerge": {
+          "blob": "9b1cc21023a462d6baf5424cc33d1075d40cba80",
+          "sha256": "d0dba831bdfccd2d2d61674f9df4719c904d06fc3ae94bec8613db5b9847e5e6"
+        }
+      },
+      "resultSha256": "d0dba831bdfccd2d2d61674f9df4719c904d06fc3ae94bec8613db5b9847e5e6"
+    },
+    {
+      "path": "src/webview/viewContentScript/modelAndPanelState.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "c4bd2d74609a83aee9af8b3819e82f8463d0fc9c",
+          "sha256": "3125094b567984746cb54798e9d3ec3b0f960b1f88f13ee68c8d3973d3e2609c"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "c4bd2d74609a83aee9af8b3819e82f8463d0fc9c",
+          "sha256": "3125094b567984746cb54798e9d3ec3b0f960b1f88f13ee68c8d3973d3e2609c"
+        },
+        "mainlineBase": {
+          "blob": "8382192e1385657dd3de3d83321c3f1be15613e3",
+          "sha256": "c99140aa3ef43865d53632baa06b8f56bb47f763bc72aae1dbb713a0596bcf87"
+        },
+        "fetchedMainline": {
+          "blob": "8382192e1385657dd3de3d83321c3f1be15613e3",
+          "sha256": "c99140aa3ef43865d53632baa06b8f56bb47f763bc72aae1dbb713a0596bcf87"
+        },
+        "acceptedWorkspace": {
+          "blob": "759f1846c0f0c66cd6377efa44a47a8445cdc028",
+          "sha256": "b0064c249d9873cef081441b8116cefdbc0ac32f06b6922c28a54ef5923f419f"
+        },
+        "mainlineMerge": {
+          "blob": "c4bd2d74609a83aee9af8b3819e82f8463d0fc9c",
+          "sha256": "3125094b567984746cb54798e9d3ec3b0f960b1f88f13ee68c8d3973d3e2609c"
+        },
+        "workspaceMerge": {
+          "blob": "759f1846c0f0c66cd6377efa44a47a8445cdc028",
+          "sha256": "b0064c249d9873cef081441b8116cefdbc0ac32f06b6922c28a54ef5923f419f"
+        }
+      },
+      "resultSha256": "b0064c249d9873cef081441b8116cefdbc0ac32f06b6922c28a54ef5923f419f"
+    },
+    {
+      "path": "src/webview/viewContentScript/settingsAndOverlays.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "8a28b69e1aedeb6cb424df55dfe7bc70f1c79d9c",
+          "sha256": "426c19494805262f3c38130191e312d9a196beb5726bcdb7c56208d38f2fd76f"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "8a28b69e1aedeb6cb424df55dfe7bc70f1c79d9c",
+          "sha256": "426c19494805262f3c38130191e312d9a196beb5726bcdb7c56208d38f2fd76f"
+        },
+        "mainlineBase": {
+          "blob": "b4f04ea6d04c3f227cc510475d5d56d599724e35",
+          "sha256": "69529918f829f24f16207f2f7429d195c1caad02c00421fc754f19f01953c222"
+        },
+        "fetchedMainline": {
+          "blob": "b1e07f57beda50522d782f3f024110e657f299b1",
+          "sha256": "581d2abb028c7c8d42185d9fd66464b59d4712564985c0fce40223304b5224b2"
+        },
+        "acceptedWorkspace": {
+          "blob": "b4dc945f4e27897fe078e121d4aae653301b75c7",
+          "sha256": "8e53277f498fcb62532d2726a28903e4724ed3c56c33a6910f132d762e94814e"
+        },
+        "mainlineMerge": {
+          "blob": "f8dcaedacb0079410c05a0ae429fc7f6e401fdb4",
+          "sha256": "2838de3ffdd8d628153c4547b893d42d6030c53c7b68aee8407a3551277141de"
+        },
+        "workspaceMerge": {
+          "blob": "7eca983bae44563ffb426ba95461cbc71f44c77f",
+          "sha256": "ad3b313a8876487b41b089d1f70ec68d4923c271c8cadcbbbaa8570e06e4cad4"
+        }
+      },
+      "resultSha256": "ad3b313a8876487b41b089d1f70ec68d4923c271c8cadcbbbaa8570e06e4cad4",
+      "overlapResolution": "Disjoint pause/wait control additions and scoped workspace-capacity save controls; preserve optional inheritance and error restoration."
+    },
+    {
+      "path": "src/webview/viewContentScript/taskListAndUi.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "f4e3a90ac5ccdc50e59203a4dff7da94f21aa2cc",
+          "sha256": "48622166a3b6f54fcbc2317cbc4be5422cd0fd2155b70d7c841b6675f945e5e3"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "f4e3a90ac5ccdc50e59203a4dff7da94f21aa2cc",
+          "sha256": "48622166a3b6f54fcbc2317cbc4be5422cd0fd2155b70d7c841b6675f945e5e3"
+        },
+        "mainlineBase": {
+          "blob": "916151d21e9b1d1dbec1509bfdea9438839355c7",
+          "sha256": "df5f62c61885dc8f3f066231d154e40fee23cb667e3f7e6ef895e6a1fd23ca11"
+        },
+        "fetchedMainline": {
+          "blob": "4a496aa07b84535ad8a99c14e6be5811914598cf",
+          "sha256": "72879c498c80f29fce6d8b8d189bd461570542f71927f1ac5ab5861ac2ce4d50"
+        },
+        "acceptedWorkspace": {
+          "blob": "f4e3a90ac5ccdc50e59203a4dff7da94f21aa2cc",
+          "sha256": "48622166a3b6f54fcbc2317cbc4be5422cd0fd2155b70d7c841b6675f945e5e3"
+        },
+        "mainlineMerge": {
+          "blob": "994becaf5b5421a4778a9a7b2bb715a270348104",
+          "sha256": "796692e645acbfee3b138f43cd52d9af010d303885cf5dcfc00c7974e9003fc1"
+        },
+        "workspaceMerge": {
+          "blob": "994becaf5b5421a4778a9a7b2bb715a270348104",
+          "sha256": "796692e645acbfee3b138f43cd52d9af010d303885cf5dcfc00c7974e9003fc1"
+        }
+      },
+      "resultSha256": "796692e645acbfee3b138f43cd52d9af010d303885cf5dcfc00c7974e9003fc1",
+      "overlapResolution": "Send pauseBeforeSend and departmentConfigurationScope together; retain request and per-tab submission flow."
+    },
+    {
+      "path": "src/webview/viewContentScript/windowMessageDispatch.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "160c980fca2716a5d8d0a08a0f9093f4b2173c5a",
+          "sha256": "7243226a473c2134496d1e7d1ab732a777149f6927dcbab07ffec3c65855ce7d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "160c980fca2716a5d8d0a08a0f9093f4b2173c5a",
+          "sha256": "7243226a473c2134496d1e7d1ab732a777149f6927dcbab07ffec3c65855ce7d"
+        },
+        "mainlineBase": {
+          "blob": "c427edff1a1a2ac0862ddffff5fc25c4b37a3476",
+          "sha256": "49b45e2a3b461756c6089f291f3a3dd477330ec00ee1add06563a7744820a70a"
+        },
+        "fetchedMainline": {
+          "blob": "cd96eb904c810d17c10094cc4561d6f2d8d0dadf",
+          "sha256": "4191b7b1dd715198bf34d76a4eaf753afd7e5ff7d5cc63f81d826b993252df6a"
+        },
+        "acceptedWorkspace": {
+          "blob": "ff0f9e14d68caa0aa523901e2930fe94fab1abbf",
+          "sha256": "43625eb9c0b6204dd9cc4fe37d1a0086ed3f20b9a5607baf79148f12e9083711"
+        },
+        "mainlineMerge": {
+          "blob": "cecb0169908f1635d0184a0c81876e1cc4c8fa62",
+          "sha256": "5d9812329215251cd4f75b682d09b1abed3e3db70bdbc163e408455fab0c8ff0"
+        },
+        "workspaceMerge": {
+          "blob": "bd846ab5de2aca3f7ab861226edc747ef831b23c",
+          "sha256": "f5ebaa9763fd008c9a9ba1a12f082c799ae540f4768df44129d3a9b2c98ab178"
+        }
+      },
+      "resultSha256": "f5ebaa9763fd008c9a9ba1a12f082c799ae540f4768df44129d3a9b2c98ab178",
+      "overlapResolution": "Keep promptPauseReady handler and scoped department/workspace save responses in same dispatcher; no handler replaces another."
+    },
+    {
+      "path": "src/webview/viewContentStrings.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "d35a0918150442543cc759a016a437a611a5d2d6",
+          "sha256": "0be8d8d7eb91dab38da1b1606e037ce9cc87d99b33a04f72715e1df375e7b16d"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "d35a0918150442543cc759a016a437a611a5d2d6",
+          "sha256": "0be8d8d7eb91dab38da1b1606e037ce9cc87d99b33a04f72715e1df375e7b16d"
+        },
+        "mainlineBase": {
+          "blob": "90f79c9352b78136e4d58a8243f789c6c4731c9e",
+          "sha256": "8a4a47c3bae1b96a47488baad314a1b7db686766e378a801214aa1e5487a93bd"
+        },
+        "fetchedMainline": {
+          "blob": "90f79c9352b78136e4d58a8243f789c6c4731c9e",
+          "sha256": "8a4a47c3bae1b96a47488baad314a1b7db686766e378a801214aa1e5487a93bd"
+        },
+        "acceptedWorkspace": {
+          "blob": "404c7d693d427cf7a67399c057c44edc1cf11ec4",
+          "sha256": "ae730e505f32625f166bd6c0b59e51250fd920ad7b172e1f64a1ca7b10b9d725"
+        },
+        "mainlineMerge": {
+          "blob": "d35a0918150442543cc759a016a437a611a5d2d6",
+          "sha256": "0be8d8d7eb91dab38da1b1606e037ce9cc87d99b33a04f72715e1df375e7b16d"
+        },
+        "workspaceMerge": {
+          "blob": "404c7d693d427cf7a67399c057c44edc1cf11ec4",
+          "sha256": "ae730e505f32625f166bd6c0b59e51250fd920ad7b172e1f64a1ca7b10b9d725"
+        }
+      },
+      "resultSha256": "ae730e505f32625f166bd6c0b59e51250fd920ad7b172e1f64a1ca7b10b9d725"
+    },
+    {
+      "path": "src/workspaceSettingsStore.ts",
+      "mainlineTextConflict": false,
+      "sources": {
+        "originalIntegration": {
+          "blob": "1d69cc77c23fee87766c9ac33505145a7bc0551e",
+          "sha256": "95f818f1427398d0353507a679a57b9844f1865ebb9dd0b6e92a823824f85bb7"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "1d69cc77c23fee87766c9ac33505145a7bc0551e",
+          "sha256": "95f818f1427398d0353507a679a57b9844f1865ebb9dd0b6e92a823824f85bb7"
+        },
+        "mainlineBase": {
+          "blob": "829782cfd3824b48627d05f9b678c5cee7bd45c8",
+          "sha256": "f764a4ae513577241f9d89032dcd09d043bc09475deec24e73aae2a4839facff"
+        },
+        "fetchedMainline": {
+          "blob": "829782cfd3824b48627d05f9b678c5cee7bd45c8",
+          "sha256": "f764a4ae513577241f9d89032dcd09d043bc09475deec24e73aae2a4839facff"
+        },
+        "acceptedWorkspace": {
+          "blob": "420d204546f4a1b8407a99a96f3b935f8f9efb94",
+          "sha256": "ca2398797808228e8481d0e8c95263810e56eeee51bea31b7ad929c63b6d7311"
+        },
+        "mainlineMerge": {
+          "blob": "1d69cc77c23fee87766c9ac33505145a7bc0551e",
+          "sha256": "95f818f1427398d0353507a679a57b9844f1865ebb9dd0b6e92a823824f85bb7"
+        },
+        "workspaceMerge": {
+          "blob": "420d204546f4a1b8407a99a96f3b935f8f9efb94",
+          "sha256": "ca2398797808228e8481d0e8c95263810e56eeee51bea31b7ad929c63b6d7311"
+        }
+      },
+      "resultSha256": "ca2398797808228e8481d0e8c95263810e56eeee51bea31b7ad929c63b6d7311"
+    }
+  ],
+  "coldEntity55Paths": [
+    {
+      "path": ".ch/docs/design-docs/department-generation-authority.md",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "a58bb046c4e8ac65149950e50fa434ebb57d894c55318bcc592d7e235249f2df",
+      "sourcePresent": true,
+      "resultSha256": "a58bb046c4e8ac65149950e50fa434ebb57d894c55318bcc592d7e235249f2df"
+    },
+    {
+      "path": ".ch/docs/design-docs/department-production-execution-wiring.md",
+      "provenGitBaseline": {
+        "blob": "f78356ea9cd4d6a8616d8e904b37bcee8851638d",
+        "sha256": "2e7d619b4c96b0351fbc4fe87111855e336a2848f07b2172159f8d8f75311033"
+      },
+      "acceptedEntitySha256": "0ceb553a70eb0b0c68260502bd18bc94163316353f07f0b51b29ed1c2d3f9c63",
+      "sourcePresent": true,
+      "resultSha256": "0ceb553a70eb0b0c68260502bd18bc94163316353f07f0b51b29ed1c2d3f9c63"
+    },
+    {
+      "path": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "provenGitBaseline": {
+        "blob": "a77dffba43dc21245f219c2d8f0b77c362e5c6fa",
+        "sha256": "b7b095279f9ff049a43e922911619abf955200618acdb067c2c5eb8774138812"
+      },
+      "acceptedEntitySha256": "b47f5573d9f67b9c4a1ef0bdcdae9b6f9fe71eed0f4aafed599350b95487d654",
+      "sourcePresent": true,
+      "resultSha256": "5353c9e6249e4b2ffd058138ea45678b3318ea57081631d24b688fa87c5ed340"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "provenGitBaseline": {
+        "blob": "5def83f899a646589b9cb74b7ab0d8aeff22bc12",
+        "sha256": "28d3d562e4e4ed0e8ee16e4f1fee64db806f4449638fb8a3fa514818dee3548f"
+      },
+      "acceptedEntitySha256": "939698317f19071c8106290db877e906d3da3bcfa074550f1b419dce37779c69",
+      "sourcePresent": true,
+      "resultSha256": "984941ca43b9308112c7f694aa1740f37765ff5b8c6c5a1a469ede4e9cffc391"
+    },
+    {
+      "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      "provenGitBaseline": {
+        "blob": "4daa8d8ae2e4e6e356756b28797dac9b57ed7414",
+        "sha256": "c76f9054a5a6c23cdffec5130f3c9056c754c50dfeb46f12d74cbd4e90330f4b"
+      },
+      "acceptedEntitySha256": "33a4ad2fdcc39258c137647bab0f46921783bd512ee8ac6c528453822951bbc4",
+      "sourcePresent": true,
+      "resultSha256": "8e20fe9df26fd22d3661ac4f7e53016939da392f1a470ccfaf08ddc04dcae52b"
+    },
+    {
+      "path": ".ch/docs/runbooks/department-cold-recovery-eh-verification.md",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "be698bff594ff9fb428cf50a6d7cca17f4bee60267485e68d6249ae4ab31b48a",
+      "sourcePresent": true,
+      "resultSha256": "be698bff594ff9fb428cf50a6d7cca17f4bee60267485e68d6249ae4ab31b48a"
+    },
+    {
+      "path": ".ch/docs/runbooks/department-cold-start-verification.md",
+      "provenGitBaseline": {
+        "blob": "febd42062eeb0f19ced864874e4d735b5acda154",
+        "sha256": "b11ac026ef21e6963a6943ffcea7e039331dcb6e7af0fc25467a05622b13d7b9"
+      },
+      "acceptedEntitySha256": "0f3e1ceb324691e5124b4b5b97849d79052490318d2711e2103f22fa362fb55b",
+      "sourcePresent": true,
+      "resultSha256": "0f3e1ceb324691e5124b4b5b97849d79052490318d2711e2103f22fa362fb55b"
+    },
+    {
+      "path": "scripts/fixtures/department_cold_recovery_eh_scenario.js",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "3af2e580bca510626ef901f96acd6e3afdbcf449265701437cf9d24d5f68e8d4",
+      "sourcePresent": true,
+      "resultSha256": "3af2e580bca510626ef901f96acd6e3afdbcf449265701437cf9d24d5f68e8d4"
+    },
+    {
+      "path": "scripts/fixtures/department_cold_recovery_eh_scenario.test.js",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "566e3d72377cf4ec5675afd277e5aca1c4a09b61711123b12d8e59a85274b5db",
+      "sourcePresent": true,
+      "resultSha256": "566e3d72377cf4ec5675afd277e5aca1c4a09b61711123b12d8e59a85274b5db"
+    },
+    {
+      "path": "scripts/fixtures/department_worker_exit_observer.js",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "b5b2b6211d6b93d6781387944a4248945a794e40c3796983b04166b1e9fb48df",
+      "sourcePresent": true,
+      "resultSha256": "b5b2b6211d6b93d6781387944a4248945a794e40c3796983b04166b1e9fb48df"
+    },
+    {
+      "path": "scripts/fixtures/department_worker_exit_observer.py",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "7a51658f1dd1fc53bccc9f89a742124832eb55de64d6f50babf5d5a3d04e6645",
+      "sourcePresent": true,
+      "resultSha256": "7a51658f1dd1fc53bccc9f89a742124832eb55de64d6f50babf5d5a3d04e6645"
+    },
+    {
+      "path": "scripts/fixtures/department_worker_exit_observer.test.js",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "b7786cced055098dffefd9b8380279f37b7c1820b35b987d5c6b500c922dcc80",
+      "sourcePresent": true,
+      "resultSha256": "b7786cced055098dffefd9b8380279f37b7c1820b35b987d5c6b500c922dcc80"
+    },
+    {
+      "path": "scripts/verify_department_full_eh_integration.js",
+      "provenGitBaseline": {
+        "blob": "b86641bf992b1ba96502ae6956d7754bb1bba099",
+        "sha256": "5c2c31fa4ce01dfb32ecb8ba88393e01e34d46d52d10470669b803b5a511e822"
+      },
+      "acceptedEntitySha256": "f944b9b793a6a1452b2edb432ba473978a07b14e873c69edee277ee368ba9055",
+      "sourcePresent": true,
+      "resultSha256": "f944b9b793a6a1452b2edb432ba473978a07b14e873c69edee277ee368ba9055"
+    },
+    {
+      "path": "scripts/verify_department_full_eh_integration.test.js",
+      "provenGitBaseline": {
+        "blob": "71218e1c558fa63d7b1b5403b3b28acad476ed97",
+        "sha256": "96b2e9a960560cc5654d3635a392675af492e321365f2fb57d652e2513c41db0"
+      },
+      "acceptedEntitySha256": "3f5eef08500e13a35f16934e50c000033a6b9a0414a2e1d4e06d573591930eb1",
+      "sourcePresent": true,
+      "resultSha256": "3f5eef08500e13a35f16934e50c000033a6b9a0414a2e1d4e06d573591930eb1"
+    },
+    {
+      "path": "scripts/verify_opencode_employee_native_drain.js",
+      "provenGitBaseline": {
+        "blob": "1aa3aec5dba19b43bcf027d6a5d7af82f6555007",
+        "sha256": "045d93a1c01eed722913901b0eb76edc3a556cb71fda0b402fbf4765919f63a0"
+      },
+      "acceptedEntitySha256": "4120fa113b90afff38727183147dc1a508ae39fcfc23a3bee2a5db6c527843da",
+      "sourcePresent": true,
+      "resultSha256": "4120fa113b90afff38727183147dc1a508ae39fcfc23a3bee2a5db6c527843da"
+    },
+    {
+      "path": "scripts/verify_opencode_owned_native_drain.js",
+      "provenGitBaseline": {
+        "blob": "1c635e7149490923a0decd3c18803679d2850db1",
+        "sha256": "392f1d9fd233082b3cae7faafd9b75d9c1f8bfa31c9e8e144dbd1b7e6e3d74de"
+      },
+      "acceptedEntitySha256": "13d16fc4c375b5b53318a412eb5d560122efd0e69f26a422ddbfcf05d4653f23",
+      "sourcePresent": true,
+      "resultSha256": "13d16fc4c375b5b53318a412eb5d560122efd0e69f26a422ddbfcf05d4653f23"
+    },
+    {
+      "path": "src/extension.ts",
+      "provenGitBaseline": {
+        "blob": "878d7ec686a404aeab4696bffacbfa2d0f16ae0a",
+        "sha256": "f6105449ff21eaca2dc92e34643b2611f0b333768eb357135671a880b4ac5998"
+      },
+      "acceptedEntitySha256": "75dfe4b474c490d5d6ab6179fe59a2add74e0eda4350709415852b253748042d",
+      "sourcePresent": true,
+      "resultSha256": "68570f87825bcc5914e477238a266939082e103d0634823bff6b42cebe91ff09"
+    },
+    {
+      "path": "src/extensionHost/departmentcodexbootstrap.ts",
+      "provenGitBaseline": {
+        "blob": "a19c4d68bd60d6032aaebc7554e4b3fd694244dd",
+        "sha256": "963129a62f5523fe8dcd85f9e7137b1219eb315798ff86c4e4bb1816d97168c1"
+      },
+      "acceptedEntitySha256": "fc5ecc5777c5589f4946729113cf3d76f5e4a638fcb0335a17e208c90d583f20",
+      "sourcePresent": true,
+      "resultSha256": "fc5ecc5777c5589f4946729113cf3d76f5e4a638fcb0335a17e208c90d583f20"
+    },
+    {
+      "path": "src/extensionHost/departmentcodexpreparation.ts",
+      "provenGitBaseline": {
+        "blob": "313696550077ba33a1cb0f810356501f213a87c2",
+        "sha256": "732f5c0b79a1b33a87e4bd280f4fbf95a861d2b846dd269ab5dcb12905a3e369"
+      },
+      "acceptedEntitySha256": "70ef8376a5c5c1c29bd05c0a2c3b78d315974c911668fe1a685e3d34badec412",
+      "sourcePresent": true,
+      "resultSha256": "70ef8376a5c5c1c29bd05c0a2c3b78d315974c911668fe1a685e3d34badec412"
+    },
+    {
+      "path": "src/extensionHost/departmentcoldgenerationrecovery.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "5cb67f3a021028c26e2b30e1fc8937d4392103502bd85aef3f253e97655af3a1",
+      "sourcePresent": true,
+      "resultSha256": "5cb67f3a021028c26e2b30e1fc8937d4392103502bd85aef3f253e97655af3a1"
+    },
+    {
+      "path": "src/extensionHost/departmentemployeeexecutionadmission.ts",
+      "provenGitBaseline": {
+        "blob": "ebed2bc3951494d9f9306731e0b6f944a8e3875c",
+        "sha256": "fe1b050dd8685f5111bcafc4859ff5ab4ad978cf5e3e4c9910f14ecadadf9d1e"
+      },
+      "acceptedEntitySha256": "76f5442517754b64ec8960c82e8fe2de2bbc4e60e020c9a8db70222be1aa5c8b",
+      "sourcePresent": true,
+      "resultSha256": "76f5442517754b64ec8960c82e8fe2de2bbc4e60e020c9a8db70222be1aa5c8b"
+    },
+    {
+      "path": "src/extensionHost/departmentexecutionproducer.ts",
+      "provenGitBaseline": {
+        "blob": "776cbdafef0ef1e3cd3c2275641fbf518edb4fdd",
+        "sha256": "493a42faedd4072cb7e59a5762fa1a38265581e757c636e803fab21e42dbb2bb"
+      },
+      "acceptedEntitySha256": "098044e87d3d347b447ca42ee75283ddc31eaadd8ca5e7867ba2bb038b85d2c9",
+      "sourcePresent": true,
+      "resultSha256": "098044e87d3d347b447ca42ee75283ddc31eaadd8ca5e7867ba2bb038b85d2c9"
+    },
+    {
+      "path": "src/extensionHost/departmentexecutionresources.ts",
+      "provenGitBaseline": {
+        "blob": "512c3ce2e58782407a91f4be996db5b49bfa8d08",
+        "sha256": "5fcdcc4fc741b35376ee36ca5b571b55ee83f70e5635dc6a86acd0173c98490d"
+      },
+      "acceptedEntitySha256": "1bf6eafe1a46ad4836d2aea877eb9191f3ddf3b820d5cc627510770ea3042eba",
+      "sourcePresent": true,
+      "resultSha256": "1bf6eafe1a46ad4836d2aea877eb9191f3ddf3b820d5cc627510770ea3042eba"
+    },
+    {
+      "path": "src/extensionHost/departmentleadercodexbootstrap.ts",
+      "provenGitBaseline": {
+        "blob": "96e4bf8322481ae3eb7cb37e87ef3495ff76ea7e",
+        "sha256": "7bd50d8d90c9cf97d60c25deee9e2a61db1be6e6e82b6e659f6f7d7910dcb546"
+      },
+      "acceptedEntitySha256": "dd4b63b21b7e9ffda9caffa660bf8c96fe799503b705cb8cff0ee3c91696e8ff",
+      "sourcePresent": true,
+      "resultSha256": "dd4b63b21b7e9ffda9caffa660bf8c96fe799503b705cb8cff0ee3c91696e8ff"
+    },
+    {
+      "path": "src/extensionHost/departmentleaderexecutionledger.ts",
+      "provenGitBaseline": {
+        "blob": "c17b4610f5b7218b8825ba579711728a057d50fb",
+        "sha256": "90b8ab5b79300695467fd7d1d65e27ab53d7dcf93881ad93c3d301d5ccabcdbd"
+      },
+      "acceptedEntitySha256": "d7c95198bd3946ab2df18e9e476d57a6b5c8ef05a4c276ed2b656419e5571229",
+      "sourcePresent": true,
+      "resultSha256": "d7c95198bd3946ab2df18e9e476d57a6b5c8ef05a4c276ed2b656419e5571229"
+    },
+    {
+      "path": "src/extensionHost/departmentleaderprocessbootstrap.ts",
+      "provenGitBaseline": {
+        "blob": "ebc8ebaa898e3102cf2a65a48f7b5dfab41f4b52",
+        "sha256": "11422c948bb45ff048e15bf6272d7cc61dd42678ff93bec7bde6b28d9f8a3053"
+      },
+      "acceptedEntitySha256": "a70ab9bf63ad90ea89786e9f381b7234e12d38c61c6393abb34b89d3e362ebce",
+      "sourcePresent": true,
+      "resultSha256": "a70ab9bf63ad90ea89786e9f381b7234e12d38c61c6393abb34b89d3e362ebce"
+    },
+    {
+      "path": "src/extensionHost/departmentleaderproductionhost.ts",
+      "provenGitBaseline": {
+        "blob": "8471a69f37155ef65458ebd19c27b8a4b62fe017",
+        "sha256": "cc6f1992c68c5058a543b2fbf6b093ee1f8da8bd1bad1e6370181f2169bf74c7"
+      },
+      "acceptedEntitySha256": "5605cfac54a96bb9eba93e4dcb8831c324247a134d881f8e75142ab3b71824b1",
+      "sourcePresent": true,
+      "resultSha256": "5605cfac54a96bb9eba93e4dcb8831c324247a134d881f8e75142ab3b71824b1"
+    },
+    {
+      "path": "src/extensionHost/departmentorchestration.ts",
+      "provenGitBaseline": {
+        "blob": "6ec6fb737248684a2dd65194fd343033fd00dbd7",
+        "sha256": "c6fa0053e559a9a1de14db254173f3221266be4ea4786e671d546f2cab5c513b"
+      },
+      "acceptedEntitySha256": "08866871e5623e1e33ff528a59cfb4d6c6cf53489c15bd9982017d6d4b687652",
+      "sourcePresent": true,
+      "resultSha256": "df7c4d6d31afcb181335af09bea2e1a8dbf2e4053156925e7dac0d309e734f4b"
+    },
+    {
+      "path": "src/extensionHost/departmentprocessbootstrap.ts",
+      "provenGitBaseline": {
+        "blob": "c25427ce4994f60ff19dc6d5156e44e0c54b1536",
+        "sha256": "5bb7752f5168c83b45306a179e3839837b2e9c2aaf7d3dfdd3a39d5abac655ea"
+      },
+      "acceptedEntitySha256": "ac74040a8bfcb56d0966a752d9b7d5a5bd22d459bd0d9f5d96e8c2fd98a8ada6",
+      "sourcePresent": true,
+      "resultSha256": "ac74040a8bfcb56d0966a752d9b7d5a5bd22d459bd0d9f5d96e8c2fd98a8ada6"
+    },
+    {
+      "path": "src/extensionHost/departmentprocesspreparation.ts",
+      "provenGitBaseline": {
+        "blob": "29643b8ce02db835325ef844de898e2582fd1fdf",
+        "sha256": "5d28c68568995d1c00affca16f167a0b8003d369228cb43cece1367701bde8cb"
+      },
+      "acceptedEntitySha256": "06afa9341cc3c0933f2448145740ae171ce10268019231c31ecd8f711a248af7",
+      "sourcePresent": true,
+      "resultSha256": "06afa9341cc3c0933f2448145740ae171ce10268019231c31ecd8f711a248af7"
+    },
+    {
+      "path": "src/extensionHost/departmentruntimecomposition.ts",
+      "provenGitBaseline": {
+        "blob": "053c36db3df2934ef70fbaa45c8ad7d4e0e38e76",
+        "sha256": "5253f11edf4f32d5374022cb28c4c0e5104b3dbb9835be054de42e393fcd9339"
+      },
+      "acceptedEntitySha256": "f3418af23aeb22b788333347ffa26e6ef946d195a9c71e04f3b106b5d41cad2c",
+      "sourcePresent": true,
+      "resultSha256": "9c13c86e11089fb9e20e05dad2939d81032275efa1ae1c6599ab32342264ca77"
+    },
+    {
+      "path": "src/extensionHost/loopPlusOrchestration.ts",
+      "provenGitBaseline": {
+        "blob": "0cca50c69cc85bf2f0857ab929fd799d119a7c55",
+        "sha256": "8b52f8208ba13e32b2d6f501d03fca222d9ed78494ec9b8c7ab72992d18cad4b"
+      },
+      "acceptedEntitySha256": "fe581b67e6f43551c51ee548b928dd172930187ea0da1809a01eda76112120bf",
+      "sourcePresent": true,
+      "resultSha256": "fbb79ef093b9d1721eb98e1bec220a72b3a4042d4de6c2a2d745aeb8b77da976"
+    },
+    {
+      "path": "src/extensionHost/loopPlusRuntimeAdapter.ts",
+      "provenGitBaseline": {
+        "blob": "2d9bcd6b35dbfdb0a0e539ce3dad025c121ffa6c",
+        "sha256": "08091e9176b89bc046522fa918653bd0bd557eac6dae67d66ccf038673509e4f"
+      },
+      "acceptedEntitySha256": "dbe6a7c39a4e861a9ac21e7a3e2084ad9d5343df45a99898684d364effbc4dc3",
+      "sourcePresent": true,
+      "resultSha256": "06dafc136a1ff6547ad8d61325f39d12d83c5c71c21530113373aba9680e144b"
+    },
+    {
+      "path": "src/runtime/departmentcodexownerworker.ts",
+      "provenGitBaseline": {
+        "blob": "7b070481d0df4d3cde1121a1ae81882618d0af1b",
+        "sha256": "88387802692e54010c7f15684d502688fdb687fd3e019b27f8f184bff9f64200"
+      },
+      "acceptedEntitySha256": "88e78beff63d1b998effe37882863094f90091bc435f91e1b3986c49cc7fabe6",
+      "sourcePresent": true,
+      "resultSha256": "88e78beff63d1b998effe37882863094f90091bc435f91e1b3986c49cc7fabe6"
+    },
+    {
+      "path": "src/runtime/departmentexecutionowner.ts",
+      "provenGitBaseline": {
+        "blob": "efe12514cb1aa9aec0fae1e07318f070847115ce",
+        "sha256": "510697df04e64187be893a98242fc15be9744ffb187bad5512e7531f018794bc"
+      },
+      "acceptedEntitySha256": "c1084a50799adec5604d22fa7ad8c053a9d54bf343195576678f683d6cbcba13",
+      "sourcePresent": true,
+      "resultSha256": "c1084a50799adec5604d22fa7ad8c053a9d54bf343195576678f683d6cbcba13"
+    },
+    {
+      "path": "src/runtime/departmentexecutionownerclient.ts",
+      "provenGitBaseline": {
+        "blob": "eb9134eb0f961c1aec0bcd975dae59eec0518849",
+        "sha256": "5129fc7386abaec03ff27ea76f7ce95baf8e5b02d5fff98b182cf664f814fd6a"
+      },
+      "acceptedEntitySha256": "4a316efb5bc4dbf52093c71a1aaadf99a9cda4907c9e4e7b8b659cfe2a4775b6",
+      "sourcePresent": true,
+      "resultSha256": "4a316efb5bc4dbf52093c71a1aaadf99a9cda4907c9e4e7b8b659cfe2a4775b6"
+    },
+    {
+      "path": "src/runtime/departmentgenerationauthority.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "538674a46110b98206cd172c44b721b0b4ff2366702f67164de2f9ba1a45908b",
+      "sourcePresent": true,
+      "resultSha256": "538674a46110b98206cd172c44b721b0b4ff2366702f67164de2f9ba1a45908b"
+    },
+    {
+      "path": "src/runtime/departmentgenerationauthorityclient.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "bb86ee5980259e4aca74af78fbdf8d0d863d172aad10fe71053229bf859ac3c5",
+      "sourcePresent": true,
+      "resultSha256": "bb86ee5980259e4aca74af78fbdf8d0d863d172aad10fe71053229bf859ac3c5"
+    },
+    {
+      "path": "src/runtime/departmentgenerationauthorityworker.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "19f548e0f70b1110c75a206eee254ee40fd3fe3280197f446249f1dcbc59ce10",
+      "sourcePresent": true,
+      "resultSha256": "19f548e0f70b1110c75a206eee254ee40fd3fe3280197f446249f1dcbc59ce10"
+    },
+    {
+      "path": "src/runtime/departmentleadercodexownerworker.ts",
+      "provenGitBaseline": {
+        "blob": "ca03e5817dd63899e71eb6d1866c2f8ce4ea881f",
+        "sha256": "0e5afcd689dafd746880d16e5b91cbd1e7f0dfd74a4cc7dc795f6b634e780bc7"
+      },
+      "acceptedEntitySha256": "cd763172c69506064b26966d1e472c8c0e2382cb1a3849a9e9fd8571ffd4b892",
+      "sourcePresent": true,
+      "resultSha256": "cd763172c69506064b26966d1e472c8c0e2382cb1a3849a9e9fd8571ffd4b892"
+    },
+    {
+      "path": "src/runtime/departmentleaderprocessownerworker.ts",
+      "provenGitBaseline": {
+        "blob": "c699a6abc1486570c10a7bb0d8ce7a26b2b70790",
+        "sha256": "84ae1e39369e3175b4927756d287bf86db9a7b193c63264c8e377738834529c1"
+      },
+      "acceptedEntitySha256": "c13d761708e590e6897dc97783053fa8f57dfb2dfa76628b12ae3e97b0f9a469",
+      "sourcePresent": true,
+      "resultSha256": "c13d761708e590e6897dc97783053fa8f57dfb2dfa76628b12ae3e97b0f9a469"
+    },
+    {
+      "path": "src/runtime/departmentprocessexecutionlauncher.ts",
+      "provenGitBaseline": {
+        "blob": "18771fc30d066f551c9f37bcf4926a152b52a032",
+        "sha256": "93ae2aeb3ad75df18d0ab21a04626d0fec4c497cf9c2ca495943d52cf759c440"
+      },
+      "acceptedEntitySha256": "6b4123742fca7b810cf749e6c09b9bb1f71f278eb21fc16eac330788a6f13c50",
+      "sourcePresent": true,
+      "resultSha256": "6b4123742fca7b810cf749e6c09b9bb1f71f278eb21fc16eac330788a6f13c50"
+    },
+    {
+      "path": "src/runtime/departmentprocessownerworker.ts",
+      "provenGitBaseline": {
+        "blob": "0e5e2fe00f481e517d2bc3547dbf1dce6f92662a",
+        "sha256": "b233eb20652239caae5e2c0a1039b05950fa860323f04bd52f20bb255a28ba70"
+      },
+      "acceptedEntitySha256": "ace2949269b2efda51d9b273e4d523661c91993fe75b28f87e9a95be9aa492f6",
+      "sourcePresent": true,
+      "resultSha256": "ace2949269b2efda51d9b273e4d523661c91993fe75b28f87e9a95be9aa492f6"
+    },
+    {
+      "path": "src/test/extensionHost/departmentcoldgenerationrecovery.test.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "0da129c1e7d7dc8e85240df684aa3f4204e6e3e6610e9d617f657e78a668bf3a",
+      "sourcePresent": true,
+      "resultSha256": "0da129c1e7d7dc8e85240df684aa3f4204e6e3e6610e9d617f657e78a668bf3a"
+    },
+    {
+      "path": "src/test/extensionHost/departmentcoldrecoveryehhost.test.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "3857ac621b3b65055a4cc7937aebb4a85aa6a0bd0fcc3c080bc4be2091a6f569",
+      "sourcePresent": true,
+      "resultSha256": "3857ac621b3b65055a4cc7937aebb4a85aa6a0bd0fcc3c080bc4be2091a6f569"
+    },
+    {
+      "path": "src/test/extensionHost/departmentleaderprocessbootstrap.test.ts",
+      "provenGitBaseline": {
+        "blob": "1dd068ef3bd55cf178cb03490e4547b7c63f3b56",
+        "sha256": "77e0b744c231ac211036541fc5b9fa67d24242de2268884a8a80a11138fbf4fe"
+      },
+      "acceptedEntitySha256": "e4ea06101f3ddca4815fe8199edf94fc49d208a7a1a115688dfa394c3575f0cb",
+      "sourcePresent": true,
+      "resultSha256": "e4ea06101f3ddca4815fe8199edf94fc49d208a7a1a115688dfa394c3575f0cb"
+    },
+    {
+      "path": "src/test/extensionHost/departmentleaderproductionhost.test.ts",
+      "provenGitBaseline": {
+        "blob": "ce6c00b317d008489d3ad60082a6961d27f0f3dd",
+        "sha256": "f549e99c466e0d2544f822ba74c912203f8980fb2021c2c622d2626a6c8b3d0a"
+      },
+      "acceptedEntitySha256": "3921ab2baf69d23c808ce36817d51509b0a765eb2a7b451b421fadf2c86692df",
+      "sourcePresent": true,
+      "resultSha256": "3921ab2baf69d23c808ce36817d51509b0a765eb2a7b451b421fadf2c86692df"
+    },
+    {
+      "path": "src/test/extensionHost/departmentproductionwiring.test.ts",
+      "provenGitBaseline": {
+        "blob": "b39fa19847dc552863439ad7c77c01633d138483",
+        "sha256": "def0e4732506fbd4e52bed264dad4536cbaea4cdc9b8797670b48c646a6503fc"
+      },
+      "acceptedEntitySha256": "a0fde666c9a919276279d6bba1113dfa8c4f77e296be6ea306ade262442e0375",
+      "sourcePresent": true,
+      "resultSha256": "56eca355fbece388abc11255e710da688b3658b0992c266751a6d9468d94d305"
+    },
+    {
+      "path": "src/test/extensionHost/departmentruntimecomposition.test.ts",
+      "provenGitBaseline": {
+        "blob": "85cf7d010e9f60ac7dbce7f56a96c8b577439551",
+        "sha256": "bc2ec92e9713bf24cfbfea459def156a8e412bac7da20ae85a72d652ced5b85f"
+      },
+      "acceptedEntitySha256": "d3f88e791a92ed07c8a4d7b68f9a63ab32fd563ea519b9ecaad6afdf6a2167ec",
+      "sourcePresent": true,
+      "resultSha256": "939351c3586afa0d8379cfce3177e88bf4f9c5b92e83c864c8e2061292942d8d"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentcoldgenerationhost.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "a2edf5ba3315b71ed1bc2cf10af2365557e4cec127cc3ec98380027f1706c07f",
+      "sourcePresent": true,
+      "resultSha256": "a2edf5ba3315b71ed1bc2cf10af2365557e4cec127cc3ec98380027f1706c07f"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentcoldrecoveryehhost.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "32c224bda070ce49b194e96594815810dd8988b41eab2f1f8dbd99c790f06f16",
+      "sourcePresent": true,
+      "resultSha256": "32c224bda070ce49b194e96594815810dd8988b41eab2f1f8dbd99c790f06f16"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentownedtestworkers.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "28097c129b789089f4ba513273320b29968b479ded85c3b8afe61783a405b546",
+      "sourcePresent": true,
+      "resultSha256": "28097c129b789089f4ba513273320b29968b479ded85c3b8afe61783a405b546"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentproductionwiringfixture.ts",
+      "provenGitBaseline": {
+        "blob": "8282bda1fbf8765ffa1e8cbd475a74642973b5be",
+        "sha256": "aae71afcd0ddcfa2aab0a6dc16a0d9c14a5e06d95f3f2897d99fc795b011eb25"
+      },
+      "acceptedEntitySha256": "9971835a0a9d44af1f9a87581124d73783e0cc9c36a2488f637ab23219b9434d",
+      "sourcePresent": true,
+      "resultSha256": "9971835a0a9d44af1f9a87581124d73783e0cc9c36a2488f637ab23219b9434d"
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusOrchestration.test.ts",
+      "provenGitBaseline": {
+        "blob": "5eb7c74548c0917aeaf04dbabe5af5497664290c",
+        "sha256": "6a29b007fccf694f38a547336c6582caf72659ff8bfa974fe091a5f2f5f4568c"
+      },
+      "acceptedEntitySha256": "d03de8b8025926851dd0d2ac6dc1470fec879120a8e0bb6569c9ccf7c8acb987",
+      "sourcePresent": true,
+      "resultSha256": "e7a18f2bf709299ac0378b9efb81a2a4ad61f76130cf6b98006e4805de014efb"
+    },
+    {
+      "path": "src/test/runtime/departmentgenerationauthority.test.ts",
+      "provenGitBaseline": null,
+      "acceptedEntitySha256": "a5cfa975d349d10c9ab93f53cceb6d88e55c83663021b25466daf97b0e977c16",
+      "sourcePresent": true,
+      "resultSha256": "a5cfa975d349d10c9ab93f53cceb6d88e55c83663021b25466daf97b0e977c16"
+    }
+  ],
+  "coldDeliveryPatchSha256": "eda945156e60e6c0aa6351eaae323e785e6eaa62a9552c92024dad99dfcfc55e",
+  "coldDeliveryManifestSha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+  "reproducibleDiffs": {
+    "newMainline": "git diff e890e363 2cda37b5",
+    "workspaceSource": "git diff ac1b8199 40c77d3e",
+    "round695Result": "git diff c40acbfc <round695-final-commit>",
+    "originalColdDelta": "git diff c76b5132 plus source SHA values in coldEntity55Paths"
+  },
+  "unchangedConflictResults": [
+    {
+      "path": "src/interactive/codexRunner.ts",
+      "mainlineTextConflict": true,
+      "sources": {
+        "originalIntegration": {
+          "blob": "66a66fcbd4229bf4e7a5a658956f335248c27028",
+          "sha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb"
+        },
+        "acceptedSemanticRepair": {
+          "blob": "66a66fcbd4229bf4e7a5a658956f335248c27028",
+          "sha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb"
+        },
+        "mainlineBase": {
+          "blob": "3fc26b02d661255db52706233260c3f809e7e306",
+          "sha256": "f8c3156645fec5396905f6dbad8768b70605fb9357ccefb0c5e6b5700602bfe1"
+        },
+        "fetchedMainline": {
+          "blob": "dfa7dfe52b78879907bf9daa195ebed3f4093877",
+          "sha256": "b978545a0455e2f0844161553418c3b9e98d5df3227c4ccb0d54a8f9587025d3"
+        },
+        "acceptedWorkspace": {
+          "blob": "66a66fcbd4229bf4e7a5a658956f335248c27028",
+          "sha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb"
+        },
+        "mainlineMerge": {
+          "blob": "66a66fcbd4229bf4e7a5a658956f335248c27028",
+          "sha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb"
+        },
+        "workspaceMerge": {
+          "blob": "66a66fcbd4229bf4e7a5a658956f335248c27028",
+          "sha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb"
+        }
+      },
+      "resultSha256": "920ef2b5c768519e63d885bd36aa1f3462fa580266657cb6b719a1a0caf35ceb",
+      "overlapResolution": "Result equals c40 injected adapter; migrate upstream pendingInterrupt/waitForStopped into invoked codexRunnerCore, including owned interrupt promise."
+    }
+  ],
+  "coldDeliveryManifestHandoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
+  "coldDeliveryManifestMatchesHandoff": false
+}

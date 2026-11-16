@@ -6,10 +6,13 @@ This is the review handoff for the local cumulative integration branch. It recor
 
 - Worktree: `/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116`
 - Branch: `codex/department-mainline-integration-round676-20261116`
-- Fetched default branch: `origin/master` at `e890e36352570b6cda9fc531df06ca2007a09ec6`
+- Initial integration mainline: `origin/master` at `e890e36352570b6cda9fc531df06ca2007a09ec6` (round-676 snapshot).
 - Candidate source: `a3a0d37a0723791645259c4abebbd6d129d52b79`, tree `87f0009e53b5aebd14f206ebad73993a4b38c492`, sole parent `e0ec605fc0b38ab0a59bb2268faac84efbeb3668`
 - Merge base: `8f396c1b809c43320aad9c4c43eb05c9cf2a3c58`
-- Final merge commit/tree/parents: recorded in the round-676 attempt report after commit to avoid a self-reference.
+- Latest fetched default branch for round 695: `origin/HEAD -> origin/master` at `2cda37b568465c3ace4c5cbe3c953471260496e2`. This attempt's normal fetch succeeded without changing the already refreshed cached ref (pre/post `2cda37b5`); the original round-676 base `e890e363` lacks both later commits, `0c0bb86c` and `2cda37b5`.
+- Round-695 mainline merge: `4b47d0a76d36c3bb973c48a74d52825e66a0f8b6`, tree `e54800c7976b40f2e702adb789bc9f388e489f2e`, parents `c40acbfc78c7bdd6bf54d036b07dbdaaac0fe443` and `2cda37b568465c3ace4c5cbe3c953471260496e2`.
+- Accepted workspace-capacity source: `40c77d3eb7eabd511ab569cdc25e08e6ed348d5a`, tree `39e191a4482b40f75072ea44463df0f7e7a4da68`, sole parent `ac1b8199d3c164f76c1043bc21bfffc13a0ae60e`.
+- Final commit/tree after round-695 integration materials: recorded in the round-695 attempt report.
 
 The integration branch was created from the fetched mainline before merging the candidate. The merge commit parent order is mainline first, candidate second. No source worktree or shared dirty checkout was changed.
 
@@ -22,10 +25,10 @@ Cold source identity:
 - Source closure: `c806bda98c0d408b20db775112ce2c62460084b8f44718e3930485fce11751bd`
 - Scripts closure: `d677e1691181020ddca60d3c61071083041e738fa0e204f3a76cce14e6d1ec13`
 - Round-674 patch SHA-256: `eda945156e60e6c0aa6351eaae323e785e6eaa62a9552c92024dad99dfcfc55e`
-- Round-674 manifest SHA-256: `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`
+- Round-674 manifest SHA-256 recorded in the handoff: `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`. Round-695 read-only measurement of the existing file is `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412`; these differ. The path identity manifest retains the measured value and `sources.json` retains both. This discrepancy remains open for provenance review; the entity was not recopied or reapplied.
 - Provenance: round-443 cold entity copied from round-440, whose cumulative source traces through round-437 to the c76 baseline; see the round-674 attempt report for the original execution manifests and limits.
 
-The original difference is the 55-path c76-to-cold-entity delta. The final difference is the complete mainline-to-merge-commit tree, including all accepted candidate history plus this cold cumulative entity: 453 paths (343 added, 110 modified, zero deleted; 168,999 insertions and 3,593 deletions). Inspect the exact final path list with `git diff --name-status e890e36352570b6cda9fc531df06ca2007a09ec6 <final-commit>`. These are intentionally separate comparisons and are not represented as a single patch.
+The original difference is the 55-path c76-to-cold-entity delta. The previously recorded final difference was the e890-to-round-676 tree (453 paths: 343 added, 110 modified, zero deleted). Round 695 adds newer mainline contracts, the accepted workspace overrides, and merge materials; use the current round-695 report for the exact final tree path list. These source comparisons are separate and are not represented as a single patch.
 
 ## Conflict Review
 
@@ -35,7 +38,7 @@ There were 13 Git unmerged paths. Each is listed with the merge decision in `sem
 
 Reused only within the exact source snapshots stated by the round-675 and round-674 reports: round-675 build, final 14 distinct targeted cases (11 unchanged plus 3 rerun after fixture repair), and 1440 dark / 280 light display fixtures; round-674 build, 7 targeted Node cases, ontology validation and 9 ontology tests, plus its limited macOS second-EH and Codex worker-exit runs. The original round-675 two test failures and Tabs timeout remain recorded. Round-674's history limitation on the older guard branch remains. The quota run-1/2 cleanup remains unknown; run-4's full driver failed while its later read-only review passed within narrower evidence bounds.
 
-This attempt ran one final successful standard `npm run build` after the three fixes. It did not run product unit tests, browser, CLI, EH or full regression on the combined tree. Workspace-level leader/employee count overrides were requested after integration began and remain unimplemented and unverified. Necessary Windows/Linux evidence, actual UI-to-EH/CLI composition, remaining cold-recovery acceptance, and final full regression remain open. Build success does not close those gates.
+Round 676 ran one final successful standard `npm run build` after its three fixes; that result applies only to that snapshot. Round 695 fetched and merged later mainline commits plus the accepted workspace-capacity source. Workspace-level optional leader/employee count overrides are now present in the integrated tree. The new combined production source passed standard build; after a capacity test fixture correction, tsc and orchestration tests passed. The other targeted groups, source checks and exact commands/results are in the round-695 report. Necessary Windows/Linux evidence, actual UI-to-EH/CLI composition, remaining cold-recovery acceptance, and final full regression remain open. Build success does not close those gates.
 
 ## Round 694: Semantic Merge Repair
 
@@ -48,4 +51,4 @@ The acceptance review identified two concrete omissions that the earlier conflic
 
 The first acceptance probe of the modal-only load/action/refresh case did not reach its assertion: the fake Webview never emitted the newer `loadingReady` handshake. This was a fixture protocol mismatch, not a pass or a production timeout fix. Round 694 adapts the fake Webview to emit `loadingReady` and a DOM-ready generation after page installation, uses bounded open waits, and retains the load, action, no-alias, refresh/content-patch, close and stale-instance assertions. The browser smoke similarly responds to the real loading handshake while leaving DOM-ready to the rendered page.
 
-The detailed old-result, corrected-result, and source-identity records are in `semantic-review.md` and `sources.json`. The round-674 manifest identity remains SHA-256 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`; all original 55 cumulative paths remain listed. Round-676's build result and the interrupted acceptance probe remain historical facts, separate from this repair's build and targeted tests. Real UI-to-EH/CLI behavior, final full regression, required platform evidence, and the separate workspace count override remain open.
+The round-694 handoff recorded the round-674 manifest as SHA-256 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`; the differing round-695 file measurement is recorded above. All original 55 cumulative paths remain listed. Round-676's build and interrupted probe, round-694 repair results, and the round-694 workspace feature results retain their original snapshot boundaries. Round-695 sources, semantic decisions, and open gates are recorded in `semantic-review.md` and `sources.json`. Real UI-to-EH/CLI behavior, final full regression, required platform evidence, and combined capacity/cold-recovery acceptance remain open.
