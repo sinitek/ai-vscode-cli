@@ -424,6 +424,8 @@ export type PanelState = {
   loopPlusMaxAcceptances: number;
   departmentMaxLeaders?: number;
   departmentMaxEmployees?: number;
+  workspaceDepartmentMaxLeaders?: number | null;
+  workspaceDepartmentMaxEmployees?: number | null;
   departmentConfigurationScope?: string;
   departmentConfigurationIssue?: string | null;
   departmentRolePreferences?: Partial<import("../departmentConfiguration").DepartmentRolePreferences>;

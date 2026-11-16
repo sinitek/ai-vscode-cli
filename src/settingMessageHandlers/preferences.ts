@@ -1,7 +1,7 @@
 import { getDebugLogging } from "../cli/config";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "../chatMessageLimit";
 import { setDebugLogging } from "../logger";
-import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "../departmentSettings";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "../departmentSettings";
 import { normalizeDepartmentRolePreference, validateDepartmentRoleCandidate } from "../departmentConfiguration";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
@@ -119,6 +119,32 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
   command("departmentMaxEmployees", (message, deps) => {
     const saved = deps.updateStoredToolSettings({ departmentMaxEmployees: normalizeDepartmentMaxEmployees(message.value) });
     if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.departmentMaxEmployeesSaveError);
+  }),
+  command(["workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"], (message, deps) => {
+    const raw = message.value as { scope?: unknown; requestId?: unknown; value?: unknown } | null;
+    const scope = deps.getDepartmentConfigurationScope?.();
+    if (!raw || typeof raw !== "object" || typeof raw.requestId !== "string") return;
+    const key = message.key === "workspaceDepartmentMaxLeaders" ? "departmentMaxLeaders" : "departmentMaxEmployees";
+    const respond = (ok: boolean, error?: string): void => {
+      // Stale requests receive a scoped reply, never an error in the replacement workspace.
+      deps.postWebviewMessage({ type: "workspaceDepartmentCapacitySaved", scope: raw.scope, requestId: raw.requestId, key: message.key, ok, error });
+      if (error && raw.scope === deps.getDepartmentConfigurationScope?.()) deps.showWebviewError("产研部配置", error);
+    };
+    if (!scope || raw.scope !== scope) { respond(false, "工作区作用域已变化，请在当前工作区重试。"); return; }
+    const clear = raw.value === null || (typeof raw.value === "string" && !raw.value.trim());
+    const value = normalizeWorkspaceDepartmentCapacity(raw.value);
+    if (!clear && value === undefined) { respond(false, "人数必须为取整后大于零的安全数字，留空继承全局。"); return; }
+    const next = { ...deps.getWorkspaceSettings() };
+    if (clear) delete next[key];
+    else next[key] = value;
+    try {
+      if (!deps.setWorkspaceSettings || !deps.saveWorkspaceSettingsWithResult?.(next).ok) {
+        respond(false, "工作区人数设置保存失败，请重试。"); return;
+      }
+    } catch { respond(false, "工作区人数设置保存失败，请重试。"); return; }
+    if (scope !== deps.getDepartmentConfigurationScope?.()) { respond(false, "工作区作用域已变化，请重新加载设置。"); return; }
+    deps.setWorkspaceSettings(next);
+    respond(true);
   }),
   command("departmentRolePreference", async (message, deps, { currentCli, workspaceSettings }) => {
     const value = message.value;

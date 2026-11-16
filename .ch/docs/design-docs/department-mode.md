@@ -87,7 +87,7 @@ round-320/321 已验证真实 Codex 0.167.2 在 macOS arm64、本机 Responses f
 
 ## 人数、共享额度与租约生命周期
 
-人数设置已通过 `src/departmentSettings.ts` 统一宿主/Webview 归一化并接入持久化及 PanelState；非法值回退默认，正数向下取整。设置值为：
+人数设置通过 `src/departmentSettings.ts` 统一宿主/Webview 正数向下取整和安全整数规则。全局非法值回退4/20；工作区两项 optional 同名字段独立覆盖，非法/缺省读取继承全局，空输入删除单项，非空非法保存拒绝。PanelState原字段仍是全局值，`workspaceDepartmentMaxLeaders`/`workspaceDepartmentMaxEmployees` 为 number/null；空值显示继承全局占位。保存使用最新副本及宿主scope/requestId，完整临时文件替换成功才发布内存，失败保留已存配置。生产 `resolveDepartmentPromptConfiguration` 解析实际工作区有效值，冻结到新根，原后续准入消费该快照；本设置不热迁移旧根或重写冷恢复原代。设置值为：
 
 | 键 | 默认值 | 语义 |
 | --- | --- | --- |

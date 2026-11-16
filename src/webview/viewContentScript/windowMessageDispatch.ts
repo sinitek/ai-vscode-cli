@@ -3,6 +3,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
         try {
           const data = event.data;
           if (data.type === "departmentRoleCandidates") applyDepartmentRoleCandidates(data);
+          if (data.type === "workspaceDepartmentCapacitySaved") applyWorkspaceDepartmentCapacitySaved(data);
           if (data.type === "departmentRolePreferenceSaved") applyDepartmentRolePreferenceSaved(data);
           if (data.type === "promptPauseReady") {
             const runtimeState = getConversationRuntimeState(data.tabId, { create: false });

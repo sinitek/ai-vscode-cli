@@ -220,7 +220,7 @@
         {
           "order": 1,
           "actor": "plugin.extension_host",
-          "action": "核对权威任务、路线、组织代次、真实 attempt 与容量，固定八字段 selection 及资源策略",
+          "action": "核对权威任务、路线、组织代次、真实 attempt 与容量，固定八字段 selection 及资源策略；新根人数逐项使用合法工作区覆盖、合法全局、4/20默认的生产配置快照，后续准入及冷恢复沿用冻结原根，不因保存新覆盖迁移运行容量",
           "object": "plugin.department_task",
           "result": "plugin.department_execution_responsibility"
         },

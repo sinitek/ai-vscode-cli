@@ -19,6 +19,69 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         return commit;
       }
 
+      const workspaceCapacityUi = { scope: null, sequence: 0, pending: {}, values: {} };
+      const workspaceCapacityKeys = ["workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"];
+      function workspaceCapacityStatus(key, text) {
+        const status = document.getElementById(key + "Status");
+        if (status) status.textContent = text;
+      }
+      function syncWorkspaceDepartmentCapacityPanelState(panelState) {
+        const scope = panelState.departmentConfigurationScope || null;
+        if (workspaceCapacityUi.scope !== scope) {
+          workspaceCapacityUi.scope = scope;
+          workspaceCapacityUi.pending = {};
+          workspaceCapacityKeys.forEach((key) => {
+            workspaceCapacityStatus(key, "");
+            elements[key]?.removeAttribute("aria-invalid");
+          });
+        }
+        workspaceCapacityKeys.forEach((key) => {
+          const input = elements[key];
+          if (!input) return;
+          const value = normalizeDepartmentCapacity(panelState[key], NaN);
+          workspaceCapacityUi.values[key] = Number.isFinite(value) ? value : null;
+          input.placeholder = "全局：" + state[key === "workspaceDepartmentMaxLeaders" ? "departmentMaxLeaders" : "departmentMaxEmployees"];
+          input.disabled = !scope || Boolean(workspaceCapacityUi.pending[key]);
+          if (!workspaceCapacityUi.pending[key]) input.value = workspaceCapacityUi.values[key] === null ? "" : String(workspaceCapacityUi.values[key]);
+        });
+      }
+      function commitWorkspaceDepartmentCapacity(key) {
+        const input = elements[key];
+        if (!input || input.disabled || workspaceCapacityUi.pending[key]) return;
+        const raw = input.value.trim();
+        const value = raw ? normalizeDepartmentCapacity(raw, NaN) : null;
+        if (input.validity?.badInput || (raw && !Number.isFinite(value))) {
+          input.setAttribute("aria-invalid", "true");
+          workspaceCapacityStatus(key, "人数必须为取整后大于零的安全数字，留空继承全局。");
+          return;
+        }
+        input.removeAttribute("aria-invalid");
+        input.value = value === null ? "" : String(value);
+        if (value === workspaceCapacityUi.values[key]) { workspaceCapacityStatus(key, ""); return; }
+        const requestId = "workspace-capacity-" + (++workspaceCapacityUi.sequence);
+        workspaceCapacityUi.pending[key] = { requestId, value };
+        input.disabled = true;
+        workspaceCapacityStatus(key, "正在保存…");
+        vscode.postMessage({ type: "updateSetting", key, value: { scope: workspaceCapacityUi.scope, requestId, value } });
+      }
+      function applyWorkspaceDepartmentCapacitySaved(data) {
+        const pending = workspaceCapacityUi.pending[data.key];
+        if (data.scope !== workspaceCapacityUi.scope || !pending || data.requestId !== pending.requestId) return;
+        delete workspaceCapacityUi.pending[data.key];
+        if (data.ok) workspaceCapacityUi.values[data.key] = pending.value;
+        const input = elements[data.key];
+        input.disabled = !workspaceCapacityUi.scope;
+        input.value = workspaceCapacityUi.values[data.key] === null ? "" : String(workspaceCapacityUi.values[data.key]);
+        workspaceCapacityStatus(data.key, data.ok ? "" : (data.error || "工作区人数设置保存失败，请重试。"));
+      }
+      workspaceCapacityKeys.forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        input.addEventListener("change", () => commitWorkspaceDepartmentCapacity(key));
+        input.addEventListener("blur", () => commitWorkspaceDepartmentCapacity(key));
+        input.addEventListener("input", () => { input.removeAttribute("aria-invalid"); workspaceCapacityStatus(key, ""); });
+      });
+
       function setToolSettingsTab(scope) {
         const selected = ["aiTask", "workspace", "notifications", "repair"].includes(scope) ? scope : "general";
         [["general", elements.toolSettingsGeneralTab, elements.toolSettingsGeneralPanel],

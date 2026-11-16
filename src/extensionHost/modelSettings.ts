@@ -41,7 +41,7 @@ import { isCliName } from "../panelStateBuilder";
 import { resolveDshActivePatchPath, resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
 import { resolveDepartmentOpenCodeDirector, readDepartmentRoleCandidates } from "./departmentConfigurationHost";
 import { resolveDepartmentConfigurationWithHost, type DepartmentConfiguredRoleRoute } from "../departmentConfiguration";
-import { normalizeDepartmentMaxLeaders, normalizeDepartmentMaxEmployees } from "../departmentSettings";
+import { resolveEffectiveDepartmentLimits } from "../departmentSettings";
 import { buildSystemLoopPlusAcceptancePlanSnapshot, findLoopPlusAcceptancePlan, normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 export type ModelSettingsHostDeps = {
@@ -1699,7 +1699,7 @@ return {
       getDirector,
       getPreferences: (director) => deps.getWorkspaceSettings().departmentRoleRoutesByDirectorConfig?.[director.configId ?? ""],
       getCandidates: getDepartmentRoleCandidates,
-      getLimits: () => { const settings = readToolSettings(); return { maxLeaders: normalizeDepartmentMaxLeaders(settings.departmentMaxLeaders), maxEmployees: normalizeDepartmentMaxEmployees(settings.departmentMaxEmployees) }; },
+      getLimits: () => resolveEffectiveDepartmentLimits(deps.getWorkspaceSettings(), readToolSettings()),
       getAcceptancePlan: () => {
         const settings = deps.getWorkspaceSettings();
         const id = acceptancePlanSelectionId ?? settings.loopPlusAcceptancePlanSelection ?? "system_default";

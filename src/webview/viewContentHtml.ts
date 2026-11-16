@@ -837,6 +837,15 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 </div>
                 <div id="workspaceLoopPlusDecisionSubtaskMaxNote" class="tool-settings-note">${i18n.toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote}</div>
               </section>
+              ${[["workspaceDepartmentMaxLeaders", i18n.departmentMaxLeadersLabel, DEPARTMENT_MAX_LEADERS_DEFAULT], ["workspaceDepartmentMaxEmployees", i18n.departmentMaxEmployeesLabel, DEPARTMENT_MAX_EMPLOYEES_DEFAULT]].map(([key, label, fallback]) => `<section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="${key}">${label}</label>
+                  <input type="number" id="${key}" class="tool-settings-number" min="1" step="1" placeholder="全局：${fallback}" disabled aria-describedby="${key}Note ${key}Status" />
+                </div>
+                <div id="${key}Note" class="tool-settings-note">${i18n.workspaceDepartmentCapacityNote}</div>
+                <div id="${key}Status" class="tool-settings-note" role="status" aria-live="polite"></div>
+              </section>`).join("\n")}
+
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
@@ -845,6 +854,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
                   </label>
                 </div>
+
                 <div id="longTermMemoryNote" class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
               </section>
               <section class="tool-settings-card">

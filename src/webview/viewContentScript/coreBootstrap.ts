@@ -438,6 +438,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
         loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
+        workspaceDepartmentMaxLeaders: document.getElementById("workspaceDepartmentMaxLeaders"),
+        workspaceDepartmentMaxEmployees: document.getElementById("workspaceDepartmentMaxEmployees"),
         departmentMaxLeaders: document.getElementById("departmentMaxLeaders"),
         departmentMaxEmployees: document.getElementById("departmentMaxEmployees"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
