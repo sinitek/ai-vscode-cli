@@ -72,6 +72,7 @@ N=1 时 B=1，避免批量为零；达到 1 条即检查，未受保护的消息
 
 - 协议使用 `pruneChatMessages` / `chatMessagesPruned`，携带请求 ID 和 Tab/CLI/会话身份。宿主重新检查消息内容快照、用户/最终答复保护以及活动输出，过期请求不应用到新会话。
 - 主色边框与宿主保护共用 `finalAnswerProtocol.ts` 的 `isFinalAnswerMessage`；宿主不信任前端关于可删除性的单方面判断。运行中当前助手消息临时保护，结束后可重新清理普通过程正文。
+- 宿主的 `src/sessionLifecycle.ts#pruneChatMessages` 保留 Tab/CLI/session 身份授权、权威 source 与共同目标数组收集、活跃 ID 识别、持久化及原地提交编排；纯删除规划由 `src/sessionMessagePruningPolicy.ts#buildSessionMessagePruningPlan` 负责。Policy 仅接收消息快照和保护 ID，不依赖生命周期或副作用。
 - 写入采用同目录临时文件加重命名；保存失败保留原存档和内存，回传错误恢复真实显示，不假报成功或在每次渲染中无休止重试。
 - 成功后原地压缩宿主缓存、主运行、并行/交互运行及待绑定草稿的消息数组，避免旧数组后续保存把数据写回。主运行索引重定位，交互流式写入按消息 ID 重新定位。
 - 存档使用兼容字段 `retentionPruned: true` 标记主动清理。Claude 在只剩用户消息时不再从外部 transcript 自动补回被清理的过程；标记随正常保存、草稿绑定和本地会话迁移保留。
@@ -115,6 +116,6 @@ N=1 时 B=1，避免批量为零；达到 1 条即检查，未受保护的消息
 - `src/webview/viewContentStrings.ts`、`src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`：工具设置、AI任务配置入口及既有设置绑定。
 - `src/webview/viewContentScript/messageRendering.ts`：`getVisibleMessages`、`renderMessages`、基础过滤、非活动 DOM 缓存与增量渲染。
 - `src/webview/chatBubbleRetention.ts`：达到上限触发、25% 批量向上取整及保护项跳过的共享策略和浏览器运行时注入源。
-- `src/sessionLifecycle.ts`、`src/sessionStore.ts`、`src/shared/atomicWrite.ts`：宿主校验、真实删除、兼容存档标记与原子写入；`src/panelMessageHandlers/session.ts` 和 `windowMessageDispatch.ts` 连接确认协议。
+- `src/sessionLifecycle.ts`、`src/sessionMessagePruningPolicy.ts`、`src/sessionStore.ts`、`src/shared/atomicWrite.ts`：宿主授权/持久化/提交编排、纯删除规划、兼容存档标记与原子写入；`src/panelMessageHandlers/session.ts` 和 `windowMessageDispatch.ts` 连接确认协议。
 - `ARCHITECTURE.md` 的 Webview/UI 层、[既有功能总表](../product-specs/FEATURE_INVENTORY.md#ai-对话标签切换性能)：现有渲染/Tab 缓存边界。
 - [CLI 运行时参考](../references/cli-runtime-reference.md)：最终结论协议；保守显示保护不能取代运行终态判定。

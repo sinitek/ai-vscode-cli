@@ -1722,7 +1722,7 @@
     {
       "id": "plugin.rule.loop_continue_model_choice",
       "name": "Loop 与 Loop+ 独立切模型及停止任务续跑",
-      "description": "Loop 与 Loop+ 群聊按钮栏通过独立切模型选择各角色模型和思考力度；继续执行只填写继续说明，补充需求和我要提问不选择模型来源。各角色保持任务绑定 CLI，从该 CLI 当前激活配置复用已有下拉选项；经典 Loop 为主子，Loop+ 全栈为主和全栈，分离为主、后端和前端。力度随模型能力更新，无支持时禁用。提交整体校验并写回任务 modelRouting、配置身份与 originProfile 各角色 ThinkingMode，不改模式及全局模型偏好；旧消息未携带力度时保留原值。当前调用不打断，后续主子调用、重试和复核读取最新路由及力度，启动边界刷新 thinkingModeOverride，避免旧提示覆盖；独立提问不受影响。停止的未完成主子执行自动续跑，活跃同级不重启。Loop+ 中断子项复用原 attempt 和会话，经典 Loop 等待原控制器安全收尾后再唤醒主任务。刷新保留同配置有效模型、力度与焦点，取消不写入，非法选项不落盘。默认模型是有效路由，不能补成主模型。",
+      "description": "Loop 与 Loop+ 群聊按钮栏通过独立切模型选择各角色模型和思考力度；继续执行只填写继续说明，补充需求和我要提问不选择模型来源。各角色保持任务绑定 CLI，从该 CLI 当前激活配置复用已有下拉选项；经典 Loop 为主子，Loop+ 全栈为主和全栈，分离为主、后端和前端。力度随模型能力更新，无支持时禁用。提交整体校验并写回任务 modelRouting、配置身份与 originProfile 各角色 ThinkingMode，不改模式及全局模型偏好；旧消息未携带力度时保留原值。当前调用不打断，后续主子调用、重试和复核读取最新路由及力度，启动边界刷新 thinkingModeOverride，避免旧提示覆盖；独立提问不受影响。停止的未完成主子执行自动续跑，活跃同级不重启。群聊继续执行在恢复原配置后也复用同一子任务恢复协调器，保留已保存的模型、配置和思考力度及继续说明；经典子任务完成后的回调只继续主任务，不重复恢复子任务，Loop+ 继续说明进入现有用户消息队列。Loop+ 中断子项复用原 attempt 和会话，经典 Loop 等待原控制器安全收尾后再唤醒主任务。刷新保留同配置有效模型、力度与焦点，取消不写入，非法选项不落盘。默认模型是有效路由，不能补成主模型。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -1900,7 +1900,7 @@
     {
       "id": "plugin.rule.loop_plus_user_message_wake",
       "name": "Loop+ 用户消息唤醒或进入主任务队列",
-      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。群聊“继续”也将用户消息排入该队列，控制器仍在等待子任务时由同一调度器唤醒主模型；继续按钮按主模型真实忙闲展示，不把后台控制器所有权误当作主模型忙。切模型先同步运行时提示、模型路由和思考力度，再排入继续消息；有实际中断子任务可恢复时启动其原 attempt，否则唤醒主模型，仍运行的兄弟 attempt 不受影响。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。Loop+ 控制状态以宿主运行所有权判断真实运行；无控制器时允许用户通过群聊显式重建原快照并继续，真实主模型忙、失败上限、完成或无效快照仍受保护；重新打开不自动运行。Loop+ 父任务正常完成并成功持久化后，主任务对话追加回答结论和最终总结 assistant 气泡；同一会话的后续普通 prompt 仍新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
+      "description": "仅 event_driven 的 Loop+ 在群聊提交“补充需求”后，主任务空闲就唤醒；主任务正在执行时消息进入 userMessageQueue。群聊“继续”也将用户消息排入该队列，控制器仍在等待子任务时由同一调度器唤醒主模型；继续按钮按主模型真实忙闲展示，不把后台控制器所有权误当作主模型忙。切模型先同步运行时提示、模型路由和思考力度，再排入继续消息；群聊继续在恢复原配置后也调用同一子任务恢复协调器，有实际中断子任务可恢复时启动其原 attempt 并保留继续消息，否则唤醒主模型，仍运行的兄弟 attempt 不受影响。开始验收时，当前项和当时已在验收队列中的完成事件由同一次主任务确认；当时已到达的用户消息也进入这一轮。执行期间新到的完成和消息留到下一轮。没有待验收项时，积压消息单独查看，并可立刻 dispatch，或在仍有 running、pending 时 wait。消息本身不是验收事件。经典 Loop 仍只保存补充需求，不走这条唤醒。父任务已停止、已完成或主任务连续失败达到上限时不自动唤醒。Loop+ 控制状态以宿主运行所有权判断真实运行；无控制器时允许用户通过群聊显式重建原快照并继续，真实主模型忙、失败上限、完成或无效快照仍受保护；重新打开不自动运行。Loop+ 父任务正常完成并成功持久化后，主任务对话追加回答结论和最终总结 assistant 气泡；同一会话的后续普通 prompt 仍新建并启动绑定同一 session 的 Loop+ 任务，而不是把文本写入旧任务后因 completed 快照结束。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2541,6 +2541,7 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "每 Tab 聊天气泡显示限额"},
         {"path": "src/webview/viewContentScript/messageRendering.ts"},
         {"path": "src/sessionLifecycle.ts", "anchor": "pruneChatMessages"},
+        {"path": "src/sessionMessagePruningPolicy.ts", "anchor": "buildSessionMessagePruningPlan"},
         {"path": "src/sessionStore.ts", "anchor": "writeMessageFile"},
         {"path": "src/finalAnswerProtocol.ts", "anchor": "isFinalAnswerMessage"},
         {"path": "src/shared/jsonContainer.ts", "anchor": "parseCompleteJsonContainer"},

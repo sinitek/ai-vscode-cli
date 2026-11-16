@@ -127,6 +127,88 @@ for (const running of [true, false]) {
   });
 }
 
+for (const savedProfile of [true, false]) {
+  test(`经典 Loop 继续先恢复子任务并在完成后保留继续说明，原档案=${savedProfile}`, async () => {
+    const env = createContinuationRecoveryHarness();
+    env.task.schedulingMode = "classic";
+    if (!savedProfile) env.task.originProfile = undefined;
+    const originalRouting = JSON.stringify(env.task.modelRouting);
+    let resumed = 0;
+    let resumeMain = () => undefined as void;
+    const inputs: Array<Parameters<typeof env.deps.runLoopPrompt>[0]> = [];
+    env.deps.resumeLoopSubtasks = (taskId, resume) => {
+      assert.equal(taskId, env.task.id);
+      resumed += 1;
+      resumeMain = resume;
+      return true;
+    };
+    env.deps.runLoopPrompt = async (prompt) => { inputs.push(prompt); };
+
+    await env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:continueTask", prompt: "继续完成剩余子任务",
+    } as never);
+    assert.equal(resumed, 1);
+    assert.equal(inputs.length, 0);
+    env.task.status = "running";
+    resumeMain();
+    await delay(0);
+    assert.equal(resumed, 1);
+    assert.equal(inputs[0]?.loopContinuePrompt, "继续完成剩余子任务");
+    assert.equal(JSON.stringify(env.task.modelRouting), originalRouting);
+    assert.deepEqual(env.warnings, []);
+  });
+}
+
+test("Loop+ 继续恢复中断子任务并保留继续消息，不直接重启主任务", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  const messages: string[] = [];
+  let resumed = 0;
+  env.deps.resumeLoopSubtasks = () => { resumed += 1; return true; };
+  env.deps.notifyLoopPlusUserMessage = (_taskId, text) => { messages.push(text); };
+  const before = JSON.stringify(env.task);
+  await env.coordinator.continueTask(env.task.id, "继续完成剩余子任务");
+  assert.equal(resumed, 1);
+  assert.equal(env.runs, 0);
+  assert.deepEqual(messages, ["继续完成剩余子任务"]);
+  assert.equal(JSON.stringify(env.task), before);
+  assert.ok(env.messages.some((message) => message.type === "loopGroupChatChat:continueTaskSettled"));
+});
+
+for (const reason of ["completed", "busy", "failure-limit", "restore-failed"] as const) {
+  test(`继续执行在 ${reason} 时不启动子任务`, async () => {
+    const env = createContinuationRecoveryHarness();
+    let resumed = 0;
+    env.deps.resumeLoopSubtasks = () => { resumed += 1; return true; };
+    if (reason === "completed") env.task.status = "completed";
+    if (reason === "busy") {
+      env.task.status = "running";
+      env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+      env.deps.isTabRunActive = () => true;
+    }
+    if (reason === "failure-limit") env.task.mainAiFailureLimitReached = true;
+    if (reason === "restore-failed") {
+      env.deps.restoreOriginalLoopRuntime = async () => ({ ok: false, message: "配置已失效" });
+    }
+    await env.coordinator.continueTask(env.task.id, "继续执行");
+    assert.equal(resumed, 0);
+    assert.equal(env.runs, 0);
+    assert.ok(env.messages.some((message) => message.type === "loopGroupChatChat:continueTaskSettled"));
+  });
+}
+
+test("子任务恢复异常后继续按钮收尾并允许重试", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.deps.resumeLoopSubtasks = () => { throw new Error("子任务恢复失败"); };
+  await env.coordinator.continueTask(env.task.id, "继续执行");
+  assert.deepEqual(env.warnings, ["子任务恢复失败"]);
+  assert.equal(env.runs, 0);
+  env.deps.resumeLoopSubtasks = () => false;
+  await env.coordinator.continueTask(env.task.id, "重试继续");
+  assert.equal(env.runs, 1);
+});
+
 test("opening reveals before model preparation, coalesces clicks and reads the latest task", async () => {
   const env = createContinuationRecoveryHarness();
   const events: string[] = [];

@@ -2094,14 +2094,14 @@ test("adapter manual stop waits for continuation notification before review", as
   }
 });
 
-test("群聊继续消息经真实 adapter 唤醒空闲 Loop+ 控制器并调用主模型", { timeout: 5000 }, async () => {
+test("群聊继续经真实 adapter 恢复中断子任务、保留活跃同级和继续说明", { timeout: 5000 }, async () => {
   const fixture = createLoopPlusRuntimeFixture();
   let originalRun: Promise<boolean> | undefined;
   let continuationRun: Promise<void> | undefined;
   try {
     fixture.queueMain((input, tabId) => {
       fixture.publish(input, tabId, {
-        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+        status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts"), subtask("B", "src/b.ts")] }),
       });
     });
     fixture.queueMain(async (input) => {
@@ -2109,8 +2109,11 @@ test("群聊继续消息经真实 adapter 唤醒空闲 Loop+ 控制器并调用�
       await fixture.holdMain();
     });
     originalRun = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
-    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "初始子任务启动");
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "初始子任务启动");
     const taskId = fixture.mainCalls[0].loopTaskId!;
+    const before = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot();
+    const originalRouting = JSON.stringify(fixture.readTask(taskId)?.modelRouting);
+    const originalTargetCount = fixture.createdSubtaskTargets.length;
     fixture.finishParked("A", { status: "stopped", content: "手动中断" });
     await waitForLoopPlus(() => fixture.readTask(taskId)?.subTasks[0]?.status === "blocked", "中断状态落盘");
 
@@ -2132,6 +2135,8 @@ test("群聊继续消息经真实 adapter 唤醒空闲 Loop+ 控制器并调用�
       isTabRunActive: () => false,
       getActiveConfigIdForCli: () => null,
       getSelectedCliModel: () => "main-model",
+      resumeLoopSubtasks: (id: string) => fixture.adapter.host().resumeInterruptedSubtasks(id),
+      notifyLoopPlusUserMessage: (id: string, text: string) => { fixture.adapter.host().submitUserMessage(id, text); },
       runLoopPrompt: (input: unknown, options: Record<string, unknown>) => {
         continuationRun = fixture.adapter.runEventDriven(input as any, options as any, fixture.target).then(() => undefined);
         return continuationRun;
@@ -2144,11 +2149,17 @@ test("群聊继续消息经真实 adapter 唤醒空闲 Loop+ 控制器并调用�
     const beforeCalls = fixture.mainCalls.length;
     const handled = coordinator.handleMessage(taskId, { type: "loopGroupChatChat:continueTask", prompt: "继续执行" });
     await waitForLoopPlus(() => fixture.mainCalls.length === beforeCalls + 1, "继续消息触发真实主模型调用");
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "中断子任务自动恢复");
+    const after = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot();
+    assert.deepEqual(after.running.map((attempt) => attempt.attemptId).sort(), before.running.map((attempt) => attempt.attemptId).sort());
+    assert.equal(fixture.createdSubtaskTargets.length, originalTargetCount + 1);
+    assert.equal(JSON.stringify(fixture.readTask(taskId)?.modelRouting), originalRouting);
     assert.equal(fixture.mainCalls.at(-1)?.taskRole, "main");
     assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot().userMessageQueue.length, 1);
     fixture.adapter.host().stopParent(taskId);
     fixture.releaseHeldMain();
     await Promise.all([handled, originalRun, continuationRun]);
+    await waitForLoopPlus(() => fixture.completionSubscriptionCount() === 0, "停止后释放恢复子任务的完成订阅");
     assert.equal(fixture.completionSubscriptionCount(), 0);
   } finally {
     fixture.adapter.host().stopParent(fixture.mainCalls[0]?.loopTaskId ?? "");

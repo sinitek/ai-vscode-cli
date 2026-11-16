@@ -365,7 +365,8 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
   };
 
-  const runContinuation = async (taskId: string, prompt?: unknown, resumeIdle = false): Promise<void> => {
+  type ContinuationOptions = { resumeIdle?: boolean; resumeSubtasks?: boolean };
+  const runContinuation = async (taskId: string, prompt: unknown, options: ContinuationOptions): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
     if (!normalizedTaskId) {
@@ -384,7 +385,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     const isLoopPlus = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven";
     const canResumeIdle = task.status !== "completed"
       && !task.mainAiFailureLimitReached
-      && (isLoopPlus || (resumeIdle && !runningTaskIds.has(task.id)))
+      && (isLoopPlus || (options.resumeIdle && !runningTaskIds.has(task.id)))
       && !(availabilityTarget && deps.isTabRunActive(availabilityTarget.tabId));
     if (!controlState.canContinue && !canResumeIdle) {
       await refresh(normalizedTaskId);
@@ -398,6 +399,15 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
 
     await deps.revealPanelView();
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
+    const resumeSubtasks = (): boolean => {
+      if (options.resumeSubtasks === false) return false;
+      const resumeMain = () => {
+        void continueTask(task.id, resumePrompt, undefined, { resumeIdle: true, resumeSubtasks: false });
+      };
+      if (deps.resumeLoopSubtasks?.(task.id, resumeMain) !== true) return false;
+      if (isLoopPlus) deps.notifyLoopPlusUserMessage?.(task.id, resumePrompt);
+      return true;
+    };
     if (task.originProfile?.configId && task.modelRouting && deps.restoreOriginalLoopRuntime) {
       const restored = await deps.restoreOriginalLoopRuntime(task);
       if (!restored.ok || !restored.target?.tabId) {
@@ -408,6 +418,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         deps.showInformationMessage(deps.t("loopGroupChatChat.continueAlreadyRunning"));
         return;
       }
+      if (resumeSubtasks()) return;
       const profile = task.originProfile;
       await deps.runLoopPrompt(applyLoopModelRoutingToPrompt({
         displayPrompt: resumePrompt,
@@ -460,6 +471,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       deps.showWarningMessage(currentModels.unavailableReason);
       return;
     }
+    if (resumeSubtasks()) return;
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
@@ -476,7 +488,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     await refresh(normalizedTaskId);
   };
 
-  const continueTask = async (taskId: string, prompt?: unknown, _legacySource?: unknown, resumeIdle = false): Promise<void> => {
+  const continueTask = async (taskId: string, prompt?: unknown, _legacySource?: unknown, options: ContinuationOptions = {}): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id)
       ?? taskId;
@@ -485,7 +497,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     }
     continuingTaskIds.add(normalizedTaskId);
     try {
-      await runContinuation(normalizedTaskId, prompt, resumeIdle);
+      await runContinuation(normalizedTaskId, prompt, options);
     } catch (error) {
       deps.showWarningMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -531,7 +543,7 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
         throw new Error("模型保存失败，请刷新后重试。");
       }
       await refresh(taskId);
-      const resumeMain = () => { void continueTask(taskId, undefined, undefined, true); };
+      const resumeMain = () => { void continueTask(taskId, undefined, undefined, { resumeIdle: true, resumeSubtasks: false }); };
       const handled = deps.resumeLoopSubtasks?.(taskId, resumeMain);
       postToPanel(taskId, { type: "loopGroupChatChat:switchModelsSettled", ok: true });
       if (handled === false || (handled !== true && resolveLoopTaskRunControlState(updated, deps.collectRunningTaskIds()).canContinue)) {

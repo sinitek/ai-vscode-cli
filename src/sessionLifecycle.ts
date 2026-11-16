@@ -11,6 +11,7 @@ import {
 } from "./interactive/metaStore";
 import type { CodexRunSelection } from "./interactive/codexThreadSelection";
 import { createSessionMessageRepository } from "./sessionMessageRepository";
+import { buildSessionMessagePruningPlan } from "./sessionMessagePruningPolicy";
 import {
   findSupersedingSessionId,
   isLocalSessionId,
@@ -40,8 +41,6 @@ import {
 } from "./sessionTabs";
 import { ChatMessage } from "./webview/types";
 import { resolveSessionHealth, type SessionHealth } from "./sessionHealth";
-import { FINAL_ANSWER_TEXT_MARKER, isFinalAnswerMessage } from "./finalAnswerProtocol";
-import { parseCompleteJsonContainer } from "./shared/jsonContainer";
 import type { PanelMessage } from "./webview/types";
 
 type RuntimeSessionReference = {
@@ -402,34 +401,17 @@ export function createSessionLifecycleController(deps: {
         protectedIds.add(assistant.id);
       }
     }
-    const candidates = new Map<string, string>();
-    if (Array.isArray(request.messages)) {
-      for (const message of request.messages) {
-        if (message && typeof message.id === "string" && typeof message.content === "string") {
-          candidates.set(message.id, message.content);
-        }
-      }
-    }
-    const deletedIds = new Set(source.filter((message) => candidates.get(message.id) === message.content)
-      .map((message) => message.id));
-    for (const messages of targets) {
-      for (const message of messages) {
-        const content = message.content.trimStart();
-        const displayContent = content.startsWith(FINAL_ANSWER_TEXT_MARKER)
-          ? content.slice(FINAL_ANSWER_TEXT_MARKER.length).trimStart() : content;
-        const protectedFinalAnswer = isFinalAnswerMessage(message, FINAL_ANSWER_TEXT_MARKER)
-          && !parseCompleteJsonContainer(displayContent);
-        if (message.role === "user" || protectedFinalAnswer || protectedIds.has(message.id)
-          || candidates.get(message.id) !== message.content) {
-          deletedIds.delete(message.id);
-        }
-      }
-    }
-    if (deletedIds.size === 0) {
+    const pruningPlan = buildSessionMessagePruningPlan({
+      authoritativeSource: source,
+      sharedMessages: [...targets],
+      candidateSnapshot: Array.isArray(request.messages) ? request.messages : undefined,
+      protectedIds,
+    });
+    if (pruningPlan.deletedIds.size === 0) {
       respond(source);
       return;
     }
-    const remaining = source.filter((message) => !deletedIds.has(message.id));
+    const { deletedIds, remainingMessages: remaining } = pruningPlan;
     if (request.sessionId && !messageRepository.persistPrunedMessages(request.cli, request.sessionId, remaining)) {
       respond(source, "气泡清理失败：无法保存会话历史，原消息未删除。");
       return;
