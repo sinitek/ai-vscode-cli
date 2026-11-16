@@ -3412,12 +3412,22 @@
     },
     {
       "id": "plugin.rule.loop_store_confirmed_contributions",
-      "name": "任务存储确认后发布贡献且部分迁移保留材料",
-      "description": "结果式读取/写入、确认删除和严格发现向索引提供同步事件。实际 writeFileSync 成功才发布规范化贡献，旧 void 写接口不代表成功；读写删除失败使来源失效。update 写失败返回 null；迁移目标写入和源重写/删除均确认后才返回身份，部分失败保留恢复材料，不伪称事务回滚。完整读取不吞坏记录或将消失文件伪装空库。",
+      "name": "任务存储确认后发布贡献并保留迁移目标权威",
+      "description": "普通严格 write/update/append 的真实读写失败传播原异常及 errno，void 正常返回表示提交确认；boolean try 未提交返回 false，真实缺失任务保留 null/no-op，身份与输入拒绝不放宽。提交读取拒绝坏 JSON/shape/记录，完整索引不把消失文件当空库；原子替换 rename 前失败保留旧字节并尝试清理 stage，持久写入及 catalog 发布确认后才发布成功贡献/缓存，失败使来源失效。普通迁移完整校验 source/target 并保留兄弟，以目标持久写入及 catalog 发布为 commit；其后源重写/删除失败属于维护失败，保留材料但仍返回已提交身份，不撤销目标权威。可选 ordinaryMoves 保存精确普通目标及旧源链，兼容无字段旧 snapshot，不提升 owned。已知普通读口在同一 writer gate 内服从目标，无 move 才用精确已知来源；目标/目录无法确认即 null，不扫描或回退旧副本，不缓存旧授权。普通 retention 以单文件为批次，在同一 gate/当前 snapshot 内完整校验、分类及提交，每文件一次 catalog 读取；锁未知、目录损坏/未发布整文件保留，不据未知删除，不跨调用缓存或视为全库原子快照。真实无 catalog 的首次普通安装兼容，不授权部门通信 GC。普通原子确认及后续维护失败不能套用 owned 多文件事务，owned 未确认仍 ready=false；保留受控根、marker、tombstone、未知身份拒绝、owner 交易、普通不可提升、最终文件 symlink 拒绝、合法目录别名及同文件别名保留已知位置、显式 recover/完整 rebuild 保护。此合同不证明外部 writer、真实多进程/崩溃、冷恢复或全部平台已通过。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.department_ownership_index"],
       "source_refs": [{
         "path": "src/loopTaskStore.ts"
+      }, {
+        "path": "src/loopTaskIdentityCatalog.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md"
+      }, {
+        "path": "src/test/loop/loopTaskStorePersistence.test.ts"
+      }, {
+        "path": "src/test/loop/loopTaskStoreCoreCoverage.test.ts"
+      }, {
+        "path": "src/test/loop/loopTaskIdentityCatalog.test.ts"
       }, {
         "path": "src/test/loop/loopTaskStore.test.ts"
       }, {
