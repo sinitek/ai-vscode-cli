@@ -1904,10 +1904,11 @@ function renderDepartmentRosterPanel(
   acceptanceAnchors: ReadonlyMap<string, string>,
 ): string {
   const department = state.department!;
-  const member = (participant: LoopGroupChatPanelParticipant, role: string, navigation = "", anchor?: string): string => {
+  const member = (participant: LoopGroupChatPanelParticipant, role: "总监" | "组长" | "员工", navigation = "", anchor?: string): string => {
     const icon = getDepartmentRoleIdentity(role === "总监" ? "director" : role === "组长" ? "leader" : "employee").icon;
     const label = `${icon} ${role} · ${participant.title}`;
-    const content = `<span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span><div>
+    const avatarLabel = { 总监: "总", 组长: "组", 员工: "员" }[role];
+    const content = `<span class="avatar">${avatarLabel}</span><div>
       <div class="member-name" title="${escapeAttribute(label)}">${escapeHtml(label)}</div>
       <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}${navigation}</div>`;
