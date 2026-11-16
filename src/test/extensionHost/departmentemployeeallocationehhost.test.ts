@@ -36,10 +36,12 @@ test("allocation generated EH entry is valid JavaScript and reuses public-entry 
   assert.doesNotMatch(entry, /saveEmployeeLimit\(/);
 });
 
-test("real allocation store and production reader nested snapshot feed reviewed prompt across save, refusal and restore", async t => {
+for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxEmployees: 6 }]) test(`${limits.maxLeaders}/${limits.maxEmployees} real allocation store and production reader nested snapshot feed reviewed prompt across save, refusal and restore`, async t => {
   const data = departmentRecords(), dir = fs.mkdtempSync(path.join(os.tmpdir(), "allocation-prompt-composition-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const store = new DepartmentRuntimeStore(dir), capacity = new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 20 });
+  const defaultLimit = Math.ceil(limits.maxEmployees / limits.maxLeaders);
+  for (const task of data.records.values()) task.department!.limits = limits;
+  const store = new DepartmentRuntimeStore(dir), capacity = new DepartmentCapacityPool(limits);
   const runtime = createDepartmentRuntimeSnapshot(data.root.id);
   runtime.leaders.push({ taskId: data.leader.id, leaderSubtaskId: "module-A", status: "running", generation: 1 });
   const lease = await capacity.acquireLeader(data.root.id, "module-A"); assert.ok(lease); t.after(() => lease.release());
@@ -53,26 +55,26 @@ test("real allocation store and production reader nested snapshot feed reviewed 
     const value = buildLoopPlusMainModelPrompt({ taskId: data.leader.id, rootPrompt: "composition", taskStoreFile: "/fixture/tasks.json",
       mainCommunicationFile: "/fixture/main.md", kind: "initial", view: createLoopPlusScheduler({ maxConcurrency: 4 }).wait().view,
       currentEventId: null, supplementalRequirements: [], maxConcurrency: 4,
-      departmentEmployeeCapacity: { rootTaskId: data.root.id, leaderTaskId: data.leader.id, maxEmployees: 20, snapshot } });
-    assert.match(value, /Regular employee total: 20/); assert.doesNotMatch(value, /allocation: unknown/);
+      departmentEmployeeCapacity: { rootTaskId: data.root.id, leaderTaskId: data.leader.id, maxEmployees: limits.maxEmployees, snapshot } });
+    assert.ok(value.includes(`Regular employee total: ${limits.maxEmployees}`)); assert.doesNotMatch(value, /allocation: unknown/);
     return { snapshot, value };
   };
   assert.match(prompt().value, /Applied group limit: not yet applied/);
   assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), true);
   const employee = await capacity.tryAcquireEmployeeWithOverflow(data.root.id, data.leader.id, "live"); assert.ok(employee);
   t.after(() => employee.release());
-  const current = prompt(); assert.equal(current.snapshot.leaderAllocation!.desiredLimit, 5);
+  const current = prompt(); assert.equal(current.snapshot.leaderAllocation!.desiredLimit, defaultLimit);
   const saved = host.updateDepartmentEmployeeLimit(data.root, { requestId: "zero", leaderTaskId: data.leader.id, employeeLimit: 0, expectedRevision: current.snapshot.leaderAllocation!.revision }); assert.ok(saved.ok);
   const pending = prompt(); assert.match(pending.value, /Desired regular employee limit for this group: 0/);
-  assert.match(pending.value, /Applied group limit: 5/); assert.match(pending.value, /pending: yes/);
+  assert.ok(pending.value.includes(`Applied group limit: ${defaultLimit}`)); assert.match(pending.value, /pending: yes/);
   assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), false);
   const denied = prompt(); assert.match(denied.value, /Applied group limit: 0/); assert.match(denied.value, /pending: no/);
-  assert.equal(denied.snapshot.activeEmployees, 1); assert.equal(denied.snapshot.availableEmployees, 19);
+  assert.equal(denied.snapshot.activeEmployees, 1); assert.equal(denied.snapshot.availableEmployees, limits.maxEmployees - 1);
   assert.match(denied.value, /This leader may acquire an overflow employee now: no/);
   assert.ok(host.updateDepartmentEmployeeLimit(data.root, { requestId: "default", leaderTaskId: data.leader.id, employeeLimit: null,
     expectedRevision: denied.snapshot.leaderAllocation!.revision }).ok);
   assert.match(prompt().value, /pending: yes/); assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), true);
-  const restored = prompt(); assert.match(restored.value, /Applied group limit: 5/); assert.match(restored.value, /pending: no/);
+  const restored = prompt(); assert.ok(restored.value.includes(`Applied group limit: ${defaultLimit}`)); assert.match(restored.value, /pending: no/);
   assert.equal(restored.snapshot.activeEmployees, 1, "quota updates retain existing live lease");
 });
 
@@ -85,23 +87,38 @@ test("allocation EH wrapper observes the actual product panel instance without r
     post(message: unknown) { forwarded++; return message; }
   }
   class Store { beginEmployeeAdmission() { return false; } }
+  class Provider {
+    resolveWebviewView(_view: unknown) { forwarded++; }
+    postMessage(message: unknown) { forwarded++; return message; }
+    postState(state: unknown) { forwarded++; return state; }
+  }
+  const allocationModule = { createDepartmentEmployeeAllocationHost: () => ({ readEmployeeCapacity: () => ({ leaderAllocation: { desiredLimit: 3 } }) }) };
   const request = { type: "loopGroupChatChat:updateDepartmentEmployeeLimit", requestId: "real-request" };
   const settled = { type: "loopGroupChatChat:departmentEmployeeLimitSettled", requestId: "real-request" };
   const run = async () => {
     const panel = new Panel(); panel.show(); panel.show(); assert.equal(callbacks.length, 1);
     callbacks[0](request); assert.equal(panel.post(settled), settled);
+    const provider = new Provider();
+    const webview = { onDidReceiveMessage(callback: (message: unknown) => void) { callbacks.push(callback); return { dispose() { disposed++; } }; } };
+    provider.resolveWebviewView({ webview }); provider.resolveWebviewView({ webview });
+    callbacks[1]({ type: "updateSetting", key: "workspaceDepartmentMaxEmployees" });
+    const reply = { type: "workspaceDepartmentCapacitySaved", ok: true };
+    assert.equal(provider.postMessage(reply), reply);
+    const state = { workspaceDepartmentMaxEmployees: 6 }; assert.equal(provider.postState(state), state);
+    const host = allocationModule.createDepartmentEmployeeAllocationHost();
+    assert.equal(host.readEmployeeCapacity().leaderAllocation.desiredLimit, 3);
   };
   const module = { run };
   const entry = createDepartmentEmployeeAllocationEhHostEntry({ root: "/isolated", timeoutMs: 1 });
   new vm.Script(entry.slice(entry.indexOf("const allocationBaseRun"))).runInNewContext({
     exports: module, fs: { appendFileSync(_file: string, line: string) { recorded.push(JSON.parse(line)); }, existsSync: () => false }, path,
     vscode: { extensions: { getExtension: () => ({ extensionPath: "/fixture" }) } },
-    require: (file: string) => file === "node:child_process" ? { fork() { throw Error("no worker expected"); } } : file.endsWith("departmentruntimestore.js") ? { DepartmentRuntimeStore: Store } : { LoopGroupChatPanel: Panel },
+    require: (file: string) => file === "node:child_process" ? { fork() { throw Error("no worker expected"); } } : file.endsWith("departmentruntimestore.js") ? { DepartmentRuntimeStore: Store } : file.endsWith("departmentemployeeallocationhost.js") ? allocationModule : file.endsWith("viewProvider.js") ? { CliBridgeViewProvider: Provider } : { LoopGroupChatPanel: Panel },
     process: { env: { HOME: "/isolated/home" } }, Date, WeakSet, Reflect,
   });
   await module.run();
-  assert.deepEqual(recorded.map(r => r.event), ["webview-request", "webview-settled"]);
-  assert.deepEqual(recorded.map(r => r.message), [request, settled]); assert.equal(disposed, 1); assert.equal(forwarded, 1);
+  assert.deepEqual(recorded.map(r => r.event), ["webview-request", "webview-settled", "settings-request", "settings-saved", "settings-state", "capacity-reader"]);
+  assert.deepEqual(recorded.slice(0, 2).map(r => r.message), [request, settled]); assert.equal(disposed, 2); assert.equal(forwarded, 5);
 });
 
 test("allocation worker exit observer retains actual unrefed child evidence without ref, kill or protocol changes", async () => {

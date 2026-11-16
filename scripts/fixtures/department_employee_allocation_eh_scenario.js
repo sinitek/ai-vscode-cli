@@ -29,7 +29,22 @@ function assertAllocationPrompt(text, saved, leaderId) {
     pending: row.appliedLimit !== desired, activeEmployees: own, globalActiveEmployees: active, availableEmployees: available };
 }
 
-function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readRuntime, holdTimeoutMs = 120000 }) {
+function assertReaderProjection(reader, projection, saved, rootId, leaderId) {
+  assert.ok(reader?.result?.leaderAllocation, "original production capacity reader required");
+  assert.equal(reader.rootTaskId, rootId); assert.equal(reader.leaderTaskId, leaderId);
+  const result = reader.result;
+  assert.equal(result.maxEmployees, saved.employeeAllocation.maxEmployees);
+  assert.equal(result.activeEmployees, projection.globalActiveEmployees);
+  assert.equal(result.availableEmployees, Math.max(0, result.maxEmployees - projection.globalActiveEmployees));
+  assert.equal(result.canAcquireOverflow, false); assert.equal(result.leaderOverflowActive, false);
+  assert.deepEqual(result.leaderAllocation, { revision: projection.revision,
+    source: saved.employeeAllocation.leaders.find(r => r.leaderTaskId === leaderId).manualLimit === null ? "default" : "manual",
+    desiredLimit: projection.desiredLimit, appliedLimit: projection.appliedLimit, pending: projection.pending,
+    activeEmployees: projection.activeEmployees, availableEmployees: projection.availableEmployees });
+}
+
+function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readRuntime, readDecision,
+  expectedLimits = { maxLeaders: 4, maxEmployees: 20 }, holdTimeoutMs = 120000 }) {
   const history = [], held = new Map(), released = new Set(), employees = [];
   let rootId, leaderId, initial = false, zeroDispatched = false, restoreDispatched = false;
   const gates = new Map();
@@ -55,7 +70,7 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
       identity = text.match(/任务 ID：([^；\s]+)；轮次：\d+/)?.[1];
       assert.ok(identity); rootId ??= identity; assert.equal(identity, rootId);
       const root = readTasks().find(t => t.id === rootId); assert.equal(root?.department?.role, "director");
-      assert.deepEqual(root.department.limits, { maxLeaders: 4, maxEmployees: 20 });
+      assert.deepEqual(root.department.limits, expectedLimits);
       if (!root.subTasks.length) {
         stage = "director-dispatch";
         answer = { status: "continue", progressPercent: 0, estimatedRemainingRounds: 1, subtasks: [{ id: "allocation-module", title: "额度链路",
@@ -69,6 +84,12 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
       const snapshot = readRuntime(rootId);
       const projection = assertAllocationPrompt(text, snapshot, leaderId);
       context.request.allocation = projection;
+      context.request.saved = snapshot;
+      if (readDecision) {
+        const reader = readDecision(rootId, leaderId);
+        assertReaderProjection(reader, projection, snapshot, rootId, leaderId);
+        context.request.productionReader = reader;
+      }
       const event = leader.loopPlus?.currentReview;
       if (!initial) {
         assert.equal(text.match(/^Prompt kind: (\S+)/m)?.[1], "initial");
@@ -84,7 +105,7 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
           acceptance: { passed: !denied, checks: checks.map(c => denied && c.name === "dispatched work" ? { ...c, passed: false } : c) } };
         if (event.subtaskId === "allocation-pulse") {
           assert.equal(zeroDispatched, false); zeroDispatched = true;
-          assert.equal(projection.desiredLimit, 0); assert.equal(projection.appliedLimit, 5); assert.equal(projection.pending, true);
+          assert.equal(projection.desiredLimit, 0); assert.equal(projection.appliedLimit, Math.ceil(snapshot.employeeAllocation.maxEmployees / snapshot.employeeAllocation.maxLeaders)); assert.equal(projection.pending, true);
           stage = "leader-zero-pending"; answer.subtasks = [work("allocation-denied")]; answer.independentSubtaskIds = ["allocation-denied"];
         } else if (denied) {
           assert.equal(restoreDispatched, false); restoreDispatched = true;
@@ -111,4 +132,4 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
   return { respond, history, release, releaseAll: () => { for (const name of gates.keys()) release(name); },
     snapshot: () => ({ rootId, leaderId, initial, zeroDispatched, restoreDispatched, held: Object.fromEntries(held), employees, history }) };
 }
-module.exports = { assertAllocationPrompt, createDepartmentEmployeeAllocationEhScenario };
+module.exports = { assertAllocationPrompt, assertReaderProjection, createDepartmentEmployeeAllocationEhScenario };

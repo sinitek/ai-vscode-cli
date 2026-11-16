@@ -32,9 +32,9 @@ function readEvents(file) {
   assert.equal(start, -1, "partial observer event"); return result;
 }
 function argumentsFor(argv) {
-  assert.equal(argv.length, 4, "use --product <built-worktree> --report <new-json>");
+  assert.ok(argv.length === 4 || argv.length === 5 && argv[4] === "--workspace-capacity", "use --product <built-worktree> --report <new-json> [--workspace-capacity]");
   assert.equal(argv[0], "--product"); assert.equal(argv[2], "--report");
-  assert.ok(argv[1] && argv[3]); return { product: path.resolve(argv[1]), report: path.resolve(argv[3]) };
+  assert.ok(argv[1] && argv[3]); return { product: path.resolve(argv[1]), report: path.resolve(argv[3]), workspaceCapacity: argv.length === 5 };
 }
 function assertSavedTransition(before, after, leaderId, manualLimit) {
   assert.equal(after.employeeAllocation.revision, before.employeeAllocation.revision + 1);
@@ -45,7 +45,7 @@ function assertSavedTransition(before, after, leaderId, manualLimit) {
   assert.deepEqual(after.executionBindings, before.executionBindings, "save altered existing Owners");
   assert.deepEqual(after.leaderExecutionSets, before.leaderExecutionSets, "save altered responsibilities");
 }
-function assertSettled(events, rootId, leaderId, beforeRevision, value, revision) {
+function assertSettled(events, rootId, leaderId, beforeRevision, value, revision, defaultLimit = 5) {
   const requests = events.filter(e => e.event === "webview-request" && e.message.leaderTaskId === leaderId
     && e.message.expectedRevision === beforeRevision && e.message.employeeLimit === value);
   assert.equal(requests.length, 1, "exact real host request required");
@@ -53,7 +53,7 @@ function assertSettled(events, rootId, leaderId, beforeRevision, value, revision
   const replies = events.filter(e => e.event === "webview-settled" && e.message.requestId === request.requestId);
   assert.equal(replies.length, 1, "matching real host settled required");
   assert.deepEqual(replies[0].message, { type: "loopGroupChatChat:departmentEmployeeLimitSettled", rootTaskId: rootId,
-    leaderTaskId: leaderId, requestId: request.requestId, ok: true, revision, desiredLimit: value ?? 5 });
+    leaderTaskId: leaderId, requestId: request.requestId, ok: true, revision, desiredLimit: value ?? defaultLimit });
   return { request, settled: replies[0].message };
 }
 function assertCleanup(saved, observations, protocol, identityApi, receiptApi, workerEvents) {
@@ -81,11 +81,42 @@ function assertCleanup(saved, observations, protocol, identityApi, receiptApi, w
   assert.ok(!saved.capacity.employeeOverflow?.length);
   return { owners: bindings.length, closedSets: sets.length, complete: true };
 }
-async function publicDepartmentEntry(view, prompt, wait) {
-  await view.locator("#toolSettingsButton").click(); await view.locator("#departmentEnabled").waitFor();
+function assertWorkspaceSaved(events, key, value, workspaceKey, durable, globalSettings) {
+  const requests = events.filter(e => e.event === "settings-request" && e.message.key === key);
+  assert.equal(requests.length, 1, "one actual UI settings request required");
+  const request = requests[0].message;
+  assert.equal(request.type, "updateSetting"); assert.equal(request.value.value, value);
+  assert.equal(typeof request.value.scope, "string"); assert.ok(request.value.scope);
+  assert.equal(JSON.parse(request.value.scope)[0], workspaceKey, "actual active workspace scope required");
+  assert.equal(typeof request.value.requestId, "string"); assert.ok(request.value.requestId);
+  const replies = events.filter(e => e.event === "settings-saved" && e.message.requestId === request.value.requestId);
+  assert.equal(replies.length, 1, "exact settings persistence reply required");
+  const reply = replies[0];
+  assert.deepEqual(reply.message, { type: "workspaceDepartmentCapacitySaved", key, scope: request.value.scope, requestId: request.value.requestId, ok: true });
+  const field = key === "workspaceDepartmentMaxLeaders" ? "departmentMaxLeaders" : "departmentMaxEmployees";
+  assert.equal(reply.workspaceSettings[workspaceKey + ".json"]?.[field], value, "reply must follow actual persistence");
+  assert.equal(durable[field], value);
+  const state = events.filter(e => e.event === "settings-state" && e.state.departmentConfigurationScope === request.value.scope).at(-1)?.state;
+  assert.ok(state, "matching panel state required"); assert.equal(state[key], value);
+  assert.deepEqual([state.departmentMaxLeaders, state.departmentMaxEmployees], [4, 20]);
+  assert.deepEqual([globalSettings.departmentMaxLeaders, globalSettings.departmentMaxEmployees], [4, 20]);
+  return { request, reply, state, durable };
+}
+async function publicDepartmentEntry(view, prompt, wait, workspaceSettingsAction) {
+  await view.locator("#toolSettingsButton").click();
+  if (workspaceSettingsAction) await workspaceSettingsAction();
+  await view.locator("#departmentEnabled").waitFor();
   await view.locator("#departmentEnabled").check();
   await wait("public department enable", async () => !await view.locator("#departmentEnabled").isDisabled());
   await view.locator("#closeToolSettings").click(); await view.locator("#toolSettingsOverlay").waitFor({ state: "hidden" });
+  // The director uses the ordinary CLI/profile/model controls, as shown in its summary.
+  await view.locator("#currentCli").selectOption("codex");
+  const directorProfile = view.locator("#configSelect");
+  await wait("director profile ready", async () => await directorProfile.isEnabled()
+    && (await directorProfile.locator("option").evaluateAll(nodes => nodes.map(n => n.value))).includes("codex-local"));
+  await directorProfile.selectOption("codex-local");
+  await wait("director model ready", () => view.locator("#modelSelect").isEnabled());
+  await view.locator("#modelSelect").selectOption("");
   await view.locator("#interactiveModeSelect").selectOption("department");
   for (const role of ["leader", "employee"]) {
     const cli = view.locator(`#department-${role}-cli`), profile = view.locator(`#department-${role}-config`), model = view.locator(`#department-${role}-model`);
@@ -116,7 +147,10 @@ async function main(argv = process.argv.slice(2)) {
     sha256: Object.fromEntries(["scripts/verify_department_employee_allocation_eh_integration.js", "scripts/fixtures/department_employee_allocation_eh_scenario.js",
       "src/test/extensionHost/fixtures/departmentemployeeallocationehhost.ts", "dist/test/extensionHost/fixtures/departmentemployeeallocationehhost.js",
       "src/extensionHost/departmentruntimestore.ts", "src/extensionHost/departmentemployeeallocationhost.ts", "src/extensionHost/departmentorchestration.ts",
-      "src/extensionHost/loopPlusPromptBuilders.ts", "src/extensionHost/loopPlusRuntimeAdapter.ts", "src/extension.ts", "src/webview/departmentEmployeeAllocation.ts"]
+      "src/extensionHost/loopPlusPromptBuilders.ts", "src/extensionHost/loopPlusRuntimeAdapter.ts", "src/extension.ts", "src/webview/departmentEmployeeAllocation.ts", "scripts/verify_department_full_eh_integration.js",
+      "src/extensionHost/modelSettings.ts", "src/workspaceSettingsStore.ts", "src/departmentSettings.ts", "src/settingMessageHandlers/preferences.ts",
+      "dist/extension.js", "dist/extensionHost/modelSettings.js", "dist/workspaceSettingsStore.js", "dist/departmentSettings.js",
+      "dist/settingMessageHandlers/preferences.js", "dist/extensionHost/departmentemployeeallocationhost.js", "dist/webview/viewContent.js"]
       .map(file => [file, crypto.createHash("sha256").update(fs.readFileSync(path.join(product, file))).digest("hex")])) };
   const fixture = require(path.join(product, "dist/test/extensionHost/fixtures/departmentemployeeallocationehhost.js"));
   const { DepartmentRuntimeStore } = require(path.join(product, "dist/extensionHost/departmentruntimestore.js"));
@@ -130,7 +164,11 @@ async function main(argv = process.argv.slice(2)) {
   };
   const budget = Number(process.env.SINITEK_ALLOCATION_EH_TIMEOUT_MS || 180000), deadline = Date.now() + budget;
   const prompt = `隔离员工额度真实链路 ${crypto.randomUUID()}，只验证免费本机文本协议，不访问外网。`;
-  const scenario = createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readRuntime, holdTimeoutMs: budget });
+  const expectedLimits = input.workspaceCapacity ? { maxLeaders: 2, maxEmployees: 6 } : { maxLeaders: 4, maxEmployees: 20 };
+  report.expectedLimits = expectedLimits;
+  const scenario = createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readRuntime, expectedLimits,
+    readDecision: (rootId, leaderId) => events().filter(e => e.event === "capacity-reader" && e.rootTaskId === rootId && e.leaderTaskId === leaderId).at(-1),
+    holdTimeoutMs: budget });
   const responses = createLocalResponsesServer({ respond: scenario.respond, maxRequests: 24 });
   let child, exited = false, browser, view, group;
   const wait = async (label, check) => {
@@ -162,7 +200,7 @@ async function main(argv = process.argv.slice(2)) {
     fs.writeFileSync(path.join(env.CODEX_HOME, "config.toml"), config, { flag: "wx" });
     fs.writeFileSync(path.join(env.CODEX_HOME, "__config/codex-local.json"), JSON.stringify({ id: "codex-local", name: "隔离本机 Responses", platform: "codex", content: config, configContent: config, authContent: "{}", codexSkills: [], createdAt: Date.now(), updatedAt: Date.now() }), { flag: "wx" });
     fs.writeFileSync(path.join(env.CODEX_HOME, "__config/config-order.json"), JSON.stringify({ codex: ["codex-local"] }), { flag: "wx" });
-    fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({ debug: true, humanInteractionEnabled: false,
+    fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({ debug: true, humanInteractionEnabled: false, departmentMaxLeaders: 4, departmentMaxEmployees: 20,
       cliEnabledByName: { codex: true, claude: false, opencode: false, grok: false, dsh: false, "kimi-code": false, zcode: false } }), { flag: "wx" });
     const workspaceKey = `${path.basename(workspace).replace(/[^a-zA-Z0-9-_]/g, "_").slice(0, 32)}_${crypto.createHash("sha256").update(workspace).digest("hex").slice(0, 12)}`;
     fs.mkdirSync(path.join(home, ".sinitek_cli/workspace-settings"));
@@ -184,20 +222,44 @@ async function main(argv = process.argv.slice(2)) {
     report.host = await wait("host-ready", () => readJson(path.join(root, "host-ready.json"))); report.stages.host = "passed";
     const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-    view = await createDepartmentWebviewAdapter(browser, "webviewView");
-    await publicDepartmentEntry(view, prompt, wait); report.stages.publicEntry = "passed";
+    view = await createDepartmentWebviewAdapter(browser, "webviewView", 30000, { deadline, cleanupDeadline: deadline + 15000 });
+    await publicDepartmentEntry(view, prompt, wait, input.workspaceCapacity && (async () => {
+      await view.locator("#toolSettingsWorkspaceTab").click();
+      const file = path.join(home, ".sinitek_cli/workspace-settings", workspaceKey + ".json");
+      const original = readJson(file);
+      assert.equal(original.departmentMaxLeaders, undefined); assert.equal(original.departmentMaxEmployees, undefined);
+      report.workspaceSettings = [];
+      for (const [key, value, globalValue] of [["workspaceDepartmentMaxLeaders", 2, 4], ["workspaceDepartmentMaxEmployees", 6, 20]]) {
+        const input = view.locator("#" + key);
+        await wait(key + " ready", () => input.isEnabled());
+        assert.equal(await input.inputValue(), ""); assert.equal(await input.getAttribute("placeholder"), "全局：" + globalValue);
+        await input.fill(String(value)); // Existing public change path, no bridge messages or private calls.
+        await wait(key + " matched persistence and panel state", async () => events().some(e => e.event === "settings-saved" && e.message.key === key)
+          && events().some(e => e.event === "settings-state" && e.state[key] === value) && await input.isEnabled());
+        const saved = assertWorkspaceSaved(events(), key, value, workspaceKey, readJson(file), readJson(path.join(home, ".sinitek_cli/settings.json")));
+        assert.equal(await input.inputValue(), String(value));
+        assert.equal(await view.locator("#" + key + "Status").innerText(), "");
+        assert.deepEqual(Object.fromEntries(Object.entries(saved.durable).filter(([k]) => !["departmentMaxLeaders", "departmentMaxEmployees"].includes(k))), original);
+        report.workspaceSettings.push(saved);
+      }
+      report.stages.workspaceUiSave = "passed";
+      await view.locator("#toolSettingsGeneralTab").click();
+    })); report.stages.publicEntry = "passed";
     const held = await wait("two actual employee requests", () => {
       const s = scenario.snapshot(); return s.held["allocation-held"] && s.held["allocation-pulse"] && s;
     });
     const rootId = held.rootId, leaderId = held.leaderId;
-    const before = readRuntime(rootId); assert.deepEqual([before.capacity.maxLeaders, before.capacity.maxEmployees], [4, 20]);
-    assert.equal(before.capacity.employees.length, 2); assert.equal(before.employeeAllocation.leaders[0].appliedLimit, 5);
+    const before = readRuntime(rootId); assert.deepEqual([before.capacity.maxLeaders, before.capacity.maxEmployees], [expectedLimits.maxLeaders, expectedLimits.maxEmployees]);
+    const defaultLimit = Math.ceil(before.employeeAllocation.maxEmployees / before.employeeAllocation.maxLeaders);
+    assert.deepEqual([before.employeeAllocation.maxLeaders, before.employeeAllocation.maxEmployees], [expectedLimits.maxLeaders, expectedLimits.maxEmployees]);
+    assert.equal(defaultLimit, input.workspaceCapacity ? 3 : 5);
+    assert.equal(before.capacity.employees.length, 2); assert.equal(before.employeeAllocation.leaders[0].appliedLimit, defaultLimit);
     report.baseline = before;
     await view.locator("#openCurrentLoopGroupChat").click(); await view.close(); view = null;
-    group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId, cleanupDeadline: deadline + 15000 });
+    group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId, deadline, cleanupDeadline: deadline + 15000 });
     if (await group.locator("#sidebarToggle").isVisible() && !(await group.locator(".layout").evaluate(e => e.classList.contains("sidebar-open")))) await group.locator("#sidebarToggle").click();
     const selector = `[data-allocation-root="${rootId}"][data-allocation-leader="${leaderId}"]`, row = group.locator(selector);
-    await row.waitFor(); assert.equal(await row.locator("input").inputValue(), "5");
+    await row.waitFor(); assert.equal(await row.locator("input").inputValue(), String(defaultLimit));
     await row.locator("input").fill("0"); await row.locator('[data-allocation-action="save"]').click();
     await wait("zero durable settled and UI readback", async () => {
       const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === 0
@@ -225,16 +287,18 @@ async function main(argv = process.argv.slice(2)) {
     await row.locator('[data-allocation-action="reset"]').click();
     const restored = await wait("restore durable settled and UI readback", async () => {
       const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === null && await row.getAttribute("aria-busy") === "false"
-        && (await row.innerText()).includes("已保存，下次派发生效") && await row.locator("input").inputValue() === "5" && s;
+        && (await row.innerText()).includes("已保存，下次派发生效") && await row.locator("input").inputValue() === String(defaultLimit) && s;
     });
     assertSavedTransition(denied, restored, leaderId, null);
-    report.restoreSaved = { saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, denied.employeeAllocation.revision, null, restored.employeeAllocation.revision) };
+    report.restoreSaved = { saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, denied.employeeAllocation.revision, null, restored.employeeAllocation.revision, defaultLimit) };
     report.stages.restoreSave = "passed"; scenario.release("restore-saved");
     await wait("new restored employee admitted", () => scenario.snapshot().held["allocation-restored"]);
     const admitted = readRuntime(rootId), next = scenario.snapshot().held["allocation-restored"];
-    assert.equal(admitted.employeeAllocation.leaders[0].appliedLimit, 5); assert.equal(admitted.capacity.employees.length, 2);
+    assert.equal(admitted.employeeAllocation.leaders[0].appliedLimit, defaultLimit); assert.equal(admitted.capacity.employees.length, 2);
     assert.ok(admitted.capacity.employees.includes(JSON.stringify([leaderId, next.attemptId])));
     assert.ok(admitted.executionBindings.some(b => b.identity.subtaskId === next.subtaskId && b.identity.attemptId === next.attemptId));
+    assert.ok(admitted.capacity.employees.includes(JSON.stringify([leaderId, held.held["allocation-held"].attemptId])), "original held lease retained");
+    assert.deepEqual(admitted.executionBindings.find(b => b.identity.attemptId === held.held["allocation-held"].attemptId), before.executionBindings.find(b => b.identity.attemptId === held.held["allocation-held"].attemptId));
     assert.ok(!admitted.capacity.employeeOverflow?.length); report.restoreApplied = admitted; report.stages.restoreAdmission = "passed";
     // A real employee event forces one final decision-time prompt after restored admission.
     scenario.release("allocation-restored");
@@ -354,5 +418,5 @@ function verifyCapturedRun(reportFile) {
     root: report.root, checkedHashes, evidenceSha256, finishSignalAt, verifierSha256: crypto.createHash("sha256").update(fs.readFileSync(__filename)).digest("hex"), originalFailure: report.failures, repairedAssertion: "actual exit code 0 and null signal; Electron close event is not required",
     cleanup: { ...result, saved: read.value, observations, workerExits }, promptStages: expected.map(([stage]) => stage), verifiedAt: new Date().toISOString() };
 }
-module.exports = { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, publicDepartmentEntry, verifyCapturedRun, main };
+module.exports = { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved, publicDepartmentEntry, verifyCapturedRun, main };
 if (require.main === module) main().then(report => { if (report.result !== "passed") process.exitCode = 1; }).catch(error => { console.error(error); process.exitCode = 1; });
