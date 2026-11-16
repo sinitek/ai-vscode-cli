@@ -575,5 +575,44 @@
       "required native Linux/Windows evidence and final authority/capacity/cold composition review remain open",
       "preserve/classify original checkout state and perform safe final branch handoff later"
     ]
+  },
+  "round711AcceptedStoreUnifiedIntegration": {
+    "round": 711,
+    "baseCommit": "0ee355624f7f878b60208726c1b7c5d788bb0f0a",
+    "baseTree": "b86d4ed34239cf77ab00d82b190f7707c5264507",
+    "acceptedStoreSource": "94267bb3f4343c9ccee0f9f75e99c6a2f492df50",
+    "acceptedStoreTree": "f96fbea2fc801dac1b28487d7eb582a61439fff9",
+    "acceptedStoreRequiredAncestor": "74be413fbd1d67ae9ae59246bac92e409a85282f",
+    "storeMerge": "5bc951463b609072d1990c3787d90aa5a22ab8ad",
+    "storeMergeTree": "139528472a8c069c269fa7f01153668f9a1cf71d",
+    "storeMergeParents": ["0ee355624f7f878b60208726c1b7c5d788bb0f0a", "94267bb3f4343c9ccee0f9f75e99c6a2f492df50"],
+    "acceptedContractDocsSource": "2999a3b0589eaab2f52b355e41487cc44a2331c6",
+    "acceptedContractDocsTree": "f2166f380da2d914ba1530317fb5f2ac21c82623",
+    "docsSourceBase": "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+    "docsMerge": "30627ab9eb86b3a484737e92161f517e8f3b5f13",
+    "mergedInputTree": "f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d",
+    "mergeParents": ["5bc951463b609072d1990c3787d90aa5a22ab8ad", "2999a3b0589eaab2f52b355e41487cc44a2331c6"],
+    "mergeStrategy": "ort",
+    "mergeConflicts": 0,
+    "manualConflictResolutions": [],
+    "overlapReview": "The nine accepted strict-store source/test paths and two accepted contract-document paths are disjoint. Both merges were conflict-free; no manual side selection or source replay was used.",
+    "acceptedStorePathIdentities": [
+      {"path":"src/loopTaskIdentityCatalog.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"8be327a8376e3a64b7b8d51f13c2e2fb8fd01e85","sourceSha256":"3078d568c9c8a984c95ce4d1f03c21f5a6bcc841c2a5245bec74b0d35412f933","mergedSha256":"3078d568c9c8a984c95ce4d1f03c21f5a6bcc841c2a5245bec74b0d35412f933","identicalToSource":true},
+      {"path":"src/loopTaskStore.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"3143a404c624b47e947ae2d703e35140780ebbc0","sourceSha256":"f90c72dd8e24b641dfdf54046f8b7c21ba5b100602b6e93f659bf2defb7a57b9","mergedSha256":"f90c72dd8e24b641dfdf54046f8b7c21ba5b100602b6e93f659bf2defb7a57b9","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentOwnedTaskSource.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"da9d248b8da25fd7cd73b68b989fbf564977d6ef","sourceSha256":"c28f21507407459db793e2ee946583362a3b5d9d78736c8eb90ac85cb637840a","mergedSha256":"c28f21507407459db793e2ee946583362a3b5d9d78736c8eb90ac85cb637840a","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentOwnershipIndex.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"87f0f9b3db9e75da55780d19ef309306955ab988","sourceSha256":"0f4990dc006529deb2fce28a8719187a6567913f1603490928afeb683b62372c","mergedSha256":"0f4990dc006529deb2fce28a8719187a6567913f1603490928afeb683b62372c","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentProductionTaskStore.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"3aa576667820cefc3d699e3fb8359f694c163644","sourceSha256":"840db91516b987230cf985fa7bd4b295f4a752acb307502e69829574bb644bb0","mergedSha256":"840db91516b987230cf985fa7bd4b295f4a752acb307502e69829574bb644bb0","identicalToSource":true},
+      {"path":"src/test/extensionHost/loopPlusHandoffContracts.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"6f73abf19a5e6ae8b6f884d87906972c0bfbf5d6","sourceSha256":"8947464fd87b979e278a1ce2d804181a4c84fd370266b42d3e5e809a3f2d221e","mergedSha256":"8947464fd87b979e278a1ce2d804181a4c84fd370266b42d3e5e809a3f2d221e","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskIdentityCatalog.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"b0cbfdfbbd0eecb286fb1d73c311099e325a3355","sourceSha256":"a6b18a379376bcb75825ca20911822b9d5bfdd2b7e005802a85304bd0426bfbd","mergedSha256":"a6b18a379376bcb75825ca20911822b9d5bfdd2b7e005802a85304bd0426bfbd","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskStoreCoreCoverage.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"69359800ebe7079156871444bad890269402aacf","sourceSha256":"d624a817efe2277f8e8c7917d2e4b40c0c76fa96c7db6e4f6a019bbd8a00d69b","mergedSha256":"d624a817efe2277f8e8c7917d2e4b40c0c76fa96c7db6e4f6a019bbd8a00d69b","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskStorePersistence.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"bc8de2a78c5e80e4c5b724a88b36d838bdab619f","sourceSha256":"e7ab9c59e80a7f98acf9bf4feea1551184b8a76d7fe52c60a702619589f8d9bc","mergedSha256":"e7ab9c59e80a7f98acf9bf4feea1551184b8a76d7fe52c60a702619589f8d9bc","identicalToSource":true}
+    ],
+    "acceptedContractDocsPathIdentities": [
+      {"path":".ch/docs/design-docs/department-mode.md","sourceCommit":"2999a3b0589eaab2f52b355e41487cc44a2331c6","sourceBlob":"b5832bb9d3ac5c2da4018b628f0df9c8a4547adb","sourceSha256":"05268db4f742f20168639619b63f5f71f507a02da48451fac3da91620b086ab5","mergedSha256":"05268db4f742f20168639619b63f5f71f507a02da48451fac3da91620b086ab5","identicalToSource":true},
+      {"path":".ch/docs/ontology/domains/cli-plugin-runtime.json","sourceCommit":"2999a3b0589eaab2f52b355e41487cc44a2331c6","sourceBlob":"fd0f9a0c11baea597359e87931adfec1b584fca1","sourceSha256":"142f57cbfbf051fb6bcd88229abebc4419ec812e7897a00eaf4042b4eb43d1f5","mergedSha256":"142f57cbfbf051fb6bcd88229abebc4419ec812e7897a00eaf4042b4eb43d1f5","identicalToSource":true}
+    ],
+    "verificationReuse": "Reused accepted Round707 standard build and 110 distinct cases, Round708 cold tsc/60 cases/794 byte-identical non-test artifacts, and Round709 ontology validation/9 tool tests within source snapshots. The merged ontology/document files are byte-identical to source; no repeated source-only checks.",
+    "officialRegression": {"inputCommit":"30627ab9eb86b3a484737e92161f517e8f3b5f13","inputTree":"f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d","command":"node scripts/run_unit_tests.js","exitCode":1,"testFiles":397,"tests":5462,"passed":5454,"failed":3,"cancelled":2,"skipped":3,"durationMs":774393,"log":"/tmp/round711-unit.log","logSha256":"dae408ed87c1e726d52d232257dff1aa06faaf67458837ff29b2d5392dc6f5c2","discoveryList":"/tmp/round711-unit-discovery.txt","discoveryListSha256":"ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a","buildCommand":"npm run build","buildExitCode":0,"buildLog":"/tmp/round711-build.log","buildLogSha256":"448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07","controlledProcessHandling":"Two departmentcodexexecutionlauncher cases timed out at the existing 10s limit; the file process then hung about 12 minutes without child processes, temp fixtures or log progress. Only this invocation's exact PID 74508 was SIGTERM'ed so the official runner could finish and report. This controlled interruption is not a pass or natural cleanup.","failures":["departmentGroupChatHost owner-change case expected 1 post but received 2; attribution unresolved.","loopTaskStore legacy migration success case did not discover the expected target store.","loopTaskStore unsafe-root case found the prior legacy path already present after the preceding failure; dependent fixture precondition, not independent contract result.","departmentcodexexecutionlauncher resume raw-session persistence-confirmation case timed out at 10s.","departmentcodexexecutionlauncher Owner callback-failure case timed out at 10s."],"failureClassification":"Store migration is a source/fixture root-cause item. Group-chat and two Owner timeouts remain unclassified pending their independent owners. The unsafe-root assertion is contaminated by the preceding migration failure.","fullRegressionPassed":false},
+    "round698HistoricalResultUnchanged": {"tests":5439,"passed":5265,"failed":165,"cancelled":6,"skipped":3,"exitCode":1}
   }
 }

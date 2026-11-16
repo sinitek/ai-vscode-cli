@@ -2817,5 +2817,27 @@
       "Required native Linux/Windows evidence, final authority/capacity/cold composition review and safe original-directory handoff remain open."
     ],
     "postCheckChanges": "Only integration documentation and machine evidence changed after the reused source checks; no source test/fixture code changed after merge."
+  },
+  "round711Followup": {
+    "baseCommit": "0ee355624f7f878b60208726c1b7c5d788bb0f0a",
+    "storeSource": "94267bb3f4343c9ccee0f9f75e99c6a2f492df50",
+    "storeSourceAncestor": "74be413fbd1d67ae9ae59246bac92e409a85282f",
+    "storeMerge": "5bc951463b609072d1990c3787d90aa5a22ab8ad",
+    "docsSource": "2999a3b0589eaab2f52b355e41487cc44a2331c6",
+    "docsMerge": "30627ab9eb86b3a484737e92161f517e8f3b5f13",
+    "testedInputCommit": "30627ab9eb86b3a484737e92161f517e8f3b5f13",
+    "testedInputTree": "f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d",
+    "build": {"command":"npm run build","exitCode":0,"log":"/tmp/round711-build.log","sha256":"448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"},
+    "officialRun": {"command":"node scripts/run_unit_tests.js","exitCode":1,"testFiles":397,"tests":5462,"passed":5454,"failed":3,"cancelled":2,"skipped":3,"durationMs":774393,"log":"/tmp/round711-unit.log","sha256":"dae408ed87c1e726d52d232257dff1aa06faaf67458837ff29b2d5392dc6f5c2","discoveryList":"/tmp/round711-unit-discovery.txt","discoveryListSha256":"ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a"},
+    "failures": [
+      {"file":"dist/test/loop/departmentGroupChatHost.test.js","test":"department ownership port unavailable, duplicate modules and changed ownership revoke current actions and pending effects","classification":"Expected one post but got two; ownership/implementation versus fixture attribution remains undetermined."},
+      {"file":"dist/test/loop/loopTaskStore.test.js","test":"moves legacy task stores and communication artifacts into Loop storage","classification":"Expected migration target discovery but received false; strict-store success-path cause requires diagnosis."},
+      {"file":"dist/test/loop/loopTaskStore.test.js","test":"keeps legacy task paths intact when the communication root is unsafe to migrate","classification":"Saw legacy path already present after preceding migration case failed; contaminated dependent fixture precondition, not an independent unsafe-root result."},
+      {"file":"dist/test/runtime/departmentcodexexecutionlauncher.test.js","test":"resume raw session waits for both persistence confirmations and launches once from snapshot","classification":"Existing 10 second test timeout; cause not established."},
+      {"file":"dist/test/runtime/departmentcodexexecutionlauncher.test.js","test":"Owner callback-failure cannot publish complete receipt","classification":"Existing 10 second test timeout; cause not established."}
+    ],
+    "processHandling": "The departmentcodexexecutionlauncher test-file process remained hung for about twelve minutes after the two timeouts with no children, temporary fixtures or log progress. PID 74508 was the exact process from this run and was SIGTERM'ed to allow the official runner to report. This run is failed and controlled-interrupted, not complete-pass evidence.",
+    "scopeAndLimitations": "This is the first official full run on the unified accepted store plus contract-doc input. Round698's original 5439/5265/165/6/3 result remains unchanged. Reused store 110, cold 60/794-artifact, and docs ontology 9 checks remain scoped to their original accepted source snapshots. No real UI/EH/CLI or native Linux/Windows claim follows from this unit run.",
+    "openGates": ["Diagnose and repair/retest the migration success-path failure and dependent unsafe-root fixture as appropriate.","Group-chat extra-post and two Owner timeout cases need their responsible owners to classify.","Rerun affected tests and final official full regression after accepted repairs.","Native Linux/Windows, real UI/EH/CLI, final authority/capacity/cold composition and original-checkout clean handoff remain open."]
   }
 }
