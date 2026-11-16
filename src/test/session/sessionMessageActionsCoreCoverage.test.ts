@@ -336,6 +336,28 @@ test("persists the Loop+ dispatch subtask maximum as a global setting", async ()
   assert.equal(calls.postPanelState, 3);
 });
 
+test("workspace dispatch limit saves and clears independently of global settings", async () => {
+  const { deps, calls, state } = createSettingHarness();
+  state.workspaceSettings.workspaceMemoryEnabled = true;
+  for (const value of ["8.9", 0, 99, "invalid", true, null, 4, "  "]) {
+    await handleUpdateSettingMessage({ type: "updateSetting", key: "workspaceLoopPlusDecisionSubtaskMax", value }, deps);
+  }
+  assert.deepEqual(calls.savedSettings, [
+    { workspaceMemoryEnabled: true, loopPlusDecisionSubtaskMax: 8 },
+    { workspaceMemoryEnabled: true, loopPlusDecisionSubtaskMax: 1 },
+    { workspaceMemoryEnabled: true, loopPlusDecisionSubtaskMax: 20 },
+    { workspaceMemoryEnabled: true },
+    { workspaceMemoryEnabled: true, loopPlusDecisionSubtaskMax: 4 },
+    { workspaceMemoryEnabled: true },
+  ]);
+  assert.deepEqual(calls.toolSettings, []);
+  assert.equal(calls.postPanelState, 8);
+  state.workspaceSettings.loopPlusDecisionSubtaskMax = 2;
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 9 }, deps);
+  assert.equal(state.workspaceSettings.loopPlusDecisionSubtaskMax, 2);
+  assert.deepEqual(calls.toolSettings, [{ loopPlusDecisionSubtaskMax: 9 }]);
+});
+
 test("persists the human interaction timeout as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
   await handleUpdateSettingMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: "10.2" }, deps);

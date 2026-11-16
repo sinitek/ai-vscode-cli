@@ -511,6 +511,20 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.loopPlusDecisionSubtaskMax.addEventListener("change", commitLoopPlusDecisionSubtaskMax);
         elements.loopPlusDecisionSubtaskMax.addEventListener("blur", commitLoopPlusDecisionSubtaskMax);
       }
+      if (elements.workspaceLoopPlusDecisionSubtaskMax) {
+        const commitWorkspaceLoopPlusDecisionSubtaskMax = () => {
+          const raw = elements.workspaceLoopPlusDecisionSubtaskMax.value.trim();
+          const nextValue = raw ? normalizeLoopPlusDecisionSubtaskMax(raw) : null;
+          elements.workspaceLoopPlusDecisionSubtaskMax.value = nextValue === null ? "" : String(nextValue);
+          vscode.postMessage({
+            type: "updateSetting",
+            key: "workspaceLoopPlusDecisionSubtaskMax",
+            value: nextValue,
+          });
+        };
+        elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("change", commitWorkspaceLoopPlusDecisionSubtaskMax);
+        elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("blur", commitWorkspaceLoopPlusDecisionSubtaskMax);
+      }
       if (elements.loopPlusMaxAcceptances) {
         const commitLoopPlusMaxAcceptances = () => {
           const nextValue = normalizeLoopPlusMaxAcceptances(elements.loopPlusMaxAcceptances.value);

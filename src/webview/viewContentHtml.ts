@@ -770,6 +770,22 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
+                  <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
+                  <input
+                    type="number"
+                    id="workspaceLoopPlusDecisionSubtaskMax"
+                    class="tool-settings-number"
+                    min="${LOOP_PLUS_DECISION_SUBTASK_MIN}"
+                    max="${LOOP_PLUS_DECISION_SUBTASK_LIMIT}"
+                    step="1"
+                    aria-label="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}"
+                    aria-describedby="workspaceLoopPlusDecisionSubtaskMaxNote"
+                  />
+                </div>
+                <div id="workspaceLoopPlusDecisionSubtaskMaxNote" class="tool-settings-note">${i18n.toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
                   <label class="debug-toggle" title="${i18n.toolSettingsLongTermMemoryTitle}">
                     <input type="checkbox" id="longTermMemoryEnabled" />

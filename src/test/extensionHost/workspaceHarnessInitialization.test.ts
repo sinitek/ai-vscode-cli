@@ -13,7 +13,10 @@ const { createModelSettingsHost } = require("../../extensionHost/modelSettings")
 const { ensureCliModelStore } = require("../../modelSelectionStore") as typeof import("../../modelSelectionStore");
 const { t } = require("../../i18n") as typeof import("../../i18n");
 
-function createHarnessHost(workspaceRoot?: string) {
+function createHarnessHost(
+  workspaceRoot?: string,
+  getWorkspaceSettings: ModelSettingsHostDeps["getWorkspaceSettings"] = () => ({}),
+) {
   const modelStore = ensureCliModelStore();
   const thinkingState: ReturnType<ModelSettingsHostDeps["getOpenCodeThinkingState"]> = {
     providerId: null,
@@ -32,7 +35,7 @@ function createHarnessHost(workspaceRoot?: string) {
     setCurrentCli: () => undefined,
     getModelStore: () => modelStore,
     setModelStore: () => undefined,
-    getWorkspaceSettings: () => ({}),
+    getWorkspaceSettings,
     setWorkspaceSettings: () => undefined,
     getPromptHistoryStore: () => ({ items: [] }),
     setPromptHistoryStore: () => undefined,
@@ -70,6 +73,20 @@ function createHarnessHost(workspaceRoot?: string) {
     logError: () => undefined,
   });
 }
+
+test("dispatch limit host reads the current workspace on every call and preserves the global value", () => {
+  let settings: ReturnType<ModelSettingsHostDeps["getWorkspaceSettings"]> = {};
+  const host = createHarnessHost(undefined, () => settings);
+  const globalValue = host.getGlobalLoopPlusDecisionSubtaskMax();
+  assert.equal(host.getEffectiveLoopPlusDecisionSubtaskMax(), globalValue);
+  settings = { loopPlusDecisionSubtaskMax: 2 };
+  assert.equal(host.getEffectiveLoopPlusDecisionSubtaskMax(), 2);
+  settings = { loopPlusDecisionSubtaskMax: 14 };
+  assert.equal(host.getEffectiveLoopPlusDecisionSubtaskMax(), 14);
+  settings = {};
+  assert.equal(host.getEffectiveLoopPlusDecisionSubtaskMax(), globalValue);
+  assert.equal(host.getGlobalLoopPlusDecisionSubtaskMax(), globalValue);
+});
 
 for (const scenario of ["confirmed", "cancelled", "no-workspace", "scaffold-error"] as const) {
   test(`workspace harness initialization ${scenario} never starts CodeGraph`, async (context) => {

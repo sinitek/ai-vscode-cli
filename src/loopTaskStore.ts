@@ -23,6 +23,7 @@ import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
+import { writeFileAtomicallySync } from "./shared/atomicWrite";
 import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
@@ -299,10 +300,8 @@ export function buildLoopTaskStoreFile(cli: CliName, workspaceKey: string, sessi
 function collectLoopTaskStoreFilesFromDir(
   dirPath: string,
   filename: string = LOOP_TASK_STORE_FILENAME,
+  options: LoopTaskStoreReadOptions = {},
 ): string[] {
-  if (!fs.existsSync(dirPath)) {
-    return [];
-  }
   const collected: string[] = [];
   const stack = [dirPath];
   while (stack.length > 0) {
@@ -311,7 +310,13 @@ function collectLoopTaskStoreFilesFromDir(
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        continue;
+      }
       void logError("loop-task-store-readdir-error", { dirPath: current, error: String(error) });
+      if (options.throwOnError) {
+        throw error;
+      }
       continue;
     }
     entries.forEach((entry) => {
@@ -328,9 +333,9 @@ function collectLoopTaskStoreFilesFromDir(
   return collected;
 }
 
-export function listLoopTaskStoreFiles(): string[] {
+export function listLoopTaskStoreFiles(options: LoopTaskStoreReadOptions = {}): string[] {
   const unmigratedLegacyFiles = migrateLegacyLoopStorage();
-  const files = collectLoopTaskStoreFilesFromDir(LOOP_TASK_STORE_DIR);
+  const files = collectLoopTaskStoreFilesFromDir(LOOP_TASK_STORE_DIR, LOOP_TASK_STORE_FILENAME, options);
   if (fs.existsSync(LOOP_TASK_STORE_FLAT_FILE)) {
     files.push(LOOP_TASK_STORE_FLAT_FILE);
   }
@@ -362,29 +367,33 @@ function migrateLegacyLoopTaskStoreFile(filePath: string): void {
       throw new Error("legacy Loop task store format invalid");
     }
     const migratedJson = migrateLegacyLoopJson(parsed, DATA_DIR).value as LoopTaskStore;
-    const migratedStore = ensureLoopTaskStore(migratedJson, { sourceFile: filePath });
+    const migratedStore = ensureLoopTaskStore(migratedJson, { sourceFile: filePath, throwOnError: true });
     for (const task of migratedStore.tasks) {
       const targetFile = buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id);
       const migratedTask: LoopTaskRecord = {
         ...task,
         taskStoreFile: targetFile,
       };
-      const targetStore = readLoopTaskStore(targetFile);
+      const targetStore = readLoopTaskStore(targetFile, { throwOnError: true });
       const existingIndex = targetStore.tasks.findIndex((item) => item.id === task.id);
       let expectedUpdatedAt = migratedTask.updatedAt;
+      // On equal timestamps the already committed destination wins. A retained
+      // legacy source is a retry, not evidence that its old state is newer.
       if (existingIndex < 0) {
         targetStore.tasks.push(migratedTask);
-      } else if (targetStore.tasks[existingIndex].updatedAt <= migratedTask.updatedAt) {
+      } else if (targetStore.tasks[existingIndex].updatedAt < migratedTask.updatedAt) {
         targetStore.tasks[existingIndex] = migratedTask;
       } else {
         expectedUpdatedAt = targetStore.tasks[existingIndex].updatedAt;
       }
       writeLoopTaskStore(targetFile, targetStore);
-      const persistedTask = readLoopTaskStore(targetFile).tasks.find((item) => item.id === task.id);
+      const persistedTask = readLoopTaskStore(targetFile, { throwOnError: true }).tasks.find((item) => item.id === task.id);
       if (!persistedTask || persistedTask.updatedAt < expectedUpdatedAt || persistedTask.taskStoreFile !== targetFile) {
         throw new Error(`Loop task migration verification failed: ${task.id}`);
       }
-      loopTaskStoreFileCache.set(task.id, targetFile);
+      // A retained legacy source may be retried after this task moved again.
+      // Resolve all copies before choosing a location instead of caching this one.
+      loopTaskStoreFileCache.delete(task.id);
     }
     fs.unlinkSync(filePath);
   } catch (error) {
@@ -536,22 +545,29 @@ function removeEmptyDirectories(rootDir: string): void {
   }
 }
 
-function resolveLoopTaskStoreFileForTask(taskId: string): string | null {
+type LoopTaskStoreReadOptions = { throwOnError?: boolean };
+
+function resolveLoopTaskStoreFileForTask(taskId: string, options: LoopTaskStoreReadOptions = {}): string | null {
   const cached = loopTaskStoreFileCache.get(taskId);
-  if (cached && fs.existsSync(cached)) {
-    const cachedStore = readLoopTaskStore(cached);
+  if (cached) {
+    const cachedStore = readLoopTaskStore(cached, options);
     if (cachedStore.tasks.some((task) => task.id === taskId)) {
       return cached;
     }
     loopTaskStoreFileCache.delete(taskId);
   }
-  const candidateFiles = listLoopTaskStoreFiles();
+  const candidateFiles = listLoopTaskStoreFiles(options);
+  let latest: { filePath: string; updatedAt: number } | undefined;
   for (const filePath of candidateFiles) {
-    const store = readLoopTaskStore(filePath);
-    if (store.tasks.some((task) => task.id === taskId)) {
-      loopTaskStoreFileCache.set(taskId, filePath);
-      return filePath;
+    const store = readLoopTaskStore(filePath, options);
+    const task = store.tasks.find((item) => item.id === taskId);
+    if (task && (!latest || task.updatedAt > latest.updatedAt)) {
+      latest = { filePath, updatedAt: task.updatedAt };
     }
+  }
+  if (latest) {
+    loopTaskStoreFileCache.set(taskId, latest.filePath);
+    return latest.filePath;
   }
   return null;
 }
@@ -648,12 +664,12 @@ function updateLoopSubtaskCommunicationFile(taskId: string, subtaskId: string, f
   updateLoopTaskRecord(taskId, { subTasks, updatedAt: Date.now() });
 }
 
-export function readLoopTaskRecord(taskId: string): LoopTaskRecord | null {
-  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
+export function readLoopTaskRecord(taskId: string, options: LoopTaskStoreReadOptions = {}): LoopTaskRecord | null {
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId, options);
   if (!storeFile) {
     return null;
   }
-  const task = readLoopTaskStore(storeFile).tasks.find((item) => item.id === taskId) ?? null;
+  const task = readLoopTaskStore(storeFile, options).tasks.find((item) => item.id === taskId) ?? null;
   if (!task) {
     return null;
   }
@@ -668,11 +684,11 @@ export function updateLoopTaskRecord(
   patch: Partial<LoopTaskRecord>,
   options: { allowCompletedToRunning?: boolean } = {}
 ): LoopTaskRecord | null {
-  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true });
   if (!storeFile) {
     return null;
   }
-  const store = readLoopTaskStore(storeFile);
+  const store = readLoopTaskStore(storeFile, { throwOnError: true });
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return null;
@@ -699,22 +715,16 @@ export function updateLoopTaskRecord(
     completionRequirementCoverage: Array.isArray(patch.completionRequirementCoverage)
       ? patch.completionRequirementCoverage
       : existing.completionRequirementCoverage,
-    updatedAt: patch.updatedAt ?? Date.now(),
+    updatedAt: Math.max(existing.updatedAt, patch.updatedAt ?? Date.now()),
   };
   const targetStoreFile = next.taskStoreFile;
-  if (targetStoreFile !== storeFile) {
-    store.tasks.splice(index, 1);
-    if (store.tasks.length > 0) {
-      writeLoopTaskStore(storeFile, store);
-    } else if (fs.existsSync(storeFile)) {
-      try {
-        fs.unlinkSync(storeFile);
-      } catch (error) {
-        void logError("loop-task-store-delete-error", { filePath: storeFile, error: String(error) });
-      }
-    }
-    const targetStore = readLoopTaskStore(targetStoreFile);
+  if (!isSameLoopTaskStoreFile(targetStoreFile, storeFile)) {
+    const targetStore = readLoopTaskStore(targetStoreFile, { throwOnError: true });
     const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
+    // A committed move must outrank its source even within the same millisecond.
+    // This also makes a cold lookup safe if source cleanup fails or the host exits.
+    next.updatedAt = Math.max(next.updatedAt, existing.updatedAt + 1,
+      targetIndex >= 0 ? targetStore.tasks[targetIndex].updatedAt + 1 : 0);
     if (targetIndex >= 0) {
       targetStore.tasks[targetIndex] = next;
     } else {
@@ -722,8 +732,25 @@ export function updateLoopTaskRecord(
     }
     writeLoopTaskStore(targetStoreFile, targetStore);
     loopTaskStoreFileCache.set(taskId, targetStoreFile);
+    // The target is now authoritative. Cleanup is maintenance: failure must not
+    // undo the commit or make a retry load the old source record.
+    store.tasks.splice(index, 1);
+    try {
+      if (store.tasks.length > 0) {
+        writeLoopTaskStore(storeFile, store);
+      } else if (fs.existsSync(storeFile)) {
+        fs.unlinkSync(storeFile);
+      }
+    } catch (error) {
+      void logError("loop-task-store-move-cleanup-error", {
+        taskId, filePath: storeFile, targetFile: targetStoreFile, error: String(error),
+      });
+    }
     return next;
   }
+  // Keep the known location for aliases, including case aliases on volumes that
+  // support them. Never clean up a second spelling of the file just committed.
+  next.taskStoreFile = storeFile;
   store.tasks[index] = next;
   writeLoopTaskStore(storeFile, store);
   loopTaskStoreFileCache.set(taskId, storeFile);
@@ -749,11 +776,11 @@ export function ensureLoopTaskMaxRoundsAtLeast(
 }
 
 export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
-  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true });
   if (!storeFile) {
     return;
   }
-  const store = readLoopTaskStore(storeFile);
+  const store = readLoopTaskStore(storeFile, { throwOnError: true });
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return;
@@ -774,7 +801,7 @@ export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
     ...task,
     rounds,
     currentRound: Math.max(task.currentRound, round.round),
-    updatedAt: Date.now(),
+    updatedAt: Math.max(task.updatedAt, Date.now()),
   };
   writeLoopTaskStore(storeFile, store);
 }
@@ -784,7 +811,7 @@ export function bindLoopTaskToSession(taskId: string, sessionId: string): LoopTa
   if (!normalizedSessionId) {
     return null;
   }
-  const task = readLoopTaskRecord(taskId);
+  const task = readLoopTaskRecord(taskId, { throwOnError: true });
   if (!task) {
     return null;
   }
@@ -804,7 +831,7 @@ export function bindLoopTaskToRuntimeTarget(
   cli: CliName,
   sessionId: string | null,
 ): LoopTaskRecord | null {
-  const task = readLoopTaskRecord(taskId);
+  const task = readLoopTaskRecord(taskId, { throwOnError: true });
   if (!task) {
     return null;
   }
@@ -1228,23 +1255,46 @@ function isLoopTaskRole(value: unknown): value is LoopTaskRole {
 
 function ensureLoopTaskStore(
   store?: LoopTaskStore,
-  options: { sourceFile?: string } = {}
+  options: { sourceFile?: string; throwOnError?: boolean } = {}
 ): LoopTaskStore {
   const now = Date.now();
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
-      .map((record) => normalizeLoopTaskRecord(record, options.sourceFile))
+      .map((record) => {
+        const normalized = normalizeLoopTaskRecord(record, options.sourceFile);
+        if (!normalized && options.throwOnError) {
+          throw new Error("Loop task store record invalid");
+        }
+        return normalized;
+      })
       .filter((record): record is LoopTaskRecord => Boolean(record))
       .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
     : [];
   return { tasks };
 }
 
-export function readLoopTaskStore(filePath: string): LoopTaskStore {
+// Resolve lexical aliases first, then let the filesystem decide case/symlink/
+// hard-link identity. Lowercasing would conflate distinct files on sensitive volumes.
+function isSameLoopTaskStoreFile(left: string, right: string): boolean {
+  if (path.resolve(left) === path.resolve(right)) {
+    return true;
+  }
   try {
-    if (!fs.existsSync(filePath)) {
-      return { tasks: [] };
+    const leftStats = fs.statSync(left);
+    const rightStats = fs.statSync(right);
+    return (leftStats.ino !== 0 && leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino)
+      || fs.realpathSync(left) === fs.realpathSync(right);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
     }
+    throw error;
+  }
+}
+
+/** Queries tolerate unreadable data; commit readers opt in to propagating failures. */
+export function readLoopTaskStore(filePath: string, options: LoopTaskStoreReadOptions = {}): LoopTaskStore {
+  try {
     const raw = fs.readFileSync(filePath, "utf8");
     const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
       && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
@@ -1253,15 +1303,24 @@ export function readLoopTaskStore(filePath: string): LoopTaskStore {
       retainLegacyStoragePaths ? undefined : DATA_DIR,
     ).value;
     if (!parsed || !Array.isArray(parsed.tasks)) {
+      throw new Error("Loop task store format invalid");
+    }
+    return ensureLoopTaskStore({ tasks: parsed.tasks as LoopTaskRecord[] }, {
+      sourceFile: filePath, throwOnError: options.throwOnError,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { tasks: [] };
     }
-    return ensureLoopTaskStore({ tasks: parsed.tasks as LoopTaskRecord[] }, { sourceFile: filePath });
-  } catch (error) {
     void logError("loop-task-store-read-error", { filePath, error: String(error) });
+    if (options.throwOnError) {
+      throw error;
+    }
     return { tasks: [] };
   }
 }
 
+/** Normal return means the atomic replacement committed; failures propagate unchanged. */
 export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void {
   try {
     const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
@@ -1270,14 +1329,13 @@ export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void
       store,
       retainLegacyStoragePaths ? undefined : DATA_DIR,
     ).value;
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(
+    writeFileAtomicallySync(
       filePath,
       JSON.stringify(ensureLoopTaskStore(migratedStore, { sourceFile: filePath }), null, 2),
-      "utf8"
     );
   } catch (error) {
     void logError("loop-task-store-write-error", { filePath, error: String(error) });
+    throw error;
   }
 }
 
@@ -1285,12 +1343,9 @@ export function cleanupLoopTaskStoreRetention(): void {
   try {
     const filePaths = listLoopTaskStoreFiles();
     filePaths.forEach((filePath) => {
-      const normalized = readLoopTaskStore(filePath);
+      const normalized = readLoopTaskStore(filePath, { throwOnError: true });
       if (normalized.tasks.length > 0) {
         writeLoopTaskStore(filePath, normalized);
-        normalized.tasks.forEach((task) => {
-          loopTaskStoreFileCache.set(task.id, filePath);
-        });
         return;
       }
       if (fs.existsSync(filePath)) {

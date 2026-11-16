@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
 import {
   CLI_LIST,
   type CliName,
@@ -44,6 +45,8 @@ export type WorkspaceSettings = {
   workspaceMemoryEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
   loopMaxRounds?: number;
+  /** 当前工作区的 Loop/Loop+ 派发上限；缺省时继承全局。 */
+  loopPlusDecisionSubtaskMax?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
   /** Loop+ 验收方案模板；“系统默认”是内置基线，不存于此字段。 */
@@ -53,6 +56,18 @@ export type WorkspaceSettings = {
 };
 
 export type WorkspaceSettingsStoreLogger = (event: string, payload?: unknown) => void;
+
+export function normalizeWorkspaceLoopPlusDecisionSubtaskMax(value: unknown): number | undefined {
+  const numeric = typeof value === "number"
+    ? value
+    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
+  return Number.isFinite(numeric) ? resolveLoopPlusDecisionSubtaskMax(numeric) : undefined;
+}
+
+export function resolveEffectiveLoopPlusDecisionSubtaskMax(workspaceValue: unknown, globalValue: unknown): number {
+  return normalizeWorkspaceLoopPlusDecisionSubtaskMax(workspaceValue)
+    ?? resolveLoopPlusDecisionSubtaskMax(globalValue);
+}
 
 export type WorkspaceSettingsStoreOptions = {
   workspaceSettingsDir: string;
@@ -123,6 +138,12 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
+    const loopPlusDecisionSubtaskMax = normalizeWorkspaceLoopPlusDecisionSubtaskMax(
+      (parsed as WorkspaceSettings).loopPlusDecisionSubtaskMax,
+    );
+    if (loopPlusDecisionSubtaskMax !== undefined) {
+      result.loopPlusDecisionSubtaskMax = loopPlusDecisionSubtaskMax;
+    }
     if (activeConfigIdByCli && typeof activeConfigIdByCli === "object") {
       const normalized: Partial<Record<CliName, string>> = {};
       CLI_LIST.forEach((cli) => {

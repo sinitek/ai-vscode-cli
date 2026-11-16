@@ -329,16 +329,16 @@ test("raises existing Loop task maxRounds to the current global setting without 
   assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
 });
 
-test("writes normalized data and contains write failures at the persistence boundary", () => {
+test("writes normalized data and propagates write failures at the persistence boundary", () => {
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   assert.equal(readPersistedTask(task.taskStoreFile, task.id).id, task.id);
 
   const blockedParent = path.join(testHome, "blocked-parent");
   fs.writeFileSync(blockedParent, "not a directory", "utf8");
-  assert.doesNotThrow(() => {
+  assert.throws(() => {
     loopTaskStore.writeLoopTaskStore(path.join(blockedParent, "loop-tasks.json"), { tasks: [task] });
-  });
+  }, (error: NodeJS.ErrnoException) => error.code === "ENOTDIR" || error.code === "EEXIST");
 });
 
 test("normalizes legacy sleeping Loop tasks to manual review", () => {

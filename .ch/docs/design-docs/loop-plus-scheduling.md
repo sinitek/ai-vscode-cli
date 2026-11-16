@@ -52,7 +52,7 @@ Loop+ 主模型在每次成功验收批次的 `accept` 决策中给出 0–99 �
 
 主任务用 `controls.reprompt` 纠正正在运行或排队的子任务时，必须同时提供非空 `title` 和至少 80 字的 `prompt`。新标题由主模型按纠正后的目标用简体中文描述，范围或目标改变时不得沿用旧标题；缺失、空白或非字符串标题会导致整份决策被拒绝并走既有协议重试，不会先停止旧执行。新标题沿原有调度、任务记录和群聊投影链路同步到新 attempt、成员名称和启动通知，子任务 ID 与会话连续性不变。`close` 仍不要求标题，历史消息不回写改名。
 
-Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列和可恢复快照；extension host 只启动 scheduler 返回的 `started` 项。生产并发容量与经典 Loop 每批派发、Loop+ 单次决定的派发上限共用 `loopPlusDecisionSubtaskMax`（界面“Loop/Loop+ 单次派发上限”，默认 6、范围 1–20），不再固定为 6。新建或继续 Loop+ 任务时，当前宿主容量策略覆盖旧快照容量；仍先验证原快照，并保留全部调度状态。运行中在构造下一次主模型请求、提交主模型决策及处理子任务结束通知前同步当前容量，不需要停止或显式继续，也不打断当前模型调用。scheduler 的 `updateMaxConcurrency` 仅更新准入策略，不自行启动任务；仍由后续 `dispatch` / `finish` 等状态转换返回 `started`。调低配置不取消已有运行项：快照容量至少覆盖已有运行预留，实际准入仍使用降低后的配置，运行数低于新上限才回填 pending，避免展示容量的保护下限被永久当成准入容量。主提示展示实际快照容量。显式宿主并发限制仍优先。扩展宿主按每次实际启动间隔约 1 秒错峰，错峰队列不改变 scheduler 的准入状态。Loop/Loop+ 共用子任务标签入口在创建标签后、首次刷新页面前发送运行中状态，覆盖会话及配置准备；尚未实际启动的准备失败或取消分别清除为 error 或 stopped，已启动调用仍由运行时负责终态与后台压缩。
+Loop+ scheduler 为纯状态内核，维护 `running`、`pending`、验收队列和可恢复快照；extension host 只启动 scheduler 返回的 `started` 项。生产并发容量与经典 Loop 每批派发、Loop+ 单次决定的派发上限共用 `loopPlusDecisionSubtaskMax`（界面“Loop/Loop+ 单次派发上限”，默认 6、范围 1–20），不再固定为 6。该配置在“工作区”Tab 支持可选覆盖，工作区设置优先于全局，留空/清空时继承全局，最终回退默认 6。`getEffectiveLoopPlusDecisionSubtaskMax` 每次读取当前工作区，统一供经典 Loop 提示/解析与 Loop+ 生产适配器使用；面板状态分开发送全局值与可为空的工作区覆盖值，避免编辑全局时显示工作区生效值。新建或继续 Loop+ 任务时，当前宿主容量策略覆盖旧快照容量；仍先验证原快照，并保留全部调度状态。运行中在构造下一次主模型请求、提交主模型决策及处理子任务结束通知前同步当前容量，不需要停止或显式继续，也不打断当前模型调用。scheduler 的 `updateMaxConcurrency` 仅更新准入策略，不自行启动任务；仍由后续 `dispatch` / `finish` 等状态转换返回 `started`。调低配置不取消已有运行项：快照容量至少覆盖已有运行预留，实际准入仍使用降低后的配置，运行数低于新上限才回填 pending，避免展示容量的保护下限被永久当成准入容量。主提示展示实际快照容量。显式宿主并发限制仍优先。扩展宿主按每次实际启动间隔约 1 秒错峰，错峰队列不改变 scheduler 的准入状态。Loop/Loop+ 共用子任务标签入口在创建标签后、首次刷新页面前发送运行中状态，覆盖会话及配置准备；尚未实际启动的准备失败或取消分别清除为 error 或 stopped，已启动调用仍由运行时负责终态与后台压缩。
 
 ### 冻结验收批次与最终完成
 
@@ -117,7 +117,19 @@ Loop / Loop+ 群聊允许主模型忙碌时连续提问，显示“主模型正�
 
 ## 阻塞观测
 
-`dispatch` 决策把 pending 原因归为运行中 `writeFiles` / `conflictGroup` 冲突或 `max_concurrency`。宿主 `loop-plus-dispatched` 日志为每个 pending attempt 记录 `subtaskId`、`attemptId` 和 `blockedBy`，冲突项附带冲突值及对应活动 attempt；异常未分类项使用 `scheduler`。pending 项之间不再报告互相阻塞。
+scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles` / `conflictGroup` 冲突或并发容量阻塞，`block` 指向实际活动 attempt，pending 项之间不报告互相阻塞。宿主 `loop-plus-dispatched` 日志目前记录 started/pending 的 attemptId 列表和 rejected 的 subtaskId/attemptId/reason，不额外声称日志已有逐项 blockedBy。
+
+## 提交与展示交接契约
+
+`writeLoopTaskStore(filePath, store): void` 保持同步签名，正常返回表示同目录临时文件已原子替换目标；写入或 rename 失败记录并抛出原异常。`updateLoopTaskRecord` 仅在任务不存在时返回 null，I/O 失败抛异常，记录外形保持。编排通过统一 update 边界将 null 视为未提交；`createLoopPlusPersistedTaskRefresher` 只在更新成功后刷新展示，同步刷新异常和异步刷新拒绝独立记录，不撤销已提交事实。真实生产接线仍由 `persistLoopPlusTaskUpdate` 装配。
+
+提交不能以默认只读查询的容错结果为依据：update、append、bind 的来源/合并目标读取及当前目录冷查找采用严格契约，只有 ENOENT 算缺失；其余 I/O 错误原样传播，无法可靠归一化的数据在写入和清理前拒绝。其它候选不可读或损坏也可能使冷提交保守失败。改绑先核对规范化路径及文件系统身份，同文件别名只写已知来源，不清理；真正迁移先提交目标再清源，清源失败仍返回真实提交结果。legacy 仅由严格较新来源覆盖已有目标，相等时间戳保留目标；结合普通更新/append 时间戳不回退及迁移目标严格较新，防止旧副本在同毫秒或时钟回退后覆盖已提交结果。维护错误边界、缓存与查询规则集中见 [存储提交与恢复边界](loop-crash-recovery.md#提交失败与展示刷新失败)。
+
+验收先提交 reviewed/真实 passed 或 failed 结论，再确认用户消息和安排后续派发；验收提交失败恢复原内存批次。dispatch 和 close/reprompt 先提交新预留与元数据，再启动、取消或关闭相应 attempt；提交失败恢复本次内存转换，不宣称已经启动。用户停止仍先关父门和取消调用，停止落盘失败不会延迟取消或卡住生命周期。
+
+父任务先检查完成门禁，完成状态只在最终提交边界转换；中间元数据写失败不能留下无重试补丁的内存 completed。最终提交失败保留控制器与 `completionPatch`，同宿主显式恢复只重试最终提交，成功后再发完成消息、提醒并释放，不重复验收和启动。子任务汇报或事件提交失败沿用 error 暂停和现有恢复路径，保留事件、结果与 Tab，取消成功压缩/关页；内存事件在磁盘恢复后显式继续提交。若提交持续失败并随后宿主崩溃，恢复只能依赖最后成功落盘的开放 attempt，不保证恢复尚未落盘的内存结果。
+
+真实磁盘回归见 `src/test/extensionHost/loopPlusHandoffContracts.test.ts`：使用隔离 HOME/USERPROFILE、真实 store/updater/refresher/host，注入底层 write/rename 错误；不以会抛错的 updateTask 替身代替整个提交链路。原子替换不扩展为跨进程合并、多文件事务或 fsync 断电耐久承诺。
 
 ## 协议矛盾后的自动纠错
 
@@ -125,7 +137,9 @@ Loop / Loop+ 群聊允许主模型忙碌时连续提问，显示“主模型正�
 
 `accept.subtasks` 中每个任务 ID 必须恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，补充需求产生的后续任务也适用。事件相关任务可关联 `passed` 项并保留真实结论；独立任务使用显式独立归属，不能为补齐关联伪造失败。解析失败不消耗验收事件或启动子任务；策略应用途中已提交的事件和已启动任务以最新快照为准，纠错不得重复处理。
 
-沿用协议重试上限，默认首答之后最多自动纠正 2 次，不放宽验收、完成或安全门禁。有效决策清除纠错上下文；持续无效才进入 `needs-review`，`finalSummary` 保存真实协议原因，主聊天、群聊和沟通文件复用同一说明，不再套用“主模型未提供阻塞原因”。显式继续或宿主重建后可从暂停摘要恢复纠错原因；旧记录未保存原因时明确指出证据缺失。当前待验收结果保留。
+scheduler 的派发拒绝（含 `active_subtask`）同样走 protocolMiss。dispatchSubtasks/dispatchDecisions 返回明确接受项和拒绝项，复用 scheduler 原因类型。部分接受时先保留已启动/排队项与已提交验收和消息确认，纠错请求携带最新快照及剩余拒绝原因，要求用 dispatch 只纠正未接受项；不重发已接受任务、不重验旧事件、不覆盖活动元数据，也不把 failed 改成 passed。后到事件仍按自己的 FIFO 批次推进。只有整个合法交接成功后清零协议重试；部分成功不能反复清零而绕过有界重试。
+
+沿用协议重试上限，默认首答之后最多自动纠正 2 次，不放宽验收、完成或安全门禁。完整接受的决策清除纠错上下文；持续拒绝才进入 `needs-review`，`finalSummary` 保存真实协议原因，主聊天、群聊和沟通文件复用同一说明，不再套用“主模型未提供阻塞原因”。显式继续或宿主重建后可从暂停摘要恢复纠错原因；旧记录未保存原因时明确指出证据缺失。当前待验收结果保留。
 
 实现与回归：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 
@@ -168,6 +182,8 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 - 快照与模板解耦：弹窗里的方案是可复用模板，任务记录里的是确认时刻的副本。之后修改或删除模板不改变已启动任务；续跑、恢复、补充需求直接读任务记录里的快照。
 - 提示注入：`initial` / `review` / `closeout` / `continue` / `user` 五类主模型提示共用同一份快照，只在固定验收清单之后追加已勾选审查项与有效“其它”文本，要求逐项给出证据或显式“不适用”。固定清单、调度协议和“主模型不得自行实现或修复被派发工作”的约束不变。
 - 简短验收反馈：`accept` 或 `completed` 真正结束验收后，Loop+ 群聊追加一条「验收结果」气泡。气泡在表格外上方显示真实子任务名、整体验收结果及事件原因；批量确认列出本批所有子任务名和各自结论，共用一张明细表。两列表格仅保留默认及附加检查，第一列是审查内容，第二列是审查结果（通过或未通过，以及证据型原因），不再添加“验收事件”或整体结果首行；原因语言按任务、证据和上下文选择，不强制中文。即使没有附加快照，也必须显示固定六项默认验收：实现完整性、契约一致性、测试验证、产物可运行性、改动合理性、回归与边界检查。「其它」仅展示本次结论和原因，不重复长篇审查要求。
+- 完成门禁：正常 `completed` 要求所有已选 `acceptancePlanResults[].passed` 为 true；任一附加项失败即拒绝并反馈具体原因。`accept` 仍允许失败，保留证据并进入修复；未选附加项和已授权 directCompletion 的既有边界不变。
+
 - 反馈协议：`accept.reviews[].reason` 解释各事件的结果，`accept.acceptance.checks[].detail` 和 `completed.acceptance.checks[].detail` 解释六项默认检查；已选择的附加项通过 `acceptancePlanResults[].reason` 解释。每条原因按 Unicode 字符计数不超过 50 字，不适用时说明具体限制，不能编造通过证据。运行时拒绝缺失、空白或超长原因，以及缺少默认项或所选附加结果的决策，走既有协议重试，不生成兜底评价或部分气泡；未发生验收时不写气泡。通用解析入口仍兼容旧数据，严格校验由 Loop+ 运行时启用。
 - 固定基线不可关闭：归一化时强制包含基线项，前端布尔值、旧版数据或可选配置都无法移除。
 - 模板持久化：方案与当前选中项存工作区设置（`loopPlusAcceptancePlans` / `loopPlusAcceptancePlanSelection`），系统默认是内置只读项，不写入存储。只改模板不会改写已启动任务。

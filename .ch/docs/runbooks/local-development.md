@@ -90,7 +90,7 @@ Windows：python verify_win.py
 确认支持即时卸载的版本保留共享池，pool 默认三轮约需 3–5 分钟（每轮约 60 秒的原生默认延迟）；旧版/未知能力使用专属进程并确认原进程实际退出，不强行注入未知参数、不换新 CLI、不以缩短等待伪造释放。自动顺序执行：
 
 1. 构建当前源码，定位实际 Codex 可执行文件并记录版本、平台、架构、源码版本、commit 和 dirty。
-2. 执行必要回归集：同 session 并发所有权、迟到回调、完成摘要轮次边界、面板状态恢复、正常关闭与失败保留 Tab、主任务不可重试错误仅调用一次/普通错误五次暂停/原因展示、原会话交接及检测脚本自身。主子交接与验收另覆盖模型路由与切换续跑、验收 JSON 协议与修复提示、验收方案与反馈、FIFO 事件归属及最终完成门禁、停止接线和崩溃后完成回报。
+2. 执行必要回归集：同 session 并发所有权、迟到回调、完成摘要轮次边界、面板状态恢复、正常关闭与失败保留 Tab、主任务不可重试错误仅调用一次/普通错误五次暂停/原因展示、原会话交接及检测脚本自身。主子交接与验收另覆盖模型路由与切换续跑、验收 JSON 协议与修复提示、验收方案与反馈、FIFO 事件归属及最终完成门禁、停止接线和崩溃后完成回报。显式存储与交接门禁清单还必须包含 `loop/loopTaskStore.test.js`、`loop/loopTaskStoreCoreCoverage.test.js`、`loop/loopTaskStorePersistence.test.js`、`extensionHost/loopPlusHandoffContracts.test.js`、`extensionHost/loopPlusAcceptanceCompletionGate.test.js`（均位于 `dist/test/`）；缺少任一文件立即失败。
 3. 按实际能力重复原 thread 交接与完整清理：共享池复现真实 writer 冲突，保留旧进程另一 thread；专属策略实际拒绝其它 owner，确认目标原进程退出后恢复，同样保留另一原会话的进程。ACK、kill 请求或逻辑关闭不算释放。
 4. 通过公共 runner 和实际版本能力探测，检查真实释放先于恢复、另一 thread 继续运行、探测/运行子进程退出、stdio 关闭和临时目录删除。能力未知不强行启用 `thread_unload_delay_secs=0`。
 
@@ -109,6 +109,20 @@ npm run verify:loop-plus -- --codex "/opt/local CLI/bin/codex" --report "/tmp/lo
 - **退出 0 / `passed=true`**：只代表该报告所列平台、源码和 Codex 版本的必要回归与隔离运行时通过。`fullyVerified=false` 与 `notCovered` 始终保留：本入口没有验证已安装扩展、真实 VS Code 多窗口/成功自动关闭 Tab、真实模型完整任务、其它平台、其它 CLI 或全仓单测。
 - 要判断跨平台是否完全修复，需在 macOS 与 Windows 对同一源码分别运行并保留报告，再对实际安装的新扩展补做真实 Loop+ 端到端验收：运行中不得假完成；同 session 重复继续不能打断原调用；正常完成自动关闭子 Tab；失败保持失败且保留证据。未执行的项目不得写成已通过。
 
+Windows 用户请把**同一轮最终源码**放在另一台 Windows 机器，安装 Python 3.9+、项目要求的 Node/npm、git、Codex，并在仓库目录安装项目依赖。PowerShell 示例（将路径替换为实际目录；报告文件名每次使用新名称）：
+
+```powershell
+Set-Location "C:\work\sinitek cli"
+npm install
+$report = Join-Path $env:TEMP ("loop-plus-windows-" + [guid]::NewGuid().ToString() + ".json")
+python verify_win.py --report "$report"
+$LASTEXITCODE
+```
+
+不传 `--runs` 即默认三轮；若不用 `--report`，从终端读取系统临时目录下的报告位置。成功标准为退出码 `0`、JSON 的 `passed=true`，必要回归无失败/跳过/取消/TODO、`evidence.files` 包含上述五项、三轮 pool 与公共 runner 均通过，且进程退出、stdio 关闭与临时目录删除证据完整。请保留 `.json`、`.log`、`.runner.json` 三份文件；`fullyVerified` 仍须为 `false`，覆盖边界见前述 `notCovered`。若失败，保留失败报告交回排查，不换另一个 CLI 覆盖结果。未显式 `--codex` 时保留默认 CLI 解析；插件实际使用自定义路径时，使用上面的加引号路径方法。
+
+最终源码检测应从实际仓库串行运行 `python3 verify_mac.py`（默认三轮，可用 `--report` 指定全新报告路径），由入口自身执行一次标准构建和必要回归，无需预热 build。共享 `dist/` 在同一阶段必须指定单一构建/验证执行者，其它执行者使用唯一临时副本并保留脚本相对结构。开始及结束记录相关源码、测试与检测脚本指纹；如期间有变化，应明确受影响范围，不能沿用失效结果宣称最终通过。入口自身 Node/Python 回归只验证检测流程及失败边界，不能代替默认三轮平台入口，也不能代替 Windows 本机或真实扩展验收。
+
 旧 `verify_codex_thread_handoff.js` / `verify_codex_thread_handoff_acceptance.js` 仅保留 pool 专项诊断；`verify_codex_runner_unload.js` 为公共 runner 专项诊断。判断此次完整源码修复优先使用统一入口，不能只跑旧脚本。
 
 本入口属于开发测试工具，不新增插件用户可见能力；本次脚本优化无需再次变更功能清单，前一轮运行时修复的功能条目仍为事实来源。
@@ -118,6 +132,18 @@ npm run verify:loop-plus -- --codex "/opt/local CLI/bin/codex" --report "/tmp/lo
 本机默认命令解析另有 Codex 0.145.0，与显式通过的 0.167.0 不同；上述通过记录不覆盖 0.145.0，更不能反推历史任务的实际版本。Windows 启动参数及失败收尾有自动化断言，但 Windows 原生运行和真实安装扩展的 Loop+ 端到端验收未执行。全仓单测不在本入口范围，不能把必要回归通过写成全仓通过。
 
 2026-11-16 复验：macOS arm64 / Node 24.22.2，`python3 verify_mac.py` 默认解析 Codex 0.167.2。原清单 900/900 通过后，补入 15 个已有交接、验收及恢复测试文件；补充范围与检测器最小回归 229/229、Python 入口 11/11 通过。修改后完整入口重新构建并退出 0，66 个文件共 1114/1114 通过，无失败、跳过、取消或 TODO。当前能力探测使用专属进程策略，三轮原会话交接为 41/44/41ms，公共 runner 为 44ms，均取得原进程实际退出证据；四组清理通过，另核对 16 个自有 PID 已不存在、临时目录已删除及报告文件清单有效。ontology 与差异空白校验通过。本次只补齐开发检测范围和报告，不改变插件行为，功能清单和业务 ontology 无需更新；未执行 Windows 原生、真实模型或已安装扩展端到端验收。
+
+2026-11-16 Round 10 最终源码隔离运行时检测：从 `/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli_2` 执行 `python3 verify_mac.py --report /var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/loop-final-macos-round10-cpaevitv/verification.json`，未指定 `--runs` 或 `--codex`，03:46:23–03:47:13 UTC，退出 0。实际环境 macOS arm64、Node v24.22.2、源码版本 1.9.9、commit `c9c135fe935d6a016cb2b28ac4b31c827ab4e990`、dirty=true；默认配置 `codex` 经 PATH 解析为 `/Users/fangjiawei/.nvm/versions/node/v24.22.2/bin/codex`，版本 0.167.2，全阶段固定同一路径。入口标准 build 通过，71 个必要回归文件 1209/1209，fail/cancelled/skipped/todo 全为 0；报告执行清单与实际 Node 参数一致，包含上述五项必跑文件。
+
+能力探测为 unknown，按既有策略使用专属进程，没有强行启用零延迟。三轮 pool 原会话交接分别为 44/49/42ms，公共 runner 为 46ms；均确认原进程实际 `process/exit` 后恢复原 thread，另一会话继续运行。公共 runner 的释放/恢复/另一会话继续协议序号为 43/46/64，四个被监督验证进程正常退出、输出关闭且未强制终止；四组清理均确认退出、stdio 关闭与临时目录删除，另以 signal 0 只读核对 16 个 Codex 子进程和 4 个自有验证进程 PID 已不存在。检测前后 693 个源码/测试/脚本文件 SHA-256 一致。
+
+本次三份报告（系统临时目录证据，需保留备查）：
+
+- JSON：`/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/loop-final-macos-round10-cpaevitv/verification.json`
+- 阶段日志：`/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/loop-final-macos-round10-cpaevitv/verification.log`
+- 公共 runner：`/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/loop-final-macos-round10-cpaevitv/verification.runner.json`
+
+同目录 `console.log`、`source-before.json`、`source-after.json` 与 `evidence-audit.json` 提供额外核对依据。本次 `passed=true`、`fullyVerified=false`，只覆盖所列 macOS 源码与真实 Codex 进程/本机模拟模型隔离运行时；不覆盖 Windows 原生、真实模型完整任务、已安装扩展/图形宿主或全仓单测。主审已接受本次源码修复、公共契约及上述 macOS 约定范围，收口见[已归档修复计划](../exec-plans/completed/2026-11/2026-11-16-bugfix-loop-handoff-contracts.md)。Windows 仍需用户在另一台机器对同一源码运行 `python verify_win.py` 并保留三份实际报告；Windows、真实模型、已安装扩展/图形宿主、其它平台/CLI 及全仓单测的未测状态属于覆盖限制，不表示本次约定修复仍未完成。本次 1209/1209 是一次真实执行统计，不与此前独立存储、scheduler、宿主或入口结果相加。
 
 ### 6. 一键启动开发主机（Windows / macOS / Linux）
 

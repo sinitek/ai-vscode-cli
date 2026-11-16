@@ -426,6 +426,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionTimeoutMinutes: document.getElementById("humanInteractionTimeoutMinutes"),
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
+        workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
         loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),

@@ -53,9 +53,13 @@ test("dispatch limit settings explain their shared Loop and Loop+ scope", () => 
   assert.match(html, /Loop\/Loop\+ 单次派发上限/);
   assert.match(html, /aria-label="Loop\/Loop\+ 单次派发上限"/);
   assert.match(html, /限制 Loop 每批、Loop\+ 一次 dispatch 或 accept/);
-  assert.match(html, /新建或继续任务时的并发上限/);
+  assert.match(html, /作为 Loop\+ 的并发上限/);
   assert.match(html, /实际数量取决于可拆分任务和写入冲突，不强制派满/);
   assert.doesNotMatch(html, /不改变同时运行的并发上限/);
+  const workspacePanel = html.split('id="toolSettingsWorkspacePanel"')[1]?.split('id="toolSettingsNotificationsPanel"')[0] ?? "";
+  assert.match(workspacePanel, /id="workspaceLoopPlusDecisionSubtaskMax"/);
+  assert.match(workspacePanel, /aria-describedby="workspaceLoopPlusDecisionSubtaskMaxNote"/);
+  assert.match(workspacePanel, /留空则使用全局设置；设置后优先于全局，仅对当前工作区生效/);
 });
 
 test("chat message limit reuses the AI task settings card between compact and Loop settings", () => {

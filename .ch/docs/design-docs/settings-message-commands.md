@@ -41,6 +41,7 @@ panelMessageHandlers/index.ts
 - 布尔值：全局 humanInteractionEnabled / autoCompact / debug / autoAddEditorContextTags 用 `Boolean(value)`；hideInstructionBubbles、workspaceMemoryEnabled/longTermMemoryEnabled 用 `value === true`；通知与 cliEnabled 必须原生 boolean。
 - `autoCompactContextBeforeRun` 是写入全局 `autoCompactContextAfterRun` 的兼容别名；只有全局保存成功，才清除并保存工作区两个旧键。`loopMaxRounds` 则仍在全局保存返回 false 时清除工作区旧键，不借重构统一策略。
 - `cliEnabled.*` 先检查合法 CLI 和 boolean，复制旧 map 时仅保留合法 CLI/boolean 条目。只有全局保存成功才重新读取当前 CLI，按原次序等待必要的 `setCurrentCli`、重定向子任务选择、发布启停状态，再刷新；全关时仍将 null 传给重定向回调。
+- `loopPlusDecisionSubtaskMax` 只更新全局；`workspaceLoopPlusDecisionSubtaskMax` 写当前工作区同名字段，数字归一化到 1–20，null 或空字符串删除覆盖，非法值不写入。两者正常返回后均由 Router 刷新一次；生效值由运行时按工作区 → 全局 → 默认 6 读取。
 - 限额、历史天数与 shell 继续使用原归一化函数、平台限制、返回值处理与中文错误文案。debug 保存后仍读取实际 debug 配置再更新日志开关。
 
 ## 如何新增设置命令

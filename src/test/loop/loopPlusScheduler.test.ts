@@ -467,7 +467,7 @@ test("restores a snapshot without losing reviews, pending work, or dedupe histor
   assert.throws(() => createLoopPlusScheduler(), /Invalid Loop\+ maxConcurrency/);
 });
 
-test("uses loopParallel conflict rules for running tasks and reserves pending write scopes", () => {
+test("uses loopParallel conflict rules for running tasks without reserving pending write scopes", () => {
   const fresh = createLoopPlusScheduler({ maxConcurrency: 2 });
   const sameBatch = fresh.dispatch([
     spec("left", ["src/shared.ts"]),
@@ -527,10 +527,136 @@ test("uses loopParallel conflict rules for running tasks and reserves pending wr
   assert.equal(waiting.decisions[0]?.concurrencyBlocked, true);
   const overlapping = reserved.dispatch([spec("overlap", ["./SRC/Queued.ts"])]);
   assert.equal(overlapping.decisions[0]?.admission, "pending");
-  assert.equal(overlapping.decisions[0]?.concurrencyBlocked, false);
-  assert.equal(overlapping.decisions[0]?.block?.reason, "writeFiles");
-  assert.equal(overlapping.decisions[0]?.block?.otherAttemptId, "queued-1");
+  assert.equal(overlapping.decisions[0]?.concurrencyBlocked, true);
+  assert.equal(overlapping.decisions[0]?.block, null);
   assert.deepEqual(overlapping.started, []);
+
+  const released = reserved.finish({ subtaskId: "holder", attemptId: "holder-1", outcome: "completed" });
+  assert.deepEqual(attemptIds(released.started), ["queued-1"]);
+  assert.deepEqual(attemptIds(released.view.pending), ["overlap-1"]);
+  const next = reserved.finish({ subtaskId: "queued", attemptId: "queued-1", outcome: "completed" });
+  assert.deepEqual(attemptIds(next.started), ["overlap-1"]);
+  assert.deepEqual(next.view.pending, []);
+});
+
+for (const firstFinished of ["alpha", "gamma"]) {
+  test(`backfills around pending write scopes and starts the oldest eligible attempt once (${firstFinished} finishes first)`, () => {
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
+    const admitted = scheduler.dispatch([
+      spec("alpha", ["x.ts"]),
+      spec("beta", ["x.ts", "y.ts"]),
+      spec("gamma", ["y.ts"]),
+    ]);
+    assert.deepEqual(attemptIds(admitted.started), ["alpha-1", "gamma-1"]);
+    assert.deepEqual(attemptIds(admitted.view.pending), ["beta-1"]);
+    assert.equal(admitted.decisions[1]?.block?.reason, "writeFiles");
+    assert.equal(admitted.decisions[1]?.block?.otherAttemptId, "alpha-1");
+    assert.equal(admitted.decisions[1]?.concurrencyBlocked, false);
+    assert.equal(admitted.decisions[2]?.admission, "started");
+
+    const first = scheduler.finish({
+      subtaskId: firstFinished, attemptId: `${firstFinished}-1`, outcome: "completed",
+    });
+    assert.deepEqual(first.started, []);
+    assert.deepEqual(attemptIds(first.view.pending), ["beta-1"]);
+    const remaining = firstFinished === "alpha" ? "gamma" : "alpha";
+    const waiting = scheduler.dispatch([spec("delta", ["x.ts", "y.ts"])]);
+    assert.equal(waiting.decisions[0]?.block?.otherAttemptId, `${remaining}-1`);
+    assert.equal(waiting.decisions[0]?.concurrencyBlocked, false);
+    assert.deepEqual(attemptIds(waiting.view.pending), ["beta-1", "delta-1"]);
+    const beforeDuplicate = scheduler.snapshot();
+    assert.deepEqual(scheduler.promotePending().started, []);
+    assert.equal(scheduler.finish({
+      subtaskId: firstFinished, attemptId: `${firstFinished}-1`, outcome: "completed",
+    }).reason, "duplicate");
+    assert.deepEqual(scheduler.snapshot(), beforeDuplicate);
+
+    const second = scheduler.finish({
+      subtaskId: remaining, attemptId: `${remaining}-1`, outcome: "completed",
+    });
+    assert.deepEqual(attemptIds(second.started), ["beta-1"]);
+    assert.deepEqual(attemptIds(second.view.pending), ["delta-1"]);
+    assert.deepEqual(scheduler.promotePending().started, []);
+    assert.equal(scheduler.dispatch([spec("beta", ["x.ts", "y.ts"])]).rejected[0]?.reason, "duplicate_attempt");
+    assert.deepEqual(scheduler.finish({
+      subtaskId: remaining, attemptId: `${remaining}-1`, outcome: "completed",
+    }).started, []);
+    const final = scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "completed" });
+    assert.deepEqual(attemptIds(final.started), ["delta-1"]);
+  });
+}
+
+test("pending conflict groups do not reserve resources but newly promoted tasks do", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
+  const admitted = scheduler.dispatch([
+    spec("alpha", ["x.ts"]),
+    spec("beta", ["x.ts"], "shared-model"),
+    spec("gamma", ["y.ts"], "SHARED-model"),
+    spec("delta", ["z.ts"], "shared-model"),
+  ]);
+  assert.deepEqual(attemptIds(admitted.started), ["alpha-1", "gamma-1"]);
+  assert.deepEqual(attemptIds(admitted.view.pending), ["beta-1", "delta-1"]);
+  assert.equal(admitted.decisions[3]?.block?.reason, "conflictGroup");
+  assert.equal(admitted.decisions[3]?.block?.otherAttemptId, "gamma-1");
+  assert.equal(admitted.decisions[3]?.concurrencyBlocked, false);
+  assert.deepEqual(scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" }).started, []);
+  const finished = scheduler.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "completed" });
+  assert.deepEqual(attemptIds(finished.started), ["beta-1"]);
+  assert.deepEqual(attemptIds(finished.view.pending), ["delta-1"]);
+});
+
+for (const restored of [false, true]) {
+  test(`applies FIFO backfill on capacity increase with newly promoted conflicts (restored=${restored})`, () => {
+    let scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+    const queued = scheduler.dispatch([
+      spec("alpha", ["x.ts"]),
+      spec("beta", ["x.ts", "y.ts"]),
+      spec("gamma", ["y.ts"]),
+      spec("delta", ["y.ts"]),
+    ]);
+    assert.deepEqual(attemptIds(queued.started), ["alpha-1"]);
+    assert.equal(queued.decisions[1]?.block?.otherAttemptId, "alpha-1");
+    for (const decision of queued.decisions.slice(2)) {
+      assert.equal(decision.block, null);
+      assert.equal(decision.concurrencyBlocked, true);
+    }
+    if (restored) {
+      scheduler = createLoopPlusScheduler({
+        snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())), maxConcurrency: 3,
+      });
+    } else {
+      scheduler.updateMaxConcurrency(3);
+    }
+    assert.deepEqual(attemptIds(scheduler.snapshot().running), ["alpha-1"]);
+    const promoted = scheduler.promotePending();
+    assert.deepEqual(attemptIds(promoted.started), ["gamma-1"]);
+    assert.deepEqual(attemptIds(promoted.view.pending), ["beta-1", "delta-1"]);
+    assert.deepEqual(scheduler.promotePending().started, []);
+    assert.deepEqual(scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" }).started, []);
+    const freed = scheduler.finish({ subtaskId: "gamma", attemptId: "gamma-1", outcome: "completed" });
+    assert.deepEqual(attemptIds(freed.started), ["beta-1"]);
+    assert.deepEqual(attemptIds(freed.view.pending), ["delta-1"]);
+  });
+}
+
+test("parent stop prevents safe backfill until explicit resume after restoration", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([
+    spec("alpha", ["x.ts"]), spec("beta", ["x.ts", "y.ts"]), spec("gamma", ["y.ts"]),
+  ]);
+  scheduler.stopParent();
+  scheduler.updateMaxConcurrency(3);
+  const stopped = scheduler.snapshot();
+  assert.deepEqual(scheduler.promotePending().started, []);
+  assert.deepEqual(scheduler.snapshot(), stopped);
+  assert.deepEqual(scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "stopped" }).started, []);
+  const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
+  assert.deepEqual(restored.promotePending().started, []);
+  assert.deepEqual(attemptIds(restored.snapshot().pending), ["beta-1", "gamma-1"]);
+  const resumed = restored.resumeParent();
+  assert.deepEqual(attemptIds(resumed.started), ["beta-1"]);
+  assert.deepEqual(attemptIds(resumed.view.pending), ["gamma-1"]);
+  assert.deepEqual(restored.promotePending().started, []);
 });
 
 test("counts already-running work against concurrency and promotes the oldest eligible task", () => {

@@ -176,6 +176,7 @@ function createPort(options: {
     },
     dispatchSubtasks(subtasks) {
       record("dispatchSubtasks", [subtasks]);
+      return { decisions: [], rejected: [] };
     },
     submitReviewBatch(eventIds, acceptance) {
       record("submitReviewBatch", [eventIds, acceptance]);
@@ -257,12 +258,13 @@ test("review id helpers keep FIFO order and reprompt launch counts", () => {
   assert.equal(plannedLoopPlusLaunchCount(decision("wait")), 0);
 });
 
-test("strategy module stays free of runtime, deps, and scheduler imports", () => {
+test("strategy module stays free of runtime, deps, and scheduler value imports", () => {
   const source = readFileSync(join(__dirname, "../../../src/extensionHost/loopPlusDecisionStrategies.ts"), "utf8");
+  assert.match(source, /import type \{ LoopPlusDispatchResult \} from "..\/loopPlusScheduler"/);
+  assert.doesNotMatch(source, /import(?! type)[^;]*from "..\/loopPlusScheduler"/);
   for (const forbidden of [
     "ParentRuntime",
     "LoopPlusOrchestrationDeps",
-    "loopPlusScheduler",
     "createLoopPlusScheduler",
     "waitForLoopPlusClarification",
     "waitForOrchestratorClarification",
@@ -360,15 +362,15 @@ test("dispatch waits on in-flight work and does not submit review or finish", ()
     "refuseDispatchPastAcceptanceLimit",
     "applyControls",
     "acknowledgeUserMessages",
-    "markDecisionAccepted",
     "dispatchSubtasks",
     "persistEstimatedRounds",
+    "markDecisionAccepted",
     "queueView",
     "queueView",
   ]);
   assert.deepEqual(calls[3].args, [1]);
-  assert.deepEqual(calls[5].args, [[subtask]]);
-  assert.deepEqual(calls[6].args, [4]);
+  assert.deepEqual(calls[4].args, [[subtask]]);
+  assert.deepEqual(calls[5].args, [4]);
   assert.equal(names(calls).includes("submitReviewBatch"), false);
   assert.equal(names(calls).includes("waitForInFlightWork"), false);
   assert.equal(names(calls).includes("planControls"), false);
@@ -595,12 +597,12 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "previewControls",
     "submitReviewBatch",
     "acknowledgeUserMessages",
-    "markDecisionAccepted",
     "persistProgressPercent",
     "refuseDispatchPastAcceptanceLimit",
     "commitControls",
     "dispatchSubtasks",
     "persistEstimatedRounds",
+    "markDecisionAccepted",
     "queueView",
   ]);
   assert.deepEqual(calls[3].args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
@@ -620,11 +622,10 @@ test("accept keeps an already submitted batch when a later launch is refused or 
     reviewEventId: "evt-1",
     subtasks: [subtask],
   })), "stop");
-  assert.deepEqual(names(limited.calls).slice(0, 6), [
+  assert.deepEqual(names(limited.calls).slice(0, 5), [
     "confirmReviewWithinAcceptanceLimit",
     "submitReviewBatch",
     "acknowledgeUserMessages",
-    "markDecisionAccepted",
     "persistProgressPercent",
     "refuseDispatchPastAcceptanceLimit",
   ]);

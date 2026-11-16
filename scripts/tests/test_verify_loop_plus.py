@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -104,16 +105,46 @@ class VerifyLoopPlusTests(unittest.TestCase):
 
 
 class VerifyRootEntrySmokeTests(unittest.TestCase):
+    def test_both_real_entries_reject_missing_node_without_creating_reports(self):
+        self._assert_real_entries_reject_missing_node()
+
+    def test_missing_node_diagnostic_remains_utf8_with_inherited_gbk(self):
+        with patch.dict(os.environ, {"PYTHONIOENCODING": "gbk"}):
+            self._assert_real_entries_reject_missing_node()
+
+    def _assert_real_entries_reject_missing_node(self):
+        with tempfile.TemporaryDirectory(prefix="sinitek-verify-no-node-") as directory:
+            cwd = Path(directory) / "外部目录 with spaces"
+            cwd.mkdir()
+            env = {key: value for key, value in os.environ.items() if key.lower() != "path"}
+            env["PATH"] = str(cwd)
+            # Match the child Python streams to subprocess.run's strict UTF-8 decoder.
+            env["PYTHONIOENCODING"] = "utf-8"
+            for name in ["verify_mac.py", "verify_win.py"]:
+                with self.subTest(name=name):
+                    report = cwd / f"{name} report.json"
+                    completed = subprocess.run(
+                        [sys.executable, str(REPO_ROOT / name), "--report", str(report)],
+                        cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=15,
+                    )
+                    self.assertEqual(completed.returncode, 1, completed.stderr)
+                    self.assertIn("检测无法启动", completed.stderr)
+                    self.assertIn("node", completed.stderr)
+                    self.assertNotIn("开始检测：", completed.stdout)
+                    self.assertFalse(report.exists())
+            self.assertEqual(list(cwd.iterdir()), [])
+
     def test_real_help_and_invalid_options_work_outside_repository_without_live_execution(self):
         with tempfile.TemporaryDirectory(prefix="sinitek-verify-entry-") as directory:
             cwd = Path(directory) / "外部目录 with spaces"
             cwd.mkdir()
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
             for name in ["verify_mac.py", "verify_win.py"]:
                 for arguments, expected in [(["--help"], 0), (["--runs", "0"], 1)]:
                     with self.subTest(name=name, arguments=arguments):
                         completed = subprocess.run(
                             [sys.executable, str(REPO_ROOT / name), *arguments],
-                            cwd=cwd, capture_output=True, text=True, encoding="utf-8", timeout=15,
+                            cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=15,
                         )
                         self.assertEqual(completed.returncode, expected, completed.stderr)
                         self.assertNotIn("开始检测：", completed.stdout)

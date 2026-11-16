@@ -2314,6 +2314,11 @@ test("keeps the running task meta when a same-id dispatch is rejected", async ()
     const rejected = (item.payload as { rejected?: Array<{ subtaskId?: string; reason?: string }> } | undefined)?.rejected;
     return item.event === "loop-plus-dispatched" && rejected?.some((entry) => entry.subtaskId === "beta" && entry.reason === "active_subtask");
   }), true);
+  const correction = env.mains.at(-1)!;
+  assert.notEqual(correction, review);
+  assert.equal(correction.request.kind, "continue");
+  assert.match(correction.request.prompt, /active_subtask/);
+  assert.match(correction.request.prompt, /不得重复 accept/);
 });
 
 test("does not treat a delayed launch as a lost process", async () => {

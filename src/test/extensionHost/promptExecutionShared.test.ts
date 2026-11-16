@@ -32,7 +32,7 @@ test("production Loop hosts share the dispatch setting without a separate fixed 
   ];
   for (const constructor of constructors) {
     const wiring = source.split(constructor)[1]?.split("});")[0] ?? "";
-    assert.match(wiring, /decisionSubtaskMax:\s*\(\)\s*=>\s*getGlobalLoopPlusDecisionSubtaskMax\(\)/u);
+    assert.match(wiring, /decisionSubtaskMax:\s*\(\)\s*=>\s*getEffectiveLoopPlusDecisionSubtaskMax\(\)/u);
     assert.doesNotMatch(wiring, /maxConcurrency:\s*(?:6\b|LOOP_PARALLEL_SUBTASK_MAX\b)/u);
   }
 });

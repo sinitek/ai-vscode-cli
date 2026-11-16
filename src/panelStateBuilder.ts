@@ -31,7 +31,7 @@ import {
   type LoopGroupChatPanelState,
   type LoopPlusPanelProjection,
 } from "./webview/loopGroupChatPanelTypes";
-import { type WorkspaceSettings } from "./workspaceSettingsStore";
+import { normalizeWorkspaceLoopPlusDecisionSubtaskMax, type WorkspaceSettings } from "./workspaceSettingsStore";
 import { type WorkspaceMemoryPaths } from "./memory/memoryPaths";
 import { type MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import { resolveLoopTaskRunControlState } from "./loopGroupChat";
@@ -214,6 +214,9 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,
     ),
+    workspaceLoopPlusDecisionSubtaskMax: normalizeWorkspaceLoopPlusDecisionSubtaskMax(
+      deps.workspaceSettings.loopPlusDecisionSubtaskMax,
+    ) ?? null,
     loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(
       deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
     ),

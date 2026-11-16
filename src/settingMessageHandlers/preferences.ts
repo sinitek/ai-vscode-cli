@@ -3,6 +3,7 @@ import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from
 import { setDebugLogging } from "../logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
+import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import {
   normalizeHistoryRetentionDays,
   resolveHumanInteractionTimeoutMinutes,
@@ -80,6 +81,16 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     deps.updateStoredToolSettings({
       loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(message.value),
     });
+  }),
+  command("workspaceLoopPlusDecisionSubtaskMax", (message, deps, { workspaceSettings }) => {
+    if (message.value === null || (typeof message.value === "string" && !message.value.trim())) {
+      delete workspaceSettings.loopPlusDecisionSubtaskMax;
+    } else {
+      const value = normalizeWorkspaceLoopPlusDecisionSubtaskMax(message.value);
+      if (value === undefined) return;
+      workspaceSettings.loopPlusDecisionSubtaskMax = value;
+    }
+    deps.saveWorkspaceSettings(workspaceSettings);
   }),
   command("loopPlusMaxAcceptances", (message, deps) => {
     deps.updateStoredToolSettings({

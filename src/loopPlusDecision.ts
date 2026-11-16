@@ -450,8 +450,9 @@ function normalizeCompletedDecision(
     || requirementCoverage.length === 0
     || requirementCoverage.some((item) => item.passed !== true)
     || !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)
+    || acceptancePlanResults?.some((result) => result.passed !== true)
   ) {
-    options?.reject?.("completed 需要非空 answerConclusion、finalSummary、全部通过的验收检查和 requirementCoverage，以及完整的已选附加验收结果；存在未完成工作时请继续派发，不能伪造通过。");
+    options?.reject?.("completed 需要全部默认验收与 requirementCoverage 通过且附加结果完整；附加验收失败时请用 accept 保留真实失败并派发修复，存在未完成工作时继续推进，不能伪造通过。");
     return null;
   }
   return withEstimatedRemainingRounds({

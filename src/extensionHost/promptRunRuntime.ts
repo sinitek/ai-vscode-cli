@@ -59,11 +59,25 @@ export type LoopPlusPromptRoleBinding = {
 
 export function createLoopPlusPersistedTaskRefresher<TPatch>(deps: {
   updateTask: (taskId: string, patch: TPatch) => LoopTaskRecord | null;
-  refreshTaskSurfaces: (taskId: string) => void;
-}): (taskId: string, patch: TPatch) => LoopTaskRecord | null {
+  refreshTaskSurfaces: (taskId: string) => void | Promise<void>;
+}): (taskId: string, patch: TPatch) => LoopTaskRecord {
   return (taskId, patch) => {
     const updated = deps.updateTask(taskId, patch);
-    deps.refreshTaskSurfaces(taskId);
+    if (!updated) {
+      throw new Error(`Loop+ task update did not commit: ${taskId}`);
+    }
+    // Surface updates are a projection of the committed record, not part of its commit.
+    const reportRefreshFailure = (error: unknown) => {
+      void logError("loop-plus-refresh-failed", { taskId, error: String(error) }).catch(() => undefined);
+    };
+    try {
+      const refresh = deps.refreshTaskSurfaces(taskId);
+      if (refresh) {
+        void refresh.catch(reportRefreshFailure);
+      }
+    } catch (error) {
+      reportRefreshFailure(error);
+    }
     return updated;
   };
 }

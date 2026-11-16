@@ -161,6 +161,13 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.equal(Object.prototype.hasOwnProperty.call(state, "loopSubtaskMaxThinkingMode"), false);
   assert.equal(state.configStateByCli, configStateByCli);
   assert.equal(state.currentCli, "opencode");
+  deps.getGlobalLoopPlusDecisionSubtaskMax = () => 9;
+  deps.workspaceSettings = { loopPlusDecisionSubtaskMax: 2 };
+  const limited = buildPanelStateWithDeps(deps);
+  assert.equal(limited.loopPlusDecisionSubtaskMax, 9);
+  assert.equal(limited.workspaceLoopPlusDecisionSubtaskMax, 2);
+  deps.workspaceSettings = {};
+  assert.equal(buildPanelStateWithDeps(deps).workspaceLoopPlusDecisionSubtaskMax, null);
   for (const cli of CLI_LIST) assert.equal(modelConfigIds[cli], configStateByCli[cli].activeConfigId);
 });
 

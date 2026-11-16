@@ -316,7 +316,9 @@ export const WEBVIEW_STRINGS = {
       "全局设置。新建经典 Loop 任务时允许的最大调度轮次。",
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop/Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
-      "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 新建或继续任务时的并发上限。默认 6，范围 1–20。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
+      "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 的并发上限。默认 6，范围 1–20。工作区设置优先于全局。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
+    toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote:
+      "留空则使用全局设置；设置后优先于全局，仅对当前工作区生效。范围 1–20。",
     toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
     toolSettingsLoopPlusMaxAcceptancesTitle:
       "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",

@@ -3,6 +3,7 @@ import type {
   LoopPlusDecision,
   LoopPlusDecisionStatus,
 } from "../loopPlusDecision";
+import type { LoopPlusDispatchResult } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
 export type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
@@ -51,7 +52,7 @@ export interface LoopPlusDecisionStrategyPort {
     controls: readonly LoopPlusControlDecision[],
     plan: LoopPlusDecisionControlPlan,
   ): boolean;
-  dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]): void;
+  dispatchSubtasks(subtasks: readonly LoopSubtaskDecision[]): Pick<LoopPlusDispatchResult, "decisions" | "rejected">;
   submitReviewBatch(
     eventIds: readonly string[],
     acceptance: "passed" | "failed" | readonly LoopPlusDecisionReviewVerdict[],
@@ -173,9 +174,12 @@ function applyDispatchDecision(
     return port.protocolMiss(false);
   }
   port.acknowledgeUserMessages(step.userMessageCount);
-  port.markDecisionAccepted();
-  port.dispatchSubtasks(decision.subtasks ?? []);
+  const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
+  if (dispatched.rejected.length > 0) {
+    return port.protocolMiss(false, dispatchRejectionReason(dispatched));
+  }
   port.persistEstimatedRounds(decision);
+  port.markDecisionAccepted();
   if (port.queueView().hasReview) {
     return "continue";
   }
@@ -252,7 +256,6 @@ function applyAcceptDecision(
     return port.queueView().parentStopped ? "stop" : port.protocolMiss(true);
   }
   port.acknowledgeUserMessages(step.userMessageCount);
-  port.markDecisionAccepted();
   port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
   if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
@@ -261,8 +264,12 @@ function applyAcceptDecision(
   if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
     return port.protocolMiss(false);
   }
-  port.dispatchSubtasks(decision.subtasks ?? []);
+  const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
+  if (dispatched.rejected.length > 0) {
+    return port.protocolMiss(false, dispatchRejectionReason(dispatched));
+  }
   port.persistEstimatedRounds(decision);
+  port.markDecisionAccepted();
   if (port.queueView().hasReview) {
     return "continue";
   }
@@ -379,4 +386,10 @@ function applyClarifyDecision(): LoopPlusDecisionOutcome {
 
 function unreachableDecisionStatus(status: never): never {
   throw new Error(`unhandled loop-plus decision status: ${String(status)}`);
+}
+
+function dispatchRejectionReason(result: Pick<LoopPlusDispatchResult, "decisions" | "rejected">): string {
+  return `派发存在拒绝项：${JSON.stringify(result.rejected)}。已接受任务：${JSON.stringify(result.decisions)}。`
+    + "此前验收结论和用户消息确认已经保留；不得重复 accept、改变 failed 结论或重发已接受任务。"
+    + "请依据最新快照使用 dispatch 仅纠正尚未接受的派发，使用不占用活动任务的 ID；后到验收事件仍按当前批次处理。";
 }

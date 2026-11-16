@@ -395,6 +395,7 @@ export type PanelState = {
   hideInstructionBubbles?: boolean;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
+  workspaceLoopPlusDecisionSubtaskMax?: number | null;
   loopPlusMaxAcceptances: number;
   debug: boolean;
   isMac: boolean;

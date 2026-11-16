@@ -1147,6 +1147,34 @@ test("keeps uninstalled workspace toggles clickable while a Loop main task is ru
   assert.equal(codeGraphToggle.disabled, true);
 });
 
+test("workspace dispatch control preserves inheritance and refreshes independently from the global input", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const sync = (workspaceLoopPlusDecisionSubtaskMax?: number | null, loopPlusDecisionSubtaskMax = 9) => {
+    window.dispatchMessage({ type: "state", payload: createPanelState({
+      loopPlusDecisionSubtaskMax, workspaceLoopPlusDecisionSubtaskMax,
+    }) });
+  };
+  const input = document.getElementById("workspaceLoopPlusDecisionSubtaskMax");
+  sync(2);
+  assert.equal(input.value, "2");
+  assert.equal(input.placeholder, "全局：9");
+  assert.equal(document.getElementById("loopPlusDecisionSubtaskMax").value, "9");
+  for (const [raw, expected] of [["8.9", 8], ["0", 1], ["99", 20], ["", null]] as const) {
+    input.value = raw;
+    input.dispatchEvent({ type: "change" });
+    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "workspaceLoopPlusDecisionSubtaskMax", value: expected });
+    assert.equal(input.value, expected === null ? "" : String(expected));
+  }
+  input.dispatchEvent({ type: "blur" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "workspaceLoopPlusDecisionSubtaskMax", value: null });
+  sync(null, 12);
+  assert.equal(input.value, "");
+  assert.equal(input.placeholder, "全局：12");
+  sync(4);
+  sync();
+  assert.equal(input.value, "");
+});
+
 test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },

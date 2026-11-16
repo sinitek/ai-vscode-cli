@@ -721,6 +721,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
         }
+        if (elements.workspaceLoopPlusDecisionSubtaskMax) {
+          elements.workspaceLoopPlusDecisionSubtaskMax.value = panelState.workspaceLoopPlusDecisionSubtaskMax == null
+            ? "" : String(normalizeLoopPlusDecisionSubtaskMax(panelState.workspaceLoopPlusDecisionSubtaskMax));
+          elements.workspaceLoopPlusDecisionSubtaskMax.placeholder = "全局：" + state.loopPlusDecisionSubtaskMax;
+        }
         if (elements.loopPlusMaxAcceptances) {
           elements.loopPlusMaxAcceptances.value = String(state.loopPlusMaxAcceptances);
         }

@@ -106,7 +106,9 @@ test("regression selection requires handoff, acceptance gates, recovery, routing
     "loopPlusDecisionStrategies", "loopPlusPromptBuilders", "loopPlusRuntimeWiring", "loopCrashRecovery",
     "loopModelRouting", "loopModelSwitchResume", "loopPlusAcceptancePlanHost", "loopPlusAcceptancePlan",
     "loopPlusDecision", "loopPlusProtocolRepair", "loopPlusContracts", "loopSubtaskLifecycle",
-    "subtaskCliRoute", "loopPlusSubtaskMode", "loopPlusSessionTabs"];
+    "subtaskCliRoute", "loopPlusSubtaskMode", "loopPlusSessionTabs",
+    "loopTaskStore", "loopTaskStoreCoreCoverage", "loopTaskStorePersistence",
+    "loopPlusHandoffContracts", "loopPlusAcceptanceCompletionGate"];
   for (const required of requiredTests) {
     assert.ok(tests.some((filename) => filename.endsWith(`${required}.test.js`)), required);
   }
@@ -181,9 +183,10 @@ test("unified acceptance pins one executable and isolated build for every native
   assert.equal(persisted.verdict, "scoped-checks-passed");
   const regression = persisted.checks.find((check: { name: string }) => check.name === "regression");
   assert.equal(regression.evidence.tests, 3);
-  assert.deepEqual(regression.evidence.files, [
-    path.relative(path.resolve(__dirname, "../../.."), state.runtime.regressionTests()[0]).split(path.sep).join("/"),
-  ]);
+  const executedTests = state.calls.find((call) => call.args.includes("--test"))!.args.slice(2);
+  assert.deepEqual(executedTests, state.runtime.regressionTests());
+  assert.deepEqual(regression.evidence.files, executedTests.map((filename) =>
+    path.relative(path.resolve(__dirname, "../../.."), filename).split(path.sep).join("/")));
   assert.ok(fs.readFileSync(report.logPath, "utf8").includes("public_runner_handoff"));
 });
 
@@ -246,4 +249,33 @@ test("native one-click launcher runs from another working directory without star
   assert.equal(launched.status, 0, launched.stderr || launched.error?.message);
   assert.match(launched.stdout, /verify:loop-plus/);
   assert.doesNotMatch(launched.stdout, /开始检测：/);
+});
+
+
+test("missing npm fails at build from another cwd and preserves a failed report without live work", (context) => {
+  const state = fixture(context);
+  const emptyPath = path.join(state.directory, "empty PATH");
+  fs.mkdirSync(emptyPath);
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toLowerCase() !== "path"));
+  env.PATH = emptyPath;
+  const launched = spawnSync(process.execPath, [script, "--live", "--report", state.reportPath], {
+    cwd: state.directory, env, encoding: "utf8", timeout: 15000,
+  });
+  assert.equal(launched.error, undefined);
+  assert.equal(launched.signal, null);
+  assert.equal(launched.status, 1, launched.stderr || launched.stdout);
+  const report = JSON.parse(fs.readFileSync(state.reportPath, "utf8"));
+  assert.equal(report.passed, false);
+  assert.equal(report.fullyVerified, false);
+  assert.equal(report.verdict, "failed");
+  assert.equal(report.checks.length, 1);
+  assert.equal(report.checks[0].name, "build");
+  assert.equal(report.checks[0].command, "npm");
+  assert.equal(report.checks[0].passed, false);
+  assert.match(report.checks[0].error, /npm/i);
+  assert.ok(report.failure);
+  assert.deepEqual(report.coverage, { regression: false, poolHandoff: false, publicRunnerHandoff: false });
+  assert.deepEqual(report.runs, []);
+  assert.ok(!fs.existsSync(report.runnerReportPath));
+  assert.ok(fs.readFileSync(report.logPath, "utf8").includes(report.failure));
 });

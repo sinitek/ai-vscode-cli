@@ -6,6 +6,8 @@ import * as path from "node:path";
 
 import {
   loadWorkspaceSettings,
+  normalizeWorkspaceLoopPlusDecisionSubtaskMax,
+  resolveEffectiveLoopPlusDecisionSubtaskMax,
   saveWorkspaceSettings,
   trySaveWorkspaceSettings,
   type WorkspaceSettingsStoreOptions,
@@ -37,6 +39,39 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
     sanitizeConversationTabRecord: () => null,
   };
 }
+
+test("workspace dispatch limit overrides global values and invalid overrides inherit", () => {
+  for (const [workspace, global, expected] of [
+    [2, 9, 2], [12, 3, 12], [undefined, 9, 9], [null, 9, 9],
+    ["", 9, 9], ["invalid", 9, 9], [true, 9, 9], [Infinity, 9, 9],
+    [undefined, undefined, 6], ["8.9", 9, 8], [0, 9, 1], [99, 9, 20],
+  ] as const) {
+    assert.equal(resolveEffectiveLoopPlusDecisionSubtaskMax(workspace, global), expected);
+  }
+  assert.equal(normalizeWorkspaceLoopPlusDecisionSubtaskMax({}), undefined);
+  assert.equal(normalizeWorkspaceLoopPlusDecisionSubtaskMax("  "), undefined);
+});
+
+test("workspace dispatch limit persists per workspace, normalizes input and can be cleared", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-dispatch-"));
+  const options = createOptions(workspaceSettingsDir);
+  const filePath = path.join(workspaceSettingsDir, "workspace.json");
+  try {
+    for (const [value, expected] of [["8.9", 8], [0, 1], [99, 20], ["invalid", undefined], [null, undefined], ["", undefined]] as const) {
+      fs.writeFileSync(filePath, JSON.stringify({ loopPlusDecisionSubtaskMax: value }), "utf8");
+      assert.equal(loadWorkspaceSettings(options).loopPlusDecisionSubtaskMax, expected);
+    }
+    saveWorkspaceSettings({ loopPlusDecisionSubtaskMax: 3, workspaceMemoryEnabled: true }, options);
+    assert.equal(loadWorkspaceSettings(options).loopPlusDecisionSubtaskMax, 3);
+    assert.deepEqual(loadWorkspaceSettings({ ...options, workspaceKey: "other" }), {});
+    const loaded = loadWorkspaceSettings(options);
+    delete loaded.loopPlusDecisionSubtaskMax;
+    saveWorkspaceSettings(loaded, options);
+    assert.deepEqual(loadWorkspaceSettings(options), { workspaceMemoryEnabled: true });
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
 
 test("ignores the retired Codex multi-agent field when loading and saving workspace settings", () => {
   const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));

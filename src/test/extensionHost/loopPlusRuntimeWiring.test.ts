@@ -97,7 +97,7 @@ function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRec
   };
 }
 
-test("refreshes the open task surfaces only after the latest snapshot is stored", () => {
+test("missing updates fail without refreshing task surfaces", () => {
   const order: string[] = [];
   const refresh = createLoopPlusPersistedTaskRefresher({
     updateTask: () => {
@@ -108,8 +108,8 @@ test("refreshes the open task surfaces only after the latest snapshot is stored"
       order.push("refresh");
     },
   });
-  assert.equal(refresh("task-1", { status: "running" }), null);
-  assert.deepEqual(order, ["persist", "refresh"]);
+  assert.throws(() => refresh("task-1", { status: "running" }), /did not commit/);
+  assert.deepEqual(order, ["persist"]);
 });
 
 test("refreshes the queue when B finishes while A is still under review", async () => {

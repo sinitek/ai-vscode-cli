@@ -694,6 +694,44 @@ test("rejects illegal completed decisions instead of dropping failed evidence", 
   });
 });
 
+test("completed requires every selected acceptance-plan result to pass", () => {
+  const options = { requireAcceptanceFeedback: true, acceptancePlanKeys: ["security", "performance"] };
+  const base = {
+    ...completedFields(),
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+  };
+  const allPassed = [
+    { key: "security", passed: true, reason: "输入边界已核对" },
+    { key: "performance", passed: true, reason: "未增加重复请求" },
+  ];
+  assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: allPassed }, options)?.status, "completed");
+
+  for (const acceptancePlanResults of [
+    allPassed.map((result, index) => index === 0 ? { ...result, passed: false } : result),
+    allPassed.map((result, index) => index === 1 ? { ...result, passed: false } : result),
+    allPassed.map((result) => ({ ...result, passed: false })),
+  ]) {
+    assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults }, options), null);
+  }
+  for (const acceptancePlanResults of [
+    undefined,
+    [],
+    [allPassed[1], allPassed[0]],
+    [allPassed[0]],
+    [allPassed[0], allPassed[1], { key: "other", passed: true, reason: "未遗漏" }],
+  ]) {
+    assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults }, options), null);
+  }
+
+  const rejected = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    ...base,
+    acceptancePlanResults: [{ ...allPassed[0], passed: false }, allPassed[1]],
+  }), options);
+  assert.equal(rejected.decision, null);
+  assert.match(rejected.rejectionReason ?? "", /accept 保留真实失败并派发修复/);
+  assert.equal(normalizeLoopPlusDecision(completedFields())?.status, "completed");
+});
+
 test("does not mutate the input decision", () => {
   const input = {
     status: "accept",
