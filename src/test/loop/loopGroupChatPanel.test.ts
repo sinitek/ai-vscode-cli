@@ -1180,6 +1180,48 @@ test("keeps a paused Loop+ review from looking active while a running subtask st
   }
 });
 
+test("renders actual Loop+ main-model activity beside a running subtask", () => {
+  const page = buildLoopGroupChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({
+      loopPlus: {
+        ok: true,
+        schedulingMode: "event_driven",
+        activity: "running",
+        phase: "waiting",
+        wakePending: false,
+        currentReview: null,
+        reviewQueue: [],
+        currentReviewCount: 0,
+        reviewQueueCount: 0,
+        visibleReviewCount: 0,
+        running: [{ subtaskId: "D", attemptId: "d-1", title: "Delta", state: "running" }],
+        pending: [],
+        runningCount: 1,
+        pendingCount: 0,
+        seenAttempts: [],
+      },
+      rounds: [{
+        key: "execution-1",
+        kind: "execution",
+        loopRound: 2,
+        status: "running",
+        startedAt: Date.now(),
+        participants: [
+          { id: "main", title: "主任务", role: "main", status: "waiting" },
+          { id: "D", title: "Delta", role: "subtask", status: "running" },
+        ],
+      }],
+    }),
+  );
+
+  assert.match(page, /data-loop-plus-status="running"/u);
+  assert.match(page, /主任务正在处理。/u);
+  assert.match(page, /data-thinking-kind="main" data-thinking-id="main"/u);
+  assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
+  assert.match(page, /Delta 思考中[\s\S]*主任务 思考中/u);
+});
+
 test("renders communication file paths as preview links and posts markdown preview results", () => {
   const filePath = "/Users/demo/.sinitek_cli/loop-communications/task-1/subtasks/round-1-demo.md";
   const html = buildLoopGroupChatPanelHtml(

@@ -69,6 +69,25 @@ test("direct Loop+ projection reads a scheduler copy without mutating the snapsh
   assert.equal(JSON.stringify(source), before);
 });
 
+test("main activity stays visible beside a running child attempt", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const dispatched = scheduler.dispatch([{
+    subtaskId: "child",
+    attemptId: "child-attempt",
+    title: "子任务",
+    writeFiles: ["src/child.ts"],
+  }]);
+  assert.equal(dispatched.started.length, 1);
+  const source = task(scheduler.snapshot());
+  source.subTasks = [{ id: "child", title: "子任务", status: "running", updatedAt: 30 }];
+  const { deps } = dependencies();
+  const state = buildLoopGroupChatPanelStateWithDeps(source, { ...deps, mainModelRunning: true });
+  assert.equal(state.loopPlus?.activity, "running");
+  assert.equal(state.loopPlus?.runningCount, 1);
+  assert.equal(state.rounds[0]?.participants.find((participant) => participant.id === "main")?.status, "running");
+  assert.equal(state.rounds[0]?.participants.find((participant) => participant.id === "child")?.status, "running");
+});
+
 test("direct Loop+ projection preserves invalid snapshot and classic shapes", () => {
   assert.deepEqual(projectLoopPlusPanel(task(undefined)), {
     ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "missing",

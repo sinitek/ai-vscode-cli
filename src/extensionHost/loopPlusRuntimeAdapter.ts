@@ -60,6 +60,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   appendHostMessage: LoopPlusOrchestrationDeps["appendMessage"];
   appendCompletionMessages?: LoopPlusOrchestrationDeps["appendCompletionMessages"];
+  onMainActivityChange?: (taskId: string) => void;
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
   appendAcceptancePlanChat?: LoopPlusOrchestrationDeps["appendAcceptancePlanChat"];
@@ -412,19 +413,28 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       );
       const execution = await runInvocation(promptInput, request.target, "main", {
         isAborted: () => aborted,
-        onStarted: () => { invocationStarted = true; },
+        onStarted: () => {
+          invocationStarted = true;
+          deps.onMainActivityChange?.(request.taskId);
+        },
       });
-      const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun);
-      if (execution.thrown) {
-        if (aborted || invocation.run?.status === "stopped") {
+      try {
+        const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun);
+        if (execution.thrown) {
+          if (aborted || invocation.run?.status === "stopped") {
+            return null;
+          }
+          throw execution.error;
+        }
+        if (aborted || invocation.run?.status === "stopped" || invocation.run?.status !== "end") {
           return null;
         }
-        throw execution.error;
+        return invocation.content;
+      } finally {
+        if (invocationStarted) {
+          deps.onMainActivityChange?.(request.taskId);
+        }
       }
-      if (aborted || invocation.run?.status === "stopped" || invocation.run?.status !== "end") {
-        return null;
-      }
-      return invocation.content;
     })();
     return {
       promise,

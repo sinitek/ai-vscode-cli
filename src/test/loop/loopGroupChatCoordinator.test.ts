@@ -16,6 +16,7 @@ installVscodeMock();
 const { buildLoopGroupChatPanelState, createLoopGroupChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { setTimeout as delay } from "node:timers/promises";
 
 function createStoppedTask(): LoopTaskRecord {
@@ -357,16 +358,67 @@ test("继续通过面板消息唤醒仍持有控制器但主模型空闲的 Loop
 test("Loop+ 面板只在主模型空闲时显示继续入口，即使后台控制器仍存在", () => {
   const env = createContinuationRecoveryHarness();
   env.task.status = "running";
+  env.task.loopPlus = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();
   env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
   const idle = buildLoopGroupChatPanelState(env.task, env.deps);
   assert.equal(idle.mainModelBusy, false);
+  assert.equal(idle.loopPlus?.activity, "idle");
   assert.equal(idle.task.canContinue, true);
 
   env.deps.isTabRunActive = () => true;
   const busy = buildLoopGroupChatPanelState(env.task, env.deps);
   assert.equal(busy.mainModelBusy, true);
   assert.equal(busy.task.canContinue, false);
+  assert.equal(busy.loopPlus?.activity, "running");
+  assert.equal(busy.rounds[0]?.participants[0]?.status, "running");
+
+  env.deps.isTabRunActive = () => false;
+  env.deps.resolveMainPromptTarget = () => null;
+  const inactive = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(inactive.loopPlus?.activity, "idle");
 });
+
+for (const outcome of ["ready", "error", "stopped"] as const) {
+  test(`Loop+ 提问开始立即更新主任务活动，${outcome} 后恢复空闲`, async () => {
+    const env = createContinuationRecoveryHarness();
+    env.task.status = "running";
+    env.task.loopPlus = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();
+    env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+    env.deps.normalizeSupplementalRequirement = (value) => typeof value === "string" ? value : null;
+    let mainModelActive = false;
+    env.deps.isTabRunActive = () => mainModelActive;
+    type State = ReturnType<typeof buildLoopGroupChatPanelState>;
+    const updates: State[] = [];
+    const panel = env.deps.panelsByTaskId.get(env.task.id)!;
+    panel.update = (state) => { updates.push(state); };
+    panel.publishAskThread = () => undefined;
+    let start: (() => void) | undefined;
+    let finish: (() => void) | undefined;
+    env.deps.askMainModel = async (_task, _question, hooks) => {
+      start = () => hooks?.onStarted?.();
+      await new Promise<void>((resolve) => { finish = resolve; });
+      if (outcome === "error") throw new Error("回答失败");
+      return { status: outcome, answer: "回答内容" };
+    };
+    const asking = env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:askMainModel", prompt: "当前进展如何？",
+    } as never);
+    await env.coordinator.refresh(env.task.id);
+    assert.equal(updates.at(-1)?.loopPlus?.activity, "idle", "排队本身不代表模型正在回答");
+    mainModelActive = true;
+    start?.();
+    assert.equal(updates.at(-1)?.loopPlus?.activity, "running");
+    assert.equal(updates.at(-1)?.mainModelBusy, true);
+    assert.equal(updates.at(-1)?.task.canContinue, false);
+    await env.coordinator.refresh(env.task.id);
+    assert.equal(updates.at(-1)?.rounds[0]?.participants[0]?.status, "running");
+    mainModelActive = false;
+    finish?.();
+    await asking;
+    assert.equal(updates.at(-1)?.loopPlus?.activity, "idle");
+    assert.equal(updates.at(-1)?.mainModelBusy, false);
+  });
+}
 
 test("切模型在没有可恢复子任务时会把继续消息交给主任务调度", async () => {
   const env = createContinuationRecoveryHarness();

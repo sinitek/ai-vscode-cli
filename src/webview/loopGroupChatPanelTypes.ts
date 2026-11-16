@@ -58,6 +58,7 @@ export type LoopPlusPanelSeenAttempt = {
 };
 
 export type LoopPlusPanelActivity =
+  | "running"
   | "waiting"
   | "review_pending"
   | "reviewing"

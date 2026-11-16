@@ -701,6 +701,12 @@ Loop / Loop+ 宿主崩溃恢复修复：重新打开后核对真实运行所有�
 
 实现：`src/extensionHost/interactiveTurnDsh.ts`、`src/loopSubtaskExecutionRoot.ts`；验证：相关 host、runner 和 Loop+ 回归，加 `SINITEK_DSH_LOOP_LIVE=1 node --test dist/test/extensionHost/dshLoopSessionResumeLive.test.js`。真实验证使用脚本主模型、真实 DSH 子模型，覆盖进程销毁后原会话上下文恢复和实际文件修复，不等同于图形界面验收。
 
+## 2026-11-16 Loop+ 群聊主任务实时活动状态
+
+Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回答真正开始时，若调度快照仍为 idle、waiting 或 review_pending，主任务状态改为“运行中”，活动说明与主任务思考气泡同步更新；并行运行的子任务继续显示各自的思考气泡。排队提问不会提前显示运行中；分解、验收、暂停、停止、完成及无效快照保持原优先级，经典 Loop 不变。
+
+实现：`src/loopPlusPanelProjection.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`；验证：`npm run build`；`node --test --test-reporter=dot dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanelState.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 140 加载真实群聊 HTML 并接收运行态 `contentPatch`，检查 waiting → running、主/子思考气泡及 480px 无横向溢出。
+
 ## 2026-11-14 主模型提问气泡排队动画
 
 “向主模型提问”弹窗中，每条仍在队列中的用户消息下方显示三点动画和“排队中，等待主模型空闲”。同一问题开始回答时移除排队提示，沿用原有回答等待动画；连续提交时，后续问题仍保留各自的排队提示。完成、失败、中止或宿主重启恢复后不遗留排队动画。关闭弹窗或 Webview 页面不可见时暂停排队动画，系统启用减少动态效果时保留静态文字与三点；窄屏提示可收缩并断行。颜色复用 VS Code 主题，不改变提问 FIFO、主任务优先级及终止规则。

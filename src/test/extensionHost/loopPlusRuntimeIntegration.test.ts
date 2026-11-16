@@ -1186,7 +1186,8 @@ test("adapter gives saved Loop+ mode priority and does not capture classic or vi
 });
 
 test("adapter isolates this invocation from old, missing, failed, retried, and late results", async () => {
-  const fixture = createLoopPlusRuntimeFixture();
+  const activityChanges: string[] = [];
+  const fixture = createLoopPlusRuntimeFixture({ onMainActivityChange: (taskId) => activityChanges.push(taskId) });
   try {
     const mainTarget = fixture.target;
     const oldMain = {
@@ -1266,6 +1267,9 @@ test("adapter isolates this invocation from old, missing, failed, retried, and l
       target: mainTarget,
     }).promise;
     assert.equal(fresh, "NEW_MAIN_DECISION");
+    assert.equal(activityChanges.length, 10);
+    assert.deepEqual(activityChanges.filter((_, index) => index % 2 === 0), Array(5).fill("task-main"));
+    assert.deepEqual(activityChanges.filter((_, index) => index % 2 === 1), Array(5).fill("task-main"));
 
     fixture.setSubtaskTab("seed-sub");
     fixture.seedHistory({

@@ -1601,6 +1601,8 @@ function loopPlusActivityText(
   strings: LoopGroupChatPanelStrings,
 ): string {
   switch (projection.activity) {
+    case "running":
+      return strings.loopPlusActivityRunning;
     case "waiting":
       return projection.running.some((item) => item.interrupted)
         ? strings.loopPlusActivityAwaitingContinuation
@@ -1929,7 +1931,7 @@ function getLoopPlusRuntimeSpeakers(state: LoopGroupChatPanelState): RuntimeThin
       ...(attemptId ? { attemptId } : {}),
     });
   }
-  if (projection.activity === "reviewing" || projection.activity === "decomposing") {
+  if (projection.activity === "running" || projection.activity === "reviewing" || projection.activity === "decomposing") {
     speakers.push({
       kind: "main",
       id: "main",

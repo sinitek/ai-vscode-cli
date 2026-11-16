@@ -96,6 +96,7 @@ export function createLoopPlusRuntimeFixture(options: {
   observeRunCompletions?: boolean;
   beforeRun?: (input: PromptRunInput) => Promise<void>;
   onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
+  onMainActivityChange?: LoopPlusRuntimeAdapterDeps["onMainActivityChange"];
   isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
@@ -261,6 +262,7 @@ export function createLoopPlusRuntimeFixture(options: {
 
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
     isInvocationActive: options.isInvocationActive,
+    onMainActivityChange: options.onMainActivityChange,
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,

@@ -3966,6 +3966,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           notifyLoopTaskCompletion(humanInteractionAttention, task);
         }
       },
+      onMainActivityChange: refreshOpenLoopGroupChatPanelForTask,
       appendSubtaskChat: (target, notice) => {
         appendLoopPlusSubtaskChat(target, notice);
       },

@@ -174,6 +174,8 @@ export function buildLoopGroupChatPanelState(
   task: LoopTaskRecord,
   deps: LoopGroupChatPanelDeps,
 ): LoopGroupChatPanelState {
+  const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
+  const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
   const state = buildLoopGroupChatPanelStateWithDeps(task, {
     collectRunningLoopTaskIds: deps.collectRunningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
@@ -181,11 +183,10 @@ export function buildLoopGroupChatPanelState(
     writeTextFileEnsuringDir: deps.writeTextFileEnsuringDir,
     getActiveLoopSubtaskIds: deps.getActiveSubtaskIds,
     getActiveReviewEventIds: deps.getActiveReviewEventIds ?? (() => []),
+    mainModelRunning: mainModelBusy,
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
-  const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
-  const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -304,13 +305,13 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     if (!panel) {
       return;
     }
+    panel.update(buildLoopGroupChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
     panel.setAskThread(thread);
     if (mode === "publish") {
       panel.publishAskThread();
       return;
     }
     if (mode === "render") {
-      panel.update(buildLoopGroupChatPanelState(deps.readTaskRecord(task.id) ?? task, deps));
       panel.publishAskThread();
     }
   };
