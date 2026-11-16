@@ -34,7 +34,11 @@ for (const resume of [false, true]) test(`leader ${resume ? "precise resume" : "
   const originalPersist = h.host.persistSession;
   h.host.persistSession = async (s) => { assert.equal(h.count("turn/start"), 0); assert.equal(h.admission.entries()[0].executionId, null); persisted++; await originalPersist(s); };
   const bind = h.store.bindLeaderExecution.bind(h.store);
-  h.store.bindLeaderExecution = (...args) => { assert.equal(h.count("turn/start"), 0); assert.ok(h.host.readSession()); return bind(...args); };
+  let binds = 0;
+  h.store.bindLeaderExecution = (...args) => {
+    assert.equal(h.count("turn/start"), binds, "each immutable round rebinds before its own native grant");
+    assert.ok(h.host.readSession()); binds++; return bind(...args);
+  };
   const p = h.port(); const a = await p.invoke(first);
   assert.equal((await a.completion).turnTerminal.status, "confirmed");
   assert.equal(p.invoke(first), p.invoke(first)); assert.equal(await p.invoke(first), a);
@@ -43,7 +47,7 @@ for (const resume of [false, true]) test(`leader ${resume ? "precise resume" : "
   const b = await p.invoke(second); assert.equal((await b.completion).streams.status, "confirmed");
   assert.deepEqual(a.identity, b.identity); assert.equal(persisted, 1); assert.equal(h.builders, 1);
   assert.equal(h.count("thread/start"), resume ? 0 : 1); assert.equal(h.count("thread/resume"), resume ? 2 : 1);
-  assert.equal(h.count("turn/start"), 2);
+  assert.equal(h.count("turn/start"), 2); assert.equal(binds, 2);
   assert.ok(h.wire().filter((m) => m.method === "thread/resume").every((m) => m.params.threadId === "native"));
   const cleanup = await p.closeAdmissionsAndDrain();
   assert.equal(cleanup.runner.status, "confirmed"); assert.equal(cleanup.tab.status, "unobservable");

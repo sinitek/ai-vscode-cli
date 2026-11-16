@@ -36,7 +36,7 @@ export const treeFixtureCompleted = (t: test.TestContext) => completed.has(t);
  * fixtures. No snapshot/state/receipt injection and no alternate producer. */
 export async function treeControl(t: test.TestContext) {
   const cleanup: Array<() => unknown> = [];
-  const h = await productionWiring({ after: (fn: () => unknown) => cleanup.push(fn) } as unknown as test.TestContext,
+  const h = await productionWiring({ mock: t.mock, after: (fn: () => unknown) => cleanup.push(fn) } as unknown as test.TestContext,
     "codex", true, true, 3, { maxEmployees: 1 });
   const releases: Array<() => void> = [];
   const operations: Array<ReturnType<typeof settlement<unknown>>> = [];

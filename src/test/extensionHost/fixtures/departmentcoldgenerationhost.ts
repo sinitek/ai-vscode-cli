@@ -42,9 +42,14 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
   const targets = new Map<string, { tabId: string; cli: "codex" | "opencode"; sessionId: string }>();
   const tabs = new Map<string, { id: string; cli: string; sessionId: string | null }>();
   const resources = createDepartmentExecutionResources({ workspace: () => "workspace", readTab: id => tabs.get(id) ?? null, isActive: () => false,
-    owns(i) { const read = store.read(i.rootTaskId, "workspace"); return !!(read.ok && read.value
-      && read.value.runtime.leaders.some(m => m.taskId === i.leaderTaskId && m.generation === i.generation)
-      && read.value.executionBindings?.some(b => sameExecution(b.identity, i))); },
+    owns(i) { const read = store.read(i.rootTaskId, "workspace");
+      const owns = !!(read.ok && read.value
+        && read.value.runtime.leaders.some(m => m.taskId === i.leaderTaskId && m.generation === i.generation)
+        && read.value.executionBindings?.some(b => sameExecution(b.identity, i)));
+      if (!owns) diagnostics.push("resource-owner-conflict: " + JSON.stringify({ generation: i.generation,
+        members: read.ok && read.value?.runtime.leaders.map(m => ({ generation: m.generation, status: m.status })) }));
+      return owns;
+    },
     async close(tab) { tabs.delete(tab.id); } });
   const restore = (task: NonNullable<ReturnType<typeof read>>) => {
     if (!["codex", "opencode"].includes(task.cli) || !task.sessionId) return null;
@@ -85,7 +90,8 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
         model: selection.model, thinkingMode: "medium", interactiveMode: "coding", threadId: null,
         configFingerprint: fingerprintDepartmentExecutionSelection(selection).configFingerprint } }), options.signal, consumer.target);
     fixture.publish(input, options.targetTabId, { status: "end", content: output }); consumed = true;
-    } finally { consumer.finish(consumed); }
+    } catch (error) { diagnostics.push("main-consumer: " + (error instanceof Error ? error.message : String(error))); throw error; }
+    finally { consumer.finish(consumed); }
   }); }, closeDepartmentCoordinator: async id => { const closed = await producer.close(id); if (!closed.ok) throw new Error(closed.error); },
   runPromptOverride: async () => { throw new Error("cold-fixture-unexpected-employee"); } });
   const group = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read,
@@ -94,8 +100,11 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
     prepareRoutes: async () => undefined, validateRoutes: () => true, prepareColdRecovery: (root, check) => recovery.prepare(root, check),
     verifyStoredLeaderIdentity: identity, inspectLeaderSession: task => recovery.inspect(task) ?? (targets.has(task.id) ? { target: targets.get(task.id)!, live: null } : null),
     observeRestoredExecution: (task, attempt) => recovery.observeAttempt(task, attempt),
-    observeLeaderCleanup: (task, generation) => recovery.owns(task.id) ? recovery.observation(task.id, generation) : group.observe(task, generation),
-    stopLeader: taskId => diagnosed("stop-leader", async () => { if (recovery.owns(taskId)) await recovery.stop(taskId); else { const close = await producer.close(taskId); if (!close.ok) throw new Error(close.error); } }),
+    observeLeaderCleanup: (task, generation) => {
+      const observed = recovery.owns(task.id) ? recovery.observation(task.id, generation) : group.observe(task, generation);
+      return observed && { done: diagnosed("observe-leader-cleanup", () => observed.done) };
+    },
+    stopLeader: taskId => diagnosed("stop-leader", async () => { if (recovery.owns(taskId)) await recovery.stop(taskId); else { const close = await producer.close(taskId); if (!close.ok) throw new Error(close.error); await fixture.adapter.waitForTaskIdle(taskId); } }),
     leaderReleased: (taskId, generation) => diagnosed("release-leader", async () => { if (recovery.owns(taskId)) await recovery.released(taskId, generation); else { native.release(taskId); await producer.retire(taskId, generation); } }),
     prepareLeaderContinuation: task => producer.canContinueLeader(task.id) ? restore(task) : null,
     resumeLeaderExecution: (id, generation) => producer.openContinuedLeader(id, generation),

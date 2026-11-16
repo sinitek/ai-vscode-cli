@@ -46,7 +46,7 @@ function scenario(name: string, run: (t: test.TestContext) => Promise<void>) {
     } finally { clearTimeout(timer); fs.rmSync(home, { recursive: true, force: true }); }
   });
 }
-const employeeDecision = { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+const employeeDecision = { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
   prompt: "Implement the complete isolated employee requirement, verify source changes with meaningful checks and report changed paths and actual results." }] };
 const waitDecision = { status: "wait", finalSummary: "等待真实员工与原 Owner 清理凭证" };
 
