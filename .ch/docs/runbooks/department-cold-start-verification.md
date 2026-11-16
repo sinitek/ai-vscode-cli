@@ -199,3 +199,46 @@ round-428 同宿主失败日志只有通用 stop 拒绝，不能反推出具体�
 本轮不运行旧 EH 或旧冷拒绝刷新证据。OpenCode 正例由原生命周期先完成完整收尾，再断开原宿主通道，使用免费确定性 CLI、真实 authority/Owner 子进程及受控 tab 管理；不是安装版 CLI 或完整第二 EH。未知 tab/consumer/root/准备、旧记录缺来源、原端点丢失、身份漂移和写失败仍保留占用。真实第二 EH、必要平台、最终 Git 合理整合及最终树全量回归继续开放。
 
 最终组件检查另暴露了新夹具的前置条件竞态：原组观察被关闭、员工完成后仍返回 wait，正常原宿主投影会进入 blocked；冷 stop 正确拒绝。夹具已改为启用真实组观察，并仅将原宿主观察返回暂停在确定的断连边界；屏障不提交凭证、不返回清理成功。冷方仍须验证真实原 Owner/服务及持久仓储。本轮保留这次失败和诊断日志，未放宽生产 blocked 或持久化失败规则。最终自有标准 build 与 27 个不同受影响 TypeScript 用例、ontology 校验和 9 个技能测试通过（分批命令，非一次全量）；未变 Codex 冷正例、58 项及历史 EH 不为刷新重跑。
+
+## lp716：最终存储输入的混合冷恢复补验
+
+本次唯一源码输入为已接受 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850`。它是官方构建/全量测试输入 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` 的文档后继；其后仅有五份交接文档变化，因此复用标准 build 和官方入口 5469 passed、3 skipped、0 failed、0 cancelled 的既有证据。本轮没有重建或重跑全量。
+
+从该提交建立独立 worktree，并物理复制 `src`、`scripts`、与整合树一致的既有 `dist` 和已安装 `node_modules` 到独立产品。源码、脚本和 `dist` 的逐文件比较一致，副本均与来源为不同实体路径；没有安装或升级依赖。执行只运行一次既有混合 `cold-recovery` 场景：
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/round384-playwright/node_modules/playwright \
+SINITEK_DEPARTMENT_FULL_EH_TIMEOUT_MS=180000 \
+node /tmp/department-final-store-cold-composition-round718-product/scripts/verify_department_full_eh_integration.js \
+  --product /tmp/department-final-store-cold-composition-round718-product \
+  --report /tmp/round718-mixed-cold-recovery-report.json \
+  --scenario cold-recovery --leader-cli opencode --leader-model default
+```
+
+这次执行在 extension host ready 前失败，driver exit 1：`prerequisites` 和 `emptyStore` 已通过，`extensionHost` 仍 pending，`publicUi`、任务创建、执行、receipt/CLOSED、容量归还和 authority 退役均未到达或确认。隔离报告的首错是 `Extension Host did not become ready: {"exitCode":1,"signal":null}`。隔离 VS Code renderer 随后记录 `production extension is missing`；核查发现本轮物理产品目录缺少 Extension Development Path 所需的 `package.json`。因此失败责任属于本轮产品装配不完整，不是生产冷恢复合同的结果。场景未重试，也未修补产品或共享 harness 后重跑。
+
+报告记载 `forcedTeardown=false`、host exit code 1/signal null、worker exit events/errors 为空；这些事实不证明所有后代进程都已退出，也不构成 Owner 清理。没有建立部门 root 或后继，原 binding、requirements、native session、transcript、required receipts、精确 CLOSED、持久容量移除、原 authority 退役、OpenCode move/readback 和真实 worker 退出组合均未验证。此前 lp698、lp702 的旧输入通过结果仍按其各自快照保留，不能替代本轮最终输入检查。Windows/Linux、任意崩溃及根任务整体完成也不在本次证据范围内。
+
+本次产品目录、隔离报告与 EH 日志留在本机 `/tmp` 供复核；文档不包含凭据或私有运行数据。lp716 没有产品源码、UI、脚本或测试改动，只有本段文档追加；下一次有效混合验证需由唯一所有者先完整装配产品闭包，再基于获准的新 attempt 决定是否重新执行。
+
+
+## lp719：完整产品闭包下的最终存储混合冷恢复
+
+本轮续接 lp716 的装配失败，保留其原 21 行记录和失败产品/报告。唯一执行输入为 `6313d889450cb4e6f802acd86ef07137fff40b53` / tree `542799c4a3587f02de489da2ae87e7a99c78747d`；该提交相对已接受生产输入 `0817f4519f3d5aa481af9ea64e848019da480b0e` / tree `b4d9054ad26fe49cd0d3c495c7fdb89463ebd850` 只有文档变化，运行时源码仍对应该接受输入。
+
+新物理产品 `/tmp/department-cold-product-closure-lp719` 由固定输入的完整 tracked archive（1540 个 tracked 文件，不含 `.git`）装配，再加入与既有接受 build 匹配、来源与副本身份均已确认的物理 `dist` 和已安装 `node_modules`。未拷贝用户配置、凭据或其它 worktree 内容；未安装/升级依赖，未共享可变 `dist`。启动 EH 前静态预检通过：`package.json` 的 publisher/name 与 `sinitek.sinitek-cli-tools` fixture 目标一致，`main` 指向存在的 `dist/extension.js`；包声明资源及 `media` 存在；本场景所需 driver、scripts、fixtures 和三个编译 EH fixture（production host、cold recovery EH host、cold start production host）齐全。检查确认实际运行 driver 与产品内 driver 相同，源码/脚本和编译产物对应固定输入。预检没有启动额外 EH，也没有通过普通 Node 加载 VS Code 扩展入口来替代静态闭包检查。
+
+唯一新增场景命令如下；使用既有安装版 VS Code、Codex、OpenCode、Playwright、隔离用户目录与免费 loopback provider，保持 180 秒预算、真实 loadingReady/DOM-ready，不读取用户凭据或调用付费模型：
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/round384-playwright/node_modules/playwright \
+SINITEK_DEPARTMENT_FULL_EH_TIMEOUT_MS=180000 \
+node /tmp/department-cold-product-closure-lp719/scripts/verify_department_full_eh_integration.js \
+  --product /tmp/department-cold-product-closure-lp719 \
+  --report /tmp/round719-mixed-cold-recovery-report.json \
+  --scenario cold-recovery --leader-cli opencode --leader-model default
+```
+
+driver exit 0，报告 `result=passed`、`failures=[]`；extensionHost、publicUi、required Owner receipts 和 capacity return 均通过，`forcedTeardown=false`，宿主自然 exit 0，worker observation errors 为空。原 task/attempt、完整 binding/selection/requirements、本地 transcript 与 OpenCode 原 native session 在冷链快照中精确关联；第二 EH 激活未重放 prompt，公开 stop 已送达。原组完整 required receipts 与精确 CLOSED 通过后，持久容量移除，原 authority 退役并自然 exit 0。只有显式公开 continue 创建唯一后继 generation/Owner/execution；OpenCode 保留原 native session，并完成 move/readback。后继公开 stop 的完整收尾与真实 Owner receipts 通过。worker 退出观察仅适用于报告直接观察到的进程，不外推所有后代；ACK、宿主退出、PID 缺席和端点删除均未作为凭证或容量归还替代物。报告 SHA-256 为 `148be0d3ee6723420e9fcd17e4fc17941213281f1639e378b6cdd29bd4e02c`，执行日志 SHA-256 为 `5da026174a416c02c0263d340cebc9352c2ba8b12452f6fefe951d9b5184774d`。
+
+复用 lp715 对该生产输入的标准 build 与官方 397 文件、5472 项结果（5469 passed、3 skipped、0 failed/cancelled、自然退出），以及 lp707 的 110 项和各历史真实场景原有范围；没有重跑 build、单测或官方全量。lp716 的 EH 未注册失败继续作为装配失败历史，不覆盖或改写。本轮没有生产代码、脚本、测试或 UI 变化，只有本文档追加。未覆盖 Windows/Linux、任意 EH 崩溃、全部后代进程外推或根任务整体接受；主任务仍需独立审查执行证据与最终整合结果。
