@@ -6,14 +6,35 @@ import { DepartmentExecutionOwnerServer } from "../../../runtime/departmentexecu
 import { DepartmentExecutionOwnerClient } from "../../../runtime/departmentexecutionownerclient";
 import { sameExecution, type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../../../runtime/departmentexecutionidentity";
 
-export function waitFile(file: string): Promise<void> {
-  return waitCondition(path.dirname(file), () => fs.existsSync(file));
+export type FixtureWait = { signal?: AbortSignal; label?: string; timeout?: number; diagnostic?: () => string };
+export function waitFile(file: string, options: FixtureWait = {}): Promise<void> {
+  return waitCondition(path.dirname(file), () => fs.existsSync(file), { label: path.basename(file), ...options });
 }
-export function waitCondition(directory: string, condition: () => boolean): Promise<void> {
-  if (condition()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const check = (): void => { if (condition()) { watcher.close(); resolve(); } };
-    const watcher = fs.watch(directory, check); check();
+export function waitCondition(directory: string, condition: () => boolean, options: FixtureWait = {}): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let watcher: fs.FSWatcher | undefined, timer: NodeJS.Timeout | undefined, poll: NodeJS.Timeout | undefined;
+    let settled = false;
+    const finish = (error?: unknown): void => {
+      if (settled) return;
+      settled = true; watcher?.close(); clearTimeout(timer); clearInterval(poll);
+      options.signal?.removeEventListener("abort", abort);
+      if (error) reject(error); else resolve();
+    };
+    const failure = (kind: string) => {
+      let diagnostic = "";
+      try { diagnostic = options.diagnostic?.() ?? ""; } catch { diagnostic = "diagnostic-unavailable"; }
+      return new Error(`fixture wait ${kind}: ${options.label ?? "condition"}; ${diagnostic}`);
+    };
+    const abort = () => finish(failure("cancelled"));
+    const check = (): void => { try { if (condition()) finish(); } catch (error) { finish(error); } };
+    try {
+      watcher = fs.watch(directory, check);
+      watcher.on("error", finish);
+      timer = setTimeout(() => finish(failure("timed out")), options.timeout ?? 15000);
+      poll = setInterval(check, 10);
+      options.signal?.addEventListener("abort", abort, { once: true });
+      if (options.signal?.aborted) abort(); else check();
+    } catch (error) { finish(error); }
   });
 }
 export function mark(directory: string, name: string): void { fs.writeFileSync(path.join(directory, name), "fixture\n"); }
@@ -30,11 +51,14 @@ function controls(){for(const name of fs.readdirSync(ROOT)){
  const c=JSON.parse(fs.readFileSync(file(name),'utf8'));
  for(const m of c.messages||[])send(m);
  if(c.response)send({id:request,result:{turn:{id:c.response}}});
- if(c.exit){watcher.close();process.exit(0);}
- if(c.close){send({method:'fixture/tail',params:{threadId:'native'}});mark('tail-written');watcher.close();process.stdout.end();process.stderr.end();}
+ if(c.exit){watcher.close();clearInterval(poll);process.exit(0);}
+ if(c.close){send({method:'fixture/tail',params:{threadId:'native'}});mark('tail-written');watcher.close();clearInterval(poll);process.stdout.end();process.stderr.end();}
  mark(name+'.ack');
 }}
 const watcher=fs.watch(ROOT,controls);
+// Filesystem events are hints, not a reliable delivery queue. Controls remain
+// exactly once, and polling stops at the same explicit protocol shutdown.
+const poll=setInterval(controls,10);poll.unref();
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);fs.appendFileSync(file('wire.jsonl'),line+'\n');
  if(!m.method)return;
@@ -47,7 +71,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 process.stdin.on('end',()=>{mark('stdin-eof');
  if(HOLD_PIPE){
   const child=require('child_process').spawn(process.execPath,[WORKER,'tail',ROOT],{stdio:['ignore',process.stdout,process.stderr]});child.unref();
-  watcher.close();mark('parent-exiting');process.exit(0);
+  watcher.close();clearInterval(poll);mark('parent-exiting');process.exit(0);
  }
 });
 controls();

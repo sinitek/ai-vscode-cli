@@ -3,7 +3,8 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { fork, execFile } from "child_process";
+import { fork, execFile, type ChildProcess } from "child_process";
+import * as childProcess from "child_process";
 import { randomUUID } from "crypto";
 import { setImmediate as immediate } from "timers/promises";
 import { createDepartmentCodexExecutionLauncher } from "../../runtime/departmentcodexexecutionlauncher";
@@ -25,7 +26,23 @@ function identity(bound = false): DepartmentExecutionIdentity {
 const terminal = { method: "turn/completed", params: { threadId: "native", turn: { id: "turn", status: "completed" } } };
 function fixture(t: test.TestContext, bound = false, bad = false) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-codex-launcher-"));
+  const lifetime = new AbortController();
   const value = identity(bound), input = fixturePreparation(directory, value, selection, { bad });
+  const cancel = () => { input.signal.abort(); lifetime.abort(); };
+  t.signal.addEventListener("abort", cancel, { once: true });
+  const children = new Map<ChildProcess, Promise<void>>();
+  const remember = (child: ChildProcess) => {
+    if (!children.has(child)) children.set(child, new Promise<void>((resolve) => child.once("close", () => resolve())));
+    return children.get(child)!;
+  };
+  const command = input.prepared.runner.command;
+  const spawn = childProcess.spawn;
+  t.mock.method(childProcess, "spawn", function (...args: Parameters<typeof spawn>) {
+    const child = Reflect.apply(spawn, childProcess, args);
+    if (args[0] === command) remember(child);
+    return child;
+  });
+  const shutdown: (() => void)[] = [];
   let serial = 0;
   const file = (name: string): string => path.join(directory, name);
   const wire = (): any[] => fs.existsSync(file("wire.jsonl"))
@@ -33,21 +50,97 @@ function fixture(t: test.TestContext, bound = false, bad = false) {
   const control = async (data: Record<string, unknown>) => {
     const name = `control-${++serial}.json`, tmp = file(name + ".tmp");
     fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, file(name));
-    if (!data.exit) await waitFile(file(name + ".ack"));
+    if (!data.exit) await waitFile(file(name + ".ack"), { signal: lifetime.signal, timeout: 4000, diagnostic });
   };
-  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  return { directory, value, ...input, file, wire, control,
-    wait: (name: string) => waitFile(file(name)), mark: (name: string) => mark(directory, name),
+  const diagnostic = () => JSON.stringify({ files: fs.readdirSync(directory), wire: wire().map((m) => m.method ?? "response") });
+  t.after(async () => {
+    t.signal.removeEventListener("abort", cancel);
+    cancel();
+    // Release only fixture-owned gates. This cannot publish a successful receipt:
+    // the real execution lifetime has already been cancelled above.
+    for (const name of ["release-binding", "release-callback", "release-handler", "release-pipe"]) mark(directory, name);
+    if ([...children.keys()].some((child) => child.exitCode === null && child.signalCode === null)) {
+      const name = `control-${++serial}.json`;
+      fs.writeFileSync(file(name + ".tmp"), JSON.stringify({ exit: true })); fs.renameSync(file(name + ".tmp"), file(name));
+    }
+    for (const close of shutdown) close();
+    const forced: number[] = [];
+    for (const [child, closed] of children) {
+      try { await bounded(closed, "fixture child close", undefined, 1000); }
+      catch {
+        forced.push(child.pid!);
+        child.kill("SIGTERM");
+        await bounded(closed, "terminated fixture child close", undefined, 1000);
+      }
+    }
+    t.diagnostic(JSON.stringify({ exits: [...children.keys()].map((child) => ({ pid: child.pid, code: child.exitCode, signal: child.signalCode })), forced }));
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  return { directory, value, ...input, file, wire, control, diagnostic, lifetime, remember, shutdown,
+    wait: (name: string) => waitFile(file(name), { signal: lifetime.signal, timeout: 4000, diagnostic }), mark: (name: string) => mark(directory, name),
     count: (method: string) => wire().filter((m) => m.method === method).length };
 }
-function deferred<T>() {
+function deferred<T>(signal?: AbortSignal, label = "gate") {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
+  const promise = new Promise<T>((done, reject) => {
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+    const abort = () => { finish(); reject(new Error(`fixture gate cancelled: ${label}`)); };
+    const timer = setTimeout(() => { finish(); reject(new Error(`fixture gate timed out: ${label}`)); }, 4000);
+    resolve = (value) => { finish(); done(value); };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+  void promise.catch(() => undefined);
   return { promise, resolve };
 }
+function bounded<T>(promise: Promise<T>, label: string, signal?: AbortSignal, timeout = 4000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+    const abort = () => { finish(); reject(new Error(`fixture wait cancelled: ${label}`)); };
+    const timer = setTimeout(() => { finish(); reject(new Error(`fixture wait timed out: ${label}`)); }, timeout);
+    promise.then((value) => { finish(); resolve(value); }, (error) => { finish(); reject(error); });
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+  });
+}
+
+test("fixture waits settle on success, condition rejection, timeout and cancellation", async (t) => {
+  const f = fixture(t);
+  f.mark("existing"); await f.wait("existing");
+  await assert.rejects(waitCondition(f.directory, () => { throw new Error("condition failed"); }), /condition failed/);
+  await assert.rejects(waitCondition(f.directory, () => false, {
+    label: "controlled missing event", timeout: 25, diagnostic: () => "wire=thread/resume",
+  }), /fixture wait timed out: controlled missing event; wire=thread\/resume/);
+  const cancelled = new AbortController();
+  const waiting = waitCondition(f.directory, () => false, { signal: cancelled.signal, label: "cancelled event" });
+  cancelled.abort(); await assert.rejects(waiting, /fixture wait cancelled: cancelled event/);
+  const gate = deferred<void>(cancelled.signal, "cancelled gate");
+  await assert.rejects(gate.promise, /fixture gate cancelled: cancelled gate/);
+});
+
+test("fixture wait recovers a dropped filesystem event and closes every watcher", async (t) => {
+  const f = fixture(t);
+  let opened = 0, closed = 0;
+  t.mock.method(fs, "watch", () => {
+    opened++;
+    const watcher = { on: () => watcher, close: () => { closed++; } };
+    return watcher;
+  });
+  let ready = false;
+  const waiting = waitCondition(f.directory, () => ready, { label: "dropped event", timeout: 1000 });
+  ready = true;
+  await waiting;
+  await assert.rejects(waitCondition(f.directory, () => { throw new Error("condition rejected"); }), /condition rejected/);
+  const cancel = new AbortController();
+  const pending = waitCondition(f.directory, () => false, { signal: cancel.signal });
+  cancel.abort(); await assert.rejects(pending, /cancelled/);
+  await assert.rejects(waitCondition(f.directory, () => false, { timeout: 25 }), /timed out/);
+  assert.equal(opened, 4); assert.equal(closed, opened);
+});
+
 async function finish(f: ReturnType<typeof fixture>, handle: Awaited<ReturnType<ReturnType<typeof createDepartmentCodexExecutionLauncher>["launch"]>>) {
   await f.control({ response: "turn", messages: [terminal] });
-  await f.wait("stdin-eof"); await f.control({ close: true }); return handle.completion;
+  await f.wait("stdin-eof"); await f.control({ close: true }); return bounded(handle.completion, "completion after physical EOF", f.lifetime.signal);
 }
 
 for (const mode of ["identity", "fingerprint", "role", "cli", "extra-auth", "extra-body", "null-config", "intent", "runner-hidden", "prompt"] as const) {
@@ -81,7 +174,7 @@ test("launch requires reserved description; cache saturation and rejected entrie
 });
 
 for (const bound of [false, true]) test(`${bound ? "resume" : "new"} raw session waits for both persistence confirmations and launches once from snapshot`, { timeout: 10000 }, async (t) => {
-  const f = fixture(t, bound), persisted = deferred<any>(), owner = deferred<void>(), entered = deferred<any>(), ownerEntered = deferred<void>();
+  const f = fixture(t, bound), persisted = deferred<any>(f.lifetime.signal, "persist release"), owner = deferred<void>(f.lifetime.signal, "Owner release"), entered = deferred<any>(f.lifetime.signal, "confirmSession entry"), ownerEntered = deferred<void>(f.lifetime.signal, "bindOwner entry");
   let resolves = 0, releases = 0;
   f.prepared.confirmSession = (session) => { entered.resolve(session); return persisted.promise; };
   f.prepared.resources.runner = { owned: true, release: () => { releases++; return { status: "confirmed", evidence: "fixture-session-released" }; } };
@@ -108,7 +201,7 @@ for (const bound of [false, true]) test(`${bound ? "resume" : "new"} raw session
 for (const mode of ["persist-reject", "persist-conflict", "owner-reject", "cancel-binding", "resume-conflict", "pre-cancel"] as const) {
   test(`${mode} retains handle and sends zero tasks`, { timeout: 10000 }, async (t) => {
     const f = fixture(t, mode === "resume-conflict", mode === "resume-conflict");
-    const entered = deferred<any>(), release = deferred<any>(); let ownerCalls = 0;
+    const entered = deferred<any>(f.lifetime.signal, "confirmSession entry"), release = deferred<any>(f.lifetime.signal, "persistence release"); let ownerCalls = 0;
     f.prepared.confirmSession = async (session) => {
       entered.resolve(session);
       if (mode === "persist-reject") throw new Error("fixture-refused");
@@ -129,7 +222,7 @@ for (const mode of ["persist-reject", "persist-conflict", "owner-reject", "cance
 }
 
 test("cancellation while Owner bind is pending prevents task but retains the original persistence responsibility", { timeout: 10000 }, async (t) => {
-  const f = fixture(t), entered = deferred<void>(), owner = deferred<void>();
+  const f = fixture(t), entered = deferred<void>(f.lifetime.signal, "bindOwner entry"), owner = deferred<void>(f.lifetime.signal, "Owner release");
   const launcher = createDepartmentCodexExecutionLauncher(() => f.prepared); launcher.requirements(f.value);
   const handle = await launcher.launch(f.value, async () => { entered.resolve(); await owner.promise; });
   await entered.promise; f.signal.abort();
@@ -140,7 +233,7 @@ test("cancellation while Owner bind is pending prevents task but retains the ori
 });
 
 for (const fallback of [false, true]) test(`${fallback ? "final-answer fallback" : "terminal before start response"} cannot bypass independent terminal/response reconciliation`, { timeout: 10000 }, async (t) => {
-  const f = fixture(t), business = deferred<void>(), visible = deferred<void>(); const output: string[] = [];
+  const f = fixture(t), business = deferred<void>(f.lifetime.signal, "business terminal"), visible = deferred<void>(f.lifetime.signal, "visible output"); const output: string[] = [];
   f.prepared.handlers.onAssistantDelta = (chunk) => { output.push(chunk); visible.resolve(); };
   f.prepared.runtime = { ...f.prepared.runtime, logInfo: (message) => { if (message === "codex-final-answer-completion-fallback") business.resolve(); } };
   // This callback is the original runner's business terminal, not native observation proof.
@@ -180,19 +273,21 @@ async function startOwner(t: test.TestContext, option = "") {
   const child = fork(worker, ["owner", f.directory, option], { stdio: ["ignore", "ignore", "pipe", "ipc"], detached: process.platform !== "win32",
     env: { ...process.env, HOME: f.directory, USERPROFILE: f.directory, CODEX_HOME: f.file(".codex") } });
   let stderr = ""; child.stderr!.on("data", (chunk) => { stderr += String(chunk); });
-  const exited = new Promise<void>((resolve) => child.once("close", () => resolve()));
-  t.after(async () => {
-    if (child.exitCode === null && child.signalCode === null) {
-      if (process.platform !== "win32") { try { process.kill(-child.pid!, "SIGKILL"); } catch {} } else child.kill();
-    }
-    await exited; assert.equal(stderr, "");
-  });
-  await new Promise<void>((resolve, reject) => { child.once("message", () => resolve()); child.once("error", reject); });
+  const exited = f.remember(child);
+  f.shutdown.push(() => { if (child.connected) child.send({ shutdown: true }); });
+  const ready = deferred<void>(f.lifetime.signal, "Owner ready");
+  const onReady = () => ready.resolve();
+  child.once("message", onReady);
+  try { await bounded(Promise.race([
+    ready.promise,
+    exited.then(() => { throw new Error(`Owner closed before ready: ${child.exitCode}/${child.signalCode}; ${stderr}`); }),
+  ]), "Owner ready", f.lifetime.signal); }
+  finally { child.removeListener("message", onReady); ready.resolve(); }
   const store = new DepartmentExecutionReceiptStore(f.directory), client = new DepartmentExecutionOwnerClient(f.directory);
   const finalized = () => waitCondition(f.directory, () => {
     const read = store.read(f.value.executionId); return read.kind === "ok" && ["cleaned", "cleanup-failed"].includes(read.value.state);
-  });
-  const close = async () => { child.send({ shutdown: true }); await exited; assert.equal(child.exitCode, 0); };
+  }, { signal: f.lifetime.signal, label: "Owner finalized", timeout: 4000, diagnostic: () => JSON.stringify({ fixture: f.diagnostic(), record: store.read(f.value.executionId) }) });
+  const close = async () => { child.send({ shutdown: true }); await bounded(exited, "Owner close", f.lifetime.signal); assert.equal(child.exitCode, 0); assert.equal(child.signalCode, null); assert.equal(stderr, ""); };
   return { ...f, child, client, store, finalized, close };
 }
 
@@ -257,6 +352,7 @@ for (const mode of ["reject-binding", "missing-terminal", "truncated", "fail-res
     const read = f.store.read(f.value.executionId); assert.equal(read.kind, "ok");
     if (read.kind === "ok") { assert.equal(read.value.state, "cleanup-failed"); assert.equal(read.value.receipt, undefined); }
     assert.equal(f.count("turn/start"), mode === "reject-binding" ? 0 : 1);
+    if (mode === "callback-failure") assert.equal(fs.existsSync(f.file("releases")), false, "failed callback cannot authorize destructive release");
     await f.close();
   });
 }
