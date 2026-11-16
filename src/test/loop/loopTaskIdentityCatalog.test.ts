@@ -88,3 +88,32 @@ for (const invalid of [null, {}, { file: "relative", sources: [] }, { file: "/or
     finally { fs.rmSync(home, { recursive: true, force: true }); }
   });
 }
+
+test("ordinary retention and known-source readers refuse damaged, unpublished and owned identities under one gate", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "identity-retention-"));
+  const child = spawnSync(process.execPath, ["-e", `
+    const assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+    const catalog=require(${JSON.stringify(require.resolve("../../loopTaskIdentityCatalog"))});
+    const directory=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities');fs.mkdirSync(directory,{recursive:true});
+    const file=path.join(directory,'catalog.json'),lock=path.join(directory,'transaction.lock');
+    const root=path.join(process.env.HOME,'owned'),owned=path.join(root,'store.json'),ordinary=path.join(process.env.HOME,'ordinary.json');
+    const valid={version:1,ready:true,roots:[root],owned:{retired:owned},files:{[owned]:['live'],[ordinary]:['plain']}};
+    for(const invalid of ['broken',JSON.stringify({...valid,ready:false}),JSON.stringify({...valid,ordinaryMoves:{plain:null}})]) {
+      fs.writeFileSync(file,invalid);
+      assert.throws(()=>catalog.retainOrdinaryLoopTaskIdentities(ordinary,()=>assert.fail('unknown must abort the entire file')));
+      assert.equal(catalog.readKnownOrdinaryLoopTaskIdentity('plain',ordinary,()=>assert.fail('unknown read')),null);
+      assert.equal(fs.readFileSync(file,'utf8'),invalid);
+    }
+    fs.writeFileSync(file,JSON.stringify(valid));
+    for(const id of ['live','retired']) assert.equal(catalog.readKnownOrdinaryLoopTaskIdentity(id,ordinary,()=>assert.fail('owned fallback')),null);
+    assert.throws(()=>catalog.retainOrdinaryLoopTaskIdentities(owned,()=>assert.fail('owned source')),/部门来源/);
+    assert.equal(catalog.readKnownOrdinaryLoopTaskIdentity('plain',ordinary,(source)=>{
+      assert.equal(source,ordinary);assert.equal(fs.existsSync(lock),true);
+      assert.throws(()=>catalog.commitLoopTaskIdentities(new Map(),()=>assert.fail('nested writer')),e=>e.code==='EEXIST');
+      return 'fresh';
+    }),'fresh');
+    assert.equal(fs.existsSync(lock),false);
+  `], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" });
+  try { assert.equal(child.status, 0, child.stdout + child.stderr); }
+  finally { fs.rmSync(home, { recursive: true, force: true }); }
+});

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
-import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, isDepartmentOwnedLoopTaskIdentity, locateOrdinaryLoopTaskMove, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
+import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, isDepartmentOwnedLoopTaskIdentity, locateOrdinaryLoopTaskMove, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
 import {
   CLI_LIST,
   createCliRecord,
@@ -909,14 +909,15 @@ export function readLoopTaskRecord(taskId: string, options: LoopTaskStoreReadOpt
 /** Ordinary group-chat fallback at an already known physical source. Never discovers stores
  * and never grants department authority when the ownership source is unavailable. */
 export function readKnownOrdinaryLoopTaskRecord(taskId: string): LoopTaskRecord | null {
-  if (hostRoutes.some((entry) => entry.ids.has(taskId)) || isDepartmentOwnedLoopTaskIdentity(taskId) !== false) return null;
-  const file = loopTaskStoreFileCache.get(taskId);
-  if (!file) return null;
-  const result = readLoopTaskStoreResult(file, true, true);
-  if (!result.ok) return null;
-  const matches = result.store.tasks.filter((task) => task.id === taskId);
-  const task = matches.length === 1 ? matches[0] : null;
-  return task && task.department === undefined && !task.departmentInvalid ? { ...task, taskStoreFile: file } : null;
+  if (hostRoutes.some((entry) => entry.ids.has(taskId))) return null;
+  return readKnownOrdinaryLoopTaskIdentity(taskId, loopTaskStoreFileCache.get(taskId), (file) => {
+    if (hostRoutes.some((entry) => insideRoute(entry.root, file))) return null;
+    const result = readLoopTaskStoreResult(file, true, true);
+    if (!result.ok) return null;
+    const matches = result.store.tasks.filter((task) => task.id === taskId);
+    const task = matches.length === 1 ? matches[0] : null;
+    return task && task.department === undefined && !task.departmentInvalid ? { ...task, taskStoreFile: file } : null;
+  });
 }
 
 export function updateLoopTaskRecord(
@@ -1661,7 +1662,6 @@ export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void
 
 function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
   move?: { taskId: string; sourceFile: string; sourceTasks: readonly LoopTaskRecord[]; targetFile: string }): void {
-  let tempFile: string | undefined;
   try {
     if (!store || !Array.isArray(store.tasks)) throw new Error("Invalid Loop task store");
     if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
@@ -1673,28 +1673,38 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
     const migratedStore = migrateLegacyLoopJson(store, retainLegacyStoragePaths ? undefined : DATA_DIR).value;
     const persisted = normalizeLoopTaskStoreForStorage(migratedStore, { sourceFile: filePath });
     if (!commitLoopTaskIdentities(new Map([[filePath, persisted.tasks]]), () => {
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
-      try {
-        const target = fs.lstatSync(filePath);
-        if (!target.isFile()) throw new Error("Loop task store target must be a regular file");
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-      tempFile = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomBytes(12).toString("hex")}.stage`);
-      fs.writeFileSync(tempFile, JSON.stringify(persisted, null, 2), { encoding: "utf8", flag: "wx" });
-      fs.renameSync(tempFile, filePath);
-      tempFile = undefined;
+      writeLoopTaskStoreBytes(filePath, persisted);
       return true;
     }, undefined, { atomicWrite: true, move })) throw new Error("Loop task identity commit was not confirmed");
     for (const task of persisted.tasks) loopTaskStoreFileCache.set(task.id, filePath);
     publishLoopTaskStoreChange({ type: "replace", filePath, tasks: persisted.tasks });
     return;
   } catch (error) {
-    if (tempFile) { try { fs.unlinkSync(tempFile); } catch { /* best-effort cleanup */ } }
     publishLoopTaskStoreChange({ type: "invalidate", filePath });
     void logError("loop-task-store-write-error", { filePath, error: String(error) });
     throw error;
+  }
+}
+
+// Byte mutation only: callers must hold the identity writer gate until publication.
+function writeLoopTaskStoreBytes(filePath: string, persisted: LoopTaskStore): void {
+  let tempFile: string | undefined;
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
+    try {
+      const target = fs.lstatSync(filePath);
+      if (!target.isFile()) throw new Error("Loop task store target must be a regular file");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    tempFile = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomBytes(12).toString("hex")}.stage`);
+    fs.writeFileSync(tempFile, JSON.stringify(persisted, null, 2), { encoding: "utf8", flag: "wx" });
+    fs.renameSync(tempFile, filePath);
+    tempFile = undefined;
+
+  } finally {
+    if (tempFile) { try { fs.unlinkSync(tempFile); } catch { /* best-effort cleanup */ } }
   }
 }
 
@@ -1737,20 +1747,33 @@ export function cleanupLoopTaskStoreRetention(): void {
     const filePaths = listLoopTaskStoreFiles();
     filePaths.forEach((filePath) => {
       if (hostRoutes.some((entry) => insideRoute(entry.root, filePath))) return;
-      const read = readLoopTaskStoreResult(filePath, true, true);
-      if (!read.ok) return;
-      const normalized = { tasks: read.store.tasks.filter((task) => {
-        const identity = locateOrdinaryLoopTaskMove(task.id);
-        return identity.available && (!identity.file || isSameLoopTaskStoreFile(identity.file, filePath));
-      }) };
-      if (normalized.tasks.length > 0) {
-        if (!tryWriteLoopTaskStore(filePath, normalized)) return;
-        normalized.tasks.forEach((task) => {
-          loopTaskStoreFileCache.set(task.id, filePath);
+      try {
+        let retained: LoopTaskStore | undefined;
+        const committed = retainOrdinaryLoopTaskIdentities(filePath, (destinations, ownedTaskIds) => {
+          // Complete validation precedes expiry or stale-copy filtering; unknown identity
+          // aborts the whole file before this callback, never becoming an empty task list.
+          const read = readLoopTaskStoreResult(filePath, true, true, true);
+          if (!read.ok || read.store.tasks.some((task) => ownedTaskIds.has(task.id)
+            || hostRoutes.some((entry) => entry.ids.has(task.id)))) return null;
+          retained = normalizeLoopTaskStoreForStorage({ tasks: read.store.tasks.filter((task) => {
+            const destination = destinations.get(task.id);
+            return !destination || isSameLoopTaskStoreFile(destination, filePath);
+          }) }, { sourceFile: filePath });
+          return { tasks: retained.tasks, write: () => {
+            if (isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
+            if (retained!.tasks.length) writeLoopTaskStoreBytes(filePath, retained!);
+            else fs.unlinkSync(filePath);
+            return true;
+          } };
         });
-        return;
+        if (!committed || !retained) return;
+        for (const [id, cached] of loopTaskStoreFileCache) if (cached === filePath) loopTaskStoreFileCache.delete(id);
+        retained.tasks.forEach((task) => loopTaskStoreFileCache.set(task.id, filePath));
+        publishLoopTaskStoreChange({ type: "replace", filePath, tasks: retained.tasks });
+      } catch (error) {
+        publishLoopTaskStoreChange({ type: "invalidate", filePath });
+        void logError("loop-task-store-retention-cleanup-error", { filePath, error: String(error) });
       }
-      deleteLoopTaskStoreFile(filePath);
     });
   } catch (error) {
     publishLoopTaskStoreChange({ type: "invalidate" });
