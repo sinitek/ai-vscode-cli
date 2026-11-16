@@ -220,3 +220,15 @@ Do not rerun the unchanged full suite only to refresh this result. Main review s
 最终串行 `npm run build` exit0，`node --test dist/test/loop/loopTaskStore.test.js` exit0，26/26，无失败/取消/跳过。首次26/26之后补了子进程HOME断言和失败时旧通信根清理，因此为最终TS输入再build/定向一次；各日志与SHA见整合 `sources.json#round714LegacyStoreMigrationRepair`。随后只补五中央材料，最终提交身份见Round714报告。旧source110/cold60/ontology9和未变证据按原范围复用，不重复运行；没有功能、本体或UI变化，不重跑浏览器/CLI/EH。
 
 本轮不跑官方全量，不把26项定向通过拼成全绿。Round698原5439项失败及Round711的5462项/5454过/3失败/2取消/3跳过/exit1与受控中断均保留；群聊撤销、Codex Owner等待仍由独立所有者交付，接受并实际统一后才跑最终官方入口。强制卫生回收不算authority自然退出，真实UI/EH/CLI、authority/容量/cold组合、必要异平台及原master脏内容分类保护/安全干净切换仍开放。本轮不操作原目录或其它来源树。
+
+## Round 715：接受修复合入与统一输入官方全量
+
+从已接受 `f1c499f36cfc06d604a10716ca7c2354fd3c3a05` 继续，依次 `git merge --no-ff` 接受群聊 `53fc392b4c4563537e935f9c307d90257e344a5e`、Owner `bbed2d585fad47652f0099b8576bed2c2a627bea`。实际merge为 `48f02272f6b8bf3cbba364d43fcad58257f4ae89` 和 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b`，均ort无冲突，三条测试/私有worker路径与各自来源逐字节相同。原迁移测试、五材料、完整严格存储和文档及全部先前来源保留，生产/ontology/UI不变，不重复应用祖先或选整文件ours/theirs。
+
+新统一输入为 `c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b` / tree `4fa24544d9396d91fa6c516d6cad24d19eafa35a`。独占本树dist，串行执行一次 `npm run build` exit0，再 `node scripts/run_unit_tests.js --list`（397编译JS文件，必需清单齐全），最后直接 `node scripts/run_unit_tests.js`，避免包装入口重复build。官方一次exit0，自然退出，5472项/5469过/0失败/0取消/3跳过/0todo，耗时63770.400166ms；本轮未外部终止进程。三项跳过仍为真实DSH环境门控，不算真实CLI/EH通过。launcher日志35条直接ChildProcess关闭均code0/signal null、forced为空，不外推所有孙进程和其它夹具。
+
+来源26、群聊37后最终变化用例8（其它29未改，不相加成45）、Owner35及共享76、source110/cold60/ontology9按既有范围复用，没有另跑这些定向套件来刷新结果。群聊精确DTO/根投影/完整结算和七撤销、Owner双持久确认/原session/冻结快照/EOF/callback/drain及失败无释放均保留。历史两次Owner超时首停点未知，当前通过不追溯证明触发原因。
+
+完整发现清单、新结果与日志SHA在 `round698-full-regression.json#round715Followup`，来源父节点与路径身份在 `sources.json#round715AcceptedRepairsFullRegression`。测试后仅追加五交接材料，最终文档提交身份见Round715报告。原Round698及Round711失败计数、取消/受控中断、Round714中间及最终结果和Round708 changedPaths均不改；当前官方exit0不抹除历史，也不把强制卫生回收当authority自然退出。
+
+真实UI/EH/CLI、三项live跳过、必要Linux/Windows和最终authority/容量/cold组合审查仍各按原范围开放。原master脏内容分类保护及安全干净切交付分支需后续独立处理，本轮不操作原目录/其它worktree，不推送发布或升级依赖，不宣称根功能整体完成。
