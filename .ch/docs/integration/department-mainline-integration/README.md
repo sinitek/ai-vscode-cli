@@ -80,3 +80,25 @@ This successor changes tests and review materials only, so ontology data, featur
 round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，强制回收自有fake worker的事实不变。本轮覆盖其10个原失败，剩余50失败、6取消/15文件只是对账，不是新官方运行或全量通过。store/cold/capacity各有唯一所有者；lp701发送/lp702传输虽done，尚未正式接受/合入。groupChatHost两项原失败也保留待组合判断，不因额度实机成功就标解决。统一生产修复正式合入后才安排最终官方全量。
 
 55路径冷累计来源、manifest原始round674第109行正确SHA `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412` 及后继错误 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`、round695测量及历史失败全部保留。未重做导入/来源审计。最终commit/tree见round704报告；真实混合冷恢复/遗留authority、必要原生Linux/Windows、最终原打开目录分类保护/切换分支/clean仍开放。原master脏树和其它来源未写入，不提前归档根feature。
+
+
+## Round 706：已接受修复统一输入与群聊额度夹具
+
+当前状态以本节为准，上文 round704 的 lp701/lp702 未审、capacity待交付及旧根待收尾均为当时快照。主审最新三事件审查已接受 cold/common/capacity，之前双事件已接受 send/transport。从已接受 `e13d043f8d74308c54b3679a60b07c7f1d62c67d` 顺序保留历史 merge：
+
+| 接受来源 | 新 merge | 范围 |
+| --- | --- | --- |
+| `e161e941859e7acd773aee977b01a012cdba847d` | `bef535c2dd5fa156044350556c4c040fecbf6aec` | 发送前最后一次模式授权重读及两个会话测试 |
+| `dc4e5d96a7ecbabbe78f0cdbb10cedbe43758858` | `81a2a6dd7665bce61d82105136f20af156a77f03` | 原生 owned transport 凭证握手夹具 |
+| `1c1c25d6ecb54fcb77689fe71cd8d721bf0cef2c` → `fa6e1ddea02096bfc4f96b9f6e42513c5addbe48` → `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d` | `71dc7cb6d1e20f9694a255ff2dc2abb141bb3878` | 完整冷控制实现、实机和计数文档链 |
+| `f21082f2585db8f3a0a1af9135081713a42b2d08` | `caaa435940a4afded739b9d1cc55dbb6bd2b9be9` | 多组容量回归；原额度三提交仍在祖先链 |
+
+四次均无文本冲突、无重叠变更路径，不需要冲突改写。最终 merge 输入 tree `5df4feaf9366bdf14df3cdbef129e8816a1dbb03`；之后仅本地修群聊测试及五项交接材料。最终交付 commit/tree 见 round706 attempt report，勿把此 pre-repair merge tree 或旧哈希当成最终输入。机器证据 `sources.json#round706AcceptedRepairIntegration` / `round698-full-regression.json#round706Followup` 记录每次 merge 的完整 parents/tree/base、16条来源 blob/SHA及结果SHA；15条与来源逐字节相同，唯一差异是本地群聊夹具。
+
+群聊两项旧错分类为夹具消息识别错误：`posted.at(-1)`/全部 post 数量把 loading/DOM-ready 后普通 patch 混作额度回执。现按 `type/rootTaskId/leaderTaskId/requestId` 精确识别，每项拒绝要求唯一错误回执与零 writer；成员、workspace、panel绑定和dispose改变前确认写入已开始且未提前回执，放开原writer后仍无迟到回执及重试。iframe无写权、重复请求/CAS及原业务断言保留。没有改coordinator授权、容量、组织控制、UI布局或主题。
+
+新组合 `npm run build` exit0；`node --test --test-reporter=tap --test-timeout=15000 dist/test/loop/departmentGroupChatHost.test.js` 一次30/30，无失败/取消/跳过；实际合入ontology结构校验通过。精确重定向命令和日志SHA见机器证据。检查后仅改文档/证据，不失效源码结果。其余未变结果直接复用：round704195仍是120+75分组证据，旧121及额度19/真实2/6→3/0/3、send101、transport28、cold22、capacity15沿各自来源范围；不累加为一次官方全绿。
+
+round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1；此前50失败/6取消为round704对账。现 send1、capacity2、groupChat2原失败及transport6取消有接受或新定向覆盖；其余store35/cold10仍开放，45/0只是原账面剩余，绝非新官方结果。`74be413f` 未审未合，103/105和两项handoff失败、ordinaryMoves合同冲突留主审；cold后继独占共享fixture，不提前消费或等待。
+
+保留全部55条原累计来源、manifest原值/抄错值与勘误、原官方失败及六取消强制回收记录。capacity12条after回收仅为卫生；cold五worker/两EH及精确旧根公开stop的正常退出已被接受，只证明其报告范围，旧根不能继续表述为尚未收尾。最终统一输入全量、必要真实异平台、最终authority/额度/冷恢复组合审查和原打开目录分类保护/安全切分支/clean交付仍开放。没有重新fetch、旧实体导入、浏览器或EH矩阵；原master脏树和来源未写入。

@@ -184,3 +184,16 @@ node scripts/run_unit_tests.js
 round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，强制回收自有fake worker的事实不变。本轮覆盖其10个原失败，剩余50失败、6取消/15文件只是对账，不是新官方运行或全量通过。store/cold/capacity各有唯一所有者；lp701发送/lp702传输虽done，尚未正式接受/合入。groupChatHost两项原失败也保留待组合判断，不因额度实机成功就标解决。统一生产修复正式合入后才安排最终官方全量。
 
 55路径冷累计来源、manifest原始round674第109行正确SHA `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412` 及后继错误 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`、round695测量及历史失败全部保留。未重做导入/来源审计。最终commit/tree见round704报告；真实混合冷恢复/遗留authority、必要原生Linux/Windows、最终原打开目录分类保护/切换分支/clean仍开放。原master脏树和其它来源未写入，不提前归档根feature。
+
+
+## Round 706：接受修复合入与后续基线
+
+沿用同一整合worktree/分支，从 `e13d043f8d74308c54b3679a60b07c7f1d62c67d` 顺序 `git merge --no-ff` 已接受send `e161e941`、transport `dc4e5d96`、完整cold `1c1c25d6→fa6e1dde→a90b6c9e`、capacity `f21082f2`。四次无冲突及重叠路径，merge依次 `bef535c2`、`81a2a6dd`、`71dc7cb6`、`caaa4359`，各源历史和原额度三提交全部保留。来源16路径及blob/SHA、每次tree/parents/base在专用sources；15条来源一致，groupChat测试有本地精确回执修复。未重新fetch、复制实体或重复旧补丁。
+
+本轮新输入标准 `npm run build > /tmp/round706-build.log 2>&1` exit0；串行再执行 `node --test --test-reporter=tap --test-timeout=15000 dist/test/loop/departmentGroupChatHost.test.js > /tmp/round706-group-chat-host.log 2>&1`，一次30/30。`python3 .agents/skills/ontology/scripts/search_ontology.py --validate > /tmp/round706-ontology-validation.log 2>&1` exit0。后续只改交接材料/外部报告。未改生产授权/组织/资源合同或共享冷fixture；没有改UI或重跑浏览器。临时依赖链接收尾移除；最终commit/tree、clean/unmerged/差异和来源保护结果见round706报告。
+
+上文各阶段“未审/未收尾”是历史状态：本批send/transport/cold/capacity已正式接受并实际进入统一历史。cold混合五worker/两EH与精确旧根公开stop正常退出已接受，沿用原范围；额度四worker自然退出也沿用原输入；capacity十二条after回收仍只是卫生。旧121、round704195=120+75、额度19及新来源101/28/22/15不重复执行、不拼成官方全量通过。
+
+官方首次5439项失败记录、manifest原始正确值和后继抄错值、强制回收事实全部保留。当前原账面剩余store35/cold10是45失败、0取消，计算不构成再次官方运行。store `74be413f` 尚未验收，不得合入；103/105、两项handoff及ordinaryMoves冲突待主审。cold后继独占十失败/共享fixture，未消费待审输入。待必要后继接受并合入，后续统一使用本轮报告最终commit为基线，按实际影响补验及最终官方全量，不能从旧候选继续。
+
+本阶段保护原打开master及其它来源，不在那里checkout/reset/stash/clean；最终分类保护既有脏内容、安全切交付分支（处理另一worktree占用）和clean仍待最终收尾。必要Linux/Windows原生证据、最终authority/额度/冷恢复组合审查亦未关闭。不归档根feature，不推送发布或安装升级依赖。

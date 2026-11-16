@@ -551,6 +551,12 @@ function allocationFixture(h: ReturnType<typeof harness>) {
 const limitRequest = (leaderTaskId: string, patch = {}) => ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit",
   requestId: "allocation-request-1", leaderTaskId, employeeLimit: 0, expectedRevision: 3, ...patch });
 
+function allocationReceipts(messages: readonly any[], rootTaskId: string, request: ReturnType<typeof limitRequest>) {
+  return messages.filter((message) => message.type === "loopGroupChatChat:departmentEmployeeLimitSettled"
+    && message.rootTaskId === rootTaskId && message.leaderTaskId === request.leaderTaskId
+    && message.requestId === request.requestId);
+}
+
 test("allocation projection copies validated host DTO, preserves null/zero and fails unknown closed", () => {
   const h = harness();
   try {
@@ -615,17 +621,26 @@ test("director allocation writer receives exact CAS payload; zero/reset, pending
 test("allocation message rejects invalid payloads, absent ports, stale records and cross-root/role/ambiguous membership", async () => {
   const h = harness(); let writes = 0;
   try {
+    let requestNumber = 0;
+    const rejects = async (patch: object, error: RegExp, rootTaskId = h.root.id) => {
+      const request = limitRequest(h.leader.id, { ...patch, requestId: `reject-${++requestNumber}` });
+      const count = h.posted.length;
+      h.receive(request); await tick();
+      const receipts = allocationReceipts(h.posted.slice(count), rootTaskId, request);
+      assert.equal(receipts.length, 1, "exactly one rejection for this root/leader/request, independently of panel patches");
+      assert.equal(receipts[0].ok, false); assert.match(receipts[0].error, error);
+      assert.equal(writes, 0, "rejected input must never reach the allocation writer");
+    };
     const data = allocationFixture(h);
     h.deps.readDepartmentEmployeeAllocation = () => data;
     await h.coordinator.open(h.root.id);
-    h.receive(limitRequest(h.leader.id)); await tick(); assert.match(h.posted.at(-1).error, /不可用/);
+    await rejects({}, /不可用/);
     h.deps.updateDepartmentEmployeeLimit = async () => { writes += 1; return { ok: true, allocation: data }; };
     for (const employeeLimit of [-1, 21, 1.5, "5", undefined, NaN, Infinity, true]) {
-      h.receive(limitRequest(h.leader.id, { employeeLimit })); await tick();
-      assert.match(h.posted.at(-1).error, /无效/);
+      await rejects({ employeeLimit }, /无效/);
     }
     for (const expectedRevision of [-1, 2, "3", Number.MAX_SAFE_INTEGER]) {
-      h.receive(limitRequest(h.leader.id, { expectedRevision })); await tick(); assert.match(h.posted.at(-1).error, /无效/);
+      await rejects({ expectedRevision }, /无效/);
     }
     const original = structuredClone(h.leader);
     for (const mutate of [
@@ -635,16 +650,19 @@ test("allocation message rejects invalid payloads, absent ports, stale records a
       (t: LoopTaskRecord) => { t.department!.role = "employee"; },
     ]) {
       const record = structuredClone(original); mutate(record); h.records.set(record.id, record);
-      h.receive(limitRequest(record.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+      await rejects({}, /仅当前/);
     }
     h.records.set(original.id, original);
     h.deps.readDepartmentLeaderTaskIds = () => [h.leader.id, "duplicate"];
-    h.receive(limitRequest(h.leader.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+    await rejects({}, /仅当前/);
     h.deps.readDepartmentLeaderTaskIds = (rootId, moduleId) => fixtureDepartmentLeaderTaskIds(h.records, rootId, moduleId);
     const target = await h.load(); const count = h.posted.length;
-    await h.send(target, limitRequest(h.leader.id)); assert.equal(h.posted.length, count, "child message is excluded before dispatch");
+    const childRequest = limitRequest(h.leader.id, { requestId: "iframe-denied" });
+    await h.send(target, childRequest);
+    assert.equal(allocationReceipts(h.posted.slice(count), h.root.id, childRequest).length, 0, "iframe has no allocation write capability");
+    assert.equal(writes, 0);
     await h.coordinator.open(h.leader.id);
-    h.receive(limitRequest(h.other.id)); await tick(); assert.match(h.posted.at(-1).error, /仅当前/);
+    await rejects({ leaderTaskId: h.other.id }, /仅当前/, h.leader.id);
     assert.equal(writes, 0); assert.deepEqual(h.effects, []);
   } finally { h.restore(); }
 });
@@ -653,17 +671,24 @@ test("allocation async receipt is discarded after membership, workspace or panel
   for (const change of ["member", "workspace", "binding", "dispose"]) {
     const h = harness(); const gate = deferred();
     try {
+      let writes = 0;
       const data = allocationFixture(h);
       h.deps.readDepartmentEmployeeAllocation = () => data;
-      h.deps.updateDepartmentEmployeeLimit = async () => { await gate.promise; return { ok: true, allocation: { ...data, revision: 4,
+      h.deps.updateDepartmentEmployeeLimit = async () => { writes++; await gate.promise; return { ok: true, allocation: { ...data, revision: 4,
         leaders: data.leaders.map((row, index) => index ? row : { ...row, source: "manual", desiredLimit: 0, pending: true }) } }; };
-      await h.coordinator.open(h.root.id); h.receive(limitRequest(h.leader.id)); await tick();
+      const request = limitRequest(h.leader.id, { requestId: `late-${change}` });
+      await h.coordinator.open(h.root.id); h.receive(request); await tick();
+      assert.equal(writes, 1, `${change}: original request reached the writer`);
+      assert.equal(allocationReceipts(h.posted, h.root.id, request).length, 0, "no receipt before durable confirmation");
       if (change === "member") h.records.delete(h.leader.id);
       if (change === "workspace") { h.root.workspaceKey = "new"; h.leader.workspaceKey = "new"; }
       if (change === "binding") h.panel().update({ ...h.panel().getState()!, task: { ...h.panel().getState()!.task, id: "other-root" } });
       if (change === "dispose") h.dispose();
       const count = h.posted.length;
-      gate.resolve(); await tick(); assert.equal(h.posted.length, count, change);
+      gate.resolve(); await tick();
+      assert.equal(allocationReceipts(h.posted.slice(count), h.root.id, request).length, 0, `${change}: no late allocation receipt`);
+      assert.equal(allocationReceipts(h.posted, h.root.id, request).length, 0, `${change}: never acknowledged the obsolete request`);
+      assert.equal(writes, 1, "invalidation does not retry the write");
       assert.deepEqual(h.effects, []);
     } finally { gate.resolve(); h.restore(); }
   }

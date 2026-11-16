@@ -98,3 +98,19 @@ No business rule, UI design, ontology data or feature inventory changed in round
 round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，强制回收自有fake worker的事实不变。本轮覆盖其10个原失败，剩余50失败、6取消/15文件只是对账，不是新官方运行或全量通过。store/cold/capacity各有唯一所有者；lp701发送/lp702传输虽done，尚未正式接受/合入。groupChatHost两项原失败也保留待组合判断，不因额度实机成功就标解决。统一生产修复正式合入后才安排最终官方全量。
 
 55路径冷累计来源、manifest原始round674第109行正确SHA `28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412` 及后继错误 `28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412`、round695测量及历史失败全部保留。未重做导入/来源审计。最终commit/tree见round704报告；真实混合冷恢复/遗留authority、必要原生Linux/Windows、最终原打开目录分类保护/切换分支/clean仍开放。原master脏树和其它来源未写入，不提前归档根feature。
+
+
+## Round 706：接受来源的 disjoint merge 与回执边界
+
+本轮四次 merge 的来源/基线/parent/result blob身份见 `sources.json#round706AcceptedRepairIntegration`。send、transport以c539为共同基线；cold链以464为基线；capacity以已在整合祖先链的b02为基线。相对这些共同基线，两侧变更路径集合交集为空，顺序合入也无互相覆盖；无自动重叠合并、无实际冲突、无整段ours/theirs选择。已有额度三提交及旧七/九夹具均保持祖先历史与字节。cold的1c1c文档、fa6e实现和a90文档均在祖先链，未只合最后文档。15/16导入路径与各接受来源相同，groupChat仅下述本地测试更改。
+
+- 发送源码保留最后await后、消息预载/runner前的当前设置授权；Loop+非阻塞投影与真实续接豁免仍是e161原输入。新冷控制不改此文件。
+- cold可信只读组织投影核验root/workspace/taskStore/metadata，未知容量保持stop、完整stop前continue禁用，请求token隔离迟到成功。与已接受modal-only刷新/loading保护在不同位置，整份coordinator与a90源码相同，额度authorize/current/requestId去重/CAS也未更改。
+- transport未知明确thread不构成凭证；fake reader barrier、raw确认与有界原生清理为dc4e原文件，没有把测试回调恢复为所有权证据。
+- capacity原15项与f210文件相同，共享productionWiring/treeControl/SIMULATED_LEADER_CLI未在本任务修改。后继如改共享fake，需自行声明具体失效消费者。
+
+群聊旧首错已由原官方JSON和cold88项记录确认，未先重跑：非法请求case对undefined做字符串断言；member撤销case全部post数1而预期0。生产`updateDepartmentEmployeeLimit`先authorize，再去重/服务/DTO/CAS，await后`current()`重验token、panel、成员和workspace，确认持久返回后才安装投影和回执。旧测试把HTML握手的askThread/contentPatch混入目标回执。修正为四字段精确匹配、唯一拒绝回执、每次非法请求零写入；撤销场景确认原writer实际启动一次、确认前无回执，身份变更及原调用结束后也无回执/重试。iframe断言关注额度能力而非无关patch。原有效0/reset/错误、重复请求和revision竞态测试均保持并在本轮30项通过，错误回复没有一律改成忽略。
+
+新标准build及群聊全文件30/30覆盖此组合和本地TS输入；ontology validate覆盖合入数据结构。没有新的产品改写、视觉设计或授权策略变更，故无新增FEATURE_INVENTORY/现行计划事实。合入的冷设计/ontology更新保留其已审来源。未复跑原195/121/19及各来源有效检查、浏览器或真实CLI/EH，亦未以编译证明真实生命周期。
+
+所有此前失败、manifest勘误和清理限制保留。当前已接受的cold混合五worker和旧根公开stop只证明其原输入；capacity12条after强制回收及round698六取消回收仍非自然成功。store74be仍未接受，cold共享夹具后继尚未整合，不能声称官方全量已过或把其done状态当接受。最终全量应在后继正式接受并实际合入后针对真实统一输入执行。
