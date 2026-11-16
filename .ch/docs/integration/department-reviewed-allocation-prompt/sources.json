@@ -97,5 +97,23 @@
     "final remote synchronization and reasonable integration",
     "full regression on actual final merged tree"
   ],
-  "history": "round-431 failed acceptance and build first errors remain in original reports; round-410 cold refusal is not takeover; root feature remains active/in_progress"
+  "history": "round-431 failed acceptance and build first errors remain in original reports; round-410 cold refusal is not takeover; root feature remains active/in_progress",
+  "round440Composition": {
+    "base": "da47ec72295416fd4a7ff7c877bc483d658e77ff",
+    "reviewedPrompt": "e613344552c559b934561ccd3506582955dbe68a",
+    "commonAncestor": "d35263a5f7d150b57b10668f2ad1c3bf0b066d43",
+    "mergeCommit": "08374899d4f162e4a31fa203f80c02dbc3720a1e",
+    "mergeTree": "9c84cdf217582f1079b00608bdb75305ab710105",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-allocation-prompt-eh-round440",
+    "scope": "Local allocation/prompt/UI/EH candidate only; does not import the concurrent cold-recovery successor.",
+    "preservation": "All seven e613 delta paths initially match their complete source blobs. The five reviewed deliveries retain their hashes above; only this manifest and the Git handoff receive composition notes. The da47 store, policy, production integration, extension and UI bytes are unchanged.",
+    "newEvidence": "See .ch/docs/runbooks/department-employee-allocation-eh-verification.md and round-440 communicationFile. Prior unmodified policy/UI/prompt/hotpath checks are reused only for their original inputs.",
+    "openGates": [
+      "Final cold-recovery/prompt product combination",
+      "Second EH ownership and recovery delivery",
+      "Necessary platforms",
+      "Remote synchronization and reasonable merging",
+      "Full regression on the real final merged tree"
+    ]
+  }
 }

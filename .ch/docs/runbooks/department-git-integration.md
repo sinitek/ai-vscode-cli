@@ -90,3 +90,12 @@ iframe sandbox、消息身份校验、同步 inert/关闭归焦、无 bridge fal
 真实 reader/writer、持久 CAS 和同步联合准入由另一所有者交付；中央功能清单/ontology/active 计划、冷恢复返修、第二 EH、必要平台、最终远端同步/合理合并与最终合并树全量回归全部继续开放。Owner、容量释放及清理标准不变；根 feature 仍 active/in_progress，round-410 冷安全拒绝不等于恢复接管。未吸入生产接线或冷恢复返修增量，未 fetch/pull/push、发布、修改共享 HEAD/index、父记录或调度状态。
 
 本轮报告：`/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-436-department-git-reviewed-allocation-prompt-candidate.md`。
+
+
+## Round-440 局部额度/提示/真实 UI-EH 组合
+
+以已审热点修复 `da47ec72295416fd4a7ff7c877bc483d658e77ff` 新建外置工作树，合入已审提示后继 `e613344552c559b934561ccd3506582955dbe68a`。共同来源为 `d35263a5f7d150b57b10668f2ad1c3bf0b066d43`；无冲突 merge `08374899d4f162e4a31fa203f80c02dbc3720a1e`，tree `9c84cdf217582f1079b00608bdb75305ab710105`。完整七条提示增量初次均逐字节对应 e613；五条已审交付保持原哈希，本清单/交接随后仅追加组合说明。da47 的历史同步修复、原 UI、准入及 extension 字节保持不变。
+
+新专属薄 harness 复用现有隔离环境、精确 Webview 适配器、免费 Responses provider 与原 Owner 观察器；只增加额度消息/真实准入/进程退出旁听及最小场景。构建、定向测试、真实场景首错与只读证据复核见 [专属验证手册](department-employee-allocation-eh-verification.md)。最终交付 commit/tree 与全部路径哈希记在 round-440 attempt 报告，避免文档自身提交身份循环。
+
+这是局部组合候选，未导入正在返修的冷恢复、第二 EH 或其它未验收增量；未修改恢复回调、executionresources、coldgenerationrecovery 或其证明标准。最终统一产品、平台、远端同步合理合并及最终合并树全量回归继续开放。未 fetch/pull/push/发布，也未改共享 HEAD/index 或任何历史来源报告。
