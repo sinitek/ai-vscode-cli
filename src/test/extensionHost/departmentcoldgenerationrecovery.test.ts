@@ -28,7 +28,7 @@ function scenario(name: string, run: (t: test.TestContext) => Promise<void>) {
 
 scenario("original independent authority escrows full production Owner receipts before endpoints retire", async t => {
   const h = await productionWiring(t, "codex", true, false, 1, undefined, "codex", true, true);
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this isolated employee requirement completely and verify actual source and report all real changes and results." }] });
   h.answer(2, { status: "wait", finalSummary: "等待原责任证明" });
   const launch = await h.start(); assert.ok(launch.ok);
@@ -66,10 +66,13 @@ scenario("original independent authority escrows full production Owner receipts 
 import { coldGenerationHost } from "./fixtures/departmentcoldgenerationhost";
 scenario("cold production repository authenticates original complete generation and durably releases before unique successor", async t => {
   const h = await productionWiring(t, "codex", true, false, 1, undefined, "codex", true, true);
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this isolated employee requirement completely, verify actual source and report the changes and results." }] });
   h.answer(2, { status: "wait", finalSummary: "等待完整责任收尾" });
-  h.answer(3, { status: "blocked", finalSummary: "后继真实执行已完成，等待验收" });
+  // A restored employee finish may wake another real leader review. "blocked"
+  // requires its own follow-up verification round; this scenario instead waits
+  // for explicit public stop and must not fall through to an unconfigured answer.
+  h.answer(3, { status: "wait", finalSummary: "后继真实执行已完成，等待验收" });
   const launch = await h.start(); assert.ok(launch.ok);
   await until(() => h.entries().length === 2 && h.entries().every(e => !!e.executionId));
   const before = h.store.read("root", "workspace"); assert.ok(before.ok && before.value);
@@ -108,7 +111,8 @@ scenario("cold production repository authenticates original complete generation 
   assert.equal(cold.read(launch.taskId)!.sessionId, originalTask.sessionId);
   assert.ok(h.wire().some(m => m.method === "thread/resume" && m.params.threadId === "native"));
   await cold.fixture.adapter.waitForTaskIdle(launch.taskId);
-  await cold.composition.organizationControl.stop(cold.read("root")!);
+  try { await cold.composition.organizationControl.stop(cold.read("root")!); }
+  catch (error) { t.diagnostic(JSON.stringify(cold.diagnostics)); throw error; }
   const successorAuthority = h.workers.filter(w => w.module.endsWith("departmentgenerationauthorityworker.js"))[1];
   assert.equal(successorAuthority.child.exitCode, 0); assert.equal(successorAuthority.child.signalCode, null);
 });
@@ -188,7 +192,7 @@ scenario("cold preflight rejects scope session configuration and generation drif
 scenario("cold control seals incomplete employee preparation and retains its exact unknown ticket and capacity", async t => {
   const h = await productionWiring(t, "codex", true, false, 1, undefined, "codex", true, true);
   const entered = gate(), release = gate(); h.beforeEmployeeBuilder(async () => { entered.resolve(); await release.promise; });
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this complete isolated employee requirement and verify source changes with meaningful evidence and actual results." }] });
   const launch = await h.start(); assert.ok(launch.ok); await entered.promise;
   const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value); const set = saved.value.leaderExecutionSets![0];
@@ -275,7 +279,7 @@ scenario("OpenCode cold original directory capability survives host loss and ret
   // independent service must obtain every real receipt and stopped handshake.
   // A disconnected host cannot resume its old projection into the successor.
   h.beforeLeaderCleanup(() => { observing.resolve(); return new Promise<void>(() => {}); });
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this isolated employee requirement completely, verify actual source and report actual changes and results." }] });
   for (let n = 2; n <= 8; n++) h.answer(n, { status: "blocked", finalSummary: "等待原资源凭证与公开控制" });
   const launch = await h.start(); assert.ok(launch.ok);

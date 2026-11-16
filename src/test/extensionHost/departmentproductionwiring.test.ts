@@ -30,14 +30,26 @@ import { normalizeLoopTaskRecord, mergeLoopTaskRecordPatch } from "../../loopTas
 
 for (const employee of ["codex", "opencode"] as const) wiringTest(`production composition uses one producer for two native mains and ${employee} employee admission`, { timeout: 20000 }, async (t) => {
   const h = await productionWiring(t, employee);
-  // Keep the employee native turn active until the explicit user wake has
-  // produced main 2; a completed turn may otherwise open a review batch.
+  const bind = h.store.bindLeaderExecution.bind(h.store);
+  t.mock.method(h.store, "bindLeaderExecution", (...args: Parameters<typeof bind>) => {
+    const result = bind(...args);
+    if (!result.ok) t.diagnostic("original binding rejected: " + result.error);
+    return result;
+  });
+  // Gate the actual consumer for both CLIs. OpenCode can finish its native
+  // process before a user wake; it must not publish an extra review main into
+  // this scenario's two-round protocol. This is not a terminal/cleanup receipt.
+  const employeeConsumed = gate(), releaseEmployee = gate();
+  h.beforeEmployeeConsumerFinish(async () => { employeeConsumed.resolve(); await releaseEmployee.promise; });
+  t.after(() => releaseEmployee.resolve());
   if (employee === "codex") fs.writeFileSync(h.file("employee/hold-terminal"), "held");
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement the complete isolated employee requirement with source changes and meaningful verification; report changed paths and actual results." }] });
   h.answer(2, { status: "wait", finalSummary: "等待真实员工清理凭证" });
   const launch = await h.start(); assert.ok(launch.ok);
   await until(() => h.employeeBuilders === 1 && h.wire(h.file("employee")).some((m) => m.method === "turn/start") || employee === "opencode" && fs.existsSync(h.file("employee/started")));
+  if (employee === "opencode") await employeeConsumed.promise;
+  assert.equal(h.mainCalls, 1, "the actual pending employee consumer has not published an automatic review");
   const leader = h.read(launch.taskId)!;
   assert.equal(leader.sessionId, "local_leader");
   assert.deepEqual(leader.executionSession, { cli: "codex", configId: "profile", sessionId: "native" });
@@ -49,6 +61,7 @@ for (const employee of ["codex", "opencode"] as const) wiringTest(`production co
   assert.equal(calls[1].params.threadId, "native"); assert.equal(h.localRuns, 0);
   const closing = h.producer.close(launch.taskId);
   if (employee === "codex") fs.rmSync(h.file("employee/hold-terminal"));
+  releaseEmployee.resolve();
   const close = await closing; assert.deepEqual(close, { ok: true });
   const stored = h.store.read("root", "workspace"); assert.ok(stored.ok && stored.value);
   assert.equal(stored.value.leaderExecutionSets![0].state, "closed");
@@ -108,7 +121,7 @@ wiringTest("main native persistence validates exact fields, survives cold read a
 
 for (const employee of ["codex", "opencode"] as const) wiringTest(`production sealing retains a late ${employee} employee preparation and rejects its grant`, { timeout: 20000 }, async (t) => {
   const h = await productionWiring(t, employee, false, false, 1, undefined, "codex", true), entered = gate(), release = gate();
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement the complete isolated employee requirement with meaningful source verification and report actual changed paths and results." }] });
   h.beforeEmployeeBuilder(async () => { entered.resolve(); await release.promise; });
   const launch = await h.start(); assert.ok(launch.ok); await entered.promise;
@@ -169,9 +182,9 @@ wiringTest("allocation production lifecycle applies saved zero at next adapter r
   const h = await productionWiring(t, "codex", true, true), entered = gate(), release = gate();
   t.after(() => release.resolve());
   h.beforeEmployeeConsumerFinish(async () => { entered.resolve(); await release.promise; });
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this complete independent requirement and verify the result. Report all changed files and meaningful test evidence to the leader." }] });
-  h.answer(2, { status: "dispatch", subtasks: [{ id: "refused", title: "refused", taskType: "general", writeFiles: [],
+  h.answer(2, { status: "dispatch", subtasks: [{ id: "refused", title: "refused", taskType: "backend", writeFiles: [],
     prompt: "Implement another independent requirement with complete source changes and meaningful verification. Report the actual changed paths and results." }] });
   h.answer(3, { status: "blocked", finalSummary: "本组常规额度为零，等待总监调整" });
   const started = await h.start(); assert.ok(started.ok); await entered.promise;
@@ -203,7 +216,7 @@ wiringTest("allocation production lifecycle applies saved zero at next adapter r
 
 for (const employee of ["codex", "opencode"] as const) wiringTest(`authority production Ledger grants two Codex leader rounds and ${employee} employee then retires after original receipts`, { timeout: 25000 }, async t => {
   const h = await productionWiring(t, employee, true, true, 1, undefined, "codex", true);
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this isolated employee requirement completely, verify the source and report the actual changes and verification evidence." }] });
   h.answer(2, { status: "wait", finalSummary: "等待员工原始清理凭证" });
   const launch = await h.start(); assert.ok(launch.ok);
@@ -252,7 +265,7 @@ wiringTest("failed production Ledger open retires its empty authority before any
 
 wiringTest("original generation receipt escrow preserves OpenCode employee full required cleanup and normal retirement", { timeout: 25000 }, async t => {
   const h = await productionWiring(t, "opencode", true, true, 1, undefined, "codex", true, true);
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement the isolated employee requirement completely and verify actual source changes and report all changes and results." }] });
   h.answer(2, { status: "wait", finalSummary: "原凭证完整后才关闭" });
   const launch = await h.start(); assert.ok(launch.ok);
@@ -275,7 +288,7 @@ wiringTest("OpenCode parallel original receipt waiter survives endpoint retireme
   const consumed = gate(), release = gate();
   h.beforeEmployeeConsumerFinish(async () => { consumed.resolve(); await release.promise; });
   t.after(() => release.resolve());
-  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "general", writeFiles: [],
+  h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement the complete isolated requirement and verify source changes and report actual results with meaningful evidence." }] });
   for (let n = 2; n <= 8; n++) h.answer(n, { status: "wait", finalSummary: "核对原凭证" });
   const launch = await h.start(); assert.ok(launch.ok); await consumed.promise;
