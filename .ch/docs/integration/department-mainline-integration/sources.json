@@ -847,5 +847,90 @@
       "Native Linux/Windows and other required platform/real product checks retain their prior limits.",
       "Original master dirty-content classification, preservation and safe clean final branch handoff remain later independent work."
     ]
+  },
+  "round720AcceptedFinalEvidenceMerge": {
+    "round": 720,
+    "acceptanceCutoff": "Frozen lp718/lp717 review in main-task.md, 2026-11-16T15:24:12.792474+00:00. Imported requirement facts remain explicitly through lp715; no later cold-composition event is accepted by this merge.",
+    "base": {
+      "commit": "2db1a838f56e5d22523dbd3f5efd78503c6c6e52",
+      "tree": "55b00634490d8601a22d5e79cc3974a1d979a529",
+      "parent": "0817f4519f3d5aa481af9ea64e848019da480b0e"
+    },
+    "acceptedRequirementSource": {
+      "commit": "c651e64226392afe884c50a6a0eff35b54a061c3",
+      "tree": "16363a5802daebed9cbb0f34ba0c493b50bbcd3a",
+      "parent": "0817f4519f3d5aa481af9ea64e848019da480b0e"
+    },
+    "merge": {
+      "commit": "e611b04f0c622a514fd8884b96c577a0ab76a299",
+      "tree": "35cb4350eaba6eac5391aae12c7d83b50122adb8",
+      "parents": [
+        "2db1a838f56e5d22523dbd3f5efd78503c6c6e52",
+        "c651e64226392afe884c50a6a0eff35b54a061c3"
+      ],
+      "strategy": "ort",
+      "conflicts": 0,
+      "manualResolutions": []
+    },
+    "importedPaths": [
+      {
+        "path": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+        "sourceBlob": "d6b58d714efd17dc8cae41ea3decc0c69b50f535",
+        "mergedBlob": "d6b58d714efd17dc8cae41ea3decc0c69b50f535",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "sourceBlob": "5133cd41510ef482f868fab9e6a0d643b2e07778",
+        "mergedBlob": "5133cd41510ef482f868fab9e6a0d643b2e07778",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md",
+        "sourceBlob": "8652cc497b88d96df18ba66f752d4fb13da898dd",
+        "mergedBlob": "8652cc497b88d96df18ba66f752d4fb13da898dd",
+        "identicalToSource": true
+      }
+    ],
+    "preservedCheckoutMaterials": [
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.json",
+        "sourceBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "mergedBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.md",
+        "sourceBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "mergedBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "identicalToSource": true
+      }
+    ],
+    "pathBoundary": "Three accepted requirement documents are disjoint from the two preservation materials. Only integration README.md and sources.json are appended afterward; no production/test/script/dist/ontology changes. Final evidence commit/tree are in the Round720 attempt report, not self-referenced here.",
+    "reusedEvidence": {
+      "sourceDocumentation": "Reuse lp717 source-document checks within unchanged c651 bytes, including all 22 requirement mappings; do not repeat its 86-link audit. Root feature stays active/in_progress.",
+      "preservation": "lp718 preservation/classification is accepted and unchanged. No repeat backup/restore/hash audit; no authority to clean or discard original contents.",
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural",
+        "scope": "Unchanged runtime inputs only; three live DSH cases remain environment-gated. No new runtime execution in Round720."
+      }
+    },
+    "remainingGates": [
+      "Later lp719 cold-composition delivery is pending separate review in this frozen batch; neither 6313 nor 1fe10c6 is merged here, and the cold-start runbook is unchanged. Existing real authority/receipt/CLOSED/capacity evidence retains its original scope; forced hygiene is not natural exit.",
+      "Original master final safe switch to the exact accepted delivery HEAD and clean handoff remain open. The delivery branch is occupied by this integration worktree; no detach or original-directory operation is authorized here.",
+      "Three unresolved installation/ZCode ontology references, ignored paths including .tmp, all other worktrees and the external preservation backup remain protected. Classification and ancestor identities are not deletion permission; integration-tree clean is not original-master clean.",
+      "Native Linux/Windows conditions, three live DSH skips and all other documented real UI/EH/CLI/platform limits remain; no overall feature completion or plan archival is claimed."
+    ]
   }
 }
