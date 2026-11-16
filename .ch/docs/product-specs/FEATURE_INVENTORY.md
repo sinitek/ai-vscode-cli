@@ -2,6 +2,41 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## 产研部三层协作模式
+
+- round-676主干累计整合交接：来源、55条完整冷恢复实体差异路径、closure和冲突决策见[整合来源清单](../integration/department-mainline-integration/sources.json)。当前分支组合标准build通过，本轮未运行单测、CLI、EH或浏览器。组长/成员人数的工作区覆盖优先于全局配置是整合开始后新增的用户要求，尚未实现或验证；真实UI-EH/CLI组合、必要异平台、冷恢复剩余门禁和分支全量回归继续开放。根feature仍active/in_progress。
+
+- 当前显示补充合同（round-675，覆盖旧图标要求）：部门总监☀️、组长🌛、员工⭐️；普通Loop/Loop+主任务🌛、子任务⭐️。沿用部门展示优先及既有main/subtask和模式判断，不按会话名称推断；无角色普通会话不加图标。原Tab名称（如Codex2）、tooltip完整层级、身份/模式及持久会话数据不迁移。部门成员树圆形头像仍固定总/组/员，28px/12px/8px gap/4px行内边距和主题、布局、各状态/导航/关闭归焦保持不变。以下旧条目及旧emoji执行证据保留原时点事实，由本条覆盖其显示要求，不追认为新emoji通过。e0ec组合已审成果继续复用，原报告后附配置操作超时outcome=failed同样保留；本后继只做新字符的标准build、既有定向测试和1440深色/280浅色显示fixture检查，标准build通过，定向14个不同用例以未变11项+夹具修复后3项覆盖，两入口双视口通过（browserErrors=[]）；原14项首轮2失败及Tabs夹具首轮超时保留，实际结果见[角色会话说明](../runbooks/department-conversation-verification.md#round-675新角色图标显示后继)。不为图标重跑真实CLI、额度EH或冷恢复；根feature仍active/in_progress，统一产品/冷恢复合入、必要异平台、实现测试完成后的远端同步合理合并与最终合并树全量回归继续开放。
+
+- 已审额度/提示/UI-EH与角色头像局部组合（round-443，2026-11-16）：根 feature 仍为 **active / in_progress**，不是最终统一产品。保留 round-436 下述生产合同及 da47 线性历史同步修复，已纳入 e613 提示与84518c专属薄harness；不再属于“提示后继尚未合入”的旧快照。84518c标准build与新增13项（5+5+3分组）通过，run4只读复核充分证明真实总监Webview请求/匹配settled、desired/revision持久保存、下次真实新attempt应用0并在全局有余额时按本组拒绝、恢复默认后再准入，以及四份原required receipts、完整CLOSED、容量归还和四worker自然退出。原run1–4命令仍failed，修正完整driver未第五次运行；run1/2清理未知，不能用run4为早期失败清理背书。本组合标准build通过，仅补来源检查，不宣称新EH通过。详见[独立来源与证据边界](../integration/department-reviewed-allocation-avatar/README.md)。
+
+- 部门成员树角色头像补充要求（round-441已审，本候选纳入）：总监固定“总”、组长固定“组”、员工固定“员”，仅由renderDepartmentRosterPanel的明确层级角色决定；总监页与组长弹窗初始HTML/contentPatch一致，空标题、同名及待创建组长不依赖标题首字或participant.role。保留总监→组长→员工嵌套、标题左侧28px圆形、12px居中字、8px gap、4px行内边距和badge主题变量；默认/hover/focus/disabled/loading/error/空状态、组长打开、员工验收定位与返回归焦沿用原结构。普通Loop/Loop+头像、消息头像、Tab原名及👴🏻👨🏻👶🏻不变。来源标准build、3项渲染和1440深色/280浅色有界浏览器通过（browserErrors=[]），仅为显示fixture证据；详见[角色头像验证手册](../runbooks/department-member-role-avatar-verification.md)。冷恢复及第二EH后继未合入，最终额度/提示/头像/冷恢复统一产品、必要平台、远端同步合理合并和最终合并树全量回归仍开放。
+
+- 逐组员工额度生产接线候选（round-436）：默认按配置 `maxLeaders` 向上取整均分（20/4 为 5），总监手动/恢复默认经当前身份及同步持久 CAS 保存 desired；下一次真实新 attempt 先持久应用，即使随后因占用拒绝。实际 held leases 含 overflow 同时受本组/部门余额约束，仅全局零余额保留每组一次未释放 overflow。额度不是预留，保存/降低不取消员工或释放原责任。旧 controller 不覆盖额度，读端不初始化，extension 已安装既有总监端口及 Loop+ 容量 reader。独立实体标准 build、9 个不同新增 store/host/composition/生产生命周期用例通过；免费模拟 CLI 证据不等于真实 EH/UI 或最终组合。11 条已审 UI 字节保持；未合入返修冷恢复及提示 Git 后继，第二 EH、平台及最终同步/合并/全量回归仍开放。详见[逐组额度设计](../design-docs/department-employee-allocation.md)。
+
+- 模式可用性设置：全局 `settings.json` 提供 `loopEnabled` / `loopPlusEnabled` / `departmentEnabled`，仅接受布尔值，缺失或非法分别按开/开/关解析。常规设置卡片提供三个开关及产研部性能警告；宿主对新建面板任务与定时任务拒绝已关闭模式，等待配置后复核。已有 Loop/部门续接与可信组长 Loop+ producer 不受开关影响。round-332 的设置面板 Chromium smoke（1280px/280px、默认值、键盘切换、保存禁用、警告与溢出）通过；部门会话 smoke 未通过，因现有角色 Tab fixture 文案不匹配（实际 `👴🏻 Codex`，fixture 期望组织总览名称）。未证明完整 VS Code 真实 CLI 派发链。
+
+- Round 234 准入收口：同一部门余额为零且该组已有未释放超额时，不同新 attempt 在权威池同一同步授予边界明确拒绝，不留新 waiter；adapter 将明确部门拒绝作为未启动的 failed finish 送入 Loop+ 验收，不创建执行 root/tab/worker。原 held/pending 身份幂等、冲突拒绝、普通等待 API、取消及迟到复核保持；原超额尚在但余额回正时可取得常规名额，既有超额标记不提前归还。实体副本标准 build、新容量 5 项、等待兼容 9 项及定向宿主 9 项通过；宿主具名场景使用隔离受控存储和真实 pool/host/adapter，底层执行仍是确定性夹具，不代表真实原生资源、生产全树停止恢复、冷恢复、其它 CLI 或跨平台根验收。契约与命令见[部门 Loop+ 回归契约](../design-docs/department-loopplus-regression-contracts.md)。
+
+- 状态：**开发中**（2026-11-14 事实同步）。总监→真实 Loop+ 组长→员工；默认同时 4 名组长、全部门共享常规 20 名员工，零余额每组最多一个未释放超额。组织/容量、实时提示、角色配置门禁、根统一验收继承、总监中转协作、组长弹窗完整操作栏与生产归属索引已有独立模块。隔离 VS Code Extension Host 已由生产任务/会话存储恢复总监、两个同名模块组长、员工及普通会话，验证真实面板投影、完整 tooltip、模式和基本键盘切换。原会话名、编号、重命名及持久化值保持不变，仅前置 👴🏻/👨🏻/👶🏻 装饰。
+
+- 真实弹窗与窄面：round-121 修复 VS Code shell 至所属 `active-frame` 的精确同源来源识别，普通内容更新与 modal 内容共用判定；opaque child 的 source/origin/channel/task/instance 校验及宿主归属授权未放宽。隔离标准 build、同次产物 87 项回归及 macOS 深色真实 EH 通过：精确组长 sandbox srcdoc、该 completed 历史状态适用的完整操作栏（不适用操作仍隐藏）、单次 load/close 且无 stop/cancel、原入口焦点及非零阅读位置 120→120、完整可见实际 275px Webview 的 tooltip/无溢出；正常 exit 0，无残留进程或 owner marker。证据 `/tmp/sinitek-dept-conversation-J6j2qa/report.json`；主模型复看截图及新增只读 UI 静态扫描无发现，本轮文档同步不重跑。round-117 与 round-121 中间失败及强制回收仍属失败；旧深浅主题/窄屏浏览器夹具保持原边界，不代表跨主题真实 EH 或运行态工具栏。验证入口见[产研部会话验证手册](../runbooks/department-conversation-verification.md)，设计见[部门模式](../design-docs/department-mode.md)。
+
+- 独立进程 Owner：**开发中**（2026-11-14）。仅既有 process 策略的 OpenCode 员工 attempt（首次原生会话及已有原生绑定） 接通可信准备、worker 自持配置执行租约、生产仓储确认 executionSession、首次 bindExecution 后才 launch，以及有界输出回到既有解析/会话端口。准备/commit 后及 start 在途的私有 grant 前复核授权与持久绑定，adapter AbortSignal 或待启动 stream.kill 可在任务记录不变时撤销准备；grant 发出是启动/取消线性化点，迟到 ACK 不复活。重入只观察原绑定，已授权后 EH 断开不取消原执行；暂拒自定义思考工作区文件，Owner 模式不发起自动压缩。round-239 后该 process 员工路径已接真实 child close/drain、配置租约/overlay 与原 EH tab 消费者关闭回读；精确原 receipt 可进入混合员工集合观察，缺能力/失败仍 unknown 并保留占用。OpenCode leader 的首次准备及 tab-isolated parallel consumer 已另行接线，但完整真实 OpenCode 生产树、整组容量及冷恢复仍待验收。范围和验证限制见[进程启动设计](../design-docs/department-process-production-bootstrap.md)。 round-237：Ledger 责任先落盘；固定 worker 持原配置租约，以自有认证 loopback server 的无 prompt POST/GET 创建/核验唯一原生 ID，真实关闭排空后可信 builder 重建 argv，EH 两次持久回读后才一次 grant。准备/首次 ID 记录保留以拒绝失联替代重跑；新增协议夹具不等于真实模型/EH/UI 验收。本机 OpenCode 1.19.5 无模型创建/核验协议已核对。
+
+- Codex 可信 Owner launcher：round-122 复用 `CodexOwnedExecution` 与 `TrustedExecutionLauncher`，实现可信一次快照、最多 256 项不淘汰注册、新建/精确 resume、可信持久确认与 Owner 绑定双层门闩；`kind=both`，streams 同时要求物理排空和 executionDrain，实际附加资源逐项释放，失败/缺能力保持未知。隔离标准 build、33 项新增组合与 4 项 Owner 定向回归通过；受控普通 Node Owner 在启动 client 退出后仍持有原执行。这是模拟 NDJSON 与测试资源组合，尚非生产 bootstrap、首次生产绑定、真实 Codex EOF 或生产 session/tab 释放证明；共享观察仍不能据此取得专属排空能力。详见[Codex launcher 专题](../design-docs/department-codex-execution-launcher.md)及[Owner 主设计](../design-docs/department-execution-owner.md)。
+
+- 组长执行集合与清理聚合基础库已验收：按 root/workspace/leader/module/generation 精确登记组长协调执行及该代全部员工 attempt 责任，首次原生准备前落盘；组织 binding 目标包含精确员工 attemptId，使同一 subtask 的多个 attempt 分别保留完整 immutable binding；同 attempt 身份/策略替换仍拒绝。Owner slot fencing、identity v1 与 receipt index 不变，也不授权同 Owner 同代重复启动。未绑定、准备失败、unsupported 或责任不明仍保留 null/unknown，不伪造身份。可信 producer 须关闭全部准入及迟到启动授权并排空在途责任，再持久封闭；库本身不提供默认 producer，生产专用装配另见下条；completed、idle、空 Map 或普通 Promise 不证明完整。仅当前代、含组长且逐项精确绑定的已封闭完整集合可验证 selection、串行等待原 Owner 凭证，并在结束后 cold reread 身份、策略及 closure fingerprint；同 subtask 的旧 attempt 仍 live/unknown 也阻止成功。缺失、错误、unknown/conflict、取消或变化均不成功，不启动替代 Owner、不直接读磁盘 cleaned、不释放资源/容量。基础测试使用真实临时 Store 与独立普通 Node Owner 分别验证完整 attempt 聚合及旧 attempt live 阻塞；该基础库证据的 producer 仍是受控测试能力。详见[执行集合专题](../design-docs/department-leader-execution-cleanup.md)和[Owner 合同](../design-docs/department-execution-owner.md)。
+
+- 员工生产准入接线（开发中）：OpenCode/Codex 两条准备链已通过可信宿主注入能力复用 `Ledger.admit`，在配置 builder/原生准备前固定 selection 与 requirements 并登记责任；首次 session 持久化后通过 admit.bind 原子写入完整 binding/责任引用并精确回读，commit/最终复核及一次性 grant 均在同次准入内。缺能力在 builder 前拒绝，不回退旧绑定；失败和取消留责、同 subtask 多 attempt 独立保留。固定免费 Node/CLI 与测试 producer 只证明注入接线，详见[员工准入专题](../design-docs/department-employee-execution-admission.md)。
+- Codex 组长原生 Owner 端口（开发中）：可信宿主在 Ledger.admit 准备前登记组长责任，原生 session 持久化/原子 binding/原 Owner 绑定后逐轮一次性 grant；同一代次和 thread 上串行组合多个不可变 CodexOwnedExecution，完整物理及消费者排空后才准入下一轮。重复调用幂等、冲突/未知不重放，显式封闭阻止迟到授权；已授权调用跨启动宿主退出存活。该端口已由真实生产 producer/Loop+ runMain 装配；Codex 资源释放见下条，无能力仍 required/unobservable，不生成 cleaned；详见[组长原生 Owner 专题](../design-docs/department-leader-native-owner.md)。
+- 生产 producer / Loop+ 装配（开发中）：extension 真实 CREATE 凭据及组长容量/成员落盘后、scheduler 首次 pump 前开启精确执行集合；同一 producer 注入原生组长多轮端口和两条员工 admission。真实 main 使用原交互消费者/运行记录和固定独立 Owner，首次原生 thread 保存到独立 executionSession，原子 binding/原 Owner 确认后授权；后续只 resume 原 thread。真实 scheduler 停止新增调用、stop 或 EH 退出先同步封闭所有最终 grant，再等原 native drain 和原始准备/消费者责任。关闭身份回验与启动权限分离，取消/迟到准备不能复活，原生错误一次暂停不自动重放。生产 producer、仓储、组合入口、scheduler/adapter、临时 Store 和免费模拟 CLI 的隔离集成证据不等于真实模型或 EH/UI 验收；OpenCode 首次 session 已补独立准备与持久绑定，已有 binding 仍只观察；员工 process 资源桥与 leader parallel consumer 已接线，未知或缺能力的 required 项保持 unobservable，不生成 cleaned 或归还容量。Codex 资源释放与组长整组容量消费分别见后两条。详见[生产接线专题](../design-docs/department-production-execution-wiring.md)。
+- Codex 生产资源释放（开发中，round-228）：已装配员工及同 thread 多轮组长复用专属执行的真实 close、自然 pipe/readLoop、原 thread/execution lease 和消费者排空事实确认 runner/session 附加释放，保留可恢复历史。extension 在真实目标创建时登记精确不可序列化 tab 能力；原固定 worker 私有请求绑定完整身份/代次/序号，宿主等原交互消费结算，核对原 binding/对象/session 后调用实际 tab 关闭并回读，由原 Owner 按原 required 策略生成 receipt。挂起责任、失败、身份变化、EH 断连及错误确认不成功，未知不淘汰、不重放；公开 IPC 不扩权。受控生产组合及隔离安装版 EH 实际 tab 端口证据不代表真实 Codex 模型或完整 UI。已有员工 receipt 消费者仅可归还该员工租约，不新增组长/整组容量消费。详见[员工启动专题](../design-docs/department-codex-production-bootstrap.md)和[组长原生 Owner 专题](../design-docs/department-leader-native-owner.md)。
+- Codex 生产整组容量消费（开发中，round-231）：extension 实际装配唯一 producer 的封闭集合聚合；原 client 仅经原 socket 严格校验的完成观察可跨该 Owner 退出复用，禁止磁盘凭证补成功。正常结束及 stop 均先封闭最终 grant/排空责任、逐项核对全部原 receipt 和当前选择、最终冷重读，再持久移除租约并释放原组长容量。成功组回收有界宿主引用，未知/失败/缺历史责任/取消不提前归还。round-231 原始验收限定 Codex 组长/Codex 员工、同宿主从首次准备完整覆盖的新代；后续已接 Codex 组长的 Codex/OpenCode 混合员工观察及受控 OpenCode leader host，仍按原 client、完整 binding/closure 与最终冷读门禁，不等于真实 OpenCode 整树容量验收。旧代/未覆盖身份仍拒绝。详见[整组清理专题](../design-docs/department-leader-execution-cleanup.md)。
+- 根级门禁不变：生产 producer、Codex 组长真实 Loop+、既有员工 preparation 及受限整组清理路径已有受控集成证据。round-357 关闭 `continueDepartmentPrompt` 路由准备首个 await 前的停止撤销窗口；20 个 composition 用例分批通过。round-359 后继 session/Owner binding 冲突的公开 stop→continue 失败作为历史保留；round-366 后续公开 EH 已完整通过 Codex 续接、六原 Owner receipt、三代 CLOSED、容量持久归还、总监再派发及最终汇报。round-375 另通过三角色全 OpenCode 默认模型公开新建场景。round-400 后续 OpenCode 连续公开执行实际到达两次 stop/continue、A→B→C、8 Owner/4 CLOSED、C 验收、第二模块与总监汇报；但原 driver report 仍 failed，3 项修正后只读离线审计通过不是新的整次 EH 通过，并发 observer 最终源码与该 EH 快照不同。Codex 与 OpenCode 的这些限定证据均不证明冷恢复、所有平台或合并后全量回归。[整树控制说明](../design-docs/department-production-tree-control-verification.md)和[根 feature 计划](../exec-plans/active/2026-11-13-feature-department-mode.md)。
+
+- 2026-11-15 当前主审范围：生产来源已由 extension 的 createDepartmentProductionTaskStore 装配 Controller/Repository、identity catalog 与普通 store router；受控写入、保留/删除、墓碑保护及跨进程通信保留有分批执行事实。round-101/102 整项失败历史保留，round-100 接口/关闭屏障、round-103 正常激活退出及 round-351 真实存储协作/删除和 authority 后继 runtime 回归已接受。未支持的 import/restore/legacy 或外部写者须写前拒绝/撤销，不将旧 lifecycle host 拒绝当作生产未装配；未知来源交接、损坏恢复与真实冷宿主仍需精确验证。round-350 真实 Codex 0.167.2/安装版 EH 新建、round-366 Codex 公开 stop→continue、round-369 混合新建、round-372 默认模型混合新建及 round-375 三角色全 OpenCode 默认模型公开新建分别按其限定快照通过；均使用本机确定性 provider，不扩大为所有 CLI/平台。round-376 managed-main 工具交互是 headless 生产 one-shot host 与安装版 OpenCode 的独立证据，不是新公开 EH 或 Department Owner/容量证明。原 Owner finalizing/员工根能力的接受范围见 round-372 条目；各需求覆盖、历史失败后继和剩余门禁见[逐项覆盖表](../runbooks/department-acceptance-coverage.md)。
+- 冷宿主执行恢复（仍为 fail-closed 边界）：可信 `DepartmentExecutionRecovery` 可按完整持久 binding、原 Owner socket 与固定 selection 对 Codex/OpenCode employee 作只读观察；unknown、配置变化或 Owner 不可达保持容量并阻塞，不重放。round-410 已接受只读持久 leader identity reader 与唯一 macOS 全 Codex cold 安全拒绝场景：公开 stop 精确命中 `live-leader-unverifiable`，完整四阶段身份/责任/保留容量对照通过且无新 grant/request；原 endpoint unknown/unreachable、employee 仍 live、责任仍 open 并保留容量。该证据不授权恢复接管、Owner 清理、CLOSED 或容量释放。round-405 `invalid-recovery` 与 round-408 `unverified-leader-session-or-plan` 及其缺失对照仍是各自历史结果；它们不被合并或改写。详见[冷恢复边界](../design-docs/department-production-tree-control-verification.md#round-326冷宿主恢复边界)。
 ## Loop+ 提交与派发交接契约
 
 - 状态：`active`（2026-11-16，源码修复、公共契约及 macOS 约定范围已验收；见[已归档修复计划](../exec-plans/completed/2026-11/2026-11-16-bugfix-loop-handoff-contracts.md)）。任务写入正常返回即原子提交成功，写入/rename 失败抛错，缺失更新 null 同样拒绝交接。展示刷新异常不撤销提交。
@@ -28,6 +63,7 @@
 
 - 状态：`active`（2026-11-15，源码实现）。Loop+ 群聊继续入口按主模型调用忙闲展示和执行，后台控制器仍可等待子任务；继续文本与对话输入一样进入 `userMessageQueue`，由现有调度器唤醒主模型。切模型先更新路由和思考力度再排队继续，确实重启中断子任务时保留其原 attempt；没有可恢复子任务时唤醒主模型。真实主模型忙时不重复启动，完成、无效快照及主模型失败上限仍阻止继续；无控制器时显式重建调度快照。经典 Loop 保持所有权保护。
 - 实现：`src/loopGroupChat.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。回归覆盖面板入口、真实 adapter 和磁盘任务存储，断言继续/切模型确实调用主模型、切模型使用新路由且活动子任务不被中断。
+
 
 ## Loop+ 协议矛盾自动纠错
 
@@ -722,3 +758,80 @@ Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；
 `blocked` 答复用简体中文说明当前结论、阻塞原因及未完成事项，列出恢复前必须解决的条件、责任方、具体动作与确认方式；模型能自行处理的工作不推给用户。确实无法完成时说明不可满足的要求和原因，给出替代方案或明确没有可行路径，不再无条件提示点击继续。信息不足时如实说明，空原因提示向主模型索取说明，不编造原因。经典 Loop 主聊天显示实际原因并移除本轮原始阻塞 JSON；Loop+ 主聊天与暂停记录使用同一说明，群聊中断摘要不再暗示所有阻塞都能继续。任务状态、验收门槛和有界复核不变。
 
 实现：`src/loopBlockedSummary.ts`、`src/panelStateBuilder.ts`、`src/loopPlusPause.ts`、`src/loopFinalSummary.ts`、两种模式的主模型提示构建器与编排入口；回归：`src/test/loop/loopBlockedSummary.test.ts`、`src/test/loop/loopPlusPause.test.ts` 及相关提示、状态机、编排测试。
+
+## 2026-11-14 产研部执行清理证明
+
+部门员工执行的业务结果与清理完成是独立事实。只有可信 runner 终止观察成功、隔离执行目录清理有明确成功结果且必需的 Tab 收尾成功后，员工和超额容量才释放；任何观察缺失、清理拒绝或持久化失败都保留占用并阻塞该组长的新派发。隔离目录身份变化、未知内容与链接清理失败继续保留现场，不递归强删。普通 Loop/Loop+ 的无部门清理兼容既有行为。此条仅记录清理边界，不代表产研部生产入口或跨进程恢复已完成。
+
+Round 105 增加真实 runner 的部分事实端口：CLI handle 可观察 child close、全部自有 stdio 排空及 OpenCode overlay 明确清理结果；child error 不提前清理仍可能在使用的 overlay。Codex NDJSON 自然消费排空与主动 close 分开，pool 可核对自有 thread 卸载且保留其它 listener；共享 reader 仍活动时不伪造完整排空。Owner 客户端 live 观察按 250ms 起逐次倍增、上限 5s 的串行节奏等待，取消不代表执行结束。后续 round-117 已补受限 OpenCode 员工生产 launcher 与持久绑定，round-122 已补 Codex 专属可信 launcher 的受控组合；后者的生产 bootstrap/首次绑定尚未验收，完整生产资源 receipt、整组聚合、容量消费及跨 Extension Host 冷恢复仍未完成，不能混同共享观察与专属执行能力。事实来源：`src/cli/processLifecycle.ts`、`src/cli/commandRunner.ts`、`src/cli/opencoderuntimeconfig.ts`、`src/interactive/codexAppServerNdjson.ts`、`src/interactive/codexAppServerPool.ts`、`src/runtime/departmentcodexexecutionlauncher.ts`、[Owner 主设计](../design-docs/department-execution-owner.md)。
+
+## 2026-11-14 产研部受控来源生产装配
+
+Round 106 提供 append-only 完整执行绑定存储与无凭据角色选择投影，生产员工恢复只读消费者按 exact binding 查询原 Owner；缺绑定、配置版本冲突或不可达保持未知，不启动替代执行。组长生产门禁缺整组清理证明时保留租约并阻塞，不能因业务结束、idle 或停止请求释放。Codex pool 修复 exit 清空 loadedThreads 被误当原生卸载的竞态，此路径等待真实 close。首次绑定已在 round-117 受限 OpenCode 员工路径接通；round-122 Codex launcher 的双层门闩仅经受控组合验证，尚非生产首次绑定。后续执行集合/receipt 聚合基础库已验收，生产接线、完整生产 turn/root/tab 清理及恢复仍未完成。固定 Node fixture 不作为真实 CLI/冷重启通过。事实来源：`src/extensionHost/departmentexecutionrecovery.ts`、`src/extensionHost/departmentruntimestore.ts`、`src/extensionHost/departmentorchestration.ts`、`src/extension.ts`、[Owner 主设计](../design-docs/department-execution-owner.md)。
+
+产研部仍为**开发中**。中央 activate 已装配专用 owner 来源与 repository，总监/真实 Loop+ 组长的完整固化记录一次事务首次落盘；员工仍复用 attempt。公共修改、append、会话 rebind、删除及保留期走 owner 路由，普通 writer 在写前拒绝受控根和已登记部门 ID。普通/部门身份目录与 owner 索引同步发布；受控完整读取保留过期记录用于关系校验，公开读取隐藏过期项，清理不能孤立有效组长。关闭撤销实际同步写者入口并等待 controller/barrier；未知 marker/锁、事务错误或未核验外部变更保持拒绝，不按 PID 或时间接管。组合单测不替代真实 VS Code/CLI、跨版本写者协调和冷重启；身份目录生产恢复管理入口及运行中执行 owner 交接仍待集成。未修改界面。
+
+## 2026-11-14 OpenCode 员工 Owner 资源释放与组容量观察
+
+round 239 将既有 OpenCode employee process Owner 的资源释放接入原 lifecycle：runner 只在真实 child close 与 stdout/stderr 排空后释放 worker 配置执行租约；temp 只合并核心 overlay 与其它临时资源，保留首个失败。原 EH tab capability 通过身份绑定的私有事件等待原消费者完成、核对对象仍由该 attempt 持有、实际关闭并回读消失。原生 OpenCode session 和历史保留。生产 process preparation 保存原 OwnerClient；已有 group aggregator 允许 Codex 组长集合包含 Codex/OpenCode 员工 binding，并对完整封闭集合逐项验证原 receipt、selection/binding 和最终冷读，容量持久移除成功后才由原 orchestration 释放占用。任一能力缺失、失败、断连或持久化失败仍保持 unknown 并占用额度。新增检查覆盖生产 process bootstrap 的真实受控 child close/drain、正确绑定/输出、缺失 tab 回执不生成 cleaned，以及 tab host 等待 consumer 并回读关闭；但没有覆盖 OpenCode 全资源成功释放到混合组容量归还的完整生产 EH/CLI 场景，Linux/Windows 也尚未验收，功能保持开发中。事实来源：`src/runtime/departmentprocessownerworker.ts`、`src/extensionHost/departmentprocessbootstrap.ts`、`src/extensionHost/departmentprocesspreparation.ts`、`src/extensionHost/departmentexecutionresources.ts`、`src/extensionHost/departmentproductioncleanup.ts`、`src/extensionHost/departmentorchestration.ts`。
+
+Round 102 存储保留修复：普通通信清理在共享 writer gate 中读取持久部门身份（含删除墓碑），无 source 的另一宿主也保留其通信；catalog 缺失、锁定、损坏或未提交时跳过删除。ready catalog 旁的普通过期孤立通信继续按保留期清理。仓储改一次当前批量身份核验，保留重复贡献、来源代次撤销与冲突拒绝。当时 macOS / VS Code 1.144.0 隔离 Extension Host 已实测自动 `onStartupFinished` 激活、专用 marker/ready catalog 指向隔离 HOME，deactivation 释放 owner；该历史运行独立主进程未自行退出，完整 smoke 仍记失败。后续 round-103 激活及 round-121 会话/弹窗场景已有各自正常退出证据，不追改旧失败；round-121 展示范围见本文件首节与验证 runbook。整体仍开发中，真实 CLI、跨平台、冷重启和未知写者交接未通过。
+
+## 2026-11-15 产研部关闭期间的原代回调与继续证明
+
+已获 grant 的 Codex 组长原代回调在 closing 期间仅凭同代只读 observation scope 和原 Leader 对象完成原消费者 ack；新授权、构建及 session binding 仍遵守强 `canLaunch` 门禁。旧 generation 被 successor 取代后，原 observation scope 拒绝且不能取得新消费者。完整 Owner 清理、CLOSED 集合、持久容量归还及身份核验成功后，可继续任务持有一次性内存 proof；打开 successor 消费 proof，completed 任务立即不保留 proof。未知/失败责任不会被驱逐。真实 EH/Codex、冷恢复及 Windows/Linux 仍未由固定协议生产 fixture 覆盖。实现与回归：`src/extensionHost/departmentleaderproductionhost.ts`、`src/extensionHost/departmentexecutionproducer.ts`、`src/test/extensionHost/departmenttreecontrolintegration.test.ts`、`src/test/extensionHost/departmentgroupcapacity.test.ts`。
+
+## 2026-11-15 OpenCode 组长生产 Owner 首次绑定
+
+组长 OpenCode 的进程型生产入口现已沿既有 Loop+ leader stream 接入固定 generation Owner。可信 host 在 Ledger 登记责任后取得固化配置 revision，在本次隔离的认证 loopback server 上无任务 prompt 创建并核验原生 `ses_`，将精确 session 写入 task 并回读，再完成 Store 原子 binding 与读回，之后才由原 Owner 获取逐轮 grant。重复轮次复用同一个 Owner/session；输出回到既有 OpenCode 按 tab 隔离的 parallel parser/consumer，任务 tab 使用稳定本地 identity 映射原生 session；并行组长各自持有输出、进程与完成状态，单独停止不覆盖其它组长（round-351 受控交错输出/取消回归，非真实 CLI/EH 证据）。取消、权威变化、持久化冲突和 Owner 观察未知继续 fail closed，不创建替代 Owner。
+
+新增生产 host 集成使用真实 producer、受控任务仓储唯一写者、Ledger、原子 Store、配置租约、Node worker/子进程，以及受控免费 CLI session server 和 tab host，验证首次责任/session/binding 持久读回先于 run、同 session 多轮、取消/撤权/配置冲突拒绝、失联及 tab 失败保留责任、停止后原输出排空与禁止后续授权。组清理只消费原 bootstrap 的 receipt＋stopped 双确认，完整 CLOSED 集合/原 client/policy/最终冷读通过才完成聚合；容量持久移除及归还仍沿原 orchestration，不由本 host 提前归还。新增测试覆盖上述原凭证聚合，不证明完整 OpenCode 组长调度树容量归还。原生历史和绑定均保留，失败准备不得换 Owner 重试。既有 Loop+ runDepartmentMain 注入端口已准入 OpenCode，定向组件测试覆盖同 session 双轮及 adapter abort→原生准备取消；adapter/scheduler 契约及共享夹具不变。生产入口暂拒绝配置命令前缀参数和自定义思考工作区文件。未覆盖真实 OpenCode 二进制/模型、完整 VS Code EH、冷重启和 Windows/Linux；功能仍为开发中，不能据此宣称根任务生产验收完成。事实来源：`src/extensionHost/departmentleaderproductionhost.ts`、`src/extensionHost/departmentexecutionproducer.ts`、`src/runtime/departmentopencodesessionpreparation.ts`、`src/runtime/departmentleaderprocessownerworker.ts`、`src/test/extensionHost/departmentleaderproductionhost.test.ts`。
+
+
+## 2026-11-15 产研部显式修复交付结算（round-364）
+
+组长组织完成现在区分会话续用与已验收需求修复。只有生产 host 成功提交当前 failed review 并派发其明确关联的新子任务，才保存精确源 subtask/attempt/finish event 的 `repairSource`；仅 `continueFromSubtaskId` 不足以替代失败交付。历史 failed/stopped 保留，全部精确修复链最新 reviewed/completed/passed、非空通过的最终需求覆盖及 scheduler/开放工作门禁共同决定组织成员完成。错误、缺失、重复、循环、来源新失败和后继未通过仍拒绝。普通同子任务重试与无失败完成兼容。该判断不替代完整原 Owner receipt、CLOSED 集合或真实容量持久归还。
+
+事实来源：`src/loopPlusCompletion.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopTaskStore.ts` 及 [产研部公开 EH runbook](../runbooks/department-full-eh-integration.md)。本轮实际验证与剩余门禁以该 runbook 的 round-364 记录及指定 attempt 报告为准；未改变 UI。
+
+
+## 2026-11-15 产研部续接协调生命周期（round-366）
+
+新建和显式继续的组长统一按真实代次结算通知总监，通知幂等且保留 blocked/未知状态；停止后的迟到结果不能复活组织。继续持有独立请求责任，等待旧总监循环及其 ownership 释放后再移交给新循环，模型调用期间的 wake 不丢失，同根无并行总监循环。首次真实会话绑定三方读回一致才接受，已绑定会话变化继续拒绝。清理与容量门禁、repairSource 及历史失败语义不变，未改 UI；真实 stop-continue 结果见[专属 runbook](../runbooks/department-full-eh-integration.md)。OpenCode 原会话跨代续接/冷恢复、必要平台及 Git 合并后全量回归仍独立开放。
+
+## 2026-11-15 OpenCode 组长限定混合公开验证（round-369）
+
+产研部仍为**开发中**。round-369 时 OpenCode 组长以每代唯一 canonical 隔离根核对准备/原生 session 的 directory，原宿主持 root capability，完整原 receipt/stopped 才能进入整组聚合；当时旧 session 跨代目录不匹配和冷恢复会拒绝。round-378 后已另有一次受控同宿主移动及公开 stop→continue 场景执行证据。round-382 已接受连续续接 A→B→C 链与自身重试来源识别修复（实体标准 build、26 个不同定向用例、代码合同主审）；没有连续公开 EH，详见本条 round-382 续接修复记录。已接受 OpenCode 1.19.5 同 Owner/session 双轮自然排空证据，范围原为受控 tab/native CLI。
+
+本轮新增公开验证器 `--leader-cli opencode`，仅验证 Codex 总监 → OpenCode 组长 → Codex 员工的新建组合；Codex 默认新建和 stop-continue 行为保留。macOS 安装版 VS Code/Codex/OpenCode、免费 loopback 双协议下，真实工具设置/角色明确模型/根统一方案/发送、两模块事件验收、四原 Owner 完整 required receipt、两个 CLOSED 全集、持久容量归还后合法下一模块实际执行与总监最终汇报已通过。默认 OpenCode 模型 null 的首份失败仍保留，未放宽选择/清理门禁。证据与版本见[专属 runbook](../runbooks/department-full-eh-integration.md#opencode-组长的限定混合公开场景round-369)。默认模型接线已由 round-372 限定修复；round-375 后继已接受三角色全 OpenCode 默认模型公开新建，两模块/四原 Owner/两 CLOSED/容量归还后再派发/总监汇报均在其报告限定场景成立。跨代/冷恢复、必要平台及 Git 同步合理合并/合并后全量回归仍开放；未改产品 UI 外观。
+
+
+## 2026-11-15 产研部 OpenCode 默认模型执行快照（round-372）
+
+持久偏好及面板的 `model:null` 继续表示所选 CLI 档案的默认；仅新根可信宿主解析将三角色 OpenCode 默认固化为同 CLI/configId 的具体有效模型，显式模型及 Codex 默认不变。候选按确切档案校验模型、变体和力度，并以不含配置正文的读取修订标记核对两次读取；每次 OpenCode 档案读取前后核对共享选择修订，等待后复核工作区/目标 tab/会话、模型选择、heartbeat 与保存屏障。内容、配置修订、偏好或作用域漂移拒绝，不将新的默认静默用于已解析请求。执行快照进入 root 后不再跟随配置默认变化；selection、argv/overlay、binding 和原 Owner 清理继续核对具体相同模型，不重写旧任务、不认领未知 Owner。缺失/非法默认、错档案及不适用变体/力度仍拒绝。读取修订不进入执行快照，也不授予执行或清理权限。
+
+真实公开默认模型限定组合（Codex 总监/OpenCode 组长/Codex 员工）已通过：UI 保存偏好仍 null；新根、组长、原 Owner 均固化 `isolated/native-drain`；两模块事件验收、统一方案、四原 client 完整 required receipt、两个 CLOSED 全集、容量持久归还后实际再派发及总监最终汇报成立。OpenCode 总监/员工默认有直接宿主接线回归；截至 round-372 尚未验证全角色 EH，该缺口由 round-375 三角色全 OpenCode 默认模型公开新建场景后继关闭。round-372 的 OpenCode 员工 root capability 修复及共享 Owner `finalizing` 只读观察均已由主审接受：根能力先于 realpath/assert 捕获且异常沿原 dispose 收尾，清理失败保留根/配置租约/责任容量；`finalizing` 协议 v1 严格为 status/identity/claimGeneration、无 receipt，仅原 Owner 在 terminal/drain 已核验且原 cleanup 进行中、内存与持久 live identity/revision/claim/requirements 一致时可返回。原 client 沿用 live/finalizing 退避，unknown/conflict/失联/坏证据拒绝；该状态不缓存、不释放、不 spawn、不推进 handoff claim，close 保留锁；员工 done 仍需完整 receipt 与 stopped。证据为 Owner/facade 27 项及未变 client/verifier 17 项分批结果，不是一次 44 项运行。历史 round-369 首次默认路径失败与 round-366/369 已验收事实保留。OpenCode 员工真实原生目录/排空/完整 receipt＋stopped 已有 round-369 独立证据；round-372 根能力捕获、finalizing 与默认模型修复均已接受。新全角色公开 EH 尚待主审是 round-372 时点的历史状态，现由 round-375 限定新建场景关闭；跨代目录交接、冷恢复、必要平台及最终 Git 同步合理合并/合并后全量回归仍开放。已有 round-121 真实弹窗/275px/焦点和非零滚动恢复、动态主题及 round-338 深浅主题 tab 证据按未变范围复用，不笼统重开主题/窄屏门禁；远程付费模型质量不是额外用户要求。详见[运行手册](../runbooks/department-full-eh-integration.md#opencode-默认模型公开路径修复round-372)和[执行 Owner 设计](../design-docs/department-execution-owner.md)。
+
+部门根/员工 capability capture 的接受证据见父任务 `department-employee-root-capability-capture-repair` 报告；它只证明首次真实目录核验前保留原 assert/dispose 能力及失败时沿原 disposer 处理，不证明整组容量或全角色目录生命周期。
+
+## 2026-11-15 产研部 OpenCode 全角色默认新建与 managed-main 交互（round-375/376）
+
+round-375 最终标准构建、137 个不同用例和三角色全 OpenCode 默认模型公开新建 EH 的具体执行结果已由后继主审接受：两模块事件验收、四原 Owner 完整 required receipt、员工 stopped、两个精确 CLOSED 全集、首次 grant 前持久身份与 binding 回读、容量持久归还后第二次实际派发及总监最终汇报均通过。round-375 整项 attempt 当时的 failed 结论保留；具体最终 EH 事实不把此前失败改写为通过。模型响应来自本机确定性 Responses fixture，不证明远程模型质量、跨代续接或跨平台。
+
+round-376 最终实体标准构建与 72 个不同用例通过；安装版 OpenCode 1.19.5 的 headless 生产 one-shot host、preparer/template/helper/monitor 完成真实工具交互。沿用原 `--auto` 语义，仅对精确当前请求及经核验子会话的 ask 回复 once；保留显式 deny，拒绝 question/plan。真实关联父活动可解除启动 60 秒限制；没有活动仍超时，总预算 120 秒。agent 双写法正确传递并核验，model/variant 优先级不变，API 无法表达的参数明确拒绝；事件/关联表有界，最终答复来自原同步响应完整核验，没有 DB 历史拼接或决策重放。配置 attach、非 main 与独立 Owner stream 未被此分支替换。该证据不是新公开 EH 或 Department Owner/容量证明，详见 round-376 子任务报告及[逐项覆盖表](../runbooks/department-acceptance-coverage.md)。
+
+## 2026-11-15 产研部 OpenCode 原会话公开续接（round-378）
+
+真实 macOS 安装版 VS Code EH 与 OpenCode 1.19.5 的全角色默认模型 stop→continue 场景，其最终执行报告通过：原组长/员工 `ses_ID` 保持，新代采用独立 Owner/root；六份原 Owner 完整 required receipt、员工 stopped、三个精确 CLOSED、首次 grant 前任务/binding 持久回读、容量持久归还后实际第二派发及总监最终汇报均成立。原 session move API 返回 204 后 GET 冷读同 ID/新 canonical directory；跨组长代次检查完整组闭包，同代员工检查精确原 attempt。免费隔离本机 provider 不证明远程模型质量或跨平台。
+
+round-378 整项交付未通过主审的历史保留：永久 reservation 阻断 A→B→C，且新 attempt 会误判当前 open 为最新移动来源。round-382 后继修复已接受，覆盖最多 256 项精确来源/目标链头，逐次核对完整 identity、原 client、binding/selection、canonical directory、required receipt、stopped 和持久员工容量移除；未知目标、竞争、迟到能力及来源变化拒绝。自身恢复只排除当前精确 running/open target；leader 跨代仍须整组 CLOSED 与容量归还，同代员工不增整组屏障。证据限隔离实体 build 与 26 个不同定向用例，未运行连续公开 EH。round-382 冷启动 EH 在公开 UI 发送前因 Playwright 缺失失败，没有任务、binding、Owner 或第二 EH 观察；冷宿主 running leader provenance/完整聚合、必要平台和最终合并回归仍开放。
+
+## 2026-11-16 OpenCode 连续公开执行与 observer 冷场景边界（round-400）
+
+`department-successive-full-eh-integration` 的 macOS 安装版 OpenCode 1.19.5 同宿主执行实际完成两次公开 stop/continue、A→B→C、8 个唯一原 Owner、4 个精确 CLOSED、C 验收、第二模块与总监最终汇报；原完整 driver 机器报告仍是 `failed`，末端聚合器误用员工专属 IPC 字段核验组长。按原报告、协议、receipt 与只读 native DB 作出的修正后离线 mixed/successive/native 审计 3 项通过，不能冒充当前完整 driver 单次 `passed`。EH 运行快照也早于并发 passive observer 最终源码，不能将两份代码闭包合并为同次已验证。
+
+`department-passive-ack-observer-repair` 最终隔离 build 与10/10定向 IPC 测试通过，证明 test fixture 保留原 fork/send receiver、返回与 callback，真正 grant 才读回，普通 callback ACK 跳过，观察诊断失败时原 send 仍只调用一次。round-400 cold EH 仅到员工 binding、原 Owner live、首 EH 正常退出及退出后 binding/容量保持；第二 EH target discovery 超时并强制回收。round-403 cold 整体仍 failed。round-405 生产 API observer 使用真实 root 面板关联，实体标准 build 与11个不同定向用例通过，唯一 cold 确认公开 stop 消息送达，warning 为 `invalid-recovery`。round-408 冷 stop 先经原 `prepareRoutes`、异步后重核身份的修复经实体标准 build 与33个不同定向 composition 用例通过；唯一 cold 再确认 stop 送达，但 warning 为 `unverified-leader-session-or-plan`，不是目标 `live-leader-unverifiable`，整体仍 failed。CDP confirmed 后第二 EH 自行 exit 1、`forcedTeardown=false`，实际覆盖 `settleColdPublicControl` 失败等待分支；完整 afterControl、四阶段身份和无新 grant/request 对照仍缺，不能合并不同快照称冷恢复通过。源码/只读诊断指向 `inspectLeaderSession` 冷 tab/session 关联边界，未直接观察实际私有 tab 分支；身份修复待审是 round-408 执行时点的历史状态，round-410 后继修复已接受。round-405 的强制回收和当时 driver 未运行均为历史事实，不被覆盖或改写为通过。
+
+部门仍为开发中。round-400 successive EH 原机器报告及整体主审 failed 的历史保留；三项修正后只读审计不构成新 EH pass，且执行快照与 observer 最终源码不同。round-403 CDP 清理失败传播/迟到 detach 门禁已接受，仅证明 harness 自有资源门禁。round-405/408 的 cold warning、缺失对照、第二 EH 强制回收/自然失败退出及整体 failed 均按各自时点保留，不回写为通过。round-410 后继只读身份修复已主审接受：精确 `live-leader-unverifiable`、完整四阶段身份/责任/容量与无新 grant/request 对照成立，双 EH 自然退出；仅证明安全拒绝，不证明恢复接管、Owner 清理或容量归还。macOS owner-core 58/58 仍只覆盖原固定入口，后代追踪和整树关闭未确认；必要平台、未覆盖来源/角色、可恢复接管及最终 Git 合理合并/合并树全量回归仍开放。各批构建、用例与执行快照不累计为全量通过。
+
+部门原始及 14 项补充要求的逐项实现入口、已接受报告、有效验证范围和剩余门禁见[部门逐项验收覆盖](../runbooks/department-acceptance-coverage.md)。该表不替代功能状态，本条仍为开发中。

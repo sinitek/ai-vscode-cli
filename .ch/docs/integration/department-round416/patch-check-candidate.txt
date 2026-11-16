@@ -1,0 +1,3 @@
+git read-tree c53f9defc811e5fddcf87e2d052ab0c6069c3087 (temporary index)
+git apply --cached --check relative-to-candidate.patch
+exit: 0

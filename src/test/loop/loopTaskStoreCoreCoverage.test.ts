@@ -571,7 +571,19 @@ test("contains Loop communication init failures and store read races", () => {
   }
 });
 
-test("lists task stores and removes only expired orphaned communication data", () => {
+// Communication GC requires an initialized identity authority, even for ordinary tasks.
+// Keep this fixture local: unrelated storage tests still cover pre-bootstrap installations.
+function readyRetentionCatalog(t: { after(action: () => void): void }): void {
+  const previousHome = process.env.HOME;
+  process.env.HOME = testHome;
+  const catalog = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+  if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+  catalog.initializeLoopTaskIdentityCatalog(path.join(testHome, "unused-owned-root"), () => new Map());
+  t.after(() => fs.rmSync(path.join(testHome, ".sinitek_cli", "loop-task-identities"), { recursive: true, force: true }));
+}
+
+test("lists task stores and removes only expired orphaned communication data", (t) => {
+  readyRetentionCatalog(t);
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   const flatStore = path.join(testHome, ".sinitek_cli", "loop-tasks.json");
@@ -596,7 +608,8 @@ test("lists task stores and removes only expired orphaned communication data", (
   assert.equal(fs.existsSync(orphanCommunication.dir), false);
 });
 
-test("covers Loop communication retention empty roots and contained cleanup failures", () => {
+test("covers Loop communication retention empty roots and contained cleanup failures", (t) => {
+  readyRetentionCatalog(t);
   const communicationRoot = path.join(testHome, ".sinitek_cli", "loop-communications");
   fs.rmSync(communicationRoot, { recursive: true, force: true });
 
@@ -1030,7 +1043,10 @@ test("moves task records between pending and session stores through public bindi
     return originalUnlinkSync(target);
   }) as typeof fs.unlinkSync;
   try {
-    assert.ok(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target"));
+    // A partial move cannot return a confirmed identity; both files remain for explicit recovery.
+    assert.equal(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target"), null);
+    assert.equal(fs.existsSync(unlinkTask.taskStoreFile), true);
+    assert.equal(fs.existsSync(loopTaskStore.getLoopTaskStoreSessionFile(unlinkTask.workspaceKey, unlinkTask.cli, "unlink-target")), true);
   } finally {
     fsModule.unlinkSync = originalUnlinkSync;
   }

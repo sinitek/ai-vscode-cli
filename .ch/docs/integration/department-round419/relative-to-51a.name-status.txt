@@ -1,0 +1,3 @@
+M	.ch/docs/runbooks/department-platform-verification.md
+M	scripts/verify_department_platform.js
+M	scripts/verify_department_platform.test.js

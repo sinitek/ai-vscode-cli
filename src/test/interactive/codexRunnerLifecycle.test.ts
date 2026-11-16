@@ -14,7 +14,7 @@ test.beforeEach(blockRealProcessSignals);
 test.beforeEach((t) => {
   // Lifecycle fake servers model app-server RPC, not a real executable's --version.
   assert.ok("mock" in t);
-  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+  t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
     async () => ({ supported: true, reason: "supported" }));
 });
 
@@ -433,9 +433,9 @@ for (const reason of ["supported", "unsupported", "unknown"] as const) {
   test(`Codex unload policy startup uses ${reason} capability and keys the final arguments`, async (t) => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-unload-startup-"));
     t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
-    const capabilities = require("../../interactive/codexAppServerCapabilities") as typeof import("../../interactive/codexAppServerCapabilities");
-    const pool = require("../../interactive/codexAppServerPool") as typeof import("../../interactive/codexAppServerPool");
-    const processModule = require("../../interactive/codexRunnerProcess");
+    const capabilities = require("../../interactive/codexAppServerCapabilitiesCore") as typeof import("../../interactive/codexAppServerCapabilitiesCore");
+    const pool = require("../../interactive/codexAppServerPoolCore") as typeof import("../../interactive/codexAppServerPoolCore");
+    const processModule = require("../../interactive/codexRunnerProcessCore");
     const probes: Parameters<typeof capabilities.resolveCodexThreadUnloadCapability>[0][] = [];
     const specs: Parameters<typeof pool.acquireCodexAppServer>[0][] = [];
     const acquire = pool.acquireCodexAppServer;
@@ -443,8 +443,8 @@ for (const reason of ["supported", "unsupported", "unknown"] as const) {
       probes.push(input);
       return { supported: reason === "supported", reason };
     });
-    t.mock.method(pool, "acquireCodexAppServer", (spec: typeof specs[number], listener: Parameters<typeof acquire>[1]) => {
-      specs.push(spec); return acquire(spec, listener);
+    t.mock.method(pool, "acquireCodexAppServer", (spec: typeof specs[number], listener: Parameters<typeof acquire>[1], runtime: Parameters<typeof acquire>[2]) => {
+      specs.push(spec); return acquire(spec, listener, runtime);
     });
     t.mock.method(processModule, "resolveSpawnCommand", (_command: string, args: string[]) => ({
       command: process.execPath, args, usesShell: false, resolvedFrom: "test-resolved-target",
@@ -492,13 +492,13 @@ for (const kind of ["turn", "compact"] as const) {
       let entered = false;
       let completeProbe!: (value: { supported: boolean; reason: "supported" }) => void;
       const probe = new Promise<{ supported: boolean; reason: "supported" }>((resolve) => { completeProbe = resolve; });
-      t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability", () => {
+      t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability", () => {
         entered = true; return probe;
       });
       let launches = 0;
       t.mock.method(crossSpawn, "spawn", () => { launches += 1; assert.fail("late startup must not spawn any child"); });
       let acquisitions = 0;
-      t.mock.method(require("../../interactive/codexAppServerPool"), "acquireCodexAppServer", () => {
+      t.mock.method(require("../../interactive/codexAppServerPoolCore"), "acquireCodexAppServer", () => {
         acquisitions += 1; assert.fail("late startup must not acquire a pooled connection");
       });
       const { CodexInteractiveRunner } = loadCodexRunner();
@@ -523,10 +523,10 @@ for (const kind of ["turn", "compact"] as const) {
 test("Codex unload policy startup preserves compatibility for an unobserved shell target", async (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-unload-shell-"));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
-  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability", () => {
+  t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability", () => {
     assert.fail("a login shell is not the identity of its eventual Codex executable");
   });
-  t.mock.method(require("../../interactive/codexRunnerProcess"), "resolveSpawnCommand", (_command: string, args: string[]) => ({
+  t.mock.method(require("../../interactive/codexRunnerProcessCore"), "resolveSpawnCommand", (_command: string, args: string[]) => ({
     command: process.execPath, args, usesShell: true, resolvedFrom: "mac-shell-fallback",
   }));
   t.mock.method(crossSpawn, "spawn", fakeCodexSpawn((_command, args) => {
@@ -1609,4 +1609,44 @@ test("Codex runner finishes a streamed turn whose id differs from the turn/start
   } finally {
     crossSpawn.spawn = originalSpawn;
   }
+});
+
+test("EH facade snapshots existing host shell and logger for the same startup and probe", async (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "codex-host-ports-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  let shell: "bash" | "zsh" = "bash";
+  let reads = 0;
+  const logs: string[] = [];
+  t.mock.method(require("../../cli/config"), "getMacTaskShell", () => { reads++; return shell; });
+  t.mock.method(require("../../logger"), "logInfo", (message: string) => { logs.push(message); });
+  t.mock.method(require("../../logger"), "logError", (message: string) => { logs.push(message); });
+  const processCore = require("../../interactive/codexRunnerProcessCore") as typeof import("../../interactive/codexRunnerProcessCore");
+  const originalResolve = processCore.resolveSpawnCommand;
+  let startupRuntime: Parameters<typeof originalResolve>[2] | undefined;
+  t.mock.method(processCore, "resolveSpawnCommand", (command: string, args: string[], runtime: Parameters<typeof originalResolve>[2]) => {
+    startupRuntime = runtime;
+    assert.ok(Object.isFrozen(runtime));
+    assert.equal(runtime.macTaskShell, "bash");
+    return originalResolve(command, args, runtime);
+  });
+  let probes = 0;
+  t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
+    async (_input: unknown, runtime: Parameters<typeof originalResolve>[2]) => {
+      assert.equal(runtime, startupRuntime);
+      probes++;
+      return { supported: true, reason: "supported" };
+    });
+  t.mock.method(crossSpawn, "spawn", fakeCodexSpawn(() => {
+    const child = createFakeChild(61912); attachSuccessfulAppServer(child); return child;
+  }));
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const runner = new CodexInteractiveRunner({ command: process.execPath, args: [], cwd: temp,
+    env: { HOME: temp, USERPROFILE: temp, CODEX_HOME: temp },
+    thinkingMode: "medium", interactiveMode: "coding", threadId: null });
+  t.after(() => runner.dispose());
+  shell = "zsh"; // Changing host settings cannot mix probe/startup roles mid-run.
+  await runner.runStreamed("fixed", createHandlers());
+  assert.equal(reads, 1);
+  assert.equal(probes, 1);
+  assert.ok(logs.includes("codex-app-server-started"));
 });

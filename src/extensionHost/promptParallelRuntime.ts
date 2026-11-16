@@ -1,3 +1,6 @@
+import { splitConfiguredCliCommand } from "../cli/commandResolution";
+import { buildCliArgs } from "../cli/cliRunArgStrategies";
+import { getCliArgs, getCliCommand } from "../cli/config";
 import {
   extractOpenCodeRuntimeSessionId,
   recoverOpenCodeMissingAssistantOutput,
@@ -168,6 +171,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
 export type PromptParallelRuntimeHostDeps = Partial<PromptParallelRuntimeRequiredHostDeps>;
 
 export type PromptParallelRuntimeHost = {
+  stopParallelRunForTab: (tabId: string, message?: string) => boolean;
   runPromptParallel: (
     input: PromptRunInput,
     target: PromptRunTarget,
@@ -303,6 +307,14 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         return messageTarget;
       }
       return messageTarget;
+    };
+
+    const preserveLeaderSession = (buffer: string): boolean => {
+      if (!executionOptions.departmentProcessStream || !executionOptions.departmentLeaderNativeSession
+        || input.taskRole !== "main" || !input.loopTaskId) return false;
+      const detectedSessionId = extractSessionId(runCli, buffer);
+      if (detectedSessionId) executionOptions.departmentLeaderNativeSession(detectedSessionId);
+      return true;
     };
 
     const syncParallelRun = (runProcess: RunProcess): void => {
@@ -742,6 +754,12 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
         });
       },
+      getManagedPromptArgs: (runtime, execution) => [
+        ...splitConfiguredCliCommand(getCliCommand("opencode")).slice(1),
+        ...buildCliArgs("opencode", { baseArgs: getCliArgs("opencode"), model: runtime.effectiveModel,
+          openCodeVariant: runtime.effectiveVariant, openCodeConfigContent: runtime.configContent,
+          isolateProjectInstructions: execution.isolateProjectInstructions }),
+      ],
       createStartupWatchdog: () => ({
         arm: () => {},
         dispose: () => {},
@@ -800,13 +818,14 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         attemptSubagentMonitor = subagentMonitor;
         return subagentMonitor;
       },
-      runCliStream,
+      runCliStream: executionOptions.departmentProcessStream ?? runCliStream,
       buildProcessLabel,
       appendBoundedUtf8Text,
       maxRawOutputBytes: AI_TASK_RAW_OUTPUT_MAX_BYTES,
-      maxHiddenRetries: input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
+      maxHiddenRetries: executionOptions.departmentProcessStream || input.cliCommandRepairAttempted ? 0 : HIDDEN_RETRY_MAX_RETRIES,
       onStdoutChunk: (chunk, stream) => {
         stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        preserveLeaderSession(stream.sessionBuffer);
         attemptSubagentMonitor?.setParentSessionId(extractSessionId(runCli, stream.sessionBuffer));
         sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stdout", tabId: target.tabId });
         const streamResult = consumeOpenCodeTabStreamChunk(
@@ -825,6 +844,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       },
       onStderrChunk: (chunk, stream) => {
         stream.sessionBuffer = updateSessionBuffer(stream.sessionBuffer, chunk);
+        preserveLeaderSession(stream.sessionBuffer);
         sendPanelMessage({ type: "rawStreamDelta", content: chunk, stream: "stderr", tabId: target.tabId });
       },
       onAttemptProcessStarted: (runProcess, runtimeSessionId) => {
@@ -845,6 +865,8 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         return isParallelRunActive();
       },
       adoptSession: (adoption) => {
+        // A native ID proves the Owner binding, not a replacement transcript key.
+        if (preserveLeaderSession(adoption.sessionBuffer)) return;
         const detectedSessionId = extractSessionId(runCli, adoption.sessionBuffer)
           ?? extractSessionId(runCli, `${adoption.rawStdout}\n${adoption.rawStderr}`);
         if (
@@ -1096,5 +1118,43 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
     });
   }
 
-  return { runPromptParallel };
+  function stopParallelRunForTab(tabId: string, message?: string): boolean {
+    const run = parallelRunsByTabId.get(tabId);
+    if (!run) {
+      return false;
+    }
+    run.stopped = true;
+    run.process.kill();
+    const stopMessage = message || t("run.stoppedByUser");
+    const systemMessage: ChatMessage = {
+      id: createMessageId(),
+      role: "system",
+      content: stopMessage,
+      createdAt: Date.now(),
+    };
+    appendMessageToStore(run.messageTarget, systemMessage);
+    sendPanelMessage({ type: "appendMessage", message: systemMessage, tabId: run.tabId });
+    const taskRecord: TaskRunRecord = {
+      id: run.runId,
+      cli: run.cli,
+      sessionId: run.sessionId,
+      prompt: run.prompt,
+      startedAt: run.startedAt,
+      endedAt: Date.now(),
+      durationMs: Math.max(0, Date.now() - run.startedAt),
+      status: "stopped",
+      taskRole: run.taskRole,
+      loopTaskId: run.loopTaskId,
+      loopRound: run.loopRound,
+      loopSubtaskId: run.loopSubtaskId,
+      loopAttemptId: run.loopAttemptId,
+    };
+    appendTaskRun(taskRecord);
+    sendRunStatusForTab(run.tabId, "stopped", { message: stopMessage });
+    parallelRunsByTabId.delete(tabId);
+    persistMessagesForTab(run.cli, run.sessionId, run.tabId, run.messageTarget);
+    return true;
+  }
+
+  return { runPromptParallel, stopParallelRunForTab };
 }

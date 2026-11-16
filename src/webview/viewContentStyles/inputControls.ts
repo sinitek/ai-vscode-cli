@@ -13,6 +13,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         flex-wrap: nowrap;
         overflow: hidden;
       }
+      .config-select-row.department-mode {
+        flex-wrap: wrap;
+      }
 
       select {
         background: var(--vscode-dropdown-background);
@@ -282,6 +285,14 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         gap: 6px;
         min-width: 0;
       }
+      #departmentRoleConfiguration[hidden],
+      .input-model-row[hidden],
+      .department-role-row [hidden] { display: none; }
+      .department-role-row .config-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
+      .department-role-row .open-code-model-label { white-space: normal; }
+      .department-role-row select:focus-visible { border-color: var(--vscode-focusBorder); }
+      .department-role-row .tool-settings-note,
+      .department-role-row .open-code-model-issue { min-width: 0; overflow-wrap: anywhere; }
       .open-code-model-row {
         display: grid;
         grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) calc(70px * 1.15);

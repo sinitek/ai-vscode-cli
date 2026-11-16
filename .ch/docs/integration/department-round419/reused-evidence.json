@@ -1,0 +1,100 @@
+{
+  "not_new_executions": true,
+  "build_and_tests": {
+    "commit": "51a5e7b15c54921611721fe14863e60361d64e72",
+    "standard_build": "npm run build: build-06 passed",
+    "related_tests": 483,
+    "reference": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-416-department-git-local-conflict-integration.md",
+    "basis": "All TS, product runtime, UI and fixture inputs unchanged relative to 51a; only accepted platform JS/test/doc bytes integrated."
+  },
+  "behavior_tests": {
+    "count": 24,
+    "reference": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-414-department-platform-owner-tracking-integration.md",
+    "basis": "Accepted report final version, matching reported new cases and explicit final JS hash. No historical behavior-test hash was reported; observed stable test bytes pinned by sources.json."
+  },
+  "round414": {
+    "report": "/private/tmp/round414-department-platform-owner-tracking/owner-core-macos.json",
+    "sha256": "a6ab18372882f2f465cad6e5ed138b7c131cd08cadee104670609398ab94a688",
+    "result": "failed",
+    "passes": [
+      26,
+      12,
+      20
+    ],
+    "first_file": "PID9357 no close; direct set unconfirmed; failure retained",
+    "reused": [
+      12,
+      20
+    ],
+    "whole_tree": "unconfirmed"
+  },
+  "round416": {
+    "report": "/private/tmp/round416-department-platform-owner-close-integration/owner-core-first-file-macos.json",
+    "sha256": "9d7b5a5774111f3df04a591ce3bd62b4d2283499fd0acf43a55146ef5918f602",
+    "result": "passed",
+    "scope": "only first fixed Owner file",
+    "passes": 26,
+    "tracked": 29,
+    "close_events": 28,
+    "snapshot_absence_only": 1,
+    "whole_tree": "unconfirmed"
+  },
+  "owner_inputs": [
+    {
+      "source": "src/runtime/departmentexecutionowner.ts",
+      "candidate_sha256": "510697df04e64187be893a98242fc15be9744ffb187bad5512e7531f018794bc",
+      "historical_source_sha256": "510697df04e64187be893a98242fc15be9744ffb187bad5512e7531f018794bc",
+      "historical_compiled_sha256": "11be2e1dd9a0625c3ff5ee8c5198c633a8c92f3bbcb7733f1f054af2ae998ef9",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    },
+    {
+      "source": "src/runtime/departmentexecutionownerclient.ts",
+      "candidate_sha256": "5129fc7386abaec03ff27ea76f7ce95baf8e5b02d5fff98b182cf664f814fd6a",
+      "historical_source_sha256": "5129fc7386abaec03ff27ea76f7ce95baf8e5b02d5fff98b182cf664f814fd6a",
+      "historical_compiled_sha256": "2a5ab58751200ea43728b9d5d314768d71d0d75dbc5da87042eae01973885c74",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    },
+    {
+      "source": "src/runtime/departmentprocessexecutionlauncher.ts",
+      "candidate_sha256": "93ae2aeb3ad75df18d0ab21a04626d0fec4c497cf9c2ca495943d52cf759c440",
+      "historical_source_sha256": "93ae2aeb3ad75df18d0ab21a04626d0fec4c497cf9c2ca495943d52cf759c440",
+      "historical_compiled_sha256": "ddcd0d10ac8f0763335e1f02a7805a44be0d3f601760ec9f61d13fb4f30fb9d3",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    },
+    {
+      "source": "src/test/runtime/departmentexecutionowner.test.ts",
+      "candidate_sha256": "5a1b18402b3ab0ed457ba98da062c6d430e1d1ef4e35ab0d70c424b49006b74c",
+      "historical_source_sha256": "5a1b18402b3ab0ed457ba98da062c6d430e1d1ef4e35ab0d70c424b49006b74c",
+      "historical_compiled_sha256": "d1fb1fddf7e1f24222a2d41a303d1f54833d81154ab1aeb4abfecd2ae0ab8e9a",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    },
+    {
+      "source": "src/test/runtime/departmentexecutionownerclient.test.ts",
+      "candidate_sha256": "98d16c68744f3783d98b3a69f1fd397e1ae00f964b75ef1e3668be4b257633b8",
+      "historical_source_sha256": "98d16c68744f3783d98b3a69f1fd397e1ae00f964b75ef1e3668be4b257633b8",
+      "historical_compiled_sha256": "0f1bbc8fd2d03eff36b742771976121bd6f96eb448715369858ede4ca40cab30",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    },
+    {
+      "source": "src/test/runtime/departmentprocessexecutionlauncher.test.ts",
+      "candidate_sha256": "24c6840d8df97b1b95418a3dafcdc6a48b9d4eba9ab9f80ccd19a33c5cb34418",
+      "historical_source_sha256": "24c6840d8df97b1b95418a3dafcdc6a48b9d4eba9ab9f80ccd19a33c5cb34418",
+      "historical_compiled_sha256": "47b5d3fb80903311483d2ef869497ce17c1565444ebf9901868c01a595ebc930",
+      "source_unchanged_from_51a": true,
+      "note": "compiled hash belongs to historical physical product, not a new round-419 build"
+    }
+  ],
+  "excluded_claims": [
+    "No new combined 58-test execution",
+    "No Windows/Linux pass",
+    "No full descendant tree closure",
+    "No Owner receipt/CLOSED or capacity release",
+    "No final remote sync, reasonable merge or final merged-tree full regression",
+    "Cold safe refusal is not recovery takeover"
+  ]
+}

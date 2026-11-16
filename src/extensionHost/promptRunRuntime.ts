@@ -1,3 +1,4 @@
+import type { LoopSubtaskCleanupResult } from "../loopSubtaskExecutionRoot";
 import {
   abortOrchestratorClarification,
   loopClarificationScope,
@@ -267,7 +268,7 @@ export function resolveLoopPlusPromptRoleBinding(input: {
   return binding;
 }
 
-export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => void } | null, T>(
+export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult> } | null, T>(
   create: () => TRoot,
   run: (root: TRoot) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
@@ -283,7 +284,8 @@ export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => v
     return { ok: true, value: await run(root as TRoot) };
   } finally {
     if (created) {
-      root?.dispose();
+      const result = await root?.dispose();
+      if (result?.ok === false) throw new Error(`执行目录清理失败：${result.reason}`);
     }
   }
 }

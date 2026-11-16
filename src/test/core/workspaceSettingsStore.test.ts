@@ -30,15 +30,59 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
       || value === "high" || value === "xhigh" || value === "max" || value === "ultra"
     ),
     isInteractiveMode: (value): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "loop"
+      value === "coding" || value === "plan" || value === "loop" || value === "loop_plus" || value === "department"
     ),
     normalizeVisibleInteractiveMode: (value) => (
-      value === "plan" || value === "loop" ? value : "coding"
+      value === "plan" || value === "loop" || value === "department" || value === "loop_plus" ? value : "coding"
     ),
     normalizeLoopMaxRounds: () => 20,
     sanitizeConversationTabRecord: () => null,
   };
 }
+
+test("round-trips department mode and role routes scoped to the director profile", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = { ...createOptions(workspaceSettingsDir), isCliName: (value: string): value is CliName => ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].includes(value) };
+  try {
+    saveWorkspaceSettings({
+      interactiveModeByCli: { codex: "department" },
+      activeConfigIdByCli: { codex: "director-profile" },
+      departmentRoleRoutesByDirectorConfig: {
+        "director-profile": {
+          leader: { cli: "claude", configId: "leader-profile", model: null, thinkingMode: "high", openCodeVariant: null },
+          employee: { cli: "opencode", configId: "employee-profile", model: "provider/model", thinkingMode: null, openCodeVariant: "high" },
+        },
+      },
+    }, options);
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.interactiveModeByCli?.codex, "department");
+    assert.deepEqual(loaded.departmentRoleRoutesByDirectorConfig?.["director-profile"], {
+      leader: { cli: "claude", configId: "leader-profile", model: null, thinkingMode: "high", openCodeVariant: null },
+      employee: { cli: "opencode", configId: "employee-profile", model: "provider/model", thinkingMode: null, openCodeVariant: "high" },
+    });
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("department partial choices round-trip without inventing another role or accepting coerced effort", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-partial-"));
+  const options = createOptions(directory);
+  try {
+    saveWorkspaceSettings({ departmentRoleRoutesByDirectorConfig: {
+      first: { leader: { cli: "codex", configId: "leader", model: null, thinkingMode: "high", openCodeVariant: null } },
+      second: { employee: { cli: "claude", configId: "employee", model: null, thinkingMode: null, openCodeVariant: null } },
+    } }, options);
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.first.employee, undefined);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.first.leader?.model, null);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.second.leader, undefined);
+    fs.writeFileSync(path.join(directory, "workspace.json"), JSON.stringify({ departmentRoleRoutesByDirectorConfig: {
+      first: { leader: { cli: "codex", configId: "leader", model: null, thinkingMode: ["high"], openCodeVariant: null } },
+    } }));
+    assert.equal(loadWorkspaceSettings(options).departmentRoleRoutesByDirectorConfig, undefined);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("workspace dispatch limit overrides global values and invalid overrides inherit", () => {
   for (const [workspace, global, expected] of [

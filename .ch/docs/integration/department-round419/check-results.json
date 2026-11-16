@@ -1,0 +1,48 @@
+{
+  "checks": [
+    {
+      "scope": "source bytes and diff boundary",
+      "action": "compare shared read-before/read-after SHA, isolated bytes, parent Git objects; git diff --name-only 51a",
+      "result": "PASS: exactly the three allowlisted platform paths; no TS, production Owner, UI, EH, config or fixtures changed"
+    },
+    {
+      "scope": "report-described JS/test/runbook contract",
+      "action": "static check of exact expected diff, 24 test registrations and report-specific close/snapshot/whole-tree boundaries; UTF-8/newline/fences/trailing spaces",
+      "result": "PASS; static source/contract audit only, not a new behavior or platform execution"
+    },
+    {
+      "scope": "existing machine JSON and Owner source correspondence",
+      "action": "parse round-414 tests[] and round-416 execution.tests; assert historical report hashes, closure distinctions; compare six source hashes and historical physical-product source/compiled bytes",
+      "result": "PASS; preserves original round-414 failure and round-416 first-file-only success; no re-execution; no final merged-product platform claim"
+    },
+    {
+      "scope": "inherited old evidence",
+      "action": "compare all 11+38 historical evidence files against 51a Git blobs",
+      "result": "PASS: 49 original files unchanged; old records remain historical snapshots"
+    },
+    {
+      "scope": "platform delta whitespace",
+      "action": "git diff --check 51a",
+      "result": "PASS; before adding new evidence, all three source paths final"
+    }
+  ],
+  "diagnostic_first_error": {
+    "action": "Initial read-only JSON shape diagnostic used d[tests] for both reports",
+    "result": "exit 1, KeyError: tests for round416; round416 uses execution.tests. No implementation change or platform execution. Corrected schema-aware audit passed as recorded above."
+  },
+  "static_audit_first_error": {
+    "action": "Initial lexical test-registration count matched a test inside a template-string fixture",
+    "result": "exit 1, 25 lexical matches; refined to 24 top-level double-quoted registrations. No source change or runtime test rerun."
+  },
+  "skipped": [
+    "build",
+    "behavior-test rerun",
+    "Owner CLI/tests",
+    "EH",
+    "browser",
+    "full regression",
+    "Windows/Linux probing",
+    "fetch/pull/push/publish"
+  ],
+  "after_checks": "Only new evidence files, shared handoff and attempt report may follow. Any source-byte change would invalidate the relevant source checks."
+}

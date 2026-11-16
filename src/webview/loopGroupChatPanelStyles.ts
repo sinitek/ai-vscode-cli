@@ -63,6 +63,7 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         min-width: 0;
       }
       .title h1 {
+        overflow-wrap: anywhere;
         margin: 0;
         font-size: 15px;
         font-weight: 600;
@@ -525,6 +526,91 @@ ${DIALOG_SHELL_STYLES}
         width: 100%;
         padding: 4px;
       }
+      .department-chat-page .title h1,
+      .department-chat-page .title p,
+      .department-chat-dialog .dialog-title {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+      .department-chat-backdrop { z-index: 110; }
+      .department-chat-dialog {
+        width: min(1120px, 94vw);
+        max-width: 94vw;
+        height: 90vh;
+        max-height: 90vh;
+        min-width: 0;
+        min-height: 0;
+      }
+      .department-chat-dialog .dialog-header { align-items: flex-start; }
+      .department-chat-dialog .dialog-title { overflow-wrap: anywhere; }
+      .department-chat-status { padding: 16px; overflow-wrap: anywhere; }
+      .department-chat-content { flex: 1; display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+      .department-chat-content iframe { width: 100%; height: 100%; min-width: 0; min-height: 0; border: 0; }
+      .department-tree,
+      .department-tree ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+      }
+      .department-tree li { min-width: 0; }
+      .department-leaders {
+        display: grid;
+        gap: 8px;
+      }
+      .department-tree .department-employees {
+        margin-inline-start: 16px;
+        border-inline-start: 1px solid var(--vscode-widget-border);
+      }
+      .department-empty { padding: 4px; }
+      .department-occupancy { margin: 8px 0; }
+      .department-navigation {
+        max-width: 100%;
+        margin-block-start: 4px;
+        padding: 4px;
+        font-size: 11px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+      .department-navigation:hover:not(:disabled),
+      .department-roster .member:hover { background: var(--vscode-list-hoverBackground); }
+      .department-navigation:focus-visible {
+        outline: 2px solid var(--vscode-focusBorder);
+        outline-offset: 2px;
+      }
+      .department-navigation:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+      .department-allocation,
+      .department-allocation-controls,
+      .department-allocation-controls label { min-width: 0; max-width: 100%; }
+      .department-allocation-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .department-allocation-controls label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .department-allocation-input {
+        width: 64px;
+        max-width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+        border-radius: 4px;
+        padding: 4px;
+        color: var(--vscode-input-foreground);
+        background: var(--vscode-input-background);
+        font: inherit;
+      }
+      .department-allocation-controls button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+      .department-allocation-controls :focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+      .department-allocation-controls :disabled { cursor: default; opacity: 0.6; }
+      .department-allocation-error { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
       .member-acceptance-link {
         border: 0;
         border-radius: 6px;

@@ -63,6 +63,15 @@ export type PanelMessage =
   | { type: "refreshPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
   | {
+      type: "updateDepartmentRolePreference";
+      scope?: string;
+      role: "leader" | "employee";
+      directorConfigId: string;
+      requestId: string;
+      preference: import("../departmentConfiguration").DepartmentConfiguredRoleRoute;
+    }
+  | { type: "requestDepartmentRoleCandidates"; scope?: string; role: "leader" | "employee"; requestId: string; cli: CliName; configId: string | null }
+  | {
       type: "humanInteractionResponse";
       interactionId: string;
       tabId?: string;
@@ -77,6 +86,7 @@ export type PanelMessage =
   | { type: "repairCliCommand"; cli: CliName }
   | {
       type: "sendPrompt";
+      departmentConfigurationScope?: string;
       requestId?: string;
       configSelections?: Partial<Record<CliName, import("../config/sharedRuntimeConfig").VisibleConfigSelection>>;
       prompt: string;
@@ -284,6 +294,16 @@ export type ConversationTabSummary = {
   loopTaskStatus?: LoopTaskStatus;
   loopSchedulingMode?: "classic" | "event_driven";
   loopMainTabCloseLocked?: boolean;
+  /** Host-projected display hint only; it does not establish organization permissions. */
+  readonly departmentPresentation?: DepartmentConversationTabPresentation;
+};
+
+export type DepartmentConversationTabPresentation = {
+  readonly role: "director" | "leader" | "employee";
+  readonly rootTaskId: string;
+  readonly taskId: string;
+  readonly moduleTitle: string;
+  readonly employeeSubtaskId?: string;
 };
 
 export type PromptHistoryItem = {
@@ -383,6 +403,9 @@ export type PanelState = {
   codeGraphInstalling: boolean;
   autoCompactContextAfterRun: boolean;
   humanInteractionEnabled: boolean;
+  loopEnabled?: boolean;
+  loopPlusEnabled?: boolean;
+  departmentEnabled?: boolean;
   humanInteractionNotifications?: boolean;
   taskCompletionNotifications?: boolean;
   humanInteractionWindowAttention?: boolean;
@@ -398,6 +421,12 @@ export type PanelState = {
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
   loopPlusMaxAcceptances: number;
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
+  departmentConfigurationScope?: string;
+  departmentConfigurationIssue?: string | null;
+  departmentRolePreferences?: Partial<import("../departmentConfiguration").DepartmentRolePreferences>;
+  departmentDirector?: import("../departmentConfiguration").DepartmentConfiguredRoleRoute;
   debug: boolean;
   isMac: boolean;
   macTaskShell: MacTaskShell;

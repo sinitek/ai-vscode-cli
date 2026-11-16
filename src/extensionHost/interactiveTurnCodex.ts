@@ -36,7 +36,13 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
         });
       }
       const runnerWasManaged = Boolean(uiSessionIdAtStart);
-      const runner = uiSessionIdAtStart
+      let ownedThreadId: string | null = null;
+      const runner = port.departmentCodexRun ? {
+        runStreamed: port.departmentCodexRun,
+        stopAndRebuild: () => port.cancelDepartmentCodexPreparation?.(),
+        getThreadId: () => ownedThreadId,
+        dispose: () => undefined,
+      } : uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateCodexRunner({
             sessionId: uiSessionIdAtStart,
             configFingerprint: port.configFingerprint,
@@ -147,6 +153,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
           onRequest: port.handleStructuredHumanInteractionRequest,
           requestUserInputEnabled: port.canHandleStructuredHumanInteractionRequest(),
           onThreadId: (threadId) => {
+            ownedThreadId = threadId;
             if (!port.isCurrentRunActive()) {
               return;
             }
@@ -166,8 +173,8 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               originalSessionId: port.originalSessionId,
               tabId: port.tabId,
             });
-            if (uiSessionId) {
-              port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
+            if (uiSessionId && !port.departmentCodexRun) {
+              port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner as CodexInteractiveRunner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
                 configId: nextSelection.configId,
                 command: port.command,
                 configFingerprint: port.configFingerprint,
@@ -180,10 +187,11 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
         });
         return await port.settleInteractiveAttempt("codex");
       } finally {
-        if (!runnerWasManaged) {
-          const threadId = runner.getThreadId();
-          if (!threadId || !port.interactiveRunnerManager.hasCodexRunner(threadId, runner)) {
-            runner.dispose();
+        if (!port.departmentCodexRun && !runnerWasManaged) {
+          const localRunner = runner as CodexInteractiveRunner;
+          const threadId = localRunner.getThreadId();
+          if (!threadId || !port.interactiveRunnerManager.hasCodexRunner(threadId, localRunner)) {
+            localRunner.dispose();
           }
         }
       }

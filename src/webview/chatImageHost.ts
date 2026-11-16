@@ -23,13 +23,23 @@ export class ChatImageHost {
   private imagePreviewPanel: vscode.WebviewPanel | undefined;
   private imagePreviewRequest = 0;
 
-  public constructor(private readonly getWebview: () => vscode.Webview | undefined) {}
+  public constructor(private readonly getWebview: () => Pick<vscode.Webview, "postMessage"> | undefined,
+    private readonly context?: { isCurrent(): boolean; baseDirectory: string }) {}
 
   public invalidate(): void {
     this.imagePreviewRequest += 1;
   }
 
+  /** Release previews owned by a closed/replaced view; ordinary invalidate keeps its existing semantics. */
+  public dispose(): void {
+    this.invalidate();
+    const panel = this.imagePreviewPanel;
+    this.imagePreviewPanel = undefined;
+    panel?.dispose();
+  }
+
   public async handleMessage(message: ChatImageMessage): Promise<void> {
+    if (this.context && !this.context.isCurrent()) return;
     if (message.type === "previewChatImage") {
       return this.previewChatImage(message.source, message.alt);
     }
@@ -40,7 +50,7 @@ export class ChatImageHost {
   }
 
   private getImageBaseDirectory(): string {
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+    return this.context?.baseDirectory || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
   }
 
   private async resolveChatImage(source: unknown): Promise<void> {
@@ -54,11 +64,11 @@ export class ChatImageHost {
         throw new Error("不支持的本地图片地址");
       }
       const resource = await loadChatImageResource(normalized, this.getImageBaseDirectory());
-      if (this.getWebview() === webview) {
+      if (this.getWebview() === webview && (!this.context || this.context.isCurrent())) {
         await webview.postMessage({ type: "chatImageResolved", source, resolvedSource: resource.source });
       }
     } catch {
-      if (this.getWebview() === webview) {
+      if (this.getWebview() === webview && (!this.context || this.context.isCurrent())) {
         await webview.postMessage({ type: "chatImageResolved", source, error: "无法加载本地图片，请确认文件存在、格式受支持且未超过大小限制。" });
       }
     }
@@ -67,6 +77,7 @@ export class ChatImageHost {
   private async downloadChatImage(source: unknown): Promise<void> {
     try {
       const resource = await loadChatImageResource(source, this.getImageBaseDirectory());
+      if (this.context && !this.context.isCurrent()) return;
       const extension = resource.filename.split(".").pop()!;
       const destination = await vscode.window.showSaveDialog({
         title: "下载图片",
@@ -74,10 +85,11 @@ export class ChatImageHost {
         defaultUri: vscode.Uri.file(path.join(os.homedir(), resource.filename)),
         filters: { [resource.mime === "image/svg+xml" ? "SVG 图片" : "图片"]: [extension] },
       });
-      if (destination) {
+      if (destination && (!this.context || this.context.isCurrent())) {
         await vscode.workspace.fs.writeFile(destination, resource.bytes);
       }
     } catch (error) {
+      if (this.context && !this.context.isCurrent()) return;
       void logError("chat-image-download-failed", { error: String(error) });
       void vscode.window.showErrorMessage("图片下载失败，请检查图片是否存在、网络连接及保存权限。");
     }
@@ -93,7 +105,7 @@ export class ChatImageHost {
     try {
       const displaySource = /^https?:|^data:/i.test(normalized) ? normalized
         : (await loadChatImageResource(normalized, this.getImageBaseDirectory())).source;
-      if (request !== this.imagePreviewRequest) {
+      if (request !== this.imagePreviewRequest || (this.context && !this.context.isCurrent())) {
         return;
       }
       if (!this.imagePreviewPanel) {
@@ -114,7 +126,7 @@ export class ChatImageHost {
       this.imagePreviewPanel.reveal(vscode.ViewColumn.Active);
     } catch (error) {
       void logError("chat-image-preview-failed", { error: String(error) });
-      if (request === this.imagePreviewRequest) {
+      if (request === this.imagePreviewRequest && (!this.context || this.context.isCurrent())) {
         void vscode.window.showErrorMessage("图片预览失败，请确认本地图片存在且格式受支持。");
       }
     }

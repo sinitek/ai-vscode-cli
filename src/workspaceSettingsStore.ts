@@ -16,6 +16,7 @@ import {
   normalizeLoopPlusAcceptancePlans,
   type LoopPlusAcceptancePlan,
 } from "./loopPlusAcceptancePlan";
+import { normalizeDepartmentRolePreference, type DepartmentConfiguredRoleRoute } from "./departmentConfiguration";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   taskSummary?: string;
@@ -53,6 +54,8 @@ export type WorkspaceSettings = {
   loopPlusAcceptancePlans?: LoopPlusAcceptancePlan[];
   /** 最近一次选中的验收方案 ID；“系统默认”以固定 ID 表示。 */
   loopPlusAcceptancePlanSelection?: string;
+  /** 产研部角色路由偏好，按总监 CLI 档案作用域隔离。 */
+  departmentRoleRoutesByDirectorConfig?: Record<string, Partial<{ leader: DepartmentConfiguredRoleRoute; employee: DepartmentConfiguredRoleRoute }>>;
 };
 
 export type WorkspaceSettingsStoreLogger = (event: string, payload?: unknown) => void;
@@ -108,6 +111,10 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
         const mode = (interactiveModeByCli as Record<string, unknown>)[cli];
         if (mode === "loop_plus") {
           normalized[cli] = "loop_plus";
+          return;
+        }
+        if (mode === "department") {
+          normalized[cli] = "department";
           return;
         }
         if (options.isInteractiveMode(mode) || isLegacyLoopInteractiveMode(mode)) {
@@ -175,6 +182,18 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       }
     }
     normalizeAcceptancePlanSettings(result, parsed as Record<string, unknown>);
+    const rawDepartmentRoutes = (parsed as Record<string, unknown>).departmentRoleRoutesByDirectorConfig;
+    if (rawDepartmentRoutes && typeof rawDepartmentRoutes === "object" && !Array.isArray(rawDepartmentRoutes)) {
+      const normalized: NonNullable<WorkspaceSettings["departmentRoleRoutesByDirectorConfig"]> = {};
+      for (const [scope, routes] of Object.entries(rawDepartmentRoutes as Record<string, unknown>)) {
+        if (!scope.trim() || !routes || typeof routes !== "object" || Array.isArray(routes)) continue;
+        const value = routes as Record<string, unknown>;
+        const leader = normalizeDepartmentRolePreference(value.leader);
+        const employee = normalizeDepartmentRolePreference(value.employee);
+        if (leader || employee) normalized[scope] = { ...(leader ? { leader } : {}), ...(employee ? { employee } : {}) };
+      }
+      if (Object.keys(normalized).length) result.departmentRoleRoutesByDirectorConfig = normalized;
+    }
     return result;
   } catch (error) {
     options.logError?.("workspace-settings-read-error", { error: String(error) });

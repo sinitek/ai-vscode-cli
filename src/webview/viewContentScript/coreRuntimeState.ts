@@ -537,6 +537,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         const includeSelection = Boolean(autoAddEditorContextTags && state.promptContext.includeSelection && state.editorContext.hasSelection);
         return {
           prompt,
+          departmentConfigurationScope: typeof departmentRoleUi !== "undefined" ? departmentRoleUi.workspaceScope : undefined,
           configSelections: readVisibleConfigSelections(),
           contextOptions: {
             includeCurrentFile,
@@ -565,6 +566,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         const contextOptions = payload.contextOptions || {};
         const interactiveMode = payload.interactiveMode === "loop"
           || payload.interactiveMode === "loop_plus"
+          || payload.interactiveMode === "department"
           || payload.interactiveMode === "coding"
           ? payload.interactiveMode
           : undefined;
@@ -609,6 +611,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
           : null;
         return {
           prompt,
+          ...(typeof payload.departmentConfigurationScope === "string" ? { departmentConfigurationScope: payload.departmentConfigurationScope } : {}),
           ...(payload.configSelections && typeof payload.configSelections === "object" ? { configSelections: payload.configSelections } : {}),
           contextOptions: {
             includeCurrentFile: contextOptions.includeCurrentFile !== false,

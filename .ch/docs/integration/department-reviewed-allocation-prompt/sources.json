@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "attempt": "round-436-department-git-reviewed-allocation-prompt-candidate",
+  "parent": "d35263a5f7d150b57b10668f2ad1c3bf0b066d43",
+  "parentTree": "8468bdb9fa6a9b81e35df2df6055e0c4508d879d",
+  "branch": "codex/department-reviewed-allocation-prompt-round436-20261116",
+  "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-reviewed-allocation-prompt-round436-20261116",
+  "source": {
+    "worktree": "/private/tmp/department-employee-allocation-prompt-round431-20261116",
+    "head": "37d5847758a3ca1679be9eebdd8bd49e5a523c3d",
+    "reports": {
+      "department-employee-allocation-prompt-context": {
+        "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-431-department-employee-allocation-prompt-context.md",
+        "sha256": "430f9480b496b25f0c9334c50142999e3ba5dcb783e90123cf413a3f9a6e906b"
+      },
+      "department-employee-allocation-prompt-unknown-boundary-repair": {
+        "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-433-department-employee-allocation-prompt-unknown-boundary-repair.md",
+        "sha256": "74032be70d6a2a6536b81877b4c38957566774718a1d2373e390e6632df1aa0d"
+      },
+      "department-git-reviewed-allocation-delta-integration": {
+        "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-433-department-git-reviewed-allocation-delta-integration.md",
+        "sha256": "95107cbee896e8e6ebcb75a9fd9eaac54576951bfb69a3b62485c59016f7b1cd"
+      }
+    },
+    "acceptance": "round-431 original prompt delivery failed review; round-433 repair accepted by host; only final hashes imported"
+  },
+  "files": [
+    {
+      "path": "src/departmentprompts.ts",
+      "sha256": "cc9cbd49a18c1379010136b196a0eac682a1e0531c01b3f17007d8dbbee1d6c9",
+      "report_id": "department-employee-allocation-prompt-context",
+      "source_untracked": false
+    },
+    {
+      "path": "src/extensionHost/loopPlusPromptBuilders.ts",
+      "sha256": "8c63b8cdf5f55353f468e18637edde9e67da75db9e7f61b14a61d0bb33a8db24",
+      "report_id": "department-employee-allocation-prompt-unknown-boundary-repair",
+      "source_untracked": false
+    },
+    {
+      "path": "src/test/loop/department.test.ts",
+      "sha256": "f18f5ef742052cc0dd90cc323323930f53501d69eb59a140b1d208289ce38746",
+      "report_id": "department-employee-allocation-prompt-context",
+      "source_untracked": false
+    },
+    {
+      "path": "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+      "sha256": "684b1094b703b4af0e9b6c9e36064263b4f8a11b4da354029d9894d4dd244b7f",
+      "report_id": "department-employee-allocation-prompt-unknown-boundary-repair",
+      "source_untracked": false
+    },
+    {
+      "path": ".ch/docs/design-docs/department-employee-allocation-prompt-contract.md",
+      "sha256": "bcd3632240467aca826497922ce85401d0a7f41ef69323dd9cea8da20336f196",
+      "report_id": "department-employee-allocation-prompt-unknown-boundary-repair",
+      "source_untracked": true
+    }
+  ],
+  "relativeParentPaths": [
+    ".ch/docs/design-docs/department-employee-allocation-prompt-contract.md",
+    ".ch/docs/integration/department-reviewed-allocation-prompt/sources.json",
+    ".ch/docs/runbooks/department-git-integration.md",
+    "src/departmentprompts.ts",
+    "src/extensionHost/loopPlusPromptBuilders.ts",
+    "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+    "src/test/loop/department.test.ts"
+  ],
+  "sourceClosure": {
+    "trackedChanges": [
+      "src/departmentprompts.ts",
+      "src/extensionHost/loopPlusPromptBuilders.ts",
+      "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+      "src/test/loop/department.test.ts"
+    ],
+    "untracked": [
+      ".ch/docs/design-docs/department-employee-allocation-prompt-contract.md"
+    ],
+    "unchangedTrackedFiles": 1473,
+    "srcFiles": 814,
+    "boundary": "source equals 37d baseline outside five delivery paths; candidate inherits reviewed policy/UI additions from d352; no combined execution claimed"
+  },
+  "reuse": {
+    "repair": "final standard npm run build and builder 34/34 at round-433 final source hashes",
+    "roleTests": "round-431 role tests unchanged; original combined 46/46 is not the repaired builder result",
+    "inherited": "policy build + 13; UI build + unchanged scope of 40 and final host 5; 1440 dark/280 light bounded fixture evidence per parent report",
+    "executionThisAttempt": "none; byte, path, JSON/document and Git integrity checks only",
+    "productionCombinationVerified": false
+  },
+  "openGates": [
+    "actual authoritative reader/writer",
+    "durable CAS and confirmed revisions",
+    "synchronous group/global joint admission and atomic reservation",
+    "central FEATURE_INVENTORY/ontology/active plan",
+    "cold recovery repair and takeover",
+    "second EH",
+    "necessary platform verification",
+    "final remote synchronization and reasonable integration",
+    "full regression on actual final merged tree"
+  ],
+  "history": "round-431 failed acceptance and build first errors remain in original reports; round-410 cold refusal is not takeover; root feature remains active/in_progress",
+  "round440Composition": {
+    "base": "da47ec72295416fd4a7ff7c877bc483d658e77ff",
+    "reviewedPrompt": "e613344552c559b934561ccd3506582955dbe68a",
+    "commonAncestor": "d35263a5f7d150b57b10668f2ad1c3bf0b066d43",
+    "mergeCommit": "08374899d4f162e4a31fa203f80c02dbc3720a1e",
+    "mergeTree": "9c84cdf217582f1079b00608bdb75305ab710105",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-allocation-prompt-eh-round440",
+    "scope": "Local allocation/prompt/UI/EH candidate only; does not import the concurrent cold-recovery successor.",
+    "preservation": "All seven e613 delta paths initially match their complete source blobs. The five reviewed deliveries retain their hashes above; only this manifest and the Git handoff receive composition notes. The da47 store, policy, production integration, extension and UI bytes are unchanged.",
+    "newEvidence": "See .ch/docs/runbooks/department-employee-allocation-eh-verification.md and round-440 communicationFile. Prior unmodified policy/UI/prompt/hotpath checks are reused only for their original inputs.",
+    "openGates": [
+      "Final cold-recovery/prompt product combination",
+      "Second EH ownership and recovery delivery",
+      "Necessary platforms",
+      "Remote synchronization and reasonable merging",
+      "Full regression on the real final merged tree"
+    ]
+  }
+}

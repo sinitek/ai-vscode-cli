@@ -166,7 +166,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const preempt = functionBody(extensionSource, "preemptActivePromptRun");
   assert.equal(preempt.includes("cancelLoopPlusInvocation("), true);
   assert.equal(preempt.indexOf("cancelLoopPlusInvocation(") < preempt.indexOf("stopRunForTab("), true);
-  const promptEntry = functionBody(extensionSource, "runPrompt");
+  const promptEntry = functionBody(extensionSource, "runPromptWithDepartmentAdmission");
   assert.equal(promptEntry.includes("loopMainQuestionQueue.runMain("), true);
   const promptRun = functionBody(extensionSource, "runPromptNow");
   assert.equal(promptRun.includes("preemptActivePromptRun("), true);
@@ -174,10 +174,9 @@ test("calls Loop+ before classic initialization and the round loop", () => {
 
   const adapterSource = readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts");
   assert.equal(adapterSource.includes("export function createLoopPlusRuntimeAdapter("), true);
-  const eventDrivenRun = functionBody(adapterSource, "runEventDriven");
-  const tried = eventDrivenRun.indexOf("host().tryRun(");
-  const revealed = eventDrivenRun.indexOf("deps.revealClarification?.(result.taskId)");
-  const awaited = eventDrivenRun.indexOf("await result.done");
+  const tried = adapterSource.indexOf("result = host().tryRun(");
+  const revealed = adapterSource.indexOf("deps.revealClarification?.(result.taskId)", tried);
+  const awaited = adapterSource.indexOf("await lifecycle", revealed);
   assert.equal(tried >= 0 && revealed > tried && awaited > revealed, true);
   assert.equal(adapterSource.includes("withLoopPlusExecutionRoot("), true);
   assert.equal(adapterSource.includes("resolveLoopPlusAttemptOutcome("), true);
@@ -224,6 +223,16 @@ test("calls Loop+ before classic initialization and the round loop", () => {
     continuation.indexOf("() => closeLoopPlusSubtaskTab(tabId,") > continuation.indexOf("notifySubtaskContinuation("),
     true,
   );
+});
+
+test("classic Loop root creation uses the awaited host authority boundary", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  const orchestration = functionBody(extensionSource, "runLoopPromptOrchestration");
+  assert.equal(orchestration.includes("resolveLoopTaskAtCreationBoundary<LoopTaskRecord>("), true);
+  assert.equal(orchestration.includes("configApplyQueue.waitForIdle(target.cli)"), true);
+  assert.equal(orchestration.includes("readTask: (taskId) => readLoopTaskRecord(taskId)"), true);
+  assert.equal(orchestration.includes("readToolSettings(),"), true);
+  assert.equal(orchestration.includes("createTask: () => {"), true);
 });
 
 test("maps only loop_plus to event_driven and resumes from the saved mode", () => {

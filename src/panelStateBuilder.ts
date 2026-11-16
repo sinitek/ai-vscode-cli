@@ -61,6 +61,8 @@ import {
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
+import { resolveModeAvailability } from "./modeAvailability";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -86,6 +88,9 @@ export type PanelStateBuilderDeps = {
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
   getGlobalHumanInteractionEnabled: () => boolean;
+  getGlobalLoopEnabled?: () => boolean;
+  getGlobalLoopPlusEnabled?: () => boolean;
+  getGlobalDepartmentEnabled?: () => boolean;
   getCliEnabledByName?: () => PanelState["cliEnabledByName"];
   getGlobalHumanInteractionTimeoutMinutes?: () => number;
   getGlobalHistoryRetentionDays?: () => number;
@@ -95,6 +100,11 @@ export type PanelStateBuilderDeps = {
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusMaxAcceptances?: () => number;
+  getDepartmentConfigurationScope?: () => string;
+  getDepartmentConfigurationIssue?: () => string | null;
+  getDepartmentDirector?: () => import("./departmentConfiguration").DepartmentConfiguredRoleRoute | undefined;
+  getGlobalDepartmentMaxLeaders?: () => number;
+  getGlobalDepartmentMaxEmployees?: () => number;
   getDebugLogging: typeof getDebugLogging;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
@@ -198,6 +208,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     codeGraphInstalling: deps.codeGraphInstalling === true,
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
+    ...resolveModeAvailability({ loopEnabled: deps.getGlobalLoopEnabled?.(), loopPlusEnabled: deps.getGlobalLoopPlusEnabled?.(), departmentEnabled: deps.getGlobalDepartmentEnabled?.() }),
     humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
     taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
     humanInteractionWindowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
@@ -220,6 +231,18 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(
       deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
     ),
+    departmentMaxLeaders: normalizeDepartmentMaxLeaders(deps.getGlobalDepartmentMaxLeaders?.()),
+    departmentMaxEmployees: normalizeDepartmentMaxEmployees(deps.getGlobalDepartmentMaxEmployees?.()),
+    departmentRolePreferences: deps.workspaceSettings.departmentRoleRoutesByDirectorConfig?.[modelConfigId ?? ""],
+    departmentConfigurationScope: deps.getDepartmentConfigurationScope?.(),
+    departmentConfigurationIssue: deps.getDepartmentConfigurationIssue?.(),
+    departmentDirector: deps.getDepartmentDirector?.() ?? {
+      cli: deps.currentCli,
+      configId: modelConfigId,
+      model: selectedModel,
+      thinkingMode: deps.currentCli === "opencode" ? null : deps.getEffectiveThinkingMode(deps.currentCli, selectedModel),
+      openCodeVariant: deps.currentCli === "opencode" ? deps.openCodeThinking.selectedVariant : null,
+    },
     debug: deps.getDebugLogging(),
     isMac: deps.processPlatform === "darwin",
     macTaskShell: deps.getMacTaskShell() as MacTaskShell,

@@ -1,11 +1,14 @@
 import type { Readable } from "stream";
 import { StringDecoder } from "string_decoder";
+import type { CleanupResult } from "../runtime/departmentexecutionidentity";
 
 const UNICODE_LINE_SEPARATOR = /[\u2028\u2029]/g;
 
 export type CodexAppServerNdjsonReader = {
   lines: AsyncIterable<string>;
   close: () => void;
+  /** Natural EOF AND consumption of all queued lines; close() is not a drain. */
+  drained: Promise<CleanupResult>;
 };
 
 export function serializeCodexAppServerMessage(message: Record<string, unknown>): string {
@@ -23,6 +26,9 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
   let closed = false;
   let streamError: Error | null = null;
   let waiter: (() => void) | null = null;
+  let consumedToEnd = false;
+  let resolveDrain!: (result: CleanupResult) => void;
+  const drained = new Promise<CleanupResult>((resolve) => { resolveDrain = resolve; });
 
   const wake = (): void => {
     const resolve = waiter;
@@ -82,6 +88,15 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
     wake();
   };
 
+  const onClose = (): void => {
+    if (!closed && !streamEnded) {
+      streamError = new Error("Codex NDJSON stream closed before natural EOF");
+      streamEnded = true;
+      wake();
+    }
+  };
+
+  stdout.on("close", onClose);
   stdout.on("data", onData);
   stdout.on("end", onEnd);
   stdout.on("error", onError);
@@ -91,9 +106,13 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
       return;
     }
     closed = true;
+    resolveDrain(streamError ? { status: "failed", reason: "ndjson-stream-error" }
+      : consumedToEnd ? { status: "confirmed", evidence: "ndjson-natural-eof-and-queue-drained" }
+        : { status: "unobservable", reason: "ndjson-reader-closed-before-drain" });
     streamEnded = true;
     buffer = "";
     pendingLines.length = 0;
+    stdout.off("close", onClose);
     stdout.off("data", onData);
     stdout.off("end", onEnd);
     stdout.off("error", onError);
@@ -108,6 +127,7 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
             throw streamError;
           }
           if (streamEnded) {
+            consumedToEnd = true;
             return;
           }
           await new Promise<void>((resolve) => {
@@ -133,5 +153,6 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
       [Symbol.asyncIterator]: () => iterate(),
     },
     close,
+    drained,
   };
 }

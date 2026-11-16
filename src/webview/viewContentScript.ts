@@ -1,4 +1,5 @@
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "./viewContentScript/coreBootstrap";
+import { VIEW_CONTENT_SCRIPT_DEPARTMENT_CONFIGURATION } from "./viewContentScript/departmentConfiguration";
 import { VIEW_CONTENT_SCRIPT_CHAT_SEARCH } from "./viewContentScript/chatSearch";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "./viewContentScript/coreRuntimeState";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "./viewContentScript/modelAndPanelState";
@@ -32,6 +33,8 @@ import {
   LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT,
   normalizeChatMessageLimit,
 } from "../chatMessageLimit";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
+import { normalizeDepartmentCapacity } from "../departmentSettings";
 
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
@@ -51,6 +54,7 @@ export type BuildWebviewRuntimeScriptInput = {
 
 const RUNTIME_SCRIPT_PARTS = [
   VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP,
+  VIEW_CONTENT_SCRIPT_DEPARTMENT_CONFIGURATION,
   VIEW_CONTENT_SCRIPT_CHAT_SEARCH,
   VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE,
   VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE,
@@ -102,6 +106,9 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
     ["${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT}", String(input.loopPlusMaxAcceptancesDefault ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT)],
     ["${LOOP_PLUS_MAX_ACCEPTANCES_MIN}", String(input.loopPlusMaxAcceptancesMin ?? LOOP_PLUS_MAX_ACCEPTANCES_MIN)],
     ["${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}", String(input.loopPlusMaxAcceptancesLimit ?? LOOP_PLUS_MAX_ACCEPTANCES_LIMIT)],
+    ["${DEPARTMENT_MAX_LEADERS_DEFAULT}", String(DEPARTMENT_MAX_LEADERS_DEFAULT)],
+    ["${DEPARTMENT_MAX_EMPLOYEES_DEFAULT}", String(DEPARTMENT_MAX_EMPLOYEES_DEFAULT)],
+    ["${NORMALIZE_DEPARTMENT_CAPACITY}", normalizeDepartmentCapacity.toString()],
     ["${FINAL_ANSWER_TEXT_MARKER}", input.finalAnswerTextMarker],
   ];
   return replacements.reduce(

@@ -1,0 +1,250 @@
+{
+  "files": [
+    {
+      "path": ".ch/docs/integration/department-round414/README.md",
+      "git_blob": "790a51d90dbfd8d4ffbd5182c15ebda8da7eeb33",
+      "sha256": "ddff5ef0b32a2bc6743cd1e07784644d69368a1784a1f756d6b3ff6f3d9298e2"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/artifact-hashes.json",
+      "git_blob": "ee117c14fdd3856057c8d04e05246d735cae60b9",
+      "sha256": "6c7b0659ac17bdf50e8c740cdc833300d42337d8eeb3e38c7baa54a328fd93c2"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/build-source-correspondence.json",
+      "git_blob": "6784cd474101a511395001c8803a602c69722187",
+      "sha256": "2161edbfa45f9ae61235583285b79ca0754d6ed3ad0c9581077afe2467997a76"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/checks.json",
+      "git_blob": "cf186efbb12694ffbeea210c35477fb09ee62b94",
+      "sha256": "47dd8ffeb5885f80104d5c1e6187135ea8430cffa9a8527d7f400e26a7995657"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/conflict-risk.json",
+      "git_blob": "cff8cdae8864fb3d49c6a5d36a3d28aecb0d467f",
+      "sha256": "cfa80ffb92c9fac8fc89c3ed48fd7073704f963f82b0f8d507621c5b311bab05"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/dependencies.json",
+      "git_blob": "12d0caf7b429cb090b1d86df12fad618e1f1d69f",
+      "sha256": "0212e613aa22b4ecd460bbd85a6b1191a0735525ed36d6860583541bd3de26e9"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/exclusions.json",
+      "git_blob": "aa532788ef81bbaaeecd80939e7ad881cf1ea63b",
+      "sha256": "f0576873b582916c8e3f48dfb5c240997c1f1488378ae525915c4a1910b87a76"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/hunks.json",
+      "git_blob": "c6c6bd9c0f82ca20a8df1355ee84f29794a3bfd6",
+      "sha256": "a3c1a0a078a1053c622f817ffe429f084a40c1727f0677c718e6bdaf86b096b0"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/manifest.json",
+      "git_blob": "8d2836fbae16dd9cd39e7721483efc79e288e475",
+      "sha256": "a847d1ab3b0f458be6d9fbd281725d9889dfa59fa60cdc4541a434422df74b1f"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/path-review.json",
+      "git_blob": "cd83e31679300f20ccca2cdbdc5698f0b223fbc2",
+      "sha256": "9ff49ddd1bdf6e5e9c6fabaa330093adaf019ec300e26c89e697cebecf09c9ac"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/reports.json",
+      "git_blob": "7003a34d4ac362f2e13825ef72dccf2d061848b0",
+      "sha256": "20e1d83ba4c656184f5bb393f76d4fa70fc988761279c6b7d2f0b1273df5cd0a"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/README.md",
+      "git_blob": "21b9f044b04584790c5d089ee6215425b8b6ccae",
+      "sha256": "2f4299364234326e47cb2fb7303c3505a71acad7224aa7da06dd8b65d5849387"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/artifact-hashes.json",
+      "git_blob": "f67ee76d486d1160c6df8d524f12ec8427d28716",
+      "sha256": "1671e42a51a420bf5395219c9ebefa437f34d8e77caef7ff1b38358cc6003772"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/baseline.json",
+      "git_blob": "3fafb78e9b1312d3fd98a889d2bdad4a12dc8e9f",
+      "sha256": "89ba6c1645aaef5623da4c4af60fb74c3d404f11b7e8335367bf0f6da29bfe45"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-01.log.gz",
+      "git_blob": "e12d05efb57b3b82442d16b18bc195ab5765ed8d",
+      "sha256": "0c25d5f3ec8fcd3cf8c29e634bc49152afa1809cc886dcc07c8ee740c2068736"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-02.log.gz",
+      "git_blob": "780b46a606fdf03086a607110c10e32c34fa3eeb",
+      "sha256": "cb55eb789e50ba4e1277aa47a8c29c9cf879f752197b6c84d2ffbecc2a0e098c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-03.log.gz",
+      "git_blob": "a9825f3d2b5dcfafa757db5e9966c0be6785ff06",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-04.log.gz",
+      "git_blob": "a9825f3d2b5dcfafa757db5e9966c0be6785ff06",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-05.log.gz",
+      "git_blob": "a9825f3d2b5dcfafa757db5e9966c0be6785ff06",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-06.log.gz",
+      "git_blob": "a9825f3d2b5dcfafa757db5e9966c0be6785ff06",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/check-summary.json",
+      "git_blob": "994ab043622379b535a9bac7700025db1795917d",
+      "sha256": "fa3e4d9358632c7da2a6af5d6bd7806d067598cd88387d52f09775115d88f825"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/checks.md",
+      "git_blob": "9b2a3b0287fab6f6f9dff727db7570d1f830407e",
+      "sha256": "19b81eb5990e679ba828defe09944e455520e0483d2b6cc4674d3186034d2138"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/compression.json",
+      "git_blob": "24929528793bef47b509396a6700e79cdeab3e48",
+      "sha256": "7467c86cd3bbf3c32e845311f35d841de8b052423917b826e70cf56c917bdda8"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/conflicts-initial.json",
+      "git_blob": "c72f72ba74aeb6186ee35f693de4fdc43f52a800",
+      "sha256": "357035e7ce268fc9773f206487ad0ab4ca69331d3c9ec9c983666792143a0b16"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/final-checks.json",
+      "git_blob": "d42d1c008a4bfb493c2a63f870bb8fa131de51f6",
+      "sha256": "be4297366fc497ad9722db94cbf66431d9d5a8738d974465e0daa72ae200ea61"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/incidental-writes.json",
+      "git_blob": "e2da47742e3fde3a1303076fab8fb50ace416312",
+      "sha256": "973d78df7bb3a589c1c1983aa03eeef521966cb74efb9a40be8c11fdd905794c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/manual-write-paths.json",
+      "git_blob": "13e029eeeb1fd03f5acde7f90a6b24b6c8909612",
+      "sha256": "971ac8c6b41c70d4065b69921ec27f3f8deed90b5fa6690ee1ae0487a07a446b"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/merge-output.txt",
+      "git_blob": "1b7f7c7106b13859dc8995c92d02096598e50d5b",
+      "sha256": "ceb2b9007dd0b44505a23042126314e747591776e0747204c65a41710334f169"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/overlap-review.json",
+      "git_blob": "8a4c3f5040d7d4e6c3b38201d87aadc4020ce411",
+      "sha256": "669bde6f61a461fafa469920df8cc940d17f0c02822280c9a75b2faa0839247e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/patch-check-candidate.txt",
+      "git_blob": "a1ac42925ec5d99774384c85212747398600c7fc",
+      "sha256": "5b47b69cf086548bfc9a3370d6f68cdaf72ab9da4f5e39244224617f4854c905"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/patch-check-origin.txt",
+      "git_blob": "22e95fc932f68d0d57865221d7188234e719f42f",
+      "sha256": "5cc816c745e85e26388ebf91fc113071f6e88ad6b70ba00a10e5260869f407c5"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/path-check.json",
+      "git_blob": "c684cb1cb0fe514668b024de210a63e83cf4c38c",
+      "sha256": "b93aa5047c592313c88606da6e921c77d1ea730c7e5e34b9c0a0dff1cc5d645e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/preserved-materials.json",
+      "git_blob": "944e617f4752f5e8a86fa13b5d716b30568c4bb6",
+      "sha256": "d35e3c7045536610f409c02226d0cd14df8da25ffb0476c379c9a95d2e969f01"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-boundaries-01.log",
+      "git_blob": "ef7645e36a52e460c28923a37910968d8c063e67",
+      "sha256": "333ca9c365942b6028a7c32c78db7916f875977d464d42e2869ba4f4b2b97ac5"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-01.log.gz",
+      "git_blob": "9d65f91016c2fcfbaaee252e1986ee91611b172e",
+      "sha256": "90e251c537633631f43ccc4e2af44b7f5d92de06e1aecc912387bcabc6c9c25a"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-02.log.gz",
+      "git_blob": "9fe45aaa7e59dd30d450bd39bb4bc49a7f7f261e",
+      "sha256": "01b50b41748c118db15dc8e41a59eb2461128de87e0d5ffb4eefc0dcc6c16b99"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-03.log",
+      "git_blob": "1edc91eb9de63395db0c0a67d13fa1c48a9f0b70",
+      "sha256": "22a184cda52fcb35d7b4f4985a3a1cb7b1816756cb3bfcb90af018f9f6766695"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-ui-01.log",
+      "git_blob": "b640d94aa2818416bac5b6993e6db3ac8b4ac145",
+      "sha256": "f7ea3ecb05e335cd4b27d81d21d28ddf91db20fc31ea560d65887d87eec323df"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-ui-02.log",
+      "git_blob": "63019e9597a6871ff9e87b6451b79362068da474",
+      "sha256": "0cc2039ae0f0de0a8788682931681e1267aa7d046ae6ac60dfaf5e475ff3ac2c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.name-status.txt",
+      "git_blob": "54fafcf75d1dc745e25ca59de856a6967445eafd",
+      "sha256": "53cf31b608436952a19074029ac8800617afe4cd6bf35093ecda19e5337f628d"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.patch.gz",
+      "git_blob": "bd8624f1d3e5fe1fb0aa05238f6432f77ebd13ed",
+      "sha256": "c5b4126afd9fdbef923d1f1986af031c99f4445f11783b0b8281c07baec85ca0"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.stat.txt",
+      "git_blob": "d388a32541714c6884c983d942b72c9a12aa29a6",
+      "sha256": "89e425d40741cacdc905f69e5fc020dd942bb2a831042068fc8c97807788e2a4"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.name-status.txt",
+      "git_blob": "acafc5237dc6417b5616339aed5321df04bd1b30",
+      "sha256": "8aa3bff6aa5f044303947fe5e2c67786b9d6c4a0745b1f2b0b4864a3fc907fa3"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.patch.gz",
+      "git_blob": "f17d18f150b05276eadef34598a8284abb15f4ab",
+      "sha256": "04a5f32b4854f1df4b3a34eed2d1f4aec40fd9f59e7788126de85d7b6c599202"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.stat.txt",
+      "git_blob": "5a3ae55b2fc272f3a6194047a110d6384531a31b",
+      "sha256": "ca7fc1e163698941fc5a8cb0a3782a90084ca4e9004c1365219e9e9623131a82"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/semantic-review.md",
+      "git_blob": "ae611938c8fa4085a202e7ebd7cdf1c2973778f8",
+      "sha256": "f98c7924eca0d3d1fe3939af41240a62f4984dfb8f1e23987b6780c81946d8dc"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/shared-preservation-precommit.json",
+      "git_blob": "985175ce03c6c3c08317dd1d15783789eb5ba00d",
+      "sha256": "23fdd785c84ffcb40329b53dfdc169c8ff544b24ea9a78c1d923008fb51f46da"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/source-manifest.json",
+      "git_blob": "6b0d6dba8f478a98122ab78dc5a0383f81900673",
+      "sha256": "826b264589245506e9a764a251ac33dc105cd6d3664909e906bfa7876aa5e204"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/unmerged.txt",
+      "git_blob": "bdf66d3fcf39cae672f52df6a4b27a1b2c496d57",
+      "sha256": "4b62844674a9969e4f987b25b66bef9356ed49056b98dca2581c38ce2870b4b1"
+    }
+  ],
+  "note": "Only byte preservation relative to accepted 51a is proved here; no retroactive expansion of evidence scope."
+}

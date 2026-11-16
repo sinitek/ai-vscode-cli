@@ -19,13 +19,15 @@ test("deactivate routes through stopAllRuns after blocking new runs", () => {
   const extensionSource = readExtensionSource();
   const deactivateSource = extractFunctionSource(
     extensionSource,
-    "export function deactivate(): void",
+    "export async function deactivate(): Promise<void>",
     "function stopAllRuns(): void",
   );
 
   assert.match(deactivateSource, /isExtensionDeactivating = true;/u);
   assert.doesNotMatch(deactivateSource, /loopAutoWakeScheduler/u);
   assert.match(deactivateSource, /stopAllRuns\(\);/u);
+  assert.ok(deactivateSource.indexOf("isExtensionDeactivating = true;") < deactivateSource.indexOf("stopAllRuns();"));
+  assert.ok(deactivateSource.indexOf("stopAllRuns();") < deactivateSource.indexOf("await ownerClosed"));
 });
 
 test("stopAllRuns covers active, parallel, interactive, and managed runners", () => {

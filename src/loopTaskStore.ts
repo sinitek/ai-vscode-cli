@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { randomBytes } from "crypto";
+import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, isDepartmentOwnedLoopTaskIdentity, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
 import {
   CLI_LIST,
   createCliRecord,
@@ -16,6 +18,7 @@ import {
 } from "./loopLegacyMigration";
 import { normalizeLoopMainAiFailureCount } from "./loopMainFailure";
 import {
+  normalizeLoopPlusAcceptancePlanSnapshot,
   normalizeLoopPlusAcceptancePlanSnapshotForStorage,
   type LoopPlusAcceptancePlanSnapshot,
 } from "./loopPlusAcceptancePlan";
@@ -23,11 +26,12 @@ import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
-import { writeFileAtomicallySync } from "./shared/atomicWrite";
 import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
 import { normalizeLoopSubtaskSession, readLoopContinuationSource, type LoopSubtaskSession } from "./loopSubtaskSession";
+import { readDepartmentMetadataField, type DepartmentMetadata } from "./department";
+import { identifier } from "./runtime/departmentexecutionidentity";
 
 const DATA_DIR = path.join(os.homedir(), ".sinitek_cli");
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
@@ -44,6 +48,55 @@ const LOOP_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
 const LOOP_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const loopTaskStoreFileCache = new Map<string, string>();
+const CONTROLLED_ROOT_MARKER = ".department-source.json";
+
+function canonicalExistingRoot(rootPath: string): string {
+  return fs.realpathSync(path.resolve(rootPath));
+}
+
+function isControlledLoopTaskStorePath(filePath: string): boolean {
+  let cursor = path.dirname(path.resolve(filePath));
+  // Resolve the existing parent once, then probe only its real ancestor chain.
+  // This keeps normal writes independent of the number of registered roots.
+  while (true) {
+    try {
+      cursor = fs.realpathSync(cursor);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true;
+      const parent = path.dirname(cursor);
+      if (parent === cursor) return false;
+      cursor = parent;
+    }
+  }
+  while (true) {
+    try { fs.lstatSync(path.join(cursor, CONTROLLED_ROOT_MARKER)); return true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return true; }
+    const parent = path.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return false;
+}
+
+/** Internal source boundary registration. Roots stay protected until explicit unregister. */
+export function registerDepartmentOwnedLoopTaskStoreRoot(rootPath: string, sourceId: string): { dispose(): void } {
+  const root = canonicalExistingRoot(rootPath);
+  const markerPath = path.join(root, CONTROLLED_ROOT_MARKER);
+  const marker = JSON.stringify({ version: 1, sourceId });
+  try { fs.writeFileSync(markerPath, marker, { flag: "wx", mode: 0o600 }); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    let existing: unknown;
+    try {
+      if (!fs.lstatSync(markerPath).isFile()) throw new Error("Invalid department source marker type");
+      existing = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    } catch { throw new Error("Invalid department source marker"); }
+    if (!existing || typeof existing !== "object" || (existing as { version?: unknown }).version !== 1
+      || (existing as { sourceId?: unknown }).sourceId !== sourceId) throw new Error("Department source marker identity mismatch");
+  }
+  return { dispose: () => undefined };
+}
 
 export type LoopTaskRole = "main" | "subtask";
 export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
@@ -84,7 +137,15 @@ export function resolveLoopSchedulingMode(value: unknown): LoopSchedulingMode {
   return typeof value === "string" && value.trim() === "event_driven" ? "event_driven" : "classic";
 }
 
+/** Host-only provenance from a successfully submitted failed review and its dispatch. */
+export type LoopSubtaskRepairSource = {
+  subtaskId: string;
+  attemptId: string;
+  finishEventId: string;
+};
+
 export type LoopSubtaskRecord = {
+  repairSource?: LoopSubtaskRepairSource;
   continueFromSubtaskId?: string;
   executionSession?: LoopSubtaskSession;
   id: string;
@@ -170,6 +231,11 @@ export type LoopTaskRecord = {
   taskKind?: LoopTaskKind;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
+  /** Department data is optional for legacy tasks; invalid data is explicit so execution can refuse it. */
+  department?: DepartmentMetadata;
+  departmentInvalid?: boolean;
+  /** Host delivery receipts committed together with the Loop+ user-message queue. */
+  departmentDeliveries?: Record<string, string>;
   loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
@@ -191,6 +257,9 @@ export type LoopTaskRecord = {
   communicationDir: string;
   mainCommunicationFile: string;
   sessionId?: string | null;
+  /** Native main execution binding; sessionId above remains the local tab/store key. */
+  executionSession?: LoopSubtaskSession;
+  executionSessionInvalid?: boolean;
   activeSubtaskId?: string | null;
   activeSubtaskIds?: string[];
   subTasks: LoopSubtaskRecord[];
@@ -244,6 +313,54 @@ export type LoopTaskStore = {
   tasks: LoopTaskRecord[];
 };
 
+/** Confirmed file mutations only; failed/unknown I/O revokes completeness until rebuild.
+ * Subscribers must not re-enter persistence. No read result is an incremental publication.
+ */
+export type LoopTaskStoreChange =
+  | { type: "replace"; filePath: string; tasks: readonly LoopTaskRecord[] }
+  | { type: "invalidate"; filePath?: string };
+const loopTaskStoreObservers = new Set<(change: LoopTaskStoreChange) => void>();
+export function subscribeLoopTaskStoreChanges(listener: (change: LoopTaskStoreChange) => void): { dispose(): void } {
+  loopTaskStoreObservers.add(listener);
+  return { dispose: () => { loopTaskStoreObservers.delete(listener); } };
+}
+function publishLoopTaskStoreChange(change: LoopTaskStoreChange): void {
+  for (const listener of loopTaskStoreObservers) {
+    try { listener(change); }
+    catch (error) {
+      // A consumer that cannot apply a mutation must discard its completeness claim.
+      try { listener({ type: "invalidate" }); } catch { /* Consumer is unusable. */ }
+      void logError("loop-task-store-observer-error", { error: String(error) });
+    }
+  }
+}
+
+/** Strict discovery for complete ownership rebuilds. Does not migrate or swallow directory errors. */
+export function listLoopTaskStoreFilesStrict(): string[] {
+  const files = new Set<string>();
+  const visit = (directory: string, filename: string, allowMissing = true): void => {
+    let entries: fs.Dirent[];
+    try {
+      if (fs.lstatSync(directory).isSymbolicLink()) throw new Error(`Ownership discovery refuses symlink: ${directory}`);
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    }
+    catch (error) { if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+    for (const entry of entries) {
+      const child = path.join(directory, entry.name);
+      if (entry.isSymbolicLink()) throw new Error(`Ownership discovery refuses symlink: ${child}`);
+      if (entry.isDirectory()) visit(child, filename, false);
+      else if (entry.isFile() && entry.name === filename) files.add(child);
+    }
+  };
+  visit(LOOP_TASK_STORE_DIR, LOOP_TASK_STORE_FILENAME);
+  visit(LEGACY_LOOP_STORAGE_PATHS.taskStoreDir, path.basename(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile));
+  for (const file of [LOOP_TASK_STORE_FLAT_FILE, LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile]) {
+    try { if (!fs.lstatSync(file).isFile()) throw new Error(`Invalid ownership source: ${file}`); files.add(file); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  return [...files];
+}
+
 export function buildLoopSessionIdsByCli(
   tasks: readonly Pick<LoopTaskRecord, "cli" | "sessionId">[]
 ): Record<CliName, Set<string>> {
@@ -255,6 +372,71 @@ export function buildLoopSessionIdsByCli(
     }
   });
   return sessionIdsByCli;
+}
+
+/** Trusted host-only routing. A handled failure NEVER delegates to ordinary discovery. */
+export type LoopTaskHostRequest =
+  | { type: "read"; taskId: string }
+  | { type: "update"; taskId: string; patch: Partial<LoopTaskRecord>; options: { allowCompletedToRunning?: boolean } }
+  | { type: "append"; taskId: string; round: LoopRoundRecord }
+  | { type: "rebind"; taskId: string; cli?: CliName; sessionId: string | null }
+  | { type: "readFile" | "deleteFile"; filePath: string }
+  | { type: "retention" };
+export type LoopTaskHostResult =
+  | { handled: false }
+  | { handled: true; ok: false }
+  | { handled: true; ok: true; record?: LoopTaskRecord; store?: LoopTaskStore };
+type HostRoute = {
+  root: string; ids: Set<string>; active: boolean;
+  route(request: LoopTaskHostRequest): LoopTaskHostResult;
+};
+const hostRoutes: HostRoute[] = [];
+function insideRoute(root: string, file: string): boolean {
+  const relative = path.relative(root, path.resolve(file));
+  return relative === "" || relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}
+/** Initialized identities must come from a complete controlled source, never model/UI fields.
+ * Disposal retains identity/root tombstones. Re-registering an inactive root preserves them. */
+export function registerLoopTaskStoreHostRouter(input: {
+  root: string; knownTaskIds: readonly string[];
+  route(request: LoopTaskHostRequest): LoopTaskHostResult;
+}): { rememberTask(taskId: string): void; dispose(): void } {
+  const root = canonicalExistingRoot(input.root);
+  const previous = hostRoutes.find((entry) => entry.root === root);
+  if (hostRoutes.some((entry) => entry.active && (insideRoute(entry.root, root) || insideRoute(root, entry.root)))) {
+    throw new Error("Loop task host router overlaps an active source");
+  }
+  const ids = new Set([...(previous?.ids ?? []), ...input.knownTaskIds]);
+  if (hostRoutes.some((entry) => entry.root !== root && [...ids].some((id) => entry.ids.has(id)))) {
+    throw new Error("Loop task host router identity conflict");
+  }
+  const entry: HostRoute = { root, ids, active: true, route: input.route };
+  if (previous) hostRoutes.splice(hostRoutes.indexOf(previous), 1);
+  hostRoutes.push(entry);
+  return {
+    rememberTask: (id) => {
+      if (!entry.active || entry.ids.has(id) || hostRoutes.some((other) => other !== entry && other.ids.has(id))) throw new Error("Loop task host identity conflict");
+      entry.ids.add(id);
+    },
+    dispose: () => { entry.active = false; },
+  };
+}
+function canonicalRouteFile(file: string): string {
+  try { return fs.realpathSync(file); } catch { return path.resolve(file); }
+}
+function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
+  if ("filePath" in request) request = { ...request, filePath: canonicalRouteFile(request.filePath) };
+  if (request.type === "retention") throw new Error("Retention must visit each source");
+  const entry = hostRoutes.find((route) => "taskId" in request ? route.ids.has(request.taskId) : insideRoute(route.root, request.filePath));
+  if (!entry) {
+    if ("taskId" in request && isDepartmentOwnedLoopTaskIdentity(request.taskId) !== false) return { handled: true, ok: false };
+    return { handled: false };
+  }
+  if (!entry.active) return { handled: true, ok: false };
+  try {
+    const result = entry.route(request);
+    return result.handled ? result : { handled: true, ok: false };
+  } catch { return { handled: true, ok: false }; }
 }
 
 export type LoopCommunicationPaths = {
@@ -310,6 +492,7 @@ function collectLoopTaskStoreFilesFromDir(
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
     } catch (error) {
+      publishLoopTaskStoreChange({ type: "invalidate" });
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         continue;
       }
@@ -351,6 +534,19 @@ function migrateLegacyLoopStorage(): string[] {
   if (fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile)) {
     legacyFiles.push(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile);
   }
+  try {
+    for (const file of legacyFiles) {
+      if (isControlledLoopTaskStorePath(file) || hostRoutes.some((entry) => insideRoute(entry.root, file))) return Array.from(new Set(legacyFiles));
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (!Array.isArray(parsed?.tasks) || parsed.tasks.some((task: LoopTaskRecord) => !task || task.department !== undefined || task.departmentInvalid
+        || hostRoutes.some((entry) => entry.ids.has(task.id))
+        || !canMigrateOrdinaryLoopTaskIdentity(task.id, file)
+        || (typeof task.taskStoreFile === "string" && (isControlledLoopTaskStorePath(task.taskStoreFile) || hostRoutes.some((entry) => insideRoute(entry.root, task.taskStoreFile))))
+        || isControlledLoopTaskStorePath(buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId ?? null, task.id)))) {
+        return Array.from(new Set(legacyFiles));
+      }
+    }
+  } catch { return Array.from(new Set(legacyFiles)); }
   if (!migrateLegacyLoopCommunicationStorage()) {
     return Array.from(new Set(legacyFiles));
   }
@@ -395,8 +591,9 @@ function migrateLegacyLoopTaskStoreFile(filePath: string): void {
       // Resolve all copies before choosing a location instead of caching this one.
       loopTaskStoreFileCache.delete(task.id);
     }
-    fs.unlinkSync(filePath);
+    if (!deleteLoopTaskStoreFile(filePath)) throw new Error("Loop task migration delete failed");
   } catch (error) {
+    publishLoopTaskStoreChange({ type: "invalidate", filePath });
     void logError("loop-legacy-task-store-migration-error", {
       filePath,
       error: String(error),
@@ -665,6 +862,8 @@ function updateLoopSubtaskCommunicationFile(taskId: string, subtaskId: string, f
 }
 
 export function readLoopTaskRecord(taskId: string, options: LoopTaskStoreReadOptions = {}): LoopTaskRecord | null {
+  const routed = routeHostRequest({ type: "read", taskId });
+  if (routed.handled) return routed.ok ? routed.record ?? null : null;
   const storeFile = resolveLoopTaskStoreFileForTask(taskId, options);
   if (!storeFile) {
     return null;
@@ -679,21 +878,81 @@ export function readLoopTaskRecord(taskId: string, options: LoopTaskStoreReadOpt
   return task;
 }
 
+/** Ordinary group-chat fallback at an already known physical source. Never discovers stores
+ * and never grants department authority when the ownership source is unavailable. */
+export function readKnownOrdinaryLoopTaskRecord(taskId: string): LoopTaskRecord | null {
+  if (hostRoutes.some((entry) => entry.ids.has(taskId)) || isDepartmentOwnedLoopTaskIdentity(taskId) !== false) return null;
+  const file = loopTaskStoreFileCache.get(taskId);
+  if (!file) return null;
+  const result = readLoopTaskStoreResult(file, true, true);
+  if (!result.ok) return null;
+  const matches = result.store.tasks.filter((task) => task.id === taskId);
+  const task = matches.length === 1 ? matches[0] : null;
+  return task && task.department === undefined && !task.departmentInvalid ? { ...task, taskStoreFile: file } : null;
+}
+
 export function updateLoopTaskRecord(
   taskId: string,
   patch: Partial<LoopTaskRecord>,
   options: { allowCompletedToRunning?: boolean } = {}
 ): LoopTaskRecord | null {
+  const routed = routeHostRequest({ type: "update", taskId, patch, options });
+  if (routed.handled) return routed.ok ? routed.record ?? null : null;
   const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true });
   if (!storeFile) {
     return null;
   }
-  const store = readLoopTaskStore(storeFile, { throwOnError: true });
+  const read = readLoopTaskStoreResult(storeFile, true);
+  if (!read.ok) return null;
+  const store = read.store;
   const index = store.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) {
     return null;
   }
   const existing = store.tasks[index];
+  // An ordinary published record cannot be promoted into a trusted department record.
+  if (!existing.department && !existing.departmentInvalid && (patch.department !== undefined || patch.departmentInvalid)) return null;
+  const next = mergeLoopTaskRecordPatch(existing, patch, options);
+  const targetStoreFile = next.taskStoreFile;
+  if (!isSameLoopTaskStoreFile(targetStoreFile, storeFile)) {
+    const targetRead = readLoopTaskStoreResult(targetStoreFile, false, true);
+    if (!targetRead.ok) return null;
+    const targetStore = targetRead.store;
+    const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
+    next.updatedAt = Math.max(next.updatedAt, existing.updatedAt + 1,
+      targetIndex >= 0 ? targetStore.tasks[targetIndex].updatedAt + 1 : 0);
+    if (targetIndex >= 0) targetStore.tasks[targetIndex] = next;
+    else targetStore.tasks.push(next);
+    if (!tryWriteLoopTaskStore(targetStoreFile, targetStore)) return null;
+    loopTaskStoreFileCache.set(taskId, targetStoreFile);
+    // Target persistence is the commit. Cleanup failure must not make reads select the old copy.
+    store.tasks.splice(index, 1);
+    try {
+      if (store.tasks.length > 0) {
+        if (!tryWriteLoopTaskStore(storeFile, store)) throw new Error("Loop task move source cleanup write failed");
+      } else if (!deleteLoopTaskStoreFile(storeFile)) {
+        throw new Error("Loop task move source cleanup delete failed");
+      }
+    } catch (error) {
+      void logError("loop-task-store-move-cleanup-error", { taskId, filePath: storeFile, targetFile: targetStoreFile, error: String(error) });
+    }
+    return next;
+  }
+  store.tasks[index] = next;
+  if (!tryWriteLoopTaskStore(storeFile, store)) return null;
+  loopTaskStoreFileCache.set(taskId, storeFile);
+  return next;
+}
+
+/** Shared ordinary/owned update semantics; persistence and identity checks belong to the caller. */
+export function mergeLoopTaskRecordPatch(existing: LoopTaskRecord, patch: Partial<LoopTaskRecord>, options: { allowCompletedToRunning?: boolean } = {}): LoopTaskRecord {
+  if (Object.prototype.hasOwnProperty.call(patch, "executionSession")) {
+    const native = normalizeDepartmentMainExecutionSession(patch.executionSession, existing.cli, existing.department, existing.sessionId);
+    if (!native || (existing.executionSession && ["cli", "sessionId", "configId"].some((key) =>
+      native[key as keyof LoopSubtaskSession] !== existing.executionSession![key as keyof LoopSubtaskSession]))) {
+      throw new Error("部门组长原生会话绑定无效或不可替换");
+    }
+  }
   const nextStatus = existing.status === "completed" && patch.status === "running" && options.allowCompletedToRunning !== true
     ? existing.status
     : patch.status ?? existing.status;
@@ -717,44 +976,35 @@ export function updateLoopTaskRecord(
       : existing.completionRequirementCoverage,
     updatedAt: Math.max(existing.updatedAt, patch.updatedAt ?? Date.now()),
   };
-  const targetStoreFile = next.taskStoreFile;
-  if (!isSameLoopTaskStoreFile(targetStoreFile, storeFile)) {
-    const targetStore = readLoopTaskStore(targetStoreFile, { throwOnError: true });
-    const targetIndex = targetStore.tasks.findIndex((task) => task.id === taskId);
-    // A committed move must outrank its source even within the same millisecond.
-    // This also makes a cold lookup safe if source cleanup fails or the host exits.
-    next.updatedAt = Math.max(next.updatedAt, existing.updatedAt + 1,
-      targetIndex >= 0 ? targetStore.tasks[targetIndex].updatedAt + 1 : 0);
-    if (targetIndex >= 0) {
-      targetStore.tasks[targetIndex] = next;
-    } else {
-      targetStore.tasks.push(next);
-    }
-    writeLoopTaskStore(targetStoreFile, targetStore);
-    loopTaskStoreFileCache.set(taskId, targetStoreFile);
-    // The target is now authoritative. Cleanup is maintenance: failure must not
-    // undo the commit or make a retry load the old source record.
-    store.tasks.splice(index, 1);
-    try {
-      if (store.tasks.length > 0) {
-        writeLoopTaskStore(storeFile, store);
-      } else if (fs.existsSync(storeFile)) {
-        fs.unlinkSync(storeFile);
-      }
-    } catch (error) {
-      void logError("loop-task-store-move-cleanup-error", {
-        taskId, filePath: storeFile, targetFile: targetStoreFile, error: String(error),
-      });
-    }
-    return next;
+  if (patch.department !== undefined) {
+    const departmentField = readDepartmentMetadataField(patch.department);
+    if (departmentField.invalid) next.departmentInvalid = true;
+    else delete next.departmentInvalid;
   }
-  // Keep the known location for aliases, including case aliases on volumes that
-  // support them. Never clean up a second spelling of the file just committed.
-  next.taskStoreFile = storeFile;
-  store.tasks[index] = next;
-  writeLoopTaskStore(storeFile, store);
-  loopTaskStoreFileCache.set(taskId, storeFile);
   return next;
+}
+
+/** Native identity is separate from the local tab key, and belongs to the
+ * frozen Codex/OpenCode leader route. This contract is shared by cold reads and writes. */
+function normalizeDepartmentMainExecutionSession(value: unknown, cli: CliName, department: DepartmentMetadata | undefined,
+  localSession: string | null | undefined): LoopSubtaskSession | undefined {
+  const native = normalizeLoopSubtaskSession(value);
+  if (!native || !value || typeof value !== "object" || Array.isArray(value)
+    || Object.keys(value).length !== 3 || !["cli", "sessionId", "configId"].every((k) => Object.prototype.hasOwnProperty.call(value, k))
+    || !["codex", "opencode"].includes(cli) || native.cli !== cli || department?.role !== "leader" || department.routes.leader.cli !== cli
+    || cli === "opencode" && !/^ses_[A-Za-z0-9]+$/.test(native.sessionId)
+    || !native.configId || native.configId !== department.routes.leader.configId
+    || !identifier(native.sessionId) || native.sessionId === localSession
+    || native.sessionId !== (value as LoopSubtaskSession).sessionId || native.configId !== (value as LoopSubtaskSession).configId) return undefined;
+  return native;
+}
+
+/** Shared round replacement key: round + role + subtaskId. */
+export function mergeLoopTaskRound(task: LoopTaskRecord, round: LoopRoundRecord): LoopTaskRecord {
+  const rounds = [...task.rounds];
+  const index = rounds.findIndex((item) => item.round === round.round && item.role === round.role && (item.subtaskId ?? null) === (round.subtaskId ?? null));
+  if (index >= 0) rounds[index] = { ...rounds[index], ...round }; else rounds.push(round);
+  return { ...task, rounds, currentRound: Math.max(task.currentRound, round.round), updatedAt: Date.now() };
 }
 
 export function ensureLoopTaskMaxRoundsAtLeast(
@@ -775,38 +1025,28 @@ export function ensureLoopTaskMaxRoundsAtLeast(
   };
 }
 
+/** Confirmed append port for hosts that must observe persistence failure. */
+export function tryAppendLoopRound(taskId: string, round: LoopRoundRecord): boolean {
+  const routed = routeHostRequest({ type: "append", taskId, round });
+  if (routed.handled) return routed.ok;
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId);
+  if (!storeFile) return false;
+  const read = readLoopTaskStoreResult(storeFile, true);
+  if (!read.ok) return false;
+  const index = read.store.tasks.findIndex((task) => task.id === taskId);
+  if (index < 0) return false;
+  read.store.tasks[index] = mergeLoopTaskRound(read.store.tasks[index], round);
+  return tryWriteLoopTaskStore(storeFile, read.store);
+}
+
+/** Legacy void wrapper; new host code must use tryAppendLoopRound for confirmation. */
 export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
-  const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true });
-  if (!storeFile) {
-    return;
-  }
-  const store = readLoopTaskStore(storeFile, { throwOnError: true });
-  const index = store.tasks.findIndex((task) => task.id === taskId);
-  if (index < 0) {
-    return;
-  }
-  const task = store.tasks[index];
-  const existingRoundIndex = task.rounds.findIndex((item) => (
-    item.round === round.round
-    && item.role === round.role
-    && (item.subtaskId ?? null) === (round.subtaskId ?? null)
-  ));
-  const rounds = [...task.rounds];
-  if (existingRoundIndex >= 0) {
-    rounds[existingRoundIndex] = { ...rounds[existingRoundIndex], ...round };
-  } else {
-    rounds.push(round);
-  }
-  store.tasks[index] = {
-    ...task,
-    rounds,
-    currentRound: Math.max(task.currentRound, round.round),
-    updatedAt: Math.max(task.updatedAt, Date.now()),
-  };
-  writeLoopTaskStore(storeFile, store);
+  if (!tryAppendLoopRound(taskId, round)) throw new Error("Loop round append was not confirmed");
 }
 
 export function bindLoopTaskToSession(taskId: string, sessionId: string): LoopTaskRecord | null {
+  const routed = routeHostRequest({ type: "rebind", taskId, sessionId });
+  if (routed.handled) return routed.ok ? routed.record ?? null : null;
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) {
     return null;
@@ -831,6 +1071,8 @@ export function bindLoopTaskToRuntimeTarget(
   cli: CliName,
   sessionId: string | null,
 ): LoopTaskRecord | null {
+  const routed = routeHostRequest({ type: "rebind", taskId, cli, sessionId });
+  if (routed.handled) return routed.ok ? routed.record ?? null : null;
   const task = readLoopTaskRecord(taskId, { throwOnError: true });
   if (!task) {
     return null;
@@ -951,8 +1193,14 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
         : {}),
     }
     : undefined;
-  const loopPlusAcceptancePlan = normalizeLoopPlusAcceptancePlanSnapshotForStorage(rawAcceptancePlan);
   const loopSubtaskMode = readLoopSubtaskModeField((raw as { loopSubtaskMode?: unknown }).loopSubtaskMode);
+  const departmentField = readDepartmentMetadataField(
+    (raw as { department?: unknown }).department,
+    raw.departmentInvalid === true,
+  );
+  const loopPlusAcceptancePlan = departmentField.metadata && rawAcceptancePlan !== undefined
+    ? normalizeLoopPlusAcceptancePlanSnapshot(rawAcceptancePlan)
+    : normalizeLoopPlusAcceptancePlanSnapshotForStorage(rawAcceptancePlan);
   return {
     id: raw.id,
     cli,
@@ -962,6 +1210,10 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(taskKind ? { taskKind } : {}),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
+    ...(departmentField.metadata ? { department: departmentField.metadata } : {}),
+    ...(departmentField.invalid ? { departmentInvalid: true } : {}),
+    ...(raw.departmentDeliveries && typeof raw.departmentDeliveries === "object" && !Array.isArray(raw.departmentDeliveries)
+      ? { departmentDeliveries: Object.fromEntries(Object.entries(raw.departmentDeliveries).filter(([id, body]) => id.trim() && typeof body === "string" && body.trim())) } : {}),
     ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
@@ -979,6 +1231,11 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLoopCommunicationPaths(raw.id).dir,
     mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLoopCommunicationPaths(raw.id).mainFile,
     sessionId,
+    ...(raw.executionSession === undefined ? {} : (() => {
+      const native = normalizeDepartmentMainExecutionSession(raw.executionSession, cli, departmentField.metadata, sessionId);
+      return native
+        ? { executionSession: native } : { executionSessionInvalid: true };
+    })()),
     activeSubtaskId: typeof raw.activeSubtaskId === "string" ? raw.activeSubtaskId : null,
     activeSubtaskIds: Array.isArray((raw as { activeSubtaskIds?: unknown }).activeSubtaskIds)
       ? (raw as { activeSubtaskIds: unknown[] }).activeSubtaskIds
@@ -1110,6 +1367,16 @@ function normalizeLoopTaskModelRoute(value: unknown): LoopTaskModelRoute | null 
   };
 }
 
+/** Retain an invalid sentinel rather than silently granting completion after corrupt recovery. */
+function normalizeLoopSubtaskRepairSource(value: unknown): LoopSubtaskRepairSource {
+  const invalid = { subtaskId: "", attemptId: "", finishEventId: "" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return invalid;
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).length !== 3 || ![raw.subtaskId, raw.attemptId, raw.finishEventId]
+    .every((item) => typeof item === "string" && item.length > 0 && item.length <= 2048 && item.trim() === item)) return invalid;
+  return { subtaskId: raw.subtaskId as string, attemptId: raw.attemptId as string, finishEventId: raw.finishEventId as string };
+}
+
 function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
@@ -1133,6 +1400,8 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(executionSession ? { executionSession } : {}),
+    ...(Object.prototype.hasOwnProperty.call(raw, "repairSource")
+      ? { repairSource: normalizeLoopSubtaskRepairSource(raw.repairSource) } : {}),
     conflictGroup: typeof raw.conflictGroup === "string" ? raw.conflictGroup : undefined,
     writeFiles: normalizeLoopWriteFiles((raw as { writeFiles?: unknown }).writeFiles),
     ...(taskType ? { taskType } : {}),
@@ -1257,6 +1526,13 @@ function ensureLoopTaskStore(
   store?: LoopTaskStore,
   options: { sourceFile?: string; throwOnError?: boolean } = {}
 ): LoopTaskStore {
+  return normalizeLoopTaskStoreForStorage(store, options);
+}
+
+export function normalizeLoopTaskStoreForStorage(
+  store?: LoopTaskStore,
+  options: { sourceFile?: string; preserveExpired?: boolean; throwOnError?: boolean } = {}
+): LoopTaskStore {
   const now = Date.now();
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
@@ -1268,91 +1544,146 @@ function ensureLoopTaskStore(
         return normalized;
       })
       .filter((record): record is LoopTaskRecord => Boolean(record))
-      .filter((record) => isTimestampWithinHistoryRetention(record.updatedAt, now))
+      .filter((record) => options.preserveExpired || isTimestampWithinHistoryRetention(record.updatedAt, now))
     : [];
   return { tasks };
 }
 
-// Resolve lexical aliases first, then let the filesystem decide case/symlink/
-// hard-link identity. Lowercasing would conflate distinct files on sensitive volumes.
+// Preserve file identity semantics on case-sensitive volumes while recognizing aliases.
 function isSameLoopTaskStoreFile(left: string, right: string): boolean {
-  if (path.resolve(left) === path.resolve(right)) {
-    return true;
-  }
+  if (path.resolve(left) === path.resolve(right)) return true;
   try {
     const leftStats = fs.statSync(left);
     const rightStats = fs.statSync(right);
     return (leftStats.ino !== 0 && leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino)
       || fs.realpathSync(left) === fs.realpathSync(right);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
 }
 
-/** Queries tolerate unreadable data; commit readers opt in to propagating failures. */
-export function readLoopTaskStore(filePath: string, options: LoopTaskStoreReadOptions = {}): LoopTaskStore {
+export type LoopTaskStoreReadResult = { ok: true; store: LoopTaskStore } | { ok: false };
+/** A missing file is empty only for ordinary create/read; rebuild requires every discovered file. */
+export function readLoopTaskStoreResult(filePath: string, requireExisting = false, requireComplete = false, preserveExpired = false, throwOnError = false): LoopTaskStoreReadResult {
+  const routed = routeHostRequest({ type: "readFile", filePath });
+  if (routed.handled) return routed.ok && routed.store ? { ok: true, store: routed.store } : { ok: false };
+  // Unregistered/aliased controlled files have no ordinary read authority.
+  if (isControlledLoopTaskStorePath(canonicalRouteFile(filePath))) return { ok: false };
   try {
-    const raw = fs.readFileSync(filePath, "utf8");
-    const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
-      && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
-    const parsed = migrateLegacyLoopJson(
-      JSON.parse(raw),
-      retainLegacyStoragePaths ? undefined : DATA_DIR,
-    ).value;
-    if (!parsed || !Array.isArray(parsed.tasks)) {
-      throw new Error("Loop task store format invalid");
-    }
-    return ensureLoopTaskStore({ tasks: parsed.tasks as LoopTaskRecord[] }, {
-      sourceFile: filePath, throwOnError: options.throwOnError,
-    });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { tasks: [] };
-    }
-    void logError("loop-task-store-read-error", { filePath, error: String(error) });
-    if (options.throwOnError) {
+    let raw: string;
+    try { raw = fs.readFileSync(filePath, "utf8"); }
+    catch (error) {
+      if (!requireExisting && (error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, store: { tasks: [] } };
       throw error;
     }
-    return { tasks: [] };
+    const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
+      && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
+    const parsed = migrateLegacyLoopJson(JSON.parse(raw), retainLegacyStoragePaths ? undefined : DATA_DIR).value;
+    if (!parsed || !Array.isArray(parsed.tasks)) throw new Error("Invalid Loop task store");
+    // Invalid records must not silently disappear from a complete ownership snapshot.
+    if (requireComplete && parsed.tasks.some((record: unknown) => !normalizeLoopTaskRecord(record, filePath))) throw new Error("Invalid Loop task record");
+    return { ok: true, store: normalizeLoopTaskStoreForStorage({ tasks: parsed.tasks as LoopTaskRecord[] }, {
+      sourceFile: filePath, preserveExpired, throwOnError: requireComplete || throwOnError,
+    }) };
+  } catch (error) {
+    publishLoopTaskStoreChange({ type: "invalidate", filePath });
+    void logError("loop-task-store-read-error", { filePath, error: String(error) });
+    if (throwOnError) throw error;
+    return { ok: false };
   }
 }
 
-/** Normal return means the atomic replacement committed; failures propagate unchanged. */
-export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void {
+export function readLoopTaskStore(filePath: string, options: LoopTaskStoreReadOptions = {}): LoopTaskStore {
+  const result = readLoopTaskStoreResult(filePath, false, false, false, options.throwOnError);
+  return result.ok ? result.store : { tasks: [] };
+}
+
+/** Narrow confirmed persistence port; the legacy void wrapper remains compatible. */
+export function tryWriteLoopTaskStore(filePath: string, store: LoopTaskStore): boolean {
+  let tempFile: string | undefined;
   try {
+    if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
+    // Check the caller's IDs before retention/normalization can erase an expired record.
+    if (store.tasks.some((task) => hostRoutes.some((entry) => entry.ids.has(task.id))
+      || isDepartmentOwnedLoopTaskIdentity(task.id) !== false)) throw new Error("Controlled task identities require owner transactions");
     const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
       && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
-    const migratedStore = migrateLegacyLoopJson(
-      store,
-      retainLegacyStoragePaths ? undefined : DATA_DIR,
-    ).value;
-    writeFileAtomicallySync(
-      filePath,
-      JSON.stringify(ensureLoopTaskStore(migratedStore, { sourceFile: filePath }), null, 2),
-    );
+    const migratedStore = migrateLegacyLoopJson(store, retainLegacyStoragePaths ? undefined : DATA_DIR).value;
+    const persisted = normalizeLoopTaskStoreForStorage(migratedStore, { sourceFile: filePath });
+    if (!commitLoopTaskIdentities(new Map([[filePath, persisted.tasks]]), () => {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
+      try {
+        const target = fs.lstatSync(filePath);
+        if (!target.isFile()) throw new Error("Loop task store target must be a regular file");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      tempFile = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomBytes(12).toString("hex")}.stage`);
+      fs.writeFileSync(tempFile, JSON.stringify(persisted, null, 2), { encoding: "utf8", flag: "wx" });
+      fs.renameSync(tempFile, filePath);
+      tempFile = undefined;
+      return true;
+    })) return false;
+    for (const task of persisted.tasks) loopTaskStoreFileCache.set(task.id, filePath);
+    publishLoopTaskStoreChange({ type: "replace", filePath, tasks: persisted.tasks });
+    return true;
   } catch (error) {
+    if (tempFile) { try { fs.unlinkSync(tempFile); } catch { /* best-effort cleanup */ } }
+    publishLoopTaskStoreChange({ type: "invalidate", filePath });
     void logError("loop-task-store-write-error", { filePath, error: String(error) });
-    throw error;
+    return false;
+  }
+}
+
+export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void {
+  if (!tryWriteLoopTaskStore(filePath, store)) throw new Error("Loop task store write was not confirmed");
+}
+
+/** Confirmed deletion, shared by migration and retention. Failure never publishes an empty file. */
+export function deleteLoopTaskStoreFile(filePath: string): boolean {
+  const routed = routeHostRequest({ type: "deleteFile", filePath });
+  if (routed.handled) return routed.ok;
+  try {
+    if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
+    if (!commitLoopTaskIdentities(new Map([[filePath, []]]), () => {
+      try { fs.unlinkSync(filePath); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      return true;
+    })) return false;
+    for (const [id, cached] of loopTaskStoreFileCache) if (cached === filePath) loopTaskStoreFileCache.delete(id);
+    publishLoopTaskStoreChange({ type: "replace", filePath, tasks: [] });
+    return true;
+  } catch (error) {
+    publishLoopTaskStoreChange({ type: "invalidate", filePath });
+    void logError("loop-task-store-delete-error", { filePath, error: String(error) });
+    return false;
   }
 }
 
 export function cleanupLoopTaskStoreRetention(): void {
+  for (const entry of hostRoutes) {
+    if (entry.active) { try { entry.route({ type: "retention" }); } catch { /* A failed source stays protected. */ } }
+  }
   try {
     const filePaths = listLoopTaskStoreFiles();
     filePaths.forEach((filePath) => {
-      const normalized = readLoopTaskStore(filePath, { throwOnError: true });
+      if (hostRoutes.some((entry) => insideRoute(entry.root, filePath))) return;
+      const read = readLoopTaskStoreResult(filePath, true);
+      if (!read.ok) return;
+      const normalized = read.store;
       if (normalized.tasks.length > 0) {
-        writeLoopTaskStore(filePath, normalized);
+        if (!tryWriteLoopTaskStore(filePath, normalized)) return;
+        normalized.tasks.forEach((task) => {
+          loopTaskStoreFileCache.set(task.id, filePath);
+        });
         return;
       }
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+      deleteLoopTaskStoreFile(filePath);
     });
   } catch (error) {
+    publishLoopTaskStoreChange({ type: "invalidate" });
     void logError("loop-task-store-retention-cleanup-error", { error: String(error) });
   }
 }
@@ -1406,33 +1737,36 @@ export function cleanupLoopCommunicationRetention(): void {
     }
     const now = Date.now();
     const retainedTaskIds = collectRetainedLoopTaskIds();
-    const entries = fs.readdirSync(LOOP_COMMUNICATION_DIR, { withFileTypes: true });
-    entries.forEach((entry) => {
-      if (!entry.isDirectory()) {
-        return;
-      }
-      const taskId = entry.name;
-      if (retainedTaskIds.has(taskId)) {
-        return;
-      }
-      const dirPath = path.join(LOOP_COMMUNICATION_DIR, taskId);
-      const latestTouchedAt = getLatestMtimeMsInTree(dirPath);
-      if (isTimestampWithinHistoryRetention(latestTouchedAt, now)) {
-        return;
-      }
-      try {
-        fs.rmSync(dirPath, { recursive: true, force: true });
-      } catch (error) {
-        void logError("loop-communication-retention-delete-error", {
-          taskId,
-          dirPath,
-          error: String(error),
-        });
+    withLoopTaskIdentityRetention((ownedTaskIds) => {
+      const entries = fs.readdirSync(LOOP_COMMUNICATION_DIR, { withFileTypes: true });
+      entries.forEach((entry) => {
+        if (!entry.isDirectory()) {
+          return;
+        }
+        const taskId = entry.name;
+        // The ordinary retention scanner cannot prove deletion in an unavailable owned source.
+        if (retainedTaskIds.has(taskId) || ownedTaskIds.has(taskId) || hostRoutes.some((entry) => entry.ids.has(taskId))) {
+          return;
+        }
+        const dirPath = path.join(LOOP_COMMUNICATION_DIR, taskId);
+        const latestTouchedAt = getLatestMtimeMsInTree(dirPath);
+        if (isTimestampWithinHistoryRetention(latestTouchedAt, now)) {
+          return;
+        }
+        try {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+        } catch (error) {
+          void logError("loop-communication-retention-delete-error", {
+            taskId,
+            dirPath,
+            error: String(error),
+          });
+        }
+      });
+      if (fs.existsSync(LOOP_COMMUNICATION_DIR) && fs.readdirSync(LOOP_COMMUNICATION_DIR).length === 0) {
+        fs.rmSync(LOOP_COMMUNICATION_DIR, { recursive: true, force: true });
       }
     });
-    if (fs.existsSync(LOOP_COMMUNICATION_DIR) && fs.readdirSync(LOOP_COMMUNICATION_DIR).length === 0) {
-      fs.rmSync(LOOP_COMMUNICATION_DIR, { recursive: true, force: true });
-    }
   } catch (error) {
     void logError("loop-communication-retention-cleanup-error", { error: String(error) });
   }

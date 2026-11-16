@@ -991,6 +991,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       // 既有排队/冲突/发送逻辑，验收方案确认后与直接发送走完全相同的分支。
       function dispatchPromptPayload(payload, tabId) {
         const promptPayload = payload;
+        if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(payload, tabId)) return "failed";
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         if (isLoopMainConversationTabRunning(targetTabId)) {
           queuePromptForLater(promptPayload);
@@ -1016,6 +1017,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         }
         const promptPayload = buildPromptPayload(prompt);
         const activeTabId = getActiveConversationTabId();
+        if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(promptPayload, activeTabId)) return;
         // 仅新建 Loop+ 根任务需要先确认验收方案；续跑/恢复/补充与其它模式保持原样。
         if (
           typeof isAcceptancePlanRequiredForPayload === "function"

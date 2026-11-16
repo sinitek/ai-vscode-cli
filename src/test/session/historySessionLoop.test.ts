@@ -95,8 +95,8 @@ function renderSessionTitleBadges(
     (key: string) => ({
       sessionLoopLabel: "Loop",
       sessionOpenInTabsLabel: "Open",
-      historySessionRoleMain: "☀️",
-      historySessionRoleSubtask: "🌛",
+      historySessionRoleMain: "🌛",
+      historySessionRoleSubtask: "⭐️",
     } as Record<string, string>)[key] || key,
     (value: string) => value,
     () => "time",
@@ -134,8 +134,8 @@ test("renders Loop and open badges together in history sessions", () => {
 });
 
 test("prefixes non-vibe history session titles with main and subtask markers", () => {
-  assert.deepEqual(renderSessionTitleBadges(true, false, "main"), ["☀️ [Codex] Build the feature", "Loop"]);
-  assert.deepEqual(renderSessionTitleBadges(false, false, "subtask"), ["🌛 [Codex] Build the feature"]);
+  assert.deepEqual(renderSessionTitleBadges(true, false, "main"), ["🌛 [Codex] Build the feature", "Loop"]);
+  assert.deepEqual(renderSessionTitleBadges(false, false, "subtask"), ["⭐️ [Codex] Build the feature"]);
   assert.deepEqual(renderSessionTitleBadges(false, false, null), ["[Codex] Build the feature"]);
 });
 

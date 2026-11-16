@@ -1021,6 +1021,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
+        if (typeof renderDepartmentConfiguration === "function") renderDepartmentConfiguration();
         if (typeof syncCliSelectAvailability === "function") {
           syncCliSelectAvailability();
         }

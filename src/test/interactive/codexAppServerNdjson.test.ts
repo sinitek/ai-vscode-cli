@@ -14,7 +14,7 @@ test.beforeEach(blockRealProcessSignals);
 test.beforeEach((t) => {
   assert.ok("mock" in t);
   // These fake executables implement RPC only; capability probes have their own suite.
-  t.mock.method(require("../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+  t.mock.method(require("../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
     async () => ({ supported: true, reason: "supported" }));
 });
 
@@ -38,6 +38,39 @@ async function readLines(chunks: Array<Buffer | string>): Promise<string[]> {
   await done;
   return lines;
 }
+
+test("NDJSON drain proof requires natural EOF and consuming the final queued line", async () => {
+  const stdout = new PassThrough(), reader = createCodexAppServerNdjsonReader(stdout);
+  const iterator = reader.lines[Symbol.asyncIterator]();
+  stdout.end("first\nlast\n");
+  assert.equal((await iterator.next()).value, "first");
+  let drained = false;
+  void reader.drained.then(() => { drained = true; });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(drained, false);
+  assert.equal((await iterator.next()).value, "last");
+  assert.equal((await iterator.next()).done, true);
+  assert.deepEqual(await reader.drained, { status: "confirmed", evidence: "ndjson-natural-eof-and-queue-drained" });
+});
+
+test("NDJSON drain proof rejects forced close, early consumer return and stream errors", async () => {
+  for (const mode of ["close", "return", "error"] as const) {
+    const stdout = new PassThrough(), reader = createCodexAppServerNdjsonReader(stdout);
+    const iterator = reader.lines[Symbol.asyncIterator]();
+    stdout.write("first\nremaining\n");
+    await iterator.next();
+    if (mode === "close") reader.close();
+    if (mode === "return") await iterator.return?.();
+    if (mode === "error") {
+      stdout.emit("error", new Error("fixture read error"));
+      await iterator.next(); // the buffered tail remains readable before error
+      await assert.rejects(iterator.next(), /fixture read error/);
+    }
+    const result = await reader.drained;
+    assert.equal(result.status, mode === "error" ? "failed" : "unobservable");
+    stdout.destroy();
+  }
+});
 
 test("codex app-server NDJSON keeps unicode line separators inside JSON strings", async () => {
   const text = "第一行\u2028第二行\u2029结束\n仍在同一字符串";

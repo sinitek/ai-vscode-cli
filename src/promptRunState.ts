@@ -6,6 +6,7 @@ import {
   migrateLegacyLoopJson,
 } from "./loopLegacyMigration";
 import { ChatMessage } from "./webview/types";
+import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "./departmentConfiguration";
 
 export type TaskRunStatus = "end" | "error" | "stopped";
 export type RunActivity = "contextCompaction";
@@ -25,6 +26,7 @@ export type LoopTaskCompletionStateLike = {
 };
 
 export type TaskRunDraft = {
+  departmentConfiguration?: DepartmentConfigurationState;
   id: string;
   cli: CliName;
   sessionId: string | null;
@@ -146,10 +148,11 @@ export function isThinkingMode(value: unknown): value is ThinkingMode {
 }
 
 export function isInteractiveMode(value: unknown): value is InteractiveMode {
-  return value === "coding" || value === "plan" || value === "loop" || value === "loop_plus";
+  return value === "coding" || value === "plan" || value === "loop" || value === "loop_plus" || value === "department";
 }
 
 export function normalizeVisibleInteractiveMode(value: unknown): InteractiveMode {
+  if (value === "department") return "department";
   if (value === "loop_plus") {
     return "loop_plus";
   }
@@ -223,7 +226,10 @@ export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps
     loopTaskId: typeof raw.loopTaskId === "string" ? raw.loopTaskId : undefined,
     loopRound: typeof raw.loopRound === "number" ? raw.loopRound : undefined,
     loopSubtaskId: typeof raw.loopSubtaskId === "string" ? raw.loopSubtaskId : undefined,
+    ...(raw.departmentConfiguration && normalizeDepartmentConfigurationSnapshot(raw.departmentConfiguration)
+      ? { departmentConfiguration: normalizeDepartmentConfigurationSnapshot(raw.departmentConfiguration)! } : {}),
     loopAttemptId: typeof raw.loopAttemptId === "string" ? raw.loopAttemptId : undefined,
+
   };
 }
 

@@ -533,3 +533,17 @@ test("same-volume fallback keeps the shared temporary parent until all roots fin
   });
   parseMock.mock.restore();
 });
+
+test("retained execution root capability rejects directory replacement and preserves unknown entries", (t) => {
+  const h = createFixture(t), root = h.createRoot();
+  root.assertCurrent();
+  const original = root.cwd + "-original";
+  fs.renameSync(root.cwd, original); fs.mkdirSync(root.cwd);
+  assert.throws(() => root.assertCurrent(), /身份已改变/);
+  assert.equal(root.dispose().ok, false);
+  fs.rmdirSync(root.cwd); fs.renameSync(original, root.cwd);
+  root.assertCurrent();
+  fs.writeFileSync(path.join(root.cwd, "unknown"), "retain");
+  assert.equal(root.dispose().ok, false);
+  assert.equal(fs.readFileSync(path.join(root.cwd, "unknown"), "utf8"), "retain");
+});

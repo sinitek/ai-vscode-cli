@@ -1,0 +1,86 @@
+{
+  "base": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+  "source_worktree": "/private/tmp/department-ui-queued-focus-round422",
+  "candidate_worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-accepted-ui-round428-20261116",
+  "paths": [
+    {
+      "path": "src/webview/departmentGroupChatModal.ts",
+      "sha256": "d90eeadbb96a5150c397d830a88575815c2c804cab6adeaa12880502c762a287",
+      "accepted_origin": "round-425",
+      "size": 17271,
+      "base_blob": "25641c3e1f07faf0019dd028f992373a5ddd4260",
+      "candidate_sha256": "d90eeadbb96a5150c397d830a88575815c2c804cab6adeaa12880502c762a287",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "src/webview/loopGroupChatPanel.ts",
+      "sha256": "7eb9b77a4bb90ebee0476c0d40c8a4c128b96c2823591758c1f8386476406671",
+      "accepted_origin": "round-425",
+      "size": 102657,
+      "base_blob": "dce46e35436feefb2d08d2bdc1b077ce0b098af7",
+      "candidate_sha256": "7eb9b77a4bb90ebee0476c0d40c8a4c128b96c2823591758c1f8386476406671",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "src/webview/loopModelSwitchDialog.ts",
+      "sha256": "0b20ee8027f53f252333119115acac98e39de7da04386b1e63c88cc413821a6a",
+      "accepted_origin": "round-425",
+      "size": 9249,
+      "base_blob": "e3e49c62f5c2192b4df08796e890c370f55bf7cc",
+      "candidate_sha256": "0b20ee8027f53f252333119115acac98e39de7da04386b1e63c88cc413821a6a",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "src/test/loop/departmentGroupChatPanel.test.ts",
+      "sha256": "e3cae72dcdd9aa01fead563f4fb14d1b15d7bf84bb8b79769bd9fa284b87b996",
+      "accepted_origin": "round-425",
+      "size": 20300,
+      "base_blob": "d5680b8297af4854401a737c95f68fe4dcc9efa8",
+      "candidate_sha256": "e3cae72dcdd9aa01fead563f4fb14d1b15d7bf84bb8b79769bd9fa284b87b996",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "src/test/loop/loopGroupChatPanel.test.ts",
+      "sha256": "4ebc10b514e863d81e32aa795e3dabecf0cfb312ae4d548d304aae129b0737c9",
+      "accepted_origin": "round-425",
+      "size": 74104,
+      "base_blob": "123ed2e538e3de942b60049cd582021ba437055a",
+      "candidate_sha256": "4ebc10b514e863d81e32aa795e3dabecf0cfb312ae4d548d304aae129b0737c9",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "scripts/department_group_chat_smoke.cjs",
+      "sha256": "53775e05884aa295cae4a53b183d9e0420e6c7e866cbca77c4b02232a8a6f04c",
+      "accepted_origin": "round-425",
+      "size": 41424,
+      "base_blob": "3d1aa98219ca17bd4f1b89c890cfef4428166cc0",
+      "candidate_sha256": "53775e05884aa295cae4a53b183d9e0420e6c7e866cbca77c4b02232a8a6f04c",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": "scripts/department_conversation_tabs_smoke.cjs",
+      "sha256": "fe6c3ba8d4a495c141a95f9b193e5178674898fbc50ac08a528dbe3ed5acf020",
+      "accepted_origin": "round-422-import-of-round-419",
+      "size": 19268,
+      "base_blob": "4508fb4da79b03fc31b0f7254fea6e374bb3da8b",
+      "candidate_sha256": "fe6c3ba8d4a495c141a95f9b193e5178674898fbc50ac08a528dbe3ed5acf020",
+      "source_verified_before_and_after": true
+    },
+    {
+      "path": ".ch/docs/runbooks/department-merge-ui-delta-verification.md",
+      "sha256": "4fbe798760bad45616dd241e541806126d0d10c0d2c5f34598218e15de133542",
+      "accepted_origin": "round-425",
+      "size": 12771,
+      "base_blob": null,
+      "candidate_sha256": "4fbe798760bad45616dd241e541806126d0d10c0d2c5f34598218e15de133542",
+      "source_verified_before_and_after": true
+    }
+  ],
+  "handoff": {
+    "path": ".ch/docs/runbooks/department-git-integration.md",
+    "template_path": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/runbooks/department-git-integration.md",
+    "template_sha256": "634088a466d6e2ae96c0385223726fbf2abbe470c595480c2a89f698c3621ef9",
+    "template_prefix_preserved": true,
+    "candidate_sha256": "1b6fb8092f2c82e82db25dc1f46b9b8ddb20380df7d65d69f29567d863dc0c38"
+  }
+}

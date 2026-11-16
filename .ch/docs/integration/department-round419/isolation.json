@@ -1,0 +1,26 @@
+{
+  "baseline": {
+    "cwd": "/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-subtask-jf17KR",
+    "shared_root": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+    "refs": {
+      "HEAD": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+      "master": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+      "origin/master": "8f396c1b809c43320aad9c4c43eb05c9cf2a3c58",
+      "codex/department-candidate-round414-20261116": "c53f9defc811e5fddcf87e2d052ab0c6069c3087",
+      "codex/department-local-integration-round416-20261116": "51a5e7b15c54921611721fe14863e60361d64e72"
+    },
+    "index_sha256": "b4c56b0612d033a5b6386ae842c2426bd70edf086fd6d69ac87769074513ef2f",
+    "status_sha256": "0a47d452c48b4b1a902db060ba9155ae06c97ca36c412c5c6ea701cff5e53b86",
+    "parent_record_sha256": "6eda7e2e565d965b4e42ae8887c59af954c84525df7d63e5b2c2b8429cd4c983",
+    "handoff_sha256": "a83958cc283246de07d4f5d1e04a179d9db56375ae7126ca1e7c39bbd47584aa"
+  },
+  "worktree": {
+    "branch": "codex/department-platform-delta-round419-20261116",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-platform-delta-round419-20261116",
+    "initial_head": "51a5e7b15c54921611721fe14863e60361d64e72",
+    "initial_status_clean": true,
+    "external_to_repository": true,
+    "setup": "No dependency setup needed: byte-only integration, no build or runtime execution."
+  },
+  "no_dependency_or_dist_writes": true
+}

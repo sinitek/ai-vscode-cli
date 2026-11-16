@@ -7,6 +7,13 @@ import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput } from "../promptRunTypes";
 
 export type PromptRunExecutionOptions = {
+  /** Trusted per-invocation process transport; never serialized into task/model input. */
+  departmentProcessStream?: typeof import("../cli/commandRunner").runCliStream;
+  /** Trusted leader mapping: preserve its durable local tab/session key. */
+  departmentLeaderNativeSession?: (sessionId: string) => void;
+  /** Trusted interactive Owner transport; never serialized into model/task input. */
+  departmentCodexRun?: (prompt: string, handlers: import("../interactive/codexOwnedExecution").CodexOwnedStreamHandlers) => Promise<void>;
+  cancelDepartmentCodexPreparation?: () => void;
   cwd?: string;
   isolateProjectInstructions?: boolean;
   isAborted?: () => boolean;

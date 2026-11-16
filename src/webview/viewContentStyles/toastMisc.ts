@@ -159,6 +159,10 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         line-height: 1.4;
         color: var(--vscode-descriptionForeground);
       }
+      .department-performance-warning {
+        color: var(--vscode-editorWarning-foreground);
+        overflow-wrap: anywhere;
+      }
       .tool-settings-card > .tool-settings-note {
         margin-top: -2px;
       }

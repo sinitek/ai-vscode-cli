@@ -1,6 +1,8 @@
 import { getDebugLogging } from "../cli/config";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "../chatMessageLimit";
 import { setDebugLogging } from "../logger";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "../departmentSettings";
+import { normalizeDepartmentRolePreference, validateDepartmentRoleCandidate } from "../departmentConfiguration";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
 import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
@@ -29,6 +31,14 @@ export type PreferenceSettingDeps = Pick<
   | "setCurrentCli"
   | "retargetDisabledLoopSubtaskSelections"
   | "publishCliEnabled"
+  | "saveWorkspaceSettingsWithResult"
+  | "setWorkspaceSettings"
+  | "getActiveConfigIdForCli"
+  | "getDepartmentConfigurationScope"
+  | "beginDepartmentConfigurationSave"
+  | "getDepartmentRoleCandidates"
+  | "getWorkspaceSettings"
+  | "postWebviewMessage"
 >;
 
 const command = settingCommand<PreferenceSettingDeps>;
@@ -57,6 +67,11 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
   }),
   command("humanInteractionEnabled", (message, deps) => {
     deps.updateStoredToolSettings({ humanInteractionEnabled: Boolean(message.value) });
+  }),
+  command(["loopEnabled", "loopPlusEnabled", "departmentEnabled"], (message, deps) => {
+    if (typeof message.value !== "boolean") return;
+    const saved = deps.updateStoredToolSettings({ [message.key]: message.value });
+    if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.taskModesSaveError);
   }),
   command(["autoCompactContextAfterRun", "autoCompactContextBeforeRun"], (message, deps, { workspaceSettings }) => {
     const savedGlobally = deps.updateStoredToolSettings({
@@ -96,6 +111,76 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     deps.updateStoredToolSettings({
       loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(message.value),
     });
+  }),
+  command("departmentMaxLeaders", (message, deps) => {
+    const saved = deps.updateStoredToolSettings({ departmentMaxLeaders: normalizeDepartmentMaxLeaders(message.value) });
+    if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.departmentMaxLeadersSaveError);
+  }),
+  command("departmentMaxEmployees", (message, deps) => {
+    const saved = deps.updateStoredToolSettings({ departmentMaxEmployees: normalizeDepartmentMaxEmployees(message.value) });
+    if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.departmentMaxEmployeesSaveError);
+  }),
+  command("departmentRolePreference", async (message, deps, { currentCli, workspaceSettings }) => {
+    const value = message.value;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const raw = value as Record<string, unknown>;
+    const scope = deps.getDepartmentConfigurationScope?.();
+    let finish: ((ok: boolean) => void) | undefined;
+    const respond = (ok: boolean, error?: string): void => {
+      finish?.(ok);
+      if (error && scope === deps.getDepartmentConfigurationScope?.()) deps.showWebviewError("产研部配置", error);
+      deps.postWebviewMessage({ scope, type: "departmentRolePreferenceSaved", requestId: raw.requestId, role: raw.role, directorConfigId: raw.directorConfigId, ok, error });
+    };
+    if (scope !== raw.scope) { respond(false, "工作区或配置作用域已变化，请重新选择角色配置。"); return; }
+    const role = raw.role === "leader" || raw.role === "employee" ? raw.role : null;
+    const preference = normalizeDepartmentRolePreference(raw.preference);
+    const directorConfigId = deps.getActiveConfigIdForCli(currentCli);
+    if (!role || !preference || !directorConfigId || raw.directorConfigId !== directorConfigId) {
+      respond(false, "角色配置或总监当前档案无效，请重新选择后重试。");
+      return;
+    }
+    if (deps.readStoredToolSettings?.().cliEnabledByName?.[preference.cli] === false) {
+      respond(false, "所选 CLI 已关闭，请选择可用 CLI。");
+      return;
+    }
+    try {
+      finish = deps.beginDepartmentConfigurationSave?.(scope ?? "", role);
+      if (!deps.getDepartmentRoleCandidates) throw new Error("角色候选读取接口不可用，请稍后重试。");
+      validateDepartmentRoleCandidate(preference, await deps.getDepartmentRoleCandidates(preference.cli, preference.configId));
+    } catch (error) {
+      respond(false, error instanceof Error ? error.message : "角色配置校验失败，请重试。");
+      return;
+    }
+    // Candidate reads may be asynchronous: never save into a director scope that changed while loading.
+    if (scope !== deps.getDepartmentConfigurationScope?.() || deps.getActiveConfigIdForCli(currentCli) !== directorConfigId || deps.getCurrentCli() !== currentCli) {
+      respond(false, "总监档案已变化，请在当前档案重新选择角色配置。");
+      return;
+    }
+    const latest = deps.getWorkspaceSettings();
+    const current = latest.departmentRoleRoutesByDirectorConfig?.[directorConfigId];
+    const next: typeof workspaceSettings = {
+      ...latest,
+      departmentRoleRoutesByDirectorConfig: {
+        ...latest.departmentRoleRoutesByDirectorConfig,
+        [directorConfigId]: {
+          ...current,
+          [role]: preference,
+        },
+      },
+    };
+    let result: ReturnType<NonNullable<PreferenceSettingDeps["saveWorkspaceSettingsWithResult"]>> | undefined;
+    try { result = deps.setWorkspaceSettings ? deps.saveWorkspaceSettingsWithResult?.(next) : undefined; }
+    catch { respond(false, "角色配置保存失败，请重试。"); return; }
+    if (result && !result.ok) {
+      respond(false, "角色配置保存失败，请重试。");
+      return;
+    }
+    if (!result) {
+      respond(false, "角色配置保存接口暂不可用，请重试。");
+      return;
+    }
+    deps.setWorkspaceSettings?.(next);
+    respond(true);
   }),
   command("humanInteractionTimeoutMinutes", (message, deps) => {
     deps.updateStoredToolSettings({

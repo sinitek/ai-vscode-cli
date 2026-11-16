@@ -8,6 +8,7 @@ installVscodeMock();
 
 const { schedulingModeForInteractiveMode } = require("../../extensionHost/modelSettings") as typeof import("../../extensionHost/modelSettings");
 const { createLoopPlusScheduler } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
+const { buildLoopPlusFinishEventId } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
 const {
   createLoopPlusRuntimeFixture,
   createLoopPlusExtensionStopHarness,
@@ -23,6 +24,69 @@ const { createLoopGroupChatPanelCoordinator } = require("../../extensionHost/loo
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { withLoopSubtaskSession } from "../../loopSubtaskSession";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
+import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
+import type { LoopTaskRecord } from "../../loopTaskStore";
+import { assertModeAvailable } from "../../modeAvailability";
+
+function createDeferred<T = void>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => { resolve = resolvePromise; });
+  return { promise, resolve };
+}
+
+function createMemoryTaskPersistence() {
+  const records = new Map<string, LoopTaskRecord>();
+  return {
+    create: (task: LoopTaskRecord) => { records.set(task.id, task); return task; },
+    read: (taskId: string) => records.get(taskId) ?? null,
+    save: (task: LoopTaskRecord) => { records.set(task.id, task); },
+    remove: (taskId: string) => { records.delete(taskId); },
+  };
+}
+
+test("injected task persistence remains the single task source across remove failures and saves", () => {
+  const records = new Map<string, LoopTaskRecord>();
+  let refuseRemoval = false;
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: {
+    create: (task) => { records.set(task.id, task); return task; },
+    read: (taskId) => records.get(taskId) ?? null,
+    save: (task) => { records.set(task.id, task); },
+    remove: (taskId) => { if (refuseRemoval) return false; records.delete(taskId); return true; },
+  } });
+  try {
+    const task = { id: "persisted", cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
+      rootPrompt: "task", schedulingMode: "event_driven" as const, status: "stopped" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      maxRounds: 2, currentRound: 0, communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [] } as LoopTaskRecord;
+    fixture.saveTask(task);
+    assert.equal(fixture.readTask(task.id)?.id, task.id);
+
+    refuseRemoval = true;
+    assert.throws(() => fixture.removeTask(task.id), /refused removal/);
+    assert.equal(fixture.readTask(task.id)?.id, task.id, "a rejected durable delete must remain readable");
+    assert.equal(records.get(task.id)?.id, task.id);
+
+    refuseRemoval = false;
+    fixture.removeTask(task.id);
+    assert.equal(fixture.readTask(task.id), null);
+    assert.equal(records.has(task.id), false, "successful delete must update the injected source");
+    fixture.saveTask({ ...task, status: "running" });
+    assert.equal(fixture.readTask(task.id)?.status, "running", "a later successful save restores visibility");
+  } finally { fixture.dispose(); }
+
+  const missed = createLoopPlusRuntimeFixture({ taskPersistence: {
+    create: (task) => task, read: () => null, save: () => undefined, remove: () => undefined,
+  } });
+  try {
+    const task = { id: "map-only", cli: "codex", workspaceKey: "workspace", taskStoreFile: missed.storeFile,
+      rootPrompt: "task", schedulingMode: "event_driven" as const, status: "stopped" as const, createdAt: Date.now(), updatedAt: Date.now(),
+      maxRounds: 2, currentRound: 0, communicationDir: missed.rootDir, mainCommunicationFile: path.join(missed.rootDir, "main.md"),
+      subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [] } as LoopTaskRecord;
+    missed.saveTask(task);
+    assert.equal(missed.readTask(task.id), null, "an injected source miss must not fall back to the fixture Map");
+  } finally { missed.dispose(); }
+});
+
 
 function longPrompt(id: string, file: string): string {
   return `Implement ${id} without editing the parent task record or scheduler snapshot. Write scope: ${file}. Report only the attempt result.`;
@@ -44,6 +108,7 @@ function subtask(id: string, file: string, conflictGroup?: string) {
     title: id,
     prompt: longPrompt(id, file),
     writeFiles: [file],
+    taskType: "backend" as const,
     ...(conflictGroup ? { conflictGroup } : {}),
   };
 }
@@ -577,7 +642,10 @@ test("model switch applies persisted routing and thinking to the next calls, not
 
 for (const preserveLoopOrigin of [true, false]) {
   test(`explicit continuation ${preserveLoopOrigin ? "preserves task routing from group chat" : "persists the main tab selection"}`, async () => {
-    const fixture = createLoopPlusRuntimeFixture({ configId: "current-config" });
+    const fixture = createLoopPlusRuntimeFixture({
+      configId: "current-config",
+      assertNewTaskModeAvailable: () => { throw new Error("existing continuation must not request new-task authority"); },
+    });
     try {
       const task: import("../../loopTaskStore").LoopTaskRecord = {
         id: "resume-models", cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
@@ -605,6 +673,87 @@ for (const preserveLoopOrigin of [true, false]) {
   });
 }
 
+test("rechecks host Loop+ authority after a stale resume candidate disappears during runner wait", async () => {
+  for (const enabled of [false, true]) {
+    let modeEnabled = true;
+    const fixture = createLoopPlusRuntimeFixture({
+      taskPersistence: createMemoryTaskPersistence(),
+      assertNewTaskModeAvailable: () => assertModeAvailable("loop_plus", { loopPlusEnabled: modeEnabled }),
+    });
+    try {
+      const candidate: LoopTaskRecord = {
+        id: "resume-candidate", cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
+        rootPrompt: "原任务", schedulingMode: "event_driven", loopPlus: createLoopPlusScheduler({ maxConcurrency: 2 }).snapshot(),
+        status: "stopped", createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 20, currentRound: 0,
+        communicationDir: path.join(fixture.rootDir, "comm"), mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+        subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
+      };
+      fixture.saveTask(candidate);
+      const capturedCandidate = fixture.readTask(candidate.id);
+      assert.equal(capturedCandidate?.id, candidate.id);
+      if (enabled) {
+        fixture.queueMain((input, tabId) => {
+          fixture.publish(input, tabId, { status: "end", content: completedDecision() });
+        });
+      }
+      const wait = createDeferred<void>();
+      const dispatchAfterRunnerWait = (async () => {
+        await wait.promise;
+        fixture.removeTask(capturedCandidate!.id);
+        modeEnabled = enabled;
+        return fixture.adapter.runEventDriven(prompt("继续已失效候选"), {
+          resumeTaskId: capturedCandidate!.id,
+          resumeRequested: true,
+          schedulingMode: "event_driven",
+        }, fixture.target);
+      })();
+      wait.resolve();
+      if (enabled) {
+        assert.equal(await dispatchAfterRunnerWait, true);
+        assert.equal(fixture.createdTaskIds.length, 1, "enabled mode keeps the legacy new-root fallback");
+        assert.equal(fixture.mainCalls.length, 1, "the enabled fallback reaches the normal Loop+ main runner");
+      } else {
+        await assert.rejects(dispatchAfterRunnerWait, /Loop\+已在工具设置中关闭/);
+        assert.equal(fixture.createdTaskIds.length, 0);
+        assert.equal(fixture.mainCalls.length, 0);
+        assert.equal(fixture.attemptCalls.length, 0);
+        assert.equal(fixture.rootsCreated.length, 0);
+      }
+    } finally {
+      fixture.dispose();
+    }
+  }
+});
+
+test("valid Loop+ continuation remains available while new Loop+ mode is disabled", async () => {
+  let authorityChecks = 0;
+  const fixture = createLoopPlusRuntimeFixture({
+    taskPersistence: createMemoryTaskPersistence(),
+    assertNewTaskModeAvailable: () => { authorityChecks += 1; throw new Error("disabled new-task mode"); },
+  });
+  try {
+    const task: LoopTaskRecord = {
+      id: "valid-resume", cli: "codex", workspaceKey: "workspace", taskStoreFile: fixture.storeFile,
+      rootPrompt: "原 Loop+ 任务", schedulingMode: "event_driven", loopPlus: createLoopPlusScheduler({ maxConcurrency: 2 }).snapshot(),
+      status: "stopped", createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 20, currentRound: 0,
+      communicationDir: path.join(fixture.rootDir, "comm"), mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      subTasks: [], rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
+    };
+    fixture.saveTask(task);
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: completedDecision() });
+    });
+    assert.equal(await fixture.adapter.runEventDriven(prompt("继续原 Loop+"), {
+      resumeTaskId: task.id, resumeRequested: true, schedulingMode: "event_driven",
+    }, fixture.target), true);
+    assert.equal(authorityChecks, 0);
+    assert.equal(fixture.createdTaskIds.length, 0);
+    assert.equal(fixture.mainCalls.length, 1);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 for (const configureDuringMain of [false, true]) {
   test(`adapter starts ten independent subtasks with the dispatch limit configured ${configureDuringMain ? "during the main call" : "before startup"}`, async () => {
     let maximum = configureDuringMain ? 6 : 10;
@@ -620,6 +769,7 @@ for (const configureDuringMain of [false, true]) {
             subtasks: Array.from({ length: 10 }, (_, index) => subtask(`item-${index}`, `src/item-${index}.ts`)),
           }),
         });
+
       });
       const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
       await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 10, "ten independent attempts started");
@@ -938,8 +1088,85 @@ test("adapter appends main-task completion messages only after Loop+ is persiste
   }
 });
 
+test("leader model invocation keeps its captured department balance snapshot", async () => {
+  const fixture = createLoopPlusRuntimeFixture({
+    taskPersistence: createMemoryTaskPersistence(),
+    assertNewTaskModeAvailable: () => { throw new Error("trusted department leader dispatch must bypass user Loop+ mode gate"); },
+  });
+  const reads: Array<[string, string]> = [];
+  const departmentMetadata = {
+    version: 1 as const,
+    rootTaskId: "department-root",
+    parentTaskId: "department-root",
+    leaderSubtaskId: null,
+    role: "leader" as const,
+    moduleTitle: "accounts",
+    routes: { director: { cli: "codex" as const }, leader: { cli: "codex" as const }, employee: { cli: "codex" as const } },
+    limits: { maxLeaders: 2, maxEmployees: 20 },
+  };
+  let available = true;
+  const snapshot = {
+    rootTaskId: "department-root",
+    leaderTaskId: "leader-task",
+    maxEmployees: 4,
+    activeEmployees: 1,
+    availableEmployees: 3,
+    leaderOverflowActive: false,
+    canAcquireOverflow: false,
+  };
+  let taskId = "";
+  try {
+    fixture.adapter.setDepartmentEmployeeCapacityReader?.((rootTaskId, leaderTaskId) => {
+      reads.push([rootTaskId, leaderTaskId]);
+      return available ? { ...snapshot, leaderTaskId } : null;
+    });
+    fixture.queueMain(async (input, tabId) => {
+      taskId = input.loopTaskId ?? "";
+      assert.match(input.displayPrompt, /Regular employee total: 4/);
+      assert.match(input.displayPrompt, /Available regular employee balance: 3/);
+      await fixture.holdMain();
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "wait" }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.match(input.displayPrompt, /employee balance unknown/);
+      assert.doesNotMatch(input.displayPrompt, /Available regular employee balance: (?:0|20)/);
+      fixture.publish(input, tabId, { status: "end", content: decision({
+        status: "completed",
+        directCompletion: true,
+        answerConclusion: "余额未知时仍完成普通主决策",
+        finalSummary: "本次组长决策未伪造员工余额",
+      }) });
+    });
+    const running = fixture.adapter.runEventDriven({
+      ...prompt("按要求完成部门工作"),
+      loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot(),
+    }, { schedulingMode: "event_driven", departmentMetadata }, fixture.target);
+    await waitForLoopPlus(() => fixture.mainCalls.length === 1 && taskId !== "", "initial leader decision issued");
+    const issuedPrompt = fixture.mainCalls[0].displayPrompt;
+    available = false;
+    fixture.releaseHeldMain();
+    const handled = await running;
+    assert.equal(handled, true);
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.equal(fixture.mainCalls[0].displayPrompt, issuedPrompt, "an issued model prompt is a fixed snapshot");
+    assert.match(issuedPrompt, /Available regular employee balance: 3/);
+    assert.match(fixture.mainCalls[1].displayPrompt, /employee balance unknown/);
+    assert.ok(reads.length >= 2, "initial and closeout decisions each read the provider");
+    assert.ok(reads.every(([root, leader]) => root === "department-root" && leader === taskId));
+    assert.equal(fixture.readTask(taskId)?.department?.role, "leader");
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("adapter stop keeps resume state, blocks continue while cancellation is live, then reviews explicitly", async () => {
-  const fixture = createLoopPlusRuntimeFixture();
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: createMemoryTaskPersistence() });
+  let taskId = "";
+  let first: Promise<boolean> | null = null;
+  let blocked: Promise<boolean> | null = null;
+  let firstSettled = false;
+  let blockedSettled = false;
+  let recoveryFailure: unknown;
   try {
     fixture.setHoldAbort(true);
     fixture.queueMain(async (input, tabId) => {
@@ -948,29 +1175,43 @@ test("adapter stop keeps resume state, blocks continue while cancellation is liv
         content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
       });
     });
-    const first = fixture.adapter.runEventDriven(prompt("keep the saved prompt"), { schedulingMode: "event_driven" }, fixture.target);
+    first = fixture.adapter.runEventDriven(prompt("keep the saved prompt"), { schedulingMode: "event_driven" }, fixture.target);
+    void first.then(() => { firstSettled = true; }, () => { firstSettled = true; });
     await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "A parked");
-    const taskId = fixture.mainCalls[0].loopTaskId ?? "";
+    taskId = fixture.mainCalls[0].loopTaskId ?? "";
     fixture.adapter.host().stopParent(taskId);
-    await first;
-    assert.equal(fixture.readTask(taskId)?.status, "stopped");
+    assert.equal(firstSettled, false, "the first lifecycle remains live while the parked runner is unsettled");
     assert.equal(fixture.adapter.getLivePrompt(taskId)?.displayPrompt, "keep the saved prompt");
     assert.equal(fixture.parkedSubtaskIds().includes("A"), true);
-    const blocked = fixture.adapter.runEventDriven(prompt("keep the saved prompt"), {
+    blocked = fixture.adapter.runEventDriven(prompt("keep the saved prompt"), {
       schedulingMode: undefined,
       resumeTaskId: taskId,
       resumeRequested: true,
     }, fixture.target);
-    await waitForLoopPlus(() => fixture.hostMessages.includes("loop-plus-resume-blocked"), "resume blocked");
+    void blocked.then(() => { blockedSettled = true; }, () => { blockedSettled = true; });
+    await waitForLoopPlus(() => fixture.hostMessages.includes("loop-plus-resume-blocked"), "authoritative blocked-continue refusal notification");
+    assert.equal(firstSettled, false, "the first adapter lifecycle remains pending until the runner settles");
+    assert.equal(blockedSettled, false, "the rejected continue still waits for the original execution to settle");
+    assert.equal(fixture.adapter.hasTaskExecution(taskId), true);
+    assert.equal(fixture.readTask(taskId)?.status, "stopped", "the task remains stopped while its original runner owns execution");
     assert.equal(fixture.mainCalls.length, 1);
-    assert.equal(fixture.readTask(taskId)?.status, "stopped");
-    blocked.catch(() => undefined);
+    assert.equal(fixture.attemptCalls.length, 1);
+    assert.deepEqual(fixture.createdTaskIds, [taskId], "blocked continue creates no replacement task");
     fixture.setHoldAbort(false);
     fixture.releaseParked("A");
-    await waitForLoopPlus(() => {
-      const snapshot = fixture.readTask(taskId)?.loopPlus as { running?: unknown[] } | undefined;
-      return Array.isArray(snapshot?.running) && snapshot.running.length === 0;
-    }, "cancelled attempt left the scheduler");
+    await waitForLoopPlus(() => !fixture.adapter.hasTaskExecution(taskId) && firstSettled && blockedSettled,
+      "cancelled runner, original lifecycle and refused continue settled");
+    assert.equal(await first, true);
+    assert.equal(await blocked, true, "the stopped task accepts an explicit continue only after runner settlement");
+    assert.equal(firstSettled, true);
+    assert.equal(blockedSettled, true);
+    const stoppedSnapshot = fixture.readTask(taskId)?.loopPlus as {
+      running?: unknown[];
+      reviewQueue?: Array<{ eventId: string; subtaskId: string; outcome: string }>;
+      seenAttempts?: Array<{ subtaskId: string; disposition: string; outcome?: string }>;
+    } | undefined;
+    assert.deepEqual(stoppedSnapshot?.running, []);
+    assert.equal(stoppedSnapshot?.seenAttempts?.some((item) => item.subtaskId === "A" && item.outcome === "stopped"), true);
     fixture.queueMain(async (input, tabId) => {
       assert.equal(input.displayPrompt.includes("Prompt kind: review"), true);
       assert.equal(input.displayPrompt.includes("subtask=A"), true);
@@ -1015,9 +1256,28 @@ test("adapter stop keeps resume state, blocks continue while cancellation is liv
     assert.equal(resumedSnapshot?.running?.length, 0);
     assert.equal(resumedSnapshot?.pending?.length, 0);
     assert.equal(resumedSnapshot?.reviewQueue?.length, 0);
+    const savedAttempt = (resumed?.loopPlus as { seenAttempts?: Array<{
+      subtaskId: string; attemptId: string; disposition: string; outcome?: string; acceptance?: string;
+    }> } | undefined)
+      ?.seenAttempts?.find((item) => item.subtaskId === "A");
+    assert.equal(savedAttempt?.disposition, "reviewed");
+    assert.equal(savedAttempt?.outcome, "stopped");
+    assert.equal(buildLoopPlusFinishEventId("A", savedAttempt?.attemptId ?? ""), currentEventId(fixture.mainCalls[1]?.displayPrompt ?? ""),
+      "the persisted stopped attempt is reviewed under its saved finish event");
     assert.equal(fixture.adapter.getLivePrompt(taskId)?.displayPrompt, "keep the saved prompt");
   } finally {
+    fixture.setHoldAbort(false);
+    fixture.releaseParkedIfPresent("A");
+    try {
+      await waitForLoopPlus(() => (!taskId || !fixture.adapter.hasTaskExecution(taskId))
+        && (!first || firstSettled) && (!blocked || blockedSettled), "bounded stop-test runner and lifecycle settlement");
+      if (first) await first;
+      if (blocked) await blocked;
+    } catch (error) { recoveryFailure = error; }
     fixture.dispose();
+    if (recoveryFailure) {
+      throw new Error(`stop-test fixture recovery failed: ${String(recoveryFailure)}`);
+    }
   }
 });
 
@@ -2322,12 +2582,36 @@ test("main control closes an already interrupted attempt tab", async () => {
     assert.deepEqual(fixture.closedSubtaskTabs, []);
     attempt.abort({ closeTab: true });
     await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(tabId), "interrupted tab closed");
-    assert.deepEqual(fixture.cancelledTabs, [tabId]);
+    assert.deepEqual(fixture.cancelledTabs, []);
     attempt.abort({ closeTab: true });
     assert.deepEqual(fixture.closedSubtaskTabs, [tabId]);
   } finally {
     fixture.dispose();
   }
+});
+
+for (const conflict of [false, true]) test(`Department Codex writeback ${conflict ? "rejects stale target without overwriting Owner" : "preserves confirmed continuation binding"}`, async () => {
+  const fixture = createLoopPlusRuntimeFixture({ configId: "profile", ownsDepartmentAttemptResources: () => true });
+  let quarantines = 0, releases = 0;
+  try {
+    fixture.saveTask({ id: "leader", cli: "codex", status: "running", workspaceKey: "workspace", subTasks: [
+      { id: "source", title: "source", status: "completed", executionSession: { cli: "codex", configId: "profile", sessionId: "original" } },
+      { id: "next", title: "next", status: "running", continueFromSubtaskId: "source" },
+    ], department: { role: "leader" } } as LoopTaskRecord);
+    fixture.adapter.setDepartmentExecutionAdmission!(async () => ({ release() { releases++; }, cleanupFailed() { quarantines++; } }));
+    fixture.setAttemptAction((input, tabId) => {
+      const task = fixture.readTask("leader")!;
+      fixture.saveTask({ ...task, subTasks: task.subTasks.map((s) => s.id === "next" ? { ...s,
+        executionSession: { cli: "codex", configId: "profile", sessionId: conflict ? "owner-native" : "original" } } : s) });
+      fixture.publish(input, tabId, { status: "end", content: "done" });
+    });
+    const handle = fixture.adapter.startAttempt({ taskId: "leader", subtaskId: "next", attemptId: "attempt",
+      continueFromSubtaskId: "source", targetCli: "codex", title: "next", prompt: "next", modelPrompt: "next", writeFiles: [], round: 1 });
+    const result = await handle.promise;
+    assert.equal(result.outcome, conflict ? "failed" : "completed");
+    assert.equal(fixture.readTask("leader")!.subTasks[1].executionSession!.sessionId, conflict ? "owner-native" : "original");
+    assert.equal(quarantines, conflict ? 1 : 0); assert.equal(releases, conflict ? 0 : 1);
+  } finally { fixture.dispose(); }
 });
 
 test("本机子进程异常退出且完成 Promise 丢失时，巡检恢复验收并释放会话", { timeout: 5000 }, async (t) => {
@@ -2393,4 +2677,5 @@ test("本机子进程异常退出且完成 Promise 丢失时，巡检恢复验�
     child?.kill();
     fixture.dispose();
   }
+
 });

@@ -153,8 +153,9 @@ function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: 
 
   return new Function(
     "getLoopMetaForTabSummary",
+    "getDepartmentConversationTabPresentation",
     `${functionSource}; return formatConversationTabLabel;`,
-  )(getLoopMetaForTabSummary) as (tab: TabSummary | null, baseLabel: string) => string;
+  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null, baseLabel: string) => string;
 }
 
 function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => string {
@@ -173,8 +174,9 @@ function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => 
 
   return new Function(
     "getLoopMetaForTabSummary",
+    "getDepartmentConversationTabPresentation",
     `${functionSource}; return resolveAutoInteractiveModeForTab;`,
-  )(getLoopMetaForTabSummary) as (tab: TabSummary | null) => string;
+  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null) => string;
 }
 
 function buildResetConversationTabSessionRequest(
@@ -215,24 +217,24 @@ test("conversation tabs use capitalized CLI labels and keep Kimi separate from K
   assert.equal(formatCliLabel(undefined), "Session");
 });
 
-test("uses sun and moon icons to identify Loop task tabs", () => {
+test("uses moon and star icons to identify Loop and Loop+ task tabs", () => {
   const formatLabel = buildFormatConversationTabLabel();
 
   assert.equal(
     formatLabel({ id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" }, "codex"),
-    "☀️ codex",
+    "🌛 codex",
   );
   assert.equal(
     formatLabel({ id: "opencode-main-tab", loopTaskRole: "main", loopTaskId: "task-opencode" }, "opcode"),
-    "☀️ opcode",
+    "🌛 opcode",
   );
   assert.equal(
     formatLabel({ id: "main-tab-2", loopTaskRole: "main", loopTaskId: "task-2" }, "codex2"),
-    "☀️ codex2",
+    "🌛 codex2",
   );
   assert.equal(
     formatLabel({ id: "subtask-tab", loopTaskRole: "subtask", loopTaskId: "task-1" }, "codex2"),
-    "🌛 codex2",
+    "⭐️ codex2",
   );
   assert.equal(formatLabel({ id: "ordinary-tab" }, "claude"), "claude");
 });
@@ -597,20 +599,21 @@ function buildLoopTabIdentityRuntime(): {
     .join("\n");
   return new Function(
     "loopMetaByTabId",
+    "getDepartmentConversationTabPresentation",
     `${sources}
     return {
       updateFromMessage: updateLoopMetaForTabFromMessage,
       updateFromMessages: updateLoopMetaForTabFromMessages,
       formatLabel: formatConversationTabLabel,
     };`,
-  )(Object.create(null)) as {
+  )(Object.create(null), () => null) as {
     updateFromMessage: (tabId: string, message: Record<string, unknown>) => boolean;
     updateFromMessages: (tabId: string, messages: Record<string, unknown>[]) => boolean;
     formatLabel: (tab: TabSummary, baseLabel: string) => string;
   };
 }
 
-test("keeps the sun icon when a loop ask is added to a main task tab", () => {
+test("keeps the moon icon when a loop ask is added to a main task tab", () => {
   const runtime = buildLoopTabIdentityRuntime();
   const tab = { id: "main-tab", loopTaskRole: "main", loopTaskId: "task-1" };
   runtime.updateFromMessages("main-tab", [{
@@ -620,7 +623,7 @@ test("keeps the sun icon when a loop ask is added to a main task tab", () => {
     taskRole: "main",
     loopTaskId: "task-1",
   }]);
-  assert.equal(runtime.formatLabel(tab, "codex"), "☀️ codex");
+  assert.equal(runtime.formatLabel(tab, "codex"), "🌛 codex");
 
   runtime.updateFromMessage("main-tab", {
     id: "ask",
@@ -641,7 +644,7 @@ test("keeps the sun icon when a loop ask is added to a main task tab", () => {
     { id: "done", role: "system", content: "任务已完成" },
   ]);
 
-  assert.equal(runtime.formatLabel(tab, "codex"), "☀️ codex");
+  assert.equal(runtime.formatLabel(tab, "codex"), "🌛 codex");
 
   runtime.updateFromMessage("main-tab", {
     id: "vibe",
