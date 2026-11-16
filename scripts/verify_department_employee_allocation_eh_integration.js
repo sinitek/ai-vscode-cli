@@ -115,8 +115,10 @@ async function publicDepartmentEntry(view, prompt, wait, workspaceSettingsAction
   await wait("director profile ready", async () => await directorProfile.isEnabled()
     && (await directorProfile.locator("option").evaluateAll(nodes => nodes.map(n => n.value))).includes("codex-local"));
   await directorProfile.selectOption("codex-local");
-  await wait("director model ready", () => view.locator("#modelSelect").isEnabled());
-  await view.locator("#modelSelect").selectOption("");
+  const directorModel = view.locator("#modelSelect");
+  await wait("director model ready", async () => await directorModel.isEnabled()
+    && (await directorModel.locator("option").evaluateAll(nodes => nodes.map(n => n.value))).includes("gpt-5"));
+  await directorModel.selectOption("gpt-5");
   await view.locator("#interactiveModeSelect").selectOption("department");
   for (const role of ["leader", "employee"]) {
     const cli = view.locator(`#department-${role}-cli`), profile = view.locator(`#department-${role}-config`), model = view.locator(`#department-${role}-model`);

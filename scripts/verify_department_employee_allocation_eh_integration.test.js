@@ -1,6 +1,6 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
-const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved } = require("./verify_department_employee_allocation_eh_integration");
+const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved, publicDepartmentEntry } = require("./verify_department_employee_allocation_eh_integration");
 
 test("allocation driver accepts only the dedicated product/report command", () => {
   assert.equal(argumentsFor(["--product", ".", "--report", "report.json"]).product, process.cwd());
@@ -77,4 +77,24 @@ test("restored settled uses the snapshot-derived default quota for 2/6", () => {
     { event: "webview-settled", message: { type: "loopGroupChatChat:departmentEmployeeLimitSettled", rootTaskId: "root", leaderTaskId: "leader", requestId: "restore", ok: true, revision: 5, desiredLimit: 3 } }];
   assertSettled(events, "root", "leader", 4, null, 5, 3);
   assert.throws(() => assertSettled(events, "root", "leader", 4, null, 5));
+});
+
+test("public entry saves workspace before enable and selects all three roles through existing controls", async () => {
+  const actions = [];
+  const view = { locator(selector) { return {
+    click: async () => actions.push([selector, "click"]), check: async () => actions.push([selector, "check"]),
+    waitFor: async () => {}, isEnabled: async () => true, isDisabled: async () => false,
+    fill: async value => actions.push([selector, value]), innerText: async () => "", inputValue: async () => "plan",
+    locator: () => ({ evaluateAll: async () => selector === "#modelSelect" ? ["gpt-5"] : ["codex-local", "__default__"] }),
+    selectOption: async value => {
+      if (selector === "#modelSelect") assert.equal(value, "gpt-5", "configured Codex model has no empty default option");
+      actions.push([selector, value]);
+    },
+  }; } };
+  await publicDepartmentEntry(view, "create", async (_label, check) => assert.ok(await check()), async () => actions.push(["workspace", "saved"]));
+  assert.ok(actions.findIndex(a => a[0] === "workspace") < actions.findIndex(a => a[0] === "#departmentEnabled"));
+  for (const [selector, value] of [["#configSelect", "codex-local"], ["#modelSelect", "gpt-5"], ["#department-leader-model", "__default__"], ["#department-employee-model", "__default__"]]) {
+    assert.ok(actions.some(a => a[0] === selector && a[1] === value));
+    assert.ok(actions.findIndex(a => a[0] === selector) < actions.findIndex(a => a[0] === "#sendPrompt"));
+  }
 });
