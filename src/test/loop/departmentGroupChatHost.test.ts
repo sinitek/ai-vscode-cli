@@ -32,16 +32,26 @@ function harness() {
   const posted: Array<any> = [], warnings: string[] = [], effects: Array<[string, string]> = [];
   let receive!: (message: any) => void;
   let dispose!: () => void;
+  const domReady = deferred();
+  const handshakeTimers = new Set<ReturnType<typeof setTimeout>>();
+  const scheduleHandshake = (message: any, onDelivered?: () => void) => {
+    const timer = setTimeout(() => {
+      handshakeTimers.delete(timer);
+      receive(message);
+      onDelivered?.();
+    }, 0);
+    handshakeTimers.add(timer);
+  };
   const previous = vscode.window.createWebviewPanel;
   (vscode.window as any).createWebviewPanel = () => {
     let html = "";
     return { title: "", webview: { cspSource: "self", get html() { return html; }, set html(value: string) {
       html = value;
       if (value.includes('vscode.postMessage({ type: "loopGroupChatChat:loadingReady" })')) {
-        setTimeout(() => receive?.({ type: "loopGroupChatChat:loadingReady" }), 0);
+        scheduleHandshake({ type: "loopGroupChatChat:loadingReady" });
       }
       const generation = /const PANEL_GENERATION = (\d+)/.exec(value)?.[1];
-      if (generation) setTimeout(() => receive?.({ type: "loopGroupChatChat:domReady", generation: Number(generation) }), 0);
+      if (generation) scheduleHandshake({ type: "loopGroupChatChat:domReady", generation: Number(generation) }, domReady.resolve);
     },
     onDidReceiveMessage: (handler: typeof receive) => { receive = handler; return { dispose() {} }; },
     postMessage: (message: any) => { posted.push(structuredClone(message)); return Promise.resolve(true); },
@@ -77,10 +87,14 @@ function harness() {
   const send = async (target: { taskId: string; instanceId: string }, message: any) => {
     receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, message }); await tick();
   };
-  return { ...data, deps, coordinator, effects, posted, warnings, load, send,
+  return { ...data, deps, coordinator, effects, posted, warnings, load, send, domReady: domReady.promise,
     receive: (message: any) => receive(message),
     panel: () => deps.panelsByTaskId.get(data.root.id)!,
-    restore: () => { vscode.window.createWebviewPanel = previous; }, dispose: () => dispose(),
+    restore: () => { vscode.window.createWebviewPanel = previous; }, dispose: () => {
+      for (const timer of handshakeTimers) clearTimeout(timer);
+      handshakeTimers.clear();
+      dispose?.();
+    },
   };
 }
 
@@ -408,37 +422,102 @@ test("department authorization hot path uses fresh ownership without task-store 
   } finally { h.restore(); fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
-test("department ownership port unavailable, duplicate modules and changed ownership revoke current actions and pending effects", async () => {
-  const mutations: Array<(h: ReturnType<typeof harness>) => void> = [
-    (h) => { h.deps.readDepartmentLeaderTaskIds = undefined; },
-    (h) => { h.deps.readDepartmentLeaderTaskIds = () => null; },
-    (h) => { h.deps.readDepartmentLeaderTaskIds = () => { throw Error("invalid index"); }; },
-    (h) => { h.other.department!.leaderSubtaskId = h.leader.department!.leaderSubtaskId; },
-    (h) => { h.leader.workspaceKey = "moved-workspace"; },
-    (h) => { h.leader.department!.parentTaskId = "moved-root"; },
-    (h) => { h.root.departmentInvalid = true; },
+test("department ownership port unavailable, duplicate modules and changed ownership revoke current actions and pending effects", async (t) => {
+  const mutations: Array<[string, (h: ReturnType<typeof harness>) => void]> = [
+    ["missing ownership port", (h) => { h.deps.readDepartmentLeaderTaskIds = undefined; }],
+    ["unavailable ownership index", (h) => { h.deps.readDepartmentLeaderTaskIds = () => null; }],
+    ["throwing ownership index", (h) => { h.deps.readDepartmentLeaderTaskIds = () => { throw Error("invalid index"); }; }],
+    ["duplicate module", (h) => { h.other.department!.leaderSubtaskId = h.leader.department!.leaderSubtaskId; }],
+    ["workspace changed", (h) => { h.leader.workspaceKey = "moved-workspace"; }],
+    ["parent changed", (h) => { h.leader.department!.parentTaskId = "moved-root"; }],
+    ["root invalidated", (h) => { h.root.departmentInvalid = true; }],
   ];
-  for (const mutate of mutations) {
-    const h = harness();
+  for (const [name, mutate] of mutations) await t.test(name, async () => {
+    const h = harness(), gate = deferred(), restoreEntered = deferred();
+    let pendingContinue: Promise<void> | undefined;
     try {
       h.leader.originProfile = { configId: "original" }; h.leader.modelRouting = { main: { model: "main" }, subtask: { model: "sub" } };
-      const gate = deferred(); h.deps.restoreOriginalLoopRuntime = async () => { await gate.promise; return { ok: true, target: { tabId: h.leader.id, cli: "codex" } }; };
-      await h.coordinator.open(h.root.id); const target = await h.load();
-      h.receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, message: { type: "loopGroupChatChat:continueTask" } }); await tick();
-      mutate(h); const count = h.effects.length; const posts = h.posted.length;
-      await h.send(target, { type: "loopGroupChatChat:supplementTask", prompt: "应拒绝" }); gate.resolve(); await tick();
-      assert.equal(h.effects.length, count); assert.equal(h.posted.length, posts);
-    } finally { h.restore(); }
-  }
+      h.deps.restoreOriginalLoopRuntime = async () => { restoreEntered.resolve(); await gate.promise; return { ok: true, target: { tabId: h.leader.id, cli: "codex" } }; };
+      h.deps.notifyLoopPlusUserMessage = (id) => { h.effects.push(["notify", id]); };
+      h.deps.resumeLoopSubtasks = (id) => { h.effects.push(["resume", id]); return false; };
+      h.deps.recordPromptHistory = () => { h.effects.push(["history", h.leader.id]); };
+      await withTimeout(h.coordinator.open(h.root.id), `${name}: loadingReady`);
+      await withTimeout(h.domReady, `${name}: director DOM-ready`);
+      const target = await h.load();
+      const initialContent = h.posted.find((post) => post.type === "loopGroupChatChat:departmentModalContent" && post.html);
+      assert.equal(initialContent?.taskId, target.taskId);
+      assert.equal(initialContent?.instanceId, target.instanceId);
+      const generation = Number(/const PANEL_GENERATION = (\d+)/.exec(initialContent.html)?.[1]);
+      assert.ok(generation > 0);
+      await h.send(target, { type: "loopGroupChatChat:domReady", generation });
+      assert.deepEqual([...h.deps.panelsByTaskId.keys()], [h.root.id], "modal-only subscriber must not alias director as leader panel");
+      assert.ok(h.posted.some((post) => post.taskId === target.taskId && post.instanceId === target.instanceId
+        && post.message?.type === "loopGroupChatChat:contentPatch" && post.message.generation === generation));
+
+      // Await the real dispatcher's entire operation, including its finally/settlement path.
+      pendingContinue = h.coordinator.handleMessage(h.root.id, {
+        type: "loopGroupChatChat:departmentTaskMessage", ...target, message: { type: "loopGroupChatChat:continueTask" },
+      });
+      await withTimeout(restoreEntered.promise, `${name}: entered original-runtime restore`);
+      const effects = structuredClone(h.effects), posts = h.posted.length;
+      const requirements = h.leader.supplementalRequirements;
+      mutate(h);
+      await h.coordinator.handleMessage(h.root.id, { type: "loopGroupChatChat:departmentTaskMessage", ...target,
+        message: { type: "loopGroupChatChat:supplementTask", prompt: "应拒绝" } });
+      assert.deepEqual(h.effects, effects, "revoked supplement must not persist, notify or record history");
+      assert.deepEqual(h.posted.slice(posts), [], "revoked supplement must not publish a business reply");
+
+      const invalidation = { type: "loopGroupChatChat:departmentModalContent", ...target,
+        error: "组长群聊关联已失效，请关闭后重试。" };
+      // Settle while the binding still exists: after-await authorization must reread the
+      // changed source, rather than relying only on a refresh having deleted the binding.
+      gate.resolve();
+      await withTimeout(pendingContinue, `${name}: revoked continue fully settled`);
+      const settlementPosts = h.posted.slice(posts);
+      assert.ok(settlementPosts.length <= 1, "only this binding's invalidation notice may accompany revoked settlement");
+      for (const post of settlementPosts) assert.deepEqual(post, invalidation,
+        "no settled/content/ask/preview reply for any task, instance, generation or request is permitted");
+      assert.deepEqual(h.effects, effects, "late restore must not persist, supplement, notify, resume, continue or stop");
+
+      // A store-driven refresh is allowed to report this exact binding's invalidation.
+      await withTimeout(h.coordinator.refresh(h.leader.id), `${name}: revoked subscriber refresh`);
+      assert.deepEqual(h.posted.slice(posts), [invalidation]);
+      const rootPosts = h.posted.length;
+      const previousRootGeneration = h.posted.filter((post) => post.type === "loopGroupChatChat:contentPatch").at(-1)?.generation ?? 1;
+      await withTimeout(h.coordinator.refresh(h.root.id), `${name}: director projection refresh`);
+      assert.equal(h.panel().getState()?.task.id, h.root.id);
+      // Root projections are distinct from any iframe response: exact current state and generation,
+      // with no task/instance envelope, request ID, settlement, or previous leader content.
+      assert.deepEqual(h.posted.slice(rootPosts), [buildLoopGroupChatPanelContentPatch(h.panel().getState()!, previousRootGeneration + 1)]);
+      const allowedPosts = structuredClone(h.posted.slice(posts));
+      assert.equal(h.leader.supplementalRequirements, requirements);
+      // A released binding stays revoked even if the source later reports its old membership again.
+      const original = departmentRecords();
+      h.records.clear(); for (const [id, record] of original.records) h.records.set(id, record);
+      h.deps.readDepartmentLeaderTaskIds = (rootId, moduleId) => fixtureDepartmentLeaderTaskIds(h.records, rootId, moduleId);
+      await h.coordinator.handleMessage(h.root.id, { type: "loopGroupChatChat:departmentTaskMessage", ...target,
+        message: { type: "loopGroupChatChat:supplementTask", prompt: "旧实例仍应拒绝" } });
+      assert.deepEqual(h.effects, effects);
+      assert.deepEqual(h.posted.slice(posts), allowedPosts);
+    } finally {
+      // Release before disposal so assertions/timeouts cannot strand this test's continuation.
+      gate.resolve();
+      h.dispose();
+      try { if (pendingContinue) await withTimeout(pendingContinue, `${name}: cleanup settlement`); }
+      finally { h.restore(); }
+    }
+  });
   const h = harness();
   try {
     h.deps.readDepartmentLeaderTaskIds = undefined;
-    await h.coordinator.open(h.root.id); await h.load();
+    await withTimeout(h.coordinator.open(h.root.id), "missing index: loadingReady");
+    await withTimeout(h.domReady, "missing index: DOM-ready");
+    await h.load();
     // No index means no department projection/container; forged loads cannot inject any contents.
     const state = buildLoopGroupChatPanelState(h.root, h.deps);
     assert.equal(state.department, undefined); assert.equal(state.acceptancePlanReadOnly, true);
     assert.equal(h.panel().getDepartmentModalTarget(), undefined); assert.ok(!h.posted.some((item) => item.html));
-  } finally { h.restore(); }
+  } finally { h.dispose(); h.restore(); }
 });
 
 test("department images reuse one preview per binding and dispose on close, switch and panel disposal", async () => {
