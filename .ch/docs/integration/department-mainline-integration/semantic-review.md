@@ -114,3 +114,11 @@ round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，
 新标准build及群聊全文件30/30覆盖此组合和本地TS输入；ontology validate覆盖合入数据结构。没有新的产品改写、视觉设计或授权策略变更，故无新增FEATURE_INVENTORY/现行计划事实。合入的冷设计/ontology更新保留其已审来源。未复跑原195/121/19及各来源有效检查、浏览器或真实CLI/EH，亦未以编译证明真实生命周期。
 
 所有此前失败、manifest勘误和清理限制保留。当前已接受的cold混合五worker和旧根公开stop只证明其原输入；capacity12条after强制回收及round698六取消回收仍非自然成功。store74be仍未接受，cold共享夹具后继尚未整合，不能声称官方全量已过或把其done状态当接受。最终全量应在后继正式接受并实际合入后针对真实统一输入执行。
+
+## Round 708：cold lifecycle accepted source integration
+
+Accepted source `6879fc01ecc440a17b40f5bc50ae47ebe825a58d` is based on already-integrated cold-chain tip `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`; all three cold ancestor commits remain in the merge ancestry. Its six actual changed paths are tests/fixtures only. Merge base with the current integration was `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`; paths changed by the source do not intersect changes made on the integration side after that base. `git merge --no-ff` produced merge `60908f513dc979982893e2d94853c3a4174a614e` without unmerged paths or a textual conflict. No `ours`/`theirs` selection or manual contract rewrite was needed.
+
+The accepted assertions retain real `t.mock`, bind-to-prior-turn accounting, one initial persist/build, actual consumer gating and drain, a valid coding task, `adapter.waitForTaskIdle`, original receipt/CLOSED/capacity-return/unique-successor checks. Group-chat exact receipt matching and invalid-request/CAS/late-reply protections remain from round706. Three forced fixture hygiene reclaims remain separate from natural `exit(0, null)` observations. The old OpenCode first-throw tracing limit is preserved.
+
+Reused source-scoped evidence from the round706 cold report: final `tsc -p tsconfig.json` passed, all five affected compiled test files passed 60/60, and 794 non-test build artifacts matched byte-for-byte. Since this merge adds precisely those accepted six files unchanged and no production or shared helper changes, these results still cover the merged paths; no build/test rerun was needed solely for the merge commit. The original 5439-case official run remains failed. Store successor `94267bb3f4343c9ccee0f9f75e99c6a2f492df50` / `74be413f` remains unaccepted and unmerged; ordinaryMoves/handoff semantics remain open.

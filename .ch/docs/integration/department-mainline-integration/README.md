@@ -102,3 +102,11 @@ round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，
 round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1；此前50失败/6取消为round704对账。现 send1、capacity2、groupChat2原失败及transport6取消有接受或新定向覆盖；其余store35/cold10仍开放，45/0只是原账面剩余，绝非新官方结果。`74be413f` 未审未合，103/105和两项handoff失败、ordinaryMoves合同冲突留主审；cold后继独占共享fixture，不提前消费或等待。
 
 保留全部55条原累计来源、manifest原值/抄错值与勘误、原官方失败及六取消强制回收记录。capacity12条after回收仅为卫生；cold五worker/两EH及精确旧根公开stop的正常退出已被接受，只证明其报告范围，旧根不能继续表述为尚未收尾。最终统一输入全量、必要真实异平台、最终authority/额度/冷恢复组合审查和原打开目录分类保护/安全切分支/clean交付仍开放。没有重新fetch、旧实体导入、浏览器或EH矩阵；原master脏树和来源未写入。
+
+## Round 708：已接受冷生命周期夹具修复合入
+
+从round706最终提交 `929bcec39cd268c4e5f716cf2833ea9db6cf05d7` / tree `81c533bb5652e0ed7432baaa85666e2a2410247f` 续接。已合入正式接受来源 `6879fc01ecc440a17b40f5bc50ae47ebe825a58d`（source tree `96b8c2bb8ec55406ef4d0cfda033ef875316d97d`，base `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`），merge `60908f513dc979982893e2d94853c3a4174a614e`，tree `78dade6a6fbf37c7815133239fb4c7b64a734d35`，父为round706整合提交及6879来源。该来源相对a90的六项测试/夹具差异与整合树在共同基点后的路径差异无重叠；`ort`合并无冲突，未修改生产源码、授权、容量、receipt或群聊控制合同。逐路径源blob及结果SHA见 `sources.json#round708AcceptedColdLifecycleIntegration.sourcePathIdentities`。
+
+按来源报告复用有效结果：该六文件输入最终 `tsc -p tsconfig.json` exit0，五相关编译测试文件60/60通过，794个非test产物与来源产品字节相同；没有在仅改变merge hash后重复build或60项测试。该证据只覆盖cold生命周期夹具/相关回归，不是整合树全量结果。三处强制卫生回收与成功场景原/后继authority自然exit(0,null)分别记载，不能将回收当完整清理证明；历史OpenCode首抛限制保留。旧cold实现及55路径累计实体没有重新复制、哈希或补丁导入。
+
+Round698原官方全量仍记录5439项中5265过、165失败、6取消、3跳过、exit1。Round704/706和本轮的针对性证据只覆盖其中特定原用例；不改写首轮记录或声称整合树全量通过。LP707严格存储后继 `94267bb3f4343c9ccee0f9f75e99c6a2f492df50` 报告110/110但仍未接受，本轮未合入该提交或 `74be413f` 祖先。其handoff及 `ordinaryMoves` schema/文档合同仍待审。最终官方 `node scripts/run_unit_tests.js` 应在相关接受输入统一后执行。必要Linux/Windows原生证据、最终authority/容量/cold组合复核，以及原始目录保护分类和安全交接仍开放。

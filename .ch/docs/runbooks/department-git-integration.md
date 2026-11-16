@@ -197,3 +197,9 @@ round698官方首次仍是5439项、5265过/165失败/6取消/3跳过、exit1，
 官方首次5439项失败记录、manifest原始正确值和后继抄错值、强制回收事实全部保留。当前原账面剩余store35/cold10是45失败、0取消，计算不构成再次官方运行。store `74be413f` 尚未验收，不得合入；103/105、两项handoff及ordinaryMoves冲突待主审。cold后继独占十失败/共享fixture，未消费待审输入。待必要后继接受并合入，后续统一使用本轮报告最终commit为基线，按实际影响补验及最终官方全量，不能从旧候选继续。
 
 本阶段保护原打开master及其它来源，不在那里checkout/reset/stash/clean；最终分类保护既有脏内容、安全切交付分支（处理另一worktree占用）和clean仍待最终收尾。必要Linux/Windows原生证据、最终authority/额度/冷恢复组合审查亦未关闭。不归档根feature，不推送发布或安装升级依赖。
+
+### Round 708 accepted cold fixture merge
+
+Continue from round706 integration commit `929bcec39cd268c4e5f716cf2833ea9db6cf05d7`. Merge only the formally accepted cold fixture source `6879fc01ecc440a17b40f5bc50ae47ebe825a58d` with `git merge --no-ff`; it descends from already integrated `a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d`, so keep the complete ancestor history and do not reapply old cold patches. The merge is `60908f513dc979982893e2d94853c3a4174a614e`, tree `78dade6a6fbf37c7815133239fb4c7b64a734d35`; it changed six test/fixture files and had zero conflicts. Case-sensitive tracked paths use `src/test/extensionHost/`.
+
+The source's final relevant checks (`tsc -p tsconfig.json`, five compiled cold tests 60/60, 794 non-test outputs identical) remain valid for those unchanged files. Do not call them a full regression or repeat them only because the merge hash changed. Preserve the original round698 failure record and the source report's forced-reclaim versus natural-exit distinction. Do not merge the unaccepted store continuation (`94267bb3f4343c9ccee0f9f75e99c6a2f492df50` / `74be413f`) until its handoff and ordinaryMoves contract review is complete. Run the official full test script only after the remaining accepted sources form the actual unified input.

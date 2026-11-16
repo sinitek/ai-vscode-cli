@@ -504,5 +504,76 @@
         "First final-audit comparison mistakenly used sibling c539 as allocation base, including unrelated original7 test differences. Corrected to actual464 allocation source baseline; all7 accepted allocation paths match. No code change/test rerun needed."
       ]
     }
+  },
+  "round708AcceptedColdLifecycleIntegration": {
+    "baseCommit": "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+    "baseTree": "81c533bb5652e0ed7432baaa85666e2a2410247f",
+    "sourceCommit": "6879fc01ecc440a17b40f5bc50ae47ebe825a58d",
+    "sourceTree": "96b8c2bb8ec55406ef4d0cfda033ef875316d97d",
+    "sourceBase": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+    "mergeBase": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+    "mergeCommit": "60908f513dc979982893e2d94853c3a4174a614e",
+    "mergeTree": "78dade6a6fbf37c7815133239fb4c7b64a734d35",
+    "mergeParents": [
+      "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+      "6879fc01ecc440a17b40f5bc50ae47ebe825a58d"
+    ],
+    "command": "git merge --no-ff 6879fc01ecc440a17b40f5bc50ae47ebe825a58d -m 'merge: integrate accepted cold lifecycle fixture repairs'",
+    "exitCode": 0,
+    "conflicts": [],
+    "overlaps": [],
+    "changedPaths": [
+      {
+        "path": "src/test/extensionHost/departmentcoldgenerationrecovery.test.ts",
+        "sourceBlob": "63e71109ab2b5f62c811b1b198d580970266db1a",
+        "sourceSha256": "4cba81789710d142d04cac3f69e8bcf69371497f04860c33583bb3524b11ae5c",
+        "mergedSha256": "4cba81789710d142d04cac3f69e8bcf69371497f04860c33583bb3524b11ae5c"
+      },
+      {
+        "path": "src/test/extensionHost/departmentproductionwiring.test.ts",
+        "sourceBlob": "6055580be164f6dd901ffffb1ff8c322bca8919b",
+        "sourceSha256": "3648e6c2e32d5941ed270dc4623d3c5e9e25c7c5c2c178bbcfa42a183df1afa9",
+        "mergedSha256": "3648e6c2e32d5941ed270dc4623d3c5e9e25c7c5c2c178bbcfa42a183df1afa9"
+      },
+      {
+        "path": "src/test/extensionHost/departmenttreecontrolintegration.test.ts",
+        "sourceBlob": "92c2a6294b85be0b43a798809c1e0fe686d8f15e",
+        "sourceSha256": "d7fd4245df45f38fe1f9b52a164cce0cd94e49297c99cd78132b0e3d784567cc",
+        "mergedSha256": "d7fd4245df45f38fe1f9b52a164cce0cd94e49297c99cd78132b0e3d784567cc"
+      },
+      {
+        "path": "src/test/extensionHost/fixtures/departmentcoldgenerationhost.ts",
+        "sourceBlob": "610cd5b86a1780bc6b29e74d5b0896360bb77006",
+        "sourceSha256": "779c56f0bd174328f5247158c7e6e8576828f27cccb612928f03f2a52f52dd8c",
+        "mergedSha256": "779c56f0bd174328f5247158c7e6e8576828f27cccb612928f03f2a52f52dd8c"
+      },
+      {
+        "path": "src/test/extensionHost/fixtures/departmenttreecontrolfixture.ts",
+        "sourceBlob": "9a9f6d899c2148dc8ae4cfa2ab2feb39a744b2e5",
+        "sourceSha256": "1005a156d1dc623e0f3cf0dd5a88823807f26eedb5db5fe75ff3a4364f4f84da",
+        "mergedSha256": "1005a156d1dc623e0f3cf0dd5a88823807f26eedb5db5fe75ff3a4364f4f84da"
+      },
+      {
+        "path": "src/test/runtime/departmentleadercodexowner.test.ts",
+        "sourceBlob": "f3f487026fefcf2a02bc8de5024a1092e4e30ab2",
+        "sourceSha256": "cdc1036eebf9815bc6a3d954cb3d514b1f922f0c24bf13b676e14e875990169f",
+        "mergedSha256": "cdc1036eebf9815bc6a3d954cb3d514b1f922f0c24bf13b676e14e875990169f"
+      }
+    ],
+    "reusedEvidence": {
+      "sourceReport": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-706-department-cold-lifecycle-regression-repair.md",
+      "tsc": "tsc -p tsconfig.json exit 0 on source product",
+      "compiledTests": "five affected files, 60/60 passed",
+      "artifactIdentity": "794 non-test artifacts byte-identical to accepted source product",
+      "scope": "The accepted six paths are unchanged in this merge; no build or test rerun solely for merge hash. This is not a unified full regression."
+    },
+    "cleanupEvidenceLimits": "Three fixture hygiene terminations remain distinct from natural authority exit(0,null); preserve the source report's historical OpenCode first-throw tracing limitation.",
+    "finalDeliveryCommitAndTree": "See round708 attempt report; this merge commit is the source integration point, followed only by handoff evidence commit.",
+    "openGates": [
+      "round698 official full regression remains failed; no new full run in round708",
+      "strict-store 94267bb3f4343c9ccee0f9f75e99c6a2f492df50 and 74be413f remain unaccepted/unmerged; handoff and ordinaryMoves contract review pending",
+      "required native Linux/Windows evidence and final authority/capacity/cold composition review remain open",
+      "preserve/classify original checkout state and perform safe final branch handoff later"
+    ]
   }
 }

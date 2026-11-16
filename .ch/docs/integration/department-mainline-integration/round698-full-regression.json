@@ -2767,5 +2767,55 @@
         "First final-audit comparison mistakenly used sibling c539 as allocation base, including unrelated original7 test differences. Corrected to actual464 allocation source baseline; all7 accepted allocation paths match. No code change/test rerun needed."
       ]
     }
+  },
+  "round708Followup": {
+    "baseCommit": "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+    "sourceCommit": "6879fc01ecc440a17b40f5bc50ae47ebe825a58d",
+    "mergeCommit": "60908f513dc979982893e2d94853c3a4174a614e",
+    "mergeTree": "78dade6a6fbf37c7815133239fb4c7b64a734d35",
+    "conflicts": 0,
+    "changedPaths": 6,
+    "productionSourcesChanged": false,
+    "reusedEvidence": {
+      "sourceReport": "round-706-department-cold-lifecycle-regression-repair.md",
+      "tscExitCode": 0,
+      "affectedCompiledTests": "60/60 across five files",
+      "nonTestArtifactsByteIdentical": 794,
+      "reasonStillValid": "No production/shared helper changes; all six accepted source paths were imported unchanged from the tested source commit."
+    },
+    "checksPerformedThisRound": [
+      {
+        "scope": "Git ancestry/path overlap/source identity",
+        "action": "Verified 6879 descends from a90, merge base a90, target changed-path set after a90 is disjoint from the six source paths; compared each final SHA-256 with source commit blob result.",
+        "result": "Passed; no overlap or changed source identity."
+      },
+      {
+        "scope": "Integration merge",
+        "command": "git merge --no-ff 6879fc01ecc440a17b40f5bc50ae47ebe825a58d -m 'merge: integrate accepted cold lifecycle fixture repairs'",
+        "result": "Exit 0; ort strategy; no conflicts."
+      }
+    ],
+    "checksNotRepeated": [
+      "No npm run build or 60-case suite rerun because source test report's tsc, five-file 60/60 and 794 non-test artifact identity remain valid for exactly these six unchanged paths.",
+      "No ontology validate because ontology files are not changed by this source.",
+      "No official node scripts/run_unit_tests.js run; the historical round698 full run remains failed and final unified-input run is still a gate.",
+      "No browser, CLI/EH or platform matrix."
+    ],
+    "preservedHistoricalFullRun": {
+      "command": "node scripts/run_unit_tests.js",
+      "exitCode": 1,
+      "tests": 5439,
+      "passed": 5265,
+      "failed": 165,
+      "cancelled": 6,
+      "skipped": 3,
+      "reconciliationNote": "Original round698 run only. Round706's 45 failure/0 cancellation arithmetic was a scope reconciliation, not a rerun; this round adds source-scoped coverage of the ten cold lifecycle failures without claiming a new official total."
+    },
+    "openGates": [
+      "Strict-store source 94267bb3f4343c9ccee0f9f75e99c6a2f492df50 and ancestor 74be413f remain unaccepted and unmerged.",
+      "Official full regression on the final actually unified accepted tree remains required.",
+      "Required native Linux/Windows evidence, final authority/capacity/cold composition review and safe original-directory handoff remain open."
+    ],
+    "postCheckChanges": "Only integration documentation and machine evidence changed after the reused source checks; no source test/fixture code changed after merge."
   }
 }
