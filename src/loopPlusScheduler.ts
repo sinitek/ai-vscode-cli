@@ -58,11 +58,12 @@ export type LoopPlusReviewItem = {
   detail: string | null;
 };
 
-export type LoopPlusReviewAcceptance = "passed" | "failed";
+export type LoopPlusReviewAcceptance = "passed" | "failed" | "cancelled";
 
 export type LoopPlusReviewVerdict = {
   eventId: string;
   acceptance: LoopPlusReviewAcceptance;
+  reason?: string;
 };
 
 export type LoopPlusSeenAttempt = {
@@ -72,6 +73,7 @@ export type LoopPlusSeenAttempt = {
   disposition: LoopPlusAttemptDisposition;
   outcome?: LoopPlusExecutionOutcome;
   acceptance?: LoopPlusReviewAcceptance;
+  acceptanceReason?: string;
 };
 
 export type LoopPlusSchedulerSnapshot = {
@@ -1368,6 +1370,10 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
     if (item.disposition !== "reviewed" && acceptance) {
       invalidSnapshot(`seenAttempts[${index}]`);
     }
+    const acceptanceReason = typeof item.acceptanceReason === "string" ? item.acceptanceReason.trim() : undefined;
+    if (acceptance === "cancelled" && (!acceptanceReason || Array.from(acceptanceReason).length > 50)) {
+      invalidSnapshot(`seenAttempts[${index}].acceptanceReason`);
+    }
     return {
       subtaskId: readRequiredId(item.subtaskId, `seenAttempts[${index}]`),
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
@@ -1375,6 +1381,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       ...readOptionalBoolean(item.requiresAcceptance, `seenAttempts[${index}].requiresAcceptance`),
       ...(outcome ? { outcome } : {}),
       ...(acceptance ? { acceptance } : {}),
+      ...(acceptanceReason ? { acceptanceReason } : {}),
     };
   });
 }
@@ -1549,41 +1556,51 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.requiresAcceptance !== undefined ? { requiresAcceptance: record.requiresAcceptance } : {}),
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
+    ...(record.acceptanceReason ? { acceptanceReason: record.acceptanceReason } : {}),
   };
 }
 
 function acceptanceByEvent(
   eventIds: readonly string[],
   acceptance: LoopPlusReviewAcceptance | readonly LoopPlusReviewVerdict[] | undefined,
-): Map<string, LoopPlusReviewAcceptance> | undefined | null {
+): Map<string, LoopPlusReviewVerdict> | undefined | null {
   if (acceptance === undefined) {
     return undefined;
   }
   if (acceptance === "passed" || acceptance === "failed") {
-    return new Map(eventIds.map((eventId) => [eventId, acceptance]));
+    return new Map(eventIds.map((eventId) => [eventId, { eventId, acceptance }]));
   }
   if (!Array.isArray(acceptance) || acceptance.length !== eventIds.length) {
     return null;
   }
-  const verdicts = new Map<string, LoopPlusReviewAcceptance>();
+  const verdicts = new Map<string, LoopPlusReviewVerdict>();
   for (let index = 0; index < eventIds.length; index += 1) {
     const verdict = acceptance[index];
     const eventId = eventIds[index];
     if (!verdict || verdict.eventId !== eventId) {
       return null;
     }
-    if (verdict.acceptance !== "passed" && verdict.acceptance !== "failed") {
+    if (verdict.acceptance !== "passed" && verdict.acceptance !== "failed" && verdict.acceptance !== "cancelled") {
       return null;
     }
-    verdicts.set(eventId, verdict.acceptance);
+    if (verdict.acceptance === "cancelled" && (typeof verdict.reason !== "string"
+      || !verdict.reason.trim() || Array.from(verdict.reason.trim()).length > 50)) return null;
+    verdicts.set(eventId, verdict);
   }
   return verdicts;
 }
 
 function recordReviewedAcceptance(
   seen: LoopPlusSeenAttempt,
-  acceptance: LoopPlusReviewAcceptance | undefined,
+  verdict: LoopPlusReviewVerdict | undefined,
 ): void {
+  if (!verdict) return;
+  const { acceptance } = verdict;
+  if (acceptance === "cancelled") {
+    seen.acceptance = acceptance;
+    seen.acceptanceReason = verdict.reason!.trim();
+    return;
+  }
   if (acceptance !== "passed" && acceptance !== "failed") {
     return;
   }
@@ -1595,7 +1612,7 @@ function readSeenAcceptance(value: unknown, field: string): LoopPlusReviewAccept
   if (value === undefined) {
     return undefined;
   }
-  if (value !== "passed" && value !== "failed") {
+  if (value !== "passed" && value !== "failed" && value !== "cancelled") {
     invalidSnapshot(field);
   }
   return value;

@@ -485,3 +485,23 @@ test("其它 text is not injected when the checkbox is unchecked", () => {
   assert.doesNotMatch(text, /这段文字不应出现在提示词里/);
   assert.doesNotMatch(text, /other/i);
 });
+
+test("撤销反馈展示原因，不把撤销当作失败或通过", () => {
+  const prompt = buildLoopPlusAcceptancePlanPromptLines({ ...buildSystemLoopPlusAcceptancePlanSnapshot(), checks: ["security"] }).join("\n");
+  assert.match(prompt, /when all accept\.reviews have acceptance=cancelled/);
+  assert.match(prompt, /omit acceptance and acceptancePlanResults/);
+  const cancelled = { eventId: "obsolete", acceptance: "cancelled" as const, reason: "用户已取消该需求" };
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    snapshot: { ...buildSystemLoopPlusAcceptancePlanSnapshot(), checks: ["security"] }, subtaskTitles: ["旧交付"], reviews: [cancelled],
+  });
+  assert.ok(section);
+  assert.match(section.body, /验收已撤销/u);
+  assert.match(section.body, /用户已取消该需求/u);
+  assert.doesNotMatch(section.body, /✅|❌|默认验收/u);
+  const mixed = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["旧交付", "新交付"],
+    reviews: [cancelled, { eventId: "keep", acceptance: "passed", reason: "测试通过" }],
+  });
+  assert.ok(mixed);
+  assert.match(mixed.body, /部分验收已撤销，其余通过/u);
+});

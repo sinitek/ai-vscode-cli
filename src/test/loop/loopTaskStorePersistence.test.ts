@@ -494,3 +494,19 @@ for (const withSibling of [false, true]) {
     assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.find((item) => item.id === task.id)?.status, "running");
   });
 }
+
+test("撤销验收及原因经过实际文件存储和冷加载后保留", () => {
+  const { createLoopPlusScheduler } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "obsolete", attemptId: "old-1" }]);
+  scheduler.finish({ subtaskId: "obsolete", attemptId: "old-1", outcome: "completed" });
+  const eventId = scheduler.claimNextReview().item!.eventId;
+  assert.equal(scheduler.submitReviewBatch([eventId], [{ eventId, acceptance: "cancelled", reason: "用户取消旧需求" }]).ok, true);
+  const task = { ...createTask(), schedulingMode: "event_driven" as const, loopPlus: scheduler.snapshot() };
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const loaded = coldStore().readLoopTaskStore(task.taskStoreFile).tasks[0];
+  const restored = createLoopPlusScheduler({ snapshot: loaded.loopPlus as ReturnType<typeof scheduler.snapshot> });
+  assert.equal(restored.wait().view.visibleReviewCount, 0);
+  assert.equal(restored.snapshot().seenAttempts[0].acceptance, "cancelled");
+  assert.equal(restored.snapshot().seenAttempts[0].acceptanceReason, "用户取消旧需求");
+});

@@ -232,3 +232,12 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 实现使用 scheduler 持久化 `seenAttempts.length` 作为已用轮次，避免重启清零或遗漏免验收。整份决策按 `subtasks.length + controls.reprompt.length` 预检；新派发/重派超额时不做控制或执行副作用，`accept` 已提交的本批验收继续保留。旧 `loopPlusMaxAcceptances` 已退役，读取和更新设置时不再使用，不自动迁移成含义不同的轮次预算。
 
 主模型内部决策保护按 `max(200, 子任务轮次 × 3)` 调整，保留无界调度保护并容纳每项派发、验收与单独收尾；不会用固定 200 次调用提前截断较高轮次预算。显式注入的测试保护阈值仍优先。
+
+
+### 需求变更：撤销验收与关闭子任务
+
+主任务在用户取消或调整需求、本次交付不再需要时，可对当前冻结批次逐项返回 `reviews[].acceptance="cancelled"`，`reason` 必须非空且最多 50 字。宿主依照原 eventId 顺序提交整批，移除相应待验收事件，在 `seenAttempts` 保存 `acceptance=cancelled` 与 `acceptanceReason`；不撤回既有已验收结论，不将撤销记录为通过或失败。允许混合 passed/failed/cancelled；尚需验收的项继续提供六项默认检查和已选附加审查。全批撤销时无需 `acceptance` / `acceptancePlanResults`，也不生成虚构检查结果。群聊显示「验收已撤销」及原因，保留定位反馈与恢复能力。
+
+撤销仅结算本次待验收交付，不将其视为执行成功。主任务须按最新需求显式调整或关闭已无必要的剩余任务，不自动取消其它交付。剩余交付和最终父任务完成继续遵守原门禁，晚到事件及消息保留给后续决策。
+
+运行中、排队中及人工中断的开放子任务继续用 `controls:[{id,action:"close",reason}]` 直接关闭。`reason` 可选以兼容旧协议；提供时须非空且最多 50 字，保存到子任务摘要和群聊关闭说明。宿主先持久化 closed 状态，再中断实际调用并关闭旧标签；不产生验收事件，迟到结果不能重开任务。群聊将其显示为「已关闭」。交付已结束并在验收队列中的任务使用 cancelled，不能用 close 绕过冻结批次。

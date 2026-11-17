@@ -1468,3 +1468,45 @@ test("reprompt replaces the open attempt and a conflicting dry run leaves the sn
   assert.equal(notOpen.reason, "not_open");
   assert.deepEqual(held.snapshot(), beforeHeld);
 });
+
+test("撤销验收持久保存原因、保持批次顺序且保留完成门禁", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
+  scheduler.dispatch([spec("old"), spec("keep"), spec("next")]);
+  scheduler.finish({ subtaskId: "old", attemptId: "old-1", outcome: "failed" });
+  scheduler.finish({ subtaskId: "keep", attemptId: "keep-1", outcome: "completed" });
+  const claimed = scheduler.claimNextReview();
+  const ids = [claimed.item!, ...claimed.view.reviewQueue].map((item) => item.eventId);
+  const before = scheduler.snapshot();
+  assert.equal(scheduler.submitReviewBatch(ids, [
+    { eventId: ids[1], acceptance: "passed" },
+    { eventId: ids[0], acceptance: "cancelled", reason: "需求已取消" },
+  ]).ok, false);
+  for (const reason of [undefined, " ", "原".repeat(51)]) {
+    assert.equal(scheduler.submitReviewBatch(ids, [
+      { eventId: ids[0], acceptance: "cancelled", reason },
+      { eventId: ids[1], acceptance: "passed" },
+    ]).ok, false);
+    assert.deepEqual(scheduler.snapshot(), before);
+  }
+  const verdicts = [
+    { eventId: ids[0], acceptance: "cancelled" as const, reason: "需求已取消" },
+    { eventId: ids[1], acceptance: "passed" as const },
+  ];
+  assert.equal(scheduler.submitReviewBatch(ids, verdicts).ok, true);
+  assert.equal(scheduler.wait().view.visibleReviewCount, 0);
+  assert.equal(scheduler.promotePending().started.length, 0);
+  const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
+  const old = restored.snapshot().seenAttempts.find((item) => item.subtaskId === "old");
+  assert.equal(old?.acceptance, "cancelled");
+  assert.equal(old?.acceptanceReason, "需求已取消");
+  assert.equal(old?.outcome, "failed");
+  assert.equal(restored.complete().ok, false);
+  const settled = restored.snapshot();
+  assert.equal(restored.submitReviewBatch(ids, verdicts).ok, true);
+  assert.deepEqual(restored.snapshot(), settled);
+  const invalid = restored.snapshot();
+  delete invalid.seenAttempts.find((item) => item.subtaskId === "old")!.acceptanceReason;
+  assert.throws(() => createLoopPlusScheduler({ snapshot: invalid }), /Invalid Loop\+ scheduler snapshot/);
+  assert.equal(restored.applyControls([{ subtaskId: "next", action: "close" }]).ok, true);
+  assert.equal(restored.complete().ok, true);
+});

@@ -100,7 +100,8 @@ export const sameLoopPlusReportIds = sameLoopPlusReviewIds;
 
 export type LoopPlusDecisionReviewVerdict = {
   eventId: string;
-  acceptance: "passed" | "failed";
+  acceptance: "passed" | "failed" | "cancelled";
+  reason?: string;
 };
 
 export function loopPlusAcceptVerdicts(
@@ -118,10 +119,11 @@ export function loopPlusAcceptVerdicts(
     if (!review || review.reviewEventId !== eventId) {
       return null;
     }
-    if (review.acceptance !== "passed" && review.acceptance !== "failed") {
+    if (review.acceptance !== "passed" && review.acceptance !== "failed" && review.acceptance !== "cancelled") {
       return null;
     }
-    verdicts.push({ eventId, acceptance: review.acceptance });
+    if (review.acceptance === "cancelled" && !review.reason?.trim()) return null;
+    verdicts.push({ eventId, acceptance: review.acceptance, ...(review.acceptance === "cancelled" ? { reason: review.reason } : {}) });
   }
   return verdicts;
 }
@@ -259,7 +261,7 @@ function applyAcceptDecision(
   }
   const verdicts = loopPlusAcceptVerdicts(decision, step.eventIds);
   if (!verdicts) {
-    return port.protocolMiss(true, "accept.reviews 必须与当前批次逐项对应，且每项保留真实 passed 或 failed 结论。");
+    return port.protocolMiss(true, "accept.reviews 必须与当前批次逐项对应，且每项保留真实 passed、failed 或 cancelled 结论及撤销原因。");
   }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;

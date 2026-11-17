@@ -1676,6 +1676,8 @@ function participantStatusClass(status: string): string {
     case "acceptance_passed":
     case "reviewed":
       return "member-status-passed";
+    case "acceptance_cancelled":
+    case "closed":
     case "no_acceptance":
       return "member-status-inactive";
     case "pending":
@@ -1722,6 +1724,10 @@ function formatParticipantStatus(
     case "queued_review":
       return strings.loopPlusStatusQueued;
     case "reviewed":
+    case "acceptance_cancelled":
+      return "验收已撤销";
+    case "closed":
+      return "已关闭";
     case "acceptance_passed":
       return strings.loopPlusAcceptancePassed;
     case "acceptance_failed":

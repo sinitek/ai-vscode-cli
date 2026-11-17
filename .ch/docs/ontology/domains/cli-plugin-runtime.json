@@ -2180,7 +2180,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结 FIFO 前最多 3 个完成事件的有序 eventId 与已见用户消息前缀；其余已有及后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；子任务轮次预算只限制新 attempt。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
+      "description": "除需求变更明确撤销的交付（plugin.rule.loop_plus_cancel_acceptance）外，Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结 FIFO 前最多 3 个完成事件的有序 eventId 与已见用户消息前缀；其余已有及后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；子任务轮次预算只限制新 attempt。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2685,6 +2685,49 @@
         },
         {
           "path": "src/toolSettings.ts"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_cancel_acceptance",
+      "name": "Loop+ 需求变更允许撤销待验收交付或关闭开放子任务",
+      "description": "用户通过群聊补充需求说明取消或调整事项。主任务对冻结批次逐项提交 cancelled 和非空最多 50 字的原因，移出验收队列，在 seenAttempts 保存 acceptanceReason；群聊显示验收已撤销并保留原因及定位。混合批次保持原顺序和未撤销项检查，全批撤销免填默认及附加检查；不撤回已有验收结论，不计通过或失败，不满足执行依赖，不自动取消后继。运行、排队及人工中断的开放子任务继续通过 controls.close 实际中断并关页，可记录关闭原因，显示已关闭；先持久化后清理，迟到结果不重新入验收。剩余工作和最终完成门禁保持。",
+      "status": "active",
+      "applies_to": [
+        "plugin.loop_task",
+        "plugin.chat_panel",
+        "plugin.extension_host"
+      ],
+      "source_refs": [
+        {
+          "path": ".ch/docs/design-docs/loop-plus-scheduling.md"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"
+        },
+        {
+          "path": "src/loopPlusDecision.ts"
+        },
+        {
+          "path": "src/loopPlusScheduler.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusDecisionStrategies.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusOrchestration.ts"
+        },
+        {
+          "path": "src/loopPlusAcceptancePlan.ts"
+        },
+        {
+          "path": "src/loopPlusPanelProjection.ts"
+        },
+        {
+          "path": "src/loopGroupChatPanelState.ts"
+        },
+        {
+          "path": "src/test/loop/loopTaskStorePersistence.test.ts"
         }
       ]
     }

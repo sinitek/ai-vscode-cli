@@ -54,7 +54,8 @@ export type LoopPlusPanelSeenAttempt = {
   requiresAcceptance?: boolean;
   disposition: "open" | "finished" | "reviewed" | "reported" | "closed";
   outcome?: "completed" | "failed" | "stopped";
-  acceptance?: "passed" | "failed";
+  acceptance?: "passed" | "failed" | "cancelled";
+  acceptanceReason?: string;
 };
 
 export type LoopPlusPanelActivity =

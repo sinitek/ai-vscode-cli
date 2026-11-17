@@ -371,8 +371,9 @@ function loopPlusMemberStatus(
   const attemptsForSubtask = projection.seenAttempts.filter((item) => item.subtaskId === subtaskId);
   const latestAttempt = attemptsForSubtask[attemptsForSubtask.length - 1];
   if (latestAttempt?.disposition === "closed") {
-    return "stopped";
+    return "closed";
   }
+  if (latestAttempt?.acceptance === "cancelled") return "acceptance_cancelled";
   if (latestAttempt?.requiresAcceptance === false
     && latestAttempt.outcome === "completed"
     && (latestAttempt.disposition === "finished" || latestAttempt.disposition === "reported")) {

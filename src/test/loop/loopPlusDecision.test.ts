@@ -908,3 +908,27 @@ test("parses clarify without subtasks and rejects a form that cannot be shown", 
     clarification: { formFields: [] },
   })), null);
 });
+
+test("撤销验收要求原因，全撤销不要求检查，混合批次保留其余验收", () => {
+  const cancelled = {
+    status: "accept", progressPercent: 60, reviewEventId: "obsolete",
+    reviews: [{ reviewEventId: "obsolete", acceptance: "cancelled", reason: "用户取消了这项需求" }],
+  };
+  const options = { requireAcceptanceFeedback: true, acceptancePlanKeys: ["security"] };
+  assert.equal(normalizeLoopPlusDecision(cancelled, options)?.reviews?.[0].acceptance, "cancelled");
+  for (const reason of [undefined, " ", "原".repeat(51)]) {
+    assert.equal(normalizeLoopPlusDecision({ ...cancelled, reviews: [{ ...cancelled.reviews[0], reason }] }), null);
+  }
+  const mixed = { ...cancelled, reviewEventId: undefined, reviewEventIds: ["obsolete", "needed"],
+    reviews: [...cancelled.reviews, { reviewEventId: "needed", acceptance: "passed", reason: "定向测试通过" }] };
+  delete mixed.reviewEventId;
+  assert.equal(normalizeLoopPlusDecision(mixed, options), null);
+  const parsed = normalizeLoopPlusDecision({ ...mixed,
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    acceptancePlanResults: [{ key: "security", passed: true, reason: "权限检查通过" }],
+  }, options);
+  assert.deepEqual(parsed?.reviews?.map((review) => review.acceptance), ["cancelled", "passed"]);
+  const close = normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: "范围调整" }] });
+  assert.equal(close?.controls?.[0].reason, "范围调整");
+  assert.equal(normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: " " }] }), null);
+});

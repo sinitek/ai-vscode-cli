@@ -4348,7 +4348,7 @@ test("steer closes one running subtask and reprompts another without an acceptan
   steer.resolve(decisionJson({
     status: "steer",
     controls: [
-      { id: "alpha", action: "close" },
+      { id: "alpha", action: "close", reason: "用户取消该需求" },
       { id: "beta", action: "reprompt", title: nextTitle, prompt: nextPrompt, writeFiles: ["src/beta-next.ts"] },
     ],
   }));
@@ -4377,6 +4377,10 @@ test("steer closes one running subtask and reprompts another without an acceptan
   assert.deepEqual(env.abortedAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
   assert.deepEqual(env.closeTabAttemptIds, [alpha.request.attemptId, beta.request.attemptId]);
   assert.equal(task?.subTasks.find((item) => item.id === "alpha")?.status, "blocked");
+  assert.match(task?.subTasks.find((item) => item.id === "alpha")?.summary ?? "", /用户取消该需求/u);
+  alpha.resolve({ outcome: "completed", detail: "迟到结果" });
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview, null);
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.prompt, nextPrompt);
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.title, nextTitle);
   assert.equal(task?.subTasks.find((item) => item.id === "beta")?.status, "running");
@@ -4941,4 +4945,35 @@ test("configured rounds allow more than 100 reviews and 200 main decisions befor
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.filter((item) => item.disposition === "reviewed").length, 101);
   assert.equal(env.messages.includes("loop-plus-safety-limit"), false);
+});
+
+test("需求变更时撤销冻结验收并保留晚到事件，随后可以正常完成", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "按最新需求交付" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("old", []), subtask("keep", [])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "旧需求实现" });
+  await flush();
+  const oldReview = env.mains[1];
+  const eventId = oldReview.request.reviewEventIds![0];
+  env.attempts[1].resolve({ outcome: "completed", detail: "当前需求实现" });
+  env.host.submitUserMessage(run.taskId!, "旧需求取消，不再验收旧交付");
+  await flush();
+  oldReview.resolve(JSON.stringify({ status: "accept", progressPercent: 70, reviewEventId: eventId,
+    reviews: [{ reviewEventId: eventId, acceptance: "cancelled", reason: "用户已取消旧需求" }] }));
+  await flush();
+  const snapshot = snapshotOf(env.tasks.get(run.taskId!));
+  assert.equal(snapshot.seenAttempts.find((item) => item.subtaskId === "old")?.acceptance, "cancelled");
+  assert.equal(snapshot.seenAttempts.find((item) => item.subtaskId === "old")?.acceptanceReason, "用户已取消旧需求");
+  assert.equal(env.acceptanceFeedback.length, 1);
+  assert.match(env.acceptanceFeedback[0].body, /验收已撤销/u);
+  assert.doesNotMatch(env.acceptanceFeedback[0].body, /❌|✅/u);
+  assert.equal(env.mains[2].request.reviewEventIds!.length, 1);
+  assert.notEqual(env.mains[2].request.reviewEventIds![0], eventId);
+  assert.notEqual(env.tasks.get(run.taskId!)?.status, "completed");
+  env.mains[2].resolve(completedDecision({ reviewEventId: env.mains[2].request.reviewEventIds![0] }));
+  await flush();
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
 });

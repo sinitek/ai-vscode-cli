@@ -51,6 +51,8 @@ export type LoopPlusControlAction = (typeof LOOP_PLUS_CONTROL_ACTIONS)[number];
 
 export type LoopPlusControlDecision = {
   id: string;
+  /** 关闭原因，保留给用户及后续恢复。 */
+  reason?: string;
   conflictGroup?: string;
   writeFiles?: string[];
   /** 省略时 reprompt 保留原子任务分类。 */
@@ -64,7 +66,7 @@ export type LoopPlusControlDecision = {
 
 export type LoopPlusAcceptReview = {
   reviewEventId: string;
-  acceptance: "passed" | "failed";
+  acceptance: "passed" | "failed" | "cancelled";
   reason?: string;
   subtaskIds?: string[];
 };
@@ -296,15 +298,16 @@ function normalizeAcceptDecision(
   if (!reviews) {
     return null;
   }
+  const allCancelled = reviews.every((review) => review.acceptance === "cancelled");
   const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
-  if (!matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
+  if (!allCancelled && !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
     options?.reject?.(`acceptancePlanResults 必须按顺序覆盖已选项：${options?.acceptancePlanKeys?.join(", ") ?? "当前验收方案"}，并提供不超过 50 字的原因。`);
     return null;
   }
   const acceptance = hasOwn(raw, "acceptance")
     ? normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback)
     : undefined;
-  if (requireAcceptanceFeedback && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
+  if (requireAcceptanceFeedback && !allCancelled && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
     options?.reject?.(`accept.acceptance 必须包含六项默认检查：${LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.join(", ")}；每项提供 passed 和不超过 50 字的 detail，失败项可以保留并派发修复。`);
     return null;
   }
@@ -316,8 +319,8 @@ function normalizeAcceptDecision(
     ...(subtasks.length > 0 ? { subtasks } : {}),
     ...(independentSubtaskIds.length > 0 ? { independentSubtaskIds } : {}),
     ...(controls.length > 0 ? { controls } : {}),
-    ...(acceptance ? { acceptance } : {}),
-    ...(acceptancePlanResults ? { acceptancePlanResults } : {}),
+    ...(!allCancelled && acceptance ? { acceptance } : {}),
+    ...(!allCancelled && acceptancePlanResults ? { acceptancePlanResults } : {}),
   }, estimatedRemainingRounds);
 }
 
@@ -579,9 +582,12 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   if (value.action === "close") {
+    const reason = readRequiredShortReason(value.reason);
+    if (hasOwn(value, "reason") && !reason) return null;
     return {
       id,
       action: "close",
+      ...(reason ? { reason } : {}),
       ...(title ? { title } : {}),
       ...(conflictGroup ? { conflictGroup } : {}),
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
@@ -821,12 +827,13 @@ function readAcceptReviews(
       reject?.(`reviews[${index}].reviewEventId 必须是 ${eventIds[index]}，不能遗漏或调换顺序。`);
       return null;
     }
-    if (item.acceptance !== "passed" && item.acceptance !== "failed") {
-      reject?.(`reviews[${index}].acceptance 只能是 passed 或 failed。`);
+    if (item.acceptance !== "passed" && item.acceptance !== "failed" && item.acceptance !== "cancelled") {
+      reject?.(`reviews[${index}].acceptance 只能是 passed、failed 或 cancelled。`);
       return null;
     }
-    const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
-    if (requireReason && !reason) {
+    const needsReason = requireReason || item.acceptance === "cancelled";
+    const reason = needsReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
+    if (needsReason && !reason) {
       reject?.(`reviews[${index}].reason 必须是非空且不超过 50 字的验收依据。`);
       return null;
     }

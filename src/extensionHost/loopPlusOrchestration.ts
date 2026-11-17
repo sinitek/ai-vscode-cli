@@ -1260,7 +1260,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       },
       submitReviewBatch(
         eventIds: readonly string[],
-        acceptance: "passed" | "failed" | readonly { eventId: string; acceptance: "passed" | "failed" }[],
+        acceptance: "passed" | "failed" | readonly { eventId: string; acceptance: "passed" | "failed" | "cancelled"; reason?: string }[],
       ) {
         const before = runtime.scheduler.snapshot();
         const result = runtime.scheduler.submitReviewBatch(eventIds, acceptance);
@@ -2628,7 +2628,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       },
       communicationFile: previous?.communicationFile,
       summary: action === "close"
-        ? "主任务已中断并关闭该子任务。"
+        ? `主任务已中断并关闭该子任务。${control?.reason ? `原因：${control.reason}` : ""}`
         : previous?.summary,
       executionStatus: action === "close" ? "blocked" : "pending",
       ...(typeof previous?.lastStartedAt === "number" ? { lastStartedAt: previous.lastStartedAt } : {}),
@@ -2647,7 +2647,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       communicationFile: meta?.communicationFile,
       runStatus: "stopped",
       assistantContent: action === "close"
-        ? "主任务已中断并关闭该子任务。"
+        ? `主任务已中断并关闭该子任务。${control?.reason ? `原因：${control.reason}` : ""}`
         : "主任务已中断该子任务，并改用新的提示词继续执行。",
     });
     deps.log?.("loop-plus-subtask-controlled", {
