@@ -1,3 +1,5 @@
+import { withLoopBlockerFixture, loopBlockerFixture } from "../loopBlockerFixture";
+import { buildLoopBlockerSummary } from "../../loopBlocker";
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
@@ -84,7 +86,7 @@ function subtask(id: string, files: string[], conflictGroup?: string): LoopSubta
 }
 
 function decisionJson(value: unknown): string {
-  const enriched = withLoopPlusAcceptReviews(value);
+  const enriched = withLoopPlusAcceptReviews(withLoopBlockerFixture(value));
   if (enriched && typeof enriched === "object" && !Array.isArray(enriched)
     && (enriched as { status?: unknown }).status === "accept"
     && !Object.prototype.hasOwnProperty.call(enriched, "progressPercent")) {
@@ -557,12 +559,66 @@ test("confirming a global block pauses once and records the actual unfinished wo
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
   assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusBlockReview?.state, "reviewed");
   assert.equal(pauses.length, 1);
-  assert.equal(pauses[0].task.finalSummary, summary);
+  assert.equal(pauses[0].task.finalSummary, buildLoopBlockerSummary(loopBlockerFixture(summary)));
   assert.equal(pauses[0].message, "loop-plus-blocked");
   env.host.tryRun({ displayPrompt: "show state" }, env.target, { resumeTaskId: run.taskId });
   await flush();
   assert.equal(env.mains.length, 2);
   assert.equal(pauses.length, 1);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+});
+
+test("incomplete blocker diagnostics are corrected before pause without confirming held events", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成构建" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("build", ["src/a.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "failed", detail: "缺少工具" });
+  await flush();
+  const incomplete = JSON.stringify({ status: "blocked", finalSummary: "缺少工具" });
+  env.mains[1].resolve(incomplete);
+  await flush();
+  assert.match(env.mains[2].request.prompt, /Bounded blocked review/);
+  env.mains[2].resolve(incomplete);
+  await flush();
+  assert.equal(env.tasks.get(run.taskId!)?.status, "running");
+  assert.match(env.mains[3].request.prompt, /Loop\+ protocol correction required/);
+  assert.match(env.mains[3].request.prompt, /缺少 blocker/);
+  assert.match(env.mains[3].request.prompt, /缺少工具/);
+  env.mains[3].resolve(decisionJson({ status: "blocked", blocker: loopBlockerFixture("缺少 Node.js，构建未完成。") }));
+  await flush();
+  await run.done;
+  const task = env.tasks.get(run.taskId!)!;
+  assert.equal(task.status, "needs-review");
+  assert.match(task.finalSummary ?? "", /Node.js/);
+  assert.match(task.finalSummary ?? "", /确认方式/);
+  assert.equal(snapshotOf(task).reviewQueue.length, 1);
+  assert.equal(task.loopPlusProgressPercent ?? 0, 0);
+  assert.equal(env.messages.includes("loop-plus-completed"), false);
+});
+
+test("diagnostic correction exhaustion is bounded and preserves the original reason across host reconstruction", async () => {
+  const env = harness();
+  const task = baseTask("diagnostic-recovery", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
+  task.loopPlusBlockReview = { state: "reviewed", summary: "容器缺少构建工具，具体软件尚未报告。" };
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: "恢复" }, env.target, { resumeTaskId: task.id });
+  await flush();
+  for (let index = 0; index < 3; index += 1) {
+    assert.ok(env.mains[index]);
+    env.mains[index].resolve(JSON.stringify({ status: "blocked", blocker: { kind: "recoverable", cause: "缺依赖" } }));
+    await flush();
+  }
+  await run.done;
+  assert.equal(env.mains.length, 3);
+  assert.equal(env.attempts.length, 0);
+  const paused = env.tasks.get(task.id)!;
+  assert.equal(paused.status, "needs-review");
+  assert.match(paused.finalSummary ?? "", /已自动请求纠正 2 次/);
+  assert.match(paused.finalSummary ?? "", /熔断诊断未补齐/);
+  assert.match(paused.finalSummary ?? "", /容器缺少构建工具/);
+  assert.match(paused.finalSummary ?? "", /affectedRequirements.*evidence.*attempts.*nextSteps.*resumeCondition/);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
 });
 
@@ -600,8 +656,8 @@ test("block review survives host reconstruction and cannot restart the same no-p
   await flush();
   assert.equal(await isSettled(run.done), true);
   assert.equal(env.mains.length, 1);
-  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /未提供具体阻塞原因/);
-  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /向主模型提问/);
+  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /外部接口约定待确认/);
+  assert.match(env.tasks.get(pending.id)?.finalSummary ?? "", /### 恢复条件/);
 
   const reviewed = baseTask("reviewed", createLoopPlusScheduler({ maxConcurrency: 6 }).snapshot());
   reviewed.loopPlusBlockReview = { state: "reviewed", summary: "already checked" };
@@ -3880,7 +3936,7 @@ test("persistent protocol errors pause with the actual reason and carry repair c
   assert.equal(task?.status, "needs-review");
   assert.match(task?.finalSummary ?? "", /调度协议校验失败/);
   assert.match(task?.finalSummary ?? "", /reviewEventId/);
-  assert.doesNotMatch(task?.finalSummary ?? "", /主模型未提供具体阻塞原因/);
+  assert.doesNotMatch(task?.finalSummary ?? "", /主模型未提供具体熔断原因/);
   assert.equal(pauses[0].finalSummary, task?.finalSummary);
   assert.equal(env.mains.length, 3);
   const reloaded = env.reloadHost();
@@ -3969,7 +4025,7 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   reviews()[3].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
   await flush();
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
-  assert.equal(env.tasks.get(taskId)?.finalSummary, "need a person");
+  assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture("need a person")));
   assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 3);
   assert.equal(env.messages.includes("loop-plus-blocked"), true);
   assert.equal(env.messages.includes("loop-plus-completed"), false);

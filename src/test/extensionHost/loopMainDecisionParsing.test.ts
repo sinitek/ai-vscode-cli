@@ -5,6 +5,7 @@ import os = require("node:os");
 import path = require("node:path");
 import { installVscodeMock } from "../vscodeMock";
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { LOOP_BLOCKER_EXAMPLE, buildLoopBlockerSummary } from "../../loopBlocker";
 
 installVscodeMock();
 
@@ -41,6 +42,19 @@ function createRuntimeHost(decisionSubtaskMax?: () => number) {
   };
   return createPromptRunRuntimeHost(deps);
 }
+
+test("classic blocked decisions preserve diagnostic gaps and render complete structured diagnoses", () => {
+  const host = createRuntimeHost();
+  const legacy = host.parseLoopMainDecision(JSON.stringify({ status: "blocked", finalSummary: "缺少工具" }));
+  assert.equal(legacy?.status, "blocked");
+  assert.match(legacy?.blockerIssue ?? "", /缺少 blocker/);
+  const complete = host.parseLoopMainDecision(JSON.stringify({
+    status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: "已完成",
+  }));
+  assert.deepEqual(complete?.blocker, LOOP_BLOCKER_EXAMPLE);
+  assert.equal(complete?.finalSummary, buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE));
+  assert.equal(complete?.blockerIssue, undefined);
+});
 
 test("classic Loop main prompt reflects the configured dispatch limit in rules and examples", async () => {
   let maximum = 10;

@@ -9,6 +9,7 @@ import {
 } from "../../loopBlockedSummary";
 import { buildLoopGroupChatFinalStatusSection } from "../../loopFinalSummary";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../../loopMainFailure";
+import { buildLoopPlusProtocolPauseSummary } from "../../loopPlusProtocolRepair";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { installVscodeMock } from "../vscodeMock";
 
@@ -38,11 +39,13 @@ function pausedTask(summary?: string, schedulingMode: LoopTaskRecord["scheduling
 test("both modes show the actual blocker and ordered recovery prerequisites", () => {
   for (const schedulingMode of [undefined, "classic", "event_driven"] as const) {
     const text = buildLoopBlockedPauseText({ schedulingMode, finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE });
-    assert.ok(text.startsWith(`${schedulingMode === "event_driven" ? "Loop+" : "Loop"} 已暂停`));
+    assert.ok(text.startsWith(`${schedulingMode === "event_driven" ? "Loop+" : "Loop"} 已熔断`));
+    assert.match(text, /子任务多次尝试仍无法解决问题/);
+    assert.match(text, /### 熔断原因与未完成事项/);
     assert.ok(text.includes(LOOP_BLOCKED_SUMMARY_EXAMPLE));
-    assert.match(text, /1\. 接口负责人提供/);
-    assert.match(text, /2\. 主模型核对/);
-    assert.match(text, /仅点击继续不会补齐接口约定/);
+    assert.match(text, /1\. 接口负责人：提供/);
+    assert.match(text, /确认方式：主模型根据资料核对缺项/);
+    assert.match(text, /仅点击继续不会解决触发熔断的问题/);
   }
 });
 
@@ -57,8 +60,8 @@ test("evidence-backed impossibility never receives a misleading retry or continu
 test("missing summaries explain the uncertainty without inventing a cause or asking users to diagnose it", () => {
   for (const summary of [undefined, null, "", " \n "]) {
     const text = normalizeLoopBlockedSummary(summary);
-    assert.match(text, /无法判断是暂时受阻还是按当前要求无法完成/);
-    assert.match(text, /未提供具体阻塞原因/);
+    assert.match(text, /无法判断问题能否恢复/);
+    assert.match(text, /未提供具体熔断原因/);
     assert.match(text, /向主模型提问/);
     assert.match(text, /不建议反复点击/);
   }
@@ -75,17 +78,19 @@ test("classic review bubbles include the supplied reason rather than only a task
 
   const failed = buildLoopTaskNeedsReviewText({ ...task, mainAiFailureCount: 3 }, () => true);
   assert.ok(failed.includes(`主任务 AI 调用已连续失败 3/${LOOP_MAIN_AI_FAILURE_LIMIT} 次`));
-  assert.match(buildLoopTaskNeedsReviewText(pausedTask(" "), () => false), /未提供具体阻塞原因/);
+  assert.match(buildLoopTaskNeedsReviewText(pausedTask(" "), () => false), /未提供具体熔断原因/);
   assert.doesNotMatch(buildLoopTaskNeedsReviewText(pausedTask(impossibleSummary), () => false), /继续执行/);
 });
 
 test("group interruption summaries preserve impossibility and avoid promising continuation", () => {
   const section = buildLoopGroupChatFinalStatusSection(pausedTask(impossibleSummary));
   assert.equal(section?.terminalStatus, "interrupted");
+  const businessBlock = buildLoopGroupChatFinalStatusSection(pausedTask(LOOP_BLOCKED_SUMMARY_EXAMPLE));
+  assert.match(businessBlock?.body ?? "", /子任务多次尝试仍无法解决问题，触发熔断/);
   assert.ok(section?.body.includes(impossibleSummary));
   assert.doesNotMatch(section?.body ?? "", /需要人工复核或继续|继续执行/);
   const missing = buildLoopGroupChatFinalStatusSection(pausedTask());
-  assert.match(missing?.body ?? "", /未提供具体阻塞原因/);
+  assert.match(missing?.body ?? "", /未提供具体熔断原因/);
 });
 
 test("legacy main failure pauses rebuild the actual error for group and chat instead of a generic summary", () => {
@@ -96,9 +101,17 @@ test("legacy main failure pauses rebuild the actual error for group and chat ins
     assert.match(text, /5\/5/);
     assert.match(text, /等待会话关闭确认超时/);
     assert.match(text, /不等于模型服务故障/);
-    assert.doesNotMatch(text, /过期业务摘要|未提供具体阻塞原因/);
+    assert.doesNotMatch(text, /过期业务摘要|未提供具体熔断原因|子任务多次|已熔断/);
   }
   const group = buildLoopGroupChatFinalStatusSection({ ...task, schedulingMode: "event_driven", currentRound: 0 });
   assert.match(group?.body ?? "", /Loop\+ 事件驱动/);
   assert.doesNotMatch(group?.body ?? "", /当前主任务轮次：0/);
+
+  const protocol = { ...pausedTask(buildLoopPlusProtocolPauseSummary("缺少验收结果", 2), "event_driven") };
+  const protocolGroup = buildLoopGroupChatFinalStatusSection(protocol);
+  assert.match(protocolGroup?.body ?? "", /缺少验收结果/);
+  assert.doesNotMatch(protocolGroup?.body ?? "", /子任务多次|已熔断/);
+  const invalidClassicDecision = buildLoopBlockedPauseText({ finalSummary: "Main task did not return a valid loop decision JSON." });
+  assert.match(invalidClassicDecision, /已暂停/);
+  assert.doesNotMatch(invalidClassicDecision, /子任务多次|已熔断/);
 });

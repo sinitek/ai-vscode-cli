@@ -1,3 +1,6 @@
+import { LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
+import { buildLoopBlockerSummary } from "../../loopBlocker";
+import type { LoopMainDecision } from "../../loopTaskStore";
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("fs");
@@ -47,6 +50,72 @@ function loopTask(overrides: Partial<LoopTaskRecord> = {}): LoopTaskRecord {
     ...overrides,
   };
 }
+
+test("classic Loop automatically requests one complete diagnosis and can continue useful work", async () => {
+  const completeBlock: LoopMainDecision = {
+    status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE,
+    finalSummary: buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE),
+  };
+  for (const correction of [completeBlock,
+    { status: "continue", subtasks: [{ id: "repair", title: "修复依赖", prompt: "在已授权范围内修复项目依赖。" }] },
+    { status: "blocked", finalSummary: "还是受阻" }, null,
+  ] as Array<LoopMainDecision | null>) {
+    let stored = loopTask();
+    const prompts: string[] = [];
+    let calls = 0;
+    let removed = 0;
+    let applied: LoopMainDecision | undefined;
+    const host = createLoopOrchestrationHost({
+      errorToMessage: (error: unknown) => String(error),
+      logError: async () => undefined,
+      getLoopCommunicationPaths: () => ({ dir: "comm", mainFile: "main.md", subtasksDir: "subtasks" }),
+      normalizeLoopContinuePromptForPrompt: () => null,
+      buildLoopSupplementalRequirementsLines: () => [],
+      buildLoopMainSubChatTranscriptFile: () => "chat.md",
+      isLoopTaskExecutionInterrupted: () => false,
+      readLoopTaskRecord: () => stored,
+      updateLoopTaskRecord: (_id: string, patch: Partial<LoopTaskRecord>) => (stored = { ...stored, ...patch }),
+      refreshOpenLoopGroupChatPanelForTask: () => undefined,
+      resolvePromptRunModelForRole: () => undefined,
+      resolvePromptRunThinkingModeForRole: () => undefined,
+      runPrompt: async (input: PromptRunInput) => { prompts.push(input.modelPrompt); },
+      resolveLoopTaskSessionId: () => null,
+      getLoopRoundRunStatus: () => "end",
+      appendLoopRound: () => undefined,
+      buildLoopRoundSummary: () => "调用已结束",
+      getLastLoopAssistantContent: () => "reply",
+      parseLoopMainDecision: () => calls++ === 0 ? { status: "blocked", finalSummary: "缺少工具" } : correction,
+      removeLoopMainDecisionMessage: () => { removed += 1; },
+      buildResetLoopMainAiFailureState: () => ({}),
+      applyLoopMainDecision: (_id: string, decision: LoopMainDecision) => {
+        applied = decision;
+        stored = { ...stored, status: decision.status === "continue" ? "running" : "needs-review", finalSummary: decision.finalSummary };
+        return { status: decision.status, task: stored, subtasks: decision.subtasks };
+      },
+    } as never);
+    const result = await host.runClassicLoopMainDecision({
+      input: { displayPrompt: stored.rootPrompt, modelPrompt: stored.rootPrompt, contextTags: [] },
+      target: { tabId: "main-tab", cli: "codex", sessionId: null }, task: stored, round: 1,
+    });
+    assert.equal(prompts.length, 2);
+    assert.equal(removed, 1, "补充前移除旧阻塞协议气泡，避免两份结果并列");
+    assert.match(prompts[1], /熔断诊断补充（本轮仅一次）/);
+    assert.match(prompts[1], /缺少工具/);
+    assert.match(prompts[1], /可推进就返回 continue/);
+    assert.notEqual(stored.status, "completed");
+    if (correction?.status === "continue") {
+      assert.equal(result.status, "continue");
+      assert.equal(applied?.subtasks?.[0].id, "repair");
+    } else if (correction?.blocker) {
+      assert.equal(result.status, "needs-review");
+      assert.equal(applied?.finalSummary, completeBlock.finalSummary);
+    } else {
+      assert.equal(result.status, "needs-review");
+      assert.match(stored.finalSummary ?? "", /熔断诊断未补齐/);
+      assert.match(stored.finalSummary ?? "", correction ? /还是受阻/ : /缺少工具/);
+    }
+  }
+});
 
 for (const mutateInPlace of [false, true]) {
   test(`classic Loop rechecks supplements arriving during completion (${mutateInPlace ? "mutable" : "immutable"} record)`, async () => {
@@ -151,7 +220,7 @@ test("classic Loop reuses reported verification, delegates only gaps or explicit
     assert.doesNotMatch(prompt, /主任务不要直接执行具体代码\/文件修改/);
     assert.ok(prompt.includes(buildStructuredSvgSummaryPromptInstruction("finalSummary")));
     assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
-    assert.ok(prompt.includes(JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE })));
+    assert.ok(prompt.includes(JSON.stringify({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE })));
     assert.doesNotMatch(prompt, /\[final_answer\]/u);
     assert.match(prompt, /相信子任务汇报的结果/u);
     assert.match(prompt, /当前总体进度：0%/u);

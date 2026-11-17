@@ -1,3 +1,4 @@
+import { withLoopBlockerFixture } from "../loopBlockerFixture";
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("fs");
@@ -93,7 +94,7 @@ function longPrompt(id: string, file: string): string {
 }
 
 function decision(value: unknown): string {
-  const enriched = withLoopPlusAcceptReviews(value);
+  const enriched = withLoopPlusAcceptReviews(withLoopBlockerFixture(value));
   if (enriched && typeof enriched === "object" && !Array.isArray(enriched)
     && (enriched as { status?: unknown }).status === "accept"
     && !Object.prototype.hasOwnProperty.call(enriched, "progressPercent")) {

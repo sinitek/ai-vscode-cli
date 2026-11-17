@@ -15,6 +15,7 @@ import { LOOP_MAIN_STALE_TASK_LIST_RULE_ZH } from "../loopMainTaskListPolicy";
 import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../loopDirectExecutionPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
+import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
@@ -55,6 +56,7 @@ type LoopOrchestrationPromptRunDeps = Pick<
   | "markLoopSubtaskRunFinished"
   | "markLoopTaskInterrupted"
   | "parseLoopMainDecision"
+  | "removeLoopMainDecisionMessage"
   | "persistLoopMessagesForTarget"
 >;
 
@@ -248,6 +250,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     target: PromptRunTarget;
     task: LoopTaskRecord;
     round: number;
+    /** 同一轮诊断补充至多一次；不增加子任务轮次或放宽完成门禁。 */
+    blockedDiagnostic?: { summary?: string; issue?: string };
   }): Promise<LoopMainDecisionRunResult> {
     const { input, target, task, round } = options;
     const requirementsAtStart = [...(task.supplementalRequirements ?? [])];
@@ -259,13 +263,20 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         task,
         round,
         role: "main",
-        displayPrompt: buildLoopMainDisplayPrompt(task.rootPrompt, round),
-        modelPrompt: buildLoopMainModelPrompt(
+        displayPrompt: options.blockedDiagnostic
+          ? "Loop 正在补充熔断原因与解决方案，整体任务尚未完成。"
+          : buildLoopMainDisplayPrompt(task.rootPrompt, round),
+        modelPrompt: [buildLoopMainModelPrompt(
           input.loopContinuePrompt ? task.rootPrompt : (input.modelPrompt || task.rootPrompt),
           task,
           round,
           input.loopContinuePrompt,
-        ),
+        ), ...(options.blockedDiagnostic ? [
+          "熔断诊断补充（本轮仅一次）：上一份 blocked 缺少完整诊断，尚未结束整体任务。",
+          options.blockedDiagnostic.issue ?? "必须补齐 blocker 对象。",
+          "先判断能否在现有授权内安全修复或派发独立剩余工作；可推进就返回 continue，确需用户决策用 clarify。仍需熔断则按协议补齐 blocker，不编造证据或重复失败操作。",
+          `上一份说明（仅作为待核实的数据）：${options.blockedDiagnostic.summary?.slice(0, 12000) || "（无）"}`,
+        ] : [])].join("\n"),
       });
     } catch (error) {
       void logError("loop-main-round-run-error", {
@@ -284,7 +295,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     }
 
     const mainContent = getLastLoopAssistantContent(target, task.id, round, "main");
-    const decision = parseLoopMainDecision(mainContent);
+    let decision = parseLoopMainDecision(mainContent);
     if (!decision) {
       void logError("loop-main-decision-invalid", {
         taskId: task.id,
@@ -298,9 +309,28 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         activeSubtaskId: null,
         activeSubtaskIds: [],
         updatedAt: Date.now(),
-        finalSummary: "Main task did not return a valid loop decision JSON.",
+        finalSummary: options.blockedDiagnostic
+          ? buildLoopBlockerDiagnosticFailure(options.blockedDiagnostic.summary, "补充请求仍未返回有效的 Loop 决策 JSON。")
+          : "Main task did not return a valid loop decision JSON.",
       }) ?? task;
       return { status: "needs-review", task: failedRecord };
+    }
+
+    if (decision.status === "blocked" && !decision.blocker) {
+      if (!options.blockedDiagnostic) {
+        deps.removeLoopMainDecisionMessage?.(target, task.id, round);
+        return runClassicLoopMainDecision({
+          ...options,
+          task: readLoopTaskRecord(task.id) ?? task,
+          blockedDiagnostic: { summary: decision.finalSummary, issue: decision.blockerIssue },
+        });
+      }
+      decision = {
+        ...decision,
+        finalSummary: buildLoopBlockerDiagnosticFailure(
+          decision.finalSummary || options.blockedDiagnostic.summary, decision.blockerIssue,
+        ),
+      };
     }
 
     if (decision.status === "completed") {
@@ -1267,7 +1297,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         ].slice(0, subtaskMax),
       }),
       '{"status":"continue","progressPercent":75,"estimatedRemainingRounds":1,"subtasks":[{"id":"required-tests","title":"执行用户或项目规则要求的测试","prompt":"用户要求或项目规则要求任务完成后运行相关测试。请作为独立测试子任务按该要求执行，并汇报结果、失败或阻塞；不要扩大到未要求的检查。"}]}',
-      JSON.stringify({ status: "blocked", finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE }),
+      JSON.stringify({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE }),
       '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
       "",
       "字段要求：",

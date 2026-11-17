@@ -12,6 +12,7 @@ import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../loopDirectExecutionPolicy";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
+import { LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
@@ -425,6 +426,7 @@ function buildLoopPlusProtocolExamples(
       status: "blocked",
       value: {
         status: "blocked",
+        blocker: LOOP_BLOCKER_EXAMPLE,
         finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE,
       },
     },
