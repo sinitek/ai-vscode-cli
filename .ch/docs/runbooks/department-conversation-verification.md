@@ -2,6 +2,24 @@
 
 此入口验证已安装 VS Code 的真实 Extension Host 是否从隔离任务与会话存储恢复总监、组长、员工及普通会话，并通过正常面板状态投影到 Webview。它是展示和恢复链路检查，不启动 CLI 或模型。
 
+## 完整提示词与组长气泡链接验证（2026-11-17）
+
+部门组长气泡按可信 Tab 角色隐藏“打开 Loop 群聊”，历史恢复和迟到角色更新均适用。总监 ☀️、组长 🌛、员工 ⭐️ 与普通 Loop/Loop+ 入口保持原合同。本轮四个相关界面测试文件 219/219，通过恢复、实时、迟到角色和普通入口对照；证据 `/tmp/department-leader-prompt-final-webview-tests.log`。
+
+既有 `DEPARTMENT_TABS_ROLE_ICONS_ONLY=1` 浏览器入口同时断言气泡链接：`DEPARTMENT_TABS_DIST=<仓库>/dist DEPARTMENT_TABS_EVIDENCE=/tmp/department-leader-prompt-browser PLAYWRIGHT_MODULE=/tmp/department-role-form-playwright/node_modules/playwright` 配合 `node scripts/department_conversation_tabs_smoke.cjs`，1440 深色和 280 浅色均通过，严格浏览器错误为空，部门截图已目视检查。生成页面及消息桥证据不代替真实宿主执行。
+
+另以物理隔离生产副本运行 `node scripts/verify_department_full_eh_integration.js --product /tmp/department-leader-prompt-product-yzz5ubny --report /tmp/department-leader-prompt-public-eh-final.json`，并设置上述 `PLAYWRIGHT_MODULE`。真实 VS Code 1.144.0 公开入口和 Codex CLI 0.167.2 配合本机确定性 provider 完成两次文本大写转换，包含总监派发、两名组长/员工、Loop+ 事件验收、总监汇报、四份原 receipt、closed 集合及容量归还。17 次本机请求无 provider 失败，宿主正常 exit 0，无强制收尾；EH 报告仍保留一条 `ERR_PROXY_CONNECTION_FAILED` 资源控制台错误，不声明该 EH 浏览器零错误。该场景不验证远程模型质量、七种 CLI 线上运行或其它平台。
+
+首次运行因 Playwright 路径不存在、第二次因驱动仍操作旧档案控件失败；驱动按现有 CLI/模型/力度表单更新后最终通过，其自身回归 39/39。提示词根因、211 项运行时回归、最终包一致性与失败分类详见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-leader-prompt-invocation.md)。未改用户任务或锁。安装版应使用本次重新导出的 VSIX 并重载，开发宿主应重载当前构建。
+
+## 总监 Tab 仍显示月亮时
+
+当前图标合同为总监 ☀️、组长 🌛、员工 ⭐️。普通 Loop/Loop+ 主任务仍为 🌛。若源码映射正确而总监仍显示 🌛，先核对已安装扩展的 `dist/extensionHost/sessionTabs.js` 是否实际调用 `projectDepartmentConversationTab`；只有渲染器中的太阳字面值、没有宿主传入的 `departmentPresentation`，会退回普通主任务图标。不要将所有主任务都改成太阳，也不要按会话名称猜角色。
+
+2026-11-17 本机启用的安装版 1.9.11 缺少上述宿主投影，当前工作区已有完整接线。重新运行 `python3 scripts/export_vscode_extension.py` 导出 VSIX，再在 VS Code 扩展菜单选择“从 VSIX 安装…”并重载窗口；只构建源码或重载旧安装包不会更新扩展内容。本次仅生成安装包，没有替换用户安装或重启窗口。
+
+验证记录：导出流程中的 `npm run build` 与通用包资源审计通过（`/tmp/department-tab-icons-package.log`）；四个角色/Tab 相关测试文件 30/30 通过（`/tmp/department-tab-icons-tests.log`）；现有 `DEPARTMENT_TABS_ROLE_ICONS_ONLY=1` Chromium 入口在 1440 深色、280 浅色下通过，浏览器错误为空，截图已检查（`/tmp/department-tab-icons-smoke/result.json`）。包内组合根、Tab 宿主、角色投影和图标渲染器与本次构建逐字节一致，且不同于旧安装版（`/tmp/department-tab-icons-package-audit.json`）。浏览器使用生成页面与隔离状态，不代表已安装扩展已生效或真实 CLI 执行通过。此处恢复既有显示合同，功能清单已有正确图标定义，无新增业务语义，ontology 无需更新。
+
 ## 运行
 
 在带有项目依赖的独立源码副本中运行，避免写入共享 `dist`：

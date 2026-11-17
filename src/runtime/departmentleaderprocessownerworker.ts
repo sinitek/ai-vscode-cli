@@ -6,6 +6,7 @@ import { DepartmentExecutionOwnerClient } from "./departmentexecutionownerclient
 import { exactKeys, isDepartmentExecutionIdentity, isExecutionCleanup, record, sameExecution,
   type CleanupResult, type DepartmentExecutionIdentity } from "./departmentexecutionidentity";
 import { DepartmentLeaderProcessOwner } from "./departmentleaderprocessowner";
+import { isDepartmentLeaderPrivateCommand } from "./departmentleaderinvocation";
 import { departmentLeaderProcessRequirements, isDepartmentLeaderProcessInvocation, isDepartmentLeaderProcessPreparation,
   type DepartmentLeaderProcessPreparation } from "./departmentleaderprocesscontract";
 
@@ -72,7 +73,7 @@ export async function runDepartmentLeaderProcessOwnerWorker(): Promise<void> {
       void prepare().catch((error) => { try { send("failed", { reason: error instanceof Error ? error.message : "preparation-failed" }); } catch {} fail(); });
       return;
     }
-    if (!record(message) || !bounded(message) || message.version !== 1 || message.token !== input.token
+    if (!record(message) || !isDepartmentLeaderPrivateCommand(message) || message.version !== 1 || message.token !== input.token
       || !isDepartmentExecutionIdentity(message.identity) || !sameExecution(message.identity, input.identity)
       || message.sequence !== sequenceIn + 1) { fail(); return; }
     sequenceIn++;

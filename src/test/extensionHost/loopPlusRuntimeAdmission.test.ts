@@ -384,3 +384,19 @@ test("Department Owner finalization stays active despite an ordinary lost-invoca
   assert.equal(releases, 1);
   assert.deepEqual(fixture.closedSubtaskTabs, [], "EH never duplicates Owner tab cleanup");
 });
+
+for (const fails of [false, true]) test(`department employees with Loop managed resources wait for original runner cleanup (failure=${fails})`, async t => {
+  const terminal = deferred<void>(), issued = deferred<void>(); let releases = 0, quarantined = 0;
+  const fixture = createLoopPlusRuntimeFixture({ ownsDepartmentAttemptResources: () => false,
+    observeAttemptTermination: () => ({ done: terminal.promise }) });
+  t.after(() => fixture.dispose());
+  fixture.saveTask({ id: "admission-task", cli: "grok", status: "running", subTasks: [], department: { role: "leader" } } as unknown as import("../../loopTaskStore").LoopTaskRecord);
+  fixture.adapter.setDepartmentExecutionAdmission!(async () => ({ release() { releases++; }, cleanupFailed() { quarantined++; } }));
+  fixture.setAttemptAction((input, tabId) => { fixture.publish(input, tabId, { status: "end", content: "员工结果" }); issued.resolve(); });
+  const attempt = fixture.adapter.startAttempt({ ...request(), targetCli: "grok" });
+  await issued.promise; await new Promise<void>(r => setImmediate(r)); assert.equal(releases, 0);
+  if (fails) terminal.reject(new Error("原 runner 清理失败")); else terminal.resolve();
+  const result = await attempt.promise;
+  assert.equal(result.outcome, fails ? "failed" : "completed");
+  assert.equal(releases, fails ? 0 : 1); assert.equal(quarantined, fails ? 1 : 0);
+});

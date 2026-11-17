@@ -85,12 +85,10 @@ function renderDepartmentRoleRow(i18n: WebviewHtmlStrings, role: "leader" | "emp
   return `<div class="open-code-model-row loop-subtask-route-row department-role-row" data-department-role="${role}">
                 <label class="open-code-model-label" for="${prefix}-cli">${label}</label>
                 <select id="${prefix}-cli" class="cli-select loop-subtask-cli-select" aria-label="${label} ${i18n.departmentRoleCliLabel}"></select>
-                <select id="${prefix}-config" class="config-select" aria-label="${label} ${i18n.departmentRoleConfigLabel}"></select>
                 <select id="${prefix}-model" class="model-select" aria-label="${label} ${i18n.departmentRoleModelLabel}"></select>
                 <select id="${prefix}-thinking" class="thinking-select" aria-label="${label} ${i18n.departmentRoleThinkingLabel}"></select>
-                <select id="${prefix}-variant" class="thinking-select" aria-label="${label} ${i18n.departmentRoleVariantLabel}" hidden></select>
-                <span id="${prefix}-message" class="open-code-model-issue" role="status" aria-live="polite"></span>
-                <button id="${prefix}-retry" type="button" class="secondary" hidden>重试</button>
+                <select id="${prefix}-variant" class="thinking-select" aria-label="${label} ${i18n.departmentRoleThinkingLabel}" hidden></select>
+                <button id="${prefix}-retry" type="button" class="secondary" aria-label="重试${label}配置" hidden>重试</button>
               </div>`;
 }
 
@@ -266,22 +264,21 @@ ${webviewStyles}    </style>
           <select id="configSelect" class="config-select" aria-label="${i18n.configSelectAria}"></select>
           ${renderInteractiveModeSelect(i18n, { id: "interactiveModeSelect", ariaLabel: i18n.interactiveModeSelectAria })}
         </div>
-        <div id="departmentRoleConfiguration" class="open-code-model-group" hidden>
-          <div class="tool-settings-note department-performance-warning" role="note">${i18n.departmentPerformanceWarning}</div>
-          <div class="open-code-model-row loop-subtask-route-row department-role-row">
-            <span class="open-code-model-label">${i18n.departmentDirectorLabel}</span>
-            <span id="departmentDirectorSummary" class="tool-settings-note"></span>
-          </div>
-          ${renderDepartmentRoleRow(i18n, "leader", i18n.departmentLeaderLabel)}
-          ${renderDepartmentRoleRow(i18n, "employee", i18n.departmentEmployeeLabel)}
-          <span id="departmentRoleMessage" class="open-code-model-issue" role="status" aria-live="polite"></span>
-        </div>
         <div class="input-box">
           <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
           <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
+          <div id="departmentRoleConfiguration" class="open-code-model-group" hidden>
+            <div class="open-code-model-row loop-subtask-route-row department-role-row">
+              <span class="open-code-model-label">${i18n.departmentDirectorLabel}</span>
+              <div id="departmentDirectorControls" class="department-director-controls"></div>
+            </div>
+            ${renderDepartmentRoleRow(i18n, "leader", i18n.departmentLeaderLabel)}
+            ${renderDepartmentRoleRow(i18n, "employee", i18n.departmentEmployeeLabel)}
+            <span id="departmentRoleMessage" class="open-code-model-issue" role="status" aria-live="polite"></span>
+          </div>
           <div class="input-model-row">
             <div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">
               <div class="open-code-model-row codex-loop-model-row">
@@ -680,7 +677,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 ${[["loopEnabled", i18n.toolSettingsLoopEnabled], ["loopPlusEnabled", i18n.toolSettingsLoopPlusEnabled], ["departmentEnabled", i18n.toolSettingsDepartmentEnabled]].map(([key, label]) => `                <div class="tool-settings-row">
                   <label class="tool-settings-label" for="${key}">${label}</label>
                   <label class="debug-toggle"><input type="checkbox" id="${key}" aria-label="${label}" /></label>
-                </div>${key === "departmentEnabled" ? `<div class="tool-settings-note department-performance-warning" role="note">${i18n.departmentPerformanceWarning}</div>` : ""}`).join("\n")}
+                </div>`).join("\n")}
               </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
@@ -842,7 +839,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   <label class="tool-settings-label" for="${key}">${label}</label>
                   <input type="number" id="${key}" class="tool-settings-number" min="1" step="1" placeholder="全局：${fallback}" disabled aria-describedby="${key}Note ${key}Status" />
                 </div>
-                <div id="${key}Note" class="tool-settings-note">${i18n.workspaceDepartmentCapacityNote}</div>
+                <div id="${key}Note" class="tool-settings-note">${i18n.workspaceDepartmentCapacityNote}${key === "workspaceDepartmentMaxEmployees" ? ` ${i18n.departmentMaxEmployeesNote}` : ""}</div>
                 <div id="${key}Status" class="tool-settings-note" role="status" aria-live="polite"></div>
               </section>`).join("\n")}
 

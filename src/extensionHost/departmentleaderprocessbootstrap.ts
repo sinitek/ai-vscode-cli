@@ -8,6 +8,7 @@ import type { ExecutionObservation, ExecutionTerminalEvidence } from "../runtime
 import { departmentLeaderProcessRequirements, isDepartmentLeaderProcessInvocation, isDepartmentLeaderProcessPreparation,
   DEPARTMENT_LEADER_PROCESS_INVOCATION_LIMIT, type DepartmentLeaderProcessInvocation, type DepartmentLeaderProcessPreparation } from "../runtime/departmentleaderprocesscontract";
 import type { ExecutionCleanupEvidence } from "../runtime/departmentexecutionowner";
+import { isDepartmentLeaderPrivateCommand } from "../runtime/departmentleaderinvocation";
 
 const MAX_PRIVATE_MESSAGE_BYTES = 64 * 1024;
 const MAX_OUTPUT_CHUNK_BYTES = 16 * 1024;
@@ -64,7 +65,7 @@ export function createDepartmentLeaderProcessBootstrap(preparation: Omit<Departm
   let completedReceipt: Awaited<ReturnType<DepartmentExecutionOwnerClient["waitForCleanup"]>> | undefined;
   const send = (operation: string, fields: Record<string, unknown> = {}) => {
     const message = { version: 1, token: fixed.token, identity, sequence: ++outbound, operation, ...fields };
-    if (!child.connected || !bounded(message)) throw new Error("department-leader-process-private-channel-unavailable");
+    if (!child.connected || !isDepartmentLeaderPrivateCommand(message)) throw new Error("department-leader-process-private-channel-unavailable");
     child.send(message, (error) => { if (error) fail(error); });
   };
   const sendSeal = () => {

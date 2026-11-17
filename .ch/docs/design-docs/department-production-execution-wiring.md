@@ -1,10 +1,10 @@
 # 部门生产执行准入与真实 Loop+ 接线
 
-状态：开发中。本文记录 Codex/OpenCode 组长与员工准备链的生产宿主装配，不声明产研部整体完成。
+状态：开发中。本文记录全部七种 CLI 的部门生产宿主装配，不声明产研部整体完成。
 
 ## 实际来源与装配
 
-`extension.ts` 使用一个 `createDepartmentExecutionProducer` 实例，将同一不可序列化 employeeAdmission 注入 Codex 和 OpenCode preparation，并将同一 producer 交给 `createDepartmentLeaderProductionHost`。真实 `LoopPlusRuntimeAdapter.runMain` 对部门组长只调用 `runDepartmentMain`；组长角色路由支持 Codex 与 OpenCode 的原生 Owner 准备，其他不支持的 CLI/身份或缺失端口明确拒绝，不能回退普通 EH runner。总监仍走经典 Loop，普通 Loop/Loop+ 保留既有入口。界面布局、tab 原名和角色图标不改。
+`extension.ts` 使用一个 `createDepartmentExecutionProducer` 实例，将同一不可序列化 employeeAdmission 注入 Codex 和 OpenCode preparation，并将同一 producer 交给 `createDepartmentLeaderProductionHost`。真实 `LoopPlusRuntimeAdapter.runMain` 对部门组长只调用 `runDepartmentMain`；组长及员工支持 `CLI_LIST` 全部七种 CLI；Codex/OpenCode 保持专用 Owner，其余五种复用原交互 runner 并纳入部门 Owner。缺失可信端口或身份冲突仍拒绝。总监仍走经典 Loop，普通 Loop/Loop+ 保留既有入口。界面布局、tab 原名和角色图标不改。
 
 producer 的新代来源是专用任务仓储唯一 CREATE 的实际返回值，宿主记录一次内存创建凭据。组织获得真实组长容量租约、创建并持久成员后，在 scheduler 首次 pump 前消费该凭据，按权威 root/leader/module/workspace/generation、角色路线和运行状态调用 `Ledger.open`。成员原子替代 starting reservation，持久快照不能同时把同一模块列为 preparing 和 owned。
 
@@ -18,13 +18,21 @@ producer 的新代来源是专用任务仓储唯一 CREATE 的实际返回值，
 
 员工准入复用原 `Ledger.admit`，不复制 Store 验证，也不另开 bindExecution 路径。每个真实 scheduler attempt 在 builder/原生准备前固定 selection 和 requirements 并落盘；首次 native session 保存回读、原子 binding/责任引用回读、commit、原 Owner 绑定及最终同步复核/一次性 grant 均保留。process overlay 策略与现有 OpenCode 固定模型 overlay builder 对齐；没有模型时准备前拒绝。生产 OpenCode preparation 可在可信新 attempt 尚无原生 session 时创建并核验首个 session，随后持久化精确 `executionSession` 与 binding；后续续接只允许原生身份、binding、selection、canonical directory 和 continuation 来源逐项匹配。round-224 的已有 session/受控 fixture 只覆盖当时范围，不能作为当前生产首次创建仍未接线的依据；也不由此扩大到任意 CLI 或冷恢复接管。
 
+## 全部 CLI 的原交互执行适配（2026-11-17）
+
+`departmentinteractiveruntime.ts` 对 Claude/Grok/DSH/Kimi Code/ZCode 使用原 `runPromptInteractive` 和 strategy，不复制协议、模型选择或调度算法。每代组长复用一个原 runner 集合；员工按原 attempt 登记。`Ledger.admit` 先持久责任，再允许原 runner 准备；ACP 的 `start` 返回 native ID，或 Claude `beforeSessionStart` 预选原生 `--session-id` UUID 后，唯一任务写者保存 `executionSession` 并回读，原子登记 binding、保留原 socket client、消费 authority 授权，随后才发送 prompt。
+
+组长稳定本地键仅维护 native mapping，员工沿原策略 promote 到真实 ID。通用 Owner 的 required 证据是 turn、streams、runner；不宣称其拥有 adapter 的目录/链接/Tab。封闭先同步阻止新启动和取消原调用，等待所有已捕获 runner、迟到捕获及在途回调排空，再产生真实 receipt。ACP runner 等 child `close`，Claude 等 SDK 原 iterator 排空；清理失败不能生成成功凭证。员工原 adapter 无论资源由谁拥有，只要存在原 Owner 观察，都须等待它成功，再关闭自己的资源与归还名额。组清理继续校验完整 CLOSED 集合、真实 executionSession/selection、原 client 与最终冷读。
+
+此适配不取得旧宿主遗失的内存 runner。宿主丢失后沿现有 unknown/人工恢复合同保留责任，不增加 CLI 选择限制，也不从磁盘状态伪造原执行完成。
+
 ## 本地会话与原生身份
 
 任务 `sessionId` 继续是 tab/本地仓储关联键。新增顶层 `executionSession: { cli, sessionId, configId }` 专存组长原生绑定，两个字段不能互换。真实 thread 响应后，唯一任务写者保存并精确回读该字段，再经 admit.bind 原子保存组织 binding 并精确回读，worker 确认原 Owner.bindSession 后最终授权，随后才允许 turn/start。
 
 现有交互 onThreadId 消费者对部门 main 仅维护本地键到 native thread 的映射，不 promote/migrate 本地 tab 键；员工与普通交互仍沿用原策略。
 
-冷读与写入共享严格合同：只允许精确的 CLI、原生 session ID 与 `configId`；组长的 Codex/OpenCode 路线分别验证其固化配置和原 identity 支持的 native ID。拒绝 `local_`、本地键、空白修饰、额外字段、错误 CLI/config 和替换已绑定 thread。受控任务 repository 同时验证规范化结果；损坏绑定不被降为无绑定新建。后续调用沿用首次原绑定，只读观察已有绑定，不重复首次 session 写入；未知 continuation source 拒绝推进。
+冷读与写入共享严格合同：只允许精确的 CLI、原生 session ID 与 `configId`；全部 CLI 路线均验证固化配置和原 identity 支持的 native ID，OpenCode 另保留 `ses_` 格式校验。拒绝 `local_`、本地键、空白修饰、额外字段、错误 CLI/config 和替换已绑定 thread。受控任务 repository 同时验证规范化结果；损坏绑定不被降为无绑定新建。后续调用沿用首次原绑定，只读观察已有绑定，不重复首次 session 写入；未知 continuation source 拒绝推进。
 
 ## 封闭与真实等待
 

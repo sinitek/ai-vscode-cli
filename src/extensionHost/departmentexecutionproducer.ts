@@ -10,7 +10,7 @@ import { sameExecution, type DepartmentExecutionIdentity, type DepartmentExecuti
 import type { DepartmentExecutionOwnerClient } from "../runtime/departmentexecutionownerclient";
 import type { DepartmentExecutionBinding } from "./departmentruntimestate";
 import { randomUUID } from "crypto";
-import { normalizeDepartmentMetadata } from "../department";
+import { isDepartmentExecutionCli, normalizeDepartmentMetadata } from "../department";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { createDepartmentEmployeeExecutionAdmission } from "./departmentemployeeexecutionadmission";
 import { DepartmentLeaderExecutionLedger, leaderExecutionScopeKey, leaderExecutionSetFingerprint, type DepartmentLeaderExecutionProducer,
@@ -64,8 +64,8 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
     const task = deps.readTask(taskId), m = normalizeDepartmentMetadata(task?.department);
     if (!task || task.departmentInvalid || m?.role !== "leader" || !m.leaderSubtaskId || m.parentTaskId !== m.rootTaskId
       || task.workspaceKey !== deps.workspaceKey() || task.schedulingMode !== "event_driven" || !task.sessionId
-      || !["codex", "opencode"].includes(task.cli) || m.routes.leader.cli !== task.cli
-      || !["codex", "opencode"].includes(m.routes.employee.cli ?? "")) throw new Error("department-producer-role-or-task-invalid");
+      || !isDepartmentExecutionCli(task.cli) || m.routes.leader.cli !== task.cli
+      || !isDepartmentExecutionCli(m.routes.employee.cli)) throw new Error("department-producer-role-or-task-invalid");
     const root = deps.readTask(m.rootTaskId), rm = normalizeDepartmentMetadata(root?.department);
     const modules = root?.subTasks.filter((s) => s.id === m.leaderSubtaskId) ?? [];
     const read = deps.store.read(m.rootTaskId, task.workspaceKey);

@@ -5,6 +5,78 @@ import os = require("node:os");
 import path = require("node:path");
 import { spawnSync } from "node:child_process";
 
+for (const scenario of ["empty", "nonempty", "overlap", "contribution", "move-source"] as const) {
+  test(`appending a host source preserves the catalog and checks ${scenario} provenance`, () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "identity-new-source-"));
+    const child = spawnSync(process.execPath, ["-e", `
+      const assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+      const catalog=require(${JSON.stringify(require.resolve("../../loopTaskIdentityCatalog"))});
+      const original=path.join(process.env.HOME,'original');fs.mkdirSync(original);
+      const ownedFile=path.join(original,'retired.json'),ordinary=path.join(process.env.HOME,'ordinary.json');
+      catalog.initializeLoopTaskIdentityCatalog(original,()=>new Map([[ownedFile,[{id:'retired'}]],[ordinary,[{id:'ordinary'}]]]));
+      const file=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities','catalog.json');
+      const scenario=${JSON.stringify(scenario)};
+      const root=path.join(scenario==='overlap'?original:process.env.HOME,'new');fs.mkdirSync(root);
+      const snapshot=JSON.parse(fs.readFileSync(file,'utf8'));
+      snapshot.ordinaryMoves={moved:{file:path.join(process.env.HOME,'destination.json'),sources:[path.join(process.env.HOME,'previous.json')]}};
+      if(scenario==='nonempty')fs.writeFileSync(path.join(root,'existing.json'),'{}');
+      if(scenario==='contribution')snapshot.files[path.join(root,'removed.json')]=[];
+      if(scenario==='move-source')snapshot.ordinaryMoves.moved.sources=[path.join(root,'removed.json')];
+      fs.writeFileSync(file,JSON.stringify(snapshot));const before=fs.readFileSync(file,'utf8');
+      assert.throws(()=>catalog.initializeLoopTaskIdentityCatalog(root,()=>assert.fail('must not rescan')));
+      const register=()=>catalog.initializeLoopTaskIdentityCatalog(root,()=>assert.fail('must not rescan'),{registerEmptySource:true});
+      if(scenario==='empty'){
+        register();const next=JSON.parse(fs.readFileSync(file,'utf8'));
+        assert.deepEqual(next,{...snapshot,roots:[...snapshot.roots,root]});
+        assert.deepEqual(catalog.locateLoopTaskIdentity('retired'),{available:true,files:[ownedFile]});
+        assert.deepEqual(catalog.locateLoopTaskIdentity('ordinary'),{available:true,files:[ordinary]});
+      }else{
+        assert.throws(register);assert.equal(fs.readFileSync(file,'utf8'),before);
+      }
+    `], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" });
+    try { assert.equal(child.status, 0, child.stdout + child.stderr); }
+    finally { fs.rmSync(home, { recursive: true, force: true }); }
+  });
+}
+
+test("unpublished catalog recovers only when every registered source root is gone", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "identity-missing-root-recovery-"));
+  const child = spawnSync(process.execPath, ["-e", `
+    const assert=require('node:assert/strict'),fs=require('fs'),path=require('path');
+    const catalog=require(${JSON.stringify(require.resolve("../../loopTaskIdentityCatalog"))});
+    const oldRoot=path.join(process.env.HOME,'abandoned'),newRoot=path.join(process.env.HOME,'new');
+    const oldFile=path.join(oldRoot,'removed.json'),ordinary=path.join(process.env.HOME,'ordinary.json');
+    fs.mkdirSync(oldRoot);fs.mkdirSync(newRoot);
+    catalog.initializeLoopTaskIdentityCatalog(oldRoot,()=>new Map([[oldFile,[{id:'retired'}]],[ordinary,[{id:'ordinary'}]]]));
+    fs.rmSync(oldRoot,{recursive:true});
+    const file=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities','catalog.json');
+    const before=JSON.parse(fs.readFileSync(file,'utf8'));before.ready=false;
+    fs.writeFileSync(file,JSON.stringify(before));
+    const recover=()=>catalog.initializeLoopTaskIdentityCatalog(newRoot,()=>new Map([[ordinary,[{id:'ordinary-v2'}]]]),{
+      registerEmptySource:true,recoverWhenAllRegisteredRootsAreMissing:true,
+    });
+    assert.throws(()=>catalog.initializeLoopTaskIdentityCatalog(newRoot,()=>new Map([[ordinary,[{id:'ordinary-v2'}]]])));
+    fs.mkdirSync(oldRoot);
+    assert.throws(recover,'a registered source still on disk must never be bypassed');
+    fs.rmdirSync(oldRoot);
+    fs.writeFileSync(file,JSON.stringify({...before,ready:false}));
+    recover();
+    const recovered=JSON.parse(fs.readFileSync(file,'utf8'));
+    assert.equal(recovered.ready,true);
+    assert.deepEqual(recovered.roots,[oldRoot,newRoot]);
+    assert.equal(recovered.owned.retired,oldFile,'deleted task identities remain reserved at their historical file');
+    assert.deepEqual(catalog.locateLoopTaskIdentity('retired'),{available:true,files:[oldFile]});
+    assert.deepEqual(catalog.locateLoopTaskIdentity('ordinary-v2'),{available:true,files:[ordinary]});
+    assert.deepEqual(catalog.locateLoopTaskIdentity('ordinary'),{available:true,files:[]},'ordinary contribution is rebuilt from current files');
+    fs.writeFileSync(path.join(path.dirname(file),'transaction.lock'),'unknown');
+    assert.throws(()=>catalog.initializeLoopTaskIdentityCatalog(newRoot,()=>new Map(),{
+      registerEmptySource:true,recoverWhenAllRegisteredRootsAreMissing:true,
+    }),/EEXIST/);
+  `], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: "utf8" });
+  try { assert.equal(child.status, 0, child.stdout + child.stderr); }
+  finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
 test("batch identity lookup reads one current catalog and preserves duplicates, tombstones and ordinary identity", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "identity-batch-"));
   const child = spawnSync(process.execPath, ["-e", `

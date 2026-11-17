@@ -865,7 +865,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       ).catch((error: unknown) => ({ ok: false as const, error }));
       const readOwnerTermination = (): Promise<{ ok: true } | { ok: false; error: unknown }> | null => termination;
       const ownerTermination = readOwnerTermination();
-      if (ownerResources && departmentLease && invocationIssued && ownerTermination) {
+      if (departmentLease && invocationIssued && ownerTermination) {
         const ended = await ownerTermination;
         if (!ended.ok) { failCleanup(ended.error); return { outcome: "failed", detail: errorDetail(ended.error) }; }
       }

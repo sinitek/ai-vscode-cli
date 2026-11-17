@@ -1089,7 +1089,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       // The department main task owns a stable local tab key. Its native
       // thread has already passed the dedicated durable executionSession
       // gates; a display callback may map it, but must not rebind that key.
-      if (executionOptions.departmentCodexRun && input.taskRole === "main" && input.loopTaskId) {
+      if ((executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner) && input.taskRole === "main" && input.loopTaskId) {
         if (!uiSessionId) throw new Error("部门组长缺少本地会话关联。");
         upsertInteractiveMapping(cli, uiSessionId, newId, { codexSelection: options.codexSelection });
         return;
@@ -1435,6 +1435,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
           departmentCodexRun: executionOptions.departmentCodexRun,
+          departmentInteractiveRunner: executionOptions.departmentInteractiveRunner,
           cancelDepartmentCodexPreparation: executionOptions.cancelDepartmentCodexPreparation,
           resolveCodexInteractiveSelection,
           getConversationTabById,

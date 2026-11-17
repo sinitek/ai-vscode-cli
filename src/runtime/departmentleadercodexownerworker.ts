@@ -6,6 +6,7 @@ import { DepartmentExecutionOwnerClient } from "./departmentexecutionownerclient
 import { exactKeys, isDepartmentExecutionIdentity, record, sameExecution, type CleanupResult } from "./departmentexecutionidentity";
 import { boundedCodexMessage, isCodexResourceResult } from "./departmentcodexpreparationcontract";
 import { DepartmentLeaderCodexOwner } from "./departmentleadercodexowner";
+import { isDepartmentLeaderPrivateCommand } from "./departmentleaderinvocation";
 import { isLeaderCodexPreparation, isLeaderInvocation, LEADER_CALLBACK_LIMIT, LEADER_CALLBACKS, LEADER_REQUIREMENTS,
   type LeaderCodexPreparation } from "./departmentleadercodexcontract";
 import type { CodexOwnedStreamHandlers } from "../interactive/codexOwnedExecution";
@@ -69,7 +70,7 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
       input = structuredClone(v);
       void prepare().catch(lost); return;
     }
-    if (!record(v) || !boundedCodexMessage(v) || v.version !== 1 || v.token !== input.token
+    if (!record(v) || !isDepartmentLeaderPrivateCommand(v) || v.version !== 1 || v.token !== input.token
       || !isDepartmentExecutionIdentity(v.identity) || !sameExecution(v.identity, input.identity) || v.sequence !== incoming + 1) { lost(); return; }
     incoming++;
     const base = ["version", "token", "identity", "sequence", "operation"];

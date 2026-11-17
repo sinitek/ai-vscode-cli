@@ -1,4 +1,4 @@
-import { CLEANUP_PARTS, exactKeys, fingerprintDepartmentExecutionSelection, identifier, isDepartmentExecutionIdentity,
+import { CLEANUP_PARTS, exactKeys, fingerprintDepartmentExecutionSelection, isDepartmentExecutionIdentity,
   isExecutionCleanup, record, type CleanupRequirements, type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "./departmentexecutionidentity";
 import { boundedCodexMessage } from "./departmentcodexpreparationcontract";
 import type { CodexRunnerOptions } from "../interactive/codexRunnerCore";
@@ -9,7 +9,8 @@ export const LEADER_CALLBACK_LIMIT = 32;
 export const LEADER_REQUIREMENTS: Readonly<CleanupRequirements> = Object.freeze(Object.fromEntries(CLEANUP_PARTS.map((p) => [p, true])) as CleanupRequirements);
 export const LEADER_CALLBACKS = ["onAssistantDelta", "onTrace", "onTaskListUpdate", "onThreadId", "onTurnCompleted", "onEvent",
   "onTokenUsageUpdate", "onSubagentUpdate", "onRequest", "onNotification", "logInfo", "logError"] as const;
-export type LeaderInvocation = Readonly<{ invocationId: string; prompt: string }>;
+export { isDepartmentLeaderInvocation as isLeaderInvocation } from "./departmentleaderinvocation";
+export type { DepartmentLeaderInvocation as LeaderInvocation } from "./departmentleaderinvocation";
 export type LeaderCodexDescription = {
   configurationDirectory: string; workspaceDirectory: string; runner: CodexRunnerOptions;
   macTaskShell: "bash" | "zsh"; requestUserInputEnabled: boolean;
@@ -17,10 +18,6 @@ export type LeaderCodexDescription = {
 export type LeaderCodexPreparation = LeaderCodexDescription & {
   version: 1; token: string; identity: DepartmentExecutionIdentity; selection: DepartmentExecutionSelection; ownerDirectory: string;
 };
-export function isLeaderInvocation(value: unknown): value is LeaderInvocation {
-  return record(value) && exactKeys(value, ["invocationId", "prompt"]) && identifier(value.invocationId)
-    && typeof value.prompt === "string" && !!value.prompt.trim() && boundedCodexMessage(value, 48 * 1024);
-}
 export function isLeaderTerminal(value: unknown): value is ExecutionTerminalEvidence {
   return record(value) && exactKeys(value, ["processTerminal", "turnTerminal", "streams"])
     && isExecutionCleanup({ ...Object.fromEntries(CLEANUP_PARTS.map((p) => [p, { status: "unobservable", reason: "validation" }])), ...value });

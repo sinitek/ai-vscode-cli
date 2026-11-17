@@ -1,3 +1,4 @@
+import { isDepartmentExecutionCli } from "../department";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import type { DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import type { DepartmentRuntimeStore } from "./departmentruntimestore";
@@ -20,8 +21,8 @@ export function createDepartmentProductionCleanup(deps: {
   let subscribers = 0;
   function snapshot(taskId: string, generation: number) {
     const phase = deps.producer.observationSnapshot(taskId, generation), task = phase.task, m = task.department;
-    if (task.departmentInvalid || m?.role !== "leader" || !["codex", "opencode"].includes(task.cli)
-      || m.routes.leader.cli !== task.cli || !["codex", "opencode"].includes(m.routes.employee.cli ?? "")
+    if (task.departmentInvalid || m?.role !== "leader" || !isDepartmentExecutionCli(task.cli)
+      || m.routes.leader.cli !== task.cli || !isDepartmentExecutionCli(m.routes.employee.cli)
       || task.workspaceKey !== deps.workspaceKey() || task.executionSessionInvalid)
       throw new Error("department-group-cleanup-unsupported-or-stale");
     return phase;
@@ -43,7 +44,7 @@ export function createDepartmentProductionCleanup(deps: {
             const i = binding.identity, s = binding.selection, selected = selections.get(s.cli);
             const route = task.department!.routes[i.role];
             const session = i.role === "leader" ? task.executionSession : sessions.get(i.subtaskId!);
-            const supportedRole = ["codex", "opencode"].includes(i.cli);
+            const supportedRole = isDepartmentExecutionCli(i.cli);
             return leaderExecutionScopeKey(i) === key && supportedRole
               && selected?.ready === true && selected.configId === s.configId && selected.revision === s.revision
               && route.cli === s.cli && route.configId === s.configId && (route.model ?? null) === s.model

@@ -3416,7 +3416,7 @@
     {
       "id": "plugin.rule.department_ownership_source",
       "name": "部门归属按文件贡献及可信来源授权",
-      "description": "文件贡献增量替换，物理重复身份与同模块多任务保留歧义；授权须唯一 ID 且从唯一物理来源重读。new/rebuilding/invalid/disposed 拒绝，失败/未知变更或来源租约撤销使完整性失效，仅显式完整 rebuild 恢复。外部写入公开前同步撤销 isCurrent；异步 watcher、恒真租约、UI 修订或全库扫描回退均不满足生产合同。中央 activate 已使用专用 department-tasks-v1 owner/controller/repository，完整总监与组长首次 owner 创建，readRevision 缓存和同步 commitSync 均实际连接；普通/部门身份目录经共享 wx writer gate 在同步闭包返回前共同发布。目录持久保留已删除部门 ID 的原文件墓碑；未取得来源的宿主也在普通发现和写入前拒绝这些身份，过期输入不能绕过此边界。受控 reader 保留完整过期记录用于关系校验，公开路由仍隐藏过期任务，retention 不孤立有效组长。未知 marker/锁或未提交身份目录保持拒绝；close 证明的是已撤销且排空的存储写者，不代表 runner 结束。普通通信 GC 在共享 writer gate 内依据持久部门身份及删除墓碑保留 artifact；catalog 缺失、锁定、损坏或未发布则整次删除拒绝，无 source 的另一宿主也不能删除。仓储以一次当前批量查询校验全部缓存贡献，不逐条重读 catalog，重复贡献及 readRevision 撤销继续生效。早期 macOS 隔离 Extension Host 已观察激活、source/owner marker、ready catalog 及 deactivation owner 释放；该次独立主进程未自行退出，历史 smoke 保持失败。后续 round 103 激活及 round 121 生产历史会话/精确组长弹窗场景各有正常退出证据，后者无残留或 owner marker，不反推真实执行或冷恢复通过。round-351 另接受真实 production source/仓储协作、删除/事务失败与后继 runtime 回归；公共受控writer有具体覆盖，不泛称未装配。旧版或直接外部写者的协调交接、损坏身份目录显式恢复和冷宿主仍无完整证据；当前未支持路径写前拒绝。",
+      "description": "文件贡献增量替换，物理重复身份与同模块多任务保留歧义；授权须唯一 ID 且从唯一物理来源重读。new/rebuilding/invalid/disposed 拒绝，失败/未知变更或来源租约撤销使完整性失效，仅显式完整 rebuild 恢复。外部写入公开前同步撤销 isCurrent；异步 watcher、恒真租约、UI 修订或全库扫描回退均不满足生产合同。中央 activate 已使用专用 department-tasks-v1 owner/controller/repository，完整总监与组长首次 owner 创建，readRevision 缓存和同步 commitSync 均实际连接；普通/部门身份目录经共享 wx writer gate 在同步闭包返回前共同发布。目录持久保留已删除部门 ID 的原文件墓碑；未取得来源的宿主也在普通发现和写入前拒绝这些身份，过期输入不能绕过此边界。受控 reader 保留完整过期记录用于关系校验，公开路由仍隐藏过期任务，retention 不孤立有效组长。新宿主仅在确认历史 department-tasks-v1 的独占 claim 冲突后，才尝试其它已登记空来源或创建独立空来源；追加必须在共享 wx writer gate 下证明空目录与非重叠。新来源不接管旧 marker、任务或身份。有效但 ready=false 的目录仅在全部已登记来源根均已消失时可受限重建，并保留旧 roots、owned 墓碑与普通迁移记录；未知 marker/锁、损坏 catalog、仍存在的旧来源或未完成事务继续拒绝。close 证明的是已撤销且排空的存储写者，不代表 runner 结束。普通通信 GC 在共享 writer gate 内依据持久部门身份及删除墓碑保留 artifact；catalog 缺失、锁定、损坏或未发布则整次删除拒绝，无 source 的另一宿主也不能删除。仓储以一次当前批量查询校验全部缓存贡献，不逐条重读 catalog，重复贡献及 readRevision 撤销继续生效。早期 macOS 隔离 Extension Host 已观察激活、source/owner marker、ready catalog 及 deactivation owner 释放；该次独立主进程未自行退出，历史 smoke 保持失败。后续 round 103 激活及 round 121 生产历史会话/精确组长弹窗场景各有正常退出证据，后者无残留或 owner marker，不反推真实执行或冷恢复通过。round-351 另接受真实 production source/仓储协作、删除/事务失败与后继 runtime 回归；公共受控writer有具体覆盖，不泛称未装配。旧版或直接外部写者的协调交接、损坏身份目录显式恢复和冷宿主仍无完整接受证据；当前未支持路径写前拒绝。",
       "status": "active",
       "applies_to": ["plugin.department_ownership_index", "plugin.chat_panel"],
       "source_refs": [{
@@ -3460,7 +3460,7 @@
     {
       "id": "plugin.rule.department_configuration_scope",
       "name": "部门配置作用域及新根保存屏障",
-      "description": "宿主作用域含 workspace key/代次/CLI/总监档案，ABA 不复用；候选及保存 await 后/落盘前核对 scope，浏览器同时核对 requestId，迟到回执不污染新工作区。按 scope/角色保存屏障拒绝同角色重入，pending/failed 阻止新根，成功落盘才更新内存并允许重试。发送/确认/队列保留 scope，宿主 await 后重核目标和选择；可信既有部门补充独立于新建草稿门禁，中央根创建/启动/协调与受限原生绑定端口已装配，缺失能力或可信来源授权仍拒绝而不降级。",
+      "description": "2026-11-17 表单修复已按 lp5/lp8 主审接受：宿主使用 ready/configId/revision 和独立选择上下文防 ABA；UI 同 panel 先应用模型状态，模式切换先失效令牌再完整同步模型控件，保持四节点恢复与迟到回执隔离。候选/保存/新根在 await 前后核对当前总监及目标 CLI 已确认绑定、作用域和配置/选择修订，候选/保存同时核对 requestId；模式、CLI、档案、目标激活身份或工作区变化撤销过期结果，不能隐藏沿用旧异档案偏好。偏好继续按工作区/总监 configId 隔离，保存成功才发布内存，旧根不热迁移。以下为既有屏障合同：宿主作用域含 workspace key/代次/CLI/总监档案，ABA 不复用；候选及保存 await 后/落盘前核对 scope，浏览器同时核对 requestId，迟到回执不污染新工作区。按 scope/角色保存屏障拒绝同角色重入，pending/failed 阻止新根，成功落盘才更新内存并允许重试。发送/确认/队列保留 scope，宿主 await 后重核目标和选择；可信既有部门补充独立于新建草稿门禁，中央根创建/启动/协调与受限原生绑定端口已装配，缺失能力或可信来源授权仍拒绝而不降级。",
       "status": "active",
       "applies_to": ["plugin.department_task", "plugin.config_profile", "plugin.chat_panel"],
       "source_refs": [{
@@ -3476,13 +3476,53 @@
       }, {
         "path": "src/extensionHost/departmentruntimecomposition.ts"
       }, {
-        "path": ".ch/docs/design-docs/department-mode.md"
+        "path": ".ch/docs/design-docs/department-mode.md",
+        "anchor": "角色与模型配置"
+      }, {
+        "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-17-bugfix-department-model-form.md"
+      }]
+    },
+    {
+      "id": "plugin.rule.department_execution_cli_admission",
+      "name": "部门执行角色复用全部 CLI 能力",
+      "description": "产研部总监、组长和员工共用 CLI_LIST 的全部七种 CLI，沿用 Loop/Loop+ 的配置和执行能力，不另设角色白名单。提示词完整传递，不设置部门长度上限或截断；Codex/OpenCode 组长精确 invocation 数据帧与员工准备消息的提示词不套用控制/配置大小预算。Codex/OpenCode 保留专用 Owner，其余五种复用原交互 runner 并接入同一责任账本、代次 authority、真实 native session 绑定及清理观察。组长本地键与 executionSession 分离；员工等待原 runner/输出排空、adapter 资源清理后归还容量。已启用 CLI、有效档案、模型及原代身份继续核验；未知 Owner 和旧任务不自动改写。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.config_profile", "plugin.chat_panel"],
+      "source_refs": [{
+        "path": "src/runtime/departmentleaderinvocation.ts"
+      }, {
+        "path": "src/test/runtime/departmentleaderinvocation.test.ts"
+      }, {
+        "path": "src/extensionHost/departmentinteractiveruntime.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentinteractiveruntime.test.ts"
+      }, {
+        "path": "src/department.ts"
+      }, {
+        "path": "src/departmentConfiguration.ts"
+      }, {
+        "path": "src/settingMessageHandlers/preferences.ts"
+      }, {
+        "path": "src/extensionHost/departmentruntimecomposition.ts"
+      }, {
+        "path": "src/extensionHost/departmentexecutionproducer.ts"
+      }, {
+        "path": "src/webview/viewContentScript/departmentConfiguration.ts"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md",
+        "anchor": "执行角色 CLI 能力准入（2026-11-17）"
+      }, {
+        "path": "src/test/core/departmentconfiguration.test.ts"
+      }, {
+        "path": "src/test/extensionHost/departmentruntimecomposition.test.ts"
+      }, {
+        "path": "src/test/webview/departmentconfigurationwebview.test.ts"
       }]
     },
     {
       "id": "plugin.rule.department_role_model_authority",
       "name": "部门模型能力按确切档案与角色读取",
-      "description": "Claude off 仍按 CLI 规范化过滤。Department UI/持久偏好 model:null 保留所选 CLI 默认语义；新根可信宿主将总监/组长/员工三角色 OpenCode 默认解析成同 CLI/configId 的具体有效模型，显式及 Codex 默认不变。确切档案默认/模型/variant/力度校验，档案内容读取标记及共享选择修订在 await 前后复核，工作区/目标/会话/模型偏好/heartbeat/保存屏障漂移拒绝；读取标记不是执行权限且不进入 root。固化 root 不随默认变化重解析，selection/argv/overlay/原 Owner 精确核对同模型，不能回写旧任务或接管未知 Owner。缺失/非法默认、错档案、不适用变体/力度拒绝，不激活配置或泄漏正文凭据。round-372 默认模型 Codex 总监/OpenCode 组长/Codex 员工公开新建 EH 两模块/四原 receipt/CLOSED/持久容量归还后实际再派发及最终汇报通过；round-375 已接受三角色全 OpenCode 默认模型公开新建 EH；round-372 的混合 EH 使用较早 Owner 快照，不证明最新 finalizing Owner。 26项分批定向与默认模型混合公开EH分别有效；该EH用较早Owner快照，不验证最新finalizing或全部角色。员工根能力/Owner观察另按独立接受报告核对，不再记为并行待验收。",
+      "description": "2026-11-17 表单修复产品已接受（见归档 bugfix 计划，生成 Webview 桥接验证不等于真实 EH/CLI）：总监在当前 CLI 直接操作主模型/力度并与启动读取一致；组长/员工仅 CLI、模型、力度三控件，OpenCode variant/effort 共用力度槽。后续表单不再提供沿用档案力度/默认变体选项，无能力时隐藏力度；用户选择时保存实际显示的有效力度。模式设置先发、面板模型/力度/模式归一化后再请求部门候选，首次加载无需切换角色CLI；底部状态及重试保留。内部 configId 继续保存/冻结，同 CLI 取总监当前档案，跨 CLI 取目标 CLI 已确认激活档案；无明确身份拒绝，不选首档、不激活，不将旧显式异档案作为隐藏选择。通用精确档案 reader 保持只读指定 configId 语义，当前绑定限制仅在表单/保存/新根边界；运行/恢复/Owner 及旧根冻结不热迁移。以下保留既有默认模型及历史接受边界：Claude off 仍按 CLI 规范化过滤。Department UI/持久偏好 model:null 保留所选 CLI 默认语义；新根可信宿主将总监/组长/员工三角色 OpenCode 默认解析成同 CLI/configId 的具体有效模型，显式及 Codex 默认不变。确切档案默认/模型/variant/力度校验，档案内容读取标记及共享选择修订在 await 前后复核，工作区/目标/会话/模型偏好/heartbeat/保存屏障漂移拒绝；读取标记不是执行权限且不进入 root。固化 root 不随默认变化重解析，selection/argv/overlay/原 Owner 精确核对同模型，不能回写旧任务或接管未知 Owner。缺失/非法默认、错档案、不适用变体/力度拒绝，不激活配置或泄漏正文凭据。round-372 默认模型 Codex 总监/OpenCode 组长/Codex 员工公开新建 EH 两模块/四原 receipt/CLOSED/持久容量归还后实际再派发及最终汇报通过；round-375 已接受三角色全 OpenCode 默认模型公开新建 EH；round-372 的混合 EH 使用较早 Owner 快照，不证明最新 finalizing Owner。 26项分批定向与默认模型混合公开EH分别有效；该EH用较早Owner快照，不验证最新finalizing或全部角色。员工根能力/Owner观察另按独立接受报告核对，不再记为并行待验收。",
       "status": "active",
       "applies_to": ["plugin.department_task", "plugin.config_profile"],
       "source_refs": [{
@@ -3499,6 +3539,11 @@
         "path": "src/test/extensionHost/departmentConfigurationHost.test.ts"
       }, {
         "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+      }, {
+        "path": ".ch/docs/design-docs/department-mode.md",
+        "anchor": "角色与模型配置"
+      }, {
+        "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-17-bugfix-department-model-form.md"
       }]
     },
     {
@@ -3553,7 +3598,7 @@
     {
       "id": "plugin.rule.department_workspace_capacity",
       "name": "工作区人数逐项覆盖及新根快照边界",
-      "description": "工具设置－工作区使用 optional departmentMaxLeaders/departmentMaxEmployees；空输入删除单项覆盖，有效值逐项为合法工作区值、合法全局值、4/20默认。公共归一化只接受数字或非空数字字符串，正数向下取整后须为safe integer；损坏读取不产生默认覆盖，非空非法保存中文拒绝。PanelState保留原全局字段并增加workspace前缀number/null投影。保存复制最新设置，校验宿主scope/requestId，经完整临时文件替换成功后更新内存；失败保留已保存值，迟到消息不写入或显示到新工作区。生产modelSettings读取实际工作区有效值；只用于新根配置快照，后续原准入使用该冻结快照，不迁移活跃组织或释放未知租约。浏览器fixture与host测试不等于真实EH/CLI或最终全量回归。",
+      "description": "性能指导仅放在全局/工作区员工最多人数说明，面板及模式开关不展示黄色警告。工具设置－工作区使用 optional departmentMaxLeaders/departmentMaxEmployees；空输入删除单项覆盖，有效值逐项为合法工作区值、合法全局值、4/20默认。公共归一化只接受数字或非空数字字符串，正数向下取整后须为safe integer；损坏读取不产生默认覆盖，非空非法保存中文拒绝。PanelState保留原全局字段并增加workspace前缀number/null投影。保存复制最新设置，校验宿主scope/requestId，经完整临时文件替换成功后更新内存；失败保留已保存值，迟到消息不写入或显示到新工作区。生产modelSettings读取实际工作区有效值；只用于新根配置快照，后续原准入使用该冻结快照，不迁移活跃组织或释放未知租约。浏览器fixture与host测试不等于真实EH/CLI或最终全量回归。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -3583,6 +3628,35 @@
         },
         {
           "path": "scripts/department_workspace_capacity_settings_smoke.cjs"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_director_auto_open_group_chat",
+      "name": "产研部启动后打开总监群聊",
+      "description": "新建总监根仅在可信组织注册及真实会话绑定成功后，用已绑定 taskId 请求现有记录驱动群聊协调器；打开异步且错误只记日志，不阻断总监执行。配置准备、组织注册或会话绑定失败不展示；组长仍从总监页入口打开。可信部门组长聊天气泡隐藏打开 Loop 群聊，历史与实时消息一致，不修改持久消息；普通 Loop/Loop+ 和总监入口保留。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.chat_panel"
+      ],
+      "source_refs": [
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
+        },
+        {
+          "path": "src/extension.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentruntimecomposition.test.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md",
+          "anchor": "界面规格"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "启动后自动打开总监群聊"
         }
       ]
     }

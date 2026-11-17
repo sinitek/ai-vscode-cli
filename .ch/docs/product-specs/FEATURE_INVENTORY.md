@@ -4,6 +4,42 @@
 
 ## 产研部三层协作模式
 
+### 完整提示词与组长聊天入口（2026-11-17）
+
+产研部完整传递 Loop / Loop+ 提示词，不额外设置长度上限，也不截断。Codex/OpenCode 的组长 invocation 和员工准备消息均将提示词与控制、配置消息的大小校验分开；宿主和原 worker 同步使用同一合同，沿用原 CLI runner。
+
+部门组长聊天气泡隐藏“打开 Loop 群聊”，历史恢复与实时消息一致；组长群聊仍从总监页的组长入口打开。普通 Loop/Loop+ 和总监的聊天入口保留，显示规则以宿主确认的部门角色为准，不修改历史消息或依赖会话名称。
+
+标准构建、211 项运行时、219 项界面及 39 项验证脚本回归通过；生成 Webview 的深浅双视口浏览器检查通过。隔离真实 VS Code/Codex CLI 配合本机确定性 provider 的简单任务已完成总监派发、两组组长/员工执行、事件验收、最终汇报与容量归还，不外推全部 CLI 线上模型或其它平台。交付包与完整证据见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-leader-prompt-invocation.md)。
+
+### 执行角色 CLI 准入（2026-11-17）
+
+产研部三角色支持 Loop / Loop+ 已支持的全部七种 CLI：Codex、Claude、OpenCode、Grok、DSH、Kimi Code、ZCode。角色下拉、保存、配置解析和生产准入复用 `CLI_LIST`，只沿用 CLI 启用状态、有效档案及已有模型能力校验。总监走经典 Loop，组长与员工走 Loop+；Codex/OpenCode 保留专用执行，其他五种复用原交互 runner，并纳入同一责任账本、真实会话绑定、停止和清理观察。
+
+不再因角色使用 Grok 等 CLI 触发 `department-producer-role-or-task-invalid`。组长的本地会话键与真实 CLI 会话分开保存；员工停止后等待原 runner/输出排空及 adapter 资源清理，再归还名额。最终标准构建及 343 项相关回归通过，包含五种通用组长逐项停止后继续及混合员工；免费本机子进程/Owner socket 验证和生成页面 Chromium smoke 覆盖源码；未安装插件、未调用七种线上模型，也不将 macOS 测试外推为 Windows/Linux 验收。旧失败任务与未知所有权数据不自动改写。详见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-all-cli-execution.md)。
+
+### 启动后自动打开总监群聊（2026-11-17）
+
+新建产研部任务在总监身份、组织注册和真实会话绑定全部确认后，自动打开对应总监群聊。展示走现有记录驱动协调器，不等待页面加载完成再启动总监；展示失败只记日志，不中断已启动的组织任务。配置准备、组织注册或会话绑定失败时不打开群聊。组长页面仍按原入口在总监页内弹窗打开。实现和验证记录见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-auto-open-group-chat.md)。
+
+### 后续修复：表单精简与首次候选加载（2026-11-17）
+
+组长、员工与 Loop+ 子模型一行保持相同选择层级，仅显示 CLI、模型及模型支持的具体力度，不再提供沿用档案力度/默认变体选项；用户选择时按实际显示力度保存，OpenCode 使用 variant 槽。去掉角色行右侧的过期说明，加载/失败状态和重试仍由底部提示及按角色按钮承担。性能警告移入全局/工作区“产研部员工最多人数”说明，面板和模式开关不再显示黄色警告。
+
+总监、组长、员工配置整体位于多行输入框下方、发送操作栏之前，与 Loop+ 主子模型同在 `input-footer`；顶部 CLI/档案/模式栏保持在输入框上方。此为布局修正，不改变角色配置、初始化或保存契约，ontology 无语义变更。
+
+布局修正验证：`npm run build` 及四个相关 Webview 文件共 25 项回归通过；`DEPARTMENT_ROLE_FORM_EVIDENCE=/tmp/department-form-below-input-20261117 node scripts/department_role_model_form_smoke.cjs` 通过，严格错误为空，1280 深色及 280 浅色均断言输入框、角色配置、发送栏的实际坐标顺序，截图已核对，无横向溢出。验证范围仍为生成页面及消息桥。
+
+修复首次模型下拉无反应：模式设置先于候选请求发送，面板批量初始化完成模型/力度/模式归一化后再请求角色候选。保持宿主身份、修订、scope/requestId 与 ABA 保护，不靠重试或切换 CLI 绕过。相关 Node 回归和生成页面 Chromium 桥接覆盖直接恢复产研部、编码切入、已有面板切入并自动修正力度；验证限定为生成 Webview 与真实宿主消息处理器，不外推已安装扩展或真实 CLI。执行与失败记录见[后续 bugfix 计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-form-initialization.md)。
+
+### 已接受修复：角色模型表单（2026-11-17）
+
+状态：`completed`（产品修复及最新主干合并已接受，最终记录仍待独立文档主审，未发布），见[本次 bugfix 计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-model-form.md)及[现行角色配置契约](../design-docs/department-mode.md#角色与模型配置)。总监在当前 CLI 分组直接选择模型/思考力度；组长、员工各只选择 CLI、模型、力度，OpenCode variant/effort 共用力度槽，无独立档案下拉。保留顶部当前 CLI/档案/模式栏及原主题布局。
+
+内部精确 `configId` 继续保存及冻结：同 CLI 绑定总监当前档案，跨 CLI 绑定目标 CLI 已确认激活档案；无身份明确提示，不选首档、不激活档案。候选/保存/新根 await 前后复核绑定、scope/requestId 及相关修订，旧显式异档案偏好不得隐藏沿用；偏好按工作区/总监档案隔离，保存成功才发布内存。通用精确档案 reader 和既有运行/恢复/Owner 合同保持，旧根不热迁移，总监选择须与启动实际读取一致。
+
+本项替代旧规格中“组长/员工可独立选择配置档案”的表单要求。父主审 lp5/lp8 已接受宿主 revision/ABA 防护与 UI 最终交互；总监主选择消息/存储与实际启动读取一致，角色实际载荷经生产 validator 和隔离 WorkspaceSettings 保存核对。复用宿主 build/89 项、UI build/11 项及生成生产 Webview 桥接 smoke（严格错误 []、1280 深色/280 浅色截图已主审），不称真实 EH/CLI。模式切换先失效令牌再完整同步模型控件，同 panel 先应用模型状态、四节点恢复和目标 revision/迟到回执保护保持。lp9 最新主干合并已接受，实际 HEAD `1e1c0d3e`，最终 build 通过；首次七文件 293 项一项夹具时序失败，等待 h.domReady 后重建并通过该文件 37 项，其余未变六文件 256 项复用，去重 293，非最终重跑全套。原未提交内容/权限已恢复，stash/备份保留，无推送或发布；命令、首次失败与未覆盖范围见归档计划。下方既有已接受范围与失败历史保持，旧 5469 项全量、冷恢复及主题/窄屏证据不覆盖本次新交互。
+
 ### 收尾状态（Round723，截止 lp722 已独立接受）
 
 现有 feature 的实现与既定交付范围已完成，[原计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)为 `completed` 并按 2026-11 归档；最终主任务接受由主审决定，未发布。lp721 正常合入、lp722 原目录交接均已通过：原目录占用交付分支，交接输入 f787/tree4777，master ref 未改且切换前 clean，整合树 detached f787；228 原 untracked 受限归档、106 tracked 精确恢复、334 完整回滚映射。index 封口 exit1 及后续三个稳定窗口/1151 条仅 106 stat-cache 变化、零 stage 语义变化和 actor 未知均保留，详见[收尾覆盖](../runbooks/department-acceptance-coverage.md#收尾结论round723截止-lp722-已独立接受)。
@@ -364,7 +400,7 @@ Loop+ 主、子调用直接捕获本次宿主的真实完成记录；即使共�
 
 工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“通知设置”“自动修复”五个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop/Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
-AI 对话面板的“使用说明”弹窗展示模式说明，将 Markdown 内容独立、同步解析为“模式 / 使用说明”两列表格，原始 HTML 转义为文本，链接仅保留 HTTP(S)；介绍 Vibe、Loop、Loop+ 的任务执行方式，并主推 Loop+。表格复用聊天 Markdown 的主题边框、表头和斑马行，说明自动换行，弹窗随内容高度自适应；表格下方提供《携宁 CLI 助手 - 教程》链接，点击进入语雀详细教程。不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentStrings.ts`、`src/webview/viewContentStyles/overlaysModals.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
+AI 对话面板的“使用说明”弹窗展示模式说明，将 Markdown 内容独立、同步解析为“模式 / 使用说明”两列表格，原始 HTML 转义为文本，链接仅保留 HTTP(S)；介绍 Vibe、Loop、Loop+、产研部的任务执行方式。产研部说明包含 ☀️ 总监（Loop）协调汇总、🌛 组长（Loop+）派发验收、⭐️ 员工具体执行，以及常规配置中的开启入口、模式与角色配置、全部 CLI 混合搭配和总监群聊进度入口。表格复用聊天 Markdown 的主题边框、表头和斑马行，说明自动换行，弹窗随内容高度自适应；表格下方提供《携宁 CLI 助手 - 教程》链接，点击进入语雀详细教程。不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentStrings.ts`、`src/webview/viewContentStyles/overlaysModals.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 
 AI 对话消息区在内容更新前距离底部不超过 75px 时自动置底；超过 75px 时保留当前阅读位置，可通过“回到底部”按钮恢复跟随。聊天搜索结果锚定时不自动置底。执行流面板保留独立的 50px 自动跟随阈值。
 
@@ -817,6 +853,12 @@ Round 105 增加真实 runner 的部分事实端口：CLI handle 可观察 child
 Round 106 提供 append-only 完整执行绑定存储与无凭据角色选择投影，生产员工恢复只读消费者按 exact binding 查询原 Owner；缺绑定、配置版本冲突或不可达保持未知，不启动替代执行。组长生产门禁缺整组清理证明时保留租约并阻塞，不能因业务结束、idle 或停止请求释放。Codex pool 修复 exit 清空 loadedThreads 被误当原生卸载的竞态，此路径等待真实 close。首次绑定已在 round-117 受限 OpenCode 员工路径接通；round-122 Codex launcher 的双层门闩仅经受控组合验证，尚非生产首次绑定。后续执行集合/receipt 聚合基础库已验收，生产接线、完整生产 turn/root/tab 清理及恢复仍未完成。固定 Node fixture 不作为真实 CLI/冷重启通过。事实来源：`src/extensionHost/departmentexecutionrecovery.ts`、`src/extensionHost/departmentruntimestore.ts`、`src/extensionHost/departmentorchestration.ts`、`src/extension.ts`、[Owner 主设计](../design-docs/department-execution-owner.md)。
 
 产研部仍为**开发中**。中央 activate 已装配专用 owner 来源与 repository，总监/真实 Loop+ 组长的完整固化记录一次事务首次落盘；员工仍复用 attempt。公共修改、append、会话 rebind、删除及保留期走 owner 路由，普通 writer 在写前拒绝受控根和已登记部门 ID。普通/部门身份目录与 owner 索引同步发布；受控完整读取保留过期记录用于关系校验，公开读取隐藏过期项，清理不能孤立有效组长。关闭撤销实际同步写者入口并等待 controller/barrier；未知 marker/锁、事务错误或未核验外部变更保持拒绝，不按 PID 或时间接管。组合单测不替代真实 VS Code/CLI、跨版本写者协调和冷重启；身份目录生产恢复管理入口及运行中执行 owner 交接仍待集成。未修改界面。
+
+## 2026-11-17 产研部新任务来源独占冲突修复
+
+当另一个宿主持有历史 `department-tasks-v1` 来源时，新宿主不再因同一 owner marker 永久拒绝所有新任务：只在确认是独占 claim 冲突后，使用另一已登记空来源或创建独立空来源，并在共享 writer gate 下追加身份目录。旧来源任务、marker、ID 与删除墓碑不变，普通来源的重复 ID 仍拒绝。未知 owner/锁、损坏 catalog、非空或重叠来源和未完成事务继续 fail closed；仅结构有效、所有已登记根都已消失的未发布 catalog 可受限重建，并保留旧身份墓碑。
+
+`npm run build` 通过；6 个来源/仓储/身份目录测试文件共 64 项通过，包含隔离 `HOME` 下的真实 Node 子进程验证（旧 owner 存活与已退出、新来源创建/持久读写、旧 marker 和任务不变）。ontology 校验与 9 项 ontology 单测通过。一次额外宽范围 production wiring/composition 测试中，部分既有员工构建/总监交付等待超时；其 fixture 使用显式固定来源，不调用新的 host 来源选择工厂，基线未在本次确认，因此不作为修复通过证据，也未扩展修复。`npm run validate:whitespace` 被仓库未修改的 `AGENTS.md:8` 尾随空格拦截；`git diff --check` 通过。真实 VS Code Extension Host、真实 CLI、冷启动和 Windows/Linux 尚未覆盖。详见[执行记录](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-source-admission.md)。
 
 ## 2026-11-14 OpenCode 员工 Owner 资源释放与组容量观察
 

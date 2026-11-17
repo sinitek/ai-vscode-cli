@@ -475,6 +475,22 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function applyState(panelState) {
+        // Model/thinking/mode normalization may post context-changing settings.
+        // Publish the role projection only after those messages have been sent.
+        departmentRoleUi.syncingPanelState = true;
+        let newlyCompletedLoopTabIds;
+        try {
+          newlyCompletedLoopTabIds = applyPanelState(panelState);
+        } finally {
+          departmentRoleUi.syncingPanelState = false;
+        }
+        syncDepartmentConfigurationState(panelState);
+        newlyCompletedLoopTabIds.forEach((tabId) => {
+          flushPendingPromptQueue(tabId);
+        });
+      }
+
+      function applyPanelState(panelState) {
         const previousCli = state.currentCli;
         const previousConversationTabs = state.conversationTabs || { activeTabId: null, tabs: [] };
         const previousActiveTabId = typeof previousConversationTabs.activeTabId === "string"
@@ -620,7 +636,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.loopSubtaskOpenCodeModels = normalizeOpenCodeModelsPayload(panelState.loopSubtaskOpenCodeModels);
         }
         state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
-        syncDepartmentConfigurationState(panelState);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
@@ -771,9 +786,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         renderPromptHistoryList();
         renderScheduledTaskList();
         applyEditorContext(panelState.editorContext);
-        newlyCompletedLoopTabIds.forEach((tabId) => {
-          flushPendingPromptQueue(tabId);
-        });
+        return newlyCompletedLoopTabIds;
       }
 
       function renderConfigOptions() {

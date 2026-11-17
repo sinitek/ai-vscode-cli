@@ -5,7 +5,7 @@ import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 const { getWebviewHtml } = require("../../webview/viewContent") as typeof import("../../webview/viewContent");
 
-test("task mode controls have associated labels, defaults and persistent department warning", () => {
+test("task mode controls retain labels and department performance guidance belongs to employee capacity settings", () => {
   const html = getWebviewHtml({ cspSource: "self" });
   const cliCard = html.indexOf('id="cliEnabledCard"');
   const modesCard = html.indexOf('id="taskModesCard"');
@@ -16,5 +16,9 @@ test("task mode controls have associated labels, defaults and persistent departm
     assert.match(html, new RegExp(`id="${id}"`));
     assert.ok(html.includes(label));
   }
-  assert.ok((html.match(/警告：本机必须具备并行运行 20 多个 CLI 执行任务的性能。/gu) || []).length >= 2);
+  assert.doesNotMatch(html, /department-performance-warning|警告：本机必须具备/);
+  for (const id of ["departmentMaxEmployeesNote", "workspaceDepartmentMaxEmployeesNote"]) {
+    const note = html.match(new RegExp(`<div id="${id}"[^>]*>([^<]+)</div>`))?.[1];
+    assert.match(note || "", /所有组长合计计算.*根据本机性能设置.*20 多个 CLI/);
+  }
 });

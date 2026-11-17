@@ -63,5 +63,7 @@ export function isDepartmentProcessPreparation(value: unknown): value is Departm
       || typeof overlay.configContent !== "string" || typeof overlay.primaryModel !== "string"
       || ![overlay.smallModel, overlay.primaryVariant, overlay.smallVariant].every((v) => v === undefined || v === null || typeof v === "string")) return false;
   }
-  return Buffer.byteLength(JSON.stringify(value), "utf8") <= 4 * 1024 * 1024;
+  // CLI arguments carry the complete Loop+ prompt. Do not include their text
+  // in the configuration-preparation budget or truncate the native invocation.
+  return Buffer.byteLength(JSON.stringify({ ...value, launch: { ...launch, args: [] } }), "utf8") <= 4 * 1024 * 1024;
 }

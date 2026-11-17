@@ -36,6 +36,11 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
             localSessionId: null,
           });
 
+      const bindDepartmentSession = port.departmentInteractiveRunner?.(runner, () => {
+        port.interactiveRunnerManager.detachRunner("grok", port.uiSessionId, runner);
+        return runner.disposeAndWait();
+      });
+
       let flushingGrokStop = false;
       const canEmitGrokPresentation = (): boolean => {
         const entry = port.interactiveRunsByTabId.get(port.tabId);
@@ -52,6 +57,7 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
         });
         port.syncInteractiveRunEntry(port.stopFn);
         const started = await runner.start();
+        await bindDepartmentSession?.(started.acpSessionId);
         port.updateSessionForNewRun(started.acpSessionId);
         const uiSessionId = port.uiSessionId;
         if (previousSessionId && previousSessionId !== uiSessionId) {

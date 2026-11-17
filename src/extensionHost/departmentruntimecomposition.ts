@@ -1,6 +1,6 @@
 import { createDepartmentEmployeeAllocationHost } from "./departmentemployeeallocationhost";
 import type { DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
-import { normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
+import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "../departmentConfiguration";
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
@@ -40,6 +40,8 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   resolveTarget(tabId: string | null): PromptRunTarget | null;
   taskForTarget(tabId: string | null): LoopTaskRecord | null;
   createRoot(input: PromptRunInput, target: PromptRunTarget, configuration: DepartmentConfigurationState): LoopTaskRecord;
+  /** Show only a successfully registered and bound director; panel loading must not block execution. */
+  openGroupChat?(taskId: string): Promise<void>;
   runDirectorDecision(request: { input: PromptRunInput; target: PromptRunTarget; task: LoopTaskRecord; round: number }): Promise<ClassicLoopDecisionResult>;
   /** Keep the existing orphan detector informed while preparation, clarification,
    * coordination waits and model consumption still belong to this director. */
@@ -137,6 +139,10 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     request.assertCurrent?.();
     const configuration = normalizeDepartmentConfigurationSnapshot(request.departmentConfiguration);
     if (!configuration || configuration.routes.director.cli !== request.cli) throw new Error("产研部固化配置无效。");
+    for (const role of ["leader", "employee"] as const) {
+      const issue = departmentRoleCliIssue(role, configuration.routes[role].cli);
+      if (issue) throw new Error(issue);
+    }
     const workspace = deps.workspaceKey(), target = deps.resolveTarget(request.targetTabId);
     if (!target || target.cli !== request.cli || deps.taskForTarget(target.tabId)) throw new Error("目标会话不可新建部门，请使用独立会话。");
     const identity = JSON.stringify(target);
@@ -156,6 +162,15 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const bound = deps.resolveTarget(target.tabId);
     if (!bound || bound.cli !== task.cli || bound.sessionId !== task.sessionId) throw new Error("总监会话绑定失败。");
     attach(task, bound, input); launchDirector(task.id);
+    if (deps.openGroupChat) {
+      try {
+        void deps.openGroupChat(task.id).catch((error) => {
+          try { deps.log?.("department-group-chat-open-failed", error); } catch { /* display cannot stop execution */ }
+        });
+      } catch (error) {
+        try { deps.log?.("department-group-chat-open-failed", error); } catch { /* display cannot stop execution */ }
+      }
+    }
   }
   function attach(task: LoopTaskRecord, target: PromptRunTarget, input?: PromptRunInput): Controller {
     const existing = controllers.get(task.id); if (existing) return existing;

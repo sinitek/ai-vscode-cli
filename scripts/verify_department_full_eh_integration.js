@@ -964,14 +964,10 @@ async function drivePublicEntry(root, port, prompt, report, input) {
       const cliDeadline = Date.now() + 15000;
       while (Date.now() < cliDeadline && await cliSelect.isDisabled()) await sleep(100);
       await cliSelect.selectOption(cli);
-      const config = frame.locator(`#department-${role}-config`);
-      await config.waitFor({ state: "visible", timeout: 10000 });
-      await config.waitFor({ state: "attached" });
-      const configDeadline = Date.now() + 15000;
-      while (Date.now() < configDeadline && await config.isDisabled()) await sleep(100);
-      assert.equal(await config.isDisabled(), false, `${role} role candidates are loaded`);
-      assert.ok((await config.locator("option").evaluateAll((nodes) => nodes.map((node) => node.value))).includes(profile), `${role} role offers the isolated ${cli} profile`);
-      await config.selectOption(profile);
+      // The current public form has CLI/model/thinking controls. Its profile
+      // follows the exact active CLI profile selected above; no hidden config
+      // select is created or changed by this driver. Final preferences and
+      // original execution bindings verify the resolved profile below.
       report.publicUi[`${role}Selection`] = { cli, profile, model: modelValue };
       const model = frame.locator(`#department-${role}-model`);
       const modelDeadline = Date.now() + 15000;
@@ -982,7 +978,7 @@ async function drivePublicEntry(root, port, prompt, report, input) {
       }
       assert.equal(await model.isDisabled(), false, `${role} default model is available`);
       await model.selectOption(modelValue);
-      const savedMessage = frame.locator(`#department-${role}-message`);
+      const savedMessage = frame.locator("#departmentRoleMessage");
       const readyDeadline = Date.now() + 15000;
       while (Date.now() < readyDeadline && (await savedMessage.innerText().catch(() => "")).includes("正在保存")) await sleep(100);
       assert.equal((await savedMessage.innerText().catch(() => "")).includes("正在保存"), false, `${role} role preference save completed`);

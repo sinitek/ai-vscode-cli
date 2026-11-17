@@ -40,7 +40,7 @@ import { getConversationTabSessionIdForCli, type ConversationTabRecord } from ".
 import { isCliName } from "../panelStateBuilder";
 import { resolveDshActivePatchPath, resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
 import { resolveDepartmentOpenCodeDirector, readDepartmentRoleCandidates } from "./departmentConfigurationHost";
-import { resolveDepartmentConfigurationWithHost, type DepartmentConfiguredRoleRoute } from "../departmentConfiguration";
+import { getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, resolveDepartmentConfigurationWithHost, type DepartmentConfiguredRoleRoute } from "../departmentConfiguration";
 import { resolveEffectiveDepartmentLimits } from "../departmentSettings";
 import { buildSystemLoopPlusAcceptancePlanSnapshot, findLoopPlusAcceptancePlan, normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
@@ -53,6 +53,7 @@ export type ModelSettingsHostDeps = {
   getActiveWorkspaceKey: () => string;
   getDepartmentConfigurationScope?: () => string;
   getDepartmentConfigurationIssue?: () => string | null;
+  readDepartmentConfigBinding?: import("../departmentConfiguration").DepartmentConfigBindingReader;
   getConfigHeartbeatSnapshot: () => ConfigHeartbeatSnapshot | null;
   getOpenCodeThinkingState: () => OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">; setOpenCodeThinkingState: (state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">) => void;
   getOpenCodeSmallThinkingState: () => OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">; setOpenCodeSmallThinkingState: (state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">) => void;
@@ -214,6 +215,7 @@ function persistOpenCodeVariant(
   if (nextStore === modelStore) {
     return;
   }
+  if (normalizedRole === "main") invalidateDepartmentSelectionContext();
   modelStore = nextStore;
   writeModelStore(modelStore);
 }
@@ -539,6 +541,7 @@ function getStoredCliModelThinkingMode(cli: CliName, model: string | null): Thin
 }
 
 function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMode: ThinkingMode): void {
+  invalidateDepartmentSelectionContext();
   const normalizedThinkingMode = normalizeThinkingModeForCli(cli, thinkingMode);
   const nextStore = ensureCliModelStore(modelStore);
   const nextThinkingByCliAndModel = {
@@ -577,6 +580,7 @@ function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode):
   if (workspaceSettings.interactiveModeByCli[cli] === normalizedMode) {
     return false;
   }
+  invalidateDepartmentSelectionContext();
   workspaceSettings.interactiveModeByCli[cli] = normalizedMode;
   saveWorkspaceSettings(workspaceSettings);
   return true;
@@ -1147,6 +1151,7 @@ function getModelOptionsForCli(cli: CliName, configId: string | null = getActive
 }
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
+  invalidateDepartmentSelectionContext();
   modelStore = cliModelSelectionStrategies[cli].selectModel(modelStore, model, configId);
   writeModelStore(modelStore);
 }
@@ -1210,6 +1215,7 @@ async function updateOpenCodeRoleModelForConfig(
   }
   const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, normalizedRole, validation.modelRef);
   if (nextStore !== modelStore) {
+    if (normalizedRole === "main") invalidateDepartmentSelectionContext();
     modelStore = nextStore;
     writeModelStore(modelStore);
   }
@@ -1696,7 +1702,10 @@ return {
           tabId, tab?.cli, tab?.sessionId, deps.getModelStore(), deps.getConfigHeartbeatSnapshot()]);
       },
       getReadinessIssue: deps.getDepartmentConfigurationIssue,
+      getSelectionContextRevision: getDepartmentSelectionContextRevision,
+      readConfigBinding: deps.readDepartmentConfigBinding ?? ((targetCli) => configService.readSharedConfigSelection(targetCli)),
       getDirector,
+      getActiveConfigIdForCli,
       getPreferences: (director) => deps.getWorkspaceSettings().departmentRoleRoutesByDirectorConfig?.[director.configId ?? ""],
       getCandidates: getDepartmentRoleCandidates,
       getLimits: () => resolveEffectiveDepartmentLimits(deps.getWorkspaceSettings(), readToolSettings()),

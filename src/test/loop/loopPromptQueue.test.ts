@@ -339,7 +339,7 @@ test("auto-continues only a Loop queue that transitions from running to complete
   assert.deepEqual(getNewlyCompletedLoopTabIds(previous, next), ["completed-task"]);
   assert.match(
     extractFunctionSource(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE, "applyState"),
-    /newlyCompletedLoopTabIds\.forEach[\s\S]*flushPendingPromptQueue\(tabId\)/,
+    /applyPanelState\(panelState\)[\s\S]*syncDepartmentConfigurationState\(panelState\)[\s\S]*newlyCompletedLoopTabIds\.forEach[\s\S]*flushPendingPromptQueue\(tabId\)/,
   );
 });
 

@@ -121,6 +121,14 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
               assert.ok((await tooltip.innerText()).includes(part), `role tooltip retains ${part}`);
             }
           }
+          const actionMessage = { id: `action-${tab.id}`, role: "assistant", codexFinalAnswer: true, merge: false,
+            content: index === 1 ? "组长会话展示检查：保留汇报气泡，隐藏群聊链接。" : "会话展示检查：保留原有群聊入口。",
+            actions: [{ type: "openLoopGroupChat", taskId: tab.loopTaskId || "ordinary-task", label: "打开 Loop 群聊" }] };
+          await page.evaluate(({ tabId, message }) => window.postMessage({ type: "setMessages", tabId, messages: [message] }, "*"),
+            { tabId: tab.id, message: actionMessage });
+          await page.getByText(actionMessage.content, { exact: true }).waitFor();
+          assert.equal(await page.locator("#messages .message-action-link").count(), index === 1 ? 0 : 1,
+            "only trusted department leader bubbles hide the group-chat action");
           if (index === 1 || index === 7) await page.screenshot({ path: path.join(output, `${width}-${theme}-${index === 1 ? "department" : "loop-plus"}.png`), fullPage: true });
           labels.push(expected[index]);
         }
@@ -130,7 +138,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
       assert.deepEqual(errors, []);
       assert.deepEqual(await page.evaluate(() => window.__postedMessages.filter((message) => message.type === "webviewError")), []);
       const result = { status: "passed", mode: "role-icons-only", results, serverPort: server.address().port,
-        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "mode and exact hierarchy tooltip retained", "1440 dark and280 light no tab/root overflow"],
+        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "mode and exact hierarchy tooltip retained", "department leader hides bubble group-chat links; other roles and ordinary Loop retain links", "1440 dark and280 light no tab/root overflow"],
         boundary: "Generated full Webview and production role projection with fixture state; not real EH or CLI evidence" };
       fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
       console.log(JSON.stringify(result)); return;

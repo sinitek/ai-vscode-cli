@@ -296,7 +296,6 @@ export const WEBVIEW_STRINGS = {
     toolSettingsLoopEnabled: "开启 Loop",
     toolSettingsLoopPlusEnabled: "开启 Loop+",
     toolSettingsDepartmentEnabled: "开启产研部",
-    departmentPerformanceWarning: "警告：本机必须具备并行运行 20 多个 CLI 执行任务的性能。",
     taskModesSaveError: "任务模式设置保存失败，请重试。",
     toolSettingsCliEnabledToggleTitle: "启用该 CLI",
     toolSettingsDebugLabel: "调试",
@@ -334,7 +333,7 @@ export const WEBVIEW_STRINGS = {
     departmentMaxLeadersLabel: "产研部组长最多人数",
     departmentMaxLeadersNote: "同时运行的组长上限，任务结束后释放名额。",
     departmentMaxEmployeesLabel: "产研部员工最多人数",
-    departmentMaxEmployeesNote: "全产研部共享的员工并发上限，所有组长合计计算。",
+    departmentMaxEmployeesNote: "全产研部共享的员工并发上限，所有组长合计计算。请根据本机性能设置；默认 20 人时，需具备并行运行 20 多个 CLI 任务的性能。",
     workspaceDepartmentCapacityNote: "工作区配置优先；留空继承全局。新部门启动时生效，不调整已有运行任务。",
     departmentMaxLeadersSaveError: "产研部组长人数设置保存失败，请重试。",
     departmentMaxEmployeesSaveError: "产研部员工人数设置保存失败，请重试。",
@@ -468,6 +467,7 @@ export const WEBVIEW_STRINGS = {
 | **Vibe** | 直接执行目标 CLI 任务。 |
 | **Loop** | 主模型作为项目经理分发任务，调度多个子模型共同完成任务。 |
 | **Loop+** | 主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。 |
+| **产研部** | ☀️ 总监用 Loop 拆分目标、协调各组并汇总结果；🌛 组长用 Loop+ 分派员工、验收成果并安排整改；⭐️ 员工执行具体任务。先在“工具设置 → 常规配置”开启产研部，再选择“产研部”模式，配置各角色的 CLI、模型和力度后发送目标。各角色支持全部 CLI，可混合搭配；在总监群聊查看各组进度。 |
 
 [《携宁 CLI 助手 - 教程》：点击进入详细教程](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)`,
     noConfigOption: "暂无配置",

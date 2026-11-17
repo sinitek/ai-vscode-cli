@@ -1,3 +1,4 @@
+import { createDepartmentInteractiveRuntime, usesDepartmentInteractiveRuntime } from "./extensionHost/departmentinteractiveruntime";
 import { readDepartmentOrganizationControlState } from "./extensionHost/departmentGroupChatProjection";
 import { createDepartmentProductionCleanup } from "./extensionHost/departmentproductioncleanup";
 import { fingerprintDepartmentExecutionSelection } from "./runtime/departmentexecutionidentity";
@@ -172,14 +173,14 @@ import {
   type ToolSettingsState,
   writeToolSettings,
 } from "./toolSettings";
-import { DepartmentConfigurationSaveBarrier, validateDepartmentRoleCandidate } from "./departmentConfiguration";
-import { normalizeDepartmentMetadata, type DepartmentMetadata } from "./department";
+import { DepartmentConfigurationSaveBarrier, getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, validateDepartmentRoleCandidate } from "./departmentConfiguration";
+import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata } from "./department";
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
 import { DepartmentColdGenerationRecovery } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
 import { DepartmentRuntimeStore } from "./extensionHost/departmentruntimestore";
 import { DepartmentExecutionRecovery } from "./extensionHost/departmentexecutionrecovery";
-import { createDepartmentProductionTaskStore } from "./extensionHost/departmentProductionTaskStore";
+import { createDepartmentProductionTaskStoreForHost } from "./extensionHost/departmentProductionTaskStore";
 import { prepareDepartmentTaskRecord } from "./extensionHost/departmentOwnedTaskRepository";
 import { readKnownOrdinaryLoopTaskRecord } from "./loopTaskStore";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
@@ -1154,6 +1155,9 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     syncCurrentSessionWithActiveTab,
     getActiveConfigIdForCli,
     getDepartmentConfigurationScope,
+    getDepartmentSelectionContextRevision,
+    invalidateDepartmentSelectionContext,
+    readDepartmentConfigBinding: (cli) => configService.readSharedConfigSelection(cli),
     getDepartmentConfigurationIssue,
     beginDepartmentConfigurationSave: (scope, role) => departmentSaveBarrier.begin(scope, role),
     getDepartmentRoleCandidates: (cli, configId) => modelSettingsHost.getDepartmentRoleCandidates(cli, configId),
@@ -2767,6 +2771,7 @@ async function setCurrentCli(
 }
 
 async function setCurrentCliFromPanelSelection(cli: CliName): Promise<void> {
+  if (cli !== currentCli) invalidateDepartmentSelectionContext();
   await applyCurrentCli(cli, {}, true);
 }
 
@@ -2786,6 +2791,7 @@ async function applyCurrentCli(
     return;
   }
   const previousCli = currentCli;
+  if (previousCli !== cli) invalidateDepartmentSelectionContext();
   currentCli = cli;
   updateStatusBar();
 
@@ -4015,6 +4021,14 @@ function getDepartmentCodexPreparation() {
     workspaceKey: () => activeWorkspaceKey, readTask: readLoopTaskRecord, updateTask: updateLoopTaskRecord,
   });
 }
+let departmentInteractiveRuntime: ReturnType<typeof createDepartmentInteractiveRuntime> | null = null;
+function getDepartmentInteractiveRuntime() {
+  return departmentInteractiveRuntime ??= createDepartmentInteractiveRuntime({
+    producer: getDepartmentExecutionProducer(), store: getDepartmentExecutionStore(),
+    ownerDirectory: path.join(DATA_DIR, "department-execution-owners"),
+    readTask: readLoopTaskRecord, updateTask: updateLoopTaskRecord,
+  });
+}
 function departmentOwnerPreparation(cli: CliName) {
   return cli === "codex" ? getDepartmentCodexPreparation() : getDepartmentProcessPreparation();
 }
@@ -4023,7 +4037,7 @@ function departmentOwnerResources(taskId: string, cli: CliName): boolean {
   return (cli === "opencode" || cli === "codex") && normalizeDepartmentMetadata(task?.department)?.role === "leader";
 }
 let departmentRuntimeComposition: ReturnType<typeof createDepartmentRuntimeComposition> | null = null;
-let departmentOwnershipIndex: ReturnType<typeof createDepartmentProductionTaskStore> | null = null;
+let departmentOwnershipIndex: ReturnType<typeof createDepartmentProductionTaskStoreForHost> | null = null;
 const departmentValidatedRoutes = new Set<string>();
 
 function departmentTaskForTab(tabId: string | null): LoopTaskRecord | null {
@@ -4035,10 +4049,15 @@ function departmentTaskForTab(tabId: string | null): LoopTaskRecord | null {
     && task.sessionId === getConversationTabSessionIdForCli(tab, tab.cli) ? task : null;
 }
 function validateDepartmentRoutes(routes: DepartmentMetadata["routes"]): boolean {
+  if (departmentRoleCliIssue("leader", routes.leader.cli) || departmentRoleCliIssue("employee", routes.employee.cli)) return false;
   return departmentValidatedRoutes.has(JSON.stringify(routes)) && Object.values(routes).every((route) => route.cli
     && readToolSettings().cliEnabledByName?.[route.cli] !== false && getActiveConfigIdForCli(route.cli) === (route.configId ?? null));
 }
 async function prepareDepartmentRoutes(routes: DepartmentMetadata["routes"]): Promise<void> {
+  for (const role of ["leader", "employee"] as const) {
+    const issue = departmentRoleCliIssue(role, routes[role].cli);
+    if (issue) throw new Error(issue);
+  }
   const workspace = activeWorkspaceKey;
   await Promise.all(Object.values(routes).map(async (route) => {
     if (!route.cli) throw new Error("部门角色 CLI 缺失。");
@@ -4220,6 +4239,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       if (coldRecovery.owns(taskId)) { await coldRecovery.released(taskId, generation); return; }
       getDepartmentLeaderProductionHost().release(taskId);
       departmentCodexPreparation?.releaseTask(taskId);
+      departmentInteractiveRuntime?.releaseTask(taskId);
       await getDepartmentExecutionProducer().retire(taskId, generation);
     },
     stopLeader: async (taskId) => {
@@ -4232,6 +4252,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     stopDirector: (taskId) => { abortOrchestratorClarification(loopClarificationScope(taskId)); stopLoopRunsForTask(taskId); },
     waitForDirectorClarification: waitForLoopTaskClarification,
     runDirectorDecision: (request) => requireLoopOrchestrationHost().runClassicLoopMainDecision(request),
+    openGroupChat: async (taskId) => openLoopGroupChatPanel(taskId),
     acquireDirectorOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
     acquireLeaderOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
     applyClassicDecision: applyLoopMainDecision,
@@ -4248,9 +4269,9 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
   });
   return departmentRuntimeComposition;
 }
-function getDepartmentOwnershipIndex(): ReturnType<typeof createDepartmentProductionTaskStore> {
+function getDepartmentOwnershipIndex(): ReturnType<typeof createDepartmentProductionTaskStoreForHost> {
   if (!departmentOwnershipIndex) {
-    departmentOwnershipIndex = createDepartmentProductionTaskStore(path.join(DATA_DIR, "department-tasks-v1"));
+    departmentOwnershipIndex = createDepartmentProductionTaskStoreForHost(DATA_DIR);
   }
   return departmentOwnershipIndex;
 }
@@ -4429,12 +4450,18 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         },
       ),
       ownsDepartmentAttemptResources: (request) => {
+        if (usesDepartmentInteractiveRuntime(request.targetCli) && readLoopTaskRecord(request.taskId)?.department?.role === "leader") {
+          getDepartmentInteractiveRuntime().authorizeAttempt(request.taskId, request.subtaskId, request.attemptId);
+          return false; // The existing Loop+ adapter owns its root and tab.
+        }
         if (!departmentOwnerResources(request.taskId, request.targetCli)) return false;
         departmentOwnerPreparation(request.targetCli).authorizeAttempt(request.taskId, request.subtaskId, request.attemptId);
         return true;
       },
-      observeAttemptTermination: (request) => departmentOwnerResources(request.taskId, request.targetCli)
-        ? departmentOwnerPreparation(request.targetCli).observe(request.taskId, request.attemptId, request.subtaskId) : null,
+      observeAttemptTermination: (request) => usesDepartmentInteractiveRuntime(request.targetCli) && readLoopTaskRecord(request.taskId)?.department?.role === "leader"
+        ? getDepartmentInteractiveRuntime().observe(request.taskId, request.attemptId, request.subtaskId)
+        : departmentOwnerResources(request.taskId, request.targetCli)
+          ? departmentOwnerPreparation(request.targetCli).observe(request.taskId, request.attemptId, request.subtaskId) : null,
       createExecutionRoot: () => {
         const workspaceCwd = resolveWorkspaceCwd();
         return workspaceCwd ? createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd) : null;
@@ -5371,6 +5398,9 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
 }): Promise<void> {
   const taskId = input.loopTaskId;
   if (!taskId || input.taskRole !== "main") throw new Error("部门组长调用身份缺失。");
+  if (usesDepartmentInteractiveRuntime(readLoopTaskRecord(taskId)?.cli)) {
+    return getDepartmentExecutionProducer().track(taskId, () => runDepartmentInteractivePrompt(input, options));
+  }
   return getDepartmentExecutionProducer().track(taskId, async () => {
     const abort = new AbortController();
     const cancel = () => abort.abort();
@@ -5475,21 +5505,42 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
   });
 }
 
+async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
+  targetTabId?: string | null; invocationId?: string; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void;
+}): Promise<void> {
+  try {
+    const fixed = await prepareDepartmentInvocation(input, options.targetTabId ?? null);
+    const target = resolvePromptRunTarget(options.targetTabId ?? null);
+    const expected = target && fixed.configSelections?.[target.cli];
+    if (!fixed.loopTaskId || !target?.sessionId || !expected) throw new Error("部门任务执行配置或会话缺失。");
+    await getDepartmentInteractiveRuntime().run({
+      taskId: fixed.loopTaskId, role: fixed.taskRole === "subtask" ? "employee" : "leader",
+      invocationId: options.invocationId ?? fixed.loopAttemptId ?? "", sessionId: target.sessionId,
+      subtaskId: fixed.loopSubtaskId, attemptId: fixed.loopAttemptId, expected,
+      cancel: () => cancelLoopPlusInvocation(target.tabId),
+      execute: (capture) => runPromptWithDepartmentAdmission(fixed, { ...options, departmentInteractiveRunner: capture }),
+    });
+  } finally {
+    if (input.loopTaskId && input.loopSubtaskId) departmentInteractiveRuntime?.rejectUnstarted(input.loopTaskId, input.loopSubtaskId);
+  }
+}
+
 async function runPrompt(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void } = {}
+  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void; departmentInteractiveRunner?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"] } = {}
 ): Promise<void> {
   const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
   if (task?.department?.role === "leader") {
     if (input.taskRole !== "subtask") throw new Error("部门组长必须经真实 Loop+ 原生 Owner 调用，禁止普通执行回退。");
-    return getDepartmentExecutionProducer().track(task.id, () => runPromptWithDepartmentAdmission(input, options));
+    return getDepartmentExecutionProducer().track(task.id, () => usesDepartmentInteractiveRuntime(task.department?.routes.employee.cli)
+      ? runDepartmentInteractivePrompt(input, options) : runPromptWithDepartmentAdmission(input, options));
   }
   return runPromptWithDepartmentAdmission(input, options);
 }
 
 async function runPromptWithDepartmentAdmission(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void } = {}
+  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void; departmentInteractiveRunner?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"] } = {}
 ): Promise<void> {
   const tabId = options.targetTabId ?? getActiveConversationTabId();
   try {
@@ -5520,7 +5571,7 @@ async function runPromptWithDepartmentAdmission(
 
 async function runPromptNow(
   input: PromptRunInput,
-  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void } = {}
+  options: { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void; departmentInteractiveRunner?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"] } = {}
 ): Promise<void> {
   if (isExtensionDeactivating || options.isAborted?.()) {
     return;
@@ -5634,6 +5685,7 @@ async function runPromptNow(
   const shouldUseInteractive = isInteractiveSupported(target.cli);
   try {
     const executionOptions = {
+      departmentInteractiveRunner: options.departmentInteractiveRunner,
       isAborted: isPreparationAborted,
       cwd: useClassicLoopProjectInstructions ? resolveWorkspaceCwd() : input.executionCwd ?? subtaskExecutionRoot?.cwd,
       isolateProjectInstructions: useClassicLoopProjectInstructions

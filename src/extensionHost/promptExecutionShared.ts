@@ -7,6 +7,8 @@ import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput } from "../promptRunTypes";
 
 export type PromptRunExecutionOptions = {
+  /** Original Loop+ runner capability, captured before its first native start. */
+  departmentInteractiveRunner?: (runner: object, release: () => Promise<void>) => (nativeSessionId: string) => Promise<void>;
   /** Trusted per-invocation process transport; never serialized into task/model input. */
   departmentProcessStream?: typeof import("../cli/commandRunner").runCliStream;
   /** Trusted leader mapping: preserve its durable local tab/session key. */

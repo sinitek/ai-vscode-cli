@@ -2,6 +2,17 @@ import { CLI_LIST, type CliName, type ThinkingMode } from "./cli/types";
 import { normalizeRouteThinkingMode, parseCliNameField } from "./subtaskCliRoute";
 
 export type DepartmentRole = "director" | "leader" | "employee";
+/** Department roles reuse the same CLI capabilities as Loop and Loop+. */
+export const DEPARTMENT_EXECUTION_CLIS = CLI_LIST;
+export const DEPARTMENT_EXECUTION_CLI_REQUIREMENT = "请选择已启用且配置有效的 CLI。";
+export function isDepartmentExecutionCli(cli: unknown): cli is typeof DEPARTMENT_EXECUTION_CLIS[number] {
+  return (DEPARTMENT_EXECUTION_CLIS as readonly unknown[]).includes(cli);
+}
+export function departmentRoleCliIssue(role: DepartmentRole, cli: unknown): string | null {
+  if (role === "director" || isDepartmentExecutionCli(cli)) return null;
+  const label = role === "leader" ? "组长" : "员工";
+  return `${label}所选 CLI（${typeof cli === "string" ? cli : "未选择"}）暂不支持。${DEPARTMENT_EXECUTION_CLI_REQUIREMENT}`;
+}
 export type DepartmentRoleRoute = {
   cli?: CliName;
   configId?: string;

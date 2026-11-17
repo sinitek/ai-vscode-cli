@@ -63,6 +63,8 @@ export async function routeSettingMessage(
       getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
       getDepartmentRoleCandidates: deps.getDepartmentRoleCandidates,
       getDepartmentConfigurationScope: deps.getDepartmentConfigurationScope,
+      getDepartmentSelectionContextRevision: deps.getDepartmentSelectionContextRevision,
+      readDepartmentConfigBinding: deps.readDepartmentConfigBinding,
       beginDepartmentConfigurationSave: deps.beginDepartmentConfigurationSave,
       getWorkspaceSettings: deps.getWorkspaceSettings,
       postWebviewMessage: deps.postWebviewMessage,

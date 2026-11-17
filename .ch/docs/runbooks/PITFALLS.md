@@ -1,5 +1,11 @@
 # 避坑指南索引
 
+## 部门组长在原生调用前报 leader-invocation-invalid
+
+提示词包含 Loop+ 协议、上下文和用户需求，序列化后的 UTF-8 大小可能轻易超过 48 KiB；英文字符数不能代替字节数。旧部门 Codex/OpenCode invocation 有额外 48 KiB 限制，私有 IPC 还有 64 KiB 限制，触发后会表现为 `DEPARTMENT_NATIVE_UNKNOWN` 并停止调度，不能据此判断模型服务故障。
+
+现行合同不设置部门提示词长度上限、不截断，宿主与 worker 同步验证精确 invocation 数据帧；员工准备预算也排除提示词。排查时同时核对两端构建，不能只去掉入参校验后让下一层传输继续拒绝。回归见 `departmentleaderinvocation.test.ts`、`departmentleadercodexowner.test.ts` 和 `departmentleaderproductionhost.test.ts`；真实 CLI/公开入口证据边界应单独记录。不要通过删锁或改用户任务状态绕过失败。
+
 ## 暂停通知先于真实任务和配置租约收尾
 
 - “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而配置租约释放、CLI 中断仍在进行。真实日志已出现同一 Vibe Tab 先释放超时、随后获取超时。
@@ -221,6 +227,13 @@
 - 根因：`--no-rewrite-relative-links` 只阻止 vsce 猜测私有仓库 URL；普通随包文件未自动登记为 Gallery 资产，市场页面也不会按安装目录解析相对图片路径。
 - 长期规避：在导出流程中将介绍图登记为标准 `Microsoft.VisualStudio.Services.Screenshots.1` 可寻址资产，只修改 VSIX 内 README 为该版本的 Gallery `assetbyname` HTTPS 地址；不改仓库 README，不依赖额外图床。新增本地图必须更新 `README_IMAGE_ASSETS`，遗漏登记或缺图阻止导出。
 - 验证方式：运行导出和发布脚本单测，再真实导出检查 README、`extension.vsixmanifest` 与 JPEG 字节；维护者升级版本并发布后，匿名请求新版本图片 URL，确认 HTTP 200、图片类型和实际市场展示。本地 ZIP 验证不等于已部署生效。
+
+## 角色表单模式切换须先失效再完整同步
+
+- 现象与依据：本次表单 lp6 发现本地离开/返回部门、宿主 panel 尚未回传时旧候选/保存可被接收；lp7 修复令牌后又漏掉完整模型同步，Codex 转 Loop 仍显示普通单模型、Loop 组隐藏禁用。lp8 先失效再调用完整同步后接受，见[归档计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-model-form.md)。
+- 规避：本地模式变更先递增代次并撤销在途候选/保存，再走已有 `syncModelSelectorByInteractiveMode`，不能以局部部门 render 替代或等待下一条 panel；回归必须实际触发 change 且不回传 panel，检查模式专属控件显隐/disabled、节点身份及迟到回执。跨 CLI 快照加载沿[既有规则](#子模型配置加载不能依赖先访问目标-cli)，不重复实现。
+- 后续初始化竞态：如果 change 先渲染发候选、后发模式设置，真实宿主会在候选异步读取期间递增选择修订，首次模型下拉因候选过期一直禁用；切换角色 CLI 才恢复。必须先发送模式设置，再失效令牌/完整同步；批量 panel 应等模型、力度和模式归一化设置全部发出后再请求部门候选。回归将同批 Webview 消息按发送顺序交给真实宿主处理器并发执行，不能逐条 await 或仅手工回填成功候选，否则会掩盖竞态；见[后续修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-form-initialization.md)。
+- 夹具握手：lp9 的群聊权限回归只等待 setImmediate，无法保证 setTimeout(0) 的加载握手先完成；应 await 既有 h.domReady 再注入操作，不改权限断言或以最后一条异步消息猜就绪。首次 293 项失败及修复后整文件 37 项通过按原时点保留；生成 Webview/Node 夹具不证明真实 EH/CLI。
 
 ## 子模型配置加载不能依赖先访问目标 CLI
 
@@ -3009,3 +3022,19 @@ rm -r "$result_directory"
 - 用户中止携带点击时的 `tabId`，主标签先停止同一父任务全部活动执行；`preemptActivePromptRun` 优先局部取消当前运行器。Loop+ 先关闭内存调度门并取消请求，再保存停止快照。
 - 标签切换和关闭回退先发送目标消息，再等待配置恢复；长历史和连续指令组都须分批，不能为维持折叠组把整个指令长串塞入一批。
 - 回归入口：`src/test/extensionHost/loopPlusRuntimeWiring.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。页面验收复用 `chromium-playwright-smoke` skill：`.agents/skills/chromium-playwright-smoke/SKILL.md`。
+
+## 部门旧宿主持有来源时不要清理 owner marker
+
+- 现象：新 Extension Host 启动产研部任务时提示“部门受控任务来源无法取得独占所有权或尚需恢复，拒绝启动”。多个窗口共享 `department-tasks-v1`；另一个有效宿主持有 owner marker 时，该根不能同时再被新宿主 claim。
+- 处理：走 `createDepartmentProductionTaskStoreForHost`。确认仅为独占 claim 冲突后，新宿主改用另一登记的空来源，或创建独立空目录并在共享 writer gate 下追加目录。保留旧来源、任务、marker、身份和墓碑，不按 PID/时间删锁、不尝试接管或重放旧任务。
+- 边界：未知 owner、损坏/锁定 catalog、非空或重叠来源、未完成事务仍拒绝。仅当未发布 catalog 结构有效且全部旧登记来源根已消失时，才允许新空来源恢复完整身份目录并保留墓碑。
+- 验证：`node --test dist/test/extensionHost/departmentHostTaskStore.test.js dist/test/extensionHost/departmentProductionTaskStore.test.js dist/test/loop/loopTaskIdentityCatalog.test.js dist/test/extensionHost/departmentOwnedTaskSource.test.js dist/test/extensionHost/departmentOwnedSourceController.test.js dist/test/extensionHost/departmentOwnedTaskRepository.test.js`；隔离 HOME 子进程覆盖旧 owner 存活及已退出情况。
+
+## 部门角色必须复用 Loop / Loop+ 的全部 CLI 能力
+
+- 现象：组长启动报 `department-producer-role-or-task-invalid`，尤其是组长或员工选择 Grok/Claude 等 CLI 时。
+- 根因：产研新增层另设 Codex/OpenCode 白名单，未接入现有交互 runner；只放开配置仍会在主任务 native session 校验和代次 authority 绑定时失败。
+- 修复：共用 `CLI_LIST`，其余五种通过 `departmentinteractiveruntime.ts` 接入原 ledger、authority 和 Owner；不重造 CLI 协议。ACP 在握手后、prompt 前绑定；Claude 使用原生 `--session-id` UUID，在 SDK 启动前绑定。本地 `local_` 键不得冒充 native ID。
+- 清理：捕获真实 runner，并等待原 child `close` 或 Claude SDK iterator 排空；DSH/Kimi 重复清理观察不能取消仍在等待的信号升级。使用 adapter 资源管理的部门员工也要等原 Owner 观察成功，再清理目录/Tab 和归还名额。
+- 验证：`departmentinteractiveruntime.test.ts` 覆盖全部通用组长、多轮、混合员工、停止、失败及真实免费 Grok ACP 子进程；配置/Webview 覆盖七种可选，Claude 回归检查 UUID 授权先于 SDK 启动。验证不修改用户旧任务或 Owner/容量文件；当前安装版须另行加载源码构建结果。
+- 记录：本方案取代早先只允许两种 CLI 的临时处理，见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-all-cli-execution.md)。

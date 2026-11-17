@@ -1868,3 +1868,21 @@ for (const loop of [false, true]) test(`ordinary ${loop ? "Loop employee" : "int
   assert.ok(messages.some((m) => m.content.includes("次自动重试")));
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
 });
+
+for (const role of ["main", "subtask"] as const) test(`department interactive ${role} keeps native and local session responsibilities separate`, async () => {
+  const harness = createInteractiveRuntimeHarness();
+  const input = createPromptInput({ taskRole: role, loopTaskId: "leader-task", ...(role === "subtask" ? { loopSubtaskId: "employee" } : {}) });
+  await harness.host.runPromptInteractive(input, createTarget({ cli: "claude", sessionId: "local_department" }), {
+    departmentInteractiveRunner: () => async () => {},
+  });
+  if (role === "main") {
+    assert.deepEqual(harness.adoptedSessions, []);
+    assert.equal(harness.mappingUpserts.at(-1)?.sessionId, "local_department");
+    assert.equal(harness.taskRecords.at(-1)?.sessionId, "local_department");
+  } else {
+    assert.equal(harness.adoptedSessions.at(-1)?.sessionId, "claude-session-default");
+    assert.equal(harness.taskRecords.at(-1)?.sessionId, "claude-session-default");
+  }
+  assert.equal(harness.mappingUpserts.at(-1)?.mappedId, "claude-session-default");
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+});

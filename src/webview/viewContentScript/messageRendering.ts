@@ -848,9 +848,10 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function normalizeMessageActions(message) {
         const actions = Array.isArray(message && message.actions) ? message.actions : [];
+        const department = getDepartmentConversationTabPresentation(getConversationTabSummary(getActiveConversationTabId()));
         return actions
           .map((action) => normalizeMessageAction(action))
-          .filter(Boolean);
+          .filter((action) => action && !(department && department.role === "leader" && action.type === "openLoopGroupChat"));
       }
 
       function handleMessageAction(action) {
@@ -896,6 +897,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           metadata: JSON.stringify({ ...message, content: undefined }),
           context: JSON.stringify([
             getMessageConversationKey(),
+            getDepartmentConversationTabPresentation(getConversationTabSummary(getActiveConversationTabId()))?.role,
             state.onlyShowFinalResults,
             index,
             streaming === true || isAssistantMarkdownRenderPending(message),

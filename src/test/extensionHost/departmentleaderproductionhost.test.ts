@@ -112,7 +112,7 @@ const record=v=>fs.appendFileSync(events,v+'\\n');
 const nativeDirectory=()=>fs.existsSync(root+'/wrong-directory')?root:fs.existsSync(root+'/native-directory')?fs.readFileSync(root+'/native-directory','utf8'):process.cwd();
 if(args.includes('serve')){const server=http.createServer((req,res)=>{if(req.method==='POST'&&req.url.startsWith('/experimental/control-plane/move-session')){let b='';req.on('data',v=>b+=v);req.on('end',()=>{const v=JSON.parse(b);if(v.sessionID!==${JSON.stringify(sessionId)}||v.moveChanges!==false||v.destination.directory!==process.cwd()){res.statusCode=409;res.end('{}');return;}record('session-moved');fs.writeFileSync(root+'/native-directory',process.cwd());res.writeHead(204).end();});return;}if(req.method==='POST'&&req.url.startsWith('/session')){record('session-created');fs.writeFileSync(root+'/native-directory',process.cwd());const timer=setInterval(()=>{if(fs.existsSync(root+'/hold-create'))return;clearInterval(timer);res.setHeader('content-type','application/json');res.end(JSON.stringify({id:${JSON.stringify(sessionId)},directory:nativeDirectory()}));},5);return;}if(req.method==='GET'&&req.url.includes(${JSON.stringify(sessionId)})){res.setHeader('content-type','application/json');res.end(JSON.stringify({id:${JSON.stringify(sessionId)},directory:nativeDirectory()}));return;}res.statusCode=404;res.end('{}');});server.listen(0,'127.0.0.1',()=>process.stdout.write('http://127.0.0.1:'+server.address().port+'\\n'));process.on('SIGTERM',()=>server.close(()=>process.exit(0)));}
 else if(args[0]==='export'){if(args[1]!==${JSON.stringify(sessionId)})process.exit(34);process.stdout.write(JSON.stringify({info:{id:${JSON.stringify(sessionId)},directory:nativeDirectory()}}));}
-else{if(fs.readFileSync(root+'/native-directory','utf8')!==process.cwd())process.exit(32);if(fs.existsSync(process.cwd()+'/AGENTS.md')||fs.existsSync(process.cwd()+'/.agents'))process.exit(33);const i=args.indexOf('--session');if(i<0||args[i+1]!==${JSON.stringify(sessionId)}||args.filter(v=>v==='--session').length!==1)process.exit(31);fs.writeFileSync(root+'/worker-pid',String(process.ppid));fs.writeFileSync(root+'/task-pid',String(process.pid));record('task-run');if(fs.existsSync(root+'/no-idle'))setInterval(()=>{},1000);process.stdout.write(JSON.stringify({type:'text',sessionID:${JSON.stringify(sessionId)},part:{type:'text',text:'answer'}})+'\\n');}
+else{if(fs.readFileSync(root+'/native-directory','utf8')!==process.cwd())process.exit(32);if(fs.existsSync(process.cwd()+'/AGENTS.md')||fs.existsSync(process.cwd()+'/.agents'))process.exit(33);const i=args.indexOf('--session');if(i<0||args[i+1]!==${JSON.stringify(sessionId)}||args.filter(v=>v==='--session').length!==1)process.exit(31);fs.appendFileSync(root+'/task-prompts.jsonl',JSON.stringify(args.at(-1))+'\\n');fs.writeFileSync(root+'/worker-pid',String(process.ppid));fs.writeFileSync(root+'/task-pid',String(process.pid));record('task-run');if(fs.existsSync(root+'/no-idle'))setInterval(()=>{},1000);process.stdout.write(JSON.stringify({type:'text',sessionID:${JSON.stringify(sessionId)},part:{type:'text',text:'answer'}})+'\\n');}
 `); fs.chmodSync(cli, 0o755);
   const tabs = new Map([["leader-tab", { id: "leader-tab", cli: "opencode", sessionId: "local_leader" }]]);
   const resources = createDepartmentExecutionResources({ workspace: () => workspace, readTab: (id) => tabs.get(id) ?? null,
@@ -139,6 +139,23 @@ else{if(fs.readFileSync(root+'/native-directory','utf8')!==process.cwd())process
   });
   return { workers, file, workspace, sessionId, events, record, config, expected, source, store, producer, rows, readTask, host, groupCleanup, tabs, resources, launch, run };
 }
+
+scenario("OpenCode production forwards long Loop+ prompts intact through the original private worker", async (t) => {
+  const h = await setup(t);
+  const prompt = '🌛\n"路径\\"\n' + '完整传递组长验收上下文'.repeat(2200);
+  assert.ok(Buffer.byteLength(JSON.stringify(prompt), "utf8") > 64 * 1024);
+  for (const id of ["long-first", "long-resume"]) {
+    const result = await h.run(id, undefined, undefined, true, `${prompt}${id}`);
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.terminal?.processTerminal.status, "confirmed");
+  }
+  assert.deepEqual(fs.readFileSync(h.file("task-prompts.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line)),
+    ["long-first", "long-resume"].map(id => `${prompt}${id}`));
+  assert.equal(h.events().filter(event => event === "session-created").length, 1);
+  const cleanup = h.groupCleanup.observe(h.readTask("leader")!, 1); assert.ok(cleanup); await cleanup.done;
+  assert.equal(h.rows().set.state, "closed");
+  h.host.release("leader");
+});
 
 for (const recoveryEnabled of [false, true]) scenario(`production OpenCode owner consumes its real generation ticket and retires authority after required receipts${recoveryEnabled ? " with original receipt escrow" : ""}`, async (t) => {
   const h = await setup(t, undefined, false, false, false, false, true, recoveryEnabled);

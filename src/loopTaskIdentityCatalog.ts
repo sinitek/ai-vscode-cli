@@ -10,10 +10,10 @@ const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
 const inside = (root: string, file: string) => file === root || file.startsWith(`${root}${path.sep}`);
 
-function read(): Snapshot | null {
+function read(allowUnready = false): Snapshot | null {
   try {
     const value = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as Snapshot;
-    if (value.version !== 1 || !value.ready || !Array.isArray(value.roots)
+    if (value.version !== 1 || typeof value.ready !== "boolean" || (!allowUnready && !value.ready) || !Array.isArray(value.roots)
       || value.roots.some((root) => typeof root !== "string" || !path.isAbsolute(root))
       || !value.owned || typeof value.owned !== "object" || Array.isArray(value.owned)
       || Object.entries(value.owned).some(([id, file]) => !id.trim() || typeof file !== "string" || !path.isAbsolute(file)
@@ -60,11 +60,63 @@ function locked<T>(action: () => T): T {
  * Reopening a published catalog does not scan directories. Damaged/uncommitted catalogs
  * need a separately authorized recovery protocol, never an automatic empty rebuild.
  */
-export function initializeLoopTaskIdentityCatalog(root: string, load: () => ReadonlyMap<string, readonly Identity[]>): void {
+export type LoopTaskIdentityCatalogInitializationOptions = {
+  registerEmptySource?: boolean;
+  recoverWhenAllRegisteredRootsAreMissing?: boolean;
+};
+
+function pathExistsWithoutFollowingLinks(filePath: string): boolean {
+  try { fs.lstatSync(filePath); return true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+}
+
+export function initializeLoopTaskIdentityCatalog(
+  root: string,
+  load: () => ReadonlyMap<string, readonly Identity[]>,
+  options: LoopTaskIdentityCatalogInitializationOptions = {},
+): void {
   locked(() => {
-    const existing = read();
+    let existing: Snapshot | null;
+    try { existing = read(); }
+    catch (error) {
+      if (!options.recoverWhenAllRegisteredRootsAreMissing) throw error;
+      const incomplete = read(true);
+      if (!incomplete || incomplete.ready || incomplete.roots.length === 0
+        || incomplete.roots.some(pathExistsWithoutFollowingLinks)) throw error;
+      if (!path.isAbsolute(root) || incomplete.roots.some((other) => inside(other, root) || inside(root, other))) throw error;
+      const files: Record<string, string[]> = Object.create(null);
+      const owned: Record<string, string> = Object.assign(Object.create(null), incomplete.owned);
+      if (Object.values(incomplete.ordinaryMoves ?? {}).some((move) => inside(root, move.file) || move.sources.some((file) => inside(root, file)))) throw error;
+      for (const [name, tasks] of load()) {
+        const file = path.resolve(name);
+        if (!path.isAbsolute(name) || tasks.some((task) => typeof task.id !== "string" || !task.id.trim())) throw error;
+        const ids = tasks.filter((task) => {
+          const move = incomplete.ordinaryMoves?.[task.id];
+          return !move || file === move.file || !move.sources.includes(file);
+        }).map((task) => task.id);
+        files[file] = ids;
+        if (inside(root, file)) for (const id of ids) {
+          if (Object.prototype.hasOwnProperty.call(owned, id)) throw error;
+          owned[id] = file;
+        }
+      }
+      if (fs.readdirSync(root).some((name) => name !== ".department-owner.json" && name !== ".department-source.json")) throw error;
+      publish({ version: 1, ready: true, roots: [...incomplete.roots, root], owned, files, ordinaryMoves: incomplete.ordinaryMoves });
+      return;
+    }
     if (existing && existing.roots.length > 0) {
-      if (!existing.roots.includes(root)) throw new Error("任务身份目录未登记此受控来源");
+      if (!existing.roots.includes(root)) {
+        // A new host may append its own empty source. This never rebuilds the catalog,
+        // imports existing files, or acquires another source's ownership.
+        if (!options.registerEmptySource || !path.isAbsolute(root)
+          || existing.roots.some((other) => inside(other, root) || inside(root, other))
+          || Object.keys(existing.files).some((file) => inside(root, file))
+          || Object.values(existing.ordinaryMoves ?? {}).some((move) => inside(root, move.file) || move.sources.some((file) => inside(root, file)))
+          || fs.readdirSync(root).some((name) => name !== ".department-owner.json" && name !== ".department-source.json")) {
+          throw new Error("任务身份目录未登记此受控来源，且来源非全新空目录");
+        }
+        publish({ ...existing, roots: [...existing.roots, root] });
+      }
       return;
     }
     const files: Record<string, string[]> = Object.create(null);
@@ -112,6 +164,16 @@ export function locateLoopTaskIdentities(taskIds: readonly string[]): LoopTaskId
 export function locateLoopTaskIdentity(taskId: string): { available: false } | { available: true; files: string[] } {
   const result = locateLoopTaskIdentities([taskId]);
   return result.available ? { available: true, files: [...result.locations.get(taskId)!] } : result;
+}
+
+/** Current controlled roots, without granting write or recovery authority. */
+export function listRegisteredLoopTaskIdentityRoots(): readonly string[] | null {
+  try {
+    if (fs.existsSync(lockFile)) return null;
+    const snapshot = read();
+    if (!snapshot) return null;
+    return [...snapshot.roots];
+  } catch { return null; }
 }
 
 /** A committed ordinary destination survives stale source bytes and process restarts.

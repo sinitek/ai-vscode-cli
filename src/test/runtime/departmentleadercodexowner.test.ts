@@ -29,6 +29,27 @@ async function setup(t: test.TestContext, bound = false) {
 const first = { invocationId: "main-1", prompt: "trusted first main invocation" };
 const second = { invocationId: "main-2", prompt: "trusted second main invocation" };
 
+test("leader preserves long multilingual Loop+ prompts across private IPC and native new/resume calls", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), p = h.port();
+  const prompt = '组长复核🌛\n"路径\\与转义"\n'.repeat(6000);
+  assert.ok(Buffer.byteLength(JSON.stringify(prompt), "utf8") > 64 * 1024);
+  for (const invocationId of ["long-first", "long-resume"]) {
+    const invocation = { invocationId, prompt: `${prompt}${invocationId}` };
+    const launch = await p.invoke(invocation);
+    assert.equal((await launch.completion).turnTerminal.status, "confirmed");
+    assert.equal(await p.invoke(invocation), launch, "duplicates retain the same launch without sending again");
+    await assert.rejects(p.invoke({ ...invocation, prompt: `${invocation.prompt} changed` }), /conflict/);
+  }
+  const turns = h.wire().filter((m) => m.method === "turn/start");
+  assert.equal(turns.length, 2);
+  for (const [index, suffix] of ["long-first", "long-resume"].entries()) {
+    assert.ok(turns[index].params.input.some((item: { text?: string }) => item.text === `${prompt}${suffix}`), "native prompt is complete");
+  }
+  assert.equal(h.count("thread/start"), 1);
+  assert.equal(h.count("thread/resume"), 1);
+  assert.equal((await p.closeAdmissionsAndDrain()).runner.status, "confirmed");
+});
+
 for (const resume of [false, true]) test(`leader ${resume ? "precise resume" : "new"} holds one identity/thread through two immutable invocations`, { timeout: 15000 }, async (t) => {
   const h = await setup(t, resume); let persisted = 0;
   const originalPersist = h.host.persistSession;

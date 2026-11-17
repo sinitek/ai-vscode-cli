@@ -162,7 +162,7 @@ export function isDepartmentGenerationTicket(value: unknown, scope: DepartmentLe
     if (selection.cli !== identity.cli || selection.role !== identity.role
       || fingerprints.configFingerprint !== identity.configFingerprint || fingerprints.profileFingerprint !== identity.profileFingerprint
       || (identity.cli === "opencode" ? !/^ses_[A-Za-z0-9]+$/.test(value.nativeSessionId as string)
-        : identity.cli === "codex" ? !identifier(value.nativeSessionId) : true)) return false;
+        : !identifier(value.nativeSessionId))) return false;
     if (value.target.role === "employee" && (identity.role !== "employee" || identity.subtaskId !== value.target.subtaskId
       || identity.attemptId !== value.target.attemptId)) return false;
     if (value.target.role === "leader" && identity.role !== "leader") return false;

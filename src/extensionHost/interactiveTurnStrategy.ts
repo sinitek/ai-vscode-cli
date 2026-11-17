@@ -37,6 +37,7 @@ export type InteractiveAssistantChunkOptions = {
 };
 
 export type InteractiveTurnAttemptPort = {
+  readonly departmentInteractiveRunner?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"];
   readonly departmentCodexRun?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentCodexRun"];
   readonly cancelDepartmentCodexPreparation?: () => void;
   readonly cli: InteractiveTurnCli;

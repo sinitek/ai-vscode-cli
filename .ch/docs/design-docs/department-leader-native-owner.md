@@ -30,7 +30,7 @@ Ledger admission 持有到 grant 确认，并保留原始 builder/持久化 Prom
 
 ## 私有协议与生命周期
 
-继承 IPC 一次准备使用随机 256-bit token、完整原 identity、严格 allowlist 和消息大小上限。双向严格递增 sequence；每条 invocation/session/persisted/owner-bound/grant/granted/settled 均校验当前阶段与调用身份，callback ACK 引用准确原序号。重复、乱序、错误 token/身份/字段或迟到 grant 保守断开并封闭。描述最大 4 MiB、每条后续消息最大 64 KiB、prompt 最大 48 KiB，worker 和宿主分别最多 32 个未确认消费者；原 CodexOwnedExecution 仍保留自己的 64 回调门禁。消费者挂起则保留真实 drain 责任；回调拒绝/断连/溢出不升级 streams。
+继承 IPC 一次准备使用随机 256-bit token、完整原 identity、严格 allowlist 和控制消息大小上限。双向严格递增 sequence；每条 invocation/session/persisted/owner-bound/grant/granted/settled 均校验当前阶段与调用身份，callback ACK 引用准确原序号。重复、乱序、错误 token/身份/字段或迟到 grant 保守断开并封闭。配置描述最大 4 MiB，控制与 callback 消息最大 64 KiB；2026-11-17 起 invocation 提示词不再设置部门长度上限，精确执行数据帧由宿主和 worker 共用 `departmentleaderinvocation.ts` 验证并完整传给原 CLI。worker 和宿主分别最多 32 个未确认消费者；原 CodexOwnedExecution 仍保留自己的 64 回调门禁。消费者挂起则保留真实 drain 责任；回调拒绝/断连/溢出不升级 streams。
 
 `closeAdmissionsAndDrain()` 同步封闭新增调用和迟到 grant，返回真实原生/消费/资源 drain；没有超时成功、空 Map closure 或 task completed 推断。grant 发出为宿主启动/取消线性化点：之前取消/撤权/封闭零任务，之后合法调用不因 AbortSignal、EH/启动宿主断连而停止。worker 消费 grant 后同步标记已授权，后续 seal 不 abort 它。断连自动封闭新增调用，已授权执行继续；无法交回消费者确认时保持 unknown。
 

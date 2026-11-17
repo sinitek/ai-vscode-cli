@@ -48,5 +48,6 @@ export function isDepartmentCodexPreparation(value: unknown): value is Departmen
     || !["off", "on", "low", "medium", "high", "xhigh", "ultra", "max"].includes(String(r.thinkingMode)) || r.interactiveMode !== "coding"
     || r.model !== (value.selection as DepartmentExecutionSelection).model || r.configFingerprint !== value.identity.configFingerprint
     || r.threadId !== (value.identity.session.state === "bound" ? value.identity.session.id : null)) return false;
-  return boundedCodexMessage(value, 4 * 1024 * 1024);
+  // The preparation budget belongs to configuration, not the Loop+ prompt.
+  return boundedCodexMessage({ ...value, prompt: "" }, 4 * 1024 * 1024);
 }

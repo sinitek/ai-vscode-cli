@@ -152,6 +152,8 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     workspaceSettings: {},
     waitForConfigApply: null,
   };
+  const departmentBindingRevisions: Partial<Record<CliName, string>> = {};
+  let departmentSelectionRevision = 0;
   const persistWorkspaceSettings = (settings: WorkspaceSettings): void => {
     const snapshot: WorkspaceSettings = { ...settings };
     if (settings.interactiveModeByCli) {
@@ -189,6 +191,10 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     disposeInteractiveRunnerIfUnused: () => undefined,
     syncCurrentSessionWithActiveTab: () => null,
     getActiveConfigIdForCli: () => "config-opencode",
+    readDepartmentConfigBinding: async (targetCli) => ({ configId: deps.getActiveConfigIdForCli(targetCli),
+      revision: departmentBindingRevisions[targetCli] ?? "stable", ready: true }),
+    getDepartmentSelectionContextRevision: () => departmentSelectionRevision,
+    invalidateDepartmentSelectionContext: () => { departmentSelectionRevision += 1; },
     selectCliModel: () => undefined,
     addCliModel: () => null,
     renameCliModel: () => null,
@@ -342,6 +348,7 @@ test("department start port receives only host-resolved snapshot; browser routes
 
 test("typed department role save validates exact candidates, preserves other roles and rolls back on failure", async () => {
   const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "role-profile" : "config-opencode";
   const results: Record<string, unknown>[] = [];
   h.deps.postWebviewMessage = (message) => { results.push(message); };
   h.deps.getDepartmentRoleCandidates = async (cli, configId) => ({ cli, configId, configs: [{ id: "role-profile", name: "档案" }], models: ["model"],
@@ -350,9 +357,9 @@ test("typed department role save validates exact candidates, preserves other rol
   h.deps.saveWorkspaceSettingsWithResult = () => canSave ? { ok: true } : { ok: false, error: "disk full" };
   h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
   const preference = { cli: "codex" as const, configId: "role-profile", model: null, thinkingMode: "high" as const, openCodeVariant: null };
-  const send = () => handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", requestId: "save-1", directorConfigId: "config-opencode", role: "leader", preference }, h.deps);
+  const send = () => handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", requestId: "save-1", directorConfigId: "role-profile", role: "leader", preference }, h.deps);
   await send();
-  assert.deepEqual(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["config-opencode"], { leader: preference });
+  assert.deepEqual(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["role-profile"], { leader: preference });
   const original = h.state.workspaceSettings;
   canSave = false; await send();
   assert.equal(h.state.workspaceSettings, original);
@@ -362,6 +369,134 @@ test("typed department role save validates exact candidates, preserves other rol
   await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", requestId: "stale", directorConfigId: "other-director", role: "employee", preference }, h.deps);
   assert.equal(results.slice(-1)[0].ok, false);
   assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["other-director"], undefined);
+});
+
+test("department candidate and save requests require the target CLI's current active profile", async () => {
+  const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  let targetProfile: string | null = "open-active";
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "config-opencode" : targetProfile;
+  const results: Record<string, unknown>[] = [];
+  h.deps.postWebviewMessage = (message) => { results.push(message); };
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => ({ cli, configId,
+    configs: [{ id: configId!, name: "角色" }], models: ["model"], defaultModel: null, supportsDefaultModel: false,
+    thinkingByModel: {}, variantsByModel: {} });
+  let writes = 0;
+  h.deps.saveWorkspaceSettingsWithResult = () => { writes++; return { ok: true }; };
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const preference = { cli: "opencode" as const, configId: "open-active", model: "model", thinkingMode: null, openCodeVariant: null };
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope: undefined, role: "leader", preference,
+    requestId: "cross-cli", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1, "the exact active OpenCode target profile can be saved across CLI boundaries");
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope: undefined, role: "employee", preference: { ...preference, configId: "saved-but-inactive" },
+    requestId: "forged-profile", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1);
+  assert.match(String(results.at(-1)?.error), /激活档案/);
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference: { ...preference, model: "forged-model" },
+    requestId: "forged-model", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1);
+  assert.match(String(results.at(-1)?.error), /模型不可用/);
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference: { ...preference, thinkingMode: "ultra" },
+    requestId: "forged-effort", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1);
+  assert.match(String(results.at(-1)?.error), /思考力度/);
+  targetProfile = null;
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference,
+    requestId: "no-active-profile", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1);
+  assert.match(String(results.at(-1)?.error), /没有该激活档案/);
+  targetProfile = "open-active";
+  h.deps.readStoredToolSettings = () => ({ cliEnabledByName: { opencode: false } });
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference,
+    requestId: "disabled-cli", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 1);
+  assert.match(String(results.at(-1)?.error), /CLI 已关闭/);
+  await handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "employee",
+    preference: { ...preference, cli: "grok", configId: "open-active" }, requestId: "grok-role-cli", directorConfigId: "config-opencode" }, h.deps);
+  assert.equal(writes, 2);
+  assert.equal(results.at(-1)?.ok, true);
+  assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig?.["config-opencode"]?.employee?.cli, "grok");
+  h.deps.readStoredToolSettings = () => ({ departmentEnabled: true });
+
+  const pending = createDeferred<void>();
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => {
+    await pending.promise;
+    return { cli, configId, configs: [{ id: configId!, name: "角色" }], models: ["model"], defaultModel: null, supportsDefaultModel: false,
+      thinkingByModel: {}, variantsByModel: {} };
+  };
+  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference,
+    requestId: "identity-drift", directorConfigId: "config-opencode" }, h.deps);
+  const query = handlePanelMessageWithDeps({ type: "requestDepartmentRoleCandidates", role: "employee", cli: "opencode",
+    configId: "open-active", requestId: "query-drift" }, h.deps);
+  targetProfile = "open-replaced";
+  pending.resolve();
+  await Promise.all([save, query]);
+  assert.equal(writes, 2, "identity drift while reading candidates cannot publish a preference");
+  assert.match(String(results.find((result) => result.requestId === "identity-drift")?.error), /激活档案已变化|配置修订或激活状态已变化/);
+  assert.match(String(results.find((result) => result.requestId === "query-drift")?.error), /激活档案已变化|配置修订或激活状态已变化/);
+});
+
+test("department candidate and save reject target A-to-B-to-A revision drift before reply or persistence", async () => {
+  const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  let active: string | null = "target";
+  let targetRevision = "rev-a";
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "director" : active;
+  h.deps.readDepartmentConfigBinding = async (cli) => ({ configId: cli === "codex" ? "director" : active,
+    revision: cli === "opencode" ? targetRevision : "director-rev", ready: true });
+  const pending = createDeferred<void>(); const replies: Record<string, unknown>[] = [];
+  const started = createDeferred<void>(); let candidateReads = 0;
+  h.deps.postWebviewMessage = (message) => { replies.push(message); };
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => {
+    candidateReads += 1;
+    if (candidateReads === 2) started.resolve();
+    await pending.promise;
+    return { cli, configId, configs: [{ id: configId!, name: "target" }], models: ["model"], defaultModel: null,
+      supportsDefaultModel: false, thinkingByModel: {}, variantsByModel: {} };
+  };
+  let writes = 0;
+  h.deps.saveWorkspaceSettingsWithResult = () => { writes++; return { ok: true }; };
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const preference = { cli: "opencode" as const, configId: "target", model: "model", thinkingMode: null, openCodeVariant: null };
+  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference,
+    requestId: "aba-save", directorConfigId: "director" }, h.deps);
+  const query = handlePanelMessageWithDeps({ type: "requestDepartmentRoleCandidates", role: "employee", cli: "opencode",
+    configId: "target", requestId: "aba-query" }, h.deps);
+  await started.promise;
+  active = "temporary"; targetRevision = "rev-b";
+  active = "target"; targetRevision = "rev-c";
+  pending.resolve(); await Promise.all([save, query]);
+  assert.equal(writes, 0);
+  assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig, undefined);
+  assert.equal(replies.find((reply) => reply.requestId === "aba-save")?.ok, false);
+  assert.match(String(replies.find((reply) => reply.requestId === "aba-query")?.error), /修订或激活状态已变化/);
+});
+
+test("department candidate and save reject a late local selection-context switch", async () => {
+  const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "director" : "target";
+  const pending = createDeferred<void>(); const started = createDeferred<void>(); let reads = 0;
+  const replies: Record<string, unknown>[] = [];
+  h.deps.postWebviewMessage = (message) => { replies.push(message); };
+  h.deps.getDepartmentRoleCandidates = async (cli, configId) => {
+    if (++reads === 2) started.resolve();
+    await pending.promise;
+    return { cli, configId, configs: [{ id: configId!, name: "target" }], models: ["model"], defaultModel: null,
+      supportsDefaultModel: false, thinkingByModel: {}, variantsByModel: {} };
+  };
+  let writes = 0;
+  h.deps.saveWorkspaceSettingsWithResult = () => { writes++; return { ok: true }; };
+  h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
+  const preference = { cli: "opencode" as const, configId: "target", model: "model", thinkingMode: null, openCodeVariant: null };
+  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", role: "leader", preference,
+    requestId: "context-save", directorConfigId: "director" }, h.deps);
+  const query = handlePanelMessageWithDeps({ type: "requestDepartmentRoleCandidates", role: "employee", cli: "opencode",
+    configId: "target", requestId: "context-query" }, h.deps);
+  await started.promise;
+  h.deps.invalidateDepartmentSelectionContext?.();
+  pending.resolve(); await Promise.all([save, query]);
+  assert.equal(writes, 0);
+  assert.equal(h.state.workspaceSettings.departmentRoleRoutesByDirectorConfig, undefined);
+  assert.equal(replies.find((reply) => reply.requestId === "context-save")?.ok, false);
+  assert.match(String(replies.find((reply) => reply.requestId === "context-query")?.error), /选择已变化/);
 });
 
 test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", async () => {
@@ -1721,6 +1856,7 @@ test("ignores acceptance plan payloads outside event-driven Loop+", async () => 
 
 test("same CLI/profile late save and candidate responses stay in the captured workspace generation", async () => {
   const h = createSendPromptHarness("codex"); h.state.currentCli = "codex";
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "profile" : "config-opencode";
   let scope = "workspace-a:1";
   h.deps.getDepartmentConfigurationScope = () => scope;
   const pending = createDeferred<void>(); const results: Record<string, unknown>[] = [];
@@ -1731,7 +1867,7 @@ test("same CLI/profile late save and candidate responses stay in the captured wo
   h.deps.saveWorkspaceSettingsWithResult = () => { writes++; return { ok: true }; };
   h.deps.setWorkspaceSettings = (settings) => { h.state.workspaceSettings = settings; };
   const preference = { cli: "codex" as const, configId: "profile", model: null, thinkingMode: null, openCodeVariant: null };
-  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope, role: "leader", preference, requestId: "old-save", directorConfigId: "config-opencode" }, h.deps);
+  const save = handlePanelMessageWithDeps({ type: "updateDepartmentRolePreference", scope, role: "leader", preference, requestId: "old-save", directorConfigId: "profile" }, h.deps);
   const query = handlePanelMessageWithDeps({ type: "requestDepartmentRoleCandidates", scope, role: "employee", cli: "codex", configId: "profile", requestId: "old-query" }, h.deps);
   scope = "workspace-a:3"; h.state.workspaceSettings = {}; // A -> B -> A, same CLI and profile
   pending.resolve(); await Promise.all([save, query]);
@@ -1744,7 +1880,8 @@ test("same CLI/profile late save and candidate responses stay in the captured wo
 test("host save barrier prevents new roots during save/failure and starts with freshly saved configuration after retry", async () => {
   const { DepartmentConfigurationSaveBarrier } = await import("../../departmentConfiguration");
   const barrier = new DepartmentConfigurationSaveBarrier(); const scope = "workspace-a:1";
-  const h = createSendPromptHarness("opencode"); h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+  const h = createSendPromptHarness("opencode"); h.state.currentCli = "opencode"; h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
+  h.deps.getActiveConfigIdForCli = (cli) => cli === "codex" ? "profile" : "config-opencode";
   h.deps.getDepartmentConfigurationScope = () => scope;
   h.deps.getDepartmentConfigurationIssue = () => barrier.issue(scope);
   h.deps.beginDepartmentConfigurationSave = (key, role) => barrier.begin(key, role);

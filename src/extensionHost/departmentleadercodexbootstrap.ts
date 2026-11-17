@@ -5,6 +5,7 @@ import { createHash, randomBytes } from "crypto";
 import { canonicalIdentity, exactKeys, fingerprintDepartmentExecutionSelection, isDepartmentExecutionIdentity, isExecutionCleanup, record, sameExecution,
   type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import { boundedCodexMessage, isCodexOwnedSession } from "../runtime/departmentcodexpreparationcontract";
+import { isDepartmentLeaderPrivateCommand } from "../runtime/departmentleaderinvocation";
 import { isLeaderCodexPreparation, isLeaderInvocation, isLeaderTerminal, LEADER_CALLBACK_LIMIT, LEADER_CALLBACKS,
   LEADER_INVOCATION_LIMIT, LEADER_REQUIREMENTS, type LeaderCodexDescription, type LeaderCodexPreparation, type LeaderInvocation } from "../runtime/departmentleadercodexcontract";
 import { DepartmentLeaderExecutionLedger, leaderExecutionCanLaunch, responsibilityKey, type DepartmentLeaderExecutionProducer, type DepartmentLeaderExecutionScope } from "./departmentleaderexecutionledger";
@@ -116,7 +117,7 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   };
   const send = (operation: string, extra: Record<string, unknown> = {}, failureStage = "channel-or-delivery-unknown") => {
     const v = { version: 1, token: input!.token, identity, sequence: ++sequence, operation, ...extra };
-    if (!child?.connected || !boundedCodexMessage(v)) throw new Error("leader-owner-channel-unobservable");
+    if (!child?.connected || !isDepartmentLeaderPrivateCommand(v)) throw new Error("leader-owner-channel-unobservable");
     child.send(v, (e) => { if (e) fail(failureStage); });
   };
   const close = () => {

@@ -1,17 +1,40 @@
 import * as path from "path";
+import * as fs from "fs";
 import { createHash } from "crypto";
 import {
   listLoopTaskStoreFilesStrict, readLoopTaskStoreResult, type LoopTaskRecord,
 } from "../loopTaskStore";
-import { commitLoopTaskIdentities, initializeLoopTaskIdentityCatalog, locateLoopTaskIdentities, locateLoopTaskIdentity } from "../loopTaskIdentityCatalog";
+import { commitLoopTaskIdentities, initializeLoopTaskIdentityCatalog, listRegisteredLoopTaskIdentityRoots, locateLoopTaskIdentities, locateLoopTaskIdentity } from "../loopTaskIdentityCatalog";
 import { DepartmentOwnedSourceController } from "./departmentOwnedSourceController";
 import { DepartmentOwnedTaskRepository } from "./departmentOwnedTaskRepository";
+
+class DepartmentTaskSourceBusyError extends Error {}
+
+/** Reuse the historical source when available. A different host's claim only blocks
+ * that source, so new work can use a fresh sibling without stealing its marker.
+ */
+export function createDepartmentProductionTaskStoreForHost(dataDirectory: string) {
+  const primaryRoot = path.join(dataDirectory, "department-tasks-v1");
+  try {
+    return createDepartmentProductionTaskStore(primaryRoot, true);
+  } catch (error) {
+    if (!(error instanceof DepartmentTaskSourceBusyError)) throw error;
+  }
+  for (const root of [...(listRegisteredLoopTaskIdentityRoots() ?? [])].reverse()) {
+    if (path.resolve(root) === path.resolve(primaryRoot)) continue;
+    try { return createDepartmentProductionTaskStore(root, true); }
+    catch (error) { if (!(error instanceof DepartmentTaskSourceBusyError)) throw error; }
+  }
+  const sources = path.join(dataDirectory, "department-task-sources-v1");
+  fs.mkdirSync(sources, { recursive: true });
+  return createDepartmentProductionTaskStore(fs.mkdtempSync(path.join(sources, "source-")), true);
+}
 
 /** Host-only owner assembly. No capability or raw commit escapes this closure.
  * Only synchronous repository transactions can write the owned root. Closing first
  * revokes that sole admission path, then drains the controller before releasing ownership.
  */
-export function createDepartmentProductionTaskStore(rootPath: string) {
+export function createDepartmentProductionTaskStore(rootPath: string, registerEmptySource = false) {
   let accepting = true;
   let unverifiedWriter = false;
   let activeWrites = 0;
@@ -19,7 +42,8 @@ export function createDepartmentProductionTaskStore(rootPath: string) {
   const controller = DepartmentOwnedSourceController.create("department-production-v1", rootPath, async () => {
     if (accepting || unverifiedWriter || activeWrites !== 0 || !locateLoopTaskIdentity("").available) throw new Error("部门写者尚未静止，保留 owner marker");
   });
-  if (!controller || !controller.ready) {
+  if (!controller) throw new DepartmentTaskSourceBusyError("部门任务目录已由其他宿主持有，无法取得独占所有权。");
+  if (!controller.ready) {
     // Unknown owner / unresolved recovery material: do not steal or remove its marker.
     throw new Error("部门受控任务来源无法取得独占所有权或尚需恢复，拒绝启动。");
   }
@@ -39,6 +63,9 @@ export function createDepartmentProductionTaskStore(rootPath: string) {
         files.set(file, tasks);
       }
       return files;
+    }, {
+      registerEmptySource,
+      recoverWhenAllRegisteredRootsAreMissing: registerEmptySource,
     });
     repository = new DepartmentOwnedTaskRepository({
       descriptor: controller.descriptor,
@@ -60,6 +87,8 @@ export function createDepartmentProductionTaskStore(rootPath: string) {
     // Source may have a pending transaction or an unverified file: retain its durable
     // marker for explicit recovery; never advertise this failed initialization as empty.
     accepting = false;
+    repository?.dispose();
+    void controller.close();
     throw error;
   }
   const currentRepository = repository;

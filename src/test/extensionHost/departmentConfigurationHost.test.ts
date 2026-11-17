@@ -34,6 +34,7 @@ function createHost(options: {
   scope?: () => string;
   issue?: () => string | null;
   tabId?: () => string | null;
+  readDepartmentConfigBinding?: ModelSettingsHostDeps["readDepartmentConfigBinding"];
 }) {
   let store = options.store;
   const thinking = thinkingState();
@@ -47,6 +48,7 @@ function createHost(options: {
     getWorkspaceSettings: () => options.settings,
     getDepartmentConfigurationScope: options.scope,
     getDepartmentConfigurationIssue: options.issue,
+    readDepartmentConfigBinding: options.readDepartmentConfigBinding ?? (async () => ({ configId: "profile", revision: "fixture", ready: true })),
     setWorkspaceSettings: () => undefined,
     getPromptHistoryStore: () => ({ items: [] }),
     setPromptHistoryStore: () => undefined,
@@ -154,7 +156,8 @@ test("real host default resolution rejects target, save barrier, director select
         }
         return profile;
       };
-      const { host } = createHost({ store, settings, currentCli: "opencode", tabId: () => tabId, issue: () => issue });
+      const { host } = createHost({ store, settings, currentCli: "opencode", tabId: () => tabId, issue: () => issue,
+        readDepartmentConfigBinding: (cli) => configService.readSharedConfigSelection(cli) });
       await assert.rejects(host.resolveDepartmentPromptConfiguration("opencode"), /变化|正在保存|读取所选 CLI/);
     }
   } finally {

@@ -1,5 +1,5 @@
 import { CLI_LIST, type CliName, type ThinkingMode } from "./cli/types";
-import type { DepartmentRoleRoute } from "./department";
+import { departmentRoleCliIssue, type DepartmentRoleRoute } from "./department";
 import { normalizeRouteThinkingMode } from "./subtaskCliRoute";
 import {
   normalizeLoopPlusAcceptancePlanSnapshot,
@@ -33,6 +33,53 @@ export type DepartmentRoleCandidates = {
   /** Opaque host read revision, never configuration content or execution authority. */
   sourceRevision?: string;
 };
+
+export type DepartmentConfigBindingSelection = {
+  configId: string | null;
+  revision: string;
+  ready: boolean;
+};
+
+export type DepartmentConfigBindingReader = (cli: CliName) => Promise<DepartmentConfigBindingSelection | null>;
+export type DepartmentConfigBindingSnapshot = Map<CliName, DepartmentConfigBindingSelection>;
+export type DepartmentSelectionContextReader = () => string | number;
+let departmentSelectionContextRevision = 0;
+export function invalidateDepartmentSelectionContext(): void { departmentSelectionContextRevision += 1; }
+export function getDepartmentSelectionContextRevision(): number { return departmentSelectionContextRevision; }
+
+export async function captureDepartmentConfigBindings(
+  expected: readonly { cli: CliName; configId: string | null }[],
+  readSelection: DepartmentConfigBindingReader,
+): Promise<DepartmentConfigBindingSnapshot> {
+  const expectedByCli = new Map<CliName, string>();
+  for (const item of expected) {
+    if (!item.configId) throw new Error("角色 CLI 当前没有已确认的激活档案，请重新选择后重试。");
+    const existing = expectedByCli.get(item.cli);
+    if (existing && existing !== item.configId) throw new Error("同一 CLI 的角色档案绑定不一致，请重新选择后重试。");
+    expectedByCli.set(item.cli, item.configId);
+  }
+  const snapshots = await Promise.all([...expectedByCli].map(async ([cli, configId]) => {
+    const selection = await readSelection(cli);
+    if (!selection || !selection.ready || selection.configId !== configId || !selection.revision) {
+      throw new Error("角色 CLI 配置尚未就绪或已切换，请重新应用当前档案后重试。");
+    }
+    return [cli, { configId: selection.configId, revision: selection.revision, ready: selection.ready }] as const;
+  }));
+  return new Map(snapshots);
+}
+
+export async function assertDepartmentConfigBindingsCurrent(
+  expected: DepartmentConfigBindingSnapshot,
+  readSelection: DepartmentConfigBindingReader,
+): Promise<void> {
+  const current = await Promise.all([...expected].map(async ([cli, snapshot]) => [cli, await readSelection(cli)] as const));
+  for (const [cli, selection] of current) {
+    const previous = expected.get(cli)!;
+    if (!selection || !selection.ready || selection.configId !== previous.configId || selection.revision !== previous.revision) {
+      throw new Error("角色 CLI 配置修订或激活状态已变化，请重新选择后重试。");
+    }
+  }
+}
 
 export function validateDepartmentRoleCandidate(preference: DepartmentConfiguredRoleRoute, candidates: DepartmentRoleCandidates): void {
   if (candidates.cli !== preference.cli || candidates.configId !== preference.configId
@@ -96,6 +143,10 @@ export function resolveDepartmentConfiguration(
   preferences: DepartmentRolePreferences,
   validation: DepartmentRouteValidation,
 ): DepartmentConfigurationState {
+  for (const role of ["leader", "employee"] as const) {
+    const issue = departmentRoleCliIssue(role, preferences[role]?.cli);
+    if (issue) throw new Error(issue);
+  }
   const resolveRoute = (label: string, preference: DepartmentConfiguredRoleRoute): DepartmentRoleRoute => {
     if (!normalizeDepartmentRolePreference(preference)) throw new Error(`${label}角色配置缺失或无效，请重新选择。`);
     if (!validation.hasConfig(preference.cli, preference.configId)) {
@@ -146,6 +197,9 @@ export function resolveDepartmentConfiguration(
 
 export type DepartmentConfigurationResolvePort = {
   getDirector: () => DepartmentConfiguredRoleRoute | Promise<DepartmentConfiguredRoleRoute>;
+  getActiveConfigIdForCli?: (cli: CliName) => string | null;
+  readConfigBinding?: DepartmentConfigBindingReader;
+  getSelectionContextRevision?: DepartmentSelectionContextReader;
   getScope?: () => string;
   getReadinessIssue?: () => string | null;
   getPreferences: (director: DepartmentConfiguredRoleRoute) => Partial<DepartmentRolePreferences> | undefined;
@@ -180,8 +234,10 @@ export function normalizeDepartmentConfigurationSnapshot(value: unknown): Depart
 /** Capture once at root start. Browser identity/routes/limits are intentionally absent from this port. */
 export async function resolveDepartmentConfigurationWithHost(port: DepartmentConfigurationResolvePort): Promise<DepartmentConfigurationState> {
   const scope = port.getScope?.();
+  const contextRevision = port.getSelectionContextRevision?.();
   const assertReady = (): void => {
     if (port.getScope?.() !== scope) throw new Error("工作区或配置作用域已变化，请在当前工作区重新发送。");
+    if (port.getSelectionContextRevision?.() !== contextRevision) throw new Error("CLI、模式或模型选择已变化，请重新发送任务。");
     const issue = port.getReadinessIssue?.();
     if (issue) throw new Error(issue);
   };
@@ -194,8 +250,41 @@ export async function resolveDepartmentConfigurationWithHost(port: DepartmentCon
   const leader = normalizeDepartmentRolePreference(preferences?.leader);
   const employee = normalizeDepartmentRolePreference(preferences?.employee);
   if (!leader || !employee) throw new Error("请先完成组长和员工的 CLI、档案、模型及思考力度配置。");
+  for (const [role, preference] of [["leader", leader], ["employee", employee]] as const) {
+    const issue = departmentRoleCliIssue(role, preference.cli);
+    if (issue) throw new Error(issue);
+  }
   const routes = [director, leader, employee];
+  const activeConfigIds = new Map<CliName, string | null>();
+  let bindings: DepartmentConfigBindingSnapshot | undefined;
+  const assertBindings = (): void => {
+    if (!port.getActiveConfigIdForCli) return;
+    for (const [cli, configId] of activeConfigIds) {
+      if (!configId || port.getActiveConfigIdForCli(cli) !== configId) {
+        throw new Error("角色 CLI 激活档案在加载期间发生变化，请重新选择后重试。");
+      }
+    }
+  };
+  if (port.getActiveConfigIdForCli) {
+    for (const route of routes) {
+      if (!activeConfigIds.has(route.cli)) activeConfigIds.set(route.cli, port.getActiveConfigIdForCli(route.cli));
+    }
+    routes.forEach((route, index) => {
+      if (route.configId !== activeConfigIds.get(route.cli)) {
+        throw new Error(`${["总监", "组长", "员工"][index]}角色未绑定当前 CLI 激活档案，请重新选择后重试。`);
+      }
+    });
+    assertBindings();
+  }
+  if (port.readConfigBinding) {
+    bindings = await captureDepartmentConfigBindings(routes, port.readConfigBinding);
+    assertReady();
+    assertBindings();
+  }
   const candidates = await Promise.all(routes.map((route) => port.getCandidates(route.cli, route.configId)));
+  assertBindings();
+  if (bindings && port.readConfigBinding) await assertDepartmentConfigBindingsCurrent(bindings, port.readConfigBinding);
+  assertReady();
   routes.forEach((route, index) => {
     try { validateDepartmentRoleCandidate(route, candidates[index]); }
     catch (error) { throw new Error(`${["总监", "组长", "员工"][index]}配置无效：${error instanceof Error ? error.message : "请重新选择。"}`); }
@@ -203,14 +292,19 @@ export async function resolveDepartmentConfigurationWithHost(port: DepartmentCon
   assertReady();
   const currentDirector = normalizeDepartmentRolePreference(await port.getDirector());
   assertReady();
+  assertBindings();
+  if (bindings && port.readConfigBinding) await assertDepartmentConfigBindingsCurrent(bindings, port.readConfigBinding);
   if (JSON.stringify(currentDirector) !== JSON.stringify(director)) throw new Error("总监配置在加载期间发生变化，请重试。");
   // Re-read exact profiles after all preparation awaits. A default/model capability
   // or host selection revision change invalidates this request; never silently
   // switch an in-flight root to a newer default.
   const verified = await Promise.all(routes.map((route) => port.getCandidates(route.cli, route.configId)));
   assertReady();
+  assertBindings();
+  if (bindings && port.readConfigBinding) await assertDepartmentConfigBindingsCurrent(bindings, port.readConfigBinding);
   if (JSON.stringify(verified) !== JSON.stringify(candidates)) throw new Error("角色档案或配置修订在加载期间发生变化，请重试。");
   if (JSON.stringify(port.getPreferences(director)) !== originalPreferences) throw new Error("角色配置在加载期间发生变化，请重试。");
+  assertReady();
   const effective = routes.map((route, index) => ({ ...route,
     model: route.cli === "opencode" && route.model === null ? candidates[index].defaultModel : route.model }));
   const [effectiveDirector, effectiveLeader, effectiveEmployee] = effective;

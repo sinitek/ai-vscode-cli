@@ -11,6 +11,7 @@ import { routeSettingMessage } from "./settingMessageRouter";
 import { type ConfigApplyResult } from "./config/configApplyQueue";
 import { type ConfigManagerPanel } from "./webview/configPanel";
 import type { KimiCodeConfigModels, KimiCodeModelListChange } from "./config/kimiCodeConfig";
+import { assertDepartmentConfigBindingsCurrent, captureDepartmentConfigBindings } from "./departmentConfiguration";
 
 export type PromptRunInputForPanel = {
   departmentConfiguration?: import("./departmentConfiguration").DepartmentConfigurationState;
@@ -135,6 +136,9 @@ export type PanelMessageHandlerDeps = {
   saveWorkspaceSettingsWithResult?: (settings: WorkspaceSettings) => { ok: boolean; error?: string };
   getDepartmentConfigurationScope?: () => string;
   getDepartmentConfigurationIssue?: () => string | null;
+  getDepartmentSelectionContextRevision?: () => string | number;
+  invalidateDepartmentSelectionContext?: () => void;
+  readDepartmentConfigBinding?: import("./departmentConfiguration").DepartmentConfigBindingReader;
   beginDepartmentConfigurationSave?: (scope: string, role: string) => (ok: boolean) => void;
   getDepartmentRoleCandidates?: (cli: CliName, configId: string | null) => Promise<import("./departmentConfiguration").DepartmentRoleCandidates>;
   addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
@@ -264,6 +268,11 @@ function isDisabledCliSelectionMessage(message: PanelMessage, deps: PanelMessage
 
 export async function handlePanelMessageWithDeps(message: PanelMessage, deps: PanelMessageHandlerDeps): Promise<void> {
   deps.ensureWorkspaceSessionStore();
+  if (message.type === "selectCli" || message.type === "selectCliModel" || message.type === "updateOpenCodeRoleModel" || message.type === "updateOpenCodeVariant"
+    || (message.type === "updateSetting" && (message.key === "thinkingMode" || message.key === "departmentEnabled"
+      || message.key.startsWith("interactiveMode.") || message.key.startsWith("cliEnabled.") || message.key.startsWith("selectedModel.")))) {
+    deps.invalidateDepartmentSelectionContext?.();
+  }
   if (message.type === "updateDepartmentRolePreference") {
     await routeSettingMessage({
       type: "updateSetting",
@@ -274,11 +283,28 @@ export async function handlePanelMessageWithDeps(message: PanelMessage, deps: Pa
   }
   if (message.type === "requestDepartmentRoleCandidates") {
     const scope = deps.getDepartmentConfigurationScope?.();
+    const contextRevision = deps.getDepartmentSelectionContextRevision?.();
+    const currentCli = deps.getCurrentCli();
+    const directorConfigId = deps.getActiveConfigIdForCli(currentCli);
+    const activeConfigId = deps.getActiveConfigIdForCli(message.cli);
     try {
       if (scope !== message.scope) throw new Error("工作区或配置作用域已变化，请重新加载角色候选。");
       if (!deps.isCliName(message.cli) || !deps.getDepartmentRoleCandidates) throw new Error("产研部候选读取接口不可用，请稍后重试。");
+      if (!deps.readDepartmentConfigBinding) throw new Error("角色 CLI 绑定校验接口不可用，请稍后重试。");
+      if (deps.readStoredToolSettings?.().cliEnabledByName?.[message.cli] === false) throw new Error("所选 CLI 已关闭，请选择可用 CLI。");
+      if (!directorConfigId) throw new Error("总监当前没有已确认的激活档案，请重新选择后重试。");
+      if (!activeConfigId || message.configId !== activeConfigId) throw new Error("所选 CLI 当前没有该激活档案，请重新加载角色候选。");
+      const bindings = await captureDepartmentConfigBindings([
+        { cli: currentCli, configId: directorConfigId }, { cli: message.cli, configId: message.configId },
+      ], deps.readDepartmentConfigBinding);
+      if (scope !== deps.getDepartmentConfigurationScope?.() || contextRevision !== deps.getDepartmentSelectionContextRevision?.()) throw new Error("CLI、模式或配置作用域已变化，请重新加载角色候选。");
       const candidates = await deps.getDepartmentRoleCandidates(message.cli, message.configId);
-      if (scope !== deps.getDepartmentConfigurationScope?.()) throw new Error("工作区或配置作用域已变化，请重新加载角色候选。");
+      if (scope !== deps.getDepartmentConfigurationScope?.() || contextRevision !== deps.getDepartmentSelectionContextRevision?.()) throw new Error("工作区或 CLI、模式、模型选择已变化，请重新加载角色候选。");
+      if (deps.getCurrentCli() !== currentCli || deps.getActiveConfigIdForCli(currentCli) !== directorConfigId
+        || deps.getActiveConfigIdForCli(message.cli) !== activeConfigId) throw new Error("总监或所选 CLI 激活档案已变化，请重新加载角色候选。");
+      if (deps.readStoredToolSettings?.().cliEnabledByName?.[message.cli] === false) throw new Error("所选 CLI 已关闭，请选择可用 CLI。");
+      await assertDepartmentConfigBindingsCurrent(bindings, deps.readDepartmentConfigBinding);
+      if (scope !== deps.getDepartmentConfigurationScope?.() || contextRevision !== deps.getDepartmentSelectionContextRevision?.()) throw new Error("工作区或 CLI、模式、模型选择已变化，请重新加载角色候选。");
       deps.postWebviewMessage({ scope, type: "departmentRoleCandidates", requestId: message.requestId, role: message.role, candidates });
     } catch (error) {
       deps.postWebviewMessage({ scope, type: "departmentRoleCandidates", requestId: message.requestId, role: message.role, error: error instanceof Error ? error.message : "读取角色候选失败，请重试。" });

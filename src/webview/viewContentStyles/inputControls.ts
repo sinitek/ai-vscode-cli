@@ -288,11 +288,13 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       #departmentRoleConfiguration[hidden],
       .input-model-row[hidden],
       .department-role-row [hidden] { display: none; }
-      .department-role-row .config-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
       .department-role-row .open-code-model-label { white-space: normal; }
+      .department-role-row .model-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
+      .department-role-row .thinking-select { flex: 0 0 80px; width: 80px; min-width: 80px; }
+      .department-director-controls { display: flex; flex: 1 1 180px; flex-wrap: wrap; gap: 6px; min-width: 0; }
+      .department-director-controls .model-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
+      .department-director-controls .thinking-select { flex: 0 0 80px; width: 80px; min-width: 80px; }
       .department-role-row select:focus-visible { border-color: var(--vscode-focusBorder); }
-      .department-role-row .tool-settings-note,
-      .department-role-row .open-code-model-issue { min-width: 0; overflow-wrap: anywhere; }
       .open-code-model-row {
         display: grid;
         grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) calc(70px * 1.15);

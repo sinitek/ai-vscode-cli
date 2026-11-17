@@ -1023,13 +1023,13 @@ export function mergeLoopTaskRecordPatch(existing: LoopTaskRecord, patch: Partia
 }
 
 /** Native identity is separate from the local tab key, and belongs to the
- * frozen Codex/OpenCode leader route. This contract is shared by cold reads and writes. */
+ * frozen leader route. This contract is shared by cold reads and writes. */
 function normalizeDepartmentMainExecutionSession(value: unknown, cli: CliName, department: DepartmentMetadata | undefined,
   localSession: string | null | undefined): LoopSubtaskSession | undefined {
   const native = normalizeLoopSubtaskSession(value);
   if (!native || !value || typeof value !== "object" || Array.isArray(value)
     || Object.keys(value).length !== 3 || !["cli", "sessionId", "configId"].every((k) => Object.prototype.hasOwnProperty.call(value, k))
-    || !["codex", "opencode"].includes(cli) || native.cli !== cli || department?.role !== "leader" || department.routes.leader.cli !== cli
+    || !CLI_LIST.includes(cli) || native.cli !== cli || department?.role !== "leader" || department.routes.leader.cli !== cli
     || cli === "opencode" && !/^ses_[A-Za-z0-9]+$/.test(native.sessionId)
     || !native.configId || native.configId !== department.routes.leader.configId
     || !identifier(native.sessionId) || native.sessionId === localSession

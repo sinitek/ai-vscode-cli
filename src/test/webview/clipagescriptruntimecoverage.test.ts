@@ -3795,6 +3795,42 @@ test("keeps Loop and Loop+ control bubbles outside collapsed instruction groups"
   }
 });
 
+test("department leader hides restored and live group-chat bubble links while ordinary and director links remain", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tab = { id: "tab-1", cli: "codex", sessionId: "session-1", createdAt: 1,
+    loopTaskId: "leader-task", loopTaskRole: "main", loopSchedulingMode: "event_driven" };
+  const show = (departmentPresentation?: unknown) => {
+    window.dispatchMessage({ type: "state", payload: createPanelState({
+      interactiveMode: "loop_plus", conversationTabs: { activeTabId: tab.id, tabs: [{ ...tab, departmentPresentation }] },
+    }) });
+    api.state.onlyShowFinalResults = false;
+  };
+  show();
+  api.state.onlyShowFinalResults = false;
+  const action = { type: "openLoopGroupChat", taskId: tab.loopTaskId };
+  window.dispatchMessage({ type: "setMessages", tabId: tab.id, messages: [
+    { id: "restored", role: "system", content: "Loop+ 任务已暂停。", merge: false, actions: [action] },
+  ] });
+  const messages = document.getElementById("messages");
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 1);
+  show({ role: "leader", rootTaskId: "root", taskId: tab.loopTaskId, moduleTitle: "研发模块" });
+  api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 0, "late role projection invalidates cached message actions");
+  window.dispatchMessage({ type: "appendMessage", tabId: tab.id, message:
+    { id: "live", role: "system", content: "Loop+ 任务状态已更新。", merge: false, actions: [action] } });
+  assert.deepEqual(api.state.messages.map((message: any) => message.id), ["restored", "live"]);
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 0);
+  assert.equal(api.state.messages[0].actions.length, 1, "persisted history is unchanged");
+  show({ role: "director", rootTaskId: tab.loopTaskId, taskId: tab.loopTaskId, moduleTitle: "产研部" });
+  api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 2);
+  show(); api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 2);
+  messages.querySelector(".message-action-link")?.click();
+  assert.ok(posted.some(message => message.type === "openLoopGroupChat" && message.taskId === tab.loopTaskId));
+  assert.deepEqual(posted.filter(message => message.type === "webviewError"), []);
+});
+
 test("does not exempt ordinary instruction bubbles with empty or invalid task actions", () => {
   const { api, document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });

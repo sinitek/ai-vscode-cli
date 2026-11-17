@@ -1555,13 +1555,20 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = normalizeInteractiveMode(event.target.value);
-          state.interactiveMode = nextMode;
-          syncModelSelectorByInteractiveMode();
+          // The host must receive the mode change before rendering requests new role candidates.
           vscode.postMessage({
             type: "updateSetting",
             key: "interactiveMode." + state.currentCli,
             value: nextMode,
           });
+          if (typeof applyLocalInteractiveModeChange === "function") {
+            applyLocalInteractiveModeChange(nextMode);
+            syncModelSelectorByInteractiveMode();
+          }
+          else {
+            state.interactiveMode = nextMode;
+            syncModelSelectorByInteractiveMode();
+          }
         });
       }
       if (elements.debugMode) {

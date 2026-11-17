@@ -1,6 +1,7 @@
 import * as os from "os";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { randomUUID } from "crypto";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
@@ -102,6 +103,8 @@ export type ClaudeTraceMeta = {
 };
 
 export type ClaudeStreamHandlers = {
+  /** Trusted host admission before SDK startup or prompt delivery. */
+  beforeSessionStart?: (sessionId: string) => Promise<void>;
   onAssistantDelta: (chunk: string) => void;
   onTrace: (content: string, kind?: ClaudeTraceKind, meta?: ClaudeTraceMeta) => void;
   onTaskListUpdate: (items: { text: string; done: boolean }[]) => void;
@@ -778,6 +781,15 @@ export class ClaudeInteractiveRunner {
     return this.disposed;
   }
 
+  private readonly streamDrains = new Set<Promise<void>>();
+  private freshSessionId: string | null = null;
+
+  /** The SDK iterator owns its process; wait until every original iterator drains. */
+  public async disposeAndWait(): Promise<void> {
+    this.dispose();
+    await Promise.all([...this.streamDrains]);
+  }
+
   public dispose(): void {
     if (this.disposed) {
       return;
@@ -908,6 +920,11 @@ export class ClaudeInteractiveRunner {
     this.throwIfSuperseded(abortGeneration, disposeGeneration);
     const turn = this.beginTurn(handlers, abortGeneration, disposeGeneration);
     try {
+      if (handlers.beforeSessionStart) {
+        const nativeSessionId = this.options.sessionId ?? (this.freshSessionId ??= randomUUID());
+        await handlers.beforeSessionStart(nativeSessionId);
+        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+      }
       await this.ensureSession(abortGeneration, disposeGeneration, legacyThinking);
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       const session = this.session;
@@ -1021,6 +1038,8 @@ export class ClaudeInteractiveRunner {
     }
     if (this.options.sessionId) {
       queryOptions.resume = this.options.sessionId;
+    } else if (this.freshSessionId) {
+      queryOptions.extraArgs = { ...queryOptions.extraArgs, "session-id": this.freshSessionId };
     }
 
     const input = new ClaudePromptInput();
@@ -1043,7 +1062,9 @@ export class ClaudeInteractiveRunner {
       closed: false,
     };
     this.session = session;
-    void this.readLoop(session);
+    const drain = this.readLoop(session);
+    this.streamDrains.add(drain);
+    void drain.then(() => this.streamDrains.delete(drain), () => undefined);
     if (
       this.disposed
       || this.disposeGeneration !== disposeGeneration

@@ -105,6 +105,11 @@ async function runDshAttempt(
       env: runnerOptions.env,
     });
 
+  const bindDepartmentSession = port.departmentInteractiveRunner?.(runner, () => {
+    port.interactiveRunnerManager.detachRunner("dsh", port.uiSessionId, runner);
+    return runner.disposeAndWait();
+  });
+
   let flushingDshStop = false;
   const canEmitDshPresentation = (): boolean => {
     const entry = port.interactiveRunsByTabId.get(port.tabId);
@@ -135,6 +140,7 @@ async function runDshAttempt(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    await bindDepartmentSession?.(started.acpSessionId);
     port.updateSessionForNewRun(started.acpSessionId);
     const uiSessionId = port.uiSessionId;
     if (previousSessionId && previousSessionId !== uiSessionId) {

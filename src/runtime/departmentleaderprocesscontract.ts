@@ -12,7 +12,8 @@ export function departmentLeaderProcessRequirements(preparation: Pick<Department
   return { ...DEPARTMENT_LEADER_PROCESS_REQUIREMENTS, temp: !!preparation.launch.overlay };
 }
 export const DEPARTMENT_LEADER_PROCESS_INVOCATION_LIMIT = 128;
-export type DepartmentLeaderProcessInvocation = Readonly<{ invocationId: string; prompt: string }>;
+export { isDepartmentLeaderInvocation as isDepartmentLeaderProcessInvocation } from "./departmentleaderinvocation";
+export type { DepartmentLeaderInvocation as DepartmentLeaderProcessInvocation } from "./departmentleaderinvocation";
 export type DepartmentLeaderProcessLaunch = Omit<CliProcessRuntimeLaunch, "args" | "cwd" | "overlay"> & {
   baseArgs: string[]; cwd: string; sessionId: string; openCodeVariant?: string | null;
   overlay?: Parameters<typeof createOpenCodeRuntimeConfigOverlay>[0] | null;
@@ -28,12 +29,6 @@ export type DepartmentLeaderProcessPreparation = {
   /** Private host capability; the host retains the original root cleanup closure. */
   hostExecutionRoot?: true;
 };
-
-export function isDepartmentLeaderProcessInvocation(value: unknown): value is DepartmentLeaderProcessInvocation {
-  return record(value) && exactKeys(value, ["invocationId", "prompt"])
-    && typeof value.invocationId === "string" && /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/.test(value.invocationId)
-    && typeof value.prompt === "string" && !!value.prompt.trim() && Buffer.byteLength(value.prompt, "utf8") <= 48 * 1024;
-}
 
 export function isDepartmentLeaderProcessPreparation(value: unknown): value is DepartmentLeaderProcessPreparation {
   if (!record(value) || !exactKeys(value, ["version", "token", "identity", "selection", "ownerDirectory", "configurationDirectory", "launch", ...(value.hostExecutionRoot === undefined ? [] : ["hostExecutionRoot"])])

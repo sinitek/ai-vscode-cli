@@ -120,6 +120,78 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLe
 // persistence. It does not claim production owned-storage or native CLI evidence.
 function latch() { let resolve!: () => void; const promise = new Promise<void>((yes) => { resolve = yes; }); return { promise, resolve }; }
 
+test("new department accepts a Grok employee route and prepares it before startup", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.configuration.routes.employee.cli = "grok";
+  let prepared = 0; h.prepare(() => { prepared++; });
+  await h.start();
+  assert.equal(prepared, 1);
+  assert.equal(h.fixture.readTask("root-1")?.department?.routes.employee.cli, "grok");
+});
+
+test("new department opens its registered director group chat without waiting for the panel", async (t) => {
+  const ownership = createLoopOrchestrationOwnershipTracker(), panel = latch(), entered = latch();
+  const opened: string[] = []; let calls = 0;
+  const h = harness({ acquireDirectorOwnership: ownership.acquire,
+    openGroupChat: async (taskId) => {
+      const task = h.fixture.readTask(taskId)!;
+      assert.equal(task.department?.role, "director");
+      assert.equal(h.composition.host.runtimeSnapshot(taskId)?.rootTaskId, taskId);
+      assert.equal(h.targets.get("director")?.sessionId, task.sessionId);
+      assert.equal(ownership.getCount(taskId), 1);
+      opened.push(taskId);
+      await panel.promise;
+    },
+    runDirectorDecision: async ({ task }) => { calls++; entered.resolve(); return { status: "pending-requirements", task }; },
+  });
+  t.after(() => { panel.resolve(); h.dispose(); });
+  await h.start();
+  await entered.promise;
+  assert.deepEqual(opened, ["root-1"]);
+  h.composition.wakeDirector("root-1");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(calls, 2);
+  assert.deepEqual(opened, ["root-1"], "director wakes do not reopen the group chat");
+  await h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
+});
+
+test("group chat opening failure is logged without stopping the new director", async (t) => {
+  const failure = new Error("panel-unavailable"), events: Array<[string, unknown]> = [], entered = latch(); let decisions = 0;
+  const h = harness({ openGroupChat: async () => { throw failure; }, runDirectorDecision: async ({ task }) => {
+    decisions++; entered.resolve(); return { status: "pending-requirements", task };
+  },
+    log: (event, error) => { events.push([event, error]); } });
+  t.after(h.dispose);
+  await h.start();
+  await entered.promise;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(h.fixture.readTask("root-1")?.status, "running");
+  assert.equal(decisions, 1);
+  assert.deepEqual(events, [["department-group-chat-open-failed", failure]]);
+  await h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
+});
+
+for (const failure of ["preparation", "registration", "binding"] as const) {
+  test(`department ${failure} failure does not open a group chat`, async (t) => {
+    const opened: string[] = [];
+    const h = harness({ openGroupChat: async (taskId) => { opened.push(taskId); } });
+    t.after(h.dispose);
+    if (failure === "preparation") h.prepare(() => { throw new Error("preparation-failed"); });
+    if (failure === "registration") t.mock.method(h.store, "write", () => ({ ok: false as const, error: "registration-failed" }));
+    if (failure === "binding") {
+      const createRoot = h.deps.createRoot;
+      t.mock.method(h.deps, "createRoot", (...args: Parameters<typeof createRoot>) => {
+        const task = createRoot(...args);
+        h.targets.set("director", { ...h.targets.get("director")!, sessionId: "changed-session" });
+        return task;
+      });
+    }
+    await assert.rejects(h.start());
+    assert.deepEqual(opened, []);
+    assert.equal(h.directorPrompts.length, 0);
+  });
+}
+
 test("director ownership covers asynchronous preparation and coordination wait, then releases on stop", async (t) => {
   const ownership = createLoopOrchestrationOwnershipTracker(), entered = latch(), finish = latch();
   const h = harness({ acquireDirectorOwnership: ownership.acquire, runDirectorDecision: async ({ task }) => {
