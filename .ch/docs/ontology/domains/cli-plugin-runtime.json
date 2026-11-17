@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-16",
+  "as_of": "2026-11-17",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -2476,7 +2476,7 @@
     {
       "id": "plugin.rule.loop_plus_capacity_aware_parallel_delivery",
       "name": "Loop+ 按容量与交付边界合理并行",
-      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；容量允许且存在至少三个有收益的独立交付边界时争取 3 到配置容量上限路并行，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。每次 accept 同时复核全部未完成的原始及补充需求；可用容量内将验收修复与安全独立交付同轮派发，不把局部验收缺口作为整体串行屏障。修复关联失败事件并复用来源会话，独立交付通过 independentSubtaskIds 显式声明且不自动继承修复会话；任务须在事件关联或独立列表中恰好归属一次。只派修复或留下可用槽位时在沟通文件记录真实依赖、写入占用、已排队容量或无独立边界的原因。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。scheduler pending 只保留候选 FIFO 顺序，不占槽、不预留写范围或冲突组；候选只与已有 running 和本轮已提升项比较，允许越过仍冲突的 pending 安全回填。冲突释放后最早可运行项优先，人工中断开放 attempt 仍占用资源。",
+      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；最终目标仍需要工作且存在可并行独立交付边界时争取达到配置容量上限，目标已满足或无可并行工作时不强制派发，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。每次 accept 同时复核全部未完成的原始及补充需求；可用容量内将必要验收修复与安全独立交付同轮派发并尽量补足配置容量，无需等待后续验收批次；每批最多验收三项不限制运行或派发数量，无需新工作时允许空的 subtasks，不把局部验收缺口作为整体串行屏障。修复关联失败事件并复用来源会话，独立交付通过 independentSubtaskIds 显式声明且不自动继承修复会话；任务须在事件关联或独立列表中恰好归属一次。只派修复或留下可用槽位时在沟通文件记录真实依赖、写入占用、已排队容量或无独立边界的原因。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。scheduler pending 只保留候选 FIFO 顺序，不占槽、不预留写范围或冲突组；候选只与已有 running 和本轮已提升项比较，允许越过仍冲突的 pending 安全回填。冲突释放后最早可运行项优先，人工中断开放 attempt 仍占用资源。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
@@ -2633,7 +2633,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结有序 eventId 与已见用户消息前缀；后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，额度按新确认 attempt 计算。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结 FIFO 前最多 3 个完成事件的有序 eventId 与已见用户消息前缀；其余已有及后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，额度按新确认 attempt 计算，预检只算本批最多三项，不把下一批计入；本批超过剩余额度仍整批暂停，不缩批凑额度。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2961,9 +2961,28 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_running_member_opens_conversation",
+      "name": "Loop 运行中子任务成员打开已有对话标签",
+      "description": "经典 Loop 与 Loop+ 群聊运行中的子任务成员支持点击及键盘激活，展开 AI 对话面板并选中该子任务最新的活动标签。宿主按群聊绑定父任务与子任务身份匹配，不按标题、不接受浏览器指定标签或会话，不新建会话或重新执行。运行态优先于历史验收定位，其它成员保留已有验收入口；窄屏激活收起成员抽屉。已结束或关闭标签提示刷新，打开异常显示中文原因；标签切换复用既有 CLI、配置及消息同步。",
+      "status": "active",
+      "aliases": ["运行中成员", "子任务 Tab 跳转", "openSubtaskConversation"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 运行中成员打开对话"},
+        {"path": ".ch/docs/design-docs/loop-group-chat-state-boundaries.md", "anchor": "运行中成员打开对话标签"},
+        {"path": "src/webview/loopGroupChatPanel.ts", "anchor": "renderRosterPanel"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"},
+        {"path": "src/extensionHost/loopSubtaskTabs.ts", "anchor": "findRunningLoopSubtaskConversationTabId"},
+        {"path": "src/extension.ts"},
+        {"path": "src/test/extensionHost/loopSubtaskTabs.test.ts"},
+        {"path": "src/test/loop/loopGroupChatCoordinator.test.ts"},
+        {"path": "src/test/loop/loopGroupChatAcceptance.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_acceptance_anchor",
       "name": "Loop+ 已验收成员定位最近一次验收气泡",
-      "description": "Loop+ 群聊已有反馈的成员无论验收成功或失败均可点击或键盘定位最近一次验收气泡；批量验收允许多个成员共享目标。新反馈隐藏保存完成事件身份并精确匹配最近一次已验收 attempt，同名成员不混淆；旧反馈仅在完整标题唯一匹配时兼容，缺失、歧义及加载错误不提供入口。定位会滚动并聚焦目标，窄屏收起成员抽屉，尊重减少动态效果偏好。最新可定位验收气泡与补充需求同属显示清理保护项，仍计入限额且必要时允许超限；不修改存档、验收结论、调度或经典 Loop 行为。",
+      "description": "Loop+ 群聊已有反馈且当前未运行的成员无论验收成功或失败均可点击或键盘定位最近一次验收气泡；批量验收允许多个成员共享目标。新反馈隐藏保存完成事件身份并精确匹配最近一次已验收 attempt，同名成员不混淆；旧反馈仅在完整标题唯一匹配时兼容，缺失、歧义及加载错误不提供入口。定位会滚动并聚焦目标，窄屏收起成员抽屉，尊重减少动态效果偏好。最新可定位验收气泡与补充需求同属显示清理保护项，仍计入限额且必要时允许超限；不修改存档、验收结论、调度或经典 Loop 行为。",
       "status": "active",
       "aliases": ["验收锚点", "成员验收定位", "loop-plus-acceptance"],
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],

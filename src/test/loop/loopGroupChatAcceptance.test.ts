@@ -160,3 +160,46 @@ test("the member action focuses and scrolls its target, closes the drawer and ho
     assert.equal(events.length, 0);
   }
 });
+
+for (const loopPlus of [true, false]) {
+  test(`running members open conversations with escaped identities in ${loopPlus ? "Loop+" : "Loop"} HTML and patches`, () => {
+    const attempt = reviewed('A"<>&', "a-1");
+    const state = stateWithFeedback([attempt], [feedback([attempt], ["任务A"])]);
+    state.task.status = "running";
+    state.rounds[0].participants[0].status = "running";
+    state.rounds[0].participants[1].status = "running";
+    if (!loopPlus) state.loopPlus = undefined;
+    for (const html of [buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state), buildLoopGroupChatPanelContentPatch(state, 1).rosterPanelHtml]) {
+      assert.match(html, /<button class="member member-conversation-link"[^>]+data-action="openSubtaskConversation"[^>]+data-subtask-id="A&quot;&lt;&gt;&amp;"/u);
+      assert.match(html, /aria-label="[^"]+：在 AI 对话面板打开此子任务"/u);
+      assert.doesNotMatch(html, /data-action="jumpToAcceptance"/u);
+      assert.equal((html.match(/data-action="openSubtaskConversation"/gu) ?? []).length, 1);
+    }
+    for (const status of ["pending", "completed", "stopped", "interrupted", "failed"]) {
+      state.rounds[0].participants[1].status = status;
+      assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml, /data-action="openSubtaskConversation"/u);
+    }
+  });
+}
+
+test("opening a running member saves reading position and sends only its identity", () => {
+  const page = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, stateWithFeedback([], []));
+  const start = page.indexOf('if (action === "openSubtaskConversation")');
+  assert.ok(start > 0);
+  const source = page.slice(start, page.indexOf('if (action === "jumpToAcceptance")', start));
+  const events: unknown[] = [];
+  const context = {
+    action: "openSubtaskConversation", target: { getAttribute: () => 'A"<>&' },
+    saveScrollState: () => events.push("save"),
+    setSidebarOpen: (open: boolean) => events.push(["sidebar", open]),
+    vscode: { postMessage: (message: unknown) => events.push(message) },
+  };
+  vm.runInNewContext(`(function () { ${source} })();`, context);
+  assert.equal(JSON.stringify(events), JSON.stringify(["save", ["sidebar", false], {
+    type: "loopGroupChatChat:openSubtaskConversation", subtaskId: 'A"<>&',
+  }]));
+  events.length = 0;
+  context.target.getAttribute = () => "";
+  vm.runInNewContext(`(function () { ${source} })();`, context);
+  assert.deepEqual(events, []);
+});

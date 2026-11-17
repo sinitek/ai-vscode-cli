@@ -118,6 +118,7 @@ test("department host rejects cross-department, bad root, metadata, workspace an
   const h = harness();
   try {
     await h.coordinator.open(h.root.id);
+    await h.domReady;
     const mutations: Array<(task: LoopTaskRecord) => void> = [
       (task) => { task.departmentInvalid = true; }, (task) => { task.department!.rootTaskId = "another-root"; },
       (task) => { task.department!.parentTaskId = "another-root"; }, (task) => { task.department!.leaderSubtaskId = "absent"; },

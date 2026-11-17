@@ -611,6 +611,7 @@ ${DIALOG_SHELL_STYLES}
       .department-allocation-controls :focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
       .department-allocation-controls :disabled { cursor: default; opacity: 0.6; }
       .department-allocation-error { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+      .member-conversation-link,
       .member-acceptance-link {
         border: 0;
         border-radius: 6px;
@@ -620,9 +621,11 @@ ${DIALOG_SHELL_STYLES}
         text-align: left;
         cursor: pointer;
       }
+      .member-conversation-link:hover,
       .member-acceptance-link:hover {
         background: var(--vscode-list-hoverBackground);
       }
+      .member-conversation-link:focus-visible,
       .member-acceptance-link:focus-visible,
       .acceptance-anchor:focus {
         outline: 2px solid var(--vscode-focusBorder);

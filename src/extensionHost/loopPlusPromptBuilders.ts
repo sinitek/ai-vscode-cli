@@ -1,4 +1,5 @@
 import {
+  LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   resolveLoopPlusDecisionSubtaskMax,
   resolveLoopPlusMaxAcceptances,
@@ -552,6 +553,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Last overall progress: ${context.progressPercent ?? 0}%`,
     current ? formatReview(current, "current") : "Current review item: (none)",
     `Acceptance batch count: ${batchIds.length}`,
+    `Maximum acceptance batch size: ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX}`,
     "Acceptance batch, oldest first. Confirm this whole list in this decision:",
     batchText,
     `FIFO review queue count: ${queue.length}`,
@@ -562,6 +564,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Scheduler concurrency limit: ${context.maxConcurrency}`,
     `Available concurrency slots in this snapshot: ${availableSlots}`,
     `Decision subtask limit: ${subtaskMax}`,
+    `Target running count when enough necessary independent work is ready: ${context.maxConcurrency}`,
     "Still running (open reservations, including interrupted subtasks):",
     running,
     `Interrupted subtasks awaiting continuation: ${context.interruptedSubtaskIds?.join(", ") || "(none)"}`,
@@ -593,10 +596,12 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Dispatch general subtasks only when the thinking workload is large enough to split into at least two independent analysis tracks, each needing substantial investigation, and parallel execution has a clear material benefit in wall-clock time or coverage. If so, dispatch at least two general subtasks together with distinct evidence scopes; general is read-only and never carries coding delivery.",
     "- For non-trivial coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks with separate deliverables, primary write ownership, and verification. Decompose by delivery boundary, not by model role: multiple backend, frontend, or fullstack subtasks can run together. Two roles do not mean a two-task limit.",
     parallelCapacity >= 3
-      ? `- When at least three useful independent delivery boundaries are ready, aim for 3 to ${parallelCapacity} concurrent subtasks, bounded by available slots and the decision subtask limit. Do not default to only one or two. Use fewer when there are fewer useful boundaries, real prerequisite dependencies, or insufficient free slots; never create tiny or artificial tasks just to fill capacity.`
+      ? `- When useful independent delivery boundaries are ready, aim to fill the configured concurrency limit of ${context.maxConcurrency} with necessary work, bounded by available slots and the decision subtask limit of ${subtaskMax}. Do not stop at three tasks when more necessary independent work can run. Use fewer when there are fewer useful boundaries, real prerequisite dependencies, or insufficient free slots; never create tiny or artificial tasks just to fill capacity.`
       : `- Use up to ${parallelCapacity} useful independent subtasks within the configured limits and available slots. Never create tiny or artificial tasks just to fill capacity.`,
     "- On dispatch and accept, look for ready independent work to refill free slots instead of waiting for all siblings. Review the whole open acceptance batch first and attach follow-up work to accept. Do not duplicate running or pending tasks; pending work already owns its place in the queue and may consume released slots.",
     "- Every accept is also a remaining-goal planning decision: re-read all unfinished root and supplemental requirements, not just this batch's acceptance defects. When the overall goal is unfinished, dispatch ready independent deliverables alongside necessary repairs in the same accept, within capacity and ownership limits. A failed check or a repair in progress is not a global barrier. Keep repairs focused on the failed criterion; independent delivery must advance a distinct unmet requirement, not repeat still-valid verification.",
+    `- Review at most ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX} subtasks per decision, exactly the frozen acceptance batch. The rest of the FIFO review queue waits for the next batch. This review limit does not cap running subtasks or new dispatches. After judging this batch, include necessary repairs and ready remaining-goal work in the same accept to refill usable slots toward the configured concurrency limit; do not wait for later review batches before launching safe independent work. Account for running tasks and pending tasks that can use those slots, while genuinely blocked pending tasks do not reserve idle slots.`,
+    "- New dispatch is conditional on the final goal still needing that work. If all requirements are satisfied, launch no new subtasks and complete once every host completion gate is clear. If remaining work is already covered by running or pending tasks, or only dependencies or real conflicts prevent useful work, accept without new subtasks and wait or continue the next review batch. Never duplicate work, rerun valid verification, or invent tasks merely to reach the concurrency target.",
     "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",

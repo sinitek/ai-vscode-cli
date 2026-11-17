@@ -1882,6 +1882,120 @@ test("freezes the active acceptance batch and reviews later completions in the n
   assert.equal(env.maxMains(), 1);
 });
 
+function finishedReviewTask(id: string, count: number): LoopTaskRecord {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: count });
+  const specs = Array.from({ length: count }, (_, index) => ({
+    subtaskId: `finished-${index}`, attemptId: `attempt-${index}`, writeFiles: [`src/finished-${index}.ts`],
+  }));
+  scheduler.dispatch(specs);
+  for (const spec of specs) scheduler.finish({ ...spec, outcome: "completed" });
+  const task = baseTask(id, scheduler.snapshot());
+  task.subTasks = specs.map((spec) => ({ id: spec.subtaskId, title: spec.subtaskId, status: "completed", updatedAt: 1 }));
+  return task;
+}
+
+test("reviews a restored backlog in FIFO batches of at most three and completes without filler dispatches", async () => {
+  for (const reload of [false, true]) {
+    const env = harness();
+    const task = finishedReviewTask(`bounded-reviews-${reload}`, 8);
+    env.tasks.set(task.id, task);
+    let host = env.host;
+    let run = host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+      resumeTaskId: task.id, schedulingMode: "event_driven",
+    });
+    await flush();
+    const allIds = Array.from({ length: 8 }, (_, index) => buildLoopPlusFinishEventId(`finished-${index}`, `attempt-${index}`));
+    let confirmed = 0;
+    for (const count of [3, 3, 2]) {
+      if (reload && confirmed === 3) {
+        host.stopParent(task.id);
+        await run.done;
+        host = env.reloadHost();
+        run = host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+          resumeTaskId: task.id, resumeRequested: true,
+        });
+        await flush();
+      }
+      const main = env.mains.at(-1)!;
+      const expected = allIds.slice(confirmed, confirmed + count);
+      assert.equal(main.request.kind, "review");
+      assert.deepEqual(main.request.reviewEventIds, expected);
+      assert.deepEqual(host.getActiveReviewEventIds(task.id), expected);
+      assert.equal(snapshotOf(env.tasks.get(task.id)).reviewQueue.length, 8 - confirmed - 1,
+        "items beyond this batch remain in the scheduler FIFO");
+      main.resolve(completedDecision({ reviewEventIds: expected }));
+      await flush();
+      confirmed += count;
+      assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.filter((item) => item.disposition === "reviewed").length, confirmed);
+      assert.equal(env.tasks.get(task.id)?.status, confirmed === 8 ? "completed" : "running");
+      assert.equal(env.attempts.length, 0, "finishing the goal does not require filling configured slots");
+    }
+    assert.equal(env.acceptanceFeedback.length, 3);
+    assert.equal(env.maxMains(), 1);
+    await run.done;
+  }
+});
+
+test("rejects confirmation beyond three and fills configured slots before reviewing the remaining FIFO", async () => {
+  const env = harness();
+  const task = finishedReviewTask("bounded-refill", 5);
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id, schedulingMode: "event_driven",
+  });
+  await flush();
+  const allIds = Array.from({ length: 5 }, (_, index) => buildLoopPlusFinishEventId(`finished-${index}`, `attempt-${index}`));
+  env.mains[0].resolve(decisionJson({ status: "accept", reviewEventIds: allIds.slice(0, 4) }));
+  await flush();
+  const retry = env.mains.at(-1)!;
+  assert.deepEqual(retry.request.reviewEventIds, allIds.slice(0, 3));
+  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.some((item) => item.disposition === "reviewed"), false);
+  const deliveries = Array.from({ length: 5 }, (_, index) => subtask(`new-${index}`, [`src/new-${index}.ts`]));
+  retry.resolve(decisionJson({
+    status: "accept", reviewEventIds: allIds.slice(0, 3),
+    reviews: allIds.slice(0, 3).map((reviewEventId, index) => ({
+      reviewEventId, acceptance: index === 0 ? "failed" : "passed", reason: index === 0 ? "边界分支遗漏" : "实现与验证符合要求",
+      ...(index === 0 ? { subtaskIds: ["repair"] } : {}),
+    })),
+    acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture().map((check) => ({ ...check, passed: false })) },
+    subtasks: [subtask("repair", ["src/finished-0.ts"]), ...deliveries],
+    independentSubtaskIds: deliveries.map((item) => item.id),
+  }));
+  await flush();
+  const snapshot = snapshotOf(env.tasks.get(task.id));
+  assert.equal(snapshot.running.length, 6, "review batch size does not limit dispatch or runtime capacity");
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["repair", ...deliveries.map((item) => item.id)]);
+  assert.equal(env.attempts[0].request.continueFromSubtaskId, "finished-0");
+  assert.equal(env.attempts.slice(1).every((item) => item.request.continueFromSubtaskId === undefined), true);
+  assert.deepEqual(env.mains.at(-1)!.request.reviewEventIds, allIds.slice(3));
+  assert.deepEqual(env.host.getActiveReviewEventIds(task.id), allIds.slice(3));
+  assert.equal(env.tasks.get(task.id)?.status, "running");
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  env.host.stopParent(task.id);
+  await run.done;
+});
+
+test("checks the acceptance budget against the three-item batch instead of the whole backlog", async () => {
+  const env = harness({ acceptanceLimit: () => 3 });
+  const task = finishedReviewTask("bounded-budget", 5);
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id, schedulingMode: "event_driven",
+  });
+  await flush();
+  assert.equal(env.mains.length, 1, "the next two reviews must not prevent accepting the first three");
+  assert.equal(env.mains[0].request.reviewEventIds?.length, 3);
+  env.mains[0].resolve(decisionJson({ status: "accept", reviewEventIds: env.mains[0].request.reviewEventIds }));
+  await run.done;
+  const snapshot = snapshotOf(env.tasks.get(task.id));
+  assert.equal(snapshot.seenAttempts.filter((item) => item.disposition === "reviewed").length, 3);
+  assert.equal(snapshot.currentReview, null);
+  assert.deepEqual(snapshot.reviewQueue.map((item) => item.subtaskId), ["finished-3", "finished-4"]);
+  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
+  assert.equal(env.messages.includes("loop-plus-acceptance-limit"), true);
+  assert.equal(env.mains.length, 1);
+});
+
 test("waits without a new dispatch or another main prompt while work is still running", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });

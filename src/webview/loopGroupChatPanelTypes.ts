@@ -188,6 +188,7 @@ export type LoopGroupChatPanelBaseMessage =
   | { type: "loopGroupChatChat:openDepartmentTask"; taskId?: unknown }
   | ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit" } & DepartmentEmployeeLimitRequest)
   | { type: "loopGroupChatChat:refresh" }
+  | { type: "loopGroupChatChat:openSubtaskConversation"; subtaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }

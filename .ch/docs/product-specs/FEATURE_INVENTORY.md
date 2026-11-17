@@ -250,10 +250,17 @@
 - 仅过滤显示，不阻止指令执行、不删除消息或存档；取消勾选恢复尚未被既有保留规则删除的气泡。气泡上限仍先基于完整基础集合执行既有清理规则，再应用隐藏指令与仅显示最终结果筛选；隐藏不绕过永久清理，也不承诺恢复已被清理的消息。设置保存失败时显示中文错误并以宿主真实状态恢复开关和气泡。
 - 实现：`src/toolSettings.ts`、`src/sessionMessageActions.ts`、`src/panelStateBuilder.ts`、`src/webview/viewContentScript/messageRendering.ts`；回归：`src/test/webview/hideInstructionBubbles.test.ts`、`src/test/core/toolSettings.test.ts`、`src/test/session/sessionMessageActionsCoreCoverage.test.ts`。
 
+## Loop / Loop+ 运行中成员打开对话
+
+- 状态：`active`（2026-11-17）。群聊成员面板中的运行中子任务支持点击及 Enter / Space 激活，自动展开 AI 对话面板并选中该子任务现有的运行标签；初始渲染与实时刷新一致，窄屏同时收起成员抽屉。
+- 宿主按父任务和子任务身份匹配运行标签，优先最新标签，支持主子任务使用不同 CLI；不按标题匹配，不新建会话或重新执行任务。点击期间任务已结束或标签已关闭时提示刷新，打开失败时显示中文原因。
+- 运行中的成员优先打开对话；已有验收反馈的其它成员保留原来的验收定位。
+- 实现：`src/webview/loopGroupChatPanel.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopSubtaskTabs.ts`、`src/extension.ts`；回归：`src/test/loop/loopGroupChatAcceptance.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/extensionHost/loopSubtaskTabs.test.ts`。
+
 ## Loop+ 成员验收气泡定位
 
 - Loop+ 群聊中已有验收反馈的子任务成员可点击查看最近一次验收结果，不区分成功或失败；批量验收中的成员可定位同一气泡。点击或键盘激活后滚动并聚焦气泡，窄屏同时收起成员抽屉；减少动态效果偏好下立即定位。
-- 新反馈用不展示的完成事件身份关联子任务与 attempt，同名成员和多次验收不混淆。旧反馈仅在当前成员标题唯一且与反馈标题完全匹配时兼容；缺失反馈、歧义或加载错误不显示可点击入口，经典 Loop 不增加入口。
+- 新反馈用不展示的完成事件身份关联子任务与 attempt，同名成员和多次验收不混淆。旧反馈仅在当前成员标题唯一且与反馈标题完全匹配时兼容；缺失反馈、歧义或加载错误不显示验收定位入口，经典 Loop 不增加验收定位入口。运行中子任务使用上述打开对话入口。
 - 成员最近一次可定位验收气泡属于群聊清理保护项，首次渲染和内容补丁同步更新成员入口与锚点；仍计入限额，必要时允许保护项超限，不删除 transcript 或改变调度。
 - 实现：`src/loopGroupChatAcceptance.ts`、`src/loopPlusAcceptancePlan.ts`、`src/webview/loopGroupChatPanel.ts`；回归：`src/test/loop/loopGroupChatAcceptance.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 
@@ -287,9 +294,10 @@
 
 ## Loop+ 容量感知并行与轻量冲突协作
 
-- 生产并发容量使用“Loop/Loop+ 单次派发上限”（默认 6、范围 1–20），不再固定为 6；主模型可见真实上限、剩余槽位和单次派发上限。存在至少三个有收益的独立交付边界且容量允许时争取 3 到当前容量上限路并行，不按一个全栈角色或两个前后端角色限制任务数；边界不足、真实依赖或容量不足时允许少派，不为凑数拆分。
+- 生产并发容量使用“Loop/Loop+ 单次派发上限”（默认 6、范围 1–20），不再固定为 6；主模型可见真实上限、剩余槽位和单次派发上限。最终目标仍需要工作且存在可并行独立交付时，争取达到当前配置容量上限，不按一个全栈角色或两个前后端角色限制任务数；目标已满足、边界不足、真实依赖或容量不足时允许少派或不派，不为凑数拆分。
+- 主任务每次最多验收 FIFO 前 3 个子任务完成事件，其余已有或后到事件留给下一批；首项完成立即验收，不等待凑满三项。协议重试和同宿主恢复保持冻结批次，宿主重建从持久化 FIFO 重新取最多三项。总验收额度预检只计算本批，超额仍整批暂停；后续未验收事件继续阻止整体完成。该上限不限制同轮派发数或运行并发。
 - 按主要写入所有权和可独立验收的实现、测试、文档、配置等边界拆分，`dispatch` / `accept` 主动回填空槽，不重复派发已有 running / pending。默认协议示例展示四个独立交付，并尊重用户单次上限和宿主并发上限。
-- 每次 `accept` 同时复核原始及补充需求的剩余目标：验收修复通过 `reviews[].subtaskIds` 关联失败事件并复用原会话；独立交付通过可选 `independentSubtaskIds` 声明，与修复同轮派发且不自动继承修复会话。不能因出现验收缺口就让整体目标串行等待；只派修复或留空槽时，主模型在沟通文件说明真实依赖、写入占用、已排队容量或没有可推进独立工作的原因。不为回填重复有效验证或制造微任务。单事件及批量验收示例均展示修复与独立交付，容量为 1 时仍允许只派修复。
+- 每次 `accept` 同时复核原始及补充需求的剩余目标：验收修复通过 `reviews[].subtaskIds` 关联失败事件并复用原会话；独立交付通过可选 `independentSubtaskIds` 声明，与修复同轮派发且不自动继承修复会话。需要新工作且可并行时尽量补到配置容量，不等待后续验收批次；已有 running / 可启动 pending 计入容量，不重复派发，真实冲突阻塞的 pending 不预留空槽。不能因出现验收缺口就让整体目标串行等待；只派修复或留空槽时，主模型在沟通文件说明真实依赖、写入占用、已排队容量或没有可推进独立工作的原因。无需新工作时允许空的 subtasks，继续验收、等待或合法完成。不为回填重复有效验证或制造微任务。单事件及批量验收示例均展示修复与独立交付，容量为 1 时仍允许只派修复。
 - 共享只读上下文不构成写冲突，局部附带修改不必让所有工作串行；子任务写入前重读并保留并发改动，小冲突自行协调并汇报。已知同路径写入和相同冲突组仍串行，不允许隐瞒范围；同符号、共享契约或大量竞争修改仍由主模型重排。
 - 实现与验证：`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`；协议归属、提示、修复与独立交付并发、会话来源、文件/冲突组/容量保护及独立回填回归。边界详见 `.ch/docs/design-docs/loop-plus-scheduling.md`；提示引导不保证真实模型每轮必定派发固定数量。
 
