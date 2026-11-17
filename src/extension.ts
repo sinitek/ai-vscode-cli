@@ -130,7 +130,7 @@ import {
 import { askLoopMainModelSession } from "./loopMainQuestion";
 import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./loopMainQuestionQueue";
 import { resolveLoopSchedulingMode } from "./loopTaskStore";
-import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
+import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
@@ -4861,7 +4861,7 @@ async function closeLoopSubtaskTabs(taskId: string, subtaskId: string, tabId?: s
     getTabs: () => ensureConversationTabs().tabs,
     resolveContext: (tab) => resolveLoopSubtaskConversationContext(tab.cli, tab.id),
     isTabRunActive,
-    closeTab: closeConversationTabAndRefreshPanel,
+    closeTab: (id) => closeConversationTabAndRefreshPanel(id, { replaceLastTab: true }),
   });
 }
 
@@ -4877,19 +4877,23 @@ function prepareLoopSubtaskTabClose(tabId: string): () => Promise<void> {
     getTabs: () => ensureConversationTabs().tabs,
     resolveContext: (candidate) => resolveLoopSubtaskConversationContext(candidate.cli, candidate.id),
     isTabRunActive,
-    closeTab: closeConversationTabAndRefreshPanel,
-  }) : () => closeConversationTabAndRefreshPanel(tabId);
+    closeTab: (id) => closeConversationTabAndRefreshPanel(id, { replaceLastTab: true }),
+  }) : () => closeConversationTabAndRefreshPanel(tabId, { replaceLastTab: true });
   return async () => {
     if (workspaceKey !== activeWorkspaceKey) throw new Error("工作区已切换，忽略原子任务标签清理。");
     const current = getConversationTabById(tabId);
     if (current && (current !== tab || current.cli !== cli || getConversationTabSessionIdForCli(current, cli) !== sessionId)) {
       throw new Error("子任务标签已被替代或换绑，保留新任务标签。");
     }
-    await close();
-    if (getConversationTabById(tabId) === tab) throw new Error("子任务标签仍存在，尚未自动关闭。");
-    for (const binding of bindings) {
-      void loopSubtaskAutoCompactions.wait(binding.cli, binding.sessionId ?? null)
-        .then(() => disposeInteractiveRunnerIfUnused(binding)).catch(() => undefined);
+    try {
+      await close();
+      if (getConversationTabById(tabId) === tab) throw new Error("子任务标签仍存在，尚未自动关闭。");
+    } finally {
+      // An older tab's refresh can fail after this tab has already closed.
+      for (const binding of bindings) {
+        void loopSubtaskAutoCompactions.wait(binding.cli, binding.sessionId ?? null)
+          .then(() => disposeInteractiveRunnerIfUnused(binding)).catch(() => undefined);
+      }
     }
   };
 }
@@ -6121,9 +6125,7 @@ function createLoopTaskRecord(
     completionRoundSummaries: [],
     completionRequirementCoverage: [],
   };
-  const store = readLoopTaskStore(taskStoreFile);
-  store.tasks.push(record);
-  writeLoopTaskStore(taskStoreFile, store);
+  appendLoopTaskRecord(taskStoreFile, record);
   return record;
 }
 

@@ -11,6 +11,7 @@ import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../../loopDirectExecutionPolicy";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
+  LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   parseLoopPlusDecision,
@@ -104,6 +105,93 @@ test("protocol examples acknowledge the frozen report prefix when resuming sched
   for (const status of PROTOCOL_STATUSES) {
     const parsed = parseExample(examples, status);
     assert.deepEqual(parsed.reportEventIds, status === "clarify" ? undefined : reportEventIds);
+  }
+});
+
+test("all main prompt modes preserve four frozen ids through refresh and late prerequisite arrival", () => {
+  assert.equal(LOOP_PLUS_ACCEPTANCE_BATCH_MAX, 4);
+  const frozen = ["event-prerequisite-z", "event-successor-a", "event-ready-c", "event-ready-b"];
+  const reports = ["report-z-first", "report-a-second"];
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      for (const latePrerequisite of [false, true]) {
+        const prompt = buildLoopPlusMainModelPrompt(mainContext({
+          kind, loopSubtaskMode, acceptanceEventIds: frozen, reportEventIds: reports,
+          currentEventId: frozen[0], maxConcurrency: 2, subtaskMax: 1, subtaskRoundLimit: 100,
+          view: view({
+            currentReview: review(frozen[0], "prerequisite"),
+            reviewQueue: [
+              ...frozen.slice(1).map((id) => review(id, id)),
+              ...(latePrerequisite ? [review("late-prerequisite", "late-prerequisite")] : []),
+            ],
+            visibleReviewCount: latePrerequisite ? 5 : 4,
+          }),
+        }));
+        assert.match(prompt, /Acceptance batch count: 4/);
+        assert.match(prompt, /Maximum acceptance batch size: 4/);
+        assert.match(prompt, /frozen host-selected order/);
+        assert.match(prompt, /protocol repair, retries, prompt refresh, and same-host recovery/);
+        assert.match(prompt, /including late-arriving prerequisites, but those belong to the next batch/);
+        assert.match(prompt, /Never reorder or expand the frozen batch from the latest record/);
+        assert.match(prompt, /Frozen FIFO report prefix:\n1\. report-z-first\n2\. report-a-second/);
+        assert.match(prompt, /then acknowledge the exact list/);
+        assert.doesNotMatch(prompt, /FIFO review queue|Acceptance batch, oldest first|review queue, oldest first/);
+        const examples = extractProtocolExamples(prompt);
+        for (const status of PROTOCOL_STATUSES) {
+          const parsed = parseExample(examples, status);
+          assert.deepEqual(parsed.reportEventIds, status === "clarify" ? undefined : reports);
+          if (status === "accept" || status === "completed") {
+            assert.deepEqual(parsed.reviewEventIds, frozen);
+            assert.equal(parsed.reviewEventId, undefined);
+            if (status === "accept") {
+              assert.deepEqual(parsed.reviews?.map((item) => item.reviewEventId), frozen);
+              assert.equal(parsed.subtasks?.length, 1);
+            }
+          }
+        }
+        assert.match(prompt, /Scheduler concurrency limit: 2/);
+        assert.match(prompt, /Decision subtask limit: 1/);
+        assert.match(prompt, /Subtask round limit: 100/);
+      }
+    }
+  }
+});
+
+test("dependency-first review rules preserve independent progress, real verdicts and execution gates", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, loopSubtaskMode, acceptanceEventIds: [] }));
+      for (const clause of [
+        /selects prerequisites before successors when generating a new batch/,
+        /preserving arrival order for independent ready items/,
+        /Do not wait to fill the batch/,
+        /running or pending prerequisite, or an unacknowledged no-acceptance report, defers only related successors/,
+        /Independent review, dispatch, and refill continue/,
+        /Acknowledge reports through the frozen FIFO report prefix first/,
+        /Never confirm a report automatically or turn it into a separate acceptance review/,
+        /reviewed \(passed or failed\), reported, or closed means it has been processed first, not that execution succeeded/,
+        /judge the successor delivery independently/,
+        /A failed prerequisite does not automatically fail any other event/,
+        /A selected prerequisite is not yet passed/,
+        /For execution admission.*outcome completed plus reviewed acceptance passed/,
+        /requiresAcceptance=false plus outcome completed and acknowledged report/,
+        /failed\/stopped attempts and closed tasks do not release successors/,
+        /complete decision.*before promoting pending work/,
+        /New reservations are persisted before execution starts/,
+        /no acceptance item is claimable, do not emit an empty review confirmation/,
+        /When an active prerequisite can advance, waiting with no frozen acceptance batch is allowed/,
+        /wait cannot make progress, even if review events remain queued/,
+        /instead of waiting indefinitely/,
+        /no batch barrier and no shared round gate/,
+        /later events or messages, running or pending work, and open continuations prevent parent completion/,
+      ]) {
+        assert.match(prompt, clause);
+      }
+      assert.match(prompt, /Do not send accept when the acceptance batch is \(none\)/);
+      const completed = parseExample(extractProtocolExamples(prompt), "completed");
+      assert.equal(completed.reviewEventId, undefined);
+      assert.equal(completed.reviewEventIds, undefined);
+    }
   }
 });
 
@@ -516,7 +604,7 @@ test("main prompt shows the current item, queue, visible count, work in flight, 
   }));
   assert.match(prompt, /Current review eventId: event-live-42/);
   assert.match(prompt, /current eventId=event-live-42 subtask=sub-current/);
-  assert.match(prompt, /FIFO review queue count: 1/);
+  assert.match(prompt, /Review queue count: 1/);
   assert.match(prompt, /Visible review count including the current item: 2/);
   assert.match(prompt, /queued#1 eventId=event-queued-7 subtask=sub-queued/);
   assert.match(prompt, /Still running count: 1/);
@@ -545,7 +633,7 @@ test("omits a live event id when nothing is under review and still parses every 
   }));
   assert.match(prompt, /Current review eventId: \(none\)/);
   assert.match(prompt, /Current review item: \(none\)/);
-  assert.match(prompt, /FIFO review queue count: 0/);
+  assert.match(prompt, /Review queue count: 0/);
   assert.match(prompt, /Visible review count including the current item: 0/);
   assert.match(prompt, /Current attempt report path: \(no current item\)/);
   assert.match(prompt, /must not be emitted/);
@@ -670,8 +758,8 @@ test("every main mode and decision kind plans remaining-goal delivery alongside 
       assert.match(prompt, /Every accept\.subtasks id must appear exactly once across reviews\[\*\]\.subtaskIds and independentSubtaskIds/);
       assert.match(prompt, /Never attach independent work to a failed review just to satisfy linkage/);
       assert.match(prompt, /independentSubtaskIds do not inherit a failed event's session/);
-      assert.match(prompt, /Maximum acceptance batch size: 3/);
-      assert.match(prompt, /Review at most 3 subtasks per decision, exactly the frozen acceptance batch/);
+      assert.match(prompt, /Maximum acceptance batch size: 4/);
+      assert.match(prompt, /Review at most 4 subtasks per decision, exactly the frozen acceptance batch/);
       assert.match(prompt, /This review limit does not cap running subtasks or new dispatches/);
       assert.match(prompt, /do not wait for later review batches before launching safe independent work/);
       assert.match(prompt, /New dispatch is conditional on the final goal still needing that work/);
@@ -795,7 +883,7 @@ test("asks the main task to judge a batch of new user messages before launching"
   assert.match(prompt, /1\. FIRST_USER_MESSAGE/);
   assert.match(prompt, /2\. SECOND_USER_MESSAGE/);
   assert.match(prompt, /judge the whole list together/);
-  assert.match(prompt, /wait when other work is still running or pending, including after finishing a trivial supplemental request/);
+  assert.match(prompt, /wait when live execution or ready pending work can advance, including after finishing a trivial supplemental request/);
   assert.match(prompt, /Do not dispatch a placeholder just to wait/);
 });
 
@@ -917,4 +1005,23 @@ test("a system-default or missing acceptance plan adds no extra review section",
   }));
   assert.doesNotMatch(systemPlan, /Additional acceptance reviews/);
   assert.equal(systemPlan, withoutPlan);
+});
+
+
+test("dependency prompts expose latest attempts, success gates, repair semantics and valid JSON", () => {
+  const dependencyBlocks = [{ subtaskId: "child", attemptId: "child-1", dependencyId: "source", dependencyAttemptId: "source-2", reason: "closed" as const }];
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({ view: view({ dependencyBlocks }) }));
+  assert.match(prompt, /child attempt=child-1 dependsOn=source latestAttempt=source-2 reason=closed/);
+  for (const clause of [/stable subtask ids/, /continueFromSubtaskId selects a session and never implies dependsOn/, /latest attempt/, /acknowledged report/, /forward-reference/, /Unknown ids/, /cycles/, /already known logical ids/, /omission of dependsOn inherits/, /\[\] clears/, /same logical id/, /wait cannot make progress/, /no whole-batch barrier/]) {
+    assert.match(prompt, clause);
+  }
+  const json = prompt.split("Dependency protocol example (prerequisite-id is an already known logical id): ")[1].split("\n")[0];
+  const parsed = parseLoopPlusDecision(json);
+  assert.deepEqual(parsed?.subtasks?.[0].dependsOn, ["prerequisite-id"]);
+  const childPrompt = buildLoopPlusSubtaskModelPrompt({
+    subtask: { id: "child", title: "child", prompt: "implement dependency", dependsOn: ["source"] }, communicationFile: "report.md",
+  });
+  assert.match(childPrompt, /dependsOn.*source/);
+  assert.match(childPrompt, /latest attempt completes and passes acceptance/);
+  assert.match(childPrompt, /Session continuation is separate from dependencies/);
 });

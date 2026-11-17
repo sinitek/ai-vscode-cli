@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 
 // Isolate before importing modules that capture os.homedir() at load time.
 const originalHome = process.env.HOME;
@@ -202,6 +203,61 @@ test("returns an empty store for missing, malformed, and unreadable storage file
   assert.deepEqual(loopTaskStore.readLoopTaskStore(malformedFile), { tasks: [] });
   assert.deepEqual(loopTaskStore.readLoopTaskStore(invalidShapeFile), { tasks: [] });
   assert.deepEqual(loopTaskStore.readLoopTaskStore(unreadableDirectory), { tasks: [] });
+});
+
+test("drops a parent with damaged dependencies while preserving valid parents and strict diagnostics", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([
+    { subtaskId: "active", attemptId: "active-1", title: "Active" },
+    { subtaskId: "queued", attemptId: "queued-1", title: "Queued" },
+  ]);
+  const snapshot = scheduler.snapshot();
+  assert.equal(snapshot.pending[0]?.subtaskId, "queued");
+  assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot }));
+
+  const base = createTask();
+  const damagedTask = {
+    ...base,
+    id: "damaged-dependencies",
+    schedulingMode: "event_driven" as const,
+    status: "running" as const,
+    activeSubtaskId: "active",
+    activeSubtaskIds: ["active"],
+    loopPlus: snapshot,
+    subTasks: [
+      { id: "active", title: "Active", prompt: "Keep this metadata.", status: "running" as const },
+      { id: "queued", title: "Queued", prompt: "Do not run without its original metadata.", status: "pending" as const, dependsOn: null },
+    ],
+  } as unknown as LoopTaskRecord;
+  const validTask = createTask({
+    id: "valid-sibling",
+    subTasks: [{ id: "legacy-subtask", title: "Legacy subtask", status: "pending" }],
+  });
+  const storeFile = path.join(testHome, "dependency-recovery", "loop-tasks.json");
+  fs.mkdirSync(path.dirname(storeFile), { recursive: true });
+  const malformedDependencies: unknown[] = [
+    null,
+    "dependency",
+    [1],
+    ["   "],
+    ["queued"],
+    ["dependency", " dependency "],
+  ];
+  for (const dependsOn of malformedDependencies) {
+    const rawDamagedTask = JSON.parse(JSON.stringify(damagedTask)) as {
+      subTasks: Array<Record<string, unknown>>;
+      [key: string]: unknown;
+    };
+    rawDamagedTask.subTasks[1].dependsOn = dependsOn;
+    fs.writeFileSync(storeFile, JSON.stringify({ tasks: [rawDamagedTask, validTask] }), "utf8");
+    const original = fs.readFileSync(storeFile, "utf8");
+
+    const compatible = loopTaskStore.readLoopTaskStore(storeFile);
+    assert.deepEqual(compatible.tasks.map((task) => task.id), ["valid-sibling"]);
+    assert.equal("dependsOn" in compatible.tasks[0].subTasks[0], false);
+    assert.throws(() => loopTaskStore.readLoopTaskStore(storeFile, { throwOnError: true }), /subTasks\[1\]\.dependsOn/);
+    assert.equal(fs.readFileSync(storeFile, "utf8"), original);
+  }
 });
 
 test("normalizes persisted task, subtask, round, and acceptance records at the store boundary", () => {

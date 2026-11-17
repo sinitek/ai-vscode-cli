@@ -66,6 +66,24 @@ test("persists per-subtask acceptance flags and keeps legacy or invalid flags on
   assert.equal(readSkillTask(task.taskStoreFile).subTasks[0].requiresAcceptance, undefined);
 });
 
+test("persists explicit dependencies, keeps legacy omissions, and rejects malformed records", () => {
+  const task = createLegacyTask();
+  task.subTasks = [
+    { id: "base", title: "Base", status: "pending" },
+    { id: "follow-up", title: "Follow up", status: "pending", dependsOn: [" base "] },
+  ];
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.deepEqual(readSkillTask(task.taskStoreFile).subTasks[1]?.dependsOn, ["base"]);
+  assert.equal(hasOwnProperty(readSkillTask(task.taskStoreFile).subTasks[0]!, "dependsOn"), false);
+
+  const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));
+  raw.tasks[0].subTasks[1].dependsOn = null;
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(raw));
+  assert.equal(loopTaskStore.readLoopTaskStore(task.taskStoreFile).tasks.some((record) => record.id === task.id), false);
+  assert.throws(() => loopTaskStore.readLoopTaskStore(task.taskStoreFile, { throwOnError: true }), /subTasks\[1\]\.dependsOn/);
+  fs.unlinkSync(task.taskStoreFile);
+});
+
 function hasOwnProperty(value: object, property: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, property);
 }

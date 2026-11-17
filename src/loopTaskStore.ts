@@ -20,6 +20,7 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshotForStorage,
   type LoopPlusAcceptancePlanSnapshot,
 } from "./loopPlusAcceptancePlan";
+import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
@@ -86,6 +87,7 @@ export function resolveLoopSchedulingMode(value: unknown): LoopSchedulingMode {
 }
 
 export type LoopSubtaskRecord = {
+  dependsOn?: string[];
   continueFromSubtaskId?: string;
   executionSession?: LoopSubtaskSession;
   id: string;
@@ -128,6 +130,7 @@ export type LoopRoundSummary = {
 };
 
 export type LoopSubtaskDecision = {
+  dependsOn?: string[];
   continueFromSubtaskId?: string;
   id?: string;
   title: string;
@@ -893,6 +896,9 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   if (!record || typeof record !== "object") {
     return null;
   }
+  if (findInvalidLoopSubtaskDependsOnIndex(record) !== null) {
+    return null;
+  }
   const raw = record as Partial<LoopTaskRecord>;
   const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
   if (typeof raw.id !== "string" || !raw.id.trim() || !cli || typeof raw.rootPrompt !== "string") {
@@ -1019,6 +1025,28 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   };
 }
 
+function findInvalidLoopSubtaskDependsOnIndex(record: unknown): number | null {
+  if (!record || typeof record !== "object" || !Array.isArray((record as { subTasks?: unknown }).subTasks)) {
+    return null;
+  }
+  const subTasks = (record as { subTasks: unknown[] }).subTasks;
+  for (let index = 0; index < subTasks.length; index += 1) {
+    const subtask = subTasks[index];
+    if (!subtask || typeof subtask !== "object" || Array.isArray(subtask)) {
+      continue;
+    }
+    const raw = subtask as { id?: unknown; dependsOn?: unknown };
+    if (!Object.prototype.hasOwnProperty.call(raw, "dependsOn")) {
+      continue;
+    }
+    const subtaskId = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (readLoopPlusDependsOn(raw.dependsOn, subtaskId) === null) {
+      return index;
+    }
+  }
+  return null;
+}
+
 export function normalizeLoopTaskModelRouting(value: unknown): LoopTaskModelRouting | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -1129,6 +1157,10 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   const status = raw.status === "pending" || raw.status === "running" || raw.status === "completed" || raw.status === "skipped" || raw.status === "blocked"
     ? raw.status
     : "pending";
+  const dependsOn = readLoopPlusDependsOn((raw as { dependsOn?: unknown }).dependsOn, raw.id);
+  if (!dependsOn) {
+    return null;
+  }
   const skillIds = normalizeLoopSkillIds((raw as { skillIds?: unknown }).skillIds);
   const skillGuidance = normalizeLoopSkillGuidance((raw as { skillGuidance?: unknown }).skillGuidance);
   const taskType = readLoopPlusTaskTypeField((raw as { taskType?: unknown }).taskType);
@@ -1141,6 +1173,7 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   return {
     id: raw.id,
     title: raw.title,
+    ...(Object.prototype.hasOwnProperty.call(raw, "dependsOn") ? { dependsOn } : {}),
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(executionSession ? { executionSession } : {}),
@@ -1267,12 +1300,24 @@ function isLoopTaskRole(value: unknown): value is LoopTaskRole {
 
 function ensureLoopTaskStore(
   store?: LoopTaskStore,
-  options: { sourceFile?: string; throwOnError?: boolean } = {}
+  options: { sourceFile?: string; throwOnError?: boolean; rejectInvalidDependencies?: boolean } = {}
 ): LoopTaskStore {
   const now = Date.now();
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
       .map((record) => {
+        const invalidDependsOnIndex = findInvalidLoopSubtaskDependsOnIndex(record);
+        if (invalidDependsOnIndex !== null) {
+          const field = `subTasks[${invalidDependsOnIndex}].dependsOn`;
+          if (options.throwOnError || options.rejectInvalidDependencies) {
+            throw new Error(`Loop task record has invalid ${field}`);
+          }
+          void logError("loop-task-store-invalid-dependencies", {
+            ...(options.sourceFile ? { filePath: options.sourceFile } : {}),
+            field,
+          });
+          return null;
+        }
         const normalized = normalizeLoopTaskRecord(record, options.sourceFile);
         if (!normalized && options.throwOnError) {
           throw new Error("Loop task store record invalid");
@@ -1343,12 +1388,22 @@ export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void
     ).value;
     writeFileAtomicallySync(
       filePath,
-      JSON.stringify(ensureLoopTaskStore(migratedStore, { sourceFile: filePath }), null, 2),
+      JSON.stringify(ensureLoopTaskStore(migratedStore, {
+        sourceFile: filePath,
+        rejectInvalidDependencies: true,
+      }), null, 2),
     );
   } catch (error) {
     void logError("loop-task-store-write-error", { filePath, error: String(error) });
     throw error;
   }
+}
+
+/** Appends a new task only after a strict read of the existing commit target. */
+export function appendLoopTaskRecord(filePath: string, record: LoopTaskRecord): void {
+  const store = readLoopTaskStore(filePath, { throwOnError: true });
+  store.tasks.push(record);
+  writeLoopTaskStore(filePath, store);
 }
 
 export function cleanupLoopTaskStoreRetention(): void {

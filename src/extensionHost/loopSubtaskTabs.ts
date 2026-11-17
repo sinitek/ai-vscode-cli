@@ -48,6 +48,7 @@ export function prepareLoopSubtaskConversationTabClose(
       && (context.attemptId === undefined || candidate.attemptId === context.attemptId);
   }).map((tab) => ({ tab, cli: tab.cli, sessionId: getConversationTabSessionIdForCli(tab, tab.cli) }));
   return async () => {
+    const failures: Array<{ tabId: string; error: unknown }> = [];
     for (const { tab, cli, sessionId } of candidates) {
       const current = deps.getTabs().find((item) => item.id === tab.id);
       if (!current) continue;
@@ -59,13 +60,23 @@ export function prepareLoopSubtaskConversationTabClose(
         continue;
       }
       if (deps.isTabRunActive(tab.id)) {
-        if (tab.id === context.tabId) throw new Error("子任务标签仍在运行，尚未自动关闭。");
+        if (tab.id === context.tabId) {
+          failures.push({ tabId: tab.id, error: new Error("子任务标签仍在运行，尚未自动关闭。") });
+        }
         continue;
       }
-      await deps.closeTab(tab.id);
-      if (deps.getTabs().some((item) => item === tab)) {
-        throw new Error("子任务标签关闭未生效，保留标签以便重试。");
+      try {
+        await deps.closeTab(tab.id);
+        if (deps.getTabs().some((item) => item === tab)) {
+          throw new Error("子任务标签关闭未生效，保留标签以便重试。");
+        }
+      } catch (error) {
+        // A stale tab or its panel refresh must not strand the completed tab.
+        failures.push({ tabId: tab.id, error });
       }
+    }
+    if (failures.length > 0) {
+      throw new Error(failures.map(({ tabId, error }) => `${tabId}: ${error instanceof Error ? error.message : String(error)}`).join("\n"));
     }
   };
 }

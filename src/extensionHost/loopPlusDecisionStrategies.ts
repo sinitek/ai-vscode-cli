@@ -3,7 +3,7 @@ import type {
   LoopPlusDecision,
   LoopPlusDecisionStatus,
 } from "../loopPlusDecision";
-import type { LoopPlusDispatchResult } from "../loopPlusScheduler";
+import type { LoopPlusDependencyBlock, LoopPlusDispatchResult } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
 export type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
@@ -29,11 +29,14 @@ export type LoopPlusDecisionQueueView = {
   runningCount: number;
   pendingCount: number;
   parentStopped: boolean;
+  /** Selection blockers for this main step; raw hasReview still gates completion. */
+  reviewDependencyBlocks?: readonly LoopPlusDependencyBlock[];
 };
 
 export type LoopPlusDecisionInFlightView = {
   runningCount: number;
   pendingCount: number;
+  dependencyBlocks?: readonly LoopPlusDependencyBlock[];
 };
 
 export interface LoopPlusDecisionStrategyPort {
@@ -189,7 +192,12 @@ function applyDispatchDecision(
   if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
-  if (controls.length > 0 && !port.applyControls(controls)) {
+  const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
+  if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
+    return port.protocolMiss(false);
+  }
+  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
+  if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
     return port.protocolMiss(false);
   }
   port.acknowledgeUserMessages(step.userMessageCount);
@@ -197,10 +205,10 @@ function applyDispatchDecision(
   if (dispatched.rejected.length > 0) {
     return port.protocolMiss(false, dispatchRejectionReason(dispatched));
   }
-  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
-  if (hasPendingDecisionWork(port.queueView())) {
+  const inFlight = port.waitForInFlightWork();
+  if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
   }
   const after = port.queueView();
@@ -229,14 +237,19 @@ function applySteerDecision(
   if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
-  if (!port.applyControls(controls)) {
+  const controlPlan = port.planControls(controls);
+  if (controlPlan === null || !port.previewControls(controlPlan)) {
     return port.protocolMiss(false);
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
+  if (!port.commitControls(controls, controlPlan)) {
+    return port.protocolMiss(false);
+  }
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
   port.persistEstimatedRounds(decision);
-  if (hasPendingDecisionWork(port.queueView())) {
+  const inFlight = port.waitForInFlightWork();
+  if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
   }
   const after = port.queueView();
@@ -289,10 +302,10 @@ function applyAcceptDecision(
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
-  if (hasPendingDecisionWork(port.queueView())) {
+  const inFlight = port.waitForInFlightWork();
+  if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
   }
-  const inFlight = port.waitForInFlightWork();
   if (inFlight.runningCount > 0 || inFlight.pendingCount > 0) {
     port.persistRunning();
     return "wait";
@@ -310,17 +323,32 @@ function applyWaitDecision(
   if (snapshot.hasCurrentReview) {
     return port.protocolMiss(true, "当前有开放验收批次，不能 wait；请返回 accept 确认整批并继续派发剩余工作，或在满足全部完成门禁时返回 completed。");
   }
-  if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview) {
+  if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview && !snapshot.hasReports) {
     return port.protocolMiss(false, "当前没有运行中或排队任务，wait 无法推进。请完成满足全部门禁的任务，或用 dispatch 派发未完成工作；不要因这项矛盾请求用户继续。");
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.acknowledgeUserMessages(step.userMessageCount);
-  if (hasPendingDecisionWork(port.queueView())) {
+  const afterReports = port.queueView();
+  if (hasPendingDecisionWork(afterReports) && (
+    !afterReports.reviewDependencyBlocks?.length || afterReports.hasReports
+    || (decision.reportEventIds?.length ?? 0) > 0
+  )) {
     return "continue";
   }
+  const inFlight = port.waitForInFlightWork();
+  if (inFlight.runningCount === 0 && afterReports.reviewDependencyBlocks?.length) {
+    return port.protocolMiss(false, reviewDependencyWaitReason(afterReports));
+  }
+  if (onlyDependencyBlocked(inFlight)) {
+    return port.protocolMiss(false, dependencyWaitReason(inFlight));
+  }
   port.markDecisionAccepted();
+  if (inFlight.runningCount === 0 && inFlight.pendingCount === 0) {
+    port.armCloseout();
+    return "continue";
+  }
   port.persistRunning();
-  port.noteWaiting(snapshot.runningCount);
+  port.noteWaiting(inFlight.runningCount);
   return "wait";
 }
 
@@ -367,6 +395,7 @@ function applyCompletedDecision(
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(step.eventIds.length > 0);
   port.acknowledgeUserMessages(step.userMessageCount);
+  const inFlight = port.waitForInFlightWork();
   port.persistSnapshot();
   const pending = port.queueView();
   if (
@@ -375,6 +404,18 @@ function applyCompletedDecision(
     || pending.runningCount > 0
     || pending.pendingCount > 0
   ) {
+    if (onlyDependencyBlocked(inFlight) && !hasPendingDecisionWork(pending) && !pending.hasUserMessages) {
+      if (submittedReview) {
+        port.markDecisionAccepted();
+        port.recordAcceptancePlanFeedback?.(decision);
+        return "continue";
+      }
+      return port.protocolMiss(false, dependencyWaitReason(inFlight));
+    }
+    if (!submittedReview && inFlight.runningCount === 0 && pending.reviewDependencyBlocks?.length
+      && !pending.hasReports && !pending.hasUserMessages && !(decision.reportEventIds?.length)) {
+      return port.protocolMiss(false, reviewDependencyWaitReason(pending));
+    }
     if (submittedReview) {
       port.markDecisionAccepted();
       port.recordAcceptancePlanFeedback?.(decision);
@@ -399,6 +440,20 @@ function applyCompletedDecision(
   port.markDecisionAccepted();
   port.recordAcceptancePlanFeedback?.(decision);
   return port.finishParent(decision);
+}
+
+function reviewDependencyWaitReason(view: LoopPlusDecisionQueueView): string {
+  return `当前待审事件被验收依赖阻塞且无活跃执行，wait/completed 无法推进：${JSON.stringify(view.reviewDependencyBlocks)}。`
+    + "请按最新 attempt 修复前置或调整尚未运行后继的依赖；保留未确认事件与真实验收结论，无安全工作时使用既有 blocked 规则。";
+}
+
+function onlyDependencyBlocked(view: LoopPlusDecisionInFlightView): boolean {
+  return view.runningCount === 0 && view.pendingCount > 0 && (view.dependencyBlocks?.length ?? 0) > 0;
+}
+
+function dependencyWaitReason(view: LoopPlusDecisionInFlightView): string {
+  return `当前全部 pending 被依赖阻塞，wait 无法推进：${JSON.stringify(view.dependencyBlocks)}。`
+    + "请用原逻辑 ID 重派失败或关闭的前置，或用 controls.reprompt 调整尚未运行后继的 dependsOn；新 ID 不会替代旧前置。保留真实失败结论，无安全工作可推进时按既有 blocked 规则处理。";
 }
 
 function applyClarifyDecision(): LoopPlusDecisionOutcome {

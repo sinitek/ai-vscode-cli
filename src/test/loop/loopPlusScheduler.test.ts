@@ -1469,13 +1469,12 @@ test("reprompt replaces the open attempt and a conflicting dry run leaves the sn
   assert.deepEqual(held.snapshot(), beforeHeld);
 });
 
-test("撤销验收持久保存原因、保持批次顺序且保留完成门禁", () => {
+test("撤销验收持久保存原因、保持批次顺序且不放行依赖", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
-  scheduler.dispatch([spec("old"), spec("keep"), spec("next")]);
+  scheduler.dispatch([spec("old"), spec("keep"), { ...spec("next"), dependsOn: ["old"] }]);
   scheduler.finish({ subtaskId: "old", attemptId: "old-1", outcome: "failed" });
   scheduler.finish({ subtaskId: "keep", attemptId: "keep-1", outcome: "completed" });
-  const claimed = scheduler.claimNextReview();
-  const ids = [claimed.item!, ...claimed.view.reviewQueue].map((item) => item.eventId);
+  const ids = scheduler.prepareReviewBatch(4).items.map((item) => item.eventId);
   const before = scheduler.snapshot();
   assert.equal(scheduler.submitReviewBatch(ids, [
     { eventId: ids[1], acceptance: "passed" },
@@ -1495,6 +1494,7 @@ test("撤销验收持久保存原因、保持批次顺序且保留完成门禁",
   assert.equal(scheduler.submitReviewBatch(ids, verdicts).ok, true);
   assert.equal(scheduler.wait().view.visibleReviewCount, 0);
   assert.equal(scheduler.promotePending().started.length, 0);
+  assert.equal(scheduler.wait().view.dependencyBlocks?.[0].reason, "closed");
   const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
   const old = restored.snapshot().seenAttempts.find((item) => item.subtaskId === "old");
   assert.equal(old?.acceptance, "cancelled");

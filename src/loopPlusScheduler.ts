@@ -4,6 +4,7 @@ import {
   type LoopParallelCandidate,
   type LoopParallelConflictReason,
 } from "./loopParallel";
+import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 
 export const LOOP_PLUS_SCHEDULER_VERSION = 1;
 
@@ -38,6 +39,7 @@ export type LoopPlusSubtaskSpec = {
   title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  dependsOn?: string[];
 };
 
 export type LoopPlusExecutionRecord = {
@@ -47,6 +49,7 @@ export type LoopPlusExecutionRecord = {
   title: string | null;
   conflictGroup: string | null;
   writeFiles: string[];
+  dependsOn?: string[];
   state: LoopPlusExecutionState;
 };
 
@@ -74,6 +77,15 @@ export type LoopPlusSeenAttempt = {
   outcome?: LoopPlusExecutionOutcome;
   acceptance?: LoopPlusReviewAcceptance;
   acceptanceReason?: string;
+  dependsOn?: string[];
+};
+
+export type LoopPlusDependencyBlock = {
+  subtaskId: string;
+  attemptId: string;
+  dependencyId: string;
+  dependencyAttemptId: string | null;
+  reason: "execution_pending" | "review_pending" | "report_pending" | "failed" | "closed";
 };
 
 export type LoopPlusSchedulerSnapshot = {
@@ -116,6 +128,7 @@ export type LoopPlusSchedulerView = {
   visibleReviewCount: number;
   canComplete: boolean;
   blockers: LoopPlusCompletionBlocker[];
+  dependencyBlocks?: LoopPlusDependencyBlock[];
 };
 
 /**
@@ -147,7 +160,8 @@ export type LoopPlusDispatchRejectionReason =
   | "duplicate_attempt"
   | "active_subtask"
   | "parent_stopped"
-  | "completed";
+  | "completed"
+  | "invalid_dependencies";
 
 export type LoopPlusDispatchDecision = {
   subtaskId: string;
@@ -155,12 +169,14 @@ export type LoopPlusDispatchDecision = {
   admission: "started" | "pending";
   block: LoopPlusConflictBlock | null;
   concurrencyBlocked: boolean;
+  dependencyBlocks?: LoopPlusDependencyBlock[];
 };
 
 export type LoopPlusDispatchRejection = {
   subtaskId: string;
   attemptId: string;
   reason: LoopPlusDispatchRejectionReason;
+  detail?: string;
 };
 
 export type LoopPlusDispatchResult = {
@@ -219,6 +235,12 @@ export type LoopPlusSubmitReviewResult = {
   ok: boolean;
   reason: LoopPlusSubmitReviewReason;
   followUp: LoopPlusReviewFollowUp;
+  view: LoopPlusSchedulerView;
+};
+
+export type LoopPlusPrepareReviewBatchResult = {
+  items: LoopPlusReviewItem[];
+  dependencyBlocks: LoopPlusDependencyBlock[];
   view: LoopPlusSchedulerView;
 };
 
@@ -325,6 +347,7 @@ export type LoopPlusScheduler = {
     eventIds: readonly string[],
     acceptance?: LoopPlusReviewAcceptance | readonly LoopPlusReviewVerdict[],
   ) => LoopPlusSubmitReviewResult;
+  prepareReviewBatch: (maxItems: number) => LoopPlusPrepareReviewBatchResult;
   wait: () => LoopPlusWaitResult;
   complete: () => LoopPlusCompleteResult;
   stopParent: () => LoopPlusStopResult;
@@ -336,6 +359,7 @@ export type LoopPlusScheduler = {
   promotePending: () => LoopPlusPromoteResult;
   getCompletionBlockers: () => LoopPlusCompletionBlocker[];
   snapshot: () => LoopPlusSchedulerSnapshot;
+  getDependencyBlocks: () => LoopPlusDependencyBlock[];
 };
 
 type ParsedSpec = {
@@ -345,6 +369,7 @@ type ParsedSpec = {
   title: string | null;
   conflictGroup: string | null;
   writeFiles: string[];
+  dependsOn?: string[];
 };
 
 const EXECUTION_OUTCOMES: readonly LoopPlusExecutionOutcome[] = ["completed", "failed", "stopped"];
@@ -421,6 +446,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     const blockers = completionBlockers();
     const current = currentReview ? copyReview(currentReview) : null;
     const queue = reviewQueue.map(copyReview);
+    const dependencyBlocks = collectDependencyBlocks(pending);
     return {
       phase: phase(),
       seq,
@@ -435,6 +461,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       visibleReviewCount: queue.length + (current ? 1 : 0),
       canComplete: blockers.length === 0,
       blockers,
+      ...(dependencyBlocks.length > 0 ? { dependencyBlocks } : {}),
     };
   }
 
@@ -444,7 +471,9 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     }
     const decisions: LoopPlusDispatchDecision[] = [];
     const rejected: LoopPlusDispatchRejection[] = [];
-    const accepted: LoopPlusExecutionRecord[] = [];
+    const accepted: Array<{ parsed: ParsedSpec; record: LoopPlusExecutionRecord }> = [];
+    const candidateAttempts = new Set<string>();
+    const candidateSubtasks = new Set<string>();
     for (const spec of specs) {
       const ids = rejectionIds(spec);
       const parsed = parseSpec(spec);
@@ -453,14 +482,14 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         continue;
       }
       const duplicate = seenAttempts.find((item) => item.attemptId === parsed.attemptId);
-      if (duplicate) {
+      if (duplicate || candidateAttempts.has(parsed.attemptId)) {
         rejected.push({ ...ids, reason: "duplicate_attempt" });
         continue;
       }
       const active = seenAttempts.find((item) => (
         item.subtaskId === parsed.subtaskId && !isSettledLoopPlusAttempt(item.disposition)
       ));
-      if (active) {
+      if (active || candidateSubtasks.has(parsed.subtaskId)) {
         rejected.push({ ...ids, reason: "active_subtask" });
         continue;
       }
@@ -472,22 +501,35 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         rejected.push({ ...ids, reason: "completed" });
         continue;
       }
-      const record = createExecution(parsed, "pending");
+      candidateAttempts.add(parsed.attemptId);
+      candidateSubtasks.add(parsed.subtaskId);
+      accepted.push({ parsed, record: createExecution(parsed, "pending") });
+    }
+    if (accepted.length === 0) {
+      return { decisions, rejected, started: [], view: view() };
+    }
+    const latestAttempts = knownLatestAttempts(seenAttempts);
+    const graphError = validateDependencyGraph(latestAttempts, accepted.map(({ parsed }) => parsed));
+    if (graphError) {
+      for (const { parsed } of accepted) {
+        rejected.push({ subtaskId: parsed.subtaskId, attemptId: parsed.attemptId, reason: "invalid_dependencies", detail: graphError });
+      }
+      return { decisions, rejected, started: [], view: view() };
+    }
+    for (const { parsed, record } of accepted) {
       pending.push(record);
       seenAttempts.push({
         subtaskId: parsed.subtaskId,
         attemptId: parsed.attemptId,
         disposition: "open",
         ...(parsed.requiresAcceptance !== undefined ? { requiresAcceptance: parsed.requiresAcceptance } : {}),
+        ...(parsed.dependsOn !== undefined ? { dependsOn: parsed.dependsOn.slice() } : {}),
       });
-      accepted.push(record);
+      latestAttempts.set(parsed.subtaskId, seenAttempts[seenAttempts.length - 1]);
     }
-    if (accepted.length === 0) {
-      return { decisions, rejected, started: [], view: view() };
-    }
-    const started = promote();
+    const started = promote(latestAttempts);
     const startedIds = new Set(started.map((item) => item.attemptId));
-    for (const record of accepted) {
+    for (const { record } of accepted) {
       if (startedIds.has(record.attemptId)) {
         decisions.push({
           subtaskId: record.subtaskId,
@@ -498,13 +540,14 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         });
         continue;
       }
-      const explanation = explainPending(record.attemptId);
+      const explanation = explainPending(record.attemptId, latestAttempts);
       decisions.push({
         subtaskId: record.subtaskId,
         attemptId: record.attemptId,
         admission: "pending",
         block: explanation.block,
         concurrencyBlocked: explanation.concurrencyBlocked,
+        ...(explanation.dependencyBlocks.length > 0 ? { dependencyBlocks: explanation.dependencyBlocks } : {}),
       });
     }
     commit();
@@ -663,6 +706,34 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return { ok: true, reason: "submitted", followUp: followUp(), view: view() };
   }
 
+  function prepareReviewBatch(maxItems: number): LoopPlusPrepareReviewBatchResult {
+    if (!Number.isSafeInteger(maxItems) || maxItems <= 0) {
+      throw new RangeError("Invalid Loop+ review batch size");
+    }
+    const candidates = currentReview ? [currentReview, ...reviewQueue] : reviewQueue.slice();
+    const plan = planReviewBatch(candidates, seenAttempts, maxItems);
+    const selected = parentStopped || completed ? [] : plan.items;
+    if (!parentStopped && !completed) {
+      const remainder = candidates.filter((item) => !plan.selectedEvents.has(item.eventId));
+      const nextCurrent = selected[0] ?? null;
+      const nextQueue = selected.slice(1).concat(remainder);
+      const changed = currentReview?.eventId !== nextCurrent?.eventId
+        || !sameReviewEventOrder(reviewQueue, nextQueue);
+      if (changed) {
+        currentReview = nextCurrent ? copyReview(nextCurrent) : null;
+        reviewQueue = nextQueue.map(copyReview);
+        wakePending = false;
+        if (reportQueue.length > 0) latchWake();
+        commit();
+      }
+    }
+    return {
+      items: selected.map(copyReview),
+      dependencyBlocks: plan.dependencyBlocks.map((block) => ({ ...block })),
+      view: view(),
+    };
+  }
+
   function wait(): LoopPlusWaitResult {
     return { action: waitAction(phase()), view: view() };
   }
@@ -800,14 +871,23 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return { requeued: true, item: copyReview(item), view: view() };
   }
 
-  function promote(): LoopPlusExecutionRecord[] {
+  function promote(latestAttempts?: ReadonlyMap<string, LoopPlusSeenAttempt> | null): LoopPlusExecutionRecord[] {
     if (parentStopped || completed) {
       return [];
     }
     const started: LoopPlusExecutionRecord[] = [];
     const active = running.map(copyExecution);
     const nextPending: LoopPlusExecutionRecord[] = [];
+    let dependencyIndex = latestAttempts;
     for (const candidate of pending) {
+      const dependencies = candidate.dependsOn ?? [];
+      if (dependencies.length > 0 && !dependencySatisfied(
+        dependencies,
+        dependencyIndex ?? (dependencyIndex = knownLatestAttempts(seenAttempts)),
+      )) {
+        nextPending.push(candidate);
+        continue;
+      }
       const conflict = findConflict(candidate, active);
       const capacityLeft = running.length + started.length < maxConcurrency;
       if (!conflict && capacityLeft) {
@@ -828,16 +908,65 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     return started.map(copyExecution);
   }
 
-  function explainPending(attemptId: string): { block: LoopPlusConflictBlock | null; concurrencyBlocked: boolean } {
+  function explainPending(
+    attemptId: string,
+    latestAttempts?: ReadonlyMap<string, LoopPlusSeenAttempt> | null,
+  ): { block: LoopPlusConflictBlock | null; concurrencyBlocked: boolean; dependencyBlocks: LoopPlusDependencyBlock[] } {
     const candidate = pending.find((item) => item.attemptId === attemptId);
     if (!candidate) {
-      return { block: null, concurrencyBlocked: false };
+      return { block: null, concurrencyBlocked: false, dependencyBlocks: [] };
     }
+    const dependencyBlocks = dependencyBlocksFor(candidate, latestAttempts);
     const runningConflict = findConflict(candidate, running);
     if (runningConflict) {
-      return { block: runningConflict, concurrencyBlocked: false };
+      return { block: runningConflict, concurrencyBlocked: false, dependencyBlocks };
     }
-    return { block: null, concurrencyBlocked: running.length >= maxConcurrency };
+    return { block: null, concurrencyBlocked: running.length >= maxConcurrency, dependencyBlocks };
+  }
+
+  function getDependencyBlocks(): LoopPlusDependencyBlock[] {
+    return collectDependencyBlocks(pending);
+  }
+
+  function collectDependencyBlocks(candidates: readonly LoopPlusExecutionRecord[]): LoopPlusDependencyBlock[] {
+    const latest = dependencyIndexFor(candidates);
+    return candidates.flatMap((candidate) => dependencyBlocksFor(candidate, latest));
+  }
+
+  function dependencyIndexFor(candidates: readonly LoopPlusExecutionRecord[]): ReadonlyMap<string, LoopPlusSeenAttempt> | null {
+    return candidates.some((candidate) => (candidate.dependsOn?.length ?? 0) > 0)
+      ? knownLatestAttempts(seenAttempts)
+      : null;
+  }
+
+  function dependencyBlocksFor(
+    candidate: LoopPlusExecutionRecord,
+    latest: ReadonlyMap<string, LoopPlusSeenAttempt> | null = null,
+  ): LoopPlusDependencyBlock[] {
+    const blocks: LoopPlusDependencyBlock[] = [];
+    const latestIndex = latest ?? (candidate.dependsOn?.length ? knownLatestAttempts(seenAttempts) : null);
+    for (const dependencyId of candidate.dependsOn ?? []) {
+      const dependency = latestIndex?.get(dependencyId);
+      if (dependency && isDependencySatisfied(dependency)) continue;
+      blocks.push({
+        subtaskId: candidate.subtaskId,
+        attemptId: candidate.attemptId,
+        dependencyId,
+        dependencyAttemptId: dependency?.attemptId ?? null,
+        reason: dependency ? dependencyBlockReason(dependency) : "execution_pending",
+      });
+    }
+    return blocks;
+  }
+
+  function dependencySatisfied(
+    dependencies: readonly string[],
+    latest: ReadonlyMap<string, LoopPlusSeenAttempt>,
+  ): boolean {
+    return dependencies.every((id) => {
+      const attempt = latest.get(id);
+      return !!attempt && isDependencySatisfied(attempt);
+    });
   }
 
   function latchWake(): boolean {
@@ -1009,6 +1138,9 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         if (!replacement || replacement.subtaskId !== subtaskId) {
           return rejected("invalid");
         }
+        if (isRecord(command.replacement) && command.replacement.dependsOn === undefined) {
+          replacement.dependsOn = open.dependsOn?.slice();
+        }
         const duplicate = seenAttempts.some((item) => item.attemptId === replacement?.attemptId)
           || planned.some((item) => item.replacement?.attemptId === replacement?.attemptId);
         if (duplicate) {
@@ -1031,6 +1163,10 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         return rejected("conflict", block);
       }
       admitted.push(item.replacement);
+    }
+    const dependencyError = validateDependencyGraph(knownLatestAttempts(seenAttempts), admitted);
+    if (dependencyError) {
+      return rejected("invalid");
     }
     if (dryRun) {
       return {
@@ -1061,6 +1197,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         attemptId: spec.attemptId,
         disposition: "open",
         ...(spec.requiresAcceptance !== undefined ? { requiresAcceptance: spec.requiresAcceptance } : {}),
+        ...(spec.dependsOn !== undefined ? { dependsOn: spec.dependsOn.slice() } : {}),
       });
     }
     const started = promote();
@@ -1083,6 +1220,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     claimNextReview,
     submitReview,
     submitReviewBatch,
+    prepareReviewBatch,
     wait,
     complete,
     stopParent,
@@ -1094,6 +1232,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     promotePending,
     acknowledgeReports,
     getCompletionBlockers: completionBlockers,
+    getDependencyBlocks,
     snapshot,
   };
 }
@@ -1149,6 +1288,8 @@ function parseSpec(value: unknown): ParsedSpec | null {
     return null;
   }
   if (value.requiresAcceptance !== undefined && typeof value.requiresAcceptance !== "boolean") return null;
+  const dependsOn = readLoopPlusDependsOn(value.dependsOn, subtaskId);
+  if (dependsOn === null) return null;
   return {
     subtaskId,
     attemptId,
@@ -1156,6 +1297,7 @@ function parseSpec(value: unknown): ParsedSpec | null {
     title: cleanText(value.title),
     conflictGroup: cleanText(value.conflictGroup),
     writeFiles: normalizeLoopWriteFiles(value.writeFiles),
+    ...(dependsOn.length > 0 ? { dependsOn } : {}),
   };
 }
 
@@ -1177,6 +1319,7 @@ function createExecution(spec: ParsedSpec, state: LoopPlusExecutionState): LoopP
     title: spec.title,
     conflictGroup: spec.conflictGroup,
     writeFiles: spec.writeFiles.slice(),
+    ...(spec.dependsOn !== undefined ? { dependsOn: spec.dependsOn.slice() } : {}),
     state,
   };
 }
@@ -1311,13 +1454,16 @@ function readExecution(value: unknown, field: string, state: LoopPlusExecutionSt
   if (!isRecord(value) || value.state !== state) {
     invalidSnapshot(field);
   }
+  const subtaskId = readRequiredId(value.subtaskId, field);
+  const dependsOn = readSnapshotDependsOn(value.dependsOn, subtaskId, field);
   return {
-    subtaskId: readRequiredId(value.subtaskId, field),
+    subtaskId,
     attemptId: readRequiredId(value.attemptId, field),
     ...readOptionalBoolean(value.requiresAcceptance, `${field}.requiresAcceptance`),
     title: readNullableString(value.title, field),
     conflictGroup: readNullableString(value.conflictGroup, field),
     writeFiles: readWriteFiles(value.writeFiles, field),
+    ...(dependsOn !== undefined ? { dependsOn } : {}),
     state,
   };
 }
@@ -1374,14 +1520,17 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
     if (acceptance === "cancelled" && (!acceptanceReason || Array.from(acceptanceReason).length > 50)) {
       invalidSnapshot(`seenAttempts[${index}].acceptanceReason`);
     }
+    const subtaskId = readRequiredId(item.subtaskId, `seenAttempts[${index}]`);
+    const dependsOn = readSnapshotDependsOn(item.dependsOn, subtaskId, `seenAttempts[${index}]`);
     return {
-      subtaskId: readRequiredId(item.subtaskId, `seenAttempts[${index}]`),
+      subtaskId,
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
       disposition: item.disposition,
       ...readOptionalBoolean(item.requiresAcceptance, `seenAttempts[${index}].requiresAcceptance`),
       ...(outcome ? { outcome } : {}),
       ...(acceptance ? { acceptance } : {}),
       ...(acceptanceReason ? { acceptanceReason } : {}),
+      ...(dependsOn !== undefined ? { dependsOn } : {}),
     };
   });
 }
@@ -1462,14 +1611,22 @@ function validateAttemptGraph(input: {
       invalidSnapshot("seenAttempts");
     }
     const execution = input.running.concat(input.pending).find((item) => item.attemptId === seen.attemptId);
-    if (execution && (execution.requiresAcceptance !== false) !== (seen.requiresAcceptance !== false)) {
-      invalidSnapshot("requiresAcceptance");
+    if (execution) {
+      if ((execution.requiresAcceptance !== false) !== (seen.requiresAcceptance !== false)) {
+        invalidSnapshot("requiresAcceptance");
+      }
+      if (!sameStringArray(execution.dependsOn ?? [], seen.dependsOn ?? [])) {
+        invalidSnapshot("dependsOn");
+      }
     }
   }
   for (const attemptId of placed.keys()) {
     if (!seenIds.has(attemptId)) {
       invalidSnapshot("seenAttempts");
     }
+  }
+  if (validateDependencyGraph(knownLatestAttempts(input.seenAttempts), [])) {
+    invalidSnapshot("dependsOn");
   }
   const workLeft = input.running.length > 0
     || input.pending.length > 0
@@ -1498,6 +1655,213 @@ function readWriteFiles(value: unknown, field: string): string[] {
     invalidSnapshot(field);
   }
   return normalizeLoopWriteFiles(value);
+}
+
+function readSnapshotDependsOn(value: unknown, subtaskId: string, field: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  const parsed = readLoopPlusDependsOn(value, subtaskId);
+  if (parsed === null) invalidSnapshot(`${field}.dependsOn`);
+  return parsed.length > 0 ? parsed : undefined;
+}
+
+function knownLatestAttempts(attempts: readonly LoopPlusSeenAttempt[]): Map<string, LoopPlusSeenAttempt> {
+  const latest = new Map<string, LoopPlusSeenAttempt>();
+  for (const attempt of attempts) latest.set(attempt.subtaskId, attempt);
+  return latest;
+}
+
+function planReviewBatch(
+  candidates: readonly LoopPlusReviewItem[],
+  seenAttempts: readonly LoopPlusSeenAttempt[],
+  maxItems: number,
+): { items: LoopPlusReviewItem[]; selectedEvents: Set<string>; dependencyBlocks: LoopPlusDependencyBlock[] } {
+  const latest = knownLatestAttempts(seenAttempts);
+  const seenByAttempt = new Map<string, LoopPlusSeenAttempt>();
+  for (const attempt of seenAttempts) seenByAttempt.set(attempt.attemptId, attempt);
+  const candidateIndex = new Map<string, number>();
+  for (let index = 0; index < candidates.length; index += 1) {
+    candidateIndex.set(candidates[index].attemptId, index);
+  }
+
+  const outgoing = candidates.map(() => [] as number[]);
+  const incoming = candidates.map(() => [] as number[]);
+  const indegree = candidates.map(() => 0);
+  const directBlocks: LoopPlusDependencyBlock[][] = candidates.map(() => []);
+  for (let index = 0; index < candidates.length; index += 1) {
+    const item = candidates[index];
+    const eventAttempt = seenByAttempt.get(item.attemptId);
+    for (const dependencyId of eventAttempt?.dependsOn ?? []) {
+      const dependency = latest.get(dependencyId);
+      if (dependency && isReviewDependencyProcessed(dependency)) continue;
+      if (dependency?.disposition === "finished") {
+        const prerequisiteIndex = candidateIndex.get(dependency.attemptId);
+        if (prerequisiteIndex !== undefined) {
+          outgoing[prerequisiteIndex].push(index);
+          incoming[index].push(prerequisiteIndex);
+          indegree[index] += 1;
+          continue;
+        }
+      }
+      directBlocks[index].push({
+        subtaskId: item.subtaskId,
+        attemptId: item.attemptId,
+        dependencyId,
+        dependencyAttemptId: dependency?.attemptId ?? null,
+        reason: dependency ? dependencyReviewBlockReason(dependency) : "execution_pending",
+      });
+    }
+  }
+
+  const ready = new StableIndexHeap();
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (indegree[index] === 0 && directBlocks[index].length === 0) ready.push(index);
+  }
+  const selectedIndexes: number[] = [];
+  const selectedEvents = new Set<string>();
+  while (ready.size > 0 && selectedIndexes.length < maxItems) {
+    const index = ready.pop();
+    selectedIndexes.push(index);
+    selectedEvents.add(candidates[index].eventId);
+    for (const dependent of outgoing[index]) {
+      indegree[dependent] -= 1;
+      if (indegree[dependent] === 0 && directBlocks[dependent].length === 0) ready.push(dependent);
+    }
+  }
+
+  const dependencyBlocks: LoopPlusDependencyBlock[] = [];
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (selectedEvents.has(candidates[index].eventId)) continue;
+    dependencyBlocks.push(...directBlocks[index]);
+    for (const dependencyIndex of incoming[index]) {
+      if (selectedEvents.has(candidates[dependencyIndex].eventId)) continue;
+      const prerequisite = candidates[dependencyIndex];
+      dependencyBlocks.push({
+        subtaskId: candidates[index].subtaskId,
+        attemptId: candidates[index].attemptId,
+        dependencyId: prerequisite.subtaskId,
+        dependencyAttemptId: prerequisite.attemptId,
+        reason: dependencyReviewBlockReason(latest.get(prerequisite.subtaskId)!),
+      });
+    }
+  }
+  return {
+    items: selectedIndexes.map((index) => candidates[index]),
+    selectedEvents,
+    dependencyBlocks,
+  };
+}
+
+function isReviewDependencyProcessed(attempt: LoopPlusSeenAttempt): boolean {
+  return attempt.disposition === "reviewed" || attempt.disposition === "reported" || attempt.disposition === "closed";
+}
+
+function dependencyReviewBlockReason(attempt: LoopPlusSeenAttempt): LoopPlusDependencyBlock["reason"] {
+  if (attempt.disposition === "closed" || attempt.acceptance === "cancelled") return "closed";
+  if (attempt.disposition === "open") return "execution_pending";
+  if (attempt.requiresAcceptance === false && attempt.outcome === "completed") return "report_pending";
+  if (attempt.outcome === "failed" || attempt.outcome === "stopped") return "failed";
+  return "review_pending";
+}
+
+function sameReviewEventOrder(left: readonly LoopPlusReviewItem[], right: readonly LoopPlusReviewItem[]): boolean {
+  return left.length === right.length && left.every((item, index) => item.eventId === right[index].eventId);
+}
+
+class StableIndexHeap {
+  private readonly values: number[] = [];
+
+  get size(): number {
+    return this.values.length;
+  }
+
+  push(value: number): void {
+    let index = this.values.length;
+    this.values.push(value);
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (this.values[parent] <= value) break;
+      this.values[index] = this.values[parent];
+      index = parent;
+    }
+    this.values[index] = value;
+  }
+
+  pop(): number {
+    const first = this.values[0];
+    const last = this.values.pop() as number;
+    if (this.values.length === 0) return first;
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      if (left >= this.values.length) break;
+      const right = left + 1;
+      const child = right < this.values.length && this.values[right] < this.values[left] ? right : left;
+      if (this.values[child] >= last) break;
+      this.values[index] = this.values[child];
+      index = child;
+    }
+    this.values[index] = last;
+    return first;
+  }
+}
+
+function isDependencySatisfied(attempt: LoopPlusSeenAttempt): boolean {
+  return attempt.outcome === "completed"
+    && ((attempt.disposition === "reviewed" && attempt.acceptance === "passed")
+      || (attempt.requiresAcceptance === false && attempt.disposition === "reported"));
+}
+
+function dependencyBlockReason(attempt: LoopPlusSeenAttempt): LoopPlusDependencyBlock["reason"] {
+  if (attempt.disposition === "closed" || attempt.acceptance === "cancelled") return "closed";
+  if (attempt.outcome === "failed" || attempt.outcome === "stopped"
+    || (attempt.disposition === "reviewed" && attempt.acceptance === "failed")) return "failed";
+  if (attempt.disposition === "open") return "execution_pending";
+  if (attempt.requiresAcceptance === false) return "report_pending";
+  return "review_pending";
+}
+
+function validateDependencyGraph(
+  historical: Map<string, LoopPlusSeenAttempt>,
+  candidates: readonly ParsedSpec[],
+): string | null {
+  const graph = new Map<string, readonly string[]>();
+  for (const [id, attempt] of historical) {
+    graph.set(id, attempt.dependsOn ?? []);
+  }
+  for (const candidate of candidates) graph.set(candidate.subtaskId, candidate.dependsOn ?? []);
+  for (const [id, dependencies] of graph) {
+    for (const dependency of dependencies) {
+      if (!graph.has(dependency)) return `Unknown dependency "${dependency}" referenced by "${id}".`;
+    }
+  }
+  const indegree = new Map<string, number>();
+  const dependents = new Map<string, string[]>();
+  for (const id of graph.keys()) indegree.set(id, 0);
+  for (const [id, dependencies] of graph) {
+    indegree.set(id, dependencies.length);
+    for (const dependency of dependencies) {
+      const list = dependents.get(dependency) ?? [];
+      list.push(id);
+      dependents.set(dependency, list);
+    }
+  }
+  const ready: string[] = [];
+  for (const [id, count] of indegree) if (count === 0) ready.push(id);
+  let visited = 0;
+  for (let cursor = 0; cursor < ready.length; cursor += 1) {
+    const id = ready[cursor];
+    visited += 1;
+    for (const dependent of dependents.get(id) ?? []) {
+      const count = (indegree.get(dependent) ?? 0) - 1;
+      indegree.set(dependent, count);
+      if (count === 0) ready.push(dependent);
+    }
+  }
+  return visited === graph.size ? null : "Dependency graph contains a cycle.";
+}
+
+function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function readRequiredId(value: unknown, field: string): string {
@@ -1534,6 +1898,7 @@ function copyExecution(record: LoopPlusExecutionRecord): LoopPlusExecutionRecord
     title: record.title,
     conflictGroup: record.conflictGroup,
     writeFiles: record.writeFiles.slice(),
+    ...(record.dependsOn !== undefined ? { dependsOn: record.dependsOn.slice() } : {}),
     state: record.state,
   };
 }
@@ -1557,6 +1922,7 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
     ...(record.acceptanceReason ? { acceptanceReason: record.acceptanceReason } : {}),
+    ...(record.dependsOn !== undefined ? { dependsOn: record.dependsOn.slice() } : {}),
   };
 }
 

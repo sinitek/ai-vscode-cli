@@ -350,24 +350,63 @@ test("rejected repair dispatch is corrected successfully from the latest snapsho
   await env.run.done;
 });
 
-test("dispatch commit failure leaves no started or reserved attempt; recovery starts it once", async (t) => {
-  const env = harness();
-  await flush();
-  const failures = failDisk(t, "write", env.read().taskStoreFile, (task) => Boolean(snapshot(task).running.length));
-  env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
-  await env.run.done;
-  assert.ok(failures() > 0);
-  assert.equal(env.attempts.length, 0);
-  assert.deepEqual(snapshot(env.read()).running, []);
-  t.mock.restoreAll();
-  const resumed = env.resume();
-  await flush();
-  env.mains.at(-1)!.resolve(json({ status: "dispatch", subtasks: [child("A")] }));
-  await flush();
-  assert.equal(env.attempts.length, 1);
-  env.host.stopParent(env.id);
-  await resumed.done;
-});
+for (const mode of ["write", "rename"] as const) {
+  test(`dispatch pending ${mode} commit failure leaves no candidate; immediate resume can dispatch once`, async (t) => {
+    const env = harness();
+    await flush();
+    const failures = failDisk(t, mode, env.read().taskStoreFile, (task) => Boolean(snapshot(task).pending.length));
+    env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
+    await env.run.done;
+    assert.ok(failures() > 0);
+    assert.equal(env.attempts.length, 0);
+    assert.deepEqual(snapshot(env.read()).pending, []);
+    assert.deepEqual(snapshot(env.read()).running, []);
+    assert.deepEqual(snapshot(env.read()).seenAttempts, []);
+    assert.deepEqual(env.read().subTasks, []);
+    t.mock.restoreAll();
+    // Resume directly from done: no drain of the old consumer before recovery.
+    const resumed = env.resume();
+    await flush();
+    assert.equal(env.mains.length, 2);
+    env.mains[1].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
+    await flush();
+    assert.equal(env.attempts.length, 1);
+    assert.equal(snapshot(env.read()).seenAttempts.length, 1);
+    env.host.stopParent(env.id);
+    await resumed.done;
+  });
+
+  test(`dispatch promotion ${mode} commit failure retains original pending attempt; immediate resume starts it once`, async (t) => {
+    const env = harness();
+    await flush();
+    const failures = failDisk(t, mode, env.read().taskStoreFile, (task) => Boolean(snapshot(task).running.length));
+    env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
+    await env.run.done;
+    assert.ok(failures() > 0);
+    assert.equal(env.attempts.length, 0);
+    const saved = snapshot(env.read());
+    assert.deepEqual(saved.running, []);
+    assert.equal(saved.pending.length, 1);
+    const originalId = saved.pending[0].attemptId;
+    assert.equal(saved.pending[0].subtaskId, "A");
+    t.mock.restoreAll();
+    // The candidate is already committed: recover it without another dispatch.
+    const resumed = env.resume();
+    let resumedSettled = false;
+    void resumed.done.then(() => { resumedSettled = true; });
+    await flush();
+    assert.equal(env.attempts.length, 1);
+    assert.equal(env.attempts[0].request.attemptId, originalId);
+    assert.equal(env.mains.length, 1);
+    assert.deepEqual(snapshot(env.read()).pending, []);
+    assert.deepEqual(snapshot(env.read()).running.map((item) => item.attemptId), [originalId]);
+    assert.deepEqual(snapshot(env.read()).seenAttempts, saved.seenAttempts);
+    assert.equal(env.read().status, "running");
+    assert.equal(resumedSettled, false);
+    env.host.stopParent(env.id);
+    await resumed.done;
+  });
+}
 
 test("control commit failure preserves the old active attempt and does not abort, close or start its replacement", async (t) => {
   const env = harness();
@@ -488,4 +527,58 @@ for (const parentStopped of [false, true]) {
       env.host.stopParent(env.id);
     });
   }
+}
+
+for (const mode of ["write", "rename"] as const) {
+  test(`review preparation ${mode} commit failure restores the previous prefix and sends no main request until immediate resume`, async (t) => {
+    const env = harness();
+    await flush();
+    env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("select-a"), { ...child("select-b"), dependsOn: ["select-a"] }] }));
+    await flush();
+    env.attempts[0].resolve({ outcome: "completed", detail: "original prerequisite" });
+    await flush();
+    const originalReview = env.mains.at(-1)!;
+    originalReview.resolve(json({ status: "accept", reviewEventIds: originalReview.request.reviewEventIds, subtasks: [] }));
+    await flush();
+    assert.equal(env.attempts[1].request.subtaskId, "select-b");
+    env.host.submitUserMessage(env.id, "重新执行前置");
+    await flush();
+    env.mains.at(-1)!.resolve(json({ status: "dispatch", subtasks: [child("select-a")] }));
+    await flush();
+    assert.equal(env.attempts[2].request.subtaskId, "select-a");
+    assert.equal(env.host.submitUserMessage(env.id, "先记录全部交付，再生成验收批次"), true);
+    await flush();
+    const user = env.mains.at(-1)!;
+    assert.equal(user.request.kind, "user");
+    env.attempts[1].resolve({ outcome: "completed", detail: "successor first" });
+    await flush();
+    env.attempts[2].resolve({ outcome: "completed", detail: "prerequisite later" });
+    await flush();
+    const before = snapshot(env.read());
+    assert.equal(before.currentReview?.subtaskId, "select-b");
+    assert.equal(before.reviewQueue[0].subtaskId, "select-a");
+    const ids = [before.reviewQueue[0].eventId, before.currentReview!.eventId];
+    const calls = env.mains.length;
+    const failures = failDisk(t, mode, env.read().taskStoreFile, (task) => snapshot(task).currentReview?.subtaskId === "select-a");
+    user.resolve(json({ status: "wait" }));
+    await env.run.done;
+    assert.ok(failures() > 0);
+    assert.equal(env.mains.length, calls, "uncommitted review selection must never reach the main model");
+    assert.equal(env.attempts.length, 3);
+    assert.deepEqual(snapshot(env.read()).currentReview, before.currentReview);
+    assert.deepEqual(snapshot(env.read()).reviewQueue, before.reviewQueue);
+    assert.equal(snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
+    t.mock.restoreAll();
+    const resumed = env.resume();
+    await flush();
+    assert.equal(env.mains.length, calls + 1);
+    const review = env.mains.at(-1)!;
+    assert.deepEqual(review.request.reviewEventIds, ids, "failed new MainStep metadata was rolled back");
+    assert.equal(snapshot(env.read()).currentReview?.eventId, ids[0], "selection is durable before the request");
+    review.resolve(completed(ids));
+    await resumed.done;
+    assert.equal(env.read().status, "completed");
+    assert.equal(env.attempts.length, 3);
+    assert.equal(env.completedNotices.length, 1);
+  });
 }

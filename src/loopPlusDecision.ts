@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
+import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
@@ -22,7 +23,7 @@ export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
 export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 /** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
-export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 3;
+export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4;
 export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT = 200;
 export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN = 50;
 export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT = 9999;
@@ -53,6 +54,7 @@ export type LoopPlusControlDecision = {
   id: string;
   /** 关闭原因，保留给用户及后续恢复。 */
   reason?: string;
+  dependsOn?: string[];
   conflictGroup?: string;
   writeFiles?: string[];
   /** 省略时 reprompt 保留原子任务分类。 */
@@ -581,6 +583,10 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     return null;
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
+  const dependsOn = readLoopPlusDependsOn(value.dependsOn, id);
+  if (!dependsOn) {
+    return null;
+  }
   if (value.action === "close") {
     const reason = readRequiredShortReason(value.reason);
     if (hasOwn(value, "reason") && !reason) return null;
@@ -593,6 +599,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
       ...classification,
       ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+      ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
@@ -608,6 +615,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
     ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+    ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
   };
 }
 
@@ -672,6 +680,10 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     return null;
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
+  const dependsOn = readLoopPlusDependsOn(value.dependsOn, id);
+  if (!dependsOn) {
+    return null;
+  }
   return {
     id,
     title,
@@ -680,6 +692,7 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
     ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+    ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(skillIds.length > 0 ? { skillIds } : {}),
   };

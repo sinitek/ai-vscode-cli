@@ -331,7 +331,7 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
-  options: { notifyTabClosed?: boolean } = {},
+  options: { notifyTabClosed?: boolean; replaceLastTab?: boolean } = {},
 ): Promise<void> {
   if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
@@ -344,6 +344,11 @@ async function closeConversationTabAndRefreshPanel(
   const previousActiveTabId = getActiveConversationTabId();
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
+  const replacingLastTab = options.replaceLastTab && ensureConversationTabs().tabs.length === 1;
+  if (replacingLastTab) {
+    // Retire the completed subtask while retaining an empty conversation.
+    addConversationTab(closingTab.cli, null, { skipPersist: true });
+  }
   const next = closeConversationTab(tabId);
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
@@ -355,6 +360,11 @@ async function closeConversationTabAndRefreshPanel(
   closingBindings.forEach((binding) => {
     disposeInteractiveRunnerIfUnused(binding);
   });
+  if (replacingLastTab) {
+    // The close acknowledgement cannot introduce a newly created fallback tab.
+    await postPanelState();
+    if (getActiveConversationTabId() !== nextActiveTabId) return;
+  }
   if (nextActiveTabId === previousActiveTabId) {
     return;
   }

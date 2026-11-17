@@ -60,6 +60,8 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 排查时对齐 `loop-subtask-auto-compact-failed`、`loop-subtask-tab-auto-close-error` / `loop-plus-subtask-tab-auto-close-error` 与对应 `tab-auto-closed` 日志。旧实现中经典 Loop 未等待压缩便关页，Loop+ 则在完成回报前关页；遇到活跃任务时共享清理可能跳过关页，调用方仍记录成功。当前实现会核对关闭是否生效，并保护压缩期间新增、替代、换绑或仍在运行的标签。关闭失败不会改写已成功的完成回报，应按错误原因核对原标签与当前任务，不要强关正在使用该会话的新任务。
 
+当前源码还覆盖两个遗漏边界：旧标签关闭或界面刷新失败后继续清理本次成功标签，最终错误汇总包含实际失败标签；压缩期间主标签关闭导致只剩子任务标签时，自动关闭原标签并保留同 CLI 空白对话，在配置恢复前发布新标签状态，避免恢复失败留下旧界面，仍拒绝关闭活动运行和锁定主任务。回归入口为 `src/test/session/sessionTabCliSwitch.test.ts`。检查实例时同时核对运行中的扩展版本与宿主是否已重载；源码、磁盘已安装扩展版本及最后两条系统提示，均不能单独证明该旧实例采用当前关页逻辑。
+
 ## 子任务 Tab 报等待其他窗口配置操作超时
 
 先按 `runPrompt-failed` 的 `tabId`、`loopTaskId`、`loopSubtaskId`、`loopAttemptId` 对齐调用，不能仅凭 `cli-startup` 推断是哪一个并行子任务失败。新版错误码为 `RUNTIME_CONFIG_LOCK_TIMEOUT`，`configLock` 提供 `operation`、`ownerPid`、`ownerAlive`、`waitedMs` 和 `timeoutMs`。`acquire` 表示还未取得执行租约；`release` 表示请求收尾阶段超时，不能据此认定 CLI 没有执行。

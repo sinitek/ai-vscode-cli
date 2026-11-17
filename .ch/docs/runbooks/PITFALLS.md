@@ -24,6 +24,12 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## Loop+ 的 done 结束不代表旧 consumer 已收尾
+
+- 现象：提交失败后从 `done` 立即恢复，旧 consumer 的迟到 catch 可能暂停新 lifecycle，旧 finally 可能清掉新请求或吞掉已合并唤醒；不能用恢复前加 sleep/flush 掩盖竞态。
+- 规避：pump 捕获原 lifecycle，catch 只有身份仍匹配且未 settle 才处理暂停；finally 按 consumer identity 清理自己的槽位，随后排空立即恢复留下的 `pumpRequested` / `forcePrompt`。主调用的请求、step 与 handle 同时建立，清理须核对相同 handle identity，旧收尾不得清空新请求。
+- 已验证来源：`src/extensionHost/loopPlusOrchestration.ts` 的 pump/runConsumer；`src/test/extensionHost/loopPlusHandoffContracts.test.ts` 使用真实 write/rename 故障，直接从 done 恢复；`src/test/extensionHost/loopPlusOrchestration.test.ts` 的 `immediate resume after dependency promotion failure preserves its lifecycle and drains queued wake once` 核对原 attempt、新 done、一次消息消费、无主调用重叠及无误 abort。生命周期修复 22/22 与 6/6 已主审，最终 macOS 入口的规定回归与原生交接也通过，统计不相加。契约和证据见[调度设计](../design-docs/loop-plus-scheduling.md#立即续跑与异步收尾所有权)及[归档计划](../exec-plans/completed/2026-11/2026-11-17-feature-loop-plus-explicit-dependencies.md)；不代表 Windows 或图形宿主已验证。
+
 ## Loop+ 成功提交不能与展示刷新共用失败契约
 
 - 现象：store 吞掉 write 错误、上层只检查异常或忽略 null 时，磁盘仍 running 却已通知完成并释放；反过来，把提交后面板刷新异常继续抛出，会将已提交事件当成未提交，造成重放。只测会抛异常的 updateTask 替身检不出真实 store 接口矛盾。

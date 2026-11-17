@@ -104,7 +104,7 @@ const LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES = [
 function formatExecution(record: LoopPlusExecutionRecord): string {
   const files = record.writeFiles.length > 0 ? record.writeFiles.join(", ") : "(none)";
   const group = record.conflictGroup ? ` group=${record.conflictGroup}` : "";
-  return `- ${record.subtaskId} attempt=${record.attemptId} state=${record.state}${group} files=${files}`;
+  return `- ${record.subtaskId} attempt=${record.attemptId} state=${record.state}${group} dependsOn=${JSON.stringify(record.dependsOn ?? [])} files=${files}`;
 }
 
 function formatReview(item: LoopPlusReviewItem, label: string): string {
@@ -163,6 +163,7 @@ function buildLoopPlusProtocolExamples(
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
     taskType: "backend",
     requiresAcceptance: true,
+    dependsOn: [],
     conflictGroup: "example-backend-scope",
     writeFiles: ["src/example-backend.ts"],
   };
@@ -308,7 +309,7 @@ function buildLoopPlusProtocolExamples(
         status: "steer",
         controls: [
           { id: "example-running-subtask", action: "close" },
-          { id: "example-other-subtask", action: "reprompt", title: "修正校验分支并验证", prompt: reprompt },
+          { id: "example-other-subtask", action: "reprompt", dependsOn: [], title: "修正校验分支并验证", prompt: reprompt },
         ].slice(0, dispatchExampleCount),
       },
     },
@@ -442,11 +443,11 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     current ? formatReview(current, "current") : "Current review item: (none)",
     `Acceptance batch count: ${batchIds.length}`,
     `Maximum acceptance batch size: ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX}`,
-    "Acceptance batch, oldest first. Confirm this whole list in this decision:",
+    "Acceptance batch, frozen host-selected order. Confirm this whole list in this decision:",
     batchText,
-    `FIFO review queue count: ${queue.length}`,
+    `Review queue count: ${queue.length}`,
     `Visible review count including the current item: ${context.view.visibleReviewCount}`,
-    "FIFO review queue, oldest first:",
+    "Review queue in host order (dependency-first selection applies only to a new batch):",
     queued,
     `Still running count: ${context.view.running.length}`,
     `Scheduler concurrency limit: ${context.maxConcurrency}`,
@@ -460,6 +461,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,
+    "Dependency blocks (latest prerequisite attempt and reason):",
+    ...(context.view.dependencyBlocks?.length
+      ? context.view.dependencyBlocks.map((block) => `- ${block.subtaskId} attempt=${block.attemptId} dependsOn=${block.dependencyId} latestAttempt=${block.dependencyAttemptId ?? "(none)"} reason=${block.reason}`)
+      : ["(none)"]),
     `Subtask rounds used: ${subtaskRounds}`,
     `Subtask round limit: ${subtaskRoundLimit}`,
     `Remaining subtask rounds: ${Math.max(0, subtaskRoundLimit - subtaskRounds)}`,
@@ -473,7 +478,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     pendingUserText,
     "Root request:",
     context.rootPrompt,
-    "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair and retries. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the FIFO review queue, but those belong to the next batch. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
+    "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair, retries, prompt refresh, and same-host recovery. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the review queue, including late-arriving prerequisites, but those belong to the next batch. Never reorder or expand the frozen batch from the latest record. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- " + LOOP_DIRECT_EXECUTION_RULE_EN,
@@ -489,13 +494,22 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       : `- Use up to ${parallelCapacity} useful independent subtasks within the configured limits and available slots. Never create tiny or artificial tasks just to fill capacity.`,
     "- On dispatch and accept, look for ready independent work to refill free slots instead of waiting for all siblings. Review the whole open acceptance batch first and attach follow-up work to accept. Do not duplicate running or pending tasks; pending work already owns its place in the queue and may consume released slots.",
     "- Every accept is also a remaining-goal planning decision: re-read all unfinished root and supplemental requirements, not just this batch's acceptance defects. When the overall goal is unfinished, dispatch ready independent deliverables alongside necessary repairs in the same accept, within capacity and ownership limits. A failed check or a repair in progress is not a global barrier. Keep repairs focused on the failed criterion; independent delivery must advance a distinct unmet requirement, not repeat still-valid verification.",
-    `- Review at most ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX} subtasks per decision, exactly the frozen acceptance batch. The rest of the FIFO review queue waits for the next batch. This review limit does not cap running subtasks or new dispatches. After judging this batch, include necessary repairs and ready remaining-goal work in the same accept to refill usable slots toward the configured concurrency limit; do not wait for later review batches before launching safe independent work. Account for running tasks and pending tasks that can use those slots, while genuinely blocked pending tasks do not reserve idle slots.`,
+    `- Review at most ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX} subtasks per decision, exactly the frozen acceptance batch. The rest of the review queue waits for the next batch. The host selects prerequisites before successors when generating a new batch, preserving arrival order for independent ready items. Do not wait to fill the batch. This review limit does not cap running subtasks or new dispatches. After judging this batch, include necessary repairs and ready remaining-goal work in the same accept to refill usable slots toward the configured concurrency limit; do not wait for later review batches before launching safe independent work. Account for running tasks and pending tasks that can use those slots, while genuinely blocked pending tasks do not reserve idle slots.`,
     "- New dispatch is conditional on the final goal still needing that work. If all requirements are satisfied, launch no new subtasks and complete once every host completion gate is clear. If remaining work is already covered by running or pending tasks, or only dependencies or real conflicts prevent useful work, accept without new subtasks and wait or continue the next review batch. Never duplicate work, rerun valid verification, or invent tasks merely to reach the concurrency target.",
     "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
     "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
     ...loopPlusModeRuleLines(context),
+    "- dependsOn is an optional array of stable subtask ids under this parent, never attempt or session ids. Ordinary dispatch omission or [] means no dependency; continueFromSubtaskId selects a session and never implies dependsOn. Declare real prerequisites explicitly and retain parallel admission for independent work; there is no whole-batch barrier.",
+    "- For execution admission, a prerequisite is satisfied only by its latest attempt: outcome completed plus reviewed acceptance passed; or requiresAcceptance=false plus outcome completed and acknowledged report (reported). Execution completion alone, pending review/report, failed/stopped attempts and closed tasks do not release successors. A prior passed attempt cannot substitute for a newer failed or open attempt.",
+    "- Review ordering is separate from execution admission. A pending-review prerequisite is selected before its successor; a running or pending prerequisite, or an unacknowledged no-acceptance report, defers only related successors from a new acceptance batch. Independent review, dispatch, and refill continue. Acknowledge reports through the frozen FIFO report prefix first; the host may select their successors in a later decision. Never confirm a report automatically or turn it into a separate acceptance review.",
+    "- For reviewing an already delivered successor, the latest prerequisite reviewed (passed or failed), reported, or closed means it has been processed first, not that execution succeeded. Once processed, judge the successor delivery independently. A failed prerequisite does not automatically fail any other event. A selected prerequisite is not yet passed; record every event's true conclusion even when prerequisites and successors share this batch. Only the host selects the batch; never insert a prerequisite yourself.",
+    "- The host applies the complete decision, including report acknowledgments, reviews, controls, and new dispatches, before promoting pending work. An old prerequisite success cannot release a successor midway through a decision that creates a newer prerequisite attempt. New reservations are persisted before execution starts.",
+    "- Subtasks in one dispatch may forward-reference another accepted subtask in that same dispatch. Unknown ids, self/duplicate dependencies, and cycles are rejected before graph admission. A rejected candidate cannot serve as a prerequisite. controls.reprompt may reference only already known logical ids, not a new id awaiting dispatch in this decision; its graph is preflighted before any old attempt is aborted.",
+    "- controls.reprompt omission of dependsOn inherits the original list; [] clears it and an explicit array replaces it. Omission of requiresAcceptance still resets to true. For failed or closed prerequisites, prefer a new dispatch attempt with the same logical id so waiting successors observe the repair; a different id never replaces the original automatically. Already running successors are not cancelled by a later prerequisite redispatch.",
+    "- When no acceptance item is claimable, do not emit an empty review confirmation. Visible events may all be dependency blocked. Read visible reports and messages first. When an active prerequisite can advance, waiting with no frozen acceptance batch is allowed. With no active work and only dependency deadlock, wait cannot make progress, even if review events remain queued; plan how to resolve the blockers instead of waiting indefinitely. Inspect each dependency id, latestAttempt and reason above; repair the prerequisite under the same id, use reprompt to adjust a pending successor, or use the existing blocked protocol when no safe work remains. Preserve failed verdicts; do not cancel successors, bypass dependencies or claim completion.",
+    "- Dependency protocol example (prerequisite-id is an already known logical id): " + JSON.stringify({ status: "dispatch", subtasks: [{ id: "dependent-delivery", title: "完成依赖交付", taskType: "backend", prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT, dependsOn: ["prerequisite-id"] }] }),
     "- writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
@@ -518,13 +532,13 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
-    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
+    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and live execution or ready pending work can advance; pending work blocked solely on failed/closed dependencies is not a reason to wait.",
     "- steer interrupts open subtasks and confirms no acceptance events. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
     "- Every accept must include progressPercent, an integer from 0 to 99. Reassess overall completion of all root and supplemental requirements using accepted evidence and remaining work, not subtask counts or acceptance counts. This is your judgment, not a scheduler calculation. New requirements may require lowering the estimate. The host updates progress only after the acceptance batch is successfully confirmed. Reserve 100% for the host after final completed succeeds; do not report 100 on accept. wait, dispatch, steer, blocked, and clarify do not update progress.",
     "- controls actions are close or reprompt. close targets only running/pending (including interrupted) subtasks; supply a short reason when requirements change. It aborts that subtask, closes its conversation tab, and drops it without an acceptance event or acceptance count. reprompt aborts it, closes that attempt's conversation tab, and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt and closes the tab; JSON alone does not stop a process.",
     "- reprompt requires a non-empty title describing the corrected task in Simplified Chinese. Do not reuse the old title when the task goal or scope has changed; update the title together with the prompt. A reprompt without a valid title is rejected.",
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
-    "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when other work is still running or pending, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
+    "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when live execution or ready pending work can advance, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept; use independentSubtaskIds for independent deliveries or reviews[*].subtaskIds for event-related work. Passed reviews stay passed. If all new work must wait for a still-running or pending execution and no other independent work is ready, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
     "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms no acceptance events. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
@@ -589,6 +603,8 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     `Attempt report file: ${context.communicationFile}`,
     roleLine,
     `Suggested write scope: ${role === "general" ? "(read only)" : files}`,
+    `Explicit prerequisite subtask ids (dependsOn): ${JSON.stringify(context.subtask.dependsOn ?? [])}`,
+    "The host admits this attempt only after each prerequisite's latest attempt completes and passes acceptance, or completes with requiresAcceptance=false and its report is acknowledged. Session continuation is separate from dependencies. Report only this attempt; do not infer parent or successor completion.",
     role === "general"
       ? "This attempt is analysis only. A prompt instruction is not a sandbox; still do not edit files."
       : "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
