@@ -80,7 +80,7 @@ export function createRunStatusHarness() {
   for (const [source, names] of [
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, [
       "createTaskListState", "createConversationRuntimeState", "resolveConversationRuntimeKey", "getConversationRuntimeState",
-      "pruneConversationRuntimeStates", "resetConversationRuntimeState", "normalizeRunActivity", "isRunStatusSummaryText",
+      "syncPendingPromptQueueState", "pruneConversationRuntimeStates", "resetConversationRuntimeState", "normalizeRunActivity", "isRunStatusSummaryText",
       "getActiveConversationRuntimeState", "ensureRuntimeStateMessages", "ensureRuntimeTaskList", "isRuntimeStateForActiveTab",
       "deriveLatestRunPromptFromMessages", "deriveLatestRunStatusMessageFromMessages", "hydrateRunArtifactsFromMessages",
     ]],

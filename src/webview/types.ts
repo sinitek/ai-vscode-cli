@@ -58,6 +58,7 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "recordPromptHistory"; prompt: string; cli?: CliName }
+  | { type: "pendingPromptQueueChanged"; hasPendingPrompts: boolean }
   | { type: "togglePromptHistoryFavorite"; id: string; favorite?: boolean }
   | { type: "togglePromptHistoryGlobal"; id: string; global?: boolean }
   | { type: "refreshPromptHistory" }

@@ -1432,12 +1432,12 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
 
 test("queued prompts retain the displayed profile revision instead of silently adopting a later heartbeat", () => {
   const { api, posted, window } = createRuntimeHarness();
-  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
   const payload = api.buildPromptPayload("按所见配置执行");
   assert.equal(payload.configSelections.codex.revision, "visible-a");
   api.queuePromptForLater(payload);
   const queued = api.getActiveConversationRuntimeState().pendingPromptQueue[0];
-  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
   api.dispatchPrompt(queued);
   const sent = posted.filter((message) => message.type === "sendPrompt").at(-1);
   assert.equal(sent.configSelections.codex.configId, "config-a");
@@ -2032,6 +2032,7 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   document.getElementById("loopPlusDecisionSubtaskMax").value = "99";
   document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 20 });
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] } }) });
   document.getElementById("promptInput").value = " queued work ";
   api.queuePromptForLater({ prompt: "queued work", contextOptions: { includeCurrentFile: false } });
   document.getElementById("queueIndicator").click();
@@ -2039,12 +2040,13 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("queueCount").textContent, "1");
   api.state.conversationTabs.tabs[0].loopTaskStatus = "completed";
   api.state.conversationTabs.tabs[0].loopTaskRunning = false;
-  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
-  assert.equal(posted.at(-1).type, "sendPrompt");
-  assert.equal(posted.at(-1).model, "gpt-5-main");
-  assert.equal(posted.at(-1).loopMainModel, "gpt-5-main");
-  assert.equal(posted.at(-1).loopSubtaskModel, "gpt-5-subtask");
-  assert.equal(posted.at(-1).interactiveMode, "loop");
+  window.dispatchMessage({ type: "runStatus", tabId: "vibe-queue", status: "end", message: "Task completed" });
+  const queuedSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.ok(queuedSend);
+  assert.equal(queuedSend.model, "gpt-5");
+  assert.equal(queuedSend.loopMainModel, undefined);
+  assert.equal(queuedSend.loopSubtaskModel, undefined);
+  assert.equal(queuedSend.interactiveMode, "coding");
 
   window.dispatchMessage({ type: "uploadResult", paths: ["/tmp/a.png"] });
   assert.match(document.getElementById("promptInput").value, /@\/tmp\/a\.png/);

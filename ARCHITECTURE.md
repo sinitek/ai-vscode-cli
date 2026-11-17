@@ -90,6 +90,7 @@ cli / interactive / config 服务层
 
 #### 扩展运行时 Host 层
 
+- Webview 以 `pendingPromptQueueChanged` 同步所有 Tab 是否存在待发送提示词，只传布尔值。宿主记录该状态供 `taskCompletionAttention.ts` 静默 Vibe 的中间完成提醒；删除、出队、重置、关页及 Webview 替换/释放清理状态。`canQueuePrompt` 统一限制提示词队列只接受普通 Vibe，覆盖冲突入口和出队入口；Loop / Loop+ 群聊及调度器内部队列独立。
 - 位于 `src/extensionHost/`
 - `modelSettings.ts` 保留模型选择、Loop 角色/推理力度、档案与工作区身份解析、面板构建及状态同步编排；`cliModelSelectionStrategies.ts` 只负责基于模型存储和实时缓存读取端口的选择规则，不负责配置 I/O。
 - `src/config/configuredModelRepository.ts` 通过最小读取/错误端口隔离 Codex、Grok、DSH、Kimi Code、ZCode 的配置读取、已有解析器调用、实例级档案缓存与读取失败降级。构造无 I/O，宿主以活 getter 接入已有选择策略，编辑后也写入同一仓储；仓储不依赖 VS Code、配置服务运行时单例或宿主。刷新由宿主先建立全部 CLI 身份再按原顺序并发调用；运行前仍重新读取配置，不以展示缓存替代执行配置。时序和边界见 `.ch/docs/design-docs/vscode-cli-extension-runtime.md`。

@@ -1471,7 +1471,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           closeRunConflictOverlay();
           return false;
         }
-        queuePromptForLater(promptPayload);
+        if (!queuePromptForLater(promptPayload)) {
+          return false;
+        }
         elements.promptInput.value = "";
         closeRunConflictOverlay();
         resetPromptContextForNextPrompt();
@@ -1485,13 +1487,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           closeRunConflictOverlay();
           return false;
         }
-        closeRunConflictOverlay();
         if (isLoopMainConversationTabRunning(getActiveConversationTabId())) {
-          elements.promptInput.value = "";
-          queuePromptForLater(promptPayload);
-          resetPromptContextForNextPrompt();
-          return;
+          showToast(t("toastLoopMainBusy"));
+          return false;
         }
+        closeRunConflictOverlay();
         return dispatchPrompt(promptPayload, { pauseBeforeSend: true });
       }
 

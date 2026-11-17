@@ -5,8 +5,9 @@ import type { TaskRunRecord } from "./promptRunState";
 export function notifyTaskRunCompletion(
   controller: HumanInteractionAttentionController | undefined,
   record: TaskRunRecord,
+  hasPendingPrompts = false,
 ): void {
-  if (record.status !== "end" || record.taskRole || record.loopTaskId
+  if (hasPendingPrompts || record.status !== "end" || record.taskRole || record.loopTaskId
     || record.loopSubtaskId || record.loopRound !== undefined) {
     return;
   }

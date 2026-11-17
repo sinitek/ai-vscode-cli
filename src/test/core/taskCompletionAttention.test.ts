@@ -61,6 +61,18 @@ test("completion reporting tolerates a missing desktop host", () => {
   notifyLoopTaskCompletion(undefined, { id: "parent", status: "completed" });
 });
 
+test("Vibe stays silent while prompts are queued and the final successful run notifies normally", async () => {
+  const env = harness();
+  notifyTaskRunCompletion(env.controller, runRecord({ id: "first" }), true);
+  notifyTaskRunCompletion(env.controller, runRecord({ id: "second" }), true);
+  await env.controller.refresh();
+  assert.deepEqual(env.events, []);
+  notifyTaskRunCompletion(env.controller, runRecord({ id: "last" }), false);
+  await env.controller.refresh();
+  assert.deepEqual(env.events, ["task-completed", "start"]);
+  await env.controller.dispose();
+});
+
 test("a resumed main task can notify for a new persisted completion without replaying the previous completion", async () => {
   const env = harness();
   notifyLoopTaskCompletion(env.controller, { id: "parent", status: "completed", updatedAt: 1 });

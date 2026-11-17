@@ -513,6 +513,8 @@ export const WEBVIEW_STRINGS = {
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
+    toastLoopQueueUnsupported: "Loop / Loop+ 主任务和子任务不支持加入队列，请在新会话中发送。",
+    toastLoopMainBusy: "Loop / Loop+ 主任务执行中，请通过群聊补充需求或在新会话中发送。",
     toastQueueUpdated: "队列提示词已更新",
     toastQueueEmptyPrompt: "提示词不能为空",
     toastQueueSendFailed: "队列发送失败，请先激活配置",

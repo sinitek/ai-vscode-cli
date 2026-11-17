@@ -1354,6 +1354,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (elements.runConflictPrompt) {
           elements.runConflictPrompt.textContent = visible && payload ? payload.prompt : "";
         }
+        if (elements.queuePrompt) {
+          elements.queuePrompt.disabled = !canQueuePrompt(runtimeState && runtimeState.pendingRunPrompt);
+          elements.queuePrompt.title = elements.queuePrompt.disabled ? t("toastLoopQueueUnsupported") : "";
+        }
         elements.runConflictOverlay.classList.toggle("visible", visible);
       }
 

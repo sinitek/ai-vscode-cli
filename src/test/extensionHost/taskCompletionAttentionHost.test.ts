@@ -34,6 +34,7 @@ function harness() {
     activeMessageTarget: [] as unknown[],
   };
   const sandbox = {
+    hasPendingPromptQueue: false,
     primaryPromptRunController,
     taskRunCompletionEmitter: { fire: (record: TaskRunRecord) => { runCompletionEvents.push(record); } },
     humanInteractionAttention: { taskCompleted: async (eventId: string) => { completions.push(eventId); } },
@@ -50,6 +51,18 @@ function harness() {
   vm.runInNewContext(script, sandbox);
   return { ...sandbox, completions, runCompletionEvents, store };
 }
+
+test("persisted Vibe runs skip attention while any tab has queued work and resume after draining", () => {
+  const env = harness();
+  const sandbox = { ...env, hasPendingPromptQueue: true };
+  vm.runInNewContext(script, sandbox);
+  sandbox.appendTaskRun(runRecord());
+  assert.equal(env.store.runs.length, 1);
+  assert.deepEqual(env.completions, []);
+  sandbox.hasPendingPromptQueue = false;
+  sandbox.appendTaskRun(runRecord({ id: "last" }));
+  assert.deepEqual(env.completions, ["vibe:last"]);
+});
 
 test("shared persisted run recording notifies successful Vibe once and filters Loop intermediate calls", () => {
   const env = harness();

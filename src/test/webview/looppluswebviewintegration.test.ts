@@ -439,6 +439,7 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "syncRunConflictOverlay"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "openRunConflictOverlay"],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "closeRunConflictOverlay"],
+    [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "canQueuePrompt"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "queuePromptForLater"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "saveQueuedPromptEdit"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "flushPendingPromptQueue"],
@@ -849,47 +850,16 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   state.selectedLoopModelsByCli.codex = { main: "changed-main", subtask: "changed-sub" };
   state.selectedLoopThinkingByCli.codex = { main: "max", subtask: "medium" };
   browser.elements.promptInput.value = "draft";
-  assert.equal(api.queueConflictPromptForLater(), true);
-  assert.equal(plusRuntime.pendingPromptQueue.length, 1);
-  assert.equal(plusRuntime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopMainModel, "entry-main");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopSubtaskModel, "entry-sub");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopMainThinkingMode, "xhigh");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopSubtaskThinkingMode, "low");
-  assert.equal(plusRuntime.pendingPromptQueue[0].skipPromptHistory, true);
-  assert.equal(browser.elements.promptInput.value, "");
-
-  plusRuntime.queueEditingIndex = 0;
-  plusRuntime.queueEditingDraft = "   ";
-  api.saveQueuedPromptEdit();
-  assert.equal(plusRuntime.pendingPromptQueue[0].prompt, "accept the finished subtask");
-  plusRuntime.queueEditingIndex = 0;
-  plusRuntime.queueEditingDraft = "edited after the dropdown changed";
-  api.saveQueuedPromptEdit();
-  assert.equal(plusRuntime.pendingPromptQueue[0].prompt, "edited after the dropdown changed");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopMainThinkingMode, "xhigh");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopSubtaskThinkingMode, "low");
+  assert.equal(api.queueConflictPromptForLater(), false);
+  assert.equal(plusRuntime.pendingPromptQueue.length, 0);
+  assert.equal(browser.elements.promptInput.value, "draft");
+  assert.equal(plusRuntime.pendingRunPrompt?.interactiveMode, "loop_plus");
 
   state.conversationTabs.activeTabId = "classic-main";
   api.renderConversationTabs();
   assert.equal(state.interactiveMode, "loop");
   assert.equal(api.getConversationRuntimeState("classic-main").pendingPromptQueue.length, 0);
-  assert.equal(api.flushPendingPromptQueue("plus-main"), true);
-  const queuedSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.ok(queuedSend);
-  assert.equal(queuedSend.prompt, "edited after the dropdown changed");
-  assert.equal(queuedSend.interactiveMode, "loop_plus");
-  assert.equal(queuedSend.tabId, "plus-main");
-  assert.equal(queuedSend.loopMainModel, "entry-main");
-  assert.equal(queuedSend.loopSubtaskModel, "entry-sub");
-  assert.equal(queuedSend.loopMainThinkingMode, "xhigh");
-  assert.equal(queuedSend.loopSubtaskThinkingMode, "low");
-  assert.equal(Object.prototype.hasOwnProperty.call(queuedSend, "loopExecutionMode"), false);
-  assert.ok(queuedSend.requestId);
-  assert.equal(plusRuntime.promptSubmission?.requestId, queuedSend.requestId);
-  // 模拟上一条请求的宿主回执，再验证后续暂停与发送。
-  api.settlePromptSubmission("plus-main", queuedSend.requestId);
-  assert.equal(plusRuntime.promptSubmission, null);
+  assert.equal(api.flushPendingPromptQueue("plus-main"), false);
 
   assert.equal(api.dispatchPrompt({
     prompt: "classic loop",
@@ -912,25 +882,10 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   state.interactiveMode = "loop";
   state.selectedLoopModelsByCli.codex = { main: "changed-main", subtask: "changed-sub" };
   const sentBeforePause = posted.filter((message) => message.type === "sendPrompt").length;
-  assert.equal(api.pauseAndSendConflictPrompt(), undefined);
+  assert.equal(api.pauseAndSendConflictPrompt(), false);
   assert.equal(posted.filter((message) => message.type === "sendPrompt").length, sentBeforePause);
-  assert.equal(plusRuntime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopMainModel, "entry-main");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopMainThinkingMode, "high");
-  assert.equal(plusRuntime.pendingPromptQueue[0].loopSubtaskThinkingMode, "medium");
-  assert.equal(api.flushPendingPromptQueue("plus-main"), false);
-  assert.equal(plusRuntime.pendingPromptQueue.length, 1);
-
+  assert.equal(plusRuntime.pendingPromptQueue.length, 0);
   state.conversationTabs.tabs.find((tab) => tab.id === "plus-main")!.loopTaskRunning = false;
-  assert.equal(api.flushPendingPromptQueue("plus-main"), true);
-  const pausedLater = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.ok(pausedLater);
-  assert.equal(pausedLater.prompt, "pause me");
-  assert.equal(pausedLater.interactiveMode, "loop_plus");
-  assert.equal(pausedLater.loopMainThinkingMode, "high");
-  assert.equal(Object.prototype.hasOwnProperty.call(pausedLater, "loopExecutionMode"), false);
-  assert.ok(pausedLater.requestId);
-  api.settlePromptSubmission("plus-main", pausedLater.requestId);
 
   state.selectedLoopModelsByCli.codex = { main: "entry-main", subtask: "entry-sub" };
   state.selectedLoopThinkingByCli.codex = { main: "high", subtask: "medium" };

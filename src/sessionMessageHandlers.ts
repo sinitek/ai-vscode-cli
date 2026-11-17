@@ -68,6 +68,7 @@ export type ConversationTabRecordForPanel = {
 };
 
 export type PanelMessageHandlerDeps = {
+  updatePendingPromptQueueState?: (hasPendingPrompts: boolean) => void;
   updateNotificationSetting?: (key: "humanInteractionNotifications" | "taskCompletionNotifications" | "humanInteractionWindowAttention" | "taskCompletionWindowAttention", enabled: boolean) => PromiseLike<void>;
   ensureWorkspaceSessionStore: () => void;
   postPanelState: () => Promise<void>;

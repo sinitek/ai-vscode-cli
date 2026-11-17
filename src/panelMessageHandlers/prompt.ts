@@ -5,6 +5,7 @@ import type { PanelMessageHandlerRegistry } from "../sessionMessageRouter";
 type PromptPanelMessageDeps = Pick<
   PanelMessageHandlerDeps,
   | "isCliName"
+  | "updatePendingPromptQueueState"
   | "getActiveConversationTab"
   | "getCurrentCli"
   | "recordPromptHistory"
@@ -24,6 +25,12 @@ export function createPromptPanelMessageHandlers(
   deps: PromptPanelMessageDeps
 ): PanelMessageHandlerRegistry {
   return {
+    pendingPromptQueueChanged: (message) => {
+      if (typeof message.hasPendingPrompts === "boolean") {
+        deps.updatePendingPromptQueueState?.(message.hasPendingPrompts);
+      }
+    },
+
     recordPromptHistory: async (message) => {
       if (typeof message.prompt !== "string") {
         return;

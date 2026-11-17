@@ -731,6 +731,32 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.vibe_prompt_queue_only",
+      "name": "提示词队列仅支持普通 Vibe",
+      "description": "Loop / Loop+ 模式及其主任务和子任务不支持加入提示词队列，统一入口拒绝并保留输入，冲突弹窗禁用加入队列。运行中的主任务不再自动排队，可通过群聊补充需求或新会话发送；旧队列的 Loop payload 或 Loop 目标 Tab 不能出队执行。普通 Vibe 保留配置快照、编辑、删除、排序和成功后继续；群聊独立提问、补充需求和 Loop+ 内部调度队列独立。",
+      "status": "active",
+      "applies_to": [
+        "plugin.chat_panel",
+        "plugin.loop_task"
+      ],
+      "source_refs": [
+        {
+          "path": "src/webview/viewContentScript/runStreamAndQueue.ts",
+          "anchor": "canQueuePrompt"
+        },
+        {
+          "path": "src/webview/viewContentScript/settingsAndOverlays.ts"
+        },
+        {
+          "path": "src/test/webview/promptQueuePolicy.test.ts"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "主任务与 Vibe 完成系统提醒"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.vibe_clarification_final_answer_fallback",
       "name": "Vibe 决策澄清优先结构化人机交互",
       "description": "人工交互开启的 Vibe 任务需要澄清时应调用结构化 user-input 或 elicitation 并等待回答。即使原始输入没有要求先提问，整段助手回复为明确请求用户决策的一到三题时，也可由共享自然语言兜底转换为现有表单；支持单题及无编号、项目符号、数字和字母选项，每个选项行保留完整文案。普通结果、引用、代码围栏和文档示例不触发该新路径。原有显式需求询问解析保持兼容。运行时在最终结论收口前移除问题气泡、等待提交并继续原会话，拒绝仍停止；人工交互关闭及 Loop/Loop+ 不使用该兜底。",
@@ -3588,7 +3614,7 @@
     {
       "id": "plugin.rule.task_completion_desktop_attention",
       "name": "仅主任务与 Vibe 成功完成触发桌面提醒",
-      "description": "Vibe 成功运行记录写入后、经典 Loop 与 Loop+ 主任务最终完成持久化后，无论本机窗口在前台还是后台，都复用携宁 CLI 提醒的中文系统通知，正文以【目录名 项目】开头，目录名来源及【未命名 项目】回退与人工交互通知一致，不显示完整路径；窗口提醒仅在后台触发。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成通知；历史已完成任务不补发。Loop+ 最终持久化失败不提前通知，重试成功后通知。完成事件最近 512 个 ID 去重，多项完成可聚合，先派发通知再在前台清除完成待查看窗口状态，避免焦点恢复与排队事件竞争漏发。前台完成立即通知，之后切后台不重发通知或闪烁。与人工交互共享窗口状态，不互相清除；通知通道异步且不阻塞任务，Windows 不同 Toast Tag 避免两类通知覆盖，macOS 复用稳定助手身份及权限且不弹跳 Dock。taskCompletionNotifications 与 taskCompletionWindowAttention 两项应用级设置默认开启并独立于人工交互设置。",
+      "description": "Vibe 成功运行记录写入后、经典 Loop 与 Loop+ 主任务最终完成持久化后，无论本机窗口在前台还是后台，都复用携宁 CLI 提醒的中文系统通知，正文以【目录名 项目】开头，目录名来源及【未命名 项目】回退与人工交互通知一致，不显示完整路径；窗口提醒仅在后台触发。子任务、中间主模型轮次、上下文压缩、失败、停止、暂停和待澄清不触发完成通知；历史已完成任务不补发。Loop+ 最终持久化失败不提前通知，重试成功后通知。完成事件最近 512 个 ID 去重，多项完成可聚合，先派发通知再在前台清除完成待查看窗口状态，避免焦点恢复与排队事件竞争漏发。前台完成立即通知，之后切后台不重发通知或闪烁。与人工交互共享窗口状态，不互相清除；通知通道异步且不阻塞任务，Windows 不同 Toast Tag 避免两类通知覆盖，macOS 复用稳定助手身份及权限且不弹跳 Dock。taskCompletionNotifications 与 taskCompletionWindowAttention 两项应用级设置默认开启并独立于人工交互设置。任一 Tab 存在待发送提示词时 Vibe 成功结束保持静默，不发送系统通知或图标提醒；队列清空后仅后续成功任务恢复提醒，不补发。Webview 仅同步队列存在性，出队、删除、Tab 重置/关闭及 Webview 替换/释放同步清理。",
       "aliases": [
         "任务完成提醒",
         "主任务完成通知",

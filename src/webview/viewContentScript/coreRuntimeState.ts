@@ -102,6 +102,15 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
             delete loopMetaByTabId[key];
           }
         });
+        syncPendingPromptQueueState();
+      }
+
+      function syncPendingPromptQueueState() {
+        const hasPendingPrompts = Object.keys(conversationRuntimeByTabId).some((tabId) => {
+          const runtimeState = conversationRuntimeByTabId[tabId];
+          return runtimeState.pendingPromptQueue.length > 0;
+        });
+        vscode.postMessage({ type: "pendingPromptQueueChanged", hasPendingPrompts });
       }
 
       function isRuntimeStateForActiveTab(tabId) {
@@ -308,6 +317,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         runtimeState.messagesLoaded = true;
         runtimeState.messagesLoading = false;
         runtimeState.pendingPromptQueue.length = 0;
+        syncPendingPromptQueueState();
         runtimeState.queueEditingIndex = -1;
         runtimeState.queueEditingDraft = "";
         runtimeState.pendingRunPrompt = null;
