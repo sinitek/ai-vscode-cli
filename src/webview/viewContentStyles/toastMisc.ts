@@ -66,17 +66,24 @@ export const TOAST_MISC_STYLES = `      /* Toast */
 
       .tool-settings-modal {
         width: min(680px, 90vw);
+        height: 70vh;
+      }
+      .tool-settings-modal > .modal-body {
+        overflow: hidden;
       }
       .tool-settings-body {
         padding: 16px;
         display: flex;
         flex-direction: column;
         gap: 12px;
+        flex: 1 1 0;
         min-height: 0;
         overflow: auto;
+        scrollbar-gutter: stable;
       }
       .tool-settings-tabs {
         display: flex;
+        flex: 0 0 auto;
         overflow-x: auto;
         gap: 4px;
         padding: 0 16px;
@@ -92,7 +99,7 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         padding: 8px 10px;
       }
       .tool-settings-tab.active {
-        border-bottom-color: var(--vscode-focusBorder);
+        border-bottom-color: var(--vscode-button-background, var(--vscode-focusBorder));
         color: var(--vscode-foreground);
       }
       .tool-settings-panel {
