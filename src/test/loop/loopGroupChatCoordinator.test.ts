@@ -99,6 +99,85 @@ function createContinuationRecoveryHarness() {
     get runs() { return runs; }, get refreshes() { return refreshes; } };
 }
 
+for (const schedulingMode of ["classic", "event_driven"] as const) {
+  test(`running member opens its existing AI conversation tab in ${schedulingMode}`, async () => {
+    const env = createContinuationRecoveryHarness();
+    env.task.schedulingMode = schedulingMode;
+    env.task.status = "running";
+    env.task.subTasks = [{ id: "subtask-1", title: "同名成员", status: "running" }];
+    const calls: string[] = [];
+    const originalTask = JSON.stringify(env.task);
+    env.deps.resolveSubtaskConversationTabId = (task, subtaskId) => {
+      assert.equal(task, env.task);
+      assert.equal(subtaskId, "subtask-1");
+      return "subtask-tab";
+    };
+    env.deps.isTabRunActive = (tabId) => tabId === "subtask-tab";
+    env.deps.revealPanelView = async () => { calls.push("reveal"); };
+    env.deps.switchVisibleConversationTabForLoop = async (tabId) => { calls.push(`switch:${tabId}`); };
+    await env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:openSubtaskConversation", subtaskId: "subtask-1",
+    });
+    assert.deepEqual(calls, ["reveal", "switch:subtask-tab"]);
+    assert.equal(JSON.stringify(env.task), originalTask);
+    assert.equal(env.runs, 0);
+    assert.deepEqual(env.warnings, []);
+  });
+}
+
+test("member navigation ignores invalid, missing and foreign subtask identities", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.subTasks = [{ id: "subtask-1", title: "同名成员", status: "running" }];
+  env.deps.readTaskRecord = (taskId) => taskId === env.task.id ? env.task : null;
+  env.deps.resolveSubtaskConversationTabId = () => { throw new Error("must not resolve invalid identity"); };
+  env.deps.revealPanelView = async () => { assert.fail("must not reveal"); };
+  for (const subtaskId of [undefined, "", "  ", 5, "foreign-subtask"]) {
+    await env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:openSubtaskConversation", subtaskId,
+    } as never);
+  }
+  await env.coordinator.handleMessage("missing-parent", {
+    type: "loopGroupChatChat:openSubtaskConversation", subtaskId: "subtask-1",
+  });
+  assert.deepEqual(env.warnings, []);
+});
+
+for (const unavailable of ["missing", "finished", "finished-during-reveal"] as const) {
+  test(`member navigation handles a ${unavailable} tab without switching`, async () => {
+    const env = createContinuationRecoveryHarness();
+    env.task.subTasks = [{ id: "subtask-1", title: "成员", status: "running" }];
+    const notices: string[] = [];
+    let active = unavailable !== "finished";
+    env.deps.resolveSubtaskConversationTabId = () => unavailable === "missing" ? null : "subtask-tab";
+    env.deps.isTabRunActive = () => active;
+    env.deps.revealPanelView = async () => {
+      assert.equal(unavailable, "finished-during-reveal");
+      active = false;
+    };
+    env.deps.showInformationMessage = (message) => { notices.push(message); };
+    env.deps.switchVisibleConversationTabForLoop = async () => { assert.fail("must not switch"); };
+    await env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:openSubtaskConversation", subtaskId: "subtask-1",
+    });
+    assert.equal(notices.length, 1);
+    assert.match(notices[0], /请刷新群聊/u);
+    assert.equal(env.runs, 0);
+  });
+}
+
+test("member navigation reports a failed panel switch without running a prompt", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.subTasks = [{ id: "subtask-1", title: "成员", status: "running" }];
+  env.deps.resolveSubtaskConversationTabId = () => "subtask-tab";
+  env.deps.isTabRunActive = () => true;
+  env.deps.switchVisibleConversationTabForLoop = async () => { throw new Error("无法恢复会话配置"); };
+  await env.coordinator.handleMessage(env.task.id, {
+    type: "loopGroupChatChat:openSubtaskConversation", subtaskId: "subtask-1",
+  });
+  assert.deepEqual(env.warnings, ["打开子任务对话失败：无法恢复会话配置"]);
+  assert.equal(env.runs, 0);
+});
+
 for (const running of [true, false]) {
   test(`switching task models ${running ? "does not interrupt running calls" : "automatically continues paused work"}`, async () => {
     const env = createContinuationRecoveryHarness();

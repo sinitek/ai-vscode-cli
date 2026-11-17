@@ -2467,9 +2467,28 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_running_member_opens_conversation",
+      "name": "Loop 运行中子任务成员打开已有对话标签",
+      "description": "经典 Loop 与 Loop+ 群聊运行中的子任务成员支持点击及键盘激活，展开 AI 对话面板并选中该子任务最新的活动标签。宿主按群聊绑定父任务与子任务身份匹配，不按标题、不接受浏览器指定标签或会话，不新建会话或重新执行。运行态优先于历史验收定位，其它成员保留已有验收入口；窄屏激活收起成员抽屉。已结束或关闭标签提示刷新，打开异常显示中文原因；标签切换复用既有 CLI、配置及消息同步。",
+      "status": "active",
+      "aliases": ["运行中成员", "子任务 Tab 跳转", "openSubtaskConversation"],
+      "applies_to": ["plugin.chat_panel", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 运行中成员打开对话"},
+        {"path": ".ch/docs/design-docs/loop-group-chat-state-boundaries.md", "anchor": "运行中成员打开对话标签"},
+        {"path": "src/webview/loopGroupChatPanel.ts", "anchor": "renderRosterPanel"},
+        {"path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"},
+        {"path": "src/extensionHost/loopSubtaskTabs.ts", "anchor": "findRunningLoopSubtaskConversationTabId"},
+        {"path": "src/extension.ts"},
+        {"path": "src/test/extensionHost/loopSubtaskTabs.test.ts"},
+        {"path": "src/test/loop/loopGroupChatCoordinator.test.ts"},
+        {"path": "src/test/loop/loopGroupChatAcceptance.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_acceptance_anchor",
       "name": "Loop+ 已验收成员定位最近一次验收气泡",
-      "description": "Loop+ 群聊已有反馈的成员无论验收成功或失败均可点击或键盘定位最近一次验收气泡；批量验收允许多个成员共享目标。新反馈隐藏保存完成事件身份并精确匹配最近一次已验收 attempt，同名成员不混淆；旧反馈仅在完整标题唯一匹配时兼容，缺失、歧义及加载错误不提供入口。定位会滚动并聚焦目标，窄屏收起成员抽屉，尊重减少动态效果偏好。最新可定位验收气泡与补充需求同属显示清理保护项，仍计入限额且必要时允许超限；不修改存档、验收结论、调度或经典 Loop 行为。",
+      "description": "Loop+ 群聊已有反馈且当前未运行的成员无论验收成功或失败均可点击或键盘定位最近一次验收气泡；批量验收允许多个成员共享目标。新反馈隐藏保存完成事件身份并精确匹配最近一次已验收 attempt，同名成员不混淆；旧反馈仅在完整标题唯一匹配时兼容，缺失、歧义及加载错误不提供入口。定位会滚动并聚焦目标，窄屏收起成员抽屉，尊重减少动态效果偏好。最新可定位验收气泡与补充需求同属显示清理保护项，仍计入限额且必要时允许超限；不修改存档、验收结论、调度或经典 Loop 行为。",
       "status": "active",
       "aliases": ["验收锚点", "成员验收定位", "loop-plus-acceptance"],
       "applies_to": ["plugin.chat_panel", "plugin.loop_task"],

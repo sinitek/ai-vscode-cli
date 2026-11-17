@@ -20,7 +20,7 @@
 
 ## Loop+ 验收锚点保护
 
-Loop+ 左侧成员通过最近一次已验收完成事件定位「验收结果」气泡，成功与失败使用同一定位链路。`src/loopPlusAcceptancePlan.ts` 将完成事件 ID 数组以 URI 编码 JSON 写入 `loop-plus-acceptance` HTML 注释；`src/loopGroupChatAcceptance.ts` 将当前成员最近一次已验收 attempt 的完成事件与反馈精确关联，渲染前移除注释。批量反馈可成为多个成员的共同目标，同名标题不影响精确身份匹配。旧反馈无注释时仅按唯一完整标题兼容，存在歧义不生成入口。
+Loop+ 左侧未运行成员通过最近一次已验收完成事件定位「验收结果」气泡，成功与失败使用同一定位链路；运行中成员优先打开 AI 对话面板中的现有运行标签，链路见[群聊状态边界](loop-group-chat-state-boundaries.md#运行中成员打开对话标签)。`src/loopPlusAcceptancePlan.ts` 将完成事件 ID 数组以 URI 编码 JSON 写入 `loop-plus-acceptance` HTML 注释；`src/loopGroupChatAcceptance.ts` 将当前成员最近一次已验收 attempt 的完成事件与反馈精确关联，渲染前移除注释。批量反馈可成为多个成员的共同目标，同名标题不影响精确身份匹配。旧反馈无注释时仅按唯一完整标题兼容，存在歧义不生成入口。
 
 `buildLoopGroupChatPanelContentPatch` 一次计算成员入口与时间线锚点。可定位的最新验收气泡与 `user-message` 一样传入既有保护谓词，即使位于窗口游标之前也保留；它们仍计入总数、必要时允许超限。普通气泡继续执行原有批次清理规则，不回填旧消息。不增加持久化字段、调度消息或额外的历史读取接口。
 

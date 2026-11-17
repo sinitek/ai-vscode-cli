@@ -136,6 +136,7 @@ export type LoopGroupChatPanelMessage =
   | import("./chatImageHost").ChatImageMessage
   | import("./chatLinkHost").ChatLinkMessage
   | { type: "loopGroupChatChat:refresh" }
+  | { type: "loopGroupChatChat:openSubtaskConversation"; subtaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }

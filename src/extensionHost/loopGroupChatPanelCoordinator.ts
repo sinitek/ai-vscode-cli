@@ -41,6 +41,7 @@ import {
   readLoopCommunicationFilePreview,
 } from "../loopCommunicationFilePreview";
 import { resolveLoopSchedulingMode, type LoopTaskOriginProfile, type LoopTaskRecord } from "../loopTaskStore";
+import { normalizeLoopSubtaskId } from "../loopConversationPresentation";
 
 type LoopPromptRunInput = {
   displayPrompt: string;
@@ -102,6 +103,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
     options?: { createIfMissing?: boolean },
   ) => LoopPromptTarget | null;
   revealPanelView: () => Promise<void>;
+  resolveSubtaskConversationTabId?: (task: LoopTaskRecord, subtaskId: string) => string | null;
   switchVisibleConversationTabForLoop: (tabId: string | null) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   getActiveConfigIdForCli: (cli: CliName) => string | null;
@@ -801,12 +803,38 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     deps.showInformationMessage(deps.t("loopGroupChatChat.clarificationRejected"));
   };
 
+  const openSubtaskConversation = async (taskId: string, requestedSubtaskId: unknown): Promise<void> => {
+    const normalizedTaskId = deps.normalizeTaskId(taskId);
+    const subtaskId = normalizeLoopSubtaskId(requestedSubtaskId);
+    const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
+    if (!task || !subtaskId || !task.subTasks.some((subtask) => subtask.id === subtaskId)) return;
+    try {
+      const tabId = deps.resolveSubtaskConversationTabId?.(task, subtaskId);
+      if (!tabId || !deps.isTabRunActive(tabId)) {
+        deps.showInformationMessage("该子任务当前没有运行中的对话标签页，请刷新群聊后重试。");
+        return;
+      }
+      await deps.revealPanelView();
+      if (!deps.isTabRunActive(tabId)) {
+        deps.showInformationMessage("该子任务已结束，请刷新群聊查看最新状态。");
+        return;
+      }
+      await deps.switchVisibleConversationTabForLoop(tabId);
+    } catch (error) {
+      deps.showWarningMessage(`打开子任务对话失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const handleMessage = async (taskId: string, message: LoopGroupChatPanelMessage): Promise<void> => {
     if (!message || typeof message.type !== "string") {
       return;
     }
     if (message.type === "loopGroupChatChat:refresh") {
       await refresh(taskId);
+      return;
+    }
+    if (message.type === "loopGroupChatChat:openSubtaskConversation") {
+      await openSubtaskConversation(taskId, message.subtaskId);
       return;
     }
     if (message.type === "loopGroupChatChat:continueTask") {

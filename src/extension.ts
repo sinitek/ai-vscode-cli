@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
-import { closeLoopSubtaskConversationTabs, prepareLoopSubtaskConversationTabClose } from "./extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose } from "./extensionHost/loopSubtaskTabs";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
 import { normalizeOpenCodeThinkingEffort } from "./cli/openCodeThinkingEffort";
@@ -2915,6 +2915,14 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   getActiveReviewEventIds: (taskId) => loopPlusRuntimeAdapter?.host().getActiveReviewEventIds(taskId) ?? [],
   buildCompletedConclusionAndSummaryMarkdown: buildLoopCompletedConclusionAndSummaryMarkdown,
   resolveMainPromptTarget: resolveLoopMainPromptTarget,
+  resolveSubtaskConversationTabId: (task, subtaskId) => findRunningLoopSubtaskConversationTabId(
+    { taskId: task.id, subtaskId },
+    {
+      getTabs: () => ensureConversationTabs().tabs,
+      resolveContext: (tab) => resolveLoopSubtaskConversationContext(tab.cli, tab.id),
+      isTabRunActive,
+    },
+  ),
   revealPanelView,
   switchVisibleConversationTabForLoop: async (tabId) => {
     if (tabId) {

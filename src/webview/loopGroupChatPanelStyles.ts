@@ -525,6 +525,7 @@ ${DIALOG_SHELL_STYLES}
         width: 100%;
         padding: 4px;
       }
+      .member-conversation-link,
       .member-acceptance-link {
         border: 0;
         border-radius: 6px;
@@ -534,9 +535,11 @@ ${DIALOG_SHELL_STYLES}
         text-align: left;
         cursor: pointer;
       }
+      .member-conversation-link:hover,
       .member-acceptance-link:hover {
         background: var(--vscode-list-hoverBackground);
       }
+      .member-conversation-link:focus-visible,
       .member-acceptance-link:focus-visible,
       .acceptance-anchor:focus {
         outline: 2px solid var(--vscode-focusBorder);

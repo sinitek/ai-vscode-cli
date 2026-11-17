@@ -21,6 +21,14 @@
 
 共享输出目录的 build 与显式 `node --test` 覆盖投影、群聊状态和呈现回归。冻结批次通过单项及多项前缀夹具检查；没有真实模型调用、浏览器检查或扩展宿主运行。此投影仅呈现宿主状态，不改变执行协议或调度页面结构。
 
+## 运行中成员打开对话标签
+
+经典 Loop 与 Loop+ 共用成员渲染：`role=subtask` 且 `status=running` 时使用原生按钮，点击及 Enter / Space 发送 `loopGroupChatChat:openSubtaskConversation`，仅携带 `subtaskId`。按钮复用成员网格、主题悬停和焦点样式；发送前保留阅读位置并关闭窄屏抽屉。同一成员有历史验收反馈时，运行态优先打开对话，其它状态保留验收定位。
+
+协调器使用该群聊绑定的父任务 ID 读取最新记录，核对子任务归属，再通过组合根注入的解析端口查找现有运行标签。`findRunningLoopSubtaskConversationTabId` 从最新标签向前按父任务和子任务身份匹配，只接受真实活动标签，不按标题或浏览器提供的 tabId/sessionId 跳转；子任务可使用不同 CLI。宿主展开 AI 对话面板后复查活动状态，再复用 `switchVisibleConversationTabForLoop` 的 CLI、配置恢复及消息同步。失效标签提示刷新，打开异常显示中文原因，不创建会话或启动任务。
+
+回归入口：`loopSubtaskTabs.test.ts`、`loopGroupChatCoordinator.test.ts`、`loopGroupChatAcceptance.test.ts`，并复跑群聊呈现与标签切换测试。浏览器验证使用实际生成的 Webview HTML 与模拟 VS Code 桥，不代表已安装扩展内的人工实测。
+
 ## 群聊打开与加载反馈
 
 主任务 Tab 优先发送打开群聊请求，再同步标签状态；同步消息只更新运行时引用，普通面板后续状态同步负责展示，省去切换群聊前的即时重复重绘。

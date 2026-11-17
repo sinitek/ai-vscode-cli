@@ -6,6 +6,27 @@ type LoopSubtaskTabContext = {
   attemptId?: string;
 };
 
+export function findRunningLoopSubtaskConversationTabId(
+  context: LoopSubtaskTabContext,
+  deps: {
+    getTabs: () => readonly ConversationTabRecord[];
+    resolveContext: (tab: ConversationTabRecord) => LoopSubtaskTabContext | null;
+    isTabRunActive: (tabId: string) => boolean;
+  },
+): string | null {
+  const tabs = deps.getTabs();
+  for (let index = tabs.length - 1; index >= 0; index -= 1) {
+    const tab = tabs[index];
+    if (!deps.isTabRunActive(tab.id)) continue;
+    const candidate = deps.resolveContext(tab);
+    if (candidate?.taskId === context.taskId && candidate.subtaskId === context.subtaskId
+      && (context.attemptId === undefined || candidate.attemptId === context.attemptId)) {
+      return tab.id;
+    }
+  }
+  return null;
+}
+
 export function prepareLoopSubtaskConversationTabClose(
   context: LoopSubtaskTabContext & { tabId?: string | null },
   deps: {

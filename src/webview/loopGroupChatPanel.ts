@@ -1245,6 +1245,14 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        const action = target.getAttribute("data-action");
+	        if (action === "openSubtaskConversation") {
+	          const subtaskId = target.getAttribute("data-subtask-id");
+	          if (!subtaskId) return;
+	          saveScrollState();
+	          setSidebarOpen(false);
+	          vscode.postMessage({ type: "loopGroupChatChat:openSubtaskConversation", subtaskId });
+	          return;
+	        }
 	        if (action === "jumpToAcceptance") {
 	          const anchor = document.getElementById(target.getAttribute("data-acceptance-target"));
 	          if (!anchor || !mainElement || !mainElement.contains(anchor)) return;
@@ -1769,7 +1777,10 @@ function renderRosterPanel(
   const rosterParticipants = collectRosterParticipants(state.rounds);
   const participants = rosterParticipants.map((participant) => {
     const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
-    const openTag = anchor
+    const opensConversation = participant.role === "subtask" && participant.status === "running";
+    const openTag = opensConversation
+      ? `<button class="member member-conversation-link" type="button" data-action="openSubtaskConversation" data-subtask-id="${escapeAttribute(participant.id)}" title="在 AI 对话面板打开此子任务" aria-label="${escapeAttribute(participant.title)}：在 AI 对话面板打开此子任务">`
+      : anchor
       ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(participant.title)}：查看最近一次验收结果">`
       : '<div class="member">';
     return `${openTag}
@@ -1779,7 +1790,7 @@ function renderRosterPanel(
       <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
-  ${anchor ? "</button>" : "</div>"}`;
+  ${opensConversation || anchor ? "</button>" : "</div>"}`;
   }).join("");
   return `<section class="panel">
     <h2>${escapeHtml(strings.participants)}</h2>
