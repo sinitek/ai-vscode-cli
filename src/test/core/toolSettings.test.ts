@@ -315,7 +315,7 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
 
 
 test("clamps subtask rounds and ignores the removed acceptance setting", () => {
-  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), { loopPlusSubtaskMaxRounds: 1 });
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), { loopPlusSubtaskMaxRounds: 50 });
   assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 10000 }), { loopPlusSubtaskMaxRounds: 9999 });
   assert.deepEqual(normalizeToolSettings({ loopPlusMaxAcceptances: 1 }), {});
 });

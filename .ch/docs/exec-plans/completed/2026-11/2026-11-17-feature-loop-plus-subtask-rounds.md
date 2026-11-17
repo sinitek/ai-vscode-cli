@@ -52,3 +52,15 @@
 - 两组共 658 项测试全部通过，无失败、取消、跳过或 TODO。
 - ontology `--validate` 和 `git diff --check`：通过。
 - 待提交源码不包含显式依赖调度的新实现、字段或测试；原工作区共享源码未改写。
+
+## 需求跟进：默认 200、最少 50
+
+2026-11-17 按用户补充，将默认轮次从 100 调整为 200、最小值从 1 调整为 50，上限仍为 9999。共享归一化覆盖全局设置、任务预算读取、主模型提示和 Webview 输入；已有低于 50 的配置按 50 读取，合法的显式配置保留。界面初始值和说明复用共享常量。原计数、额度耗尽后的验收及恢复规则保持一致，相关额度测试通过历史已验收轮次构造 50 轮边界。
+
+在基于 `788643d6` 的隔离 worktree 验证，排除其他任务改动：`npm run build` 通过；以下相关单测 476/476 通过；ontology `--validate` 及 9 项脚本单测通过，`git diff --check` 通过。
+
+```bash
+node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusContracts.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js
+```
+
+使用 Chromium 加载生产 Webview HTML 与脚本、模拟 VS Code 消息桥，默认 200、49→50、10000→9999、清空→200 四项场景通过，无浏览器、网络或 HTTP 错误；结果保存在 `.tmp/loop-plus-rounds-default-200/{default,lower,upper,empty}/result.json`。未运行真实 CLI、已安装扩展宿主或 Windows 原生验证；本次仅调整数值配置边界，不涉及 CLI 或平台路径逻辑。

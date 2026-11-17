@@ -321,7 +321,7 @@ export const WEBVIEW_STRINGS = {
       "留空则使用全局设置；设置后优先于全局，仅对当前工作区生效。范围 1–20。",
     toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop+ 子任务轮次",
     toolSettingsLoopPlusSubtaskMaxRoundsTitle:
-      "全局设置。限制一个 Loop+ 任务的子任务执行总轮次，默认 100，范围 1–9999。每个新派发或重派的子任务计 1 轮，并行任务分别计数；恢复同一次执行不重复计数。达到上限后仍可验收已有结果，提高上限后可继续派发。",
+      "全局设置。限制一个 Loop+ 任务的子任务执行总轮次，默认 200，范围 50–9999。每个新派发或重派的子任务计 1 轮，并行任务分别计数；恢复同一次执行不重复计数。达到上限后仍可验收已有结果，提高上限后可继续派发。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

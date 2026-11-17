@@ -6,6 +6,7 @@ import { getCliDisplayName } from "../cli/installer";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
   LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
   LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
@@ -767,13 +768,13 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
                     max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
                     step="1"
-                    value="100"
+                    value="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}"
                     title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
                     aria-describedby="loopPlusSubtaskMaxRoundsNote"
                     aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
                   />
                 </div>
-                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 100，范围 1–9999。每个新派发或重派的子任务计 1 轮；达到上限后仍可验收已有结果。</div>
+                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。每个新派发或重派的子任务计 1 轮；达到上限后仍可验收已有结果。</div>
               </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">

@@ -227,7 +227,7 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 
 ## 子任务轮次预算
 
-工具设置“AI任务配置”提供 `loopPlusSubtaskMaxRounds`（Loop+ 子任务轮次），默认 100，范围 1–9999，写入 `~/.sinitek_cli/settings.json`。每个成功入队的新 attempt 计 1 轮，包含并行、排队、免验收和 `reprompt`；恢复同一次执行和排队提升不重复计数，关闭不退还轮次。`dispatch`、`steer` 或 `accept` 的新派发及重派总数超过剩余额度时不新增 attempt，父任务进入 `needs-review`；`accept` 已确认的验收仍保留。已有执行、报告确认、验收及满足门禁的最终完成不受额度阻拦。任务保存预算，全局值提高时只升不降；旧验收次数设置不转换为新预算，缺新字段采用当前全局值。经典 Loop 的 `loopMaxRounds` 保持独立。
+工具设置“AI任务配置”提供 `loopPlusSubtaskMaxRounds`（Loop+ 子任务轮次），默认 200，范围 50–9999，写入 `~/.sinitek_cli/settings.json`。每个成功入队的新 attempt 计 1 轮，包含并行、排队、免验收和 `reprompt`；恢复同一次执行和排队提升不重复计数，关闭不退还轮次。`dispatch`、`steer` 或 `accept` 的新派发及重派总数超过剩余额度时不新增 attempt，父任务进入 `needs-review`；`accept` 已确认的验收仍保留。已有执行、报告确认、验收及满足门禁的最终完成不受额度阻拦。任务保存预算，全局值提高时只升不降；旧验收次数设置不转换为新预算，缺新字段采用当前全局值。经典 Loop 的 `loopMaxRounds` 保持独立。
 
 实现使用 scheduler 持久化 `seenAttempts.length` 作为已用轮次，避免重启清零或遗漏免验收。整份决策按 `subtasks.length + controls.reprompt.length` 预检；新派发/重派超额时不做控制或执行副作用，`accept` 已提交的本批验收继续保留。旧 `loopPlusMaxAcceptances` 已退役，读取和更新设置时不再使用，不自动迁移成含义不同的轮次预算。
 

@@ -381,9 +381,9 @@ test("persists the Loop+ subtask round limit as a global setting", async () => {
   await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: "nope" }, deps);
   assert.deepEqual(calls.toolSettings, [
     { loopPlusSubtaskMaxRounds: 100 },
-    { loopPlusSubtaskMaxRounds: 1 },
+    { loopPlusSubtaskMaxRounds: 50 },
     { loopPlusSubtaskMaxRounds: 9999 },
-    { loopPlusSubtaskMaxRounds: 100 },
+    { loopPlusSubtaskMaxRounds: 200 },
   ]);
   assert.equal(calls.postPanelState, 4);
 });

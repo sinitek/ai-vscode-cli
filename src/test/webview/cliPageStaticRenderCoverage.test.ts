@@ -632,10 +632,11 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
 });
 
 
-test("Loop+ subtask rounds replace the acceptance limit with an accessible 1–9999 input", () => {
+test("Loop+ subtask rounds replace the acceptance limit with an accessible 50–9999 input defaulting to 200", () => {
   const html = buildHtml();
   assert.match(html, /for="loopPlusSubtaskMaxRounds">Loop\+ 子任务轮次/);
-  assert.match(html, /id="loopPlusSubtaskMaxRounds"[\s\S]*?min="1"[\s\S]*?max="9999"[\s\S]*?value="100"/);
+  assert.match(html, /id="loopPlusSubtaskMaxRounds"[\s\S]*?min="50"[\s\S]*?max="9999"[\s\S]*?value="200"/);
   assert.match(html, /aria-describedby="loopPlusSubtaskMaxRoundsNote"/);
+  assert.match(html, /默认 200，范围 50–9999/);
   assert.doesNotMatch(html, /最多验收次数|loopPlusMaxAcceptances/);
 });

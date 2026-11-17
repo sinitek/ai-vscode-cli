@@ -2165,9 +2165,14 @@ test("distinguishes manual and automatic interaction history with accessible SVG
 
 test("normalizes the Loop+ subtask round limit from the AI task settings input", () => {
   const { document, posted } = createRuntimeHarness();
+  for (const [input, expected] of [["", 200], ["49", 50], ["50", 50], ["200", 200], ["9999", 9999]] as const) {
+    document.getElementById("loopPlusSubtaskMaxRounds").value = input;
+    document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: expected });
+  }
   document.getElementById("loopPlusSubtaskMaxRounds").value = "0";
   document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 1 });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 50 });
   document.getElementById("loopPlusSubtaskMaxRounds").value = "10000";
   document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 9999 });
