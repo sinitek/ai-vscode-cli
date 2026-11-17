@@ -55,9 +55,9 @@ import {
 } from "./loopParallel";
 import {
   LOOP_PLUS_DECISION_SUBTASK_MAX,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
@@ -94,7 +94,7 @@ export type PanelStateBuilderDeps = {
   getGlobalHideInstructionBubbles?: () => boolean;
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
-  getGlobalLoopPlusMaxAcceptances?: () => number;
+  getGlobalLoopPlusSubtaskMaxRounds?: () => number;
   getDebugLogging: typeof getDebugLogging;
   getMacTaskShell: typeof getMacTaskShell;
   getEffectiveThinkingMode: (cli: CliName, model: string | null) => PanelState["thinkingMode"];
@@ -217,8 +217,8 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     workspaceLoopPlusDecisionSubtaskMax: normalizeWorkspaceLoopPlusDecisionSubtaskMax(
       deps.workspaceSettings.loopPlusDecisionSubtaskMax,
     ) ?? null,
-    loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(
-      deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+    loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(
+      deps.getGlobalLoopPlusSubtaskMaxRounds?.() ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
     ),
     debug: deps.getDebugLogging(),
     isMac: deps.processPlatform === "darwin",

@@ -6,8 +6,8 @@ import { getCliDisplayName } from "../cli/installer";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 import { WebviewStringKey } from "./viewContentStrings";
 import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
@@ -759,18 +759,21 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}</div>
+                  <label class="tool-settings-label" for="loopPlusSubtaskMaxRounds">${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}</label>
                   <input
                     type="number"
-                    id="loopPlusMaxAcceptances"
+                    id="loopPlusSubtaskMaxRounds"
                     class="tool-settings-number"
-                    min="${LOOP_PLUS_MAX_ACCEPTANCES_MIN}"
-                    max="${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}"
+                    min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
+                    max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
                     step="1"
-                    title="${i18n.toolSettingsLoopPlusMaxAcceptancesTitle}"
-                    aria-label="${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}"
+                    value="100"
+                    title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
+                    aria-describedby="loopPlusSubtaskMaxRoundsNote"
+                    aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
                   />
                 </div>
+                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 100，范围 1–9999。每个新派发或重派的子任务计 1 轮；达到上限后仍可验收已有结果。</div>
               </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">

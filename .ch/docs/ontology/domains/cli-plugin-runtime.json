@@ -2018,8 +2018,8 @@
     {
       "id": "plugin.rule.loop_plus_max_acceptances",
       "name": "Loop+ 最多验收次数可配置",
-      "description": "工具设置 AI任务配置中的 loopPlusMaxAcceptances 限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1 到 999，保存在 ~/.sinitek_cli/settings.json。每个新变为 reviewed 的 attempt 计 1 次。整批确认若会超过任务上限则不提交，父任务进入 needs-review，验收队列保持不变；已达上限后不再 dispatch 新子任务。任务记录保存该上限，全局值更高时只升不降。它不读取经典 Loop 的 loopMaxRounds。",
-      "status": "active",
+      "description": "2026-11-17 已移除最多验收次数配置及验收额度门禁。由 plugin.rule.loop_plus_subtask_rounds 的子任务轮次预算替代；旧配置不自动迁移为新预算。",
+      "status": "historical",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
@@ -2031,7 +2031,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_control",
       "name": "Loop+ 主任务用 JSON 中断子任务",
-      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不计验收次数。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填非空新标题为同一子任务开启新 attempt 和新 tab；标题用简体中文反映纠正目标，同步到调度快照、任务记录和群聊，不默认沿用旧标题。缺失或无效标题拒绝整份决策且不停止旧执行；close 无需标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。主模型关页要求可升级此前普通停止，停止结算前后幂等生效；恢复后缺少旧句柄时按父任务和子任务身份清理旧闲置 tab，不关闭更新的替代 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
+      "description": "Loop+ 主任务用和派发相同的 JSON 中断子任务，不提供单独按钮。steer 以及 dispatch 或 accept 上的 controls 可 close 或 reprompt 正在运行或排队的子任务。close 中止进程并关闭该次 attempt 的子任务对话 tab，不进入验收队列，不新增子任务轮次。reprompt 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填非空新标题为同一子任务开启新 attempt 和新 tab；标题用简体中文反映纠正目标，同步到调度快照、任务记录和群聊，不默认沿用旧标题。缺失或无效标题拒绝整份决策且不停止旧执行；close 无需标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。主模型关页要求可升级此前普通停止，停止结算前后幂等生效；恢复后缺少旧句柄时按父任务和子任务身份清理旧闲置 tab，不关闭更新的替代 tab。验收批次开着时不能单独 steer。wait、blocked、completed 带 controls 则整份拒绝。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2139,7 +2139,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结 FIFO 前最多 3 个完成事件的有序 eventId 与已见用户消息前缀；其余已有及后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，额度按新确认 attempt 计算，预检只算本批最多三项，不把下一批计入；本批超过剩余额度仍整批暂停，不缩批凑额度。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
+      "description": "Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。review 启动时冻结 FIFO 前最多 3 个完成事件的有序 eventId 与已见用户消息前缀；其余已有及后到事件留 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；子任务轮次预算只限制新 attempt。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
@@ -2605,6 +2605,30 @@
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "决策记录"},
         {"path": ".ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-config-model-import-host.md", "anchor": "用户反馈修复：复用可执行配置的凭据"}
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_subtask_rounds",
+      "name": "Loop+ 子任务轮次预算",
+      "description": "工具设置“AI任务配置”提供 loopPlusSubtaskMaxRounds（Loop+ 子任务轮次），默认 100，范围 1–9999，写入 ~/.sinitek_cli/settings.json。每个成功入队的新 attempt 计 1 轮，包含并行、排队、免验收和 reprompt；恢复同一次执行和排队提升不重复计数，关闭不退还轮次。dispatch、steer 或 accept 的新派发及重派总数超过剩余额度时不新增 attempt，父任务进入 needs-review；accept 已确认的验收仍保留。已有执行、报告确认、验收及满足门禁的最终完成不受额度阻拦。任务保存预算，全局值提高时只升不降；旧验收次数设置不转换为新预算，缺新字段采用当前全局值。经典 Loop 的 loopMaxRounds 保持独立。",
+      "status": "active",
+      "applies_to": [
+        "plugin.loop_task",
+        "plugin.chat_panel"
+      ],
+      "source_refs": [
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"
+        },
+        {
+          "path": "src/loopPlusDecision.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusOrchestration.ts"
+        },
+        {
+          "path": "src/toolSettings.ts"
+        }
       ]
     }
   ]

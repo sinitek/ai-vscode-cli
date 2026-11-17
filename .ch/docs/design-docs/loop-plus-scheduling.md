@@ -48,7 +48,7 @@ Loop+ 区分执行事实与验收判断。子任务明确汇报的测试、构�
 
 ### 子任务是否需要完整验收
 
-主任务在每次 `dispatch` 子任务或 `reprompt` 新 attempt 时，逐项决定 `requiresAcceptance`。缺省按 `true` 兼容旧任务并保持完整验收；`reprompt` 是新的判断，省略标记不会继承旧 attempt 的免验收。只有明确设为 `false` 才跳过独立验收流程。这个标记只表示免去完整交付审查，不表示主任务可以忽略结果：成功 attempt 会进入独立持久化报告 FIFO，完成事件唤醒主任务；主任务读取对应报告、将结果用于剩余工作判断并按冻结顺序回传 `reportEventIds` 确认。确认不记为验收通过、不占验收次数；报告未确认仍阻止父任务完成。失败和停止始终进入原验收队列，可从排队或当前验收位置恢复；恢复校验拒绝失败/停止被记为免验收成功报告。宿主恢复、主任务忙碌期间到达的新报告均保留，下一轮处理；每轮仅确认本次可见报告和用户消息前缀，晚到内容不越过完成门禁。免验收不消耗验收次数，达到验收上限后的派发限制仍适用于全部新 attempt。群聊与成功调用的完成提示均显示“无需验收”，不生成验收通过气泡。
+主任务在每次 `dispatch` 子任务或 `reprompt` 新 attempt 时，逐项决定 `requiresAcceptance`。缺省按 `true` 兼容旧任务并保持完整验收；`reprompt` 是新的判断，省略标记不会继承旧 attempt 的免验收。只有明确设为 `false` 才跳过独立验收流程。这个标记只表示免去完整交付审查，不表示主任务可以忽略结果：成功 attempt 会进入独立持久化报告 FIFO，完成事件唤醒主任务；主任务读取对应报告、将结果用于剩余工作判断并按冻结顺序回传 `reportEventIds` 确认。确认不记为验收通过；报告未确认仍阻止父任务完成。失败和停止始终进入原验收队列，可从排队或当前验收位置恢复；恢复校验拒绝失败/停止被记为免验收成功报告。宿主恢复、主任务忙碌期间到达的新报告均保留，下一轮处理；每轮仅确认本次可见报告和用户消息前缀，晚到内容不越过完成门禁。免验收 attempt 与其它 attempt 一样占用子任务轮次；报告确认不再额外计数。群聊与成功调用的完成提示均显示“无需验收”，不生成验收通过气泡。
 
 免验收判断看交付物能否作为清楚、可直接使用的报告，不按任务名称或复杂度决定。适合 `false` 的例子：明确范围与命令的测试/构建执行且无无关改动，带来源的只读事实盘点，按指定输入机械生成的报告，边界明确且结论可读的隔离诊断。适合 `true` 的例子：代码、测试、文档、配置或脚本交付需要判断质量/契约/边界；测试失败要归因或结果含糊；需要检查跨任务集成、安全、数据或接口风险；用户或项目明确要求独立复核。测试任务不会自动免验收，文档任务也不会自动免验收；测试结果可直接使用，不等于测试覆盖完整或交付天然通过。
 
@@ -80,7 +80,7 @@ Loop+ 没有 batch barrier 或共享 round gate，宿主持有调度状态。第
 
 验收失败、主模型失败重试、协议修复和同一宿主的暂停恢复保留未确认批次及尚未消费的消息前缀；blocked 消费消息但不确认事件时同步扣除该前缀，不能让后到消息冒充已看消息。父任务停止、runtime generation 改变或 acceptancePlanEpoch 改变仍使旧答案失效。宿主重建后没有存活的旧请求，按持久化 FIFO 恢复未确认事件；本优化不新增持久化队列或快照字段。
 
-提交复用 `scheduler.submitReviewBatch`：只消费已冻结的 currentReview 与 FIFO 前缀，校验每个 ID 的顺序并幂等记录 attempt，后到事件不随旧批次提交。旧批次提交后，下一次决策才捕获余下 FIFO 事件；不会重验已接收事件。验收额度按已确认 attempt 计算，首次预检仅计算下一批最多 3 项，重试只检查冻结批次，不把下一批算入本批额度；本批超过剩余额度时仍整批暂停，不为凑剩余额度再缩小批次。
+提交复用 `scheduler.submitReviewBatch`：只消费已冻结的 currentReview 与 FIFO 前缀，校验每个 ID 的顺序并幂等记录 attempt，后到事件不随旧批次提交。旧批次提交后，下一次决策才捕获余下 FIFO 事件；不会重验已接收事件。验收不再受次数上限限制；冻结批次仍按最多 3 项处理，与子任务轮次预算独立。
 
 `completed` 可以确认本次冻结批次，但父任务能否最终完成由宿主提交后的最新状态决定：后到事件、用户消息、running、pending 或等待续接结果的开放 attempt 均阻止整体完成。后到需求只留给后续处理，不通过重新审查已确认批次解决。仅最新全局门禁通过并成功持久化后，才能显示父任务整体完成。
 
@@ -175,7 +175,7 @@ scheduler 的派发拒绝（含 `active_subtask`）同样走 protocolMiss。disp
 
 最终 `blocked` 还需完整的结构化 `blocker`。`src/loopBlocker.ts` 共享字段校验和中文 Markdown 生成：`kind` 为 `recoverable` 或 `impossible`，`cause` 为因果说明，`affectedRequirements` / `evidence` / `attempts` 为非空字符串数组，`nextSteps` 每项含 `owner`、`action`、`verification`。可恢复时至少一步且必须提供 `resumeCondition`；无法完成时必须提供 `alternatives`（可说明无可行替代的依据），不附带无效继续尾注。数组/字段完整性由宿主校验，证据真实性仍由主模型和实际执行负责。
 
-旧回复缺对象或字段不全时，解析器保留 `finalSummary` 并生成内部 `blockerIssue`；第一次 blocked 仍走剩余工作复核。复核后缺诊断进入现有 `protocolMiss`，携带具体缺项、模型原说明和旧回复，默认最多纠正两次；不确认验收、不增加验收次数、不清除队列。耗尽后保留协议失败及“熔断诊断未补齐”说明，显式继续可恢复纠错原因。完整诊断生成的 Markdown 覆盖模型自由摘要，沿用既有持久化与展示，不新增存储字段。经典 Loop 共用该诊断契约；缺对象时同轮补充一次主模型决策，仍缺失或非法就暂停并保留原说明，不新增子任务轮次或放宽完成/权限门禁。
+旧回复缺对象或字段不全时，解析器保留 `finalSummary` 并生成内部 `blockerIssue`；第一次 blocked 仍走剩余工作复核。复核后缺诊断进入现有 `protocolMiss`，携带具体缺项、模型原说明和旧回复，默认最多纠正两次；不确认验收、不新增子任务轮次、不清除队列。耗尽后保留协议失败及“熔断诊断未补齐”说明，显式继续可恢复纠错原因。完整诊断生成的 Markdown 覆盖模型自由摘要，沿用既有持久化与展示，不新增存储字段。经典 Loop 共用该诊断契约；缺对象时同轮补充一次主模型决策，仍缺失或非法就暂停并保留原说明，不新增子任务轮次或放宽完成/权限门禁。
 
 最终暂停沿用 `needs-review`，保留活动 attempt 和验收队列。主聊天展示阻塞原因、未完成事项与恢复入口；`src/loopPlusPause.ts` 同步将该说明写入主任务沟通文件和群聊 transcript，按任务 ID、持久化更新时间与暂停原因标记去重。群聊解析暂停段落时隐藏该元数据，不改写持久化内容。聊天通知写入与文件记录异常隔离，不因单一展示失败丢失另一条证据，也不将暂停改为完成。
 
@@ -224,3 +224,11 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 - 实现：`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/loopPlusSubtaskMode.ts`、`src/subtaskCliRoute.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusAcceptancePlanHost.ts`、`src/webview/viewContentScript/acceptancePlan.ts`
 - 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
 - 验证：`npm run build`；`node --test dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopPlusAcceptancePlanHost.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/webview/loopPlusAcceptancePlanDialog.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/workspaceSettingsStore.test.js`
+
+## 子任务轮次预算
+
+工具设置“AI任务配置”提供 `loopPlusSubtaskMaxRounds`（Loop+ 子任务轮次），默认 100，范围 1–9999，写入 `~/.sinitek_cli/settings.json`。每个成功入队的新 attempt 计 1 轮，包含并行、排队、免验收和 `reprompt`；恢复同一次执行和排队提升不重复计数，关闭不退还轮次。`dispatch`、`steer` 或 `accept` 的新派发及重派总数超过剩余额度时不新增 attempt，父任务进入 `needs-review`；`accept` 已确认的验收仍保留。已有执行、报告确认、验收及满足门禁的最终完成不受额度阻拦。任务保存预算，全局值提高时只升不降；旧验收次数设置不转换为新预算，缺新字段采用当前全局值。经典 Loop 的 `loopMaxRounds` 保持独立。
+
+实现使用 scheduler 持久化 `seenAttempts.length` 作为已用轮次，避免重启清零或遗漏免验收。整份决策按 `subtasks.length + controls.reprompt.length` 预检；新派发/重派超额时不做控制或执行副作用，`accept` 已提交的本批验收继续保留。旧 `loopPlusMaxAcceptances` 已退役，读取和更新设置时不再使用，不自动迁移成含义不同的轮次预算。
+
+主模型内部决策保护按 `max(200, 子任务轮次 × 3)` 调整，保留无界调度保护并容纳每项派发、验收与单独收尾；不会用固定 200 次调用提前截断较高轮次预算。显式注入的测试保护阈值仍优先。

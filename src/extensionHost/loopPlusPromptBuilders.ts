@@ -2,7 +2,7 @@ import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -43,9 +43,9 @@ export type LoopPlusMainPromptContext = {
   pendingUserMessages?: readonly string[];
   maxConcurrency: number;
   subtaskMax?: number;
-  acceptedCount?: number;
+  subtaskRounds?: number;
   progressPercent?: number;
-  acceptanceLimit?: number;
+  subtaskRoundLimit?: number;
   /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
@@ -363,8 +363,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
   const parallelCapacity = Math.min(subtaskMax, context.maxConcurrency);
   const availableSlots = Math.max(0, context.maxConcurrency - context.view.running.length);
-  const acceptedCount = normalizePromptCount(context.acceptedCount);
-  const acceptanceLimit = resolveLoopPlusMaxAcceptances(context.acceptanceLimit);
+  const subtaskRounds = normalizePromptCount(context.subtaskRounds);
+  const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(context.subtaskRoundLimit);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
@@ -416,7 +416,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Before accepting an event, inspect its relevant code, diff, or other deliverables and judge implementation completeness, agreed contracts, change relevance, omissions, regression risks, and boundary handling. Apply every selected additional review. Passing tests or an overall done claim is not a substitute for acceptance review. Do not implement or repair that dispatched work yourself.",
     "For every dispatched subtask, decide requiresAcceptance at dispatch time. Omission means true for compatibility and safety. Reassess every reprompt as a new attempt: omission resets to true instead of inheriting the previous attempt's exemption. Use false only if the exact output is a sufficiently complete report that the main task can use directly without independently judging a deliverable. Consider what the output will contain, whether it changes a deliverable or contract, whether its result is clear, what risk or integration judgment remains, and whether the user or project requires independent review; task type and complexity alone never decide it. False may fit a bounded test/build run that makes no unrelated edits and reports exact command, scope, result and uncovered cases; read-only inventory/fact collection with sources; mechanical report generation from named inputs; or isolated diagnostics with clear findings. Keep true for implementation or documentation deliverables that need judgment, tests whose failure needs triage or whose scope changes code, unclear reports, integration/security/contract risk, or explicit independent review. A test is not automatically exempt, and a document is not automatically exempt.",
     "The general simple-task rule is separate from requiresAcceptance: when the whole request is clear, local, low-risk and directly verifiable, and neither the user nor project requires tests, builds, delegation or an independent check, the main task may do it directly. Do not delegate a trivial task just to avoid review. A subtask can be simple and still require acceptance when its deliverable needs judgment; a large bounded report can skip the separate acceptance cycle when its evidence is directly usable.",
-    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". It does not count toward acceptance limits.`,
+    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". The attempt consumes a subtask round whether or not full acceptance is required.`,
     `Pending no-acceptance reports (oldest first):\n${reports}`,
     "Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check. Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check. Already completed independent checks that remain valid are reusable too. A passing unit suite does not establish untested integration behavior.",
     "Clarify an unclear report using existing output or the source subtask before considering a rerun. Do not demand raw logs or independent reproduction merely to trust a clear execution report. You may run tests or start produced artifacts only to close an identified verification gap under the rules above. Skipping an unnecessary rerun is not a failure; an unmet required check still needs resolution.",
@@ -460,8 +460,10 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,
-    `Confirmed acceptances: ${acceptedCount}`,
-    `Acceptance limit: ${acceptanceLimit}`,
+    `Subtask rounds used: ${subtaskRounds}`,
+    `Subtask round limit: ${subtaskRoundLimit}`,
+    `Remaining subtask rounds: ${Math.max(0, subtaskRoundLimit - subtaskRounds)}`,
+    "Each newly dispatched or reprompted attempt uses one round, including parallel and acceptance-exempt subtasks. Resuming the same attempt uses no extra round. Stay within the remaining rounds; existing reviews and reports may still be confirmed at the limit.",
     `Snapshot phase: ${context.view.phase}`,
     `Snapshot completion blockers: ${blockers}`,
     `Snapshot says completion is allowed: ${context.view.canComplete ? "yes" : "no"}`,
@@ -533,7 +535,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
-    "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
+    "- Only newly dispatched or reprompted attempts consume subtask rounds. Never exceed the remaining round budget; review and report confirmation remain allowed at the limit.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),

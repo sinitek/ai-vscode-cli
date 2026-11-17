@@ -341,7 +341,7 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="humanInteractionTimeoutMinutes"',
     'id="loopMaxRounds"',
     'id="loopPlusDecisionSubtaskMax"',
-    'id="loopPlusMaxAcceptances"',
+    'id="loopPlusSubtaskMaxRounds"',
     'id="commonCommandsOverlay"',
     'id="addModelOverlay"',
     'id="modelManagerList"',
@@ -629,4 +629,13 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
   assert.match(DIALOG_SHELL_STYLES, /padding:\s*16px 16px 12px/);
   assert.match(DIALOG_SHELL_STYLES, /gap:\s*8px/);
   assert.match(CLARIFICATION_DIALOG_STYLES, /max-height:\s*min\(85vh,\s*760px\)/);
+});
+
+
+test("Loop+ subtask rounds replace the acceptance limit with an accessible 1–9999 input", () => {
+  const html = buildHtml();
+  assert.match(html, /for="loopPlusSubtaskMaxRounds">Loop\+ 子任务轮次/);
+  assert.match(html, /id="loopPlusSubtaskMaxRounds"[\s\S]*?min="1"[\s\S]*?max="9999"[\s\S]*?value="100"/);
+  assert.match(html, /aria-describedby="loopPlusSubtaskMaxRoundsNote"/);
+  assert.doesNotMatch(html, /最多验收次数|loopPlusMaxAcceptances/);
 });

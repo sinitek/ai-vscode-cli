@@ -450,11 +450,11 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   const limited = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 3 }));
   assert.match(limited, /1 to 3 new self-contained subtasks/);
   assert.match(limited, /0 to 3 new subtasks/);
-  assert.match(prompt, /Confirmed acceptances: 0/);
-  assert.match(prompt, /Acceptance limit: 100/);
-  const counted = buildLoopPlusMainModelPrompt(mainContext({ acceptedCount: 4, acceptanceLimit: 12 }));
-  assert.match(counted, /Confirmed acceptances: 4/);
-  assert.match(counted, /Acceptance limit: 12/);
+  assert.match(prompt, /Subtask rounds used: 0/);
+  assert.match(prompt, /Subtask round limit: 100/);
+  const counted = buildLoopPlusMainModelPrompt(mainContext({ subtaskRounds: 4, subtaskRoundLimit: 12 }));
+  assert.match(counted, /Subtask rounds used: 4/);
+  assert.match(counted, /Subtask round limit: 12/);
   const clamped = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 99 }));
   assert.match(clamped, /1 to 20 new self-contained subtasks/);
   assert.match(prompt, new RegExp(String(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH)));

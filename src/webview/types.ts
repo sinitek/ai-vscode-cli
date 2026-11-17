@@ -398,7 +398,7 @@ export type PanelState = {
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
-  loopPlusMaxAcceptances: number;
+  loopPlusSubtaskMaxRounds: number;
   debug: boolean;
   isMac: boolean;
   macTaskShell: MacTaskShell;

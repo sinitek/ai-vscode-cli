@@ -14,7 +14,7 @@ import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
-import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   buildLoopPlusProtocolPauseSummary,
   buildLoopPlusProtocolRepairPrompt,
@@ -75,9 +75,11 @@ import { inheritLoopPlusRepairSessions } from "../loopSubtaskSession";
 import type { LoopPlusReviewItem } from "../loopPlusScheduler";
 
 const DECISION_SAFETY_LIMIT = 200;
+// Each subtask can require dispatch, review and a separate closeout decision.
+const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const PROTOCOL_RETRY_LIMIT = 2;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
-const LOOP_PLUS_ACCEPTANCE_LIMIT_SUMMARY = "Reached the Loop+ acceptance limit. Raise loopPlusMaxAcceptances to continue.";
+const LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY = "已达到 Loop+ 子任务轮次上限，请提高“Loop+ 子任务轮次”后继续派发。";
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -189,7 +191,7 @@ export type LoopPlusOrchestrationDeps = {
   protocolRetryLimit?: number;
   launchDelayMs?: (lastLaunchAt: number | null, now: number) => number;
   decisionSubtaskMax?: () => number;
-  acceptanceLimit?: () => number;
+  subtaskRoundLimit?: () => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
   hasActiveSubtasks?: (taskId: string) => boolean;
@@ -324,7 +326,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
 
   const runtimes = new Map<string, ParentRuntime>();
   const interruptedSubtaskResumeRequests = new Set<string>();
-  const decisionSafetyLimit = deps.decisionSafetyLimit ?? DECISION_SAFETY_LIMIT;
   const protocolRetryLimit = deps.protocolRetryLimit ?? PROTOCOL_RETRY_LIMIT;
   const decisionStrategies = createLoopPlusDecisionStrategyRegistry();
   const now = deps.now ?? (() => Date.now());
@@ -334,7 +335,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   const launchDelayMs = deps.launchDelayMs ?? (() => 0);
   const decisionSubtaskMax = () => resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
   const maxConcurrency = () => deps.maxConcurrency ?? decisionSubtaskMax();
-  const configuredAcceptanceLimit = () => resolveLoopPlusMaxAcceptances(deps.acceptanceLimit?.());
+  const configuredSubtaskRoundLimit = () => resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.());
 
   function tryRun(input: LoopPlusRunInput, target: LoopPlusPromptTarget, options: LoopPlusRunOptions = {}): LoopPlusRunResult {
     const resumeTaskId = normalizeId(options.resumeTaskId);
@@ -953,6 +954,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
 
   async function runConsumer(runtime: ParentRuntime): Promise<void> {
     while (!runtime.autoPaused && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped) {
+      const decisionSafetyLimit = deps.decisionSafetyLimit ?? Math.max(
+        DECISION_SAFETY_LIMIT,
+        subtaskRoundLimitFor(runtime) * MAIN_DECISIONS_PER_SUBTASK_ROUND,
+      );
       if (runtime.decisionCount >= decisionSafetyLimit) {
         pause(runtime, "needs-review", "loop-plus-safety-limit");
         return;
@@ -1080,13 +1085,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return null;
     }
     if (snapshot.currentReview || snapshot.reviewQueue.length > 0) {
-      if (acceptanceBatchWouldExceed(runtime)) {
-        if (snapshot.currentReview) {
-          runtime.scheduler.requeueCurrentReview();
-        }
-        pauseForAcceptanceLimit(runtime);
-        return null;
-      }
       return planReview(runtime);
     }
     const reportEventIds = (snapshot.reportQueue ?? []).map((item) => item.eventId);
@@ -1226,11 +1224,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           userMessageCount: pendingCount,
         };
       },
-      refuseDispatchPastAcceptanceLimit(plannedLaunches: number) {
-        return refuseDispatchPastAcceptanceLimit(runtime, plannedLaunches);
-      },
-      confirmReviewWithinAcceptanceLimit(eventIds: readonly string[]) {
-        return confirmWithinAcceptanceLimit(runtime, eventIds);
+      refuseDispatchPastSubtaskRoundLimit(plannedLaunches: number) {
+        return refuseDispatchPastSubtaskRoundLimit(runtime, plannedLaunches);
       },
       applyControls(controls: readonly LoopPlusControlDecision[]) {
         return applyLoopPlusControls(runtime, controls);
@@ -2251,9 +2246,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         : [],
       maxConcurrency: runtime.scheduler.snapshot().maxConcurrency,
       subtaskMax: decisionSubtaskMax(),
-      acceptedCount: reviewedAcceptanceCount(runtime),
+      subtaskRounds: runtime.scheduler.snapshot().seenAttempts.length,
       progressPercent: normalizeLoopPlusProgressPercent(task?.loopPlusProgressPercent) ?? 0,
-      acceptanceLimit: acceptanceLimitFor(runtime),
+      subtaskRoundLimit: subtaskRoundLimitFor(runtime),
       ...(routing.mode ? { loopSubtaskMode: routing.mode } : {}),
       routingSummary: routing.summary,
       ...(task?.loopPlusBlockReview?.state === "pending"
@@ -2448,52 +2443,22 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     });
   }
 
-  function acceptanceLimitFor(runtime: ParentRuntime): number {
-    const globalLimit = configuredAcceptanceLimit();
+  function subtaskRoundLimitFor(runtime: ParentRuntime): number {
+    const globalLimit = configuredSubtaskRoundLimit();
     const task = deps.readTask(runtime.taskId);
-    const stored = task?.loopPlusMaxAcceptances;
+    const stored = task?.loopPlusSubtaskMaxRounds;
     const hasStored = typeof stored === "number" && Number.isFinite(stored);
     const resolved = hasStored
-      ? Math.max(resolveLoopPlusMaxAcceptances(stored), globalLimit)
+      ? Math.max(resolveLoopPlusSubtaskMaxRounds(stored), globalLimit)
       : globalLimit;
-    if (task && task.loopPlusMaxAcceptances !== resolved) {
+    if (task && task.loopPlusSubtaskMaxRounds !== resolved) {
       updateTask(runtime.taskId, {
-        loopPlusMaxAcceptances: resolved,
+        loopPlusSubtaskMaxRounds: resolved,
         schedulingMode: "event_driven",
         updatedAt: now(),
       });
     }
     return resolved;
-  }
-
-  function reviewedAcceptanceCount(runtime: ParentRuntime): number {
-    return runtime.scheduler.snapshot().seenAttempts.filter((item) => item.disposition === "reviewed").length;
-  }
-
-  function pendingAcceptanceCount(runtime: ParentRuntime): number {
-    const snapshot = runtime.scheduler.snapshot();
-    return snapshot.reviewQueue.length + (snapshot.currentReview ? 1 : 0);
-  }
-
-  function unreviewedEventCount(runtime: ParentRuntime, eventIds: readonly string[]): number {
-    const reviewedIds = new Set(
-      runtime.scheduler.snapshot().seenAttempts
-        .filter((item) => item.disposition === "reviewed")
-        .map((item) => buildLoopPlusFinishEventId(item.subtaskId, item.attemptId)),
-    );
-    return eventIds.filter((eventId) => !reviewedIds.has(eventId)).length;
-  }
-
-  function acceptanceBatchWouldExceed(runtime: ParentRuntime): boolean {
-    const live = liveAcceptanceEventIds(runtime.scheduler.snapshot());
-    const frozen = runtime.reviewStep?.eventIds;
-    const pending = frozen && frozen.every((id, index) => live[index] === id)
-      ? frozen.length
-      : Math.min(LOOP_PLUS_ACCEPTANCE_BATCH_MAX, pendingAcceptanceCount(runtime));
-    if (pending <= 0) {
-      return false;
-    }
-    return reviewedAcceptanceCount(runtime) + pending > acceptanceLimitFor(runtime);
   }
 
   function liveAcceptanceEventIds(snapshot: LoopPlusSchedulerSnapshot): string[] {
@@ -2507,19 +2472,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return ids;
   }
 
-  function pauseForAcceptanceLimit(runtime: ParentRuntime): void {
-    pause(runtime, "needs-review", "loop-plus-acceptance-limit", LOOP_PLUS_ACCEPTANCE_LIMIT_SUMMARY);
-  }
-
-  function confirmWithinAcceptanceLimit(runtime: ParentRuntime, eventIds: readonly string[]): boolean {
-    if (reviewedAcceptanceCount(runtime) + unreviewedEventCount(runtime, eventIds) <= acceptanceLimitFor(runtime)) {
-      return true;
-    }
-    if (runtime.scheduler.snapshot().currentReview) {
-      runtime.scheduler.requeueCurrentReview();
-    }
-    pauseForAcceptanceLimit(runtime);
-    return false;
+  function pauseForSubtaskRoundLimit(runtime: ParentRuntime): void {
+    pause(runtime, "needs-review", "loop-plus-subtask-round-limit", LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY);
   }
 
   function applyLoopPlusControls(
@@ -2702,14 +2656,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     });
   }
 
-  function refuseDispatchPastAcceptanceLimit(
+  function refuseDispatchPastSubtaskRoundLimit(
     runtime: ParentRuntime,
     subtaskCount: number,
   ): boolean {
-    if (subtaskCount <= 0 || reviewedAcceptanceCount(runtime) < acceptanceLimitFor(runtime)) {
+    if (subtaskCount <= 0 || runtime.scheduler.snapshot().seenAttempts.length + subtaskCount <= subtaskRoundLimitFor(runtime)) {
       return false;
     }
-    pauseForAcceptanceLimit(runtime);
+    pauseForSubtaskRoundLimit(runtime);
     return true;
   }
 

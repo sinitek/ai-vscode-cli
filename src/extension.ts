@@ -131,7 +131,7 @@ import { askLoopMainModelSession } from "./loopMainQuestion";
 import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./loopMainQuestionQueue";
 import { resolveLoopSchedulingMode } from "./loopTaskStore";
 import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
-import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { getSelectedLoopFrontendThinkingFromStore, getSelectedLoopFullstackThinkingFromStore } from "./modelSelectionStore";
@@ -1350,7 +1350,7 @@ function buildPanelStateFromConfigState(
     getGlobalHideInstructionBubbles: () => readToolSettings().hideInstructionBubbles === true,
     getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
-    getGlobalLoopPlusMaxAcceptances,
+    getGlobalLoopPlusSubtaskMaxRounds,
 
     getDebugLogging,
     getCliEnabledByName: () => readToolSettings().cliEnabledByName,
@@ -1589,7 +1589,7 @@ const promptRunRuntimeHost = createPromptRunRuntimeHost({
   getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopGroupChatMessageAction: (taskId, round) => buildLoopGroupChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId), prepareSubtaskTabClose: prepareLoopSubtaskTabClose, handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
 const modelSettingsHost = createModelSettingsHost({ getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatCoordinator.getSnapshot(), getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
-const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getEffectiveLoopPlusDecisionSubtaskMax, getGlobalLoopPlusMaxAcceptances, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
+const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getEffectiveLoopPlusDecisionSubtaskMax, getGlobalLoopPlusSubtaskMaxRounds, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
   selectCliModelFromStore(cli, model, configId);
@@ -3902,7 +3902,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       hasActiveSubtasks: hasActiveLoopSubtasks,
       getActiveConfigIdForCli,
       decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
-      acceptanceLimit: () => getGlobalLoopPlusMaxAcceptances(),
+      subtaskRoundLimit: () => getGlobalLoopPlusSubtaskMaxRounds(),
       launchDelayMs: (lastLaunchAt) => getLoopSubtaskLaunchDelayMs(lastLaunchAt),
       readTask: (taskId) => readLoopTaskRecord(taskId),
       createTask: ({ cli, rootPrompt, sessionId, snapshot, prompt }) => {
@@ -3936,7 +3936,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           schedulingMode: "event_driven",
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
-          loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
+          loopPlusSubtaskMaxRounds: getGlobalLoopPlusSubtaskMaxRounds(),
           loopSubtaskMode,
           ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
@@ -3947,7 +3947,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           schedulingMode: "event_driven",
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
-          loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
+          loopPlusSubtaskMaxRounds: getGlobalLoopPlusSubtaskMaxRounds(),
           loopSubtaskMode,
           ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
@@ -4208,39 +4208,20 @@ function loopPlusHostMessage(message: string, taskId: string): string {
   if (message === "loop-plus-resume-blocked") {
     return t("run.loopPlusPaused", { detail: "上次停止的子任务仍在结束执行或等待资源释放。请等待收尾完成后再次继续；当前不会重复派发这些子任务。" });
   }
-  if (message === "loop-plus-acceptance-limit") {
-    return t("run.loopPlusAcceptanceLimit", loopPlusAcceptanceLimitDetail(task));
+  if (message === "loop-plus-subtask-round-limit") {
+    return t("run.loopPlusSubtaskRoundLimit", loopPlusSubtaskRoundLimitDetail(task));
   }
   return t("run.loopPlusPaused", { detail: message });
 }
 
-function loopPlusAcceptanceLimitDetail(task: LoopTaskRecord | null): {
-  accepted: number;
+function loopPlusSubtaskRoundLimitDetail(task: LoopTaskRecord | null): {
+  rounds: number;
   limit: number;
-  pending: number;
 } {
-  const limit = resolveLoopPlusMaxAcceptances(task?.loopPlusMaxAcceptances);
-  const snapshot = task?.loopPlus;
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    return { accepted: 0, limit, pending: 0 };
-  }
-  const raw = snapshot as {
-    seenAttempts?: unknown;
-    reviewQueue?: unknown;
-    currentReview?: unknown;
-  };
-  const accepted = Array.isArray(raw.seenAttempts)
-    ? raw.seenAttempts.filter((item) => (
-      Boolean(item)
-      && typeof item === "object"
-      && (item as { disposition?: unknown }).disposition === "reviewed"
-    )).length
-    : 0;
-  const queued = Array.isArray(raw.reviewQueue) ? raw.reviewQueue.length : 0;
+  const snapshot = task?.loopPlus as { seenAttempts?: unknown } | undefined;
   return {
-    accepted,
-    limit,
-    pending: queued + (raw.currentReview ? 1 : 0),
+    rounds: Array.isArray(snapshot?.seenAttempts) ? snapshot.seenAttempts.length : 0,
+    limit: resolveLoopPlusSubtaskMaxRounds(task?.loopPlusSubtaskMaxRounds),
   };
 }
 

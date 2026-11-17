@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
+import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 
@@ -19,7 +20,7 @@ export type ToolSettingsState = {
   humanInteractionEnabled?: boolean;
   loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
-  loopPlusMaxAcceptances?: number;
+  loopPlusSubtaskMaxRounds?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
@@ -118,14 +119,14 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     }
   }
   if (
-    typeof record.loopPlusMaxAcceptances === "number"
-    || typeof record.loopPlusMaxAcceptances === "string"
+    typeof record.loopPlusSubtaskMaxRounds === "number"
+    || typeof record.loopPlusSubtaskMaxRounds === "string"
   ) {
-    const parsed = typeof record.loopPlusMaxAcceptances === "number"
-      ? record.loopPlusMaxAcceptances
-      : (record.loopPlusMaxAcceptances.trim() ? Number(record.loopPlusMaxAcceptances) : Number.NaN);
+    const parsed = typeof record.loopPlusSubtaskMaxRounds === "number"
+      ? record.loopPlusSubtaskMaxRounds
+      : (record.loopPlusSubtaskMaxRounds.trim() ? Number(record.loopPlusSubtaskMaxRounds) : Number.NaN);
     if (Number.isFinite(parsed)) {
-      normalized.loopPlusMaxAcceptances = Math.floor(parsed);
+      normalized.loopPlusSubtaskMaxRounds = resolveLoopPlusSubtaskMaxRounds(parsed);
     }
   }
   if (

@@ -218,7 +218,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         hideInstructionBubbles: false,
         loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
-        loopPlusMaxAcceptances: \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT},
+        loopPlusSubtaskMaxRounds: \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT},
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
@@ -429,7 +429,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
-        loopPlusMaxAcceptances: document.getElementById("loopPlusMaxAcceptances"),
+        loopPlusSubtaskMaxRounds: document.getElementById("loopPlusSubtaskMaxRounds"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
         commonCommandButton: document.getElementById("commonCommandButton"),
@@ -655,16 +655,16 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         );
       }
 
-      function normalizeLoopPlusMaxAcceptances(value) {
+      function normalizeLoopPlusSubtaskMaxRounds(value) {
         const numeric = typeof value === "number"
           ? value
           : (typeof value === "string" && value.trim() ? Number(value) : NaN);
         if (!Number.isFinite(numeric)) {
-          return \${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT};
+          return \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT};
         }
         return Math.min(
-          Math.max(Math.floor(numeric), \${LOOP_PLUS_MAX_ACCEPTANCES_MIN}),
-          \${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}
+          Math.max(Math.floor(numeric), \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}),
+          \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}
         );
       }
 

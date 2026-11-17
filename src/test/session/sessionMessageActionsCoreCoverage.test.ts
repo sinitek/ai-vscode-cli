@@ -373,17 +373,17 @@ test("persists the human interaction timeout as a global setting", async () => {
   assert.equal(calls.postPanelState, 4);
 });
 
-test("persists the Loop+ acceptance limit as a global setting", async () => {
+test("persists the Loop+ subtask round limit as a global setting", async () => {
   const { deps, calls } = createSettingHarness();
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: "100.2" }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: 0 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: 5000 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusMaxAcceptances", value: "nope" }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: "100.2" }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 0 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 10000 }, deps);
+  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: "nope" }, deps);
   assert.deepEqual(calls.toolSettings, [
-    { loopPlusMaxAcceptances: 100 },
-    { loopPlusMaxAcceptances: 1 },
-    { loopPlusMaxAcceptances: 999 },
-    { loopPlusMaxAcceptances: 100 },
+    { loopPlusSubtaskMaxRounds: 100 },
+    { loopPlusSubtaskMaxRounds: 1 },
+    { loopPlusSubtaskMaxRounds: 9999 },
+    { loopPlusSubtaskMaxRounds: 100 },
   ]);
   assert.equal(calls.postPanelState, 4);
 });

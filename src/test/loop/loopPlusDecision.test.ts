@@ -9,11 +9,11 @@ import {
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
   parseLoopPlusDecisionWithFeedback,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
   type LoopPlusDecision,
   type LoopPlusDecisionStatus,
 } from "../../loopPlusDecision";
@@ -576,12 +576,15 @@ test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown
   })), null);
 });
 
-test("normalizes the Loop+ acceptance limit", () => {
-  assert.equal(resolveLoopPlusMaxAcceptances(undefined), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
-  assert.equal(resolveLoopPlusMaxAcceptances(""), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
-  assert.equal(resolveLoopPlusMaxAcceptances("100.9"), 100);
-  assert.equal(resolveLoopPlusMaxAcceptances(0), LOOP_PLUS_MAX_ACCEPTANCES_MIN);
-  assert.equal(resolveLoopPlusMaxAcceptances(5000), LOOP_PLUS_MAX_ACCEPTANCES_LIMIT);
+test("normalizes Loop+ subtask rounds from 1 to 9999", () => {
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(undefined), LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(""), LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds("100.9"), 100);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(0), LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(5000), 5000);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(9999), 9999);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(10000), LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(Infinity), 100);
 });
 
 test("applies a configured Loop+ dispatch subtask maximum", () => {

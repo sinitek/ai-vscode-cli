@@ -20,7 +20,7 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshotForStorage,
   type LoopPlusAcceptancePlanSnapshot,
 } from "./loopPlusAcceptancePlan";
-import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
@@ -178,7 +178,7 @@ export type LoopTaskRecord = {
   taskKind?: LoopTaskKind;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
-  loopPlusMaxAcceptances?: number;
+  loopPlusSubtaskMaxRounds?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
   loopProgressPercent?: number;
@@ -940,8 +940,8 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
-  const loopPlusMaxAcceptances = normalizeStoredLoopPlusMaxAcceptances(
-    (raw as { loopPlusMaxAcceptances?: unknown }).loopPlusMaxAcceptances,
+  const loopPlusSubtaskMaxRounds = normalizeStoredLoopPlusSubtaskMaxRounds(
+    (raw as { loopPlusSubtaskMaxRounds?: unknown }).loopPlusSubtaskMaxRounds,
   );
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
@@ -970,7 +970,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(taskKind ? { taskKind } : {}),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
-    ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
+    ...(loopPlusSubtaskMaxRounds !== undefined ? { loopPlusSubtaskMaxRounds } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
     ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
@@ -1174,7 +1174,7 @@ function normalizeLoopPlusMainPhase(value: unknown): LoopPlusMainPhase | undefin
   return value === "decomposing" ? "decomposing" : undefined;
 }
 
-function normalizeStoredLoopPlusMaxAcceptances(value: unknown): number | undefined {
+function normalizeStoredLoopPlusSubtaskMaxRounds(value: unknown): number | undefined {
   if (typeof value !== "number" && typeof value !== "string") {
     return undefined;
   }
@@ -1184,7 +1184,7 @@ function normalizeStoredLoopPlusMaxAcceptances(value: unknown): number | undefin
   if (!Number.isFinite(numeric)) {
     return undefined;
   }
-  return resolveLoopPlusMaxAcceptances(numeric);
+  return resolveLoopPlusSubtaskMaxRounds(numeric);
 }
 
 function normalizeLoopTaskKind(value: unknown): LoopTaskKind | undefined {

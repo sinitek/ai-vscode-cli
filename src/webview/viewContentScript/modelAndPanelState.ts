@@ -638,8 +638,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
         );
-        state.loopPlusMaxAcceptances = normalizeLoopPlusMaxAcceptances(
-          panelState.loopPlusMaxAcceptances
+        state.loopPlusSubtaskMaxRounds = normalizeLoopPlusSubtaskMaxRounds(
+          panelState.loopPlusSubtaskMaxRounds
         );
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
@@ -726,8 +726,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             ? "" : String(normalizeLoopPlusDecisionSubtaskMax(panelState.workspaceLoopPlusDecisionSubtaskMax));
           elements.workspaceLoopPlusDecisionSubtaskMax.placeholder = "全局：" + state.loopPlusDecisionSubtaskMax;
         }
-        if (elements.loopPlusMaxAcceptances) {
-          elements.loopPlusMaxAcceptances.value = String(state.loopPlusMaxAcceptances);
+        if (elements.loopPlusSubtaskMaxRounds) {
+          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
         }
         if (elements.macTaskShellRow) {
           elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";

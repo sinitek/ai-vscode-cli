@@ -50,7 +50,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   getActiveConfigIdForCli?: (cli: LoopPlusPromptTarget["cli"]) => string | null;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
-  acceptanceLimit?: LoopPlusOrchestrationDeps["acceptanceLimit"];
+  subtaskRoundLimit?: LoopPlusOrchestrationDeps["subtaskRoundLimit"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   isInvocationActive?: (tabId: string) => boolean;
@@ -619,7 +619,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
         decisionSubtaskMax: deps.decisionSubtaskMax,
-        acceptanceLimit: deps.acceptanceLimit,
+        subtaskRoundLimit: deps.subtaskRoundLimit,
         delay: deps.delay,
         now,
         hasActiveSubtasks: deps.hasActiveSubtasks,

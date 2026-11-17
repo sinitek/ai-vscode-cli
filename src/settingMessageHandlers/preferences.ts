@@ -1,7 +1,7 @@
 import { getDebugLogging } from "../cli/config";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "../chatMessageLimit";
 import { setDebugLogging } from "../logger";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
 import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import {
@@ -92,9 +92,9 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     }
     deps.saveWorkspaceSettings(workspaceSettings);
   }),
-  command("loopPlusMaxAcceptances", (message, deps) => {
+  command("loopPlusSubtaskMaxRounds", (message, deps) => {
     deps.updateStoredToolSettings({
-      loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(message.value),
+      loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(message.value),
     });
   }),
   command("humanInteractionTimeoutMinutes", (message, deps) => {

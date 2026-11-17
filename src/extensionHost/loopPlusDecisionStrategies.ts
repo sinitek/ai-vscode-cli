@@ -45,8 +45,7 @@ export interface LoopPlusDecisionStrategyPort {
   acknowledgeUserMessages(count: number): void;
   acknowledgeReports(eventIds: readonly string[]): boolean;
   captureRemainingUserMessagesForHeldReview(): void;
-  refuseDispatchPastAcceptanceLimit(plannedLaunches: number): boolean;
-  confirmReviewWithinAcceptanceLimit(eventIds: readonly string[]): boolean;
+  refuseDispatchPastSubtaskRoundLimit(plannedLaunches: number): boolean;
   applyControls(controls: readonly LoopPlusControlDecision[]): boolean;
   planControls(controls: readonly LoopPlusControlDecision[]): LoopPlusDecisionControlPlan | null;
   previewControls(plan: LoopPlusDecisionControlPlan): boolean;
@@ -185,7 +184,7 @@ function applyDispatchDecision(
     return port.protocolMiss(true, "当前有开放验收批次，不能 dispatch；请返回 accept 确认整批，并在同一决策中派发后续任务。");
   }
   const controls = decision.controls ?? [];
-  if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
+  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
   if (controls.length > 0 && !port.applyControls(controls)) {
@@ -225,7 +224,7 @@ function applySteerDecision(
   if (controls.length === 0) {
     return port.protocolMiss(false);
   }
-  if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
+  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
   if (!port.applyControls(controls)) {
@@ -262,9 +261,6 @@ function applyAcceptDecision(
   if (!verdicts) {
     return port.protocolMiss(true, "accept.reviews 必须与当前批次逐项对应，且每项保留真实 passed 或 failed 结论。");
   }
-  if (!port.confirmReviewWithinAcceptanceLimit(step.eventIds)) {
-    return "stop";
-  }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
   if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
@@ -279,7 +275,7 @@ function applyAcceptDecision(
   port.acknowledgeUserMessages(step.userMessageCount);
   port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
-  if (port.refuseDispatchPastAcceptanceLimit(plannedLoopPlusLaunchCount(decision))) {
+  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
     return "stop";
   }
   if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
@@ -357,9 +353,6 @@ function applyCompletedDecision(
     if (!sameLoopPlusReviewIds(confirmed, step.eventIds)) {
       return port.protocolMiss(true,
         `completed 确认的事件必须与当前验收批次数量及顺序一致：${JSON.stringify(step.eventIds)}。`);
-    }
-    if (!port.confirmReviewWithinAcceptanceLimit(step.eventIds)) {
-      return "stop";
     }
     const submitted = port.submitReviewBatch(step.eventIds, "passed");
     if (!submitted.ok) {

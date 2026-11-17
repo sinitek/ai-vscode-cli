@@ -525,19 +525,19 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("change", commitWorkspaceLoopPlusDecisionSubtaskMax);
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("blur", commitWorkspaceLoopPlusDecisionSubtaskMax);
       }
-      if (elements.loopPlusMaxAcceptances) {
-        const commitLoopPlusMaxAcceptances = () => {
-          const nextValue = normalizeLoopPlusMaxAcceptances(elements.loopPlusMaxAcceptances.value);
-          state.loopPlusMaxAcceptances = nextValue;
-          elements.loopPlusMaxAcceptances.value = String(nextValue);
+      if (elements.loopPlusSubtaskMaxRounds) {
+        const commitLoopPlusSubtaskMaxRounds = () => {
+          const nextValue = normalizeLoopPlusSubtaskMaxRounds(elements.loopPlusSubtaskMaxRounds.value);
+          state.loopPlusSubtaskMaxRounds = nextValue;
+          elements.loopPlusSubtaskMaxRounds.value = String(nextValue);
           vscode.postMessage({
             type: "updateSetting",
-            key: "loopPlusMaxAcceptances",
+            key: "loopPlusSubtaskMaxRounds",
             value: nextValue,
           });
         };
-        elements.loopPlusMaxAcceptances.addEventListener("change", commitLoopPlusMaxAcceptances);
-        elements.loopPlusMaxAcceptances.addEventListener("blur", commitLoopPlusMaxAcceptances);
+        elements.loopPlusSubtaskMaxRounds.addEventListener("change", commitLoopPlusSubtaskMaxRounds);
+        elements.loopPlusSubtaskMaxRounds.addEventListener("blur", commitLoopPlusSubtaskMaxRounds);
       }
       if (elements.historyRetentionDays) {
         const commitHistoryRetentionDays = () => {

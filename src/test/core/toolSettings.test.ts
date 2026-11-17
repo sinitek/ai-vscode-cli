@@ -249,14 +249,14 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "42.9",
       loopPlusDecisionSubtaskMax: "8.2",
-      loopPlusMaxAcceptances: "100.8",
+      loopPlusSubtaskMaxRounds: "100.8",
       humanInteractionTimeoutMinutes: "10.9",
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
       loopMaxRounds: 42,
       loopPlusDecisionSubtaskMax: 8,
-      loopPlusMaxAcceptances: 100,
+      loopPlusSubtaskMaxRounds: 100,
       humanInteractionTimeoutMinutes: 10,
     },
   );
@@ -264,7 +264,7 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "",
       loopPlusDecisionSubtaskMax: "",
-      loopPlusMaxAcceptances: "",
+      loopPlusSubtaskMaxRounds: "",
       humanInteractionTimeoutMinutes: "",
       loopSubtaskMaxThinkingMode: "invalid",
     }),
@@ -311,4 +311,11 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
     }),
     { loopMaxRounds: 12 },
   );
+});
+
+
+test("clamps subtask rounds and ignores the removed acceptance setting", () => {
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), { loopPlusSubtaskMaxRounds: 1 });
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 10000 }), { loopPlusSubtaskMaxRounds: 9999 });
+  assert.deepEqual(normalizeToolSettings({ loopPlusMaxAcceptances: 1 }), {});
 });

@@ -2163,14 +2163,14 @@ test("distinguishes manual and automatic interaction history with accessible SVG
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-icon\.automatic\s*\{[^}]*color:\s*var\(--vscode-charts-blue, var\(--vscode-foreground\)\);/u);
 });
 
-test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {
+test("normalizes the Loop+ subtask round limit from the AI task settings input", () => {
   const { document, posted } = createRuntimeHarness();
-  document.getElementById("loopPlusMaxAcceptances").value = "0";
-  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 1 });
-  document.getElementById("loopPlusMaxAcceptances").value = "5000";
-  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 999 });
+  document.getElementById("loopPlusSubtaskMaxRounds").value = "0";
+  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 1 });
+  document.getElementById("loopPlusSubtaskMaxRounds").value = "10000";
+  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 9999 });
 });
 
 test("renders prompt history favorites and filters to favorite prompts", () => {
