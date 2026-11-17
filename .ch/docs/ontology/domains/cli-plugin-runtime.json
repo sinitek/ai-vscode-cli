@@ -347,6 +347,25 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.vibe_clarification_final_answer_fallback",
+      "name": "Vibe 决策澄清优先结构化人机交互",
+      "description": "人工交互开启的 Vibe 任务需要澄清时应调用结构化 user-input 或 elicitation 并等待回答。即使原始输入没有要求先提问，整段助手回复为明确请求用户决策的一到三题时，也可由共享自然语言兜底转换为现有表单；支持单题及无编号、项目符号、数字和字母选项，每个选项行保留完整文案。普通结果、引用、代码围栏和文档示例不触发该新路径。原有显式需求询问解析保持兼容。运行时在最终结论收口前移除问题气泡、等待提交并继续原会话，拒绝仍停止；人工交互关闭及 Loop/Loop+ 不使用该兜底。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Vibe 澄清与最终答复"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Vibe 澄清最终答复兜底"},
+        {"path": "src/humanInteraction.ts"},
+        {"path": "src/promptRuntime.ts"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/extensionHost/promptOneShotRuntime.ts"},
+        {"path": "src/extensionHost/promptParallelRuntime.ts"},
+        {"path": "src/test/core/humanInteraction.test.ts"},
+        {"path": "src/test/extensionHost/promptInteractiveRuntime.test.ts"},
+        {"path": "src/test/extensionHost/promptOneShotRuntime.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_submission_feedback",
       "name": "Vibe 与 Loop 系列实际发送立即展示提示词及等待气泡",
       "description": "Vibe、Loop 和 Loop+ 通过本地检查并发送后立即显示原始提示词用户气泡预览和准备等待；Loop+ 仍先确认验收方案。宿主预加载用户消息使用 requestId 作为 messageId，真实消息到达后替换预览，不按文字匹配，不重复气泡。runStatus.start 后等待模型响应，首次助手正文或思考输出及调用终态清除。临时预览和等待不入历史或模型上下文，减少动态效果保留文字与静态三点。宿主以原 requestId 和目标 Tab 回传 promptSubmissionSettled，覆盖拒绝、提前返回和异常；旧回执及未 start 时旧调用的输出/终态不清除新准备。先发布真实用户消息，再后台刷新完整面板，刷新失败不阻断执行，配置拒绝的展示刷新也不拖延回执；真实配置校验、所有权及压缩等待保持。",

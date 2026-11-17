@@ -4,6 +4,14 @@
 - 更新日期：2026-11-13
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
+## Vibe 澄清与最终答复
+
+人工交互开启时，模型应优先调用结构化 user-input / elicitation，并等待回答后继续任务。这个约束同时适用于单个澄清问题和用户没有主动要求“先问我”的任务。
+
+`src/humanInteraction.ts` 为交互式及 OpenCode one-shot/parallel 入口提供共享自然语言兜底：整段回复为明确向用户请求决策的 1–3 题时，允许直接转换现有人工交互表单。支持单个无编号问题及其无编号、项目符号、数字或字母选项；每个独立选项行保留全文，不按逗号、斜杠或“或”拆开。原有显式询问需求的解析保持兼容。结果正文、引用、代码围栏和文档示例不作为新路径的澄清依据。
+
+运行时在最终结论收口前转换问题气泡，提交后把答案写为用户消息并继续原会话；拒绝仍停止当前任务。人工交互开关关闭以及 Loop/Loop+ 仍由原边界处理。本次不改变 Webview 表单、CLI 协议或持久化格式。
+
 ## Loop 任务内模型切换
 
 群聊「切模型」是独立于继续执行的任务内路由变更。`src/loopModelSwitch.ts` 按各角色绑定 CLI 当前配置复用现有下拉选项，分别选择模型与思考力度，整体校验后保存 `modelRouting`、配置身份及 `originProfile` 对应角色的 `*ThinkingMode`，不修改全局模型偏好、CLI 或任务模式。力度选项随所选模型更新，DSH 使用配置声明的模型能力，无支持时禁用；旧消息省略 `thinkingModes` 时保留原力度。群聊继续执行仅提交继续说明，沿用任务最新路由；主任务 Tab 直接继续仍接受已有下拉选择，并先更新任务路由与显式提交的角色力度，未提交的角色设置保持不变，避免后续调用读回旧快照。

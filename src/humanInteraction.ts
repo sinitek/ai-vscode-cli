@@ -354,6 +354,83 @@ function parseNaturalLanguageClarificationQuestion(question: string): NaturalLan
   };
 }
 
+function isDirectedClarificationQuestion(question: string): boolean {
+  return /(?:希望|想要|选哪|哪种|哪个|哪些|是否|如何处理|怎么处理|怎样处理|需要我|请.*(?:提供|补充|确认|选择|告诉))/u.test(question)
+    || /\b(?:which|would you|do you want|do you prefer|should I|please (?:provide|confirm|choose|tell))\b/iu.test(question);
+}
+
+function isClarificationInstruction(line: string): boolean {
+  return line.length <= 120 && (
+    /^(?:可以[。！!，,]\s*)?(?:请|需要|我需要|还需要|先|你可以|您可以).*(?:回答|回复|选择|选项|确认|补充|提供)/u.test(line)
+    || /^(?:please|before (?:I|we) continue|I need).*(?:answer|reply|choose|confirm|clarif|provide)/iu.test(line)
+  );
+}
+
+// Only accept a complete clarification reply here. Questions inside a result,
+// quotation or code example must not turn a finished task into a pending form.
+function collectDirectedClarificationQuestions(
+  assistantText: string,
+  explicitClarificationIntent: boolean,
+): NaturalLanguageClarificationQuestion[] {
+  const lines = stripFinalAnswerMarker(assistantText).split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) {
+    return [];
+  }
+  const questions: NaturalLanguageClarificationQuestion[] = [];
+  let cursor = 0;
+  while (cursor < lines.length && !/[?？]/u.test(lines[cursor] ?? "")) {
+    if (!isClarificationInstruction(cleanClarificationQuestion(lines[cursor] ?? ""))) {
+      return [];
+    }
+    cursor += 1;
+  }
+  while (cursor < lines.length) {
+    const line = lines[cursor] ?? "";
+    const question = parseClarificationQuestionLine(line) || cleanClarificationQuestion(line);
+    if (!/[?？]/u.test(question) || /[。!！]/u.test(question.split(/[?？]/u)[0] ?? "")) {
+      return [];
+    }
+    const parsed = parseNaturalLanguageClarificationQuestion(question);
+    if (!explicitClarificationIntent && !isDirectedClarificationQuestion(parsed.label)) {
+      return [];
+    }
+    cursor += 1;
+    const optionLines: string[] = [];
+    while (cursor < lines.length && !/[?？]/u.test(lines[cursor] ?? "")) {
+      const nextLine = lines[cursor] ?? "";
+      if (isClarificationInstruction(cleanClarificationQuestion(nextLine))) {
+        // A short submission hint is allowed only at the end of the reply.
+        if (cursor !== lines.length - 1) {
+          return [];
+        }
+        cursor += 1;
+        break;
+      }
+      optionLines.push(nextLine);
+      cursor += 1;
+    }
+    if (optionLines.length) {
+      if (parsed.options.length || optionLines.length < 2 || optionLines.length > 6) {
+        return [];
+      }
+      // Each line is one choice: commas, slashes and “或” can be part of it.
+      const labels = optionLines.map((option) => cleanNaturalLanguageOptionLabel(
+        cleanClarificationQuestion(option.replace(/^[-*•]\s+/u, "")),
+      ));
+      if (labels.some((label) => !label || label.length > 300) || new Set(labels).size !== labels.length) {
+        return [];
+      }
+      parsed.options = labels.map((label) => ({ value: label, label }));
+      parsed.type = inferNaturalLanguageOptionFieldType(parsed.label, parsed.options);
+    }
+    questions.push(parsed);
+    if (questions.length > 3) {
+      return [];
+    }
+  }
+  return questions;
+}
+
 function normalizeFieldType(value: unknown, hasOptions: boolean): HumanInteractionFieldType {
   const normalized = normalizeText(value).toLowerCase();
   if (
@@ -490,16 +567,23 @@ export function normalizeHumanInteractionRequestFromCodex(
 export function buildNaturalLanguageHumanInteractionRequest(
   input: NaturalLanguageHumanInteractionInput,
 ): HumanInteractionRequest | null {
-  if (!hasExplicitClarificationIntent(input.userPrompt)) {
+  if (/(?:^|\n)\s*(?:>|```|~~~|\|)/u.test(input.assistantText)) {
     return null;
   }
-  const questions = collectClarificationQuestions(input.assistantText);
-  if (!isQuestionListLike(input.assistantText, questions)) {
-    return null;
+  const explicitClarificationIntent = hasExplicitClarificationIntent(input.userPrompt);
+  let questions = collectDirectedClarificationQuestions(input.assistantText, explicitClarificationIntent);
+  if (!questions.length) {
+    if (!explicitClarificationIntent) {
+      return null;
+    }
+    const legacyQuestions = collectClarificationQuestions(input.assistantText);
+    if (!isQuestionListLike(input.assistantText, legacyQuestions)) {
+      return null;
+    }
+    questions = legacyQuestions.map(parseNaturalLanguageClarificationQuestion);
   }
   const formFields: HumanInteractionFormField[] = questions.length > 0
-    ? questions.map((question, index): HumanInteractionFormField => {
-        const parsed = parseNaturalLanguageClarificationQuestion(question);
+    ? questions.map((parsed, index): HumanInteractionFormField => {
         return {
           id: `answer_${index + 1}`,
           label: parsed.label,

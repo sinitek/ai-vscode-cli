@@ -1232,6 +1232,15 @@ rm -r "$result_directory"
 - `src/extensionHost/promptRunRuntime.ts`
 - `src/panelDiagnostics.ts`
 
+## 单题决策澄清不能依赖用户先说“问我需求”
+
+- 首次发现：2026-11-17；适用范围：Vibe 自然语言人工交互兜底。
+- 现象：模型把“‘撤销验收’希望如何处理？”和两个无编号选项作为最终答复，没有弹窗。
+- 根因：共享 parser 要求原始输入明确要求询问需求，通常至少识别两题，且不支持普通文本选项行；仅强化模型提示无法补齐宿主漏判。
+- 规避：对整段明确请求用户决策的一到三题增加共享解析路径；选项按行完整保留，不按逗号或“或”拆开。普通结果、引用、代码和文档示例需保留反例。保留原有显式需求询问兼容及关闭/Loop 边界。
+- 验证：core parser 回归使用用户原例；interactive/one-shot 回归确认表单替换问题气泡与提交续接，并覆盖拒绝、开关关闭和 Loop 边界。真实 Codex 最小验证使用隔离 HOME 与本机模拟响应，确认单题双选项及同一 thread 两轮续接；它不代替图形宿主弹窗或真实模型遵循指令的验收。
+- 事实来源：`src/humanInteraction.ts`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md#Vibe 澄清与最终答复`。
+
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
 - 状态：已规避，需随 Codex / Claude / OpenCode 澄清回复样式变化复核
