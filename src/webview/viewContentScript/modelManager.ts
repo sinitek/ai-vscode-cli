@@ -1555,6 +1555,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = normalizeInteractiveMode(event.target.value);
           state.interactiveMode = nextMode;
+          const runtimeState = getActiveConversationRuntimeState();
+          runtimeState.interactiveModeSelection = { cli: state.currentCli, mode: nextMode };
           syncModelSelectorByInteractiveMode();
           vscode.postMessage({
             type: "updateSetting",

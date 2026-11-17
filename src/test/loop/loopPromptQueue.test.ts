@@ -209,6 +209,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
   );
   const visibleConfigHelperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "readVisibleConfigSelections");
   const posted: unknown[] = [];
+  const runtimeState = { promptSubmission: null as { requestId: string; prompt: string } | null };
   const dispatchPrompt = new Function(
     "normalizePromptPayloadWithModelFields",
     "getActiveConversationTabId",
@@ -224,6 +225,9 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "resetTaskListForRunStart",
     "cliSupportsModelSelection",
     "vscode",
+    "isRuntimeStateForActiveTab",
+    "syncPromptSubmissionWait",
+    "stickChatToBottom",
     `${visibleConfigHelperSource}\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
     (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
@@ -243,7 +247,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     },
     (mode: unknown) => mode || "coding",
     (payload: unknown) => payload,
-    () => null,
+    () => runtimeState,
     () => false,
     () => undefined,
     () => "message-1",
@@ -251,6 +255,9 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     () => undefined,
     () => false,
     { postMessage: (message: unknown) => posted.push(message) },
+    () => true,
+    () => undefined,
+    () => undefined,
   ) as (payload: unknown) => boolean;
 
   assert.equal(dispatchPrompt({ prompt: "queued task", contextOptions: {}, skipPromptHistory: true }), true);
@@ -265,7 +272,10 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     model: undefined,
     preserveActiveTab: false,
     skipPromptHistory: true,
+    requestId: "message-1",
   }]);
+  assert.equal(runtimeState.promptSubmission?.requestId, "message-1");
+  assert.equal(runtimeState.promptSubmission?.prompt, "queued task");
 });
 
 test("prevents the conflict overlay from bypassing a running Loop main tab", () => {

@@ -173,8 +173,9 @@ function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => 
 
   return new Function(
     "getLoopMetaForTabSummary",
-    `${functionSource}; return resolveAutoInteractiveModeForTab;`,
-  )(getLoopMetaForTabSummary) as (tab: TabSummary | null) => string;
+    "getConversationRuntimeState",
+    `${extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab")}\n${functionSource}; return resolveAutoInteractiveModeForTab;`,
+  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null) => string;
 }
 
 function buildResetConversationTabSessionRequest(

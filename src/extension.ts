@@ -4673,7 +4673,7 @@ function resolvePreloadedExecutionModel(input: PromptRunInput, cli: CliName): st
   return typeof displayName === "string" && displayName.trim() ? displayName.trim() : recorded;
 }
 
-function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget, options: { captureTaskSummary?: boolean } = {}): PromptRunInput {
+function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget, options: { captureTaskSummary?: boolean; messageId?: string } = {}): PromptRunInput {
   if (input.preloadedUserMessageId) {
     return input;
   }
@@ -4691,7 +4691,7 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     ? firstExecutionDisplayModel
     : firstExecutionDisplayModel;
   const createdAt = Date.now();
-  const messageId = createMessageId();
+  const messageId = options.messageId || createMessageId();
   const message = buildUserChatMessage({
     ...input,
     executionModel,

@@ -328,7 +328,7 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   await handlePanelMessageWithDeps(message, deps);
 
   assert.equal(calls.ensured, 1);
-  assert.deepEqual(calls.activeTabSwitches, ["tab-opencode-smoke"]);
+  assert.deepEqual(calls.activeTabSwitches, [], "sending in the active tab must preserve its selected mode");
   assert.equal(state.currentCli, "opencode");
   assert.deepEqual(calls.savedSettings, [
     { currentCli: "opencode" },
@@ -497,6 +497,81 @@ test("Loop+ submission settles on config refusal, early return and execution fai
     assert.deepEqual(receipts, [{
       type: "promptSubmissionSettled", requestId: failure, tabId: "tab-opencode-smoke",
     }]);
+  }
+});
+
+test("Vibe publishes its bubble before a slow full refresh and keeps the submission receipt until execution ends", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const panelReady = createDeferred();
+  const executionDone = createDeferred();
+  const order: string[] = [];
+  const receipts: Record<string, unknown>[] = [];
+  deps.postPanelState = () => { order.push("refresh"); return panelReady.promise; };
+  deps.postWebviewMessage = (message) => { receipts.push(message); };
+  const preload = deps.preloadUserMessageForPrompt;
+  deps.preloadUserMessageForPrompt = (input, target, options) => {
+    order.push("bubble");
+    assert.equal(options?.messageId, "vibe-request");
+    return preload(input, target, options);
+  };
+  const run = deps.runPrompt;
+  deps.runPrompt = async (...args) => {
+    order.push("run");
+    await run(...args);
+    await executionDone.promise;
+  };
+  const submission = handlePanelMessageWithDeps({ type: "sendPrompt", requestId: "vibe-request",
+    prompt: "立即展示 Vibe", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(order, ["bubble", "refresh", "run"]);
+    assert.equal(calls.runPrompt.length, 1);
+    assert.deepEqual(receipts, []);
+    executionDone.resolve();
+    await submission;
+    assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "vibe-request", tabId: "tab-opencode-smoke" }]);
+  } finally {
+    panelReady.resolve();
+    executionDone.resolve();
+    await submission;
+  }
+});
+
+test("sending Vibe in the active completed Loop conversation preserves the selected mode and native session", async () => {
+  for (const previousMode of ["loop", "loop_plus"] as const) {
+    const { deps, calls, state } = createSendPromptHarness();
+    const tab = deps.getActiveConversationTab()!;
+    tab.sessionId = "completed-loop-session";
+    tab.sessionIdByCli.opencode = tab.sessionId;
+    state.workspaceSettings.interactiveModeByCli = { opencode: "coding" };
+    deps.setActiveConversationTab = () => { throw new Error(`must not restore ${previousMode} when the active tab did not change`); };
+    await handlePanelMessageWithDeps({ type: "sendPrompt", requestId: `continue-${previousMode}`,
+      prompt: "继续处理新需求", interactiveMode: "coding", tabId: tab.id, cli: "opencode" }, deps);
+    assert.equal(calls.runPrompt.length, 1);
+    assert.equal(calls.runLoopPrompt.length, 0);
+    assert.equal(calls.preloaded[0].target.sessionId, "completed-loop-session");
+    assert.equal(state.workspaceSettings.interactiveModeByCli.opencode, "coding");
+  }
+});
+
+test("Vibe config refusal settles without waiting for the corrective panel refresh", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const panelReady = createDeferred();
+  const receipts: Record<string, unknown>[] = [];
+  deps.postPanelState = () => panelReady.promise;
+  deps.postWebviewMessage = (message) => { receipts.push(message); };
+  deps.validateVisibleConfigSelections = async () => { throw new Error("配置已变化"); };
+  const submission = handlePanelMessageWithDeps({ type: "sendPrompt", requestId: "rejected-vibe",
+    prompt: "等待配置校验", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls.webviewErrors, ["配置已变化"]);
+    assert.equal(calls.preloaded.length, 0);
+    assert.equal(calls.runPrompt.length, 0);
+    assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "rejected-vibe", tabId: "tab-opencode-smoke" }]);
+  } finally {
+    panelReady.resolve();
+    await submission;
   }
 });
 

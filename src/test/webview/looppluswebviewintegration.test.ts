@@ -408,6 +408,7 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "activateRenderedConversation"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "handleMessageRenderFailure"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "renderMessages"],
+    [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"],
     [VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"],

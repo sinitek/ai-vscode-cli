@@ -348,18 +348,36 @@
   "rules": [
     {
       "id": "plugin.rule.loop_plus_submission_feedback",
-      "name": "Loop+ 实际发送立即展示等待气泡且展示刷新不阻塞启动",
-      "description": "验收方案确认且通过本地检查并发送后，在当前 Tab 独立临时气泡显示准备等待；runStatus.start 后等待模型响应，首次助手正文或思考输出及调用终态清除。气泡不入历史或模型上下文，减少动态效果保留文字与静态三点。宿主以原 requestId 和目标 Tab 回传 promptSubmissionSettled，覆盖拒绝、提前返回和异常；旧回执及未 start 时旧调用的输出/终态不清除新准备。完整面板配置与模型刷新仅为展示投影，后台执行且失败不阻断 Loop+；执行前真实配置校验、所有权及压缩等待保持。",
+      "name": "Vibe 与 Loop 系列实际发送立即展示提示词及等待气泡",
+      "description": "Vibe、Loop 和 Loop+ 通过本地检查并发送后立即显示原始提示词用户气泡预览和准备等待；Loop+ 仍先确认验收方案。宿主预加载用户消息使用 requestId 作为 messageId，真实消息到达后替换预览，不按文字匹配，不重复气泡。runStatus.start 后等待模型响应，首次助手正文或思考输出及调用终态清除。临时预览和等待不入历史或模型上下文，减少动态效果保留文字与静态三点。宿主以原 requestId 和目标 Tab 回传 promptSubmissionSettled，覆盖拒绝、提前返回和异常；旧回执及未 start 时旧调用的输出/终态不清除新准备。先发布真实用户消息，再后台刷新完整面板，刷新失败不阻断执行，配置拒绝的展示刷新也不拖延回执；真实配置校验、所有权及压缩等待保持。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.extension_host", "plugin.loop_task"],
       "source_refs": [
         {"path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "发送与启动反馈"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 发送后即时等待反馈"},
         {"path": "src/sessionMessageActions.ts", "anchor": "handleSendPromptMessage"},
+        {"path": "src/extension.ts", "anchor": "preloadUserMessageForPrompt"},
         {"path": "src/webview/viewContentScript/taskListAndUi.ts", "anchor": "syncPromptSubmissionWait"},
         {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
         {"path": "src/test/session/sessionMessageActions.test.ts"},
         {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"}
+      ]
+    },
+    {
+      "id": "plugin.rule.explicit_conversation_mode_selection",
+      "name": "当前 Tab 显式执行模式优先于历史任务推断",
+      "description": "页面存续期间，每个 Tab 按当前 CLI 保存显式模式选择；同 CLI 的迟到面板快照和返回 Tab 的自动推断均不能覆盖用户选择。未手动选择的 Tab 继续按历史主任务恢复 Loop 或 Loop+，CLI 改变时不使用其它 CLI 的选择，关闭 Tab 清理。发送到当前 Tab 不重新激活，已完成 Loop 或 Loop+ 会话切到 Vibe 后复用原会话走普通执行，不重启历史编排；不扩展持久化格式。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel", "plugin.cli_session", "plugin.loop_task"],
+      "source_refs": [
+        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Tab 运行状态与配置协调"},
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 发送后即时等待反馈"},
+        {"path": "src/webview/viewContentScript/modelManager.ts"},
+        {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "getExplicitInteractiveModeForTab"},
+        {"path": "src/webview/viewContentScript/modelAndPanelState.ts"},
+        {"path": "src/sessionMessageActions.ts", "anchor": "executeSendPromptMessage"},
+        {"path": "src/test/webview/clipagescriptruntimecoverage.test.ts"},
+        {"path": "src/test/session/sessionMessageActions.test.ts"}
       ]
     },
     {

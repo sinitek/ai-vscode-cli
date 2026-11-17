@@ -610,7 +610,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (panelState.loopSubtaskOpenCodeModels) {
           state.loopSubtaskOpenCodeModels = normalizeOpenCodeModelsPayload(panelState.loopSubtaskOpenCodeModels);
         }
-        state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
+        state.interactiveMode = getExplicitInteractiveModeForTab(getConversationTabSummary(getActiveConversationTabId()))
+          || normalizeInteractiveMode(panelState.interactiveMode);
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);

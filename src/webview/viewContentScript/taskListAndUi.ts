@@ -688,6 +688,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const runtimeState = getActiveConversationRuntimeState({ create: false });
         const submission = runtimeState && runtimeState.promptSubmission;
+        if (submission && !submission.accepted && runtimeState.messages.some((message) => message.id === submission.requestId)) {
+          submission.accepted = true;
+        }
+        if (elements.promptSubmissionPreview) {
+          elements.promptSubmissionPreview.hidden = !submission || submission.accepted === true;
+          elements.promptSubmissionPreviewText.textContent = submission ? submission.prompt : "";
+        }
         node.hidden = !submission;
         if (submission) {
           elements.promptSubmissionWaitText.textContent = submission.pausing
@@ -696,7 +703,11 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             ? "等待模型响应"
             : submission.pauseReady
             ? "正在发送补充任务"
-            : "正在准备 Loop+ 任务";
+            : submission.interactiveMode === "loop_plus"
+            ? "正在准备 Loop+ 任务"
+            : submission.interactiveMode === "loop"
+            ? "正在准备 Loop 任务"
+            : "正在准备 Vibe 任务";
           elements.emptyState.style.display = "none";
         }
       }
@@ -1298,10 +1309,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (normalizedPayload.loopPlusAcceptancePlan) {
           sendPromptMessage.loopPlusAcceptancePlan = normalizedPayload.loopPlusAcceptancePlan;
         }
-        if (targetInteractiveMode === "loop_plus" || options.pauseBeforeSend) {
+        {
           const runtimeState = getConversationRuntimeState(targetTabId);
           const requestId = createMessageId();
-          runtimeState.promptSubmission = { requestId, started: false, pausing: options.pauseBeforeSend === true };
+          runtimeState.promptSubmission = {
+            requestId, prompt, interactiveMode: targetInteractiveMode,
+            started: false, pausing: options.pauseBeforeSend === true,
+          };
           sendPromptMessage.requestId = requestId;
           if (isRuntimeStateForActiveTab(targetTabId)) {
             syncPromptSubmissionWait();

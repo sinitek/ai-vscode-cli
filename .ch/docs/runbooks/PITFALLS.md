@@ -1,5 +1,12 @@
 # 避坑指南索引
 
+## 发送即时反馈与显式模式不能被展示刷新覆盖
+
+- 现象：Vibe 点击发送后长时间没有气泡；已完成 Loop / Loop+ 会话切到 Vibe，返回 Tab 或收到迟到状态后又恢复历史模式。
+- 根因：普通发送先等待读取各 CLI 配置/模型的完整面板刷新；历史任务模式推断没有考虑当前 Tab 的手动选择。
+- 规避：发送前端立即显示临时提示词和等待状态，宿主真实消息用同一提交 ID 接管，配置校验保留，展示刷新后台执行。Tab 当前 CLI 的显式模式优先于历史推断和面板快照，发送当前 Tab 不重复激活；临时状态不进入持久化历史。
+- 验证：`sessionMessageActions.test.ts` 覆盖慢刷新与拒绝回执；`clipagescriptruntimecoverage.test.ts` 覆盖消息接管、旧回执、跨 Tab 和 CLI 隔离。浏览器应模拟宿主不响应，确认仍有气泡和动画。事实来源见[发送反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)及[模式协调](../design-docs/vscode-cli-extension-runtime.md#tab-运行状态与配置协调)。
+
 ## Vibe 的完成通知不能先于自动压缩放行队列
 
 - 现象：长 Vibe 刚完成，队列任务立即开始并出现“用户已终止”，随后在 Codex 建立连接时失败，错误为 `Codex run aborted`。

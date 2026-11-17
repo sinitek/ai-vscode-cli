@@ -191,7 +191,7 @@ export type PanelMessageHandlerDeps = {
   getLatestLoopRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string, attemptId?: string) => { endedAt: number } | null;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
-  preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
+  preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel, options?: { messageId?: string }) => PromptRunInputForPanel;
   runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   maybeWakeLoopMainAfterSubtaskContinuation: (

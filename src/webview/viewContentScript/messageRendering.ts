@@ -1598,7 +1598,17 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         return baseLabel;
       }
 
+      function getExplicitInteractiveModeForTab(tab) {
+        const runtimeState = tab && getConversationRuntimeState(tab.id, { create: false });
+        const selection = runtimeState && runtimeState.interactiveModeSelection;
+        return selection && selection.cli === tab.cli ? selection.mode : "";
+      }
+
       function resolveAutoInteractiveModeForTab(tab) {
+        const selectedMode = getExplicitInteractiveModeForTab(tab);
+        if (selectedMode) {
+          return selectedMode;
+        }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta && meta.taskRole === "main") {
           const schedulingMode = tab && typeof tab.loopSchedulingMode === "string"

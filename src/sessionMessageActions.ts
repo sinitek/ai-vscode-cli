@@ -257,6 +257,17 @@ function resolvePromptRoleThinkingModes(
   };
 }
 
+function refreshPromptPanelState(deps: Pick<PanelMessageHandlerDeps, "postPanelState">): void {
+  const reportFailure = (error: unknown) => {
+    void logError("prompt-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
+  };
+  try {
+    void deps.postPanelState().catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+
 export async function handleSendPromptMessage(
   message: Extract<PanelMessage, { type: "sendPrompt" }>,
   deps: PanelMessageHandlerDeps
@@ -301,7 +312,7 @@ async function executeSendPromptMessage(
     return;
   }
 
-  if (requestedTabId && requestedTab && !preserveActiveTab) {
+  if (requestedTabId && requestedTab && !preserveActiveTab && requestedTabId !== deps.getActiveConversationTabId()) {
     const switched = deps.setActiveConversationTab(requestedTabId);
     if (switched && deps.getCurrentCli() !== switched.cli) {
       deps.setCurrentCliValue(switched.cli);
@@ -398,7 +409,7 @@ async function executeSendPromptMessage(
     await deps.validateVisibleConfigSelections?.(targetCli, message.configSelections);
   } catch (error) {
     deps.showWebviewError("配置已变化", error instanceof Error ? error.message : String(error));
-    await deps.postPanelState();
+    refreshPromptPanelState(deps);
     return;
   }
   if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
@@ -522,24 +533,13 @@ async function executeSendPromptMessage(
   if (message.skipPromptHistory !== true) {
     deps.recordPromptHistory(trimmed, targetCli);
   }
-  if (loopPlusSchedulingMode === "event_driven") {
-    // This refresh reads every CLI's configuration/models. It is a UI projection,
-    // not a prerequisite for execution; visible config validation already ran.
-    const reportRefreshFailure = (error: unknown) => {
-      void logError("loop-plus-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
-    };
-    try {
-      void deps.postPanelState().catch(reportRefreshFailure);
-    } catch (error) {
-      reportRefreshFailure(error);
-    }
-  } else {
-    await deps.postPanelState();
-  }
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget
-    ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget)
+    ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget, { messageId: message.requestId })
     : promptInput;
+  // This refresh reads every CLI's configuration/models. Publish the user bubble
+  // first, then refresh the projection without gating execution on unrelated I/O.
+  refreshPromptPanelState(deps);
   if (shouldRunLoop) {
     await deps.runLoopPrompt(preparedPromptInput, {
       targetTabId: promptTargetTabId,

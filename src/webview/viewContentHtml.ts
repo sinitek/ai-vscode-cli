@@ -186,6 +186,9 @@ ${webviewStyles}    </style>
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
+        <div id="promptSubmissionPreview" class="message user prompt-submission-preview" hidden>
+          <div id="promptSubmissionPreviewText" class="bubble"></div>
+        </div>
         <div id="promptSubmissionWait" class="message assistant prompt-submission-wait" hidden>
           <div class="bubble" role="status" aria-live="polite" aria-atomic="true">
             <span class="typing" aria-hidden="true"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>

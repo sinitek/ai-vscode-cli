@@ -24,6 +24,9 @@
 
 ## Tab 运行状态与配置协调
 
+- Webview 为每个 Tab 保留当前 CLI 的显式 `interactiveModeSelection`，模式下拉变更时更新；同 CLI 的后续状态快照和自动历史推断优先使用该选择。未选择的 Tab 保持原有主任务 Loop / Loop+、其它 coding 的推断。CLI 不同的旧选择不复用，关闭 Tab 随运行态清除；该字段只存在于当前页面，不扩展持久化格式。发送处理器不重新激活当前 Tab，已完成 Loop / Loop+ 选择 Vibe 后复用原会话走普通 `runPrompt`。
+- 普通发送与 Loop 系列共用即时提示词预览和等待反馈，细节见[发送与启动反馈](loop-plus-scheduling.md#发送与启动反馈)。完整面板配置/模型刷新仅在后台展示，真实用户消息先发布；配置校验、会话交接与压缩仍按实际状态等待。
+
 - 同一 CLI + session 在启动时自动归属当前目标 Tab：公共执行入口先停止其它占用任务并关闭重复 Tab（含空闲旧 Tab），交互宿主在异步配置/会话准备前后再次接管，非交互执行也在启动前复核。实际运行绑定与标签绑定同时参与检查；不同 CLI 或会话保持并行，不删除会话历史。同 Tab 的交互重入仍拒绝；停止或关闭未完成则不启动替代调用，保留 `SESSION_RUN_ACTIVE` 门禁。此接管不替代 Codex 底层 HOME + thread 写锁交接。
 - 接管期间复核工作区、目标标签对象与会话绑定；已取消、换绑或被关闭目标的准备流程不能迟到启动。停止旧任务后重新加载消息，保留旧轮停止记录和新轮输入。回归见 `src/test/extensionHost/sessionTabOwnership.test.ts`、`src/test/extensionHost/promptInteractiveRuntime.test.ts` 和 `src/test/session/sessionTabCliSwitch.test.ts`。
 - 运行收尾及 Codex 的迟到 thread/taskList 回调只操作所属 runId；旧调用不得重绑新会话或覆盖新状态。宿主发布完整面板状态后立即重放现有运行协调消息，恢复仍活跃的 Loop 子任务；不靠历史摘要推断完成。

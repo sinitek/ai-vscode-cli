@@ -172,6 +172,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     commandCompact: createModeControl(),
   };
   const posted: Array<{ type?: string; key?: string; value?: string }> = [];
+  const runtimeState = { interactiveModeSelection: null as { cli: string; mode: string } | null };
   const modelSource = [
     ...[
       "cliSupportsManagedModelSelection",
@@ -212,6 +213,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     "normalizeInteractiveMode",
     "syncModelSelectorByInteractiveMode",
     "vscode",
+    "getActiveConversationRuntimeState",
     extractBlockSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "if (elements.interactiveModeSelect) {"),
   )(
     state,
@@ -219,6 +221,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     normalizeInteractiveMode,
     syncModelSelectorByInteractiveMode,
     { postMessage: (message: { type?: string; key?: string; value?: string }) => posted.push(message) },
+    () => runtimeState,
   );
 
   syncInteractiveModeSelector();
@@ -229,6 +232,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
 
   elements.interactiveModeSelect.dispatchChange("loop");
   assert.equal(state.interactiveMode, "loop");
+  assert.deepEqual(runtimeState.interactiveModeSelection, { cli: "codex", mode: "loop" });
 
   elements.interactiveModeSelect.dispatchChange("loop_plus");
   assert.deepEqual(posted.at(-1), {
@@ -256,6 +260,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
 
   elements.interactiveModeSelect.dispatchChange("plan");
   assert.equal(state.interactiveMode, "coding");
+  assert.deepEqual(runtimeState.interactiveModeSelection, { cli: "claude", mode: "coding" });
   assert.deepEqual(posted.at(-1), {
     type: "updateSetting",
     key: "interactiveMode.claude",
@@ -313,10 +318,12 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     "hideAddModelDialog",
     "getActiveConversationTabId",
     "getConversationTabSummary",
+    "getConversationRuntimeState",
     [
       "var lastAutoInteractiveModeTabKey = \"\";",
       "function syncConversationTabRunningFlowWatch() {}",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
+      extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -344,6 +351,7 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     () => undefined,
     () => state.conversationTabs.activeTabId,
     (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
+    () => null,
   ) as {
     resolveAutoInteractiveModeForTab(tab: Record<string, string>): string;
     applyAutoInteractiveModeForTab(tab: Record<string, string>): boolean;
@@ -415,10 +423,12 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       "hideAddModelDialog",
       "getActiveConversationTabId",
       "getConversationTabSummary",
+      "getConversationRuntimeState",
       [
         "var lastAutoInteractiveModeTabKey = \"\";",
         "function syncConversationTabRunningFlowWatch() {}",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
+        extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -444,6 +454,7 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       () => undefined,
       () => state.conversationTabs.activeTabId,
       (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
+      () => null,
     ) as { renderConversationTabs(): void };
     api.renderConversationTabs();
     return { mode: state.interactiveMode, select: elements.interactiveModeSelect.value };

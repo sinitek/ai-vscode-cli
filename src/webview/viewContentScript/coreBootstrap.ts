@@ -336,6 +336,8 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         stopRun: document.getElementById("stopRun"),
         chatArea: document.getElementById("chatArea"),
         messages: document.getElementById("messages"),
+        promptSubmissionPreview: document.getElementById("promptSubmissionPreview"),
+        promptSubmissionPreviewText: document.getElementById("promptSubmissionPreviewText"),
         promptSubmissionWait: document.getElementById("promptSubmissionWait"),
         promptSubmissionWaitText: document.getElementById("promptSubmissionWaitText"),
         emptyState: document.getElementById("emptyState"),

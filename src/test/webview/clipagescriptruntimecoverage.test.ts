@@ -823,6 +823,112 @@ test("Loop+ submission immediately shows a transient waiting bubble through star
   assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission, null);
 });
 
+test("Vibe, Loop and Loop+ immediately preview the prompt until the matching persisted bubble arrives", () => {
+  for (const mode of ["coding", "loop", "loop_plus"]) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const panel = createPanelState({ interactiveMode: mode,
+      conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    const before = api.getConversationRuntimeState("tab-1").messages.length;
+    const prompt = "立即展示 <原始提示词>\n第二行";
+    assert.equal(api.dispatchPrompt({ prompt, interactiveMode: mode }), true);
+    const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+    assert.ok(request.requestId);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+    assert.equal(document.getElementById("promptSubmissionPreviewText").textContent, prompt);
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    assert.equal(document.getElementById("promptSubmissionWaitText").textContent,
+      mode === "coding" ? "正在准备 Vibe 任务" : mode === "loop" ? "正在准备 Loop 任务" : "正在准备 Loop+ 任务");
+    assert.equal(api.getConversationRuntimeState("tab-1").messages.length, before, "preview is not session history");
+    window.dispatchMessage({ type: "state", payload: panel });
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
+      message: { id: "older-submission", role: "user", content: prompt, merge: false } });
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false, "same text is not an acknowledgement");
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
+      message: { id: request.requestId, role: "user", content: prompt, merge: false } });
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    assert.equal(api.getConversationRuntimeState("tab-1").messages.filter((message: any) => message.id === request.requestId).length, 1);
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+    assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "等待模型响应");
+    window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "answer", content: "收到" });
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  }
+});
+
+test("Vibe preview follows its tab and a rejection clears only the matching submission", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }];
+  const show = (activeTabId: string) => window.dispatchMessage({ type: "state",
+    payload: createPanelState({ interactiveMode: "coding", conversationTabs: { activeTabId, tabs } }) });
+  show("tab-1");
+  api.dispatchPrompt({ prompt: "慢配置期间的提示词" });
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  show("tab-2");
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  show("tab-1");
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: "old" });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: request.requestId });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+});
+
+test("a full transcript replaces the Vibe preview while retaining the wait for model output", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } }) });
+  api.dispatchPrompt({ prompt: "载入消息历史期间发送" });
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: request.requestId, role: "user", content: request.prompt, createdAt: 1 },
+  ] });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  assert.equal(api.getConversationRuntimeState("tab-1").messages.length, 1);
+});
+
+test("completed Loop and Loop+ conversations dispatch the explicitly selected Vibe mode", () => {
+  for (const mode of ["loop", "loop_plus"]) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const panel = createPanelState({ interactiveMode: mode,
+      conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex", loopTaskRole: "main",
+        loopTaskId: "completed-task", loopTaskStatus: "completed", loopTaskRunning: false,
+        loopSchedulingMode: mode === "loop_plus" ? "event_driven" : "classic" }] } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    const select = document.getElementById("interactiveModeSelect");
+    select.value = "coding";
+    select.dispatchEvent({ type: "change", target: select });
+    window.dispatchMessage({ type: "state", payload: panel });
+    assert.equal(select.value, "coding", "a stale snapshot must not restore the historical Loop mode");
+    window.dispatchMessage({ type: "state", payload: { ...panel, interactiveMode: "coding" } });
+    assert.equal(select.value, "coding");
+    assert.equal(api.dispatchPrompt({ prompt: "在这个会话继续 Vibe" }), true);
+    const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+    assert.equal(request.interactiveMode, "coding");
+    assert.equal(request.loopSubtaskCli, undefined);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+    window.dispatchMessage({ type: "state", payload: { ...panel,
+      conversationTabs: { activeTabId: "tab-2", tabs: [...(panel.conversationTabs as any).tabs, { id: "tab-2", cli: "codex" }] } } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    assert.equal(select.value, "coding", "returning to the tab must retain its explicit Vibe selection");
+  }
+});
+
+test("an explicit conversation mode does not override the mode of a different CLI", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } }) });
+  const select = document.getElementById("interactiveModeSelect");
+  select.value = "coding";
+  select.dispatchEvent({ type: "change", target: select });
+  window.dispatchMessage({ type: "state", payload: createPanelState({ currentCli: "claude", interactiveMode: "loop",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "claude" }] } }) });
+  assert.equal(select.value, "loop");
+});
+
 test("Vibe pause keeps input until host confirmation and ignores stale acknowledgements", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding",

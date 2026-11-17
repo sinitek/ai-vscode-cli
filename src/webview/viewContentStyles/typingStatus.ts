@@ -1,4 +1,5 @@
 export const TYPING_STATUS_STYLES = `      /* Typing Indicator */
+      .prompt-submission-preview[hidden],
       .prompt-submission-wait[hidden] {
         display: none;
       }
