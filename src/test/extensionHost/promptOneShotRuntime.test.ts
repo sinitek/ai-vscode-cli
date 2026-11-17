@@ -244,6 +244,7 @@ function createOneShotRuntimeHarness(options: {
     sendRunStatus: (status, message) => {
       statusEvents.push({ status, message });
     },
+    sendRunStatusForTab: (_tabId, status) => { statusEvents.push({ status }); },
     setActiveCliForRun: () => undefined,
     setActiveMessageTarget: (target) => {
       activeMessageTarget = target;

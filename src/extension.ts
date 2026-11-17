@@ -1802,6 +1802,7 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   upsertInteractiveMapping,
 });
 const { runPromptOneShot } = createPromptOneShotRuntimeHost({
+  sendRunStatusForTab,
   AI_TASK_RAW_OUTPUT_MAX_BYTES,
   adoptFreshOpenCodeLoopRecoverySession,
   appendAssistantChunk,
@@ -5570,7 +5571,7 @@ function reserveLoopMainAutoCompactRun(
 async function runAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string,
-  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; isolatedRun?: boolean; execution?: LoopMainAutoCompactRequest["execution"] },
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; onStarted?: () => void; isolatedRun?: boolean; execution?: LoopMainAutoCompactRequest["execution"] },
 ): Promise<void> {
   const compacted = await runContextCompaction({
     silent: true,
@@ -5580,6 +5581,7 @@ async function runAutoCompactContextAfterPromptSuccess(
     timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
     allowActiveRun: request.allowActiveRun,
     onStopReady: request.onStopReady,
+    onStarted: request.onStarted,
   }, request.isolatedRun, request.execution);
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
@@ -5643,7 +5645,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch,
     canOverlap: overlapLoopDispatch && !isPrimaryRunActive(),
-    run: (request) => runAutoCompactContextAfterPromptSuccess(target, sessionId, request),
+    run: (request) => runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...request, onStarted: options.onStarted }),
     reserve: () => reserveLoopMainAutoCompactRun(target, sessionId),
     track: (flight) => {
       loopMainAutoCompactFlights.track(target.tabId, flight);

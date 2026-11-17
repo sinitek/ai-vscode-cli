@@ -105,7 +105,7 @@ export async function scheduleAutoCompactAfterPrompt(
   input: PromptRunInput,
   target: PromptRunTarget,
   run: (options: LoopMainAutoCompactRequest) => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const configSelection = input.configSelections?.[target.cli];
   const execution = configSelection ? {
     configSelection,
@@ -113,7 +113,12 @@ export async function scheduleAutoCompactAfterPrompt(
     thinkingMode: input.thinkingModeOverride,
   } : undefined;
   if (loopSubtaskAutoCompactions.defer(input, target, () => run({ isolatedRun: true, ...(execution ? { execution } : {}) }))) {
-    return;
+    return false;
   }
-  await run({ overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input) });
+  let started = false;
+  await run({
+    overlapLoopDispatch: shouldOverlapLoopMainContextCompaction(input),
+    ...(!input.loopTaskId ? { onStarted: () => { started = true; } } : {}),
+  });
+  return started;
 }

@@ -213,6 +213,7 @@ function createRecordingPorts(events: string[], overrides: Partial<OpenCodePromp
     maybeAutoCompactContextAfterPromptSuccess: async () => {
       events.push("maybeAutoCompactContextAfterPromptSuccess");
     },
+    publishSuccessfulCompletion: () => { events.push("publishSuccessfulCompletion"); },
     evaluateFailedAttempt: () => call("evaluateFailedAttempt", {
       hiddenRetryCount: 0,
       shouldRetry: false,
@@ -303,6 +304,32 @@ function createInput(overrides: Partial<PromptRunInput> = {}): PromptRunInput {
 function createTarget(): PromptRunTarget {
   return { tabId: "tab-1", cli: "opencode", sessionId: null };
 }
+
+for (const outcome of ["end", "stopped", "skipped"] as const) test(`OpenCode Vibe queue waits for compaction (${outcome})`, { timeout: 2000 }, async () => {
+  let finish!: () => void;
+  let markStarted!: () => void;
+  const gate = new Promise<void>((resolve) => { finish = resolve; });
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
+  const events: string[] = [];
+  const ports = createRecordingPorts(events, {
+    maybeAutoCompactContextAfterPromptSuccess: async (_target, _sessionId, _duration, options) => {
+      if (outcome !== "skipped") options?.onStarted?.();
+      markStarted();
+      await gate;
+      if (outcome !== "skipped") events.push(`compact:${outcome}`);
+    },
+  });
+  const run = runOpenCodePromptTemplate(createInput(), createTarget(), {}, ports);
+  await started;
+  try {
+    assert.equal(events.includes("publishSuccessfulCompletion"), false);
+  } finally {
+    finish();
+    await run;
+  }
+  assert.equal(events.filter((event) => event === "publishSuccessfulCompletion").length, outcome === "skipped" ? 1 : 0);
+  assert.equal(events.includes("compact:end"), outcome === "end");
+});
 
 test("OpenCode subtask returns its result before notification starts background compaction", { timeout: 2000 }, async () => {
   const events: string[] = [];
@@ -397,6 +424,7 @@ test("runs the shared OpenCode attempt steps and calls explicit ports in order",
     "resolveOpenCodeSuccessfulExitOutcome",
     "finalizeSuccessfulExit",
     "maybeAutoCompactContextAfterPromptSuccess",
+    "publishSuccessfulCompletion",
   ]);
   assert.equal(scheduledTimers, 0);
   assert.equal(typeof ports.resolveMessageTarget, "function");

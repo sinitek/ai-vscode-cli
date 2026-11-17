@@ -2,6 +2,12 @@
 
 这个文件是当前仓库功能清单的**单一事实来源**。
 
+## Vibe 自动压缩后继续队列
+
+- Vibe 成功后需自动压缩时，先完成压缩，再通知队列继续；交互运行时与 OpenCode 共用执行模板均遵守此顺序。压缩承担本次运行的结束通知，原任务不再重复发送 `end`；未触发或跳过压缩时由原任务正常通知一次。
+- 压缩主动停止或超时沿用 `stopped`，队列保持暂停，不能由原任务的迟到成功通知再次放行。压缩准备、原生请求与结果回写均受本次调用所有权约束，停止后的配置读取结果不能再获取 runner 或影响新任务。
+- 实现：`src/extensionHost/promptInteractiveRuntime.ts`、`src/extensionHost/openCodePromptRunTemplate.ts`、`src/loopSubtaskAutoCompact.ts`、`src/contextCompactionRunner.ts`。Loop 主任务的压缩与派发重叠、子任务回报后后台压缩沿用既有流程。
+
 ## Loop+ 提交与派发交接契约
 
 - 状态：`active`（2026-11-16，源码修复、公共契约及 macOS 约定范围已验收；见[已归档修复计划](../exec-plans/completed/2026-11/2026-11-16-bugfix-loop-handoff-contracts.md)）。任务写入正常返回即原子提交成功，写入/rename 失败抛错，缺失更新 null 同样拒绝交接。展示刷新异常不撤销提交。

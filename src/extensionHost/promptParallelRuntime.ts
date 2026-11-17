@@ -984,7 +984,6 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         parallelRunsByTabId.delete(target.tabId);
         const taskRecord = buildParallelTaskRunRecord("end");
         appendTaskRun(taskRecord);
-        sendRunStatusForTab(target.tabId, "end");
         const completionMessage: ChatMessage = {
           id: createMessageId(),
           role: "system",
@@ -1011,6 +1010,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         };
       },
       maybeAutoCompactContextAfterPromptSuccess,
+      publishSuccessfulCompletion: () => sendRunStatusForTab(target.tabId, "end"),
       evaluateFailedAttempt: (context) => {
         const lastFailureMessage = getAttemptFailureMessage(context.attemptResult, context.rawStderr || null);
         const nextHiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(

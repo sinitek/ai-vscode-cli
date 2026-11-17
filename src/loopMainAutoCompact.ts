@@ -1,4 +1,6 @@
 export type LoopMainAutoCompactRequest = {
+  /** The enclosing Vibe run leaves terminal status publication to compaction. */
+  onStarted?: () => void;
   overlapLoopDispatch?: boolean;
   isolatedRun?: boolean;
   execution?: {

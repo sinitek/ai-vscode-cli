@@ -364,6 +364,12 @@ type ContextTokenUsageMessage = {
 - 自动提取还有二级条件：`memoryAutoExtractAfterCompact` 只允许 compact 成功后的提取，`memoryAutoExtractAfterLoopTask` 只允许 Loop 任务完成后的提取；二者默认关闭，且必须在总开关和对应作用域开启时才允许新增或更新当前工作区 `.ch/docs/memory/` 与相关 generated recall。
 - 运行时会兼容读取旧的 VS Code `sinitek-cli-tools.*` 配置值，但工具设置面板本身以 `~/.sinitek_cli/` 下的数据为主
 
+### Vibe 自动压缩与队列交接
+
+普通 Vibe 成功后满足自动压缩条件时，先运行压缩再放行排队提示词。模型结果仍立即记录完成，`runStatus:end` 等到压缩终态才发布一次；压缩未实际启动时由原任务发布。交互式 CLI 与 OpenCode one-shot / 并行执行共用此约定。压缩停止或超时发布 `stopped`，队列保持暂停，原任务不再补发成功状态。
+
+`scheduleAutoCompactAfterPrompt` 通过 `onStarted` 确认压缩已接管状态发布。`runContextCompactionWithDeps` 的异步等待响应停止，并在准备返回、注册 runner 停止句柄与读取原生结果后复核运行身份，旧压缩不再操作后续任务的 runner 或回写其会话。Loop 主任务压缩与派发重叠、子任务完成回报后后台压缩保持原有交接。
+
 ## 4. 模式与参数映射
 
 ### thinking mode

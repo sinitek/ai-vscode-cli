@@ -609,6 +609,36 @@ test("host uses execution cwd for ordinary and Loop turns, reuses semantic ident
   });
 });
 
+for (const outcome of ["end", "stopped", "skipped"] as const) test(`Vibe waits for automatic compaction before releasing its queue (${outcome})`, { timeout: 2000 }, async () => {
+  const compactGate = createDeferred();
+  const started = createDeferred();
+  const harness = createInteractiveRuntimeHarness({
+    autoCompactAfterRun: true,
+    runtimeDeps: {
+      maybeAutoCompactContextAfterPromptSuccess: async (_target, _sessionId, _duration, options) => {
+        if (outcome !== "skipped") {
+          options?.onStarted?.();
+          harness.runStatusEvents.push({ tabId: "tab-1", status: "start" });
+        }
+        started.resolve();
+        await compactGate.promise;
+        if (outcome !== "skipped") harness.runStatusEvents.push({ tabId: "tab-1", status: outcome });
+      },
+    },
+  });
+  const run = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  await started.promise;
+  try {
+    assert.equal(harness.taskRecords.at(-1)?.status, "end", "model result remains completed");
+    assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false, "queue must remain blocked during compaction");
+  } finally {
+    compactGate.resolve();
+    await run;
+  }
+  assert.equal(harness.runStatusEvents.filter((event) => event.status === "end").length, outcome === "stopped" ? 0 : 1, "release queue once after completion and keep it paused after stop");
+  assert.equal(harness.codexStopCalls, 0);
+});
+
 test("interactive subtask completion returns before compaction and waits for the parent notification", { timeout: 2000 }, async () => {
   const compactGate = createDeferred();
   const started = createDeferred();

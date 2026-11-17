@@ -2373,6 +2373,22 @@
       ]
     },
     {
+      "id": "plugin.rule.vibe_compaction_before_queue",
+      "name": "Vibe 自动压缩完成后继续队列",
+      "description": "普通 Vibe 成功后需要自动压缩时，先完成压缩再由压缩终态放行队列，原任务不重复发布 end；跳过或未启动压缩时由原任务正常发布一次。压缩主动停止或超时保留 stopped 和队列暂停，旧压缩异步准备及结果回写必须核对调用所有权，停止后不能获取或中止后续 runner。交互执行与 OpenCode 共用模板一致；Loop 主任务重叠派发、子任务报告后后台压缩保留原流程。",
+      "status": "active",
+      "aliases": ["Vibe 队列", "先压缩后执行", "Codex run aborted"],
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli"],
+      "source_refs": [
+        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Vibe 自动压缩后继续队列"},
+        {"path": ".ch/docs/references/cli-runtime-reference.md", "anchor": "Vibe 自动压缩与队列交接"},
+        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
+        {"path": "src/extensionHost/openCodePromptRunTemplate.ts"},
+        {"path": "src/contextCompactionRunner.ts"},
+        {"path": "src/test/core/contextCompactionRunner.test.ts"}
+      ]
+    },
+    {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
       "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。子任务先持久化完成汇报或验收事件，再在独立运行状态中后台压缩自己的会话，不阻塞主任务；原 Tab 或新 Tab 续接同一子任务会话时等待压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理；同会话等待前驱压缩与关页完成，独立会话继续推进；压缩复用原配置、模型和思考快照并持有配置执行租约，配置档案切换、失败或超时不撤销已上报结果。成功且超过五分钟及三分钟超时条件不变，普通对话策略不变。",

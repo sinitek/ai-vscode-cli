@@ -152,6 +152,7 @@ type PromptOneShotRuntimeHostDeps = {
   sendPanelMessage: (payload: Record<string, unknown>) => void;
   sendRawStreamDelta: (content: unknown, options?: { stream?: "stdout" | "stderr" | "event"; appendNewline?: boolean }) => void;
   sendRunStatus: (status: "start" | "end" | "error" | "stopped", message?: string, options?: { activity?: RunActivity }) => void;
+  sendRunStatusForTab: (tabId: string, status: "end") => void;
   setActiveCliForRun: (cli: CliName | null) => void;
   setActiveMessageTarget: (target: ChatMessage[] | null) => void;
   setActiveProcess: (process: RunProcess) => void;
@@ -1105,7 +1106,6 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         }
       },
       finalizeSuccessfulExit: async () => {
-        sendRunStatus("end");
         appendCompletionMessage("end");
         persistActiveMessages();
         maybePersistLongTermMemoryFromRun({
@@ -1126,6 +1126,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         clearActiveRun();
         return completion;
       },
+      publishSuccessfulCompletion: () => deps.sendRunStatusForTab(target.tabId, "end"),
       maybeAutoCompactContextAfterPromptSuccess,
       evaluateFailedAttempt: (context) => {
         const nextHiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(
