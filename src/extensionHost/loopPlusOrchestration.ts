@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
+import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
@@ -1405,7 +1406,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const task = deps.readTask(runtime.taskId);
     const subtaskTitles = eventIds.map((eventId) => {
       const attempt = attempts.find((item) => buildLoopPlusFinishEventId(item.subtaskId, item.attemptId) === eventId);
-      return task?.subTasks.find((subtask) => subtask.id === attempt?.subtaskId)?.title ?? attempt?.subtaskId ?? eventId;
+      const subtaskIndex = task?.subTasks.findIndex((subtask) => subtask.id === attempt?.subtaskId) ?? -1;
+      const subtask = task?.subTasks[subtaskIndex];
+      return subtask ? getLoopSubtaskDisplayTitle(subtaskIndex, subtask) : attempt?.subtaskId ?? eventId;
     });
     const section = buildLoopPlusAcceptanceFeedbackSection({
       snapshot: task?.loopPlusAcceptancePlan,

@@ -1258,7 +1258,7 @@ test("accept feedback requires reasons before commit and shows default and selec
     assert.match(feedback.body, passed
       ? /\n\n✅ 回归通过且实现符合需求\n\n/
       : /\n\n❌ 回归断言失败，尚未满足需求\n\n/);
-    assert.match(feedback.body, /^\*\*子任务：alpha\*\*\n\n/u);
+    assert.match(feedback.body, /^\*\*子任务：子任务 1：alpha\*\*\n\n/u);
     assert.ok(feedback.body.includes(`**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**`));
     assert.doesNotMatch(feedback.body, /验收事件|\| 整体验收结果/u);
     assert.match(feedback.body, /\| 安全审查 \| ✅ 输入已校验，日志无敏感信息 \|/);
@@ -1400,7 +1400,7 @@ test("accept followed by completed closeout writes only one subtask acceptance t
   env.mains.at(-1)!.resolve(decisionJson({ status: "accept", reviewEventIds: env.mains.at(-1)!.request.reviewEventIds }));
   await flush();
   assert.equal(env.acceptanceFeedback.length, 1);
-  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：重构规则表\*\*/u);
+  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：子任务 1：重构规则表\*\*/u);
   assert.equal(env.mains.at(-1)?.request.kind, "closeout");
   env.mains.at(-1)!.resolve(completedDecision());
   await flush();
@@ -1412,8 +1412,8 @@ test("completed can directly accept a batch and names every subtask above one ta
   const env = harness();
   const task = baseTask("complete-batch", twoFinishedReviews());
   task.subTasks = [
-    { id: "alpha", title: "前端表单", status: "completed", updatedAt: 1 },
     { id: "beta", title: "后端接口", status: "completed", updatedAt: 1 },
+    { id: "alpha", title: "前端表单", status: "completed", updatedAt: 1 },
   ];
   env.tasks.set(task.id, task);
   env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, { resumeTaskId: task.id, schedulingMode: "event_driven" });
@@ -1424,7 +1424,7 @@ test("completed can directly accept a batch and names every subtask above one ta
   await flush();
   assert.equal(env.tasks.get(task.id)?.status, "completed");
   assert.equal(env.acceptanceFeedback.length, 1);
-  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：前端表单、后端接口\*\*\n\n\*\*整体验收结果：✅ 通过\*\*/u);
+  assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：子任务 2：前端表单、子任务 1：后端接口\*\*\n\n\*\*整体验收结果：✅ 通过\*\*/u);
   assert.doesNotMatch(env.acceptanceFeedback[0].body, /验收事件/u);
 });
 
@@ -1454,7 +1454,7 @@ test("restored reviewed attempts suppress only closeout feedback, not a new atte
     assert.equal(env.tasks.get(task.id)?.status, "completed");
     assert.equal(env.acceptanceFeedback.length, newAttempt ? 1 : 0);
     if (newAttempt) {
-      assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：规则表修复\*\*/u);
+      assert.match(env.acceptanceFeedback[0].body, /^\*\*子任务：子任务 1：规则表修复\*\*/u);
     }
   }
 });
