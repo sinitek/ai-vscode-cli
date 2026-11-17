@@ -6,6 +6,8 @@ import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
 export type ConversationTabRecord = {
+  loopTaskId?: string;
+  loopSubtaskId?: string;
   taskSummary?: string;
   taskSummaryAttempted?: boolean;
   id: string;
@@ -569,6 +571,7 @@ export function createSessionTabsController(deps: {
           lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
           loopTaskRole: loopContext.taskRole ?? undefined,
           loopTaskId: loopTaskId ?? undefined,
+          loopSubtaskId: loopContext.taskRole === "subtask" ? tab.loopSubtaskId : undefined,
           loopTaskRunning,
           loopTaskStatus: loopTaskStatus ?? undefined,
           loopMainTabCloseLocked,

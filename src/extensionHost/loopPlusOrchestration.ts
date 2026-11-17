@@ -85,6 +85,8 @@ export type LoopPlusPromptTarget = {
   tabId: string;
   cli: LoopTaskRecord["cli"];
   sessionId: string | null;
+  loopTaskId?: string;
+  loopSubtaskId?: string;
 };
 
 export type LoopPlusRunInput = {

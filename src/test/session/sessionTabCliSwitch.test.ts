@@ -120,32 +120,37 @@ function createHost(initial: {
   return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, currentCli: () => currentCli };
 }
 
-test("Loop/Loop+ 派发新会话或续接会话时，首次刷新前子任务标签已显示运行中", async () => {
+test("Loop/Loop+ 子任务标签先发布身份，再显示运行中状态", async () => {
   for (const cli of ["codex", "claude"] as const) {
     for (const sessionId of [null, "existing-session"]) {
       const view = createRunStatusHarness();
       let createdId: string | undefined;
-      let checkedRefresh = false;
+      const events: string[] = [];
+      view.setTabSummary("subtask-tab", { loopTaskRole: "subtask", loopSubtaskRunning: true });
+      assert.equal(view.tabState("subtask-tab").running, true);
       const env = createHost({
         state: { activeTabId: "main-tab", tabs: [{ id: "main-tab", cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 }] },
         currentCli: "codex", modes: {},
         onSubtaskTabCreated: (tabId) => {
           createdId = tabId;
+          events.push("start");
           view.send({ type: "runStatus", status: "start", tabId });
         },
         onPostPanelState: async () => {
-          assert.ok(createdId);
-          assert.equal(view.tabState(createdId).running, true);
-          checkedRefresh = true;
+          events.push("state");
         },
       });
-      const target = env.host.createLoopSubtaskRunTarget(cli, { sessionId });
-      assert.equal(target.tabId, createdId);
+      const target = env.host.createLoopSubtaskRunTarget(cli, {
+        sessionId,
+        loopTaskId: "task-1",
+        loopSubtaskId: "subtask-1",
+      });
       assert.equal(target.sessionId, sessionId);
-      assert.equal(view.tabState(target.tabId).running, true);
       assert.equal(view.tabState("active").running, false);
-      await Promise.resolve();
-      assert.equal(checkedRefresh, true);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(createdId, target.tabId);
+      assert.deepEqual(events, ["state", "start"]);
+      assert.equal(view.tabState(target.tabId).running, true);
       view.send({ type: "runStatus", status: "error", tabId: target.tabId });
       assert.equal(view.tabState(target.tabId).running, false);
     }

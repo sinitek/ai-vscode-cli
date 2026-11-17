@@ -407,6 +407,8 @@ export function createLoopPlusRuntimeFixture(options: {
         tabId: subtaskTabOverride ?? nextId("subtab"),
         cli,
         sessionId: options?.sessionId ?? null,
+        loopTaskId: options?.loopTaskId,
+        loopSubtaskId: options?.loopSubtaskId,
       };
       createdSubtaskTargets.push(created);
       return created;

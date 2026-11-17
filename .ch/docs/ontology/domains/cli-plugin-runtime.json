@@ -535,13 +535,15 @@
     {
       "id": "plugin.rule.chat_tab_running_status_priority",
       "name": "Tab 运行状态优先于中间错误",
-      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。完成摘要只从最近用户消息之后恢复，新用户轮次和宿主恢复的活跃信号清除旧完成摘要；完整面板状态后立即协调活跃 Loop 子任务。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
+      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；新派发 Loop 子任务的完整首次标签状态直接投影宿主活动执行，准备阶段在完整状态发布后补发启动事件，避免新标签登记前清理运行标记。运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。完成摘要只从最近用户消息之后恢复，新用户轮次和宿主恢复的活跃信号清除旧完成摘要；完整面板状态后立即协调活跃 Loop 子任务。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
       "status": "active",
       "applies_to": ["plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
         {"path": "src/webview/viewContentScript/messageRendering.ts", "anchor": "syncTabErrorFromMessage"},
         {"path": "src/webview/viewContentScript/windowMessageDispatch.ts"},
         {"path": "src/webview/viewContentScript/coreRuntimeState.ts", "anchor": "createConversationRuntimeState"},
+        {"path": "src/extensionHost/sessionTabs.ts", "anchor": "createLoopSubtaskRunTarget"},
+        {"path": "src/test/session/sessionTabCliSwitch.test.ts"},
         {"path": "src/test/webview/tabRunStatus.test.ts"},
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 状态与配置协调"}
       ]
@@ -645,13 +647,15 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "只有 Loop/Loop+ 子任务 Tab 悬停提示与群聊成员标题共用格式，显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 AI 摘要的 30 码点限制。优先按当前 Tab 消息的任务/子任务身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。主任务保留并展示归纳后的 AI 摘要，不以固定主任务角色名覆盖。子任务仅改变宿主状态投影，不改变持久化摘要、浮层交互或布局。",
+      "description": "只有 Loop/Loop+ 子任务 Tab 悬停提示与群聊成员标题共用格式，显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 AI 摘要的 30 码点限制。新派发 Tab 直接使用运行时携带的父任务/子任务身份投影角色图标与成员标题，不等待首条消息或历史读取；历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。主任务保留并展示归纳后的 AI 摘要，不以固定主任务角色名覆盖。子任务身份只作为当前宿主投影，不改变持久化摘要、浮层交互或布局。",
       "status": "active",
       "applies_to": ["plugin.conversation_task_summary", "plugin.chat_panel", "plugin.cli_session"],
       "source_refs": [
         {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话 Tab 任务摘要"},
         {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "事实来源与边界"},
         {"path": "src/extensionHost/sessionTabs.ts", "anchor": "attachConversationTabLoopMemberTitle"},
+        {"path": "src/extensionHost/sessionTabs.ts", "anchor": "createLoopSubtaskRunTarget"},
+        {"path": "src/sessionTabs.ts", "anchor": "buildTabsState"},
         {"path": "src/loopConversationPresentation.ts", "anchor": "getLoopSubtaskDisplayTitle"},
         {"path": "src/test/session/loopTabMemberTooltip.test.ts"}
       ]

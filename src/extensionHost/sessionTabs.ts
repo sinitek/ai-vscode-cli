@@ -19,8 +19,11 @@ export function attachConversationTabLoopMemberTitle(
     return summary;
   }
   const context = resolveLoopSubtaskConversationContextFromMessages(messages);
+  const identitySubtaskId = typeof summary.loopSubtaskId === "string" ? summary.loopSubtaskId : null;
   const matchingIndices = task && task.id === summary.loopTaskId ? task.subTasks.map((subtask, index) => (
-    context
+    identitySubtaskId
+      ? identitySubtaskId === subtask.id
+      : context
       ? context.taskId === task.id && context.subtaskId === subtask.id
       : Boolean(summary.sessionId && subtask.executionSession?.cli === summary.cli && subtask.executionSession.sessionId === summary.sessionId)
   ) ? index : -1).filter((index) => index >= 0) : [];
@@ -192,12 +195,19 @@ function buildConversationTabsState(): {
           task?.schedulingMode,
         )
         : summary;
-      const messages = summary.loopTaskRole === "subtask"
+      if (summary.loopTaskRole !== "subtask") {
+        return withSchedulingMode;
+      }
+      const messages = !summary.loopSubtaskId
         ? getLiveMessagesForTab(summary.id) ?? (summary.sessionId
           ? loadSessionMessages(summary.cli, summary.sessionId)
           : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
         : [];
-      return attachConversationTabLoopMemberTitle(withSchedulingMode, task, messages);
+      return attachConversationTabLoopMemberTitle({
+        ...withSchedulingMode,
+        ...(summary.loopSubtaskId ? { loopSubtaskId: summary.loopSubtaskId } : {}),
+        ...(summary.loopTaskRole === "subtask" ? { loopSubtaskRunning: isTabRunActive(summary.id) } : {}),
+      }, task, messages);
     }),
   };
 }
@@ -283,22 +293,23 @@ async function switchVisibleConversationTabForLoop(
 
 function createLoopSubtaskRunTarget(
   cli: CliName,
-  options: { sessionId?: string | null } = {}
+  options: { sessionId?: string | null; loopTaskId?: string; loopSubtaskId?: string } = {}
 ): PromptRunTarget {
   const sessionId = options.sessionId?.trim() || null;
   const state = ensureConversationTabs();
   const tab: ConversationTabRecord = {
     id: createConversationTabId(),
+    ...(options.loopTaskId ? { loopTaskId: options.loopTaskId } : {}),
+    ...(options.loopSubtaskId ? { loopSubtaskId: options.loopSubtaskId } : {}),
     cli,
     sessionId,
     sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
-  deps.onSubtaskTabCreated?.(tab.id);
   persistConversationTabsToWorkspaceSettings();
   void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
-  void postPanelState();
+  void postPanelState().then(() => deps.onSubtaskTabCreated?.(tab.id));
   return {
     tabId: tab.id,
     cli,

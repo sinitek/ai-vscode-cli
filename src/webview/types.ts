@@ -272,6 +272,8 @@ export type SessionSummary = {
 };
 
 export type ConversationTabSummary = {
+  loopSubtaskId?: string;
+  loopSubtaskRunning?: boolean;
   taskSummary?: string;
   id: string;
   cli: CliName;

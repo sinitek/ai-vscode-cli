@@ -684,6 +684,8 @@ test("adapter creates only the normal user prompt bubble in a subtask conversati
 
     const subtaskTarget = fixture.createdSubtaskTargets[0];
     assert.ok(subtaskTarget);
+    assert.equal(subtaskTarget.loopTaskId, fixture.mainCalls[0]?.loopTaskId);
+    assert.equal(subtaskTarget.loopSubtaskId, "A");
     const displayPrompt = fixture.attemptCalls[0]?.displayPrompt;
     assert.ok(displayPrompt?.includes(longPrompt("A", "src/a.ts")));
     const promptMessages = messages.filter((message) => message.content === displayPrompt);

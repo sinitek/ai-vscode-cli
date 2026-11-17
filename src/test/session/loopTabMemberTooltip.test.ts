@@ -100,6 +100,7 @@ test("host projection reads each subtask from live, persisted or draft messages 
     { ...createSummary(), id: "live" },
     { ...createSummary(), id: "stored" },
     { ...createSummary(), id: "draft", sessionId: null },
+    { ...createSummary(), id: "new-subtask", sessionId: null, loopSubtaskId: "subtask-517" },
     { ...createSummary(), id: "main", loopTaskRole: "main" },
   ];
   const reads: string[] = [];
@@ -112,15 +113,18 @@ test("host projection reads each subtask from live, persisted or draft messages 
     getLiveMessagesForTab: (tabId: string) => { reads.push(tabId); return tabId === "live" ? createMessages() : null; },
     loadSessionMessages: () => { reads.push("stored-messages"); return createMessages(); },
     getPendingSessionDraft: () => { reads.push("draft-messages"); return { messages: createMessages() }; },
+    isTabRunActive: (tabId: string | null) => tabId === "new-subtask",
     setSessionStore: () => undefined, setCurrentCli: () => undefined, activeData: {},
   } as unknown as HostDeps);
   const result = host.buildConversationTabsState();
   assert.equal(result.activeTabId, "vibe");
   assert.equal(result.tabs[0], summaries[0]);
-  assert.equal(result.tabs[4].taskSummary, summaries[4].taskSummary);
+  assert.equal(result.tabs[5].taskSummary, summaries[5].taskSummary);
   for (const summary of result.tabs.slice(1, 4)) {
     assert.equal(summary.taskSummary, getLoopSubtaskDisplayTitle(516, task.subTasks[516]));
     assert.equal(summary.loopSchedulingMode, "event_driven");
   }
+  assert.equal(result.tabs[4].taskSummary, "子任务 517：恢复SpreadJS本体源码构建与前端接入路线");
+  assert.equal(result.tabs[4].loopSubtaskRunning, true);
   assert.deepEqual(reads, ["live", "stored", "stored-messages", "draft", "draft-messages"]);
 });

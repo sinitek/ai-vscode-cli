@@ -1707,6 +1707,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         }
         return Boolean(
           isTabRunning(tab.id)
+          || (tab.loopTaskRole === "subtask" && tab.loopSubtaskRunning === true)
           || (
             isLoopMainTab(tab)
             && (tab.loopTaskRunning === true || tab.loopTaskStatus === "running")

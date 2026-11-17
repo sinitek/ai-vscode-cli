@@ -110,7 +110,7 @@ type LoopOrchestrationRequiredHostDeps =
     buildSubagentProgressLabels: () => SubagentProgressLabels;
     buildLoopSubtaskRetryText: (taskId: string, subtaskId: string, retryCount: number) => string;
     closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
-    createLoopSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null }) => PromptRunTarget;
+    createLoopSubtaskRunTarget: (cli: CliName, options?: { sessionId?: string | null; loopTaskId?: string; loopSubtaskId?: string }) => PromptRunTarget;
     createMessageId: () => string;
     createSubagentProgressController: typeof import("../subagentProgress").createSubagentProgressController;
     ensureLoopMainSubChatTranscript: (task: LoopTaskRecord) => string;
@@ -916,7 +916,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         }
         if (!subtaskTarget) {
           const continuation = resolveLoopSubtaskSession(readLoopTaskRecord(task.id) ?? task, subtask, execution.cli, execution.configId);
-          subtaskTarget = createLoopSubtaskRunTarget(execution.cli, { sessionId: continuation.sessionId });
+          subtaskTarget = createLoopSubtaskRunTarget(execution.cli, {
+            sessionId: continuation.sessionId,
+            loopTaskId: task.id,
+            loopSubtaskId: subtask.id,
+          });
           if (subtask.continueFromSubtaskId || continuation.sessionId) {
             appendSystemMessageForLoop(target, `子任务 ${subtask.id}：${continuation.reason}（来源：${continuation.sourceSubtaskId}）。`);
           }

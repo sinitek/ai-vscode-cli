@@ -87,7 +87,7 @@ export type LoopPlusRuntimeAdapterDeps = {
     model: string | undefined,
   ) => ThinkingMode | undefined;
   createExecutionRoot: () => { cwd?: string; dispose: () => void } | null;
-  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
+  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null; loopTaskId?: string; loopSubtaskId?: string }) => LoopPlusPromptTarget;
   onSubtaskPreparationFailed?: (tabId: string, status: "stopped" | "error") => void;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
@@ -454,7 +454,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const task = deps.readTask(request.taskId);
     const configId = request.execution?.configId ?? deps.getActiveConfigIdForCli?.(request.targetCli) ?? null;
     const continuation = resolveLoopSubtaskSession(task ?? { subTasks: [] }, { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
-    const subtaskTarget = deps.createSubtaskTarget(request.targetCli, { sessionId: continuation.sessionId });
+    const subtaskTarget = deps.createSubtaskTarget(request.targetCli, {
+      sessionId: continuation.sessionId,
+      loopTaskId: request.taskId,
+      loopSubtaskId: request.subtaskId,
+    });
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
     let closeTabAfterAbort = false;
