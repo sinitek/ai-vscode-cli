@@ -1,3 +1,4 @@
+import * as fsSync from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -9,8 +10,40 @@ type ExecutionLease = { id: string; pid: number };
 export type RuntimeConfigExecutionLease = { selection: SharedConfigSelection; release: () => Promise<void> };
 type SharedState = SharedConfigSelection & { version: 1; leases: ExecutionLease[] };
 type LockOwner = { pid: number; token: string };
-type ConfigLockOperation = "initialize" | "change" | "edit" | "acquire" | "release";
+type ConfigLockOperation = "initialize" | "change" | "edit" | "acquire" | "release" | "exclusive";
 const localOperations = new Map<string, Promise<unknown>>();
+const activeLockTokens = new Map<string, Set<string>>();
+
+export function runtimeCoordinationDirectory(targetFile: string): string {
+  return path.join(path.dirname(targetFile), ".sinitek-runtime-coordination", path.basename(targetFile));
+}
+
+function coordinationKey(directory: string): string {
+  const resolved = path.resolve(directory);
+  try {
+    fsSync.mkdirSync(resolved, { recursive: true, mode: 0o700 });
+    return fsSync.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+function holdsToken(key: string, token: string): boolean {
+  return activeLockTokens.get(key)?.has(token) === true;
+}
+
+function retainToken(key: string, token: string): void {
+  const tokens = activeLockTokens.get(key) ?? new Set<string>();
+  tokens.add(token);
+  activeLockTokens.set(key, tokens);
+}
+
+function releaseToken(key: string, token: string): void {
+  const tokens = activeLockTokens.get(key);
+  if (!tokens) return;
+  tokens.delete(token);
+  if (tokens.size === 0) activeLockTokens.delete(key);
+}
 
 export async function releaseRuntimeConfigExecutionLease(
   lease: RuntimeConfigExecutionLease,
@@ -93,7 +126,14 @@ export class SharedRuntimeConfig {
     }
   }
 
-  private async recoverLock(owner: LockOwner): Promise<void> {
+  private canRecover(owner: LockOwner, key: string): boolean {
+    // A mutex left by this process is stale once its critical section has left
+    // the in-memory holder set. Another live process is never stolen.
+    if (owner.pid === process.pid) return !holdsToken(key, owner.token);
+    return !isAlive(owner.pid);
+  }
+
+  private async recoverLock(owner: LockOwner, key: string): Promise<void> {
     const recoveryPath = path.join(this.directory, `recover-${owner.token}`);
     try {
       await fs.mkdir(recoveryPath);
@@ -103,7 +143,7 @@ export class SharedRuntimeConfig {
     }
     try {
       const current = await this.readOwner();
-      if (current?.token === owner.token && !isAlive(current.pid)) {
+      if (current?.token === owner.token && this.canRecover(current, key)) {
         await fs.unlink(this.lockPath);
       }
     } finally {
@@ -111,17 +151,35 @@ export class SharedRuntimeConfig {
     }
   }
 
+  private async releaseOwnedLock(owner: LockOwner): Promise<void> {
+    try {
+      const current = await this.readOwner();
+      if (current?.token === owner.token) await fs.unlink(this.lockPath);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    }
+    try {
+      const raw = await fs.readFile(this.lockPath, "utf8");
+      if (raw.includes(owner.token)) await fs.unlink(this.lockPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        // The next acquire treats an unheld mutex from this pid as stale.
+      }
+    }
+  }
+
   private locked<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>): Promise<Result> {
-    const key = path.resolve(this.directory);
+    const key = coordinationKey(this.directory);
     const previous = localOperations.get(key) ?? Promise.resolve();
-    const pending = previous.catch(() => undefined).then(() => this.lockedAcrossProcesses(purpose, operation));
+    const pending = previous.catch(() => undefined).then(() => this.lockedAcrossProcesses(purpose, operation, key));
     localOperations.set(key, pending);
     return pending.finally(() => {
       if (localOperations.get(key) === pending) localOperations.delete(key);
     });
   }
 
-  private async lockedAcrossProcesses<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>): Promise<Result> {
+  private async lockedAcrossProcesses<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>, key: string): Promise<Result> {
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
     const owner: LockOwner = { pid: process.pid, token: randomUUID() };
     const candidate = path.join(this.directory, `owner-${owner.token}`);
@@ -137,7 +195,7 @@ export class SharedRuntimeConfig {
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const current = await this.readOwner();
-          if (current && !isAlive(current.pid)) await this.recoverLock(current);
+          if (current && this.canRecover(current, key)) await this.recoverLock(current, key);
           if (Date.now() >= deadline) {
             // The owner may have released while we were reading it, or recovery
             // may just have removed a dead writer. Confirm contention atomically
@@ -161,11 +219,22 @@ export class SharedRuntimeConfig {
           await new Promise<void>((resolve) => setTimeout(resolve, 20));
         }
       }
+      retainToken(key, owner.token);
       return await operation();
     } finally {
-      if (acquired && (await this.readOwner())?.token === owner.token) await fs.unlink(this.lockPath);
+      if (acquired) {
+        try {
+          await this.releaseOwnedLock(owner);
+        } finally {
+          releaseToken(key, owner.token);
+        }
+      }
       await fs.rm(candidate, { force: true });
     }
+  }
+
+  async exclusive<Result>(operation: () => Promise<Result>): Promise<Result> {
+    return this.locked("exclusive", operation);
   }
 
   private async readState(pruneLeases = true): Promise<SharedState | null> {

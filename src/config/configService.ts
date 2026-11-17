@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { SharedRuntimeConfig, type VisibleConfigSelection } from "./sharedRuntimeConfig";
+import { runtimeCoordinationDirectory, SharedRuntimeConfig, type VisibleConfigSelection } from "./sharedRuntimeConfig";
 import type { CliName } from "../cli/types";
 import {
   ApplyPayload,
@@ -72,7 +72,7 @@ function sharedRuntimeConfig(platform: LegacyConfigPlatformInput): SharedRuntime
         : cli === "kimi-code" ? resolveKimiCodeConfigPath()
           : cli === "zcode" ? resolveZcodeProviderConfigPath()
             : CONFIG_PATHS[cli].config;
-  return new SharedRuntimeConfig(path.join(path.dirname(target), ".sinitek-runtime-coordination", path.basename(target)));
+  return new SharedRuntimeConfig(runtimeCoordinationDirectory(target));
 }
 
 function profileDigest(config: ConfigItem): string {

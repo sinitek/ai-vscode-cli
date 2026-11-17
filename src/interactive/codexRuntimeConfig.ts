@@ -1,5 +1,6 @@
 import * as fs from "fs/promises";
 import * as path from "path";
+import { runtimeCoordinationDirectory, SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { expandHomePath, resolveCodexHomeDir } from "../shared/userHomePaths";
 import { writeFileAtomically } from "../shared/atomicWrite";
 
@@ -153,15 +154,20 @@ export async function ensureCodexProjectTrusted(input: {
   const configPath = resolveCodexConfigPath(input.codexHomeDir);
   const existingContent = await readTextFile(configPath);
   const ensuredContent = ensureCodexProjectTrustedContent(existingContent, projectRoot);
-
-  if (ensuredContent.status === "updated") {
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await writeFileAtomically(configPath, ensuredContent.content);
+  if (ensuredContent.status !== "updated") {
+    return { status: ensuredContent.status, configPath, projectRoot };
   }
-
-  return {
-    status: ensuredContent.status,
-    configPath,
-    projectRoot,
-  };
+  // New sessions persist workspace trust into the same config.toml that profile
+  // apply rewrites. Take the shared coordination lock first so this write cannot
+  // sit under another window's config transaction until task startup times out.
+  const persisted = await new SharedRuntimeConfig(runtimeCoordinationDirectory(configPath)).exclusive(async () => {
+    const latest = await readTextFile(configPath);
+    const again = ensureCodexProjectTrustedContent(latest, projectRoot);
+    if (again.status === "updated") {
+      await fs.mkdir(path.dirname(configPath), { recursive: true });
+      await writeFileAtomically(configPath, again.content);
+    }
+    return again;
+  });
+  return { status: persisted.status, configPath, projectRoot };
 }

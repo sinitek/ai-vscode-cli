@@ -152,24 +152,72 @@ test("a live writer still blocks the final atomic attempt and exposes safe timeo
   await withDirectory(async (directory) => {
     const shared = new SharedRuntimeConfig(directory, 0);
     const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
-    const owner = { pid: process.pid, token: "live-writer" };
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.once("spawn", () => resolve());
+        child.once("error", reject);
+      });
+      const owner = { pid: child.pid!, token: "live-writer" };
+      const mutex = path.join(directory, "mutex");
+      await fs.writeFile(mutex, JSON.stringify(owner));
+      await assert.rejects(shared.acquire(selected), (error: unknown) => {
+        assert.ok(error instanceof RuntimeConfigLockTimeoutError);
+        assert.equal(error.code, "RUNTIME_CONFIG_LOCK_TIMEOUT");
+        assert.equal(error.diagnostic.operation, "acquire");
+        assert.equal(error.diagnostic.ownerPid, child.pid);
+        assert.equal(error.diagnostic.ownerAlive, true);
+        assert.equal(error.diagnostic.timeoutMs, 0);
+        assert.ok(error.diagnostic.waitedMs >= 0);
+        return true;
+      });
+      assert.deepEqual(JSON.parse(await fs.readFile(mutex, "utf8")), owner);
+      assert.deepEqual((await fs.readdir(directory)).sort(), ["mutex", "selection.json"]);
+      await fs.unlink(mutex);
+      const lease = await shared.acquire(selected);
+      await lease.release();
+    } finally {
+      child.kill();
+    }
+  });
+});
+
+test("a mutex left by this process is recovered when no critical section still holds it", async () => {
+  await withDirectory(async (directory) => {
+    const shared = new SharedRuntimeConfig(directory, 0);
+    const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
     const mutex = path.join(directory, "mutex");
-    await fs.writeFile(mutex, JSON.stringify(owner));
-    await assert.rejects(shared.acquire(selected), (error: unknown) => {
-      assert.ok(error instanceof RuntimeConfigLockTimeoutError);
-      assert.equal(error.code, "RUNTIME_CONFIG_LOCK_TIMEOUT");
-      assert.equal(error.diagnostic.operation, "acquire");
-      assert.equal(error.diagnostic.ownerPid, process.pid);
-      assert.equal(error.diagnostic.ownerAlive, true);
-      assert.equal(error.diagnostic.timeoutMs, 0);
-      assert.ok(error.diagnostic.waitedMs >= 0);
-      return true;
-    });
-    assert.deepEqual(JSON.parse(await fs.readFile(mutex, "utf8")), owner);
-    assert.deepEqual((await fs.readdir(directory)).sort(), ["mutex", "selection.json"]);
-    await fs.unlink(mutex);
+    await fs.writeFile(mutex, JSON.stringify({ pid: process.pid, token: "stale-self" }));
     const lease = await shared.acquire(selected);
+    assert.equal(lease.selection.configId, "selected");
     await lease.release();
+    assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json"]);
+  });
+});
+
+test("a symlinked coordination directory waits for the in-process owner instead of timing out", async () => {
+  await withDirectory(async (parent) => {
+    const real = path.join(parent, "real");
+    const link = path.join(parent, "link");
+    await fs.mkdir(real);
+    try {
+      await fs.symlink(real, link, "dir");
+    } catch {
+      return;
+    }
+    const primary = new SharedRuntimeConfig(real);
+    const alias = new SharedRuntimeConfig(link, 40);
+    let started!: () => void;
+    const startedPromise = new Promise<void>((resolve) => { started = resolve; });
+    const changing = primary.change(async () => {
+      started();
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return { configId: "selected", profileDigest: "digest" };
+    });
+    await startedPromise;
+    assert.equal(await alias.exclusive(async () => "after"), "after");
+    assert.equal((await alias.read())?.configId, "selected");
+    await changing;
   });
 });
 
