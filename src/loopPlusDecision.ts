@@ -21,6 +21,8 @@ import {
 export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
 export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
+/** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
+export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 3;
 export const LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT = 100;
 export const LOOP_PLUS_MAX_ACCEPTANCES_MIN = 1;
 export const LOOP_PLUS_MAX_ACCEPTANCES_LIMIT = 999;

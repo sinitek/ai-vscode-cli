@@ -577,7 +577,8 @@ test("shows real concurrency capacity and encourages useful multi-task delivery 
     assert.match(prompt, /Scheduler concurrency limit: 6/);
     assert.match(prompt, /Available concurrency slots in this snapshot: 5/);
     assert.match(prompt, /Decision subtask limit: 6/);
-    assert.match(prompt, /aim for 3 to 6 concurrent subtasks, bounded by available slots/);
+    assert.match(prompt, /aim to fill the configured concurrency limit of 6 with necessary work/);
+    assert.match(prompt, /Do not stop at three tasks when more necessary independent work can run/);
     assert.match(prompt, /Two roles do not mean a two-task limit/);
     assert.match(prompt, /never create tiny or artificial tasks just to fill capacity/);
     assert.match(prompt, /On dispatch and accept, look for ready independent work to refill free slots/);
@@ -669,6 +670,14 @@ test("every main mode and decision kind plans remaining-goal delivery alongside 
       assert.match(prompt, /Every accept\.subtasks id must appear exactly once across reviews\[\*\]\.subtaskIds and independentSubtaskIds/);
       assert.match(prompt, /Never attach independent work to a failed review just to satisfy linkage/);
       assert.match(prompt, /independentSubtaskIds do not inherit a failed event's session/);
+      assert.match(prompt, /Maximum acceptance batch size: 3/);
+      assert.match(prompt, /Review at most 3 subtasks per decision, exactly the frozen acceptance batch/);
+      assert.match(prompt, /This review limit does not cap running subtasks or new dispatches/);
+      assert.match(prompt, /do not wait for later review batches before launching safe independent work/);
+      assert.match(prompt, /New dispatch is conditional on the final goal still needing that work/);
+      assert.match(prompt, /If all requirements are satisfied, launch no new subtasks/);
+      assert.match(prompt, /genuinely blocked pending tasks do not reserve idle slots/);
+      assert.match(prompt, /accept without new subtasks and wait or continue the next review batch/);
       assert.doesNotMatch(prompt, /If a failed event cannot be repaired by a subtask, send blocked/);
     }
   }

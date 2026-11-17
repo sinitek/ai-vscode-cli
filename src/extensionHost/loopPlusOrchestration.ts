@@ -14,7 +14,7 @@ import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
-import { parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import {
   buildLoopPlusProtocolPauseSummary,
   buildLoopPlusProtocolRepairPrompt,
@@ -1131,7 +1131,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const eventIds = [
       claimed.item.eventId,
       ...claimed.view.reviewQueue.map((item) => item.eventId),
-    ];
+    ].slice(0, LOOP_PLUS_ACCEPTANCE_BATCH_MAX);
     runtime.reviewStep = {
       kind: "review",
       eventId: claimed.item.eventId,
@@ -2489,7 +2489,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const frozen = runtime.reviewStep?.eventIds;
     const pending = frozen && frozen.every((id, index) => live[index] === id)
       ? frozen.length
-      : pendingAcceptanceCount(runtime);
+      : Math.min(LOOP_PLUS_ACCEPTANCE_BATCH_MAX, pendingAcceptanceCount(runtime));
     if (pending <= 0) {
       return false;
     }
