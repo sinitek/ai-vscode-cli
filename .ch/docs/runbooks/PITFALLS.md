@@ -24,6 +24,7 @@
 - 新建 Tab 不写原生配置；发送需取得按原生配置路径共享的锁。不同项目使用同一个 Codex 配置时会争锁，普通长任务只保留租约，不长期持有 mutex。
 - 从 `~/.sinitek_cli/logs/` 找 `RUNTIME_CONFIG_LOCK_TIMEOUT`。先看 `configLock.operation` 区分获取与释放，再用 `lockId` 串联 `runtime-config-lock-timeout`、`runtime-config-lock-slow`、`runtime-config-lock-release-deferred` 和 `runtime-config-lock-recovered`，核对 `ownerPid`、`ownerOperation`、`waitedMs`、`heldMs`。`ownerAgeMs` 可能含持锁方获得锁前的等待，不能当成实际持锁时长。
 - `recoveryPublished:true` 表示持锁事务已结束，后续新版本窗口可回收；`false` 表示连结束标记也写不进去，检查文件系统。旧窗口可能没有新字段，也不会回收新结束标记；待任务结束后统一更新并重载各窗口，不按 PID 存活时长手工强拆。
+- 若 `ownerAlive:false` 仍反复超时，只读核对是否同时残留 `mutex` 和同 token 的 `recover-*` 目录。已用独立 Node 进程在创建回收目录后、删除锁前退出复现：后继回收遇到 `EEXIST` 会跳过，重载窗口不一定恢复。先保留日志和目录状态，不直接删除 `mutex`。
 - Codex 的本地调用中止不代表 `turn/interrupt` RPC 已返回。确认原生停止前先等待该响应，否则专属连接会因仍有待处理请求而进入约 60 秒的订阅卸载等待，错过原进程退出路径。
 
 这个文件用于记录仍有行动价值的真实踩坑。starter 默认不预置条目，也不为空内容预建模块分片。

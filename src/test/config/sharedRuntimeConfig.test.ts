@@ -148,9 +148,9 @@ test("execution acquires a dead writer lock recovered at the deadline", async ()
   });
 });
 
-test("a live writer still blocks the final atomic attempt and exposes safe timeout diagnostics", async () => {
+test("a live writer blocks the final atomic attempt at the default five-minute deadline", async (context) => {
   await withDirectory(async (directory) => {
-    const shared = new SharedRuntimeConfig(directory, 0);
+    const shared = new SharedRuntimeConfig(directory);
     const selected = await shared.change(async () => ({ configId: "selected", profileDigest: "digest" }));
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], { stdio: "ignore" });
     try {
@@ -161,16 +161,26 @@ test("a live writer still blocks the final atomic attempt and exposes safe timeo
       const owner = { pid: child.pid!, token: "live-writer" };
       const mutex = path.join(directory, "mutex");
       await fs.writeFile(mutex, JSON.stringify(owner));
+      let now = Date.now();
+      let attempts = 0;
+      const elapsedByAttempt = [15_000, 285_000, 0];
+      const originalLink = fs.link;
+      context.mock.method(Date, "now", () => now);
+      context.mock.method(fs, "link", async (existingPath: string, newPath: string) => {
+        now += elapsedByAttempt[attempts++] ?? 300_000;
+        return originalLink(existingPath, newPath);
+      });
       await assert.rejects(shared.acquire(selected), (error: unknown) => {
         assert.ok(error instanceof RuntimeConfigLockTimeoutError);
         assert.equal(error.code, "RUNTIME_CONFIG_LOCK_TIMEOUT");
         assert.equal(error.diagnostic.operation, "acquire");
         assert.equal(error.diagnostic.ownerPid, child.pid);
         assert.equal(error.diagnostic.ownerAlive, true);
-        assert.equal(error.diagnostic.timeoutMs, 0);
-        assert.ok(error.diagnostic.waitedMs >= 0);
+        assert.equal(error.diagnostic.timeoutMs, 300_000);
+        assert.equal(error.diagnostic.waitedMs, 300_000);
         return true;
       });
+      assert.equal(attempts, 3);
       assert.deepEqual(JSON.parse(await fs.readFile(mutex, "utf8")), owner);
       assert.deepEqual((await fs.readdir(directory)).sort(), ["mutex", "selection.json"]);
       await fs.unlink(mutex);

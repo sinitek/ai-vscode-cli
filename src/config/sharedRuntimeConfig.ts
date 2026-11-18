@@ -14,6 +14,7 @@ const CONFIG_LOCK_OPERATIONS = ["initialize", "change", "edit", "acquire", "rele
 type ConfigLockOperation = (typeof CONFIG_LOCK_OPERATIONS)[number];
 type LockOwner = { pid: number; token: string; operation?: ConfigLockOperation; startedAt?: number };
 type LockRecoveryReason = "dead-owner" | "inactive-local-owner" | "finished-transaction";
+const DEFAULT_CONFIG_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
 const LOCK_CLEANUP_RETRY_DELAYS_MS = [25, 75, 150] as const;
 const SLOW_LOCK_THRESHOLD_MS = 1000;
 const localOperations = new Map<string, Promise<unknown>>();
@@ -133,7 +134,7 @@ export class SharedRuntimeConfig {
   private readonly statePath: string;
   private readonly lockPath: string;
 
-  constructor(private readonly directory: string, private readonly timeoutMs = 15000) {
+  constructor(private readonly directory: string, private readonly timeoutMs = DEFAULT_CONFIG_LOCK_TIMEOUT_MS) {
     this.statePath = path.join(directory, "selection.json");
     this.lockPath = path.join(directory, "mutex");
   }
