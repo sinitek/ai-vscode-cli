@@ -686,6 +686,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       }
 
       function openToolSettings() {
+        vscode.postMessage({ type: "refreshToolSettings" });
         elements.toolSettingsOverlay.classList.add("visible");
         if (elements.toolSettingsNotificationsTab && elements.toolSettingsNotificationsTab.getAttribute("aria-selected") === "true") requestNotificationAuthorization(false);
       }

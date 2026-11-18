@@ -3582,6 +3582,7 @@ test("cold tab switches show a loading state until its first message snapshot ar
 test("reopening tool settings requests fresh global values and renders the host reply", () => {
   const { document, window, posted } = createRuntimeHarness();
   const settingsButton = document.getElementById("toolSettingsButton");
+  const overlay = document.getElementById("toolSettingsOverlay");
   const retentionInput = document.getElementById("historyRetentionDays");
   const dispatchLimit = document.getElementById("loopPlusDecisionSubtaskMax");
   const workspaceLimit = document.getElementById("workspaceLoopPlusDecisionSubtaskMax");
@@ -3591,8 +3592,10 @@ test("reopening tool settings requests fresh global values and renders the host 
   }) });
   settingsButton.click();
   assert.equal(posted.at(-1).type, "refreshToolSettings");
+  assert.equal(overlay.classList.contains("visible"), true);
   assert.equal(retentionInput.value, "30");
   document.getElementById("closeToolSettings").click();
+  assert.equal(overlay.classList.contains("visible"), false);
   settingsButton.click();
   assert.equal(posted.filter((message) => message.type === "refreshToolSettings").length, 2);
 
@@ -3602,7 +3605,7 @@ test("reopening tool settings requests fresh global values and renders the host 
   assert.equal(retentionInput.value, "60");
   assert.equal(dispatchLimit.value, "8");
   assert.equal(workspaceLimit.value, "12");
-  assert.equal(workspaceLimit.placeholder, "8");
+  assert.equal(workspaceLimit.placeholder, "全局：8");
   assert.equal(posted.some((message) => message.type === "updateSetting"), false);
 });
 

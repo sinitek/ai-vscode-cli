@@ -169,6 +169,7 @@ export type PanelMessageHandlerDeps = {
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
   loadModelStore: () => void;
   isCliName: (value: string) => value is CliName;
+  reloadStoredToolSettings: () => void;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   readStoredToolSettings?: () => ToolSettingsState;
   publishCliEnabled?: (cliEnabledByName: CliEnabledByName) => void;

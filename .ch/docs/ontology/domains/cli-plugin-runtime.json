@@ -6103,6 +6103,35 @@
       ]
     },
     {
+      "id": "plugin.rule.refresh_tool_settings_on_open",
+      "name": "打开工具设置时重读全局参数",
+      "description": "每次打开工具设置时，Webview 请求扩展宿主重读 ~/.sinitek_cli/settings.json 并替换缓存，通过 PanelState 回显其他窗口已保存的值。刷新不写全局配置，不覆盖工作区独立设置。文件缺失或无效时沿用默认值规则。",
+      "status": "active",
+      "aliases": [
+        "refreshToolSettings",
+        "工具设置",
+        "全局参数"
+      ],
+      "applies_to": [
+        "plugin.chat_panel",
+        "plugin.extension_host"
+      ],
+      "source_refs": [
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "通知授权与工具设置"
+        },
+        {
+          "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+          "anchor": "工具设置打开时刷新"
+        },
+        {
+          "path": "src/toolSettings.ts",
+          "anchor": "reloadToolSettings"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.new_task_default_mode",
       "name": "新建或重置任务使用全局默认模式",
       "description": "工具设置→AI任务配置将单选的 Vibe、Loop 或 Loop+ 以 newTaskInteractiveMode 写入全局工具设置。存储值为 coding、loop、loop_plus；缺失或非法配置回退 Vibe，非法更新不覆盖已保存值。宿主只在手动新建或成功重置任务时应用此设置，Webview 新建占位标签同步采用默认值。保存不切换当前任务，已有标签的模式恢复、历史和运行保护不变。",
