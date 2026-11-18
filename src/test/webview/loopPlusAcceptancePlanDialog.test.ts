@@ -4,6 +4,7 @@ import * as vm from "node:vm";
 
 import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "../../webview/viewContentScript/acceptancePlan";
+import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
 
 type FakeClassList = {
@@ -744,7 +745,7 @@ function extractFunctionSource(script: string, name: string): string {
   throw new Error(`${name} was not terminated`);
 }
 
-function createSendPromptSandbox(options: { required?: boolean; running?: boolean; busy?: boolean } = {}) {
+function createSendPromptSandbox(options: { required?: boolean; running?: boolean; busy?: boolean; creating?: boolean } = {}) {
   const captured: {
     opened: Array<{ payload: Record<string, any>; tabId: string }>;
     dispatched: Array<Record<string, any>>;
@@ -756,6 +757,7 @@ function createSendPromptSandbox(options: { required?: boolean; running?: boolea
     state: { interactiveMode: "loop_plus" },
     buildPromptPayload: (prompt: string) => ({ prompt, contextOptions: {} }),
     getActiveConversationTabId: () => "tab-1",
+    pendingConversationCreate: options.creating ? { tab: { id: "tab-1" } } : null,
     isAcceptancePlanRequiredForPayload: () => options.required !== false,
     openAcceptancePlanDialog: (payload: Record<string, any>, tabId: string) => {
       captured.opened.push({ payload, tabId });
@@ -775,6 +777,7 @@ function createSendPromptSandbox(options: { required?: boolean; running?: boolea
   const context = vm.createContext(sandbox);
   vm.runInContext(
     [
+      extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "isCreatingConversationTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "clearPromptInputAfterSend"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "dispatchPromptPayload"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "sendPrompt"),
@@ -802,6 +805,19 @@ test("sendPrompt keeps classic, Loop+, and continuation sending unchanged", () =
   assert.equal(harness.captured.opened.length, 0);
   assert.equal(harness.captured.dispatched.length, 1);
   assert.equal(harness.sandbox.elements.promptInput.value, "");
+});
+
+test("sendPrompt keeps the draft and waits for the active tab to finish creating", () => {
+  const harness = createSendPromptSandbox({ creating: true });
+  harness.api.sendPrompt();
+  assert.deepEqual({ ...harness.captured }, { opened: [], dispatched: [], queued: [], conflicts: [] });
+  assert.equal(harness.sandbox.elements.promptInput.value, "实现任务");
+
+  harness.sandbox.pendingConversationCreate = null;
+  harness.api.sendPrompt();
+  assert.equal(harness.captured.opened.length, 1);
+  assert.equal(harness.captured.opened[0].tabId, "tab-1");
+  assert.equal(harness.captured.dispatched.length, 0);
 });
 
 test("confirmed acceptance plans cannot queue on a busy Loop main task and keep the conflict draft", () => {

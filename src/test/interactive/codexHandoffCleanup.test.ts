@@ -128,14 +128,20 @@ test("Windows handoff cleanup fails bounded persistent removal errors without cl
 
 test("Windows handoff cleanup stops removal retries at its original deadline", async (t) => {
   mockPlatform(t, "win32");
+  t.mock.method(Date, "now", () => 1000);
+  Reflect.apply(t.mock.timers.enable, t.mock.timers, [{ apis: ["setTimeout"] }]);
   const events: Record<string, unknown>[] = [];
   let attempts = 0;
-  await assert.rejects(cleanup({ shutdown: () => {}, server: closedServer, tracked: [], root: "fixture-only",
+  const result = cleanup({ shutdown: () => {}, server: closedServer, tracked: [], root: "fixture-only",
     removeRoot: () => { attempts += 1; throw Object.assign(new Error("busy past deadline"), { code: "EBUSY" }); },
-    emit: (event) => events.push(event), timeoutMs: 20 }), /资源清理超时/);
-  const attemptsAtTimeout = attempts;
-  await new Promise<void>((resolve) => setTimeout(resolve, 120));
-  assert.equal(attempts, attemptsAtTimeout, "timed-out cleanup must not delete later");
+    emit: (event) => events.push(event), timeoutMs: 20 });
+  const timeout = assert.rejects(result, /资源清理超时/);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 1, "the first retry must be waiting before the timeout fires");
+  t.mock.timers.tick(20);
+  await timeout;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 1, "timed-out cleanup must not retry even if the wall clock has not reached the deadline");
   assert.deepEqual(events.map((event) => event.phase), ["cleanup_failed"]);
 });
 

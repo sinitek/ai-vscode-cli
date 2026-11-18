@@ -126,7 +126,7 @@ class DocumentDouble extends EventTargetDouble {
   elementFromPoint(): ElementDouble | null { return this.hit; }
 }
 
-type Tab = { id: string; cli: string; taskSummary?: unknown; running?: boolean; locked?: boolean; errored?: boolean };
+type Tab = { id: string; cli: string; taskSummary?: unknown; running?: boolean; locked?: boolean; errored?: boolean; submitting?: boolean };
 
 function createHarness(tabs: Tab[] = [
   { id: "a", cli: "codex", taskSummary: "实现任务摘要悬浮提示" },
@@ -142,16 +142,24 @@ function createHarness(tabs: Tab[] = [
   let sequence = 0;
   const posted: Array<{ type: string; tabId: string }> = [];
   const state = { conversationTabs: { tabs, activeTabId: tabs[0]?.id || null } };
-  const start = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      function getConversationTabPageCount(");
+  const source = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING;
+  const busyStart = source.indexOf("      function isConversationTabBusy(");
+  const busyEnd = source.indexOf("      function isLoopMainConversationTabRunning(", busyStart);
+  const tabsStart = source.indexOf("      function getConversationTabPageCount(");
+  assert.ok(busyStart >= 0 && busyEnd > busyStart && tabsStart > busyEnd);
+  const getConversationTabSummary = (id: string) => state.conversationTabs.tabs.find((tab) => tab.id === id);
   const sandbox = {
     document, window, state, elements: { conversationTabs: root },
     CONVERSATION_TAB_PAGE_SIZE: 3, conversationTabPageIndex: 0, conversationTabPageAnchorTabId: null,
     syncConversationTabRunningFlowWatch() {}, syncAutoInteractiveModeForActiveTab() {},
     formatConversationTabCliLabel: (cli: string) => cli,
     formatConversationTabLabel: (_tab: Tab, label: string) => label,
-    isTabErrored: (id: string) => tabs.find((tab) => tab.id === id)?.errored,
-    isConversationTabRunning: (tab: Tab) => Boolean(tab.running),
-    isLoopMainTabCloseLocked: (tab: Tab) => Boolean(tab.locked),
+    getActiveConversationTabId: () => state.conversationTabs.activeTabId,
+    getConversationTabSummary,
+    getConversationRuntimeState: (id: string) => getConversationTabSummary(id)?.submitting ? { promptSubmission: {} } : null,
+    isTabErrored: (id: string) => getConversationTabSummary(id)?.errored,
+    isConversationTabRunning: (tab?: Tab) => Boolean(tab?.running),
+    isLoopMainTabCloseLocked: (tab?: Tab) => Boolean(tab?.locked),
     applyAutoInteractiveModeForTab() {}, syncActiveMessagesFromRuntime(_options?: { render: boolean }) {}, syncRunningStateForActiveTab() {},
     armPromptContextForConversationStart() {}, openLoopGroupChatForMainTaskTab() { return false; },
     t: (key: string) => key,
@@ -168,7 +176,7 @@ function createHarness(tabs: Tab[] = [
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(start), sandbox);
+  vm.runInContext(source.slice(busyStart, busyEnd) + source.slice(tabsStart), sandbox);
   const render = () => vm.runInContext("renderConversationTabs()", sandbox);
   render();
   const tab = (id: string): ElementDouble => {
@@ -357,6 +365,9 @@ test("click selection, Enter/Space selection, and close retain the original mess
     assert.equal(harness.visible(), false, operation);
     assert.equal(harness.posted[0]?.type, operation === "close" ? "closeConversationTab" : "selectConversationTab");
     assert.equal(harness.posted[0]?.tabId, "b");
+    if (operation === "close") {
+      assert.deepEqual(harness.state.conversationTabs.tabs.map((tab) => tab.id), ["a"]);
+    }
   }
 });
 
@@ -378,7 +389,7 @@ test("opening a main-task group chat precedes selection and avoids its redundant
   }
 });
 
-test("running, errored and locked tabs remain readable while close stays disabled when required", () => {
+test("running, errored, locked and submitting tabs remain readable while close stays disabled when required", () => {
   const harness = createHarness([
     { id: "a", cli: "codex", taskSummary: "正在运行的任务", running: true },
     { id: "b", cli: "codex", taskSummary: "执行失败的任务", errored: true },
@@ -391,6 +402,12 @@ test("running, errored and locked tabs remain readable while close stays disable
     assert.equal(harness.tab(id).querySelector(".conversation-tab-close")?.disabled, id !== "b");
     harness.tab(id).dispatch("mouseout");
   }
+  harness.state.conversationTabs.tabs[1].submitting = true;
+  harness.render();
+  const closeButton = harness.hover("b").querySelector(".conversation-tab-close");
+  harness.advance(300);
+  assert.equal(harness.visible(), true);
+  assert.equal(closeButton?.disabled, true);
 });
 
 test("running tabs take precedence over an intermediate or stale error marker", () => {

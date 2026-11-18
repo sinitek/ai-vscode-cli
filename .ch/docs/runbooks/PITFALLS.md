@@ -109,6 +109,7 @@
 - Windows 夹具：fake PID 的终止调用必须拦截。taskkill 应分流为终止请求，不能由通用 spawn mock 创建成另一个 app-server；成功请求后仍需独立模拟目标 exit / close，否则正确的释放确认会超时。复用 `src/test/interactive/codexProcessFixture.ts`，超时拒绝和所有权保留断言不能删。
 - Windows 隔离清理：默认命令和原生 0.162.1 均复现已 exit、无 stdio EOF。空 HOME 会触发插件 Git 同步；Windows Git 启动器退出可使深层 fetch 后代逃出 `taskkill /T` 的现存树并持有管道。隔离协议脚本须在临时配置禁用 `features.plugins`，不读取用户插件、不访问插件仓库；不能改用原生 exe 就声称根因解决。清理超时须涵盖 HTTP close，并保留进程/管道诊断；只有真实 exit、正常 stdio close、目录删除全部完成才输出 `cleanup_verified`。产品启用插件时的后台后代终止行为另属审查范围，本次未修改。证据见 [Windows 验证记录](../references/codex-thread-handoff-windows-validation.md)。
 - Windows 临时目录短暂占用：2026-11-13 复验第三轮在进程/stdio 全部关闭后删除临时根报 `EPERM`，稍后同目录直接删除成功。公共验收清理仅在 Windows 对删除阶段的 `EPERM` / `EBUSY` / `ENOTEMPTY` 最多重试 5 次，沿用原清理期限；macOS/Linux 保持一次删除，错误直接抛出。不能以重试代替退出证据，持续错误、超时仍须失败。用 `codexHandoffCleanup.test.ts` 验证平台分支、恢复、耗尽及到期不再删除，再跑统一三轮真实验收；失败报告保留。
+- 清理超时后的重试：外层定时器一旦触发，立即取消后续删除重试，不能只用 `Date.now()` 判断是否到期。`codexHandoffCleanup.test.ts` 用冻结的墙上时钟和独立推进的定时器验证超时只报一次，且不再发起删除。
 
 ## 记录原则
 
@@ -178,6 +179,7 @@
 - 状态：已规避；首次确认及修复：2026-11-04。
 - 现象与根因：使用 `extractFunctionSource`、`new Function` 或 VM 拼装局部 Webview 流程时，业务函数新增的同作用域 helper 和宿主桥接不会自动进入夹具。配置快照新增 `readVisibleConfigSelections` 后，旧 Loop+ 派发及队列夹具报 ReferenceError；历史弹窗增加 `vscode.postMessage` 后，旧加载动画夹具同样失败。
 - 长期规避：优先把依赖的真实 helper 加入抽取列表，并提供符合当前契约的配置修订号、宿主桥接与消息收集器；断言配置快照在排队后不被新配置替换、历史打开确实请求刷新。不要删除真实行为或用无语义的空函数掩盖缺失依赖。
+- 2026-11-18 全量回归：群聊按钮夹具补入 `syncPromptSubmissionWait`；会话摘要和 Loop+ 验收弹窗夹具分别接入 `isConversationTabBusy`、`isCreatingConversationTab`，验证提示词提交期间禁用关闭、关闭请求立即移除标签，以及标签创建期间保留草稿、不打开验收弹窗。
 - 验证方式：`npm run build && node --test dist/test/webview/loopPlusModeEntry.test.js dist/test/webview/looppluswebviewintegration.test.js dist/test/webview/runPromptHistoryWebview.test.js`，再运行 `npm run test:unit`。
 
 ## 同 CLI 切换配置必须核对交互进程身份
