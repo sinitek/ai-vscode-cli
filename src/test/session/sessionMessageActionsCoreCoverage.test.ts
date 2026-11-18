@@ -404,7 +404,7 @@ test("persists an independent global group chat limit and rejects invalid input"
   for (const value of ["234.9", 0, 20000, "", "bad", null, true]) {
     await handleUpdateSettingMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value }, deps);
   }
-  assert.deepEqual(calls.toolSettings, [234, 1, 10000, 200, 200, 200, 200].map((loopGroupChatMessageLimit) => ({ loopGroupChatMessageLimit })));
+  assert.deepEqual(calls.toolSettings, [234, 1, 10000, 500, 500, 500, 500].map((loopGroupChatMessageLimit) => ({ loopGroupChatMessageLimit })));
   assert.equal(calls.postPanelState, 7);
   assert.deepEqual(state.workspaceSettings, originalSettings);
   assert.deepEqual(calls.savedSettings, []);

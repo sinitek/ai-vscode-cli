@@ -94,8 +94,8 @@ test("group chat limit reuses the AI task settings card with its own accessible 
   assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
   assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
   assert.match(html, /<label class="tool-settings-label" for="loopGroupChatMessageLimit">Loop \/ Loop\+ 群聊气泡上限<\/label>/u);
-  assert.match(html, /<input\s+type="number"\s+id="loopGroupChatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="200"\s+aria-describedby="loopGroupChatMessageLimitNote"/u);
-  assert.match(html, /达到上限时移除最旧的 25%.*默认 50 个.*不删除聊天记录或任务数据/u);
+  assert.match(html, /<input\s+type="number"\s+id="loopGroupChatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="500"\s+aria-describedby="loopGroupChatMessageLimitNote"/u);
+  assert.match(html, /id="loopGroupChatMessageLimitNote"[^>]*>全局设置，默认 500.*达到上限时移除最旧的 25%.*默认 125 个.*不删除聊天记录或任务数据/u);
 });
 
 test("conversation tabs use compact horizontal padding and close-button spacing", () => {

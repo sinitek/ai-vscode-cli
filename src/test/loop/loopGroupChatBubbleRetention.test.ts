@@ -6,8 +6,8 @@ function createEntries(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);
 }
 
-test("group chat defaults to 200 and removes the oldest 50 when the threshold is reached", () => {
-  for (const [count, retainedCount, first] of [[0, 0, undefined], [199, 199, 0], [200, 150, 50], [201, 151, 50], [249, 199, 50], [250, 150, 100], [2001, 151, 1850]] as const) {
+test("group chat defaults to 500 and removes the oldest 125 when the threshold is reached", () => {
+  for (const [count, retainedCount, first] of [[0, 0, undefined], [499, 499, 0], [500, 375, 125], [501, 376, 125], [624, 499, 125], [625, 375, 250], [2001, 376, 1625]] as const) {
     const retained = selectLoopGroupChatBubbles(createEntries(count), undefined);
     assert.equal(retained.length, retainedCount);
     assert.equal(retained[0], first);
@@ -36,7 +36,7 @@ test("group chat scales the batch size and reapplies the window when its setting
 
 test("group chat rejects invalid limits, normalizes numeric input and never drops the newest bubble", () => {
   for (const value of [null, "", " ", "bad", true, {}, [], Infinity, NaN]) {
-    assert.equal(selectLoopGroupChatBubbles(createEntries(200), value).length, 150);
+    assert.equal(selectLoopGroupChatBubbles(createEntries(500), value).length, 375);
   }
   for (const value of [1, 0, -20, "1.9"]) {
     assert.deepEqual(selectLoopGroupChatBubbles(createEntries(200), value), [199]);

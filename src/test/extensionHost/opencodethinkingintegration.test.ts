@@ -123,7 +123,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
 
   const state = buildPanelStateWithDeps(deps);
   assert.equal(state.chatMessageLimit, 500);
-  assert.equal(state.loopGroupChatMessageLimit, 200);
+  assert.equal(state.loopGroupChatMessageLimit, 500);
   assert.equal(state.hideInstructionBubbles, false);
   for (const enabled of [true, false]) {
     assert.equal(buildPanelStateWithDeps({ ...deps, getGlobalHideInstructionBubbles: () => enabled }).hideInstructionBubbles, enabled);
@@ -131,7 +131,7 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   for (const [value, expected] of [[762.9, 762], [0, 1], [20000, 10000], [NaN, 500], [Infinity, 500]] as const) {
     assert.equal(buildPanelStateWithDeps({ ...deps, getGlobalChatMessageLimit: () => value }).chatMessageLimit, expected);
   }
-  for (const [value, expected] of [[320.9, 320], [0, 1], [20000, 10000], [NaN, 200], [Infinity, 200]] as const) {
+  for (const [value, expected] of [[320.9, 320], [0, 1], [20000, 10000], [NaN, 500], [Infinity, 500]] as const) {
     assert.equal(buildPanelStateWithDeps({ ...deps, getGlobalLoopGroupChatMessageLimit: () => value }).loopGroupChatMessageLimit, expected);
   }
   assert.equal(state.taskCompletionNotifications, true);
