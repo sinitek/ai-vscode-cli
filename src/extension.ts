@@ -128,8 +128,7 @@ import {
   writeLoopAskThreadFile,
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
-import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./loopMainQuestionQueue";
-import { resolveLoopSchedulingMode } from "./loopTaskStore";
+import { createLoopMainQuestionQueue } from "./loopMainQuestionQueue";
 import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
@@ -310,7 +309,6 @@ const promptAutoRepairController = createPromptAutoRepairController();
 let isExtensionDeactivating = false;
 const loopOrchestrationOwnership = createLoopOrchestrationOwnershipTracker();
 const loopMainQuestionQueue = createLoopMainQuestionQueue();
-const classicMainRequirementCounts = new Map<string, number>();
 const latestOpenCodeTaskListByTabId = new Map<string, OpenCodeTaskListItem[]>();
 let sessionTabsController: SessionTabsController;
 let sessionLifecycleController: SessionLifecycleController;
@@ -3035,15 +3033,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
         if (!latest || !currentTarget || currentTarget.tabId !== target.tabId || currentTarget.cli !== target.cli) {
           throw new Error(t("loopGroupChatChat.askUnavailable"));
         }
-        if (resolveLoopSchedulingMode(latest.schedulingMode) === "event_driven") {
-          return !getLoopPlusOrchestrationHost().hasPendingMainWork(task.id);
-        }
-        return !hasPendingClassicLoopMainWork({
-          controllerActive: loopOrchestrationOwnership.getCount(task.id) > 0,
-          activeSubtaskCount: getActiveLoopSubtaskIds(latest).length,
-          requirementCount: latest.supplementalRequirements?.length ?? 0,
-          observedRequirementCount: classicMainRequirementCounts.get(task.id) ?? 0,
-        });
+        return true;
       },
     }, ask) ?? { status: "stopped" };
   },
@@ -4277,9 +4267,6 @@ async function runLoopPrompt(
     }
   } finally {
     ownership.release?.();
-    if (ownership.taskId && loopOrchestrationOwnership.getCount(ownership.taskId) === 0) {
-      classicMainRequirementCounts.delete(ownership.taskId);
-    }
     await postPanelState();
   }
 }
@@ -4531,7 +4518,6 @@ async function runLoopPromptOrchestration(
 
     let decisionRunResult: Awaited<ReturnType<LoopOrchestrationHost["runClassicLoopMainDecision"]>>;
     try {
-      classicMainRequirementCounts.set(latest.id, latest.supplementalRequirements?.length ?? 0);
       decisionRunResult = await runClassicLoopMainDecision({
             input,
             target,

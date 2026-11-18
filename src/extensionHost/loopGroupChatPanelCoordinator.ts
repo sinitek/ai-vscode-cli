@@ -270,10 +270,8 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
   const openingPanels = new WeakMap<LoopGroupChatPanel, Promise<void>>();
   const askThreads = new Map<string, LoopAskThread>();
   const askRuns = new Map<string, {
-    aborted: boolean;
-    started: boolean;
-    activeTurnId?: string;
-    questions: Array<{ question: string; turnId: string }>;
+    pendingTurnIds: Set<string>;
+    startedTurnId?: string;
   }>();
   const continuingTaskIds = new Set<string>();
   let askSerial = 0;
@@ -284,15 +282,12 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
     mode: "remember" | "publish" | "render",
   ): void => {
     const run = askRuns.get(task.id);
-    const queuedIds = new Set(run?.questions.map((question) => question.turnId));
-    if (run?.activeTurnId && !run.started) {
-      queuedIds.add(run.activeTurnId);
-    }
     thread = {
       ...thread,
+      ...(run ? { running: true, queued: !run.startedTurnId } : {}),
       messages: thread.messages.map((message) => {
         const { queued: _queued, ...bubble } = message;
-        return thread.running && message.role === "user" && queuedIds.has(message.id)
+        return message.role === "user" && run?.pendingTurnIds.has(message.id) && run.startedTurnId !== message.id
           ? { ...bubble, queued: true }
           : bubble;
       }),
@@ -623,57 +618,45 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       return;
     }
     const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
-    const existingRun = askRuns.get(task.id);
-    const run: NonNullable<ReturnType<typeof askRuns.get>> = existingRun ?? { aborted: false, started: false, questions: [] };
-    run.questions.push({ question, turnId });
+    const run = askRuns.get(task.id) ?? { pendingTurnIds: new Set<string>() };
+    run.pendingTurnIds.add(turnId);
     askRuns.set(task.id, run);
-    const started = {
-      ...beginLoopAskTurn(current, question, Date.now(), turnId),
-      queued: !run.started,
-    };
-    syncAskThread(task, started, "publish");
-    if (existingRun) {
+    syncAskThread(task, beginLoopAskTurn(current, question, Date.now(), turnId), "publish");
+    const isAborted = () => askRuns.get(task.id) !== run;
+    let result: LoopMainModelAnswerResult;
+    try {
+      result = await deps.askMainModel(task, question, {
+        isAborted,
+        onStarted: () => {
+          if (isAborted()) {
+            return;
+          }
+          run.startedTurnId = turnId;
+          syncAskThread(task, ensureAskThread(task), "publish");
+        },
+      });
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
+      result = { status: "error", error: deps.t("loopGroupChatChat.askFailed", { detail }) };
+    }
+    if (isAborted()) {
       return;
     }
-    while (run.questions.length > 0 && !run.aborted && askRuns.get(task.id) === run) {
-      const next = run.questions.shift()!;
-      run.activeTurnId = next.turnId;
-      let result: LoopMainModelAnswerResult;
-      try {
-        result = await deps.askMainModel(deps.readTaskRecord(task.id) ?? task, next.question, {
-          isAborted: () => run.aborted,
-          onStarted: () => {
-            if (run.aborted || askRuns.get(task.id) !== run) {
-              return;
-            }
-            run.started = true;
-            syncAskThread(task, { ...(askThreads.get(task.id) ?? started), queued: false }, "publish");
-          },
-        });
-      } catch (error) {
-        const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
-        result = { status: "error", error: deps.t("loopGroupChatChat.askFailed", { detail }) };
-      }
-      if (askRuns.get(task.id) !== run) {
-        return;
-      }
-      run.started = false;
-      run.activeTurnId = undefined;
-      const thread = askThreads.get(task.id) ?? started;
-      const settled = settleLoopAskTurn(thread, {
-        ...(result.status === "ready" ? { answer: result.answer } : {}),
-        notice: result.status === "stopped"
-          ? deps.t("loopGroupChatChat.askStopped")
-          : result.status === "error" ? result.error : deps.t("loopGroupChatChat.askEmpty"),
-        now: Date.now(),
-        noticeId: `${next.turnId}:result`,
-      });
-      const pending = run.questions.length > 0 && !run.aborted;
-      syncAskThread(task, { ...settled, running: pending, queued: pending }, "render");
+    run.pendingTurnIds.delete(turnId);
+    if (run.startedTurnId === turnId) {
+      run.startedTurnId = undefined;
     }
-    if (askRuns.get(task.id) === run) {
+    if (run.pendingTurnIds.size === 0) {
       askRuns.delete(task.id);
     }
+    syncAskThread(task, settleLoopAskTurn(ensureAskThread(task), {
+      ...(result.status === "ready" ? { answer: result.answer } : {}),
+      notice: result.status === "stopped"
+        ? deps.t("loopGroupChatChat.askStopped")
+        : result.status === "error" ? result.error : deps.t("loopGroupChatChat.askEmpty"),
+      now: Date.now(),
+      noticeId: `${turnId}:result`,
+    }), "render");
   };
 
   const stopTask = async (taskId: string): Promise<void> => {
@@ -857,16 +840,14 @@ export function createLoopGroupChatPanelCoordinator(deps: LoopGroupChatPanelDeps
       const normalizedTaskId = deps.normalizeTaskId(taskId)
         ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
       const run = normalizedTaskId ? askRuns.get(normalizedTaskId) : undefined;
-      if (run) {
-        run.aborted = true;
-        run.questions.length = 0;
+      if (normalizedTaskId && run) {
+        askRuns.delete(normalizedTaskId);
       }
       const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
       if (task && run) {
-        if (run.started) {
+        if (run.startedTurnId) {
           deps.abortMainModelRun?.(task);
         }
-        askRuns.delete(task.id);
         syncAskThread(task, settleLoopAskTurn(ensureAskThread(task), {
           notice: deps.t("loopGroupChatChat.askStopped"),
           now: Date.now(),

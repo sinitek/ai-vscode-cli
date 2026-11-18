@@ -247,7 +247,6 @@ test("report continuation consumes visible user messages and preserves late repo
   assert.equal(secondReport.request.userMessageCount, 1);
   assert.deepEqual(secondReport.request.reportEventIds, [secondId]);
   assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["补充最终说明"]);
-  assert.equal(env.host.hasPendingMainWork(taskId), true);
   secondReport.resolve(completedDecision({ reportEventIds: [secondId] }));
   await flush();
   await run.done;
@@ -395,32 +394,6 @@ test("simple supplemental work is handled during live work and after earlier acc
   assert.equal(env.acceptanceFeedback.length, 1);
 });
 
-test("question readiness yields to main control, supplemental requirements and acceptance", async () => {
-  const env = harness();
-  const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
-  const taskId = run.taskId ?? "";
-  assert.equal(env.host.hasPendingMainWork(taskId), true);
-  await flush();
-  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
-  await flush();
-  assert.equal(env.host.hasPendingMainWork(taskId), false);
-  env.host.submitUserMessage(taskId, "补充要求优先");
-  assert.equal(env.host.hasPendingMainWork(taskId), true);
-  await flush();
-  env.mains[1].resolve(decisionJson({ status: "wait" }));
-  await flush();
-  assert.equal(env.host.hasPendingMainWork(taskId), false);
-  env.attempts[0].resolve({ outcome: "completed", detail: "等待验收" });
-  await flush();
-  assert.equal(env.host.hasPendingMainWork(taskId), true);
-  assert.equal(env.mains[2].request.kind, "review");
-  env.host.stopParent(taskId);
-  await flush();
-  await run.done;
-  assert.equal(env.host.hasPendingMainWork(taskId), false);
-  assert.equal(env.host.hasPendingMainWork("missing-task"), false);
-});
-
 test("stopping Loop+ aborts live requests before persisting the stopped state", async () => {
   const events: string[] = [];
   const main = deferred<string | null>();
@@ -445,23 +418,31 @@ test("stopping Loop+ aborts live requests before persisting the stopped state", 
   await run.done;
 });
 
-test("Loop+ drains acceptance and supplemental work before the next queued question", async () => {
-  const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
+test("Loop+ answers a queued question between consecutive acceptance batches", async () => {
+  const queue = createLoopMainQuestionQueue();
   const calls: string[] = [];
+  const firstReview = deferred<void>();
+  const answer = deferred<void>();
   const env = harness({
     adaptMain: (request) => ({
       promise: queue.runMain(request.target.tabId, async () => {
-        calls.push(request.kind);
         if (request.kind === "initial") {
-          return decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] });
+          calls.push("initial");
+          return decisionJson({ status: "dispatch", subtasks: [
+            subtask("first", ["src/first.ts"]), subtask("second", ["src/second.ts"]),
+          ] });
         }
         if (request.kind === "review") {
-          return decisionJson({ status: "accept", reviewEventIds: request.reviewEventIds, subtasks: [] });
+          const isFirst = !calls.includes("review-1");
+          calls.push(isFirst ? "review-1" : "review-2");
+          assert.equal(request.reviewEventIds?.length, 1);
+          if (isFirst) {
+            await firstReview.promise;
+            return decisionJson({ status: "accept", reviewEventIds: request.reviewEventIds, subtasks: [] });
+          }
+          return completedDecision({ reviewEventIds: request.reviewEventIds });
         }
-        if (request.kind === "user") {
-          return directCompletionDecision();
-        }
-        return directCompletionDecision();
+        throw new Error(`Unexpected main request: ${request.kind}`);
       }),
       abort: () => undefined,
     }),
@@ -469,22 +450,22 @@ test("Loop+ drains acceptance and supplemental work before the next queued quest
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId ?? "";
   await flush();
-  const answer = deferred<void>();
-  const canRun = () => !env.host.hasPendingMainWork(taskId);
-  const first = queue.runQuestion(env.target.tabId, { canRun }, async () => {
-    calls.push("answer-1");
+  env.attempts[0].resolve({ outcome: "completed", detail: "第一批待验收" });
+  await flush();
+  assert.deepEqual(calls, ["initial", "review-1"]);
+  const question = queue.runQuestion(env.target.tabId, { canRun: () => true }, async () => {
+    calls.push("answer");
     await answer.promise;
   });
-  const second = queue.runQuestion(env.target.tabId, { canRun }, async () => { calls.push("answer-2"); });
-  env.attempts[0].resolve({ outcome: "completed", detail: "等待验收" });
+  env.attempts[1].resolve({ outcome: "completed", detail: "下一批待验收" });
   await flush();
-  env.host.submitUserMessage(taskId, "优先处理补充需求");
-  assert.deepEqual(calls, ["initial", "answer-1"]);
+  assert.deepEqual(calls, ["initial", "review-1"]);
+  firstReview.resolve();
+  await flush();
+  assert.deepEqual(calls, ["initial", "review-1", "answer"]);
   answer.resolve();
-  await flush();
-  await delay(5);
-  await Promise.all([first, second, run.done]);
-  assert.deepEqual(calls, ["initial", "answer-1", "review", "user", "answer-2"]);
+  await Promise.all([question, run.done]);
+  assert.deepEqual(calls, ["initial", "review-1", "answer", "review-2"]);
   assert.equal(env.tasks.get(taskId)?.status, "completed");
 });
 
@@ -5340,7 +5321,6 @@ test("review selection defers only a running prerequisite's successor, then orde
   env.successor.resolve({ outcome: "completed", detail: "successor arrived first" });
   await flush();
   assert.equal(env.mains.length, 3);
-  assert.equal(env.host.hasPendingMainWork(env.taskId), false);
   assert.equal(env.tasks.get(env.taskId)?.status, "running");
   env.host.checkWaitingTasks();
   await flush();
@@ -5507,7 +5487,6 @@ test("review selection survives same-host stop/resume and watchdog finishes whos
   const watched = await runningReviewDependency({ inactive: () => active });
   watched.successor.resolve({ outcome: "completed", detail: null });
   await flush();
-  assert.equal(watched.host.hasPendingMainWork(watched.taskId), false);
   active = false;
   watched.host.checkWaitingTasks();
   await flush();

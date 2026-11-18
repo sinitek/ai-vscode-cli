@@ -1296,7 +1296,7 @@ test("asks the current main model session and shows the answer without supplemen
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "再确认当前进度" });
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(questions, []);
+    assert.equal(questions.length, 0);
     assert.ok(savedThreads.length > savedCount);
     const panelWhileBusy = deps.panelsByTaskId.get(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, true);
@@ -1365,8 +1365,12 @@ test("asks the current main model session and shows the answer without supplemen
     holdAnswer = false;
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败的问题" });
     messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "失败后继续" });
-    await delay(5);
-    assert.deepEqual(questions.slice(-2), ["失败的问题", "失败后继续"]);
+    const review = questionQueue.runMain("main-tab", async () => { questions.push("后到的验收"); });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "验收之后的问题" });
+    const settled = questionQueue.runMain("main-tab", async () => undefined);
+    await Promise.all([review, settled]);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(questions.slice(-4), ["失败的问题", "失败后继续", "后到的验收", "验收之后的问题"]);
     assert.equal(panel?.getAskThread().running, false);
     assert.equal(panel?.getAskThread().messages.some((message) => message.queued), false);
   } finally {

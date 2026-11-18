@@ -764,7 +764,7 @@ Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回
 
 ## 2026-11-14 主模型提问气泡排队动画
 
-“向主模型提问”弹窗中，每条仍在队列中的用户消息下方显示三点动画和“排队中，等待主模型空闲”。同一问题开始回答时移除排队提示，沿用原有回答等待动画；连续提交时，后续问题仍保留各自的排队提示。完成、失败、中止或宿主重启恢复后不遗留排队动画。关闭弹窗或 Webview 页面不可见时暂停排队动画，系统启用减少动态效果时保留静态文字与三点；窄屏提示可收缩并断行。颜色复用 VS Code 主题，不改变提问 FIFO、主任务优先级及终止规则。
+“向主模型提问”弹窗中，每条仍在队列中的用户消息下方显示三点动画和“排队中，等待主模型空闲”。同一问题开始回答时移除排队提示，沿用原有回答等待动画；连续提交时，后续问题仍保留各自的排队提示。完成、失败、中止或宿主重启恢复后不遗留排队动画。关闭弹窗或 Webview 页面不可见时暂停排队动画，系统启用减少动态效果时保留静态文字与三点；窄屏提示可收缩并断行。颜色复用 VS Code 主题，排队顺序及终止规则见下节。
 
 实现：`src/loopAskThread.ts` 的用户气泡可选 `queued` 字段由 `src/extensionHost/loopGroupChatPanelCoordinator.ts` 按当前提问队列投影，兼容旧版历史文件；`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts` 负责展示。验证：`npm run build`；相关问答历史、协调器、弹窗和提问队列测试；headless Chromium 检查排队/回答切换、动画、窄视口、减少动态效果与取消清理。
 
@@ -774,7 +774,7 @@ Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回
 
 2026-11-11 弹窗优化：忙碌提示位于终止按钮左侧，仅在主模型忙碌且当前未提交运行中的提问时显示；提交后的排队、派发过渡和回答过程不触发该提示，避免点击发送后文字闪现。提问队列与终止行为不变。
 
-Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交；已提交问题立即写入提问历史，支持连续提交，按 FIFO 在主会话空闲时自动回答。主任务和提问共享会话级互斥队列，已排队的验收、补充需求及调度收口先于后续提问；已开始回答的问题不被后来到达的验收抢占。经典 Loop 的主任务交接间隙及未处理补充需求也会阻止提问抢跑。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间在对应用户气泡下方显示排队动画与文字，真正回答时才显示回答等待动画；仍可继续输入下一问。中止等待中的问题只清空提问队列，不停止正在执行的主任务；正在回答时中止该回答并清空后续问题。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿；宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
+Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交；已提交问题立即写入提问历史，支持连续提交。自 2026-11-18 起，每条问题在提交时即进入主任务 Tab 的共享互斥队列，与实际主模型调用先入队先执行。当前调用不打断；后来发起的验收、补充需求处理和收口调用不插队，待处理的验收事件也不预占会话。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间在对应用户气泡下方显示排队动画与文字，真正回答时才显示回答等待动画；仍可继续输入下一问。中止等待中的问题只清空提问队列，不停止正在执行的主任务；正在回答时中止该回答并清空后续问题。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿；宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
 
 实现：`src/loopMainQuestionQueue.ts`、`src/loopMainQuestion.ts`、`src/loopAskThread.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/webview/loopGroupChatPanel.ts`；验证：`npm run build`；`node --test dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 验证忙碌提示、连续提交与排队/回答状态切换。
 

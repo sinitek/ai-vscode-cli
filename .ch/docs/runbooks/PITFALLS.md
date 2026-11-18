@@ -168,6 +168,11 @@
 - 长期规避：取消回调传到具体运行时，在异步准备返回、实际启动之前重验；已准备资源在取消路径释放。取消代次在第一个 `await` 前捕获；结果归类先判断停止，再尝试从持久化消息恢复回答，不能把部分回答当作正常完成。取消排队只清空提问队列，不终止原主任务。
 - 验证方式：`npm run build` 后执行 `node --test dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/promptSessionHealth.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/extensionHost/openCodePromptRunTemplate.test.js dist/test/interactive/codexRunnerLifecycle.test.js`。
 
+## 主模型公平排队依赖同一个入队点
+
+- 现象与根因：Loop / Loop+ 在连续验收时一直不回答已提交的问题。主任务优先队列和编排待办判断允许后来发起的验收反复插队；协调器另排后续问题也会丢失它们相对于主任务的提交顺序。
+- 长期规避：每个问题提交时立即进入主任务 Tab 的共享队列，只有实际调用占队列位置；编排器内的待验收事件、补充需求和收口不得预占。回归应覆盖第一批验收执行中提交问题、第二批就绪后先回答问题，以及多个问题分居主任务调用前后的顺序。
+
 ## 相同 HTML 补丁不会清理按钮临时状态
 
 - 状态：已规避；首次确认及修复：2026-11-04。
