@@ -278,8 +278,8 @@ function createHarness(): HandlerHarness {
       state.workspaceSettings = settings;
       calls.savedSettings.push({ ...settings });
     },
-    addConversationTab: (cli, sessionId) => {
-      const id = `tab-${cli}-${sessionId ?? "new"}`;
+    addConversationTab: (cli, sessionId, options) => {
+      const id = options?.tabId ?? `tab-${cli}-${sessionId ?? "new"}`;
       state.tabs.set(id, { id, cli, sessionId, sessionIdByCli: sessionId ? { [cli]: sessionId } : {}, createdAt: 2 });
       state.activeTabId = id;
       return id;
@@ -1072,6 +1072,20 @@ test("routes special panel messages through the unified router", async (t) => {
     values: { answer: "yes" },
   }]);
   assert.equal(harness.calls.panelStates, 1);
+});
+
+test("tab creation targets its own snapshot even when the active tab changes during refresh", async () => {
+  const { deps, state, calls } = createHarness();
+  const tabId = "ui-tab-123-abc";
+  const originalTabId = state.activeTabId;
+  deps.postPanelState = async () => { state.activeTabId = originalTabId; };
+  await handlePanelMessageWithDeps({ type: "newSession", tabId }, deps);
+  assert.equal(state.tabs.get(tabId)?.sessionId, null);
+  assert.equal(calls.sessionMessages.at(-1)?.tabId, tabId);
+  assert.deepEqual(calls.webviewMessages.at(-1), { type: "conversationTabCreateSettled", tabId, ready: true });
+  await handlePanelMessageWithDeps({ type: "newSession", tabId }, deps);
+  assert.deepEqual(calls.webviewMessages.at(-1), { type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(calls.sessionMessages.length, 1);
 });
 
 test("reports the live Codex long-connection count without changing sessions", async (t) => {

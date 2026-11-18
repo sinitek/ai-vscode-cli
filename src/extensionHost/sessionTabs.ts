@@ -320,7 +320,7 @@ function createLoopSubtaskRunTarget(
 function addConversationTab(
   cli: CliName,
   sessionId: string | null,
-  options: { skipPersist?: boolean } = {}
+  options: { skipPersist?: boolean; tabId?: string } = {}
 ): string | null {
   return sessionTabsController.addConversationTab(cli, sessionId, options);
 }
@@ -331,14 +331,16 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
-  options: { notifyTabClosed?: boolean; replaceLastTab?: boolean } = {},
+  options: { notifyTabClosed?: boolean; replaceLastTab?: boolean; onRejected?: () => void } = {},
 ): Promise<void> {
   if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
+    options.onRejected?.();
     await postPanelState();
     return;
   }
   const closingTab = getConversationTabById(tabId);
   if (!closingTab) {
+    if (options.onRejected) deps.postConversationTabClosed(tabId, getActiveConversationTabId());
     return;
   }
   const previousActiveTabId = getActiveConversationTabId();
@@ -352,14 +354,26 @@ async function closeConversationTabAndRefreshPanel(
   const next = closeConversationTab(tabId);
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
+    options.onRejected?.();
     return;
   }
   if (options.notifyTabClosed !== false) {
     deps.postConversationTabClosed(tabId, nextActiveTabId);
   }
-  closingBindings.forEach((binding) => {
-    disposeInteractiveRunnerIfUnused(binding);
-  });
+  const disposeClosingRunners = () => {
+    closingBindings.forEach((binding) => disposeInteractiveRunnerIfUnused(binding));
+  };
+  if (options.onRejected && closingBindings.length) {
+    setImmediate(() => {
+      try {
+        disposeClosingRunners();
+      } catch (error) {
+        logInfo("conversation-tab-cleanup-failed", { tabId, error: String(error) });
+      }
+    });
+  } else {
+    disposeClosingRunners();
+  }
   if (replacingLastTab) {
     // The close acknowledgement cannot introduce a newly created fallback tab.
     await postPanelState();
@@ -383,6 +397,7 @@ async function closeConversationTabAndRefreshPanel(
   }
   if (next && previousCli !== next.cli) {
     await maybePromptInstallOnCliGroupSwitch(next.cli);
+    if (getActiveConversationTabId() !== nextActiveTabId) return;
   }
   if (next) {
     setWorkspaceInteractiveModeForCli(next.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));

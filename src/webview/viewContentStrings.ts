@@ -21,6 +21,8 @@ export const WEBVIEW_STRINGS = {
     conversationTabsNextPage: "下一页会话",
     conversationTabLabel: "会话{index}",
     conversationTabCloseAria: "关闭{label}",
+    conversationTabCloseRejected: "暂时无法关闭此对话，标签已恢复。",
+    conversationTabCreateFailed: "新建对话未就绪，请重试。",
     emptyState: "输入需求，开始对话。",
     jsonTreeEmptyObject: "无属性",
     scrollToBottomAria: "跳转到最新消息",

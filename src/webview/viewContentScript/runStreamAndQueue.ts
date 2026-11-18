@@ -1025,12 +1025,13 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function sendPrompt() {
+        const activeTabId = getActiveConversationTabId();
+        if (isCreatingConversationTab(activeTabId)) return;
         const prompt = elements.promptInput.value.trim();
         if (!prompt) {
           return;
         }
         const promptPayload = buildPromptPayload(prompt);
-        const activeTabId = getActiveConversationTabId();
         // 仅新建 Loop+ 根任务需要先确认验收方案；续跑/恢复/补充与其它模式保持原样。
         if (
           typeof isAcceptancePlanRequiredForPayload === "function"

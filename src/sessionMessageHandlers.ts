@@ -120,13 +120,13 @@ export type PanelMessageHandlerDeps = {
   setWorkspaceSettings?: (settings: WorkspaceSettings) => void;
   /** 带结果的保存，用于把失败提示回界面。 */
   saveWorkspaceSettingsWithResult?: (settings: WorkspaceSettings) => { ok: boolean; error?: string };
-  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
+  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean; tabId?: string }) => string | null;
   startNewSession: (cli: CliName) => void;
   getConversationTabById: (tabId: string) => ConversationTabRecordForPanel | null;
   hasAnyTaskRunning: () => boolean;
   disposeAllInteractiveRunners: () => void;
   maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>;
-  closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+  closeConversationTabAndRefreshPanel: (tabId: string, options?: { onRejected?: () => void }) => Promise<void>;
   confirm: (message: string, confirmLabel: string) => Promise<boolean>;
   disposeInteractiveRunnerSession: (cli: CliName, sessionId: string) => void;
   deleteSession: (cli: CliName, sessionId: string) => void;

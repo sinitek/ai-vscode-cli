@@ -640,9 +640,7 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const startedAt = typeof options.startedAt === "number" ? options.startedAt : 0;
         const shouldResyncRunningClock = isRunning && startedAt > 0 && runWaitStartAt > 0 && runWaitStartAt !== startedAt;
         state.isRunning = isRunning;
-        elements.sendPrompt.disabled = false;
         elements.promptInput.disabled = false;
-        elements.newSession.disabled = false;
         syncResetSessionAvailability();
         renderConversationTabs();
         elements.stopRun.disabled = !isRunning;

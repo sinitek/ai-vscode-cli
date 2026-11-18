@@ -268,7 +268,9 @@ export function createSessionPanelMessageHandlers(
     },
 
     closeConversationTab: async (message) => {
-      await deps.closeConversationTabAndRefreshPanel(message.tabId);
+      await deps.closeConversationTabAndRefreshPanel(message.tabId, {
+        onRejected: () => deps.postWebviewMessage({ type: "conversationTabCloseRejected", tabId: message.tabId }),
+      });
     },
 
     deleteSession: async (message) => {
@@ -403,11 +405,31 @@ export function createSessionPanelMessageHandlers(
       await deps.postPanelState();
     },
 
-    newSession: async () => {
-      const sessionId = deps.addConversationTab(deps.getCurrentCli(), null);
-      deps.setWorkspaceInteractiveModeForCli(deps.getCurrentCli(), "coding");
-      await deps.postPanelState();
-      deps.sendSessionMessagesToPanel(deps.getCurrentCli(), sessionId);
+    newSession: async (message) => {
+      const requestedTabId = message.tabId;
+      let ready = false;
+      try {
+        if (requestedTabId !== undefined && (typeof requestedTabId !== "string"
+          || !/^ui-tab-\d{1,16}-[a-z0-9]{1,16}$/.test(requestedTabId)
+          || deps.getConversationTabById(requestedTabId))) {
+          return;
+        }
+        const cli = deps.getCurrentCli();
+        const sessionId = deps.addConversationTab(cli, null, requestedTabId ? { tabId: requestedTabId } : undefined);
+        const tabId = requestedTabId ?? deps.getActiveConversationTabId();
+        deps.setWorkspaceInteractiveModeForCli(cli, "coding");
+        await deps.postPanelState();
+        if (!requestedTabId || deps.getConversationTabById(requestedTabId)?.cli === cli) {
+          deps.sendSessionMessagesToPanel(cli, sessionId, tabId);
+          ready = true;
+        }
+      } catch (error) {
+        void logError("conversation-tab-create-failed", { error: String(error) });
+      } finally {
+        if (typeof requestedTabId === "string") {
+          deps.postWebviewMessage({ type: "conversationTabCreateSettled", tabId: requestedTabId, ready });
+        }
+      }
     },
 
     queryCodexLongConnectionCount: (message) => {

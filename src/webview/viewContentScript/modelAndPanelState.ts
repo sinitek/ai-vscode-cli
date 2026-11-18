@@ -489,7 +489,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.dshReasoningOptions = panelState.dshReasoningOptions.filter((option) => typeof option === "string" && option.trim());
         }
         state.sessionState = panelState.sessionState;
-        const nextConversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const nextConversationTabs = reconcileConversationTabMutations(
+          panelState.conversationTabs || { activeTabId: null, tabs: [] }, previousActiveTabId
+        );
         const newlyCompletedLoopTabIds = getNewlyCompletedLoopTabIds(
           previousConversationTabs,
           nextConversationTabs
@@ -529,10 +531,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             state.pendingOpenCodeRoleSelection = null;
           }
         }
-        const tabIds = Array.isArray(state.conversationTabs.tabs)
-          ? state.conversationTabs.tabs.map((tab) => tab.id)
-          : [];
-        pruneConversationRuntimeStates(tabIds);
+        pruneConversationRuntimeStates(getConversationTabRuntimeIds());
         if (Array.isArray(state.conversationTabs.tabs)) {
           state.conversationTabs.tabs.forEach((tab) => {
             const previousTab = Array.isArray(previousConversationTabs.tabs)

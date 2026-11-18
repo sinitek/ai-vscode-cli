@@ -48,7 +48,7 @@ export type PanelMessage =
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }
-  | { type: "newSession" }
+  | { type: "newSession"; tabId?: string }
   | { type: "queryCodexLongConnectionCount"; token?: number }
   | { type: "resetConversationTabSession" }
   | { type: "deleteSession"; sessionId: string; cli: CliName }

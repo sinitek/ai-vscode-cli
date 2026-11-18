@@ -510,9 +510,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function showConversationMessagesLoading() {
-        if (!elements.messages || elements.messages.querySelector(".conversation-messages-loading")) {
+        if (!elements.messages) {
           return;
         }
+        elements.messages.setAttribute("aria-busy", "true");
+        if (elements.messages.querySelector(".conversation-messages-loading")) return;
         const loading = document.createElement("div");
         loading.className = "conversation-messages-loading";
         loading.setAttribute("role", "status");
@@ -524,7 +526,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         label.textContent = "正在加载对话";
         loading.append(spinner, label);
         elements.messages.replaceChildren(loading);
-        elements.messages.setAttribute("aria-busy", "true");
       }
 
       function clearConversationMessagesLoading() {
@@ -1124,6 +1125,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         const previousKey = renderedConversationKey;
         const previousTabId = previousKey ? JSON.parse(previousKey)[1] : null;
         if (!messageRenderPending && previousTabId && getConversationTabSummary(previousTabId)
+          && !elements.messages.querySelector(".conversation-messages-loading")
           && renderedMessageCount <= MAX_CACHED_CONVERSATION_MESSAGES) {
           renderedConversationViews.set(previousKey, {
             tabId: previousTabId,
@@ -1208,7 +1210,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           }
           if (visibleMessages.length === 0) {
             const runtimeState = getActiveConversationRuntimeState({ create: false });
-            if (runtimeState && runtimeState.messagesLoading) {
+            if (isCreatingConversationTab(getActiveConversationTabId()) || (runtimeState && runtimeState.messagesLoading)) {
               showConversationMessagesLoading();
               renderedConversationKey = conversationKey;
               renderedMessageCount = 0;
@@ -1394,7 +1396,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function isActiveConversationTabResetLocked() {
         const activeTabId = getActiveConversationTabId();
-        return isConversationTabBusy(activeTabId);
+        return isCreatingConversationTab(activeTabId) || isConversationTabBusy(activeTabId);
       }
 
       function normalizeLoopTaskRole(value) {
@@ -1887,6 +1889,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function syncConversationControlsForActiveTab() {
+        elements.sendPrompt.disabled = isCreatingConversationTab(getActiveConversationTabId());
         updateQueueIndicator();
         updateRunPromptButton();
         updateRunStreamButton();
@@ -2169,27 +2172,129 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         };
       }
 
-      function applyConversationTabClosed(data) {
+      let pendingConversationCreate = null;
+      const requestedConversationTabCloses = new Map();
+
+      function isCreatingConversationTab(tabId) {
+        return Boolean(pendingConversationCreate && pendingConversationCreate.tab.id === tabId);
+      }
+
+      function getConversationTabRuntimeIds() {
+        const tabIds = (state.conversationTabs?.tabs || []).map((tab) => tab.id);
+        for (const [tabId, request] of requestedConversationTabCloses) {
+          if (!request.closed) tabIds.push(tabId);
+        }
+        return tabIds;
+      }
+
+      function reconcileConversationTabMutations(snapshot, previousActiveTabId) {
+        if (!pendingConversationCreate && !requestedConversationTabCloses.size) return snapshot;
+        const incomingIds = new Set(snapshot.tabs.map((tab) => tab.id));
+        for (const [tabId, request] of requestedConversationTabCloses) {
+          if (request.closed && !incomingIds.has(tabId)) requestedConversationTabCloses.delete(tabId);
+        }
+        const creatingTab = pendingConversationCreate?.tab;
+        const tabs = snapshot.tabs.filter((tab) => !requestedConversationTabCloses.has(tab.id));
+        if (creatingTab && !incomingIds.has(creatingTab.id) && !requestedConversationTabCloses.has(creatingTab.id)) {
+          tabs.push(creatingTab);
+        }
+        const preferLocalSelection = creatingTab || requestedConversationTabCloses.has(snapshot.activeTabId);
+        const activeTabId = preferLocalSelection && tabs.some((tab) => tab.id === previousActiveTabId)
+          ? previousActiveTabId
+          : tabs.some((tab) => tab.id === snapshot.activeTabId) ? snapshot.activeTabId : (tabs[0]?.id ?? null);
+        return { ...snapshot, tabs, activeTabId };
+      }
+
+      function showConversationTabSelection(tab) {
+        applyAutoInteractiveModeForTab(tab);
+        syncActiveMessagesFromRuntime();
+        syncRunningStateForActiveTab();
+        updateContextTokenUsage();
+        armPromptContextForConversationStart();
+      }
+
+      function requestNewConversationTab() {
+        if (pendingConversationCreate) return;
+        const previousActiveTabId = getActiveConversationTabId();
+        const tab = {
+          id: "ui-tab-" + Date.now() + "-" + Math.random().toString(36).slice(2, 13).padEnd(11, "0"),
+          cli: getConversationTabSummary(previousActiveTabId)?.cli || state.currentCli,
+          sessionId: null,
+        };
+        const previousTabs = state.conversationTabs || { tabs: [] };
+        pendingConversationCreate = { tab, previousActiveTabId };
+        state.conversationTabs = { ...previousTabs, tabs: [...previousTabs.tabs, tab], activeTabId: tab.id };
+        vscode.postMessage({ type: "newSession", tabId: tab.id });
+        showConversationTabSelection(tab);
+      }
+
+      function settleNewConversationTab(data) {
+        if (!isCreatingConversationTab(data.tabId)) return;
+        const { tab, previousActiveTabId } = pendingConversationCreate;
+        const createdTab = getConversationTabSummary(tab.id);
+        pendingConversationCreate = null;
+        if (!data.ready) {
+          if (createdTab === tab) {
+            applyConversationTabClosed({ tabId: tab.id, activeTabId: previousActiveTabId }, { allowEmpty: true });
+          }
+          showToast(t("conversationTabCreateFailed"));
+          vscode.postMessage({ type: "requestState" });
+        }
+        if (getActiveConversationTabId() === tab.id) {
+          syncActiveMessagesFromRuntime();
+          syncRunningStateForActiveTab();
+        }
+        renderConversationTabs();
+      }
+
+      function requestConversationTabClose(tab) {
+        const tabs = state.conversationTabs.tabs;
+        const index = tabs.findIndex((entry) => entry.id === tab.id);
+        if (index < 0 || tabs.length < 2 || isConversationTabBusy(tab.id)) return;
+        const fallback = tabs[index > 0 ? index - 1 : 1];
+        requestedConversationTabCloses.set(tab.id, { tab, index, closed: false });
+        vscode.postMessage({ type: "closeConversationTab", tabId: tab.id, cli: tab.cli });
+        applyConversationTabClosed({ tabId: tab.id, activeTabId: fallback.id }, { optimistic: true });
+      }
+
+      function rejectConversationTabClose(data) {
+        const request = requestedConversationTabCloses.get(data.tabId);
+        if (!request || request.closed) return;
+        requestedConversationTabCloses.delete(data.tabId);
+        const tabs = state.conversationTabs.tabs.slice();
+        if (!tabs.some((tab) => tab.id === data.tabId)) tabs.splice(request.index, 0, request.tab);
+        state.conversationTabs = { ...state.conversationTabs, tabs };
+        renderConversationTabs();
+        showToast(t("conversationTabCloseRejected"));
+      }
+
+      function applyConversationTabClosed(data, options = {}) {
         const tabs = state.conversationTabs && state.conversationTabs.tabs;
         if (!Array.isArray(tabs)) {
           return;
         }
+        const request = requestedConversationTabCloses.get(data.tabId);
+        const confirmed = request && !options.optimistic && !request.closed;
+        if (confirmed) {
+          request.closed = true;
+          if (isCreatingConversationTab(data.tabId)) pendingConversationCreate = null;
+        }
         const remaining = tabs.filter((tab) => tab.id !== data.tabId);
-        if (remaining.length === 0 || remaining.length === tabs.length) {
+        if ((!options.allowEmpty && remaining.length === 0) || remaining.length === tabs.length) {
+          if (confirmed) {
+            pruneConversationRuntimeStates(getConversationTabRuntimeIds());
+            renderConversationTabs();
+          }
           return;
         }
         const previousActiveTabId = getActiveConversationTabId();
         const activeTab = remaining.find((tab) => tab.id === previousActiveTabId)
           || remaining.find((tab) => tab.id === data.activeTabId)
           || remaining[0];
-        state.conversationTabs = { ...state.conversationTabs, tabs: remaining, activeTabId: activeTab.id };
-        pruneConversationRuntimeStates(remaining.map((tab) => tab.id));
-        if (activeTab.id !== previousActiveTabId) {
-          applyAutoInteractiveModeForTab(activeTab);
-          syncActiveMessagesFromRuntime();
-          syncRunningStateForActiveTab();
-          updateContextTokenUsage();
-          armPromptContextForConversationStart();
+        state.conversationTabs = { ...state.conversationTabs, tabs: remaining, activeTabId: activeTab?.id ?? null };
+        if (!options.optimistic) pruneConversationRuntimeStates(getConversationTabRuntimeIds());
+        if (state.conversationTabs.activeTabId !== previousActiveTabId) {
+          showConversationTabSelection(activeTab);
         }
         renderConversationTabs();
       }
@@ -2208,6 +2313,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           ? state.conversationTabs.tabs
           : [];
         const activeTabId = state.conversationTabs ? state.conversationTabs.activeTabId : null;
+        if (elements.newSession) elements.newSession.disabled = Boolean(pendingConversationCreate);
         elements.conversationTabs.innerHTML = "";
         const showTabs = tabs.length > 0;
         elements.conversationTabs.classList.toggle("visible", showTabs);
@@ -2267,6 +2373,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           tabItem.setAttribute("aria-selected", String(isActive));
           tabItem.setAttribute("tabindex", isActive ? "0" : "-1");
           tabItem.setAttribute("aria-disabled", "false");
+          if (isCreatingConversationTab(tab.id)) tabItem.setAttribute("aria-busy", "true");
           conversationTabSummaryTooltipController.register(tabItem, tab);
 
           const tabBaseLabel = groupIndex > 1 ? (cliLabel + String(groupIndex)) : cliLabel;
@@ -2283,11 +2390,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             closeButton.textContent = "×";
             closeButton.title = t("conversationTabCloseAria", { label: labelText });
             closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-            closeButton.disabled = isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
+            closeButton.disabled = isConversationTabBusy(tab.id);
             closeButton.addEventListener("click", (event) => {
               event.preventDefault();
               event.stopPropagation();
-              vscode.postMessage({ type: "closeConversationTab", tabId: tab.id, cli: tab.cli });
+              requestConversationTabClose(tab);
             });
             tabItem.appendChild(closeButton);
           }
@@ -2314,7 +2421,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             selectTab();
           });
           tabItem.addEventListener("keydown", (event) => {
-            if (event.key === "Enter" || event.key === " ") {
+            if (event.target === tabItem && (event.key === "Enter" || event.key === " ")) {
               event.preventDefault();
               selectTab();
             }

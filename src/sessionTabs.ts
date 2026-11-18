@@ -227,7 +227,7 @@ export function createSessionTabsController(deps: {
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => LoopConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
 }): {
-  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
+  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean; tabId?: string }) => string | null;
   buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
   buildOpenConversationTabSessionMap: () => Map<string, string>;
   clearPendingSessionDraft: (tabId: string, cli?: CliName) => void;
@@ -588,7 +588,7 @@ export function createSessionTabsController(deps: {
     addConversationTab: (cli, sessionId, options = {}) => {
       const state = ensureTabs();
       const tab: ConversationTabRecord = {
-        id: createTabId(),
+        id: options.tabId ?? createTabId(),
         cli,
         sessionId,
         sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),

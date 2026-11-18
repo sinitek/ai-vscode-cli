@@ -3588,6 +3588,109 @@ test("cold tab switches show a loading state until its first message snapshot ar
   assert.equal(messages.getAttribute("aria-busy"), null);
 });
 
+test("new tab appears before host replies, keeps the previous conversation, and waits for readiness", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const oldTab = { id: "tab-1", cli: "codex", sessionId: "old-session" };
+  const snapshot = (activeTabId: string, tabs = [oldTab]) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ conversationTabs: { activeTabId, tabs } }),
+  });
+  snapshot(oldTab.id);
+  window.dispatchMessage({ type: "setMessages", tabId: oldTab.id, messages: [{ id: "old-message", role: "user", content: "保留原对话" }] });
+  document.getElementById("newSession").click();
+  document.getElementById("newSession").click();
+  const creates = posted.filter((message) => message.type === "newSession");
+  assert.equal(creates.length, 1);
+  const newTabId = String(creates[0].tabId);
+  const messages = document.getElementById("messages");
+  assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  assert.ok(conversationTabByLabel(document, "Codex2"));
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  assert.equal(document.getElementById("sendPrompt").disabled, true);
+  snapshot(oldTab.id);
+  assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  conversationTabByLabel(document, "Codex")?.click();
+  assert.equal(api.state.messages[0].content, "保留原对话");
+  snapshot(newTabId, [oldTab, { id: newTabId, cli: "codex", sessionId: "" }]);
+  assert.equal(api.state.conversationTabs.activeTabId, oldTab.id);
+  conversationTabByLabel(document, "Codex2")?.click();
+  window.dispatchMessage({ type: "setMessages", tabId: newTabId, messages: [] });
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId: newTabId, ready: true });
+  assert.equal(messages.getAttribute("aria-busy"), null);
+  assert.equal(document.getElementById("sendPrompt").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("closing optimistically preserves the foreground DOM and handles stale snapshots and rejection", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = ["tab-1", "tab-2", "tab-3"].map((id) => ({ id, cli: "codex", sessionId: id }));
+  const snapshot = (nextTabs = tabs) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "tab-1", tabs: nextTabs } }),
+  });
+  snapshot();
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [{ id: "current", role: "user", content: "当前对话" }] });
+  const bubble = document.getElementById("messages").querySelector(".bubble");
+  assert.ok(bubble);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(posted.filter((message) => message.type === "closeConversationTab").at(-1)?.tabId, "tab-2");
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  assert.equal(document.getElementById("messages").querySelector(".bubble"), bubble);
+  snapshot();
+  assert.ok(!api.state.conversationTabs.tabs.some((tab: { id: string }) => tab.id === "tab-2"));
+  window.dispatchMessage({ type: "conversationTabCloseRejected", tabId: "tab-2" });
+  assert.equal(api.state.conversationTabs.tabs.length, 3);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  window.dispatchMessage({ type: "conversationTabClosed", tabId: "tab-2", activeTabId: "tab-1" });
+  snapshot();
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  snapshot([tabs[0], tabs[2]]);
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+});
+
+test("closing a loading tab ignores its late creation completion", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] },
+  }) });
+  document.getElementById("newSession").click();
+  const tabId = posted.find((message) => message.type === "newSession")?.tabId;
+  assert.ok(tabId);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  window.dispatchMessage({ type: "conversationTabClosed", tabId, activeTabId: "tab-1" });
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(api.state.conversationTabs.tabs.length, 1);
+  assert.equal(document.getElementById("newSession").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("closing the active tab immediately selects its neighbor without overriding a later selection", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const tabs = ["tab-1", "tab-2", "tab-3"].map((id) => ({ id, cli: "codex", sessionId: id }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "tab-2", tabs } }) });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [{ id: "cached", role: "user", content: "相邻标签的缓存内容" }] });
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  assert.equal(api.state.messages[0].content, "相邻标签的缓存内容");
+  conversationTabByLabel(document, "Codex2")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
+  window.dispatchMessage({ type: "conversationTabClosed", tabId: "tab-2", activeTabId: "tab-1" });
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
+});
+
+test("failed creation removes the placeholder and unblocks another attempt", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  document.getElementById("newSession").click();
+  const tabId = posted.find((message) => message.type === "newSession")?.tabId;
+  assert.ok(tabId);
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  assert.equal(document.getElementById("newSession").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
 test("large conversations render in yielding batches and keep every message", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState() });

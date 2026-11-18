@@ -291,6 +291,24 @@ test("closing protected tabs never acknowledges removal or disposes their runner
   }
 });
 
+test("user close acknowledges before runner cleanup and explicitly rejects protected tabs", async () => {
+  const state: ConversationTabsState = {
+    activeTabId: "active-tab",
+    tabs: ["active-tab", "closing-tab"].map((id) => ({ id, cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 })),
+  };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+  let rejections = 0;
+  const onRejected = () => { rejections += 1; };
+  await env.host.closeConversationTabAndRefreshPanel("closing-tab", { onRejected });
+  assert.deepEqual(env.closedTabs, [{ tabId: "closing-tab", activeTabId: "active-tab" }]);
+  assert.deepEqual(env.disposedTabIds, []);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(env.disposedTabIds, ["closing-tab"]);
+  await env.host.closeConversationTabAndRefreshPanel("active-tab", { onRejected });
+  assert.equal(rejections, 1);
+  assert.equal(state.activeTabId, "active-tab");
+});
+
 test("repeated and consecutive background closes do not refresh the active conversation", async () => {
   const state: ConversationTabsState = {
     activeTabId: "active-tab",
