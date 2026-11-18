@@ -82,19 +82,57 @@ test("execution result reuse preserves event-level code review and every selecte
   }
 });
 
-test("all main prompt kinds distinguish report-only work from the general simple-task rule", () => {
+test("all main prompt kinds distinguish full acceptance, report confirmation, and direct execution", () => {
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
     const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
     assert.match(prompt, /For every dispatched subtask, decide requiresAcceptance at dispatch time/);
     assert.match(prompt, /Reassess every reprompt as a new attempt: omission resets to true/);
-    assert.match(prompt, /what the output will contain, whether it changes a deliverable or contract/);
+    assert.match(prompt, /Report-only work may skip full acceptance/);
     assert.match(prompt, /A test is not automatically exempt, and a document is not automatically exempt/);
     assert.match(prompt, /The general simple-task rule is separate from requiresAcceptance/);
     assert.match(prompt, /Do not delegate a trivial task just to avoid review/);
     assert.match(prompt, /Reports marked no-acceptance must be explicitly acknowledged/);
     const dispatch = parseExample(extractProtocolExamples(prompt), "dispatch");
-    assert.equal(dispatch.subtasks?.some((item) => item.requiresAcceptance === false), true);
-    assert.equal(dispatch.subtasks?.filter((item) => item.requiresAcceptance === true).length, 3);
+    const byId = new Map(dispatch.subtasks?.map((item) => [item.id, item]));
+    assert.equal(byId.get("example-verification-report-subtask")?.requiresAcceptance, false);
+    assert.equal(byId.get("example-local-log-subtask")?.requiresAcceptance, false);
+    assert.deepEqual(byId.get("example-local-log-subtask")?.writeFiles, ["src/example-worker.ts"]);
+    assert.equal(byId.get("example-subtask")?.requiresAcceptance, true);
+    assert.equal(byId.get("example-frontend-subtask")?.requiresAcceptance, true);
+  }
+});
+
+test("low-risk edits and authorized routine Git delivery skip only independent acceptance", () => {
+  for (const loopSubtaskMode of ["fullstack", "split"] as const) {
+    for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, loopSubtaskMode }));
+      for (const clause of [
+        /Obviously simple, low-risk edits may skip full acceptance too/,
+        /the edit is local and directly verifiable/,
+        /must check the targeted diff, run any required checks/,
+        /Neither task type, diff size, nor model capability alone decides it/,
+        /the user or project requires independent review/,
+        /A one-line change to a shared default or a log that exposes sensitive data is not exempt/,
+        /An authorized ordinary Git commit or push with a known scope and target also uses requiresAcceptance=false/,
+        /Route a standalone Git delivery as backend .* not read-only general/,
+        /Keep it separate from implementation that still needs review/,
+        /use dependsOn for prerequisite subtasks/,
+        /Do not overlap with work that can alter the commit set or target ref/,
+        /The exemption does not grant permission to commit or push, does not waive review of the contents/,
+        /does not cover force-push, history rewriting/,
+      ]) {
+        assert.match(prompt, clause);
+      }
+    }
+    const prompt = buildLoopPlusSubtaskModelPrompt({
+      subtask: { id: "git-delivery", title: "提交变更", taskType: "backend", prompt: "GIT_DELIVERY_TOKEN" },
+      communicationFile: "REPORT_TOKEN",
+      loopSubtaskMode,
+    });
+    assert.match(prompt, /execute only the authorized commit or push/);
+    assert.match(prompt, /Verify the intended files or commits, branch, and push remote before writing/);
+    assert.match(prompt, /Do not edit the delivered files, include unrelated changes, bypass required hooks, force-push, or rewrite history/);
+    assert.match(prompt, /Stop and report an unexpected scope, destination, or failure; report the actual commit SHA and push result/);
   }
 });
 
