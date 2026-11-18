@@ -761,18 +761,44 @@
       "name": "Vibe 决策澄清优先结构化人机交互",
       "description": "人工交互开启的 Vibe 任务需要澄清时应调用结构化 user-input 或 elicitation 并等待回答。即使原始输入没有要求先提问，整段助手回复为明确请求用户决策的一到三题时，也可由共享自然语言兜底转换为现有表单；支持单题及无编号、项目符号、数字和字母选项，每个选项行保留完整文案。普通结果、引用、代码围栏和文档示例不触发该新路径。原有显式需求询问解析保持兼容。运行时在最终结论收口前移除问题气泡、等待提交并继续原会话，拒绝仍停止；人工交互关闭及 Loop/Loop+ 不使用该兜底。",
       "status": "active",
-      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.cli_session"],
+      "applies_to": [
+        "plugin.chat_panel",
+        "plugin.local_cli",
+        "plugin.cli_session"
+      ],
       "source_refs": [
-        {"path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md", "anchor": "Vibe 澄清与最终答复"},
-        {"path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Vibe 澄清最终答复兜底"},
-        {"path": "src/humanInteraction.ts"},
-        {"path": "src/promptRuntime.ts"},
-        {"path": "src/extensionHost/promptInteractiveRuntime.ts"},
-        {"path": "src/extensionHost/promptOneShotRuntime.ts"},
-        {"path": "src/extensionHost/promptParallelRuntime.ts"},
-        {"path": "src/test/core/humanInteraction.test.ts"},
-        {"path": "src/test/extensionHost/promptInteractiveRuntime.test.ts"},
-        {"path": "src/test/extensionHost/promptOneShotRuntime.test.ts"}
+        {
+          "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
+          "anchor": "Vibe 澄清与最终答复"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "Vibe 澄清最终答复兜底"
+        },
+        {
+          "path": "src/humanInteraction.ts"
+        },
+        {
+          "path": "src/promptRuntime.ts"
+        },
+        {
+          "path": "src/extensionHost/promptInteractiveRuntime.ts"
+        },
+        {
+          "path": "src/extensionHost/promptOneShotRuntime.ts"
+        },
+        {
+          "path": "src/extensionHost/promptParallelRuntime.ts"
+        },
+        {
+          "path": "src/test/core/humanInteraction.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/promptInteractiveRuntime.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/promptOneShotRuntime.test.ts"
+        }
       ]
     },
     {
@@ -1201,9 +1227,9 @@
     },
     {
       "id": "plugin.rule.shared_config_snapshot_coordination",
-      "name": "共享配置只读快照不竞争写锁",
-      "description": "面板读取已有共享配置只校验原子快照，不获取写锁或回写租约。首次初始化仍互斥并二次读取；配置应用、编辑与执行租约按目录在同进程顺序排队，跨进程文件锁默认等待 5 分钟。任务启动在锁内重新核对档案和 ready，未就绪或跨进程等锁到期仍冲突则拒绝启动，不强拆存活进程的锁。真实 CLI 终态不由执行租约清理错误改写；释放失败记录诊断并有限重试，租约移除前继续阻止不安全配置切换。Vibe 显式暂停发送等待旧调用、Codex 原生会话卸载或进程退出确认及租约清理，90 秒超时或会话变化拒绝迟到发送并保留输入，Loop 主任务仍按原方式排队。",
-      "status": "active",
+      "name": "历史配置互斥锁与执行租约",
+      "description": "历史版本曾以共享原子快照、跨进程互斥锁和执行租约协调配置写入及任务派发。该机制已于 2026-11-18 移除；现行规则见 plugin.rule.config_apply_serializes_runtime_writes。",
+      "status": "historical",
       "applies_to": [
         "plugin.config_profile",
         "plugin.cli_session"
@@ -1212,10 +1238,6 @@
         {
           "path": "src/config/sharedRuntimeConfig.ts",
           "anchor": "read"
-        },
-        {
-          "path": "src/config/sharedRuntimeConfig.ts",
-          "anchor": "acquire"
         },
         {
           "path": "src/extensionHost/promptRunHandoff.ts"
@@ -1308,7 +1330,7 @@
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
       "name": "任务摘要随新提交异步更新",
-      "description": "Vibe 与 Loop/Loop+ 主任务每次新的用户可见任务提交在执行前捕获，共同 runPrompt 取得实际配置执行租约后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次，缺少主任务快照时使用 rootPrompt 而非调度协议；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；只有子任务不生成 AI 摘要，改用群聊成员标题。",
+      "description": "Vibe 与 Loop/Loop+ 主任务每次新的用户可见任务提交在执行前捕获，共同 runPrompt 读取当前配置后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次，缺少主任务快照时使用 rootPrompt 而非调度协议；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；只有子任务不生成 AI 摘要，改用群聊成员标题。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",
@@ -3732,8 +3754,8 @@
     },
     {
       "id": "plugin.rule.config_apply_serializes_runtime_writes",
-      "name": "同一 CLI 配置应用串行写入运行文件",
-      "description": "同一进程内按 CLI 串行显式应用，并按目标原生配置路径使用跨进程互斥、共享提交版本与完整请求执行租约。显式应用/保存时七个 CLI 按 JSON/TOML 语义比较，OpenCode 支持 JSONC；一致不写，不一致应用并读回验证。Codex 配对检查 config/auth，Claude MCP 保持顶层浅合并，ZCode 保留其它供应商。仅校验冲突最多应用3次，等待25/50毫秒；其它错误直接失败，部分应用标记不可执行。保存由服务在同一事务判断是否仍为当前档案，配置卡片和 Kimi 模型管理不保存后二次激活。普通对话、Loop/Loop+ 主子任务执行前只按 configId 检查档案是否切换，不比较 revision、摘要、模型、连接、认证或原生内容，不自动修复或提示配置漂移；同档案版本变化可继续。共享状态不可执行或档案已切换仍拒绝。存在租约时拒绝切换及保存/删除当前档案，同档案任务可并行；未激活档案可编辑，不同目标独立。runner 配置指纹仅用于连接复用隔离，不作为档案切换阻断。死进程锁和租约按 PID 存活状态保守清理；解锁失败先短间隔重试，仍失败时由事务已结束的持锁方原子发布同 token 结束凭据，由其它新窗口在回收门内复核后清理。活跃事务不按时间抢占。等待到期后再原子获取一次；最终冲突返回 RUNTIME_CONFIG_LOCK_TIMEOUT，日志可按匿名 lockId 关联争锁、释放、回收和持锁进程及操作，启动失败另关联 Tab/Loop attempt。旧版窗口、持续文件系统异常、外部直接写入及自动文件回滚不受保证。",
+      "name": "配置应用原子写入与读取时生效",
+      "description": "同一扩展进程内按 CLI 串行显式应用，并保留原子文件替换与应用后读回校验。配置选择快照可跨窗口共享，但不使用跨进程文件互斥或执行租约；任务启动忽略发送时携带的旧档案选择，按启动时读取到的当前配置运行。跨窗口并发编辑、应用和 Codex 信任写入不保证事务隔离，最后完成的写入生效。部分写入不自动回滚。runner 配置指纹仍仅用于连接复用隔离。",
       "status": "active",
       "applies_to": [
         "plugin.config_profile",
@@ -3781,7 +3803,7 @@
     {
       "id": "plugin.rule.config_selection_commits_before_dispatch",
       "name": "配置切换需先提交再发送",
-      "description": "七个 CLI 的当前档案以目标原生路径的共享提交 ID、随机版本与内容摘要为准，显式应用成功发布版本，五秒心跳只跟随不回写；首次迁移可识别已匹配原生文件的档案，不激活任意首项。面板、排队与手动 Loop 输入携带所见 configSelections，统一入口在请求开始和修复重试时再次核对，缺失或过期就刷新并拒绝，不静默采用不同档案。配置等待、摘要、读取、写入、验证及预检失败均阻止执行。后台定时/历史入口不恢复旧档案，未携带所见版本时读取当前共享选择；明确恢复原分组和配置仍属主动操作。常驻 runner 和 Codex 池按档案及配置/认证 SHA-256 指纹重建或隔离，不迁移在途进程。首次读取/心跳不创建原生文件，旧版窗口与外部直接写入不受保证。",
+      "description": "七个 CLI 的当前档案以目标原生路径的共享提交 ID、随机版本与内容摘要为准，显式应用成功发布版本，五秒心跳只跟随不回写；首次迁移可识别已匹配原生文件的档案，不激活任意首项。面板和排队消息不携带档案快照；普通、交互、并行、Loop/Loop+ 派发均在启动准备时读取当前共享选择，不因窗口间切换或旧快照拒绝。配置读取、写入、验证及预检失败仍阻止执行。后台定时/历史入口不恢复旧档案；明确恢复原分组和配置仍属主动操作。常驻 runner 和 Codex 池按档案及配置/认证 SHA-256 指纹重建或隔离，不迁移在途进程。跨窗口写入不做事务隔离，最后完成写入生效。首次读取/心跳不创建原生文件，旧版窗口与外部直接写入不受保证。",
       "status": "active",
       "applies_to": [
         "plugin.chat_panel",
@@ -4071,7 +4093,7 @@
     {
       "id": "plugin.rule.loop_continuation_recovery",
       "name": "Loop 续跑复用就绪原档案并明确收尾请求",
-      "description": "Loop 与 Loop+ 以原配置续跑时，在共享配置互斥事务内复用仍已就绪的同一档案，不重复写入原生配置、认证文件或共享版本，不清除有效执行租约。切换不同档案、修复未就绪档案、显式重新应用和编辑配置仍遵守租约互斥。续跑提前拒绝、恢复失败和启动异常都发送 continueTaskSettled 回执，按实际任务状态解除继续按钮临时禁用；不依赖相同内容补丁重建 DOM。前端防止弹窗关闭后的重复确认，宿主按任务去重正在处理的续跑请求。",
+      "description": "Loop 与 Loop+ 续跑在启动准备阶段读取当前共享档案，不持有跨窗口互斥锁或执行租约，不因档案已切换或旧快照拒绝。显式应用、原生配置写入与读回校验保留各自既有规则。续跑提前拒绝、恢复失败和启动异常都发送 continueTaskSettled 回执，按实际任务状态解除继续按钮临时禁用；不依赖相同内容补丁重建 DOM。前端防止弹窗关闭后的重复确认，宿主按任务去重正在处理的续跑请求。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -5702,7 +5724,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。子任务先持久化完成汇报或验收事件，再在独立运行状态中后台压缩自己的会话，不阻塞主任务；原 Tab 或新 Tab 续接同一子任务会话时等待压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理；同会话等待前驱压缩与关页完成，独立会话继续推进；压缩复用原配置、模型和思考快照并持有配置执行租约，配置档案切换、失败或超时不撤销已上报结果。成功且超过五分钟及三分钟超时条件不变，普通对话策略不变。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。子任务先持久化完成汇报或验收事件，再在独立运行状态中后台压缩自己的会话，不阻塞主任务；原 Tab 或新 Tab 续接同一子任务会话时等待压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理；同会话等待前驱压缩与关页完成，独立会话继续推进；压缩按启动时读取的当前配置运行，配置档案切换、失败或超时不撤销已上报结果。成功且超过五分钟及三分钟超时条件不变，普通对话策略不变。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6085,16 +6107,32 @@
       "name": "新建或重置任务使用全局默认模式",
       "description": "工具设置→AI任务配置将单选的 Vibe、Loop 或 Loop+ 以 newTaskInteractiveMode 写入全局工具设置。存储值为 coding、loop、loop_plus；缺失或非法配置回退 Vibe，非法更新不覆盖已保存值。宿主只在手动新建或成功重置任务时应用此设置，Webview 新建占位标签同步采用默认值。保存不切换当前任务，已有标签的模式恢复、历史和运行保护不变。",
       "status": "active",
-      "aliases": ["newTaskInteractiveMode", "新建任务", "重置任务", "默认模式"],
-      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "aliases": [
+        "newTaskInteractiveMode",
+        "新建任务",
+        "重置任务",
+        "默认模式"
+      ],
+      "applies_to": [
+        "plugin.chat_panel",
+        "plugin.extension_host"
+      ],
       "source_refs": [
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
           "anchor": "新建或重置任务的默认模式"
         },
-        { "path": "src/toolSettings.ts", "anchor": "resolveNewTaskInteractiveMode" },
-        { "path": "src/panelMessageHandlers/session.ts" },
-        { "path": "src/extensionHost/sessionTabs.ts", "anchor": "resetConversationTabSession" }
+        {
+          "path": "src/toolSettings.ts",
+          "anchor": "resolveNewTaskInteractiveMode"
+        },
+        {
+          "path": "src/panelMessageHandlers/session.ts"
+        },
+        {
+          "path": "src/extensionHost/sessionTabs.ts",
+          "anchor": "resetConversationTabSession"
+        }
       ]
     },
     {
@@ -6102,13 +6140,31 @@
       "name": "AI 对话输入框高度作为全局偏好保存",
       "description": "拖拽 AI 对话多行输入框的上沿可调整高度，最小为原有三行。松开后将 CSS 像素高度保存至全局 ~/.sinitek_cli/settings.json 的 promptInputHeight；取消拖拽或缩小面板不覆盖偏好。创建和重载 Webview 时恢复，缺失或非法值回退三行，不写工作区或会话配置。",
       "status": "active",
-      "aliases": ["promptInputHeight", "输入框高度", "拖拽上沿"],
-      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "aliases": [
+        "promptInputHeight",
+        "输入框高度",
+        "拖拽上沿"
+      ],
+      "applies_to": [
+        "plugin.chat_panel",
+        "plugin.extension_host"
+      ],
       "source_refs": [
-        { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话输入框高度" },
-        { "path": "src/toolSettings.ts", "anchor": "normalizeToolSettings" },
-        { "path": "src/webview/viewProvider.ts", "anchor": "resolveWebviewView" },
-        { "path": "src/webview/viewContentScript/settingsAndOverlays.ts" }
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "AI 对话输入框高度"
+        },
+        {
+          "path": "src/toolSettings.ts",
+          "anchor": "normalizeToolSettings"
+        },
+        {
+          "path": "src/webview/viewProvider.ts",
+          "anchor": "resolveWebviewView"
+        },
+        {
+          "path": "src/webview/viewContentScript/settingsAndOverlays.ts"
+        }
       ]
     },
     {

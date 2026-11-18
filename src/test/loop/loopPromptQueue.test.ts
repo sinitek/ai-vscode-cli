@@ -71,7 +71,7 @@ function createSendPromptHarness(options: {
     "openAcceptancePlanDialog",
     "showToast",
     "t",
-    `${sources}; return { sendPrompt: sendPrompt };`,
+    `function isCreatingConversationTab() { return false; }\n${sources}; return { sendPrompt: sendPrompt };`,
   )(
     elements,
     (prompt: string) => ({ prompt }),
@@ -156,7 +156,6 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
     "isConfigApplyPendingForCli",
   );
-  const visibleConfigHelperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "readVisibleConfigSelections");
   const posted: unknown[] = [];
   const runtimeState = { promptSubmission: null as { requestId: string; prompt: string } | null };
   const dispatchPrompt = new Function(
@@ -177,7 +176,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "isRuntimeStateForActiveTab",
     "syncPromptSubmissionWait",
     "stickChatToBottom",
-    `${visibleConfigHelperSource}\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
+    `function isCreatingConversationTab() { return false; }\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
     (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
       ? {
@@ -212,7 +211,6 @@ test("forwards queued prompt history skip flag when dispatching", () => {
   assert.equal(dispatchPrompt({ prompt: "queued task", contextOptions: {}, skipPromptHistory: true }), true);
   assert.deepEqual(posted, [{
     type: "sendPrompt",
-    configSelections: { opencode: { configId: "config-opencode", revision: "visible-revision" } },
     prompt: "queued task",
     interactiveMode: "coding",
     contextOptions: {},

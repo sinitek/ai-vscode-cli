@@ -14,17 +14,14 @@
 - 规避：需要压缩时先压缩再发布唯一的队列结束信号。压缩已发布运行状态就由其负责终态，未启动压缩才由原任务补发；停止/超时不补发 `end`。压缩等待同时响应停止，异步返回及停止句柄注册前核对原调用身份。
 - 验证：`contextCompactionRunner.test.ts` 覆盖准备期间取消与替换；`promptInteractiveRuntime.test.ts`、`openCodePromptRunTemplate.test.ts` 覆盖完成、跳过和停止的唯一交接通知。
 
-## 暂停通知先于真实任务和配置租约收尾
+## 暂停通知先于真实任务收尾
 
-- “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而配置租约释放、CLI 中断仍在进行。真实日志已出现同一 Vibe Tab 先释放超时、随后获取超时。
-- 复用 `PromptRunHandoff` 等待完整调用、待释放租约及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。其它窗口持续持锁仍按原共享配置保护明确失败；不要手动删 mutex，按下节诊断。
+- “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而 CLI 中断仍在进行。
+- 复用 `PromptRunHandoff` 等待完整调用及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。
 
-### 新建 Tab 首发提示等待其他窗口配置操作超时
+### 已移除的配置锁超时
 
-- 新建 Tab 不写原生配置；发送需取得按原生配置路径共享的锁。不同项目使用同一个 Codex 配置时会争锁，普通长任务只保留租约，不长期持有 mutex。
-- 从 `~/.sinitek_cli/logs/` 找 `RUNTIME_CONFIG_LOCK_TIMEOUT`。先看 `configLock.operation` 区分获取与释放，再用 `lockId` 串联 `runtime-config-lock-timeout`、`runtime-config-lock-slow`、`runtime-config-lock-release-deferred` 和 `runtime-config-lock-recovered`，核对 `ownerPid`、`ownerOperation`、`waitedMs`、`heldMs`。`ownerAgeMs` 可能含持锁方获得锁前的等待，不能当成实际持锁时长。
-- `recoveryPublished:true` 表示持锁事务已结束，后续新版本窗口可回收；`false` 表示连结束标记也写不进去，检查文件系统。旧窗口可能没有新字段，也不会回收新结束标记；待任务结束后统一更新并重载各窗口，不按 PID 存活时长手工强拆。
-- 若 `ownerAlive:false` 仍反复超时，只读核对是否同时残留 `mutex` 和同 token 的 `recover-*` 目录。已用独立 Node 进程在创建回收目录后、删除锁前退出复现：后继回收遇到 `EEXIST` 会跳过，重载窗口不一定恢复。先保留日志和目录状态，不直接删除 `mutex`。
+- 跨窗口配置锁和执行租约已移除。当前版本若仍出现“等待其他窗口配置操作超时”，先确认 VS Code 是否已加载新构建；不再建议检查或手动清理旧 mutex。
 - Codex 的本地调用中止不代表 `turn/interrupt` RPC 已返回。确认原生停止前先等待该响应，否则专属连接会因仍有待处理请求而进入约 60 秒的订阅卸载等待，错过原进程退出路径。
 
 这个文件用于记录仍有行动价值的真实踩坑。starter 默认不预置条目，也不为空内容预建模块分片。
@@ -43,12 +40,6 @@
 - 规避：write 正常返回即原子提交，I/O 原样抛出；update 的 null 在编排/真实 refresher 边界统一拒绝。展示同步异常和异步拒绝独立记录。完成、成功压缩和关闭必须以前置提交为门禁；保留现有 completionPatch、暂停和显式继续路径。
 - 派发拒绝也属于同步交接结果：部分成功不清零纠错次数，不重验已确认事件或重发已接受任务，依据最新快照只纠正剩余派发。控制替换先提交再关闭/启动；用户停止仍先取消。
 - 回归与限制：`src/test/extensionHost/loopPlusHandoffContracts.test.ts` 使用真实临时磁盘和底层 write/rename 故障；不证明 Windows 实机、断电 fsync 或真实 VS Code GUI。持续磁盘故障后崩溃只能恢复最后提交快照，不能承诺未落盘内存事件。
-
-## 执行配置租约释放失败不能改写 CLI 终态
-
-- 现象：子任务 CLI 已成功结束并通知主任务，但跨窗口执行租约释放在配置互斥锁等待中超时。若让清理异常继续冒泡，Loop+ 会收到执行失败结果、面板标错，并跳过成功关页回调；这与随后可选的上下文压缩是否触发无关。
-- 长期规避：主执行和隔离压缩都必须将租约释放作为资源清理处理。首次释放失败记录包含 CLI、Tab、Loop 身份和释放阶段的错误，并对原租约作有界后台重试；失败不能改变真实任务结果。持锁写入仍有效期间不得强拆锁、丢弃租约或允许配置切换。成功回报后，无压缩、压缩失败和压缩成功都沿用原有安全关页生命周期。
-- 验证：`src/test/config/sharedRuntimeConfig.test.ts` 覆盖释放重试与耗尽；`src/test/extensionHost/promptSessionHealth.test.ts` 覆盖 release 超时不变成执行失败；`src/test/loop/loopSubtaskLifecycle.test.ts` 覆盖未安排压缩时仍关闭；Loop+ 压缩成功/失败及关页保护由 `src/test/extensionHost/loopPlusRuntimeIntegration.test.ts` 覆盖。
 
 ## 临时 outDir 的 NODE_PATH 不补齐 Webview 相对资源
 
@@ -194,7 +185,7 @@
 - 状态：已规避；首次确认及修复：2026-11-04。
 - 现象：面板已选择并应用新档案，但下一回合仍可能使用旧进程启动时的供应商地址或环境。
 - 触发条件与根因：Claude 的复用判定不含配置身份，SDK 会话存活时不重读 `settings.json` 的环境；Codex 仅按 `configId` 区分 runner，不检查同档案内容变化，连接池也不包含配置/认证内容指纹。当另一个 Tab 保留共享 app-server 时，切到同名 provider 的不同档案即使重建 runner，也可能取得旧连接。配置文件写入队列只保证落盘与提交顺序，不负责已有进程重载。
-- 长期规避：先核对用户所见档案与共享提交版本，再校验原生文件，一致不写，不一致才修复；失败停止执行。档案 ID、原生配置/认证文本的 SHA-256 指纹接入所有常驻 runner 与 Codex 共享池两层复用判定，同档案编辑也重建对应进程，不全局中断其它 Tab。跨窗口执行租约保留到请求结束，期间拒绝切换或修改当前档案，同版本任务可并行；心跳只跟随共享选择，不回写旧档案。Tab、历史与自动任务均不恢复旧档案。
+- 长期规避：档案 ID、原生配置/认证文本的 SHA-256 指纹接入所有常驻 runner 与 Codex 共享池两层复用判定，同档案编辑也重建对应进程，不全局中断其它 Tab。任务启动按准备时读取的当前档案运行；跨窗口切换不等待执行结束，写入并发按最后完成者生效。心跳只跟随共享选择，不回写旧档案；Tab、历史与自动任务均不恢复旧档案。
 - 验证方式：隔离 Claude SDK 夹具覆盖 A→B 后第二回合仍读 A、显式重建后读 B；使用真实 Node 子进程模拟启动时读取配置的 Codex app-server，覆盖同档案修改及多 Tab 共享连接后切换档案。上述验证确认插件的复用与环境下发行为，不等同于真实供应商请求或所有 CLI 的热加载测试。
 - 证据与边界：前轮审计及进程身份修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-chat-cli-config-switch-audit.md#确认风险与证据` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-explicit-cli-config-ownership.md#实现与关键决策`；跨窗口协调见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-cross-window-visible-config.md#当前结论`。本 runbook 的文档交付来源分别见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-chat-cli-config-switch-audit.md#范围与非目标`、`.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-explicit-cli-config-ownership.md#范围与非目标` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-cross-window-visible-config.md#范围与非目标`，不替代上述行为证据。本机 Node 子进程验证不等同于真实供应商请求或所有 CLI 热加载；仅协调使用新协议的扩展窗口，不控制旧版本或外部工具直接写入。
 
@@ -1048,7 +1039,7 @@ rm -r "$result_directory"
 - 适用范围：七个 CLI、共享原生配置文件、AI 面板和配置中心、多 VS Code 窗口
 - 现象：另一个窗口激活不同档案后，原生配置很快又恢复旧档案，表现为配置被锁死；底层写文件本身正常。
 - 根因：面板被动刷新发现宿主激活 ID 与旧 `selectedConfigId` 不同，自动发送 `applyConfig`，多个窗口相互覆盖；重试节流不能解决所有权问题。
-- 规避：首次迁移仅识别已经匹配原生文件的档案；之后以共享提交记录为唯一选择来源，五秒心跳只跟随，不创建原生文件或回写旧档案。每次手动发送与排队出队携带所见档案及版本，执行准备在跨进程锁内复核，过期就刷新并拒绝，不抢回旧选择或静默改用新选择。同版本执行租约覆盖完整请求，期间拒绝切换/修改当前档案；旧子任务和后台定时任务不恢复旧绑定。Tab 不匹配时保留当前选择，只有用户明确选择恢复原配置才允许切换。
+- 规避：首次迁移仅识别已经匹配原生文件的档案；之后以共享提交记录为唯一选择来源，五秒心跳只跟随，不创建原生文件或回写旧档案。手动发送和排队出队不保留面板配置快照，任务启动准备读取当时当前档案。切换期间并发写入不保证事务隔离，以最后完成写入为准；旧子任务和后台定时任务不恢复旧绑定。明确恢复原配置仍需用户主动选择。
 - 任务失败排查：配置等待、读取、写入或校验失败立即阻止执行并显示错误，不再记录旧的警告后继续行为。检查当前档案、原生文件权限及外部写入竞争；失败不提交激活成功，不记录未成功应用的会话档案。常驻进程复用还必须检查配置指纹，不能只检查档案 ID。
 - 边界：不使用长期配置锁，不保证多个进程同时启动的读写原子性，也不迁移已启动的 CLI 进程；所有旧版本扩展窗口需重载，否则仍可能回写。
 - 验证：`npm run build`；配置服务、应用队列、`promptSessionHealth` 和面板运行时相关单测；用临时 HOME 重放显式切换及任务启动，禁止改写用户真实凭据。

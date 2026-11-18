@@ -38,7 +38,7 @@
 
 ## Vibe 暂停后发送补充任务
 
-- 点击“暂停并发送”后显示“正在等待原任务完全暂停”，等待旧调用完整收尾及配置执行租约释放，再启动补充任务；仅收到 `stopped` 或运行标记消失不能作为确认。
+- 点击“暂停并发送”后显示“正在等待原任务完全暂停”，等待旧调用完整收尾及原生停止确认，再启动补充任务；仅收到 `stopped` 或运行标记消失不能作为确认。
 - Codex 复用现有原生交接：共享连接确认目标会话 `closed` / `notLoaded`，旧版专属连接等待进程实际退出；其它会话继续运行。暂停等待上限 90 秒，关闭/换绑会话、停止确认失败或超时均不迟到发送，保留输入并提示原因；等待期间禁止重复提交。
 - 保留 Loop 主任务既有补充需求排队方式，不强拆其它存活宿主的配置锁。实现：`src/extensionHost/promptRunHandoff.ts`、`src/sessionMessageActions.ts`、`src/interactive/codexAppServerPool.ts`。
 
@@ -108,8 +108,8 @@
 ## AI 对话 Tab 状态与配置协调
 
 - 状态：`active`（2026-11-11）。Tab 有真实运行信号时优先显示运行态，中间 trace/system 错误保留在消息中但不覆盖运行状态。每 Tab 记录宿主最新运行状态，`runStatus:end` 后迟到的新增/替换错误消息、trace 片段和自动重试排队提示不再重新标红；新用户消息、新运行或会话重置释放上一轮成功保护。明确的 `runStatus:error` 仍标记失败，未运行过的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离处理，不改变错误气泡或磁盘会话格式。
-- 共享配置已有状态通过只读快照获取，面板刷新不获取配置写锁、不回写执行租约。首次初始化、配置应用/编辑和执行租约仍使用跨进程互斥锁；同进程同目录的事务顺序排队，不彼此轮询到超时。
-- 读取到未就绪状态不视为配置可用；任务启动仍在互斥事务中核对所选档案及就绪状态。跨窗口等待配置写锁默认 5 分钟，到期仍冲突则拒绝启动，不强拆存活进程持有的写锁。
+- 配置档案选择通过共享快照同步；初始化、配置应用和编辑不使用跨窗口互斥锁或执行租约。原子替换保护单次文件写入，跨窗口同时写入时最后完成者生效。
+- 任务启动忽略发送时携带的旧档案选择，按启动准备时读取到的当前选择继续；不再因其他窗口正在操作配置而等待或拒绝启动。
 - 配置锁等待到期后补一次原子获取。解锁失败自动重试；若仍失败，完成事务的窗口发布与旧锁绑定的结束标记，允许其它新版本窗口安全回收，避免新建 Tab 首次发送被残留锁误阻断。真正运行中的事务、旧版无结束证据的锁，以及持续文件系统不可用时仍保守拒绝。日志以匿名 `lockId` 关联争锁超时、慢事务、解锁和回收；启动错误另关联 Tab 与 Loop attempt。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/config/sharedRuntimeConfig.ts`；回归：`src/test/webview/tabRunStatus.test.ts`、`src/test/webview/conversationtabsummarytooltip.test.ts`、`src/test/config/sharedRuntimeConfig.test.ts`。
 
@@ -195,7 +195,7 @@
 - 2026-11-11：Vibe 与 Loop/Loop+ 主任务保留以下 AI 摘要行为，主任务悬停展示归纳后的任务摘要，不固定显示“主任务”；只有子任务直接投影群聊成员完整标题“子任务 N：标题”（如“子任务 517：恢复SpreadJS本体源码构建与前端接入路线”），编号与群聊一致，不套用 AI 摘要的 30 码点上限。按当前 Tab 的任务/子任务元信息定位，历史消息缺元信息时可由同 CLI 的持久化执行 session 绑定恢复；缺少对应子任务时不展示旧 AI 摘要。只有子任务跳过 AI 摘要生成；主任务沿用用户提交快照、内部轮次去重及任务根需求回退，不改变现有悬停时长、浮层交互和 Tab 布局。
 - 新派发的 Loop / Loop+ 子任务 Tab 在创建时绑定当前父任务与子任务身份，首次状态刷新即可显示子任务图标和成员标题，不等待首条消息或会话历史加载。运行中状态在首次 Tab 状态发布后同步；若执行先启动，面板状态直接投影宿主活动执行事实。
 - 状态：`active`（2026-11-07）；用户：多会话并行的 AI 对话使用者；运行时与浮层已实现并经主审。现有提示词截取标签保留，不冒充 AI 摘要。
-- 每次新的用户可见任务提交都在 Loop 改写前捕获需求，在共同 `runPrompt` 取得实际配置执行租约后异步归纳并更新 Tab 摘要，不等完成、不阻塞任务；已有摘要或历史会话继续执行也可更新。可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。同一任务的内部调度/重试、空白 Tab、hover、刷新和仅恢复旧历史不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出保留上次有效摘要（从未成功则缺失），同次提交不重试，不用原提示截断伪造。
+- 每次新的用户可见任务提交都在 Loop 改写前捕获需求，在共同 `runPrompt` 读取当前配置后异步归纳并更新 Tab 摘要，不等完成、不阻塞任务；已有摘要或历史会话继续执行也可更新。可选 `ConversationTabSummary.taskSummary` 为最多 30 个 Unicode 码点的中文纯文本，提示要求简体中文。同一任务的内部调度/重试、空白 Tab、hover、刷新和仅恢复旧历史不重复生成；并发 2、总容量 32、活动调用超时 20 秒，失败/超时/溢出保留上次有效摘要（从未成功则缺失），同次提交不重试，不用原提示截断伪造。
 - 新任务替换同 Tab 的在途摘要请求，旧结果不得覆盖新任务；更新同步保存到 Tab、草稿及当前绑定 session，已显示浮层随状态推送更新正文。刷新缺陷修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-bugfix-conversation-tab-summary-refresh.md`；已删除测试计划的历史回归证据见[十一月删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)，按 `source_old_path` `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md` 定位。
 - 按任务/会话保存，兼容旧记录；原生 session 绑定、重载、历史重开不丢失或串 Tab，关闭/重置/工作区切换后的迟到结果丢弃。复用已有 CLI/provider 配置的独立受限 session，不污染原对话/Loop 协议，不绕过 DSH/Kimi/ZCode 的 one-shot prompt 禁令。
 - 连续 hover 或键盘 focus 300 毫秒后显示一段正文的轻量主题浮层；摘要通过独立后台队列准备，不同步占用任务启动或 Webview 渲染；离开、失焦、选择、关闭、分页、Escape 隐藏，无摘要/生成中/失败无占位。纯文本安全渲染、窄屏换行且不越界；原 Tab 尺寸、分页、状态、角色和关闭功能不变，无新增配置、语言包或开关。
@@ -300,14 +300,14 @@
 ## Loop / Loop+ 子任务完成收尾
 
 - 子任务成功后依次持久化结果并通知主任务、按原条件压缩子会话、关闭原子任务 Tab，覆盖自动派发和人工续接。主任务验收和独立子任务继续推进；同会话等待压缩及旧标签清理结束。
-- 压缩失败或跳过仍关页；回报失败保留现场。清理配置执行租约失败只记录并有限后台重试，不把已完成的 CLI 运行改判为失败。清理使用完成时标签快照，保护新增、换绑、替代及运行中标签；关闭未生效记录失败，不伪报成功。会话及聊天历史继续保留。
+- 压缩失败或跳过仍关页；回报失败保留现场。配置清理不再管理执行租约，不把已完成的 CLI 运行改判为失败。清理使用完成时标签快照，保护新增、换绑、替代及运行中标签；关闭未生效记录失败，不伪报成功。会话及聊天历史继续保留。
 - 清理某个旧标签或刷新界面失败时，仍继续关闭其它符合条件的标签，最后汇总失败标签及原因。成功子任务若成为最后一个标签，自动关闭时保留同 CLI 的空白对话；运行中标签与锁定主任务仍不可关闭。
 - 实现：`src/loopSubtaskAutoCompact.ts`、`src/loopSubtaskLifecycle.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopSubtaskTabs.ts`；回归覆盖顺序、压缩失败、回报失败、会话串行和标签保护，纳入 `npm run verify:loop-plus`。
 
 ## Loop / Loop+ 中断后继续执行
 
 - 子任务停止或失败时仍保留 Tab；重新执行并成功完成后，自动清理同一父任务、同一子任务的当前及更早闲置 Tab，不删除 CLI 会话和聊天记录，不关闭运行中或更新的替代 Tab。Loop+ 主模型 `close` / `reprompt` 可以升级此前停止请求；恢复后缺少旧 attempt 句柄时仍清理对应旧 Tab。实现：`src/extensionHost/loopSubtaskTabs.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
-- 按任务绑定配置续跑时，主 CLI 与跨 CLI 子任务都在各自的跨窗口共享互斥事务内检查档案身份；原档案仍为已就绪的当前选择则直接复用，不重新写入原生配置、认证文件或共享版本，不清除任何有效执行租约。切换到不同档案、修复未就绪档案、显式重新应用或编辑配置仍遵守原有租约互斥。
+- 按任务绑定配置续跑时，主 CLI 与跨 CLI 子任务在启动准备阶段读取当前配置；忽略历史绑定与发送时的旧档案快照，不建立执行租约。配置切换或编辑不因其他窗口的运行任务而阻塞。
 - 续跑提前拒绝、原配置恢复失败和启动异常后，宿主发送明确收尾回执并刷新实际任务状态；“继续执行”可再次弹窗，不依赖相同 HTML 补丁重建按钮。同一请求确认只提交一次，同一任务准备续跑时拒绝重复启动。
 - 实现：`src/config/sharedRuntimeConfig.ts`、`src/config/configService.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/webview/loopGroupChatPanel.ts`；回归：`src/test/config/sharedRuntimeConfig.test.ts`、`src/test/config/configService.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`、`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/extensionHost/extensionHostExtractionContracts.test.ts`。
 
@@ -404,9 +404,7 @@ Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六�
 
 配置中心显式应用或保存当前配置档案时，同一扩展进程内同一 CLI 的运行时写入按请求顺序串行执行，Codex 的 `config.toml` 与 `auth.json` 配对校验，不同 CLI 分组可独立应用。读回校验按 JSON / TOML 字段值比较，OpenCode 同时支持 JSONC；仅格式、对象键顺序、注释或换行不同不误报，数组顺序、字段值和缺失字段仍严格校验，Claude MCP 保持顶层浅合并语义。仅读回校验冲突会在同一队列操作内最多完整应用 3 次，重试前分别等待 25 / 50 毫秒；DSH 档案激活同样有界恢复。持续冲突仍由配置服务返回“未成功更新配置”，补充 CLI、文件名和排查建议，不展示配置值或凭证；权限、写入和档案格式错误直接失败。配置中心和显式切换不把失败标记为成功。实现见 `src/config/configService.ts`、`src/config/runtimeConfigVerification.ts`、`src/config/dshConfig.ts`；回归见 `src/test/config/configService.test.ts`、`src/test/config/runtimeConfigVerification.test.ts`、`src/test/config/dshConfig.test.ts`。
 
-配置跨窗口以目标原生配置路径旁的共享提交记录为准，保存档案 ID、随机版本、内容摘要及进程租约，不保存凭据明文。显式应用成功后发布版本；五秒心跳只跟随已提交的选择，不回写旧档案。首次迁移仅识别已经匹配原生文件的档案，不激活任意首项。手动发送和排队消息携带用户所见的档案 ID / 版本，普通、并行、交互及 Loop 执行前仅按 `configId` 判断档案是否切换，不比较 `revision` 或摘要；同一档案更新版本可继续执行，只有档案已切换才刷新并拒绝该过期选择，不能静默改用其它档案。历史和后台定时任务不恢复旧绑定，未携带所见选择的后台入口读取当前共享选择。配置卡片与 Kimi 模型管理只请求保存，由服务在同一事务内判断是否仍为当前档案并应用；禁止依据过期界面状态保存后二次激活，避免编辑 A 抢回另一窗口已切换的 B。
-
-任务启动与命令修复重试在跨进程互斥区内只检查档案身份与共享状态并获取执行租约，不读取或比较档案内容、模型、连接、认证和原生文件，不自动修复原生配置。AI 对话面板模型下拉切换不算档案切换；普通对话、Loop、Loop+ 主子任务都不会因原生内容差异触发配置漂移警告或中断，需要恢复档案内容时由用户在任务结束后显式重新应用。配置等待、共享状态不可执行或 OpenCode 预检失败仍阻止执行；显式应用失败或部分应用需用户重新应用。执行租约保留到请求结束，同档案任务可并行；任一窗口仍有该目标任务时，切换、保存或删除当前档案立即拒绝，保存未激活档案不影响运行配置。不同目标路径独立，崩溃进程的锁和租约按进程存活状态保守清理，不按时间抢占活进程。交互 runner 和 Codex 共享池仍按档案及配置/认证 SHA-256 指纹隔离，这只影响连接复用，不作为档案切换或配置漂移阻断；Tab 恢复只恢复与当前档案一致的模型和思考，明确“恢复原分组和配置”仍属主动切换。该协调要求相关窗口均使用新版扩展，不约束外部工具、旧版本窗口直接写入或原生 CLI 自行维护的元数据，不自动回滚部分写入。实现见 `src/config/sharedRuntimeConfig.ts`、`src/config/configService.ts`、`src/webviewCommandCoordinator.ts`、`src/sessionMessageActions.ts`、`src/extension.ts`；回归见 `sharedRuntimeConfig`、`currentConfigOwnership`、`configService`、`promptSessionHealth`、`loopPlusRuntimeIntegration` 和面板消息测试。
+配置选择通过原子共享快照在窗口间同步，不使用跨窗口互斥锁或任务执行租约。配置操作不等待其他窗口，两个窗口同时写入时最后完成的写入生效；任务启动忽略发送时的旧档案快照，按启动准备时读取到的当前配置运行。原子替换保护单次文件完整性，不提供多文件或跨窗口事务隔离。实现见 `src/config/sharedRuntimeConfig.ts`、`src/config/configService.ts`、`src/webviewCommandCoordinator.ts`、`src/sessionMessageActions.ts`、`src/extension.ts`；回归覆盖配置共享快照与任务启动读取行为。
 
 AI 对话面板读取 Codex 当前 `config.toml` 的根级 `model` 作为配置默认模型：有值时替代空值“默认”项，并与 `~/.sinitek_cli/models.json` 中的用户管理模型按大小写不敏感规则去重；用户显式选择优先，配置缺失或读取失败时保持旧行为。实现见 `src/cli/codexConfigModel.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`、`src/extensionHost/modelSettings.ts`、`src/webview/viewContentScript/modelManager.ts`；回归见 `src/test/cli/codexConfigModel.test.ts`、`src/test/extensionHost/cliModelSelectionStrategies.test.ts`、`src/test/webview/grokmodelselection.test.ts`。
 
@@ -660,6 +658,7 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 | AI 对话 / 通用 | 首次加载默认辅助栏入口 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.1 对话入口与基础导航` | `package.json`、`run_dev.py`、`src/extension.ts`、`src/webview/viewProvider.ts` | `npm run build`；`node --test dist/test/webview/panelViewLocation.test.js dist/test/webview/viewProvider.test.js dist/test/extensionHost/commandRegistry.test.js` | 使用 VS Code 1.104+ 原生 `secondarySidebar` 注册聊天容器，不再重复声明同 ID 的 Activity Bar 容器。保持原容器与视图 ID，尊重已有布局；`run_dev.py` 在 Windows/macOS/Linux 安装依赖、构建并以独立窗口启动开发宿主；`autoOpenPanel=false` 时不自动展开，不修改其他扩展位置。 |
 | AI 对话 / 通用 | 资源管理器右键加入到携宁 CLI 引用 | in-progress | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.5 Prompt 输入增强` | `package.json`、`src/commandRegistry.ts`、`src/webview/panelFileActions.ts`、`src/webview/viewProvider.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts` | `npm run build` 与命令/菜单清单回归通过；路径解析、就绪缓存和输入框回归待验证 | 菜单标题在 package.json 中固定为“加入到携宁 CLI 引用”，不随 VS Code 显示语言切换。文件与目录右键菜单支持单选/多选插入工作区相对路径 `@` 引用，含空格路径加引号，保留输入框其他内容；首次打开或重载时待脚本就绪后插入，不自动发送。 |
 | AI 对话 / 通用 | 资源管理器拖拽工作区路径引用 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#3.5 Prompt 输入增强`、`.ch/docs/exec-plans/completed/2026-10/2026-10-05-bugfix-explorer-drop-references.md` | `src/webview/viewContentScript/runStreamAndQueue.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/extension.ts` | 构建、拖拽回归与协议测试通过；Chromium 六种场景通过；完整 Webview 覆盖测试存在基线可复现的任务列表失败 | 文件与目录按工作区相对路径插入 `@` 引用，多选去重，含空格路径加引号，兼容 Windows 盘符与 UNC；无路径文件保留附件上传回退。 |
+| AI 对话 / 通用 | 粘贴附件引用后的光标定位 | active | 终端用户 | `src/webview/viewContentScript/runStreamAndQueue.ts` | `npm run build`；`node --test dist/test/webview/clipagescriptruntimecoverage.test.js`；Chromium 验证 | 附件上传成功后在当前选区插入引用，光标停在最后一个引用之后并滚动到光标可见处；光标位于多行提示词中间时保留后续内容，不滚到底部。 |
 | AI 对话 / 通用 | 固定简体中文界面 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/i18n.ts`、`src/webview/viewContentScript/coreBootstrap.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`package.json` | `npm run build`；`node --test dist/test/core/i18n.test.js dist/test/webview/panelViewLocation.test.js` | 对话界面、命令、设置说明和视图标题固定使用简体中文；不提供语言选项、locale 配置或 package.nls 语言包 |
 | AI 对话 / Kimi Code | 语义回放精简 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#Kimi Code`、`.ch/docs/references/cli-runtime-reference.md#Kimi Code` | `src/interactive/kimiReplayStream.ts`、`src/interactive/kimiRunner.ts`、`src/extensionHost/interactiveTurnKimi.ts` | `npm run build`；`node --test dist/test/interactive/kimiReplayStream.test.js dist/test/interactive/kimiRunner.test.js dist/test/interactive/kimiAppServerProtocol.test.js dist/test/extensionHost/kimiInteractiveHostWire.test.js` | 默认回放不记录思考 token 流、用量、命令目录和会话信息；普通正文按消息或当前回合合并，兼容增量及累计文本，工具保留开始、有效过程输出和终态，重复快照去重。聊天的正文、思考、工具与 token 用量展示不变，回放与 JSONL 导出共用精简后的记录。 |
 | 配置 / Kimi Code | 可视化模型分栏编辑 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#Kimi Code` | `media/config/assets/config-app-ui.js`、`media/config/assets/index-Dl7d6WMN.css` | `npm run build`；`node --test dist/test/config/kimiCodeConfigPage.test.js dist/test/config/cliPageConfigCoverage.test.js` | 默认模型与免审批模式作为公共参数置于上方；下方左侧管理模型列表，右侧编辑所选模型及连接参数；不再展示 Providers 清单，保留 TOML 数据与未展示字段。 |

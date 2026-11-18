@@ -405,13 +405,6 @@ async function executeSendPromptMessage(
   if (!configReady) {
     return;
   }
-  try {
-    await deps.validateVisibleConfigSelections?.(targetCli, message.configSelections);
-  } catch (error) {
-    deps.showWebviewError("配置已变化", error instanceof Error ? error.message : String(error));
-    refreshPromptPanelState(deps);
-    return;
-  }
   if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
     const resolvedConfigId = await resolveSubtaskRouteConfigId({
       cli: requestedSubtaskCli,
@@ -442,7 +435,6 @@ async function executeSendPromptMessage(
     includeLoopModels,
   }, promptModels);
   const promptInput: PromptRunInputForPanel = {
-    ...(message.configSelections ? { configSelections: message.configSelections } : {}),
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,

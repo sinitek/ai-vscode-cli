@@ -479,7 +479,6 @@ type SendMessage = {
   contextOptions?: unknown;
   scheduledAt?: number;
   files?: unknown[];
-  configSelections?: Record<string, { configId: string | null; revision: string }>;
 };
 
 function buildDispatchHarness() {
@@ -513,7 +512,6 @@ function buildDispatchHarness() {
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
-      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",
@@ -603,7 +601,7 @@ test("sends Loop+ with role models, rejects its queue entry, and still queues Vi
   assert.equal(sent.loopMainThinkingMode, "high");
   assert.equal(sent.loopSubtaskThinkingMode, "medium");
   assert.equal(sent.model, "saved-main-model");
-  assert.deepEqual(sent.configSelections, { codex: { configId: "config-1", revision: "revision-1" } });
+  assert.equal(Object.prototype.hasOwnProperty.call(sent, "configSelections"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(sent, "loopExecutionMode"), false);
 
   harness.posted.length = 0;
@@ -614,7 +612,6 @@ test("sends Loop+ with role models, rejects its queue entry, and still queues Vi
   harness.state.interactiveMode = "coding";
   harness.api.queuePromptForLater({ ...basePayload, interactiveMode: "coding" });
   assert.equal(harness.runtime.pendingPromptQueue.length, 1);
-  assert.deepEqual(harness.runtime.pendingPromptQueue[0].configSelections, sent.configSelections);
   harness.runtime.queueEditingIndex = 0;
   harness.runtime.queueEditingDraft = "edited prompt";
   harness.api.saveQueuedPromptEdit();
@@ -624,7 +621,7 @@ test("sends Loop+ with role models, rejects its queue entry, and still queues Vi
   assert.ok(flushed);
   assert.equal(flushed.prompt, "edited prompt");
   assert.equal(flushed.interactiveMode, "coding");
-  assert.deepEqual(flushed.configSelections, sent.configSelections);
+  assert.equal(Object.prototype.hasOwnProperty.call(flushed, "configSelections"), false);
 
   harness.state.interactiveMode = "loop";
   harness.setActiveTab("tab-active");
@@ -823,7 +820,6 @@ test("retains a rejected Loop+ busy-overlay snapshot and permits explicit pause 
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
-      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",

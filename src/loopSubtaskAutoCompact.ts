@@ -106,13 +106,7 @@ export async function scheduleAutoCompactAfterPrompt(
   target: PromptRunTarget,
   run: (options: LoopMainAutoCompactRequest) => Promise<void>,
 ): Promise<boolean> {
-  const configSelection = input.configSelections?.[target.cli];
-  const execution = configSelection ? {
-    configSelection,
-    model: input.model ?? null,
-    thinkingMode: input.thinkingModeOverride,
-  } : undefined;
-  if (loopSubtaskAutoCompactions.defer(input, target, () => run({ isolatedRun: true, ...(execution ? { execution } : {}) }))) {
+  if (loopSubtaskAutoCompactions.defer(input, target, () => run({ isolatedRun: true }))) {
     return false;
   }
   let started = false;

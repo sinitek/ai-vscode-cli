@@ -1426,18 +1426,16 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
   });
 }
 
-test("queued prompts retain the displayed profile revision instead of silently adopting a later heartbeat", () => {
+test("queued prompts do not retain a stale profile snapshot", () => {
   const { api, posted, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
   const payload = api.buildPromptPayload("按所见配置执行");
-  assert.equal(payload.configSelections.codex.revision, "visible-a");
   api.queuePromptForLater(payload);
   const queued = api.getActiveConversationRuntimeState().pendingPromptQueue[0];
   window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
   api.dispatchPrompt(queued);
   const sent = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.equal(sent.configSelections.codex.configId, "config-a");
-  assert.equal(sent.configSelections.codex.revision, "visible-a");
+  assert.equal(Object.prototype.hasOwnProperty.call(sent, "configSelections"), false);
 });
 
 for (const cli of CLI_LIST) {

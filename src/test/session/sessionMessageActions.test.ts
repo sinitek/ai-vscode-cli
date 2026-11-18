@@ -474,14 +474,12 @@ test("Loop+ starts without waiting for the full panel refresh and settles its su
   }]);
 });
 
-test("Loop+ submission settles on config refusal, early return and execution failure", async () => {
-  for (const failure of ["config", "disabled", "execution"] as const) {
+test("Loop+ submission settles on early return and execution failure", async () => {
+  for (const failure of ["disabled", "execution"] as const) {
     const { deps, calls } = createSendPromptHarness();
     const receipts: Record<string, unknown>[] = [];
     deps.postWebviewMessage = (message) => { receipts.push(message); };
-    if (failure === "config") {
-      deps.validateVisibleConfigSelections = async () => { throw new Error("配置已变化"); };
-    } else if (failure === "disabled") {
+    if (failure === "disabled") {
       deps.readStoredToolSettings = () => ({ cliEnabledByName: { opencode: false } });
     } else {
       deps.runLoopPrompt = async () => { throw new Error("启动失败"); };
@@ -553,60 +551,43 @@ test("sending Vibe in the active completed Loop conversation preserves the selec
   }
 });
 
-test("Vibe config refusal settles without waiting for the corrective panel refresh", async () => {
+test("Vibe dispatch uses the host's current configuration", async () => {
   const { deps, calls } = createSendPromptHarness();
-  const panelReady = createDeferred();
   const receipts: Record<string, unknown>[] = [];
-  deps.postPanelState = () => panelReady.promise;
   deps.postWebviewMessage = (message) => { receipts.push(message); };
-  deps.validateVisibleConfigSelections = async () => { throw new Error("配置已变化"); };
   const submission = handlePanelMessageWithDeps({ type: "sendPrompt", requestId: "rejected-vibe",
-    prompt: "等待配置校验", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
-  try {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.deepEqual(calls.webviewErrors, ["配置已变化"]);
-    assert.equal(calls.preloaded.length, 0);
-    assert.equal(calls.runPrompt.length, 0);
-    assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "rejected-vibe", tabId: "tab-opencode-smoke" }]);
-  } finally {
-    panelReady.resolve();
-    await submission;
-  }
+    prompt: "按启动时当前配置执行", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
+  await submission;
+  assert.equal(calls.preloaded.length, 1);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "rejected-vibe", tabId: "tab-opencode-smoke" }]);
 });
 
-test("stale visible configuration refuses both ordinary and Loop dispatch before recording history", async () => {
+test("ordinary and Loop dispatch use the host's current configuration", async () => {
   for (const interactiveMode of ["coding", "loop"] as const) {
     const { deps, calls } = createSendPromptHarness();
-    deps.validateVisibleConfigSelections = async () => { throw new Error("所见配置版本已过期，请重新确认"); };
     await handlePanelMessageWithDeps({
-      type: "sendPrompt", prompt: "不能使用未确认的配置", cli: "opencode", interactiveMode,
+      type: "sendPrompt", prompt: "使用启动时当前配置", cli: "opencode", interactiveMode,
       tabId: "tab-opencode-smoke",
-      configSelections: { opencode: { configId: "visible-profile", revision: "old-revision" } },
     }, deps);
-    assert.equal(calls.runPrompt.length, 0);
-    assert.equal(calls.runLoopPrompt.length, 0);
-    assert.equal(calls.promptHistory.length, 0);
-    assert.equal(calls.preloaded.length, 0);
-    assert.equal(calls.postPanelState, 1);
-    assert.equal(calls.webviewErrors.length, 1);
+    assert.equal(calls.runPrompt.length, interactiveMode === "coding" ? 1 : 0);
+    assert.equal(calls.runLoopPrompt.length, interactiveMode === "loop" ? 1 : 0);
+    assert.equal(calls.promptHistory.length, 1);
+    assert.equal(calls.preloaded.length, 1);
+    assert.equal(calls.webviewErrors.length, 0);
   }
 });
 
-test("validated visible revisions are forwarded unchanged to ordinary and Loop execution", async () => {
+test("configuration snapshots are not forwarded to ordinary or Loop execution", async () => {
   for (const interactiveMode of ["coding", "loop"] as const) {
     const { deps, calls } = createSendPromptHarness();
-    const configSelections = { opencode: { configId: "visible-profile", revision: "visible-revision" } };
-    deps.validateVisibleConfigSelections = async (cli, selections) => {
-      assert.equal(cli, "opencode");
-      assert.deepEqual(selections, configSelections);
-    };
     await handlePanelMessageWithDeps({
-      type: "sendPrompt", prompt: "按已确认的所见配置执行", cli: "opencode", interactiveMode,
-      tabId: "tab-opencode-smoke", configSelections,
+      type: "sendPrompt", prompt: "按启动时当前配置执行", cli: "opencode", interactiveMode,
+      tabId: "tab-opencode-smoke",
     }, deps);
     const dispatched = interactiveMode === "coding" ? calls.runPrompt : calls.runLoopPrompt;
     assert.equal(dispatched.length, 1);
-    assert.deepEqual(dispatched[0].input.configSelections, configSelections);
+    assert.equal("configSelections" in dispatched[0].input, false);
   }
 });
 

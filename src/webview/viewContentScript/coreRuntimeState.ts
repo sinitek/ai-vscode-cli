@@ -548,7 +548,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         const includeSelection = Boolean(autoAddEditorContextTags && state.promptContext.includeSelection && state.editorContext.hasSelection);
         return {
           prompt,
-          configSelections: readVisibleConfigSelections(),
           contextOptions: {
             includeCurrentFile,
             includeSelection,
@@ -620,7 +619,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
           : null;
         return {
           prompt,
-          ...(payload.configSelections && typeof payload.configSelections === "object" ? { configSelections: payload.configSelections } : {}),
           contextOptions: {
             includeCurrentFile: contextOptions.includeCurrentFile !== false,
             includeSelection: contextOptions.includeSelection !== false,

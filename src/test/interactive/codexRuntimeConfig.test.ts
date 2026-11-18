@@ -4,7 +4,6 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 
-import { runtimeCoordinationDirectory, SharedRuntimeConfig } from "../../config/sharedRuntimeConfig";
 import { ensureCodexProjectTrusted, resolveCodexModelProvider } from "../../interactive/codexRuntimeConfig";
 
 test("resolves the root model_provider from Codex TOML", async () => {
@@ -24,28 +23,15 @@ test("resolves the root model_provider from Codex TOML", async () => {
   }
 });
 
-test("new-session project trust waits for the config lock before rewriting config.toml", async () => {
+test("new-session project trust writes without waiting for a cross-window mutex", async () => {
   const codexHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-trust-lock-"));
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), "codex-trust-project-"));
   const configPath = path.join(codexHomeDir, "config.toml");
   try {
     await fs.writeFile(configPath, "model = \"test\"\n");
-    const gate = new SharedRuntimeConfig(runtimeCoordinationDirectory(configPath));
-    let release!: () => void;
-    const hold = new Promise<void>((resolve) => { release = resolve; });
-    let entered = false;
-    const holding = gate.exclusive(async () => {
-      entered = true;
-      await hold;
-      return (await fs.readFile(configPath, "utf8")).includes("trust_level");
-    });
-    for (let attempt = 0; attempt < 50 && !entered; attempt += 1) {
-      await new Promise<void>((resolve) => setImmediate(resolve));
-    }
-    assert.equal(entered, true);
+    await fs.mkdir(path.join(codexHomeDir, ".sinitek-runtime-coordination", "config.toml"), { recursive: true });
+    await fs.writeFile(path.join(codexHomeDir, ".sinitek-runtime-coordination", "config.toml", "mutex"), "held");
     const trust = ensureCodexProjectTrusted({ projectRoot, codexHomeDir });
-    release();
-    assert.equal(await holding, false);
     const persisted = await trust;
     assert.equal(persisted.status, "updated");
     assert.match(await fs.readFile(configPath, "utf8"), /trust_level = "trusted"/);

@@ -42,7 +42,7 @@ test("Loop uses each bound CLI's current config without changing the CLI or glob
   assert.equal(record.modelRouting?.main.model, "old-main");
 });
 
-test("invocation boundary refreshes split frontend models and discards an obsolete config selection", () => {
+test("invocation boundary refreshes split frontend models", () => {
   const record = task();
   record.schedulingMode = "event_driven";
   record.loopSubtaskMode = "split";
@@ -51,13 +51,11 @@ test("invocation boundary refreshes split frontend models and discards an obsole
   const result = applyLoopInvocationModelRouting({
     displayPrompt: "继续", modelPrompt: "继续", contextTags: [], taskRole: "subtask", loopTaskId: record.id,
     loopSubtaskId: "front", model: "cached-model", loopSubtaskModel: "cached-child",
-    configSelections: { grok: { configId: "grok-old", revision: "old" } },
   }, record);
   assert.equal(result.model, "new-frontend");
   assert.equal(result.loopSubtaskModel, "new-frontend");
   assert.equal(result.loopSubtaskCli, "grok");
   assert.equal(result.loopSubtaskConfigId, "grok-current");
-  assert.equal(result.configSelections, undefined);
 });
 
 test("invocation boundary preserves explicit default child instead of inheriting the main model", () => {

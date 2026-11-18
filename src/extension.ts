@@ -13,7 +13,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease } from "./config/sharedRuntimeConfig";
 import { PromptRunHandoff } from "./extensionHost/promptRunHandoff";
 import {
   cleanupHumanInteractionHistory,
@@ -1160,14 +1159,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
       await promptRunHandoff.pause(tabId, () => stopRunForTab(tabId), isCurrent, async (isStillCurrent) => {
         if (cli === "codex") await interactiveRunnerManager?.waitForCodexSessionStopped(sessionId, isStillCurrent);
       });
-    },
-    validateVisibleConfigSelections: async (cli, selections) => {
-      const visible = selections?.[cli];
-      const current = await loadConfigState(cli);
-      if (!visible || current.configurationError || !current.revision
-        || visible.configId !== current.activeConfigId) {
-        throw new ConfigSelectionChangedError();
-      }
     },
     readCliRules,
     writeCliRules,
@@ -4702,7 +4693,7 @@ function rememberConversationTaskSummarySubmission(input: PromptRunInput, target
     const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
     const requirement = newSubmission ? input.displayPrompt : task?.rootPrompt ?? input.displayPrompt;
     if (!requirement?.trim()) return undefined;
-    const configId = input.configSelections?.[target.cli]?.configId ?? getActiveConfigIdForCli(target.cli);
+    const configId = getActiveConfigIdForCli(target.cli);
     const model = input.model ?? getSelectedCliModel(target.cli, configId);
     return {
       workspace: activeWorkspaceKey, draft, requirement, model,
@@ -5015,7 +5006,6 @@ async function runPromptNow(
       execute: async (attemptInput, attemptTarget) => {
         let appliedExecutionConfigId: string | null = null;
         let currentAttemptInput = attemptInput;
-        let executionLease: Awaited<ReturnType<typeof configService.acquireRuntimeConfigExecution>> | undefined;
         try {
           if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
             throw new Error("配置应用失败，任务未启动，请重新选择配置后重试。");
@@ -5025,13 +5015,7 @@ async function runPromptNow(
             currentAttemptInput = attemptInput;
           }
           const configState = await loadConfigState(attemptTarget.cli);
-          const expected = attemptInput.configSelections?.[attemptTarget.cli]
-            ?? (!attemptInput.configSelections && configState.revision
-              ? { configId: configState.activeConfigId, revision: configState.revision } : null);
-          if (!expected || configState.configurationError) throw new ConfigSelectionChangedError();
-          executionLease = promptRunHandoff.trackLease(attemptTarget.tabId,
-            await configService.acquireRuntimeConfigExecution(attemptTarget.cli, expected));
-          const executionConfigId = executionLease.selection.configId;
+          const executionConfigId = configState.activeConfigId;
           const previousConfigId = attemptInput.taskRole === "subtask"
             ? attemptInput.loopSubtaskConfigId
             : attemptInput.executionProfile?.configId
@@ -5052,10 +5036,6 @@ async function runPromptNow(
             };
           }
           appliedExecutionConfigId = executionConfigId;
-          currentAttemptInput = {
-            ...currentAttemptInput,
-            configSelections: { ...currentAttemptInput.configSelections, [attemptTarget.cli]: executionLease.selection },
-          };
           if (attemptTarget.cli === "opencode") {
             const preflightMessage = await getOpenCodeConfigPreflightMessage();
             if (preflightMessage) {
@@ -5068,18 +5048,15 @@ async function runPromptNow(
             }
           }
         } catch (error) {
-          await executionLease?.release();
-          if (error instanceof ConfigSelectionChangedError) void postPanelState();
           appendSystemMessageForPromptTarget(attemptTarget, getErrorInfo(error).message);
           throw error;
         }
-        try {
-          if (executionOptions.isAborted()) {
-            return;
-          }
-          options.onStarted?.();
-          if (summarySubmission) {
-            conversationTaskSummaries.request({
+        if (executionOptions.isAborted()) {
+          return;
+        }
+        options.onStarted?.();
+        if (summarySubmission) {
+          conversationTaskSummaries.request({
               tabId: attemptTarget.tabId,
               eligible: currentSummaryTask && pendingConversationTaskSummarySubmissions.isCurrent(currentTab, summarySubmission),
               submission: summarySubmission,
@@ -5094,35 +5071,17 @@ async function runPromptNow(
                   claudeEntrypoint: attemptTarget.cli === "claude" ? resolveClaudeInteractiveEntrypoint(summarySubmission.command) : undefined,
                 });
               },
-            });
-          }
-          if (!shouldUseInteractive && !await takeOverSessionForTab(attemptTarget, executionOptions.isAborted)) {
-            return;
-          }
-          if (shouldUseInteractive) {
-            await runPromptInteractive(currentAttemptInput, attemptTarget, executionOptions);
-          } else if (hasOtherTabRun(attemptTarget.tabId)) {
-            await runPromptParallel(currentAttemptInput, attemptTarget, executionOptions);
-          } else {
-            await runPromptOneShot(currentAttemptInput, attemptTarget, executionOptions);
-          }
-        } finally {
-          if (executionLease) {
-            await releaseRuntimeConfigExecutionLease(executionLease, (releaseError, attempt) => {
-              const info = getErrorInfo(releaseError);
-              void logError("runtime-config-execution-lease-release-failed", {
-                cli: attemptTarget.cli,
-                tabId: attemptTarget.tabId,
-                taskRole: currentAttemptInput.taskRole,
-                loopTaskId: currentAttemptInput.loopTaskId,
-                loopSubtaskId: currentAttemptInput.loopSubtaskId,
-                loopAttemptId: currentAttemptInput.loopAttemptId,
-                error: info.message,
-                errorCode: info.code,
-                attempt,
-              });
-            });
-          }
+          });
+        }
+        if (!shouldUseInteractive && !await takeOverSessionForTab(attemptTarget, executionOptions.isAborted)) {
+          return;
+        }
+        if (shouldUseInteractive) {
+          await runPromptInteractive(currentAttemptInput, attemptTarget, executionOptions);
+        } else if (hasOtherTabRun(attemptTarget.tabId)) {
+          await runPromptParallel(currentAttemptInput, attemptTarget, executionOptions);
+        } else {
+          await runPromptOneShot(currentAttemptInput, attemptTarget, executionOptions);
         }
         if (attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);
@@ -5204,7 +5163,6 @@ async function runPromptNow(
       loopAttemptId: promptInput.loopAttemptId,
       error: info.message,
       errorCode: info.code,
-      ...(error instanceof RuntimeConfigLockTimeoutError ? { configLock: error.diagnostic } : {}),
     });
     if (!isTabRunActive(target.tabId)) {
       if (info.code === "SESSION_RUN_ACTIVE") {
@@ -5386,7 +5344,6 @@ function persistAutoCompactMessagesPreservingConcurrentTranscript(): void {
 async function runContextCompaction(
   options: ContextCompactionOptions = {},
   isolatedRun = false,
-  execution?: LoopMainAutoCompactRequest["execution"],
 ): Promise<boolean> {
   const deps: ContextCompactionRunDeps = {
     getCurrentCli: () => currentCli,
@@ -5397,9 +5354,9 @@ async function runContextCompaction(
     hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
-    getActiveConfigIdForCli: execution ? () => execution.configSelection.configId : getActiveConfigIdForCli,
-    getSelectedCliModel: execution ? () => execution.model : getSelectedCliModel,
-    getEffectiveThinkingMode: execution?.thinkingMode ? () => execution.thinkingMode! : getEffectiveThinkingMode,
+    getActiveConfigIdForCli,
+    getSelectedCliModel,
+    getEffectiveThinkingMode,
     getWorkspaceInteractiveMode,
     applyThinkingWorkspaceFiles,
     getEffectiveCliArgs,
@@ -5460,7 +5417,7 @@ async function runContextCompaction(
       if (cli !== "opencode") {
         return { model: selectedModel };
       }
-      const configId = execution ? execution.configSelection.configId : getActiveConfigIdForCli("opencode");
+      const configId = getActiveConfigIdForCli("opencode");
       const runtimePreparation = await prepareOpenCodeRuntime({
         configId,
         role: "main",
@@ -5553,7 +5510,7 @@ function reserveLoopMainAutoCompactRun(
 async function runAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string,
-  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; onStarted?: () => void; isolatedRun?: boolean; execution?: LoopMainAutoCompactRequest["execution"] },
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; onStarted?: () => void; isolatedRun?: boolean },
 ): Promise<void> {
   const compacted = await runContextCompaction({
     silent: true,
@@ -5564,7 +5521,7 @@ async function runAutoCompactContextAfterPromptSuccess(
     allowActiveRun: request.allowActiveRun,
     onStopReady: request.onStopReady,
     onStarted: request.onStarted,
-  }, request.isolatedRun, request.execution);
+  }, request.isolatedRun);
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
     tabId: target.tabId,
@@ -5594,26 +5551,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
     return;
   }
   if (options.isolatedRun) {
-    const lease = options.execution
-      ? await configService.acquireRuntimeConfigExecution(target.cli, options.execution.configSelection)
-      : undefined;
-    try {
-      await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
-    } finally {
-      if (lease) {
-        await releaseRuntimeConfigExecutionLease(lease, (releaseError, attempt) => {
-          const info = getErrorInfo(releaseError);
-          void logError("runtime-config-execution-lease-release-failed", {
-            cli: target.cli,
-            tabId: target.tabId,
-            activity: "contextCompaction",
-            error: info.message,
-            errorCode: info.code,
-            attempt,
-          });
-        });
-      }
-    }
+    await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
     return;
   }
   const overlapLoopDispatch = options.overlapLoopDispatch === true;

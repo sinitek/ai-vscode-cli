@@ -81,7 +81,6 @@ export type PanelMessage =
       type: "sendPrompt";
       requestId?: string;
       pauseBeforeSend?: boolean;
-      configSelections?: Partial<Record<CliName, import("../config/sharedRuntimeConfig").VisibleConfigSelection>>;
       prompt: string;
       interactiveMode?: InteractiveMode;
       contextOptions?: PromptContextOptions;

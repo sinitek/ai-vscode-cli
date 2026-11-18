@@ -49,11 +49,10 @@ async function action(name: string): Promise<any> {
   if (name === "begin") {
     const { createLoopPlusOrchestrationHost } = load("extensionHost/loopPlusOrchestration.js");
     const selection = (await api.loadConfigState("codex"));
-    const configSelections = { codex: { configId: selection.activeConfigId, revision: selection.revision } };
     const parent = api.resolvePromptRunTarget(api.getActiveConversationTabId());
     const input = { displayPrompt: "原生宿主压缩路由隔离验收", model: "native-fixture", loopSubtaskMode: "fullstack",
       loopSubtaskFullstackCli: "codex", loopSubtaskFullstackConfigId: selection.activeConfigId,
-      loopSubtaskFullstackModel: "native-fixture", configSelections };
+      loopSubtaskFullstackModel: "native-fixture" };
     // Compose the production scheduler at its invocation ports. Keep the completed child open
     // to exercise presentation; production adapter auto-close is outside this scenario.
     host = createLoopPlusOrchestrationHost({

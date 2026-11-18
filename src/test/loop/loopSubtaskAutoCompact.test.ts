@@ -241,15 +241,14 @@ test("same-session replacement waits for canceled predecessor while an independe
   assert.deepEqual(events, ["first", "other", "second"]);
 });
 
-test("subtask compaction retains the execution config, model and thinking snapshot", async () => {
-  const selection = { configId: "child-profile", revision: "selected-revision" };
-  const runInput = input({ loopTaskId: "snapshot-task", configSelections: { codex: selection }, model: "child-model", thinkingModeOverride: "high" });
+test("subtask compaction reads the current runtime config instead of retaining a selection snapshot", async () => {
+  const runInput = input({ loopTaskId: "snapshot-task", model: "child-model", thinkingModeOverride: "high" });
   const options: unknown[] = [];
   await scheduleAutoCompactAfterPrompt(runInput, target(), async (request) => { options.push(request); });
   runInput.model = "new-model";
   loopSubtaskAutoCompactions.notify("snapshot-task", "child", true);
   await loopSubtaskAutoCompactions.wait("codex", "child-session");
-  assert.deepEqual(options, [{ isolatedRun: true, execution: { configSelection: selection, model: "child-model", thinkingMode: "high" } }]);
+  assert.deepEqual(options, [{ isolatedRun: true }]);
 });
 
 test("late compaction rejection logs its original subtask and session without failing a waiting continuation", async (t) => {

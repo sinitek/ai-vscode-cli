@@ -52,11 +52,9 @@
 
 - Tab 展示先判断 `isConversationTabRunning`，再判断错误标记。运行中的 trace/system 错误可能来自可恢复工具失败，不直接判定任务终止；终态仍由宿主 `runStatus` 驱动。保留错误气泡和原有成功、重试、输出恢复逻辑。
 - Webview 每 Tab 的 `lastRunStatus` 仅保存在内存，宿主 `runStatus` 事件更新后，消息推断不得覆盖明确的成功终态 `end`，自动重试排队提示同样遵守此保护。新用户消息、新运行和会话重置释放上一轮成功保护；明确的 `error` 始终可标记失败，未收到成功终态的空闲错误仍可展示。关闭/工作区切换复用运行态回收，不新增持久化字段；回归见 `src/test/webview/tabRunStatus.test.ts`。
-- `SharedRuntimeConfig.read` 对已有 `selection.json` 读取经过结构校验的原子快照，不争抢写锁、不清理磁盘租约；缺失且需要初始化时进入互斥事务并再次读取，防止重复初始化。只读可见 `ready:false`，并不赋予启动权限。
-- 配置应用、编辑和 `acquire` / `release` 仍受同一文件互斥锁保护；同进程按规范化目录建立轻量 Promise 顺序队列，跨进程才轮询文件锁。队列失败不阻断后续事务，最后一个操作完成时清除队列。
-- 失效 PID 租约仅在互斥事务中筛除，并随后续写入持久化。执行前重新检查档案与 `ready`，不凭面板快照跳过租约，也不通过超时强拆存活进程的锁。
-- 回归覆盖并发只读、未就绪配置、初始化竞争、同进程长事务、真实子进程写锁超时及崩溃恢复；只读快照不能替代启动时的一致性校验。
-- Vibe 的显式暂停发送使用 `sendPrompt.pauseBeforeSend`。宿主 `PromptRunHandoff` 按 Tab 跟踪完整调用和未成功释放的租约，先取消仍在准备的旧调用并请求停止，再等待调用收尾、原生停止确认与租约清理；不会用 UI `stopped` 事件或 Map 删除推断完整停止。Codex 先等待 `turn/interrupt` 应答，再复用 `releaseThreadForHandoff` 的卸载/实际退出证据，使用同一 HOME + thread 门禁阻止确认期间重入，保留其它会话。90 秒超时后中止确认资格，不迟到提交；会话/工作区变化、释放失败与重复提交均拒绝发送。Webview 收到确认后才清空匹配的输入；Loop 主任务仍走既有排队路径。
+- `SharedRuntimeConfig` 仅以原子快照同步当前档案选择，不提供跨窗口互斥锁或执行租约。各窗口独立执行操作，最后完成的共享选择写入生效；任务按启动准备时读取到的当前配置运行。
+- 回归覆盖无锁并发读写、剩余配置校验、陈旧档案快照不再进入派发、会话交接及压缩按当前配置运行。
+- Vibe 的显式暂停发送使用 `sendPrompt.pauseBeforeSend`。宿主 `PromptRunHandoff` 按 Tab 跟踪完整调用，先取消仍在准备的旧调用并请求停止，再等待调用收尾与原生停止确认；不会用 UI `stopped` 事件或 Map 删除推断完整停止。Codex 先等待 `turn/interrupt` 应答，再复用 `releaseThreadForHandoff` 的卸载/实际退出证据，使用同一 HOME + thread 门禁阻止确认期间重入，保留其它会话。90 秒超时后中止确认资格，不迟到提交；会话/工作区变化与重复提交均拒绝发送。Webview 收到确认后才清空匹配的输入；Loop 主任务仍走既有排队路径。
 
 ## 对话 Markdown 链接边界
 
@@ -115,7 +113,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 - 成员标题与子任务消息身份解析的轻量事实来源为 `src/loopConversationPresentation.ts`；`src/panelStateBuilder.ts` 保留原导出兼容现有群聊和运行时调用，Tab 宿主直接依赖轻量模块，避免引入 VS Code UI 依赖。执行 session 被多个子任务共用且消息身份缺失时，不猜测成员标题。
 - 对外只增加可选 `ConversationTabSummary.taskSummary?: string`。归一化折叠空白，校验汉字与纯文本，拒绝空白、超限、思考/工具标记和无效输出；以 `Array.from` 限制最多 30 个 Unicode 码点，不破坏非 BMP 字符。提示要求简体中文，但未做确定性繁简转换。旧记录缺字段兼容，无生成中/失败占位。
-- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
+- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在读取当前配置后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
 - 协调器按提交快照对象、工作区和草稿对象去重，同一任务的 Loop 内部调度及自动重试只尝试一次；`taskSummaryAttempted` 仍随 Tab/草稿/会话保存，但不再是后续新任务的永久门禁。失败、超时和溢出也消费本次尝试；空白 Tab、hover、刷新与仅恢复旧历史不补生成，新提交不受前次失败影响。
 - 摘要是任务/会话元信息，不写入用户消息、回放、任务记录或 Loop 协议。草稿、会话保存、状态投影和 local/native 绑定（包括目标 session 已存在时）保留摘要与尝试状态，重载/历史重开恢复元信息，不从当前活动 Tab 猜测归属。
 

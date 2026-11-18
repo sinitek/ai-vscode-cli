@@ -12,7 +12,6 @@ import { type ConfigManagerPanel } from "./webview/configPanel";
 import type { KimiCodeConfigModels, KimiCodeModelListChange } from "./config/kimiCodeConfig";
 
 export type PromptRunInputForPanel = {
-  configSelections?: Partial<Record<CliName, import("./config/sharedRuntimeConfig").VisibleConfigSelection>>;
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
@@ -144,7 +143,6 @@ export type PanelMessageHandlerDeps = {
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;
   applyConfigById: (cli: CliName, configId: string) => Promise<ConfigApplyResult>;
   waitForConfigApply?: (cli: CliName) => Promise<boolean>;
-  validateVisibleConfigSelections?: (cli: CliName, selections: PromptRunInputForPanel["configSelections"]) => Promise<void>;
   waitForConfigRetryDelay?: (milliseconds: number) => Promise<void>;
   readCliRules: (cli: CliName, scope: "global" | "project") => Promise<string>;
   writeCliRules: (cli: CliName, scope: "global" | "project", content: string) => Promise<void>;
