@@ -244,6 +244,7 @@ function createOneShotRuntimeHarness(options: {
     sendRunStatus: (status, message) => {
       statusEvents.push({ status, message });
     },
+    sendRunStatusForTab: (_tabId, status) => { statusEvents.push({ status }); },
     setActiveCliForRun: () => undefined,
     setActiveMessageTarget: (target) => {
       activeMessageTarget = target;
@@ -396,6 +397,51 @@ test("one-shot runtime host converts OpenCode natural clarification replies into
   assert.deepEqual(harness.statusEvents.map((event) => event.status), ["start", "end"]);
   assert.deepEqual(harness.completionStatuses, ["end"]);
   assert.deepEqual(harness.memoryPersistStatuses, ["end"]);
+});
+
+test("one-shot runtime converts an implicit single decision into a form before completing", async () => {
+  const prompts: string[] = [];
+  const question = "“撤销验收”希望如何处理？";
+  const options = [
+    "本次交付不再验收：记录撤销原因并移出待验收队列（推荐）",
+    "撤回已有验收结论：恢复为待验收，重新审查",
+  ];
+  const harness = createOneShotRuntimeHarness({
+    humanInteractionSubmission: (request) => ({
+      interactionId: request.interactionId,
+      tabId: request.tabId,
+      status: "completed",
+      values: { answer_1: options[1] },
+    }),
+  });
+  const stub: RunCliStream = (_cli, prompt, handlers) => {
+    prompts.push(prompt);
+    setImmediate(() => {
+      handlers.onStdout(`${JSON.stringify({
+        type: "text",
+        sessionID: "ses_acceptance_choice",
+        part: {
+          type: "text",
+          text: prompts.length === 1
+            ? `[final_answer] ${question}\n${options.join("\n")}`
+            : "[final_answer] 已按所选方案实现撤销验收。",
+        },
+      })}\n`);
+      handlers.onExit(0);
+    });
+    return { kill: () => true };
+  };
+  await withRunCliStreamStub(stub, () => harness.host.runPromptOneShot({
+    displayPrompt: "增加撤销验收功能",
+    modelPrompt: "增加撤销验收功能",
+    contextTags: [],
+  }, { tabId: "tab-acceptance", cli: "opencode", sessionId: null }));
+
+  assert.equal(prompts.length, 2);
+  assert.ok(prompts[1]?.includes(`${question}：${options[1]}`));
+  assert.equal(harness.humanInteractionRequests.length, 1);
+  assert.deepEqual(harness.humanInteractionRequests[0]?.formFields[0]?.options?.map((option) => option.label), options);
+  assert.deepEqual(harness.completionStatuses, ["end"]);
 });
 
 test("one-shot runtime host parses OpenCode optioned clarification replies into radio fields", async () => {

@@ -1223,6 +1223,33 @@ test("Codex compaction preserves the runtime configuration fingerprint", async (
   assert.equal(calls.setRunnerCalls[0]?.extra?.configFingerprint, "current-fingerprint");
 });
 
+test("stopping Codex compaction during preparation cannot acquire a replacement runner", { timeout: 2000 }, async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createSilentCodexCompactionDeps();
+  let finishRead!: (value: string) => void;
+  let readStarted!: () => void;
+  const reading = new Promise<void>((resolve) => { readStarted = resolve; });
+  deps.readRuntimeConfigFingerprint = () => {
+    readStarted();
+    return new Promise<string>((resolve) => { finishRead = resolve; });
+  };
+  let runnerAcquired = 0;
+  deps.interactiveRunnerManager.getOrCreateCodexRunner = () => {
+    runnerAcquired += 1;
+    throw new Error("cancelled preparation acquired a replacement runner");
+  };
+  let stop!: () => void;
+  const compacting = runContextCompactionWithDeps(deps, { silent: true, timeoutMs: 1000, onStopReady: (fn) => { stop = fn; } });
+  await reading;
+  stop();
+  deps.beginActiveRunState({ runId: "replacement", cli: "codex", sessionId: "session-1", tabId: "tab-1", messageTarget: [] });
+  finishRead("late-fingerprint");
+  assert.equal(await compacting, false);
+  assert.equal(runnerAcquired, 0);
+  assert.equal(calls.stopAndRebuild, 0);
+  assert.equal(deps.getActiveRunId(), "replacement");
+});
+
 test("Codex fingerprint reads respect the compaction timeout before creating a runner", async () => {
   const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   const { deps, calls } = createStrategySelectionDeps({ cli: "codex" });

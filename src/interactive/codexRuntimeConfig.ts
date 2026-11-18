@@ -153,15 +153,10 @@ export async function ensureCodexProjectTrusted(input: {
   const configPath = resolveCodexConfigPath(input.codexHomeDir);
   const existingContent = await readTextFile(configPath);
   const ensuredContent = ensureCodexProjectTrustedContent(existingContent, projectRoot);
-
-  if (ensuredContent.status === "updated") {
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await writeFileAtomically(configPath, ensuredContent.content);
+  if (ensuredContent.status !== "updated") {
+    return { status: ensuredContent.status, configPath, projectRoot };
   }
-
-  return {
-    status: ensuredContent.status,
-    configPath,
-    projectRoot,
-  };
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await writeFileAtomically(configPath, ensuredContent.content);
+  return { status: ensuredContent.status, configPath, projectRoot };
 }

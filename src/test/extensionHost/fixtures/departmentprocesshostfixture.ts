@@ -15,6 +15,7 @@ import { createLoopPlusRuntimeFixture } from "./loopPlusRuntimeFixture";
 import { SharedRuntimeConfig } from "../../../config/sharedRuntimeConfig";
 import { parseOpenCodeRunOutput } from "../../../cli/openCodeRunOutput";
 import { writeMessageFile } from "../../../sessionStore";
+import { fixtureEmployeeAdmission } from "../../runtime/fixtures/departmentemployeeadmission";
 
 export async function seedDepartmentProcessHostFixture(directory: string, home: string, workspaceKey: string): Promise<void> {
   const route = { cli: "opencode" as const, configId: "profile", model: "fixture/model" };
@@ -35,8 +36,9 @@ export async function seedDepartmentProcessHostFixture(directory: string, home: 
 
 export async function runDepartmentProcessHostFixture(directory: string, workspace: string, workspaceKey: string, nodeExecutable: string, cancelPreparation = false): Promise<void> {
   // Activation owns the production source/router. Never open a second writer here.
-  assert.ok(readLoopTaskRecord("root"));
-  assert.ok(updateLoopTaskRecord("root", { status: "running" }, { allowCompletedToRunning: true }));
+  const root = readLoopTaskRecord("root");
+  assert.ok(root);
+  assert.ok(updateLoopTaskRecord("root", { status: "running", subTasks: root.subTasks.map(module => ({ ...module, status: "running" })) }, { allowCompletedToRunning: true }));
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 }); scheduler.dispatch([{ subtaskId: "subtask", attemptId: "attempt" }]);
   const leader = readLoopTaskRecord("leader")!;
   assert.ok(updateLoopTaskRecord("leader", { status: "running", loopPlus: scheduler.snapshot(), subTasks: leader.subTasks.map((s) => ({ ...s, status: "running" })) }, { allowCompletedToRunning: true }));
@@ -48,7 +50,8 @@ export async function runDepartmentProcessHostFixture(directory: string, workspa
   assert.equal(store.write({ version: 1, rootTaskId: "root", workspaceKey, runtime,
     capacity: { rootTaskId: "root", maxLeaders: 4, maxEmployees: 20, leaders: ["module"], employees: [JSON.stringify(["leader", "attempt"])] } }).ok, true);
   let output = "";
-  const preparationHost = { store, ownerDirectory: path.join(directory, "owners"), workspaceKey: () => workspaceKey,
+  const preparationHost = { store, employeeAdmission: fixtureEmployeeAdmission(store, workspaceKey).port,
+    ownerDirectory: path.join(directory, "owners"), workspaceKey: () => workspaceKey,
     readTask: readLoopTaskRecord, updateTask: updateLoopTaskRecord,
     async prepareLaunch(_selection: import("../../../runtime/departmentexecutionidentity").DepartmentExecutionSelection, sessionId: string) {
       return { configurationDirectory: path.join(directory, "configuration"), workspaceDirectory: workspace, overlay: null,
@@ -59,6 +62,7 @@ export async function runDepartmentProcessHostFixture(directory: string, workspa
   const service = createDepartmentProcessPreparation(preparationHost);
   if (cancelPreparation) {
     let releases = 0, unknown = 0;
+    let launchLifecycle: ReturnType<typeof startDepartmentProcessInvocation>["lifecycle"];
     const before = JSON.stringify(readLoopTaskRecord("leader"));
     const fixture = createLoopPlusRuntimeFixture({ cli: "opencode", configId: "profile",
       taskPersistence: { create() { throw new Error("not-used"); }, read: readLoopTaskRecord,
@@ -68,8 +72,8 @@ export async function runDepartmentProcessHostFixture(directory: string, workspa
       runPromptOverride: async (_input, options) => {
         assert.ok(options?.signal);
         await new Promise<void>((_resolve, reject) => {
-          startDepartmentProcessInvocation(service, "leader", "subtask", { onError: reject }, selection,
-            preparationHost.prepareLaunch, { signal: options.signal, isAborted: options.isAborted });
+          launchLifecycle = startDepartmentProcessInvocation(service, "leader", "subtask", { onError: reject }, selection,
+            preparationHost.prepareLaunch, { signal: options.signal, isAborted: options.isAborted }).lifecycle;
         });
       },
     });
@@ -86,10 +90,8 @@ export async function runDepartmentProcessHostFixture(directory: string, workspa
       attempt.abort(); await attempt.promise;
       assert.equal(JSON.stringify(readLoopTaskRecord("leader")), before, "caller cancellation does not require task-state mutation");
       fs.writeFileSync(path.join(directory, "export-open"), "open");
-      while (JSON.parse(fs.readFileSync(path.join(directory, "configuration", "selection.json"), "utf8")).leases.length) {
-        if (Date.now() > deadline) throw new Error("EH-probe-lease-not-drained");
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      assert.ok(launchLifecycle);
+      assert.equal((await launchLifecycle).processTerminal.status, "unobservable");
       assert.equal(fs.existsSync(path.join(directory, "spawn-count")), false);
       const read = store.read("root", workspaceKey); assert.ok(read.ok && read.value);
       assert.equal(read.value.executionBindings?.length ?? 0, 0); assert.equal(read.value.capacity.employees.length, 1);

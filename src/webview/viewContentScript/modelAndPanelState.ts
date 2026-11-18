@@ -514,7 +514,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.dshReasoningOptions = panelState.dshReasoningOptions.filter((option) => typeof option === "string" && option.trim());
         }
         state.sessionState = panelState.sessionState;
-        const nextConversationTabs = panelState.conversationTabs || { activeTabId: null, tabs: [] };
+        const nextConversationTabs = reconcileConversationTabMutations(
+          panelState.conversationTabs || { activeTabId: null, tabs: [] }, previousActiveTabId
+        );
         const newlyCompletedLoopTabIds = getNewlyCompletedLoopTabIds(
           previousConversationTabs,
           nextConversationTabs
@@ -554,10 +556,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             state.pendingOpenCodeRoleSelection = null;
           }
         }
-        const tabIds = Array.isArray(state.conversationTabs.tabs)
-          ? state.conversationTabs.tabs.map((tab) => tab.id)
-          : [];
-        pruneConversationRuntimeStates(tabIds);
+        pruneConversationRuntimeStates(getConversationTabRuntimeIds());
         if (Array.isArray(state.conversationTabs.tabs)) {
           state.conversationTabs.tabs.forEach((tab) => {
             const previousTab = Array.isArray(previousConversationTabs.tabs)
@@ -578,6 +577,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
         state.loopGroupChatMessageLimit = normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
         state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
+        state.newTaskInteractiveMode = panelState.newTaskInteractiveMode === "loop" || panelState.newTaskInteractiveMode === "loop_plus"
+          ? panelState.newTaskInteractiveMode : "coding";
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -635,7 +636,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (panelState.loopSubtaskOpenCodeModels) {
           state.loopSubtaskOpenCodeModels = normalizeOpenCodeModelsPayload(panelState.loopSubtaskOpenCodeModels);
         }
-        state.interactiveMode = normalizeInteractiveMode(panelState.interactiveMode);
+        state.interactiveMode = getExplicitInteractiveModeForTab(getConversationTabSummary(getActiveConversationTabId()))
+          || (isCreatingConversationTab(nextActiveTabId) && nextActiveTabId !== panelState.conversationTabs?.activeTabId
+            ? state.newTaskInteractiveMode
+            : normalizeInteractiveMode(panelState.interactiveMode));
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
@@ -668,13 +672,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
           panelState.humanInteractionTimeoutMinutes
         );
-        state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
         state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
         );
-        state.loopPlusMaxAcceptances = normalizeLoopPlusMaxAcceptances(
-          panelState.loopPlusMaxAcceptances
+        state.loopPlusSubtaskMaxRounds = normalizeLoopPlusSubtaskMaxRounds(
+          panelState.loopPlusSubtaskMaxRounds
         );
+        if (elements.loopPlusSubtaskMaxRounds) {
+          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
+        }
         syncDepartmentCapacityPanelState(panelState);
         syncWorkspaceDepartmentCapacityPanelState(panelState);
         if (!state.autoAddEditorContextTags) {
@@ -751,8 +757,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.hideInstructionBubbles) {
           elements.hideInstructionBubbles.checked = state.hideInstructionBubbles;
         }
-        if (elements.loopMaxRounds) {
-          elements.loopMaxRounds.value = String(state.loopMaxRounds);
+        if (elements.newTaskInteractiveMode) {
+          elements.newTaskInteractiveMode.value = state.newTaskInteractiveMode;
         }
         if (elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
@@ -762,8 +768,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             ? "" : String(normalizeLoopPlusDecisionSubtaskMax(panelState.workspaceLoopPlusDecisionSubtaskMax));
           elements.workspaceLoopPlusDecisionSubtaskMax.placeholder = "全局：" + state.loopPlusDecisionSubtaskMax;
         }
-        if (elements.loopPlusMaxAcceptances) {
-          elements.loopPlusMaxAcceptances.value = String(state.loopPlusMaxAcceptances);
+        if (elements.loopPlusSubtaskMaxRounds) {
+          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
         }
         if (elements.macTaskShellRow) {
           elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";

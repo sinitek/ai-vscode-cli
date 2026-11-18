@@ -87,7 +87,6 @@ function createPort(options: {
   views?: LoopPlusDecisionQueueView[];
   inFlight?: LoopPlusDecisionInFlightView[];
   refuse?: boolean[];
-  confirm?: boolean;
   controlsApplied?: boolean;
   controlPlan?: LoopPlusDecisionControlPlan | null;
   preview?: boolean;
@@ -153,15 +152,11 @@ function createPort(options: {
     captureRemainingUserMessagesForHeldReview() {
       record("captureRemainingUserMessagesForHeldReview");
     },
-    refuseDispatchPastAcceptanceLimit(plannedLaunches) {
-      record("refuseDispatchPastAcceptanceLimit", [plannedLaunches]);
+    refuseDispatchPastSubtaskRoundLimit(plannedLaunches) {
+      record("refuseDispatchPastSubtaskRoundLimit", [plannedLaunches]);
       const refused = next(refuse, refuseIndex);
       refuseIndex += 1;
       return refused;
-    },
-    confirmReviewWithinAcceptanceLimit(eventIds) {
-      record("confirmReviewWithinAcceptanceLimit", [eventIds]);
-      return options.confirm ?? true;
     },
     applyControls(controls) {
       record("applyControls", [controls]);
@@ -265,7 +260,7 @@ test("review id helpers keep FIFO order and reprompt launch counts", () => {
 
 test("strategy module stays free of runtime, deps, and scheduler value imports", () => {
   const source = readFileSync(join(__dirname, "../../../src/extensionHost/loopPlusDecisionStrategies.ts"), "utf8");
-  assert.match(source, /import type \{ LoopPlusDispatchResult \} from "..\/loopPlusScheduler"/);
+  assert.match(source, /import type \{[^}]*LoopPlusDispatchResult[^}]*\} from "..\/loopPlusScheduler"/);
   assert.doesNotMatch(source, /import(?! type)[^;]*from "..\/loopPlusScheduler"/);
   for (const forbidden of [
     "ParentRuntime",
@@ -323,7 +318,7 @@ test("dispatch refuses a held review before controls or launch", () => {
   assert.deepEqual(calls[1].args, [true]);
 });
 
-test("dispatch stops at the acceptance limit before applying controls", () => {
+test("dispatch stops at the subtask round limit before applying controls", () => {
   const { port, calls } = createPort({ refuse: [true] });
   const outcome = createLoopPlusDecisionStrategyRegistry().dispatch(
     port,
@@ -331,20 +326,20 @@ test("dispatch stops at the acceptance limit before applying controls", () => {
     decision("dispatch", { subtasks: [subtask], controls: [repromptControl] }),
   );
   assert.equal(outcome, "stop");
-  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastAcceptanceLimit"]);
+  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit"]);
   assert.deepEqual(calls[1].args, [2]);
 });
 
 test("dispatch reports a control miss without launching subtasks", () => {
-  const { port, calls } = createPort({ controlsApplied: false });
+  const { port, calls } = createPort({ preview: false });
   const outcome = createLoopPlusDecisionStrategyRegistry().dispatch(
     port,
     decisionStep(),
     decision("dispatch", { subtasks: [subtask], controls: [closeControl] }),
   );
   assert.equal(outcome, "continue");
-  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastAcceptanceLimit", "applyControls", "protocolMiss"]);
-  assert.deepEqual(calls[3].args, [false]);
+  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit", "planControls", "previewControls", "protocolMiss"]);
+  assert.deepEqual(calls.at(-1)?.args, [false]);
 });
 
 test("dispatch waits on in-flight work and does not submit review or finish", () => {
@@ -364,21 +359,24 @@ test("dispatch waits on in-flight work and does not submit review or finish", ()
   assert.equal(outcome, "wait");
   assert.deepEqual(names(calls), [
     "queueView",
-    "refuseDispatchPastAcceptanceLimit",
-    "applyControls",
+    "refuseDispatchPastSubtaskRoundLimit",
+    "planControls",
+    "previewControls",
+    "commitControls",
     "acknowledgeUserMessages",
     "dispatchSubtasks",
     "persistEstimatedRounds",
     "markDecisionAccepted",
+    "waitForInFlightWork",
     "queueView",
     "queueView",
   ]);
-  assert.deepEqual(calls[3].args, [1]);
-  assert.deepEqual(calls[4].args, [[subtask]]);
-  assert.deepEqual(calls[5].args, [4]);
+  assert.deepEqual(calls.find((c) => c.name === "acknowledgeUserMessages")?.args, [1]);
+  assert.deepEqual(calls.find((c) => c.name === "dispatchSubtasks")?.args, [[subtask]]);
+  assert.deepEqual(calls.find((c) => c.name === "persistEstimatedRounds")?.args, [4]);
   assert.equal(names(calls).includes("submitReviewBatch"), false);
-  assert.equal(names(calls).includes("waitForInFlightWork"), false);
-  assert.equal(names(calls).includes("planControls"), false);
+  assert.equal(names(calls).includes("waitForInFlightWork"), true);
+  assert.equal(names(calls).includes("planControls"), true);
   assert.equal(names(calls).includes("tryFinishParent"), false);
 });
 
@@ -424,10 +422,10 @@ test("steer rejects an open review, empty controls, limit, and failed controls",
 
   const limited = createPort({ refuse: [true] });
   assert.equal(registry.steer(limited.port, decisionStep(), decision("steer", { controls: [repromptControl] })), "stop");
-  assert.deepEqual(names(limited.calls), ["queueView", "refuseDispatchPastAcceptanceLimit"]);
+  assert.deepEqual(names(limited.calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit"]);
   assert.equal(names(limited.calls).includes("applyControls"), false);
 
-  const rejected = createPort({ controlsApplied: false });
+  const rejected = createPort({ preview: false });
   assert.equal(registry.steer(rejected.port, decisionStep(), decision("steer", { controls: [closeControl] })), "continue");
   assert.deepEqual(names(rejected.calls).at(-1), "protocolMiss");
   assert.equal(names(rejected.calls).includes("dispatchSubtasks"), false);
@@ -442,7 +440,7 @@ test("steer waits, continues into review, or arms closeout without dispatching",
   assert.deepEqual(names(running.calls).at(-1), "queueView");
   assert.equal(names(running.calls).includes("persistRunning"), false);
   assert.equal(names(running.calls).includes("dispatchSubtasks"), false);
-  assert.equal(names(running.calls).includes("waitForInFlightWork"), false);
+  assert.equal(names(running.calls).includes("waitForInFlightWork"), true);
 
   const review = createPort({ views: [view(), view({ hasReview: true })] });
   assert.equal(registry.steer(review.port, decisionStep(), decision("steer", { controls: [closeControl] })), "continue");
@@ -486,18 +484,6 @@ test("accept misses unless the step is the same FIFO review batch", () => {
   assert.equal(names(reversed.calls).includes("submitReviewBatch"), false);
 });
 
-test("accept stops before submit when the batch would exceed the acceptance limit", () => {
-  const { port, calls } = createPort({ confirm: false });
-  const outcome = createLoopPlusDecisionStrategyRegistry().accept(
-    port,
-    decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1"] }),
-    decision("accept", { reviewEventId: "evt-1", controls: [closeControl] }),
-  );
-  assert.equal(outcome, "stop");
-  assert.deepEqual(names(calls), ["confirmReviewWithinAcceptanceLimit"]);
-  assert.deepEqual(calls[0].args, [["evt-1"]]);
-});
-
 test("accept previews controls before submit and does not commit a rejected plan", () => {
   const registry = createLoopPlusDecisionStrategyRegistry();
   const missing = createPort({ controlPlan: null });
@@ -506,7 +492,7 @@ test("accept previews controls before submit and does not commit a rejected plan
     decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1"] }),
     decision("accept", { reviewEventId: "evt-1", controls: [repromptControl] }),
   ), "continue");
-  assert.deepEqual(names(missing.calls), ["confirmReviewWithinAcceptanceLimit", "planControls", "protocolMiss"]);
+  assert.deepEqual(names(missing.calls), ["planControls", "protocolMiss"]);
   assert.deepEqual(missing.calls.at(-1)?.args, [true]);
 
   const rejected = createPort({ preview: false });
@@ -516,7 +502,6 @@ test("accept previews controls before submit and does not commit a rejected plan
     decision("accept", { reviewEventId: "evt-1", controls: [closeControl] }),
   ), "continue");
   assert.deepEqual(names(rejected.calls), [
-    "confirmReviewWithinAcceptanceLimit",
     "planControls",
     "previewControls",
     "protocolMiss",
@@ -533,7 +518,7 @@ test("accept preserves the queue when submit fails and distinguishes a stopped p
     views: [view({ parentStopped: true })],
   });
   assert.equal(registry.accept(stopped.port, step, decision("accept", { reviewEventIds: ["evt-1", "evt-2"] })), "stop");
-  assert.deepEqual(names(stopped.calls), ["confirmReviewWithinAcceptanceLimit", "submitReviewBatch", "persistSnapshot", "queueView"]);
+  assert.deepEqual(names(stopped.calls), ["submitReviewBatch", "persistSnapshot", "queueView"]);
   assert.equal(names(stopped.calls).includes("protocolMiss"), false);
 
   const retry = createPort({ submitOk: false, views: [view()] });
@@ -597,26 +582,26 @@ test("accept marks a follow-up batch failed and commits controls only after subm
   );
   assert.equal(outcome, "continue");
   assert.deepEqual(names(calls), [
-    "confirmReviewWithinAcceptanceLimit",
     "planControls",
     "previewControls",
     "submitReviewBatch",
     "acknowledgeUserMessages",
     "persistProgressPercent",
-    "refuseDispatchPastAcceptanceLimit",
+    "refuseDispatchPastSubtaskRoundLimit",
     "commitControls",
     "dispatchSubtasks",
     "persistEstimatedRounds",
     "markDecisionAccepted",
+    "waitForInFlightWork",
     "queueView",
   ]);
-  assert.deepEqual(calls[3].args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
+  assert.deepEqual(calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
   assert.deepEqual(calls.find((call) => call.name === "persistProgressPercent")?.args, [23]);
-  assert.deepEqual(calls.find((call) => call.name === "refuseDispatchPastAcceptanceLimit")?.args, [1]);
+  assert.deepEqual(calls.find((call) => call.name === "refuseDispatchPastSubtaskRoundLimit")?.args, [1]);
   assert.deepEqual(calls.find((call) => call.name === "persistEstimatedRounds")?.args, [2]);
   assert.equal(calls.find((call) => call.name === "commitControls")?.args[1], plan);
   assert.equal(names(calls).includes("applyControls"), false);
-  assert.equal(names(calls).includes("waitForInFlightWork"), false);
+  assert.equal(names(calls).includes("waitForInFlightWork"), true);
 });
 
 test("accept keeps an already submitted batch when a later launch is refused or controls fail", () => {
@@ -628,11 +613,10 @@ test("accept keeps an already submitted batch when a later launch is refused or 
     subtasks: [subtask],
   })), "stop");
   assert.deepEqual(names(limited.calls).slice(0, 5), [
-    "confirmReviewWithinAcceptanceLimit",
     "submitReviewBatch",
     "acknowledgeUserMessages",
     "persistProgressPercent",
-    "refuseDispatchPastAcceptanceLimit",
+    "refuseDispatchPastSubtaskRoundLimit",
   ]);
   assert.equal(names(limited.calls).includes("dispatchSubtasks"), false);
 
@@ -656,7 +640,7 @@ test("accept waits on the scheduler view and arms closeout only when that view i
     inFlight: [{ runningCount: 1, pendingCount: 0 }],
   });
   assert.equal(registry.accept(busy.port, step, accepted), "wait");
-  assert.deepEqual(names(busy.calls).slice(-3), ["queueView", "waitForInFlightWork", "persistRunning"]);
+  assert.deepEqual(names(busy.calls).slice(-3), ["waitForInFlightWork", "queueView", "persistRunning"]);
   assert.deepEqual(busy.calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "passed" }]]);
   assert.equal(names(busy.calls).includes("armCloseout"), false);
 
@@ -670,7 +654,7 @@ test("accept waits on the scheduler view and arms closeout only when that view i
   assert.equal(names(idle.calls).includes("pauseForReview"), false);
 });
 
-test("wait uses the pre-ack snapshot for in-flight work and a later read for messages", () => {
+test("wait uses the post-ack admission view for in-flight work and a later read for messages", () => {
   const registry = createLoopPlusDecisionStrategyRegistry();
   const held = createPort({ views: [view({ hasCurrentReview: true, runningCount: 3 })] });
   assert.equal(registry.wait(held.port, decisionStep({ userMessageCount: 2 }), decision("wait")), "continue");
@@ -683,17 +667,19 @@ test("wait uses the pre-ack snapshot for in-flight work and a later read for mes
 
   const running = createPort({
     views: [view({ runningCount: 4, pendingCount: 1 }), view({ runningCount: 0 })],
+    inFlight: [{ runningCount: 3, pendingCount: 1 }],
   });
   assert.equal(registry.wait(running.port, decisionStep({ userMessageCount: 2 }), decision("wait")), "wait");
   assert.deepEqual(names(running.calls), [
     "queueView",
     "acknowledgeUserMessages",
     "queueView",
+    "waitForInFlightWork",
     "markDecisionAccepted",
     "persistRunning",
     "noteWaiting",
   ]);
-  assert.deepEqual(running.calls.at(-1)?.args, [4]);
+  assert.deepEqual(running.calls.at(-1)?.args, [3]);
 
   const idleMessage = createPort({
     views: [view({ hasUserMessages: false }), view(), view({ hasUserMessages: true })],
@@ -751,14 +737,6 @@ test("completed misses mismatched or unexpected event ids before submit", () => 
   ), "continue");
   assert.deepEqual(reversed.calls, [{ name: "protocolMiss", args: [true] }]);
 
-  const limited = createPort({ confirm: false });
-  assert.equal(registry.completed(
-    limited.port,
-    decisionStep({ kind: "review", eventIds: ["evt-1"] }),
-    decision("completed", { reviewEventId: "evt-1" }),
-  ), "stop");
-  assert.deepEqual(names(limited.calls), ["confirmReviewWithinAcceptanceLimit"]);
-
   const unexpected = createPort();
   assert.equal(registry.completed(
     unexpected.port,
@@ -776,8 +754,8 @@ test("completed stops after a failed submit without asking whether the parent st
     decision("completed", { reviewEventIds: ["evt-1", "evt-2"] }),
   );
   assert.equal(outcome, "stop");
-  assert.deepEqual(names(calls), ["confirmReviewWithinAcceptanceLimit", "submitReviewBatch", "persistSnapshot"]);
-  assert.deepEqual(calls[1].args, [["evt-1", "evt-2"], "passed"]);
+  assert.deepEqual(names(calls), ["submitReviewBatch", "persistSnapshot"]);
+  assert.deepEqual(calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1", "evt-2"], "passed"]);
   assert.equal(names(calls).includes("protocolMiss"), false);
   assert.equal(names(calls).includes("queueView"), false);
 });
@@ -858,7 +836,7 @@ test("completed clears main failure after a passed review while work remains", (
   assert.equal(failedSubmit.failure.mainAiFailureLimitReached, true);
   assert.equal(names(failedSubmit.calls).includes("markDecisionAccepted"), false);
   assert.equal(names(failedSubmit.calls).includes("clearProtocolRetries"), false);
-  assert.deepEqual(names(failedSubmit.calls), ["confirmReviewWithinAcceptanceLimit", "submitReviewBatch", "persistSnapshot"]);
+  assert.deepEqual(names(failedSubmit.calls), ["submitReviewBatch", "persistSnapshot"]);
 
   const withoutSubmit = createPort({
     views: [view({ runningCount: 1, pendingCount: 1 }), view()],
@@ -904,6 +882,7 @@ test("completed finishes only after the scheduler accepts an idle parent", () =>
   assert.equal(registry.completed(blocked.port, step, accepted), "continue");
   assert.deepEqual(names(blocked.calls), [
     "acknowledgeUserMessages",
+    "waitForInFlightWork",
     "persistSnapshot",
     "queueView",
     "tryFinishParent",
@@ -914,13 +893,65 @@ test("completed finishes only after the scheduler accepts an idle parent", () =>
 
   const waiting = createPort({ tryFinish: false, views: [view(), view()] });
   assert.equal(registry.completed(waiting.port, step, accepted), "wait");
-  assert.equal(names(waiting.calls)[1], "persistSnapshot");
+  assert.equal(names(waiting.calls)[2], "persistSnapshot");
   assert.equal(names(waiting.calls).at(-1), "persistRunning");
 
   const done = createPort({ finish: "stop", views: [view()] });
   assert.equal(registry.completed(done.port, step, accepted), "stop");
-  assert.equal(names(done.calls)[1], "persistSnapshot");
+  assert.equal(names(done.calls)[2], "persistSnapshot");
   assert.deepEqual(names(done.calls).slice(-2), ["markDecisionAccepted", "finishParent"]);
   assert.equal(names(done.calls).includes("dispatchSubtasks"), false);
   assert.equal(names(done.calls).includes("armCloseout"), false);
+});
+
+
+test("dependency-only wait is a protocol miss before resetting retries; a valid failed accept returns to planning", () => {
+  const dependencyBlocks = [{ subtaskId: "child", attemptId: "child-1", dependencyId: "source", dependencyAttemptId: "source-2", reason: "failed" as const }];
+  const registry = createLoopPlusDecisionStrategyRegistry();
+  const blocked = createPort({ views: [view({ pendingCount: 1 })], inFlight: [{ runningCount: 0, pendingCount: 1, dependencyBlocks }], failure: { protocolRetries: 2 } });
+  assert.equal(registry.wait(blocked.port, decisionStep(), decision("wait")), "continue");
+  assert.equal(blocked.calls.at(-1)?.name, "protocolMiss");
+  assert.equal(blocked.failure.protocolRetries, 2);
+  assert.equal(names(blocked.calls).includes("markDecisionAccepted"), false);
+  assert.equal(names(blocked.calls).includes("noteWaiting"), false);
+  const accepted = createPort({ views: [view({ pendingCount: 1 })], inFlight: [{ runningCount: 0, pendingCount: 1, dependencyBlocks }] });
+  assert.equal(registry.accept(accepted.port, decisionStep({ kind: "review", eventIds: ["failed-event"] }), decision("accept", {
+    reviewEventId: "failed-event", reviews: [{ reviewEventId: "failed-event", acceptance: "failed", reason: "failed validation" }],
+  })), "continue");
+  assert.equal(names(accepted.calls).includes("protocolMiss"), false);
+  assert.equal(names(accepted.calls).includes("persistRunning"), false);
+});
+
+test("report confirmation and controls precede dispatch and final dependency admission", () => {
+  const { port, calls } = createPort({ views: [view({ runningCount: 1 })] });
+  createLoopPlusDecisionStrategyRegistry().dispatch(port, decisionStep(), decision("dispatch", {
+    controls: [repromptControl], reportEventIds: ["report"], subtasks: [subtask],
+  }));
+  const ordered = names(calls);
+  for (const [before, after] of [["previewControls", "acknowledgeReports"], ["acknowledgeReports", "commitControls"], ["commitControls", "dispatchSubtasks"], ["dispatchSubtasks", "waitForInFlightWork"]]) {
+    assert.ok(ordered.indexOf(before) < ordered.indexOf(after), `${before} precedes ${after}`);
+  }
+});
+
+test("deferred raw review events keep wait and completed in bounded correction before accepting a no-progress decision", () => {
+  const blocked = { subtaskId: "successor", attemptId: "successor-1", dependencyId: "source", dependencyAttemptId: "source-2", reason: "execution_pending" as const };
+  for (const status of ["wait", "completed"] as const) {
+    const env = createPort({ views: [view({ hasReview: true, reviewDependencyBlocks: [blocked] })], failure: { protocolRetries: 1 } });
+    const outcome = loopPlusDecisionStrategyFor(status)(env.port, decisionStep({ kind: "continue" }), decision(status));
+    assert.equal(outcome, "continue");
+    assert.ok(names(env.calls).includes("protocolMiss"));
+    assert.equal(names(env.calls).includes("markDecisionAccepted"), false);
+    assert.equal(names(env.calls).includes("clearProtocolRetries"), false);
+    assert.equal(names(env.calls).includes("tryFinishParent"), false);
+    assert.equal(env.failure.protocolRetries, 1);
+  }
+});
+
+test("deferred raw review events can wait on a live prerequisite without requesting an empty review", () => {
+  const env = createPort({ views: [view({ hasReview: true, runningCount: 1, reviewDependencyBlocks: [
+    { subtaskId: "successor", attemptId: "child", dependencyId: "source", dependencyAttemptId: "source-new", reason: "execution_pending" },
+  ] })], inFlight: [{ runningCount: 1, pendingCount: 0 }] });
+  assert.equal(loopPlusDecisionStrategyFor("wait")(env.port, decisionStep({ kind: "continue" }), decision("wait")), "wait");
+  assert.ok(names(env.calls).includes("markDecisionAccepted"));
+  assert.equal(names(env.calls).includes("protocolMiss"), false);
 });

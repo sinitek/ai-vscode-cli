@@ -445,7 +445,7 @@ export function buildLoopPlusAcceptancePlanPromptLines(snapshot: LoopPlusAccepta
   }
   const lines: string[] = [
     `Additional acceptance reviews from the acceptance plan "${normalized.name}":`,
-    "The user selected these reviews in the acceptance plan confirmed when this task started. They are additive: they extend the acceptance checklist above for every event in this batch, and they never weaken it, never replace the scheduling protocol, and never authorize you to implement or repair the dispatched work yourself.",
+    "The user selected these reviews in the acceptance plan confirmed when this task started. They are additive: they extend the acceptance checklist above for every non-cancelled event in this batch, and they never weaken it, never replace the scheduling protocol, and never authorize you to implement or repair the dispatched work yourself.",
     "For each selection below, state a conclusion backed by evidence from the code, the attempt report, or a check you chose to run, or state explicitly that it does not apply. An empty claim is not a conclusion.",
   ];
   LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_DEFINITIONS.forEach((definition) => {
@@ -461,7 +461,7 @@ export function buildLoopPlusAcceptancePlanPromptLines(snapshot: LoopPlusAccepta
   const feedbackItems = listLoopPlusAcceptancePlanFeedbackItems(normalized);
   if (feedbackItems.length > 0) {
     lines.push(
-      "On accept and completed, include acceptancePlanResults for every selected review above. It must list exactly these keys in order: "
+      "On accept and completed, include acceptancePlanResults for every selected review above. Exception: when all accept.reviews have acceptance=cancelled because the deliveries are no longer needed, omit acceptance and acceptancePlanResults and record the cancellation reasons instead. For all remaining cases it must list exactly these keys in order: "
       + feedbackItems.map((item) => item.key).join(", ")
       + ". Include exactly these results even when a review is not applicable or evidence is unavailable. Each object is {\"key\":\"<key>\",\"passed\":true or false,\"reason\":\"short reason\"}. reason must explain the evidence-backed result or limitation in no more than 50 characters. passed is true only when that review passes.",
     );
@@ -508,7 +508,7 @@ export type LoopPlusAcceptancePlanFeedbackResult = {
 
 export type LoopPlusAcceptanceFeedbackReview = {
   eventId: string;
-  acceptance: "passed" | "failed";
+  acceptance: "passed" | "failed" | "cancelled";
   reason?: string;
 };
 
@@ -549,6 +549,7 @@ export function buildLoopPlusAcceptanceFeedbackSection(
 ): { heading: string; body: string } | null {
   const rows: AcceptanceFeedbackRow[] = [];
   const reviews = input.reviews ?? [];
+  const allCancelled = reviews.length > 0 && reviews.every((review) => review.acceptance === "cancelled");
   const summaries: string[] = [];
   for (const [index, review] of reviews.entries()) {
     const reason = normalizeFeedbackReason(review.reason);
@@ -558,9 +559,9 @@ export function buildLoopPlusAcceptanceFeedbackSection(
     const title = reviews.length > 1
       ? `${escapeMarkdownFeedbackText(input.subtaskTitles?.[index] ?? `子任务 ${index + 1}`)}：`
       : "";
-    summaries.push(`${title}${review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}`);
+    summaries.push(`${title}${review.acceptance === "cancelled" ? "验收已撤销：" : review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}`);
   }
-  for (const check of input.checks ?? []) {
+  for (const check of allCancelled ? [] : input.checks ?? []) {
     const reason = normalizeFeedbackReason(check.detail);
     if (!reason) {
       return null;
@@ -571,8 +572,8 @@ export function buildLoopPlusAcceptanceFeedbackSection(
       reason,
     });
   }
-  const items = listLoopPlusAcceptancePlanFeedbackItems(input.snapshot);
-  if ((input.planResults?.length ?? 0) !== items.length) {
+  const items = allCancelled ? [] : listLoopPlusAcceptancePlanFeedbackItems(input.snapshot);
+  if (!allCancelled && (input.planResults?.length ?? 0) !== items.length) {
     return null;
   }
   if (items.length > 0) {
@@ -593,10 +594,14 @@ export function buildLoopPlusAcceptanceFeedbackSection(
     return null;
   }
   const titles = (input.subtaskTitles ?? []).map(escapeMarkdownFeedbackText).filter(Boolean);
-  const passed = rows.every((row) => row.passed) && reviews.every((review) => review.acceptance === "passed");
+  const passed = rows.every((row) => row.passed) && reviews.every((review) => review.acceptance !== "failed");
+  const result = allCancelled ? "验收已撤销"
+    : reviews.some((review) => review.acceptance === "cancelled")
+      ? `部分验收已撤销，其余${passed ? "通过" : "未通过"}`
+      : passed ? "✅ 通过" : "❌ 未通过";
   const sections = [
     titles.length > 0 ? `**子任务：${titles.join("、")}**` : "**主任务验收**",
-    `**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**`,
+    `**整体验收结果：${result}**`,
     ...summaries,
   ];
   if (rows.length > 0) {

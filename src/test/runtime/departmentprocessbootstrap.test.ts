@@ -89,7 +89,7 @@ test("process freezes authority before asynchronous ledger admission rather than
   assert.equal(h.admission.entries()[0].responsibility.selection.model, "fixture/model");
 });
 
-for (const mode of ["unbound", "wrong-role", "wrong-module", "module-not-running", "missing-capacity", "config-revision", "config-id", "bind-failed", "session-write-failed", "native-session-conflict"] as const) {
+for (const mode of ["unbound", "wrong-role", "wrong-module", "module-not-running", "missing-capacity", "config-id", "bind-failed", "session-write-failed", "native-session-conflict"] as const) {
   test(`production preparation rejects ${mode} with zero task spawn`, { timeout: 15000 }, async (t) => {
     const h = await setup(t);
     if (mode === "unbound") h.leader.subTasks[0].executionSession!.sessionId = "local-fixture";
@@ -100,7 +100,6 @@ for (const mode of ["unbound", "wrong-role", "wrong-module", "module-not-running
       const state = h.store.read("root", "workspace"); assert.ok(state.ok && state.value);
       state.value.capacity.employees = []; assert.equal(h.store.write(state.value).ok, true);
     }
-    if (mode === "config-revision") h.expected.revision = "stale-revision";
     if (mode === "config-id") h.expected.configId = "other";
     if (mode === "bind-failed") t.mock.method(h.store, "bindLeaderExecution", () => ({ ok: false, error: "controlled-write-failure" }));
     if (mode === "session-write-failed") h.host.updateTask = () => null;
@@ -152,8 +151,8 @@ test("production coordinator durably binds before launch, routes session output,
   assert.equal((await client.startExecution(binding.identity)).status, "live");
   const actual = JSON.parse(fs.readFileSync(path.join(h.directory, "observed"), "utf8"));
   assert.deepEqual(actual.identity, binding.identity, "real child read the durable exact binding before prompt execution");
-  assert.equal(actual.ownerLeases.length, 1); assert.notEqual(actual.ownerLeases[0].pid, process.pid);
-  await assert.rejects(h.config.change(async () => ({ configId: "other", profileDigest: null })), /执行中的任务/);
+  assert.equal(actual.ownerPid, h.workers[0].pid);
+  assert.equal((await h.config.change(async () => ({ configId: "other", profileDigest: null }))).configId, "other");
   assert.equal(fs.readFileSync(path.join(h.directory, "spawn-count"), "utf8"), "spawn\n");
   let terminal = false; void handle.lifecycle!.then(() => { terminal = true; });
   fs.writeFileSync(path.join(h.directory, "exit"), "open");
@@ -182,8 +181,8 @@ test("production host process exits while the original independent Node Owner re
   const binding = read.value.executionBindings![0];
   const client = new DepartmentExecutionOwnerClient(path.join(h.directory, "owners", binding.identity.ownerId));
   assert.equal((await client.observeExecution(binding.identity)).status, "live");
-  const selection = JSON.parse(fs.readFileSync(path.join(h.directory, "configuration", "selection.json"), "utf8"));
-  assert.equal(selection.leases.length, 1); assert.notEqual(selection.leases[0].pid, host.pid);
+  const { ownerPid } = JSON.parse(fs.readFileSync(path.join(h.directory, "observed"), "utf8"));
+  assert.notEqual(ownerPid, host.pid); assert.equal(process.kill(ownerPid, 0), true);
   const original = JSON.stringify(binding);
   h.host.employeeAdmission = null;
   const recovered = createDepartmentProcessPreparation(h.host);
@@ -258,7 +257,6 @@ for (const mode of ["duplicate-preparation", "wrong-commit-identity"] as const) 
   }
   const [code] = await ended; assert.equal(code, 0);
   assert.equal(fs.existsSync(path.join(h.directory, "spawn-count")), false);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(h.directory, "configuration", "selection.json"), "utf8")).leases.length, 0);
 });
 
 test("process producer revocation after atomic bind prevents final grant and late ACK revival", { timeout: 15000 }, async (t) => {
@@ -392,9 +390,10 @@ for (const cancel of ["kill", "signal"] as const) test(`prelaunch stream ${cance
   if (cancel === "kill") { assert.equal(handle.kill(), true); assert.equal(handle.kill(), false); }
   else controller.abort();
   assert.equal((await handle.lifecycle!).processTerminal.status, "unobservable");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(h.directory, "configuration", "selection.json"), "utf8")).leases.length, 1);
+  const worker = h.workers[0]; assert.ok(worker); assert.equal(worker.exitCode, null);
   fs.writeFileSync(path.join(h.directory, "export-open"), "open");
-  await until(() => JSON.parse(fs.readFileSync(path.join(h.directory, "configuration", "selection.json"), "utf8")).leases.length === 0);
+  await until(() => worker.exitCode !== null);
+  assert.equal(worker.exitCode, 0);
   assert.equal(errors, 1); assert.equal(fs.existsSync(path.join(h.directory, "spawn-count")), false);
   const read = h.store.read("root", "workspace"); assert.ok(read.ok && read.value);
   assert.equal(read.value.executionBindings?.length ?? 0, 0); assert.equal(read.value.capacity.employees.length, 1);

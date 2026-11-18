@@ -274,11 +274,17 @@ test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {
 
   const bounded = writeRawTask("event-acceptance-limit", {
     schedulingMode: "event_driven",
-    loopPlusMaxAcceptances: "120.8",
+    loopPlusSubtaskMaxRounds: "120.8",
   });
-  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 120);
-  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusMaxAcceptances: 2000 });
-  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusMaxAcceptances, 999);
+  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 120);
+  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusSubtaskMaxRounds: 10000 });
+  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 9999);
+  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusSubtaskMaxRounds: 49 });
+  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 50);
+  const legacyLowBudget = writeRawTask("event-low-subtask-budget", {
+    schedulingMode: "event_driven", loopPlusSubtaskMaxRounds: "1",
+  });
+  assert.equal(loopTaskStore.readLoopTaskStore(legacyLowBudget.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 50);
   const decomposing = writeRawTask("event-decomposing", {
     schedulingMode: "event_driven",
     status: "running",
@@ -312,7 +318,7 @@ test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {
   assert.equal(
     Object.prototype.hasOwnProperty.call(
       loopTaskStore.readLoopTaskStore(classic.taskStoreFile).tasks[0],
-      "loopPlusMaxAcceptances",
+      "loopPlusSubtaskMaxRounds",
     ),
     false,
   );
@@ -377,7 +383,6 @@ function createWorkspaceOptions(
       value === "codex" || value === "claude" || value === "opencode"
     ),
     isThinkingMode: (value): value is ThinkingMode => value === "off" || value === "high",
-    normalizeLoopMaxRounds: () => 20,
     sanitizeConversationTabRecord: () => null,
     ...modeOptions,
   };

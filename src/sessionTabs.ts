@@ -6,6 +6,8 @@ import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
 export type ConversationTabRecord = {
+  loopTaskId?: string;
+  loopSubtaskId?: string;
   taskSummary?: string;
   taskSummaryAttempted?: boolean;
   id: string;
@@ -225,7 +227,7 @@ export function createSessionTabsController(deps: {
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => LoopConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
 }): {
-  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
+  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean; tabId?: string }) => string | null;
   buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
   buildOpenConversationTabSessionMap: () => Map<string, string>;
   clearPendingSessionDraft: (tabId: string, cli?: CliName) => void;
@@ -569,6 +571,7 @@ export function createSessionTabsController(deps: {
           lockedPrimaryModel: getConversationTabLockedPrimaryModel(tab),
           loopTaskRole: loopContext.taskRole ?? undefined,
           loopTaskId: loopTaskId ?? undefined,
+          loopSubtaskId: loopContext.taskRole === "subtask" ? tab.loopSubtaskId : undefined,
           loopTaskRunning,
           loopTaskStatus: loopTaskStatus ?? undefined,
           loopMainTabCloseLocked,
@@ -585,7 +588,7 @@ export function createSessionTabsController(deps: {
     addConversationTab: (cli, sessionId, options = {}) => {
       const state = ensureTabs();
       const tab: ConversationTabRecord = {
-        id: createTabId(),
+        id: options.tabId ?? createTabId(),
         cli,
         sessionId,
         sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),

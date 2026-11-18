@@ -770,6 +770,8 @@ function createSendPromptSandbox(options: { required?: boolean; running?: boolea
       return true;
     },
     resetPromptContextForNextPrompt: () => undefined,
+    showToast: () => undefined,
+    t: (key: string) => key,
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(
@@ -803,11 +805,12 @@ test("sendPrompt keeps classic, Loop+, and continuation sending unchanged", () =
   assert.equal(harness.sandbox.elements.promptInput.value, "");
 });
 
-test("confirmed acceptance plans still flow through queue and conflict branches", () => {
+test("confirmed acceptance plans cannot queue on a busy Loop main task and keep the conflict draft", () => {
   const queued = createSendPromptSandbox({ required: false, running: true });
   queued.api.dispatchPromptPayload({ prompt: "实现任务" }, "tab-1");
-  assert.equal(queued.captured.queued.length, 1);
+  assert.equal(queued.captured.queued.length, 0);
   assert.equal(queued.captured.dispatched.length, 0);
+  assert.equal(queued.sandbox.elements.promptInput.value, "实现任务");
 
   const conflict = createSendPromptSandbox({ required: false, busy: true });
   conflict.api.dispatchPromptPayload({ prompt: "实现任务" }, "tab-1");

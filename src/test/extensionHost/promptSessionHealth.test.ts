@@ -11,7 +11,6 @@ import { createPromptAutoRepairController } from "../../extensionHost/promptAuto
 import { isCliShellCommandNotFoundError } from "../../cli/cliCommandRepair";
 import { CLI_LIST } from "../../cli/types";
 import { planBoundSubtaskConfigApply } from "../../subtaskCliRoute";
-import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease, type VisibleConfigSelection } from "../../config/sharedRuntimeConfig";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { applyLoopInvocationModelRouting } from "../../loopModelSwitch";
 import type { LoopTaskModelRouting } from "../../loopTaskStore";
@@ -43,8 +42,6 @@ const runPromptScript = ts.transpileModule([
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-type ConfigLeaseResult = "acquired" | "superseded";
-
 function createHarness(options: {
   cli: CliName;
   health: "normal" | "abnormal";
@@ -58,8 +55,6 @@ function createHarness(options: {
   fallbackConfigId?: string | null;
   loadedActiveConfigId?: string;
   waitForConfigApply?: () => Promise<boolean>;
-  acquireConfigLease?: (cli: CliName, configId: string) => Promise<ConfigLeaseResult>;
-  releaseConfigLeaseError?: Error;
   configExists?: boolean;
   preflightMessage?: string;
   loopSessionId?: string;
@@ -69,7 +64,6 @@ function createHarness(options: {
     sessionIdByCli: { [options.cli]: "previous-session" }, createdAt: 1 };
   const tabs = [tab];
   const events: string[] = [];
-  const leasedConfigs: Array<{ cli: CliName; configId: string }> = [];
   const systemMessages: string[] = [];
   const errorLogs: Array<{ event: string; payload: Record<string, unknown> }> = [];
   const statuses: string[] = [];
@@ -144,32 +138,16 @@ function createHarness(options: {
     getActiveConfigIdForCli: () => activeConfigId,
     getSelectedCliModel: () => "current-model",
     getSelectedLoopCliModel: () => "current-loop-model",
-    ConfigSelectionChangedError,
-    releaseRuntimeConfigExecutionLease,
     loadConfigState: async () => ({ activeConfigId, revision: `${activeConfigId ?? "native"}-revision`,
       configs: options.fallbackConfigId ? [{ id: options.fallbackConfigId }] : [] }),
     configService: {
       getConfigById: async () => options.configExists === false ? null : {},
-      acquireRuntimeConfigExecution: async (cli: CliName, expected: VisibleConfigSelection) => {
-        if (expected.configId !== activeConfigId) throw new ConfigSelectionChangedError();
-        if (expected.configId) {
-          events.push("acquire-config");
-          leasedConfigs.push({ cli, configId: expected.configId });
-          const result = options.acquireConfigLease ? await options.acquireConfigLease(cli, expected.configId) : "acquired";
-          if (result === "superseded") throw new ConfigSelectionChangedError();
-        }
-        return { selection: expected, release: async () => {
-          events.push("release-config");
-          if (options.releaseConfigLeaseError) throw options.releaseConfigLeaseError;
-        } };
-      },
     },
     planBoundSubtaskConfigApply,
     resolveWorkspaceCwd: () => null,
     t: (key: string) => key,
     logInfo: () => undefined,
     logError: (event: string, payload: Record<string, unknown>) => { errorLogs.push({ event, payload }); },
-    RuntimeConfigLockTimeoutError,
     getErrorInfo: (error: Error & { code?: string }) => ({ message: error.message, name: error.name, code: error.code }),
     isAbortErrorInfo: (info: { name?: string }) => info.name === "AbortError",
     loopMainAutoCompactFlights: { wait: async () => {
@@ -213,35 +191,10 @@ function createHarness(options: {
     runPromptParallel: dispatch,
     runPromptOneShot: dispatch,
   }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
-  return { runPrompt, events, dispatched, leasedConfigs, systemMessages, statuses, boundConfigs, tabs, errorLogs,
+  return { runPrompt, events, dispatched, systemMessages, statuses, boundConfigs, tabs, errorLogs,
     questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
-
-test("Loop subtask configuration timeouts preserve tab failure and correlated lock diagnostics", async () => {
-  const diagnostic = { operation: "acquire" as const, ownerPid: process.pid, ownerAlive: true, waitedMs: 15001, timeoutMs: 15000 };
-  const failure = new RuntimeConfigLockTimeoutError(diagnostic);
-  const harness = createHarness({
-    cli: "codex", health: "normal", runtime: "interactive",
-    acquireConfigLease: async () => { throw failure; },
-  });
-  await assert.rejects(harness.runPrompt({
-    displayPrompt: "执行子任务", modelPrompt: "执行子任务", contextTags: [], taskRole: "subtask", throwOnError: true,
-    loopTaskId: "parent-loop", loopSubtaskId: "child-1", loopAttemptId: "attempt-1",
-  }), (error) => error === failure);
-  assert.equal(harness.dispatched.length, 0);
-  assert.deepEqual(harness.statuses, ["error"]);
-  assert.deepEqual(harness.boundConfigs, []);
-  const log = harness.errorLogs.find((entry) => entry.event === "runPrompt-failed")!;
-  assert.ok(log);
-  assert.equal(log.payload.tabId, "target-tab");
-  assert.equal(log.payload.taskRole, "subtask");
-  assert.equal(log.payload.loopTaskId, "parent-loop");
-  assert.equal(log.payload.loopSubtaskId, "child-1");
-  assert.equal(log.payload.loopAttemptId, "attempt-1");
-  assert.equal(log.payload.errorCode, "RUNTIME_CONFIG_LOCK_TIMEOUT");
-  assert.deepEqual(log.payload.configLock, diagnostic);
-});
 
 test("cancelling main work queued behind a question prevents a late CLI start", async () => {
   const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session" });
@@ -325,46 +278,6 @@ test("a question cancelled while waiting for compaction never dispatches", async
     waitForSubtaskCompact: async () => { aborted = true; } });
   await harness.runPrompt({ displayPrompt: "提问", modelPrompt: "提问", contextTags: [], loopAsk: true }, { isAborted: () => aborted });
   assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.leasedConfigs.length, 0);
-});
-
-test("a question cancelled during config preparation releases its lease without dispatching", async () => {
-  let aborted = false;
-  let started = false;
-  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
-    acquireConfigLease: async () => { aborted = true; return "acquired"; } });
-  await harness.runPrompt({ displayPrompt: "提问", modelPrompt: "提问", contextTags: [], loopAsk: true }, {
-    isAborted: () => aborted,
-    onStarted: () => { started = true; },
-  });
-  assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.leasedConfigs.length, 1);
-  assert.equal(harness.events.at(-1), "release-config");
-  assert.equal(started, false);
-});
-
-test("config lease release timeout does not turn a successful subtask run into an execution error", async () => {
-  const harness = createHarness({
-    cli: "codex",
-    health: "normal",
-    runtime: "interactive",
-    loopSessionId: "subtask-session",
-    releaseConfigLeaseError: new RuntimeConfigLockTimeoutError({
-      operation: "release", ownerPid: process.pid, ownerAlive: true, waitedMs: 15000, timeoutMs: 15000,
-    }),
-  });
-  await harness.runPrompt({
-    displayPrompt: "完成子任务",
-    modelPrompt: "完成子任务",
-    contextTags: [],
-    taskRole: "subtask",
-    loopTaskId: "parent-loop",
-    loopSubtaskId: "child",
-    loopAttemptId: "attempt-child",
-  });
-  assert.equal(harness.events.includes("dispatch"), true);
-  assert.equal(harness.errorLogs.some(({ event }) => event === "runPrompt-failed"), false);
-  assert.deepEqual(harness.statuses, []);
 });
 
 test("Kimi model editing never reapplies or reactivates a stale profile after the coordinated save", async () => {
@@ -395,22 +308,6 @@ test("Kimi model editing never reapplies or reactivates a stale profile after th
   assert.equal(result.model, "new-model");
 });
 
-test("dispatches a fresh session after the health gate across interactive, one-shot and parallel execution", async () => {
-  for (const runtime of ["interactive", "one-shot", "parallel"] as const) {
-    const harness = createHarness({ cli: runtime === "interactive" ? "codex" : "opencode", health: "abnormal", runtime });
-    await harness.runPrompt({ displayPrompt: "再次执行", modelPrompt: "执行原始任务", contextTags: [] });
-
-    assert.equal(harness.dispatched.length, 1);
-    assert.equal(harness.dispatched[0].target.sessionId, null);
-    assert.equal(harness.dispatched[0].input.modelPrompt, "执行原始任务");
-    assert.deepEqual(harness.events.slice(0, 3), ["health-check", "dispose-old-runner", "panel-state"]);
-    assert.deepEqual(harness.events.slice(-2), ["dispatch", "release-config"]);
-    if (runtime !== "interactive") {
-      assert.ok(harness.events.indexOf("health-check") < harness.events.indexOf("preload"));
-    }
-  }
-});
-
 test("continues normal sessions without disposing their runners", async () => {
   for (const cli of ["codex", "claude", "opencode", "grok"] as const) {
     const harness = createHarness({ cli, health: "normal", runtime: cli === "opencode" ? "one-shot" : "interactive" });
@@ -418,80 +315,6 @@ test("continues normal sessions without disposing their runners", async () => {
     assert.equal(harness.dispatched[0].target.sessionId, "previous-session");
     assert.equal(harness.events.includes("dispose-old-runner"), false);
   }
-});
-
-test("all runtime routes reject switched profiles but accept revisions within the same profile", async () => {
-  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
-    const harness = createHarness({ cli: "codex", health: "normal", runtime });
-    await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true,
-      configSelections: { codex: { configId: "previous-config", revision: "stale-visible-revision" } } }), /本次任务未启动/);
-    assert.equal(harness.leasedConfigs.length, 0);
-    assert.equal(harness.dispatched.length, 0);
-    await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [],
-      configSelections: { codex: { configId: "selected-config", revision: "stale-same-profile-revision" } } });
-    assert.equal(harness.dispatched.length, 1);
-    assert.ok(harness.events.indexOf("dispatch") < harness.events.indexOf("release-config"));
-  }
-});
-
-test("the visible selection gate compares profile identity without comparing revisions", async () => {
-  const validators: ts.ArrowFunction[] = [];
-  const visit = (node: ts.Node): void => {
-    if (ts.isPropertyAssignment(node) && node.name.getText(sourceFile) === "validateVisibleConfigSelections"
-      && ts.isArrowFunction(node.initializer)) {
-      validators.push(node.initializer);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-  assert.equal(validators.length, 1);
-  const script = ts.transpileModule(`const validate = ${validators[0].getText(sourceFile)};`, {
-    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
-  }).outputText;
-  let current: { activeConfigId: string | null; revision?: string; configurationError?: string };
-  const validate = vm.runInNewContext(`${script}\nvalidate;`, {
-    loadConfigState: async () => current,
-    ConfigSelectionChangedError,
-  }) as (cli: CliName, selections?: Partial<Record<CliName, VisibleConfigSelection>>) => Promise<void>;
-  for (const cli of CLI_LIST) {
-    for (const configId of ["selected-config", null]) {
-      const selections = { [cli]: { configId, revision: "old-revision" } };
-      current = { activeConfigId: configId, revision: "new-revision" };
-      await validate(cli, selections);
-      await assert.rejects(validate(cli), ConfigSelectionChangedError);
-      current = { activeConfigId: "other-config", revision: "new-revision" };
-      await assert.rejects(validate(cli, selections), ConfigSelectionChangedError);
-      current = { activeConfigId: configId, revision: "new-revision", configurationError: "上次配置应用未成功" };
-      await assert.rejects(validate(cli, selections), ConfigSelectionChangedError);
-      current = { activeConfigId: configId };
-      await assert.rejects(validate(cli, selections), ConfigSelectionChangedError);
-    }
-  }
-});
-
-test("all CLIs and task roles accept the same profile with an older revision without warnings", async () => {
-  for (const cli of CLI_LIST) {
-    for (const runtime of ["interactive", "one-shot", "parallel"] as const) {
-      for (const taskRole of [undefined, "main", "subtask"] as const) {
-        const harness = createHarness({ cli, health: "normal", runtime });
-        await harness.runPrompt({ displayPrompt: "继续执行", modelPrompt: "执行", contextTags: [], taskRole,
-          configSelections: { [cli]: { configId: "selected-config", revision: "old-revision" } },
-          ...(taskRole === "subtask" ? { loopSubtaskCli: cli, loopSubtaskConfigId: "selected-config" } : {}),
-          throwOnError: true });
-        assert.equal(harness.dispatched.length, 1);
-        assert.deepEqual(harness.leasedConfigs, [{ cli, configId: "selected-config" }]);
-        assert.deepEqual(harness.systemMessages, []);
-        assert.equal(harness.events.filter((event) => event === "release-config").length, 1);
-        assert.ok(harness.events.indexOf("dispatch") < harness.events.indexOf("release-config"));
-      }
-    }
-  }
-});
-
-test("runtime errors release the config lease rather than permanently blocking other windows", async () => {
-  const harness = createHarness({ cli: "claude", health: "normal", runtime: "interactive", failures: [new Error("synthetic runtime failure")] });
-  await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), /synthetic runtime failure/);
-  assert.equal(harness.events.filter((event) => event === "release-config").length, 1);
 });
 
 test("rejects a rebound tab before its health check after waiting for compaction", async () => {
@@ -522,33 +345,9 @@ test("the unified entry waits for the current subtask session before acquiring c
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.deepEqual(sessions, ["previous-session"]);
   assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.leasedConfigs.length, 0);
   release();
   await run;
   assert.equal(harness.dispatched[0].target.sessionId, "previous-session");
-});
-
-test("a target rebound during configuration preparation never dispatches on any runtime route", async () => {
-  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
-    let release!: () => void;
-    let entered!: () => void;
-    const waiting = new Promise<void>((resolve) => { entered = resolve; });
-    const gate = new Promise<boolean>((resolve) => { release = () => resolve(true); });
-    const h = createHarness({ cli: "codex", health: "normal", runtime,
-      waitForConfigApply: () => { entered(); return gate; } });
-    let started = false;
-    const pending = h.runPrompt({ displayPrompt: "continue", modelPrompt: "continue", contextTags: [] }, {
-      onStarted: () => { started = true; },
-    });
-    await waiting;
-    h.tabs[0].sessionId = "replacement";
-    h.tabs[0].sessionIdByCli.codex = "replacement";
-    release();
-    await pending;
-    assert.equal(h.dispatched.length, 0, runtime);
-    assert.equal(started, false, runtime);
-    assert.equal(h.events.at(-1), "release-config", runtime);
-  }
 });
 
 test("the unified entry repairs ENOENT and uses a fresh session across all execution routes", async () => {
@@ -595,179 +394,12 @@ test("宿主 PATH 可解析但登录 shell 找不到 Codex 时固定绝对路径
 });
 
 for (const cli of CLI_LIST) {
-  test(`${cli} acquires the selected profile lease on every run across all execution routes`, async () => {
-    for (const runtime of ["interactive", "one-shot", "parallel"] as const) {
-      const harness = createHarness({ cli, health: "normal", runtime });
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [] });
-      }
-      assert.deepEqual(harness.leasedConfigs, [
-        { cli, configId: "selected-config" }, { cli, configId: "selected-config" },
-      ]);
-      assert.equal(harness.dispatched.length, 2);
-      assert.ok(harness.events.indexOf("wait-config") < harness.events.indexOf("acquire-config"));
-      assert.ok(harness.events.indexOf("acquire-config") < harness.events.indexOf("dispatch"));
-      if (cli === "opencode") {
-        assert.ok(harness.events.indexOf("acquire-config") < harness.events.indexOf("preflight"));
-      }
-    }
-  });
-
-  test(`${cli} waits for pending activation and lease acquisition before dispatch`, async () => {
-    let finishSwitch!: (success: boolean) => void;
-    let finishWrite!: (result: ConfigLeaseResult) => void;
-    const switchPromise = new Promise<boolean>((resolve) => { finishSwitch = resolve; });
-    const writePromise = new Promise<ConfigLeaseResult>((resolve) => { finishWrite = resolve; });
-    const harness = createHarness({ cli, health: "normal", runtime: "one-shot",
-      waitForConfigApply: () => switchPromise, acquireConfigLease: () => writePromise });
-    const run = harness.runPrompt({ displayPrompt: "排队任务", modelPrompt: "执行", contextTags: [] });
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(harness.leasedConfigs.length, 0);
-    assert.equal(harness.dispatched.length, 0);
-    harness.selectConfig("newly-selected-config");
-    finishSwitch(true);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.deepEqual(harness.leasedConfigs, [{ cli, configId: "newly-selected-config" }]);
-    assert.equal(harness.dispatched.length, 0);
-    finishWrite("acquired");
-    await run;
-    assert.equal(harness.dispatched.length, 1);
-  });
-
-  test(`${cli} stops dispatch when configuration activation or lease acquisition fails`, async () => {
-    for (const runtime of ["interactive", "one-shot", "parallel"] as const) {
-      for (const failure of ["wait", "write"] as const) {
-        const harness = createHarness({ cli, health: "normal", runtime,
-          waitForConfigApply: async () => failure !== "wait",
-          acquireConfigLease: async () => { throw new Error("配置租约获取失败"); } });
-        await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), /配置.*失败/);
-        assert.equal(harness.dispatched.length, 0);
-        assert.equal(harness.statuses.includes("error"), true);
-        assert.equal(harness.systemMessages.length, 1);
-        assert.match(harness.systemMessages[0], /配置.*失败/);
-        assert.equal(harness.leasedConfigs.length, failure === "wait" ? 0 : 1);
-        assert.equal(harness.events.includes("preflight"), false);
-      }
-    }
-  });
-
-  test(`${cli} stops dispatch when another profile supersedes lease acquisition`, async () => {
-    const harness = createHarness({ cli, health: "normal", runtime: "interactive",
-      acquireConfigLease: async () => "superseded" });
-    await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }));
-    assert.equal(harness.dispatched.length, 0);
-    assert.equal(harness.statuses.at(-1), "error");
-    assert.equal(harness.systemMessages.length, 1);
-    assert.equal(harness.events.includes("preflight"), false);
-  });
-
-  test(`${cli} acquires the current subtask profile lease instead of trusting the cached active ID`, async () => {
-    const harness = createHarness({ cli, health: "normal", runtime: "parallel" });
-    await harness.runPrompt({ displayPrompt: "子任务", modelPrompt: "执行", contextTags: [],
-      taskRole: "subtask", loopSubtaskCli: cli, loopSubtaskConfigId: "selected-config" });
-    assert.deepEqual(harness.leasedConfigs, [{ cli, configId: "selected-config" }]);
-    assert.equal(harness.dispatched.length, 1);
-  });
 }
-
-test("command-repair retries use the latest selection instead of restoring the original profile", async () => {
-  let harness: ReturnType<typeof createHarness>;
-  harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
-    failures: [Object.assign(new Error("spawn cli ENOENT"), { code: "ENOENT" })],
-    acquireConfigLease: async () => { harness.selectConfig("another-config"); return "acquired"; } });
-  await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [] });
-  assert.deepEqual(harness.leasedConfigs.map((config) => config.configId), ["selected-config", "another-config"]);
-  assert.equal(harness.dispatched.length, 2);
-});
-
-test("failed lease acquisition never dispatches or triggers command repair", async () => {
-  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
-    failures: [Object.assign(new Error("spawn cli ENOENT"), { code: "ENOENT" })],
-    acquireConfigLease: async () => { throw new Error("配置租约获取失败"); } });
-  await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), /配置租约获取失败/);
-  assert.equal(harness.leasedConfigs.length, 1);
-  assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.events.includes("persist-command"), false);
-  assert.equal(harness.statuses.includes("error"), true);
-
-  await assert.rejects(harness.runPrompt({ displayPrompt: "下一次任务", modelPrompt: "执行", contextTags: [], throwOnError: true }), /配置租约获取失败/);
-  assert.equal(harness.leasedConfigs.length, 2);
-  assert.equal(harness.dispatched.length, 0);
-});
-
-test("an aborted configuration lease acquisition never dispatches a task", async () => {
-  for (const runtime of ["interactive", "one-shot", "parallel"] as const) {
-    const harness = createHarness({ cli: "codex", health: "normal", runtime,
-      acquireConfigLease: async () => { throw Object.assign(new Error("用户取消"), { name: "AbortError" }); } });
-    await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true });
-    assert.equal(harness.dispatched.length, 0);
-    assert.equal(harness.systemMessages.some((message) => message.includes("配置重写失败")), false);
-  }
-});
-
-test("configuration failures take precedence over runtime errors without dispatching", async () => {
-  const failure = new Error("CLI 运行失败");
-  const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive",
-    failures: [failure], acquireConfigLease: async () => { throw new Error("配置租约获取失败"); } });
-  await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }),
-    /配置租约获取失败/);
-  assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.statuses.at(-1), "error");
-  assert.deepEqual(harness.systemMessages, ["配置租约获取失败"]);
-});
-
-test("a historical execution snapshot cannot override the current selection", async () => {
-  const harness = createHarness({ cli: "claude", health: "normal", runtime: "interactive" });
-  await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [],
-    executionProfile: { configId: "task-profile", model: null } });
-  assert.deepEqual(harness.leasedConfigs, [{ cli: "claude", configId: "selected-config" }]);
-  assert.equal(harness.dispatched[0].input.model, "current-model");
-});
-
-test("subtasks use the current profile rather than saved bindings and reject unavailable current profiles", async () => {
-  for (const configExists of [true, false]) {
-    const harness = createHarness({ cli: "opencode", health: "normal", runtime: "one-shot", configExists });
-    await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], taskRole: "subtask",
-      loopSubtaskCli: "opencode", loopSubtaskConfigId: "bound-config", executionProfile: { configId: "other-config", model: null } });
-    assert.equal(harness.dispatched.length, configExists ? 1 : 0);
-    assert.deepEqual(harness.leasedConfigs, configExists ? [{ cli: "opencode", configId: "selected-config" }] : []);
-    if (configExists) {
-      assert.equal(harness.dispatched[0].input.model, "current-loop-model");
-      assert.equal(harness.dispatched[0].input.loopSubtaskConfigId, "selected-config");
-    }
-  }
-});
-
-test("subtask session bindings only record a config ID after successful lease acquisition", async () => {
-  for (const result of ["acquired", "wait-failed", "write-failed"] as const) {
-    const harness = createHarness({ cli: "codex", health: "normal", runtime: "parallel", loopSessionId: "runtime-session",
-      waitForConfigApply: async () => result !== "wait-failed",
-      acquireConfigLease: async () => {
-        if (result === "write-failed") { throw new Error("配置租约获取失败"); }
-        return "acquired";
-      } });
-    const run = harness.runPrompt({ displayPrompt: "子任务", modelPrompt: "执行", contextTags: [], taskRole: "subtask",
-      loopTaskId: "parent-loop", loopSubtaskId: "subtask-1", loopSubtaskCli: "codex", loopSubtaskConfigId: "bound-profile",
-      throwOnError: true });
-    if (result !== "acquired") {
-      await assert.rejects(run, /配置.*失败/);
-      assert.equal(harness.dispatched.length, 0);
-      assert.equal(harness.boundConfigs.length, 0);
-      continue;
-    }
-    await run;
-    assert.equal(harness.dispatched.length, 1);
-    assert.equal(harness.boundConfigs.length, 1);
-    assert.equal(harness.boundConfigs[0].sessionId, "runtime-session");
-    assert.equal(harness.boundConfigs[0].configId, "selected-config");
-  }
-});
 
 test("startup never activates the first profile when using unmanaged native config", async () => {
   for (const fallbackConfigId of ["first-profile", null]) {
     const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", activeConfigId: null, fallbackConfigId });
     await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [] });
-    assert.deepEqual(harness.leasedConfigs, []);
     assert.equal(harness.dispatched.length, 1);
   }
 });
@@ -776,23 +408,15 @@ test("startup does not adopt a native matched profile when no user selection exi
   const harness = createHarness({ cli: "claude", health: "normal", runtime: "interactive", activeConfigId: null,
     loadedActiveConfigId: "native-matched-profile", fallbackConfigId: "first-profile" });
   await harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [] });
-  assert.deepEqual(harness.leasedConfigs, []);
 });
 
-test("OpenCode preflight errors are visible and stop dispatch after acquiring the profile lease", async () => {
-  const harness = createHarness({ cli: "opencode", health: "normal", runtime: "one-shot", preflightMessage: "配置检查失败" });
-  await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }), /配置检查失败/);
-  assert.equal(harness.leasedConfigs.length, 1);
-  assert.equal(harness.dispatched.length, 0);
-  assert.deepEqual(harness.systemMessages, ["配置检查失败"]);
-});
 
-test("OpenCode configuration lease failure stops before preflight and dispatch", async () => {
-  const harness = createHarness({ cli: "opencode", health: "normal", runtime: "one-shot", preflightMessage: "配置检查失败",
-    acquireConfigLease: async () => { throw new Error("配置租约获取失败"); } });
-  await assert.rejects(harness.runPrompt({ displayPrompt: "执行", modelPrompt: "执行", contextTags: [], throwOnError: true }),
-    /配置租约获取失败/);
-  assert.equal(harness.dispatched.length, 0);
-  assert.deepEqual(harness.systemMessages, ["配置租约获取失败"]);
-  assert.equal(harness.events.includes("preflight"), false);
+test("the current config dispatches across every CLI runtime", async () => {
+  for (const cli of CLI_LIST) {
+    for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+      const harness = createHarness({ cli, health: "normal", runtime });
+      await harness.runPrompt({ displayPrompt: "读取当前配置", modelPrompt: "读取当前配置", contextTags: [] });
+      assert.equal(harness.dispatched.length, 1);
+    }
+  }
 });

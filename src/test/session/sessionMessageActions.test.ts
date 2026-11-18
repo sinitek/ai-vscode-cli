@@ -262,7 +262,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
-    normalizeLoopMaxRounds: () => 20,
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),
@@ -518,7 +517,7 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   await handlePanelMessageWithDeps(message, deps);
 
   assert.equal(calls.ensured, 1);
-  assert.deepEqual(calls.activeTabSwitches, ["tab-opencode-smoke"]);
+  assert.deepEqual(calls.activeTabSwitches, [], "sending in the active tab must preserve its selected mode");
   assert.equal(state.currentCli, "opencode");
   assert.deepEqual(calls.savedSettings, [
     { currentCli: "opencode" },
@@ -665,14 +664,12 @@ test("Loop+ starts without waiting for the full panel refresh and settles its su
   }]);
 });
 
-test("Loop+ submission settles on config refusal, early return and execution failure", async () => {
-  for (const failure of ["config", "disabled", "execution"] as const) {
+test("Loop+ submission settles on early return and execution failure", async () => {
+  for (const failure of ["disabled", "execution"] as const) {
     const { deps, calls } = createSendPromptHarness();
     const receipts: Record<string, unknown>[] = [];
     deps.postWebviewMessage = (message) => { receipts.push(message); };
-    if (failure === "config") {
-      deps.validateVisibleConfigSelections = async () => { throw new Error("配置已变化"); };
-    } else if (failure === "disabled") {
+    if (failure === "disabled") {
       deps.readStoredToolSettings = () => ({ cliEnabledByName: { opencode: false } });
     } else {
       deps.runLoopPrompt = async () => { throw new Error("启动失败"); };
@@ -690,39 +687,97 @@ test("Loop+ submission settles on config refusal, early return and execution fai
   }
 });
 
-test("stale visible configuration refuses both ordinary and Loop dispatch before recording history", async () => {
-  for (const interactiveMode of ["coding", "loop"] as const) {
-    const { deps, calls } = createSendPromptHarness();
-    deps.validateVisibleConfigSelections = async () => { throw new Error("所见配置版本已过期，请重新确认"); };
-    await handlePanelMessageWithDeps({
-      type: "sendPrompt", prompt: "不能使用未确认的配置", cli: "opencode", interactiveMode,
-      tabId: "tab-opencode-smoke",
-      configSelections: { opencode: { configId: "visible-profile", revision: "old-revision" } },
-    }, deps);
-    assert.equal(calls.runPrompt.length, 0);
-    assert.equal(calls.runLoopPrompt.length, 0);
-    assert.equal(calls.promptHistory.length, 0);
-    assert.equal(calls.preloaded.length, 0);
-    assert.equal(calls.postPanelState, 1);
-    assert.equal(calls.webviewErrors.length, 1);
+test("Vibe publishes its bubble before a slow full refresh and keeps the submission receipt until execution ends", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const panelReady = createDeferred();
+  const executionDone = createDeferred();
+  const order: string[] = [];
+  const receipts: Record<string, unknown>[] = [];
+  deps.postPanelState = () => { order.push("refresh"); return panelReady.promise; };
+  deps.postWebviewMessage = (message) => { receipts.push(message); };
+  const preload = deps.preloadUserMessageForPrompt;
+  deps.preloadUserMessageForPrompt = (input, target, options) => {
+    order.push("bubble");
+    assert.equal(options?.messageId, "vibe-request");
+    return preload(input, target, options);
+  };
+  const run = deps.runPrompt;
+  deps.runPrompt = async (...args) => {
+    order.push("run");
+    await run(...args);
+    await executionDone.promise;
+  };
+  const submission = handlePanelMessageWithDeps({ type: "sendPrompt", requestId: "vibe-request",
+    prompt: "立即展示 Vibe", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(order, ["bubble", "refresh", "run"]);
+    assert.equal(calls.runPrompt.length, 1);
+    assert.deepEqual(receipts, []);
+    executionDone.resolve();
+    await submission;
+    assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "vibe-request", tabId: "tab-opencode-smoke" }]);
+  } finally {
+    panelReady.resolve();
+    executionDone.resolve();
+    await submission;
   }
 });
 
-test("validated visible revisions are forwarded unchanged to ordinary and Loop execution", async () => {
+test("sending Vibe in the active completed Loop conversation preserves the selected mode and native session", async () => {
+  for (const previousMode of ["loop", "loop_plus"] as const) {
+    const { deps, calls, state } = createSendPromptHarness();
+    const tab = deps.getActiveConversationTab()!;
+    tab.sessionId = "completed-loop-session";
+    tab.sessionIdByCli.opencode = tab.sessionId;
+    state.workspaceSettings.interactiveModeByCli = { opencode: "coding" };
+    deps.setActiveConversationTab = () => { throw new Error(`must not restore ${previousMode} when the active tab did not change`); };
+    await handlePanelMessageWithDeps({ type: "sendPrompt", requestId: `continue-${previousMode}`,
+      prompt: "继续处理新需求", interactiveMode: "coding", tabId: tab.id, cli: "opencode" }, deps);
+    assert.equal(calls.runPrompt.length, 1);
+    assert.equal(calls.runLoopPrompt.length, 0);
+    assert.equal(calls.preloaded[0].target.sessionId, "completed-loop-session");
+    assert.equal(state.workspaceSettings.interactiveModeByCli.opencode, "coding");
+  }
+});
+
+test("Vibe dispatch uses the host's current configuration", async () => {
+  const { deps, calls } = createSendPromptHarness();
+  const receipts: Record<string, unknown>[] = [];
+  deps.postWebviewMessage = (message) => { receipts.push(message); };
+  const submission = handlePanelMessageWithDeps({ type: "sendPrompt", requestId: "rejected-vibe",
+    prompt: "按启动时当前配置执行", interactiveMode: "coding", tabId: "tab-opencode-smoke", cli: "opencode" }, deps);
+  await submission;
+  assert.equal(calls.preloaded.length, 1);
+  assert.equal(calls.runPrompt.length, 1);
+  assert.deepEqual(receipts, [{ type: "promptSubmissionSettled", requestId: "rejected-vibe", tabId: "tab-opencode-smoke" }]);
+});
+
+test("ordinary and Loop dispatch use the host's current configuration", async () => {
   for (const interactiveMode of ["coding", "loop"] as const) {
     const { deps, calls } = createSendPromptHarness();
-    const configSelections = { opencode: { configId: "visible-profile", revision: "visible-revision" } };
-    deps.validateVisibleConfigSelections = async (cli, selections) => {
-      assert.equal(cli, "opencode");
-      assert.deepEqual(selections, configSelections);
-    };
     await handlePanelMessageWithDeps({
-      type: "sendPrompt", prompt: "按已确认的所见配置执行", cli: "opencode", interactiveMode,
-      tabId: "tab-opencode-smoke", configSelections,
+      type: "sendPrompt", prompt: "使用启动时当前配置", cli: "opencode", interactiveMode,
+      tabId: "tab-opencode-smoke",
+    }, deps);
+    assert.equal(calls.runPrompt.length, interactiveMode === "coding" ? 1 : 0);
+    assert.equal(calls.runLoopPrompt.length, interactiveMode === "loop" ? 1 : 0);
+    assert.equal(calls.promptHistory.length, 1);
+    assert.equal(calls.preloaded.length, 1);
+    assert.equal(calls.webviewErrors.length, 0);
+  }
+});
+
+test("configuration snapshots are not forwarded to ordinary or Loop execution", async () => {
+  for (const interactiveMode of ["coding", "loop"] as const) {
+    const { deps, calls } = createSendPromptHarness();
+    await handlePanelMessageWithDeps({
+      type: "sendPrompt", prompt: "按启动时当前配置执行", cli: "opencode", interactiveMode,
+      tabId: "tab-opencode-smoke",
     }, deps);
     const dispatched = interactiveMode === "coding" ? calls.runPrompt : calls.runLoopPrompt;
     assert.equal(dispatched.length, 1);
-    assert.deepEqual(dispatched[0].input.configSelections, configSelections);
+    assert.equal("configSelections" in dispatched[0].input, false);
   }
 });
 
@@ -1668,8 +1723,10 @@ test("rechecks Loop and Loop+ availability after the last dispatch prerequisite 
         await wait();
       };
     } else {
-      // Loop+ awaits visible configuration validation, never the full UI refresh.
-      h.deps.validateVisibleConfigSelections = wait;
+      h.deps.waitForConfigApply = async () => {
+        await wait();
+        return true;
+      };
     }
 
     const sending = handlePanelMessageWithDeps({
@@ -1914,7 +1971,7 @@ test("host save barrier prevents new roots during save/failure and starts with f
   assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
 });
 
-test("department sends reject changed workspace, target session and active selection across awaits", async () => {
+test("department sends fence workspace and target identity across awaits while using the resolved profile", async () => {
   for (const change of ["workspace", "session", "selection", "message-scope"] as const) {
     const h = createSendPromptHarness("opencode"); h.state.workspaceSettings.interactiveModeByCli = { opencode: "department" };
     let scope = "a:1"; h.deps.getDepartmentConfigurationScope = () => scope;
@@ -1927,7 +1984,9 @@ test("department sends reject changed workspace, target session and active selec
       return { routes: { director: {}, leader: {}, employee: {} }, limits: { maxLeaders: 4, maxEmployees: 20 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
     };
     await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "旧请求", departmentConfigurationScope: change === "message-scope" ? "old:0" : scope }, h.deps);
-    assert.equal(starts, 0, change); assert.match(h.calls.webviewErrors[h.calls.webviewErrors.length - 1], /作用域已变化|会话或有效配置已变化/);
+    assert.equal(starts, change === "selection" ? 1 : 0, change);
+    if (change === "selection") assert.deepEqual(h.calls.webviewErrors, []);
+    else assert.match(h.calls.webviewErrors[h.calls.webviewErrors.length - 1], /作用域已变化|会话或模式已变化/);
     assert.equal(h.calls.runPrompt.length + h.calls.runLoopPrompt.length, 0);
   }
 });
@@ -1943,7 +2002,7 @@ test("department start port retains a trusted final freshness guard across its o
     assert.equal(typeof request.assertCurrent, "function"); request.assertCurrent!(); mutations++;
   };
   await handlePanelMessageWithDeps({ type: "sendPrompt", prompt: "不得使用过期目标" }, h.deps);
-  assert.equal(mutations, 0); assert.match(h.calls.webviewErrors.at(-1)!, /会话或有效配置已变化/);
+  assert.equal(mutations, 0); assert.match(h.calls.webviewErrors.at(-1)!, /会话或模式已变化/);
 });
 
 test("department continuation bypasses a failing unrelated new-root configuration draft", async () => {

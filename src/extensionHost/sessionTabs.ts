@@ -21,7 +21,9 @@ export function attachConversationTabLoopMemberTitle(
   }
   const context = resolveLoopSubtaskConversationContextFromMessages(messages);
   const matchingIndices = task && task.id === summary.loopTaskId ? task.subTasks.map((subtask, index) => (
-    context
+    summary.loopSubtaskId
+      ? summary.loopSubtaskId === subtask.id
+      : context
       ? context.taskId === task.id && context.subtaskId === subtask.id
       : Boolean(summary.sessionId && subtask.executionSession?.cli === summary.cli && subtask.executionSession.sessionId === summary.sessionId)
   ) ? index : -1).filter((index) => index >= 0) : [];
@@ -208,12 +210,15 @@ function buildConversationTabsState(): {
           task?.schedulingMode,
         )
         : summary;
-      const messages = summary.loopTaskRole === "subtask"
+      const needsEmployeeEvidence = task?.department?.role === "leader" && Boolean(summary.sessionId);
+      const messages = summary.loopTaskRole === "subtask" && (!summary.loopSubtaskId || needsEmployeeEvidence)
         ? getLiveMessagesForTab(summary.id) ?? (summary.sessionId
           ? loadSessionMessages(summary.cli, summary.sessionId)
           : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
         : [];
-      const withMemberTitle = attachConversationTabLoopMemberTitle(withSchedulingMode, task, messages);
+      const withMemberTitle = attachConversationTabLoopMemberTitle(summary.loopTaskRole === "subtask"
+        ? { ...withSchedulingMode, loopSubtaskRunning: isTabRunActive(summary.id) }
+        : withSchedulingMode, task, messages);
       return summary.loopTaskRole === "subtask"
         ? projectDepartmentEmployeeConversationTab(withMemberTitle, task, messages, readPort)
         : projectDepartmentConversationTab(withMemberTitle, task, messages, readPort);
@@ -302,12 +307,14 @@ async function switchVisibleConversationTabForLoop(
 
 function createLoopSubtaskRunTarget(
   cli: CliName,
-  options: { sessionId?: string | null } = {}
+  options: { sessionId?: string | null; loopTaskId?: string; loopSubtaskId?: string } = {}
 ): PromptRunTarget {
   const sessionId = options.sessionId?.trim() || null;
   const state = ensureConversationTabs();
   const tab: ConversationTabRecord = {
     id: createConversationTabId(),
+    ...(options.loopTaskId ? { loopTaskId: options.loopTaskId } : {}),
+    ...(options.loopSubtaskId ? { loopSubtaskId: options.loopSubtaskId } : {}),
     cli,
     sessionId,
     sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
@@ -339,12 +346,13 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
-  options: { notifyTabClosed?: boolean } = {},
+  options: { notifyTabClosed?: boolean; onRejected?: () => void } = {},
   ownedTarget?: ConversationTabRecord,
 ): Promise<void> {
   if (ownedTarget && getConversationTabById(tabId) !== ownedTarget) throw new Error("department-owned-tab-target-changed");
   if (isTabRunActive(tabId) || !ownedTarget && isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
+    options.onRejected?.();
     return;
   }
   const closingTab = getConversationTabById(tabId);
@@ -357,6 +365,7 @@ async function closeConversationTabAndRefreshPanel(
   const next = closeConversationTab(tabId);
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
+    options.onRejected?.();
     return;
   }
   if (options.notifyTabClosed !== false) {
@@ -445,7 +454,7 @@ async function resetConversationTabSession(): Promise<void> {
   const targetCli = activeTab.cli;
   addConversationTab(targetCli, null);
   const nextTabId = getActiveConversationTabId();
-  setWorkspaceInteractiveModeForCli(targetCli, "coding");
+  setWorkspaceInteractiveModeForCli(targetCli, deps.resolveAutoInteractiveModeForConversationTab(null));
   await closeConversationTabAndRefreshPanel(previousTabId, { notifyTabClosed: false });
   if (getActiveConversationTabId() !== nextTabId) {
     return;

@@ -612,6 +612,36 @@ test("host uses execution cwd for ordinary and Loop turns, reuses semantic ident
   });
 });
 
+for (const outcome of ["end", "stopped", "skipped"] as const) test(`Vibe waits for automatic compaction before releasing its queue (${outcome})`, { timeout: 2000 }, async () => {
+  const compactGate = createDeferred();
+  const started = createDeferred();
+  const harness = createInteractiveRuntimeHarness({
+    autoCompactAfterRun: true,
+    runtimeDeps: {
+      maybeAutoCompactContextAfterPromptSuccess: async (_target, _sessionId, _duration, options) => {
+        if (outcome !== "skipped") {
+          options?.onStarted?.();
+          harness.runStatusEvents.push({ tabId: "tab-1", status: "start" });
+        }
+        started.resolve();
+        await compactGate.promise;
+        if (outcome !== "skipped") harness.runStatusEvents.push({ tabId: "tab-1", status: outcome });
+      },
+    },
+  });
+  const run = harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  await started.promise;
+  try {
+    assert.equal(harness.taskRecords.at(-1)?.status, "end", "model result remains completed");
+    assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false, "queue must remain blocked during compaction");
+  } finally {
+    compactGate.resolve();
+    await run;
+  }
+  assert.equal(harness.runStatusEvents.filter((event) => event.status === "end").length, outcome === "stopped" ? 0 : 1, "release queue once after completion and keep it paused after stop");
+  assert.equal(harness.codexStopCalls, 0);
+});
+
 test("interactive subtask completion returns before compaction and waits for the parent notification", { timeout: 2000 }, async () => {
   const compactGate = createDeferred();
   const started = createDeferred();
@@ -1230,6 +1260,61 @@ test("interactive runtime host converts explicit natural clarification replies i
   assert.equal(messages.some((message) => message.role === "assistant" && message.content.includes("请先回答")), false);
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "end"]);
 });
+
+for (const disposition of ["completed", "aborted", "disabled", "loop"] as const) {
+  test(`interactive runtime handles implicit single-choice clarification when ${disposition}`, async () => {
+    const question = "“撤销验收”希望如何处理？";
+    const options = [
+      "本次交付不再验收：记录撤销原因并移出待验收队列（推荐）",
+      "撤回已有验收结论：恢复为待验收，重新审查",
+    ];
+    const clarification = `[final_answer] ${question}\n\n${options.join("\n")}`;
+    let attempts = 0;
+    const harness = createInteractiveRuntimeHarness({
+      humanInteractionEnabled: disposition !== "disabled",
+      humanInteractionSubmission: (request) => ({
+        interactionId: request.interactionId,
+        tabId: request.tabId,
+        status: disposition === "aborted" ? "aborted" : "completed",
+        values: { answer_1: options[0] },
+      }),
+      codexRunBehavior: async (prompt, handlers) => {
+        attempts += 1;
+        harness.setCodexThreadId("thread-acceptance-choice");
+        handlers.onThreadId("thread-acceptance-choice");
+        if (attempts === 1) {
+          handlers.onAssistantDelta(clarification, { codexFinalAnswer: true });
+          return;
+        }
+        assert.equal(disposition, "completed");
+        assert.match(prompt, /已提交补充信息/);
+        assert.ok(prompt.includes(`${question}：${options[0]}`));
+        handlers.onAssistantDelta("[final_answer] 已按所选方案实现撤销验收。", { codexFinalAnswer: true });
+      },
+    });
+    await harness.host.runPromptInteractive(
+      createPromptInput({
+        displayPrompt: "增加撤销验收功能",
+        modelPrompt: "增加撤销验收功能",
+        ...(disposition === "loop" ? { loopTaskId: "loop-acceptance" } : {}),
+      }),
+      createTarget(),
+    );
+
+    const shouldInteract = disposition === "completed" || disposition === "aborted";
+    assert.equal(harness.humanInteractionRequests.length, shouldInteract ? 1 : 0);
+    assert.equal(attempts, disposition === "completed" ? 2 : 1);
+    assert.equal(harness.codexRunnerCreateCalls, attempts);
+    if (shouldInteract) {
+      assert.equal(harness.humanInteractionRequests[0]?.formFields[0]?.type, "radio");
+      assert.deepEqual(harness.humanInteractionRequests[0]?.formFields[0]?.options?.map((option) => option.label), options);
+      assert.ok(harness.panelMessages.some((message) => message.type === "removeMessage"));
+    }
+    const messages = harness.messagesBySession.get("session-1") ?? [];
+    assert.equal(messages.some((message) => message.role === "assistant" && message.content === clarification), !shouldInteract);
+    assert.equal(harness.runStatusEvents.at(-1)?.status, disposition === "aborted" ? "stopped" : "end");
+  });
+}
 
 test("interactive runtime host accepts a Claude greeting when the result succeeds", async () => {
   const harness = createInteractiveRuntimeHarness({

@@ -18,6 +18,7 @@ import type {
   ThinkingMode,
 } from "../../cli/types";
 import type { ChatMessage, PanelMessage } from "../../webview/types";
+import type { ToolSettingsState } from "../../toolSettings";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type PanelFileActionsMock = Pick<typeof import("../../webview/panelFileActions"),
@@ -278,8 +279,8 @@ function createHarness(): HandlerHarness {
       state.workspaceSettings = settings;
       calls.savedSettings.push({ ...settings });
     },
-    addConversationTab: (cli, sessionId) => {
-      const id = `tab-${cli}-${sessionId ?? "new"}`;
+    addConversationTab: (cli, sessionId, options) => {
+      const id = options?.tabId ?? `tab-${cli}-${sessionId ?? "new"}`;
       state.tabs.set(id, { id, cli, sessionId, sessionIdByCli: sessionId ? { [cli]: sessionId } : {}, createdAt: 2 });
       state.activeTabId = id;
       return id;
@@ -336,7 +337,6 @@ function createHarness(): HandlerHarness {
     isInteractiveMode,
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
-    normalizeLoopMaxRounds: () => 3,
     isCliName,
     updateStoredToolSettings: () => true,
     isMacTaskShell,
@@ -1072,6 +1072,65 @@ test("routes special panel messages through the unified router", async (t) => {
     values: { answer: "yes" },
   }]);
   assert.equal(harness.calls.panelStates, 1);
+});
+
+test("the global default is saved without switching the current task and applied on new tabs", async (t) => {
+  const { deps, calls, restore } = createHarness();
+  t.after(restore);
+  let settings: ToolSettingsState = {};
+  deps.readStoredToolSettings = () => settings;
+  deps.updateStoredToolSettings = (update) => {
+    settings = { ...settings, ...update };
+    return true;
+  };
+  await handlePanelMessageWithDeps({ type: "newSession" }, deps);
+  assert.equal(calls.interactiveModes.at(-1)?.mode, "coding");
+  for (const mode of ["loop", "loop_plus", "coding"] as const) {
+    const previousModeChanges = calls.interactiveModes.length;
+    await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: mode }, deps);
+    assert.equal(settings.newTaskInteractiveMode, mode);
+    assert.equal(calls.interactiveModes.length, previousModeChanges);
+    await handlePanelMessageWithDeps({ type: "newSession" }, deps);
+    assert.equal(calls.interactiveModes.at(-1)?.mode, mode);
+  }
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: "plan" }, deps);
+  assert.equal(settings.newTaskInteractiveMode, "coding");
+  deps.updateStoredToolSettings = () => false;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: "loop" }, deps);
+  assert.equal(settings.newTaskInteractiveMode, "coding");
+  assert.match(String(calls.errors.at(-1)?.detail), /默认任务模式保存失败/);
+});
+
+test("chat input height is saved globally and invalid updates leave the preference unchanged", async (t) => {
+  const { deps, calls, restore } = createHarness();
+  t.after(restore);
+  const updates: Array<Partial<ToolSettingsState>> = [];
+  deps.updateStoredToolSettings = (patch) => {
+    updates.push(patch);
+    return true;
+  };
+  for (const value of [160.5, 58.5, 20, "160", Infinity]) {
+    await handlePanelMessageWithDeps({ type: "updateSetting", key: "promptInputHeight", value }, deps);
+  }
+  assert.deepEqual(updates, [{ promptInputHeight: 160.5 }, { promptInputHeight: 58.5 }]);
+  assert.equal(calls.errors.length, 0);
+  deps.updateStoredToolSettings = () => false;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "promptInputHeight", value: 160 }, deps);
+  assert.match(String(calls.errors.at(-1)?.detail), /输入框高度保存失败/);
+});
+
+test("tab creation targets its own snapshot even when the active tab changes during refresh", async () => {
+  const { deps, state, calls } = createHarness();
+  const tabId = "ui-tab-123-abc";
+  const originalTabId = state.activeTabId;
+  deps.postPanelState = async () => { state.activeTabId = originalTabId; };
+  await handlePanelMessageWithDeps({ type: "newSession", tabId }, deps);
+  assert.equal(state.tabs.get(tabId)?.sessionId, null);
+  assert.equal(calls.sessionMessages.at(-1)?.tabId, tabId);
+  assert.deepEqual(calls.webviewMessages.at(-1), { type: "conversationTabCreateSettled", tabId, ready: true });
+  await handlePanelMessageWithDeps({ type: "newSession", tabId }, deps);
+  assert.deepEqual(calls.webviewMessages.at(-1), { type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(calls.sessionMessages.length, 1);
 });
 
 test("reports the live Codex long-connection count without changing sessions", async (t) => {

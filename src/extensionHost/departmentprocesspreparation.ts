@@ -1,7 +1,6 @@
 import { admitDepartmentEmployeeExecution, type DepartmentEmployeeExecutionAdmission } from "./departmentemployeeexecutionadmission";
 import * as path from "path";
 import * as fs from "fs";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { createHash, randomUUID } from "crypto";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { normalizeDepartmentMetadata } from "../department";
@@ -128,9 +127,9 @@ export function createDepartmentProcessPreparation(host: DepartmentProcessPrepar
   }
   async function start(facts: ReturnType<typeof authority>, handlers: CliProcessRuntimeHandlers, expected: { configId: string | null; revision: string }, prepareLaunch: DepartmentProcessPreparationHost["prepareLaunch"], lifetime: DepartmentProcessInvocationLifetime): Promise<CliProcessRuntimeHandle> {
     const { task, m, member, attempt, session, route, saved } = facts;
+    if (expected.configId !== route.configId) throw new Error("department-process-role-profile-conflict");
     const selection: DepartmentExecutionSelection = { version: 1, cli: "opencode", role: "employee", configId: route.configId ?? null,
       revision: expected.revision, model: route.model ?? null, thinkingMode: route.thinkingMode ?? null, openCodeVariant: route.openCodeVariant ?? null };
-    if (expected.configId !== selection.configId) throw new Error("department-process-role-configuration-conflict");
     const old = saved.executionBindings?.filter(({ identity }) => identity.leaderTaskId === task.id && identity.role === "employee"
       && identity.subtaskId === attempt.subtaskId && identity.attemptId === attempt.attemptId) ?? [];
     if (old.length) {
@@ -167,13 +166,11 @@ export function createDepartmentProcessPreparation(host: DepartmentProcessPrepar
       const sessionKey = (value: typeof session) => value ? JSON.stringify([value.cli, value.sessionId, value.configId]) : "null";
       let expectedSession = session;
       let continuation: Awaited<ReturnType<NonNullable<DepartmentProcessPreparationHost["prepareNativeContinuation"]>>> | undefined;
-      let configuration: SharedRuntimeConfig | undefined;
       let binding: Awaited<ReturnType<typeof prepareDepartmentProcessOwner>>["binding"] | undefined;
       let tab: ReturnType<typeof bindDepartmentExecutionTab>;
       const assertCurrent = (): void => {
         admission.assertCurrent();
         continuation?.assertCurrent();
-        if (configuration && !configuration.isCurrentSelection(expected)) throw new Error("department-process-configuration-changed");
         if (lifetime.signal?.aborted || lifetime.isAborted?.()) throw new Error("department-process-caller-cancelled");
         const current = authority(task.id, attempt.subtaskId);
         if (signatureOf(current) !== signature || sessionKey(current.session) !== sessionKey(expectedSession)) throw new Error("department-process-authority-changed");
@@ -184,7 +181,6 @@ export function createDepartmentProcessPreparation(host: DepartmentProcessPrepar
       };
       assertCurrent();
       const prepared = await prepareLaunch(structuredClone(selection), session?.sessionId ?? null);
-      configuration = new SharedRuntimeConfig(prepared.configurationDirectory);
       assertCurrent();
       admission.assertProcessOverlay(prepared.overlay !== null);
       const identity = { version: 1 as const, workspace: task.workspaceKey, rootTaskId: m.rootTaskId, leaderTaskId: task.id,

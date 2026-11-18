@@ -1,4 +1,5 @@
 import { humanInteractionOtherChoiceScript } from "../humanInteractionOtherChoice";
+import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
@@ -533,6 +534,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
         elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
       }
+      if (elements.newTaskInteractiveMode) {
+        elements.newTaskInteractiveMode.addEventListener("change", (event) => {
+          const mode = normalizeInteractiveMode(event.target.value);
+          state.newTaskInteractiveMode = mode;
+          vscode.postMessage({ type: "updateSetting", key: "newTaskInteractiveMode", value: mode });
+        });
+      }
       if (elements.chatMessageLimit) {
         const commitChatMessageLimit = () => {
           const nextValue = normalizeChatMessageLimit(elements.chatMessageLimit.value);
@@ -566,19 +574,15 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.loopGroupChatMessageLimit.addEventListener("change", commitLoopGroupChatMessageLimit);
         elements.loopGroupChatMessageLimit.addEventListener("blur", commitLoopGroupChatMessageLimit);
       }
-      if (elements.loopMaxRounds) {
-        const commitLoopMaxRounds = () => {
-          const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);
-          state.loopMaxRounds = nextValue;
-          elements.loopMaxRounds.value = String(nextValue);
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopMaxRounds",
-            value: nextValue,
-          });
+      if (elements.loopPlusSubtaskMaxRounds) {
+        const commitLoopPlusSubtaskMaxRounds = () => {
+          const nextValue = normalizeLoopPlusSubtaskMaxRounds(elements.loopPlusSubtaskMaxRounds.value);
+          state.loopPlusSubtaskMaxRounds = nextValue;
+          elements.loopPlusSubtaskMaxRounds.value = String(nextValue);
+          vscode.postMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: nextValue });
         };
-        elements.loopMaxRounds.addEventListener("change", commitLoopMaxRounds);
-        elements.loopMaxRounds.addEventListener("blur", commitLoopMaxRounds);
+        elements.loopPlusSubtaskMaxRounds.addEventListener("change", commitLoopPlusSubtaskMaxRounds);
+        elements.loopPlusSubtaskMaxRounds.addEventListener("blur", commitLoopPlusSubtaskMaxRounds);
       }
       ["departmentMaxLeaders", "departmentMaxEmployees"].forEach((key) => {
         const input = elements[key];
@@ -612,20 +616,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         };
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("change", commitWorkspaceLoopPlusDecisionSubtaskMax);
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("blur", commitWorkspaceLoopPlusDecisionSubtaskMax);
-      }
-      if (elements.loopPlusMaxAcceptances) {
-        const commitLoopPlusMaxAcceptances = () => {
-          const nextValue = normalizeLoopPlusMaxAcceptances(elements.loopPlusMaxAcceptances.value);
-          state.loopPlusMaxAcceptances = nextValue;
-          elements.loopPlusMaxAcceptances.value = String(nextValue);
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopPlusMaxAcceptances",
-            value: nextValue,
-          });
-        };
-        elements.loopPlusMaxAcceptances.addEventListener("change", commitLoopPlusMaxAcceptances);
-        elements.loopPlusMaxAcceptances.addEventListener("blur", commitLoopPlusMaxAcceptances);
       }
       if (elements.historyRetentionDays) {
         const commitHistoryRetentionDays = () => {
@@ -1567,7 +1557,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           closeRunConflictOverlay();
           return false;
         }
-        queuePromptForLater(promptPayload);
+        if (!queuePromptForLater(promptPayload)) {
+          return false;
+        }
         elements.promptInput.value = "";
         closeRunConflictOverlay();
         resetPromptContextForNextPrompt();
@@ -1583,10 +1575,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         }
         closeRunConflictOverlay();
         if (isLoopMainConversationTabRunning(getActiveConversationTabId())) {
-          elements.promptInput.value = "";
-          queuePromptForLater(promptPayload);
-          resetPromptContextForNextPrompt();
-          return;
+          showToast(t("toastLoopQueueUnsupported"));
+          return false;
         }
         return dispatchPrompt(promptPayload, { pauseBeforeSend: true });
       }
@@ -1774,6 +1764,77 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       elements.stopRun.addEventListener("click", () => {
         vscode.postMessage({ type: "stopRun", tabId: getActiveConversationTabId() });
       });
+
+      if (elements.promptInputResize) {
+        const handle = elements.promptInputResize;
+        const input = elements.promptInput;
+        const heightProperty = "--prompt-input-height";
+        const minHeight = ${PROMPT_INPUT_MIN_HEIGHT};
+        const maxHeight = () => Math.max(minHeight, parseFloat(getComputedStyle(input).maxHeight) || minHeight);
+        const visibleHeight = () => parseFloat(getComputedStyle(input).height) || minHeight;
+        const syncHandle = () => {
+          handle.setAttribute("aria-valuemax", String(maxHeight()));
+          handle.setAttribute("aria-valuenow", String(visibleHeight()));
+        };
+        const setHeight = (height) => {
+          input.style.setProperty(heightProperty, Math.min(maxHeight(), Math.max(minHeight, height)) + "px");
+          syncHandle();
+        };
+        const saveHeight = () => {
+          vscode.postMessage({ type: "updateSetting", key: "promptInputHeight", value: visibleHeight() });
+        };
+        let drag = null;
+        const finishDrag = (event, commit) => {
+          if (!drag || event.pointerId !== drag.pointerId) {
+            return;
+          }
+          if (commit && visibleHeight() !== drag.height) {
+            saveHeight();
+          } else {
+            input.style.setProperty(heightProperty, drag.previousHeight);
+            syncHandle();
+          }
+          drag = null;
+          handle.classList.remove("is-resizing");
+        };
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0 || drag) {
+            return;
+          }
+          event.preventDefault();
+          handle.setPointerCapture(event.pointerId);
+          drag = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            height: visibleHeight(),
+            previousHeight: input.style.getPropertyValue(heightProperty),
+          };
+          handle.classList.add("is-resizing");
+        });
+        handle.addEventListener("pointermove", (event) => {
+          if (drag && event.pointerId === drag.pointerId) {
+            setHeight(drag.height + drag.startY - event.clientY);
+          }
+        });
+        handle.addEventListener("pointerup", (event) => finishDrag(event, true));
+        handle.addEventListener("pointercancel", (event) => finishDrag(event, false));
+        handle.addEventListener("lostpointercapture", (event) => finishDrag(event, false));
+        handle.addEventListener("keydown", (event) => {
+          if (drag || !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+            return;
+          }
+          event.preventDefault();
+          const before = visibleHeight();
+          const step = 16;
+          const targetHeight = { ArrowUp: before + step, ArrowDown: before - step, Home: minHeight, End: maxHeight() }[event.key];
+          if (Math.min(maxHeight(), Math.max(minHeight, targetHeight)) !== before) {
+            setHeight(targetHeight);
+            saveHeight();
+          }
+        });
+        window.addEventListener("resize", syncHandle);
+        syncHandle();
+      }
 
       elements.promptInput.addEventListener("compositionstart", () => {
         isComposing = true;

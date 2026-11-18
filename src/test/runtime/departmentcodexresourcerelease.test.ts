@@ -75,7 +75,6 @@ isolated("production Codex employee and two-round leader release original resour
   assert.equal(h.wire().filter((m) => m.method === "thread/resume").length, 1);
   assert.equal(h.wire(h.file("employee")).filter((m) => m.method === "turn/start").length, 1);
   assert.deepEqual(h.closedTabs.slice().sort(), ["leader-tab", h.fixture.createdSubtaskTargets[0].tabId].sort());
-  assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 0);
   // Complete Codex receipts do not consume whole-group capacity or erase history.
   assert.equal(h.read(started.taskId)?.executionSession?.sessionId, "native");
   const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);

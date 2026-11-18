@@ -23,7 +23,8 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshotForStorage,
   type LoopPlusAcceptancePlanSnapshot,
 } from "./loopPlusAcceptancePlan";
-import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { readLoopPlusDependsOn } from "./loopPlusDependencies";
+import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
@@ -146,6 +147,7 @@ export type LoopSubtaskRepairSource = {
 };
 
 export type LoopSubtaskRecord = {
+  dependsOn?: string[];
   repairSource?: LoopSubtaskRepairSource;
   continueFromSubtaskId?: string;
   executionSession?: LoopSubtaskSession;
@@ -189,6 +191,7 @@ export type LoopRoundSummary = {
 };
 
 export type LoopSubtaskDecision = {
+  dependsOn?: string[];
   continueFromSubtaskId?: string;
   id?: string;
   title: string;
@@ -239,12 +242,13 @@ export type LoopTaskRecord = {
   taskKind?: LoopTaskKind;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
+  loopPlusSubtaskMaxRounds?: number;
+  classicSubtaskDispatchCount?: number;
   /** Department data is optional for legacy tasks; invalid data is explicit so execution can refuse it. */
   department?: DepartmentMetadata;
   departmentInvalid?: boolean;
   /** Host delivery receipts committed together with the Loop+ user-message queue. */
   departmentDeliveries?: Record<string, string>;
-  loopPlusMaxAcceptances?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
   loopProgressPercent?: number;
@@ -1188,6 +1192,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   if (typeof raw.id !== "string" || !raw.id.trim() || !cli || typeof raw.rootPrompt !== "string") {
     return null;
   }
+  if (findInvalidLoopSubtaskDependsOnIndex(record) !== null) return null;
   const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Date.now();
   const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : createdAt;
   const status = normalizeLoopTaskStatus(raw.status);
@@ -1230,9 +1235,10 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
-  const loopPlusMaxAcceptances = normalizeStoredLoopPlusMaxAcceptances(
-    (raw as { loopPlusMaxAcceptances?: unknown }).loopPlusMaxAcceptances,
+  const loopPlusSubtaskMaxRounds = normalizeStoredLoopPlusSubtaskMaxRounds(
+    (raw as { loopPlusSubtaskMaxRounds?: unknown }).loopPlusSubtaskMaxRounds,
   );
+  const classicSubtaskDispatchCount = raw.classicSubtaskDispatchCount;
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
@@ -1266,11 +1272,13 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(taskKind ? { taskKind } : {}),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
+    ...(loopPlusSubtaskMaxRounds !== undefined ? { loopPlusSubtaskMaxRounds } : {}),
+    ...(typeof classicSubtaskDispatchCount === "number" && Number.isSafeInteger(classicSubtaskDispatchCount)
+      && classicSubtaskDispatchCount >= 0 ? { classicSubtaskDispatchCount } : {}),
     ...(departmentField.metadata ? { department: departmentField.metadata } : {}),
     ...(departmentField.invalid ? { departmentInvalid: true } : {}),
     ...(raw.departmentDeliveries && typeof raw.departmentDeliveries === "object" && !Array.isArray(raw.departmentDeliveries)
       ? { departmentDeliveries: Object.fromEntries(Object.entries(raw.departmentDeliveries).filter(([id, body]) => id.trim() && typeof body === "string" && body.trim())) } : {}),
-    ...(loopPlusMaxAcceptances !== undefined ? { loopPlusMaxAcceptances } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
     ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
@@ -1441,6 +1449,8 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   if (typeof raw.id !== "string" || !raw.id.trim() || typeof raw.title !== "string") {
     return null;
   }
+  const dependsOn = readLoopPlusDependsOn((raw as { dependsOn?: unknown }).dependsOn, raw.id);
+  if (!dependsOn) return null;
   const status = raw.status === "pending" || raw.status === "running" || raw.status === "completed" || raw.status === "skipped" || raw.status === "blocked"
     ? raw.status
     : "pending";
@@ -1456,6 +1466,7 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   return {
     id: raw.id,
     title: raw.title,
+    ...(Object.prototype.hasOwnProperty.call(raw, "dependsOn") ? { dependsOn } : {}),
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(executionSession ? { executionSession } : {}),
@@ -1491,17 +1502,26 @@ function normalizeLoopPlusMainPhase(value: unknown): LoopPlusMainPhase | undefin
   return value === "decomposing" ? "decomposing" : undefined;
 }
 
-function normalizeStoredLoopPlusMaxAcceptances(value: unknown): number | undefined {
-  if (typeof value !== "number" && typeof value !== "string") {
-    return undefined;
+function normalizeStoredLoopPlusSubtaskMaxRounds(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  const numeric = typeof value === "number" ? value : (value.trim() ? Number(value) : Number.NaN);
+  return Number.isFinite(numeric) ? resolveLoopPlusSubtaskMaxRounds(numeric) : undefined;
+}
+
+function findInvalidLoopSubtaskDependsOnIndex(record: unknown): number | null {
+  if (!record || typeof record !== "object" || !Array.isArray((record as { subTasks?: unknown }).subTasks)) {
+    return null;
   }
-  const numeric = typeof value === "number"
-    ? value
-    : (value.trim() ? Number(value) : Number.NaN);
-  if (!Number.isFinite(numeric)) {
-    return undefined;
+  const subTasks = (record as { subTasks: unknown[] }).subTasks;
+  for (let index = 0; index < subTasks.length; index += 1) {
+    const subtask = subTasks[index];
+    if (!subtask || typeof subtask !== "object" || Array.isArray(subtask)) continue;
+    const raw = subtask as { id?: unknown; dependsOn?: unknown };
+    if (!Object.prototype.hasOwnProperty.call(raw, "dependsOn")) continue;
+    const subtaskId = typeof raw.id === "string" ? raw.id.trim() : "";
+    if (readLoopPlusDependsOn(raw.dependsOn, subtaskId) === null) return index;
   }
-  return resolveLoopPlusMaxAcceptances(numeric);
+  return null;
 }
 
 function normalizeLoopTaskKind(value: unknown): LoopTaskKind | undefined {

@@ -181,9 +181,6 @@ test("injects the copy handler into both chat Webviews", () => {
   const mainScript = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 5,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 12,
     finalAnswerTextMarker: "<FINAL>",
   });
   const groupPanel = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, {

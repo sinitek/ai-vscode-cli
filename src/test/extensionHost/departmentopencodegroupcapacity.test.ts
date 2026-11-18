@@ -103,7 +103,7 @@ scenario("OpenCode leader tree drains original Owners before durable capacity re
   await bounded(started.done, "normal scheduler/organization lifecycle completion", h.diagnostic);
   await eventually(() => saved(h).capacity.leaders.length === 0, "durable group capacity return", h.diagnostic);
   await assertOriginalGroup(h, started.taskId); occupancy(h, 0, 0);
-  assert.equal(h.tabs.size, 0); assert.equal(h.configurationLeases().length, 0);
+  assert.equal(h.tabs.size, 0);
   const runs = h.events().filter(e => e.kind === "task-run");
   assert.equal(runs.length, 2); assert.equal(runs[0].session, runs[1].session); assert.equal(runs[0].ownerPid, runs[1].ownerPid);
   assert.equal(h.events().filter(e => e.kind === "session-created").length, 1);
@@ -124,7 +124,7 @@ scenario("OpenCode leader tree drains original Owners before durable capacity re
   await bounded(next.done, "redispatched group normal lifecycle", h.diagnostic);
   await eventually(() => saved(h).capacity.leaders.length === 0, "redispatched capacity consumption", h.diagnostic);
   await assertOriginalGroup(h, next.taskId); occupancy(h, 0, 0);
-  assert.equal(h.tabs.size, 0); assert.equal(h.configurationLeases().length, 0);
+  assert.equal(h.tabs.size, 0);
   assert.equal(saved(h).leaderExecutionSets!.length, 2); assert.equal(h.events().filter(e => e.kind === "session-created").length, 2);
   assert.notEqual(h.read(next.taskId)!.executionSession!.sessionId, h.read(started.taskId)!.executionSession!.sessionId);
   assert.equal(h.localRuns, 0); assert.equal(h.fixture.completionMessages.length, 2);

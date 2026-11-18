@@ -62,18 +62,16 @@ for (const [employees, history] of [[0, 0], [0, 128], [3, 128]]) scenario(`produ
     assert.equal(h.store.write(saved.value).ok, true);
     const file = h.file("runtime/" + Buffer.from("root").toString("hex") + ".json");
     const read = fs.readFileSync, validate = runtimeState.isDepartmentExecutionBinding;
-    let reads = 0, validations = 0, selections = 0;
+    let reads = 0, validations = 0;
     t.mock.method(fs, "readFileSync", (...args: Parameters<typeof fs.readFileSync>) => {
       if (args[0] === file) reads++;
       return Reflect.apply(read, fs, args);
     });
     t.mock.method(runtimeState, "isDepartmentExecutionBinding", (value: unknown) => { validations++; return validate(value); });
-    h.setCleanupSelection(async () => { selections++; return { ...h.expected, ready: true }; });
     const observed = h.groupCleanup.observe(h.read(started.taskId)!, 1); assert.ok(observed); await observed.done;
-    t.diagnostic(JSON.stringify({ bindings: employees + 1, history, reads, validations, selections }));
+    t.diagnostic(JSON.stringify({ bindings: employees + 1, history, reads, validations }));
     assert.ok(reads <= 30, `phase reads, independent of bindings: ${reads}`);
     assert.ok(validations <= reads * (employees + history + 1) + 4, `one linear validation per cold read: ${validations}`);
-    assert.equal(selections, 2, "one config read per CLI in each pre/post Owner phase");
     assert.deepEqual(h.groupCleanup.observationState(), { generations: 0, subscribers: 0 });
     assert.equal(h.store.read("root", "workspace").ok, true);
     t.mock.restoreAll();
@@ -113,17 +111,13 @@ scenario("cancelled observers detach synchronously while one original close owns
   assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
 });
 
-for (const change of ["config", "generation", "closure"] as const) scenario(`batch observation rejects ${change} mutation across asynchronous policy boundary`, async (t) => {
+for (const change of ["generation", "closure"] as const) scenario(`batch observation rejects ${change} mutation before aggregation`, async (t) => {
   const h = await productionWiring(t, "codex", true, false); h.answer(1, completed());
   const started = await h.start(); assert.ok(started.ok); await started.done;
-  const entered = gate(), release = gate(); let calls = 0;
-  h.setCleanupSelection(async () => {
-    calls++; if (calls === 2) { entered.resolve(); await release.promise; }
-    return { ...h.expected, ready: true, ...(change === "config" && calls === 2 ? { revision: "changed" } : {}) };
-  });
   const observed = h.groupCleanup.observe(h.read(started.taskId)!, 1); assert.ok(observed);
-  const rejected = assert.rejects(observed.done, /selection-conflict|generation-or-set-changed/);
-  await entered.promise;
+  const rejected = assert.rejects(observed.done, change === "generation"
+    ? /leader-execution-producer-closure-invalid/
+    : /leader-execution-closure-immutable/);
   const read = h.store.read("root", "workspace"); assert.ok(read.ok && read.value);
   if (change === "generation") { read.value.runtime.leaders[0].generation = (read.value.runtime.leaders[0].generation ?? 1) + 1; assert.equal(h.store.write(read.value).ok, true); }
   if (change === "closure") {
@@ -132,7 +126,7 @@ for (const change of ["config", "generation", "closure"] as const) scenario(`bat
     read.value.leaderExecutionSets![0].closure!.admissionFence = "external-replacement";
     fs.writeFileSync(h.file("runtime/" + Buffer.from("root").toString("hex") + ".json"), JSON.stringify(read.value));
   }
-  release.resolve(); await rejected;
+  await rejected;
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 0, subscribers: 0 });
   assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
 });

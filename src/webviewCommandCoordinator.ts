@@ -457,7 +457,7 @@ export async function loadConfigStateWithDeps(
         platform: config.platform,
       })),
       activeConfigId,
-      ...(shared ? { revision: shared.revision, ...(!shared.ready ? { configurationError: "上次配置应用未成功，请重新应用配置后执行。" } : {}) } : {}),
+      ...(shared ? { revision: shared.revision } : {}),
     };
   } catch (error) {
     const message = deps.errorToMessage(error);
@@ -682,8 +682,7 @@ export function resolveLoopResumeRound(task: LoopTaskRecord): number {
       : 0;
     return Math.max(maxValue, round);
   }, 0);
-  const resolved = Math.max(recordedRound, latestRoundFromHistory, 1);
-  return Math.min(resolved, task.maxRounds);
+  return Math.max(recordedRound, latestRoundFromHistory, 1);
 }
 
 export function buildLoopRoundSummary(round: number, role: "main" | "subtask", subtaskId?: string): string {

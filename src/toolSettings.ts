@@ -1,10 +1,12 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
+import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMode, MacTaskShell } from "./cli/types";
+import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
+import { normalizePromptInputHeight } from "./promptInputHeight";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -13,23 +15,30 @@ export const HUMAN_INTERACTION_TIMEOUT_MINUTES_DEFAULT = 15;
 export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MIN = 1;
 export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MAX = 1440;
 
+export type NewTaskInteractiveMode = Exclude<InteractiveMode, "plan">;
+
+export function resolveNewTaskInteractiveMode(value: unknown): NewTaskInteractiveMode {
+  return value === "loop" || value === LOOP_PLUS_INTERACTIVE_MODE ? value : "coding";
+}
+
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
+  newTaskInteractiveMode?: NewTaskInteractiveMode;
   loopEnabled?: boolean;
   loopPlusEnabled?: boolean;
   departmentEnabled?: boolean;
-  loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
-  loopPlusMaxAcceptances?: number;
+  loopPlusSubtaskMaxRounds?: number;
   departmentMaxLeaders?: number;
   departmentMaxEmployees?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
+  promptInputHeight?: number;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
   macTaskShell?: MacTaskShell;
@@ -75,6 +84,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     return normalized;
   }
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
+  if ("newTaskInteractiveMode" in record) {
+    normalized.newTaskInteractiveMode = resolveNewTaskInteractiveMode(record.newTaskInteractiveMode);
+  }
   if ("chatMessageLimit" in record) {
     normalized.chatMessageLimit = normalizeChatMessageLimit(record.chatMessageLimit);
   }
@@ -83,6 +95,10 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.hideInstructionBubbles === "boolean") {
     normalized.hideInstructionBubbles = record.hideInstructionBubbles;
+  }
+  const promptInputHeight = normalizePromptInputHeight(record.promptInputHeight);
+  if (promptInputHeight !== undefined) {
+    normalized.promptInputHeight = promptInputHeight;
   }
   if (typeof record.debug === "boolean") {
     normalized.debug = record.debug;
@@ -107,14 +123,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       normalized.historyRetentionDays = normalizeHistoryRetentionDays(parsed);
     }
   }
-  if (typeof record.loopMaxRounds === "number" || typeof record.loopMaxRounds === "string") {
-    const parsed = typeof record.loopMaxRounds === "number"
-      ? record.loopMaxRounds
-      : (record.loopMaxRounds.trim() ? Number(record.loopMaxRounds) : Number.NaN);
-    if (Number.isFinite(parsed)) {
-      normalized.loopMaxRounds = Math.floor(parsed);
-    }
-  }
   if (
     typeof record.loopPlusDecisionSubtaskMax === "number"
     || typeof record.loopPlusDecisionSubtaskMax === "string"
@@ -126,15 +134,12 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       normalized.loopPlusDecisionSubtaskMax = Math.floor(parsed);
     }
   }
-  if (
-    typeof record.loopPlusMaxAcceptances === "number"
-    || typeof record.loopPlusMaxAcceptances === "string"
-  ) {
-    const parsed = typeof record.loopPlusMaxAcceptances === "number"
-      ? record.loopPlusMaxAcceptances
-      : (record.loopPlusMaxAcceptances.trim() ? Number(record.loopPlusMaxAcceptances) : Number.NaN);
+  if (typeof record.loopPlusSubtaskMaxRounds === "number" || typeof record.loopPlusSubtaskMaxRounds === "string") {
+    const parsed = typeof record.loopPlusSubtaskMaxRounds === "number"
+      ? record.loopPlusSubtaskMaxRounds
+      : (record.loopPlusSubtaskMaxRounds.trim() ? Number(record.loopPlusSubtaskMaxRounds) : Number.NaN);
     if (Number.isFinite(parsed)) {
-      normalized.loopPlusMaxAcceptances = Math.floor(parsed);
+      normalized.loopPlusSubtaskMaxRounds = resolveLoopPlusSubtaskMaxRounds(parsed);
     }
   }
   if ("departmentMaxLeaders" in record) {

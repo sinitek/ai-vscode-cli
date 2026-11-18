@@ -37,7 +37,7 @@ async function setup(t: test.TestContext, bound = false) {
   const { prepared } = fixturePreparation(directory, identity, selection);
   prepared.runner.configFingerprint = identity.configFingerprint;
   prepared.runner.model = null;
-  const protocol = fs.readFileSync(prepared.runner.command, "utf8").replace("const file=n=>", "fs.writeFileSync(path.join(ROOT,'native-pid'),String(process.pid));const file=n=>");
+  const protocol = fs.readFileSync(prepared.runner.command, "utf8").replace("const file=n=>", "fs.writeFileSync(path.join(ROOT,'native-pid'),String(process.pid));fs.writeFileSync(path.join(ROOT,'owner-pid'),String(process.ppid));const file=n=>");
   fs.writeFileSync(prepared.runner.command, protocol);
   const route = { cli: "codex" as const, configId: "profile", thinkingMode: "medium" as const };
   const metadata = { version: 1 as const, rootTaskId: "root", parentTaskId: "root", leaderSubtaskId: "module", role: "leader" as const,
@@ -64,9 +64,9 @@ async function setup(t: test.TestContext, bound = false) {
   t.after(async () => {
     // Fixture teardown only, never counted as cleanup proof. Workers may retain unknown resources.
     const pids = new Set<number>();
-    try { for (const lease of JSON.parse(fs.readFileSync(file("configuration/selection.json"), "utf8")).leases) pids.add(lease.pid); } catch {}
+    try { pids.add(Number(fs.readFileSync(file("owner-pid"), "utf8"))); } catch {}
     try { const pid = Number(fs.readFileSync(file("native-pid"), "utf8")); if (pid > 0) { try { process.kill(-pid, "SIGTERM"); } catch { try { process.kill(pid, "SIGTERM"); } catch {} } } } catch {}
-    for (const pid of pids) { try { process.kill(pid, "SIGTERM"); } catch {} }
+    for (const pid of pids) if (pid > 1 && pid !== process.pid) { try { process.kill(pid, "SIGTERM"); } catch {} }
     await new Promise((resolve) => setTimeout(resolve, 30));
     fs.rmSync(directory, { recursive: true, force: true });
   });
@@ -172,9 +172,8 @@ for (const bound of [false, true]) test(`production coordinator ${bound ? "resum
   assert.deepEqual(h.host.readTask("leader")!.subTasks[0].executionSession, { cli: "codex", configId: "profile", sessionId: "native" });
   const state = h.store.read("root", "workspace"); assert.ok(state.ok && state.value);
   const binding = state.value.executionBindings![0]; assert.equal(binding.identity.session.state, "bound");
-  const leases = JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases;
-  assert.equal(leases.length, 1); assert.notEqual(leases[0].pid, process.pid);
-  await assert.rejects(h.config.change(async () => ({ configId: "other", profileDigest: null })), /执行中的任务/);
+  assert.notEqual(Number(fs.readFileSync(h.file("owner-pid"), "utf8")), process.pid);
+  assert.equal((await h.config.change(async () => ({ configId: "other", profileDigest: null }))).configId, "other");
   await finish(h); await run;
   assert.equal(h.count("turn/start"), 1);
   await until(async () => (await new DepartmentExecutionOwnerClient(path.join(h.directory, "owners", binding.identity.ownerId)).observeExecution(binding.identity)).status === "unknown");
@@ -268,7 +267,7 @@ for (const stage of ["prepared", "session", "owner-bound"]) test(`cancel while $
   assert.equal(h.count("turn/start"), 0);
 });
 
-test("original granted Owner and its config lease survive startup host exit; new host only observes", { timeout: 20000 }, async (t) => {
+test("original granted Owner survives startup host exit; new host only observes", { timeout: 20000 }, async (t) => {
   const h = await setup(t);
   for (const task of h.tasks.values()) fs.writeFileSync(h.file(task.id + "-task"), JSON.stringify(task));
   fs.writeFileSync(h.file("expected"), JSON.stringify(h.current)); fs.writeFileSync(h.file("description"), JSON.stringify(h.description));
@@ -279,8 +278,8 @@ test("original granted Owner and its config lease survive startup host exit; new
   const state = h.store.read("root", "workspace"); assert.ok(state.ok && state.value);
   const binding = state.value.executionBindings![0], client = new DepartmentExecutionOwnerClient(path.join(h.directory, "owners", binding.identity.ownerId));
   assert.equal((await client.observeExecution(binding.identity)).status, "live"); assert.equal((await client.startExecution(binding.identity)).status, "live");
-  const leases = JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases;
-  assert.equal(leases.length, 1); assert.notEqual(leases[0].pid, host.pid);
+  const ownerPid = Number(fs.readFileSync(h.file("owner-pid"), "utf8"));
+  assert.notEqual(ownerPid, host.pid); assert.equal(process.kill(ownerPid, 0), true);
   h.host.employeeAdmission = null;
   const stale = createDepartmentCodexPreparation(h.host);
   await assert.rejects(stale.run("leader", "subtask", h.handlers, h.current, async () => { throw new Error("must-not-prepare"); }), /existing-binding-conflict/);

@@ -90,7 +90,7 @@ Windows：python verify_win.py
 确认支持即时卸载的版本保留共享池，pool 默认三轮约需 3–5 分钟（每轮约 60 秒的原生默认延迟）；旧版/未知能力使用专属进程并确认原进程实际退出，不强行注入未知参数、不换新 CLI、不以缩短等待伪造释放。自动顺序执行：
 
 1. 构建当前源码，定位实际 Codex 可执行文件并记录版本、平台、架构、源码版本、commit 和 dirty。
-2. 执行必要回归集：同 session 并发所有权、迟到回调、完成摘要轮次边界、面板状态恢复、正常关闭与失败保留 Tab、主任务不可重试错误仅调用一次/普通错误五次暂停/原因展示、原会话交接及检测脚本自身。主子交接与验收另覆盖模型路由与切换续跑、验收 JSON 协议与修复提示、验收方案与反馈、FIFO 事件归属及最终完成门禁、停止接线和崩溃后完成回报。显式存储与交接门禁清单还必须包含 `loop/loopTaskStore.test.js`、`loop/loopTaskStoreCoreCoverage.test.js`、`loop/loopTaskStorePersistence.test.js`、`extensionHost/loopPlusHandoffContracts.test.js`、`extensionHost/loopPlusAcceptanceCompletionGate.test.js`（均位于 `dist/test/`）；缺少任一文件立即失败。
+2. 执行必要回归集：同 session 并发所有权、迟到回调、完成摘要轮次边界、面板状态恢复、正常关闭与失败保留 Tab、主任务不可重试错误仅调用一次/普通错误五次暂停/原因展示、原会话交接及检测脚本自身。主子交接与验收另覆盖模型路由与切换续跑、验收 JSON 协议与修复提示、验收方案与反馈、新批次依赖优先/四项上限、冻结前缀事件归属及最终完成门禁、停止接线和崩溃后完成回报。显式存储与交接门禁清单还必须包含 `loop/loopTaskStore.test.js`、`loop/loopTaskStoreCoreCoverage.test.js`、`loop/loopTaskStorePersistence.test.js`、`extensionHost/loopPlusHandoffContracts.test.js`、`extensionHost/loopPlusAcceptanceCompletionGate.test.js`（均位于 `dist/test/`）；缺少任一文件立即失败。
 3. 按实际能力重复原 thread 交接与完整清理：共享池复现真实 writer 冲突，保留旧进程另一 thread；专属策略实际拒绝其它 owner，确认目标原进程退出后恢复，同样保留另一原会话的进程。ACK、kill 请求或逻辑关闭不算释放。
 4. 通过公共 runner 和实际版本能力探测，检查真实释放先于恢复、另一 thread 继续运行、探测/运行子进程退出、stdio 关闭和临时目录删除。能力未知不强行启用 `thread_unload_delay_secs=0`。
 
@@ -126,6 +126,12 @@ $LASTEXITCODE
 旧 `verify_codex_thread_handoff.js` / `verify_codex_thread_handoff_acceptance.js` 仅保留 pool 专项诊断；`verify_codex_runner_unload.js` 为公共 runner 专项诊断。判断此次完整源码修复优先使用统一入口，不能只跑旧脚本。
 
 本入口属于开发测试工具，不新增插件用户可见能力；本次脚本优化无需再次变更功能清单，前一轮运行时修复的功能条目仍为事实来源。
+
+2026-11-17 Round 17：显式依赖及补充四项验收实现、局部夹具和约定 macOS 源码范围已通过主审，见[唯一归档 feature 计划](../exec-plans/completed/2026-11/2026-11-17-feature-loop-plus-explicit-dependencies.md#最终-macos-原生证据及边界)。在实际仓库一次执行 `python3 verify_mac.py --report <全新临时目录>/verification.json`，默认三轮、退出 0；标准 build 成功，75 文件 1350/1350，无失败/取消/跳过/TODO，五项存储/交接/完成门禁均实际列入。三轮 pool 与公共 runner 的交接、原进程退出、stdio 关闭、临时目录清理和监督收尾全部通过。环境为 macOS 15.6.1 arm64、Node 24.22.2、npm 11.19.1、默认 PATH Codex 0.167.2；未减少轮数、换 CLI、预热构建或调用付费模型。局部冻结批次夹具显式 `subtaskRoundLimit=100`，生产默认 200 不变；隔离真实 TypeScript 编译及精确定向 1 项通过。
+
+报告稳定后四处外部测试变化，加上主审观察到的 `loopPromptQueue.test.ts`、`opencodeloopmodewebview.test.ts`、`conversationTabLock.test.ts` 三处后到夹具变化，共七处均不在此次 75 文件清单；产品源码、规定回归源文件、脚本和构建配置在指纹核对时仍匹配。入口后共享 dist 已被其它构建接管；原始执行通过事实保留，但不能证明七处外部测试当前内容或当前 dist。`fullyVerified=false`；Windows、已安装扩展/图形宿主、真实模型完整业务任务、其它 CLI 及全仓单测未覆盖，不宣称发布或整仓完全验证。此前入口的 1322 通过/1 失败（生命周期恢复）与随后 1349 通过/1 失败（局部预算夹具）及修复按原因保留于归档计划，不与本次 1350 相加；未变范围的 Dependencies、adapter、存储和宿主报告继续复用。本次最终文档仍待独立主审。
+
+历史记录保留如下，统计均为各次独立执行。
 
 2026-11-13 本机验证：macOS arm64 / Node 24.22.2，显式固定 Codex 0.167.0，默认三轮完整入口退出 0；构建通过，必要回归 717/717（无跳过），pool 交接耗时 60080 / 60048 / 60037ms，公共 runner 以真实 `thread/closed` 在 26ms 后交接。四组进程退出、stdio 关闭、临时目录删除均确认，另核对自有 PID 已不存在；重复指定已有报告时退出 1 且文件未改。ontology 校验与 9 项 Python 测试通过，启动器本机帮助调用及语法检查通过。检测暴露的空白命令能力探测已修复并补回归：空白不再默认探测另一个 Codex。
 

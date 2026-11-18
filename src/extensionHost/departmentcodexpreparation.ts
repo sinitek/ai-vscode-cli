@@ -125,7 +125,6 @@ export function createDepartmentCodexPreparation(host: DepartmentCodexPreparatio
     const { task, m, route, member, attempt } = facts;
     const selection: DepartmentExecutionSelection = { version: 1, cli: "codex", role: "employee", configId: route.configId!, revision: expected.revision,
       model: route.model ?? null, thinkingMode: route.thinkingMode!, openCodeVariant: null };
-    if (expected.configId !== selection.configId) throw new Error("department-codex-role-configuration-conflict");
     const old = facts.saved.executionBindings?.filter(({ identity }) => identity.leaderTaskId === task.id && identity.role === "employee"
       && identity.subtaskId === attempt.subtaskId && identity.attemptId === attempt.attemptId) ?? [];
     if (old.length) {

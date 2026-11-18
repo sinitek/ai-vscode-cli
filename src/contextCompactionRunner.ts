@@ -491,6 +491,7 @@ export type ContextCompactionOptions = {
   /** Caller already reserved the primary run and still wants compaction to proceed. */
   allowActiveRun?: boolean;
   onStopReady?: (stop: () => void) => void;
+  onStarted?: () => void;
 };
 
 export type ContextCompactionRunStatus = "end" | "error" | "stopped";
@@ -1177,12 +1178,22 @@ export async function runContextCompactionWithDeps(
   // Automatic compaction stays quiet in the transcript, but still drives the
   // Webview's active compaction indicator until the run has finished.
   deps.sendRunStatus("start", undefined, { activity: "contextCompaction" });
+  options.onStarted?.();
 
   let stopCurrentTurn: (() => void) | null = null;
+  let rejectStopped!: (error: Error) => void;
+  const stopped = new Promise<never>((_resolve, reject) => { rejectStopped = reject; });
+  void stopped.catch(() => undefined);
+  const checkActive = (): void => {
+    if (deps.getActiveRunId() !== runId) {
+      throw Object.assign(new Error("上下文压缩已停止。"), { name: "AbortError" });
+    }
+  };
   const stopFn = (): void => {
     if (deps.getActiveRunId() !== runId) {
       return;
     }
+    rejectStopped(Object.assign(new Error("上下文压缩已停止。"), { name: "AbortError" }));
     void logInfo("context-compact-stop-requested", { cli, sessionId, runId });
     if (deps.isActiveInteractiveStop(stopFn)) {
       deps.setActiveInteractiveStop(null);
@@ -1226,10 +1237,9 @@ export async function runContextCompactionWithDeps(
     })
     : null;
   const withCompactionTimeout = async <T>(operation: Promise<T>): Promise<T> => {
-    if (!timeoutPromise) {
-      return operation;
-    }
-    return Promise.race([operation, timeoutPromise]);
+    const result = await Promise.race(timeoutPromise ? [operation, stopped, timeoutPromise] : [operation, stopped]);
+    checkActive();
+    return result;
   };
 
   try {
@@ -1252,6 +1262,7 @@ export async function runContextCompactionWithDeps(
       }, {
         withCompactionTimeout,
         setStopCurrentTurn: (stop) => {
+          checkActive();
           stopCurrentTurn = stop;
         },
       })

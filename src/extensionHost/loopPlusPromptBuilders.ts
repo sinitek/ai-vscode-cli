@@ -2,7 +2,7 @@ import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -43,9 +43,9 @@ export type LoopPlusMainPromptContext = {
   pendingUserMessages?: readonly string[];
   maxConcurrency: number;
   subtaskMax?: number;
-  acceptedCount?: number;
+  subtaskRounds?: number;
   progressPercent?: number;
-  acceptanceLimit?: number;
+  subtaskRoundLimit?: number;
   /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
@@ -131,7 +131,7 @@ const LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES = [
 function formatExecution(record: LoopPlusExecutionRecord): string {
   const files = record.writeFiles.length > 0 ? record.writeFiles.join(", ") : "(none)";
   const group = record.conflictGroup ? ` group=${record.conflictGroup}` : "";
-  return `- ${record.subtaskId} attempt=${record.attemptId} state=${record.state}${group} files=${files}`;
+  return `- ${record.subtaskId} attempt=${record.attemptId} state=${record.state}${group} dependsOn=${JSON.stringify(record.dependsOn ?? [])} files=${files}`;
 }
 
 function formatReview(item: LoopPlusReviewItem, label: string): string {
@@ -274,6 +274,7 @@ function buildLoopPlusProtocolExamples(
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
     taskType: "backend",
     requiresAcceptance: true,
+    dependsOn: [],
     conflictGroup: "example-backend-scope",
     writeFiles: ["src/example-backend.ts"],
   };
@@ -292,16 +293,16 @@ function buildLoopPlusProtocolExamples(
   };
   const parallelSupportSubtasks = [
     {
-      id: "example-config-subtask",
-      title: "Example independent configuration subtask",
+      id: "example-local-log-subtask",
+      title: "Example low-risk local log edit",
       prompt: [
-        "Implement the independent configuration validator against the agreed existing schema. Suggested write scope: src/example-config.ts and src/test/example-config.test.ts; no backend or frontend changes are needed.",
-        "Design key point: reuse the existing schema and keep the public configuration contract stable. Record verification commands and results in the attempt report.",
+        "Add the requested fixed debug message to the named success branch using the existing logger. Suggested write scope: src/example-worker.ts. Do not log payloads or change control flow.",
+        "Check the targeted diff and perform required verification. Report the exact edit and check results in the attempt report.",
       ].join(" "),
       taskType: "backend",
-      requiresAcceptance: true,
-      conflictGroup: "example-config-scope",
-      writeFiles: ["src/example-config.ts", "src/test/example-config.test.ts"],
+      requiresAcceptance: false,
+      conflictGroup: "example-worker-scope",
+      writeFiles: ["src/example-worker.ts"],
     },
     {
       id: "example-verification-report-subtask",
@@ -419,7 +420,7 @@ function buildLoopPlusProtocolExamples(
         status: "steer",
         controls: [
           { id: "example-running-subtask", action: "close" },
-          { id: "example-other-subtask", action: "reprompt", title: "修正校验分支并验证", prompt: reprompt },
+          { id: "example-other-subtask", action: "reprompt", dependsOn: [], title: "修正校验分支并验证", prompt: reprompt },
         ].slice(0, dispatchExampleCount),
       },
     },
@@ -474,8 +475,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
   const parallelCapacity = Math.min(subtaskMax, context.maxConcurrency);
   const availableSlots = Math.max(0, context.maxConcurrency - context.view.running.length);
-  const acceptedCount = normalizePromptCount(context.acceptedCount);
-  const acceptanceLimit = resolveLoopPlusMaxAcceptances(context.acceptanceLimit);
+  const subtaskRounds = normalizePromptCount(context.subtaskRounds);
+  const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(context.subtaskRoundLimit);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
@@ -526,9 +527,12 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Before deciding, read these sources, in order: the current attempt report, the main communication file, and the latest task record.",
     "Trust the attempt report's concrete execution facts, including test, build, and startup results. Reuse reported checks that cover the current changes and remain valid. Do not rerun them yourself or dispatch another attempt solely to reproduce those results.",
     "Before accepting an event, inspect its relevant code, diff, or other deliverables and judge implementation completeness, agreed contracts, change relevance, omissions, regression risks, and boundary handling. Apply every selected additional review. Passing tests or an overall done claim is not a substitute for acceptance review. Do not implement or repair that dispatched work yourself.",
-    "For every dispatched subtask, decide requiresAcceptance at dispatch time. Omission means true for compatibility and safety. Reassess every reprompt as a new attempt: omission resets to true instead of inheriting the previous attempt's exemption. Use false only if the exact output is a sufficiently complete report that the main task can use directly without independently judging a deliverable. Consider what the output will contain, whether it changes a deliverable or contract, whether its result is clear, what risk or integration judgment remains, and whether the user or project requires independent review; task type and complexity alone never decide it. False may fit a bounded test/build run that makes no unrelated edits and reports exact command, scope, result and uncovered cases; read-only inventory/fact collection with sources; mechanical report generation from named inputs; or isolated diagnostics with clear findings. Keep true for implementation or documentation deliverables that need judgment, tests whose failure needs triage or whose scope changes code, unclear reports, integration/security/contract risk, or explicit independent review. A test is not automatically exempt, and a document is not automatically exempt.",
-    "The general simple-task rule is separate from requiresAcceptance: when the whole request is clear, local, low-risk and directly verifiable, and neither the user nor project requires tests, builds, delegation or an independent check, the main task may do it directly. Do not delegate a trivial task just to avoid review. A subtask can be simple and still require acceptance when its deliverable needs judgment; a large bounded report can skip the separate acceptance cycle when its evidence is directly usable.",
-    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". It does not count toward acceptance limits.`,
+    "For every dispatched subtask, decide requiresAcceptance at dispatch time. Omission means true for compatibility and safety. Reassess every reprompt as a new attempt: omission resets to true instead of inheriting the previous attempt's exemption. Use false for the cases below when the main task can rely on the subtask's concrete execution evidence without independently judging a deliverable. Keep true if the result is unclear, needs quality or failure-triage judgment, affects a shared contract, carries material security, privacy, or integration risk, or the user or project requires independent review. Neither task type, diff size, nor model capability alone decides it. A test is not automatically exempt, and a document is not automatically exempt.",
+    "Report-only work may skip full acceptance: a bounded test/build run with no unrelated edits that reports exact command, scope, result and uncovered cases; read-only fact collection with sources; mechanical report generation from named inputs; or isolated diagnostics with clear findings.",
+    "Obviously simple, low-risk edits may skip full acceptance too. Use false when the exact intent and affected scope are clear, the edit is local and directly verifiable, and no material behavior, contract, security, or integration judgment remains. Examples include adding a fixed, non-sensitive diagnostic log with the existing logger or renaming a strictly local variable without changing behavior. The subtask must check the targeted diff, run any required checks, and report the exact changes and results. A one-line change to a shared default or a log that exposes sensitive data is not exempt.",
+    "An authorized ordinary Git commit or push with a known scope and target also uses requiresAcceptance=false when it is only a delivery step. Route a standalone Git delivery as backend (the fullstack sub-model in fullstack mode), not read-only general. Keep it separate from implementation that still needs review, and wait until the intended changes are ready; use dependsOn for prerequisite subtasks. Specify the authorized files or commits and the target branch and, for a push, the remote. Do not overlap with work that can alter the commit set or target ref. The attempt checks the scope and destination, then reports the actual commit SHA and push result if applicable. The exemption does not grant permission to commit or push, does not waive review of the contents, and does not cover force-push, history rewriting, or other non-routine Git operations.",
+    "The general simple-task rule is separate from requiresAcceptance: when the whole request is clear, local, low-risk and directly verifiable, and neither the user nor project requires tests, builds, delegation or an independent check, the main task may do it directly. Do not delegate a trivial task just to avoid review. Required checks still apply to delegated no-acceptance work; if the scope expands or a check fails, address that in the next decision rather than treating report acknowledgment as approval.",
+    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". The attempt consumes a subtask round whether or not full acceptance is required.`,
     `Pending no-acceptance reports (oldest first):\n${reports}`,
     "Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check. Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check. Already completed independent checks that remain valid are reusable too. A passing unit suite does not establish untested integration behavior.",
     "Clarify an unclear report using existing output or the source subtask before considering a rerun. Do not demand raw logs or independent reproduction merely to trust a clear execution report. You may run tests or start produced artifacts only to close an identified verification gap under the rules above. Skipping an unnecessary rerun is not a failure; an unmet required check still needs resolution.",
@@ -554,11 +558,11 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     current ? formatReview(current, "current") : "Current review item: (none)",
     `Acceptance batch count: ${batchIds.length}`,
     `Maximum acceptance batch size: ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX}`,
-    "Acceptance batch, oldest first. Confirm this whole list in this decision:",
+    "Acceptance batch, frozen host-selected order. Confirm this whole list in this decision:",
     batchText,
-    `FIFO review queue count: ${queue.length}`,
+    `Review queue count: ${queue.length}`,
     `Visible review count including the current item: ${context.view.visibleReviewCount}`,
-    "FIFO review queue, oldest first:",
+    "Review queue in host order (dependency-first selection applies only to a new batch):",
     queued,
     `Still running count: ${context.view.running.length}`,
     `Scheduler concurrency limit: ${context.maxConcurrency}`,
@@ -572,8 +576,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,
-    `Confirmed acceptances: ${acceptedCount}`,
-    `Acceptance limit: ${acceptanceLimit}`,
+    "Dependency blocks (latest prerequisite attempt and reason):",
+    ...(context.view.dependencyBlocks?.length
+      ? context.view.dependencyBlocks.map((block) => `- ${block.subtaskId} attempt=${block.attemptId} dependsOn=${block.dependencyId} latestAttempt=${block.dependencyAttemptId ?? "(none)"} reason=${block.reason}`)
+      : ["(none)"]),
+    `Subtask rounds used: ${subtaskRounds}`,
+    `Subtask round limit: ${subtaskRoundLimit}`,
+    `Remaining subtask rounds: ${Math.max(0, subtaskRoundLimit - subtaskRounds)}`,
+    "Each newly dispatched or reprompted attempt uses one round, including parallel and acceptance-exempt subtasks. Resuming the same attempt uses no extra round. Stay within the remaining rounds; existing reviews and reports may still be confirmed at the limit.",
     `Snapshot phase: ${context.view.phase}`,
     `Snapshot completion blockers: ${blockers}`,
     `Snapshot says completion is allowed: ${context.view.canComplete ? "yes" : "no"}`,
@@ -583,7 +593,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     pendingUserText,
     "Root request:",
     context.rootPrompt,
-    "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair and retries. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the FIFO review queue, but those belong to the next batch. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
+    "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair, retries, prompt refresh, and same-host recovery. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the review queue, including late-arriving prerequisites, but those belong to the next batch. Never reorder or expand the frozen batch from the latest record. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- " + LOOP_DIRECT_EXECUTION_RULE_EN,
@@ -600,20 +610,30 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       : `- Use up to ${parallelCapacity} useful independent subtasks within the configured limits and available slots. Never create tiny or artificial tasks just to fill capacity.`,
     "- On dispatch and accept, look for ready independent work to refill free slots instead of waiting for all siblings. Review the whole open acceptance batch first and attach follow-up work to accept. Do not duplicate running or pending tasks; pending work already owns its place in the queue and may consume released slots.",
     "- Every accept is also a remaining-goal planning decision: re-read all unfinished root and supplemental requirements, not just this batch's acceptance defects. When the overall goal is unfinished, dispatch ready independent deliverables alongside necessary repairs in the same accept, within capacity and ownership limits. A failed check or a repair in progress is not a global barrier. Keep repairs focused on the failed criterion; independent delivery must advance a distinct unmet requirement, not repeat still-valid verification.",
-    `- Review at most ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX} subtasks per decision, exactly the frozen acceptance batch. The rest of the FIFO review queue waits for the next batch. This review limit does not cap running subtasks or new dispatches. After judging this batch, include necessary repairs and ready remaining-goal work in the same accept to refill usable slots toward the configured concurrency limit; do not wait for later review batches before launching safe independent work. Account for running tasks and pending tasks that can use those slots, while genuinely blocked pending tasks do not reserve idle slots.`,
+    `- Review at most ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX} subtasks per decision, exactly the frozen acceptance batch. The rest of the review queue waits for the next batch. The host selects prerequisites before successors when generating a new batch, preserving arrival order for independent ready items. Do not wait to fill the batch. This review limit does not cap running subtasks or new dispatches. After judging this batch, include necessary repairs and ready remaining-goal work in the same accept to refill usable slots toward the configured concurrency limit; do not wait for later review batches before launching safe independent work. Account for running tasks and pending tasks that can use those slots, while genuinely blocked pending tasks do not reserve idle slots.`,
     "- New dispatch is conditional on the final goal still needing that work. If all requirements are satisfied, launch no new subtasks and complete once every host completion gate is clear. If remaining work is already covered by running or pending tasks, or only dependencies or real conflicts prevent useful work, accept without new subtasks and wait or continue the next review batch. Never duplicate work, rerun valid verification, or invent tasks merely to reach the concurrency target.",
     "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
     "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
     ...loopPlusModeRuleLines(context),
+    "- dependsOn is an optional array of stable subtask ids under this parent, never attempt or session ids. Ordinary dispatch omission or [] means no dependency; continueFromSubtaskId selects a session and never implies dependsOn. Declare real prerequisites explicitly and retain parallel admission for independent work; there is no whole-batch barrier.",
+    "- For execution admission, a prerequisite is satisfied only by its latest attempt: outcome completed plus reviewed acceptance passed; or requiresAcceptance=false plus outcome completed and acknowledged report (reported). Execution completion alone, pending review/report, failed/stopped attempts and closed tasks do not release successors. A prior passed attempt cannot substitute for a newer failed or open attempt.",
+    "- Review ordering is separate from execution admission. A pending-review prerequisite is selected before its successor; a running or pending prerequisite, or an unacknowledged no-acceptance report, defers only related successors from a new acceptance batch. Independent review, dispatch, and refill continue. Acknowledge reports through the frozen FIFO report prefix first; the host may select their successors in a later decision. Never confirm a report automatically or turn it into a separate acceptance review.",
+    "- For reviewing an already delivered successor, the latest prerequisite reviewed (passed or failed), reported, or closed means it has been processed first, not that execution succeeded. Once processed, judge the successor delivery independently. A failed prerequisite does not automatically fail any other event. A selected prerequisite is not yet passed; record every event's true conclusion even when prerequisites and successors share this batch. Only the host selects the batch; never insert a prerequisite yourself.",
+    "- The host applies the complete decision, including report acknowledgments, reviews, controls, and new dispatches, before promoting pending work. An old prerequisite success cannot release a successor midway through a decision that creates a newer prerequisite attempt. New reservations are persisted before execution starts.",
+    "- Subtasks in one dispatch may forward-reference another accepted subtask in that same dispatch. Unknown ids, self/duplicate dependencies, and cycles are rejected before graph admission. A rejected candidate cannot serve as a prerequisite. controls.reprompt may reference only already known logical ids, not a new id awaiting dispatch in this decision; its graph is preflighted before any old attempt is aborted.",
+    "- controls.reprompt omission of dependsOn inherits the original list; [] clears it and an explicit array replaces it. Omission of requiresAcceptance still resets to true. For failed or closed prerequisites, prefer a new dispatch attempt with the same logical id so waiting successors observe the repair; a different id never replaces the original automatically. Already running successors are not cancelled by a later prerequisite redispatch.",
+    "- When no acceptance item is claimable, do not emit an empty review confirmation. Visible events may all be dependency blocked. Read visible reports and messages first. When an active prerequisite can advance, waiting with no frozen acceptance batch is allowed. With no active work and only dependency deadlock, wait cannot make progress, even if review events remain queued; plan how to resolve the blockers instead of waiting indefinitely. Inspect each dependency id, latestAttempt and reason above; repair the prerequisite under the same id, use reprompt to adjust a pending successor, or use the existing blocked protocol when no safe work remains. Preserve failed verdicts; do not cancel successors, bypass dependencies or claim completion.",
+    "- Dependency protocol example (prerequisite-id is an already known logical id): " + JSON.stringify({ status: "dispatch", subtasks: [{ id: "dependent-delivery", title: "完成依赖交付", taskType: "backend", prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT, dependsOn: ["prerequisite-id"] }] }),
     "- writeFiles is a concurrency hint, not a hard allowlist. Do not tell the subtask it may edit only those files. A shorter prompt is rejected.",
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
-    "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId, acceptance (exactly passed or failed), and a short reason no longer than 50 characters explaining the evidence-backed result. A missing, extra, reordered review, or missing reason rejects the decision.",
-    "- accept.acceptance is required and must report the default checks dispatched work, contracts, tests, artifacts, unauthorized changes, and omissions and regressions. Each check has passed and a concise evidence-backed detail no longer than 50 characters; failed checks are allowed while repair work is launched.",
-    "- Every accept.reviews reason must briefly summarize the evidence-backed result of the default acceptance checklist for that event, no more than 50 characters. Do not reuse generic filler; name the decisive evidence or failed criterion.",
+    "- accept.reviews is required: one object per confirmed event, in the same order. Each object has reviewEventId, acceptance (exactly passed, failed or cancelled), and a short reason no longer than 50 characters explaining the evidence-backed result. A missing, extra, reordered review, or missing reason rejects the decision.",
+    "- Unless every review is cancelled, accept.acceptance is required and must report the default checks dispatched work, contracts, tests, artifacts, unauthorized changes, and omissions and regressions. Each check has passed and a concise evidence-backed detail no longer than 50 characters; failed checks are allowed while repair work is launched.",
+    "- For passed/failed reviews, every accept.reviews reason must briefly summarize the evidence-backed result of the default acceptance checklist for that event, no more than 50 characters. Do not reuse generic filler; name the decisive evidence or failed criterion.",
     "- Write each acceptance reason and check detail in the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory. Keep each within 50 characters, state the decisive evidence, failure, or not-applicable reason, and never invent evidence or use a bare passed/failed claim.",
+    "- When requirements change and a delivery is no longer needed, set that frozen event review acceptance to cancelled and supply a non-empty reason of at most 50 characters. This withdraws only the current delivery from acceptance, persists the reason, and never counts as passed or failed. Do not withdraw an existing reviewed verdict. Keep all frozen ids in their original order, including mixed passed/failed/cancelled batches; do not use controls.close for a delivered event. When every review is cancelled, omit acceptance and acceptancePlanResults instead of inventing check evidence. Remaining-goal dispatch and controls are still allowed. Cancelled prerequisites never release pending successors; explicitly replan remaining requirements and dependencies. Do not cancel a still-required delivery merely to bypass failed checks or completion gates.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
     "- When an event launches repairs or related follow-up subtasks, list those ids in that review's subtaskIds. For independent remaining-goal deliveries unrelated to this batch's events, list their ids in accept.independentSubtaskIds instead. Every accept.subtasks id must appear exactly once across reviews[*].subtaskIds and independentSubtaskIds; unknown, duplicate, or missing links are rejected. independentSubtaskIds is optional and allowed only on accept. A passed event may launch related follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt. Never attach independent work to a failed review just to satisfy linkage: that would inherit the repair session.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
@@ -623,18 +643,18 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Decide whether each next subtask continues an earlier subtask. Set continueFromSubtaskId to that earlier subtask id for follow-up work; omit it for independent work. Wait for that source to finish; use controls.reprompt to redirect work that is still running. The host restores only a session recorded under this parent with the same CLI and configuration. Do not run two tasks concurrently on one source session.",
     "- Repairs linked by failed reviews[*].subtaskIds automatically inherit the failed event's subtask session. Prefer that original session for acceptance-failure fixes, not a fresh context. A new attempt or conversation tab does not imply a new CLI session. Missing sessions or incompatible CLI/configuration are recorded and fall back to a fresh session.",
     "- independentSubtaskIds do not inherit a failed event's session. Omit continueFromSubtaskId for genuinely independent work; only set it when deliberately continuing a different compatible earlier subtask. Independent delivery can run alongside a repair while real write conflicts and per-session serialization remain enforced.",
-    "- An attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
+    "- Unless the delivery is no longer needed and explicitly cancelled with a reason, an attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is a concise evidence-backed reason of no more than 50 characters.",
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
-    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and at least one execution is still running or pending.",
+    "- wait confirms nothing. Do not include reviewEventId, reviewEventIds, subtasks, or controls. Use wait only when the acceptance batch is (none) and live execution or ready pending work can advance; pending work blocked solely on failed/closed dependencies is not a reason to wait.",
     "- steer interrupts open subtasks and confirms no acceptance events. Do not send steer while the acceptance batch is open. Do not include reviewEventId, reviewEventIds, or subtasks. controls must name running or pending subtask ids.",
     "- Every accept must include progressPercent, an integer from 0 to 99. Reassess overall completion of all root and supplemental requirements using accepted evidence and remaining work, not subtask counts or acceptance counts. This is your judgment, not a scheduler calculation. New requirements may require lowering the estimate. The host updates progress only after the acceptance batch is successfully confirmed. Reserve 100% for the host after final completed succeeds; do not report 100 on accept. wait, dispatch, steer, blocked, and clarify do not update progress.",
-    "- controls actions are close or reprompt. close aborts that subtask, closes its conversation tab, and drops it without an acceptance event or acceptance count. reprompt aborts it, closes that attempt's conversation tab, and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt and closes the tab; JSON alone does not stop a process.",
+    "- controls actions are close or reprompt. close targets only running/pending (including interrupted) subtasks; supply a short reason when requirements change. It aborts that subtask, closes its conversation tab, and drops it without an acceptance event or acceptance count. reprompt aborts it, closes that attempt's conversation tab, and starts one new attempt whose prompt is at least " + LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH + " characters. The host performs the interrupt and closes the tab; JSON alone does not stop a process.",
     "- reprompt requires a non-empty title describing the corrected task in Simplified Chinese. Do not reuse the old title when the task goal or scope has changed; update the title together with the prompt. A reprompt without a valid title is rejected.",
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
-    "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when other work is still running or pending, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
+    "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when live execution or ready pending work can advance, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept; use independentSubtaskIds for independent deliveries or reviews[*].subtaskIds for event-related work. Passed reviews stay passed. If all new work must wait for a still-running or pending execution and no other independent work is ready, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
     "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms no acceptance events. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
@@ -646,7 +666,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
-    "- Confirmed acceptances count each reviewed attempt. Do not dispatch more subtasks when that count has reached the acceptance limit. The host rejects a whole review batch that would pass the limit and leaves that queue unchanged.",
+    "- Only newly dispatched or reprompted attempts consume subtask rounds. Never exceed the remaining round budget; review and report confirmation remain allowed at the limit.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),
@@ -699,12 +719,15 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     `Attempt report file: ${context.communicationFile}`,
     roleLine,
     `Suggested write scope: ${role === "general" ? "(read only)" : files}`,
+    `Explicit prerequisite subtask ids (dependsOn): ${JSON.stringify(context.subtask.dependsOn ?? [])}`,
+    "The host admits this attempt only after each prerequisite's latest attempt completes and passes acceptance, or completes with requiresAcceptance=false and its report is acknowledged. Session continuation is separate from dependencies. Report only this attempt; do not infer parent or successor completion.",
     role === "general"
       ? "This attempt is analysis only. A prompt instruction is not a sandbox; still do not edit files."
       : "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",
     ...(role === "general" ? [] : [
       "Other subtasks may edit this workspace concurrently. Re-read the latest file before writing, preserve changes owned by others, and do not revert or overwrite their work. Reconcile small disjoint edits locally instead of stopping merely because another task changed the file.",
       "Keep necessary incidental cross-scope edits minimal and report their paths, reasons, and reconciliation in this attempt report. If the same symbols or shared contract need competing changes, report the dependency to the main model rather than forcing a broad rewrite.",
+      "For an ordinary Git delivery-only attempt, execute only the authorized commit or push. Verify the intended files or commits, branch, and push remote before writing. Do not edit the delivered files, include unrelated changes, bypass required hooks, force-push, or rewrite history. Stop and report an unexpected scope, destination, or failure; report the actual commit SHA and push result if applicable.",
     ]),
     "Do not modify scheduling state, active ids, the loopPlus snapshot, the task record, or another attempt report.",
     "Before finishing, record what changed, the verification commands, and their results in the attempt report file.",

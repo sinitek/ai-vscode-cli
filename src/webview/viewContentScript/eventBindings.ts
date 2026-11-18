@@ -89,12 +89,6 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         });
       });
 
-      function resetActiveViewForNewConversation() {
-        setMessagesForTab(getActiveConversationTabId(), []);
-        renderMessages();
-        renderTaskList();
-      }
-
       function syncResetSessionAvailability() {
         const resetLocked = isActiveConversationTabResetLocked();
         if (elements.resetSession) {
@@ -116,12 +110,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         vscode.postMessage({ type: "resetConversationTabSession" });
       }
 
-      elements.newSession.addEventListener("click", () => {
-        applyAutoInteractiveModeForTab(null);
-        resetActiveViewForNewConversation();
-        armPromptContextForConversationStart();
-        vscode.postMessage({ type: "newSession" });
-      });
+      elements.newSession.addEventListener("click", requestNewConversationTab);
 
       let applyCodexLongConnectionCount = function applyCodexLongConnectionCount() {};
 

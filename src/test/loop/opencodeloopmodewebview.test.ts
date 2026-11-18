@@ -178,6 +178,7 @@ function buildHarness() {
     `${extractFunctionSource(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, "syncCommonCommandOptions")}; return syncCommonCommandOptions;`,
   )(state, elements) as () => void;
   const postedMessages: unknown[] = [];
+  const runtimeState = { interactiveModeSelection: null as { cli: string; mode: string } | null };
   const bindingSource = extractBlockSource(
     VIEW_CONTENT_SCRIPT_MODEL_MANAGER,
     "if (elements.interactiveModeSelect) {",
@@ -188,6 +189,7 @@ function buildHarness() {
     "normalizeInteractiveMode",
     "syncModelSelectorByInteractiveMode",
     "vscode",
+    "getActiveConversationRuntimeState",
     bindingSource,
   )(
     state,
@@ -195,6 +197,7 @@ function buildHarness() {
     normalizeInteractiveMode,
     syncModelSelectorByInteractiveMode,
     { postMessage: (message: unknown) => postedMessages.push(message) },
+    () => runtimeState,
   );
   new Function(
     "state",

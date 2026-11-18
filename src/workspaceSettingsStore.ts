@@ -84,7 +84,7 @@ export type WorkspaceSettingsStoreOptions = {
   isThinkingMode: (value: unknown) => value is ThinkingMode;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (value: unknown) => InteractiveMode;
-  normalizeLoopMaxRounds: (value: unknown) => number;
+  normalizeLoopMaxRounds?: (value: unknown) => number;
   sanitizeConversationTabRecord: (value: unknown) => ConversationTabRecordForWorkspaceSettings | null;
   logError?: WorkspaceSettingsStoreLogger;
 };
@@ -144,10 +144,6 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     const workspaceMemoryEnabled = (parsed as WorkspaceSettings).workspaceMemoryEnabled;
     if (typeof workspaceMemoryEnabled === "boolean") {
       result.workspaceMemoryEnabled = workspaceMemoryEnabled;
-    }
-    const loopMaxRounds = (parsed as WorkspaceSettings).loopMaxRounds;
-    if (typeof loopMaxRounds === "number" || typeof loopMaxRounds === "string") {
-      result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
     }
     for (const key of ["departmentMaxLeaders", "departmentMaxEmployees"] as const) {
       const value = normalizeWorkspaceDepartmentCapacity((parsed as WorkspaceSettings)[key]);

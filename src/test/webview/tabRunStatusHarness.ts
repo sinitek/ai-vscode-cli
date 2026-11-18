@@ -33,6 +33,7 @@ export function createRunStatusHarness() {
   const erroredTabIds = new Set<string>();
   const renderedMessages: unknown[] = [];
   const renderedTraces: unknown[] = [];
+  const tabSummaries = new Map<string, Record<string, unknown>>();
   const noop = () => {};
   const elements = {
     sendPrompt: element(), promptInput: element(), newSession: element(), stopRun: element(),
@@ -70,7 +71,7 @@ export function createRunStatusHarness() {
     runningFlowStoppedTabIds: new Set<string>(),
     assistantRedirects: Object.create(null),
     getActiveConversationTabId: () => activeTabId,
-    getConversationTabSummary: (tabId: string) => ({ id: tabId }),
+    getConversationTabSummary: (tabId: string) => tabSummaries.get(tabId) ?? ({ id: tabId }),
     updateLoopMetaForTabFromMessage: () => false,
     t: (key: string) => key,
     reportWebviewFailure: (_label: string, error: unknown) => { throw error; },
@@ -79,7 +80,7 @@ export function createRunStatusHarness() {
   for (const [source, names] of [
     [VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, [
       "createTaskListState", "createConversationRuntimeState", "resolveConversationRuntimeKey", "getConversationRuntimeState",
-      "pruneConversationRuntimeStates", "resetConversationRuntimeState", "normalizeRunActivity", "isRunStatusSummaryText",
+      "syncPendingPromptQueueState", "pruneConversationRuntimeStates", "resetConversationRuntimeState", "normalizeRunActivity", "isRunStatusSummaryText",
       "getActiveConversationRuntimeState", "ensureRuntimeStateMessages", "ensureRuntimeTaskList", "isRuntimeStateForActiveTab",
       "deriveLatestRunPromptFromMessages", "deriveLatestRunStatusMessageFromMessages", "hydrateRunArtifactsFromMessages",
     ]],
@@ -118,6 +119,7 @@ export function createRunStatusHarness() {
   };
   return {
     context, erroredTabIds, send, run, message, tabState, elements, renderedMessages, renderedTraces,
+    setTabSummary: (tabId: string, summary: Record<string, unknown>) => tabSummaries.set(tabId, { id: tabId, ...summary }),
     runtime: (tabId: string) => sandbox.conversationRuntimeByTabId[tabId] as {
       activeRunActivity: string; lastRunStatus: string; tokensInContextWindow: number | null; modelContextWindow: number | null;
       lastRunStatusMessage: string;

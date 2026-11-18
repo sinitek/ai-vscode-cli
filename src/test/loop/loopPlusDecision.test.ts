@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
+  LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_STATUSES,
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
@@ -9,11 +10,11 @@ import {
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
   parseLoopPlusDecisionWithFeedback,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
   type LoopPlusDecision,
   type LoopPlusDecisionStatus,
 } from "../../loopPlusDecision";
@@ -24,6 +25,48 @@ const CHINESE_PROMPT = [
   "范围：只处理当前授权文件，保留中文需求、验收标准和写文件边界。",
   "验收：模式保持 loop_plus，快照原样保存，解析器不调度也不改任务记录。",
 ].join("");
+
+test("four-event confirmations retain caller order and independent verdicts without host scheduling in the parser", () => {
+  assert.equal(LOOP_PLUS_ACCEPTANCE_BATCH_MAX, 4);
+  const eventIds = ["event-prerequisite-z", "event-successor-a", "event-ready-c", "event-ready-b"];
+  const reviews = eventIds.map((reviewEventId, index) => ({
+    reviewEventId,
+    acceptance: index === 0 ? "failed" : "passed",
+    reason: index === 0 ? "前置用例失败" : "本项交付已独立核对",
+  }));
+  const candidate = {
+    status: "accept", progressPercent: 50, reviewEventIds: eventIds, reviews,
+    acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture() },
+  };
+  const parsed = normalizeLoopPlusDecision(candidate, { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.deepEqual(parsed?.reviewEventIds, eventIds);
+  assert.deepEqual(parsed?.reviews?.map((item) => item.acceptance), ["failed", "passed", "passed", "passed"]);
+  assert.equal(parsed?.reviewEventId, undefined);
+  assert.deepEqual(normalizeLoopPlusDecision({ ...completedFields(), reviewEventIds: eventIds })?.reviewEventIds, eventIds);
+  for (const extra of [
+    { reviewEventId: eventIds[0] },
+    { reviewEventIds: [...eventIds, eventIds[0]] },
+    { reviews: reviews.slice(1) },
+    { reviews: reviews.slice().reverse() },
+  ]) {
+    assert.equal(normalizeLoopPlusDecision({ ...candidate, ...extra }), null);
+  }
+  // The parser validates protocol shape; the host matches the frozen batch's size and order.
+  const extraEventId = "host-must-reject-unfrozen-event";
+  assert.ok(normalizeLoopPlusDecision({
+    ...candidate,
+    reviewEventIds: [...eventIds, extraEventId],
+    reviews: [...reviews, { reviewEventId: extraEventId, acceptance: "passed" }],
+  }));
+});
+
+test("report confirmations retain FIFO input order and reject malformed ids without sorting", () => {
+  const reportEventIds = ["report-z-first", "report-a-second"];
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "wait", reportEventIds })?.reportEventIds, reportEventIds);
+  for (const value of [null, "report-z-first", [""], ["report-z-first", "report-z-first"], [1]]) {
+    assert.equal(normalizeLoopPlusDecision({ status: "wait", reportEventIds: value }), null);
+  }
+});
 
 test("direct completion needs explicit host permission but no acceptance payload", () => {
   const candidate = {
@@ -174,6 +217,33 @@ test("parses a dispatch with one through six self-contained Chinese prompts", ()
   assert.equal(full?.subtasks?.length, LOOP_PLUS_DECISION_SUBTASK_MAX);
   assert.equal(full?.estimatedRemainingRounds, 2);
   assert.equal(full?.subtasks?.some((item) => item.id === "ignored-because-array-wins"), false);
+});
+
+test("parses explicit dependencies on dispatch and accept subtasks", () => {
+  const dispatch = normalizeLoopPlusDecision({
+    status: "dispatch",
+    subtasks: [
+      subtask("base"),
+      { ...subtask("follow-up"), dependsOn: [" base "] },
+    ],
+  });
+  assert.equal(dispatch?.subtasks?.[0].dependsOn, undefined);
+  assert.deepEqual(dispatch?.subtasks?.[1].dependsOn, ["base"]);
+
+  const accepted = normalizeLoopPlusDecision({
+    status: "accept",
+    reviewEventId: "event-1",
+    reviews: [{ reviewEventId: "event-1", acceptance: "passed", subtaskIds: ["repair"] }],
+    subtasks: [{ ...subtask("repair"), dependsOn: ["base"] }],
+  });
+  assert.deepEqual(accepted?.subtasks?.[0].dependsOn, ["base"]);
+
+  for (const dependsOn of [null, "base", ["repair"], [" "], ["base", " base "], ["base", 1]]) {
+    assert.equal(normalizeLoopPlusDecision({
+      status: "dispatch",
+      subtasks: [{ ...subtask("repair"), dependsOn }],
+    }), null, `invalid dependsOn ${JSON.stringify(dependsOn)}`);
+  }
 });
 
 test("retains per-attempt acceptance decisions and rejects non-boolean markers", () => {
@@ -576,12 +646,20 @@ test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown
   })), null);
 });
 
-test("normalizes the Loop+ acceptance limit", () => {
-  assert.equal(resolveLoopPlusMaxAcceptances(undefined), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
-  assert.equal(resolveLoopPlusMaxAcceptances(""), LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT);
-  assert.equal(resolveLoopPlusMaxAcceptances("100.9"), 100);
-  assert.equal(resolveLoopPlusMaxAcceptances(0), LOOP_PLUS_MAX_ACCEPTANCES_MIN);
-  assert.equal(resolveLoopPlusMaxAcceptances(5000), LOOP_PLUS_MAX_ACCEPTANCES_LIMIT);
+test("normalizes Loop+ subtask rounds with a default of 200 and bounds of 50 to 9999", () => {
+  assert.equal(LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT, 200);
+  assert.equal(LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN, 50);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(undefined), 200);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(49), 50);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds("49.9"), 50);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(50), 50);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(""), LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds("100.9"), 100);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(0), LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(5000), 5000);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(9999), 9999);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(10000), LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT);
+  assert.equal(resolveLoopPlusSubtaskMaxRounds(Infinity), 200);
 });
 
 test("applies a configured Loop+ dispatch subtask maximum", () => {
@@ -805,6 +883,27 @@ test("parses steer and controls without treating them as acceptance", () => {
   assert.equal(accepted?.subtasks, undefined);
 });
 
+test("reprompt preserves omitted dependencies separately from explicit clearing", () => {
+  const omitted = normalizeLoopPlusDecision({
+    status: "steer",
+    controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta" }],
+  });
+  const cleared = normalizeLoopPlusDecision({
+    status: "steer",
+    controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta", dependsOn: [] }],
+  });
+  assert.equal(omitted?.controls?.[0].dependsOn, undefined);
+  assert.deepEqual(cleared?.controls?.[0].dependsOn, []);
+  assert.equal(omitted?.controls?.[0].requiresAcceptance, undefined);
+  assert.equal(cleared?.controls?.[0].requiresAcceptance, undefined);
+  for (const dependsOn of [null, "alpha", ["beta"], [" "]]) {
+    assert.equal(normalizeLoopPlusDecision({
+      status: "steer",
+      controls: [{ id: "beta", action: "reprompt", prompt: CHINESE_PROMPT, title: "重做 beta", dependsOn }],
+    }), null);
+  }
+});
+
 test("reprompt requires a non-empty corrected title on every supported decision", () => {
   const decisions = [
     { status: "steer" },
@@ -899,4 +998,28 @@ test("parses clarify without subtasks and rejects a form that cannot be shown", 
     status: "clarify",
     clarification: { formFields: [] },
   })), null);
+});
+
+test("撤销验收要求原因，全撤销不要求检查，混合批次保留其余验收", () => {
+  const cancelled = {
+    status: "accept", progressPercent: 60, reviewEventId: "obsolete",
+    reviews: [{ reviewEventId: "obsolete", acceptance: "cancelled", reason: "用户取消了这项需求" }],
+  };
+  const options = { requireAcceptanceFeedback: true, acceptancePlanKeys: ["security"] };
+  assert.equal(normalizeLoopPlusDecision(cancelled, options)?.reviews?.[0].acceptance, "cancelled");
+  for (const reason of [undefined, " ", "原".repeat(51)]) {
+    assert.equal(normalizeLoopPlusDecision({ ...cancelled, reviews: [{ ...cancelled.reviews[0], reason }] }), null);
+  }
+  const mixed = { ...cancelled, reviewEventId: undefined, reviewEventIds: ["obsolete", "needed"],
+    reviews: [...cancelled.reviews, { reviewEventId: "needed", acceptance: "passed", reason: "定向测试通过" }] };
+  delete mixed.reviewEventId;
+  assert.equal(normalizeLoopPlusDecision(mixed, options), null);
+  const parsed = normalizeLoopPlusDecision({ ...mixed,
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    acceptancePlanResults: [{ key: "security", passed: true, reason: "权限检查通过" }],
+  }, options);
+  assert.deepEqual(parsed?.reviews?.map((review) => review.acceptance), ["cancelled", "passed"]);
+  const close = normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: "范围调整" }] });
+  assert.equal(close?.controls?.[0].reason, "范围调整");
+  assert.equal(normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: " " }] }), null);
 });

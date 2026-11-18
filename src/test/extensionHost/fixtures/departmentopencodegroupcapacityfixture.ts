@@ -147,7 +147,6 @@ export async function openCodeGroupCapacityFixture(t: test.TestContext) {
     beforeMainConsumerFinish(fn: (round: number) => Promise<void>) { beforeConsumerFinish = fn; },
     hold(name: string) { fs.writeFileSync(h.file(name), "gate"); },
     release(name: string) { fs.rmSync(h.file(name), { force: true }); },
-    configurationLeases() { return JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases as unknown[]; },
     diagnostic() { return JSON.stringify({ events: events().slice(-15), taskLogs: h.fixture.logs.slice(-5),
       snapshot: h.composition.host.runtimeSnapshot("root"), capacity: h.composition.readCapacity("root"), mainCalls: h.mainCalls,
       employeeBuilders: h.employeeBuilders, tasks: h.mainInvocations.map(i => h.read(i.taskId)?.status) }); },

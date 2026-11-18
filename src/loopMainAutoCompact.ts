@@ -1,11 +1,8 @@
 export type LoopMainAutoCompactRequest = {
+  /** The enclosing Vibe run leaves terminal status publication to compaction. */
+  onStarted?: () => void;
   overlapLoopDispatch?: boolean;
   isolatedRun?: boolean;
-  execution?: {
-    configSelection: import("./config/sharedRuntimeConfig").VisibleConfigSelection;
-    model: string | null;
-    thinkingMode?: import("./cli/types").ThinkingMode;
-  };
 };
 
 export type LoopMainAutoCompactRunRequest = {

@@ -1555,6 +1555,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = normalizeInteractiveMode(event.target.value);
+          const runtimeState = getActiveConversationRuntimeState();
+          if (runtimeState) {
+            runtimeState.interactiveModeSelection = { cli: state.currentCli, mode: nextMode };
+          }
           // The host must receive the mode change before rendering requests new role candidates.
           vscode.postMessage({
             type: "updateSetting",

@@ -7,6 +7,8 @@ import { spawn } from "child_process";
 import { productionWiring, until } from "./fixtures/departmentproductionwiringfixture";
 import { DepartmentGenerationAuthorityClient } from "../../runtime/departmentgenerationauthorityclient";
 import { departmentGenerationAuthorityDirectory } from "../../runtime/departmentgenerationauthority";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
+import { loopBlockerFixture } from "../loopBlockerFixture";
 
 function scenario(name: string, run: (t: test.TestContext) => Promise<void>) {
   const selected = process.env.DEPARTMENT_COLD_GENERATION_SCENARIO;
@@ -125,7 +127,7 @@ import { createDepartmentExecutionProducer } from "../../extensionHost/departmen
 import type { LoopTaskRecord } from "../../loopTaskStore";
 
 function observerFor(h: Awaited<ReturnType<typeof productionWiring>>, options: {
-  read?: (id: string) => LoopTaskRecord | null; verify?: () => Promise<boolean>; authorityDirectory?: string;
+  read?: (id: string) => LoopTaskRecord | null; authorityDirectory?: string;
 } = {}) {
   let targets = 0;
   const readTask = options.read ?? h.read;
@@ -137,7 +139,7 @@ function observerFor(h: Awaited<ReturnType<typeof productionWiring>>, options: {
       return task?.cli === cli && task.sessionId === id ? context : { taskRole: null, loopTaskId: null };
     } });
   const recovery = new DepartmentColdGenerationRecovery({ store: h.store, authorityDirectory: options.authorityDirectory ?? h.file("authorities"),
-    workspaceKey: () => "workspace", readTask, verifyStoredIdentity: identity, verifySelection: options.verify ?? (async () => true),
+    workspaceKey: () => "workspace", readTask, verifyStoredIdentity: identity,
     registerRestoredTarget() { assert.fail("negative-test-registration"); },
     restoreTarget() { targets++; throw new Error("negative-test-must-not-create-target"); }, acceptRetirement() { assert.fail("negative-test-retirement"); } });
   return { recovery, get targets() { return targets; } };
@@ -174,13 +176,6 @@ scenario("cold preflight rejects scope session configuration and generation drif
   });
   await assert.rejects(observerFor(h).recovery.prepare(root, () => {}), /identity-conflict|responsibility-incomplete/);
   shifted.mock.restore();
-  const changedConfig = observerFor(h, { verify: async () => false });
-  await assert.rejects(changedConfig.recovery.prepare(root, () => {}), /config-conflict/);
-  const hungConfig = observerFor(h, { verify: () => new Promise<boolean>(() => {}) });
-  const deadlineStart = Date.now();
-  await assert.rejects(hungConfig.recovery.prepare(root, () => {}, 80), /generation-deadline/);
-  assert.ok(Date.now() - deadlineStart < 2_000, "configuration wait shares the original bounded deadline");
-  assert.equal(hungConfig.targets, 0);
   const noCapability = observerFor(h, { authorityDirectory: h.file("missing-original-capability") });
   await assert.rejects(noCapability.recovery.prepare(root, () => {}), /authority-unavailable/);
   const invalidated = observerFor(h);
@@ -252,18 +247,24 @@ scenario("cold original endpoint loss retains complete durable set and forbids a
   assert.equal(retained.value.leaderExecutionSets![0].state, "open"); assert.equal(retained.value.capacity.leaders.length, 1);
 });
 
-scenario("cold asynchronous configuration preflight rechecks authoritative task and revoked request", async t => {
+scenario("cold asynchronous authority observation rechecks the authoritative task", async t => {
   const h = await productionWiring(t, "codex", true, false, 1, undefined, "codex", true, true);
   const held = gate(); let firstOutput = true; h.beforeLeaderCallback(async () => { if (firstOutput) firstOutput = false; else await held.promise; }); t.after(() => held.resolve());
   h.answer(1, { status: "blocked", finalSummary: "保留身份" });
   const launch = await h.start(); assert.ok(launch.ok); await until(() => !!h.read(launch.taskId)?.executionSession);
   await until(() => h.fixture.getMessages("leader-tab").length > 0 && h.mainInvocations.length >= 2);
   const entered = gate(), release = gate();
-  const probe = observerFor(h, { verify: async () => { entered.resolve(); await release.promise; return true; } });
+  const observe = DepartmentGenerationAuthorityClient.prototype.observe;
+  const observation = t.mock.method(DepartmentGenerationAuthorityClient.prototype, "observe", async function (this: DepartmentGenerationAuthorityClient) {
+    const result = await observe.call(this);
+    entered.resolve(); await release.promise;
+    return result;
+  });
+  const probe = observerFor(h);
   const preparing = probe.recovery.prepare(h.read("root")!, () => {}); const rejected = assert.rejects(preparing, /changed-during-control/);
   await entered.promise;
   assert.ok(h.update(launch.taskId, { supplementalRequirements: ["在等待期间变更的真实要求"] }));
-  release.resolve(); await rejected;
+  release.resolve(); await rejected; observation.mock.restore();
   assert.equal(probe.targets, 0); const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
   const set = saved.value.leaderExecutionSets![0];
   const client = new DepartmentGenerationAuthorityClient(departmentGenerationAuthorityDirectory(h.file("authorities"), set.scope), set.scope, set.producerId);
@@ -330,6 +331,12 @@ scenario("OpenCode cold original directory capability survives host loss and ret
   await until(() => authority.child.exitCode !== null); assert.equal(authority.child.exitCode, 0); assert.equal(authority.child.signalCode, null);
   assert.equal(cold.producer.canContinueLeader(launch.taskId), true);
   const oldRuns = Number(fs.readFileSync(h.file("cold-native-round"), "utf8"));
+  const scheduler = createLoopPlusScheduler({ snapshot: cold.read(launch.taskId)?.loopPlus });
+  const successorDecision = { status: "blocked", finalSummary: "后继代已完成受控调用，等待停止核验",
+    blocker: loopBlockerFixture("等待测试触发后继代停止"),
+    reportEventIds: scheduler.snapshot().reportQueue?.map(event => event.eventId) ?? [] };
+  h.answer(oldRuns + 1, successorDecision);
+  h.answer(oldRuns + 2, successorDecision);
   const result = await cold.composition.host.continueRoot("root"); assert.ok(result.ok, JSON.stringify(result));
   await until(() => Number(fs.readFileSync(h.file("cold-native-round"), "utf8")) > oldRuns);
   const continued = cold.store.read("root", "workspace"); assert.ok(continued.ok && continued.value);
@@ -344,7 +351,12 @@ scenario("OpenCode cold original directory capability survives host loss and ret
   await cold.recovery.released(launch.taskId, original.scope.generation); // stale finalizer cannot touch successor
   assert.equal(cold.producer.canContinueLeader(launch.taskId), false);
   await cold.fixture.adapter.waitForTaskIdle(launch.taskId);
-  await cold.composition.organizationControl.stop(cold.read("root")!);
+  try { await cold.composition.organizationControl.stop(cold.read("root")!); }
+  catch (error) {
+    throw new Error("OpenCode successor stop failed: " + JSON.stringify({
+      diagnostics: cold.diagnostics, logs: cold.fixture.logs.slice(-12), runtime: cold.composition.host.runtimeSnapshot("root"), capacity: cold.composition.readCapacity("root"),
+    }) + " | " + String(error));
+  }
   const nextAuthority = h.workers.filter(w => w.module.endsWith("departmentgenerationauthorityworker.js"))[1];
   assert.equal(nextAuthority.child.exitCode, 0); assert.equal(nextAuthority.child.signalCode, null);
 });

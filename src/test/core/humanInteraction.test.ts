@@ -202,7 +202,124 @@ test("builds option fields from lettered natural-language clarification choices"
   );
 });
 
-test("does not build natural-language requests without explicit user clarification intent", () => {
+const acceptanceClarificationQuestion = "“撤销验收”希望如何处理？";
+const acceptanceClarificationOptions = [
+  "本次交付不再验收：记录撤销原因并移出待验收队列（推荐）",
+  "撤回已有验收结论：恢复为待验收，重新审查",
+];
+
+for (const [format, prefix] of [
+  ["plain", (_index: number) => ""],
+  ["bullets", (_index: number) => "- "],
+  ["numbered", (index: number) => `${index + 1}. `],
+  ["lettered", (index: number) => `${String.fromCharCode(65 + index)}. `],
+] as const) {
+  test(`converts a single implicit clarification with ${format} choices and preserves full option text`, () => {
+    const request = buildNaturalLanguageHumanInteractionRequest({
+      tabId: "tab-acceptance",
+      fallbackInteractionId: "acceptance-question",
+      userPrompt: "增加撤销验收功能",
+      assistantText: [
+        `[final_answer] ${acceptanceClarificationQuestion}`,
+        "",
+        ...acceptanceClarificationOptions.map((option, index) => `${prefix(index)}${option}`),
+      ].join("\r\n"),
+    });
+
+    assert.ok(request);
+    assert.equal(request.formFields.length, 1);
+    assert.deepEqual(request.formFields[0], {
+      id: "answer_1",
+      label: acceptanceClarificationQuestion,
+      type: "radio",
+      required: true,
+      options: acceptanceClarificationOptions.map((label) => ({ value: label, label })),
+    });
+  });
+}
+
+test("converts single open-ended clarification and keeps choices with punctuation intact", () => {
+  for (const userPrompt of ["部署应用", "先问我需要补充哪些信息"]) {
+    const request = buildNaturalLanguageHumanInteractionRequest({
+      tabId: "tab-deploy",
+      fallbackInteractionId: "deploy-question",
+      userPrompt,
+      assistantText: "[final_answer] 请提供目标环境的名称？",
+    });
+    assert.equal(request?.formFields[0]?.type, "textarea");
+    assert.equal(request?.formFields[0]?.label, "请提供目标环境的名称？");
+  }
+  const request = buildNaturalLanguageHumanInteractionRequest({
+    tabId: "tab-deploy",
+    fallbackInteractionId: "deploy-choice",
+    userPrompt: "部署应用",
+    assistantText: "请先确认部署范围：\n希望选择哪个环境？\n- 开发 / 测试，保留数据或日志\n- 生产，重新审查\n请回复你的选择。",
+  });
+  assert.deepEqual(request?.formFields[0]?.options?.map((option) => option.label), [
+    "开发 / 测试，保留数据或日志", "生产，重新审查",
+  ]);
+});
+
+test("converts a single explicit open question without requiring a second question", () => {
+  const request = buildNaturalLanguageHumanInteractionRequest({
+    tabId: "tab-topic",
+    fallbackInteractionId: "topic-question",
+    userPrompt: "先问我写作需求",
+    assistantText: "[final_answer] 主题是什么？",
+  });
+  assert.equal(request?.formFields[0]?.label, "主题是什么？");
+});
+
+test("does not reinterpret quoted questions as forms even with explicit clarification intent", () => {
+  for (const wrapper of ["> ", "```text\n"]) {
+    assert.equal(buildNaturalLanguageHumanInteractionRequest({
+      tabId: "tab-example",
+      fallbackInteractionId: "example-question",
+      userPrompt: "先问我需求细节",
+      assistantText: `${wrapper}1. 希望哪个方案？\n2. 希望哪种环境？`,
+    }), null);
+  }
+});
+
+test("converts multiple implicit decisions into separate form fields", () => {
+  const request = buildNaturalLanguageHumanInteractionRequest({
+    tabId: "tab-acceptance",
+    fallbackInteractionId: "multiple-decisions",
+    userPrompt: "增加撤销验收功能",
+    assistantText: [
+      `1. ${acceptanceClarificationQuestion}`,
+      ...acceptanceClarificationOptions.map((option) => `- ${option}`),
+      "2. 哪些角色可以操作？",
+      "- 管理员",
+      "- 验收负责人",
+    ].join("\n"),
+  });
+  assert.deepEqual(request?.formFields.map((field) => [field.type, field.options?.length]), [
+    ["radio", 2], ["checkbox", 2],
+  ]);
+});
+
+for (const [name, assistantText] of [
+  ["rhetorical closing", "[final_answer] 秋风起，你喜欢这样的意象吗？"],
+  ["completed result", `[final_answer] 已实现撤销验收功能。\n${acceptanceClarificationQuestion}\n${acceptanceClarificationOptions.join("\n")}`],
+  ["quoted question", `> ${acceptanceClarificationQuestion}\n> ${acceptanceClarificationOptions.join("\n> ")}`],
+  ["code example", `\`\`\`text\n${acceptanceClarificationQuestion}\n${acceptanceClarificationOptions.join("\n")}\n\`\`\``],
+  ["document example", `界面文案示例：\n${acceptanceClarificationQuestion}\n${acceptanceClarificationOptions.join("\n")}`],
+  ["explanation", "撤销验收是什么？\n移出待验收队列\n恢复为待验收"],
+  ["incomplete choice list", `${acceptanceClarificationQuestion}\n只有一个选项`],
+  ["duplicate choices", `${acceptanceClarificationQuestion}\n相同选项\n相同选项`],
+] as const) {
+  test(`does not open a clarification form for ${name}`, () => {
+    assert.equal(buildNaturalLanguageHumanInteractionRequest({
+      tabId: "tab-result",
+      fallbackInteractionId: "result-question",
+      userPrompt: "增加撤销验收功能",
+      assistantText,
+    }), null);
+  });
+}
+
+test("does not convert rhetorical questions in ordinary final answers", () => {
   assert.equal(
     buildNaturalLanguageHumanInteractionRequest({
       tabId: "tab-normal",

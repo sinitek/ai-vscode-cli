@@ -35,7 +35,7 @@ function createHarness(activeTabId = "active-tab") {
     renderConversationTabs: () => { calls.push("tabs"); },
     reportWebviewFailure: (_event: string, error: unknown) => { throw error; },
   });
-  const start = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      function applyConversationTabClosed(");
+  const start = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      let pendingConversationCreate = null;");
   const end = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("      function renderConversationTabs(", start);
   assert.ok(start >= 0 && end > start);
   vm.runInContext(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(start, end), sandbox);

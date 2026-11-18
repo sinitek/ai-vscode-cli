@@ -336,15 +336,14 @@ async function main(args = process.argv.slice(2)) {
     assertConsumerGateObservation(pendingObservation, binding.identity);
     evidence.consumerGateObservation = pendingObservation;
     assert.equal(tabs.size, 1);
-    assert.equal(JSON.parse(fs.readFileSync(file("configuration/selection.json"), "utf8")).leases.length, 1);
     consumer.finish(); record({ event: "consumer-finished" });
     evidence.activePhase = "original-receipt-and-stopped";
     await within(service.observe("leader", "attempt").done, "employee-original-receipt-stopped");
     const receipt = await within(original.waitForCleanup(binding.identity, binding.requirements), "original-receipt");
     assert.ok(cleanupComplete(receipt.cleanup, binding.requirements));
     await until(() => events().some(e => e.event === "owner-close"), "original-worker-natural-close");
-    assert.equal(tabs.size, 0); const leases = JSON.parse(fs.readFileSync(file("configuration/selection.json"), "utf8")).leases; assert.equal(leases.length, 0);
-    evidence.cleanup = { requirements: binding.requirements, receipt, originalClientValidated: true, controlledTabAbsent: true, configLeases: leases };
+    assert.equal(tabs.size, 0);
+    evidence.cleanup = { requirements: binding.requirements, receipt, originalClientValidated: true, controlledTabAbsent: true };
     const { runCliProcess } = load("cli/cliProcessRuntime.js"); let exported = "", exportError;
     const reader = runCliProcess({ command: evidence.binary, args: ["export", "--pure", native], cwd: workspace, baseEnvironment: env },
       { onStdout(chunk) { exported += chunk; }, onStderr() {}, onError(error) { exportError = error; } }, "ignore");

@@ -1,10 +1,14 @@
 # 部门进程执行的独立 Owner 启动
 
+## 当前配置契约（2026-11-18）
+
+角色配置由可信宿主按实际准备时读取并固定；不得以跨窗口锁、执行租约、共享选择快照或 `isCurrentSelection` 阻断任务启动。保留原子写入、进程内 CLI 配置应用队列、必要读回和 runner 指纹隔离，跨窗口竞争按最后完成者生效。Owner 的身份、代次、责任账本、准入、准备期撤权、排空、原始 receipt 及清理后归还容量保持不变；下方较早轮次中的配置租约/共享 revision 描述仅为历史记录。
+
 状态：开发中。接通范围仅为既有 process 策略的 OpenCode 员工 attempt，支持缺少 executionSession 时首次创建原生会话，以及已有 `ses_…` session 的原生 export 核验；尚不支持自定义思考工作区文件。未接通总监/组长或交互 CLI；不得将 Codex 降级为 print/process。完整生产组织组合尚未通过。
 
 ## 可信调用与持久顺序
 
-`extension.ts` 的 `prepareDepartmentInvocation/runPromptNow` 保留固化角色、配置队列与执行租约检查。一次性内部 `departmentProcessStream` 闭包复用原有配置命令拆分、`buildCliArgs`、mac shell 与环境快照。它不来自模型 JSON、公开命令或 Owner socket。`promptOneShotRuntime` 和 `promptParallelRuntime` 继续消费既有 OpenCode parser、消息与会话展示端口；Owner 模式禁用隐藏的替代执行、自动运行后压缩及 EH 持有的监控 server。自定义思考工作区文件尚未移到 Owner root，生产入口在任何写入/启动前保守拒绝；模板的 Owner 分支也不调用 EH 工作区文件写入端口，避免改写原工作区。
+`extension.ts` 的 `prepareDepartmentInvocation/runPromptNow` 保留固化角色和配置应用队列，不再有执行租约检查。一次性内部 `departmentProcessStream` 闭包复用原有配置命令拆分、`buildCliArgs`、mac shell 与环境快照。它不来自模型 JSON、公开命令或 Owner socket。`promptOneShotRuntime` 和 `promptParallelRuntime` 继续消费既有 OpenCode parser、消息与会话展示端口；Owner 模式禁用隐藏的替代执行、自动运行后压缩及 EH 持有的监控 server。自定义思考工作区文件尚未移到 Owner root，生产入口在任何写入/启动前保守拒绝；模板的 Owner 分支也不调用 EH 工作区文件写入端口，避免改写原工作区。
 
 `createDepartmentProcessPreparation(host)` 的宿主端口为真实生产任务 read/update、`DepartmentRuntimeStore`、workspace 标识和可信 `prepareLaunch(selection, sessionId: string | null)`。实时 adapter 的 `authorizeAttempt` 是新启动的必要能力；恢复时缺失绑定不能通过新建 service/Owner 补跑。单实例最多保留 256 项启动/观察/准入事实，饱和拒绝，不淘汰未知执行。
 

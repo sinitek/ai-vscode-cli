@@ -69,7 +69,9 @@ function createSendPromptHarness(options: {
     "dispatchPrompt",
     "isAcceptancePlanRequiredForPayload",
     "openAcceptancePlanDialog",
-    `${sources}; return { sendPrompt: sendPrompt };`,
+    "showToast",
+    "t",
+    `function isCreatingConversationTab() { return false; }\n${sources}; return { sendPrompt: sendPrompt };`,
   )(
     elements,
     (prompt: string) => ({ prompt }),
@@ -85,6 +87,8 @@ function createSendPromptHarness(options: {
     },
     () => options.requiresAcceptancePlan === true,
     (payload: unknown) => opened.push(payload),
+    () => undefined,
+    (key: string) => key,
   ) as { sendPrompt: () => void };
   return {
     sendPrompt: api.sendPrompt,
@@ -97,16 +101,16 @@ function createSendPromptHarness(options: {
   };
 }
 
-test("queues a new prompt immediately while the Loop main tab is still running", () => {
+test("rejects a new prompt while the Loop main tab is still running and preserves input", () => {
   const harness = createSendPromptHarness({ loopMainRunning: true, tabBusy: true });
 
   harness.sendPrompt();
 
-  assert.deepEqual(harness.queued, [{ prompt: "next task" }]);
+  assert.deepEqual(harness.queued, []);
   assert.equal(harness.conflicts.length, 0);
   assert.equal(harness.dispatched.length, 0);
-  assert.equal(harness.elements.promptInput.value, "");
-  assert.equal(harness.getResetCount(), 1);
+  assert.equal(harness.elements.promptInput.value, " next task ");
+  assert.equal(harness.getResetCount(), 0);
 });
 
 test("keeps the existing conflict prompt for a busy non-Loop tab", () => {
@@ -146,69 +150,14 @@ test("does not flush a queued prompt while the target tab is still busy", () => 
   assert.equal(flushPendingPromptQueue("tab-1"), false);
 });
 
-test("stores the Loop mode with a queued prompt for background dispatch", () => {
-  const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "queuePromptForLater");
-  const runtimeState = { pendingPromptQueue: [] as unknown[] };
-  const posted: unknown[] = [];
-  const queuePromptForLater = new Function(
-    "snapshotPromptPayloadForQueue",
-    "getActiveConversationRuntimeState",
-    "normalizeInteractiveMode",
-    "state",
-    "getActiveConversationTabId",
-    "getConversationTabSummary",
-    "vscode",
-    "updateQueueIndicator",
-    "showToast",
-    "t",
-    `${functionSource}; return queuePromptForLater;`,
-  )(
-    (payload: unknown) => payload,
-    () => runtimeState,
-    (mode: unknown) => mode === "loop" ? "loop" : "coding",
-    { currentCli: "codex", interactiveMode: "loop" },
-    () => "tab-loop",
-    () => ({ cli: "opencode" }),
-    { postMessage: (message: unknown) => posted.push(message) },
-    () => undefined,
-    () => undefined,
-    () => "queued",
-  ) as (payload: unknown) => void;
-
-  queuePromptForLater({
-    prompt: "next task",
-    contextOptions: {},
-    loopMainModel: "planner-main",
-    loopSubtaskModel: "executor-subtask",
-  });
-
-  assert.deepEqual(runtimeState.pendingPromptQueue, [{
-    prompt: "next task",
-    contextOptions: {},
-    loopMainModel: "planner-main",
-    loopSubtaskModel: "executor-subtask",
-    interactiveMode: "loop",
-    skipPromptHistory: true,
-  }]);
-  assert.deepEqual(posted, [{
-    type: "recordPromptHistory",
-    prompt: "next task",
-    cli: "opencode",
-  }]);
-  assert.match(
-    VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
-    /basePayload\.interactiveMode[\s\S]*isBackgroundDispatch/,
-  );
-});
-
 test("forwards queued prompt history skip flag when dispatching", () => {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "dispatchPrompt");
   const configApplyHelperSource = extractFunctionSource(
     VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI,
     "isConfigApplyPendingForCli",
   );
-  const visibleConfigHelperSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "readVisibleConfigSelections");
   const posted: unknown[] = [];
+  const runtimeState = { promptSubmission: null as { requestId: string; prompt: string } | null };
   const dispatchPrompt = new Function(
     "normalizePromptPayloadWithModelFields",
     "getActiveConversationTabId",
@@ -224,7 +173,10 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     "resetTaskListForRunStart",
     "cliSupportsModelSelection",
     "vscode",
-    `${visibleConfigHelperSource}\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
+    "isRuntimeStateForActiveTab",
+    "syncPromptSubmissionWait",
+    "stickChatToBottom",
+    `function isCreatingConversationTab() { return false; }\n${configApplyHelperSource}\n${functionSource}; return dispatchPrompt;`,
   )(
     (payload: Record<string, unknown>) => payload && typeof payload.prompt === "string"
       ? {
@@ -244,7 +196,7 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     },
     (mode: unknown) => mode || "coding",
     (payload: unknown) => payload,
-    () => null,
+    () => runtimeState,
     () => false,
     () => undefined,
     () => "message-1",
@@ -252,6 +204,9 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     () => undefined,
     () => false,
     { postMessage: (message: unknown) => posted.push(message) },
+    () => true,
+    () => undefined,
+    () => undefined,
   ) as (payload: unknown) => boolean;
 
   assert.equal(dispatchPrompt({
@@ -260,7 +215,6 @@ test("forwards queued prompt history skip flag when dispatching", () => {
   }), true);
   assert.deepEqual(posted, [{
     type: "sendPrompt",
-    configSelections: { opencode: { configId: "config-opencode", revision: "visible-revision" } },
     prompt: "queued task",
     interactiveMode: "coding",
     contextOptions: {},
@@ -270,7 +224,9 @@ test("forwards queued prompt history skip flag when dispatching", () => {
     preserveActiveTab: false,
     skipPromptHistory: true,
     departmentConfigurationScope: "workspace-scope",
+    requestId: "message-1",
   }]);
+  assert.equal(runtimeState.promptSubmission?.prompt, "queued task");
 });
 
 test("prevents the conflict overlay from bypassing a running Loop main tab", () => {
@@ -285,21 +241,23 @@ test("prevents the conflict overlay from bypassing a running Loop main tab", () 
     const pauseAndSend = new Function(
       "getActiveConversationRuntimeState", "normalizePromptPayload", "closeRunConflictOverlay",
       "isLoopMainConversationTabRunning", "getActiveConversationTabId", "elements",
-      "queuePromptForLater", "resetPromptContextForNextPrompt", "dispatchPrompt",
+      "queuePromptForLater", "resetPromptContextForNextPrompt", "dispatchPrompt", "showToast", "t",
       `${functionSource}; return pauseAndSendConflictPrompt;`,
     )(
       () => ({ pendingRunPrompt: payload }), (value: unknown) => value, () => { closed += 1; },
       () => loopRunning, () => "tab-1", elements,
       (value: unknown) => queued.push(value), () => { reset += 1; },
       (value: unknown, options: unknown) => { dispatched.push({ value, options }); return true; },
+      () => undefined, (key: string) => key,
     ) as () => unknown;
     const result = pauseAndSend();
     assert.equal(closed, 1);
     if (loopRunning) {
-      assert.deepEqual(queued, [payload]);
+      assert.deepEqual(queued, []);
       assert.deepEqual(dispatched, []);
-      assert.equal(elements.promptInput.value, "");
-      assert.equal(reset, 1);
+      assert.equal(elements.promptInput.value, "pending task");
+      assert.equal(reset, 0);
+      assert.equal(result, false);
     } else {
       assert.deepEqual(queued, []);
       assert.deepEqual(dispatched, [{ value: payload, options: { pauseBeforeSend: true } }]);

@@ -1,6 +1,5 @@
 import { isDepartmentExecutionCli } from "../department";
 import type { LoopTaskRecord } from "../loopTaskStore";
-import type { DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import type { DepartmentRuntimeStore } from "./departmentruntimestore";
 import type { DepartmentExecutionBinding } from "./departmentruntimestate";
 import type { DepartmentExecutionProducerHost } from "./departmentexecutionproducer";
@@ -15,7 +14,6 @@ type Observation = { subscribers: Set<Subscriber> };
 export function createDepartmentProductionCleanup(deps: {
   store: DepartmentRuntimeStore; producer: DepartmentExecutionProducerHost; ownerDirectory: string;
   workspaceKey(): string; readTask(id: string): LoopTaskRecord | null;
-  readSelection(cli: DepartmentExecutionSelection["cli"]): Promise<{ ready: boolean; configId: string | null; revision: string } | null>;
 }) {
   const observations = new Map<string, Observation>();
   let subscribers = 0;
@@ -28,25 +26,19 @@ export function createDepartmentProductionCleanup(deps: {
     return phase;
   }
   async function aggregate(taskId: string, generation: number, key: string): Promise<void> {
-    // One phase snapshot/CLI read for the complete binding batch. The second
-    // snapshot is acquired AFTER config awaits and again after the Owner batch.
     let phase = snapshot(taskId, generation);
     const cleanup = new DepartmentLeaderExecutionCleanup(deps.store, deps.ownerDirectory, async () => false,
       (binding) => phase.originalClient(binding), async (bindings) => {
         try {
           phase = snapshot(taskId, generation);
-          const selections = new Map<DepartmentExecutionSelection["cli"], Awaited<ReturnType<typeof deps.readSelection>>>();
-          for (const cli of new Set(bindings.map((b) => b.selection.cli))) selections.set(cli, await deps.readSelection(cli));
-          phase = snapshot(taskId, generation);
           if (leaderExecutionScopeKey(phase.scope) !== key) return false;
           const task = phase.task, sessions = new Map(task.subTasks.map((s) => [s.id, s.executionSession]));
           return bindings.every((binding: DepartmentExecutionBinding) => {
-            const i = binding.identity, s = binding.selection, selected = selections.get(s.cli);
+            const i = binding.identity, s = binding.selection;
             const route = task.department!.routes[i.role];
             const session = i.role === "leader" ? task.executionSession : sessions.get(i.subtaskId!);
             const supportedRole = isDepartmentExecutionCli(i.cli);
             return leaderExecutionScopeKey(i) === key && supportedRole
-              && selected?.ready === true && selected.configId === s.configId && selected.revision === s.revision
               && route.cli === s.cli && route.configId === s.configId && (route.model ?? null) === s.model
               && (route.thinkingMode ?? null) === s.thinkingMode && (route.openCodeVariant ?? null) === s.openCodeVariant
               && i.session.state === "bound" && session?.cli === i.cli && session.sessionId === i.session.id && session.configId === s.configId

@@ -1,5 +1,9 @@
 # Codex 组长多轮原生 Owner
 
+## 当前配置契约（2026-11-18）
+
+Owner 的执行配置由可信宿主在准备时读取并固定；不得取得或重建跨窗口配置锁、执行租约或共享选择快照门禁。配置并发写入按最后完成者生效，保留原子替换、进程内 CLI 应用队列、必要读回和 runner 指纹隔离。该变化不削弱 Owner 身份、代次、Ledger 责任、启动准入、真实排空、receipt 和清理归还容量的要求。下方早期轮次中关于 SharedRuntimeConfig 租约的描述属于历史实现记录，不是当前要求。
+
 状态：开发中。提供可运行的独立普通 Node Owner 与可信宿主端口，round-224 已装入 extension 组合根及真实 Loop+ `runMain`；round-228 补齐已装配 Codex 路径的原生附加资源与精确 tab 释放。员工准入、单次 CodexOwnedExecution、原 Owner slot/identity v1、receipt 合同保持。
 
 ## 运行合同
@@ -17,7 +21,7 @@
 顺序固定：
 
 1. 宿主同步核对权威事实与本代 producer，Ledger.admit 先保存固定 leader responsibility、selection、八项全 required，再进入配置 builder。
-2. 固定 `departmentleadercodexownerworker.js` 以 Electron 普通 Node 规则 detached fork；worker 自己 acquire 真实 SharedRuntimeConfig 执行租约，核对 ready/configId/revision，持有真实执行 root/links。配置/命令/模型/思考/环境/工作目录仅来自这一次可信构造。
+2. 固定 `departmentleadercodexownerworker.js` 以 Electron 普通 Node 规则 detached fork；worker 仅消费可信构造中冻结的配置/命令/模型/思考/环境/工作目录及真实执行 root/links，不获取共享锁或执行租约。
 3. 原 `DepartmentExecutionOwnerServer` 登记同 identity 和 requirements，再允许首轮真实原生准备。公共 socket 仍只接受原 identity 请求，无新增 prompt/command/worker/module 入口。
 4. 原生响应取得冻结 session 后，宿主唯一写者 `persistSession` 保存任务原生 session 并由 `readSession` 精确回读 cli/sessionId/configId；不能以 tab、通知或缓存替代。
 5. 同次 admit 的 bind 回调复用 `Store.bindLeaderExecution` 原子提交组织 binding 与 responsibility 引用，并 cold read 完整 binding/selection/requirements/责任；失败保留 null 或原绑定。

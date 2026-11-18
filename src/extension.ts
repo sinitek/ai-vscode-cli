@@ -27,7 +27,6 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
-import { ConfigSelectionChangedError, RuntimeConfigLockTimeoutError, releaseRuntimeConfigExecutionLease } from "./config/sharedRuntimeConfig";
 import { PromptRunHandoff } from "./extensionHost/promptRunHandoff";
 import {
   cleanupHumanInteractionHistory,
@@ -142,10 +141,9 @@ import {
   writeLoopAskThreadFile,
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
-import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "./loopMainQuestionQueue";
+import { createLoopMainQuestionQueue } from "./loopMainQuestionQueue";
 import { resolveLoopSchedulingMode } from "./loopTaskStore";
-import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
-import { resolveLoopPlusMaxAcceptances } from "./loopPlusDecision";
+import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { getSelectedLoopFrontendThinkingFromStore, getSelectedLoopFullstackThinkingFromStore } from "./modelSelectionStore";
@@ -299,7 +297,7 @@ let activeWorkspaceKey: string;
 let departmentWorkspaceGeneration = 0;
 const departmentSaveBarrier = new DepartmentConfigurationSaveBarrier();
 function getDepartmentConfigurationScope(): string {
-  return JSON.stringify([activeWorkspaceKey, departmentWorkspaceGeneration, currentCli, getActiveConfigIdForCli(currentCli)]);
+  return JSON.stringify([activeWorkspaceKey, departmentWorkspaceGeneration]);
 }
 function getDepartmentConfigurationIssue(): string | null {
   return departmentSaveBarrier.issue(getDepartmentConfigurationScope());
@@ -1197,7 +1195,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     hasAnyTaskRunning,
     disposeAllInteractiveRunners: () => interactiveRunnerManager?.disposeAll(),
     maybePromptInstallOnCliGroupSwitch,
-    closeConversationTabAndRefreshPanel,
+    closeConversationTabAndRefreshPanel: (tabId, options) => closeConversationTabAndRefreshPanel(tabId, options),
     confirm: async (messageText, confirmLabel) => {
       const confirmed = await vscode.window.showWarningMessage(messageText, { modal: true }, confirmLabel);
       return confirmed === confirmLabel;
@@ -1232,14 +1230,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
         if (cli === "codex") await interactiveRunnerManager?.waitForCodexSessionStopped(sessionId, isStillCurrent);
       });
     },
-    validateVisibleConfigSelections: async (cli, selections) => {
-      const visible = selections?.[cli];
-      const current = await loadConfigState(cli);
-      if (!visible || current.configurationError || !current.revision
-        || visible.configId !== current.activeConfigId) {
-        throw new ConfigSelectionChangedError();
-      }
-    },
     readCliRules,
     writeCliRules,
     normalizeRuleTargets,
@@ -1254,7 +1244,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     normalizeVisibleInteractiveMode,
 
     loadModelStore: () => { modelStore = loadModelStore(); },
-    normalizeLoopMaxRounds,
     isCliName,
     updateStoredToolSettings,
     readStoredToolSettings: () => readToolSettings(),
@@ -1286,7 +1275,10 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getLatestLoopRoundRunRecord,
     recordPromptHistory,
     resolvePromptRunTarget,
-    preloadUserMessageForPrompt,
+    preloadUserMessageForPrompt: (input, target, options) => preloadUserMessageForPrompt(input, target, {
+      captureTaskSummary: true,
+      messageId: options?.messageId,
+    }),
     runLoopPrompt,
     runPrompt,
     maybeWakeLoopMainAfterSubtaskContinuation,
@@ -1420,9 +1412,7 @@ function buildPanelStateFromConfigState(
     getGlobalChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().chatMessageLimit),
     getGlobalLoopGroupChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     getGlobalHideInstructionBubbles: () => readToolSettings().hideInstructionBubbles === true,
-    getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
-    getGlobalLoopPlusMaxAcceptances,
     getDepartmentConfigurationScope,
     getDepartmentConfigurationIssue,
     getDepartmentDirector: () => modelSettingsHost.getDepartmentDirectorForPanel(),
@@ -1667,7 +1657,7 @@ const promptRunRuntimeHost = createPromptRunRuntimeHost({
   getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopGroupChatMessageAction: (taskId, round) => buildLoopGroupChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId), prepareSubtaskTabClose: prepareLoopSubtaskTabClose, handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
 const modelSettingsHost = createModelSettingsHost({ getDepartmentConfigurationScope, getDepartmentConfigurationIssue, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatCoordinator.getSnapshot(), getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
-const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getGlobalLoopPlusMaxAcceptances, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
+const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, getGlobalLoopPlusDecisionSubtaskMax, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, setPromptHistoryGlobal, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
 const getEffectiveLoopPlusDecisionSubtaskMax = modelSettingsHost.getEffectiveLoopPlusDecisionSubtaskMax;
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
@@ -1705,6 +1695,7 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   isTabRunActive,
   hasActiveSubtasks: hasActiveLoopSubtasks,
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
+  subtaskRoundLimit: () => modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),
   getActiveConfigIdForCli,
   appendLoopRound,
   appendMessageToStore,
@@ -1902,6 +1893,7 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   buildUserChatMessage,
   captureSessionFromBuffer,
   cancelHumanInteractionForTab,
+  sendRunStatusForTab,
   clearActiveRun,
   createDisabledOpenCodeSubagentMonitor,
   createMessageId,
@@ -3133,12 +3125,9 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
         if (resolveLoopSchedulingMode(latest.schedulingMode) === "event_driven") {
           return !getLoopPlusOrchestrationHost().hasPendingMainWork(task.id);
         }
-        return !hasPendingClassicLoopMainWork({
-          controllerActive: loopOrchestrationOwnership.getCount(task.id) > 0,
-          activeSubtaskCount: getActiveLoopSubtaskIds(latest).length,
-          requirementCount: latest.supplementalRequirements?.length ?? 0,
-          observedRequirementCount: classicMainRequirementCounts.get(task.id) ?? 0,
-        });
+        return loopOrchestrationOwnership.getCount(task.id) === 0
+          && getActiveLoopSubtaskIds(latest).length === 0
+          && (latest.supplementalRequirements?.length ?? 0) <= (classicMainRequirementCounts.get(task.id) ?? 0);
       },
     }, ask) ?? { status: "stopped" };
   },
@@ -3587,7 +3576,7 @@ function resolveAutoInteractiveModeForConversationTab(
   tab: ConversationTabRecord | null
 ): InteractiveMode {
   if (!tab) {
-    return "coding";
+    return readToolSettings().newTaskInteractiveMode ?? "coding";
   }
   const context = resolveConversationTabLoopContext(tab);
   const actual = context.loopTaskId ? readLoopTaskRecord(context.loopTaskId) : null;
@@ -4051,7 +4040,7 @@ function departmentTaskForTab(tabId: string | null): LoopTaskRecord | null {
 function validateDepartmentRoutes(routes: DepartmentMetadata["routes"]): boolean {
   if (departmentRoleCliIssue("leader", routes.leader.cli) || departmentRoleCliIssue("employee", routes.employee.cli)) return false;
   return departmentValidatedRoutes.has(JSON.stringify(routes)) && Object.values(routes).every((route) => route.cli
-    && readToolSettings().cliEnabledByName?.[route.cli] !== false && getActiveConfigIdForCli(route.cli) === (route.configId ?? null));
+    && readToolSettings().cliEnabledByName?.[route.cli] !== false);
 }
 async function prepareDepartmentRoutes(routes: DepartmentMetadata["routes"]): Promise<void> {
   for (const role of ["leader", "employee"] as const) {
@@ -4064,9 +4053,8 @@ async function prepareDepartmentRoutes(routes: DepartmentMetadata["routes"]): Pr
     const candidates = await modelSettingsHost.getDepartmentRoleCandidates(route.cli, route.configId ?? null);
     validateDepartmentRoleCandidate({ cli: route.cli, configId: route.configId ?? null, model: route.model ?? null,
       thinkingMode: route.thinkingMode ?? null, openCodeVariant: route.openCodeVariant ?? null }, candidates);
-    const shared = await configService.readSharedConfigSelection(route.cli);
-    if (!shared?.ready || shared.configId !== (route.configId ?? null) || getActiveConfigIdForCli(route.cli) !== (route.configId ?? null)) {
-      throw new Error("部门角色固化档案当前不可执行；请先确保对应 CLI 的共享档案一致，宿主不会全局切换或替换角色。");
+    if (route.configId && !await configService.getConfigById(route.cli, route.configId)) {
+      throw new Error("部门角色固化档案已不存在，拒绝启动。");
     }
   }));
   if (workspace !== activeWorkspaceKey) throw new Error("部门工作区已切换。");
@@ -4086,31 +4074,25 @@ async function prepareDepartmentInvocation(input: PromptRunInput, tabId: string 
   if (!route.cli || target?.cli !== route.cli) throw new Error("部门执行 CLI 与固化角色不匹配。");
   const before = JSON.stringify(task.department), workspace = activeWorkspaceKey, targetIdentity = JSON.stringify(target);
   await prepareDepartmentRoutes(m.routes);
-  const shared = await configService.readSharedConfigSelection(route.cli);
   const current = readLoopTaskRecord(task.id);
-  if (!shared?.ready || shared.configId !== (route.configId ?? null) || current?.status !== "running"
+  if (current?.status !== "running"
     || current.departmentInvalid || JSON.stringify(current.department) !== before || workspace !== activeWorkspaceKey
-    || JSON.stringify(resolvePromptRunTarget(tabId)) !== targetIdentity) throw new Error("部门角色、归属或共享档案已变化，执行未启动。");
+    || JSON.stringify(resolvePromptRunTarget(tabId)) !== targetIdentity) throw new Error("部门角色或执行归属已变化，执行未启动。");
   return { ...input, model: route.model, thinkingModeOverride: route.thinkingMode ?? "off",
     ...(input.taskRole === "subtask" ? { loopSubtaskModel: route.model, loopSubtaskCli: route.cli, loopSubtaskConfigId: route.configId,
       loopSubtaskThinkingMode: route.thinkingMode } : { loopMainModel: route.model, loopMainThinkingMode: route.thinkingMode }),
     executionProfile: route.configId ? { configId: route.configId, model: route.model ?? null,
-      thinkingMode: route.thinkingMode, openCodeVariant: route.openCodeVariant ?? null } : undefined,
-    configSelections: { ...input.configSelections, [route.cli]: { configId: shared.configId, revision: shared.revision } } };
+      thinkingMode: route.thinkingMode, openCodeVariant: route.openCodeVariant ?? null } : undefined };
 }
 function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRuntimeComposition> {
   if (departmentRuntimeComposition) return departmentRuntimeComposition;
   const runtime = getLoopPlusRuntimeAdapter();
   const runtimeStore = getDepartmentExecutionStore();
-  const executionRecovery = new DepartmentExecutionRecovery(runtimeStore, path.join(DATA_DIR, "department-execution-owners"), async ({ selection }) => {
-    const current = await configService.readSharedConfigSelection(selection.cli);
-    return current?.ready === true && current.configId === selection.configId && current.revision === selection.revision;
-  });
+  const executionRecovery = new DepartmentExecutionRecovery(runtimeStore, path.join(DATA_DIR, "department-execution-owners"), async () => true);
   const groupCleanup = createDepartmentProductionCleanup({
     store: runtimeStore, producer: getDepartmentExecutionProducer(),
     ownerDirectory: path.join(DATA_DIR, "department-execution-owners"),
     workspaceKey: () => activeWorkspaceKey, readTask: readLoopTaskRecord,
-    readSelection: (cli) => configService.readSharedConfigSelection(cli),
   });
   const storedLeaderIdentity = createDepartmentStoredLeaderIdentityReader({
     store: runtimeStore, workspaceKey: () => activeWorkspaceKey,
@@ -4119,10 +4101,6 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
   const coldRecovery = new DepartmentColdGenerationRecovery({
     store: runtimeStore, authorityDirectory: path.join(DATA_DIR, "department-generation-authorities"),
     workspaceKey: () => activeWorkspaceKey, readTask: readLoopTaskRecord, verifyStoredIdentity: storedLeaderIdentity,
-    async verifySelection({ selection }) {
-      const selected = await configService.readSharedConfigSelection(selection.cli);
-      return selected?.ready === true && selected.configId === selection.configId && selected.revision === selection.revision;
-    },
     restoreTarget(task) {
       // Existing session manager restores the verified local transcript, never a new task/native session.
       const target = resolveLoopMainPromptTarget(task, { createIfMissing: true });
@@ -4255,7 +4233,11 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     openGroupChat: async (taskId) => openLoopGroupChatPanel(taskId),
     acquireDirectorOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
     acquireLeaderOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
-    applyClassicDecision: applyLoopMainDecision,
+    applyClassicDecision: (taskId, decision) => applyLoopMainDecision(
+      taskId,
+      decision,
+      modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),
+    ),
     report: (taskId, message) => {
       const task = readLoopTaskRecord(taskId), target = task && resolveLoopMainPromptTarget(task, { createIfMissing: false });
       if (target) appendSystemMessageForLoop(target, message, { taskRole: "main", loopTaskId: taskId, merge: false });
@@ -4316,7 +4298,6 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
       getActiveConfigIdForCli,
       assertNewTaskModeAvailable: () => assertModeAvailable("loop_plus", readToolSettings()),
       decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
-      acceptanceLimit: () => getGlobalLoopPlusMaxAcceptances(),
       launchDelayMs: (lastLaunchAt) => getLoopSubtaskLaunchDelayMs(lastLaunchAt),
       readTask: (taskId) => readLoopTaskRecord(taskId),
       createTask: ({ cli, rootPrompt, sessionId, snapshot, prompt, departmentMetadata }) => {
@@ -4351,7 +4332,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           if (!acceptancePlan) throw new Error("组长统一验收方案缺失，任务未创建。");
           task = getDepartmentOwnershipIndex().create(prepareDepartmentTaskRecord({ ...task,
             schedulingMode: "event_driven", loopPlus: snapshot, loopPlusMainPhase: "decomposing",
-            loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(), loopSubtaskMode,
+            loopSubtaskMode,
           }, departmentMetadata, acceptancePlan));
           getDepartmentExecutionProducer().recordNewLeader(task);
           ensureLoopCommunicationFiles(task.id, task.rootPrompt);
@@ -4362,7 +4343,6 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           schedulingMode: "event_driven",
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
-          loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
           loopSubtaskMode,
           ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
@@ -4373,7 +4353,6 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           schedulingMode: "event_driven",
           loopPlus: snapshot,
           loopPlusMainPhase: "decomposing",
-          loopPlusMaxAcceptances: getGlobalLoopPlusMaxAcceptances(),
           loopSubtaskMode,
           ...(acceptancePlan ? { loopPlusAcceptancePlan: acceptancePlan } : {}),
           ...(modelRouting ? { modelRouting } : {}),
@@ -4662,40 +4641,7 @@ function loopPlusHostMessage(message: string, taskId: string): string {
   if (message === "loop-plus-resume-blocked") {
     return t("run.loopPlusPaused", { detail: "上次停止的子任务仍在结束执行或等待资源释放。请等待收尾完成后再次继续；当前不会重复派发这些子任务。" });
   }
-  if (message === "loop-plus-acceptance-limit") {
-    return t("run.loopPlusAcceptanceLimit", loopPlusAcceptanceLimitDetail(task));
-  }
   return t("run.loopPlusPaused", { detail: message });
-}
-
-function loopPlusAcceptanceLimitDetail(task: LoopTaskRecord | null): {
-  accepted: number;
-  limit: number;
-  pending: number;
-} {
-  const limit = resolveLoopPlusMaxAcceptances(task?.loopPlusMaxAcceptances);
-  const snapshot = task?.loopPlus;
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    return { accepted: 0, limit, pending: 0 };
-  }
-  const raw = snapshot as {
-    seenAttempts?: unknown;
-    reviewQueue?: unknown;
-    currentReview?: unknown;
-  };
-  const accepted = Array.isArray(raw.seenAttempts)
-    ? raw.seenAttempts.filter((item) => (
-      Boolean(item)
-      && typeof item === "object"
-      && (item as { disposition?: unknown }).disposition === "reviewed"
-    )).length
-    : 0;
-  const queued = Array.isArray(raw.reviewQueue) ? raw.reviewQueue.length : 0;
-  return {
-    accepted,
-    limit,
-    pending: queued + (raw.currentReview ? 1 : 0),
-  };
 }
 
 async function runEventDrivenLoopPrompt(
@@ -4966,14 +4912,12 @@ async function runLoopPromptOrchestration(
   if (!task) {
     return;
   }
-  task = ensureLoopTaskMaxRoundsAtLeast(task, getGlobalLoopMaxRounds());
   onTaskOwnershipAcquired?.(task.id, target);
   await postPanelState();
   void openLoopGroupChatPanel(task.id);
 
-  while (round <= task.maxRounds) {
-    const latestRecord: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
-    const latest: LoopTaskRecord = ensureLoopTaskMaxRoundsAtLeast(latestRecord, getGlobalLoopMaxRounds());
+  while (true) {
+    const latest: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
     task = latest;
     if (isLoopTaskBlockedByMainAiFailureLimit(latest)) {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(latest));
@@ -5091,7 +5035,7 @@ async function runLoopPromptOrchestration(
     }
 
     const nextMainRound = round + 1;
-    if (nextMainRound <= decisionRunResult.task.maxRounds) {
+    if (subtaskResults.some((result) => result.status === "end")) {
       appendSystemMessageForLoop(
         target,
         buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask))
@@ -5100,15 +5044,6 @@ async function runLoopPromptOrchestration(
     round = nextMainRound;
   }
 
-  if (!task) {
-    return;
-  }
-  const finalRecord = updateLoopTaskRecord(task.id, {
-    status: "needs-review",
-    updatedAt: Date.now(),
-    finalSummary: "Reached the maximum automatic loop rounds. Manual review is required.",
-  });
-  appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(finalRecord ?? task));
 }
 
 function requireLoopOrchestrationHost(): LoopOrchestrationHost {
@@ -5171,7 +5106,7 @@ function resolvePreloadedExecutionModel(input: PromptRunInput, cli: CliName): st
   return typeof displayName === "string" && displayName.trim() ? displayName.trim() : recorded;
 }
 
-function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget, options: { captureTaskSummary?: boolean } = {}): PromptRunInput {
+function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTarget, options: { captureTaskSummary?: boolean; messageId?: string } = {}): PromptRunInput {
   if (input.preloadedUserMessageId) {
     return input;
   }
@@ -5189,7 +5124,7 @@ function preloadUserMessageForPrompt(input: PromptRunInput, target: PromptRunTar
     ? firstExecutionDisplayModel
     : firstExecutionDisplayModel;
   const createdAt = Date.now();
-  const messageId = createMessageId();
+  const messageId = options.messageId ?? createMessageId();
   const message = buildUserChatMessage({
     ...input,
     executionModel,
@@ -5222,7 +5157,7 @@ function rememberConversationTaskSummarySubmission(input: PromptRunInput, target
     const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
     const requirement = newSubmission ? input.displayPrompt : task?.rootPrompt ?? input.displayPrompt;
     if (!requirement?.trim()) return undefined;
-    const configId = input.configSelections?.[target.cli]?.configId ?? getActiveConfigIdForCli(target.cli);
+    const configId = getActiveConfigIdForCli(target.cli);
     const model = input.model ?? getSelectedCliModel(target.cli, configId);
     return {
       workspace: activeWorkspaceKey, draft, requirement, model,
@@ -5417,9 +5352,10 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
       if (!await configApplyQueue.waitForIdle(leaderCli)) throw new Error("配置应用失败，组长任务未启动。");
       assert();
       const fixed = await prepareDepartmentInvocation(input, options.targetTabId); assert();
-      const target = resolvePromptRunTarget(options.targetTabId), expected = fixed.configSelections?.[leaderCli];
+      const target = resolvePromptRunTarget(options.targetTabId);
+      const expected = { configId: fixed.executionProfile?.configId ?? null, revision: "department-role" };
       const mode = fixed.thinkingModeOverride;
-      if (!target || target.cli !== leaderCli || !expected || !mode) throw new Error("部门组长原生执行配置未支持，任务未启动。");
+      if (!target || target.cli !== leaderCli || !mode) throw new Error("部门组长原生执行配置未支持，任务未启动。");
       if (leaderCli === "opencode") {
         if (normalizeThinkingWorkspaceFiles(getThinkingWorkspaceFiles("opencode", mode)).length > 0) {
           throw new Error("部门 OpenCode 组长暂不支持自定义思考工作区文件，任务未启动。");
@@ -5511,7 +5447,7 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
   try {
     const fixed = await prepareDepartmentInvocation(input, options.targetTabId ?? null);
     const target = resolvePromptRunTarget(options.targetTabId ?? null);
-    const expected = target && fixed.configSelections?.[target.cli];
+    const expected = target && { configId: fixed.executionProfile?.configId ?? null, revision: "department-role" };
     if (!fixed.loopTaskId || !target?.sessionId || !expected) throw new Error("部门任务执行配置或会话缺失。");
     await getDepartmentInteractiveRuntime().run({
       taskId: fixed.loopTaskId, role: fixed.taskRole === "subtask" ? "employee" : "leader",
@@ -5705,7 +5641,6 @@ async function runPromptNow(
         const abortCodexPreparation = () => codexPreparationAbort.abort();
         options.signal?.addEventListener("abort", abortCodexPreparation, { once: true });
         if (options.signal?.aborted) abortCodexPreparation();
-        let executionLease: Awaited<ReturnType<typeof configService.acquireRuntimeConfigExecution>> | undefined;
         try {
           if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
             throw new Error("配置应用失败，任务未启动，请重新选择配置后重试。");
@@ -5717,20 +5652,25 @@ async function runPromptNow(
             currentAttemptInput = attemptInput;
           }
           const configState = await loadConfigState(attemptTarget.cli);
-          const expected = attemptInput.configSelections?.[attemptTarget.cli]
-            ?? (!attemptInput.configSelections && configState.revision
-              ? { configId: configState.activeConfigId, revision: configState.revision } : null);
-          if (!expected || configState.configurationError) throw new ConfigSelectionChangedError();
-          executionLease = promptRunHandoff.trackLease(attemptTarget.tabId,
-            await configService.acquireRuntimeConfigExecution(attemptTarget.cli, expected));
-          const executionConfigId = executionLease.selection.configId;
           const previousConfigId = attemptInput.taskRole === "subtask"
             ? attemptInput.loopSubtaskConfigId
             : attemptInput.executionProfile?.configId
               ?? (attemptInput.loopTaskId ? readLoopTaskRecord(attemptInput.loopTaskId)?.originProfile?.configId : undefined);
-          if (attemptInput.loopTaskId && readLoopTaskRecord(attemptInput.loopTaskId)?.department
-            && previousConfigId !== executionConfigId) throw new Error("部门固化角色档案不可用，拒绝替换角色配置。");
-          if (previousConfigId && previousConfigId !== executionConfigId) {
+          const departmentTask = Boolean(attemptInput.loopTaskId && readLoopTaskRecord(attemptInput.loopTaskId)?.department);
+          const executionConfigId = departmentTask
+            ? previousConfigId ?? configState.activeConfigId
+            : configState.activeConfigId ?? getActiveConfigIdForCli(attemptTarget.cli);
+          if (configState.configurationError && !departmentTask) throw new Error("当前 CLI 配置读取失败，任务未启动。");
+          if (departmentTask && executionConfigId) {
+            if (!await configService.getConfigById(attemptTarget.cli, executionConfigId)) {
+              throw new Error("部门固化角色档案已不存在，拒绝启动。");
+            }
+            if (executionConfigId !== configState.activeConfigId
+              && await applyConfigById(attemptTarget.cli, executionConfigId) !== "applied") {
+              throw new Error("部门固化角色档案应用失败，任务未启动。");
+            }
+          }
+          if (!departmentTask && previousConfigId && previousConfigId !== executionConfigId) {
             const role = attemptInput.taskRole === "subtask" ? "subtask" : "main";
             const model = attemptInput.taskRole
               ? getSelectedLoopCliModel(attemptTarget.cli, role, executionConfigId)
@@ -5746,10 +5686,6 @@ async function runPromptNow(
             };
           }
           appliedExecutionConfigId = executionConfigId;
-          currentAttemptInput = {
-            ...currentAttemptInput,
-            configSelections: { ...currentAttemptInput.configSelections, [attemptTarget.cli]: executionLease.selection },
-          };
           if (departmentProcess && attemptTarget.cli === "opencode") {
             const mode = currentAttemptInput.thinkingModeOverride;
             if (!mode || normalizeThinkingWorkspaceFiles(getThinkingWorkspaceFiles("opencode", mode)).length > 0) {
@@ -5765,7 +5701,7 @@ async function runPromptNow(
               invoked = true;
               return startDepartmentProcessInvocation(getDepartmentProcessPreparation(), currentAttemptInput.loopTaskId,
                 currentAttemptInput.loopSubtaskId, handlers,
-                { configId: executionLease!.selection.configId, revision: executionLease!.selection.revision }, async (selection, sessionId) => {
+                { configId: executionConfigId, revision: "department-role" }, async (selection, sessionId) => {
                   if ((streamOptions.sessionId && streamOptions.sessionId !== sessionId) || streamOptions.commandOverride || streamOptions.argsOverride
                     || (selection.model !== null && streamOptions.model !== selection.model)) throw new Error("部门原生会话或角色参数冲突。");
                   const command = splitConfiguredCliCommand(getCliCommand(cli));
@@ -5775,8 +5711,8 @@ async function runPromptNow(
                   }
                   if (!command[0] || !workspaceDirectory) throw new Error("部门执行缺少工作区或 CLI。");
                   const targetConfig = DEPARTMENT_CONFIG_PATHS.opencode.config;
-                  return {
-                    configurationDirectory: path.join(path.dirname(targetConfig), ".sinitek-runtime-coordination", path.basename(targetConfig)),
+            return {
+              configurationDirectory: path.join(path.dirname(targetConfig), ".sinitek-runtime-coordination", path.basename(targetConfig)),
                     workspaceDirectory,
                     launch: { command: command[0], args: [...command.slice(1), ...buildDepartmentProcessArgs(cli, { ...streamOptions, sessionId }, prompt)],
                       baseEnvironment: { ...(streamOptions.environment ?? process.env) }, envOverrides: streamOptions.envOverrides ? { ...streamOptions.envOverrides } : undefined,
@@ -5795,7 +5731,7 @@ async function runPromptNow(
             if (!mode || normalizeThinkingWorkspaceFiles(getThinkingWorkspaceFiles("codex", mode)).length > 0) {
               throw new Error("部门独立 Codex 暂不支持自定义思考工作区文件，任务未启动。");
             }
-            const selection = { ...executionLease.selection };
+            const expectedSelection = { configId: executionConfigId, revision: "department-role" };
             const command = getCliCommand("codex"), workspaceDirectory = resolveWorkspaceCwd();
             const shell = getMacTaskShell(), environment = { ...process.env };
             const model = currentAttemptInput.model ?? null;
@@ -5808,7 +5744,7 @@ async function runPromptNow(
               if (invoked || !currentAttemptInput.loopTaskId || !currentAttemptInput.loopSubtaskId) throw new Error("部门原执行不能重试或替换 Owner。");
               invoked = true;
               await getDepartmentCodexPreparation().run(currentAttemptInput.loopTaskId, currentAttemptInput.loopSubtaskId, handlers,
-                selection, async (fixed, threadId) => {
+                expectedSelection, async (fixed, threadId) => {
                   if (fixed.model !== model || fixed.thinkingMode !== mode) throw new Error("部门 Codex 角色参数冲突。");
                   return { configurationDirectory: path.join(path.dirname(targetConfig), ".sinitek-runtime-coordination", path.basename(targetConfig)),
                     workspaceDirectory, macTaskShell: shell, prompt, requestUserInputEnabled: handlers.requestUserInputEnabled === true,
@@ -5831,8 +5767,6 @@ async function runPromptNow(
         } catch (error) {
           departmentTabConsumer?.finish(false);
           options.signal?.removeEventListener("abort", abortCodexPreparation);
-          await executionLease?.release();
-          if (error instanceof ConfigSelectionChangedError) void postPanelState();
           appendSystemMessageForPromptTarget(attemptTarget, getErrorInfo(error).message);
           throw error;
         }
@@ -5874,23 +5808,6 @@ async function runPromptNow(
         } finally {
           departmentTabConsumer?.finish(departmentConsumed);
           options.signal?.removeEventListener("abort", abortCodexPreparation);
-          if (executionLease) {
-            await releaseRuntimeConfigExecutionLease(executionLease, (releaseError, attempt) => {
-              const info = getErrorInfo(releaseError);
-              void logError("runtime-config-execution-lease-release-failed", {
-                cli: attemptTarget.cli,
-                tabId: attemptTarget.tabId,
-                taskRole: currentAttemptInput.taskRole,
-                loopTaskId: currentAttemptInput.loopTaskId,
-                loopSubtaskId: currentAttemptInput.loopSubtaskId,
-                loopAttemptId: currentAttemptInput.loopAttemptId,
-                error: info.message,
-                errorCode: info.code,
-                attempt,
-              });
-            });
-          }
-
         }
         if (!departmentCodexRun && attemptInput.taskRole === "subtask" && attemptInput.loopTaskId && attemptInput.loopSubtaskId) {
           const task = readLoopTaskRecord(attemptInput.loopTaskId);
@@ -5972,7 +5889,6 @@ async function runPromptNow(
       loopAttemptId: promptInput.loopAttemptId,
       error: info.message,
       errorCode: info.code,
-      ...(error instanceof RuntimeConfigLockTimeoutError ? { configLock: error.diagnostic } : {}),
     });
     if (!isTabRunActive(target.tabId)) {
       if (info.code === "SESSION_RUN_ACTIVE") {
@@ -6154,7 +6070,6 @@ function persistAutoCompactMessagesPreservingConcurrentTranscript(): void {
 async function runContextCompaction(
   options: ContextCompactionOptions = {},
   isolatedRun = false,
-  execution?: LoopMainAutoCompactRequest["execution"],
 ): Promise<boolean> {
   const deps: ContextCompactionRunDeps = {
     getCurrentCli: () => currentCli,
@@ -6165,9 +6080,9 @@ async function runContextCompaction(
     hasActiveProcessOrInteractiveStop: () => Boolean(primaryPromptRunController.activeProcess || primaryPromptRunController.activeInteractiveStop),
     resolveInteractiveSessionForResume,
     resolveWorkspaceCwd,
-    getActiveConfigIdForCli: execution ? () => execution.configSelection.configId : getActiveConfigIdForCli,
-    getSelectedCliModel: execution ? () => execution.model : getSelectedCliModel,
-    getEffectiveThinkingMode: execution?.thinkingMode ? () => execution.thinkingMode! : getEffectiveThinkingMode,
+    getActiveConfigIdForCli,
+    getSelectedCliModel,
+    getEffectiveThinkingMode,
     getWorkspaceInteractiveMode,
     applyThinkingWorkspaceFiles,
     getEffectiveCliArgs,
@@ -6228,7 +6143,7 @@ async function runContextCompaction(
       if (cli !== "opencode") {
         return { model: selectedModel };
       }
-      const configId = execution ? execution.configSelection.configId : getActiveConfigIdForCli("opencode");
+      const configId = getActiveConfigIdForCli("opencode");
       const runtimePreparation = await prepareOpenCodeRuntime({
         configId,
         role: "main",
@@ -6321,7 +6236,7 @@ function reserveLoopMainAutoCompactRun(
 async function runAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string,
-  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; isolatedRun?: boolean; execution?: LoopMainAutoCompactRequest["execution"] },
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; isolatedRun?: boolean },
 ): Promise<void> {
   const compacted = await runContextCompaction({
     silent: true,
@@ -6331,7 +6246,7 @@ async function runAutoCompactContextAfterPromptSuccess(
     timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
     allowActiveRun: request.allowActiveRun,
     onStopReady: request.onStopReady,
-  }, request.isolatedRun, request.execution);
+  }, request.isolatedRun);
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
     tabId: target.tabId,
@@ -6361,26 +6276,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
     return;
   }
   if (options.isolatedRun) {
-    const lease = options.execution
-      ? await configService.acquireRuntimeConfigExecution(target.cli, options.execution.configSelection)
-      : undefined;
-    try {
-      await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
-    } finally {
-      if (lease) {
-        await releaseRuntimeConfigExecutionLease(lease, (releaseError, attempt) => {
-          const info = getErrorInfo(releaseError);
-          void logError("runtime-config-execution-lease-release-failed", {
-            cli: target.cli,
-            tabId: target.tabId,
-            activity: "contextCompaction",
-            error: info.message,
-            errorCode: info.code,
-            attempt,
-          });
-        });
-      }
-    }
+    await runAutoCompactContextAfterPromptSuccess(target, sessionId, { ...options, allowActiveRun: false });
     return;
   }
   const overlapLoopDispatch = options.overlapLoopDispatch === true;
@@ -6853,7 +6749,7 @@ function createLoopTaskRecord(
     status: "running",
     createdAt: now,
     updatedAt: now,
-    maxRounds: getGlobalLoopMaxRounds(),
+    maxRounds: LOOP_DEFAULT_MAX_ROUNDS,
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,

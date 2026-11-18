@@ -1060,7 +1060,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (status === "error" && userMessage) {
         appendSystemMessageForTab(userMessage);
       }
-      sendRunStatusForTab(tabId, status === "end" ? "end" : status);
+      const deferEndStatus = status === "end" && shouldAutoCompactAfterRun && !input.loopTaskId;
+      if (!deferEndStatus) {
+        sendRunStatusForTab(tabId, status);
+      }
       const taskRecord = appendCompletionMessageForTab(status);
       flushPersistForInteractiveRun();
       maybePersistLongTermMemoryFromRun({
@@ -1075,10 +1078,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         skip: input.skipLongTermMemoryPersist,
       });
       interactiveRunsByTabId.delete(tabId);
+      let compactionStarted = false;
       if (status === "end" && shouldAutoCompactAfterRun) {
         const compactTarget = { ...target, sessionId: uiSessionId };
-        await scheduleAutoCompactAfterPrompt({ ...input, model: selectedModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
+        compactionStarted = await scheduleAutoCompactAfterPrompt({ ...input, model: selectedModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
           maybeAutoCompactContextAfterPromptSuccess(compactTarget, compactTarget.sessionId, taskRecord?.durationMs ?? null, options));
+      }
+      if (deferEndStatus && !compactionStarted) {
+        sendRunStatusForTab(tabId, "end");
       }
     };
 

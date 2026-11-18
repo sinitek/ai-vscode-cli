@@ -15,11 +15,13 @@ import {
   resolveGlobalHumanInteractionEnabled,
   resolveHumanInteractionTimeoutMinutes,
   resolveLongTermMemoryEnabled,
+  resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
   normalizeHistoryRetentionDays,
   type ToolSettingsState,
 } from "../../toolSettings";
 import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
+import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 test("chat message limit keeps old settings compatible and preserves neighboring values", () => {
   assert.deepEqual(normalizeToolSettings(undefined), {});
@@ -64,7 +66,26 @@ test("instruction bubble visibility accepts only booleans and keeps old settings
   }
 });
 
-test("chat display settings persist globally without losing other settings", () => {
+test("chat input height accepts finite pixel heights at or above the three-row minimum", () => {
+  for (const height of [PROMPT_INPUT_MIN_HEIGHT, 190.5]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, promptInputHeight: height }), { debug: true, promptInputHeight: height });
+  }
+  for (const height of [undefined, null, 0, PROMPT_INPUT_MIN_HEIGHT - 0.5, "190.5", NaN, Infinity]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, promptInputHeight: height }), { debug: true });
+  }
+});
+
+test("new task mode defaults to Vibe and accepts only the three visible modes", () => {
+  assert.equal(resolveNewTaskInteractiveMode(normalizeToolSettings({}).newTaskInteractiveMode), "coding");
+  for (const mode of ["coding", "loop", "loop_plus"]) {
+    assert.equal(normalizeToolSettings({ newTaskInteractiveMode: mode }).newTaskInteractiveMode, mode);
+  }
+  for (const mode of [null, "plan", "lobster", "Loop+", true, {}]) {
+    assert.equal(normalizeToolSettings({ newTaskInteractiveMode: mode }).newTaskInteractiveMode, "coding");
+  }
+});
+
+test("tool settings persist globally without losing other settings", () => {
   const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-chat-limit-settings-"));
   try {
     const script = `
@@ -85,9 +106,22 @@ test("chat display settings persist globally without losing other settings", () 
       settings.writeToolSettings({ ...settings.readToolSettings(), loopGroupChatMessageLimit: "200.9" });
       assert.deepEqual(settings.readToolSettings(), { ...expected, loopGroupChatMessageLimit: 200 });
       assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { ...expected, loopGroupChatMessageLimit: 200 });
+      const resized = { ...settings.readToolSettings(), promptInputHeight: 190.5 };
+      settings.writeToolSettings(resized);
+      assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), resized);
+      const settingsPath = ${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))};
+      delete require.cache[require.resolve(settingsPath)];
+      assert.deepEqual(require(settingsPath).readToolSettings(), resized);
+      settings.writeToolSettings({ ...settings.readToolSettings(), promptInputHeight: undefined });
       for (const enabled of [true, false]) {
         settings.writeToolSettings({ ...settings.readToolSettings(), hideInstructionBubbles: enabled });
         const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: enabled };
+        assert.deepEqual(settings.readToolSettings(), persisted);
+        assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
+      }
+      for (const mode of ["coding", "loop", "loop_plus"]) {
+        settings.writeToolSettings({ ...settings.readToolSettings(), newTaskInteractiveMode: mode });
+        const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: false, newTaskInteractiveMode: mode };
         assert.deepEqual(settings.readToolSettings(), persisted);
         assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
       }
@@ -261,14 +295,13 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "42.9",
       loopPlusDecisionSubtaskMax: "8.2",
-      loopPlusMaxAcceptances: "100.8",
+      loopPlusSubtaskMaxRounds: "100.8",
       humanInteractionTimeoutMinutes: "10.9",
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
-      loopMaxRounds: 42,
       loopPlusDecisionSubtaskMax: 8,
-      loopPlusMaxAcceptances: 100,
+      loopPlusSubtaskMaxRounds: 100,
       humanInteractionTimeoutMinutes: 10,
     },
   );
@@ -276,7 +309,7 @@ test("normalizes global Loop tool settings", () => {
     normalizeToolSettings({
       loopMaxRounds: "",
       loopPlusDecisionSubtaskMax: "",
-      loopPlusMaxAcceptances: "",
+      loopPlusSubtaskMaxRounds: "",
       humanInteractionTimeoutMinutes: "",
       loopSubtaskMaxThinkingMode: "invalid",
     }),
@@ -312,7 +345,6 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
       [getLegacyLoopPropertyKey("memoryAutoExtractAfterLoopTask")]: true,
     }),
     {
-      loopMaxRounds: 31,
       memoryAutoExtractAfterLoopTask: true,
     },
   );
@@ -321,6 +353,13 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
       loopMaxRounds: 12,
       [getLegacyLoopPropertyKey("loopMaxRounds")]: 99,
     }),
-    { loopMaxRounds: 12 },
+    {},
   );
+});
+
+
+test("clamps subtask rounds and ignores the removed acceptance setting", () => {
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), { loopPlusSubtaskMaxRounds: 50 });
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 10000 }), { loopPlusSubtaskMaxRounds: 9999 });
+  assert.deepEqual(normalizeToolSettings({ loopPlusMaxAcceptances: 1 }), {});
 });

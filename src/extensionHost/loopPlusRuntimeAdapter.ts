@@ -73,7 +73,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   getActiveConfigIdForCli?: (cli: LoopPlusPromptTarget["cli"]) => string | null;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
-  acceptanceLimit?: LoopPlusOrchestrationDeps["acceptanceLimit"];
+  subtaskRoundLimit?: LoopPlusOrchestrationDeps["subtaskRoundLimit"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   isInvocationActive?: (tabId: string) => boolean;
@@ -126,7 +126,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   /** True only when the trusted Owner owns root/links/tab; EH must not clean them again. */
   ownsDepartmentAttemptResources?: (request: LoopPlusAttemptRequest) => boolean;
   observeAttemptTermination?: (request: LoopPlusAttemptRequest, target: LoopPlusPromptTarget) => { done: Promise<void> } | null;
-  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null }) => LoopPlusPromptTarget;
+  createSubtaskTarget: (cli: LoopPlusPromptTarget["cli"], options?: { sessionId?: string | null; loopTaskId?: string; loopSubtaskId?: string }) => LoopPlusPromptTarget;
   recordDepartmentSubtaskTarget?: (target: LoopPlusPromptTarget) => void;
   onSubtaskPreparationFailed?: (tabId: string, status: "stopped" | "error") => void;
   closeSubtaskTab: (tabId: string) => Promise<void>;
@@ -286,7 +286,6 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     rememberLivePrompt(taskId, {
       displayPrompt: prompt.displayPrompt,
       modelPrompt: prompt.modelPrompt ?? prompt.displayPrompt,
-      configSelections: prompt.configSelections,
       contextTags: [],
       model: prompt.model,
       loopMainModel: prompt.loopMainModel,
@@ -336,7 +335,6 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       live: task?.modelRouting ? applyLoopModelRoutingToPrompt(live ?? {}, task.modelRouting, task.originProfile) : live,
     });
     const promptInput: PromptRunInput = {
-      ...(livePrompts.get(taskId)?.configSelections ? { configSelections: livePrompts.get(taskId)!.configSelections } : {}),
       displayPrompt,
       modelPrompt: task?.department?.role === "leader" ? `${buildDepartmentRolePrompt(role === "main" ? "leader" : "employee")}\n\n${modelPrompt}` : modelPrompt,
       contextTags: [],
@@ -692,7 +690,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     return handle;
 
     function createTarget(): LoopPlusPromptTarget {
-      const target = deps.createSubtaskTarget(request.targetCli, { sessionId: continuation.sessionId });
+      const target = deps.createSubtaskTarget(request.targetCli, {
+        sessionId: continuation.sessionId,
+        loopTaskId: request.taskId,
+        loopSubtaskId: request.subtaskId,
+      });
       if (task?.department?.role === "leader") deps.recordDepartmentSubtaskTarget?.(target);
       return target;
     }
@@ -916,7 +918,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
         decisionSubtaskMax: deps.decisionSubtaskMax,
-        acceptanceLimit: deps.acceptanceLimit,
+        subtaskRoundLimit: deps.subtaskRoundLimit,
         delay: deps.delay,
         now,
         hasActiveSubtasks: deps.hasActiveSubtasks,
@@ -1047,7 +1049,6 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     result = host().tryRun({
       displayPrompt: input.displayPrompt,
       modelPrompt: input.modelPrompt,
-      configSelections: input.configSelections,
       ...(input.loopPlusAcceptancePlan ? { loopPlusAcceptancePlan: input.loopPlusAcceptancePlan } : {}),
       model: input.model,
       loopMainModel: input.loopMainModel,

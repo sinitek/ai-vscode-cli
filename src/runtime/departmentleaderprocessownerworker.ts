@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { createLoopSubtaskExecutionRoot } from "../loopSubtaskExecutionRoot";
 import { DepartmentExecutionOwnerServer } from "./departmentexecutionowner";
 import { DepartmentExecutionOwnerClient } from "./departmentexecutionownerclient";
@@ -121,12 +120,7 @@ export async function runDepartmentLeaderProcessOwnerWorker(): Promise<void> {
 
   async function prepare(): Promise<void> {
     const i = input!;
-    const config = new SharedRuntimeConfig(i.configurationDirectory);
-    const lease = await config.acquire({ configId: i.selection.configId, revision: i.selection.revision });
-    if (!process.connected || !lease.selection.ready || lease.selection.configId !== i.selection.configId
-      || lease.selection.revision !== i.selection.revision || !config.isCurrentSelection({ configId: i.selection.configId, revision: i.selection.revision })) {
-      await lease.release(); throw new Error("department-leader-process-configuration-conflict");
-    }
+    if (!process.connected) throw new Error("department-leader-process-channel-closed");
     const root = i.hostExecutionRoot ? null : createLoopSubtaskExecutionRoot(i.launch.cwd);
     let disposed = false;
     owner = new DepartmentLeaderProcessOwner({ ...i, launch: { ...i.launch, cwd: root?.cwd ?? i.launch.cwd } }, async () => {
@@ -144,17 +138,16 @@ export async function runDepartmentLeaderProcessOwnerWorker(): Promise<void> {
           || ["failed", "unobservable"].includes(String(released.status)) && typeof released.reason === "string")
           ? released as CleanupResult : { status: "unobservable", reason: "leader-owned-root-release-unconfirmed" };
       if (rootFact.status !== "confirmed") throw new Error("leader-owned-root-release-unconfirmed");
-      await lease.release();
       const base = { processTerminal: { status: "confirmed", evidence: "owner-generation-drained" },
         turnTerminal: { status: "not-applicable", reason: "per-invocation-turn-terminal" },
-        streams: { status: "confirmed", evidence: "owner-generation-drained" }, runner: { status: "confirmed", evidence: "owner-config-lease-released" },
+        streams: { status: "confirmed", evidence: "owner-generation-drained" }, runner: { status: "confirmed", evidence: "owner-process-drained" },
         executionRoot: rootFact, links: rootFact,
         temp: i.launch.overlay ? { status: "confirmed", evidence: "invocation-overlays-released" } : { status: "not-applicable", reason: "no-owner-temp-overlay" },
         tab: { status: "unobservable", reason: "leader-tab-pending" } };
       const tabResult = await request("release-tab").catch(() => undefined);
       const tab = isExecutionCleanup({ ...base, tab: tabResult }) ? tabResult as CleanupResult
         : { status: "unobservable", reason: "leader-tab-release-unconfirmed" } as CleanupResult;
-      return { runner: { status: "confirmed", evidence: "leader-config-lease-released-after-process-drain" },
+      return { runner: { status: "confirmed", evidence: "leader-process-drained" },
         executionRoot: rootFact, links: rootFact,
         temp: i.launch.overlay ? { status: "confirmed", evidence: "invocation-overlays-released-by-process-lifecycle" }
           : { status: "not-applicable", reason: "no-owner-temp-overlay" },

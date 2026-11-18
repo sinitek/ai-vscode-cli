@@ -304,7 +304,8 @@ export const VIEW_CONTENT_SCRIPT_DEPARTMENT_CONFIGURATION = `
         const message = document.getElementById("departmentRoleMessage");
         if (message) message.textContent = state.interactiveMode === "department" ? issue : "";
         if (typeof elements !== "undefined" && elements.sendPrompt) {
-          elements.sendPrompt.disabled = Boolean(issue);
+          elements.sendPrompt.disabled = Boolean(issue)
+            || (typeof isCreatingConversationTab === "function" && isCreatingConversationTab(tabId));
           elements.sendPrompt.title = issue || t("sendButton");
         }
       }

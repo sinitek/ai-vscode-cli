@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as childProcess from "child_process";
 import { SharedRuntimeConfig } from "../../../config/sharedRuntimeConfig";
 import { createLoopPlusScheduler } from "../../../loopPlusScheduler";
 import { createDepartmentRuntimeSnapshot } from "../../../extensionHost/departmentruntimestate";
@@ -18,6 +19,14 @@ export async function until(predicate: () => boolean | Promise<boolean>): Promis
 }
 export async function setup(t: test.TestContext) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-process-production-"));
+  const workers: childProcess.ChildProcess[] = [];
+  const children = require("child_process") as typeof childProcess;
+  const fork = children.fork;
+  t.mock.method(children, "fork", (...args: Parameters<typeof fork>) => {
+    const child = fork(...args);
+    if (String(args[0]).endsWith("departmentprocessownerworker.js")) workers.push(child);
+    return child;
+  });
   fs.mkdirSync(path.join(directory, "workspace"));
   fs.writeFileSync(path.join(directory, "workspace", "source.txt"), "controlled source");
   const config = new SharedRuntimeConfig(path.join(directory, "configuration"));
@@ -54,19 +63,12 @@ export async function setup(t: test.TestContext) {
     fs.writeFileSync(path.join(directory, "export-open"), "open");
     fs.writeFileSync(path.join(directory, "create-open"), "open");
     fs.writeFileSync(path.join(directory, "server-close-open"), "open");
-    const state = JSON.parse(fs.readFileSync(path.join(directory, "configuration", "selection.json"), "utf8"));
-    for (const lease of state.leases) {
-      // Only PIDs registered by this fixture's isolated config directory, never a cleanup assertion.
-      if (lease.pid !== process.pid) { try { process.kill(lease.pid, "SIGTERM"); } catch { /* already exited */ } }
-    }
-    await until(() => state.leases.every((lease: { pid: number }) => {
-      if (lease.pid === process.pid) return true;
-      try { process.kill(lease.pid, 0); return false; } catch { return true; }
-    }));
+    for (const worker of workers) if (worker.exitCode === null && worker.signalCode === null) worker.kill();
+    await until(() => workers.every(worker => worker.exitCode !== null || worker.signalCode !== null));
     if (process.env.DEPARTMENT_KEEP_FIXTURE) t.diagnostic(directory);
     else fs.rmSync(directory, { recursive: true, force: true });
   });
-  return { admission, directory, config, current, expected, host, tasks, leader, root, store };
+  return { admission, directory, config, current, expected, host, tasks, leader, root, store, workers };
 }
 
 /** Hold a real worker event at the trusted host boundary; no worker test switches or timers. */

@@ -23,6 +23,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
           queueEditingDraft: "",
           pendingRunPrompt: null,
           promptSubmission: null,
+          interactiveModeSelection: null,
           suppressQueueFlushOnce: false,
           currentRunPrompt: "",
           lastRunStatus: "",
@@ -101,6 +102,15 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
             delete loopMetaByTabId[key];
           }
         });
+        syncPendingPromptQueueState();
+      }
+
+      function syncPendingPromptQueueState() {
+        const hasPendingPrompts = Object.keys(conversationRuntimeByTabId).some((tabId) => {
+          const runtimeState = conversationRuntimeByTabId[tabId];
+          return runtimeState.pendingPromptQueue.length > 0;
+        });
+        vscode.postMessage({ type: "pendingPromptQueueChanged", hasPendingPrompts });
       }
 
       function isRuntimeStateForActiveTab(tabId) {
@@ -307,6 +317,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         runtimeState.messagesLoaded = true;
         runtimeState.messagesLoading = false;
         runtimeState.pendingPromptQueue.length = 0;
+        syncPendingPromptQueueState();
         runtimeState.queueEditingIndex = -1;
         runtimeState.queueEditingDraft = "";
         runtimeState.pendingRunPrompt = null;
@@ -538,7 +549,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         return {
           prompt,
           departmentConfigurationScope: typeof departmentRoleUi !== "undefined" ? departmentRoleUi.workspaceScope : undefined,
-          configSelections: readVisibleConfigSelections(),
           contextOptions: {
             includeCurrentFile,
             includeSelection,
@@ -612,7 +622,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE = `      ${buildFinalAnswerM
         return {
           prompt,
           ...(typeof payload.departmentConfigurationScope === "string" ? { departmentConfigurationScope: payload.departmentConfigurationScope } : {}),
-          ...(payload.configSelections && typeof payload.configSelections === "object" ? { configSelections: payload.configSelections } : {}),
           contextOptions: {
             includeCurrentFile: contextOptions.includeCurrentFile !== false,
             includeSelection: contextOptions.includeSelection !== false,

@@ -50,7 +50,7 @@ export async function runDepartmentCodexHostFixture(directory: string, workspace
   prepared.runner.model = null; prepared.runner.configFingerprint = identity.configFingerprint; delete prepared.runner.cwd;
   // A real task child reads both production persistent records before accepting its task.
   const command = prepared.runner.command;
-  const injected = `const task=JSON.parse(fs.readFileSync(${JSON.stringify(leader.taskStoreFile)},'utf8'));const runtime=JSON.parse(fs.readFileSync(${JSON.stringify(file("runtime/726f6f74.json"))},'utf8'));const selection=JSON.parse(fs.readFileSync(${JSON.stringify(file("configuration/selection.json"))},'utf8'));fs.writeFileSync(file('observed'),JSON.stringify({task,runtime,ownerLeases:selection.leases,cwd:process.cwd()}));`;
+  const injected = `const task=JSON.parse(fs.readFileSync(${JSON.stringify(leader.taskStoreFile)},'utf8'));const runtime=JSON.parse(fs.readFileSync(${JSON.stringify(file("runtime/726f6f74.json"))},'utf8'));fs.writeFileSync(file('observed'),JSON.stringify({task,runtime,ownerPid:process.ppid,cwd:process.cwd()}));`;
   fs.writeFileSync(command, fs.readFileSync(command, "utf8").replace("request=m.id;mark('task-started');", injected + "request=m.id;mark('task-started');"));
   const store = new DepartmentRuntimeStore(file("runtime")), runtime = createDepartmentRuntimeSnapshot("root");
   runtime.leaders.push({ taskId: "leader", leaderSubtaskId: "module", status: "running", generation: 1 });
@@ -90,6 +90,6 @@ export async function runDepartmentCodexHostFixture(directory: string, workspace
   const persisted = readLoopTaskRecord("leader")!.subTasks[0].executionSession;
   assert.equal(persisted?.sessionId, "native"); assert.equal(binding.identity.session.state, "bound");
   fs.writeFileSync(file("eh-result.json"), JSON.stringify({ identity: binding.identity, sessionId: persisted.sessionId, ehPid: process.pid,
-    adapterSignal: true, boundBeforeTask: true, leaseOwnedByWorker: true, scope: "real adapter + production repository/config + production coordinator; trusted fixture runPrompt callback" }));
+    adapterSignal: true, boundBeforeTask: true, scope: "real adapter + production repository/config + production coordinator; trusted fixture runPrompt callback" }));
   // The extension test host exits now while the original Owner and native turn remain live.
 }

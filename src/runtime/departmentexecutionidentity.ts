@@ -76,8 +76,7 @@ export type DepartmentExecutionSelection = {
   openCodeVariant: string | null;
 };
 /** Explicit allowlist of selection metadata. Never accepts ConfigItem,
- * SharedConfigSelection.profileDigest, env/auth contents or a full config body.
- * The caller must hold the existing role's configuration execution lease. */
+ * SharedConfigSelection.profileDigest, env/auth contents or a full config body. */
 export function fingerprintDepartmentExecutionSelection(selection: DepartmentExecutionSelection): {
   configFingerprint: string; profileFingerprint: string;
 } {

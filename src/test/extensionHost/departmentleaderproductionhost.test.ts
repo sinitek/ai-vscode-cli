@@ -120,8 +120,7 @@ else{if(fs.readFileSync(root+'/native-directory','utf8')!==process.cwd())process
     async close(tab) { record("tab-close-attempt"); if (tabFails) throw new Error("controlled-tab-failure"); tabs.delete(tab.id); record("tab-closed"); } });
   resources.recordCreated("leader-tab");
   const host = createDepartmentLeaderProductionHost({ producer, store, ownerDirectory: file("owners"), readTask, updateTask });
-  const groupCleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => workspace, readTask,
-    readSelection: async () => config.read() });
+  const groupCleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => workspace, readTask });
   const launch = { command: cli, baseArgs: ["run", "--format", "json"], cwd: workspace, baseEnvironment: { PATH: process.env.PATH } as NodeJS.ProcessEnv,
     overlay: { configContent: JSON.stringify({ provider: { fixture: { models: { model: {} } } } }), primaryModel: "fixture/model", smallModel: null } };
   const run = async (id: string, signal?: AbortSignal, output?: () => void | Promise<void>, withTab = true, taskPrompt = "controlled prompt") => {
@@ -239,7 +238,7 @@ scenario("OpenCode production leader first binding and same-session rounds aggre
   const binding = h.rows().bindings[0], client = h.producer.originalClient(binding); assert.ok(client);
   const heldConsumer = h.resources.beginConsumer("leader-tab");
   const observation = h.groupCleanup.observe(h.readTask("leader")!, 1); assert.ok(observation);
-  await until(() => JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length === 0);
+  await until(() => !fs.existsSync(nativeDirectory));
   assert.equal((await client.observeExecution(binding.identity)).status, "unknown", "receipt alone does not bypass original stopped confirmation");
   assert.equal(h.tabs.size, 1); assert.deepEqual(h.rows().set.state, "open");
   heldConsumer.finish(); await observation.done;
@@ -255,19 +254,13 @@ scenario("OpenCode production leader first binding and same-session rounds aggre
   h.host.release("leader");
 });
 
-for (const mode of ["cancel", "revoke", "config"] as const) scenario(`OpenCode production first preparation ${mode} cannot launch or retry`, async (t) => {
+for (const mode of ["cancel", "revoke"] as const) scenario(`OpenCode production first preparation ${mode} cannot launch or retry`, async (t) => {
   const h = await setup(t), abort = new AbortController(); fs.writeFileSync(h.file("hold-create"), "gate");
   const running = h.run("round-1", abort.signal);
   await until(() => h.events().includes("session-created"));
   assert.equal(h.rows().set.entries[0].executionId, null); assert.ok(!h.events().includes("task-run"));
   if (mode === "cancel") abort.abort();
   if (mode === "revoke") assert.ok(updateLoopTaskRecord("root", { status: "stopped" }));
-  // A real active lease rejects configuration replacement. Caller cancellation
-  // then closes preparation; no model prompt can follow the late response.
-  if (mode === "config") {
-    await assert.rejects(h.config.change(async () => ({ configId: "replacement", profileDigest: null })));
-    abort.abort();
-  }
   fs.unlinkSync(h.file("hold-create"));
   const result = await running;
   assert.equal(result.errors.length, 1);
@@ -321,12 +314,18 @@ scenario("OpenCode production granted output drains after stop while all later g
   assert.equal(h.rows().set.state, "closed"); assert.equal(h.tabs.size, 0);
 });
 
-scenario("OpenCode production stale configuration never reaches native preparation", async (t) => {
+scenario("OpenCode production keeps its fixed profile through a shared selection change during preparation", async (t) => {
   const h = await setup(t);
+  fs.writeFileSync(h.file("hold-create"), "gate");
+  const running = h.run("round-1");
+  await until(() => h.events().includes("session-created"));
   await h.config.change(async () => ({ configId: "replacement", profileDigest: null }));
-  assert.equal((await h.run("round-1")).errors.length, 1);
-  assert.equal(h.events().filter(v => v === "session-created" || v === "task-run").length, 0);
-  assert.equal(h.rows().set.entries.length, 1);
+  fs.unlinkSync(h.file("hold-create"));
+  assert.deepEqual((await running).errors, []);
+  assert.equal(h.rows().bindings[0].selection.configId, "profile");
+  assert.equal(h.events().filter(v => v === "task-run").length, 1);
+  const cleanup = h.groupCleanup.observe(h.readTask("leader")!, 1); assert.ok(cleanup); await cleanup.done;
+  assert.equal(h.rows().set.state, "closed");
 });
 
 

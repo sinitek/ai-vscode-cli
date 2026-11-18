@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { createLoopSubtaskExecutionRoot } from "../loopSubtaskExecutionRoot";
 import { createDepartmentCodexExecutionLauncher } from "./departmentcodexexecutionlauncher";
 import { DepartmentExecutionOwnerServer, type TrustedExecutionHandle } from "./departmentexecutionowner";
@@ -12,7 +11,6 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
   let phase: "empty" | "preparing" | "ready" | "binding" | "owner-bound" | "granted" | "failed" = "empty";
   let input: DepartmentCodexPreparation, server: DepartmentExecutionOwnerServer | undefined;
   const lifetime = new AbortController();
-  let lease: Awaited<ReturnType<SharedRuntimeConfig["acquire"]>> | undefined;
   let disposeRoot: (() => CleanupResult) | undefined;
   let handle: TrustedExecutionHandle | undefined, finished = false, sequence = 0;
   let consumerFailed = false;
@@ -49,7 +47,7 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
   };
   const close = async (): Promise<void> => {
     if (server) { try { await server.close(); } catch { return; } }
-    if (!handle) { disposeRoot?.(); await lease?.release(); }
+    if (!handle) disposeRoot?.();
   };
   const releaseTab = (): Promise<CleanupResult> => tabRelease ??= (async () => {
     if (!nativeThread || consumerFailed || !process.connected) return { status: "unobservable", reason: "codex-tab-channel-or-consumers-unconfirmed" };
@@ -92,9 +90,7 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
     lost();
   });
   async function prepare(): Promise<void> {
-    lease = await new SharedRuntimeConfig(input.configurationDirectory).acquire({ configId: input.selection.configId, revision: input.selection.revision });
-    if (!lease.selection.ready || lease.selection.configId !== input.selection.configId || lease.selection.revision !== input.selection.revision
-      || phase !== "preparing" || !process.connected) throw new Error("codex-configuration-changed");
+    if (phase !== "preparing" || !process.connected) throw new Error("codex-preparation-revoked");
     const root = createLoopSubtaskExecutionRoot(input.workspaceDirectory);
     let rootResult: CleanupResult | undefined;
     disposeRoot = () => rootResult ??= (() => {
@@ -135,7 +131,7 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
         runner: { owned: true, release: (native) => native.runner },
         tab: { owned: true, release: releaseTab },
         executionRoot: { owned: true, release: disposeRoot }, links: { owned: true, release: disposeRoot },
-        temp: { owned: true, release: async () => { await lease!.release(); return { status: "confirmed", evidence: "owner-configuration-lease-released" }; } },
+        temp: { owned: true, release: async () => ({ status: "confirmed", evidence: "no-owner-temp-resource-created" }) },
       },
     } : null);
     const requirements = launcher.requirements(input.identity);

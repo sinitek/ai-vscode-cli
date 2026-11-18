@@ -122,7 +122,7 @@ test("extension captures Vibe and Loop main summaries without summarizing intern
     appendMessageToStore: (messages: typeof draft.messages, message: typeof draft.messages[number]) => messages.push(message),
     sendPanelMessage: () => undefined,
   }) as {
-    preloadUserMessageForPrompt: (input: PromptRunInput, target: PromptRunTarget, options?: { captureTaskSummary?: boolean }) => PromptRunInput;
+    preloadUserMessageForPrompt: (input: PromptRunInput, target: PromptRunTarget, options?: { captureTaskSummary?: boolean; messageId?: string }) => PromptRunInput;
     rememberConversationTaskSummarySubmission: (input: PromptRunInput, target: PromptRunTarget) => { requirement: string } | undefined;
   };
   const target: PromptRunTarget = { tabId: "tab-a", cli: "codex", sessionId: "native-session" };
@@ -148,6 +148,9 @@ test("extension captures Vibe and Loop main summaries without summarizing intern
   assert.notEqual(mainSnapshot, secondSnapshot);
   assert.equal(mainSnapshot?.requirement, mainInput.displayPrompt);
   assert.equal(runtime.rememberConversationTaskSummarySubmission(internal, target), mainSnapshot);
+  const correlated = runtime.preloadUserMessageForPrompt(input, target, { messageId: "submission-request" });
+  assert.equal(correlated.preloadedUserMessageId, "submission-request");
+  assert.equal(draft.messages.filter((message) => message.id === "submission-request").length, 1);
   submissions.remember(tab, "workspace", draft, () => undefined, true);
   const recoveredSnapshot = runtime.rememberConversationTaskSummarySubmission(internal, target);
   assert.equal(recoveredSnapshot?.requirement, "旧 Loop 根需求");

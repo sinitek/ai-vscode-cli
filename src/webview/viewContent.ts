@@ -10,17 +10,14 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 
-const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
-const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
-const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
 
 
-export function getWebviewHtml(webview: { cspSource: string }): string {
+export function getWebviewHtml(webview: { cspSource: string }, promptInputHeight?: number): string {
   const nonce = getNonce();
   const i18n = getWebviewStrings();
   const cliOptions = CLI_LIST.map(
@@ -37,21 +34,19 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     markedScript,
     jsonFormatterScript,
     webviewStyles: WEBVIEW_STYLES,
+    promptInputHeight,
   });
 
   return `${staticHtml}
 ${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     i18n,
     cliList: CLI_LIST,
-    loopMaxRoundsDefault: LOOP_MAX_ROUNDS_SETTING_DEFAULT,
-    loopMaxRoundsMin: LOOP_MAX_ROUNDS_SETTING_MIN,
-    loopMaxRoundsMax: LOOP_MAX_ROUNDS_SETTING_MAX,
     loopPlusDecisionSubtaskMaxDefault: LOOP_PLUS_DECISION_SUBTASK_MAX,
     loopPlusDecisionSubtaskMaxMin: LOOP_PLUS_DECISION_SUBTASK_MIN,
     loopPlusDecisionSubtaskMaxLimit: LOOP_PLUS_DECISION_SUBTASK_LIMIT,
-    loopPlusMaxAcceptancesDefault: LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
-    loopPlusMaxAcceptancesMin: LOOP_PLUS_MAX_ACCEPTANCES_MIN,
-    loopPlusMaxAcceptancesLimit: LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+    loopPlusSubtaskMaxRoundsDefault: LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+    loopPlusSubtaskMaxRoundsMin: LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
+    loopPlusSubtaskMaxRoundsLimit: LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   }))}
     </script>

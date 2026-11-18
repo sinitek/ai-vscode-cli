@@ -15,7 +15,6 @@ import { assertDepartmentConfigBindingsCurrent, captureDepartmentConfigBindings 
 
 export type PromptRunInputForPanel = {
   departmentConfiguration?: import("./departmentConfiguration").DepartmentConfigurationState;
-  configSelections?: Partial<Record<CliName, import("./config/sharedRuntimeConfig").VisibleConfigSelection>>;
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
@@ -83,6 +82,7 @@ export type ConversationTabRecordForPanel = {
 };
 
 export type PanelMessageHandlerDeps = {
+  updatePendingPromptQueueState?: (hasPendingPrompts: boolean) => void;
   updateNotificationSetting?: (key: "humanInteractionNotifications" | "taskCompletionNotifications" | "humanInteractionWindowAttention" | "taskCompletionWindowAttention", enabled: boolean) => PromiseLike<void>;
   ensureWorkspaceSessionStore: () => void;
   postPanelState: () => Promise<void>;
@@ -141,13 +141,13 @@ export type PanelMessageHandlerDeps = {
   readDepartmentConfigBinding?: import("./departmentConfiguration").DepartmentConfigBindingReader;
   beginDepartmentConfigurationSave?: (scope: string, role: string) => (ok: boolean) => void;
   getDepartmentRoleCandidates?: (cli: CliName, configId: string | null) => Promise<import("./departmentConfiguration").DepartmentRoleCandidates>;
-  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean }) => string | null;
+  addConversationTab: (cli: CliName, sessionId: string | null, options?: { skipPersist?: boolean; tabId?: string }) => string | null;
   startNewSession: (cli: CliName) => void;
   getConversationTabById: (tabId: string) => ConversationTabRecordForPanel | null;
   hasAnyTaskRunning: () => boolean;
   disposeAllInteractiveRunners: () => void;
   maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>;
-  closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
+  closeConversationTabAndRefreshPanel: (tabId: string, options?: { onRejected?: () => void }) => Promise<void>;
   confirm: (message: string, confirmLabel: string) => Promise<boolean>;
   disposeInteractiveRunnerSession: (cli: CliName, sessionId: string) => void;
   deleteSession: (cli: CliName, sessionId: string) => void;
@@ -165,7 +165,6 @@ export type PanelMessageHandlerDeps = {
   getConfigManagerPanel: () => ConfigManagerPanel | undefined;
   applyConfigById: (cli: CliName, configId: string) => Promise<ConfigApplyResult>;
   waitForConfigApply?: (cli: CliName) => Promise<boolean>;
-  validateVisibleConfigSelections?: (cli: CliName, selections: PromptRunInputForPanel["configSelections"]) => Promise<void>;
   waitForConfigRetryDelay?: (milliseconds: number) => Promise<void>;
   readCliRules: (cli: CliName, scope: "global" | "project") => Promise<string>;
   writeCliRules: (cli: CliName, scope: "global" | "project", content: string) => Promise<void>;
@@ -191,7 +190,6 @@ export type PanelMessageHandlerDeps = {
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
   loadModelStore: () => void;
-  normalizeLoopMaxRounds: (value: unknown) => number;
   isCliName: (value: string) => value is CliName;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   readStoredToolSettings?: () => ToolSettingsState;
@@ -213,7 +211,7 @@ export type PanelMessageHandlerDeps = {
   getLatestLoopRoundRunRecord: (taskId: string, round: number, role: "main" | "subtask", subtaskId?: string, attemptId?: string) => { endedAt: number } | null;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   resolvePromptRunTarget: (tabId: string | null) => PromptRunTargetForPanel | null;
-  preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel) => PromptRunInputForPanel;
+  preloadUserMessageForPrompt: (input: PromptRunInputForPanel, target: PromptRunTargetForPanel, options?: { messageId?: string }) => PromptRunInputForPanel;
   runLoopPrompt: (input: PromptRunInputForPanel, options: { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   runPrompt: (input: PromptRunInputForPanel, options?: { targetTabId?: string | null }) => Promise<void>;
   resolveDepartmentPromptConfiguration?: (request: DepartmentPromptStartRequest) => Promise<import("./departmentConfiguration").DepartmentConfigurationState>;

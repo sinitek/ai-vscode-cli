@@ -566,6 +566,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
       }
 
       function updateQueueIndicator() {
+        syncPendingPromptQueueState();
         if (!elements.queueIndicator || !elements.queueCount) {
           return;
         }
@@ -846,10 +847,20 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         syncQueueOverlay();
       }
 
+      function canQueuePrompt(payload, tabId) {
+        const targetTab = getConversationTabSummary(tabId || getActiveConversationTabId());
+        const mode = normalizeInteractiveMode(payload && payload.interactiveMode || state.interactiveMode);
+        return !getLoopMetaForTabSummary(targetTab) && mode !== "loop" && mode !== "loop_plus";
+      }
+
       function queuePromptForLater(payload) {
+        if (!canQueuePrompt(payload)) {
+          showToast(t("toastLoopQueueUnsupported"));
+          return false;
+        }
         const normalizedPayload = snapshotPromptPayloadForQueue(payload);
         if (!normalizedPayload) {
-          return;
+          return false;
         }
         if (normalizedPayload.loopSubtaskRouteBlocked) {
           if (typeof elements !== "undefined" && elements && elements.loopSubtaskRouteIssue) {
@@ -859,11 +870,11 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           if (typeof showToast === "function") {
             showToast(normalizedPayload.loopSubtaskRouteBlocked);
           }
-          return;
+          return false;
         }
         const runtimeState = getActiveConversationRuntimeState();
         if (!runtimeState) {
-          return;
+          return false;
         }
         const interactiveMode = normalizedPayload.interactiveMode
           ? normalizeInteractiveMode(normalizedPayload.interactiveMode)
@@ -882,6 +893,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         });
         updateQueueIndicator();
         showToast(t("toastQueueAdded"));
+        return true;
       }
 
       function moveQueuedPrompt(fromIndex, toIndex) {
@@ -942,6 +954,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!runtimeState || !runtimeState.pendingPromptQueue.length) {
           return false;
         }
+        if (!canQueuePrompt(runtimeState.pendingPromptQueue[0], targetTabId)) {
+          return false;
+        }
         const targetTab = getConversationTabSummary(targetTabId);
         const targetCli = targetTab && targetTab.cli ? targetTab.cli : state.currentCli;
         if (
@@ -952,6 +967,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
           return false;
         }
         const nextPromptPayload = runtimeState.pendingPromptQueue.shift();
+        syncPendingPromptQueueState();
         if (runtimeState.queueEditingIndex === 0) {
           runtimeState.queueEditingIndex = -1;
           runtimeState.queueEditingDraft = "";
@@ -994,9 +1010,8 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(payload, tabId)) return "failed";
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         if (isLoopMainConversationTabRunning(targetTabId)) {
-          queuePromptForLater(promptPayload);
-          clearPromptInputAfterSend(promptPayload.prompt);
-          return "queued";
+          showToast(t("toastLoopMainBusy"));
+          return "blocked";
         }
         if (isConversationTabBusy(targetTabId)) {
           openRunConflictOverlay(promptPayload);
@@ -1034,6 +1049,51 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         return dispatchPromptPayload(payload, tabId);
       }
 
+      function revealPromptCaret(input, position) {
+        if (input.scrollHeight <= input.clientHeight) {
+          return;
+        }
+        if (position === input.value.length) {
+          input.scrollTop = Math.max(0, input.scrollHeight - input.clientHeight);
+          return;
+        }
+
+        const style = getComputedStyle(input);
+        const mirror = document.createElement("div");
+        Object.assign(mirror.style, {
+          position: "fixed",
+          top: "0",
+          left: "0",
+          visibility: "hidden",
+          boxSizing: "border-box",
+          width: input.clientWidth + "px",
+          padding: style.padding,
+          font: style.font,
+          lineHeight: style.lineHeight,
+          letterSpacing: style.letterSpacing,
+          tabSize: style.tabSize,
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap,
+          wordBreak: style.wordBreak,
+        });
+        mirror.textContent = input.value;
+        document.body.appendChild(mirror);
+        const range = document.createRange();
+        range.setStart(mirror.firstChild, position);
+        range.collapse(true);
+        const caretRect = range.getBoundingClientRect();
+        const mirrorTop = mirror.getBoundingClientRect().top;
+        mirror.remove();
+
+        const caretTop = caretRect.top - mirrorTop;
+        const caretBottom = caretRect.bottom - mirrorTop;
+        if (caretTop < input.scrollTop) {
+          input.scrollTop = Math.floor(caretTop);
+        } else if (caretBottom > input.scrollTop + input.clientHeight) {
+          input.scrollTop = Math.ceil(caretBottom - input.clientHeight);
+        }
+      }
+
       function insertPromptText(text) {
         const input = elements.promptInput;
         const value = input.value || "";
@@ -1041,9 +1101,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : value.length;
         input.value = value.slice(0, selectionStart) + text + value.slice(selectionEnd);
         const nextPos = selectionStart + text.length;
-        input.selectionStart = nextPos;
-        input.selectionEnd = nextPos;
         input.focus();
+        input.setSelectionRange(nextPos, nextPos);
+        revealPromptCaret(input, nextPos);
       }
 
       function buildInsertText(paths, prefix = "@") {

@@ -55,7 +55,6 @@ async function main() {
       assert.equal(result.cancelledBeforeLaunch, true); assert.equal(result.adapterSignal, true);
       assert.equal(result.taskUnchanged, true); assert.equal(result.exportDrained, true);
       assert.equal(fs.existsSync(path.join(directory, "spawn-count")), false);
-      assert.equal(JSON.parse(fs.readFileSync(path.join(directory, "configuration/selection.json"), "utf8")).leases.length, 0);
       report.result = result; report.ok = true; return;
     }
     const { DepartmentExecutionOwnerClient } = require(path.join(product, "dist/runtime/departmentexecutionownerclient.js"));
@@ -64,7 +63,9 @@ async function main() {
     assert.equal((await client.startExecution(result.identity)).status, "live", "identity-only duplicate start is idempotent");
     assert.equal(fs.readFileSync(path.join(directory, "spawn-count"), "utf8"), "spawn\n");
     const observed = JSON.parse(fs.readFileSync(path.join(directory, "observed"), "utf8"));
-    assert.deepEqual(observed.identity, result.identity); assert.notEqual(observed.ownerLeases[0].pid, result.ehPid);
+    assert.deepEqual(observed.identity, result.identity);
+    assert.ok(Number.isSafeInteger(observed.ownerPid) && observed.ownerPid > 1);
+    assert.notEqual(observed.ownerPid, result.ehPid);
     fs.writeFileSync(path.join(directory, "exit"), "open");
     assert.equal((await client.observeExecution(result.identity)).status, "live", "parent exit cannot certify descendant-held pipe drain");
     fs.writeFileSync(path.join(directory, "drain"), "open");
@@ -80,8 +81,9 @@ async function main() {
     if (child && !exit) { forced = true; try { process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM"); } catch {} }
     // Fixture-only cleanup; killing a worker never constitutes production receipt evidence.
     for (const gate of ["exit", "drain", "export-open"]) fs.writeFileSync(path.join(directory, gate), "fixture cleanup");
-    const selectionFile = path.join(directory, "configuration/selection.json");
-    if (fs.existsSync(selectionFile)) for (const lease of JSON.parse(fs.readFileSync(selectionFile, "utf8")).leases) { try { process.kill(lease.pid, "SIGTERM"); } catch {} }
+    if (!report.ok && child?.pid && exit && process.platform !== "win32") {
+      try { process.kill(-child.pid, "SIGTERM"); } catch {}
+    }
     report.forcedHostCleanup = forced; if (forced) { report.ok = false; process.exitCode = 1; }
     fs.writeFileSync(path.join(directory, "report.json"), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
   }

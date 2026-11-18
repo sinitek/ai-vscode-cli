@@ -1442,7 +1442,7 @@ test("ZCode save applies only the active profile and waits for runtime model ref
     await sandbox.saveProfile();
     assert.ok(errors.length >= 1);
     assert.match(errors.join("\n"), /未成功更新配置|Existing provider settings were left unchanged/);
-    assert.equal((await configService.readSharedConfigSelection("zcode"))?.ready, false);
+    assert.equal((await configService.readSharedConfigSelection("zcode"))?.ready, true);
     assert.equal(successes.includes("已更新当前激活的配置"), false);
     assert.equal(fs.readFileSync(runtimePath, "utf8"), "not-json");
   } finally {

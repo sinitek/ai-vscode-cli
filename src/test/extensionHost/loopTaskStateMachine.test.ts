@@ -10,6 +10,7 @@ import {
   LOOP_EVENT_DRIVEN_INTERRUPT_SUMMARY,
   buildLoopSubtaskId,
   getActiveLoopSubtaskIds,
+  getClassicLoopSubtaskDispatchCount,
   getLoopDecisionSubtasks,
   loopInterruptFailureLimitPatch,
   loopTaskTransitionStrategies,
@@ -18,6 +19,7 @@ import {
   transitionLoopTaskStop,
 } from "../../extensionHost/loopTaskStateMachine";
 import { buildNextLoopMainAiFailureState, LOOP_MAIN_AI_FAILURE_LIMIT } from "../../loopMainFailure";
+import { buildLoopBlockedPauseText } from "../../loopBlockedSummary";
 import {
   ORCHESTRATOR_CLARIFICATION_LIMIT,
   type OrchestratorClarification,
@@ -154,6 +156,42 @@ test("updates classic progress only after a finished batch and reserves 100 for 
     assert.equal(transitionLoopTaskStop("classic", { task: paused, now: NOW }).patch.loopProgressPercent, undefined);
     assert.equal(decide(paused, { ...decision, progressPercent: undefined }).patch.loopProgressPercent, undefined);
   }
+});
+
+test("classic Loop counts every admitted batch member and repeat dispatch, but can complete at the limit", () => {
+  const task = createTask({ classicSubtaskDispatchCount: 47 });
+  const batch: LoopMainDecision = { status: "continue", subtasks: [
+    { id: "sub-a", title: "继续现有子任务", prompt: "补充剩余工作" },
+    { id: "sub-b", title: "并行子任务", prompt: "完成独立工作" },
+  ] };
+  const first = transitionLoopMainDecision({ task, decision: batch, now: NOW, subtaskRoundLimit: 50 });
+  assert.equal(first.patch.classicSubtaskDispatchCount, 49);
+  const afterBatch = { ...task, ...first.patch };
+  const rejected = transitionLoopMainDecision({ task: afterBatch, decision: batch, now: NOW, subtaskRoundLimit: 50 });
+  assert.equal(rejected.patch.status, "needs-review");
+  assert.match(rejected.patch.finalSummary ?? "", /已用 49\/50，本次需要 2/);
+  assert.match(buildLoopBlockedPauseText({ ...afterBatch, ...rejected.patch }), /^Loop 已暂停/);
+  assert.equal(rejected.subtasks, undefined);
+  assert.equal(rejected.patch.classicSubtaskDispatchCount, undefined);
+  const repeat: LoopMainDecision = { status: "continue", subtasks: batch.subtasks?.slice(0, 1) };
+  const last = transitionLoopMainDecision({ task: afterBatch, decision: repeat, now: NOW, subtaskRoundLimit: 50 });
+  assert.equal(last.patch.classicSubtaskDispatchCount, 50);
+  assert.equal(last.patch.subTasks?.length, 2);
+  const atLimit = { ...afterBatch, ...last.patch };
+  assert.equal(transitionLoopMainDecision({ task: atLimit, decision: repeat, now: NOW, subtaskRoundLimit: 50 }).status, "blocked");
+  assert.equal(transitionLoopMainDecision({ task: atLimit, decision: repeat, now: NOW, subtaskRoundLimit: 51 }).patch.classicSubtaskDispatchCount, 51);
+  assert.equal(transitionLoopMainDecision({
+    task: atLimit, decision: { status: "completed", finalSummary: "完成" }, now: NOW, subtaskRoundLimit: 50,
+  }).status, "completed");
+});
+
+test("classic Loop estimates legacy dispatches from historical round identities without counting retries", () => {
+  const run = { round: 1, role: "subtask" as const, subtaskId: "sub-a", status: "error" as const, startedAt: 1, endedAt: 2 };
+  const task = createTask({
+    subTasks: [createSubtask(), createSubtask({ id: "sub-b", status: "pending" })],
+    rounds: [run, { ...run, status: "end", startedAt: 3 }, { ...run, round: 2 }, { ...run, role: "main" }],
+  });
+  assert.equal(getClassicLoopSubtaskDispatchCount(task), 3);
 });
 
 function createStopTask(status: LoopTaskRecord["status"] = "running"): LoopTaskRecord {

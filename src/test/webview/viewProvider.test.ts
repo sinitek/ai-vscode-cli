@@ -50,6 +50,33 @@ function createProvider(messages: PanelMessage[] = []) {
   });
 }
 
+test("queue attention state resets on reload, replacement and disposal while stale views are ignored", async () => {
+  let hasPendingPrompts = false;
+  const provider = new CliBridgeViewProvider({ fsPath: process.cwd() } as vscode.Uri, {
+    onResetRuntimeState: () => { hasPendingPrompts = false; },
+    onMessage: (message) => {
+      if (message.type === "pendingPromptQueueChanged") hasPendingPrompts = message.hasPendingPrompts;
+    },
+  });
+  const previous = createViewHarness();
+  provider.resolveWebviewView(previous.view);
+  await previous.receive({ type: "pendingPromptQueueChanged", hasPendingPrompts: true });
+  assert.equal(hasPendingPrompts, true);
+  provider.reload();
+  assert.equal(hasPendingPrompts, false);
+  await previous.receive({ type: "pendingPromptQueueChanged", hasPendingPrompts: true });
+  const current = createViewHarness();
+  provider.resolveWebviewView(current.view);
+  assert.equal(hasPendingPrompts, false);
+  await previous.receive({ type: "pendingPromptQueueChanged", hasPendingPrompts: true });
+  assert.equal(hasPendingPrompts, false);
+  await current.receive({ type: "pendingPromptQueueChanged", hasPendingPrompts: true });
+  previous.dispose();
+  assert.equal(hasPendingPrompts, true);
+  current.dispose();
+  assert.equal(hasPendingPrompts, false);
+});
+
 test("chat links use the host opener instead of the session router and ignore disposed views", async (context) => {
   const api = require("vscode");
   const external: string[] = [];

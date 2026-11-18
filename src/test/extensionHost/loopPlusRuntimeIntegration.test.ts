@@ -787,23 +787,22 @@ for (const configureDuringMain of [false, true]) {
   });
 }
 
-test("Loop+ preserves visible configuration revisions from its first main call through subtask dispatch", async () => {
+test("Loop+ does not carry a stale configuration snapshot through task dispatch", async () => {
   const fixture = createLoopPlusRuntimeFixture();
-  const configSelections = { codex: { configId: "visible-profile", revision: "visible-revision" } };
   try {
     fixture.queueMain((input, tabId) => {
-      assert.deepEqual(input.configSelections, configSelections);
+      assert.equal("configSelections" in input, false);
       fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
     });
     fixture.queueMain((input, tabId) => {
-      assert.deepEqual(input.configSelections, configSelections);
+      assert.equal("configSelections" in input, false);
       fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
     });
     fixture.setAttemptAction((input, tabId) => {
-      assert.deepEqual(input.configSelections, configSelections);
+      assert.equal("configSelections" in input, false);
       fixture.publish(input, tabId, { status: "end", content: "已完成所见配置任务" });
     });
-    await fixture.adapter.runEventDriven({ ...prompt(), configSelections }, { schedulingMode: "event_driven" }, fixture.target);
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
     assert.equal(fixture.mainCalls.length, 2);
     assert.equal(fixture.attemptCalls.length, 1);
   } finally { fixture.dispose(); }
@@ -834,6 +833,8 @@ test("adapter creates only the normal user prompt bubble in a subtask conversati
 
     const subtaskTarget = fixture.createdSubtaskTargets[0];
     assert.ok(subtaskTarget);
+    assert.equal(subtaskTarget.loopTaskId, fixture.mainCalls[0]?.loopTaskId);
+    assert.equal(subtaskTarget.loopSubtaskId, "A");
     const displayPrompt = fixture.attemptCalls[0]?.displayPrompt;
     assert.ok(displayPrompt?.includes(longPrompt("A", "src/a.ts")));
     const promptMessages = messages.filter((message) => message.content === displayPrompt);

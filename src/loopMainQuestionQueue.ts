@@ -11,21 +11,10 @@ type Work = {
 };
 
 type SessionQueue = {
-  main: Work[];
-  questions: Work[];
+  pending: Work[];
   running: boolean;
   timer?: ReturnType<typeof setTimeout>;
 };
-
-export function hasPendingClassicLoopMainWork(input: {
-  controllerActive: boolean;
-  activeSubtaskCount: number;
-  requirementCount: number;
-  observedRequirementCount: number;
-}): boolean {
-  return input.controllerActive && (input.activeSubtaskCount === 0
-    || input.requirementCount > input.observedRequirementCount);
-}
 
 export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number } = {}) {
   const sessions = new Map<string, SessionQueue>();
@@ -38,45 +27,39 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
       clearTimeout(queue.timer);
       queue.timer = undefined;
     }
-    queue.questions = queue.questions.filter((work) => {
+    queue.pending = queue.pending.filter((work) => {
       if (work.options?.isAborted?.()) {
         work.cancel();
         return false;
       }
       return true;
     });
-    let work = queue.main.shift();
-    if (!work && queue.questions.length > 0) {
-      const question = queue.questions[0];
+    while (queue.pending.length > 0) {
+      const work = queue.pending[0];
       try {
-        if (question.options?.canRun()) {
-          work = queue.questions.shift();
+        if (work.options && !work.options.canRun()) {
+          queue.timer = setTimeout(() => pump(tabId, queue), options.pollIntervalMs ?? 100);
+          queue.timer.unref?.();
+          return;
         }
       } catch (error) {
-        queue.questions.shift();
-        question.reject(error);
+        queue.pending.shift();
+        work.reject(error);
+        continue;
+      }
+      queue.pending.shift();
+      queue.running = true;
+      void work.execute().finally(() => {
+        queue.running = false;
         pump(tabId, queue);
-        return;
-      }
-    }
-    if (!work) {
-      if (queue.questions.length > 0) {
-        queue.timer = setTimeout(() => pump(tabId, queue), options.pollIntervalMs ?? 100);
-        queue.timer.unref?.();
-      } else {
-        sessions.delete(tabId);
-      }
+      });
       return;
     }
-    queue.running = true;
-    void work.execute().finally(() => {
-      queue.running = false;
-      pump(tabId, queue);
-    });
+    sessions.delete(tabId);
   }
 
   function enqueue<Result>(tabId: string, execute: () => Promise<Result>, question?: QuestionOptions): Promise<Result | undefined> {
-    const queue = sessions.get(tabId) ?? { main: [], questions: [], running: false };
+    const queue = sessions.get(tabId) ?? { pending: [], running: false };
     sessions.set(tabId, queue);
     return new Promise<Result | undefined>((resolve, reject) => {
       const work: Work = {
@@ -91,7 +74,7 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
           }
         },
       };
-      (question ? queue.questions : queue.main).push(work);
+      queue.pending.push(work);
       pump(tabId, queue);
     });
   }

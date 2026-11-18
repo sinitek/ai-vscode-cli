@@ -7,7 +7,6 @@ import type { CodexOwnedStreamHandlers } from "../interactive/codexOwnedExecutio
 import { CLEANUP_PARTS, sameExecution, fingerprintDepartmentExecutionSelection, type CleanupRequirements, type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import type { CliProcessRuntimeHandlers } from "../cli/cliProcessRuntime";
 import type { RunProcess } from "../cli/commandRunner";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { DepartmentExecutionOwnerClient } from "../runtime/departmentexecutionownerclient";
 import type { DepartmentLeaderProcessBootstrapPort } from "./departmentleaderprocessbootstrap";
 import { createDepartmentLeaderProcessBootstrap } from "./departmentleaderprocessbootstrap";
@@ -246,7 +245,6 @@ export function createDepartmentLeaderProductionHost(deps: {
           let nativeSessionId = resumedSession?.sessionId;
           let binding: DepartmentExecutionBinding | undefined;
           let ownedRoot: LoopSubtaskExecutionRoot | undefined;
-          const configuration = new SharedRuntimeConfig(configurationDirectory);
           const routeSignature = JSON.stringify(route);
           const assertCurrent = (identity: typeof baseIdentity, requireBinding = true): void => {
             ownedRoot?.assertCurrent();
@@ -259,8 +257,6 @@ export function createDepartmentLeaderProductionHost(deps: {
               || identity.executionId !== executionId || identity.ownerId !== ownerId
               || identity.configFingerprint !== baseIdentity.configFingerprint || identity.profileFingerprint !== baseIdentity.profileFingerprint
               ) throw new Error("department-leader-opencode-authority-changed");
-            if (!configuration.isCurrentSelection({ configId: selection.configId, revision: selection.revision }))
-              throw new Error("department-leader-opencode-configuration-changed");
             if (identity.session.state === "bound") {
               if (!nativeSessionId || identity.session.id !== nativeSessionId || JSON.stringify(current.executionSession)
                 !== JSON.stringify({ cli: "opencode", sessionId: nativeSessionId, configId: selection.configId }))
@@ -289,26 +285,16 @@ export function createDepartmentLeaderProductionHost(deps: {
             ownedRoot.cwd = fs.realpathSync(createdRoot.cwd);
             ownedRoot.assertCurrent();
             preparation.cwd = ownedRoot.cwd;
-            {
-              const lease = await configuration.acquire({ configId: selection.configId, revision: selection.revision });
-              if (!lease.selection.ready || lease.selection.configId !== selection.configId || lease.selection.revision !== selection.revision
-                || !configuration.isCurrentSelection({ configId: selection.configId, revision: selection.revision })) {
-                await lease.release(); throw new Error("department-leader-opencode-configuration-conflict");
-              }
-              try {
-                assertPreparation();
-                const preparationArgs = preparation.baseArgs[0] === "run" ? preparation.baseArgs : ["run", ...preparation.baseArgs];
-                continuation = resumedSession ? await deps.producer.prepareNativeContinuation(baseIdentity, selection, undefined, assertPreparation) : undefined;
-                assertPreparation();
-                nativeSessionId = await createDepartmentOpenCodeSession({ workspaceDirectory: preparation.cwd, retired: continuation?.source, assertCurrent: assertPreparation,
-                  sessionState: nativeSessionId ? "bound" : "unbound", sessionId: nativeSessionId, requireDirectory: true, launch: { command: preparation.command,
-                    args: preparationArgs, cwd: preparation.cwd,
-                    baseEnvironment: preparation.baseEnvironment, envOverrides: preparation.envOverrides,
-                    processLabel: preparation.processLabel, macTaskShell: preparation.macTaskShell }, overlay: preparation.overlay ?? null }, abort.signal);
-                assertPreparation();
-              } finally { await lease.release(); }
-              assertPreparation();
-            }
+            assertPreparation();
+            const preparationArgs = preparation.baseArgs[0] === "run" ? preparation.baseArgs : ["run", ...preparation.baseArgs];
+            continuation = resumedSession ? await deps.producer.prepareNativeContinuation(baseIdentity, selection, undefined, assertPreparation) : undefined;
+            assertPreparation();
+            nativeSessionId = await createDepartmentOpenCodeSession({ workspaceDirectory: preparation.cwd, retired: continuation?.source, assertCurrent: assertPreparation,
+              sessionState: nativeSessionId ? "bound" : "unbound", sessionId: nativeSessionId, requireDirectory: true, launch: { command: preparation.command,
+                args: preparationArgs, cwd: preparation.cwd,
+                baseEnvironment: preparation.baseEnvironment, envOverrides: preparation.envOverrides,
+                processLabel: preparation.processLabel, macTaskShell: preparation.macTaskShell }, overlay: preparation.overlay ?? null }, abort.signal);
+            assertPreparation();
             if (!resumedSession) {
               const persisted = { cli: "opencode" as const, sessionId: nativeSessionId!, configId: selection.configId };
               if (deps.readTask(taskId)?.executionSession || !deps.updateTask(taskId, { executionSession: persisted })

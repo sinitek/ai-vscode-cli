@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
+import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
@@ -22,10 +23,10 @@ export const LOOP_PLUS_DECISION_SUBTASK_MAX = 6;
 export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 /** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
-export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 3;
-export const LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT = 100;
-export const LOOP_PLUS_MAX_ACCEPTANCES_MIN = 1;
-export const LOOP_PLUS_MAX_ACCEPTANCES_LIMIT = 999;
+export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4;
+export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT = 200;
+export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN = 50;
+export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT = 9999;
 export const LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH = 80;
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
@@ -51,6 +52,9 @@ export type LoopPlusControlAction = (typeof LOOP_PLUS_CONTROL_ACTIONS)[number];
 
 export type LoopPlusControlDecision = {
   id: string;
+  /** 关闭原因，保留给用户及后续恢复。 */
+  reason?: string;
+  dependsOn?: string[];
   conflictGroup?: string;
   writeFiles?: string[];
   /** 省略时 reprompt 保留原子任务分类。 */
@@ -64,7 +68,7 @@ export type LoopPlusControlDecision = {
 
 export type LoopPlusAcceptReview = {
   reviewEventId: string;
-  acceptance: "passed" | "failed";
+  acceptance: "passed" | "failed" | "cancelled";
   reason?: string;
   subtaskIds?: string[];
 };
@@ -153,16 +157,16 @@ export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
   );
 }
 
-export function resolveLoopPlusMaxAcceptances(value?: unknown): number {
+export function resolveLoopPlusSubtaskMaxRounds(value?: unknown): number {
   const numeric = typeof value === "number"
     ? value
     : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
   if (!Number.isFinite(numeric)) {
-    return LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT;
+    return LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT;
   }
   return Math.min(
-    Math.max(Math.floor(numeric), LOOP_PLUS_MAX_ACCEPTANCES_MIN),
-    LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
+    Math.max(Math.floor(numeric), LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN),
+    LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
   );
 }
 
@@ -306,15 +310,16 @@ function normalizeAcceptDecision(
   if (!reviews) {
     return null;
   }
+  const allCancelled = reviews.every((review) => review.acceptance === "cancelled");
   const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
-  if (!matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
+  if (!allCancelled && !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
     options?.reject?.(`acceptancePlanResults 必须按顺序覆盖已选项：${options?.acceptancePlanKeys?.join(", ") ?? "当前验收方案"}，并提供不超过 50 字的原因。`);
     return null;
   }
   const acceptance = hasOwn(raw, "acceptance")
     ? normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback)
     : undefined;
-  if (requireAcceptanceFeedback && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
+  if (requireAcceptanceFeedback && !allCancelled && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
     options?.reject?.(`accept.acceptance 必须包含六项默认检查：${LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.join(", ")}；每项提供 passed 和不超过 50 字的 detail，失败项可以保留并派发修复。`);
     return null;
   }
@@ -326,8 +331,8 @@ function normalizeAcceptDecision(
     ...(subtasks.length > 0 ? { subtasks } : {}),
     ...(independentSubtaskIds.length > 0 ? { independentSubtaskIds } : {}),
     ...(controls.length > 0 ? { controls } : {}),
-    ...(acceptance ? { acceptance } : {}),
-    ...(acceptancePlanResults ? { acceptancePlanResults } : {}),
+    ...(!allCancelled && acceptance ? { acceptance } : {}),
+    ...(!allCancelled && acceptancePlanResults ? { acceptancePlanResults } : {}),
   }, estimatedRemainingRounds);
 }
 
@@ -588,15 +593,23 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     return null;
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
+  const dependsOn = readLoopPlusDependsOn(value.dependsOn, id);
+  if (!dependsOn) {
+    return null;
+  }
   if (value.action === "close") {
+    const reason = readRequiredShortReason(value.reason);
+    if (hasOwn(value, "reason") && !reason) return null;
     return {
       id,
       action: "close",
+      ...(reason ? { reason } : {}),
       ...(title ? { title } : {}),
       ...(conflictGroup ? { conflictGroup } : {}),
       ...(writeFiles.length > 0 ? { writeFiles } : {}),
       ...classification,
       ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+      ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
     };
   }
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
@@ -612,6 +625,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
     ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+    ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
   };
 }
 
@@ -676,6 +690,10 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     return null;
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
+  const dependsOn = readLoopPlusDependsOn(value.dependsOn, id);
+  if (!dependsOn) {
+    return null;
+  }
   return {
     id,
     title,
@@ -684,6 +702,7 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
     ...(requiresAcceptance !== undefined ? { requiresAcceptance } : {}),
+    ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(skillIds.length > 0 ? { skillIds } : {}),
   };
@@ -831,12 +850,13 @@ function readAcceptReviews(
       reject?.(`reviews[${index}].reviewEventId 必须是 ${eventIds[index]}，不能遗漏或调换顺序。`);
       return null;
     }
-    if (item.acceptance !== "passed" && item.acceptance !== "failed") {
-      reject?.(`reviews[${index}].acceptance 只能是 passed 或 failed。`);
+    if (item.acceptance !== "passed" && item.acceptance !== "failed" && item.acceptance !== "cancelled") {
+      reject?.(`reviews[${index}].acceptance 只能是 passed、failed 或 cancelled。`);
       return null;
     }
-    const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
-    if (requireReason && !reason) {
+    const needsReason = requireReason || item.acceptance === "cancelled";
+    const reason = needsReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
+    if (needsReason && !reason) {
       reject?.(`reviews[${index}].reason 必须是非空且不超过 50 字的验收依据。`);
       return null;
     }

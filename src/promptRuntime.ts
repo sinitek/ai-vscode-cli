@@ -131,6 +131,7 @@ export const HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
   "Ask at most 3 short questions. Each question must resolve one decision, and when clear candidates exist provide 2-3 mutually exclusive options with the recommended option first.",
   "For request_user_input or elicitation style payloads, prefer questions like { id, header, question, options: [{ label, description }], isOther: true } instead of free-form text fields unless the answer is inherently open-ended.",
   "Do not respond with a plain final-answer list of clarification questions when structured human interaction is available.",
+  "This applies even to a single clarification question and even when the user did not explicitly ask you to ask questions. Call the user-input mechanism and wait for its response before treating the task as complete; a question with suggested choices is not a final answer.",
 ].join("\n");
 
 export const CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION = HUMAN_INTERACTION_PROMPT_INSTRUCTION;

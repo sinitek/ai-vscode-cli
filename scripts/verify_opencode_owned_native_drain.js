@@ -346,8 +346,7 @@ async function main(args = process.argv.slice(2)) {
     assert.equal((await originalClient.observeExecution(binding.identity)).status, "cleaned");
     assert.equal(tabs.size, 0); assert.equal(rows().set.state, "closed");
     evidence.cleanup = { requirements: binding.requirements, receipt, originalBootstrapObserved: "cleaned", controlledTabAbsent: true,
-      closedSet: rows().set.state, configLeases: JSON.parse(fs.readFileSync(file("configuration/selection.json"), "utf8")).leases };
-    assert.equal(evidence.cleanup.configLeases.length, 0);
+      closedSet: rows().set.state };
     host.release("leader");
     await until(() => events().some(e => e.event === "owner-close"), "owner-worker-natural-close");
     const { runCliProcess } = load("cli/cliProcessRuntime.js");

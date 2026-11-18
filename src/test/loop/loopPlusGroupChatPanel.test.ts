@@ -797,3 +797,23 @@ test("interrupted open subtasks wait for continuation without thinking bubbles o
   assert.match(resumed, /data-thinking-kind="main" data-thinking-id="main"/);
   assert.doesNotMatch(resumed, /已中断，等待续跑/);
 });
+
+test("群聊显示验收已撤销和已关闭，并可定位撤销原因", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const eventId = scheduler.snapshot().currentReview!.eventId;
+  scheduler.submitReviewBatch([eventId], [{ eventId, acceptance: "cancelled", reason: "用户取消旧需求" }]);
+  scheduler.dispatch([spec("B", "b-1")]);
+  scheduler.applyControls([{ subtaskId: "B", action: "close" }]);
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    subtaskTitles: ["Alpha"], reviews: [{ eventId, acceptance: "cancelled", reason: "用户取消旧需求" }],
+  });
+  assert.ok(section);
+  const state = buildWithChat(scheduler.snapshot(), {}, `# Loop chat\n\n## ${section.heading}\n\n${section.body}\n`);
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.match(html, /验收已撤销/u);
+  assert.match(html, /已关闭/u);
+  assert.match(html, /用户取消旧需求/u);
+  assert.match(html, /data-action="jumpToAcceptance"/u);
+  assert.doesNotMatch(html, /❌ 未通过/u);
+});

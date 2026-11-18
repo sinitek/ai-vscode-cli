@@ -8,7 +8,6 @@ import { DepartmentGenerationAuthorityClient } from "../runtime/departmentgenera
 import { departmentGenerationAuthorityDirectory, type DepartmentGenerationAuthoritySnapshot } from "../runtime/departmentgenerationauthority";
 import { leaderExecutionScopeKey, responsibilityKey, responsibilityMatchesBinding, leaderExecutionSetFingerprint,
   type DepartmentLeaderExecutionScope } from "./departmentleaderexecutionledger";
-import type { DepartmentExecutionBinding } from "./departmentruntimestate";
 import type { DepartmentRuntimeStore } from "./departmentruntimestore";
 import type { DepartmentLeaderTarget } from "./departmentorchestration";
 
@@ -42,12 +41,6 @@ type Prepared = { task: PreparedTask; routeSignature: string; nativeSources: Dep
   target: DepartmentLeaderTarget; tabGate: { retired: boolean }; fingerprint: string; client: DepartmentGenerationAuthorityClient; controlId: string; released: boolean; releasing?: Promise<void>; lifecycle: Promise<void>; stopped(): void };
 const clone = <T>(v: T): T => structuredClone(v);
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
-async function beforeDeadline<T>(work: Promise<T>, deadline: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try { return await Promise.race([work, new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("department-cold-generation-deadline")), Math.max(0, deadline - Date.now()));
-  })]); } finally { clearTimeout(timer); }
-}
 function taskIdentity(task: LoopTaskRecord | null) {
   if (!task) return null;
   const { updatedAt: _, ...value } = task; return value;
@@ -68,7 +61,6 @@ export class DepartmentColdGenerationRecovery {
     store: DepartmentRuntimeStore; authorityDirectory: string; workspaceKey(): string;
     readTask(id: string): LoopTaskRecord | null;
     verifyStoredIdentity(task: LoopTaskRecord, expected: DepartmentMetadata, generation: number): boolean;
-    verifySelection(binding: DepartmentExecutionBinding): Promise<boolean>;
     restoreTarget(task: LoopTaskRecord): (DepartmentLeaderTarget & { restoredTab: DepartmentRestoredTabObject }) | null;
     registerRestoredTarget(capability: DepartmentColdRestoredTab): void;
     acceptRetirement(capability: DepartmentColdRetirement): void;
@@ -165,11 +157,6 @@ export class DepartmentColdGenerationRecovery {
           || now.set.producerId !== phase.set.producerId) throw new Error("department-cold-generation-changed-during-control");
       }
     };
-    // All candidate identities/policies are checked before any root can restore capacity.
-    for (const { phase } of phases) for (const binding of phase.bindings) {
-      if (!await beforeDeadline(this.deps.verifySelection(clone(binding)), deadline)) throw new Error("department-cold-generation-config-conflict");
-      recheck();
-    }
     const completed: Prepared[] = [];
     for (const { scope, phase } of phases) {
       recheck();
@@ -195,10 +182,6 @@ export class DepartmentColdGenerationRecovery {
       const snapshot = await client.observe(); this.exactTickets(snapshot, phase); recheck();
       if (snapshot.state !== "sealed" || snapshot.tickets.some(t => t.state !== "released") || !control.closure)
         throw new Error("department-cold-generation-closure-unverifiable");
-      for (const binding of phase.bindings) {
-        if (!await beforeDeadline(this.deps.verifySelection(clone(binding)), deadline)) throw new Error("department-cold-generation-config-conflict");
-        recheck();
-      }
       const latest = this.deps.store.readLeaderExecutionSet(scope);
       if (!latest.ok || !latest.value) throw new Error("department-cold-generation-ledger-unavailable");
       if (latest.value.set.state !== "closed") {

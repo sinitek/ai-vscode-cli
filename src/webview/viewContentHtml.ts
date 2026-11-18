@@ -6,9 +6,11 @@ import { getCliDisplayName } from "../cli/installer";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
+import { normalizePromptInputHeight, PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
 import { WebviewStringKey } from "./viewContentStrings";
 import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
 import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
@@ -100,6 +102,7 @@ export type BuildWebviewStaticHtmlInput = {
   markedScript: string;
   jsonFormatterScript?: string;
   webviewStyles: string;
+  promptInputHeight?: number;
 };
 
 export function buildWebviewStaticHtml(
@@ -114,6 +117,8 @@ export function buildWebviewStaticHtml(
     jsonFormatterScript = "",
     webviewStyles,
   } = input;
+  const promptInputHeight = normalizePromptInputHeight(input.promptInputHeight);
+  const promptInputHeightStyle = promptInputHeight === undefined ? "" : ` style="--prompt-input-height: ${promptInputHeight}px"`;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -199,6 +204,9 @@ ${webviewStyles}    </style>
       <div id="chatArea" class="chat-area">
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
+        <div id="promptSubmissionPreview" class="message user prompt-submission-preview" hidden>
+          <div id="promptSubmissionPreviewText" class="bubble"></div>
+        </div>
         <div id="promptSubmissionWait" class="message assistant prompt-submission-wait" hidden>
           <div class="bubble" role="status" aria-live="polite" aria-atomic="true">
             <span class="typing" aria-hidden="true"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>
@@ -265,8 +273,9 @@ ${webviewStyles}    </style>
           ${renderInteractiveModeSelect(i18n, { id: "interactiveModeSelect", ariaLabel: i18n.interactiveModeSelectAria })}
         </div>
         <div class="input-box">
+          <div id="promptInputResize" class="prompt-input-resize" role="separator" tabindex="0" aria-controls="promptInput" aria-label="${i18n.promptInputResizeLabel}" aria-valuemin="${PROMPT_INPUT_MIN_HEIGHT}" title="${i18n.promptInputResizeLabel}"></div>
           <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
-          <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
+          <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"${promptInputHeightStyle}></textarea>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
@@ -681,6 +690,14 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
+              <section class="tool-settings-card tool-settings-row">
+                <label class="tool-settings-label" for="newTaskInteractiveMode">${i18n.toolSettingsNewTaskInteractiveModeLabel}</label>
+                <select id="newTaskInteractiveMode" class="thinking-select">
+                  <option value="coding">${i18n.interactiveModeCoding}</option>
+                  <option value="loop">${i18n.interactiveModeLoop}</option>
+                  <option value="loop_plus">${i18n.interactiveModeLoopPlus}</option>
+                </select>
+              </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsHumanInteractionLabel}</div>
@@ -759,18 +776,21 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
+                  <label class="tool-settings-label" for="loopPlusSubtaskMaxRounds">${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}</label>
                   <input
                     type="number"
-                    id="loopMaxRounds"
+                    id="loopPlusSubtaskMaxRounds"
                     class="tool-settings-number"
-                    min="1"
-                    max="100"
+                    min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
+                    max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
                     step="1"
-                    title="${i18n.toolSettingsLoopMaxRoundsTitle}"
-                    aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
+                    value="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}"
+                    title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
+                    aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
+                    aria-describedby="loopPlusSubtaskMaxRoundsNote"
                   />
                 </div>
+                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。限制单个主任务累计派发的子任务数；达到上限后仍可复核、验收和总结。</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
@@ -798,21 +818,6 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     step="1"
                     title="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxTitle}"
                     aria-label="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}"
-                  />
-                </div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}</div>
-                  <input
-                    type="number"
-                    id="loopPlusMaxAcceptances"
-                    class="tool-settings-number"
-                    min="${LOOP_PLUS_MAX_ACCEPTANCES_MIN}"
-                    max="${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}"
-                    step="1"
-                    title="${i18n.toolSettingsLoopPlusMaxAcceptancesTitle}"
-                    aria-label="${i18n.toolSettingsLoopPlusMaxAcceptancesLabel}"
                   />
                 </div>
               </section>

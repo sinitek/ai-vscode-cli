@@ -25,10 +25,9 @@ else if (mode === "export") {
     if (!saved.tasks?.find((task: { id: string }) => task.id === "leader")?.subTasks
       .some((subtask: { id: string; executionSession?: { sessionId: string } }) => subtask.id === "subtask" && subtask.executionSession?.sessionId === "ses_fixture")) process.exit(93);
   }
-  const config = JSON.parse(fs.readFileSync(path.join(directory, "configuration", "selection.json"), "utf8"));
   fs.appendFileSync(path.join(directory, "spawn-count"), "spawn\n");
   fs.writeFileSync(path.join(directory, "observed"), JSON.stringify({ identity: bindings[0].identity,
-    ownerLeases: config.leases, pid: process.pid, cwd: process.cwd(), pwd: process.env.PWD }));
+    ownerPid: process.ppid, pid: process.pid, cwd: process.cwd(), pwd: process.env.PWD }));
   process.stdout.write(JSON.stringify({ type: "text", sessionID: "ses_fixture", part: { type: "text", text: "正确会话回答" } }) + "\n");
   const tail = spawn(process.execPath, [__filename, "tail"], { stdio: ["ignore", process.stdout, process.stderr], env: process.env });
   tail.unref();

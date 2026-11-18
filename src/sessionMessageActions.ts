@@ -302,7 +302,7 @@ async function executeSendPromptMessage(
     return;
   }
 
-  if (requestedTabId && requestedTab && !preserveActiveTab) {
+  if (requestedTabId && requestedTab && !preserveActiveTab && requestedTabId !== deps.getActiveConversationTabId()) {
     const switched = deps.setActiveConversationTab(requestedTabId);
     if (switched && deps.getCurrentCli() !== switched.cli) {
       deps.setCurrentCliValue(switched.cli);
@@ -348,7 +348,6 @@ async function executeSendPromptMessage(
   }
   if (departmentMode) {
     const scope = deps.getDepartmentConfigurationScope?.();
-    const selection = JSON.stringify([deps.getCurrentCli(), deps.getActiveConfigIdForCli(targetCli), requestedInteractiveMode ?? deps.getWorkspaceSettings().interactiveModeByCli?.[targetCli]]);
     const targetId = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
     const readTarget = () => targetId ? deps.getConversationTabById(targetId) : deps.getActiveConversationTab();
     const targetIdentity = JSON.stringify(readTarget());
@@ -356,9 +355,8 @@ async function executeSendPromptMessage(
     const assertCurrent = (): void => {
       if (!continuation) assertModeAvailable("department", deps.readStoredToolSettings?.());
       if ((!continuation && scope !== message.departmentConfigurationScope) || scope !== deps.getDepartmentConfigurationScope?.() || targetIdentity !== JSON.stringify(readTarget())
-        || (!preserveActiveTab && deps.getActiveConversationTabId() !== targetId)
-        || selection !== JSON.stringify([deps.getCurrentCli(), deps.getActiveConfigIdForCli(targetCli), requestedInteractiveMode ?? deps.getWorkspaceSettings().interactiveModeByCli?.[targetCli]])) {
-        throw new Error("工作区、目标会话或有效配置已变化，请在当前会话重新发送。");
+        || (!preserveActiveTab && deps.getActiveConversationTabId() !== targetId)) {
+        throw new Error("工作区、目标会话或模式已变化，请在当前会话重新发送。");
       }
       const issue = !continuation && deps.getDepartmentConfigurationIssue?.();
       if (issue) throw new Error(issue);
@@ -390,8 +388,6 @@ async function executeSendPromptMessage(
         return;
       }
       if (deps.waitForConfigApply && !await deps.waitForConfigApply(targetCli)) throw new Error("配置应用失败，产研部任务未启动。");
-      assertCurrent();
-      await deps.validateVisibleConfigSelections?.(targetCli, message.configSelections);
       assertCurrent();
       const departmentConfiguration = await deps.resolveDepartmentPromptConfiguration!(startRequest);
       assertCurrent();
@@ -479,13 +475,6 @@ async function executeSendPromptMessage(
       return;
     }
   }
-  try {
-    await deps.validateVisibleConfigSelections?.(targetCli, message.configSelections);
-  } catch (error) {
-    deps.showWebviewError("配置已变化", error instanceof Error ? error.message : String(error));
-    await deps.postPanelState();
-    return;
-  }
   if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
     const resolvedConfigId = await resolveSubtaskRouteConfigId({
       cli: requestedSubtaskCli,
@@ -525,7 +514,6 @@ async function executeSendPromptMessage(
     includeLoopModels,
   }, promptModels);
   const promptInput: PromptRunInputForPanel = {
-    ...(message.configSelections ? { configSelections: message.configSelections } : {}),
     displayPrompt: trimmed,
     modelPrompt: modelPromptWithMemory,
     contextTags: contextBuild.contextTags,
@@ -616,9 +604,7 @@ async function executeSendPromptMessage(
   if (message.skipPromptHistory !== true) {
     deps.recordPromptHistory(trimmed, targetCli);
   }
-  if (loopPlusSchedulingMode === "event_driven") {
-    // This refresh reads every CLI's configuration/models. It is a UI projection,
-    // not a prerequisite for execution; visible config validation already ran.
+  const refreshPanel = () => {
     const reportRefreshFailure = (error: unknown) => {
       void logError("loop-plus-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
     };
@@ -627,7 +613,10 @@ async function executeSendPromptMessage(
     } catch (error) {
       reportRefreshFailure(error);
     }
-  } else {
+  };
+  if (loopPlusSchedulingMode === "event_driven") {
+    refreshPanel();
+  } else if (shouldRunLoop) {
     await deps.postPanelState();
   }
   // Refresh can outlive the earlier checks; authorize new work from current settings
@@ -642,8 +631,9 @@ async function executeSendPromptMessage(
   }
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget
-    ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget)
+    ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget, { messageId: message.requestId })
     : promptInput;
+  if (!shouldRunLoop) refreshPanel();
   if (shouldRunLoop) {
     await deps.runLoopPrompt(preparedPromptInput, {
       targetTabId: promptTargetTabId,

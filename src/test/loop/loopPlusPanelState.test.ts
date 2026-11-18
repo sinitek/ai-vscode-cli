@@ -715,7 +715,7 @@ test("projects a completed repair accept as acceptance_failed", () => {
   assert.equal(passedState.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_passed");
 });
 
-test("shows a closed Loop+ subtask as stopped even after an older acceptance", () => {
+test("shows a closed Loop+ subtask as closed even after an older acceptance", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   assert.equal(scheduler.dispatch([spec("A", "a-1", "Alpha")]).started.length, 1);
   assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-1", outcome: "completed" }).applied, true);
@@ -732,5 +732,19 @@ test("shows a closed Loop+ subtask as stopped even after an older acceptance", (
     return;
   }
   assert.equal(state.loopPlus.seenAttempts.find((item) => item.attemptId === "a-2")?.disposition, "closed");
-  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "stopped");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "closed");
+});
+
+test("撤销验收在恢复后仍显示独立状态和撤销原因", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const eventId = scheduler.snapshot().currentReview!.eventId;
+  assert.equal(scheduler.submitReviewBatch([eventId], [{ eventId, acceptance: "cancelled", reason: "需求变更，不再交付" }]).ok, true);
+  const restored = JSON.parse(JSON.stringify(scheduler.snapshot()));
+  const state = buildLoopGroupChatPanelStateWithDeps(task(restored), deps());
+  assert.equal(state.loopPlus?.ok, true);
+  if (!state.loopPlus?.ok) return;
+  assert.equal(state.loopPlus.visibleReviewCount, 0);
+  assert.equal(state.loopPlus.seenAttempts[0].acceptanceReason, "需求变更，不再交付");
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_cancelled");
 });

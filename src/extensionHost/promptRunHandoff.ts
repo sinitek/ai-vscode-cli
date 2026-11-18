@@ -1,9 +1,6 @@
-import type { RuntimeConfigExecutionLease } from "../config/sharedRuntimeConfig";
-
-/** Runtime status can become stopped before the invocation and its lease finish. */
+/** Runtime status can become stopped before the invocation finishes. */
 export class PromptRunHandoff {
   private readonly runs = new Map<string, Set<{ done: Promise<void>; cancel: () => void }>>();
-  private readonly leases = new Map<string, Set<RuntimeConfigExecutionLease>>();
   private readonly stopping = new Set<string>();
 
   constructor(private readonly timeoutMs = 90000) {}
@@ -26,27 +23,6 @@ export class PromptRunHandoff {
     }
   }
 
-  trackLease(tabId: string, lease: RuntimeConfigExecutionLease): RuntimeConfigExecutionLease {
-    const entries = this.leases.get(tabId) ?? new Set<RuntimeConfigExecutionLease>();
-    this.leases.set(tabId, entries);
-    let releasing: Promise<void> | undefined;
-    const tracked: RuntimeConfigExecutionLease = {
-      selection: lease.selection,
-      release: () => {
-        if (!entries.has(tracked)) return Promise.resolve();
-        if (!releasing) {
-          releasing = lease.release().then(() => {
-            entries.delete(tracked);
-            if (!entries.size) this.leases.delete(tabId);
-          }).finally(() => { releasing = undefined; });
-        }
-        return releasing;
-      },
-    };
-    entries.add(tracked);
-    return tracked;
-  }
-
   async pause(
     tabId: string,
     stop: () => void,
@@ -67,9 +43,6 @@ export class PromptRunHandoff {
           await Promise.all(runs.map((run) => run.done));
           if (!isCurrent()) throw new Error("目标会话已变化，补充任务未发送，输入已保留。");
           await confirmStopped(() => waiting && isCurrent());
-          // A normal completion may have scheduled a failed lease release retry.
-          // Confirm release here instead of treating that completion as idle.
-          await Promise.all(Array.from(this.leases.get(tabId) ?? [], (lease) => lease.release()));
         })(),
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(new Error("等待原任务完全暂停超时，补充任务未发送，输入已保留，请稍后重试。")), this.timeoutMs);

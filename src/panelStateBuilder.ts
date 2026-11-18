@@ -55,11 +55,11 @@ import {
 } from "./loopParallel";
 import {
   LOOP_PLUS_DECISION_SUBTASK_MAX,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusMaxAcceptances,
+  resolveLoopPlusSubtaskMaxRounds,
 } from "./loopPlusDecision";
-import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
+import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes, resolveNewTaskInteractiveMode } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import { resolveModeAvailability } from "./modeAvailability";
@@ -97,9 +97,9 @@ export type PanelStateBuilderDeps = {
   getGlobalChatMessageLimit?: () => number;
   getGlobalLoopGroupChatMessageLimit?: () => number;
   getGlobalHideInstructionBubbles?: () => boolean;
-  getGlobalLoopMaxRounds: () => number;
+  getNewTaskInteractiveMode?: () => PanelState["newTaskInteractiveMode"];
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
-  getGlobalLoopPlusMaxAcceptances?: () => number;
+  getGlobalLoopPlusSubtaskMaxRounds?: () => number;
   getDepartmentConfigurationScope?: () => string;
   getDepartmentConfigurationIssue?: () => string | null;
   getDepartmentDirector?: () => import("./departmentConfiguration").DepartmentConfiguredRoleRoute | undefined;
@@ -221,15 +221,15 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     chatMessageLimit: normalizeChatMessageLimit(deps.getGlobalChatMessageLimit?.()),
     loopGroupChatMessageLimit: normalizeChatMessageLimit(deps.getGlobalLoopGroupChatMessageLimit?.(), LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     hideInstructionBubbles: deps.getGlobalHideInstructionBubbles?.() === true,
-    loopMaxRounds: deps.getGlobalLoopMaxRounds(),
+    newTaskInteractiveMode: resolveNewTaskInteractiveMode(deps.getNewTaskInteractiveMode?.()),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,
     ),
     workspaceLoopPlusDecisionSubtaskMax: normalizeWorkspaceLoopPlusDecisionSubtaskMax(
       deps.workspaceSettings.loopPlusDecisionSubtaskMax,
     ) ?? null,
-    loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(
-      deps.getGlobalLoopPlusMaxAcceptances?.() ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
+    loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(
+      deps.getGlobalLoopPlusSubtaskMaxRounds?.() ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
     ),
     departmentMaxLeaders: normalizeDepartmentMaxLeaders(deps.getGlobalDepartmentMaxLeaders?.()),
     departmentMaxEmployees: normalizeDepartmentMaxEmployees(deps.getGlobalDepartmentMaxEmployees?.()),

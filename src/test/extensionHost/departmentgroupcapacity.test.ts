@@ -111,7 +111,8 @@ scenario("production OpenCode employee close and drain, owned resources and tab 
   assert.deepEqual(h.employeeProcessLifecycles.at(-1), { processTerminal: "confirmed", streams: "confirmed", temp: "unobservable" });
   await until(() => h.tabCloseAttempts.includes(employeeTabId));
   await until(() => h.tabs.size === 0);
-  await until(() => JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length === 0);
+  await until(() => h.composition.readCapacity("root")!.leaders.length === 0
+    && h.composition.readCapacity("root")!.employees.length === 0);
   const employeeRecord = new DepartmentExecutionReceiptStore(h.file("owners/" + employeeBinding.identity.ownerId))
     .read(employeeBinding.identity.executionId, employeeBinding.identity);
   assert.equal(employeeRecord.kind, "ok");
@@ -123,8 +124,6 @@ scenario("production OpenCode employee close and drain, owned resources and tab 
   assert.equal(employeeRecord.value.receipt?.cleanup.links.status, "confirmed");
   assert.equal(employeeRecord.value.receipt?.cleanup.temp.status, "confirmed");
   assert.equal(employeeRecord.value.receipt?.cleanup.tab.status, "confirmed");
-  await until(() => h.composition.readCapacity("root")!.leaders.length === 0
-    && h.composition.readCapacity("root")!.employees.length === 0);
   const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
   assert.equal(saved.value.leaderExecutionSets![0].state, "closed");
   assert.equal(saved.value.capacity.leaders.length, 0);
@@ -166,7 +165,7 @@ scenario("production OpenCode employee tab release failure retains mixed group c
   assert.deepEqual(h.read(started.taskId)!.subTasks[0].executionSession, { cli: "opencode", configId: "profile", sessionId: "ses_fixture" });
 });
 
-for (const failure of ["tab", "selection", "missing-original", "persistence", "late-builder", "pipe"] as const) scenario(`production ${failure} retains group capacity`, async (t) => {
+for (const failure of ["tab", "missing-original", "persistence", "late-builder", "pipe"] as const) scenario(`production ${failure} retains group capacity`, async (t) => {
   const h = await productionWiring(t, "codex", true, true), entered = gate(), release = gate();
   h.answer(1, completed());
   if (failure === "tab") h.failTabClose(true);
@@ -184,7 +183,6 @@ for (const failure of ["tab", "selection", "missing-original", "persistence", "l
     assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
     fs.rmSync(h.file("hold-pipe")); await started.done; return;
   } else {
-    if (failure === "selection") h.setCleanupSelection(async () => ({ ...h.expected, ready: true, revision: "wrong-revision" }));
     if (failure === "persistence") {
       const write = h.store.write.bind(h.store);
       h.store.write = (value) => value.capacity.leaders.length === 0 ? { ok: false, error: "injected-release-persistence-failure" } : write(value);

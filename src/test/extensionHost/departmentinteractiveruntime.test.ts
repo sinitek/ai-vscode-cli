@@ -40,7 +40,7 @@ async function harness(t: test.TestContext, leader: CliName, employee: CliName =
   await producer.openNewLeader("leader", 1);
   const runtime = createDepartmentInteractiveRuntime({ producer, store, ownerDirectory: path.join(directory, "owners"), readTask: read, updateTask: update });
   const cleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: path.join(directory, "owners"), workspaceKey: () => "workspace", readTask: read,
-    readSelection: async () => ({ ready: true, configId: "profile", revision: "revision" }) });
+  });
   const run = (round = "round-1", execute?: Parameters<typeof runtime.run>[0]["execute"], role: "leader" | "employee" = "leader", cancel = () => {}) => producer.track("leader", () => runtime.run({
     taskId: "leader", role, invocationId: round, sessionId: role === "leader" ? "local_leader" : "local_employee",
     ...(role === "employee" ? { subtaskId: "employee", attemptId: "attempt" } : {}), expected: { configId: "profile", revision: "revision" }, cancel,

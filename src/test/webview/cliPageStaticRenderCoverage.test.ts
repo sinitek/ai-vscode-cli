@@ -48,6 +48,15 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("chat input restores valid heights before the script starts and leaves the default for missing or invalid settings", () => {
+  const html = buildHtml({ promptInputHeight: 195.5 });
+  assert.match(html, /id="promptInputResize"[^>]+role="separator"[^>]+aria-controls="promptInput"/);
+  assert.match(html, /id="promptInput"[^>]+rows="3"[^>]+style="--prompt-input-height: 195\.5px"/);
+  for (const promptInputHeight of [undefined, 10, Infinity]) {
+    assert.doesNotMatch(buildHtml({ promptInputHeight }), /id="promptInput"[^>]+style=/);
+  }
+});
+
 test("dispatch limit settings explain their shared Loop and Loop+ scope", () => {
   const html = buildHtml();
   assert.match(html, /Loop\/Loop\+ 单次派发上限/);
@@ -66,7 +75,7 @@ test("chat message limit reuses the AI task settings card between compact and Lo
   const html = buildHtml();
   const start = html.indexOf('id="chatMessageLimit"');
   assert.ok(start > html.indexOf('id="autoCompactContextAfterRun"'));
-  assert.ok(start < html.indexOf('id="loopMaxRounds"'));
+  assert.ok(start < html.indexOf('id="loopPlusSubtaskMaxRounds"'));
   assert.equal(countOccurrences(html, 'id="chatMessageLimit"'), 1);
   assert.match(html, /<label class="tool-settings-label" for="chatMessageLimit">每个标签页气泡上限<\/label>/);
   assert.match(html, /<input\s+type="number"\s+id="chatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="500"\s+aria-describedby="chatMessageLimitNote"/);
@@ -81,7 +90,7 @@ test("group chat limit reuses the AI task settings card with its own accessible 
   const start = html.indexOf('id="loopGroupChatMessageLimit"');
   assert.equal(countOccurrences(html, 'id="loopGroupChatMessageLimit"'), 1);
   assert.ok(start > html.indexOf('id="chatMessageLimit"'));
-  assert.ok(start < html.indexOf('id="loopMaxRounds"'));
+  assert.ok(start < html.indexOf('id="loopPlusSubtaskMaxRounds"'));
   assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
   assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
   assert.match(html, /<label class="tool-settings-label" for="loopGroupChatMessageLimit">Loop \/ Loop\+ 群聊气泡上限<\/label>/u);
@@ -339,9 +348,8 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'CLI 工具',
     'id="codeGraphEnabled"',
     'id="humanInteractionTimeoutMinutes"',
-    'id="loopMaxRounds"',
     'id="loopPlusDecisionSubtaskMax"',
-    'id="loopPlusMaxAcceptances"',
+    'id="loopPlusSubtaskMaxRounds"',
     'id="commonCommandsOverlay"',
     'id="addModelOverlay"',
     'id="modelManagerList"',
@@ -629,4 +637,15 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
   assert.match(DIALOG_SHELL_STYLES, /padding:\s*16px 16px 12px/);
   assert.match(DIALOG_SHELL_STYLES, /gap:\s*8px/);
   assert.match(CLARIFICATION_DIALOG_STYLES, /max-height:\s*min\(85vh,\s*760px\)/);
+});
+
+
+test("Loop+ subtask rounds replace the acceptance limit with an accessible 50–9999 input defaulting to 200", () => {
+  const html = buildHtml();
+  assert.match(html, /for="loopPlusSubtaskMaxRounds">Loop\/Loop\+ 子任务轮次上限</);
+  assert.doesNotMatch(html, /id="loopMaxRounds"|Loop 最大轮次/);
+  assert.match(html, /id="loopPlusSubtaskMaxRounds"[\s\S]*?min="50"[\s\S]*?max="9999"[\s\S]*?value="200"/);
+  assert.match(html, /aria-describedby="loopPlusSubtaskMaxRoundsNote"/);
+  assert.match(html, /默认 200，范围 50–9999/);
+  assert.doesNotMatch(html, /最多验收次数|loopPlusMaxAcceptances/);
 });

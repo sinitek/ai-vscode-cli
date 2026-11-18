@@ -150,8 +150,7 @@ function start(snapshot: Snapshot): TrustedExecutionHandle {
 }
 
 /** Trusted in-process adapter only. Public Owner IPC remains identity-only.
- * Cache is bounded and never evicts an active or failed execution into a second spawn.
- * The trusted resolver retains its configuration lease until its own release capability completes. */
+ * Cache is bounded and never evicts an active or failed execution into a second spawn. */
 export function createDepartmentProcessExecutionLauncher(resolvePrepared: DepartmentProcessExecutionResolver): TrustedExecutionLauncher {
   const entries = new Map<string, Entry>();
   const getEntry = (identity: DepartmentExecutionIdentity): Entry & { snapshot: Snapshot } => {

@@ -16,7 +16,7 @@ import { type GrokConfigModels } from "../cli/grokConfigModels";
 import { changeKimiCodeConfigModelList, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
 import { ConfiguredModelRepository } from "../config/configuredModelRepository";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
 import { resolveEffectiveLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
@@ -88,9 +88,6 @@ const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const DEFAULT_MODEL_STORE_KEY = "__default__";
 const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const PROMPT_HISTORY_LIMIT = 200;
-const LOOP_DEFAULT_MAX_ROUNDS = 20;
-const LOOP_MIN_MAX_ROUNDS = 1;
-const LOOP_MAX_MAX_ROUNDS = 100;
 const CODEGRAPH_INSTALL_TERMINAL_NAME = "CodeGraph Install";
 const CODEGRAPH_INSTALL_POLL_MS = 2000;
 const CODEGRAPH_INSTALL_TIMEOUT_MS = 15 * 60 * 1000;
@@ -895,38 +892,6 @@ function getGlobalAutoCompactContextAfterRun(): boolean {
   return resolveGlobalAutoCompactContextAfterRun(readToolSettings(), workspaceSettings);
 }
 
-function normalizeLoopMaxRounds(value: unknown): number {
-  const rawValue = parseLoopMaxRoundsValue(value);
-  if (!Number.isFinite(rawValue)) {
-    return LOOP_DEFAULT_MAX_ROUNDS;
-  }
-  const integerValue = Math.floor(rawValue);
-  return Math.min(Math.max(integerValue, LOOP_MIN_MAX_ROUNDS), LOOP_MAX_MAX_ROUNDS);
-}
-
-function normalizeStoredLoopMaxRounds(value: unknown): number {
-  const rawValue = parseLoopMaxRoundsValue(value);
-  if (!Number.isFinite(rawValue)) {
-    return LOOP_DEFAULT_MAX_ROUNDS;
-  }
-  return Math.max(Math.floor(rawValue), LOOP_MIN_MAX_ROUNDS);
-}
-
-function parseLoopMaxRoundsValue(value: unknown): number {
-  const rawValue = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  return rawValue;
-}
-
-function getGlobalLoopMaxRounds(): number {
-  const toolSettings = readToolSettings();
-  if (typeof toolSettings.loopMaxRounds === "number") {
-    return normalizeLoopMaxRounds(toolSettings.loopMaxRounds);
-  }
-  return normalizeLoopMaxRounds(workspaceSettings.loopMaxRounds);
-}
-
 function getGlobalLoopPlusDecisionSubtaskMax(): number {
   return resolveLoopPlusDecisionSubtaskMax(readToolSettings().loopPlusDecisionSubtaskMax);
 }
@@ -938,8 +903,8 @@ function getEffectiveLoopPlusDecisionSubtaskMax(): number {
   );
 }
 
-function getGlobalLoopPlusMaxAcceptances(): number {
-  return resolveLoopPlusMaxAcceptances(readToolSettings().loopPlusMaxAcceptances);
+function getGlobalLoopPlusSubtaskMaxRounds(): number {
+  return resolveLoopPlusSubtaskMaxRounds(readToolSettings().loopPlusSubtaskMaxRounds);
 }
 
 function getModelStoreOptions() {
@@ -960,7 +925,6 @@ function getWorkspaceSettingsStoreOptions() {
     isThinkingMode,
     isInteractiveMode,
     normalizeVisibleInteractiveMode,
-    normalizeLoopMaxRounds,
     sanitizeConversationTabRecord: (value: unknown): ConversationTabRecordForWorkspaceSettings | null => sanitizeConversationTabRecord(value),
     logError: (event: string, payload?: unknown) => void logError(event, payload),
   };
@@ -1762,13 +1726,9 @@ return {
   buildArchitectureInitializationModelPrompt: wrap(buildArchitectureInitializationModelPrompt),
   maybePromptInitializeArchitectureWithAi: wrap(maybePromptInitializeArchitectureWithAi),
   getGlobalAutoCompactContextAfterRun: wrap(getGlobalAutoCompactContextAfterRun),
-  normalizeLoopMaxRounds: wrap(normalizeLoopMaxRounds),
-  normalizeStoredLoopMaxRounds: wrap(normalizeStoredLoopMaxRounds),
-  parseLoopMaxRoundsValue: wrap(parseLoopMaxRoundsValue),
-  getGlobalLoopMaxRounds: wrap(getGlobalLoopMaxRounds),
   getGlobalLoopPlusDecisionSubtaskMax: wrap(getGlobalLoopPlusDecisionSubtaskMax),
   getEffectiveLoopPlusDecisionSubtaskMax: wrap(getEffectiveLoopPlusDecisionSubtaskMax),
-  getGlobalLoopPlusMaxAcceptances: wrap(getGlobalLoopPlusMaxAcceptances),
+  getGlobalLoopPlusSubtaskMaxRounds: wrap(getGlobalLoopPlusSubtaskMaxRounds),
   getModelStoreOptions: wrap(getModelStoreOptions),
   getWorkspaceSettingsStoreOptions: wrap(getWorkspaceSettingsStoreOptions),
   getPromptHistoryStoreOptions: wrap(getPromptHistoryStoreOptions),

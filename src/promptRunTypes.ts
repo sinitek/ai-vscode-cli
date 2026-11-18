@@ -7,7 +7,6 @@ import type { LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 export type PromptRunInput = {
   /** Host-validated root configuration snapshot, captured once by the department start boundary. */
   departmentConfiguration?: import("./departmentConfiguration").DepartmentConfigurationState;
-  configSelections?: Partial<Record<CliName, import("./config/sharedRuntimeConfig").VisibleConfigSelection>>;
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];

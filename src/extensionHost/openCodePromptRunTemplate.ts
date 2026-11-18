@@ -291,6 +291,7 @@ export type OpenCodePromptRunPorts = {
     currentAttemptHasAssistantAnswer: boolean;
     conversationHasFinalConclusion: boolean;
   }) => Promise<OpenCodePromptSuccessCompletion>;
+  publishSuccessfulCompletion: () => void;
   maybeAutoCompactContextAfterPromptSuccess: (
     target: PromptRunTarget,
     sessionId: string | null,
@@ -615,10 +616,18 @@ export async function runOpenCodePromptTemplate(
         currentAttemptHasAssistantAnswer,
         conversationHasFinalConclusion,
       });
+      const deferEndStatus = shouldAutoCompactAfterRun && !input.loopTaskId;
+      if (!deferEndStatus) {
+        ports.publishSuccessfulCompletion();
+      }
+      let compactionStarted = false;
       if (shouldAutoCompactAfterRun) {
         const compactTarget = { ...target, sessionId: completion.sessionId };
-        await scheduleAutoCompactAfterPrompt({ ...input, model: runtimeModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
+        compactionStarted = await scheduleAutoCompactAfterPrompt({ ...input, model: runtimeModel ?? undefined, thinkingModeOverride: thinkingMode }, compactTarget, (options) =>
           ports.maybeAutoCompactContextAfterPromptSuccess(compactTarget, compactTarget.sessionId, completion.durationMs, options));
+      }
+      if (deferEndStatus && !compactionStarted) {
+        ports.publishSuccessfulCompletion();
       }
       return;
     }

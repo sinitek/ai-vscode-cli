@@ -1,4 +1,4 @@
-/* Installed EH + real adapter/repositories/leases and production Codex worker. Free simulated NDJSON CLI. */
+/* Installed EH + real adapter/repositories and production Codex worker. Free simulated NDJSON CLI. */
 "use strict";
 const fs = require("node:fs"), os = require("node:os"), path = require("node:path"), crypto = require("node:crypto"), cp = require("node:child_process"), assert = require("node:assert/strict");
 const product = path.resolve(__dirname, ".."), cancel = process.argv.includes("--prelaunch-cancel");
@@ -32,7 +32,8 @@ async function main() {
     const client = new DepartmentExecutionOwnerClient(path.join(directory, "owners", result.identity.ownerId));
     assert.equal((await client.observeExecution(result.identity)).status, "live"); assert.equal((await client.startExecution(result.identity)).status, "live");
     const observed = JSON.parse(fs.readFileSync(path.join(directory, "observed"), "utf8"));
-    assert.equal(observed.ownerLeases.length, 1); assert.notEqual(observed.ownerLeases[0].pid, result.ehPid);
+    assert.ok(Number.isSafeInteger(observed.ownerPid) && observed.ownerPid > 1);
+    assert.notEqual(observed.ownerPid, result.ehPid);
     const beforeTask = observed.task.tasks.find(task => task.id === result.identity.leaderTaskId);
     assert.deepEqual(beforeTask.subTasks.find(task => task.id === result.identity.subtaskId).executionSession,
       { cli: "codex", sessionId: result.identity.session.id, configId: "profile" });
@@ -51,8 +52,9 @@ async function main() {
   finally {
     if (host && !exited) { forced = true; try { process.kill(process.platform === "win32" ? host.pid : -host.pid, "SIGTERM"); } catch {} }
     // Fixture teardown only. Forced termination never counts as native cleanup evidence.
-    const config = path.join(directory, "configuration/selection.json");
-    if (fs.existsSync(config)) for (const lease of JSON.parse(fs.readFileSync(config, "utf8")).leases) { try { process.kill(lease.pid, "SIGTERM"); } catch {} }
+    if (!report.ok && host?.pid && exited && process.platform !== "win32") {
+      try { process.kill(-host.pid, "SIGTERM"); } catch {}
+    }
     report.forcedHostCleanup = forced; if (forced) { report.ok = false; process.exitCode = 1; }
     fs.writeFileSync(path.join(directory, "report.json"), JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
   }

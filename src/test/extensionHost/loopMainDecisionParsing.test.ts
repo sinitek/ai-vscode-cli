@@ -11,6 +11,7 @@ installVscodeMock();
 
 const { createPromptRunRuntimeHost } = require("../../extensionHost/promptRunRuntime") as typeof import("../../extensionHost/promptRunRuntime");
 const { createLoopOrchestrationHost } = require("../../extensionHost/loopOrchestration") as typeof import("../../extensionHost/loopOrchestration");
+const { resolveLoopResumeRound } = require("../../webviewCommandCoordinator") as typeof import("../../webviewCommandCoordinator");
 
 function createRuntimeHost(decisionSubtaskMax?: () => number) {
   const deps: Parameters<typeof createPromptRunRuntimeHost>[0] = {
@@ -58,9 +59,11 @@ test("classic blocked decisions preserve diagnostic gaps and render complete str
 
 test("classic Loop main prompt reflects the configured dispatch limit in rules and examples", async () => {
   let maximum = 10;
+  let total = 60;
   const prompts: string[] = [];
   const host = createLoopOrchestrationHost({
     decisionSubtaskMax: () => maximum,
+    subtaskRoundLimit: () => total,
     getLoopCommunicationPaths: () => ({ dir: "comm", mainFile: "main.md", subtasksDir: "subtasks" }),
     normalizeLoopContinuePromptForPrompt: () => null,
     buildLoopSupplementalRequirementsLines: () => [],
@@ -76,7 +79,7 @@ test("classic Loop main prompt reflects the configured dispatch limit in rules a
     appendLoopRound: () => null,
     buildLoopRoundSummary: () => "",
   });
-  const task = { id: "task-limit", taskStoreFile: "tasks.json", rootPrompt: "完成目标" } as LoopTaskRecord;
+  const task = { ...createNeedsReviewTask(), classicSubtaskDispatchCount: 50 };
   const options = {
     input: { displayPrompt: "完成目标", modelPrompt: "完成目标", contextTags: [] },
     target: { tabId: "tab-limit", cli: "codex" as const, sessionId: null },
@@ -97,6 +100,11 @@ test("classic Loop main prompt reflects the configured dispatch limit in rules a
     .map((line) => JSON.parse(line) as { subtasks: unknown[] });
   assert.equal(examples.length, 2);
   assert.ok(examples.every((example) => example.subtasks.length <= 1));
+  total = 50;
+  await host.runClassicLoopMainDecision(options);
+  assert.match(prompts[2], /已用 50\/50，剩余 0/);
+  assert.match(prompts[2], /仍应根据已有汇报复核/);
+  assert.doesNotMatch(prompts[2], /\{"status":"continue"/);
 });
 
 test("classic Loop uses the configured dispatch limit instead of a fixed six-task cap", () => {
@@ -169,6 +177,10 @@ function createNeedsReviewTask(): LoopTaskRecord {
     completionRequirementCoverage: [],
   };
 }
+
+test("classic Loop resumes at the recorded round even past legacy maxRounds", () => {
+  assert.equal(resolveLoopResumeRound(createNeedsReviewTask()), 24);
+});
 
 test("terminal Loop tasks do not regain a main tab unless continuation explicitly creates one", () => {
   const tabs: Array<{ id: string; cli: "codex"; sessionId: string | null; sessionIdByCli: { codex: string }; createdAt: number }> = [];

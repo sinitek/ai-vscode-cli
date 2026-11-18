@@ -20,7 +20,6 @@ async function setup(t: test.TestContext, bound = false) {
   t.after(async () => {
     // Test teardown only; SIGTERM/removal is not native cleanup or capacity evidence.
     const pids = new Set<number>();
-    try { for (const l of JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases) pids.add(l.pid); } catch {}
     try { for (const l of fs.readFileSync(h.file("native-pids"), "utf8").trim().split("\n")) pids.add(Number(l)); } catch {}
     for (const pid of pids) { try { process.kill(pid, "SIGTERM"); } catch {} }
     await new Promise((r) => setTimeout(r, 20)); fs.rmSync(directory, { recursive: true, force: true });
@@ -198,7 +197,7 @@ test("leader granted round survives seal and post-grant caller abort", { timeout
   assert.equal(h.count("turn/start"), 1);
 });
 
-test("leader original granted Owner and config lease survive startup host exit", { timeout: 15000 }, async (t) => {
+test("leader original granted Owner survives startup host exit", { timeout: 15000 }, async (t) => {
   const h = await setup(t); h.flag("hold-terminal");
   const child = fork(path.join(__dirname, "fixtures", "departmentleadercodexhost.js"), [h.directory], { stdio: ["ignore", "ignore", "pipe", "ipc"], execArgv: [] });
   let stderr = ""; child.stderr!.on("data", (v) => { stderr += String(v); });
@@ -211,8 +210,6 @@ test("leader original granted Owner and config lease survive startup host exit",
   assert.equal((await recovered.observe()).status, "live");
   await assert.rejects(recovered.invoke(second), /observation-only/);
   assert.equal(h.builders, 0);
-  const state = JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8"));
-  assert.equal(state.leases.length, 1); process.kill(state.leases[0].pid, 0);
   assert.equal(h.count("turn/start"), 1); h.removeFlag("hold-terminal");
   await until(() => fs.existsSync(h.file("eof-1")));
   await until(async () => (await new DepartmentExecutionOwnerClient(h.file("owner")).observeExecution(binding.identity)).status !== "live");

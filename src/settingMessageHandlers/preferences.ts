@@ -4,12 +4,14 @@ import { setDebugLogging } from "../logger";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "../departmentSettings";
 import { assertDepartmentConfigBindingsCurrent, captureDepartmentConfigBindings, normalizeDepartmentRolePreference, validateDepartmentRoleCandidate } from "../departmentConfiguration";
 import { departmentRoleCliIssue } from "../department";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusMaxAcceptances } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { normalizePromptInputHeight } from "../promptInputHeight";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
 import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import {
   normalizeHistoryRetentionDays,
   resolveHumanInteractionTimeoutMinutes,
+  resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
   type CliEnabledByName,
 } from "../toolSettings";
@@ -25,7 +27,6 @@ export type PreferenceSettingDeps = Pick<
   | "showWebviewError"
   | "updateStoredToolSettings"
   | "saveWorkspaceSettings"
-  | "normalizeLoopMaxRounds"
   | "isMacTaskShell"
   | "readStoredToolSettings"
   | "getCurrentCli"
@@ -76,6 +77,12 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     const saved = deps.updateStoredToolSettings({ [message.key]: message.value });
     if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.taskModesSaveError);
   }),
+  command("newTaskInteractiveMode", (message, deps) => {
+    const mode = resolveNewTaskInteractiveMode(message.value);
+    if (message.value === mode && !deps.updateStoredToolSettings({ newTaskInteractiveMode: mode })) {
+      deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsNewTaskInteractiveModeSaveError);
+    }
+  }),
   command(["autoCompactContextAfterRun", "autoCompactContextBeforeRun"], (message, deps, { workspaceSettings }) => {
     const savedGlobally = deps.updateStoredToolSettings({
       autoCompactContextAfterRun: Boolean(message.value),
@@ -88,12 +95,9 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
       deps.saveWorkspaceSettings(workspaceSettings);
     }
   }),
-  command("loopMaxRounds", (message, deps, { workspaceSettings }) => {
-    deps.updateStoredToolSettings({ loopMaxRounds: deps.normalizeLoopMaxRounds(message.value) });
-    if ("loopMaxRounds" in workspaceSettings) {
-      delete workspaceSettings.loopMaxRounds;
-      deps.saveWorkspaceSettings(workspaceSettings);
-    }
+  command("loopPlusSubtaskMaxRounds", (message, deps) => {
+    const saved = deps.updateStoredToolSettings({ loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(message.value) });
+    if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.taskModesSaveError);
   }),
   command("loopPlusDecisionSubtaskMax", (message, deps) => {
     deps.updateStoredToolSettings({
@@ -109,11 +113,6 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
       workspaceSettings.loopPlusDecisionSubtaskMax = value;
     }
     deps.saveWorkspaceSettings(workspaceSettings);
-  }),
-  command("loopPlusMaxAcceptances", (message, deps) => {
-    deps.updateStoredToolSettings({
-      loopPlusMaxAcceptances: resolveLoopPlusMaxAcceptances(message.value),
-    });
   }),
   command("departmentMaxLeaders", (message, deps) => {
     const saved = deps.updateStoredToolSettings({ departmentMaxLeaders: normalizeDepartmentMaxLeaders(message.value) });
@@ -273,6 +272,12 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     const saved = deps.updateStoredToolSettings({ hideInstructionBubbles: message.value === true });
     if (!saved) {
       deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsHideInstructionBubblesSaveError);
+    }
+  }),
+  command("promptInputHeight", (message, deps) => {
+    const height = normalizePromptInputHeight(message.value);
+    if (height !== undefined && !deps.updateStoredToolSettings({ promptInputHeight: height })) {
+      deps.showWebviewError(WEBVIEW_STRINGS.appTitle, WEBVIEW_STRINGS.promptInputHeightSaveError);
     }
   }),
   command("historyRetentionDays", (message, deps) => {

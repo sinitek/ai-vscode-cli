@@ -69,7 +69,6 @@ test("employee facade keeps original observation pending through consumer finali
   assert.equal(terminal.processTerminal.status, "confirmed"); assert.equal(terminal.streams.status, "confirmed");
   await until(() => finalizingReplies >= 2); // Responses are from the original automatic waitForCleanup chain.
   assert.equal(settled, false); assert.equal(tabCloses, 0); assert.equal(tabs.size, 1);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(h.directory, "configuration/selection.json"), "utf8")).leases.length, 1);
   const binding = bindings()[0]; assert.ok(binding && original);
   assert.equal(fs.readFileSync(path.join(h.directory, "spawn-count"), "utf8"), "spawn\n");
   consumer.finish();
@@ -81,7 +80,6 @@ test("employee facade keeps original observation pending through consumer finali
   await until(() => owner?.exitCode !== null && owner?.exitCode !== undefined);
   assert.equal(stoppedDelivered, true);
   assert.equal(settled, true); assert.equal(tabCloses, 1); assert.equal(tabs.size, 0);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(h.directory, "configuration/selection.json"), "utf8")).leases.length, 0);
   assert.ok(output.includes("正确会话回答") && output.includes("tail-output"));
   assert.equal(fs.readFileSync(path.join(h.directory, "spawn-count"), "utf8"), "spawn\n");
   assert.deepEqual(await original.waitForCleanup(binding.identity, binding.requirements), receipt, "original strict cache survives stopped");

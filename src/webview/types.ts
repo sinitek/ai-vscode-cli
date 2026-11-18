@@ -36,6 +36,7 @@ export type PanelMessage =
   | { type: "resolveChatImage"; source: string }
   | { type: "downloadChatImage"; source: string; alt?: string }
   | { type: "reconcileRunningConversationTabs" }
+  | { type: "pendingPromptQueueChanged"; hasPendingPrompts: boolean }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
   | { type: "selectCliLoopModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
@@ -48,7 +49,7 @@ export type PanelMessage =
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
   | { type: "selectConversationTab"; tabId: string; cli: CliName }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }
-  | { type: "newSession" }
+  | { type: "newSession"; tabId?: string }
   | { type: "queryCodexLongConnectionCount"; token?: number }
   | { type: "resetConversationTabSession" }
   | { type: "deleteSession"; sessionId: string; cli: CliName }
@@ -89,7 +90,6 @@ export type PanelMessage =
       departmentConfigurationScope?: string;
       requestId?: string;
       pauseBeforeSend?: boolean;
-      configSelections?: Partial<Record<CliName, import("../config/sharedRuntimeConfig").VisibleConfigSelection>>;
       prompt: string;
       interactiveMode?: InteractiveMode;
       contextOptions?: PromptContextOptions;
@@ -292,6 +292,8 @@ export type ConversationTabSummary = {
   loopTaskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopTaskRunning?: boolean;
+  loopSubtaskRunning?: boolean;
+  loopSubtaskId?: string;
   loopTaskStatus?: LoopTaskStatus;
   loopSchedulingMode?: "classic" | "event_driven";
   loopMainTabCloseLocked?: boolean;
@@ -418,10 +420,10 @@ export type PanelState = {
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
-  loopMaxRounds: number;
+  newTaskInteractiveMode: import("../toolSettings").NewTaskInteractiveMode;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
-  loopPlusMaxAcceptances: number;
+  loopPlusSubtaskMaxRounds: number;
   departmentMaxLeaders?: number;
   departmentMaxEmployees?: number;
   workspaceDepartmentMaxLeaders?: number | null;

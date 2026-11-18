@@ -71,7 +71,7 @@ test("first native session: responsibility, one creation, two durable confirmati
   await until(() => h.exists("create-ready"));
   assert.equal(h.exists("spawn-count"), false); assert.equal(wroteSession, false);
   assert.equal(h.admission.entries()[0].executionId, null);
-  await assert.rejects(h.config.change(async () => ({ configId: "other", profileDigest: null })), /执行中的任务/);
+  assert.equal((await h.config.change(async () => ({ configId: "other", profileDigest: null }))).configId, "other");
   h.open("create-open"); await until(() => h.exists("server-close-ready"));
   assert.equal(wroteSession, false, "server signal is not close/drain evidence");
   assert.equal(h.exists("spawn-count"), false);
@@ -182,28 +182,33 @@ test("private unbound contract rejects conflicting session args and freezes ever
 });
 
 for (const stage of ["create", "persist", "committed", "launch-request"] as const) {
-  test(`first native ${stage}: shared selection revision conflict blocks the final grant`, { timeout: 15000 }, async (t) => {
+  test(`first native ${stage}: shared selection revision change preserves the admitted route`, { timeout: 15000 }, async (t) => {
     const h = await firstSession(t, true);
     const event = holdOwnerEvent(t, stage === "committed" || stage === "launch-request" ? stage : "prepared");
-    const run = h.service.run("leader", "subtask", {}, h.expected), rejected = assert.rejects(run);
-    const conflict = () => {
-      // Fault injection only: legitimate SharedRuntimeConfig.change is already denied by the real worker lease.
+    const run = h.service.run("leader", "subtask", {}, h.expected);
+    const replace = () => {
       const target = h.file("configuration/selection.json"), current = JSON.parse(fs.readFileSync(target, "utf8"));
       fs.writeFileSync(target, JSON.stringify({ ...current, revision: "externally-conflicting-revision" }));
     };
-    if (stage === "create") { await until(() => h.exists("create-ready")); conflict(); }
+    if (stage === "create") { await until(() => h.exists("create-ready")); replace(); }
     else {
       h.open("create-open"); h.open("server-close-open"); await event.ready;
       if (stage === "persist") {
         const update = h.host.updateTask;
-        h.host.updateTask = (id, patch) => { const result = update(id, patch); conflict(); return result; };
+        h.host.updateTask = (id, patch) => { const result = update(id, patch); replace(); return result; };
         event.release();
-      } else { conflict(); event.release(); }
+      } else { replace(); event.release(); }
     }
     h.open("create-open"); h.open("server-close-open");
-    await rejected; await until(event.exited);
-    assert.equal(h.exists("spawn-count"), false);
+    if (stage === "create") { await event.ready; event.release(); }
+    const handle = await run;
+    await until(() => h.exists("tail-ready"));
+    h.open("exit"); h.open("drain");
+    assert.equal((await handle.lifecycle!).streams.status, "confirmed");
+    await assert.rejects(h.service.observe("leader", "attempt").done, /cleanup-observation-unknown/);
+    assert.equal(fs.readFileSync(h.file("spawn-count"), "utf8"), "spawn\n");
     assert.equal(h.admission.entries().length, 1);
+    assert.equal(h.admission.entries()[0].responsibility.selection.revision, h.expected.revision);
   });
 }
 
@@ -293,7 +298,7 @@ for (const mode of ["same-root", "wrong-directory", "retained-root", "root-repla
       else { fs.unlinkSync(path.join(cwd, "source.txt")); fs.writeFileSync(path.join(cwd, "source.txt"), "foreign"); }
       event.release(); await rejected; await until(event.exited);
       assert.equal(h.exists("spawn-count"), false);
-      assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 1);
+      assert.equal(fs.existsSync(cwd), true);
       // Hygiene only: substituted resources are deliberately retained by the Owner.
       fs.rmSync(cwd, { recursive: true, force: true }); fs.rmSync(cwd + "-original", { recursive: true, force: true });
       return;
@@ -309,7 +314,6 @@ for (const mode of ["same-root", "wrong-directory", "retained-root", "root-repla
     await assert.rejects(h.service.observe("leader", "attempt").done);
     if (mode === "retained-root") {
       assert.equal(fs.existsSync(cwd), true);
-      assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 1);
       fs.rmSync(cwd, { recursive: true, force: true }); // hygiene, never evidence
     } else await until(() => !fs.existsSync(cwd));
   });
@@ -343,7 +347,7 @@ test("employee private argv rejects instance overrides before any native prepara
   }
 });
 
-for (const retain of [false, true]) test(`employee same root full receipt ${retain ? "retains unknown root and configuration lease" : "waits original consumer and naturally retires the Owner"}`, { timeout: 15000 }, async t => {
+for (const retain of [false, true]) test(`employee same root full receipt ${retain ? "retains unknown root and capacity" : "waits original consumer and naturally retires the Owner"}`, { timeout: 15000 }, async t => {
   const h = await firstSession(t);
   const { createDepartmentExecutionResources } = await import("../../extensionHost/departmentexecutionresources");
   const tabs = new Map([["employee", { id: "employee", cli: "opencode", sessionId: "local_employee" }]]);
@@ -362,13 +366,11 @@ for (const retain of [false, true]) test(`employee same root full receipt ${reta
   if (retain) fs.writeFileSync(path.join(cwd, "unknown-owned-root-content"), "preserve");
   h.open("exit"); h.open("drain"); await handle.lifecycle;
   assert.equal(tabs.size, 1);
-  assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 1);
   let complete = false; const done = h.service.observe("leader", "attempt").done.then(() => { complete = true; });
   if (retain) {
     const rejected = assert.rejects(done); consumer.finish(); await rejected;
     assert.equal(complete, false); assert.equal(tabs.size, 0);
     assert.equal(fs.existsSync(cwd), true);
-    assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 1);
     const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
     assert.equal(saved.value.capacity.employees.length, 1); assert.equal(saved.value.capacity.leaders.length, 1);
     const b = saved.value.executionBindings![0]; assert.ok(originalClient);
@@ -385,7 +387,6 @@ for (const retain of [false, true]) test(`employee same root full receipt ${reta
   assert.ok(originalClient);
   const receipt = await originalClient.waitForCleanup(binding.identity, binding.requirements);
   for (const [part, required] of Object.entries(binding.requirements)) if (required) assert.equal(receipt.cleanup[part as keyof typeof receipt.cleanup].status, "confirmed", part);
-  assert.equal(JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases.length, 0);
 });
 
 for (const stage of ["realpath", "assert"] as const) for (const cleanup of ["confirmed", "retained"] as const) {
@@ -409,7 +410,7 @@ for (const stage of ["realpath", "assert"] as const) for (const cleanup of ["con
     const audit = fs.readFileSync(h.file("root-capture-audit"), "utf8").trim().split("\n").map(line => JSON.parse(line));
     cwd = audit[0].cwd;
     assert.deepEqual(audit.map(entry => entry.event), ["created", "first-check-failed", "dispose-called", "dispose-result"]);
-    assert.equal(audit[0].leases, 1);
+    assert.equal(audit[0].pid, worker!.pid);
     assert.equal(audit[1].stage, stage);
     assert.equal(audit[2].cwd, cwd, "dispose uses the original allocated root");
     assert.equal(audit[3].result.ok, cleanup === "confirmed");
@@ -422,9 +423,6 @@ for (const stage of ["realpath", "assert"] as const) for (const cleanup of ["con
     assert.deepEqual(events, ["rejected"], "no native result, prepared binding, or grant request");
     for (const marker of ["server-count", "create-count", "verify-count", "spawn-count"]) assert.equal(h.exists(marker), false, marker);
     assert.equal(h.tasks.get("leader")!.subTasks[0].executionSession, undefined);
-    const leases = JSON.parse(fs.readFileSync(h.file("configuration/selection.json"), "utf8")).leases;
-    assert.equal(leases.length, cleanup === "retained" ? 1 : 0);
-    if (cleanup === "retained") assert.equal(leases[0].pid, worker!.pid);
     const state = h.store.read("root", "workspace"); assert.ok(state.ok && state.value);
     assert.equal(state.value.executionBindings?.length ?? 0, 0);
     assert.equal(state.value.capacity.employees.length, 1);
@@ -434,6 +432,6 @@ for (const stage of ["realpath", "assert"] as const) for (const cleanup of ["con
     await assert.rejects(recovered.run("leader", "subtask", {}, h.expected), /reserved-or-unknown/);
     assert.equal(audit.filter(entry => entry.event === "dispose-called").length, 1);
     assert.equal(worker!.signalCode, null, "worker retires naturally; teardown is not cleanup evidence");
-    t.diagnostic(JSON.stringify({ stage, cleanup, workerPid: worker!.pid, naturallyExited: true, retainedLease: leases.length, rootRetainedBeforeHygiene: fs.existsSync(cwd!) }));
+    t.diagnostic(JSON.stringify({ stage, cleanup, workerPid: worker!.pid, naturallyExited: true, rootRetainedBeforeHygiene: fs.existsSync(cwd!) }));
   });
 }

@@ -689,6 +689,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         }
         const runtimeState = getActiveConversationRuntimeState({ create: false });
         const submission = runtimeState && runtimeState.promptSubmission;
+        if (submission && !submission.accepted && runtimeState.messages.some((message) => message.id === submission.requestId)) {
+          submission.accepted = true;
+        }
+        if (elements.promptSubmissionPreview) {
+          elements.promptSubmissionPreview.hidden = !submission || submission.accepted === true;
+          elements.promptSubmissionPreviewText.textContent = submission ? submission.prompt : "";
+        }
         node.hidden = !submission;
         if (submission) {
           elements.promptSubmissionWaitText.textContent = submission.pausing
@@ -697,7 +704,11 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             ? "等待模型响应"
             : submission.pauseReady
             ? "正在发送补充任务"
-            : "正在准备 Loop+ 任务";
+            : submission.interactiveMode === "loop_plus"
+            ? "正在准备 Loop+ 任务"
+            : submission.interactiveMode === "loop"
+            ? "正在准备 Loop 任务"
+            : "正在准备 Vibe 任务";
           elements.emptyState.style.display = "none";
         }
       }
@@ -1129,18 +1140,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         return next;
       }
 
-      function readVisibleConfigSelections() {
-        const selections = {};
-        const configStates = { ...(state.configStateByCli || {}), [state.currentCli]: state.configState };
-        Object.keys(configStates).forEach((cli) => {
-          const config = configStates[cli];
-          if (config && typeof config.revision === "string") {
-            selections[cli] = { configId: config.activeConfigId || null, revision: config.revision };
-          }
-        });
-        return selections;
-      }
-
       function snapshotPromptPayloadForQueue(payload) {
         const normalizedPayload = normalizePromptPayloadWithModelFields(payload);
         if (!normalizedPayload) {
@@ -1152,7 +1151,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const capturedPayload = {
           ...normalizedPayload,
           interactiveMode,
-          configSelections: normalizedPayload.configSelections || readVisibleConfigSelections(),
         };
         if (normalizedPayload.interactiveMode) {
           return capturedPayload;
@@ -1241,7 +1239,6 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           type: "sendPrompt",
           departmentConfigurationScope: normalizedPayload.departmentConfigurationScope,
           ...(options.pauseBeforeSend ? { pauseBeforeSend: true } : {}),
-          configSelections: normalizedPayload.configSelections || readVisibleConfigSelections(),
           prompt,
           interactiveMode: targetInteractiveMode,
           contextOptions: normalizedPayload.contextOptions,
@@ -1301,10 +1298,13 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         if (normalizedPayload.loopPlusAcceptancePlan) {
           sendPromptMessage.loopPlusAcceptancePlan = normalizedPayload.loopPlusAcceptancePlan;
         }
-        if (targetInteractiveMode === "loop_plus" || options.pauseBeforeSend) {
+        {
           const runtimeState = getConversationRuntimeState(targetTabId);
           const requestId = createMessageId();
-          runtimeState.promptSubmission = { requestId, started: false, pausing: options.pauseBeforeSend === true };
+          runtimeState.promptSubmission = {
+            requestId, prompt, interactiveMode: targetInteractiveMode,
+            started: false, pausing: options.pauseBeforeSend === true,
+          };
           sendPromptMessage.requestId = requestId;
           if (isRuntimeStateForActiveTab(targetTabId)) {
             syncPromptSubmissionWait();
@@ -1342,6 +1342,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
         const visible = Boolean(runtimeState && runtimeState.overlays.runConflict && payload);
         if (elements.runConflictPrompt) {
           elements.runConflictPrompt.textContent = visible && payload ? payload.prompt : "";
+        }
+        if (elements.queuePrompt) {
+          elements.queuePrompt.disabled = !canQueuePrompt(runtimeState && runtimeState.pendingRunPrompt);
+          elements.queuePrompt.title = elements.queuePrompt.disabled ? t("toastLoopQueueUnsupported") : "";
         }
         elements.runConflictOverlay.classList.toggle("visible", visible);
       }

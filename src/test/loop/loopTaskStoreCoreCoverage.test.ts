@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 
 // Isolate before importing modules that capture os.homedir() at load time.
 const originalHome = process.env.HOME;
@@ -28,6 +29,7 @@ test.after(() => {
 });
 
 const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
+const { transitionLoopMainDecision } = require("../../extensionHost/loopTaskStateMachine") as typeof import("../../extensionHost/loopTaskStateMachine");
 assert.equal(loopTaskStore.getLoopCommunicationPaths("isolation-probe").dir,
   path.join(testHome, ".sinitek_cli", "loop-communications", "isolation-probe"));
 
@@ -205,6 +207,61 @@ test("returns an empty store for missing, malformed, and unreadable storage file
   assert.deepEqual(loopTaskStore.readLoopTaskStore(unreadableDirectory), { tasks: [] });
 });
 
+test("drops a parent with damaged dependencies while preserving valid parents and strict diagnostics", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([
+    { subtaskId: "active", attemptId: "active-1", title: "Active" },
+    { subtaskId: "queued", attemptId: "queued-1", title: "Queued" },
+  ]);
+  const snapshot = scheduler.snapshot();
+  assert.equal(snapshot.pending[0]?.subtaskId, "queued");
+  assert.doesNotThrow(() => createLoopPlusScheduler({ snapshot }));
+
+  const base = createTask();
+  const damagedTask = {
+    ...base,
+    id: "damaged-dependencies",
+    schedulingMode: "event_driven" as const,
+    status: "running" as const,
+    activeSubtaskId: "active",
+    activeSubtaskIds: ["active"],
+    loopPlus: snapshot,
+    subTasks: [
+      { id: "active", title: "Active", prompt: "Keep this metadata.", status: "running" as const },
+      { id: "queued", title: "Queued", prompt: "Do not run without its original metadata.", status: "pending" as const, dependsOn: null },
+    ],
+  } as unknown as LoopTaskRecord;
+  const validTask = createTask({
+    id: "valid-sibling",
+    subTasks: [{ id: "legacy-subtask", title: "Legacy subtask", status: "pending" }],
+  });
+  const storeFile = path.join(testHome, "dependency-recovery", "loop-tasks.json");
+  fs.mkdirSync(path.dirname(storeFile), { recursive: true });
+  const malformedDependencies: unknown[] = [
+    null,
+    "dependency",
+    [1],
+    ["   "],
+    ["queued"],
+    ["dependency", " dependency "],
+  ];
+  for (const dependsOn of malformedDependencies) {
+    const rawDamagedTask = JSON.parse(JSON.stringify(damagedTask)) as {
+      subTasks: Array<Record<string, unknown>>;
+      [key: string]: unknown;
+    };
+    rawDamagedTask.subTasks[1].dependsOn = dependsOn;
+    fs.writeFileSync(storeFile, JSON.stringify({ tasks: [rawDamagedTask, validTask] }), "utf8");
+    const original = fs.readFileSync(storeFile, "utf8");
+
+    const compatible = loopTaskStore.readLoopTaskStore(storeFile);
+    assert.deepEqual(compatible.tasks.map((task) => task.id), ["valid-sibling"]);
+    assert.equal("dependsOn" in compatible.tasks[0].subTasks[0], false);
+    assert.throws(() => loopTaskStore.readLoopTaskStore(storeFile, { throwOnError: true }), /subTasks\[1\]\.dependsOn/);
+    assert.equal(fs.readFileSync(storeFile, "utf8"), original);
+  }
+});
+
 test("normalizes persisted task, subtask, round, and acceptance records at the store boundary", () => {
   const storeFile = path.join(testHome, "normalization", "loop-tasks.json");
   const now = Date.now();
@@ -316,18 +373,24 @@ test("does not resurrect persisted Loop tasks with missing status as running", (
   assert.equal(persisted.status, "stopped");
 });
 
-test("raises existing Loop task maxRounds to the current global setting without lowering it", () => {
+test("persists classic subtask dispatch counts without deriving them from legacy maxRounds", () => {
   resetLoopStorage();
   const task = createTask({ maxRounds: 20 });
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  const raised = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(task, 50);
-  assert.equal(raised.maxRounds, 50);
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
-
-  const unchanged = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(raised, 10);
-  assert.equal(unchanged.maxRounds, 50);
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).classicSubtaskDispatchCount, undefined);
+  loopTaskStore.updateLoopTaskRecord(task.id, { classicSubtaskDispatchCount: 49 });
+  const decision = { status: "continue" as const, subtask: { id: "next", title: "Next", prompt: "Continue independently." } };
+  const admitted = transitionLoopMainDecision({ task: readPersistedTask(task.taskStoreFile, task.id), decision,
+    subtaskRoundLimit: 50, now: Date.now() });
+  loopTaskStore.updateLoopTaskRecord(task.id, admitted.patch);
+  const committed = readPersistedTask(task.taskStoreFile, task.id);
+  assert.equal(committed.classicSubtaskDispatchCount, 50);
+  assert.deepEqual(committed.activeSubtaskIds, ["next"]);
+  const refused = transitionLoopMainDecision({ task: committed, decision, subtaskRoundLimit: 50, now: Date.now() });
+  assert.equal(refused.status, "blocked");
+  assert.equal(refused.subtasks, undefined);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 20);
 });
 
 test("writes normalized data and propagates write failures at the persistence boundary", () => {
@@ -1125,7 +1188,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
 
   const tasks = loopTaskStore.readLoopTaskStore(filePath).tasks;
   const task = tasks[0];
-  assert.equal(task.maxRounds, 20);
+  assert.equal(task.maxRounds, undefined);
   assert.deepEqual(task.subTasks[0]?.skillIds, ["valid-skill"]);
   assert.equal(task.subTasks[0]?.skillGuidance, "guidance");
   assert.equal(task.subTasks[0]?.conflictGroup, "group-a");

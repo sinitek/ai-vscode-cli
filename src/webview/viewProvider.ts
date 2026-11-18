@@ -9,6 +9,8 @@ import { formatHomeDisplayPath } from "../shared/userHomePaths";
 import type { DesktopNotificationAuthorization } from "../desktopNotificationAuthorization";
 
 type ViewHandlers = {
+  getPromptInputHeight?: () => number | undefined;
+  onResetRuntimeState?: () => void;
   onMessage: (message: PanelMessage) => void;
   onRequestHumanInteractionHistory?: () => Record<string, unknown>[];
   onNotificationAuthorization?: (request: boolean) => Promise<DesktopNotificationAuthorization>;
@@ -27,6 +29,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
+    this.handlers.onResetRuntimeState?.();
     this.imageHost.invalidate();
     this.view = webviewView;
     this.webviewReady = false;
@@ -35,6 +38,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
         this.imageHost.invalidate();
         this.view = undefined;
         this.webviewReady = false;
+        this.handlers.onResetRuntimeState?.();
       }
     });
     webviewView.webview.options = {
@@ -42,7 +46,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri],
     };
     try {
-      webviewView.webview.html = getWebviewHtml(webviewView.webview);
+      webviewView.webview.html = getWebviewHtml(webviewView.webview, this.handlers.getPromptInputHeight?.());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void logError("webview-html-render-failed", {
@@ -122,9 +126,10 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
+    this.handlers.onResetRuntimeState?.();
     this.webviewReady = false;
     try {
-      this.view.webview.html = getWebviewHtml(this.view.webview);
+      this.view.webview.html = getWebviewHtml(this.view.webview, this.handlers.getPromptInputHeight?.());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void logError("webview-html-reload-failed", {

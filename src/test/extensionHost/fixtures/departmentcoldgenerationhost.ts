@@ -61,8 +61,7 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
   };
   let restored = 0;
   const recovery = new DepartmentColdGenerationRecovery({ store, authorityDirectory: file("authorities"), workspaceKey: () => "workspace", readTask: read,
-    verifyStoredIdentity: identity, async verifySelection({ selection }) { const selected = await config.read(); return selected?.ready === true
-      && selected.configId === selection.configId && selected.revision === selection.revision; },
+    verifyStoredIdentity: identity,
     restoreTarget(task) { restored++; const target = restore(task); return target && { ...target, restoredTab: tabs.get(target.tabId)! }; },
     registerRestoredTarget(capability) { if (registration) registration(capability, resources, [...tabs.values()][0]); else resources.recordRestored(capability); }, acceptRetirement(cap) { producer.acceptColdRetirement(cap); } });
   let runs = 0;
@@ -77,7 +76,7 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
       let failure: Error | undefined;
       const handle = native.runOpenCode(input.loopTaskId!, options.invocationId, input.modelPrompt, {
         onStdout(chunk) { for (const line of chunk.trim().split("\n")) if (line) output += JSON.parse(line).part.text; },
-        onStderr() {}, onError(error) { failure = error; }, onExit() {},
+        onStderr(chunk) { diagnostics.push(chunk); }, onError(error) { failure = error; }, onExit() {},
       }, expected, file("configuration"), coldOpenCodeLaunch(directory), options.signal, consumer.target);
       const facts = await handle.lifecycle;
       if (failure) throw failure;
@@ -94,8 +93,7 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
     finally { consumer.finish(consumed); }
   }); }, closeDepartmentCoordinator: async id => { const closed = await producer.close(id); if (!closed.ok) throw new Error(closed.error); },
   runPromptOverride: async () => { throw new Error("cold-fixture-unexpected-employee"); } });
-  const group = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read,
-    readSelection: async () => { const current = await config.read(); if (!current) throw new Error("cold-fixture-selection-missing"); return current; } });
+  const group = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read });
   const composition = createDepartmentRuntimeComposition({ runtime: fixture.adapter, store, workspaceKey: () => "workspace", readTask: read, updateTask: updateLoopTaskRecord,
     prepareRoutes: async () => undefined, validateRoutes: () => true, prepareColdRecovery: (root, check) => recovery.prepare(root, check),
     verifyStoredLeaderIdentity: identity, inspectLeaderSession: task => recovery.inspect(task) ?? (targets.has(task.id) ? { target: targets.get(task.id)!, live: null } : null),

@@ -329,7 +329,13 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHumanInteractionTimeoutLabel: "人工交互超时（分钟）",
     toolSettingsHumanInteractionTimeoutTitle:
       "全局设置。Vibe 人工交互弹窗，以及 Loop、Loop+ 主任务澄清表单，若在此时限内没有提交，则视为超时。AI 会自行选择最佳方案继续，不记为拒绝，也不进入待复核。默认 15 分钟，范围 1–1440 分钟（最长 24 小时）。",
-    toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
+    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop/Loop+ 子任务轮次上限",
+    toolSettingsLoopPlusSubtaskMaxRoundsTitle:
+      "全局设置。每个父任务累计允许派发的 Loop/Loop+ 子任务数量。每次新派发或重派计一次；运行中的任务、重试、恢复和队列提升不重复计数。默认 200，范围 50–9999。",
+    promptInputResizeLabel: "调整对话输入框高度",
+    promptInputHeightSaveError: "输入框高度保存失败，重新打开面板时将使用上次保存的高度。",
+    toolSettingsNewTaskInteractiveModeSaveError: "默认任务模式保存失败，请重试。",
+    toolSettingsNewTaskInteractiveModeLabel: "新建或重置任务的默认模式",
     departmentMaxLeadersLabel: "产研部组长最多人数",
     departmentMaxLeadersNote: "同时运行的组长上限，任务结束后释放名额。",
     departmentMaxEmployeesLabel: "产研部员工最多人数",
@@ -337,16 +343,11 @@ export const WEBVIEW_STRINGS = {
     workspaceDepartmentCapacityNote: "工作区配置优先；留空继承全局。新部门启动时生效，不调整已有运行任务。",
     departmentMaxLeadersSaveError: "产研部组长人数设置保存失败，请重试。",
     departmentMaxEmployeesSaveError: "产研部员工人数设置保存失败，请重试。",
-    toolSettingsLoopMaxRoundsTitle:
-      "全局设置。新建经典 Loop 任务时允许的最大调度轮次。",
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop/Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
       "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 的并发上限。默认 6，范围 1–20。工作区设置优先于全局。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
     toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote:
       "留空则使用全局设置；设置后优先于全局，仅对当前工作区生效。范围 1–20。",
-    toolSettingsLoopPlusMaxAcceptancesLabel: "Loop+ 最多验收次数",
-    toolSettingsLoopPlusMaxAcceptancesTitle:
-      "全局设置。限制一个 Loop+ 任务最多确认多少次子任务验收，默认 100，范围 1–999。达到上限后暂停自动验收和新派发，提高上限后可以继续。每个已确认的子任务 attempt 计 1 次。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

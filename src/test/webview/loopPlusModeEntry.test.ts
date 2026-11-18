@@ -214,6 +214,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     "normalizeInteractiveMode",
     "syncModelSelectorByInteractiveMode",
     "vscode",
+    "getActiveConversationRuntimeState",
     extractBlockSource(VIEW_CONTENT_SCRIPT_MODEL_MANAGER, "if (elements.interactiveModeSelect) {"),
   )(
     state,
@@ -221,6 +222,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     normalizeInteractiveMode,
     syncModelSelectorByInteractiveMode,
     { postMessage: (message: { type?: string; key?: string; value?: string }) => posted.push(message) },
+    () => null,
   );
 
   syncInteractiveModeSelector();
@@ -320,6 +322,9 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
       "function syncConversationTabRunningFlowWatch() {}",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getDepartmentConversationTabPresentation"),
+      extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
+      "function getConversationRuntimeState() { return null; }",
+      "var pendingConversationCreate = null; function isCreatingConversationTab() { return false; }",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -423,6 +428,9 @@ test("restores each main tab mode from its summary after a fresh page load", () 
         "function syncConversationTabRunningFlowWatch() {}",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getDepartmentConversationTabPresentation"),
+        extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
+        "function getConversationRuntimeState() { return null; }",
+        "var pendingConversationCreate = null; function isCreatingConversationTab() { return false; }",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -472,7 +480,6 @@ type SendMessage = {
   contextOptions?: unknown;
   scheduledAt?: number;
   files?: unknown[];
-  configSelections?: Record<string, { configId: string | null; revision: string }>;
 };
 
 function buildDispatchHarness() {
@@ -493,6 +500,8 @@ function buildDispatchHarness() {
   let activeTabId = "tab-active";
   const posted: SendMessage[] = [];
   const source = [
+    "function getLoopMetaForTabSummary() { return null; }",
+    "function syncPendingPromptQueueState() {}",
     "function syncPromptSubmissionWait() {}",
     "function stickChatToBottom() {}",
     extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "normalizePromptPayload"),
@@ -504,13 +513,13 @@ function buildDispatchHarness() {
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
-      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",
       "resolveDispatchInteractiveMode",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, name)),
     ...[
+      "canQueuePrompt",
       "queuePromptForLater",
       "saveQueuedPromptEdit",
       "flushPendingPromptQueue",
@@ -577,7 +586,7 @@ function buildDispatchHarness() {
   };
 }
 
-test("sends, queues, and flushes Loop+ with role models and no legacy mode", () => {
+test("sends Loop+ with role models, rejects its queue entry, and still queues Vibe", () => {
   const harness = buildDispatchHarness();
   const basePayload = {
     prompt: "review the next result",
@@ -593,47 +602,28 @@ test("sends, queues, and flushes Loop+ with role models and no legacy mode", () 
   assert.equal(sent.loopMainThinkingMode, "high");
   assert.equal(sent.loopSubtaskThinkingMode, "medium");
   assert.equal(sent.model, "saved-main-model");
-  assert.deepEqual(sent.configSelections, { codex: { configId: "config-1", revision: "revision-1" } });
+  assert.equal(Object.prototype.hasOwnProperty.call(sent, "configSelections"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(sent, "loopExecutionMode"), false);
 
   harness.posted.length = 0;
   harness.api.queuePromptForLater(basePayload);
-  assert.equal(harness.runtime.pendingPromptQueue.length, 1);
-  assert.equal(harness.runtime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopMainModel, "saved-main-model");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopSubtaskModel, "saved-sub-model");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopMainThinkingMode, "high");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopSubtaskThinkingMode, "medium");
-  assert.equal(harness.runtime.pendingPromptQueue[0].skipPromptHistory, true);
-  assert.deepEqual(harness.runtime.pendingPromptQueue[0].configSelections, sent.configSelections);
+  assert.equal(harness.runtime.pendingPromptQueue.length, 0);
+  assert.equal(harness.posted.length, 0);
 
   harness.state.interactiveMode = "coding";
-  harness.state.configState = { activeConfigId: "config-2", revision: "revision-2" };
+  harness.api.queuePromptForLater({ ...basePayload, interactiveMode: "coding" });
+  assert.equal(harness.runtime.pendingPromptQueue.length, 1);
+  harness.runtime.queueEditingIndex = 0;
+  harness.runtime.queueEditingDraft = "edited prompt";
+  harness.api.saveQueuedPromptEdit();
   harness.setActiveTab("tab-active");
   assert.equal(harness.api.flushPendingPromptQueue("tab-other"), true);
   const flushed = harness.posted.find((message) => message.type === "sendPrompt");
   assert.ok(flushed);
-  assert.equal(flushed.interactiveMode, "loop_plus");
-  assert.equal(flushed.cli, "codex");
-  assert.equal(flushed.loopMainModel, "saved-main-model");
-  assert.equal(flushed.loopSubtaskModel, "saved-sub-model");
-  assert.equal(flushed.loopMainThinkingMode, "high");
-  assert.equal(flushed.loopSubtaskThinkingMode, "medium");
-  assert.deepEqual(flushed.configSelections, sent.configSelections);
-  assert.equal(Object.prototype.hasOwnProperty.call(flushed, "loopExecutionMode"), false);
+  assert.equal(flushed.prompt, "edited prompt");
+  assert.equal(flushed.interactiveMode, "coding");
+  assert.equal(Object.prototype.hasOwnProperty.call(flushed, "configSelections"), false);
 
-  harness.state.interactiveMode = "loop_plus";
-  harness.api.queuePromptForLater({ ...basePayload, prompt: "edit me" });
-  harness.state.interactiveMode = "coding";
-  harness.runtime.queueEditingIndex = 0;
-  harness.runtime.queueEditingDraft = "edited prompt";
-  harness.api.saveQueuedPromptEdit();
-  assert.equal(harness.runtime.pendingPromptQueue[0].prompt, "edited prompt");
-  assert.equal(harness.runtime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopMainModel, "saved-main-model");
-  assert.equal(harness.runtime.pendingPromptQueue[0].loopSubtaskThinkingMode, "medium");
-
-  harness.runtime.pendingPromptQueue.length = 0;
   harness.state.interactiveMode = "loop";
   harness.setActiveTab("tab-active");
   assert.equal(harness.api.dispatchPrompt({ ...basePayload, prompt: "classic loop" }), true);
@@ -789,7 +779,7 @@ test("keeps loop_plus and role fields in the base prompt normalizer", () => {
   assert.equal(normalizePromptPayload({ prompt: "" }), null);
 });
 
-test("keeps the busy-overlay snapshot through queue later, pause send, edit, and auto send", () => {
+test("retains a rejected Loop+ busy-overlay snapshot and permits explicit pause send after the main task stops", () => {
   const state = {
     currentCli: "codex",
     interactiveMode: "loop_plus",
@@ -818,6 +808,8 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   let loopMainRunning = false;
   let activeTabId = "tab-active";
   const source = [
+    "function getLoopMetaForTabSummary() { return null; }",
+    "function syncPendingPromptQueueState() {}",
     "function syncPromptSubmissionWait() {}",
     "function stickChatToBottom() {}",
     extractFunctionSource(VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE, "normalizePromptPayload"),
@@ -829,7 +821,6 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
       "shouldIncludeCodexLoopRoleModels",
       "resolvePromptLoopRoleModel",
       "applyCodexLoopRoleModelsToPromptPayload",
-      "readVisibleConfigSelections",
       "snapshotPromptPayloadForQueue",
       "isConfigApplyPendingForCli",
       "dispatchPrompt",
@@ -839,6 +830,7 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
       "closeRunConflictOverlay",
     ].map((name) => extractFunctionSource(VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, name)),
     ...[
+      "canQueuePrompt",
       "queuePromptForLater",
       "saveQueuedPromptEdit",
       "flushPendingPromptQueue",
@@ -919,35 +911,10 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   state.interactiveMode = "coding";
   state.selectedLoopModels = { main: "changed-main", subtask: "changed-sub" };
   state.selectedLoopThinking = { main: "max", subtask: "medium" };
-  assert.equal(api.queueConflictPromptForLater(), true);
-  assert.equal(runtime.pendingPromptQueue.length, 1);
-  assert.equal(runtime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(runtime.pendingPromptQueue[0].loopMainModel, "entry-main");
-  assert.equal(runtime.pendingPromptQueue[0].loopSubtaskModel, "entry-sub");
-  assert.equal(runtime.pendingPromptQueue[0].loopMainThinkingMode, "xhigh");
-  assert.equal(runtime.pendingPromptQueue[0].loopSubtaskThinkingMode, "low");
-  assert.equal(runtime.pendingPromptQueue[0].skipPromptHistory, true);
-  assert.equal(elements.promptInput.value, "");
-  assert.equal(runtime.pendingRunPrompt, null);
-
-  runtime.queueEditingIndex = 0;
-  runtime.queueEditingDraft = "edited after the dropdown changed";
-  api.saveQueuedPromptEdit();
-  assert.equal(runtime.pendingPromptQueue[0].prompt, "edited after the dropdown changed");
-  assert.equal(runtime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(runtime.pendingPromptQueue[0].loopMainModel, "entry-main");
-
-  activeTabId = "tab-active";
-  assert.equal(api.flushPendingPromptQueue("tab-later"), true);
-  const queuedSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.ok(queuedSend);
-  assert.equal(queuedSend.prompt, "edited after the dropdown changed");
-  assert.equal(queuedSend.interactiveMode, "loop_plus");
-  assert.equal(queuedSend.loopMainModel, "entry-main");
-  assert.equal(queuedSend.loopSubtaskModel, "entry-sub");
-  assert.equal(queuedSend.loopMainThinkingMode, "xhigh");
-  assert.equal(queuedSend.loopSubtaskThinkingMode, "low");
-  assert.equal(Object.prototype.hasOwnProperty.call(queuedSend, "loopExecutionMode"), false);
+  assert.equal(api.queueConflictPromptForLater(), false);
+  assert.equal(runtime.pendingPromptQueue.length, 0);
+  assert.equal(elements.promptInput.value, "draft");
+  assert.equal(runtime.pendingRunPrompt?.interactiveMode, "loop_plus");
 
   state.interactiveMode = "loop_plus";
   state.selectedLoopModels = { main: "entry-main", subtask: "entry-sub" };
@@ -957,11 +924,10 @@ test("keeps the busy-overlay snapshot through queue later, pause send, edit, and
   state.interactiveMode = "loop";
   state.selectedLoopModels = { main: "changed-main", subtask: "changed-sub" };
   loopMainRunning = true;
-  api.pauseAndSendConflictPrompt();
-  assert.equal(posted.filter((message) => message.type === "sendPrompt").length, 1);
-  assert.equal(runtime.pendingPromptQueue[0].interactiveMode, "loop_plus");
-  assert.equal(runtime.pendingPromptQueue[0].loopMainModel, "entry-main");
-  assert.equal(runtime.pendingPromptQueue[0].loopMainThinkingMode, "high");
+  assert.equal(api.pauseAndSendConflictPrompt(), false);
+  assert.equal(posted.filter((message) => message.type === "sendPrompt").length, 0);
+  assert.equal(runtime.pendingPromptQueue.length, 0);
+  assert.equal(elements.promptInput.value, "pause me");
 
   runtime.pendingPromptQueue.length = 0;
   state.interactiveMode = "loop_plus";

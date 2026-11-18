@@ -64,6 +64,7 @@ export function projectLoopPlusPanel(
           attemptId: item.attemptId,
           ...(item.requiresAcceptance !== undefined ? { requiresAcceptance: item.requiresAcceptance } : {}),
           disposition: item.disposition,
+          ...(item.acceptanceReason ? { acceptanceReason: item.acceptanceReason } : {}),
           ...(item.outcome ? { outcome: item.outcome } : {}),
           ...(item.disposition === "reviewed"
             ? { acceptance: loopPlusReviewedAcceptance(item.outcome, recordedStatus, item.acceptance) }
@@ -134,8 +135,9 @@ function isLoopPlusDisplayPaused(status: string): boolean {
 function loopPlusReviewedAcceptance(
   outcome: "completed" | "failed" | "stopped" | undefined,
   recordedStatus: string | undefined,
-  recordedAcceptance?: "passed" | "failed",
-): "passed" | "failed" {
+  recordedAcceptance?: "passed" | "failed" | "cancelled",
+): "passed" | "failed" | "cancelled" {
+  if (recordedAcceptance === "cancelled") return "cancelled";
   if (recordedAcceptance === "failed" || outcome === "failed" || outcome === "stopped") {
     return "failed";
   }

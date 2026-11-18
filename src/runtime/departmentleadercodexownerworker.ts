@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { createLoopSubtaskExecutionRoot } from "../loopSubtaskExecutionRoot";
 import { DepartmentExecutionOwnerServer } from "./departmentexecutionowner";
 import { DepartmentExecutionOwnerClient } from "./departmentexecutionownerclient";
@@ -111,18 +110,13 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
   });
   async function prepare(): Promise<void> {
     const i = input!;
-    const lease = await new SharedRuntimeConfig(i.configurationDirectory).acquire({ configId: i.selection.configId, revision: i.selection.revision });
-    if (closed || !process.connected || !lease.selection.ready || lease.selection.configId !== i.selection.configId || lease.selection.revision !== i.selection.revision) {
-      await lease.release(); throw new Error("leader-configuration-changed");
-    }
-    let root: ReturnType<typeof createLoopSubtaskExecutionRoot>;
-    try { root = createLoopSubtaskExecutionRoot(i.workspaceDirectory); } catch (error) { await lease.release(); throw error; }
+    if (closed || !process.connected) throw new Error("leader-preparation-channel-closed");
+    const root = createLoopSubtaskExecutionRoot(i.workspaceDirectory);
     owner = new DepartmentLeaderCodexOwner(i, root.cwd, async () => {
       const result = root.dispose();
       const fact: CleanupResult = result.ok && !result.retainedDirectory ? { status: "confirmed", evidence: "leader-owned-root-links-removed" }
         : { status: "failed", reason: "leader-owned-root-links-retained" };
-      await lease.release();
-      return { executionRoot: fact, links: fact, temp: { status: "confirmed", evidence: "leader-config-lease-released" } };
+      return { executionRoot: fact, links: fact, temp: { status: "confirmed", evidence: "no-owner-temp-resource-created" } };
     }, (identity) => tabRelease ??= (async () => {
       if (!closed || consumerFailed || !process.connected || pending.size || consumers.size) return { status: "unobservable", reason: "leader-tab-channel-or-consumers-unconfirmed" };
       try {

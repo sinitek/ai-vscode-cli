@@ -37,7 +37,7 @@ export async function until(check: () => boolean | Promise<boolean>): Promise<vo
   while (!await check()) { if (Date.now() > deadline) throw new Error("production-wiring-fixture-timeout"); await new Promise((r) => setTimeout(r, 5)); }
 }
 /** Actual production producer, owned repository, composition, scheduler/adapter,
- * Store, config leases and fixed workers. Only native CLI and UI consumers are
+ * Store, configuration and fixed workers. Only native CLI and UI consumers are
  * controlled/free fixtures; no fixture producer is constructed or installed. */
 export async function productionWiring(t: test.TestContext, employee: "codex" | "opencode" = "codex", withResources = false, withGroupCleanup = false, modules = 1, treeControl?: { maxEmployees: number }, leader: "codex" | "opencode" = "codex", authorityEnabled = false, coldRecoveryEnabled = false) {
   const workers = captureDepartmentTestWorkers(t);
@@ -225,9 +225,7 @@ else{fs.writeFileSync(${JSON.stringify(file("employee/started"))},'yes');process
     communicationDir: directory, mainCommunicationFile: file("root.md"), subTasks: Array.from({ length: modules }, (_, n) => ({ id: n ? "module-" + n : "module", title: n ? "module-" + n : "module", status: "running" as const, prompt: "fixture module" })), rounds: [],
     completionRoundSummaries: [], completionRequirementCoverage: [] }, { version: 1, rootTaskId: "root", parentTaskId: null, leaderSubtaskId: null,
     role: "director", moduleTitle: "fixture department", routes, limits: { maxLeaders: 4, maxEmployees: treeControl?.maxEmployees ?? 20 } }, plan));
-  let cleanupSelection = async () => { const current = await config.read(); if (!current) throw new Error("fixture-config-missing"); return { ...expected, ready: current.ready, revision: current.revision }; };
-  const groupCleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read,
-    readSelection: () => cleanupSelection() });
+  const groupCleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read });
   let targetCount = 0;
   const ownership = createLoopOrchestrationOwnershipTracker();
   const composition = createDepartmentRuntimeComposition({ runtime: fixture.adapter, store, workspaceKey: () => "workspace", readTask: read, updateTask: update,
@@ -284,7 +282,6 @@ else{fs.writeFileSync(${JSON.stringify(file("employee/started"))},'yes');process
     for (const root of [directory, file("employee")]) {
       try { for (const id of fs.readFileSync(path.join(root, "native-pids"), "utf8").trim().split("\n")) { try { process.kill(Number(id), "SIGTERM"); } catch {} } } catch {}
     }
-    try { for (const l of JSON.parse(fs.readFileSync(file("configuration/selection.json"), "utf8")).leases) { try { process.kill(l.pid, "SIGTERM"); } catch {} } } catch {}
     await new Promise((r) => setTimeout(r, 30));
     composition.dispose(); fixture.dispose(); await source.close();
     // A killed worker can still finish an atomic write. Retry test-directory
@@ -299,7 +296,6 @@ else{fs.writeFileSync(${JSON.stringify(file("employee/started"))},'yes');process
     beforeLeaderCallback(fn: () => Promise<void>) { beforeLeaderCallback = fn; },
     beforeLeaderCleanup(fn: () => Promise<void>) { beforeLeaderCleanup = fn; },
     beforeEmployeeBuilder(fn: () => Promise<void>) { beforeEmployeeBuilder = fn; },
-    setCleanupSelection(fn: typeof cleanupSelection) { cleanupSelection = fn; },
     tabs, closedTabs, tabCloseAttempts, employeeProcessLifecycles, failTabClose(value: boolean) { tabCloseError = value; },
     beforeEmployeeConsumerFinish(fn: () => Promise<void>) { employeeConsumer = fn; },
     onEmployeeOutput(fn: () => Promise<void>) { employeeOutput = fn; },

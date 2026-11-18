@@ -578,9 +578,6 @@ function createRuntimeHarness(
   const script = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: cliListOverride ?? ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 5,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 12,
     finalAnswerTextMarker: "<FINAL>",
   });
   const runtimeFactory = new Function(
@@ -788,7 +785,7 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     longTermMemoryEnabled: true,
     workspaceMemoryEnabled: true,
     autoCompactContextAfterRun: true,
-    loopMaxRounds: 99,
+    loopPlusSubtaskMaxRounds: 175,
     loopSubtaskMaxThinkingMode: "xhigh",
     isMac: true,
     macTaskShell: "bash",
@@ -826,6 +823,112 @@ test("Loop+ submission immediately shows a transient waiting bubble through star
   window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "response-1", content: "开始分析" });
   assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
   assert.equal(api.getConversationRuntimeState("tab-1").promptSubmission, null);
+});
+
+test("Vibe, Loop and Loop+ immediately preview the prompt until the matching persisted bubble arrives", () => {
+  for (const mode of ["coding", "loop", "loop_plus"]) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const panel = createPanelState({ interactiveMode: mode,
+      conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    const before = api.getConversationRuntimeState("tab-1").messages.length;
+    const prompt = "立即展示 <原始提示词>\n第二行";
+    assert.equal(api.dispatchPrompt({ prompt, interactiveMode: mode }), true);
+    const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+    assert.ok(request.requestId);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+    assert.equal(document.getElementById("promptSubmissionPreviewText").textContent, prompt);
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    assert.equal(document.getElementById("promptSubmissionWaitText").textContent,
+      mode === "coding" ? "正在准备 Vibe 任务" : mode === "loop" ? "正在准备 Loop 任务" : "正在准备 Loop+ 任务");
+    assert.equal(api.getConversationRuntimeState("tab-1").messages.length, before, "preview is not session history");
+    window.dispatchMessage({ type: "state", payload: panel });
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
+      message: { id: "older-submission", role: "user", content: prompt, merge: false } });
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false, "same text is not an acknowledgement");
+    window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
+      message: { id: request.requestId, role: "user", content: prompt, merge: false } });
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    assert.equal(api.getConversationRuntimeState("tab-1").messages.filter((message: any) => message.id === request.requestId).length, 1);
+    window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
+    assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "等待模型响应");
+    window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "answer", content: "收到" });
+    assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  }
+});
+
+test("Vibe preview follows its tab and a rejection clears only the matching submission", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = [{ id: "tab-1", cli: "codex" }, { id: "tab-2", cli: "codex" }];
+  const show = (activeTabId: string) => window.dispatchMessage({ type: "state",
+    payload: createPanelState({ interactiveMode: "coding", conversationTabs: { activeTabId, tabs } }) });
+  show("tab-1");
+  api.dispatchPrompt({ prompt: "慢配置期间的提示词" });
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  show("tab-2");
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  show("tab-1");
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: "old" });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+  window.dispatchMessage({ type: "promptSubmissionSettled", tabId: "tab-1", requestId: request.requestId });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+});
+
+test("a full transcript replaces the Vibe preview while retaining the wait for model output", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } }) });
+  api.dispatchPrompt({ prompt: "载入消息历史期间发送" });
+  const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [
+    { id: request.requestId, role: "user", content: request.prompt, createdAt: 1 },
+  ] });
+  assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
+  assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+  assert.equal(api.getConversationRuntimeState("tab-1").messages.length, 1);
+});
+
+test("completed Loop and Loop+ conversations dispatch the explicitly selected Vibe mode", () => {
+  for (const mode of ["loop", "loop_plus"]) {
+    const { api, document, window, posted } = createRuntimeHarness();
+    const panel = createPanelState({ interactiveMode: mode,
+      conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex", loopTaskRole: "main",
+        loopTaskId: "completed-task", loopTaskStatus: "completed", loopTaskRunning: false,
+        loopSchedulingMode: mode === "loop_plus" ? "event_driven" : "classic" }] } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    const select = document.getElementById("interactiveModeSelect");
+    select.value = "coding";
+    select.dispatchEvent({ type: "change", target: select });
+    window.dispatchMessage({ type: "state", payload: panel });
+    assert.equal(select.value, "coding", "a stale snapshot must not restore the historical Loop mode");
+    window.dispatchMessage({ type: "state", payload: { ...panel, interactiveMode: "coding" } });
+    assert.equal(select.value, "coding");
+    assert.equal(api.dispatchPrompt({ prompt: "在这个会话继续 Vibe" }), true);
+    const request = posted.filter((message) => message.type === "sendPrompt").at(-1);
+    assert.equal(request.interactiveMode, "coding");
+    assert.equal(request.loopSubtaskCli, undefined);
+    assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
+    window.dispatchMessage({ type: "state", payload: { ...panel,
+      conversationTabs: { activeTabId: "tab-2", tabs: [...(panel.conversationTabs as any).tabs, { id: "tab-2", cli: "codex" }] } } });
+    window.dispatchMessage({ type: "state", payload: panel });
+    assert.equal(select.value, "coding", "returning to the tab must retain its explicit Vibe selection");
+  }
+});
+
+test("an explicit conversation mode does not override the mode of a different CLI", () => {
+  const { document, window } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] } }) });
+  const select = document.getElementById("interactiveModeSelect");
+  select.value = "coding";
+  select.dispatchEvent({ type: "change", target: select });
+  window.dispatchMessage({ type: "state", payload: createPanelState({ currentCli: "claude", interactiveMode: "loop",
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "claude" }] } }) });
+  assert.equal(select.value, "loop");
 });
 
 test("Vibe pause keeps input until host confirmation and ignores stale acknowledgements", () => {
@@ -1284,16 +1387,15 @@ test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },
     cliList: ["codex"],
-    loopMaxRoundsDefault: 4,
-    loopMaxRoundsMin: 2,
-    loopMaxRoundsMax: 9,
+    loopPlusSubtaskMaxRoundsDefault: 400,
+    loopPlusSubtaskMaxRoundsMin: 52,
     finalAnswerTextMarker: "<FINAL>",
   });
 
   assert.match(script, /const i18n = \{"ok":"OK"\}/);
   assert.match(script, /const CLI_NAMES = \["codex"\]/);
-  assert.match(script, /loopMaxRounds: 4/);
-  assert.match(script, /Math\.max\(Math\.floor\(numeric\), 2\)/);
+  assert.match(script, /loopPlusSubtaskMaxRounds: 400/);
+  assert.match(script, /Math\.max\(Math\.floor\(numeric\), 52\)/);
   assert.match(script, /"medium"/);
   assert.match(script, /"<FINAL>"/);
   assert.doesNotMatch(script, /\$\{JSON\.stringify|\$\{LOOP_|\$\{FINAL_/);
@@ -1330,18 +1432,16 @@ function createProfilePanelState(cli: string, configId: string, overrides: Recor
   });
 }
 
-test("queued prompts retain the displayed profile revision instead of silently adopting a later heartbeat", () => {
+test("queued prompts do not retain a stale profile snapshot", () => {
   const { api, posted, window } = createRuntimeHarness();
-  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-a", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-a", revision: "visible-a", configs: [{ id: "config-a", name: "配置一" }] } }) });
   const payload = api.buildPromptPayload("按所见配置执行");
-  assert.equal(payload.configSelections.codex.revision, "visible-a");
   api.queuePromptForLater(payload);
   const queued = api.getActiveConversationRuntimeState().pendingPromptQueue[0];
-  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
+  window.dispatchMessage({ type: "state", payload: createProfilePanelState("codex", "config-b", { interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] }, configState: { activeConfigId: "config-b", revision: "visible-b", configs: [{ id: "config-b", name: "配置二" }] } }) });
   api.dispatchPrompt(queued);
   const sent = posted.filter((message) => message.type === "sendPrompt").at(-1);
-  assert.equal(sent.configSelections.codex.configId, "config-a");
-  assert.equal(sent.configSelections.codex.revision, "visible-a");
+  assert.equal(Object.prototype.hasOwnProperty.call(sent, "configSelections"), false);
 });
 
 for (const cli of CLI_LIST) {
@@ -1624,7 +1724,7 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(posted[0], { type: "requestState" });
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   assert.equal(api.state.currentCli, "codex");
-  assert.equal(api.state.loopMaxRounds, 12);
+  assert.equal(api.state.loopPlusSubtaskMaxRounds, 175);
   assert.equal(api.state.macTaskShell, "bash");
   assert.equal(document.getElementById("codexLoopModelGroup").style.display, "");
   assert.equal(document.getElementById("codexLoopMainModelSelect").disabled, false);
@@ -1923,15 +2023,13 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   codeGraphToggle.checked = true;
   codeGraphToggle.dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "installCodeGraph" });
-  document.getElementById("loopMaxRounds").value = "0";
-  document.getElementById("loopMaxRounds").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopMaxRounds", value: 1 });
   document.getElementById("loopPlusDecisionSubtaskMax").value = "0";
   document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 1 });
   document.getElementById("loopPlusDecisionSubtaskMax").value = "99";
   document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 20 });
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "coding", conversationTabs: { activeTabId: "vibe-queue", tabs: [{ id: "vibe-queue", cli: "codex", sessionId: null }] } }) });
   document.getElementById("promptInput").value = " queued work ";
   api.queuePromptForLater({ prompt: "queued work", contextOptions: { includeCurrentFile: false } });
   document.getElementById("queueIndicator").click();
@@ -1939,12 +2037,13 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("queueCount").textContent, "1");
   api.state.conversationTabs.tabs[0].loopTaskStatus = "completed";
   api.state.conversationTabs.tabs[0].loopTaskRunning = false;
-  window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "end", message: "Task completed" });
-  assert.equal(posted.at(-1).type, "sendPrompt");
-  assert.equal(posted.at(-1).model, "gpt-5-main");
-  assert.equal(posted.at(-1).loopMainModel, "gpt-5-main");
-  assert.equal(posted.at(-1).loopSubtaskModel, "gpt-5-subtask");
-  assert.equal(posted.at(-1).interactiveMode, "loop");
+  window.dispatchMessage({ type: "runStatus", tabId: "vibe-queue", status: "end", message: "Task completed" });
+  const queuedSend = posted.filter((message) => message.type === "sendPrompt").at(-1);
+  assert.ok(queuedSend);
+  assert.equal(queuedSend.model, "gpt-5");
+  assert.equal(queuedSend.loopMainModel, undefined);
+  assert.equal(queuedSend.loopSubtaskModel, undefined);
+  assert.equal(queuedSend.interactiveMode, "coding");
 
   window.dispatchMessage({ type: "uploadResult", paths: ["/tmp/a.png"] });
   assert.match(document.getElementById("promptInput").value, /@\/tmp\/a\.png/);
@@ -2169,14 +2268,19 @@ test("distinguishes manual and automatic interaction history with accessible SVG
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-icon\.automatic\s*\{[^}]*color:\s*var\(--vscode-charts-blue, var\(--vscode-foreground\)\);/u);
 });
 
-test("normalizes the Loop+ acceptance limit from the AI task settings input", () => {
+test("normalizes the Loop+ subtask round limit from the AI task settings input", () => {
   const { document, posted } = createRuntimeHarness();
-  document.getElementById("loopPlusMaxAcceptances").value = "0";
-  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 1 });
-  document.getElementById("loopPlusMaxAcceptances").value = "5000";
-  document.getElementById("loopPlusMaxAcceptances").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusMaxAcceptances", value: 999 });
+  for (const [input, expected] of [["", 200], ["49", 50], ["50", 50], ["200", 200], ["9999", 9999]] as const) {
+    document.getElementById("loopPlusSubtaskMaxRounds").value = input;
+    document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: expected });
+  }
+  document.getElementById("loopPlusSubtaskMaxRounds").value = "0";
+  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 50 });
+  document.getElementById("loopPlusSubtaskMaxRounds").value = "10000";
+  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 9999 });
 });
 
 test("renders prompt history favorites and filters to favorite prompts", () => {
@@ -3479,6 +3583,132 @@ test("cold tab switches show a loading state until its first message snapshot ar
   window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [] });
   assert.equal(messages.querySelector(".conversation-messages-loading"), null);
   assert.equal(messages.getAttribute("aria-busy"), null);
+});
+
+test("default task mode setting does not switch the current task and follows the saved host state", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "loop" }) });
+  document.getElementById("toolSettingsButton").click();
+  document.getElementById("toolSettingsAiTaskTab").click();
+  const select = document.getElementById("newTaskInteractiveMode");
+  assert.equal(select.value, "coding");
+  select.value = "loop_plus";
+  select.dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "newTaskInteractiveMode", value: "loop_plus" });
+  assert.equal(api.state.interactiveMode, "loop");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ newTaskInteractiveMode: "coding", interactiveMode: "loop" }) });
+  assert.equal(select.value, "coding");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ newTaskInteractiveMode: "loop_plus", interactiveMode: "loop" }) });
+  assert.equal(select.value, "loop_plus");
+});
+
+test("new tab appears in the configured mode before host replies and waits for readiness", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const oldTab = { id: "tab-1", cli: "codex", sessionId: "old-session" };
+  const snapshot = (activeTabId: string, tabs = [oldTab]) => window.dispatchMessage({
+    type: "state", payload: createPanelState({
+      conversationTabs: { activeTabId, tabs },
+      newTaskInteractiveMode: "loop_plus",
+      interactiveMode: activeTabId === oldTab.id ? "coding" : "loop_plus",
+    }),
+  });
+  snapshot(oldTab.id);
+  window.dispatchMessage({ type: "setMessages", tabId: oldTab.id, messages: [{ id: "old-message", role: "user", content: "保留原对话" }] });
+  document.getElementById("newSession").click();
+  document.getElementById("newSession").click();
+  const creates = posted.filter((message) => message.type === "newSession");
+  assert.equal(creates.length, 1);
+  const newTabId = String(creates[0].tabId);
+  const messages = document.getElementById("messages");
+  assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  assert.equal(api.state.interactiveMode, "loop_plus");
+  assert.ok(conversationTabByLabel(document, "Codex2"));
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  assert.equal(document.getElementById("sendPrompt").disabled, true);
+  snapshot(oldTab.id);
+  assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  assert.equal(api.state.interactiveMode, "loop_plus");
+  conversationTabByLabel(document, "Codex")?.click();
+  assert.equal(api.state.messages[0].content, "保留原对话");
+  snapshot(newTabId, [oldTab, { id: newTabId, cli: "codex", sessionId: "" }]);
+  assert.equal(api.state.conversationTabs.activeTabId, oldTab.id);
+  conversationTabByLabel(document, "Codex2")?.click();
+  window.dispatchMessage({ type: "setMessages", tabId: newTabId, messages: [] });
+  assert.equal(messages.getAttribute("aria-busy"), "true");
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId: newTabId, ready: true });
+  assert.equal(messages.getAttribute("aria-busy"), null);
+  assert.equal(document.getElementById("sendPrompt").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("closing optimistically preserves the foreground DOM and handles stale snapshots and rejection", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tabs = ["tab-1", "tab-2", "tab-3"].map((id) => ({ id, cli: "codex", sessionId: id }));
+  const snapshot = (nextTabs = tabs) => window.dispatchMessage({
+    type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "tab-1", tabs: nextTabs } }),
+  });
+  snapshot();
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [{ id: "current", role: "user", content: "当前对话" }] });
+  const bubble = document.getElementById("messages").querySelector(".bubble");
+  assert.ok(bubble);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(posted.filter((message) => message.type === "closeConversationTab").at(-1)?.tabId, "tab-2");
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  assert.equal(document.getElementById("messages").querySelector(".bubble"), bubble);
+  snapshot();
+  assert.ok(!api.state.conversationTabs.tabs.some((tab: { id: string }) => tab.id === "tab-2"));
+  window.dispatchMessage({ type: "conversationTabCloseRejected", tabId: "tab-2" });
+  assert.equal(api.state.conversationTabs.tabs.length, 3);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  window.dispatchMessage({ type: "conversationTabClosed", tabId: "tab-2", activeTabId: "tab-1" });
+  snapshot();
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  snapshot([tabs[0], tabs[2]]);
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+});
+
+test("closing a loading tab ignores its late creation completion", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    conversationTabs: { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] },
+  }) });
+  document.getElementById("newSession").click();
+  const tabId = posted.find((message) => message.type === "newSession")?.tabId;
+  assert.ok(tabId);
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  window.dispatchMessage({ type: "conversationTabClosed", tabId, activeTabId: "tab-1" });
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(api.state.conversationTabs.tabs.length, 1);
+  assert.equal(document.getElementById("newSession").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
+});
+
+test("closing the active tab immediately selects its neighbor without overriding a later selection", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const tabs = ["tab-1", "tab-2", "tab-3"].map((id) => ({ id, cli: "codex", sessionId: id }));
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "tab-2", tabs } }) });
+  window.dispatchMessage({ type: "setMessages", tabId: "tab-1", messages: [{ id: "cached", role: "user", content: "相邻标签的缓存内容" }] });
+  conversationTabByLabel(document, "Codex2")?.querySelector(".conversation-tab-close")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  assert.equal(api.state.messages[0].content, "相邻标签的缓存内容");
+  conversationTabByLabel(document, "Codex2")?.click();
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
+  window.dispatchMessage({ type: "conversationTabClosed", tabId: "tab-2", activeTabId: "tab-1" });
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
+});
+
+test("failed creation removes the placeholder and unblocks another attempt", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState() });
+  document.getElementById("newSession").click();
+  const tabId = posted.find((message) => message.type === "newSession")?.tabId;
+  assert.ok(tabId);
+  window.dispatchMessage({ type: "conversationTabCreateSettled", tabId, ready: false });
+  assert.equal(api.state.conversationTabs.activeTabId, "tab-1");
+  assert.equal(api.state.conversationTabs.tabs.length, 2);
+  assert.equal(document.getElementById("newSession").disabled, false);
+  assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 
 test("large conversations render in yielding batches and keep every message", () => {
@@ -5079,13 +5309,9 @@ test("applies model, panel, and selector state without preserving invalid snapsh
   const runtimeScript = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 5,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 12,
     finalAnswerTextMarker: "<FINAL>",
   });
   const functionSource = [
-    "normalizeLoopMaxRounds",
     "normalizeModelNameList",
     "normalizeModelSelection",
     "normalizeLoopRoleModelsPayload",
@@ -5114,7 +5340,6 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "CLI_NAMES",
     "t",
     `${functionSource}; return {
-      normalizeLoopMaxRounds,
       normalizeModelNameList,
       normalizeOpenCodeThinkingPayload,
       normalizeOpenCodeModelsPayload,
@@ -5129,7 +5354,6 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     (key: string) => key,
   );
 
-  assert.equal(helpers.normalizeLoopMaxRounds("99"), 12);
   assert.deepEqual(helpers.normalizeModelNameList([" GPT ", "gpt", "", 42]), ["GPT"]);
   assert.deepEqual(helpers.normalizeOpenCodeThinkingPayload({
     selectedVariant: " high ",
@@ -5253,6 +5477,44 @@ test("empty Explorer context reference messages do not overwrite selected text",
   assert.equal(input.value, "保留提示词");
   assert.equal(input.selectionStart, 0);
   assert.equal(input.selectionEnd, input.value.length);
+});
+
+test("pasted attachments append references and reveal the caret at the end of an overflowing prompt", async () => {
+  class AttachmentFileReader {
+    result = "data:text/plain;base64,aGVsbG8=";
+    onload?: () => void;
+    readAsDataURL(): void {
+      this.onload?.();
+    }
+  }
+  const { document, window, posted } = createRuntimeHarness(undefined, AttachmentFileReader);
+  const input = document.getElementById("promptInput");
+  input.value = "第一行\n第二行\n请查看 ";
+  input.setSelectionRange(input.value.length, input.value.length);
+  input.clientHeight = 60;
+  input.scrollHeight = 180;
+
+  assert.equal(input.dispatchEvent({ type: "paste", clipboardData: { items: [] } }), true);
+  const file = { name: "hello.txt", type: "text/plain", size: 5 };
+  assert.equal(input.dispatchEvent({
+    type: "paste",
+    clipboardData: { items: [{ kind: "file", getAsFile: () => file }] },
+  }), false);
+  await Promise.resolve();
+  assert.deepEqual(posted.at(-1), {
+    type: "uploadFiles",
+    files: [{ name: "hello.txt", type: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" }],
+  });
+
+  window.dispatchMessage({ type: "uploadResult", paths: [] });
+  assert.equal(input.value, "第一行\n第二行\n请查看 ");
+  assert.equal(input.scrollTop, 0);
+  window.dispatchMessage({ type: "uploadResult", paths: ["/tmp/a.png", "/tmp/my folder/hello.txt"] });
+  assert.equal(input.value, '第一行\n第二行\n请查看 @/tmp/a.png @"/tmp/my folder/hello.txt" ');
+  assert.equal(input.selectionStart, input.value.length);
+  assert.equal(input.selectionEnd, input.value.length);
+  assert.equal(input.focused, true);
+  assert.equal(input.scrollTop, input.scrollHeight - input.clientHeight);
 });
 
 test("prompt drops keep attachment uploads and ordinary text fallback", async () => {

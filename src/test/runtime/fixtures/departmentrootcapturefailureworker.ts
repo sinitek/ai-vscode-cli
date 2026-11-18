@@ -12,8 +12,7 @@ const audit = (value: object) => fs.appendFileSync(path.join(directory, "root-ca
 const create = roots.createLoopSubtaskExecutionRoot;
 roots.createLoopSubtaskExecutionRoot = (...args: Parameters<typeof create>) => {
   const root = create(...args);
-  const leases = JSON.parse(fs.readFileSync(path.join(directory, "configuration", "selection.json"), "utf8")).leases;
-  audit({ event: "created", cwd: root.cwd, leases: leases.length, pid: process.pid });
+  audit({ event: "created", cwd: root.cwd, pid: process.pid });
   const originalDispose = root.dispose;
   root.dispose = () => {
     audit({ event: "dispose-called", cwd: root.cwd });

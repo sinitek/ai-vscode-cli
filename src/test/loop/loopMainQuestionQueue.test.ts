@@ -1,7 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { setTimeout as delay } from "node:timers/promises";
-import { createLoopMainQuestionQueue, hasPendingClassicLoopMainWork } from "../../loopMainQuestionQueue";
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 
 function deferred() {
   let resolve: () => void = () => undefined;
@@ -14,16 +14,18 @@ test("busy questions wait for idle and retain FIFO order", async () => {
   const calls: string[] = [];
   let idle = false;
   const first = queue.runQuestion("main", { canRun: () => idle }, async () => { calls.push("first"); return 1; });
+  const review = queue.runMain("main", async () => { calls.push("review"); });
   const second = queue.runQuestion("main", { canRun: () => idle }, async () => { calls.push("second"); return 2; });
   await delay(5);
   assert.deepEqual(calls, []);
   idle = true;
   await delay(5);
   assert.deepEqual(await Promise.all([first, second]), [1, 2]);
-  assert.deepEqual(calls, ["first", "second"]);
+  await review;
+  assert.deepEqual(calls, ["first", "review", "second"]);
 });
 
-test("acceptance and supplemental main work precede queued questions without preempting the active answer", async () => {
+test("main work and questions share arrival order without preempting the active answer", async () => {
   const queue = createLoopMainQuestionQueue();
   const active = deferred();
   const calls: string[] = [];
@@ -32,13 +34,13 @@ test("acceptance and supplemental main work precede queued questions without pre
     await active.promise;
     calls.push("answer-1-done");
   });
-  const second = queue.runQuestion("main", { canRun: () => true }, async () => { calls.push("answer-2"); });
   const review = queue.runMain("main", async () => { calls.push("review"); });
+  const second = queue.runQuestion("main", { canRun: () => true }, async () => { calls.push("answer-2"); });
   const supplement = queue.runMain("main", async () => { calls.push("supplement"); });
   assert.deepEqual(calls, ["answer-1"]);
   active.resolve();
   await Promise.all([first, second, review, supplement]);
-  assert.deepEqual(calls, ["answer-1", "answer-1-done", "review", "supplement", "answer-2"]);
+  assert.deepEqual(calls, ["answer-1", "answer-1-done", "review", "answer-2", "supplement"]);
 });
 
 test("main preparation and question preparation hold the same session lock", async () => {
@@ -61,11 +63,12 @@ test("cancelling a waiting question does not start it or stop unrelated main wor
     canRun: () => false,
     isAborted: () => aborted,
   }, async () => { calls += 1; });
+  const main = queue.runMain("main", async () => { calls += 1; });
+  assert.equal(calls, 0);
   aborted = true;
   await delay(5);
   assert.equal(await question, undefined);
-  assert.equal(calls, 0);
-  await queue.runMain("main", async () => { calls += 1; });
+  await main;
   assert.equal(calls, 1);
 });
 
@@ -88,12 +91,4 @@ test("different main tabs progress independently", async () => {
   aborted = true;
   await delay(5);
   await blocked;
-});
-
-test("classic Loop reserves review gaps and unobserved supplemental requirements", () => {
-  const base = { controllerActive: true, activeSubtaskCount: 1, requirementCount: 2, observedRequirementCount: 2 };
-  assert.equal(hasPendingClassicLoopMainWork(base), false);
-  assert.equal(hasPendingClassicLoopMainWork({ ...base, activeSubtaskCount: 0 }), true);
-  assert.equal(hasPendingClassicLoopMainWork({ ...base, requirementCount: 3 }), true);
-  assert.equal(hasPendingClassicLoopMainWork({ ...base, controllerActive: false, activeSubtaskCount: 0 }), false);
 });

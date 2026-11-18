@@ -90,7 +90,6 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
     getEffectiveLongTermMemoryEnabled: () => false,
     getGlobalAutoCompactContextAfterRun: () => false,
     getGlobalHumanInteractionEnabled: () => true,
-    getGlobalLoopMaxRounds: () => 1,
     getDebugLogging: () => false,
     getMacTaskShell: () => "zsh",
     getEffectiveThinkingMode: () => "off",

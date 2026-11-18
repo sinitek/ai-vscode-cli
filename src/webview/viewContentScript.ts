@@ -20,9 +20,9 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT,
-  LOOP_PLUS_MAX_ACCEPTANCES_LIMIT,
-  LOOP_PLUS_MAX_ACCEPTANCES_MIN,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
+  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 import { CLI_LIST } from "../cli/types";
 import { getCliDisplayName } from "../cli/installer";
@@ -35,20 +35,24 @@ import {
 } from "../chatMessageLimit";
 import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { normalizeDepartmentCapacity } from "../departmentSettings";
+import { PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
 
 export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
   cliList: unknown;
   cliDisplayNames?: unknown;
-  loopMaxRoundsDefault: number;
-  loopMaxRoundsMin: number;
-  loopMaxRoundsMax: number;
+  loopMaxRoundsDefault?: number;
+  loopMaxRoundsMin?: number;
+  loopMaxRoundsMax?: number;
   loopPlusDecisionSubtaskMaxDefault?: number;
   loopPlusDecisionSubtaskMaxMin?: number;
   loopPlusDecisionSubtaskMaxLimit?: number;
   loopPlusMaxAcceptancesDefault?: number;
   loopPlusMaxAcceptancesMin?: number;
   loopPlusMaxAcceptancesLimit?: number;
+  loopPlusSubtaskMaxRoundsDefault?: number;
+  loopPlusSubtaskMaxRoundsMin?: number;
+  loopPlusSubtaskMaxRoundsLimit?: number;
   finalAnswerTextMarker: string;
 };
 
@@ -80,6 +84,7 @@ function replaceLiteral(value: string, search: string, replacement: string): str
 export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput): string {
   const replacements: Array<[string, string]> = [
     ["${CHAT_MESSAGE_LIMIT_DEFAULT}", String(CHAT_MESSAGE_LIMIT_DEFAULT)],
+    ["${PROMPT_INPUT_MIN_HEIGHT}", String(PROMPT_INPUT_MIN_HEIGHT)],
     ["${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT}", String(LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT)],
     ["${NORMALIZE_CHAT_MESSAGE_LIMIT}", [
       `const CHAT_MESSAGE_LIMIT_DEFAULT = ${CHAT_MESSAGE_LIMIT_DEFAULT};`,
@@ -97,15 +102,12 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
           ?? Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliDisplayName(cli)])),
       ),
     ],
-    ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
-    ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
-    ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],
+    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}", String(input.loopPlusSubtaskMaxRoundsDefault ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT)],
+    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}", String(input.loopPlusSubtaskMaxRoundsMin ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN)],
+    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}", String(input.loopPlusSubtaskMaxRoundsLimit ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT}", String(input.loopPlusDecisionSubtaskMaxDefault ?? LOOP_PLUS_DECISION_SUBTASK_MAX)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}", String(input.loopPlusDecisionSubtaskMaxMin ?? LOOP_PLUS_DECISION_SUBTASK_MIN)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}", String(input.loopPlusDecisionSubtaskMaxLimit ?? LOOP_PLUS_DECISION_SUBTASK_LIMIT)],
-    ["${LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT}", String(input.loopPlusMaxAcceptancesDefault ?? LOOP_PLUS_MAX_ACCEPTANCES_DEFAULT)],
-    ["${LOOP_PLUS_MAX_ACCEPTANCES_MIN}", String(input.loopPlusMaxAcceptancesMin ?? LOOP_PLUS_MAX_ACCEPTANCES_MIN)],
-    ["${LOOP_PLUS_MAX_ACCEPTANCES_LIMIT}", String(input.loopPlusMaxAcceptancesLimit ?? LOOP_PLUS_MAX_ACCEPTANCES_LIMIT)],
     ["${DEPARTMENT_MAX_LEADERS_DEFAULT}", String(DEPARTMENT_MAX_LEADERS_DEFAULT)],
     ["${DEPARTMENT_MAX_EMPLOYEES_DEFAULT}", String(DEPARTMENT_MAX_EMPLOYEES_DEFAULT)],
     ["${NORMALIZE_DEPARTMENT_CAPACITY}", normalizeDepartmentCapacity.toString()],

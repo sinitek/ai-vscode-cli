@@ -85,7 +85,6 @@ export function applyLoopInvocationModelRouting(input: PromptRunInput, task: Loo
     model,
     ...(thinkingMode ? { thinkingModeOverride: thinkingMode } : {}),
     ...(input.model !== model ? { executionModel: undefined, executionProfile: undefined } : {}),
-    ...(configId && input.configSelections?.[cli]?.configId !== configId ? { configSelections: undefined } : {}),
   };
 }
 

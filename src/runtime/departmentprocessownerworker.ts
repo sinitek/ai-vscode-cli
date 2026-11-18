@@ -1,6 +1,5 @@
 import * as fs from "fs";
 import { createDepartmentOpenCodeSession } from "./departmentopencodesessionpreparation";
-import { SharedRuntimeConfig } from "../config/sharedRuntimeConfig";
 import { createLoopSubtaskExecutionRoot, isLoopSubtaskLinkFailedError } from "../loopSubtaskExecutionRoot";
 import { runCliProcess, type CliProcessRuntimeHandle } from "../cli/cliProcessRuntime";
 import { createOpenCodeRuntimeConfigOverlay } from "../cli/opencoderuntimeconfig";
@@ -19,21 +18,13 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
   let rejectFinalize: ((error: Error) => void) | undefined;
   let server: DepartmentExecutionOwnerServer | undefined;
   let required: import("./departmentexecutionidentity").CleanupRequirements;
-  let configuration: SharedRuntimeConfig;
-  const assertConfiguration = async () => {
-    const selected = await configuration.read();
-    if (!selected?.ready || selected.configId !== input.selection.configId || selected.revision !== input.selection.revision) {
-      throw new Error("configuration-changed");
-    }
-  };
-  let lease: Awaited<ReturnType<SharedRuntimeConfig["acquire"]>> | undefined;
   let disposeRoot: (() => CleanupResult) | undefined;
   let rootCleanup: CleanupResult | undefined;
   let assertRoot: (() => void) | undefined;
   let preparationCleanupUnknown = false;
   let checked: (() => void) | undefined;
   const checkHost = async () => {
-    assertRoot?.(); await assertConfiguration();
+    assertRoot?.();
     if (phase !== "preparing" || preparing.signal.aborted || !process.connected) throw new Error("preparation-host-lost");
     await new Promise<void>((resolve, reject) => {
       if (checked) { reject(new Error("preparation-check-conflict")); return; }
@@ -43,7 +34,7 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       checked = () => { clearTimeout(timer); preparing.signal.removeEventListener("abort", abort); resolve(); };
       send({ type: "preparation-check" });
     });
-    assertRoot?.(); await assertConfiguration();
+    assertRoot?.();
     if (phase !== "preparing" || preparing.signal.aborted || !process.connected) throw new Error("preparation-host-lost");
   };
   let operationSequence = 0;
@@ -71,14 +62,13 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
     flush(message);
   };
   const disposePreparation = (): Promise<void> => abandonPromise ??= (async () => {
-    // Unknown native drain or retained owned resources must retain the lease.
+    // Unknown native drain or retained owned resources remain owned.
     if (preparationCleanupUnknown) throw new Error("native-preparation-drain-unknown");
     const overlay = abandonOverlay?.();
     const root = disposeRoot?.();
     if (overlay && overlay.status !== "confirmed" || root && root.status !== "confirmed") {
       throw new Error("preparation-resources-retained");
     }
-    await lease?.release(); lease = undefined;
     if (server) await server.close();
   })();
   process.on("disconnect", () => {
@@ -127,17 +117,13 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       && message.version === 1 && message.token === input.token && message.operation === "commit"
       && isDepartmentExecutionIdentity(message.identity) && sameExecution(message.identity, input.identity) && process.connected) {
       phase = "committing";
-      void assertConfiguration().then(() => {
-        if (phase !== "committing" || !process.connected) return;
-        phase = "committed"; send({ type: "committed" });
-      }, () => { phase = "failed"; if (process.connected) process.disconnect?.(); });
+      if (phase === "committing" && process.connected) { phase = "committed"; send({ type: "committed" }); }
       return;
     }
     if (phase === "committed" && requestLaunch && record(message)
       && exactKeys(message, ["version", "token", "sequence", "operation", "identity"]) && message.version === 1
       && message.token === input.token && message.operation === "launch" && isDepartmentExecutionIdentity(message.identity)
-      && sameExecution(message.identity, input.identity) && process.connected && !launched
-      && configuration.isCurrentSelection(input.selection)) {
+      && sameExecution(message.identity, input.identity) && process.connected && !launched) {
       try { assertRoot!(); } catch { phase = "failed"; preparing.abort(); process.disconnect?.(); return; }
       // Consume the private grant once. Promise continuations spawn before another IPC event can run.
       launched = true; const accept = requestLaunch; requestLaunch = undefined; accept(); return;
@@ -158,7 +144,7 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       && isDepartmentExecutionIdentity(message.identity) && sameExecution(message.identity, input.identity)) {
       phase = "failed"; // permanently closes private admission; never replay a task
       void (async () => {
-        if (lease || rootCleanup?.status !== "confirmed") throw new Error("owned-resources-retained");
+        if (rootCleanup?.status !== "confirmed") throw new Error("owned-resources-retained");
         const client = new DepartmentExecutionOwnerClient(input.ownerDirectory);
         const observed = await client.observeExecution(input.identity);
         if (observed.status !== "cleaned") throw new Error("original-receipt-not-ready");
@@ -172,16 +158,12 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       return;
     }
     // Reject every other private message. An active execution stays owned even if its channel is invalid.
-    // During an awaited native probe, preparation itself releases the lease after real close/drain.
     if (!launched) { phase = "failed"; preparing.abort(); rejectFinalize?.(new Error("preparation-message-invalid")); }
     if (process.connected) process.disconnect?.();
   });
 
   async function prepare(): Promise<void> {
-    configuration = new SharedRuntimeConfig(input.configurationDirectory);
-    lease = await configuration.acquire({ configId: input.selection.configId, revision: input.selection.revision });
-    if (!lease.selection.ready || lease.selection.configId !== input.selection.configId || lease.selection.revision !== input.selection.revision
-      || phase !== "preparing" || !process.connected) throw new Error("configuration-changed");
+    if (phase !== "preparing" || !process.connected) throw new Error("preparation-host-lost");
     let root: ReturnType<typeof createLoopSubtaskExecutionRoot>;
     try { root = createLoopSubtaskExecutionRoot(input.workspaceDirectory); }
     catch (error) {
@@ -217,14 +199,12 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
     }
     assertRoot();
     if (wasUnbound || input.retired) {
-      await assertConfiguration();
       if (phase !== "preparing" || !process.connected) throw new Error("preparation-host-lost");
       input.identity = { ...input.identity, session: { state: "bound", id } };
       const launch = await new Promise<DepartmentProcessPreparation["launch"]>((resolve, reject) => {
         finalize = resolve; rejectFinalize = reject; send({ type: "native-session" });
       });
       rejectFinalize = undefined;
-      await assertConfiguration();
       if (phase !== "preparing" || !process.connected) throw new Error("preparation-host-lost");
       // Only final argv may change. Configuration, environment, prefix and resource paths stay fixed.
       const fixed = ({ args: _args, ...rest }: DepartmentProcessPreparation["launch"]) => JSON.stringify(rest);
@@ -248,7 +228,6 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       throw error;
     }
     assertRoot();
-    await assertConfiguration();
     if (phase !== "preparing" || !process.connected) throw new Error("preparation-host-lost");
     const overlayResult = input.overlay ? createOpenCodeRuntimeConfigOverlay(input.overlay) : null;
     if (overlayResult && (!overlayResult.ok || !overlayResult.overlay)) throw new Error("overlay-unavailable");
@@ -264,8 +243,6 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       // Process launcher invokes resource release only after its captured child
       // has actually closed and every owned stdio stream has drained.
       runner: { owned: true, release: async () => {
-        if (!lease) return { status: "unobservable", reason: "owner-config-lease-missing" };
-        // Last resource (tab) releases the lease only after root/links/overlay succeeded.
         return { status: "confirmed", evidence: "owned-cli-process-close-drain" };
       } },
       executionRoot: { owned: true, release: disposeRoot }, links: { owned: true, release: disposeRoot },
@@ -277,9 +254,8 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
         if (resolveTabRelease) return Promise.resolve({ status: "unobservable", reason: "duplicate-tab-release" });
         const result = await new Promise<CleanupResult>((resolve) => { resolveTabRelease = resolve; send({ type: "release-tab" }); });
         const temp = abandonOverlay?.();
-        if (result.status === "confirmed" && rootCleanup?.status === "confirmed" && (!temp || temp.status === "confirmed")) {
-          await lease?.release(); lease = undefined;
-        } else if (result.status === "confirmed") return { status: "unobservable", reason: "owned-resources-retained" };
+        if (result.status === "confirmed" && (rootCleanup?.status !== "confirmed" || temp && temp.status !== "confirmed"))
+          return { status: "unobservable", reason: "owned-resources-retained" };
         return result;
       } },
     };
@@ -305,7 +281,6 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
         requirements(identity) { if (phase !== "committed" || !launched && !process.connected) throw new Error("binding-not-committed"); return launcher.requirements(identity); },
         async launch(identity, bind) {
           if (phase !== "committed" || !process.connected) throw new Error("binding-not-committed");
-          await assertConfiguration();
           assertRoot!();
           if (phase !== "committed" || !process.connected) throw new Error("binding-not-committed");
           await new Promise<void>((resolve, reject) => {
@@ -322,7 +297,6 @@ export async function runDepartmentProcessOwnerWorker(): Promise<void> {
       } });
     fs.mkdirSync(input.ownerDirectory, { recursive: true, mode: 0o700 });
     await server.listen();
-    await assertConfiguration();
     if (phase !== "preparing" || !process.connected) throw new Error("preparation-host-lost");
     phase = "prepared"; send({ type: "prepared", requirements, directory: cwd });
   }

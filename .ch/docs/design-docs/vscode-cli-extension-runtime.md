@@ -4,6 +4,14 @@
 - 更新日期：2026-11-13
 - 事实来源：`src/extensionHost/modelSettings.ts`、`src/config/configuredModelRepository.ts`、`src/extensionHost/cliModelSelectionStrategies.ts`
 
+## Vibe 澄清与最终答复
+
+人工交互开启时，模型应优先调用结构化 user-input / elicitation，并等待回答后继续任务。这个约束同时适用于单个澄清问题和用户没有主动要求“先问我”的任务。
+
+`src/humanInteraction.ts` 为交互式及 OpenCode one-shot/parallel 入口提供共享自然语言兜底：整段回复为明确向用户请求决策的 1–3 题时，允许直接转换现有人工交互表单。支持单个无编号问题及其无编号、项目符号、数字或字母选项；每个独立选项行保留全文，不按逗号、斜杠或“或”拆开。原有显式询问需求的解析保持兼容。结果正文、引用、代码围栏和文档示例不作为新路径的澄清依据。
+
+运行时在最终结论收口前转换问题气泡，提交后把答案写为用户消息并继续原会话；拒绝仍停止当前任务。人工交互开关关闭以及 Loop/Loop+ 仍由原边界处理。本次不改变 Webview 表单、CLI 协议或持久化格式。
+
 ## Loop 任务内模型切换
 
 群聊「切模型」是独立于继续执行的任务内路由变更。`src/loopModelSwitch.ts` 按各角色绑定 CLI 当前配置复用现有下拉选项，分别选择模型与思考力度，整体校验后保存 `modelRouting`、配置身份及 `originProfile` 对应角色的 `*ThinkingMode`，不修改全局模型偏好、CLI 或任务模式。力度选项随所选模型更新，DSH 使用配置声明的模型能力，无支持时禁用；旧消息省略 `thinkingModes` 时保留原力度。群聊继续执行仅提交继续说明，沿用任务最新路由；主任务 Tab 直接继续仍接受已有下拉选择，并先更新任务路由与显式提交的角色力度，未提交的角色设置保持不变，避免后续调用读回旧快照。
@@ -22,23 +30,31 @@
 
 压缩和普通轮次共享配置身份，压缩沿用已建立的提问 capability，仍重新计算真实 key。没有新增跨窗口业务锁、持久化会话格式或用户设置；其它 CLI 和 Loop 调度边界不变。详细协议、错误码、诊断与真实验证见 `../references/cli-runtime-reference.md` 的“Codex 会话跨连接交接”。
 
+## AI 对话输入框高度
+
+- Webview 用指针捕获实时调整多行输入框，松手或键盘调整完成后通过 `updateSetting` 持久化 `promptInputHeight`（CSS 像素）；取消拖拽还原原值。宿主拒绝无效更新，保存失败时提示。
+- 创建和重载 Webview 时，宿主从 `~/.sinitek_cli/settings.json` 取值并随初始 HTML 渲染；不依赖会话 `PanelState`，切换标签不影响高度。显示高度至少为原来的三行，通常至多为面板高度的一半；面板尺寸变化不写回设置。
+
 ## Tab 运行状态与配置协调
+
+- Webview 为每个 Tab 保留当前 CLI 的显式 `interactiveModeSelection`，模式下拉变更时更新；同 CLI 的后续状态快照和自动历史推断优先使用该选择。未选择的 Tab 保持原有主任务 Loop / Loop+、其它 coding 的推断。CLI 不同的旧选择不复用，关闭 Tab 随运行态清除；该字段只存在于当前页面，不扩展持久化格式。发送处理器不重新激活当前 Tab，已完成 Loop / Loop+ 选择 Vibe 后复用原会话走普通 `runPrompt`。
+- 普通发送与 Loop 系列共用即时提示词预览和等待反馈，细节见[发送与启动反馈](loop-plus-scheduling.md#发送与启动反馈)。完整面板配置/模型刷新仅在后台展示，真实用户消息先发布；配置校验、会话交接与压缩仍按实际状态等待。
 
 - 同一 CLI + session 在启动时自动归属当前目标 Tab：公共执行入口先停止其它占用任务并关闭重复 Tab（含空闲旧 Tab），交互宿主在异步配置/会话准备前后再次接管，非交互执行也在启动前复核。实际运行绑定与标签绑定同时参与检查；不同 CLI 或会话保持并行，不删除会话历史。同 Tab 的交互重入仍拒绝；停止或关闭未完成则不启动替代调用，保留 `SESSION_RUN_ACTIVE` 门禁。此接管不替代 Codex 底层 HOME + thread 写锁交接。
 - 接管期间复核工作区、目标标签对象与会话绑定；已取消、换绑或被关闭目标的准备流程不能迟到启动。停止旧任务后重新加载消息，保留旧轮停止记录和新轮输入。回归见 `src/test/extensionHost/sessionTabOwnership.test.ts`、`src/test/extensionHost/promptInteractiveRuntime.test.ts` 和 `src/test/session/sessionTabCliSwitch.test.ts`。
 - 运行收尾及 Codex 的迟到 thread/taskList 回调只操作所属 runId；旧调用不得重绑新会话或覆盖新状态。宿主发布完整面板状态后立即重放现有运行协调消息，恢复仍活跃的 Loop 子任务；不靠历史摘要推断完成。
 - 历史完成摘要只能从最近用户消息之后恢复；新用户消息立即清空旧摘要，真实活跃信号恢复时清除历史完成状态。正常完成仍由 Loop+ adapter 自动关闭子任务 Tab；失败或中断保留诊断，同会话被新 Tab 接管时关闭旧 Tab，诊断仍保存在会话历史，不通过关页伪装成功。回归见 `src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/webview/tabRunStatus.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
-- 非运行标签关闭使用宿主确认后的轻量 `conversationTabClosed` 增量消息，不等待 `postPanelState` 重载各 CLI 配置和模型能力。后台关闭仅移除标签与缓存，不重选当前会话、不重放正文；活动关闭立即切到回退标签缓存，之后仍由原有配置恢复和全量状态保证执行配置正确。运行锁、最后标签保护与磁盘会话保留不变。
+- 手动关闭先由 Webview 隐藏标签并屏蔽仍包含该标签的旧快照。宿主接受后发送轻量 `conversationTabClosed`，运行态缓存此时才回收；若拒绝则通过 `conversationTabCloseRejected` 恢复标签。手动关闭把 runner 清理延后到独立事件循环回合，释放时复查引用；自动关闭、所有权接管和重置仍沿用原收尾语义。后台关闭不重选当前会话、不重放正文；活动关闭立即切到回退标签，仍由配置恢复和全量状态校准。运行锁、最后标签保护与磁盘会话保留不变。
+- 手动新建在 Webview 插入加载中的标签，以临时生成的 `tabId` 关联请求。宿主验证标识格式和唯一性，由宿主创建并持久化真实标签，以同一 ID 发送 `state`、目标 `setMessages` 和 `conversationTabCreateSettled`。完成前保留本地选中项并阻止向加载标签发送，旧全量快照不能吞掉占位标签；关闭加载标签后忽略迟到的创建回执。
+- 手动新建和成功重置时，宿主将全局工具设置 `newTaskInteractiveMode` 应用到目标 CLI 的当前模式。`PanelState` 分开下发此默认值和当前 `interactiveMode`；新建占位标签使用默认值，宿主确认活动标签后使用权威模式。改变默认值不切换正在查看的任务，也不修改已有标签的模式推断规则。
 - 手动切换与活动关闭后的回退先发送带目标 `tabId` 的消息快照，再等待配置恢复及全量状态。Webview 区分尚未收到快照与已加载空会话，等待时展示可访问的中文加载状态；长历史以每批 48 条异步创建，连续指令跨批保留同一组，代际检查禁止旧批次提交到新标签。未完成视图不进入缓存，原有消息清理、折叠与滚动规则继续适用。
 - 重置会话先创建新标签再关闭旧标签，不能套用普通关闭的轻量确认：客户端尚无新标签，提前确认会暂时选中邻居并破坏待提交配置的保留判断。重置显式禁用提前确认，并在新标签仍活动时发布完整状态和空会话消息。回归见 `src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
 
 - Tab 展示先判断 `isConversationTabRunning`，再判断错误标记。运行中的 trace/system 错误可能来自可恢复工具失败，不直接判定任务终止；终态仍由宿主 `runStatus` 驱动。保留错误气泡和原有成功、重试、输出恢复逻辑。
 - Webview 每 Tab 的 `lastRunStatus` 仅保存在内存，宿主 `runStatus` 事件更新后，消息推断不得覆盖明确的成功终态 `end`，自动重试排队提示同样遵守此保护。新用户消息、新运行和会话重置释放上一轮成功保护；明确的 `error` 始终可标记失败，未收到成功终态的空闲错误仍可展示。关闭/工作区切换复用运行态回收，不新增持久化字段；回归见 `src/test/webview/tabRunStatus.test.ts`。
-- `SharedRuntimeConfig.read` 对已有 `selection.json` 读取经过结构校验的原子快照，不争抢写锁、不清理磁盘租约；缺失且需要初始化时进入互斥事务并再次读取，防止重复初始化。只读可见 `ready:false`，并不赋予启动权限。
-- 配置应用、编辑和 `acquire` / `release` 仍受同一文件互斥锁保护；同进程按规范化目录建立轻量 Promise 顺序队列，跨进程才轮询文件锁。队列失败不阻断后续事务，最后一个操作完成时清除队列。
-- 失效 PID 租约仅在互斥事务中筛除，并随后续写入持久化。执行前重新检查档案与 `ready`，不凭面板快照跳过租约，也不通过超时强拆存活进程的锁。
-- 回归覆盖并发只读、未就绪配置、初始化竞争、同进程长事务、真实子进程写锁超时及崩溃恢复；只读快照不能替代启动时的一致性校验。
-- Vibe 的显式暂停发送使用 `sendPrompt.pauseBeforeSend`。宿主 `PromptRunHandoff` 按 Tab 跟踪完整调用和未成功释放的租约，先取消仍在准备的旧调用并请求停止，再等待调用收尾、原生停止确认与租约清理；不会用 UI `stopped` 事件或 Map 删除推断完整停止。Codex 先等待 `turn/interrupt` 应答，再复用 `releaseThreadForHandoff` 的卸载/实际退出证据，使用同一 HOME + thread 门禁阻止确认期间重入，保留其它会话。90 秒超时后中止确认资格，不迟到提交；会话/工作区变化、释放失败与重复提交均拒绝发送。Webview 收到确认后才清空匹配的输入；Loop 主任务仍走既有排队路径。
+- `SharedRuntimeConfig` 仅以原子快照同步当前档案选择，不提供跨窗口互斥锁或执行租约。各窗口独立执行操作，最后完成的共享选择写入生效；任务按启动准备时读取到的当前配置运行。
+- 回归覆盖无锁并发读写、剩余配置校验、陈旧档案快照不再进入派发、会话交接及压缩按当前配置运行。
+- Vibe 的显式暂停发送使用 `sendPrompt.pauseBeforeSend`。宿主 `PromptRunHandoff` 按 Tab 跟踪完整调用，先取消仍在准备的旧调用并请求停止，再等待调用收尾与原生停止确认；不会用 UI `stopped` 事件或 Map 删除推断完整停止。Codex 先等待 `turn/interrupt` 应答，再复用 `releaseThreadForHandoff` 的卸载/实际退出证据，使用同一 HOME + thread 门禁阻止确认期间重入，保留其它会话。90 秒超时后中止确认资格，不迟到提交；会话/工作区变化与重复提交均拒绝发送。Webview 收到确认后才清空匹配的输入；Loop 主任务仍走既有排队路径。
 
 ## 对话 Markdown 链接边界
 
@@ -89,7 +105,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 ### 事实来源与边界
 
-2026-11-11 起，以下 AI 摘要生成和 30 码点限制适用于 Vibe 与 Loop/Loop+ 主任务；主任务状态投影保留已有 AI 摘要，不用固定“主任务”角色名覆盖。只有子任务在 `src/extensionHost/sessionTabs.ts` 的状态投影中复用 `getLoopSubtaskDisplayTitle`，显示“子任务 N：完整标题”，不限制成员标题长度。子任务优先使用当前 Tab 的实时/已保存/草稿消息解析身份，再核对任务 ID；无消息身份时可用匹配 CLI/session 的 `executionSession` 恢复，不能用其他任务或成员兜底。找不到子任务成员时移除本次投影中的旧 AI 摘要。`rememberConversationTaskSummarySubmission` 仅跳过子任务；主任务新提交捕获用户需求，内部轮次复用同次快照，缺少快照时使用 `rootPrompt` 而非调度协议归纳摘要。浮层渲染、现有停留时间和键盘交互保持不变。回归入口为 `src/test/session/loopTabMemberTooltip.test.ts` 与既有摘要、浮层测试。
+2026-11-11 起，以下 AI 摘要生成和 30 码点限制适用于 Vibe 与 Loop/Loop+ 主任务；主任务状态投影保留已有 AI 摘要，不用固定“主任务”角色名覆盖。只有子任务在 `src/extensionHost/sessionTabs.ts` 的状态投影中复用 `getLoopSubtaskDisplayTitle`，显示“子任务 N：完整标题”，不限制成员标题长度。新派发标签通过当前运行时记录立即提供父任务/子任务身份，不等待消息或会话加载；历史标签仍优先按当前消息身份定位，无消息身份时通过匹配 CLI/session 的 `executionSession` 恢复，不能用其他任务或成员兜底。宿主活动执行状态随首次标签投影提供；启动事件在标签状态发布后补发，避免 Webview 在新标签登记前清理运行标记。找不到子任务成员时移除本次投影中的旧 AI 摘要。`rememberConversationTaskSummarySubmission` 仅跳过子任务；主任务新提交捕获用户需求，内部轮次复用同次快照，缺少快照时使用 `rootPrompt` 而非调度协议归纳摘要。浮层渲染、现有停留时间和键盘交互保持不变。回归入口为 `src/test/session/loopTabMemberTooltip.test.ts` 与既有摘要、浮层测试。
 
 `src/extension.ts` 捕获每次新的用户可见任务提交并接入摘要协调器，`src/conversationTaskSummary.ts` 承载归纳提示、结果归一化和有界队列，`src/extensionHost/conversationTaskSummary.ts` 捕获配置快照并执行隔离调用。`src/webview/types.ts` 的 `ConversationTabSummary` 投影给 `src/webview/viewContentScript/messageRendering.ts` 的 `renderConversationTabs`；Tab、会话保存与绑定由 `src/sessionTabs.ts`、`src/sessionStore.ts`、`src/sessionLifecycle.ts`、`src/workspaceSettingsStore.ts` 及既有宿主 `src/extensionHost/sessionTabs.ts` 承接。原 `preparePendingLabel` 提示词标签行为保留，不等于 AI 摘要。用户行为见能力分册 §3.4；初次交付目标见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-feature-conversation-tab-summary.md`，关联文档见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-docs-conversation-tab-summary.md`；原测试开发与证据按来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary.md` 在[测试计划删除审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)中定位。后续任务刷新缺陷修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-bugfix-conversation-tab-summary-refresh.md`，其原测试来源 `.ch/docs/exec-plans/completed/2026-11/2026-11-07-conversation-tab-summary-refresh.md` 的删除审计记录亦见[此审计](../exec-plans/migrations/test-plan-removals/2026-11-11-nov-active.json)。
 
@@ -97,7 +113,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 - 成员标题与子任务消息身份解析的轻量事实来源为 `src/loopConversationPresentation.ts`；`src/panelStateBuilder.ts` 保留原导出兼容现有群聊和运行时调用，Tab 宿主直接依赖轻量模块，避免引入 VS Code UI 依赖。执行 session 被多个子任务共用且消息身份缺失时，不猜测成员标题。
 - 对外只增加可选 `ConversationTabSummary.taskSummary?: string`。归一化折叠空白，校验汉字与纯文本，拒绝空白、超限、思考/工具标记和无效输出；以 `Array.from` 限制最多 30 个 Unicode 码点，不破坏非 BMP 字符。提示要求简体中文，但未做确定性繁简转换。旧记录缺字段兼容，无生成中/失败占位。
-- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在取得实际配置执行租约后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
+- 每次用户可见提交在 Loop 协议改写和 local session 接管前替换该 Tab 的 WeakMap 快照，使用本次用户需求（含相同文字再次提交），不再受已有 session、首条提示词或摘要字段限制。共同 `runPrompt` 在读取当前配置后安排独立非阻塞调用；provider 配置和 runner 快照延至异步队列启动后捕获，避免同步准备占用任务启动路径。内部 OpenCode 消息预加载不替换提交快照；主任务不等待摘要结束。
 - 协调器按提交快照对象、工作区和草稿对象去重，同一任务的 Loop 内部调度及自动重试只尝试一次；`taskSummaryAttempted` 仍随 Tab/草稿/会话保存，但不再是后续新任务的永久门禁。失败、超时和溢出也消费本次尝试；空白 Tab、hover、刷新与仅恢复旧历史不补生成，新提交不受前次失败影响。
 - 摘要是任务/会话元信息，不写入用户消息、回放、任务记录或 Loop 协议。草稿、会话保存、状态投影和 local/native 绑定（包括目标 session 已存在时）保留摘要与尝试状态，重载/历史重开恢复元信息，不从当前活动 Tab 猜测归属。
 

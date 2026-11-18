@@ -35,7 +35,6 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
     normalizeVisibleInteractiveMode: (value) => (
       value === "plan" || value === "loop" || value === "department" || value === "loop_plus" ? value : "coding"
     ),
-    normalizeLoopMaxRounds: () => 20,
     sanitizeConversationTabRecord: () => null,
   };
 }
@@ -189,7 +188,7 @@ test("migrates legacy Loop workspace keys and interactive mode", () => {
 
     assert.equal(loaded.interactiveModeByCli?.codex, "loop");
     assert.equal(Object.prototype.hasOwnProperty.call(loaded, "loopExecutionModeByCli"), false);
-    assert.equal(loaded.loopMaxRounds, 20);
+    assert.equal(Object.prototype.hasOwnProperty.call(loaded, "loopMaxRounds"), false);
 
     saveWorkspaceSettings(loaded, options);
     const persisted = JSON.parse(fs.readFileSync(filePath, "utf8")) as Record<string, unknown>;
