@@ -381,9 +381,11 @@ const { SharedRuntimeConfig } = require(process.argv[1]);
 const fs = require("fs/promises");
 const path = require("path");
 const shared = new SharedRuntimeConfig(process.argv[2], 3000);
+const logging = process.argv[3] ? require(process.argv[3]).initLogger() : Promise.resolve();
 const leases = new Map();
 process.on("message", async (message) => {
   try {
+    await logging;
     let result;
     if (message.action === "change" || message.action === "hold" || message.action === "ensure") {
       result = await shared.change(async () => {
@@ -394,6 +396,32 @@ process.on("message", async (message) => {
         await fs.writeFile(path.join(process.argv[2], "synthetic-runtime"), message.configId);
         return { configId: message.configId, profileDigest: message.configId };
       }, { reuseConfigId: message.action === "ensure" ? message.configId : undefined });
+    } else if (message.action === "fail-unlink") {
+      const originalUnlink = fs.unlink;
+      const originalRename = fs.rename;
+      let failures = 0;
+      fs.unlink = async (target) => {
+        if (target === path.join(process.argv[2], "mutex") && failures < message.failures) {
+          failures += 1;
+          throw Object.assign(new Error("synthetic mutex unlink failure"), { code: "EACCES" });
+        }
+        return originalUnlink(target);
+      };
+      if (message.failPublish) {
+        fs.rename = async (source, target) => {
+          if (path.basename(target).startsWith("finished-")) {
+            throw Object.assign(new Error("synthetic marker publication failure"), { code: "EACCES" });
+          }
+          return originalRename(source, target);
+        };
+      }
+      try {
+        await shared.exclusive(async () => undefined);
+        result = failures;
+      } finally {
+        fs.unlink = originalUnlink;
+        fs.rename = originalRename;
+      }
     } else if (message.action === "acquire") {
       const lease = await shared.acquire(message.expected);
       leases.set(message.id, lease);
@@ -407,8 +435,14 @@ process.on("message", async (message) => {
 });
 `;
 
-function createWorker(directory: string) {
-  const child = spawn(process.execPath, ["-e", workerSource, require.resolve("../../config/sharedRuntimeConfig"), directory], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+function createWorker(directory: string, options: { cwd?: string; logHome?: string } = {}) {
+  const args = ["-e", workerSource, require.resolve("../../config/sharedRuntimeConfig"), directory];
+  if (options.logHome) args.push(require.resolve("../../logger"));
+  const child = spawn(process.execPath, args, {
+    cwd: options.cwd,
+    env: options.logHome ? { ...process.env, HOME: options.logHome, USERPROFILE: options.logHome } : process.env,
+    stdio: ["ignore", "ignore", "pipe", "ipc"],
+  });
   let nextId = 0;
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   child.on("message", (message: any) => {
@@ -436,6 +470,100 @@ function createWorker(directory: string) {
     },
   };
 }
+
+test("a first send in another process recovers a completed transaction whose owner could not unlink the mutex", { timeout: 10000 }, async () => {
+  await withDirectory(async (root) => {
+    const directory = path.join(root, "coordination");
+    const firstProject = path.join(root, "project-one");
+    const secondProject = path.join(root, "project-two");
+    const writerHome = path.join(root, "writer-home");
+    const firstHome = path.join(root, "reader-one-home");
+    const secondHome = path.join(root, "reader-two-home");
+    await Promise.all([firstProject, secondProject].map((project) => fs.mkdir(project)));
+    const writer = createWorker(directory, { logHome: writerHome });
+    const firstWindow = createWorker(directory, { cwd: firstProject, logHome: firstHome });
+    const secondWindow = createWorker(directory, { cwd: secondProject, logHome: secondHome });
+    try {
+      const selected = await writer.request({ action: "change", configId: "selected" });
+      assert.ok(await writer.request({ action: "fail-unlink", failures: 100 }) >= 2);
+      const owner = JSON.parse(await fs.readFile(path.join(directory, "mutex"), "utf8"));
+      await fs.stat(path.join(directory, `finished-${owner.token}`));
+      const [first, second] = await Promise.all([firstWindow, secondWindow].map((window) => window.request({ action: "acquire", expected: selected })));
+      assert.equal(first.configId, "selected");
+      assert.equal(second.configId, "selected");
+      assert.equal((await writer.request({ action: "read" })).ready, true);
+      const statePath = path.join(directory, "selection.json");
+      assert.equal(JSON.parse(await fs.readFile(statePath, "utf8")).leases.length, 2);
+      await Promise.all([
+        firstWindow.request({ action: "release", leaseId: first.leaseId }),
+        secondWindow.request({ action: "release", leaseId: second.leaseId }),
+      ]);
+      assert.equal(JSON.parse(await fs.readFile(statePath, "utf8")).leases.length, 0);
+      assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json", "synthetic-runtime"]);
+
+      const readLogs = async (home: string): Promise<string> => {
+        const logs = path.join(home, ".sinitek_cli", "logs");
+        return (await Promise.all((await fs.readdir(logs)).map((name) => fs.readFile(path.join(logs, name), "utf8")))).join("\n");
+      };
+      let logContents = "";
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        logContents = (await Promise.all([writerHome, firstHome, secondHome].map(readLogs))).join("\n");
+        if (logContents.includes("runtime-config-lock-recovered") && logContents.includes("runtime-config-lock-release-deferred")) break;
+        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      }
+      const releaseLine = logContents.match(/runtime-config-lock-release-deferred \| (.+)/);
+      const recoverLine = logContents.match(/runtime-config-lock-recovered \| (.+)/);
+      assert.ok(releaseLine && recoverLine);
+      const release = JSON.parse(releaseLine[1]);
+      const recovery = JSON.parse(recoverLine[1]);
+      assert.match(release.lockId, /^[a-f0-9]{16}$/);
+      assert.equal(release.operation, "exclusive");
+      assert.equal(release.unlinkErrorCode, "EACCES");
+      assert.equal(release.recoveryPublished, true);
+      assert.equal(typeof release.heldMs, "number");
+      assert.equal(recovery.lockId, release.lockId);
+      assert.equal(recovery.ownerPid, owner.pid);
+      assert.equal(recovery.ownerOperation, "exclusive");
+      assert.equal(recovery.reason, "finished-transaction");
+      assert.notEqual(recovery.pid, owner.pid);
+      assert.ok(!logContents.includes(owner.token));
+      assert.ok(!logContents.includes(path.basename(root)));
+      assert.ok(!logContents.includes("synthetic mutex unlink failure"));
+    } finally {
+      await Promise.all([writer.stop(), firstWindow.stop(), secondWindow.stop()]);
+    }
+  });
+});
+
+test("transient mutex unlink failure is retried without leaving a lock", { timeout: 10000 }, async () => {
+  await withDirectory(async (directory) => {
+    const writer = createWorker(directory);
+    try {
+      await writer.request({ action: "change", configId: "selected" });
+      assert.equal(await writer.request({ action: "fail-unlink", failures: 2 }), 2);
+      assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json", "synthetic-runtime"]);
+    } finally {
+      await writer.stop();
+    }
+  });
+});
+
+test("a live foreign owner without published completion cannot be bypassed after filesystem failures", { timeout: 10000 }, async () => {
+  await withDirectory(async (directory) => {
+    const writer = createWorker(directory);
+    try {
+      const selected = await writer.request({ action: "change", configId: "selected" });
+      await writer.request({ action: "fail-unlink", failures: 100, failPublish: true });
+      const observer = new SharedRuntimeConfig(directory, 0);
+      await assert.rejects(observer.acquire(selected), RuntimeConfigLockTimeoutError);
+      await writer.request({ action: "change", configId: "selected" });
+      await (await observer.acquire(selected)).release();
+      assert.deepEqual((await fs.readdir(directory)).sort(), ["selection.json", "synthetic-runtime"]);
+    } finally {
+      await writer.stop();
+    }
+  });
+});
 
 test("a continuation in another process reuses the selected profile without dropping the running process lease", { timeout: 15000 }, async () => {
   await withDirectory(async (directory) => {
@@ -487,7 +615,14 @@ test("a crashed configuration writer leaves execution invalid and its process lo
       assert.equal(await writer.request({ action: "hold" }), "holding");
       const snapshot = (await survivor.read())!;
       assert.equal(snapshot.ready, false);
-      await assert.rejects(survivor.acquire(snapshot), /等待其他窗口配置操作超时/);
+      await assert.rejects(survivor.acquire(snapshot), (error: unknown) => {
+        assert.ok(error instanceof RuntimeConfigLockTimeoutError);
+        assert.equal(error.diagnostic.ownerOperation, "change");
+        assert.equal(error.diagnostic.ownerAlive, true);
+        assert.ok((error.diagnostic.ownerAgeMs ?? 0) >= 300);
+        assert.match(error.diagnostic.lockId ?? "", /^[a-f0-9]{16}$/);
+        return true;
+      });
       await writer.stop();
       assert.equal((await survivor.read())?.ready, false);
       await assert.rejects(survivor.acquire(snapshot), /上次配置应用未成功/);

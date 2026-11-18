@@ -1,7 +1,8 @@
 import * as fsSync from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { logError, logEssential } from "../logger";
 import { writeFileAtomically } from "../shared/atomicWrite";
 
 export type VisibleConfigSelection = { configId: string | null; revision: string };
@@ -9,8 +10,12 @@ export type SharedConfigSelection = VisibleConfigSelection & { profileDigest: st
 type ExecutionLease = { id: string; pid: number };
 export type RuntimeConfigExecutionLease = { selection: SharedConfigSelection; release: () => Promise<void> };
 type SharedState = SharedConfigSelection & { version: 1; leases: ExecutionLease[] };
-type LockOwner = { pid: number; token: string };
-type ConfigLockOperation = "initialize" | "change" | "edit" | "acquire" | "release" | "exclusive";
+const CONFIG_LOCK_OPERATIONS = ["initialize", "change", "edit", "acquire", "release", "exclusive"] as const;
+type ConfigLockOperation = (typeof CONFIG_LOCK_OPERATIONS)[number];
+type LockOwner = { pid: number; token: string; operation?: ConfigLockOperation; startedAt?: number };
+type LockRecoveryReason = "dead-owner" | "inactive-local-owner" | "finished-transaction";
+const LOCK_CLEANUP_RETRY_DELAYS_MS = [25, 75, 150] as const;
+const SLOW_LOCK_THRESHOLD_MS = 1000;
 const localOperations = new Map<string, Promise<unknown>>();
 const activeLockTokens = new Map<string, Set<string>>();
 
@@ -82,6 +87,9 @@ export class RuntimeConfigLockTimeoutError extends Error {
     ownerAlive: boolean | null;
     waitedMs: number;
     timeoutMs: number;
+    lockId?: string;
+    ownerOperation?: ConfigLockOperation | null;
+    ownerAgeMs?: number | null;
   }) {
     super("等待其他窗口配置操作超时，任务未启动，请稍后重试。");
     this.name = "RuntimeConfigLockTimeoutError";
@@ -104,6 +112,23 @@ function isAlive(pid: number): boolean {
   }
 }
 
+function lockErrorCode(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return typeof code === "string" && /^[A-Z0-9_]{1,48}$/.test(code) ? code : "UNKNOWN";
+}
+
+function ownerSummary(owner: LockOwner | null) {
+  return {
+    ownerPid: owner?.pid ?? null,
+    ownerOperation: owner?.operation ?? null,
+    ownerAgeMs: owner?.startedAt === undefined ? null : Math.max(0, Date.now() - owner.startedAt),
+  };
+}
+
+function waitForLock(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
 export class SharedRuntimeConfig {
   private readonly statePath: string;
   private readonly lockPath: string;
@@ -116,24 +141,39 @@ export class SharedRuntimeConfig {
   private async readOwner(): Promise<LockOwner | null> {
     try {
       const owner = JSON.parse(await fs.readFile(this.lockPath, "utf8")) as LockOwner;
-      if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.token !== "string") {
+      if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || typeof owner.token !== "string"
+        || !/^[a-zA-Z0-9-]{1,80}$/.test(owner.token)) {
         throw new Error("配置协调锁已损坏，请关闭相关窗口后检查配置协调目录。");
       }
-      return owner;
+      return {
+        pid: owner.pid,
+        token: owner.token,
+        operation: owner.operation && CONFIG_LOCK_OPERATIONS.includes(owner.operation) ? owner.operation : undefined,
+        startedAt: Number.isSafeInteger(owner.startedAt) ? owner.startedAt : undefined,
+      };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
     }
   }
 
-  private canRecover(owner: LockOwner, key: string): boolean {
-    // A mutex left by this process is stale once its critical section has left
-    // the in-memory holder set. Another live process is never stolen.
-    if (owner.pid === process.pid) return !holdsToken(key, owner.token);
-    return !isAlive(owner.pid);
+  private finishedPath(owner: LockOwner): string {
+    return path.join(this.directory, `finished-${owner.token}`);
   }
 
-  private async recoverLock(owner: LockOwner, key: string): Promise<void> {
+  private async recoveryReason(owner: LockOwner, key: string): Promise<LockRecoveryReason | null> {
+    if (owner.pid === process.pid && holdsToken(key, owner.token)) return null;
+    try {
+      await fs.access(this.finishedPath(owner));
+      return "finished-transaction";
+    } catch (error) {
+      if (lockErrorCode(error) !== "ENOENT") throw error;
+    }
+    if (owner.pid === process.pid) return "inactive-local-owner";
+    return isAlive(owner.pid) ? null : "dead-owner";
+  }
+
+  private async recoverLock(owner: LockOwner, key: string, lockId: string, operation: ConfigLockOperation): Promise<void> {
     const recoveryPath = path.join(this.directory, `recover-${owner.token}`);
     try {
       await fs.mkdir(recoveryPath);
@@ -143,30 +183,55 @@ export class SharedRuntimeConfig {
     }
     try {
       const current = await this.readOwner();
-      if (current?.token === owner.token && this.canRecover(current, key)) {
-        await fs.unlink(this.lockPath);
+      if (current?.token !== owner.token) return;
+      const reason = await this.recoveryReason(current, key);
+      if (!reason) return;
+      await fs.unlink(this.lockPath);
+      if (reason === "finished-transaction") {
+        await this.removeLockArtifact(this.finishedPath(current), "finished", lockId, operation);
       }
+      void logEssential("runtime-config-lock-recovered", { lockId, pid: process.pid, operation, reason, ...ownerSummary(current) });
     } finally {
       await fs.rmdir(recoveryPath);
     }
   }
 
-  private async releaseOwnedLock(owner: LockOwner): Promise<void> {
+  private async removeLockArtifact(file: string, artifact: "candidate" | "finished", lockId: string, operation: ConfigLockOperation): Promise<void> {
     try {
-      const current = await this.readOwner();
-      if (current?.token === owner.token) await fs.unlink(this.lockPath);
-      return;
+      await fs.rm(file, { force: true });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      void logError("runtime-config-lock-artifact-cleanup-failed", { lockId, pid: process.pid, operation, artifact, errorCode: lockErrorCode(error) });
     }
-    try {
-      const raw = await fs.readFile(this.lockPath, "utf8");
-      if (raw.includes(owner.token)) await fs.unlink(this.lockPath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        // The next acquire treats an unheld mutex from this pid as stale.
+  }
+
+  private async releaseOwnedLock(owner: LockOwner, candidate: string, lockId: string, heldMs: number): Promise<void> {
+    const context = { lockId, pid: process.pid, operation: owner.operation, heldMs };
+    let unlinkErrorCode: string | undefined;
+    for (const delay of [0, ...LOCK_CLEANUP_RETRY_DELAYS_MS]) {
+      if (delay) await waitForLock(delay);
+      try {
+        const current = await this.readOwner();
+        if (current?.token === owner.token) await fs.unlink(this.lockPath);
+        if (unlinkErrorCode) void logEssential("runtime-config-lock-release-retried", { ...context, unlinkErrorCode });
+        return;
+      } catch (error) {
+        unlinkErrorCode = lockErrorCode(error);
+        if (unlinkErrorCode === "ENOENT") return;
       }
     }
+
+    let publishErrorCode: string | undefined;
+    for (const delay of [0, ...LOCK_CLEANUP_RETRY_DELAYS_MS]) {
+      if (delay) await waitForLock(delay);
+      try {
+        await fs.rename(candidate, this.finishedPath(owner));
+        void logError("runtime-config-lock-release-deferred", { ...context, unlinkErrorCode, recoveryPublished: true });
+        return;
+      } catch (error) {
+        publishErrorCode = lockErrorCode(error);
+      }
+    }
+    void logError("runtime-config-lock-release-deferred", { ...context, unlinkErrorCode, recoveryPublished: false, publishErrorCode });
   }
 
   private locked<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>): Promise<Result> {
@@ -181,55 +246,64 @@ export class SharedRuntimeConfig {
 
   private async lockedAcrossProcesses<Result>(purpose: ConfigLockOperation, operation: () => Promise<Result>, key: string): Promise<Result> {
     await fs.mkdir(this.directory, { recursive: true, mode: 0o700 });
-    const owner: LockOwner = { pid: process.pid, token: randomUUID() };
+    const lockId = createHash("sha256").update(key).digest("hex").slice(0, 16);
+    const owner: LockOwner = { pid: process.pid, token: randomUUID(), operation: purpose, startedAt: Date.now() };
     const candidate = path.join(this.directory, `owner-${owner.token}`);
     await fs.writeFile(candidate, JSON.stringify(owner), { mode: 0o600, flag: "wx" });
     const startedAt = Date.now();
     const deadline = startedAt + this.timeoutMs;
-    let acquired = false;
+    let acquiredAt: number | undefined;
     try {
-      while (!acquired) {
+      while (acquiredAt === undefined) {
         try {
           await fs.link(candidate, this.lockPath);
-          acquired = true;
+          acquiredAt = Date.now();
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
           const current = await this.readOwner();
-          if (current && this.canRecover(current, key)) await this.recoverLock(current, key);
+          if (current && await this.recoveryReason(current, key)) await this.recoverLock(current, key, lockId, purpose);
           if (Date.now() >= deadline) {
             // The owner may have released while we were reading it, or recovery
             // may just have removed a dead writer. Confirm contention atomically
             // once more before rejecting, including after host scheduling delays.
             try {
               await fs.link(candidate, this.lockPath);
-              acquired = true;
+              acquiredAt = Date.now();
             } catch (lastError) {
               if ((lastError as NodeJS.ErrnoException).code !== "EEXIST") throw lastError;
               const blocker = await this.readOwner();
-              throw new RuntimeConfigLockTimeoutError({
+              const diagnostic = {
+                lockId,
                 operation: purpose,
-                ownerPid: blocker?.pid ?? null,
+                ...ownerSummary(blocker),
                 ownerAlive: blocker ? isAlive(blocker.pid) : null,
                 waitedMs: Date.now() - startedAt,
                 timeoutMs: this.timeoutMs,
-              });
+              };
+              void logError("runtime-config-lock-timeout", { pid: process.pid, ...diagnostic });
+              throw new RuntimeConfigLockTimeoutError(diagnostic);
             }
             continue;
           }
-          await new Promise<void>((resolve) => setTimeout(resolve, 20));
+          await waitForLock(20);
         }
       }
       retainToken(key, owner.token);
       return await operation();
     } finally {
-      if (acquired) {
+      if (acquiredAt !== undefined) {
+        const heldMs = Math.max(0, Date.now() - acquiredAt);
         try {
-          await this.releaseOwnedLock(owner);
+          await this.releaseOwnedLock(owner, candidate, lockId, heldMs);
         } finally {
           releaseToken(key, owner.token);
         }
+        const waitedMs = Math.max(0, acquiredAt - startedAt);
+        if (waitedMs >= SLOW_LOCK_THRESHOLD_MS || heldMs >= SLOW_LOCK_THRESHOLD_MS) {
+          void logEssential("runtime-config-lock-slow", { lockId, pid: process.pid, operation: purpose, waitedMs, heldMs });
+        }
       }
-      await fs.rm(candidate, { force: true });
+      await this.removeLockArtifact(candidate, "candidate", lockId, purpose);
     }
   }
 

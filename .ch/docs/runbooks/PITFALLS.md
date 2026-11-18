@@ -17,7 +17,13 @@
 ## 暂停通知先于真实任务和配置租约收尾
 
 - “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而配置租约释放、CLI 中断仍在进行。真实日志已出现同一 Vibe Tab 先释放超时、随后获取超时。
-- 复用 `PromptRunHandoff` 等待完整调用、待释放租约及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。配置锁持有进程仍存活时不能删除 mutex，需核对日志 `configLock.operation`、`ownerPid` 与存活状态。其它窗口持续持锁仍按原共享配置保护明确失败。
+- 复用 `PromptRunHandoff` 等待完整调用、待释放租约及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。其它窗口持续持锁仍按原共享配置保护明确失败；不要手动删 mutex，按下节诊断。
+
+### 新建 Tab 首发提示等待其他窗口配置操作超时
+
+- 新建 Tab 不写原生配置；发送需取得按原生配置路径共享的锁。不同项目使用同一个 Codex 配置时会争锁，普通长任务只保留租约，不长期持有 mutex。
+- 从 `~/.sinitek_cli/logs/` 找 `RUNTIME_CONFIG_LOCK_TIMEOUT`。先看 `configLock.operation` 区分获取与释放，再用 `lockId` 串联 `runtime-config-lock-timeout`、`runtime-config-lock-slow`、`runtime-config-lock-release-deferred` 和 `runtime-config-lock-recovered`，核对 `ownerPid`、`ownerOperation`、`waitedMs`、`heldMs`。`ownerAgeMs` 可能含持锁方获得锁前的等待，不能当成实际持锁时长。
+- `recoveryPublished:true` 表示持锁事务已结束，后续新版本窗口可回收；`false` 表示连结束标记也写不进去，检查文件系统。旧窗口可能没有新字段，也不会回收新结束标记；待任务结束后统一更新并重载各窗口，不按 PID 存活时长手工强拆。
 - Codex 的本地调用中止不代表 `turn/interrupt` RPC 已返回。确认原生停止前先等待该响应，否则专属连接会因仍有待处理请求而进入约 60 秒的订阅卸载等待，错过原进程退出路径。
 
 这个文件用于记录仍有行动价值的真实踩坑。starter 默认不预置条目，也不为空内容预建模块分片。
