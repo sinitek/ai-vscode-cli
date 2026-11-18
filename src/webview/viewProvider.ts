@@ -9,6 +9,7 @@ import { formatHomeDisplayPath } from "../shared/userHomePaths";
 import type { DesktopNotificationAuthorization } from "../desktopNotificationAuthorization";
 
 type ViewHandlers = {
+  getPromptInputHeight?: () => number | undefined;
   onResetRuntimeState?: () => void;
   onMessage: (message: PanelMessage) => void;
   onRequestHumanInteractionHistory?: () => Record<string, unknown>[];
@@ -45,7 +46,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this.extensionUri],
     };
     try {
-      webviewView.webview.html = getWebviewHtml(webviewView.webview);
+      webviewView.webview.html = getWebviewHtml(webviewView.webview, this.handlers.getPromptInputHeight?.());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void logError("webview-html-render-failed", {
@@ -128,7 +129,7 @@ export class CliBridgeViewProvider implements vscode.WebviewViewProvider {
     this.handlers.onResetRuntimeState?.();
     this.webviewReady = false;
     try {
-      this.view.webview.html = getWebviewHtml(this.view.webview);
+      this.view.webview.html = getWebviewHtml(this.view.webview, this.handlers.getPromptInputHeight?.());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       void logError("webview-html-reload-failed", {

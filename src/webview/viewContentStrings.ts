@@ -52,6 +52,8 @@ export const WEBVIEW_STRINGS = {
     openConfigButton: "配置",
     promptPlaceholder:
       "Shift + Enter 换行，输入 @ 选择文件/目录；右键文件或目录，在菜单中单击“加入到携宁 CLI 引用”即可引用；支持附件黏贴...",
+    promptInputResizeLabel: "调整输入框高度",
+    promptInputHeightSaveError: "输入框高度保存失败，重新打开面板时将使用上次保存的高度。",
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",

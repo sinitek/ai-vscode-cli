@@ -12,6 +12,7 @@ import {
 } from "../loopPlusDecision";
 import { WebviewStringKey } from "./viewContentStrings";
 import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
+import { normalizePromptInputHeight, PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
 
 type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
@@ -87,6 +88,7 @@ export type BuildWebviewStaticHtmlInput = {
   markedScript: string;
   jsonFormatterScript?: string;
   webviewStyles: string;
+  promptInputHeight?: number;
 };
 
 export function buildWebviewStaticHtml(
@@ -101,6 +103,8 @@ export function buildWebviewStaticHtml(
     jsonFormatterScript = "",
     webviewStyles,
   } = input;
+  const promptInputHeight = normalizePromptInputHeight(input.promptInputHeight);
+  const promptInputHeightStyle = promptInputHeight === undefined ? "" : ` style="--prompt-input-height: ${promptInputHeight}px"`;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -255,8 +259,9 @@ ${webviewStyles}    </style>
           ${renderInteractiveModeSelect(i18n, { id: "interactiveModeSelect", ariaLabel: i18n.interactiveModeSelectAria })}
         </div>
         <div class="input-box">
+          <div id="promptInputResize" class="prompt-input-resize" role="separator" tabindex="0" aria-controls="promptInput" aria-label="${i18n.promptInputResizeLabel}" aria-valuemin="${PROMPT_INPUT_MIN_HEIGHT}" title="${i18n.promptInputResizeLabel}"></div>
           <div id="promptContextTags" class="prompt-context-tags" style="display: none;"></div>
-          <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"></textarea>
+          <textarea id="promptInput" rows="3" placeholder="${i18n.promptPlaceholder}"${promptInputHeightStyle}></textarea>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">

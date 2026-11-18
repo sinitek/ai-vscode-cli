@@ -48,6 +48,15 @@ function buildHtml(overrides: Partial<StaticHtmlInput> = {}): string {
   return buildWebviewStaticHtml({ ...input, ...overrides });
 }
 
+test("chat input restores valid heights before the script starts and leaves the default for missing or invalid settings", () => {
+  const html = buildHtml({ promptInputHeight: 195.5 });
+  assert.match(html, /id="promptInputResize"[^>]+role="separator"[^>]+aria-controls="promptInput"/);
+  assert.match(html, /id="promptInput"[^>]+rows="3"[^>]+style="--prompt-input-height: 195\.5px"/);
+  for (const promptInputHeight of [undefined, 10, Infinity]) {
+    assert.doesNotMatch(buildHtml({ promptInputHeight }), /id="promptInput"[^>]+style=/);
+  }
+});
+
 test("dispatch limit settings explain their shared Loop and Loop+ scope", () => {
   const html = buildHtml();
   assert.match(html, /Loop\/Loop\+ 单次派发上限/);

@@ -6098,6 +6098,20 @@
       ]
     },
     {
+      "id": "plugin.rule.prompt_input_height",
+      "name": "AI 对话输入框高度作为全局偏好保存",
+      "description": "拖拽 AI 对话多行输入框的上沿可调整高度，最小为原有三行。松开后将 CSS 像素高度保存至全局 ~/.sinitek_cli/settings.json 的 promptInputHeight；取消拖拽或缩小面板不覆盖偏好。创建和重载 Webview 时恢复，缺失或非法值回退三行，不写工作区或会话配置。",
+      "status": "active",
+      "aliases": ["promptInputHeight", "输入框高度", "拖拽上沿"],
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "AI 对话输入框高度" },
+        { "path": "src/toolSettings.ts", "anchor": "normalizeToolSettings" },
+        { "path": "src/webview/viewProvider.ts", "anchor": "resolveWebviewView" },
+        { "path": "src/webview/viewContentScript/settingsAndOverlays.ts" }
+      ]
+    },
+    {
       "id": "plugin.rule.hide_instruction_bubbles_global_setting",
       "name": "隐藏指令气泡只改变显示且默认关闭",
       "description": "工具设置→AI任务配置以布尔 hideInstructionBubbles 写入全局 ~/.sinitek_cli/settings.json，默认及缺失/非法值均为关闭。开启后复用 isInstructionBubble 分类隐藏 AI 对话面板所有历史和新增指令气泡及连续指令组，各标签页和重载一致生效；用户、系统、思考、最终答复及带交互操作的气泡保留。先执行既有气泡保留/永久清理规则再过滤显示，不阻止指令执行、不主动删除存档；取消后恢复未被既有规则删除的消息。保存失败提示错误并由宿主真实状态回滚。",

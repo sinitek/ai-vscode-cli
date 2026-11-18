@@ -1,3 +1,5 @@
+import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
+
 export const INPUT_CONTROLS_STYLES = `      /* Input Area */
       .input-area {
         padding: 8px var(--panel-content-padding);
@@ -79,6 +81,31 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         border-color: var(--vscode-focusBorder);
         box-shadow: 0 0 0 1px var(--vscode-focusBorder);
       }
+      .prompt-input-resize {
+        position: absolute;
+        inset: -5px 8px auto;
+        height: 12px;
+        display: grid;
+        place-items: center;
+        cursor: ns-resize;
+        touch-action: none;
+        user-select: none;
+      }
+      .prompt-input-resize::after {
+        content: "";
+        width: 28px;
+        height: 2px;
+        border-radius: 1px;
+        background: var(--vscode-descriptionForeground);
+      }
+      .prompt-input-resize:hover::after,
+      .prompt-input-resize:focus-visible::after,
+      .prompt-input-resize.is-resizing::after {
+        background: var(--vscode-focusBorder);
+      }
+      .prompt-input-resize:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder);
+      }
       .prompt-context-tags {
         display: flex;
         flex-wrap: wrap;
@@ -127,8 +154,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         resize: none;
         outline: none;
         width: 100%;
-        height: calc(1.5em * 3);
-        max-height: calc(1.5em * 3);
+        height: var(--prompt-input-height, ${PROMPT_INPUT_MIN_HEIGHT}px);
+        min-height: ${PROMPT_INPUT_MIN_HEIGHT}px;
+        max-height: 50vh;
         overflow-y: auto;
         padding: 0;
       }

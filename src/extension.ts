@@ -635,6 +635,7 @@ export function activate(context: vscode.ExtensionContext): void {
   updateStatusBar();
   statusBarItem.show();
   viewProvider = new CliBridgeViewProvider(extensionUri, {
+    getPromptInputHeight: () => readToolSettings().promptInputHeight,
     onResetRuntimeState: () => { hasPendingPromptQueue = false; },
     onMessage: async (message) => {
       await handlePanelMessage(message);

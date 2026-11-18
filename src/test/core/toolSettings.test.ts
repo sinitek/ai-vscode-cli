@@ -21,6 +21,7 @@ import {
   type ToolSettingsState,
 } from "../../toolSettings";
 import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
+import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 test("chat message limit keeps old settings compatible and preserves neighboring values", () => {
   assert.deepEqual(normalizeToolSettings(undefined), {});
@@ -50,6 +51,15 @@ test("instruction bubble visibility accepts only booleans and keeps old settings
   }
   for (const value of [undefined, null, "true", "false", 1, 0, {}, []]) {
     assert.deepEqual(normalizeToolSettings({ debug: true, hideInstructionBubbles: value }), { debug: true });
+  }
+});
+
+test("chat input height accepts finite pixel heights at or above the three-row minimum", () => {
+  for (const height of [PROMPT_INPUT_MIN_HEIGHT, 190.5]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, promptInputHeight: height }), { debug: true, promptInputHeight: height });
+  }
+  for (const height of [undefined, null, 0, PROMPT_INPUT_MIN_HEIGHT - 0.5, "190.5", NaN, Infinity]) {
+    assert.deepEqual(normalizeToolSettings({ debug: true, promptInputHeight: height }), { debug: true });
   }
 });
 
@@ -84,6 +94,13 @@ test("tool settings persist globally without losing other settings", () => {
       settings.writeToolSettings({ ...settings.readToolSettings(), loopGroupChatMessageLimit: "200.9" });
       assert.deepEqual(settings.readToolSettings(), { ...expected, loopGroupChatMessageLimit: 200 });
       assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { ...expected, loopGroupChatMessageLimit: 200 });
+      const resized = { ...settings.readToolSettings(), promptInputHeight: 190.5 };
+      settings.writeToolSettings(resized);
+      assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), resized);
+      const settingsPath = ${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))};
+      delete require.cache[require.resolve(settingsPath)];
+      assert.deepEqual(require(settingsPath).readToolSettings(), resized);
+      settings.writeToolSettings({ ...settings.readToolSettings(), promptInputHeight: undefined });
       for (const enabled of [true, false]) {
         settings.writeToolSettings({ ...settings.readToolSettings(), hideInstructionBubbles: enabled });
         const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: enabled };

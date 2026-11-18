@@ -2,6 +2,7 @@ import { getDebugLogging } from "../cli/config";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "../chatMessageLimit";
 import { setDebugLogging } from "../logger";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { normalizePromptInputHeight } from "../promptInputHeight";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
 import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import {
@@ -130,6 +131,15 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     const saved = deps.updateStoredToolSettings({ hideInstructionBubbles: message.value === true });
     if (!saved) {
       deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsHideInstructionBubblesSaveError);
+    }
+  }),
+  command("promptInputHeight", (message, deps) => {
+    const height = normalizePromptInputHeight(message.value);
+    if (height === undefined) {
+      return;
+    }
+    if (!deps.updateStoredToolSettings({ promptInputHeight: height })) {
+      deps.showWebviewError(WEBVIEW_STRINGS.appTitle, WEBVIEW_STRINGS.promptInputHeightSaveError);
     }
   }),
   command("historyRetentionDays", (message, deps) => {

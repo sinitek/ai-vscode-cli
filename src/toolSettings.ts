@@ -5,6 +5,7 @@ import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMod
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
+import { normalizePromptInputHeight } from "./promptInputHeight";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -32,6 +33,7 @@ export type ToolSettingsState = {
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
+  promptInputHeight?: number;
   /** Global retention period for plugin-managed history artifacts. */
   historyRetentionDays?: number;
   macTaskShell?: MacTaskShell;
@@ -88,6 +90,10 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   }
   if (typeof record.hideInstructionBubbles === "boolean") {
     normalized.hideInstructionBubbles = record.hideInstructionBubbles;
+  }
+  const promptInputHeight = normalizePromptInputHeight(record.promptInputHeight);
+  if (promptInputHeight !== undefined) {
+    normalized.promptInputHeight = promptInputHeight;
   }
   if (typeof record.debug === "boolean") {
     normalized.debug = record.debug;

@@ -1102,6 +1102,24 @@ test("the global default is saved without switching the current task and applied
   assert.match(String(calls.errors.at(-1)?.detail), /默认任务模式保存失败/);
 });
 
+test("chat input height is saved globally and invalid updates leave the preference unchanged", async (t) => {
+  const { deps, calls, restore } = createHarness();
+  t.after(restore);
+  const updates: Array<Partial<ToolSettingsState>> = [];
+  deps.updateStoredToolSettings = (patch) => {
+    updates.push(patch);
+    return true;
+  };
+  for (const value of [160.5, 58.5, 20, "160", Infinity]) {
+    await handlePanelMessageWithDeps({ type: "updateSetting", key: "promptInputHeight", value }, deps);
+  }
+  assert.deepEqual(updates, [{ promptInputHeight: 160.5 }, { promptInputHeight: 58.5 }]);
+  assert.equal(calls.errors.length, 0);
+  deps.updateStoredToolSettings = () => false;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "promptInputHeight", value: 160 }, deps);
+  assert.match(String(calls.errors.at(-1)?.detail), /输入框高度保存失败/);
+});
+
 test("tab creation targets its own snapshot even when the active tab changes during refresh", async () => {
   const { deps, state, calls } = createHarness();
   const tabId = "ui-tab-123-abc";

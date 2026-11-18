@@ -1,4 +1,5 @@
 import { humanInteractionOtherChoiceScript } from "../humanInteractionOtherChoice";
+import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
@@ -1685,6 +1686,77 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       elements.stopRun.addEventListener("click", () => {
         vscode.postMessage({ type: "stopRun", tabId: getActiveConversationTabId() });
       });
+
+      if (elements.promptInputResize) {
+        const handle = elements.promptInputResize;
+        const input = elements.promptInput;
+        const heightProperty = "--prompt-input-height";
+        const minHeight = ${PROMPT_INPUT_MIN_HEIGHT};
+        const maxHeight = () => Math.max(minHeight, parseFloat(getComputedStyle(input).maxHeight) || minHeight);
+        const visibleHeight = () => parseFloat(getComputedStyle(input).height) || minHeight;
+        const syncHandle = () => {
+          handle.setAttribute("aria-valuemax", String(maxHeight()));
+          handle.setAttribute("aria-valuenow", String(visibleHeight()));
+        };
+        const setHeight = (height) => {
+          input.style.setProperty(heightProperty, Math.min(maxHeight(), Math.max(minHeight, height)) + "px");
+          syncHandle();
+        };
+        const saveHeight = () => {
+          vscode.postMessage({ type: "updateSetting", key: "promptInputHeight", value: visibleHeight() });
+        };
+        let drag = null;
+        const finishDrag = (event, commit) => {
+          if (!drag || event.pointerId !== drag.pointerId) {
+            return;
+          }
+          if (commit && visibleHeight() !== drag.height) {
+            saveHeight();
+          } else {
+            input.style.setProperty(heightProperty, drag.previousHeight);
+            syncHandle();
+          }
+          drag = null;
+          handle.classList.remove("is-resizing");
+        };
+        handle.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0 || drag) {
+            return;
+          }
+          event.preventDefault();
+          handle.setPointerCapture(event.pointerId);
+          drag = {
+            pointerId: event.pointerId,
+            startY: event.clientY,
+            height: visibleHeight(),
+            previousHeight: input.style.getPropertyValue(heightProperty),
+          };
+          handle.classList.add("is-resizing");
+        });
+        handle.addEventListener("pointermove", (event) => {
+          if (drag && event.pointerId === drag.pointerId) {
+            setHeight(drag.height + drag.startY - event.clientY);
+          }
+        });
+        handle.addEventListener("pointerup", (event) => finishDrag(event, true));
+        handle.addEventListener("pointercancel", (event) => finishDrag(event, false));
+        handle.addEventListener("lostpointercapture", (event) => finishDrag(event, false));
+        handle.addEventListener("keydown", (event) => {
+          if (drag || !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+            return;
+          }
+          event.preventDefault();
+          const before = visibleHeight();
+          const step = 16;
+          const targetHeight = { ArrowUp: before + step, ArrowDown: before - step, Home: minHeight, End: maxHeight() }[event.key];
+          if (Math.min(maxHeight(), Math.max(minHeight, targetHeight)) !== before) {
+            setHeight(targetHeight);
+            saveHeight();
+          }
+        });
+        window.addEventListener("resize", syncHandle);
+        syncHandle();
+      }
 
       elements.promptInput.addEventListener("compositionstart", () => {
         isComposing = true;

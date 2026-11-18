@@ -20,7 +20,7 @@ const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
 const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
 
 
-export function getWebviewHtml(webview: { cspSource: string }): string {
+export function getWebviewHtml(webview: { cspSource: string }, promptInputHeight?: number): string {
   const nonce = getNonce();
   const i18n = getWebviewStrings();
   const cliOptions = CLI_LIST.map(
@@ -37,6 +37,7 @@ export function getWebviewHtml(webview: { cspSource: string }): string {
     markedScript,
     jsonFormatterScript,
     webviewStyles: WEBVIEW_STYLES,
+    promptInputHeight,
   });
 
   return `${staticHtml}

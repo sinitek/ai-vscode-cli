@@ -30,6 +30,11 @@
 
 压缩和普通轮次共享配置身份，压缩沿用已建立的提问 capability，仍重新计算真实 key。没有新增跨窗口业务锁、持久化会话格式或用户设置；其它 CLI 和 Loop 调度边界不变。详细协议、错误码、诊断与真实验证见 `../references/cli-runtime-reference.md` 的“Codex 会话跨连接交接”。
 
+## AI 对话输入框高度
+
+- Webview 用指针捕获实时调整多行输入框，松手或键盘调整完成后通过 `updateSetting` 持久化 `promptInputHeight`（CSS 像素）；取消拖拽还原原值。宿主拒绝无效更新，保存失败时提示。
+- 创建和重载 Webview 时，宿主从 `~/.sinitek_cli/settings.json` 取值并随初始 HTML 渲染；不依赖会话 `PanelState`，切换标签不影响高度。显示高度至少为原来的三行，通常至多为面板高度的一半；面板尺寸变化不写回设置。
+
 ## Tab 运行状态与配置协调
 
 - Webview 为每个 Tab 保留当前 CLI 的显式 `interactiveModeSelection`，模式下拉变更时更新；同 CLI 的后续状态快照和自动历史推断优先使用该选择。未选择的 Tab 保持原有主任务 Loop / Loop+、其它 coding 的推断。CLI 不同的旧选择不复用，关闭 Tab 随运行态清除；该字段只存在于当前页面，不扩展持久化格式。发送处理器不重新激活当前 Tab，已完成 Loop / Loop+ 选择 Vibe 后复用原会话走普通 `runPrompt`。

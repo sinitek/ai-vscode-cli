@@ -357,6 +357,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         configSelect: document.getElementById("configSelect"),
         interactiveModeSelect: document.getElementById("interactiveModeSelect"),
         promptInput: document.getElementById("promptInput"),
+        promptInputResize: document.getElementById("promptInputResize"),
         promptContextTags: document.getElementById("promptContextTags"),
         thinkingMode: document.getElementById("thinkingMode"),
         openCodePrimaryThinkingMode: document.getElementById("openCodePrimaryThinkingMode"),
