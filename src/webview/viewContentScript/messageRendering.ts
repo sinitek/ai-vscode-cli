@@ -1663,8 +1663,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         return applyAutoInteractiveModeForTab(activeTab);
       }
 
-      function applyAutoInteractiveModeForTab(tab) {
-        const nextMode = resolveAutoInteractiveModeForTab(tab);
+      function applyAutoInteractiveModeForTab(tab, nextMode = resolveAutoInteractiveModeForTab(tab)) {
         if (state.interactiveMode === nextMode) {
           return false;
         }
@@ -2206,7 +2205,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function showConversationTabSelection(tab) {
-        applyAutoInteractiveModeForTab(tab);
+        applyAutoInteractiveModeForTab(tab, isCreatingConversationTab(tab?.id) ? state.newTaskInteractiveMode : undefined);
         syncActiveMessagesFromRuntime();
         syncRunningStateForActiveTab();
         updateContextTokenUsage();

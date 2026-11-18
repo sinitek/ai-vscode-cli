@@ -15,6 +15,7 @@ import {
   resolveGlobalHumanInteractionEnabled,
   resolveHumanInteractionTimeoutMinutes,
   resolveLongTermMemoryEnabled,
+  resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
   normalizeHistoryRetentionDays,
   type ToolSettingsState,
@@ -52,7 +53,17 @@ test("instruction bubble visibility accepts only booleans and keeps old settings
   }
 });
 
-test("chat display settings persist globally without losing other settings", () => {
+test("new task mode defaults to Vibe and accepts only the three visible modes", () => {
+  assert.equal(resolveNewTaskInteractiveMode(normalizeToolSettings({}).newTaskInteractiveMode), "coding");
+  for (const mode of ["coding", "loop", "loop_plus"]) {
+    assert.equal(normalizeToolSettings({ newTaskInteractiveMode: mode }).newTaskInteractiveMode, mode);
+  }
+  for (const mode of [null, "plan", "lobster", "Loop+", true, {}]) {
+    assert.equal(normalizeToolSettings({ newTaskInteractiveMode: mode }).newTaskInteractiveMode, "coding");
+  }
+});
+
+test("tool settings persist globally without losing other settings", () => {
   const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-chat-limit-settings-"));
   try {
     const script = `
@@ -76,6 +87,12 @@ test("chat display settings persist globally without losing other settings", () 
       for (const enabled of [true, false]) {
         settings.writeToolSettings({ ...settings.readToolSettings(), hideInstructionBubbles: enabled });
         const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: enabled };
+        assert.deepEqual(settings.readToolSettings(), persisted);
+        assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
+      }
+      for (const mode of ["coding", "loop", "loop_plus"]) {
+        settings.writeToolSettings({ ...settings.readToolSettings(), newTaskInteractiveMode: mode });
+        const persisted = { ...expected, loopGroupChatMessageLimit: 200, hideInstructionBubbles: false, newTaskInteractiveMode: mode };
         assert.deepEqual(settings.readToolSettings(), persisted);
         assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), persisted);
       }

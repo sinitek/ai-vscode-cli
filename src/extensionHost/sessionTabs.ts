@@ -9,6 +9,7 @@ import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, ty
 import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
+import { resolveNewTaskInteractiveMode, type NewTaskInteractiveMode } from "../toolSettings";
 
 export function attachConversationTabLoopMemberTitle(
   summary: ConversationTabSummary,
@@ -50,6 +51,7 @@ export type ExtensionSessionTabsHostDeps = {
   postConversationTabClosed: (tabId: string, activeTabId: string | null) => void;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
+  getNewTaskInteractiveMode?: () => NewTaskInteractiveMode | undefined;
   extractSessionId: (cli: CliName, buffer: string) => string | null; isLocalSessionId: (sessionId: string) => boolean; migrateLocalSessionToTargetSession: (cli: CliName, from: string, to: string, options?: { notifyPanel?: boolean }) => void; adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
   getActiveTaskRunMutable: () => { cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null; logInfo: (event: string, payload?: unknown) => void; activeData: { WORKSPACE_KEY_FALLBACK: string; LEGACY_SESSION_FILE: string; SESSION_DIR: string; SESSION_BUFFER_LIMIT: number };
 };
@@ -460,7 +462,7 @@ async function resetConversationTabSession(): Promise<void> {
   const targetCli = activeTab.cli;
   addConversationTab(targetCli, null);
   const nextTabId = getActiveConversationTabId();
-  setWorkspaceInteractiveModeForCli(targetCli, "coding");
+  setWorkspaceInteractiveModeForCli(targetCli, resolveNewTaskInteractiveMode(deps.getNewTaskInteractiveMode?.()));
   await closeConversationTabAndRefreshPanel(previousTabId, { notifyTabClosed: false });
   if (getActiveConversationTabId() !== nextTabId) {
     return;

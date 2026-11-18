@@ -6081,6 +6081,23 @@
       ]
     },
     {
+      "id": "plugin.rule.new_task_default_mode",
+      "name": "新建或重置任务使用全局默认模式",
+      "description": "工具设置→AI任务配置将单选的 Vibe、Loop 或 Loop+ 以 newTaskInteractiveMode 写入全局工具设置。存储值为 coding、loop、loop_plus；缺失或非法配置回退 Vibe，非法更新不覆盖已保存值。宿主只在手动新建或成功重置任务时应用此设置，Webview 新建占位标签同步采用默认值。保存不切换当前任务，已有标签的模式恢复、历史和运行保护不变。",
+      "status": "active",
+      "aliases": ["newTaskInteractiveMode", "新建任务", "重置任务", "默认模式"],
+      "applies_to": ["plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "anchor": "新建或重置任务的默认模式"
+        },
+        { "path": "src/toolSettings.ts", "anchor": "resolveNewTaskInteractiveMode" },
+        { "path": "src/panelMessageHandlers/session.ts" },
+        { "path": "src/extensionHost/sessionTabs.ts", "anchor": "resetConversationTabSession" }
+      ]
+    },
+    {
       "id": "plugin.rule.hide_instruction_bubbles_global_setting",
       "name": "隐藏指令气泡只改变显示且默认关闭",
       "description": "工具设置→AI任务配置以布尔 hideInstructionBubbles 写入全局 ~/.sinitek_cli/settings.json，默认及缺失/非法值均为关闭。开启后复用 isInstructionBubble 分类隐藏 AI 对话面板所有历史和新增指令气泡及连续指令组，各标签页和重载一致生效；用户、系统、思考、最终答复及带交互操作的气泡保留。先执行既有气泡保留/永久清理规则再过滤显示，不阻止指令执行、不主动删除存档；取消后恢复未被既有规则删除的消息。保存失败提示错误并由宿主真实状态回滚。",

@@ -15,6 +15,7 @@ function createHost(initial: {
   state: ConversationTabsState;
   currentCli: CliName;
   modes: Partial<Record<CliName, InteractiveMode>>;
+  newTaskInteractiveMode?: "coding" | "loop" | "loop_plus";
   onRestore?: (tabId: string) => Promise<void>;
   runningTabIds?: ReadonlySet<string>;
   lockedTabIds?: ReadonlySet<string>;
@@ -61,6 +62,7 @@ function createHost(initial: {
   const sessionStore = createCliRecord((): SessionStore[CliName] => ({ currentId: null, sessions: [] }));
   const host = createExtensionSessionTabsHost({
     onSubtaskTabCreated: initial.onSubtaskTabCreated,
+    getNewTaskInteractiveMode: () => initial.newTaskInteractiveMode,
     getSessionTabsController: () => controller,
     getSessionLifecycleController: () => ({
       loadSessionStore: () => sessionStore,
@@ -544,11 +546,13 @@ for (const cli of CLI_LIST) {
         { id: "old-tab", cli, sessionId: "old-session", sessionIdByCli: { [cli]: "old-session" }, createdAt: 2, executionLocked: true },
       ],
     };
-    const env = createHost({ state, currentCli: cli, modes: { [cli]: "coding" } });
+    const newTaskInteractiveMode = cli === "codex" ? "loop_plus" : cli === "opencode" ? "loop" : undefined;
+    const env = createHost({ state, currentCli: cli, modes: { [cli]: "coding" }, newTaskInteractiveMode });
 
     await env.host.resetConversationTabSession();
 
     assert.equal(env.currentCli(), cli);
+    assert.equal(env.modes[cli], newTaskInteractiveMode ?? "coding");
     assert.equal(state.tabs.length, 2);
     assert.equal(state.tabs[0].id, "neighbor-tab");
     const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);

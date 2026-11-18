@@ -59,7 +59,7 @@ import {
   resolveLoopPlusDecisionSubtaskMax,
   resolveLoopPlusSubtaskMaxRounds,
 } from "./loopPlusDecision";
-import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes } from "./toolSettings";
+import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes, resolveNewTaskInteractiveMode } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
@@ -92,6 +92,7 @@ export type PanelStateBuilderDeps = {
   getGlobalChatMessageLimit?: () => number;
   getGlobalLoopGroupChatMessageLimit?: () => number;
   getGlobalHideInstructionBubbles?: () => boolean;
+  getNewTaskInteractiveMode?: () => PanelState["newTaskInteractiveMode"];
   getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusSubtaskMaxRounds?: () => number;
@@ -210,6 +211,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     chatMessageLimit: normalizeChatMessageLimit(deps.getGlobalChatMessageLimit?.()),
     loopGroupChatMessageLimit: normalizeChatMessageLimit(deps.getGlobalLoopGroupChatMessageLimit?.(), LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     hideInstructionBubbles: deps.getGlobalHideInstructionBubbles?.() === true,
+    newTaskInteractiveMode: resolveNewTaskInteractiveMode(deps.getNewTaskInteractiveMode?.()),
     loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,

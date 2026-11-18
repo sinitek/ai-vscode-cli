@@ -2,6 +2,7 @@ import { countAliveCodexAppServerConnections } from "../interactive/codexAppServ
 import { buildErrorDetail } from "../errorDisplay";
 import { t } from "../i18n";
 import { logError } from "../logger";
+import { resolveNewTaskInteractiveMode } from "../toolSettings";
 import {
   exportSessionHistoryMessagesToTxt,
 } from "../webview/panelFileActions";
@@ -60,6 +61,7 @@ type SessionPanelMessageDeps = Pick<
   | "setPromptHistoryFavorite"
   | "setPromptHistoryGlobal"
   | "setWorkspaceInteractiveModeForCli"
+  | "readStoredToolSettings"
   | "resetConversationTabSession"
   | "getConfigManagerPanel"
   | "applyConfigById"
@@ -417,7 +419,7 @@ export function createSessionPanelMessageHandlers(
         const cli = deps.getCurrentCli();
         const sessionId = deps.addConversationTab(cli, null, requestedTabId ? { tabId: requestedTabId } : undefined);
         const tabId = requestedTabId ?? deps.getActiveConversationTabId();
-        deps.setWorkspaceInteractiveModeForCli(cli, "coding");
+        deps.setWorkspaceInteractiveModeForCli(cli, resolveNewTaskInteractiveMode(deps.readStoredToolSettings?.()?.newTaskInteractiveMode));
         await deps.postPanelState();
         if (!requestedTabId || deps.getConversationTabById(requestedTabId)?.cli === cli) {
           deps.sendSessionMessagesToPanel(cli, sessionId, tabId);

@@ -3588,11 +3588,32 @@ test("cold tab switches show a loading state until its first message snapshot ar
   assert.equal(messages.getAttribute("aria-busy"), null);
 });
 
-test("new tab appears before host replies, keeps the previous conversation, and waits for readiness", () => {
+test("default task mode setting does not switch the current task and follows the saved host state", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  window.dispatchMessage({ type: "state", payload: createPanelState({ interactiveMode: "loop" }) });
+  document.getElementById("toolSettingsButton").click();
+  document.getElementById("toolSettingsAiTaskTab").click();
+  const select = document.getElementById("newTaskInteractiveMode");
+  assert.equal(select.value, "coding");
+  select.value = "loop_plus";
+  select.dispatchEvent({ type: "change" });
+  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "newTaskInteractiveMode", value: "loop_plus" });
+  assert.equal(api.state.interactiveMode, "loop");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ newTaskInteractiveMode: "coding", interactiveMode: "loop" }) });
+  assert.equal(select.value, "coding");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ newTaskInteractiveMode: "loop_plus", interactiveMode: "loop" }) });
+  assert.equal(select.value, "loop_plus");
+});
+
+test("new tab appears in the configured mode before host replies and waits for readiness", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   const oldTab = { id: "tab-1", cli: "codex", sessionId: "old-session" };
   const snapshot = (activeTabId: string, tabs = [oldTab]) => window.dispatchMessage({
-    type: "state", payload: createPanelState({ conversationTabs: { activeTabId, tabs } }),
+    type: "state", payload: createPanelState({
+      conversationTabs: { activeTabId, tabs },
+      newTaskInteractiveMode: "loop_plus",
+      interactiveMode: activeTabId === oldTab.id ? "coding" : "loop_plus",
+    }),
   });
   snapshot(oldTab.id);
   window.dispatchMessage({ type: "setMessages", tabId: oldTab.id, messages: [{ id: "old-message", role: "user", content: "保留原对话" }] });
@@ -3603,11 +3624,13 @@ test("new tab appears before host replies, keeps the previous conversation, and 
   const newTabId = String(creates[0].tabId);
   const messages = document.getElementById("messages");
   assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  assert.equal(api.state.interactiveMode, "loop_plus");
   assert.ok(conversationTabByLabel(document, "Codex2"));
   assert.equal(messages.getAttribute("aria-busy"), "true");
   assert.equal(document.getElementById("sendPrompt").disabled, true);
   snapshot(oldTab.id);
   assert.equal(api.state.conversationTabs.activeTabId, newTabId);
+  assert.equal(api.state.interactiveMode, "loop_plus");
   conversationTabByLabel(document, "Codex")?.click();
   assert.equal(api.state.messages[0].content, "保留原对话");
   snapshot(newTabId, [oldTab, { id: newTabId, cli: "codex", sessionId: "" }]);

@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { CLI_LIST, type CliName, MacTaskShell } from "./cli/types";
+import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMode, MacTaskShell } from "./cli/types";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
@@ -13,11 +13,18 @@ export const HUMAN_INTERACTION_TIMEOUT_MINUTES_DEFAULT = 15;
 export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MIN = 1;
 export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MAX = 1440;
 
+export type NewTaskInteractiveMode = Exclude<InteractiveMode, "plan">;
+
+export function resolveNewTaskInteractiveMode(value: unknown): NewTaskInteractiveMode {
+  return value === "loop" || value === LOOP_PLUS_INTERACTIVE_MODE ? value : "coding";
+}
+
 export type ToolSettingsState = {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
+  newTaskInteractiveMode?: NewTaskInteractiveMode;
   loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
   loopPlusSubtaskMaxRounds?: number;
@@ -70,6 +77,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     return normalized;
   }
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
+  if ("newTaskInteractiveMode" in record) {
+    normalized.newTaskInteractiveMode = resolveNewTaskInteractiveMode(record.newTaskInteractiveMode);
+  }
   if ("chatMessageLimit" in record) {
     normalized.chatMessageLimit = normalizeChatMessageLimit(record.chatMessageLimit);
   }

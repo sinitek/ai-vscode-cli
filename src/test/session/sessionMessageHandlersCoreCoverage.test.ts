@@ -18,6 +18,7 @@ import type {
   ThinkingMode,
 } from "../../cli/types";
 import type { ChatMessage, PanelMessage } from "../../webview/types";
+import type { ToolSettingsState } from "../../toolSettings";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
 type PanelFileActionsMock = Pick<typeof import("../../webview/panelFileActions"),
@@ -1072,6 +1073,33 @@ test("routes special panel messages through the unified router", async (t) => {
     values: { answer: "yes" },
   }]);
   assert.equal(harness.calls.panelStates, 1);
+});
+
+test("the global default is saved without switching the current task and applied on new tabs", async (t) => {
+  const { deps, calls, restore } = createHarness();
+  t.after(restore);
+  let settings: ToolSettingsState = {};
+  deps.readStoredToolSettings = () => settings;
+  deps.updateStoredToolSettings = (update) => {
+    settings = { ...settings, ...update };
+    return true;
+  };
+  await handlePanelMessageWithDeps({ type: "newSession" }, deps);
+  assert.equal(calls.interactiveModes.at(-1)?.mode, "coding");
+  for (const mode of ["loop", "loop_plus", "coding"] as const) {
+    const previousModeChanges = calls.interactiveModes.length;
+    await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: mode }, deps);
+    assert.equal(settings.newTaskInteractiveMode, mode);
+    assert.equal(calls.interactiveModes.length, previousModeChanges);
+    await handlePanelMessageWithDeps({ type: "newSession" }, deps);
+    assert.equal(calls.interactiveModes.at(-1)?.mode, mode);
+  }
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: "plan" }, deps);
+  assert.equal(settings.newTaskInteractiveMode, "coding");
+  deps.updateStoredToolSettings = () => false;
+  await handlePanelMessageWithDeps({ type: "updateSetting", key: "newTaskInteractiveMode", value: "loop" }, deps);
+  assert.equal(settings.newTaskInteractiveMode, "coding");
+  assert.match(String(calls.errors.at(-1)?.detail), /默认任务模式保存失败/);
 });
 
 test("tab creation targets its own snapshot even when the active tab changes during refresh", async () => {

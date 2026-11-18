@@ -210,6 +210,11 @@
 - 缓存命中保留该标签的阅读位置和指令组展开状态，后台消息快照在切回时按内容与元数据更新；其它标签尚未执行的自动滚底帧不能覆盖当前阅读位置。
 - 实现：`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/coreRuntimeState.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts`、`src/webview/viewContentScript/modelAndPanelState.ts`；回归：`src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+## 新建或重置任务的默认模式
+
+- 工具设置 → AI任务配置提供「新建或重置任务的默认模式」，可单选 Vibe、Loop 或 Loop+。全局保存在 `~/.sinitek_cli/settings.json` 的 `newTaskInteractiveMode`，未设置或配置无效时使用 Vibe。
+- 保存不切换当前任务。点击新建或成功重置后自动切到所选模式，仍可在输入区手动调整；不改变历史、已有标签的模式恢复规则或运行中任务的重置保护。保存失败时提示错误并回显已保存值。
+
 ## 非运行对话标签关闭性能
 
 - 点击关闭立即隐藏标签。宿主校验后发送轻量 `conversationTabClosed` 确认，Webview 再释放对应运行态和视图缓存，宿主在后台按当前使用情况清理 runner；若运行状态刚变、宿主拒绝，则恢复标签并提示。关闭不是删除磁盘会话。
@@ -352,7 +357,7 @@ Loop+ 主、子调用直接捕获本次宿主的真实完成记录；即使共�
 
 经典 Loop 除下述简单任务直办外采用汇报驱动：主模型拆分、派发、协调并信任子任务汇报判断完成，不检查实现、不亲自验收或测试。实现子任务可一并完成用户或项目规则要求的验证并汇报范围、命令或操作及结果；已通过且仍覆盖当前改动的验证直接复用，仅补缺失、失败或后续改动影响的部分，未覆盖的实现后集成验证只补相应缺口。汇报不清时优先续接来源子任务补充说明，不因报告细节不足直接要求重测。明确要求独立验收或交叉复核时仍须另派，不能用实现自测替代；均无验证要求时默认不做，用户未提不免除项目规则要求。子任务首次执行与续跑均加载真实工作区规则，自主实施，不额外强制设计或实施流程。`completed` 只需非空 `finalSummary`，历史验收/需求覆盖/轮次摘要字段可选兼容；轻量总结不虚构“验收通过”。Loop+（包括全栈模式）已派发工作的隔离、事件驱动验收和完成门槛不变；简单任务直办遵循下述例外。实现见 `src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/extensionHost/promptExecutionShared.ts`、`src/loopTaskStore.ts`、`src/loopFinalSummary.ts`；回归见 `src/test/extensionHost/loopMainDecisionParsing.test.ts`、`src/test/extensionHost/promptExecutionShared.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/loop/loopFinalSummary.test.ts`。
 
-工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“通知设置”“自动修复”五个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop/Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
+工具设置当前 UI 采用“常规配置”“AI任务配置”“工作区”“通知设置”“自动修复”五个 Tab；历史保留天数和 CLI 工具开关归入“常规配置”，新建或重置任务的默认模式、人工交互、人工交互超时、执行后自动压缩上下文、Loop 参数及 Loop/Loop+ 单次派发上限归入“AI任务配置”，CLI `spawn ENOENT` 归入“自动修复”；插件初始化会对尚未解析的裸命令自动执行一次同样的修复。
 
 AI 对话面板的“使用说明”弹窗展示模式说明，将 Markdown 内容独立、同步解析为“模式 / 使用说明”两列表格，原始 HTML 转义为文本，链接仅保留 HTTP(S)；介绍 Vibe、Loop、Loop+ 的任务执行方式，并主推 Loop+。表格复用聊天 Markdown 的主题边框、表头和斑马行，说明自动换行，弹窗随内容高度自适应；表格下方提供《携宁 CLI 助手 - 教程》链接，点击进入语雀详细教程。不再展示“安装”页签、CLI 安装命令及环境变量清理说明。其他安装入口不受影响。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentStrings.ts`、`src/webview/viewContentStyles/overlaysModals.ts`；回归见 `src/test/webview/loopPlusModeHelp.test.ts`、`src/test/webview/cliPageStaticRenderCoverage.test.ts`。
 

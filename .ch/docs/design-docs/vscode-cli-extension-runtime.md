@@ -41,6 +41,7 @@
 - 历史完成摘要只能从最近用户消息之后恢复；新用户消息立即清空旧摘要，真实活跃信号恢复时清除历史完成状态。正常完成仍由 Loop+ adapter 自动关闭子任务 Tab；失败或中断保留诊断，同会话被新 Tab 接管时关闭旧 Tab，诊断仍保存在会话历史，不通过关页伪装成功。回归见 `src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/webview/tabRunStatus.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
 - 手动关闭先由 Webview 隐藏标签并屏蔽仍包含该标签的旧快照。宿主接受后发送轻量 `conversationTabClosed`，运行态缓存此时才回收；若拒绝则通过 `conversationTabCloseRejected` 恢复标签。手动关闭把 runner 清理延后到独立事件循环回合，释放时复查引用；自动关闭、所有权接管和重置仍沿用原收尾语义。后台关闭不重选当前会话、不重放正文；活动关闭立即切到回退标签，仍由配置恢复和全量状态校准。运行锁、最后标签保护与磁盘会话保留不变。
 - 手动新建在 Webview 插入加载中的标签，以临时生成的 `tabId` 关联请求。宿主验证标识格式和唯一性，由宿主创建并持久化真实标签，以同一 ID 发送 `state`、目标 `setMessages` 和 `conversationTabCreateSettled`。完成前保留本地选中项并阻止向加载标签发送，旧全量快照不能吞掉占位标签；关闭加载标签后忽略迟到的创建回执。
+- 手动新建和成功重置时，宿主将全局工具设置 `newTaskInteractiveMode` 应用到目标 CLI 的当前模式。`PanelState` 分开下发此默认值和当前 `interactiveMode`；新建占位标签使用默认值，宿主确认活动标签后使用权威模式。改变默认值不切换正在查看的任务，也不修改已有标签的模式推断规则。
 - 手动切换与活动关闭后的回退先发送带目标 `tabId` 的消息快照，再等待配置恢复及全量状态。Webview 区分尚未收到快照与已加载空会话，等待时展示可访问的中文加载状态；长历史以每批 48 条异步创建，连续指令跨批保留同一组，代际检查禁止旧批次提交到新标签。未完成视图不进入缓存，原有消息清理、折叠与滚动规则继续适用。
 - 重置会话先创建新标签再关闭旧标签，不能套用普通关闭的轻量确认：客户端尚无新标签，提前确认会暂时选中邻居并破坏待提交配置的保留判断。重置显式禁用提前确认，并在新标签仍活动时发布完整状态和空会话消息。回归见 `src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/conversationTabClose.test.ts`。
 

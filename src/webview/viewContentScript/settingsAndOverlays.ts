@@ -450,6 +450,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
         elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
       }
+      if (elements.newTaskInteractiveMode) {
+        elements.newTaskInteractiveMode.addEventListener("change", (event) => {
+          const mode = normalizeInteractiveMode(event.target.value);
+          state.newTaskInteractiveMode = mode;
+          vscode.postMessage({ type: "updateSetting", key: "newTaskInteractiveMode", value: mode });
+        });
+      }
       if (elements.chatMessageLimit) {
         const commitChatMessageLimit = () => {
           const nextValue = normalizeChatMessageLimit(elements.chatMessageLimit.value);

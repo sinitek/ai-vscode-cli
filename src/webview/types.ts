@@ -10,6 +10,7 @@ import type { LoopTaskStatus } from "../loopTaskStore";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
 import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
+import type { NewTaskInteractiveMode } from "../toolSettings";
 import type {
   LoopPlusAcceptancePlan,
   LoopPlusAcceptancePlanCheckKey,
@@ -398,6 +399,7 @@ export type PanelState = {
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
+  newTaskInteractiveMode?: NewTaskInteractiveMode;
   loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;

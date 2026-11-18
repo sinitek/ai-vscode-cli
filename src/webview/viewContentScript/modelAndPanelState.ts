@@ -552,6 +552,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
         state.loopGroupChatMessageLimit = normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
         state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
+        state.newTaskInteractiveMode = normalizeInteractiveMode(panelState.newTaskInteractiveMode);
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -610,7 +611,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           state.loopSubtaskOpenCodeModels = normalizeOpenCodeModelsPayload(panelState.loopSubtaskOpenCodeModels);
         }
         state.interactiveMode = getExplicitInteractiveModeForTab(getConversationTabSummary(getActiveConversationTabId()))
-          || normalizeInteractiveMode(panelState.interactiveMode);
+          || (isCreatingConversationTab(nextActiveTabId) && nextActiveTabId !== panelState.conversationTabs?.activeTabId
+            ? state.newTaskInteractiveMode
+            : normalizeInteractiveMode(panelState.interactiveMode));
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
         state.debug = Boolean(panelState.debug);
         state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
@@ -714,6 +717,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.hideInstructionBubbles) {
           elements.hideInstructionBubbles.checked = state.hideInstructionBubbles;
+        }
+        if (elements.newTaskInteractiveMode) {
+          elements.newTaskInteractiveMode.value = state.newTaskInteractiveMode;
         }
         if (elements.loopMaxRounds) {
           elements.loopMaxRounds.value = String(state.loopMaxRounds);

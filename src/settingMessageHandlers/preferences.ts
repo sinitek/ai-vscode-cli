@@ -7,6 +7,7 @@ import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettin
 import {
   normalizeHistoryRetentionDays,
   resolveHumanInteractionTimeoutMinutes,
+  resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
   type CliEnabledByName,
 } from "../toolSettings";
@@ -57,6 +58,15 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
   }),
   command("humanInteractionEnabled", (message, deps) => {
     deps.updateStoredToolSettings({ humanInteractionEnabled: Boolean(message.value) });
+  }),
+  command("newTaskInteractiveMode", (message, deps) => {
+    const mode = resolveNewTaskInteractiveMode(message.value);
+    if (message.value !== mode) {
+      return;
+    }
+    if (!deps.updateStoredToolSettings({ newTaskInteractiveMode: mode })) {
+      deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.toolSettingsNewTaskInteractiveModeSaveError);
+    }
   }),
   command(["autoCompactContextAfterRun", "autoCompactContextBeforeRun"], (message, deps, { workspaceSettings }) => {
     const savedGlobally = deps.updateStoredToolSettings({

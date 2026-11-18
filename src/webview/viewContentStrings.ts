@@ -292,6 +292,8 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAutoCompactAfterRunTitle:
       "Codex、Claude、OpenCode、Grok、ZCode 的全局设置。耗时超过 5 分钟的任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
+    toolSettingsNewTaskInteractiveModeLabel: "新建或重置任务的默认模式",
+    toolSettingsNewTaskInteractiveModeSaveError: "默认任务模式保存失败，请重试。",
     toolSettingsChatMessageLimitLabel: "每个标签页气泡上限",
     toolSettingsLoopGroupChatMessageLimitLabel: "Loop / Loop+ 群聊气泡上限",
     toolSettingsLoopGroupChatMessageLimitSaveError: "群聊气泡上限保存失败，请重试。",

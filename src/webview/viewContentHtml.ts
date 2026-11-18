@@ -655,6 +655,14 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
+              <section class="tool-settings-card tool-settings-row">
+                <label class="tool-settings-label" for="newTaskInteractiveMode">${i18n.toolSettingsNewTaskInteractiveModeLabel}</label>
+                <select id="newTaskInteractiveMode" class="thinking-select">
+                  <option value="coding">${i18n.interactiveModeCoding}</option>
+                  <option value="loop">${i18n.interactiveModeLoop}</option>
+                  <option value="loop_plus">${i18n.interactiveModeLoopPlus}</option>
+                </select>
+              </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsHumanInteractionLabel}</div>
