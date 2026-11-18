@@ -328,6 +328,101 @@ test("normal return commits readable JSON, and only a missing task returns null"
   assertNoTempFiles(task.taskStoreFile);
 });
 
+test("rejects damaged dependency writes before replacing existing store bytes", () => {
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const original = fs.readFileSync(task.taskStoreFile, "utf8");
+  const malformedDependencies: unknown[] = [
+    null,
+    "dependency",
+    [1],
+    ["   "],
+    ["persist-subtask"],
+    ["dependency", " dependency "],
+  ];
+
+  for (const dependsOn of malformedDependencies) {
+    const damaged = {
+      ...task,
+      subTasks: [{
+        id: "persist-subtask",
+        title: "Persist task metadata",
+        prompt: "Do not lose this prompt when dependency data is corrupt.",
+        status: "pending" as const,
+        dependsOn,
+      }],
+    } as unknown as LoopTaskRecord;
+    assert.throws(
+      () => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [damaged] }),
+      /subTasks\[0\]\.dependsOn/,
+      `must reject ${JSON.stringify(dependsOn)}`,
+    );
+    assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), original);
+  }
+  assertNoTempFiles(task.taskStoreFile);
+});
+
+test("task creation append rejects a damaged sibling record without replacing stored bytes", () => {
+  const task = createTask();
+  const sibling = { ...createTask(), taskStoreFile: task.taskStoreFile };
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task, sibling] });
+  const original = fs.readFileSync(task.taskStoreFile, "utf8");
+  const raw = JSON.parse(original) as { tasks: Array<Record<string, unknown>> };
+  raw.tasks[0] = {
+    ...raw.tasks[0],
+    subTasks: [{ id: "bad-subtask", title: "Bad", prompt: "Keep raw", status: "pending", dependsOn: null }],
+  };
+  const damagedOriginal = JSON.stringify(raw);
+  fs.writeFileSync(task.taskStoreFile, damagedOriginal, "utf8");
+
+  assert.throws(
+    () => store.appendLoopTaskRecord(task.taskStoreFile, createTask()),
+    /subTasks\[0\]\.dependsOn/,
+  );
+  assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), damagedOriginal);
+  assert.equal(store.readLoopTaskStore(task.taskStoreFile).tasks.some((record) => record.id === sibling.id), true);
+  assertNoTempFiles(task.taskStoreFile);
+  fs.unlinkSync(task.taskStoreFile);
+});
+
+test("task creation append preserves valid siblings, legacy dependencies, and dependency order", () => {
+  const task = createTask();
+  const sibling = { ...createTask(), taskStoreFile: task.taskStoreFile };
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task, sibling] });
+  const legacy = { ...createTask(), taskStoreFile: task.taskStoreFile };
+  const beforeAppend = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")) as { tasks: Array<Record<string, unknown>> };
+  beforeAppend.tasks[0].subTasks = [{
+    id: "legacy-subtask",
+    title: "Legacy subtask",
+    prompt: "Retain a pre-dependencies task record.",
+    status: "pending",
+  }];
+  beforeAppend.tasks.push(legacy as unknown as Record<string, unknown>);
+  fs.writeFileSync(task.taskStoreFile, JSON.stringify(beforeAppend), "utf8");
+
+  const created = { ...createTask(), taskStoreFile: task.taskStoreFile };
+  created.subTasks = [{
+    id: "new-subtask",
+    title: "Keep dependency data",
+    prompt: "Append without rewriting other records.",
+    status: "pending",
+    dependsOn: [" first ", "second"],
+  }];
+  store.appendLoopTaskRecord(task.taskStoreFile, created);
+
+  const persisted = store.readLoopTaskStore(task.taskStoreFile).tasks;
+  assert.deepEqual(persisted.map((record) => record.id), [task.id, sibling.id, legacy.id, created.id]);
+  assert.equal(persisted[0].subTasks[0]?.dependsOn, undefined);
+  assert.deepEqual(persisted[persisted.length - 1]?.subTasks[0]?.dependsOn, ["first", "second"]);
+});
+
+test("task creation append creates a new store file", () => {
+  const task = createTask();
+  assert.equal(fs.existsSync(task.taskStoreFile), false);
+  store.appendLoopTaskRecord(task.taskStoreFile, task);
+  assert.deepEqual(store.readLoopTaskStore(task.taskStoreFile).tasks.map((record) => record.id), [task.id]);
+});
+
 for (const failure of ["write", "rename"] as const) {
   test(`${failure} failure propagates the original error, preserves the running record and removes temporary files`, (t) => {
     const task = createTask();
@@ -627,4 +722,20 @@ test("retention holds the writer gate from authority classification through clea
     assert.equal(store.readKnownOrdinaryLoopTaskRecord(a.id).taskStoreFile,destination);
     assert.equal(store.readLoopTaskStore(a.taskStoreFile).tasks.some(t=>t.id===a.id),false);
   `);
+});
+
+test("撤销验收及原因经过实际文件存储和冷加载后保留", () => {
+  const { createLoopPlusScheduler } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "obsolete", attemptId: "old-1" }]);
+  scheduler.finish({ subtaskId: "obsolete", attemptId: "old-1", outcome: "completed" });
+  const eventId = scheduler.prepareReviewBatch(4).items[0].eventId;
+  assert.equal(scheduler.submitReviewBatch([eventId], [{ eventId, acceptance: "cancelled", reason: "用户取消旧需求" }]).ok, true);
+  const task = { ...createTask(), schedulingMode: "event_driven" as const, loopPlus: scheduler.snapshot() };
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const loaded = coldStore().readLoopTaskStore(task.taskStoreFile).tasks[0];
+  const restored = createLoopPlusScheduler({ snapshot: loaded.loopPlus as ReturnType<typeof scheduler.snapshot> });
+  assert.equal(restored.wait().view.visibleReviewCount, 0);
+  assert.equal(restored.snapshot().seenAttempts[0].acceptance, "cancelled");
+  assert.equal(restored.snapshot().seenAttempts[0].acceptanceReason, "用户取消旧需求");
 });

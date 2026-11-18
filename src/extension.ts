@@ -143,7 +143,7 @@ import {
 import { askLoopMainModelSession } from "./loopMainQuestion";
 import { createLoopMainQuestionQueue } from "./loopMainQuestionQueue";
 import { resolveLoopSchedulingMode } from "./loopTaskStore";
-import { appendLoopRound, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
+import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, type LoopTaskRecord } from "./loopTaskStore";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { getSelectedLoopFrontendThinkingFromStore, getSelectedLoopFullstackThinkingFromStore } from "./modelSelectionStore";
@@ -6764,9 +6764,7 @@ function createLoopTaskRecord(
     completionRequirementCoverage: [],
   };
   if (options.buildOnly) return record;
-  const store = readLoopTaskStore(taskStoreFile);
-  store.tasks.push(record);
-  writeLoopTaskStore(taskStoreFile, store);
+  appendLoopTaskRecord(taskStoreFile, record);
   return record;
 }
 

@@ -1617,9 +1617,15 @@ export function normalizeLoopTaskStoreForStorage(
   const tasks = Array.isArray(store?.tasks)
     ? store.tasks
       .map((record) => {
+        if (options.throwOnError) {
+          const invalidDependsOnIndex = findInvalidLoopSubtaskDependsOnIndex(record);
+          if (invalidDependsOnIndex !== null) {
+            throw new Error(`Loop task record has invalid subTasks[${invalidDependsOnIndex}].dependsOn`);
+          }
+        }
         const normalized = normalizeLoopTaskRecord(record, options.sourceFile);
         if (!normalized && options.throwOnError) {
-          throw new Error("Loop task store record invalid");
+          throw new Error("Invalid Loop task record");
         }
         return normalized;
       })
@@ -1661,8 +1667,6 @@ export function readLoopTaskStoreResult(filePath: string, requireExisting = fals
       && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
     const parsed = migrateLegacyLoopJson(JSON.parse(raw), retainLegacyStoragePaths ? undefined : DATA_DIR).value;
     if (!parsed || !Array.isArray(parsed.tasks)) throw new Error("Invalid Loop task store");
-    // Invalid records must not silently disappear from a complete ownership snapshot.
-    if ((requireComplete || throwOnError) && parsed.tasks.some((record: unknown) => !normalizeLoopTaskRecord(record, filePath))) throw new Error("Invalid Loop task record");
     return { ok: true, store: normalizeLoopTaskStoreForStorage({ tasks: parsed.tasks as LoopTaskRecord[] }, {
       sourceFile: filePath, preserveExpired, throwOnError: requireComplete || throwOnError,
     }) };
@@ -1684,6 +1688,13 @@ export function writeLoopTaskStore(filePath: string, store: LoopTaskStore): void
   commitLoopTaskStore(filePath, store);
 }
 
+export function appendLoopTaskRecord(filePath: string, record: LoopTaskRecord): void {
+  const read = readLoopTaskStoreResult(filePath, false, true, false, true);
+  if (!read.ok) throw new Error("Loop task store append target unavailable");
+  read.store.tasks.push(record);
+  writeLoopTaskStore(filePath, read.store);
+}
+
 function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
   move?: { taskId: string; sourceFile: string; sourceTasks: readonly LoopTaskRecord[]; targetFile: string }): void {
   try {
@@ -1695,7 +1706,7 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
     const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
       && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
     const migratedStore = migrateLegacyLoopJson(store, retainLegacyStoragePaths ? undefined : DATA_DIR).value;
-    const persisted = normalizeLoopTaskStoreForStorage(migratedStore, { sourceFile: filePath });
+    const persisted = normalizeLoopTaskStoreForStorage(migratedStore, { sourceFile: filePath, throwOnError: true });
     if (!commitLoopTaskIdentities(new Map([[filePath, persisted.tasks]]), () => {
       writeLoopTaskStoreBytes(filePath, persisted);
       return true;
