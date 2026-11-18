@@ -746,21 +746,6 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
-                  <div class="tool-settings-label">${i18n.toolSettingsLoopMaxRoundsLabel}</div>
-                  <input
-                    type="number"
-                    id="loopMaxRounds"
-                    class="tool-settings-number"
-                    min="1"
-                    max="100"
-                    step="1"
-                    title="${i18n.toolSettingsLoopMaxRoundsTitle}"
-                    aria-label="${i18n.toolSettingsLoopMaxRoundsLabel}"
-                  />
-                </div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
                   <input
                     type="number"
@@ -790,7 +775,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
                   />
                 </div>
-                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。每个新派发或重派的子任务计 1 轮；达到上限后仍可验收已有结果。</div>
+                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。限制单个主任务累计派发的子任务数；达到上限后仍可复核、验收和总结。</div>
               </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">

@@ -93,7 +93,6 @@ export type PanelStateBuilderDeps = {
   getGlobalLoopGroupChatMessageLimit?: () => number;
   getGlobalHideInstructionBubbles?: () => boolean;
   getNewTaskInteractiveMode?: () => PanelState["newTaskInteractiveMode"];
-  getGlobalLoopMaxRounds: () => number;
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
   getGlobalLoopPlusSubtaskMaxRounds?: () => number;
   getDebugLogging: typeof getDebugLogging;
@@ -212,7 +211,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     loopGroupChatMessageLimit: normalizeChatMessageLimit(deps.getGlobalLoopGroupChatMessageLimit?.(), LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     hideInstructionBubbles: deps.getGlobalHideInstructionBubbles?.() === true,
     newTaskInteractiveMode: resolveNewTaskInteractiveMode(deps.getNewTaskInteractiveMode?.()),
-    loopMaxRounds: deps.getGlobalLoopMaxRounds(),
     loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(
       deps.getGlobalLoopPlusDecisionSubtaskMax?.() ?? LOOP_PLUS_DECISION_SUBTASK_MAX,
     ),

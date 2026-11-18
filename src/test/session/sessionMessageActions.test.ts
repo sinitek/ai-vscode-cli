@@ -254,7 +254,6 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     ),
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
-    normalizeLoopMaxRounds: () => 20,
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),

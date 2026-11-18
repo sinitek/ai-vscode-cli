@@ -317,17 +317,14 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHumanInteractionTimeoutLabel: "人工交互超时（分钟）",
     toolSettingsHumanInteractionTimeoutTitle:
       "全局设置。Vibe 人工交互弹窗，以及 Loop、Loop+ 主任务澄清表单，若在此时限内没有提交，则视为超时。AI 会自行选择最佳方案继续，不记为拒绝，也不进入待复核。默认 15 分钟，范围 1–1440 分钟（最长 24 小时）。",
-    toolSettingsLoopMaxRoundsLabel: "Loop 最大轮次",
-    toolSettingsLoopMaxRoundsTitle:
-      "全局设置。新建经典 Loop 任务时允许的最大调度轮次。",
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop/Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
       "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 的并发上限。默认 6，范围 1–20。工作区设置优先于全局。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
     toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote:
       "留空则使用全局设置；设置后优先于全局，仅对当前工作区生效。范围 1–20。",
-    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop+ 子任务轮次",
+    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop/Loop+ 子任务轮次上限",
     toolSettingsLoopPlusSubtaskMaxRoundsTitle:
-      "全局设置。限制一个 Loop+ 任务的子任务执行总轮次，默认 200，范围 50–9999。每个新派发或重派的子任务计 1 轮，并行任务分别计数；恢复同一次执行不重复计数。达到上限后仍可验收已有结果，提高上限后可继续派发。",
+      "全局设置，对 Loop 和 Loop+ 分别按每个主任务累计计数。每个新派发或重派的子任务计 1 轮，并行任务分别计数；同一次执行的重试或恢复不重复计数。调低不会取消已派发的任务。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",

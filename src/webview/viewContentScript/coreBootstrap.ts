@@ -217,7 +217,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopGroupChatMessageLimit: \${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT},
         hideInstructionBubbles: false,
         newTaskInteractiveMode: "coding",
-        loopMaxRounds: \${LOOP_MAX_ROUNDS_SETTING_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         loopPlusSubtaskMaxRounds: \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT},
         isMac: false,
@@ -431,7 +430,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionWindowAttention: document.getElementById("humanInteractionWindowAttention"),
         taskCompletionWindowAttention: document.getElementById("taskCompletionWindowAttention"),
         humanInteractionTimeoutMinutes: document.getElementById("humanInteractionTimeoutMinutes"),
-        loopMaxRounds: document.getElementById("loopMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
         loopPlusSubtaskMaxRounds: document.getElementById("loopPlusSubtaskMaxRounds"),
@@ -632,19 +630,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           return 15;
         }
         return Math.min(Math.max(Math.floor(numeric), 1), 1440);
-      }
-
-      function normalizeLoopMaxRounds(value) {
-        const numeric = typeof value === "number"
-          ? value
-          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
-        if (!Number.isFinite(numeric)) {
-          return \${LOOP_MAX_ROUNDS_SETTING_DEFAULT};
-        }
-        return Math.min(
-          Math.max(Math.floor(numeric), \${LOOP_MAX_ROUNDS_SETTING_MIN}),
-          \${LOOP_MAX_ROUNDS_SETTING_MAX}
-        );
       }
 
       function normalizeLoopPlusDecisionSubtaskMax(value) {

@@ -37,9 +37,6 @@ export type BuildWebviewRuntimeScriptInput = {
   i18n: unknown;
   cliList: unknown;
   cliDisplayNames?: unknown;
-  loopMaxRoundsDefault: number;
-  loopMaxRoundsMin: number;
-  loopMaxRoundsMax: number;
   loopPlusDecisionSubtaskMaxDefault?: number;
   loopPlusDecisionSubtaskMaxMin?: number;
   loopPlusDecisionSubtaskMaxLimit?: number;
@@ -93,9 +90,6 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
           ?? Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliDisplayName(cli)])),
       ),
     ],
-    ["${LOOP_MAX_ROUNDS_SETTING_DEFAULT}", String(input.loopMaxRoundsDefault)],
-    ["${LOOP_MAX_ROUNDS_SETTING_MIN}", String(input.loopMaxRoundsMin)],
-    ["${LOOP_MAX_ROUNDS_SETTING_MAX}", String(input.loopMaxRoundsMax)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT}", String(input.loopPlusDecisionSubtaskMaxDefault ?? LOOP_PLUS_DECISION_SUBTASK_MAX)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}", String(input.loopPlusDecisionSubtaskMaxMin ?? LOOP_PLUS_DECISION_SUBTASK_MIN)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}", String(input.loopPlusDecisionSubtaskMaxLimit ?? LOOP_PLUS_DECISION_SUBTASK_LIMIT)],

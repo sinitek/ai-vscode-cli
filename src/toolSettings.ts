@@ -26,7 +26,6 @@ export type ToolSettingsState = {
   autoCompactContextAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
   newTaskInteractiveMode?: NewTaskInteractiveMode;
-  loopMaxRounds?: number;
   loopPlusDecisionSubtaskMax?: number;
   loopPlusSubtaskMaxRounds?: number;
   humanInteractionTimeoutMinutes?: number;
@@ -113,14 +112,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       : (record.historyRetentionDays.trim() ? Number(record.historyRetentionDays) : Number.NaN);
     if (Number.isFinite(parsed)) {
       normalized.historyRetentionDays = normalizeHistoryRetentionDays(parsed);
-    }
-  }
-  if (typeof record.loopMaxRounds === "number" || typeof record.loopMaxRounds === "string") {
-    const parsed = typeof record.loopMaxRounds === "number"
-      ? record.loopMaxRounds
-      : (record.loopMaxRounds.trim() ? Number(record.loopMaxRounds) : Number.NaN);
-    if (Number.isFinite(parsed)) {
-      normalized.loopMaxRounds = Math.floor(parsed);
     }
   }
   if (

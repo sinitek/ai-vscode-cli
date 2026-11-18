@@ -15,9 +15,6 @@ import {
   LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 
-const LOOP_MAX_ROUNDS_SETTING_DEFAULT = 20;
-const LOOP_MAX_ROUNDS_SETTING_MIN = 1;
-const LOOP_MAX_ROUNDS_SETTING_MAX = 100;
 
 
 export function getWebviewHtml(webview: { cspSource: string }, promptInputHeight?: number): string {
@@ -44,9 +41,6 @@ export function getWebviewHtml(webview: { cspSource: string }, promptInputHeight
 ${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     i18n,
     cliList: CLI_LIST,
-    loopMaxRoundsDefault: LOOP_MAX_ROUNDS_SETTING_DEFAULT,
-    loopMaxRoundsMin: LOOP_MAX_ROUNDS_SETTING_MIN,
-    loopMaxRoundsMax: LOOP_MAX_ROUNDS_SETTING_MAX,
     loopPlusDecisionSubtaskMaxDefault: LOOP_PLUS_DECISION_SUBTASK_MAX,
     loopPlusDecisionSubtaskMaxMin: LOOP_PLUS_DECISION_SUBTASK_MIN,
     loopPlusDecisionSubtaskMaxLimit: LOOP_PLUS_DECISION_SUBTASK_LIMIT,

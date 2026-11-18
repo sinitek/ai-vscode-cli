@@ -637,7 +637,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
           panelState.humanInteractionTimeoutMinutes
         );
-        state.loopMaxRounds = normalizeLoopMaxRounds(panelState.loopMaxRounds);
         state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
         );
@@ -720,9 +719,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         if (elements.newTaskInteractiveMode) {
           elements.newTaskInteractiveMode.value = state.newTaskInteractiveMode;
-        }
-        if (elements.loopMaxRounds) {
-          elements.loopMaxRounds.value = String(state.loopMaxRounds);
         }
         if (elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);

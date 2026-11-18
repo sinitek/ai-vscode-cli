@@ -51,7 +51,6 @@ export async function routeSettingMessage(
       showWebviewError: deps.showWebviewError,
       updateStoredToolSettings: deps.updateStoredToolSettings,
       saveWorkspaceSettings: deps.saveWorkspaceSettings,
-      normalizeLoopMaxRounds: deps.normalizeLoopMaxRounds,
       isMacTaskShell: deps.isMacTaskShell,
       readStoredToolSettings: deps.readStoredToolSettings,
       getCurrentCli: deps.getCurrentCli,

@@ -44,7 +44,6 @@ export type WorkspaceSettings = {
   autoCompactContextBeforeRun?: boolean;
   workspaceMemoryEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
-  loopMaxRounds?: number;
   /** 当前工作区的 Loop/Loop+ 派发上限；缺省时继承全局。 */
   loopPlusDecisionSubtaskMax?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
@@ -76,7 +75,6 @@ export type WorkspaceSettingsStoreOptions = {
   isThinkingMode: (value: unknown) => value is ThinkingMode;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (value: unknown) => InteractiveMode;
-  normalizeLoopMaxRounds: (value: unknown) => number;
   sanitizeConversationTabRecord: (value: unknown) => ConversationTabRecordForWorkspaceSettings | null;
   logError?: WorkspaceSettingsStoreLogger;
 };
@@ -132,10 +130,6 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     const workspaceMemoryEnabled = (parsed as WorkspaceSettings).workspaceMemoryEnabled;
     if (typeof workspaceMemoryEnabled === "boolean") {
       result.workspaceMemoryEnabled = workspaceMemoryEnabled;
-    }
-    const loopMaxRounds = (parsed as WorkspaceSettings).loopMaxRounds;
-    if (typeof loopMaxRounds === "number" || typeof loopMaxRounds === "string") {
-      result.loopMaxRounds = options.normalizeLoopMaxRounds(loopMaxRounds);
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     const loopPlusDecisionSubtaskMax = normalizeWorkspaceLoopPlusDecisionSubtaskMax(

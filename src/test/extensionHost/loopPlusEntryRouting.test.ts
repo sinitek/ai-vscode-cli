@@ -139,7 +139,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const orchestration = functionBody(extensionSource, "runLoopPromptOrchestration");
   const call = orchestration.indexOf("await runEventDrivenLoopPrompt(");
   const classicInit = orchestration.indexOf("createLoopTaskRecord(");
-  const roundLoop = orchestration.indexOf("while (round <= task.maxRounds)");
+  const roundLoop = orchestration.indexOf("while (true)");
   assert.equal(call >= 0, true);
   assert.equal(classicInit >= 0, true);
   assert.equal(roundLoop >= 0, true);
@@ -148,6 +148,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const openedGroupChat = orchestration.indexOf("void openLoopGroupChatPanel(task.id)");
   assert.equal(openedGroupChat > classicInit, true);
   assert.equal(openedGroupChat < roundLoop, true);
+  assert.doesNotMatch(orchestration, /\.maxRounds\b/);
   assert.equal(orchestration.slice(call, classicInit).includes("return;"), true);
 
   const stopTab = functionBody(extensionSource, "stopRunForTab");

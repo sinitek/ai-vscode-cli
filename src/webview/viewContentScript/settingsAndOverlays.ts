@@ -491,20 +491,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.loopGroupChatMessageLimit.addEventListener("change", commitLoopGroupChatMessageLimit);
         elements.loopGroupChatMessageLimit.addEventListener("blur", commitLoopGroupChatMessageLimit);
       }
-      if (elements.loopMaxRounds) {
-        const commitLoopMaxRounds = () => {
-          const nextValue = normalizeLoopMaxRounds(elements.loopMaxRounds.value);
-          state.loopMaxRounds = nextValue;
-          elements.loopMaxRounds.value = String(nextValue);
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopMaxRounds",
-            value: nextValue,
-          });
-        };
-        elements.loopMaxRounds.addEventListener("change", commitLoopMaxRounds);
-        elements.loopMaxRounds.addEventListener("blur", commitLoopMaxRounds);
-      }
       if (elements.loopPlusDecisionSubtaskMax) {
         const commitLoopPlusDecisionSubtaskMax = () => {
           const nextValue = normalizeLoopPlusDecisionSubtaskMax(elements.loopPlusDecisionSubtaskMax.value);

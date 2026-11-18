@@ -133,7 +133,7 @@ const MESSAGES = {
     "run.loopPlusUserMessages": "Loop+ 主任务正在一起查看新的消息。",
     "run.loopPlusSnapshotInvalid": "Loop+ 调度快照无效，没有降级成经典 Loop。{detail}",
     "run.loopPlusPaused": "Loop+ 自动调度已暂停，验收队列保持不变。{detail}",
-    "run.loopPlusSubtaskRoundLimit": "Loop+ 子任务轮次不足（已用 {rounds}/{limit}）。已有任务及验收结果保留，提高“Loop+ 子任务轮次”后可以继续派发。",
+    "run.loopPlusSubtaskRoundLimit": "Loop+ 子任务轮次不足（已用 {rounds}/{limit}）。已有任务及验收结果保留，提高“Loop/Loop+ 子任务轮次上限”后可以继续派发。",
     "run.loopPlusStopped": "Loop+ 调度已停止。晚到的执行结果只留证，不会自动验收。",
     "run.loopPlusCompleted": "Loop+ 全部任务已完成：{taskId}",
     "run.loopPlusSubtaskFinished": "Loop+ 子任务已结束：{title}\n运行结果：{status}\nLoop+ 任务：{taskId}",

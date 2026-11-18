@@ -573,9 +573,6 @@ function createRuntimeHarness(
   const script = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: cliListOverride ?? ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 5,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 12,
     finalAnswerTextMarker: "<FINAL>",
   });
   const runtimeFactory = new Function(
@@ -783,7 +780,7 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     longTermMemoryEnabled: true,
     workspaceMemoryEnabled: true,
     autoCompactContextAfterRun: true,
-    loopMaxRounds: 99,
+    loopPlusSubtaskMaxRounds: 175,
     loopSubtaskMaxThinkingMode: "xhigh",
     isMac: true,
     macTaskShell: "bash",
@@ -1384,16 +1381,15 @@ test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },
     cliList: ["codex"],
-    loopMaxRoundsDefault: 4,
-    loopMaxRoundsMin: 2,
-    loopMaxRoundsMax: 9,
+    loopPlusSubtaskMaxRoundsDefault: 400,
+    loopPlusSubtaskMaxRoundsMin: 52,
     finalAnswerTextMarker: "<FINAL>",
   });
 
   assert.match(script, /const i18n = \{"ok":"OK"\}/);
   assert.match(script, /const CLI_NAMES = \["codex"\]/);
-  assert.match(script, /loopMaxRounds: 4/);
-  assert.match(script, /Math\.max\(Math\.floor\(numeric\), 2\)/);
+  assert.match(script, /loopPlusSubtaskMaxRounds: 400/);
+  assert.match(script, /Math\.max\(Math\.floor\(numeric\), 52\)/);
   assert.match(script, /"medium"/);
   assert.match(script, /"<FINAL>"/);
   assert.doesNotMatch(script, /\$\{JSON\.stringify|\$\{LOOP_|\$\{FINAL_/);
@@ -1724,7 +1720,7 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(posted[0], { type: "requestState" });
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   assert.equal(api.state.currentCli, "codex");
-  assert.equal(api.state.loopMaxRounds, 12);
+  assert.equal(api.state.loopPlusSubtaskMaxRounds, 175);
   assert.equal(api.state.macTaskShell, "bash");
   assert.equal(document.getElementById("codexLoopModelGroup").style.display, "");
   assert.equal(document.getElementById("codexLoopMainModelSelect").disabled, false);
@@ -2023,9 +2019,6 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   codeGraphToggle.checked = true;
   codeGraphToggle.dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "installCodeGraph" });
-  document.getElementById("loopMaxRounds").value = "0";
-  document.getElementById("loopMaxRounds").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopMaxRounds", value: 1 });
   document.getElementById("loopPlusDecisionSubtaskMax").value = "0";
   document.getElementById("loopPlusDecisionSubtaskMax").dispatchEvent({ type: "change" });
   assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusDecisionSubtaskMax", value: 1 });
@@ -5276,13 +5269,9 @@ test("applies model, panel, and selector state without preserving invalid snapsh
   const runtimeScript = buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 5,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 12,
     finalAnswerTextMarker: "<FINAL>",
   });
   const functionSource = [
-    "normalizeLoopMaxRounds",
     "normalizeModelNameList",
     "normalizeModelSelection",
     "normalizeLoopRoleModelsPayload",
@@ -5311,7 +5300,6 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     "CLI_NAMES",
     "t",
     `${functionSource}; return {
-      normalizeLoopMaxRounds,
       normalizeModelNameList,
       normalizeOpenCodeThinkingPayload,
       normalizeOpenCodeModelsPayload,
@@ -5326,7 +5314,6 @@ test("applies model, panel, and selector state without preserving invalid snapsh
     (key: string) => key,
   );
 
-  assert.equal(helpers.normalizeLoopMaxRounds("99"), 12);
   assert.deepEqual(helpers.normalizeModelNameList([" GPT ", "gpt", "", 42]), ["GPT"]);
   assert.deepEqual(helpers.normalizeOpenCodeThinkingPayload({
     selectedVariant: " high ",

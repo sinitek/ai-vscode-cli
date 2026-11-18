@@ -29,6 +29,7 @@ test.after(() => {
 });
 
 const loopTaskStore = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
+const { transitionLoopMainDecision } = require("../../extensionHost/loopTaskStateMachine") as typeof import("../../extensionHost/loopTaskStateMachine");
 assert.equal(loopTaskStore.getLoopCommunicationPaths("isolation-probe").dir,
   path.join(testHome, ".sinitek_cli", "loop-communications", "isolation-probe"));
 
@@ -371,18 +372,24 @@ test("does not resurrect persisted Loop tasks with missing status as running", (
   assert.equal(persisted.status, "stopped");
 });
 
-test("raises existing Loop task maxRounds to the current global setting without lowering it", () => {
+test("persists classic subtask dispatch counts without deriving them from legacy maxRounds", () => {
   resetLoopStorage();
   const task = createTask({ maxRounds: 20 });
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  const raised = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(task, 50);
-  assert.equal(raised.maxRounds, 50);
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
-
-  const unchanged = loopTaskStore.ensureLoopTaskMaxRoundsAtLeast(raised, 10);
-  assert.equal(unchanged.maxRounds, 50);
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 50);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).classicSubtaskDispatchCount, undefined);
+  loopTaskStore.updateLoopTaskRecord(task.id, { classicSubtaskDispatchCount: 49 });
+  const decision = { status: "continue" as const, subtask: { id: "next", title: "Next", prompt: "Continue independently." } };
+  const admitted = transitionLoopMainDecision({ task: readPersistedTask(task.taskStoreFile, task.id), decision,
+    subtaskRoundLimit: 50, now: Date.now() });
+  loopTaskStore.updateLoopTaskRecord(task.id, admitted.patch);
+  const committed = readPersistedTask(task.taskStoreFile, task.id);
+  assert.equal(committed.classicSubtaskDispatchCount, 50);
+  assert.deepEqual(committed.activeSubtaskIds, ["next"]);
+  const refused = transitionLoopMainDecision({ task: committed, decision, subtaskRoundLimit: 50, now: Date.now() });
+  assert.equal(refused.status, "blocked");
+  assert.equal(refused.subtasks, undefined);
+  assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 20);
 });
 
 test("writes normalized data and propagates write failures at the persistence boundary", () => {
@@ -1164,7 +1171,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
 
   const tasks = loopTaskStore.readLoopTaskStore(filePath).tasks;
   const task = tasks[0];
-  assert.equal(task.maxRounds, 20);
+  assert.equal(task.maxRounds, undefined);
   assert.deepEqual(task.subTasks[0]?.skillIds, ["valid-skill"]);
   assert.equal(task.subTasks[0]?.skillGuidance, "guidance");
   assert.equal(task.subTasks[0]?.conflictGroup, "group-a");

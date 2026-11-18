@@ -4064,7 +4064,6 @@ test("main failure, protocol pause and explicit resume retain the unconfirmed ba
   env.host.submitUserMessage(taskId, "after frozen prefix");
   await flush();
   limit = 50;
-  env.tasks.set(taskId, { ...env.tasks.get(taskId)!, loopPlusSubtaskMaxRounds: 50 });
   first.reject(new Error("temporary main failure"));
   await flush();
   assert.equal(env.tasks.get(taskId)?.mainAiFailureCount, 1);
@@ -4203,19 +4202,30 @@ test("allows completed to confirm an existing batch above the subtask round limi
   assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), false);
 });
 
-test("keeps a higher stored Loop+ subtask round limit when the global setting is lower", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50 });
-  const task = baseTask("kept-limit", twoFinishedReviews());
+test("enforces a lowered Loop+ subtask limit at decision commit without losing completed reviews", async () => {
+  let limit = 60;
+  const env = harness({ subtaskRoundLimit: () => limit });
+  const task = baseTask("lowered-limit", twoFinishedReviews(48));
   task.loopPlusSubtaskMaxRounds = 60;
   env.tasks.set(task.id, task);
-  env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
     resumeTaskId: task.id,
     schedulingMode: "event_driven",
   });
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
-  assert.equal(env.tasks.get(task.id)?.loopPlusSubtaskMaxRounds, 60);
-  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), false);
+  const review = env.mains[0];
+  assert.match(review.request.modelPrompt, /Subtask round limit: 60/);
+  limit = 50;
+  review.resolve(decisionJson({ status: "accept", reviewEventIds: review.request.reviewEventIds,
+    subtasks: [subtask("gamma", ["src/gamma.ts"])] }));
+  await run.done;
+  const snapshot = snapshotOf(env.tasks.get(task.id));
+  assert.equal(snapshot.seenAttempts.length, 50);
+  assert.equal(snapshot.seenAttempts.every((attempt) => attempt.disposition === "reviewed"), true);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.tasks.get(task.id)?.loopPlusSubtaskMaxRounds, 50);
+  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
+  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), true);
 });
 
 test("resumes dispatch after raising the subtask round limit without counting restored attempts twice", async () => {

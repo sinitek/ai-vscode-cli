@@ -15,7 +15,8 @@ import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../loopDirectExecutionPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
-import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { getClassicLoopSubtaskDispatchCount } from "./loopTaskStateMachine";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 
@@ -105,6 +106,7 @@ type LoopOrchestrationRequiredHostDeps =
   >
   & {
     decisionSubtaskMax?: () => number;
+    subtaskRoundLimit?: () => number;
     isTabRunActive?: (tabId: string) => boolean;
     hasActiveSubtasks?: (taskId: string) => boolean;
     buildSubagentProgressLabels: () => SubagentProgressLabels;
@@ -317,7 +319,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       ...buildResetLoopMainAiFailureState(),
       updatedAt: Date.now(),
     });
-    const decisionResult = applyLoopMainDecision(taskId, decision);
+    const decisionResult = applyLoopMainDecision(taskId, decision, resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.()));
     if (decisionResult.status === "completed") {
       return { status: "completed", task: decisionResult.task, decision };
     }
@@ -1194,7 +1196,13 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number,
     continuePrompt?: string,
   ): string {
-    const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
+    const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.());
+    const usedSubtaskRounds = getClassicLoopSubtaskDispatchCount(task);
+    const remainingSubtaskRounds = Math.max(0, subtaskRoundLimit - usedSubtaskRounds);
+    const subtaskMax = Math.min(remainingSubtaskRounds, resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.()));
+    const dispatchInstruction = subtaskMax > 0
+      ? `当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`
+      : "子任务轮次额度已用尽：不得返回 continue。仍应根据已有汇报复核，任务已完成则正常收尾；仍需派发则说明原因并返回 blocked。";
     const taskId = task.id;
     const taskFile = task.taskStoreFile;
     const communication = getLoopCommunicationPaths(taskId);
@@ -1203,6 +1211,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "你正在执行 VS Code 插件的 Loop 模式主任务。",
       `Loop 任务 ID：${taskId}`,
       `当前轮次：${round}`,
+      `子任务轮次：已用 ${usedSubtaskRounds}/${subtaskRoundLimit}，剩余 ${remainingSubtaskRounds}。每个新增派发或重派的子任务单独计 1 轮；同次执行的重试或恢复不重复计数。`,
       `当前总体进度：${task.loopProgressPercent ?? 0}%`,
       `任务记录文件：${taskFile}`,
       `沟通目录：${communication.dir}`,
@@ -1211,7 +1220,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "Loop 模式原理（必须遵守）：",
       "1. 主任务先判断是否适用简单任务直办；不适用时负责拆分和派发，不直接做具体实现。每轮最终只输出一个 JSON 决策。",
-      `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
+      `2. ${dispatchInstruction}`,
       "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你根据汇报继续决策。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
@@ -1234,7 +1243,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "   历史沟通模板或旧派发提示中的默认独立验证要求，不算用户或项目明确要求。",
       "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
       "11. 每次决策预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个子任务批次才能 completed；completed 时为 0。",
-      "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
+      "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作且有派发额度时返回 continue，否则说明阻塞原因。",
       "13. 除符合条件的简单任务直办外，主任务负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",
       "14. 简单任务直办完成后可直接返回 completed，estimatedRemainingRounds=0，如实说明操作结果，不虚构子任务或验收结论；其它实现工作返回 JSON 后由程序启动子任务。",
       "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
@@ -1242,7 +1251,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "JSON 协议：",
       '{"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"根据子任务汇报直接回答用户原始问题","finalSummary":"根据全部子任务汇报归纳完成内容与交付结果"}',
-      JSON.stringify({
+      ...(subtaskMax > 0 ? [JSON.stringify({
         status: "continue",
         progressPercent: 0,
         estimatedRemainingRounds: 2,
@@ -1252,7 +1261,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           { id: "stable-id-b", title: "子任务B标题", writeFiles: ["docs/b.md"], prompt: "背景与目标：完成 B。遵循项目既有规则，自主选择实施方式并汇报完成情况。" },
         ].slice(0, subtaskMax),
       }),
-      '{"status":"continue","progressPercent":75,"estimatedRemainingRounds":1,"subtasks":[{"id":"required-tests","title":"执行用户或项目规则要求的测试","prompt":"用户要求或项目规则要求任务完成后运行相关测试。请作为独立测试子任务按该要求执行，并汇报结果、失败或阻塞；不要扩大到未要求的检查。"}]}',
+      '{"status":"continue","progressPercent":75,"estimatedRemainingRounds":1,"subtasks":[{"id":"required-tests","title":"执行用户或项目规则要求的测试","prompt":"用户要求或项目规则要求任务完成后运行相关测试。请作为独立测试子任务按该要求执行，并汇报结果、失败或阻塞；不要扩大到未要求的检查。"}]}'] : []),
       JSON.stringify({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE }),
       '{"status":"clarify","estimatedRemainingRounds":2,"finalSummary":"需要用户确认范围后再拆分","clarification":{"title":"需要确认需求","instruction":"以下选择会改变后续拆分，请补充后继续。","submitLabel":"提交","cancelLabel":"拒绝","formFields":[{"id":"scope","label":"本次范围","type":"radio","required":true,"options":[{"label":"只改接口","value":"api"},{"label":"接口和调用方一起改","value":"api-and-callers"}]}]}}',
       "",
@@ -1264,7 +1273,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- answerConclusion 用于直接回答用户原始问题，应尽量简短明确；finalSummary 用于整体完成说明和交付总结。",
       "- finalSummary 根据子任务汇报归纳整体结果、完成内容和最终交付；遗留问题如实说明，不编造验收结论。",
       buildStructuredSvgSummaryPromptInstruction("finalSummary"),
-      `- status=continue 时提供 subtasks 数组，数组长度 1~${subtaskMax}，不要求 acceptance。`,
+      ...(subtaskMax > 0 ? [`- status=continue 时提供 subtasks 数组，数组长度 1~${subtaskMax}，不要求 acceptance。`] : []),
       "- 当前没有可执行子任务、需要等待外部结果，或有证据表明当前要求无法完成时，返回 blocked，不得把任务标成 completed。",
       LOOP_BLOCKED_SUMMARY_INSTRUCTION,
       "- 如果对用户需求有疑惑，或者当前方案明显不合理、缺少必须由用户决定的关键信息，返回 clarify。clarification.formFields 必须有 1 到 8 个字段，字段 type 可以是 text、textarea、password、radio、checkbox、select、multiselect。不要同时返回 subtasks。宿主会在群聊弹出表单，用户提交后再唤醒你；用户拒绝则任务暂停。",
@@ -1276,7 +1285,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- subtasks[*].writeFiles 可选，表示建议写入范围；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突。它不是执行时的硬性写入白名单。纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
       "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
       "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
-      "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
+      "- 只通过 JSON 提议子任务，不得直接修改任务记录文件；宿主校验并保存派发和进度。",
       "- 根据汇报确认目标与必需的验证要求已满足后返回 completed；明确要求的独立验收或交叉复核仍须完成，不因复用普通测试结果而省略。任务记录和最终总结由宿主落地。",
       "",
       ...buildLoopSupplementalRequirementsLines(task),

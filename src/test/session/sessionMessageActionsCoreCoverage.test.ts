@@ -98,7 +98,6 @@ function createSettingHarness(currentCli: CliName = "codex"): SettingHarness {
       calls.toolSettings.push(patch);
       return true;
     },
-    normalizeLoopMaxRounds: (value: unknown) => typeof value === "number" ? Math.max(1, Math.floor(value)) : 3,
     updateStatusBar: () => { calls.statusUpdates += 1; },
     postWebviewMessage: (message: Record<string, unknown>) => { calls.webviewMessages.push(message); },
     getConfigManagerPanel: () => ({ reload: () => { calls.configReloads += 1; } }),
@@ -296,7 +295,6 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   state.workspaceSettings = {
     autoCompactContextAfterRun: true,
     autoCompactContextBeforeRun: true,
-    loopMaxRounds: 99,
   };
   await handleUpdateSettingMessage({ type: "updateSetting", key: "codexMultiAgentEnabled", value: 0 }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "autoCompactContextBeforeRun", value: "false" }, deps);
@@ -312,7 +310,6 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   assert.deepEqual(state.workspaceSettings, { workspaceMemoryEnabled: false });
   assert.deepEqual(calls.toolSettings, [
     { autoCompactContextAfterRun: true },
-    { loopMaxRounds: 4 },
     { debug: true },
     { autoAddEditorContextTags: true },
     ...(process.platform === "darwin" ? [{ macTaskShell: "zsh" as const }] : []),
@@ -320,7 +317,7 @@ test("cleans migrated settings and preserves each global setting contract", asyn
   assert.equal(calls.statusUpdates, 0);
   assert.deepEqual(calls.webviewMessages, []);
   assert.equal(calls.configReloads, 0);
-  assert.equal(calls.postPanelState, 7);
+  assert.equal(calls.postPanelState, 6);
 });
 
 test("persists the Loop+ dispatch subtask maximum as a global setting", async () => {

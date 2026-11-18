@@ -21,9 +21,6 @@ function buildRuntimeScript(): string {
   return buildWebviewRuntimeScript({
     i18n: WEBVIEW_STRINGS,
     cliList: ["codex", "claude", "opencode"],
-    loopMaxRoundsDefault: 20,
-    loopMaxRoundsMin: 1,
-    loopMaxRoundsMax: 100,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
 }

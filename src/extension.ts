@@ -129,7 +129,7 @@ import {
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
 import { createLoopMainQuestionQueue } from "./loopMainQuestionQueue";
-import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, ensureLoopTaskMaxRoundsAtLeast, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
+import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, writeLoopTaskStore, type LoopTaskRecord } from "./loopTaskStore";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
@@ -338,9 +338,6 @@ const LEGACY_PROMPT_HISTORY_FILE = path.join(DATA_DIR, "prompt-history.json");
 const LEGACY_HUMAN_INTERACTION_HISTORY_FILE = path.join(DATA_DIR, "human-interaction-history.json");
 const TASK_STORE_FILE = path.join(DATA_DIR, "tasks.json");
 const taskRunCompletionEmitter = new vscode.EventEmitter<TaskRunRecord>();
-const LOOP_DEFAULT_MAX_ROUNDS = 20;
-const LOOP_MIN_MAX_ROUNDS = 1;
-const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
 const HISTORY_RETENTION_CLEAN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const CODEX_IMAGE_MIN_VERSION = "0.2.0";
@@ -1186,7 +1183,6 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     normalizeVisibleInteractiveMode,
 
     loadModelStore: () => { modelStore = loadModelStore(); },
-    normalizeLoopMaxRounds,
     isCliName,
     updateStoredToolSettings,
     readStoredToolSettings: () => readToolSettings(),
@@ -1350,7 +1346,6 @@ function buildPanelStateFromConfigState(
     getGlobalLoopGroupChatMessageLimit: () => normalizeChatMessageLimit(readToolSettings().loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT),
     getGlobalHideInstructionBubbles: () => readToolSettings().hideInstructionBubbles === true,
     getNewTaskInteractiveMode: () => readToolSettings().newTaskInteractiveMode,
-    getGlobalLoopMaxRounds,
     getGlobalLoopPlusDecisionSubtaskMax,
     getGlobalLoopPlusSubtaskMaxRounds,
 
@@ -1592,7 +1587,7 @@ const promptRunRuntimeHost = createPromptRunRuntimeHost({
   getActiveWorkspaceKey: () => activeWorkspaceKey, getConversationTabById: (tabId) => getConversationTabById(tabId), getConversationTabs: () => ensureConversationTabs().tabs, createConversationTabId: () => createConversationTabId(), persistConversationTabsToWorkspaceSettings: () => persistConversationTabsToWorkspaceSettings(), postPanelState: () => postPanelState(), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), persistMessagesForTab: (cli, sessionId, tabId, messages) => persistMessagesForTab(cli, sessionId, tabId, messages), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), updatePendingSessionDraft: (tabId, patch, cli) => updatePendingSessionDraft(tabId, patch, cli), sendPanelMessage: (payload) => sendPanelMessage(payload), createMessageId: () => createMessageId(), readTaskStore: () => readTaskStore(), writeTaskStore: (store) => writeTaskStore(store), appendLoopMainSubChatMainDecision: (task, decision, subtasks) => appendLoopMainSubChatMainDecision(task, decision, subtasks), buildLoopGroupChatMessageAction: (taskId, round) => buildLoopGroupChatMessageAction(taskId, round), runLoopPrompt: (input, options) => runLoopPrompt(input, options), isTabRunActive: (tabId) => isTabRunActive(tabId), refreshOpenLoopGroupChatPanelForTask: (taskId) => refreshOpenLoopGroupChatPanelForTask(taskId), resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab), resolveLoopTaskSessionId: (target) => resolveLoopTaskSessionId(target), isLoopTaskBlockedByMainAiFailureLimit: (task) => isLoopTaskBlockedByMainAiFailureLimit(task), appendLoopMainSubChatSubtaskFinished: (task, subtask, runStatus, assistantContent) => appendLoopMainSubChatSubtaskFinished(task, subtask, runStatus, assistantContent), closeConversationTabAndRefreshPanel: (tabId) => closeLoopSubtaskTabAndRefreshPanel(tabId), prepareSubtaskTabClose: prepareLoopSubtaskTabClose, handleLoopPlusSubtaskContinuation: (context, tabId) => handleLoopPlusSubtaskContinuation(context, tabId), stopLoopPlusParent: (taskId) => stopLoopPlusParent(taskId) });
 const { resolvePromptRunTarget, collectRecentLoopTaskIdsForTarget, isLoopTaskCompatibleWithTarget, findResumableLoopTaskForTarget, getLoopMessagesForTarget, resolveLoopSubtaskConversationContext, isLoopSubtaskConversationTarget, getLastLoopAssistantContent, parseLoopMainDecision, extractJsonObjectText, normalizeLoopMainDecision, normalizeLoopEstimatedRemainingRounds, normalizeLoopSubtaskDecisions, normalizeSingleLoopSubtaskDecision, normalizeLoopRoundSummaries, normalizeSingleLoopRoundSummary, normalizeLoopAcceptance, normalizeLoopAcceptanceChecks, buildLoopSubtaskId, applyLoopMainDecision, getLoopDecisionSubtasks, appendLoopMainDecisionSummary, buildLoopSubtaskDecisionMarkdown, upsertLoopSubtask, upsertLoopSubtasks, getActiveLoopSubtaskIds, markLoopSubtaskRunFinished, finalizeLoopSubtaskRun, buildLoopSubtaskCompletionSummary, appendLoopSubtaskCompletionAutoLog, markLoopTaskInterrupted, isLoopTaskExecutionInterrupted, markLoopTaskStopped, markLoopTaskStoppedByUser, markLoopTaskStoppedAfterRuntimeEnded, resolvePromptRunTargetFromConversationTab, prepareLoopOriginContinuationTarget, resolveLoopMainPromptTarget, maybeWakeLoopMainAfterSubtaskContinuation, getLoopTargetSessionId, persistLoopMessagesForTarget, removeLoopMainDecisionMessage, replaceLoopMainDecisionMessageWithMarkdown, showLoopSubtaskDecisionMarkdown, hasCompleteLoopCompletionMessagesForTask, appendLoopAnswerConclusionMessage, appendLoopFinalSummaryMessage, appendSystemMessageForLoop, getLoopRoundRunStatus, getLatestLoopRoundRunRecord } = promptRunRuntimeHost;
 const modelSettingsHost = createModelSettingsHost({ getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getModelStore: () => modelStore, setModelStore: (store) => { modelStore = store; }, getWorkspaceSettings: () => workspaceSettings, setWorkspaceSettings: (settings) => { workspaceSettings = settings; }, getPromptHistoryStore: () => promptHistoryStore, setPromptHistoryStore: (store) => { promptHistoryStore = store; }, getModelSelectionStoreState: () => modelSelectionStoreState, getActiveWorkspaceKey: () => activeWorkspaceKey, getConfigHeartbeatSnapshot: () => configHeartbeatCoordinator.getSnapshot(), getOpenCodeThinkingState: () => openCodeThinkingState, setOpenCodeThinkingState: (state) => { openCodeThinkingState = state; }, getOpenCodeSmallThinkingState: () => openCodeSmallThinkingState, setOpenCodeSmallThinkingState: (state) => { openCodeSmallThinkingState = state; }, getOpenCodeModelsState: () => openCodeModelsState, setOpenCodeModelsState: (state) => { openCodeModelsState = state; }, getOpenCodeThinkingContextKey: () => openCodeThinkingContextKey, setOpenCodeThinkingContextKey: (value) => { openCodeThinkingContextKey = value; }, getOpenCodeThinkingConfigId: () => openCodeThinkingConfigId, setOpenCodeThinkingConfigId: (value) => { openCodeThinkingConfigId = value; }, getOpenCodeThinkingExactModels: () => openCodeThinkingExactModels, setOpenCodeThinkingExactModels: (value) => { openCodeThinkingExactModels = value; }, getOpenCodeThinkingRequestId: () => openCodeThinkingRequestId, setOpenCodeThinkingRequestId: (value) => { openCodeThinkingRequestId = value; }, getWorkspacePreferredConfigIdForCli: (cli) => getWorkspacePreferredConfigIdForCli(cli), resolveModelConfigIdForCli: (cli, configState) => resolveModelConfigIdForCli(cli, configState), postPanelState: () => postPanelState(), resolveWorkspaceCwd: () => resolveWorkspaceCwd(), getExtensionUri: () => extensionUri, updateStatusBar: () => updateStatusBar(), getActiveConversationTab: () => getActiveConversationTab(), getActiveConversationTabId: () => getActiveConversationTabId(), getConversationTabById: (tabId) => getConversationTabById(tabId), isTabRunActive: (tabId) => isTabRunActive(tabId), preloadUserMessageForPrompt: (input, target) => preloadUserMessageForPrompt(input, target), resolvePromptRunTarget: (tabId) => resolvePromptRunTarget(tabId), runPrompt: (input, options) => runPrompt(input, options), sanitizeConversationTabRecord: (value) => sanitizeConversationTabRecord(value), logError: (event, payload) => logError(event, payload) });
-const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, normalizeLoopMaxRounds, normalizeStoredLoopMaxRounds, parseLoopMaxRoundsValue, getGlobalLoopMaxRounds, getGlobalLoopPlusDecisionSubtaskMax, getEffectiveLoopPlusDecisionSubtaskMax, getGlobalLoopPlusSubtaskMaxRounds, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
+const { getOpenCodeThinkingStateForRole, setOpenCodeThinkingStateForRole, persistOpenCodeVariant, updateOpenCodeVariantForCurrentSelection, updateOpenCodeVariantForConfig, resolveOpenCodeRoleModelsForConfig, refreshOpenCodeThinkingState, getOpenCodeVariantForRun, resolvePromptRunTargetSessionId, resolveLoopTaskSessionId, isLoopTaskBlockedByMainAiFailureLimit, normalizeThinkingModeForCli, getWorkspaceThinkingMode, getCliModelThinkingKey, getStoredCliModelThinkingMode, setCliModelThinkingMode, getEffectiveThinkingMode, getWorkspaceInteractiveMode, setWorkspaceInteractiveModeForCli, getGlobalHumanInteractionEnabled, shouldRequireExplicitFinalAnswerForRun, buildLongTermMemoryRuntimeSettings, getLongTermMemoryDisabledReason, getEffectiveLongTermMemoryEnabled, getActiveWorkspaceMemoryPaths, ensureActiveWorkspaceHarnessScaffold, confirmAndInitializeWorkspaceHarness, createCodeGraphTerminal, installCodeGraphForWorkspace, isCodeGraphInstalling, buildArchitectureInitializationModelPrompt, maybePromptInitializeArchitectureWithAi, getGlobalAutoCompactContextAfterRun, getGlobalLoopPlusDecisionSubtaskMax, getEffectiveLoopPlusDecisionSubtaskMax, getGlobalLoopPlusSubtaskMaxRounds, getModelStoreOptions, getWorkspaceSettingsStoreOptions, getPromptHistoryStoreOptions, errorToMessage, ensureCliModelStore, readModelStore, writeModelStore, loadModelStore, getActiveConfigIdForCli, getSelectedCliModel, getSelectedLoopCliModel, getSelectedLoopThinkingMode, getSelectedLoopSubtaskCli, getSelectedLoopFrontendCli, selectLoopSubtaskCli, selectLoopFrontendCli, selectLoopFullstackCli, getSelectedLoopFullstackCli, selectLoopSubtaskMode, getSelectedLoopSubtaskMode, setLoopRoleExplicitModel, setLoopRoleThinking, seedLoopFullstackRole, getLoopRoleExplicitModel, refreshLoopSubtaskOpenCodeModels, getLoopSubtaskOpenCodeModels, getManagedModelOptionsForCli, getModelOptionsForCli, selectCliModel: selectCliModelFromStore, selectCliLoopModel: selectCliLoopModelFromStore, setSelectedLoopThinkingMode, updateOpenCodeRoleModelForConfig: updateOpenCodeRoleModelForConfigFromStore, addCliModel, renameCliModel, deleteCliModel, moveCliModel, getEffectiveCliArgs, buildModelState, loadWorkspaceSettings, saveWorkspaceSettings, loadPromptHistoryStore, ensurePromptHistoryStore, buildPromptHistoryState, recordPromptHistory, setPromptHistoryFavorite, clearPromptHistory, getPromptHistoryFilePath, readPromptHistoryFile, writePromptHistoryFile, deletePromptHistoryFile, cleanupPromptHistoryRetentionAcrossWorkspaces, collectWorkspaceKeysForPromptHistoryCleanup } = modelSettingsHost;
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
   selectCliModelFromStore(cli, model, configId);
@@ -1627,6 +1622,7 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   isTabRunActive,
   hasActiveSubtasks: hasActiveLoopSubtasks,
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
+  subtaskRoundLimit: () => getGlobalLoopPlusSubtaskMaxRounds(),
   getActiveConfigIdForCli,
   appendLoopRound,
   appendMessageToStore,
@@ -4466,14 +4462,12 @@ async function runLoopPromptOrchestration(
   if (!task) {
     return;
   }
-  task = ensureLoopTaskMaxRoundsAtLeast(task, getGlobalLoopMaxRounds());
   onTaskOwnershipAcquired?.(task.id, target);
   await postPanelState();
   void openLoopGroupChatPanel(task.id);
 
-  while (round <= task.maxRounds) {
-    const latestRecord: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
-    const latest: LoopTaskRecord = ensureLoopTaskMaxRoundsAtLeast(latestRecord, getGlobalLoopMaxRounds());
+  while (true) {
+    const latest: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
     task = latest;
     if (isLoopTaskBlockedByMainAiFailureLimit(latest)) {
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(latest));
@@ -4555,7 +4549,7 @@ async function runLoopPromptOrchestration(
       return;
     }
     if (decisionRunResult.status === "needs-review") {
-      if (decisionRunResult.decision?.status === "blocked") {
+      if (decisionRunResult.decision) {
         removeLoopMainDecisionMessage(target, decisionRunResult.task.id, round);
       }
       appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(decisionRunResult.task));
@@ -4589,25 +4583,12 @@ async function runLoopPromptOrchestration(
       return;
     }
 
-    const nextMainRound = round + 1;
-    if (nextMainRound <= decisionRunResult.task.maxRounds) {
-      appendSystemMessageForLoop(
-        target,
-        buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask))
-      );
-    }
-    round = nextMainRound;
+    round += 1;
+    appendSystemMessageForLoop(
+      target,
+      buildLoopMainResumeText(decisionRunResult.task.id, round, subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask))
+    );
   }
-
-  if (!task) {
-    return;
-  }
-  const finalRecord = updateLoopTaskRecord(task.id, {
-    status: "needs-review",
-    updatedAt: Date.now(),
-    finalSummary: "Reached the maximum automatic loop rounds. Manual review is required.",
-  });
-  appendSystemMessageForLoop(target, buildLoopTaskNeedsReviewText(finalRecord ?? task));
 }
 
 function requireLoopOrchestrationHost(): LoopOrchestrationHost {
@@ -6103,7 +6084,6 @@ function createLoopTaskRecord(
     status: "running",
     createdAt: now,
     updatedAt: now,
-    maxRounds: getGlobalLoopMaxRounds(),
     currentRound: 0,
     communicationDir: communication.dir,
     mainCommunicationFile: communication.mainFile,

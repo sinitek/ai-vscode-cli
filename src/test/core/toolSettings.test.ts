@@ -288,7 +288,6 @@ test("normalizes global Loop tool settings", () => {
       loopSubtaskMaxThinkingMode: "high",
     }),
     {
-      loopMaxRounds: 42,
       loopPlusDecisionSubtaskMax: 8,
       loopPlusSubtaskMaxRounds: 100,
       humanInteractionTimeoutMinutes: 10,
@@ -334,7 +333,6 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
       [getLegacyLoopPropertyKey("memoryAutoExtractAfterLoopTask")]: true,
     }),
     {
-      loopMaxRounds: 31,
       memoryAutoExtractAfterLoopTask: true,
     },
   );
@@ -343,7 +341,7 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
       loopMaxRounds: 12,
       [getLegacyLoopPropertyKey("loopMaxRounds")]: 99,
     }),
-    { loopMaxRounds: 12 },
+    {},
   );
 });
 

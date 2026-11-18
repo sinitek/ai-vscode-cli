@@ -24,7 +24,6 @@ export type PreferenceSettingDeps = Pick<
   | "showWebviewError"
   | "updateStoredToolSettings"
   | "saveWorkspaceSettings"
-  | "normalizeLoopMaxRounds"
   | "isMacTaskShell"
   | "readStoredToolSettings"
   | "getCurrentCli"
@@ -78,13 +77,6 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
         || "autoCompactContextBeforeRun" in workspaceSettings)) {
       delete workspaceSettings.autoCompactContextAfterRun;
       delete workspaceSettings.autoCompactContextBeforeRun;
-      deps.saveWorkspaceSettings(workspaceSettings);
-    }
-  }),
-  command("loopMaxRounds", (message, deps, { workspaceSettings }) => {
-    deps.updateStoredToolSettings({ loopMaxRounds: deps.normalizeLoopMaxRounds(message.value) });
-    if ("loopMaxRounds" in workspaceSettings) {
-      delete workspaceSettings.loopMaxRounds;
       deps.saveWorkspaceSettings(workspaceSettings);
     }
   }),

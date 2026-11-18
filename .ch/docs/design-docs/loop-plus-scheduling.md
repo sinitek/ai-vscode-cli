@@ -322,11 +322,11 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 
 ## 子任务轮次预算
 
-工具设置“AI任务配置”提供 `loopPlusSubtaskMaxRounds`（Loop+ 子任务轮次），默认 200，范围 50–9999，写入 `~/.sinitek_cli/settings.json`。每个成功入队的新 attempt 计 1 轮，包含并行、排队、免验收和 `reprompt`；恢复同一次执行和排队提升不重复计数，关闭不退还轮次。`dispatch`、`steer` 或 `accept` 的新派发及重派总数超过剩余额度时不新增 attempt，父任务进入 `needs-review`；`accept` 已确认的验收仍保留。已有执行、报告确认、验收及满足门禁的最终完成不受额度阻拦。任务保存预算，全局值提高时只升不降；旧验收次数设置不转换为新预算，缺新字段采用当前全局值。经典 Loop 的 `loopMaxRounds` 保持独立。
+工具设置“AI任务配置”提供「Loop/Loop+ 子任务轮次上限」，复用全局键 `loopPlusSubtaskMaxRounds`（默认 200，范围 50–9999）。每个父任务独立累计，每次接纳的新派发或重派（含并行、排队和免验收）各计 1 轮，同一次执行的重试、恢复及队列提升不重复计数。最新设置约束下一次派发，超额批次不新增任何子任务并进入 `needs-review`；已有任务及结果保留，已有报告、复核、验收和最终完成不消耗额度。旧 `loopMaxRounds` 和旧验收次数设置不再生效。 经典 Loop 在接纳批次时与子任务记录一起持久化 `classicSubtaskDispatchCount`，旧记录按不同的（子任务 ID、历史主任务轮次）和缺运行历史的子任务估算；`maxRounds` 仅兼容读取，不参与调度或恢复。Loop+ 沿用快照 `seenAttempts` 计数；`dispatch`、`steer` 或 `accept` 的新派发与重派共用剩余额度，关闭不退还轮次，`accept` 已确认的验收继续保留。
 
 实现使用 scheduler 持久化 `seenAttempts.length` 作为已用轮次，避免重启清零或遗漏免验收。整份决策按 `subtasks.length + controls.reprompt.length` 预检；新派发/重派超额时不做控制或执行副作用，`accept` 已提交的本批验收继续保留。旧 `loopPlusMaxAcceptances` 已退役，读取和更新设置时不再使用，不自动迁移成含义不同的轮次预算。
 
-主模型内部决策保护按 `max(200, 子任务轮次 × 3)` 调整，保留无界调度保护并容纳每项派发、验收与单独收尾；不会用固定 200 次调用提前截断较高轮次预算。显式注入的测试保护阈值仍优先。
+主模型内部决策保护按 `max(200, max(当前上限, 已用轮次) × 3)` 调整，保留无界调度保护并容纳每项派发、验收与单独收尾；不会用固定 200 次调用提前截断较高轮次预算。显式注入的测试保护阈值仍优先。
 
 
 ### 需求变更：撤销验收与关闭子任务

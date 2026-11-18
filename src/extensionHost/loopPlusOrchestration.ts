@@ -81,7 +81,7 @@ const DECISION_SAFETY_LIMIT = 200;
 const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const PROTOCOL_RETRY_LIMIT = 2;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
-const LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY = "已达到 Loop+ 子任务轮次上限，请提高“Loop+ 子任务轮次”后继续派发。";
+const LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY = "Loop+ 子任务轮次不足，请提高“Loop/Loop+ 子任务轮次上限”后继续派发。";
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -979,7 +979,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     while (!runtime.autoPaused && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped) {
       const decisionSafetyLimit = deps.decisionSafetyLimit ?? Math.max(
         DECISION_SAFETY_LIMIT,
-        subtaskRoundLimitFor(runtime) * MAIN_DECISIONS_PER_SUBTASK_ROUND,
+        Math.max(subtaskRoundLimitFor(runtime), runtime.scheduler.snapshot().seenAttempts.length) * MAIN_DECISIONS_PER_SUBTASK_ROUND,
       );
       if (runtime.decisionCount >= decisionSafetyLimit) {
         pause(runtime, "needs-review", "loop-plus-safety-limit");
@@ -2532,19 +2532,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function subtaskRoundLimitFor(runtime: ParentRuntime): number {
     const globalLimit = configuredSubtaskRoundLimit();
     const task = deps.readTask(runtime.taskId);
-    const stored = task?.loopPlusSubtaskMaxRounds;
-    const hasStored = typeof stored === "number" && Number.isFinite(stored);
-    const resolved = hasStored
-      ? Math.max(resolveLoopPlusSubtaskMaxRounds(stored), globalLimit)
-      : globalLimit;
-    if (task && task.loopPlusSubtaskMaxRounds !== resolved) {
+    if (task && task.loopPlusSubtaskMaxRounds !== globalLimit) {
       updateTask(runtime.taskId, {
-        loopPlusSubtaskMaxRounds: resolved,
+        loopPlusSubtaskMaxRounds: globalLimit,
         schedulingMode: "event_driven",
         updatedAt: now(),
       });
     }
-    return resolved;
+    return globalLimit;
   }
 
   function liveAcceptanceEventIds(snapshot: LoopPlusSchedulerSnapshot): string[] {

@@ -383,7 +383,6 @@ function createWorkspaceOptions(
       value === "codex" || value === "claude" || value === "opencode"
     ),
     isThinkingMode: (value): value is ThinkingMode => value === "off" || value === "high",
-    normalizeLoopMaxRounds: () => 20,
     sanitizeConversationTabRecord: () => null,
     ...modeOptions,
   };

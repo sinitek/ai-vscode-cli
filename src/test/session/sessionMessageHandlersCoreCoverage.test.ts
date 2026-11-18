@@ -337,7 +337,6 @@ function createHarness(): HandlerHarness {
     isInteractiveMode,
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
-    normalizeLoopMaxRounds: () => 3,
     isCliName,
     updateStoredToolSettings: () => true,
     isMacTaskShell,

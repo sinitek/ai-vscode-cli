@@ -400,7 +400,6 @@ export type PanelState = {
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
   newTaskInteractiveMode?: NewTaskInteractiveMode;
-  loopMaxRounds: number;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
   loopPlusSubtaskMaxRounds: number;

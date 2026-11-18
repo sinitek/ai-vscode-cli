@@ -723,6 +723,7 @@ function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
 function applyLoopMainDecision(
   taskId: string,
   decision: LoopMainDecision,
+  subtaskRoundLimit: number,
 ): { status: "completed" | "continue" | "blocked" | "clarify"; task: LoopTaskRecord; subtasks?: LoopSubtaskRecord[] } {
   const existing = readLoopTaskRecord(taskId);
   if (!existing) {
@@ -732,8 +733,12 @@ function applyLoopMainDecision(
     task: existing,
     decision,
     now: Date.now(),
+    subtaskRoundLimit,
   });
-  const task = updateLoopTaskRecord(taskId, transition.patch) ?? existing;
+  const task = updateLoopTaskRecord(taskId, transition.patch);
+  if (!task) {
+    throw new Error(`loop-task-missing:${taskId}`);
+  }
   if (transition.appendDecisionMessages) {
     appendLoopMainDecisionSummary(task, decision);
     appendLoopMainSubChatMainDecision(task, decision, transition.subtasks);

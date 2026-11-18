@@ -38,7 +38,6 @@ const LOOP_TASK_STORE_FILENAME = "loop-tasks.json";
 const LOOP_TASK_STORE_FLAT_FILE = path.join(DATA_DIR, LOOP_TASK_STORE_FILENAME);
 const LOOP_COMMUNICATION_DIR = path.join(DATA_DIR, "loop-communications");
 const LEGACY_LOOP_STORAGE_PATHS = getLegacyLoopStoragePaths(DATA_DIR);
-const LOOP_DEFAULT_MAX_ROUNDS = 20;
 const LOOP_MIN_MAX_ROUNDS = 1;
 const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_MAX_SKILL_IDS_PER_SUBTASK = 3;
@@ -182,6 +181,7 @@ export type LoopTaskRecord = {
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
   loopPlusSubtaskMaxRounds?: number;
+  classicSubtaskDispatchCount?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
   loopProgressPercent?: number;
@@ -197,7 +197,7 @@ export type LoopTaskRecord = {
   runtimeInterrupted?: boolean;
   createdAt: number;
   updatedAt: number;
-  maxRounds: number;
+  maxRounds?: number;
   currentRound: number;
   communicationDir: string;
   mainCommunicationFile: string;
@@ -768,24 +768,6 @@ export function updateLoopTaskRecord(
   return next;
 }
 
-export function ensureLoopTaskMaxRoundsAtLeast(
-  task: LoopTaskRecord,
-  minimumMaxRounds: number,
-): LoopTaskRecord {
-  const normalizedMinimum = normalizeStoredLoopMaxRounds(minimumMaxRounds);
-  if (normalizedMinimum <= task.maxRounds) {
-    return task;
-  }
-  return updateLoopTaskRecord(task.id, {
-    maxRounds: normalizedMinimum,
-    updatedAt: Date.now(),
-  }) ?? {
-    ...task,
-    maxRounds: normalizedMinimum,
-    updatedAt: Date.now(),
-  };
-}
-
 export function appendLoopRound(taskId: string, round: LoopRoundRecord): void {
   const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true });
   if (!storeFile) {
@@ -949,6 +931,8 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const loopPlusSubtaskMaxRounds = normalizeStoredLoopPlusSubtaskMaxRounds(
     (raw as { loopPlusSubtaskMaxRounds?: unknown }).loopPlusSubtaskMaxRounds,
   );
+  const classicSubtaskDispatchCount = raw.classicSubtaskDispatchCount;
+  const legacyMaxRounds = parseLoopMaxRoundsValue(raw.maxRounds);
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
@@ -977,6 +961,8 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
     ...(loopPlusSubtaskMaxRounds !== undefined ? { loopPlusSubtaskMaxRounds } : {}),
+    ...(typeof classicSubtaskDispatchCount === "number" && Number.isSafeInteger(classicSubtaskDispatchCount)
+      && classicSubtaskDispatchCount >= 0 ? { classicSubtaskDispatchCount } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
     ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
@@ -988,7 +974,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(raw.runtimeInterrupted === true ? { runtimeInterrupted: true } : {}),
     createdAt,
     updatedAt,
-    maxRounds: normalizeStoredLoopMaxRounds(raw.maxRounds),
+    ...(legacyMaxRounds !== null ? { maxRounds: legacyMaxRounds } : {}),
     currentRound: typeof raw.currentRound === "number" ? raw.currentRound : 0,
     communicationDir: typeof raw.communicationDir === "string" ? raw.communicationDir : getLoopCommunicationPaths(raw.id).dir,
     mainCommunicationFile: typeof raw.mainCommunicationFile === "string" ? raw.mainCommunicationFile : getLoopCommunicationPaths(raw.id).mainFile,
@@ -1513,14 +1499,6 @@ function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefin
     return undefined;
   }
   return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
-}
-
-function normalizeStoredLoopMaxRounds(value: unknown): number {
-  const rawValue = parseLoopMaxRoundsValue(value);
-  if (rawValue === null) {
-    return LOOP_DEFAULT_MAX_ROUNDS;
-  }
-  return rawValue;
 }
 
 function parseLoopMaxRoundsValue(value: unknown): number | null {

@@ -170,7 +170,6 @@ export type PanelMessageHandlerDeps = {
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (mode: InteractiveMode) => InteractiveMode;
   loadModelStore: () => void;
-  normalizeLoopMaxRounds: (value: unknown) => number;
   isCliName: (value: string) => value is CliName;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   readStoredToolSettings?: () => ToolSettingsState;
