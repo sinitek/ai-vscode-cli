@@ -1048,6 +1048,51 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         return dispatchPromptPayload(payload, tabId);
       }
 
+      function revealPromptCaret(input, position) {
+        if (input.scrollHeight <= input.clientHeight) {
+          return;
+        }
+        if (position === input.value.length) {
+          input.scrollTop = Math.max(0, input.scrollHeight - input.clientHeight);
+          return;
+        }
+
+        const style = getComputedStyle(input);
+        const mirror = document.createElement("div");
+        Object.assign(mirror.style, {
+          position: "fixed",
+          top: "0",
+          left: "0",
+          visibility: "hidden",
+          boxSizing: "border-box",
+          width: input.clientWidth + "px",
+          padding: style.padding,
+          font: style.font,
+          lineHeight: style.lineHeight,
+          letterSpacing: style.letterSpacing,
+          tabSize: style.tabSize,
+          whiteSpace: style.whiteSpace,
+          overflowWrap: style.overflowWrap,
+          wordBreak: style.wordBreak,
+        });
+        mirror.textContent = input.value;
+        document.body.appendChild(mirror);
+        const range = document.createRange();
+        range.setStart(mirror.firstChild, position);
+        range.collapse(true);
+        const caretRect = range.getBoundingClientRect();
+        const mirrorTop = mirror.getBoundingClientRect().top;
+        mirror.remove();
+
+        const caretTop = caretRect.top - mirrorTop;
+        const caretBottom = caretRect.bottom - mirrorTop;
+        if (caretTop < input.scrollTop) {
+          input.scrollTop = Math.floor(caretTop);
+        } else if (caretBottom > input.scrollTop + input.clientHeight) {
+          input.scrollTop = Math.ceil(caretBottom - input.clientHeight);
+        }
+      }
+
       function insertPromptText(text) {
         const input = elements.promptInput;
         const value = input.value || "";
@@ -1055,9 +1100,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const selectionEnd = typeof input.selectionEnd === "number" ? input.selectionEnd : value.length;
         input.value = value.slice(0, selectionStart) + text + value.slice(selectionEnd);
         const nextPos = selectionStart + text.length;
-        input.selectionStart = nextPos;
-        input.selectionEnd = nextPos;
         input.focus();
+        input.setSelectionRange(nextPos, nextPos);
+        revealPromptCaret(input, nextPos);
       }
 
       function buildInsertText(paths, prefix = "@") {

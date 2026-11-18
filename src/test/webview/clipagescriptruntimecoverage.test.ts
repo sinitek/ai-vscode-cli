@@ -5452,6 +5452,44 @@ test("empty Explorer context reference messages do not overwrite selected text",
   assert.equal(input.selectionEnd, input.value.length);
 });
 
+test("pasted attachments append references and reveal the caret at the end of an overflowing prompt", async () => {
+  class AttachmentFileReader {
+    result = "data:text/plain;base64,aGVsbG8=";
+    onload?: () => void;
+    readAsDataURL(): void {
+      this.onload?.();
+    }
+  }
+  const { document, window, posted } = createRuntimeHarness(undefined, AttachmentFileReader);
+  const input = document.getElementById("promptInput");
+  input.value = "第一行\n第二行\n请查看 ";
+  input.setSelectionRange(input.value.length, input.value.length);
+  input.clientHeight = 60;
+  input.scrollHeight = 180;
+
+  assert.equal(input.dispatchEvent({ type: "paste", clipboardData: { items: [] } }), true);
+  const file = { name: "hello.txt", type: "text/plain", size: 5 };
+  assert.equal(input.dispatchEvent({
+    type: "paste",
+    clipboardData: { items: [{ kind: "file", getAsFile: () => file }] },
+  }), false);
+  await Promise.resolve();
+  assert.deepEqual(posted.at(-1), {
+    type: "uploadFiles",
+    files: [{ name: "hello.txt", type: "text/plain", dataUrl: "data:text/plain;base64,aGVsbG8=" }],
+  });
+
+  window.dispatchMessage({ type: "uploadResult", paths: [] });
+  assert.equal(input.value, "第一行\n第二行\n请查看 ");
+  assert.equal(input.scrollTop, 0);
+  window.dispatchMessage({ type: "uploadResult", paths: ["/tmp/a.png", "/tmp/my folder/hello.txt"] });
+  assert.equal(input.value, '第一行\n第二行\n请查看 @/tmp/a.png @"/tmp/my folder/hello.txt" ');
+  assert.equal(input.selectionStart, input.value.length);
+  assert.equal(input.selectionEnd, input.value.length);
+  assert.equal(input.focused, true);
+  assert.equal(input.scrollTop, input.scrollHeight - input.clientHeight);
+});
+
 test("prompt drops keep attachment uploads and ordinary text fallback", async () => {
   class DropFileReader {
     result = "data:text/plain;base64,aGVsbG8=";
