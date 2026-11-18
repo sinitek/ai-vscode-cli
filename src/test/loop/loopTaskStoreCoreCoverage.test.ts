@@ -393,6 +393,15 @@ test("persists classic subtask dispatch counts without deriving them from legacy
   assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 20);
 });
 
+test("leaves an absent legacy maxRounds absent on disk and after reload", () => {
+  const task = createTask();
+  delete task.maxRounds;
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  assert.equal("maxRounds" in JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")).tasks[0], false);
+  assert.equal("maxRounds" in readPersistedTask(task.taskStoreFile, task.id), false);
+});
+
 test("writes normalized data and propagates write failures at the persistence boundary", () => {
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
@@ -1189,6 +1198,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   const tasks = loopTaskStore.readLoopTaskStore(filePath).tasks;
   const task = tasks[0];
   assert.equal(task.maxRounds, undefined);
+  assert.equal("maxRounds" in task, false);
   assert.deepEqual(task.subTasks[0]?.skillIds, ["valid-skill"]);
   assert.equal(task.subTasks[0]?.skillGuidance, "guidance");
   assert.equal(task.subTasks[0]?.conflictGroup, "group-a");
@@ -1208,6 +1218,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   }]);
   assert.deepEqual(task.completionRequirementCoverage, [{ name: "acceptance", passed: false, detail: "missing name" }]);
   assert.equal(tasks[1]?.createdAt, tasks[1]?.updatedAt);
+  assert.equal("maxRounds" in tasks[1], false);
   assert.equal(tasks.length, 2);
 
   assert.equal(

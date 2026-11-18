@@ -192,6 +192,42 @@ for (const failure of ["preparation", "registration", "binding"] as const) {
   });
 }
 
+for (const { label, maxRounds, limit } of [
+  { label: "valid", maxRounds: 3, limit: 3 },
+  { label: "missing", maxRounds: undefined, limit: 20 },
+  { label: "corrupt", maxRounds: Number.POSITIVE_INFINITY, limit: 20 },
+]) {
+  test(`director pauses at the classic round limit with a ${label} legacy maxRounds`, async (t) => {
+    const ownership = createLoopOrchestrationOwnershipTracker();
+    const rounds: number[] = [];
+    const h = harness({ acquireDirectorOwnership: ownership.acquire, runDirectorDecision: async ({ task, round }) => {
+      rounds.push(round);
+      const updated = h.deps.updateTask(task.id, { currentRound: round })!;
+      if (round === limit) h.composition.wakeDirector(task.id);
+      return { status: "pending-requirements", task: updated };
+    } });
+    t.after(h.dispose);
+    const createRoot = h.deps.createRoot;
+    t.mock.method(h.deps, "createRoot", (...args: Parameters<typeof createRoot>) => {
+      const task = createRoot(...args);
+      task.currentRound = limit - 1;
+      if (maxRounds === undefined) delete task.maxRounds;
+      else task.maxRounds = maxRounds;
+      h.fixture.saveTask(task);
+      return task;
+    });
+
+    await h.start();
+    await waitForLoopPlus(() => h.fixture.readTask("root-1")?.status === "needs-review"
+      && ownership.getCount("root-1") === 0, "director round limit and ownership release");
+    const paused = h.fixture.readTask("root-1")!;
+    assert.deepEqual(rounds, [limit]);
+    assert.equal(paused.currentRound, limit);
+    assert.match(paused.finalSummary ?? "", /经典 Loop 轮次上限/);
+    assert.equal(ownership.getCount(paused.id), 0);
+  });
+}
+
 test("director ownership covers asynchronous preparation and coordination wait, then releases on stop", async (t) => {
   const ownership = createLoopOrchestrationOwnershipTracker(), entered = latch(), finish = latch();
   const h = harness({ acquireDirectorOwnership: ownership.acquire, runDirectorDecision: async ({ task }) => {

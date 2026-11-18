@@ -4,7 +4,7 @@ import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMet
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "../departmentConfiguration";
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
-import type { LoopMainDecision, LoopTaskRecord } from "../loopTaskStore";
+import { resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -209,7 +209,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         if (!deps.waitForDirectorClarification || !await deps.waitForDirectorClarification(task, c.target)) return;
         continue;
       }
-      if (task.currentRound >= task.maxRounds) {
+      if (task.currentRound >= resolveLegacyLoopMaxRounds(task.maxRounds)) {
         if (!deps.updateTask(root, { status: "needs-review", finalSummary: "总监已达到经典 Loop 轮次上限，等待继续。" })) throw new Error("总监暂停状态保存失败。");
         return;
       }
