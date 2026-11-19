@@ -49,6 +49,7 @@ export type DepartmentGroupChatProjection = {
   leaders: Array<{
     taskId: string;
     participant: LoopGroupChatPanelParticipant;
+    progressPercent?: number;
     employees: LoopGroupChatPanelParticipant[];
   }>;
   maxLeaders: number;

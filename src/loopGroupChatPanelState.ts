@@ -172,7 +172,7 @@ function resolveLoopMemberLastStartedAt(
   return typeof updatedAt === "number" && Number.isFinite(updatedAt) ? updatedAt : null;
 }
 
-function resolveLoopPanelProgressPercent(task: LoopTaskRecord, loopPlus?: LoopPlusPanelProjection | null): number {
+export function resolveLoopPanelProgressPercent(task: LoopTaskRecord, loopPlus?: LoopPlusPanelProjection | null): number {
   const completed = loopPlus ? loopPlus.ok && loopPlus.phase === "completed" : task.status === "completed";
   const storedProgress = loopPlus ? task.loopPlusProgressPercent : task.loopProgressPercent;
   return completed ? 100 : Math.min(normalizeLoopProgressPercent(storedProgress) ?? 0, 99);

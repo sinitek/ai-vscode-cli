@@ -1,5 +1,6 @@
 import { normalizeDepartmentMetadata } from "../department";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import type { DepartmentEmployeeAllocationProjection, DepartmentGroupChatProjection, LoopGroupChatPanelParticipant } from "../webview/loopGroupChatPanelTypes";
@@ -92,8 +93,7 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
     sessionId: task.sessionId, summary: task.finalSummary, updatedAt: task.updatedAt };
 }
 
-function employees(task: LoopTaskRecord): LoopGroupChatPanelParticipant[] {
-  const projection = projectLoopPlusPanel(task);
+function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel> = projectLoopPlusPanel(task)): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
   return projection.seenAttempts.flatMap((attempt) => {
     const spec = task.subTasks.find((item) => item.id === attempt.subtaskId);
@@ -167,7 +167,11 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     role: meta.role as "director" | "leader", rootTaskId: root.id,
     ...(meta.parentTaskId ? { parentTaskId: meta.parentTaskId } : {}), title: meta.moduleTitle,
     director: participant(root, "director"),
-    leaders: leaders.map((leader) => ({ taskId: leader.id, participant: participant(leader, "leader"), employees: employees(leader) })),
+    leaders: leaders.map((leader) => {
+      const loopPlus = projectLoopPlusPanel(leader);
+      return { taskId: leader.id, participant: participant(leader, "leader"),
+        progressPercent: resolveLoopPanelProgressPercent(leader, loopPlus), employees: employees(leader, loopPlus) };
+    }),
     maxLeaders: valid ? capacity!.maxLeaders : rootMeta.limits.maxLeaders,
     maxEmployees: valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees,
     activeLeaders: valid ? capacity!.leaders.length : null,

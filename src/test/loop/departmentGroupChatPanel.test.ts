@@ -53,6 +53,20 @@ for (const role of ["director", "leader"] as const) {
   });
 }
 
+test("director member panel displays created leader progress beside status", () => {
+  const state = departmentState("director");
+  const projection: DepartmentGroupChatProjection = state.department!;
+  projection.leaders[0].progressPercent = 25;
+  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+  assert.match(patch.rosterPanelHtml, /<span class="member-status-running">运行中<\/span>&nbsp;<span class="department-leader-progress">25%<\/span>/u);
+  const uncreatedLeader = patch.rosterPanelHtml.match(/data-department-leader-task-id=""[\s\S]*?<\/li>/u)?.[0] ?? "";
+  assert.doesNotMatch(uncreatedLeader, /department-leader-progress/u);
+
+  const leaderState = departmentState("leader");
+  leaderState.department!.leaders[0].progressPercent = 25;
+  assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(leaderState, 1).rosterPanelHtml, /department-leader-progress/u);
+});
+
 test("task suffix distinguishes modules sharing title and public timestamp prefix", () => {
   const a = departmentState("leader");
   const b = departmentState("leader");

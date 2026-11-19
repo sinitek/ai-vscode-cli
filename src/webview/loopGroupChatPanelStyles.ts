@@ -673,6 +673,10 @@ ${DIALOG_SHELL_STYLES}
       .member-status-inactive {
         color: var(--vscode-descriptionForeground);
       }
+      .department-leader-progress {
+        margin-left: 6px;
+        font-variant-numeric: tabular-nums;
+      }
       .timeline {
         width: 100%;
         max-width: 960px;

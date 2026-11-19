@@ -16,6 +16,7 @@ type DepartmentGroupChatProjection = {
   leaders: Array<{
     taskId: string;
     participant: LoopGroupChatPanelParticipant;
+    progressPercent?: number;
     employees: LoopGroupChatPanelParticipant[];
   }>;
   maxLeaders: number;
@@ -26,6 +27,8 @@ type DepartmentGroupChatProjection = {
 ```
 
 成员树直接消费每组 `employees`，不推断归属。组长 `taskId` 留空表示群聊尚未创建，入口禁用；`participant.sessionId` 是 CLI 会话 ID，不是群聊创建证据。默认同时运行上限 4 名组长、全部门共享 20 名员工及完成后释放，由宿主运行时提供实际计数；UI 不修改配额或任务状态。
+
+总监群聊在已创建的组长状态文案右侧显示 `progressPercent`。宿主从可信组长记录复用组长群聊的总体进度计算；组长状态更新后，已打开的总监页接收 `contentPatch`，无需打开组长弹窗。未创建的组长不显示百分比。
 
 `getDepartmentRoleIdentity("director" | "leader" | "employee")` 返回 `{icon, label}`，分别为 👴🏻/总监、👨🏻/组长、👶🏻/员工。总监与组长使用 emoji 标题标识；员工实际会话 tab 接线尚未实现。本接口不设置 VS Code 原生 `iconPath`。
 
