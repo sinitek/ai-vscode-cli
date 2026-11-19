@@ -1153,7 +1153,7 @@
     {
       "id": "plugin.rule.loop_plus_next_step_plan",
       "name": "Loop+ 主任务按需生成并续跑下一步计划",
-      "description": "Loop+ 主模型可在 dispatch、steer、accept 或 wait 决策中自愿返回短 nextStepPlan（必填 objective，最多 240 字符；可选 1 至 4 条 acceptanceCriteria，每条最多 120 字符）。宿主仅在整份继续型决策有效并应用后持久化；下一次主任务提示注入计划，后续有效继续决策可消费或替换。计划不创建子任务、不确认验收或绕过根需求、任务/调度状态、冻结前缀及既有验收、依赖、停止、预算和完成门禁。协议错误、纠错、clarify、非终态暂停及宿主重建保留计划；blocked、父任务成功完成和用户停止清除。clarify、blocked、completed 不得携带新计划。",
+      "description": "Loop+ 主模型可在 dispatch、steer、accept 或 wait 决策中自愿返回短 nextStepPlan（必填 objective，最多 240 字符；可选 1 至 4 条 acceptanceCriteria，每条最多 120 字符）。首次领取新验收批次时先判断是否存在不依赖待验收结果、与冻结交付无冲突且能在当前并发槽和轮次额度内立即启动的独立任务；有则先 dispatch 并持久化 nextStepPlan，自动续跑同一冻结批次验收；没有则直接验收。验收修复和依赖后继不得提前派发；旧冻结批次不重复开放机会。宿主仅在整份继续型决策有效并应用后持久化计划；下一次主任务提示注入，后续有效继续决策可消费或替换。计划不确认验收或绕过根需求、任务/调度状态、冻结前缀及既有验收、依赖、停止、预算和完成门禁。协议错误、纠错、clarify、非终态暂停及宿主重建保留计划；blocked、父任务成功完成和用户停止清除。clarify、blocked、completed 不得携带新计划。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",

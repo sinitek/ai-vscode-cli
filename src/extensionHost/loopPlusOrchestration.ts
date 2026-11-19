@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
 import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
+import { buildLoopSubtaskExecutionPlan } from "../loopParallel";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
 import {
   buildNextLoopMainAiFailureState,
@@ -257,6 +258,7 @@ type InFlightAttempt = {
 
 type MainStep = {
   kind: LoopPlusMainKind;
+  allowDispatchBeforeReview?: boolean;
   eventId: string | null;
   eventIds: string[];
   reportEventIds: string[];
@@ -298,6 +300,8 @@ type ParentRuntime = {
   currentMainStep: MainStep | null;
   /** 未确认批次的请求快照；重试和暂停恢复不得混入后到事件或消息。 */
   reviewStep: MainStep | null;
+  /** 宿主重建前已经存在的事件按冻结批次恢复，不重新开放派发优先机会。 */
+  recoveredReviewEventIds: Set<string>;
   launching: Set<string>;
   launchEpoch: Map<string, number>;
   mainGeneration: number;
@@ -657,8 +661,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     input: LoopPlusRunInput,
     scheduler: LoopPlusScheduler,
   ): ParentRuntime {
+    const snapshot = scheduler.snapshot();
     const meta = new Map<string, SubtaskMeta>();
-    const latestDependencies = new Map(scheduler.snapshot().seenAttempts.map((item) => [item.subtaskId, item.dependsOn ?? []]));
+    const latestDependencies = new Map(snapshot.seenAttempts.map((item) => [item.subtaskId, item.dependsOn ?? []]));
     task.subTasks.forEach((subtask) => {
       meta.set(subtask.id, {
         decision: {
@@ -707,6 +712,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       currentMainRequest: null,
       currentMainStep: null,
       reviewStep: null,
+      recoveredReviewEventIds: new Set(snapshot.currentReview
+        ? [snapshot.currentReview, ...snapshot.reviewQueue]
+          .slice(0, LOOP_PLUS_ACCEPTANCE_BATCH_MAX)
+          .map((item) => item.eventId)
+        : []),
       launching: new Set<string>(),
       launchEpoch: new Map(),
       mainGeneration: 0,
@@ -1181,7 +1191,15 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       } : null;
       // Persist the actual submission prefix before exposing it to the main model.
       persist(runtime);
-      return { step: runtime.reviewStep, dependencyBlocks: prepared.dependencyBlocks };
+      const allowDispatchBeforeReview = !previousStep
+        && before.running.length < maxConcurrency()
+        && before.seenAttempts.length < subtaskRoundLimitFor(runtime)
+        && !runtime.protocolRepair && !deps.readTask(runtime.taskId)?.loopPlusBlockReview
+        && prepared.items.every((item) => !runtime.recoveredReviewEventIds.has(item.eventId));
+      const step = runtime.reviewStep && allowDispatchBeforeReview
+        ? { ...runtime.reviewStep, allowDispatchBeforeReview: true }
+        : runtime.reviewStep;
+      return { step, dependencyBlocks: prepared.dependencyBlocks };
     } catch (error) {
       runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
       runtime.reviewStep = previousStep;
@@ -1492,6 +1510,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!decision) {
       return protocolMiss(runtime, Boolean(held), rejectionReason ?? undefined, response);
     }
+    if (step.allowDispatchBeforeReview && decision.status === "dispatch") {
+      return applyDispatchBeforeReview(runtime, step, decision, response);
+    }
     if (!sameLoopPlusReportIds(decision.reportEventIds ?? [], step.reportEventIds)) {
       return protocolMiss(runtime, Boolean(held), "reportEventIds 必须逐项确认当前提示中的无需验收报告，且不能跳过或重排。");
     }
@@ -1538,6 +1559,28 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     // the complete decision has applied confirmations, controls and new attempts.
     if (outcome !== "stop") promotePendingAndLaunch(runtime);
     return outcome;
+  }
+
+  function applyDispatchBeforeReview(
+    runtime: ParentRuntime,
+    step: MainStep,
+    decision: LoopPlusDecision,
+    response: string | null,
+  ): LoopPlusDecisionOutcome {
+    const subtasks = decision.subtasks ?? [];
+    if (!decision.nextStepPlan || decision.controls?.length
+      || !sameLoopPlusReportIds(decision.reportEventIds ?? [], step.reportEventIds)) {
+      return protocolMiss(runtime, true, "验收前派发须提供用于续跑本批验收的 nextStepPlan，并按原顺序确认报告；不能带 controls。请继续验收冻结批次。", response);
+    }
+    const dispatched = dispatchDecisions(runtime, subtasks, decision.nextStepPlan, step.reportEventIds);
+    if (dispatched.decisions.length === 0) {
+      return protocolMiss(runtime, true, "验收前只允许在剩余轮次和空槽内立即启动独立任务，不能依赖待确认结果、复用已有任务或与待验收交付冲突。请继续验收冻结批次。", response);
+    }
+    const port = createDecisionPort(runtime, response, step);
+    port.persistEstimatedRounds(decision);
+    port.markDecisionAccepted();
+    promotePendingAndLaunch(runtime);
+    return "continue";
   }
 
 
@@ -1619,12 +1662,41 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return "continue";
   }
 
-  function dispatchDecisions(runtime: ParentRuntime, subtasks: readonly LoopSubtaskDecision[]) {
+  function dispatchDecisions(
+    runtime: ParentRuntime,
+    subtasks: readonly LoopSubtaskDecision[],
+    reviewPlan?: LoopPlusNextStepPlan,
+    reportEventIds: readonly string[] = [],
+  ) {
     const before = runtime.scheduler.snapshot();
     const metaBefore = new Map(runtime.meta);
     const seqBefore = runtime.attemptSeq;
-    const built = subtasks.map((subtask) => toSpec(runtime, subtask));
-    const dispatched = runtime.scheduler.dispatch(built.map((item) => item.spec));
+    const built = subtasks.map((subtask, index) => toSpec(subtask, seqBefore + index + 1));
+    const specs = built.map((item) => item.spec);
+    if (reviewPlan && !canDispatchBeforeReview(runtime, before, built.map((item) => item.decision))) {
+      return { decisions: [], rejected: [] };
+    }
+    if (reviewPlan) {
+      const preflight = createLoopPlusScheduler({ snapshot: before });
+      if (reportEventIds.length > 0 && !preflight.acknowledgeReports(reportEventIds)) {
+        return { decisions: [], rejected: [] };
+      }
+      const preview = preflight.dispatch(specs);
+      if (preview.rejected.length > 0 || preview.decisions.length !== specs.length
+        || preview.decisions.some((item) => item.admission !== "started")) {
+        return { decisions: [], rejected: [] };
+      }
+      if (reportEventIds.length > 0 && !runtime.scheduler.acknowledgeReports(reportEventIds)) {
+        return { decisions: [], rejected: [] };
+      }
+    }
+    const dispatched = runtime.scheduler.dispatch(specs);
+    if (reviewPlan && (dispatched.rejected.length > 0 || dispatched.decisions.length !== specs.length
+      || dispatched.decisions.some((item) => item.admission !== "started"))) {
+      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      return { decisions: [], rejected: [] };
+    }
+    runtime.attemptSeq += built.length;
     const accepted = new Set(dispatched.decisions.map((item) => item.attemptId));
     // Kernel transitions may reserve work. Re-evaluate these reservations only
     // after every mutation in this main-model decision (including redispatch).
@@ -1642,6 +1714,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       persist(runtime, {
         status: "running",
         ...(accepted.size > 0 ? { loopPlusBlockReview: undefined } : {}),
+        ...(reviewPlan ? { loopPlusNextStepPlan: reviewPlan } : {}),
       });
     } catch (error) {
       runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
@@ -1663,7 +1736,43 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return { decisions: dispatched.decisions, rejected: dispatched.rejected };
   }
 
-  function toSpec(runtime: ParentRuntime, subtask: LoopSubtaskDecision): {
+  function canDispatchBeforeReview(
+    runtime: ParentRuntime,
+    snapshot: LoopPlusSchedulerSnapshot,
+    subtasks: readonly LoopSubtaskDecision[],
+  ): boolean {
+    if (subtasks.length === 0 || snapshot.running.length >= maxConcurrency()) return false;
+    if (snapshot.seenAttempts.length + subtasks.length > subtaskRoundLimitFor(runtime)) return false;
+    const existingIds = new Set(snapshot.seenAttempts.map((attempt) => attempt.subtaskId));
+    const unreviewedEvents = [snapshot.currentReview, ...snapshot.reviewQueue]
+      .filter((event): event is LoopPlusReviewItem => event !== null);
+    const unreviewed = unreviewedEvents.map((event) => runtime.meta.get(event.subtaskId)?.decision);
+    const knownUnreviewed = unreviewed.filter((decision): decision is LoopSubtaskDecision => Boolean(decision));
+    if (knownUnreviewed.length !== unreviewedEvents.length) return false;
+    const unreviewedIds = new Set(unreviewedEvents.map((event) => event.subtaskId));
+    return subtasks.every((subtask) => {
+      const subtaskId = subtask.id ?? buildSubtaskId(subtask.title);
+      const candidate = {
+        id: subtaskId,
+        title: subtask.title,
+        conflictGroup: subtask.conflictGroup,
+        writeFiles: subtask.writeFiles,
+      };
+      return !existingIds.has(subtaskId) && !subtask.continueFromSubtaskId
+      && !(subtask.dependsOn ?? []).some((dependencyId) => unreviewedIds.has(dependencyId))
+      && knownUnreviewed.every((other) => buildLoopSubtaskExecutionPlan([
+        {
+          id: other.id ?? buildSubtaskId(other.title),
+          title: other.title,
+          conflictGroup: other.conflictGroup,
+          writeFiles: other.writeFiles,
+        },
+        candidate,
+      ]).conflicts.length === 0);
+    });
+  }
+
+  function toSpec(subtask: LoopSubtaskDecision, attemptSeq: number): {
     spec: {
       subtaskId: string;
       attemptId: string;
@@ -1676,8 +1785,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     decision: LoopSubtaskDecision;
   } {
     const subtaskId = subtask.id?.trim() || buildSubtaskId(subtask.title);
-    runtime.attemptSeq += 1;
-    const attemptId = `lp${runtime.attemptSeq}-${subtaskId}`;
+    const attemptId = `lp${attemptSeq}-${subtaskId}`;
     return {
       spec: {
         subtaskId,
@@ -2324,6 +2432,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       taskStoreFile: task?.taskStoreFile ?? "",
       mainCommunicationFile: task?.mainCommunicationFile ?? "",
       kind: step.kind,
+      allowDispatchBeforeReview: step.allowDispatchBeforeReview,
       acceptancePlan: task?.loopPlusAcceptancePlan ?? null,
       allowDirectCompletion: canCompleteDirectly(runtime),
       view: {

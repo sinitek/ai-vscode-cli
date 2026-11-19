@@ -31,6 +31,7 @@ export type LoopPlusMainPromptContext = {
   taskStoreFile: string;
   mainCommunicationFile: string;
   kind: "initial" | "review" | "closeout" | "continue" | "user";
+  allowDispatchBeforeReview?: boolean;
   /** 任务记录中固化的验收方案快照；缺失时只使用固定基线检查项。 */
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null;
   allowDirectCompletion?: boolean;
@@ -145,6 +146,7 @@ function buildLoopPlusProtocolExamples(
   dispatchExampleCount: number,
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null,
   reportEventIds: readonly string[] = [],
+  includeDispatchNextStepPlan = false,
 ): string {
   const planReasons = {
     maintainability: "复用既有模块，未引入重复实现",
@@ -356,6 +358,9 @@ function buildLoopPlusProtocolExamples(
     "```json",
     JSON.stringify({
       ...example.value,
+      ...(includeDispatchNextStepPlan && example.status === "dispatch"
+        ? { nextStepPlan: { objective: "下一步验收当前冻结批次" } }
+        : {}),
       ...(reportEventIds.length > 0 && example.status !== "clarify" ? { reportEventIds } : {}),
     }, null, 2),
     "```",
@@ -430,6 +435,11 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Do not edit scheduling state, active ids, the loopPlus snapshot, or the task record.",
     `Parent task: ${context.taskId}`,
     `Prompt kind: ${context.kind}`,
+    ...(context.allowDispatchBeforeReview ? [
+      "One-time dispatch-first check for this newly frozen acceptance batch: first look for genuinely independent unfinished work that can start now without relying on any unreviewed event's result. This is a single dispatch opportunity, not an acceptance decision.",
+      "If such work exists, return dispatch with only those self-contained tasks, acknowledge the exact supplied reportEventIds, and include nextStepPlan for the automatic next main decision to review this unchanged frozen batch. Do not include review ids, reviews, or controls. Never include repairs or successors whose scope depends on an acceptance verdict.",
+      "If no independent task can start immediately within the live slot and subtask-round limits, return accept now and review the frozen batch; do not return an empty dispatch or create placeholder work. The host will not offer another dispatch-first opportunity for this batch.",
+    ] : []),
     ...(context.blockedReviewSummary !== undefined ? [
       "Bounded blocked review: this is the one remaining-work check before a global pause, not permission to retry a failed execution.",
       `Previous proposed blockage: ${context.blockedReviewSummary || "(no reason supplied)"}`,
@@ -498,7 +508,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Direct completion available: ${context.allowDirectCompletion === true ? "yes" : "no"}`,
     "- Eligible independent trivial work may be executed directly in every decision, even when Direct completion available is no. That flag controls only the simplified final response, not permission to handle trivial supplemental work. Preserve the existing dispatch, wait, and accept rules for other work.",
     "- Only when Direct completion available is yes, the trivial-work rule is satisfied, and all original and supplemental requirements are finished, return {\"status\":\"completed\",\"directCompletion\":true,\"answerConclusion\":\"实际结果\",\"finalSummary\":\"实际操作与结果\"}. Omit subtasks, review ids, reviews, acceptance, requirementCoverage, and acceptancePlanResults. No extra independent acceptance or fabricated evidence is needed. Earlier reviewed work does not prohibit this path. Never use it to skip unreviewed events, failed or unfinished requirements, or user/project verification requirements. Otherwise use the normal completion protocol below.",
-    "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms no acceptance events; acknowledge supplied reports with reportEventIds. Do not send dispatch while the acceptance batch is open. Do not include reviewEventId or reviewEventIds.",
+    "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms no acceptance events; acknowledge supplied reports with reportEventIds. Do not send dispatch while the acceptance batch is open, except for the explicit one-time dispatch-first check above. Do not include reviewEventId or reviewEventIds.",
     "- Keep planning, decomposition, repository reasoning, and ordinary read-only thinking in this main decision by default. Do not dispatch general for a small or medium question, a single analysis track, ordinary inspection, making a plan, or explaining work. If the request is answer-only/read-only and needs no separate evidence report or parallel analysis, return completed directly with no subtasks.",
     "- Dispatch general subtasks only when the thinking workload is large enough to split into at least two independent analysis tracks, each needing substantial investigation, and parallel execution has a clear material benefit in wall-clock time or coverage. If so, dispatch at least two general subtasks together with distinct evidence scopes; general is read-only and never carries coding delivery.",
     "- For non-trivial coding or write-oriented work, including implementation, tests, docs, config, and scripts, prefer one dispatch containing multiple independent coding subtasks with separate deliverables, primary write ownership, and verification. Decompose by delivery boundary, not by model role: multiple backend, frontend, or fullstack subtasks can run together. Two roles do not mean a two-task limit.",
@@ -567,7 +577,13 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `- A continuing decision may optionally include nextStepPlan with a concise objective and up to ${LOOP_PLUS_NEXT_STEP_CRITERIA_MAX_COUNT} short acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.`,
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
-    buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),
+    buildLoopPlusProtocolExamples(
+      batchIds,
+      Math.min(4, parallelCapacity),
+      context.acceptancePlan,
+      reportIds,
+      context.allowDispatchBeforeReview,
+    ),
   ].join("\n");
 }
 

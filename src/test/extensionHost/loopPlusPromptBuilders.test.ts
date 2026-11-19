@@ -233,6 +233,28 @@ test("dependency-first review rules preserve independent progress, real verdicts
   }
 });
 
+test("a newly frozen review offers one independent dispatch before acceptance", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    allowDispatchBeforeReview: true,
+    currentEventId: "event-ready",
+    acceptanceEventIds: ["event-ready"],
+    view: view({ currentReview: review("event-ready", "finished-delivery"), visibleReviewCount: 1 }),
+  }));
+  assert.match(prompt, /One-time dispatch-first check for this newly frozen acceptance batch/);
+  assert.match(prompt, /genuinely independent unfinished work that can start now/);
+  assert.match(prompt, /include nextStepPlan for the automatic next main decision to review this unchanged frozen batch/);
+  assert.match(prompt, /If no independent task can start immediately.*return accept now/);
+  const dispatch = parseExample(extractProtocolExamples(prompt), "dispatch");
+  assert.deepEqual(dispatch.nextStepPlan, { objective: "下一步验收当前冻结批次" });
+
+  const ordinaryReview = buildLoopPlusMainModelPrompt(mainContext({
+    currentEventId: "event-ready",
+    acceptanceEventIds: ["event-ready"],
+    view: view({ currentReview: review("event-ready", "finished-delivery"), visibleReviewCount: 1 }),
+  }));
+  assert.doesNotMatch(ordinaryReview, /One-time dispatch-first check/);
+});
+
 test("Loop+ subtask reports identify reusable verification scope without claiming to replace main review", () => {
   for (const loopSubtaskMode of ["fullstack", "split"] as const) {
     for (const executionRole of ["backend", "frontend", "general"] as const) {

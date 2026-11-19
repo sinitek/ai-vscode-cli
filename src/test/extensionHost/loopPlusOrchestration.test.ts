@@ -174,6 +174,75 @@ test("an acceptance can return a next-step plan that launches a separate main de
   assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined);
 });
 
+test("dispatches independent work once before reviewing the unchanged frozen batch", async () => {
+  const env = harness({ maxConcurrency: 1 });
+  const run = env.host.tryRun({ displayPrompt: "先派发独立交付再验收" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("first", ["src/first.ts"])] }));
+  await flush();
+  const firstAttemptId = env.attempts[0].request.attemptId;
+  env.attempts[0].resolve({ outcome: "completed", detail: "首项交付已完成" });
+  await flush();
+
+  const frozenEventId = buildLoopPlusFinishEventId("first", firstAttemptId);
+  const dispatchFirst = env.mains[1];
+  assert.deepEqual(dispatchFirst.request.reviewEventIds, [frozenEventId]);
+  assert.match(dispatchFirst.request.prompt, /One-time dispatch-first check/);
+  dispatchFirst.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("independent", ["src/independent.ts"])],
+    nextStepPlan: { objective: "检查并验收首项冻结批次" },
+  }));
+  await flush();
+
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.attempts[1].request.subtaskId, "independent");
+  assert.deepEqual(env.tasks.get(taskId)?.loopPlusNextStepPlan, { objective: "检查并验收首项冻结批次" });
+  const review = env.mains[2];
+  assert.deepEqual(review.request.reviewEventIds, [frozenEventId]);
+  assert.match(review.request.prompt, /Objective: 检查并验收首项冻结批次/);
+  assert.doesNotMatch(review.request.prompt, /One-time dispatch-first check/);
+  review.resolve(decisionJson({ status: "accept", reviewEventId: frozenEventId, subtasks: [] }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+
+  const independentAttemptId = env.attempts[1].request.attemptId;
+  env.attempts[1].resolve({ outcome: "completed", detail: "独立交付已完成" });
+  await flush();
+  env.mains[3].resolve(completedDecision({
+    reviewEventId: buildLoopPlusFinishEventId("independent", independentAttemptId),
+  }));
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+});
+
+test("does not dispatch a successor that depends on the frozen review result", async () => {
+  const env = harness({ maxConcurrency: 1 });
+  const run = env.host.tryRun({ displayPrompt: "验收前不能派发依赖任务" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("prerequisite", ["src/prerequisite.ts"])] }));
+  await flush();
+  const prerequisite = env.attempts[0];
+  prerequisite.resolve({ outcome: "completed", detail: "前置交付已完成，等待验收" });
+  await flush();
+  const frozenEventId = buildLoopPlusFinishEventId("prerequisite", prerequisite.request.attemptId);
+  env.mains[1].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [dependentSubtask("successor", ["prerequisite"])],
+    nextStepPlan: { objective: "之后再处理依赖交付" },
+  }));
+  await flush();
+
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusNextStepPlan, undefined);
+  assert.deepEqual(env.mains[2].request.reviewEventIds, [frozenEventId]);
+  assert.doesNotMatch(env.mains[2].request.prompt, /One-time dispatch-first check/);
+  env.host.stopParent(run.taskId ?? "");
+  await run.done;
+});
+
 test("invalid main responses and explicit host recovery retain the pending next-step plan", async () => {
   const env = harness();
   const task = baseTask("next-plan-recovery", createLoopPlusScheduler({ maxConcurrency: 2 }).snapshot());
@@ -1827,6 +1896,7 @@ test("reviews a restored backlog in FIFO batches of at most four and completes w
       resumeTaskId: task.id, schedulingMode: "event_driven",
     });
     await flush();
+    assert.doesNotMatch(env.mains[0].request.prompt, /One-time dispatch-first check/);
     const allIds = Array.from({ length: 8 }, (_, index) => buildLoopPlusFinishEventId(`finished-${index}`, `attempt-${index}`));
     let confirmed = 0;
     for (const count of [4, 4]) {
@@ -1842,6 +1912,11 @@ test("reviews a restored backlog in FIFO batches of at most four and completes w
       const main = env.mains.at(-1)!;
       const expected = allIds.slice(confirmed, confirmed + count);
       assert.equal(main.request.kind, "review");
+      if (reload && confirmed === 4) {
+        assert.doesNotMatch(main.request.prompt, /One-time dispatch-first check/);
+      } else if (!reload && confirmed === 4) {
+        assert.match(main.request.prompt, /One-time dispatch-first check/);
+      }
       assert.deepEqual(main.request.reviewEventIds, expected);
       assert.deepEqual(host.getActiveReviewEventIds(task.id), expected);
       assert.equal(snapshotOf(env.tasks.get(task.id)).reviewQueue.length, 8 - confirmed - 1,
@@ -4988,6 +5063,7 @@ test("dependencies wait for acceptance while independent work and frozen later r
   await flush();
   const frozen = env.mains[1];
   assert.deepEqual(frozen.request.reviewEventIds, [attemptEvent(env.attempts[0])]);
+  assert.match(frozen.request.prompt, /One-time dispatch-first check/);
   assert.match(frozen.request.prompt, /reason=review_pending/);
   assert.equal(env.attempts.length, 2, "execution completion alone must not start successor");
   env.attempts[1].resolve({ outcome: "completed", detail: "later independent completion" });
