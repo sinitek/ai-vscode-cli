@@ -42,6 +42,8 @@ createDepartmentCodexPreparation(host: DepartmentCodexPreparationHost): {
 
 私有通道每条携带版本、随机token、完整原identity和连续sequence，准备最大4MiB，后续消息最大64KiB。最多32个在途消费责任。每个输出/请求/日志回调按精确sequence ACK；同步返回、异步返回、拒绝和断连均被消费，丢失或超限留下粘性未知。EH 转回既有消息及日志设施；无无界输出队列。原异步server handler及原caller回调仍由 owned 核心等待，日志消费也必须结算后才能完成额外传输观察。
 
+员工复用组长的私有回调分片协议，以原 `executionId` 绑定其唯一调用。工具完成事件的兼容字段可能将 `aggregatedOutput` 同值转发为 `aggregated_output`，因此原生消息小于 64 KiB 不代表兼容回调也小于 64 KiB。可分片的流式回调在原 64 KiB 帧限内编码，按 UTF-8 字节计算每个回调 8 MiB、合计在途 16 MiB 的限额；EH 校验关联标识、顺序、长度和摘要后只交付一次，并按首片序号确认。读取端等待通知消费者结算才继续，独立 `onRequest` 不阻塞该门禁。缺片、失败或未消费仍不能确认排空或清理，不重试 `turn/start`，不修改公共 Owner 协议。
+
 `handle.kind=both`，保持 launcher 的逐项映射：processTerminal、精确turnTerminal、物理streams+executionDrain、runner和附加资源分别独立。业务 settled、interrupt、exit、空队列、grant 或 Promise 完成均不是终态/排空证据。专属 reader 仍须自然EOF、尾部派发、真实close和全部消费责任结束；共享观察语义及peer存活不升级。原start响应对账、候选/观察上限、一次绑定、取消唤醒及旧代次隔离完全保留在未复制的Core内。
 
 Owner 持有执行 root/links（同一幂等释放函数）、配置执行 lease（temp 责任）。round-228 将现有专属执行的实际 process close、自然 pipe/readLoop、thread/execution lease 及异步消费者排空事实接入 runner/session 附加释放；保留可恢复 thread 历史，不删除历史、不主动 reader.close，也不以 exit 通知作为 close 证明。源、turn、物理 streams、executionDrain 和 runner 全确认后才逐项尝试资源释放。tab 通过下面的宿主能力释放；缺能力仍 required/unobservable。消息/回调失败时保留 unknown，无超时成功和隐式重试。EH 临时配置租约结算不替代 worker 的独立租约释放。

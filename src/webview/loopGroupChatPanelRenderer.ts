@@ -174,11 +174,11 @@ export function buildLoopGroupChatPanelTitle(
 /** Shared by the initial HTML and every content patch. */
 export function buildLoopGroupChatPanelHeading(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
   if (!state.department) return state.loopPlus ? strings.titleLoopPlus : strings.title;
-  if (state.department.role === "director") return "产研部总监";
+  if (state.department.role === "director") return "产研部群聊";
   const leader = state.department.leaders.find((item) => item.taskId && item.taskId === state.task.id);
   return buildDepartmentLeaderChatTitle(leader?.leaderNumber);
 }
 
 export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState): string {
-  return state.department ? `${state.department.title} · ${state.task.id}` : state.task.id;
+  return state.department?.role === "leader" ? `${state.department.title} · ${state.task.id}` : state.task.id;
 }

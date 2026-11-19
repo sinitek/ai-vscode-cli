@@ -272,7 +272,7 @@
       "id": "plugin.conversation_task_summary",
       "name": "对话 Tab AI 任务摘要",
       "kind": "value_object",
-      "description": "Tab 悬停提示：Vibe 与 Loop/Loop+ 主任务使用任务/会话 AI 摘要，每次新的用户可见任务提交异步归纳并更新，同次提交只尝试一次，最多 30 个 Unicode 码点，失败保留上次有效摘要；缺失字段兼容旧记录。只有 Loop/Loop+ 子任务直接投影群聊成员标题子任务 N：完整标题，不受 AI 摘要长度限制且不额外调用 AI。主任务不能用固定角色名覆盖 AI 摘要。均通过可选 ConversationTabSummary.taskSummary 交给既有浮层，不是任务完成总结。",
+      "description": "Vibe、普通 Loop/Loop+ 主任务和产研部总监使用任务或会话 AI 摘要。每次新提交异步归纳，最多 30 个 Unicode 码点，同次提交只尝试一次，失败保留上次有效摘要。普通 Loop/Loop+ 子任务投影群聊成员的编号和完整标题。产研部组长和员工分别投影成员面板上的模块标题和员工子任务标题。所有成员标题使用完整长度。展示均通过可选 ConversationTabSummary.taskSummary 投影到标签浮层。",
       "status": "active",
       "aliases": [
         "Tab 任务摘要",
@@ -2096,7 +2096,7 @@
     {
       "id": "plugin.rule.tab_task_summary_first_submit",
       "name": "任务摘要随新提交异步更新",
-      "description": "Vibe 与 Loop/Loop+ 主任务每次新的用户可见任务提交在执行前捕获，共同 runPrompt 读取当前配置后独立异步更新摘要，不等完成、不阻塞主任务。同次提交的内部调度/重试只尝试一次，缺少主任务快照时使用 rootPrompt 而非调度协议；已有摘要或 session 不阻止新提交更新。并发 2、总容量 32、活动调用超时 20 秒；失败/超时/溢出保留上次有效摘要（从未成功则缺失），本次不重试，空白 Tab、hover、刷新和仅恢复旧历史不触发。七种 CLI 复用已有 runner 与配置，不绕过 DSH/Kimi/ZCode 的 one-shot 禁令，不伪造提示词截断；只有子任务不生成 AI 摘要，改用群聊成员标题。",
+      "description": "Vibe、普通 Loop/Loop+ 主任务和产研部总监在执行前捕获新的用户提交。产研部新任务须完成可信注册和会话绑定，续接需求须成功保存。共同 runPrompt 在读取配置后通过现有七种 CLI runner 独立异步更新摘要。同次提交内部调度与重试只尝试一次，缺少主任务快照时使用 rootPrompt。并发 2、总容量 32、活动调用超时 20 秒。失败、超时或溢出保留上次有效摘要。空白 Tab、hover、刷新和仅恢复旧历史不触发。普通子任务及产研部组长、员工使用成员标题。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",
@@ -2171,7 +2171,7 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "只有 Loop/Loop+ 子任务 Tab 悬停提示与群聊成员标题共用格式，显示子任务 N：完整标题，编号取同一任务 subTasks 顺序，不套用 AI 摘要的 30 码点限制。新派发 Tab 直接使用运行时携带的父任务/子任务身份投影角色图标与成员标题，不等待首条消息或历史读取；历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI/session 的 executionSession 绑定恢复；缺失或错配时不显示旧 AI 摘要，不串 Tab。主任务保留并展示归纳后的 AI 摘要，不以固定主任务角色名覆盖。子任务身份只作为当前宿主投影，不改变持久化摘要、浮层交互或布局。",
+      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，组长显示成员面板的模块标题，员工显示成员面板的子任务标题。普通主任务和产研部总监展示归纳后的 AI 摘要。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",
@@ -2331,6 +2331,22 @@
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
           "anchor": "七类 CLI 可视化配置"
         }
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_subtask_cli_failure_report",
+      "name": "Loop 子任务 CLI 错误随失败结果上报",
+      "applies_to": ["plugin.loop_task", "plugin.cli_session"],
+      "status": "active",
+      "description": "经典 Loop 与 Loop+ 以当前调用错误或同次运行终态的 failureDetail 为诊断，不从助手部分输出或旧调用推断。宿主遮蔽可识别凭证、约束长度，将实际错误写入子任务汇报和阻塞摘要；未捕获详情时明确未知。经典 Loop 重试耗尽后保留最后一次失败，等待巡检和显式续跑契约不变。Loop+ 继续使用失败验收事件；已确认失败但未被替代、关闭或取消验收的最新 attempt 可为后续阻塞提供证据，不扩充当前冻结批次。诊断不改变验收、清理、容量及完成门禁。",
+      "source_refs": [
+        { "path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "子任务执行错误上报" },
+        { "path": "src/extensionHost/loopOrchestration.ts" },
+        { "path": "src/extensionHost/loopPlusOrchestration.ts" },
+        { "path": "src/extensionHost/loopPlusRuntimeAdapter.ts" },
+        { "path": "src/promptRunState.ts" },
+        { "path": "src/test/extensionHost/loopWaitWatchdog.test.ts" },
+        { "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts" }
       ]
     },
     {
@@ -8278,7 +8294,7 @@
     {
       "id": "plugin.rule.department_group_chat_title",
       "name": "部门群聊短标题",
-      "description": "总监群聊标题为产研部总监。组长群聊按可信总监记录中关联模块的位置从 1 编号，页头、Webview 标签页与组长弹窗使用同一短标题。缺失或尚未创建的群聊不影响其它组长的编号。群聊副标题保留模块名与任务 ID。",
+      "description": "总监群聊标题为产研部群聊。组长群聊按可信总监记录中关联模块的位置从 1 编号，页头、Webview 标签页与组长弹窗使用同一短标题。缺失或尚未创建的群聊不影响其它组长的编号。总监群聊副标题只显示当前任务 ID，与 Loop+ 群聊一致。组长群聊副标题显示模块名与任务 ID。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -8329,7 +8345,7 @@
       "id": "plugin.rule.department_director_balanced_round_dispatch",
       "name": "产研部总监均衡分轮派工",
       "kind": "business_rule",
-      "description": "总监优先按独立可验收的目标分出内聚组长任务，再按实现与验证成本尽量均衡，不把员工额度当作工作量。continue 只提交本轮已就绪且不冲突的模块，参考组长租约与启动预留的剩余名额。组长结算后复核原始目标、补充要求与依赖，再派后续批次；已派发工作结算不等于整体目标完成。原有准入、员工额度和完成门禁不变。",
+      "description": "总监每轮检查剩余目标，在组长可用名额内用同一个 continue 批次并行派发多个已就绪、可独立验收、范围不冲突且并行有实际收益的目标。局部或强耦合工作可由一组完成，有先后依赖的工作分轮。各组保持任务内聚并按实现与验证成本尽量均衡。组长结算后复核原始目标、补充要求与依赖，有空位时补派新就绪工作。全部目标覆盖、已登记任务与协作结算后才确认整体完成。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -8403,6 +8419,36 @@
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
           "anchor": "产研部总监等待汇报与真实阻塞分流"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_codex_employee_callback_delivery",
+      "name": "产研部 Codex 员工回调分片与消费确认",
+      "kind": "business_rule",
+      "description": "固定员工 Owner 以原 executionId 绑定唯一调用，复用组长私有回调分帧协议。工具输出兼容字段可能使原生小帧映射为大回调；按 UTF-8 字节和同时在途预算分片，宿主校验原 token、identity、连续序号、回调关联、长度与摘要，重组后按序只消费一次并确认首片。原通知消费者结算前不继续读取通知，独立请求不计入该读取门禁；缺片或未确认消费不构成终态排空和清理证据，不改变执行授权、重试或容量释放规则。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.extension_host",
+        "plugin.local_cli"
+      ],
+      "source_refs": [
+        {
+          "path": "src/runtime/departmentcodexownerworker.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentcodexbootstrap.ts"
+        },
+        {
+          "path": "src/runtime/departmentleadercodexcontract.ts"
+        },
+        {
+          "path": "src/test/runtime/departmentcodexbootstrap.test.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
+          "anchor": "消费和资源事实"
         }
       ]
     }

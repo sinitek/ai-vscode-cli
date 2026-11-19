@@ -22,6 +22,8 @@ npm install
 npm run build
 ```
 
+开发构建会保留 `dist/` 中已有的文件，类型检查失败时保留上一次输出。涉及删除或重命名源码时，可在开发宿主退出后运行 `npm run clean && npm run build`。VSIX 打包入口 `vscode:prepublish` 会先清理旧产物，应在独立副本执行。
+
 ### 3. 开发期持续编译
 
 ```bash

@@ -2,6 +2,7 @@ import type { ChatMessage, ConversationTabSummary, DepartmentConversationTabPres
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { departmentMetadata, isDepartmentLeader } from "./departmentGroupChatProjection";
+import { formatDepartmentMemberTitle } from "../department";
 
 export type DepartmentConversationTabReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
@@ -29,17 +30,6 @@ function presentation(
     moduleTitle,
     ...(employeeSubtaskId ? { employeeSubtaskId } : {}),
   };
-}
-
-function describe(value: DepartmentConversationTabPresentation, rootTitle: string): string {
-  const identity = `rootTaskId ${value.rootTaskId} / taskId ${value.taskId}`;
-  if (value.role === "director") {
-    return `产研部 / 总监 / ${value.moduleTitle} / ${identity}`;
-  }
-  if (value.role === "leader") {
-    return `产研部 / ${rootTitle} / 组长 / 模块 ${value.moduleTitle} / ${identity}`;
-  }
-  return `产研部 / ${rootTitle} / 员工 / 模块 ${value.moduleTitle} / ${identity} / employeeSubtaskId ${value.employeeSubtaskId}`;
 }
 
 function hasUniqueModuleRelationship(root: LoopTaskRecord, leader: LoopTaskRecord, port: DepartmentConversationTabReadPort): boolean {
@@ -74,7 +64,7 @@ export function projectDepartmentConversationTab(
       || !ownsMainSession(summary, task)) return summary;
     if (!hasUniqueRootIdentity(task, port)) return summary;
     const projected = presentation("director", task.id, task.id, meta.moduleTitle);
-    return { ...summary, departmentPresentation: projected, taskSummary: describe(projected, meta.moduleTitle) };
+    return { ...summary, departmentPresentation: projected };
   }
 
   if (meta.role !== "leader" || summary.loopTaskRole !== "main"
@@ -88,7 +78,7 @@ export function projectDepartmentConversationTab(
 
   if (meta.parentTaskId !== root.id || !meta.leaderSubtaskId) return summary;
   const projected = presentation("leader", root.id, task.id, meta.moduleTitle);
-  return { ...summary, departmentPresentation: projected, taskSummary: describe(projected, departmentMetadata(root)?.moduleTitle ?? meta.moduleTitle) };
+  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("leader", meta.moduleTitle) };
 }
 
 export function projectDepartmentEmployeeConversationTab(
@@ -121,10 +111,8 @@ export function projectDepartmentEmployeeConversationTab(
     && subtask.executionSession.sessionId === summary.sessionId);
   if (matches.length !== 1 || sessionMatches.length !== 1) return summary;
 
-  const rootMeta = departmentMetadata(root);
-  if (!rootMeta) return summary;
   const projected = presentation("employee", root.id, leader.id, meta.moduleTitle, matches[0].id);
-  return { ...summary, departmentPresentation: projected, taskSummary: describe(projected, rootMeta.moduleTitle) };
+  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", matches[0].title) };
 }
 
 function sameWorkspace(root: LoopTaskRecord, task: LoopTaskRecord): boolean {

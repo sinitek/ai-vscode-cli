@@ -21,7 +21,7 @@ for (const role of ["director", "leader"] as const) {
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.rosterPanelHtml));
     assert.ok(html.includes(patch.actionsHtml));
-    assert.equal(patch.headingText, role === "director" ? "产研部总监" : "组长1");
+    assert.equal(patch.headingText, role === "director" ? "产研部群聊" : "组长1");
     assert.equal(patch.tabTitle, patch.headingText);
     assert.ok(html.includes(`<title>${patch.headingText}</title>`));
     assert.deepEqual(
@@ -31,9 +31,13 @@ for (const role of ["director", "leader"] as const) {
     assert.doesNotMatch(patch.rosterPanelHtml, /[☀🌛⭐]/u);
     assert.match(patch.rosterPanelHtml, /class="member-name" title="组长 · 同名模块">组长 · 同名模块<\/div>/u);
     assert.match(patch.rosterPanelHtml, /class="member-name" title="(员工 · 员工甲[^"]*)">\1<\/div>/u);
-    assert.equal(patch.subtitleText, `${projection.title} · ${state.task.id}`);
+    assert.equal(patch.subtitleText, role === "director" ? state.task.id : `${projection.title} · ${state.task.id}`);
+    if (role === "director") {
+      assert.ok(html.includes(`<p id="panelSubtitle" title="${state.task.id}">${state.task.id}</p>`));
+    } else {
+      assert.match(html, /&lt;流程&gt; &amp; &quot;标题&quot;/u);
+    }
     assert.equal(patch.tabTitle, buildLoopGroupChatPanelTitle(state, getStrings()));
-    assert.match(html, /&lt;流程&gt; &amp; &quot;标题&quot;/u);
     assert.doesNotMatch(patch.rosterPanelHtml, /<契约>/u);
     if (role === "director") assert.match(patch.rosterPanelHtml, /class="member-name" title="总监">总监<\/div>/u);
     else assert.doesNotMatch(patch.rosterPanelHtml, /class="member-name" title="总监"/u);

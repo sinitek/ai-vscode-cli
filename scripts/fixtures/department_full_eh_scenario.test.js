@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const { createDepartmentFullEhScenario, latestUserText, LONG_TOOL_OUTPUT, LONG_TOOL_PAYLOAD_BYTES,
   LONG_TOOL_OUTPUT_SHA256, LONG_TOOL_COMMAND_SHA256 } = require("./department_full_eh_scenario");
 const request = (text) => ({ input: [{ role: "user", content: [{ type: "input_text", text }] }] });
-const director = (id, total, state = "running") => `使用经典 Loop JSON 决策。\n任务 ID：${id}；轮次：1\nunique test prompt\n根任务：${id}；真实状态：running。模块总数：${total}。\n${total ? `"organizationStatus": "${state}"` : ""}`;
+const director = (id, total, state = "running") => `使用经典 Loop JSON 决策。\n任务 ID：${id}；轮次：1\nunique test prompt\n根任务：${id}；真实状态：running。已登记模块数：${total}。\n${total ? `"organizationStatus": "${state}"` : ""}`;
 function fixture(cleanup = { complete: false }) {
   const tasks = [{ id: "root-actual", department: { role: "director", rootTaskId: "root-actual" } },
     { id: "leader-actual", department: { role: "leader", rootTaskId: "root-actual" }, schedulingMode: "event_driven", subTasks: [], loopPlus: { currentReview: { eventId: "event-actual", subtaskId: "subtask-actual", attemptId: "attempt-actual", outcome: "completed" } } }];
@@ -17,7 +17,6 @@ Parent task: leader-actual
 Prompt kind: initial
 Current review eventId: (none)
 Still running count: 0
-Confirmed acceptances: 0
 Snapshot says completion is allowed: yes`;
 
 test("only latest native user input selects a stage", () => {

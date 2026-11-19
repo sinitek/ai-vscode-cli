@@ -78,7 +78,7 @@ type PromptOneShotRuntimeHostDeps = {
     loopTaskId: string;
   }) => ChatMessage[];
   appendAssistantChunk: (chunk: string, kind?: ChatMessage["kind"]) => void;
-  appendCompletionMessage: (status: TaskRunStatus) => void;
+  appendCompletionMessage: (status: TaskRunStatus, failureDetail?: string) => void;
   appendMessageToStore: (target: ChatMessage[], message: ChatMessage) => void;
   appendSystemMessage: (content: string) => void;
   appendTraceLines: (chunk: string) => void;
@@ -1115,7 +1115,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         });
         sendRunStatus("error", userMessageText);
         appendSystemMessage(userMessageText);
-        appendCompletionMessage("error");
+        appendCompletionMessage("error", missingConclusionMessage);
         persistActiveMessages();
         clearActiveRun();
         if (input.throwOnError) {
@@ -1225,7 +1225,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
         }
         flushOpenCodeJsonlBuffer();
         flushTraceBuffer();
-        appendCompletionMessage("error");
+        appendCompletionMessage("error", context.attemptResult.type === "error" ? retryFailureMessage : userMessageForThrow);
         persistActiveMessages();
         clearActiveRun();
         if (context.attemptResult.type === "error" && isCliCommandRepairableError(context.attemptResult.error)) {

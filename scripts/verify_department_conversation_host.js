@@ -88,11 +88,16 @@ async function seedPrivateFixture({ root, home, workspace }) {
     [fixture.ids.ordinarySessionId, [{ id: "ordinary-message", role: "user", content: "普通会话历史" }]],
   ]);
   const now = Date.now();
+  const taskSummaries = ["统筹部门模块并完成交付", `组长 · ${fixture.ids.moduleTitle}`, `组长 · ${fixture.ids.moduleTitle}`,
+    `员工 · ${fixture.leaderOne.subTasks[0].title}`];
   const sessionRecord = (id, label) => ({ id, label, firstPrompt: label, createdAt: now, lastUsedAt: now });
   const sessionStore = Object.fromEntries(["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].map((cli) => [cli, { currentId: null, sessions: [] }]));
   const sessionIds = [fixture.ids.directorSessionId, fixture.ids.leaderOneSessionId, fixture.ids.leaderTwoSessionId, fixture.ids.employeeSessionId, fixture.ids.ordinarySessionId];
   const originalSessionLabels = ["Codex", "Codex2", "Codex3", "Codex4", "Codex5"];
-  sessionStore.codex = { currentId: fixture.ids.directorSessionId, sessions: sessionIds.map((id, index) => sessionRecord(id, originalSessionLabels[index])) };
+  sessionStore.codex = { currentId: fixture.ids.directorSessionId, sessions: sessionIds.map((id, index) => ({
+    ...sessionRecord(id, originalSessionLabels[index]),
+    ...(index === 0 ? { taskSummary: taskSummaries[0], taskSummaryAttempted: true } : {}),
+  })) };
   const dataDir = path.join(home, ".sinitek_cli");
   const sessionOptions = { workspaceKeyFallback: "workspace", legacySessionFile: path.join(dataDir, "sessions.json"), sessionDir: path.join(dataDir, "sessions") };
   writeSessionFile(sessionStore, fixtureWorkspaceKey, sessionOptions);
@@ -115,7 +120,7 @@ async function seedPrivateFixture({ root, home, workspace }) {
   fs.mkdirSync(workspaceSettingsDir, { recursive: true });
   fs.writeFileSync(path.join(workspaceSettingsDir, `${fixtureWorkspaceKey}.json`), JSON.stringify(settings, null, 2), { flag: "wx" });
   return { workspaceKey: fixtureWorkspaceKey, fixture, sessionIds, taskSourceRoot: path.join(dataDir, "department-tasks-v1"),
-    sessionStorePath: path.join(dataDir, "sessions", `${fixtureWorkspaceKey}.json`), originalSessionLabels };
+    sessionStorePath: path.join(dataDir, "sessions", `${fixtureWorkspaceKey}.json`), originalSessionLabels, taskSummaries };
 }
 
 function extensionTestEntry({ root, manifest, home }) {
@@ -279,12 +284,20 @@ async function verifyWebview(root, port, fixture, report) {
   const tooltip = async () => evaluate("document.querySelector('#conversationTabSummaryTooltip')?.innerText || ''");
   await goToTab(0); await focus();
   const directorTooltip = await tooltip();
-  for (const id of [fixture.ids.rootTaskId]) assert.ok(directorTooltip.includes(id), `director tooltip includes ${id}`);
+  assert.equal(directorTooltip, fixture.taskSummaries[0]);
   await screenshot("webview-desktop.png");
-  for (const [index, expected] of [[1, [fixture.ids.rootTaskId, fixture.ids.leaderOneTaskId]], [2, [fixture.ids.rootTaskId, fixture.ids.leaderTwoTaskId]], [3, [fixture.ids.rootTaskId, fixture.ids.leaderOneTaskId, fixture.ids.employeeSubtaskId]]]) {
+  for (const index of [1, 2, 3]) {
     await goToTab(index); await focus();
     const fullTooltip = await tooltip();
-    for (const id of expected) assert.ok(fullTooltip.includes(id), `tooltip ${index} includes full ID ${id}; actual tooltip: ${JSON.stringify(fullTooltip)}`);
+    assert.equal(fullTooltip, fixture.taskSummaries[index], `tooltip for tab ${index}`);
+  }
+  if (process.argv.includes("--task-summaries-only")) {
+    report.webviewErrors.push(...errors.filter((message) => !message.includes("Unrecognized feature: 'local-network-access'.")));
+    assert.deepEqual(report.webviewErrors, [], `Webview errors: ${JSON.stringify(report.webviewErrors)}`);
+    report.browser = { status: "passed", labels, assertions: ["restored director summary and complete leader and employee member titles"] };
+    socket.close();
+    await browser.close();
+    return;
   }
   const clickTab = async (index) => { await goToTab(index); await evaluate("document.querySelector('.conversation-tab').click()"); };
   const mode = async () => evaluate("document.querySelector('#interactiveModeSelect')?.value");
@@ -337,7 +350,7 @@ async function verifyWebview(root, port, fixture, report) {
       const webviewId = new URL(candidate.url).searchParams.get("id");
       const surface = visibleWebviews.find((item) => item.id === webviewId);
       candidateSummaries.set(candidate.id, { id: candidate.id, webviewId, url: candidate.url, visibleSurface: surface ?? null, text: inspected.text.slice(0, 1200) });
-      if (surface?.visible && inspected.text.includes("产研部总监") && inspected.text.includes(fixture.ids.rootTaskId)) {
+      if (surface?.visible && inspected.text.includes("产研部群聊") && inspected.text.includes(fixture.ids.rootTaskId)) {
         groupWebview = inspected; break;
       }
     }
@@ -568,8 +581,7 @@ async function verifyWebview(root, port, fixture, report) {
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1"), true);
   await goToTab(1); await focus();
   const narrowTooltip = await tooltip();
-  assert.ok(narrowTooltip.includes(fixture.ids.rootTaskId) && narrowTooltip.includes(fixture.ids.leaderOneTaskId),
-    "narrow Webview tooltip retains the complete root and leader identities");
+  assert.equal(narrowTooltip, fixture.taskSummaries[1], "narrow Webview tooltip retains the full member title");
   report.narrow.tooltip = narrowTooltip;
   await screenshot("webview-narrow-leader-tooltip.png");
   await goToTab(0);
@@ -577,7 +589,7 @@ async function verifyWebview(root, port, fixture, report) {
   report.webviewErrors.push(...errors.filter((message) => !message.includes("Unrecognized feature: 'local-network-access'.")));
   assert.deepEqual(report.webviewErrors, [], `Webview errors: ${JSON.stringify(report.webviewErrors)}`);
   report.browser = { status: "passed", targetUrl: target.url, targetId: target.id, labels, errors,
-    assertions: ["actual production state restored from owned task/session stores", "three role icons preserve original Codex/Codex2/Codex3/Codex4 tab names and ordinary Codex5 title", "same-title leaders retain their original distinct tab names", "complete tooltip IDs at desktop and measured narrow surface", "department/Loop+/coding modes", "keyboard focus and tab activation", "director group-chat WebviewPanel loads the exact leader's sandboxed srcdoc and Loop+ action bar", "dialog close restores opener focus and reading position", `measured ${narrowViewport.innerWidth}px actual Webview viewport, tab bounds, and page overflow`] };
+    assertions: ["actual production state restored from owned task/session stores", "three role icons preserve original Codex/Codex2/Codex3/Codex4 tab names and ordinary Codex5 title", "same-title leaders retain their original distinct tab names", "director session summary and full member title tooltips at desktop and measured narrow surface", "department/Loop+/coding modes", "keyboard focus and tab activation", "director group-chat WebviewPanel loads the exact leader's sandboxed srcdoc and Loop+ action bar", "dialog close restores opener focus and reading position", `measured ${narrowViewport.innerWidth}px actual Webview viewport, tab bounds, and page overflow`] };
   report.browser.cdpEvents = events.filter((event) => event.method === "Runtime.exceptionThrown" || (event.method === "Log.entryAdded" && event.params.entry?.level === "error")).length;
   socket.close();
   await browser.close();
@@ -694,7 +706,7 @@ async function main() {
 
 if (process.argv[2] === "--seed") {
   seedPrivateFixture({ root: process.argv[3], home: process.argv[4], workspace: process.argv[5] })
-    .then((seeded) => fs.writeFileSync(process.argv[6], JSON.stringify({ workspaceKey: seeded.workspaceKey, fixture: { ids: seeded.fixture.ids },
+    .then((seeded) => fs.writeFileSync(process.argv[6], JSON.stringify({ workspaceKey: seeded.workspaceKey, fixture: { ids: seeded.fixture.ids, taskSummaries: seeded.taskSummaries },
       taskSourceRoot: seeded.taskSourceRoot, sessionStorePath: seeded.sessionStorePath, originalSessionLabels: seeded.originalSessionLabels,
       sessionIds: seeded.sessionIds }, null, 2), { flag: "wx" }))
     .catch((error) => { console.error(error.stack || error); process.exitCode = 1; });

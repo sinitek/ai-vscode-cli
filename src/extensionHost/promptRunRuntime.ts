@@ -1,4 +1,6 @@
 import type { LoopSubtaskCleanupResult } from "../loopSubtaskExecutionRoot";
+import { normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
+import { LOOP_SUBTASK_PROMPT_MIN_LENGTH } from "../loopPromptBuilders";
 import {
   abortOrchestratorClarification,
   loopClarificationScope,
@@ -330,7 +332,6 @@ export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
 const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopGroupChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
 const LOOP_MAX_MAX_ROUNDS = 100;
-const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
 const readTaskStore = deps.readTaskStore;
 const writeTaskStore = deps.writeTaskStore;
 const resolveLoopTaskSessionId = deps.resolveLoopTaskSessionId;
@@ -942,6 +943,7 @@ function markLoopSubtaskRunFinished(
   subtaskId: string,
   runStatus: TaskRunStatus,
   assistantContent: string | null,
+  failureDetail?: string,
 ): void {
   const task = readLoopTaskRecord(taskId);
   if (!task) {
@@ -949,7 +951,8 @@ function markLoopSubtaskRunFinished(
   }
   const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
   const now = Date.now();
-  const summary = buildLoopSubtaskCompletionSummary(assistantContent);
+  const executionFailure = runStatus === "error" ? normalizeLoopSubtaskFailure(failureDetail) : undefined;
+  const summary = buildLoopSubtaskCompletionSummary(executionFailure ?? assistantContent);
   const nextStatus: LoopSubtaskRecord["status"] = runStatus === "end" ? "completed" : "blocked";
   const subTasks = task.subTasks.map((item) => {
     if (item.id !== subtaskId) {
@@ -958,7 +961,8 @@ function markLoopSubtaskRunFinished(
     return {
       ...item,
       status: nextStatus,
-      summary: summary ?? item.summary,
+      executionFailure,
+      summary: summary ?? (item.executionFailure ? undefined : item.summary),
       updatedAt: now,
     };
   });
@@ -971,9 +975,9 @@ function markLoopSubtaskRunFinished(
     activeSubtaskIds,
     updatedAt: now,
   });
-  appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent);
+  appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent, executionFailure);
   if (subtaskRecord) {
-    appendLoopMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, assistantContent);
+    appendLoopMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, executionFailure ? `CLI 执行错误：${executionFailure}` : assistantContent);
   } else {
     refreshOpenLoopGroupChatPanelForTask(taskId);
   }
@@ -1009,6 +1013,7 @@ function appendLoopSubtaskCompletionAutoLog(
   runStatus: TaskRunStatus,
   summary?: string,
   assistantContent?: string | null,
+  executionFailure?: string,
 ): void {
   const filePath = typeof subtask?.communicationFile === "string" && subtask.communicationFile.trim()
     ? subtask.communicationFile
@@ -1047,7 +1052,9 @@ function appendLoopSubtaskCompletionAutoLog(
   if (verification.buildEvidence) {
     lines.push(`- 编译依据：${verification.buildEvidence}`);
   }
-  if (summary) {
+  if (executionFailure) {
+    lines.push(`- CLI 执行错误：${executionFailure}`);
+  } else if (summary) {
     lines.push(`- 输出摘要：${summary}`);
   }
   if (verification.unitTest === "unknown" || verification.build === "unknown") {

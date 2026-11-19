@@ -115,7 +115,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     ...overrides,
   };
   composition = createDepartmentRuntimeComposition(deps);
-  const start = () => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt: "实现账号和报表模块", modelPrompt: "实现目标", contextTags: [], departmentConfiguration: configuration });
+  const start = (displayPrompt = "实现账号和报表模块") => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt, modelPrompt: "实现目标", contextTags: [], departmentConfiguration: configuration });
   const dispatch = (prefix: string, count = 1) => fixture.queueMain((input, tab) => fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "dispatch",
     subtasks: Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i}`, title: `${prefix}-${i}`, prompt: `Implement ${prefix}-${i}, report all changes and relevant verification evidence to the real department leader.`, taskType: "general", writeFiles: [] })) }) }));
   const finish = () => fixture.queueMain((input, tab) => {
@@ -167,12 +167,32 @@ test("a settled leader frees the next director batch without registering later w
   await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "director completed after both batches");
 });
 
+test("production director can finish a cohesive single-group task with spare leader slots", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.decide({ status: "continue", subtasks: [{ id: "account-validation", title: "账号校验", prompt: "修复账号校验中的空值处理，保持现有账号规则及有效输入的结果一致。负责修改校验和对应的测试，覆盖空值及正常账号的结果，检查其它校验分支是否受到影响，并在完成后向总监报告实际修改范围和验证结果。" }] });
+  h.dispatch("account-validation");
+  await h.start("修复一处账号校验并验证");
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("account-validation-0"), "single group started");
+  await waitForLoopPlus(() => h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("组长可用名额：3 / 4")), "spare leader slots");
+  assert.match(h.directorPrompts[0].modelPrompt, /只有一个合适模块时只填一项/u);
+  assert.match(h.directorPrompts[0].modelPrompt, /prompt 至少 80 个字符/u);
+  assert.deepEqual(h.composition.readCapacity(h.rootTaskId)?.leaders, ["account-validation"]);
+
+  h.decide({ status: "completed", finalSummary: "账号校验已修复并验证" });
+  h.finish();
+  h.fixture.finishParked("account-validation-0", { status: "end", content: "修复及验证完成" });
+  await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "single group settled");
+  assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["account-validation"]);
+});
+
 test("production composition starts classic director and two real Loop+ leaders with shared persisted employee capacity and cleanup", async (t) => {
   const h = harness(); t.after(h.dispose);
   h.decide({ status: "continue", subtasks: [modulePrompt("accounts"), modulePrompt("reports")] });
   h.dispatch("accounts", 3); h.dispatch("reports", 2);
   await h.start();
   await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 3, "two real leaders sharing one regular slot and one overflow each");
+  assert.match(h.directorPrompts[0].modelPrompt, /把本轮可并行的模块放进同一个 subtasks 数组/u);
+  assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：4 \/ 4/u);
   const snapshot = h.composition.host.runtimeSnapshot(h.rootTaskId)!;
   assert.equal(snapshot.leaders.length, 2);
   const capacity = h.composition.readCapacity(h.rootTaskId)!;

@@ -214,7 +214,7 @@ function theme(dark) {
           results.push({ name: "dynamic-dark-light-dark", result: "passed", colors, parentTop, childTop, target, serverPort: server.address().port, browserErrors: errors });
           continue;
         }
-        assert.equal(await page.title(), "产研部总监");
+        assert.equal(await page.title(), "产研部群聊");
         await overflow(page);
         await showMembers(page);
         const groups = page.locator(".department-group");

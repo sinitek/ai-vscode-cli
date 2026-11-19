@@ -37,8 +37,10 @@ const messages = [{ id: "employee-message", role: "user", content: "work", taskR
   loopTaskId: leaderId, loopSubtaskId: employeeId, loopRound: 1 }];
 const ownershipPort = { readTaskRecord: (id) => tasksById.get(id) ?? null,
   readDepartmentLeaderTaskIds: (root, module) => root === rootId && module === "module-smoke" ? [leaderId] : [] };
+const expectedSummaries = ["统筹模块交付与验收", `组长 · ${longModule}`, "员工 · 员工真实会话"];
 const projectedTabs = [
-  projectDepartmentConversationTab({ id: "director-tab", cli: "codex", sessionId: `${rootId}-session`, createdAt: 1, loopTaskRole: "main", loopTaskId: rootId }, rootTask, [], ownershipPort),
+  projectDepartmentConversationTab({ id: "director-tab", cli: "codex", sessionId: `${rootId}-session`, createdAt: 1, loopTaskRole: "main", loopTaskId: rootId,
+    taskSummary: expectedSummaries[0] }, rootTask, [], ownershipPort),
   projectDepartmentConversationTab({ id: "leader-tab", cli: "codex", sessionId: `${leaderId}-session`, createdAt: 2, loopTaskRole: "main", loopTaskId: leaderId }, leaderTask, [], ownershipPort),
   projectDepartmentEmployeeConversationTab({ id: "employee-tab", cli: "codex", sessionId: "employee-session", createdAt: 3, loopTaskRole: "subtask", loopTaskId: leaderId }, leaderTask, messages, ownershipPort),
 ];
@@ -117,9 +119,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
           if (index < 3) {
             await selected.focus();
             const tooltip = page.locator("#conversationTabSummaryTooltip"); await tooltip.waitFor({ state: "visible" });
-            for (const part of [["总监", rootId], ["组长", rootId, leaderId], ["员工", rootId, leaderId, employeeId]][index]) {
-              assert.ok((await tooltip.innerText()).includes(part), `role tooltip retains ${part}`);
-            }
+            assert.equal(await tooltip.innerText(), expectedSummaries[index]);
           }
           const actionMessage = { id: `action-${tab.id}`, role: "assistant", codexFinalAnswer: true, merge: false,
             content: index === 1 ? "组长会话展示检查：保留汇报气泡，隐藏群聊链接。" : "会话展示检查：保留原有群聊入口。",
@@ -138,7 +138,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
       assert.deepEqual(errors, []);
       assert.deepEqual(await page.evaluate(() => window.__postedMessages.filter((message) => message.type === "webviewError")), []);
       const result = { status: "passed", mode: "role-icons-only", results, serverPort: server.address().port,
-        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "mode and exact hierarchy tooltip retained", "department leader hides bubble group-chat links; other roles and ordinary Loop retain links", "1440 dark and280 light no tab/root overflow"],
+        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "director summary and exact member title tooltips", "department leader hides bubble group-chat links; other roles and ordinary Loop retain links", "1440 dark and280 light no tab/root overflow"],
         boundary: "Generated full Webview and production role projection with fixture state; not real EH or CLI evidence" };
       fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
       console.log(JSON.stringify(result)); return;
@@ -196,16 +196,11 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     assert.equal(await page.locator(".conversation-tab").nth(2).locator(".conversation-tab-close").isDisabled(), true);
     assert.equal(await page.locator(".conversation-tab-label").nth(3).textContent(), "Codex4");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
-    const tooltipExpectations = [
-      [0, ["总监", "产研部统一任务总览", rootId]],
-      [1, ["组长", longModule, rootId, leaderId]],
-      [2, ["员工", longModule, rootId, leaderId, employeeId]],
-    ];
-    for (const [index, expectedParts] of tooltipExpectations) {
-      await page.locator(".conversation-tab").nth(index).focus();
-      await page.waitForTimeout(350);
-      const tooltip = await page.locator("#conversationTabSummaryTooltip").innerText();
-      for (const part of expectedParts) assert.ok(tooltip.includes(part), `tooltip includes ${part}`);
+    for (const [index, expected] of expectedSummaries.entries()) {
+      await page.locator(".conversation-tab").nth(index).hover();
+      const tooltip = page.locator("#conversationTabSummaryTooltip");
+      await tooltip.waitFor({ state: "visible" });
+      assert.equal(await tooltip.innerText(), expected);
       assert.ok(await page.locator(".conversation-tab").nth(index).getAttribute("aria-describedby"));
     }
     await page.screenshot({ path: path.join(output, "tabs-desktop-dark.png"), fullPage: true });
@@ -251,17 +246,13 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     await page.setViewportSize({ width: 280, height: 800 });
     await page.waitForTimeout(100);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true);
-    for (const [index, expectedLabel, fullIds] of [
-      [0, expectedRoleLabels[0], ["总监", "产研部统一任务总览", rootId]],
-      [1, expectedRoleLabels[1], ["组长", longModule, rootId, leaderId]],
-      [2, expectedRoleLabels[2], ["员工", longModule, rootId, leaderId, employeeId]],
-    ]) {
+    for (const [index, expected] of expectedSummaries.entries()) {
       const visible = page.locator(".conversation-tab").first();
-      assert.equal(await visible.locator(".conversation-tab-label").textContent(), expectedLabel);
+      assert.equal(await visible.locator(".conversation-tab-label").textContent(), expectedRoleLabels[index]);
       assert.equal(await visible.evaluate((element) => element.scrollWidth <= element.clientWidth + 1), true);
       await visible.focus(); await page.waitForTimeout(350);
       const tooltip = await page.locator("#conversationTabSummaryTooltip").innerText();
-      for (const expectedPart of fullIds) assert.ok(tooltip.includes(expectedPart), `tooltip includes ${expectedPart}`);
+      assert.equal(tooltip, expected);
       await page.screenshot({ path: path.join(output, `tabs-mobile-dark-${index}.png`), fullPage: true });
       if (index < 2) await page.locator(".conversation-tabs-nav-next").click();
     }
@@ -273,7 +264,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     assert.deepEqual(webviewErrors, []);
     assert.deepEqual(errors, []);
     const result = { status: "passed", mode: "full-existing-smoke", viewportChecks: [1280, 280], themes: ["dark", "light"], screenshots: fs.readdirSync(output).filter((name) => name.endsWith(".png")),
-      checks: ["role icons decorate unchanged Codex/Codex2/Codex3 labels", "role names and task IDs stay out of visible labels", "long module truncation", "full hierarchy and identity tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "leader mouse and keyboard selection stays in conversation", "director selection opens group chat", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
+      checks: ["role icons decorate unchanged Codex/Codex2/Codex3 labels", "role names and task IDs stay out of visible labels", "long module truncation", "director summary and full member title tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "leader mouse and keyboard selection stays in conversation", "director selection opens group chat", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
       errors, webviewErrors, boundary: "Generated full webview runtime with a fixture PanelState and VS Code API bridge; does not verify real CLI organization startup" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));

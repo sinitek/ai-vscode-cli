@@ -44,6 +44,7 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   resolveTarget(tabId: string | null): PromptRunTarget | null;
   taskForTarget(tabId: string | null): LoopTaskRecord | null;
   createRoot(input: PromptRunInput, target: PromptRunTarget, configuration: DepartmentConfigurationState): LoopTaskRecord;
+  captureDirectorTaskSummary?(input: PromptRunInput, target: PromptRunTarget): void;
   /** Show only a successfully registered and bound director; panel loading must not block execution. */
   openGroupChat?(taskId: string): Promise<void>;
   runDirectorDecision(request: { input: PromptRunInput; target: PromptRunTarget; task: LoopTaskRecord; round: number }): Promise<ClassicLoopDecisionResult>;
@@ -189,6 +190,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     if (!registered.ok) throw new Error(`部门注册失败：${registered.reason}`);
     const bound = deps.resolveTarget(target.tabId);
     if (!bound || bound.cli !== task.cli || bound.sessionId !== task.sessionId) throw new Error("总监会话绑定失败。");
+    captureDirectorTaskSummary(input, bound);
     attach(task, bound, input); launchDirector(task.id);
     if (deps.openGroupChat) {
       try {
@@ -200,6 +202,14 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       }
     }
   }
+  function captureDirectorTaskSummary(input: PromptRunInput, target: PromptRunTarget): void {
+    try {
+      deps.captureDirectorTaskSummary?.(input, target);
+    } catch (error) {
+      try { deps.log?.("department-task-summary-capture-failed", error); } catch { /* The director can still run. */ }
+    }
+  }
+
   function attach(task: LoopTaskRecord, target: PromptRunTarget, input?: PromptRunInput): Controller {
     const existing = controllers.get(task.id); if (existing) return existing;
     const m = metadata(task);
@@ -399,6 +409,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     assertContinuation();
     const latest = deps.readTask(root.id)!;
     if (!deps.updateTask(root.id, { supplementalRequirements: [...(latest.supplementalRequirements ?? []), prompt] })) throw new Error("补充需求保存失败。");
+    captureDirectorTaskSummary({ ...c.input, displayPrompt: prompt }, target);
     wake(root.id); if (launchDirector(root.id, release)) release = undefined;
     } catch (error) {
       // A refused/cancelled handoff must not leave a projected running root

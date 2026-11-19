@@ -15,6 +15,7 @@ import type { FirstLoopMainExecution } from "../../../extensionHost/promptRunHan
 
 type PublishOptions = {
   status?: TaskRunStatus | null;
+  failureDetail?: string;
   content?: string | null;
   late?: boolean;
   prompt?: string;
@@ -273,6 +274,7 @@ export function createLoopPlusRuntimeFixture(options: {
         endedAt: runEndedAt,
         durationMs: Math.max(0, runEndedAt - runStartedAt),
         status: options.status,
+        failureDetail: options.failureDetail,
         taskRole: input.taskRole,
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,

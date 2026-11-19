@@ -167,6 +167,7 @@ export type LoopSubtaskRecord = {
   skillGuidance?: string;
   status: "pending" | "running" | "completed" | "skipped" | "blocked";
   summary?: string;
+  executionFailure?: string;
   communicationFile?: string;
   updatedAt?: number;
   lastStartedAt?: number;
@@ -1489,6 +1490,7 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     ...(skillIds && skillGuidance ? { skillIds, skillGuidance } : {}),
     status,
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
+    ...(status === "blocked" && typeof raw.executionFailure === "string" ? { executionFailure: raw.executionFailure } : {}),
     communicationFile: typeof raw.communicationFile === "string" ? raw.communicationFile : undefined,
     updatedAt: typeof raw.updatedAt === "number" ? raw.updatedAt : undefined,
     ...(typeof raw.lastStartedAt === "number" && Number.isFinite(raw.lastStartedAt)

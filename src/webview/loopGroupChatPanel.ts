@@ -18,6 +18,7 @@ import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { getMarkdownStyles } from "./viewContentStyles/markdown";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
+import { formatDepartmentMemberTitle, type DepartmentRole } from "../department";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
@@ -2022,9 +2023,9 @@ function renderDepartmentRosterPanel(
   acceptanceAnchors: ReadonlyMap<string, string>,
 ): string {
   const department = state.department!;
-  const member = (participant: LoopGroupChatPanelParticipant, role: "总监" | "组长" | "员工", navigation = "", anchor?: string, progressPercent?: number): string => {
-    const label = role === "总监" ? role : `${role} · ${participant.title}`;
-    const avatarLabel = { 总监: "总", 组长: "组", 员工: "员" }[role];
+  const member = (participant: LoopGroupChatPanelParticipant, role: DepartmentRole, navigation = "", anchor?: string, progressPercent?: number): string => {
+    const label = formatDepartmentMemberTitle(role, participant.title);
+    const avatarLabel = { director: "总", leader: "组", employee: "员" }[role];
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>
       <div class="member-name" title="${escapeAttribute(label)}">${escapeHtml(label)}</div>
@@ -2042,16 +2043,16 @@ function renderDepartmentRosterPanel(
       ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, buildDepartmentLeaderChatTitle(leader.leaderNumber))
       : "";
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
-    const employees = leader.employees.map((employee) => `<li>${member(employee, "员工", "",
+    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
-      ${member(leader.participant, "组长", navigation + allocationSummary, undefined, progressPercent)}
+      ${member(leader.participant, "leader", navigation + allocationSummary, undefined, progressPercent)}
       <ul class="department-employees" aria-label="${escapeAttribute(`${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
     </li>`;
   }).join("");
   const departmentTree = department.role === "director"
-    ? `<li>${member(department.director, "总监")}
+    ? `<li>${member(department.director, "director")}
       <ul class="department-leaders" aria-label="组长">${leaders || '<li class="member-meta department-empty">尚未分配组长</li>'}</ul>
     </li>`
     : leaders || '<li class="member-meta department-empty">尚未分配组长</li>';

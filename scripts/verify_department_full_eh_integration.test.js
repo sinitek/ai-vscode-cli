@@ -35,8 +35,9 @@ test("cold recovery classification rejects unrelated activation errors and only 
 });
 
 test("cold UI stop is bound to the exact opened root, and cross-host comparison rejects same execution IDs with changed identity or selection", () => {
-  assert.equal(assertColdUiRoot("产研部 · root-expected", "root-expected"), true);
-  assert.throws(() => assertColdUiRoot("产研部 · root-other", "root-expected"), /does not belong/);
+  assert.equal(assertColdUiRoot("root-expected", "root-expected"), true);
+  assert.throws(() => assertColdUiRoot("root-other", "root-expected"), /does not belong/);
+  assert.throws(() => assertColdUiRoot("产研部 · root-expected", "root-expected"), /does not belong/);
   const identity = { rootTaskId: "root", workspace: "/workspace", moduleId: "module", leaderTaskId: "leader", generation: 3,
     subtaskId: "subtask", attemptId: "attempt", executionId: "execution", ownerId: "owner", role: "employee", cli: "codex",
     session: { state: "bound", id: "session" } };
@@ -214,8 +215,8 @@ test("cold driver refuses missing evidence before its shared deadline and report
       const command = JSON.parse(params.message);
       if (command.method === "Runtime.enable") setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ method: "Runtime.executionContextCreated", params: { context: { id: 1, auxData: { isDefault: true } } } }) }));
-      const value = command.method === "Runtime.evaluate" ? command.params.expression.includes("#panelSubtitle") ? "部门 · root"
-        : command.params.expression.includes("innerText") ? "产研部总监 root"
+      const value = command.method === "Runtime.evaluate" ? command.params.expression.includes("#panelSubtitle") ? "root"
+        : command.params.expression.includes("innerText") ? "产研部群聊 root"
         : command.params.expression.includes("dispatchEvent") ? (clicks += 1, true) : 1 : undefined;
       setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ id: command.id, result: { result: { value } } }) }));
@@ -587,7 +588,7 @@ test('root-scoped shared CDP discovers real untyped OOPIF panels by exact public
             message:JSON.stringify({method:'Runtime.executionContextCreated',params:{context:{id:1,auxData:{isDefault:true}}}})}));
           const targetRoot=wrongRoot?'another-root':rootId;
           const value=command.method!=='Runtime.evaluate'?undefined:params.sessionId==='leader'?'产研部 · 组长 · leader-other':
-            command.params.expression.includes('getAttribute')?`产研部 · 总监 · ${targetRoot}`:`产研部总监 ${targetRoot}`;
+            command.params.expression.includes('getAttribute')?targetRoot:`产研部群聊 ${targetRoot}`;
           setImmediate(()=>cdp.emit('Target.receivedMessageFromTarget',{sessionId:params.sessionId,message:JSON.stringify({id:command.id,result:{result:{value}}})}));
           return {};
         }
@@ -657,7 +658,7 @@ function cleanupGateBrowser({ candidateFailure = false, discoveryFailure = false
         if (command.method === 'Runtime.enable') setImmediate(() => cdp.emit('Target.receivedMessageFromTarget', { sessionId: params.sessionId,
           message: JSON.stringify({ method: 'Runtime.executionContextCreated', params: { context: { id: 1, auxData: { isDefault: true } } } }) }));
         const value = command.method !== 'Runtime.evaluate' ? undefined : params.sessionId === 'wrong' ? 'other' :
-          command.params.expression.includes('getAttribute') ? '产研部 · 总监 · root' : '产研部总监 root';
+          command.params.expression.includes('getAttribute') ? 'root' : '产研部群聊 root';
         setImmediate(() => cdp.emit('Target.receivedMessageFromTarget', { sessionId: params.sessionId,
           message: JSON.stringify({ id: command.id, result: { result: { value } } }) }));
         return {};
@@ -705,7 +706,7 @@ test('cold driver passes exact root and deadlines to shared panel factory and re
         webviewFactory: async (_browser, purpose, _ms, options) => {
           assert.equal(purpose, 'webviewPanel'); assert.equal(options.rootId, 'root');
           assert.equal(options.deadline, deadlines.actionDeadline); assert.equal(options.cleanupDeadline, deadlines.hostDeadline);
-          return { locator: selector => ({ waitFor: async () => {}, count: async () => 1, getAttribute: async () => '产研部 · 总监 · root', click: async () => clicked++ }),
+          return { locator: selector => ({ waitFor: async () => {}, count: async () => 1, getAttribute: async () => 'root', click: async () => clicked++ }),
             close: async () => fail ? [{ operation: 'target detach', status: 'unconfirmed' }] : [] };
         }
       });
@@ -740,7 +741,7 @@ test('cold driver propagates concrete observer failure and confirms CDP release 
         chromium: { connectOverCDP: async () => ({ contexts: () => [{ pages: () => [{ url: () => 'vscode-file://workbench' }] }],
           close: async () => events.push('disconnect') }) },
         webviewFactory: async () => ({ locator: () => ({ waitFor: async () => {}, count: async () => 1,
-          getAttribute: async () => '部门 · root', click: async () => events.push('click') }), close: async () => events.push('detach') }),
+          getAttribute: async () => 'root', click: async () => events.push('click') }), close: async () => events.push('detach') }),
         signal: () => events.push('signal'), evidenceExists: () => false,
         readFailure: () => ({ phase: 'awaiting-public-stop', error: 'exact original failure' }),
       });

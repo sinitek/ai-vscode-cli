@@ -81,7 +81,7 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
       assert.ok(identity, "director request lacks exact runtime task ID");
       if (!rootId) { assert.ok(text.includes(prompt)); rootId = identity; }
       assert.equal(identity, rootId, "director identity changed"); task(identity, "director");
-      const total = Number(text.match(/模块总数：(\d+)/)?.[1]);
+      const total = Number(text.match(/(?:已登记模块数|模块总数)：(\d+)/)?.[1]);
       assert.ok(Number.isSafeInteger(total), "missing production coordination context");
       if (total === 0 && moduleCount === 0) {
         stage = "director-dispatch"; moduleCount = 1;
@@ -165,14 +165,12 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
         // no blockers, not that this scenario dispatched and reviewed its work.
         assert.equal(text.match(/^Prompt kind: (\S+)/m)?.[1], "initial", "first leader request is not initial");
         assert.equal(Number(text.match(/^Still running count: (\d+)/m)?.[1]), 0);
-        assert.equal(Number(text.match(/^Confirmed acceptances: (\d+)/m)?.[1]), 0);
         assert.equal(leader.subTasks.length, 0, "initial leader already has unowned work");
         dispatched.add(identity); stage = "leader-dispatch";
         answer = { status: "dispatch", subtasks: [{ id: "text-protocol", title: "确定性文本答复", taskType: "backend", writeFiles: [],
           prompt: "仅验证本机确定性文本答复协议：将 isolated protocol 转为 ISOLATED PROTOCOL。最终答复给出输入、输出和非真实模型的验证范围。不修改调度或任务记录，不访问外网，不要求编写代码文件；此任务完整自包含，不再拆分。" }] };
       } else if (text.includes("Snapshot says completion is allowed: yes")) {
         assert.ok(reviewed.has(identity), "closeout lacks a real employee event acceptance");
-        assert.equal(Number(text.match(/^Confirmed acceptances: (\d+)/m)?.[1]), 1);
         assert.equal(leader.subTasks.length, 1);
         assert.equal(leader.subTasks[0].status, "completed", "employee acceptance is not persisted");
         stage = "leader-report";

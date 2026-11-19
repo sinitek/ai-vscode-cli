@@ -64,8 +64,8 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
     await settle();
     await page.screenshot({ path: path.join(output, `${name}-${label}.png`) });
   };
-  assert.equal(await page.locator("#panelHeading").textContent(), "产研部总监");
-  assert.equal(await page.title(), "产研部总监");
+  assert.equal(await page.locator("#panelHeading").textContent(), "产研部群聊");
+  assert.equal(await page.title(), "产研部群聊");
   await showMembers(page); await overflow(page);
   const directorInitial = await inspectRoster(page);
   assert.match(directorInitial.rows[2].title, /员工 · $/u);
@@ -106,8 +106,8 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await page.evaluate(() => window.__roleAvatarDocument), "same-document", "parent contentPatch must not reload page");
   await showMembers(page); await overflow(page);
   const directorPatched = await inspectRoster(page);
-  assert.equal(await page.locator("#panelHeading").textContent(), "产研部总监");
-  assert.equal(await page.title(), "产研部总监");
+  assert.equal(await page.locator("#panelHeading").textContent(), "产研部群聊");
+  assert.equal(await page.title(), "产研部群聊");
   fs.writeFileSync(path.join(output, `${name}-director-patched.html`), await page.content());
   await captureRoster(page, "director-patched");
   await page.locator('.department-group').nth(1).getByRole("button", { name: "打开组长群聊", exact: true }).click();

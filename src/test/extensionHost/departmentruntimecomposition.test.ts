@@ -209,7 +209,13 @@ test("new department accepts a Grok employee route and prepares it before startu
 test("new department opens its registered director group chat without waiting for the panel", async (t) => {
   const ownership = createLoopOrchestrationOwnershipTracker(), panel = latch(), entered = latch();
   const opened: string[] = []; let calls = 0;
+  const captured: string[] = [];
   const h = harness({ acquireDirectorOwnership: ownership.acquire,
+    captureDirectorTaskSummary: (input, target) => {
+      assert.equal(h.composition.host.runtimeSnapshot("root-1")?.rootTaskId, "root-1");
+      assert.deepEqual(target, h.targets.get("director"));
+      captured.push(input.displayPrompt);
+    },
     openGroupChat: async (taskId) => {
       const task = h.fixture.readTask(taskId)!;
       assert.equal(task.department?.role, "director");
@@ -219,7 +225,12 @@ test("new department opens its registered director group chat without waiting fo
       opened.push(taskId);
       await panel.promise;
     },
-    runDirectorDecision: async ({ task }) => { calls++; entered.resolve(); return { status: "pending-requirements", task }; },
+    runDirectorDecision: async ({ task }) => {
+      assert.deepEqual(captured, ["实现账号和报表模块"]);
+      calls++;
+      entered.resolve();
+      return { status: "pending-requirements", task };
+    },
   });
   t.after(() => { panel.resolve(); h.dispose(); });
   await h.start();
@@ -229,6 +240,7 @@ test("new department opens its registered director group chat without waiting fo
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(calls, 2);
   assert.deepEqual(opened, ["root-1"], "director wakes do not reopen the group chat");
+  assert.deepEqual(captured, ["实现账号和报表模块"], "director wakes do not capture another submission");
   await h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
 });
 
@@ -251,7 +263,9 @@ test("group chat opening failure is logged without stopping the new director", a
 for (const failure of ["preparation", "registration", "binding"] as const) {
   test(`department ${failure} failure does not open a group chat`, async (t) => {
     const opened: string[] = [];
-    const h = harness({ openGroupChat: async (taskId) => { opened.push(taskId); } });
+    const captured: string[] = [];
+    const h = harness({ openGroupChat: async (taskId) => { opened.push(taskId); },
+      captureDirectorTaskSummary: (input) => { captured.push(input.displayPrompt); } });
     t.after(h.dispose);
     if (failure === "preparation") h.prepare(() => { throw new Error("preparation-failed"); });
     if (failure === "registration") t.mock.method(h.store, "write", () => ({ ok: false as const, error: "registration-failed" }));
@@ -265,6 +279,7 @@ for (const failure of ["preparation", "registration", "binding"] as const) {
     }
     await assert.rejects(h.start());
     assert.deepEqual(opened, []);
+    assert.deepEqual(captured, []);
     assert.equal(h.directorPrompts.length, 0);
   });
 }
@@ -359,8 +374,10 @@ test("leader ownership is acquired before its first orphan projection and releas
 for (const outcome of ["resume", "stop", "revoke", "reject", "throw"] as const) {
   test(`director continuation owns the running projection before continueRoot settles: ${outcome}`, async (t) => {
     const ownership = createLoopOrchestrationOwnershipTracker(), entered = latch(), release = latch();
+    const summarySubmissions: string[] = [];
     let decisions = 0;
-    const h = harness({ acquireDirectorOwnership: ownership.acquire, runDirectorDecision: async ({ task }) => {
+    const h = harness({ acquireDirectorOwnership: ownership.acquire,
+      captureDirectorTaskSummary: (input) => { summarySubmissions.push(input.displayPrompt); }, runDirectorDecision: async ({ task }) => {
       decisions++; return { status: "pending-requirements", task };
     } });
     t.after(() => { release.resolve(); h.dispose(); });
@@ -385,6 +402,7 @@ for (const outcome of ["resume", "stop", "revoke", "reject", "throw"] as const) 
       await assert.rejects(continuation, /deterministic/);
       assert.equal(ownership.getCount(root.id), 0);
       assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+      assert.deepEqual(summarySubmissions, ["实现账号和报表模块"]);
       return;
     }
     await entered.promise;
@@ -398,8 +416,10 @@ for (const outcome of ["resume", "stop", "revoke", "reject", "throw"] as const) 
       await assert.rejects(continuation, /已停止|continuation-revoked/);
       assert.equal(decisions, before, "late continuation cannot resurrect a stopped director");
       assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+      assert.deepEqual(summarySubmissions, ["实现账号和报表模块"]);
     } else {
       await continuation;
+      assert.deepEqual(summarySubmissions, ["实现账号和报表模块", "继续"]);
       await waitForLoopPlus(() => decisions === before + 1, "resumed director decision");
       assert.equal(ownership.getCount(root.id), 1, "the same ownership transfers to coordination wait");
       assert.equal(isLoopTaskRunOrphaned(h.fixture.readTask(root.id)!, ownership.collectTaskIds()), false);

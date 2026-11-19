@@ -79,6 +79,40 @@ async function finish(h: Awaited<ReturnType<typeof setup>>) {
   await h.control({ response: "turn", messages: [terminal] }); await waitFile(h.file("stdin-eof")); await h.control({ close: true });
 }
 
+test("employee delivers large compatible tool callbacks in order without losing its Owner channel", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), entered = deferred(), release = deferred(), seen: string[] = [];
+  const outputs = new Map([["compat", "c".repeat(51 * 1024)], ["utf8", '工具🌛\\\"\n'.repeat(8192)]]);
+  const messages = [...outputs].flatMap(([id, aggregatedOutput]) => {
+    const message = { method: "item/completed", params: { threadId: "native", turnId: "turn",
+      item: { id, type: "commandExecution", aggregatedOutput, exitCode: 0, status: "completed" } } };
+    assert.equal(Buffer.byteLength(JSON.stringify(message), "utf8") > 64 * 1024, id === "utf8");
+    return [message, { method: "item/agentMessage/delta", params: { threadId: "native", turnId: "turn", delta: `after-${id}` } }];
+  });
+  h.handlers.onEvent = async (event) => {
+    const forwarded = event as { type: string; item?: { id: string; aggregatedOutput: string; aggregated_output: string } };
+    if (forwarded.type !== "item.completed" || !forwarded.item || !outputs.has(forwarded.item.id)) return;
+    const { id, aggregatedOutput, aggregated_output } = forwarded.item;
+    assert.equal(aggregatedOutput, outputs.get(id));
+    assert.equal(aggregated_output, aggregatedOutput);
+    assert.ok(Buffer.byteLength(JSON.stringify(forwarded), "utf8") > 64 * 1024);
+    seen.push(id);
+    if (id === "compat") { entered.resolve(); await release.promise; }
+  };
+  h.handlers.onAssistantDelta = (chunk) => { seen.push(chunk); };
+  const owner = await startDepartmentCodexOwner(h.input(), { handlers: h.handlers, async persist() {}, assertAuthorized() {} });
+  t.after(() => { release.resolve(); owner.disconnect(); });
+  await waitFile(h.file("task-started"));
+  await h.control({ response: "turn", messages: [...messages, terminal] });
+  await Promise.race([entered.promise, owner.completion.then(() => assert.fail("terminal preceded the large callback"))]);
+  assert.deepEqual(seen, ["compat"]);
+  assert.equal(fs.existsSync(h.file("stdin-eof")), false);
+  release.resolve();
+  await waitFile(h.file("stdin-eof")); await h.control({ close: true });
+  assert.ok(Object.values(await owner.completion).every((fact) => fact.status === "confirmed"));
+  assert.deepEqual(seen, ["compat", "after-compat", "utf8", "after-utf8"]);
+  assert.equal(h.count("turn/start"), 1);
+});
+
 for (const forged of [false, true]) test(`employee admission ${forged ? "forged" : "missing"} capability rejects before codex builder`, async (t) => {
   const h = await setup(t);
   h.host.employeeAdmission = forged ? {} as NonNullable<typeof h.host.employeeAdmission> : null;
@@ -239,8 +273,9 @@ test("source completion waits for asynchronous EH consumers before physical stre
   void owner.completion.then(() => { done = true; });
   await waitFile(h.file("task-started"));
   await h.control({ response: "turn", messages: [{ method: "item/agentMessage/delta", params: { threadId: "native", turnId: "turn", delta: "answer" } }, terminal] });
-  await until(() => entered); await waitFile(h.file("stdin-eof")); await h.control({ close: true });
-  assert.equal(done, false); callback.resolve();
+  await until(() => entered);
+  assert.equal(done, false); assert.equal(fs.existsSync(h.file("stdin-eof")), false);
+  callback.resolve(); await waitFile(h.file("stdin-eof")); await h.control({ close: true });
   const facts = await owner.completion; assert.equal(facts.turnTerminal.status, "confirmed"); assert.equal(facts.streams.status, "confirmed"); owner.disconnect();
 });
 

@@ -1,5 +1,10 @@
 # 避坑指南索引
 
+## 开发构建清空 dist 会中断新员工准备
+
+- 开发宿主会按磁盘路径启动员工 Worker。源码仓构建先删 `dist/` 时，已在内存运行的宿主可能正常接收组长决定，却在员工绑定前报 `department-codex-owner-channel-unobservable`。先核对准备记录是否仍未绑定，再对照构建时间和 Worker 文件，区分会话启动后的 IPC 大回调失联。
+- 开发构建保留现有产物，类型检查通过后才写输出。需要清理旧文件或打包时，先退出使用该目录的宿主，或使用独立构建副本。对照验证见 [员工 Worker 构建修复](../exec-plans/completed/2026-11/2026-11-19-bugfix-employee-worker-build-gap.md)。
+
 ## 部门组长在原生调用前报 leader-invocation-invalid
 
 提示词包含 Loop+ 协议、上下文和用户需求，序列化后的 UTF-8 大小可能轻易超过 48 KiB；英文字符数不能代替字节数。旧部门 Codex/OpenCode invocation 有额外 48 KiB 限制，私有 IPC 还有 64 KiB 限制，触发后会表现为 `DEPARTMENT_NATIVE_UNKNOWN` 并停止调度，不能据此判断模型服务故障。
@@ -68,6 +73,10 @@
 - `src/loopCommunicationFilePreview.ts`
 - `src/loopTaskStore.ts`
 - `src/shared/userHomePaths.ts`
+
+## Loop 子任务失败不能从助手回复猜原因
+
+- CLI 有时不抛异常，只结算为 `error`，已有助手文本也可能是半截输出。应检查本次运行的 `failureDetail` 或捕获的错误，并按子任务/attempt 核对汇报；通用暂停状态不能替代真实诊断。
 
 ## Loop+ 假完成必须核对轮次与会话所有权
 
@@ -1113,6 +1122,10 @@ rm -r "$result_directory"
 - `src/extensionHost/modelSettings.ts`
 - `src/test/session/sessionMessageActions.test.ts`
 - `src/test/webview/opencodedualmodelwebview.test.ts`
+
+## 产研部 Codex 员工工具输出超过单帧会伪装成通道失联
+
+遇到 `department-codex-owner-channel-unobservable` 时，先只读核对原 Owner 是否已绑定以及原生会话是否有 `task_started`，不要把该错误直接归因于 worker 启动失败。去掉正文后对齐工具完成时间与报错时间，按兼容转换后的 UTF-8 字节测量：约 50 KiB 的 `aggregatedOutput` 加上 `aggregated_output` 后即可超过 64 KiB。员工与组长应复用同一有界分片和消费确认协议；不要仅放大帧限、截断工具输出或用新 Owner 重放旧 attempt。完整清理仍需要原 Owner 的凭证。
 
 ## Codex app-server 残留进程会把 spawn 失败放大成 EAGAIN
 

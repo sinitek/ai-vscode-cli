@@ -9,6 +9,7 @@ export type LoopSubtaskCompletionOptions = {
   subtaskId: string;
   runStatus: TaskRunStatus;
   assistantContent: string | null;
+  failureDetail?: string;
   tabId: string | null;
 };
 
@@ -25,6 +26,7 @@ export type LoopSubtaskCompletionDeps = {
     subtaskId: string,
     runStatus: TaskRunStatus,
     assistantContent: string | null,
+    failureDetail?: string,
   ) => void;
   closeSubtaskTab: (tabId: string) => Promise<void>;
   prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
@@ -78,7 +80,11 @@ export async function finalizeLoopSubtaskRun(
   let reported = false;
   let cleanup: Promise<void> | undefined;
   try {
-    deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
+    if (options.failureDetail) {
+      deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent, options.failureDetail);
+    } else {
+      deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
+    }
     reported = runStatus === "end";
   } finally {
     cleanup = loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported, closeCompletedTab);

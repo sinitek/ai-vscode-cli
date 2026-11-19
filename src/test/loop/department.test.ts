@@ -227,12 +227,13 @@ test("role prompts preserve director boundaries and live collaboration path", ()
   assert.doesNotMatch(employee, /部门员工额度|宿主限额/u);
 });
 
-test("director plans cohesive groups by effort and dispatches only a ready batch each round", () => {
+test("director prefers useful same-round parallelism and retains cohesive single-group tasks", () => {
   const director = buildDepartmentRolePrompt("director");
+  assert.match(director, /多个目标若已就绪、可以独立交付和验收、写入范围互不冲突.*在组长可用名额内同轮派给多个组长/u);
   assert.match(director, /每位组长负责一个内聚、可独立验收的目标/u);
+  assert.match(director, /强耦合或需要共同修改同一文件或契约的工作适合留在一组/u);
+  assert.match(director, /必须先后完成的工作按依赖分轮。只有一个合适目标时就派一组/u);
   assert.match(director, /预计实现与验证工作量.*尽量均衡各组/u);
-  assert.match(director, /优先保留任务内聚性/u);
-  assert.match(director, /每轮只派当前就绪、范围互不冲突的精简批次/u);
-  assert.match(director, /收到组长汇报后核对剩余范围和依赖，再决定下一批/u);
+  assert.match(director, /有空位时补派新就绪且不冲突的目标/u);
   assert.match(director, /尚有未派发工作.*不得宣告部门整体完成/u);
 });

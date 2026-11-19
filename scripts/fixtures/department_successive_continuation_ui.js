@@ -280,8 +280,10 @@ async function driveSuccessiveContinuation({ browser, scenario, readTasks, readR
           assertWebviewTarget(target, "webviewPanel", activeRoot);
           const subtitle = await target.locator("#panelSubtitle").getAttribute("title").catch(() => "");
           const body = await target.locator("body").innerText().catch(() => "");
-          if (subtitle?.endsWith(` · ${activeRoot}`) && body.includes("产研部总监") && body.includes(activeRoot)) return target;
-          assert.ok(!subtitle?.includes("产研部") || subtitle.endsWith(` · ${activeRoot}`), "public panel targets another department root");
+          if (body.includes("产研部群聊") && subtitle) {
+            assert.equal(subtitle, activeRoot, "public panel targets another department root");
+            if (body.includes(activeRoot)) return target;
+          }
           await closeAdapter(target);
           return null;
         } catch (error) {
@@ -339,7 +341,7 @@ async function driveSuccessiveContinuation({ browser, scenario, readTasks, readR
       roundEvidence.prompt = prompt;
       group = panelAdapter;
       const subtitle = await group.locator("#panelSubtitle").getAttribute("title");
-      assert.ok(subtitle?.endsWith(` · ${activeRoot}`), "continue panel belongs to another root");
+      assert.equal(subtitle, activeRoot, "continue panel belongs to another root");
       const continueButton = group.locator('#panelActions [data-action="continueTask"]');
       await wait(`round ${roundNumber} public continue enabled`, async () => await continueButton.isVisible().catch(() => false) && await continueButton.isEnabled().catch(() => false));
       await withinDeadline(`round ${roundNumber} public continue click`, () => continueButton.click());

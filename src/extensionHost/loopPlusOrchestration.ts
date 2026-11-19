@@ -4,6 +4,7 @@ import type { FirstLoopMainExecution } from "./promptRunHandoff";
 import { RUNTIME_CONFIG_LOCK_TIMEOUT } from "../loopMainFailure";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
+import { appendLoopSubtaskFailureEvidence, getLoopSubtaskFailureLines, normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
 import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
 import { buildLoopSubtaskExecutionPlan } from "../loopParallel";
 import { loopSubtaskAutoCompactions } from "../loopSubtaskAutoCompact";
@@ -263,6 +264,7 @@ type SubtaskMeta = {
   decision: LoopSubtaskDecision;
   communicationFile?: string;
   summary?: string;
+  executionFailure?: string;
   executionStatus?: LoopSubtaskRecord["status"];
   lastStartedAt?: number;
 };
@@ -726,6 +728,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         },
         communicationFile: subtask.communicationFile,
         summary: subtask.summary,
+        executionFailure: subtask.executionFailure,
         executionStatus: subtask.status,
         ...(typeof subtask.lastStartedAt === "number" && Number.isFinite(subtask.lastStartedAt)
           ? { lastStartedAt: subtask.lastStartedAt }
@@ -1505,7 +1508,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         });
       },
       pauseForReview(message: string, finalSummary?: string) {
-        pause(runtime, "needs-review", message, finalSummary);
+        pause(runtime, "needs-review", message, message === "loop-plus-blocked"
+          ? appendLoopSubtaskFailureEvidence(finalSummary, getLoopPlusFailureLines(runtime, step)) : finalSummary);
       },
       armCloseout() {
         runtime.closeoutBudget = 1;
@@ -1691,7 +1695,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     if (decision.status === "blocked" && !decision.blocker) {
       return protocolMiss(runtime, Boolean(held), buildLoopBlockerDiagnosticFailure(
-        decision.finalSummary || blockReview?.summary, decision.blockerIssue,
+        appendLoopSubtaskFailureEvidence(decision.finalSummary || blockReview?.summary, getLoopPlusFailureLines(runtime, step)), decision.blockerIssue,
       ), response);
     }
     const outcome = loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
@@ -2406,6 +2410,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     detail: string | null;
     onCompleted?: () => Promise<void>;
   }): void {
+    if (input.outcome === "failed") {
+      input = { ...input, detail: normalizeLoopSubtaskFailure(input.detail) ?? "CLI 调用失败，未捕获具体错误。" };
+    }
     const currentAttempt = runtime.scheduler.snapshot().running.find((item) => item.subtaskId === input.subtaskId);
     let completed = false;
     try {
@@ -2477,6 +2484,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (meta) {
       meta.summary = input.detail ?? meta.summary;
       meta.executionStatus = input.outcome === "completed" ? "completed" : "blocked";
+      meta.executionFailure = input.outcome === "failed" ? input.detail ?? undefined : undefined;
     }
     let task: LoopTaskRecord | null = null;
     try {
@@ -2664,6 +2672,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       reportEventIds: step.reportEventIds,
       reportQueue: (runtime.scheduler.snapshot().reportQueue ?? [])
         .filter((item) => frozenReportIds.has(item.eventId)),
+      priorSubtaskFailures: getLoopPlusFailureLines(runtime, step, false),
       interruptedSubtaskIds: runtime.scheduler.snapshot().running
         .filter((item) => runtime.meta.get(item.subtaskId)?.executionStatus === "blocked")
         .map((item) => item.subtaskId),
@@ -2759,6 +2768,22 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return "running";
   }
 
+  function getLoopPlusFailureLines(runtime: ParentRuntime, step: MainStep, includeCurrent = true): string[] {
+    const snapshot = runtime.scheduler.snapshot();
+    const latest = new Map(snapshot.seenAttempts.map((attempt) => [attempt.subtaskId, attempt]));
+    const events = new Map([snapshot.currentReview, ...snapshot.reviewQueue, ...(snapshot.reportQueue ?? [])]
+      .filter((item): item is LoopPlusReviewItem => item !== null).map((item) => [item.attemptId, item.eventId]));
+    const visible = new Set([...step.eventIds, ...step.reportEventIds]);
+    const subtasks = [...runtime.meta].map(([id, meta]) => ({ id, title: meta.decision.title,
+      status: meta.executionStatus ?? "pending", executionFailure: meta.executionFailure } as const));
+    return getLoopSubtaskFailureLines(subtasks.filter(({ id }) => {
+      const attempt = latest.get(id);
+      if (attempt?.outcome !== "failed" || attempt.disposition === "closed" || attempt.acceptance === "cancelled") return false;
+      const eventId = events.get(attempt.attemptId);
+      return eventId === undefined || (includeCurrent && visible.has(eventId));
+    }));
+  }
+
   function mergeSubtasks(runtime: ParentRuntime, existing: readonly LoopSubtaskRecord[]): LoopSubtaskRecord[] {
     const byId = new Map(existing.map((subtask) => [subtask.id, subtask]));
     runtime.meta.forEach((meta, subtaskId) => {
@@ -2788,6 +2813,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           : {}),
         status: active,
         summary: meta.summary ?? previous?.summary,
+        ...(active === "blocked" && meta.executionFailure ? { executionFailure: meta.executionFailure } : {}),
         communicationFile: meta.communicationFile ?? previous?.communicationFile,
         ...(typeof lastStartedAt === "number" && Number.isFinite(lastStartedAt) ? { lastStartedAt } : {}),
         updatedAt: now(),

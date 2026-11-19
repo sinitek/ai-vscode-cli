@@ -94,6 +94,7 @@ import {
   mapLoopRunStatusToSubagentStatus,
 } from "./loopSubtaskProgress";
 import { buildResetLoopMainAiFailureState, isLoopMainStartupConfigLockTimeout } from "./loopMainFailure";
+import { normalizeLoopSubtaskFailure } from "./loopSubtaskFailure";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import { LoopGroupChatPanel } from "./webview/loopGroupChatPanel";
 import * as configService from "./config/configService";
@@ -1738,6 +1739,7 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   getLoopMainSubChatMainTitle,
   getLoopMessagesForTarget,
   getLoopRoundRunStatus,
+  getLatestLoopRoundRunRecord,
   getLoopSubtaskDisplayTitle,
   isLoopTaskExecutionInterrupted,
   logError,
@@ -1887,7 +1889,7 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   AI_TASK_RAW_OUTPUT_MAX_BYTES,
   adoptFreshOpenCodeLoopRecoverySession,
   appendAssistantChunk,
-  appendCompletionMessage,
+  appendCompletionMessage: (status, failureDetail) => appendCompletionMessage(status, { failureDetail }),
   appendMessageToStore,
   appendSystemMessage,
   appendTraceLines,
@@ -4308,6 +4310,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     stopDirector: (taskId) => { abortOrchestratorClarification(loopClarificationScope(taskId)); stopLoopRunsForTask(taskId); },
     waitForDirectorClarification: waitForLoopTaskClarification,
     runDirectorDecision: (request) => requireLoopOrchestrationHost().runClassicLoopMainDecision(request),
+    captureDirectorTaskSummary: (input, target) => { rememberConversationTaskSummarySubmission(input, target, true); },
     openGroupChat: async (taskId) => openLoopGroupChatPanel(taskId),
     acquireDirectorOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
     acquireLeaderOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
@@ -6781,7 +6784,7 @@ function startTaskRun(
   };
 }
 
-function appendCompletionMessage(status: TaskRunStatus, options: { notifyCompletion?: boolean } = {}): void {
+function appendCompletionMessage(status: TaskRunStatus, options: { notifyCompletion?: boolean; failureDetail?: string } = {}): void {
   if (primaryPromptRunController.activeCompletionSent) {
     return;
   }
@@ -6872,7 +6875,7 @@ function sendPanelMessage(payload: Record<string, unknown>): void {
   sendPanelMessageWithActiveTab(payload, primaryPromptRunController.activeTabIdForRun, (message) => viewProvider?.postMessage(message));
 }
 
-function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, options: { notifyCompletion?: boolean } = {}): TaskRunRecord | null {
+function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, options: { notifyCompletion?: boolean; failureDetail?: string } = {}): TaskRunRecord | null {
   if (!runId || !primaryPromptRunController.activeTaskRun || primaryPromptRunController.activeTaskRun.id !== runId) {
     return null;
   }
@@ -6883,6 +6886,8 @@ function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, optio
     endedAt,
     durationMs,
     status,
+    ...(status === "error" && primaryPromptRunController.activeTaskRun.taskRole === "subtask" && options.failureDetail
+      ? { failureDetail: normalizeLoopSubtaskFailure(options.failureDetail) } : {}),
   };
   primaryPromptRunController.activeTaskRun = null;
   appendTaskRun(record, options);

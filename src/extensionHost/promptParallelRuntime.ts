@@ -21,6 +21,7 @@ import type { I18nKey } from "../i18n";
 import type { OpenCodeTabStreamAction } from "../openCodeTabStream";
 import type { CliAttemptResult } from "../promptRetry";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
+import { normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
 import type { SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
@@ -439,7 +440,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       return message;
     };
 
-    const buildParallelTaskRunRecord = (status: TaskRunStatus): TaskRunRecord => {
+    const buildParallelTaskRunRecord = (status: TaskRunStatus, failure?: string): TaskRunRecord => {
       const endedAt = Date.now();
       return {
         id: runId,
@@ -450,6 +451,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         endedAt,
         durationMs: Math.max(0, endedAt - startedAt),
         status,
+        ...(status === "error" && input.taskRole === "subtask" && failure ? { failureDetail: normalizeLoopSubtaskFailure(failure) } : {}),
         taskRole: input.taskRole,
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
@@ -971,7 +973,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       },
       finalizeMissingFinalConclusion: async ({ missingConclusionMessage, finalMessageTarget, hiddenRetryCount }) => {
         parallelRunsByTabId.delete(target.tabId);
-        const taskRecord = buildParallelTaskRunRecord("error");
+        const taskRecord = buildParallelTaskRunRecord("error", missingConclusionMessage);
         appendTaskRun(taskRecord);
         const userMessageText = buildHiddenRetryFailureMessage({
           hiddenRetryCount,
@@ -1080,9 +1082,9 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
           openCodeTabStreamState = finalTextResult.state;
           applyOpenCodeTabStreamActions(finalTextResult.actions);
         }
-        const taskRecord = buildParallelTaskRunRecord("error");
-        appendTaskRun(taskRecord);
         const finalFailureMessage = buildOpenCodeFailureMessage(openCodeOutput, lastFailureMessage);
+        const taskRecord = buildParallelTaskRunRecord("error", finalFailureMessage);
+        appendTaskRun(taskRecord);
         const userMessageText = buildHiddenRetryFailureMessage({
           hiddenRetryCount: context.hiddenRetryCount,
           maxRetries: HIDDEN_RETRY_MAX_RETRIES,

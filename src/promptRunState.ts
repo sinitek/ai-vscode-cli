@@ -7,6 +7,7 @@ import {
 } from "./loopLegacyMigration";
 import { ChatMessage } from "./webview/types";
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "./departmentConfiguration";
+import { normalizeLoopSubtaskFailure } from "./loopSubtaskFailure";
 
 export type TaskRunStatus = "end" | "error" | "stopped";
 export type RunActivity = "contextCompaction";
@@ -43,6 +44,7 @@ export type TaskRunRecord = TaskRunDraft & {
   endedAt: number;
   durationMs: number;
   status: TaskRunStatus;
+  failureDetail?: string;
 };
 
 export type TaskStore = {
@@ -228,6 +230,8 @@ export function normalizeTaskRunRecord(record: unknown, deps: Pick<TaskStoreDeps
     endedAt: raw.endedAt,
     durationMs: raw.durationMs,
     status: raw.status,
+    ...(raw.status === "error" && typeof raw.failureDetail === "string"
+      ? { failureDetail: normalizeLoopSubtaskFailure(raw.failureDetail) } : {}),
     taskRole: deps.isLoopTaskRole(raw.taskRole) ? raw.taskRole : undefined,
     loopTaskId: typeof raw.loopTaskId === "string" ? raw.loopTaskId : undefined,
     loopRound: typeof raw.loopRound === "number" ? raw.loopRound : undefined,

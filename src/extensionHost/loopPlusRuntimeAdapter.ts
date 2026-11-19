@@ -2,6 +2,8 @@ import type { LoopSubtaskCleanupResult } from "../loopSubtaskExecutionRoot";
 import { randomUUID } from "crypto";
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
+import { describeLoopSubtaskError } from "../loopSubtaskFailure";
+import { getErrorInfo } from "../promptRetry";
 import type { ThinkingMode } from "../cli/types";
 import { applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile } from "../loopModelSwitch";
 import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
@@ -924,14 +926,19 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       const ownerTermination = readOwnerTermination();
       if (departmentLease && invocationIssued && ownerTermination) {
         const ended = await ownerTermination;
-        if (!ended.ok) { failCleanup(ended.error); return { outcome: "failed", detail: errorDetail(ended.error) }; }
+        if (!ended.ok) {
+          failCleanup(ended.error);
+          const detail = executionFailure === undefined ? undefined : describeLoopSubtaskError(getErrorInfo(executionFailure));
+          return { outcome: "failed", detail: detail ?? errorDetail(ended.error) };
+        }
       }
       if (ownerResources && departmentLease && invocationIssued && !ownerTermination) {
         const error = new Error("Owner 执行缺少完整清理观察"); failCleanup(error);
         return { outcome: "failed", detail: error.message };
       }
       if (!rootResult.ok) {
-        return { outcome: "failed", detail: [...new Set([executionFailure, rootResult.error].filter((error) => error !== undefined).map(errorDetail))].join("\n") };
+        return { outcome: "failed", detail: [...new Set([executionFailure, rootResult.error].filter((error) => error !== undefined)
+          .map((error) => describeLoopSubtaskError(getErrorInfo(error))).filter(Boolean))].join("\n") };
       }
       const invocation = readInvocation(
         rootResult.value.target,
@@ -960,9 +967,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
       return {
         outcome,
-        detail: rootResult.value.thrown
-          ? errorDetail(rootResult.value.error)
-          : (invocation.content ?? "failed"),
+        detail: (rootResult.value.thrown ? describeLoopSubtaskError(getErrorInfo(rootResult.value.error)) : undefined)
+          ?? invocation.run?.failureDetail
+          ?? (invocation.run ? "CLI 调用失败，未捕获具体错误。" : "未找到本次 CLI 调用的终态。"),
       };
     }
   }

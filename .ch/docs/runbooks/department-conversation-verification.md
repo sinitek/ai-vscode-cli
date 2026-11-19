@@ -2,6 +2,8 @@
 
 此入口验证已安装 VS Code 的真实 Extension Host 是否从隔离任务与会话存储恢复总监、组长、员工及普通会话，并通过正常面板状态投影到 Webview。它是展示和恢复链路检查，不启动 CLI 或模型。
 
+当前验证夹具通过持久化会话预置总监的已生成摘要，并检查总监浮层展示该摘要。组长和员工浮层分别检查完整模块标题和员工任务标题。可用 `node scripts/verify_department_conversation_host.js --task-summaries-only` 定向验证浮层和正常退场。下文保留历史验证结果。
+
 ## 完整提示词与组长气泡链接验证（2026-11-17）
 
 部门组长气泡按可信 Tab 角色隐藏“打开 Loop 群聊”，历史恢复和迟到角色更新均适用。总监 ☀️、组长 🌛、员工 ⭐️ 与普通 Loop/Loop+ 入口保持原合同。本轮四个相关界面测试文件 219/219，通过恢复、实时、迟到角色和普通入口对照；证据 `/tmp/department-leader-prompt-final-webview-tests.log`。

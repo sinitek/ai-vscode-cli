@@ -2,6 +2,11 @@ import { CLI_LIST, type CliName, type ThinkingMode } from "./cli/types";
 import { normalizeRouteThinkingMode, parseCliNameField } from "./subtaskCliRoute";
 
 export type DepartmentRole = "director" | "leader" | "employee";
+
+export function formatDepartmentMemberTitle(role: DepartmentRole, title: string): string {
+  if (role === "director") return "总监";
+  return `${role === "leader" ? "组长" : "员工"} · ${title}`;
+}
 /** Department roles reuse the same CLI capabilities as Loop and Loop+. */
 export const DEPARTMENT_EXECUTION_CLIS = CLI_LIST;
 export const DEPARTMENT_EXECUTION_CLI_REQUIREMENT = "请选择已启用且配置有效的 CLI。";

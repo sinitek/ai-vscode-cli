@@ -4,7 +4,8 @@ import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
 import type { TestContext } from "node:test";
-import { createLoopOrchestrationHost } from "../../extensionHost/loopOrchestration";
+import { createLoopOrchestrationHost, LOOP_SUBTASK_RETRY_DELAY_MS, LOOP_SUBTASK_RETRY_MAX_RETRIES } from "../../extensionHost/loopOrchestration";
+import type { TaskRunRecord } from "../../promptRunState";
 import { startLoopWaitWatchdog, waitForLoopInvocation, LOOP_WAIT_WATCHDOG_INTERVAL_MS } from "../../loopWaitWatchdog";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { PromptRunInput } from "../../promptRunTypes";
@@ -46,7 +47,7 @@ test("失联等待可取消并消费迟到的拒绝结果", async () => {
   assert.equal(await waitForLoopInvocation(Promise.resolve(7)), 7);
 });
 
-function classicHarness(t: TestContext) {
+function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null) {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "loop-wait-classic-"));
   t.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
   let task: LoopTaskRecord = {
@@ -82,6 +83,7 @@ function classicHarness(t: TestContext) {
     createLoopSubtaskRunTarget: () => ({ tabId: `child-${calls.length}`, cli: "codex", sessionId: null }),
     prepareLoopSubtaskCommunicationFile: () => path.join(rootDir, "sub.md"),
     buildLoopSubtaskStartedText: () => "子任务启动",
+    buildLoopSubtaskRetryText: () => "重试子任务",
     appendSystemMessageForLoop: (_target, message) => { messages.push(message); },
     getLoopSubtaskDisplayTitle: (_index, subtask) => subtask.title,
     formatLoopGroupChatMemberName: (title) => title ?? "子任务",
@@ -95,11 +97,18 @@ function classicHarness(t: TestContext) {
       calls.push({ input, start: () => options?.onStarted?.(), finish: resolve, fail: () => reject(new Error("迟到失败")), isAborted: options?.isAborted ?? (() => false) });
     }),
     getLoopRoundRunStatus: () => "stopped",
+    getLatestLoopRoundRunRecord: readRun,
     appendLoopRound: () => { roundReports++; },
     buildLoopRoundSummary: () => "异常结果",
     getLastLoopAssistantContent: () => null,
     mapLoopRunStatusToSubagentStatus: () => "interrupted",
-    finalizeLoopSubtaskRun: async () => { finalized++; },
+    finalizeLoopSubtaskRun: async (result) => {
+      finalized++;
+      if (result.runStatus === "error") {
+        task = { ...task, subTasks: task.subTasks.map((item) => item.id === result.subtaskId
+          ? { ...item, status: "blocked", executionFailure: result.failureDetail } : item) };
+      }
+    },
     logError: () => undefined,
     errorToMessage: String,
     t: () => "等待",
@@ -115,6 +124,33 @@ function classicHarness(t: TestContext) {
     counts: () => ({ finalized, roundReports }),
   };
 }
+
+test("经典 Loop 重试耗尽后用最后一次 CLI 错误解释暂停", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] } as never);
+  let latestRun: TaskRunRecord | null = null;
+  const env = classicHarness(t, () => latestRun);
+  const pending = env.run();
+  for (let index = 0; index <= LOOP_SUBTASK_RETRY_MAX_RETRIES; index++) {
+    await flush();
+    const call = env.calls[index];
+    assert.ok(call);
+    call.start();
+    latestRun = {
+      id: `run-${index}`, cli: "codex", prompt: call.input.displayPrompt, sessionId: null,
+      startedAt: index, endedAt: index + 1, durationMs: 1, status: "error",
+      failureDetail: index === LOOP_SUBTASK_RETRY_MAX_RETRIES ? "EACCES: CLI 无法读取配置" : "旧的瞬时错误",
+    };
+    call.finish();
+    await flush();
+    if (index < LOOP_SUBTASK_RETRY_MAX_RETRIES) t.mock.timers.tick(LOOP_SUBTASK_RETRY_DELAY_MS);
+  }
+  env.host.checkWaitingTasks();
+  assert.equal((await pending)[0]?.status, "stopped");
+  assert.equal(env.task().status, "stopped");
+  assert.match(env.task().finalSummary ?? "", /EACCES: CLI 无法读取配置/);
+  assert.doesNotMatch(env.task().finalSummary ?? "", /旧的瞬时错误/);
+  assert.ok(env.messages.some((message) => message.includes("EACCES")));
+});
 
 test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子任务交给主任务验收", async (t) => {
   let now = 1000;

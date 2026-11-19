@@ -4,6 +4,7 @@ import { createDepartmentCodexExecutionLauncher } from "./departmentcodexexecuti
 import { DepartmentExecutionOwnerServer, type TrustedExecutionHandle } from "./departmentexecutionowner";
 import { exactKeys, isDepartmentExecutionIdentity, record, sameExecution, type CleanupResult } from "./departmentexecutionidentity";
 import { boundedCodexMessage, isCodexResourceResult, isDepartmentCodexPreparation, type DepartmentCodexPreparation } from "./departmentcodexpreparationcontract";
+import { leaderCallbackFrames as codexOwnerCallbackFrames, LEADER_CALLBACK_LIMIT, LEADER_CALLBACK_PENDING_BYTES } from "./departmentleadercodexcontract";
 import type { CodexOwnedStreamHandlers } from "../interactive/codexOwnedExecution";
 
 /** Fixed ordinary Node worker; no dynamic worker/module, command or prompt public IPC. */
@@ -16,7 +17,9 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
   let consumerFailed = false;
   let nativeThread: string | undefined, tabRelease: Promise<CleanupResult> | undefined;
   const consumers = new Set<Promise<unknown>>();
-  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
+  const notificationConsumers = new Set<Promise<unknown>>();
+  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; bytes?: number }>();
+  let pendingBytes = 0;
   let persist: (() => void) | undefined, grant: (() => void) | undefined;
   let rejectGate: ((error: Error) => void) | undefined;
   const lost = (): void => {
@@ -24,7 +27,7 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
     const wasPreparing = phase === "preparing";
     if (phase !== "granted") { phase = "failed"; lifetime.abort(); rejectGate?.(new Error("codex-preparation-revoked")); }
     for (const entry of pending.values()) entry.reject(new Error("codex-consumer-unobservable"));
-    pending.clear();
+    pending.clear(); pendingBytes = 0;
     if (process.connected) process.disconnect?.();
     if (finished || !handle && !wasPreparing) void close();
   };
@@ -34,15 +37,28 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
     process.send!(message, (error: Error | null) => { if (error) lost(); });
   };
   const consume = (name: string, args: unknown[]): Promise<unknown> => {
-    if (consumers.size >= 32) { consumerFailed = true; return Promise.reject(new Error("codex-consumer-capacity")); }
+    if (pending.size >= LEADER_CALLBACK_LIMIT) { consumerFailed = true; return Promise.reject(new Error("codex-consumer-capacity")); }
     const task = new Promise<unknown>((resolve, reject) => {
-      if (pending.size >= 32 || !process.connected) { reject(new Error("codex-consumer-unobservable")); return; }
+      if (!process.connected) { reject(new Error("codex-consumer-unobservable")); return; }
       const seq = sequence + 1;
-      pending.set(seq, { resolve, reject });
-      try { send({ type: "callback", name, args }); } catch { pending.delete(seq); reject(new Error("codex-output-lost")); lost(); }
+      let encoded: ReturnType<typeof codexOwnerCallbackFrames>;
+      try {
+        encoded = codexOwnerCallbackFrames({ version: 1, token: input.token, identity: input.identity, sequence: seq }, input.identity.executionId, name, args);
+        if (pendingBytes + encoded.bytes > LEADER_CALLBACK_PENDING_BYTES) throw new Error("codex-callback-byte-limit");
+      } catch { reject(new Error("codex-output-lost")); lost(); return; }
+      pending.set(seq, { resolve, reject, bytes: encoded.bytes }); pendingBytes += encoded.bytes;
+      try {
+        for (const frame of encoded.frames) {
+          if (!process.connected) throw new Error("codex-private-channel-unobservable");
+          sequence++;
+          process.send!(frame, (error: Error | null) => { if (error) lost(); });
+        }
+      } catch { lost(); }
     });
     consumers.add(task);
-    void task.then(() => { consumers.delete(task); }, () => { consumerFailed = true; consumers.delete(task); });
+    if (name !== "onRequest") notificationConsumers.add(task);
+    const settle = (): void => { consumers.delete(task); notificationConsumers.delete(task); };
+    void task.then(settle, () => { consumerFailed = true; settle(); });
     return task;
   };
   const close = async (): Promise<void> => {
@@ -76,6 +92,7 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
       const entry = pending.get(Number(message.sequence));
       if (!entry) { lost(); return; }
       pending.delete(Number(message.sequence));
+      pendingBytes -= entry.bytes ?? 0;
       if (message.ok) entry.resolve(message.result); else entry.reject(new Error("codex-consumer-rejected"));
       return;
     }
@@ -115,6 +132,9 @@ export async function runDepartmentCodexOwnerWorker(): Promise<void> {
       session: identity.session.state === "bound" ? { intent: "resume", threadId: identity.session.id } : { intent: "new" },
       runner: { ...input.runner, cwd: root.cwd }, prompt: input.prompt, handlers, signal: lifetime.signal,
       runtime: { macTaskShell: input.macTaskShell,
+        async waitForNotificationConsumers() {
+          while (notificationConsumers.size) await Promise.allSettled([...notificationConsumers]);
+        },
         logInfo: async (message, data) => { await consume("logInfo", [message, data ?? null]).catch(() => undefined); },
         logError: async (message, data) => { await consume("logError", [message, data ?? null]).catch(() => undefined); } },
       confirmSession: async (session) => {

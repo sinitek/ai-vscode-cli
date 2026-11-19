@@ -10,6 +10,7 @@ import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
 import { containsFinalAnswerTextMarker } from "../finalAnswerProtocol";
 import { buildHiddenRetryFailureMessage, getHiddenRetryDelayMs, resetHiddenRetryCountOnRecoveredReply } from "../hiddenRetry";
+import { normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
 import {
   buildNaturalLanguageHumanInteractionRequest,
   buildCodexHumanInteractionResolution,
@@ -925,7 +926,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       syncInteractiveRunEntry();
     };
 
-    const appendCompletionMessageForTab = (status: TaskRunStatus): TaskRunRecord | null => {
+    const appendCompletionMessageForTab = (status: TaskRunStatus, failure?: string): TaskRunRecord | null => {
       if (completionSent) {
         return null;
       }
@@ -940,6 +941,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         endedAt,
         durationMs: Math.max(0, endedAt - startedAt),
         status,
+        ...(status === "error" && input.taskRole === "subtask" && failure ? { failureDetail: normalizeLoopSubtaskFailure(failure) } : {}),
         taskRole: input.taskRole,
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
@@ -1066,7 +1068,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return true;
     };
 
-    const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string): Promise<void> => {
+    const cleanupAfterRun = async (status: TaskRunStatus, userMessage?: string, failureDetail = userMessage): Promise<void> => {
       if (!isCurrentRunActive()) {
         return;
       }
@@ -1087,7 +1089,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (!deferEndStatus) {
         sendRunStatusForTab(tabId, status);
       }
-      const taskRecord = appendCompletionMessageForTab(status);
+      const taskRecord = appendCompletionMessageForTab(status, failureDetail);
       flushPersistForInteractiveRun();
       maybePersistLongTermMemoryFromRun({
         status,
@@ -1627,7 +1629,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           lastFailureMessage: rawUserMessage,
           lastFailurePrefix: t("run.hiddenRetryLastErrorPrefix"),
         });
-        await cleanupAfterRun("error", userMessage);
+        await cleanupAfterRun("error", userMessage, rawUserMessage);
         throw error;
       }
     }

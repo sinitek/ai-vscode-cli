@@ -340,6 +340,83 @@ test("本次完成记录从共享历史丢失后仍进入验收并自动关闭�
   }
 });
 
+test("Loop+ passes a returned CLI failure into review and preserves it in the confirmed blocker", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  const failure = "department-interactive-session-conflict";
+  const incompleteOutput = "PARTIAL_OUTPUT_IS_NOT_A_CLI_ERROR";
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId ?? "";
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "error", content: incompleteOutput, failureDetail: `${failure}: token=synthetic-fixture-value` });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.match(input.modelPrompt, /outcome=failed detail=department-interactive-session-conflict/);
+      assert.doesNotMatch(input.modelPrompt, /PARTIAL_OUTPUT_IS_NOT_A_CLI_ERROR|synthetic-fixture-value/);
+      fixture.publish(input, tabId, { status: "end", content: decision({
+        status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [],
+        reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", subtaskIds: [] }],
+      }) });
+    });
+    for (const boundedReview of [false, true]) {
+      fixture.queueMain((input, tabId) => {
+        assert.equal(input.modelPrompt.includes("Bounded blocked review"), boundedReview);
+        assert.match(input.modelPrompt, /Unresolved subtask execution failures recorded by the host/);
+        assert.match(input.modelPrompt, /department-interactive-session-conflict/);
+        fixture.publish(input, tabId, { status: "end", content: decision({ status: "blocked", finalSummary: "需要人工恢复" }) });
+      });
+    }
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    const task = fixture.readTask(taskId);
+    assert.equal(task?.status, "needs-review");
+    assert.match(task?.finalSummary ?? "", /A：department-interactive-session-conflict: token=\[redacted\]/);
+    assert.doesNotMatch(task?.finalSummary ?? "", /synthetic-fixture-value|PARTIAL_OUTPUT_IS_NOT_A_CLI_ERROR/);
+    const report = fs.readFileSync(task?.subTasks[0]?.communicationFile ?? "", "utf8");
+    assert.match(report, /department-interactive-session-conflict: token=\[redacted\]/);
+    assert.doesNotMatch(report, /synthetic-fixture-value|PARTIAL_OUTPUT_IS_NOT_A_CLI_ERROR/);
+    assert.equal(fixture.attemptCalls.length, 1);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("Loop+ does not reuse a CLI failure after the same subtask succeeds on a new attempt", async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId ?? "";
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, fixture.attemptCalls.length === 1
+        ? { status: "error", failureDetail: "CLI_CONFIG_DENIED" }
+        : { status: "end", content: "本次执行成功" });
+    });
+    fixture.queueMain((input, tabId) => {
+      const reviewEventId = currentEventId(input.displayPrompt);
+      assert.match(input.modelPrompt, /CLI_CONFIG_DENIED/);
+      fixture.publish(input, tabId, { status: "end", content: decision({
+        status: "accept", reviewEventId, subtasks: [subtask("A", "src/a.ts")],
+        reviews: [{ reviewEventId, acceptance: "failed", subtaskIds: ["A"] }],
+      }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.doesNotMatch(input.modelPrompt, /CLI_CONFIG_DENIED/);
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    assert.equal(fixture.attemptCalls.length, 2);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.readTask(taskId)?.subTasks[0]?.executionFailure, undefined);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 for (const status of ["end", "error", "stopped", null] as const) {
   test(`共享历史缺失时只按本次真实完成状态 ${status} 决定是否关页`, async () => {
     const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });

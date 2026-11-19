@@ -1,4 +1,4 @@
-
+export const LOOP_SUBTASK_PROMPT_MIN_LENGTH = 80;
 
 export function normalizeLoopContinuePromptForPrompt(value: unknown): string | null {
   if (typeof value !== "string") {

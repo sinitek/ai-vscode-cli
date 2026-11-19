@@ -515,7 +515,7 @@ function assertColdRestartIdentity(firstHost, secondHost, sameExecution = (a, b)
 
 function assertColdUiRoot(subtitleTitle, expectedRootId) {
   assert.equal(typeof subtitleTitle, "string", "department chat title is unavailable");
-  assert.ok(subtitleTitle.endsWith(` · ${expectedRootId}`), `department chat does not belong to expected root ${expectedRootId}: ${subtitleTitle}`);
+  assert.equal(subtitleTitle, expectedRootId, `department chat does not belong to expected root ${expectedRootId}: ${subtitleTitle}`);
   return true;
 }
 
@@ -556,7 +556,7 @@ async function createDepartmentRootPanelAdapter(browser, rootId, timeoutMs, opti
         owned.add(adapter);
         const subtitle = await adapter.locator("#panelSubtitle").getAttribute("title");
         const body = await adapter.locator("body").innerText();
-        if (subtitle?.endsWith(` · ${rootId}`) && body.includes("产研部总监") && body.includes(rootId)) matches.push(adapter);
+        if (subtitle === rootId && body.includes("产研部群聊") && body.includes(rootId)) matches.push(adapter);
         else await close(adapter);
       }
       assert.ok(matches.length <= 1, "multiple production Webview panels for the exact root");
@@ -1053,7 +1053,7 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
       for (const frame of frames()) {
         if (await frame.locator('#panelActions [data-action="stopTask"]').isVisible().catch(() => false)) {
           const text = await frame.locator("body").innerText();
-          if (text.includes("产研部总监") && text.includes(rootId)) return frame;
+          if (text.includes("产研部群聊") && text.includes(rootId)) return frame;
         }
       }
       for (const frame of frames()) {
