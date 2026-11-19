@@ -384,6 +384,20 @@ test("acceptance reason language follows the task and conversation instead of fo
   assert.doesNotMatch(prompt, /Write every acceptance reason and check detail in Simplified Chinese/u);
 });
 
+test("previous main decision next-step plan is exposed without overriding current gates", () => {
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    nextStepPlan: {
+      objective: "验收成功后安排剩余交付",
+      acceptanceCriteria: ["核对最新子任务结果", "保持现有完成门禁"],
+    },
+  }));
+  assert.match(prompt, /Next-step plan from the previous main decision/);
+  assert.match(prompt, /Objective: 验收成功后安排剩余交付/);
+  assert.match(prompt, /1\. 核对最新子任务结果/);
+  assert.match(prompt, /never overrides the root request, latest task record, scheduler state/);
+  assert.match(prompt, /Do not include nextStepPlan with clarify, blocked, or completed/);
+});
+
 test("all acceptance examples satisfy strict feedback for default and custom plans", () => {
   const plans: LoopPlusMainPromptContext["acceptancePlan"][] = [undefined, {
     id: "plan-custom", name: "上线审查", checks: ["security", "other"],

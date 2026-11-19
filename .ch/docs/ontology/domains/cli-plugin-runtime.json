@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-11-17",
+  "as_of": "2026-11-19",
   "domain": {
     "id": "cli-plugin-runtime",
     "name": "VS Code CLI 插件运行时",
@@ -1147,6 +1147,47 @@
         },
         {
           "path": ".ch/docs/runbooks/loop-plus-stop-diagnosis.md"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_next_step_plan",
+      "name": "Loop+ 主任务按需生成并续跑下一步计划",
+      "description": "Loop+ 主模型可在 dispatch、steer、accept 或 wait 决策中自愿返回短 nextStepPlan（必填 objective，最多 240 字符；可选 1 至 3 条 acceptanceCriteria，每条最多 120 字符）。宿主仅在整份继续型决策有效并应用后持久化；下一次主任务提示注入计划，后续有效继续决策可消费或替换。计划不创建子任务、不确认验收或绕过根需求、任务/调度状态、冻结前缀及既有验收、依赖、停止、预算和完成门禁。协议错误、纠错、clarify、非终态暂停及宿主重建保留计划；blocked、父任务成功完成和用户停止清除。clarify、blocked、completed 不得携带新计划。",
+      "status": "active",
+      "applies_to": [
+        "plugin.loop_task",
+        "plugin.extension_host"
+      ],
+      "source_refs": [
+        {
+          "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
+          "anchor": "主任务按需续跑计划"
+        },
+        {
+          "path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+          "anchor": "Loop+ 主任务按需续跑计划"
+        },
+        {
+          "path": "src/loopPlusNextStepPlan.ts"
+        },
+        {
+          "path": "src/loopPlusDecision.ts"
+        },
+        {
+          "path": "src/loopTaskStore.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusDecisionStrategies.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusOrchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusPromptBuilders.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusOrchestration.test.ts"
         }
       ]
     },

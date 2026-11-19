@@ -15,6 +15,7 @@ import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtoc
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
+import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 import {
@@ -50,6 +51,7 @@ export type LoopPlusMainPromptContext = {
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
   blockedReviewSummary?: string;
+  nextStepPlan?: LoopPlusNextStepPlan;
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -481,6 +483,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     pendingUserText,
     "Root request:",
     context.rootPrompt,
+    ...(context.nextStepPlan ? [
+      "Next-step plan from the previous main decision (persisted until a valid decision is applied):",
+      `Objective: ${context.nextStepPlan.objective}`,
+      ...(context.nextStepPlan.acceptanceCriteria?.length
+        ? [`Acceptance criteria:\n${context.nextStepPlan.acceptanceCriteria.map((criterion, index) => `${index + 1}. ${criterion}`).join("\n")}`]
+        : []),
+      "Carry out this plan in the current decision where it remains useful. First honor the latest user messages, frozen acceptance batch, queued reports, and active work shown above. The plan never overrides the root request, latest task record, scheduler state, or any existing acceptance, safety, capacity, round, retry, or completion rule.",
+    ] : []),
     "The Acceptance batch listed at request start is frozen and is the only batch to confirm in this decision, including protocol repair, retries, prompt refresh, and same-host recovery. Its event ids and order do not change when this prompt is refreshed. Read the latest task record before choosing a status: it may contain later finish events in the review queue, including late-arriving prerequisites, but those belong to the next batch. Never reorder or expand the frozen batch from the latest record. Never add them to or otherwise change the reviewEventId or reviewEventIds captured for this request. Later events do not abort this request or invalidate an otherwise valid answer. Only the captured New user messages prefix is consumed; later messages wait for the next decision. The host submits this batch first, then checks its latest state: later events or messages, running or pending work, and open continuations prevent parent completion even when you return completed. Your JSON does not mutate scheduling state.",
     "Rules:",
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
@@ -554,6 +564,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- Only newly dispatched or reprompted attempts consume subtask rounds. Never exceed the remaining round budget; review and report confirmation remain allowed at the limit.",
+    "- A continuing decision may optionally include nextStepPlan with a concise objective and up to three short acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),

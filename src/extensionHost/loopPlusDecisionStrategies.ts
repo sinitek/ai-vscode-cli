@@ -3,6 +3,7 @@ import type {
   LoopPlusDecision,
   LoopPlusDecisionStatus,
 } from "../loopPlusDecision";
+import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import type { LoopPlusDependencyBlock, LoopPlusDispatchResult } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
@@ -64,6 +65,7 @@ export interface LoopPlusDecisionStrategyPort {
   requeueCurrentReview(): void;
   persistRunning(): void;
   persistSnapshot(): void;
+  applyNextStepPlan(plan: LoopPlusNextStepPlan | undefined): void;
   persistEstimatedRounds(decision: LoopPlusDecision): void;
   persistProgressPercent(decision: LoopPlusDecision): void;
   noteWaiting(runningCount: number): void;
@@ -207,6 +209,7 @@ function applyDispatchDecision(
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
+  port.applyNextStepPlan(decision.nextStepPlan);
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
@@ -247,6 +250,7 @@ function applySteerDecision(
   }
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
+  port.applyNextStepPlan(decision.nextStepPlan);
   port.persistEstimatedRounds(decision);
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
@@ -302,6 +306,7 @@ function applyAcceptDecision(
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
+  port.applyNextStepPlan(decision.nextStepPlan);
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
@@ -343,6 +348,7 @@ function applyWaitDecision(
     return port.protocolMiss(false, dependencyWaitReason(inFlight));
   }
   port.markDecisionAccepted();
+  port.applyNextStepPlan(decision.nextStepPlan);
   if (inFlight.runningCount === 0 && inFlight.pendingCount === 0) {
     port.armCloseout();
     return "continue";
@@ -368,6 +374,7 @@ function applyBlockedDecision(
     port.captureRemainingUserMessagesForHeldReview();
     return "continue";
   }
+  port.applyNextStepPlan(undefined);
   port.pauseForReview("loop-plus-blocked", decision.finalSummary);
   return "stop";
 }
@@ -407,6 +414,7 @@ function applyCompletedDecision(
     if (onlyDependencyBlocked(inFlight) && !hasPendingDecisionWork(pending) && !pending.hasUserMessages) {
       if (submittedReview) {
         port.markDecisionAccepted();
+        port.applyNextStepPlan(undefined);
         port.recordAcceptancePlanFeedback?.(decision);
         return "continue";
       }
@@ -418,6 +426,7 @@ function applyCompletedDecision(
     }
     if (submittedReview) {
       port.markDecisionAccepted();
+      port.applyNextStepPlan(undefined);
       port.recordAcceptancePlanFeedback?.(decision);
     } else {
       port.clearProtocolRetries();

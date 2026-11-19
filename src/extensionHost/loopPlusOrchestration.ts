@@ -16,6 +16,7 @@ import {
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
 import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import {
   buildLoopPlusProtocolPauseSummary,
   buildLoopPlusProtocolRepairPrompt,
@@ -441,6 +442,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       updateTask(task.id, {
         status: "stopped",
         runtimeInterrupted: undefined,
+        loopPlusNextStepPlan: undefined,
         schedulingMode: "event_driven",
         loopPlus: scheduler.snapshot(),
         updatedAt: now(),
@@ -910,6 +912,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       persist(runtime, {
         status: "stopped",
         runtimeInterrupted: undefined,
+        loopPlusNextStepPlan: undefined,
         finalSummary: "Loop+ parent scheduling is stopped.",
         pendingClarification: undefined,
       });
@@ -1142,6 +1145,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return null;
     }
     if (isDependencyBlocked(runtime)) return plain("continue");
+    if (current.running.length === 0 && current.pending.length === 0
+      && deps.readTask(runtime.taskId)?.loopPlusNextStepPlan) {
+      if (runtime.closeoutBudget > 0) runtime.closeoutBudget -= 1;
+      return plain("continue");
+    }
     if (runtime.closeoutBudget > 0 && current.running.length === 0 && current.pending.length === 0) {
       runtime.closeoutBudget -= 1;
       return plain("closeout");
@@ -1325,6 +1333,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       persistSnapshot() {
         persist(runtime);
       },
+      applyNextStepPlan(plan: LoopPlusNextStepPlan | undefined) {
+        persist(runtime, { loopPlusNextStepPlan: plan });
+      },
       persistEstimatedRounds(decision: LoopPlusDecision) {
         persistEstimatedRounds(runtime, decision);
       },
@@ -1362,6 +1373,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           finalSummary: decision.finalSummary,
           completionRequirementCoverage: decision.requirementCoverage,
           estimatedRemainingRounds: 0,
+          loopPlusNextStepPlan: undefined,
         };
         try {
           if (!runtime.scheduler.complete().ok) {
@@ -2337,6 +2349,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       subtaskMax: decisionSubtaskMax(),
       subtaskRounds: runtime.scheduler.snapshot().seenAttempts.length,
       progressPercent: normalizeLoopPlusProgressPercent(task?.loopPlusProgressPercent) ?? 0,
+      nextStepPlan: task?.loopPlusNextStepPlan,
       subtaskRoundLimit: subtaskRoundLimitFor(runtime),
       ...(routing.mode ? { loopSubtaskMode: routing.mode } : {}),
       routingSummary: routing.summary,

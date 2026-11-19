@@ -20,6 +20,7 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshotForStorage,
   type LoopPlusAcceptancePlanSnapshot,
 } from "./loopPlusAcceptancePlan";
+import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
@@ -184,6 +185,7 @@ export type LoopTaskRecord = {
   classicSubtaskDispatchCount?: number;
   loopPlusMainPhase?: LoopPlusMainPhase;
   loopPlusProgressPercent?: number;
+  loopPlusNextStepPlan?: LoopPlusNextStepPlan;
   loopProgressPercent?: number;
   loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
@@ -937,6 +939,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
   );
   const loopPlusProgressPercent = normalizeLoopPlusProgressPercent(raw.loopPlusProgressPercent);
+  const loopPlusNextStepPlan = normalizeLoopPlusNextStepPlan((raw as { loopPlusNextStepPlan?: unknown }).loopPlusNextStepPlan);
   const loopProgressPercent = normalizeLoopProgressPercent(raw.loopProgressPercent);
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
   const blockReview = (raw as { loopPlusBlockReview?: unknown }).loopPlusBlockReview;
@@ -965,6 +968,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
       && classicSubtaskDispatchCount >= 0 ? { classicSubtaskDispatchCount } : {}),
     ...(loopPlusMainPhase ? { loopPlusMainPhase } : {}),
     ...(loopPlusProgressPercent !== undefined ? { loopPlusProgressPercent } : {}),
+    ...(loopPlusNextStepPlan ? { loopPlusNextStepPlan } : {}),
     ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
     ...(loopPlusBlockReview ? { loopPlusBlockReview } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),

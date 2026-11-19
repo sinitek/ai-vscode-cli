@@ -68,6 +68,35 @@ test("report confirmations retain FIFO input order and reject malformed ids with
   }
 });
 
+test("next-step plans are short, optional on continuing decisions, and rejected on terminal decisions", () => {
+  const nextStepPlan = {
+    objective: "  验收完成后推进剩余交付  ",
+    acceptanceCriteria: ["目标范围已覆盖", "保留现有验收门禁"],
+  };
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "wait", nextStepPlan }), {
+    status: "wait",
+    nextStepPlan: {
+      objective: "验收完成后推进剩余交付",
+      acceptanceCriteria: ["目标范围已覆盖", "保留现有验收门禁"],
+    },
+  });
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "wait" }), { status: "wait" });
+  for (const status of ["clarify", "blocked", "completed"]) {
+    assert.equal(normalizeLoopPlusDecision({ status, nextStepPlan }), null, status);
+  }
+  for (const plan of [
+    null,
+    {},
+    { objective: " " },
+    { objective: "x".repeat(241) },
+    { objective: "valid", acceptanceCriteria: [] },
+    { objective: "valid", acceptanceCriteria: ["x".repeat(121)] },
+    { objective: "valid", acceptanceCriteria: ["a", "b", "c", "d"] },
+  ]) {
+    assert.equal(normalizeLoopPlusDecision({ status: "wait", nextStepPlan: plan }), null);
+  }
+});
+
 test("direct completion needs explicit host permission but no acceptance payload", () => {
   const candidate = {
     status: "completed",

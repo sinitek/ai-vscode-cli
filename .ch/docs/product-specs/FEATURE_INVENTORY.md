@@ -807,6 +807,12 @@ Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；
 实现：`src/loopBlockedSummary.ts`、`src/panelStateBuilder.ts`、`src/loopPlusPause.ts`、`src/loopFinalSummary.ts`、两种模式的主模型提示构建器与编排入口；回归：`src/test/loop/loopBlockedSummary.test.ts`、`src/test/loop/loopPlusPause.test.ts` 及相关提示、状态机、编排测试。
 
 
+## 2026-11-19 Loop+ 主任务按需续跑计划
+
+Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含短目标及可选的最多三条验收标准。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
+
+实现：`src/loopPlusNextStepPlan.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`。回归：`src/test/loop/loopPlusDecision.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/extensionHost/loopPlusDecisionStrategies.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
+
 ## 2026-11-16 Loop / Loop+ 熔断诊断完整性与恢复方案
 
 最终 `blocked` 增加可校验的 `blocker` 诊断：具体卡点与原因、未完成要求、证据、已尝试处理、按推荐顺序的责任方/操作/验证方式，以及明确恢复条件；确实无法完成时说明限制和替代方案。宿主统一生成中文摘要。缺软件等环境问题需给出具体依赖/版本/平台/运行位置、安装或配置命令或官方入口、验证命令与预期结果，不能只说“环境不支持”。优先安全自主修复或推进独立工作，需用户决策用澄清表单。

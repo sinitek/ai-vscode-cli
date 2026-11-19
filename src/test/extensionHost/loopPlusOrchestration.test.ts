@@ -127,6 +127,117 @@ test("trivial work completes in one main call without subtasks or acceptance fee
   assert.equal(env.acceptanceFeedback.length, 0);
 });
 
+test("an acceptance can return a next-step plan that launches a separate main decision", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "先完成首项交付，再按验收结果继续" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("first", ["src/first.ts"])] }));
+  await flush();
+
+  const firstAttemptId = env.attempts[0].request.attemptId;
+  env.attempts[0].resolve({ outcome: "completed", detail: "首项实现完成" });
+  await flush();
+  const firstReviewId = buildLoopPlusFinishEventId("first", firstAttemptId);
+  env.mains[1].resolve(decisionJson({
+    status: "accept",
+    reviewEventId: firstReviewId,
+    subtasks: [],
+    nextStepPlan: { objective: "根据首项验收结果推进后续交付", acceptanceCriteria: ["不重复已完成工作"] },
+  }));
+  await flush();
+
+  assert.equal(env.mains.length, 3);
+  assert.match(env.mains[2].request.prompt, /Objective: 根据首项验收结果推进后续交付/);
+  assert.deepEqual(env.tasks.get(taskId)?.loopPlusNextStepPlan, {
+    objective: "根据首项验收结果推进后续交付",
+    acceptanceCriteria: ["不重复已完成工作"],
+  });
+  env.mains[2].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("second", ["src/second.ts"])],
+    nextStepPlan: { objective: "验收后核对整体交付" },
+  }));
+  await flush();
+  assert.deepEqual(env.tasks.get(taskId)?.loopPlusNextStepPlan, { objective: "验收后核对整体交付" });
+
+  const secondAttemptId = env.attempts[1].request.attemptId;
+  env.attempts[1].resolve({ outcome: "completed", detail: "后续交付完成" });
+  await flush();
+  assert.match(env.mains[3].request.prompt, /Objective: 验收后核对整体交付/);
+  env.mains[3].resolve(completedDecision({
+    reviewEventId: buildLoopPlusFinishEventId("second", secondAttemptId),
+  }));
+  await flush();
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined);
+});
+
+test("invalid main responses and explicit host recovery retain the pending next-step plan", async () => {
+  const env = harness();
+  const task = baseTask("next-plan-recovery", createLoopPlusScheduler({ maxConcurrency: 2 }).snapshot());
+  task.loopPlusNextStepPlan = { objective: "完成尚未处理的后续交付" };
+  env.tasks.set(task.id, task);
+  const run = env.reloadHost().tryRun({ displayPrompt: "继续" }, env.target, {
+    resumeTaskId: task.id,
+    resumeRequested: true,
+  });
+  await flush();
+  for (let index = 0; index < 3; index += 1) {
+    assert.match(env.mains[index].request.prompt, /Objective: 完成尚未处理的后续交付/);
+    env.mains[index].resolve("invalid protocol");
+    await flush();
+  }
+  await run.done;
+  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
+  assert.deepEqual(env.tasks.get(task.id)?.loopPlusNextStepPlan, task.loopPlusNextStepPlan);
+
+  const resumedHost = env.reloadHost();
+  const resumed = resumedHost.tryRun({ displayPrompt: "恢复" }, env.target, {
+    resumeTaskId: task.id,
+    resumeRequested: true,
+  });
+  await flush();
+  assert.match(env.mains[3].request.prompt, /Objective: 完成尚未处理的后续交付/);
+  resumedHost.stopParent(task.id);
+  await resumed.done;
+  assert.equal(env.tasks.get(task.id)?.status, "stopped");
+  assert.equal(env.tasks.get(task.id)?.loopPlusNextStepPlan, undefined);
+});
+
+test("clarification preserves a pending plan for the post-answer main request", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "完成主任务" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("clarify-source", ["src/source.ts"])],
+    nextStepPlan: { objective: "澄清后按确认范围完成剩余工作" },
+  }));
+  await flush();
+  const attemptId = env.attempts[0].request.attemptId;
+  env.attempts[0].resolve({ outcome: "completed", detail: "等待主任务确认范围" });
+  await flush();
+  const review = env.mains[1];
+  assert.match(review.request.prompt, /Objective: 澄清后按确认范围完成剩余工作/);
+  review.resolve(clarificationDecision());
+  await flush();
+  const waiting = env.tasks.get(taskId);
+  assert.deepEqual(waiting?.loopPlusNextStepPlan, { objective: "澄清后按确认范围完成剩余工作" });
+  assert.equal(submitOrchestratorClarification(
+    loopClarificationScope(taskId),
+    waiting?.pendingClarification?.interactionId ?? "",
+    { scope: "api" },
+  ).ok, true);
+  await flush();
+  assert.match(env.mains[2].request.prompt, /Objective: 澄清后按确认范围完成剩余工作/);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, buildLoopPlusFinishEventId("clarify-source", attemptId));
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
 test("no-acceptance completion wakes the main task to read its report and continue dispatching", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "汇总验证结果并完成交付" }, env.target, { schedulingMode: "event_driven" });
