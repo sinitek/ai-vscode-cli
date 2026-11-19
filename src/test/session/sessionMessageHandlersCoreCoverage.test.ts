@@ -338,6 +338,7 @@ function createHarness(): HandlerHarness {
     normalizeVisibleInteractiveMode: (mode) => mode,
     loadModelStore: () => undefined,
     isCliName,
+    reloadStoredToolSettings: () => undefined,
     updateStoredToolSettings: () => true,
     isMacTaskShell,
     confirmAndInitializeWorkspaceHarness: async () => state.initializedHarness,
@@ -411,6 +412,21 @@ test("does not select a CLI that tool settings have disabled", async (t) => {
 
   assert.equal(harness.state.currentCli, "codex");
   assert.equal(harness.calls.panelStates, 2);
+});
+
+test("refreshes global tool settings before posting the panel state on every request", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  const order: string[] = [];
+  harness.deps.reloadStoredToolSettings = () => { order.push("read settings"); };
+  harness.deps.postPanelState = async () => { order.push("post state"); };
+
+  await handlePanelMessageWithDeps({ type: "refreshToolSettings" }, harness.deps);
+  await handlePanelMessageWithDeps({ type: "refreshToolSettings" }, harness.deps);
+
+  assert.deepEqual(order, ["read settings", "post state", "read settings", "post state"]);
+  assert.deepEqual(harness.calls.sessionMessages, []);
+  assert.deepEqual(harness.calls.savedSettings, []);
 });
 
 test("orchestrates state, runtime errors, CLI selection, and model changes", async (t) => {

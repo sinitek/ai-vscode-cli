@@ -12,12 +12,12 @@ test("chat message limit exports the shared contract", () => {
   assert.equal(CHAT_MESSAGE_LIMIT_DEFAULT, 500);
   assert.equal(CHAT_MESSAGE_LIMIT_MIN, 1);
   assert.equal(CHAT_MESSAGE_LIMIT_MAX, 10000);
-  assert.equal(LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, 200);
+  assert.equal(LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, 500);
 });
 
 test("group chat can use its own fallback without changing the ordinary chat default", () => {
   for (const value of [undefined, null, "", "invalid", NaN, Infinity, true]) {
-    assert.equal(normalizeChatMessageLimit(value, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT), 200);
+    assert.equal(normalizeChatMessageLimit(value, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT), 500);
     assert.equal(normalizeChatMessageLimit(value), 500);
   }
 });

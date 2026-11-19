@@ -412,7 +412,7 @@ test("blocks a main decision and keeps the supplied final summary", () => {
 
   for (const finalSummary of [undefined, "", " \n "]) {
     const fallback = decide(createTask(), { status: "blocked", finalSummary });
-    assert.match(fallback.patch.finalSummary ?? "", /未提供具体阻塞原因/);
+    assert.match(fallback.patch.finalSummary ?? "", /未提供具体熔断原因/);
     assert.match(fallback.patch.finalSummary ?? "", /向主模型提问/);
     assert.equal(hasOwn(fallback.patch, "estimatedRemainingRounds"), false);
   }

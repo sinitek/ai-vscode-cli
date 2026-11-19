@@ -690,8 +690,8 @@ test("chat message limit normalizes input, immediately rerenders changes and sen
 test("group chat limit uses its independent default and normalizes edits and saved state", () => {
   const { api, document, posted, window } = createRuntimeHarness();
   const input = document.getElementById("loopGroupChatMessageLimit");
-  assert.equal(api.state.loopGroupChatMessageLimit, 200);
-  for (const [value, expected, eventType] of [["320.9", 320, "change"], ["", 200, "blur"], ["bad", 200, "change"], ["0", 1, "change"], ["10001", 10000, "blur"]] as const) {
+  assert.equal(api.state.loopGroupChatMessageLimit, 500);
+  for (const [value, expected, eventType] of [["320.9", 320, "change"], ["", 500, "blur"], ["bad", 500, "change"], ["0", 1, "change"], ["10001", 10000, "blur"]] as const) {
     input.value = value;
     input.dispatchEvent({ type: eventType });
     assert.equal(api.state.loopGroupChatMessageLimit, expected);
@@ -699,7 +699,7 @@ test("group chat limit uses its independent default and normalizes edits and sav
     assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopGroupChatMessageLimit", value: expected });
     assert.equal(api.state.chatMessageLimit, 500);
   }
-  for (const [value, expected] of [[undefined, 200], ["bad", 200], ["420.8", 420]] as const) {
+  for (const [value, expected] of [[undefined, 500], ["bad", 500], ["420.8", 420]] as const) {
     window.dispatchMessage({ type: "state", payload: { ...createPanelState(), loopGroupChatMessageLimit: value } });
     assert.equal(api.state.loopGroupChatMessageLimit, expected);
     assert.equal(input.value, String(expected));
@@ -3583,6 +3583,36 @@ test("cold tab switches show a loading state until its first message snapshot ar
   window.dispatchMessage({ type: "setMessages", tabId: "tab-2", messages: [] });
   assert.equal(messages.querySelector(".conversation-messages-loading"), null);
   assert.equal(messages.getAttribute("aria-busy"), null);
+});
+
+test("reopening tool settings requests fresh global values and renders the host reply", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const settingsButton = document.getElementById("toolSettingsButton");
+  const overlay = document.getElementById("toolSettingsOverlay");
+  const retentionInput = document.getElementById("historyRetentionDays");
+  const dispatchLimit = document.getElementById("loopPlusDecisionSubtaskMax");
+  const workspaceLimit = document.getElementById("workspaceLoopPlusDecisionSubtaskMax");
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    historyRetentionDays: 30, loopPlusDecisionSubtaskMax: 6, workspaceLoopPlusDecisionSubtaskMax: 12,
+  }) });
+  settingsButton.click();
+  assert.equal(posted.at(-1).type, "refreshToolSettings");
+  assert.equal(overlay.classList.contains("visible"), true);
+  assert.equal(retentionInput.value, "30");
+  document.getElementById("closeToolSettings").click();
+  assert.equal(overlay.classList.contains("visible"), false);
+  settingsButton.click();
+  assert.equal(posted.filter((message) => message.type === "refreshToolSettings").length, 2);
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    historyRetentionDays: 60, loopPlusDecisionSubtaskMax: 8, workspaceLoopPlusDecisionSubtaskMax: 12,
+  }) });
+  assert.equal(retentionInput.value, "60");
+  assert.equal(dispatchLimit.value, "8");
+  assert.equal(workspaceLimit.value, "12");
+  assert.equal(workspaceLimit.placeholder, "全局：8");
+  assert.equal(posted.some((message) => message.type === "updateSetting"), false);
 });
 
 test("default task mode setting does not switch the current task and follows the saved host state", () => {

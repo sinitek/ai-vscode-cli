@@ -36,7 +36,7 @@ test("chat message limit keeps old settings compatible and preserves neighboring
 });
 
 test("group chat message limit is independent and safely normalizes global settings", () => {
-  for (const [value, expected] of [["734.9", 734], ["", 200], [null, 200], [true, 200], [Infinity, 200], [0, 1], [20000, 10000]] as const) {
+  for (const [value, expected] of [[200, 200], ["734.9", 734], ["", 500], [null, 500], [true, 500], [Infinity, 500], [0, 1], [20000, 10000]] as const) {
     assert.deepEqual(normalizeToolSettings({ chatMessageLimit: 500, loopGroupChatMessageLimit: value, debug: true }), {
       chatMessageLimit: 500, loopGroupChatMessageLimit: expected, debug: true,
     });
@@ -83,6 +83,37 @@ test("new task mode defaults to Vibe and accepts only the three visible modes", 
   for (const mode of [null, "plan", "lobster", "Loop+", true, {}]) {
     assert.equal(normalizeToolSettings({ newTaskInteractiveMode: mode }).newTaskInteractiveMode, "coding");
   }
+});
+
+test("reloading tool settings reads external changes and replaces the cached snapshot", (context) => {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-reload-settings-"));
+  context.after(() => fs.rmSync(temporaryHome, { recursive: true, force: true }));
+  const script = `
+    const assert = require("node:assert/strict");
+    const fs = require("node:fs");
+    require("node:os").homedir = () => ${JSON.stringify(temporaryHome)};
+    const settings = require(${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))});
+    const filePath = settings.getToolSettingsFilePath();
+    const initial = { debug: true, historyRetentionDays: 45 };
+    settings.writeToolSettings(initial);
+    const external = JSON.stringify({ historyRetentionDays: 90, chatMessageLimit: "800.9" });
+    fs.writeFileSync(filePath, external);
+    assert.deepEqual(settings.readToolSettings(), initial);
+    const updated = { historyRetentionDays: 90, chatMessageLimit: 800 };
+    assert.deepEqual(settings.reloadToolSettings(), updated);
+    assert.deepEqual(settings.readToolSettings(), updated);
+    assert.equal(fs.readFileSync(filePath, "utf8"), external);
+    fs.writeFileSync(filePath, "invalid JSON");
+    assert.deepEqual(settings.reloadToolSettings(), {});
+    assert.deepEqual(settings.readToolSettings(), {});
+    fs.writeFileSync(filePath, external);
+    assert.deepEqual(settings.reloadToolSettings(), updated);
+    fs.unlinkSync(filePath);
+    assert.deepEqual(settings.reloadToolSettings(), {});
+    assert.deepEqual(settings.readToolSettings(), {});
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
 test("tool settings persist globally without losing other settings", () => {

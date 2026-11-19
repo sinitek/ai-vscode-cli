@@ -191,6 +191,9 @@ function createPort(options: {
     persistSnapshot() {
       record("persistSnapshot");
     },
+    applyNextStepPlan(value) {
+      record("applyNextStepPlan", [value]);
+    },
     persistEstimatedRounds(value) {
       record("persistEstimatedRounds", [value.estimatedRemainingRounds]);
     },
@@ -367,6 +370,7 @@ test("dispatch waits on in-flight work and does not submit review or finish", ()
     "dispatchSubtasks",
     "persistEstimatedRounds",
     "markDecisionAccepted",
+    "applyNextStepPlan",
     "waitForInFlightWork",
     "queueView",
     "queueView",
@@ -592,6 +596,7 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "dispatchSubtasks",
     "persistEstimatedRounds",
     "markDecisionAccepted",
+    "applyNextStepPlan",
     "waitForInFlightWork",
     "queueView",
   ]);
@@ -676,6 +681,7 @@ test("wait uses the post-ack admission view for in-flight work and a later read 
     "queueView",
     "waitForInFlightWork",
     "markDecisionAccepted",
+    "applyNextStepPlan",
     "persistRunning",
     "noteWaiting",
   ]);
@@ -714,6 +720,7 @@ test("blocked requeues a held review and does not reset the main failure state",
     "acknowledgeUserMessages",
     "clearProtocolRetries",
     "queueView",
+    "applyNextStepPlan",
     "pauseForReview",
   ]);
   assert.deepEqual(held.calls.at(-1)?.args, ["loop-plus-blocked", "needs a product choice"]);
@@ -766,7 +773,7 @@ test("completed keeps running work instead of finishing the parent", () => {
   const accepted = decision("completed", { reviewEventId: "evt-1", subtasks: [subtask] });
   const review = createPort({ views: [view({ hasReview: true }), view({ hasReview: true })] });
   assert.equal(registry.completed(review.port, step, accepted), "continue");
-  assert.deepEqual(names(review.calls).slice(-3), ["queueView", "markDecisionAccepted", "queueView"]);
+  assert.deepEqual(names(review.calls).slice(-3), ["markDecisionAccepted", "applyNextStepPlan", "queueView"]);
   assert.equal(names(review.calls).includes("tryFinishParent"), false);
   assert.equal(names(review.calls).includes("dispatchSubtasks"), false);
   assert.equal(names(review.calls).includes("clearProtocolRetries"), false);
@@ -775,7 +782,7 @@ test("completed keeps running work instead of finishing the parent", () => {
     views: [view({ runningCount: 1 }), view()],
   });
   assert.equal(registry.completed(running.port, step, accepted), "wait");
-  assert.deepEqual(names(running.calls).slice(-3), ["markDecisionAccepted", "queueView", "persistRunning"]);
+  assert.deepEqual(names(running.calls).slice(-4), ["markDecisionAccepted", "applyNextStepPlan", "queueView", "persistRunning"]);
   assert.equal(names(running.calls).includes("clearProtocolRetries"), false);
   assert.equal(names(running.calls).includes("finishParent"), false);
 

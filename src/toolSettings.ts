@@ -305,9 +305,10 @@ export function resolveLongTermMemoryEnabled(input?: ResolveLongTermMemoryEnable
 }
 
 export function readToolSettings(): ToolSettingsState {
-  if (cachedToolSettings) {
-    return { ...cachedToolSettings };
-  }
+  return cachedToolSettings ? { ...cachedToolSettings } : reloadToolSettings();
+}
+
+export function reloadToolSettings(): ToolSettingsState {
   try {
     if (!fs.existsSync(TOOL_SETTINGS_FILE)) {
       cachedToolSettings = {};

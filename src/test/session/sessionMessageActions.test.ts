@@ -265,6 +265,7 @@ function createSendPromptHarness(cli: CliName = "opencode"): SendPromptHarness {
     isCliName: (value: string): value is CliName => (
       value === "codex" || value === "claude" || value === "opencode"
     ),
+    reloadStoredToolSettings: () => undefined,
     updateStoredToolSettings: (patch) => {
       calls.toolSettingsPatches.push(patch);
       return true;

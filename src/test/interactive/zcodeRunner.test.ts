@@ -2,7 +2,7 @@ import assert = require("node:assert/strict");
 import test = require("node:test");
 import { FakeZcode } from "./zcodeProcessFixture";
 import { installVscodeMock } from "../vscodeMock";
-import type { ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
+import { ZCODE_SHUTDOWN_GRACE_MS, type ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
 
 installVscodeMock();
 
@@ -10,7 +10,7 @@ const { ZcodeInteractiveRunner } = require("../../interactive/zcodeRunner") as t
 const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
 
 for (const closeResponse of ["acknowledged", "failed", "unanswered"]) {
-test(`ZCode dispose sends native close once and drains after ${closeResponse} response`, async () => {
+test(`ZCode dispose sends native close once and drains after ${closeResponse} response`, async (context) => {
   const child = new FakeZcode();
   if (closeResponse === "failed") child.failedMethod = "session/close";
   if (closeResponse === "unanswered") child.withholdMethod = "session/close";
@@ -20,6 +20,7 @@ test(`ZCode dispose sends native close once and drains after ${closeResponse} re
     killTreeImpl: (_child, signal) => { signals.push(signal); },
   });
   await runner.start();
+  Reflect.apply(context.mock.timers.enable, context.mock.timers, [{ apis: ["setTimeout"] }]);
   let settled = false;
   const disposing = runner.dispose();
   assert.equal(child.requests.filter((request) => request.method === "session/close").length, 1);
@@ -27,7 +28,11 @@ test(`ZCode dispose sends native close once and drains after ${closeResponse} re
   void disposing.then(() => { settled = true; });
   assert.equal(runner.isReusable(), false);
   await assert.rejects(runner.start(), /disposed/);
-  await new Promise((resolve) => setTimeout(resolve, 650));
+  context.mock.timers.tick(ZCODE_SHUTDOWN_GRACE_MS - 1);
+  assert.equal(signals.length, 0);
+  context.mock.timers.tick(1);
+  assert.deepEqual(signals, ["SIGTERM"]);
+  context.mock.timers.tick(ZCODE_SHUTDOWN_GRACE_MS);
   assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
   assert.equal(settled, false, "sending kill is not exit");
   child.emit("exit", 0);

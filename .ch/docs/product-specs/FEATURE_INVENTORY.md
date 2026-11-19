@@ -307,8 +307,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 ## Loop / Loop+ 群聊气泡显示限额
 
-- 工具设置 → AI任务配置新增“Loop / Loop+ 群聊气泡上限”，全局键 `loopGroupChatMessageLimit`，默认 200，整数范围 1–10000；有限数字及非空数字字符串向下取整并钳制，非法输入回退 200。与普通聊天的 `chatMessageLimit` 独立。
-- 群聊初始任务、历史消息及当前思考气泡共用限额。达到上限时按 25%（向上取整，默认 50 个）批量移除最旧可清理气泡，跳过并保留全部“补充需求”，维持原时间顺序；补充需求仍计入阈值，初始任务发起不受保护。没有补充需求时仍是 200→150，后续增长到 200 再裁剪。极小上限至少保留最新一条；补充需求本身达到或超过上限时允许超限，不删除需求。首次打开长记录同样适用。
+- 工具设置 → AI任务配置新增“Loop / Loop+ 群聊气泡上限”，全局键 `loopGroupChatMessageLimit`，默认 500，整数范围 1–10000；有限数字及非空数字字符串向下取整并钳制，非法输入回退 500。已保存的有效上限不变，与普通聊天的 `chatMessageLimit` 独立。
+- 群聊初始任务、历史消息及当前思考气泡共用限额。达到上限时按 25%（向上取整，默认 125 个）批量移除最旧可清理气泡，跳过并保留全部“补充需求”，维持原时间顺序；补充需求仍计入阈值，初始任务发起不受保护。没有保护项时默认 500→375，后续增长到 500 再裁剪。极小上限至少保留最新一条；补充需求本身达到或超过上限时允许超限，不删除需求。首次打开长记录同样适用。
 - 仅渲染受保护补充需求及保留窗口，首次 HTML 和增量更新一致；同一面板的后续刷新不恢复已裁剪的普通气泡。保存设置立即刷新已打开群聊；改变上限或重新打开面板会从完整存档重新计算窗口。聊天文件、任务状态、CLI 日志与模型上下文不删除、不改变。
 - 实现：`src/webview/loopGroupChatBubbleRetention.ts`、`src/webview/loopGroupChatPanel.ts`、`src/toolSettings.ts`；规则及验收见 `.ch/docs/design-docs/loop-group-chat-bubble-limit.md`。
 - Loop+ 成员最近一次可定位的验收反馈同属保护项，与补充需求一起计入阈值并在必要时允许超限；保留后仍按 transcript 原序渲染，避免成员点击指向已裁剪目标。
@@ -375,6 +375,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 - 本机 macOS 扩展启动时，只要人工交互或任务完成系统通知任一设置开启，就异步申请未决定的通知权限；后续启用通知设置也会检查。已允许或已拒绝时不重复请求系统授权；拒绝不会弹额外提示或自动打开系统设置，不影响任务执行。
 - 使用说明仅保留模式说明；“工具设置 → 通知设置”以简短说明介绍提醒范围、仅后台图标提醒、全局即时生效和勿扰限制，只显示当前平台的授权操作提示。工具设置页签支持鼠标及方向键、Home/End 切换，窄面板可横向滚动。
+- 工具设置弹窗固定为 Webview 视口高度的 70%，五个页签切换时高度与位置保持一致；标题和页签栏保持可见，超长内容仅在内容区滚动。选中页签（包括“AI任务配置”）显示主题主色下划线，窄面板的页签栏保持完整高度。
+- 每次打开工具设置弹窗都会重新读取全局参数，回显其他 VS Code 窗口已保存至 `~/.sinitek_cli/settings.json` 的修改，无需重载窗口；刷新本身不保存配置，也不覆盖工作区独立设置。
 - 页签提供“任务完成通知”“任务完成图标闪烁”“人机交互通知”“人机交互图标闪烁”四个独立开关，均默认开启；读取并全局保存既有应用级设置 `taskCompletionNotifications` / `taskCompletionWindowAttention` / `humanInteractionNotifications` / `humanInteractionWindowAttention`，保留用户已有选择，保存后立即生效。关闭图标闪烁不影响系统通知，关闭系统通知不影响图标提醒或系统授权；保存失败显示错误并用实际配置恢复界面。Windows 闪烁任务栏，Linux 沿用 X11/wmctrl 图标提醒，macOS 不新增 Dock 弹跳。
 - Mac 页签显示实时授权状态及单独手动说明。“授权通知”对未决定状态直接弹系统授权；已允许、拒绝或关闭横幅时按钮改为“打开系统通知设置”，跳转通知设置后由用户选择“携宁 CLI 提醒”。刷新只查询、不申请、不发送通知；失败和超时可重试。远程扩展宿主不执行本机授权，其他系统不显示 Mac 专属说明；Windows 提供系统设置按钮，Linux 隐藏授权按钮。
 - Windows 查询当前编辑器实际 `ToastNotifier.Setting`，区分允许、应用关闭、用户全局关闭、系统策略限制及安装/查询异常。Windows 提供“打开系统通知设置”和“刷新状态”，查询失败仍可打开设置。Windows 没有 macOS 式授权框，本机任一通知开关开启时首次自动打开 `ms-settings:notifications`；成功打开后记录扩展全局状态，之后启动和配置刷新不重复弹出，失败可重试。用户需检查当前编辑器的通知、横幅及勿扰设置；不自动修改系统设置。刷新只查询、不投递、不打开系统设置；远程 workspace 宿主跳过首次引导。
@@ -931,6 +933,12 @@ round-378 整项交付未通过主审的历史保留：永久 reservation 阻断
 部门仍为开发中。round-400 successive EH 原机器报告及整体主审 failed 的历史保留；三项修正后只读审计不构成新 EH pass，且执行快照与 observer 最终源码不同。round-403 CDP 清理失败传播/迟到 detach 门禁已接受，仅证明 harness 自有资源门禁。round-405/408 的 cold warning、缺失对照、第二 EH 强制回收/自然失败退出及整体 failed 均按各自时点保留，不回写为通过。round-410 后继只读身份修复已主审接受：精确 `live-leader-unverifiable`、完整四阶段身份/责任/容量与无新 grant/request 对照成立，双 EH 自然退出；仅证明安全拒绝，不证明恢复接管、Owner 清理或容量归还。macOS owner-core 58/58 仍只覆盖原固定入口，后代追踪和整树关闭未确认；必要平台、未覆盖来源/角色、可恢复接管及最终 Git 合理合并/合并树全量回归仍开放。各批构建、用例与执行快照不累计为全量通过。
 
 部门原始及全部 22 项补充要求的逐项实现入口、已接受报告、有效验证范围和剩余门禁见[部门逐项验收覆盖](../runbooks/department-acceptance-coverage.md)。该表不替代功能状态，本条仍为开发中。
+
+## 2026-11-19 Loop+ 主任务按需续跑计划
+
+Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含短目标及可选的最多四条验收标准。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
+
+实现：`src/loopPlusNextStepPlan.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`。回归：`src/test/loop/loopPlusDecision.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/extensionHost/loopPlusDecisionStrategies.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
 
 ## 2026-11-16 Loop / Loop+ 熔断诊断完整性与恢复方案
 

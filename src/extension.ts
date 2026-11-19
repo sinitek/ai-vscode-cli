@@ -164,6 +164,7 @@ import {
   listEnabledClis,
   readHumanInteractionTimeoutMs,
   readToolSettings,
+  reloadToolSettings,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
   resolveHumanInteractionTimeoutMinutes,
@@ -1245,6 +1246,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
     loadModelStore: () => { modelStore = loadModelStore(); },
     isCliName,
+    reloadStoredToolSettings: reloadToolSettings,
     updateStoredToolSettings,
     readStoredToolSettings: () => readToolSettings(),
     publishCliEnabled: () => {

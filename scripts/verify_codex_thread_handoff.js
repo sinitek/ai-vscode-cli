@@ -9,8 +9,9 @@ const crossSpawn = require("cross-spawn");
 const CLEANUP_REMOVE_MAX_RETRIES = 5;
 const CLEANUP_REMOVE_RETRY_DELAY_MS = 100;
 
-async function removeRootWithRetry(removeRoot, deadline) {
+async function removeRootWithRetry(removeRoot, deadline, signal) {
   for (let attempt = 0; ; attempt += 1) {
+    signal.throwIfAborted();
     if (Date.now() >= deadline) throw new Error("资源清理超时");
     try {
       await removeRoot();
@@ -27,12 +28,18 @@ async function removeRootWithRetry(removeRoot, deadline) {
   }
 }
 
-async function within(promise, milliseconds, phase = "隔离验证") {
+async function within(promise, milliseconds, phase = "隔离验证", onTimeout) {
   let timer;
   try {
     return await Promise.race([
       promise,
-      new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error(`${phase}超时`)), milliseconds); }),
+      new Promise((resolve, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(`${phase}超时`);
+          onTimeout?.(error);
+          reject(error);
+        }, milliseconds);
+      }),
     ]);
   } finally {
     clearTimeout(timer);
@@ -56,6 +63,7 @@ function trackChild(child, command) {
 
 async function cleanup({ shutdown, server, tracked, removeRoot, emit, root, timeoutMs = 10000 }) {
   const deadline = Date.now() + timeoutMs;
+  const controller = new AbortController();
   try {
     await within((async () => {
       shutdown();
@@ -72,8 +80,8 @@ async function cleanup({ shutdown, server, tracked, removeRoot, emit, root, time
         await Promise.all(pending.map((entry) => entry.done));
       }
       assert.ok(tracked.every(({ state }) => !state.pid || (state.exited && state.closed)), "子进程退出尚未确认");
-      await removeRootWithRetry(removeRoot, deadline);
-    })(), timeoutMs, "资源清理");
+      await removeRootWithRetry(removeRoot, deadline, controller.signal);
+    })(), timeoutMs, "资源清理", (error) => controller.abort(error));
   } catch (error) {
     emit({ phase: "cleanup_failed", root, children: tracked.map((entry) => entry.state), error: error.message });
     throw error;

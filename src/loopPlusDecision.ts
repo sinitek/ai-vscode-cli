@@ -4,6 +4,7 @@ import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
+import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import {
   LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH,
@@ -76,6 +77,7 @@ export type LoopPlusAcceptReview = {
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
   departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>;
+  nextStepPlan?: LoopPlusNextStepPlan;
   progressPercent?: number;
   directCompletion?: true;
   reviewEventId?: string;
@@ -231,11 +233,22 @@ function normalizeDecision(
   if (!isLoopPlusDecisionStatus(status)) {
     return null;
   }
+  const nextStepPlan = hasOwn(value, "nextStepPlan") ? normalizeLoopPlusNextStepPlan(value.nextStepPlan) : undefined;
+  if (hasOwn(value, "nextStepPlan") && (
+    !nextStepPlan || status === "clarify" || status === "blocked" || status === "completed"
+  )) {
+    options?.reject?.("nextStepPlan 只能用于有效的继续型决策，且不能与 clarify、blocked 或 completed 同时返回。");
+    return null;
+  }
   const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
   if (!decision) return null;
   const reportEventIds = readOptionalReportEventIds(value);
   if (reportEventIds === null) return null;
-  let normalized = reportEventIds !== undefined ? { ...decision, reportEventIds } : decision;
+  let normalized: LoopPlusDecision = {
+    ...decision,
+    ...(nextStepPlan ? { nextStepPlan } : {}),
+    ...(reportEventIds !== undefined ? { reportEventIds } : {}),
+  };
   if (value.departmentCollaborations === undefined) return normalized;
   // Coordination accompanies a normal wait decision; it never confirms/skips a review batch.
   const messages = value.departmentCollaborations;

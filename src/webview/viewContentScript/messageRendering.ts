@@ -2449,7 +2449,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             closeButton.textContent = "×";
             closeButton.title = t("conversationTabCloseAria", { label: labelText });
             closeButton.setAttribute("aria-label", t("conversationTabCloseAria", { label: labelText }));
-            closeButton.disabled = isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
+            closeButton.disabled = isConversationTabBusy(tab.id);
             closeButton.addEventListener("click", (event) => {
               event.preventDefault();
               event.stopPropagation();

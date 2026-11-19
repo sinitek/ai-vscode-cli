@@ -37,6 +37,10 @@ export function createPanelMessageHandlerRegistry(
     createPromptPanelMessageHandlers(deps),
     createLoopPlusAcceptancePlanPanelMessageHandlers(deps),
     {
+      refreshToolSettings: async () => {
+        deps.reloadStoredToolSettings();
+        await deps.postPanelState();
+      },
       updateSetting: async (message) => {
         if (message.key) {
           await handleUpdateSettingMessage(message, deps);

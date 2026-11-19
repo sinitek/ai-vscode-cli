@@ -969,21 +969,21 @@ function createLongChatState(count: number, overrides: any = {}) {
 }
 
 test("group chat initial HTML and content patches render only the newest bounded batch", () => {
-  const state = createLongChatState(199);
+  const state = createLongChatState(499);
   const patch = buildLoopGroupChatPanelContentPatch(state, 1);
-  assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 150);
-  assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0049|任务发起/u);
-  assert.match(patch.timelineHtml, /群聊消息编号0050/u);
-  assert.match(patch.timelineHtml, /群聊消息编号0199/u);
+  assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 375);
+  assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0124|任务发起/u);
+  assert.match(patch.timelineHtml, /群聊消息编号0125/u);
+  assert.match(patch.timelineHtml, /群聊消息编号0499/u);
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
-  assert.equal((html.match(/<article class="message /g) ?? []).length, 150);
-  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(198), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 199);
-  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(1000), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 151);
-  assert.equal(state.chatMarkdown.match(/## 主任务发言/g)?.length, 199);
+  assert.equal((html.match(/<article class="message /g) ?? []).length, 375);
+  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(498), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 499);
+  assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(1000), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 376);
+  assert.equal(state.chatMarkdown.match(/## 主任务发言/g)?.length, 499);
 });
 
 test("group chat counts live thinking bubbles and does not restore the pruned prefix when they finish", () => {
-  const state = createLongChatState(198);
+  const state = createLongChatState(198, { messageLimit: 200 });
   state.task.status = "running";
   const window = { start: 0 };
   const running = buildLoopGroupChatPanelContentPatch(state, 1, window);
@@ -1013,15 +1013,15 @@ test("group chat applies custom and minimum limits to Loop+ as well as classic L
 test("panel instances retain the cursor across patches and reset it for a different task or setting", () => {
   const harness = createPanelHarness();
   const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
-  panel.show(createLongChatState(199));
+  panel.show(createLongChatState(199, { messageLimit: 200 }));
   assert.equal((harness.panel.webview.html.match(/<article class="message /g) ?? []).length, 150);
   harness.messageHandler({ type: "loopGroupChatChat:domReady", generation: 1 });
-  const next = createLongChatState(198);
+  const next = createLongChatState(198, { messageLimit: 200 });
   panel.update(next);
   assert.equal((harness.messages.at(-1).timelineHtml.match(/<article class="message /g) ?? []).length, 149);
   panel.update({ ...next, messageLimit: 400 });
   assert.equal((harness.messages.at(-1).timelineHtml.match(/<article class="message /g) ?? []).length, 199);
-  panel.update(createLongChatState(249));
+  panel.update(createLongChatState(249, { messageLimit: 200 }));
   assert.doesNotMatch(harness.messages.at(-1).timelineHtml, /群聊消息编号0099/u);
   panel.update({ ...next, task: { ...next.task, id: "other-task" } });
   assert.match(harness.messages.at(-1).timelineHtml, /群聊消息编号0001/u);
