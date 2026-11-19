@@ -13,6 +13,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
+import { resolveLoopPanelProgressPercent } from "../../loopGroupChatPanelState";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 const { createDepartmentRuntimeComposition } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
 const { freezeDepartmentThinkingDefaults } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
@@ -44,6 +45,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
   const store = new DepartmentRuntimeStore(directory);
   const targets = new Map<string, PromptRunTarget>([["director", { tabId: "director", cli: "codex", sessionId: `director-${rootTaskId}` }]]);
   const notices: string[] = [], directorPrompts: PromptRunInput[] = [];
+  const directorProgressRefreshes: number[] = [];
   const configuration: DepartmentConfigurationState = { routes: { director: { cli: "codex", configId: "profile", model: "director" },
     leader: { cli: "codex", configId: "profile", model: "leader" }, employee: { cli: "codex", configId: "profile", model: "employee" } },
     limits: { maxLeaders: 4, maxEmployees: 1 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
@@ -59,7 +61,9 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     buildLoopSupplementalRequirementsLines: (task) => task.supplementalRequirements ?? [],
     isLoopTaskExecutionInterrupted: (id) => fixture.readTask(id)?.status !== "running",
     readLoopTaskRecord: fixture.readTask, updateLoopTaskRecord: update,
-    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+    refreshOpenLoopGroupChatPanelForTask: (id) => {
+      if (id === rootTaskId) directorProgressRefreshes.push(resolveLoopPanelProgressPercent(fixture.readTask(id)!));
+    },
     resolvePromptRunModelForRole: (input) => input.loopMainModel,
     resolvePromptRunThinkingModeForRole: () => undefined,
     runPrompt: async (input) => { directorPrompts.push(input); lastDirectorOutput = JSON.stringify(decision); decision = { status: "blocked", finalSummary: "等待汇报" }; },
@@ -124,7 +128,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
       ...(event && event !== "(none)" ? { reviewEventId: event } : {}), finalSummary: "模块已完成", answerConclusion: "完成",
       acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "module", passed: true }] })) });
   });
-  return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, configuration, start, dispatch, finish,
+  return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, directorProgressRefreshes, configuration, start, dispatch, finish,
     decide: (next: typeof decision) => { decision = next; }, prepare: (next: () => void) => { prepares = next; }, workspace: (value: string) => { workspace = value; },
     taskSource,
     rootTaskId,
@@ -138,7 +142,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
 }
 const modulePrompt = (id: string) => ({ id, title: id, prompt: `负责完整${id}模块，向总监反馈依赖；复用真实Loop+完成实现和统一验收。保持独立任务及会话，在执行期间报告跨组依赖，不要等待所有组长结束才反馈。实现接口、界面和必要验证，并报告实际修改路径、结果以及未完成边界。` });
 
-test("a settled leader frees the next director batch without registering later work in the first round", async (t) => {
+test("a settled leader frees the next batch and director JSON refreshes group chat progress", async (t) => {
   const h = harness(); t.after(h.dispose);
   h.configuration.limits.maxLeaders = 1;
   h.decide({ status: "continue", subtasks: [modulePrompt("accounts")] });
@@ -150,21 +154,32 @@ test("a settled leader frees the next director batch without registering later w
   assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：1 \/ 1/u);
   assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["accounts"]);
 
-  h.decide({ status: "continue", subtasks: [modulePrompt("reports")] });
+  h.decide({ status: "continue", progressPercent: 55, subtasks: [modulePrompt("reports")] });
   h.finish(); h.dispatch("reports");
   h.fixture.finishParked("accounts-0", { status: "end", content: "账号实现和验证已完成" });
   await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("reports-0"), "settlement woke the second batch");
   assert.ok(h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("组长可用名额：1 / 1")
     && modelPrompt.includes('"moduleId": "accounts"') && modelPrompt.includes('"organizationStatus": "completed"')));
+  assert.equal(h.fixture.readTask(h.rootTaskId)?.loopProgressPercent, 55);
+  assert.ok(h.directorProgressRefreshes.includes(55));
   assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["accounts", "reports"]);
   assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
 
   await waitForLoopPlus(() => h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("组长可用名额：0 / 1")
     && modelPrompt.includes('"moduleId": "reports"')), "second occupied slot in director prompt");
+  h.decide({ status: "waiting", progressPercent: 62, finalSummary: "等待报表组长汇报" });
+  h.composition.wakeDirector(h.rootTaskId);
+  await waitForLoopPlus(() => h.directorProgressRefreshes.includes(62), "waiting decision repaints director progress");
+  assert.equal(h.fixture.readTask(h.rootTaskId)?.loopProgressPercent, 62);
+  assert.equal(h.fixture.readTask(h.rootTaskId)?.status, "running");
+  assert.ok(h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("当前总体进度：55%")));
+
   h.decide({ status: "completed", answerConclusion: "账号和报表均已交付", finalSummary: "根据两轮汇报确认完成" });
   h.finish();
   h.fixture.finishParked("reports-0", { status: "end", content: "报表实现和验证已完成" });
   await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "director completed after both batches");
+  assert.equal(h.fixture.readTask(h.rootTaskId)?.loopProgressPercent, 100);
+  assert.ok(h.directorProgressRefreshes.includes(100));
 });
 
 test("production director can finish a cohesive single-group task with spare leader slots", async (t) => {

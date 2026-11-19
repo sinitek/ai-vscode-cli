@@ -352,7 +352,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       if (task.departmentInvalid || task.department?.role !== "director" || !deps.handleDepartmentDecision) {
         throw new Error("部门总监组织入口不可用，任务不会退化为普通 Loop。");
       }
-      return deps.handleDepartmentDecision({ task: readLoopTaskRecord(task.id) ?? task, decision, content: mainContent, requirements: requirementsAtStart });
+      const current = readLoopTaskRecord(task.id) ?? task;
+      const result = await deps.handleDepartmentDecision({ task: current, decision, content: mainContent, requirements: requirementsAtStart });
+      if (result.status === "completed" || result.task.loopProgressPercent !== current.loopProgressPercent) {
+        refreshOpenLoopGroupChatPanelForTask(task.id);
+      }
+      return result;
     }
     return applyLoopMainDecisionForRun(task.id, decision);
   }
@@ -1255,10 +1260,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     if (task.department?.role === "director") return [
       buildDepartmentRolePrompt("director"),
       `任务 ID：${task.id}；轮次：${round}`,
+      `当前总体进度：${task.loopProgressPercent ?? 0}%`,
       "使用经典 Loop JSON 决策。continue 的 subtasks 只列本轮要启动的模块。参考可信协调上下文的组长可用名额，把本轮可并行的模块放进同一个 subtasks 数组。只有一个合适模块时只填一项。",
       `每个新模块用稳定 ID，prompt 至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符，写明本轮目标、范围边界和预期交付结果。各模块的实施由唯一真实 Loop+ 组长负责。`,
+      "每次返回 JSON 都提供 progressPercent。根据全部需求、已收到的组长汇报和剩余工作估算，首次拆分从 0 开始。未完成时为 0–99 的整数，只有整体完成时使用 100。",
       '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","prompt":"自包含模块需求"}]}',
-      '仍有组长处于 starting/running 且只需等待其汇报时，使用 {"status":"waiting","finalSummary":"等待组长汇报"}；waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
+      '仍有组长处于 starting/running 且只需等待其汇报时，返回 {"status":"waiting","progressPercent":40,"finalSummary":"等待组长汇报"}，其中百分比按实际工作估算。waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
       '确有用户疑问使用标准 clarify 表单。',
       '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
       '完成使用 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}；宿主检查全组织门禁后才会写入完成。',

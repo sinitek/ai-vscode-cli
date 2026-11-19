@@ -111,8 +111,10 @@ export function projectDepartmentEmployeeConversationTab(
     && subtask.executionSession.sessionId === summary.sessionId);
   if (matches.length !== 1 || sessionMatches.length !== 1) return summary;
 
-  const projected = presentation("employee", root.id, leader.id, meta.moduleTitle, matches[0].id);
-  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", matches[0].title) };
+  const subtask = matches[0];
+  const employeeNumber = leader.subTasks.indexOf(subtask) + 1;
+  const projected = presentation("employee", root.id, leader.id, meta.moduleTitle, subtask.id);
+  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", subtask.title, employeeNumber) };
 }
 
 function sameWorkspace(root: LoopTaskRecord, task: LoopTaskRecord): boolean {

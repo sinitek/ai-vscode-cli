@@ -5,6 +5,7 @@ export type LoopGroupChatPanelParticipant = {
   id: string;
   /** Actual Loop+ subtask identity when id identifies one employee attempt. */
   subtaskId?: string;
+  employeeNumber?: number;
   title: string;
   role: string;
   status: string;

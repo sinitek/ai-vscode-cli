@@ -492,7 +492,7 @@ export function transitionLoopMainDecision(context: LoopMainDecisionContext): Lo
   if (transition.status === "completed") {
     transition.patch.loopProgressPercent = 100;
   } else if (progressPercent !== undefined && progressPercent < 100
-    && context.task.rounds.some((round) => round.role === "subtask")) {
+    && (context.task.department?.role === "director" || context.task.rounds.some((round) => round.role === "subtask"))) {
     transition.patch.loopProgressPercent = progressPercent;
   }
   return transition;

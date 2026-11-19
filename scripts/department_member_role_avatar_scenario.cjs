@@ -30,7 +30,7 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
       background: style.backgroundColor, foreground: style.color };
   }));
   assert.deepEqual(rows.map((row) => row.avatar), role === "director" ? ["总", "组", "员", "组", "员", "组"] : ["组", "员"]);
-  assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), role === "director" ? ["总监", "组长", "员工", "组长", "员工", "组长"] : ["组长", "员工"]);
+  assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), role === "director" ? ["总监", "组长", "员工 112", "组长", "员工 1", "组长"] : ["组长", leaderTaskId === "department-20261113-leader-111111" ? "员工 112" : "员工 1"]);
   for (const row of rows) {
     assert.doesNotMatch(row.title, /[☀🌛⭐]/u);
     assert.equal(row.tooltip, row.title);
@@ -68,7 +68,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await page.title(), "产研部群聊");
   await showMembers(page); await overflow(page);
   const directorInitial = await inspectRoster(page);
-  assert.match(directorInitial.rows[2].title, /员工 · $/u);
+  assert.equal(directorInitial.rows[2].title, "员工 112 · ");
   await captureRoster(page, "director-initial");
   const open = page.locator('.department-group').first().getByRole("button", { name: "打开组长群聊", exact: true });
   await open.click();
@@ -93,7 +93,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await captureRoster(frame, "leader-patched");
   // Existing employee acceptance and return controls retain their accessible names and routes.
   const employee = frame.locator('.department-employees .member-acceptance-link').first();
-  assert.equal(await employee.getAttribute("aria-label"), "员工 · 同名模块：查看最近一次验收结果");
+  assert.equal(await employee.getAttribute("aria-label"), "员工 112 · 同名模块：查看最近一次验收结果");
   await employee.click(); await settle();
   assert.equal(await frame.locator("#loop-plus-acceptance-0").evaluate((element) => document.activeElement === element), true);
   await showMembers(frame);

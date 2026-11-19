@@ -30,7 +30,7 @@ for (const role of ["director", "leader"] as const) {
     );
     assert.doesNotMatch(patch.rosterPanelHtml, /[☀🌛⭐]/u);
     assert.match(patch.rosterPanelHtml, /class="member-name" title="组长 · 同名模块">组长 · 同名模块<\/div>/u);
-    assert.match(patch.rosterPanelHtml, /class="member-name" title="(员工 · 员工甲[^"]*)">\1<\/div>/u);
+    assert.match(patch.rosterPanelHtml, /class="member-name" title="(员工 112 · 员工甲[^"]*)">\1<\/div>/u);
     assert.equal(patch.subtitleText, role === "director" ? state.task.id : `${projection.title} · ${state.task.id}`);
     if (role === "director") {
       assert.ok(html.includes(`<p id="panelSubtitle" title="${state.task.id}">${state.task.id}</p>`));

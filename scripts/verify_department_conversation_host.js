@@ -89,7 +89,7 @@ async function seedPrivateFixture({ root, home, workspace }) {
   ]);
   const now = Date.now();
   const taskSummaries = ["统筹部门模块并完成交付", `组长 · ${fixture.ids.moduleTitle}`, `组长 · ${fixture.ids.moduleTitle}`,
-    `员工 · ${fixture.leaderOne.subTasks[0].title}`];
+    `员工 1 · ${fixture.leaderOne.subTasks[0].title}`];
   const sessionRecord = (id, label) => ({ id, label, firstPrompt: label, createdAt: now, lastUsedAt: now });
   const sessionStore = Object.fromEntries(["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].map((cli) => [cli, { currentId: null, sessions: [] }]));
   const sessionIds = [fixture.ids.directorSessionId, fixture.ids.leaderOneSessionId, fixture.ids.leaderTwoSessionId, fixture.ids.employeeSessionId, fixture.ids.ordinarySessionId];

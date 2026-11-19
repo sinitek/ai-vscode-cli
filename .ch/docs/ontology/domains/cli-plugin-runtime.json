@@ -2171,7 +2171,7 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，组长显示成员面板的模块标题，员工显示成员面板的子任务标题。普通主任务和产研部总监展示归纳后的 AI 摘要。",
+      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，组长显示成员面板的模块标题，员工显示成员面板的编号和子任务标题，编号取所属组长任务的 subTasks 顺序。普通主任务和产研部总监展示归纳后的 AI 摘要。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",
@@ -8420,6 +8420,21 @@
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
           "anchor": "产研部总监等待汇报与真实阻塞分流"
         }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_director_decision_progress",
+      "name": "产研部总监按决策更新总体进度",
+      "kind": "business_rule",
+      "description": "组长结算唤醒总监。总监根据需求、已收到的组长汇报及剩余工作在决策 JSON 中估算 progressPercent。宿主在有效决策提交时保存到根任务的 loopProgressPercent，含仍有组长在执行的 waiting 决策。缺字段保留上次值，组织完成门禁通过后才置为 100%。保存新进度后刷新已打开的总监群聊工具栏。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.chat_panel", "plugin.extension_host"],
+      "source_refs": [
+        { "path": "src/extensionHost/loopOrchestration.ts" },
+        { "path": "src/extensionHost/departmentruntimecomposition.ts" },
+        { "path": "src/extensionHost/loopTaskStateMachine.ts" },
+        { "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md" },
+        { "path": "src/test/extensionHost/departmentproductioncomposition.test.ts" }
       ]
     },
     {

@@ -105,6 +105,7 @@ function harness() {
 
 test("department host projection uses validated records, actual attempts and read-only lease snapshot", () => {
   const { root, leader, other, records } = departmentRecords();
+  leader.subTasks.unshift({ id: "employee-undispatched", title: "尚未派发", status: "pending" });
   const port = { readTaskRecord: (id: string) => records.get(id) ?? null, readLeaderTaskIds: (rootId: string, moduleId: string) => fixtureDepartmentLeaderTaskIds(records, rootId, moduleId) };
   const projection = buildDepartmentGroupChatProjection(root, port)!;
   assert.equal(projection.leaders.length, 2);
@@ -114,7 +115,7 @@ test("department host projection uses validated records, actual attempts and rea
   assert.deepEqual(buildDepartmentGroupChatProjection(other, {
     ...port, readLeaderTaskIds: (rootId, moduleId) => moduleId === leader.department!.leaderSubtaskId ? [] : port.readLeaderTaskIds(rootId, moduleId),
   })!.leaders.map(({ taskId, leaderNumber }) => [taskId, leaderNumber]), [[other.id, 2]]);
-  assert.deepEqual(projection.leaders[0].employees.map((item) => [item.id, item.subtaskId]), [["attempt-A", "employee-A"]]);
+  assert.deepEqual(projection.leaders[0].employees.map((item) => [item.id, item.subtaskId, item.employeeNumber]), [["attempt-A", "employee-A", 2]]);
   assert.deepEqual(projection.leaders[1].employees, []);
   assert.equal(projection.activeLeaders, null); assert.equal(projection.activeEmployees, null);
   const capacity = { rootTaskId: root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["lease-A"], employees: ["lease-1", "lease-2"] };

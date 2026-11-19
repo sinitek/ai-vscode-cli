@@ -127,11 +127,12 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
 function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
   return projection.seenAttempts.flatMap((attempt) => {
-    const spec = task.subTasks.find((item) => item.id === attempt.subtaskId);
+    const subtaskIndex = task.subTasks.findIndex((item) => item.id === attempt.subtaskId);
+    const spec = task.subTasks[subtaskIndex];
     if (!spec) return [];
     const execution = [...projection.running, ...projection.pending].find((item) => item.attemptId === attempt.attemptId);
     const review = [projection.currentReview, ...projection.reviewQueue].find((item) => item?.attemptId === attempt.attemptId);
-    return [{ id: attempt.attemptId, subtaskId: spec.id, title: spec.title, role: "employee",
+    return [{ id: attempt.attemptId, subtaskId: spec.id, employeeNumber: subtaskIndex + 1, title: spec.title, role: "employee",
       status: execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
         : review ? "queued_review" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"

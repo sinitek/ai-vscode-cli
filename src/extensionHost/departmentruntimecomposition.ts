@@ -6,7 +6,7 @@ import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../depa
 import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
-import { resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
+import { normalizeLoopProgressPercent, resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -295,10 +295,16 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       if (!result.ok) { deps.report(task.id, `整体完成被组织门禁拒绝：${result.reason}`); return { status: "pending-requirements", task: deps.readTask(task.id)! }; }
       return { status: "completed", task: deps.readTask(task.id)!, decision };
     }
+    const progressPercent = normalizeLoopProgressPercent(decision.progressPercent);
+    const progressPatch = progressPercent !== undefined && progressPercent < 100 && progressPercent !== task.loopProgressPercent
+      ? { loopProgressPercent: progressPercent } : {};
     if (decision.status === "waiting") {
       const leaders = host.runtimeSnapshot(task.id)?.leaders ?? [];
       if (leaders.some((member) => member.status === "starting" || member.status === "running")) {
-        return { status: "pending-requirements", task };
+        if (progressPatch.loopProgressPercent === undefined) return { status: "pending-requirements", task };
+        const saved = deps.updateTask(task.id, { ...progressPatch, updatedAt: Date.now() });
+        if (!saved) throw new Error("总监进度保存失败。");
+        return { status: "pending-requirements", task: saved };
       }
       const summary = "总监请求等待组长汇报，但当前没有正在运行的组长任务；已暂停自动协调，请复核组织状态后继续。";
       const paused = deps.updateTask(task.id, { status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
@@ -313,7 +319,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       const summary = decision.blocker
         ? decision.finalSummary ?? "总监报告存在无法推进的阻塞，整体任务尚未完成。"
         : buildLoopBlockerDiagnosticFailure(decision.finalSummary, decision.blockerIssue);
-      const paused = deps.updateTask(task.id, { status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
+      const paused = deps.updateTask(task.id, { ...progressPatch, status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
       if (!paused) throw new Error("总监阻塞状态保存失败。");
       deps.report(task.id, summary);
       return { status: "needs-review", task: paused, decision };

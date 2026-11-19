@@ -3,9 +3,11 @@ import { normalizeRouteThinkingMode, parseCliNameField } from "./subtaskCliRoute
 
 export type DepartmentRole = "director" | "leader" | "employee";
 
-export function formatDepartmentMemberTitle(role: DepartmentRole, title: string): string {
+export function formatDepartmentMemberTitle(role: DepartmentRole, title: string, employeeNumber?: number): string {
   if (role === "director") return "总监";
-  return `${role === "leader" ? "组长" : "员工"} · ${title}`;
+  if (role === "leader") return `组长 · ${title}`;
+  const label = employeeNumber === undefined ? "员工" : `员工 ${employeeNumber}`;
+  return `${label} · ${title}`;
 }
 /** Department roles reuse the same CLI capabilities as Loop and Loop+. */
 export const DEPARTMENT_EXECUTION_CLIS = CLI_LIST;
