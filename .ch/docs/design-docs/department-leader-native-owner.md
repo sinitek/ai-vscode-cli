@@ -85,3 +85,31 @@ tab 等待原交互消费者完成，异常结算保留未知，再核对 worksp
 上述 round-228 的资源事实及原 required 策略保持。round-231 在 extension 接通仅 Codex 组长/Codex 员工完整代次的生产 `observeLeaderCleanup`：唯一 producer 关闭/排空并持久封闭集合，复用原 socket 严格验证后保存在原 client 内的私有完成观察，再核验当前配置、完整 binding 及冷重读集合；全部成功并持久移除原租约后，才实际归还组长名额。组长 drained 后保留 server 到宿主取得原 receipt，员工原 client 也按所属组保留；缺原观察而 socket 已退场仍 unknown，禁止磁盘 cleaned 补成功。只有成功组回收有界宿主引用，失败/未知保留责任与占用。此节取代本专题前述历史轮次的“生产 observe 为 null/容量消费未启用”当前状态描述。
 
 具体合同及验证在[整组清理专题](department-leader-execution-cleanup.md)与 round-231 报告。OpenCode/其它角色、跨平台、真实 CLI/模型、完整 UI、全树控制、冷恢复及根集成仍是后续门禁，不以本轮窄范围 Codex 消费声明整体交付完成。
+
+## Round 2 notification pacing and failure evidence
+
+组长的固定 worker 为原生 Codex 通知消费者提供排空 barrier。owned Codex transport 完成一条不带 `id` 的 native notification 派发后暂停 child stdout，等待该通知引发的组长 worker 消费者收到宿主 ACK，再恢复 stdout 读取。这样上游通知突发不会在 ACK 往返期间无界累积待处理 callback；该 barrier 等待真实消费者 Promise，不把等待、超时或断连当作成功排空。
+
+带 `id` 的 JSON-RPC `onRequest` 是需要独立答复的交互请求，不加入 notification consumer barrier；继续由原 request 路径消费结果和处理取消/解决通知。worker 将 `onRequest` 与通知消费者分开追踪。共享 Codex transport 不提供 `waitForNotificationConsumers` 端口，因此不启用该暂停行为。实现位置：`src/interactive/codexAppServerPoolCore.ts` 的 readLoop/dispatch 后 barrier，`src/interactive/codexRuntimePorts.ts` 的可选可信端口，以及 `src/runtime/departmentleadercodexownerworker.ts` 的消费者集合与 wait 实现。
+
+worker 首次失败会在断开私有通道前尽力发送一个固定阶段标记。宿主仍先验证原 token、identity、严格递增 sequence、帧大小、字段集合与阶段白名单，然后以 `department-leader-native-failed` 写入现有 Extension Host 错误日志。阶段只表达 preparation、private command/phase/channel/send、callback capacity/message/ACK、invocation 或 grant 类别，不携带 prompt、callback 参数、环境、原始错误或 token。发送失败或阶段帧无法观察时仍为 unknown；诊断不是执行授权、grant、终态或清理证据。对应实现见 `src/runtime/departmentleadercodexcontract.ts`、`src/runtime/departmentleadercodexownerworker.ts` 和 `src/extensionHost/departmentleadercodexbootstrap.ts`。
+
+以上节流用于遵守既有最多 32 个未确认 worker callback 的合同；并未扩大窗口或丢弃/重试通知。token、identity、序号、单次 grant、原 Owner receipt、原清理和容量规则仍然 fail closed。`drained` 私有事件只用于推进原 receipt 观察，不取代 receipt。
+
+2026-11-18 日志确认四个组长 tab 在 bootstrap 的 callback ACK send failure 阶段失败；本次受控连续通知用例稳定复现 worker callback-capacity 溢出及后续通道断开。历史运行没有保留 worker 首个内部 failure stage，因此历史四次失败的 worker 首因仍未知，不能据本次复现宣称四次历史故障都由 callback-capacity 导致。此合同和回归不要求也不包含重跑或接管历史任务。
+
+本轮复用隔离副本既有 `npm run build` 与相关 Node 测试 296/296 通过结果，不重复执行代码检查；本轮只更新本设计文档。
+
+## 2026-11-18 大型流数据回调修复（本轮源码合同）
+
+第四组工具完成事件为 67,228 字节，与 worker 的 `callback-message-rejected` 拒绝路径吻合；前三组仅确认宿主 `callback-ack-send-failed`。现有会话记录重建显示兼容转换保留 `aggregatedOutput` 并增加 `aggregated_output`，前三组转发事件约 103 KB；缺原始私有帧及首条 worker 诊断，不能把该机制写成前三组已证实首因。此前短文本真实宿主成功及普通通知节流证据不覆盖大型工具输出。
+
+物理帧上限仍为 64 KiB。小 callback 沿用原 `{type:callback,name,args}` 路径；仅 `onAssistantDelta`、`onTrace`、`onTaskListUpdate`、`onEvent`、`onTokenUsageUpdate`、`onSubagentUpdate`、`onNotification` 的超帧流数据允许在同一继承 IPC 上分片。`onRequest`、日志及 thread/turn 控制回调不豁免；公开 Owner socket 不变。这里取代前述“callback 消息最大 64 KiB”的逻辑消息限制，物理帧限制不变。
+
+限制按 UTF-8 JSON args 的逻辑字节计算：单回调最多 8 MiB、未完成或未确认消费累计最多 16 MiB、32 个逻辑 callback 槽位；单片原始数据最多 24 KiB，base64 传输，每回调最多 342 片。双端在首片/发送前预约完整逻辑字节预算，直到唯一 ACK 才释放，声明长度也占预算。不会截断、重试或把超限回调当成功。
+
+每片重复原 token、完整原 identity 和 invocationId，并消耗严格递增的全局 sequence；`callbackSequence` 固定为首片全局序号。宿主先走原认证与当前 invocation 检查，再严格核对字段白名单、流回调名称、连续片号、固定片数/总长度/SHA-256、规范 base64、每片实际长度及最终完整 UTF-8/JSON/参数数量。初次到达时预约有序槽，允许短 callback 在未完成分片间交错，仍按初次到达顺序调用原消费者；不会等待前一消费者完成才调用下一消费者。完整还原之后才调用原 `onNotification` / `onEvent` 等 handler；其 Promise 完成后仅对首片序号 ACK 一次，通知结果固定 null，原生请求仍保留结果。worker 的 notification barrier、独立 onRequest 及最终 consumer drain 保持。
+
+损坏、缺片、重复、跨调用、序号/身份冲突、超预算均关闭本代并保留 unknown。未完成消息不交付任何部分、不 ACK；在终态/drain 前仍有重组或未确认消费者时拒绝成功。静默缺片保持真实等待责任，断连则拒绝完成；没有超时成功。worker 固定诊断区分 `callback-size-limit`、`callback-serialization-failed`、`callback-channel-disconnected` / `private-send-failed`；宿主固定诊断区分 fragment rejection/incomplete、预算、消费者及通道失败，不输出正文、原异常、token 或环境。单次 grant、原始清理凭证和容量门禁不变。
+
+验证包含固定 worker、原 Store/Ledger/配置租约/Owner/client 与模拟 NDJSON CLI 的 51 KiB 原始结果（兼容扩展后超过 64 KiB）、多字节 UTF-8 原始工具结果、交错短回调、挂起消费与原八项 receipt；另有宿主假 child 的认证/唯一 ACK/坏片测试及共享协议边界测试。详细命令和最终结果写入[本轮计划](../exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md)。这些测试不证明安装版 EH 的长工具输出场景，该独立驱动由并行任务交付，父任务需在双方新产物验收后运行；未写共享 dist、未启动/清理历史用户任务。

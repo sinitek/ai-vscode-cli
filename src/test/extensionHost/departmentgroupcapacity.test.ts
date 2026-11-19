@@ -291,7 +291,7 @@ scenario("two production leaders share twenty employee leases and retain one unr
     id: prefix + n, title: prefix + n, taskType: "backend", writeFiles: [prefix + n + ".ts"],
     prompt: "Implement this complete isolated backend requirement with meaningful source verification and report actual changed paths and results.",
   })) });
-  const blocked = { status: "blocked", finalSummary: "全部门常规名额耗尽且本组应急名额已占用，等待原准备完成。" };
+  const wakeMessage = "全部门余额为零时核对本组唯一应急准入";
   const authorize = (leaderTaskId: string) => {
     const root = h.read("root")!, projection = h.composition.readDepartmentEmployeeAllocation(root.id)!;
     assert.deepEqual(root.department!.limits, { maxLeaders: 4, maxEmployees: 20 });
@@ -306,8 +306,8 @@ scenario("two production leaders share twenty employee leases and retain one unr
     assert.equal(confirmed.appliedLimit, null); assert.equal(confirmed.pending, true);
   };
   try {
-    h.answer(1, dispatch("employee-", 11)); h.answer(2, dispatch("employee-", 11)); h.answer(3, blocked);
-    h.answer(4, dispatch("emergency-", 2)); h.answer(5, blocked);
+    h.answer(1, dispatch("employee-", 11)); h.answer(2, dispatch("employee-", 11));
+    h.answerByPrompt(wakeMessage, dispatch("emergency-", 2), { status: "wait" });
     h.beforeBuilder(async () => { firstEntered.resolve(); await firstRelease.promise; });
     const first = await h.start(); assert.ok(first.ok); await firstEntered.promise;
     authorize(first.taskId); firstRelease.resolve();
@@ -328,8 +328,9 @@ scenario("two production leaders share twenty employee leases and retain one unr
 
     // With global balance zero the first group can also request one emergency
     // employee, while both groups' further requests must be refused.
-    assert.equal(h.fixture.adapter.host().submitUserMessage(first.taskId, "全部门余额为零时核对本组唯一应急准入"), true);
-    await until(() => h.employeeBuilders === 22 && fs.existsSync(h.file("eof-5")));
+    assert.equal(h.fixture.adapter.host().submitUserMessage(first.taskId, wakeMessage), true);
+    await until(() => h.employeeBuilders === 22 && fs.existsSync(h.file("answer-by-prompt-eof")));
+    assert.equal(h.mainInvocations.find(({ prompt }) => prompt.includes(wakeMessage))?.taskId, first.taskId);
     const capacity = h.composition.readCapacity("root")!;
     assert.equal(capacity.employees.length, 22); assert.equal(capacity.employeeOverflow?.length, 2);
     assert.deepEqual(capacity.employeeOverflow!.map((id) => JSON.parse(id)[0]).sort(), [first.taskId, second.taskId].sort());

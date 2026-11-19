@@ -1,5 +1,9 @@
 # 总监逐组员工上限：UI 与受限宿主端口验证
 
+当前界面入口见[分配员工弹窗](../design-docs/department-group-chat-ui-contract.md#分配员工弹窗)。弹窗由右上角 SVG 关闭图标退出，多个组长改动通过右下角唯一“保存并关闭”按顺序提交并等待回执；以下保留原候选阶段证据。浏览器场景从顶部工具栏打开弹窗，检查成员区无额度编辑、弹窗无“恢复均分”、关闭及重新打开，并验证保存和回执。
+
+2026-11-19 验证：`npm run build`、226 项群聊/额度/验收脚本回归、9 项本体测试及 `DEPARTMENT_UI_ALLOCATION_ONLY=1` 的宽屏深色和窄屏浅色 Chromium 烟测通过。`scripts/verify_department_employee_allocation_eh_integration.js` 首次因历史脚本仍等待已移除的角色档案控件而未进入群聊；改为沿用顶部激活档案后，隔离 VS Code/Codex 与本机模拟模型的 4/20 场景通过：弹窗保存 0、下一次派发受限、手动保存原数值、下一次派发恢复及清理均通过。本次未重跑 2/6 工作区场景或线上模型。
+
 本范围是总监成员树中的额度展示、编辑和授权接缝，不是生产额度执行或持久化接线。基线为已接受 `37d5847758a3ca1679be9eebdd8bd49e5a523c3d`；本轮独立物理工作树为 `/private/tmp/department-allocation-ui-round431-20261116`。未吸入并行策略或冷恢复源码，原 round422 UI 树只读。
 
 ## 设计与数据合同

@@ -1,9 +1,14 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { EventEmitter } from "events";
+import * as fs from "node:fs/promises";
+import { writeFileSync } from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
 import { blockRealProcessSignals, fakeCodexSpawn } from "./codexProcessFixture";
+import { readCodexRuntimeConfigReadback } from "../../config/codexRuntimeConfigIdentity";
 
 installVscodeMock();
 test.beforeEach(blockRealProcessSignals);
@@ -56,7 +61,7 @@ function loadCodexRunner(): typeof import("../../interactive/codexRunner") {
   return require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
 }
 
-function attachPersistentServer(child: FakeChild, methods: string[]): void {
+function attachPersistentServer(child: FakeChild, methods: string[], resume?: (threadId: string) => object | undefined): void {
   let input = "";
   let threadSeq = 0;
   let turnSeq = 0;
@@ -84,7 +89,8 @@ function attachPersistentServer(child: FakeChild, methods: string[]): void {
       if (method === "thread/start" || method === "thread/resume") {
         threadSeq += 1;
         const threadId = String(message.params?.threadId || `thread-${threadSeq}`);
-        send({ jsonrpc: "2.0", id: message.id, result: { thread: { id: threadId } } });
+        const result = method === "thread/resume" && resume ? resume(threadId) : { thread: { id: threadId } };
+        if (result) send({ jsonrpc: "2.0", id: message.id, result });
         continue;
       }
       if (method === "turn/start") {
@@ -126,6 +132,89 @@ function attachPersistentServer(child: FakeChild, methods: string[]): void {
           params: { threadId: message.params?.threadId },
         }));
       }
+    }
+  });
+}
+
+for (const response of ["exact", "missing", "mismatch", "cancelled", "provider-drift", "auth-drift"] as const) {
+  test(`original Codex admission handles a ${response} native response without replacing the thread`, async (t) => {
+    const methods: string[] = [];
+    const controller = new AbortController();
+    let reply = response;
+    let transportError: Error | undefined;
+    const failure = Object.assign(new Error("synthetic first-turn stdin failure"), { code: "EPIPE" });
+    const codexHome = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-codex-original-thread-"));
+    t.after(() => fs.rm(codexHome, { recursive: true, force: true }));
+    const config = path.join(codexHome, "config.toml");
+    const auth = path.join(codexHome, "auth.json");
+    await fs.writeFile(config, 'model_provider = "original-provider"\n');
+    await fs.writeFile(auth, '{}');
+    const { evidence } = await readCodexRuntimeConfigReadback(undefined, codexHome);
+    t.mock.method(crossSpawn, "spawn", fakeCodexSpawn(() => {
+      const child = createFakeChild(62700);
+      const write = child.stdin.write.bind(child.stdin);
+      t.mock.method(child.stdin, "write", (data: string) => {
+        if (transportError && JSON.parse(data).method === "turn/start") throw transportError;
+        return write(data);
+      });
+      attachPersistentServer(child, methods, (threadId) => {
+        if (reply === "auth-drift") writeFileSync(auth, '{"synthetic":"different"}');
+        if (reply === "cancelled") {
+          queueMicrotask(() => controller.abort());
+          return undefined;
+        }
+        return reply === "missing" ? {} : { thread: { id: reply === "mismatch" ? "different-thread" : threadId } };
+      });
+      return child;
+    }));
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const runner = new CodexInteractiveRunner({ command: process.execPath, args: [], thinkingMode: "medium",
+      interactiveMode: "coding", threadId: "original-thread", env: { ...process.env, CODEX_HOME: codexHome, CODEX_HOME_DIR: codexHome } });
+    const handlers = { onAssistantDelta: () => undefined, onTrace: () => undefined, onTaskListUpdate: () => undefined,
+      onThreadId: () => assert.fail("original thread must not be rebound") };
+    let commits = 0;
+    let startRejections = 0;
+    let sends = 0;
+    const run = (signal?: AbortSignal) => runner.runStreamed("unused", handlers, undefined, {
+      threadId: "original-thread", codexConfigEvidence: evidence, signal, onStartRejected: () => { startRejections += 1; }, preparePrompt: () => {
+        assert.equal(methods.includes("thread/resume"), true);
+        return { prompt: "committed prompt", commit: () => { commits += 1; }, afterSend: () => { sends += 1; } };
+      },
+    });
+    try {
+      if (response === "provider-drift" || response === "auth-drift") {
+        if (response === "provider-drift") await fs.writeFile(config, 'model_provider = "different-provider"\n');
+        await assert.rejects(run(), /原档案的运行配置已变化/);
+        assert.equal(methods.filter((method) => method === "thread/resume").length, response === "auth-drift" ? 1 : 0);
+        assert.equal(methods.includes("turn/start"), false);
+        assert.equal(commits, 0);
+        assert.equal(sends, 0);
+      } else if (response === "exact") {
+        await run();
+        await run();
+        assert.equal(methods.filter(method => method === "thread/resume").length, 1, "loaded thread is reused");
+        assert.equal(commits, 2);
+        transportError = failure;
+        await assert.rejects(run(), (error: unknown) => error === failure);
+        assert.equal(commits, 3);
+        assert.equal(startRejections, 1);
+        assert.equal(sends, 3, "committed transport failure is distinct from a refused admission");
+        assert.equal(methods.filter((method) => method === "turn/start").length, 2, "no retry after EPIPE");
+      } else {
+        await assert.rejects(run(controller.signal), response === "cancelled" ? { name: "AbortError" } : /原线程不一致/);
+        assert.equal(commits, 0);
+        assert.equal(startRejections, 0);
+        assert.equal(sends, 0);
+        assert.equal(methods.includes("turn/start"), false);
+        reply = "exact";
+        await run();
+        assert.equal(commits, 1, "refusal released the thread usage slot");
+        assert.equal(methods.filter(method => method === "thread/resume").length, 2);
+      }
+      assert.equal(runner.getThreadId(), "original-thread");
+      assert.equal(methods.includes("thread/start"), false);
+    } finally {
+      runner.dispose();
     }
   });
 }

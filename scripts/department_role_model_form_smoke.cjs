@@ -184,9 +184,9 @@ const generatedHtml = getWebviewHtml({ cspSource: "'self'" }).replace("<head>", 
     await page.evaluate((state) => window.postMessage({ type: "state", payload: state }, "*"), panelState());
     await page.locator("#departmentRoleConfiguration").waitFor({ state: "visible" });
     assert.equal(await page.locator(".department-performance-warning").count(), 0);
-    assert.equal(await page.locator("#departmentRoleConfiguration").getByText("20 多个 CLI", { exact: false }).count(), 0);
+    assert.equal(await page.locator("#departmentRoleConfiguration").getByText("根据本机性能设置", { exact: false }).count(), 0);
     for (const id of ["departmentMaxEmployeesNote", "workspaceDepartmentMaxEmployeesNote"]) {
-      assert.match(await page.locator("#" + id).textContent(), /根据本机性能设置.*20 多个 CLI/);
+      assert.match(await page.locator("#" + id).textContent(), /根据本机性能设置.*默认 16 人.*16 个员工 CLI/);
     }
     assert.equal(await page.locator("#department-leader-message, #department-employee-message").count(), 0);
     assert.equal(await page.locator("#department-employee-thinking").isVisible(), false);

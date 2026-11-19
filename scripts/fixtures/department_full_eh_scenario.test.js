@@ -1,7 +1,8 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createDepartmentFullEhScenario, latestUserText } = require("./department_full_eh_scenario");
+const { createDepartmentFullEhScenario, latestUserText, LONG_TOOL_OUTPUT, LONG_TOOL_PAYLOAD_BYTES,
+  LONG_TOOL_OUTPUT_SHA256, LONG_TOOL_COMMAND_SHA256 } = require("./department_full_eh_scenario");
 const request = (text) => ({ input: [{ role: "user", content: [{ type: "input_text", text }] }] });
 const director = (id, total, state = "running") => `使用经典 Loop JSON 决策。\n任务 ID：${id}；轮次：1\nunique test prompt\n根任务：${id}；真实状态：running。模块总数：${total}。\n${total ? `"organizationStatus": "${state}"` : ""}`;
 function fixture(cleanup = { complete: false }) {
@@ -56,6 +57,79 @@ test("leader acceptance copies the actual event and rejects an unregistered atte
   const answer = JSON.parse(await h.ask(text));
   assert.equal(answer.reviewEventId, "event-actual"); assert.equal(answer.reviews[0].reviewEventId, "event-actual");
   await assert.rejects(h.ask(text.replace("attempt=attempt-actual", "attempt=unknown")), /not persisted/);
+});
+
+const longInvocation = { role: "leader", rootTaskId: "root-actual", leaderTaskId: "leader-actual", moduleId: "module-actual",
+  generation: 2, executionId: "execution-actual", ownerId: "owner-actual", invocationId: "invocation-actual", bindingIdentitySha256: "a".repeat(64) };
+const longForwarded = { ...longInvocation, commandSha256: LONG_TOOL_COMMAND_SHA256, payloadBytes: LONG_TOOL_PAYLOAD_BYTES,
+  payloadSha256: LONG_TOOL_OUTPUT_SHA256, eventBytes: 72400 };
+const declaredExec = { type: "function", name: "exec_command", parameters: { required: ["cmd"],
+  properties: { cmd: { type: "string" }, shell: { type: "string" }, login: { type: "boolean" }, max_output_tokens: { type: "number" } } } };
+const outputEnvelope = payload => `Chunk ID: abcdef\nWall time: 0.1 seconds\nProcess exited with code 0\nOriginal token count: 6000\nOutput:\n${payload}`;
+async function longToolFixture(readLongToolEvidence, longToolEvidenceWaitMs = 0) {
+  const h = fixture();
+  const scenario = createDepartmentFullEhScenario({ prompt: "unique test prompt", readTasks: () => h.tasks,
+    inspectCleanup: async () => ({ complete: false }), longToolOutput: true, readLongToolInvocation: () => longInvocation,
+    readLongToolEvidence, longToolEvidenceWaitMs });
+  await scenario.respond(request(director("root-actual", 0)), { index: 1, request: {} });
+  const first = await scenario.respond({ ...request(initialLeader), tools: [declaredExec] }, { index: 2, request: {} });
+  const completion = { type: "function_call_output", call_id: first.call_id, output: outputEnvelope(LONG_TOOL_OUTPUT) };
+  return { scenario, first, completion,
+    complete: (...outputs) => scenario.respond({ input: [...request(initialLeader).input, ...outputs] }, { index: 3, request: {} }) };
+}
+
+test("long tool evidence can arrive EH first or Responses first", async () => {
+  for (const ehFirst of [true, false]) {
+    let forwarded = ehFirst ? longForwarded : null;
+    const { scenario, first, completion, complete } = await longToolFixture(() => forwarded, 1000);
+    assert.equal(first.type, "function_call");
+    assert.equal(first.name, "exec_command");
+    assert.deepEqual(Object.keys(first.arguments).sort(), Object.keys(declaredExec.parameters.properties).sort());
+    const pending = complete(completion);
+    assert.equal(!!scenario.snapshot().longToolEvidence, ehFirst);
+    forwarded = longForwarded;
+    assert.equal(JSON.parse(await pending).status, "dispatch");
+    const evidence = scenario.snapshot().longToolEvidence;
+    assert.equal(evidence.nativeFunctionCallOutput, true);
+    assert.equal(evidence.modelInputBytes, Buffer.byteLength(JSON.stringify(completion)));
+    assert.ok(evidence.modelInputBytes < 65536 && evidence.forwardedEventBytes > 65536);
+    assert.equal(evidence.payloadSha256, LONG_TOOL_OUTPUT_SHA256);
+    assert.equal(evidence.payloadBytes, LONG_TOOL_PAYLOAD_BYTES);
+    const saved = scenario.summarizeRequest({ input: [first, completion, ...request("private prompt").input], instructions: "private instructions" });
+    assert.equal(saved.instructions, undefined);
+    assert.equal(saved.input[0].arguments, "[redacted]");
+    assert.deepEqual(saved.input[1].output, { byteLength: Buffer.byteLength(completion.output),
+      sha256: require("node:crypto").createHash("sha256").update(completion.output).digest("hex") });
+    assert.equal(saved.input[2].content, "[redacted]");
+  }
+});
+
+test("long tool evidence rejects a same-leader wrong execution and missing, short or corrupt EH evidence", async () => {
+  for (const [label, value, expected] of [
+    ["Responses only", null, /missing actual EH/],
+    ["wrong execution", { ...longForwarded, executionId: "other-execution" }, /not linked/],
+    ["wrong invocation", { ...longForwarded, invocationId: "other-invocation" }, /not linked/],
+    ["wrong generation", { ...longForwarded, generation: 3 }, /not linked/],
+    ["truncated", { ...longForwarded, payloadBytes: LONG_TOOL_PAYLOAD_BYTES - 1 }, /truncated/],
+    ["digest mismatch", { ...longForwarded, payloadSha256: "0".repeat(64) }, /digest mismatch/],
+    ["short event", { ...longForwarded, eventBytes: 65536 }, /threshold/],
+  ]) {
+    const { complete, completion } = await longToolFixture(() => value);
+    await assert.rejects(complete(completion), expected, label);
+  }
+});
+
+test("long tool evidence rejects missing, duplicate, extended or corrupt native Responses output even with EH evidence", async () => {
+  for (const [select, expected] of [
+    [() => [], /missing or duplicated/],
+    [item => [item, item], /missing or duplicated/],
+    [item => [{ ...item, output: item.output + "extra" }], /truncated or extended/],
+    [item => [{ ...item, output: outputEnvelope(LONG_TOOL_OUTPUT.slice(1)) }], /truncated or extended/],
+    [item => [{ ...item, output: outputEnvelope(LONG_TOOL_OUTPUT.slice(1) + "x") }], /digest mismatch/],
+  ]) {
+    const { complete, completion } = await longToolFixture(() => longForwarded);
+    await assert.rejects(complete(...select(completion)), expected);
+  }
 });
 
 test("initial empty scheduler dispatches despite completion allowance and cannot claim a later closeout", async () => {

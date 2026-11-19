@@ -268,6 +268,7 @@ test("original Loop runtime restoration reuses ready main and cross-CLI subtask 
     logEssential: async () => undefined,
     activeWorkspaceKey: "synthetic-workspace",
     prepareLoopOriginContinuationTarget: () => ({ tabId: "main-tab" }),
+    getConversationTabById: (tabId: string) => ({ id: tabId }),
     switchVisibleConversationTabForLoop: async () => undefined,
     parseCliName: (value: string | undefined) => value ?? null,
     selectCliLoopModel: () => undefined,
@@ -346,6 +347,17 @@ test("department OpenCode leader entry uses its tab-isolated parallel consumer a
   const validatorSource = readSource("src", "extensionHost", "departmentleadernativesessionvalidation.ts");
   assert.doesNotMatch(validatorSource, /upsertInteractiveMapping|metaStore|sessionLifecycle/);
   assert.match(openCodeLeader, /finally \{ tabConsumer\.finish\(consumed\); \}/);
+});
+
+test("new interactive department employee initializes only its local session before runner preparation", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  const run = requireFunction(parseTypeScript("extension.ts", extensionSource), "runDepartmentInteractivePrompt", "extension.ts").getText();
+  assert.match(run, /if \(!fixed\.loopTaskId \|\| !target \|\| !expected\)/);
+  assert.doesNotMatch(run, /!target\?\.sessionId/);
+  assert.match(run, /fixed\.taskRole === "subtask" && !target\.sessionId/);
+  assert.match(run, /ensureLocalSession\(target\.cli, target\.tabId, true\)/);
+  assert.match(run, /initialized\?\.cli === target\.cli && initialized\.sessionId/);
+  assert.match(run, /rejectUnstarted\(input\.loopTaskId, input\.loopAttemptId, failure\)/);
 });
 
 test("scheduled tasks resolve their interactive mode from the selected task config", () => {

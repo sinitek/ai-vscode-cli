@@ -8,6 +8,7 @@ import { once } from "events";
 import { leaderFixture } from "./fixtures/departmentleadercodexhost";
 import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
 import { isLeaderCodexPreparation, LEADER_INVOCATION_LIMIT } from "../../runtime/departmentleadercodexcontract";
+import { bindDepartmentExecutionTab, createDepartmentExecutionResources } from "../../extensionHost/departmentexecutionresources";
 const tick = () => new Promise<void>((r) => setImmediate(r));
 function deferred() { let resolve!: () => void; const promise = new Promise<void>((r) => { resolve = r; }); return { promise, resolve }; }
 async function until(check: () => boolean | Promise<boolean>) {
@@ -27,6 +28,106 @@ async function setup(t: test.TestContext, bound = false) {
 }
 const first = { invocationId: "main-1", prompt: "trusted first main invocation" };
 const second = { invocationId: "main-2", prompt: "trusted second main invocation" };
+
+test("leader native notification burst drains ACKs without overflowing the callback window", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), stages: unknown[] = []; let deltas = 0;
+  h.flag("burst");
+  h.host.logError = (message, data) => { if (message === "department-leader-native-failed") stages.push(data); };
+  h.host.handlers.onAssistantDelta = async () => { deltas++; await new Promise<void>((resolve) => setTimeout(resolve, 10)); };
+  let tab: { id: string; cli: string; sessionId: null } | null = { id: "owned-tab", cli: "codex", sessionId: null };
+  const resources = createDepartmentExecutionResources({ workspace: () => "workspace", readTab: () => tab,
+    isActive: () => false, owns: () => true, close: async () => { tab = null; } });
+  resources.recordCreated(tab.id); const consumer = resources.beginConsumer(tab.id);
+  h.host.tab = bindDepartmentExecutionTab(consumer.target, h.identity);
+  let originalReceipt!: () => ReturnType<DepartmentExecutionOwnerClient["waitForCleanup"]>;
+  h.host.retainOriginalClient = (binding, client) => { originalReceipt = () => client.waitForCleanup(binding.identity, binding.requirements); };
+  const p = h.port(), launch = await p.invoke(first);
+  assert.equal((await launch.completion).streams.status, "confirmed", JSON.stringify(stages));
+  assert.equal(deltas, 40); assert.deepEqual(stages, []);
+  assert.equal(h.count("turn/start"), 1);
+  consumer.finish();
+  const cleanup = await p.closeAdmissionsAndDrain();
+  assert.equal(cleanup.runner.status, "confirmed"); assert.equal(cleanup.tab.status, "confirmed");
+  assert.deepEqual((await originalReceipt()).identity, launch.identity);
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  assert.deepEqual(saved.value.capacity.leaders, ["module"], "receipt alone does not release organizational capacity");
+});
+
+test("leader notification pacing leaves interactive requests outside the ACK barrier", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), delta = deferred(); let requests = 0;
+  h.flag("request");
+  h.host.handlers.onRequest = async () => { requests++; await delta.promise; return { result: {} }; };
+  h.host.handlers.onAssistantDelta = () => delta.resolve();
+  const p = h.port(), launch = await p.invoke(first);
+  assert.equal((await launch.completion).streams.status, "confirmed"); assert.equal(requests, 1);
+  assert.equal(h.count("turn/start"), 1); await p.closeAdmissionsAndDrain();
+});
+
+test("leader callback above the logical limit fails closed with a redacted worker stage in the application log", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), logs: unknown[] = [];
+  h.flag("oversized-notification");
+  h.host.logError = (message, data) => { if (message === "department-leader-native-failed") logs.push(data); };
+  const p = h.port(), launch = await p.invoke(first);
+  await assert.rejects(launch.completion, /channel-or-delivery-unknown/);
+  assert.deepEqual(logs, [{ stage: "worker-callback-size-limit", phase: "granted",
+    rootTaskId: h.identity.rootTaskId, leaderTaskId: h.identity.leaderTaskId,
+    executionId: h.identity.executionId, generation: h.identity.generation }]);
+  assert.equal(JSON.stringify(logs).includes("sensitive-native-data"), false);
+  await assert.rejects(p.invoke(second)); assert.equal(h.count("turn/start"), 1);
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  assert.deepEqual(saved.value.capacity.leaders, ["module"]);
+});
+
+test("leader delivers compatible 51 KiB and raw UTF-8 large tool results intact before exact terminal and original cleanup", { timeout: 15000 }, async (t) => {
+  const h = await setup(t), stages: unknown[] = [], seen: string[] = [], gate = deferred(), entered = deferred();
+  h.flag("large-tool-output");
+  h.host.logError = (message, data) => { if (message === "department-leader-native-failed") stages.push(data); };
+  const expected = new Map([["compat", "c".repeat(51 * 1024)], ["utf8", '工具🌛\\\"\n'.repeat(8192)]]);
+  h.host.handlers.onNotification = async (raw) => {
+    const message = raw as any;
+    if (message.method !== "item/completed") return;
+    const item = message.params.item;
+    assert.equal(item.aggregatedOutput, expected.get(item.id));
+    assert.equal(Buffer.byteLength(JSON.stringify(message), "utf8") > 64 * 1024, item.id === "utf8",
+      "compat starts below a frame while the raw multilingual event already exceeds it");
+    seen.push(`native-${item.id}`);
+    if (item.id === "compat") { entered.resolve(); await gate.promise; }
+  };
+  h.host.handlers.onEvent = (raw) => {
+    const event = raw as any;
+    if (event.type !== "item.completed" || !expected.has(event.item?.id)) return;
+    assert.equal(event.item.aggregatedOutput, expected.get(event.item.id));
+    assert.equal(event.item.aggregated_output, expected.get(event.item.id));
+    assert.ok(Buffer.byteLength(JSON.stringify(event), "utf8") > 64 * 1024);
+    seen.push(`forwarded-${event.item.id}`);
+  };
+  h.host.handlers.onAssistantDelta = (text) => { if (text.startsWith("short-after-")) seen.push(text); };
+  let tab: { id: string; cli: string; sessionId: null } | null = { id: "large-output-tab", cli: "codex", sessionId: null };
+  const resources = createDepartmentExecutionResources({ workspace: () => "workspace", readTab: () => tab,
+    isActive: () => false, owns: () => true, close: async () => { tab = null; } });
+  resources.recordCreated(tab.id); const consumer = resources.beginConsumer(tab.id);
+  h.host.tab = bindDepartmentExecutionTab(consumer.target, h.identity);
+  let originalReceipt!: () => ReturnType<DepartmentExecutionOwnerClient["waitForCleanup"]>;
+  h.host.retainOriginalClient = (binding, client) => { originalReceipt = () => client.waitForCleanup(binding.identity, binding.requirements); };
+  const p = h.port(), launch = await p.invoke(first);
+  await entered.promise;
+  let settled = false; void launch.completion.then(() => { settled = true; });
+  await tick(); assert.equal(settled, false); assert.equal(seen.includes("short-after-compat"), false);
+  gate.resolve();
+  const terminal = await launch.completion;
+  assert.ok(Object.values(terminal).every((fact) => fact.status === "confirmed"));
+  assert.deepEqual(seen, ["native-compat", "forwarded-compat", "short-after-compat", "native-utf8", "forwarded-utf8", "short-after-utf8"]);
+  assert.deepEqual(stages, []); assert.equal(h.count("turn/start"), 1);
+  assert.equal(await p.invoke(first), launch, "no duplicate grant/turn for identical invocation");
+  consumer.finish();
+  const cleanup = await p.closeAdmissionsAndDrain();
+  assert.ok(Object.values(cleanup).every((fact) => fact.status === "confirmed"));
+  const receipt = await originalReceipt();
+  assert.deepEqual(receipt.identity, launch.identity);
+  assert.ok(Object.values(receipt.cleanup).every((fact) => fact.status === "confirmed"));
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  assert.deepEqual(saved.value.capacity.leaders, ["module"]);
+});
 
 test("leader preserves long multilingual Loop+ prompts across private IPC and native new/resume calls", { timeout: 15000 }, async (t) => {
   const h = await setup(t), p = h.port();
@@ -180,13 +281,21 @@ for (const kind of ["consumer", "pipe"] as const) test(`leader held ${kind} prev
 });
 
 test("leader callback rejection preserves unknown and refuses later invocation", { timeout: 15000 }, async (t) => {
-  const h = await setup(t), diagnostics: string[] = [], originalError = console.error;
+  const h = await setup(t), diagnostics: string[] = [], applicationLogs: unknown[] = [], originalError = console.error;
   console.error = (message?: unknown) => { diagnostics.push(String(message)); };
   t.after(() => { console.error = originalError; });
+  h.host.logError = (message, data) => {
+    applicationLogs.push({ message, data });
+    return Promise.reject(new Error("fixture-diagnostic-consumer-rejected"));
+  };
   h.host.handlers.onAssistantDelta = async () => { throw new Error("fixture-consumer-failure"); };
   const p = h.port(), a = await p.invoke(first); await assert.rejects(a.completion, /channel-or-delivery-unknown/);
   await assert.rejects(p.invoke(second)); assert.equal(h.count("turn/start"), 1);
   assert.deepEqual(diagnostics, ["[department-leader-native] stage=callback-consumer-rejected"]);
+  assert.deepEqual(applicationLogs, [{ message: "department-leader-native-failed", data: {
+    stage: "callback-consumer-rejected", phase: "granted", rootTaskId: h.identity.rootTaskId,
+    leaderTaskId: h.identity.leaderTaskId, executionId: h.identity.executionId, generation: h.identity.generation,
+  } }]);
 });
 
 test("leader granted round survives seal and post-grant caller abort", { timeout: 15000 }, async (t) => {
@@ -222,6 +331,36 @@ test("leader strict private preparation rejects employee, non-Codex, extra modul
   for (const v of [{ ...input, module: "/arbitrary" }, { ...input, identity: { ...h.identity, role: "employee" } },
     { ...input, selection: { ...h.selection, model: "other" } }, { ...input, identity: { ...h.identity, cli: "opencode" } }]) assert.equal(isLeaderCodexPreparation(v), false);
   assert.equal(LEADER_INVOCATION_LIMIT, 128);
+});
+
+test("leader worker still rejects callback window overflow without treating it as cleanup", { timeout: 10000 }, async (t) => {
+  const h = await setup(t); h.flag("request-burst"); h.flag("hold-terminal");
+  const input = { ...h.description, version: 1, token: "d".repeat(64), identity: h.identity,
+    selection: h.selection, ownerDirectory: h.file("owner") };
+  const child = fork(path.join(__dirname, "..", "..", "runtime", "departmentleadercodexownerworker.js"), [], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"], execArgv: [], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+  });
+  t.after(() => { if (child.exitCode === null) child.kill(); });
+  let sequence = 0, granted = false, held = 0, failure: any;
+  const send = (operation: string, extra = {}) => child.send({ version: 1, token: input.token,
+    identity: h.identity, sequence: ++sequence, operation, ...extra });
+  child.on("message", (v: any) => {
+    if (v.type === "ready") send("invoke", { invocation: first });
+    if (v.type === "session") send("persisted", { invocationId: first.invocationId });
+    if (v.type === "owner-bound") send("grant", { invocationId: first.invocationId });
+    if (v.type === "granted") granted = true;
+    if (v.type === "callback") {
+      if (granted) held++;
+      else send("ack", { callbackSequence: v.sequence, ok: true, result: null });
+    }
+    if (v.type === "failure") failure = v;
+  });
+  const disconnected = once(child, "disconnect"); child.send(input); await disconnected;
+  assert.equal(failure?.stage, "callback-capacity"); assert.equal(held, 32);
+  assert.equal(failure.token, input.token); assert.deepEqual(failure.identity, h.identity);
+  assert.equal(h.count("turn/start"), 1);
+  const observed = await new DepartmentExecutionOwnerClient(h.file("owner")).observeExecution(h.identity);
+  assert.notEqual(observed.status, "cleaned");
 });
 
 for (const violation of ["token", "sequence", "identity", "extra-field", "premature-grant"] as const)

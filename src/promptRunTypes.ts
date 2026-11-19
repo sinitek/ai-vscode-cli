@@ -41,6 +41,8 @@ export type PromptRunInput = {
   loopSubtaskId?: string;
   loopAttemptId?: string;
   executionCwd?: string;
+  grokLoopExecutionRootId?: string;
+  grokLoopResumeSessionId?: string | null;
   isolateProjectInstructions?: boolean;
   skipLongTermMemoryPersist?: boolean;
   thinkingModeOverride?: ThinkingMode;

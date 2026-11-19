@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DepartmentExecutionIdentity, CleanupRequirements } from "../../../runtime/departmentexecutionidentity";
+import { createHash } from "node:crypto";
+import { types } from "node:util";
+import { canonicalIdentity, identifier, isDepartmentExecutionIdentity, sameExecution, type DepartmentExecutionIdentity, type CleanupRequirements } from "../../../runtime/departmentexecutionidentity";
 import type { DepartmentExecutionReceipt } from "../../../runtime/departmentexecutionreceiptstore";
+import type { createDepartmentLeaderProductionHost } from "../../../extensionHost/departmentleaderproductionhost";
 
 /** Passive test observation of the ORIGINAL client's validated return. Returns
  * the same Promise; cannot grant, release, retry or synthesize cleanup. */
@@ -98,9 +101,108 @@ export function installDepartmentFullEhProtocolObserver(cp: typeof import("node:
   return () => { if (cp.fork === wrapped) cp.fork = original; };
 }
 
-export function createDepartmentFullEhHostTestEntry(options: { root: string; timeoutMs?: number }): string {
+type LongToolPayload = { commandSha256: string; payloadBytes: number; payloadSha256: string };
+const sha256 = (value: string) => createHash("sha256").update(value, "utf8").digest("hex");
+
+export function departmentFullEhLongToolIdentity(identity: DepartmentExecutionIdentity, invocationId: string) {
+  return { role: identity.role, rootTaskId: identity.rootTaskId, leaderTaskId: identity.leaderTaskId, moduleId: identity.moduleId,
+    generation: identity.generation, executionId: identity.executionId, ownerId: identity.ownerId, invocationId,
+    bindingIdentitySha256: sha256(canonicalIdentity(identity)) };
+}
+
+export function readDepartmentFullEhLongToolGrant(root: string, taskId: string, invocationId?: string) {
+  const file = path.join(root, "original-owner-protocol.ndjson");
+  if (!fs.existsSync(file)) return null;
+  const matches = fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line))
+    .filter(event => event.event === "sent" && event.operation === "grant" && event.identity?.role === "leader"
+      && event.identity.leaderTaskId === taskId && (invocationId === undefined || event.invocationId === invocationId));
+  if (!matches.length) return null;
+  if (matches.length !== 1) throw new Error("non-unique long-tool Owner grant");
+  const grant = matches[0];
+  const bind = grant.preGrantReadback?.bindings;
+  const identity: unknown = bind?.[0]?.identity;
+  if (!identifier(grant.invocationId) || grant.preGrantReadback?.runtimeOk !== true || bind?.length !== 1
+    || !isDepartmentExecutionIdentity(identity) || identity.role !== "leader" || identity.cli !== "codex" || identity.session.state !== "bound"
+    || grant.preGrantReadback.taskId !== taskId || grant.preGrantReadback.session?.sessionId !== identity.session.id
+    || !isDepartmentExecutionIdentity(grant.identity) || (grant.identity.session.state === "bound" && grant.identity.session.id !== identity.session.id)
+    || !sameExecution({ ...grant.identity, session: identity.session }, identity)) throw new Error("long-tool Owner grant lacks its exact persisted binding");
+  return { identity, invocationId: grant.invocationId };
+}
+
+export function installDepartmentFullEhLongToolEventObserver(hostModule: { createDepartmentLeaderProductionHost: typeof createDepartmentLeaderProductionHost },
+  options: LongToolPayload & { root: string; resolveGrant: (taskId: string, invocationId: string) => ReturnType<typeof readDepartmentFullEhLongToolGrant>;
+    failed?: () => void }): () => void {
+  const originalFactory = hostModule.createDepartmentLeaderProductionHost;
+  let failed = false;
+  const writeFailure = (stage: string): void => {
+    if (failed) return;
+    failed = true;
+    try { options.failed?.(); } catch { /* diagnostic only */ }
+    try { fs.appendFileSync(path.join(options.root, "long-tool-observer-errors.ndjson"), JSON.stringify({ stage }) + "\n", { mode: 0o600 }); } catch { /* diagnostic only */ }
+  };
+  const observe = (event: unknown, taskId: string, invocationId: string): void => {
+    try {
+      const value = event as Record<string, unknown> | null;
+      const item = value?.item as Record<string, unknown> | undefined;
+      if (value?.type !== "item.completed" || item?.type !== "command_execution" || typeof item.command !== "string") return;
+      const commandSha256 = sha256(item.command);
+      if (commandSha256 !== options.commandSha256) return;
+      const grant = options.resolveGrant(taskId, invocationId);
+      if (!grant || grant.invocationId !== invocationId || grant.identity.leaderTaskId !== taskId) {
+        writeFailure("long-tool-event-identity-unmatched"); return;
+      }
+      const output = item.aggregatedOutput;
+      if (item.status !== "completed" || item.exitCode !== 0 || typeof output !== "string" || item.aggregated_output !== output) {
+        writeFailure("long-tool-event-native-output-mismatch"); return;
+      }
+      const payloadBytes = Buffer.byteLength(output, "utf8"), payloadSha256 = sha256(output);
+      const eventBytes = Buffer.byteLength(JSON.stringify(event), "utf8");
+      if (payloadBytes !== options.payloadBytes || payloadSha256 !== options.payloadSha256 || eventBytes <= 65536) {
+        writeFailure("long-tool-event-evidence-mismatch"); return;
+      }
+      const file = path.join(options.root, "long-tool-forwarded-event.json");
+      if (fs.existsSync(file)) { writeFailure("long-tool-event-duplicate"); return; }
+      const record = JSON.stringify({ ...departmentFullEhLongToolIdentity(grant.identity, invocationId), eventBytes, payloadBytes, payloadSha256, commandSha256 });
+      const pending = `${file}.pending`;
+      fs.writeFileSync(pending, record, { flag: "wx", mode: 0o600 });
+      fs.renameSync(pending, file);
+    } catch { writeFailure("long-tool-event-observer-failed"); }
+  };
+  const wrappedFactory = new Proxy(originalFactory, { apply(factory, receiver, args) {
+    const host = Reflect.apply(factory, receiver, args) as ReturnType<typeof originalFactory>;
+    host.run = new Proxy(host.run, { apply(run, runReceiver, args: Parameters<typeof host.run>) {
+      const [taskId, invocationId, , handlers] = args;
+      if (typeof handlers?.onEvent !== "function") return Reflect.apply(run, runReceiver, args);
+      const onEvent = new Proxy(handlers.onEvent, { apply(consumer, consumerReceiver, eventArgs) {
+        const result = Reflect.apply(consumer, consumerReceiver, eventArgs);
+        const capture = () => observe(eventArgs[0], taskId, invocationId);
+        try {
+          if (types.isPromise(result)) void Promise.prototype.then.call(result, capture, () => undefined);
+          else capture();
+        } catch { writeFailure("long-tool-event-observer-failed"); }
+        return result;
+      } });
+      args[3] = { ...handlers, onEvent };
+      return Reflect.apply(run, runReceiver, args);
+    } });
+    return host;
+  } });
+  hostModule.createDepartmentLeaderProductionHost = wrappedFactory;
+  return () => { if (hostModule.createDepartmentLeaderProductionHost === wrappedFactory) hostModule.createDepartmentLeaderProductionHost = originalFactory; };
+}
+
+export function createDepartmentFullEhHostTestEntry(options: { root: string; timeoutMs?: number; longToolOutput?: LongToolPayload }): string {
   const root = JSON.stringify(options.root);
   const hostTimeout = (options.timeoutMs ?? 180000) + 30000;
+  const longObserverSetup = options.longToolOutput ? `
+  let longToolObservationFailed = false;
+  const { installDepartmentFullEhLongToolEventObserver, readDepartmentFullEhLongToolGrant } = require(path.join(extension.extensionPath, 'dist/test/extensionHost/fixtures/departmentfullehproductionhost.js'));
+  const leaderHostModule = require(path.join(extension.extensionPath, 'dist/extensionHost/departmentleaderproductionhost.js'));
+  installDepartmentFullEhLongToolEventObserver(leaderHostModule, {
+    ...${JSON.stringify(options.longToolOutput)}, root,
+    resolveGrant: (taskId, invocationId) => readDepartmentFullEhLongToolGrant(root, taskId, invocationId),
+    failed: () => { longToolObservationFailed = true; }
+  });` : "";
   return `
 const fs = require('node:fs');
 const path = require('node:path');
@@ -113,6 +215,7 @@ exports.run = async () => {
   const extensionId = 'sinitek.sinitek-cli-tools';
   const extension = vscode.extensions.getExtension(extensionId);
   if (!extension) throw new Error('production extension is missing');
+${longObserverSetup}
   const { DepartmentExecutionOwnerClient } = require(path.join(extension.extensionPath, 'dist/runtime/departmentexecutionownerclient.js'));
   const seen = new Set();
   const protocolObservationErrors = path.join(root, 'original-owner-observation-errors.ndjson');
@@ -163,6 +266,7 @@ exports.run = async () => {
   while (Date.now() < deadline && !fs.existsSync(path.join(root, 'host-finish.signal'))) await new Promise(resolve => setTimeout(resolve, 100));
   if (!fs.existsSync(path.join(root, 'host-finish.signal'))) throw new Error('public-entry harness did not signal normal host shutdown');
   if (protocolObservationFailed || fs.existsSync(protocolObservationErrors)) throw new Error('original Owner protocol observer reported a diagnostic');
+${options.longToolOutput ? "  if (longToolObservationFailed) throw new Error('long tool event observer reported a diagnostic');" : ""}
 };
 `;
 }

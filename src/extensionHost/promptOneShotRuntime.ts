@@ -980,6 +980,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       },
       onAttemptProcessStarted: (runProcess, runtimeSessionId) => {
         setActiveProcess(runProcess);
+        executionOptions.registerQuestionRun?.(runId);
         attemptSubagentMonitor?.setParentSessionId(runtimeSessionId);
       },
       finishStreamAttempt: async (context) => {

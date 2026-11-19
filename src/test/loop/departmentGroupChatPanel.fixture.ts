@@ -21,9 +21,9 @@ export function departmentState(role: DepartmentGroupChatProjection["role"] = "d
       title: "同名模块 <流程> & \"标题\" / " + "很长的模块标题与Windows路径C:\\workspace\\module".repeat(5),
       director: { id: "director", title: "部门总监", role: "main", status: "running" },
       leaders: [
-        { taskId: "department-20261113-leader-111111", participant: { id: "leader-a", title: "同名模块", role: "main", status: "running" }, employees: [employee] },
-        { taskId: "department-20261113-leader-222222", participant: { id: "leader-b", title: "同名模块", role: "main", status: "paused" }, employees: [{ id: "employee-b", title: "员工乙", role: "subtask", status: "pending" }] },
-        { taskId: "", participant: { id: "leader-pending", title: "尚未创建的模块", role: "main", status: "pending" }, employees: [] },
+        { taskId: "department-20261113-leader-111111", leaderNumber: 1, participant: { id: "leader-a", title: "同名模块", role: "main", status: "running" }, employees: [employee] },
+        { taskId: "department-20261113-leader-222222", leaderNumber: 2, participant: { id: "leader-b", title: "同名模块", role: "main", status: "paused" }, employees: [{ id: "employee-b", title: "员工乙", role: "subtask", status: "pending" }] },
+        { taskId: "", leaderNumber: 3, participant: { id: "leader-pending", title: "尚未创建的模块", role: "main", status: "pending" }, employees: [] },
       ],
       maxLeaders: 4, maxEmployees: 20, activeLeaders: 2, activeEmployees: 1,
     },

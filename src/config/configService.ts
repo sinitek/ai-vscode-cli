@@ -14,9 +14,9 @@ import {
   CurrentConfigPlatform,
 } from "./types";
 import { t } from "../i18n";
-import { createCliRuntimeConfigStrategies } from "./cliRuntimeConfigStrategies";
+import { createCliRuntimeConfigStrategies, type ReadCodexReadback } from "./cliRuntimeConfigStrategies";
 import { retryRuntimeConfigApply } from "./runtimeConfigVerification";
-import { readCodexRuntimeConfigIdentity } from "./codexRuntimeConfigIdentity";
+import { assertCodexRuntimeConfigEvidence, buildCodexRuntimeConfigFingerprint, readCodexRuntimeConfigIdentity, readCodexRuntimeConfigReadback, type CodexRuntimeConfigEvidence } from "./codexRuntimeConfigIdentity";
 import {
   OpenCodeConfigModelIssueCode,
   OpenCodeModelRole,
@@ -243,15 +243,20 @@ export async function readOpenCodeConfig(): Promise<{ config: string; env: strin
   return { config, env: "" };
 }
 
-export async function readRuntimeConfigFingerprint(cli: CliName, configId: string | null, workingDirectory?: string): Promise<string> {
+export async function readRuntimeConfigFingerprint(
+  cli: CliName, configId: string | null, workingDirectory?: string, codexEvidence?: CodexRuntimeConfigEvidence,
+): Promise<string> {
   let content: unknown;
   switch (cli) {
     case "claude":
       content = await Promise.all([readClaudeConfig(), readClaudeMcpConfig()]);
       break;
     case "codex":
-      content = await readCodexRuntimeConfigIdentity(workingDirectory);
-      break;
+      if (codexEvidence) {
+        await assertCodexRuntimeConfigEvidence(codexEvidence, workingDirectory);
+        return buildCodexRuntimeConfigFingerprint(configId, codexEvidence.identity);
+      }
+      return buildCodexRuntimeConfigFingerprint(configId, await readCodexRuntimeConfigIdentity(workingDirectory));
     case "opencode":
       content = await readOpenCodeConfig();
       break;
@@ -311,7 +316,9 @@ export async function writeCodexConfig(config: string, auth?: string): Promise<v
   if (auth !== undefined) {
     writes.push(writeFileAtomically(CONFIG_PATHS.codex.auth, auth));
   }
-  await Promise.all(writes);
+  for (const write of await Promise.allSettled(writes)) {
+    if (write.status === "rejected") throw write.reason;
+  }
 }
 
 export async function writeOpenCodeConfig(config: string, _env?: string): Promise<void> {
@@ -480,23 +487,37 @@ const cliRuntimeConfigStrategies = createCliRuntimeConfigStrategies({
   },
 });
 
-const configApplyTails = new Map<CurrentConfigPlatform, Promise<void>>();
+const configApplyQueues = new Map<CurrentConfigPlatform, { tail: Promise<void>; pendingApplies: number }>();
+const localConfigApplications = new Map<CurrentConfigPlatform, { profileId: string }>();
+
+export function isLocallyAppliedProfile(platform: LegacyConfigPlatformInput, profileId: string): boolean {
+  const normalizedPlatform = normalizeConfigPlatform(platform);
+  return !configApplyQueues.get(normalizedPlatform)?.pendingApplies
+    && localConfigApplications.get(normalizedPlatform)?.profileId === profileId;
+}
+
+function recordLocalConfigApplication(platform: CurrentConfigPlatform, profileId: string): () => boolean {
+  const application = { profileId };
+  localConfigApplications.set(platform, application);
+  return () => !configApplyQueues.get(platform)?.pendingApplies && localConfigApplications.get(platform) === application;
+}
 
 function enqueueConfigApply(
   platform: CurrentConfigPlatform,
   operation: () => Promise<void>,
+  appliesRuntime: boolean,
 ): Promise<void> {
-  const previous = configApplyTails.get(platform) ?? Promise.resolve();
-  let queued!: Promise<void>;
-  queued = previous
+  const queue = configApplyQueues.get(platform) ?? { tail: Promise.resolve(), pendingApplies: 0 };
+  if (appliesRuntime) queue.pendingApplies++;
+  const queued = queue.tail
     .catch(() => undefined)
     .then(operation)
     .finally(() => {
-      if (configApplyTails.get(platform) === queued) {
-        configApplyTails.delete(platform);
-      }
+      if (appliesRuntime) queue.pendingApplies--;
+      if (queue.tail === queued) configApplyQueues.delete(platform);
     });
-  configApplyTails.set(platform, queued);
+  queue.tail = queued;
+  configApplyQueues.set(platform, queue);
   return queued;
 }
 
@@ -862,18 +883,24 @@ export async function saveConfig(config: ConfigItem): Promise<void> {
     }
   }
   const filePath = getConfigFilePath(configToSave.platform, config.id);
-  await sharedRuntimeConfig(configToSave.platform).edit(config.id, async () => {
-    await ensureDir(configDir);
-    if (configToSave.platform === "dsh") {
-      await fs.chmod(configDir, 0o700);
-    }
-    await writeFileAtomically(filePath, JSON.stringify(configToSave, null, 2), { mode: 0o600 });
-  }, async () => {
-    const saved = await getConfigById(configToSave.platform, config.id);
-    if (!saved) throw new Error("保存后的配置档案无法读取，请检查文件权限。");
-    await applyRuntimeConfig(normalizeConfigPlatform(saved.platform), saved);
-    return profileDigest(saved);
-  });
+  await enqueueConfigApply(normalizedPlatform, async () => {
+    let reapplied = false;
+    await sharedRuntimeConfig(normalizedPlatform).edit(config.id, async () => {
+      await ensureDir(configDir);
+      if (normalizedPlatform === "dsh") {
+        await fs.chmod(configDir, 0o700);
+      }
+      await writeFileAtomically(filePath, JSON.stringify(configToSave, null, 2), { mode: 0o600 });
+    }, async () => {
+      localConfigApplications.delete(normalizedPlatform);
+      const saved = await getConfigById(normalizedPlatform, config.id);
+      if (!saved) throw new Error("保存后的配置档案无法读取，请检查文件权限。");
+      await applyRuntimeConfig(normalizedPlatform, saved);
+      reapplied = true;
+      return profileDigest(saved);
+    });
+    if (reapplied) recordLocalConfigApplication(normalizedPlatform, config.id);
+  }, false);
 }
 
 export async function copyConfig(payload: CopyConfigPayload): Promise<ConfigItem> {
@@ -957,7 +984,9 @@ export async function getCurrentConfig(platform: LegacyConfigPlatformInput): Pro
   return cliRuntimeConfigStrategies[normalizedPlatform].readCurrent();
 }
 
-async function applyRuntimeConfig(normalizedPlatform: CurrentConfigPlatform, payload: ApplyPayload): Promise<void> {
+async function applyRuntimeConfig(
+  normalizedPlatform: CurrentConfigPlatform, payload: ApplyPayload, readCodexReadback?: ReadCodexReadback,
+): Promise<void> {
   return retryRuntimeConfigApply(async () => {
     const profileId = typeof payload.profileId === "string" ? payload.profileId.trim() : "";
     if (normalizedPlatform === "dsh" && profileId) {
@@ -970,25 +999,57 @@ async function applyRuntimeConfig(normalizedPlatform: CurrentConfigPlatform, pay
       }
       return;
     }
-    await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload);
+    await cliRuntimeConfigStrategies[normalizedPlatform].apply(payload, readCodexReadback);
   });
 }
+
+export type ApplyConfigOptions = {
+  reuseActiveProfile?: boolean;
+  onApplied?: (isCurrent: () => boolean) => void;
+  codexReadback?: {
+    workingDirectory?: string;
+    onApplied: (isCurrent: () => boolean, evidence: CodexRuntimeConfigEvidence) => void;
+  };
+};
 
 export async function applyConfig(
   platform: LegacyConfigPlatformInput,
   payload: ApplyPayload,
-  options: { reuseActiveProfile?: boolean } = {},
+  options: ApplyConfigOptions = {},
 ): Promise<void> {
   const normalizedPlatform = normalizeConfigPlatform(platform);
   const configId = payload.profileId?.trim() || null;
+  const codexReadback = options.codexReadback;
+  if (codexReadback && (normalizedPlatform !== "codex" || !configId)) {
+    throw new Error("无法确认 Codex 原档案的运行配置，任务未启动。");
+  }
   return enqueueConfigApply(normalizedPlatform, async () => {
-    await sharedRuntimeConfig(platform).change(async () => {
-      const config = configId ? await getConfigById(platform, configId) : null;
-      if (configId && !config) throw new Error("配置档案不存在，请刷新后重试。");
-      await applyRuntimeConfig(normalizedPlatform, config ? { ...config, profileId: configId ?? undefined } : payload);
-      return { configId, profileDigest: config ? profileDigest(config) : null };
-    }, { reuseConfigId: options.reuseActiveProfile ? configId ?? undefined : undefined });
-  });
+    let applied = false;
+    let evidence: CodexRuntimeConfigEvidence | undefined;
+    const readCodexReadback: ReadCodexReadback | undefined = codexReadback && (async () => {
+      const readback = await readCodexRuntimeConfigReadback(codexReadback.workingDirectory, path.dirname(CONFIG_PATHS.codex.config));
+      evidence = readback.evidence;
+      return readback;
+    });
+    try {
+      await sharedRuntimeConfig(platform).change(async () => {
+        localConfigApplications.delete(normalizedPlatform);
+        const config = configId ? await getConfigById(platform, configId) : null;
+        if (configId && !config) throw new Error("配置档案不存在，请刷新后重试。");
+        await applyRuntimeConfig(normalizedPlatform, config ? { ...config, profileId: configId ?? undefined } : payload, readCodexReadback);
+        applied = true;
+        return { configId, profileDigest: config ? profileDigest(config) : null };
+      }, { reuseConfigId: options.reuseActiveProfile && !codexReadback ? configId ?? undefined : undefined });
+    } catch (error) {
+      localConfigApplications.delete(normalizedPlatform);
+      throw error;
+    }
+    if (applied && configId) {
+      const isCurrent = recordLocalConfigApplication(normalizedPlatform, configId);
+      options.onApplied?.(isCurrent);
+      if (evidence) codexReadback?.onApplied(isCurrent, evidence);
+    }
+  }, true);
 }
 
 export async function readSharedConfigSelection(platform: LegacyConfigPlatformInput, initializeConfigId?: string | null) {

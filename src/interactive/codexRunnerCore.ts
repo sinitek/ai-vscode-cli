@@ -33,6 +33,7 @@ import {
   resolveCodexModelProvider,
   resolveCodexProjectPath,
 } from "./codexRuntimeConfig";
+import { assertCodexRuntimeConfigEvidence, type CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIdentity";
 import {
   buildCodexAppServerArgs,
   buildCodexAppServerInitializeParams,
@@ -139,6 +140,16 @@ export type CodexStreamHandlers = {
   onRequest?: (request: CodexAppServerRequest) => Promise<JsonRpcResolution | null | undefined> | JsonRpcResolution | null | undefined;
   requestUserInputEnabled?: boolean;
 };
+
+export type OriginalCodexThreadTurn = {
+  threadId: string;
+  codexConfigEvidence: CodexRuntimeConfigEvidence;
+  signal?: AbortSignal;
+  preparePrompt: () => { prompt: string; commit: () => void; afterSend: () => void };
+  onStartRejected?: () => void;
+};
+
+const ORIGINAL_THREAD_PREPARATION_TIMEOUT_MS = 75_000;
 
 type CodexCompactionResult = {
   compacted: boolean;
@@ -543,6 +554,7 @@ export class CodexInteractiveRunner {
     prompt: string,
     handlers: CodexStreamHandlers,
     executionObservation?: CodexExecutionObservationHandle,
+    originalThreadTurn?: OriginalCodexThreadTurn,
   ): Promise<void> {
     const abortGeneration = this.abortGeneration;
     const disposeGeneration = this.disposeGeneration;
@@ -565,7 +577,7 @@ export class CodexInteractiveRunner {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       await this.enqueue(async () => {
         this.throwIfSuperseded(abortGeneration, disposeGeneration);
-        await this.runStreamedOnce(prompt, handlers, abortGeneration, disposeGeneration, observation);
+        await this.runStreamedOnce(prompt, handlers, abortGeneration, disposeGeneration, observation, originalThreadTurn);
       });
     } catch (error) {
       if (observation && !observation.business) {
@@ -685,30 +697,81 @@ export class CodexInteractiveRunner {
     abortGeneration: number,
     disposeGeneration: number,
     executionObservation?: CodexExecutionObservation,
+    originalThreadTurn?: OriginalCodexThreadTurn,
   ): Promise<void> {
+    if (originalThreadTurn && (this.ownedMode || !originalThreadTurn.threadId || this.options.threadId !== originalThreadTurn.threadId)) {
+      throw new Error("Codex 原线程身份不一致，任务未启动。");
+    }
+    const codexConfigEvidence = originalThreadTurn?.codexConfigEvidence;
+    if (originalThreadTurn && !codexConfigEvidence) {
+      throw new Error("无法确认 Codex 原档案的运行配置，任务未启动。");
+    }
     const operation = this.beginOperation("turn", handlers, abortGeneration, disposeGeneration, executionObservation);
-    try {
-      const opened = this.ownedPrepared ?? await this.openConnection(handlers, handlers.requestUserInputEnabled === true, false, operation);
-      if (executionObservation) executionObservation.connection = opened.connection;
+    let preparationFailure: Error | undefined;
+    const declinePreparation = (error: Error): void => {
+      if (this.activeOperation !== operation || operation.settled) return;
+      preparationFailure = error;
+      this.settleActive(error);
+      this.connection?.rejectOwner(this.listenerId, error);
+    };
+    const cancelPreparation = () => declinePreparation(createAbortError());
+    const preparationTimeout = originalThreadTurn ? setTimeout(() => {
+      declinePreparation(new Error("等待 Codex 原线程恢复超时，任务未启动。"));
+    }, ORIGINAL_THREAD_PREPARATION_TIMEOUT_MS) : undefined;
+    const stopPreparing = (): void => {
+      if (preparationTimeout) clearTimeout(preparationTimeout);
+      originalThreadTurn?.signal?.removeEventListener("abort", cancelPreparation);
+    };
+    const checkActive = (): void => {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      await opened.connection.withThread(this.listenerId, this.options.threadId, async () => {
-        await this.ensureThreadLoaded(opened.connection, opened.threadOptions);
+      if (preparationFailure) throw preparationFailure;
+    };
+    try {
+      originalThreadTurn?.signal?.addEventListener("abort", cancelPreparation, { once: true });
+      if (originalThreadTurn?.signal?.aborted) cancelPreparation();
+      checkActive();
+      const opening = this.ownedPrepared ?? this.openConnection(handlers, handlers.requestUserInputEnabled === true, false, operation, codexConfigEvidence);
+      const opened = originalThreadTurn ? await Promise.race([opening, operation.done.then(() => { throw createAbortError(); })]) : await opening;
+      if (executionObservation) executionObservation.connection = opened.connection;
+      checkActive();
+      await opened.connection.withThread(this.listenerId, originalThreadTurn?.threadId ?? this.options.threadId, async () => {
+        const loading = this.ensureThreadLoaded(opened.connection, opened.threadOptions, originalThreadTurn?.threadId);
+        if (originalThreadTurn) await Promise.race([loading, operation.done]);
+        else await loading;
         if (executionObservation) executionObservation.threadId = String(this.options.threadId || "").trim() || undefined;
-        this.throwIfSuperseded(abortGeneration, disposeGeneration);
+        checkActive();
         if (executionObservation) {
           executionObservation.requestSequence = opened.connection.getNotificationSequence();
           executionObservation.requestSent = true;
         }
-        const turnStartPromise = opened.connection.request<Record<string, unknown>>(
-          this.listenerId,
-          "turn/start",
-          buildCodexTurnStartParams(
-            this.options.threadId,
-            prompt,
-            opened.imagePaths,
-            opened.threadOptions,
-          ),
-        );
+        let turnStartPromise: Promise<Record<string, unknown>>;
+        if (originalThreadTurn) {
+          await Promise.race([
+            assertCodexRuntimeConfigEvidence(originalThreadTurn.codexConfigEvidence, opened.threadOptions.workingDirectory, opened.codexHomeDir),
+            operation.done,
+          ]);
+          checkActive();
+          if (this.options.threadId !== originalThreadTurn.threadId || !opened.connection.hasLoadedThread(originalThreadTurn.threadId)) {
+            throw new Error("Codex 原线程身份不一致，任务未启动。");
+          }
+          const prepared = originalThreadTurn.preparePrompt();
+          const params = buildCodexTurnStartParams(originalThreadTurn.threadId, prepared.prompt, opened.imagePaths, opened.threadOptions);
+          turnStartPromise = opened.connection.startPreparedTurn<Record<string, unknown>>(this.listenerId, params, () => {
+            checkActive();
+            prepared.commit();
+            stopPreparing();
+          }).catch((error: unknown) => {
+            originalThreadTurn.onStartRejected?.();
+            throw error;
+          });
+          prepared.afterSend();
+        } else {
+          turnStartPromise = opened.connection.request<Record<string, unknown>>(
+            this.listenerId,
+            "turn/start",
+            buildCodexTurnStartParams(this.options.threadId, prompt, opened.imagePaths, opened.threadOptions),
+          );
+        }
         // This handler survives business settlement and belongs to the actual
         // request/operation closure, never to whichever operation is active later.
         if (executionObservation) {
@@ -732,11 +795,12 @@ export class CodexInteractiveRunner {
           await operation.done;
         }
         this.throwIfSuperseded(abortGeneration, disposeGeneration);
-      }, { checkActive: () => this.throwIfSuperseded(abortGeneration, disposeGeneration) });
+      }, { checkActive });
     } catch (error) {
       this.throwIfSuperseded(abortGeneration, disposeGeneration);
       throw error;
     } finally {
+      stopPreparing();
       if (this.activeOperation === operation) {
         this.connection?.cancelServerRequests(this.listenerId);
         this.activeOperation = null;
@@ -754,10 +818,12 @@ export class CodexInteractiveRunner {
     requestUserInputEnabled: boolean,
     reuseLoadedThread: boolean,
     operation: CodexRunnerOperation,
+    codexConfigEvidence?: CodexRuntimeConfigEvidence,
   ): Promise<{
     connection: CodexAppServerConnection;
     threadOptions: ReturnType<typeof buildCodexThreadOptions>;
     imagePaths: string[];
+    codexHomeDir: string;
   }> {
     const threadOptions = buildCodexThreadOptions(
       this.options.args,
@@ -780,7 +846,9 @@ export class CodexInteractiveRunner {
     let resolvedWorkspaceDir = threadOptions.workingDirectory;
     const configOverrides: string[] = [];
     const childEnvResult = buildCodexChildEnv(this.options.env ?? process.env);
-    threadOptions.modelProvider = (await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
+    threadOptions.modelProvider = (codexConfigEvidence
+      ? codexConfigEvidence.provider
+      : await resolveCodexModelProvider(childEnvResult.codexHomeDir)) ?? undefined;
     if (reuseLoadedThread && this.connection?.isAlive()) {
       requestUserInputEnabled = this.connectionRequestUserInputEnabled;
     }
@@ -838,6 +906,10 @@ export class CodexInteractiveRunner {
           requestUserInputEnabled, immediateThreadUnload: true,
         });
       }
+    }
+    if (codexConfigEvidence) {
+      await assertCodexRuntimeConfigEvidence(codexConfigEvidence, cwd, childEnvResult.codexHomeDir);
+      checkActive();
     }
     const exclusiveOwnerId = shareConnection && !this.ownedMode ? undefined : this.listenerId;
     const key = buildCodexAppServerConnectionKey({
@@ -924,12 +996,13 @@ export class CodexInteractiveRunner {
       });
       throw normalized;
     }
-    return { connection, threadOptions, imagePaths };
+    return { connection, threadOptions, imagePaths, codexHomeDir: childEnvResult.codexHomeDir };
   }
 
   private async ensureThreadLoaded(
     connection: CodexAppServerConnection,
     threadOptions: ReturnType<typeof buildCodexThreadOptions>,
+    expectedThreadId?: string,
   ): Promise<void> {
     if (this.ownedMode && this.ownedThreadCredential) {
       const credential = this.ownedThreadCredential;
@@ -941,6 +1014,7 @@ export class CodexInteractiveRunner {
     }
     const operation = this.activeOperation;
     const threadId = this.ownedMode ? this.ownedInitialThreadId ?? "" : String(this.options.threadId || "").trim();
+    if (expectedThreadId && threadId !== expectedThreadId) throw new Error("Codex 原线程身份不一致，任务未启动。");
     if (!this.ownedMode && threadId && connection.hasLoadedThread(threadId)) {
       connection.claimThread(threadId, this.listenerId);
       void this.runtime.logInfo("codex-app-server-thread-reused", { connectionId: connection.id, threadId });
@@ -951,8 +1025,9 @@ export class CodexInteractiveRunner {
       ? await connection.request<Record<string, unknown>>(this.listenerId, "thread/resume", {
         threadId,
         ...threadParams,
-      })
+      }, expectedThreadId)
       : await connection.request<Record<string, unknown>>(this.listenerId, "thread/start", threadParams);
+    if (expectedThreadId) return;
     const thread = threadResult?.thread && typeof threadResult.thread === "object"
       ? threadResult.thread as Record<string, unknown>
       : null;

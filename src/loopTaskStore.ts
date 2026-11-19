@@ -207,7 +207,7 @@ export type LoopSubtaskDecision = {
 };
 
 export type LoopMainDecision = {
-  status: "completed" | "continue" | "blocked" | "clarify";
+  status: "completed" | "continue" | "waiting" | "blocked" | "clarify";
   progressPercent?: number;
   answerConclusion?: string;
   finalSummary?: string;
@@ -285,6 +285,7 @@ export type LoopTaskRecord = {
   mainAiFailureLimitReached?: boolean;
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
+  mainAiLastFailureCode?: string | null;
   supplementalRequirements?: string[];
   pendingClarification?: OrchestratorClarification;
   clarificationCount?: number;
@@ -1190,6 +1191,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     return null;
   }
   const raw = record as Partial<LoopTaskRecord>;
+  if (Array.isArray(raw.subTasks) && raw.subTasks.some(hasInvalidLoopSubtaskDependencies)) return null;
   const cli = typeof raw.cli === "string" && isCliName(raw.cli) ? raw.cli : null;
   if (typeof raw.id !== "string" || !raw.id.trim() || !cli || typeof raw.rootPrompt !== "string") {
     return null;
@@ -1327,6 +1329,8 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     mainAiLastFailureMessage: typeof (raw as { mainAiLastFailureMessage?: unknown }).mainAiLastFailureMessage === "string"
       ? (raw as { mainAiLastFailureMessage: string }).mainAiLastFailureMessage
       : undefined,
+    mainAiLastFailureCode: raw.mainAiLastFailureCode === undefined ? undefined
+      : typeof raw.mainAiLastFailureCode === "string" ? raw.mainAiLastFailureCode : null,
     supplementalRequirements,
     ...(pendingClarification ? { pendingClarification } : {}),
     ...(clarificationCount ? { clarificationCount } : {}),
@@ -1638,6 +1642,12 @@ export function normalizeLoopTaskStoreForStorage(
       .filter((record) => options.preserveExpired || isTimestampWithinHistoryRetention(record.updatedAt, now))
     : [];
   return { tasks };
+}
+
+function hasInvalidLoopSubtaskDependencies(subtask: unknown): boolean {
+  if (!subtask || typeof subtask !== "object") return false;
+  const { id, dependsOn } = subtask as { id?: unknown; dependsOn?: unknown };
+  return readLoopPlusDependsOn(dependsOn, typeof id === "string" ? id.trim() : "") === null;
 }
 
 // Preserve file identity semantics on case-sensitive volumes while recognizing aliases.

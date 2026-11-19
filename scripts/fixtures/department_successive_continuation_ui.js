@@ -280,7 +280,7 @@ async function driveSuccessiveContinuation({ browser, scenario, readTasks, readR
           assertWebviewTarget(target, "webviewPanel", activeRoot);
           const subtitle = await target.locator("#panelSubtitle").getAttribute("title").catch(() => "");
           const body = await target.locator("body").innerText().catch(() => "");
-          if (subtitle?.endsWith(` · ${activeRoot}`) && body.includes("产研部 · 总监") && body.includes(activeRoot)) return target;
+          if (subtitle?.endsWith(` · ${activeRoot}`) && body.includes("产研部总监") && body.includes(activeRoot)) return target;
           assert.ok(!subtitle?.includes("产研部") || subtitle.endsWith(` · ${activeRoot}`), "public panel targets another department root");
           await closeAdapter(target);
           return null;

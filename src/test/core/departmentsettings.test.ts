@@ -17,7 +17,7 @@ const { WEBVIEW_STRINGS } = require("../../webview/viewContentStrings") as typeo
 
 test("department capacity defaults and numeric inputs normalize to safe positive integers", () => {
   assert.equal(DEPARTMENT_MAX_LEADERS_DEFAULT, 4);
-  assert.equal(DEPARTMENT_MAX_EMPLOYEES_DEFAULT, 20);
+  assert.equal(DEPARTMENT_MAX_EMPLOYEES_DEFAULT, 16);
   for (const [input, expected] of [["7.9", 7], [3.8, 3], [" 12 ", 12]] as const) {
     assert.equal(normalizeDepartmentMaxLeaders(input), expected);
     assert.equal(normalizeDepartmentMaxEmployees(input), expected);
@@ -25,9 +25,9 @@ test("department capacity defaults and numeric inputs normalize to safe positive
 });
 
 test("invalid department capacities fall back without coercing non-numeric values", () => {
-  for (const input of ["", "  ", "NaN", "Infinity", Number.NaN, Infinity, true, false, {}, [], 0, -1, Number.MAX_SAFE_INTEGER + 1]) {
+  for (const input of [undefined, "", "  ", "NaN", "Infinity", Number.NaN, Infinity, true, false, {}, [], 0, -1, Number.MAX_SAFE_INTEGER + 1]) {
     assert.equal(normalizeDepartmentMaxLeaders(input), 4);
-    assert.equal(normalizeDepartmentMaxEmployees(input), 20);
+    assert.equal(normalizeDepartmentMaxEmployees(input), 16);
   }
 });
 
@@ -44,6 +44,11 @@ test("department capacities round-trip through the global settings file", () => 
       const filePath = path.join(home, ".sinitek_cli", "settings.json");
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, JSON.stringify({ loopPlusDecisionSubtaskMax: 11, departmentMaxLeaders: "5.8" }));
+      assert.equal(settings.readToolSettings().departmentMaxEmployees, undefined);
+      assert.equal(JSON.parse(fs.readFileSync(filePath, "utf8")).departmentMaxEmployees, undefined);
+      settings.writeToolSettings({ ...settings.readToolSettings(), departmentMaxEmployees: 20 });
+      assert.equal(settings.readToolSettings().departmentMaxEmployees, 20);
+      assert.equal(JSON.parse(fs.readFileSync(filePath, "utf8")).departmentMaxEmployees, 20);
       settings.writeToolSettings({ ...settings.readToolSettings(), departmentMaxEmployees: 25.4 });
       assert.deepEqual(settings.readToolSettings(), { loopPlusDecisionSubtaskMax: 11, departmentMaxLeaders: 5, departmentMaxEmployees: 25 });
       assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), { loopPlusDecisionSubtaskMax: 11, departmentMaxLeaders: 5, departmentMaxEmployees: 25 });
@@ -119,7 +124,7 @@ test("workspace capacities resolve independently without turning corrupt overrid
     assert.equal(normalize(value), undefined);
     assert.deepEqual(resolve({ departmentMaxLeaders: value, departmentMaxEmployees: value }, global), { maxLeaders: 8, maxEmployees: 40 });
   }
-  assert.deepEqual(resolve({}, {}), { maxLeaders: 4, maxEmployees: 20 });
+  assert.deepEqual(resolve({}, {}), { maxLeaders: 4, maxEmployees: 16 });
   assert.deepEqual(resolve({ departmentMaxLeaders: "2.8" }, global), { maxLeaders: 2, maxEmployees: 40 });
   assert.deepEqual(resolve({ departmentMaxEmployees: "11.9" }, global), { maxLeaders: 8, maxEmployees: 11 });
   assert.deepEqual(resolve({ departmentMaxLeaders: 2, departmentMaxEmployees: Number.MAX_SAFE_INTEGER }, global), { maxLeaders: 2, maxEmployees: Number.MAX_SAFE_INTEGER });

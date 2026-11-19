@@ -10,9 +10,31 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 ## 产研部三层协作模式
 
+### 总监均衡分轮派工
+
+总监优先给每位组长一个内聚、可独立验收的交付目标，按实现复杂度、变更范围和验证成本尽量均衡工作量，不按任务条数或员工名额机械平分。每轮只派当前就绪、范围不冲突的批次，参考实际组长可用名额，不必一次分完或凑满；收到组长汇报后，核对原始目标、补充要求及剩余依赖，再派后续批次。所有目标都已覆盖、已登记任务和协作均已结算后，才确认整体完成。此规则不改变员工额度或宿主准入。
+
+### 总监群聊分配员工
+
+总监群聊的顶部工具栏通过“分配员工”打开弹窗，各组的员工上限和额度状态集中在弹窗内，不在左侧成员面板显示，也不提供“恢复均分”按钮。用户只需点击右下角“保存并关闭”一次，多个变更按组串行提交并等待宿主确认；全部成功后关闭，失败时保留未完成草稿以便重试，已确认项不回滚。右上角 SVG 图标负责关闭，关闭或按 Escape 不提交草稿。成功的逐组额度于该组下次派发生效，不改变部门共享总额或打断当前员工执行。组长群聊仍仅查看本组额度，不能编辑。详见[群聊接口合同](../design-docs/department-group-chat-ui-contract.md#分配员工弹窗)。
+
+### 总监停止后的继续门槛（2026-11-18）
+
+停止在途、拒绝、存在待清理责任或冷宿主未核验时，总监群聊旧消息和组织直接续接入口均不能恢复执行；空容量本身不构成核验。收尾后，当前停止请求必须从可信仓储读回同一工作区、物理记录和会话的 `stopped` 根才能确认；读不到或仍为 `running` 时保留原核验入口。澄清可以保存，恢复仍需通过门槛。只有当前停止核验成功且可信容量已空时，才按原规则继续；后继执行不能沿用这次核验。详见[专属群聊合同](../design-docs/department-group-chat-ui-contract.md)。
+
+### 群聊短标题（2026-11-19）
+
+总监群聊标题显示“产研部总监”，组长群聊按总监任务中的模块顺序显示“组长1”“组长2”等。页头、Webview 标签页和组长弹窗使用同一短标题。成员栏的总监行只显示角色图标和“总监”，不拼接任务标题。完整模块名与任务 ID 可在群聊副标题查看。见[群聊接口合同](../design-docs/department-group-chat-ui-contract.md)。
+
 ### 总监成员面板显示组长进度（2026-11-19）
 
 总监群聊成员面板在各组长的状态文案右侧显示与组长群聊一致的总体进度，如“运行中 25%”。进度随组长记录更新，无需打开组长弹窗；未创建群聊的组长不显示百分比。
+
+### 群聊成员可见范围（2026-11-18）
+
+总监群聊显示总监、全部组长及各组员工的完整部门树。组长群聊只按宿主可信当前 `state.task.id` 精确匹配 `department.leaders[].taskId`，显示本人及本组员工；未匹配时显示空状态，不回退或泄露其它组。组长行不再重复提供打开本人群聊入口；员工状态、验收定位和返回总监群聊导航保留。本组无员工沿用空组提示，主题、头像尺寸、间距、hover/focus/disabled 与窄屏抽屉保持。
+
+事实来源：[成员 renderer](../../../src/webview/loopGroupChatPanel.ts)、[部门渲染测试](../../../src/test/loop/departmentGroupChatPanel.test.ts)及[群聊 smoke](../../../scripts/department_group_chat_smoke.cjs)。此为显示范围修复；宿主记录/归属、workspace、taskId/instanceId 与动作授权仍按[群聊接口合同](../design-docs/department-group-chat-ui-contract.md)核验，不以浏览器过滤替代授权。
 
 ### 完整提示词与组长聊天入口（2026-11-17）
 
@@ -30,7 +52,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 ### 启动后自动打开总监群聊（2026-11-17）
 
-新建产研部任务在总监身份、组织注册和真实会话绑定全部确认后，自动打开对应总监群聊。展示走现有记录驱动协调器，不等待页面加载完成再启动总监；展示失败只记日志，不中断已启动的组织任务。配置准备、组织注册或会话绑定失败时不打开群聊。组长页面仍按原入口在总监页内弹窗打开。实现和验证记录见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-auto-open-group-chat.md)。
+新建产研部任务在总监身份、组织注册和真实会话绑定全部确认后，自动打开对应总监群聊。展示走现有记录驱动协调器，不等待页面加载完成再启动总监；展示失败只记日志，不中断已启动的组织任务。配置准备、组织注册或会话绑定失败时不打开群聊。产研部组长在启动、继续或等待澄清时都不会自动打开独立的 VS Code 群聊页；在总监群聊内点击组长入口即可打开对应弹窗并处理澄清。普通 Loop+ 群聊仍自动打开。总监自动打开的实现和验证记录见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-auto-open-group-chat.md)。
 
 ### 后续修复：表单精简与首次候选加载（2026-11-17）
 
@@ -55,6 +77,14 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 现有 feature 的实现与既定交付范围已完成，[原计划](../exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md)为 `completed` 并按 2026-11 归档；最终主任务接受由主审决定，未发布。lp721 正常合入、lp722 原目录交接均已通过：原目录占用交付分支，交接输入 f787/tree4777，master ref 未改且切换前 clean，整合树 detached f787；228 原 untracked 受限归档、106 tracked 精确恢复、334 完整回滚映射。index 封口 exit1 及后续三个稳定窗口/1151 条仅 106 stat-cache 变化、零 stage 语义变化和 actor 未知均保留，详见[收尾覆盖](../runbooks/department-acceptance-coverage.md#收尾结论round723截止-lp722-已独立接受)。
 
 复用 lp715 一次标准 build 和官方 397 文件/5472 项（5469 通过、0 失败/取消、3 门控跳过、自然 exit0），复用 lp719 唯一 180 秒 mixed 冷恢复 exit0，沿原 receipts/CLOSED/容量/authority/公开 continue 与 stop/OpenCode session/move-readback/直接 worker 观察边界；总监最终业务汇报用其已有历史接受证据，不从冷场景外推。原生 Windows/Linux 缺目标条件、三 DSH live 门控及模型/崩溃/外部 writer/所有后代限制不变；ignored dist 未更新或验证匹配，不重复运行验证。下方 Round721 和更早正文保留为历史快照，当前不再待交接；完整 22 项映射未变。
+
+### 现行并发额度
+
+新建产研部逐项采用有效工作区设置，其次是有效全局设置；均无有效值时，默认同时最多 4 名组长（无例外），全部门共享 16 名常规并发员工，不是每组 16 名。额度在启动时保存，已有任务及其恢复沿用原额度。零余额时每组仍最多持有一个未释放的超额员工，超额计入部门实际占用；员工实际执行结束且清理完成后才释放额度。下方历史验收快照保留当时的配置和结果。
+
+### 群聊成员名称
+
+产研部总监群聊和组长群聊的成员名称不再加 ☀️、🌛、⭐️ 前缀，悬停提示和员工验收定位的无障碍名称同步。保留“总／组／员”圆形头像、成员角色名称和组长及员工标题；会话标签页图标及普通 Loop/Loop+ 不变。初始渲染和实时刷新一致，见[群聊展示接口](../design-docs/department-group-chat-ui-contract.md)。下方历史图标验收保留当时的结果。
 
 ### 历史状态（Round721；保留原文）
 
@@ -97,6 +127,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 - 员工生产准入接线（开发中）：OpenCode/Codex 两条准备链已通过可信宿主注入能力复用 `Ledger.admit`，在配置 builder/原生准备前固定 selection 与 requirements 并登记责任；首次 session 持久化后通过 admit.bind 原子写入完整 binding/责任引用并精确回读，commit/最终复核及一次性 grant 均在同次准入内。缺能力在 builder 前拒绝，不回退旧绑定；失败和取消留责、同 subtask 多 attempt 独立保留。固定免费 Node/CLI 与测试 producer 只证明注入接线，详见[员工准入专题](../design-docs/department-employee-execution-admission.md)。
 - Codex 组长原生 Owner 端口（开发中）：可信宿主在 Ledger.admit 准备前登记组长责任，原生 session 持久化/原子 binding/原 Owner 绑定后逐轮一次性 grant；同一代次和 thread 上串行组合多个不可变 CodexOwnedExecution，完整物理及消费者排空后才准入下一轮。重复调用幂等、冲突/未知不重放，显式封闭阻止迟到授权；已授权调用跨启动宿主退出存活。该端口已由真实生产 producer/Loop+ runMain 装配；Codex 资源释放见下条，无能力仍 required/unobservable，不生成 cleaned；详见[组长原生 Owner 专题](../design-docs/department-leader-native-owner.md)。
+- Codex 组长大型工具输出（2026-11-18，本轮源码待主审）：白名单流数据回调在原私有 IPC 上有界分片，完整还原给原通知/事件消费者后只确认一次；物理帧仍为 64 KiB，逻辑 args 最大 8 MiB、累计未确认最多 16 MiB、每回调最多 342 片和 32 项窗口。超限、坏片、缺片或断连保持 unknown，不截断输出；原请求、grant、原 Owner receipt 和容量门禁保持。固定 worker/宿主协议回归的结果见[修复计划](../exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md)，安装版 EH 长输出仍需父任务集成验证；前三组历史 ACK 失败不因此被确认为同一首因。
 - 生产 producer / Loop+ 装配（开发中）：extension 真实 CREATE 凭据及组长容量/成员落盘后、scheduler 首次 pump 前开启精确执行集合；同一 producer 注入原生组长多轮端口和两条员工 admission。真实 main 使用原交互消费者/运行记录和固定独立 Owner，首次原生 thread 保存到独立 executionSession，原子 binding/原 Owner 确认后授权；后续只 resume 原 thread。真实 scheduler 停止新增调用、stop 或 EH 退出先同步封闭所有最终 grant，再等原 native drain 和原始准备/消费者责任。关闭身份回验与启动权限分离，取消/迟到准备不能复活，原生错误一次暂停不自动重放。生产 producer、仓储、组合入口、scheduler/adapter、临时 Store 和免费模拟 CLI 的隔离集成证据不等于真实模型或 EH/UI 验收；OpenCode 首次 session 已补独立准备与持久绑定，已有 binding 仍只观察；员工 process 资源桥与 leader parallel consumer 已接线，未知或缺能力的 required 项保持 unobservable，不生成 cleaned 或归还容量。Codex 资源释放与组长整组容量消费分别见后两条。详见[生产接线专题](../design-docs/department-production-execution-wiring.md)。
 - Codex 生产资源释放（开发中，round-228）：已装配员工及同 thread 多轮组长复用专属执行的真实 close、自然 pipe/readLoop、原 thread/execution lease 和消费者排空事实确认 runner/session 附加释放，保留可恢复历史。extension 在真实目标创建时登记精确不可序列化 tab 能力；原固定 worker 私有请求绑定完整身份/代次/序号，宿主等原交互消费结算，核对原 binding/对象/session 后调用实际 tab 关闭并回读，由原 Owner 按原 required 策略生成 receipt。挂起责任、失败、身份变化、EH 断连及错误确认不成功，未知不淘汰、不重放；公开 IPC 不扩权。受控生产组合及隔离安装版 EH 实际 tab 端口证据不代表真实 Codex 模型或完整 UI。已有员工 receipt 消费者仅可归还该员工租约，不新增组长/整组容量消费。详见[员工启动专题](../design-docs/department-codex-production-bootstrap.md)和[组长原生 Owner 专题](../design-docs/department-leader-native-owner.md)。
 - Codex 生产整组容量消费（开发中，round-231）：extension 实际装配唯一 producer 的封闭集合聚合；原 client 仅经原 socket 严格校验的完成观察可跨该 Owner 退出复用，禁止磁盘凭证补成功。正常结束及 stop 均先封闭最终 grant/排空责任、逐项核对全部原 receipt 和当前选择、最终冷重读，再持久移除租约并释放原组长容量。成功组回收有界宿主引用，未知/失败/缺历史责任/取消不提前归还。round-231 原始验收限定 Codex 组长/Codex 员工、同宿主从首次准备完整覆盖的新代；后续已接 Codex 组长的 Codex/OpenCode 混合员工观察及受控 OpenCode leader host，仍按原 client、完整 binding/closure 与最终冷读门禁，不等于真实 OpenCode 整树容量验收。旧代/未覆盖身份仍拒绝。详见[整组清理专题](../design-docs/department-leader-execution-cleanup.md)。
@@ -143,6 +174,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - 状态：`active`（2026-11-15，源码实现）。Loop+ 群聊继续入口按主模型调用忙闲展示和执行，后台控制器仍可等待子任务；继续文本与对话输入一样进入 `userMessageQueue`，由现有调度器唤醒主模型。切模型先更新路由和思考力度再排队继续，确实重启中断子任务时保留其原 attempt；没有可恢复子任务时唤醒主模型。真实主模型忙时不重复启动，完成、无效快照及主模型失败上限仍阻止继续；无控制器时显式重建调度快照。经典 Loop 保持所有权保护。
 - 实现：`src/loopGroupChat.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。回归覆盖面板入口、真实 adapter 和磁盘任务存储，断言继续/切模型确实调用主模型、切模型使用新路由且活动子任务不被中断。
 
+
+- 历史配置锁超时的手动续跑（2026-11-18）。原任务群聊可手动续跑符合资格的普通 Codex Loop+ 父任务。现行配置应用采用进程内队列和原子替换。宿主核验原任务和原生线程，在首个 `turn/start` 前一次原子保存任务变更与预留。提交前失败或取消保留原暂停、失败计数、冻结验收、报告与依赖。v1 `dependsOn` 依赖准入按整份决策登记后的最新前置结果判断。独立工作可填充空闲派发槽。详见[恢复契约](../design-docs/loop-crash-recovery.md#启动前共享配置锁超时)。
 
 ## Loop+ 协议矛盾自动纠错
 
@@ -501,7 +534,7 @@ Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份
 
 模型选择写入不受永久 `executionLocked` 限制；该锁仍只保护 CLI 切换旁路。回归见 `src/test/session/conversationTabModelSelection.test.ts`。
 
-点击 Loop / Loop+ 主任务标签会打开该任务的群聊页面。标签已经选中时，再次点击或按 Enter / Space 同样打开。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`；回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
+点击普通 Loop / Loop+ 主任务标签或产研部总监标签会打开对应群聊。标签已经选中时，再次点击或按 Enter / Space 同样打开。产研部组长标签只切换 AI 对话会话，重复点击或按 Enter / Space 不打开群聊。从总监群聊的成员列表可进入组长群聊。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区已有的“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
 打开群聊时优先切换页面：首次打开先显示“正在加载群聊…”及动画，首帧绘制后再准备模型选项、读取群聊并构建内容；大量 Markdown 分批挂载，完成后收起加载提示。已打开的群聊立即显示已有内容，连续点击合并加载，关闭页面后丢弃迟到结果。加载失败显示原因并可重试。主任务入口同步标签状态时省去普通聊天的即时重复重绘；每次群聊状态构建对同一 transcript 仅读取一次，下次刷新重新读取。实现与验证边界见 `.ch/docs/design-docs/loop-group-chat-state-boundaries.md`。
 
@@ -700,6 +733,7 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 | AI 对话 / Grok | 语义回放与工具调用摘要 | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md#Grok Build`、`.ch/docs/runbooks/grok-model-config.md#语义回放与工具气泡` | `src/interactive/grokToolCallStream.ts`、`src/interactive/grokReplayStream.ts`、`src/interactive/grokRunner.ts`、`src/extensionHost/promptInteractiveRuntime.ts` | `npm run build`；Grok 协议、聚合、回放、runner、宿主及 Webview 回归；隔离真实 Grok 与 Chromium 验证 | 按会话/回合/toolCallId 聚合工具，回放通常仅开始和结束，聊天按同 ID 更新一个摘要；空进度、描述性结果和重复状态不追加。已知 UTF-8 输出无损解码、等价字段及重复文本内容去重，保留差异、错误、截断与非文本。原生/todo 计划更新任务列表；过滤通知仍更新独立活动时间。停止先排空未完成调用，拒绝迟到记录；缺 ID 与未知结构保守保留。历史存档不改写，JSONL 导出沿用语义记录。 |
 | AI 对话 / Grok | 原生任务计划与 todo 增量同步 | active | 终端用户 | `.ch/docs/runbooks/grok-model-config.md#任务列表来源与排查`、`.ch/docs/references/cli-runtime-reference.md#Grok Build` | `src/promptRuntime.ts`、`src/interactive/grokAppServerProtocol.ts`、`src/interactive/grokToolCallStream.ts`、`src/interactive/grokReplayStream.ts`、既有 `taskListUpdate` 和任务浮层 | `npm run build`；Grok 协议/工具/回放/runner 与 prompt、宿主、任务浮层相关回归 151/151；隔离真实 Grok 1.0.62 + 本地 API；生产 Webview Chromium 桌面/窄屏交互 | 标准 ACP `session/update` 的 `plan.entries` 为完整任务列表，成功 `TodosUpdated.todos` 同样是完整结果。识别原生工具元数据与 TodoWrite variant；缺少完整成功输出时才按 ID 与默认 merge 合并，替换/空列表清空。失败或取消保留错误，重复终态、异会话和跨回合隔离，原生/派生计划去重。普通多步任务提示引导原生 todo_write，描述默认中文；单步可省略。复用原浮层、主题和文案，运行中全完成仍显示，结束/停止清空，Tab 独立，Loop/Loop+ 主任务隐藏。模型实际调用工具后才有原生计划，无额外查询 RPC 依赖。 |
 | AI 对话 / CLI | 官方 Grok Build ACP | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md` | `src/cli/types.ts`、`src/interactive/grokRunner.ts`、`src/interactive/manager.ts`、`src/extensionhost/promptInteractiveRuntime.ts`、`src/interactive/grokAppServerProtocol.ts`、`src/config/grokConfig.ts`、`src/cli/config.ts`、`src/webview/viewContent.ts`、`src/webview/configView.ts`、`media/config/assets/config-app-ui.js`、`media/config/assets/config-app-store.js` | `npm run build`；`node --test dist/test/cli/modelArgs.test.js dist/test/cli/grokCliEnum.test.js dist/test/cli/grokmodelselection.test.js dist/test/interactive/grokRunner.test.js dist/test/webview/grokmodelselection.test.js` | grok 追加为第 4 个 CLI，不改变 Codex、Claude、OpenCode 的顺序和 OpenCode id。宿主复用已有 GrokInteractiveRunner。启动为 `grok --no-auto-update --permission-mode bypassPermissions agent stdio`，模型用 `--model`，思考可选到 max/ultra 且 ultra 下发为 max，回放走 rawStreamDelta。默认模型已有 api_key 或可用 env_key 时跳过 authenticate。ACP session id 接管 local_ 会话并可续聊；end_turn 且已有正文时正常结束。长驻 NDJSON JSON-RPC，不套用其他 CLI 的危险绕过参数。三类 session/update 进入现有正文、思考和工具气泡。`session/new` 与 `session/load` 带 `_meta.yoloMode: true`，且不向宿主声明 terminal/fs 能力，命令由 grok 自己执行。配置页在 OpenCode 后追加 Grok 卡片。文本模式编辑完整 config.toml，空文本和非法 TOML 不覆盖上一份有效内容；可视化只映射已文档化字段，其中包括可留空的 `api_key`，并复用 Codex 行、问号 tooltip 和主题语义色。空、加载、解析错误、无效时禁用保存。不新做布局。 |
+| Loop+ / Grok 子任务 | 跨 attempt 与多跳续接恢复原 ACP 会话 | active | Loop+ 用户 | `.ch/docs/references/cli-runtime-reference.md#Grok Build`、`.ch/docs/design-docs/department-mode.md` | `src/loopSubtaskExecutionRoot.ts`、`src/loopSubtaskSession.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/interactiveTurnGrok.ts`、`src/extensionHost/departmentinteractiveruntime.ts` | `npm run build`；Loop+ Grok 会话/隔离根、Grok runner 与部门交互回归 | Grok 的 ACP `session/load` 需要匹配原 cwd。同子任务重试和基于 `continueFromSubtaskId` 的修补/续接沿用原隔离执行目录标识；已有 Loop+ 原生会话必须严格恢复，失败不新建替代会话。普通 Vibe 与首次 Loop+ 会话保持现有启动行为；缺少目录标识的历史 Grok 绑定明确拒绝续接并保留原绑定。 |
 | AI 对话 / CLI | 官方 Kimi Code ACP | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md`、`.ch/docs/references/kimi-code-official-reference.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#Kimi Code`、`.ch/docs/runbooks/kimi-code-config.md`、`docs/kimi-code-guide.md` | `src/cli/types.ts`、`src/interactive/kimiAppServerProtocol.ts`、`src/interactive/kimiRunner.ts`、`src/interactive/manager.ts`、`src/interactive/runnerLifecycleStrategies.ts`、`src/extensionHost/interactiveTurnKimi.ts`、`src/extensionHost/kimiInteractiveLaunch.ts`、`src/extensionHost/promptInteractiveRuntime.ts`、`src/extensionHost/modelSettings.ts`、`src/config/kimiCodeConfig.ts`、`src/cli/config.ts`、`src/cli/installer.ts`、`src/webview/viewContentHtml.ts`、`src/webview/configView.ts`、`media/config/assets/config-app-ui.js`、`media/config/assets/config-app-store.js` | `npm run build`；`node --test dist/test/interactive/kimiAppServerProtocol.test.js dist/test/interactive/kimiRunner.test.js dist/test/extensionHost/kimiInteractiveLaunch.test.js dist/test/extensionHost/kimiCodeModelSelection.test.js dist/test/config/kimiCodeConfig.test.js dist/test/config/kimiCodeConfigPage.test.js dist/test/config/kimiCodeDocContract.test.js dist/test/extensionHost/kimiInteractiveHostWire.test.js dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/cli/grokCliEnum.test.js dist/test/cli/cliRunArgStrategies.test.js` | kimi-code 追加为第 6 个 CLI（`codex`、`claude`、`opencode`、`grok`、`dsh`、`kimi-code`），不改变前五项顺序。官方包 `@moonshot-ai/kimi-code`（bin `kimi`，Node >= 22.19.0）。安装有两条官方入口：脚本 `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash`（Windows `irm https://code.kimi.com/kimi-code/install.ps1 \| iex`，官方推荐、无需预装 Node）与 npm `npm install -g @moonshot-ai/kimi-code`；插件自身的安装/修复只走可回滚的 `npm install -g @moonshot-ai/kimi-code@latest`（本机实测 2.3.2），不执行管道脚本。版本检查 `kimi --version`，配置自检 `kimi doctor config`。启动为 `kimi acp`，`args.kimi-code` 只允许 `--region mainland-cn|global`，其余参数直接拒绝，不猜测。新档案默认模型 `kimi-k3.1-pro`，已有配置不迁移别名，凭据只来自 `~/.kimi-code/config.toml`（`api_key` / provider `env` / `api_key_env`），宿主不注入密钥并剥离其它 CLI 的 `*_API_KEY`。免审批是真实能力，但官方 `--auto` / `--yolo` 与 `-p/--prompt` 互斥，插件一次性任务走 `-p`，因此只能写 `default_permission_mode = "auto"`（默认新范例即 `auto`），启动命令只发 `kimi`。思考值只下发 ACP `thinking` 选项真实广告过的值，`ultra` 不重写为 `max`，广告里没有就报错；广告集合由模型表 `capabilities` / `support_efforts` 决定，env-only 通道只有 `off\|on`，无 `capabilities` 时不下发该选项。默认配置与范例生成 `capabilities = ["thinking"]` 和完整五档 `support_efforts`，所有保存自动补缺失字段且不覆盖已有值，可视化只展示常用字段；此前显式声明配置的隔离 `KIMI_CODE_HOME` 实测广告六值并完成一轮 `session/prompt`（`stopReason: end_turn`）。Webview 已消费 `kimiThinkingOptions` / `kimiModeUpdate`（按 `tabId` 隔离、过滤非法值、只从广告集合选当前值，只有 `off\|on` 时禁用下拉），`contextWindowSource` 为独立的 `kimi-config-window`，悬停文案说明窗口取自配置的 `max_context_size`。主/子模型复用插件通用角色选择，候选只取当前配置声明的模型；子任务未单独选择时先回落到普通对话所选模型、再回落到 `default_model`，与 Grok 一致；Loop 子任务用子模型。Kimi 自身 `config.toml` 没有子模型字段。`session/resume` 只在持有 `session_` 前缀 id 时使用，失败时除非 `requireResume` 否则回落 `session/new`；不发送 `session/load`、`session/fork`、`session/delete`。权限请求自动选广告中的 `allow_once`；`plan` 模式映射真实只读 `plan`，不伪造其它能力。上下文窗口展示取每轮结束的 `usage_update.size`，即配置声明的 `max_context_size`，不是估算值；标为 `contextWindowSource: "kimi-config-window"`，与 DSH 的 `adapter-fallback` 区分。Kimi Code 无 ACP 独立 `session/compact` RPC，但 2.5.2 已广告 `compact` 原生命令；`compactSession()` 经原会话 `session/prompt` 发送纯文本 `/compact`，先监听后发送，要求同操作开始、完成通知和正常 prompt 结果，普通回答、异会话、停止、失败、取消、退出或超时不成功；恢复失败不新建空会话，并加入既有全局执行后自动压缩。usage 缺失不显示为 0。配置中心和 Skills 目标显示 `KimiCode`，配置页在 DSH 后追加 KimiCode 卡片；主 CLI 下拉和子模型 CLI 分组显示 `KimiCode`，对话 Tab 显示 `Kimi`；真实 `kimi acp` + `subcoco/kimi-k3.1-pro` 已实跑写文件并通过。图形 Extension Host 点击验收未做。 |
 | AI 对话 / CLI | ZCode Protocol | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md`、`docs/zcode-guide.md` | `src/interactive/zcodeAppServerProtocol.ts`、`src/interactive/zcodeRunner.ts`、`src/interactive/zcodeTrace.ts`、`src/extensionHost/interactiveTurnZcode.ts`、`src/config/zcodeConfig.ts`、`media/config/assets/config-app-ui.js` | `npm run build`；`node --test dist/test/interactive/zcodeAppServerProtocol.test.js dist/test/interactive/zcodeRunner.test.js dist/test/interactive/zcodeTrace.test.js dist/test/config/zcodeConfig.test.js dist/test/webview/traceToolTitleLocalization.test.js dist/test/webview/clipagescriptruntimecoverage.test.js` | zcode 追加为第 7 个 CLI。协议是 ZCode Protocol 1，启动 `zcode app-server --stdio --mode yolo`，不是 ACP。思考偏好仅在模型 advertised 后覆写，不发送未支持的 medium，不自动降级 max。仅完整初始化的健康 runner 可复用，重复启动复用同一进程与原生会话，进程重建可恢复会话；发送前注册回合监听，连续任务的快速正文和终态不丢失。上下文用量读取 projection。`session/compact` 是原生压缩。安装命令与一键安装相同，为 `npm install -g zcode-app-cli@latest`；配置页「安装」只复制该命令，不执行安装。已有桌面应用附带的 `zcode` 命令仍可使用。GLM 范例使用 openai-responses，已有配置协议不自动改写，范例模型 ID 为 `glm-5.3-flash`，Base URL 为 `http://127.0.0.1:33391/v1`；默认推理档位通过 `defaultModelSelection.options.reasoningLevel` 指定 high，能力覆写不必填写，保留两个必需空规则数组与 group。旧两种 GLM 引用缺少档位时兼容 max，示例密钥为 your_apikey。配置页默认 JSON，复用公共卡片标题与可视化/JSON 标签、右侧保存动作和配置范例抽屉中的一键导入；公共参数整宽置顶，下方为左侧模型列表、右侧模型 ID，模型删除使用列表行确认操作。高级字段往返保留。`model.streaming` 与 `tool.updated` 按 `toolCallId` 更新同一条 Codex-compatible 工具气泡。 |
 | AI 对话 / Loop / Loop+ | 独立切模型与停止任务续跑 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/loopModelSwitch.ts`、`src/extensionHost/loopModelSwitchResume.ts`、`src/webview/loopModelSwitchDialog.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts` | `npm run build`；`node --test dist/test/loop/loopModelSwitch.test.js dist/test/extensionHost/loopModelSwitchResume.test.js dist/test/loop/loopGroupChatCoordinator.test.js`；headless Chromium 消息桥验证 | 按绑定 CLI 当前配置分别选择角色模型与思考力度；Loop+ 全栈和前后端分离均支持，力度随模型能力更新。整体校验并保存任务角色力度，不改全局偏好；提交不打断当前调用，后续执行、重试、复核读取新路由与力度。停止主子执行自动续跑，运行中同级不重启。“继续执行”在原配置恢复成功后也自动恢复中断子任务，保持已保存模型、配置及力度，保留继续说明；经典 Loop 等子任务收尾后继续主任务，Loop+ 复用原 attempt。刷新保留有效模型、力度与焦点 |
@@ -823,7 +857,7 @@ Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回
 
 ## 2026-11-14 主模型提问气泡排队动画
 
-“向主模型提问”弹窗中，每条仍在队列中的用户消息下方显示三点动画和“排队中，等待主模型空闲”。同一问题开始回答时移除排队提示，沿用原有回答等待动画；连续提交时，后续问题仍保留各自的排队提示。完成、失败、中止或宿主重启恢复后不遗留排队动画。关闭弹窗或 Webview 页面不可见时暂停排队动画，系统启用减少动态效果时保留静态文字与三点；窄屏提示可收缩并断行。颜色复用 VS Code 主题，不改变提问 FIFO、主任务优先级及终止规则。
+“向主模型提问”弹窗中，每条仍在队列中的用户消息下方显示三点动画和“排队中，等待主模型空闲”。同一问题开始回答时移除排队提示，沿用原有回答等待动画；连续提交时，后续问题仍保留各自的排队提示。完成、失败、中止或宿主重启恢复后不遗留排队动画。关闭弹窗或 Webview 页面不可见时暂停排队动画，系统启用减少动态效果时保留静态文字与三点；窄屏提示可收缩并断行。颜色复用 VS Code 主题，排队顺序及终止规则见下节。
 
 实现：`src/loopAskThread.ts` 的用户气泡可选 `queued` 字段由 `src/extensionHost/loopGroupChatPanelCoordinator.ts` 按当前提问队列投影，兼容旧版历史文件；`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts` 负责展示。验证：`npm run build`；相关问答历史、协调器、弹窗和提问队列测试；headless Chromium 检查排队/回答切换、动画、窄视口、减少动态效果与取消清理。
 
@@ -833,7 +867,7 @@ Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回
 
 2026-11-11 弹窗优化：忙碌提示位于终止按钮左侧，仅在主模型忙碌且当前未提交运行中的提问时显示；提交后的排队、派发过渡和回答过程不触发该提示，避免点击发送后文字闪现。提问队列与终止行为不变。
 
-Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交；已提交问题立即写入提问历史，支持连续提交，按 FIFO 在主会话空闲时自动回答。主任务和提问共享会话级互斥队列，已排队的验收、补充需求及调度收口先于后续提问；已开始回答的问题不被后来到达的验收抢占。经典 Loop 的主任务交接间隙及未处理补充需求也会阻止提问抢跑。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间在对应用户气泡下方显示排队动画与文字，真正回答时才显示回答等待动画；仍可继续输入下一问。中止等待中的问题只清空提问队列，不停止正在执行的主任务；正在回答时中止该回答并清空后续问题。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿；宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
+Loop / Loop+ 的“向主模型提问”弹窗在主模型忙碌时显示“主模型正在处理，你的问题会放入队列。”，发送按钮及 Ctrl/⌘+Enter 仍可提交。每条已提交问题立即写入提问历史并进入主任务 Tab 的共享互斥队列，与实际主模型调用先入队先执行。部门组长的 Codex 和 OpenCode 原生 Owner 调用在配置准备前入队，持有该位置直至调用及其消费者收尾。后来发起的验收、补充需求处理和收口调用依序排队，待处理的验收事件不预占会话。提问不改变任务补充要求，不进入 Loop+ 用户消息或验收事件队列，也不自行唤醒主任务。等待期间在对应用户气泡下方显示排队动画与文字，真正回答时才显示回答等待动画，仍可继续输入下一问。中止只取消本弹窗的待答问题和实际在答的请求，正在执行的主任务继续运行。单次回答失败不丢失后续问题，不同主任务 Tab 的队列独立。关闭或刷新弹窗保留历史和草稿，宿主重启后未完成提问沿用停止恢复规则，不自动重放。用户 Markdown 气泡样式及滚动策略保持不变。
 
 实现：`src/loopMainQuestionQueue.ts`、`src/loopMainQuestion.ts`、`src/loopAskThread.ts`、`src/extension.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/webview/loopGroupChatPanel.ts`；验证：`npm run build`；`node --test dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopAskThread.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 验证忙碌提示、连续提交与排队/回答状态切换。
 
@@ -951,3 +985,9 @@ Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`�
 Loop 的缺失诊断自动补充一次；Loop+ 复用一次剩余工作复核与最多两次协议纠错。补齐失败后说明诊断缺项并保留模型原说明，不编造原因，不标记完成、不清空未确认事件、不无限重试。既有主聊天、群聊和暂停记录复用该摘要，无新增安装或授权动作。实现：`src/loopBlocker.ts`、`src/loopBlockedSummary.ts` 及两种模式的决策解析/编排；回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`，已纳入跨平台检测入口。
 
 业务 `blocked` 的主聊天气泡、群聊摘要和暂停记录统一使用“熔断”，说明“子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成”，并保留具体原因、证据、已尝试动作、推荐解决方案与恢复条件。主模型调用失败和调度协议错误仍说明各自真实原因，不能归因于子任务反复失败。此次称谓调整不新增重试阈值，不改变状态、验收门槛和恢复流程；历史模型原文保留。
+
+## 2026-11-19 产研部总监等待汇报与真实阻塞分流
+
+总监在仍有组长运行且当前只需等待汇报时返回 `status=waiting`；宿主不重派已启动模块，根任务保持运行，并由组长真实结算唤醒后续复核。没有运行组长的 waiting 会转为 `needs-review`，不无限空等。`status=blocked` 保留给有真实阻塞证据的情形；有效 blocker 或失败/blocked 组长暂停总监根的自动协调，但不释放未核验的组长、员工或 Owner 容量。兼容旧版缺 blocker 输出时，只有未发现组长失败才按待汇报处理。生命周期诊断仅记录白名单错误码，不输出异常正文、路径、会话或凭据。
+
+非 Codex/OpenCode 的交互式员工由原 Loop+ runner 执行。新员工 Tab 尚无 transcript session 时，宿主先为该 Tab 创建本地会话键，再准备 runner；CLI 握手回传的 native session 仍单独绑定到账本。未启动的 attempt 返回原始失败并记录安全阶段、attempt 和错误码，未知清理仍保留容量。

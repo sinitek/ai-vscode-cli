@@ -40,6 +40,7 @@ export type InteractiveTurnAttemptPort = {
   readonly departmentInteractiveRunner?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"];
   readonly departmentCodexRun?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentCodexRun"];
   readonly cancelDepartmentCodexPreparation?: () => void;
+  readonly originalCodexThreadTurn?: import("../interactive/codexRunner").OriginalCodexThreadTurn;
   readonly cli: InteractiveTurnCli;
   readonly tabId: string;
   readonly runId: string;
@@ -56,6 +57,7 @@ export type InteractiveTurnAttemptPort = {
   readonly zcodeLaunch: Pick<ZcodeInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelRef" | "thinkingValue"> | null;
   readonly cwd: string | undefined;
   readonly workspaceCwd?: string;
+  readonly grokLoopResumeSessionId?: string | null;
   readonly thinkingMode: ThinkingMode;
   readonly interactiveMode: InteractiveMode;
   readonly selectedModel: string | null;

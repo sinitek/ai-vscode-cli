@@ -337,7 +337,7 @@ async function verifyWebview(root, port, fixture, report) {
       const webviewId = new URL(candidate.url).searchParams.get("id");
       const surface = visibleWebviews.find((item) => item.id === webviewId);
       candidateSummaries.set(candidate.id, { id: candidate.id, webviewId, url: candidate.url, visibleSurface: surface ?? null, text: inspected.text.slice(0, 1200) });
-      if (surface?.visible && inspected.text.includes("产研部 · 总监 ☀️") && inspected.text.includes(fixture.ids.rootTaskId)) {
+      if (surface?.visible && inspected.text.includes("产研部总监") && inspected.text.includes(fixture.ids.rootTaskId)) {
         groupWebview = inspected; break;
       }
     }
@@ -478,7 +478,7 @@ async function verifyWebview(root, port, fixture, report) {
   assert.equal(modalDetails.actions.some((item) => item.action === "stopTask" || item.action === "supplementTask" || item.action === "continueTask"), false,
     "completed historical fixture keeps non-applicable run actions unavailable");
   const dialogTitle = await groupEvaluate("document.querySelector('#departmentChatTitle')?.textContent || ''");
-  assert.ok(dialogTitle.includes("财务模块"), "department modal title identifies the selected leader module");
+  assert.equal(dialogTitle, "组长1", "department modal title identifies the selected leader by module number");
   report.modal = { frameUrl: modalFrame.frame.url, leaderTaskId: fixture.ids.leaderOneTaskId, title: dialogTitle,
     context: { groupContextId, frameId: modalFrame.frame.id, contextId: modalFrame.contextId, defaultWorld: true }, loopPlus: modalDetails.loopPlus, toolbar: modalDetails.toolbar, actions: modalDetails.actions };
   await screenshot("webview-department-dialog.png");

@@ -4,7 +4,9 @@ import * as TOML from "@iarna/toml";
 import { createHash } from "crypto";
 import { isPlainObject } from "../shared/jsonObject";
 import { resolveCodexHomeDir } from "../shared/userHomePaths";
-import { resolveCodexProjectPath } from "../interactive/codexRuntimeConfig";
+import { readCodexModelProvider, resolveCodexProjectPath } from "../interactive/codexRuntimeConfig";
+
+export type CodexRuntimeConfigEvidence = Readonly<{ identity: string; provider: string | null }>;
 
 // Tag every value so dates, bigint, non-finite numbers and user objects cannot
 // collide. Sorting applies only to object keys; array order remains meaningful.
@@ -95,13 +97,18 @@ async function resolveSourcePath(source: string): Promise<string> {
   }
 }
 
-export async function readCodexRuntimeConfigIdentity(workingDirectory?: string): Promise<string> {
+async function readCodexRuntimeConfigSnapshot(workingDirectory?: string, codexHomeDir?: string, verifySource = false) {
   // Resolve at invocation time, like buildCodexChildEnv, rather than using the
   // config editor's module-time path snapshot after HOME has changed.
-  const home = path.resolve(resolveCodexHomeDir());
+  const home = path.resolve(codexHomeDir ?? resolveCodexHomeDir());
   const configPath = path.join(home, "config.toml");
   const authPath = path.join(home, "auth.json");
-  const [configText, authText] = await Promise.all([readOptionalFile(configPath), readOptionalFile(authPath)]);
+  const readSources = () => Promise.all([home, configPath, authPath].map(async (source) => [source, await resolveSourcePath(source)] as const));
+  const initialSources = verifySource ? await readSources() : undefined;
+  const [configText, authText] = await Promise.all([
+    readOptionalFile(initialSources?.[1][1] ?? configPath),
+    readOptionalFile(initialSources?.[2][1] ?? authPath),
+  ]);
   let config: Record<string, unknown>;
   let auth: unknown;
   try {
@@ -113,6 +120,38 @@ export async function readCodexRuntimeConfigIdentity(workingDirectory?: string):
   }
   await effectiveProjectConfig(config, workingDirectory);
   // Preserve configured source and symlink target identity even for equal values.
-  const sources = await Promise.all([home, configPath, authPath].map(async (source) => [source, await resolveSourcePath(source)]));
-  return createHash("sha256").update(JSON.stringify(canonicalValue({ sources, config, auth }))).digest("hex");
+  const sources = await readSources();
+  if (initialSources?.some((source, index) => source[1] !== sources[index][1])) {
+    throw new Error("Codex 运行配置来源已变化，任务未启动。");
+  }
+  const identity = createHash("sha256").update(JSON.stringify(canonicalValue({ sources, config, auth }))).digest("hex");
+  return { identity, configText: configText ?? "", authText: authText ?? "", configuredProvider: config.model_provider };
+}
+
+export async function readCodexRuntimeConfigIdentity(workingDirectory?: string): Promise<string> {
+  return (await readCodexRuntimeConfigSnapshot(workingDirectory)).identity;
+}
+
+export async function readCodexRuntimeConfigReadback(workingDirectory?: string, codexHomeDir?: string): Promise<{
+  config: string; auth: string; evidence: CodexRuntimeConfigEvidence;
+}> {
+  const { identity, configText, authText, configuredProvider } = await readCodexRuntimeConfigSnapshot(workingDirectory, codexHomeDir, true);
+  const provider = readCodexModelProvider(configText);
+  if (configuredProvider !== (provider ?? undefined)) {
+    throw new Error("无法确认 Codex 运行配置的 provider，任务未启动。");
+  }
+  return { config: configText, auth: authText, evidence: Object.freeze({ identity, provider }) };
+}
+
+export async function assertCodexRuntimeConfigEvidence(
+  expected: CodexRuntimeConfigEvidence, workingDirectory?: string, codexHomeDir?: string,
+): Promise<void> {
+  const { evidence } = await readCodexRuntimeConfigReadback(workingDirectory, codexHomeDir);
+  if (evidence.identity !== expected.identity || evidence.provider !== expected.provider) {
+    throw new Error("Codex 原档案的运行配置已变化，任务未启动。");
+  }
+}
+
+export function buildCodexRuntimeConfigFingerprint(configId: string | null, identity: string): string {
+  return createHash("sha256").update(JSON.stringify(["codex", configId, identity])).digest("hex");
 }

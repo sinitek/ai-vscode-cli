@@ -13,7 +13,11 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const mappedSessionId = uiSessionIdAtStart
         ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
         : null;
-      const resumeSessionId = resolveGrokResumeSessionId(uiSessionIdAtStart, mappedSessionId);
+      const isLoopPlusGrokAttempt = port.grokLoopResumeSessionId !== undefined;
+      const resumeSessionId = isLoopPlusGrokAttempt
+        ? port.grokLoopResumeSessionId ?? null
+        : resolveGrokResumeSessionId(uiSessionIdAtStart, mappedSessionId);
+      const requireResume = isLoopPlusGrokAttempt && resumeSessionId !== null;
       port.observedGrokFinalAnswer = false;
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateGrokRunner({
@@ -56,7 +60,10 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
           }
         });
         port.syncInteractiveRunEntry(port.stopFn);
-        const started = await runner.start();
+        const started = await runner.start({ requireResume });
+        if (requireResume && started.acpSessionId !== resumeSessionId) {
+          throw new Error("Grok 未恢复原子任务会话，已停止本轮执行。");
+        }
         await bindDepartmentSession?.(started.acpSessionId);
         port.updateSessionForNewRun(started.acpSessionId);
         const uiSessionId = port.uiSessionId;

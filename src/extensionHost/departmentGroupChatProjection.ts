@@ -57,6 +57,12 @@ export function resolveDepartmentRoot(task: LoopTaskRecord, port: Pick<Departmen
  * there is no remaining capacity to reconcile. This grants no execution right. */
 export function readDepartmentOrganizationControlState(task: LoopTaskRecord, workspaceKey: string,
   port: Pick<DepartmentGroupChatReadPort, "readTaskRecord" | "readCapacity">): { needsCleanup: boolean } | null {
+  const state = readDepartmentOrganizationControl(task, workspaceKey, port);
+  return state && { needsCleanup: state.needsCleanup };
+}
+
+function readDepartmentOrganizationControl(task: LoopTaskRecord, workspaceKey: string,
+  port: Pick<DepartmentGroupChatReadPort, "readTaskRecord" | "readCapacity">) {
   const current = port.readTaskRecord(task.id);
   if (!current || !workspaceKey || current.workspaceKey !== workspaceKey || task.workspaceKey !== workspaceKey
     || current.id !== task.id || current.taskStoreFile !== task.taskStoreFile
@@ -74,7 +80,32 @@ export function readDepartmentOrganizationControlState(task: LoopTaskRecord, wor
     && capacity.employees.every(id => typeof id === "string" && id.trim())
     && new Set(capacity.leaders).size === capacity.leaders.length
     && new Set(capacity.employees).size === capacity.employees.length;
-  return { needsCleanup: !valid || capacity!.leaders.length > 0 || capacity!.employees.length > 0 };
+  return { needsCleanup: !valid || capacity!.leaders.length > 0 || capacity!.employees.length > 0, capacityKnown: Boolean(valid), status: current.status, interrupted: current.runtimeInterrupted === true };
+}
+
+/** Combine a trusted current root/lease read with this host's matching stop receipt.
+ * Persistent runtime.stopping and an idle tab deliberately supply no receipt. */
+export function readDepartmentOrganizationStopFeedback(task: LoopTaskRecord, workspaceKey: string,
+  port: Pick<DepartmentGroupChatReadPort, "readTaskRecord" | "readCapacity">,
+  result?: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState) {
+  const state = readDepartmentOrganizationControl(task, workspaceKey, port);
+  if (!state) return null;
+  const stopState: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState | undefined = result === "stopping" ? "stopping"
+    : result === "unconfirmed" || !state.capacityKnown ? "unconfirmed"
+    : state.needsCleanup ? (state.status === "running" && !state.interrupted ? undefined : "unconfirmed")
+    : result === "confirmed" && (state.status !== "running" || state.interrupted) ? "confirmed"
+    : state.status === "stopped" || state.interrupted ? "unconfirmed" : undefined;
+  return { needsCleanup: state.needsCleanup || stopState === "stopping" || stopState === "unconfirmed", stopState };
+}
+
+export function assertDepartmentOrganizationContinuation(task: LoopTaskRecord,
+  state: { needsCleanup: boolean; stopState?: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState } | null | undefined): void {
+  if (!state) throw new Error("部门续接归属已变化。");
+  if (state.stopState === "stopping") throw new Error("部门正在停止，请等待当前停止核验完成。");
+  if (state.stopState === "unconfirmed" || ((task.status !== "running" || task.runtimeInterrupted)
+    && (state.needsCleanup || ((task.status === "stopped" || task.runtimeInterrupted) && state.stopState !== "confirmed")))) {
+    throw new Error("部门停止未确认，请先核验停止再继续。");
+  }
 }
 
 /** Neither labels, sessions nor browser IDs establish membership. */
@@ -93,7 +124,7 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
     sessionId: task.sessionId, summary: task.finalSummary, updatedAt: task.updatedAt };
 }
 
-function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel> = projectLoopPlusPanel(task)): LoopGroupChatPanelParticipant[] {
+function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
   return projection.seenAttempts.flatMap((attempt) => {
     const spec = task.subTasks.find((item) => item.id === attempt.subtaskId);
@@ -137,15 +168,17 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
   const meta = departmentMetadata(task)!, rootMeta = departmentMetadata(root)!;
   // The same complete production index serves rendering and authorization. No list fallback.
   if (!port.readLeaderTaskIds) return undefined;
-  const byId = new Map<string, LoopTaskRecord>();
+  const byId = new Map<string, { record: LoopTaskRecord; leaderNumber: number }>();
   try {
-    for (const module of root.subTasks) {
+    for (const [index, module] of root.subTasks.entries()) {
       const ids = port.readLeaderTaskIds(root.id, module.id);
       if (!Array.isArray(ids)) return undefined;
       if (ids.length !== 1) continue; // Missing or ambiguous modules expose no leader contents.
       const record = port.readTaskRecord(ids[0]);
       if (record && record.id === ids[0] && isDepartmentLeader(root, record)
-        && departmentMetadata(record)!.leaderSubtaskId === module.id) byId.set(record.id, record);
+        && departmentMetadata(record)!.leaderSubtaskId === module.id && !byId.has(record.id)) {
+        byId.set(record.id, { record, leaderNumber: index + 1 });
+      }
     }
   } catch { return undefined; }
   const leaders = [...byId.values()];
@@ -160,17 +193,17 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     && new Set(capacity.leaders).size === capacity.leaders.length && new Set(capacity.employees).size === capacity.employees.length;
   let employeeAllocation: DepartmentEmployeeAllocationProjection | undefined;
   try { employeeAllocation = normalizeDepartmentEmployeeAllocation(port.readEmployeeAllocation?.(root.id), root.id,
-    leaders.map((leader) => leader.id), valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees); } catch { /* Unknown, never fabricated. */ }
+    [...byId.keys()], valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees); } catch { /* Unknown, never fabricated. */ }
   return {
     ...(employeeAllocation ? { employeeAllocation } : {}),
     employeeAllocationEditable: meta.role === "director" && Boolean(employeeAllocation && port.employeeAllocationWritable),
     role: meta.role as "director" | "leader", rootTaskId: root.id,
     ...(meta.parentTaskId ? { parentTaskId: meta.parentTaskId } : {}), title: meta.moduleTitle,
     director: participant(root, "director"),
-    leaders: leaders.map((leader) => {
-      const loopPlus = projectLoopPlusPanel(leader);
-      return { taskId: leader.id, participant: participant(leader, "leader"),
-        progressPercent: resolveLoopPanelProgressPercent(leader, loopPlus), employees: employees(leader, loopPlus) };
+    leaders: leaders.map(({ record, leaderNumber }) => {
+      const loopPlus = projectLoopPlusPanel(record);
+      return { taskId: record.id, leaderNumber, participant: participant(record, "leader"),
+        progressPercent: resolveLoopPanelProgressPercent(record, loopPlus), employees: employees(record, loopPlus) };
     }),
     maxLeaders: valid ? capacity!.maxLeaders : rootMeta.limits.maxLeaders,
     maxEmployees: valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees,

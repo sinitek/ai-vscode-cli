@@ -128,3 +128,29 @@ producer 的 `observationSnapshot` 只从本宿主创建的代次出发，一次
 定向生产组合检查使用真实临时RuntimeStore、原生产producer/host/adapter和固定免费Node协议CLI。当前1/4个binding及0/128个追加历史binding的三个场景均为23次冷读，验证数分别23、2967、3036（每次读取仍完整校验当前全量历史）；两阶段配置读取均2次。观察期间的配置、generation、closure变化继续拒绝；128订阅满额拒绝、取消即时清除、重复取消/重订阅只保留同一个底层责任；准备和原生消费者门闩放行前不结算。新增8项及直接相关旧检查结果、隔离标准build和精确源码覆盖以round-234 attempt报告为准。Store存储/追加历史/原子binding算法未修改，无需重复历史绑定性能检查。
 
 中央功能清单及ontology由并行准入修复任务维护；本轮不改变业务概念、状态机、权限、清理证据、容量消费或事实来源边界，因此无需新增本体项。OpenCode/其它角色、全树控制、冷恢复、真实CLI/模型与完整UI、Windows/Linux及最终根集成门禁保持；本轮不声明产研部整体完成。
+
+## 停止、清理与容量诊断日志（2026-11-18）
+
+关键事件复用 `logger.logEssential`，调试关闭仍写入应用日志 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 及同日 `.N.log` 分段，沿用现有 10 MiB 轮转和保留策略。按内部 `rootTaskId`、`leaderTaskId`、`generation` 查询，并与 `department-leader-native-failed` 关联；该既有事件补充根任务 ID，私有 IPC 失败分类不变。例如：
+
+```sh
+rg 'department-(root-stop|leader-cleanup|leader-capacity|employee-capacity|lifecycle-persistence)' ~/.sinitek_cli/logs/sinitek-cli.*.log
+rg 'msg_<内部根任务ID>|msg_<内部组长任务ID>' ~/.sinitek_cli/logs/sinitek-cli.*.log
+```
+
+| 固定事件 | 发生点及含义 |
+| --- | --- |
+| `department-root-stop-started` | 本宿主实际开始根停止，重复在途请求共享同一次记录。 |
+| `department-root-stop-settled` | 原停止流程结算，附 `confirmed/unconfirmed/retained/elapsedMs`。前两项按本次捕获的原代次，分别统计本宿主已取得原整组核验结果与未取得的组长数；`retained` 是仍持组长租约数，与前两项可以重叠。已核验但释放持久失败应为 confirmed=1、retained=1。旧适配器未装整组凭证门禁不计已确认。 |
+| `department-leader-cleanup` | 每个共享组清理记录 `producer-close` 与 `owner-receipts` 的开始/确认/未确认；前者只证明原 producer 的封闭及持久 closure，后者包括原集合、selection、全量原 client receipts 和末次权威核验。 |
+| `department-leader-capacity` | 生命周期、idle、释放持久化失败时记录保留原因；只有既有 `CapacityLease.release()` 成功返回后才记录 `capacity-release/released`，包括正常收尾、显式停止及既有启动补偿路径。 |
+| `department-employee-capacity` | 原员工租约实际归还后记录 released，清理拒绝时记录 retained；重复 release/quarantine 不重复记录，晚到结果保留员工创建时的组长代次，不记录员工正文或工具结果。 |
+| `department-lifecycle-persistence-failed` | 原运行快照、释放快照或 producer closure 持久化失败；同一连续故障仅记首次，成功持久化后重新允许记录。closure 写入处直接判别持久化拒绝，不从异常文本猜测；最近128个失败代次做有界去重。 |
+
+原因枚举固定为 `none/already-blocked/evidence-missing/evidence-rejected/persistence-failed/task-still-running/identity-changed/unexpected-failure`。仅对已知内部错误分类，未知异常统一 `unexpected-failure`，不输出异常原文。字段仅投影有界内部任务 ID（至多128个 ASCII 字母数字、下划线、连字符；其它值置 `invalid-id`）、代次、固定阶段/结果/原因、数量和耗时（整数 0..2147483647）。不写异常、堆栈、路径、会话、正文、命令、工具载荷或凭据。
+
+根停止日志按本宿主一次停止周期去重，成功继续后开始新周期。组清理日志跟随一个原共享观察，取消订阅和128个观察者不产生额外阶段事件；最近128个 scope/代次保留抑制记录，淘汰后重新实际观察该旧代次可以再次记录，日志不承担永久审计或幂等授权。晚到的整组结果和释放记录使用操作开始时捕获的原代次，不能套用停止后递增的代次。读取界面、查询计数和轮询不产生日志。
+
+日志为非阻塞旁路：不增加 Store/Owner/selection 核验读取，不等待日志写入；同步抛错及异步拒绝均吞掉，不改变原 receipt、持久化结果、容量门禁和原业务返回值。原生 Promise、停止标记、日志里的 confirmed、容量计数、Owner 记录里的 live 或进程退出均不是清理凭证，不能据此手工释放或继续现场根；必须沿用原 Owner 完整凭证和持久释放门禁。`producer-close/confirmed` 尤其不代表 Owner 已清理。日志写入失败可能造成事件缺失，缺日志也不能证明未执行或已释放。
+
+本次新增日志只由隔离构建、定向生产夹具/编排回归以及独立进程临时应用日志验证；既有真实宿主停止/继续证据仍按原范围使用，不覆盖新增日志。完整命令和覆盖边界见本次 attempt 报告。共享功能清单、执行计划与本体由父任务在各并行交付验收后同步：最小增补是关键日志查找入口及“诊断无清理/容量授权”边界，不提升真实宿主或平台验收状态。

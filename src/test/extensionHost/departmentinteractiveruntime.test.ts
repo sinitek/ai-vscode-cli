@@ -41,9 +41,11 @@ async function harness(t: test.TestContext, leader: CliName, employee: CliName =
   const runtime = createDepartmentInteractiveRuntime({ producer, store, ownerDirectory: path.join(directory, "owners"), readTask: read, updateTask: update });
   const cleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: path.join(directory, "owners"), workspaceKey: () => "workspace", readTask: read,
   });
-  const run = (round = "round-1", execute?: Parameters<typeof runtime.run>[0]["execute"], role: "leader" | "employee" = "leader", cancel = () => {}) => producer.track("leader", () => runtime.run({
-    taskId: "leader", role, invocationId: round, sessionId: role === "leader" ? "local_leader" : "local_employee",
+  const run = (round = "round-1", execute?: Parameters<typeof runtime.run>[0]["execute"], role: "leader" | "employee" = "leader", cancel = () => {}, grokExecutionRootId?: string) => producer.track("leader", () => runtime.run({
+    taskId: "leader", role, invocationId: round, sessionId: role === "leader" ? "local_leader" : null,
+    ...(role === "employee" ? { initializeLocalSession: () => "local_employee" } : {}),
     ...(role === "employee" ? { subtaskId: "employee", attemptId: "attempt" } : {}), expected: { configId: "profile", revision: "revision" }, cancel,
+    ...(grokExecutionRootId ? { grokExecutionRootId } : {}),
     execute: execute ?? (async capture => { await capture({}, async () => {})(`native-${role}`); }),
   }));
   t.after(async () => { await producer.close("leader").catch(() => undefined); producer.closeAll();
@@ -80,15 +82,44 @@ for (const cli of CLI_LIST.filter(usesDepartmentInteractiveRuntime)) test(`${cli
   const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
   saved.value.capacity.employees.push(JSON.stringify(["leader", "attempt"])); assert.equal(h.store.write(saved.value).ok, true);
   h.runtime.authorizeAttempt("leader", "employee", "attempt");
-  let cleaned = false; const observation = h.runtime.observe("leader", "attempt", "employee");
+  let cleaned = false; const observation = h.runtime.observe("leader", "attempt");
   void observation.done.then(() => { cleaned = true; });
   const started = gate(), drain = gate();
-  const work = h.run("attempt", async capture => { await capture({}, async () => { started.resolve(); await drain.promise; })("native-employee"); }, "employee");
+  const grokExecutionRootId = cli === "grok" ? "0e9f04ab-3ca8-4e41-8f10-876fb954d378" : undefined;
+  const work = h.run("attempt", async capture => { await capture({}, async () => { started.resolve(); await drain.promise; })("native-employee"); }, "employee", () => {}, grokExecutionRootId);
   await started.promise; assert.equal(cleaned, false);
   assert.equal(h.read("leader")?.subTasks[0].executionSession?.cli, cli);
+  assert.equal(h.read("leader")?.subTasks[0].executionSession?.sessionId, "native-employee");
+  assert.equal(h.read("leader")?.subTasks[0].executionSession?.grokExecutionRootId, grokExecutionRootId);
   drain.resolve(); await work; await observation.done; assert.equal(cleaned, true);
   const group = h.cleanup.observe(h.read("leader")!, 1); assert.ok(group); await group.done;
   h.update("leader", { status: "completed" }); await h.producer.retire("leader", 1);
+});
+
+test("unstarted employee session failure is observable with a safe attempt diagnostic", async t => {
+  const h = await harness(t, "grok", "grok");
+  const events: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const loggedRuntime = createDepartmentInteractiveRuntime({
+    producer: h.producer, store: h.store, ownerDirectory: path.join(h.directory, "diagnostic-owners"),
+    readTask: h.read, updateTask: h.update,
+    log: (event, payload) => events.push({ event, payload }),
+  });
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
+  scheduler.dispatch([{ subtaskId: "employee", attemptId: "attempt" }]);
+  h.update("leader", { subTasks: [{ id: "employee", title: "员工", status: "running" }], loopPlus: scheduler.snapshot() });
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  saved.value.capacity.employees.push(JSON.stringify(["leader", "attempt"])); assert.equal(h.store.write(saved.value).ok, true);
+  loggedRuntime.authorizeAttempt("leader", "employee", "attempt");
+  const observation = loggedRuntime.observe("leader", "attempt");
+  await assert.rejects(loggedRuntime.run({ taskId: "leader", role: "employee", invocationId: "attempt", sessionId: null,
+    subtaskId: "employee", attemptId: "attempt", expected: { configId: "profile", revision: "revision" },
+    cancel: () => {}, execute: async () => {} }), /department-interactive-local-session-unavailable/);
+  await assert.rejects(observation.done, /department-interactive-local-session-unavailable/);
+  assert.deepEqual(events.map(item => [item.event, item.payload.stage, item.payload.result, item.payload.errorCode]), [
+    ["department-interactive-invocation", "admission", "started", undefined],
+    ["department-interactive-invocation", "local-session", "unconfirmed", "department-interactive-local-session-unavailable"],
+  ]);
+  assert.equal(events.some(item => JSON.stringify(item.payload).includes("native-employee")), false);
 });
 
 for (const cli of CLI_LIST.filter(usesDepartmentInteractiveRuntime)) test(`${cli} stopped leader continues in a new generation with its original native session`, { timeout: 15000 }, async t => {

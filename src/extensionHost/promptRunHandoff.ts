@@ -1,9 +1,71 @@
+import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
+import type { LoopTaskRecord } from "../loopTaskStore";
+import type { CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIdentity";
+
+export type PreparedLoopMainExecution = Pick<PromptRunInput, "displayPrompt" | "modelPrompt"> & {
+  commit: () => void;
+  afterSend: () => void;
+};
+
+export class FirstLoopMainExecution {
+  claimed = false;
+  admitted = false;
+  prepareMain?: (task: LoopTaskRecord) => PreparedLoopMainExecution;
+  readResumeTask?: () => LoopTaskRecord;
+  resumeRequirements?: (task: LoopTaskRecord) => LoopTaskRecord["supplementalRequirements"] | null;
+  startRejected = false;
+  private resolveAdmission!: (result: { kind: "admitted" | "cancelled" } | { kind: "refused"; error: unknown }) => void;
+  readonly admission = new Promise<{ kind: "admitted" | "cancelled" } | { kind: "refused"; error: unknown }>((resolve) => {
+    this.resolveAdmission = resolve;
+  });
+
+  constructor(
+    readonly target: PromptRunTarget,
+    readonly configId: string,
+    readonly isTargetCurrent: () => boolean,
+    readonly unavailableMessage: string,
+    readonly codexConfigEvidence: CodexRuntimeConfigEvidence,
+  ) {}
+
+  prepare(): PreparedLoopMainExecution {
+    const verify = () => {
+      if (!this.claimed || this.admitted || !this.readResumeTask || !this.isTargetCurrent()) throw new Error(this.unavailableMessage);
+      return this.readResumeTask();
+    };
+    const task = verify();
+    if (!this.prepareMain) throw new Error(this.unavailableMessage);
+    const prepared = this.prepareMain(task);
+    return {
+      ...prepared,
+      commit: () => {
+        const latest = verify();
+        if (latest.taskStoreFile !== task.taskStoreFile || latest.updatedAt !== task.updatedAt) {
+          throw new Error(this.unavailableMessage);
+        }
+        prepared.commit();
+        this.admitted = true;
+        this.resolveAdmission({ kind: "admitted" });
+      },
+    };
+  }
+
+  finishBeforeAdmission(cancelled: boolean, error?: unknown): void {
+    if (!this.admitted) this.resolveAdmission(cancelled ? { kind: "cancelled" }
+      : { kind: "refused", error: error ?? new Error(this.unavailableMessage) });
+  }
+
+}
+
 /** Runtime status can become stopped before the invocation finishes. */
 export class PromptRunHandoff {
   private readonly runs = new Map<string, Set<{ done: Promise<void>; cancel: () => void }>>();
   private readonly stopping = new Set<string>();
 
   constructor(private readonly timeoutMs = 90000) {}
+
+  isBusy(tabId: string): boolean {
+    return this.runs.has(tabId) || this.stopping.has(tabId);
+  }
 
   async run(tabId: string, operation: (isAborted: () => boolean) => Promise<void>): Promise<void> {
     if (this.stopping.has(tabId)) throw new Error("正在等待原任务完全暂停，请稍后发送。");

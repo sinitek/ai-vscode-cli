@@ -76,6 +76,7 @@ type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
   claimThreadFromResult: boolean;
+  expectedThreadId?: string;
 };
 
 type InboundRequest = {
@@ -598,11 +599,19 @@ export class CodexAppServerConnection {
     ownerId: string,
     method: string,
     params: Record<string, unknown>,
+    expectedThreadId?: string,
   ): Promise<T> {
     if (this.ownedSealed) throw new Error("Owned Codex connection is sealed");
     await this.whenReady();
     if (this.ownedSealed) throw new Error("Owned Codex connection is sealed");
-    return this.requestInternal<T>(ownerId, method, params, method === "thread/start" || method === "thread/resume");
+    return this.requestInternal<T>(ownerId, method, params, method === "thread/start" || method === "thread/resume", expectedThreadId);
+  }
+
+  public startPreparedTurn<T>(ownerId: string, params: Record<string, unknown>, commit: () => void): Promise<T> {
+    if (this.ownedSealed || !this.isAlive() || !this.child?.stdin?.writable) {
+      throw new Error(t("codex.appServerStdinUnavailable"));
+    }
+    return this.requestInternal<T>(ownerId, "turn/start", params, false, undefined, commit);
   }
 
   public notify(method: string, params?: Record<string, unknown>): void {
@@ -804,6 +813,16 @@ export class CodexAppServerConnection {
           break;
         }
         await this.dispatch(message);
+        if (this.spec.ownedExecution && typeof message.method === "string" && !("id" in message)
+          && this.runtime.waitForNotificationConsumers) {
+          // The private owner channel has a fixed ACK window. Do not read a
+          // native burst into more live callbacks than that window can hold.
+          // Requests remain outside this barrier so cancellation/resolution
+          // notifications can still reach an outstanding interactive request.
+          this.child?.stdout?.pause();
+          try { await this.runtime.waitForNotificationConsumers(); }
+          finally { this.child?.stdout?.resume(); }
+        }
       }
     } catch (error) {
       if (!this.closed) {
@@ -873,7 +892,11 @@ export class CodexAppServerConnection {
       return;
     }
     if (pending.claimThreadFromResult) {
-      const threadId = threadIdFromResult(message.result);
+      const threadId = threadIdFromResult(message.result, Boolean(pending.expectedThreadId));
+      if (pending.expectedThreadId && threadId !== pending.expectedThreadId) {
+        pending.reject(new Error("Codex 恢复回执与原线程不一致，任务未启动。"));
+        return;
+      }
       if (threadId) {
         this.claimThread(threadId, pending.ownerId);
       }
@@ -1071,14 +1094,18 @@ export class CodexAppServerConnection {
     method: string,
     params: Record<string, unknown>,
     claimThreadFromResult: boolean,
+    expectedThreadId?: string,
+    commit?: () => void,
   ): Promise<T> {
+    const id = this.nextRequestId++;
+    const message = { jsonrpc: "2.0", id, method, params };
+    const prepared = commit ? serializeCodexAppServerMessage(message) : undefined;
+    commit?.();
     return new Promise<T>((resolve, reject) => {
       if (this.closed || !this.child) {
         reject(this.spawnError ?? new Error(t("codex.appServerStdinUnavailable")));
         return;
       }
-      const id = this.nextRequestId;
-      this.nextRequestId += 1;
       if (method === "thread/resume") {
         this.threadLoadGenerations.set(String(params.threadId || "").trim(), this.nextThreadLoadGeneration++);
       }
@@ -1087,11 +1114,13 @@ export class CodexAppServerConnection {
         method,
         loadingThreadId: method === "thread/resume" ? String(params.threadId || "").trim() : undefined,
         claimThreadFromResult,
+        expectedThreadId,
         resolve: (value) => resolve(value as T),
         reject,
       });
       try {
-        this.send({ jsonrpc: "2.0", id, method, params });
+        if (prepared === undefined) this.send(message);
+        else this.sendSerialized(prepared);
       } catch (error) {
         this.pending.delete(id);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -1100,10 +1129,14 @@ export class CodexAppServerConnection {
   }
 
   private send(message: Record<string, unknown>): void {
+    this.sendSerialized(serializeCodexAppServerMessage(message));
+  }
+
+  private sendSerialized(message: string): void {
     if (!this.child?.stdin || !this.child.stdin.writable || this.closed) {
       throw new Error(t("codex.appServerStdinUnavailable"));
     }
-    this.child.stdin.write(serializeCodexAppServerMessage(message));
+    this.child.stdin.write(message);
   }
 
   private rejectAll(error: Error): void {
@@ -1114,7 +1147,7 @@ export class CodexAppServerConnection {
   }
 }
 
-function threadIdFromResult(result: unknown): string | null {
+function threadIdFromResult(result: unknown, requireString = false): string | null {
   if (!result || typeof result !== "object") {
     return null;
   }
@@ -1122,7 +1155,8 @@ function threadIdFromResult(result: unknown): string | null {
   if (!thread || typeof thread !== "object") {
     return null;
   }
-  const threadId = String((thread as Record<string, unknown>).id || "").trim();
+  const id = (thread as Record<string, unknown>).id;
+  const threadId = requireString && typeof id !== "string" ? "" : String(id || "").trim();
   return threadId || null;
 }
 

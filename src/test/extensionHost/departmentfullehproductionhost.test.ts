@@ -2,9 +2,11 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { EventEmitter } from "node:events";
-import { createDepartmentFullEhHostTestEntry, inspectDepartmentFullEhTaskStore, installDepartmentFullEhReceiptObserver } from "./fixtures/departmentfullehproductionhost";
+import { createDepartmentFullEhHostTestEntry, inspectDepartmentFullEhTaskStore, installDepartmentFullEhReceiptObserver,
+  installDepartmentFullEhLongToolEventObserver, readDepartmentFullEhLongToolGrant } from "./fixtures/departmentfullehproductionhost";
 import type { DepartmentExecutionIdentity, CleanupRequirements } from "../../runtime/departmentexecutionidentity";
 import type { DepartmentExecutionReceipt } from "../../runtime/departmentexecutionreceiptstore";
 
@@ -29,6 +31,99 @@ test("public-entry EH fixture checks empty startup and emits an isolated host te
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+const longToolIdentity: DepartmentExecutionIdentity = { version: 1, role: "leader", cli: "codex", workspace: "isolated-workspace",
+  rootTaskId: "root-long", leaderTaskId: "leader-long", moduleId: "module-long", generation: 3, executionId: "exec-long", ownerId: "owner-long",
+  session: { state: "bound", id: "thread-long" }, configFingerprint: "a".repeat(64), profileFingerprint: "b".repeat(64) };
+const invocationId = "invocation-long";
+const payload = "\x01".repeat(6000), fixedCommand = "fixed-native-command";
+const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+const expectedLongTool = { commandSha256: sha256(fixedCommand), payloadBytes: Buffer.byteLength(payload), payloadSha256: sha256(payload) };
+
+test("long-tool EH entry installs the production host observer before activation only when enabled", () => {
+  const entry = createDepartmentFullEhHostTestEntry({ root: "/isolated", longToolOutput: expectedLongTool });
+  assert.match(entry, /dist\/extensionHost\/departmentleaderproductionhost\.js/);
+  assert.match(entry, /installDepartmentFullEhLongToolEventObserver\(leaderHostModule/);
+  assert.ok(entry.indexOf("installDepartmentFullEhLongToolEventObserver(leaderHostModule") < entry.indexOf("await extension.activate()"));
+  assert.doesNotMatch(entry, /codexRunner|runStreamed/);
+  assert.doesNotMatch(createDepartmentFullEhHostTestEntry({ root: "/isolated" }), /installDepartmentFullEhLongToolEventObserver/);
+});
+
+test("long-tool Owner grant must identify the exact persisted original, even within the same leader and generation", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "department-long-tool-grant-"));
+  const file = path.join(root, "original-owner-protocol.ndjson");
+  const grant = { event: "sent", operation: "grant", invocationId, identity: { ...longToolIdentity, session: { state: "unbound" } },
+    preGrantReadback: { runtimeOk: true, taskId: longToolIdentity.leaderTaskId, session: { sessionId: "thread-long" }, bindings: [{ identity: longToolIdentity }] } };
+  const write = (...observations: object[]) => fs.writeFileSync(file, observations.map(observation => JSON.stringify(observation)).join("\n") + "\n");
+  try {
+    write(grant);
+    assert.deepEqual(readDepartmentFullEhLongToolGrant(root, longToolIdentity.leaderTaskId, invocationId), { identity: longToolIdentity, invocationId });
+    assert.equal(readDepartmentFullEhLongToolGrant(root, longToolIdentity.leaderTaskId, "other-invocation"), null);
+    write({ ...grant, identity: { ...grant.identity, executionId: "other-execution" } });
+    assert.throws(() => readDepartmentFullEhLongToolGrant(root, longToolIdentity.leaderTaskId, invocationId), /exact persisted binding/);
+    write(grant, grant);
+    assert.throws(() => readDepartmentFullEhLongToolGrant(root, longToolIdentity.leaderTaskId, invocationId), /non-unique/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("long-tool production run wrapper records only after success and preserves callback and run semantics", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "department-long-tool-observer-"));
+  const file = path.join(root, "long-tool-forwarded-event.json"), errors = path.join(root, "long-tool-observer-errors.ndjson");
+  const event = { type: "item.completed", item: { type: "command_execution", command: fixedCommand, id: "item-测",
+    status: "completed", exitCode: 0, aggregatedOutput: payload, aggregated_output: payload } };
+  const factoryArg = {}, runReceiver = {}, callbackReceiver = {}, extraCallbackArg = {}, signal = new AbortController().signal;
+  const originalRunReturn = Promise.resolve("run-result"), failure = new Error("original consumer failure");
+  let callbackResult: unknown, consumerReturn: unknown, throwConsumer = false, alreadyObserved = false, diagnosticCount = 0;
+  const consumer = function (this: unknown, ...args: unknown[]) {
+    assert.equal(this, callbackReceiver);
+    assert.equal(args.length, 2); assert.equal(args[0], event); assert.equal(args[1], extraCallbackArg);
+    assert.equal(fs.existsSync(file), alreadyObserved);
+    if (throwConsumer) throw failure;
+    return consumerReturn;
+  };
+  const originalFactory = function (this: unknown, arg: unknown) {
+    assert.equal(this, hostModule); assert.equal(arg, factoryArg);
+    return { run(this: unknown, taskId: string, invocation: string, prompt: string, handlers: { onEvent: typeof consumer }, extra: unknown) {
+      assert.equal(this, runReceiver); assert.equal(taskId, longToolIdentity.leaderTaskId); assert.equal(invocation, invocationId);
+      assert.equal(prompt, "private prompt"); assert.equal(extra, signal);
+      callbackResult = handlers.onEvent.call(callbackReceiver, event, extraCallbackArg);
+      return originalRunReturn;
+    } };
+  };
+  const hostModule = { createDepartmentLeaderProductionHost: originalFactory };
+  const restore = installDepartmentFullEhLongToolEventObserver(hostModule as unknown as Parameters<typeof installDepartmentFullEhLongToolEventObserver>[0],
+    { ...expectedLongTool, root, resolveGrant: (taskId, invocation) => {
+      assert.equal(taskId, longToolIdentity.leaderTaskId); assert.equal(invocation, invocationId);
+      return { identity: longToolIdentity, invocationId };
+    }, failed: () => { diagnosticCount++; throw new Error("private observation diagnostic failure"); } });
+  try {
+    const host = hostModule.createDepartmentLeaderProductionHost(factoryArg);
+    const run = () => host.run.call(runReceiver, longToolIdentity.leaderTaskId, invocationId, "private prompt", { onEvent: consumer }, signal);
+    throwConsumer = true;
+    assert.throws(run, error => error === failure); assert.equal(fs.existsSync(file), false);
+    throwConsumer = false;
+    consumerReturn = Promise.reject(failure);
+    assert.equal(run(), originalRunReturn); assert.equal(callbackResult, consumerReturn);
+    await assert.rejects(callbackResult as Promise<unknown>, error => error === failure); assert.equal(fs.existsSync(file), false);
+    let resolve!: () => void;
+    consumerReturn = new Promise<void>(fulfill => { resolve = fulfill; });
+    assert.equal(run(), originalRunReturn); assert.equal(callbackResult, consumerReturn);
+    assert.equal(fs.existsSync(file), false);
+    resolve(); await consumerReturn;
+    const saved = fs.readFileSync(file, "utf8"), evidence = JSON.parse(saved);
+    assert.equal(evidence.executionId, longToolIdentity.executionId); assert.equal(evidence.invocationId, invocationId);
+    assert.equal(evidence.eventBytes, Buffer.byteLength(JSON.stringify(event))); assert.ok(evidence.eventBytes > 65536);
+    assert.equal(evidence.payloadSha256, expectedLongTool.payloadSha256);
+    assert.doesNotMatch(saved, /fixed-native-command|private prompt|\\u0001/);
+    alreadyObserved = true;
+    consumerReturn = { originalResult: true };
+    assert.equal(run(), originalRunReturn); assert.equal(callbackResult, consumerReturn);
+    assert.equal(diagnosticCount, 1);
+    assert.deepEqual(JSON.parse(fs.readFileSync(errors, "utf8")), { stage: "long-tool-event-duplicate" });
+    assert.equal(fs.readFileSync(file, "utf8"), saved);
+  } finally { restore(); fs.rmSync(root, { recursive: true, force: true }); }
+  assert.equal(hostModule.createDepartmentLeaderProductionHost, originalFactory);
 });
 
 test("EH receipt observer preserves the original Promise, rejection and caller policy", async () => {

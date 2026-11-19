@@ -11,6 +11,15 @@ function response(id, text) {
       input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
 }
 
+function toolCallResponse(id, call) {
+  const item = { id: `${id}_function_call`, type: "function_call", status: "completed", call_id: call.call_id || `${id}_call`,
+    name: call.name, arguments: JSON.stringify(call.arguments) };
+  return { id, object: "response", created_at: Math.floor(Date.now() / 1000), status: "completed",
+    error: null, incomplete_details: null, model: "local-test", output: [item], parallel_tool_calls: false,
+    usage: { input_tokens: 8, output_tokens: 4, total_tokens: 12,
+      input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 } } };
+}
+
 function event(res, type, payload) {
   res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
 }
@@ -23,6 +32,7 @@ function createLocalResponsesServer(options = {}) {
   const respond = typeof options.respond === "function"
     ? options.respond
     : (_request, context) => `[final_answer] Isolated native drain turn ${context.index}.`;
+  const summarizeRequest = typeof options.summarizeRequest === "function" ? options.summarizeRequest : (body) => body;
   let sequence = 0;
   const server = http.createServer((req, res) => {
     if (req.method !== "POST" || req.url !== "/v1/responses") {
@@ -35,7 +45,7 @@ function createLocalResponsesServer(options = {}) {
       let input;
       try { input = JSON.parse(body); } catch { res.writeHead(400); res.end("invalid JSON"); return; }
       const index = requests.length + 1, responseId = `resp_local_${index}`;
-      const record = { body: input, responseId, at: Date.now() };
+      const record = { body: summarizeRequest(input), responseId, at: Date.now() };
       if (index > maxRequests) {
         failures.push({ index, reason: "request-budget-exceeded", responseId });
         res.writeHead(429, { "Content-Type": "application/json" });
@@ -44,15 +54,26 @@ function createLocalResponsesServer(options = {}) {
       }
       requests.push(record);
       Promise.resolve().then(() => respond(input, { index, responseId, request: record })).then((text) => {
-        if (typeof text !== "string" || !text.trim()) throw new Error("scripted response must be non-empty text");
-        const output = response(responseId, text);
+        if (!(typeof text === "string" && text.trim())
+          && !(text && typeof text === "object" && text.type === "function_call" && typeof text.name === "string" && text.arguments))
+          throw new Error("scripted response must be non-empty text or a function call");
+        const output = typeof text === "string" ? response(responseId, text) : toolCallResponse(responseId, text);
         res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
         res.flushHeaders?.();
         event(res, "response.created", { sequence_number: sequence++, response: { ...output, status: "in_progress", output: [] } });
         event(res, "response.in_progress", { sequence_number: sequence++, response: { ...output, status: "in_progress", output: [] } });
-        const item = output.output[0], part = item.content[0];
+        const item = output.output[0];
         event(res, "response.output_item.added", { sequence_number: sequence++, output_index: 0,
-          item: { ...item, status: "in_progress", content: [] } });
+          item: item.type === "message" ? { ...item, status: "in_progress", content: [] } : { ...item, status: "in_progress", arguments: "" } });
+        if (item.type === "function_call") {
+          event(res, "response.function_call_arguments.delta", { sequence_number: sequence++, item_id: item.id, output_index: 0, delta: item.arguments });
+          event(res, "response.function_call_arguments.done", { sequence_number: sequence++, item_id: item.id, output_index: 0, arguments: item.arguments });
+          event(res, "response.output_item.done", { sequence_number: sequence++, output_index: 0, item });
+          event(res, "response.completed", { sequence_number: sequence++, response: output });
+          res.end("data: [DONE]\n\n");
+          return;
+        }
+        const part = item.content[0];
         event(res, "response.content_part.added", { sequence_number: sequence++, item_id: item.id, output_index: 0,
           content_index: 0, part: { ...part, text: "" } });
         event(res, "response.output_text.delta", { sequence_number: sequence++, item_id: item.id,

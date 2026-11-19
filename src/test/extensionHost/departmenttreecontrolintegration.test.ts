@@ -80,7 +80,7 @@ scenario("production root stop drains an already-granted leader callback before 
   assert.equal(h.read("root")?.status, "stopped");
   assert.equal(h.producer.producer.canLaunch!(scope), false, "stop closes new grants immediately");
   assert.deepEqual(h.composition.readCapacity("root")!.leaders, before.leaders, "closing retains the original leader lease");
-  await assert.rejects(bounded(h.continue(), "continue while granted callback is pending", h.diagnostic), /部门继续被拒绝：root-not-ready/);
+  await assert.rejects(bounded(h.continue(), "continue while granted callback is pending", h.diagnostic), /部门正在停止/);
   assert.equal(stop.state.status, "pending");
   fs.rmSync(h.file("hold-output"));
   await bounded(entered.promise, "original leader callback entered after closing", h.diagnostic);
@@ -147,7 +147,7 @@ scenario("production root stop drains two original groups before explicit contin
   assert.equal(h.read("root")?.status, "stopped");
   assert.equal(h.composition.host.runtimeSnapshot("root")?.stopping, true);
   const counts = h.counts();
-  await assert.rejects(bounded(h.continue(), "continue while original consumers pending", h.diagnostic), /部门继续被拒绝：root-not-ready/);
+  await assert.rejects(bounded(h.continue(), "continue while original consumers pending", h.diagnostic), /部门正在停止/);
   assert.equal(stop.state.status, "pending", "explicit consumer latches still own the stop lifecycle");
   assert.deepEqual(h.counts(), counts);
   assert.deepEqual(h.composition.readCapacity("root")!.employees, before.employees);
@@ -229,7 +229,7 @@ scenario("production root stop before binding fences late preparation and retain
   const original = structuredClone(h.entries()[0]);
   const capacity = h.composition.readCapacity("root"); const counts = h.counts();
   const stop = h.track(h.stop());
-  await assert.rejects(bounded(h.continue(), "unbound pending continue", h.diagnostic), /部门继续被拒绝：root-not-ready/);
+  await assert.rejects(bounded(h.continue(), "unbound pending continue", h.diagnostic), /部门正在停止/);
   assert.equal(stop.state.status, "pending"); assert.deepEqual(h.counts(), counts);
   release.resolve(); await bounded(stop.done, "failed original preparation settlement", h.diagnostic);
   assert.equal(stop.state.status, "rejected"); assert.match(String(stop.state.error), /尚未核验全部执行清理/);
@@ -241,7 +241,7 @@ scenario("production root stop before binding fences late preparation and retain
   h.producer.retire(launch.taskId, 1);
   assert.equal(h.producer.canContinueLeader(launch.taskId), false);
   assert.equal(h.producer.observationScope(launch.taskId, 1).generation, 1, "retirement cannot discard unknown preparation responsibility");
-  await assert.rejects(bounded(h.continue(), "unknown original responsibility continue", h.diagnostic), /部门继续被拒绝：execution-cleanup-unverified/);
+  await assert.rejects(bounded(h.continue(), "unknown original responsibility continue", h.diagnostic), /部门停止未确认/);
   assert.deepEqual(h.counts(), counts);
   assert.equal(h.read("root")?.status, "stopped");
   const persisted = h.store.read("root", "workspace"); assert.ok(persisted.ok && persisted.value);

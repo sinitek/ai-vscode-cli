@@ -2,6 +2,7 @@ import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 
 type PromptAutoRepairOptions = {
+  disableRepair?: boolean;
   execute: (input: PromptRunInput, target: PromptRunTarget) => Promise<void>;
   repairCommand: (error: unknown) => Promise<boolean>;
   startFreshSession: () => Promise<void>;
@@ -19,6 +20,7 @@ export function createPromptAutoRepairController() {
     isRepairing: (tabId: string): boolean => runs.get(tabId)?.repairing === true,
     hasRepairingRuns: (): boolean => Array.from(runs.values()).some((entry) => entry.repairing),
     async run(input: PromptRunInput, target: PromptRunTarget, options: PromptAutoRepairOptions): Promise<void> {
+      if (options.disableRepair) return options.execute(input, target);
       const entry = { repairing: false };
       runs.set(target.tabId, entry);
       const isCurrent = (): boolean => runs.get(target.tabId) === entry && options.isTargetCurrent();

@@ -15,6 +15,7 @@ type DepartmentGroupChatProjection = {
   director: LoopGroupChatPanelParticipant;
   leaders: Array<{
     taskId: string;
+    leaderNumber: number;
     participant: LoopGroupChatPanelParticipant;
     progressPercent?: number;
     employees: LoopGroupChatPanelParticipant[];
@@ -26,13 +27,17 @@ type DepartmentGroupChatProjection = {
 };
 ```
 
-成员树直接消费每组 `employees`，不推断归属。组长 `taskId` 留空表示群聊尚未创建，入口禁用；`participant.sessionId` 是 CLI 会话 ID，不是群聊创建证据。默认同时运行上限 4 名组长、全部门共享 20 名员工及完成后释放，由宿主运行时提供实际计数；UI 不修改配额或任务状态。
+成员树直接消费每组 `employees`，不推断归属。组长 `taskId` 留空表示群聊尚未创建，入口禁用；`participant.sessionId` 是 CLI 会话 ID，不是群聊创建证据。新建产研部的额度逐项按有效工作区设置、有效全局设置、默认值取用；默认同时最多 4 名组长（无例外）、全部门共享 16 名常规并发员工。已有任务沿用启动时保存的额度。零余额时每组仍最多持有一个未释放的超额员工，员工实际执行结束且清理完成后才释放额度。成员树只展示宿主提供的占用与状态，不在成员树内编辑额度。
+
+群聊页头、Webview 标签页和组长弹窗使用短标题：总监显示“产研部总监”，组长显示“组长1”“组长2”等。`leaderNumber` 取可信总监任务中关联模块的位置，从 1 开始。尚未创建群聊的模块仍占用对应位置，已有组长的编号不会随可见组长列表变化。组长页无法匹配当前任务时显示“组长”。完整模块名和任务 ID 保留在群聊副标题中。总监和组长群聊的成员区保留“总／组／员”圆形头像，成员名称、悬停提示和员工验收定位的无障碍名称不添加角色符号；总监行仅写“总监”，组长和员工仍展示各自标题。初始渲染与 `contentPatch` 一致。
 
 总监群聊在已创建的组长状态文案右侧显示 `progressPercent`。宿主从可信组长记录复用组长群聊的总体进度计算；组长状态更新后，已打开的总监页接收 `contentPatch`，无需打开组长弹窗。未创建的组长不显示百分比。
 
-`getDepartmentRoleIdentity("director" | "leader" | "employee")` 返回 `{icon, label}`，分别为 👴🏻/总监、👨🏻/组长、👶🏻/员工。总监与组长使用 emoji 标题标识；员工实际会话 tab 接线尚未实现。本接口不设置 VS Code 原生 `iconPath`。
-
 ## 浏览器到宿主
+
+### 分配员工弹窗
+
+总监群聊的工具栏提供“分配员工”；弹窗消费宿主 `employeeAllocation` 投影，每组仅提供输入框，改动由右下角唯一“保存并关闭”统一提交，不提供“恢复均分”。多个组长额度按顺序写入，并逐项等待宿主持久化回执和递增版本；全部成功后关闭。任一项失败时保持弹窗打开，保留未保存草稿并显示对应组错误以便重试；部分已确认的保存不回滚。右上角复用通用 SVG 关闭图标，关闭或按 Escape 不提交未保存编辑。`contentPatch.employeeAllocationHtml` 独立于成员树刷新，保留打开时的草稿和焦点。写入仍走既有 `updateDepartmentEmployeeLimit` 和版本核验，成功由宿主回执确认，下次派发生效。服务不可用或没有可信组长记录时不能保存；普通 Loop/Loop+、组长群聊和组长消息转发均无此编辑入口。组长群聊保留本组额度的只读状态。
 
 ```ts
 type DepartmentGroupChatModalTarget = { taskId: string; instanceId: string };
@@ -222,3 +227,25 @@ listLoopTaskStoreFilesStrict(): string[];
 3. 未知变化可能迁入任何 root/workspace，所以失效采用整个来源范围；不尝试用未知文件的旧归属猜测较小范围。来源重新可信后显式完整 rebuild，不自动使用旧完整性或单次成功写恢复。工作区/扩展卸载释放索引与来源租约；已关闭弹窗不影响索引或任务生命周期。
 
 本轮仅提供可调用生产数据源与真实存储接入点，不声称部门功能已上线。仍保留真实 Extension Development Host/CLI、中央组织控制/容量装配、标准 build、根方案传播及员工真实 tab 接线门禁；本轮无 UI 源码变化，不重跑原浏览器矩阵。Ontology 交接新增：文件贡献与模块归属分区、真实写入确认及部分迁移失败、来源租约/全局失效/显式重建、索引发现与真实记录重读的不同证据责任。由中央统一同步领域本体。
+
+
+## 总监组织停止反馈（round-3）
+
+总监工具栏复用总体进度旁的原 `stopTask` 按钮位、`progress-controls` 对齐/间距及 VS Code 主题按钮样式，不新增弹窗。仅显示反馈，不推断或清理调度责任：
+
+| 当前可信组织状态 | 原按钮区域 | 继续执行 |
+| --- | --- | --- |
+| 正常运行、尚未请求停止 | 原“中止” | 原门槛 |
+| 当前停止请求尚未结算 | 禁用“正在停止…” | 禁止 |
+| 停止拒绝、剩余责任、未知占用或冷宿主没有核验凭证 | “停止未确认”与“核验停止”入口 | 禁止 |
+| 匹配停止请求成功，可信根容量精确为空且无待清理责任 | 移除停止按钮及提示 | 按原失败上限、状态及运行门槛恢复 |
+
+`task.departmentStopState` 为宿主只读反馈（`stopping` / `unconfirmed` / `confirmed`），组长及普通 Loop/Loop+ 不需要该字段。composition 记录匹配组织停止请求的瞬时状态；旧请求的成功/失败不得覆盖新 token。`readDepartmentOrganizationStopFeedback` 重读可信根身份/工作区和容量，并与该宿主停止结果合成投影。容量已空但停止请求在途或拒绝仍不能继续；持久 `runtime.stopping`、tab 停止、空占用和历史 UI 缓存都不是停止核验凭证。冷宿主 stopped 根即使占用已空仍须显式核验。
+
+“核验停止”发送原 `loopGroupChatChat:stopTask`，复用唯一 `organizationControl.stop` 和既有冷停止/Owner 清理路径。宿主在首个 await 前登记同根请求，刷新、重复点击、关闭后重开均不重复调用；无任务、非法关联、不适用及已确认无责任的迟到消息不执行操作。开始和成功/拒绝后刷新对应根，刷新失败不覆盖原中文停止错误。刷新及迟到结果重读当前根/工作区/物理记录身份，不能写入另一根或过期组长弹窗。
+
+成员清理和总监旧调用收尾后，只有当前停止请求可以回读可信部门仓储并发出确认；回读必须是同根、同物理记录、同工作区及会话身份的 `stopped` 记录。记录缺失、身份变化或仍为 `running` 时，停止维持未确认并保留原核验入口，即使成员已清理且容量已空。
+
+总监 `continueTask` 消息即使来自仍打开的旧页面，也必须由宿主重读当前可信根、物理记录、工作区及同一停止状态；组织续接入口在准备路由前和异步交接中独立复核。澄清答案可先保存，停止未确认时不唤醒等待中的执行，也不另起续接。健康运行时仍可补充需求或回答澄清。匹配核验结果仅授予本次停止后的恢复资格，在后继执行获准时消耗；该结果不能证明后继执行已停止。
+
+本轮使用合成四组长 blocked/open 与保留占用夹具，不重放现场、不修改现场占用，不修改 Owner 凭证、权限、容量释放或调度记录。实际 stop/清理/continue 复用 round-366 已接受的真实宿主证据；新增 `DEPARTMENT_STOP_FEEDBACK=1` 的 `scripts/department_group_chat_host_smoke.cjs` 定向检查真实 Chromium 按钮点击、刷新后在途禁用、拒绝后核验入口、核验后移除与继续门槛。该浏览器证据的组织执行端为模拟端口，不能替代真实 Owner 清理证据。

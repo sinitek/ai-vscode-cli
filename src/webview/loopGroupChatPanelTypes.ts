@@ -48,6 +48,7 @@ export type DepartmentGroupChatProjection = {
   director: LoopGroupChatPanelParticipant;
   leaders: Array<{
     taskId: string;
+    leaderNumber: number;
     participant: LoopGroupChatPanelParticipant;
     progressPercent?: number;
     employees: LoopGroupChatPanelParticipant[];
@@ -152,6 +153,9 @@ export type LoopPlusPanelProjection = {
   error: string;
 };
 
+/** Host request feedback; capacity and persistent stopping flags are not stop receipts. */
+export type DepartmentOrganizationStopState = "stopping" | "unconfirmed" | "confirmed";
+
 export type LoopGroupChatPanelState = {
   department?: DepartmentGroupChatProjection;
   messageLimit?: number;
@@ -171,6 +175,7 @@ export type LoopGroupChatPanelState = {
     canSupplement: boolean;
     canContinue: boolean;
     canStop: boolean;
+    departmentStopState?: DepartmentOrganizationStopState;
   };
   rounds: LoopGroupChatPanelRound[];
   chatMarkdown: string;

@@ -849,6 +849,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       },
       onAttemptProcessStarted: (runProcess, runtimeSessionId) => {
         syncParallelRun(runProcess);
+        executionOptions.registerQuestionRun?.(runId);
         attemptSubagentMonitor?.setParentSessionId(runtimeSessionId);
       },
       finishStreamAttempt: () => {

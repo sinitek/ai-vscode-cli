@@ -6,6 +6,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { isDepartmentExecutionBinding, isDepartmentRuntimeSnapshot, type DepartmentExecutionBinding,
   type DepartmentLeaderRuntimeState, type DepartmentRuntimeSnapshot } from "./departmentruntimestate";
 import { CLEANUP_PARTS, exactKeys, executionSlot, identifier, record, sameExecution } from "../runtime/departmentexecutionidentity";
@@ -57,7 +58,7 @@ function validate(value: unknown, root: string, workspace: string): ValidatedRun
   const v = value as DepartmentStoredRuntime;
   if (v.version !== 1 || v.rootTaskId !== root || v.workspaceKey !== workspace
     || !isDepartmentRuntimeSnapshot(v.runtime, root) || v.capacity?.rootTaskId !== root) return null;
-  try { new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 20 }).restore([v.capacity]); }
+  try { new DepartmentCapacityPool({ maxLeaders: DEPARTMENT_MAX_LEADERS_DEFAULT, maxEmployees: DEPARTMENT_MAX_EMPLOYEES_DEFAULT }).restore([v.capacity]); }
   catch { return null; }
   if (v.employeeAllocation !== undefined) {
     try { v.employeeAllocation = normalizeDepartmentEmployeeAllocation(v.employeeAllocation, root); }

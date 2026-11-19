@@ -1,9 +1,11 @@
 import { createDepartmentEmployeeAllocationHost } from "./departmentemployeeallocationhost";
-import type { DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
+import { assertDepartmentOrganizationContinuation, readDepartmentOrganizationStopFeedback, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
 import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "../departmentConfiguration";
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
+import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
 import { resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
@@ -31,6 +33,8 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   "capacity" | "persistRuntime" | "notifyDirector" | "buildLeaderInput" | "validateRoutes" | "canExecuteRoot" | "leaderSettled" | "beginEmployeeAdmission" | "readEmployeeCapacity"> & {
   store: DepartmentRuntimeStore;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
+  /** The department repository is authoritative for director control in production. */
+  readOrganizationRoot?(taskId: string): LoopTaskRecord | null;
   workspaceKey(): string;
   /** Resolves live capabilities and shared profile availability without switching any profile. */
   prepareColdRecovery?(root: LoopTaskRecord, assertCurrent: () => void): Promise<void>;
@@ -59,7 +63,7 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 /** Host-only central factory. Installs admission on the SAME adapter used by ordinary Loop+. */
 export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompositionDeps) {
-  const capacity = new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 20 });
+  const capacity = new DepartmentCapacityPool({ maxLeaders: DEPARTMENT_MAX_LEADERS_DEFAULT, maxEmployees: DEPARTMENT_MAX_EMPLOYEES_DEFAULT });
   const snapshots = new Map<string, DepartmentRuntimeSnapshot>();
   const failed = new Set<string>();
   const controllers = new Map<string, Controller>();
@@ -72,6 +76,30 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   // Capacity removal precedes original-service retirement. Keep public continue
   // fenced until the WHOLE explicit stop returns; failures retain this fence.
   const unconfirmedStops = new Map<string, object>();
+  type StopRequest = { identity: string; state: "stopping" | "unconfirmed" | "confirmed" };
+  const stopRequests = new Map<string, StopRequest>();
+  const rootIdentity = (task: LoopTaskRecord) => JSON.stringify([task.id, task.workspaceKey, task.taskStoreFile,
+    task.cli, task.sessionId, task.department, task.departmentInvalid]);
+  const readOrganizationRoot = (id: string) => deps.readOrganizationRoot ? deps.readOrganizationRoot(id) : deps.readTask(id);
+  function readOrganizationStopState(id: string): StopRequest["state"] | undefined {
+    const request = stopRequests.get(id);
+    if (request?.state !== "confirmed") return request?.state;
+    const current = readOrganizationRoot(id);
+    return current && rootIdentity(current) === request.identity ? "confirmed" : undefined;
+  }
+  function readCapacity(id: string): DepartmentCapacitySnapshot | null {
+    const live = capacity.snapshot(id)[0]; if (live) return live;
+    const task = deps.readTask(id); if (!task) return null;
+    const saved = deps.store.read(id, task.workspaceKey); return saved.ok ? saved.value?.capacity ?? null : null;
+  }
+  function assertStopGate(root: LoopTaskRecord): LoopTaskRecord {
+    const current = readOrganizationRoot(root.id);
+    if (!current || rootIdentity(current) !== rootIdentity(root)) throw new Error("部门续接归属已变化。");
+    assertDepartmentOrganizationContinuation(current, readDepartmentOrganizationStopFeedback(current, deps.workspaceKey(), {
+      readTaskRecord: () => current, readCapacity,
+    }, readOrganizationStopState(root.id)));
+    return current;
+  }
   let disposed = false;
   function save(root: string, releaseLeaderModuleId?: string): void {
     const runtime = snapshots.get(root), task = deps.readTask(root);
@@ -257,7 +285,29 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       if (!result.ok) { deps.report(task.id, `整体完成被组织门禁拒绝：${result.reason}`); return { status: "pending-requirements", task: deps.readTask(task.id)! }; }
       return { status: "completed", task: deps.readTask(task.id)!, decision };
     }
-    if (decision.status === "blocked") return { status: "pending-requirements", task };
+    if (decision.status === "waiting") {
+      const leaders = host.runtimeSnapshot(task.id)?.leaders ?? [];
+      if (leaders.some((member) => member.status === "starting" || member.status === "running")) {
+        return { status: "pending-requirements", task };
+      }
+      const summary = "总监请求等待组长汇报，但当前没有正在运行的组长任务；已暂停自动协调，请复核组织状态后继续。";
+      const paused = deps.updateTask(task.id, { status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
+      if (!paused) throw new Error("总监等待状态保存失败。");
+      deps.report(task.id, summary);
+      return { status: "needs-review", task: paused, decision };
+    }
+    if (decision.status === "blocked") {
+      const leaders = host.runtimeSnapshot(task.id)?.leaders ?? [];
+      const hasFailedLeader = leaders.some((member) => member.status === "blocked" || member.status === "failed");
+      if (!decision.blocker && !hasFailedLeader) return { status: "pending-requirements", task };
+      const summary = decision.blocker
+        ? decision.finalSummary ?? "总监报告存在无法推进的阻塞，整体任务尚未完成。"
+        : buildLoopBlockerDiagnosticFailure(decision.finalSummary, decision.blockerIssue);
+      const paused = deps.updateTask(task.id, { status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
+      if (!paused) throw new Error("总监阻塞状态保存失败。");
+      deps.report(task.id, summary);
+      return { status: "needs-review", task: paused, decision };
+    }
     const applied = deps.applyClassicDecision(task.id, decision);
     if (decision.status === "clarify") return { status: "awaiting-input", task: applied.task, decision };
     for (const module of applied.subtasks ?? []) {
@@ -284,7 +334,10 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const root = clone(foundRoot), prompt = request.displayPrompt;
     if (coldStops.has(root.id)) throw new Error("部门正在停止，请等待当前停止核验完成。");
     if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
+    const director = m.role === "director" && root.id === task.id;
+    if (director) assertStopGate(task);
     const continuation = {};
+    let admitted = false;
     continuations.set(root.id, continuation);
     const assertContinuation = () => {
       // assertCurrent covers caller configuration, not organization cancellation.
@@ -292,11 +345,16 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       request.assertCurrent?.();
       const current = deps.taskForTarget(request.targetTabId), currentRoot = deps.readTask(root.id);
       if (!current || !currentRoot || current.id !== task.id || current.cli !== task.cli || current.sessionId !== task.sessionId
-        || current.workspaceKey !== task.workspaceKey || currentRoot.cli !== root.cli || currentRoot.sessionId !== root.sessionId
+        || current.workspaceKey !== task.workspaceKey || current.taskStoreFile !== task.taskStoreFile || currentRoot.id !== root.id
+        || currentRoot.taskStoreFile !== root.taskStoreFile || currentRoot.cli !== root.cli || currentRoot.sessionId !== root.sessionId
         || currentRoot.workspaceKey !== root.workspaceKey || currentRoot.workspaceKey !== deps.workspaceKey()
         || current.departmentInvalid || currentRoot.departmentInvalid || !same(task.department, current.department)
         || !same(root.department, currentRoot.department) || !same(target, deps.resolveTarget(request.targetTabId))
         || !deps.validateRoutes(m.routes)) throw new Error("部门续接归属已变化。");
+      if (director) {
+        const trusted = assertStopGate(currentRoot);
+        if (trusted.status !== (admitted ? "running" : root.status)) throw new Error("部门续接状态已变化。");
+      }
     };
     let c: Controller | undefined, stopRevision: number | undefined;
     let release: (() => void) | undefined;
@@ -325,7 +383,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       await c.run;
       assertContinuation();
       if (c.stopRevision !== stopRevision) throw new Error("部门续接已停止或请求已失效。");
-      const continued = await host.continueRoot(root.id); if (!continued.ok) throw new Error(`部门继续被拒绝：${continued.reason}`);
+      const receipt = stopRequests.get(root.id);
+      const continued = await host.continueRoot(root.id, { assertCurrent: assertContinuation, admitted: () => {
+        admitted = true;
+        if (receipt?.state === "confirmed" && stopRequests.get(root.id) === receipt) stopRequests.delete(root.id);
+      } });
+      if (!continued.ok) throw new Error(`部门继续被拒绝：${continued.reason}`);
       assertContinuation();
       const resumed = deps.readTask(root.id);
       if (disposed || c.stopRevision !== stopRevision || resumed?.status !== "running"
@@ -351,10 +414,23 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     }
   }
   async function stop(root: LoopTaskRecord): Promise<void> {
-    const request = {};
+    if (coldStops.has(root.id)) throw new Error("部门正在停止，请等待当前停止核验完成。");
+    const request: StopRequest = { identity: rootIdentity(root), state: "stopping" };
+    stopRequests.set(root.id, request);
     unconfirmedStops.set(root.id, request);
-    await stopOrganization(root);
-    if (unconfirmedStops.get(root.id) === request) unconfirmedStops.delete(root.id);
+    try {
+      await stopOrganization(root);
+      if (stopRequests.get(root.id) !== request) return;
+      // Member cleanup and director retirement can finish even when the root stop write did not land.
+      const current = readOrganizationRoot(root.id);
+      if (disposed || !current || current.status !== "stopped" || current.workspaceKey !== deps.workspaceKey()
+        || rootIdentity(current) !== request.identity) throw new Error("部门停止归属或状态已变化。");
+      request.state = "confirmed";
+      if (unconfirmedStops.get(root.id) === request) unconfirmedStops.delete(root.id);
+    } catch (error) {
+      if (stopRequests.get(root.id) === request) request.state = "unconfirmed";
+      throw error;
+    }
   }
   async function stopOrganization(root: LoopTaskRecord): Promise<void> {
     // Revoke even when recovery/ensure fails: a pending request must never adopt
@@ -363,7 +439,6 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const c = controllers.get(root.id); if (c) { c.stopRevision++; c.stopped = true; wake(root.id); }
     if (disposed) throw new Error("部门运行入口已释放。");
     if (!host.runtimeSnapshot(root.id)) {
-      if (coldStops.has(root.id)) throw new Error("部门正在停止，请等待当前停止核验完成。");
       const frozen = clone(root), m = metadata(frozen), request = {};
       if (m.role !== "director" || m.rootTaskId !== frozen.id) throw new Error("部门停止根任务身份无效。");
       // Freeze the authoritative organization, session and state across route
@@ -401,8 +476,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   }
   const organizationControl = {
     continue: async (root: LoopTaskRecord, prompt?: string) => {
-      const target = deps.resolveTargetForRoot?.(root);
+      if (disposed) throw new Error("部门运行入口已释放。");
+      if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
+      const current = assertStopGate(root);
+      const target = deps.resolveTargetForRoot?.(current);
       if (!target) throw new Error("总监真实会话不可用。");
+      if (deps.taskForTarget(target.tabId)?.id !== current.id) throw new Error("部门续接会话绑定无效。");
       await continueDepartmentPrompt({ displayPrompt: prompt ?? "继续部门任务", modelPrompt: prompt ?? "继续部门任务", contextTags: [], targetTabId: target.tabId, cli: target.cli });
     },
     stop,
@@ -414,11 +493,8 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     wakeDirector: wake,
     recoverRoot: (root: LoopTaskRecord) => { ensure(root); },
     isOrganizationStopUnconfirmed: (root: string) => unconfirmedStops.has(root),
-    readCapacity: (root: string): DepartmentCapacitySnapshot | null => {
-      const live = capacity.snapshot(root)[0]; if (live) return live;
-      const task = deps.readTask(root); if (!task) return null;
-      const saved = deps.store.read(root, task.workspaceKey); return saved.ok ? saved.value?.capacity ?? null : null;
-    },
+    readOrganizationStopState,
+    readCapacity,
     dispose: () => {
       if (disposed) return;
       disposed = true;

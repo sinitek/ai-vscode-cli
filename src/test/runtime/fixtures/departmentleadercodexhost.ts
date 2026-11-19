@@ -18,7 +18,18 @@ fs.appendFileSync(file('native-pids'),String(process.pid)+'\n');
 let native,turn,round,done=false,eof=false,replied=false;
 function step(){
  if(native&&!exists('hold-native')){send({id:native.id,result:{thread:{id:exists('wrong-thread')?'wrong':'native'}}});native=null;}
- if(turn&&!replied){replied=true;send({id:turn.id,result:{turn:{id:'turn-'+round}}});send({method:'item/agentMessage/delta',params:{threadId:'native',turnId:'turn-'+round,itemId:'answer',delta:'fixture answer'}});}
+ if(turn&&!replied){
+  replied=true;send({id:turn.id,result:{turn:{id:'turn-'+round}}});
+  for(let n=0;n<(exists('request-burst')?40:exists('request')?1:0);n++)send({id:'approval-'+n,method:'item/commandExecution/requestApproval',params:{threadId:'native',turnId:'turn-'+round}});
+  for(let n=0;n<(exists('burst')?40:1);n++)send({method:'item/agentMessage/delta',params:{threadId:'native',turnId:'turn-'+round,itemId:'answer',delta:'fixture answer'}});
+  if(exists('oversized-notification'))send({method:'fixture/oversized',params:{threadId:'native',data:'sensitive-native-data'.repeat(500000)}});
+  if(exists('large-tool-output')){
+   for(const [id,output] of [['compat','c'.repeat(51*1024)],['utf8','工具🌛\\\"\n'.repeat(8192)]]){
+    send({method:'item/completed',params:{threadId:'native',turnId:'turn-'+round,item:{id,type:'commandExecution',command:'fixture',status:'completed',aggregatedOutput:output,exitCode:0}}});
+    send({method:'item/agentMessage/delta',params:{threadId:'native',turnId:'turn-'+round,itemId:'answer',delta:'short-after-'+id}});
+   }
+  }
+ }
  if(turn&&!done&&!exists('hold-terminal')){done=true;send({method:'turn/completed',params:{threadId:'native',turn:{id:'turn-'+round,status:'completed'}}});}
  if(eof&&!exists('hold-pipe')){watcher.close();process.stdout.end();process.stderr.end();}
 }

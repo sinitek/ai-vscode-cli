@@ -51,8 +51,9 @@ test("department capacity settings normalize old, malformed, and valid persisted
   });
   assert.deepEqual(normalizeToolSettings({ departmentMaxLeaders: "", departmentMaxEmployees: Infinity }), {
     departmentMaxLeaders: 4,
-    departmentMaxEmployees: 20,
+    departmentMaxEmployees: 16,
   });
+  assert.deepEqual(normalizeToolSettings({ departmentMaxEmployees: 20 }), { departmentMaxEmployees: 20 });
 });
 
 test("instruction bubble visibility accepts only booleans and keeps old settings compatible", () => {

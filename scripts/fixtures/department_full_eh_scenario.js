@@ -1,6 +1,28 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+
+const sha256 = value => crypto.createHash("sha256").update(value, "utf8").digest("hex");
+const LONG_TOOL_PAYLOAD_BYTES = 6000;
+const LONG_TOOL_OUTPUT = "\x01".repeat(LONG_TOOL_PAYLOAD_BYTES);
+const LONG_TOOL_OUTPUT_SHA256 = sha256(LONG_TOOL_OUTPUT);
+const LONG_TOOL_COMMAND = `node -e 'process.stdout.write(String.fromCharCode(1).repeat(${LONG_TOOL_PAYLOAD_BYTES}))'`;
+const LONG_TOOL_ARGS = Object.freeze({ cmd: LONG_TOOL_COMMAND, shell: "/bin/sh", login: false, max_output_tokens: 30000 });
+const LONG_TOOL_COMMAND_SHA256 = sha256(`${LONG_TOOL_ARGS.shell} -c ${JSON.stringify(LONG_TOOL_ARGS.cmd)}`);
+const LONG_TOOL_CALL = "department-long-output";
+
+function assertLongToolForwarding(forwarded, original) {
+  assert.ok(forwarded, "missing actual EH onEvent forwarded command completion evidence");
+  assert.ok(original && original.role === "leader" && Object.keys(original).every(key => forwarded[key] === original[key]),
+    "forwarded event is not linked to the exact original leader invocation and execution identity");
+  assert.equal(forwarded.commandSha256, LONG_TOOL_COMMAND_SHA256, "forwarded command does not match native command shape");
+  assert.equal(forwarded.payloadBytes, LONG_TOOL_PAYLOAD_BYTES, "forwarded command output is truncated or extended");
+  assert.equal(forwarded.payloadSha256, LONG_TOOL_OUTPUT_SHA256, "forwarded command output digest mismatch");
+  assert.ok(Number.isSafeInteger(forwarded.eventBytes) && forwarded.eventBytes > 65536, "actual forwarded item.completed event did not exceed the threshold");
+  return { ...original, commandSha256: forwarded.commandSha256, forwardedEventObserved: true,
+    forwardedEventBytes: forwarded.eventBytes, payloadBytes: forwarded.payloadBytes, payloadSha256: forwarded.payloadSha256 };
+}
 
 // Protocol fixture, not a model or an independent code reviewer. All identities
 // come from current production prompts and are checked against persisted tasks.
@@ -10,7 +32,8 @@ function latestUserText(body) {
   if (!user) throw new Error("Responses request has no user message");
   return typeof user.content === "string" ? user.content : (user.content || []).map((part) => part.text || "").join("\n");
 }
-function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, maxRequests = 32, roles, continuationPrompt, continuationPrompts, holdEmployee = false }) {
+function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, maxRequests = 32, roles, continuationPrompt, continuationPrompts, holdEmployee = false,
+  longToolOutput = false, readLongToolInvocation = () => null, readLongToolEvidence = () => null, longToolEvidenceWaitMs = 3000 }) {
   if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 32) throw new Error("invalid scenario request budget");
   const extraContinuationPrompts = continuationPrompts === undefined ? [] : continuationPrompts;
   if (!Array.isArray(extraContinuationPrompts) || extraContinuationPrompts.length > 2 || extraContinuationPrompts.some(value => typeof value !== "string" || !value.trim())) throw new Error("invalid continuation prompt budget");
@@ -27,6 +50,7 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
   const history = [], dispatched = new Set(), employees = new Map(), leaders = new Set(), reviewed = new Set();
   const attemptKey = (leader, subtask, attempt) => JSON.stringify([leader, subtask, attempt]);
   let rootId, moduleCount = 0, capacityReuse, chatSequence = 0, heldEmployee = null, releaseHeldEmployee;
+  let longToolInvocation = null, longToolCompletionStarted = false, longToolEvidence = null;
   let resolveHeldEmployee;
   const heldEmployeeReady = new Promise((resolve) => { resolveHeldEmployee = resolve; });
   function task(id, role) {
@@ -41,7 +65,7 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
   async function respond(body, context) {
     assert.ok(context.index <= maxRequests, "scenario request budget exceeded");
     const text = latestUserText(body);
-    context.request.prompt = text; // Isolated synthetic prompt only; retained on failure.
+    context.request.prompt = longToolOutput ? "[redacted]" : text;
     const role = text.startsWith("你是任务摘要器。") || text.includes("使用经典 Loop JSON 决策。") ? "director"
       : text.includes("You are the Loop+ main reviewer.") ? "leader" : text.includes("You are one independent Loop+ execution attempt.") ? "employee" : null;
     if (roles && role) assert.equal(roles[role], context.transport === "chat-completions" ? "opencode" : "codex", "production role used wrong CLI transport");
@@ -81,6 +105,45 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
       identity = text.match(/^Parent task: (\S+)/m)?.[1];
       const leader = task(identity, "leader"); leaders.add(identity);
       assert.equal(leader.schedulingMode, "event_driven");
+      if (longToolOutput && !longToolInvocation && identity === [...leaders][0]) {
+        stage = "leader-long-tool-call";
+        const tools = (body.tools || []).filter(tool => tool.type === "function" && tool.name === "exec_command");
+        assert.equal(tools.length, 1, "leader request did not declare one native exec_command tool");
+        const parameters = tools[0].parameters;
+        assert.ok(Object.entries(LONG_TOOL_ARGS).every(([key, value]) => parameters?.properties?.[key]?.type ===
+          ({ string: "string", boolean: "boolean", number: "number" })[typeof value] ||
+          typeof value === "number" && parameters?.properties?.[key]?.type === "integer")
+          && (parameters.required || []).every(key => Object.hasOwn(LONG_TOOL_ARGS, key)),
+        "leader exec_command schema does not declare the selected command arguments");
+        longToolInvocation = readLongToolInvocation(rootId, identity);
+        assert.ok(longToolInvocation?.role === "leader" && longToolInvocation.rootTaskId === rootId && longToolInvocation.leaderTaskId === identity,
+          "long-tool call lacks its original persisted leader invocation");
+        answer = { type: "function_call", call_id: LONG_TOOL_CALL, name: tools[0].name, arguments: LONG_TOOL_ARGS };
+        history.push({ index: context.index, stage, identity, answer: "[native function call]" }); context.request.stage = stage;
+        return answer;
+      } else if (longToolOutput && longToolInvocation?.leaderTaskId === identity && !longToolEvidence) {
+        assert.equal(longToolCompletionStarted, false, "duplicate leader native tool completion request");
+        longToolCompletionStarted = true;
+        const outputs = body.input.filter(item => item.type === "function_call_output" && item.call_id === LONG_TOOL_CALL);
+        assert.equal(outputs.length, 1, "leader native tool completion is missing or duplicated");
+        const output = outputs[0].output;
+        assert.equal(typeof output, "string", "leader tool completion is not native text output");
+        const header = /^Chunk ID: [a-f0-9]+\nWall time: \d+(?:\.\d+)? seconds\nProcess exited with code 0\nOriginal token count: \d+\nOutput:\n/.exec(output);
+        assert.ok(header, "leader native tool output does not have the expected success envelope");
+        const payload = output.slice(header[0].length);
+        const modelPayloadBytes = Buffer.byteLength(payload, "utf8"), modelPayloadSha256 = sha256(payload);
+        assert.equal(modelPayloadBytes, LONG_TOOL_PAYLOAD_BYTES, "leader native tool output is truncated or extended");
+        assert.equal(modelPayloadSha256, LONG_TOOL_OUTPUT_SHA256, "leader native tool output digest mismatch");
+        const serialized = JSON.stringify(outputs[0]);
+        const deadline = performance.now() + longToolEvidenceWaitMs;
+        let forwarded = readLongToolEvidence();
+        while (!forwarded && performance.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 25));
+          forwarded = readLongToolEvidence();
+        }
+        longToolEvidence = { ...assertLongToolForwarding(forwarded, longToolInvocation), nativeFunctionCallOutput: true,
+          modelInputBytes: Buffer.byteLength(serialized, "utf8"), modelInputSha256: sha256(serialized), modelPayloadBytes, modelPayloadSha256 };
+      }
       const event = text.match(/^Current review eventId: (\S+)/m)?.[1];
       const checks = ["dispatched work", "contracts", "tests", "artifacts", "unauthorized changes", "omissions and regressions"]
         .map((name) => ({ name, passed: true, detail: "本机确定性文本协议答复；非代码验收" }));
@@ -140,8 +203,19 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
         answer = "Input: isolated protocol\nOutput: ISOLATED PROTOCOL\nDeterministic local protocol fixture; no code changes, external model, or independent review claimed.";
       }
     } else throw new Error("unknown production prompt stage");
-    const entry = { index: context.index, stage, identity, answer }; history.push(entry); context.request.stage = stage;
+    const entry = { index: context.index, stage, identity, answer: typeof answer === "string" ? answer : answer?.type === "function_call" ? "[native function call]" : answer };
+    history.push(entry); context.request.stage = stage;
+    if (answer?.type === "function_call") return answer;
     return typeof answer === "string" ? answer : JSON.stringify(answer);
+  }
+  function summarizeRequest(body) {
+    if (!longToolOutput) return body;
+    return { input: body.input?.map(item => {
+      if (item.type === "function_call_output") return { type: item.type, output: { byteLength: Buffer.byteLength(String(item.output ?? ""), "utf8"),
+        sha256: sha256(String(item.output ?? "")) } };
+      if (item.type === "function_call") return { type: item.type, arguments: "[redacted]" };
+      return { content: "[redacted]" };
+    }) };
   }
   // Translate only the transport envelope; all production decision/event parsing
   // and persisted task validation remain shared with the Responses scenario.
@@ -185,8 +259,9 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
     history.at(-1).transport = "chat-completions";
     return result;
   }
-  return { respond, respondChat, history, waitForHeldEmployee: () => heldEmployee ? Promise.resolve(heldEmployee) : heldEmployeeReady,
+  return { respond, respondChat, summarizeRequest, history, waitForHeldEmployee: () => heldEmployee ? Promise.resolve(heldEmployee) : heldEmployeeReady,
     releaseHeldEmployee: () => releaseHeldEmployee?.(),
-    snapshot: () => ({ rootId, moduleCount, leaders: [...leaders], employees: [...employees.values()], heldEmployee: structuredClone(heldEmployee), capacityReuse, history }) };
+    snapshot: () => ({ rootId, moduleCount, leaders: [...leaders], employees: [...employees.values()], heldEmployee: structuredClone(heldEmployee), capacityReuse, longToolEvidence: structuredClone(longToolEvidence), history }) };
 }
-module.exports = { createDepartmentFullEhScenario, latestUserText };
+module.exports = { createDepartmentFullEhScenario, latestUserText, assertLongToolForwarding, LONG_TOOL_OUTPUT, LONG_TOOL_PAYLOAD_BYTES,
+  LONG_TOOL_OUTPUT_SHA256, LONG_TOOL_COMMAND, LONG_TOOL_COMMAND_SHA256 };

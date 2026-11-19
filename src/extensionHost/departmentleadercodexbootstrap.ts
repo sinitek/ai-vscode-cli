@@ -6,14 +6,15 @@ import { canonicalIdentity, exactKeys, fingerprintDepartmentExecutionSelection, 
   type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import { boundedCodexMessage, isCodexOwnedSession } from "../runtime/departmentcodexpreparationcontract";
 import { isDepartmentLeaderPrivateCommand } from "../runtime/departmentleaderinvocation";
-import { isLeaderCodexPreparation, isLeaderInvocation, isLeaderTerminal, LEADER_CALLBACK_LIMIT, LEADER_CALLBACKS,
-  LEADER_INVOCATION_LIMIT, LEADER_REQUIREMENTS, type LeaderCodexDescription, type LeaderCodexPreparation, type LeaderInvocation } from "../runtime/departmentleadercodexcontract";
+import { isLeaderCodexPreparation, isLeaderInvocation, isLeaderTerminal,
+  LEADER_INVOCATION_LIMIT, LEADER_REQUIREMENTS, LEADER_WORKER_FAILURES, type LeaderCodexDescription, type LeaderCodexPreparation, type LeaderInvocation } from "../runtime/departmentleadercodexcontract";
 import { DepartmentLeaderExecutionLedger, leaderExecutionCanLaunch, responsibilityKey, type DepartmentLeaderExecutionProducer, type DepartmentLeaderExecutionScope } from "./departmentleaderexecutionledger";
 import type { DepartmentRuntimeStore } from "./departmentruntimestore";
 import type { DepartmentExecutionBinding } from "./departmentruntimestate";
 import type { CodexOwnedSession, CodexOwnedStreamHandlers } from "../interactive/codexOwnedExecution";
 import type { ExecutionObservation, ExecutionCleanupEvidence, ExecutionTerminalEvidence } from "../runtime/departmentexecutionowner";
 import { releaseDepartmentExecutionTab, type DepartmentExecutionTabCapability } from "./departmentexecutionresources";
+import { LeaderCallbackAssembler, type LeaderCallback } from "../runtime/departmentleadercodexcontract";
 
 function deferred<T>() {
   let resolve!: (v: T) => void, reject!: (e: Error) => void;
@@ -79,12 +80,18 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   } | undefined;
   const client = new DepartmentExecutionOwnerClient(ownerDirectory);
   const callbacks = new Set<Promise<unknown>>();
+  const callbackAssembler = new LeaderCallbackAssembler();
   const preparations = new Set<Promise<void>>();
   let consumerFailed = false, tabRequested = false, failureDiagnosed = false;
+  const logFailure = host.logError?.bind(host);
   const diagnose = (stage: string): void => {
     if (failureDiagnosed) return;
     failureDiagnosed = true;
     try { console.error(`[department-leader-native] stage=${stage}`); } catch { /* diagnostics cannot affect execution */ }
+    try { void Promise.resolve(logFailure?.("department-leader-native-failed", {
+      stage, phase: active?.phase ?? "idle", rootTaskId: identity.rootTaskId, leaderTaskId: identity.leaderTaskId,
+      executionId: identity.executionId, generation: identity.generation,
+    })).catch(() => undefined); } catch { /* diagnostic consumer is independent of callback ACKs */ }
   };
   const tab = host.tab;
   const authority = () => {
@@ -111,6 +118,7 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   const disconnect = () => { if (child?.connected) child.disconnect(); };
   const fail = (stage = "channel-or-delivery-unknown") => {
     if (failed) return; failed = true; sealed = true; diagnose(stage);
+    callbackAssembler.clear();
     const e = new Error("leader-owner-channel-or-delivery-unknown"); ready.reject(e); drain.reject(e);
     for (const r of records.values()) { r.launch.reject(e); r.completion.reject(e); }
     disconnect();
@@ -126,16 +134,42 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
       try { if (child?.connected) send("seal"); else if (!boot) drain.reject(new Error("leader-native-preparation-not-observed")); } catch { fail(); } }
     return drain.promise;
   };
+  const deliverCallback = (event: LeaderCallback): void => {
+    const callback = handlers[event.name as keyof typeof handlers], seq = event.sequence;
+    const task = Promise.resolve().then(() => {
+      if (failed) return null;
+      return typeof callback === "function" ? Reflect.apply(callback, handlers, event.args) : null;
+    }).then((result) => {
+      if (failed) return;
+      try {
+        send("ack", { callbackSequence: seq, ok: true, result: callbackAckResult(event.name, result) }, "callback-ack-send-failed");
+        callbackAssembler.release(seq);
+      } catch { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); }
+    }, () => {
+      if (failed) return;
+      consumerFailed = true;
+      try { send("ack", { callbackSequence: seq, ok: false, result: null }, "callback-rejection-ack-send-failed"); }
+      catch { fail("callback-rejection-ack-send-failed"); return; }
+      fail("callback-consumer-rejected");
+    }).catch(() => { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); });
+    callbacks.add(task); void task.then(() => callbacks.delete(task));
+  };
   const onMessage = (v: unknown) => {
     if (failed) return;
     if (!record(v) || !boundedCodexMessage(v) || v.version !== 1 || v.token !== input!.token
       || !isDepartmentExecutionIdentity(v.identity) || !sameExecution(v.identity, identity) || v.sequence !== incoming + 1) { fail("private-message-rejected"); return; }
     incoming++;
     const base = ["version", "token", "identity", "sequence", "type"];
+    if (v.type === "failure" && exactKeys(v, [...base, "stage"]) && typeof v.stage === "string"
+      && (LEADER_WORKER_FAILURES as readonly string[]).includes(v.stage)) { fail(`worker-${v.stage}`); return; }
+    if (callbackAssembler.incomplete && !["callback", "callback-chunk"].includes(String(v.type))) {
+      fail("callback-fragment-incomplete"); return;
+    }
     if (v.type === "ready" && exactKeys(v, [...base, "requirements"]) && record(v.requirements)
       && JSON.stringify(v.requirements) === JSON.stringify(LEADER_REQUIREMENTS) && incoming === 1) { ready.resolve(); return; }
     if (v.type === "drained" && sealed && exactKeys(v, [...base, "cleanup"]) && record(v.cleanup)
       && exactKeys(v.cleanup, ["runner", "executionRoot", "links", "temp", "tab"])) {
+      if (callbackAssembler.size) { fail("callback-fragment-incomplete"); return; }
       // Validate all results using the existing receipt contract; never promote to cleaned.
       const validation = { processTerminal: { status: "unobservable", reason: "validation" }, turnTerminal: { status: "unobservable", reason: "validation" }, streams: { status: "unobservable", reason: "validation" }, ...v.cleanup };
       if (!isExecutionCleanup(validation)) { fail("drain-evidence-rejected"); return; }
@@ -152,6 +186,7 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
       })().catch(() => fail("original-receipt-observation-failed")); return;
     }
     if (v.type === "release-tab" && sealed && !active && !tabRequested && !consumerFailed && binding
+      && callbackAssembler.size === 0
       && exactKeys(v, [...base, "resourceIdentity"]) && isDepartmentExecutionIdentity(v.resourceIdentity)
       && sameExecution(v.resourceIdentity, binding.identity)) {
       tabRequested = true; const seq = incoming;
@@ -161,21 +196,15 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
     }
     if (!active || v.invocationId !== active.invocation.invocationId) { fail(); return; }
     const a = active, r = records.get(a.invocation.invocationId)!;
-    if (v.type === "callback" && exactKeys(v, [...base, "invocationId", "name", "args"]) && typeof v.name === "string"
-      && (LEADER_CALLBACKS as readonly string[]).includes(v.name) && Array.isArray(v.args) && v.args.length <= 3) {
-      if (callbacks.size >= LEADER_CALLBACK_LIMIT) { consumerFailed = true; fail(); return; }
-      const callback = handlers[v.name as keyof typeof handlers], seq = incoming;
-      const task = Promise.resolve().then(() => typeof callback === "function" ? Reflect.apply(callback, handlers, v.args as unknown[]) : null)
-        .then((result) => {
-          try { send("ack", { callbackSequence: seq, ok: true, result: callbackAckResult(v.name as string, result) }, "callback-ack-send-failed"); }
-          catch { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); }
-        }, () => {
-          consumerFailed = true;
-          try { send("ack", { callbackSequence: seq, ok: false, result: null }, "callback-rejection-ack-send-failed"); }
-          catch { fail("callback-rejection-ack-send-failed"); return; }
-          fail("callback-consumer-rejected");
-        }).catch(() => { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); });
-      callbacks.add(task); void task.then(() => callbacks.delete(task)); return;
+    if (v.type === "callback" || v.type === "callback-chunk") {
+      let ready: LeaderCallback[];
+      try { ready = callbackAssembler.accept(v); }
+      catch (error) {
+        consumerFailed = true;
+        fail(error instanceof Error && ["callback-size-limit", "callback-capacity"].includes(error.message) ? error.message : "callback-fragment-rejected"); return;
+      }
+      for (const event of ready) deliverCallback(event);
+      return;
     }
     if (v.type === "session" && a.phase === "preparing" && exactKeys(v, [...base, "invocationId", "session"]) && isCodexOwnedSession(v.session)) {
       const session = Object.freeze({ ...v.session, token: Object.freeze({ ...v.session.token }) });
@@ -217,6 +246,7 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
       r.launch.resolve({ identity: structuredClone(binding!.identity), completion: r.completion.promise }); return;
     }
     if (v.type === "settled" && a.phase === "granted" && exactKeys(v, [...base, "invocationId", "terminal"]) && isLeaderTerminal(v.terminal)) {
+      if (callbackAssembler.size) { fail("callback-consumer-incomplete"); return; }
       r.completion.resolve(v.terminal); active = undefined; return;
     }
     fail();

@@ -55,6 +55,9 @@ const STRINGS = {
     continueCancel: "取消",
     stopTask: "中止",
     stopTaskTitle: "中止当前 Loop 任务",
+    stoppingTask: "正在停止…",
+    stopUnconfirmed: "停止未确认",
+    verifyStop: "核验停止",
     task: "任务",
     status: "状态",
     cli: "CLI",
@@ -149,16 +152,16 @@ export type LoopGroupChatPanelStrings = Record<keyof typeof STRINGS, string>;
 export function getStrings(): LoopGroupChatPanelStrings {
   return STRINGS;
 }
+
+export function buildDepartmentLeaderChatTitle(leaderNumber?: number): string {
+  return leaderNumber === undefined ? "组长" : `组长${leaderNumber}`;
+}
+
 export function buildLoopGroupChatPanelTitle(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
 ): string {
-  if (state.department) {
-    const { label: role, icon } = getDepartmentRoleIdentity(state.department.role);
-    const title = state.department.title.trim();
-    const shortTaskId = state.task.id.trim().slice(-12);
-    return `${icon} 产研部 · ${role}${title ? ` · ${title}` : ""}${shortTaskId ? ` · #${shortTaskId}` : ""}`;
-  }
+  if (state.department) return buildLoopGroupChatPanelHeading(state, strings);
   const title = state.loopPlus ? strings.titleLoopPlus : strings.title;
   const taskId = state.task.id.trim();
   if (!taskId) {
@@ -171,16 +174,11 @@ export function buildLoopGroupChatPanelTitle(
 /** Shared by the initial HTML and every content patch. */
 export function buildLoopGroupChatPanelHeading(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
   if (!state.department) return state.loopPlus ? strings.titleLoopPlus : strings.title;
-  return state.department.role === "director"
-    ? "产研部 · 总监 ☀️"
-    : `产研部 · 组长 🌛 · ${state.department.title}`;
+  if (state.department.role === "director") return "产研部总监";
+  const leader = state.department.leaders.find((item) => item.taskId && item.taskId === state.task.id);
+  return buildDepartmentLeaderChatTitle(leader?.leaderNumber);
 }
 
 export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState): string {
   return state.department ? `${state.department.title} · ${state.task.id}` : state.task.id;
-}
-
-/** Reusable for session-tab integration; employee sessions are not wired by this view. */
-export function getDepartmentRoleIdentity(role: "director" | "leader" | "employee"): { icon: string; label: string } {
-  return { director: { icon: "☀️", label: "总监" }, leader: { icon: "🌛", label: "组长" }, employee: { icon: "⭐️", label: "员工" } }[role];
 }

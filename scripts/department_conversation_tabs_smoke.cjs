@@ -217,12 +217,21 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     }
 
     const modeSelect = page.locator("#interactiveModeSelect");
-    await page.locator(".conversation-tab").nth(1).click();
+    const leaderTab = page.locator(".conversation-tab").nth(1);
+    const beforeTabSelection = await page.evaluate(() => window.__postedMessages.length);
+    await leaderTab.click();
+    assert.equal(await leaderTab.getAttribute("aria-selected"), "true");
     assert.equal(await modeSelect.inputValue(), "loop_plus");
+    await leaderTab.click();
+    await leaderTab.press("Enter");
+    await leaderTab.press("Space");
     await page.locator(".conversation-tab").nth(2).click();
     assert.equal(await modeSelect.inputValue(), "coding");
     await page.locator(".conversation-tab").nth(0).click();
     assert.equal(await modeSelect.inputValue(), "department");
+    const openedGroupChats = await page.evaluate((from) => window.__postedMessages.slice(from)
+      .filter((message) => message.type === "openLoopGroupChat").map((message) => message.taskId), beforeTabSelection);
+    assert.deepEqual(openedGroupChats, [rootId]);
     await page.locator(".conversation-tab").nth(2).focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.locator(".conversation-tab").nth(2).getAttribute("aria-selected"), "true");
@@ -264,7 +273,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     assert.deepEqual(webviewErrors, []);
     assert.deepEqual(errors, []);
     const result = { status: "passed", mode: "full-existing-smoke", viewportChecks: [1280, 280], themes: ["dark", "light"], screenshots: fs.readdirSync(output).filter((name) => name.endsWith(".png")),
-      checks: ["role icons decorate unchanged Codex/Codex2/Codex3 labels", "role names and task IDs stay out of visible labels", "long module truncation", "full hierarchy and identity tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
+      checks: ["role icons decorate unchanged Codex/Codex2/Codex3 labels", "role names and task IDs stay out of visible labels", "long module truncation", "full hierarchy and identity tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "leader mouse and keyboard selection stays in conversation", "director selection opens group chat", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
       errors, webviewErrors, boundary: "Generated full webview runtime with a fixture PanelState and VS Code API bridge; does not verify real CLI organization startup" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));

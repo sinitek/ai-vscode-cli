@@ -1,8 +1,10 @@
 import * as fs from "fs";
+import type { CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIdentity";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { isDeepStrictEqual } from "node:util";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
-import { buildDepartmentGroupChatProjection, normalizeDepartmentEmployeeAllocation, departmentMetadata, resolveDepartmentRoot, authorizeDepartmentLeader, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
-import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES, type DepartmentGroupChatModalTarget, type DepartmentEmployeeAllocationProjection, type DepartmentEmployeeLimitRequest } from "../webview/loopGroupChatPanelTypes";
+import { assertDepartmentOrganizationContinuation, buildDepartmentGroupChatProjection, normalizeDepartmentEmployeeAllocation, departmentMetadata, resolveDepartmentRoot, authorizeDepartmentLeader, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
+import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES, type DepartmentGroupChatModalTarget, type DepartmentEmployeeAllocationProjection, type DepartmentEmployeeLimitRequest, type DepartmentOrganizationStopState } from "../webview/loopGroupChatPanelTypes";
 import * as path from "path";
 import { ChatImageHost, isChatImageMessage } from "../webview/chatImageHost";
 import { isChatLinkMessage, openChatLink } from "../webview/chatLinkHost";
@@ -24,6 +26,9 @@ import {
   submitOrchestratorClarification,
 } from "../orchestratorClarification";
 import { buildLoopMainSubChatTranscriptFile, resolveLoopTaskRunControlState } from "../loopGroupChat";
+import { isLoopMainAiFailureLimitReached, isLoopMainStartupConfigLockTimeout } from "../loopMainFailure";
+import { createLoopPlusScheduler } from "../loopPlusScheduler";
+import type { PromptRunInput } from "../promptRunTypes";
 import {
   beginLoopAskTurn,
   createEmptyLoopAskThread,
@@ -71,12 +76,22 @@ type LoopPromptRunOptions = {
   resumeRequested: boolean;
   resumeUserMessage?: string;
   preserveLoopOrigin?: boolean;
+  configLockRecovery?: ConfigLockResumeRequest;
   schedulingMode?: "classic" | "event_driven";
+};
+
+export type ConfigLockResumeRequest = {
+  readTask: () => LoopTaskRecord | null;
+  isTargetCurrent: () => boolean;
+  codexConfigEvidence: CodexRuntimeConfigEvidence;
+  unavailableMessage: string;
 };
 
 type LoopOriginRestoreResult = {
   ok: boolean;
   target?: LoopPromptTarget;
+  isOriginalTargetCurrent?: () => boolean;
+  codexConfigEvidence?: CodexRuntimeConfigEvidence;
   message?: string;
 };
 
@@ -103,7 +118,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   readDepartmentLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   departmentOrganizationControl?: DepartmentOrganizationControl;
   /** Validates the fresh root against the trusted source and active workspace. */
-  readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean } | null;
+  readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean; stopState?: DepartmentOrganizationStopState } | null;
   prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
   getExtensionUri: () => vscode.Uri;
   getMessageLimit?: () => number;
@@ -114,6 +129,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   appendSupplementalRequirementToCommunication: (task: LoopTaskRecord, requirement: string) => void;
   recordPromptHistory: (prompt: string, cli: CliName) => void;
   readTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  readConfigLockResumeTask?: (taskId: string, taskStoreFile: string) => LoopTaskRecord | null;
   updateTaskRecord: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   listTaskStoreFiles: () => string[];
   readTaskStoreTasks: (filePath: string) => LoopTaskRecord[];
@@ -157,7 +173,8 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
     subtaskFrontendThinkingMode?: ThinkingMode;
     subtaskFullstackThinkingMode?: ThinkingMode;
   }) => LoopTaskOriginProfile | null;
-  restoreOriginalLoopRuntime?: (task: LoopTaskRecord) => Promise<LoopOriginRestoreResult>;
+  restoreOriginalLoopRuntime?: (task: LoopTaskRecord, options?: { configLockRecovery: true; originalTabId?: string }) => Promise<LoopOriginRestoreResult>;
+  isConfigLockResumeSessionAvailable?: (task: LoopTaskRecord, restoredTabId?: string) => boolean;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
   markTaskStoppedByUser: (taskId: string) => LoopTaskRecord | null;
@@ -190,9 +207,9 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
       onProgress?: (progress: LoopMainModelQuestionProgress) => void;
       onStarted?: () => void;
       isAborted?: () => boolean;
+      signal?: AbortSignal;
     },
   ) => Promise<LoopMainModelAnswerResult>;
-  abortMainModelRun?: (task: LoopTaskRecord) => void;
   readAskThread?: (task: LoopTaskRecord) => LoopAskThread;
   writeAskThread?: (task: LoopTaskRecord, thread: LoopAskThread) => void;
   t: typeof import("../i18n").t;
@@ -221,7 +238,10 @@ export function buildLoopGroupChatPanelState(
   });
   const departmentRoot = resolveDepartmentRoot(task, deps);
   const organization = deps.readDepartmentOrganizationControlState?.(task);
-  const needsOrganizationStop = Boolean(departmentRoot?.id === task.id && organization?.needsCleanup);
+  const isDirector = departmentRoot?.id === task.id;
+  const stopState = isDirector ? organization?.stopState
+    ?? (organization?.needsCleanup && task.status !== "running" ? "unconfirmed" : undefined) : undefined;
+  const needsOrganizationStop = Boolean(isDirector && (organization?.needsCleanup || stopState === "stopping" || stopState === "unconfirmed"));
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -234,7 +254,8 @@ export function buildLoopGroupChatPanelState(
     task: {
       ...state.task,
       canContinue: canContinueLoopTaskWithDeps(task, deps, needsOrganizationStop),
-      ...(needsOrganizationStop ? { canStop: true } : {}),
+      ...(isDirector && organization ? { departmentStopState: stopState,
+        canStop: stopState === "confirmed" && !needsOrganizationStop ? false : needsOrganizationStop || state.task.canStop } : {}),
     },
     ...acceptancePlanState,
     ...(departmentRoot ? { ...(department ? { department } : {}), acceptancePlan: departmentRoot?.loopPlusAcceptancePlan ?? null, acceptancePlans: [], acceptancePlanReadOnly: true } : {}),
@@ -290,23 +311,57 @@ function canStopLoopTaskWithRunningTaskIds(
 
 function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps,
   needsOrganizationStop = Boolean(deps.readDepartmentOrganizationControlState?.(task)?.needsCleanup)): boolean {
-  if (needsOrganizationStop) return false;
+  const stopState = deps.readDepartmentOrganizationControlState?.(task)?.stopState;
+  if (needsOrganizationStop || stopState === "stopping" || stopState === "unconfirmed") return false;
+  if (isLoopMainAiFailureLimitReached(task)) return canResumeLoopPlusConfigLockPause(task, deps);
   if (resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue) {
     return true;
   }
   if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven"
-    || task.status === "completed"
-    || task.mainAiFailureLimitReached) {
+    || task.status === "completed") {
     return false;
   }
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   return !(target && deps.isTabRunActive(target.tabId));
 }
 
+function canResumeLoopPlusConfigLockPause(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps, restoredTabId?: string): boolean {
+  const configId = task.originProfile?.configId;
+  const mainRoute = task.modelRouting?.main;
+  if (task.cli !== "codex" || task.schedulingMode !== "event_driven" || task.status !== "needs-review"
+    || task.department || task.departmentInvalid || task.pendingClarification || task.executionSessionInvalid
+    || task.loopSubtaskModeInvalid || !task.sessionId || !configId || !mainRoute
+    || (mainRoute.cli && mainRoute.cli !== task.cli) || (mainRoute.configId && mainRoute.configId !== configId)
+    || (task.executionSession && (task.executionSession.cli !== task.cli || task.executionSession.configId !== configId))
+    || !isLoopMainAiFailureLimitReached(task) || !isLoopMainStartupConfigLockTimeout(task)
+    || !deps.restoreOriginalLoopRuntime || deps.collectRunningTaskIds().has(task.id)
+    || !deps.isConfigLockResumeSessionAvailable?.(task, restoredTabId) || !task.loopPlus) return false;
+  try {
+    const snapshot = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();
+    return !snapshot.completed && !snapshot.parentStopped && snapshot.running.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+function configLockResumeIdentity(task: LoopTaskRecord) {
+  return {
+    id: task.id, workspaceKey: task.workspaceKey, taskStoreFile: task.taskStoreFile, createdAt: task.createdAt,
+    cli: task.cli, sessionId: task.sessionId, executionSession: task.executionSession, originProfile: task.originProfile,
+    modelRouting: task.modelRouting, loopSubtaskMode: task.loopSubtaskMode, mainAiFailureCount: task.mainAiFailureCount,
+    loopPlus: task.loopPlus,
+    mainAiLastFailureAt: task.mainAiLastFailureAt, mainAiLastFailureCode: task.mainAiLastFailureCode,
+    mainAiLastFailureMessage: task.mainAiLastFailureMessage,
+  };
+}
+
 export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatPanelDeps) {
   type ModalBinding = DepartmentGroupChatModalTarget & { rootTaskId: string; panel: LoopGroupChatPanel; images?: ChatImageHost };
   const bindings = new Map<string, ModalBinding>();
   const requestScope = new AsyncLocalStorage<ModalBinding>();
+  // Page requests share one root fence, independent of view close/reopen.
+  const organizationStops = new Map<string, { identity: string; state: DepartmentOrganizationStopState }>();
+  const stopIdentity = (task: LoopTaskRecord) => JSON.stringify([task.id, task.workspaceKey, task.taskStoreFile, task.cli, task.sessionId, task.department]);
   const validBinding = (binding: ModalBinding): boolean => {
     const target = binding.panel.getDepartmentModalTarget();
     if (bindings.get(binding.rootTaskId) !== binding || originalDeps.panelsByTaskId.get(binding.rootTaskId) !== binding.panel
@@ -322,11 +377,28 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
   const guardedPorts = new Set<keyof LoopGroupChatPanelDeps>([
     "updateTaskRecord", "appendSupplementalRequirementToCommunication", "notifyLoopPlusUserMessage", "runLoopPrompt",
     "stopRunsForTask", "markTaskStoppedByUser", "resumeLoopSubtasks", "restoreOriginalLoopRuntime",
-    "revealPanelView", "switchVisibleConversationTabForLoop", "abortMainModelRun", "resolveMainPromptTarget",
+    "revealPanelView", "switchVisibleConversationTabForLoop", "resolveMainPromptTarget",
   ]);
   const deps = new Proxy(originalDeps, {
     get(target, key: keyof LoopGroupChatPanelDeps) {
       const value = target[key];
+      if (key === "readDepartmentOrganizationControlState") return (task: LoopTaskRecord) => {
+        const trusted = target.readDepartmentOrganizationControlState?.(task);
+        if (target.readDepartmentOrganizationControlState && !trusted) return trusted;
+        const local = organizationStops.get(task.id);
+        if (!local || local.identity !== stopIdentity(task) || !resolveDepartmentRoot(task, target)) return trusted;
+        // Production owns the lifetime of settled receipts. The page fence only
+        // supplies immediate, in-flight feedback while the request is dispatched.
+        if (local.state !== "stopping" && trusted && "stopState" in trusted) return trusted;
+        if (local.state === "confirmed" && task.status === "running" && !task.runtimeInterrupted && trusted?.stopState === undefined) {
+          organizationStops.delete(task.id);
+          return trusted;
+        }
+        const result = trusted?.stopState === "stopping" ? "stopping"
+          : local.state === "stopping" ? "stopping" : trusted?.stopState ?? local.state;
+        const stopState = result === "confirmed" && trusted?.needsCleanup !== false ? "unconfirmed" : result;
+        return { needsCleanup: trusted?.needsCleanup !== false || stopState !== "confirmed", stopState };
+      };
       if (typeof value !== "function" || !guardedPorts.has(key)) return value;
       return (...args: unknown[]) => {
         if (!scopeValid()) throw obsoleteRequest;
@@ -343,15 +415,28 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       };
     },
   });
+  const readContinuableDirector = (root: LoopTaskRecord): LoopTaskRecord => {
+    const current = deps.readTaskRecord(root.id);
+    if (!current || stopIdentity(current) !== stopIdentity(root) || resolveDepartmentRoot(current, deps)?.id !== root.id) {
+      throw new Error("部门续接归属已变化。");
+    }
+    assertDepartmentOrganizationContinuation(current, deps.readDepartmentOrganizationControlState?.(current));
+    return current;
+  };
+  const continueDirector = async (root: LoopTaskRecord, prompt?: string): Promise<void> => {
+    const current = readContinuableDirector(root);
+    const receipt = organizationStops.get(current.id);
+    await deps.departmentOrganizationControl!.continue(current, prompt);
+    if (receipt?.state === "confirmed" && organizationStops.get(current.id) === receipt) organizationStops.delete(current.id);
+  };
 
   const openingPanels = new WeakMap<LoopGroupChatPanel, Promise<void>>();
   const askThreads = new Map<string, LoopAskThread>();
   const askRuns = new Map<string, {
     owner?: ModalBinding;
-    aborted: boolean;
-    started: boolean;
-    activeTurnId?: string;
-    questions: Array<{ question: string; turnId: string }>;
+    controller: AbortController;
+    pendingTurnIds: Set<string>;
+    startedTurnId?: string;
   }>();
   const continuingTaskIds = new Set<string>();
   let askSerial = 0;
@@ -363,15 +448,12 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
   ): void => {
     if (!scopeValid()) return;
     const run = askRuns.get(task.id);
-    const queuedIds = new Set(run?.questions.map((question) => question.turnId));
-    if (run?.activeTurnId && !run.started) {
-      queuedIds.add(run.activeTurnId);
-    }
     thread = {
       ...thread,
+      ...(run ? { running: true, queued: !run.startedTurnId } : {}),
       messages: thread.messages.map((message) => {
         const { queued: _queued, ...bubble } = message;
-        return thread.running && message.role === "user" && queuedIds.has(message.id)
+        return message.role === "user" && run?.pendingTurnIds.has(message.id)
           ? { ...bubble, queued: true }
           : bubble;
       }),
@@ -428,17 +510,18 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     return loaded;
   };
 
-  const refresh = async (taskId: string): Promise<void> => {
+  const warnRefreshFailure = () => deps.showWarningMessage("群聊刷新失败，请重试。");
+  const refresh = async (taskId: string, { refreshDirector = false, refreshModals = true } = {}): Promise<void> => {
     if (!scopeValid()) return;
     const normalizedTaskId = deps.normalizeTaskId(taskId);
     if (!normalizedTaskId) {
       return;
     }
     const panel = deps.panelsByTaskId.get(normalizedTaskId);
-    if (panel && openingPanels.has(panel)) return;
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task || task.id !== normalizedTaskId) return;
-    if ((task.department || task.departmentInvalid) && !resolveDepartmentRoot(task, deps)) {
+    const root = task.department || task.departmentInvalid ? resolveDepartmentRoot(task, deps) : null;
+    if ((task.department || task.departmentInvalid) && !root) {
       const known = panel?.getState();
       if (known) panel?.update({ ...known, error: "部门任务关联无效，请刷新任务记录后重试。",
         task: { ...known.task, canContinue: false, canStop: false, canSupplement: false } });
@@ -450,8 +533,13 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       }
       return;
     }
-    const subscribers = [...bindings.values()].filter((binding) => binding.taskId === task.id || binding.rootTaskId === task.id);
-    if (!panel && !subscribers.length) return;
+    const subscribers = refreshModals
+      ? [...bindings.values()].filter((binding) => binding.taskId === task.id || binding.rootTaskId === task.id)
+      : [];
+    const refreshDirectorPanel = refreshDirector && root && root.id !== task.id && deps.panelsByTaskId.has(root.id);
+    if (!panel && !subscribers.length && !refreshDirectorPanel) return;
+    if (refreshDirectorPanel) void refresh(root.id, { refreshModals: false }).catch(warnRefreshFailure);
+    if (panel && openingPanels.has(panel)) return;
     try {
       await deps.prepareModelSwitchOptions?.(task);
     } catch (error) {
@@ -479,7 +567,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     }
   };
 
-  type ContinuationOptions = { resumeIdle?: boolean; resumeSubtasks?: boolean };
+  type ContinuationOptions = { resumeIdle?: boolean; resumeSubtasks?: boolean; panel?: LoopGroupChatPanel };
   const runContinuation = async (taskId: string, prompt: unknown, options: ContinuationOptions): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
@@ -498,7 +586,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       if (!root) throw new Error("部门任务关联无效，无法继续。");
       if (root.id === task.id) {
         if (!deps.departmentOrganizationControl) throw new Error("部门组织控制尚未接入，无法继续产研部。");
-        await deps.departmentOrganizationControl.continue(root, typeof prompt === "string" ? prompt : undefined);
+        await continueDirector(root, typeof prompt === "string" ? prompt : undefined);
         return;
       }
     }
@@ -506,11 +594,12 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
     const availabilityTarget = deps.resolveMainPromptTarget(task, { createIfMissing: false });
     const isLoopPlus = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven";
+    const failureLimited = isLoopMainAiFailureLimitReached(task);
+    const configLockRecovery = failureLimited && Boolean(options.panel) && canResumeLoopPlusConfigLockPause(task, deps);
     const canResumeIdle = task.status !== "completed"
-      && !task.mainAiFailureLimitReached
       && (isLoopPlus || (options.resumeIdle && !runningTaskIds.has(task.id)))
       && !(availabilityTarget && deps.isTabRunActive(availabilityTarget.tabId));
-    if (!controlState.canContinue && !canResumeIdle) {
+    if (failureLimited ? !configLockRecovery : !controlState.canContinue && !canResumeIdle) {
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
         controlState.isRunning
@@ -520,6 +609,19 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
 
+    const recoveryIdentity = configLockRecovery ? structuredClone(configLockResumeIdentity(task)) : null;
+    const originalTabId = availabilityTarget?.tabId ?? undefined;
+    const readRecoveryTask = (restoredTabId?: string): LoopTaskRecord | null => {
+      const latest = deps.readConfigLockResumeTask
+        ? task.taskStoreFile ? deps.readConfigLockResumeTask(normalizedTaskId, task.taskStoreFile) : null
+        : deps.readTaskRecord(normalizedTaskId);
+      if (!latest || deps.panelsByTaskId.get(normalizedTaskId) !== options.panel
+        || options.panel?.getState()?.task.id !== normalizedTaskId
+        || (restoredTabId && originalTabId && restoredTabId !== originalTabId)
+        || !isDeepStrictEqual(configLockResumeIdentity(latest), recoveryIdentity)
+        || !canResumeLoopPlusConfigLockPause(latest, deps, restoredTabId ?? originalTabId)) return null;
+      return latest;
+    };
     await deps.revealPanelView();
     const resumePrompt = normalizeLoopContinuePrompt(prompt, deps);
     const resumeSubtasks = (): boolean => {
@@ -532,33 +634,55 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return true;
     };
     if (task.originProfile?.configId && task.modelRouting && deps.restoreOriginalLoopRuntime) {
-      const restored = await deps.restoreOriginalLoopRuntime(task);
+      const original = configLockRecovery ? readRecoveryTask() : task;
+      if (!original) {
+        deps.showWarningMessage(deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
+        return;
+      }
+      const restored = await deps.restoreOriginalLoopRuntime(original, configLockRecovery ? { configLockRecovery: true, originalTabId } : undefined);
       if (!restored.ok || !restored.target?.tabId) {
         deps.showWarningMessage(restored.message || deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
+        return;
+      }
+      const recoveryBinding = restored.isOriginalTargetCurrent && restored.codexConfigEvidence
+        ? { isTargetCurrent: restored.isOriginalTargetCurrent, codexConfigEvidence: restored.codexConfigEvidence }
+        : undefined;
+      if (configLockRecovery && !recoveryBinding) {
+        deps.showWarningMessage(deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
         return;
       }
       if (deps.isTabRunActive(restored.target.tabId)) {
         deps.showInformationMessage(deps.t("loopGroupChatChat.continueAlreadyRunning"));
         return;
       }
-      if (resumeSubtasks()) return;
-      const profile = task.originProfile;
+      const resumeTask = configLockRecovery ? readRecoveryTask(restored.target.tabId) : task;
+      if (!resumeTask?.originProfile || !resumeTask.modelRouting || (configLockRecovery && restored.target.cli !== resumeTask.cli)) {
+        deps.showWarningMessage(deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
+        return;
+      }
+      if (!configLockRecovery && resumeSubtasks()) return;
+      const profile = resumeTask.originProfile;
       await deps.runLoopPrompt(applyLoopModelRoutingToPrompt({
         displayPrompt: resumePrompt,
         modelPrompt: resumePrompt,
         contextTags: [],
-        ...(task.loopSubtaskMode ? { loopSubtaskMode: task.loopSubtaskMode } : {}),
+        ...(resumeTask.loopSubtaskMode ? { loopSubtaskMode: resumeTask.loopSubtaskMode } : {}),
         ...(profile.mainThinkingMode ? { loopMainThinkingMode: profile.mainThinkingMode } : {}),
         ...(profile.subtaskThinkingMode ? { loopSubtaskThinkingMode: profile.subtaskThinkingMode } : {}),
         ...(profile.subtaskFrontendThinkingMode ? { loopSubtaskFrontendThinkingMode: profile.subtaskFrontendThinkingMode } : {}),
         ...(profile.subtaskFullstackThinkingMode ? { loopSubtaskFullstackThinkingMode: profile.subtaskFullstackThinkingMode } : {}),
         loopContinuePrompt: resumePrompt,
-      }, task.modelRouting, task.originProfile), {
+      }, resumeTask.modelRouting, profile), {
         targetTabId: restored.target.tabId,
         resumeTaskId: task.id,
         resumeRequested: true,
         ...(task.schedulingMode === "event_driven" ? { resumeUserMessage: resumePrompt } : {}),
         preserveLoopOrigin: true,
+        ...(configLockRecovery && recoveryBinding ? { configLockRecovery: {
+          readTask: () => readRecoveryTask(restored.target!.tabId!),
+          ...recoveryBinding,
+          unavailableMessage: deps.t("loopGroupChatChat.originalRuntimeUnavailable"),
+        } } : {}),
         ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
       });
       await refresh(normalizedTaskId);
@@ -760,58 +884,43 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       deps.showInformationMessage("该组长已有其他窗口提问正在处理，请稍后重试。");
       return;
     }
-    const run: NonNullable<ReturnType<typeof askRuns.get>> = existingRun ?? { owner: requestScope.getStore(), aborted: false, started: false, questions: [] };
-
-    run.questions.push({ question, turnId });
+    const run = existingRun ?? { owner: requestScope.getStore(), controller: new AbortController(), pendingTurnIds: new Set<string>() };
+    run.pendingTurnIds.add(turnId);
     askRuns.set(task.id, run);
-    const started = {
-      ...beginLoopAskTurn(current, question, Date.now(), turnId),
-      queued: !run.started,
-    };
-    syncAskThread(task, started, "publish");
-    if (existingRun) {
-      return;
-    }
-    while (run.questions.length > 0 && !run.aborted && askRuns.get(task.id) === run) {
-      const next = run.questions.shift()!;
-      run.activeTurnId = next.turnId;
-      let result: LoopMainModelAnswerResult;
-      try {
-        result = await deps.askMainModel(deps.readTaskRecord(task.id) ?? task, next.question, {
-          isAborted: () => run.aborted || Boolean(run.owner && !validBinding(run.owner)),
-          onStarted: () => {
-            if ((run.owner && !validBinding(run.owner)) || run.aborted || askRuns.get(task.id) !== run) {
-              return;
-            }
-            run.started = true;
-            const publish = () => syncAskThread(task, { ...(askThreads.get(task.id) ?? started), queued: false }, "publish");
-            if (run.owner) requestScope.run(run.owner, publish); else publish();
-          },
-        });
-      } catch (error) {
-        const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
-        result = { status: "error", error: deps.t("loopGroupChatChat.askFailed", { detail }) };
-      }
-      if (!scopeValid() || askRuns.get(task.id) !== run) {
-        return;
-      }
-      run.started = false;
-      run.activeTurnId = undefined;
-      const thread = askThreads.get(task.id) ?? started;
-      const settled = settleLoopAskTurn(thread, {
-        ...(result.status === "ready" ? { answer: result.answer } : {}),
-        notice: result.status === "stopped"
-          ? deps.t("loopGroupChatChat.askStopped")
-          : result.status === "error" ? result.error : deps.t("loopGroupChatChat.askEmpty"),
-        now: Date.now(),
-        noticeId: `${next.turnId}:result`,
+    syncAskThread(task, beginLoopAskTurn(current, question, Date.now(), turnId), "publish");
+
+    const isAborted = () => askRuns.get(task.id) !== run || Boolean(run.owner && !validBinding(run.owner));
+    let result: LoopMainModelAnswerResult;
+    try {
+      result = await deps.askMainModel(task, question, {
+        isAborted,
+        signal: run.controller.signal,
+        onStarted: () => {
+          if (isAborted() || !run.pendingTurnIds.delete(turnId)) return;
+          run.startedTurnId = turnId;
+          const publish = () => syncAskThread(task, ensureAskThread(task), "publish");
+          if (run.owner) requestScope.run(run.owner, publish);
+          else requestScope.exit(publish);
+        },
       });
-      const pending = run.questions.length > 0 && !run.aborted;
-      syncAskThread(task, { ...settled, running: pending, queued: pending }, "render");
+    } catch (error) {
+      const detail = error instanceof Error && error.message.trim() ? error.message.trim() : String(error);
+      result = { status: "error", error: deps.t("loopGroupChatChat.askFailed", { detail }) };
     }
-    if (askRuns.get(task.id) === run) {
+    if (isAborted()) return;
+    run.pendingTurnIds.delete(turnId);
+    if (run.startedTurnId === turnId) run.startedTurnId = undefined;
+    if (!run.startedTurnId && run.pendingTurnIds.size === 0) {
       askRuns.delete(task.id);
     }
+    syncAskThread(task, settleLoopAskTurn(ensureAskThread(task), {
+      ...(result.status === "ready" ? { answer: result.answer } : {}),
+      notice: result.status === "stopped"
+        ? deps.t("loopGroupChatChat.askStopped")
+        : result.status === "error" ? result.error : deps.t("loopGroupChatChat.askEmpty"),
+      now: Date.now(),
+      noticeId: `${turnId}:result`,
+    }), "render");
   };
 
   const stopTask = async (taskId: string): Promise<void> => {
@@ -833,8 +942,39 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       if (!root) throw new Error("部门任务关联无效，无法停止。");
       if (root.id === task.id) {
         if (!deps.departmentOrganizationControl) throw new Error("部门组织控制尚未接入，无法停止产研部。");
-        await deps.departmentOrganizationControl.stop(root);
-        await refresh(root.id);
+        const trusted = originalDeps.readDepartmentOrganizationControlState?.(root);
+        if (originalDeps.readDepartmentOrganizationControlState && !trusted) return;
+        const identity = stopIdentity(root);
+        const previous = organizationStops.get(root.id);
+        if ((previous?.identity === identity && previous.state === "stopping")
+          || trusted?.stopState === "stopping") return;
+        const state = buildLoopGroupChatPanelState(root, deps);
+        if (!state.task.canStop) { await refresh(root.id); return; }
+        const request = { identity, state: "stopping" as DepartmentOrganizationStopState };
+        organizationStops.set(root.id, request);
+        const refreshStop = async () => {
+          try {
+            const current = deps.readTaskRecord(root.id);
+            if (!current || stopIdentity(current) !== identity || !resolveDepartmentRoot(current, deps)) return;
+            if (originalDeps.readDepartmentOrganizationControlState && !originalDeps.readDepartmentOrganizationControlState(current)) return;
+            await refresh(root.id);
+          } catch { deps.showWarningMessage("群聊刷新失败，请重试。"); }
+        };
+        // Publish immediately; refresh failure never changes the stop outcome.
+        const startedRefresh = refreshStop();
+        try {
+          const current = deps.readTaskRecord(root.id);
+          if (!current || stopIdentity(current) !== identity || !resolveDepartmentRoot(current, deps)
+            || (originalDeps.readDepartmentOrganizationControlState && !originalDeps.readDepartmentOrganizationControlState(current))) throw new Error("部门停止归属已变化。");
+          await deps.departmentOrganizationControl.stop(current);
+          if (organizationStops.get(root.id) === request) request.state = "confirmed";
+        } catch (error) {
+          if (organizationStops.get(root.id) === request) request.state = "unconfirmed";
+          throw error;
+        } finally {
+          await startedRefresh;
+          await refreshStop();
+        }
         return;
       }
     }
@@ -877,15 +1017,21 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       await refresh(task.id);
       return;
     }
-    const delivered = submitOrchestratorClarification(loopClarificationScope(task.id), safeInteractionId, normalized.values);
-    if (delivered.ok) {
-      await refresh(task.id);
-      return;
+    let deliverToWaiter = true;
+    if (departmentAtSubmit?.role === "director") {
+      try { readContinuableDirector(task); } catch { deliverToWaiter = false; }
     }
-    if (delivered.reason === "invalid" && delivered.issue) {
-      deps.showWarningMessage(clarificationIssueMessage(delivered.issue));
-      await refresh(task.id);
-      return;
+    if (deliverToWaiter) {
+      const delivered = submitOrchestratorClarification(loopClarificationScope(task.id), safeInteractionId, normalized.values);
+      if (delivered.ok) {
+        await refresh(task.id);
+        return;
+      }
+      if (delivered.reason === "invalid" && delivered.issue) {
+        deps.showWarningMessage(clarificationIssueMessage(delivered.issue));
+        await refresh(task.id);
+        return;
+      }
     }
     const answer = formatOrchestratorClarificationAnswer({
       interactionId: safeInteractionId,
@@ -915,7 +1061,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         || root.id !== departmentAtSubmit.rootTaskId) throw new Error("部门任务关联无效，无法恢复澄清。");
       if (root.id === task.id) {
         if (!deps.departmentOrganizationControl) throw new Error("部门组织控制尚未接入，澄清已保存，无法继续产研部。");
-        await deps.departmentOrganizationControl.continue(root);
+        await continueDirector(root);
         await refresh(root.id);
         return;
       }
@@ -1065,7 +1211,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     }
   };
 
-  const handleMessage = async (taskId: string, message: LoopGroupChatPanelMessage): Promise<void> => {
+  const handleMessage = async (taskId: string, message: LoopGroupChatPanelMessage, sourcePanel?: LoopGroupChatPanel): Promise<void> => {
     if (!message || typeof message.type !== "string") {
       return;
     }
@@ -1173,7 +1319,8 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
     if (message.type === "loopGroupChatChat:continueTask") {
-      await continueTask(taskId, message.prompt);
+      const panel = !requestScope.getStore() && deps.panelsByTaskId.get(taskId) === sourcePanel ? sourcePanel : undefined;
+      await continueTask(taskId, message.prompt, undefined, { panel: panel?.getState()?.task.id === taskId ? panel : undefined });
       return;
     }
     if (message.type === "loopGroupChatChat:switchModels") {
@@ -1192,16 +1339,11 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       const normalizedTaskId = deps.normalizeTaskId(taskId)
         ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
       const run = normalizedTaskId ? askRuns.get(normalizedTaskId) : undefined;
-      if (run) {
-        run.aborted = true;
-        run.questions.length = 0;
-      }
-      const task = normalizedTaskId ? deps.readTaskRecord(normalizedTaskId) : null;
-      if (task && run) {
-        if (run.started) {
-          deps.abortMainModelRun?.(task);
-        }
-        askRuns.delete(task.id);
+      if (!normalizedTaskId || !run || run.owner !== requestScope.getStore()) return;
+      askRuns.delete(normalizedTaskId);
+      run.controller.abort();
+      const task = deps.readTaskRecord(normalizedTaskId);
+      if (task) {
         syncAskThread(task, settleLoopAskTurn(ensureAskThread(task), {
           notice: deps.t("loopGroupChatChat.askStopped"),
           now: Date.now(),
@@ -1280,7 +1422,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     binding.images = undefined;
     // Cancel this display's pending question subscription; never stop the task.
     const run = askRuns.get(binding.taskId);
-    if (run?.owner === binding) { run.aborted = true; run.questions.length = 0; askRuns.delete(binding.taskId); }
+    if (run?.owner === binding) askRuns.delete(binding.taskId);
     const thread = askThreads.get(binding.taskId);
     if (run?.owner === binding && thread?.running) askThreads.set(binding.taskId, settleLoopAskTurn(thread, { now: Date.now(), noticeId: `modal-closed-${askSerial += 1}` }));
   };
@@ -1413,7 +1555,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       const taskId = task.id;
       panel = new LoopGroupChatPanel(deps.getExtensionUri(), {
         onMessage: (message) => {
-          void handleMessage(taskId, message).catch((error) => { if (error !== obsoleteRequest) deps.showWarningMessage(error instanceof Error ? error.message : String(error)); });
+          void handleMessage(taskId, message, panel).catch((error) => { if (error !== obsoleteRequest) deps.showWarningMessage(error instanceof Error ? error.message : String(error)); });
         },
         onDispose: () => {
           for (const [key, token] of allocationRequests) if (token.panel === panel) allocationRequests.delete(key);
@@ -1457,8 +1599,9 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
   };
 
   const refreshOpenPanelForTask = (taskId: string): void => {
-    if (!deps.panelsByTaskId.has(taskId) && ![...bindings.values()].some((binding) => binding.taskId === taskId || binding.rootTaskId === taskId)) return;
-    void refresh(taskId).catch(() => deps.showWarningMessage("群聊刷新失败，请重试。"));
+    if (!deps.panelsByTaskId.has(taskId) && ![...bindings.values()].some((binding) => binding.taskId === taskId || binding.rootTaskId === taskId)
+      && ![...deps.panelsByTaskId.values()].some((panel) => panel.getState()?.department?.role === "director")) return;
+    void refresh(taskId, { refreshDirector: true }).catch(warnRefreshFailure);
   };
 
   const buildMessageAction = (taskId: string, round?: number): ChatMessageAction => {

@@ -3,10 +3,12 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("fs");
 import path = require("path");
+import vm = require("node:vm");
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
+const { createLoopSubtaskExecutionRoot, resolveGrokLoopExecutionCwd } = require("../../loopSubtaskExecutionRoot") as typeof import("../../loopSubtaskExecutionRoot");
 const { schedulingModeForInteractiveMode } = require("../../extensionHost/modelSettings") as typeof import("../../extensionHost/modelSettings");
 const { createLoopPlusScheduler } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
 const { buildLoopPlusFinishEventId } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
@@ -20,14 +22,19 @@ const {
   selectLoopPlusInvocationAssistant,
   selectLoopPlusInvocationRun,
 } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
-const { createLoopGroupChatPanelCoordinator } = require("../../extensionHost/loopGroupChatPanelCoordinator") as typeof import("../../extensionHost/loopGroupChatPanelCoordinator");
+const { buildLoopGroupChatPanelState, createLoopGroupChatPanelCoordinator } = require("../../extensionHost/loopGroupChatPanelCoordinator") as typeof import("../../extensionHost/loopGroupChatPanelCoordinator");
+const { buildLoopGroupChatPanelHtml } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { withLoopSubtaskSession } from "../../loopSubtaskSession";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
-import type { LoopTaskRecord } from "../../loopTaskStore";
+import { normalizeLoopTaskRecord, type LoopTaskRecord } from "../../loopTaskStore";
+import { isLoopTaskPromptResumeCandidate } from "../../loopTaskMessagePolicy";
+import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../../loopMainFailure";
+import { RUNTIME_CONFIG_LOCK_TIMEOUT, RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE } from "../../loopMainFailure";
 import { assertModeAvailable } from "../../modeAvailability";
+import { loopClarificationScope } from "../../orchestratorClarification";
 
 function createDeferred<T = void>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -501,6 +508,69 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
   });
 }
 }
+
+test("Grok Loop+ keeps the first native session's isolated cwd across repairs and multi-hop continuations", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ configId: "profile", executionRootFactory: (rootId) => {
+    assert.ok(rootId);
+    const workspace = path.join(fixture.rootDir, "workspace");
+    return createLoopSubtaskExecutionRoot(workspace, { persistentCwd: resolveGrokLoopExecutionCwd(workspace, rootId, fixture.rootDir) });
+  } });
+  try {
+    const workspace = path.join(fixture.rootDir, "workspace");
+    fs.mkdirSync(path.join(workspace, "src"), { recursive: true });
+    fs.writeFileSync(path.join(workspace, "AGENTS.md"), "private project instructions");
+    fixture.saveTask({ id: "grok-task", cli: "codex", status: "running", workspaceKey: "workspace", subTasks: [
+      { id: "first", title: "首轮", status: "running" },
+      { id: "next", title: "修补", status: "running" },
+      { id: "further", title: "续接", status: "running" },
+      { id: "independent", title: "独立", status: "running" },
+      { id: "legacy", title: "旧会话", status: "running", executionSession: { cli: "grok", configId: "profile", sessionId: "legacy-session" } },
+    ] } as LoopTaskRecord);
+    const nativeSession = "original-grok-session";
+    const seen: string[] = [];
+    fixture.setAttemptAction((input, tabId) => {
+      const target = fixture.createdSubtaskTargets.find((value) => value.tabId === tabId)!;
+      assert.equal(input.grokLoopResumeSessionId, target.sessionId);
+      assert.ok(input.executionCwd);
+      assert.equal(fs.existsSync(path.join(input.executionCwd, "AGENTS.md")), false);
+      assert.equal(fs.statSync(path.join(input.executionCwd, "src")).isDirectory(), true);
+      seen.push(input.executionCwd);
+      target.sessionId ??= input.loopSubtaskId === "independent" ? "independent-session" : nativeSession;
+      fixture.publish(input, tabId, { status: "end", content: "完成" });
+    });
+    const run = async (subtaskId: string, round: number, continueFromSubtaskId?: string) => {
+      const handle = fixture.adapter.startAttempt({ taskId: "grok-task", subtaskId, attemptId: `attempt-${round}`, continueFromSubtaskId,
+        targetCli: "grok", title: subtaskId, prompt: "继续", modelPrompt: "继续", writeFiles: [], round });
+      const result = await handle.promise;
+      if (result.outcome === "completed") await handle.onCompleted?.();
+      return result;
+    };
+    assert.equal((await run("first", 1)).outcome, "completed");
+    const initial = fs.statSync(seen[0], { bigint: true });
+    assert.deepEqual(fs.readdirSync(seen[0]), []);
+    fs.writeFileSync(path.join(workspace, "new.txt"), "new workspace entry");
+    assert.equal((await run("first", 2)).outcome, "completed");
+    assert.equal((await run("next", 3, "first")).outcome, "completed");
+    assert.equal((await run("further", 4, "next")).outcome, "completed");
+    assert.equal((await run("independent", 5)).outcome, "completed");
+    assert.deepEqual(seen.slice(0, 4), Array(4).fill(seen[0]));
+    assert.notEqual(seen[4], seen[0]);
+    assert.equal(fs.statSync(seen[0], { bigint: true }).ino, initial.ino);
+    assert.deepEqual(fs.readdirSync(seen[0]), []);
+    const [first, next, further, independent, legacy] = fixture.readTask("grok-task")!.subTasks;
+    assert.ok(first.executionSession?.grokExecutionRootId);
+    assert.deepEqual(next.executionSession, first.executionSession);
+    assert.deepEqual(further.executionSession, first.executionSession);
+    assert.notEqual(independent.executionSession?.grokExecutionRootId, first.executionSession.grokExecutionRootId);
+    assert.match((await run("legacy", 6)).detail ?? "", /旧版 Grok 子任务没有记录原执行目录/);
+    assert.equal(seen.length, 5);
+    assert.deepEqual(fixture.readTask("grok-task")!.subTasks[4].executionSession, legacy.executionSession);
+    fs.writeFileSync(path.join(seen[0], "unknown.txt"), "preserve");
+    assert.match((await run("first", 7)).detail ?? "", /已保留现场/);
+    assert.equal(seen.length, 5);
+    assert.equal(fs.readFileSync(path.join(seen[0], "unknown.txt"), "utf8"), "preserve");
+  } finally { fixture.dispose(); }
+});
 
 function prompt(text = "ship the feature") {
   return {
@@ -1089,6 +1159,53 @@ test("adapter appends main-task completion messages only after Loop+ is persiste
     fixture.dispose();
   }
 });
+
+for (const departmentMode of [false, true]) {
+  test(`${departmentMode ? "department leader skips" : "ordinary Loop+ requests"} standalone group chat on start, clarification and resume`, async () => {
+    const revealed: string[] = [];
+    const clarificationScopes: string[] = [];
+    const fixture = createLoopPlusRuntimeFixture({
+      revealClarification: (taskId) => { revealed.push(taskId); },
+      waitForClarification: async (scope, request) => {
+        clarificationScopes.push(scope);
+        return { interactionId: request.interactionId, status: "aborted", values: {} };
+      },
+    });
+    const input = { ...prompt("完成任务"), loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
+    const departmentMetadata = departmentMode ? {
+      version: 1 as const,
+      rootTaskId: "department-root",
+      parentTaskId: "department-root",
+      leaderSubtaskId: "accounts",
+      role: "leader" as const,
+      moduleTitle: "账号模块",
+      routes: { director: { cli: "codex" as const }, leader: { cli: "codex" as const }, employee: { cli: "codex" as const } },
+      limits: { maxLeaders: 2, maxEmployees: 20 },
+    } : undefined;
+    try {
+      fixture.queueMain((request, tabId) => fixture.publish(request, tabId, { status: "end", content: decision({
+        status: "clarify",
+        clarification: { formFields: [{ id: "scope", label: "范围", type: "text" }] },
+      }) }));
+      assert.equal(await fixture.adapter.runEventDriven(input, { schedulingMode: "event_driven", departmentMetadata }, fixture.target), true);
+      const [taskId] = fixture.createdTaskIds;
+      assert.ok(taskId);
+      assert.deepEqual(clarificationScopes, [loopClarificationScope(taskId)]);
+      assert.equal(fixture.readTask(taskId)?.status, "needs-review");
+      assert.deepEqual(revealed, departmentMode ? [] : [taskId, taskId]);
+
+      fixture.queueMain((request, tabId) => fixture.publish(request, tabId, { status: "end", content: decision({
+        status: "completed", directCompletion: true, answerConclusion: "已完成", finalSummary: "任务完成",
+      }) }));
+      assert.equal(await fixture.adapter.runEventDriven(input, { resumeTaskId: taskId, resumeRequested: true,
+        preserveLoopOrigin: true }, fixture.target), true);
+      assert.equal(fixture.readTask(taskId)?.status, "completed");
+      assert.deepEqual(revealed, departmentMode ? [] : [taskId, taskId, taskId]);
+    } finally {
+      fixture.dispose();
+    }
+  });
+}
 
 test("leader model invocation keeps its captured department balance snapshot", async () => {
   const fixture = createLoopPlusRuntimeFixture({
@@ -2360,6 +2477,301 @@ test("adapter manual stop waits for continuation notification before review", as
   }
 });
 
+test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保留验收顺序", { timeout: 5000 }, async () => {
+  const configId = "original-config";
+  const firstReview = createDeferred();
+  let failures = 0;
+  let injectHistoricalFailure = false;
+  let duringPreparation: (() => Promise<void>) | undefined;
+  let admissionAttempts = 0;
+  const fixture = createLoopPlusRuntimeFixture({ configId, prepareConfigLockResume: async () => {
+    admissionAttempts += 1;
+    await duringPreparation?.();
+  }, beforePromptStart: async (input) => {
+    if (input.taskRole !== "main" || !injectHistoricalFailure || failures >= LOOP_MAIN_AI_FAILURE_LIMIT) return;
+    await firstReview.promise;
+    failures += 1;
+    throw Object.assign(new Error(RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE), { code: RUNTIME_CONFIG_LOCK_TIMEOUT });
+  } });
+  const reviewStarted = createDeferred();
+  const runReview = createDeferred();
+  const finishNextReview = createDeferred();
+  let restoreBarrier: { entered: ReturnType<typeof createDeferred<void>>; release: ReturnType<typeof createDeferred<void>> } | undefined;
+  const runs: Promise<unknown>[] = [];
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "a.ts"), subtask("B", "b.ts"), subtask("C", "c.ts"),
+        { ...subtask("successor", "successor.ts"), dependsOn: ["A"] }] }),
+    }));
+    runs.push(fixture.adapter.runEventDriven(prompt("Verify A, B and C; dependent work needs their approval"), { schedulingMode: "event_driven" }, fixture.target));
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 3, "original child runners");
+    taskId = fixture.createdTaskIds[0];
+    const original = fixture.readTask(taskId)!;
+    fixture.saveTask({ ...original, originProfile: { configId, mainThinkingMode: "low" }, loopSubtaskMode: "fullstack",
+      modelRouting: { main: { cli: "codex", model: "main-model" }, subtask: { model: "sub-model" }, subtaskFullstack: { model: "sub-model" } } });
+    injectHistoricalFailure = true;
+    const snapshot = () => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+    for (const child of ["A", "B", "C"]) {
+      fixture.finishParked(child, { status: "end", content: `finished ${child}` });
+      await waitForLoopPlus(() => !snapshot().running.some((attempt) => attempt.subtaskId === child), `${child} finish persisted`);
+    }
+    firstReview.resolve();
+    await runs[0];
+    const paused = fixture.readTask(taskId)!;
+    const pausedSnapshot = snapshot();
+    assert.equal(failures, LOOP_MAIN_AI_FAILURE_LIMIT);
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(paused.status, "needs-review");
+    assert.equal(paused.mainAiFailureCount, LOOP_MAIN_AI_FAILURE_LIMIT);
+    assert.equal(paused.mainAiLastFailureCode, RUNTIME_CONFIG_LOCK_TIMEOUT);
+    assert.equal(normalizeLoopTaskRecord(JSON.parse(JSON.stringify(paused)))?.mainAiLastFailureCode, RUNTIME_CONFIG_LOCK_TIMEOUT);
+    assert.equal(pausedSnapshot.currentReview?.subtaskId, "A");
+    assert.deepEqual(pausedSnapshot.reviewQueue.map((review) => review.subtaskId), ["B", "C"]);
+    assert.equal(pausedSnapshot.version, 1);
+    assert.deepEqual(pausedSnapshot.pending.map(({ subtaskId, dependsOn }) => ({ subtaskId, dependsOn })),
+      [{ subtaskId: "successor", dependsOn: ["A"] }]);
+
+    type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
+    type Panel = NonNullable<ReturnType<CoordinatorDeps["panelsByTaskId"]["get"]>>;
+    const warnings: string[] = [];
+    let busy = false;
+    let targetSession = fixture.target.sessionId;
+    let restores = 0;
+    let submissions = 0;
+    let applySettlement: ((message: { canContinue: boolean }) => void) | undefined;
+    let state: ReturnType<typeof buildLoopGroupChatPanelState>;
+    const panel = {
+      getState: () => state, setAskThread: () => undefined,
+      update: (latest: typeof state) => { state = latest; },
+      post: (message: { type: string; canContinue: boolean }) => {
+        if (message.type === "loopGroupChatChat:continueTaskSettled") applySettlement?.(message);
+      },
+    } as unknown as Panel;
+    const deps: CoordinatorDeps = {
+      getExtensionUri: () => ({ fsPath: fixture.rootDir } as ReturnType<CoordinatorDeps["getExtensionUri"]>),
+      panelsByTaskId: new Map([[taskId, panel]]),
+      normalizeTaskId: (value: unknown) => typeof value === "string" ? value : null,
+      normalizeSupplementalRequirement: () => null,
+      appendSupplementalRequirement: () => [],
+      appendSupplementalRequirementToCommunication: () => undefined,
+      recordPromptHistory: () => undefined,
+      readTaskRecord: fixture.readTask,
+      updateTaskRecord: () => null,
+      listTaskStoreFiles: () => [],
+      readTaskStoreTasks: () => [],
+      collectRunningTaskIds: () => new Set(fixture.adapter.host().collectRunningTaskIds()),
+      resolveMainPromptTarget: () => fixture.target,
+      isTabRunActive: () => busy,
+      isConfigLockResumeSessionAvailable: (task, restoredTabId) => !busy && task.workspaceKey === "workspace"
+        && task.sessionId === targetSession && (!restoredTabId || restoredTabId === fixture.target.tabId),
+      getActiveConfigIdForCli: () => configId,
+      getSelectedCliModel: () => "main-model",
+      restoreOriginalLoopRuntime: async (_task, options) => {
+        assert.equal(options?.configLockRecovery, true);
+        assert.equal(options?.originalTabId, fixture.target.tabId);
+        restores += 1;
+        if (restoreBarrier) { restoreBarrier.entered.resolve(); await restoreBarrier.release.promise; }
+        return { ok: true, target: fixture.target,
+          isOriginalTargetCurrent: () => true, codexConfigEvidence: { identity: "fixture-native-identity", provider: null } };
+      },
+      revealPanelView: async () => undefined,
+      switchVisibleConversationTabForLoop: async () => undefined,
+      runLoopPrompt: async (input, options) => {
+        submissions += 1;
+        assert.equal(options.preserveLoopOrigin, true);
+        assert.equal(options.resumeRequested, true);
+        assert.equal(options.resumeTaskId, taskId);
+        assert.equal("configSelections" in input, false);
+        await fixture.adapter.runEventDriven(input, options, fixture.target);
+      },
+      getActiveSubtaskIds: () => [],
+      stopRunsForTask: () => undefined,
+      markTaskStoppedByUser: () => null,
+      getActiveConversationTaskId: () => taskId,
+      postPanelState: async () => undefined,
+      pickTask: async () => null,
+      readTextFileIfNonEmpty: () => null,
+      fileExists: () => false,
+      writeTextFileEnsuringDir: () => true,
+      buildCompletedConclusionAndSummaryMarkdown: () => "",
+      showInformationMessage: () => undefined,
+      showWarningMessage: (message) => { warnings.push(message); },
+      t: (key: string) => key,
+    };
+    const coordinator = createLoopGroupChatPanelCoordinator(deps);
+    state = buildLoopGroupChatPanelState(paused, deps);
+    const message = { type: "loopGroupChatChat:continueTask", prompt: "继续原任务" } as const;
+    assert.equal(state.task.canContinue, true);
+    assert.equal(state.task.canSupplement, false);
+    assert.equal(isLoopTaskPromptResumeCandidate(paused, { hasCompleteCompletionMessages: false }), false);
+    await coordinator.continueTask(taskId, "普通入口不能解锁");
+    await coordinator.handleMessage(taskId, message);
+    fixture.adapter.host().checkWaitingTasks();
+    assert.equal(restores, 0);
+    assert.equal(fixture.mainCalls.length, 1);
+
+    const stopped = createLoopPlusScheduler({ snapshot: paused.loopPlus });
+    stopped.stopParent();
+    const reserved = createLoopPlusScheduler({ snapshot: paused.loopPlus });
+    assert.equal(reserved.dispatch([{ subtaskId: "dependent", attemptId: "not-yet-owned", writeFiles: ["dependent.ts"] }]).started.length, 1);
+    assert.equal(buildLoopGroupChatPanelState({ ...paused, mainAiLastFailureCode: undefined,
+      mainAiLastFailureMessage: RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE }, deps).task.canContinue, true);
+    for (const patch of [
+      { status: "completed" }, { status: "stopped" }, { cli: "opencode" }, { departmentInvalid: true },
+      { workspaceKey: "other" }, { sessionId: null }, { originProfile: { configId: "" } },
+      { loopPlus: undefined }, { loopPlus: {} }, { loopPlus: stopped.snapshot() }, { loopPlus: reserved.snapshot() },
+      { pendingClarification: { interactionId: "required", title: "澄清", instruction: "等待回答", formFields: [], submitLabel: "提交", cancelLabel: "取消" } },
+      { mainAiLastFailureCode: "SESSION_RUN_ACTIVE" }, { mainAiLastFailureCode: null },
+      { mainAiLastFailureCode: undefined, mainAiLastFailureMessage: `prefix ${RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE}` },
+    ] as Partial<LoopTaskRecord>[]) {
+      const ineligible = { ...paused, ...patch };
+      fixture.saveTask(ineligible);
+      state = buildLoopGroupChatPanelState(ineligible, deps);
+      assert.equal(state.task.canContinue, false, JSON.stringify(patch));
+      await coordinator.handleMessage(taskId, message, panel);
+    }
+    fixture.saveTask(paused);
+    busy = true;
+    state = buildLoopGroupChatPanelState(paused, deps);
+    assert.equal(state.task.canContinue, false);
+    await coordinator.handleMessage(taskId, message, panel);
+    assert.equal(restores, 0);
+    busy = false;
+    state = buildLoopGroupChatPanelState(paused, deps);
+
+    injectHistoricalFailure = false;
+
+    for (const changed of ["target", "record"]) {
+      restoreBarrier = { entered: createDeferred(), release: createDeferred() };
+      const stale = coordinator.handleMessage(taskId, message, panel);
+      await restoreBarrier.entered.promise;
+      if (changed === "target") targetSession = "different-session";
+      else fixture.saveTask({ ...paused, originProfile: { configId: "different-config" } });
+      restoreBarrier.release.resolve();
+      await stale;
+      assert.equal(fixture.readTask(taskId)?.status, "needs-review");
+      assert.equal(fixture.readTask(taskId)?.mainAiFailureCount, LOOP_MAIN_AI_FAILURE_LIMIT);
+      assert.deepEqual(snapshot(), pausedSnapshot);
+      assert.equal(submissions, 0);
+      if (changed === "record") assert.equal(fixture.readTask(taskId)?.originProfile?.configId, "different-config");
+      fixture.saveTask(paused);
+      targetSession = fixture.target.sessionId;
+      state = buildLoopGroupChatPanelState(paused, deps);
+    }
+    restoreBarrier = undefined;
+
+    const queued = createLoopPlusScheduler({ snapshot: pausedSnapshot });
+    const parkedAttempt = { subtaskId: "pending-child", attemptId: "pending-child-attempt" };
+    assert.equal(queued.dispatch([parkedAttempt]).started.length, 1);
+    assert.equal(queued.releaseUnstarted([parkedAttempt.attemptId]).released.length, 1);
+    fixture.saveTask({ ...paused, loopPlus: queued.snapshot() });
+    assert.equal(snapshot().pending.length, 2);
+    fixture.saveTask(paused);
+    for (const change of ["session", "busy"] as const) {
+      const entered = createDeferred();
+      const prepared = createDeferred();
+      const before = structuredClone(fixture.readTask(taskId));
+      const warningCount = warnings.length;
+      duringPreparation = async () => { entered.resolve(); await prepared.promise; };
+      const refused = coordinator.handleMessage(taskId, message, panel);
+      await entered.promise;
+      assert.deepEqual(fixture.readTask(taskId), before);
+      if (change === "busy") busy = true;
+      else targetSession = "rebound-during-preflight";
+      prepared.resolve();
+      await refused;
+      assert.equal(warnings.length, warningCount + 1);
+      assert.deepEqual(fixture.readTask(taskId), before);
+      assert.equal(fixture.mainCalls.length, 1);
+      assert.equal(fixture.attemptCalls.length, 3);
+      busy = false;
+      targetSession = fixture.target.sessionId;
+    }
+    duringPreparation = undefined;
+    state = buildLoopGroupChatPanelState(paused, deps);
+    const rejectedSubmissions = submissions;
+    const rejectedAdmissions = admissionAttempts;
+
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as Parameters<typeof buildLoopGroupChatPanelHtml>[0], state);
+    assert.match(html, /<button class="button primary"[^>]*data-action="continueTask"[^>]*>继续执行<\/button>/u);
+    const button = { disabled: false };
+    const input = { value: "", focus: () => undefined, select: () => undefined };
+    const source = html.slice(html.indexOf("function openContinueDialog"), html.indexOf("function submitSupplementDialog"));
+    const actions = vm.runInNewContext(`${source}\n({openContinueDialog, submitContinueDialog, applyContinueTaskSettled})`, {
+      continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
+      continueDialogInput: input, continueDialogConfirm: { dataset: {} }, continueDialogOpen: false,
+      continueDialogMode: undefined, continueDialogOpener: null, continueRequestPending: false,
+      actionButton: () => button, window: {}, document: { activeElement: button },
+      setContinueDialogError: () => undefined, saveDialogState: () => undefined, requestRefresh: () => undefined,
+      clearDialogState: () => undefined,
+      vscode: { postMessage: (payload: typeof message) => { runs.push(coordinator.handleMessage(taskId, payload, panel)); } },
+    }) as { openContinueDialog: () => void; submitContinueDialog: () => void; applyContinueTaskSettled: typeof applySettlement };
+    applySettlement = actions.applyContinueTaskSettled;
+    const predecessorEventId = pausedSnapshot.currentReview!.eventId;
+    fixture.queueMain(async (input, tabId) => {
+      assert.equal(input.loopTaskId, taskId);
+      assert.equal(tabId, fixture.target.tabId);
+      assert.equal(targetSession, fixture.target.sessionId);
+      assert.equal(input.loopMainModel, "main-model");
+      assert.equal(currentEventId(input.displayPrompt), pausedSnapshot.currentReview?.eventId);
+      reviewStarted.resolve();
+      await runReview.promise;
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "accept", reviewEventIds: [predecessorEventId],
+        reviews: [{ reviewEventId: predecessorEventId, acceptance: "passed", reason: "Synthetic result verified" }],
+        acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() } }) });
+    });
+    fixture.queueMain(async () => finishNextReview.promise);
+    actions.openContinueDialog();
+    actions.submitContinueDialog();
+    actions.submitContinueDialog();
+    assert.equal(button.disabled, true);
+    const resumed = runs.at(-1)!;
+    await coordinator.handleMessage(taskId, message, panel);
+    await Promise.race([reviewStarted.promise, resumed.then(() => {
+      assert.fail(`original review did not start: ${warnings.at(-1)}; ${fixture.readTask(taskId)?.finalSummary}`);
+    })]);
+    assert.equal(submissions, rejectedSubmissions + 1);
+    assert.equal(admissionAttempts, rejectedAdmissions + 1);
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.deepEqual(fixture.createdTaskIds, [taskId]);
+    assert.deepEqual(fixture.readTask(taskId)?.modelRouting, paused.modelRouting);
+    assert.deepEqual(snapshot().currentReview, pausedSnapshot.currentReview);
+    assert.deepEqual(snapshot().reviewQueue, pausedSnapshot.reviewQueue);
+    assert.deepEqual(snapshot().pending, pausedSnapshot.pending);
+    const successorStarted = createDeferred();
+    const finishSuccessor = createDeferred();
+    fixture.setAttemptAction(async (input) => {
+      assert.equal(input.loopSubtaskId, "successor");
+      successorStarted.resolve();
+      await finishSuccessor.promise;
+    });
+    runReview.resolve();
+    try {
+      await Promise.race([successorStarted.promise, resumed.then(() => {
+        assert.fail(`accepted predecessor did not release successor: ${JSON.stringify(fixture.logs.slice(-8))}`);
+      })]);
+      const advanced = snapshot();
+      assert.deepEqual(advanced.seenAttempts.filter((item) => item.disposition === "reviewed").map((item) => item.subtaskId), ["A"]);
+      assert.deepEqual([advanced.currentReview, ...advanced.reviewQueue].filter(Boolean), pausedSnapshot.reviewQueue);
+      assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), ["A", "B", "C", "successor"]);
+    } finally {
+      fixture.adapter.host().stopParent(taskId);
+      finishSuccessor.resolve();
+      finishNextReview.resolve();
+    }
+    await resumed;
+  } finally {
+    firstReview.resolve();
+    restoreBarrier?.release.resolve();
+    fixture.adapter.host().stopParent(taskId);
+    runReview.resolve();
+    finishNextReview.resolve();
+    await Promise.allSettled(runs);
+    fixture.dispose();
+  }
+});
+
 test("群聊继续经真实 adapter 恢复中断子任务、保留活跃同级和继续说明", { timeout: 5000 }, async () => {
   const fixture = createLoopPlusRuntimeFixture();
   let originalRun: Promise<boolean> | undefined;
@@ -2498,6 +2910,49 @@ test("切模型消息经真实 adapter 唤醒主模型并保留正在运行的�
   }
 });
 
+
+test("combined accept registers the new prerequisite before filling slots freed by controls", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ maxConcurrency: 2 });
+  let running: Promise<unknown> | undefined;
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "dispatch", subtasks: [subtask("P", "p.ts"), subtask("X", "x.ts"),
+        { ...subtask("B", "b.ts"), dependsOn: ["P"] }, subtask("C", "c.ts")] }),
+    }));
+    fixture.queueMain((input, tabId) => {
+      const reviewEventId = currentEventId(input.displayPrompt);
+      fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "accept", reviewEventId,
+          reviews: [{ reviewEventId, acceptance: "passed", subtaskIds: ["P"] }],
+          controls: [{ id: "X", action: "close" }], subtasks: [subtask("P", "p.ts")] }),
+      });
+    });
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "accept", reviewEventId: currentEventId(input.displayPrompt) }),
+    }));
+    running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "old P and X running");
+    const oldAttemptId = fixture.peekParked("P")!.input.loopAttemptId;
+    const taskId = fixture.createdTaskIds[0];
+    const snapshot = () => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+    fixture.finishParked("P", { status: "end", content: "old P complete" });
+    await waitForLoopPlus(() => fixture.peekParked("P")?.input.loopAttemptId !== undefined
+      && fixture.peekParked("P")?.input.loopAttemptId !== oldAttemptId, "new P starts after closing X");
+    assert.deepEqual(snapshot().running.map(item => item.subtaskId).sort(), ["C", "P"]);
+    assert.deepEqual(snapshot().pending.map(item => item.subtaskId), ["B"]);
+    assert.equal(snapshot().seenAttempts.find(item => item.subtaskId === "X")?.disposition, "closed");
+    assert.equal(snapshot().seenAttempts.find(item => item.attemptId === oldAttemptId)?.acceptance, "passed");
+    assert.equal(fixture.parkedSubtaskIds().includes("B"), false);
+    fixture.finishParked("P", { status: "end", content: "new P complete" });
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("B"), "B starts after latest P passes");
+    assert.deepEqual(snapshot().running.map(item => item.subtaskId).sort(), ["B", "C"]);
+    assert.equal(snapshot().pending.length, 0);
+  } finally {
+    fixture.adapter.host().stopParent(fixture.createdTaskIds[0] ?? "");
+    await running;
+    fixture.dispose();
+  }
+});
 
 test("main reprompt closes an interrupted tab, resumes its session and closes the replacement on completion", async () => {
   const fixture = createLoopPlusRuntimeFixture();

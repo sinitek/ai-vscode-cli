@@ -1210,6 +1210,41 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   assert.deepEqual(posted.slice(beforeMain).filter((message) => message.type === "webviewError"), []);
 });
 
+test("selects a department leader conversation without opening its group chat", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const tabs = [
+    { id: "director-tab", cli: "codex", loopTaskRole: "main", loopTaskId: "director-task",
+      departmentPresentation: { role: "director", rootTaskId: "director-task", taskId: "director-task", moduleTitle: "产研部" } },
+    { id: "leader-tab", cli: "codex", loopTaskRole: "main", loopTaskId: "leader-task", loopSchedulingMode: "event_driven",
+      departmentPresentation: { role: "leader", rootTaskId: "director-task", taskId: "leader-task", moduleTitle: "研发模块" } },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "director-tab", tabs } }) });
+
+  const beforeLeader = posted.length;
+  const leaderTab = conversationTabByLabel(document, "🌛 Codex2");
+  assert.ok(leaderTab);
+  leaderTab.click();
+  const selectedLeader = conversationTabByLabel(document, "🌛 Codex2");
+  assert.ok(selectedLeader);
+  assert.equal(selectedLeader.getAttribute("aria-selected"), "true");
+  selectedLeader.click();
+  selectedLeader.dispatchEvent({ type: "keydown", key: "Enter" });
+  selectedLeader.dispatchEvent({ type: "keydown", key: " " });
+  assert.deepEqual(postedTabActions(posted, beforeLeader), [
+    { type: "selectConversationTab", tabId: "leader-tab", cli: "codex" },
+  ]);
+
+  const beforeDirector = posted.length;
+  const directorTab = conversationTabByLabel(document, "☀️ Codex");
+  assert.ok(directorTab);
+  directorTab.click();
+  assert.deepEqual(postedTabActions(posted, beforeDirector), [
+    { type: "openLoopGroupChat", taskId: "director-task" },
+    { type: "selectConversationTab", tabId: "director-tab", cli: "codex" },
+  ]);
+  assert.equal(posted.some(message => message.type === "webviewError"), false);
+});
+
 test("shows the workspace harness toggle as checked and disabled when .ch already exists", () => {
   const { document, window } = createRuntimeHarness();
   const idleTabs = { activeTabId: "tab-1", tabs: [{ id: "tab-1", cli: "codex" }] };

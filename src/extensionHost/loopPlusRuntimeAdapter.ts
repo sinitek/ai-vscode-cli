@@ -11,8 +11,10 @@ import type { LoopTaskRecord } from "../loopTaskStore";
 import { buildDepartmentRolePrompt } from "../departmentprompts";
 import type { DepartmentMetadata } from "../department";
 import type { DepartmentEmployeeCapacity } from "../departmentcapacity";
-import { normalizeDepartmentMetadata } from "../department";
+import { isDepartmentExecutionCli, normalizeDepartmentMetadata } from "../department";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
+import { FirstLoopMainExecution } from "./promptRunHandoff";
+import type { ConfigLockResumeRequest } from "./loopGroupChatPanelCoordinator";
 import {
   createLoopPlusOrchestrationHost,
   type LoopPlusAttemptHandle,
@@ -83,6 +85,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   assertNewTaskModeAvailable: () => void;
   createTask: (input: Parameters<LoopPlusOrchestrationDeps["createTask"]>[0] & { departmentMetadata?: DepartmentMetadata }) => LoopTaskRecord;
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
+  commitConfigLockResume?: LoopPlusRuntimeAdapterDeps["updateTask"];
   appendHostMessage: LoopPlusOrchestrationDeps["appendMessage"];
   appendCompletionMessages?: LoopPlusOrchestrationDeps["appendCompletionMessages"];
   onMainActivityChange?: (taskId: string) => void;
@@ -101,6 +104,7 @@ export type LoopPlusRuntimeAdapterDeps = {
     isAborted?: () => boolean;
     signal?: AbortSignal;
     onStarted?: () => void;
+    firstMainExecution?: FirstLoopMainExecution;
   }) => Promise<void>;
   /** Trusted production transport; department leaders never fall back to EH runners. */
   runDepartmentMain?: (input: PromptRunInput, options: { targetTabId: string; invocationId: string;
@@ -118,7 +122,7 @@ export type LoopPlusRuntimeAdapterDeps = {
     role: "main" | "subtask",
     model: string | undefined,
   ) => ThinkingMode | undefined;
-  createExecutionRoot: () => { cwd?: string; dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult> } | null;
+  createExecutionRoot: (grokExecutionRootId?: string) => { cwd?: string; dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult> } | null;
   /** Trusted runner observation bound to this invocation, installed before execution.
    * done must prove actual termination (including runner cleanup), never task-end records or runPrompt settlement.
    * Missing observation quarantines department occupancy; ordinary Loop+ retains its legacy behavior.
@@ -422,7 +426,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     promptInput: PromptRunInput,
     target: LoopPlusPromptTarget,
     role: "main" | "subtask",
-    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal; lostInvocationSignal?: AbortSignal },
+    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal; lostInvocationSignal?: AbortSignal; firstMainExecution?: FirstLoopMainExecution },
   ): Promise<AttemptExecution> {
     const boundary = captureBoundary(target);
     const query: LoopPlusInvocationQuery = {
@@ -435,15 +439,20 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     };
     let completedRun: TaskRunRecord | null = null;
     const unsubscribe = deps.subscribeRunCompletion?.((run) => {
-      if (isInvocationRun(run, boundary, query)) {
+      if (isInvocationRun(run, boundary, { ...query, displayPrompt: promptInput.displayPrompt })) {
         completedRun = run;
       }
     });
     let removePreparationAbort: (() => void) | undefined;
     try {
       const task = deps.readTask(promptInput.loopTaskId ?? "");
-      if (role === "main" && (task?.department?.role === "leader" || task?.departmentInvalid)) {
-        if (!deps.runDepartmentMain || !["codex", "opencode"].includes(task.cli)) throw new Error("部门组长原生 Owner 路径未支持，拒绝普通执行回退。");
+      if (options.firstMainExecution && (!task || task.department || task.departmentInvalid)) {
+        throw new Error("原 Loop+ 执行归属已变化，任务未启动。");
+      }
+      if (options.firstMainExecution) {
+        await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
+      } else if (role === "main" && (task?.department?.role === "leader" || task?.departmentInvalid)) {
+        if (!deps.runDepartmentMain || !isDepartmentExecutionCli(task.cli)) throw new Error("部门组长原生 Owner 路径未支持，拒绝普通执行回退。");
         await deps.runDepartmentMain(promptInput, { ...options, targetTabId: target.tabId, invocationId: randomUUID() });
       } else if (role === "subtask" && (task?.department?.role === "leader" || task?.departmentInvalid)) {
         // Owner termination is the Department cleanup authority. An ordinary
@@ -476,7 +485,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
       return { thrown: false, error: null, completedRun, boundary, promptInput, target };
     } catch (error) {
-      if (role === "main" && deps.readTask(promptInput.loopTaskId ?? "")?.department?.role === "leader") {
+      if (role === "main" && !options.firstMainExecution && deps.readTask(promptInput.loopTaskId ?? "")?.department?.role === "leader") {
         const unknown = new Error(error instanceof Error ? error.message : String(error)) as Error & { code: string; cause: unknown };
         unknown.code = "DEPARTMENT_NATIVE_UNKNOWN"; unknown.cause = error;
         return { thrown: true, error: unknown, completedRun, boundary, promptInput, target };
@@ -489,11 +498,13 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
   }
 
   function runMain(request: LoopPlusMainRequest): LoopPlusMainHandle {
+    const firstMainExecution = request.firstMainExecution;
     let aborted = false;
     const departmentMain = deps.readTask(request.taskId)?.department?.role === "leader";
-    const controller = departmentMain ? new AbortController() : undefined;
+    const controller = departmentMain || firstMainExecution ? new AbortController() : undefined;
     let invocationStarted = false;
-    const promise = (async (): Promise<string | null> => {
+    if (firstMainExecution) firstMainExecution.claimed = true;
+    const invocation = (async (): Promise<string | null> => {
       const promptInput = promptForRole(
         request.taskId,
         "main",
@@ -501,8 +512,23 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         request.modelPrompt,
         request.target.cli,
       );
+      if (firstMainExecution?.prepareMain) {
+        const prepare = firstMainExecution.prepareMain;
+        firstMainExecution.prepareMain = (task) => {
+          const prepared = prepare(task);
+          return {
+            ...prepared,
+            afterSend: () => {
+              promptInput.displayPrompt = prepared.displayPrompt;
+              promptInput.modelPrompt = prepared.modelPrompt ?? prepared.displayPrompt;
+              prepared.afterSend();
+            },
+          };
+        };
+      }
       const execution = await runInvocation(promptInput, request.target, "main", {
         isAborted: () => aborted,
+        firstMainExecution,
         ...(controller ? { signal: controller.signal } : {}),
         onStarted: () => {
           invocationStarted = true;
@@ -510,6 +536,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         },
       });
       try {
+        if (firstMainExecution && !firstMainExecution.admitted) {
+          firstMainExecution.finishBeforeAdmission(aborted, execution.thrown ? execution.error : undefined);
+          return null;
+        }
         const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun);
         if (execution.thrown) {
           if (aborted || invocation.run?.status === "stopped") {
@@ -522,14 +552,24 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }
         return invocation.content;
       } finally {
-        if (invocationStarted) {
+        if (invocationStarted && !firstMainExecution) {
           deps.onMainActivityChange?.(request.taskId);
         }
       }
     })();
+    const promise = firstMainExecution ? invocation.catch(async (error) => {
+      if (firstMainExecution.admitted) throw error;
+      firstMainExecution.finishBeforeAdmission(aborted, error);
+      return null;
+    }).finally(async () => {
+      if (invocationStarted) {
+        try { deps.onMainActivityChange?.(request.taskId); } catch { /* Projection only. */ }
+      }
+    }) : invocation;
     trackExecution(request.taskId, promise);
     return {
       promise,
+      hasStarted: () => invocationStarted,
       abort: () => {
         if (aborted) {
           return;
@@ -553,6 +593,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const task = deps.readTask(request.taskId);
     const configId = request.execution?.configId ?? deps.getActiveConfigIdForCli?.(request.targetCli) ?? null;
     const continuation = resolveLoopSubtaskSession(task ?? { subTasks: [] }, { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
+    const grokExecutionRootId = request.targetCli === "grok"
+      ? continuation.sessionId ? continuation.grokExecutionRootId : randomUUID()
+      : undefined;
     const sourceSessionSnapshot = JSON.stringify(task?.subTasks.find((v) => v.id === continuation.sourceSubtaskId)?.executionSession ?? null);
     let subtaskTarget = departmentExecutionAdmission || deps.acquireAttemptExecution ? null : createTarget();
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
@@ -759,6 +802,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
 
     function persistSession(sessionId = subtaskTarget ? deps.resolveSessionId(subtaskTarget) : null): void {
+      if (task?.department?.role === "leader" && request.targetCli === "grok") return;
       const latest = deps.readTask(request.taskId);
       if (!sessionId || !latest) {
         return;
@@ -775,13 +819,19 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         return;
       }
       const recordedConfigId = recorded?.cli === request.targetCli && recorded.sessionId === sessionId ? recorded.configId : configId;
-      deps.updateTask(latest.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, request.subtaskId, { cli: request.targetCli, sessionId, configId: recordedConfigId }) });
+      deps.updateTask(latest.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, request.subtaskId, {
+        cli: request.targetCli, sessionId, configId: recordedConfigId,
+        ...(grokExecutionRootId ? { grokExecutionRootId } : {}),
+      }) });
     }
 
     async function runStartedAttempt(): Promise<LoopPlusAttemptResult> {
       const target = subtaskTarget;
       if (aborted || !target) {
         return { outcome: "stopped", detail: "stopped" };
+      }
+      if (request.targetCli === "grok" && !grokExecutionRootId) {
+        throw new Error("旧版 Grok 子任务没有记录原执行目录，无法安全续接；原会话已保留。");
       }
       if (task?.department?.role === "leader" && request.targetCli === "codex") {
         const current = deps.readTask(request.taskId);
@@ -800,7 +850,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         () => {
           if (ownerResources) return { cwd: undefined, dispose: () => ({ ok: true as const, retainedDirectory: false }) };
           let root: ReturnType<LoopPlusRuntimeAdapterDeps["createExecutionRoot"]>;
-          try { root = deps.createExecutionRoot(); }
+          try { root = deps.createExecutionRoot(grokExecutionRootId); }
           catch (error) {
             if ((error as { cleanupResult?: LoopSubtaskCleanupResult })?.cleanupResult?.ok === false) failCleanup(error);
             throw error;
@@ -845,6 +895,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
             const root = executionRoot;
             promptInput.executionCwd = root?.cwd;
             promptInput.isolateProjectInstructions = Boolean(root);
+            if (grokExecutionRootId) {
+              if (!root?.cwd) throw new Error("Grok 子任务缺少隔离执行目录。");
+              promptInput.grokLoopExecutionRootId = grokExecutionRootId;
+              promptInput.grokLoopResumeSessionId = continuation.sessionId;
+            }
             try {
               if (departmentLease) {
                 const observation = deps.observeAttemptTermination?.(request, target);
@@ -912,6 +967,13 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
   }
 
+  function revealStandaloneGroupChat(taskId: string): void {
+    const task = deps.readTask(taskId);
+    if (task && task.department === undefined && !task.departmentInvalid) {
+      deps.revealClarification?.(taskId);
+    }
+  }
+
   function host(): ReturnType<typeof createLoopPlusOrchestrationHost> {
     if (!hostInstance) {
       hostInstance = createLoopPlusOrchestrationHost({
@@ -941,6 +1003,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           return deps.readTask(task.id) ?? task;
         },
         updateTask: (taskId, patch) => deps.updateTask(taskId, patch),
+        commitConfigLockResume: deps.commitConfigLockResume,
         appendMessage: deps.appendHostMessage,
         appendCompletionMessages: deps.appendCompletionMessages,
         onTaskCompleted: deps.onTaskCompleted,
@@ -965,7 +1028,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           ].join("\n"));
         },
         log: deps.log,
-        revealClarification: deps.revealClarification,
+        revealClarification: revealStandaloneGroupChat,
         recordInteractionHistory: deps.recordInteractionHistory,
         waitForClarification: deps.waitForClarification,
       });
@@ -975,7 +1038,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
 
   async function runEventDriven(
     input: PromptRunInput,
-    options: LoopPlusRunOptions & { departmentMetadata?: DepartmentMetadata; resumeUserMessage?: string } = {},
+    options: LoopPlusRunOptions & { departmentMetadata?: DepartmentMetadata; configLockRecovery?: ConfigLockResumeRequest } = {},
     target: LoopPlusPromptTarget,
     onTaskOwnershipAcquired?: (taskId: string, target: LoopPlusPromptTarget) => void | Promise<void>,
   ): Promise<boolean> {
@@ -992,10 +1055,18 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       return false;
     }
     let existing = resumeTaskId ? deps.readTask(resumeTaskId) : null;
+    const recovery = options.configLockRecovery;
+    const originalConfigId = existing?.originProfile?.configId;
+    if (recovery && (!existing || !resumeRequested || !preserveLoopOrigin || options.departmentMetadata !== undefined
+      || existing.schedulingMode !== "event_driven" || target.cli !== "codex" || !originalConfigId
+      || !recovery.isTargetCurrent())) {
+      throw new Error(recovery.unavailableMessage);
+    }
     if (resolveLoopPlusEntry(existing, options.schedulingMode) !== "event_driven") {
       return false;
     }
     if (deps.isSubtaskConversation(target)) {
+      if (recovery) throw new Error(recovery.unavailableMessage);
       deps.appendRefusal(target, "nested");
       return true;
     }
@@ -1015,10 +1086,30 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       compatible: existing ? deps.isTaskCompatible(existing, target) : false,
     });
     if (refusal) {
+      if (recovery) throw new Error(recovery.unavailableMessage);
       deps.appendRefusal(target, refusal);
       return true;
     }
-    if (existing && resumeRequested) {
+    const firstMainExecution = recovery && originalConfigId
+      ? new FirstLoopMainExecution(target, originalConfigId, recovery.isTargetCurrent, recovery.unavailableMessage, recovery.codexConfigEvidence)
+      : undefined;
+    let result: ReturnType<ReturnType<typeof host>["tryRun"]>;
+    try {
+    if (recovery && firstMainExecution) {
+      const verify = (preparing?: FirstLoopMainExecution) => {
+        const original = recovery.readTask();
+        if (!original || original.id !== resumeTaskId || original.workspaceKey !== deps.activeWorkspaceKey()
+          || original.cli !== target.cli || !targetSessionId || original.sessionId !== targetSessionId
+          || original.originProfile?.configId !== firstMainExecution.configId || !recovery.isTargetCurrent()
+          || (executions.get(original.id)?.size ?? 0) > (preparing ? 1 : 0) || cleanupFailures.has(original.id)
+          || !host().canAdmitConfigLockResume(original, preparing)) throw new Error(recovery.unavailableMessage);
+        return original;
+      };
+      existing = verify();
+      firstMainExecution.readResumeTask = () => verify(firstMainExecution);
+      firstMainExecution.resumeRequirements = (task) => continueRequirements(task, input);
+    }
+    if (existing && resumeRequested && !firstMainExecution) {
       if (!preserveLoopOrigin) {
         const configId = deps.getActiveConfigIdForCli?.(target.cli);
         const modelRouting = loopModelRoutingFromPromptInput(input, { mainCli: target.cli });
@@ -1029,23 +1120,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }) ?? existing;
       }
       rememberLivePrompt(existing.id, input);
-      const mergedRequirements = mergeLoopPlusResumeContinueInstruction(
-        existing.supplementalRequirements,
-        input.loopContinuePrompt ?? deps.normalizeContinuePrompt(input.displayPrompt || input.modelPrompt),
-        deps.hiddenContinuePrompt(),
-      );
-      if (mergedRequirements) {
-        existing = deps.updateTask(existing.id, {
-          supplementalRequirements: mergedRequirements,
-          updatedAt: now(),
-        }) ?? existing;
-      }
+      existing = saveContinueInstruction(existing, input);
     }
     creatingDepartment = requestedDepartment ?? undefined;
     departmentOwnership = onTaskOwnershipAcquired;
     departmentTarget = target;
-    let result: ReturnType<ReturnType<typeof host>["tryRun"]>;
-    try {
     result = host().tryRun({
       displayPrompt: input.displayPrompt,
       modelPrompt: input.modelPrompt,
@@ -1071,6 +1150,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       resumeRequested,
       ...(typeof options.resumeUserMessage === "string" ? { resumeUserMessage: options.resumeUserMessage } : {}),
       preserveLoopOrigin,
+      firstMainExecution,
       schedulingMode: options.schedulingMode,
       sessionId: targetSessionId,
       ...(requestedDepartment && onTaskOwnershipAcquired ? { beforeInitialPump: async (taskId: string) => {
@@ -1081,6 +1161,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     } finally {
       creatingDepartment = undefined; departmentOwnership = undefined; departmentTarget = undefined;
       departmentOwnershipReady = undefined; departmentOwnershipTaskId = undefined;
+    }
+    if (firstMainExecution) {
+      if (!firstMainExecution.claimed) throw new Error(firstMainExecution.unavailableMessage);
+      const admission = await firstMainExecution.admission;
+      if (admission.kind !== "admitted") {
+        await result.done;
+        if (admission.kind === "refused") throw admission.error;
+        return true;
+      }
     }
     if (!resumeTaskId && options.departmentMetadata && result.taskId) {
       const current = deps.readTask(result.taskId);
@@ -1096,7 +1185,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     if (result.taskId) {
       rememberLivePrompt(result.taskId, input);
       if (!requestedDepartment) onTaskOwnershipAcquired?.(result.taskId, target);
-      deps.revealClarification?.(result.taskId);
+      revealStandaloneGroupChat(result.taskId);
     }
     if (result.handled) {
       const id = result.taskId;
@@ -1116,6 +1205,21 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
     releaseLivePromptIfCompleted(result.taskId);
     return true;
+  }
+
+  function continueRequirements(task: LoopTaskRecord, input: PromptRunInput) {
+    return mergeLoopPlusResumeContinueInstruction(
+      task.supplementalRequirements,
+      input.loopContinuePrompt ?? deps.normalizeContinuePrompt(input.displayPrompt || input.modelPrompt),
+      deps.hiddenContinuePrompt(),
+    );
+  }
+
+  function saveContinueInstruction(task: LoopTaskRecord, input: PromptRunInput): LoopTaskRecord {
+    const mergedRequirements = continueRequirements(task, input);
+    return mergedRequirements ? deps.updateTask(task.id, {
+      supplementalRequirements: mergedRequirements, updatedAt: now(),
+    }) ?? task : task;
   }
 
   return {

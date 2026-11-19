@@ -87,12 +87,16 @@ test("first mode entry loads both role models through the host without a CLI tog
   let changeMode!: (event: { target: { value: string } }) => void;
   h.context.elements.interactiveModeSelect = { addEventListener: (_event: string, listener: typeof changeMode) => { changeMode = listener; } };
   h.context.normalizeInteractiveMode = (value: string) => value;
+  const runtimeState = { interactiveModeSelection: { cli: "codex", mode: "coding" } };
+  h.context.getActiveConversationRuntimeState = () => runtimeState;
   h.context.syncModelSelectorByInteractiveMode = () => h.context.renderDepartmentConfiguration();
   const start = VIEW_CONTENT_SCRIPT_MODEL_MANAGER.lastIndexOf("      if (elements.interactiveModeSelect) {");
   const end = VIEW_CONTENT_SCRIPT_MODEL_MANAGER.indexOf("      if (elements.debugMode) {", start);
   assert.ok(start >= 0 && end > start);
   vm.runInContext(VIEW_CONTENT_SCRIPT_MODEL_MANAGER.slice(start, end), h.context);
   changeMode({ target: { value: "department" } });
+  assert.equal(runtimeState.interactiveModeSelection.cli, "codex");
+  assert.equal(runtimeState.interactiveModeSelection.mode, "department");
 
   let revision = 0;
   let hostMode = "coding";

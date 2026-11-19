@@ -10,6 +10,7 @@ import { fingerprintDepartmentExecutionSelection, type CleanupRequirements, type
   type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import { DepartmentLeaderExecutionLedger, leaderExecutionScopeKey } from "./departmentleaderexecutionledger";
 import type { DepartmentExecutionProducerHost } from "./departmentexecutionproducer";
+import { departmentCleanupErrorCode } from "./departmentlifecyclediagnostics";
 import type { DepartmentExecutionBinding } from "./departmentruntimestate";
 import type { DepartmentRuntimeStore } from "./departmentruntimestore";
 import type { PromptRunExecutionOptions } from "./promptExecutionShared";
@@ -32,6 +33,7 @@ const requirements: CleanupRequirements = { processTerminal: false, turnTerminal
   runner: true, executionRoot: false, links: false, temp: false, tab: false };
 const confirmed = (evidence: string) => ({ status: "confirmed" as const, evidence });
 const absent = { status: "not-applicable" as const, reason: "owned-by-loop-runtime" };
+const diagnosticId = (value: string | undefined): string | undefined => value && /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : undefined;
 type Entry = {
   binding?: DepartmentExecutionBinding; localSessionId: string; selection: DepartmentExecutionSelection; server: DepartmentExecutionOwnerServer; client: DepartmentExecutionOwnerClient;
   terminal: ReturnType<typeof deferred<ExecutionTerminalEvidence>>;
@@ -40,8 +42,10 @@ type Entry = {
   invocations: Set<string>; cancel?: () => void; sealed: boolean; closing?: Promise<void>;
 };
 type Invocation = {
-  taskId: string; role: "leader" | "employee"; invocationId: string; sessionId: string;
+  taskId: string; role: "leader" | "employee"; invocationId: string; sessionId: string | null;
+  initializeLocalSession?: () => string | null;
   subtaskId?: string; attemptId?: string; expected: { configId: string | null; revision: string };
+  grokExecutionRootId?: string;
   cancel(): void; execute(capture: Capture): Promise<void>;
 };
 
@@ -49,12 +53,12 @@ export function createDepartmentInteractiveRuntime(deps: {
   producer: DepartmentExecutionProducerHost; store: DepartmentRuntimeStore; ownerDirectory: string;
   readTask(id: string): LoopTaskRecord | null;
   updateTask(id: string, patch: Partial<LoopTaskRecord>): LoopTaskRecord | null;
+  log?(event: string, payload: Record<string, unknown>): void;
 }) {
   const ledger = new DepartmentLeaderExecutionLedger(deps.store, deps.producer.producer);
   const entries = new Map<string, Entry>();
   const observations = new Map<string, Observation>();
   const authorized = new Set<string>();
-  const slots = new Map<string, string>();
   const key = (...parts: string[]) => JSON.stringify(parts);
   function observe(taskId: string, attemptId: string): Observation {
     const id = key(taskId, attemptId);
@@ -71,8 +75,8 @@ export function createDepartmentInteractiveRuntime(deps: {
     const task = deps.readTask(input.taskId), scope = deps.producer.scope(input.taskId);
     const route = task?.department?.routes[input.role];
     if (!task || task.departmentInvalid || task.executionSessionInvalid || !route || !usesDepartmentInteractiveRuntime(route.cli)
-      || input.role === "leader" && task.cli !== route.cli || !route.configId || input.expected.configId !== route.configId
-      || !input.sessionId) throw new Error("department-interactive-route-or-session-invalid");
+      || input.role === "leader" && task.cli !== route.cli || !route.configId || input.expected.configId !== route.configId)
+      throw new Error("department-interactive-route-or-session-invalid");
     const saved = deps.store.read(scope.rootTaskId, scope.workspace);
     if (!saved.ok || !saved.value) throw new Error("department-interactive-runtime-unavailable");
     if (input.role === "employee") {
@@ -117,7 +121,7 @@ export function createDepartmentInteractiveRuntime(deps: {
     void entry.closing.catch(entry.terminal.reject);
     return entry.closing;
   }
-  function create(input: Invocation, current: ReturnType<typeof facts>): Entry {
+  function create(input: Invocation, current: ReturnType<typeof facts>, localSessionId: string): Entry {
     const { scope, selection, task } = current;
     const identity: DepartmentExecutionIdentity = { version: 1, ...scope, cli: selection.cli,
       ...(input.role === "leader" ? { role: "leader" as const } : { role: "employee" as const,
@@ -136,7 +140,7 @@ export function createDepartmentInteractiveRuntime(deps: {
         }) };
       },
     } });
-    entry = { localSessionId: input.sessionId, selection, registered: deferred<void>(), native: deferred<string>(), server, client: new DepartmentExecutionOwnerClient(directory), terminal,
+    entry = { localSessionId, selection, registered: deferred<void>(), native: deferred<string>(), server, client: new DepartmentExecutionOwnerClient(directory), terminal,
       ready: Promise.resolve(), pending: new Set(), runners: new Map(), invocations: new Set(), sealed: false };
     // Retain the original sealer before the first asynchronous preparation.
     if (input.role === "leader") deps.producer.attachNativeOwner(task.id, () => close(entry));
@@ -148,7 +152,11 @@ export function createDepartmentInteractiveRuntime(deps: {
       const nativeId = await entry.native.promise;
       const latest = facts(input);
       if (entry.sealed || leaderExecutionScopeKey(latest.scope) !== leaderExecutionScopeKey(scope)) throw new Error("department-interactive-preparation-sealed");
-      const session = { cli: selection.cli, sessionId: nativeId, configId: selection.configId };
+      const session = {
+        cli: selection.cli, sessionId: nativeId, configId: selection.configId,
+        ...(input.role === "employee" && selection.cli === "grok" && input.grokExecutionRootId
+          ? { grokExecutionRootId: input.grokExecutionRootId } : {}),
+      };
       const old = input.role === "leader" ? latest.task.executionSession
         : latest.task.subTasks.find(value => value.id === input.subtaskId)?.executionSession;
       if (old && JSON.stringify(old) !== JSON.stringify(session)) throw new Error("department-interactive-session-conflict");
@@ -178,31 +186,54 @@ export function createDepartmentInteractiveRuntime(deps: {
       if (authorized.size >= 256 && !authorized.has(key(task, subtask, attempt))) throw new Error("department-interactive-admission-capacity");
       authorized.add(key(task, subtask, attempt));
     },
-    observe(task: string, attempt: string, subtask?: string) {
-      if (subtask) slots.set(key(task, subtask), attempt);
+    observe(task: string, attempt: string) {
       return { done: observe(task, attempt).done };
     },
-    rejectUnstarted(task: string, subtask: string): void {
-      const attempt = slots.get(key(task, subtask));
-      if (attempt && !entries.has(key(task, "employee", attempt))) observe(task, attempt).reject(new Error("department-interactive-invocation-never-started"));
+    rejectUnstarted(task: string, attempt: string, error?: unknown): void {
+      if (!entries.has(key(task, "employee", attempt))) {
+        observations.get(key(task, attempt))?.reject(error ?? new Error("department-interactive-invocation-never-started"));
+      }
     },
     async run(input: Invocation): Promise<void> {
       const observed = input.role === "employee" && input.attemptId ? observe(input.taskId, input.attemptId) : null;
+      const startedAt = Date.now();
+      let stage = "admission";
+      const diagnose = (result: "started" | "confirmed" | "unconfirmed", error?: unknown): void => {
+        try {
+          const task = deps.readTask(input.taskId);
+          const errorCode = error === undefined ? undefined : departmentCleanupErrorCode(error);
+          deps.log?.("department-interactive-invocation", {
+            ...(diagnosticId(task?.department?.rootTaskId) ? { rootTaskId: diagnosticId(task?.department?.rootTaskId) } : {}),
+            ...(diagnosticId(input.taskId) ? { leaderTaskId: diagnosticId(input.taskId) } : {}),
+            ...(diagnosticId(input.subtaskId) ? { subtaskId: diagnosticId(input.subtaskId) } : {}),
+            ...(diagnosticId(input.attemptId) ? { attemptId: diagnosticId(input.attemptId) } : {}),
+            stage, result, elapsedMs: Math.max(0, Date.now() - startedAt),
+            ...(errorCode ? { errorCode } : {}),
+          });
+        } catch { /* Diagnostics cannot change execution authority or cleanup. */ }
+      };
+      diagnose("started");
       try {
+        stage = "admission";
         const current = facts(input), id = key(input.taskId, input.role, input.role === "leader" ? String(current.scope.generation) : input.attemptId!);
         let entry = entries.get(id);
+        stage = "local-session";
+        const localSessionId = input.sessionId ?? (input.role === "employee" && !entry ? input.initializeLocalSession?.() : null);
+        if (!localSessionId) throw new Error("department-interactive-local-session-unavailable");
+        stage = "owner-preparation";
         if (!entry) {
           if (entries.size >= 256) throw new Error("department-interactive-owner-capacity");
-          entry = create(input, current); entries.set(id, entry);
+          entry = create(input, current, localSessionId); entries.set(id, entry);
         }
         if (entry.sealed || entry.pending.size || entry.invocations.has(input.invocationId)
           || JSON.stringify(entry.selection) !== JSON.stringify(current.selection)
-          || entry.localSessionId !== input.sessionId)
+          || entry.localSessionId !== localSessionId)
           throw new Error("department-interactive-invocation-conflict");
         entry.invocations.add(input.invocationId); entry.cancel = input.cancel;
         const original = entry;
         const work = (async () => {
           await original.registered.promise;
+          stage = "runner";
           facts(input);
           if (original.sealed) throw new Error("department-interactive-invocation-sealed");
           await input.execute((runner, release) => {
@@ -213,10 +244,12 @@ export function createDepartmentInteractiveRuntime(deps: {
               throw new Error("department-interactive-runner-sealed");
             }
             return async nativeSessionId => {
+              stage = "native-session";
               const bound = original.binding?.identity.session;
               if (original.sealed || bound?.state === "bound" && bound.id !== nativeSessionId)
                 throw new Error("department-interactive-native-session-conflict");
               original.native.resolve(nativeSessionId);
+              stage = "owner-authorization";
               await original.ready;
               if (original.sealed) throw new Error("department-interactive-invocation-sealed");
             };
@@ -228,14 +261,18 @@ export function createDepartmentInteractiveRuntime(deps: {
         finally {
           original.pending.delete(work); original.cancel = undefined;
           original.native.reject(new Error("department-interactive-session-not-prepared"));
-          if (input.role === "employee" || !original.binding) await close(original);
+          if (input.role === "employee" || !original.binding) {
+            stage = "owner-cleanup";
+            await close(original);
+          }
         }
         observed?.resolve();
-      } catch (error) { observed?.reject(error); throw error; }
+        diagnose("confirmed");
+      } catch (error) { diagnose("unconfirmed", error); observed?.reject(error); throw error; }
     },
     /** Called only after the original complete group was cleaned and released. */
     releaseTask(taskId: string): void {
-      for (const map of [entries, observations, slots]) for (const id of map.keys()) if (JSON.parse(id)[0] === taskId) map.delete(id);
+      for (const map of [entries, observations]) for (const id of map.keys()) if (JSON.parse(id)[0] === taskId) map.delete(id);
       for (const id of authorized) if (JSON.parse(id)[0] === taskId) authorized.delete(id);
     },
   };

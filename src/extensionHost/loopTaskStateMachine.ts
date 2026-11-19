@@ -474,6 +474,8 @@ function resolveLoopMainDecisionStrategy(status: LoopMainDecision["status"]): Lo
       return loopTaskTransitionStrategies.mainDecision.clarify;
     case "blocked":
       return loopTaskTransitionStrategies.mainDecision.blocked;
+    case "waiting":
+      return loopTaskTransitionStrategies.mainDecision.blocked;
     case "continue":
       return loopTaskTransitionStrategies.mainDecision.continue;
     default:

@@ -537,6 +537,17 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       estimatedRemainingRounds,
     };
   }
+  if (raw.status === "waiting") {
+    const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
+      ? raw.finalSummary.trim()
+      : undefined;
+    return {
+      status: "waiting",
+      ...(progressPercent !== undefined ? { progressPercent } : {}),
+      ...(finalSummary ? { finalSummary } : {}),
+      estimatedRemainingRounds,
+    };
+  }
   if (raw.status === "clarify") {
     const clarification = parseOrchestratorClarification(raw, `loop-clarify-${Date.now()}`);
     if (!clarification) {

@@ -334,10 +334,10 @@ export type LoopPlusControlResult = {
 export type LoopPlusScheduler = {
   /** 更新准入容量；不取消已有预留，也不自行启动排队任务。 */
   updateMaxConcurrency: (value: number) => void;
-  dispatch: (specs: readonly unknown[]) => LoopPlusDispatchResult;
+  dispatch: (specs: readonly unknown[], options?: { deferPromotion?: boolean }) => LoopPlusDispatchResult;
   applyControls: (
     commands: readonly LoopPlusControlCommand[],
-    options?: { dryRun?: boolean },
+    options?: { dryRun?: boolean; deferPromotion?: boolean },
   ) => LoopPlusControlResult;
   finish: (input: LoopPlusFinishInput) => LoopPlusFinishResult;
   acknowledgeReports: (eventIds: readonly string[]) => boolean;
@@ -465,7 +465,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     };
   }
 
-  function dispatch(specs: readonly unknown[]): LoopPlusDispatchResult {
+  function dispatch(specs: readonly unknown[], options?: { deferPromotion?: boolean }): LoopPlusDispatchResult {
     if (!Array.isArray(specs)) {
       throw new Error("Invalid Loop+ dispatch specs");
     }
@@ -527,7 +527,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       });
       latestAttempts.set(parsed.subtaskId, seenAttempts[seenAttempts.length - 1]);
     }
-    const started = promote(latestAttempts);
+    const started = options?.deferPromotion ? [] : promote(latestAttempts);
     const startedIds = new Set(started.map((item) => item.attemptId));
     for (const { record } of accepted) {
       if (startedIds.has(record.attemptId)) {
@@ -1088,7 +1088,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
 
   function applyControls(
     commands: readonly LoopPlusControlCommand[],
-    options?: { dryRun?: boolean },
+    options?: { dryRun?: boolean; deferPromotion?: boolean },
   ): LoopPlusControlResult {
     const dryRun = options?.dryRun === true;
     const rejected = (
@@ -1200,7 +1200,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         ...(spec.dependsOn !== undefined ? { dependsOn: spec.dependsOn.slice() } : {}),
       });
     }
-    const started = promote();
+    const started = options?.deferPromotion ? [] : promote();
     commit();
     return {
       ok: true,

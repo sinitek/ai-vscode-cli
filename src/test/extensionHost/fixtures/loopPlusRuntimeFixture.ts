@@ -11,6 +11,7 @@ import type { TaskRunRecord, TaskRunStatus } from "../../../promptRunState";
 import type { LoopPlusPromptTarget } from "../../../extensionHost/loopPlusOrchestration";
 import type { LoopPlusSchedulerSnapshot } from "../../../loopPlusScheduler";
 import type { LoopPlusRuntimeAdapter, LoopPlusRuntimeAdapterDeps } from "../../../extensionHost/loopPlusRuntimeAdapter";
+import type { FirstLoopMainExecution } from "../../../extensionHost/promptRunHandoff";
 
 type PublishOptions = {
   status?: TaskRunStatus | null;
@@ -85,6 +86,7 @@ type LoopPlusTaskPersistence = {
   create(task: LoopTaskRecord): LoopTaskRecord;
   read(taskId: string): LoopTaskRecord | null;
   save(task: LoopTaskRecord): void;
+  update?: LoopPlusRuntimeAdapterDeps["updateTask"];
   remove(taskId: string): void | boolean;
 };
 
@@ -108,6 +110,8 @@ export function createLoopPlusRuntimeFixture(options: {
   observeAttemptTermination?: LoopPlusRuntimeAdapterDeps["observeAttemptTermination"] | false;
   ownsDepartmentAttemptResources?: LoopPlusRuntimeAdapterDeps["ownsDepartmentAttemptResources"];
   acquireAttemptExecution?: LoopPlusRuntimeAdapterDeps["acquireAttemptExecution"];
+  prepareConfigLockResume?: () => Promise<void>;
+  runConfigLockResume?: (execution: FirstLoopMainExecution, notifyStarted: () => void, signal?: AbortSignal) => Promise<void>;
   beforePromptStart?: (input: PromptRunInput) => Promise<void>;
   runPromptOverride?: LoopPlusRuntimeAdapterDeps["runPrompt"];
   runDepartmentMain?: LoopPlusRuntimeAdapterDeps["runDepartmentMain"];
@@ -122,6 +126,8 @@ export function createLoopPlusRuntimeFixture(options: {
   onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
   onMainActivityChange?: LoopPlusRuntimeAdapterDeps["onMainActivityChange"];
   isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
+  revealClarification?: LoopPlusRuntimeAdapterDeps["revealClarification"];
+  waitForClarification?: LoopPlusRuntimeAdapterDeps["waitForClarification"];
 
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
@@ -336,6 +342,8 @@ export function createLoopPlusRuntimeFixture(options: {
     log: (event, detail) => { logs.push({ event, detail }); },
     isInvocationActive: options.isInvocationActive,
     onMainActivityChange: options.onMainActivityChange,
+    revealClarification: options.revealClarification,
+    waitForClarification: options.waitForClarification,
     getActiveConfigIdForCli: () => options.configId ?? null,
     maxConcurrency: options.maxConcurrency,
     decisionSubtaskMax: options.decisionSubtaskMax,
@@ -381,6 +389,7 @@ export function createLoopPlusRuntimeFixture(options: {
     },
     updateTask: createLoopPlusPersistedTaskRefresher({
       updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => {
+        if (taskPersistence?.update) return taskPersistence.update(taskId, patch);
         const existing = readTask(taskId);
         if (!existing) {
           return null;
@@ -435,7 +444,20 @@ export function createLoopPlusRuntimeFixture(options: {
       terminationObservers.set(terminationKey(request.taskId, request.subtaskId, target.tabId), observation);
       return observation;
     }),
-    runPrompt: fixturePrompt,
+    runPrompt: async (input, promptOptions) => {
+      if (!promptOptions?.firstMainExecution) return fixturePrompt(input, promptOptions);
+      if (options.prepareConfigLockResume) await options.prepareConfigLockResume();
+      if (promptOptions.isAborted?.()) return;
+      if (options.runConfigLockResume) {
+        await options.runConfigLockResume(promptOptions.firstMainExecution, () => promptOptions.onStarted?.(), promptOptions.signal);
+        await fixturePrompt(input, { ...promptOptions, onStarted: undefined });
+      } else {
+        const prepared = promptOptions.firstMainExecution.prepare();
+        prepared.commit();
+        prepared.afterSend();
+        await fixturePrompt(input, promptOptions);
+      }
+    },
     // Legacy scheduling tests simulate the transport explicitly. Production
     // wiring tests override these with the actual producer/native host.
     runDepartmentMain: options.runDepartmentMain ?? ((input, opts) => fixturePrompt(input, opts)),
@@ -448,14 +470,14 @@ export function createLoopPlusRuntimeFixture(options: {
       return () => { completionListeners.delete(listener); };
     },
     resolveThinkingMode: options.resolveThinkingMode ?? (() => "low"),
-    createExecutionRoot: () => {
+    createExecutionRoot: (grokExecutionRootId) => {
       if (rootFailure) {
         throw new Error(rootFailure);
       }
       rootSequence += 1;
       const rootId = rootSequence;
       rootsCreated.push(rootId);
-      const root = options.executionRootFactory?.();
+      const root = options.executionRootFactory?.(grokExecutionRootId);
       return {
         cwd: root?.cwd ?? path.join(rootDir, `root-${rootId}`),
         dispose: async () => {

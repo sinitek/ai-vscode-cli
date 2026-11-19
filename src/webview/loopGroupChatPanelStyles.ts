@@ -584,6 +584,28 @@ ${DIALOG_SHELL_STYLES}
         cursor: default;
         opacity: 0.6;
       }
+      .department-allocation-dialog { padding: 0; }
+      .department-allocation-dialog:not([open]) { display: none; }
+      .department-allocation-dialog::backdrop {
+        background: color-mix(in srgb, var(--vscode-editor-background) 70%, transparent);
+      }
+      .department-allocation-list {
+        display: grid;
+        gap: 12px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        overflow-wrap: anywhere;
+      }
+      .department-allocation + .department-allocation {
+        border-block-start: 1px solid var(--vscode-widget-border);
+        padding-block-start: 12px;
+      }
+      .department-allocation-name {
+        margin: 0 0 4px;
+        font-size: 13px;
+        font-weight: 600;
+      }
       .department-allocation,
       .department-allocation-controls,
       .department-allocation-controls label { min-width: 0; max-width: 100%; }
@@ -607,7 +629,6 @@ ${DIALOG_SHELL_STYLES}
         background: var(--vscode-input-background);
         font: inherit;
       }
-      .department-allocation-controls button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
       .department-allocation-controls :focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
       .department-allocation-controls :disabled { cursor: default; opacity: 0.6; }
       .department-allocation-error { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }

@@ -7,7 +7,8 @@ import { boundedCodexMessage, isCodexResourceResult } from "./departmentcodexpre
 import { DepartmentLeaderCodexOwner } from "./departmentleadercodexowner";
 import { isDepartmentLeaderPrivateCommand } from "./departmentleaderinvocation";
 import { isLeaderCodexPreparation, isLeaderInvocation, LEADER_CALLBACK_LIMIT, LEADER_CALLBACKS, LEADER_REQUIREMENTS,
-  type LeaderCodexPreparation } from "./departmentleadercodexcontract";
+  LEADER_WORKER_FAILURES, type LeaderCodexPreparation } from "./departmentleadercodexcontract";
+import { leaderCallbackFrames, LEADER_CALLBACK_PENDING_BYTES } from "./departmentleadercodexcontract";
 import type { CodexOwnedStreamHandlers } from "../interactive/codexOwnedExecution";
 
 /** Fixed ordinary Node process. Executables/configuration arrive once from the
@@ -21,7 +22,9 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
   let consumerFailed = false;
   let tabRelease: Promise<CleanupResult> | undefined;
   const consumers = new Set<Promise<unknown>>();
-  const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
+  const notificationConsumers = new Set<Promise<unknown>>();
+  const pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void; bytes?: number }>();
+  let pendingBytes = 0;
   const seal = (): void => {
     if (closed) return; closed = true;
     for (const reject of rejects) reject(new Error("leader-private-gate-revoked"));
@@ -33,26 +36,54 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
       if (!process.connected) void server?.close().catch(() => undefined);
     });
   };
-  const lost = (): void => {
+  let failureReported = false;
+  const lost = (stage: typeof LEADER_WORKER_FAILURES[number] = "private-channel-lost"): void => {
+    if (!failureReported && input && process.connected) {
+      failureReported = true;
+      // Bypass callback consumers: their failure may be the reason for sealing.
+      // Never include error text, payloads, prompt, token or environment in logs.
+      try { process.send!({ version: 1, token: input.token, identity: input.identity,
+        sequence: ++outgoing, type: "failure", stage }, () => undefined); } catch { /* host remains unknown */ }
+    }
     seal();
     for (const p of pending.values()) p.reject(new Error("leader-consumer-unobservable"));
-    pending.clear();
+    pending.clear(); pendingBytes = 0;
     if (closed && server) void owner?.seal().then(() => server?.close()).catch(() => undefined);
     if (process.connected) process.disconnect();
   };
   const send = (event: Record<string, unknown>) => {
-    const message = { version: 1, token: input!.token, identity: input!.identity, sequence: ++outgoing, ...event };
+    const message = { version: 1, token: input!.token, identity: input!.identity, sequence: outgoing + 1, ...event };
     if (!process.connected || !boundedCodexMessage(message)) throw new Error("leader-private-channel-unobservable");
-    process.send!(message, (error: Error | null) => { if (error) lost(); });
+    outgoing++;
+    process.send!(message, (error: Error | null) => { if (error) lost("private-send-failed"); });
   };
   const consume = (name: string, args: unknown[]): Promise<unknown> => {
-    if (pending.size >= LEADER_CALLBACK_LIMIT) { lost(); return Promise.reject(new Error("leader-consumer-capacity")); }
+    if (pending.size >= LEADER_CALLBACK_LIMIT) { lost("callback-capacity"); return Promise.reject(new Error("leader-consumer-capacity")); }
     const task = new Promise((resolve, reject) => {
-      const seq = outgoing + 1; pending.set(seq, { resolve, reject });
-      try { send({ type: "callback", invocationId, name, args }); }
-      catch { pending.delete(seq); reject(new Error("leader-consumer-unobservable")); lost(); }
+      if (!process.connected) { reject(new Error("leader-consumer-unobservable")); lost("callback-channel-disconnected"); return; }
+      let encoded: ReturnType<typeof leaderCallbackFrames>;
+      try {
+        encoded = leaderCallbackFrames({ version: 1, token: input!.token, identity: input!.identity, sequence: outgoing + 1 }, invocationId, name, args);
+        if (pendingBytes + encoded.bytes > LEADER_CALLBACK_PENDING_BYTES) throw new Error("callback-size-limit");
+      } catch (error) {
+        const stage = error instanceof Error && (error.message === "callback-size-limit" || error.message === "callback-serialization-failed")
+          ? error.message : "callback-message-rejected";
+        reject(new Error("leader-consumer-unobservable")); lost(stage); return;
+      }
+      const seq = outgoing + 1; pending.set(seq, { resolve, reject, bytes: encoded.bytes }); pendingBytes += encoded.bytes;
+      try {
+        // Synchronous enqueue preserves logical callback order. One pending slot
+        // and one ACK at the original first sequence, regardless of chunk count.
+        for (const frame of encoded.frames) {
+          if (!process.connected) throw new Error("callback-channel-disconnected");
+          outgoing++;
+          process.send!(frame, (error: Error | null) => { if (error) lost("private-send-failed"); });
+        }
+      } catch { lost("callback-channel-disconnected"); }
     });
     consumers.add(task);
+    if (name !== "onRequest") notificationConsumers.add(task);
+    void task.then(() => notificationConsumers.delete(task), () => notificationConsumers.delete(task));
     void task.then(() => consumers.delete(task), () => { consumerFailed = true; consumers.delete(task); });
     return task;
   };
@@ -62,21 +93,21 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
     if (type === "session") { phase = "persisting"; persist = accept; } else { phase = "granting"; grant = accept; }
     try { send({ type, invocationId, ...extra }); } catch { lost(); }
   });
-  process.on("disconnect", lost);
+  process.on("disconnect", () => lost());
   process.on("message", (v: unknown) => {
     if (!input) {
       if (!isLeaderCodexPreparation(v)) { lost(); return; }
       input = structuredClone(v);
-      void prepare().catch(lost); return;
+      void prepare().catch(() => lost("preparation-failed")); return;
     }
     if (!record(v) || !isDepartmentLeaderPrivateCommand(v) || v.version !== 1 || v.token !== input.token
-      || !isDepartmentExecutionIdentity(v.identity) || !sameExecution(v.identity, input.identity) || v.sequence !== incoming + 1) { lost(); return; }
+      || !isDepartmentExecutionIdentity(v.identity) || !sameExecution(v.identity, input.identity) || v.sequence !== incoming + 1) { lost("private-command-rejected"); return; }
     incoming++;
     const base = ["version", "token", "identity", "sequence", "operation"];
     if (v.operation === "ack" && exactKeys(v, [...base, "callbackSequence", "ok", "result"]) && typeof v.ok === "boolean" && Number.isSafeInteger(v.callbackSequence)) {
       const p = pending.get(Number(v.callbackSequence));
-      if (!p) { lost(); return; }
-      pending.delete(Number(v.callbackSequence));
+      if (!p) { lost("callback-ack-unknown"); return; }
+      pending.delete(Number(v.callbackSequence)); pendingBytes -= p.bytes ?? 0;
       if (v.ok) p.resolve(v.result); else p.reject(new Error("leader-consumer-rejected")); return;
     }
     if (v.operation === "seal" && exactKeys(v, base)) { seal(); return; }
@@ -86,6 +117,9 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
       const handlers = Object.fromEntries(LEADER_CALLBACKS.filter((n) => !n.startsWith("log")).map((name) => [name, (...args: unknown[]) => consume(name, args)])) as unknown as CodexOwnedStreamHandlers;
       handlers.requestUserInputEnabled = input.requestUserInputEnabled;
       const runtime = { macTaskShell: input.macTaskShell,
+        async waitForNotificationConsumers() {
+          while (notificationConsumers.size) await Promise.allSettled([...notificationConsumers]);
+        },
         logInfo: async (...args: unknown[]) => { await consume("logInfo", args).catch(() => undefined); },
         logError: async (...args: unknown[]) => { await consume("logError", args).catch(() => undefined); } };
       void owner!.invoke(v.invocation, handlers, runtime, {
@@ -94,7 +128,7 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
       }).then((terminal) => {
         phase = "idle";
         try { send({ type: "settled", invocationId, terminal }); } catch { lost(); }
-      }, lost); return;
+      }, () => lost("invocation-failed")); return;
     }
     if (v.operation === "persisted" && phase === "persisting" && v.invocationId === invocationId
       && exactKeys(v, [...base, "invocationId"]) && persist) {
@@ -104,9 +138,9 @@ export async function runDepartmentLeaderCodexWorker(): Promise<void> {
       && exactKeys(v, [...base, "invocationId"]) && grant) {
       // Consume synchronously before ACK: a subsequent seal cannot cancel this invocation.
       try { if (consumerFailed) throw new Error("leader-consumer-failed-before-grant"); owner!.grant(invocationId); phase = "granted"; const accept = grant; grant = undefined; send({ type: "granted", invocationId }); accept(); }
-      catch { lost(); } return;
+      catch { lost("grant-rejected"); } return;
     }
-    lost();
+    lost("private-phase-rejected");
   });
   async function prepare(): Promise<void> {
     const i = input!;

@@ -848,6 +848,13 @@
 - `npm run build`
 - `node --test dist/test/interactive/grokRunner.test.js dist/test/interactive/grokAppServerProtocol.test.js dist/test/extensionHost/grokCliHostWire.test.js`
 
+## Grok Loop+ 续接必须保留原工作目录
+
+- 现象：Grok 员工首轮成功，续跑可能报 `department-interactive-session-conflict`。同一 session ID 在新 cwd 下会触发 `session/load` 的 `Path not found.`；普通启动回退新建后，部门 Owner 正确拒绝替换原绑定。
+- 排查：先核对同一子任务两轮的原生会话和执行目录。不要关闭 Owner 冲突校验，也不要把恢复失败按新会话成功处理。
+- 规避：Loop+ 将不透明执行目录标识随 Grok 会话持久化，跨轮次与跨子任务续接复用原 cwd，严格恢复失败即停止。旧绑定没有目录标识时保留原记录；需要继续执行时新派任务，不改绑旧会话。
+- 证据：`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`；[真实 Grok 探针和回归记录](../exec-plans/completed/2026-11/2026-11-19-bugfix-grok-loop-session-cwd.md#验证结果)。
+
 ## Windows 不能把 ~/.codex 当作真实路径
 
 - 状态：已规避，需随 CLI 安装路径 / CODEX_HOME 变化复核

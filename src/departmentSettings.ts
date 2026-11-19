@@ -1,5 +1,5 @@
 export const DEPARTMENT_MAX_LEADERS_DEFAULT = 4;
-export const DEPARTMENT_MAX_EMPLOYEES_DEFAULT = 20;
+export const DEPARTMENT_MAX_EMPLOYEES_DEFAULT = 16;
 
 /** Closure-free so the exact host rule can be embedded in the Webview runtime. */
 export function normalizeDepartmentCapacity(value: unknown, fallback: number): number {

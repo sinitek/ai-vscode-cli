@@ -1,5 +1,26 @@
 {
-  "active_plans": [],
+  "active_plans": [
+    {
+      "modified_at": "2026-11-19T04:25:33+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 1187,
+      "references": [
+        "src/test/runtime/departmentleadercallbackprotocol.test.ts"
+      ],
+      "summary": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
+      "title": "Codex 组长大型原生回调私有 IPC 修复"
+    },
+    {
+      "modified_at": "2026-11-19T04:25:33+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md",
+      "privacy_stripped_count": 0,
+      "read_tokens": 317,
+      "references": [],
+      "summary": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
+      "title": "Loop+ 启动前配置锁超时后显式继续"
+    }
+  ],
   "claim_count": 129,
   "claim_stats": {
     "by_confidence": {
@@ -1826,7 +1847,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-11-13T09:53:04+00:00",
+  "generated_at": "2026-11-19T04:25:33+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1845,7 +1866,7 @@
       ],
       "last_verified_at": "2026-07-18",
       "memory_type": "memory_rules",
-      "modified_at": "2026-11-13T09:53:04+00:00",
+      "modified_at": "2026-11-12T03:15:19+00:00",
       "path": ".ch/docs/MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -1898,7 +1919,7 @@
       ],
       "last_verified_at": "2026-10-24",
       "memory_type": "event_memory",
-      "modified_at": "2026-11-13T09:53:04+00:00",
+      "modified_at": "2026-11-13T02:07:54+00:00",
       "path": ".ch/docs/memory/EVENT_MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L2 event_memory",
@@ -2014,7 +2035,7 @@
       ],
       "last_verified_at": "2026-08-29",
       "memory_type": "memory_index_rules",
-      "modified_at": "2026-11-13T09:53:04+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "path": ".ch/docs/memory/README.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "operational_hot_zone",
@@ -2090,36 +2111,59 @@
     "L4 procedural_experience": 1,
     "operational_hot_zone": 4
   },
-  "observation_count": 2,
+  "observation_count": 4,
   "observations": [
     {
       "concepts": [
-        "general"
+        "open-loop",
+        "problem-solution"
       ],
-      "content_hash": "c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "content_hash": "7525b245acce85ca9a2092f9ba0f19a7039c95c70f1658ddff99569e0229e8b7",
       "facts": [
-        "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
-        "Source of truth: .ch/docs/MEMORY.md"
+        "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
+        "Modified at: 2026-11-19T04:25:33+00:00"
       ],
       "files": [
-        ".ch/docs/exec-plans/README.md",
-        ".ch/docs/generated/",
-        ".ch/docs/generated/memory-index/.local/",
-        ".ch/docs/ontology/"
+        "src/test/runtime/departmentleadercallbackprotocol.test.ts"
       ],
-      "id": "mem-c1d7e714b7",
-      "modified_at": "2026-11-13T09:53:04+00:00",
-      "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+      "id": "mem-7525b245ac",
+      "modified_at": "2026-11-19T04:25:33+00:00",
+      "narrative": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
       "private_stripped": false,
-      "read_tokens": 39,
-      "source_anchor": "记忆流转规则",
-      "source_kind": "memory_doc",
-      "source_path": ".ch/docs/MEMORY.md",
-      "source_title": "记忆流转规则",
-      "subtitle": "operational_hot_zone / memory-rules",
-      "title": "记忆流转规则",
-      "topic": "rule",
-      "type": "rule"
+      "read_tokens": 74,
+      "source_anchor": "Codex 组长大型原生回调私有 IPC 修复",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md",
+      "source_title": "Codex 组长大型原生回调私有 IPC 修复",
+      "subtitle": "Active execution plan",
+      "title": "Codex 组长大型原生回调私有 IPC 修复",
+      "topic": "plan",
+      "type": "plan"
+    },
+    {
+      "concepts": [
+        "open-loop",
+        "problem-solution"
+      ],
+      "content_hash": "52c8a09d98d32ff277973ae865e12a228765c500ca550f754ed68690bfcd411c",
+      "facts": [
+        "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
+        "Modified at: 2026-11-19T04:25:33+00:00"
+      ],
+      "files": [],
+      "id": "mem-52c8a09d98",
+      "modified_at": "2026-11-19T04:25:33+00:00",
+      "narrative": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
+      "private_stripped": false,
+      "read_tokens": 52,
+      "source_anchor": "Loop+ 启动前配置锁超时后显式继续",
+      "source_kind": "active_plan",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md",
+      "source_title": "Loop+ 启动前配置锁超时后显式继续",
+      "subtitle": "Active execution plan",
+      "title": "Loop+ 启动前配置锁超时后显式继续",
+      "topic": "plan",
+      "type": "plan"
     },
     {
       "concepts": [
@@ -2136,7 +2180,7 @@
         ".ch/docs/generated/memory-index/.local/"
       ],
       "id": "mem-431f2548e1",
-      "modified_at": "2026-11-13T09:53:04+00:00",
+      "modified_at": "2026-11-11T06:13:15+00:00",
       "narrative": "这里放的是**默认优先召回的短记忆**，目的不是替代其他文档，而是避免代理每次都从全仓文档冷启动。",
       "private_stripped": false,
       "read_tokens": 46,
@@ -2148,10 +2192,39 @@
       "title": "热区记忆面",
       "topic": "gotcha",
       "type": "rule"
+    },
+    {
+      "concepts": [
+        "general"
+      ],
+      "content_hash": "c1d7e714b7e6c4976f0acfe2caff3fd8bfa441accb5b8b14f663d6735c3e709e",
+      "facts": [
+        "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+        "Source of truth: .ch/docs/MEMORY.md"
+      ],
+      "files": [
+        ".ch/docs/exec-plans/README.md",
+        ".ch/docs/generated/",
+        ".ch/docs/generated/memory-index/.local/",
+        ".ch/docs/ontology/"
+      ],
+      "id": "mem-c1d7e714b7",
+      "modified_at": "2026-11-12T03:15:19+00:00",
+      "narrative": "这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。**",
+      "private_stripped": false,
+      "read_tokens": 39,
+      "source_anchor": "记忆流转规则",
+      "source_kind": "memory_doc",
+      "source_path": ".ch/docs/MEMORY.md",
+      "source_title": "记忆流转规则",
+      "subtitle": "operational_hot_zone / memory-rules",
+      "title": "记忆流转规则",
+      "topic": "rule",
+      "type": "rule"
     }
   ],
   "open_loops": {
-    "active_plan_count": 0,
+    "active_plan_count": 2,
     "active_risks": [],
     "pending_items": []
   },
@@ -2178,6 +2251,14 @@
       ],
       "read_tokens": 46
     },
+    "plan": {
+      "count": 2,
+      "ids": [
+        "mem-7525b245ac",
+        "mem-52c8a09d98"
+      ],
+      "read_tokens": 126
+    },
     "rule": {
       "count": 1,
       "ids": [
@@ -2186,6 +2267,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 85,
+  "total_read_tokens": 211,
   "version": "0.2.0"
 }

@@ -99,7 +99,7 @@ async function main(args = process.argv.slice(2)) {
   // Intercept the runner's dependency instance, including explicit module-root runs.
   const crossSpawn = createRequire(path.join(moduleRoot, "interactive/codexRunner.js"))("cross-spawn");
   require(path.join(moduleRoot, "test/vscodeMock")).installVscodeMock();
-  const capabilityModule = require(path.join(moduleRoot, "interactive/codexAppServerCapabilities"));
+  const capabilityModule = require(path.join(moduleRoot, "interactive/codexAppServerCapabilitiesCore"));
   const originalCapability = capabilityModule.resolveCodexThreadUnloadCapability;
   const originalSpawn = crossSpawn.spawn;
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-codex-runner-")));
@@ -124,8 +124,8 @@ async function main(args = process.argv.slice(2)) {
     response.writeHead(400, { "Content-Type": "application/json" });
     response.end(JSON.stringify({ error: { message: "isolated runner lifecycle test", type: "invalid_request_error" } }));
   });
-  capabilityModule.resolveCodexThreadUnloadCapability = async (input) => {
-    const result = await originalCapability(input);
+  capabilityModule.resolveCodexThreadUnloadCapability = async (input, runtime) => {
+    const result = await originalCapability(input, runtime);
     evidence.capabilities.push({ command: input.command, ...result, seq: ++sequence });
     return result;
   };

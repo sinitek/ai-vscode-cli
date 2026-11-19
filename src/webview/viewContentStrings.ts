@@ -1,5 +1,6 @@
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
 import { formatHomeDisplayPath } from "../shared/userHomePaths";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT } from "../departmentSettings";
 
 const SINITEK_RUNTIME_HINT = formatHomeDisplayPath(".sinitek_cli");
 
@@ -340,7 +341,7 @@ export const WEBVIEW_STRINGS = {
     departmentMaxLeadersLabel: "产研部组长最多人数",
     departmentMaxLeadersNote: "同时运行的组长上限，任务结束后释放名额。",
     departmentMaxEmployeesLabel: "产研部员工最多人数",
-    departmentMaxEmployeesNote: "全产研部共享的员工并发上限，所有组长合计计算。请根据本机性能设置；默认 20 人时，需具备并行运行 20 多个 CLI 任务的性能。",
+    departmentMaxEmployeesNote: `全产研部共享的员工并发上限，所有组长合计计算。请根据本机性能设置；默认 ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT} 人时，本机需能同时运行 ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT} 个员工 CLI 任务。`,
     workspaceDepartmentCapacityNote: "工作区配置优先；留空继承全局。新部门启动时生效，不调整已有运行任务。",
     departmentMaxLeadersSaveError: "产研部组长人数设置保存失败，请重试。",
     departmentMaxEmployeesSaveError: "产研部员工人数设置保存失败，请重试。",

@@ -28,11 +28,13 @@ export type CliRuntimeInitialFields = {
 
 export type CliRuntimeConfigStrategy = {
   readCurrent: () => Promise<CurrentConfig>;
-  apply: (payload: ApplyPayload) => Promise<void>;
+  apply: (payload: ApplyPayload, readCodexReadback?: ReadCodexReadback) => Promise<void>;
   backup: () => Promise<string[]>;
   readInitialFields: () => Promise<CliRuntimeInitialFields>;
   fallbackInitialFields: () => CliRuntimeInitialFields;
 };
+
+export type ReadCodexReadback = () => Promise<{ config: string; auth: string }>;
 
 export type ClaudeRuntimeConfigIo = {
   readClaudeConfig: () => Promise<string>;
@@ -146,7 +148,7 @@ function createCodexRuntimeConfigStrategy(io: CodexRuntimeConfigIo): CliRuntimeC
       const { config, auth } = await io.readCodexConfig();
       return { content: config, configContent: config, authContent: auth };
     },
-    async apply(payload) {
+    async apply(payload, readCodexReadback) {
       // Apply prefers payload.content. Profile save still prefers configContent.
       const configContent = payload.content ?? payload.configContent;
       if (configContent === undefined) {
@@ -157,12 +159,14 @@ function createCodexRuntimeConfigStrategy(io: CodexRuntimeConfigIo): CliRuntimeC
         ? configContent
         : mergeCodexSkillsConfig(configContent, payload.codexSkills);
       const nextAuth = payload.authContent ?? (current.auth || "{}");
-      if (runtimeConfigMatches(nextConfig, current.config, { cli: "Codex", file: "config.toml", format: "TOML" })
-        && runtimeConfigMatches(nextAuth, current.auth, { cli: "Codex", file: "auth.json", format: "JSON" })) {
+      const matches = runtimeConfigMatches(nextConfig, current.config, { cli: "Codex", file: "config.toml", format: "TOML" })
+        && runtimeConfigMatches(nextAuth, current.auth, { cli: "Codex", file: "auth.json", format: "JSON" });
+      if (!matches) {
+        await io.writeCodexConfig(nextConfig, nextAuth);
+      } else if (!readCodexReadback) {
         return;
       }
-      await io.writeCodexConfig(nextConfig, nextAuth);
-      const applied = await io.readCodexConfig();
+      const applied = await (readCodexReadback ? readCodexReadback() : io.readCodexConfig());
       assertRuntimeConfigApplied(nextConfig, applied.config, {
         cli: "Codex", file: "config.toml", format: "TOML",
       });

@@ -68,7 +68,16 @@ export async function productionWiring(t: test.TestContext, employee: "codex" | 
   function writeCli(root: string) {
     const cmd = path.join(root, process.platform === "win32" ? "native.cmd" : "native");
     const script = path.join(root, "native.cjs");
-    const body = SIMULATED_LEADER_CLI.replace("delta:'fixture answer'", "delta:exists('answer-'+round)?fs.readFileSync(file('answer-'+round),'utf8'):'fixture answer'")
+    const body = SIMULATED_LEADER_CLI.replace("let native,turn,round,", "let matchedPrompt=false;let native,turn,round,")
+      .replace("if(turn&&!replied)", `if(turn&&!replied&&exists('answer-by-prompt')){
+        const {marker}=JSON.parse(fs.readFileSync(file('answer-by-prompt'),'utf8'));
+        matchedPrompt=JSON.stringify(turn.params.input).includes(marker)&&!exists('answer-by-prompt-eof');
+      }
+      if(turn&&!replied)`)
+      .replace("delta:'fixture answer'", `delta:matchedPrompt?JSON.stringify(JSON.parse(fs.readFileSync(file('answer-by-prompt'),'utf8')).answer):
+        exists('answer-'+round)?fs.readFileSync(file('answer-'+round),'utf8'):
+        exists('answer-fallback')?fs.readFileSync(file('answer-fallback'),'utf8'):'fixture answer'`)
+      .replace("eof=true;", "eof=true;if(matchedPrompt)fs.writeFileSync(file('answer-by-prompt-eof'),'ok');")
       .replace("if(turn&&!replied)", "if(turn&&!replied&&!exists('hold-output'))")
       .replace("if(turn&&!done&&!exists('hold-terminal'))", "if(turn&&!done&&!exists('hold-output')&&!exists('hold-terminal'))");
     fs.writeFileSync(script, `const ROOT=${JSON.stringify(root)};\n${body}`);
@@ -292,6 +301,10 @@ else{fs.writeFileSync(${JSON.stringify(file("employee/started"))},'yes');process
     setOpenCodeMain(run: OpenCodeMain) { openCodeMain = run; },
     start: (moduleId = "module") => composition.host.startLeader("root", { leaderSubtaskId: moduleId, moduleTitle: moduleId, prompt: "Implement complete fixture module with actual employees and report native evidence." }),
     answer(round: number, value: unknown) { fs.writeFileSync(file("answer-" + round), JSON.stringify(value)); },
+    answerByPrompt(marker: string, answer: unknown, fallback: unknown) {
+      fs.writeFileSync(file("answer-by-prompt"), JSON.stringify({ marker, answer }));
+      fs.writeFileSync(file("answer-fallback"), JSON.stringify(fallback));
+    },
     beforeBuilder(fn: () => Promise<void>) { beforeBuilder = fn; }, get mainCalls() { return mainCalls; }, get localRuns() { return localRuns; }, get employeeBuilders() { return employeeBuilders; },
     beforeLeaderCallback(fn: () => Promise<void>) { beforeLeaderCallback = fn; },
     beforeLeaderCleanup(fn: () => Promise<void>) { beforeLeaderCleanup = fn; },

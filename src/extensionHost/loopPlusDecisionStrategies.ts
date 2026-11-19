@@ -66,6 +66,7 @@ export interface LoopPlusDecisionStrategyPort {
     acceptance: "passed" | "failed" | readonly LoopPlusDecisionReviewVerdict[],
   ): { ok: boolean };
   requeueCurrentReview(): void;
+  promoteDecisionWork(): void;
   persistRunning(): void;
   persistSnapshot(): void;
   applyNextStepPlan(plan: LoopPlusNextStepPlan | undefined): void;
@@ -208,11 +209,13 @@ function applyDispatchDecision(
   port.acknowledgeUserMessages(step.userMessageCount);
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
+    port.promoteDecisionWork();
     return port.protocolMiss(false, dispatchRejectionReason(dispatched));
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
+  port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
@@ -255,6 +258,7 @@ function applySteerDecision(
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
   port.persistEstimatedRounds(decision);
+  port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
@@ -305,11 +309,13 @@ function applyAcceptDecision(
   }
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? [], decision.reviews);
   if (dispatched.rejected.length > 0) {
+    port.promoteDecisionWork();
     return port.protocolMiss(false, dispatchRejectionReason(dispatched));
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
+  port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
@@ -336,6 +342,7 @@ function applyWaitDecision(
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.acknowledgeUserMessages(step.userMessageCount);
+  port.promoteDecisionWork();
   const afterReports = port.queueView();
   if (hasPendingDecisionWork(afterReports) && (
     !afterReports.reviewDependencyBlocks?.length || afterReports.hasReports
@@ -375,6 +382,7 @@ function applyBlockedDecision(
   const pending = port.queueView();
   if (pending.hasUserMessages || pending.hasReports) {
     port.captureRemainingUserMessagesForHeldReview();
+    port.promoteDecisionWork();
     return "continue";
   }
   port.applyNextStepPlan(undefined);
@@ -405,8 +413,9 @@ function applyCompletedDecision(
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(step.eventIds.length > 0);
   port.acknowledgeUserMessages(step.userMessageCount);
-  const inFlight = port.waitForInFlightWork();
   port.persistSnapshot();
+  port.promoteDecisionWork();
+  const inFlight = port.waitForInFlightWork();
   const pending = port.queueView();
   if (
     hasPendingDecisionWork(pending)

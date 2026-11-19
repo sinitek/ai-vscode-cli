@@ -214,7 +214,7 @@ function theme(dark) {
           results.push({ name: "dynamic-dark-light-dark", result: "passed", colors, parentTop, childTop, target, serverPort: server.address().port, browserErrors: errors });
           continue;
         }
-        assert.match(await page.title(), /☀️.*#-root-abcdef/u);
+        assert.equal(await page.title(), "产研部总监");
         await overflow(page);
         await showMembers(page);
         const groups = page.locator(".department-group");
@@ -222,7 +222,7 @@ function theme(dark) {
         assert.match(await groups.nth(0).locator(".department-employees").innerText(), /员工甲/u);
         assert.doesNotMatch(await groups.nth(0).locator(".department-employees").innerText(), /员工乙/u);
         assert.match(await groups.nth(1).locator(".department-employees").innerText(), /员工乙/u);
-        assert.equal(await groups.nth(2).locator("button").isDisabled(), true);
+        assert.equal(await groups.nth(2).locator('[data-action="openDepartmentTask"]').isDisabled(), true);
         await page.locator(".main").evaluate((element) => { element.scrollTop = 140; });
         const parentTop = await page.locator(".main").evaluate((element) => element.scrollTop);
         await page.screenshot({ path: path.join(output, `${name}-tree.png`) });
@@ -308,7 +308,30 @@ function theme(dark) {
         await frame.locator('[data-action="refresh"]').focus();
         await frame.locator('[data-action="refresh"]').press("Shift+Tab");
         await page.waitForFunction(() => document.activeElement.id === "departmentChatClose");
+        await frame.evaluate(({ taskId, instanceId }) => {
+          window.reverseTabTrace = [];
+          const snapshot = (event) => window.reverseTabTrace.push({ event, focused: document.hasFocus(),
+            action: document.activeElement.getAttribute("data-action"), id: document.activeElement.id });
+          document.addEventListener("focusin", () => snapshot("focusin"), true);
+          window.reverseTabDelivered = new Promise((resolve) => {
+            // The bridge consumes controls with stopImmediatePropagation. Observe
+            // completion of that exact bound message without changing propagation.
+            const stop = Event.prototype.stopImmediatePropagation;
+            Event.prototype.stopImmediatePropagation = function () {
+              const data = this.data;
+              if (this.type === "message" && this.source === parent && data?.channel === "department-host" &&
+                data.taskId === taskId && data.instanceId === instanceId && data.message?.control === "focusLast") {
+                Event.prototype.stopImmediatePropagation = stop;
+                snapshot("focusLast received");
+                queueMicrotask(() => { snapshot("focusLast handled"); resolve(window.reverseTabTrace); });
+              }
+              return stop.call(this);
+            };
+          });
+        }, a);
         await page.locator("#departmentChatClose").press("Shift+Tab");
+        const reverseTabTrace = await frame.evaluate(() => window.reverseTabDelivered);
+        fs.writeFileSync(path.join(output, `${name}-reverse-tab.json`), JSON.stringify(reverseTabTrace, null, 2));
         assert.equal(await page.locator("#departmentChatContent iframe").evaluate((element) => document.activeElement === element), true,
           "reverse Tab from the outer close control returns to the iframe");
         assert.equal(await frame.evaluate(() => document.hasFocus() && document.activeElement.getAttribute("data-action") === "refresh"), true,
@@ -318,12 +341,13 @@ function theme(dark) {
           assert.equal((await frame.locator(".timeline").innerText()).match(/合并增量消息 \d+/gu)?.length, 49,
             "all 49 transcript entries render across the retention batch threshold");
         }
-        assert.match(await frame.locator("#panelHeading").innerText(), /组长 🌛/u);
+        assert.equal(await frame.locator("#panelHeading").innerText(), "组长1");
+        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长1");
         assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);
         await showMembers(frame);
         assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案.*\n产研部统一规则 <严格>/u);
         await showMembers(frame);
-        const spacing = await frame.locator(".department-employees").first().evaluate((element) => ({ indent: getComputedStyle(element).marginInlineStart, border: getComputedStyle(element).borderInlineStartWidth, gap: getComputedStyle(document.querySelector(".department-leaders")).rowGap, avatar: getComputedStyle(document.querySelector(".avatar")).width, memberGap: getComputedStyle(document.querySelector(".member")).columnGap, padding: getComputedStyle(document.querySelector(".member")).padding }));
+        const spacing = await frame.locator(".department-employees").first().evaluate((element) => ({ indent: getComputedStyle(element).marginInlineStart, border: getComputedStyle(element).borderInlineStartWidth, gap: getComputedStyle(document.querySelector(".department-tree")).rowGap, avatar: getComputedStyle(document.querySelector(".department-group > .member > .avatar")).width, memberGap: getComputedStyle(document.querySelector(".department-group > .member")).columnGap, padding: getComputedStyle(document.querySelector(".department-group > .member")).padding }));
         assert.deepEqual(spacing, { indent: "16px", border: "1px", gap: "8px", avatar: "28px", memberGap: "8px", padding: "4px" });
         if (width === 280) await frame.locator("#sidebarToggle").click();
         await frame.locator('[data-action="supplementTask"]').click();
@@ -369,10 +393,28 @@ function theme(dark) {
           "cancel restores focus to its opener");
         await frame.locator('[data-action="continueTask"]').click();
         await frame.locator("#continueDialogInput").fill("继续A组任务");
+        await frame.evaluate(() => {
+          window.continueReturnFocus = [];
+          document.addEventListener("focusin", (event) => {
+            if (event.target.getAttribute("data-action") === "continueTask") {
+              window.continueReturnFocus.push({ disabled: event.target.disabled, dialogHidden:
+                document.getElementById("continueDialogBackdrop").getAttribute("aria-hidden") });
+            }
+          }, true);
+        });
         await frame.locator("#continueDialogInput").press("Control+Enter");
-        assert.equal(await frame.evaluate(() => document.activeElement.getAttribute("data-action")), "continueTask",
-          "continue keyboard submission restores focus to its opener");
+        assert.deepEqual(await frame.evaluate(() => window.continueReturnFocus), [{ disabled: false, dialogHidden: "true" }],
+          "continue keyboard submission restores focus before its pending opener is disabled");
+        const continueButton = frame.locator('[data-action="continueTask"]');
+        assert.equal(await continueButton.isDisabled(), true, "pending continue prevents duplicate submission");
+        assert.equal(await continueButton.evaluate((element) => document.activeElement === element), false,
+          "a disabled continue button cannot retain keyboard focus");
+        await frame.evaluate(() => { window.focusBeforeContinueSettled = document.activeElement; });
         panel.postDepartmentModalMessage(a, { type: "loopGroupChatChat:continueTaskSettled", canContinue: true });
+        await continueButton.waitFor({ state: "visible" });
+        await frame.waitForFunction(() => !document.querySelector('[data-action="continueTask"]').disabled);
+        assert.equal(await frame.evaluate(() => document.activeElement === window.focusBeforeContinueSettled), true,
+          "asynchronous continue settlement enables the opener without stealing focus");
         await frame.locator('[data-action="switchModels"]').click();
         await frame.locator("#modelSwitchConfirm").click();
         panel.postDepartmentModalMessage(a, { type: "loopGroupChatChat:switchModelsSettled", ok: true });
@@ -488,12 +530,19 @@ function theme(dark) {
         await frame.locator(".main").evaluate((element) => { element.scrollTop = 180; }); await settle();
         const childTop = await frame.locator(".main").evaluate((element) => element.scrollTop);
         await showMembers(frame);
-        await frame.locator('.department-group').nth(1).locator('[data-action="openDepartmentTask"]').click();
+        await frame.getByRole("button", { name: "返回总监群聊", exact: true }).click();
+        await page.waitForFunction(() => !document.getElementById("departmentChatBackdrop").classList.contains("visible"));
+        assert.equal(await openA.evaluate((element) => document.activeElement === element), true,
+          "returning to the director restores the current group's opener");
+        const openB = page.locator('.department-group').nth(1).locator('[data-action="openDepartmentTask"]');
+        await openB.click();
         const b = await targetReady(); assert.notEqual(b.taskId, a.taskId);
         assert.equal(panel.setDepartmentModalState(a, state), false);
         assert.equal(panel.publishDepartmentModalAskThread(a, { version: 1, messages: [], running: false, dialogOpen: false, updatedAt: 0 }), false);
         await page.evaluate((target) => window.dispatchEvent(new MessageEvent("message", { data: { type: "loopGroupChatChat:departmentModalContent", ...target, error: "迟到的A错误" } })), a);
         ({ frame } = await inject(b));
+        assert.equal(await frame.locator("#panelHeading").innerText(), "组长2");
+        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长2");
         if (deltaOnly) {
           const lateState = { ...state, chatMarkdown: "\n## 主任务发言\n\n旧A批次迟到响应不应渲染\n" };
           setTimeout(() => panel.setDepartmentModalState(a, lateState), 20);
@@ -509,7 +558,7 @@ function theme(dark) {
         await frame.locator('[data-action="refresh"]').press("Escape"); await settle();
         assert.equal(await page.locator("#departmentChatBackdrop").getAttribute("aria-hidden"), "true");
         assert.equal(await page.locator(".main").evaluate((element) => element.scrollTop), parentTop);
-        assert.equal(await page.evaluate(() => document.activeElement.getAttribute("data-department-task-id")), a.taskId);
+        assert.equal(await page.evaluate(() => document.activeElement.getAttribute("data-department-task-id")), b.taskId);
         await page.locator('.department-group').nth(0).locator('[data-action="openDepartmentTask"]').press("Space");
         const reopened = await targetReady();
         ({ frame } = await inject(reopened));

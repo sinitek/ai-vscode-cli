@@ -1,4 +1,4 @@
-import { DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT, renderDepartmentEmployeeAllocation } from "./departmentEmployeeAllocation";
+import { DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT, renderDepartmentEmployeeAllocationDialog, renderDepartmentEmployeeAllocationRows, renderDepartmentEmployeeAllocationSummary } from "./departmentEmployeeAllocation";
 import * as vscode from "vscode";
 import { buildDepartmentChildBridge, DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, renderDepartmentGroupChatModal } from "./departmentGroupChatModal";
 import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES } from "./loopGroupChatPanelTypes";
@@ -22,11 +22,11 @@ import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview"
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
 import {
+  buildDepartmentLeaderChatTitle,
   buildLoopGroupChatPanelTitle,
   buildLoopGroupChatPanelHeading,
   buildLoopGroupChatPanelSubtitle,
   getStrings,
-  getDepartmentRoleIdentity,
   type LoopGroupChatPanelStrings,
 } from "./loopGroupChatPanelRenderer";
 import type {
@@ -389,6 +389,7 @@ export type LoopGroupChatPanelContentPatch = {
   actionsHtml: string;
   taskPanelHtml: string;
   rosterPanelHtml: string;
+  employeeAllocationHtml: string;
   timelineHtml: string;
   clarificationHtml: string;
   clarificationInteractionId: string;
@@ -417,6 +418,7 @@ export function buildLoopGroupChatPanelContentPatch(
     actionsHtml: renderPanelActions(state, strings),
     taskPanelHtml: renderTaskPanel(state, strings),
     rosterPanelHtml: renderRosterPanel(state, strings, acceptanceAnchors.byParticipantId),
+    employeeAllocationHtml: renderDepartmentEmployeeAllocationRows(state.department, escapeAttribute),
     timelineHtml: renderTimeline(state, transcript.segments, strings, bubbleWindow, acceptanceAnchors.bySegmentIndex),
     clarificationHtml: renderOrchestratorClarificationDialog(
       state.clarification,
@@ -540,6 +542,7 @@ ${renderPanelDialog({
 	      </div>
 	    </div>
 	    ${state.department?.role === "director" ? renderDepartmentGroupChatModal() : ""}
+    ${state.department?.role === "director" ? renderDepartmentEmployeeAllocationDialog(patch.employeeAllocationHtml) : ""}
     ${options.embedded ? `<script nonce="${nonce}">${neutralizeInlineScriptEndTags(buildDepartmentChildBridge(options.embedded))}</script>` : ""}
     <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getMarkedScript())}</script>
 	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getJsonFormatterScript())}</script>
@@ -561,7 +564,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let sidebarOpen = false;
 	      const mainElement = document.querySelector(".main");
 	      const renderedSlotHtml = new WeakMap();
-	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot").forEach((slot) => {
+	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot, #departmentAllocationSlot").forEach((slot) => {
 	        renderedSlotHtml.set(slot, { initial: slot.innerHTML });
 	      });
 	      const continueDialogBackdrop = document.getElementById("continueDialogBackdrop");
@@ -1320,13 +1323,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
         const slot = document.getElementById("rosterPanelSlot");
         const focused = document.activeElement;
         const focusKey = slot && focused && slot.contains(focused)
-          ? focused.getAttribute("data-department-nav-key") || focused.getAttribute("data-department-focus-key") : null;
+          ? focused.getAttribute("data-department-nav-key") : null;
         const sidebarTop = sidebarElement ? sidebarElement.scrollTop : 0;
         replaceHtml(slot, html);
-        departmentEmployeeAllocation.sync();
         if (focusKey && slot) {
-          const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key], [data-department-focus-key]"))
-            .find((element) => (element.getAttribute("data-department-nav-key") || element.getAttribute("data-department-focus-key")) === focusKey && !element.disabled);
+          const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key]"))
+            .find((element) => element.getAttribute("data-department-nav-key") === focusKey && !element.disabled);
           if (replacement) replacement.focus({ preventScroll: true });
         }
         if (sidebarElement) sidebarElement.scrollTop = sidebarTop;
@@ -1382,6 +1384,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        replaceHtml(document.getElementById("taskPanelSlot"), message.taskPanelHtml);
 	        replaceRosterHtml(message.rosterPanelHtml);
+          departmentEmployeeAllocation?.sync((slot) => replaceHtml(slot, message.employeeAllocationHtml));
 	        const shouldStick = isNearBottom();
 	        const previousTop = mainElement ? mainElement.scrollTop : 0;
 	        replaceHtml(document.getElementById("timelineSlot"), message.timelineHtml);
@@ -1417,6 +1420,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        if (target.disabled) return;
         const action = target.getAttribute("data-action");
+        if (action === "allocateEmployees") {
+          departmentEmployeeAllocation?.open();
+          return;
+        }
         if (action === "openDepartmentTask") {
           const taskId = target.getAttribute("data-department-task-id");
           if (taskId && taskId.trim()) {
@@ -1492,11 +1499,11 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        if (action === "stopTask") {
-	          saveScrollState();
 	          const liveStopButton = actionButton("stopTask");
-	          if (liveStopButton) {
-	            liveStopButton.disabled = true;
-	          }
+	          if (!liveStopButton || liveStopButton.disabled) return;
+	          saveScrollState();
+	          liveStopButton.disabled = true;
+	          ${state.department?.role === "director" ? 'liveStopButton.textContent = "正在停止…";' : ""}
 	          vscode.postMessage({ type: "loopGroupChatChat:stopTask" });
 	          return;
 	        }
@@ -1515,7 +1522,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      window.addEventListener("message", (event) => {
             ${options.embedded ? "" : "if (!isLoopGroupChatHostMessage(event)) return;"}
 	        const message = event.data;
-        if (departmentEmployeeAllocation.settled(message)) return;
+        if (departmentEmployeeAllocation?.settled(message)) return;
 	        if (message && message.type === "loopGroupChatChat:continueTaskSettled") {
 	          applyContinueTaskSettled(message);
 	          return;
@@ -1725,9 +1732,10 @@ function renderPanelActions(
   const progressBand = Math.min(4, Math.floor(progressPercent / 20));
   return [
     state.department ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
+    state.department?.role === "director" ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
     `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
-      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>`
+      ? `${state.task.departmentStopState === "unconfirmed" ? `<span role="status">${escapeHtml(strings.stopUnconfirmed)}</span>` : ""}<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTask)}</button>`
       : "",
     "</div>",
     state.task.canSupplement
@@ -2015,8 +2023,7 @@ function renderDepartmentRosterPanel(
 ): string {
   const department = state.department!;
   const member = (participant: LoopGroupChatPanelParticipant, role: "总监" | "组长" | "员工", navigation = "", anchor?: string, progressPercent?: number): string => {
-    const icon = getDepartmentRoleIdentity(role === "总监" ? "director" : role === "组长" ? "leader" : "employee").icon;
-    const label = `${icon} ${role} · ${participant.title}`;
+    const label = role === "总监" ? role : `${role} · ${participant.title}`;
     const avatarLabel = { 总监: "总", 组长: "组", 员工: "员" }[role];
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>
@@ -2027,24 +2034,32 @@ function renderDepartmentRosterPanel(
       ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(label)}：查看最近一次验收结果">${content}</button>`
       : `<div class="member">${content}</div>`;
   };
-  const leaders = department.leaders.map((leader) => {
-    const navigation = renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, `🌛 产研部 · 组长 · ${leader.participant.title} · #${leader.taskId.slice(-12)}`);
+  const visibleLeaders = department.role === "leader"
+    ? department.leaders.filter((leader) => Boolean(state.task.id) && leader.taskId === state.task.id)
+    : department.leaders;
+  const leaders = visibleLeaders.map((leader) => {
+    const navigation = department.role === "director"
+      ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, buildDepartmentLeaderChatTitle(leader.leaderNumber))
+      : "";
+    const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
     const employees = leader.employees.map((employee) => `<li>${member(employee, "员工", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
-      ${member(leader.participant, "组长", navigation + renderDepartmentEmployeeAllocation(department, leader.taskId, escapeAttribute), undefined, progressPercent)}
+      ${member(leader.participant, "组长", navigation + allocationSummary, undefined, progressPercent)}
       <ul class="department-employees" aria-label="${escapeAttribute(`${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
     </li>`;
   }).join("");
+  const departmentTree = department.role === "director"
+    ? `<li>${member(department.director, "总监")}
+      <ul class="department-leaders" aria-label="组长">${leaders || '<li class="member-meta department-empty">尚未分配组长</li>'}</ul>
+    </li>`
+    : leaders || '<li class="member-meta department-empty">尚未分配组长</li>';
   return `<section class="panel department-roster" aria-label="部门成员">
     <h2>${escapeHtml(strings.participants)}</h2>
     ${department.role === "leader" ? renderDepartmentNavigation(department.rootTaskId, "返回总监群聊", `director:${department.rootTaskId}`) : ""}
     <p class="member-meta department-occupancy">组长 ${escapeHtml(department.activeLeaders === null ? "未知" : String(department.activeLeaders))}/${escapeHtml(String(department.maxLeaders))} · 员工 ${escapeHtml(department.activeEmployees === null ? "未知" : String(department.activeEmployees))}/${escapeHtml(String(department.maxEmployees))}（全部门共享）</p>
-    <p class="member-meta">员工上限不增加全部门共享总额，当前员工继续执行；全局零余额时每组一个例外保留。调整从组长下次派发生效。</p>
-    <ul class="roster department-tree"><li>${member(department.director, "总监")}
-      <ul class="department-leaders" aria-label="组长">${leaders || '<li class="member-meta department-empty">尚未分配组长</li>'}</ul>
-    </li></ul>
+    <ul class="roster department-tree">${departmentTree}</ul>
   </section>`;
 }
 

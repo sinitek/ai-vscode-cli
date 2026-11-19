@@ -1,3 +1,4 @@
+import { departmentLifecycleDiagnostic as diagnostic } from "./departmentlifecyclediagnostics";
 import { createHash } from "crypto";
 import { CLEANUP_PARTS, canonicalIdentity, exactKeys, fingerprintDepartmentExecutionSelection, identifier,
   isCleanupRequirements, record, type CleanupRequirements, type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
@@ -96,6 +97,9 @@ export function leaderExecutionCanLaunch(producer: DepartmentLeaderExecutionProd
   return producer.isCurrent(structuredClone(scope)) && (producer.canLaunch?.(structuredClone(scope)) ?? true);
 }
 
+// Suppress the same closure write failure across the original producer/Owner
+// ledger instances. This cache is telemetry only and never authorizes cleanup.
+const closurePersistenceFailures = new Set<string>();
 export class DepartmentLeaderExecutionLedger {
   constructor(private readonly store: DepartmentRuntimeStore, private readonly producer: DepartmentLeaderExecutionProducer | null) {}
   open(scope: DepartmentLeaderExecutionScope): DepartmentRuntimeWriteResult {
@@ -167,7 +171,18 @@ export class DepartmentLeaderExecutionLedger {
     try {
       const closure = await producer.closeAdmissionsAndDrain(structuredClone(scope));
       if (!producer.isCurrent(structuredClone(scope)) || !isProducerClosure(closure, producer.producerId, scope)) throw new Error("leader-execution-producer-closure-invalid");
-      return this.store.closeLeaderExecutionSet(scope, closure);
+      // This is the existing write, not an additional read/verification. Only
+      // here can diagnostics distinguish persistence refusal from native drain.
+      const saved = this.store.closeLeaderExecutionSet(scope, closure);
+      const key = leaderExecutionScopeKey(scope);
+      if (saved.ok) closurePersistenceFailures.delete(key);
+      else if (!closurePersistenceFailures.has(key)) {
+        if (closurePersistenceFailures.size >= 128) closurePersistenceFailures.delete(closurePersistenceFailures.values().next().value!);
+        closurePersistenceFailures.add(key);
+        diagnostic("department-lifecycle-persistence-failed", { rootTaskId: scope.rootTaskId, leaderTaskId: scope.leaderTaskId,
+          generation: scope.generation, stage: "producer-close", result: "unconfirmed", reason: "persistence-failed" });
+      }
+      return saved;
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   }
 }

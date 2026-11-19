@@ -9,6 +9,7 @@ const base = ["--product", "/physical/product", "--report", "/new/report.json"];
 test("default Codex and existing stop-continue arguments remain supported; OpenCode partial continuation stays rejected", () => {
   assert.equal(args(base).leaderCli, "codex"); assert.equal(args([...base, "--scenario", "stop-continue"]).scenario, "stop-continue");
   assert.equal(args([...base, "--scenario", "cold-start"]).scenario, "cold-start");
+  assert.equal(args([...base, "--scenario", "codex-long-tool-output"]).scenario, "codex-long-tool-output");
   assert.equal(args([...base, "--leader-cli", "opencode"]).leaderCli, "opencode");
   assert.equal(args([...base, "--leader-cli", "opencode"]).leaderModel, "explicit");
   assert.equal(args([...base, "--leader-cli", "opencode", "--leader-model", "default"]).leaderModel, "default");
@@ -16,6 +17,8 @@ test("default Codex and existing stop-continue arguments remain supported; OpenC
     assert.throws(() => args([...base, ...extra]));
   for (const flag of ["--director-cli", "--leader-cli", "--employee-cli"])
     assert.throws(() => args([...base, "--scenario", "cold-start", flag, "opencode"]), /Codex director\/leader\/employee/);
+  for (const flag of ["--director-cli", "--leader-cli", "--employee-cli"])
+    assert.throws(() => args([...base, "--scenario", "codex-long-tool-output", flag, "opencode"]), /requires Codex director\/leader\/employee/);
 });
 
 test("cold recovery classification rejects unrelated activation errors and only accepts the observed production fail-closed boundary", () => {
@@ -212,7 +215,7 @@ test("cold driver refuses missing evidence before its shared deadline and report
       if (command.method === "Runtime.enable") setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ method: "Runtime.executionContextCreated", params: { context: { id: 1, auxData: { isDefault: true } } } }) }));
       const value = command.method === "Runtime.evaluate" ? command.params.expression.includes("#panelSubtitle") ? "部门 · root"
-        : command.params.expression.includes("innerText") ? "产研部 · 总监 root"
+        : command.params.expression.includes("innerText") ? "产研部总监 root"
         : command.params.expression.includes("dispatchEvent") ? (clicks += 1, true) : 1 : undefined;
       setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ id: command.id, result: { result: { value } } }) }));
@@ -584,7 +587,7 @@ test('root-scoped shared CDP discovers real untyped OOPIF panels by exact public
             message:JSON.stringify({method:'Runtime.executionContextCreated',params:{context:{id:1,auxData:{isDefault:true}}}})}));
           const targetRoot=wrongRoot?'another-root':rootId;
           const value=command.method!=='Runtime.evaluate'?undefined:params.sessionId==='leader'?'产研部 · 组长 · leader-other':
-            command.params.expression.includes('getAttribute')?`产研部 · 总监 · ${targetRoot}`:`产研部 · 总监 ${targetRoot}`;
+            command.params.expression.includes('getAttribute')?`产研部 · 总监 · ${targetRoot}`:`产研部总监 ${targetRoot}`;
           setImmediate(()=>cdp.emit('Target.receivedMessageFromTarget',{sessionId:params.sessionId,message:JSON.stringify({id:command.id,result:{result:{value}}})}));
           return {};
         }
@@ -654,7 +657,7 @@ function cleanupGateBrowser({ candidateFailure = false, discoveryFailure = false
         if (command.method === 'Runtime.enable') setImmediate(() => cdp.emit('Target.receivedMessageFromTarget', { sessionId: params.sessionId,
           message: JSON.stringify({ method: 'Runtime.executionContextCreated', params: { context: { id: 1, auxData: { isDefault: true } } } }) }));
         const value = command.method !== 'Runtime.evaluate' ? undefined : params.sessionId === 'wrong' ? 'other' :
-          command.params.expression.includes('getAttribute') ? '产研部 · 总监 · root' : '产研部 · 总监 root';
+          command.params.expression.includes('getAttribute') ? '产研部 · 总监 · root' : '产研部总监 root';
         setImmediate(() => cdp.emit('Target.receivedMessageFromTarget', { sessionId: params.sessionId,
           message: JSON.stringify({ id: command.id, result: { result: { value } } }) }));
         return {};

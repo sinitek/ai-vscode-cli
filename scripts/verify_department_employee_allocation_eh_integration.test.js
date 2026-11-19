@@ -92,6 +92,7 @@ test("public entry saves workspace before enable and selects all three roles thr
     },
   }; } };
   await publicDepartmentEntry(view, "create", async (_label, check) => assert.ok(await check()), async () => actions.push(["workspace", "saved"]));
+  assert.ok(!actions.some(([selector]) => /^#department-(leader|employee)-config$/.test(selector)));
   assert.ok(actions.findIndex(a => a[0] === "workspace") < actions.findIndex(a => a[0] === "#departmentEnabled"));
   for (const [selector, value] of [["#configSelect", "codex-local"], ["#modelSelect", "gpt-5"], ["#department-leader-model", "__default__"], ["#department-employee-model", "__default__"]]) {
     assert.ok(actions.some(a => a[0] === selector && a[1] === value));

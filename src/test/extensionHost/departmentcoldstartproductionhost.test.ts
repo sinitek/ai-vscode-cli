@@ -176,12 +176,12 @@ test("cold public observer uses actual root on content reuse and rejects foreign
     const api = publicPanelApi(), observer = installColdPublicControlObserver(api.window);
     try {
       const panel = api.window.createWebviewPanel("sinitek-cli-tools.loopGroupChatChat", "title", 1, {}) as any;
-      panel.webview.html = '<h1 id="panelHeading">产研部 · 总监 ☀️</h1><p id="panelSubtitle" title="部门 · root">root</p>';
-      if (mode === "foreign") panel.webview.postMessage({ type: "loopGroupChatChat:contentPatch", subtitleText: "另一部门 · foreign", headingText: "产研部 · 总监 ☀️" });
-      if (mode === "unbound") panel.webview.html = '<h1 id="panelHeading">产研部 · 组长 🌛</h1>';
+      panel.webview.html = '<h1 id="panelHeading">产研部总监</h1><p id="panelSubtitle" title="部门 · root">root</p>';
+      if (mode === "foreign") panel.webview.postMessage({ type: "loopGroupChatChat:contentPatch", subtitleText: "另一部门 · foreign", headingText: "产研部总监" });
+      if (mode === "unbound") panel.webview.html = '<h1 id="panelHeading">组长1</h1>';
       if (mode === "icon-only") panel.webview.html = '<h1 id="panelHeading">☀️</h1><p id="panelSubtitle" title="部门 · root">root</p>';
-      if (mode === "wrong-role") panel.webview.html = '<h1 id="panelHeading">产研部 · 组长 🌛</h1><p id="panelSubtitle" title="部门 · root">root</p>';
-      if (mode === "malformed-root") panel.webview.html = '<h1 id="panelHeading">产研部 · 总监 ☀️</h1><p id="panelSubtitle" title="部门 · root/foreign">root</p>';
+      if (mode === "wrong-role") panel.webview.html = '<h1 id="panelHeading">组长1</h1><p id="panelSubtitle" title="部门 · root">root</p>';
+      if (mode === "malformed-root") panel.webview.html = '<h1 id="panelHeading">产研部总监</h1><p id="panelSubtitle" title="部门 · root/foreign">root</p>';
       if (mode !== "missing") panel.receive({ type: "loopGroupChatChat:stopTask" });
       if (mode === "duplicate") panel.receive({ type: "loopGroupChatChat:stopTask" });
       await assert.rejects(() => waitForColdPublicStopAction(() => observer.readActions(), "root", 0, async () => {}),

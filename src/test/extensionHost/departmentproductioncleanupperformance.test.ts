@@ -78,6 +78,9 @@ for (const [employees, history] of [[0, 0], [0, 128], [3, 128]]) scenario(`produ
 });
 
 scenario("cancelled observers detach synchronously while one original close owns pending preparation", async (t) => {
+  const events: { event: string; data: any }[] = [];
+  const logger = require("../../logger") as typeof import("../../logger");
+  t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
   const h = await productionWiring(t, "codex", true, false), entered = gate(), release = gate();
   h.beforeBuilder(async () => { entered.resolve(); await release.promise; });
   const started = await h.start(); assert.ok(started.ok); await entered.promise;
@@ -101,12 +104,19 @@ scenario("cancelled observers detach synchronously while one original close owns
   for (const w of waiters) { w.abort.abort(); await assert.rejects(w.observed.done, /cancelled/); }
   assert.equal(closes, closesBeforeBatch, "reobserve/abort retains the same close subscription; adapter close is independent");
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 1, subscribers: 0 });
+  assert.equal(events.filter((e) => e.event === "department-leader-cleanup" && e.data.stage === "producer-close" && e.data.result === "started").length, 1,
+    "abort, subscriptions and overflow cannot repeat shared cleanup diagnostics");
   assert.equal(h.entries()[0].executionId, null);
   assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
   const final = h.groupCleanup.observe(task, 1); assert.ok(final);
   const rejected = assert.rejects(final.done, /sealed|fence|cancel|unobservable|failed|unknown/);
   release.resolve(); await rejected; await started.done;
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 0, subscribers: 0 });
+  assert.equal(events.filter((e) => e.event === "department-leader-cleanup" && e.data.stage === "producer-close" && e.data.result !== "started").length, 1);
+  assert.equal(events.filter((e) => e.data.result === "released").length, 0);
+  for (const e of events.filter((e) => e.event === "department-leader-cleanup")) {
+    assert.equal(e.data.rootTaskId, "root"); assert.equal(e.data.leaderTaskId, started.taskId); assert.equal(e.data.generation, 1);
+  }
   assert.equal(h.wire().filter((m) => m.method === "turn/start").length, 0);
   assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
 });
@@ -146,4 +156,74 @@ scenario("pending native consumer keeps shared responsibility after every observ
   release.resolve(); await remaining.done; await started.done;
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 0, subscribers: 0 });
   assert.equal(h.wire(h.file("employee")).filter((m) => m.method === "turn/start").length, 1);
+});
+
+for (const mode of ["normal", "evidence-rejected", "persistence", "closure-persistence", "throw", "reject"] as const) {
+  scenario(`production diagnostic outcome and original receipt gates: ${mode}`, async (t) => {
+    const logger = require("../../logger") as typeof import("../../logger");
+    const events: { event: string; data: any }[] = [];
+    t.mock.method(logger, "logEssential", (event: string, data: unknown) => {
+      events.push({ event, data });
+      if (mode === "throw") throw new Error("SYNTHETIC_SENSITIVE_LOG_ERROR");
+      return mode === "reject" ? Promise.reject(new Error("SYNTHETIC_SENSITIVE_LOG_ERROR")) : Promise.resolve();
+    });
+    const h = await productionWiring(t, "codex", true, true);
+    if (mode === "evidence-rejected") {
+      const read = h.producer.observationSnapshot.bind(h.producer);
+      t.mock.method(h.producer, "observationSnapshot", (...args: Parameters<typeof read>) => {
+        const snapshot = read(...args);
+        return { ...snapshot, task: { ...snapshot.task, executionSession: undefined } };
+      });
+    }
+    if (mode === "persistence") {
+      const write = h.store.write.bind(h.store);
+      t.mock.method(h.store, "write", (value: Parameters<typeof write>[0]) => value.capacity.leaders.length === 0 && value.runtime.leaders.length > 0
+        ? { ok: false, error: "SYNTHETIC_SENSITIVE_PERSIST_ERROR" } : write(value));
+    }
+    if (mode === "closure-persistence") t.mock.method(h.store, "closeLeaderExecutionSet", () => ({ ok: false, error: "SYNTHETIC_SENSITIVE_CLOSURE_ERROR" }));
+    h.answer(1, completed()); const started = await h.start(); assert.ok(started.ok); await started.done;
+    const retained = mode === "persistence" || mode === "closure-persistence" || mode === "evidence-rejected";
+    assert.equal(h.composition.readCapacity("root")!.leaders.length, retained ? 1 : 0);
+    const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+    assert.equal(saved.value.capacity.leaders.length, retained ? 1 : 0);
+    assert.equal(saved.value.leaderExecutionSets![0].state, mode === "closure-persistence" ? "open" : "closed");
+    // Read-only test audit of the original Owner's receipt. It is never injected
+    // into production aggregation or used to authorize capacity release.
+    const { DepartmentExecutionReceiptStore } = require("../../runtime/departmentexecutionreceiptstore") as typeof import("../../runtime/departmentexecutionreceiptstore");
+    const { cleanupComplete } = require("../../runtime/departmentexecutionidentity") as typeof import("../../runtime/departmentexecutionidentity");
+    const binding = saved.value.executionBindings![0];
+    const receipt = new DepartmentExecutionReceiptStore(h.file("owners/" + binding.identity.ownerId)).read(binding.identity.executionId, binding.identity);
+    assert.equal(receipt.kind, "ok");
+    if (receipt.kind === "ok") {
+      assert.equal(receipt.value.state, "cleaned"); assert.ok(receipt.value.receipt);
+      assert.equal(cleanupComplete(receipt.value.receipt!.cleanup, binding.requirements), true);
+    }
+    assert.equal(events.filter((e) => e.event === "department-leader-capacity" && e.data.result === "released").length, retained ? 0 : 1);
+    const owner = events.filter((e) => e.event === "department-leader-cleanup" && e.data.stage === "owner-receipts" && e.data.result !== "started");
+    assert.equal(owner.length, mode === "closure-persistence" ? 0 : 1);
+    if (owner.length) assert.equal(owner[0].data.result, mode === "evidence-rejected" ? "unconfirmed" : "confirmed");
+    if (mode === "evidence-rejected") assert.equal(owner[0].data.reason, "evidence-rejected");
+    if (mode === "persistence" || mode === "closure-persistence") assert.ok(events.some((e) => e.data.reason === "persistence-failed"));
+    if (mode === "closure-persistence") assert.equal(events.filter((e) => e.event === "department-lifecycle-persistence-failed"
+      && e.data.stage === "producer-close").length, 1, "original ledger instances share diagnostic suppression");
+    assert.equal(JSON.stringify(events).includes("SYNTHETIC_SENSITIVE"), false);
+  });
+}
+
+scenario("actual stop and late original receipt retain generation with one stop summary", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  const events: { event: string; data: any }[] = [];
+  t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
+  const h = await productionWiring(t, "codex", true, true);
+  h.answer(1, completed()); fs.writeFileSync(h.file("hold-pipe"), "held");
+  const started = await h.start(); assert.ok(started.ok); await until(() => fs.existsSync(h.file("eof-1")));
+  const stop1 = h.composition.host.stopRoot("root"), stop2 = h.composition.host.stopRoot("root");
+  await new Promise((r) => setImmediate(r));
+  assert.equal(events.filter((e) => e.data.result === "released").length, 0);
+  assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
+  fs.rmSync(h.file("hold-pipe")); assert.equal(await stop1, true); assert.equal(await stop2, true); await started.done;
+  const summaries = events.filter((e) => e.event === "department-root-stop-settled"); assert.equal(summaries.length, 1);
+  assert.equal(summaries[0].data.confirmed, 1); assert.equal(summaries[0].data.unconfirmed, 0); assert.equal(summaries[0].data.retained, 0);
+  const release = events.filter((e) => e.data.result === "released"); assert.equal(release.length, 1);
+  for (const e of events.filter((e) => e.data.leaderTaskId)) assert.equal(e.data.generation, 1);
 });

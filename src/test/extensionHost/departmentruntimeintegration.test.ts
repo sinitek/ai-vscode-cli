@@ -826,3 +826,71 @@ test("stored leader identity: paused recovery and warm continuation still requir
   assert.equal(h.fixture.mainCalls.length, before);
   assert.deepEqual(h.pool.snapshot(), []);
 });
+
+// Telemetry cannot stand in for cleanup proof or durable release.
+for (const proof of ["confirmed", "missing", "rejected", "persistence"] as const) {
+  test(`lifecycle diagnostics retain proof and capacity gates: ${proof}`, async (t) => {
+    const logger = require("../../logger") as typeof import("../../logger");
+    const events: { event: string; data: any }[] = [];
+    t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
+    const cleanup = deferred(); let requested = false;
+    const h = harness({ observeLeaderCleanup: () => {
+      requested = true;
+      return proof === "missing" ? null : { done: proof === "rejected"
+        ? Promise.reject(new Error("leader-cleanup-selection-conflict")) : cleanup.promise };
+    } });
+    t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]); h.pause();
+    const first = await h.host.startLeader("root", request("accounts")); assert.ok(first.ok);
+    await waitForLoopPlus(() => requested, "cleanup observation entered");
+    if (proof === "persistence") h.failPersistence(true);
+    cleanup.resolve(); await first.done;
+    const released = proof === "confirmed";
+    assert.equal(h.capacity.snapshot("root")[0].leaders.length, released ? 0 : 1);
+    const releases = events.filter((e) => e.event === "department-leader-capacity" && e.data.result === "released");
+    assert.equal(releases.length, released ? 1 : 0);
+    assert.ok(events.some((e) => e.data.reason === (released ? "none" : proof === "missing" ? "evidence-missing"
+      : proof === "persistence" ? "persistence-failed" : "evidence-rejected")));
+    const one = h.host.stopRoot("root"), two = h.host.stopRoot("root");
+    assert.equal(await one, released); assert.equal(await two, released);
+    await h.host.stopRoot("root");
+    assert.equal(events.filter((e) => e.event === "department-root-stop-started").length, 1);
+    const summaries = events.filter((e) => e.event === "department-root-stop-settled"); assert.equal(summaries.length, 1);
+    assert.equal(summaries[0].data.retained, released ? 0 : 1);
+    assert.equal(summaries[0].data.confirmed, released || proof === "persistence" ? 1 : 0);
+    assert.equal(summaries[0].data.unconfirmed, released || proof === "persistence" ? 0 : 1);
+    for (const e of events.filter((e) => e.data.leaderTaskId)) {
+      assert.equal(e.data.rootTaskId, "root"); assert.equal(e.data.leaderTaskId, first.taskId); assert.equal(e.data.generation, 1);
+    }
+  });
+}
+
+for (const failure of ["throw", "reject"] as const) test(`diagnostic ${failure} cannot change cleanup or stop results`, async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  t.mock.method(logger, "logEssential", () => {
+    if (failure === "throw") throw new Error("SYNTHETIC_SENSITIVE_DIAGNOSTIC");
+    return Promise.reject(new Error("SYNTHETIC_SENSITIVE_DIAGNOSTIC"));
+  });
+  const cleanup = deferred(); let requested = false;
+  const h = harness({ observeLeaderCleanup: () => { requested = true; return { done: cleanup.promise }; } });
+  t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]); h.pause();
+  const first = await h.host.startLeader("root", request("accounts")); assert.ok(first.ok);
+  await waitForLoopPlus(() => requested, "original cleanup waits");
+  const stopping = h.host.stopRoot("root");
+  assert.equal(h.capacity.snapshot("root")[0].leaders.length, 1);
+  cleanup.resolve(); await first.done; assert.equal(await stopping, true);
+  assert.equal(h.capacity.snapshot("root")[0].leaders.length, 0);
+});
+
+test("employee release diagnostics follow actual release once per original generation", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  const events: { event: string; data: any }[] = [];
+  t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
+  const h = harness(); t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]); h.dispatch("diagnostic-employee"); h.pause();
+  const first = await h.host.startLeader("root", request("accounts")); assert.ok(first.ok);
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 1, "employee live");
+  assert.equal(events.filter((e) => e.event === "department-employee-capacity").length, 0);
+  await h.host.stopRoot("root"); await first.done;
+  const releases = events.filter((e) => e.event === "department-employee-capacity" && e.data.result === "released");
+  assert.equal(releases.length, 1); assert.equal(releases[0].data.generation, 1); assert.equal(releases[0].data.leaderTaskId, first.taskId);
+  assert.equal(h.capacity.snapshot("root")[0].employees.length, 0);
+});

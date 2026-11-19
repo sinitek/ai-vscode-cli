@@ -10,6 +10,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
+import { LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 const { createDepartmentRuntimeComposition } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
 const { freezeDepartmentThinkingDefaults } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
@@ -111,7 +112,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLe
       ...(event && event !== "(none)" ? { reviewEventId: event } : {}), finalSummary: "模块已完成", answerConclusion: "完成",
       acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "module", passed: true }] })) });
   });
-  return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, configuration, start, dispatch, finish,
+  return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, configuration, start, dispatch, finish, update,
     decide: (next: typeof decision) => { decision = next; }, prepare: (next: () => void) => { prepares = next; }, workspace: (value: string) => { workspace = value; },
     dispose: () => { composition.dispose(); fixture.dispose(); } };
 }
@@ -119,6 +120,82 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLe
 // This fixture exercises the real composition/classic parser with in-memory task
 // persistence. It does not claim production owned-storage or native CLI evidence.
 function latch() { let resolve!: () => void; const promise = new Promise<void>((yes) => { resolve = yes; }); return { promise, resolve }; }
+
+async function startHeldLeader(h: ReturnType<typeof harness>, moduleId: string) {
+  const leaderStarted = latch(), releaseLeader = latch();
+  await h.start();
+  const root = h.fixture.readTask("root-1")!;
+  h.fixture.queueMain(async (input, tabId) => {
+    leaderStarted.resolve();
+    await releaseLeader.promise;
+    h.fixture.publish(input, tabId, { status: "stopped", content: "stopped by deterministic test" });
+  });
+  await h.composition.handleDirectorDecision({ task: root, decision: { status: "continue", estimatedRemainingRounds: 1,
+    subtasks: [{ id: moduleId, title: "模块", prompt: "Implement the module and report its result.", taskType: "general", writeFiles: [] }] },
+  content: '{"status":"continue"}', requirements: [] });
+  await leaderStarted.promise;
+  const leaderId = [...h.fixture.createdTaskIds].find((id) => h.fixture.readTask(id)?.department?.leaderSubtaskId === moduleId);
+  assert.ok(leaderId);
+  return { root, leaderId, releaseLeader };
+}
+
+test("director waiting does not block or redispatch while a leader is running", async (t) => {
+  const h = harness();
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { held?.releaseLeader.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-wait");
+  const leaderIds = [...h.fixture.createdTaskIds].filter((id) => h.fixture.readTask(id)?.department?.role === "leader");
+  const result = await h.composition.handleDirectorDecision({ task: h.fixture.readTask(held.root.id)!,
+    decision: { status: "waiting", finalSummary: "等待组长汇报" }, content: '{"status":"waiting"}', requirements: [] });
+  assert.equal(result.status, "pending-requirements");
+  assert.equal(h.fixture.readTask(held.root.id)?.status, "running");
+  assert.deepEqual([...h.fixture.createdTaskIds].filter((id) => h.fixture.readTask(id)?.department?.role === "leader"), leaderIds);
+  assert.ok(h.directorPrompts.some((input) => input.modelPrompt.includes('"status":"waiting"')));
+  held.releaseLeader.resolve();
+  await h.fixture.adapter.waitForTaskIdle(held.leaderId);
+});
+
+test("director blocked with a valid diagnosis pauses review without releasing live ownership", async (t) => {
+  const h = harness();
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { held?.releaseLeader.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-blocked");
+  const decision: LoopMainDecision = { status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE,
+    finalSummary: "已核实的执行阻塞" };
+  const result = await h.composition.handleDirectorDecision({ task: held.root, decision,
+    content: JSON.stringify({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE }), requirements: [] });
+  assert.equal(result.status, "needs-review");
+  assert.equal(h.fixture.readTask(held.root.id)?.status, "needs-review");
+  assert.equal(h.composition.host.runtimeSnapshot(held.root.id)?.leaders[0]?.status, "running");
+  assert.ok(h.composition.readCapacity(held.root.id)?.leaders.includes("module-blocked"));
+  assert.equal(h.fixture.readTask(held.root.id)?.finalSummary, decision.finalSummary);
+});
+
+test("director waiting without a live leader pauses review instead of sleeping indefinitely", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  await h.start();
+  const root = h.fixture.readTask("root-1")!;
+  const decision: LoopMainDecision = { status: "waiting", finalSummary: "等待组长汇报" };
+  const result = await h.composition.handleDirectorDecision({ task: root, decision,
+    content: JSON.stringify(decision), requirements: [] });
+  assert.equal(result.status, "needs-review");
+  assert.equal(h.fixture.readTask(root.id)?.status, "needs-review");
+  assert.match(h.fixture.readTask(root.id)?.finalSummary ?? "", /没有正在运行的组长/);
+});
+
+test("runtime capacity uses current defaults without rewriting a frozen employee limit", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  const capacity = h.composition.capacity;
+  const lease = await capacity.acquireLeader("default-root", "leader");
+  assert.ok(lease);
+  assert.deepEqual(h.composition.readCapacity("default-root"), {
+    rootTaskId: "default-root", maxLeaders: 4, maxEmployees: 16, leaders: ["leader"], employees: [],
+  });
+  lease.release();
+  const frozen = { rootTaskId: "frozen-root", maxLeaders: 4, maxEmployees: 20, leaders: [], employees: [] };
+  capacity.restoreRoot(frozen);
+  assert.deepEqual(h.composition.readCapacity("frozen-root"), frozen);
+});
 
 test("new department accepts a Grok employee route and prepares it before startup", async (t) => {
   const h = harness(); t.after(h.dispose);
@@ -292,10 +369,10 @@ for (const outcome of ["resume", "stop", "revoke", "reject", "throw"] as const) 
     await h.composition.organizationControl.stop(root);
     await ownership.waitForIdle(root.id);
     const original = h.composition.host.continueRoot;
-    h.composition.host.continueRoot = async (id) => {
+    h.composition.host.continueRoot = async (id, continuation) => {
       if (outcome === "reject") return { ok: false, reason: "deterministic-refusal" };
       if (outcome === "throw") throw new Error("deterministic-startup-error");
-      const result = await original(id);
+      const result = await original(id, continuation);
       assert.ok(result.ok);
       assert.equal(ownership.getCount(id), 1);
       assert.equal(isLoopTaskRunOrphaned(h.fixture.readTask(id)!, ownership.collectTaskIds()), false);
@@ -396,7 +473,7 @@ test("route preparation stop revokes the old request without clearing its legal 
   await ownership.waitForIdle(root.id);
   const snapshot = h.composition.host.runtimeSnapshot(root.id), capacity = h.composition.readCapacity(root.id);
   const resume = h.composition.host.continueRoot;
-  h.composition.host.continueRoot = (id) => { resumes++; return resume(id); };
+  h.composition.host.continueRoot = (...args) => { resumes++; return resume(...args); };
   h.deps.prepareRoutes = async () => {
     const ordinal = ++prepares;
     if (ordinal === 1) { firstEntered.resolve(); await firstRelease.promise; }
@@ -437,7 +514,7 @@ test("route preparation rejection releases only its request and allows explicit 
   await h.start(); const root = h.fixture.readTask("root-1")!;
   await h.composition.organizationControl.stop(root);
   const resume = h.composition.host.continueRoot;
-  h.composition.host.continueRoot = (id) => { resumes++; return resume(id); };
+  h.composition.host.continueRoot = (...args) => { resumes++; return resume(...args); };
   h.deps.prepareRoutes = async () => { if (++prepares === 1) { entered.resolve(); await release.promise; throw new Error("route-preparation-rejected"); } };
   const failed = h.composition.organizationControl.continue(root);
   const rejected = assert.rejects(failed, /route-preparation-rejected/);
@@ -455,25 +532,26 @@ test("route preparation stop stays revoked when controller-free recovery fails",
   const entered = latch(), release = latch();
   const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }); t.after(() => { release.resolve(); h.dispose(); });
   await h.start(); const root = h.fixture.readTask("root-1")!;
-  await h.composition.organizationControl.stop(root);
   h.composition.dispose();
   const cold = createDepartmentRuntimeComposition(h.deps); t.after(cold.dispose);
-  let reads = 0, resumes = 0;
+  let reads = 0, resumes = 0, refuseRecovery = false;
   const read = h.store.read.bind(h.store);
-  h.store.read = (...args) => { reads++; return reads === 1 ? { ok: false, error: "deterministic-recovery-refusal" } : read(...args); };
+  h.store.read = (...args) => { reads++; return refuseRecovery ? { ok: false, error: "deterministic-recovery-refusal" } : read(...args); };
   const resume = cold.host.continueRoot;
-  cold.host.continueRoot = (id) => { resumes++; return resume(id); };
+  cold.host.continueRoot = (...args) => { resumes++; return resume(...args); };
   let prepares = 0;
   h.deps.prepareRoutes = async () => { if (++prepares === 1) { entered.resolve(); await release.promise; } };
   const pending = cold.organizationControl.continue(root);
   const rejected = assert.rejects(pending, /已停止|已失效/);
   await entered.promise;
+  const readsBeforeStop = reads;
+  refuseRecovery = true;
   await assert.rejects(cold.organizationControl.stop(h.fixture.readTask(root.id)!), /deterministic-recovery-refusal/);
-  assert.equal(reads, 1);
+  assert.equal(reads, readsBeforeStop + 1);
   release.resolve(); await rejected;
-  assert.equal(reads, 1, "invalidated request must not even enter ensure/recovery");
+  assert.equal(reads, readsBeforeStop + 1, "invalidated request must not even enter ensure/recovery");
   assert.equal(resumes, 0); assert.equal(cold.host.runtimeSnapshot(root.id), null);
-  assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+  assert.equal(h.fixture.readTask(root.id)?.status, "running", "failed cold stop does not change the persisted record");
 });
 
 for (const cold of [false, true]) {
@@ -481,7 +559,7 @@ for (const cold of [false, true]) {
     const entered = latch(), release = latch();
     const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }); t.after(() => { release.resolve(); h.dispose(); });
     await h.start(); const root = h.fixture.readTask("root-1")!;
-    await h.composition.organizationControl.stop(root);
+    if (!cold) await h.composition.organizationControl.stop(root);
     if (cold) h.composition.dispose();
     const composition = cold ? createDepartmentRuntimeComposition(h.deps) : h.composition;
     t.after(composition.dispose);
@@ -489,13 +567,13 @@ for (const cold of [false, true]) {
     const read = h.store.read.bind(h.store);
     h.store.read = (...args) => { reads++; return read(...args); };
     const resume = composition.host.continueRoot;
-    composition.host.continueRoot = (id) => { resumes++; return resume(id); };
+    composition.host.continueRoot = (...args) => { resumes++; return resume(...args); };
     h.deps.prepareRoutes = async () => { entered.resolve(); await release.promise; };
     const pending = composition.organizationControl.continue(root);
     const rejected = assert.rejects(pending, /已停止|已失效/);
-    await entered.promise; composition.dispose(); release.resolve(); await rejected;
-    assert.equal(reads, 0); assert.equal(resumes, 0);
-    assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+    await entered.promise; const readsAtPreparation = reads; composition.dispose(); release.resolve(); await rejected;
+    assert.equal(reads, readsAtPreparation); assert.equal(resumes, 0);
+    assert.equal(h.fixture.readTask(root.id)?.status, cold ? "running" : "stopped");
     await assert.rejects(composition.organizationControl.continue(root), /已释放/);
   });
 }
@@ -508,7 +586,7 @@ for (const change of ["workspace", "routes", "session"] as const) {
     await h.composition.organizationControl.stop(root);
     let resumes = 0;
     const resume = h.composition.host.continueRoot;
-    h.composition.host.continueRoot = (id) => { resumes++; return resume(id); };
+    h.composition.host.continueRoot = (...args) => { resumes++; return resume(...args); };
     h.deps.prepareRoutes = async () => { entered.resolve(); await release.promise; };
     const pending = h.composition.organizationControl.continue(root);
     const rejected = assert.rejects(pending, /归属已变化/);
@@ -576,10 +654,10 @@ test("continuation waits for the old director run and transfers ownership withou
   await h.start(); await entered.promise;
   const stopping = h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
   await cancelling.promise; await new Promise<void>((resolve) => setImmediate(resolve));
-  const continuing = h.composition.organizationControl.continue(h.fixture.readTask("root-1")!, "显式继续");
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  await assert.rejects(h.composition.organizationControl.continue(h.fixture.readTask("root-1")!, "在途继续"), /正在停止/);
   assert.equal(calls, 1);
-  oldDone.resolve(); await stopping; await continuing;
+  oldDone.resolve(); await stopping;
+  await h.composition.organizationControl.continue(h.fixture.readTask("root-1")!, "显式继续");
   await waitForLoopPlus(() => calls === 2, "new director after old run finally");
   assert.equal(maximum, 1); assert.equal(completed, 0, "stopped old result cannot complete a resumed root");
   assert.equal(ownership.getCount("root-1"), 1, "old finally cannot release transferred ownership");
@@ -868,18 +946,175 @@ for (const fail of [false, true]) {
     const outcome = pending.then(() => null, error => error);
     await entered.promise;
     assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+    assert.equal(h.composition.readOrganizationStopState(root.id), "stopping");
     assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
     assert.equal(h.composition.readCapacity(root.id)?.leaders.length, 0);
+    await assert.rejects(h.composition.organizationControl.continue(root, "停止在途"), /正在停止/);
     release.resolve();
     const error = await outcome;
     assert.equal(Boolean(error), fail);
     assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), fail, "failed stop is never a confirmed release");
+    assert.equal(h.composition.readOrganizationStopState(root.id), fail ? "unconfirmed" : "confirmed");
+    if (fail) await assert.rejects(h.composition.organizationControl.continue(root, "停止拒绝"), /停止未确认/);
+    assert.ok(!h.fixture.readTask(root.id)?.supplementalRequirements?.length);
   });
 }
 
+test("missing root stop write retains the continuation fence after member cleanup and director retirement", async (t) => {
+  const directorEntered = latch(), directorDone = latch(), firstLeaderTurn = latch(), leaderReleased = latch();
+  const ownership = createLoopOrchestrationOwnershipTracker();
+  const id = "root-1";
+  let refuseRootWrite = true, checkingRetirement = true;
+  let directorCalls = 0, cancellations = 0, ownerCleanups = 0, reads = 0, targets = 0, prepares = 0;
+  const h = harness({
+    updateTask: (taskId, patch): LoopTaskRecord | null => taskId === id && patch.status === "stopped" && refuseRootWrite ? null : h.update(taskId, patch),
+    acquireDirectorOwnership: ownership.acquire,
+    runDirectorDecision: async ({ task }) => {
+      if (++directorCalls === 1) { directorEntered.resolve(); await directorDone.promise; }
+      return { status: "pending-requirements", task };
+    },
+    stopDirector: () => { cancellations++; },
+    observeLeaderCleanup: () => { ownerCleanups++; return { done: Promise.resolve() }; },
+    leaderReleased: () => { leaderReleased.resolve(); },
+  });
+  t.after(() => { directorDone.resolve(); h.dispose(); });
+  await h.start(); await directorEntered.promise;
+  h.deps.updateTask(id, { subTasks: [{ id: "module", title: "module", status: "running", prompt: "Implement the isolated module." }] });
+  h.fixture.queueMain((input, tab) => { h.fixture.publish(input, tab, { status: "end", content: '{"status":"wait","finalSummary":"等待停止"}' }); firstLeaderTurn.resolve(); });
+  assert.ok((await h.composition.host.startLeader(id, { leaderSubtaskId: "module", moduleTitle: "module", prompt: "Implement the isolated module." })).ok);
+  await firstLeaderTurn.promise;
+  assert.deepEqual(h.composition.readCapacity(id)?.leaders, ["module"]);
+
+  const resolveTarget = h.deps.resolveTargetForRoot!;
+  h.deps.readOrganizationRoot = (taskId) => {
+    reads++;
+    if (checkingRetirement) assert.equal(ownership.getCount(id), 0, "confirmation must read after the director finalizer");
+    return h.fixture.readTask(taskId);
+  };
+  h.deps.resolveTargetForRoot = (task) => { targets++; return resolveTarget(task); };
+  h.deps.prepareRoutes = async () => { prepares++; };
+  const stopping = h.composition.organizationControl.stop(h.fixture.readTask(id)!);
+  const refused = assert.rejects(stopping, /部门停止归属或状态已变化/);
+  await leaderReleased.promise;
+  assert.equal(cancellations, 1);
+  assert.ok(ownerCleanups > 0);
+  assert.deepEqual(h.composition.readCapacity(id)?.leaders, []);
+  assert.equal(h.fixture.readTask(id)?.status, "running");
+  assert.equal(h.composition.readOrganizationStopState(id), "stopping");
+  assert.equal(reads, 0, "member cleanup alone must not trigger the confirmation read");
+
+  directorDone.resolve(); await refused;
+  assert.equal(reads, 1);
+  assert.equal(h.composition.readOrganizationStopState(id), "unconfirmed");
+  assert.equal(h.composition.isOrganizationStopUnconfirmed(id), true);
+  await assert.rejects(h.composition.organizationControl.continue(h.fixture.readTask(id)!, "不得继续"), /停止未确认/);
+  assert.deepEqual([targets, prepares, directorCalls], [0, 0, 1]);
+
+  refuseRootWrite = false;
+  await h.composition.organizationControl.stop(h.fixture.readTask(id)!);
+  assert.equal(h.fixture.readTask(id)?.status, "stopped");
+  assert.equal(h.composition.readOrganizationStopState(id), "confirmed");
+  checkingRetirement = false;
+  h.finish();
+  await h.composition.organizationControl.continue(h.fixture.readTask(id)!, "核验后继续");
+  assert.deepEqual([targets, prepares], [1, 1]);
+  assert.equal(h.fixture.readTask(id)?.status, "running");
+  assert.deepEqual(h.fixture.readTask(id)?.supplementalRequirements, ["核验后继续"]);
+  assert.equal(h.composition.readOrganizationStopState(id), undefined);
+});
+
+for (const change of ["missing", "root", "file", "workspace", "active-workspace", "session", "cli"] as const) {
+  test(`organization stop refuses changed trusted root readback: ${change}`, async (t) => {
+    const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) });
+    t.after(h.dispose);
+    await h.start();
+    const root = h.fixture.readTask("root-1")!;
+    h.deps.readOrganizationRoot = (id) => {
+      const current = h.fixture.readTask(id)!;
+      assert.equal(current.status, "stopped");
+      switch (change) {
+        case "missing": return null;
+        case "root": return { ...current, id: "different-root" };
+        case "file": return { ...current, taskStoreFile: `${current.taskStoreFile}.replaced` };
+        case "workspace": return { ...current, workspaceKey: "different-workspace" };
+        case "active-workspace": h.workspace("different-workspace"); return current;
+        case "session": return { ...current, sessionId: "different-session" };
+        case "cli": return { ...current, cli: "opencode" };
+      }
+    };
+    await assert.rejects(h.composition.organizationControl.stop(root), /部门停止归属或状态已变化/);
+    assert.equal(h.composition.readOrganizationStopState(root.id), "unconfirmed");
+    assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+  });
+}
+
+test("cold stopped director with empty capacity cannot resume until a matching verification, and its successor cannot reuse it", async (t) => {
+  const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) });
+  t.after(h.dispose);
+  await h.start();
+  const root = h.fixture.readTask("root-1")!;
+  await h.composition.organizationControl.stop(root);
+  h.composition.dispose();
+  let prepares = 0, targets = 0, controls = 0;
+  const cold = createDepartmentRuntimeComposition({ ...h.deps, prepareRoutes: async () => { prepares++; },
+    resolveTargetForRoot: (task) => { targets++; return h.deps.resolveTargetForRoot!(task); },
+    stopDirector: () => { controls++; },
+  });
+  t.after(cold.dispose);
+  const stopped = h.fixture.readTask(root.id)!;
+  const before = h.store.read(root.id, root.workspaceKey);
+  assert.deepEqual(cold.readCapacity(root.id)?.leaders, []);
+  assert.deepEqual(cold.readCapacity(root.id)?.employees, []);
+  await assert.rejects(cold.organizationControl.continue(stopped), /停止未确认/);
+  await assert.rejects(cold.continueDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt: "旧请求", modelPrompt: "旧请求", contextTags: [] }), /停止未确认/);
+  assert.deepEqual([prepares, targets, controls], [0, 0, 0]);
+  assert.deepEqual(h.fixture.readTask(root.id), stopped);
+  assert.deepEqual(h.store.read(root.id, root.workspaceKey), before);
+  assert.equal(cold.host.runtimeSnapshot(root.id), null);
+
+  await cold.organizationControl.stop(stopped);
+  assert.equal(cold.readOrganizationStopState(root.id), "confirmed");
+  await cold.organizationControl.continue(h.fixture.readTask(root.id)!, "已核验后继续");
+  assert.equal(h.fixture.readTask(root.id)?.status, "running");
+  assert.deepEqual(h.fixture.readTask(root.id)?.supplementalRequirements, ["已核验后继续"]);
+  assert.equal(cold.readOrganizationStopState(root.id), undefined);
+
+  h.deps.updateTask(root.id, { status: "stopped" });
+  const beforeSuccessor = [prepares, targets, controls];
+  await assert.rejects(cold.organizationControl.continue(h.fixture.readTask(root.id)!), /停止未确认/);
+  assert.deepEqual([prepares, targets, controls], beforeSuccessor);
+});
+
+test("a newer stop during leader continuation preparation prevents the old handoff from starting execution", async (t) => {
+  const firstTurn = latch(), preparing = latch(), prepared = latch();
+  const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }),
+    resumeLeaderExecution: async () => { preparing.resolve(); await prepared.promise; },
+  });
+  t.after(() => { prepared.resolve(); h.dispose(); });
+  await h.start();
+  const id = "root-1";
+  h.deps.updateTask(id, { subTasks: [{ id: "module", title: "module", status: "running", prompt: "Implement the isolated module." }] });
+  h.fixture.queueMain((input, tab) => { h.fixture.publish(input, tab, { status: "end", content: '{"status":"wait","finalSummary":"等待停止"}' }); firstTurn.resolve(); });
+  assert.ok((await h.composition.host.startLeader(id, { leaderSubtaskId: "module", moduleTitle: "module", prompt: "Implement the isolated module." })).ok);
+  await firstTurn.promise;
+  await h.composition.organizationControl.stop(h.fixture.readTask(id)!);
+
+  const before = h.fixture.mainCalls.length;
+  const continuing = h.composition.organizationControl.continue(h.fixture.readTask(id)!, "迟到交接");
+  const rejected = assert.rejects(continuing, /已停止|resume-cancelled/);
+  await preparing.promise;
+  assert.equal(h.fixture.readTask(id)?.status, "running");
+  assert.equal(h.composition.readOrganizationStopState(id), undefined, "admission consumes the previous receipt before preparation settles");
+  await h.composition.organizationControl.stop(h.fixture.readTask(id)!);
+  prepared.resolve(); await rejected;
+  assert.equal(h.fixture.mainCalls.length, before);
+  assert.equal(h.fixture.readTask(id)?.status, "stopped");
+  assert.equal(h.composition.readOrganizationStopState(id), "confirmed", "late handoff cannot consume the newer receipt");
+});
+
 test("late successful stop cannot clear a newer unconfirmed organization stop", async (t) => {
   const firstEntered = latch(), firstRelease = latch(), secondEntered = latch(), secondRelease = latch();
-  let calls = 0;
+  let calls = 0, reads = 0;
   const h = harness({ stopDirector: async () => {
     const call = ++calls;
     if (call === 1) { firstEntered.resolve(); await firstRelease.promise; }
@@ -887,13 +1122,18 @@ test("late successful stop cannot clear a newer unconfirmed organization stop", 
   } });
   t.after(() => { firstRelease.resolve(); secondRelease.resolve(); h.dispose(); });
   await h.start(); const root = h.fixture.readTask("root-1")!;
+  h.deps.readOrganizationRoot = (id) => { reads++; return h.fixture.readTask(id); };
   const first = h.composition.organizationControl.stop(root); await firstEntered.promise;
   const second = h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
   const secondResult = second.then(() => null, error => error); await secondEntered.promise;
   firstRelease.resolve(); await first;
+  assert.equal(reads, 0, "superseded stop cannot perform the authoritative read for the newer request");
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+  assert.equal(h.composition.readOrganizationStopState(root.id), "stopping");
   secondRelease.resolve(); assert.ok(await secondResult);
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
+  assert.equal(h.composition.readOrganizationStopState(root.id), "unconfirmed");
   await h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), false);
+  assert.equal(reads, 1);
 });

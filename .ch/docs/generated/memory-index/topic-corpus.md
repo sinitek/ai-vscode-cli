@@ -2,6 +2,14 @@
 
 这个文件把 observation entries 按 topic 分组，作为跨任务复用和 reference pack 导出的轻量 corpus 起点。
 
+## plan
+
+- Entries: 2
+- Estimated read cost: ~126 tokens
+
+- `mem-7525b245ac` `plan` Codex 组长大型原生回调私有 IPC 修复 -> `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md`
+- `mem-52c8a09d98` `plan` Loop+ 启动前配置锁超时后显式继续 -> `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md`
+
 ## gotcha
 
 - Entries: 1

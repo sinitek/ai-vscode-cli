@@ -75,7 +75,7 @@ function harness({ cleanupComplete = true, wrongTarget = null, delayedBinding = 
     const makeLocator = (selector) => ({
       count: async () => selector === "#panelSubtitle" ? 1 : 1,
       getAttribute: async () => wrongTarget === "root" ? "产研部 · 总监 · other-root" : `产研部 · 总监 · ${rootId}`,
-      innerText: async () => `产研部 · 总监 ${rootId}`,
+      innerText: async () => `产研部总监 ${rootId}`,
       isVisible: async () => selector === "#openCurrentLoopGroupChat" || selector.includes("stopTask") || selector.includes("continueTask")
         || selector === "#continueDialogInput" || selector === "#continueDialogConfirm",
       isEnabled: async () => true,

@@ -330,12 +330,174 @@ test("configuration operations proceed without cross-window execution leases", a
     await first.saveConfig(original);
     await first.saveConfig(replacement);
     await first.applyConfig("codex", { profileId: original.id });
+    assert.equal(first.isLocallyAppliedProfile("codex", original.id), true);
     const visible = (await first.readSharedConfigSelection("codex"))!;
     await second.applyConfig("codex", { profileId: replacement.id });
     assert.equal((await first.readSharedConfigSelection("codex"))?.configId, replacement.id);
+    assert.equal(first.isLocallyAppliedProfile("codex", original.id), true);
+    assert.equal(first.isLocallyAppliedProfile("codex", replacement.id), false);
+    assert.equal(second.isLocallyAppliedProfile("codex", replacement.id), true);
     await first.saveConfig({ ...replacement, name: "另一窗口修改" });
     await second.deleteConfig("codex", original.id);
     assert.notEqual((await second.readSharedConfigSelection("codex"))?.revision, visible.revision);
+  });
+});
+
+test("local profile binding reflects queued, reused, failed and unbound runtime applies", async () => {
+  await withTempHome(async () => {
+    const service = loadConfigService();
+    const original = normalizationProfile("codex", { content: 'model = "original"\n' });
+    const replacement = { ...original, id: "replacement", content: 'model = "replacement"\n' };
+    await service.saveConfig(original);
+    await service.saveConfig(replacement);
+    const shared = await service.readSharedConfigSelection("codex", original.id);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+    await service.applyConfig("codex", { profileId: original.id }, { reuseActiveProfile: true });
+    assert.equal((await service.readSharedConfigSelection("codex"))?.revision, shared?.revision);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+    assert.equal((await service.readCodexConfig()).config, "");
+    let originalIsCurrent: (() => boolean) | undefined;
+    await service.applyConfig("codex", { profileId: original.id }, { onApplied: (isCurrent) => { originalIsCurrent = isCurrent; } });
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), true);
+    assert.equal(originalIsCurrent?.(), true);
+    assert.match((await service.readCodexConfig()).config, /model\s*=\s*"original"/);
+
+    const switchProfile = service.applyConfig("codex", { profileId: replacement.id });
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+    assert.equal(service.isLocallyAppliedProfile("codex", replacement.id), false);
+    await switchProfile;
+    assert.equal(service.isLocallyAppliedProfile("codex", replacement.id), true);
+
+    await assert.rejects(service.applyConfig("codex", { profileId: "missing" }), /配置档案不存在/);
+    assert.equal(service.isLocallyAppliedProfile("codex", replacement.id), false);
+    await service.applyConfig("codex", { profileId: original.id });
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), true);
+    assert.equal(originalIsCurrent?.(), false);
+    await service.applyConfig("codex", { content: 'model = "unbound"\n' });
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+  });
+});
+
+test("Codex recovery fingerprints the verified profile readback and rejects changes to config, auth or source", async () => {
+  await withTempHome(async (homeDir) => {
+    const service = loadConfigService();
+    const config = 'model = "original"\nmodel_provider = "original-provider"\n';
+    const auth = '{"synthetic":"original"}';
+    const original = normalizationProfile("codex", { content: config, authContent: auth });
+    await service.saveConfig(original);
+    await service.readSharedConfigSelection("codex", original.id);
+    const home = path.dirname(service.getCodexRuntimePaths().config);
+    const configPath = path.join(home, "config.toml");
+    const authPath = path.join(home, "auth.json");
+    await fs.mkdir(home, { recursive: true });
+    await fs.writeFile(configPath, 'model = "stale"\n');
+    await fs.writeFile(authPath, '{}');
+    const bindings: Array<{ isCurrent: () => boolean; evidence: import("../../config/codexRuntimeConfigIdentity").CodexRuntimeConfigEvidence }> = [];
+    await service.applyConfig("codex", { profileId: original.id }, {
+      reuseActiveProfile: true,
+      codexReadback: { onApplied: (isCurrent, evidence) => { bindings.push({ isCurrent, evidence }); } },
+    });
+    assert.equal(bindings.length, 1);
+    const [binding] = bindings;
+    const fingerprint = () => service.readRuntimeConfigFingerprint("codex", original.id, undefined, binding.evidence);
+    assert.equal(binding.isCurrent(), true);
+    assert.deepEqual(Object.keys(binding.evidence).sort(), ["identity", "provider"]);
+    assert.equal(binding.evidence.provider, "original-provider");
+    assert.equal(await fingerprint(), await service.readRuntimeConfigFingerprint("codex", original.id));
+    await fs.writeFile(configPath, '# normalized\nmodel_provider = "original-provider"\nmodel="original"\n');
+    assert.equal(await fingerprint(), await service.readRuntimeConfigFingerprint("codex", original.id));
+    await fs.writeFile(configPath, config.replace("original-provider", "changed-provider"));
+    await assert.rejects(fingerprint(), /原档案的运行配置已变化/);
+    await fs.writeFile(configPath, config);
+    await fs.writeFile(authPath, '{"synthetic":"different"}');
+    await assert.rejects(fingerprint(), /原档案的运行配置已变化/);
+    await fs.writeFile(authPath, auth);
+    const otherHome = path.join(homeDir, "other-codex-home");
+    await fs.mkdir(otherHome);
+    await fs.copyFile(configPath, path.join(otherHome, "config.toml"));
+    await fs.copyFile(authPath, path.join(otherHome, "auth.json"));
+    process.env.CODEX_HOME = otherHome;
+    await assert.rejects(fingerprint(), /原档案的运行配置已变化/);
+    assert.equal(binding.isCurrent(), true);
+  });
+});
+
+test("saving an active Codex profile shares the apply queue and supersedes the captured application", async (context) => {
+  await withTempHome(async () => {
+    const service = loadConfigService();
+    const original = normalizationProfile("codex", { content: 'model = "original"\n' });
+    const replacement = { ...original, id: "replacement", content: 'model = "replacement"\n' };
+    await service.saveConfig(original);
+    let originalIsCurrent: (() => boolean) | undefined;
+    await service.applyConfig("codex", { profileId: original.id }, { onApplied: (isCurrent) => { originalIsCurrent = isCurrent; } });
+    const revision = (await service.readSharedConfigSelection("codex"))?.revision;
+    const rename = fs.rename;
+    let signalInactiveWrite!: () => void;
+    let releaseInactiveWrite!: () => void;
+    const inactiveWriteStarted = new Promise<void>((resolve) => { signalInactiveWrite = resolve; });
+    const inactiveWriteAllowed = new Promise<void>((resolve) => { releaseInactiveWrite = resolve; });
+    const inactiveRename = context.mock.method(fs, "rename", async (...args: Parameters<typeof fs.rename>) => {
+      if (path.basename(String(args[1])) === `${replacement.id}.json`) {
+        signalInactiveWrite();
+        await inactiveWriteAllowed;
+      }
+      return rename(...args);
+    });
+    const inactiveSave = service.saveConfig(replacement);
+    await inactiveWriteStarted;
+    try {
+      assert.equal(originalIsCurrent?.(), true);
+    } finally {
+      releaseInactiveWrite();
+      await inactiveSave;
+      inactiveRename.mock.restore();
+    }
+    assert.equal(originalIsCurrent?.(), true);
+    assert.equal((await service.readSharedConfigSelection("codex"))?.revision, revision);
+    assert.match((await service.readCodexConfig()).config, /model\s*=\s*"original"/);
+
+    const { config } = service.getCodexRuntimePaths();
+    const auth = path.join(path.dirname(config), "auth.json");
+    let failAuth = false;
+    let signalConfigWrite!: () => void;
+    let releaseConfigWrite!: () => void;
+    let configWriteStarted = new Promise<void>((resolve) => { signalConfigWrite = resolve; });
+    let configWriteAllowed = new Promise<void>((resolve) => { releaseConfigWrite = resolve; });
+    context.mock.method(fs, "rename", async (...args: Parameters<typeof fs.rename>) => {
+      if (args[1] === auth && failAuth) throw Object.assign(new Error("synthetic auth write failure"), { code: "EACCES" });
+      if (args[1] === config) {
+        signalConfigWrite();
+        await configWriteAllowed;
+      }
+      return rename(...args);
+    });
+
+    const edited = { ...original, content: 'model = "edited"\n' };
+    const save = service.saveConfig(edited);
+    await configWriteStarted;
+    assert.equal(originalIsCurrent?.(), false);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+    const queued = service.applyConfig("codex", { profileId: original.id });
+    assert.match((await service.readCodexConfig()).config, /model\s*=\s*"original"/);
+    releaseConfigWrite();
+    await Promise.all([save, queued]);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), true);
+    assert.equal(originalIsCurrent?.(), false);
+    assert.match((await service.readCodexConfig()).config, /model\s*=\s*"edited"/);
+
+    failAuth = true;
+    configWriteStarted = new Promise<void>((resolve) => { signalConfigWrite = resolve; });
+    configWriteAllowed = new Promise<void>((resolve) => { releaseConfigWrite = resolve; });
+    let saveFinished = false;
+    const failedSave = assert.rejects(service.saveConfig({ ...original, content: 'model = "partial"\n' }), /synthetic auth write failure/)
+      .then(() => { saveFinished = true; });
+    await configWriteStarted;
+    assert.equal(saveFinished, false);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
+    releaseConfigWrite();
+    await failedSave;
+    assert.match((await service.readCodexConfig()).config, /model\s*=\s*"partial"/);
+    assert.equal(service.isLocallyAppliedProfile("codex", original.id), false);
   });
 });
 

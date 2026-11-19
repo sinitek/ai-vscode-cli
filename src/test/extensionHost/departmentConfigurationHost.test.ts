@@ -178,7 +178,7 @@ test("production model settings resolves persisted workspace limits over changin
     isThinkingMode: (_v: unknown): _v is import("../../cli/types").ThinkingMode => false,
     isInteractiveMode: (_v: unknown): _v is import("../../cli/types").InteractiveMode => false,
     normalizeVisibleInteractiveMode: () => "coding" as const, normalizeLoopMaxRounds: () => 20, sanitizeConversationTabRecord: () => null };
-  let global = { departmentMaxLeaders: 8, departmentMaxEmployees: 40 };
+  let global: ReturnType<typeof toolSettings.readToolSettings> = {};
   const profile = { id: "profile", name: "OpenCode", platform: "opencode" as const, createdAt: 1, updatedAt: 1,
     content: JSON.stringify({ model: "p/default", provider: { p: { models: { default: {} } } } }) };
   try {
@@ -191,15 +191,22 @@ test("production model settings resolves persisted workspace limits over changin
       assert.equal(trySaveWorkspaceSettings({ departmentRoleRoutesByDirectorConfig: routes, ...limits }, { ...options, workspaceKey: key }).ok, true);
       return createHost({ store: ensureCliModelStore(null), settings: loadWorkspaceSettings({ ...options, workspaceKey: key }), currentCli: "opencode" }).host.resolveDepartmentPromptConfiguration("opencode");
     };
+    assert.deepEqual((await saveAndResolve({})).limits, { maxLeaders: 4, maxEmployees: 16 });
+    global = { departmentMaxEmployees: 20 };
+    assert.deepEqual((await saveAndResolve({})).limits, { maxLeaders: 4, maxEmployees: 20 });
+    assert.deepEqual((await saveAndResolve({ departmentMaxEmployees: 0 })).limits, { maxLeaders: 4, maxEmployees: 20 });
+    global = { departmentMaxLeaders: 8, departmentMaxEmployees: 40 };
     assert.deepEqual((await saveAndResolve({})).limits, { maxLeaders: 8, maxEmployees: 40 });
     assert.deepEqual((await saveAndResolve({ departmentMaxLeaders: 2 })).limits, { maxLeaders: 2, maxEmployees: 40 });
     assert.deepEqual((await saveAndResolve({ departmentMaxEmployees: 13 })).limits, { maxLeaders: 8, maxEmployees: 13 });
-    const frozen = await saveAndResolve({ departmentMaxLeaders: 3, departmentMaxEmployees: 12 });
-    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 12 });
+    const frozen = await saveAndResolve({ departmentMaxLeaders: 3, departmentMaxEmployees: 20 });
+    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 20 });
     global = { departmentMaxLeaders: 9, departmentMaxEmployees: 50 };
     assert.deepEqual((await saveAndResolve({ departmentMaxEmployees: 12 })).limits, { maxLeaders: 9, maxEmployees: 12 });
     assert.deepEqual((await saveAndResolve({}, "b")).limits, { maxLeaders: 9, maxEmployees: 50 });
-    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 12 });
+    global = {};
+    assert.deepEqual((await saveAndResolve({}, "b")).limits, { maxLeaders: 4, maxEmployees: 16 });
+    assert.deepEqual(frozen.limits, { maxLeaders: 3, maxEmployees: 20 });
   } finally {
     toolSettings.readToolSettings = originalRead; configService.getConfigList = originalList; configService.getConfigById = originalGet;
     fs.rmSync(directory, { recursive: true, force: true });

@@ -39,7 +39,7 @@ export function installColdPublicControlObserver(window: Pick<typeof import("vsc
     const heading = patch?.headingText ?? /<h1 id="panelHeading"[^>]*>([^<]*)<\/h1>/.exec(html)?.[1];
     // Task IDs are plain identifiers; refuse ambiguous/malformed public captions.
     const rootTaskId = typeof subtitle === "string" ? / · ([a-zA-Z0-9_-]+)$/.exec(subtitle)?.[1] : null;
-    return heading === "产研部 · 总监 ☀️" && rootTaskId ? rootTaskId : null;
+    return heading === "产研部总监" && rootTaskId ? rootTaskId : null;
   };
   const wrappedCreate: typeof originalCreatePanel = function (this: unknown, ...args) {
     const panel = originalCreatePanel.apply(this, args);

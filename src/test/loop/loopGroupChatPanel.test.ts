@@ -1585,6 +1585,7 @@ test("live busy patches and an active question still allow consecutive queued su
     document: { getElementById: () => null },
     replaceHtml: () => undefined,
     replaceRosterHtml: () => undefined,
+    departmentEmployeeAllocation: null,
     isNearBottom: () => true,
     applyClarificationPatch: () => undefined,
     replaceContinueModelChoice: () => undefined,

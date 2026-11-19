@@ -1202,7 +1202,6 @@ test("asks the current main model session and shows the answer without supplemen
     let supplementalCount = 0;
     let aborts = 0;
     let holdAnswer = false;
-    let releaseAnswer: (() => void) | undefined;
     const questionQueue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     const deps: CoordinatorDeps = {
@@ -1243,13 +1242,10 @@ test("asks the current main model session and shows the answer without supplemen
       notifyLoopPlusUserMessage: (_taskId, text) => {
         notices.push(text);
       },
-      abortMainModelRun: () => {
-        aborts += 1;
-        releaseAnswer?.();
-      },
       askMainModel: async (_task, question, hooks) => await questionQueue.runQuestion("main-tab", {
         canRun: () => !mainModelBusy,
         isAborted: hooks?.isAborted,
+        signal: hooks?.signal,
       }, async () => {
         hooks?.onStarted?.();
         questions.push(question);
@@ -1267,7 +1263,9 @@ test("asks the current main model session and shows the answer without supplemen
           }],
         });
         if (holdAnswer) {
-          await new Promise<void>((resolve) => { releaseAnswer = resolve; });
+          await new Promise<void>((resolve) => {
+            hooks?.signal?.addEventListener("abort", () => { aborts += 1; resolve(); }, { once: true });
+          });
         }
         return { status: "ready" as const, answer: "可以先合并冲突文件。" };
       }) ?? { status: "stopped" as const },

@@ -55,6 +55,7 @@ test("classic blocked decisions preserve diagnostic gaps and render complete str
   assert.deepEqual(complete?.blocker, LOOP_BLOCKER_EXAMPLE);
   assert.equal(complete?.finalSummary, buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE));
   assert.equal(complete?.blockerIssue, undefined);
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({ status: "waiting", finalSummary: "等待组长汇报" }))?.status, "waiting");
 });
 
 test("classic Loop main prompt reflects the configured dispatch limit in rules and examples", async () => {

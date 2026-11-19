@@ -1,3 +1,6 @@
+export const RUNTIME_CONFIG_LOCK_TIMEOUT = "RUNTIME_CONFIG_LOCK_TIMEOUT";
+export const RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE = "等待其他窗口配置操作超时，任务未启动，请稍后重试。";
+
 export const LOOP_MAIN_AI_FAILURE_LIMIT = 5;
 
 export type LoopMainAiFailureState = {
@@ -5,7 +8,14 @@ export type LoopMainAiFailureState = {
   mainAiFailureLimitReached?: boolean;
   mainAiLastFailureAt?: number;
   mainAiLastFailureMessage?: string;
+  mainAiLastFailureCode?: string | null;
 };
+
+export function isLoopMainStartupConfigLockTimeout(state: LoopMainAiFailureState): boolean {
+  return state.mainAiLastFailureCode === undefined
+    ? state.mainAiLastFailureMessage === RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE
+    : state.mainAiLastFailureCode === RUNTIME_CONFIG_LOCK_TIMEOUT;
+}
 
 export function buildLoopMainAiFailureSummary(
   state: LoopMainAiFailureState,

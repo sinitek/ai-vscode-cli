@@ -9,7 +9,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { createOpenCodeLocalProvider } = require("./fixtures/opencode_local_provider_server");
 const { createLocalResponsesServer } = require("./fixtures/codex_local_responses_server");
-const { createDepartmentFullEhScenario } = require("./fixtures/department_full_eh_scenario");
+const { createDepartmentFullEhScenario, assertLongToolForwarding, LONG_TOOL_COMMAND_SHA256,
+  LONG_TOOL_PAYLOAD_BYTES, LONG_TOOL_OUTPUT_SHA256 } = require("./fixtures/department_full_eh_scenario");
 const { createDepartmentContinuationEhScenario } = require("./fixtures/department_continuation_eh_scenario");
 const { createDepartmentSuccessiveContinuationEhScenario, isStoppedTaskRecord } = require("./fixtures/department_successive_continuation_eh_scenario");
 const { driveSuccessiveContinuation } = require("./fixtures/department_successive_continuation_ui");
@@ -33,7 +34,7 @@ function args(argv) {
     result[field] = value;
   }
   if (!result.product || !result.report) throw new Error("Usage: node scripts/verify_department_full_eh_integration.js --product <isolated-built-extension> --report <new-json-path>");
-  if (result.scenario && !["stop-continue", "successive-stop-continue", "cold-start", "cold-recovery"].includes(result.scenario)) throw new Error("Unknown scenario");
+  if (result.scenario && !["stop-continue", "successive-stop-continue", "cold-start", "cold-recovery", "codex-long-tool-output"].includes(result.scenario)) throw new Error("Unknown scenario");
   for (const field of ["directorCli", "leaderCli", "employeeCli"]) {
     result[field] ??= "codex";
     if (!["codex", "opencode"].includes(result[field])) throw new Error(`Unknown role CLI: ${field}`);
@@ -51,6 +52,8 @@ function args(argv) {
     throw new Error("Cold-start verification currently supports only Codex director/leader/employee");
   if (result.scenario === "cold-recovery" && (result.directorCli !== "codex" || result.employeeCli !== "codex"))
     throw new Error("Cold recovery supports Codex director/employee with Codex or OpenCode leader");
+  if (result.scenario === "codex-long-tool-output" && [result.directorCli, result.leaderCli, result.employeeCli].some(cli => cli !== "codex"))
+    throw new Error("Codex long-tool-output verification requires Codex director/leader/employee");
   return result;
 }
 
@@ -396,7 +399,9 @@ function writeExtensionHostEntry(product, root, options = {}) {
   const file = path.join(root, "extension-host-test.js");
   const entry = options.coldRecovery
     ? require(path.join(product, "dist/test/extensionHost/fixtures/departmentcoldrecoveryehhost.js")).createDepartmentColdRecoveryFirstEntry({ root, timeoutMs })
-    : createDepartmentFullEhHostTestEntry({ root, timeoutMs, coldStart: options.coldStart === true });
+    : createDepartmentFullEhHostTestEntry({ root, timeoutMs, coldStart: options.coldStart === true,
+      ...(options.longToolOutput ? { longToolOutput: { commandSha256: LONG_TOOL_COMMAND_SHA256,
+        payloadBytes: LONG_TOOL_PAYLOAD_BYTES, payloadSha256: LONG_TOOL_OUTPUT_SHA256 } } : {}) });
   fs.writeFileSync(file, entry, { flag: "wx" });
   return file;
 }
@@ -551,7 +556,7 @@ async function createDepartmentRootPanelAdapter(browser, rootId, timeoutMs, opti
         owned.add(adapter);
         const subtitle = await adapter.locator("#panelSubtitle").getAttribute("title");
         const body = await adapter.locator("body").innerText();
-        if (subtitle?.endsWith(` · ${rootId}`) && body.includes("产研部 · 总监") && body.includes(rootId)) matches.push(adapter);
+        if (subtitle?.endsWith(` · ${rootId}`) && body.includes("产研部总监") && body.includes(rootId)) matches.push(adapter);
         else await close(adapter);
       }
       assert.ok(matches.length <= 1, "multiple production Webview panels for the exact root");
@@ -1048,7 +1053,7 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
       for (const frame of frames()) {
         if (await frame.locator('#panelActions [data-action="stopTask"]').isVisible().catch(() => false)) {
           const text = await frame.locator("body").innerText();
-          if (text.includes("产研部 · 总监") && text.includes(rootId)) return frame;
+          if (text.includes("产研部总监") && text.includes(rootId)) return frame;
         }
       }
       for (const frame of frames()) {
@@ -1130,7 +1135,7 @@ async function main() {
   const prompt = `部门公开入口隔离验收 ${require("node:crypto").randomUUID()}：对 isolated protocol 做两次大写转换，按组织流程报告结果；不编写代码，不访问外网。`;
   const report = { startedAt: new Date().toISOString(), platform: process.platform, node: process.version,
     product, vscode: code, isolated: { root, home, workspace, taskStore: path.join(home, ".sinitek_cli/department-tasks-v1"), userData: path.join(root, "user-data") },
-    stages: { prerequisites: "running", emptyStore: "pending", extensionHost: "pending", publicUi: "pending", rootCreation: "pending", directorExecution: "pending", leaderExecution: "pending", eventAcceptance: "pending", unifiedAcceptancePlan: "pending", directorReport: "pending", ownerReceipts: "pending", capacityReturn: "pending" },
+    stages: { prerequisites: "running", emptyStore: "pending", extensionHost: "pending", publicUi: "pending", rootCreation: "pending", directorExecution: "pending", leaderExecution: "pending", ...(input.scenario === "codex-long-tool-output" ? { longNativeToolCompletion: "pending" } : {}), eventAcceptance: "pending", unifiedAcceptancePlan: "pending", directorReport: "pending", ownerReceipts: "pending", capacityReturn: "pending" },
     scenarioName: input.scenario || "new-root", roles: { director: input.directorCli, leader: input.leaderCli, employee: input.employeeCli }, leaderModelSelection: input.leaderModel,
     result: "failed", failures: [], notes: ["Only free loopback protocol providers are configured; external model credentials are not copied."] };
   let responses, openCodeProvider, child, secondChild, workerExitObserver, exited = false, forced = false;
@@ -1155,6 +1160,21 @@ async function main() {
     const read = runtimeStore.read(rootId, task.workspaceKey);
     assert.equal(read.ok, true, `runtime state is unreadable: ${read.error}`);
     assert.ok(read.value, "runtime is missing"); return read.value;
+  };
+  const longToolFixture = input.scenario === "codex-long-tool-output"
+    ? require(path.join(product, "dist/test/extensionHost/fixtures/departmentfullehproductionhost.js")) : null;
+  const readLongToolEvidence = () => {
+    assert.equal(fs.existsSync(path.join(root, "long-tool-observer-errors.ndjson")), false, "long tool event observer reported a diagnostic");
+    return readJson(path.join(root, "long-tool-forwarded-event.json"));
+  };
+  const readLongToolGrant = (rootId, leaderId, invocationId) => {
+    const grant = longToolFixture.readDepartmentFullEhLongToolGrant(root, leaderId, invocationId);
+    assert.ok(grant && grant.identity.rootTaskId === rootId, "missing original leader invocation grant");
+    const saved = readRuntime(rootId), id = grant.identity;
+    assert.equal(saved.executionBindings.filter(binding => sameExecution(binding.identity, id)).length, 1, "long-tool grant differs from persisted original binding");
+    assert.equal(saved.runtime.leaders.filter(leader => leader.taskId === leaderId && leader.generation === id.generation
+      && leader.leaderSubtaskId === id.moduleId).length, 1, "long-tool grant differs from persisted leader generation");
+    return grant;
   };
   const inspectCleanup = async (rootId, phase = "completed", expectedSets = null) => {
     const task = readTasks().find((value) => value.id === rootId && value.department?.role === "director");
@@ -1213,6 +1233,11 @@ async function main() {
       : input.scenario === "successive-stop-continue" ? createDepartmentSuccessiveContinuationEhScenario
       : input.scenario === "stop-continue" ? createDepartmentContinuationEhScenario : createDepartmentFullEhScenario;
     const scenario = scenarioFactory({ prompt, readTasks, inspectCleanup, roles: report.roles,
+      ...(longToolFixture ? { longToolOutput: true, readLongToolEvidence,
+        readLongToolInvocation: (rootId, leaderId) => {
+          const grant = readLongToolGrant(rootId, leaderId);
+          return longToolFixture.departmentFullEhLongToolIdentity(grant.identity, grant.invocationId);
+        } } : {}),
       ...(input.scenario === "successive-stop-continue" ? { holdTimeoutMs: Math.min(timeoutMs, 120000) } : {}) });
   try {
     assert.ok(fs.existsSync(code), `VS Code is not installed at ${code}`);
@@ -1228,7 +1253,7 @@ async function main() {
     fs.mkdirSync(path.join(home, ".sinitek_cli"), { recursive: true }); fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
     fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({
       debug: true, humanInteractionEnabled: false, cliEnabledByName: { codex: true, claude: false, opencode: Object.values(report.roles).includes("opencode"), grok: false, dsh: false, "kimi-code": false, zcode: false } }), { flag: "wx" });
-    responses = createLocalResponsesServer({ maxRequests: 32, respond: scenario.respond });
+    responses = createLocalResponsesServer({ maxRequests: 32, respond: scenario.respond, summarizeRequest: scenario.summarizeRequest });
     await new Promise((resolve, reject) => responses.server.once("error", reject).listen(0, "127.0.0.1", resolve));
     const providerPort = responses.server.address().port;
     const localConfig = `model = "gpt-5"
@@ -1289,7 +1314,8 @@ requires_openai_auth = false
       "scripts/fixtures/department_continuation_eh_scenario.js", "scripts/fixtures/department_successive_continuation_eh_scenario.js",
       "scripts/fixtures/department_successive_continuation_ui.js", "scripts/fixtures/opencode_local_provider_server.js"].map((name) => [name,
       crypto.createHash("sha256").update(fs.readFileSync(path.join(product, name))).digest("hex")]));
-    const extensionTestPath = writeExtensionHostEntry(product, root, { coldStart: input.scenario === "cold-start", coldRecovery: input.scenario === "cold-recovery" });
+    const extensionTestPath = writeExtensionHostEntry(product, root, { coldStart: input.scenario === "cold-start", coldRecovery: input.scenario === "cold-recovery",
+      longToolOutput: input.scenario === "codex-long-tool-output" });
     const userSettings = { "workbench.startupEditor": "none", "security.workspace.trust.enabled": false,
       "extensions.autoCheckUpdates": false, "extensions.autoUpdate": false, "update.mode": "none", "telemetry.telemetryLevel": "off",
       "window.restoreWindows": "none", "sinitek-cli-tools.autoOpenPanel": false, "sinitek-cli-tools.humanInteractionNotifications": false,
@@ -1677,6 +1703,7 @@ requires_openai_auth = false
       const tasks = snapshots.flatMap((snapshot) => Array.isArray(snapshot.tasks) ? snapshot.tasks : [snapshot]);
       if (scenario.history.some((entry) => entry.stage === "director-dispatch")) report.stages.directorExecution = "observed";
       if (scenario.history.some((entry) => entry.stage === "leader-dispatch")) { report.stages.leaderExecution = "observed"; report.activePhase = "eventAcceptance"; }
+      if (scenario.snapshot().longToolEvidence) report.stages.longNativeToolCompletion = "observed";
       if (scenario.history.some((entry) => entry.stage === "leader-accept")) report.stages.eventAcceptance = "observed";
       if (["stop-continue", "successive-stop-continue"].includes(input.scenario)) {
         const saved = readRuntime(scenario.snapshot().rootId);
@@ -1757,6 +1784,26 @@ requires_openai_auth = false
     }
     assert.ok(scenario.history.some((entry) => entry.stage === "director-report"), "missing final director report");
     assert.ok(snapshot.capacityReuse?.complete, "second legal dispatch did not observe returned capacity");
+    if (input.scenario === "codex-long-tool-output") {
+      const evidence = snapshot.longToolEvidence;
+      assert.ok(evidence?.nativeFunctionCallOutput, "missing native leader function_call_output evidence");
+      assert.equal(evidence.modelPayloadBytes, LONG_TOOL_PAYLOAD_BYTES);
+      assert.equal(evidence.modelPayloadSha256, LONG_TOOL_OUTPUT_SHA256);
+      const grant = readLongToolGrant(snapshot.rootId, snapshot.leaders[0], evidence.invocationId);
+      const identity = longToolFixture.departmentFullEhLongToolIdentity(grant.identity, grant.invocationId);
+      const forwarded = assertLongToolForwarding(readLongToolEvidence(), identity);
+      assert.ok(Object.keys(forwarded).every(key => forwarded[key] === evidence[key]), "forwarded evidence changed after dispatch");
+      const captured = fs.readFileSync(cleanup.originalClientObservationFile, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line));
+      const originals = captured.filter(entry => sameExecution(entry.identity, grant.identity));
+      assert.equal(originals.length, 1, "long-tool invocation lacks its unique original Owner receipt");
+      const original = originals[0];
+      const binding = cleanup.saved.executionBindings.find(entry => sameExecution(entry.identity, grant.identity));
+      assert.ok(binding && original.source === "original-client-waitForCleanup-return" && isDepartmentExecutionReceipt(original.receipt)
+        && sameExecution(original.receipt.identity, binding.identity) && cleanupComplete(original.receipt.cleanup, binding.requirements),
+      "long-tool Owner receipt differs from the exact original persisted binding");
+      report.longToolEvidence = { ...evidence, ownerReceiptId: original.receipt.receiptId };
+      report.stages.longNativeToolCompletion = "passed";
+    }
     if (Object.values(report.roles).includes("opencode")) {
       const savedPreferences = JSON.parse(fs.readFileSync(path.join(workspaceSettings, `${workspaceKey}.json`), "utf8"));
       report.roleDefaultModelEvidence = [];
@@ -1812,6 +1859,12 @@ requires_openai_auth = false
       forced = true;
       if (process.platform === "win32") cp.spawnSync("taskkill.exe", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" });
       else { try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch { /* report remains failed */ } } }
+    }
+    if (longToolFixture && report.stages.longNativeToolCompletion === "passed"
+      && (!exited || report.hostExit?.exitCode !== 0 || report.hostExit?.signal
+        || fs.existsSync(path.join(root, "long-tool-observer-errors.ndjson")))) {
+      report.stages.longNativeToolCompletion = "failed";
+      report.failures.push({ stage: "longNativeToolCompletion", message: "long tool event observation did not finish cleanly" });
     }
     if (secondChild && report.coldStart?.secondHostExit?.exitCode === undefined) {
       forced = true;

@@ -4,6 +4,7 @@ import { installVscodeMock } from "../vscodeMock";
 
 import type { CliName } from "../../cli/types";
 import type { CodexInteractiveRunner, CodexStreamHandlers } from "../../interactive/codexRunner";
+import type { OriginalCodexThreadTurn } from "../../interactive/codexRunnerCore";
 import type { ClaudeStreamHandlers } from "../../interactive/claudeRunner";
 import type { InteractiveRunnerManager } from "../../interactive/manager";
 import type { TaskRunRecord, TaskRunStatus } from "../../promptRunState";
@@ -26,6 +27,7 @@ const {
 } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
 
 type PromptInteractiveRuntimeDeps = Parameters<typeof createPromptInteractiveRuntimeHost>[0];
+const originalCodexEvidence = { identity: "original-native-identity", provider: "original-provider" };
 
 type RunStatusEvent = {
   tabId: string;
@@ -522,6 +524,123 @@ test("interactive preparation cannot start a closed, replaced or rebound target"
     assert.equal(h.codexRunnerCreateCalls, 0, change);
     assert.deepEqual(h.runStatusEvents, [], change);
   }
+});
+
+test("original Codex session admission does not commit after a preparation-time rebind or new owner", async () => {
+  for (const drift of ["rebind", "occupied"] as const) {
+    const preparing = createDeferred();
+    const prepared = createDeferred();
+    let commits = 0;
+    const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+      readRuntimeConfigFingerprint: async () => { preparing.resolve(); await prepared.promise; return "leased-identity"; },
+    } });
+    const target = createTarget();
+    const run = harness.host.runPromptInteractive(createPromptInput(), target, { requireOriginalSession: true,
+      prepareOriginalSession: {
+        configId: "config-main",
+        codexConfigEvidence: originalCodexEvidence,
+        isConfigCurrent: () => true,
+        prepare: () => ({ ...createPromptInput(), commit: () => { commits += 1; }, afterSend: () => undefined }),
+      },
+    });
+    const settled = drift === "occupied" ? assert.rejects(run, { code: "SESSION_RUN_ACTIVE" }) : run;
+    await preparing.promise;
+    if (drift === "rebind") harness.tabs.get(target.tabId)!.sessionIdByCli.codex = "different-session";
+    else harness.activeRunsByTabId.set("other-tab", { runId: "other-run", tabId: "other-tab", cli: target.cli,
+      sessionId: target.sessionId, startedAt: Date.now(), prompt: "Other task", stop: () => assert.fail("must not preempt"),
+      messageTarget: [], stopped: false });
+    prepared.resolve();
+    await settled;
+    assert.equal(commits, 0);
+    assert.equal(harness.codexRunnerCreateCalls, 0);
+    assert.deepEqual(harness.preparedLabels, []);
+    assert.deepEqual(harness.taskRecords, []);
+    assert.deepEqual(harness.runStatusEvents, []);
+  }
+});
+
+test("original Codex turn rejects a different local profile before fingerprint capture or at commit", async (context) => {
+  const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
+  for (const phase of ["capture", "commit"] as const) {
+    let configId = phase === "capture" ? "other-profile" : "original-profile";
+    const fingerprints: Array<string | null> = [];
+    const sent: string[] = [];
+    let commits = 0;
+    const runner = context.mock.method(CodexInteractiveRunner.prototype, "runStreamed", async (_prompt: string,
+      _handlers: CodexStreamHandlers, _observer: unknown, original: OriginalCodexThreadTurn) => {
+      assert.equal(original.threadId, "original-thread");
+      assert.equal(original.codexConfigEvidence, originalCodexEvidence);
+      const prepared = original.preparePrompt();
+      configId = "other-profile";
+      prepared.commit();
+      sent.push(prepared.prompt);
+    });
+    const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+      getActiveConfigIdForCli: () => "ordinary-profile",
+      resolveInteractiveMappedId: () => "original-thread",
+      readRuntimeConfigFingerprint: async (_cli, id, _cwd, evidence) => {
+        assert.equal(evidence, originalCodexEvidence);
+        fingerprints.push(id);
+        return "original-fingerprint";
+      },
+    } });
+    await assert.rejects(harness.host.runPromptInteractive(createPromptInput(), createTarget(), {
+      requireOriginalSession: true,
+      prepareOriginalSession: {
+        configId: "original-profile",
+        codexConfigEvidence: originalCodexEvidence,
+        isConfigCurrent: () => configId === "original-profile",
+        prepare: () => ({ ...createPromptInput(), commit: () => { commits += 1; }, afterSend: () => undefined }),
+      },
+    }), /原配置已变化|原会话、标签或配置已变化/u);
+    assert.equal(runner.mock.callCount(), phase === "capture" ? 0 : 1);
+    assert.deepEqual(fingerprints, phase === "capture" ? [] : ["original-profile"]);
+    assert.deepEqual(sent, []);
+    assert.equal(commits, 0);
+    assert.deepEqual(harness.taskRecords, []);
+    assert.deepEqual(harness.runStatusEvents, []);
+    runner.mock.restore();
+  }
+});
+
+test("original Codex turn sends the committed prompt even when start notifications fail", async (context) => {
+  const { CodexInteractiveRunner } = require("../../interactive/codexRunner") as typeof import("../../interactive/codexRunner");
+  const sent: string[] = [];
+  let notificationReached = false;
+  context.mock.method(CodexInteractiveRunner.prototype, "runStreamed", async (_prompt: string, handlers: CodexStreamHandlers,
+    _observer: unknown, original: OriginalCodexThreadTurn) => {
+    const prepared = original.preparePrompt();
+    prepared.commit();
+    sent.push(prepared.prompt);
+    prepared.afterSend();
+    handlers.onAssistantDelta("[final_answer] finished", { codexFinalAnswer: true });
+  });
+  const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+    preparePendingLabel: () => { throw new Error("label notification failed"); },
+    resolveInteractiveMappedId: () => "original-thread",
+    readRuntimeConfigFingerprint: async () => "original-fingerprint",
+  } });
+  let commits = 0;
+  const input = createPromptInput();
+  await h.host.runPromptInteractive(input, createTarget(), {
+    requireOriginalSession: true,
+    prepareOriginalSession: {
+      configId: "config-main",
+      codexConfigEvidence: originalCodexEvidence,
+      isConfigCurrent: () => true,
+      prepare: () => ({
+        displayPrompt: "committed display", modelPrompt: "committed first turn",
+        commit: () => { commits += 1; assert.equal(sent.length, 0); },
+        afterSend: () => { notificationReached = sent.length === 1; throw new Error("resume notification failed"); },
+      }),
+    },
+  });
+  assert.equal(commits, 1);
+  assert.equal(notificationReached, true);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0], /committed first turn/u);
+  assert.equal(h.runStatusEvents.at(-1)?.status, "end");
+  assert.equal(h.activeRunsByTabId.size, 0);
 });
 
 test("a replaced Claude tab cannot publish late session or task-list updates", async () => {

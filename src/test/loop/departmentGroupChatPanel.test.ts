@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import * as vm from "node:vm";
 import { installVscodeMock } from "../vscodeMock";
 import { departmentState } from "./departmentGroupChatPanel.fixture";
-import { buildLoopGroupChatPanelTitle, getStrings, getDepartmentRoleIdentity } from "../../webview/loopGroupChatPanelRenderer";
+import { buildLoopGroupChatPanelTitle, getStrings } from "../../webview/loopGroupChatPanelRenderer";
 import type { DepartmentGroupChatProjection, LoopGroupChatPanelMessage } from "../../webview/loopGroupChatPanelTypes";
 import { buildDepartmentChildBridge, DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, LOOP_GROUP_CHAT_HOST_MESSAGE_SCRIPT } from "../../webview/departmentGroupChatModal";
 
@@ -14,27 +14,46 @@ for (const role of ["director", "leader"] as const) {
   test(`${role}: initial HTML and content patch share escaped hierarchy, title and actions`, () => {
     const state = departmentState(role);
     const projection: DepartmentGroupChatProjection = state.department!;
+    projection.leaders[0].progressPercent = 25;
+    projection.director.title = "总监任务原始长标题 <需求>".repeat(12);
     const original = JSON.stringify(state);
     const patch = buildLoopGroupChatPanelContentPatch(state, 2);
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.rosterPanelHtml));
     assert.ok(html.includes(patch.actionsHtml));
-    assert.equal(patch.headingText, role === "director" ? "产研部 · 总监 ☀️" : `产研部 · 组长 🌛 · ${projection.title}`);
-    assert.ok(patch.tabTitle.startsWith(role === "director" ? "☀️ " : "🌛 "));
-    assert.deepEqual(Array.from(patch.rosterPanelHtml.matchAll(/<span class="avatar">([^<]*)<\/span>/gu), match => match[1]), ["总", "组", "员", "组", "员", "组"]);
-    for (const label of ["☀️ 总监", "🌛 组长", "⭐️ 员工"]) assert.ok(patch.rosterPanelHtml.includes(label));
+    assert.equal(patch.headingText, role === "director" ? "产研部总监" : "组长1");
+    assert.equal(patch.tabTitle, patch.headingText);
+    assert.ok(html.includes(`<title>${patch.headingText}</title>`));
+    assert.deepEqual(
+      Array.from(patch.rosterPanelHtml.matchAll(/<span class="avatar">([^<]*)<\/span>/gu), match => match[1]),
+      role === "director" ? ["总", "组", "员", "组", "员", "组"] : ["组", "员"],
+    );
+    assert.doesNotMatch(patch.rosterPanelHtml, /[☀🌛⭐]/u);
+    assert.match(patch.rosterPanelHtml, /class="member-name" title="组长 · 同名模块">组长 · 同名模块<\/div>/u);
+    assert.match(patch.rosterPanelHtml, /class="member-name" title="(员工 · 员工甲[^"]*)">\1<\/div>/u);
     assert.equal(patch.subtitleText, `${projection.title} · ${state.task.id}`);
-    assert.ok(patch.tabTitle.endsWith(` · #${state.task.id.slice(-12)}`));
     assert.equal(patch.tabTitle, buildLoopGroupChatPanelTitle(state, getStrings()));
     assert.match(html, /&lt;流程&gt; &amp; &quot;标题&quot;/u);
     assert.doesNotMatch(patch.rosterPanelHtml, /<契约>/u);
-    assert.match(patch.rosterPanelHtml, /总监 · 部门总监/u);
-    assert.equal((patch.rosterPanelHtml.match(/组长 · 同名模块/gu) ?? []).length, 6); // visible text + member title + navigation title
+    if (role === "director") assert.match(patch.rosterPanelHtml, /class="member-name" title="总监">总监<\/div>/u);
+    else assert.doesNotMatch(patch.rosterPanelHtml, /class="member-name" title="总监"/u);
+    assert.doesNotMatch(patch.rosterPanelHtml, /总监任务原始长标题/u);
+    assert.equal((patch.rosterPanelHtml.match(/组长 · 同名模块/gu) ?? []).length, role === "director" ? 4 : 2);
     assert.match(patch.rosterPanelHtml, /组长 2\/4 · 员工 1\/20（全部门共享）/u);
-    assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"[\s\S]*员工甲[\s\S]*data-department-leader-task-id="department-20261113-leader-222222"[\s\S]*员工乙/u);
-    assert.match(patch.rosterPanelHtml, /data-department-task-id=""[^>]*disabled[^>]*>打开组长群聊<\/button><div class="member-meta">群聊尚未创建/u);
+    if (role === "director") {
+      assert.match(patch.rosterPanelHtml, /<span class="member-status-running">运行中<\/span>&nbsp;<span class="department-leader-progress">25%<\/span>/u);
+      assert.doesNotMatch(patch.rosterPanelHtml.match(/data-department-leader-task-id=""[\s\S]*?<\/li>/u)?.[0] ?? "", /department-leader-progress/u);
+      assert.match(patch.rosterPanelHtml, /data-department-title="组长1" data-department-task-id="department-20261113-leader-111111"/u);
+      assert.match(patch.rosterPanelHtml, /data-department-title="组长2" data-department-task-id="department-20261113-leader-222222"/u);
+      assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"[\s\S]*员工甲[\s\S]*data-department-leader-task-id="department-20261113-leader-222222"[\s\S]*员工乙/u);
+      assert.match(patch.rosterPanelHtml, /data-department-task-id=""[^>]*disabled[^>]*>打开组长群聊<\/button><div class="member-meta">群聊尚未创建/u);
+    } else {
+      assert.doesNotMatch(patch.rosterPanelHtml, /department-leader-progress/u);
+      assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"[\s\S]*员工甲/u);
+      assert.doesNotMatch(patch.rosterPanelHtml, /leader-222222|员工乙|打开组长群聊/u);
+    }
     assert.match(patch.rosterPanelHtml, /运行中/u);
-    assert.match(patch.rosterPanelHtml, /尚未分配员工/u);
+    if (role === "director") assert.match(patch.rosterPanelHtml, /尚未分配员工/u);
     for (const action of ["refresh", "supplementTask", "askMainModel", "switchModels", "continueTask"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
     if (role === "director") {
       assert.match(patch.actionsHtml, /data-action="acceptancePlan"[^>]*>统一验收方案/u);
@@ -53,25 +72,14 @@ for (const role of ["director", "leader"] as const) {
   });
 }
 
-test("director member panel displays created leader progress beside status", () => {
-  const state = departmentState("director");
-  const projection: DepartmentGroupChatProjection = state.department!;
-  projection.leaders[0].progressPercent = 25;
-  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
-  assert.match(patch.rosterPanelHtml, /<span class="member-status-running">运行中<\/span>&nbsp;<span class="department-leader-progress">25%<\/span>/u);
-  const uncreatedLeader = patch.rosterPanelHtml.match(/data-department-leader-task-id=""[\s\S]*?<\/li>/u)?.[0] ?? "";
-  assert.doesNotMatch(uncreatedLeader, /department-leader-progress/u);
-
-  const leaderState = departmentState("leader");
-  leaderState.department!.leaders[0].progressPercent = 25;
-  assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(leaderState, 1).rosterPanelHtml, /department-leader-progress/u);
-});
-
-test("task suffix distinguishes modules sharing title and public timestamp prefix", () => {
-  const a = departmentState("leader");
-  const b = departmentState("leader");
-  b.task.id = "department-20261113-leader-222222";
-  assert.notEqual(buildLoopGroupChatPanelTitle(a, getStrings()), buildLoopGroupChatPanelTitle(b, getStrings()));
+test("leader chat titles use their module number even when earlier groups are absent", () => {
+  const state = departmentState("leader");
+  assert.equal(buildLoopGroupChatPanelTitle(state, getStrings()), "组长1");
+  state.task.id = "department-20261113-leader-222222";
+  state.department!.leaders.shift();
+  assert.equal(buildLoopGroupChatPanelTitle(state, getStrings()), "组长2");
+  state.task.id = "unmatched-task";
+  assert.equal(buildLoopGroupChatPanelTitle(state, getStrings()), "组长");
 });
 
 test("modal refresh does not force iframe focus and keeps the opaque child bridge bound", () => {
@@ -105,7 +113,7 @@ test("known hierarchy survives missing rounds and read errors; empty tree stays 
   state.department!.activeEmployees = 0;
   patch = buildLoopGroupChatPanelContentPatch(state, 2);
   assert.match(patch.rosterPanelHtml, /尚未分配组长/u);
-  assert.match(patch.rosterPanelHtml, /总监 · 部门总监/u);
+  assert.match(patch.rosterPanelHtml, />总监<\/div>/u);
   assert.doesNotMatch(patch.rosterPanelHtml, /员工甲|员工乙/u);
 });
 
@@ -115,7 +123,23 @@ test("missing director target disables the return action; task ID alone enables 
   state.department!.leaders[0].participant.sessionId = null;
   const patch = buildLoopGroupChatPanelContentPatch(state, 1);
   assert.match(patch.rosterPanelHtml, /aria-label="返回总监群聊：群聊尚未创建" disabled/u);
-  assert.match(patch.rosterPanelHtml, /data-department-task-id="department-20261113-leader-111111"[^>]*>打开组长群聊/u);
+  assert.doesNotMatch(patch.rosterPanelHtml, /data-department-task-id="department-20261113-leader-111111"[^>]*>打开组长群聊/u);
+});
+
+test("leader roster requires an exact current task match and shows only its own empty group", () => {
+  const state = departmentState("leader");
+  state.task.id = "department-20261113-leader-unknown";
+  let patch = buildLoopGroupChatPanelContentPatch(state, 1);
+  assert.doesNotMatch(patch.rosterPanelHtml, />总监<\/div>|组长 · 同名模块|员工甲|员工乙|leader-111111|leader-222222/u);
+  assert.match(patch.rosterPanelHtml, /尚未分配组长/u);
+  assert.match(patch.rosterPanelHtml, /返回总监群聊/u);
+
+  state.task.id = "department-20261113-leader-111111";
+  state.department!.leaders[0].employees = [];
+  patch = buildLoopGroupChatPanelContentPatch(state, 2);
+  assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"/u);
+  assert.match(patch.rosterPanelHtml, /尚未分配员工/u);
+  assert.doesNotMatch(patch.rosterPanelHtml, />总监<\/div>|员工乙|leader-222222/u);
 });
 
 test("navigation posts only the exact task ID and never derives it from a label", () => {
@@ -147,12 +171,6 @@ test("ordinary Loop and Loop+ retain their roster, title and acceptance behavior
   assert.doesNotMatch(patch.rosterPanelHtml, /jumpToAcceptance/u);
 });
 
-
-test("role identity is reusable for employee session integration", () => {
-  assert.deepEqual(getDepartmentRoleIdentity("director"), { icon: "☀️", label: "总监" });
-  assert.deepEqual(getDepartmentRoleIdentity("leader"), { icon: "🌛", label: "组长" });
-  assert.deepEqual(getDepartmentRoleIdentity("employee"), { icon: "⭐️", label: "员工" });
-});
 
 test("modal host API binds state, patches, questions, previews and close to the current task and instance", async () => {
   const vscode = require("vscode");
@@ -316,23 +334,39 @@ test("VS Code shell messages survive the parent alias and reject unrelated frame
 test("allocation UI is director-only editable, honest when unavailable and escapes labels", () => {
   const state = departmentState();
   const projection = state.department!;
-  let html = buildLoopGroupChatPanelContentPatch(state, 1).rosterPanelHtml;
-  assert.match(html, /员工额度未知，额度服务不可用/);
-  assert.match(html, /class="department-allocation-input"[^>]*disabled/);
+  projection.leaders[0].participant.title = '<组长 "甲">';
+  const unavailable = buildLoopGroupChatPanelContentPatch(state, 1);
+  assert.match(unavailable.actionsHtml, /data-action="allocateEmployees"[^>]*>分配员工/);
+  assert.doesNotMatch(unavailable.rosterPanelHtml, /data-allocation|员工上限|额度未知|>分配员工</);
+  assert.match(unavailable.employeeAllocationHtml, /员工额度未知，额度服务不可用/);
+  assert.match(unavailable.employeeAllocationHtml, /class="department-allocation-input"[^>]*disabled/);
   projection.employeeAllocation = { rootTaskId: projection.rootTaskId, revision: 3, defaultLimit: 5,
     leaders: [{ leaderTaskId: projection.leaders[0].taskId, source: "manual", desiredLimit: 0, appliedLimit: null, activeEmployees: 2, pending: true }] };
-  html = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
-  assert.match(html, /额度写入服务不可用/);
+  assert.match(buildLoopGroupChatPanelContentPatch(state, 2).employeeAllocationHtml, /额度写入服务不可用/);
   projection.employeeAllocationEditable = true;
-  html = buildLoopGroupChatPanelContentPatch(state, 3).rosterPanelHtml;
+  const director = buildLoopGroupChatPanelContentPatch(state, 3);
+  const html = director.employeeAllocationHtml;
+  assert.doesNotMatch(director.rosterPanelHtml, /data-allocation|期望上限|员工上限|恢复均分/);
+  assert.match(html, /aria-label="员工上限：组长1 · &lt;组长 &quot;甲&quot;&gt;"/);
   assert.match(html, /实际占用 2 · 待首次派发 · 已保存，下次派发生效/);
   assert.match(html, /type="number"[^>]*min="0"[^>]*max="20"[^>]*step="1"/);
-  assert.match(html, /data-allocation-action="reset"/);
+  assert.doesNotMatch(html, /<button\b|恢复均分/);
   assert.match(html, /aria-live="polite"/);
+  const dialogHtml = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state)
+    .match(/<dialog id="departmentAllocationDialog"[\s\S]*?<\/dialog>/)?.[0];
+  assert.ok(dialogHtml);
+  assert.equal(dialogHtml.match(/<button\b/g)?.length, 2);
+  assert.match(dialogHtml, /class="dialog-header"[^>]*>[\s\S]*?<button id="departmentAllocationClose" class="icon-button"[^>]*><svg/);
+  assert.match(dialogHtml, /class="dialog-actions"[^>]*>[\s\S]*?<button id="departmentAllocationSave" class="button primary"[^>]*>保存并关闭<\/button>/);
+  const empty = buildLoopGroupChatPanelContentPatch({ ...state, department: { ...projection, leaders: [] } }, 4);
+  assert.match(empty.employeeAllocationHtml, /尚未分配组长/);
   projection.role = "leader";
-  html = buildLoopGroupChatPanelContentPatch(state, 4).rosterPanelHtml;
-  assert.doesNotMatch(html, /data-allocation-action|class="department-allocation-input"/);
-  assert.match(html, /期望上限 0 · 实际占用 2/);
+  state.task.id = projection.leaders[0].taskId;
+  const leader = buildLoopGroupChatPanelContentPatch(state, 5);
+  assert.doesNotMatch(leader.actionsHtml, /allocateEmployees/);
+  assert.equal(leader.employeeAllocationHtml, "");
+  assert.doesNotMatch(leader.rosterPanelHtml, /data-allocation-action|class="department-allocation-input"/);
+  assert.match(leader.rosterPanelHtml, /期望上限 0 · 实际占用 2/);
 });
 
 test("allocation writes are explicitly absent from child forwarding contracts", () => {
@@ -341,4 +375,30 @@ test("allocation writes are explicitly absent from child forwarding contracts", 
   // @ts-expect-error director writes must never become a child-forwardable message
   const child: import("../../webview/loopGroupChatPanelTypes").DepartmentGroupChatTaskMessage = { type: "loopGroupChatChat:updateDepartmentEmployeeLimit", requestId: "x", leaderTaskId: "y", employeeLimit: 1, expectedRevision: 0 };
   assert.equal(child.type, "loopGroupChatChat:updateDepartmentEmployeeLimit");
+});
+
+
+test("director stop feedback keeps the progress action slot and incumbent button classes", () => {
+  const state = departmentState("director");
+  state.task.canStop = true; state.task.canContinue = false;
+  const normal = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
+  assert.match(normal, /class="progress-controls"[\s\S]*class="button danger"[^>]*data-action="stopTask"[^>]*>中止/);
+  for (const feedback of ["stopping", "unconfirmed", "confirmed"] as const) {
+    state.task.departmentStopState = feedback;
+    state.task.canStop = feedback !== "confirmed";
+    state.task.canContinue = feedback === "confirmed";
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+    const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
+    assert.ok(html.includes(patch.actionsHtml));
+    if (feedback === "stopping") assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*disabled[^>]*>正在停止…/);
+    if (feedback === "unconfirmed") {
+      assert.match(patch.actionsHtml, /role="status">停止未确认/);
+      assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*>核验停止/);
+      assert.doesNotMatch(patch.actionsHtml, /disabled|data-action="continueTask"/);
+    }
+    if (feedback === "confirmed") {
+      assert.doesNotMatch(patch.actionsHtml, /data-action="stopTask"|停止未确认/);
+      assert.match(patch.actionsHtml, /data-action="continueTask"/);
+    }
+  }
 });

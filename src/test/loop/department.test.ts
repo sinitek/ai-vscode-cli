@@ -226,3 +226,13 @@ test("role prompts preserve director boundaries and live collaboration path", ()
   assert.match(leader, /额度快照缺失或无效时，本组额度未知/u);
   assert.doesNotMatch(employee, /部门员工额度|宿主限额/u);
 });
+
+test("director plans cohesive groups by effort and dispatches only a ready batch each round", () => {
+  const director = buildDepartmentRolePrompt("director");
+  assert.match(director, /每位组长负责一个内聚、可独立验收的目标/u);
+  assert.match(director, /预计实现与验证工作量.*尽量均衡各组/u);
+  assert.match(director, /优先保留任务内聚性/u);
+  assert.match(director, /每轮只派当前就绪、范围互不冲突的精简批次/u);
+  assert.match(director, /收到组长汇报后核对剩余范围和依赖，再决定下一批/u);
+  assert.match(director, /尚有未派发工作.*不得宣告部门整体完成/u);
+});

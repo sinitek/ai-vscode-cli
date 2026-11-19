@@ -121,15 +121,12 @@ async function publicDepartmentEntry(view, prompt, wait, workspaceSettingsAction
   await directorModel.selectOption("gpt-5");
   await view.locator("#interactiveModeSelect").selectOption("department");
   for (const role of ["leader", "employee"]) {
-    const cli = view.locator(`#department-${role}-cli`), profile = view.locator(`#department-${role}-config`), model = view.locator(`#department-${role}-model`);
+    const cli = view.locator(`#department-${role}-cli`), model = view.locator(`#department-${role}-model`);
     await wait(`${role} CLI ready`, async () => await cli.isEnabled()); await cli.selectOption("codex");
-    await wait(`${role} profile ready`, async () => await profile.isEnabled()
-      && (await profile.locator("option").evaluateAll(nodes => nodes.map(n => n.value))).includes("codex-local"));
-    await profile.selectOption("codex-local");
     await wait(`${role} model ready`, async () => await model.isEnabled()
       && (await model.locator("option").evaluateAll(nodes => nodes.map(n => n.value))).includes("__default__"));
     await model.selectOption("__default__");
-    await wait(`${role} saved`, async () => !(await view.locator(`#department-${role}-message`).innerText()).includes("正在保存"));
+    await wait(`${role} saved`, async () => await model.isEnabled());
   }
   await view.locator("#promptInput").fill(prompt); assert.equal(await view.locator("#sendPrompt").isEnabled(), true);
   await view.locator("#sendPrompt").click(); await view.locator("#acceptancePlanOverlay").waitFor();
@@ -259,10 +256,10 @@ async function main(argv = process.argv.slice(2)) {
     report.baseline = before;
     await view.locator("#openCurrentLoopGroupChat").click(); await view.close(); view = null;
     group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId, deadline, cleanupDeadline: deadline + 15000 });
-    if (await group.locator("#sidebarToggle").isVisible() && !(await group.locator(".layout").evaluate(e => e.classList.contains("sidebar-open")))) await group.locator("#sidebarToggle").click();
-    const selector = `[data-allocation-root="${rootId}"][data-allocation-leader="${leaderId}"]`, row = group.locator(selector);
+    await group.locator('#panelActions [data-action="allocateEmployees"]').click();
+    const selector = `#departmentAllocationDialog [data-allocation-root="${rootId}"][data-allocation-leader="${leaderId}"]`, row = group.locator(selector);
     await row.waitFor(); assert.equal(await row.locator("input").inputValue(), String(defaultLimit));
-    await row.locator("input").fill("0"); await row.locator('[data-allocation-action="save"]').click();
+    await row.locator("input").fill("0"); await group.locator("#departmentAllocationSave").click();
     await wait("zero durable settled and UI readback", async () => {
       const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === 0
         && await row.getAttribute("aria-busy") === "false" && (await row.innerText()).includes("已保存，下次派发生效") && s;
@@ -286,13 +283,14 @@ async function main(argv = process.argv.slice(2)) {
     assert.equal(refusal[0].saved.value.employeeAllocation.leaders[0].appliedLimit, 0);
     report.zeroApplied = { saved: denied, failed, refusal: refusal[0], tasks: readTasks() }; report.stages.refuseZero = "passed";
     await wait("zero applied UI", async () => (await row.innerText()).includes("已应用上限 0"));
-    await row.locator('[data-allocation-action="reset"]').click();
+    await group.locator('#panelActions [data-action="allocateEmployees"]').click();
+    await row.locator("input").fill(String(defaultLimit)); await group.locator("#departmentAllocationSave").click();
     const restored = await wait("restore durable settled and UI readback", async () => {
-      const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === null && await row.getAttribute("aria-busy") === "false"
+      const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === defaultLimit && await row.getAttribute("aria-busy") === "false"
         && (await row.innerText()).includes("已保存，下次派发生效") && await row.locator("input").inputValue() === String(defaultLimit) && s;
     });
-    assertSavedTransition(denied, restored, leaderId, null);
-    report.restoreSaved = { saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, denied.employeeAllocation.revision, null, restored.employeeAllocation.revision, defaultLimit) };
+    assertSavedTransition(denied, restored, leaderId, defaultLimit);
+    report.restoreSaved = { mode: "manual", saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, denied.employeeAllocation.revision, defaultLimit, restored.employeeAllocation.revision, defaultLimit) };
     report.stages.restoreSave = "passed"; scenario.release("restore-saved");
     await wait("new restored employee admitted", () => scenario.snapshot().held["allocation-restored"]);
     const admitted = readRuntime(rootId), next = scenario.snapshot().held["allocation-restored"];
@@ -376,11 +374,12 @@ function verifyCapturedRun(reportFile) {
     assert.equal(actual, hash, `run input changed: ${file}`); checkedHashes[file] = actual;
   }
   const baseline = report.baseline, rootId = baseline.rootTaskId, leaderId = baseline.runtime.leaders[0].taskId;
+  const restoredManualLimit = report.restoreSaved.mode === "manual" ? Math.ceil(baseline.capacity.maxEmployees / baseline.capacity.maxLeaders) : null;
   assertSavedTransition(baseline, report.zeroSaved.saved, leaderId, 0);
-  assertSavedTransition(report.zeroApplied.saved, report.restoreSaved.saved, leaderId, null);
+  assertSavedTransition(report.zeroApplied.saved, report.restoreSaved.saved, leaderId, restoredManualLimit);
   const events = readEvents(path.join(report.root, "allocation-host.ndjson"));
   assertSettled(events, rootId, leaderId, baseline.employeeAllocation.revision, 0, report.zeroSaved.saved.employeeAllocation.revision);
-  assertSettled(events, rootId, leaderId, report.zeroApplied.saved.employeeAllocation.revision, null, report.restoreSaved.saved.employeeAllocation.revision);
+  assertSettled(events, rootId, leaderId, report.zeroApplied.saved.employeeAllocation.revision, restoredManualLimit, report.restoreSaved.saved.employeeAllocation.revision);
   assert.equal(report.responses.failures.length, 0);
   const captured = readJson(path.join(report.root, "responses-requests.json"));
   const expected = [

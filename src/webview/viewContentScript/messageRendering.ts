@@ -1574,6 +1574,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
           return false;
         }
+        if (getDepartmentConversationTabPresentation(tab)?.role === "leader") {
+          return false;
+        }
         vscode.postMessage({ type: "openLoopGroupChat", taskId: meta.loopTaskId });
         return true;
       }

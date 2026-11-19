@@ -19,6 +19,6 @@ test("task mode controls retain labels and department performance guidance belon
   assert.doesNotMatch(html, /department-performance-warning|警告：本机必须具备/);
   for (const id of ["departmentMaxEmployeesNote", "workspaceDepartmentMaxEmployeesNote"]) {
     const note = html.match(new RegExp(`<div id="${id}"[^>]*>([^<]+)</div>`))?.[1];
-    assert.match(note || "", /所有组长合计计算.*根据本机性能设置.*20 多个 CLI/);
+    assert.match(note || "", /所有组长合计计算.*根据本机性能设置.*默认 16 人.*16 个员工 CLI/);
   }
 });

@@ -21,3 +21,4 @@
 - `src/interactive/grokAppServerProtocol.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `src/test/extensionHost/dshLoopSessionResumeLive.test.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `src/test/interactive/grokAppServerProtocol.test.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `src/test/runtime/departmentleadercallbackprotocol.test.ts` <- `mem-7525b245ac`

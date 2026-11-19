@@ -138,6 +138,35 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
 }
 const modulePrompt = (id: string) => ({ id, title: id, prompt: `负责完整${id}模块，向总监反馈依赖；复用真实Loop+完成实现和统一验收。保持独立任务及会话，在执行期间报告跨组依赖，不要等待所有组长结束才反馈。实现接口、界面和必要验证，并报告实际修改路径、结果以及未完成边界。` });
 
+test("a settled leader frees the next director batch without registering later work in the first round", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.configuration.limits.maxLeaders = 1;
+  h.decide({ status: "continue", subtasks: [modulePrompt("accounts")] });
+  h.dispatch("accounts");
+  await h.start();
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("accounts-0"), "first leader started");
+  await waitForLoopPlus(() => h.directorPrompts.some((input) => input.modelPrompt.includes("组长可用名额：0 / 1")), "held leader slot in director prompt");
+  assert.match(h.directorPrompts[0].modelPrompt, /subtasks 只列本轮要启动的模块/u);
+  assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：1 \/ 1/u);
+  assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["accounts"]);
+
+  h.decide({ status: "continue", subtasks: [modulePrompt("reports")] });
+  h.finish(); h.dispatch("reports");
+  h.fixture.finishParked("accounts-0", { status: "end", content: "账号实现和验证已完成" });
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("reports-0"), "settlement woke the second batch");
+  assert.ok(h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("组长可用名额：1 / 1")
+    && modelPrompt.includes('"moduleId": "accounts"') && modelPrompt.includes('"organizationStatus": "completed"')));
+  assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["accounts", "reports"]);
+  assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
+
+  await waitForLoopPlus(() => h.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes("组长可用名额：0 / 1")
+    && modelPrompt.includes('"moduleId": "reports"')), "second occupied slot in director prompt");
+  h.decide({ status: "completed", answerConclusion: "账号和报表均已交付", finalSummary: "根据两轮汇报确认完成" });
+  h.finish();
+  h.fixture.finishParked("reports-0", { status: "end", content: "报表实现和验证已完成" });
+  await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "director completed after both batches");
+});
+
 test("production composition starts classic director and two real Loop+ leaders with shared persisted employee capacity and cleanup", async (t) => {
   const h = harness(); t.after(h.dispose);
   h.decide({ status: "continue", subtasks: [modulePrompt("accounts"), modulePrompt("reports")] });

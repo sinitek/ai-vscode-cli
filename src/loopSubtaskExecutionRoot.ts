@@ -9,6 +9,18 @@ const EXECUTION_ROOT_PREFIX = "sinitek-loop-subtask-";
 export const LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME = ".sinitek-loop-tmp";
 export const LOOP_SUBTASK_LINK_FAILED_CODE = "LOOP_SUBTASK_LINK_FAILED";
 
+export function isGrokLoopExecutionRootId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export function resolveGrokLoopExecutionCwd(workspaceCwd: string, rootId: string, dataDir: string): string {
+  if (!isGrokLoopExecutionRootId(rootId)) throw new Error("Grok 子任务执行目录标识无效。");
+  const base = process.platform === "win32" && !isSameVolumePath(workspaceCwd, dataDir)
+    ? path.join(workspaceCwd, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME)
+    : path.join(dataDir, "grok-loop-workspaces");
+  return path.join(base, `grok-${rootId}`);
+}
+
 const HIDDEN_ROOT_ENTRIES = new Set([
   "AGENTS.md",
   "CLAUDE.md",
