@@ -1,38 +1,20 @@
 # 避坑指南索引
 
-## 发送即时反馈与显式模式不能被展示刷新覆盖
+## 部门组长在原生调用前报 leader-invocation-invalid
 
-- 现象：Vibe 点击发送后长时间没有气泡；已完成 Loop / Loop+ 会话切到 Vibe，返回 Tab 或收到迟到状态后又恢复历史模式。
-- 根因：普通发送先等待读取各 CLI 配置/模型的完整面板刷新；历史任务模式推断没有考虑当前 Tab 的手动选择。
-- 规避：发送前端立即显示临时提示词和等待状态，宿主真实消息用同一提交 ID 接管，配置校验保留，展示刷新后台执行。Tab 当前 CLI 的显式模式优先于历史推断和面板快照，发送当前 Tab 不重复激活；临时状态不进入持久化历史。
-- 验证：`sessionMessageActions.test.ts` 覆盖慢刷新与拒绝回执；`clipagescriptruntimecoverage.test.ts` 覆盖消息接管、旧回执、跨 Tab 和 CLI 隔离。浏览器应模拟宿主不响应，确认仍有气泡和动画。事实来源见[发送反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)及[模式协调](../design-docs/vscode-cli-extension-runtime.md#tab-运行状态与配置协调)。
+提示词包含 Loop+ 协议、上下文和用户需求，序列化后的 UTF-8 大小可能轻易超过 48 KiB；英文字符数不能代替字节数。旧部门 Codex/OpenCode invocation 有额外 48 KiB 限制，私有 IPC 还有 64 KiB 限制，触发后会表现为 `DEPARTMENT_NATIVE_UNKNOWN` 并停止调度，不能据此判断模型服务故障。
 
-## Vibe 的完成通知不能先于自动压缩放行队列
+现行合同不设置部门提示词长度上限、不截断，宿主与 worker 同步验证精确 invocation 数据帧；员工准备预算也排除提示词。排查时同时核对两端构建，不能只去掉入参校验后让下一层传输继续拒绝。回归见 `departmentleaderinvocation.test.ts`、`departmentleadercodexowner.test.ts` 和 `departmentleaderproductionhost.test.ts`；真实 CLI/公开入口证据边界应单独记录。不要通过删锁或改用户任务状态绕过失败。
 
-- 现象：长 Vibe 刚完成，队列任务立即开始并出现“用户已终止”，随后在 Codex 建立连接时失败，错误为 `Codex run aborted`。
-- 根因：原任务先发送 `runStatus:end`，Webview 因此发出下一条队列请求，而宿主仍在启动自动压缩。新任务暂停旧压缩；旧压缩等待配置读取时没有完整的取消门禁，迟到返回可能再次获取同会话 runner。
-- 规避：需要压缩时先压缩再发布唯一的队列结束信号。压缩已发布运行状态就由其负责终态，未启动压缩才由原任务补发；停止/超时不补发 `end`。压缩等待同时响应停止，异步返回及停止句柄注册前核对原调用身份。
-- 验证：`contextCompactionRunner.test.ts` 覆盖准备期间取消与替换；`promptInteractiveRuntime.test.ts`、`openCodePromptRunTemplate.test.ts` 覆盖完成、跳过和停止的唯一交接通知。
+## 暂停通知先于真实任务和配置租约收尾
 
-## 暂停通知先于真实任务收尾
-
-- “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而 CLI 中断仍在进行。
-- 复用 `PromptRunHandoff` 等待完整调用及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。
-
-### 已移除的配置锁超时
-
-- 跨窗口配置锁和执行租约已移除。当前版本若仍出现“等待其他窗口配置操作超时”，先确认 VS Code 是否已加载新构建；不再建议检查或手动清理旧 mutex。
+- “暂停并发送”不能在收到 `stopped` 或运行 Map 删除后立即启动下一笔请求；停止回调可能先结算本地调用，而配置租约释放、CLI 中断仍在进行。真实日志已出现同一 Vibe Tab 先释放超时、随后获取超时。
+- 复用 `PromptRunHandoff` 等待完整调用、待释放租约及 Codex 原生卸载/退出证据；等待失败保留输入并阻止迟到发送。配置锁持有进程仍存活时不能删除 mutex，需核对日志 `configLock.operation`、`ownerPid` 与存活状态。其它窗口持续持锁仍按原共享配置保护明确失败。
 - Codex 的本地调用中止不代表 `turn/interrupt` RPC 已返回。确认原生停止前先等待该响应，否则专属连接会因仍有待处理请求而进入约 60 秒的订阅卸载等待，错过原进程退出路径。
 
 这个文件用于记录仍有行动价值的真实踩坑。starter 默认不预置条目，也不为空内容预建模块分片。
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
-
-## Loop+ 的 done 结束不代表旧 consumer 已收尾
-
-- 现象：提交失败后从 `done` 立即恢复，旧 consumer 的迟到 catch 可能暂停新 lifecycle，旧 finally 可能清掉新请求或吞掉已合并唤醒；不能用恢复前加 sleep/flush 掩盖竞态。
-- 规避：pump 捕获原 lifecycle，catch 只有身份仍匹配且未 settle 才处理暂停；finally 按 consumer identity 清理自己的槽位，随后排空立即恢复留下的 `pumpRequested` / `forcePrompt`。主调用的请求、step 与 handle 同时建立，清理须核对相同 handle identity，旧收尾不得清空新请求。
-- 已验证来源：`src/extensionHost/loopPlusOrchestration.ts` 的 pump/runConsumer；`src/test/extensionHost/loopPlusHandoffContracts.test.ts` 使用真实 write/rename 故障，直接从 done 恢复；`src/test/extensionHost/loopPlusOrchestration.test.ts` 的 `immediate resume after dependency promotion failure preserves its lifecycle and drains queued wake once` 核对原 attempt、新 done、一次消息消费、无主调用重叠及无误 abort。生命周期修复 22/22 与 6/6 已主审，最终 macOS 入口的规定回归与原生交接也通过，统计不相加。契约和证据见[调度设计](../design-docs/loop-plus-scheduling.md#立即续跑与异步收尾所有权)及[归档计划](../exec-plans/completed/2026-11/2026-11-17-feature-loop-plus-explicit-dependencies.md)；不代表 Windows 或图形宿主已验证。
 
 ## Loop+ 成功提交不能与展示刷新共用失败契约
 
@@ -40,6 +22,12 @@
 - 规避：write 正常返回即原子提交，I/O 原样抛出；update 的 null 在编排/真实 refresher 边界统一拒绝。展示同步异常和异步拒绝独立记录。完成、成功压缩和关闭必须以前置提交为门禁；保留现有 completionPatch、暂停和显式继续路径。
 - 派发拒绝也属于同步交接结果：部分成功不清零纠错次数，不重验已确认事件或重发已接受任务，依据最新快照只纠正剩余派发。控制替换先提交再关闭/启动；用户停止仍先取消。
 - 回归与限制：`src/test/extensionHost/loopPlusHandoffContracts.test.ts` 使用真实临时磁盘和底层 write/rename 故障；不证明 Windows 实机、断电 fsync 或真实 VS Code GUI。持续磁盘故障后崩溃只能恢复最后提交快照，不能承诺未落盘内存事件。
+
+## 执行配置租约释放失败不能改写 CLI 终态
+
+- 现象：子任务 CLI 已成功结束并通知主任务，但跨窗口执行租约释放在配置互斥锁等待中超时。若让清理异常继续冒泡，Loop+ 会收到执行失败结果、面板标错，并跳过成功关页回调；这与随后可选的上下文压缩是否触发无关。
+- 长期规避：主执行和隔离压缩都必须将租约释放作为资源清理处理。首次释放失败记录包含 CLI、Tab、Loop 身份和释放阶段的错误，并对原租约作有界后台重试；失败不能改变真实任务结果。持锁写入仍有效期间不得强拆锁、丢弃租约或允许配置切换。成功回报后，无压缩、压缩失败和压缩成功都沿用原有安全关页生命周期。
+- 验证：`src/test/config/sharedRuntimeConfig.test.ts` 覆盖释放重试与耗尽；`src/test/extensionHost/promptSessionHealth.test.ts` 覆盖 release 超时不变成执行失败；`src/test/loop/loopSubtaskLifecycle.test.ts` 覆盖未安排压缩时仍关闭；Loop+ 压缩成功/失败及关页保护由 `src/test/extensionHost/loopPlusRuntimeIntegration.test.ts` 覆盖。
 
 ## 临时 outDir 的 NODE_PATH 不补齐 Webview 相对资源
 
@@ -161,11 +149,6 @@
 - 长期规避：取消回调传到具体运行时，在异步准备返回、实际启动之前重验；已准备资源在取消路径释放。取消代次在第一个 `await` 前捕获；结果归类先判断停止，再尝试从持久化消息恢复回答，不能把部分回答当作正常完成。取消排队只清空提问队列，不终止原主任务。
 - 验证方式：`npm run build` 后执行 `node --test dist/test/loop/loopMainQuestion.test.js dist/test/loop/loopMainQuestionQueue.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/extensionHost/promptSessionHealth.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js dist/test/extensionHost/openCodePromptRunTemplate.test.js dist/test/interactive/codexRunnerLifecycle.test.js`。
 
-## 主模型公平排队依赖同一个入队点
-
-- 现象与根因：Loop / Loop+ 在连续验收时一直不回答已提交的问题。主任务优先队列和编排待办判断允许后来发起的验收反复插队；协调器另排后续问题也会丢失它们相对于主任务的提交顺序。
-- 长期规避：每个问题提交时立即进入主任务 Tab 的共享队列，只有实际调用占队列位置；编排器内的待验收事件、补充需求和收口不得预占。回归应覆盖第一批验收执行中提交问题、第二批就绪后先回答问题，以及多个问题分居主任务调用前后的顺序。
-
 ## 相同 HTML 补丁不会清理按钮临时状态
 
 - 状态：已规避；首次确认及修复：2026-11-04。
@@ -187,7 +170,7 @@
 - 状态：已规避；首次确认及修复：2026-11-04。
 - 现象：面板已选择并应用新档案，但下一回合仍可能使用旧进程启动时的供应商地址或环境。
 - 触发条件与根因：Claude 的复用判定不含配置身份，SDK 会话存活时不重读 `settings.json` 的环境；Codex 仅按 `configId` 区分 runner，不检查同档案内容变化，连接池也不包含配置/认证内容指纹。当另一个 Tab 保留共享 app-server 时，切到同名 provider 的不同档案即使重建 runner，也可能取得旧连接。配置文件写入队列只保证落盘与提交顺序，不负责已有进程重载。
-- 长期规避：档案 ID、原生配置/认证文本的 SHA-256 指纹接入所有常驻 runner 与 Codex 共享池两层复用判定，同档案编辑也重建对应进程，不全局中断其它 Tab。任务启动按准备时读取的当前档案运行；跨窗口切换不等待执行结束，写入并发按最后完成者生效。心跳只跟随共享选择，不回写旧档案；Tab、历史与自动任务均不恢复旧档案。
+- 长期规避：先核对用户所见档案与共享提交版本，再校验原生文件，一致不写，不一致才修复；失败停止执行。档案 ID、原生配置/认证文本的 SHA-256 指纹接入所有常驻 runner 与 Codex 共享池两层复用判定，同档案编辑也重建对应进程，不全局中断其它 Tab。跨窗口执行租约保留到请求结束，期间拒绝切换或修改当前档案，同版本任务可并行；心跳只跟随共享选择，不回写旧档案。Tab、历史与自动任务均不恢复旧档案。
 - 验证方式：隔离 Claude SDK 夹具覆盖 A→B 后第二回合仍读 A、显式重建后读 B；使用真实 Node 子进程模拟启动时读取配置的 Codex app-server，覆盖同档案修改及多 Tab 共享连接后切换档案。上述验证确认插件的复用与环境下发行为，不等同于真实供应商请求或所有 CLI 的热加载测试。
 - 证据与边界：前轮审计及进程身份修复见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-chore-chat-cli-config-switch-audit.md#确认风险与证据` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-bugfix-explicit-cli-config-ownership.md#实现与关键决策`；跨窗口协调见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-feature-cross-window-visible-config.md#当前结论`。本 runbook 的文档交付来源分别见 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-chat-cli-config-switch-audit.md#范围与非目标`、`.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-explicit-cli-config-ownership.md#范围与非目标` 与 `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-cross-window-visible-config.md#范围与非目标`，不替代上述行为证据。本机 Node 子进程验证不等同于真实供应商请求或所有 CLI 热加载；仅协调使用新协议的扩展窗口，不控制旧版本或外部工具直接写入。
 
@@ -246,6 +229,13 @@
 - 根因：`--no-rewrite-relative-links` 只阻止 vsce 猜测私有仓库 URL；普通随包文件未自动登记为 Gallery 资产，市场页面也不会按安装目录解析相对图片路径。
 - 长期规避：在导出流程中将介绍图登记为标准 `Microsoft.VisualStudio.Services.Screenshots.1` 可寻址资产，只修改 VSIX 内 README 为该版本的 Gallery `assetbyname` HTTPS 地址；不改仓库 README，不依赖额外图床。新增本地图必须更新 `README_IMAGE_ASSETS`，遗漏登记或缺图阻止导出。
 - 验证方式：运行导出和发布脚本单测，再真实导出检查 README、`extension.vsixmanifest` 与 JPEG 字节；维护者升级版本并发布后，匿名请求新版本图片 URL，确认 HTTP 200、图片类型和实际市场展示。本地 ZIP 验证不等于已部署生效。
+
+## 角色表单模式切换须先失效再完整同步
+
+- 现象与依据：本次表单 lp6 发现本地离开/返回部门、宿主 panel 尚未回传时旧候选/保存可被接收；lp7 修复令牌后又漏掉完整模型同步，Codex 转 Loop 仍显示普通单模型、Loop 组隐藏禁用。lp8 先失效再调用完整同步后接受，见[归档计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-model-form.md)。
+- 规避：本地模式变更先递增代次并撤销在途候选/保存，再走已有 `syncModelSelectorByInteractiveMode`，不能以局部部门 render 替代或等待下一条 panel；回归必须实际触发 change 且不回传 panel，检查模式专属控件显隐/disabled、节点身份及迟到回执。跨 CLI 快照加载沿[既有规则](#子模型配置加载不能依赖先访问目标-cli)，不重复实现。
+- 后续初始化竞态：如果 change 先渲染发候选、后发模式设置，真实宿主会在候选异步读取期间递增选择修订，首次模型下拉因候选过期一直禁用；切换角色 CLI 才恢复。必须先发送模式设置，再失效令牌/完整同步；批量 panel 应等模型、力度和模式归一化设置全部发出后再请求部门候选。回归将同批 Webview 消息按发送顺序交给真实宿主处理器并发执行，不能逐条 await 或仅手工回填成功候选，否则会掩盖竞态；见[后续修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-form-initialization.md)。
+- 夹具握手：lp9 的群聊权限回归只等待 setImmediate，无法保证 setTimeout(0) 的加载握手先完成；应 await 既有 h.domReady 再注入操作，不改权限断言或以最后一条异步消息猜就绪。首次 293 项失败及修复后整文件 37 项通过按原时点保留；生成 Webview/Node 夹具不证明真实 EH/CLI。
 
 ## 子模型配置加载不能依赖先访问目标 CLI
 
@@ -858,6 +848,13 @@
 - `npm run build`
 - `node --test dist/test/interactive/grokRunner.test.js dist/test/interactive/grokAppServerProtocol.test.js dist/test/extensionHost/grokCliHostWire.test.js`
 
+## Grok Loop+ 续接必须保留原工作目录
+
+- 现象：Grok 员工首轮成功，续跑可能报 `department-interactive-session-conflict`。同一 session ID 在新 cwd 下会触发 `session/load` 的 `Path not found.`；普通启动回退新建后，部门 Owner 正确拒绝替换原绑定。
+- 排查：先核对同一子任务两轮的原生会话和执行目录。不要关闭 Owner 冲突校验，也不要把恢复失败按新会话成功处理。
+- 规避：Loop+ 将不透明执行目录标识随 Grok 会话持久化，跨轮次与跨子任务续接复用原 cwd，严格恢复失败即停止。旧绑定没有目录标识时保留原记录；需要继续执行时新派任务，不改绑旧会话。
+- 证据：`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`；[真实 Grok 探针和回归记录](../exec-plans/completed/2026-11/2026-11-19-bugfix-grok-loop-session-cwd.md#验证结果)。
+
 ## Windows 不能把 ~/.codex 当作真实路径
 
 - 状态：已规避，需随 CLI 安装路径 / CODEX_HOME 变化复核
@@ -1041,7 +1038,7 @@ rm -r "$result_directory"
 - 适用范围：七个 CLI、共享原生配置文件、AI 面板和配置中心、多 VS Code 窗口
 - 现象：另一个窗口激活不同档案后，原生配置很快又恢复旧档案，表现为配置被锁死；底层写文件本身正常。
 - 根因：面板被动刷新发现宿主激活 ID 与旧 `selectedConfigId` 不同，自动发送 `applyConfig`，多个窗口相互覆盖；重试节流不能解决所有权问题。
-- 规避：首次迁移仅识别已经匹配原生文件的档案；之后以共享提交记录为唯一选择来源，五秒心跳只跟随，不创建原生文件或回写旧档案。手动发送和排队出队不保留面板配置快照，任务启动准备读取当时当前档案。切换期间并发写入不保证事务隔离，以最后完成写入为准；旧子任务和后台定时任务不恢复旧绑定。明确恢复原配置仍需用户主动选择。
+- 规避：首次迁移仅识别已经匹配原生文件的档案；之后以共享提交记录为唯一选择来源，五秒心跳只跟随，不创建原生文件或回写旧档案。每次手动发送与排队出队携带所见档案及版本，执行准备在跨进程锁内复核，过期就刷新并拒绝，不抢回旧选择或静默改用新选择。同版本执行租约覆盖完整请求，期间拒绝切换/修改当前档案；旧子任务和后台定时任务不恢复旧绑定。Tab 不匹配时保留当前选择，只有用户明确选择恢复原配置才允许切换。
 - 任务失败排查：配置等待、读取、写入或校验失败立即阻止执行并显示错误，不再记录旧的警告后继续行为。检查当前档案、原生文件权限及外部写入竞争；失败不提交激活成功，不记录未成功应用的会话档案。常驻进程复用还必须检查配置指纹，不能只检查档案 ID。
 - 边界：不使用长期配置锁，不保证多个进程同时启动的读写原子性，也不迁移已启动的 CLI 进程；所有旧版本扩展窗口需重载，否则仍可能回写。
 - 验证：`npm run build`；配置服务、应用队列、`promptSessionHealth` 和面板运行时相关单测；用临时 HOME 重放显式切换及任务启动，禁止改写用户真实凭据。
@@ -1242,15 +1239,6 @@ rm -r "$result_directory"
 - `src/webview/loopGroupChatPanel.ts`
 - `src/extensionHost/promptRunRuntime.ts`
 - `src/panelDiagnostics.ts`
-
-## 单题决策澄清不能依赖用户先说“问我需求”
-
-- 首次发现：2026-11-17；适用范围：Vibe 自然语言人工交互兜底。
-- 现象：模型把“‘撤销验收’希望如何处理？”和两个无编号选项作为最终答复，没有弹窗。
-- 根因：共享 parser 要求原始输入明确要求询问需求，通常至少识别两题，且不支持普通文本选项行；仅强化模型提示无法补齐宿主漏判。
-- 规避：对整段明确请求用户决策的一到三题增加共享解析路径；选项按行完整保留，不按逗号或“或”拆开。普通结果、引用、代码和文档示例需保留反例。保留原有显式需求询问兼容及关闭/Loop 边界。
-- 验证：core parser 回归使用用户原例；interactive/one-shot 回归确认表单替换问题气泡与提交续接，并覆盖拒绝、开关关闭和 Loop 边界。真实 Codex 最小验证使用隔离 HOME 与本机模拟响应，确认单题双选项及同一 thread 两轮续接；它不代替图形宿主弹窗或真实模型遵循指令的验收。
-- 事实来源：`src/humanInteraction.ts`、`.ch/docs/design-docs/vscode-cli-extension-runtime.md#Vibe 澄清与最终答复`。
 
 ## 人工交互自然语言兜底不能只识别“可选：”候选项
 
@@ -3043,3 +3031,19 @@ rm -r "$result_directory"
 - 用户中止携带点击时的 `tabId`，主标签先停止同一父任务全部活动执行；`preemptActivePromptRun` 优先局部取消当前运行器。Loop+ 先关闭内存调度门并取消请求，再保存停止快照。
 - 标签切换和关闭回退先发送目标消息，再等待配置恢复；长历史和连续指令组都须分批，不能为维持折叠组把整个指令长串塞入一批。
 - 回归入口：`src/test/extensionHost/loopPlusRuntimeWiring.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`。页面验收复用 `chromium-playwright-smoke` skill：`.agents/skills/chromium-playwright-smoke/SKILL.md`。
+
+## 部门旧宿主持有来源时不要清理 owner marker
+
+- 现象：新 Extension Host 启动产研部任务时提示“部门受控任务来源无法取得独占所有权或尚需恢复，拒绝启动”。多个窗口共享 `department-tasks-v1`；另一个有效宿主持有 owner marker 时，该根不能同时再被新宿主 claim。
+- 处理：走 `createDepartmentProductionTaskStoreForHost`。确认仅为独占 claim 冲突后，新宿主改用另一登记的空来源，或创建独立空目录并在共享 writer gate 下追加目录。保留旧来源、任务、marker、身份和墓碑，不按 PID/时间删锁、不尝试接管或重放旧任务。
+- 边界：未知 owner、损坏/锁定 catalog、非空或重叠来源、未完成事务仍拒绝。仅当未发布 catalog 结构有效且全部旧登记来源根已消失时，才允许新空来源恢复完整身份目录并保留墓碑。
+- 验证：`node --test dist/test/extensionHost/departmentHostTaskStore.test.js dist/test/extensionHost/departmentProductionTaskStore.test.js dist/test/loop/loopTaskIdentityCatalog.test.js dist/test/extensionHost/departmentOwnedTaskSource.test.js dist/test/extensionHost/departmentOwnedSourceController.test.js dist/test/extensionHost/departmentOwnedTaskRepository.test.js`；隔离 HOME 子进程覆盖旧 owner 存活及已退出情况。
+
+## 部门角色必须复用 Loop / Loop+ 的全部 CLI 能力
+
+- 现象：组长启动报 `department-producer-role-or-task-invalid`，尤其是组长或员工选择 Grok/Claude 等 CLI 时。
+- 根因：产研新增层另设 Codex/OpenCode 白名单，未接入现有交互 runner；只放开配置仍会在主任务 native session 校验和代次 authority 绑定时失败。
+- 修复：共用 `CLI_LIST`，其余五种通过 `departmentinteractiveruntime.ts` 接入原 ledger、authority 和 Owner；不重造 CLI 协议。ACP 在握手后、prompt 前绑定；Claude 使用原生 `--session-id` UUID，在 SDK 启动前绑定。本地 `local_` 键不得冒充 native ID。
+- 清理：捕获真实 runner，并等待原 child `close` 或 Claude SDK iterator 排空；DSH/Kimi 重复清理观察不能取消仍在等待的信号升级。使用 adapter 资源管理的部门员工也要等原 Owner 观察成功，再清理目录/Tab 和归还名额。
+- 验证：`departmentinteractiveruntime.test.ts` 覆盖全部通用组长、多轮、混合员工、停止、失败及真实免费 Grok ACP 子进程；配置/Webview 覆盖七种可选，Claude 回归检查 UUID 授权先于 SDK 启动。验证不修改用户旧任务或 Owner/容量文件；当前安装版须另行加载源码构建结果。
+- 记录：本方案取代早先只允许两种 CLI 的临时处理，见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-all-cli-execution.md)。

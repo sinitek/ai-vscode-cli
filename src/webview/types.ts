@@ -10,7 +10,6 @@ import type { LoopTaskStatus } from "../loopTaskStore";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
 import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
-import type { NewTaskInteractiveMode } from "../toolSettings";
 import type {
   LoopPlusAcceptancePlan,
   LoopPlusAcceptancePlanCheckKey,
@@ -38,6 +37,7 @@ export type PanelMessage =
   | { type: "resolveChatImage"; source: string }
   | { type: "downloadChatImage"; source: string; alt?: string }
   | { type: "reconcileRunningConversationTabs" }
+  | { type: "pendingPromptQueueChanged"; hasPendingPrompts: boolean }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }
   | { type: "selectCliLoopModel"; cli: CliName; role: "main" | "subtask"; model: string | null; configId?: string | null }
@@ -60,11 +60,19 @@ export type PanelMessage =
   | { type: "clearAllSessions" }
   | { type: "clearPromptHistory" }
   | { type: "recordPromptHistory"; prompt: string; cli?: CliName }
-  | { type: "pendingPromptQueueChanged"; hasPendingPrompts: boolean }
   | { type: "togglePromptHistoryFavorite"; id: string; favorite?: boolean }
   | { type: "togglePromptHistoryGlobal"; id: string; global?: boolean }
   | { type: "refreshPromptHistory" }
   | { type: "updateSetting"; key: string; value: unknown }
+  | {
+      type: "updateDepartmentRolePreference";
+      scope?: string;
+      role: "leader" | "employee";
+      directorConfigId: string;
+      requestId: string;
+      preference: import("../departmentConfiguration").DepartmentConfiguredRoleRoute;
+    }
+  | { type: "requestDepartmentRoleCandidates"; scope?: string; role: "leader" | "employee"; requestId: string; cli: CliName; configId: string | null }
   | {
       type: "humanInteractionResponse";
       interactionId: string;
@@ -80,6 +88,7 @@ export type PanelMessage =
   | { type: "repairCliCommand"; cli: CliName }
   | {
       type: "sendPrompt";
+      departmentConfigurationScope?: string;
       requestId?: string;
       pauseBeforeSend?: boolean;
       prompt: string;
@@ -274,8 +283,6 @@ export type SessionSummary = {
 };
 
 export type ConversationTabSummary = {
-  loopSubtaskId?: string;
-  loopSubtaskRunning?: boolean;
   taskSummary?: string;
   id: string;
   cli: CliName;
@@ -286,9 +293,21 @@ export type ConversationTabSummary = {
   loopTaskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopTaskRunning?: boolean;
+  loopSubtaskRunning?: boolean;
+  loopSubtaskId?: string;
   loopTaskStatus?: LoopTaskStatus;
   loopSchedulingMode?: "classic" | "event_driven";
   loopMainTabCloseLocked?: boolean;
+  /** Host-projected display hint only; it does not establish organization permissions. */
+  readonly departmentPresentation?: DepartmentConversationTabPresentation;
+};
+
+export type DepartmentConversationTabPresentation = {
+  readonly role: "director" | "leader" | "employee";
+  readonly rootTaskId: string;
+  readonly taskId: string;
+  readonly moduleTitle: string;
+  readonly employeeSubtaskId?: string;
 };
 
 export type PromptHistoryItem = {
@@ -388,6 +407,9 @@ export type PanelState = {
   codeGraphInstalling: boolean;
   autoCompactContextAfterRun: boolean;
   humanInteractionEnabled: boolean;
+  loopEnabled?: boolean;
+  loopPlusEnabled?: boolean;
+  departmentEnabled?: boolean;
   humanInteractionNotifications?: boolean;
   taskCompletionNotifications?: boolean;
   humanInteractionWindowAttention?: boolean;
@@ -399,10 +421,18 @@ export type PanelState = {
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
   hideInstructionBubbles?: boolean;
-  newTaskInteractiveMode?: NewTaskInteractiveMode;
+  newTaskInteractiveMode: import("../toolSettings").NewTaskInteractiveMode;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
   loopPlusSubtaskMaxRounds: number;
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
+  workspaceDepartmentMaxLeaders?: number | null;
+  workspaceDepartmentMaxEmployees?: number | null;
+  departmentConfigurationScope?: string;
+  departmentConfigurationIssue?: string | null;
+  departmentRolePreferences?: Partial<import("../departmentConfiguration").DepartmentRolePreferences>;
+  departmentDirector?: import("../departmentConfiguration").DepartmentConfiguredRoleRoute;
   debug: boolean;
   isMac: boolean;
   macTaskShell: MacTaskShell;

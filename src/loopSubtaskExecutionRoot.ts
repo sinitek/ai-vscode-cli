@@ -9,6 +9,18 @@ const EXECUTION_ROOT_PREFIX = "sinitek-loop-subtask-";
 export const LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME = ".sinitek-loop-tmp";
 export const LOOP_SUBTASK_LINK_FAILED_CODE = "LOOP_SUBTASK_LINK_FAILED";
 
+export function isGrokLoopExecutionRootId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+export function resolveGrokLoopExecutionCwd(workspaceCwd: string, rootId: string, dataDir: string): string {
+  if (!isGrokLoopExecutionRootId(rootId)) throw new Error("Grok 子任务执行目录标识无效。");
+  const base = process.platform === "win32" && !isSameVolumePath(workspaceCwd, dataDir)
+    ? path.join(workspaceCwd, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME)
+    : path.join(dataDir, "grok-loop-workspaces");
+  return path.join(base, `grok-${rootId}`);
+}
+
 const HIDDEN_ROOT_ENTRIES = new Set([
   "AGENTS.md",
   "CLAUDE.md",
@@ -18,14 +30,21 @@ const HIDDEN_ROOT_ENTRIES = new Set([
   LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME,
 ]);
 
+export type LoopSubtaskCleanupResult =
+  | { ok: true; retainedDirectory: boolean }
+  | { ok: false; reason: string };
+
 export type LoopSubtaskExecutionRoot = {
   cwd: string;
-  dispose: () => void;
+  dispose: () => LoopSubtaskCleanupResult;
+  /** Recheck the original physical directory before using a retained capability. */
+  assertCurrent: () => void;
 };
 
 export type LoopSubtaskLinkFailedError = Error & {
   code: typeof LOOP_SUBTASK_LINK_FAILED_CODE;
   entryName: string;
+  cleanupResult?: LoopSubtaskCleanupResult;
 };
 
 type LoopSubtaskLinkedEntry = {
@@ -65,15 +84,21 @@ export function createLoopSubtaskExecutionRoot(
       }
     }
   } catch (error) {
-    disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd));
+    const cleanupResult = disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd));
+    (error as LoopSubtaskLinkFailedError).cleanupResult = cleanupResult;
     throw error;
   }
 
   return {
     cwd,
-    dispose: () => {
-      disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd));
+    assertCurrent: () => {
+      assertExecutionRootIdentity(cwd, rootIdentity);
+      for (const entry of linkedEntries) {
+        const current = fs.lstatSync(entry.targetPath, { bigint: true });
+        if (!isSameIdentity(entry.identity, current)) throw new Error("隔离执行根链接身份已改变");
+      }
     },
+    dispose: () => disposeExecutionRoot(cwd, localTempRoot, rootIdentity, linkedEntries, Boolean(options.persistentCwd)),
   };
 }
 
@@ -119,14 +144,16 @@ function disposeExecutionRoot(
   rootIdentity: fs.BigIntStats,
   linkedEntries: LoopSubtaskLinkedEntry[],
   preserveDirectory = false,
-): void {
+): LoopSubtaskCleanupResult {
+  const failure = (error: unknown): LoopSubtaskCleanupResult => ({ ok: false, reason: error instanceof Error ? error.message : String(error) });
   try {
     assertExecutionRootIdentity(cwd, rootIdentity);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       logCleanupFailure(cwd, cwd, error);
+      return failure(error);
     }
-    return;
+    return { ok: true, retainedDirectory: false };
   }
 
   const remainingEntries = linkedEntries.filter((entry) => {
@@ -142,7 +169,7 @@ function disposeExecutionRoot(
   linkedEntries.splice(0, linkedEntries.length, ...remainingEntries);
 
   if (linkedEntries.length > 0) {
-    return;
+    return failure(new Error(`隔离执行目录仍有 ${linkedEntries.length} 个链接未清理，已保留现场`));
   }
   try {
     assertExecutionRootIdentity(cwd, rootIdentity);
@@ -150,7 +177,7 @@ function disposeExecutionRoot(
       if (fs.readdirSync(cwd).length > 0) {
         throw new Error("隔离执行目录包含未知内容，已保留现场并跳过清理");
       }
-      return;
+      return { ok: true, retainedDirectory: true };
     }
     fs.rmdirSync(cwd);
     if (localTempRoot) {
@@ -160,8 +187,10 @@ function disposeExecutionRoot(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       logCleanupFailure(cwd, cwd, error);
+      return failure(error);
     }
   }
+  return { ok: true, retainedDirectory: false };
 }
 
 function assertExecutionRootIdentity(cwd: string, identity: fs.BigIntStats): void {

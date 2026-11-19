@@ -5,6 +5,8 @@ import type { ConversationExecutionProfile } from "./webview/types";
 import type { LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 
 export type PromptRunInput = {
+  /** Host-validated root configuration snapshot, captured once by the department start boundary. */
+  departmentConfiguration?: import("./departmentConfiguration").DepartmentConfigurationState;
   displayPrompt: string;
   modelPrompt: string;
   contextTags: string[];
@@ -39,6 +41,8 @@ export type PromptRunInput = {
   loopSubtaskId?: string;
   loopAttemptId?: string;
   executionCwd?: string;
+  grokLoopExecutionRootId?: string;
+  grokLoopResumeSessionId?: string | null;
   isolateProjectInstructions?: boolean;
   skipLongTermMemoryPersist?: boolean;
   thinkingModeOverride?: ThinkingMode;

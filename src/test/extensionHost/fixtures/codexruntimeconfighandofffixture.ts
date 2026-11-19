@@ -39,7 +39,7 @@ export async function waitForConfigHandoff(predicate: () => boolean, label: stri
 /** Real identity, manager, public runner and pool; only OS processes/probes and RPC peer are controlled. */
 export function createCodexRuntimeConfigHandoffFixture(context: TestContext, home: string, cwd: string) {
   blockRealProcessSignals(context);
-  context.mock.method(require("../../../interactive/codexAppServerCapabilities"), "resolveCodexThreadUnloadCapability",
+  context.mock.method(require("../../../interactive/codexAppServerCapabilitiesCore"), "resolveCodexThreadUnloadCapability",
     async () => ({ supported: true, reason: "supported", version: "0.167.0" }));
   const { InteractiveRunnerManager } = require("../../../interactive/manager") as typeof import("../../../interactive/manager");
   const { shutdownCodexAppServerPool, countAliveCodexAppServerConnections } = require("../../../interactive/codexAppServerPool") as typeof import("../../../interactive/codexAppServerPool");

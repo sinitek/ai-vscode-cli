@@ -1,7 +1,7 @@
 {
   "$schema": "../ontology.schema.json",
   "version": "1.0.0",
-  "as_of": "2026-10-02",
+  "as_of": "2026-11-16",
   "collection": "cross-domain-workflows",
   "workflows": [
     {
@@ -9,13 +9,43 @@
       "name": "CLI 插件功能变更的 harness 流程",
       "description": "一次涉及插件运行时的非平凡变更，应先读取规则和 ontology，再用执行计划记录范围，最终验证并按记忆规则收尾。",
       "status": "active",
-      "domains": ["cli-plugin-runtime", "harness-governance"],
-      "trigger": "用户请求新增、修复或调整插件运行时、CLI 调用、会话、Loop/Loop+ 或配置能力。",
-      "outcome": "代码、测试、文档和 ontology 状态一致，执行计划记录验证结果。",
+      "domains": [
+        "cli-plugin-runtime",
+        "harness-governance"
+      ],
+      "trigger": "用户请求新增、修复或调整插件运行时、CLI 调用、会话、Loop/Loop+、产研部组织或配置能力。",
+      "outcome": "代码、测试、文档和 ontology 状态一致，执行计划记录验证结果；产研部按已实现模块、已装配能力及真实验证范围分别记事实，不把未验收中央/tab 接线写成运行保证。模式可用性由宿主保护用户新建面板及定时任务入口，配置等待后复核；续接和可信内部 Loop+ 派发保持兼容。round-332 设置面板隔离 Chromium 检查通过；部门会话 smoke 被既有角色 Tab fixture 的标题断言阻断，真实 VS Code/CLI 链路仍待主审验收。",
       "source_refs": [
-        {"path": "AGENTS.md"},
-        {"path": ".ch/docs/ontology/README.md"},
-        {"path": ".ch/docs/exec-plans/README.md"}
+        {
+          "path": "AGENTS.md"
+        },
+        {
+          "path": ".ch/docs/ontology/README.md"
+        },
+        {
+          "path": ".ch/docs/exec-plans/README.md"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md"
+        },
+        {
+          "path": "src/modeAvailability.ts"
+        },
+        {
+          "path": "src/sessionMessageActions.ts"
+        },
+        {
+          "path": "src/extension.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentorchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentOwnershipIndex.ts"
+        },
+        {
+          "path": "src/departmentConfiguration.ts"
+        }
       ],
       "steps": [
         {
@@ -35,7 +65,7 @@
         {
           "order": 3,
           "actor": "plugin.extension_host",
-          "action": "在正确分层内实现并连接 CLI、Webview 或会话改动",
+          "action": "在正确分层内实现并连接 CLI、Webview 或会话改动；部门集成分别核对可信归属来源/唯一实例、固定方案、租约及配置代次，缺少可信生产端口时保持拒绝",
           "object": "plugin.chat_panel",
           "result": "plugin.cli_session"
         },
@@ -80,6 +110,348 @@
           "action": "按差异矩阵手工合并通用规则，不覆盖项目事实、记忆热区、generated 索引、执行计划和专属 skills",
           "object": "harness.workspace_scaffold",
           "result": "harness.execution_plan"
+        }
+      ]
+    },
+    {
+      "id": "scenario.department_employee_execution_admission",
+      "name": "部门员工原生准备前登记与启动授权",
+      "description": "可信宿主按权威根/代次/attempt/容量租约固定scope、selection和requirements，在builder/原生准备前Ledger.admit，首次session持久回读/原子binding/commit与最终grant均在同次准入。Codex/OpenCode准备链使用同一producer，未知准备不替代重试。决策余额不预留；真实host启动原子重判，零余额且本组已有未释放超额时不同新attempt明确failed进入精确Loop+验收，无新waiter/资源；取消仍stopped，已有held/pending完整身份幂等，余额回正可正常授予。OpenCode原worker用认证loopback无prompt创建/核验session，原生目录匹配原canonical根；根创建后先捕获原assert/dispose再首次realpath/assert，核验异常沿原dispose，清理失败保留根/配置租约/责任容量。真实child close/drain、overlay/lease及原EH tab能力逐项释放，原完整required receipt加原stopped才done；原生session历史保留。round-369真实员工受控tab/原生排空与round-372根能力4项分别接受。协议 v1 finalizing 严格仅 status/identity/claimGeneration、无 receipt：原 Server 仍持精确 entry/handle、terminal/drain 已核验且正在原 cleanup，并与持久 live identity/revision/claim/requirements 一致。原 client 仅对 live/finalizing 串行沿用 250ms→5s 退避；unknown/conflict/失联/坏证据立即拒绝。finalizing 不缓存成功、不释放容量、不 spawn、不递增 handoff claim；close 拒绝并保留锁。员工 done 仍需原完整 required receipt 与原 stopped。round-372 最终 Owner/facade 27 项与未变 client/verifier 17 项为分批有效结果，不是一次44项运行或最新全角色 EH。round-375 三角色全 OpenCode 默认模型公开新建已按限定场景接受；round-378 同宿主 move 204 后 GET 冷读新目录，原 session 保持、新代独立 Owner/root，六原 Owner 完整 receipt、员工 stopped、三个 CLOSED、grant前持久读回和容量归还后再派发在限定公开场景成立。round-378 整项实现当时未过主审的历史保留；round-382 已修复 A→B→C 永久 reservation 与自身重试误认当前 open 来源。实体标准 build、26 个不同定向用例及代码合同主审通过；round-400 macOS/OpenCode 1.19.5 两次公开 stop/continue 实际到达 A→B→C、8 Owner/4 CLOSED、C 验收、第二模块与总监汇报；原 driver result 仍 failed，修正后 mixed/successive/native 只读审计 3 项通过，不是新的一次完整 EH pass，且 observer 最终源码与 EH 快照不同。round-382 Codex-only 冷启动 EH 因缺 Playwright 在公开 UI 发送前失败，没有任务/binding/Owner/第二 EH 观察。round-400 唯一 cold 运行仅观察员工 binding、原 Owner live、首 EH 正常退出且退出后 binding/容量保留；第二 EH target discovery 超时并强制回收，未到公开 stop/warning 或第二宿主控制快照。running leader 缺原 producer provenance/完整聚合仍 fail closed 并保留容量。未覆盖全树停止继续、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；各批证据不累计，不新增付费模型质量或无限平台门禁。",
+      "status": "active",
+      "domains": [
+        "cli-plugin-runtime",
+        "harness-governance"
+      ],
+      "trigger": "可信宿主请求一个精确部门员工 attempt 的首次准备；恢复已有 binding 时仅观察。",
+      "outcome": "先持久责任，原子 binding 并精确回读后才授权一次启动；失败、取消、策略冲突及迟到响应保留 null/原 binding 和容量，无能力不准备、不回退旧 bindExecution。已装配 Codex 及 OpenCode employee process 资源桥在真实物理/消费者排空、原精确 tab 关闭回读后，由原 Owner 生成 required 完整 receipt；员工消费者只归还其员工租约。生产 observeLeaderCleanup 对同宿主新建且从首次准备完整覆盖的集合，复用原 client 私有 socket 成功观察、核对 selection/完整 binding，并最终冷读后先持久移除组长租约再 release；无原观察且 socket 不可达仍 unknown，禁止磁盘 cleaned 补成功。round-350 已在 macOS 安装版 EH、真实 Codex 0.167.2 binary 与本机确定性 Responses fixture 的新建场景验证四原 Owner receipt 和容量归还后再派发；不证明远程模型质量或其它平台。round-375 接受三角色全 OpenCode 默认模型公开新建场景的完整凭证、CLOSED、容量归还和第二派发。round-378 的全角色 OpenCode stop→continue 限定最终执行场景另验证六原 Owner 完整凭证、三个 CLOSED、容量持久归还后第二派发、总监汇报及 session move 后 GET 冷读新目录；该实现当时未过主审的历史保留；round-382 已修复 A→B→C reservation 与自身重试来源识别，实体 build、26 个不同定向用例及代码合同主审通过，round-400 passive-ack observer 的最终隔离 build 与定向 IPC 10/10 通过：原 fork/send 参数、receiver、返回与 callback 保持，只有真正 grant 才读回，普通 callback ACK 跳过，观察异常不阻断/改写原 send；此为 fixture 证据，不是生产冷恢复证明。唯一 cold EH 仅到员工 binding、原 Owner live、首 EH 正常退出和退出后 binding/容量保留；第二 EH target discovery 超时并强制回收，未到公开 stop/warning 或第二宿主控制快照。失败/未知保留占用；冷宿主缺原 producer provenance/完整聚合不接管 running leader；连续续接公开 EH、完整全树停止继续、必要平台及最终根组合仍是门禁。",
+      "source_refs": [
+        {
+          "path": "src/extensionHost/departmentemployeeexecutionadmission.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentprocesspreparation.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentcodexpreparation.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-employee-execution-admission.md"
+        },
+        {
+          "path": "src/extensionHost/departmentexecutionproducer.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentleaderproductionhost.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+        },
+        {
+          "path": "src/extension.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+        },
+        {
+          "path": "src/extensionHost/departmentexecutionresources.ts"
+        },
+        {
+          "path": "src/test/runtime/departmentcodexresourcerelease.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentcodextabrelease.test.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentproductioncleanup.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+        },
+        {
+          "path": "src/departmentcapacity.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentorchestration.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-loopplus-regression-contracts.md"
+        },
+        {
+          "path": "src/runtime/departmentopencodesessionpreparation.ts"
+        },
+        {
+          "path": "src/test/runtime/departmentopencodesessionpreparation.test.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-process-production-bootstrap.md"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md"
+        },
+        {
+          "path": "src/runtime/departmentprocessownerworker.ts"
+        },
+        {
+          "path": "src/runtime/departmentexecutionowner.ts"
+        },
+        {
+          "path": "src/runtime/departmentexecutionownerclient.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-execution-owner.md"
+        },
+        {
+          "path": "src/test/extensionHost/departmentprocessfinalizingobservation.test.ts"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-opencode-continuation.md"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-cold-start-verification.md"
+        }
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "actor": "plugin.extension_host",
+          "action": "核对权威任务、路线、组织代次、真实 attempt 与容量，固定八字段 selection 及资源策略；新根人数逐项使用合法工作区覆盖、合法全局、4/20默认的生产配置快照，后续准入及冷恢复沿用冻结原根，不因保存新覆盖迁移运行容量",
+          "object": "plugin.department_task",
+          "result": "plugin.department_execution_responsibility"
+        },
+        {
+          "order": 2,
+          "actor": "plugin.department_execution_producer",
+          "action": "Ledger.admit 先登记责任，再在同次准入内准备、持久 session、原子绑定和最终复核 grant",
+          "object": "plugin.department_execution_responsibility",
+          "result": "plugin.cli_session"
+        },
+        {
+          "order": 3,
+          "actor": "harness.ontology",
+          "action": "记录既有生产员工准入与资源桥，以及 round-375 已接受的 macOS 三角色全 OpenCode 默认模型公开新建场景：两模块、四原 Owner 完整 required receipt、员工 stopped、两个精确 CLOSED 集合、首次 grant 前持久身份/binding 回读、容量持久归还后第二次实际派发及总监汇报；该新建快照不证明 OpenCode 跨代继续、冷恢复或必要平台",
+          "object": "plugin.department_execution_producer",
+          "result": "plugin.department_leader_execution_set"
+        }
+      ]
+    },
+    {
+      "id": "scenario.department_leader_native_owner",
+      "name": "组长多轮原生 Owner 与逐轮授权核心",
+      "description": "开发中中央可信宿主已装配 composition、组织/容量 host、根控制、生产来源 store 及真实 Loop+ adapter。Codex 独立多轮原生 Owner 与 OpenCode 固定代次 process Owner/私有 bootstrap 已接线；OpenCode leader 当前由 tab-isolated parallel consumer 消费输出/取消，one-shot/template 仍仅作零重试等相关来源。Ledger 首次登记、精确配置/原生 executionSession 读回及原子 binding 先于 grant，每轮串行 resume 且完整 drain 后才准下一轮。只读 validator 逐次核验持久 session、调用内固定首个成功ID，不写普通metaStore。canonical隔离根与准备/任务/session目录一致，原host root capability只供同代释放。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-372 UI/持久null不变，可信新根固化三角色OpenCode同档案具体默认，异步配置/目标/保存屏障漂移拒绝；26项及限定默认混合EH有效，但其Owner快照较早。协议 v1 finalizing 严格仅 status/identity/claimGeneration、无 receipt：原 Server 仍持精确 entry/handle、terminal/drain 已核验且正在原 cleanup，并与持久 live identity/revision/claim/requirements 一致。原 client 仅对 live/finalizing 串行沿用 250ms→5s 退避；unknown/conflict/失联/坏证据立即拒绝。finalizing 不缓存成功、不释放容量、不 spawn、不递增 handoff claim；close 拒绝并保留锁。员工 done 仍需原完整 required receipt 与原 stopped。round-372 最终 Owner/facade 27 项与未变 client/verifier 17 项为分批有效结果，不是一次44项运行或最新全角色 EH。round-375 三角色全 OpenCode 默认模型公开新建 EH 已按限定场景接受，覆盖两模块、四原 Owner 完整 receipt、两 CLOSED 全集、容量归还后第二次实际派发及总监汇报。round-378 macOS 安装版 OpenCode 1.19.5 全角色默认模型公开 stop→continue 的最终执行场景通过：原组长/员工 session 保持、新代独立 Owner/root、六原 Owner 完整 required receipt、员工 stopped、三个 CLOSED、首次 grant 前持久任务/binding 回读、容量归还后第二次实际派发和总监汇报；同宿主 move 204 后 GET 冷读新 canonical directory。整项实现当时未过主审的历史保留；round-382 已修复 A→B→C reservation 与自身重试来源识别，实体 build、26 个不同定向用例及代码合同主审通过，round-400 macOS/OpenCode 1.19.5 两次公开 stop/continue 实际到达 A→B→C、8 Owner/4 CLOSED、C 验收、第二模块与总监汇报；原 driver result 仍 failed，修正后 mixed/successive/native 只读审计 3 项通过，不是新的一次完整 EH pass，且 observer 最终源码与 EH 快照不同；round-400 当时整体主审失败保留为历史。round-403 后继修复已通过代码审查和定向回归：harness 自有 CDP 清理失败传播至 driver failure gate，迟到 discovery detach 受清理门禁约束；这不证明 Owner receipt、CLOSED、容量释放或生产恢复。round-403 cold EH 整体仍 failed；round-405 生产 API observer 使用真实 root 面板确认公开 stop 消息已送达并观察到 warning，但值为 invalid-recovery 而非 live-leader-unverifiable。缺完整控制后快照、四阶段身份及无新 grant/request 对照，round-405 整体主审仍 failed。CDP confirmed 仅证明 harness 自有资源门禁，原运行仍强制回收第二 EH；round-405时后补 settleColdPublicControl 仅有1项定向单测，最终 driver 未真实运行，不能合并不同快照。round-405时该生产冷 stop 路由准备修复已派发待审；round-408后续修复已完成并通过定向审查。round-382 Codex-only 冷 EH 因 Playwright 缺失停在公开 UI 发送前，无任务/binding/Owner/第二 EH 观察。round-400 唯一 cold 运行仅观察员工 binding、原 Owner live、首 EH 正常退出且退出后 binding/容量保留；第二 EH target discovery 超时并强制回收，未到公开 stop/warning 或第二宿主控制快照。running leader 缺原 producer provenance/完整聚合仍 fail closed 并保留容量。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；各批证据不累计，不新增付费模型质量或无限平台门禁。 round-405/408 的 warning、证据缺口及整体失败均为各自历史快照：round-405 为 invalid-recovery 且原运行强制回收第二 EH；round-408 为 unverified-leader-session-or-plan、完整冷对照不足且第二 EH 自行 exit 1。round-410 后继只读身份边界修复已由代码主审接受，实体标准 build 与13项身份、5项恢复/继续、3项 composition 用例分别通过。唯一 macOS 安装版 Codex 0.167.2 / VS Code 1.144.0 免费 loopback cold 场景通过安全只读拒绝：公开 stop 精确命中 live-leader-unverifiable；完整 beforeActivation/afterActivation/beforeControl/afterControl 身份、selection、requirements、方案/档案、session/attempt、责任全集及保留容量一致；无新 grant/责任，provider 请求保持6→6→6，无自动重播；CDP 无诊断，两 EH 自然 exit 0、无强制回收。生产 verifyStoredLeaderIdentity 复用 RuntimeStore、真实 transcript parser 与原 binding validator，仅返回 boolean，不生成 target/live/provenance、不建 tab、不写盘；无效身份仍拒绝为 unverified-leader-session-or-plan，running leader 缺真实 target 时在成员登记、容量恢复或持久写入前拒绝。endpoint unknown/unreachable、employee live、责任 open、原 binding 与容量保持；本场景不证明恢复接管、Owner receipt/CLOSED、员工验收或容量归还。round-400 successive 原 driver/整体主审 failed 及3项只读离线审计、执行快照与 observer 源码差异均保持原边界。必要平台、未覆盖来源/角色、可恢复接管及最终 Git 合理合并/合并树全量回归仍开放。",
+      "status": "active",
+      "domains": [
+        "cli-plugin-runtime",
+        "harness-governance"
+      ],
+      "trigger": "可信宿主为同一组长协调代次依次提交不可变 main invocation，或显式封闭新增调用。",
+      "outcome": "重复幂等、冲突/未知不重放；grant 前取消/撤权/封闭不启动，grant 后原 Owner 跨启动宿主退出存活。closing 的原代回调仅使用同代只读 observation scope，不为后继授权；真实 native/consumer/resource drain、原精确 tab 关闭回读后，由原 Owner 按 required 策略生成 receipt。producer 封闭/drain 后持久 closure，完整集合逐项验证原 client、selection、binding 和 requirements，最终冷读后持久移除租约才 release；不从磁盘 cleaned 补成功。Owner 资源事实、原 receipt 生成、可信观察、完整聚合和容量消费是不同门槛。未知/失败/缺能力继续保留占用；tracker/token 不等于 native drain、完整 receipt、CLOSED 集合或容量。早期 OpenCode 受控 host 组合与只读 validator 不证明真实 OpenCode/EH；round-378 限定 macOS 安装版公开 stop→continue 场景有真实 EH 执行事实，整项当时未过主审的历史保留；round-382 后继修复已通过代码合同审查、实体 build 与 26 个不同定向用例，round-400 macOS/OpenCode 1.19.5 两次公开 stop/continue 实际到达 A→B→C、8 Owner/4 CLOSED、C 验收、第二模块与总监汇报；原 driver result 仍 failed，修正后 mixed/successive/native 只读审计 3 项通过，不是新的一次完整 EH pass，且 observer 最终源码与 EH 快照不同；round-400 当时整体主审失败保留为历史。round-403 后继修复已通过代码审查和定向回归：harness 自有 CDP 清理失败传播至 driver failure gate，迟到 discovery detach 受清理门禁约束；这不证明 Owner receipt、CLOSED、容量释放或生产恢复。round-403 cold EH 整体仍 failed；round-405 生产 API observer 使用真实 root 面板确认公开 stop 消息已送达并观察到 warning，但值为 invalid-recovery 而非 live-leader-unverifiable。缺完整控制后快照、四阶段身份及无新 grant/request 对照，round-405 整体主审仍 failed。CDP confirmed 仅证明 harness 自有资源门禁，原运行仍强制回收第二 EH；round-405时后补 settleColdPublicControl 仅有1项定向单测，最终 driver 未真实运行，不能合并不同快照。round-405时该生产冷 stop 路由准备修复已派发待审；round-408后续修复已完成并通过定向审查。round-382 Codex-only 冷 EH 因 Playwright 缺失在公开 UI 发送前失败，无任务/binding/Owner/第二 EH 观察。round-400 唯一 cold 运行仅观察员工 binding、原 Owner live、首 EH 正常退出且退出后 binding/容量保留；第二 EH target discovery 超时并强制回收，未到公开 stop/warning 或第二宿主控制快照。running leader 缺原 producer provenance/完整聚合仍 fail closed 并保留容量。round-375 已接受三角色全 OpenCode 默认模型公开新建场景。停止后同宿主显式继续的交付结算与原 Owner 清理独立：failed review 的成功派发可持久化精确 repairSource，后继全部通过才结算对应当前失败 attempt；continueFrom 只恢复 session，不结算需求。历史失败保留，全部开放工作/最终需求覆盖门禁仍成立，不从 task completed 或空容量推断完整组织成功。各代组长真实结算统一幂等通知总监，清理未知仍 blocked；显式继续先等待旧总监完整 finalizer 并复核撤销身份，再移交 ownership，旧代迟到结果不能复活或覆盖新代。wake revision 保留模型调用期间的唤醒，同根无并行总监循环；通知不替代 receipt/CLOSED/容量凭证。round-366 macOS 安装版 VS Code/Codex 公开 stop-continue 在免费本机 Responses 下完整通过：后继组长结算唤醒总监，六原 Owner 完整 receipt、三代集合 CLOSED、持久容量移除后下一模块实际执行及总监最终汇报；不外推冷恢复、真实 OpenCode、其它平台、真实模型质量或合并后全量回归。round-369 混合新建、round-375 三角色默认模型公开新建均按各自快照接受。各批证据不累计为单次全量运行。 round-405/408 的 warning、证据缺口及整体失败均为各自历史快照：round-405 为 invalid-recovery 且原运行强制回收第二 EH；round-408 为 unverified-leader-session-or-plan、完整冷对照不足且第二 EH 自行 exit 1。round-410 后继只读身份边界修复已由代码主审接受，实体标准 build 与13项身份、5项恢复/继续、3项 composition 用例分别通过。唯一 macOS 安装版 Codex 0.167.2 / VS Code 1.144.0 免费 loopback cold 场景通过安全只读拒绝：公开 stop 精确命中 live-leader-unverifiable；完整 beforeActivation/afterActivation/beforeControl/afterControl 身份、selection、requirements、方案/档案、session/attempt、责任全集及保留容量一致；无新 grant/责任，provider 请求保持6→6→6，无自动重播；CDP 无诊断，两 EH 自然 exit 0、无强制回收。生产 verifyStoredLeaderIdentity 复用 RuntimeStore、真实 transcript parser 与原 binding validator，仅返回 boolean，不生成 target/live/provenance、不建 tab、不写盘；无效身份仍拒绝为 unverified-leader-session-or-plan，running leader 缺真实 target 时在成员登记、容量恢复或持久写入前拒绝。endpoint unknown/unreachable、employee live、责任 open、原 binding 与容量保持；本场景不证明恢复接管、Owner receipt/CLOSED、员工验收或容量归还。round-400 successive 原 driver/整体主审 failed 及3项只读离线审计、执行快照与 observer 源码差异均保持原边界。必要平台、未覆盖来源/角色、可恢复接管及最终 Git 合理合并/合并树全量回归仍开放。",
+      "source_refs": [
+        {
+          "path": "src/departmentConfiguration.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentConfigurationHost.ts"
+        },
+        {
+          "path": "src/extensionHost/modelSettings.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentopencodedefaultmodel.test.ts"
+        },
+        {
+          "path": "scripts/fixtures/department_full_eh_scenario.js"
+        },
+        {
+          "path": "scripts/fixtures/opencode_local_provider_server.js"
+        },
+        {
+          "path": "src/loopPlusCompletion.ts"
+        },
+        {
+          "path": "src/runtime/departmentleadercodexowner.ts"
+        },
+        {
+          "path": "src/runtime/departmentleaderprocessowner.ts"
+        },
+        {
+          "path": "src/runtime/departmentleaderprocessownerworker.ts"
+        },
+        {
+          "path": "src/runtime/departmentleaderprocesscontract.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentleaderprocessbootstrap.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-opencode-leader-owner-core.md"
+        },
+        {
+          "path": "src/runtime/departmentleadercodexownerworker.ts"
+        },
+        {
+          "path": "src/runtime/departmentleadercodexcontract.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentleadercodexbootstrap.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-leader-native-owner.md"
+        },
+        {
+          "path": "src/extensionHost/departmentexecutionproducer.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentleaderproductionhost.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+        },
+        {
+          "path": "src/extension.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-production-execution-wiring.md"
+        },
+        {
+          "path": "src/extensionHost/departmentexecutionresources.ts"
+        },
+        {
+          "path": "src/test/runtime/departmentcodexresourcerelease.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentcodextabrelease.test.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentproductioncleanup.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentgroupcapacity.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmenttreecontrolintegration.test.ts"
+        },
+        {
+          "path": "src/runtime/departmentopencodesessionpreparation.ts"
+        },
+        {
+          "path": "src/loopTaskStore.ts"
+        },
+        {
+          "path": "src/extensionHost/promptOneShotRuntime.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentleaderproductionhost.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentfullehproductionhost.test.ts"
+        },
+        {
+          "path": "scripts/verify_department_full_eh_integration.js"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-full-eh-integration.md"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md"
+        },
+        {
+          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md"
+        },
+        {
+          "path": ".ch/docs/exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md"
+        },
+        {
+          "path": "ARCHITECTURE.md"
+        },
+        {
+          "path": "src/extensionHost/promptParallelRuntime.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentleadernativesessionvalidation.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentleadernativesessionvalidation.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentruntimecomposition.test.ts"
+        },
+        {
+          "path": "scripts/verify_codex_owned_native_drain.js"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-codex-native-drain-verification.md"
+        },
+        {
+          "path": "src/runtime/departmentexecutionowner.ts"
+        },
+        {
+          "path": "src/runtime/departmentexecutionownerclient.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-execution-owner.md"
+        },
+        {
+          "path": "src/test/extensionHost/departmentprocessfinalizingobservation.test.ts"
+        },
+        {
+          "path": "src/runtime/departmentprocessownerworker.ts"
+        },
+        {
+          "path": "src/test/runtime/departmentopencodesessionpreparation.test.ts"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-acceptance-coverage.md"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-opencode-continuation.md"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-cold-start-verification.md"
+        },
+        {
+          "path": "src/extensionHost/departmentleaderstoredidentity.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentruntimeintegration.test.ts"
+        }
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "actor": "plugin.extension_host",
+          "action": "从权威事实和本代完整 producer 准入先登记 leader responsibility，再固定 builder/配置租约/原生 thread",
+          "object": "plugin.department_task",
+          "result": "plugin.department_execution_responsibility"
+        },
+        {
+          "order": 2,
+          "actor": "plugin.department_execution_producer",
+          "action": "Codex/OpenCode 可信新代均先完成原生首次准备；OpenCode 缺 session 时由原 worker 创建/核验，再持久回读任务 executionSession 与原子 binding，原 Owner 绑定后最终同步核验并 grant。后续只 resume 精确绑定的原生 session，续接还须匹配来源链与 canonical directory；未知来源拒绝推进",
+          "object": "plugin.department_execution_responsibility",
+          "result": "plugin.cli_session"
+        },
+        {
+          "order": 3,
+          "actor": "plugin.extension_host",
+          "action": "实际 scheduler 停止新增调用后同步封闭全部 grant，再等待原 Owner 和 retained 原始准备责任；round-375 已接受限定三角色全 OpenCode 新建场景中的原 Owner 完整 receipt、员工 stopped、精确 CLOSED 集合及持久移除组长租约后归还容量；不外推到 OpenCode 跨代继续、冷恢复或必要平台",
+          "object": "plugin.department_execution_producer",
+          "result": "plugin.department_leader_execution_set"
+        },
+        {
+          "order": 4,
+          "actor": "plugin.extension_host",
+          "action": "同宿主原 Owner 全集清理、closed set 与持久容量归还经原 producer 回读后，才可用一次内存 continuation provenance 开启新代；Codex round-366 公开 stop→continue 按限定场景接受。OpenCode round-378 限定公开执行事实及整项当时未过主审历史保留；round-382 有界精确来源/目标链头与自身重试代码修复经实体 build、26 个不同定向用例及合同主审接受。round-400 实际执行两次公开 stop/continue、A→B→C、8 Owner/4 CLOSED、C 验收、第二模块和总监汇报；原 driver 仍 failed，mixed/successive/native 是原证据只读审计3项通过，不是完整 EH pass。round-403 CDP 清理失败传播/迟到 detach 门禁及定向回归已接受，仅证明 harness 资源清理门禁。round-405 实体标准 build 与11个不同定向用例通过；唯一 cold 使用生产 API observer/真实 root 关联确认 stop 消息送达并记录 invalid-recovery，而非 live-leader-unverifiable。缺完整控制后快照、四阶段身份及无新 grant/request 对照，整体主审仍 failed；CDP confirmed 不改变原强制回收第二 EH。round-405时后补 settleColdPublicControl 仅1项单测、最终 driver 未真实执行，round-405时生产冷 stop 路由准备修复已派发待审；后续 round-408 已完成该路由修复。round-403 macOS owner-core 固定入口套件58/58，但后代追踪未启用、整树关闭未确认。冷恢复、必要平台及未覆盖来源/角色仍开放；tracker/token 不代替 drain/receipt/CLOSED/容量。 round-408 冷 stop 的 prepareRoutes 顺序及异步身份复核已修；实体标准 build 与33项不同定向 composition 用例通过。真实 stop 已送达，但 warning 为 unverified-leader-session-or-plan、未达到 live-leader-unverifiable；完整 afterControl、四阶段身份和无新 grant/request 对照仍缺，cold 仍 failed。第二 EH 自行 exit 1、forcedTeardown=false，实际覆盖失败等待分支，不证明场景成功、Owner 清理或容量释放；inspectLeaderSession 冷 tab/session 边界待审。 round-410 已接受的冷宿主只读身份核验与安全拒绝结果：生产只读 reader 仅证明持久 leader identity，不合成可执行 target/live/provenance；唯一 macOS Codex cold 场景通过精确 live-leader-unverifiable、完整四阶段身份/责任/保留容量及无新 grant/request 对照。此结果不代表恢复接管、Owner 清理或容量归还。",
+          "object": "plugin.department_leader_execution_set",
+          "result": "plugin.department_leader_execution_set"
         }
       ]
     }

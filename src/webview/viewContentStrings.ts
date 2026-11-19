@@ -1,5 +1,6 @@
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
 import { formatHomeDisplayPath } from "../shared/userHomePaths";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT } from "../departmentSettings";
 
 const SINITEK_RUNTIME_HINT = formatHomeDisplayPath(".sinitek_cli");
 
@@ -22,8 +23,6 @@ export const WEBVIEW_STRINGS = {
     conversationTabsNextPage: "下一页会话",
     conversationTabLabel: "会话{index}",
     conversationTabCloseAria: "关闭{label}",
-    conversationTabCloseRejected: "暂时无法关闭此对话，标签已恢复。",
-    conversationTabCreateFailed: "新建对话未就绪，请重试。",
     emptyState: "输入需求，开始对话。",
     jsonTreeEmptyObject: "无属性",
     scrollToBottomAria: "跳转到最新消息",
@@ -46,6 +45,19 @@ export const WEBVIEW_STRINGS = {
     interactiveModeLoop: "Loop",
     interactiveModeLoopPlus: "Loop+",
     interactiveModeLoopPlusHint: "单个子任务执行结束后立即验收，其它完成进入队列。",
+    interactiveModeDepartment: "产研部",
+    departmentDirectorLabel: "总监",
+    departmentLeaderLabel: "组长",
+    departmentEmployeeLabel: "员工",
+    departmentRoleCliLabel: "CLI",
+    departmentRoleConfigLabel: "档案",
+    departmentRoleModelLabel: "模型",
+    departmentRoleThinkingLabel: "思考力度",
+    departmentRoleVariantLabel: "OpenCode 变体",
+    departmentRoleDefaultModel: "CLI 默认模型",
+    departmentRoleNoConfigs: "当前 CLI 没有可用档案。",
+    departmentRoleNoModels: "当前档案没有可用模型。",
+    departmentRoleSaveError: "产研部角色配置保存失败，请检查档案后重试。",
     openLoopGroupChatAction: "打开 Loop 群聊",
     openLoopGroupChatActionTitle: "打开当前 Loop 任务的群聊页面",
     openCurrentLoopGroupChatLabel: "打开群聊",
@@ -53,8 +65,6 @@ export const WEBVIEW_STRINGS = {
     openConfigButton: "配置",
     promptPlaceholder:
       "Shift + Enter 换行，输入 @ 选择文件/目录；右键文件或目录，在菜单中单击“加入到携宁 CLI 引用”即可引用；支持附件黏贴...",
-    promptInputResizeLabel: "调整输入框高度",
-    promptInputHeightSaveError: "输入框高度保存失败，重新打开面板时将使用上次保存的高度。",
     commonCommandButton: "常用指令",
     pathPickerButton: "插入路径",
     attachmentButton: "上传附件",
@@ -284,6 +294,11 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHistoryRetentionDaysHint: `适用于 ${SINITEK_RUNTIME_HINT} 下的日志、会话、提示词历史、任务记录和 Loop 记录。默认 30 天，可设置 1–3650 天。`,
     toolSettingsCliEnabledLabel: "CLI 工具",
     toolSettingsCliEnabledHint: "关闭后，对话面板和配置中心不再提供该 CLI。已有会话和配置会保留。",
+    toolSettingsModesLabel: "任务模式",
+    toolSettingsLoopEnabled: "开启 Loop",
+    toolSettingsLoopPlusEnabled: "开启 Loop+",
+    toolSettingsDepartmentEnabled: "开启产研部",
+    taskModesSaveError: "任务模式设置保存失败，请重试。",
     toolSettingsCliEnabledToggleTitle: "启用该 CLI",
     toolSettingsDebugLabel: "调试",
     toolSettingsDebugTitle: "调试日志",
@@ -295,8 +310,6 @@ export const WEBVIEW_STRINGS = {
     toolSettingsAutoCompactAfterRunTitle:
       "Codex、Claude、OpenCode、Grok、ZCode 的全局设置。耗时超过 5 分钟的任务成功结束后自动压缩上下文。",
     toolSettingsAutoCompactAfterRunToggle: "开启",
-    toolSettingsNewTaskInteractiveModeLabel: "新建或重置任务的默认模式",
-    toolSettingsNewTaskInteractiveModeSaveError: "默认任务模式保存失败，请重试。",
     toolSettingsChatMessageLimitLabel: "每个标签页气泡上限",
     toolSettingsLoopGroupChatMessageLimitLabel: "Loop / Loop+ 群聊气泡上限",
     toolSettingsLoopGroupChatMessageLimitSaveError: "群聊气泡上限保存失败，请重试。",
@@ -318,14 +331,25 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHumanInteractionTimeoutLabel: "人工交互超时（分钟）",
     toolSettingsHumanInteractionTimeoutTitle:
       "全局设置。Vibe 人工交互弹窗，以及 Loop、Loop+ 主任务澄清表单，若在此时限内没有提交，则视为超时。AI 会自行选择最佳方案继续，不记为拒绝，也不进入待复核。默认 15 分钟，范围 1–1440 分钟（最长 24 小时）。",
+    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop/Loop+ 子任务轮次上限",
+    toolSettingsLoopPlusSubtaskMaxRoundsTitle:
+      "全局设置。每个父任务累计允许派发的 Loop/Loop+ 子任务数量。每次新派发或重派计一次；运行中的任务、重试、恢复和队列提升不重复计数。默认 200，范围 50–9999。",
+    promptInputResizeLabel: "调整对话输入框高度",
+    promptInputHeightSaveError: "输入框高度保存失败，重新打开面板时将使用上次保存的高度。",
+    toolSettingsNewTaskInteractiveModeSaveError: "默认任务模式保存失败，请重试。",
+    toolSettingsNewTaskInteractiveModeLabel: "新建或重置任务的默认模式",
+    departmentMaxLeadersLabel: "产研部组长最多人数",
+    departmentMaxLeadersNote: "同时运行的组长上限，任务结束后释放名额。",
+    departmentMaxEmployeesLabel: "产研部员工最多人数",
+    departmentMaxEmployeesNote: `全产研部共享的员工并发上限，所有组长合计计算。请根据本机性能设置；默认 ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT} 人时，本机需能同时运行 ${DEPARTMENT_MAX_EMPLOYEES_DEFAULT} 个员工 CLI 任务。`,
+    workspaceDepartmentCapacityNote: "工作区配置优先；留空继承全局。新部门启动时生效，不调整已有运行任务。",
+    departmentMaxLeadersSaveError: "产研部组长人数设置保存失败，请重试。",
+    departmentMaxEmployeesSaveError: "产研部员工人数设置保存失败，请重试。",
     toolSettingsLoopPlusDecisionSubtaskMaxLabel: "Loop/Loop+ 单次派发上限",
     toolSettingsLoopPlusDecisionSubtaskMaxTitle:
       "全局设置。限制 Loop 每批、Loop+ 一次 dispatch 或 accept 最多派发的子任务数，并作为 Loop+ 的并发上限。默认 6，范围 1–20。工作区设置优先于全局。实际数量取决于可拆分任务和写入冲突，不强制派满；调低上限不会中断已运行的子任务。",
     toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote:
       "留空则使用全局设置；设置后优先于全局，仅对当前工作区生效。范围 1–20。",
-    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop/Loop+ 子任务轮次上限",
-    toolSettingsLoopPlusSubtaskMaxRoundsTitle:
-      "全局设置，对 Loop 和 Loop+ 分别按每个主任务累计计数。每个新派发或重派的子任务计 1 轮，并行任务分别计数；同一次执行的重试或恢复不重复计数。调低不会取消已派发的任务。",
     toolSettingsLongTermMemoryLabel: "工作区 Harness 骨架",
     toolSettingsLongTermMemoryTitle:
       "工作区设置。提供仓库本地 AI 协作骨架，支持长期记忆、踩坑沉淀、任务交接、技能约定和 CodeGraph 辅助代码导航。",
@@ -446,6 +470,7 @@ export const WEBVIEW_STRINGS = {
 | **Vibe** | 直接执行目标 CLI 任务。 |
 | **Loop** | 主模型作为项目经理分发任务，调度多个子模型共同完成任务。 |
 | **Loop+** | 主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。 |
+| **产研部** | ☀️ 总监用 Loop 拆分目标、协调各组并汇总结果；🌛 组长用 Loop+ 分派员工、验收成果并安排整改；⭐️ 员工执行具体任务。先在“工具设置 → 常规配置”开启产研部，再选择“产研部”模式，配置各角色的 CLI、模型和力度后发送目标。各角色支持全部 CLI，可混合搭配；在总监群聊查看各组进度。 |
 
 [《携宁 CLI 助手 - 教程》：点击进入详细教程](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)`,
     noConfigOption: "暂无配置",
@@ -456,8 +481,8 @@ export const WEBVIEW_STRINGS = {
     historyEmptyFavoritePrompts: "暂无收藏提示词",
     sessionDefaultLabel: "未命名会话",
     sessionLoopLabel: "Loop",
-    historySessionRoleMain: "☀️",
-    historySessionRoleSubtask: "🌛",
+    historySessionRoleMain: "🌛",
+    historySessionRoleSubtask: "⭐️",
     sessionOpenInTabsLabel: "已激活",
     sessionLoadLabel: "加载",
     sessionDeleteLabel: "删除",
@@ -517,8 +542,6 @@ export const WEBVIEW_STRINGS = {
     toastCopied: "已复制",
     toastCopyFailed: "复制失败",
     toastQueueAdded: "已加入队列",
-    toastLoopQueueUnsupported: "Loop / Loop+ 主任务和子任务不支持加入队列，请在新会话中发送。",
-    toastLoopMainBusy: "Loop / Loop+ 主任务执行中，请通过群聊补充需求或在新会话中发送。",
     toastQueueUpdated: "队列提示词已更新",
     toastQueueEmptyPrompt: "提示词不能为空",
     toastQueueSendFailed: "队列发送失败，请先激活配置",

@@ -57,6 +57,11 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
           env: launch.env,
         });
 
+      const bindDepartmentSession = port.departmentInteractiveRunner?.(runner, () => {
+        port.interactiveRunnerManager.detachRunner("kimi-code", port.uiSessionId, runner);
+        return runner.disposeAndWait();
+      });
+
       let flushingKimiStop = false;
       let kimiPromptCompleted = false;
       const canEmitKimiPresentation = (): boolean => {
@@ -91,6 +96,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
         if (launch.thinkingValue) {
           await runner.setThinkingMode(launch.thinkingValue);
         }
+        await bindDepartmentSession?.(started.acpSessionId);
         port.updateSessionForNewRun(started.acpSessionId);
         confirmedSessionId.value = started.acpSessionId;
         const uiSessionId = port.uiSessionId;

@@ -10,9 +10,10 @@ import {
   LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
   LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
+import { normalizePromptInputHeight, PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
 import { WebviewStringKey } from "./viewContentStrings";
 import { CHAT_MESSAGE_LIMIT_DEFAULT, CHAT_MESSAGE_LIMIT_MIN, CHAT_MESSAGE_LIMIT_MAX, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT } from "../chatMessageLimit";
-import { normalizePromptInputHeight, PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
+import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 
 type WebviewHtmlStrings = Record<WebviewStringKey, string>;
 
@@ -49,6 +50,7 @@ function renderInteractiveModeSelect(
             <option value="coding">${i18n.interactiveModeCoding}</option>
             <option value="loop">${i18n.interactiveModeLoop}</option>
             <option value="loop_plus" title="${i18n.interactiveModeLoopPlusHint}">${i18n.interactiveModeLoopPlus}</option>
+            <option value="department">${i18n.interactiveModeDepartment}</option>
           </select>`;
 }
 
@@ -77,6 +79,18 @@ function renderLoopPlusFrontendRouteRow(i18n: WebviewHtmlStrings, ids: {
                 ${renderLoopSubtaskCliSelect(i18n, ids.cli, i18n.loopPlusFrontendCliSelectAria)}
                 <select id="${ids.model}" class="model-select" aria-label="${i18n.loopPlusFrontendModelSelectAria}"${describedBy} title="${i18n.loopPlusFrontendModelSelectAria}"></select>
                 <select id="${ids.thinking}" class="thinking-select" aria-label="${i18n.loopPlusFrontendThinkingModeAria}" title="${i18n.loopPlusFrontendThinkingModeAria}"></select>
+              </div>`;
+}
+
+function renderDepartmentRoleRow(i18n: WebviewHtmlStrings, role: "leader" | "employee", label: string): string {
+  const prefix = `department-${role}`;
+  return `<div class="open-code-model-row loop-subtask-route-row department-role-row" data-department-role="${role}">
+                <label class="open-code-model-label" for="${prefix}-cli">${label}</label>
+                <select id="${prefix}-cli" class="cli-select loop-subtask-cli-select" aria-label="${label} ${i18n.departmentRoleCliLabel}"></select>
+                <select id="${prefix}-model" class="model-select" aria-label="${label} ${i18n.departmentRoleModelLabel}"></select>
+                <select id="${prefix}-thinking" class="thinking-select" aria-label="${label} ${i18n.departmentRoleThinkingLabel}"></select>
+                <select id="${prefix}-variant" class="thinking-select" aria-label="${label} ${i18n.departmentRoleThinkingLabel}" hidden></select>
+                <button id="${prefix}-retry" type="button" class="secondary" aria-label="重试${label}配置" hidden>重试</button>
               </div>`;
 }
 
@@ -265,6 +279,15 @@ ${webviewStyles}    </style>
         </div>
         <input id="attachmentInput" class="hidden-input" type="file" multiple />
         <div class="input-footer">
+          <div id="departmentRoleConfiguration" class="open-code-model-group" hidden>
+            <div class="open-code-model-row loop-subtask-route-row department-role-row">
+              <span class="open-code-model-label">${i18n.departmentDirectorLabel}</span>
+              <div id="departmentDirectorControls" class="department-director-controls"></div>
+            </div>
+            ${renderDepartmentRoleRow(i18n, "leader", i18n.departmentLeaderLabel)}
+            ${renderDepartmentRoleRow(i18n, "employee", i18n.departmentEmployeeLabel)}
+            <span id="departmentRoleMessage" class="open-code-model-issue" role="status" aria-live="polite"></span>
+          </div>
           <div class="input-model-row">
             <div id="codexLoopModelGroup" class="open-code-model-group codex-loop-model-group" style="display: none;">
               <div class="open-code-model-row codex-loop-model-row">
@@ -658,6 +681,13 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   </label>
                 </div>`).join("\n")}
               </section>
+              <section id="taskModesCard" class="tool-settings-card">
+                <div class="tool-settings-label">${i18n.toolSettingsModesLabel}</div>
+                ${[["loopEnabled", i18n.toolSettingsLoopEnabled], ["loopPlusEnabled", i18n.toolSettingsLoopPlusEnabled], ["departmentEnabled", i18n.toolSettingsDepartmentEnabled]].map(([key, label]) => `                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="${key}">${label}</label>
+                  <label class="debug-toggle"><input type="checkbox" id="${key}" aria-label="${label}" /></label>
+                </div>`).join("\n")}
+              </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
               <section class="tool-settings-card tool-settings-row">
@@ -746,6 +776,38 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="loopPlusSubtaskMaxRounds">${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}</label>
+                  <input
+                    type="number"
+                    id="loopPlusSubtaskMaxRounds"
+                    class="tool-settings-number"
+                    min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
+                    max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
+                    step="1"
+                    value="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}"
+                    title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
+                    aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
+                    aria-describedby="loopPlusSubtaskMaxRoundsNote"
+                  />
+                </div>
+                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。限制单个主任务累计派发的子任务数；达到上限后仍可复核、验收和总结。</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="departmentMaxLeaders">${i18n.departmentMaxLeadersLabel}</label>
+                  <input type="number" id="departmentMaxLeaders" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_LEADERS_DEFAULT}" aria-describedby="departmentMaxLeadersNote" />
+                </div>
+                <div id="departmentMaxLeadersNote" class="tool-settings-note">${i18n.departmentMaxLeadersNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="departmentMaxEmployees">${i18n.departmentMaxEmployeesLabel}</label>
+                  <input type="number" id="departmentMaxEmployees" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_EMPLOYEES_DEFAULT}" aria-describedby="departmentMaxEmployeesNote" />
+                </div>
+                <div id="departmentMaxEmployeesNote" class="tool-settings-note">${i18n.departmentMaxEmployeesNote}</div>
+              </section>
+              <section class="tool-settings-card">
+                <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
                   <input
                     type="number"
@@ -758,24 +820,6 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     aria-label="${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}"
                   />
                 </div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <label class="tool-settings-label" for="loopPlusSubtaskMaxRounds">${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}</label>
-                  <input
-                    type="number"
-                    id="loopPlusSubtaskMaxRounds"
-                    class="tool-settings-number"
-                    min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
-                    max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
-                    step="1"
-                    value="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}"
-                    title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
-                    aria-describedby="loopPlusSubtaskMaxRoundsNote"
-                    aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
-                  />
-                </div>
-                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。限制单个主任务累计派发的子任务数；达到上限后仍可复核、验收和总结。</div>
               </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
@@ -795,6 +839,15 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 </div>
                 <div id="workspaceLoopPlusDecisionSubtaskMaxNote" class="tool-settings-note">${i18n.toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote}</div>
               </section>
+              ${[["workspaceDepartmentMaxLeaders", i18n.departmentMaxLeadersLabel, DEPARTMENT_MAX_LEADERS_DEFAULT], ["workspaceDepartmentMaxEmployees", i18n.departmentMaxEmployeesLabel, DEPARTMENT_MAX_EMPLOYEES_DEFAULT]].map(([key, label, fallback]) => `<section class="tool-settings-card">
+                <div class="tool-settings-row">
+                  <label class="tool-settings-label" for="${key}">${label}</label>
+                  <input type="number" id="${key}" class="tool-settings-number" min="1" step="1" placeholder="全局：${fallback}" disabled aria-describedby="${key}Note ${key}Status" />
+                </div>
+                <div id="${key}Note" class="tool-settings-note">${i18n.workspaceDepartmentCapacityNote}${key === "workspaceDepartmentMaxEmployees" ? ` ${i18n.departmentMaxEmployeesNote}` : ""}</div>
+                <div id="${key}Status" class="tool-settings-note" role="status" aria-live="polite"></div>
+              </section>`).join("\n")}
+
               <section class="tool-settings-card">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLongTermMemoryLabel}</div>
@@ -803,6 +856,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                     <span>${i18n.toolSettingsLongTermMemoryToggle}</span>
                   </label>
                 </div>
+
                 <div id="longTermMemoryNote" class="tool-settings-note">${i18n.toolSettingsLongTermMemoryHint}</div>
               </section>
               <section class="tool-settings-card">

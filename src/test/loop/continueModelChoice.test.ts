@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as ts from "typescript";
 
 import {
   loopModelRoutingFromPromptInput,
@@ -84,13 +85,33 @@ test("continue model choice keeps recorded models or switches to the current Loo
 
 test("new Loop tasks snapshot the prompt main and subtask models", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8");
-  const createTaskIndex = source.indexOf("task = createLoopTaskRecord(target.cli, input.displayPrompt");
-  const snapshotIndex = source.indexOf("loopModelRoutingFromPromptInput(input, { mainCli: target.cli })", createTaskIndex);
-  const originIndex = source.indexOf("captureLoopOriginProfile(", snapshotIndex);
-  assert.ok(createTaskIndex >= 0);
-  assert.ok(snapshotIndex > createTaskIndex);
-  assert.ok(originIndex > snapshotIndex);
-  assert.ok(originIndex < source.indexOf("ensureLoopMainSubChatTranscript(task)", createTaskIndex));
+  const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const orchestration = file.statements.find((node): node is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(node) && node.name?.text === "runLoopPromptOrchestration");
+  assert.ok(orchestration);
+  let creation: ts.CallExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(file) === "resolveLoopTaskAtCreationBoundary") creation = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(orchestration);
+  assert.ok(creation);
+  const options = creation.arguments[0];
+  assert.ok(ts.isObjectLiteralExpression(options));
+  const callback = options.properties.find((node): node is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(node) && node.name.getText(file) === "createTask");
+  assert.ok(callback && ts.isArrowFunction(callback.initializer));
+  const body = callback.initializer.body.getText(file);
+  const createTaskIndex = body.indexOf("let createdTask = createLoopTaskRecord(target.cli, input.displayPrompt");
+  const snapshotIndex = body.indexOf("loopModelRoutingFromPromptInput(input, { mainCli: target.cli })", createTaskIndex);
+  const originIndex = body.indexOf("captureLoopOriginProfile(", snapshotIndex);
+  const persistIndex = body.indexOf("createdTask = updateLoopTaskRecord(createdTask.id,", originIndex);
+  const transcriptIndex = body.indexOf("ensureLoopMainSubChatTranscript(createdTask)", persistIndex);
+  assert.ok(createTaskIndex >= 0 && snapshotIndex > createTaskIndex && originIndex > snapshotIndex);
+  assert.ok(persistIndex > originIndex && transcriptIndex > persistIndex);
+  assert.match(body.slice(persistIndex, transcriptIndex), /modelRouting \? \{ modelRouting \}/u);
+  assert.match(body.slice(persistIndex, transcriptIndex), /originProfile \? \{ originProfile \}/u);
+  assert.ok(body.indexOf("return createdTask", transcriptIndex) > transcriptIndex);
 });
 
 test("Loop origin profile keeps config and thinking only when a config id exists", () => {

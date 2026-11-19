@@ -418,6 +418,15 @@ test("blocks a main decision and keeps the supplied final summary", () => {
   }
 });
 
+test("a director-only waiting decision cannot dispatch work through the classic Loop state machine", () => {
+  const result = decide(createTask(), { status: "waiting", finalSummary: "等待组长汇报" });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.patch.status, "needs-review");
+  assert.equal(result.patch.finalSummary, "等待组长汇报");
+  assert.deepEqual(result.patch.activeSubtaskIds, []);
+});
+
 test("continues a single legacy subtask and replaces the active subtask ids", () => {
   const task = createTask({
     activeSubtaskId: "old",

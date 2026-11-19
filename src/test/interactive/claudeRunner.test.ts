@@ -940,3 +940,41 @@ test("dedupes TodoWrite updates and still tracks task tools inside one Claude tu
     runner.dispose();
   }
 });
+
+test("department Claude admission binds the exact native UUID before SDK startup and waits for iterator drain", async t => {
+  let authorize!: () => void, finishDrain!: () => void;
+  const admission = new Promise<void>(resolve => { authorize = resolve; });
+  const drain = new Promise<void>(resolve => { finishDrain = resolve; });
+  let entered!: () => void; const entering = new Promise<void>(resolve => { entered = resolve; });
+  let native = "", queries = 0;
+  t.mock.method(dynamicImportModule, "dynamicImport", async () => ({ query: ({ prompt, options }: any) => {
+    queries++;
+    assert.equal(options.extraArgs["session-id"], native);
+    return (async function* () {
+      try {
+        for await (const ignored of prompt) {
+          void ignored;
+          yield { type: "system", subtype: "init", session_id: native };
+          yield { type: "result", subtype: "success", session_id: native };
+        }
+      } finally { await drain; }
+    })();
+  } }));
+  const runner = new ClaudeInteractiveRunner({ command: "claude", args: [], thinkingMode: "off", interactiveMode: "coding", sessionId: null, env: {} });
+  t.after(() => { authorize(); finishDrain(); runner.dispose(); });
+  const running = runner.runStreamed("执行", { beforeSessionStart: async id => { native = id; entered(); await admission; },
+    onAssistantDelta() {}, onTrace() {}, onTaskListUpdate() {}, onSessionId(id) { assert.equal(id, native); } });
+  await entering; assert.match(native, /^[0-9a-f-]{36}$/); assert.equal(queries, 0);
+  authorize(); await running; assert.equal(queries, 1);
+  let released = false; const closing = runner.disposeAndWait().then(() => { released = true; });
+  await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(released, false);
+  finishDrain(); await closing; assert.equal(released, true);
+});
+
+test("rejected department Claude admission never starts the SDK or delivers a prompt", async t => {
+  t.mock.method(dynamicImportModule, "dynamicImport", async () => { assert.fail("SDK must not start"); });
+  const runner = new ClaudeInteractiveRunner({ command: "claude", args: [], thinkingMode: "off", interactiveMode: "coding", sessionId: "native-resumed", env: {} });
+  await assert.rejects(runner.runStreamed("执行", { beforeSessionStart: async id => { assert.equal(id, "native-resumed"); throw new Error("sealed"); },
+    onAssistantDelta() {}, onTrace() {}, onTaskListUpdate() {}, onSessionId() {} }), /sealed/);
+  await runner.disposeAndWait();
+});

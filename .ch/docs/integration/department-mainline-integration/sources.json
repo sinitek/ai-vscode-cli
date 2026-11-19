@@ -1,0 +1,1096 @@
+{
+  "version": 1,
+  "semanticRepair": {
+    "attempt": "round-694-department-mainline-semantic-merge-repair",
+    "baseCommit": "ac1b8199d3c164f76c1043bc21bfffc13a0ae60e",
+    "repairedPathSha256SnapshotCommit": "c40acbfc78c7bdd6bf54d036b07dbdaaac0fe443",
+    "repairedPathSha256Scope": "Historical c40 snapshot hashes, verified against c40 blobs; not hashes of the updated round-695 files.",
+    "mainlineContractSource": {
+      "commit": "f1e15cee57ed5e93492a0b6fbb6ac8693fd64b2a",
+      "file": "src/interactive/codexAppServerPool.ts",
+      "rule": "unknown explicit thread notifications are buffered until ownership is confirmed"
+    },
+    "originalMergeBlobs": {
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts": "8b824b9d3ffe98988bab8861fd63688114bd6cae",
+      "src/interactive/codexAppServerPoolCore.ts": "b2730eebcb4b1210169f92ae96f4da37a25a3c96",
+      "src/test/loop/departmentGroupChatHost.test.ts": "f955dad1b2aee1887754afe134e7fcdd805597bf"
+    },
+    "repairedPaths": [
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+      "src/interactive/codexAppServerPoolCore.ts",
+      "src/test/loop/departmentGroupChatHost.test.ts",
+      "src/test/interactive/codexThreadHandoff.test.ts",
+      "scripts/department_group_chat_host_smoke.cjs",
+      ".ch/docs/integration/department-mainline-integration/README.md",
+      ".ch/docs/integration/department-mainline-integration/semantic-review.md",
+      ".ch/docs/integration/department-mainline-integration/sources.json",
+      ".ch/docs/runbooks/department-git-integration.md"
+    ],
+    "repairedPathSha256": {
+      "src/extensionHost/loopGroupChatPanelCoordinator.ts": "3df006203d60806552a4cde1667a4a6321a1d3626c97079d52b115537520fc2e",
+      "src/interactive/codexAppServerPoolCore.ts": "6925d176f39c91eb21cf2353188ea1f3c87b3b4ba6a038d4ee2518c6d7f86dd3",
+      "src/test/loop/departmentGroupChatHost.test.ts": "9818c28b15dc89caf366b8660d7acb0caf1599a9de3dc7040282c919c1eaa481",
+      "src/test/interactive/codexThreadHandoff.test.ts": "74ff57fb6b236c1706823ef96cf83c33eb50e192800fdd85fd34e96f5649adec",
+      "scripts/department_group_chat_host_smoke.cjs": "8a0eb9f56bdc807980b7c5892895ff0af6d7e3fd02631952f3487241a89a7cd7",
+      ".ch/docs/integration/department-mainline-integration/README.md": "f15ec66170be39cae1a02fe4e8bd6c5c5a6a50d73f503778bc6508a06b940089",
+      ".ch/docs/integration/department-mainline-integration/semantic-review.md": "dfd4fee7360ae2b14e02bf3597bf567a3254e80a1ecaa7a27db9e15a95c8b805",
+      ".ch/docs/runbooks/department-git-integration.md": "5db60f6a0781e7c0badea8c435fd2dea11c2687f518ad1128249faba82d2c8fd"
+    },
+    "behaviorCorrections": [
+      "modal-only leader refresh reaches validated modal subscribers without registering a leader panel alias",
+      "unknown explicit threadId notifications remain bounded-buffered until RPC or known parent confirms ownership"
+    ],
+    "original55PathColdEntityClosurePreserved": true,
+    "round674ManifestSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "round674ManifestSha256Scope": "Historical round-694 handoff transcription error; original round-674 report line 109 and round-695 measurement agree. See round698ManifestReconciliation."
+  },
+  "integration": {
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116",
+    "branch": "codex/department-mainline-integration-round676-20261116",
+    "fetchedRemote": "origin",
+    "defaultBranch": "origin/master",
+    "initialDefaultBranchSha": "e890e36352570b6cda9fc531df06ca2007a09ec6",
+    "defaultBranchSha": "2cda37b568465c3ace4c5cbe3c953471260496e2",
+    "originHead": "refs/remotes/origin/master",
+    "round695Fetch": {
+      "command": "git fetch origin",
+      "exitCode": 0,
+      "beforeCachedSha": "2cda37b568465c3ace4c5cbe3c953471260496e2",
+      "afterSha": "2cda37b568465c3ace4c5cbe3c953471260496e2",
+      "refAdvancedByThisAttempt": false
+    },
+    "mainlineCommitsIntegrated": [
+      "0c0bb86ce552c5f125bcac0de64ce86161064ea2",
+      "2cda37b568465c3ace4c5cbe3c953471260496e2"
+    ],
+    "mergeBase": "8f396c1b809c43320aad9c4c43eb05c9cf2a3c58",
+    "mergeParentOrder": [
+      "origin/master",
+      "a3a0d37a0723791645259c4abebbd6d129d52b79"
+    ],
+    "mainlineMergeCommit": "4b47d0a76d36c3bb973c48a74d52825e66a0f8b6",
+    "mainlineMergeTree": "e54800c7976b40f2e702adb789bc9f388e489f2e",
+    "workspaceCapacityMergeCommit": "b7524181b4b96f68d2fd51ebc9a7c2685e4f6a86",
+    "workspaceCapacityMergeTree": "a5f13bf10b1d2cac226bf61339ee910cad2cdf23",
+    "round695PathIdentityManifest": "round695-path-identities.json",
+    "finalCommit": "see round-695 attempt report",
+    "finalTree": "see round-695 attempt report"
+  },
+  "sources": [
+    {
+      "name": "accepted-role-icon-cumulative-candidate",
+      "commit": "a3a0d37a0723791645259c4abebbd6d129d52b79",
+      "tree": "87f0009e53b5aebd14f206ebad73993a4b38c492",
+      "parent": "e0ec605fc0b38ab0a59bb2268faac84efbeb3668",
+      "mergeBaseWithMainline": "8f396c1b809c43320aad9c4c43eb05c9cf2a3c58",
+      "provenance": "Contains the previously accepted allocation, prompt and avatar history. Its earlier commits were checked as ancestors and were not reapplied."
+    },
+    {
+      "name": "accepted-round-674-cold-recovery-cumulative-entity",
+      "path": "/tmp/department-cold-mixed-round674-product",
+      "baselineCommit": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+      "sourceClosure": "c806bda98c0d408b20db775112ce2c62460084b8f44718e3930485fce11751bd",
+      "scriptsClosure": "d677e1691181020ddca60d3c61071083041e738fa0e204f3a76cce14e6d1ec13",
+      "deliveryPatch": {
+        "path": "/tmp/round674-delivery.patch",
+        "sha256": "eda945156e60e6c0aa6351eaae323e785e6eaa62a9552c92024dad99dfcfc55e"
+      },
+      "deliveryManifest": {
+        "path": "/tmp/round674-delivery-manifest.json",
+        "sha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+        "sha256Scope": "Original round-674 report line 109, independently matching the existing round-695 measurement; corrected in round 698 without rehashing the old entity.",
+        "historicalHandoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412"
+      },
+      "trackedPathDeltaCount": 55,
+      "excludedLocalArtifact": ".ch/docs/generated/memory-index/.local",
+      "provenance": [
+        "round-443 entity",
+        "round-440 entity",
+        "round-437 entity",
+        "c76 baseline"
+      ]
+    }
+  ],
+  "coldEntityPathDeltaFromC76": [
+    ".ch/docs/design-docs/department-generation-authority.md",
+    ".ch/docs/design-docs/department-production-execution-wiring.md",
+    ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+    ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+    ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+    ".ch/docs/runbooks/department-cold-recovery-eh-verification.md",
+    ".ch/docs/runbooks/department-cold-start-verification.md",
+    "scripts/fixtures/department_cold_recovery_eh_scenario.js",
+    "scripts/fixtures/department_cold_recovery_eh_scenario.test.js",
+    "scripts/fixtures/department_worker_exit_observer.js",
+    "scripts/fixtures/department_worker_exit_observer.py",
+    "scripts/fixtures/department_worker_exit_observer.test.js",
+    "scripts/verify_department_full_eh_integration.js",
+    "scripts/verify_department_full_eh_integration.test.js",
+    "scripts/verify_opencode_employee_native_drain.js",
+    "scripts/verify_opencode_owned_native_drain.js",
+    "src/extension.ts",
+    "src/extensionHost/departmentcodexbootstrap.ts",
+    "src/extensionHost/departmentcodexpreparation.ts",
+    "src/extensionHost/departmentcoldgenerationrecovery.ts",
+    "src/extensionHost/departmentemployeeexecutionadmission.ts",
+    "src/extensionHost/departmentexecutionproducer.ts",
+    "src/extensionHost/departmentexecutionresources.ts",
+    "src/extensionHost/departmentleadercodexbootstrap.ts",
+    "src/extensionHost/departmentleaderexecutionledger.ts",
+    "src/extensionHost/departmentleaderprocessbootstrap.ts",
+    "src/extensionHost/departmentleaderproductionhost.ts",
+    "src/extensionHost/departmentorchestration.ts",
+    "src/extensionHost/departmentprocessbootstrap.ts",
+    "src/extensionHost/departmentprocesspreparation.ts",
+    "src/extensionHost/departmentruntimecomposition.ts",
+    "src/extensionHost/loopPlusOrchestration.ts",
+    "src/extensionHost/loopPlusRuntimeAdapter.ts",
+    "src/runtime/departmentcodexownerworker.ts",
+    "src/runtime/departmentexecutionowner.ts",
+    "src/runtime/departmentexecutionownerclient.ts",
+    "src/runtime/departmentgenerationauthority.ts",
+    "src/runtime/departmentgenerationauthorityclient.ts",
+    "src/runtime/departmentgenerationauthorityworker.ts",
+    "src/runtime/departmentleadercodexownerworker.ts",
+    "src/runtime/departmentleaderprocessownerworker.ts",
+    "src/runtime/departmentprocessexecutionlauncher.ts",
+    "src/runtime/departmentprocessownerworker.ts",
+    "src/test/extensionHost/departmentcoldgenerationrecovery.test.ts",
+    "src/test/extensionHost/departmentcoldrecoveryehhost.test.ts",
+    "src/test/extensionHost/departmentleaderprocessbootstrap.test.ts",
+    "src/test/extensionHost/departmentleaderproductionhost.test.ts",
+    "src/test/extensionHost/departmentproductionwiring.test.ts",
+    "src/test/extensionHost/departmentruntimecomposition.test.ts",
+    "src/test/extensionHost/fixtures/departmentcoldgenerationhost.ts",
+    "src/test/extensionHost/fixtures/departmentcoldrecoveryehhost.ts",
+    "src/test/extensionHost/fixtures/departmentownedtestworkers.ts",
+    "src/test/extensionHost/fixtures/departmentproductionwiringfixture.ts",
+    "src/test/extensionHost/loopPlusOrchestration.test.ts",
+    "src/test/runtime/departmentgenerationauthority.test.ts"
+  ],
+  "acceptedAdditionalSources": [
+    {
+      "name": "accepted-round-694-workspace-capacity-overrides",
+      "commit": "40c77d3eb7eabd511ab569cdc25e08e6ed348d5a",
+      "tree": "39e191a4482b40f75072ea44463df0f7e7a4da68",
+      "parent": "ac1b8199d3c164f76c1043bc21bfffc13a0ae60e",
+      "pathDeltaCount": 24,
+      "attemptReport": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-694-department-workspace-count-overrides.md",
+      "provenance": "Accepted independently and merged as a second-parent source; no workspace setting paths were replayed as patches."
+    }
+  ],
+  "round695ManifestIdentity": {
+    "path": "/tmp/round674-delivery-manifest.json",
+    "handoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "measuredSha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "matchesHandoff": false,
+    "scope": "Historical read-only round-695 measurement; matchesHandoff=false remains true for the erroneous later handoff. Round 698 reconciles the original report in round698ManifestReconciliation. Original closure and all 55 path records retained."
+  },
+  "round698ManifestReconciliation": {
+    "originalReport": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-674-department-cold-mixed-guard-exit-repair.md",
+    "originalReportLine": 109,
+    "originalSha256": "28a1bc69a4488c46aa24ee4d0a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "historicalErroneousHandoffSha256": "28a1bc69a4488c46aa24ee0d4a5379c12e07d7714df0e8ad3b0794352c85c412",
+    "matchesRound695Measurement": true,
+    "conclusion": "Later lp676/lp694 handoff transcription error. Original report and round-695 measured file agree; no evidence of source manifest mutation. Historical mismatch, measurements and prior failures remain unchanged. No closure audit or source execution rerun."
+  },
+  "round698FullRegression": {
+    "baseCommit": "464d1113f13b1bc0f2b59ea1ba4c09976ebed713",
+    "baseTree": "cb6ef3649b90ed1a7dbe3b9ea78a83c503f63bd4",
+    "evidenceFile": ".ch/docs/integration/department-mainline-integration/round698-full-regression.json",
+    "officialCommand": "node scripts/run_unit_tests.js",
+    "officialExitCode": 1,
+    "firstRun": {
+      "tests": 5439,
+      "pass": 5265,
+      "fail": 165,
+      "cancelled": 6,
+      "skipped": 3
+    },
+    "finalTargetedCasesPass": 121,
+    "productionSourceChanged": false,
+    "fullRegressionPassed": false,
+    "sourceIdentityScope": "Existing round-695 identities remain snapshots of their named commits; round698 repaired test input identities are separate. Original 55 cold paths unchanged.",
+    "remainingGate": "Central/exclusive failures need coordinated repair; no second full result or final tree acceptance claimed."
+  },
+  "round704CommonRegressionRepair": {
+    "baseCommit": "c5395f834c6892dea743e513aa860f6f35f03226",
+    "allocationMergeCommit": "2f6caca23a6389da016905fe1cf238b78bbe44db",
+    "allocationMergeTree": "73e05e2ab434c802234494ec307a8ff5139bdce8",
+    "allocationMergeParents": [
+      "c5395f834c6892dea743e513aa860f6f35f03226",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "acceptedAllocationCommits": [
+      "ab99922e7fbda0669f22a4adbffeb28ffec21bfc",
+      "b992d3b668c495f398fa20d4620166733a0bf86b",
+      "b02cfe1a34c427937efd625735cf267bc67ac711"
+    ],
+    "mergeConflicts": 0,
+    "productionSourceChanged": false,
+    "finalTargetedEvidence": {
+      "distinctCasesPass": 195,
+      "files": 9,
+      "composedOf": "seven unchanged file results120 plus two final file results75; not a single all-green nine-file invocation",
+      "firstRunFailuresNowCovered": 10,
+      "firstRunUnresolvedFailures": 50,
+      "firstRunUnresolvedCancellations": 6,
+      "remainingFirstRunFiles": 15,
+      "fullRegressionPassed": false
+    },
+    "openOwnership": {
+      "strictStore": "store owner: ownedTaskSource/ownershipIndex/productionTaskStore/handoff/storeCore/storePersistence",
+      "cold": "cold owner: coldgenerationrecovery/continuationlifecycle/productionwiring/treecontrolintegration/leadercodexowner; extension and shared worker helpers remain exclusive",
+      "capacity": "allocation successor: departmentgroupcapacity.test.ts untouched",
+      "send": "lp701 done but not formally accepted or merged",
+      "transport": "lp702 done but not formally accepted or merged",
+      "groupChatHost": "two original failures retained; coordinate allocation/cold/store effects after accepted inputs, no unverified resolution claim"
+    },
+    "openGates": [
+      "accepted production repairs must be integrated before final official full regression",
+      "remaining real mixed cold recovery and retained authority cleanup",
+      "native Linux/Windows evidence where required",
+      "final original-directory preservation/classification/branch switch and clean handoff"
+    ],
+    "evidenceFile": ".ch/docs/integration/department-mainline-integration/round698-full-regression.json#round704Followup",
+    "resultIdentityScope": "Per-file base/result SHA are the round704 snapshot in evidence; prior c40/round695/round698 hashes remain named historical snapshots. Final commit/tree in round704 report."
+  },
+  "round706AcceptedRepairIntegration": {
+    "round": 706,
+    "baseCommit": "e13d043f8d74308c54b3679a60b07c7f1d62c67d",
+    "baseTree": "65b59202f20e3625765bc15690c8caa10f45bfd5",
+    "mergedInputCommit": "caaa435940a4afded739b9d1cc55dbb6bd2b9be9",
+    "mergedInputTree": "5df4feaf9366bdf14df3cdbef129e8816a1dbb03",
+    "merges": [
+      {
+        "source": "e161e941859e7acd773aee977b01a012cdba847d",
+        "commit": "bef535c2dd5fa156044350556c4c040fecbf6aec",
+        "tree": "c2bbd90f99699ff46da4b138b71715f13ca74f52",
+        "parents": [
+          "e13d043f8d74308c54b3679a60b07c7f1d62c67d",
+          "e161e941859e7acd773aee977b01a012cdba847d"
+        ],
+        "mergeBase": "c5395f834c6892dea743e513aa860f6f35f03226",
+        "command": "git merge --no-ff e161e941859e7acd773aee977b01a012cdba847d -m 'merge: integrate accepted send authorization repair'",
+        "exitCode": 0,
+        "conflicts": [],
+        "overlaps": []
+      },
+      {
+        "source": "dc4e5d96a7ecbabbe78f0cdbb10cedbe43758858",
+        "commit": "81a2a6dd7665bce61d82105136f20af156a77f03",
+        "tree": "ac8e05d215242180135566c02c7e8c4f732c2d5c",
+        "parents": [
+          "bef535c2dd5fa156044350556c4c040fecbf6aec",
+          "dc4e5d96a7ecbabbe78f0cdbb10cedbe43758858"
+        ],
+        "mergeBase": "c5395f834c6892dea743e513aa860f6f35f03226",
+        "command": "git merge --no-ff dc4e5d96a7ecbabbe78f0cdbb10cedbe43758858 -m 'merge: integrate accepted owned transport fixtures'",
+        "exitCode": 0,
+        "conflicts": [],
+        "overlaps": []
+      },
+      {
+        "source": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "commit": "71dc7cb6d1e20f9694a255ff2dc2abb141bb3878",
+        "tree": "c6221f1ef1099ec9fa0f19d031faf5d60e65c282",
+        "parents": [
+          "81a2a6dd7665bce61d82105136f20af156a77f03",
+          "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d"
+        ],
+        "mergeBase": "464d1113f13b1bc0f2b59ea1ba4c09976ebed713",
+        "command": "git merge --no-ff a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d -m 'merge: integrate accepted complete cold stop-control repair chain'",
+        "exitCode": 0,
+        "conflicts": [],
+        "overlaps": []
+      },
+      {
+        "source": "f21082f2585db8f3a0a1af9135081713a42b2d08",
+        "commit": "caaa435940a4afded739b9d1cc55dbb6bd2b9be9",
+        "tree": "5df4feaf9366bdf14df3cdbef129e8816a1dbb03",
+        "parents": [
+          "71dc7cb6d1e20f9694a255ff2dc2abb141bb3878",
+          "f21082f2585db8f3a0a1af9135081713a42b2d08"
+        ],
+        "mergeBase": "b02cfe1a34c427937efd625735cf267bc67ac711",
+        "command": "git merge --no-ff f21082f2585db8f3a0a1af9135081713a42b2d08 -m 'merge: integrate accepted multi-group capacity fixtures'",
+        "exitCode": 0,
+        "conflicts": [],
+        "overlaps": []
+      }
+    ],
+    "acceptedColdChain": [
+      "1c1c25d6ecb54fcb77689fe71cd8d721bf0cef2c",
+      "fa6e1ddea02096bfc4f96b9f6e42513c5addbe48",
+      "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d"
+    ],
+    "sourceIdentityScope": "Source Git blobs and final source/test result identities;15/16 source-identical, only group-chat test repaired locally. Existing c40/round695/round698/round704 hashes remain historical snapshots.",
+    "sourcePathIdentities": [
+      {
+        "path": "src/sessionMessageActions.ts",
+        "sourceCommit": "e161e941859e7acd773aee977b01a012cdba847d",
+        "sourceBlob": "e7736609422b9eeb8ef46e49546996184e54893b",
+        "sourceSha256": "7e7fc125dbb4d13f6973de48068e79da583f029fbf35e252c1a47c09482c3437",
+        "mergedSha256": "7e7fc125dbb4d13f6973de48068e79da583f029fbf35e252c1a47c09482c3437",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/session/sessionMessageActions.test.ts",
+        "sourceCommit": "e161e941859e7acd773aee977b01a012cdba847d",
+        "sourceBlob": "efee350bdaeeeab2eb8f8c30fa221d63808faf08",
+        "sourceSha256": "ec92110b80f75e80c31240e734f560bebb980a81d301bcff5f3715c59ff16bb7",
+        "mergedSha256": "ec92110b80f75e80c31240e734f560bebb980a81d301bcff5f3715c59ff16bb7",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/session/sessionMessageActionsCoreCoverage.test.ts",
+        "sourceCommit": "e161e941859e7acd773aee977b01a012cdba847d",
+        "sourceBlob": "8af24cabbd5e06816ed2580d631875ffef4b4eb4",
+        "sourceSha256": "fdc29e0ec8b1ef7d6d12c0732c5963567f4ed0169b173ae7af9e0fae4f4347ef",
+        "mergedSha256": "fdc29e0ec8b1ef7d6d12c0732c5963567f4ed0169b173ae7af9e0fae4f4347ef",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/interactive/codexOwnedExecution.test.ts",
+        "sourceCommit": "dc4e5d96a7ecbabbe78f0cdbb10cedbe43758858",
+        "sourceBlob": "450f85be44c3bb8ea07ffd20d2b9b6ece8cfa289",
+        "sourceSha256": "4a924a7962ca2f4e6ad15c22fd067aea13ddc5cc670ab8782b4758d9c1f9dc2c",
+        "mergedSha256": "4a924a7962ca2f4e6ad15c22fd067aea13ddc5cc670ab8782b4758d9c1f9dc2c",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/design-docs/loop-crash-recovery.md",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "e2fd59dd30c829443d081d26112162d46ce70732",
+        "sourceSha256": "0116890392de7f3172bef7d88ad457d0dbb45ba43e1a207ee7b353180155c4e0",
+        "mergedSha256": "0116890392de7f3172bef7d88ad457d0dbb45ba43e1a207ee7b353180155c4e0",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "fa3ab65827e00cb9823a5bd993f6cd491a026f34",
+        "sourceSha256": "808427514bc3ea2eedf35f984f155687b309357b48fad074f93074380ecf12ee",
+        "mergedSha256": "808427514bc3ea2eedf35f984f155687b309357b48fad074f93074380ecf12ee",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/runbooks/department-cold-recovery-eh-verification.md",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "ac5e37f6c5f5f5d6e51702753b5f9943f7e3446f",
+        "sourceSha256": "08e71030bfa66a75905d5bfe27ed33db3fd8a74ee124ed3c9da797d1500d266c",
+        "mergedSha256": "08e71030bfa66a75905d5bfe27ed33db3fd8a74ee124ed3c9da797d1500d266c",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/extension.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "9cdeba42f5140325821f354c31c639e2e0384e69",
+        "sourceSha256": "2674c7b69bb73cf5c1132ce8179a145f51c6a89a6bb2774eaa60aee5bc407831",
+        "mergedSha256": "2674c7b69bb73cf5c1132ce8179a145f51c6a89a6bb2774eaa60aee5bc407831",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/extensionHost/departmentGroupChatProjection.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "a9d892c45a55ce94ca6bcc2667c8355cc21dacd9",
+        "sourceSha256": "df468da23a281d488b2877ad758f5ade3404979dffde0e1a6a47e7181c20894c",
+        "mergedSha256": "df468da23a281d488b2877ad758f5ade3404979dffde0e1a6a47e7181c20894c",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/extensionHost/departmentruntimecomposition.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "995cd747184e29a0c03907023faeba2310ff438d",
+        "sourceSha256": "51123cab49a88e483ccd01c44aecad75bc7f88e142251bcf09e79125d465cde6",
+        "mergedSha256": "51123cab49a88e483ccd01c44aecad75bc7f88e142251bcf09e79125d465cde6",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "b6f86053e7f8ce7ba9ce4df1bf404f975ecde672",
+        "sourceSha256": "2611f7f269ac05033d10eb67ed3f7a5e0588c210080b523246ff124e45e01f6e",
+        "mergedSha256": "2611f7f269ac05033d10eb67ed3f7a5e0588c210080b523246ff124e45e01f6e",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/extensionHost/promptRunRuntime.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "9d40c25d40fde621f62697079264c9a7f3d18d4f",
+        "sourceSha256": "f7c02a9899d48d6c7b4bb9b0a2c998ffa71528e682a57aef18b778cbc7d65aed",
+        "mergedSha256": "f7c02a9899d48d6c7b4bb9b0a2c998ffa71528e682a57aef18b778cbc7d65aed",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/extensionHost/departmentruntimecomposition.test.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "ba17d91fd54588ee4ee11ae4ecaafbe5543db21b",
+        "sourceSha256": "971ba99e4a9d4c4ef5d276b10ed3495a9db88de3cb4253bd9f98f4577906263a",
+        "mergedSha256": "971ba99e4a9d4c4ef5d276b10ed3495a9db88de3cb4253bd9f98f4577906263a",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/extensionHost/loopCrashRecovery.test.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "d779d11007e79b7bdc75ecb7cb5495dd5e020639",
+        "sourceSha256": "d5bd5ad74ff7d321cb28a642f8e15830ef608e586b57463f4ea5d4a3e520a88e",
+        "mergedSha256": "d5bd5ad74ff7d321cb28a642f8e15830ef608e586b57463f4ea5d4a3e520a88e",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/loop/departmentGroupChatHost.test.ts",
+        "sourceCommit": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+        "sourceBlob": "756f0d6427f867b1e71bccb93b20af2bb6d60489",
+        "sourceSha256": "ec699deb71eb6892eb6716499a24801195af0efe4ff87fbcd603ad97491f77b3",
+        "mergedSha256": "fdab92b1592d5f52d30e5589b51848aa8db6fe1aaf71670017cb5c9b0deda6bf",
+        "identicalToSource": false
+      },
+      {
+        "path": "src/test/extensionHost/departmentgroupcapacity.test.ts",
+        "sourceCommit": "f21082f2585db8f3a0a1af9135081713a42b2d08",
+        "sourceBlob": "0092544981c1a087f139a6c8e43b58b8eda40803",
+        "sourceSha256": "b03bdcad4d341b8c93c197e4770065f22b36956939e7457bb797c9f86d5782f9",
+        "mergedSha256": "b03bdcad4d341b8c93c197e4770065f22b36956939e7457bb797c9f86d5782f9",
+        "identicalToSource": true
+      }
+    ],
+    "productionSourceEdits": "Only accepted source commits; no local production changes or conflict fixes",
+    "reconciliation": {
+      "scope": "Arithmetic against original round698 records plus exact accepted source evidence; NOT another official full run",
+      "previousUnresolvedFailures": 50,
+      "previousUnresolvedCancellations": 6,
+      "acceptedOrNewlyCoveredOriginalFailures": {
+        "send": 1,
+        "capacity": 2,
+        "groupChat": 2
+      },
+      "acceptedTransportCancellationsCovered": 6,
+      "stillPendingOriginalFailures": {
+        "strictStore": 35,
+        "coldLifecycle": 10
+      },
+      "remainingFirstRunFailures": 45,
+      "remainingFirstRunCancellations": 0,
+      "fullRegressionPassed": false
+    },
+    "openOwnership": {
+      "strictStore": "74be413fbd1d67ae9ae59246bac92e409a85282f NOT accepted and NOT merged; source report103/105 plus two unresolved handoff failures is not acceptance; ordinaryMoves schema/doc conflict pending review",
+      "coldLifecycle": "parallel cold successor owns ten original failures and shared productionWiring/treeControl/SIMULATED_LEADER_CLI fixtures; no successor input merged here"
+    },
+    "openGates": [
+      "Relevant successors require formal acceptance and actual integration before final official full regression",
+      "Necessary real native Linux/Windows evidence remains open",
+      "Final original directory dirty-content classification/preservation, safe branch switch and clean handoff remain open",
+      "Final authority/capacity/cold combination review remains open; exact old cold root cleanup is accepted and must not be restated as still unperformed"
+    ],
+    "postCheckChanges": "After build and30 tests only integration documents/evidence and external report changed. No product/test change invalidates these checks.",
+    "skippedChecks": [
+      "No official full rerun on incomplete unaccepted store/cold-successor input",
+      "No repeat of195/121/19/101/28/22/15 source suites solely to refresh dates",
+      "No UI/CSS changes, browser matrix, live CLI/EH, dependency installation or upgrades",
+      "No old cold entity copy/rehash/reimport; all55 source closure records and manifest correction retained"
+    ],
+    "finalDeliveryIdentity": "Final local commit/tree/parent are in round706 attempt report; mergedInput is a pre-local-fixture snapshot, not the final delivery hash",
+    "evidenceFile": "round698-full-regression.json#round706Followup",
+    "integrationAudit": {
+      "command": "python3 /tmp/round706-final-audit.py",
+      "exitCode": 0,
+      "resultFile": "/tmp/round706-final-verification.json",
+      "sha256": "7202f8c5b92fc96d62b3e12e5af50e40d1e431c29c48af935a60ae3c16801525",
+      "scope": "historical JSON unchanged;16 path/case/source-result identities and log SHA;old7+9 fixtures and allocation7 identical;accepted ancestors/store excluded;diff-check/unmerged;protected worktree HEAD/status snapshots",
+      "preliminaryAuditIssues": [
+        "Broad worktree metadata inspection hit a stale registered /private/tmp/sinitek-loop-plus-protocol-repair path; no worktree mutated. Narrowed to actual protected source paths.",
+        "First final-audit comparison mistakenly used sibling c539 as allocation base, including unrelated original7 test differences. Corrected to actual464 allocation source baseline; all7 accepted allocation paths match. No code change/test rerun needed."
+      ]
+    }
+  },
+  "round708AcceptedColdLifecycleIntegration": {
+    "baseCommit": "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+    "baseTree": "81c533bb5652e0ed7432baaa85666e2a2410247f",
+    "sourceCommit": "6879fc01ecc440a17b40f5bc50ae47ebe825a58d",
+    "sourceTree": "96b8c2bb8ec55406ef4d0cfda033ef875316d97d",
+    "sourceBase": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+    "mergeBase": "a90b6c9eb498643a6a65a2dc9a23ce4bc032a91d",
+    "mergeCommit": "60908f513dc979982893e2d94853c3a4174a614e",
+    "mergeTree": "78dade6a6fbf37c7815133239fb4c7b64a734d35",
+    "mergeParents": [
+      "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+      "6879fc01ecc440a17b40f5bc50ae47ebe825a58d"
+    ],
+    "command": "git merge --no-ff 6879fc01ecc440a17b40f5bc50ae47ebe825a58d -m 'merge: integrate accepted cold lifecycle fixture repairs'",
+    "exitCode": 0,
+    "conflicts": [],
+    "overlaps": [],
+    "changedPaths": [
+      {
+        "path": "src/test/extensionHost/departmentcoldgenerationrecovery.test.ts",
+        "sourceBlob": "63e71109ab2b5f62c811b1b198d580970266db1a",
+        "sourceSha256": "4cba81789710d142d04cac3f69e8bcf69371497f04860c33583bb3524b11ae5c",
+        "mergedSha256": "4cba81789710d142d04cac3f69e8bcf69371497f04860c33583bb3524b11ae5c"
+      },
+      {
+        "path": "src/test/extensionHost/departmentproductionwiring.test.ts",
+        "sourceBlob": "6055580be164f6dd901ffffb1ff8c322bca8919b",
+        "sourceSha256": "3648e6c2e32d5941ed270dc4623d3c5e9e25c7c5c2c178bbcfa42a183df1afa9",
+        "mergedSha256": "3648e6c2e32d5941ed270dc4623d3c5e9e25c7c5c2c178bbcfa42a183df1afa9"
+      },
+      {
+        "path": "src/test/extensionHost/departmenttreecontrolintegration.test.ts",
+        "sourceBlob": "92c2a6294b85be0b43a798809c1e0fe686d8f15e",
+        "sourceSha256": "d7fd4245df45f38fe1f9b52a164cce0cd94e49297c99cd78132b0e3d784567cc",
+        "mergedSha256": "d7fd4245df45f38fe1f9b52a164cce0cd94e49297c99cd78132b0e3d784567cc"
+      },
+      {
+        "path": "src/test/extensionHost/fixtures/departmentcoldgenerationhost.ts",
+        "sourceBlob": "610cd5b86a1780bc6b29e74d5b0896360bb77006",
+        "sourceSha256": "779c56f0bd174328f5247158c7e6e8576828f27cccb612928f03f2a52f52dd8c",
+        "mergedSha256": "779c56f0bd174328f5247158c7e6e8576828f27cccb612928f03f2a52f52dd8c"
+      },
+      {
+        "path": "src/test/extensionHost/fixtures/departmenttreecontrolfixture.ts",
+        "sourceBlob": "9a9f6d899c2148dc8ae4cfa2ab2feb39a744b2e5",
+        "sourceSha256": "1005a156d1dc623e0f3cf0dd5a88823807f26eedb5db5fe75ff3a4364f4f84da",
+        "mergedSha256": "1005a156d1dc623e0f3cf0dd5a88823807f26eedb5db5fe75ff3a4364f4f84da"
+      },
+      {
+        "path": "src/test/runtime/departmentleadercodexowner.test.ts",
+        "sourceBlob": "f3f487026fefcf2a02bc8de5024a1092e4e30ab2",
+        "sourceSha256": "cdc1036eebf9815bc6a3d954cb3d514b1f922f0c24bf13b676e14e875990169f",
+        "mergedSha256": "cdc1036eebf9815bc6a3d954cb3d514b1f922f0c24bf13b676e14e875990169f"
+      }
+    ],
+    "reusedEvidence": {
+      "sourceReport": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-706-department-cold-lifecycle-regression-repair.md",
+      "tsc": "tsc -p tsconfig.json exit 0 on source product",
+      "compiledTests": "five affected files, 60/60 passed",
+      "artifactIdentity": "794 non-test artifacts byte-identical to accepted source product",
+      "scope": "The accepted six paths are unchanged in this merge; no build or test rerun solely for merge hash. This is not a unified full regression."
+    },
+    "cleanupEvidenceLimits": "Three fixture hygiene terminations remain distinct from natural authority exit(0,null); preserve the source report's historical OpenCode first-throw tracing limitation.",
+    "finalDeliveryCommitAndTree": "See round708 attempt report; this merge commit is the source integration point, followed only by handoff evidence commit.",
+    "openGates": [
+      "round698 official full regression remains failed; no new full run in round708",
+      "strict-store 94267bb3f4343c9ccee0f9f75e99c6a2f492df50 and 74be413f remain unaccepted/unmerged; handoff and ordinaryMoves contract review pending",
+      "required native Linux/Windows evidence and final authority/capacity/cold composition review remain open",
+      "preserve/classify original checkout state and perform safe final branch handoff later"
+    ]
+  },
+  "round711AcceptedStoreUnifiedIntegration": {
+    "round": 711,
+    "baseCommit": "0ee355624f7f878b60208726c1b7c5d788bb0f0a",
+    "baseTree": "b86d4ed34239cf77ab00d82b190f7707c5264507",
+    "acceptedStoreSource": "94267bb3f4343c9ccee0f9f75e99c6a2f492df50",
+    "acceptedStoreTree": "f96fbea2fc801dac1b28487d7eb582a61439fff9",
+    "acceptedStoreRequiredAncestor": "74be413fbd1d67ae9ae59246bac92e409a85282f",
+    "storeMerge": "5bc951463b609072d1990c3787d90aa5a22ab8ad",
+    "storeMergeTree": "139528472a8c069c269fa7f01153668f9a1cf71d",
+    "storeMergeParents": ["0ee355624f7f878b60208726c1b7c5d788bb0f0a", "94267bb3f4343c9ccee0f9f75e99c6a2f492df50"],
+    "acceptedContractDocsSource": "2999a3b0589eaab2f52b355e41487cc44a2331c6",
+    "acceptedContractDocsTree": "f2166f380da2d914ba1530317fb5f2ac21c82623",
+    "docsSourceBase": "929bcec39cd268c4e5f716cf2833ea9db6cf05d7",
+    "docsMerge": "30627ab9eb86b3a484737e92161f517e8f3b5f13",
+    "mergedInputTree": "f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d",
+    "mergeParents": ["5bc951463b609072d1990c3787d90aa5a22ab8ad", "2999a3b0589eaab2f52b355e41487cc44a2331c6"],
+    "mergeStrategy": "ort",
+    "mergeConflicts": 0,
+    "manualConflictResolutions": [],
+    "overlapReview": "The nine accepted strict-store source/test paths and two accepted contract-document paths are disjoint. Both merges were conflict-free; no manual side selection or source replay was used.",
+    "acceptedStorePathIdentities": [
+      {"path":"src/loopTaskIdentityCatalog.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"8be327a8376e3a64b7b8d51f13c2e2fb8fd01e85","sourceSha256":"3078d568c9c8a984c95ce4d1f03c21f5a6bcc841c2a5245bec74b0d35412f933","mergedSha256":"3078d568c9c8a984c95ce4d1f03c21f5a6bcc841c2a5245bec74b0d35412f933","identicalToSource":true},
+      {"path":"src/loopTaskStore.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"3143a404c624b47e947ae2d703e35140780ebbc0","sourceSha256":"f90c72dd8e24b641dfdf54046f8b7c21ba5b100602b6e93f659bf2defb7a57b9","mergedSha256":"f90c72dd8e24b641dfdf54046f8b7c21ba5b100602b6e93f659bf2defb7a57b9","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentOwnedTaskSource.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"da9d248b8da25fd7cd73b68b989fbf564977d6ef","sourceSha256":"c28f21507407459db793e2ee946583362a3b5d9d78736c8eb90ac85cb637840a","mergedSha256":"c28f21507407459db793e2ee946583362a3b5d9d78736c8eb90ac85cb637840a","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentOwnershipIndex.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"87f0f9b3db9e75da55780d19ef309306955ab988","sourceSha256":"0f4990dc006529deb2fce28a8719187a6567913f1603490928afeb683b62372c","mergedSha256":"0f4990dc006529deb2fce28a8719187a6567913f1603490928afeb683b62372c","identicalToSource":true},
+      {"path":"src/test/extensionHost/departmentProductionTaskStore.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"3aa576667820cefc3d699e3fb8359f694c163644","sourceSha256":"840db91516b987230cf985fa7bd4b295f4a752acb307502e69829574bb644bb0","mergedSha256":"840db91516b987230cf985fa7bd4b295f4a752acb307502e69829574bb644bb0","identicalToSource":true},
+      {"path":"src/test/extensionHost/loopPlusHandoffContracts.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"6f73abf19a5e6ae8b6f884d87906972c0bfbf5d6","sourceSha256":"8947464fd87b979e278a1ce2d804181a4c84fd370266b42d3e5e809a3f2d221e","mergedSha256":"8947464fd87b979e278a1ce2d804181a4c84fd370266b42d3e5e809a3f2d221e","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskIdentityCatalog.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"b0cbfdfbbd0eecb286fb1d73c311099e325a3355","sourceSha256":"a6b18a379376bcb75825ca20911822b9d5bfdd2b7e005802a85304bd0426bfbd","mergedSha256":"a6b18a379376bcb75825ca20911822b9d5bfdd2b7e005802a85304bd0426bfbd","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskStoreCoreCoverage.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"69359800ebe7079156871444bad890269402aacf","sourceSha256":"d624a817efe2277f8e8c7917d2e4b40c0c76fa96c7db6e4f6a019bbd8a00d69b","mergedSha256":"d624a817efe2277f8e8c7917d2e4b40c0c76fa96c7db6e4f6a019bbd8a00d69b","identicalToSource":true},
+      {"path":"src/test/loop/loopTaskStorePersistence.test.ts","sourceCommit":"94267bb3f4343c9ccee0f9f75e99c6a2f492df50","sourceBlob":"bc8de2a78c5e80e4c5b724a88b36d838bdab619f","sourceSha256":"e7ab9c59e80a7f98acf9bf4feea1551184b8a76d7fe52c60a702619589f8d9bc","mergedSha256":"e7ab9c59e80a7f98acf9bf4feea1551184b8a76d7fe52c60a702619589f8d9bc","identicalToSource":true}
+    ],
+    "acceptedContractDocsPathIdentities": [
+      {"path":".ch/docs/design-docs/department-mode.md","sourceCommit":"2999a3b0589eaab2f52b355e41487cc44a2331c6","sourceBlob":"b5832bb9d3ac5c2da4018b628f0df9c8a4547adb","sourceSha256":"05268db4f742f20168639619b63f5f71f507a02da48451fac3da91620b086ab5","mergedSha256":"05268db4f742f20168639619b63f5f71f507a02da48451fac3da91620b086ab5","identicalToSource":true},
+      {"path":".ch/docs/ontology/domains/cli-plugin-runtime.json","sourceCommit":"2999a3b0589eaab2f52b355e41487cc44a2331c6","sourceBlob":"fd0f9a0c11baea597359e87931adfec1b584fca1","sourceSha256":"142f57cbfbf051fb6bcd88229abebc4419ec812e7897a00eaf4042b4eb43d1f5","mergedSha256":"142f57cbfbf051fb6bcd88229abebc4419ec812e7897a00eaf4042b4eb43d1f5","identicalToSource":true}
+    ],
+    "verificationReuse": "Reused accepted Round707 standard build and 110 distinct cases, Round708 cold tsc/60 cases/794 byte-identical non-test artifacts, and Round709 ontology validation/9 tool tests within source snapshots. The merged ontology/document files are byte-identical to source; no repeated source-only checks.",
+    "officialRegression": {"inputCommit":"30627ab9eb86b3a484737e92161f517e8f3b5f13","inputTree":"f342fe88dd76ca4ddb1e1e60331a2af2fb0c048d","command":"node scripts/run_unit_tests.js","exitCode":1,"testFiles":397,"tests":5462,"passed":5454,"failed":3,"cancelled":2,"skipped":3,"durationMs":774393,"log":"/tmp/round711-unit.log","logSha256":"dae408ed87c1e726d52d232257dff1aa06faaf67458837ff29b2d5392dc6f5c2","discoveryList":"/tmp/round711-unit-discovery.txt","discoveryListSha256":"ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a","buildCommand":"npm run build","buildExitCode":0,"buildLog":"/tmp/round711-build.log","buildLogSha256":"448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07","controlledProcessHandling":"Two departmentcodexexecutionlauncher cases timed out at the existing 10s limit; the file process then hung about 12 minutes without child processes, temp fixtures or log progress. Only this invocation's exact PID 74508 was SIGTERM'ed so the official runner could finish and report. This controlled interruption is not a pass or natural cleanup.","failures":["departmentGroupChatHost owner-change case expected 1 post but received 2; attribution unresolved.","loopTaskStore legacy migration success case did not discover the expected target store.","loopTaskStore unsafe-root case found the prior legacy path already present after the preceding failure; dependent fixture precondition, not independent contract result.","departmentcodexexecutionlauncher resume raw-session persistence-confirmation case timed out at 10s.","departmentcodexexecutionlauncher Owner callback-failure case timed out at 10s."],"failureClassification":"Store migration is a source/fixture root-cause item. Group-chat and two Owner timeouts remain unclassified pending their independent owners. The unsafe-root assertion is contaminated by the preceding migration failure.","fullRegressionPassed":false},
+    "round698HistoricalResultUnchanged": {"tests":5439,"passed":5265,"failed":165,"cancelled":6,"skipped":3,"exitCode":1}
+  },
+  "round714LegacyStoreMigrationRepair": {
+    "round": 714,
+    "baseCommit": "bc0b066fd318db984ffe7191db0bac86eaeab217",
+    "baseTree": "5b4efaab43c12b49a4f37d3e5f4acb793022addb",
+    "testedInputCommit": "4d36ef021aa88bd2f5e12aeeeb8c26105c624ee6",
+    "testedInputTree": "11c08b5428b487ebc1f46021ac1768bde48be634",
+    "testedInputNote": "Build/tests ran on the working bytes subsequently committed as this input; only handoff documents changed afterward. Final delivery commit/tree are in the Round714 attempt report.",
+    "productionSourceChanged": false,
+    "changedTestPaths": [
+      {
+        "path": "src/test/loop/loopTaskStore.test.ts",
+        "blob": "615914000e99f42c38652bc9a8efad2077d68b22",
+        "sha256": "6f3ed3757618371a129fc2a1eb47b69c97ea4763eb2ef5155fbceb7365e02daf"
+      }
+    ],
+    "rootCauseClassification": "Fixture authorization and failure isolation. An earlier real ownership rebuild established the catalog. The legacy success case then imported unknown IDs with fs.writeFileSync; canMigrateOrdinaryLoopTaskIdentity correctly refused the unknown source before moving communications. Its unguarded assertion left the legacy communication root behind, contaminating the next case. No production defect was established.",
+    "repair": [
+      "New bounded child process with HOME/USERPROFILE set before importing store/catalog covers ordinary pre-catalog migration; parent finally removes its own temporary home.",
+      "Existing-catalog success registers both ordinary sibling IDs via writeLoopTaskStore, confirms migration permission, then seeds only legacy payload fields without changing registered identities. Communication bytes, target paths, sibling preservation, obsolete-field normalization and subsequent update persistence remain asserted.",
+      "Unsafe symlink/junction source is registered via the supported writer; migration permission and a delegating lstatSync observer prove it reaches the real communication-root refusal. Original paths/content and absent target remain asserted.",
+      "Setup and assertions are protected by finally; source directories, own link/external target and mocks are cleaned even on assertion failure. No user data or catalog identity is fabricated."
+    ],
+    "checks": [
+      {
+        "scope": "intermediate fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "intermediate legacy file and adjacent cases",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "log": "/tmp/round714-loop-task-store.log",
+        "logSha256": "95cabf06682ba708da6586547ef9de49643b11f1a5c620dc79022595650908ad"
+      },
+      {
+        "scope": "final fixture compile",
+        "command": "npm run build",
+        "exitCode": 0,
+        "log": "/tmp/round714-build-final.log",
+        "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+      },
+      {
+        "scope": "final legacy file and adjacent isolation",
+        "command": "node --test dist/test/loop/loopTaskStore.test.js",
+        "exitCode": 0,
+        "tests": 26,
+        "passed": 26,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "durationMs": 266.316,
+        "log": "/tmp/round714-loop-task-store-final.log",
+        "logSha256": "dc7ab457da618098e48b5e3ccd4f709c4f8cf3e34bd373f9f191f400e00681ae"
+      }
+    ],
+    "intermediateResultLimit": "After the first successful build and 26/26, final review added explicit child HOME assertion and cleanup of the complete owned legacy communication root on failure. Those TS changes invalidate the intermediate fixture evidence for the final bytes; final build and the same file were rerun once.",
+    "reuseAndSkips": "Production store/catalog, shared helpers, ontology and other tests are unchanged; prior accepted source110, cold60 and other scoped evidence remain valid. No official full rerun, browser, CLI/EH, ontology validation, 110-case or cold60 repetition in this attempt.",
+    "officialFullRegressionPassed": false,
+    "remainingGates": [
+      "Round711 official full remains failed: 5462 tests / 5454 passed / 3 failed / 2 cancelled / 3 skipped / exit1, including its controlled interruption. Round698 original failed result is unchanged.",
+      "Group-chat revocation and Codex Owner wait repairs belong to independent owners; this attempt neither modifies nor accepts them.",
+      "After accepted repairs are actually unified, run the official full suite on that input.",
+      "Native Linux/Windows, real UI/EH/CLI and final authority/capacity/cold composition evidence retain their existing limits.",
+      "Original master dirty-content classification/preservation and safe final clean checkout handoff remain later work."
+    ]
+  },
+  "round715AcceptedRepairsFullRegression": {
+    "round": 715,
+    "baseCommit": "f1c499f36cfc06d604a10716ca7c2354fd3c3a05",
+    "baseTree": "b025197d0949d1a368e2828f33c9c335b0b65a30",
+    "branch": "codex/department-mainline-integration-round676-20261116",
+    "groupChatSource": {
+      "commit": "53fc392b4c4563537e935f9c307d90257e344a5e",
+      "tree": "a5de04cfa4a0abc6d87c1995241de55c85f629dd",
+      "parent": "bc0b066fd318db984ffe7191db0bac86eaeab217"
+    },
+    "ownerSource": {
+      "commit": "bbed2d585fad47652f0099b8576bed2c2a627bea",
+      "tree": "aa1dd6ffd6a4bf7b1f74242ef8ff56305ae37d17",
+      "parent": "bc0b066fd318db984ffe7191db0bac86eaeab217"
+    },
+    "groupChatMerge": {
+      "commit": "48f02272f6b8bf3cbba364d43fcad58257f4ae89",
+      "tree": "7fc8d64210a303426dc568cc1ecd77dc53095847",
+      "parents": [
+        "f1c499f36cfc06d604a10716ca7c2354fd3c3a05",
+        "53fc392b4c4563537e935f9c307d90257e344a5e"
+      ]
+    },
+    "ownerMergeAndTestedInput": {
+      "commit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+      "tree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+      "parents": [
+        "48f02272f6b8bf3cbba364d43fcad58257f4ae89",
+        "bbed2d585fad47652f0099b8576bed2c2a627bea"
+      ]
+    },
+    "mergeStrategy": "ort",
+    "mergeConflicts": 0,
+    "manualConflictResolutions": [],
+    "overlapReview": "Group-chat one-path and Owner two-path source deltas are disjoint from each other and from the accepted migration test / five handoff paths. Three imported paths are byte-identical to accepted source. No production, shared runtime, store/catalog, ontology or UI changes; no ours/theirs selection or replayed ancestor patches.",
+    "importedPathIdentities": [
+      {
+        "path": "src/test/loop/departmentGroupChatHost.test.ts",
+        "sourceCommit": "53fc392b4c4563537e935f9c307d90257e344a5e",
+        "sourceBlob": "b4b59b3ac03cbfa3bc0c2a9bf33bc2ac3e55e10c",
+        "sourceSha256": "7261cd7a3b605befd87b39a0a9b474ba108a12c0fb8b58acdf3fba60b81bf6e6",
+        "mergedSha256": "7261cd7a3b605befd87b39a0a9b474ba108a12c0fb8b58acdf3fba60b81bf6e6",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/runtime/departmentcodexexecutionlauncher.test.ts",
+        "sourceCommit": "bbed2d585fad47652f0099b8576bed2c2a627bea",
+        "sourceBlob": "73b6f6d9c3e92593e597039d13f635f7968eea9a",
+        "sourceSha256": "757ebebc700c94694082775b10ff147d560f40e986e7ac8b5b5a380b5627fde9",
+        "mergedSha256": "757ebebc700c94694082775b10ff147d560f40e986e7ac8b5b5a380b5627fde9",
+        "identicalToSource": true
+      },
+      {
+        "path": "src/test/runtime/fixtures/departmentcodexownerworker.ts",
+        "sourceCommit": "bbed2d585fad47652f0099b8576bed2c2a627bea",
+        "sourceBlob": "efba008330ffbb0b4d6b4aa4d6c680ede04ac29d",
+        "sourceSha256": "8ccd0c3d73125b7c036b46773b2f3a026dd01ad077b86256fecd51176cd7cd18",
+        "mergedSha256": "8ccd0c3d73125b7c036b46773b2f3a026dd01ad077b86256fecd51176cd7cd18",
+        "identicalToSource": true
+      }
+    ],
+    "retainedMigrationTest": {
+      "path": "src/test/loop/loopTaskStore.test.ts",
+      "sourceCommit": "f1c499f36cfc06d604a10716ca7c2354fd3c3a05",
+      "blob": "615914000e99f42c38652bc9a8efad2077d68b22",
+      "sha256": "6f3ed3757618371a129fc2a1eb47b69c97ea4763eb2ef5155fbceb7365e02daf",
+      "unchanged": true
+    },
+    "newValidationReason": "Round711 official full run failed on the prior unified input. Accepted migration/group-chat/Owner focused results did not cover these three repairs together. User explicitly required official full regression of the actual final unified source.",
+    "reusedEvidence": "Reuse accepted migration final build/26; group-chat 37 then final changed revoke case 8 (remaining 29 unchanged, never sum to 45); Owner final build/35 plus unchanged consumers76; source110/cold60/ontology9 within prior scope. No separate repetition of those source checks.",
+    "build": {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "/tmp/round715-build.log",
+      "logSha256": "448b526c915b6efdafbc18c84e74fa59d7195b28c17fba87160b82127dfcdd07"
+    },
+    "discovery": {
+      "command": "node scripts/run_unit_tests.js --list",
+      "exitCode": 0,
+      "testFiles": 397,
+      "file": "/tmp/round715-unit-discovery.txt",
+      "sha256": "ae9cd3b1ea7a1441da496c4a5699a14c92afd6ab4125d3dcffcb7eac21a6868a",
+      "filesReference": "round698-full-regression.json#round715Followup.discoveredFiles",
+      "requiredFilesPresent": true
+    },
+    "officialRegression": {
+      "command": "node scripts/run_unit_tests.js",
+      "exitCode": 0,
+      "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+      "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+      "testFiles": 397,
+      "tests": 5472,
+      "suites": 2,
+      "passed": 5469,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 3,
+      "todo": 0,
+      "durationMs": 63770.400166,
+      "log": "/tmp/round715-unit.log",
+      "logSha256": "4dee70fd6346b8d0c666f871df6f12aa0a9c3cd823cd9c32459964c06b2f3707",
+      "failures": [],
+      "skips": [
+        {
+          "file": "dist/test/extensionHost/dshLoopSessionResumeLive.test.js",
+          "test": "real DSH rejects a changed cwd but resumes the same session at its original cwd",
+          "reason": "SINITEK_DSH_LOOP_LIVE is not 1"
+        },
+        {
+          "file": "dist/test/extensionHost/dshLoopSessionResumeLive.test.js",
+          "test": "real DSH Loop+ resumes after failed acceptance, tab closure and process disposal",
+          "reason": "SINITEK_DSH_LOOP_LIVE is not 1"
+        },
+        {
+          "file": "dist/test/extensionHost/dshPluginLiveBoundary.test.js",
+          "test": "DSH plugin runner and extension host talk to the configured loopback model",
+          "reason": "Requires SINITEK_DSH_LIVE=1 plus a loopback SINITEK_DSH_BASE_URL and SINITEK_DSH_API_KEY; no credentials read or printed."
+        }
+      ],
+      "processExit": "Official command returned exit0 naturally; no external signal, controlled interruption or forced process cleanup by this attempt.",
+      "launcherDiagnostics": {
+        "directChildCloseRecords": 35,
+        "allCode0SignalNull": true,
+        "forced": [],
+        "limit": "Only directly registered launcher children; not an independent exit observation of every grandchild or every other fixture in the full suite."
+      },
+      "officialEntryPassed": true,
+      "allCasesPassedWithoutSkips": false
+    },
+    "postTestChanges": "Only five appended handoff documents; final evidence commit/tree are recorded in Round715 attempt report. Tested source/test/script input remains c66439cb, with the evidence commit as its child.",
+    "historicalResultsPreserved": {
+      "round698": {
+        "tests": 5439,
+        "passed": 5265,
+        "failed": 165,
+        "cancelled": 6,
+        "skipped": 3,
+        "exitCode": 1
+      },
+      "round711": {
+        "tests": 5462,
+        "passed": 5454,
+        "failed": 3,
+        "cancelled": 2,
+        "skipped": 3,
+        "exitCode": 1,
+        "controlledInterruption": true
+      },
+      "round714": "Accepted fixture-only migration repair final build and 26/26; no official full run in that attempt."
+    },
+    "remainingGates": [
+      "Three real DSH environment-gated cases remain skipped; no new real CLI/EH or installed UI validation.",
+      "Historical two Owner timeout first-stop points remain unknown; this pass does not reconstruct them.",
+      "Final authority/capacity/cold composition review and scope-specific receipt/CLOSED/capacity evidence retain original limits. Forced hygiene cleanup is not natural authority exit.",
+      "Native Linux/Windows and other required platform/real product checks retain their prior limits.",
+      "Original master dirty-content classification, preservation and safe clean final branch handoff remain later independent work."
+    ]
+  },
+  "round720AcceptedFinalEvidenceMerge": {
+    "round": 720,
+    "acceptanceCutoff": "Frozen lp718/lp717 review in main-task.md, 2026-11-16T15:24:12.792474+00:00. Imported requirement facts remain explicitly through lp715; no later cold-composition event is accepted by this merge.",
+    "base": {
+      "commit": "2db1a838f56e5d22523dbd3f5efd78503c6c6e52",
+      "tree": "55b00634490d8601a22d5e79cc3974a1d979a529",
+      "parent": "0817f4519f3d5aa481af9ea64e848019da480b0e"
+    },
+    "acceptedRequirementSource": {
+      "commit": "c651e64226392afe884c50a6a0eff35b54a061c3",
+      "tree": "16363a5802daebed9cbb0f34ba0c493b50bbcd3a",
+      "parent": "0817f4519f3d5aa481af9ea64e848019da480b0e"
+    },
+    "merge": {
+      "commit": "e611b04f0c622a514fd8884b96c577a0ab76a299",
+      "tree": "35cb4350eaba6eac5391aae12c7d83b50122adb8",
+      "parents": [
+        "2db1a838f56e5d22523dbd3f5efd78503c6c6e52",
+        "c651e64226392afe884c50a6a0eff35b54a061c3"
+      ],
+      "strategy": "ort",
+      "conflicts": 0,
+      "manualResolutions": []
+    },
+    "importedPaths": [
+      {
+        "path": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+        "sourceBlob": "d6b58d714efd17dc8cae41ea3decc0c69b50f535",
+        "mergedBlob": "d6b58d714efd17dc8cae41ea3decc0c69b50f535",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        "sourceBlob": "5133cd41510ef482f868fab9e6a0d643b2e07778",
+        "mergedBlob": "5133cd41510ef482f868fab9e6a0d643b2e07778",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/runbooks/department-acceptance-coverage.md",
+        "sourceBlob": "8652cc497b88d96df18ba66f752d4fb13da898dd",
+        "mergedBlob": "8652cc497b88d96df18ba66f752d4fb13da898dd",
+        "identicalToSource": true
+      }
+    ],
+    "preservedCheckoutMaterials": [
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.json",
+        "sourceBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "mergedBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.md",
+        "sourceBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "mergedBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "identicalToSource": true
+      }
+    ],
+    "pathBoundary": "Three accepted requirement documents are disjoint from the two preservation materials. Only integration README.md and sources.json are appended afterward; no production/test/script/dist/ontology changes. Final evidence commit/tree are in the Round720 attempt report, not self-referenced here.",
+    "reusedEvidence": {
+      "sourceDocumentation": "Reuse lp717 source-document checks within unchanged c651 bytes, including all 22 requirement mappings; do not repeat its 86-link audit. Root feature stays active/in_progress.",
+      "preservation": "lp718 preservation/classification is accepted and unchanged. No repeat backup/restore/hash audit; no authority to clean or discard original contents.",
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural",
+        "scope": "Unchanged runtime inputs only; three live DSH cases remain environment-gated. No new runtime execution in Round720."
+      }
+    },
+    "remainingGates": [
+      "Later lp719 cold-composition delivery is pending separate review in this frozen batch; neither 6313 nor 1fe10c6 is merged here, and the cold-start runbook is unchanged. Existing real authority/receipt/CLOSED/capacity evidence retains its original scope; forced hygiene is not natural exit.",
+      "Original master final safe switch to the exact accepted delivery HEAD and clean handoff remain open. The delivery branch is occupied by this integration worktree; no detach or original-directory operation is authorized here.",
+      "Three unresolved installation/ZCode ontology references, ignored paths including .tmp, all other worktrees and the external preservation backup remain protected. Classification and ancestor identities are not deletion permission; integration-tree clean is not original-master clean.",
+      "Native Linux/Windows conditions, three live DSH skips and all other documented real UI/EH/CLI/platform limits remain; no overall feature completion or plan archival is claimed."
+    ]
+  },
+  "round721AcceptedColdFinalFactsMerge": {
+    "round": 721,
+    "acceptanceCutoff": "Formal lp719 review 2026-11-16T15:32:33.100158+00:00 and lp720 review 2026-11-16T15:41:24.586298+00:00 in main-task.md. lp718 preservation/lp717 documentation accepted; lp720 actual union retained; lp719 source now imported.",
+    "base": {
+      "commit": "c2d352da3de4f69987adbbc9676f49f33f8a0198",
+      "tree": "ee86c7a749c5d94dfbd9a94e0ee25c7b1cd14568"
+    },
+    "acceptedColdSource": {
+      "commit": "1fe10c603041671dfcd52fd8c39ad8e233825924",
+      "tree": "890e5d5c0d224db35ae23c43e164a0c9a92d098a",
+      "parent": "6313d889450cb4e6f802acd86ef07137fff40b53",
+      "parentTree": "542799c4a3587f02de489da2ae87e7a99c78747d",
+      "ancestor": "0817f4519f3d5aa481af9ea64e848019da480b0e",
+      "history": "Complete 21-line lp716 assembly failure and 22-line lp719 success retained; historical failure is not changed to pass."
+    },
+    "merge": {
+      "commit": "7a8ba23671df350a62be21c2cf9c446bd24cdeaf",
+      "tree": "4b871c308ba7a83703ab69234c4687c51b58cf76",
+      "parents": [
+        "c2d352da3de4f69987adbbc9676f49f33f8a0198",
+        "1fe10c603041671dfcd52fd8c39ad8e233825924"
+      ],
+      "strategy": "ort",
+      "conflicts": 0,
+      "manualResolutions": []
+    },
+    "importedPaths": [
+      {
+        "path": ".ch/docs/runbooks/department-cold-start-verification.md",
+        "sourceBlob": "6c737900419c49b3504303738ecc627eeab16a3f",
+        "mergedBlob": "6c737900419c49b3504303738ecc627eeab16a3f",
+        "identicalToSource": true
+      }
+    ],
+    "preservedCheckoutMaterials": [
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.md",
+        "sourceBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "mergedBlob": "9fadda9db48a1b64ffecce0956fea1f84f161e6f",
+        "identicalToSource": true
+      },
+      {
+        "path": ".ch/docs/integration/department-mainline-integration/original-checkout-preservation.json",
+        "sourceBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "mergedBlob": "516939599d91f7cb710c203a7e423d0f50a0a9aa",
+        "identicalToSource": true
+      }
+    ],
+    "currentFactPaths": [
+      ".ch/docs/runbooks/department-acceptance-coverage.md",
+      ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+      ".ch/docs/integration/department-mainline-integration/README.md",
+      ".ch/docs/integration/department-mainline-integration/sources.json"
+    ],
+    "pathBoundary": "Only the accepted cold runbook is merged; afterward only five current-fact/handoff documents change. No production/test/script/dist/ontology/UI changes. lp715 snapshots, all 22 mappings and historical JSON values retained; final evidence commit/tree live in the external Round721 report to avoid self-reference.",
+    "reusedEvidence": {
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural",
+        "scope": "Unchanged runtime only; no rerun. Three DSH live cases remain environment-gated."
+      },
+      "lp719": {
+        "inputCommit": "6313d889450cb4e6f802acd86ef07137fff40b53",
+        "inputTree": "542799c4a3587f02de489da2ae87e7a99c78747d",
+        "scenario": "cold-recovery --leader-cli opencode --leader-model default",
+        "budgetMs": 180000,
+        "exitCode": 0,
+        "result": "passed",
+        "forcedTeardown": false,
+        "scope": "Complete product closure; no replay; original full receipts/CLOSED, persisted capacity removal, original authority natural retirement; public continue only, unique successor and original OpenCode native session/move/readback; final public stop. Exit observations limited to directly observed workers, not every descendant or director final business reporting."
+      },
+      "lp707": "Accepted store 110 distinct cases within unchanged scope, not rerun or added to official totals.",
+      "lp717": "Accepted 22-mapping documentation checks reused for unchanged historical source sections; only new current facts/links checked, no repeat 86-link audit.",
+      "lp718": "Accepted protected preservation/classification snapshot unchanged; no repeat 334-item backup/restore audit or current-original completeness claim."
+    },
+    "remainingGates": [
+      "Original checkout safe path-specific handoff to exact final accepted branch/HEAD remains separately authorized future work. Revalidate HEAD/index/status/content/new nonignored paths/links/parents/ignored collisions immediately before acting; preserve changes by append, never overwrite backup. Integration clean is not master clean.",
+      "Resolve same-branch worktree occupancy only after final accepted HEAD is fixed and integration clean; preserve its contents and all other worktrees. No detach, original restore/archive/switch or cleanup occurs in this attempt.",
+      "Current accepted installation/ZCode symbol definitions exist; three original anchor versions remain in protected backup. No ontology changes, ownership inference, old whole-file reinsertion or deletion permission.",
+      "Protect ignored dist/node_modules/.tmp/.codegraph, private backup and independent trees. Zero collision is not cleanup permission; original ignored dist is neither updated nor revalidated.",
+      "Windows/Linux native conditions, three DSH live gates, paid models/arbitrary crash/external writer/all descendants remain outside the specific accepted scenario. Root feature active/in_progress; final root acceptance open."
+    ]
+  },
+  "round723FeatureCloseoutRecords": {
+    "round": 723,
+    "acceptanceCutoff": "Formal lp722 review 2026-11-16T16:22:32.322831+00:00; lp721 actual integration and lp722 handoff accepted. Closeout records require independent acceptance; no publication.",
+    "base": {
+      "commit": "f78706a8a541c389799fa617f7a80d1892f62a70",
+      "tree": "477723271a956a786605cf9088c8e98ad9222b64"
+    },
+    "delivery": {
+      "branch": "codex/department-mainline-integration-round676-20261116",
+      "checkout": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli",
+      "masterRef": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+      "masterCleanBeforeSwitch": true,
+      "integrationWorktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-mainline-integration-round676-20261116",
+      "integrationDetachedCommit": "f78706a8a541c389799fa617f7a80d1892f62a70"
+    },
+    "planMigration": {
+      "from": ".ch/docs/exec-plans/active/2026-11-13-feature-department-mode.md",
+      "to": ".ch/docs/exec-plans/completed/2026-11/2026-11-13-feature-department-mode.md",
+      "status": "completed",
+      "scope": "Existing feature implementation and defined delivery scope; final main-task acceptance remains independent. Historical snapshots and pending items retained, current links/source_refs migrated; historical literal paths are not rewritten."
+    },
+    "acceptedHandoff": {
+      "archivedUntrackedFiles": 228,
+      "restoredTrackedPaths": 106,
+      "rollbackPaths": 334,
+      "archive": "/Users/fangjiawei/.cache/round722-original-handoff-dt2oahtr",
+      "rollbackMapSha256": "8f0761489f13ab3d708660937d4bed81b70798b1759cf82c8baa78ab672c38f4",
+      "oldBackup": "/Users/fangjiawei/.cache/round718-original-checkout-ggf4x1v6",
+      "intermediateIndexSealExitCode": 1,
+      "diagnosis": {
+        "stableWindows": 3,
+        "indexEntries": 1151,
+        "statCacheChanges": 106,
+        "stageSemanticChanges": 0,
+        "actor": "unknown"
+      },
+      "protection": "Old backup and two preservation documents unchanged; no original private contents copied into this record. No repeat handoff or archive validation."
+    },
+    "reusedEvidence": {
+      "round715": {
+        "inputCommit": "c66439cbf5c5f2dc12a84c40f9fb8a7f29af2e3b",
+        "inputTree": "4fa24544d9396d91fa6c516d6cad24d19eafa35a",
+        "standardBuildExitCode": 0,
+        "officialCommand": "node scripts/run_unit_tests.js",
+        "testFiles": 397,
+        "tests": 5472,
+        "passed": 5469,
+        "failed": 0,
+        "cancelled": 0,
+        "skipped": 3,
+        "exitCode": 0,
+        "exit": "natural"
+      },
+      "lp719": "Single 180-second complete-product mixed cold-recovery exit0, within original receipts/CLOSED, persisted capacity, authority retirement, public continue unique successor, OpenCode session/move-readback, final stop and directly observed worker scope.",
+      "directorFinalBusinessReport": "Reuse corresponding accepted round-366/375 evidence, not inferred from cold recovery.",
+      "runtimeRerun": false
+    },
+    "verificationScope": "Plan archive/status/month; affected Markdown links and rebased plan links; two source_refs, duplicate-free JSON and old-value retention; historical text/22 mappings; ontology validate and diff hygiene. No build/tsc/tests/browser/CLI/EH or old audit/restore reruns.",
+    "remainingLimits": [
+      "Final main-task acceptance by reviewer; no push or release.",
+      "Native Windows/Linux targets unavailable; three live DSH environment gates not executed.",
+      "Paid models, arbitrary crashes, external writers, all descendants and other uncovered matrices not established by these scenarios.",
+      "Ignored dist may differ from source; not updated or validated. Backups, ignored/private content and independent trees remain protected."
+    ],
+    "finalIdentity": "Only in external Round723 attempt report; this object records its parent input, not a self-referential commit."
+  }
+}

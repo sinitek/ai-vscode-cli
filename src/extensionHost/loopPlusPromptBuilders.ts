@@ -53,6 +53,33 @@ export type LoopPlusMainPromptContext = {
   routingSummary?: string;
   blockedReviewSummary?: string;
   nextStepPlan?: LoopPlusNextStepPlan;
+  /** Validated department leader scope and the latest host-provided read-only capacity snapshot. */
+  departmentEmployeeCapacity?: {
+    rootTaskId: string;
+    leaderTaskId: string;
+    maxEmployees: number;
+    snapshot?: LoopPlusDepartmentEmployeeCapacitySnapshot | null;
+  };
+};
+
+/** Minimal structural contract shared with the department capacity pool. */
+export type LoopPlusDepartmentEmployeeCapacitySnapshot = {
+  rootTaskId: string;
+  leaderTaskId: string;
+  maxEmployees: number;
+  activeEmployees: number;
+  availableEmployees: number;
+  leaderOverflowActive: boolean;
+  canAcquireOverflow: boolean;
+  leaderAllocation?: {
+    revision: number;
+    source: "default" | "manual";
+    desiredLimit: number;
+    appliedLimit: number | null;
+    activeEmployees: number;
+    availableEmployees: number;
+    pending: boolean;
+  };
 };
 
 export type LoopPlusSubtaskPromptContext = {
@@ -120,6 +147,90 @@ function normalizePromptCount(value: unknown): number {
     return 0;
   }
   return Math.floor(numeric);
+}
+
+function departmentEmployeeCapacityLines(
+  context: LoopPlusMainPromptContext["departmentEmployeeCapacity"],
+): string[] {
+  if (!context) return [];
+  const unknownGlobal = [
+    "Department-wide employee capacity: employee balance unknown (the latest host snapshot is unavailable or invalid).",
+    "Do not treat unknown as zero balance or as permission to use an overflow exception.",
+  ];
+  const unknownLeader = "This leader group's employee allocation: unknown; regular/overflow admission eligibility is also unknown (the host did not provide a valid allocation snapshot). Do not infer that this leader may dispatch or acquire overflow; the host must obtain a valid current allocation snapshot and recheck before launch.";
+  try {
+    const snapshot = context.snapshot;
+    if (!snapshot || typeof snapshot !== "object") return [...unknownGlobal, unknownLeader];
+
+    const rootMatches = snapshot.rootTaskId === context.rootTaskId;
+    const leaderMatches = snapshot.leaderTaskId === context.leaderTaskId;
+    const globalValid = rootMatches
+      && leaderMatches
+      && Number.isSafeInteger(snapshot.maxEmployees) && snapshot.maxEmployees >= 0
+      && Number.isSafeInteger(snapshot.activeEmployees) && snapshot.activeEmployees >= 0
+      && Number.isSafeInteger(snapshot.availableEmployees) && snapshot.availableEmployees >= 0
+      && snapshot.availableEmployees === Math.max(0, snapshot.maxEmployees - snapshot.activeEmployees)
+      && typeof snapshot.leaderOverflowActive === "boolean"
+      && typeof snapshot.canAcquireOverflow === "boolean"
+      && (!snapshot.leaderOverflowActive || snapshot.activeEmployees > 0)
+      && snapshot.canAcquireOverflow === (snapshot.availableEmployees === 0 && !snapshot.leaderOverflowActive);
+    if (!globalValid) return [...unknownGlobal, unknownLeader];
+
+    const lines = [
+      "Department employee capacity (latest decision-time snapshot):",
+      `- Regular employee total: ${snapshot.maxEmployees}`,
+      `- Active employees in this department across all leaders, including overflow employees: ${snapshot.activeEmployees}`,
+      `- Available regular employee balance: ${snapshot.availableEmployees}`,
+      `- This leader group already has an overflow employee: ${snapshot.leaderOverflowActive ? "yes" : "no"}`,
+      `- Department-wide regular employee balance is zero: ${snapshot.availableEmployees === 0 ? "yes" : "no"}`,
+      "- Regular employee capacity is shared by all leaders within this department; departments with different root task ids have separate balances. Every active employee in this department, including overflow employees, counts as occupied.",
+      "- Only a zero department-wide regular balance can permit the existing one-unreleased-overflow-per-leader exception. A full local allocation does not permit overflow while department-wide regular balance remains.",
+      "- An existing overflow lease remains active after capacity expansion and cannot be stacked.",
+      "- The director model does not consume employee capacity.",
+      "- This is an advisory decision-time snapshot. The host must atomically recheck before launch; another leader in this department may consume positive balance concurrently.",
+      "- Local concurrency, file conflicts, pause, cancellation, and acceptance gates remain in force.",
+    ];
+
+    try {
+      const allocation = snapshot.leaderAllocation;
+      const validAllocation = allocation
+        && typeof allocation === "object"
+        && Number.isSafeInteger(allocation.revision) && allocation.revision >= 0
+        && (allocation.source === "default" || allocation.source === "manual")
+        && Number.isSafeInteger(allocation.desiredLimit) && allocation.desiredLimit >= 0
+        && (allocation.appliedLimit === null
+          || (Number.isSafeInteger(allocation.appliedLimit) && allocation.appliedLimit >= 0))
+        && Number.isSafeInteger(allocation.activeEmployees) && allocation.activeEmployees >= 0
+        && allocation.activeEmployees <= snapshot.activeEmployees
+        && (!snapshot.leaderOverflowActive || allocation.activeEmployees > 0)
+        && Number.isSafeInteger(allocation.availableEmployees) && allocation.availableEmployees >= 0
+        && allocation.availableEmployees === Math.min(
+          snapshot.availableEmployees,
+          Math.max(0, allocation.desiredLimit - allocation.activeEmployees),
+        )
+        && typeof allocation.pending === "boolean";
+      if (!validAllocation) return [...lines, unknownLeader];
+      lines.push(
+        "This leader group's employee allocation (host-provided, for the next admission decision):",
+        `- Allocation source: ${allocation.source}`,
+        `- Desired regular employee limit for this group: ${allocation.desiredLimit}`,
+        `- Applied group limit: ${allocation.appliedLimit === null ? "not yet applied" : allocation.appliedLimit}`,
+        `- Active employees in this leader group, including overflow employees: ${allocation.activeEmployees}`,
+        `- Regular employee balance available to this leader's next dispatch: ${allocation.availableEmployees}`,
+        `- Host allocation revision: ${allocation.revision}`,
+        `- Host reports this allocation pending: ${allocation.pending ? "yes" : "no"}`,
+        `- This leader may acquire an overflow employee now: ${snapshot.canAcquireOverflow ? "yes" : "no"}`,
+        "- Pending status comes from the host allocation snapshot; do not infer it from department-wide capacity changes.",
+        "- Saving a changed limit does not interrupt employees that have already started. The latest desired limit applies at the next real employee admission attempt.",
+        "- If active group occupancy exceeds the desired limit, wait for real execution cleanup to release employees before normal dispatch resumes.",
+      );
+    } catch {
+      lines.push(unknownLeader);
+    }
+    return lines;
+  } catch {
+    return [...unknownGlobal, unknownLeader];
+  }
 }
 
 function liveReviewEventId(currentEventId: string | null): string | null {
@@ -396,6 +507,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ? queue.map((item, index) => formatReview(item, `queued#${index + 1}`)).join("\n")
     : "(none)";
   const blockers = context.view.blockers.length > 0 ? context.view.blockers.join(", ") : "(none)";
+  const departmentCapacityLines = departmentEmployeeCapacityLines(context.departmentEmployeeCapacity);
   const batchText = batchIds.length > 0
     ? batchIds.map((eventId, index) => `${index + 1}. ${eventId}`).join("\n")
     : "(none)";
@@ -506,6 +618,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- " + LOOP_MAIN_STALE_TASK_LIST_RULE_EN,
     "- " + LOOP_DIRECT_EXECUTION_RULE_EN,
     `Direct completion available: ${context.allowDirectCompletion === true ? "yes" : "no"}`,
+    ...departmentCapacityLines,
     "- Eligible independent trivial work may be executed directly in every decision, even when Direct completion available is no. That flag controls only the simplified final response, not permission to handle trivial supplemental work. Preserve the existing dispatch, wait, and accept rules for other work.",
     "- Only when Direct completion available is yes, the trivial-work rule is satisfied, and all original and supplemental requirements are finished, return {\"status\":\"completed\",\"directCompletion\":true,\"answerConclusion\":\"实际结果\",\"finalSummary\":\"实际操作与结果\"}. Omit subtasks, review ids, reviews, acceptance, requirementCoverage, and acceptancePlanResults. No extra independent acceptance or fabricated evidence is needed. Earlier reviewed work does not prohibit this path. Never use it to skip unreviewed events, failed or unfinished requirements, or user/project verification requirements. Otherwise use the normal completion protocol below.",
     "- dispatch starts 1 to " + subtaskMax + " new self-contained subtasks and confirms no acceptance events; acknowledge supplied reports with reportEventIds. Do not send dispatch while the acceptance batch is open, except for the explicit one-time dispatch-first check above. Do not include reviewEventId or reviewEventIds.",
@@ -521,6 +634,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- New dispatch is conditional on the final goal still needing that work. If all requirements are satisfied, launch no new subtasks and complete once every host completion gate is clear. If remaining work is already covered by running or pending tasks, or only dependencies or real conflicts prevent useful work, accept without new subtasks and wait or continue the next review batch. Never duplicate work, rerun valid verification, or invent tasks merely to reach the concurrency target.",
     "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
+    "- Use dependsOn (an array of same-parent subtask IDs) only for real prerequisites. Each must complete and pass acceptance, or have its no-acceptance report acknowledged. Independent work may run immediately. A reprompt inherits dependencies unless it supplies dependsOn, including [] to remove them explicitly.",
+    ...(context.view.dependencyBlocks ?? []).map((block) =>
+      `- Dependency pending: ${block.subtaskId} requires ${block.dependencyId} (${block.dependencyAttemptId ?? "unavailable"}: ${block.reason}).`),
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
     "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
     ...loopPlusModeRuleLines(context),

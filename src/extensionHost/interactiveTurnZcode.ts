@@ -49,6 +49,11 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           env: launch.env,
         });
       let flushingZcodeStop = false;
+      const bindDepartmentSession = port.departmentInteractiveRunner?.(runner, () => {
+        port.interactiveRunnerManager.detachRunner("zcode", port.uiSessionId, runner);
+        return runner.dispose();
+      });
+
       let stopped = false;
       let cancelWait!: (ready: false) => void;
       const stoppedWhileWaiting = new Promise<false>((resolve) => { cancelWait = resolve; });
@@ -78,6 +83,7 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
         await runner.setThoughtLevel(launch.thinkingValue);
       }
       const settings = runner.getSettings();
+      await bindDepartmentSession?.(started.sessionId);
       port.updateSessionForNewRun(started.sessionId);
       const uiSessionId = port.uiSessionId;
       if (previousSessionId && previousSessionId !== uiSessionId) {

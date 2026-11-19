@@ -1,5 +1,6 @@
 import { appendBoundedUtf8Text } from "../boundedText";
 import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
+import type { CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIdentity";
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
@@ -90,7 +91,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   getGlobalHumanInteractionEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
-  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null, workingDirectory?: string) => Promise<string>;
+  readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null, workingDirectory?: string, codexEvidence?: CodexRuntimeConfigEvidence) => Promise<string>;
   resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
   resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
   prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome">>;
@@ -215,8 +216,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     target: PromptRunTarget,
     executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
-    const prompt = input.displayPrompt;
-    const modelPrompt = input.modelPrompt || prompt;
+    let prompt = input.displayPrompt;
+    let modelPrompt = input.modelPrompt || prompt;
+    const prepareOriginalSession = executionOptions.prepareOriginalSession;
     const contextTags = Array.isArray(input.contextTags)
       ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
       : [];
@@ -237,7 +239,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (interactiveRunsByTabId.get(target.tabId)?.stopped === false) {
       throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
     }
-    if (deps.takeOverSessionForTab
+    if (!executionOptions.requireOriginalSession && deps.takeOverSessionForTab
       && !await deps.takeOverSessionForTab(target, isPreparationAborted)) {
       return;
     }
@@ -247,10 +249,24 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
     const cli = target.cli;
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
-    const activeConfigId = getActiveConfigIdForCli(cli);
-    const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId, cwd);
+    const activeConfigId = prepareOriginalSession?.configId ?? getActiveConfigIdForCli(cli);
+    const isExecutionConfigCurrent = () => prepareOriginalSession
+      ? prepareOriginalSession.isConfigCurrent()
+      : getActiveConfigIdForCli(cli) === activeConfigId;
+    const assertOriginalConfigCurrent = () => {
+      if (prepareOriginalSession && !isExecutionConfigCurrent()) throw new Error("原配置已变化，任务未启动。");
+    };
+    assertOriginalConfigCurrent();
+    if (prepareOriginalSession && (cli !== "codex" || !prepareOriginalSession.codexConfigEvidence || !deps.readRuntimeConfigFingerprint)) {
+      throw new Error("无法确认 Codex 原档案的运行配置，任务未启动。");
+    }
+    const configFingerprint = await deps.readRuntimeConfigFingerprint?.(cli, activeConfigId, cwd, prepareOriginalSession?.codexConfigEvidence);
     if (isPreparationAborted()) return;
-    const requestedModel = input.model || getSelectedCliModel(cli, activeConfigId);
+    assertOriginalConfigCurrent();
+    const requestedModel = prepareOriginalSession ? input.model ?? null : input.executionProfile
+      ? input.executionProfile.model
+      : input.model || getSelectedCliModel(cli, activeConfigId);
+
     const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
       ? await deps.resolveGrokModelForRun(requestedModel)
       : requestedModel;
@@ -258,15 +274,19 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
     const executionProfile = buildConversationExecutionProfile(activeConfigId, selectedModel, thinkingMode);
     const interactiveMode = getWorkspaceInteractiveMode(cli);
-    applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
+    if (!executionOptions.departmentCodexRun) applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
     const tabId = target.tabId;
     const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
-    const resolvedSessionId = await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
+    // The trusted Owner prepares/resumes and durably binds its native thread.
+    // Its local transcript key is not a shared-runner resume credential.
+    const resolvedSessionId = executionOptions.requireOriginalSession || (cli === "codex" && executionOptions.departmentCodexRun)
+      ? target.sessionId
+      : await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
     if (resolvedSessionId === undefined) {
       return;
     }
-    preparePendingLabel(cli, tabId, prompt);
+    if (!prepareOriginalSession) preparePendingLabel(cli, tabId, prompt);
 
     let uiSessionId = resolvedSessionId;
     let messageTarget = uiSessionId
@@ -277,11 +297,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const humanInteractionEnabledForVibeRun = interactiveMode === "coding"
       && !input.loopTaskId
       && getGlobalHumanInteractionEnabled();
-    const thinkingPrompt = buildThinkingPrompt(cli, thinkingMode, modelPrompt, {
-      includeSuffix: false,
-      includeFinalAnswerInstruction,
-      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
-    });
     const hiddenRetryPrompt = buildHiddenRetryPrompt(cli, thinkingMode, {
       includeFinalAnswerInstruction,
     });
@@ -307,7 +322,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       kimiModelWire = await deps.resolveKimiModelWireForRun(requestedModel);
       kimiLaunch = await (deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
-        interactiveMode,
+        interactiveMode: interactiveMode === "department" ? "coding" : interactiveMode,
         selectedModel: kimiModelWire,
         thinkingMode,
       });
@@ -367,23 +382,39 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (tabOwner && !tabOwner.stopped) {
       throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
     }
-    if (deps.takeOverSessionForTab
+    if (!executionOptions.requireOriginalSession && deps.takeOverSessionForTab
       && !await deps.takeOverSessionForTab({ ...target, sessionId: uiSessionId }, isPreparationAborted)) {
       return;
     }
     if (isPreparationAborted()) {
       return;
     }
-    const sessionOwner = Array.from(interactiveRunsByTabId.values()).find((run) => !run.stopped
-      && (run.tabId === tabId || (uiSessionId && run.cli === cli && run.sessionId === uiSessionId)));
-    if (sessionOwner) {
-      throw Object.assign(new Error(`会话仍在标签 ${sessionOwner.tabId} 中运行，请切换到该标签查看，或先停止原任务再重试。`), {
-        code: "SESSION_RUN_ACTIVE",
-      });
-    }
+    const assertSessionAvailable = (): void => {
+      const sessionOwner = Array.from(interactiveRunsByTabId.values()).find((run) => !run.stopped
+        && (run.tabId === tabId || (uiSessionId && run.cli === cli && run.sessionId === uiSessionId)));
+      if (sessionOwner) {
+        throw Object.assign(new Error(`会话仍在标签 ${sessionOwner.tabId} 中运行，请切换到该标签查看，或先停止原任务再重试。`), {
+          code: "SESSION_RUN_ACTIVE",
+        });
+      }
+    };
+    assertSessionAvailable();
     // Stopping the previous owner flushes its last messages before this turn.
     if (uiSessionId) {
       messageTarget = loadSessionMessages(cli, uiSessionId);
+    }
+    const buildTurnPrompt = (text = modelPrompt) => buildThinkingPrompt(cli, thinkingMode, text, {
+      includeSuffix: false,
+      includeFinalAnswerInstruction,
+      includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
+    });
+    let thinkingPrompt = buildTurnPrompt();
+    const readOriginalThread = () => uiSessionId
+      ? resolveInteractiveMappedId(cli, uiSessionId) ?? (isLocalSessionId(uiSessionId) ? null : uiSessionId)
+      : null;
+    const originalThreadId = prepareOriginalSession ? readOriginalThread() : null;
+    if (prepareOriginalSession && (cli !== "codex" || !originalThreadId || executionOptions.departmentCodexRun)) {
+      throw new Error("无法确认原 Codex 线程，任务未启动。");
     }
 
     logCliStartup({
@@ -413,7 +444,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const runId = createMessageId();
     const startedAt = Date.now();
     const processSessionId = uiSessionId ?? runId;
-    applyProcessTitle(runId, cli, processSessionId);
 
     let assistantMessageId: string | undefined;
     const assistantMessagesByItemId = new Map<string, string>();
@@ -1086,6 +1116,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       newId: string,
       options: { freezePrevious?: string | null; codexSelection?: CodexRunSelection | null } = {}
     ): void => {
+      // The department main task owns a stable local tab key. Its native
+      // thread has already passed the dedicated durable executionSession
+      // gates; a display callback may map it, but must not rebind that key.
+      if ((executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner) && input.taskRole === "main" && input.loopTaskId) {
+        if (!uiSessionId) throw new Error("部门组长缺少本地会话关联。");
+        upsertInteractiveMapping(cli, uiSessionId, newId, { codexSelection: options.codexSelection });
+        return;
+      }
       const localSessionIdToPromote = !uiSessionId
         ? (getConversationTabById(tabId)?.sessionId ?? null)
         : (isLocalSessionId(uiSessionId) ? uiSessionId : null);
@@ -1161,6 +1199,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       })) {
         return { action: "ok" };
       }
+      // The department Owner port consumes a single execution. Missing output
+      // must settle as an error before queuing or waiting for another attempt.
+      if (executionOptions.departmentCodexRun) {
+        return { action: "error", message: t("run.missingFinalConclusion") };
+      }
       const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
       if (!input.cliCommandRepairAttempted && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES) {
         appendMessageForTab(createHiddenRetryErrorTraceMessage(missingConclusionMessage, {
@@ -1195,37 +1238,90 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       };
     };
 
-    if (!input.preloadedUserMessageId) {
-      appendMessageForTab(buildUserChatMessage({ ...input, executionModel, executionProfile }, userCreatedAt, userMessageId));
-    } else {
-      const userMessage = messageTarget.find((message) => message.id === userMessageId);
-      if (userMessage) {
-        userMessage.executionModel = executionModel;
-        userMessage.executionProfile = executionProfile;
-        sendPanelMessage({ type: "replaceMessage", message: userMessage, tabId });
-        schedulePersistForInteractiveRun();
+    let runRegistered = false;
+    const publishRunStart = (): void => {
+      applyProcessTitle(runId, cli, processSessionId);
+      if (!input.preloadedUserMessageId) {
+        appendMessageForTab(buildUserChatMessage({ ...input, displayPrompt: prompt, executionModel, executionProfile }, userCreatedAt, userMessageId));
+      } else {
+        const userMessage = messageTarget.find((message) => message.id === userMessageId);
+        if (userMessage) {
+          userMessage.executionModel = executionModel;
+          userMessage.executionProfile = executionProfile;
+          sendPanelMessage({ type: "replaceMessage", message: userMessage, tabId });
+          schedulePersistForInteractiveRun();
+        }
       }
+      sendRunStatusForTab(tabId, "start", {
+        prompt,
+        startedAt,
+      });
+    };
+    const registerRun = (): void => {
+      interactiveRunsByTabId.set(tabId, {
+        runId,
+        tabId,
+        cli,
+        sessionId: uiSessionId,
+        prompt,
+        startedAt,
+        stop: stopFn,
+        messageTarget,
+        stopped: false,
+        taskRole: input.taskRole,
+        loopTaskId: input.loopTaskId,
+        loopRound: input.loopRound,
+        loopSubtaskId: input.loopSubtaskId,
+      });
+      runRegistered = true;
+      executionOptions.registerQuestionRun?.(runId);
+    };
+    if (!prepareOriginalSession) {
+      publishRunStart();
+      registerRun();
     }
-    sendRunStatusForTab(tabId, "start", {
-      prompt,
-      startedAt,
-    });
-
-    interactiveRunsByTabId.set(tabId, {
-      runId,
-      tabId,
-      cli,
-      sessionId: uiSessionId,
-      prompt,
-      startedAt,
-      stop: stopFn,
-      messageTarget,
-      stopped: false,
-      taskRole: input.taskRole,
-      loopTaskId: input.loopTaskId,
-      loopRound: input.loopRound,
-      loopSubtaskId: input.loopSubtaskId,
-    });
+    const notifyCommittedRun = (notify: () => void): void => {
+      try { notify(); } catch (error) {
+        try { void logError("loop-plus-resume-notification-failed", { tabId, error: getErrorInfo(error).message }).catch(() => undefined); } catch {}
+      }
+    };
+    let originalTurnStartRejected = false;
+    const prepareOriginalTurn = prepareOriginalSession && originalThreadId ? {
+      threadId: originalThreadId,
+      codexConfigEvidence: prepareOriginalSession.codexConfigEvidence,
+      signal: executionOptions.originalSessionPreparationSignal,
+      onStartRejected: () => {
+        originalTurnStartRejected = true;
+        executionOptions.onOriginalTurnStartRejected?.();
+      },
+      preparePrompt: () => {
+        const verifySession = () => {
+          if (isPreparationAborted() || readOriginalThread() !== originalThreadId || !isExecutionConfigCurrent()) {
+            throw new Error("原会话、标签或配置已变化，任务未启动。");
+          }
+          assertSessionAvailable();
+        };
+        verifySession();
+        const prepared = prepareOriginalSession.prepare();
+        const preparedModelPrompt = prepared.modelPrompt || prepared.displayPrompt;
+        const preparedThinkingPrompt = buildTurnPrompt(preparedModelPrompt);
+        return {
+          prompt: preparedThinkingPrompt,
+          commit: () => { verifySession(); prepared.commit(); },
+          afterSend: () => {
+            prompt = prepared.displayPrompt;
+            modelPrompt = preparedModelPrompt;
+            thinkingPrompt = preparedThinkingPrompt;
+            registerRun();
+            notifyCommittedRun(prepared.afterSend);
+            notifyCommittedRun(() => preparePendingLabel(cli, tabId, prompt));
+            notifyCommittedRun(publishRunStart);
+            syncInteractiveRunEntry(stopFn);
+            notifyCommittedRun(() => beginInteractiveAttempt(thinkingPrompt));
+          },
+        };
+      },
+    } : undefined;
 
     const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode"): Promise<"continue" | "return"> => {
       if (await maybeHandleNaturalLanguageHumanInteraction()) {
@@ -1282,13 +1378,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         });
       }
 
-      beginInteractiveAttempt(attemptPrompt);
+      if (runRegistered) beginInteractiveAttempt(attemptPrompt);
 
       try {
         if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode") {
           throw new Error(`interactive-runner-unsupported:${cli}`);
         }
-        if (getActiveConfigIdForCli(cli) !== activeConfigId) {
+        if (!isExecutionConfigCurrent()) {
           throw new Error("配置选择已变化，任务未启动，请重试。");
         }
         const disposition = await interactiveTurnStrategies[cli].runAttempt({
@@ -1308,6 +1404,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           zcodeLaunch,
           cwd,
           workspaceCwd: executionOptions.isolateProjectInstructions ? resolveWorkspaceCwd() : undefined,
+          grokLoopResumeSessionId: input.grokLoopResumeSessionId,
           thinkingMode,
           interactiveMode,
           selectedModel,
@@ -1421,6 +1518,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           handleStructuredHumanInteractionRequest,
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
+          departmentCodexRun: executionOptions.departmentCodexRun,
+          departmentInteractiveRunner: executionOptions.departmentInteractiveRunner,
+          originalCodexThreadTurn: runRegistered ? undefined : prepareOriginalTurn,
+          cancelDepartmentCodexPreparation: executionOptions.cancelDepartmentCodexPreparation,
           resolveCodexInteractiveSelection,
           getConversationTabById,
           createMessageId,
@@ -1432,6 +1533,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         }
         return;
       } catch (error) {
+        if (!runRegistered) throw error;
         const entry = interactiveRunsByTabId.get(tabId);
         if (!entry || entry.runId !== runId) {
           return;
@@ -1447,6 +1549,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             errorStack: info.stack,
           });
           return;
+        }
+        if (originalTurnStartRejected) {
+          try { await cleanupAfterRun("error", getErrorInfo(error).message); }
+          finally {
+            if (interactiveRunsByTabId.get(tabId) === entry) interactiveRunsByTabId.delete(tabId);
+            throw error;
+          }
         }
         subagentProgress.finishRunning("failed");
 
@@ -1469,7 +1578,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
         const canContinueCurrentConversation = Boolean(uiSessionId);
         hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-        const shouldRetry = canContinueCurrentConversation
+        const shouldRetry = !executionOptions.departmentCodexRun && canContinueCurrentConversation
           && !input.cliCommandRepairAttempted
           && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
           && isHiddenRetryEligibleErrorInfo(info);

@@ -47,6 +47,7 @@ class ElementDouble extends EventTargetDouble {
   parentElement: ElementDouble | null = null;
   rect = { left: 20, top: 20, width: 100, height: 24 };
   classList = {
+    contains: (token: string) => this.className.split(/\s+/).includes(token),
     add: (token: string) => { this.className += ` ${token}`; },
     toggle: (token: string, enabled: boolean) => {
       this.className = this.className.split(/\s+/).filter((item) => item !== token).join(" ");
@@ -176,7 +177,12 @@ function createHarness(tabs: Tab[] = [
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext(source.slice(busyStart, busyEnd) + source.slice(tabsStart), sandbox);
+  const helperStart = source.indexOf("      function getDepartmentConversationTabPresentation(");
+  const helperEnd = source.indexOf("      function resolveAutoInteractiveModeForTab(", helperStart);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart && tabsStart > helperEnd);
+  vm.runInContext(source.slice(busyStart, busyEnd)
+    + source.slice(helperStart, helperEnd)
+    + source.slice(tabsStart), sandbox);
   const render = () => vm.runInContext("renderConversationTabs()", sandbox);
   render();
   const tab = (id: string): ElementDouble => {

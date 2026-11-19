@@ -76,6 +76,7 @@ export type LoopPlusAcceptReview = {
 
 export type LoopPlusDecision = {
   status: LoopPlusDecisionStatus;
+  departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>;
   nextStepPlan?: LoopPlusNextStepPlan;
   progressPercent?: number;
   directCompletion?: true;
@@ -239,14 +240,23 @@ function normalizeDecision(
     options?.reject?.("nextStepPlan 只能用于有效的继续型决策，且不能与 clarify、blocked 或 completed 同时返回。");
     return null;
   }
+  const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
+  if (!decision) return null;
   const reportEventIds = readOptionalReportEventIds(value);
   if (reportEventIds === null) return null;
-  const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
-  return decision ? {
+  let normalized: LoopPlusDecision = {
     ...decision,
     ...(nextStepPlan ? { nextStepPlan } : {}),
     ...(reportEventIds !== undefined ? { reportEventIds } : {}),
-  } : null;
+  };
+  if (value.departmentCollaborations === undefined) return normalized;
+  // Coordination accompanies a normal wait decision; it never confirms/skips a review batch.
+  const messages = value.departmentCollaborations;
+  if (status !== "wait" || !Array.isArray(messages) || messages.length > 20 || messages.some((item) => !item || typeof item !== "object"
+    || ["id", "targetLeaderTaskId", "body"].some((key) => typeof item[key] !== "string" || !item[key].trim()))
+    || new Set(messages.map((item) => item.id)).size !== messages.length) return null;
+  normalized = { ...normalized, departmentCollaborations: messages.map(({ id, targetLeaderTaskId, body }) => ({ id, targetLeaderTaskId, body })) };
+  return normalized;
 }
 
 function normalizeDispatchDecision(
@@ -624,6 +634,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     action: "reprompt",
     prompt,
     title,
+    ...(value.dependsOn !== undefined ? { dependsOn } : {}),
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,
@@ -701,6 +712,7 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     id,
     title,
     prompt,
+    ...(value.dependsOn !== undefined ? { dependsOn } : {}),
     ...(conflictGroup ? { conflictGroup } : {}),
     ...(writeFiles.length > 0 ? { writeFiles } : {}),
     ...classification,

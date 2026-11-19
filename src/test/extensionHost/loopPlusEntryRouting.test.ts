@@ -2,7 +2,15 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("node:fs");
 import path = require("node:path");
+import vm = require("node:vm");
+import * as ts from "typescript";
 import { installVscodeMock } from "../vscodeMock";
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { askLoopMainModelSession } from "../../loopMainQuestion";
+import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
+import { leaderExecutionScopeKey } from "../../extensionHost/departmentleaderexecutionledger";
+import type { PromptRunInput } from "../../promptRunTypes";
+import type { ChatMessage } from "../../webview/types";
 
 installVscodeMock();
 
@@ -18,120 +26,244 @@ function readSource(...relativePath: string[]): string {
 }
 
 function functionBody(source: string, name: string): string {
-  const asyncStart = source.indexOf(`async function ${name}`);
-  const start = asyncStart >= 0 ? asyncStart : source.indexOf(`function ${name}`);
-  assert.equal(start >= 0, true, name);
-  const parenAt = source.indexOf("(", start);
-  let cursor = parenAt;
-  let depthParen = 0;
-  let quote: "'" | "\"" | "`" | null = null;
-  let paramsClosedAt = -1;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    const previous = source[cursor - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
-      }
-      cursor += 1;
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      cursor += 1;
-      continue;
-    }
-    if (char === "(") {
-      depthParen += 1;
-    } else if (char === ")") {
-      depthParen -= 1;
-      if (depthParen === 0) {
-        paramsClosedAt = cursor;
-        break;
-      }
-    }
-    cursor += 1;
-  }
-  assert.equal(paramsClosedAt >= 0, true, name);
-  cursor = paramsClosedAt + 1;
-  depthParen = 0;
-  let depthBrace = 0;
-  let depthAngle = 0;
-  quote = null;
-  let bodyOpen = -1;
-  while (cursor < source.length) {
-    const char = source[cursor];
-    const previous = source[cursor - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
-      }
-      cursor += 1;
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      cursor += 1;
-      continue;
-    }
-    if (char === "<") {
-      depthAngle += 1;
-    } else if (char === ">" && depthAngle > 0) {
-      depthAngle -= 1;
-    } else if (char === "(") {
-      depthParen += 1;
-    } else if (char === ")") {
-      depthParen -= 1;
-    } else if (char === "{") {
-      if (depthParen === 0 && depthBrace === 0 && depthAngle === 0) {
-        const groupEnd = matchingBrace(source, cursor);
-        let next = groupEnd + 1;
-        while (next < source.length && /\s/.test(source[next])) {
-          next += 1;
-        }
-        if (source[next] === "{") {
-          cursor = next;
-          continue;
-        }
-        bodyOpen = cursor;
-        break;
-      }
-      depthBrace += 1;
-    } else if (char === "}") {
-      depthBrace -= 1;
-    }
-    cursor += 1;
-  }
-  assert.equal(bodyOpen >= 0, true, name);
-  return source.slice(bodyOpen, matchingBrace(source, bodyOpen) + 1);
+  const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const declaration = file.statements.find((node): node is ts.FunctionDeclaration =>
+    ts.isFunctionDeclaration(node) && node.name?.text === name);
+  assert.ok(declaration?.body, `${name} should have a function body`);
+  return declaration.body.getText(file);
 }
 
-function matchingBrace(source: string, open: number): number {
-  let depth = 0;
-  let quote: "'" | "\"" | "`" | null = null;
-  for (let index = open; index < source.length; index += 1) {
-    const char = source[index];
-    const previous = source[index - 1];
-    if (quote) {
-      if (char === quote && previous !== "\\") {
-        quote = null;
+function productionLoopMainEntries() {
+  const source = readSource("src", "extension.ts");
+  const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true);
+  const coordinator = file.statements.filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .find((declaration) => declaration.name.getText(file) === "loopGroupChatChatPanelCoordinator");
+  const initializer = coordinator?.initializer;
+  assert.ok(initializer && ts.isCallExpression(initializer));
+  const ports = initializer.arguments[0];
+  assert.ok(ts.isObjectLiteralExpression(ports));
+  const questionPort = ports.properties.find((property) => property.name?.getText(file) === "askMainModel");
+  assert.ok(questionPort && ts.isPropertyAssignment(questionPort));
+  return ts.transpileModule(`
+    async function runPromptWithDepartmentAdmission(input, options = {}) ${functionBody(source, "runPromptWithDepartmentAdmission")}
+    async function runPrompt(input, options = {}) ${functionBody(source, "runPrompt")}
+    async function runDepartmentLeaderPrompt(input, options) ${functionBody(source, "runDepartmentLeaderPrompt")}
+    ({ ask: ${questionPort.initializer.getText(file)}, runPrompt, runDepartmentLeaderPrompt });
+  `, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
+}
+
+test("production ask uses Tab occupancy and shared FIFO rather than pending decisions", async () => {
+  const task = { id: "task", cli: "codex", status: "running", sessionId: "original-session", schedulingMode: "event_driven",
+    workspaceKey: "workspace", taskStoreFile: "/fixture/tasks.json", supplementalRequirements: ["待处理补充需求"] };
+  const target = { tabId: "main-tab", cli: task.cli, sessionId: task.sessionId };
+  const events: string[] = [];
+  const messages: ChatMessage[] = [];
+  let active = false;
+  let taskReads = 0;
+  let pendingReviewReads = 0;
+  let releaseMain!: () => void;
+  const mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
+  const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
+  const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+    isExtensionDeactivating: false,
+    readLoopTaskRecord: () => { taskReads += 1; return task; },
+    resolveLoopMainPromptTarget: () => ({ ...target }),
+    isTabRunActive: () => active,
+    loopMainQuestionQueue: queue,
+    promptRunHandoff: new PromptRunHandoff(),
+    getLoopPlusOrchestrationHost: () => ({ hasPendingMainWork: () => { pendingReviewReads += 1; return true; } }),
+    askLoopMainModelSession,
+    getConversationTabById: () => null,
+    loadSessionMessages: () => messages,
+    getActiveConversationTabId: () => target.tabId,
+    prepareDepartmentInvocation: async (input: unknown) => input,
+    runPromptNow: async (input: { displayPrompt: string; loopAsk?: boolean }) => {
+      events.push(input.displayPrompt);
+      if (input.loopAsk) {
+        messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
+      } else {
+        await mainGate;
       }
-      continue;
-    }
-    if (char === "'" || char === "\"" || char === "`") {
-      quote = char;
-      continue;
-    }
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-  throw new Error("Unclosed brace");
+    },
+    t: (key: string) => key,
+  }) as {
+    ask: (input: typeof task, question: string, hooks?: { isAborted: () => boolean }) => Promise<Awaited<ReturnType<typeof askLoopMainModelSession>>>;
+    runPrompt: (input: { displayPrompt: string; taskRole: string; loopTaskId: string }) => Promise<void>;
+  };
+
+  const first = runtime.ask(task, "已有待验收，先提问");
+  assert.deepEqual(events, ["已有待验收，先提问"]);
+  assert.equal((await first).status, "ready");
+  assert.equal(pendingReviewReads, 0);
+
+  const main = runtime.runPrompt({ displayPrompt: "先入队的验收", taskRole: "main", loopTaskId: task.id });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const second = runtime.ask(task, "后入队问题");
+  assert.deepEqual(events, ["已有待验收，先提问", "先入队的验收"]);
+  releaseMain();
+  await main;
+  assert.equal((await second).status, "ready");
+  assert.deepEqual(events, ["已有待验收，先提问", "先入队的验收", "后入队问题"]);
+
+  active = true;
+  const readsBefore = taskReads;
+  const stale = runtime.ask(task, "过期会话的问题");
+  assert.equal(queue.isBusy(target.tabId), true);
+  target.sessionId = "replacement-session";
+  const drained = queue.runMain(target.tabId, async () => undefined);
+  assert.equal(taskReads, readsBefore);
+  active = false;
+  const tick = setTimeout(() => undefined, 20);
+  await assert.rejects(stale, /loopGroupChatChat\.askUnavailable/u);
+  clearTimeout(tick);
+  await drained;
+  assert.equal(events.length, 3);
+});
+
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => { release = resolve; });
+  return { promise, release };
+}
+
+for (const cli of ["codex", "opencode"] as const) {
+  test(`production ${cli} leader and ask share FIFO through preparation and consumer cleanup`, async () => {
+    const task = { id: "leader", status: "running", cli, workspaceKey: "fixture", taskStoreFile: "/fixture/tasks.json",
+      sessionId: "leader-session", department: { role: "leader", routes: { leader: { cli, model: "fixture-model" } } } };
+    const tab = { id: "leader-tab" };
+    const target = { tabId: tab.id, cli, sessionId: task.sessionId };
+    const scope = { rootTaskId: "director", workspace: task.workspaceKey, leaderTaskId: task.id, moduleId: "module", generation: 1 };
+    const events: string[] = [];
+    const messages: ChatMessage[] = [];
+    const interactiveRunsByTabId = new Map<string, { runId: string; stop: () => void }>();
+    const parallelRunsByTabId = new Map<string, { runId: string; stop: () => void }>();
+    const runs = cli === "codex" ? interactiveRunsByTabId : parallelRunsByTabId;
+    const prep = gate(), consumer = gate();
+    let answerGate = gate();
+    const native = async () => { events.push("owner"); };
+    const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+      AbortController,
+      isExtensionDeactivating: false,
+      activeWorkspaceKey: task.workspaceKey,
+      readLoopTaskRecord: () => task,
+      resolvePromptRunTarget: () => ({ ...target }),
+      resolveLoopMainPromptTarget: () => ({ ...target }),
+      getConversationTabById: () => tab,
+      getConversationTabSessionIdForCli: () => target.sessionId,
+      getActiveConversationTabId: () => tab.id,
+      loadSessionMessages: () => messages,
+      isTabRunActive: () => runs.has(tab.id),
+      loopMainQuestionQueue: createLoopMainQuestionQueue({ pollIntervalMs: 1 }),
+      promptRunHandoff: new PromptRunHandoff(),
+      askLoopMainModelSession,
+      usesDepartmentInteractiveRuntime: () => false,
+      leaderExecutionScopeKey,
+      getDepartmentExecutionProducer: () => ({ scope: () => ({ ...scope }), track: async (_taskId: string, work: () => Promise<void>) => work() }),
+      configApplyQueue: { waitForIdle: async () => { events.push("prepare"); await prep.promise; return true; } },
+      prepareDepartmentInvocation: async (input: PromptRunInput) => ({ ...input, model: "fixture-model", thinkingModeOverride: "off" }),
+      normalizeThinkingWorkspaceFiles: () => [],
+      getThinkingWorkspaceFiles: () => [],
+      getCliCommand: () => cli,
+      getMacTaskShell: () => "bash",
+      resolveWorkspaceCwd: () => "/fixture",
+      buildDepartmentProcessArgs: () => [],
+      splitConfiguredCliCommand: () => [cli],
+      DEPARTMENT_CONFIG_PATHS: { [cli]: { config: "/fixture/config" } },
+      getDepartmentExecutionResources: () => ({ beginConsumer: () => ({ target, finish: () => events.push("cleanup") }) }),
+      runPromptInteractive: async (_input: unknown, _target: unknown, options: { departmentCodexRun: (prompt: string, handlers: object) => Promise<void> }) => {
+        await options.departmentCodexRun("leader", {});
+        await consumer.promise;
+      },
+      runPromptParallel: async (_input: unknown, _target: unknown, options: { departmentProcessStream: (cli: string, prompt: string, handlers: object, settings: object) => unknown }) => {
+        await options.departmentProcessStream(cli, "leader", {}, { model: "fixture-model", openCodeConfigContent: "{}", environment: {} });
+        await consumer.promise;
+      },
+      createDepartmentLeaderNativeSessionValidator: () => undefined,
+      getDepartmentLeaderProductionHost: () => ({ run: native, runOpenCode: native }),
+      path,
+      process: { env: {} },
+      interactiveRunsByTabId,
+      parallelRunsByTabId,
+      stopParallelRunForTab: (tabId: string) => parallelRunsByTabId.get(tabId)?.stop(),
+      getPrimaryRunTabId: () => null,
+      runPromptNow: async (input: PromptRunInput, options: { registerQuestionRun?: (id: string) => void }) => {
+        const questionGate = answerGate;
+        events.push(input.displayPrompt);
+        runs.set(tab.id, { runId: input.displayPrompt, stop: () => { events.push(`stop:${input.displayPrompt}`); questionGate.release(); } });
+        options.registerQuestionRun?.(input.displayPrompt);
+        await questionGate.promise;
+        runs.delete(tab.id);
+        messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
+      },
+      t: (key: string) => key,
+    }) as {
+      ask: (record: typeof task, question: string, hooks?: { signal?: AbortSignal }) => ReturnType<typeof askLoopMainModelSession>;
+      runDepartmentLeaderPrompt: (input: PromptRunInput, options: { targetTabId: string; invocationId: string; signal?: AbortSignal; isAborted: () => boolean }) => Promise<void>;
+    };
+    const startLeader = (signal?: AbortSignal) => runtime.runDepartmentLeaderPrompt({ displayPrompt: "leader", modelPrompt: "leader",
+      contextTags: [], taskRole: "main", loopTaskId: task.id },
+      { targetTabId: tab.id, invocationId: "invocation", signal, isAborted: () => false });
+    const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+    const leader = startLeader();
+    const cancelledQuestion = new AbortController();
+    const cancelled = runtime.ask(task, "cancelled", { signal: cancelledQuestion.signal });
+    const queuedQuestion = runtime.ask(task, "after leader");
+    assert.deepEqual(events, ["prepare"]);
+    cancelledQuestion.abort();
+    assert.equal((await cancelled).status, "stopped");
+    prep.release();
+    await tick();
+    assert.deepEqual(events, ["prepare", "owner"]);
+    consumer.release();
+    await leader;
+    await tick();
+    assert.deepEqual(events, ["prepare", "owner", "cleanup", "after leader"]);
+    answerGate.release();
+    assert.equal((await queuedQuestion).status, "ready");
+    await tick();
+
+    events.length = 0;
+    answerGate = gate();
+    const questionAbort = new AbortController();
+    const first = runtime.ask(task, "before leader", { signal: questionAbort.signal });
+    const queuedAbort = new AbortController();
+    const cancelledLeader = startLeader(queuedAbort.signal);
+    const laterLeader = startLeader();
+    assert.deepEqual(events, ["before leader"]);
+    queuedAbort.abort();
+    await cancelledLeader;
+    assert.deepEqual(events, ["before leader"]);
+    questionAbort.abort();
+    assert.equal((await first).status, "stopped");
+    await laterLeader;
+    assert.deepEqual(events, ["before leader", "stop:before leader", "prepare", "owner", "cleanup"]);
+
+    events.length = 0;
+    answerGate = gate();
+    const staleAbort = new AbortController();
+    const active = runtime.ask(task, "original question", { signal: staleAbort.signal });
+    const staleLeader = startLeader();
+    target.sessionId = "replacement-session";
+    runs.set(tab.id, { runId: "replacement", stop: () => events.push("unexpected stop") });
+    staleAbort.abort();
+    assert.deepEqual(events, ["original question"]);
+    answerGate.release();
+    assert.equal((await active).status, "stopped");
+    await assert.rejects(staleLeader, /会话已变化/u);
+    assert.deepEqual(events, ["original question"]);
+
+    target.sessionId = task.sessionId;
+    answerGate = gate();
+    const beforeReplacement = runtime.ask(task, "before generation change");
+    const staleGeneration = startLeader();
+    scope.generation += 1;
+    answerGate.release();
+    await beforeReplacement;
+    await assert.rejects(staleGeneration, /归属或会话已变化/u);
+    assert.deepEqual(events, ["original question", "before generation change"]);
+  });
 }
 
 test("calls Loop+ before classic initialization and the round loop", () => {
@@ -167,7 +299,7 @@ test("calls Loop+ before classic initialization and the round loop", () => {
   const preempt = functionBody(extensionSource, "preemptActivePromptRun");
   assert.equal(preempt.includes("cancelLoopPlusInvocation("), true);
   assert.equal(preempt.indexOf("cancelLoopPlusInvocation(") < preempt.indexOf("stopRunForTab("), true);
-  const promptEntry = functionBody(extensionSource, "runPrompt");
+  const promptEntry = functionBody(extensionSource, "runPromptWithDepartmentAdmission");
   assert.equal(promptEntry.includes("loopMainQuestionQueue.runMain("), true);
   const promptRun = functionBody(extensionSource, "runPromptNow");
   assert.equal(promptRun.includes("preemptActivePromptRun("), true);
@@ -175,10 +307,9 @@ test("calls Loop+ before classic initialization and the round loop", () => {
 
   const adapterSource = readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts");
   assert.equal(adapterSource.includes("export function createLoopPlusRuntimeAdapter("), true);
-  const eventDrivenRun = functionBody(adapterSource, "runEventDriven");
-  const tried = eventDrivenRun.indexOf("host().tryRun(");
-  const revealed = eventDrivenRun.indexOf("deps.revealClarification?.(result.taskId)");
-  const awaited = eventDrivenRun.indexOf("await result.done");
+  const tried = adapterSource.indexOf("result = host().tryRun(");
+  const revealed = adapterSource.indexOf("revealStandaloneGroupChat(result.taskId)", tried);
+  const awaited = adapterSource.indexOf("await lifecycle", revealed);
   assert.equal(tried >= 0 && revealed > tried && awaited > revealed, true);
   assert.equal(adapterSource.includes("withLoopPlusExecutionRoot("), true);
   assert.equal(adapterSource.includes("resolveLoopPlusAttemptOutcome("), true);
@@ -225,6 +356,16 @@ test("calls Loop+ before classic initialization and the round loop", () => {
     continuation.indexOf("() => closeLoopPlusSubtaskTab(tabId,") > continuation.indexOf("notifySubtaskContinuation("),
     true,
   );
+});
+
+test("classic Loop root creation uses the awaited host authority boundary", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  const orchestration = functionBody(extensionSource, "runLoopPromptOrchestration");
+  assert.equal(orchestration.includes("resolveLoopTaskAtCreationBoundary<LoopTaskRecord>("), true);
+  assert.equal(orchestration.includes("configApplyQueue.waitForIdle(target.cli)"), true);
+  assert.equal(orchestration.includes("readTask: (taskId) => readLoopTaskRecord(taskId)"), true);
+  assert.equal(orchestration.includes("readToolSettings(),"), true);
+  assert.equal(orchestration.includes("createTask: () => {"), true);
 });
 
 test("maps only loop_plus to event_driven and resumes from the saved mode", () => {

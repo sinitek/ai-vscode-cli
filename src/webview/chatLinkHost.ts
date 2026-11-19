@@ -28,11 +28,14 @@ function getDocumentPreviewEditor(extension: string): string | undefined {
   return undefined;
 }
 
-async function offerDocumentOpenOptions(uri: vscode.Uri, extension: string): Promise<void> {
+type ChatLinkContext = { isCurrent(): boolean; baseDirectory: string };
+async function offerDocumentOpenOptions(uri: vscode.Uri, extension: string, context?: ChatLinkContext): Promise<void> {
+  if (context && !context.isCurrent()) return;
   const action = await vscode.window.showWarningMessage(
     "VS Code 无法直接预览此文件。PDF、PPTX 等格式需要相应的预览扩展，也可以使用系统应用打开。",
     "选择打开方式", "使用系统应用打开", "查找预览扩展",
   );
+  if (context && !context.isCurrent()) return;
   if (action === "选择打开方式") {
     await vscode.commands.executeCommand("vscode.openWith", uri, "");
   } else if (action === "使用系统应用打开" && !await vscode.env.openExternal(uri)) {
@@ -42,7 +45,8 @@ async function offerDocumentOpenOptions(uri: vscode.Uri, extension: string): Pro
   }
 }
 
-export async function openChatLink(source: unknown, previewImage: (source: string) => Promise<void>): Promise<void> {
+export async function openChatLink(source: unknown, previewImage: (source: string) => Promise<void>, context?: ChatLinkContext): Promise<void> {
+  if (context && !context.isCurrent()) return;
   const normalized = normalizeChatLinkSource(source);
   if (!normalized) {
     void vscode.window.showErrorMessage("无法打开链接：地址为空或使用了不受支持的协议。");
@@ -55,18 +59,21 @@ export async function openChatLink(source: unknown, previewImage: (source: strin
       }
       return;
     }
-    const target = resolveChatLocalLink(normalized, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd());
+    const target = resolveChatLocalLink(normalized, context?.baseDirectory || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd());
     const uri = vscode.Uri.file(target.path);
     try {
       const stat = await vscode.workspace.fs.stat(uri);
+      if (context && !context.isCurrent()) return;
       if (stat.type & vscode.FileType.Directory) {
         await vscode.commands.executeCommand("revealInExplorer", uri);
         return;
       }
     } catch {
+      if (context && !context.isCurrent()) return;
       void vscode.window.showErrorMessage("无法打开文件：文件不存在或无法访问，请确认链接路径及当前工作区。路径：" + target.path);
       return;
     }
+    if (context && !context.isCurrent()) return;
     const extension = path.extname(target.path).toLowerCase();
     if (/^\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/.test(extension)) {
       await previewImage(uri.toString());
@@ -79,7 +86,7 @@ export async function openChatLink(source: unknown, previewImage: (source: strin
     const binaryDocument = /^\.(?:pdf|pptx?|docx?|xlsx?|od[pts])$/.test(extension);
     const previewEditor = binaryDocument ? getDocumentPreviewEditor(extension) : undefined;
     if (binaryDocument && !previewEditor) {
-      await offerDocumentOpenOptions(uri, extension);
+      await offerDocumentOpenOptions(uri, extension, context);
       return;
     }
     try {
@@ -95,9 +102,10 @@ export async function openChatLink(source: unknown, previewImage: (source: strin
         await vscode.commands.executeCommand("vscode.open", resource, options);
       }
     } catch {
-      await offerDocumentOpenOptions(uri, extension);
+      await offerDocumentOpenOptions(uri, extension, context);
     }
   } catch (error) {
+    if (context && !context.isCurrent()) return;
     void logError("chat-link-open-failed", { error: String(error) });
     void vscode.window.showErrorMessage("链接打开失败，请检查文件访问权限、默认打开方式或网络连接。");
   }

@@ -1,0 +1,72 @@
+{
+  "scope": "This manifest binds the other nine new evidence files; self excluded. Full commit boundary is listed below.",
+  "base": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+  "files": [
+    {
+      "path": ".ch/docs/integration/department-round428/README.md",
+      "sha256": "907a48d265abab8d3c8546d146a33a298b5bd58b0b34237edb65963822e46269",
+      "bytes": 2433
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/checks.json",
+      "sha256": "383eb0f49835a04cf907b3d5829ac4ec46c757653ea4718ee38b25cdaab84db8",
+      "bytes": 2949
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/isolation.json",
+      "sha256": "520cbfe4a6243e2dedb22b4b33441e5794332e59abbb8f7c77c2ce980720b3fb",
+      "bytes": 14557
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/relative-to-c76.name-status.txt",
+      "sha256": "0e1221f8e28627198df6d2d6b6066af5f911028a16e5b591dba7e254d9f284ba",
+      "bytes": 412
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/relative-to-c76.patch.gz",
+      "sha256": "44773de1448b068091c51102a895996af48f441ce4052f7e08d0540e6e4a6eaf",
+      "bytes": 23255
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/relative-to-c76.stat.txt",
+      "sha256": "15f4bb3e8d8544f74d5fd02f079800b2ac250406ac35318b752e3eb61f4ac471",
+      "bytes": 641
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/reused-evidence.json",
+      "sha256": "3717cde936d500975c5b2914f08f34e078e4a35a45d9f3c593e5662bf6032437",
+      "bytes": 14345
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/source-closure.json",
+      "sha256": "13c83c5f6a2854c7951e074fd58993afd72ff6dd4a02d37d799a7f55b211ed1c",
+      "bytes": 306077
+    },
+    {
+      "path": ".ch/docs/integration/department-round428/sources.json",
+      "sha256": "b82e74b78e8f957c7fca6035f7bac8b2dd819df327945b60988f6ab9d7231568",
+      "bytes": 4046
+    }
+  ],
+  "expected_commit_paths": [
+    ".ch/docs/integration/department-round428/README.md",
+    ".ch/docs/integration/department-round428/artifact-hashes.json",
+    ".ch/docs/integration/department-round428/checks.json",
+    ".ch/docs/integration/department-round428/isolation.json",
+    ".ch/docs/integration/department-round428/relative-to-c76.name-status.txt",
+    ".ch/docs/integration/department-round428/relative-to-c76.patch.gz",
+    ".ch/docs/integration/department-round428/relative-to-c76.stat.txt",
+    ".ch/docs/integration/department-round428/reused-evidence.json",
+    ".ch/docs/integration/department-round428/source-closure.json",
+    ".ch/docs/integration/department-round428/sources.json",
+    ".ch/docs/runbooks/department-git-integration.md",
+    ".ch/docs/runbooks/department-merge-ui-delta-verification.md",
+    "scripts/department_conversation_tabs_smoke.cjs",
+    "scripts/department_group_chat_smoke.cjs",
+    "src/test/loop/departmentGroupChatPanel.test.ts",
+    "src/test/loop/loopGroupChatPanel.test.ts",
+    "src/webview/departmentGroupChatModal.ts",
+    "src/webview/loopGroupChatPanel.ts",
+    "src/webview/loopModelSwitchDialog.ts"
+  ]
+}

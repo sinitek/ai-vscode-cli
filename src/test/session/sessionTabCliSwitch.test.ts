@@ -15,7 +15,6 @@ function createHost(initial: {
   state: ConversationTabsState;
   currentCli: CliName;
   modes: Partial<Record<CliName, InteractiveMode>>;
-  newTaskInteractiveMode?: "coding" | "loop" | "loop_plus";
   onRestore?: (tabId: string) => Promise<void>;
   runningTabIds?: ReadonlySet<string>;
   lockedTabIds?: ReadonlySet<string>;
@@ -61,8 +60,11 @@ function createHost(initial: {
   });
   const sessionStore = createCliRecord((): SessionStore[CliName] => ({ currentId: null, sessions: [] }));
   const host = createExtensionSessionTabsHost({
+    readOrdinaryConversationTabTaskRecord: () => null,
+    readDepartmentTaskRecord: () => null,
+    readDepartmentLeaderTaskIds: () => null,
     onSubtaskTabCreated: initial.onSubtaskTabCreated,
-    getNewTaskInteractiveMode: () => initial.newTaskInteractiveMode,
+
     getSessionTabsController: () => controller,
     getSessionLifecycleController: () => ({
       loadSessionStore: () => sessionStore,
@@ -122,37 +124,32 @@ function createHost(initial: {
   return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, currentCli: () => currentCli };
 }
 
-test("Loop/Loop+ 子任务标签先发布身份，再显示运行中状态", async () => {
+test("Loop/Loop+ 派发新会话或续接会话时，首次刷新前子任务标签已显示运行中", async () => {
   for (const cli of ["codex", "claude"] as const) {
     for (const sessionId of [null, "existing-session"]) {
       const view = createRunStatusHarness();
       let createdId: string | undefined;
-      const events: string[] = [];
-      view.setTabSummary("subtask-tab", { loopTaskRole: "subtask", loopSubtaskRunning: true });
-      assert.equal(view.tabState("subtask-tab").running, true);
+      let checkedRefresh = false;
       const env = createHost({
         state: { activeTabId: "main-tab", tabs: [{ id: "main-tab", cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 }] },
         currentCli: "codex", modes: {},
         onSubtaskTabCreated: (tabId) => {
           createdId = tabId;
-          events.push("start");
           view.send({ type: "runStatus", status: "start", tabId });
         },
         onPostPanelState: async () => {
-          events.push("state");
+          assert.ok(createdId);
+          assert.equal(view.tabState(createdId).running, true);
+          checkedRefresh = true;
         },
       });
-      const target = env.host.createLoopSubtaskRunTarget(cli, {
-        sessionId,
-        loopTaskId: "task-1",
-        loopSubtaskId: "subtask-1",
-      });
+      const target = env.host.createLoopSubtaskRunTarget(cli, { sessionId });
+      assert.equal(target.tabId, createdId);
       assert.equal(target.sessionId, sessionId);
-      assert.equal(view.tabState("active").running, false);
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.equal(createdId, target.tabId);
-      assert.deepEqual(events, ["state", "start"]);
       assert.equal(view.tabState(target.tabId).running, true);
+      assert.equal(view.tabState("active").running, false);
+      await Promise.resolve();
+      assert.equal(checkedRefresh, true);
       view.send({ type: "runStatus", status: "error", tabId: target.tabId });
       assert.equal(view.tabState(target.tabId).running, false);
     }
@@ -293,24 +290,6 @@ test("closing protected tabs never acknowledges removal or disposes their runner
   }
 });
 
-test("user close acknowledges before runner cleanup and explicitly rejects protected tabs", async () => {
-  const state: ConversationTabsState = {
-    activeTabId: "active-tab",
-    tabs: ["active-tab", "closing-tab"].map((id) => ({ id, cli: "codex", sessionId: null, sessionIdByCli: {}, createdAt: 1 })),
-  };
-  const env = createHost({ state, currentCli: "codex", modes: {} });
-  let rejections = 0;
-  const onRejected = () => { rejections += 1; };
-  await env.host.closeConversationTabAndRefreshPanel("closing-tab", { onRejected });
-  assert.deepEqual(env.closedTabs, [{ tabId: "closing-tab", activeTabId: "active-tab" }]);
-  assert.deepEqual(env.disposedTabIds, []);
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(env.disposedTabIds, ["closing-tab"]);
-  await env.host.closeConversationTabAndRefreshPanel("active-tab", { onRejected });
-  assert.equal(rejections, 1);
-  assert.equal(state.activeTabId, "active-tab");
-});
-
 test("repeated and consecutive background closes do not refresh the active conversation", async () => {
   const state: ConversationTabsState = {
     activeTabId: "active-tab",
@@ -430,93 +409,6 @@ test("关页被宿主拒绝时明确失败，不能伪报关闭成功", async ()
   }), /关闭未生效/);
 });
 
-for (const failure of ["close", "refresh", "unchanged"] as const) {
-  test(`旧子任务标签${failure}失败不阻断本次成功标签关闭`, async () => {
-    const context = { taskId: "task", subtaskId: "child", tabId: "completed-sub" };
-    const tabs: ConversationTabRecord[] = ["main-tab", "old-sub", "completed-sub"].map((id) => ({
-      id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1,
-    }));
-    const attempted: string[] = [];
-    await assert.rejects(closeLoopSubtaskConversationTabs(context, {
-      getTabs: () => tabs,
-      resolveContext: (tab) => tab.id === "main-tab" ? null : context,
-      isTabRunActive: () => false,
-      closeTab: async (id) => {
-        attempted.push(id);
-        if (id === "old-sub" && failure === "close") throw new Error("旧标签关闭失败");
-        if (id === "old-sub" && failure === "unchanged") return;
-        tabs.splice(tabs.findIndex((tab) => tab.id === id), 1);
-        if (id === "old-sub") throw new Error("旧标签界面刷新失败");
-      },
-    }), /失败|关闭未生效/);
-    assert.deepEqual(attempted, ["old-sub", "completed-sub"]);
-    assert.equal(tabs.some((tab) => tab.id === "completed-sub"), false);
-    assert.equal(tabs.some((tab) => tab.id === "old-sub"), failure !== "refresh");
-    assert.equal(tabs.some((tab) => tab.id === "main-tab"), true);
-  });
-}
-
-test("压缩期间主标签关闭后，最后一个成功子任务标签替换为空白对话", async () => {
-  const context = { taskId: "task", subtaskId: "child", tabId: "completed-sub" };
-  const state: ConversationTabsState = {
-    activeTabId: "completed-sub",
-    tabs: ["main-tab", "completed-sub"].map((id) => ({
-      id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1,
-    })),
-  };
-  const env = createHost({ state, currentCli: "codex", modes: {} });
-  const options = { replaceLastTab: true, notifyTabClosed: true };
-  const close = prepareLoopSubtaskConversationTabClose(context, {
-    getTabs: () => state.tabs,
-    resolveContext: (tab) => tab.id === "completed-sub" ? context : null,
-    isTabRunActive: () => false,
-    closeTab: (id) => env.host.closeConversationTabAndRefreshPanel(id, options),
-  });
-  await env.host.closeConversationTabAndRefreshPanel("main-tab");
-  await close();
-  assert.equal(state.tabs.length, 1);
-  assert.notEqual(state.tabs[0].id, "completed-sub");
-  assert.equal(state.activeTabId, state.tabs[0].id);
-  assert.equal(state.tabs[0].cli, "codex");
-  assert.equal(state.tabs[0].sessionId, null);
-  assert.deepEqual(state.tabs[0].sessionIdByCli, {});
-  assert.equal(state.tabs[0].loopTaskId, undefined);
-  assert.equal(env.modes.codex, "coding");
-  assert.deepEqual(env.closedTabs.map((tab) => tab.tabId), ["main-tab", "completed-sub"]);
-});
-
-test("最后一个标签替换仍保护运行中和锁定主任务，普通手动关页保留原行为", async () => {
-  for (const protection of ["running", "locked", "manual"] as const) {
-    const state: ConversationTabsState = {
-      activeTabId: "sub-tab",
-      tabs: [{ id: "sub-tab", cli: "codex", sessionId: "session", sessionIdByCli: { codex: "session" }, createdAt: 1 }],
-    };
-    const env = createHost({ state, currentCli: "codex", modes: {},
-      runningTabIds: new Set(protection === "running" ? ["sub-tab"] : []),
-      lockedTabIds: new Set(protection === "locked" ? ["sub-tab"] : []),
-    });
-    const options = { replaceLastTab: protection !== "manual", notifyTabClosed: true };
-    await env.host.closeConversationTabAndRefreshPanel("sub-tab", options);
-    assert.deepEqual(state.tabs.map((tab) => tab.id), ["sub-tab"], protection);
-    assert.deepEqual(env.closedTabs, [], protection);
-  }
-});
-
-test("最后一个子任务关页在恢复配置前发布空白标签，恢复失败不遗留旧界面", async () => {
-  const state: ConversationTabsState = {
-    activeTabId: "sub-tab",
-    tabs: [{ id: "sub-tab", cli: "codex", sessionId: "session", sessionIdByCli: { codex: "session" }, createdAt: 1 }],
-  };
-  const env = createHost({ state, currentCli: "codex", modes: {},
-    onRestore: async () => { throw new Error("配置恢复失败"); },
-  });
-  await assert.rejects(env.host.closeConversationTabAndRefreshPanel("sub-tab", { replaceLastTab: true }), /配置恢复失败/);
-  assert.equal(state.tabs.length, 1);
-  assert.notEqual(state.tabs[0].id, "sub-tab");
-  assert.deepEqual(env.postedTabIds, [state.tabs[0].id]);
-  assert.deepEqual(env.closedTabs, [{ tabId: "sub-tab", activeTabId: state.tabs[0].id }]);
-});
-
 test("an old attempt cannot close a newer replacement tab waiting to start", async () => {
   const context = { taskId: "task-1", subtaskId: "A", attemptId: "attempt-old" };
   const state: ConversationTabsState = {
@@ -546,13 +438,11 @@ for (const cli of CLI_LIST) {
         { id: "old-tab", cli, sessionId: "old-session", sessionIdByCli: { [cli]: "old-session" }, createdAt: 2, executionLocked: true },
       ],
     };
-    const newTaskInteractiveMode = cli === "codex" ? "loop_plus" : cli === "opencode" ? "loop" : undefined;
-    const env = createHost({ state, currentCli: cli, modes: { [cli]: "coding" }, newTaskInteractiveMode });
+    const env = createHost({ state, currentCli: cli, modes: { [cli]: "coding" } });
 
     await env.host.resetConversationTabSession();
 
     assert.equal(env.currentCli(), cli);
-    assert.equal(env.modes[cli], newTaskInteractiveMode ?? "coding");
     assert.equal(state.tabs.length, 2);
     assert.equal(state.tabs[0].id, "neighbor-tab");
     const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);

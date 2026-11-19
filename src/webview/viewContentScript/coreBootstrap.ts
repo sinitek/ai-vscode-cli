@@ -217,8 +217,10 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopGroupChatMessageLimit: \${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT},
         hideInstructionBubbles: false,
         newTaskInteractiveMode: "coding",
-        loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         loopPlusSubtaskMaxRounds: \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT},
+        loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
+        departmentMaxLeaders: \${DEPARTMENT_MAX_LEADERS_DEFAULT},
+        departmentMaxEmployees: \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT},
         isMac: false,
         macTaskShell: "zsh",
         thinkingMode: "medium",
@@ -268,6 +270,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         thinkingModeByCli: {},
         pendingLoopSubtaskCliSelection: null,
         interactiveMode: "coding",
+        loopEnabled: true,
+        loopPlusEnabled: true,
+        departmentEnabled: false,
         interactive: { supported: false, enabled: true },
         rulePaths: { global: {}, project: {} },
         ruleScope: "global",
@@ -355,6 +360,9 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         scrollToBottomButton: document.getElementById("scrollToBottomButton"),
         configSelect: document.getElementById("configSelect"),
         interactiveModeSelect: document.getElementById("interactiveModeSelect"),
+        loopEnabled: document.getElementById("loopEnabled"),
+        loopPlusEnabled: document.getElementById("loopPlusEnabled"),
+        departmentEnabled: document.getElementById("departmentEnabled"),
         promptInput: document.getElementById("promptInput"),
         promptInputResize: document.getElementById("promptInputResize"),
         promptContextTags: document.getElementById("promptContextTags"),
@@ -430,9 +438,13 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionWindowAttention: document.getElementById("humanInteractionWindowAttention"),
         taskCompletionWindowAttention: document.getElementById("taskCompletionWindowAttention"),
         humanInteractionTimeoutMinutes: document.getElementById("humanInteractionTimeoutMinutes"),
+        loopPlusSubtaskMaxRounds: document.getElementById("loopPlusSubtaskMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
-        loopPlusSubtaskMaxRounds: document.getElementById("loopPlusSubtaskMaxRounds"),
+        workspaceDepartmentMaxLeaders: document.getElementById("workspaceDepartmentMaxLeaders"),
+        workspaceDepartmentMaxEmployees: document.getElementById("workspaceDepartmentMaxEmployees"),
+        departmentMaxLeaders: document.getElementById("departmentMaxLeaders"),
+        departmentMaxEmployees: document.getElementById("departmentMaxEmployees"),
         macTaskShellRow: document.getElementById("macTaskShellRow"),
         macTaskShell: document.getElementById("macTaskShell"),
         commonCommandButton: document.getElementById("commonCommandButton"),
@@ -633,19 +645,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return Math.min(Math.max(Math.floor(numeric), 1), 1440);
       }
 
-      function normalizeLoopPlusDecisionSubtaskMax(value) {
-        const numeric = typeof value === "number"
-          ? value
-          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
-        if (!Number.isFinite(numeric)) {
-          return \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT};
-        }
-        return Math.min(
-          Math.max(Math.floor(numeric), \${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}),
-          \${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}
-        );
-      }
-
       function normalizeLoopPlusSubtaskMaxRounds(value) {
         const numeric = typeof value === "number"
           ? value
@@ -656,6 +655,19 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         return Math.min(
           Math.max(Math.floor(numeric), \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}),
           \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}
+        );
+      }
+
+      function normalizeLoopPlusDecisionSubtaskMax(value) {
+        const numeric = typeof value === "number"
+          ? value
+          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
+        if (!Number.isFinite(numeric)) {
+          return \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT};
+        }
+        return Math.min(
+          Math.max(Math.floor(numeric), \${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}),
+          \${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}
         );
       }
 

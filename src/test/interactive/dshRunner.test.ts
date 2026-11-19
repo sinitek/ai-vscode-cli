@@ -919,3 +919,17 @@ test("DSH runner strips foreign credentials when env is omitted and rejects a se
     }
   }
 });
+
+test("department disposal observes real close and repeated observation preserves signal escalation", async () => {
+  const fake = new FakeDsh();
+  const created = createRunner(fake, { shutdownGraceMs: 10 });
+  await created.runner.start();
+  let closed = false;
+  const first = created.runner.disposeAndWait().then(() => { closed = true; });
+  const second = created.runner.disposeAndWait();
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(closed, false);
+  assert.ok(created.signals.includes("SIGKILL"));
+  fake.exitCode = 0; fake.emit("close", 0, null);
+  await Promise.all([first, second]); assert.equal(closed, true);
+});

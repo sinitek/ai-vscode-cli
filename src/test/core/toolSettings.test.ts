@@ -43,6 +43,19 @@ test("group chat message limit is independent and safely normalizes global setti
   }
 });
 
+test("department capacity settings normalize old, malformed, and valid persisted values", () => {
+  assert.deepEqual(normalizeToolSettings({ debug: true }), { debug: true });
+  assert.deepEqual(normalizeToolSettings({ departmentMaxLeaders: "5.9", departmentMaxEmployees: 18.7 }), {
+    departmentMaxLeaders: 5,
+    departmentMaxEmployees: 18,
+  });
+  assert.deepEqual(normalizeToolSettings({ departmentMaxLeaders: "", departmentMaxEmployees: Infinity }), {
+    departmentMaxLeaders: 4,
+    departmentMaxEmployees: 16,
+  });
+  assert.deepEqual(normalizeToolSettings({ departmentMaxEmployees: 20 }), { departmentMaxEmployees: 20 });
+});
+
 test("instruction bubble visibility accepts only booleans and keeps old settings compatible", () => {
   for (const enabled of [true, false]) {
     assert.deepEqual(normalizeToolSettings({ debug: true, hideInstructionBubbles: enabled }), {

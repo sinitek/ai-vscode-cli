@@ -1,0 +1,374 @@
+{
+  "semantic_decisions": [
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.task_mode_availability",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "0bac337dcaf2b9233e883c5fe59c59d5b81cefdc705ef82e323d7b4822f84a21"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_task",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "6111d43e00d986b258efb407a7974e6326a69be55c4986009598196ce7a470c9"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_leader_execution_set",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "40fe774bf391cbff14c9fdb66e8c8f8c8b825bd8496e04d2649d6478c3a4d5e7"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_execution_responsibility",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "040f09ffef9cbf8f986f8decdaea91f876e856c1276aa0af5b153bc66c300709"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_execution_producer",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "d97ae9cd6fe8eb4efea474c3403d52d1085f3a23f1d64d04d62fda15859b2a4f"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_execution_closure",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "604df6fcbbb7ed5f71b6dd1149c9a2285de27c128cd0e52b3b0bddb96309a7d9"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_owner_cleanup_aggregation",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "52351972f9a6cdf273a98f1ec1b8ab4c270b672ada52057d5e37860ef15c2e0d"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_cold_execution_observation",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "7cae9fa4ac981eb0530d897c9a0294132b00b60b2ba28c2654caf4998da24c73"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_ownership_index",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "bba98e4ced05fa3e8238a3810563fa255052f90916c69e2e4fdec487bee1632e"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_tracks_leader_execution_set",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "d009d46992de7a12de9d5693d8f5380a8f6bc77ebb5398040698d7d0428437f1"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_execution_set_contains_responsibility",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "5406cdcf2dad5fae2912d6c549688524e74f929d4fc3426afed3c64dd8636d13"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_producer_produces_closure",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "e98a6cf90d5697b68148996e782100c8dcdbe47b1e595c3199ac3d984d826038"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_closure_scopes_execution_set",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "9ed399b63c17f44353d240840c349e5a251f8dbd31e8c89f96fae6e1017f23fb"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_aggregation_observes_execution_set",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "d9ee4d0e648d9a60eeb8da88006d553d2e3de9c1d81fbe58753a9e431971808d"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_aggregation_requires_closure",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "c107bbdd110c4bad95dd1e1a2a2353782ff51c331744257541975a1423eacc0e"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_uses_loop_task",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "4818d8cae0e213cfcc36202024719d469a30ad5bed2cbd67a70a6d3f7a4983fe"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.department_panel_depends_on_ownership",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "eed7e800777ab57499a1b89b6d1902e67eb5e35b26f1f4b92a72b03b24d61c7a"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.loop_plus_attempt_execution_admission",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "4ed3356b69df77f14b78c1487d388272c420f51d7fd101f8af41d04199e71e42"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.missing_cli_install_dialog",
+      "disposition": "withheld-unrelated-pending-owner-review",
+      "baseline_object_sha256": "b87d9c308a0ac9a2823ae7740e47f2279aca6d24b514241b239b802bcf65d6ac",
+      "source_object_sha256": "5f8130c0e09dd8b07da5b5dbdcbdb53012c0051d62174036a2663ca3b8eb8611"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.zcode_one_click_install",
+      "disposition": "withheld-unrelated-pending-owner-review",
+      "baseline_object_sha256": "a1b5ca64792bc946600645f8231ff89364b7d76459d5bab95f83e64ebdb2b5e3",
+      "source_object_sha256": "a584f20dd6f16db15a0217b289c57782c773fe918548de0b492a266f35681511"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.zcode_context_compaction",
+      "disposition": "withheld-unrelated-pending-owner-review",
+      "baseline_object_sha256": "2fbc9da0b10b24e0701fd0b443babfc6603e6550e45510ac7909264100092573",
+      "source_object_sha256": "9d74a36f3dc8f4b71393d2f5c8cda83a6fc48997484dbb3db8e7f08c700ad906"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_identity_and_frozen_plan",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "2c2bf56de53bc8789950d6352cb64108a4e44b48d541a402ae7fedc265aba50e"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_shared_capacity",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "aad757764eab66faec2e79e046eb48712d95a0cefa349f324c9a2379700c3bd1"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_execution_authority",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "0b024f77ffd8337ffb7eb0dbe6b0c1c054430556310a0a89681ede4a31c73109"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_execution_responsibility_registration",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "9da86adadecbf06a4bb81031a0314c3fdaf64a898c4b05dee306d608180eb62e"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_execution_set_persistence",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "ab941f4b0730e73f95c2c50d8de63a36f7fb668610285679af014dc21ce255fb"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_all_owner_cleanup_aggregation",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "ffc966ffbc05022e086af9fdf96dc4cab818a20217cfb67add7024bff1ee8580"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_codex_owner_launcher",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "68519747eebf319a14eabc29d5464ff28d910d56ef1554edcaa4566b26dd0ead"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_director_collaboration_completion",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "832231772254e6bd17a2f8bb7eb3c1747319473545b3cce1b6ef2e4291c06b18"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_modal_authorization",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "210f67cce4ac4f5a6c07174f3102e944fd98f709ccfc6c1bd3cedb01da1b4678"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_ownership_source",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "7b6e0183c9e932f3e00e27c936af7a93b40fe3f442ab1a1ce7bb7784d74e778e"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.loop_store_confirmed_contributions",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "efda1bfc7d7005949c93add29619700611c79433552f4f1cd043791391814fe5"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_configuration_scope",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "9ab84787d40ca1c38cff88ff327cf873674f5a3c596eca4d714e1fd9dd35a18b"
+    },
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "id": "plugin.rule.department_role_model_authority",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "e5b359ec010192ef0cbdf0a019146a5a4bc3bf1ed46cc5aae1586cf1e08fe4a8"
+    },
+    {
+      "path": ".ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "id": "scenario.cli_feature_change_with_harness",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": "5129ee5c6425413f53a5968d37df943309f552aca649786e6915b184c30f8cd2",
+      "source_object_sha256": "e7fcd83ea51013a4117bc7751ad1a0edce90d3b3827993b22644dc7def6d51b5"
+    },
+    {
+      "path": ".ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "id": "scenario.department_employee_execution_admission",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "87f3556d981af6387ad3691dd34f66d1d6061f43a5a806aee248e50baa5fbea3"
+    },
+    {
+      "path": ".ch/docs/ontology/workflows/cross-domain-workflows.json",
+      "id": "scenario.department_leader_native_owner",
+      "disposition": "included-department-semantics",
+      "baseline_object_sha256": null,
+      "source_object_sha256": "992891681f091aa517c80d3bee1252b006557580802db28150c0667e3ea5b57c"
+    }
+  ],
+  "excluded_content": [
+    {
+      "paths": [
+        ".tmp/",
+        "dist/",
+        "node_modules/",
+        ".codegraph/",
+        "__pycache__/",
+        ".DS_Store"
+      ],
+      "reason": "缓存、构建产物、本机索引、临时现场；不复制。"
+    },
+    {
+      "paths": [
+        "~/.sinitek_cli/ runtime stores, owner receipts, provider logs, user credentials"
+      ],
+      "reason": "只读父记录并提取报告路径/状态/摘要哈希，不复制原记录、执行数据或凭据。"
+    },
+    {
+      "paths": [
+        "ontology unchanged-object formatting"
+      ],
+      "reason": "保留基线原始文本，不纳入全文件无关格式化。"
+    }
+  ],
+  "ambiguous_hunks": [
+    {
+      "path": ".ch/docs/ontology/domains/cli-plugin-runtime.json",
+      "ids": [
+        "plugin.rule.missing_cli_install_dialog",
+        "plugin.rule.zcode_context_compaction",
+        "plugin.rule.zcode_one_click_install"
+      ],
+      "status": "withheld pending attribution review; shared original untouched",
+      "reason": "安装/ZCode source_refs symbol→anchor 与部门无关；实际作者不由文件名猜测。"
+    }
+  ],
+  "ongoing_platform": {
+    "paths": [
+      "scripts/verify_department_platform.js",
+      "scripts/verify_department_platform.test.js",
+      ".ch/docs/runbooks/department-platform-verification.md"
+    ],
+    "hash_before_read": {
+      "scripts/verify_department_platform.js": "9a587501c2e94e0e583448c74db0fb5b50191ab8c8c7de040b7456467b2ada40",
+      "scripts/verify_department_platform.test.js": "e6b3cff98f910933864bf1649a31992caf16f5b4fcb035ae7b2a8a0e1cd59db3",
+      ".ch/docs/runbooks/department-platform-verification.md": "07734b66d652189bd11c49ae0b87cbdccf38170e9636d27f344c1ce4629ce202"
+    },
+    "hash_after_read": {
+      "scripts/verify_department_platform.js": "9a587501c2e94e0e583448c74db0fb5b50191ab8c8c7de040b7456467b2ada40",
+      "scripts/verify_department_platform.test.js": "e6b3cff98f910933864bf1649a31992caf16f5b4fcb035ae7b2a8a0e1cd59db3",
+      ".ch/docs/runbooks/department-platform-verification.md": "07734b66d652189bd11c49ae0b87cbdccf38170e9636d27f344c1ce4629ce202"
+    },
+    "stable_across_capture": true,
+    "followup_increment_required": true,
+    "capture_stability_scope": "仅表明读取窗口两次一致；不视为已完成/已接受交付。两份JS改用已接受round-403实体版本。",
+    "selected_hashes": {
+      "scripts/verify_department_platform.js": "30868398c33fcd5cbb1b0ee1acc0e06a297ebfb4c80c237f026ec87d043504fe",
+      "scripts/verify_department_platform.test.js": "772cddf6be63b100c825d7bbf1ea962e967f1324ee04efb10df6c6b2f60bbeb0",
+      ".ch/docs/runbooks/department-platform-verification.md": "07734b66d652189bd11c49ae0b87cbdccf38170e9636d27f344c1ce4629ce202"
+    },
+    "accepted_report": "round-403-department-platform-owner-entry-integration.md"
+  },
+  "initial_inventory_delta": [
+    {
+      "path": "scripts/verify_department_platform.js",
+      "sha256": "9a587501c2e94e0e583448c74db0fb5b50191ab8c8c7de040b7456467b2ada40",
+      "bytes": 46653,
+      "observed_at": "2026-11-15T19:45:20.519123+00:00",
+      "read_twice_identical": true,
+      "changed_since_initial_inventory": true
+    },
+    {
+      "path": "scripts/verify_department_platform.test.js",
+      "sha256": "e6b3cff98f910933864bf1649a31992caf16f5b4fcb035ae7b2a8a0e1cd59db3",
+      "bytes": 38925,
+      "observed_at": "2026-11-15T19:45:20.519196+00:00",
+      "read_twice_identical": true,
+      "changed_since_initial_inventory": true
+    }
+  ],
+  "candidate_only_normalizations": [
+    {
+      "path": "src/cli/cliProcessRuntime.ts",
+      "before_sha256": "3e1eee8b9c1747dcd1d46d682b3006fd3c71b52dbcd80ee0ce47658d404fa7f1",
+      "after_sha256": "adff5fab257e1103a93c64f0771ef286d1bae7dd65b00c2f5fda7c339eab9b12",
+      "removed_bytes": 1,
+      "scope": "terminal blank line bytes only; no tokens changed"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentcodextabreleasehost.ts",
+      "before_sha256": "a807cff9a96e4d2989a044b8aa1df460198e1a8e1cbcca919c09b52df4b18228",
+      "after_sha256": "749d9b37f9e488bcf4fef8e337f072033ff576461ce5a3cd5939e782106fd586",
+      "removed_bytes": 1,
+      "scope": "terminal blank line bytes only; no tokens changed"
+    },
+    {
+      "path": "src/test/extensionHost/fixtures/departmentresourcetabhost.ts",
+      "before_sha256": "a2faa207a653e44a208838aae3b6d0834a689bf3ec6d9ce2790e06abccb46b3b",
+      "after_sha256": "3630acbd54c2929d6798a98acceed21d1cef95707cc82bbdbe8daf789797ef47",
+      "removed_bytes": 1,
+      "scope": "terminal blank line bytes only; no tokens changed"
+    },
+    {
+      "path": "src/test/runtime/fixtures/departmentprocesspreparationfixture.ts",
+      "before_sha256": "bce793e0dc6542bd383c09aea253d2669157cb1c5cce82d944ff380fc5d336e8",
+      "after_sha256": "9c521d4e4154436c7c2c05781f7ec0fc4b395d1137a45408c0ff27bfea7ae599",
+      "removed_bytes": 1,
+      "scope": "terminal blank line bytes only; no tokens changed"
+    }
+  ]
+}

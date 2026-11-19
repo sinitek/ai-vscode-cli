@@ -23,7 +23,7 @@ Module._load = (request: string, parent: unknown, isMain: boolean): unknown => {
         createTerminal: () => ({ sendText: () => {} }),
       },
       workspace: {
-        getConfiguration: () => ({ get: () => undefined }),
+        getConfiguration: () => ({ get: () => undefined, inspect: () => undefined }),
       },
     };
   }
@@ -326,7 +326,10 @@ function createOpenCodeCompactionDeps(options: OpenCodeCompactionFixtureOptions 
   return { deps, calls };
 }
 
-test("Codex compact passes cwd to the real semantic identity and preserves reuse isolation", async () => {
+test("Codex compact passes cwd to the real semantic identity and preserves reuse isolation", async (t) => {
+  const errors: unknown[] = [];
+  const logger = require("../../logger") as typeof import("../../logger");
+  t.mock.method(logger, "logError", async (_event: string, data: unknown) => { errors.push(data); });
   await withCodexIdentityFixture(async (f) => {
     const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
     const { InteractiveRunnerManager } = require("../../interactive/manager") as typeof import("../../interactive/manager");
@@ -352,13 +355,13 @@ test("Codex compact passes cwd to the real semantic identity and preserves reuse
       return f.fingerprint(cli, configId, cwd);
     };
     try {
-      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true, JSON.stringify(errors));
       assert.equal(fingerprints[0], await f.fingerprint("codex", "config-codex", f.a));
       await f.trust(f.b);
-      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true, JSON.stringify(errors));
       assert.equal(runners[1], runners[0]);
       await f.writeConfig('sandbox_mode="read-only"\n');
-      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true);
+      assert.equal(await runContextCompactionWithDeps(deps, { silent: true }), true, JSON.stringify(errors));
       assert.notEqual(runners[2], runners[0]);
       assert.notEqual(fingerprints[2], fingerprints[0]);
     } finally {

@@ -106,5 +106,5 @@ export function createConfigApplyQueue<K extends string>() {
     return request(key, operation);
   };
 
-  return { request, requestIfIdle, waitForIdle };
+  return { request, requestIfIdle, waitForIdle, isApplying: (key: K) => states.has(key) };
 }

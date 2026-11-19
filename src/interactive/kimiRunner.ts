@@ -183,6 +183,7 @@ type PendingRequest = {
 export class KimiInteractiveRunner {
   private child: KimiChild | null = null;
   private reader: CodexAppServerNdjsonReader | null = null;
+  private childClose: Promise<void> = Promise.resolve();
   private readonly pending = new Map<string, PendingRequest>();
   private nextId = 1;
   private sessionId: string | null = null;
@@ -562,6 +563,12 @@ export class KimiInteractiveRunner {
     return this.getConfigSnapshot();
   }
 
+  /** Observe native stdio closure after requesting the existing shutdown path. */
+  public async disposeAndWait(): Promise<void> {
+    if (!this.closed) this.dispose();
+    await this.childClose;
+  }
+
   public dispose(): void {
     if (this.closed) {
       this.stopTimers();
@@ -599,6 +606,7 @@ export class KimiInteractiveRunner {
       throw spawnError;
     }
     this.child = child;
+    this.childClose = new Promise<void>((resolve) => child.once("close", () => resolve()));
     child.stderr?.on("data", (chunk: Buffer | string) => {
       this.appendStderr(chunk);
     });

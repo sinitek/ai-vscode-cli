@@ -100,12 +100,15 @@ test("host projection reads each subtask from live, persisted or draft messages 
     { ...createSummary(), id: "live" },
     { ...createSummary(), id: "stored" },
     { ...createSummary(), id: "draft", sessionId: null },
-    { ...createSummary(), id: "new-subtask", sessionId: null, loopSubtaskId: "subtask-517" },
+    { ...createSummary(), id: "new-subtask", sessionId: null, loopSubtaskId: task.subTasks[516].id },
     { ...createSummary(), id: "main", loopTaskRole: "main" },
   ];
   const reads: string[] = [];
   type HostDeps = Parameters<typeof createExtensionSessionTabsHost>[0];
   const host = createExtensionSessionTabsHost({
+    readOrdinaryConversationTabTaskRecord: () => task,
+    readDepartmentTaskRecord: () => null,
+    readDepartmentLeaderTaskIds: () => null,
     getSessionTabsController: () => ({ buildConversationTabsState: () => ({ activeTabId: "vibe", tabs: summaries }) }),
     getSessionLifecycleController: () => ({}), getSessionStore: () => ({}),
     getCurrentCli: () => "codex", getActiveWorkspaceKey: () => "workspace",

@@ -1,0 +1,60 @@
+{
+  "parent": "51a5e7b15c54921611721fe14863e60361d64e72",
+  "parent_tree": "7e91cfbcff24d0e1eb436374c832b791af3e70d2",
+  "files": [
+    {
+      "path": "scripts/verify_department_platform.js",
+      "source": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/scripts/verify_department_platform.js",
+      "source_sha256": "7a6ed43e68695509e675437cedc31296ee35ce1a4b8183ac5ab0b80cf8908304",
+      "source_bytes": 48087,
+      "parent_sha256": "30868398c33fcd5cbb1b0ee1acc0e06a297ebfb4c80c237f026ec87d043504fe",
+      "parent_bytes": 43320,
+      "mode": "0o644",
+      "provenance": "round-414 final tracking/snapshot JS; round-416 verified same explicit SHA without code changes",
+      "candidate_sha256": "7a6ed43e68695509e675437cedc31296ee35ce1a4b8183ac5ab0b80cf8908304",
+      "git_blob": "8bc1202aee183f27b5c003c19ef5840a2030fbe2",
+      "historical_hash_anchor": "explicit JS SHA in accepted task/report"
+    },
+    {
+      "path": "scripts/verify_department_platform.test.js",
+      "source": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/scripts/verify_department_platform.test.js",
+      "source_sha256": "0f5996576fb3c220c83576b3217dc4880bf77020f88c050921658c0602f32183",
+      "source_bytes": 39874,
+      "parent_sha256": "772cddf6be63b100c825d7bbf1ea962e967f1324ee04efb10df6c6b2f60bbeb0",
+      "parent_bytes": 36533,
+      "mode": "0o644",
+      "provenance": "round-414 final 24-case behavior test described by accepted report; round-416 reported no test edits",
+      "candidate_sha256": "0f5996576fb3c220c83576b3217dc4880bf77020f88c050921658c0602f32183",
+      "git_blob": "947541ee49f40292764e0ddb68dc6c1c22a9b9ea",
+      "historical_hash_anchor": "no full historical hash in accepted report; report-described diff/sections checked; this attempt pins observed stable bytes"
+    },
+    {
+      "path": ".ch/docs/runbooks/department-platform-verification.md",
+      "source": "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/runbooks/department-platform-verification.md",
+      "source_sha256": "c3d885f0dcf5625ad984bbfa3d8c5f9ebfc93197e54a5dd40010a933e39418fd",
+      "source_bytes": 19436,
+      "parent_sha256": "07734b66d652189bd11c49ae0b87cbdccf38170e9636d27f344c1ce4629ce202",
+      "parent_bytes": 12102,
+      "mode": "0o644",
+      "provenance": "round-414 tracking plus round-416 close snapshot section; reports do not state a runbook SHA",
+      "candidate_sha256": "c3d885f0dcf5625ad984bbfa3d8c5f9ebfc93197e54a5dd40010a933e39418fd",
+      "git_blob": "8365d2c10ba3e51fc5f8357a1423db86d1c2d8e3",
+      "historical_hash_anchor": "no full historical hash in accepted report; report-described diff/sections checked; this attempt pins observed stable bytes"
+    }
+  ],
+  "accepted_reports": [
+    {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-416-department-git-local-conflict-integration.md",
+      "sha256": "9d828fab7111121f849455e490facedbcdc21fb758f9fcdeba814d549510c1cb"
+    },
+    {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-414-department-platform-owner-tracking-integration.md",
+      "sha256": "586f71f0e9d370c45a9a1ded05edcaa382bb426162e5adeebc3f57c45595b425"
+    },
+    {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-416-department-platform-owner-close-integration-repair.md",
+      "sha256": "af36463094cacabd52ff96c8bcc2b92be1001f3fc61ae3bddff94323739142b8"
+    }
+  ],
+  "provenance_limit": "JS has explicit historical hash; test and runbook lack full SHA in accepted reports. Their changes match accepted report details; hashes recorded here pin the stable observed source, not a retroactive claim about execution bytes."
+}

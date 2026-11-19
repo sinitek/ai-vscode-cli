@@ -5,11 +5,11 @@ import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { isHiddenLoopPlusProtocolPrompt } from "../loopPlusProtocolPrompt";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
-import { bindLoopTaskToSession, buildLoopSessionIdsByCli, readLoopTaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { bindLoopTaskToSession, buildLoopSessionIdsByCli, type LoopTaskRecord } from "../loopTaskStore";
 import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
+import { projectDepartmentConversationTab, projectDepartmentEmployeeConversationTab } from "./departmentConversationTabs";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
-import { resolveNewTaskInteractiveMode, type NewTaskInteractiveMode } from "../toolSettings";
 
 export function attachConversationTabLoopMemberTitle(
   summary: ConversationTabSummary,
@@ -20,10 +20,9 @@ export function attachConversationTabLoopMemberTitle(
     return summary;
   }
   const context = resolveLoopSubtaskConversationContextFromMessages(messages);
-  const identitySubtaskId = typeof summary.loopSubtaskId === "string" ? summary.loopSubtaskId : null;
   const matchingIndices = task && task.id === summary.loopTaskId ? task.subTasks.map((subtask, index) => (
-    identitySubtaskId
-      ? identitySubtaskId === subtask.id
+    summary.loopSubtaskId
+      ? summary.loopSubtaskId === subtask.id
       : context
       ? context.taskId === task.id && context.subtaskId === subtask.id
       : Boolean(summary.sessionId && subtask.executionSession?.cli === summary.cli && subtask.executionSession.sessionId === summary.sessionId)
@@ -36,8 +35,11 @@ export function attachConversationTabLoopMemberTitle(
 }
 
 export type ExtensionSessionTabsHostDeps = {
+  readOrdinaryConversationTabTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  readDepartmentTaskRecord: (taskId: string) => LoopTaskRecord | null;
+  readDepartmentLeaderTaskIds: (rootTaskId: string, leaderSubtaskId: string) => readonly string[] | null;
   getSessionTabsController: () => SessionTabsController;
-  getSessionLifecycleController: () => { loadSessionStore: () => SessionStore; cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>; ensureLocalSession: (cli: CliName, tabId: string) => void; assignPendingLabel: (cli: CliName, tabId: string, sessionId: string) => void; persistActiveMessages: () => void; attachPendingMessages: (cli: CliName, tabId: string, sessionId: string) => void; };
+  getSessionLifecycleController: () => { loadSessionStore: () => SessionStore; cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>; ensureLocalSession: (cli: CliName, tabId: string, createForEmptyDraft?: boolean) => void; assignPendingLabel: (cli: CliName, tabId: string, sessionId: string) => void; persistActiveMessages: () => void; attachPendingMessages: (cli: CliName, tabId: string, sessionId: string) => void; };
   getSessionStore: () => SessionStore; setSessionStore: (store: SessionStore) => void;
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void; getActiveWorkspaceKey: () => string;
   getWorkspaceSettings: () => { currentCli?: CliName }; saveWorkspaceSettings: (settings: any) => void;
@@ -51,7 +53,6 @@ export type ExtensionSessionTabsHostDeps = {
   postConversationTabClosed: (tabId: string, activeTabId: string | null) => void;
   getInteractiveSessionBindingsForTab: (tab: ConversationTabRecord) => unknown[]; disposeInteractiveRunnerIfUnused: (binding: unknown) => void; setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
-  getNewTaskInteractiveMode?: () => NewTaskInteractiveMode | undefined;
   extractSessionId: (cli: CliName, buffer: string) => string | null; isLocalSessionId: (sessionId: string) => boolean; migrateLocalSessionToTargetSession: (cli: CliName, from: string, to: string, options?: { notifyPanel?: boolean }) => void; adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
   getActiveTaskRunMutable: () => { cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null; logInfo: (event: string, payload?: unknown) => void; activeData: { WORKSPACE_KEY_FALLBACK: string; LEGACY_SESSION_FILE: string; SESSION_DIR: string; SESSION_BUFFER_LIMIT: number };
 };
@@ -187,29 +188,40 @@ function buildConversationTabsState(): {
   tabs: ConversationTabSummary[];
 } {
   const tabState = sessionTabsController.buildConversationTabsState();
+  const taskRecords = new Map<string, LoopTaskRecord | null>();
+  const readTaskRecord = (taskId: string): LoopTaskRecord | null => {
+    if (!taskRecords.has(taskId)) {
+      try { taskRecords.set(taskId, deps.readDepartmentTaskRecord(taskId)); }
+      catch { taskRecords.set(taskId, null); }
+    }
+    return taskRecords.get(taskId) ?? null;
+  };
+  const readPort = { readTaskRecord, readDepartmentLeaderTaskIds: deps.readDepartmentLeaderTaskIds };
   return {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
-      const task = summary.loopTaskId ? readLoopTaskRecord(summary.loopTaskId) : null;
+      let task = summary.loopTaskId ? readTaskRecord(summary.loopTaskId) : null;
+      if (!task && summary.loopTaskId) {
+        try { task = deps.readOrdinaryConversationTabTaskRecord(summary.loopTaskId); } catch { task = null; }
+      }
       const withSchedulingMode = summary.loopTaskId
         ? attachConversationTabLoopSchedulingMode(
           summary,
           task?.schedulingMode,
         )
         : summary;
-      if (summary.loopTaskRole !== "subtask") {
-        return withSchedulingMode;
-      }
-      const messages = !summary.loopSubtaskId
+      const needsEmployeeEvidence = task?.department?.role === "leader" && Boolean(summary.sessionId);
+      const messages = summary.loopTaskRole === "subtask" && (!summary.loopSubtaskId || needsEmployeeEvidence)
         ? getLiveMessagesForTab(summary.id) ?? (summary.sessionId
           ? loadSessionMessages(summary.cli, summary.sessionId)
           : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
         : [];
-      return attachConversationTabLoopMemberTitle({
-        ...withSchedulingMode,
-        ...(summary.loopSubtaskId ? { loopSubtaskId: summary.loopSubtaskId } : {}),
-        ...(summary.loopTaskRole === "subtask" ? { loopSubtaskRunning: isTabRunActive(summary.id) } : {}),
-      }, task, messages);
+      const withMemberTitle = attachConversationTabLoopMemberTitle(summary.loopTaskRole === "subtask"
+        ? { ...withSchedulingMode, loopSubtaskRunning: isTabRunActive(summary.id) }
+        : withSchedulingMode, task, messages);
+      return summary.loopTaskRole === "subtask"
+        ? projectDepartmentEmployeeConversationTab(withMemberTitle, task, messages, readPort)
+        : projectDepartmentConversationTab(withMemberTitle, task, messages, readPort);
     }),
   };
 }
@@ -309,9 +321,10 @@ function createLoopSubtaskRunTarget(
     createdAt: Date.now(),
   };
   state.tabs.push(tab);
+  deps.onSubtaskTabCreated?.(tab.id);
   persistConversationTabsToWorkspaceSettings();
   void logInfo("loop-subtask-session-created", { cli, tabId: tab.id });
-  void postPanelState().then(() => deps.onSubtaskTabCreated?.(tab.id));
+  void postPanelState();
   return {
     tabId: tab.id,
     cli,
@@ -322,7 +335,7 @@ function createLoopSubtaskRunTarget(
 function addConversationTab(
   cli: CliName,
   sessionId: string | null,
-  options: { skipPersist?: boolean; tabId?: string } = {}
+  options: { skipPersist?: boolean } = {}
 ): string | null {
   return sessionTabsController.addConversationTab(cli, sessionId, options);
 }
@@ -333,26 +346,22 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
-  options: { notifyTabClosed?: boolean; replaceLastTab?: boolean; onRejected?: () => void } = {},
+  options: { notifyTabClosed?: boolean; onRejected?: () => void } = {},
+  ownedTarget?: ConversationTabRecord,
 ): Promise<void> {
-  if (isTabRunActive(tabId) || isLoopMainTabCloseLocked(tabId)) {
-    options.onRejected?.();
+  if (ownedTarget && getConversationTabById(tabId) !== ownedTarget) throw new Error("department-owned-tab-target-changed");
+  if (isTabRunActive(tabId) || !ownedTarget && isLoopMainTabCloseLocked(tabId)) {
     await postPanelState();
+    options.onRejected?.();
     return;
   }
   const closingTab = getConversationTabById(tabId);
   if (!closingTab) {
-    if (options.onRejected) deps.postConversationTabClosed(tabId, getActiveConversationTabId());
     return;
   }
   const previousActiveTabId = getActiveConversationTabId();
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
-  const replacingLastTab = options.replaceLastTab && ensureConversationTabs().tabs.length === 1;
-  if (replacingLastTab) {
-    // Retire the completed subtask while retaining an empty conversation.
-    addConversationTab(closingTab.cli, null, { skipPersist: true });
-  }
   const next = closeConversationTab(tabId);
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
@@ -362,25 +371,9 @@ async function closeConversationTabAndRefreshPanel(
   if (options.notifyTabClosed !== false) {
     deps.postConversationTabClosed(tabId, nextActiveTabId);
   }
-  const disposeClosingRunners = () => {
-    closingBindings.forEach((binding) => disposeInteractiveRunnerIfUnused(binding));
-  };
-  if (options.onRejected && closingBindings.length) {
-    setImmediate(() => {
-      try {
-        disposeClosingRunners();
-      } catch (error) {
-        logInfo("conversation-tab-cleanup-failed", { tabId, error: String(error) });
-      }
-    });
-  } else {
-    disposeClosingRunners();
-  }
-  if (replacingLastTab) {
-    // The close acknowledgement cannot introduce a newly created fallback tab.
-    await postPanelState();
-    if (getActiveConversationTabId() !== nextActiveTabId) return;
-  }
+  closingBindings.forEach((binding) => {
+    disposeInteractiveRunnerIfUnused(binding);
+  });
   if (nextActiveTabId === previousActiveTabId) {
     return;
   }
@@ -399,7 +392,6 @@ async function closeConversationTabAndRefreshPanel(
   }
   if (next && previousCli !== next.cli) {
     await maybePromptInstallOnCliGroupSwitch(next.cli);
-    if (getActiveConversationTabId() !== nextActiveTabId) return;
   }
   if (next) {
     setWorkspaceInteractiveModeForCli(next.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
@@ -462,7 +454,7 @@ async function resetConversationTabSession(): Promise<void> {
   const targetCli = activeTab.cli;
   addConversationTab(targetCli, null);
   const nextTabId = getActiveConversationTabId();
-  setWorkspaceInteractiveModeForCli(targetCli, resolveNewTaskInteractiveMode(deps.getNewTaskInteractiveMode?.()));
+  setWorkspaceInteractiveModeForCli(targetCli, deps.resolveAutoInteractiveModeForConversationTab(null));
   await closeConversationTabAndRefreshPanel(previousTabId, { notifyTabClosed: false });
   if (getActiveConversationTabId() !== nextTabId) {
     return;
@@ -576,8 +568,8 @@ function clearPendingSessionDraft(tabId: string, cli?: CliName): void {
   sessionTabsController.clearPendingSessionDraft(tabId, cli);
 }
 
-function ensureLocalSession(cli: CliName, tabId: string): void {
-  sessionLifecycleController.ensureLocalSession(cli, tabId);
+function ensureLocalSession(cli: CliName, tabId: string, createForEmptyDraft = false): void {
+  sessionLifecycleController.ensureLocalSession(cli, tabId, createForEmptyDraft);
 }
 
 function preparePendingLabel(cli: CliName, tabId: string, prompt: string): void {
@@ -618,6 +610,8 @@ return {
   addConversationTab: wrap(addConversationTab),
   closeConversationTab: wrap(closeConversationTab),
   closeConversationTabAndRefreshPanel: wrap(closeConversationTabAndRefreshPanel),
+  // In-process host capability only; no UI message route exposes this port.
+  closeOwnedConversationTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, tab)),
   detachConversationTabsFromSession: wrap(detachConversationTabsFromSession),
   syncCurrentSessionWithActiveTab: wrap(syncCurrentSessionWithActiveTab),
   setCurrentSession: wrap(setCurrentSession),

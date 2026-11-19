@@ -107,6 +107,7 @@ function resetLoopStorage(): void {
   assert.equal(os.homedir(), testHome);
   unlinkMigrationFixtures();
   [
+    "loop-task-identities",
     "loop-tasks",
     "loop-tasks.json",
     "loop-communications",
@@ -392,6 +393,15 @@ test("persists classic subtask dispatch counts without deriving them from legacy
   assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 20);
 });
 
+test("leaves an absent legacy maxRounds absent on disk and after reload", () => {
+  const task = createTask();
+  delete task.maxRounds;
+  loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+
+  assert.equal("maxRounds" in JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8")).tasks[0], false);
+  assert.equal("maxRounds" in readPersistedTask(task.taskStoreFile, task.id), false);
+});
+
 test("writes normalized data and propagates write failures at the persistence boundary", () => {
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
@@ -634,7 +644,19 @@ test("contains Loop communication init failures and store read races", () => {
   }
 });
 
-test("lists task stores and removes only expired orphaned communication data", () => {
+// Communication GC requires an initialized identity authority, even for ordinary tasks.
+// Keep this fixture local: unrelated storage tests still cover pre-bootstrap installations.
+function readyRetentionCatalog(t: { after(action: () => void): void }): void {
+  const previousHome = process.env.HOME;
+  process.env.HOME = testHome;
+  const catalog = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+  if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+  catalog.initializeLoopTaskIdentityCatalog(path.join(testHome, "unused-owned-root"), () => new Map());
+  t.after(() => fs.rmSync(path.join(testHome, ".sinitek_cli", "loop-task-identities"), { recursive: true, force: true }));
+}
+
+test("lists task stores and removes only expired orphaned communication data", (t) => {
+  readyRetentionCatalog(t);
   const task = createTask();
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   const flatStore = path.join(testHome, ".sinitek_cli", "loop-tasks.json");
@@ -659,7 +681,8 @@ test("lists task stores and removes only expired orphaned communication data", (
   assert.equal(fs.existsSync(orphanCommunication.dir), false);
 });
 
-test("covers Loop communication retention empty roots and contained cleanup failures", () => {
+test("covers Loop communication retention empty roots and contained cleanup failures", (t) => {
+  readyRetentionCatalog(t);
   const communicationRoot = path.join(testHome, ".sinitek_cli", "loop-communications");
   fs.rmSync(communicationRoot, { recursive: true, force: true });
 
@@ -1093,7 +1116,10 @@ test("moves task records between pending and session stores through public bindi
     return originalUnlinkSync(target);
   }) as typeof fs.unlinkSync;
   try {
-    assert.ok(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target"));
+    // The target commit is authoritative; failed source cleanup is maintenance.
+    assert.equal(loopTaskStore.bindLoopTaskToSession(unlinkTask.id, "unlink-target")?.sessionId, "unlink-target");
+    assert.equal(fs.existsSync(unlinkTask.taskStoreFile), true);
+    assert.equal(fs.existsSync(loopTaskStore.getLoopTaskStoreSessionFile(unlinkTask.workspaceKey, unlinkTask.cli, "unlink-target")), true);
   } finally {
     fsModule.unlinkSync = originalUnlinkSync;
   }
@@ -1172,6 +1198,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   const tasks = loopTaskStore.readLoopTaskStore(filePath).tasks;
   const task = tasks[0];
   assert.equal(task.maxRounds, undefined);
+  assert.equal("maxRounds" in task, false);
   assert.deepEqual(task.subTasks[0]?.skillIds, ["valid-skill"]);
   assert.equal(task.subTasks[0]?.skillGuidance, "guidance");
   assert.equal(task.subTasks[0]?.conflictGroup, "group-a");
@@ -1191,6 +1218,7 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   }]);
   assert.deepEqual(task.completionRequirementCoverage, [{ name: "acceptance", passed: false, detail: "missing name" }]);
   assert.equal(tasks[1]?.createdAt, tasks[1]?.updatedAt);
+  assert.equal("maxRounds" in tasks[1], false);
   assert.equal(tasks.length, 2);
 
   assert.equal(
@@ -1226,8 +1254,8 @@ test("normalizes malformed optional Loop records without preserving invalid deta
   assert.match(legacyTask.taskStoreFile, /loop-tasks/);
 
   const undefinedStoreFile = path.join(testHome, "optional-normalization", "undefined-store.json");
-  loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../../loopTaskStore").LoopTaskStore);
-  assert.deepEqual(loopTaskStore.readLoopTaskStore(undefinedStoreFile), { tasks: [] });
+  assert.throws(() => loopTaskStore.writeLoopTaskStore(undefinedStoreFile, undefined as unknown as import("../../loopTaskStore").LoopTaskStore), /Invalid Loop task store/);
+  assert.equal(fs.existsSync(undefinedStoreFile), false);
 
   fs.mkdirSync(legacy.communicationDir, { recursive: true });
   const retainedTask = createTask({

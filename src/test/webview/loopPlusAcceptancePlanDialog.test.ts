@@ -693,7 +693,7 @@ test("confirming refuses when the originating session is no longer active", () =
   assert.equal(context.open, true, "dialog stays open so the user can react");
 });
 
-test("only a new Loop+ root task requires the acceptance plan", () => {
+test("only a new Loop+ or department root task requires the shared acceptance plan", () => {
   const harness = createHarness({
     tabs: [
       { id: "tab-1", cli: "codex" },
@@ -702,6 +702,7 @@ test("only a new Loop+ root task requires the acceptance plan", () => {
     ],
   });
   assert.equal(harness.api.isAcceptancePlanRequiredForPayload(sendPromptPayload({ interactiveMode: "loop_plus" }), "tab-1"), true);
+  assert.equal(harness.api.isAcceptancePlanRequiredForPayload(sendPromptPayload({ interactiveMode: "department" }), "tab-1"), true);
   assert.equal(harness.api.isAcceptancePlanRequiredForPayload(sendPromptPayload({ interactiveMode: "loop" }), "tab-1"), false);
   assert.equal(harness.api.isAcceptancePlanRequiredForPayload(sendPromptPayload({ interactiveMode: "coding" }), "tab-1"), false);
   assert.equal(harness.api.isAcceptancePlanRequiredForPayload(sendPromptPayload({ interactiveMode: "loop_plus" }), "plus-main"), false);

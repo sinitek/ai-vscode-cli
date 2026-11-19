@@ -1,0 +1,10 @@
+ .ch/docs/runbooks/department-git-integration.md    |  67 ++++++
+ .../department-merge-ui-delta-verification.md      |  70 +++++++
+ scripts/department_conversation_tabs_smoke.cjs     |  43 +++-
+ scripts/department_group_chat_smoke.cjs            | 232 ++++++++++++++++++++-
+ src/test/loop/departmentGroupChatPanel.test.ts     |  19 ++
+ src/test/loop/loopGroupChatPanel.test.ts           |  68 +++++-
+ src/webview/departmentGroupChatModal.ts            |  42 ++--
+ src/webview/loopGroupChatPanel.ts                  |  54 +++--
+ src/webview/loopModelSwitchDialog.ts               |  14 +-
+ 9 files changed, 558 insertions(+), 51 deletions(-)

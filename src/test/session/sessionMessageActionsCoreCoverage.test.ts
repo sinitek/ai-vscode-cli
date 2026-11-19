@@ -155,6 +155,7 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     wakeMain: [],
   };
   const state = { currentCli: initialCli, workspaceSettings: {} as WorkspaceSettings };
+  let toolSettings: Partial<ToolSettingsState> = {};
   const tabs = new Map<string, ConversationTabRecordForPanel>();
   const activeTab: ConversationTabRecordForPanel = {
     id: "active-tab",
@@ -186,6 +187,8 @@ function createPromptHarness(initialCli: CliName = "claude"): PromptHarness {
     getSelectedLoopCliModel: () => null,
     updateStatusBar: () => { calls.statusUpdates += 1; },
     getWorkspaceSettings: () => state.workspaceSettings,
+    readStoredToolSettings: () => toolSettings,
+    showWebviewError: () => undefined,
     saveWorkspaceSettings: (settings: WorkspaceSettings) => {
       calls.savedSettings.push({ ...settings });
       state.workspaceSettings = settings;
@@ -665,6 +668,69 @@ test("continues an interrupted Loop main task from ordinary main tab input", asy
     resumeTaskId: "interrupted-task",
     resumeRequested: true,
   });
+});
+
+test("rejects a new Loop when disabled but allows an existing Loop continuation", async () => {
+  const { deps, calls } = createPromptHarness("codex");
+  let toolSettings: Partial<ToolSettingsState> = { loopEnabled: false };
+  const errors: string[] = [];
+  deps.readStoredToolSettings = () => toolSettings;
+  deps.showWebviewError = (_title, detail) => { errors.push(String(detail)); };
+  await handleSendPromptMessage({ type: "sendPrompt", prompt: "new", interactiveMode: "loop" }, deps);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.match(String(errors.at(-1)), /Loop已在工具设置中关闭/);
+
+  deps.resolveLoopResumeTaskFromPrompt = () => ({ id: "existing" } as ReturnType<PanelMessageHandlerDeps["resolveLoopResumeTaskFromPrompt"]>);
+  toolSettings = { loopEnabled: false };
+  await handleSendPromptMessage({ type: "sendPrompt", prompt: "resume", interactiveMode: "loop" }, deps);
+  assert.equal(calls.runLoopPrompt.length, 1);
+});
+
+test("only a resolved existing task can bypass disabled mode at final dispatch, not resume wording", async () => {
+  for (const interactiveMode of ["loop", "loop_plus"] as const) {
+    for (const existingTask of [false, true]) {
+      const { deps, calls } = createPromptHarness("codex");
+      let settings: Partial<ToolSettingsState> = { loopEnabled: true, loopPlusEnabled: true };
+      const errors: string[] = [];
+      deps.readStoredToolSettings = () => settings;
+      deps.showWebviewError = (_title, detail) => { errors.push(String(detail)); };
+      deps.isInteractiveMode = (value): value is InteractiveMode => value === "loop" || value === "loop_plus";
+      deps.isLoopResumePrompt = () => true;
+      deps.resolveLoopResumeTaskFromPrompt = () => existingTask
+        ? ({ id: "existing-task" } as ReturnType<PanelMessageHandlerDeps["resolveLoopResumeTaskFromPrompt"]>)
+        : null;
+      deps.postPanelState = async () => {
+        calls.postPanelState += 1;
+        settings = { loopEnabled: false, loopPlusEnabled: false };
+      };
+
+      await handleSendPromptMessage({ type: "sendPrompt", prompt: "resume", interactiveMode }, deps);
+
+      assert.equal(calls.postPanelState, 1);
+      assert.equal(calls.runPrompt.length, 0);
+      assert.equal(calls.runLoopPrompt.length, existingTask ? 1 : 0);
+      if (existingTask) {
+        assert.equal(errors.length, 0);
+        assert.equal(calls.runLoopPrompt[0].options.resumeTaskId, "existing-task");
+        assert.equal(calls.runLoopPrompt[0].options.resumeRequested, true);
+      } else {
+        assert.equal(calls.preloaded.length, 0);
+        assert.match(errors.at(-1) ?? "", /已在工具设置中关闭/);
+      }
+    }
+  }
+});
+
+test("rechecks mode availability after asynchronous configuration wait", async () => {
+  const { deps, calls } = createPromptHarness("codex");
+  let toolSettings: Partial<ToolSettingsState> = {};
+  const errors: string[] = [];
+  deps.readStoredToolSettings = () => toolSettings;
+  deps.showWebviewError = (_title, detail) => { errors.push(String(detail)); };
+  deps.waitForConfigApply = async () => { toolSettings = { loopEnabled: false }; return true; };
+  await handleSendPromptMessage({ type: "sendPrompt", prompt: "new", interactiveMode: "loop" }, deps);
+  assert.equal(calls.runLoopPrompt.length, 0);
+  assert.match(errors.at(-1) ?? "", /Loop已在工具设置中关闭/);
 });
 
 test("forces a Loop subtask continuation through coding and wakes the parent after the run", async () => {

@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { buildDepartmentRolePrompt } from "../departmentprompts";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { I18nKey } from "../i18n";
@@ -16,9 +17,9 @@ import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtoc
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
 import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
-import { getClassicLoopSubtaskDispatchCount } from "./loopTaskStateMachine";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
+import { getClassicLoopSubtaskDispatchCount } from "./loopTaskStateMachine";
 
 export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
@@ -140,7 +141,42 @@ type LoopOrchestrationRequiredHostDeps =
     t: (key: I18nKey, params?: Record<string, string | number | boolean>) => string;
   };
 
-export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps>;
+export type ClassicLoopDecisionResult =
+    | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
+    | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
+    | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "pending-requirements"; task: LoopTaskRecord }
+    | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
+    | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
+export type DepartmentDirectorDecisionRequest = {
+  task: LoopTaskRecord; decision: LoopMainDecision; content: string | null; requirements: string[];
+};
+export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps> & {
+  handleDepartmentDecision?: (request: DepartmentDirectorDecisionRequest) => ClassicLoopDecisionResult | Promise<ClassicLoopDecisionResult>;
+};
+
+export async function resolveLoopTaskAtCreationBoundary<T>(options: {
+  candidateId?: string | null;
+  prepareRunner: () => Promise<void>;
+  readTask: (taskId: string) => T | null;
+  isReusableContinuation: (task: T) => boolean;
+  allowFallbackCreation: boolean;
+  assertNewTaskAvailable: () => void;
+  createTask: () => T;
+  beforeFallbackCreation?: () => void;
+}): Promise<{ task: T | null; created: boolean }> {
+  await options.prepareRunner();
+  const candidate = options.candidateId ? options.readTask(options.candidateId) : null;
+  if (candidate && options.isReusableContinuation(candidate)) {
+    return { task: candidate, created: false };
+  }
+  if (!options.allowFallbackCreation) {
+    return { task: null, created: false };
+  }
+  options.assertNewTaskAvailable();
+  options.beforeFallbackCreation?.();
+  return { task: options.createTask(), created: true };
+}
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
@@ -282,7 +318,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       return { status: "needs-review", task: failedRecord };
     }
 
-    if (decision.status === "blocked" && !decision.blocker) {
+    if (task.department?.role !== "director" && decision.status === "blocked" && !decision.blocker) {
       if (!options.blockedDiagnostic) {
         deps.removeLoopMainDecisionMessage?.(target, task.id, round);
         return runClassicLoopMainDecision({
@@ -308,6 +344,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       }
     }
 
+    if (task.department !== undefined || task.departmentInvalid) {
+      if (task.departmentInvalid || task.department?.role !== "director" || !deps.handleDepartmentDecision) {
+        throw new Error("部门总监组织入口不可用，任务不会退化为普通 Loop。");
+      }
+      return deps.handleDepartmentDecision({ task: readLoopTaskRecord(task.id) ?? task, decision, content: mainContent, requirements: requirementsAtStart });
+    }
     return applyLoopMainDecisionForRun(task.id, decision);
   }
 
@@ -319,7 +361,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       ...buildResetLoopMainAiFailureState(),
       updatedAt: Date.now(),
     });
-    const decisionResult = applyLoopMainDecision(taskId, decision, resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.()));
+    const decisionResult = applyLoopMainDecision(
+      taskId,
+      decision,
+      resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.()),
+    );
     if (decisionResult.status === "completed") {
       return { status: "completed", task: decisionResult.task, decision };
     }
@@ -546,13 +592,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     watchdogRecovered?: boolean;
   };
 
-  type LoopMainDecisionRunResult =
-    | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
-    | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
-    | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "pending-requirements"; task: LoopTaskRecord }
-    | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
+  type LoopMainDecisionRunResult = ClassicLoopDecisionResult;
 
   async function runLoopSubtasksBatchWithRetry(
     options: LoopSubtaskBatchOptions
@@ -1199,6 +1239,19 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     round: number,
     continuePrompt?: string,
   ): string {
+    if (task.department?.role === "director") return [
+      buildDepartmentRolePrompt("director"),
+      `任务 ID：${task.id}；轮次：${round}`,
+      "使用经典 Loop JSON 决策。continue 的 subtasks 只列本轮要启动的模块，不列后续待办；参考可信协调上下文的组长可用名额，按需分批。每个新模块用稳定 ID，prompt 写明本轮目标、范围边界和预期交付结果。各模块由唯一真实 Loop+ 组长负责；不得直接实施。",
+      '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","prompt":"自包含模块需求"}]}',
+      '仍有组长处于 starting/running 且只需等待其汇报时，使用 {"status":"waiting","finalSummary":"等待组长汇报"}；waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
+      '确有用户疑问使用标准 clarify 表单。',
+      '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
+      '完成使用 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}；宿主检查全组织门禁后才会写入完成。',
+      "组长汇报、协作和补充会及时唤醒你，无需等待所有组长结束。不得检查代码或验收。",
+      ...buildLoopSupplementalRequirementsLines(task),
+      "原始目标：", rootPrompt, continuePrompt ?? "",
+    ].join("\n");
     const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.());
     const usedSubtaskRounds = getClassicLoopSubtaskDispatchCount(task);
     const remainingSubtaskRounds = Math.max(0, subtaskRoundLimit - usedSubtaskRounds);
@@ -1237,7 +1290,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "4. 后续轮次根据汇报推进：需要委派的未完成工作派发下一批子任务；独立且符合直办条件的新工作可直接处理。不因缺少验收证据或未运行未要求的测试而增加任务。",
       "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
       "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
-      `7. 每批最多 ${subtaskMax} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`,
+      ...(subtaskMax > 0 ? [`7. 每批最多 ${subtaskMax} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`] : []),
       "8. 主任务不验收子任务产物，不检查代码、文档或实现细节，不运行或重复运行测试、构建、启动和其它验证；完成判断以子任务汇报为依据。",
       "9. 用户明确要求或项目既有规则要求的验证必须完成，但要求测试、构建不等于要求独立验证。子任务已明确汇报通过且覆盖当前改动的验证，直接采信并复用，不再另派重复验证任务。两者都未要求时默认不做，不增加固定验收清单；用户未提但项目规则要求的验证不能遗漏。",
       "   部分覆盖时只补缺失或失败项，后续改动使原结果失效时只补受影响项，不无理由重跑整套验证。",
@@ -1246,7 +1299,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "   历史沟通模板或旧派发提示中的默认独立验证要求，不算用户或项目明确要求。",
       "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
       "11. 每次决策预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个子任务批次才能 completed；completed 时为 0。",
-      "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作且有派发额度时返回 continue，否则说明阻塞原因。",
+      "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
       "13. 除符合条件的简单任务直办外，主任务负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",
       "14. 简单任务直办完成后可直接返回 completed，estimatedRemainingRounds=0，如实说明操作结果，不虚构子任务或验收结论；其它实现工作返回 JSON 后由程序启动子任务。",
       "15. 输出必须是一个 JSON 对象，不要包裹 markdown，不要输出额外解释。",
@@ -1288,7 +1341,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "- subtasks[*].writeFiles 可选，表示建议写入范围；但返回多个 subtasks 时，必须为每个会写文件的子任务列出预计写入文件或目录，用于证明文件不冲突。它不是执行时的硬性写入白名单。纯验证/调研子任务可省略并在 parallelReason 说明不会写文件。",
       "- subtasks[*].conflictGroup 可选，用于说明冲突域；同一批次内不应出现会互相覆盖的冲突域。",
       "- 返回多个 subtasks 前，必须确认它们的 writeFiles / conflictGroup 互不重叠；只要能确认文件不冲突，就优先并发，不要保守串行；无法判断写入范围的实现类子任务应串行。",
-      "- 只通过 JSON 提议子任务，不得直接修改任务记录文件；宿主校验并保存派发和进度。",
+      "- 返回 continue 前，同时更新任务记录文件中的 subTasks、activeSubtaskId、activeSubtaskIds 和 estimatedRemainingRounds。",
       "- 根据汇报确认目标与必需的验证要求已满足后返回 completed；明确要求的独立验收或交叉复核仍须完成，不因复用普通测试结果而省略。任务记录和最终总结由宿主落地。",
       "",
       ...buildLoopSupplementalRequirementsLines(task),

@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "attempt": "round-443-department-reviewed-allocation-avatar-integration",
+  "scope": "Local reviewed allocation/prompt/UI-EH plus fixed role-avatar candidate; not final cold-recovery product or release.",
+  "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-allocation-avatar-round443",
+  "branch": "codex/department-allocation-avatar-round443",
+  "baseline": {
+    "commit": "84518c13758eb7b972ee4ca405543a91b75c8ca3",
+    "tree": "4ac2d1242e43421e063949cb4eb91d98c29d3e8b",
+    "deltaFrom": "da47ec72295416fd4a7ff7c877bc483d658e77ff",
+    "completeDelta": [
+      {
+        "path": ".ch/docs/design-docs/department-employee-allocation-prompt-contract.md",
+        "gitBlob": "734e5668015f45785cce1935cd18677fd513566a",
+        "sha256": "bcd3632240467aca826497922ce85401d0a7f41ef69323dd9cea8da20336f196"
+      },
+      {
+        "path": ".ch/docs/integration/department-reviewed-allocation-prompt/sources.json",
+        "gitBlob": "f0688099bdf46a436cb3e7529b645ec72fef6095",
+        "sha256": "466d795d45779e429c87e229aa7d7b7ba6af2da57e049e54e70d2f8a6fd8367a"
+      },
+      {
+        "path": ".ch/docs/runbooks/department-employee-allocation-eh-verification.md",
+        "gitBlob": "e64cfde5bab454dabdc4a840055e29098cb7b250",
+        "sha256": "4245dfbae3b78518f2d5a20a4e2c5127d20ed87679b54e67e1044a558233013a"
+      },
+      {
+        "path": ".ch/docs/runbooks/department-git-integration.md",
+        "gitBlob": "b8db19d61d0b3eceaf6e0c016393f96078eda429",
+        "sha256": "f0198c78cfc56ad860fd429eb0f075ab2040f68767eee9d6ad56daa00db4c509"
+      },
+      {
+        "path": "scripts/fixtures/department_employee_allocation_eh_scenario.js",
+        "gitBlob": "4aef6b0e441140b44b91ffbb2b5bc554e36b6dee",
+        "sha256": "d646b58af1367cb6be7c8a63a6b09e5b8100ea919f3fbeaf5ebfd955aa32af3c"
+      },
+      {
+        "path": "scripts/fixtures/department_employee_allocation_eh_scenario.test.js",
+        "gitBlob": "040775c0fcc5577fbf09460cadb8717b30a7df4f",
+        "sha256": "5dda9b2056cfe1976a3dba1539682bf39ca0badd4dbb2d4733ecd4b5a3e260e0"
+      },
+      {
+        "path": "scripts/verify_department_employee_allocation_eh_integration.js",
+        "gitBlob": "fecd5daabb91efa6a81d56ae2299ff305cfb16f6",
+        "sha256": "deec51cfa9689e8fdbb1f44d9ea0ea5ae6ee227d3d3d51eab4ddd4005ff2a153"
+      },
+      {
+        "path": "scripts/verify_department_employee_allocation_eh_integration.test.js",
+        "gitBlob": "8a961241f5c50f8f6e4128973c0eb96d808e71b7",
+        "sha256": "146bfb9681397340a8eef0c3234ee2308cc4cfd4844095062443ca5fc4e223e6"
+      },
+      {
+        "path": "src/departmentprompts.ts",
+        "gitBlob": "416fa826f404ade0c807eeac28a19d0e15fe475a",
+        "sha256": "cc9cbd49a18c1379010136b196a0eac682a1e0531c01b3f17007d8dbbee1d6c9"
+      },
+      {
+        "path": "src/extensionHost/loopPlusPromptBuilders.ts",
+        "gitBlob": "ba4ddbec220c517ccf5caa34bfe36611fcd97145",
+        "sha256": "8c63b8cdf5f55353f468e18637edde9e67da75db9e7f61b14a61d0bb33a8db24"
+      },
+      {
+        "path": "src/test/extensionHost/departmentemployeeallocationehhost.test.ts",
+        "gitBlob": "c4d320d0a7c3ad1fdeb4e4b38f2b25e13be55fa5",
+        "sha256": "15e027edea30ffa6353e79ec9d7696c8c21ec8410eecad56858686af1978efce"
+      },
+      {
+        "path": "src/test/extensionHost/fixtures/departmentemployeeallocationehhost.ts",
+        "gitBlob": "dc174e64f982197ce1fe2d5b418d13ecb9690054",
+        "sha256": "86156f1204c01fa3d341cbe4e548832af2fd17dd25e28d76c2e50ef66fe735e1"
+      },
+      {
+        "path": "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+        "gitBlob": "458c176ff6809c2df167dd6674445770d9933389",
+        "sha256": "684b1094b703b4af0e9b6c9e36064263b4f8a11b4da354029d9894d4dd244b7f"
+      },
+      {
+        "path": "src/test/loop/department.test.ts",
+        "gitBlob": "57b30a26f152f2cf96e330ab0154fdac6bb30838",
+        "sha256": "f18f5ef742052cc0dd90cc323323930f53501d69eb59a140b1d208289ce38746"
+      }
+    ]
+  },
+  "avatar": {
+    "commit": "5e5cca4f232bc4bd98db753aeb3489ca0e2024d9",
+    "tree": "940390cbaf5e2e5620b6564092a2690ce109d675",
+    "soleParent": "da47ec72295416fd4a7ff7c877bc483d658e77ff",
+    "completeDelta": [
+      {
+        "path": ".ch/docs/runbooks/department-member-role-avatar-verification.md",
+        "gitBlob": "d1ce75be7a18a3ca6a1309fe1ac97c0ad0cc1995",
+        "sha256": "0bd85f21be58538b5fb543919b4d38c4f525f9c862ed48c76843fda287e7a475"
+      },
+      {
+        "path": "scripts/department_group_chat_smoke.cjs",
+        "gitBlob": "cf853ee5b444df24c8458703e95c40707000d840",
+        "sha256": "ab938fd977385f84921d0ef2696612161f1fa544375d3b15ad60cc667ecca1e9"
+      },
+      {
+        "path": "scripts/department_member_role_avatar_scenario.cjs",
+        "gitBlob": "1b7a6117af1128bc010ff697512d08c1f5c29572",
+        "sha256": "552376c915365837f63bc03fbbf006d0ba34a19bd01273c410346e86ef3fe6ed"
+      },
+      {
+        "path": "src/webview/loopGroupChatPanel.ts",
+        "gitBlob": "4823d5ff9c9b715ce919904ca8f4b8b405fc4aad",
+        "sha256": "83a5039b25d1c0ab658aed6e52030d7872a9696611e895545f1d41ed80570f60"
+      }
+    ]
+  },
+  "composition": {
+    "commit": "e9fea635adb966f7e743221c45fd793e37f07cf5",
+    "tree": "a8a29e15265b6e0d31fb713b17751ff38f01f078",
+    "parents": [
+      "84518c13758eb7b972ee4ca405543a91b75c8ca3",
+      "5e5cca4f232bc4bd98db753aeb3489ca0e2024d9"
+    ],
+    "mergeBase": "da47ec72295416fd4a7ff7c877bc483d658e77ff",
+    "strategy": "ort; no conflicts; exact complete four-path avatar delta",
+    "sourceBytesUnmodified": true
+  },
+  "reports": [
+    {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-440-department-allocation-prompt-ui-eh-composition.md",
+      "sha256": "f603ccd493ed9ca6090131661e170c6b36c2b19747fcac4ffffa41fe7efa8975"
+    },
+    {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-441-department-member-role-avatar-labels.md",
+      "sha256": "c88e005cd0cf2264c35bdb182aea9628e675d08a2f179e75e3a5878c0dc3203d"
+    }
+  ],
+  "reviewedPrompt": {
+    "commit": "e613344552c559b934561ccd3506582955dbe68a",
+    "preservedExactPaths": [
+      "src/departmentprompts.ts",
+      "src/extensionHost/loopPlusPromptBuilders.ts",
+      "src/test/extensionHost/loopPlusPromptBuilders.test.ts",
+      "src/test/loop/department.test.ts",
+      ".ch/docs/design-docs/department-employee-allocation-prompt-contract.md"
+    ]
+  },
+  "handoffDelta": [
+    ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+    ".ch/docs/runbooks/department-git-integration.md",
+    ".ch/docs/integration/department-reviewed-allocation-avatar/README.md",
+    ".ch/docs/integration/department-reviewed-allocation-avatar/sources.json"
+  ],
+  "finalIdentity": "Final handoff commit/tree and all eight path hashes are in the external round-443 attempt report; composition identity above binds the executable merge without a self-referential hash.",
+  "reusedEvidence": {
+    "allocation": "Policy 13, reviewed UI40/final host5 and prompt builder34 only for unchanged inputs; da47 standard build and11 directed tests retained.",
+    "round440": "Standard build and13 new tests (5+5+3 separate commands) passed. Run4 read-only review proves real UI request/settled, durable desired/revision, next new attempt activation/refusal/restore, four original required receipts, complete CLOSED, capacity return and four natural worker exits.",
+    "round440Limit": "Original run1/2/3/4 driver commands remain failed; corrected complete driver not run a fifth time. Run1/2 cleanup remains unknown. Run4 success does not certify earlier failed cleanup or this composed tree as a newly executed EH run.",
+    "avatar": "Standard build,3 renderer cases and1440-dark/280-light bounded display-fixture browser passed; browserErrors=[]; no production EH claim.",
+    "thisAttempt": "Only one new standard npm run build plus source/diff/JSON/whitespace checks. No old tests, CLI, EH or browser rerun."
+  },
+  "openGates": [
+    "Reviewed cold-recovery integration and unified allocation/prompt/avatar product",
+    "Real UI-to-EH evidence on the final unified product tree",
+    "Necessary platforms",
+    "Remote synchronization and reasonable merging after all completion tests",
+    "Full regression on actual final merged tree"
+  ],
+  "preservation": "All tracked blobs outside the four avatar paths and four handoff paths inherit845; original prompt sources.json/history and both source reports remain unchanged. No concurrent cold-recovery successor or shared full EH driver changes.",
+  "ontologyDecision": "No new concepts, permissions, lifecycle or runtime interfaces. Existing allocation semantics and explicit role identity are unchanged; display requirement and accepted scope are recorded in FEATURE_INVENTORY, without ontology or active-plan changes.",
+  "verification": {
+    "standardBuild": {
+      "command": "npm run build > /private/tmp/department-allocation-avatar-round443-build.log 2>&1",
+      "cwd": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-allocation-avatar-round443",
+      "exitCode": 0,
+      "result": "passed; npm run clean && tsc -p ./",
+      "logSha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7"
+    },
+    "additionalChecks": "Complete source/parent/blob/diff/JSON/UTF-8/EOF/whitespace checks; external round-443 report records commands and results."
+  },
+  "round675Continuation": {
+    "attempt": "round-675-department-allocation-avatar-role-icons-continuation",
+    "baseCommit": "e0ec605fc0b38ab0a59bb2268faac84efbeb3668",
+    "baseTree": "f2400710a8fdc0d5b26e9116802feefad113594e",
+    "worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-role-icons-round675",
+    "branch": "codex/department-role-icons-round675",
+    "sourceReport": {
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-443-department-reviewed-allocation-avatar-integration.md",
+      "sha256": "037d1a2ea4c62712d6b7cfa247265c9e2f85bc45b08cf48cd4d19504c1b516a1"
+    },
+    "history": "Round443 contains completed source/build facts and a later host configuration-operation timeout outcome=failed. Both are preserved; no previous merge/build is repeated or relabelled successful.",
+    "displayContract": {
+      "department": {
+        "director": "☀️",
+        "leader": "🌛",
+        "employee": "⭐️"
+      },
+      "ordinaryLoopAndLoopPlus": {
+        "main": "🌛",
+        "subtask": "⭐️"
+      },
+      "rosterAvatar": {
+        "director": "总",
+        "leader": "组",
+        "employee": "员"
+      },
+      "priority": "existing trusted department role, then ordinary Loop metadata, then undecorated session; never infer from name",
+      "supersedes": "Old department 👴🏻/👨🏻/👶🏻 and ordinary main☀️/subtask🌛 display requirements only; no session data migration."
+    },
+    "implementationPaths": [
+      "scripts/department_conversation_tabs_smoke.cjs",
+      "scripts/department_group_chat_host_smoke.cjs",
+      "scripts/department_group_chat_smoke.cjs",
+      "scripts/department_member_role_avatar_scenario.cjs",
+      "scripts/verify_department_conversation_host.js",
+      "src/test/extensionHost/departmentcoldstartproductionhost.test.ts",
+      "src/test/extensionHost/fixtures/departmentcoldstartproductionhost.ts",
+      "src/test/loop/departmentGroupChatHost.test.ts",
+      "src/test/loop/departmentGroupChatPanel.test.ts",
+      "src/test/session/conversationTabLock.test.ts",
+      "src/test/session/historySessionLoop.test.ts",
+      "src/test/webview/clipagescriptruntimecoverage.test.ts",
+      "src/test/webview/departmentConversationTabsWebview.test.ts",
+      "src/webview/departmentGroupChatModal.ts",
+      "src/webview/loopGroupChatPanel.ts",
+      "src/webview/loopGroupChatPanelRenderer.ts",
+      "src/webview/viewContentScript/messageRendering.ts",
+      "src/webview/viewContentStrings.ts"
+    ],
+    "additionalScope": "scripts/department_member_role_avatar_scenario.cjs extends the existing bounded fixture to assert new headings/icons and unchanged 总/组/员 geometry, rather than duplicating the page or adding a suite.",
+    "verification": "Actual final build, directed tests, bounded display fixture browser and source hashes are recorded in round675 report and appended runbook. Older emoji runs are not evidence for new glyphs.",
+    "preserved": "Allocation CAS/admission/prompt/linear history synchronization, all original receipts/CLOSED rules, full EH driver and cold repair ownership are unchanged. Round440 run1/2 cleanup unknown; original run4 failed, read-only review passed, no fifth complete driver run.",
+    "openGates": [
+      "Existing cold mixed guard/exit repair owner remains open; not imported or re-dispatched",
+      "Unified product and final composition verification depend on both deliveries",
+      "Necessary other platforms lack a real authorized execution endpoint",
+      "Remote Git synchronization/reasonable merge after implementation/tests, then full regression on actual merged tree"
+    ],
+    "finalIdentity": "Final successor commit/tree and all source SHA-256 are in the external round675 report to avoid self-reference.",
+    "ontology": "Only glyph/display changes; no business concepts, permissions, role identities or lifecycle changes, so ontology is unchanged.",
+    "verificationResults": {
+      "builds": [
+        {
+          "log": "build.log",
+          "exitCode": 0
+        },
+        {
+          "log": "build-final.log",
+          "exitCode": 0
+        }
+      ],
+      "directedFirst": {
+        "log": "directed-tests.log",
+        "pass": 12,
+        "fail": 2,
+        "exitCode": 1,
+        "reason": "Existing VM fake DOM lacked HTMLSelectElement.options; original failure preserved."
+      },
+      "fixtureRecompile": {
+        "command": "./node_modules/.bin/tsc -p ./",
+        "exitCode": 0
+      },
+      "directedFinalAffected": {
+        "log": "runtime-tests-final.log",
+        "pass": 3,
+        "fail": 0,
+        "exitCode": 0,
+        "totalValidDistinct": "11 unchanged from first run plus3 affected cases; not a new all14 pass run"
+      },
+      "browserGroup": {
+        "directory": "group-browser",
+        "viewports": [
+          "1440-dark",
+          "280-light"
+        ],
+        "exitCode": 0,
+        "browserErrors": []
+      },
+      "browserTabsFirst": {
+        "directory": "tabs-browser",
+        "exitCode": 1,
+        "reason": "Repeated active identity retained auto-mode key; fixture corrected, product unchanged."
+      },
+      "browserTabsFinal": {
+        "directory": "tabs-browser-final",
+        "viewports": [
+          "1440-dark",
+          "280-light"
+        ],
+        "exitCode": 0,
+        "browserErrors": []
+      },
+      "evidenceRoot": "/private/tmp/department-role-icons-round675-evidence"
+    },
+    "implementationSha256": {
+      "scripts/department_conversation_tabs_smoke.cjs": "8ebff4c963f6cf9c5dc4cd1608c06618d764d87bd4290c031098318a6a2927e7",
+      "scripts/department_group_chat_host_smoke.cjs": "3430ea3e99cb4b3561eefade10d10472c01a36f45930d7f4802592441c63a1e4",
+      "scripts/department_group_chat_smoke.cjs": "b3e3cda9a351b54e3cb3c6f720c884e09b0bfe594944ce604a51da22fd7741ce",
+      "scripts/department_member_role_avatar_scenario.cjs": "520e0b7c2195ea630005bd78bf48ae4287e957602964e8cb2d0e48c25bc193b0",
+      "scripts/verify_department_conversation_host.js": "639da1a298e35da605cb338a049b5745ba65ee3e6986efdd116ba4bf04ca1712",
+      "src/test/extensionHost/departmentcoldstartproductionhost.test.ts": "1442575da8c794c38814497a7647d9af8f7141edbd38d155cf916654802e2d8d",
+      "src/test/extensionHost/fixtures/departmentcoldstartproductionhost.ts": "6e67ed78bfab9726158b5f289658c0eacc7ae5b6bbd360e883e8fd44a271b271",
+      "src/test/loop/departmentGroupChatHost.test.ts": "347e127be98492c460ff9b8f68bc23b5b9260084caa94e6d78871c2b4b807461",
+      "src/test/loop/departmentGroupChatPanel.test.ts": "6e24f0503beeaf03188407b4a3b2b4db5a6189eff1265d520d391b94f3f4987f",
+      "src/test/session/conversationTabLock.test.ts": "5ec74c4eef4937ef6220dfd649755296c2e7af52b51c2be3cc8638dda2246653",
+      "src/test/session/historySessionLoop.test.ts": "9d58a3d4c50b0131df75142e841093a58cb4c553463750b045ceaaa2837e8ca6",
+      "src/test/webview/clipagescriptruntimecoverage.test.ts": "80a48429a3d288b0ff56c74e9da7a708820c8a316f202ce62d50de73b5c580d5",
+      "src/test/webview/departmentConversationTabsWebview.test.ts": "8d81c01480e3c53aadfc402eb7cbb1b31d6895ef4432debebba30b95c5ac29da",
+      "src/webview/departmentGroupChatModal.ts": "febd2c99dd1e6294385915007669de588ba035bb5e26637d8f83b17b2cc923fa",
+      "src/webview/loopGroupChatPanel.ts": "949eab8eaef9b4e09144268b83fc3fc3d0a2833549216eea2e2ef1dce3ce9b4f",
+      "src/webview/loopGroupChatPanelRenderer.ts": "c270cfb73210ab1bf4352e59a33e972ecaeb4c6a74cba23a8e94f7fc8dccb70e",
+      "src/webview/viewContentScript/messageRendering.ts": "5d990e44c85dee5a70afa6a08dc4dfe83ee1de4a1c59b6b19764590d140f13f7",
+      "src/webview/viewContentStrings.ts": "6cee8f1d1b340365404db6ac40928db1ab5cec3ef0b5d693ad6c6b37cebe4e9a"
+    }
+  }
+}

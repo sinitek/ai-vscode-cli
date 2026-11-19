@@ -1,13 +1,15 @@
-type QuestionOptions = {
+type AdmissionOptions = {
   canRun: () => boolean;
   isAborted?: () => boolean;
+  signal?: AbortSignal;
 };
 
 type Work = {
-  options?: QuestionOptions;
+  options?: AdmissionOptions;
   execute: () => Promise<void>;
   cancel: () => void;
   reject: (error: unknown) => void;
+  detach: () => void;
 };
 
 type SessionQueue = {
@@ -28,7 +30,7 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
       queue.timer = undefined;
     }
     queue.pending = queue.pending.filter((work) => {
-      if (work.options?.isAborted?.()) {
+      if (work.options?.signal?.aborted || work.options?.isAborted?.()) {
         work.cancel();
         return false;
       }
@@ -44,10 +46,12 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
         }
       } catch (error) {
         queue.pending.shift();
+        work.detach();
         work.reject(error);
         continue;
       }
       queue.pending.shift();
+      work.detach();
       queue.running = true;
       void work.execute().finally(() => {
         queue.running = false;
@@ -58,13 +62,22 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
     sessions.delete(tabId);
   }
 
-  function enqueue<Result>(tabId: string, execute: () => Promise<Result>, question?: QuestionOptions): Promise<Result | undefined> {
+  function enqueue<Result>(tabId: string, execute: () => Promise<Result>, admission?: AdmissionOptions): Promise<Result | undefined> {
+    if (admission?.signal?.aborted || admission?.isAborted?.()) return Promise.resolve(undefined);
     const queue = sessions.get(tabId) ?? { pending: [], running: false };
     sessions.set(tabId, queue);
     return new Promise<Result | undefined>((resolve, reject) => {
+      const abort = () => {
+        const index = queue.pending.indexOf(work);
+        if (index < 0) return;
+        queue.pending.splice(index, 1);
+        work.cancel();
+        pump(tabId, queue);
+      };
       const work: Work = {
-        ...(question ? { options: question } : {}),
-        cancel: () => resolve(undefined),
+        options: admission,
+        detach: () => admission?.signal?.removeEventListener("abort", abort),
+        cancel: () => { work.detach(); resolve(undefined); },
         reject,
         execute: async () => {
           try {
@@ -75,15 +88,21 @@ export function createLoopMainQuestionQueue(options: { pollIntervalMs?: number }
         },
       };
       queue.pending.push(work);
+      admission?.signal?.addEventListener("abort", abort, { once: true });
       pump(tabId, queue);
     });
   }
 
+  function runMain<Result>(tabId: string, execute: () => Promise<Result>): Promise<Result>;
+  function runMain<Result>(tabId: string, execute: () => Promise<Result>, admission: AdmissionOptions): Promise<Result | undefined>;
+  function runMain<Result>(tabId: string, execute: () => Promise<Result>, admission?: AdmissionOptions): Promise<Result | undefined> {
+    return enqueue(tabId, execute, admission);
+  }
+
   return {
-    runMain: <Result>(tabId: string, execute: () => Promise<Result>): Promise<Result> => (
-      enqueue(tabId, execute) as Promise<Result>
-    ),
-    runQuestion: <Result>(tabId: string, question: QuestionOptions, execute: () => Promise<Result>) => (
+    isBusy: (tabId: string): boolean => sessions.has(tabId),
+    runMain,
+    runQuestion: <Result>(tabId: string, question: AdmissionOptions, execute: () => Promise<Result>) => (
       enqueue(tabId, execute, question)
     ),
   };

@@ -3,6 +3,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         document.documentElement.style.setProperty("--app-height", window.innerHeight + "px");
       }
 
+      \${NORMALIZE_DEPARTMENT_CAPACITY}
+
+      function syncDepartmentCapacityPanelState(panelState) {
+        state.departmentMaxLeaders = normalizeDepartmentCapacity(panelState.departmentMaxLeaders, \${DEPARTMENT_MAX_LEADERS_DEFAULT});
+        state.departmentMaxEmployees = normalizeDepartmentCapacity(panelState.departmentMaxEmployees, \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT});
+        if (elements.departmentMaxLeaders) elements.departmentMaxLeaders.value = String(state.departmentMaxLeaders);
+        if (elements.departmentMaxEmployees) elements.departmentMaxEmployees.value = String(state.departmentMaxEmployees);
+      }
+
       function scheduleAppHeightUpdate() {
         if (resizeFrame) {
           cancelAnimationFrame(resizeFrame);
@@ -466,6 +475,22 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       }
 
       function applyState(panelState) {
+        // Model/thinking/mode normalization may post context-changing settings.
+        // Publish the role projection only after those messages have been sent.
+        departmentRoleUi.syncingPanelState = true;
+        let newlyCompletedLoopTabIds;
+        try {
+          newlyCompletedLoopTabIds = applyPanelState(panelState);
+        } finally {
+          departmentRoleUi.syncingPanelState = false;
+        }
+        syncDepartmentConfigurationState(panelState);
+        newlyCompletedLoopTabIds.forEach((tabId) => {
+          flushPendingPromptQueue(tabId);
+        });
+      }
+
+      function applyPanelState(panelState) {
         const previousCli = state.currentCli;
         const previousConversationTabs = state.conversationTabs || { activeTabId: null, tabs: [] };
         const previousActiveTabId = typeof previousConversationTabs.activeTabId === "string"
@@ -552,7 +577,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
         state.loopGroupChatMessageLimit = normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
         state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
-        state.newTaskInteractiveMode = normalizeInteractiveMode(panelState.newTaskInteractiveMode);
+        state.newTaskInteractiveMode = panelState.newTaskInteractiveMode === "loop" || panelState.newTaskInteractiveMode === "loop_plus"
+          ? panelState.newTaskInteractiveMode : "coding";
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -624,6 +650,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.codeGraphInstalling = panelState.codeGraphInstalling === true;
         state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
         state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
+        state.loopEnabled = panelState.loopEnabled !== false;
+        state.loopPlusEnabled = panelState.loopPlusEnabled !== false;
+        state.departmentEnabled = panelState.departmentEnabled === true;
+        ["loopEnabled", "loopPlusEnabled", "departmentEnabled"].forEach((key) => {
+          if (elements[key]) {
+            elements[key].checked = state[key];
+            elements[key].disabled = false;
+          }
+        });
         state.humanInteractionNotifications = panelState.humanInteractionNotifications !== false;
         state.taskCompletionNotifications = panelState.taskCompletionNotifications !== false;
         state.humanInteractionWindowAttention = panelState.humanInteractionWindowAttention !== false;
@@ -643,6 +678,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         state.loopPlusSubtaskMaxRounds = normalizeLoopPlusSubtaskMaxRounds(
           panelState.loopPlusSubtaskMaxRounds
         );
+        if (elements.loopPlusSubtaskMaxRounds) {
+          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
+        }
+        syncDepartmentCapacityPanelState(panelState);
+        syncWorkspaceDepartmentCapacityPanelState(panelState);
         if (!state.autoAddEditorContextTags) {
           state.promptContext.autoIncludeArmed = true;
           state.promptContext.includeCurrentFile = false;
@@ -752,9 +792,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         renderPromptHistoryList();
         renderScheduledTaskList();
         applyEditorContext(panelState.editorContext);
-        newlyCompletedLoopTabIds.forEach((tabId) => {
-          flushPendingPromptQueue(tabId);
-        });
+        return newlyCompletedLoopTabIds;
       }
 
       function renderConfigOptions() {
@@ -1042,6 +1080,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         }
         const supported = Boolean(state.interactive && state.interactive.supported);
         const visible = supported || state.currentCli === "opencode";
+        const enabled = { loop: state.loopEnabled !== false, loop_plus: state.loopPlusEnabled !== false, department: state.departmentEnabled === true };
+        Array.from(elements.interactiveModeSelect.options).forEach((option) => {
+          if (option.value in enabled) option.hidden = !enabled[option.value];
+        });
+        if (state.interactiveMode in enabled && !enabled[state.interactiveMode]) {
+          state.interactiveMode = "coding";
+          if (typeof showToast === "function") showToast("所选任务模式已关闭，已切回编码模式；输入内容已保留。");
+          vscode.postMessage({ type: "updateSetting", key: "interactiveMode." + state.currentCli, value: "coding" });
+        }
         elements.interactiveModeSelect.style.display = visible ? "" : "none";
         elements.interactiveModeSelect.disabled = !visible;
         elements.interactiveModeSelect.value = normalizeInteractiveMode(state.interactiveMode);

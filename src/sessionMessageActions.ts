@@ -2,6 +2,7 @@
 import { type CliName, type ThinkingMode } from "./cli/types";
 import { schedulingModeForInteractiveMode } from "./extensionHost/modelSettings";
 import { logError, logInfo } from "./logger";
+import { assertModeAvailable, resolveModeAvailability } from "./modeAvailability";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 import { routeSettingMessage } from "./settingMessageRouter";
 import { PanelMessage } from "./webview/types";
@@ -257,17 +258,6 @@ function resolvePromptRoleThinkingModes(
   };
 }
 
-function refreshPromptPanelState(deps: Pick<PanelMessageHandlerDeps, "postPanelState">): void {
-  const reportFailure = (error: unknown) => {
-    void logError("prompt-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
-  };
-  try {
-    void deps.postPanelState().catch(reportFailure);
-  } catch (error) {
-    reportFailure(error);
-  }
-}
-
 export async function handleSendPromptMessage(
   message: Extract<PanelMessage, { type: "sendPrompt" }>,
   deps: PanelMessageHandlerDeps
@@ -334,6 +324,77 @@ async function executeSendPromptMessage(
   );
   if (cliExplicitlyDisabled(targetCli)) {
     deps.showWebviewError?.("CLI", "该 CLI 已关闭，不能作为新的执行目标。");
+    return;
+  }
+
+  const departmentMode = deps.isDepartmentContinuation?.(targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId()) === true
+    || requestedInteractiveMode === "department"
+    || (!requestedInteractiveMode && deps.getWorkspaceSettings().interactiveModeByCli?.[targetCli] === "department");
+  const requestedMode = requestedInteractiveMode ?? deps.getWorkspaceSettings().interactiveModeByCli?.[targetCli] ?? "coding";
+  const modeSettings = deps.readStoredToolSettings?.() ?? {};
+  const modeAvailability = resolveModeAvailability(modeSettings);
+  const promptTargetIdForMode = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
+  const existingLoopContext = deps.resolveLoopSubtaskConversationContext(targetCli, promptTargetIdForMode);
+  const loopResumeCandidate = (requestedMode === "loop" || requestedMode === "loop_plus")
+    ? deps.resolveLoopResumeTaskFromPrompt(trimmed, promptTargetIdForMode)
+    : null;
+  const isExistingLoopContinuation = Boolean(existingLoopContext || loopResumeCandidate);
+  if (!isExistingLoopContinuation && (requestedMode === "loop" && !modeAvailability.loopEnabled
+    || requestedMode === "loop_plus" && !modeAvailability.loopPlusEnabled
+    || requestedMode === "department" && !modeAvailability.departmentEnabled && !deps.isDepartmentContinuation?.(promptTargetIdForMode))) {
+    const label = requestedMode === "loop" ? "Loop" : requestedMode === "loop_plus" ? "Loop+" : "产研部";
+    deps.showWebviewError?.("任务模式不可用", `${label}已在工具设置中关闭，未发送任务。`);
+    return;
+  }
+  if (departmentMode) {
+    const scope = deps.getDepartmentConfigurationScope?.();
+    const targetId = targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId();
+    const readTarget = () => targetId ? deps.getConversationTabById(targetId) : deps.getActiveConversationTab();
+    const targetIdentity = JSON.stringify(readTarget());
+    const continuation = deps.isDepartmentContinuation?.(targetId) === true;
+    const assertCurrent = (): void => {
+      if (!continuation) assertModeAvailable("department", deps.readStoredToolSettings?.());
+      if ((!continuation && scope !== message.departmentConfigurationScope) || scope !== deps.getDepartmentConfigurationScope?.() || targetIdentity !== JSON.stringify(readTarget())
+        || (!preserveActiveTab && deps.getActiveConversationTabId() !== targetId)) {
+        throw new Error("工作区、目标会话或模式已变化，请在当前会话重新发送。");
+      }
+      const issue = !continuation && deps.getDepartmentConfigurationIssue?.();
+      if (issue) throw new Error(issue);
+    };
+    const contextBuild = deps.buildPromptWithAutoContext(trimmed, message.contextOptions);
+    const modelPrompt = deps.maybeInjectLongTermMemoryForPrompt(
+      trimmed,
+      contextBuild.modelPrompt,
+      contextBuild.contextTags,
+    );
+    const startRequest = {
+      assertCurrent,
+      displayPrompt: trimmed,
+      modelPrompt,
+      contextTags: contextBuild.contextTags,
+      targetTabId: targetTab?.id ?? requestedTabId ?? deps.getActiveConversationTabId(),
+      cli: targetCli,
+      ...(typeof message.loopPlusAcceptancePlan?.id === "string" ? { acceptancePlanSelectionId: message.loopPlusAcceptancePlan.id } : {}),
+    };
+    if (!continuation && (!deps.startDepartmentPrompt || !deps.resolveDepartmentPromptConfiguration)) {
+      deps.showWebviewError("产研部配置", "产研部组织启动入口尚未接入；当前设置不会退化为普通 Loop 或编码任务。");
+      return;
+    }
+    try {
+      assertCurrent();
+      if (continuation) {
+        if (!deps.continueDepartmentPrompt) throw new Error("产研部补充需求入口尚未接入，请稍后重试。");
+        await deps.continueDepartmentPrompt(startRequest);
+        return;
+      }
+      if (deps.waitForConfigApply && !await deps.waitForConfigApply(targetCli)) throw new Error("配置应用失败，产研部任务未启动。");
+      assertCurrent();
+      const departmentConfiguration = await deps.resolveDepartmentPromptConfiguration!(startRequest);
+      assertCurrent();
+      await deps.startDepartmentPrompt!({ ...startRequest, departmentConfiguration });
+    } catch (error) {
+      deps.showWebviewError("产研部任务未启动", error instanceof Error ? error.message : "产研部任务启动失败，请检查配置后重试。");
+    }
     return;
   }
 
@@ -405,6 +466,15 @@ async function executeSendPromptMessage(
   if (!configReady) {
     return;
   }
+  if (!isExistingLoopContinuation) {
+    try {
+      assertModeAvailable(requestedMode, deps.readStoredToolSettings?.());
+    } catch (error) {
+      deps.showWebviewError("任务模式不可用", error instanceof Error ? error.message : String(error));
+      await deps.postPanelState();
+      return;
+    }
+  }
   if (requestedSubtaskCli && requestedSubtaskCli !== targetCli) {
     const resolvedConfigId = await resolveSubtaskRouteConfigId({
       cli: requestedSubtaskCli,
@@ -422,6 +492,15 @@ async function executeSendPromptMessage(
       return;
     }
     promptMessage = { ...message, loopSubtaskConfigId: resolvedConfigId };
+  }
+  if (!isExistingLoopContinuation) {
+    try {
+      assertModeAvailable(requestedMode, deps.readStoredToolSettings?.());
+    } catch (error) {
+      deps.showWebviewError("任务模式不可用", error instanceof Error ? error.message : String(error));
+      await deps.postPanelState();
+      return;
+    }
   }
   const activeConfigId = deps.getActiveConfigIdForCli(targetCli);
   const loopPlusSchedulingMode = schedulingModeForInteractiveMode(effectiveInteractiveMode);
@@ -525,13 +604,36 @@ async function executeSendPromptMessage(
   if (message.skipPromptHistory !== true) {
     deps.recordPromptHistory(trimmed, targetCli);
   }
+  const refreshPanel = () => {
+    const reportRefreshFailure = (error: unknown) => {
+      void logError("loop-plus-submit-panel-refresh", { error: String(error) }).catch(() => undefined);
+    };
+    try {
+      void deps.postPanelState().catch(reportRefreshFailure);
+    } catch (error) {
+      reportRefreshFailure(error);
+    }
+  };
+  if (loopPlusSchedulingMode === "event_driven") {
+    refreshPanel();
+  } else if (shouldRunLoop) {
+    await deps.postPanelState();
+  }
+  // Refresh can outlive the earlier checks; authorize new work from current settings
+  // before preloading or dispatching, without waiting for the Loop+ UI projection.
+  if (!isExistingLoopContinuation) {
+    try {
+      assertModeAvailable(requestedMode, deps.readStoredToolSettings?.());
+    } catch (error) {
+      deps.showWebviewError("任务模式不可用", error instanceof Error ? error.message : String(error));
+      return;
+    }
+  }
   const promptRunTarget = deps.resolvePromptRunTarget(promptTargetTabId);
   const preparedPromptInput = promptRunTarget
     ? deps.preloadUserMessageForPrompt(promptInput, promptRunTarget, { messageId: message.requestId })
     : promptInput;
-  // This refresh reads every CLI's configuration/models. Publish the user bubble
-  // first, then refresh the projection without gating execution on unrelated I/O.
-  refreshPromptPanelState(deps);
+  if (!shouldRunLoop) refreshPanel();
   if (shouldRunLoop) {
     await deps.runLoopPrompt(preparedPromptInput, {
       targetTabId: promptTargetTabId,

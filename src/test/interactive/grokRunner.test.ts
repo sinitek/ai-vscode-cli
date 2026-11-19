@@ -516,6 +516,22 @@ test("loads a saved Grok session and falls back to a new session when it is gone
   assert.equal(methods.includes("session/load"), true);
   assert.equal(methods.includes("session/new"), true);
   missingRunner.dispose();
+
+  const strictMissing = new FakeGrok();
+  strictMissing.loadSession = true;
+  strictMissing.failLoad = true;
+  const strictMissingRunner = new GrokInteractiveRunner({
+    cwd: process.cwd(),
+    command: process.execPath,
+    env: { ...process.env, XAI_API_KEY: "set", GROK_HOME: home },
+    localSessionId: "01a1450f-97a8-7882-a51c-b39c6d30a180",
+    spawnImpl: () => strictMissing as unknown as GrokChild,
+  });
+  await assert.rejects(strictMissingRunner.start({ requireResume: true }), /Path not found/);
+  const strictMethods = strictMissing.lines.map((line) => (JSON.parse(line) as { method?: string }).method);
+  assert.equal(strictMethods.includes("session/load"), true);
+  assert.equal(strictMethods.includes("session/new"), false);
+  strictMissingRunner.dispose();
 });
 
 test("answers Grok terminal/create instead of returning method not found", async () => {

@@ -1,8 +1,17 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import * as vm from "node:vm";
-import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
 import { getWebviewStrings } from "../../webview/viewContentStrings";
+import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
+import { CLI_LIST } from "../../cli/types";
+import { FINAL_ANSWER_TEXT_MARKER } from "../../finalAnswerProtocol";
+
+// Test the generated script, including substituted department constants, rather
+// than evaluating a template fragment containing unresolved placeholders.
+const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = buildWebviewRuntimeScript({
+  i18n: getWebviewStrings(), cliList: CLI_LIST, loopMaxRoundsDefault: 20,
+  loopMaxRoundsMin: 1, loopMaxRoundsMax: 100, finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
+});
 import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 
@@ -41,7 +50,7 @@ function harness() {
   const start = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("let notificationAuthorizationRequestId");
   const end = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function openHelp()", start);
   vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(start, end), context);
-  vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(0, VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function requestCliRepairs")), context);
+  vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function setToolSettingsTab("), VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function requestCliRepairs")), context);
   const bindings = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("const toolSettingsTabs");
   vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(bindings, VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("if (elements.autoCompactContextAfterRun)", bindings)), context);
   const api = vm.runInContext("({requestNotificationAuthorization, applyNotificationAuthorization, setToolSettingsTab})", context) as {

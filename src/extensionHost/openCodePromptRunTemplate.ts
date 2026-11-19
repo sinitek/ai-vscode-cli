@@ -1,4 +1,5 @@
 import type { RunProcess } from "../cli/commandRunner";
+import { runOpenCodeManagedPrompt } from "../cli/openCodeManagedPrompt";
 import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
 import type { CliName, ThinkingMode } from "../cli/types";
@@ -78,6 +79,7 @@ export type OpenCodePromptAttemptContext = {
 
 export type OpenCodePromptStartupWatchdog = {
   arm: () => void;
+  noteActivity?: () => void;
   dispose: () => void;
 };
 
@@ -232,6 +234,7 @@ export type OpenCodePromptRunPorts = {
     attemptNumber: number;
     hiddenRetryCount: number;
   }) => void;
+  getManagedPromptArgs?: (runtime: OpenCodeRuntimePreparation, execution: PromptRunExecutionOptions) => readonly string[];
   createStartupWatchdog: (context: OpenCodePromptStartupWatchdogContext) => OpenCodePromptStartupWatchdog;
   createSubagentMonitor: (context: OpenCodePromptSubagentMonitorContext) => OpenCodeSubagentMonitor;
   runCliStream: typeof import("../cli/commandRunner").runCliStream;
@@ -319,7 +322,7 @@ export async function runOpenCodePromptTemplate(
   const runtimePreparation = await ports.prepareOpenCodeRuntime({
     role: input.taskRole === "subtask" ? "subtask" : "main",
     model: input.model ?? null,
-    variant: input.thinkingModeOverride ?? (input.taskRole === "subtask" ? input.loopSubtaskThinkingMode : input.loopMainThinkingMode),
+    variant: input.executionProfile?.openCodeVariant !== undefined ? input.executionProfile.openCodeVariant : input.thinkingModeOverride ?? (input.taskRole === "subtask" ? input.loopSubtaskThinkingMode : input.loopMainThinkingMode),
     requiresSubtaskModel: Boolean(input.loopTaskId),
   });
   if (executionOptions.isAborted?.()) {
@@ -327,8 +330,9 @@ export async function runOpenCodePromptTemplate(
   }
   const runtimeModel = runtimePreparation.effectiveModel;
   const thinkingMode = input.thinkingModeOverride ?? ports.getEffectiveThinkingMode(runCli, runtimeModel);
-  ports.applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
-  const shouldAutoCompactAfterRun = ports.shouldAutoCompactContextAfterRunForTarget(target);
+  // Owner production preparation rejects configured workspace files until it can apply them in its own root.
+  if (!executionOptions.departmentProcessStream) ports.applyThinkingWorkspaceFiles(runCli, thinkingMode, cwd);
+  const shouldAutoCompactAfterRun = !executionOptions.departmentProcessStream && ports.shouldAutoCompactContextAfterRunForTarget(target);
   ports.preparePendingLabel(runCli, target.tabId, prompt);
   const includeFinalAnswerInstruction = !input.loopTaskId;
   const humanInteractionEnabled = !input.loopTaskId && ports.readGlobalHumanInteractionEnabled();
@@ -385,6 +389,9 @@ export async function runOpenCodePromptTemplate(
   }
   ports.finishRunActivation(prepared, identity);
 
+  // An Owner invocation has one final grant. Its consumer must never replay it,
+  // even when a host evaluator classifies the failure as retryable.
+  const maxHiddenRetries = executionOptions.departmentProcessStream ? 0 : ports.maxHiddenRetries;
   let hiddenRetryCount = 0;
   const isLoopMainRun = Boolean(input.loopTaskId && input.taskRole === "main");
   let freshSessionRecoveryPending = false;
@@ -437,7 +444,10 @@ export async function runOpenCodePromptTemplate(
     const runtimeSessionId = isFreshSessionRecoveryAttempt
       ? null
       : ports.resolveCliSessionIdForResume(runCli, ports.getSessionId());
-    const subagentRuntime = await ports.prepareOpenCodeSubagentRuntime({
+    // The independent Owner must not depend on an EH-owned monitoring server.
+    const subagentRuntime: PreparedOpenCodeSubagentRuntime = executionOptions.departmentProcessStream
+      ? { connection: null, endpointSource: "unavailable", error: null, dispose: () => undefined }
+      : await ports.prepareOpenCodeSubagentRuntime({
       cwd,
       runId: ports.getRunId(),
       runtime: runtimePreparation,
@@ -471,6 +481,7 @@ export async function runOpenCodePromptTemplate(
       subagentRuntime,
       attemptNumber,
       hiddenRetryCount,
+      useManagedPrompt: isLoopMainRun,
     });
     if (!await ports.finishStreamAttempt({
       attemptPrompt,
@@ -536,7 +547,7 @@ export async function runOpenCodePromptTemplate(
         currentAttemptHasAssistantAnswer,
         conversationHasFinalConclusion,
         hiddenRetryCount,
-        maxHiddenRetries: ports.maxHiddenRetries,
+        maxHiddenRetries,
       });
       if (successfulExitOutcome !== "complete") {
         const missingConclusionMessage = ports.buildOpenCodeMissingFinalConclusionMessage(openCodeOutput);
@@ -557,7 +568,7 @@ export async function runOpenCodePromptTemplate(
             loopRound: input.loopRound,
             attempt: hiddenRetryCount + 1,
             retryCount: hiddenRetryCount,
-            maxRetries: ports.maxHiddenRetries,
+            maxRetries: maxHiddenRetries,
             conversationHasFinalConclusion,
             currentAttemptHasAssistantAnswer,
             structuredFinalAnswer: openCodeOutput.hasStructuredFinalAnswer,
@@ -629,7 +640,7 @@ export async function runOpenCodePromptTemplate(
       hiddenRetryCount,
     });
     hiddenRetryCount = failure.hiddenRetryCount;
-    if (failure.shouldRetry) {
+    if (failure.shouldRetry && hiddenRetryCount < maxHiddenRetries) {
       ports.recordFailedAttemptRetry({
         attemptResult,
         rawStdout: stream.rawStdout,
@@ -652,6 +663,7 @@ export async function runOpenCodePromptTemplate(
 }
 
 async function runOpenCodePromptAttemptStream(options: {
+  useManagedPrompt: boolean;
   ports: OpenCodePromptRunPorts;
   stream: OpenCodePromptStreamState;
   runCli: "opencode";
@@ -711,10 +723,13 @@ async function runOpenCodePromptAttemptStream(options: {
     };
     settleAttempt = settle;
     watchdog.arm();
-    const runProcess = ports.runCliStream(
-      runCli,
-      attemptPrompt,
-      {
+    const managed = options.subagentRuntime.endpointSource === "managed-server"
+      && options.subagentRuntime.connection && !executionOptions.departmentProcessStream && options.useManagedPrompt;
+    let managedArgs: readonly string[];
+    try { managedArgs = managed ? ports.getManagedPromptArgs?.(runtimePreparation, executionOptions) ?? [] : []; }
+    catch (error) { settle({ type: "error", error: error instanceof Error ? error : new Error(String(error)) }); return; }
+    const handlers = {
+        onActivity: () => { if (!settled && ports.isRunActive()) watchdog.noteActivity?.(); },
         onStdout: (chunk: string) => {
           if (settled || !ports.isRunActive()) {
             return;
@@ -735,8 +750,21 @@ async function runOpenCodePromptAttemptStream(options: {
         onError: (error: Error) => {
           settle({ type: "error", error });
         },
-      },
-      {
+      };
+    // Only classic main runs use this managed-server compatibility transport.
+    // Owner streams, configured attach and other roles retain their existing ports.
+    const runProcess = managed
+      ? runOpenCodeManagedPrompt({
+        connection: options.subagentRuntime.connection!,
+        cwd: cwd ?? process.cwd(), sessionId: runtimeSessionId,
+        model: runtimePreparation.effectiveModel, variant: runtimePreparation.effectiveVariant,
+        args: managedArgs,
+        prompt: attemptPrompt, maxBytes: ports.maxRawOutputBytes,
+        isCurrent: () => !settled && ports.isRunActive() && !executionOptions.isAborted?.()
+          && JSON.stringify(ports.getManagedPromptArgs?.(runtimePreparation, executionOptions) ?? []) === JSON.stringify(managedArgs),
+        onSession: sessionId => subagentMonitor.setParentSessionId(sessionId),
+      }, handlers)
+      : ports.runCliStream(runCli, attemptPrompt, handlers, {
         cwd,
         sessionId: runtimeSessionId,
         thinkingMode,

@@ -167,6 +167,19 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   assert.equal(limited.workspaceLoopPlusDecisionSubtaskMax, 2);
   deps.workspaceSettings = {};
   assert.equal(buildPanelStateWithDeps(deps).workspaceLoopPlusDecisionSubtaskMax, null);
+  deps.getGlobalDepartmentMaxLeaders = () => 8;
+  deps.getGlobalDepartmentMaxEmployees = () => 40;
+  deps.workspaceSettings = { departmentMaxLeaders: 3 };
+  const capacity = buildPanelStateWithDeps(deps);
+  assert.equal(capacity.departmentMaxLeaders, 8);
+  assert.equal(capacity.departmentMaxEmployees, 40);
+  assert.equal(capacity.workspaceDepartmentMaxLeaders, 3);
+  assert.equal(capacity.workspaceDepartmentMaxEmployees, null);
+  deps.workspaceSettings = { departmentMaxEmployees: 13 };
+  assert.equal(buildPanelStateWithDeps(deps).workspaceDepartmentMaxLeaders, null);
+  assert.equal(buildPanelStateWithDeps(deps).workspaceDepartmentMaxEmployees, 13);
+  deps.getGlobalDepartmentMaxLeaders = () => 10;
+  assert.equal(buildPanelStateWithDeps(deps).departmentMaxLeaders, 10);
   for (const cli of CLI_LIST) assert.equal(modelConfigIds[cli], configStateByCli[cli].activeConfigId);
 });
 

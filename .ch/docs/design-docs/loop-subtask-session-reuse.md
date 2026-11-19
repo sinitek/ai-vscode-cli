@@ -44,6 +44,16 @@ Loop+ 停止时可取消来源预留、后台压缩及 `runPrompt` 启动前的�
 
 ## 执行边界与验证
 
+### Loop+ attempt 执行准入端口
+
+`LoopPlusRuntimeAdapterDeps.acquireAttemptExecution?(request: LoopPlusAttemptRequest, signal: AbortSignal): Promise<LoopPlusAttemptExecutionLease | null>` 是可选的内部注入点；租约仅有 `release(): void`。backend、frontend、general 子任务均经过准入，`runMain` 不调用它。未注入时保持原路由、session 选择与执行路径。本端口尚未接入 extension、部门设置或部门额度池，不增加用户可见功能，也不改变嵌套入口校验。
+
+调用顺序为准入 → 子任务 Tab → `withLoopSubtaskSession` → `withLoopPlusExecutionRoot` → 原 `PromptRunInput/runPrompt` 与结果归属判断 → 目录清理 → 租约释放。等待准入不创建 Tab、执行目录，不持有 session 锁。返回 null 停止；准入抛错产生 failed 结果。每次 attempt 有独立 AbortController，钩子必须响应 AbortSignal 取消等待；适配器事件驱动地停止等待，仍防御忽略取消的迟到租约并释放它。准入返回与取消同轮发生时，执行前再次检查取消。
+
+取消通过已有 `runPrompt.isAborted/onStarted` 端口约束：等待 session 锁、执行准备或已经结束的 attempt 不调用 `cancelInvocation`，只取消本 attempt 已启动且尚未结算的调用。停止或显式关 Tab 不提前归还租约；CLI Promise 与执行目录清理结束后，在 finally 中释放一次。根创建失败、CLI 失败和清理失败同样释放。释放失败成为 failed 结果并保留原错误；已停止且已结算的准入等待者收到迟到租约时，释放错误通过 `loop-attempt-late-lease-release-failed` 日志观察，未提供 log 时写入 stderr。取消后迟到的准入异常使用 `loop-attempt-cancelled-admission-failed` 日志。
+
+可控 Promise 回归见 `src/test/extensionHost/loopPlusRuntimeAdmission.test.ts`；既有 session、路由、取消和 Tab 语义继续由 `loopPlusRuntimeIntegration.test.ts` 覆盖。
+
 ### DSH 的会话目录与 cwd
 
 DSH ACP 恢复同时依赖原 `DSH_HOME` 和持久化会话的 canonical cwd，不只检查 session ID。Loop+ 外层仍为每个 attempt 创建并清理隔离根，但 DSH 实际从该会话隔离 HOME 下的 `loop-workspace` 真实目录执行；同一会话关闭 Tab、释放进程或验收失败后重新派发，均复用这一 cwd。普通 Vibe 继续使用真实工作区，不增加这层目录。

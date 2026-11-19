@@ -2,11 +2,13 @@ import { CLI_LIST, type CliName } from "./cli/types";
 import type { LoopSubtaskDecision, LoopSubtaskRecord, LoopTaskRecord } from "./loopTaskStore";
 import type { LoopPlusDecision } from "./loopPlusDecision";
 import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
+import { isGrokLoopExecutionRootId } from "./loopSubtaskExecutionRoot";
 
 export type LoopSubtaskSession = {
   cli: CliName;
   sessionId: string;
   configId: string | null;
+  grokExecutionRootId?: string;
 };
 
 export function readLoopContinuationSource(value: unknown): string | undefined | null {
@@ -25,7 +27,10 @@ export function normalizeLoopSubtaskSession(value: unknown): LoopSubtaskSession 
     || raw.sessionId.trim().startsWith("local_") || (raw.configId !== null && typeof raw.configId !== "string")) {
     return undefined;
   }
-  return { cli: raw.cli as CliName, sessionId: raw.sessionId.trim(), configId: raw.configId?.trim() || null };
+  return {
+    cli: raw.cli as CliName, sessionId: raw.sessionId.trim(), configId: raw.configId?.trim() || null,
+    ...(raw.cli === "grok" && isGrokLoopExecutionRootId(raw.grokExecutionRootId) ? { grokExecutionRootId: raw.grokExecutionRootId } : {}),
+  };
 }
 
 export function resolveLoopSubtaskSession(
@@ -33,7 +38,7 @@ export function resolveLoopSubtaskSession(
   subtask: Pick<LoopSubtaskDecision, "id" | "continueFromSubtaskId">,
   cli: CliName,
   configId: string | null | undefined,
-): { sessionId: string | null; sourceSubtaskId: string | null; reason: string } {
+): { sessionId: string | null; sourceSubtaskId: string | null; reason: string; grokExecutionRootId?: string } {
   const sourceSubtaskId = subtask.continueFromSubtaskId || subtask.id || null;
   const source = task.subTasks.find((item) => item.id === sourceSubtaskId);
   const binding = normalizeLoopSubtaskSession(source?.executionSession);
@@ -43,7 +48,10 @@ export function resolveLoopSubtaskSession(
   if (binding.cli !== cli || binding.configId !== (configId?.trim() || null)) {
     return { sessionId: null, sourceSubtaskId, reason: "来源会话的 CLI 或配置不兼容，使用新会话" };
   }
-  return { sessionId: binding.sessionId, sourceSubtaskId, reason: "续接来源子任务会话" };
+  return {
+    sessionId: binding.sessionId, sourceSubtaskId, reason: "续接来源子任务会话",
+    ...(binding.grokExecutionRootId ? { grokExecutionRootId: binding.grokExecutionRootId } : {}),
+  };
 }
 
 export function bindLoopSubtaskSession(

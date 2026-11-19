@@ -885,3 +885,147 @@ for (const freshSession of [false, true]) {
     assert.ok(usageMessages.every(message => Number(message.tokensInContextWindow) < 2000));
   });
 }
+
+test("department Owner port feeds existing one-shot OpenCode parsing without calling facade spawn", async () => {
+  const harness = createOneShotRuntimeHarness();
+  let calls = 0;
+  const transport = createAsyncRunCliStreamStub(handlers => {
+    calls++;
+    handlers.onStdout(JSON.stringify({ type: "text", sessionID: "ses_bound", part: { type: "text", text: "Owner answer" } }) + "\n");
+    handlers.onExit(0);
+  });
+  await withRunCliStreamStub(() => { assert.fail("facade must not spawn a duplicate"); }, async () => {
+    await harness.host.runPromptOneShot({ displayPrompt: "controlled", modelPrompt: "controlled", contextTags: [] },
+      { tabId: "owner-tab", cli: "opencode", sessionId: "ses_bound" }, { departmentProcessStream: transport });
+  });
+  assert.equal(calls, 1);
+  assert.ok(harness.messages.some(message => message.role === "assistant" && message.content.includes("Owner answer")));
+  assert.deepEqual(harness.completionStatuses, ["end"]);
+});
+
+for (const failureType of ["exit", "error"] as const) {
+  test(`department one-shot retryable ${failureType} finalizes without replay or retry status`, async () => {
+    const retry = require("../../promptRetry") as typeof import("../../promptRetry");
+    assert.ok(retry.HIDDEN_RETRY_MAX_RETRIES > 0, "exercise a nonzero ordinary retry budget");
+    const failure = failureType === "exit"
+      ? { type: "exit" as const, code: 1 }
+      : { type: "error" as const, error: new Error("temporary provider failure") };
+    assert.equal(retry.isHiddenRetryEligibleAttempt(failure, "temporary provider failure"), true);
+    const originalWait = retry.waitForHiddenRetryDelay;
+    let waits = 0, calls = 0;
+    retry.waitForHiddenRetryDelay = async () => { waits++; return false; };
+    const harness = createOneShotRuntimeHarness();
+    const transport = createAsyncRunCliStreamStub(handlers => {
+      calls++;
+      handlers.onStdout(contextAnswer("ses_bound"));
+      handlers.onStderr("temporary provider failure");
+      if (failure.type === "exit") handlers.onExit(failure.code);
+      else handlers.onError(failure.error);
+    });
+    try {
+      await withRunCliStreamStub(() => { assert.fail("Owner failures cannot fall back to ordinary execution"); }, async () => {
+        await harness.host.runPromptOneShot({ displayPrompt: "controlled", modelPrompt: "controlled", contextTags: [], taskRole: "main", loopTaskId: "leader" },
+          { tabId: "owner-tab", cli: "opencode", sessionId: "ses_bound" }, { departmentProcessStream: transport });
+      });
+    } finally {
+      retry.waitForHiddenRetryDelay = originalWait;
+    }
+    assert.equal(calls, 1);
+    assert.equal(waits, 0);
+    assert.deepEqual(harness.statusEvents.map(e => e.status), ["start", "error"]);
+    assert.deepEqual(harness.completionStatuses, ["error"]);
+    assert.equal(harness.activeRunId, undefined);
+    assert.ok(harness.messages.some(m => m.role === "assistant"));
+    assert.equal(harness.systemMessages.includes(retry.buildHiddenRetryQueuedMessage(0)), false);
+    assert.equal(harness.systemMessages.includes(retry.buildHiddenRetryStartedMessage(1)), false);
+  });
+}
+
+
+test("department leader native output preserves its durable local transcript identity", async () => {
+  let adopted = 0;
+  const harness = createOneShotRuntimeHarness({ captureSessionFromBuffer: () => { adopted++; } });
+  const native: string[] = [];
+  const transport = createAsyncRunCliStreamStub(handlers => {
+    handlers.onStdout(JSON.stringify({ type: "text", sessionID: "ses_bound", part: { type: "text", text: "Leader answer" } }) + "\n");
+    handlers.onExit(0);
+  });
+  await withRunCliStreamStub(() => { assert.fail("leader cannot spawn the facade transport"); }, async () => {
+    await harness.host.runPromptOneShot({ displayPrompt: "controlled", modelPrompt: "controlled", contextTags: [], taskRole: "main", loopTaskId: "leader" },
+      { tabId: "leader-tab", cli: "opencode", sessionId: "local_leader" }, {
+        departmentProcessStream: transport, departmentLeaderNativeSession: (id) => { native.push(id); },
+      });
+  });
+  assert.ok(native.length > 0); assert.ok(native.every(id => id === "ses_bound"));
+  assert.equal(adopted, 0, "native session must not replace the durable local task/tab key");
+  assert.ok(harness.messages.some(message => message.role === "assistant" && message.content.includes("Leader answer")));
+  assert.deepEqual(harness.completionStatuses, ["end"]);
+});
+
+for (const hasActivity of [true, false]) test(`managed one-shot real parent ${hasActivity ? "activity survives" : "silence reaches"} the 60-second startup boundary without children`, async t => {
+  const http = await import("http"), fs = await import("fs"), os = await import("os"), path = await import("path");
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "oneshot-parent-")));
+  const h = createOneShotRuntimeHarness();
+  const events = new Set<import("http").ServerResponse>();
+  let answer!: import("http").ServerResponse, message: any, posted!: () => void;
+  const entered = new Promise<void>(resolve => { posted = resolve; });
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url!, "http://localhost");
+    if (url.pathname === "/event") { res.writeHead(200, { "Content-Type": "text/event-stream" }); res.flushHeaders(); events.add(res); return; }
+    let raw = ""; for await (const chunk of req) raw += chunk;
+    res.setHeader("Content-Type", "application/json");
+    if (url.pathname === "/session" && req.method === "POST") { res.end(JSON.stringify({ id: "ses_parent", directory: root })); return; }
+    if (url.pathname === "/session/ses_parent/message") { answer = res; message = JSON.parse(raw); posted(); return; }
+    res.end("[]"); // genuine monitor children/messages poll: no child activity
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  let handle: RunProcess | undefined, kills = 0, aborted = false, disposed = 0;
+  const timers = new Map<object, () => void>();
+  const set = global.setTimeout, clear = global.clearTimeout;
+  // Only startup time is controlled; native HTTP and the finite overall helper
+  // deadline remain real. This exercises the production one-shot watchdog port.
+  global.setTimeout = ((callback: () => void, delay: number, ...args: any[]) => {
+    if (delay !== 60000) return (set as (...values: any[]) => NodeJS.Timeout)(callback, delay, ...args);
+    const token = {}; timers.set(token, callback); return token;
+  }) as typeof set;
+  global.clearTimeout = ((token: any) => { if (!timers.delete(token)) clear(token); }) as typeof clear;
+  t.after(async () => { global.setTimeout = set; global.clearTimeout = clear; handle?.kill();
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(root, { recursive: true }); });
+  h.deps.resolveWorkspaceCwd = () => root;
+  h.deps.prepareOpenCodeSubagentRuntime = async () => ({ connection: { serverUrl: `http://127.0.0.1:${(server.address() as any).port}` },
+    endpointSource: "managed-server", error: null, dispose: () => { disposed++; } });
+  h.deps.setActiveProcess = process => { handle = process; };
+  h.deps.killActiveProcess = () => { kills++; handle?.kill(); };
+  const host = createPromptOneShotRuntimeHost(h.deps);
+  const running = host.runPromptOneShot({ displayPrompt: "slow healthy main", modelPrompt: "slow healthy main", contextTags: [],
+    taskRole: "main", loopTaskId: "parent", cliCommandRepairAttempted: true }, { cli: "opencode", tabId: "main", sessionId: null }, { isAborted: () => aborted });
+  await entered;
+  assert.equal(timers.size, 1);
+  const advancePastStartup = () => { for (const [token, callback] of [...timers]) { timers.delete(token); callback(); } };
+  const info = { id: "msg_current", role: "assistant", sessionID: "ses_parent", parentID: message.messageID,
+    modelID: message.model.modelID, providerID: message.model.providerID, path: { cwd: root } };
+  if (hasActivity) {
+    for (const event of [{ type: "message.updated", properties: { info } }, { type: "message.part.updated", properties: {
+      part: { id: "prt_think", type: "reasoning", sessionID: "ses_parent", messageID: info.id, text: "actual parent reasoning" } } }]) {
+      for (const stream of events) stream.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+    for (let i = 0; i < 200 && timers.size; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(timers.size, 0, "verified parent activity disarms startup; there is still no final stdout or child");
+    // Controlled time crosses the former startup deadline. The timer was
+    // cancelled; final answer arrives after that boundary, within total budget.
+    advancePastStartup(); // virtual startup time now 60,001ms
+    assert.equal(kills, 0);
+    answer.end(JSON.stringify({ info: { ...info, finish: "stop", time: { completed: Date.now() } },
+      parts: [{ id: "prt_final", type: "text", sessionID: "ses_parent", messageID: info.id, text: "[final_answer] slow main completed" }] }));
+    await running;
+    assert.deepEqual(h.completionStatuses, ["end"]);
+    assert.ok(h.assistantChunks.some(text => text.includes("slow main completed")));
+  } else {
+    advancePastStartup(); await running;
+    assert.equal(kills, 1);
+    assert.equal(h.assistantChunks.some(text => text.includes("slow main completed")), false);
+    assert.ok(h.statusEvents.some(event => event.status === "error" && /60 秒内/.test(event.message ?? "")),
+      "startup timeout must retain its diagnostic even when managed kill reports cancellation synchronously");
+  }
+  assert.equal(disposed, 1); assert.equal(timers.size, 0);
+});

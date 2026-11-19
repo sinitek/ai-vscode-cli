@@ -81,6 +81,7 @@ type ModeControl = {
   style: { display: string };
   disabled: boolean;
   value: string;
+  options: Array<{ value: string; hidden: boolean }>;
   parentElement: { style: { display: string } };
   addEventListener(type: string, listener: (event: { target: ModeControl }) => void): void;
   dispatchChange(value: string): void;
@@ -92,6 +93,7 @@ function createModeControl(): ModeControl {
     style: { display: "" },
     disabled: false,
     value: "",
+    options: ["coding", "loop", "loop_plus", "department"].map((value) => ({ value, hidden: false })),
     parentElement: { style: { display: "" } },
     addEventListener(type, listener) {
       if (type === "change") {
@@ -123,7 +125,7 @@ test("renders Loop+ in both interactive mode selects without extra Loop mode cho
     assert.match(select, /value="loop_plus"/);
     assert.match(select, /value="loop_plus" title="单个子任务执行结束后立即验收，其它完成进入队列。"/u);
     assert.doesNotMatch(select, /value="graph"/);
-    assert.equal((select.match(/<option /g) || []).length, 3);
+    assert.deepEqual(Array.from(select.matchAll(/<option value="([^"]+)"/g), (match) => match[1]), ["coding", "loop", "loop_plus", "department"]);
     assert.ok(select.indexOf('value="loop"') < select.indexOf('value="loop_plus"'));
     assert.match(select, />Loop\+</);
   }
@@ -172,7 +174,6 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     commandCompact: createModeControl(),
   };
   const posted: Array<{ type?: string; key?: string; value?: string }> = [];
-  const runtimeState = { interactiveModeSelection: null as { cli: string; mode: string } | null };
   const modelSource = [
     ...[
       "cliSupportsManagedModelSelection",
@@ -221,7 +222,7 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
     normalizeInteractiveMode,
     syncModelSelectorByInteractiveMode,
     { postMessage: (message: { type?: string; key?: string; value?: string }) => posted.push(message) },
-    () => runtimeState,
+    () => null,
   );
 
   syncInteractiveModeSelector();
@@ -232,7 +233,6 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
 
   elements.interactiveModeSelect.dispatchChange("loop");
   assert.equal(state.interactiveMode, "loop");
-  assert.deepEqual(runtimeState.interactiveModeSelection, { cli: "codex", mode: "loop" });
 
   elements.interactiveModeSelect.dispatchChange("loop_plus");
   assert.deepEqual(posted.at(-1), {
@@ -260,7 +260,6 @@ test("restores Loop+, posts the setting, and keeps role selectors in sync", () =
 
   elements.interactiveModeSelect.dispatchChange("plan");
   assert.equal(state.interactiveMode, "coding");
-  assert.deepEqual(runtimeState.interactiveModeSelection, { cli: "claude", mode: "coding" });
   assert.deepEqual(posted.at(-1), {
     type: "updateSetting",
     key: "interactiveMode.claude",
@@ -318,12 +317,14 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     "hideAddModelDialog",
     "getActiveConversationTabId",
     "getConversationTabSummary",
-    "getConversationRuntimeState",
     [
       "var lastAutoInteractiveModeTabKey = \"\";",
       "function syncConversationTabRunningFlowWatch() {}",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
+      extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getDepartmentConversationTabPresentation"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
+      "function getConversationRuntimeState() { return null; }",
+      "var pendingConversationCreate = null; function isCreatingConversationTab() { return false; }",
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
       extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -351,7 +352,6 @@ test("switches classic and Loop+ main tabs from loopSchedulingMode without cross
     () => undefined,
     () => state.conversationTabs.activeTabId,
     (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
-    () => null,
   ) as {
     resolveAutoInteractiveModeForTab(tab: Record<string, string>): string;
     applyAutoInteractiveModeForTab(tab: Record<string, string>): boolean;
@@ -423,12 +423,14 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       "hideAddModelDialog",
       "getActiveConversationTabId",
       "getConversationTabSummary",
-      "getConversationRuntimeState",
       [
         "var lastAutoInteractiveModeTabKey = \"\";",
         "function syncConversationTabRunningFlowWatch() {}",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeInteractiveMode"),
+        extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getDepartmentConversationTabPresentation"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab"),
+        "function getConversationRuntimeState() { return null; }",
+        "var pendingConversationCreate = null; function isCreatingConversationTab() { return false; }",
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "applyAutoInteractiveModeForTab"),
         extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "autoInteractiveModeTabKey"),
@@ -454,7 +456,6 @@ test("restores each main tab mode from its summary after a fresh page load", () 
       () => undefined,
       () => state.conversationTabs.activeTabId,
       (tabId: string) => state.conversationTabs.tabs.find((tab) => tab.id === tabId) || null,
-      () => null,
     ) as { renderConversationTabs(): void };
     api.renderConversationTabs();
     return { mode: state.interactiveMode, select: elements.interactiveModeSelect.value };

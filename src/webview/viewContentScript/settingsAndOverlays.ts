@@ -3,6 +3,86 @@ import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
+      function commitDepartmentCapacitySetting(input, key, state) {
+        const fallback = key === "departmentMaxLeaders" ? \${DEPARTMENT_MAX_LEADERS_DEFAULT} : \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};
+        const nextValue = normalizeDepartmentCapacity(input.value, fallback);
+        const changed = state[key] !== nextValue;
+        state[key] = nextValue;
+        input.value = String(nextValue);
+        if (changed) vscode.postMessage({ type: "updateSetting", key, value: nextValue });
+        return { changed, value: nextValue };
+      }
+
+      function bindDepartmentCapacityInput(input, key, state) {
+        const commit = () => commitDepartmentCapacitySetting(input, key, state);
+        input.addEventListener("change", commit);
+        input.addEventListener("blur", commit);
+        return commit;
+      }
+
+      const workspaceCapacityUi = { scope: null, sequence: 0, pending: {}, values: {} };
+      const workspaceCapacityKeys = ["workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"];
+      function workspaceCapacityStatus(key, text) {
+        const status = document.getElementById(key + "Status");
+        if (status) status.textContent = text;
+      }
+      function syncWorkspaceDepartmentCapacityPanelState(panelState) {
+        const scope = panelState.departmentConfigurationScope || null;
+        if (workspaceCapacityUi.scope !== scope) {
+          workspaceCapacityUi.scope = scope;
+          workspaceCapacityUi.pending = {};
+          workspaceCapacityKeys.forEach((key) => {
+            workspaceCapacityStatus(key, "");
+            elements[key]?.removeAttribute("aria-invalid");
+          });
+        }
+        workspaceCapacityKeys.forEach((key) => {
+          const input = elements[key];
+          if (!input) return;
+          const value = normalizeDepartmentCapacity(panelState[key], NaN);
+          workspaceCapacityUi.values[key] = Number.isFinite(value) ? value : null;
+          input.placeholder = "全局：" + state[key === "workspaceDepartmentMaxLeaders" ? "departmentMaxLeaders" : "departmentMaxEmployees"];
+          input.disabled = !scope || Boolean(workspaceCapacityUi.pending[key]);
+          if (!workspaceCapacityUi.pending[key]) input.value = workspaceCapacityUi.values[key] === null ? "" : String(workspaceCapacityUi.values[key]);
+        });
+      }
+      function commitWorkspaceDepartmentCapacity(key) {
+        const input = elements[key];
+        if (!input || input.disabled || workspaceCapacityUi.pending[key]) return;
+        const raw = input.value.trim();
+        const value = raw ? normalizeDepartmentCapacity(raw, NaN) : null;
+        if (input.validity?.badInput || (raw && !Number.isFinite(value))) {
+          input.setAttribute("aria-invalid", "true");
+          workspaceCapacityStatus(key, "人数必须为取整后大于零的安全数字，留空继承全局。");
+          return;
+        }
+        input.removeAttribute("aria-invalid");
+        input.value = value === null ? "" : String(value);
+        if (value === workspaceCapacityUi.values[key]) { workspaceCapacityStatus(key, ""); return; }
+        const requestId = "workspace-capacity-" + (++workspaceCapacityUi.sequence);
+        workspaceCapacityUi.pending[key] = { requestId, value };
+        input.disabled = true;
+        workspaceCapacityStatus(key, "正在保存…");
+        vscode.postMessage({ type: "updateSetting", key, value: { scope: workspaceCapacityUi.scope, requestId, value } });
+      }
+      function applyWorkspaceDepartmentCapacitySaved(data) {
+        const pending = workspaceCapacityUi.pending[data.key];
+        if (data.scope !== workspaceCapacityUi.scope || !pending || data.requestId !== pending.requestId) return;
+        delete workspaceCapacityUi.pending[data.key];
+        if (data.ok) workspaceCapacityUi.values[data.key] = pending.value;
+        const input = elements[data.key];
+        input.disabled = !workspaceCapacityUi.scope;
+        input.value = workspaceCapacityUi.values[data.key] === null ? "" : String(workspaceCapacityUi.values[data.key]);
+        workspaceCapacityStatus(data.key, data.ok ? "" : (data.error || "工作区人数设置保存失败，请重试。"));
+      }
+      workspaceCapacityKeys.forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        input.addEventListener("change", () => commitWorkspaceDepartmentCapacity(key));
+        input.addEventListener("blur", () => commitWorkspaceDepartmentCapacity(key));
+        input.addEventListener("input", () => { input.removeAttribute("aria-invalid"); workspaceCapacityStatus(key, ""); });
+      });
+
       function setToolSettingsTab(scope) {
         const selected = ["aiTask", "workspace", "notifications", "repair"].includes(scope) ? scope : "general";
         [["general", elements.toolSettingsGeneralTab, elements.toolSettingsGeneralPanel],
@@ -176,6 +256,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         }
         if (mode === "loop_plus") {
           return t("interactiveModeLoopPlus");
+        }
+        if (mode === "department") {
+          return t("interactiveModeDepartment");
         }
         if (mode === "coding") {
           return t("interactiveModeCoding");
@@ -491,6 +574,21 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.loopGroupChatMessageLimit.addEventListener("change", commitLoopGroupChatMessageLimit);
         elements.loopGroupChatMessageLimit.addEventListener("blur", commitLoopGroupChatMessageLimit);
       }
+      if (elements.loopPlusSubtaskMaxRounds) {
+        const commitLoopPlusSubtaskMaxRounds = () => {
+          const nextValue = normalizeLoopPlusSubtaskMaxRounds(elements.loopPlusSubtaskMaxRounds.value);
+          state.loopPlusSubtaskMaxRounds = nextValue;
+          elements.loopPlusSubtaskMaxRounds.value = String(nextValue);
+          vscode.postMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: nextValue });
+        };
+        elements.loopPlusSubtaskMaxRounds.addEventListener("change", commitLoopPlusSubtaskMaxRounds);
+        elements.loopPlusSubtaskMaxRounds.addEventListener("blur", commitLoopPlusSubtaskMaxRounds);
+      }
+      ["departmentMaxLeaders", "departmentMaxEmployees"].forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        bindDepartmentCapacityInput(input, key, state);
+      });
       if (elements.loopPlusDecisionSubtaskMax) {
         const commitLoopPlusDecisionSubtaskMax = () => {
           const nextValue = normalizeLoopPlusDecisionSubtaskMax(elements.loopPlusDecisionSubtaskMax.value);
@@ -519,20 +617,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("change", commitWorkspaceLoopPlusDecisionSubtaskMax);
         elements.workspaceLoopPlusDecisionSubtaskMax.addEventListener("blur", commitWorkspaceLoopPlusDecisionSubtaskMax);
       }
-      if (elements.loopPlusSubtaskMaxRounds) {
-        const commitLoopPlusSubtaskMaxRounds = () => {
-          const nextValue = normalizeLoopPlusSubtaskMaxRounds(elements.loopPlusSubtaskMaxRounds.value);
-          state.loopPlusSubtaskMaxRounds = nextValue;
-          elements.loopPlusSubtaskMaxRounds.value = String(nextValue);
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "loopPlusSubtaskMaxRounds",
-            value: nextValue,
-          });
-        };
-        elements.loopPlusSubtaskMaxRounds.addEventListener("change", commitLoopPlusSubtaskMaxRounds);
-        elements.loopPlusSubtaskMaxRounds.addEventListener("blur", commitLoopPlusSubtaskMaxRounds);
-      }
       if (elements.historyRetentionDays) {
         const commitHistoryRetentionDays = () => {
           const raw = Number(elements.historyRetentionDays.value);
@@ -544,6 +628,14 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.historyRetentionDays.addEventListener("change", commitHistoryRetentionDays);
         elements.historyRetentionDays.addEventListener("blur", commitHistoryRetentionDays);
       }
+      ["loopEnabled", "loopPlusEnabled", "departmentEnabled"].forEach((key) => {
+        const input = elements[key];
+        if (!input) return;
+        input.addEventListener("change", () => {
+          input.disabled = true;
+          vscode.postMessage({ type: "updateSetting", key, value: input.checked });
+        });
+      });
       if (elements.macTaskShell) {
         elements.macTaskShell.addEventListener("change", (event) => {
           const nextValue = event.target.value === "bash" ? "bash" : "zsh";
@@ -1482,11 +1574,11 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           closeRunConflictOverlay();
           return false;
         }
+        closeRunConflictOverlay();
         if (isLoopMainConversationTabRunning(getActiveConversationTabId())) {
-          showToast(t("toastLoopMainBusy"));
+          showToast(t("toastLoopQueueUnsupported"));
           return false;
         }
-        closeRunConflictOverlay();
         return dispatchPrompt(promptPayload, { pauseBeforeSend: true });
       }
 

@@ -49,6 +49,15 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
             isolateProjectInstructions: port.isolateProjectInstructions,
           });
 
+      const captureRunner = () => {
+        const original = runner;
+        return port.departmentInteractiveRunner?.(original, () => {
+          port.interactiveRunnerManager.detachRunner("claude", port.uiSessionId, original);
+          return original.disposeAndWait();
+        });
+      };
+      let bindDepartmentSession = captureRunner();
+
       const runStreamHandlers = {
         onAssistantDelta: (chunk: string) => {
           if (!port.isCurrentRunActive()) {
@@ -153,6 +162,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
         try {
           await turnRunner.runStreamed(port.attemptPrompt, {
             ...runStreamHandlers,
+            beforeSessionStart: bindDepartmentSession,
             onSessionId: (sessionId) => {
               if (!isBound()) {
                 return;
@@ -211,6 +221,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
               sessionId: null,
               isolateProjectInstructions: port.isolateProjectInstructions,
             });
+            bindDepartmentSession = captureRunner();
             retainClaudeRunner();
             port.setStopCurrentTurn(() => runner.stopAndRebuild());
             port.syncInteractiveRunEntry(port.stopFn);

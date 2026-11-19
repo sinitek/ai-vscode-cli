@@ -268,6 +268,7 @@ test("original Loop runtime restoration reuses ready main and cross-CLI subtask 
     logEssential: async () => undefined,
     activeWorkspaceKey: "synthetic-workspace",
     prepareLoopOriginContinuationTarget: () => ({ tabId: "main-tab" }),
+    getConversationTabById: (tabId: string) => ({ id: tabId }),
     switchVisibleConversationTabForLoop: async () => undefined,
     parseCliName: (value: string | undefined) => value ?? null,
     selectCliLoopModel: () => undefined,
@@ -301,8 +302,9 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(extensionSource, /from "\.\/extensionHost\/promptOneShotRuntime"/);
   assert.match(extensionSource, /from "\.\/extensionHost\/promptInteractiveRuntime"/);
   assert.match(extensionSource, /loopOrchestrationHost = createLoopOrchestrationHost\(\{/);
-  assert.match(extensionSource, /const \{ runPromptParallel \} = createPromptParallelRuntimeHost\(\{/);
+  assert.match(extensionSource, /const \{ runPromptParallel, stopParallelRunForTab \} = createPromptParallelRuntimeHost\(\{/);
   assert.match(extensionSource, /const \{ runPromptOneShot \} = createPromptOneShotRuntimeHost\(\{/);
+
   assert.match(extensionSource, /const \{ runPromptInteractive \} = createPromptInteractiveRuntimeHost\(\{/);
   assert.match(extensionSource, /resolveZcodeModelWireForRun: \(model\) => modelSettingsHost\.resolveZcodeModelWireForRun\(model\)/);
   assert.match(extensionSource, /function runClassicLoopMainDecision\([\s\S]*requireLoopOrchestrationHost\(\)\.runClassicLoopMainDecision/);
@@ -316,18 +318,46 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   assert.match(autoRepairExecuteSource, /execute: async \(attemptInput, attemptTarget\) => \{/);
   assert.match(
     autoRepairExecuteSource,
-    /if \(shouldUseInteractive\) \{\s*await runPromptInteractive\(currentAttemptInput, attemptTarget, executionOptions\);/,
+    /if \(shouldUseInteractive\) \{\s*await runPromptInteractive\(currentAttemptInput, attemptTarget, \{ \.\.\.executionOptions, departmentCodexRun, cancelDepartmentCodexPreparation: abortCodexPreparation \}\);/,
   );
   assert.match(
     autoRepairExecuteSource,
-    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(currentAttemptInput, attemptTarget, executionOptions\);/,
+    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(currentAttemptInput, attemptTarget, \{ \.\.\.executionOptions, departmentProcessStream: ownerStream \}\);/,
   );
   assert.match(
     autoRepairExecuteSource,
-    /\} else \{\s*await runPromptOneShot\(currentAttemptInput, attemptTarget, executionOptions\);/,
+    /\} else \{\s*await runPromptOneShot\(currentAttemptInput, attemptTarget, \{ \.\.\.executionOptions, departmentProcessStream: ownerStream \}\);/,
   );
   assert.doesNotMatch(autoRepairExecuteSource, /promptInput, target, executionOptions/);
   assert.doesNotMatch(extensionSource, /async function runPromptInteractive\(/);
+});
+
+test("department OpenCode leader entry uses its tab-isolated parallel consumer and original capability", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  assert.match(extensionSource, /const \{ runPromptParallel, stopParallelRunForTab \} = createPromptParallelRuntimeHost\(\{/);
+  const leader = findFunctionByName(parseTypeScript("extension.ts", extensionSource), "runDepartmentLeaderPrompt")!.getText();
+  const openCodeLeader = leader.slice(leader.indexOf('if (leaderCli === "opencode")'), leader.indexOf('if (!mode ||'));
+  assert.match(openCodeLeader, /await runPromptParallel\(fixed, target,/);
+  assert.doesNotMatch(openCodeLeader, /runPromptOneShot\(/);
+  assert.match(extensionSource, /import \{ createDepartmentLeaderNativeSessionValidator \} from "\.\/extensionHost\/departmentleadernativesessionvalidation"/);
+  assert.match(openCodeLeader, /departmentLeaderNativeSession: createDepartmentLeaderNativeSessionValidator\(\{/);
+  assert.match(openCodeLeader, /localSessionId: target\.sessionId, configId: expected\.configId,/);
+  assert.match(openCodeLeader, /readExecutionSession: \(\) => readLoopTaskRecord\(taskId\)\?\.executionSession,\s*\}\)/);
+  assert.doesNotMatch(openCodeLeader, /upsertInteractiveMapping/);
+  const validatorSource = readSource("src", "extensionHost", "departmentleadernativesessionvalidation.ts");
+  assert.doesNotMatch(validatorSource, /upsertInteractiveMapping|metaStore|sessionLifecycle/);
+  assert.match(openCodeLeader, /finally \{ tabConsumer\.finish\(consumed\); \}/);
+});
+
+test("new interactive department employee initializes only its local session before runner preparation", () => {
+  const extensionSource = readSource("src", "extension.ts");
+  const run = requireFunction(parseTypeScript("extension.ts", extensionSource), "runDepartmentInteractivePrompt", "extension.ts").getText();
+  assert.match(run, /if \(!fixed\.loopTaskId \|\| !target \|\| !expected\)/);
+  assert.doesNotMatch(run, /!target\?\.sessionId/);
+  assert.match(run, /fixed\.taskRole === "subtask" && !target\.sessionId/);
+  assert.match(run, /ensureLocalSession\(target\.cli, target\.tabId, true\)/);
+  assert.match(run, /initialized\?\.cli === target\.cli && initialized\.sessionId/);
+  assert.match(run, /rejectUnstarted\(input\.loopTaskId, input\.loopAttemptId, failure\)/);
 });
 
 test("scheduled tasks resolve their interactive mode from the selected task config", () => {
@@ -647,13 +677,55 @@ test("conversation tab summaries carry the persisted Loop scheduling mode", () =
     loopTaskId: "task-1",
   }, undefined);
   assert.equal(summary.loopSchedulingMode, "classic");
-  const eventDriven: ConversationTabSummary = {
-    ...summary,
-    loopSchedulingMode: "event_driven",
-  };
+  const eventDriven: ConversationTabSummary = attachConversationTabLoopSchedulingMode({
+    id: "tab-2",
+    cli: "codex",
+    sessionId: null,
+    createdAt: 2,
+    loopTaskRole: "main",
+    loopTaskId: "task-2",
+  }, "event_driven");
   assert.equal(eventDriven.loopSchedulingMode, "event_driven");
   const hostSource = readSource("src", "extensionHost", "sessionTabs.ts");
-  assert.equal(hostSource.includes("readLoopTaskRecord(summary.loopTaskId)"), true);
-  assert.equal(hostSource.includes("task?.schedulingMode"), true);
-  assert.equal(hostSource.includes("attachConversationTabLoopSchedulingMode("), true);
+  const buildTabsStateSource = requireFunction(
+    parseTypeScript("sessionTabs.ts", hostSource),
+    "buildConversationTabsState",
+    "session tabs host",
+  ).getText();
+  assert.match(buildTabsStateSource, /const readTaskRecord = \(taskId: string\): LoopTaskRecord \| null => \{[\s\S]*deps\.readDepartmentTaskRecord\(taskId\)/);
+  assert.match(buildTabsStateSource, /let task = summary\.loopTaskId \? readTaskRecord\(summary\.loopTaskId\) : null;/);
+  assert.match(buildTabsStateSource, /if \(!task && summary\.loopTaskId\) \{[\s\S]*deps\.readOrdinaryConversationTabTaskRecord\(summary\.loopTaskId\)/);
+  assert.match(buildTabsStateSource, /attachConversationTabLoopSchedulingMode\([\s\S]*summary,[\s\S]*task\?\.schedulingMode/);
+  assert.equal(buildTabsStateSource.includes("readLoopTaskRecord(summary.loopTaskId)"), false);
+});
+
+test("fresh Department employee tab registration precedes loop context projection for both native CLIs", () => {
+  const source = readSource("src", "extension.ts");
+  const parsed = parseTypeScript("extension.ts", source);
+  let initializer: ts.Expression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (ts.isPropertyAssignment(node) && node.name.getText(parsed) === "recordDepartmentSubtaskTarget") initializer = node.initializer;
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  assert.ok(initializer);
+  const { createDepartmentExecutionResources } = require("../../extensionHost/departmentexecutionresources") as typeof import("../../extensionHost/departmentexecutionresources");
+  const tabs = new Map(["codex", "opencode", "claude"].map(cli => [cli, { id: cli, cli, sessionId: null }]));
+  const resources = createDepartmentExecutionResources({ workspace: () => "workspace", readTab: id => tabs.get(id) ?? null,
+    isActive: () => false, owns: () => false, close: async () => { assert.fail("recording creation cannot authorize close"); } });
+  const javascript = ts.transpileModule(`(${initializer.getText(parsed)})`, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const register = vm.runInNewContext(javascript, {
+    getDepartmentExecutionResources: () => resources,
+    resolveConversationTabLoopContext: () => { assert.fail("fresh target has no projected context yet"); },
+  }) as (target: { tabId: string; cli: string }) => void;
+  for (const cli of ["codex", "opencode"]) {
+    register({ tabId: cli, cli });
+    const consumer = resources.beginConsumer(cli);
+    assert.deepEqual(consumer.target, { kind: "department-created-tab" });
+    consumer.finish();
+  }
+  register({ tabId: "claude", cli: "claude" });
+  assert.throws(() => resources.beginConsumer("claude"), /not-owned/);
+  // The caller supplies Department identity from its trusted task, not tab context.
+  assert.match(readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts"), /if \(task\?\.department\?\.role === "leader"\) deps\.recordDepartmentSubtaskTarget\?\.\(target\)/);
 });

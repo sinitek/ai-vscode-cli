@@ -264,6 +264,7 @@ type ContextTokenUsageMessage = {
 
 ### Grok Build
 
+- ACP `session/load` 的身份由 `sessionId` 与 cwd 共同决定。Loop+ Grok 员工将不透明执行目录标识保存在子任务 `executionSession`，在同子任务重试、修补或后续续接时复用相同隔离 cwd；仅此 Loop+ 路径要求恢复原 ACP session，失败时不回退 `session/new`。首次启动和普通 Vibe 的既有行为不变。旧 Loop+ Grok 绑定没有目录标识时保留记录并拒绝续接，不静默更换会话。
 - 原生 `ask_user_question` 使用 ACP 扩展请求 `_x.ai/ask_user_question`（同时兼容 `x.ai/ask_user_question`），不是权限审批。客户端验证 `sessionId` 和问题结构后，仅在开启人工交互的 Vibe/coding 普通任务中复用现有表单；Loop/Loop+、关闭交互或没有回合处理器时返回 `{ outcome: "cancelled" }`，不弹窗。问题支持 `multiSelect` / `multi_select`，选项保留描述与预览，单选/多选均提供独立的可选其他回答。提交按问题原文返回 `{ outcome: "accepted", answers: { [question]: string[] } }`，不是 Codex 的 questionId 协议。人工交互超时将“自行选择最佳方案继续”作为各问题回答；用户拒绝返回原生取消并停止宿主任务，不触发 hidden retry；迟到回答不能进入下一回合。工具错误摘要同时保留 `rawOutput.error` 与 `rawOutput.message`，不能只显示 `tool_execution_failed`。
 - 当前上下文用量：`initialize.clientCapabilities._meta["x.ai/statusLine"] = true` 开启原生状态订阅。本机 Grok 1.0.62 验证会发送 `_x.ai/session_notification`，其中 `update.sessionUpdate = "session_status"`、`schema_version = 1`，`context_window.context_tokens` 是当前窗口读数，`context_window_size` 是上限；不能使用其中累计的 `session_input_tokens` / `session_output_tokens`。协议适配同时兼容 ACP `usage_update.used/size`，只接受相同会话的非负安全整数，缺失读数不估算。
 - 运行中每次同会话 `response_completed` 使用最近一次响应的 `input_tokens + cache_read_input_tokens + cache_creation_input_tokens + output_tokens` 提前刷新；Grok 缓存输入独立计数、推理包含在输出内，已与 1.0.62 最终原生 `context_tokens` 对照。逐响应值直接替换，不累计 `turn_completed` / `turn_usage`，结束后仍由原生状态快照校准。相同 token 与窗口上限的通知合并，不增加轮询；单次模型响应/工具尚未结束期间保留最近读数。

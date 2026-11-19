@@ -1,0 +1,107 @@
+{
+  "checked_at": "2026-11-15T19:49:38.000709+00:00",
+  "checks": [
+    {
+      "scope": "332 selected source/doc/script files before EOF normalization",
+      "action": "sha256 vs manifest; accepted physical platform source SHA; no selected symlinks",
+      "result": "passed"
+    },
+    {
+      "scope": "candidate tracked tree plus 332 selected paths",
+      "action": "exact-case component membership, casefold collisions, classified lexical imports",
+      "result": "passed",
+      "limitations": "No compiler/runtime resolution; 2 fixture source strings and 1 expected built dist target explicitly classified."
+    },
+    {
+      "scope": "selected Markdown relative links",
+      "action": "resolve relative Markdown links by exact-case candidate path membership",
+      "result": "findings-recorded",
+      "checked": 86,
+      "findings": [
+        {
+          "from": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+          "target": "图片地址",
+          "resolved": ".ch/docs/product-specs/图片地址",
+          "present_exact_case": false
+        }
+      ],
+      "limitations": "External, anchors and absolute runtime evidence paths skipped."
+    },
+    {
+      "scope": "initial selected-source patch against baseline temporary index",
+      "command": "GIT_INDEX_FILE=<isolated-index> git read-tree f5b5ac57; git apply --cached --check <selected-source.patch>",
+      "result": "passed",
+      "exit_code": 0,
+      "patch_sha256": "bf9b8a74dad5d30e5a226c11da09acce7050ed84f7acc6ef17b8024cece33216"
+    },
+    {
+      "scope": "local-origin-master isolated temporary index; selected-source patch only",
+      "command": "GIT_INDEX_FILE=<isolated-index> git read-tree origin/master; git apply --cached --check <selected-source.patch>",
+      "exit_code": 1,
+      "result": "conflict-risk-recorded",
+      "stderr": "error: patch failed: .ch/docs/ontology/domains/cli-plugin-runtime.json:1\nerror: .ch/docs/ontology/domains/cli-plugin-runtime.json: patch does not apply\nerror: patch failed: .ch/docs/product-specs/FEATURE_INVENTORY.md:2\nerror: .ch/docs/product-specs/FEATURE_INVENTORY.md: patch does not apply\nerror: patch failed: src/extension.ts:1\nerror: src/extension.ts: patch does not apply\nerror: patch failed: src/extensionHost/loopGroupChatPanelCoordinator.ts:180\nerror: src/extensionHost/loopGroupChatPanelCoordinator.ts: patch does not apply\nerror: patch failed: src/extensionHost/loopOrchestration.ts:500\nerror: src/extensionHost/loopOrchestration.ts: patch does not apply\nerror: patch failed: src/extensionHost/loopPlusOrchestration.ts:187\nerror: src/extensionHost/loopPlusOrchestration.ts: patch does not apply\nerror: patch failed: src/extensionHost/loopPlusRuntimeAdapter.ts:1\nerror: src/extensionHost/loopPlusRuntimeAdapter.ts: patch does not apply\nerror: patch failed: src/extensionHost/promptInteractiveRuntime.ts:228\nerror: src/extensionHost/promptInteractiveRuntime.ts: patch does not apply\nerror: patch failed: src/extensionHost/sessionTabs.ts:4\nerror: src/extensionHost/sessionTabs.ts: patch does not apply\nerror: patch failed: src/promptRunState.ts:222\nerror: src/promptRunState.ts: patch does not apply\nerror: patch failed: src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts:90\nerror: src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts: patch does not apply\nerror: patch failed: src/test/extensionHost/loopPlusOrchestration.test.ts:33\nerror: src/test/extensionHost/loopPlusOrchestration.test.ts: patch does not apply\nerror: patch failed: src/test/extensionHost/loopPlusRuntimeIntegration.test.ts:20\nerror: src/test/extensionHost/loopPlusRuntimeIntegration.test.ts: patch does not apply\nerror: patch failed: src/test/extensionHost/promptInteractiveRuntime.test.ts:13\nerror: src/test/extensionHost/promptInteractiveRuntime.test.ts: patch does not apply\nerror: patch failed: src/test/session/sessionTabCliSwitch.test.ts:57\nerror: src/test/session/sessionTabCliSwitch.test.ts: patch does not apply\n",
+      "patch_sha256": "bf9b8a74dad5d30e5a226c11da09acce7050ed84f7acc6ef17b8024cece33216"
+    },
+    {
+      "scope": "initial staged 332 selected files including new files",
+      "command": "git diff --cached --check",
+      "result": "failed",
+      "exit_code": 2,
+      "findings": [
+        "src/cli/cliProcessRuntime.ts:235 new blank line at EOF",
+        "src/test/extensionHost/fixtures/departmentcodextabreleasehost.ts:45 new blank line at EOF",
+        "src/test/extensionHost/fixtures/departmentresourcetabhost.ts:117 new blank line at EOF",
+        "src/test/runtime/fixtures/departmentprocesspreparationfixture.ts:92 new blank line at EOF"
+      ],
+      "followup": "Normalize EOF blank lines in candidate only. Source snapshot and shared originals preserved."
+    },
+    {
+      "scope": "four candidate-only normalized source files",
+      "action": "final candidate SHA256 == manifest; accepted round410 source SHA256 == source hash; difference exactly original.rstrip(newline)+newline",
+      "result": "passed",
+      "changes_after_original_check": [
+        "src/cli/cliProcessRuntime.ts",
+        "src/test/extensionHost/fixtures/departmentcodextabreleasehost.ts",
+        "src/test/extensionHost/fixtures/departmentresourcetabhost.ts",
+        "src/test/runtime/fixtures/departmentprocesspreparationfixture.ts"
+      ],
+      "limitations": "Original 807/807 comparison is pre-normalization. Final 803 exact plus 4 EOF-only, no new build/test."
+    },
+    {
+      "scope": "final source patch after four EOF changes against isolated baseline index",
+      "command": "GIT_INDEX_FILE=<final-baseline-index> git read-tree f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95; git apply --cached --check <selected-source-final.patch>",
+      "result": "passed",
+      "exit_code": 0,
+      "patch_sha256": "3d43fd1a4d53fcb831cd9c05d133ad66e719d947b23e8759cde225d312791bce",
+      "patch_bytes": 4370270
+    },
+    {
+      "scope": "final staged 332 selected source/doc/script files after EOF normalization",
+      "command": "git diff --cached --check",
+      "result": "passed",
+      "exit_code": 0
+    },
+    {
+      "scope": "existing Markdown placeholder finding",
+      "action": "inspect HEAD FEATURE_INVENTORY.md and current inline example containing 图片地址",
+      "result": "classified inherited example; no real navigation target missing; source unchanged"
+    },
+    {
+      "scope": "new candidate handoff README and machine-readable JSON artifacts",
+      "action": "UTF-8 read, JSON parse, exact relative link targets, trailing whitespace/final newline",
+      "result": "passed",
+      "limitations": "Not semantic ontology validation, unit tests or acceptance review."
+    }
+  ],
+  "not_run": [
+    "fetch/pull/merge/rebase/push",
+    "npm install/build/tsc",
+    "unit tests",
+    "CLI",
+    "Extension Host",
+    "browser",
+    "publish scripts"
+  ],
+  "completed_at": "2026-11-15T19:51:37.692943+00:00",
+  "after_checks": "Only metadata/documentation/attempt report additions remain; no selected source edits after final source patch checks."
+}

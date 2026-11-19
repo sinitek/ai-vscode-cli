@@ -226,7 +226,8 @@ test("restores the supplement dialog before a main-task refresh can mark it clos
 
   assert.match(saveDialog, /if \(!dialogStateRestored\)/);
   assert.match(restoreDialog, /dialogStateRestored = true/);
-  assert.match(restoreDialog, /openSupplementDialog\(preservedPrompt\)/);
+  assert.match(restoreDialog, /openSupplementDialog\(preservedPrompt, false\)/);
+  assert.match(restoreDialog, /openContinueDialog\(preservedPrompt, false\)/);
   const patcher = html.slice(html.indexOf("function applyContentPatch"), html.indexOf("function startAutoRefresh"));
   assert.doesNotMatch(patcher, /continueDialogInput\.value/);
   assert.match(patcher, /timelineSlot/);
@@ -386,25 +387,26 @@ function createSupplementDialogHarness() {
   const input = { value: "", focus: () => undefined, select: () => undefined };
   const messages: { type: string; prompt: string }[] = [];
   const errors: string[] = [];
-  const context = {
+  const context: any = {
     continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
     continueDialogInput: input,
     continueDialogConfirm: { dataset: {} },
     continueDialogOpen: false,
     continueRequestPending: false,
     continueDialogMode: undefined as string | undefined,
+    continueDialogOpener: null as { isConnected?: boolean; focus?: () => void } | null,
     setContinueDialogError: (error: string) => errors.push(error),
     setContinueModelChoiceVisible: () => undefined,
     saveDialogState: () => undefined,
     clearDialogState: () => undefined,
     readContinueModelSource: () => "original",
     actionButton: () => button,
-    document: { getElementById: () => null, querySelector: () => null },
-    window: { setTimeout: () => undefined },
+    document: { activeElement: null as unknown, getElementById: () => null, querySelector: () => null },
+    window: { setTimeout: () => undefined } as any,
     vscode: { postMessage: (message: { type: string; prompt: string }) => messages.push(message) },
   };
   const actions = vm.runInNewContext(`${source}\n({ openSupplementDialog, submitSupplementDialog, closeContinueDialog, submitContinueDialog, applyContinueTaskSettled });`, context) as {
-    openSupplementDialog: (prompt?: string) => void;
+    openSupplementDialog: (prompt?: string, focusInput?: boolean) => void;
     submitSupplementDialog: () => void;
     closeContinueDialog: () => void;
     submitContinueDialog: () => void;
@@ -468,6 +470,55 @@ test("ignores duplicate supplement confirmation after the dialog closes", () => 
   assert.equal(harness.messages.length, 1);
 });
 
+test("synchronizes dialog lifecycle and restores only a live user-action opener", () => {
+  const harness = createSupplementDialogHarness();
+  const opener = { isConnected: true };
+  const lifecycle: unknown[] = [];
+  harness.context.document.activeElement = opener;
+  harness.context.window.__departmentDialogOpened = (backdrop: unknown, target: unknown) => lifecycle.push(["open", backdrop, target]);
+  harness.context.window.__departmentDialogClosed = (backdrop: unknown) => lifecycle.push(["close", backdrop]);
+
+  harness.openSupplementDialog("键盘入口");
+  harness.submitSupplementDialog();
+  assert.equal(lifecycle.length, 2);
+  assert.equal((lifecycle[0] as unknown[])[0], "open");
+  assert.equal((lifecycle[0] as unknown[])[2], opener);
+  assert.equal((lifecycle[1] as unknown[])[0], "close");
+
+  harness.openSupplementDialog("恢复态", false);
+  assert.equal((lifecycle[2] as unknown[])[2], null, "restored dialogs do not register a focus target");
+  harness.closeContinueDialog();
+  assert.equal(lifecycle[3] instanceof Array && lifecycle[3][0], "close");
+});
+
+test("ask, file preview and model switch dialogs use the shared synchronous focus lifecycle", () => {
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
+  const openAsk = html.slice(html.indexOf("function openAskDialog"), html.indexOf("function submitAskChat"));
+  assert.match(openAsk, /const dialogOpener = focusInput \? document\.activeElement : null/u);
+  assert.match(openAsk, /showAskDialog\(\);[\s\S]*__departmentDialogOpened && window\.__departmentDialogOpened\(askChatBackdrop, dialogOpener\)/u);
+  assert.match(openAsk, /hideAskDialog\(\);[\s\S]*if \(lifecycleManaged\) window\.__departmentDialogClosed\(askChatBackdrop\)/u);
+  assert.match(openAsk, /else if \(askDialogOpener\?\.isConnected\) askDialogOpener\.focus\(\{ preventScroll: true \}\)/u,
+    "ordinary Loop panels restore the ask opener when no department bridge exists");
+  const restoreAsk = html.slice(html.indexOf("function restoreAskDialogState"), html.indexOf("function restoreDialogState"));
+  assert.match(restoreAsk, /showAskDialog\(\)/u);
+  assert.doesNotMatch(restoreAsk, /__departmentDialogOpened|\.focus\(/u,
+    "restored ask state does not register an opener or take focus");
+
+  const preview = html.slice(html.indexOf("function openCommunicationFilePreview"), html.indexOf("function applyCommunicationFilePreview"));
+  assert.match(preview, /focusClose !== false\)[\s\S]*communicationPreviewOpener = document\.activeElement;[\s\S]*__departmentDialogOpened && window\.__departmentDialogOpened\(filePreviewBackdrop, communicationPreviewOpener\)/u);
+  assert.match(preview, /function restoreCommunicationFilePreview\(\)[\s\S]*openCommunicationFilePreview\(stored\.path, false\)/u,
+    "restoring a stored preview does not register or focus an opener");
+  assert.match(preview, /setAttribute\("aria-hidden", "true"\);[\s\S]*if \(lifecycleManaged\) window\.__departmentDialogClosed\(filePreviewBackdrop\)/u);
+  assert.match(preview, /else if \(communicationPreviewOpener\?\.isConnected\) communicationPreviewOpener\.focus\(\{ preventScroll: true \}\)/u);
+
+  const modelScript = html.slice(html.indexOf("function close(restoreFocus = true)"), html.indexOf("function updateError()"));
+  assert.match(modelScript, /__departmentDialogClosed\(backdrop, restoreFocus\)/u);
+  assert.match(modelScript, /if \(restoreFocus && !lifecycleManaged\)[\s\S]*opener\.focus\(\)/u,
+    "ordinary Loop panels retain model dialog focus restoration without the department bridge");
+  assert.match(html, /if \(message\.ok\) close\(false\)/u, "an asynchronous settled reply closes without restoring focus");
+  assert.match(html, /__departmentDialogOpened && window\.__departmentDialogOpened\(backdrop, opener\)/u);
+});
+
 test("keeps empty supplement input editable and does not submit a continue dialog as a supplement", () => {
   const harness = createSupplementDialogHarness();
   harness.openSupplementDialog("   ");
@@ -485,7 +536,8 @@ test("refreshes the current runtime configuration immediately when the continue 
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const openDialog = html.slice(html.indexOf("function openContinueDialog"), html.indexOf("function closeContinueDialog"));
   const calls: string[] = [];
-  const input = { value: "", focus: () => undefined, select: () => undefined };
+  let focusCalls = 0;
+  const input = { value: "", focus: () => { focusCalls += 1; }, select: () => undefined };
   const context = {
     continueDialogBackdrop: { classList: { add: () => undefined }, setAttribute: () => undefined },
     continueDialogInput: input,
@@ -497,6 +549,7 @@ test("refreshes the current runtime configuration immediately when the continue 
     setContinueModelChoiceVisible: () => undefined,
     saveDialogState: () => calls.push("save"),
     requestRefresh: () => calls.push("refresh"),
+    document: { activeElement: null },
     window: { setTimeout: () => undefined },
   };
 
@@ -506,6 +559,9 @@ test("refreshes the current runtime configuration immediately when the continue 
   assert.equal(input.value, "保留继续说明");
   assert.equal(context.continueDialogOpen, true);
   assert.equal(context.continueDialogMode, "continue");
+  assert.equal(focusCalls, 1, "an explicit dialog open focuses synchronously");
+  vm.runInNewContext(`\nopenContinueDialog("恢复的说明", false);`, context);
+  assert.equal(focusCalls, 1, "restoring a dialog does not take focus without user activation");
 });
 
 function createPanelHarness() {
@@ -1528,6 +1584,8 @@ test("live busy patches and an active question still allow consecutive queued su
     mainElement: null,
     document: { getElementById: () => null },
     replaceHtml: () => undefined,
+    replaceRosterHtml: () => undefined,
+    departmentEmployeeAllocation: null,
     isNearBottom: () => true,
     applyClarificationPatch: () => undefined,
     replaceContinueModelChoice: () => undefined,

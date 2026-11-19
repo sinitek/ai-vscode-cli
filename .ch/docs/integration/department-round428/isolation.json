@@ -1,0 +1,312 @@
+{
+  "host_cwd": "/private/var/folders/49/shyk0sxs3qg15d9w_npw48z80000gn/T/sinitek-loop-subtask-UoyQCb",
+  "source": "/private/tmp/department-ui-queued-focus-round422",
+  "candidate": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-accepted-ui-round428-20261116",
+  "branch": "codex/department-accepted-ui-round428-20261116",
+  "base": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+  "base_tree": "f2f1a1cb3436de590b13305900816d40d27c0cdf",
+  "initial_clean": {
+    "head": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+    "status": "",
+    "branch": "codex/department-accepted-ui-round428-20261116",
+    "external_worktree": "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-accepted-ui-round428-20261116",
+    "setup": "No dependencies installed or linked; no build/runtime commands."
+  },
+  "preserved_worktrees": {
+    "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli": {
+      "head": "f5b5ac57e4b9f956abdb29f82cf8e50d345c2b95",
+      "index_sha256": "b4c56b0612d033a5b6386ae842c2426bd70edf086fd6d69ac87769074513ef2f",
+      "status_sha256": "b8f05f90180cf8bc60f236e8d998bce858f5bc185cfaa5e81d5789d0e3753ca9",
+      "unchanged": true
+    },
+    "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-candidate-round414-20261116": {
+      "head": "c53f9defc811e5fddcf87e2d052ab0c6069c3087",
+      "index_sha256": "5a56ebed798baa8e72d78067b5bfdf5641945945c60379b2e9d99de8fc3e31b9",
+      "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "unchanged": true
+    },
+    "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-local-integration-round416-20261116": {
+      "head": "51a5e7b15c54921611721fe14863e60361d64e72",
+      "index_sha256": "0656eb3359b5c7979f3bbd65094976cad2341401b072653670bae1a5aab1c7dd",
+      "status_sha256": "f19375333ad86e574e4ee87925c478693e82ba9365e5845645b8c62cafcc27de",
+      "unchanged": true
+    },
+    "/Users/fangjiawei/.cache/codex-worktrees/sinitek-ai-vscode-cli/department-platform-delta-round419-20261116": {
+      "head": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+      "index_sha256": "0accd9d0a280330bc6de839e684b681a64fb6b00166a0321c95b7364789ac054",
+      "status_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "unchanged": true
+    },
+    "/private/tmp/department-ui-queued-focus-round422": {
+      "head": "c76b5132d6c0430dfb03f150fb8220010265e32f",
+      "index_sha256": "e71edd943495920296fcf5e08990165ab394d0b3eaf99cee16e3d786302ff294",
+      "status_sha256": "b4508cf27a691576df605b785371e2832b1add66501204b4b47a00cc316e95bb",
+      "unchanged": true
+    }
+  },
+  "origin_master_observed": "7302702ec3cac018660d81ba16a3bd369225b8d3",
+  "origin_note": "Observed local ref only; different from historical 8f396c1b. No fetch/pull/push; not integrated here.",
+  "shared_handoff_sha256": "634088a466d6e2ae96c0385223726fbf2abbe470c595480c2a89f698c3621ef9",
+  "handoff_template_prefix_preserved": true,
+  "parent_record": {
+    "path": "/Users/fangjiawei/.sinitek_cli/loop-tasks/sinitek-ai-vscode-cli_9ae6912ed06d/codex/01a1d3e6-6285-7c73-8808-b269a412f0e7/loop-tasks.json",
+    "before_sha256": "8754292ba1c0c647e759d8863c68300b26fc1f3dc9f6d10a7b8306f5a0b36589",
+    "after_sha256": "8754292ba1c0c647e759d8863c68300b26fc1f3dc9f6d10a7b8306f5a0b36589",
+    "unchanged": true
+  },
+  "inherited_evidence": [
+    {
+      "path": ".ch/docs/integration/department-round414/README.md",
+      "sha256": "ddff5ef0b32a2bc6743cd1e07784644d69368a1784a1f756d6b3ff6f3d9298e2"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/artifact-hashes.json",
+      "sha256": "6c7b0659ac17bdf50e8c740cdc833300d42337d8eeb3e38c7baa54a328fd93c2"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/build-source-correspondence.json",
+      "sha256": "2161edbfa45f9ae61235583285b79ca0754d6ed3ad0c9581077afe2467997a76"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/checks.json",
+      "sha256": "47dd8ffeb5885f80104d5c1e6187135ea8430cffa9a8527d7f400e26a7995657"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/conflict-risk.json",
+      "sha256": "cfa80ffb92c9fac8fc89c3ed48fd7073704f963f82b0f8d507621c5b311bab05"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/dependencies.json",
+      "sha256": "0212e613aa22b4ecd460bbd85a6b1191a0735525ed36d6860583541bd3de26e9"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/exclusions.json",
+      "sha256": "f0576873b582916c8e3f48dfb5c240997c1f1488378ae525915c4a1910b87a76"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/hunks.json",
+      "sha256": "a3c1a0a078a1053c622f817ffe429f084a40c1727f0677c718e6bdaf86b096b0"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/manifest.json",
+      "sha256": "a847d1ab3b0f458be6d9fbd281725d9889dfa59fa60cdc4541a434422df74b1f"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/path-review.json",
+      "sha256": "9ff49ddd1bdf6e5e9c6fabaa330093adaf019ec300e26c89e697cebecf09c9ac"
+    },
+    {
+      "path": ".ch/docs/integration/department-round414/reports.json",
+      "sha256": "20e1d83ba4c656184f5bb393f76d4fa70fc988761279c6b7d2f0b1273df5cd0a"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/README.md",
+      "sha256": "2f4299364234326e47cb2fb7303c3505a71acad7224aa7da06dd8b65d5849387"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/artifact-hashes.json",
+      "sha256": "1671e42a51a420bf5395219c9ebefa437f34d8e77caef7ff1b38358cc6003772"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/baseline.json",
+      "sha256": "89ba6c1645aaef5623da4c4af60fb74c3d404f11b7e8335367bf0f6da29bfe45"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-01.log.gz",
+      "sha256": "0c25d5f3ec8fcd3cf8c29e634bc49152afa1809cc886dcc07c8ee740c2068736"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-02.log.gz",
+      "sha256": "cb55eb789e50ba4e1277aa47a8c29c9cf879f752197b6c84d2ffbecc2a0e098c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-03.log.gz",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-04.log.gz",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-05.log.gz",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/build-06.log.gz",
+      "sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/check-summary.json",
+      "sha256": "fa3e4d9358632c7da2a6af5d6bd7806d067598cd88387d52f09775115d88f825"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/checks.md",
+      "sha256": "19b81eb5990e679ba828defe09944e455520e0483d2b6cc4674d3186034d2138"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/compression.json",
+      "sha256": "7467c86cd3bbf3c32e845311f35d841de8b052423917b826e70cf56c917bdda8"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/conflicts-initial.json",
+      "sha256": "357035e7ce268fc9773f206487ad0ab4ca69331d3c9ec9c983666792143a0b16"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/final-checks.json",
+      "sha256": "be4297366fc497ad9722db94cbf66431d9d5a8738d974465e0daa72ae200ea61"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/incidental-writes.json",
+      "sha256": "973d78df7bb3a589c1c1983aa03eeef521966cb74efb9a40be8c11fdd905794c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/manual-write-paths.json",
+      "sha256": "971ac8c6b41c70d4065b69921ec27f3f8deed90b5fa6690ee1ae0487a07a446b"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/merge-output.txt",
+      "sha256": "ceb2b9007dd0b44505a23042126314e747591776e0747204c65a41710334f169"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/overlap-review.json",
+      "sha256": "669bde6f61a461fafa469920df8cc940d17f0c02822280c9a75b2faa0839247e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/patch-check-candidate.txt",
+      "sha256": "5b47b69cf086548bfc9a3370d6f68cdaf72ab9da4f5e39244224617f4854c905"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/patch-check-origin.txt",
+      "sha256": "5cc816c745e85e26388ebf91fc113071f6e88ad6b70ba00a10e5260869f407c5"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/path-check.json",
+      "sha256": "b93aa5047c592313c88606da6e921c77d1ea730c7e5e34b9c0a0dff1cc5d645e"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/preserved-materials.json",
+      "sha256": "d35e3c7045536610f409c02226d0cd14df8da25ffb0476c379c9a95d2e969f01"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-boundaries-01.log",
+      "sha256": "333ca9c365942b6028a7c32c78db7916f875977d464d42e2869ba4f4b2b97ac5"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-01.log.gz",
+      "sha256": "90e251c537633631f43ccc4e2af44b7f5d92de06e1aecc912387bcabc6c9c25a"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-02.log.gz",
+      "sha256": "01b50b41748c118db15dc8e41a59eb2461128de87e0d5ffb4eefc0dcc6c16b99"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-runtime-03.log",
+      "sha256": "22a184cda52fcb35d7b4f4985a3a1cb7b1816756cb3bfcb90af018f9f6766695"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-ui-01.log",
+      "sha256": "f7ea3ecb05e335cd4b27d81d21d28ddf91db20fc31ea560d65887d87eec323df"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/regression-ui-02.log",
+      "sha256": "0cc2039ae0f0de0a8788682931681e1267aa7d046ae6ac60dfaf5e475ff3ac2c"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.name-status.txt",
+      "sha256": "53cf31b608436952a19074029ac8800617afe4cd6bf35093ecda19e5337f628d"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.patch.gz",
+      "sha256": "c5b4126afd9fdbef923d1f1986af031c99f4445f11783b0b8281c07baec85ca0"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-candidate.stat.txt",
+      "sha256": "89e425d40741cacdc905f69e5fc020dd942bb2a831042068fc8c97807788e2a4"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.name-status.txt",
+      "sha256": "8aa3bff6aa5f044303947fe5e2c67786b9d6c4a0745b1f2b0b4864a3fc907fa3"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.patch.gz",
+      "sha256": "04a5f32b4854f1df4b3a34eed2d1f4aec40fd9f59e7788126de85d7b6c599202"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/relative-to-origin.stat.txt",
+      "sha256": "ca7fc1e163698941fc5a8cb0a3782a90084ca4e9004c1365219e9e9623131a82"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/semantic-review.md",
+      "sha256": "f98c7924eca0d3d1fe3939af41240a62f4984dfb8f1e23987b6780c81946d8dc"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/shared-preservation-precommit.json",
+      "sha256": "23fdd785c84ffcb40329b53dfdc169c8ff544b24ea9a78c1d923008fb51f46da"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/source-manifest.json",
+      "sha256": "826b264589245506e9a764a251ac33dc105cd6d3664909e906bfa7876aa5e204"
+    },
+    {
+      "path": ".ch/docs/integration/department-round416/unmerged.txt",
+      "sha256": "4b62844674a9969e4f987b25b66bef9356ed49056b98dca2581c38ce2870b4b1"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/README.md",
+      "sha256": "3546d6a8e106fd51ecbb5b608875fd569b4fe07f4db61a4cecbff630b8fc9c0f"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/artifact-hashes.json",
+      "sha256": "cbba376e942a4c81dcb4b0a3f64d35a36f9751d1f93304326131d56b00665de4"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/check-results.json",
+      "sha256": "de3f12a354c21519bcb18fc287de089649713a00377559840c9addf9c4be8b92"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/checks.md",
+      "sha256": "574e4595829fddb21af69c75ceb0b159beffb530951130cb5bc4feebbc5444fa"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/delta-patch.json",
+      "sha256": "8d3bcaa04db43a9b06fbbfcfd45f8d231da34835278f33d5257a5bb5185ab50a"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/final-checks.json",
+      "sha256": "b50c24da0b3cde6b6318e52182ed06c4e31da1e0b41cd9c374b5f465b0f1f4eb"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/isolation.json",
+      "sha256": "bb5b982a7b77adce4103b1cd755de323d1723d263fd5c2dd4805c08e65494fe8"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/preserved-materials.json",
+      "sha256": "db7d72f5ae8b7e26131f3c06c97ba0ac16fd695968cc8ec64acc65a4a409f00f"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/relative-to-51a.name-status.txt",
+      "sha256": "2ddc141dcfbc7f8db37744f306c2e9f7ab27651cb87fa2cac8cc47e787367098"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/relative-to-51a.patch.gz",
+      "sha256": "6852b614a56391ba16d34150017a63f621731c20a803f6b2809670f763b654bf"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/relative-to-51a.stat.txt",
+      "sha256": "7ad87ed0617ddcbdda9bb2e4fb0d0f2dad09620d0a753579831ec3433bb9a702"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/reused-evidence.json",
+      "sha256": "1a3313930467a8499445604970f3d3deeeba49f7eabc658dce377f55b5e62065"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/sources.json",
+      "sha256": "0f335778a34eb37e0f017053fe7e957a4ecfff518d85d896ecb8cee78dbcaca6"
+    },
+    {
+      "path": ".ch/docs/integration/department-round419/write-paths.json",
+      "sha256": "52a2b787a26008ab9c2707857174731d544c096ef4bec7bbb1cb931d867ddaa6"
+    }
+  ],
+  "not_accessed": "Concurrent runtime recovery and UI/EH working-tree bytes outside the eight accepted paths; no private runtime data copied."
+}

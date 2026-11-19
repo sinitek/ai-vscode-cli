@@ -39,6 +39,10 @@ import type { LoopTaskRecord } from "../loopTaskStore";
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
 import { isCliName } from "../panelStateBuilder";
 import { resolveDshActivePatchPath, resolveGrokConfigPath, resolveKimiCodeConfigPath } from "../shared/userHomePaths";
+import { resolveDepartmentOpenCodeDirector, readDepartmentRoleCandidates } from "./departmentConfigurationHost";
+import { getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, resolveDepartmentConfigurationWithHost, type DepartmentConfiguredRoleRoute } from "../departmentConfiguration";
+import { resolveEffectiveDepartmentLimits } from "../departmentSettings";
+import { buildSystemLoopPlusAcceptancePlanSnapshot, findLoopPlusAcceptancePlan, normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 export type ModelSettingsHostDeps = {
   getCurrentCli: () => CliName; setCurrentCli: (cli: CliName) => void;
@@ -47,6 +51,9 @@ export type ModelSettingsHostDeps = {
   getPromptHistoryStore: () => PromptHistoryStore; setPromptHistoryStore: (store: PromptHistoryStore) => void;
   getModelSelectionStoreState: () => ModelSelectionStoreState;
   getActiveWorkspaceKey: () => string;
+  getDepartmentConfigurationScope?: () => string;
+  getDepartmentConfigurationIssue?: () => string | null;
+  readDepartmentConfigBinding?: import("../departmentConfiguration").DepartmentConfigBindingReader;
   getConfigHeartbeatSnapshot: () => ConfigHeartbeatSnapshot | null;
   getOpenCodeThinkingState: () => OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">; setOpenCodeThinkingState: (state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">) => void;
   getOpenCodeSmallThinkingState: () => OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">; setOpenCodeSmallThinkingState: (state: OpenCodeThinkingState & Pick<OpenCodeThinkingCapability, "configuredDefaultVariant">) => void;
@@ -205,6 +212,7 @@ function persistOpenCodeVariant(
   if (nextStore === modelStore) {
     return;
   }
+  if (normalizedRole === "main") invalidateDepartmentSelectionContext();
   modelStore = nextStore;
   writeModelStore(modelStore);
 }
@@ -530,6 +538,7 @@ function getStoredCliModelThinkingMode(cli: CliName, model: string | null): Thin
 }
 
 function setCliModelThinkingMode(cli: CliName, model: string | null, thinkingMode: ThinkingMode): void {
+  invalidateDepartmentSelectionContext();
   const normalizedThinkingMode = normalizeThinkingModeForCli(cli, thinkingMode);
   const nextStore = ensureCliModelStore(modelStore);
   const nextThinkingByCliAndModel = {
@@ -568,6 +577,7 @@ function setWorkspaceInteractiveModeForCli(cli: CliName, mode: InteractiveMode):
   if (workspaceSettings.interactiveModeByCli[cli] === normalizedMode) {
     return false;
   }
+  invalidateDepartmentSelectionContext();
   workspaceSettings.interactiveModeByCli[cli] = normalizedMode;
   saveWorkspaceSettings(workspaceSettings);
   return true;
@@ -1105,6 +1115,7 @@ function getModelOptionsForCli(cli: CliName, configId: string | null = getActive
 }
 
 function selectCliModel(cli: CliName, model: string | null, configId: string | null = getActiveConfigIdForCli(cli)): void {
+  invalidateDepartmentSelectionContext();
   modelStore = cliModelSelectionStrategies[cli].selectModel(modelStore, model, configId);
   writeModelStore(modelStore);
 }
@@ -1168,6 +1179,7 @@ async function updateOpenCodeRoleModelForConfig(
   }
   const nextStore = setOpenCodeRoleModelInStore(modelStore, configId, normalizedRole, validation.modelRef);
   if (nextStore !== modelStore) {
+    if (normalizedRole === "main") invalidateDepartmentSelectionContext();
     modelStore = nextStore;
     writeModelStore(modelStore);
   }
@@ -1615,7 +1627,72 @@ function collectWorkspaceKeysForPromptHistoryCleanup(): string[] {
   return collectWorkspaceKeysForPromptHistoryStoreCleanup(getPromptHistoryStoreOptions());
 }
 
+async function getDepartmentRoleCandidates(cli: CliName, configId: string | null) {
+  if (readToolSettings().cliEnabledByName?.[cli] === false) throw new Error("所选 CLI 已关闭，请选择可用 CLI。");
+  try {
+    return await readDepartmentRoleCandidates(cli, configId, {
+      getConfigs: configService.getConfigList,
+      getConfig: configService.getConfigById,
+      getStoredModels: (_targetCli, id) => [...(deps.getModelStore().optionsByConfigId[id] ?? [])],
+      normalizeThinkingMode: normalizeThinkingModeForCli,
+      getRevision: async (targetCli) => JSON.stringify(await configService.readSharedConfigSelection(targetCli)),
+    });
+  } catch {
+    throw new Error("读取所选 CLI 档案或模型能力失败，请检查配置后重试。");
+  }
+}
+
 return {
+  resolveDepartmentPromptConfiguration: async (cli: CliName, acceptancePlanSelectionId?: string) => {
+    const getDirector = async (): Promise<DepartmentConfiguredRoleRoute> => {
+      syncFromDeps();
+      const configId = getActiveConfigIdForCli(cli);
+      if (cli === "opencode") {
+        if (!configId) throw new Error("总监当前没有有效 OpenCode 档案，请先选择档案。");
+        const profile = await configService.getConfigById(cli, configId);
+        if (!profile || profile.platform !== cli) throw new Error("总监当前 OpenCode 档案已失效，请重新选择。");
+        return resolveDepartmentOpenCodeDirector(configId, profile.content ?? profile.configContent ?? "",
+          getOpenCodeRoleModelFromStore(deps.getModelStore(), configId, "main"),
+          (model) => getOpenCodeRoleVariantFromStore(deps.getModelStore(), configId, model, "main"));
+      }
+      const model = getSelectedCliModel(cli, configId);
+      return { cli, configId, model, thinkingMode: getEffectiveThinkingMode(cli, model), openCodeVariant: null };
+    };
+    return resolveDepartmentConfigurationWithHost({
+      getScope: () => {
+        const tabId = deps.getActiveConversationTabId();
+        const tab = tabId ? deps.getConversationTabById(tabId) : null;
+        return JSON.stringify([(deps.getDepartmentConfigurationScope ?? deps.getActiveWorkspaceKey)(),
+          tabId, tab?.cli, tab?.sessionId, deps.getModelStore(), deps.getConfigHeartbeatSnapshot()]);
+      },
+      getReadinessIssue: deps.getDepartmentConfigurationIssue,
+      getSelectionContextRevision: getDepartmentSelectionContextRevision,
+      readConfigBinding: deps.readDepartmentConfigBinding ?? ((targetCli) => configService.readSharedConfigSelection(targetCli)),
+      getDirector,
+      getActiveConfigIdForCli,
+      getPreferences: (director) => deps.getWorkspaceSettings().departmentRoleRoutesByDirectorConfig?.[director.configId ?? ""],
+      getCandidates: getDepartmentRoleCandidates,
+      getLimits: () => resolveEffectiveDepartmentLimits(deps.getWorkspaceSettings(), readToolSettings()),
+      getAcceptancePlan: () => {
+        const settings = deps.getWorkspaceSettings();
+        const id = acceptancePlanSelectionId ?? settings.loopPlusAcceptancePlanSelection ?? "system_default";
+        if (id === "system_default") return buildSystemLoopPlusAcceptancePlanSnapshot();
+        const plan = findLoopPlusAcceptancePlan(settings.loopPlusAcceptancePlans ?? [], id);
+        if (!plan) throw new Error("验收方案已失效，请重新选择方案。");
+        return normalizeLoopPlusAcceptancePlanSnapshot({ ...plan, systemDefault: false });
+      },
+    });
+  },
+  getDepartmentDirectorForPanel: (): DepartmentConfiguredRoleRoute | undefined => {
+    syncFromDeps();
+    if (currentCli !== "opencode") return undefined;
+    const configId = getActiveConfigIdForCli("opencode");
+    const model = getOpenCodeRoleModelFromStore(modelStore, configId, "main");
+    const exactModel = model ?? (deps.getOpenCodeThinkingConfigId() === configId ? deps.getOpenCodeModelsState()?.configPrimaryRef : null);
+    return { cli: "opencode", configId, model, thinkingMode: null,
+      openCodeVariant: exactModel ? getOpenCodeRoleVariantFromStore(modelStore, configId, exactModel, "main") : null };
+  },
+  getDepartmentRoleCandidates,
   getOpenCodeThinkingStateForRole: wrap(getOpenCodeThinkingStateForRole),
   setOpenCodeThinkingStateForRole: wrap(setOpenCodeThinkingStateForRole),
   persistOpenCodeVariant: wrap(persistOpenCodeVariant),

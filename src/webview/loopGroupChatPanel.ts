@@ -1,4 +1,7 @@
+import { DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT, renderDepartmentEmployeeAllocationDialog, renderDepartmentEmployeeAllocationRows, renderDepartmentEmployeeAllocationSummary } from "./departmentEmployeeAllocation";
 import * as vscode from "vscode";
+import { buildDepartmentChildBridge, DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT, renderDepartmentGroupChatModal } from "./departmentGroupChatModal";
+import { DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES } from "./loopGroupChatPanelTypes";
 import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/acceptancePlan";
 import { getWebviewStrings } from "./viewContentStrings";
@@ -19,11 +22,15 @@ import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview"
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
 import {
+  buildDepartmentLeaderChatTitle,
   buildLoopGroupChatPanelTitle,
+  buildLoopGroupChatPanelHeading,
+  buildLoopGroupChatPanelSubtitle,
   getStrings,
   type LoopGroupChatPanelStrings,
 } from "./loopGroupChatPanelRenderer";
 import type {
+  DepartmentGroupChatModalTarget,
   LoopCommunicationFilePreviewMessage,
   LoopGroupChatPanelActiveSpeaker,
   LoopGroupChatPanelMessage,
@@ -34,6 +41,9 @@ import type {
   LoopPlusPanelReviewItem,
 } from "./loopGroupChatPanelTypes";
 export type {
+  DepartmentGroupChatProjection,
+  DepartmentGroupChatModalTarget,
+  DepartmentGroupChatTaskMessage,
   LoopCommunicationFilePreviewMessage,
   LoopGroupChatPanelActiveSpeaker,
   LoopGroupChatPanelMessage,
@@ -63,6 +73,16 @@ export class LoopGroupChatPanel {
   private loadingReady: Promise<boolean> | undefined;
   private resolveLoadingReady: ((ready: boolean) => void) | undefined;
   private readonly bubbleWindow: LoopGroupChatBubbleWindow = { start: 0 };
+  private documentNonce = getNonce();
+  private departmentModal: {
+    target: DepartmentGroupChatModalTarget;
+    state?: LoopGroupChatPanelState;
+    thread: LoopAskThread;
+    generation: number;
+    ready: boolean;
+    bubbleWindow: LoopGroupChatBubbleWindow;
+  } | undefined;
+  private readonly departmentBubbleWindows = new Map<string, LoopGroupChatBubbleWindow>();
   private readonly imageHost = new ChatImageHost(() => this.panel?.webview);
 
   public constructor(
@@ -85,6 +105,29 @@ export class LoopGroupChatPanel {
       const panel = this.panel;
       this.panel.webview.onDidReceiveMessage(async (message: LoopGroupChatPanelMessage) => {
         if (this.panel !== panel) return;
+        if (message?.type === "loopGroupChatChat:departmentModal") {
+          if (typeof message.taskId !== "string" || !message.taskId.trim() || typeof message.instanceId !== "string" || !message.instanceId || this.state?.department?.role !== "director") return;
+          if (message.action === "close") {
+            if (!this.matchesDepartmentModal(message)) return;
+            this.departmentModal = undefined;
+          } else if (message.action === "load" || message.action === "retry") {
+            const bubbleWindow = this.departmentBubbleWindows.get(message.taskId) ?? { start: 0 };
+            this.departmentBubbleWindows.set(message.taskId, bubbleWindow);
+            this.departmentModal = { target: { taskId: message.taskId, instanceId: message.instanceId }, thread: createEmptyLoopAskThread(), generation: 0, ready: false, bubbleWindow };
+          } else return;
+          this.handlers.onMessage(message);
+          return;
+        }
+        if (message?.type === "loopGroupChatChat:departmentTaskMessage") {
+          if (!this.matchesDepartmentModal(message) || !message.message || !DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES.has(message.message.type)) return;
+          if (message.message.type === "loopGroupChatChat:domReady") {
+            this.departmentModal!.ready = true;
+            this.publishDepartmentModalState();
+            return;
+          }
+          this.handlers.onMessage(message);
+          return;
+        }
         if (message?.type === "loopGroupChatChat:loadingReady") {
           this.resolveLoadingReady?.(true);
           this.resolveLoadingReady = undefined;
@@ -114,6 +157,8 @@ export class LoopGroupChatPanel {
         this.htmlInstalled = false;
         this.renderGeneration = 0;
         this.bubbleWindow.start = 0;
+        this.departmentModal = undefined;
+        this.departmentBubbleWindows.clear();
         this.handlers.onDispose?.();
       });
     } else {
@@ -143,9 +188,15 @@ export class LoopGroupChatPanel {
 
   public update(state: LoopGroupChatPanelState): void {
     if (this.state?.task.id !== state.task.id) {
+      this.closeDepartmentModal();
+      this.departmentBubbleWindows.clear();
       this.bubbleWindow.start = 0;
     }
     this.state = state;
+    if (this.departmentModal?.state) {
+      this.departmentModal.state = { ...this.departmentModal.state, acceptancePlan: state.acceptancePlan };
+      this.publishDepartmentModalState();
+    }
     if (!this.panel) {
       return;
     }
@@ -158,6 +209,7 @@ export class LoopGroupChatPanel {
         this.askThread,
         this.renderGeneration,
         this.bubbleWindow,
+        { nonce: this.documentNonce },
       );
       this.htmlInstalled = true;
       return;
@@ -186,6 +238,73 @@ export class LoopGroupChatPanel {
     void this.panel.webview.postMessage(
       buildLoopGroupChatPanelContentPatch(this.state, this.renderGeneration, this.bubbleWindow),
     );
+  }
+
+  public getDepartmentModalTarget(): DepartmentGroupChatModalTarget | undefined {
+    return this.departmentModal ? { ...this.departmentModal.target } : undefined;
+  }
+
+  private matchesDepartmentModal(target: DepartmentGroupChatModalTarget): boolean {
+    return this.departmentModal?.target.taskId === target.taskId && this.departmentModal.target.instanceId === target.instanceId;
+  }
+
+  /** Caller must authorize same-department membership before injecting any task state. */
+  public setDepartmentModalState(target: DepartmentGroupChatModalTarget, state: LoopGroupChatPanelState, thread?: LoopAskThread): boolean {
+    target = { taskId: target.taskId, instanceId: target.instanceId };
+    if (!this.panel || !this.matchesDepartmentModal(target) || state.task.id !== target.taskId || state.department?.role !== "leader") return false;
+    const modal = this.departmentModal!;
+    const initial = !modal.state;
+    modal.state = { ...state, acceptancePlan: state.acceptancePlanReadOnly ? state.acceptancePlan : this.state?.acceptancePlan };
+    if (thread) modal.thread = thread;
+    modal.generation += 1;
+    if (initial) {
+      this.post({ type: "loopGroupChatChat:departmentModalContent", ...target, title: buildLoopGroupChatPanelTitle(state, getStrings()),
+        html: buildLoopGroupChatPanelHtml(this.panel.webview, modal.state, modal.thread, modal.generation, modal.bubbleWindow, { nonce: this.documentNonce, embedded: target }) });
+    } else if (modal.ready) this.publishDepartmentModalState();
+    return true;
+  }
+
+  private publishDepartmentModalState(): void {
+    const modal = this.departmentModal;
+    if (!modal?.state || !modal.ready) return;
+    this.post({ type: "loopGroupChatChat:departmentModalContent", ...modal.target, title: buildLoopGroupChatPanelTitle(modal.state, getStrings()) });
+    this.postDepartmentModalMessage(modal.target, buildLoopGroupChatPanelContentPatch(modal.state, modal.generation, modal.bubbleWindow));
+    this.publishDepartmentModalAskThread(modal.target, modal.thread);
+  }
+
+  public setDepartmentModalError(target: DepartmentGroupChatModalTarget, error: string): boolean {
+    target = { taskId: target.taskId, instanceId: target.instanceId };
+    if (!this.matchesDepartmentModal(target)) return false;
+    this.departmentModal!.state = undefined;
+    this.departmentModal!.ready = false;
+    this.post({ type: "loopGroupChatChat:departmentModalContent", ...target, error });
+    return true;
+  }
+
+  /** Bound host responses, e.g. model/continue settlements and chatImageResolved. */
+  public postDepartmentModalMessage(target: DepartmentGroupChatModalTarget, message: { type: string; [key: string]: unknown }): boolean {
+    target = { taskId: target.taskId, instanceId: target.instanceId };
+    if (!this.matchesDepartmentModal(target)) return false;
+    this.post({ type: "loopGroupChatChat:departmentModalMessage", ...target, message });
+    return true;
+  }
+
+  public publishDepartmentModalAskThread(target: DepartmentGroupChatModalTarget, thread: LoopAskThread): boolean {
+    if (!this.matchesDepartmentModal(target)) return false;
+    this.departmentModal!.thread = thread;
+    return this.postDepartmentModalMessage(target, { type: "loopGroupChatChat:askThread", thread });
+  }
+
+  public postDepartmentModalCommunicationFilePreview(target: DepartmentGroupChatModalTarget, message: LoopCommunicationFilePreviewMessage): boolean {
+    return this.postDepartmentModalMessage(target, message);
+  }
+
+  public closeDepartmentModal(target?: DepartmentGroupChatModalTarget): boolean {
+    if (!this.departmentModal || (target && !this.matchesDepartmentModal(target))) return false;
+    const binding = this.departmentModal.target;
+    this.departmentModal = undefined;
+    this.post({ type: "loopGroupChatChat:departmentModalClose", ...binding });
+    return true;
   }
 
   public setAskThread(thread: LoopAskThread): void {
@@ -265,10 +384,12 @@ export type LoopGroupChatPanelContentPatch = {
   mainModelBusy: boolean;
   generation: number;
   headingText: string;
+  tabTitle: string;
   subtitleText: string;
   actionsHtml: string;
   taskPanelHtml: string;
   rosterPanelHtml: string;
+  employeeAllocationHtml: string;
   timelineHtml: string;
   clarificationHtml: string;
   clarificationInteractionId: string;
@@ -291,11 +412,13 @@ export function buildLoopGroupChatPanelContentPatch(
     type: "loopGroupChatChat:contentPatch",
     mainModelBusy: state.mainModelBusy === true,
     generation,
-    headingText: state.loopPlus ? strings.titleLoopPlus : strings.title,
-    subtitleText: state.task.id,
+    headingText: buildLoopGroupChatPanelHeading(state, strings),
+    tabTitle: buildLoopGroupChatPanelTitle(state, strings),
+    subtitleText: buildLoopGroupChatPanelSubtitle(state),
     actionsHtml: renderPanelActions(state, strings),
     taskPanelHtml: renderTaskPanel(state, strings),
     rosterPanelHtml: renderRosterPanel(state, strings, acceptanceAnchors.byParticipantId),
+    employeeAllocationHtml: renderDepartmentEmployeeAllocationRows(state.department, escapeAttribute),
     timelineHtml: renderTimeline(state, transcript.segments, strings, bubbleWindow, acceptanceAnchors.bySegmentIndex),
     clarificationHtml: renderOrchestratorClarificationDialog(
       state.clarification,
@@ -313,17 +436,18 @@ export function buildLoopGroupChatPanelHtml(
   askThread: LoopAskThread = createEmptyLoopAskThread(),
   generation = 0,
   bubbleWindow?: LoopGroupChatBubbleWindow,
+  options: { nonce?: string; embedded?: DepartmentGroupChatModalTarget } = {},
 ): string {
-  const nonce = getNonce();
+  const nonce = options.nonce ?? getNonce();
   const strings = getStrings();
   const patch = buildLoopGroupChatPanelContentPatch(state, generation, bubbleWindow);
-  const heading = patch.headingText;
+  const heading = state.department ? patch.tabTitle : patch.headingText;
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: http: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none';${state.department?.role === "director" ? " frame-src 'self';" : ""} img-src ${webview.cspSource} https: http: data:; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(heading)}</title>
     <style>
@@ -332,13 +456,13 @@ ${getMarkdownStyles(".markdown-body")}
       .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
     </style>
   </head>
-  <body>
+  <body${state.department ? ' class="department-chat-page"' : ""}>
     ${renderGroupChatLoading()}
     <div class="shell">
       <header class="topbar">
         <div class="title">
-          <h1 id="panelHeading">${escapeHtml(patch.headingText)}</h1>
-          <p id="panelSubtitle">${escapeHtml(patch.subtitleText)}</p>
+          <h1 id="panelHeading"${state.department ? ` title="${escapeAttribute(patch.headingText)}"` : ""}>${escapeHtml(patch.headingText)}</h1>
+          <p id="panelSubtitle"${state.department ? ` title="${escapeAttribute(patch.subtitleText)}"` : ""}>${escapeHtml(patch.subtitleText)}</p>
         </div>
         <div class="actions" id="panelActions">
           ${patch.actionsHtml}
@@ -380,10 +504,10 @@ ${renderPanelDialog({
           label: strings.askAnswerClose,
           className: "icon-button ask-chat-close",
         }),
-        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="submit" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${state.mainModelBusy && !askThread.running ? ' aria-describedby="askChatBusy"' : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
+        afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="${options.embedded ? "button" : "submit"}" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${state.mainModelBusy && !askThread.running ? ' aria-describedby="askChatBusy"' : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
-      ${state.loopPlus ? renderGroupAcceptancePlanDialogs() : ""}
+      ${hasGroupAcceptancePlan(state) ? renderGroupAcceptancePlanDialogs() : ""}
       ${renderPanelDialog({
         backdropId: "filePreviewBackdrop",
         backdropClassName: "dialog-backdrop file-preview-backdrop",
@@ -417,11 +541,15 @@ ${renderPanelDialog({
 	        </main>
 	      </div>
 	    </div>
-	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getMarkedScript())}</script>
+	    ${state.department?.role === "director" ? renderDepartmentGroupChatModal() : ""}
+    ${state.department?.role === "director" ? renderDepartmentEmployeeAllocationDialog(patch.employeeAllocationHtml) : ""}
+    ${options.embedded ? `<script nonce="${nonce}">${neutralizeInlineScriptEndTags(buildDepartmentChildBridge(options.embedded))}</script>` : ""}
+    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getMarkedScript())}</script>
 	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getJsonFormatterScript())}</script>
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
           const escapeHtml = askEscape;
+${DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT}
 ${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
 ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
@@ -436,7 +564,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let sidebarOpen = false;
 	      const mainElement = document.querySelector(".main");
 	      const renderedSlotHtml = new WeakMap();
-	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot").forEach((slot) => {
+	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot, #departmentAllocationSlot").forEach((slot) => {
 	        renderedSlotHtml.set(slot, { initial: slot.innerHTML });
 	      });
 	      const continueDialogBackdrop = document.getElementById("continueDialogBackdrop");
@@ -468,11 +596,14 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let continueDialogOpen = false;
 	      let continueRequestPending = false;
 	      let continueDialogMode = undefined;
+	      let continueDialogOpener = null;
 	      let dialogStateRestored = false;
 	      let askDialogOpen = ${askThread.dialogOpen ? "true" : "false"};
+	      let askDialogOpener = null;
 	      let askThread = ${embedJson(askThread)};
 	      let mainModelBusy = ${state.mainModelBusy === true};
 	      let communicationPreviewOpen = false;
+	      let communicationPreviewOpener = null;
 	      let communicationPreviewSeq = 0;
 
 	      function setSidebarOpen(open, restoreFocus = false) {
@@ -640,23 +771,26 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogError.textContent = message || "";
 	      }
 
-	      function openContinueDialog(preservedPrompt) {
+	      function openContinueDialog(preservedPrompt, focusInput = true) {
 	        if (!continueDialogBackdrop || !continueDialogInput || continueRequestPending) {
 	          return;
 	        }
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        continueDialogOpener = dialogOpener;
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
 	        continueDialogMode = "continue";
 	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.continuePromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        window.__departmentDialogOpened && window.__departmentDialogOpened(continueDialogBackdrop, dialogOpener);
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "continue");
 	        saveDialogState();
 	        requestRefresh();
-	        window.setTimeout(() => {
+	        if (focusInput) {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
-	        }, 0);
+	        }
 	      }
 
 	      function closeContinueDialog() {
@@ -667,6 +801,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogMode = undefined;
 	        continueDialogBackdrop.classList.remove("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "true");
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(continueDialogBackdrop);
+	        else if (continueDialogOpener?.isConnected) continueDialogOpener.focus({ preventScroll: true });
+	        continueDialogOpener = null;
 	        setContinueDialogError("");
 	        clearDialogState();
 	      }
@@ -712,10 +850,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        vscode.postMessage({ type: "loopGroupChatChat:supplementTask", prompt });
 	      }
 
-	      function openSupplementDialog(preservedPrompt) {
+	      function openSupplementDialog(preservedPrompt, focusInput = true) {
 	        if (!continueDialogBackdrop || !continueDialogInput) {
 	          return;
 	        }
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        continueDialogOpener = dialogOpener;
 	        setContinueDialogError("");
 	        continueDialogOpen = true;
 	        continueDialogMode = "supplement";
@@ -734,12 +874,13 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueDialogInput.value = typeof preservedPrompt === "string" ? preservedPrompt : "${escapeJsString(strings.supplementPromptDefault)}";
 	        continueDialogBackdrop.classList.add("visible");
 	        continueDialogBackdrop.setAttribute("aria-hidden", "false");
+	        window.__departmentDialogOpened && window.__departmentDialogOpened(continueDialogBackdrop, dialogOpener);
 	        continueDialogConfirm && (continueDialogConfirm.dataset.mode = "supplement");
 	        saveDialogState();
-	        window.setTimeout(() => {
+	        if (focusInput) {
 	          continueDialogInput.focus();
 	          continueDialogInput.select();
-	        }, 0);
+	        }
 	      }
 
 	      const ASK_WAITING_LABEL = "${escapeJsString(strings.askChatWaiting)}";
@@ -922,19 +1063,24 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	      }
 
-	      function openAskDialog() {
+	      function openAskDialog(focusInput = true) {
+	        const dialogOpener = focusInput ? document.activeElement : null;
+	        askDialogOpener = dialogOpener;
 	        showAskDialog();
+	        if (focusInput && askChatBackdrop) {
+	          window.__departmentDialogOpened && window.__departmentDialogOpened(askChatBackdrop, dialogOpener);
+	        }
 	        saveAskDialogState();
 	        vscode.postMessage({ type: "loopGroupChatChat:openAskDialog" });
-	        window.setTimeout(() => {
-	          if (askChatInput) {
-	            askChatInput.focus();
-	          }
-	        }, 0);
+	        if (focusInput && askChatInput) askChatInput.focus();
 	      }
 
 	      function closeAskDialog() {
 	        hideAskDialog();
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(askChatBackdrop);
+	        else if (askDialogOpener?.isConnected) askDialogOpener.focus({ preventScroll: true });
+	        askDialogOpener = null;
 	        saveAskDialogState();
 	        vscode.postMessage({ type: "loopGroupChatChat:closeAskDialog" });
 	      }
@@ -955,6 +1101,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 
 	      function restoreAskDialogState() {
 	        const stored = getStoredAskDialogState();
+            ${options.embedded ? 'if (typeof stored.draft === "string" && askChatInput) askChatInput.value = stored.draft;' : ""}
 	        if (!stored || stored.open !== true && stored.open !== false) {
 	          return;
 	        }
@@ -985,9 +1132,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	        const preservedPrompt = typeof dialog.prompt === "string" ? dialog.prompt : undefined;
 	        if (dialog.mode === "supplement") {
-	          openSupplementDialog(preservedPrompt);
+	          openSupplementDialog(preservedPrompt, false);
 	        } else if (dialog.mode === "continue") {
-	          openContinueDialog(preservedPrompt);
+	          openContinueDialog(preservedPrompt, false);
 	        } else {
 	          return;
 	        }
@@ -1056,6 +1203,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const existing = getStoredCommunicationFile();
 	        const cachedHtml = existing && existing.path === filePath && typeof existing.html === "string" ? existing.html : "";
 	        showCommunicationFilePreview(filePath, cachedHtml, cachedHtml ? "" : "${escapeJsString(strings.communicationFileLoading)}");
+	        if (focusClose !== false) {
+	          communicationPreviewOpener = document.activeElement;
+	          window.__departmentDialogOpened && window.__departmentDialogOpened(filePreviewBackdrop, communicationPreviewOpener);
+	        }
 	        rememberCommunicationFilePreview(filePath, requestId, cachedHtml);
 	        vscode.postMessage({ type: "loopGroupChatChat:openCommunicationFile", requestId: requestId, path: filePath });
 	        if (focusClose !== false && filePreviewClose) {
@@ -1069,6 +1220,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          filePreviewBackdrop.classList.remove("visible");
 	          filePreviewBackdrop.setAttribute("aria-hidden", "true");
 	        }
+	        const lifecycleManaged = typeof window.__departmentDialogClosed === "function";
+	        if (lifecycleManaged) window.__departmentDialogClosed(filePreviewBackdrop);
+	        else if (communicationPreviewOpener?.isConnected) communicationPreviewOpener.focus({ preventScroll: true });
+	        communicationPreviewOpener = null;
 	        if (filePreviewError) {
 	          filePreviewError.textContent = "";
 	        }
@@ -1164,7 +1319,22 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        renderedSlotHtml.set(slot, { source: html });
 	      }
 
-	      function applyClarificationPatch(html, interactionId) {
+	      function replaceRosterHtml(html) {
+        const slot = document.getElementById("rosterPanelSlot");
+        const focused = document.activeElement;
+        const focusKey = slot && focused && slot.contains(focused)
+          ? focused.getAttribute("data-department-nav-key") : null;
+        const sidebarTop = sidebarElement ? sidebarElement.scrollTop : 0;
+        replaceHtml(slot, html);
+        if (focusKey && slot) {
+          const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key]"))
+            .find((element) => element.getAttribute("data-department-nav-key") === focusKey && !element.disabled);
+          if (replacement) replacement.focus({ preventScroll: true });
+        }
+        if (sidebarElement) sidebarElement.scrollTop = sidebarTop;
+      }
+
+      function applyClarificationPatch(html, interactionId) {
 	        const slot = document.getElementById("clarificationSlot");
 	        if (!slot || typeof html !== "string") {
 	          return;
@@ -1197,12 +1367,15 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const heading = document.getElementById("panelHeading");
 	        if (heading && typeof message.headingText === "string") {
 	          heading.textContent = message.headingText;
+              heading.title = message.headingText;
 	        }
 	        const subtitle = document.getElementById("panelSubtitle");
 	        if (subtitle && typeof message.subtitleText === "string") {
 	          subtitle.textContent = message.subtitleText;
+              subtitle.title = message.subtitleText;
 	        }
-	        replaceHtml(document.getElementById("panelActions"), message.actionsHtml);
+	        if (typeof message.tabTitle === "string") document.title = message.tabTitle;
+        replaceHtml(document.getElementById("panelActions"), message.actionsHtml);
 	        if (continueRequestPending) {
 	          const liveContinueButton = actionButton("continueTask");
 	          if (liveContinueButton) {
@@ -1210,7 +1383,8 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          }
 	        }
 	        replaceHtml(document.getElementById("taskPanelSlot"), message.taskPanelHtml);
-	        replaceHtml(document.getElementById("rosterPanelSlot"), message.rosterPanelHtml);
+	        replaceRosterHtml(message.rosterPanelHtml);
+          departmentEmployeeAllocation?.sync((slot) => replaceHtml(slot, message.employeeAllocationHtml));
 	        const shouldStick = isNearBottom();
 	        const previousTop = mainElement ? mainElement.scrollTop : 0;
 	        replaceHtml(document.getElementById("timelineSlot"), message.timelineHtml);
@@ -1244,7 +1418,25 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (!target) {
 	          return;
 	        }
-	        const action = target.getAttribute("data-action");
+	        if (target.disabled) return;
+        const action = target.getAttribute("data-action");
+        if (action === "allocateEmployees") {
+          departmentEmployeeAllocation?.open();
+          return;
+        }
+        if (action === "openDepartmentTask") {
+          const taskId = target.getAttribute("data-department-task-id");
+          if (taskId && taskId.trim()) {
+            saveScrollState();
+            if (departmentModal) departmentModal.open(taskId, target.getAttribute("data-department-title"), target);
+            else vscode.postMessage({ type: "loopGroupChatChat:openDepartmentTask", taskId });
+          }
+          return;
+        }
+        if (action === "refresh") {
+          requestRefresh();
+          return;
+        }
 	        if (action === "openSubtaskConversation") {
 	          const subtaskId = target.getAttribute("data-subtask-id");
 	          if (!subtaskId) return;
@@ -1307,11 +1499,11 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        if (action === "stopTask") {
-	          saveScrollState();
 	          const liveStopButton = actionButton("stopTask");
-	          if (liveStopButton) {
-	            liveStopButton.disabled = true;
-	          }
+	          if (!liveStopButton || liveStopButton.disabled) return;
+	          saveScrollState();
+	          liveStopButton.disabled = true;
+	          ${state.department?.role === "director" ? 'liveStopButton.textContent = "正在停止…";' : ""}
 	          vscode.postMessage({ type: "loopGroupChatChat:stopTask" });
 	          return;
 	        }
@@ -1328,7 +1520,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        }
 	      });
 	      window.addEventListener("message", (event) => {
+            ${options.embedded ? "" : "if (!isLoopGroupChatHostMessage(event)) return;"}
 	        const message = event.data;
+        if (departmentEmployeeAllocation?.settled(message)) return;
 	        if (message && message.type === "loopGroupChatChat:continueTaskSettled") {
 	          applyContinueTaskSettled(message);
 	          return;
@@ -1448,6 +1642,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          vscode.postMessage({ type: "loopGroupChatChat:abortMainModelQuestion" });
 	        });
 	      }
+          ${options.embedded ? `if (askChatSend) askChatSend.addEventListener("click", (event) => { event.preventDefault(); submitAskChat(); });` : ""}
 	      if (askChatForm) {
 	        askChatForm.addEventListener("submit", (event) => {
 	          event.preventDefault();
@@ -1518,10 +1713,15 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
           }));
 ${orchestratorClarificationDialogScript()}
 ${LOOP_MODEL_SWITCH_SCRIPT}
-${state.loopPlus ? renderGroupAcceptancePlanScript(state) : ""}
+${hasGroupAcceptancePlan(state) ? renderGroupAcceptancePlanScript(state) : ""}
+${DEPARTMENT_GROUP_CHAT_MODAL_SCRIPT.replace("PARENT_TASK_ID", embedJson(state.task.id))}
 	    </script>
   </body>
 </html>`;
+}
+
+function hasGroupAcceptancePlan(state: LoopGroupChatPanelState): boolean {
+  return state.acceptancePlanReadOnly ? false : state.department ? state.department.role === "director" : Boolean(state.loopPlus);
 }
 
 function renderPanelActions(
@@ -1531,9 +1731,11 @@ function renderPanelActions(
   const progressPercent = state.task.progressPercent ?? 0;
   const progressBand = Math.min(4, Math.floor(progressPercent / 20));
   return [
+    state.department ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
+    state.department?.role === "director" ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
     `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
-      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(strings.stopTaskTitle)}">${escapeHtml(strings.stopTask)}</button>`
+      ? `${state.task.departmentStopState === "unconfirmed" ? `<span role="status">${escapeHtml(strings.stopUnconfirmed)}</span>` : ""}<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTask)}</button>`
       : "",
     "</div>",
     state.task.canSupplement
@@ -1542,8 +1744,8 @@ function renderPanelActions(
     state.task.canSupplement
       ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>`
       : "",
-    state.loopPlus && state.task.status !== "completed"
-      ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(strings.acceptancePlan)}</button>`
+    hasGroupAcceptancePlan(state) && state.task.status !== "completed"
+      ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(state.department?.role === "director" ? "统一验收方案" : strings.acceptancePlan)}</button>`
       : "",
     state.task.status !== "completed"
       ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
@@ -1570,6 +1772,8 @@ function renderTaskPanel(
       ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt))}
     </div>
   </section>
+  ${state.department?.role === "director" && state.acceptancePlanReadOnly ? `<section class="panel"><h2>统一验收方案（只读）</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
+  ${state.department?.role === "leader" ? `<section class="panel"><h2>继承产研部统一验收方案</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
   ${renderLoopPlusPanels(state, strings)}`;
 }
 
@@ -1777,6 +1981,7 @@ function renderRosterPanel(
   strings: LoopGroupChatPanelStrings,
   acceptanceAnchors: ReadonlyMap<string, string>,
 ): string {
+  if (state.department) return renderDepartmentRosterPanel(state, strings, acceptanceAnchors);
   if (state.rounds.length === 0) {
     return "";
   }
@@ -1801,6 +2006,60 @@ function renderRosterPanel(
   return `<section class="panel">
     <h2>${escapeHtml(strings.participants)}</h2>
     <div class="roster">${participants}</div>
+  </section>`;
+}
+
+/** Navigation availability comes from an actual task ID, never a module title or CLI session. */
+function renderDepartmentNavigation(taskId: string | undefined, label: string, key: string, title = ""): string {
+  const available = Boolean(taskId?.trim());
+  const description = available ? label : `${label}：群聊尚未创建`;
+  return `<button class="button department-navigation" type="button" data-action="openDepartmentTask" data-department-nav-key="${escapeAttribute(key)}" data-department-title="${escapeAttribute(title)}" data-department-task-id="${escapeAttribute(available ? taskId! : "")}" title="${escapeAttribute(description)}" aria-label="${escapeAttribute(description)}"${available ? "" : " disabled"}>${escapeHtml(label)}</button>${available ? "" : '<div class="member-meta">群聊尚未创建</div>'}`;
+}
+
+function renderDepartmentRosterPanel(
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
+  acceptanceAnchors: ReadonlyMap<string, string>,
+): string {
+  const department = state.department!;
+  const member = (participant: LoopGroupChatPanelParticipant, role: "总监" | "组长" | "员工", navigation = "", anchor?: string, progressPercent?: number): string => {
+    const label = role === "总监" ? role : `${role} · ${participant.title}`;
+    const avatarLabel = { 总监: "总", 组长: "组", 员工: "员" }[role];
+    const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
+    const content = `<span class="avatar">${avatarLabel}</span><div>
+      <div class="member-name" title="${escapeAttribute(label)}">${escapeHtml(label)}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${progress}</div>
+      ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}${navigation}</div>`;
+    return anchor
+      ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(label)}：查看最近一次验收结果">${content}</button>`
+      : `<div class="member">${content}</div>`;
+  };
+  const visibleLeaders = department.role === "leader"
+    ? department.leaders.filter((leader) => Boolean(state.task.id) && leader.taskId === state.task.id)
+    : department.leaders;
+  const leaders = visibleLeaders.map((leader) => {
+    const navigation = department.role === "director"
+      ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, buildDepartmentLeaderChatTitle(leader.leaderNumber))
+      : "";
+    const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
+    const employees = leader.employees.map((employee) => `<li>${member(employee, "员工", "",
+      department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
+    const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
+    return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
+      ${member(leader.participant, "组长", navigation + allocationSummary, undefined, progressPercent)}
+      <ul class="department-employees" aria-label="${escapeAttribute(`${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
+    </li>`;
+  }).join("");
+  const departmentTree = department.role === "director"
+    ? `<li>${member(department.director, "总监")}
+      <ul class="department-leaders" aria-label="组长">${leaders || '<li class="member-meta department-empty">尚未分配组长</li>'}</ul>
+    </li>`
+    : leaders || '<li class="member-meta department-empty">尚未分配组长</li>';
+  return `<section class="panel department-roster" aria-label="部门成员">
+    <h2>${escapeHtml(strings.participants)}</h2>
+    ${department.role === "leader" ? renderDepartmentNavigation(department.rootTaskId, "返回总监群聊", `director:${department.rootTaskId}`) : ""}
+    <p class="member-meta department-occupancy">组长 ${escapeHtml(department.activeLeaders === null ? "未知" : String(department.activeLeaders))}/${escapeHtml(String(department.maxLeaders))} · 员工 ${escapeHtml(department.activeEmployees === null ? "未知" : String(department.activeEmployees))}/${escapeHtml(String(department.maxEmployees))}（全部门共享）</p>
+    <ul class="roster department-tree">${departmentTree}</ul>
   </section>`;
 }
 

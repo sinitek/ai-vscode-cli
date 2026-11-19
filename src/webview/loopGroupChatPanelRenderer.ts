@@ -55,6 +55,9 @@ const STRINGS = {
     continueCancel: "取消",
     stopTask: "中止",
     stopTaskTitle: "中止当前 Loop 任务",
+    stoppingTask: "正在停止…",
+    stopUnconfirmed: "停止未确认",
+    verifyStop: "核验停止",
     task: "任务",
     status: "状态",
     cli: "CLI",
@@ -149,10 +152,16 @@ export type LoopGroupChatPanelStrings = Record<keyof typeof STRINGS, string>;
 export function getStrings(): LoopGroupChatPanelStrings {
   return STRINGS;
 }
+
+export function buildDepartmentLeaderChatTitle(leaderNumber?: number): string {
+  return leaderNumber === undefined ? "组长" : `组长${leaderNumber}`;
+}
+
 export function buildLoopGroupChatPanelTitle(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
 ): string {
+  if (state.department) return buildLoopGroupChatPanelHeading(state, strings);
   const title = state.loopPlus ? strings.titleLoopPlus : strings.title;
   const taskId = state.task.id.trim();
   if (!taskId) {
@@ -160,4 +169,16 @@ export function buildLoopGroupChatPanelTitle(
   }
   const shortTaskId = taskId.length > 12 ? taskId.slice(0, 12) : taskId;
   return `${title}: ${shortTaskId}`;
+}
+
+/** Shared by the initial HTML and every content patch. */
+export function buildLoopGroupChatPanelHeading(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
+  if (!state.department) return state.loopPlus ? strings.titleLoopPlus : strings.title;
+  if (state.department.role === "director") return "产研部总监";
+  const leader = state.department.leaders.find((item) => item.taskId && item.taskId === state.task.id);
+  return buildDepartmentLeaderChatTitle(leader?.leaderNumber);
+}
+
+export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState): string {
+  return state.department ? `${state.department.title} · ${state.task.id}` : state.task.id;
 }

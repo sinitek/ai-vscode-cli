@@ -1,0 +1,75 @@
+{
+  "reason": "lossless compression retains first-failure output and patches including significant/diagnostic trailing spaces while keeping diff whitespace checks meaningful",
+  "files": [
+    {
+      "artifact": "regression-runtime-01.log.gz",
+      "uncompressed_name": "regression-runtime-01.log",
+      "uncompressed_bytes": 30150,
+      "uncompressed_sha256": "ed08f1bdccae413acab81a3c35173eb915502e06da13a8747e79b0440cbc6646",
+      "gzip_sha256": "90e251c537633631f43ccc4e2af44b7f5d92de06e1aecc912387bcabc6c9c25a"
+    },
+    {
+      "artifact": "regression-runtime-02.log.gz",
+      "uncompressed_name": "regression-runtime-02.log",
+      "uncompressed_bytes": 20823,
+      "uncompressed_sha256": "54ec3a0a8ff30053aaa0c0048e9a0946a65787e82259ebae917f14b55948aa92",
+      "gzip_sha256": "01b50b41748c118db15dc8e41a59eb2461128de87e0d5ffb4eefc0dcc6c16b99"
+    },
+    {
+      "artifact": "relative-to-candidate.patch.gz",
+      "uncompressed_name": "relative-to-candidate.patch",
+      "uncompressed_bytes": 988458,
+      "uncompressed_sha256": "41db9637ab76449c1cf0e26e93cae4a954103151eb3896a7394332c80a34f3da",
+      "gzip_sha256": "c5b4126afd9fdbef923d1f1986af031c99f4445f11783b0b8281c07baec85ca0"
+    },
+    {
+      "artifact": "relative-to-origin.patch.gz",
+      "uncompressed_name": "relative-to-origin.patch",
+      "uncompressed_bytes": 7559223,
+      "uncompressed_sha256": "b6527b019f97a71fc8c88e1f9ff2451587f85ac3f7e79d660b8d65d54a96a313",
+      "gzip_sha256": "04a5f32b4854f1df4b3a34eed2d1f4aec40fd9f59e7788126de85d7b6c599202"
+    },
+    {
+      "artifact": "build-01.log.gz",
+      "uncompressed_name": "build-01.log",
+      "uncompressed_bytes": 348,
+      "uncompressed_sha256": "35c5da79e896d2d705c8b3e66fe311c46f50e2b2698eabade8da56e48de9051f",
+      "gzip_sha256": "0c25d5f3ec8fcd3cf8c29e634bc49152afa1809cc886dcc07c8ee740c2068736"
+    },
+    {
+      "artifact": "build-02.log.gz",
+      "uncompressed_name": "build-02.log",
+      "uncompressed_bytes": 1320,
+      "uncompressed_sha256": "837b407b01e681903fcb0b9c215cbf7695cc55d09ada85af3edc187a6484f5a0",
+      "gzip_sha256": "cb55eb789e50ba4e1277aa47a8c29c9cf879f752197b6c84d2ffbecc2a0e098c"
+    },
+    {
+      "artifact": "build-03.log.gz",
+      "uncompressed_name": "build-03.log",
+      "uncompressed_bytes": 166,
+      "uncompressed_sha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7",
+      "gzip_sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "artifact": "build-04.log.gz",
+      "uncompressed_name": "build-04.log",
+      "uncompressed_bytes": 166,
+      "uncompressed_sha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7",
+      "gzip_sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "artifact": "build-05.log.gz",
+      "uncompressed_name": "build-05.log",
+      "uncompressed_bytes": 166,
+      "uncompressed_sha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7",
+      "gzip_sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    },
+    {
+      "artifact": "build-06.log.gz",
+      "uncompressed_name": "build-06.log",
+      "uncompressed_bytes": 166,
+      "uncompressed_sha256": "8b827a37e14db4f6d55a8261baacb35b988b64e5cdc610b64fdb6826a7df43e7",
+      "gzip_sha256": "81180bb0b89eaaf029f0c8415c4324f00e6449edb1269a7d07bda1267f44141e"
+    }
+  ]
+}

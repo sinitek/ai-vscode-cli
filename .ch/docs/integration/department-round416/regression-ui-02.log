@@ -1,0 +1,11 @@
+✔ omits task role labels across classic and Loop+ history and tab refresh (8.515167ms)
+✔ keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged (2.544ms)
+✔ hides Loop+ protocol prompts from message bubbles (1.834708ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57.972708

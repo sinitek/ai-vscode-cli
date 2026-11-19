@@ -50,6 +50,42 @@ test("rejects unavailable runtime role models before writing a file", () => {
   assert.match(result.issues[0]?.message ?? "", /not an available model/u);
 });
 
+test("overlay cleanup reports unknown content and can retry only after it is removed", () => {
+  const overlay = createOpenCodeRuntimeConfigOverlay({ configContent, primaryModel: "provider/selected", smallModel: null }).overlay!;
+  const root = path.dirname(overlay.configPath), unknown = path.join(root, "unowned.txt");
+  try {
+    fs.writeFileSync(unknown, "fixture");
+    assert.deepEqual(overlay.cleanup(), { status: "failed", reason: "overlay-directory-has-unknown-content" });
+    assert.equal(fs.existsSync(overlay.configPath), true);
+    fs.unlinkSync(unknown);
+    assert.equal(overlay.cleanup().status, "confirmed");
+    assert.equal(overlay.cleanup().status, "confirmed");
+    assert.equal(fs.existsSync(root), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("overlay cleanup preserves a replacement directory and reports removal errors without caching success", (t) => {
+  const overlay = createOpenCodeRuntimeConfigOverlay({ configContent, primaryModel: "provider/selected", smallModel: null }).overlay!;
+  const root = path.dirname(overlay.configPath), retained = root + "-retained";
+  try {
+    fs.renameSync(root, retained);
+    fs.mkdirSync(root);
+    assert.deepEqual(overlay.cleanup(), { status: "failed", reason: "overlay-directory-identity-changed" });
+    assert.equal(fs.existsSync(root), true);
+    fs.rmdirSync(root);
+    fs.renameSync(retained, root);
+    const removal = t.mock.method(fs, "rmdirSync", () => { throw Object.assign(new Error("busy fixture"), { code: "EBUSY" }); });
+    assert.deepEqual(overlay.cleanup(), { status: "failed", reason: "overlay-removal-failed" });
+    assert.equal(fs.existsSync(root), true);
+    removal.mock.restore();
+    assert.equal(overlay.cleanup().status, "confirmed");
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(retained, { recursive: true, force: true });
+  }
+});
+
 test("creates runtime overlays from OpenCode JSONC configuration", () => {
   const result = createOpenCodeRuntimeConfigOverlay({
     configContent: `{

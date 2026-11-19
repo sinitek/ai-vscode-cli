@@ -563,6 +563,17 @@ for (const taskRole of ["main", "subtask"] as const) {
   });
 }
 
+test("OpenCode host-pinned exact variant and explicit CLI default override visible role thinking", async () => {
+  for (const variant of ["custom-variant", null]) {
+    let captured: unknown;
+    const ports = createRecordingPorts([], { prepareOpenCodeRuntime: async (input) => { captured = input; return createRuntimePreparation(); } });
+    await runOpenCodePromptTemplate(createInput({ taskRole: "subtask", loopTaskId: "leader", model: "provider/model", thinkingModeOverride: "high",
+      executionProfile: { configId: "open-config", model: "provider/model", thinkingMode: "high", openCodeVariant: variant },
+    }), createTarget(), {}, ports);
+    assert.deepEqual(captured, { role: "subtask", model: "provider/model", variant, requiresSubtaskModel: true });
+  }
+});
+
 test("fills the execution model on a preloaded OpenCode prompt without duplicating it", async () => {
   const message: import("../../webview/types").ChatMessage = {
     id: "preloaded", role: "user", content: "ship the template", createdAt: 123,
@@ -582,4 +593,99 @@ test("fills the execution model on a preloaded OpenCode prompt without duplicati
   });
   assert.equal(message.createdAt, 123);
   assert.deepEqual(replacements, [message]);
+});
+
+test("department Owner transport leaves monitoring servers in Owner ownership and preserves output callbacks", async () => {
+  const events: string[] = [];
+  const ports = createRecordingPorts(events, {
+    prepareOpenCodeSubagentRuntime: async () => { assert.fail("EH must not prepare its own server for Owner execution"); },
+  });
+  await runOpenCodePromptTemplate(createInput(), createTarget(), { departmentProcessStream: ports.runCliStream }, ports);
+  assert.ok(events.includes("runCliStream"));
+  assert.ok(events.includes("appendBoundedUtf8Text"));
+  assert.equal(events.includes("prepareOpenCodeSubagentRuntime"), false);
+  assert.equal(events.includes("applyThinkingWorkspaceFiles"), false);
+  assert.equal(events.includes("maybeAutoCompactContextAfterPromptSuccess"), false);
+});
+
+for (const owned of [false, true]) {
+  test(`${owned ? "Owner" : "zero-budget ordinary"} stream cannot retry despite a positive failure evaluation`, async () => {
+    const events: string[] = [];
+    let attempts = 0;
+    const ports = createRecordingPorts(events, {
+      maxHiddenRetries: owned ? 3 : 0,
+      runCliStream: (_cli, _prompt, handlers) => {
+        attempts++;
+        assert.equal(attempts, 1, "no invocation replay");
+        handlers.onExit(1);
+        return { kill: () => false };
+      },
+      evaluateFailedAttempt: () => ({ hiddenRetryCount: 0, shouldRetry: true }),
+    });
+    await runOpenCodePromptTemplate(createInput(), createTarget(), owned ? { departmentProcessStream: ports.runCliStream } : {}, ports);
+    assert.equal(attempts, 1);
+    assert.ok(events.includes("finalizeFailedAttempt"));
+    for (const event of ["recordFailedAttemptRetry", "waitForHiddenRetryDelay", "prepareHiddenRetry", "publishSystem", "logHiddenRetry"]) {
+      assert.equal(events.includes(event), false, event);
+    }
+  });
+}
+
+test("Owner stream with no conclusion cannot recover a fresh session under an ordinary retry budget", async () => {
+  const { resolveOpenCodeSuccessfulExitOutcome } = require("../../openCodeRunCompletion") as typeof import("../../openCodeRunCompletion");
+  const events: string[] = [];
+  const empty = { finalText: null, errorText: null, statusText: null, hasStructuredFinalAnswer: false };
+  let attempts = 0;
+  const ports = createRecordingPorts(events, {
+    maxHiddenRetries: 3,
+    runCliStream: (_cli, _prompt, handlers) => {
+      assert.equal(++attempts, 1);
+      handlers.onExit(0);
+      return { kill: () => false };
+    },
+    parseOpenCodeRunOutput: () => empty,
+    recoverOpenCodeMissingAssistantOutput: async () => empty,
+    resolveOpenCodeSuccessfulExitOutcome,
+    shouldRecoverOpenCodeLoopMainSessionInFreshSession: () => { assert.fail("cannot replace an Owner session"); },
+  });
+  await runOpenCodePromptTemplate(createInput({ taskRole: "main", loopTaskId: "leader" }), createTarget(), { departmentProcessStream: ports.runCliStream }, ports);
+  assert.ok(events.includes("finalizeMissingFinalConclusion"));
+  assert.equal(events.includes("publishMissingConclusionRetry"), false);
+  assert.equal(events.includes("waitForHiddenRetryDelay"), false);
+});
+
+test("classic managed main consumes its exact native response before monitor/server disposal", async t => {
+  const http = await import("http"), fs = await import("fs"), os = await import("os"), path = await import("path");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "classic-managed-test-")), cwd = fs.realpathSync(root);
+  const events: string[] = [];
+  const server = http.createServer(async (req, res) => {
+    let raw = ""; for await (const chunk of req) raw += chunk;
+    res.setHeader("Content-Type", "application/json");
+    if (req.url?.startsWith("/event?")) {
+      res.writeHead(200, { "Content-Type": "text/event-stream" }); res.flushHeaders(); return;
+    }
+    if (req.method === "GET") { res.end(JSON.stringify({ id: "ses_fixed", directory: cwd })); return; }
+    assert.ok(events.includes("monitor.parent:ses_fixed"));
+    assert.ok(!events.includes("server.dispose"));
+    const body = JSON.parse(raw); assert.equal(body.parts[0].text, "thinking");
+    res.end(JSON.stringify({ info: { id: "msg_response", role: "assistant", sessionID: "ses_fixed", parentID: body.messageID,
+      providerID: "local", modelID: "model", path: { cwd }, time: { completed: Date.now() }, finish: "stop" },
+      parts: [{ id: "prt_response", type: "text", sessionID: "ses_fixed", messageID: "msg_response", text: "native decision" }] }));
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(root, { recursive: true }); });
+  const ports = createRecordingPorts(events, {
+    getSessionId: () => "ses_fixed",
+    prepareOpenCodeRuntime: async () => ({ ...createRuntimePreparation(), effectiveModel: "local/model" }),
+    prepareOpenCodeSubagentRuntime: async () => ({ connection: { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}` }, endpointSource: "managed-server", error: null, dispose: () => { events.push("server.dispose"); } }),
+    createSubagentMonitor: () => ({ setParentSessionId: id => { events.push(`monitor.parent:${id}`); }, pollNow: async () => {}, finish: () => { events.push("monitor.finished"); }, dispose: () => {} }),
+    runCliStream: () => { assert.fail("must not execute the attached command a second time"); },
+    onStdoutChunk: chunk => { assert.match(chunk, /native decision/); events.push("native.output"); },
+    adoptSession: adoption => { assert.match(adoption.rawStdout, /ses_fixed/); events.push("native.adopt"); },
+  });
+  await runOpenCodePromptTemplate(createInput({ taskRole: "main", loopTaskId: "root" }), createTarget(), { cwd }, ports);
+  assert.ok(events.indexOf("native.output") < events.indexOf("monitor.finished"));
+  assert.ok(events.indexOf("monitor.finished") < events.indexOf("server.dispose"));
+  assert.ok(events.indexOf("server.dispose") < events.indexOf("native.adopt"));
+  assert.ok(events.includes("finalizeSuccessfulExit"));
 });

@@ -23,12 +23,20 @@ const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), 
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
 const runPromptDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === "runPrompt");
+const admissionDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
+  ts.isFunctionDeclaration(statement) && statement.name?.text === "runPromptWithDepartmentAdmission");
+const prepareDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
+  ts.isFunctionDeclaration(statement) && statement.name?.text === "prepareDepartmentInvocation");
 const runPromptNowDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === "runPromptNow");
 assert.ok(runPromptDeclaration);
 assert.ok(runPromptNowDeclaration);
+assert.ok(admissionDeclaration);
+assert.ok(prepareDeclaration);
 const runPromptScript = ts.transpileModule([
   runPromptDeclaration.getText(sourceFile),
+  admissionDeclaration.getText(sourceFile),
+  prepareDeclaration.getText(sourceFile),
   runPromptNowDeclaration.getText(sourceFile),
 ].join("\n"), {
   compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
@@ -72,7 +80,13 @@ function createHarness(options: {
     }
   };
   const runPrompt = vm.runInNewContext(`${runPromptScript}\nrunPrompt;`, {
+    AbortController,
     isExtensionDeactivating: false,
+    // These cases exercise ordinary prompts. Execute the real admission wrapper
+    // and preparer, whose metadata check keeps them on the ordinary route.
+    departmentProcessPreparation: null,
+    departmentCodexPreparation: null,
+    departmentOwnerResources: () => null,
     activeWorkspaceKey: "test-workspace",
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),

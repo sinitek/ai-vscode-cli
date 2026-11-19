@@ -30,14 +30,58 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
       || value === "high" || value === "xhigh" || value === "max" || value === "ultra"
     ),
     isInteractiveMode: (value): value is InteractiveMode => (
-      value === "coding" || value === "plan" || value === "loop"
+      value === "coding" || value === "plan" || value === "loop" || value === "loop_plus" || value === "department"
     ),
     normalizeVisibleInteractiveMode: (value) => (
-      value === "plan" || value === "loop" ? value : "coding"
+      value === "plan" || value === "loop" || value === "department" || value === "loop_plus" ? value : "coding"
     ),
     sanitizeConversationTabRecord: () => null,
   };
 }
+
+test("round-trips department mode and role routes scoped to the director profile", () => {
+  const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));
+  const options = { ...createOptions(workspaceSettingsDir), isCliName: (value: string): value is CliName => ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].includes(value) };
+  try {
+    saveWorkspaceSettings({
+      interactiveModeByCli: { codex: "department" },
+      activeConfigIdByCli: { codex: "director-profile" },
+      departmentRoleRoutesByDirectorConfig: {
+        "director-profile": {
+          leader: { cli: "claude", configId: "leader-profile", model: null, thinkingMode: "high", openCodeVariant: null },
+          employee: { cli: "opencode", configId: "employee-profile", model: "provider/model", thinkingMode: null, openCodeVariant: "high" },
+        },
+      },
+    }, options);
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.interactiveModeByCli?.codex, "department");
+    assert.deepEqual(loaded.departmentRoleRoutesByDirectorConfig?.["director-profile"], {
+      leader: { cli: "claude", configId: "leader-profile", model: null, thinkingMode: "high", openCodeVariant: null },
+      employee: { cli: "opencode", configId: "employee-profile", model: "provider/model", thinkingMode: null, openCodeVariant: "high" },
+    });
+  } finally {
+    fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("department partial choices round-trip without inventing another role or accepting coerced effort", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-partial-"));
+  const options = createOptions(directory);
+  try {
+    saveWorkspaceSettings({ departmentRoleRoutesByDirectorConfig: {
+      first: { leader: { cli: "codex", configId: "leader", model: null, thinkingMode: "high", openCodeVariant: null } },
+      second: { employee: { cli: "claude", configId: "employee", model: null, thinkingMode: null, openCodeVariant: null } },
+    } }, options);
+    const loaded = loadWorkspaceSettings(options);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.first.employee, undefined);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.first.leader?.model, null);
+    assert.equal(loaded.departmentRoleRoutesByDirectorConfig?.second.leader, undefined);
+    fs.writeFileSync(path.join(directory, "workspace.json"), JSON.stringify({ departmentRoleRoutesByDirectorConfig: {
+      first: { leader: { cli: "codex", configId: "leader", model: null, thinkingMode: ["high"], openCodeVariant: null } },
+    } }));
+    assert.equal(loadWorkspaceSettings(options).departmentRoleRoutesByDirectorConfig, undefined);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
 
 test("workspace dispatch limit overrides global values and invalid overrides inherit", () => {
   for (const [workspace, global, expected] of [
@@ -260,5 +304,50 @@ test("trySaveWorkspaceSettings reports failures instead of silently dropping the
     }
   } finally {
     fs.rmSync(workspaceSettingsDir, { recursive: true, force: true });
+  }
+});
+
+test("workspace capacity storage preserves inheritance, partial clears, other settings and isolation", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-workspace-capacity-"));
+  const a = { ...createOptions(directory), workspaceKey: "a" }, b = { ...createOptions(directory), workspaceKey: "b" };
+  try {
+    assert.deepEqual(loadWorkspaceSettings(a), {});
+    assert.equal(trySaveWorkspaceSettings({ departmentMaxLeaders: 3, departmentMaxEmployees: 12, workspaceMemoryEnabled: true }, a).ok, true);
+    assert.deepEqual(loadWorkspaceSettings(b), {});
+    const next = loadWorkspaceSettings(a); delete next.departmentMaxLeaders;
+    assert.equal(trySaveWorkspaceSettings(next, a).ok, true);
+    assert.deepEqual(loadWorkspaceSettings(a), { departmentMaxEmployees: 12, workspaceMemoryEnabled: true });
+    for (const value of ["", " ", true, "bad", 0, -1, 0.5, 9007199254740992]) {
+      fs.writeFileSync(path.join(directory, "a.json"), JSON.stringify({ departmentMaxLeaders: value, departmentMaxEmployees: "13.8" }));
+      assert.deepEqual(loadWorkspaceSettings(a), { departmentMaxEmployees: 13 });
+    }
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("partial workspace writes and replacement failures retain the previous saved document and remove temporary files", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-atomic-save-"));
+  const options = createOptions(directory);
+  const mutableFs = require("node:fs") as typeof import("node:fs");
+  const originalWrite = mutableFs.writeFileSync, originalRename = mutableFs.renameSync;
+  try {
+    const saved = { departmentMaxLeaders: 3, departmentMaxEmployees: 12, workspaceMemoryEnabled: true };
+    assert.equal(trySaveWorkspaceSettings(saved, options).ok, true);
+    const original = fs.readFileSync(path.join(directory, "workspace.json"), "utf8");
+    mutableFs.writeFileSync = ((file: fs.PathOrFileDescriptor, ..._args: unknown[]) => {
+      originalWrite(file, "partial"); throw new Error("injected partial write");
+    }) as typeof fs.writeFileSync;
+    assert.equal(trySaveWorkspaceSettings({ departmentMaxEmployees: 5 }, options).ok, false);
+    mutableFs.writeFileSync = originalWrite;
+    assert.equal(fs.readFileSync(path.join(directory, "workspace.json"), "utf8"), original);
+    mutableFs.renameSync = () => { throw new Error("injected replacement failure"); };
+    assert.equal(trySaveWorkspaceSettings({ departmentMaxEmployees: 5 }, options).ok, false);
+    mutableFs.renameSync = originalRename;
+    assert.deepEqual(loadWorkspaceSettings(options), saved);
+    assert.deepEqual(fs.readdirSync(directory), ["workspace.json"]);
+    assert.equal(trySaveWorkspaceSettings({ ...saved, departmentMaxEmployees: 5 }, options).ok, true);
+    assert.equal(loadWorkspaceSettings(options).departmentMaxEmployees, 5);
+  } finally {
+    mutableFs.writeFileSync = originalWrite; mutableFs.renameSync = originalRename;
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 });

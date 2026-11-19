@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
-import { removePathBestEffort } from "../shared/fsCleanup";
+import type { CleanupResult } from "../runtime/departmentexecutionidentity";
 import { parseJsonObjectText } from "../shared/jsonObject";
 import {
   applyOpenCodeRuntimeModelOverlay,
@@ -12,7 +12,7 @@ import {
 export type OpenCodeRuntimeConfigOverlay = {
   configPath: string;
   envOverrides: Record<string, string>;
-  cleanup: () => void;
+  cleanup: () => CleanupResult;
 };
 
 export type OpenCodeRuntimeConfigOverlayResult = {
@@ -78,7 +78,7 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
     mode: 0o600,
   });
 
-  let cleaned = false;
+  const created = fs.lstatSync(tempDir);
   return {
     ok: true,
     issues: applied.issues,
@@ -86,11 +86,32 @@ export function createOpenCodeRuntimeConfigOverlay(input: {
       configPath,
       envOverrides: { OPENCODE_CONFIG: configPath },
       cleanup: () => {
-        if (cleaned) {
-          return;
+        try {
+          const current = fs.lstatSync(tempDir);
+          if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== created.dev || current.ino !== created.ino) {
+            return { status: "failed", reason: "overlay-directory-identity-changed" };
+          }
+          // This root contains private configuration. Do not recursively delete
+          // unknown additions or a substituted path to manufacture a receipt.
+          if (fs.readdirSync(tempDir).some((name) => name !== path.basename(configPath))) {
+            return { status: "failed", reason: "overlay-directory-has-unknown-content" };
+          }
+          try { fs.unlinkSync(configPath); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+          fs.rmdirSync(tempDir);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            return { status: "failed", reason: "overlay-removal-failed" };
+          }
         }
-        cleaned = true;
-        removePathBestEffort(tempDir);
+        try {
+          fs.lstatSync(tempDir);
+          return { status: "failed", reason: "overlay-directory-remains" };
+        } catch (error) {
+          return (error as NodeJS.ErrnoException).code === "ENOENT"
+            ? { status: "confirmed", evidence: "owned-overlay-directory-absent" }
+            : { status: "unobservable", reason: "overlay-removal-unobservable" };
+        }
       },
     },
   };

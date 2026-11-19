@@ -1,0 +1,17 @@
+[
+  ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+  "src/extension.ts",
+  "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+  "src/extensionHost/loopPlusRuntimeAdapter.ts",
+  "src/extensionHost/promptInteractiveRuntime.ts",
+  "src/promptRunState.ts",
+  "src/test/extensionHost/fixtures/loopPlusRuntimeFixture.ts",
+  "src/test/extensionHost/loopPlusOrchestration.test.ts",
+  "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts",
+  "src/test/extensionHost/promptInteractiveRuntime.test.ts",
+  "src/test/session/sessionTabCliSwitch.test.ts",
+  "src/extensionHost/promptParallelRuntime.ts",
+  "src/test/loop/departmentGroupChatHost.test.ts",
+  "src/test/extensionHost/loopPlusRuntimeAdmission.test.ts",
+  "src/test/webview/looppluswebviewintegration.test.ts"
+]

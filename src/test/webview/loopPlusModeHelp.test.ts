@@ -56,6 +56,7 @@ test("将中文模式说明的 Markdown 渲染为两列表格", () => {
     "<strong>Vibe</strong>", "直接执行目标 CLI 任务。",
     "<strong>Loop</strong>", "主模型作为项目经理分发任务，调度多个子模型共同完成任务。",
     "<strong>Loop+</strong>", "主模型除分发任务外，还作为组长进行功能验收；发现缺陷时，会再次发起整改。",
+    "<strong>产研部</strong>", "☀️ 总监用 Loop 拆分目标、协调各组并汇总结果；🌛 组长用 Loop+ 分派员工、验收成果并安排整改；⭐️ 员工执行具体任务。先在“工具设置 → 常规配置”开启产研部，再选择“产研部”模式，配置各角色的 CLI、模型和力度后发送目标。各角色支持全部 CLI，可混合搭配；在总监群聊查看各组进度。",
   ]);
   assert.doesNotMatch(chinese, /<ul>|<li>|\| ---/);
   assert.match(chinese, /<\/table>\s*<p><a href="https:\/\/www\.yuque\.com\/hunjfang\/ul749m\/pkxei0ie9gc8bmim\?singleDoc#">《携宁 CLI 助手 - 教程》：点击进入详细教程<\/a><\/p>/);
@@ -116,7 +117,7 @@ test("使用说明仅保留模式说明，通知授权和四个默认开启的�
       assert.match(select, /value="loop"/);
       assert.match(select, /value="loop_plus"/);
       assert.doesNotMatch(select, /value="graph"/);
-      assert.equal((select.match(/<option /g) || []).length, 3);
+      assert.deepEqual(Array.from(select.matchAll(/<option value="([^"]+)"/g), (match) => match[1]), ["coding", "loop", "loop_plus", "department"]);
     }
   }
 

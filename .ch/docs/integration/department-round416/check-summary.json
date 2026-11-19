@@ -1,0 +1,33 @@
+{
+  "implementation_tree": "dc272bd0c3696b132712c8a91c6843da4df82df6",
+  "build_final": "build-06.log.gz (exit 0); standard npm run build; only test fixture changed after build-05",
+  "final_test_evidence": {
+    "runtime": "regression-runtime-03.log:212/212",
+    "boundaries": "regression-boundaries-01.log:166/166",
+    "identity_and_strategies": "regression-runtime-01.log.gz:30/30 (those two files unchanged afterward)",
+    "ui": "regression-ui-01.log:72 passed in four unchanged files; regression-ui-02.log:3/3 repaired VM fixture"
+  },
+  "unique_test_total": 483,
+  "failed_history_retained": [
+    "build-01.log.gz:parse errors",
+    "build-02.log.gz:missing fixture port",
+    "regression-runtime-01.log.gz:232/241",
+    "regression-runtime-02.log.gz:210/211",
+    "regression-ui-01.log:72/75"
+  ],
+  "not_run": [
+    "full suite",
+    "real CLI/model calls",
+    "EH",
+    "browser/visual smoke",
+    "platform scripts",
+    "publish",
+    "remote operations"
+  ],
+  "checks_no_source_edits_after": "build-06; no source edits after final tests",
+  "source_hash_recheck_entries": 1413,
+  "source_hash_recheck_mismatches": 0,
+  "initial_new_evidence_whitespace": "failed on raw successful build logs EOF; raw bytes now preserved losslessly via gzip",
+  "node": "v24.22.2",
+  "npm": "11.19.1"
+}

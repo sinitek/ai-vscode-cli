@@ -1016,6 +1016,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      let modelManagerTarget =
       }
 
       function syncModelSelectorByInteractiveMode(cli = state.currentCli) {
+        if (typeof renderDepartmentConfiguration === "function") renderDepartmentConfiguration();
         if (typeof syncCliSelectAvailability === "function") {
           syncCliSelectAvailability();
         }
@@ -1576,15 +1577,24 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      let modelManagerTarget =
       if (elements.interactiveModeSelect) {
         elements.interactiveModeSelect.addEventListener("change", (event) => {
           const nextMode = normalizeInteractiveMode(event.target.value);
-          state.interactiveMode = nextMode;
           const runtimeState = getActiveConversationRuntimeState();
-          runtimeState.interactiveModeSelection = { cli: state.currentCli, mode: nextMode };
-          syncModelSelectorByInteractiveMode();
+          if (runtimeState) {
+            runtimeState.interactiveModeSelection = { cli: state.currentCli, mode: nextMode };
+          }
+          // The host must receive the mode change before rendering requests new role candidates.
           vscode.postMessage({
             type: "updateSetting",
             key: "interactiveMode." + state.currentCli,
             value: nextMode,
           });
+          if (typeof applyLocalInteractiveModeChange === "function") {
+            applyLocalInteractiveModeChange(nextMode);
+            syncModelSelectorByInteractiveMode();
+          }
+          else {
+            state.interactiveMode = nextMode;
+            syncModelSelectorByInteractiveMode();
+          }
         });
       }
       if (elements.debugMode) {

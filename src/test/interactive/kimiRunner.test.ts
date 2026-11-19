@@ -976,3 +976,17 @@ test("Kimi dispose stops the child tree and blocks further prompts", async () =>
   await assert.rejects(runner.prompt("hello"), /disposed/);
   assert.ok(fake.signalCode === null || signals.length >= 0);
 });
+
+test("department disposal waits for close and retains shutdown escalation across repeated observations", async () => {
+  const fake = new FakeKimi();
+  const created = createRunner(fake, { shutdownGraceMs: 10 });
+  await created.runner.start();
+  let closed = false;
+  const first = created.runner.disposeAndWait().then(() => { closed = true; });
+  const second = created.runner.disposeAndWait();
+  await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(closed, false);
+  assert.ok(created.signals.includes("SIGKILL"));
+  fake.exitCode = 0; fake.emit("close", 0, null);
+  await Promise.all([first, second]); assert.equal(closed, true);
+});

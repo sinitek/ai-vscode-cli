@@ -15,6 +15,9 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         flex-wrap: nowrap;
         overflow: hidden;
       }
+      .config-select-row.department-mode {
+        flex-wrap: wrap;
+      }
 
       select {
         background: var(--vscode-dropdown-background);
@@ -85,8 +88,12 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         position: absolute;
         inset: -5px 8px auto;
         height: 12px;
+        width: calc(100% - 16px);
         display: grid;
         place-items: center;
+        border: 0;
+        padding: 0;
+        background: transparent;
         cursor: ns-resize;
         touch-action: none;
         user-select: none;
@@ -156,7 +163,7 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         width: 100%;
         height: var(--prompt-input-height, ${PROMPT_INPUT_MIN_HEIGHT}px);
         min-height: ${PROMPT_INPUT_MIN_HEIGHT}px;
-        max-height: 50vh;
+        max-height: var(--prompt-input-max-height, 50vh);
         overflow-y: auto;
         padding: 0;
       }
@@ -310,6 +317,16 @@ export const INPUT_CONTROLS_STYLES = `      /* Input Area */
         gap: 6px;
         min-width: 0;
       }
+      #departmentRoleConfiguration[hidden],
+      .input-model-row[hidden],
+      .department-role-row [hidden] { display: none; }
+      .department-role-row .open-code-model-label { white-space: normal; }
+      .department-role-row .model-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
+      .department-role-row .thinking-select { flex: 0 0 80px; width: 80px; min-width: 80px; }
+      .department-director-controls { display: flex; flex: 1 1 180px; flex-wrap: wrap; gap: 6px; min-width: 0; }
+      .department-director-controls .model-select { flex: 1 1 92px; min-width: 0; max-width: 100%; }
+      .department-director-controls .thinking-select { flex: 0 0 80px; width: 80px; min-width: 80px; }
+      .department-role-row select:focus-visible { border-color: var(--vscode-focusBorder); }
       .open-code-model-row {
         display: grid;
         grid-template-columns: minmax(52px, auto) minmax(92px, 1fr) calc(70px * 1.15);

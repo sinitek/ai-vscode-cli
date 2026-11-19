@@ -660,7 +660,7 @@ async function executeGrokContextCompaction(
     agentArgs: run.args,
     cwd: run.cwd ?? process.cwd(),
     thinkingMode: run.thinkingMode,
-    interactiveMode: run.interactiveMode,
+    interactiveMode: run.interactiveMode === "department" ? "coding" : run.interactiveMode,
     model: run.selectedModel,
     localSessionId: resumeSessionId,
   });
@@ -981,7 +981,7 @@ async function executeKimiContextCompaction(
   const selectedModel = deps.resolveKimiModelWireForRun
     ? await hooks.withCompactionTimeout(deps.resolveKimiModelWireForRun(run.selectedModel)) : run.selectedModel;
   const launch = await hooks.withCompactionTimeout((deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
-    interactiveMode: run.interactiveMode,
+    interactiveMode: run.interactiveMode === "department" ? "coding" : run.interactiveMode,
     selectedModel,
     thinkingMode: run.thinkingMode,
   }));

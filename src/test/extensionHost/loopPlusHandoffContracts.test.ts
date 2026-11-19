@@ -4,6 +4,7 @@ import fs = require("fs");
 import os = require("os");
 import path = require("path");
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { readCodexRuntimeConfigReadback } from "../../config/codexRuntimeConfigIdentity";
 import type { LoopPlusAttemptRequest, LoopPlusAttemptResult, LoopPlusMainRequest } from "../../extensionHost/loopPlusOrchestration";
 import { installVscodeMock } from "../vscodeMock";
 
@@ -21,6 +22,10 @@ const { createLoopPlusOrchestrationHost } = require("../../extensionHost/loopPlu
 const { createLoopPlusPersistedTaskRefresher } = require("../../extensionHost/promptRunRuntime") as typeof import("../../extensionHost/promptRunRuntime");
 const { loopSubtaskAutoCompactions } = require("../../loopSubtaskAutoCompact") as typeof import("../../loopSubtaskAutoCompact");
 const { withLoopPlusAcceptReviews, loopPlusAcceptanceChecksFixture } = require("../loopPlusAcceptFixture") as typeof import("../loopPlusAcceptFixture");
+const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
+const { createCodexRuntimeConfigHandoffFixture } = require("./fixtures/codexruntimeconfighandofffixture") as typeof import("./fixtures/codexruntimeconfighandofffixture");
+const { createLoopGroupChatPanelCoordinator, buildLoopGroupChatPanelState } = require("../../extensionHost/loopGroupChatPanelCoordinator") as typeof import("../../extensionHost/loopGroupChatPanelCoordinator");
+const { RUNTIME_CONFIG_LOCK_TIMEOUT, RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE } = require("../../loopMainFailure") as typeof import("../../loopMainFailure");
 
 test.after(() => {
   fs.rmSync(isolatedHome, { recursive: true, force: true });
@@ -59,6 +64,9 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
   const completedNotices: string[] = [];
   const feedback: string[] = [];
   const aborted: string[] = [];
+  const firstAttemptStarted = deferred<LoopPlusAttemptRequest>();
+  const consumerFailed = deferred<void>();
+  const events: string[] = [];
   let cleanups = 0;
   let missingUpdate = false;
   let refreshes = 0;
@@ -82,6 +90,12 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
       refreshTaskSurfaces: () => { refreshes += 1; return options.refresh?.(); },
     }),
     appendMessage: (_target, message) => { messages.push(message); },
+    log: (event) => {
+      if (event === "loop-plus-consumer-failed") {
+        events.push(event);
+        consumerFailed.resolve();
+      }
+    },
     appendAcceptancePlanChat: (_id, section) => { feedback.push(section.body); },
     onTaskCompleted: (taskId) => { assert.equal(read().status, "completed"); completedNotices.push(taskId); },
     runMain: (request) => {
@@ -92,11 +106,13 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
     startAttempt: (request) => {
       const gate = deferred<LoopPlusAttemptResult>();
       attempts.push({ request, ...gate });
+      firstAttemptStarted.resolve(request);
       return { promise: gate.promise, abort: () => { aborted.push(request.attemptId); }, onCompleted: async () => { cleanups += 1; } };
     },
   });
   const run = host.tryRun(input, target, { schedulingMode: "event_driven" });
-  return { id, host, run, mains, attempts, messages, feedback, completedNotices, aborted, read,
+  return { id, host, run, mains, attempts, messages, feedback, completedNotices, aborted, read, events,
+    firstAttemptStarted: firstAttemptStarted.promise, consumerFailed: consumerFailed.promise,
     cleanupCount: () => cleanups, refreshCount: () => refreshes, setMissing: (value: boolean) => { missingUpdate = value; },
     observe: () => host.tryRun(input, target, { resumeTaskId: id }),
     resume: () => host.tryRun(input, target, { resumeTaskId: id, resumeRequested: true }) };
@@ -129,6 +145,151 @@ function failDisk(t: import("node:test").TestContext, mode: "write" | "rename", 
   }
   return () => failures;
 }
+
+test("original group chat resume atomically commits after exact thread receipt and before first turn", { timeout: 5000 }, async (context) => {
+  const taskId = "config-lock-atomic-resume";
+  const threadId = "original-native-thread";
+  const instruction = "保留报告，先验收原任务。";
+  const configId = "original-profile";
+  const oldCodexHome = process.env.CODEX_HOME;
+  const oldCodexHomeDir = process.env.CODEX_HOME_DIR;
+  const cwd = fs.realpathSync(isolatedHome);
+  const codexHome = path.join(cwd, "codex-home");
+  fs.mkdirSync(codexHome);
+  process.env.CODEX_HOME = codexHome;
+  process.env.CODEX_HOME_DIR = codexHome;
+  const { evidence } = await readCodexRuntimeConfigReadback(cwd, codexHome);
+  const native = createCodexRuntimeConfigHandoffFixture(context, codexHome, cwd);
+  const run = native.runner("session", threadId, "original-revision");
+  const mainEntered = deferred<void>();
+  const finishMain = deferred<void>();
+  const write = (task: LoopTaskRecord) => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const fixture = createLoopPlusRuntimeFixture({ configId,
+    taskPersistence: { create: (task) => { write(task); return task; }, read: store.readLoopTaskRecord, save: write,
+      update: (id, patch) => store.updateLoopTaskRecord(id, patch), remove: () => undefined },
+    runConfigLockResume: async (execution, notifyStarted, signal) => {
+      await run.runStreamed("uncommitted", {
+        onAssistantDelta: () => undefined, onTrace: () => undefined, onTaskListUpdate: () => undefined,
+        onThreadId: () => assert.fail("must not rebind the original thread"),
+      }, undefined, { threadId, codexConfigEvidence: execution.codexConfigEvidence, signal, preparePrompt: () => {
+        assert.equal(native.wire.filter(({ message }) => message.method === "thread/resume").length, 1);
+        const prepared = execution.prepare();
+        return { prompt: prepared.modelPrompt ?? prepared.displayPrompt, commit: prepared.commit,
+          afterSend: () => { prepared.afterSend(); notifyStarted(); } };
+      } });
+    },
+  });
+  let retry: Promise<void> | undefined;
+  try {
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
+    const opened = [{ subtaskId: "P", attemptId: "review-first" }, { subtaskId: "Q", attemptId: "review-next" },
+      { subtaskId: "R", attemptId: "report", requiresAcceptance: false }];
+    scheduler.dispatch(opened);
+    for (const attempt of opened) scheduler.finish({ ...attempt, outcome: "completed", detail: attempt.attemptId });
+    const ready = { subtaskId: "X", attemptId: "independent" };
+    const blocked = { subtaskId: "B", attemptId: "dependent", dependsOn: ["P"] };
+    scheduler.dispatch([ready, blocked], { deferPromotion: true });
+    const paused = scheduler.snapshot();
+    const taskStoreFile = store.buildLoopTaskStoreFile("codex", "workspace", "session", taskId);
+    const task: LoopTaskRecord = {
+      id: taskId, taskStoreFile, workspaceKey: "workspace", cli: "codex", sessionId: fixture.target.sessionId,
+      status: "needs-review", rootPrompt: "synthetic task", schedulingMode: "event_driven", loopPlus: paused,
+      mainAiFailureCount: 5, mainAiFailureLimitReached: true, mainAiLastFailureCode: RUNTIME_CONFIG_LOCK_TIMEOUT,
+      mainAiLastFailureMessage: RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE, finalSummary: "原暂停",
+      originProfile: { configId }, modelRouting: { main: { cli: "codex", model: "main-model" }, subtask: { model: "sub-model" } },
+      createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 4, currentRound: 1, activeSubtaskId: null, activeSubtaskIds: [],
+      subTasks: [...opened, ready, blocked].map((attempt) => ({ id: attempt.subtaskId, title: attempt.subtaskId,
+        status: opened.some((item) => item.subtaskId === attempt.subtaskId) ? "completed" : "pending", updatedAt: Date.now() })),
+      communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      rounds: [], supplementalRequirements: ["原说明"], completionRoundSummaries: [], completionRequirementCoverage: [],
+    };
+    write(task);
+    const originalRead = fixture.readTask(taskId)!;
+    const originalBytes = fs.readFileSync(taskStoreFile);
+    const warnings: string[] = [];
+    type Deps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
+    type Panel = NonNullable<ReturnType<Deps["panelsByTaskId"]["get"]>>;
+    let state: ReturnType<typeof buildLoopGroupChatPanelState>;
+    const panel = { getState: () => state, setAskThread: () => undefined, post: () => undefined,
+      update: (value: typeof state) => { state = value; } } as unknown as Panel;
+    const deps: Deps = {
+      getExtensionUri: () => ({ fsPath: fixture.rootDir } as ReturnType<Deps["getExtensionUri"]>),
+      panelsByTaskId: new Map([[taskId, panel]]), normalizeTaskId: () => taskId,
+      normalizeSupplementalRequirement: () => null, appendSupplementalRequirement: () => [],
+      appendSupplementalRequirementToCommunication: () => undefined, recordPromptHistory: () => undefined,
+      readTaskRecord: fixture.readTask, updateTaskRecord: () => assert.fail("must use the original task's recovery commit"),
+      listTaskStoreFiles: () => [], readTaskStoreTasks: () => [], collectRunningTaskIds: () => new Set(),
+      resolveMainPromptTarget: () => fixture.target, isTabRunActive: () => false,
+      isConfigLockResumeSessionAvailable: () => true, getActiveConfigIdForCli: () => configId, getSelectedCliModel: () => "main-model",
+      restoreOriginalLoopRuntime: async () => ({ ok: true, target: fixture.target,
+        isOriginalTargetCurrent: () => true, codexConfigEvidence: evidence }),
+      revealPanelView: async () => undefined, switchVisibleConversationTabForLoop: async () => undefined,
+      runLoopPrompt: async (input, options) => { await fixture.adapter.runEventDriven(input, options, fixture.target); },
+      getActiveSubtaskIds: () => [], stopRunsForTask: () => undefined, markTaskStoppedByUser: () => null,
+      getActiveConversationTaskId: () => taskId, postPanelState: async () => undefined,
+      pickTask: async () => null, readTextFileIfNonEmpty: () => null, fileExists: () => false, writeTextFileEnsuringDir: () => true,
+      buildCompletedConclusionAndSummaryMarkdown: () => "", showInformationMessage: () => undefined,
+      showWarningMessage: (message) => { warnings.push(message); }, t: (key) => key,
+    };
+    const coordinator = createLoopGroupChatPanelCoordinator(deps);
+    state = buildLoopGroupChatPanelState(originalRead, deps);
+    assert.equal(state.task.canContinue, true);
+    let rejectRename = true;
+    const staged: LoopTaskRecord[] = [];
+    const rename = fs.renameSync;
+    context.mock.method(fs, "renameSync", (from: fs.PathLike, to: fs.PathLike) => {
+      if (String(to) === taskStoreFile) {
+        staged.push(JSON.parse(fs.readFileSync(from, "utf8")).tasks[0]);
+        if (rejectRename) throw Object.assign(new Error("synthetic atomic replacement denied"), { code: "EACCES" });
+      }
+      return rename(from, to);
+    });
+    const click = () => coordinator.handleMessage(taskId, { type: "loopGroupChatChat:continueTask", prompt: instruction }, panel);
+    await click();
+    assert.match(warnings.at(-1) ?? "", /synthetic atomic replacement denied/u);
+    assert.deepEqual(fs.readFileSync(taskStoreFile), originalBytes);
+    assert.equal(staged.length, 1);
+    assert.equal(fixture.mainCalls.length, 0);
+    assert.equal(fixture.attemptCalls.length, 0);
+    assert.deepEqual(fixture.hostMessages, []);
+    const turns = () => native.wire.filter(({ message }) => message.method === "turn/start");
+    assert.equal(turns().length, 0);
+    assert.equal(fs.readdirSync(path.dirname(taskStoreFile)).some((entry) => entry.endsWith(".stage")), false);
+
+    rejectRename = false;
+    fixture.queueMain(async () => { mainEntered.resolve(); await finishMain.promise; });
+    retry = click();
+    await Promise.race([mainEntered.promise, retry.then(() => assert.fail(`retry did not start: ${warnings.at(-1)}`))]);
+    await waitForLoopPlus(() => fixture.attemptCalls.length === 1, "independent committed reservation");
+    assert.equal(turns().length, 1);
+    const firstTurn = turns()[0].message.params!;
+    assert.equal(firstTurn.threadId, threadId);
+    assert.ok((firstTurn.input as Array<{ text?: string }>).some(({ text }) => text?.includes(instruction)));
+    assert.equal(native.wire.some(({ message }) => message.method === "thread/start"), false);
+    assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), [ready.subtaskId]);
+    const commit = staged[1];
+    assert.equal(commit.status, "running");
+    assert.equal(commit.mainAiFailureCount, 0);
+    assert.deepEqual(commit.supplementalRequirements, ["原说明", instruction]);
+    const resumed = snapshot(commit);
+    assert.deepEqual(resumed.currentReview, paused.currentReview);
+    assert.deepEqual(resumed.reviewQueue, paused.reviewQueue);
+    assert.deepEqual(resumed.reportQueue, paused.reportQueue);
+    assert.deepEqual(resumed.pending, paused.pending.filter((item) => item.subtaskId === blocked.subtaskId));
+    assert.equal(resumed.running[0]?.attemptId, ready.attemptId);
+    assert.equal(fixture.mainCalls[0].loopTaskId, taskId);
+  } finally {
+    fixture.adapter.host().stopParent(taskId);
+    finishMain.resolve();
+    await retry;
+    await native.cleanup();
+    fixture.dispose();
+    if (oldCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = oldCodexHome;
+    if (oldCodexHomeDir === undefined) delete process.env.CODEX_HOME_DIR;
+    else process.env.CODEX_HOME_DIR = oldCodexHomeDir;
+  }
+});
 
 for (const mode of ["write", "rename"] as const) {
   test(`real ${mode} failure prevents final notification/release; retry completes exactly once`, async (t) => {
@@ -293,15 +454,19 @@ for (const asyncRefresh of [false, true]) {
 test("partial accept/dispatch rejection repairs only remaining work with bounded retries and no repeated acceptance", async () => {
   const env = harness({ protocolRetryLimit: 2 });
   await flush();
-  env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A"), child("B")] }));
+  env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A"), child("B"), { ...child("report"), requiresAcceptance: false }] }));
   await flush();
   env.attempts[0].resolve({ outcome: "completed", detail: "A" });
   await flush();
   const review = env.mains.at(-1)!;
   env.host.submitUserMessage(env.id, "只确认一次");
-  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds, subtasks: [child("repair-C"), child("B")] }));
+  env.attempts[2].resolve({ outcome: "completed", detail: "免验收报告" });
   await flush();
-  assert.equal(env.attempts.length, 3);
+  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
+    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: ["repair-C"] }],
+    independentSubtaskIds: ["B"], subtasks: [child("repair-C"), child("B")] }));
+  await flush();
+  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), ["A", "B", "report", "repair-C"]);
   assert.equal(env.feedback.length, 1);
   const reviewed = () => snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed");
   assert.equal(reviewed().length, 1);
@@ -310,9 +475,13 @@ test("partial accept/dispatch rejection repairs only remaining work with bounded
   assert.match(env.mains.at(-1)!.request.prompt, /不得重复 accept/);
   assert.equal(env.read().subTasks.find((item) => item.id === "B")?.title, "B");
   // A second partially accepted response must not reset the retry counter.
-  env.mains.at(-1)!.resolve(json({ status: "dispatch", subtasks: [child("repair-D"), child("B")] }));
+  const reportEventIds = env.mains.at(-1)!.request.reportEventIds;
+  assert.equal(reportEventIds?.length, 1);
+  env.mains.at(-1)!.resolve(json({ status: "dispatch", reportEventIds, subtasks: [child("repair-D"), child("B")] }));
   await flush();
-  assert.equal(env.attempts.length, 4);
+  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), ["A", "B", "report", "repair-C", "repair-D"]);
+  assert.deepEqual(snapshot(env.read()).reportQueue ?? [], []);
+  assert.deepEqual(env.mains.at(-1)!.request.reportEventIds, []);
   env.mains.at(-1)!.resolve(json({ status: "dispatch", subtasks: [child("B")] }));
   await flush();
   await env.run.done;
@@ -332,7 +501,9 @@ test("rejected repair dispatch is corrected successfully from the latest snapsho
   env.attempts[0].resolve({ outcome: "completed", detail: "A needs repair" });
   await flush();
   const review = env.mains.at(-1)!;
-  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds, subtasks: [child("B")] }));
+  review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
+    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: [] }],
+    independentSubtaskIds: ["B"], subtasks: [child("B")] }));
   await flush();
   const correction = env.mains.at(-1)!;
   assert.notEqual(correction.request.kind, "review");
@@ -407,6 +578,33 @@ for (const mode of ["write", "rename"] as const) {
     await resumed.done;
   });
 }
+test("dispatch commit failure leaves no started or reserved attempt; recovery starts it once", { timeout: 5000 }, async (t) => {
+  const env = harness();
+  const failures = failDisk(t, "write", env.read().taskStoreFile, (task) => Boolean(snapshot(task).running.length));
+  env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
+  await env.run.done;
+  assert.equal(failures(), 1);
+  assert.equal(env.attempts.length, 0);
+  const registered = snapshot(env.read());
+  assert.deepEqual(registered.running, []);
+  assert.deepEqual(registered.pending.map((item) => item.subtaskId), ["A"]);
+  assert.deepEqual(env.events, []);
+  t.mock.restoreAll();
+  const resumed = env.resume();
+  const reserved = snapshot(env.read());
+  assert.deepEqual(reserved.pending, []);
+  assert.deepEqual(reserved.running.map((item) => item.attemptId), [registered.pending[0].attemptId]);
+  await env.consumerFailed;
+  assert.deepEqual(env.events, ["loop-plus-consumer-failed"]);
+  assert.equal(env.read().status, "running");
+  assert.deepEqual(snapshot(env.read()).running, reserved.running);
+  const started = await env.firstAttemptStarted;
+  assert.equal(started.attemptId, registered.pending[0].attemptId);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.mains.length, 1);
+  env.host.stopParent(env.id);
+  await resumed.done;
+});
 
 test("control commit failure preserves the old active attempt and does not abort, close or start its replacement", async (t) => {
   const env = harness();

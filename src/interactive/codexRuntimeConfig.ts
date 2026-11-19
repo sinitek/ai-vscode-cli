@@ -53,12 +53,14 @@ export function resolveCodexConfigPath(codexHomeDir?: string): string {
   return path.join(expandHomePath(codexHomeDir) || resolveCodexHomeDir(), CODEX_CONFIG_FILE_NAME);
 }
 
-export async function resolveCodexModelProvider(codexHomeDir?: string): Promise<string | null> {
-  const configPath = resolveCodexConfigPath(codexHomeDir);
-  const content = await readTextFile(configPath);
+export function readCodexModelProvider(content: string): string | null {
   const match = content.match(/^\s*model_provider\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s#]+))/mu);
   const provider = (match?.[1] ?? match?.[2] ?? match?.[3] ?? "").trim();
   return provider || null;
+}
+
+export async function resolveCodexModelProvider(codexHomeDir?: string): Promise<string | null> {
+  return readCodexModelProvider(await readTextFile(resolveCodexConfigPath(codexHomeDir)));
 }
 
 export function buildCodexChildEnv(env: NodeJS.ProcessEnv = process.env): CodexChildEnvResult {

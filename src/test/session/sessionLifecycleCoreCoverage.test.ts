@@ -1304,3 +1304,25 @@ test("covers retained stores, deletion, no-op drafts, local promotion, and fallb
     harness.cleanup();
   }
 });
+
+test("explicit department preparation creates one durable local session for an empty target tab", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const tab = harness.state.tabs[0];
+    harness.state.store.codex.sessions.push(createRecord("unrelated-current"));
+    harness.state.store.codex.currentId = "unrelated-current";
+    harness.state.drafts.set(`${tab.id}:codex`, { label: null, firstPrompt: null, messages: [] });
+
+    harness.controller.ensureLocalSession("codex", tab.id, true);
+    const sessionId = tab.sessionId;
+    assert.match(sessionId ?? "", /^local_/);
+    assert.notEqual(sessionId, "unrelated-current");
+    assert.equal(harness.state.store.codex.currentId, sessionId);
+    assert.equal(harness.calls.persistedTabs, 1);
+    harness.controller.ensureLocalSession("codex", tab.id, true);
+    assert.equal(tab.sessionId, sessionId);
+    assert.equal(harness.calls.persistedTabs, 1);
+  } finally {
+    harness.cleanup();
+  }
+});

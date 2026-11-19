@@ -14,6 +14,7 @@ type FakeControl = {
   checked: boolean;
   tabIndex: number;
   value: string;
+  options: Array<{ value: string; hidden: boolean }>;
   parentElement: { style: { display: string } };
   addEventListener(type: "change", listener: (event: ChangeEvent) => void): void;
   addEventListener(type: "click", listener: (event: ClickEvent) => void): void;
@@ -73,6 +74,7 @@ function createControl(): FakeControl {
     checked: false,
     tabIndex: 0,
     value: "",
+    options: ["coding", "loop", "loop_plus", "department"].map((value) => ({ value, hidden: false })),
     parentElement: { style: { display: "" } },
     addEventListener(type, listener) {
       if (type === "change") {

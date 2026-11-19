@@ -5,6 +5,7 @@ import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMod
 import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
+import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { normalizePromptInputHeight } from "./promptInputHeight";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
@@ -26,8 +27,13 @@ export type ToolSettingsState = {
   autoCompactContextAfterRun?: boolean;
   humanInteractionEnabled?: boolean;
   newTaskInteractiveMode?: NewTaskInteractiveMode;
+  loopEnabled?: boolean;
+  loopPlusEnabled?: boolean;
+  departmentEnabled?: boolean;
   loopPlusDecisionSubtaskMax?: number;
   loopPlusSubtaskMaxRounds?: number;
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
   humanInteractionTimeoutMinutes?: number;
   chatMessageLimit?: number;
   loopGroupChatMessageLimit?: number;
@@ -106,6 +112,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
   if (typeof record.humanInteractionEnabled === "boolean") {
     normalized.humanInteractionEnabled = record.humanInteractionEnabled;
   }
+  if (typeof record.loopEnabled === "boolean") normalized.loopEnabled = record.loopEnabled;
+  if (typeof record.loopPlusEnabled === "boolean") normalized.loopPlusEnabled = record.loopPlusEnabled;
+  if (typeof record.departmentEnabled === "boolean") normalized.departmentEnabled = record.departmentEnabled;
   if (typeof record.historyRetentionDays === "number" || typeof record.historyRetentionDays === "string") {
     const parsed = typeof record.historyRetentionDays === "number"
       ? record.historyRetentionDays
@@ -125,16 +134,19 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       normalized.loopPlusDecisionSubtaskMax = Math.floor(parsed);
     }
   }
-  if (
-    typeof record.loopPlusSubtaskMaxRounds === "number"
-    || typeof record.loopPlusSubtaskMaxRounds === "string"
-  ) {
+  if (typeof record.loopPlusSubtaskMaxRounds === "number" || typeof record.loopPlusSubtaskMaxRounds === "string") {
     const parsed = typeof record.loopPlusSubtaskMaxRounds === "number"
       ? record.loopPlusSubtaskMaxRounds
       : (record.loopPlusSubtaskMaxRounds.trim() ? Number(record.loopPlusSubtaskMaxRounds) : Number.NaN);
     if (Number.isFinite(parsed)) {
       normalized.loopPlusSubtaskMaxRounds = resolveLoopPlusSubtaskMaxRounds(parsed);
     }
+  }
+  if ("departmentMaxLeaders" in record) {
+    normalized.departmentMaxLeaders = normalizeDepartmentMaxLeaders(record.departmentMaxLeaders);
+  }
+  if ("departmentMaxEmployees" in record) {
+    normalized.departmentMaxEmployees = normalizeDepartmentMaxEmployees(record.departmentMaxEmployees);
   }
   if (
     typeof record.humanInteractionTimeoutMinutes === "number"

@@ -106,6 +106,7 @@ function createDisabledSubagentMonitor() {
 
 function createParallelRuntimeHarness(options: {
   runCliStream: RunCliStream;
+  deps?: PromptParallelRuntimeDeps;
   maxRetries?: number;
   retryEligible?: boolean;
   parseOpenCodeRunOutput?: (stdout: string, stderr: string) => OpenCodeRunOutput;
@@ -255,7 +256,7 @@ function createParallelRuntimeHarness(options: {
   };
 
   return {
-    host: createPromptParallelRuntimeHost(deps),
+    host: createPromptParallelRuntimeHost({ ...deps, ...options.deps }),
     memoryPersistStatuses,
     messages,
     panelMessages,
@@ -305,4 +306,164 @@ test("parallel automatic repair retry has no further transient error retries", a
   await harness.host.runPromptParallel(createPromptInput({ cliCommandRepairAttempted: true }), createTarget());
   assert.equal(attempts, 1);
   assert.equal(harness.parallelRunsByTabId.has(TAB_ID), false);
+});
+
+test("department Owner port feeds the bound parallel session and disables hidden replacement executions", async () => {
+  let calls = 0;
+  const harness = createParallelRuntimeHarness({ maxRetries: 3, retryEligible: true, runCliStream: () => { assert.fail("fallback must not spawn"); } });
+  const transport = createAsyncRunCliStreamStub(handlers => {
+    calls++;
+    handlers.onStdout(JSON.stringify({ type: "text", sessionID: "ses_bound", part: { type: "text", text: "Owner partial answer" } }) + "\n");
+    handlers.onExit(1);
+  });
+  await harness.host.runPromptParallel(createPromptInput(), createTarget({ sessionId: "ses_bound" }), { departmentProcessStream: transport });
+  assert.equal(calls, 1);
+  assert.ok(harness.persistedMessages.some(entry => entry.sessionId === "ses_bound" && entry.messages.some(message => message.content.includes("Owner partial answer"))));
+  assert.equal(harness.taskRuns[harness.taskRuns.length - 1]?.status, "error");
+});
+
+// Controlled Owner transports publish onExit only when their physical/consumer
+// drain is released. These are parser/tab-state tests, not native CLI receipts.
+function createConcurrentLeaderHarness() {
+  let retryWaits = 0;
+  const transcripts = new Map<string, ChatMessage[]>([["local_a", []], ["local_b", []]]);
+  const nativeSeen = new Map<string, string[]>();
+  const controls = new Map<string, { handlers: RunCliStreamHandlers; kills: number }>();
+  const started = new Map<string, Promise<void>>();
+  const startResolvers = new Map<string, () => void>();
+  for (const id of ["a", "b"]) {
+    started.set(id, new Promise<void>(resolve => startResolvers.set(id, resolve)));
+    nativeSeen.set(id, []);
+  }
+  const harness = createParallelRuntimeHarness({
+    runCliStream: () => { assert.fail("leader must never fall back to ordinary execution"); },
+    maxRetries: 3,
+    retryEligible: true,
+    parseOpenCodeRunOutput: () => ({ finalText: "", errorText: null, statusText: null, hasStructuredFinalAnswer: true }),
+    deps: {
+      waitForHiddenRetryDelay: async () => { retryWaits++; return false; },
+      extractSessionId: (_cli, text) => {
+        const match = /"sessionID":"(ses_[ab])"/.exec(text);
+        return match?.[1];
+      },
+      isLocalSessionId: id => id.startsWith("local_"),
+      loadSessionMessages: (_cli, id) => {
+        assert.ok(transcripts.has(id), "native IDs must not replace durable transcript keys");
+        return transcripts.get(id)!;
+      },
+      adoptDetectedSessionId: () => { assert.fail("leader session cannot be adopted as a new tab identity"); },
+      adoptFreshOpenCodeLoopRecoverySession: () => { assert.fail("leader cannot replace its native Owner/session"); },
+    },
+  });
+  const run = (id: "a" | "b") => harness.host.runPromptParallel(
+    createPromptInput({ taskRole: "main", loopTaskId: `leader-${id}`, loopSubtaskId: undefined }),
+    createTarget({ tabId: `tab-${id}`, sessionId: `local_${id}` }),
+    {
+      departmentLeaderNativeSession: sessionId => {
+        assert.equal(sessionId, `ses_${id}`);
+        nativeSeen.get(id)!.push(sessionId);
+      },
+      departmentProcessStream: ((_cli, _prompt, handlers) => {
+        assert.equal(controls.has(id), false, "one Owner invocation only");
+        const control = { handlers, kills: 0 };
+        controls.set(id, control);
+        startResolvers.get(id)!();
+        return { kill: () => { control.kills++; return true; } };
+      }) as RunCliStream,
+    },
+  );
+  const text = (id: string, content: string) => controls.get(id)!.handlers.onStdout(
+    JSON.stringify({ type: "text", sessionID: `ses_${id}`, part: { type: "text", text: content } }) + "\n",
+  );
+  return { ...harness, transcripts, nativeSeen, controls, started, run, text, get retryWaits() { return retryWaits; } };
+}
+
+for (const failureType of ["exit", "error"] as const) {
+  test(`retryable department leader ${failureType} fails once while the other tab completes`, async () => {
+    const h = createConcurrentLeaderHarness();
+    const a = h.run("a"), b = h.run("b");
+    await Promise.all([h.started.get("a"), h.started.get("b")]);
+    h.text("a", "A partial answer"); h.text("b", "B before failure ");
+    h.controls.get("a")!.handlers.onStderr("temporary provider failure");
+    if (failureType === "exit") h.controls.get("a")!.handlers.onExit(1);
+    else h.controls.get("a")!.handlers.onError(new Error("temporary provider failure"));
+    await a;
+    assert.equal(h.retryWaits, 0, "Owner failures must not enter retry waiting");
+    assert.equal(h.parallelRunsByTabId.has("tab-a"), false);
+    assert.equal(h.parallelRunsByTabId.has("tab-b"), true);
+    assert.deepEqual(h.taskRuns.map(r => [r.loopTaskId, r.status]), [["leader-a", "error"]]);
+    h.text("b", "B after failure");
+    h.controls.get("b")!.handlers.onExit(0);
+    await b;
+    assert.deepEqual(h.runStatusEvents.filter(e => e.tabId === "tab-a").map(e => e.status), ["start", "error"]);
+    assert.deepEqual(h.runStatusEvents.filter(e => e.tabId === "tab-b").map(e => e.status), ["start", "end"]);
+    assert.deepEqual(h.taskRuns.map(r => [r.loopTaskId, r.status]), [["leader-a", "error"], ["leader-b", "end"]]);
+    for (const [id, transcript] of h.transcripts) {
+      assert.equal(transcript.some(m => /retry queued|retry started|retry prompt/.test(m.content)), false);
+      assert.ok(h.persistedMessages.some(p => p.sessionId === id));
+    }
+    assert.ok(h.transcripts.get("local_a")!.some(m => m.content.includes("A partial answer")));
+    assert.ok(h.transcripts.get("local_b")!.some(m => m.content.includes("B after failure")));
+    assert.equal(h.parallelRunsByTabId.size, 0);
+    assert.equal(h.controls.size, 2, "one original transport per leader; no fallback or replay");
+  });
+}
+
+test("concurrent department leaders retain interleaved output and independent completion by tab", async () => {
+  const h = createConcurrentLeaderHarness();
+  const a = h.run("a"), b = h.run("b");
+  await Promise.all([h.started.get("a"), h.started.get("b")]);
+  h.text("a", "A first "); h.text("b", "B first ");
+  h.text("a", "A second "); h.text("b", "B second ");
+  h.controls.get("b")!.handlers.onExit(0);
+  await b;
+  assert.equal(h.parallelRunsByTabId.has("tab-b"), false);
+  assert.equal(h.parallelRunsByTabId.has("tab-a"), true);
+  assert.deepEqual(h.taskRuns.map(r => [r.loopTaskId, r.status]), [["leader-b", "end"]]);
+  h.text("a", "A tail");
+  h.controls.get("a")!.handlers.onExit(0);
+  await a;
+  for (const id of ["a", "b"]) {
+    const answer = h.transcripts.get(`local_${id}`)!.filter(m => m.role === "assistant").map(m => m.content).join("");
+    assert.ok(answer.includes(`${id.toUpperCase()} first `));
+    assert.ok(answer.includes(`${id.toUpperCase()} second `));
+    assert.equal(answer.includes(id === "a" ? "B first" : "A first"), false);
+    assert.ok(h.nativeSeen.get(id)!.length > 0);
+    const deltas = h.panelMessages.filter(m => m.type === "assistantDelta" && m.tabId === `tab-${id}`).map(m => m.content).join("");
+    assert.ok(deltas.includes(`${id.toUpperCase()} first `));
+    assert.equal(deltas.includes(id === "a" ? "B first" : "A first"), false);
+    assert.deepEqual(h.runStatusEvents.filter(e => e.tabId === `tab-${id}`).map(e => e.status), ["start", "end"]);
+    assert.equal(h.controls.get(id)!.kills, 0);
+    assert.ok(h.persistedMessages.some(p => p.tabId === `tab-${id}` && p.sessionId === `local_${id}`));
+  }
+  assert.ok(h.transcripts.get("local_a")!.some(m => m.content.includes("A tail")));
+  assert.equal(h.parallelRunsByTabId.size, 0);
+  assert.deepEqual(h.taskRuns.map(r => [r.loopTaskId, r.status]), [["leader-b", "end"], ["leader-a", "end"]]);
+});
+
+test("cancelling one department leader waits its Owner drain and leaves the other leader active", async () => {
+  const h = createConcurrentLeaderHarness();
+  let aDrained = false;
+  const a = h.run("a").then(() => { aDrained = true; }), b = h.run("b");
+  await Promise.all([h.started.get("a"), h.started.get("b")]);
+  h.text("a", "A before stop"); h.text("b", "B before stop ");
+  assert.equal(h.host.stopParallelRunForTab("tab-a"), true);
+  assert.equal(h.host.stopParallelRunForTab("tab-a"), false);
+  assert.equal(h.controls.get("a")!.kills, 1);
+  assert.equal(h.controls.get("b")!.kills, 0);
+  assert.equal(h.parallelRunsByTabId.has("tab-b"), true);
+  h.text("a", "A late output"); h.text("b", "B after A stop");
+  h.controls.get("b")!.handlers.onExit(0);
+  await b;
+  assert.equal(aDrained, false, "stop request is not physical/consumer drain");
+  h.controls.get("a")!.handlers.onExit(null);
+  await a;
+  assert.deepEqual(h.taskRuns.map(r => [r.loopTaskId, r.status]), [["leader-a", "stopped"], ["leader-b", "end"]]);
+  assert.deepEqual(h.runStatusEvents.filter(e => e.tabId === "tab-a").map(e => e.status), ["start", "stopped"]);
+  assert.deepEqual(h.runStatusEvents.filter(e => e.tabId === "tab-b").map(e => e.status), ["start", "end"]);
+  assert.ok(h.transcripts.get("local_a")!.some(m => m.content.includes("A before stop")));
+  assert.equal(h.transcripts.get("local_a")!.some(m => m.content.includes("A late output")), false);
+  assert.ok(h.transcripts.get("local_b")!.some(m => m.content.includes("B after A stop")));
+  assert.equal(h.transcripts.get("local_b")!.some(m => m.content.includes("A before stop")), false);
+  assert.equal(h.parallelRunsByTabId.size, 0);
 });

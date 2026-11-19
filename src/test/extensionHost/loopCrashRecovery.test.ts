@@ -22,7 +22,8 @@ const { createLoopPlusScheduler, buildLoopPlusFinishEventId } = require("../../l
 test.after(() => fs.rmSync(taskHome, { recursive: true, force: true }));
 
 let sequence = 0;
-function harness(mode: "classic" | "event_driven" = "classic", resumeWaitingClassicBatch?: (taskId: string) => boolean) {
+function harness(mode: "classic" | "event_driven" = "classic", resumeWaitingClassicBatch?: (taskId: string) => boolean,
+  isDepartmentOrganizationTask?: (task: LoopTaskRecord) => boolean) {
   const id = `recovery-${++sequence}`;
   const dir = path.join(taskHome, id);
   fs.mkdirSync(dir, { recursive: true });
@@ -56,7 +57,7 @@ function harness(mode: "classic" | "event_driven" = "classic", resumeWaitingClas
   let reconcileOnClose = false;
   let host: ReturnType<typeof createPromptRunRuntimeHost>;
   const createHost = () => createPromptRunRuntimeHost({
-    resumeWaitingClassicBatch,
+    resumeWaitingClassicBatch, isDepartmentOrganizationTask,
     getActiveWorkspaceKey: () => "workspace", getConversationTabById: (tabId) => tabs.find((tab) => tab.id === tabId) ?? null,
     getConversationTabs: () => tabs, createConversationTabId: () => "restored-main", persistConversationTabsToWorkspaceSettings: () => undefined,
     postPanelState: async () => undefined, loadSessionMessages: (_cli, sessionId) => messages.get(sessionId) ?? [],
@@ -267,3 +268,17 @@ test("经典手动续跑交回已有等待控制器，不重复启动主任务",
   assert.deepEqual(env.reports, ["alpha", "beta"]);
   assert.deepEqual(env.read().activeSubtaskIds, []);
 });
+
+for (const mode of ["classic", "event_driven"] as const) {
+  test(`trusted department organization survives local orphan reconciliation before panel readiness: ${mode}`, () => {
+    let checks = 0;
+    const env = harness(mode, undefined, task => { checks++; assert.equal(task.workspaceKey, "workspace"); return true; });
+    const before = env.read();
+    env.host.markLoopTaskStoppedAfterRuntimeEnded(env.id);
+    assert.equal(checks, 1);
+    assert.deepEqual(env.read(), before, "no status, child, scheduler or capacity side effect from a missing local invocation");
+    env.host.markLoopTaskStoppedByUser(env.id);
+    assert.equal(env.read().status, "stopped", "explicit user stop retains its ordinary semantics");
+    assert.equal(env.read().runtimeInterrupted, undefined);
+  });
+}

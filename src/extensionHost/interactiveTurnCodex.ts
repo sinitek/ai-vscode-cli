@@ -1,6 +1,6 @@
 import { normalizeRawStreamContent } from "../promptRunState";
 import { extractTaskListItemsFromForwardedCodexEvent } from "../interactive/codexAppServerProtocol";
-import { CodexInteractiveRunner } from "../interactive/codexRunner";
+import { CodexInteractiveRunner, type CodexStreamHandlers } from "../interactive/codexRunner";
 import { isCodexRetryProgressTraceKind } from "../interactive/codexRunnerRuntime";
 import { decideCodexThreadForSelection, normalizeCodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
@@ -9,6 +9,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
   return {
     async runAttempt(port: InteractiveTurnAttemptPort) {
       const uiSessionIdAtStart = port.uiSessionId;
+      const originalThreadTurn = port.originalCodexThreadTurn;
       const mappedThreadId = uiSessionIdAtStart
         ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
         : null;
@@ -16,7 +17,9 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
         configId: port.activeConfigId,
         model: port.selectedModel,
       });
-      const threadDecision = decideCodexThreadForSelection({
+      const threadDecision = originalThreadTurn ? {
+        threadId: originalThreadTurn.threadId, freezePrevious: null, startedFreshForSelectionChange: false,
+      } : decideCodexThreadForSelection({
         mappedThreadId,
         previousSelection: uiSessionIdAtStart
           ? port.interactiveRunnerManager.getCodexRunnerSelection(uiSessionIdAtStart)
@@ -35,8 +38,14 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
           tabId: port.tabId,
         });
       }
-      const runnerWasManaged = Boolean(uiSessionIdAtStart);
-      const runner = uiSessionIdAtStart
+      const runnerWasManaged = Boolean(uiSessionIdAtStart && !originalThreadTurn);
+      let ownedThreadId: string | null = null;
+      const runner = port.departmentCodexRun ? {
+        runStreamed: port.departmentCodexRun,
+        stopAndRebuild: () => port.cancelDepartmentCodexPreparation?.(),
+        getThreadId: () => ownedThreadId,
+        dispose: () => undefined,
+      } : runnerWasManaged && uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateCodexRunner({
             sessionId: uiSessionIdAtStart,
             configFingerprint: port.configFingerprint,
@@ -57,13 +66,13 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             thinkingMode: port.thinkingMode,
             interactiveMode: port.interactiveMode,
             model: nextSelection.model,
-            threadId: null,
+            threadId: originalThreadTurn?.threadId ?? null,
           });
 
       try {
         port.setStopCurrentTurn(() => runner.stopAndRebuild());
         port.syncInteractiveRunEntry(port.stopFn);
-        await runner.runStreamed(port.attemptPrompt, {
+        const handlers: CodexStreamHandlers = {
           onAssistantDelta: (chunk, meta) => {
             if (!port.isCurrentRunActive()) {
               return;
@@ -147,6 +156,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
           onRequest: port.handleStructuredHumanInteractionRequest,
           requestUserInputEnabled: port.canHandleStructuredHumanInteractionRequest(),
           onThreadId: (threadId) => {
+            ownedThreadId = threadId;
             if (!port.isCurrentRunActive()) {
               return;
             }
@@ -166,8 +176,8 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               originalSessionId: port.originalSessionId,
               tabId: port.tabId,
             });
-            if (uiSessionId) {
-              port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
+            if (uiSessionId && !port.departmentCodexRun) {
+              port.interactiveRunnerManager.setRunner("codex", uiSessionId, runner as CodexInteractiveRunner, port.thinkingMode, port.interactiveMode, nextSelection.model, {
                 configId: nextSelection.configId,
                 command: port.command,
                 configFingerprint: port.configFingerprint,
@@ -177,13 +187,16 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
             }
             port.syncInteractiveRunEntry();
           },
-        });
+        };
+        if (port.departmentCodexRun) await port.departmentCodexRun(port.attemptPrompt, handlers);
+        else await (runner as CodexInteractiveRunner).runStreamed(port.attemptPrompt, handlers, undefined, originalThreadTurn);
         return await port.settleInteractiveAttempt("codex");
       } finally {
-        if (!runnerWasManaged) {
-          const threadId = runner.getThreadId();
-          if (!threadId || !port.interactiveRunnerManager.hasCodexRunner(threadId, runner)) {
-            runner.dispose();
+        if (!port.departmentCodexRun && !runnerWasManaged) {
+          const localRunner = runner as CodexInteractiveRunner;
+          const threadId = localRunner.getThreadId();
+          if (originalThreadTurn || !threadId || !port.interactiveRunnerManager.hasCodexRunner(threadId, localRunner)) {
+            localRunner.dispose();
           }
         }
       }

@@ -1,3 +1,4 @@
+import type { LoopSubtaskCleanupResult } from "../loopSubtaskExecutionRoot";
 import {
   abortOrchestratorClarification,
   loopClarificationScope,
@@ -268,7 +269,7 @@ export function resolveLoopPlusPromptRoleBinding(input: {
   return binding;
 }
 
-export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => void } | null, T>(
+export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult> } | null, T>(
   create: () => TRoot,
   run: (root: TRoot) => Promise<T>,
 ): Promise<{ ok: true; value: T } | { ok: false; error: unknown }> {
@@ -284,7 +285,8 @@ export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => v
     return { ok: true, value: await run(root as TRoot) };
   } finally {
     if (created) {
-      root?.dispose();
+      const result = await root?.dispose();
+      if (result?.ok === false) throw new Error(`执行目录清理失败：${result.reason}`);
     }
   }
 }
@@ -292,6 +294,8 @@ export async function withLoopPlusExecutionRoot<TRoot extends { dispose: () => v
 
 export type PromptRunRuntimeHostDeps = {
   decisionSubtaskMax?: () => number;
+  /** Trusted organizational ownership check; local absence cannot stop an organization. */
+  isDepartmentOrganizationTask?: (task: LoopTaskRecord) => boolean;
   getActiveWorkspaceKey: () => string;
   getConversationTabById: (tabId: string) => ConversationTabRecord | null;
   getConversationTabs: () => ConversationTabRecord[];
@@ -530,6 +534,17 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       status: "blocked",
       ...(progressPercent !== undefined ? { progressPercent } : {}),
       ...readLoopBlockedDecisionFields(raw),
+      estimatedRemainingRounds,
+    };
+  }
+  if (raw.status === "waiting") {
+    const finalSummary = typeof raw.finalSummary === "string" && raw.finalSummary.trim()
+      ? raw.finalSummary.trim()
+      : undefined;
+    return {
+      status: "waiting",
+      ...(progressPercent !== undefined ? { progressPercent } : {}),
+      ...(finalSummary ? { finalSummary } : {}),
       estimatedRemainingRounds,
     };
   }
@@ -1152,6 +1167,7 @@ function markLoopTaskStoppedAfterRuntimeEnded(taskId: string): LoopTaskRecord | 
   if (!task || task.status !== "running") {
     return task;
   }
+  if (deps.isDepartmentOrganizationTask?.(task)) return task;
   // Losing host ownership is not a user stop. In particular, do not clear the
   // active IDs or stop the persisted Loop+ scheduler before results can return.
   const record = updateLoopTaskRecord(taskId, {

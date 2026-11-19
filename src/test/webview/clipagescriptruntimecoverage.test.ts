@@ -229,6 +229,11 @@ class FakeElement {
     this.classList.setFromClassName(value);
   }
 
+  // HTMLSelectElement.options is a live descendant collection in the real Webview.
+  get options(): FakeElement[] {
+    return this.querySelectorAll("option");
+  }
+
   get childElementCount(): number {
     return this.children.length;
   }
@@ -1157,8 +1162,9 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   };
   window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: tabs }) });
 
+  assert.equal(posted.some(message => message.type === "webviewError"), false);
   const beforeMain = posted.length;
-  const mainTab = conversationTabByLabel(document, "☀️ Codex");
+  const mainTab = conversationTabByLabel(document, "🌛 Codex");
   assert.ok(mainTab);
   mainTab.click();
   assert.deepEqual(postedTabActions(posted, beforeMain), [
@@ -1171,7 +1177,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeRepeat = posted.length;
-  const activeMainTab = conversationTabByLabel(document, "☀️ Codex");
+  const activeMainTab = conversationTabByLabel(document, "🌛 Codex");
   assert.ok(activeMainTab);
   activeMainTab.click();
   activeMainTab.dispatchEvent({ type: "keydown", key: "Enter" });
@@ -1183,7 +1189,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   ]);
 
   const beforeOthers = posted.length;
-  conversationTabByLabel(document, "🌛 Codex2")?.click();
+  conversationTabByLabel(document, "⭐️ Codex2")?.click();
   conversationTabByLabel(document, "Claude")?.click();
   conversationTabByLabel(document, "Codex3")?.click();
   assert.deepEqual(postedTabActions(posted, beforeOthers), [
@@ -1197,11 +1203,46 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
     payload: createPanelState({ conversationTabs: { ...tabs, activeTabId: "main-tab" } }),
   });
   const beforeClose = posted.length;
-  conversationTabByLabel(document, "☀️ Codex")?.querySelector(".conversation-tab-close")?.click();
+  conversationTabByLabel(document, "🌛 Codex")?.querySelector(".conversation-tab-close")?.click();
   assert.deepEqual(postedTabActions(posted, beforeClose), [
     { type: "closeConversationTab", tabId: "main-tab", cli: "codex" },
   ]);
   assert.deepEqual(posted.slice(beforeMain).filter((message) => message.type === "webviewError"), []);
+});
+
+test("selects a department leader conversation without opening its group chat", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const tabs = [
+    { id: "director-tab", cli: "codex", loopTaskRole: "main", loopTaskId: "director-task",
+      departmentPresentation: { role: "director", rootTaskId: "director-task", taskId: "director-task", moduleTitle: "产研部" } },
+    { id: "leader-tab", cli: "codex", loopTaskRole: "main", loopTaskId: "leader-task", loopSchedulingMode: "event_driven",
+      departmentPresentation: { role: "leader", rootTaskId: "director-task", taskId: "leader-task", moduleTitle: "研发模块" } },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({ conversationTabs: { activeTabId: "director-tab", tabs } }) });
+
+  const beforeLeader = posted.length;
+  const leaderTab = conversationTabByLabel(document, "🌛 Codex2");
+  assert.ok(leaderTab);
+  leaderTab.click();
+  const selectedLeader = conversationTabByLabel(document, "🌛 Codex2");
+  assert.ok(selectedLeader);
+  assert.equal(selectedLeader.getAttribute("aria-selected"), "true");
+  selectedLeader.click();
+  selectedLeader.dispatchEvent({ type: "keydown", key: "Enter" });
+  selectedLeader.dispatchEvent({ type: "keydown", key: " " });
+  assert.deepEqual(postedTabActions(posted, beforeLeader), [
+    { type: "selectConversationTab", tabId: "leader-tab", cli: "codex" },
+  ]);
+
+  const beforeDirector = posted.length;
+  const directorTab = conversationTabByLabel(document, "☀️ Codex");
+  assert.ok(directorTab);
+  directorTab.click();
+  assert.deepEqual(postedTabActions(posted, beforeDirector), [
+    { type: "openLoopGroupChat", taskId: "director-task" },
+    { type: "selectConversationTab", tabId: "director-tab", cli: "codex" },
+  ]);
+  assert.equal(posted.some(message => message.type === "webviewError"), false);
 });
 
 test("shows the workspace harness toggle as checked and disabled when .ch already exists", () => {
@@ -2567,13 +2608,13 @@ test("默认过滤子任务并保留主任务、普通及旧会话，取消勾�
   const labels = () => list.children.map((item: FakeElement) => item.querySelector(".session-label")?.textContent);
   assert.equal(api.state.historySessionFilterSubtasks, true);
   assert.equal(filter.checked, true);
-  assert.deepEqual(labels(), ["☀️ [Codex] 主任务", "[Claude] 普通会话", "[OpenCode] 旧会话"]);
+  assert.deepEqual(labels(), ["🌛 [Codex] 主任务", "[Claude] 普通会话", "[OpenCode] 旧会话"]);
   filter.checked = false;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(api.state.historySessionFilterSubtasks, false);
   assert.equal(list.children.length, 5);
-  assert.equal(labels()[1], "🌛 [Codex] 子任务");
-  assert.equal(labels()[2], "🌛 [Claude] 其它子任务");
+  assert.equal(labels()[1], "⭐️ [Codex] 子任务");
+  assert.equal(labels()[2], "⭐️ [Claude] 其它子任务");
   assert.equal(api.state.sessionState.sessions.length, 5);
   document.getElementById("historyTabPrompts").click();
   document.getElementById("historyTabSessions").click();
@@ -2603,13 +2644,13 @@ test("子任务过滤叠加关键词搜索且不影响历史提示词", () => {
   search.value = "发布";
   search.dispatchEvent({ type: "input", target: search });
   assert.equal(list.children.length, 1);
-  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "☀️ [Codex] 发布主任务");
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "🌛 [Codex] 发布主任务");
   filter.checked = false;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(list.children.length, 2);
   search.value = "子任务";
   search.dispatchEvent({ type: "input", target: search });
-  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "🌛 [Codex] 发布子任务");
+  assert.equal(list.children[0].querySelector(".session-label")?.textContent, "⭐️ [Codex] 发布子任务");
   filter.checked = true;
   filter.dispatchEvent({ type: "change", target: filter });
   assert.equal(list.children[0].textContent, "没有匹配的历史会话。");
@@ -4049,6 +4090,42 @@ test("keeps Loop and Loop+ control bubbles outside collapsed instruction groups"
     assert.equal(messages.children[messages.children.length - 1].dataset.messageId, "live-notice");
     assert.ok(messages.children[messages.children.length - 1].querySelector(".message-action-link"));
   }
+});
+
+test("department leader hides restored and live group-chat bubble links while ordinary and director links remain", () => {
+  const { api, document, window, posted } = createRuntimeHarness();
+  const tab = { id: "tab-1", cli: "codex", sessionId: "session-1", createdAt: 1,
+    loopTaskId: "leader-task", loopTaskRole: "main", loopSchedulingMode: "event_driven" };
+  const show = (departmentPresentation?: unknown) => {
+    window.dispatchMessage({ type: "state", payload: createPanelState({
+      interactiveMode: "loop_plus", conversationTabs: { activeTabId: tab.id, tabs: [{ ...tab, departmentPresentation }] },
+    }) });
+    api.state.onlyShowFinalResults = false;
+  };
+  show();
+  api.state.onlyShowFinalResults = false;
+  const action = { type: "openLoopGroupChat", taskId: tab.loopTaskId };
+  window.dispatchMessage({ type: "setMessages", tabId: tab.id, messages: [
+    { id: "restored", role: "system", content: "Loop+ 任务已暂停。", merge: false, actions: [action] },
+  ] });
+  const messages = document.getElementById("messages");
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 1);
+  show({ role: "leader", rootTaskId: "root", taskId: tab.loopTaskId, moduleTitle: "研发模块" });
+  api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 0, "late role projection invalidates cached message actions");
+  window.dispatchMessage({ type: "appendMessage", tabId: tab.id, message:
+    { id: "live", role: "system", content: "Loop+ 任务状态已更新。", merge: false, actions: [action] } });
+  assert.deepEqual(api.state.messages.map((message: any) => message.id), ["restored", "live"]);
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 0);
+  assert.equal(api.state.messages[0].actions.length, 1, "persisted history is unchanged");
+  show({ role: "director", rootTaskId: tab.loopTaskId, taskId: tab.loopTaskId, moduleTitle: "产研部" });
+  api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 2);
+  show(); api.renderMessages();
+  assert.equal(messages.querySelectorAll(".message-action-link").length, 2);
+  messages.querySelector(".message-action-link")?.click();
+  assert.ok(posted.some(message => message.type === "openLoopGroupChat" && message.taskId === tab.loopTaskId));
+  assert.deepEqual(posted.filter(message => message.type === "webviewError"), []);
 });
 
 test("does not exempt ordinary instruction bubbles with empty or invalid task actions", () => {

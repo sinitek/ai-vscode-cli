@@ -1,0 +1,309 @@
+{
+  "no_new_execution": true,
+  "reports": {
+    "department-git-platform-delta-integration": {
+      "status": "completed",
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-419-department-git-platform-delta-integration.md",
+      "sha256": "2866f9f055be4ea558b5c23c0b04399e5154a5142ed54a545a0b99dcddd55d3f"
+    },
+    "department-ui-queued-fixture-focus-repair": {
+      "status": "completed",
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-422-department-ui-queued-fixture-focus-repair.md",
+      "sha256": "1633ab9d26f6128af01997138b6bced2203c8893831ca808d36f9276f2c641bb"
+    },
+    "department-ui-keyboard-focus-boundary-repair": {
+      "status": "completed",
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-424-department-ui-keyboard-focus-boundary-repair.md",
+      "sha256": "b9689aea85409abee5f71dd0dca4381d7d9fd0a6f3b01f5624827ce6274d8fa9"
+    },
+    "department-ui-dialog-lifecycle-completion": {
+      "status": "completed",
+      "path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-425-department-ui-dialog-lifecycle-completion.md",
+      "sha256": "7bb597e6ae231e12be84b19b8ffda99493badd9a77bc2e8b060ab52755ef0350"
+    }
+  },
+  "verified_historical_artifacts": [
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422/dist/webview/departmentGroupChatModal.js",
+      "sha256": "3614a10b65c50a89b6b9bc64e2a9fbbd618bd83b43e79b66a13321a339f9b741",
+      "label": "round425 compiled modal",
+      "bytes": 17543
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422/dist/webview/loopGroupChatPanel.js",
+      "sha256": "2ff8879b36937510d6dc3e20bf8fd19b3771eea7d21dccf158ec3c5c7713a249",
+      "label": "round425 compiled panel",
+      "bytes": 101031
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422/dist/webview/loopModelSwitchDialog.js",
+      "sha256": "9630fd0e062649b91fd7465b543866b197cf496caca5281174f6f85fded62337",
+      "label": "round425 compiled switch",
+      "bytes": 9387
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422-evidence/group-round425-focus-lifecycle-final2/result.json",
+      "sha256": "4bb3e21f666c0797766bf16b9240bc3425ee9d7eb7000c27353b4711cf9bba54",
+      "label": "round425 final",
+      "bytes": 443,
+      "parsed": {
+        "scope": "generated HTML + fixture host API; no organization runtime",
+        "mode": "dialog-focus-lifecycle-only",
+        "results": [
+          {
+            "name": "1440-dark",
+            "result": "passed",
+            "scope": "dialog-focus-lifecycle-only",
+            "target": {
+              "taskId": "department-20261113-leader-111111",
+              "instanceId": "b6416509-e58c-4776-ae2f-85ff3f3fb16d"
+            },
+            "serverPort": 51788,
+            "browserErrors": []
+          }
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422-evidence/group-round425-focus-lifecycle-final2/1440-dark-focus-lifecycle.png",
+      "sha256": "6588bc4c85ea35d60fcee38efcb2736110506c9e72173081973484681807058a",
+      "label": "round425 screenshot",
+      "bytes": 202054
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422-evidence/group-round424-keyboard-focus-final3/result.json",
+      "sha256": "2fb282a7522568e52fbf53276c08a87b1c7f1d2b471e58597d1fb830e5dafd0d",
+      "label": "round424 final",
+      "bytes": 2180,
+      "parsed": {
+        "scope": "generated HTML + fixture host API; no organization runtime",
+        "mode": "merged-ui-delta",
+        "results": [
+          {
+            "name": "1440-dark",
+            "result": "passed",
+            "spacing": {
+              "indent": "16px",
+              "border": "1px",
+              "gap": "8px",
+              "avatar": "28px",
+              "memberGap": "8px",
+              "padding": "4px"
+            },
+            "parentTop": 140,
+            "childTop": 180,
+            "taskMessages": 13,
+            "serverPort": 64792,
+            "deltaOnly": true,
+            "deltaChecks": [
+              "49 transcript entries",
+              "busy continue is unavailable and dispatch count is unchanged",
+              "idle continue route remains bound to active leader",
+              "answered/active/queued bubble state and queued notice sizing/wrapping/reduced-motion behavior",
+              "keyboard modal entry, nested dialog Tab/Escape and focus return",
+              "late inactive leader update is ignored"
+            ],
+            "deltaFindings": [],
+            "browserErrors": [],
+            "screenshots": [
+              "1440-dark-modal.png",
+              "1440-dark-queued-ask.png",
+              "1440-dark-tree.png"
+            ]
+          },
+          {
+            "name": "280-light",
+            "result": "passed",
+            "spacing": {
+              "indent": "16px",
+              "border": "1px",
+              "gap": "8px",
+              "avatar": "28px",
+              "memberGap": "8px",
+              "padding": "4px"
+            },
+            "parentTop": 140,
+            "childTop": 180,
+            "taskMessages": 13,
+            "serverPort": 64792,
+            "deltaOnly": true,
+            "deltaChecks": [
+              "49 transcript entries",
+              "busy continue is unavailable and dispatch count is unchanged",
+              "idle continue route remains bound to active leader",
+              "answered/active/queued bubble state and queued notice sizing/wrapping/reduced-motion behavior",
+              "keyboard modal entry, nested dialog Tab/Escape and focus return",
+              "late inactive leader update is ignored"
+            ],
+            "deltaFindings": [],
+            "browserErrors": [],
+            "screenshots": [
+              "1440-dark-modal.png",
+              "1440-dark-queued-ask.png",
+              "1440-dark-tree.png",
+              "280-light-modal.png",
+              "280-light-queued-ask.png",
+              "280-light-tree.png"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/department-ui-queued-focus-round422-evidence/group-round424-keyboard-focus-final2/result.json",
+      "sha256": "12c53161e65b97688ee4ea9528c45ff7577817fd3015564819f1dbc256cf725d",
+      "label": "round424 stronger focus assertion failure",
+      "bytes": 1204,
+      "parsed": {
+        "scope": "generated HTML + fixture host API; no organization runtime",
+        "mode": "merged-ui-delta",
+        "results": [
+          {
+            "name": "1440-dark",
+            "result": "failed",
+            "error": "AssertionError [ERR_ASSERTION]: reverse Tab restores the last focused child control inside the iframe\n\nfalse !== true\n\n    at /private/tmp/department-ui-queued-focus-round422/scripts/department_group_chat_smoke.cjs:223:16",
+            "serverPort": 64565,
+            "deltaOnly": true,
+            "deltaFindings": [],
+            "screenshots": [
+              "1440-dark-failure.png",
+              "1440-dark-tree.png"
+            ],
+            "browserErrors": []
+          },
+          {
+            "name": "280-light",
+            "result": "failed",
+            "error": "AssertionError [ERR_ASSERTION]: reverse Tab restores the last focused child control inside the iframe\n\nfalse !== true\n\n    at /private/tmp/department-ui-queued-focus-round422/scripts/department_group_chat_smoke.cjs:223:16",
+            "serverPort": 64565,
+            "deltaOnly": true,
+            "deltaFindings": [],
+            "screenshots": [
+              "1440-dark-failure.png",
+              "1440-dark-tree.png",
+              "280-light-failure.png",
+              "280-light-tree.png"
+            ],
+            "browserErrors": []
+          }
+        ]
+      }
+    },
+    {
+      "path": "/private/tmp/department-merge-ui-delta-round419/tabs-final-2/result.json",
+      "sha256": "7f3ee59cf4a21eb667ea9eb83bfa8aab6b958d4d4377b27403e758cfac3c9244",
+      "label": "round419 tabs final",
+      "bytes": 641,
+      "parsed": {
+        "status": "passed",
+        "mode": "merged-ui-delta",
+        "viewportChecks": [
+          1280
+        ],
+        "serverPort": 53311,
+        "screenshots": [
+          "tabs-delta-employee-active.png"
+        ],
+        "checks": [
+          "49 messages cross the 48-message retention threshold",
+          "async prune request queued",
+          "late inactive-tab message and prune responses do not pollute active transcript",
+          "loading placeholder disappears after active batch",
+          "no webview/browser errors"
+        ],
+        "boundary": "Generated full webview runtime with fixture PanelState and realistic setMessages/pruneChatMessages host messages; no extension-host session store/CLI is exercised"
+      }
+    },
+    {
+      "path": "/private/tmp/department-merge-ui-delta-round419/group-final-2/result.json",
+      "sha256": "8f5033a40dc187e803f02b0a112a4e7f2035fa6e46b1d3e5ab452d17213d7872",
+      "label": "round419 malformed queued fixture and focus errors",
+      "bytes": 2845,
+      "parsed": {
+        "scope": "generated HTML + fixture host API; no organization runtime",
+        "mode": "merged-ui-delta",
+        "results": [
+          {
+            "name": "1440-dark",
+            "result": "failed",
+            "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   'queued bubble notice missing: expected 1, found 0'\n+ ]\n- []\n\n    at /Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/scripts/department_group_chat_smoke.cjs:335:16",
+            "serverPort": 52256,
+            "deltaOnly": true,
+            "deltaFindings": [
+              "queued bubble notice missing: expected 1, found 0"
+            ],
+            "screenshots": [
+              "1440-dark-failure.png",
+              "1440-dark-modal.png",
+              "1440-dark-queued-ask.png",
+              "1440-dark-tree.png"
+            ],
+            "browserErrors": [
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2255,\"column\":0,\"lineNumber\":2255,\"columnNumber\":0}",
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2123,\"column\":0,\"lineNumber\":2123,\"columnNumber\":0}",
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2255,\"column\":0,\"lineNumber\":2255,\"columnNumber\":0}"
+            ]
+          },
+          {
+            "name": "280-light",
+            "result": "failed",
+            "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   'queued bubble notice missing: expected 1, found 0'\n+ ]\n- []\n\n    at /Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/scripts/department_group_chat_smoke.cjs:335:16",
+            "serverPort": 52256,
+            "deltaOnly": true,
+            "deltaFindings": [
+              "queued bubble notice missing: expected 1, found 0"
+            ],
+            "screenshots": [
+              "1440-dark-failure.png",
+              "1440-dark-modal.png",
+              "1440-dark-queued-ask.png",
+              "1440-dark-tree.png",
+              "280-light-failure.png",
+              "280-light-modal.png",
+              "280-light-queued-ask.png",
+              "280-light-tree.png"
+            ],
+            "browserErrors": [
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2255,\"column\":0,\"lineNumber\":2255,\"columnNumber\":0}",
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2123,\"column\":0,\"lineNumber\":2123,\"columnNumber\":0}",
+              "Permissions policy violation: focus-without-user-activation is not allowed in this document. @ {\"url\":\"about:srcdoc\",\"line\":2255,\"column\":0,\"lineNumber\":2255,\"columnNumber\":0}"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "reused_results": [
+    {
+      "result": "round425 standard npm run build, 71/71 node tests",
+      "scope": "Accepted UI tree, same 814 src and tracked configuration/resources; no rerun. Build/test acceptance and timestamps are reported facts, not reconstructed logs."
+    },
+    {
+      "result": "round425 1440 dark lifecycle browser passed, browserErrors=[]",
+      "scope": "Generated Webview + fixture host only; final three webview source and compiled hashes match pinned report."
+    },
+    {
+      "result": "round424 1440 dark / 280 light keyboard and queue passed",
+      "scope": "Reuse only unchanged keyboard/queue portions as accepted; round425 changed dialog lifecycle and smoke script, so round424 is not current-byte full browser evidence. New dialog portions covered by round425 targeted result."
+    },
+    {
+      "result": "round419 tabs final passed",
+      "scope": "Script retained through round422, not a round425 addition. UI source tree acceptance declares tab input unchanged; reused tab protocol scope only, no EH/session store/CLI proof."
+    }
+  ],
+  "historical_failures": [
+    "round419 malformed queued fixture + asynchronous focus errors remain failed.",
+    "round422 stale test assertions and smoke locator failure retained in original report/evidence.",
+    "round424 missing dependencies, VM/assertion failures and stronger iframe focus failure preserved; subsequent fix results retain their own snapshots.",
+    "round425 VM opener fixture and regex first failure retained in original report; final 71/71 and focused browser accepted."
+  ],
+  "open_gates": [
+    "runtime cold recovery takeover",
+    "second EH",
+    "necessary platform gates (including real host coverage)",
+    "final remote sync and reasonable integration",
+    "full regression on actual final merged tree"
+  ],
+  "root_feature": "active/in_progress",
+  "cold_refusal_is_takeover": false
+}

@@ -1,5 +1,7 @@
 import * as fs from "fs";
+import { normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import * as path from "path";
+import { randomUUID } from "crypto";
 import { resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
 import {
   CLI_LIST,
@@ -16,6 +18,7 @@ import {
   normalizeLoopPlusAcceptancePlans,
   type LoopPlusAcceptancePlan,
 } from "./loopPlusAcceptancePlan";
+import { normalizeDepartmentRolePreference, type DepartmentConfiguredRoleRoute } from "./departmentConfiguration";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   taskSummary?: string;
@@ -44,14 +47,20 @@ export type WorkspaceSettings = {
   autoCompactContextBeforeRun?: boolean;
   workspaceMemoryEnabled?: boolean;
   /** @deprecated Loop max rounds is global; keep only for legacy reads. */
+  loopMaxRounds?: number;
   /** 当前工作区的 Loop/Loop+ 派发上限；缺省时继承全局。 */
   loopPlusDecisionSubtaskMax?: number;
+  /** 工作区产研部人数覆盖；缺省逐项继承全局。 */
+  departmentMaxLeaders?: number;
+  departmentMaxEmployees?: number;
   activeConfigIdByCli?: Partial<Record<CliName, string>>;
   conversationTabs?: ConversationTabsStateForWorkspaceSettings;
   /** Loop+ 验收方案模板；“系统默认”是内置基线，不存于此字段。 */
   loopPlusAcceptancePlans?: LoopPlusAcceptancePlan[];
   /** 最近一次选中的验收方案 ID；“系统默认”以固定 ID 表示。 */
   loopPlusAcceptancePlanSelection?: string;
+  /** 产研部角色路由偏好，按总监 CLI 档案作用域隔离。 */
+  departmentRoleRoutesByDirectorConfig?: Record<string, Partial<{ leader: DepartmentConfiguredRoleRoute; employee: DepartmentConfiguredRoleRoute }>>;
 };
 
 export type WorkspaceSettingsStoreLogger = (event: string, payload?: unknown) => void;
@@ -75,6 +84,7 @@ export type WorkspaceSettingsStoreOptions = {
   isThinkingMode: (value: unknown) => value is ThinkingMode;
   isInteractiveMode: (value: unknown) => value is InteractiveMode;
   normalizeVisibleInteractiveMode: (value: unknown) => InteractiveMode;
+  normalizeLoopMaxRounds?: (value: unknown) => number;
   sanitizeConversationTabRecord: (value: unknown) => ConversationTabRecordForWorkspaceSettings | null;
   logError?: WorkspaceSettingsStoreLogger;
 };
@@ -108,6 +118,10 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
           normalized[cli] = "loop_plus";
           return;
         }
+        if (mode === "department") {
+          normalized[cli] = "department";
+          return;
+        }
         if (options.isInteractiveMode(mode) || isLegacyLoopInteractiveMode(mode)) {
           normalized[cli] = isLegacyLoopInteractiveMode(mode)
             ? "loop"
@@ -130,6 +144,10 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
     const workspaceMemoryEnabled = (parsed as WorkspaceSettings).workspaceMemoryEnabled;
     if (typeof workspaceMemoryEnabled === "boolean") {
       result.workspaceMemoryEnabled = workspaceMemoryEnabled;
+    }
+    for (const key of ["departmentMaxLeaders", "departmentMaxEmployees"] as const) {
+      const value = normalizeWorkspaceDepartmentCapacity((parsed as WorkspaceSettings)[key]);
+      if (value !== undefined) result[key] = value;
     }
     const activeConfigIdByCli = (parsed as WorkspaceSettings).activeConfigIdByCli;
     const loopPlusDecisionSubtaskMax = normalizeWorkspaceLoopPlusDecisionSubtaskMax(
@@ -169,6 +187,18 @@ export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): W
       }
     }
     normalizeAcceptancePlanSettings(result, parsed as Record<string, unknown>);
+    const rawDepartmentRoutes = (parsed as Record<string, unknown>).departmentRoleRoutesByDirectorConfig;
+    if (rawDepartmentRoutes && typeof rawDepartmentRoutes === "object" && !Array.isArray(rawDepartmentRoutes)) {
+      const normalized: NonNullable<WorkspaceSettings["departmentRoleRoutesByDirectorConfig"]> = {};
+      for (const [scope, routes] of Object.entries(rawDepartmentRoutes as Record<string, unknown>)) {
+        if (!scope.trim() || !routes || typeof routes !== "object" || Array.isArray(routes)) continue;
+        const value = routes as Record<string, unknown>;
+        const leader = normalizeDepartmentRolePreference(value.leader);
+        const employee = normalizeDepartmentRolePreference(value.employee);
+        if (leader || employee) normalized[scope] = { ...(leader ? { leader } : {}), ...(employee ? { employee } : {}) };
+      }
+      if (Object.keys(normalized).length) result.departmentRoleRoutesByDirectorConfig = normalized;
+    }
     return result;
   } catch (error) {
     options.logError?.("workspace-settings-read-error", { error: String(error) });
@@ -206,13 +236,18 @@ export function trySaveWorkspaceSettings(
   if (!filePath) {
     return { ok: false, error: "当前工作区没有可用的设置存储位置。" };
   }
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(next, null, 2), "utf8");
+    // Replace only a complete document: a failed/partial write must preserve the saved configuration.
+    fs.writeFileSync(temporaryPath, JSON.stringify(next, null, 2), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    fs.renameSync(temporaryPath, filePath);
     return { ok: true };
   } catch (error) {
     options.logError?.("workspace-settings-write-error", { error: String(error) });
     return { ok: false, error: String(error) };
+  } finally {
+    try { fs.unlinkSync(temporaryPath); } catch { /* Already renamed, or the write never created it. */ }
   }
 }
 

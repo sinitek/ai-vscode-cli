@@ -1,0 +1,50 @@
+{
+  "parent": "51a5e7b15c54921611721fe14863e60361d64e72",
+  "committed_paths": [
+    ".ch/docs/integration/department-round419/README.md",
+    ".ch/docs/integration/department-round419/artifact-hashes.json",
+    ".ch/docs/integration/department-round419/check-results.json",
+    ".ch/docs/integration/department-round419/checks.md",
+    ".ch/docs/integration/department-round419/delta-patch.json",
+    ".ch/docs/integration/department-round419/final-checks.json",
+    ".ch/docs/integration/department-round419/isolation.json",
+    ".ch/docs/integration/department-round419/preserved-materials.json",
+    ".ch/docs/integration/department-round419/relative-to-51a.name-status.txt",
+    ".ch/docs/integration/department-round419/relative-to-51a.patch.gz",
+    ".ch/docs/integration/department-round419/relative-to-51a.stat.txt",
+    ".ch/docs/integration/department-round419/reused-evidence.json",
+    ".ch/docs/integration/department-round419/sources.json",
+    ".ch/docs/integration/department-round419/write-paths.json",
+    ".ch/docs/runbooks/department-platform-verification.md",
+    "scripts/verify_department_platform.js",
+    "scripts/verify_department_platform.test.js"
+  ],
+  "implementation_paths": [
+    "scripts/verify_department_platform.js",
+    "scripts/verify_department_platform.test.js",
+    ".ch/docs/runbooks/department-platform-verification.md"
+  ],
+  "new_evidence_paths": [
+    ".ch/docs/integration/department-round419/README.md",
+    ".ch/docs/integration/department-round419/artifact-hashes.json",
+    ".ch/docs/integration/department-round419/check-results.json",
+    ".ch/docs/integration/department-round419/checks.md",
+    ".ch/docs/integration/department-round419/delta-patch.json",
+    ".ch/docs/integration/department-round419/final-checks.json",
+    ".ch/docs/integration/department-round419/isolation.json",
+    ".ch/docs/integration/department-round419/preserved-materials.json",
+    ".ch/docs/integration/department-round419/relative-to-51a.name-status.txt",
+    ".ch/docs/integration/department-round419/relative-to-51a.patch.gz",
+    ".ch/docs/integration/department-round419/relative-to-51a.stat.txt",
+    ".ch/docs/integration/department-round419/reused-evidence.json",
+    ".ch/docs/integration/department-round419/sources.json",
+    ".ch/docs/integration/department-round419/write-paths.json"
+  ],
+  "shared_write_paths": [
+    "/Users/fangjiawei/sinitek/sinitek-ai-vscode-cli/.ch/docs/runbooks/department-git-integration.md"
+  ],
+  "report_path": "/Users/fangjiawei/.sinitek_cli/loop-communications/msg_1794556451463_c5dcb99f4e8d1/subtasks/round-419-department-git-platform-delta-integration.md",
+  "scratch_write_directory": "/private/tmp/department-platform-delta-round419",
+  "git_metadata_writes": "Only new branch/worktree registration, objects and successor worktree own index/HEAD; shared HEAD/index and old branches untouched.",
+  "reason": "Three accepted platform paths plus separately versioned audit evidence; shared handoff appended only after successor commit."
+}
