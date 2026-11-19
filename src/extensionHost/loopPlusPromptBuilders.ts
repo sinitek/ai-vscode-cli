@@ -15,7 +15,7 @@ import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtoc
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
-import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
+import { LOOP_PLUS_NEXT_STEP_CRITERIA_MAX_COUNT, type LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 import {
@@ -564,7 +564,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- Only newly dispatched or reprompted attempts consume subtask rounds. Never exceed the remaining round budget; review and report confirmation remain allowed at the limit.",
-    "- A continuing decision may optionally include nextStepPlan with a concise objective and up to three short acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.",
+    `- A continuing decision may optionally include nextStepPlan with a concise objective and up to ${LOOP_PLUS_NEXT_STEP_CRITERIA_MAX_COUNT} short acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.`,
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(batchIds, Math.min(4, parallelCapacity), context.acceptancePlan, reportIds),

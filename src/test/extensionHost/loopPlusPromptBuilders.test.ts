@@ -395,6 +395,7 @@ test("previous main decision next-step plan is exposed without overriding curren
   assert.match(prompt, /Objective: 验收成功后安排剩余交付/);
   assert.match(prompt, /1\. 核对最新子任务结果/);
   assert.match(prompt, /never overrides the root request, latest task record, scheduler state/);
+  assert.match(prompt, /up to 4 short acceptanceCriteria/);
   assert.match(prompt, /Do not include nextStepPlan with clarify, blocked, or completed/);
 });
 

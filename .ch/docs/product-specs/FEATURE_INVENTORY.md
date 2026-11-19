@@ -809,7 +809,7 @@ Loop+ 对首次全局 `blocked` 只进行一次有边界的剩余工作复核；
 
 ## 2026-11-19 Loop+ 主任务按需续跑计划
 
-Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含短目标及可选的最多三条验收标准。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
+Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含短目标及可选的最多四条验收标准。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
 
 实现：`src/loopPlusNextStepPlan.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`。回归：`src/test/loop/loopPlusDecision.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/extensionHost/loopPlusDecisionStrategies.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
 

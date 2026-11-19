@@ -57,7 +57,7 @@ test("persists a bounded Loop+ next-step plan and ignores corrupt stored plans",
   const task = createLegacyTask();
   task.loopPlusNextStepPlan = {
     objective: "验收后继续推进剩余目标",
-    acceptanceCriteria: ["基于已验收结果", "不绕过完成门禁"],
+    acceptanceCriteria: ["基于已验收结果", "不绕过完成门禁", "核对剩余目标", "记录验证范围"],
   };
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusNextStepPlan, task.loopPlusNextStepPlan);

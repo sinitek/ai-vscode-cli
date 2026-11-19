@@ -284,7 +284,7 @@ scheduler 的派发拒绝（含 `active_subtask`）同样走 protocolMiss。disp
 
 ## 主任务按需续跑计划
 
-Loop+ 主模型可在 `dispatch`、`steer`、`accept` 或 `wait` 决策中自愿返回 `nextStepPlan`，仅包含必填 `objective`（最多 240 字符）和可选的 1 至 3 条 `acceptanceCriteria`（每条最多 120 字符）。主模型自行判断是否值得把后续工作留给下一次主任务决策；计划不复制当前调度快照或已完成工作，也不新增子任务。
+Loop+ 主模型可在 `dispatch`、`steer`、`accept` 或 `wait` 决策中自愿返回 `nextStepPlan`，仅包含必填 `objective`（最多 240 字符）和可选的 1 至 4 条 `acceptanceCriteria`（每条最多 120 字符）。主模型自行判断是否值得把后续工作留给下一次主任务决策；计划不复制当前调度快照或已完成工作，也不新增子任务。
 
 宿主只在整份继续型决策通过校验并应用后，才将计划持久化到父任务记录；下一次主模型提示读取该计划，并仍以根需求、补充需求、最新任务记录、冻结验收/报告/消息前缀和 scheduler 状态为准。有效决策可省略计划以消费旧计划，也可直接替换；协议无效、协议纠错、`clarify`、非终态暂停和宿主重建保留待执行计划。模型确认 `blocked`、成功完成父任务或用户停止时清除计划。
 
