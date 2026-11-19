@@ -546,17 +546,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           return attempt && !attempt.settled && (attempt.isActive?.() ?? true);
         })) continue;
         runtime.recoveringWait = true;
+        let changed = snapshot.running.length === 0;
         try {
           for (const record of snapshot.running) {
-            const attempt = runtime.attempts.get(record.attemptId);
-            if (attempt) {
-              attempt.settled = true;
-              try {
-                attempt.abort();
-              } catch (error) {
-                deps.log?.("loop-plus-wait-watchdog-abort-failed", { taskId: runtime.taskId, attemptId: record.attemptId, error: errorText(error) });
-              }
+            const meta = runtime.meta.get(record.subtaskId);
+            if (meta) {
+              if (parkInterruptedAttempt(runtime, record, meta)) changed = true;
+              continue;
             }
+            changed = true;
+            discardLostAttempt(runtime, record);
             safeApplyFinish(runtime, {
               subtaskId: record.subtaskId,
               attemptId: record.attemptId,
@@ -567,7 +566,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         } finally {
           runtime.recoveringWait = false;
         }
-        if (runtime.autoPaused || runtime.stopRequested || runtime.released) continue;
+        if (!changed || runtime.autoPaused || runtime.stopRequested || runtime.released) continue;
         promotePendingAndLaunch(runtime);
         const current = runtime.scheduler.snapshot();
         if (current.running.length === 0 && current.pending.length === 0) {
@@ -629,8 +628,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() });
     const runtime = buildRuntime(task, target, input, scheduler);
-    // No attempt handles survive a host restart. Preserve their reservations
-    // and expose the interruption to the main model on explicit parent resume.
     if (!scheduler.snapshot().parentStopped) {
       scheduler.snapshot().running.forEach((attempt) => {
         const meta = runtime.meta.get(attempt.subtaskId);
@@ -850,28 +847,47 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
 
   function resumeInterruptedSubtasks(taskId: string): boolean {
     const runtime = runtimes.get(taskId);
-    if (!runtime || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped) {
-      if (deps.readTask(taskId)?.schedulingMode === "event_driven") {
-        interruptedSubtaskResumeRequests.add(taskId);
-      }
+    if (!runtime || runtime.autoPaused || runtime.stopRequested || runtime.released
+      || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
+      if (deps.readTask(taskId)?.schedulingMode === "event_driven") interruptedSubtaskResumeRequests.add(taskId);
       return false;
     }
     interruptedSubtaskResumeRequests.delete(taskId);
-    if (runtime.released || runtime.scheduler.snapshot().completed) {
-      return false;
-    }
-    const interrupted = runtime.scheduler.snapshot().running.filter((record) => (
-      runtime.meta.get(record.subtaskId)?.executionStatus === "blocked"
-      && runtime.attempts.get(record.attemptId)?.settled !== false
-      && !runtime.launching.has(record.attemptId)
-    ));
-    if (interrupted.length === 0) {
-      return false;
-    }
+    const restarted = relaunchInterruptedSubtasks(runtime);
+    if (restarted) requestPump(runtime);
+    return restarted;
+  }
+
+  function relaunchInterruptedSubtasks(runtime: ParentRuntime): boolean {
+    const interrupted = runtime.scheduler.snapshot().running.filter((record) => {
+      const meta = runtime.meta.get(record.subtaskId);
+      if (!meta || runtime.launching.has(record.attemptId)) return false;
+      const attempt = runtime.attempts.get(record.attemptId);
+      if (attempt && !attempt.settled) return false;
+      if (meta.executionStatus !== "blocked") return false;
+      return true;
+    });
     interrupted.forEach((record) => runtime.attempts.delete(record.attemptId));
     launchAll(runtime, interrupted);
-    requestPump(runtime);
-    return true;
+    return interrupted.length > 0;
+  }
+
+  function parkInterruptedAttempt(runtime: ParentRuntime, record: LoopPlusExecutionRecord, meta: SubtaskMeta): boolean {
+    const changed = meta.executionStatus !== "blocked";
+    discardLostAttempt(runtime, record);
+    meta.executionStatus = "blocked";
+    return changed;
+  }
+
+  function discardLostAttempt(runtime: ParentRuntime, record: LoopPlusExecutionRecord): void {
+    const attempt = runtime.attempts.get(record.attemptId);
+    if (!attempt || attempt.settled) return;
+    attempt.settled = true;
+    try {
+      attempt.abort();
+    } catch (error) {
+      deps.log?.("loop-plus-wait-watchdog-abort-failed", { taskId: runtime.taskId, attemptId: record.attemptId, error: errorText(error) });
+    }
   }
 
   function reconcileLostRunning(runtime: ParentRuntime): void {

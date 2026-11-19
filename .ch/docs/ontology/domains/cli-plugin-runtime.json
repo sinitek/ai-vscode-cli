@@ -2554,6 +2554,19 @@
       ]
     },
     {
+      "id": "plugin.rule.chat_model_manager_by_role_cli",
+      "name": "模型管理入口按对话角色的 CLI 和配置复用",
+      "description": "Codex 和 Kimi Code 在 Vibe、Loop、Loop+ 对话模型下拉复用同一管理弹窗。主模型和各子任务角色按自身 CLI 及配置管理模型；打开弹窗不改变模型选择，也不切换面板 CLI。不支持管理的 CLI 保持原有模型下拉。",
+      "status": "active",
+      "aliases": ["模型下拉管理", "子模型管理"],
+      "applies_to": ["plugin.chat_panel", "plugin.local_cli", "plugin.config_profile"],
+      "source_refs": [
+        { "path": "src/webview/viewContentScript/modelManager.ts" },
+        { "path": "src/test/webview/clipagescriptruntimecoverage.test.ts" },
+        { "path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md", "anchor": "3.7 模型、思考模式与规则" }
+      ]
+    },
+    {
       "id": "plugin.rule.all_cli_config_snapshot_sync",
       "name": "所有 CLI 配置快照供共享子模型入口统一加载和刷新",
       "description": "AI 面板首次打开和配置保存后并行读取七个 CLI 的档案摘要及独立激活身份，复用心跳已有种子并隔离各分组错误。Grok、DSH、KimiCode、ZCode 缺少保存档案时仍读取已有原生模型，OpenCode 跨 CLI 子模型只解析本机元数据；不创建默认档案、不自动激活首项或后台回写旧选择、不启动所有 CLI 或发送模型请求。Loop、Loop+ 共用完整模型与身份状态，ZCode 主模型也接入共享子模型分组控件。配置页所有分组采用宿主激活身份；激活档案保存应用并等待面板刷新，未激活档案保存不切换配置或主 CLI。显式空身份不回退到旧心跳，新应用的工作区配置不受旧快照遮蔽；实际跨 CLI 派发仍要求有效档案绑定。",
@@ -4393,7 +4406,7 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务继续保持 running 并等待 activeSubtaskIds 清空；同一批次的子任务按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped；只要父任务仍为 running，主任务 Tab 即使没有直接 CLI 进程也可发起停止。正常完成回调在全部活动子任务成功完成后唤醒主任务复核；当前宿主另每 5 分钟巡检真实执行所有权，主模型空闲且没有活动子任务时，经典 Loop 取消失联批次等待并保留未完成项为 blocked，Loop+ 将失联预留提交为失败验收事件后唤醒主任务，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复；用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。手动续跑成功后经典 Loop 等全部活动任务完成再恢复主任务；Loop+ 可从持久化快照重建原开放 attempt 的完成事件与验收链，失联兄弟预留不制造完成结果。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务等待 activeSubtaskIds 清空；同一批次按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped。正常完成回调在全部活动子任务成功后唤醒主任务复核。当前宿主每 5 分钟巡检真实执行所有权：经典 Loop 取消失联批次调用、保留未完成 blocked 子任务和原等待控制器，并将父任务标记为 stopped + runtimeInterrupted，使群聊“继续”可以续跑；Loop+ 取消失联调用，将有对应任务记录的开放 attempt 置为 blocked 并保留原身份，不立即生成失败验收事件，显式继续时重启子任务，只有本次结果进入验收。无法关联任务记录的残留预留仍作为失败事件处理，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟阻止误恢复；迟到回调不重复回报。主动停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复。用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"

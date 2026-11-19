@@ -343,7 +343,7 @@ export const VIEW_CONTENT_SCRIPT_EVENT_BINDINGS = `      if (elements.messages) 
         elements.openCodeSmallModelSelect.addEventListener("change", (event) => {
           const route = typeof getLoopSubtaskRoute === "function" ? getLoopSubtaskRoute() : null;
           if (route && (route.crossCli || route.subtaskCli !== "opencode") && typeof handleLoopSubtaskModelChange === "function") {
-            handleLoopSubtaskModelChange(event.target.value);
+            handleLoopSubtaskModelChange(event.target.value, event.target);
             return;
           }
           handleOpenCodeRoleModelChange("subtask", event.target.value);

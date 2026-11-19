@@ -1725,12 +1725,14 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.equal(document.getElementById("codexLoopSubtaskModelSelect").disabled, false);
   assert.equal(document.getElementById("modelSelect").style.display, "none");
   assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopMainModelSelect")), [
-      ["", "默认"],
+    ["", "默认"],
     ["gpt-5-main", "gpt-5-main"],
+    ["__manage__", "管理"],
   ]);
   assert.deepEqual(childValueTextPairs(document.getElementById("codexLoopSubtaskModelSelect")), [
     ["", "默认"],
     ["gpt-5-subtask", "gpt-5-subtask"],
+    ["__manage__", "管理"],
   ]);
   assert.equal(document.getElementById("codexLoopMainModelSelect").value, "gpt-5-main");
   assert.equal(document.getElementById("codexLoopSubtaskModelSelect").value, "gpt-5-subtask");
@@ -6129,6 +6131,65 @@ test("ZCode model selectors follow interaction modes and recover after CLI switc
   assert.deepEqual(posted.filter((message) => message.type === "webviewError"), []);
 });
 
+test("Loop and Loop+ reuse model management for the selected role's CLI and profile", () => {
+  const cases = [
+    { mode: "loop", id: "codexLoopMainModelSelect", cli: "codex", model: "gpt-5-main" },
+    { mode: "loop", id: "codexLoopSubtaskModelSelect", cli: "kimi-code", model: "kimi-task" },
+    { mode: "loop_plus", id: "codexLoopMainModelSelect", cli: "codex", model: "gpt-5-main" },
+    { mode: "loop_plus", id: "codexLoopFullstackModelSelect", cli: "kimi-code", model: "kimi-explicit", split: false },
+    { mode: "loop_plus", id: "codexLoopFrontendModelSelect", cli: "kimi-code", model: "kimi-explicit", split: true },
+    { mode: "loop_plus", id: "codexLoopSubtaskModelSelect", cli: "kimi-code", model: "kimi-task", split: true },
+  ];
+  for (const { mode, id, cli, model, split } of cases) {
+    const { document, window, posted, api } = createRuntimeHarness(undefined, undefined, ["codex", "kimi-code"]);
+    const payload = createPanelState({ interactiveMode: mode });
+    Object.assign(payload.modelState as Record<string, unknown>, {
+      activeConfigIdByCli: { codex: "cfg-1", "kimi-code": "kimi-profile" },
+      selectedLoopSubtaskCliByConfigId: { "cfg-1": "kimi-code" },
+      selectedLoopFrontendCliByConfigId: { "cfg-1": "kimi-code" },
+      selectedLoopFullstackCliByConfigId: { "cfg-1": "kimi-code" },
+      selectedLoopSubtaskModeByConfigId: { "cfg-1": split ? "split" : "fullstack" },
+      loopRoleExplicitModelByConfigId: { "kimi-profile": { frontend: "kimi-explicit", fullstack: "kimi-explicit" } },
+      optionsByCli: { codex: ["gpt-5"], "kimi-code": ["kimi-task", "kimi-explicit"] },
+      managedByCli: { codex: ["gpt-5"], "kimi-code": ["kimi-task", "kimi-explicit"] },
+      loopOptionsByCli: { codex: { main: ["gpt-5-main"] }, "kimi-code": { subtask: ["kimi-task", "kimi-explicit"] } },
+      selectedLoopByCli: { codex: { main: "gpt-5-main" }, "kimi-code": { subtask: "kimi-task" } },
+    });
+    window.dispatchMessage({ type: "state", payload });
+    const select = document.getElementById(id);
+    const overlay = document.getElementById("addModelOverlay");
+    const configId = cli === "codex" ? "cfg-1" : "kimi-profile";
+    assert.equal(select.disabled, false, `${mode}: ${id}`);
+    assert.deepEqual(childValueTextPairs(select).at(-1), ["__manage__", "管理"]);
+    assert.equal(select.value, model);
+    const beforeSelection = posted.length;
+    select.value = "__manage__";
+    select.dispatchEvent({ type: "change" });
+    assert.equal(select.value, model);
+    assert.equal(overlay.classList.contains("visible"), true);
+    assert.equal(api.state.currentCli, "codex");
+    assert.deepEqual(posted.slice(beforeSelection).map((message) => message.type), ["inspectModelManager"]);
+    assert.equal(posted.at(-1).cli, cli);
+    assert.equal(posted.at(-1).configId, configId);
+    const managerList = document.getElementById("modelManagerList");
+    assert.equal(managerList.children[0].children[0].children[0].textContent, cli === "codex" ? "gpt-5" : "kimi-task");
+    window.dispatchMessage({ type: "state", payload });
+    assert.equal(overlay.classList.contains("visible"), true);
+    document.getElementById("modelInput").value = "new-test-model";
+    document.getElementById("confirmAddModel").dispatchEvent({ type: "click" });
+    assert.deepEqual(posted.at(-1), { type: "addCliModel", cli, model: "new-test-model", configId });
+    document.getElementById("cancelAddModel").dispatchEvent({ type: "click" });
+    assert.equal(overlay.classList.contains("visible"), false);
+    assert.equal(select.value, model);
+    if (mode === "loop" && id === "codexLoopSubtaskModelSelect") {
+      const currentCli = document.getElementById("currentCli");
+      currentCli.value = "kimi-code";
+      currentCli.dispatchEvent({ type: "change" });
+      assert.equal(overlay.classList.contains("visible"), false);
+    }
+  }
+});
+
 test("all CLI child routes initialize and refresh in Loop and Loop+ without visiting target CLIs", () => {
   const activeConfigIdByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, `${cli}-profile`]));
   const optionsByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, cli === "claude" ? [] : [`synthetic-${cli}`]]));
@@ -6169,6 +6230,14 @@ test("all CLI child routes initialize and refresh in Loop and Loop+ without visi
         const select = document.getElementById(modelId);
         assert.equal(select.disabled, targetCli === "claude");
         if (targetCli !== "claude") {
+          const expectedModels = targetCli === "opencode"
+            ? ["", "fixture/child"]
+            : targetCli === "codex"
+              ? ["", `synthetic-${targetCli}`, "__manage__"]
+              : targetCli === "kimi-code"
+                ? [`synthetic-${targetCli}`, "__manage__"]
+                : [`synthetic-${targetCli}`];
+          assert.deepEqual(childValueTextPairs(select).map(([value]) => value), expectedModels);
           assert.equal(select.value, targetCli === "opencode" ? "fixture/child" : `synthetic-${targetCli}`);
           const updatedModel = targetCli === "opencode" ? "fixture/saved" : `saved-${targetCli}`;
           const updatedOpenCodeModels = {

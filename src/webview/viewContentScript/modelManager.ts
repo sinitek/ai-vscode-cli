@@ -1,5 +1,7 @@
 // Model manager, model selection, and model persistence handlers.
-export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDeclaredModels(cli = state.currentCli) {
+export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      let modelManagerTarget = null;
+
+      function cliUsesConfigDeclaredModels(cli = state.currentCli) {
         return cli === "grok" || cli === "kimi-code" || cli === "zcode" || cli === "dsh"
           || (cli === "codex" && Boolean(state.configuredDefaultModelsByCli && state.configuredDefaultModelsByCli.codex));
       }
@@ -45,16 +47,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         return cli === "codex" || cli === "kimi-code";
       }
 
-      function getModelsForCurrentCli() {
-        const cli = state.currentCli;
+      function getModelsForCurrentCli(cli = state.currentCli) {
         const models = state.modelsByCli && Array.isArray(state.modelsByCli[cli])
           ? state.modelsByCli[cli]
           : [];
         return models;
       }
 
-      function getManagedModelsForCurrentCli() {
-        const cli = state.currentCli;
+      function getManagedModelsForCurrentCli(cli = state.currentCli) {
         const models = state.managedModelsByCli && Array.isArray(state.managedModelsByCli[cli])
           ? state.managedModelsByCli[cli]
           : [];
@@ -79,6 +79,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
 
       function handleModelSelectChange(value) {
         if (value === MODEL_MANAGE_OPTION_VALUE) {
+          updateModelSelectOptions();
           showAddModelDialog();
           return;
         }
@@ -95,17 +96,14 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         });
       }
 
-      function reportModelManagerInspection() {
-        if (!cliSupportsManagedModelSelection()) {
-          return;
-        }
+      function reportModelManagerInspection(cli, configId) {
         vscode.postMessage({
           type: "inspectModelManager",
-          cli: state.currentCli,
-          configId: getCurrentModelConfigId(),
-          visibleModelCount: getModelsForCurrentCli().length,
-          visibleManagedModelCount: getManagedModelsForCurrentCli().length,
-          selectedModel: state.selectedModel || null,
+          cli,
+          configId,
+          visibleModelCount: getModelsForCurrentCli(cli).length,
+          visibleManagedModelCount: getManagedModelsForCurrentCli(cli).length,
+          selectedModel: state.selectedModelsByCli && state.selectedModelsByCli[cli] || null,
         });
       }
 
@@ -150,10 +148,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function renderModelManagerList() {
-        if (!elements.modelManagerList) {
+        if (!elements.modelManagerList || !modelManagerTarget) {
           return;
         }
-        const availableModels = getManagedModelsForCurrentCli();
+        if (!getModelManagerTarget()) {
+          hideAddModelDialog();
+          return;
+        }
+        const { cli, configId } = modelManagerTarget;
+        const availableModels = getManagedModelsForCurrentCli(cli);
         elements.modelManagerList.innerHTML = "";
         if (!availableModels.length) {
           const empty = document.createElement("div");
@@ -196,10 +199,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           moveUpButton.addEventListener("click", () => {
             vscode.postMessage({
               type: "moveCliModel",
-              cli: state.currentCli,
+              cli,
               model: modelName,
               direction: "up",
-              configId: getCurrentModelConfigId(),
+              configId,
             });
           });
           actions.appendChild(moveUpButton);
@@ -212,10 +215,10 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           moveDownButton.addEventListener("click", () => {
             vscode.postMessage({
               type: "moveCliModel",
-              cli: state.currentCli,
+              cli,
               model: modelName,
               direction: "down",
-              configId: getCurrentModelConfigId(),
+              configId,
             });
           });
           actions.appendChild(moveDownButton);
@@ -230,9 +233,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
             }
             vscode.postMessage({
               type: "deleteCliModel",
-              cli: state.currentCli,
+              cli,
               model: modelName,
-              configId: getCurrentModelConfigId(),
+              configId,
             });
           });
           actions.appendChild(deleteButton);
@@ -240,6 +243,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           item.appendChild(actions);
           elements.modelManagerList.appendChild(item);
         });
+      }
+
+      function appendModelManageOption(selectElement, cli) {
+        if (canOpenModelManagerDialog(cli)) {
+          const manageOption = document.createElement("option");
+          manageOption.value = MODEL_MANAGE_OPTION_VALUE;
+          manageOption.textContent = t("modelOptionManage");
+          selectElement.appendChild(manageOption);
+        }
       }
 
       function updateModelSelectOptions() {
@@ -265,12 +277,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           elements.modelSelect.appendChild(option);
         });
 
-        if (canOpenModelManagerDialog(state.currentCli)) {
-          const manageOption = document.createElement("option");
-          manageOption.value = MODEL_MANAGE_OPTION_VALUE;
-          manageOption.textContent = t("modelOptionManage");
-          elements.modelSelect.appendChild(manageOption);
-        }
+        appendModelManageOption(elements.modelSelect, state.currentCli);
 
         const nextValue = typeof state.selectedModel === "string" ? state.selectedModel : "";
         if (nextValue && availableModels.includes(nextValue)) {
@@ -323,18 +330,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         return "";
       }
 
-      function updateCodexLoopRoleModelSelect(selectElement, role) {
+      function updateCodexLoopRoleModelSelect(selectElement, role, cli = state.currentCli) {
         if (!selectElement || (typeof isSelectFocused === "function" && isSelectFocused(selectElement))) {
           return;
         }
-        const availableModels = getLoopRoleModelsForCli(state.currentCli, role);
+        const availableModels = getLoopRoleModelsForCli(cli, role);
         selectElement.innerHTML = "";
 
-        const configDeclared = cliUsesConfigDeclaredModels();
+        const configDeclared = cliUsesConfigDeclaredModels(cli);
         if (!configDeclared || availableModels.length === 0) {
           const defaultOption = document.createElement("option");
           defaultOption.value = "";
-          defaultOption.textContent = getNoConfiguredModelLabel(state.currentCli);
+          defaultOption.textContent = getNoConfiguredModelLabel(cli);
           defaultOption.disabled = configDeclared;
           selectElement.appendChild(defaultOption);
         }
@@ -342,12 +349,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         availableModels.forEach((modelName) => {
           const option = document.createElement("option");
           option.value = modelName;
-          option.textContent = getModelOptionLabel(state.currentCli, modelName);
+          option.textContent = getModelOptionLabel(cli, modelName);
           selectElement.appendChild(option);
         });
 
-        selectElement.value = getSelectedLoopRoleModelForCli(state.currentCli, role);
-        selectElement.title = getCliLoopModelSelectAria(state.currentCli, role);
+        appendModelManageOption(selectElement, cli);
+        selectElement.value = getSelectedLoopRoleModelForCli(cli, role);
+        selectElement.title = getCliLoopModelSelectAria(cli, role);
         if (typeof selectElement.setAttribute === "function") {
           selectElement.setAttribute("aria-label", selectElement.title);
         }
@@ -610,13 +618,18 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         }
       }
 
-      function handleLoopRoleModelChange(role, rawValue) {
+      function handleLoopRoleModelChange(role, rawValue, selectElement) {
         const route = getLoopNamedRoute(role);
         if (!route || route.subtaskCli === "claude" || route.unavailableReason) {
           return;
         }
         const value = typeof normalizeModelSelection === "function" ? normalizeModelSelection(rawValue) : String(rawValue || "").trim();
         const configId = route.subtaskConfigId || route.mainConfigId;
+        if (rawValue === MODEL_MANAGE_OPTION_VALUE && canOpenModelManagerDialog(route.subtaskCli)) {
+          const selected = readExplicitRoleModel(configId, role) ?? readLoopSubtaskModelSelection(route);
+          openLoopModelManager(selectElement, route.subtaskCli, configId, selected);
+          return;
+        }
         if (!configId) {
           return;
         }
@@ -754,27 +767,9 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           const selected = models && (models.selectedSubtaskRef || models.selectedSmallRef) || "";
           selectElement.value = selected || "";
           selectElement.title = t("openCodeSmallModelSelectAria");
-        } else if (cli === state.currentCli && (cli === "codex" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode")) {
-          updateCodexLoopRoleModelSelect(selectElement, "subtask");
-          return;
         } else {
-          const models = getLoopRoleModelsForCli(cli, "subtask");
-          const configDeclared = cliUsesConfigDeclaredModels(cli);
-          if (!configDeclared || models.length === 0) {
-            const empty = document.createElement("option");
-            empty.value = "";
-            empty.textContent = getNoConfiguredModelLabel(cli);
-            empty.disabled = configDeclared;
-            selectElement.appendChild(empty);
-          }
-          models.forEach((modelName) => {
-            const option = document.createElement("option");
-            option.value = modelName;
-            option.textContent = getModelOptionLabel(cli, modelName);
-            selectElement.appendChild(option);
-          });
-          selectElement.value = getSelectedLoopRoleModelForCli(cli, "subtask");
-          selectElement.title = getCliLoopModelSelectAria(cli, "subtask");
+          updateCodexLoopRoleModelSelect(selectElement, "subtask", cli);
+          return;
         }
         if (typeof selectElement.setAttribute === "function" && selectElement.title) {
           selectElement.setAttribute("aria-label", selectElement.title);
@@ -1078,21 +1073,40 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
 
       function handleCurrentCliSelectionChange(cli) {
         syncModelSelectorByInteractiveMode(cli);
-        if (!canOpenModelManagerDialog(cli)) {
+        if (!canOpenModelManagerDialog(cli) || (modelManagerTarget && cli !== modelManagerTarget.panelCli)) {
           hideAddModelDialog();
         }
       }
 
-      function showAddModelDialog() {
-        if (!elements.addModelOverlay || !canOpenModelManagerDialog()) {
+      function getModelManagerConfigId(cli) {
+        return cli === state.currentCli ? getCurrentModelConfigId() : getActiveConfigIdForStateCli(cli);
+      }
+
+      function getModelManagerTarget() {
+        return modelManagerTarget && modelManagerTarget.panelCli === state.currentCli
+          && modelManagerTarget.configId === getModelManagerConfigId(modelManagerTarget.cli)
+          ? modelManagerTarget : null;
+      }
+
+      function openLoopModelManager(selectElement, cli, configId, selectedModel) {
+        if (selectElement) {
+          selectElement.value = selectedModel;
+        }
+        showAddModelDialog(cli, configId);
+      }
+
+      function showAddModelDialog(cli = state.currentCli, configId = getModelManagerConfigId(cli)) {
+        if (!elements.addModelOverlay || !canOpenModelManagerDialog(cli) || configId !== getModelManagerConfigId(cli)) {
           return;
         }
-        if (elements.modelSelect) {
-          elements.modelSelect.value = state.selectedModel || "";
+        modelManagerTarget = { cli, configId, panelCli: state.currentCli };
+        if (elements.addModelTitle) {
+          const title = t("modelAddTitle");
+          elements.addModelTitle.textContent = cli === state.currentCli ? title : title + " · " + CLI_DISPLAY_NAMES[cli];
         }
         resetModelManageForm();
         renderModelManagerList();
-        reportModelManagerInspection();
+        reportModelManagerInspection(cli, configId);
         elements.addModelOverlay.classList.add("visible");
         elements.modelInput.focus();
       }
@@ -1102,10 +1116,8 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
           return;
         }
         elements.addModelOverlay.classList.remove("visible");
+        modelManagerTarget = null;
         resetModelManageForm();
-        if (elements.modelSelect) {
-          elements.modelSelect.value = state.selectedModel || "";
-        }
       }
 
       function shouldSubmitModelInputOnEnter(event, isComposing, lastCompositionEndAt, now = Date.now()) {
@@ -1118,15 +1130,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
 
       function confirmAddModel() {
-        if (!cliSupportsManagedModelSelection()) {
+        const target = getModelManagerTarget();
+        if (!target) {
           return;
         }
+        const { cli, configId } = target;
         const modelName = elements.modelInput.value.trim();
         if (!modelName) {
           showModelManageError(t("modelAddEmptyError"));
           return;
         }
-        const existingModels = getModelsForCurrentCli();
+        const existingModels = getModelsForCurrentCli(cli);
         const editingKey = editingModelName ? editingModelName.toLowerCase() : "";
         const duplicate = existingModels.some((model) => {
           const currentKey = String(model).toLowerCase();
@@ -1139,17 +1153,17 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         if (editingModelName) {
           vscode.postMessage({
             type: "renameCliModel",
-            cli: state.currentCli,
+            cli,
             previousModel: editingModelName,
             nextModel: modelName,
-            configId: getCurrentModelConfigId(),
+            configId,
           });
         } else {
           vscode.postMessage({
             type: "addCliModel",
-            cli: state.currentCli,
+            cli,
             model: modelName,
-            configId: getCurrentModelConfigId(),
+            configId,
           });
         }
         resetModelManageForm();
@@ -1277,9 +1291,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         });
       }
 
-      function handleLoopSubtaskModelChange(rawValue) {
+      function handleLoopSubtaskModelChange(rawValue, selectElement) {
         const route = getLoopSubtaskRoute();
         if (!route || route.subtaskCli === "claude" || route.unavailableReason) {
+          return;
+        }
+        if (rawValue === MODEL_MANAGE_OPTION_VALUE && canOpenModelManagerDialog(route.subtaskCli)) {
+          openLoopModelManager(selectElement, route.subtaskCli, route.subtaskConfigId, readLoopSubtaskModelSelection(route));
           return;
         }
         if (route.subtaskCli === "opencode") {
@@ -1363,12 +1381,16 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
         });
       }
 
-      function handleCodexLoopRoleModelChange(role, rawValue) {
+      function handleCodexLoopRoleModelChange(role, rawValue, selectElement) {
+        const cli = state.currentCli;
+        if (rawValue === MODEL_MANAGE_OPTION_VALUE && canOpenModelManagerDialog(cli)) {
+          openLoopModelManager(selectElement, cli, getCurrentModelConfigId(), getSelectedLoopRoleModelForCli(cli, role));
+          return;
+        }
         const value = normalizeModelSelection(rawValue);
         if (!state.selectedLoopModelsByCli || typeof state.selectedLoopModelsByCli !== "object") {
           state.selectedLoopModelsByCli = {};
         }
-        const cli = state.currentCli;
         const existingSelection = state.selectedLoopModelsByCli[cli] || { main: "", subtask: "" };
         state.selectedLoopModelsByCli[cli] = {
           main: role === "main" ? value : normalizeModelSelection(existingSelection.main),
@@ -1396,13 +1418,13 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
 
       if (elements.codexLoopMainModelSelect) {
         elements.codexLoopMainModelSelect.addEventListener("change", (event) => {
-          handleCodexLoopRoleModelChange("main", event.target.value);
+          handleCodexLoopRoleModelChange("main", event.target.value, event.target);
         });
       }
 
       if (elements.codexLoopSubtaskModelSelect) {
         elements.codexLoopSubtaskModelSelect.addEventListener("change", (event) => {
-          handleLoopSubtaskModelChange(event.target.value);
+          handleLoopSubtaskModelChange(event.target.value, event.target);
         });
       }
       if (elements.openCodeSmallModelSelect) {
@@ -1434,22 +1456,22 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       });
       if (elements.codexLoopFrontendModelSelect) {
         elements.codexLoopFrontendModelSelect.addEventListener("change", (event) => {
-          handleLoopRoleModelChange("frontend", event.target.value);
+          handleLoopRoleModelChange("frontend", event.target.value, event.target);
         });
       }
       if (elements.openCodeFrontendModelSelect) {
         elements.openCodeFrontendModelSelect.addEventListener("change", (event) => {
-          handleLoopRoleModelChange("frontend", event.target.value);
+          handleLoopRoleModelChange("frontend", event.target.value, event.target);
         });
       }
       if (elements.codexLoopFullstackModelSelect) {
         elements.codexLoopFullstackModelSelect.addEventListener("change", (event) => {
-          handleLoopRoleModelChange("fullstack", event.target.value);
+          handleLoopRoleModelChange("fullstack", event.target.value, event.target);
         });
       }
       if (elements.openCodeFullstackModelSelect) {
         elements.openCodeFullstackModelSelect.addEventListener("change", (event) => {
-          handleLoopRoleModelChange("fullstack", event.target.value);
+          handleLoopRoleModelChange("fullstack", event.target.value, event.target);
         });
       }
       function bindLoopRoleThinkingControls(role, controls) {
@@ -1499,7 +1521,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      function cliUsesConfigDe
       }
       if (elements.claudeLoopSubtaskModelSelect) {
         elements.claudeLoopSubtaskModelSelect.addEventListener("change", (event) => {
-          handleLoopSubtaskModelChange(event.target.value);
+          handleLoopSubtaskModelChange(event.target.value, event.target);
         });
       }
 

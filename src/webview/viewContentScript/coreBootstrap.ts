@@ -565,6 +565,7 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         taskListCount: document.getElementById("taskListCount"),
         taskListBody: document.getElementById("taskListBody"),
         addModelOverlay: document.getElementById("addModelOverlay"),
+        addModelTitle: document.getElementById("addModelTitle"),
         closeAddModel: document.getElementById("closeAddModel"),
         cancelAddModel: document.getElementById("cancelAddModel"),
         clearModelEdit: document.getElementById("clearModelEdit"),

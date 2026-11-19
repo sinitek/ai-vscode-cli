@@ -2336,7 +2336,7 @@ test("main control closes an already interrupted attempt tab", async () => {
   }
 });
 
-test("本机子进程异常退出且完成 Promise 丢失时，巡检恢复验收并释放会话", { timeout: 5000 }, async (t) => {
+test("本机子进程异常退出且完成 Promise 丢失时，巡检保留子任务供显式续跑", { timeout: 5000 }, async (t) => {
   let now = 1000;
   t.mock.method(Date, "now", () => now);
   const { spawn } = require("node:child_process") as typeof import("node:child_process");
@@ -2378,20 +2378,26 @@ test("本机子进程异常退出且完成 Promise 丢失时，巡检恢复验�
     assert.equal(fixture.mainCalls.length, 1);
     now += 5 * 60 * 1000;
     fixture.adapter.host().checkWaitingTasks();
-    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "主任务进入异常产物验收");
-    const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
-    assert.equal(snapshot.currentReview?.outcome, "failed");
-    assert.equal(snapshot.running.length, 0);
     await waitForLoopPlus(() => fixture.rootsDisposed.length === 1, "失联调用释放执行根");
-    assert.equal(fixture.completionSubscriptionCount(), 1); // 仅主模型订阅仍存活。
+    const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+    assert.equal(snapshot.currentReview, null);
+    assert.equal(snapshot.running.length, 1);
+    assert.equal(fixture.readTask(taskId)?.subTasks[0]?.status, "blocked");
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(fixture.completionSubscriptionCount(), 0);
     await withLoopSubtaskSession("codex", null, async () => undefined, { taskId, subtaskId: "crashed" });
     const communicationFile = fixture.readTask(taskId)!.subTasks[0].communicationFile!;
-    assert.match(fs.readFileSync(communicationFile, "utf8"), /outcome: failed/);
-    assert.match(fs.readFileSync(communicationFile, "utf8"), /不能视为成功/);
+    assert.doesNotMatch(fs.readFileSync(communicationFile, "utf8"), /outcome: failed/);
+    const attemptId = snapshot.running[0]!.attemptId;
+    assert.equal(fixture.adapter.host().notifySubtaskContinuation(
+      taskId, "crashed", "completed", "显式续跑后完成", undefined, undefined, attemptId,
+    ), true);
+    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "续跑完成后进入子任务验收");
+    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "completed");
     releaseLate();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(fixture.mainCalls.length, 2);
-    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "failed");
+    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "completed");
     fixture.adapter.host().stopParent(taskId);
     await running;
   } finally {

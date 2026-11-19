@@ -116,7 +116,7 @@ function classicHarness(t: TestContext) {
   };
 }
 
-test("经典 Loop 准备或执行时继续等，实际失联后解除批次并忽略迟到结果", async (t) => {
+test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子任务交给主任务验收", async (t) => {
   let now = 1000;
   t.mock.method(Date, "now", () => now);
   const env = classicHarness(t);
@@ -137,13 +137,16 @@ test("经典 Loop 准备或执行时继续等，实际失联后解除批次并�
   env.host.checkWaitingTasks();
   const results = await pending;
   await flush();
-  assert.equal(results[0].watchdogRecovered, true);
-  assert.equal(results[0].status, "stopped");
+  assert.equal(env.task().status, "stopped");
+  assert.equal(env.task().runtimeInterrupted, true);
   assert.equal(env.calls[0].isAborted(), true);
   assert.equal(env.task().subTasks[0].status, "blocked");
   assert.equal(env.task().subTasks[1].status, "pending");
   assert.deepEqual(env.task().activeSubtaskIds, []);
   assert.equal(env.host.isSubtaskRunning(env.task().id, "A"), false);
+  assert.equal(results[0].watchdogRecovered, undefined);
+  assert.equal(results[0].status, "stopped");
+  assert.equal(env.host.resumeWaitingBatch(env.task().id), false);
   const counts = env.counts();
   env.calls[0].fail();
   await flush();
@@ -179,7 +182,10 @@ test("经典 Loop 中断批次等待其它活动子任务，随后恢复主任�
   env.setManualActive(false);
   env.host.checkWaitingTasks();
   const results = await pending;
-  assert.equal(results[0].watchdogRecovered, true);
+  assert.equal(results[0].watchdogRecovered, undefined);
+  assert.equal(results[0].status, "stopped");
+  assert.equal(env.task().runtimeInterrupted, true);
+  assert.equal(env.task().subTasks[0].status, "blocked");
   assert.equal(env.counts().finalized, 1);
 });
 

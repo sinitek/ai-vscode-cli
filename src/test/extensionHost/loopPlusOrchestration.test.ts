@@ -4949,7 +4949,7 @@ test("a task started without an acceptance plan falls back to the fixed baseline
 });
 
 
-test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后仅验收一次", async () => {
+test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后续跑并验收新结果", async () => {
   let active = true;
   const env = harness({ isAttemptActive: () => active, deferAttemptAbort: true });
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
@@ -4963,39 +4963,54 @@ test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后�
   env.host.checkWaitingTasks();
   env.host.checkWaitingTasks();
   await flush();
-  assert.equal(env.mains.length, 2);
-  assert.equal(env.mains[1].request.kind, "review");
+  assert.equal(env.mains.length, 1);
   const snapshot = snapshotOf(env.tasks.get(run.taskId!));
-  assert.equal(snapshot.running.length, 0);
-  assert.equal(snapshot.currentReview?.outcome, "failed");
-  assert.match(snapshot.currentReview?.detail ?? "", /不能视为成功/);
+  assert.equal(snapshot.running.length, 1);
+  assert.equal(snapshot.currentReview, null);
+  assert.equal(env.reports.length, 0);
+  assert.equal(env.host.resumeInterruptedSubtasks(run.taskId!), true);
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.attempts[1].request.attemptId, env.attempts[0].request.attemptId);
+  env.attempts[1].resolve({ outcome: "completed", detail: "续跑完成" });
+  await flush();
+  assert.equal(env.mains[1].request.kind, "review");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "completed");
   assert.equal(env.reports.length, 1);
   env.attempts[0].resolve({ outcome: "completed", detail: "迟到的旧结果" });
   await flush();
   assert.equal(env.reports.length, 1);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "failed");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "completed");
   assert.equal(env.maxMains(), 1);
   env.host.stopParent(run.taskId!);
   await run.done;
 });
 
-test("Loop+ 中断预留在没有其它活动子任务时交回主任务验收", async () => {
-  let manualRun = true;
-  const env = harness({ hasActiveSubtasks: () => manualRun });
+test("Loop+ 巡检保留失联 attempt，继续时重启子任务而非先交主任务验收", async () => {
+  let active = true;
+  const env = harness({ isAttemptActive: () => active });
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("stopped", ["src/a.ts"])] }));
   await flush();
-  env.attempts[0].resolve({ outcome: "stopped", detail: "runner interrupted" });
-  await flush();
+  active = false;
   env.host.checkWaitingTasks();
   await flush();
   assert.equal(env.mains.length, 1);
-  manualRun = false;
-  env.host.checkWaitingTasks();
+  const interruptedSnapshot = snapshotOf(env.tasks.get(run.taskId!));
+  assert.equal(interruptedSnapshot.running[0]?.attemptId, env.attempts[0].request.attemptId);
+  assert.equal(interruptedSnapshot.currentReview, null);
+  assert.equal(env.tasks.get(run.taskId!)?.subTasks[0]?.status, "blocked");
+  assert.equal(env.host.resumeInterruptedSubtasks(run.taskId!), true);
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.attempts[1].request.attemptId, env.attempts[0].request.attemptId);
+  assert.equal(env.attempts[1].request.subtaskId, "stopped");
+  assert.equal(env.mains.length, 1);
+  env.attempts[1].resolve({ outcome: "completed", detail: "继续后完成" });
   await flush();
   assert.equal(env.mains[1].request.kind, "review");
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "failed");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "completed");
   env.host.stopParent(run.taskId!);
   env.host.checkWaitingTasks();
   await flush();
@@ -5023,7 +5038,7 @@ test("Loop+ 巡检不复活暂停、等待澄清、失败上限和已完成任�
   }
 });
 
-test("Loop+ 同次巡检的多个失联子任务合并为一轮验收", async () => {
+test("Loop+ 同次巡检保留多个失联子任务，续跑完成后合并验收", async () => {
   const env = harness({ isAttemptActive: () => false, deferAttemptAbort: true });
   const run = env.host.tryRun({ displayPrompt: "并行实现功能" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -5031,8 +5046,20 @@ test("Loop+ 同次巡检的多个失联子任务合并为一轮验收", async ()
   await flush();
   env.host.checkWaitingTasks();
   await flush();
-  assert.equal(env.mains.length, 2);
-  assert.equal(env.mains[1].request.reviewEventIds?.length, 2);
+  assert.equal(env.mains.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).running.length, 2);
+  assert.equal(env.reports.length, 0);
+  assert.equal(env.host.resumeInterruptedSubtasks(run.taskId!), true);
+  await flush();
+  assert.equal(env.attempts.length, 4);
+  assert.deepEqual(env.attempts.slice(2).map((item) => item.request.attemptId), env.attempts.slice(0, 2).map((item) => item.request.attemptId));
+  env.attempts.slice(2).forEach((attempt) => attempt.resolve({ outcome: "completed", detail: "续跑完成" }));
+  await flush();
+  assert.equal(env.mains[1].request.kind, "review");
+  const finished = snapshotOf(env.tasks.get(run.taskId!));
+  const events = [finished.currentReview, ...finished.reviewQueue].filter(Boolean);
+  assert.equal(events.length, 2);
+  assert.equal(events.every((event) => event?.outcome === "completed"), true);
   assert.equal(env.reports.length, 2);
   assert.equal(env.maxMains(), 1);
   env.host.stopParent(run.taskId!);
@@ -5666,7 +5693,9 @@ test("review selection consumes an unconfirmed prerequisite report FIFO before s
   await env.run.done;
 });
 
-test("review selection survives same-host stop/resume and watchdog finishes whose kernel wake was already latched", async () => {
+test("review selection survives same-host stop/resume and watchdog continuation", async (t) => {
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
   let active = true;
   const env = await runningReviewDependency({ inactive: () => active });
   env.successor.resolve({ outcome: "completed", detail: null });
@@ -5685,10 +5714,20 @@ test("review selection survives same-host stop/resume and watchdog finishes whos
   watched.successor.resolve({ outcome: "completed", detail: null });
   await flush();
   active = false;
+  now += 5 * 60 * 1000;
   watched.host.checkWaitingTasks();
   await flush();
-  assert.deepEqual(watched.mains.at(-1)!.request.reviewEventIds, [watched.id(watched.source), watched.id(watched.successor)]);
-  assert.equal(snapshotOf(watched.tasks.get(watched.taskId)).currentReview?.outcome, "failed");
+  assert.equal(watched.mains.length, 3);
+  assert.equal(snapshotOf(watched.tasks.get(watched.taskId)).currentReview, null);
+  assert.equal(watched.host.resumeInterruptedSubtasks(watched.taskId), true);
+  await flush();
+  const restartedSource = watched.attempts.filter((item) => item.request.subtaskId === "source").at(-1)!;
+  restartedSource.resolve({ outcome: "completed", detail: "续跑后完成" });
+  await flush();
+  const reviews = [snapshotOf(watched.tasks.get(watched.taskId)).currentReview,
+    ...snapshotOf(watched.tasks.get(watched.taskId)).reviewQueue].filter(Boolean);
+  assert.equal(reviews.length, 2);
+  assert.equal(reviews.every((event) => event?.outcome === "completed"), true);
   watched.host.stopParent(watched.taskId);
   await watched.run.done;
 });

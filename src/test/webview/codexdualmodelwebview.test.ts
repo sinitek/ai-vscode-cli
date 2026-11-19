@@ -183,6 +183,8 @@ function buildCodexModelHarness() {
       "cliUsesConfigDeclaredModels",
       "getCliLoopModelSelectAria",
       "getNoConfiguredModelLabel",
+      "canOpenModelManagerDialog",
+      "appendModelManageOption",
       "updateCodexLoopRoleModelSelect",
       "updateCodexLoopModelSelectOptions",
       "handleCodexLoopRoleModelChange",
@@ -238,7 +240,7 @@ function buildCodexModelHarness() {
     "CLI_NAMES",
     "t",
     "vscode",
-    `${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, updateCodexLoopThinkingSelectOptions, handleCodexLoopRoleModelChange, handleCodexLoopRoleThinkingChange, handleLoopSubtaskModelChange, handleLoopSubtaskThinkingChange };`,
+    `const MODEL_MANAGE_OPTION_VALUE = "__manage__"; ${functionSource}; return { applyModelState, updateCodexLoopModelSelectOptions, updateCodexLoopThinkingSelectOptions, handleCodexLoopRoleModelChange, handleCodexLoopRoleThinkingChange, handleLoopSubtaskModelChange, handleLoopSubtaskThinkingChange };`,
   )(
     state,
     elements,
@@ -290,7 +292,7 @@ function buildVisibilityHarness() {
     "elements",
     "normalizeInteractiveMode",
     "hideAddModelDialog",
-    `${functionSource}; return { syncModelSelectorByInteractiveMode, handleCurrentCliSelectionChange };`,
+    `let modelManagerTarget = null; ${functionSource}; return { syncModelSelectorByInteractiveMode, handleCurrentCliSelectionChange };`,
   )(
     state,
     elements,
@@ -465,10 +467,12 @@ test("replays Codex role model options and selections from panel state", () => {
     ["", "默认"],
     ["main-large", "main-large"],
     ["main-balanced", "main-balanced"],
+    ["__manage__", "管理"],
   ]);
   assert.deepEqual(optionPairs(harness.elements.codexLoopSubtaskModelSelect), [
     ["", "默认"],
     ["sub-small", "sub-small"],
+    ["__manage__", "管理"],
   ]);
   assert.equal(harness.elements.codexLoopMainModelSelect.value, "main-large");
   assert.equal(harness.elements.codexLoopSubtaskModelSelect.value, "");
@@ -487,6 +491,7 @@ test("replays Codex role model options and selections from panel state", () => {
     ["", "默认"],
     ["main-large", "main-large"],
     ["main-balanced", "main-balanced"],
+    ["__manage__", "管理"],
   ]);
   assert.equal(harness.elements.codexLoopMainModelSelect.value, "main-large");
 });

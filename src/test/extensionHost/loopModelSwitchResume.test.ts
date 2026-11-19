@@ -78,14 +78,16 @@ test("classic model switch immediately resumes only stopped children and waits f
   assert.deepEqual(env.errors, []);
 });
 
-test("stopped classic parent and child resume without a live controller", async () => {
+test("runtime-interrupted classic parent resumes its blocked child without a live controller", async () => {
   const env = harness();
   env.task.status = "stopped";
+  env.task.runtimeInterrupted = true;
   env.task.activeSubtaskIds = [];
   env.task.subTasks = env.task.subTasks.filter((subtask) => subtask.id !== "live");
   env.running.clear();
   assert.equal(env.resume(), true);
   assert.equal(env.task.status, "running");
+  assert.equal(env.task.runtimeInterrupted, undefined);
   assert.deepEqual(env.task.activeSubtaskIds, ["blocked"]);
   env.releases[0]("end");
   await nextTurn();

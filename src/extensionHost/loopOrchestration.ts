@@ -598,6 +598,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     for (const waiting of waitingBatches.values()) {
       try {
         const task = readLoopTaskRecord(waiting.taskId);
+        if (task?.status === "stopped" && task.runtimeInterrupted === true) continue;
         if (!task || task.status !== "running" || task.pendingClarification
           || isLoopMainAiFailureLimitReached(task)) {
           waiting.recover(false);
@@ -612,6 +613,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         const detail = "定时检查发现已无活动子任务，主任务将检查现有结果；未完成或失联的子任务不视为成功。";
         const activeIds = getActiveLoopSubtaskIds(task).filter((id) => !batchIds.has(id));
         updateLoopTaskRecord(task.id, {
+          status: "stopped",
+          runtimeInterrupted: true,
           activeSubtaskId: activeIds[0] ?? null,
           activeSubtaskIds: activeIds,
           subTasks: task.subTasks.map((item) => batchIds.has(item.id) && item.status !== "completed" && item.status !== "skipped"
@@ -621,7 +624,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         });
         appendSystemMessageForLoop(waiting.target, detail);
         refreshOpenLoopGroupChatPanelForTask(task.id);
-        waiting.recover(true);
+        waiting.recover(false);
       } catch (error) {
         void logError("loop-wait-watchdog-check-failed", { taskId: waiting.taskId, error: errorToMessage(error) });
       }

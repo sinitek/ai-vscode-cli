@@ -58,9 +58,9 @@
 ## Loop / Loop+ 等待巡检
 
 - 状态：`active`（2026-11-15，源码实现）。扩展宿主每 5 分钟检查经典 Loop 与 Loop+ 的等待任务；主模型空闲且没有真实活动子任务时，唤醒主任务检查现有产物、未完成要求及后续动作。
-- 经典 Loop 覆盖未结束的批次 Promise、子任务停止和重试耗尽后的等待，清理本批失联的活动关联，未完成项保留为 `blocked`；Loop+ 把失联预留提交为失败验收事件，继续使用原验收、修复及完成门禁，不把失联当成功。多个失联事件同轮提交，迟到回调不重复回报。
+- 经典 Loop 覆盖未结束的批次 Promise、子任务停止和重试耗尽后的等待；巡检发现失联后，将父任务标为 `stopped` + `runtimeInterrupted`，保留原等待控制器及 `blocked` 子任务，群聊“继续”续跑后交还原控制器。Loop+ 对应的开放 attempt 保留原身份并置为 `blocked`，不先交主任务验收；显式继续重启子任务，本次完成结果才进入验收。不能关联原任务记录的残留预留仍按失败验收处理，不推断成功；迟到回调不重复回报。
 - 准备启动、会话/来源锁、压缩和重试等待仍算活动；调用刚开始的 5 分钟内保留启动交接宽限，运行中的兄弟或手动续跑子任务也阻止误唤醒。主任务停止、暂停、完成、等待澄清或达到连续失败上限时不自动复活；关闭宿主后仍须按原流程显式恢复。
-- 实现：`src/loopWaitWatchdog.ts`、`src/extension.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`。回归：巡检时钟、两种模式等待/失联/迟到回调，以及本机子进程异常退出后恢复验收的隔离集成测试。
+- 实现：`src/loopWaitWatchdog.ts`、`src/extension.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`。回归：巡检时钟、两种模式等待/失联/续跑/迟到回调，以及本机子进程异常退出隔离集成测试。
 
 ## Loop+ 遗留运行状态的显式继续
 
@@ -474,7 +474,7 @@ Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份
 
 | 模块 | 能力 | 状态 | 角色 | 规格来源 | 实现入口 | 验证 | 验收 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| AI 对话 / 模型 | 任务期间保持模型管理弹窗 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#31-对话入口与基础导航` | `src/webview/viewContentScript/modelManager.ts`、`src/webview/viewContentScript/eventBindings.ts` | `npm run build`；`node --test dist/test/webview/modelManagerIme.test.js dist/test/webview/codexdualmodelwebview.test.js` | 任务执行、流式消息和面板状态刷新不会关闭已打开的 Codex 管理模型弹窗；用户显式切换到不支持该弹窗的 CLI 时关闭。模型名称输入兼容中文输入法，组合输入期间、229 回车码和组合结束后 150ms 内不触发添加或重命名，普通回车仍提交。 |
+| AI 对话 / 模型 | Vibe、Loop、Loop+ 复用模型管理弹窗 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md#37-模型思考模式与规则` | `src/webview/viewContentScript/modelManager.ts`、`src/webview/viewContentScript/eventBindings.ts` | `npm run build`；`node --test dist/test/webview/clipagescriptruntimecoverage.test.js dist/test/webview/modelManagerIme.test.js` | Codex 和 Kimi Code 的模型下拉显示「管理」，包含 Loop、Loop+ 主模型和各子任务角色。打开弹窗不切换模型，跨 CLI 时仅管理该角色所用 CLI 的配置。普通状态刷新不关闭弹窗；切换面板 CLI 或目标配置时关闭。输入兼容中文输入法，普通回车仍可提交。 |
 
 ## VSIX 瘦身与平台定向导出
 

@@ -49,6 +49,7 @@ function extractFunctionSource(source: string, functionName: string): string {
 function createRouteApi(state: Record<string, any>) {
   const posted: Array<Record<string, unknown>> = [];
   const source = [
+    'const MODEL_MANAGE_OPTION_VALUE = "__manage__";',
     "const CLI_NAMES = ['codex', 'claude', 'opencode', 'grok', 'dsh', 'kimi-code', 'zcode'];",
     ...[
       "normalizeModelSelection",
