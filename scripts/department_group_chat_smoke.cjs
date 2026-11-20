@@ -341,8 +341,8 @@ function theme(dark) {
           assert.equal((await frame.locator(".timeline").innerText()).match(/合并增量消息 \d+/gu)?.length, 49,
             "all 49 transcript entries render across the retention batch threshold");
         }
-        assert.equal(await frame.locator("#panelHeading").innerText(), "组长1");
-        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长1");
+        assert.equal(await frame.locator("#panelHeading").innerText(), "组长A");
+        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长A");
         assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);
         await showMembers(frame);
         assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案.*\n产研部统一规则 <严格>/u);
@@ -544,8 +544,8 @@ function theme(dark) {
         assert.equal(panel.publishDepartmentModalAskThread(a, { version: 1, messages: [], running: false, dialogOpen: false, updatedAt: 0 }), false);
         await page.evaluate((target) => window.dispatchEvent(new MessageEvent("message", { data: { type: "loopGroupChatChat:departmentModalContent", ...target, error: "迟到的A错误" } })), a);
         ({ frame } = await inject(b));
-        assert.equal(await frame.locator("#panelHeading").innerText(), "组长2");
-        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长2");
+        assert.equal(await frame.locator("#panelHeading").innerText(), "组长B");
+        assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长B");
         if (deltaOnly) {
           const lateState = { ...state, chatMarkdown: "\n## 主任务发言\n\n旧A批次迟到响应不应渲染\n" };
           setTimeout(() => panel.setDepartmentModalState(a, lateState), 20);

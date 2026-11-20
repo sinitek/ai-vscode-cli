@@ -272,7 +272,7 @@
       "id": "plugin.conversation_task_summary",
       "name": "对话 Tab AI 任务摘要",
       "kind": "value_object",
-      "description": "Vibe、普通 Loop/Loop+ 主任务和产研部总监使用任务或会话 AI 摘要。每次新提交异步归纳，最多 30 个 Unicode 码点，同次提交只尝试一次，失败保留上次有效摘要。普通 Loop/Loop+ 子任务投影群聊成员的编号和完整标题。产研部组长和员工分别投影成员面板上的模块标题和员工子任务标题。所有成员标题使用完整长度。展示均通过可选 ConversationTabSummary.taskSummary 投影到标签浮层。",
+      "description": "Vibe、普通 Loop/Loop+ 主任务和产研部总监使用任务或会话 AI 摘要。每次新提交异步归纳，最多 30 个 Unicode 码点，同次提交只尝试一次，失败保留上次有效摘要。普通 Loop/Loop+ 子任务投影群聊成员的编号和完整标题。产研部组长和员工沿用成员面板的编号及完整标题。组长显示字母编号，员工编号带上所属组长的字母。展示均通过可选 ConversationTabSummary.taskSummary 投影到标签浮层。",
       "status": "active",
       "aliases": [
         "Tab 任务摘要",
@@ -2176,7 +2176,7 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，组长显示成员面板的模块标题，员工显示成员面板的编号和子任务标题，编号取所属组长任务的 subTasks 顺序。普通主任务和产研部总监展示归纳后的 AI 摘要。",
+      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，沿用群聊成员的编号和完整标题。组长字母由模块顺序按组长上限循环映射，上限为 4 时只使用 A 至 D。员工编号由组长字母和员工在所属组长任务 subTasks 中的一基顺序组成。普通主任务和产研部总监展示归纳后的 AI 摘要。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",

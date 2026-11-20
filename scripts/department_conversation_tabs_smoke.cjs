@@ -37,7 +37,7 @@ const messages = [{ id: "employee-message", role: "user", content: "work", taskR
   loopTaskId: leaderId, loopSubtaskId: employeeId, loopRound: 1 }];
 const ownershipPort = { readTaskRecord: (id) => tasksById.get(id) ?? null,
   readDepartmentLeaderTaskIds: (root, module) => root === rootId && module === "module-smoke" ? [leaderId] : [] };
-const expectedSummaries = ["统筹模块交付与验收", `组长 · ${longModule}`, "员工 1 · 员工真实会话"];
+const expectedSummaries = ["统筹模块交付与验收", `组长A · ${longModule}`, "员工 A1 · 员工真实会话"];
 const projectedTabs = [
   projectDepartmentConversationTab({ id: "director-tab", cli: "codex", sessionId: `${rootId}-session`, createdAt: 1, loopTaskRole: "main", loopTaskId: rootId,
     taskSummary: expectedSummaries[0] }, rootTask, [], ownershipPort),

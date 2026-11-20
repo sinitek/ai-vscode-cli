@@ -1,5 +1,5 @@
+import { formatDepartmentMemberTitle, getDepartmentLeaderCode } from "../department";
 import type { DepartmentGroupChatProjection } from "./loopGroupChatPanelTypes";
-import { buildDepartmentLeaderChatTitle } from "./loopGroupChatPanelRenderer";
 import { renderModalActions, renderModalCloseButton, renderModalHeader } from "./modalComponents";
 
 type AllocationRow = NonNullable<DepartmentGroupChatProjection["employeeAllocation"]>["leaders"][number];
@@ -27,7 +27,8 @@ export function renderDepartmentEmployeeAllocationRows(department: DepartmentGro
     const leaderTaskId = leader.taskId;
     const row = snapshot?.leaders.find((item) => item.leaderTaskId === leaderTaskId);
     const editable = Boolean(leaderTaskId && row && department.employeeAllocationEditable === true);
-    const title = escapeHtml(`${buildDepartmentLeaderChatTitle(leader.leaderNumber)} · ${leader.participant.title}`);
+    const leaderCode = getDepartmentLeaderCode(leader.leaderNumber, department.maxLeaders);
+    const title = escapeHtml(formatDepartmentMemberTitle("leader", leader.participant.title, leaderCode));
     return `<li class="department-allocation" data-allocation-root="${escapeHtml(department.rootTaskId)}" data-allocation-leader="${escapeHtml(leaderTaskId)}" data-allocation-revision="${snapshot?.revision ?? ""}" data-allocation-editable="${editable}">
       <h3 class="department-allocation-name">${title}</h3>
       <div class="member-meta">${escapeHtml(leaderTaskId ? describeAllocation(row) : "组长尚未创建，暂不可编辑。")}</div>

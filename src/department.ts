@@ -1,12 +1,28 @@
 import { CLI_LIST, type CliName, type ThinkingMode } from "./cli/types";
+import { normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { normalizeRouteThinkingMode, parseCliNameField } from "./subtaskCliRoute";
 
 export type DepartmentRole = "director" | "leader" | "employee";
 
-export function formatDepartmentMemberTitle(role: DepartmentRole, title: string, employeeNumber?: number): string {
+export function getDepartmentLeaderCode(leaderNumber: number, maxLeaders: number): string {
+  let slot = (leaderNumber - 1) % normalizeDepartmentMaxLeaders(maxLeaders) + 1;
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let code = "";
+  while (slot > 0) {
+    code = alphabet[(slot - 1) % alphabet.length] + code;
+    slot = Math.floor((slot - 1) / alphabet.length);
+  }
+  return code;
+}
+
+export function formatDepartmentLeaderLabel(leaderCode = ""): string {
+  return `组长${leaderCode}`;
+}
+
+export function formatDepartmentMemberTitle(role: DepartmentRole, title: string, leaderCode = "", employeeNumber?: number): string {
   if (role === "director") return "总监";
-  if (role === "leader") return `组长 · ${title}`;
-  const label = employeeNumber === undefined ? "员工" : `员工 ${employeeNumber}`;
+  if (role === "leader") return `${formatDepartmentLeaderLabel(leaderCode)} · ${title}`;
+  const label = employeeNumber === undefined ? "员工" : `员工 ${leaderCode}${employeeNumber}`;
   return `${label} · ${title}`;
 }
 /** Department roles reuse the same CLI capabilities as Loop and Loop+. */

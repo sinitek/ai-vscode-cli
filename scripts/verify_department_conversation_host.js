@@ -88,8 +88,8 @@ async function seedPrivateFixture({ root, home, workspace }) {
     [fixture.ids.ordinarySessionId, [{ id: "ordinary-message", role: "user", content: "普通会话历史" }]],
   ]);
   const now = Date.now();
-  const taskSummaries = ["统筹部门模块并完成交付", `组长 · ${fixture.ids.moduleTitle}`, `组长 · ${fixture.ids.moduleTitle}`,
-    `员工 1 · ${fixture.leaderOne.subTasks[0].title}`];
+  const taskSummaries = ["统筹部门模块并完成交付", `组长A · ${fixture.ids.moduleTitle}`, `组长B · ${fixture.ids.moduleTitle}`,
+    `员工 A1 · ${fixture.leaderOne.subTasks[0].title}`];
   const sessionRecord = (id, label) => ({ id, label, firstPrompt: label, createdAt: now, lastUsedAt: now });
   const sessionStore = Object.fromEntries(["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].map((cli) => [cli, { currentId: null, sessions: [] }]));
   const sessionIds = [fixture.ids.directorSessionId, fixture.ids.leaderOneSessionId, fixture.ids.leaderTwoSessionId, fixture.ids.employeeSessionId, fixture.ids.ordinarySessionId];
@@ -491,7 +491,7 @@ async function verifyWebview(root, port, fixture, report) {
   assert.equal(modalDetails.actions.some((item) => item.action === "stopTask" || item.action === "supplementTask" || item.action === "continueTask"), false,
     "completed historical fixture keeps non-applicable run actions unavailable");
   const dialogTitle = await groupEvaluate("document.querySelector('#departmentChatTitle')?.textContent || ''");
-  assert.equal(dialogTitle, "组长1", "department modal title identifies the selected leader by module number");
+  assert.equal(dialogTitle, "组长A", "department modal title identifies the selected leader by letter");
   report.modal = { frameUrl: modalFrame.frame.url, leaderTaskId: fixture.ids.leaderOneTaskId, title: dialogTitle,
     context: { groupContextId, frameId: modalFrame.frame.id, contextId: modalFrame.contextId, defaultWorld: true }, loopPlus: modalDetails.loopPlus, toolbar: modalDetails.toolbar, actions: modalDetails.actions };
   await screenshot("webview-department-dialog.png");

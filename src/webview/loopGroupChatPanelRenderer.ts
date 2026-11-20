@@ -1,3 +1,4 @@
+import { formatDepartmentLeaderLabel, getDepartmentLeaderCode } from "../department";
 import type { LoopGroupChatPanelState } from "./loopGroupChatPanelTypes";
 
 const STRINGS = {
@@ -153,10 +154,6 @@ export function getStrings(): LoopGroupChatPanelStrings {
   return STRINGS;
 }
 
-export function buildDepartmentLeaderChatTitle(leaderNumber?: number): string {
-  return leaderNumber === undefined ? "组长" : `组长${leaderNumber}`;
-}
-
 export function buildLoopGroupChatPanelTitle(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
@@ -176,7 +173,7 @@ export function buildLoopGroupChatPanelHeading(state: LoopGroupChatPanelState, s
   if (!state.department) return state.loopPlus ? strings.titleLoopPlus : strings.title;
   if (state.department.role === "director") return "产研部群聊";
   const leader = state.department.leaders.find((item) => item.taskId && item.taskId === state.task.id);
-  return buildDepartmentLeaderChatTitle(leader?.leaderNumber);
+  return formatDepartmentLeaderLabel(leader && getDepartmentLeaderCode(leader.leaderNumber, state.department.maxLeaders));
 }
 
 export function buildLoopGroupChatPanelSubtitle(state: LoopGroupChatPanelState): string {

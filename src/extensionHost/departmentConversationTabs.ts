@@ -2,7 +2,7 @@ import type { ChatMessage, ConversationTabSummary, DepartmentConversationTabPres
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { departmentMetadata, isDepartmentLeader } from "./departmentGroupChatProjection";
-import { formatDepartmentMemberTitle } from "../department";
+import { formatDepartmentMemberTitle, getDepartmentLeaderCode } from "../department";
 
 export type DepartmentConversationTabReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
@@ -77,8 +77,10 @@ export function projectDepartmentConversationTab(
     || !hasUniqueModuleRelationship(root, task, port)) return summary;
 
   if (meta.parentTaskId !== root.id || !meta.leaderSubtaskId) return summary;
+  const leaderCode = getDepartmentLeaderCode(root.subTasks.findIndex((item) => item.id === meta.leaderSubtaskId) + 1,
+    departmentMetadata(root)!.limits.maxLeaders);
   const projected = presentation("leader", root.id, task.id, meta.moduleTitle);
-  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("leader", meta.moduleTitle) };
+  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("leader", meta.moduleTitle, leaderCode) };
 }
 
 export function projectDepartmentEmployeeConversationTab(
@@ -113,8 +115,10 @@ export function projectDepartmentEmployeeConversationTab(
 
   const subtask = matches[0];
   const employeeNumber = leader.subTasks.indexOf(subtask) + 1;
+  const leaderCode = getDepartmentLeaderCode(root.subTasks.findIndex((item) => item.id === meta.leaderSubtaskId) + 1,
+    departmentMetadata(root)!.limits.maxLeaders);
   const projected = presentation("employee", root.id, leader.id, meta.moduleTitle, subtask.id);
-  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", subtask.title, employeeNumber) };
+  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", subtask.title, leaderCode, employeeNumber) };
 }
 
 function sameWorkspace(root: LoopTaskRecord, task: LoopTaskRecord): boolean {

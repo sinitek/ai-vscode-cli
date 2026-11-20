@@ -164,7 +164,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     await opener.click();
     const frameHandle = await page.locator("#departmentChatContent iframe").elementHandle({ timeout: 10000 });
     const frame = await frameHandle.contentFrame(); await frame.locator(".department-roster").waitFor();
-    assert.equal(await frame.locator("#panelHeading").innerText(), "组长1");
+    assert.equal(await frame.locator("#panelHeading").innerText(), "组长A");
     assert.match(await frame.locator(".department-roster").innerText(), /真实员工/);
     assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案[\s\S]*根固化快照/);
     assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);

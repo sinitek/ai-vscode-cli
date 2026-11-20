@@ -18,12 +18,11 @@ import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { getMarkdownStyles } from "./viewContentStyles/markdown";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
-import { formatDepartmentMemberTitle, type DepartmentRole } from "../department";
+import { formatDepartmentLeaderLabel, formatDepartmentMemberTitle, getDepartmentLeaderCode, type DepartmentRole } from "../department";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
 import {
-  buildDepartmentLeaderChatTitle,
   buildLoopGroupChatPanelTitle,
   buildLoopGroupChatPanelHeading,
   buildLoopGroupChatPanelSubtitle,
@@ -2057,8 +2056,8 @@ function renderDepartmentRosterPanel(
   acceptanceAnchors: ReadonlyMap<string, string>,
 ): string {
   const department = state.department!;
-  const member = (participant: LoopGroupChatPanelParticipant, role: DepartmentRole, navigation = "", anchor?: string, progressPercent?: number): string => {
-    const label = formatDepartmentMemberTitle(role, participant.title, participant.employeeNumber);
+  const member = (participant: LoopGroupChatPanelParticipant, role: DepartmentRole, leaderCode = "", navigation = "", anchor?: string, progressPercent?: number): string => {
+    const label = formatDepartmentMemberTitle(role, participant.title, leaderCode, participant.employeeNumber);
     const avatarLabel = { director: "总", leader: "组", employee: "员" }[role];
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>
@@ -2073,12 +2072,13 @@ function renderDepartmentRosterPanel(
     ? department.leaders.filter((leader) => Boolean(state.task.id) && leader.taskId === state.task.id)
     : department.leaders;
   const leaders = visibleLeaders.map((leader) => {
-    const leaderChatTitle = buildDepartmentLeaderChatTitle(leader.leaderNumber);
+    const leaderCode = getDepartmentLeaderCode(leader.leaderNumber, department.maxLeaders);
+    const leaderChatTitle = formatDepartmentLeaderLabel(leaderCode);
     const navigation = department.role === "director"
       ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, leaderChatTitle)
       : "";
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
-    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", "",
+    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", leaderCode, "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
     const canToggle = Boolean(leader.taskId && employees);
@@ -2087,12 +2087,12 @@ function renderDepartmentRosterPanel(
     const employeesLabel = escapeAttribute(`${leaderChatTitle}员工列表`);
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
-        ${member(leader.participant, "leader", navigation + allocationSummary, undefined, progressPercent)}
+        ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
         ${canToggle ? `<button class="button department-employees-toggle" type="button" data-action="toggleDepartmentEmployees" aria-label="${employeesLabel}" title="展开或收起员工列表" aria-controls="${employeesId}" aria-expanded="${!collapsed}"${collapsed ? " data-department-leader-completed" : ""}>
           <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19" /></svg>
         </button>` : ""}
       </div>
-      <ul class="department-employees"${canToggle ? ` id="${employeesId}"` : ""} aria-label="${escapeAttribute(`${leader.participant.title}的员工`)}"${collapsed ? " hidden" : ""}>${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
+      <ul class="department-employees"${canToggle ? ` id="${employeesId}"` : ""} aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}"${collapsed ? " hidden" : ""}>${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
     </li>`;
   }).join("");
   const departmentTree = department.role === "director"

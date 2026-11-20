@@ -50,7 +50,7 @@ test("projects director and event-driven leader only from their owned main sessi
 
   const leaderSummary = projectDepartmentConversationTab(tab("leader-tab", leader.id), leader, [], port);
   assert.deepEqual(leaderSummary.departmentPresentation, { role: "leader", rootTaskId: root.id, taskId: leader.id, moduleTitle: "共享模块名" });
-  assert.equal(leaderSummary.taskSummary, "组长 · 共享模块名");
+  assert.equal(leaderSummary.taskSummary, "组长A · 共享模块名");
   assert.equal(projectDepartmentConversationTab(tab("wrong-session", leader.id, "main", "other-session"), leader, [], port).departmentPresentation, undefined);
   assert.equal(projectDepartmentConversationTab({ ...tab("ordinary", root.id), loopTaskRole: "subtask" }, root, [], port).departmentPresentation, undefined);
 });
@@ -68,8 +68,8 @@ test("same module titles remain distinct by actual leader task id and reject dup
   });
   assert.equal(first.departmentPresentation?.moduleTitle, second.departmentPresentation?.moduleTitle);
   assert.notEqual(first.departmentPresentation?.taskId, second.departmentPresentation?.taskId);
-  assert.equal(first.taskSummary, "组长 · 共享模块名");
-  assert.equal(second.taskSummary, first.taskSummary);
+  assert.equal(first.taskSummary, "组长A · 共享模块名");
+  assert.equal(second.taskSummary, "组长B · 共享模块名");
 
   root.subTasks.push({ id: "module-ui", title: "duplicate module id", status: "running" });
   assert.equal(projectDepartmentConversationTab(tab("ambiguous-module", leader.id), leader, [], port).departmentPresentation, undefined);
@@ -81,7 +81,7 @@ test("projects an employee only when message identity and a unique execution ses
   const result = projectDepartmentEmployeeConversationTab(tab("employee-tab", leader.id, "subtask", "employee-session"), leader, employeeMessages, port);
   assert.deepEqual(result.departmentPresentation, { role: "employee", rootTaskId: "department-root-abcdef", taskId: leader.id,
     moduleTitle: "共享模块名", employeeSubtaskId: "employee-subtask-789abc" });
-  assert.equal(result.taskSummary, "员工 2 · 员工真实会话");
+  assert.equal(result.taskSummary, "员工 A2 · 员工真实会话");
 
   assert.equal(projectDepartmentEmployeeConversationTab(tab("wrong-message", leader.id, "subtask", "employee-session"), leader,
     [{ ...employeeMessages[0], loopTaskId: "other-task" }], port).departmentPresentation, undefined);
@@ -151,8 +151,8 @@ test("host projection reads only known task ids and reuses a root read within on
   assert.deepEqual(ownershipReadIds, [root.id, leader.id, "missing-task"]);
   assert.deepEqual(membershipReads, [`${root.id}:module-ui`, `${root.id}:module-ui`]);
   assert.equal(state.tabs[0].taskSummary, "实现账号与报表功能");
-  assert.equal(state.tabs[1].taskSummary, "组长 · 共享模块名");
-  assert.equal(state.tabs[2].taskSummary, "员工 1 · 员工真实会话");
+  assert.equal(state.tabs[1].taskSummary, "组长A · 共享模块名");
+  assert.equal(state.tabs[2].taskSummary, "员工 A1 · 员工真实会话");
   assert.equal(state.tabs[3].departmentPresentation, undefined);
 });
 

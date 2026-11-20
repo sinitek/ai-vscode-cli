@@ -30,7 +30,9 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
       background: style.backgroundColor, foreground: style.color };
   }));
   assert.deepEqual(rows.map((row) => row.avatar), role === "director" ? ["总", "组", "员", "组", "员", "组"] : ["组", "员"]);
-  assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), role === "director" ? ["总监", "组长", "员工 112", "组长", "员工 1", "组长"] : ["组长", leaderTaskId === "department-20261113-leader-111111" ? "员工 112" : "员工 1"]);
+  const expectedLabels = role === "director" ? ["总监", "组长A", "员工 A112", "组长B", "员工 B1", "组长C"]
+    : leaderTaskId === "department-20261113-leader-111111" ? ["组长A", "员工 A112"] : ["组长B", "员工 B1"];
+  assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), expectedLabels);
   for (const row of rows) {
     assert.doesNotMatch(row.title, /[☀🌛⭐]/u);
     assert.equal(row.tooltip, row.title);
@@ -72,15 +74,15 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await page.title(), "产研部群聊");
   await showMembers(page); await overflow(page);
   const directorInitial = await inspectRoster(page);
-  assert.equal(directorInitial.rows[2].title, "员工 112 · ");
+  assert.equal(directorInitial.rows[2].title, "员工 A112 · ");
   await captureRoster(page, "director-initial");
   const open = page.locator('.department-group').first().getByRole("button", { name: "打开组长群聊", exact: true });
   await open.click();
   const target = await targetReady();
-  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长1");
+  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长A");
   const { frame, state } = await inject(target);
-  assert.equal(await frame.locator("#panelHeading").textContent(), "组长1");
-  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长1");
+  assert.equal(await frame.locator("#panelHeading").textContent(), "组长A");
+  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长A");
   assert.equal(await page.locator("#departmentChatContent iframe").getAttribute("sandbox"), "allow-scripts");
   await showMembers(frame); await overflow(frame);
   const leaderInitial = await inspectRoster(frame, "leader", target.taskId);
@@ -92,17 +94,17 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await frame.waitForFunction(() => document.querySelector(".department-group .member-name").textContent.includes("API契约"));
   assert.equal(await frame.evaluate(() => window.__roleAvatarDocument), "same-document", "child contentPatch must not reload iframe");
   const leaderPatched = await inspectRoster(frame, "leader", target.taskId); await overflow(frame);
-  assert.equal(await frame.locator("#panelHeading").textContent(), "组长1");
+  assert.equal(await frame.locator("#panelHeading").textContent(), "组长A");
   fs.writeFileSync(path.join(output, `${name}-leader-patched.html`), await frame.content());
   await captureRoster(frame, "leader-patched");
   // Existing employee acceptance and return controls retain their accessible names and routes.
   const employee = frame.locator('.department-employees .member-acceptance-link').first();
-  assert.equal(await employee.getAttribute("aria-label"), "员工 112 · 同名模块：查看最近一次验收结果");
+  assert.equal(await employee.getAttribute("aria-label"), "员工 A112 · 同名模块：查看最近一次验收结果");
   await employee.click(); await settle();
   assert.equal(await frame.locator("#loop-plus-acceptance-0").evaluate((element) => document.activeElement === element), true);
   await showMembers(frame);
   const childGroup = frame.locator(".department-group");
-  const childToggle = childGroup.getByRole("button", { name: "组长1员工列表", exact: true });
+  const childToggle = childGroup.getByRole("button", { name: "组长A员工列表", exact: true });
   await employee.focus();
   state.department.leaders[0].participant.status = "completed";
   assert.equal(panel.setDepartmentModalState(target, structuredClone(state)), true);
@@ -124,7 +126,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   fs.writeFileSync(path.join(output, `${name}-director-patched.html`), await page.content());
   await captureRoster(page, "director-patched");
   const directorGroup = page.locator(".department-group").first();
-  const directorToggle = directorGroup.getByRole("button", { name: "组长1员工列表", exact: true });
+  const directorToggle = directorGroup.getByRole("button", { name: "组长A员工列表", exact: true });
   const secondGroup = page.locator(".department-group").nth(1);
   await directorToggle.press("Enter");
   await checkExpansion(directorGroup, false);
@@ -148,7 +150,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await checkExpansion(directorGroup, true);
   directorLeader.employees[0].title = "完成后仍可查看";
   panel.update(structuredClone(parentState));
-  await directorGroup.getByText("员工 112 · 完成后仍可查看", { exact: true }).waitFor();
+  await directorGroup.getByText("员工 A112 · 完成后仍可查看", { exact: true }).waitFor();
   await checkExpansion(directorGroup, true);
   await directorToggle.click();
   await checkExpansion(directorGroup, false);
@@ -160,10 +162,10 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await page.locator('.department-group').nth(1).getByRole("button", { name: "打开组长群聊", exact: true }).click();
   const secondTarget = await targetReady();
   assert.notEqual(secondTarget.taskId, target.taskId);
-  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长2");
+  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长B");
   const { frame: secondFrame } = await inject(secondTarget);
-  assert.equal(await secondFrame.locator("#panelHeading").textContent(), "组长2");
-  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长2");
+  assert.equal(await secondFrame.locator("#panelHeading").textContent(), "组长B");
+  assert.equal(await page.locator("#departmentChatTitle").textContent(), "组长B");
   await overflow(secondFrame);
   await page.locator("#departmentChatClose").click();
   assert.equal(sent.filter((message) => message.type === "loopGroupChatChat:updateDepartmentEmployeeLimit").length, 0);
