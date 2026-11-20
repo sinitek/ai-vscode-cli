@@ -939,6 +939,7 @@
 - 目录用 junction，顶层文件优先 `fs.linkSync`；跨盘把临时根放到工作区 `.sinitek-loop-tmp`。
 - 链接失败再回退文件 symlink，仍失败则返回可读错误。
 - Loop 临时根必须先按登记身份撤销链接，再非递归删除空目录；不得调用通用的递归 `removePathBestEffort`。Windows junction 使用非递归 `rmdirSync`，文件硬链接和其他符号链接使用 `unlinkSync`。未知内容或身份变化保留现场并记录 `loop-subtask-execution-root-cleanup-skipped`。OpenCode overlay 仍使用原有 best-effort 清理；占用中的路径不得抛出到任务结果。
+- 员工即使已输出结论，在隔离工作目录内留下构建目录仍会让非递归删除返回 `ENOTEMPTY`。排查时将员工 CLI 会话记录的实际 cwd 与原 Owner 的 `cleanup-failed` 记录对照，并只读检查剩余内容。员工提示要求将临时产物放在当前工作目录之外，需验收的证据保存在任务约定的位置。
 - 不假设所有 Node/Electron 版本的递归删除都会把 junction 当成不可遍历链接。清理测试必须在销毁源夹具之前断言真实源目录、文件内容和本轮修改仍存在，并覆盖根替换、链接替换、并发根和启动中途失败。
 - 旧版遗留临时根可能仍含指向真实项目的 junction，不要直接递归删除 `.sinitek-loop-tmp`。本次修复不自动迁移或清扫旧残留，也不提供文件恢复功能。
 

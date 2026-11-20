@@ -149,7 +149,7 @@ test("dispose preserves entries not created by the execution root", () => {
   fs.mkdirSync(unexpectedDirectory);
   fs.writeFileSync(path.join(unexpectedDirectory, "keep.txt"), "keep directory", "utf8");
 
-  executionRoot.dispose();
+  assert.equal(executionRoot.dispose().ok, false);
 
   assert.equal(fs.readFileSync(unexpectedPath, "utf8"), "keep");
   assert.equal(fs.readFileSync(path.join(unexpectedDirectory, "keep.txt"), "utf8"), "keep directory");
@@ -157,7 +157,7 @@ test("dispose preserves entries not created by the execution root", () => {
   fs.rmSync(unexpectedPath, { force: true });
   fs.unlinkSync(path.join(unexpectedDirectory, "keep.txt"));
   fs.rmdirSync(unexpectedDirectory);
-  executionRoot.dispose();
+  assert.deepEqual(executionRoot.dispose(), { ok: true, retainedDirectory: false });
   assert.equal(fs.existsSync(executionRoot.cwd), false);
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
 });

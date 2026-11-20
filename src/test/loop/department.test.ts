@@ -237,3 +237,10 @@ test("director prefers useful same-round parallelism and retains cohesive single
   assert.match(director, /有空位时补派新就绪且不冲突的目标/u);
   assert.match(director, /尚有未派发工作.*不得宣告部门整体完成/u);
 });
+
+test("employee prompt keeps temporary build output outside the execution directory", () => {
+  const employee = buildDepartmentRolePrompt("employee");
+  assert.match(employee, /构建副本、缓存和临时测试日志应放在当前工作目录之外的系统临时目录/u);
+  assert.match(employee, /将构建和测试的临时输出指向该目录/u);
+  assert.match(employee, /验收的证据应放在任务约定的持久位置，并在沟通文件中记录路径/u);
+});

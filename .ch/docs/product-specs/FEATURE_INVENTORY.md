@@ -50,6 +50,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 产研部三角色支持 Loop / Loop+ 已支持的全部七种 CLI：Codex、Claude、OpenCode、Grok、DSH、Kimi Code、ZCode。角色下拉、保存、配置解析和生产准入复用 `CLI_LIST`，只沿用 CLI 启用状态、有效档案及已有模型能力校验。总监走经典 Loop，组长与员工走 Loop+；Codex/OpenCode 保留专用执行，其他五种复用原交互 runner，并纳入同一责任账本、真实会话绑定、停止和清理观察。
 
+员工执行提示明确要求在当前工作目录之外存放构建副本、缓存和临时测试日志，验收证据保存到任务约定的持久位置。隔离工作目录遗留未登记内容时保留现场，清理未经核验时保留执行名额。
+
 不再因角色使用 Grok 等 CLI 触发 `department-producer-role-or-task-invalid`。组长的本地会话键与真实 CLI 会话分开保存；员工停止后等待原 runner/输出排空及 adapter 资源清理，再归还名额。最终标准构建及 343 项相关回归通过，包含五种通用组长逐项停止后继续及混合员工；免费本机子进程/Owner socket 验证和生成页面 Chromium smoke 覆盖源码；未安装插件、未调用七种线上模型，也不将 macOS 测试外推为 Windows/Linux 验收。旧失败任务与未知所有权数据不自动改写。详见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-all-cli-execution.md)。
 
 ### 启动后自动打开总监群聊（2026-11-17）

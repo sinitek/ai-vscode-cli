@@ -7836,7 +7836,7 @@
     {
       "id": "plugin.rule.department_execution_cli_admission",
       "name": "部门执行角色复用全部 CLI 能力",
-      "description": "产研部总监、组长和员工共用 CLI_LIST 的全部七种 CLI，沿用 Loop/Loop+ 的配置和执行能力，不另设角色白名单。提示词完整传递，不设置部门长度上限或截断；Codex/OpenCode 组长精确 invocation 数据帧与员工准备消息的提示词不套用控制/配置大小预算。Codex/OpenCode 保留专用 Owner，其余五种复用原交互 runner 并接入同一责任账本、代次 authority、真实 native session 绑定及清理观察。新建交互员工 Tab 可先建立仅用于 UI/消息定位的本地 session 键；CLI 握手返回的 native session 仍独立绑定，已有会话续接不重绑。组长本地键与 executionSession 分离；员工等待原 runner/输出排空、adapter 资源清理后归还容量。已启用 CLI、有效档案、模型及原代身份继续核验；未知 Owner 和旧任务不自动改写。",
+      "description": "产研部总监、组长和员工共用 CLI_LIST 的全部七种 CLI，沿用 Loop/Loop+ 的配置和执行能力，不另设角色白名单。提示词完整传递，不设置部门长度上限或截断；Codex/OpenCode 组长精确 invocation 数据帧与员工准备消息的提示词不套用控制/配置大小预算。Codex/OpenCode 保留专用 Owner，其余五种复用原交互 runner 并接入同一责任账本、代次 authority、真实 native session 绑定及清理观察。新建交互员工 Tab 可先建立仅用于 UI/消息定位的本地 session 键；CLI 握手返回的 native session 仍独立绑定，已有会话续接不重绑。组长本地键与 executionSession 分离；员工等待原 runner/输出排空、adapter 资源清理后归还容量。员工提示要求临时构建及测试产物存放在当前工作目录之外，隔离目录中未登记的内容保留现场。已启用 CLI、有效档案、模型及原代身份继续核验；未知 Owner 和旧任务不自动改写。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -7844,6 +7844,12 @@
         "plugin.chat_panel"
       ],
       "source_refs": [
+        {
+          "path": "src/departmentprompts.ts"
+        },
+        {
+          "path": "src/loopSubtaskExecutionRoot.ts"
+        },
         {
           "path": "src/runtime/departmentleaderinvocation.ts"
         },
