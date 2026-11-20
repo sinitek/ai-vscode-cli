@@ -534,7 +534,7 @@ test("routes AI-dialogue OpenCode sendPrompt payload through coding runPrompt", 
   assert.equal(calls.runLoopPrompt.length, 0);
   assert.equal(calls.wakeMain.length, 0);
   assert.equal(calls.runPrompt.length, 1);
-  assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
+  assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke", performanceMode: "vibe" });
   assert.deepEqual(calls.runPrompt[0].input, {
     displayPrompt: "hi",
     modelPrompt: "hi",
@@ -631,7 +631,7 @@ test("waits for pending config apply before sending a prompt", async () => {
 
   assert.deepEqual(calls.configApplyWaits, ["opencode"]);
   assert.equal(calls.runPrompt.length, 1);
-  assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke" });
+  assert.deepEqual(calls.runPrompt[0].options, { targetTabId: "tab-opencode-smoke", performanceMode: "vibe" });
 });
 
 test("Loop+ starts without waiting for the full panel refresh and settles its submission", async () => {

@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { getHistoryRetentionCutoff, getHistoryRetentionDays } from "./historyRetention";
+import type { PerformanceEntry } from "./performanceLog";
 
 let logsDirPath: string | undefined;
 let debugLoggingEnabled = false;
@@ -24,19 +25,18 @@ export function setDebugLogging(enabled: boolean): void {
   debugLoggingEnabled = enabled;
 }
 
-export function scheduleLogRetentionCleanup(): void {
-  if (!logsDirPath || logRetentionCleanupPromise) {
-    return;
-  }
-  logRetentionCleanupPromise = pruneExpiredLogs(logsDirPath)
+export function scheduleLogRetentionCleanup(): Promise<void> | undefined {
+  if (!logsDirPath) return;
+  logRetentionCleanupPromise ??= pruneExpiredLogs(logsDirPath)
     .catch((error) => {
-      void appendLog("ERROR", "logs-retention-cleanup-failed", {
+      return appendLog("ERROR", "logs-retention-cleanup-failed", {
         error: String(error),
-      }, { force: true });
+      }, { force: true }).catch(() => undefined);
     })
     .finally(() => {
       logRetentionCleanupPromise = null;
     });
+  return logRetentionCleanupPromise;
 }
 
 export function sanitizeEnv(env: Record<string, string | undefined>): Record<string, string> {
@@ -65,6 +65,14 @@ export async function logError(message: string, data?: unknown): Promise<void> {
 
 export async function logEssential(message: string, data?: unknown): Promise<void> {
   await appendLog("INFO", message, data, { force: true });
+}
+
+export async function writePerformanceLog(entry: PerformanceEntry): Promise<void> {
+  if (!logsDirPath) return;
+  const now = new Date();
+  const { traceId, mode, cli, role, phase, outcome, durationMs } = entry;
+  await appendToSegmentedLog(`sinitek-cli.performance.${formatLocalDate(now)}.log`,
+    `${JSON.stringify({ time: now.toISOString(), traceId, mode, cli, role, phase, outcome, durationMs })}\n`);
 }
 
 export async function logAssistantRaw(

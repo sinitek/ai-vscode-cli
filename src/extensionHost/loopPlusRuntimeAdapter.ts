@@ -5,6 +5,7 @@ import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWa
 import { describeLoopSubtaskError } from "../loopSubtaskFailure";
 import { getErrorInfo } from "../promptRetry";
 import type { ThinkingMode } from "../cli/types";
+import { createPerformanceTrace } from "../performanceLog";
 import { applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile } from "../loopModelSwitch";
 import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
 import type { ChatMessage } from "../webview/types";
@@ -62,6 +63,7 @@ export type LoopPlusAttemptExecutionLease = {
 };
 
 export type LoopPlusRuntimeAdapterDeps = {
+  createPerformanceTrace?: typeof createPerformanceTrace;
   /** Live, read-only department balance supplied by the trusted host. */
   getDepartmentEmployeeCapacity?: (rootTaskId: string, leaderTaskId: string) => DepartmentEmployeeCapacity | null;
   /**
@@ -500,6 +502,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
   }
 
   function runMain(request: LoopPlusMainRequest): LoopPlusMainHandle {
+    const trace = deps.createPerformanceTrace?.("loop_plus", request.target.cli, "main");
     const firstMainExecution = request.firstMainExecution;
     let aborted = false;
     const departmentMain = deps.readTask(request.taskId)?.department?.role === "leader";
@@ -559,7 +562,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }
       }
     })();
-    const promise = firstMainExecution ? invocation.catch(async (error) => {
+    const measuredInvocation = trace?.measure("main-turn", () => invocation,
+      (result) => result === null ? (aborted ? "stopped" : "failed") : "returned") ?? invocation;
+    const promise = firstMainExecution ? measuredInvocation.catch(async (error) => {
       if (firstMainExecution.admitted) throw error;
       firstMainExecution.finishBeforeAdmission(aborted, error);
       return null;
@@ -567,7 +572,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (invocationStarted) {
         try { deps.onMainActivityChange?.(request.taskId); } catch { /* Projection only. */ }
       }
-    }) : invocation;
+    }) : measuredInvocation;
     trackExecution(request.taskId, promise);
     return {
       promise,
@@ -599,6 +604,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       ? continuation.sessionId ? continuation.grokExecutionRootId : randomUUID()
       : undefined;
     const sourceSessionSnapshot = JSON.stringify(task?.subTasks.find((v) => v.id === continuation.sourceSubtaskId)?.executionSession ?? null);
+    const trace = deps.createPerformanceTrace?.("loop_plus", request.targetCli, "subtask");
+    const finishAttempt = trace?.start("attempt");
     let subtaskTarget = departmentExecutionAdmission || deps.acquireAttemptExecution ? null : createTarget();
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
@@ -633,12 +640,19 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       let lease: LoopPlusAttemptExecutionLease | null | undefined;
       let result: LoopPlusAttemptResult = { outcome: "stopped", detail: "stopped" };
       try {
-        lease = departmentExecutionAdmission || deps.acquireAttemptExecution ? await acquireExecution() : null;
+        const admissionConfigured = Boolean(departmentExecutionAdmission || deps.acquireAttemptExecution);
+        const acquire = () => admissionConfigured ? acquireExecution() : Promise.resolve(null);
+        lease = trace && admissionConfigured
+          ? await trace.measure("attempt-admission", acquire, (value) => value === null ? (aborted ? "stopped" : "denied") : "returned")
+          : await acquire();
         if (!aborted && (!(departmentExecutionAdmission || deps.acquireAttemptExecution) || lease !== null)) {
           subtaskTarget ??= createTarget();
-          result = await withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
+          const execute = () => withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
             taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, signal: controller.signal,
           });
+          result = trace
+            ? await trace.measure("attempt-execution", execute, (value) => value.outcome)
+            : await execute();
           if (result.outcome === "completed") {
             try { preparedClose = deps.prepareSubtaskTabClose?.(subtaskTarget.tabId); }
             catch (error) { preparedClose = async () => { throw error; }; }
@@ -651,6 +665,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       } catch (error) {
         result = aborted ? { outcome: "stopped", detail: "stopped" } : { outcome: "failed", detail: errorDetail(error) };
       } finally {
+        const finishCleanup = trace?.start("attempt-cleanup");
         if (!invocationStarted && subtaskTarget) {
           deps.onSubtaskPreparationFailed?.(subtaskTarget.tabId, aborted ? "stopped" : "error");
         }
@@ -688,9 +703,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           }
         }
         settled = true;
+        finishCleanup?.(cleanupFailed ? "failed" : "completed");
       }
       return result;
     })();
+    void promise.then((value) => finishAttempt?.(value.outcome), () => finishAttempt?.("threw"));
     const handle: LoopPlusAttemptHandle = {
       promise,
       isActive: () => !settled && (departmentLease || invocationStartedAt === null || now() - invocationStartedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS

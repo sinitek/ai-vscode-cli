@@ -428,6 +428,7 @@ Loop+ 群聊左侧已有验收反馈的子任务成员可点击定位最近一�
 - 会话与模型等本地状态持久化
 - 模型状态读取失败时保留当前内存状态，避免一次临时读失败把面板模型列表刷新为空
 - 日志保留与临时文件清理
+- 核心链路性能日志始终独立写入 `~/.sinitek_cli/logs/sinitek-cli.performance.YYYY-MM-DD.log`，不受 debug 日志开关影响。记录仅含 Trace ID、Vibe / Loop / Loop+ / 产研部模式、CLI 与角色、阶段、结果和耗时，不记录提示词、模型输出、会话/任务标识、配置或路径；复用现有分段轮转和保留清理
 - 插件管理的历史痕迹（logs / 未收藏 prompt history / session history / task runs / loop task records / loop communications）按工具设置“常规配置”Tab 中的全局 `historyRetentionDays` 保留，默认 30 天、范围 1–3650 天；收藏 prompt history 保留到用户取消收藏后再按普通历史规则清理。临时目录仍按独立的 1 小时策略清理
 - Webview 渲染失败时的回退页
 - 配置中心空白页排查优先看本插件 Webview 前端渲染异常、配置 JSON/TOML 解析异常和配置卡片初始化数据；用户控制台中的 `AugmentExtensionSidecar` 对 `https://d17.api.augmentcode.com/*` 返回 403 是 Augment 扩展侧请求失败，通常不应直接归因于本插件配置页空白，除非同时发现本插件自身日志或 Webview 错误链路指向它。

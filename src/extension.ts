@@ -76,6 +76,7 @@ import { CliBridgeViewProvider } from "./webview/viewProvider";
 import { buildWorkspacePathItems, removeScheduledTaskAttachments, saveScheduledTaskAttachments, startTempCleanup } from "./webview/panelFileActions";
 import { ChatMessage, ChatMessageAction, PanelMessage, PanelState, ScheduledTaskRecord } from "./webview/types";
 import { initLogger, logDebug, logEssential, logError, logInfo, scheduleLogRetentionCleanup, setDebugLogging } from "./logger";
+import { createPerformanceTrace, type PerformanceTrace } from "./performanceLog";
 import { showErrorWithActions } from "./errorDisplay";
 import { appendBoundedUtf8Text } from "./boundedText";
 import {
@@ -1167,9 +1168,11 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     getDepartmentConfigurationIssue,
     beginDepartmentConfigurationSave: (scope, role) => departmentSaveBarrier.begin(scope, role),
     getDepartmentRoleCandidates: (cli, configId) => modelSettingsHost.getDepartmentRoleCandidates(cli, configId),
-    startDepartmentPrompt: (request) => getDepartmentRuntimeComposition().startDepartmentPrompt(request),
+    startDepartmentPrompt: (request) => createPerformanceTrace("department", request.cli, "director").measure("organization-start",
+      () => getDepartmentRuntimeComposition().startDepartmentPrompt(request)),
     isDepartmentContinuation: (tabId) => getDepartmentRuntimeComposition().isDepartmentContinuation(tabId),
-    continueDepartmentPrompt: (request) => getDepartmentRuntimeComposition().continueDepartmentPrompt(request),
+    continueDepartmentPrompt: (request) => createPerformanceTrace("department", request.cli).measure("organization-continue",
+      () => getDepartmentRuntimeComposition().continueDepartmentPrompt(request)),
     resolveDepartmentPromptConfiguration: async (request) => freezeDepartmentThinkingDefaults(
       await modelSettingsHost.resolveDepartmentPromptConfiguration(request.cli, request.acceptancePlanSelectionId), getEffectiveThinkingMode),
     selectCliModel,
@@ -4245,7 +4248,8 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
         ? { tabId: tab.id, cli: task.cli, sessionId: task.sessionId! } : null;
     },
     createMessageId,
-    prepareRoutes: prepareDepartmentRoutes,
+    prepareRoutes: (routes) => createPerformanceTrace("department", routes.director.cli ?? undefined).measure("route-validation",
+      () => prepareDepartmentRoutes(routes)),
     validateRoutes: validateDepartmentRoutes,
     resolveTarget: (tabId) => resolvePromptRunTarget(tabId),
     taskForTarget: departmentTaskForTab,
@@ -4315,7 +4319,9 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     },
     stopDirector: (taskId) => { abortOrchestratorClarification(loopClarificationScope(taskId)); stopLoopRunsForTask(taskId); },
     waitForDirectorClarification: waitForLoopTaskClarification,
-    runDirectorDecision: (request) => requireLoopOrchestrationHost().runClassicLoopMainDecision(request),
+    runDirectorDecision: (request) => createPerformanceTrace("department", request.target.cli, "director").measure("main-decision",
+      () => requireLoopOrchestrationHost().runClassicLoopMainDecision(request),
+      (result) => result.status === "interrupted" ? (result.runStatus === "stopped" ? "stopped" : "failed") : "returned"),
     captureDirectorTaskSummary: (input, target) => { rememberConversationTaskSummarySubmission(input, target, true); },
     openGroupChat: async (taskId) => openLoopGroupChatPanel(taskId),
     acquireDirectorOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
@@ -4380,6 +4386,7 @@ function persistLoopPlusTaskUpdate(taskId: string, patch: Partial<LoopTaskRecord
 function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAdapter> {
   if (!loopPlusRuntimeAdapter) {
     loopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+      createPerformanceTrace,
       isInvocationActive: (tabId) => isTabRunActive(tabId),
       hasActiveSubtasks: hasActiveLoopSubtasks,
       getActiveConfigIdForCli,
@@ -5175,11 +5182,14 @@ function readTextFileIfNonEmpty(...args: Parameters<LoopOrchestrationHost["readT
 }
 
 function runClassicLoopMainDecision(...args: Parameters<LoopOrchestrationHost["runClassicLoopMainDecision"]>): ReturnType<LoopOrchestrationHost["runClassicLoopMainDecision"]> {
-  return requireLoopOrchestrationHost().runClassicLoopMainDecision(...args);
+  return createPerformanceTrace("loop", args[0].target.cli, "main").measure("main-decision",
+    () => requireLoopOrchestrationHost().runClassicLoopMainDecision(...args),
+    (result) => result.status === "interrupted" ? (result.runStatus === "stopped" ? "stopped" : "failed") : "returned");
 }
 
 function runLoopSubtasksBatchWithRetry(...args: Parameters<LoopOrchestrationHost["runLoopSubtasksBatchWithRetry"]>): ReturnType<LoopOrchestrationHost["runLoopSubtasksBatchWithRetry"]> {
-  return requireLoopOrchestrationHost().runLoopSubtasksBatchWithRetry(...args);
+  return createPerformanceTrace("loop", args[0].target.cli, "subtask").measure("subtask-batch",
+    () => requireLoopOrchestrationHost().runLoopSubtasksBatchWithRetry(...args));
 }
 
 function writeTextFileEnsuringDir(...args: Parameters<LoopOrchestrationHost["writeTextFileEnsuringDir"]>): ReturnType<LoopOrchestrationHost["writeTextFileEnsuringDir"]> {
@@ -5608,6 +5618,8 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
 }
 
 type RunPromptOptions = { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void;
+  performanceMode?: "vibe" | "loop" | "loop_plus" | "department";
+  performanceTrace?: PerformanceTrace;
   registerQuestionRun?: (runId: string) => void;
   departmentInteractiveRunner?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"];
   firstMainExecution?: FirstLoopMainExecution };
@@ -5617,15 +5629,33 @@ async function runPrompt(
   options: RunPromptOptions = {},
 ): Promise<void> {
   const task = input.loopTaskId ? readLoopTaskRecord(input.loopTaskId) : null;
-  if (options.firstMainExecution && (!task || task.department || task.departmentInvalid || input.taskRole !== "main")) {
-    throw new Error(t("loopGroupChatChat.originalRuntimeUnavailable"));
-  }
-  if (task?.department?.role === "leader") {
-    if (input.taskRole !== "subtask") throw new Error("部门组长必须经真实 Loop+ 原生 Owner 调用，禁止普通执行回退。");
-    return getDepartmentExecutionProducer().track(task.id, () => usesDepartmentInteractiveRuntime(task.department?.routes.employee.cli)
-      ? runDepartmentInteractivePrompt(input, options) : runPromptWithDepartmentAdmission(input, options));
-  }
-  return runPromptWithDepartmentAdmission(input, options);
+  const department = task?.department;
+  const mode = options.performanceMode ?? (department || task?.departmentInvalid ? "department"
+    : task?.schedulingMode === "event_driven" ? "loop_plus" : input.loopTaskId ? "loop" : "vibe");
+  const role = department?.role === "leader" && input.taskRole === "subtask" ? "employee" : department?.role ?? input.taskRole;
+  const tabId = options.targetTabId ?? getActiveConversationTabId();
+  const trace = createPerformanceTrace(mode, tabId ? getConversationTabById(tabId)?.cli : undefined, role);
+  const dispatch = trace.start("runner-dispatch");
+  let runnerStarted = false;
+  const onStarted = options.onStarted;
+  options = { ...options, performanceTrace: trace, onStarted: () => { runnerStarted = true; dispatch(); onStarted?.(); } };
+  const invocation = trace.measure("invocation", async () => {
+    if (options.firstMainExecution && (!task || task.department || task.departmentInvalid || input.taskRole !== "main")) {
+      throw new Error(t("loopGroupChatChat.originalRuntimeUnavailable"));
+    }
+    if (department?.role === "leader") {
+      if (!task) throw new Error("部门运行任务缺失。");
+      if (input.taskRole !== "subtask") throw new Error("部门组长必须经真实 Loop+ 原生 Owner 调用，禁止普通执行回退。");
+      return getDepartmentExecutionProducer().track(task.id, () => usesDepartmentInteractiveRuntime(department.routes.employee.cli)
+        ? runDepartmentInteractivePrompt(input, options) : runPromptWithDepartmentAdmission(input, options));
+    }
+    return runPromptWithDepartmentAdmission(input, options);
+  });
+  void invocation.then(
+    () => { if (!runnerStarted) dispatch("stopped"); },
+    () => { if (!runnerStarted) dispatch("threw"); },
+  ).catch(() => undefined);
+  return invocation;
 }
 
 async function runPromptWithDepartmentAdmission(
@@ -5806,7 +5836,10 @@ async function runPromptNow(
         options.signal?.addEventListener("abort", abortCodexPreparation, { once: true });
         if (options.signal?.aborted) abortCodexPreparation();
         try {
-          if (!await configApplyQueue.waitForIdle(attemptTarget.cli)) {
+          const waitForConfiguration = () => configApplyQueue.waitForIdle(attemptTarget.cli);
+          const ready = await (options.performanceTrace?.measure("config-queue", waitForConfiguration, (value) => value ? "returned" : "denied")
+            ?? waitForConfiguration());
+          if (!ready) {
             throw new Error("配置应用失败，任务未启动，请重新选择配置后重试。");
           }
           if (attemptInput.loopTaskId) {
@@ -5944,6 +5977,7 @@ async function runPromptNow(
         }
         let departmentConsumed = false;
         let finishFirstMainQueue: (() => void) | undefined;
+        let finishRunner: ReturnType<PerformanceTrace["start"]> | undefined;
         try {
           if (executionOptions.isAborted()) {
             return;
@@ -5970,6 +6004,7 @@ async function runPromptNow(
           if (!firstMainExecution && !shouldUseInteractive && !await takeOverSessionForTab(attemptTarget, executionOptions.isAborted)) {
             return;
           }
+          finishRunner = options.performanceTrace?.start("runner");
           if (firstMainExecution) {
             if (!shouldUseInteractive) throw new Error(firstMainExecution.unavailableMessage);
             await runPromptInteractive(currentAttemptInput, attemptTarget, {
@@ -6010,7 +6045,11 @@ async function runPromptNow(
             await runPromptOneShot(currentAttemptInput, attemptTarget, { ...executionOptions, departmentProcessStream: ownerStream });
           }
           departmentConsumed = true;
+        } catch (error) {
+          finishRunner?.("threw");
+          throw error;
         } finally {
+          finishRunner?.();
           finishFirstMainQueue?.();
           departmentTabConsumer?.finish(departmentConsumed);
           options.signal?.removeEventListener("abort", abortCodexPreparation);

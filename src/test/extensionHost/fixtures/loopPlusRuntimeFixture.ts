@@ -103,6 +103,7 @@ export async function waitForLoopPlus(predicate: () => boolean, label: string): 
 
 export function createLoopPlusRuntimeFixture(options: {
   cli?: LoopPlusPromptTarget["cli"];
+  createPerformanceTrace?: LoopPlusRuntimeAdapterDeps["createPerformanceTrace"];
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
   configId?: string | null;
@@ -340,6 +341,7 @@ export function createLoopPlusRuntimeFixture(options: {
       await action(input, tabId);
     };
   const adapter: LoopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
+    createPerformanceTrace: options.createPerformanceTrace,
     acquireAttemptExecution: options.acquireAttemptExecution,
     log: (event, detail) => { logs.push({ event, detail }); },
     isInvocationActive: options.isInvocationActive,

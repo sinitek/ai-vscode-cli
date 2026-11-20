@@ -2,6 +2,8 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import type { LoopPlusAttemptRequest } from "../../extensionHost/loopPlusOrchestration";
 import type { LoopPlusAttemptExecutionLease } from "../../extensionHost/loopPlusRuntimeAdapter";
+import * as logger from "../../logger";
+import { createPerformanceTrace, type PerformanceEntry } from "../../performanceLog";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -22,6 +24,24 @@ function request(id = "A"): LoopPlusAttemptRequest {
     prompt: `Complete ${id}`, modelPrompt: "model", writeFiles: [], round: 1, targetCli: "codex",
   };
 }
+
+test("attempts without a capacity gate do not log admission denial", async (context) => {
+  const entries: PerformanceEntry[] = [];
+  context.mock.method(logger, "writePerformanceLog", async (entry: PerformanceEntry) => {
+    entries.push(entry);
+  });
+  const fixture = createLoopPlusRuntimeFixture({ createPerformanceTrace });
+  context.after(() => fixture.dispose());
+  fixture.setAttemptAction((input, tabId) => {
+    fixture.publish(input, tabId, { status: "end", content: "done" });
+  });
+
+  assert.equal((await fixture.adapter.startAttempt(request()).promise).outcome, "completed");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.ok(entries.some((entry) => entry.phase === "attempt-execution"));
+  assert.equal(entries.some((entry) => entry.phase === "attempt-admission" && entry.outcome === "denied"), false);
+});
 
 test("admission wait creates no tab/root/CLI, owns no session lock and does not block main events", async (t) => {
   const pending = new Map<string, ReturnType<typeof deferred<LoopPlusAttemptExecutionLease | null>>>();

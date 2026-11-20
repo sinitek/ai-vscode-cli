@@ -417,7 +417,7 @@
       "id": "plugin.history_retention_settings",
       "name": "历史自动清理设置",
       "kind": "configuration",
-      "description": "工具设置中的全局历史保留期限，控制插件在 ~/.sinitek_cli 下管理的日志、会话、提示词历史、任务和 Loop 记录清理边界；默认 30 天，范围 1–3650 天。",
+      "description": "工具设置中的全局历史保留期限，控制插件在 ~/.sinitek_cli 下管理的日志（含核心链路性能日志）、会话、提示词历史、任务和 Loop 记录清理边界；默认 30 天，范围 1–3650 天。",
       "status": "active",
       "aliases": [
         "自动清理",
@@ -427,6 +427,8 @@
       "implementation_paths": [
         "src/toolSettings.ts",
         "src/historyRetention.ts",
+        "src/logger.ts",
+        "src/performanceLog.ts",
         "src/webview/viewContentHtml.ts",
         "src/sessionMessageActions.ts",
         "src/settingMessageHandlers/preferences.ts"
@@ -434,6 +436,9 @@
       "source_refs": [
         {
           "path": "src/historyRetention.ts"
+        },
+        {
+          "path": "src/performanceLog.ts"
         },
         {
           "path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",

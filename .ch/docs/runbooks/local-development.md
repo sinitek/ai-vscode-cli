@@ -214,6 +214,8 @@ node scripts/count_effective_loc.js --json
 3. 按 `F5` 启动 Extension Development Host
 4. 在新的开发主机窗口中验证侧边栏、命令和 Webview 行为
 
+性能排查查看 `~/.sinitek_cli/logs/sinitek-cli.performance.*.log`。记录包含执行模式、阶段、结果和耗时，通过 Trace ID 关联同次调用；该日志不依赖 debug 开关，并按 `historyRetentionDays` 自动清理。
+
 ### Webview 调试
 
 在 VS Code 或开发主机中执行：

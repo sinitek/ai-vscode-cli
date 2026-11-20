@@ -642,7 +642,7 @@ async function executeSendPromptMessage(
       ...(loopPlusSchedulingMode ? { schedulingMode: loopPlusSchedulingMode } : {}),
     });
   } else {
-    await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId });
+    await deps.runPrompt(preparedPromptInput, { targetTabId: promptTargetTabId, performanceMode: "vibe" });
     if (loopSubtaskContext && promptTargetTabId) {
       const wakeOptions = {
         tabId: promptTargetTabId,

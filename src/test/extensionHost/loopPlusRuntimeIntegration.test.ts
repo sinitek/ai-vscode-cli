@@ -35,6 +35,8 @@ import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../../loopMainFailure";
 import { RUNTIME_CONFIG_LOCK_TIMEOUT, RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE } from "../../loopMainFailure";
 import { assertModeAvailable } from "../../modeAvailability";
 import { loopClarificationScope } from "../../orchestratorClarification";
+import * as logger from "../../logger";
+import { createPerformanceTrace, type PerformanceEntry } from "../../performanceLog";
 
 function createDeferred<T = void>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -335,6 +337,40 @@ test("本次完成记录从共享历史丢失后仍进入验收并自动关闭�
     await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId), "成功回报后关闭子任务标签");
     assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
     assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("Loop+ records main-turn and attempt lifecycle performance stages", async (context) => {
+  const entries: PerformanceEntry[] = [];
+  context.mock.method(logger, "writePerformanceLog", async (entry: PerformanceEntry) => {
+    entries.push(entry);
+  });
+  const fixture = createLoopPlusRuntimeFixture({
+    createPerformanceTrace,
+    acquireAttemptExecution: async () => ({ release: () => undefined }),
+  });
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId!;
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.queueMain((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
+    });
+    fixture.setAttemptAction((input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "执行已完成" });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.deepEqual(new Set(entries.map((entry) => entry.phase)), new Set([
+      "main-turn", "attempt", "attempt-admission", "attempt-execution", "attempt-cleanup",
+    ]));
+    assert.ok(entries.every((entry) => entry.mode === "loop_plus" && entry.durationMs >= 0));
   } finally {
     fixture.dispose();
   }
