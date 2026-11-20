@@ -264,7 +264,7 @@ test("同名真实模型不被临时草稿排除，模型列表复用宿主去�
   ]);
 });
 
-test("初始态不发请求、不可提交，模型控件为禁用的下拉占位", async () => {
+test("范例抽屉初始态不发请求、不可提交，模型控件为禁用的下拉占位", async () => {
   let submitted = 0;
   const harness = loadHarness();
   assert.equal(harness.resolveButton().props.disabled, true);
@@ -514,6 +514,92 @@ test("失败与重试同样保留解析期间输入的最新配置名称与其�
   assert.equal(harness.imported[0].model, "retry-model");
 });
 
+test("快捷添加两项连接信息都失焦后只自动解析一次，成功后仍可输入其他模型", async () => {
+  for (const [first, last] of [["base_url", "api_key"], ["api_key", "base_url"]] as const) {
+    const harness = loadHarness({ props: { platform: "codex" } });
+    assert.equal(harness.field("模型名称")!.props.type, "text");
+    assert.equal(harness.field("模型名称")!.props.disabled, false);
+    harness.field(first)!.props.onChange({ target: { value: values[first] } });
+    await harness.field(first)!.props.onBlur();
+    assert.equal(harness.calls.providers, 0);
+    harness.field(last)!.props.onChange({ target: { value: values[last] } });
+    assert.equal(harness.calls.providers, 0, "输入时不请求");
+    const connectionTarget = { closest: (selector: string) => selector.includes("[data-cli-example-connection]") ? {} : null };
+    await harness.field(last)!.props.onBlur({ relatedTarget: connectionTarget });
+    assert.equal(harness.calls.providers, 0, "在两个连接字段间切换焦点不请求");
+    const request = harness.field(first)!.props.onBlur();
+    await harness.resolveButton().props.onClick();
+    await request;
+    await harness.field(last)!.props.onBlur();
+    assert.deepEqual(harness.calls, { providers: 1, discover: 1 });
+    const model = harness.field("模型名称")!;
+    assert.equal(model.props.type, "text");
+    assert.equal(model.props.value, values.model);
+    assert.ok(nodes(harness.render()).some((node) => node.type === "datalist" && node.props.id === model.props.list));
+    model.props.onChange({ target: { value: "custom-model" } });
+    await harness.render().props.onOk();
+    assert.equal(harness.imported[0].model, "custom-model");
+  }
+});
+
+test("快捷添加的非法地址不触发自动解析，连接修正后可直接提交手填模型", async () => {
+  const harness = loadHarness({ props: { platform: "codex" } });
+  harness.connect("ftp://example.com");
+  await harness.field("api_key")!.props.onBlur();
+  assert.equal(harness.calls.providers, 0);
+  harness.field("模型名称")!.props.onChange({ target: { value: "manual-model" } });
+  await harness.render().props.onOk();
+  assert.equal(harness.imported.length, 0);
+  harness.field("base_url")!.props.onChange({ target: { value: values.base_url } });
+  await harness.render().props.onOk();
+  assert.equal(harness.imported[0].model, "manual-model");
+  assert.equal(harness.calls.providers, 0);
+});
+
+test("快捷添加解析中保留手填模型，可直接提交且忽略迟到响应", async () => {
+  const pending = deferred<unknown>();
+  const harness = loadHarness({ props: { platform: "codex" }, host: { discover: () => pending.promise } });
+  harness.connect();
+  const request = harness.field("api_key")!.props.onBlur();
+  await tick();
+  assert.equal(harness.status().props["data-state"], "loading");
+  assert.equal(harness.field("模型名称")!.props.disabled, false);
+  harness.field("模型名称")!.props.onChange({ target: { value: "manual-model" } });
+  await harness.render().props.onOk();
+  assert.equal(harness.imported[0].model, "manual-model");
+  pending.resolve({ models: [{ id: "late-model" }] });
+  await request;
+  assert.equal(harness.status().props["data-state"], "idle");
+  assert.equal(harness.field("模型名称")!.props.value, "manual-model");
+});
+
+test("快捷添加解析失败后不重复自动请求，重试成功保留手填模型", async () => {
+  let shouldFail = true;
+  const harness = loadHarness({
+    props: { platform: "codex" },
+    host: { discover: async () => {
+      if (shouldFail) throw new Error("接口不可用");
+      return { models: [{ id: "discovered-model" }] };
+    } },
+  });
+  harness.connect();
+  await harness.field("api_key")!.props.onBlur();
+  assert.equal(harness.status().props["data-state"], "failure");
+  assert.equal(harness.field("模型名称")!.props.disabled, false);
+  await harness.field("api_key")!.props.onBlur();
+  assert.equal(harness.calls.discover, 1);
+  harness.field("模型名称")!.props.onChange({ target: { value: "manual-model" } });
+  shouldFail = false;
+  await harness.resolveButton().props.onClick();
+  assert.equal(harness.status().props["data-state"], "success");
+  assert.equal(harness.field("模型名称")!.props.value, "manual-model");
+  harness.field("api_key")!.props.onChange({ target: { value: "rotated-key" } });
+  assert.equal(harness.field("模型名称")!.props.list, undefined);
+  await harness.field("api_key")!.props.onBlur();
+  assert.equal(harness.calls.discover, 3);
+  assert.equal(harness.field("模型名称")!.props.value, "manual-model");
+});
+
 test("目标平台切换后旧成功响应不能建立成功态，也不能提交旧模型", async () => {
   const pending = deferred<{ models: Array<{ id: string; label: string }>; existingModelIds: string[] }>();
   const harness = loadHarness({ props: { platform: "codex" }, host: { discover: () => pending.promise } });
@@ -524,14 +610,14 @@ test("目标平台切换后旧成功响应不能建立成功态，也不能提�
   pending.resolve({ models: [{ id: "offline-model", label: "offline-model" }], existingModelIds: [] });
   await request;
   assert.equal(harness.status().props["data-state"], "idle");
-  assert.equal(harness.field("模型名称")!.props.disabled, true);
-  assert.equal(harness.field("模型名称")!.props.value, undefined);
+  assert.equal(harness.field("模型名称")!.props.disabled, false);
+  assert.equal(harness.field("模型名称")!.props.value, "");
   await harness.render().props.onOk();
-  assert.equal(harness.imported.length, 0, "未解析的新目标不可提交");
+  assert.equal(harness.imported.length, 0, "模型名称为空的新目标不可提交");
   assert.equal(harness.calls.providers, 1);
 });
 
-test("目标切换后旧失败不能放开手填授权，已有成功与手填态都回到未解析", async () => {
+test("目标切换后忽略旧失败，已有成功与手填态都回到空白模型输入框", async () => {
   const failures: Array<Deferred<never>> = [];
   const harness = loadHarness({
     props: { platform: "codex" },
@@ -550,8 +636,8 @@ test("目标切换后旧失败不能放开手填授权，已有成功与手填�
   failures[0].reject(new Error("旧目标失败"));
   await request;
   assert.equal(harness.status().props["data-state"], "idle");
-  assert.equal(harness.field("模型名称")!.props.disabled, true);
-  assert.deepEqual(Array.from(harness.field("模型名称")!.props.options as unknown[]), []);
+  assert.equal(harness.field("模型名称")!.props.type, "text");
+  assert.equal(harness.field("模型名称")!.props.list, undefined);
 
   const host: HarnessOptions["host"] = {
     discover: async () => ({ models: [{ id: "offline-model", label: "offline-model" }], existingModelIds: [] }),
@@ -562,17 +648,18 @@ test("目标切换后旧失败不能放开手填授权，已有成功与手填�
   assert.equal(success.status().props["data-state"], "success");
   success.setProps({ platform: "claude" });
   assert.equal(success.status().props["data-state"], "idle");
-  assert.equal(success.field("模型名称")!.props.disabled, true);
-  assert.equal(success.field("模型名称")!.props.value, undefined);
+  assert.equal(success.field("模型名称")!.props.disabled, false);
+  assert.equal(success.field("模型名称")!.props.value, "");
 
   const manual = loadHarness({ props: { platform: "codex" }, host: { discover: async () => { throw new Error("失败"); } } });
   manual.connect();
   await manual.resolveButton().props.onClick();
   assert.equal(manual.field("模型名称")!.props.type, "text");
+  manual.field("模型名称")!.props.onChange({ target: { value: "old-manual-model" } });
   manual.setProps({ platform: "claude" });
   assert.equal(manual.status().props["data-state"], "idle");
-  assert.equal(manual.field("模型名称")!.props.disabled, true);
-  assert.equal(manual.field("模型名称")!.props.value, undefined);
+  assert.equal(manual.field("模型名称")!.props.disabled, false);
+  assert.equal(manual.field("模型名称")!.props.value, "");
 });
 
 test("目标切换后按新目标初始化协议默认值，新发现可提交到新平台", async () => {
@@ -580,12 +667,12 @@ test("目标切换后按新目标初始化协议默认值，新发现可提交�
   assert.equal(harness.field("API 协议类型")!.props.value, "responses");
   harness.connect();
   await harness.resolveButton().props.onClick();
-  assert.ok(Array.isArray(harness.field("模型名称")!.props.options));
+  assert.equal(harness.field("模型名称")!.props.list, "cli-example-model-options");
   harness.setProps({ platform: "grok" });
   const protocolField = harness.field("API 协议类型")!;
   assert.equal(protocolField.props.value, "responses");
   assert.equal(harness.status().props["data-state"], "idle");
-  assert.equal(harness.field("模型名称")!.props.value, undefined);
+  assert.equal(harness.field("模型名称")!.props.value, "");
   await harness.resolveButton().props.onClick();
   assert.equal(harness.status().props["data-state"], "success");
   await harness.render().props.onOk();
@@ -628,15 +715,15 @@ test("按身份 key 真实重挂载后新实例从空白未解析态开始，旧
   assert.equal(nodes(tree).find((node) => node.props.role === "status")!.props["data-state"], "idle");
   assert.equal(harness.field("base_url")!.props.value, "");
   assert.equal(harness.field("api_key")!.props.value, "");
-  assert.equal(harness.field("模型名称")!.props.disabled, true);
+  assert.equal(harness.field("模型名称")!.props.disabled, false);
   assert.equal(nodes(tree).some((node) => node.props["aria-label"] === "API 协议类型"), false, "Claude 无协议字段");
   pending.resolve({ models: [{ id: "stale-codex-model", label: "stale-codex-model" }], existingModelIds: [] });
   await request;
   assert.equal(harness.status().props["data-state"], "idle");
-  assert.equal(harness.field("模型名称")!.props.value, undefined);
+  assert.equal(harness.field("模型名称")!.props.value, "");
   assert.equal(harness.field("base_url")!.props.value, "");
   await harness.render().props.onOk();
-  assert.equal(harness.imported.length, 0, "新实例未解析不可提交");
+  assert.equal(harness.imported.length, 0, "新实例缺少必填信息不可提交");
 });
 
 test("目标切换后旧请求结束不清除新请求的 loading 与结果", async () => {
@@ -663,7 +750,7 @@ test("目标切换后旧请求结束不清除新请求的 loading 与结果", as
   requests[0].resolve({ models: [{ id: "stale-codex-model", label: "stale-codex-model" }], existingModelIds: [] });
   await first;
   assert.equal(harness.status().props["data-state"], "loading", "旧请求结束不得清除新请求 loading");
-  assert.equal(harness.field("模型名称")!.props.disabled, true);
+  assert.equal(harness.field("模型名称")!.props.disabled, false);
   requests[1].resolve({ models: [{ id: "fresh-claude-model", label: "fresh-claude-model" }], existingModelIds: [] });
   await second;
   assert.equal(harness.status().props["data-state"], "success");

@@ -6399,6 +6399,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
   const [discovery, setDiscovery] = c.useState({ status: "idle", models: [], message: "" });
   const baseUrlInputRef = c.useRef(null);
   const submittingRef = c.useRef(!1);
+  const modelEditedRef = c.useRef(!1);
   const targetIdentity = `${currentExampleKey}|${platform || ""}`;
   const identityRef = c.useRef(targetIdentity);
   const autoNameRef = c.useRef(initialName);
@@ -6414,7 +6415,8 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
   };
   const resetForTarget = () => {
     const nextDefaultName = platform ? `${configPlatformLabel(platform)} 配置 ${Date.now()}` : "";
-    discoveryRef.current = { generation: discoveryRef.current.generation + 1, signature: "", identity: targetIdentity, inFlight: !1 };
+    invalidateDiscovery();
+    modelEditedRef.current = !1;
     setValues((previous) => ({
       base_url: previous.base_url,
       api_key: previous.api_key,
@@ -6440,7 +6442,8 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
   const protocolValue = targetReady ? values.protocol : protocol ? protocol.defaultValue : void 0;
   const nameValue = targetReady ? values.name : "";
   const discoveryPending = activeDiscovery.status === "loading";
-  const confirmBlocked = submitting || discoveryPending || activeDiscovery.status === "idle";
+  const unresolved = !platform && (discoveryPending || activeDiscovery.status === "idle");
+  const confirmBlocked = submitting || !targetReady || (!platform && unresolved);
   const resolveBlocked = submitting || !targetReady || discoveryPending
     || Object.keys(validateCliExampleImportConnection(values, currentExampleKey)).length > 0;
   const resolveModels = async () => {
@@ -6498,17 +6501,23 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
       setDiscovery({ status: "failure", models: [], message });
       return;
     }
-    setValues((previous) => {
-      const currentModel = String(previous.model || "").trim();
-      return { ...previous, model: models.some((option) => option.value === currentModel) ? currentModel : models[0].value };
-    });
-    setErrors((previous) => ({ ...previous, model: "", import: "" }));
+    if (!platform || !modelEditedRef.current) {
+      setValues((previous) => {
+        const currentModel = String(previous.model || "").trim();
+        return { ...previous, model: models.some((option) => option.value === currentModel) ? currentModel : models[0].value };
+      });
+      setErrors((previous) => ({ ...previous, model: "", import: "" }));
+    }
     setDiscovery({ status: "success", models, message: "" });
   };
+  const resolveOnConnectionBlur = (event) => {
+    if (resolveBlocked || activeDiscovery.status !== "idle") return;
+    if (event?.relatedTarget?.closest?.("[data-cli-example-connection], .ant-modal-footer, .ant-modal-close")) return;
+    return resolveModels();
+  };
   const submit = async () => {
-    if (submittingRef.current) return;
+    if (submittingRef.current || !targetReady) return;
     const resolvedValues = { ...values, model: modelValue };
-    const unresolved = activeDiscovery.status === "idle" || activeDiscovery.status === "loading";
     const nextErrors = validateCliExampleImport(resolvedValues, currentExampleKey);
     if (unresolved) delete nextErrors.model;
     if (platform && !String(resolvedValues.name || "").trim()) nextErrors.name = "配置名称不能为空";
@@ -6519,6 +6528,10 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
       return;
     }
     submittingRef.current = !0;
+    if (discoveryRef.current.inFlight) {
+      invalidateDiscovery();
+      setDiscovery({ status: "idle", models: [], message: "" });
+    }
     setSubmitting(!0);
     try {
       await onImport(resolvedValues);
@@ -6544,11 +6557,13 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
     }
   };
   const updateValue = (key, value, connection) => {
-    const clearsModel = connection && discovery.status !== "idle";
-    if (clearsModel) {
+    if (key === "model") modelEditedRef.current = !0;
+    const resetsDiscovery = connection && (discovery.status !== "idle" || discoveryRef.current.inFlight);
+    if (resetsDiscovery) {
       invalidateDiscovery();
       setDiscovery({ status: "idle", models: [], message: "" });
     }
+    const clearsModel = resetsDiscovery && (!platform || !modelEditedRef.current);
     setValues((previous) => ({ ...previous, [key]: value, ...(clearsModel ? { model: "" } : {}) }));
     setErrors((previous) => ({ ...previous, [key]: "", import: "" }));
   };
@@ -6570,7 +6585,9 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
         "aria-invalid": Boolean(errors[key]),
         "aria-describedby": errors[key] ? `cli-example-${key}-error` : void 0,
         status: errors[key] ? "error" : void 0,
+        "data-cli-example-connection": platform && connection ? "" : void 0,
         onChange: (event) => updateValue(key, cliExampleImportModelText(event?.target ? event.target.value : event), connection),
+        onBlur: platform && connection ? resolveOnConnectionBlur : void 0,
         onPressEnter: (event) => { if (!event.nativeEvent?.isComposing) submit(); },
       }),
       errors[key] ? be.jsx("div", {
@@ -6588,17 +6605,19 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
     children: errors.model,
   }) : null;
   const statusText = activeDiscovery.status === "loading" ? "正在解析模型，请稍候…"
-    : activeDiscovery.status === "success" ? `已解析 ${activeDiscovery.models.length} 个模型，请选择后提交`
+    : activeDiscovery.status === "success" ? `已解析 ${activeDiscovery.models.length} 个模型${platform ? "" : "，请选择后提交"}`
       : activeDiscovery.status === "failure" ? "解析未完成，可重试解析或手动填写模型名称"
-        : "填写地址和密钥后可解析模型";
+        : platform ? "地址和密钥填好后自动解析" : "填写地址和密钥后可解析模型";
   const renderModelField = () => {
+    const discoveryFailed = activeDiscovery.status === "failure";
+    const suggestionsId = platform && activeDiscovery.status === "success" ? "cli-example-model-options" : void 0;
     const shared = {
       "aria-label": "模型名称",
       "aria-required": !0,
       "aria-invalid": Boolean(errors.model),
-      "aria-describedby": errors.model ? "cli-example-model-error" : "cli-example-model-hint",
+      "aria-describedby": errors.model ? "cli-example-model-error" : !platform || discoveryFailed ? "cli-example-model-hint" : void 0,
     };
-    if (activeDiscovery.status === "success") return be.jsxs("label", {
+    if (!platform && activeDiscovery.status === "success") return be.jsxs("label", {
       className: "config-visual-field",
       style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
       children: [
@@ -6625,7 +6644,7 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
         modelError,
       ],
     });
-    if (activeDiscovery.status === "failure") return be.jsxs("label", {
+    if (platform || discoveryFailed) return be.jsxs("label", {
       className: "config-visual-field",
       style: { display: "flex", flexDirection: "column", gap: 5, minWidth: 0 },
       children: [
@@ -6634,19 +6653,24 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
           ...shared,
           type: "text",
           value: modelValue,
-          placeholder: "例如 got-6.1-sol",
+          placeholder: platform ? "请输入模型名称" : "例如 got-6.1-sol",
           required: !0,
           disabled: submitting,
+          list: suggestionsId,
           autoComplete: "off",
           spellCheck: !1,
           status: errors.model ? "error" : void 0,
           onChange: (event) => updateValue("model", cliExampleImportModelText(event?.target ? event.target.value : event)),
         }),
-        be.jsx("div", {
+        suggestionsId ? be.jsx("datalist", {
+          id: suggestionsId,
+          children: activeDiscovery.models.map(({ value, label }) => be.jsx("option", { value, label }, value)),
+        }) : null,
+        discoveryFailed ? be.jsx("div", {
           id: "cli-example-model-hint",
           className: "grok-model-copy-hint",
           children: activeDiscovery.message || "未能解析模型，可手动填写模型名称",
-        }),
+        }) : null,
         modelError,
       ],
     });
