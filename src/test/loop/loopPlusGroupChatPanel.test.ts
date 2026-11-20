@@ -35,6 +35,7 @@ const {
 } = require("../../panelStateBuilder") as typeof import("../../panelStateBuilder");
 const {
   buildLoopGroupChatPanelHtml,
+  buildLoopGroupChatPanelContentPatch,
 } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
 const {
   createLoopPlusScheduler,
@@ -193,6 +194,7 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.equal(countValue(page, "visible"), "3");
     assert.equal(countValue(page, "running"), "1");
     assert.equal(countValue(page, "pending"), "1");
+    assert.doesNotMatch(page, /依赖\[/u);
     assert.doesNotMatch(page, /data-loop-plus-count="reviewed"/u);
     assertLoopPlusDetailCardsHidden(page);
     assert.doesNotMatch(page, new RegExp(buildLoopPlusFinishEventId("A", "a-1").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -218,6 +220,35 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.match(page, /主任务 0% 思考中/u);
     assert.doesNotMatch(page, /已全部收口/u);
   }
+});
+
+test("shows only unmet dependencies on pending members and refreshes the labels as they are resolved", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(scheduler, "A", "a-1");
+  assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("A", "a-1")], "failed").ok, true);
+  dispatchAndFinish(scheduler, "B", "b-1");
+  assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("B", "b-1")], "passed").ok, true);
+  assert.equal(scheduler.dispatch([{ ...spec("C", "c-1"), requiresAcceptance: false }]).started.length, 1);
+  const report = scheduler.finish({ subtaskId: "C", attemptId: "c-1", outcome: "completed" });
+  assert.equal(report.applied, true);
+  assert.equal(scheduler.dispatch([{ ...spec("E", "e-1"), dependsOn: ["C", "B", "A"] }]).started.length, 0);
+
+  const memberStatus = (page: string) => page.match(/子任务 5：Echo<\/div>\s*<div class="member-meta">([^\n]+)<\/div>/u)?.[1];
+  const rosterOnRefresh = () => buildLoopGroupChatPanelContentPatch(build(scheduler.snapshot()), 1).rosterPanelHtml;
+  const pendingLabel = '<span class="member-status-pending">待启动</span>';
+  assert.equal(memberStatus(html(build(scheduler.snapshot()))), `${pendingLabel} 依赖[子任务 3、子任务 1]`);
+
+  assert.equal(scheduler.acknowledgeReports([buildLoopPlusFinishEventId("C", "c-1")]), true);
+  assert.equal(memberStatus(rosterOnRefresh()), `${pendingLabel} 依赖[子任务 1]`);
+
+  dispatchAndFinish(scheduler, "A", "a-2");
+  assert.equal(scheduler.dispatch([spec("D", "d-1")]).started.length, 1);
+  assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("A", "a-2")], "passed").ok, true);
+  assert.equal(scheduler.promotePending().started.length, 0);
+  assert.equal(memberStatus(rosterOnRefresh()), pendingLabel);
+
+  assert.equal(scheduler.finish({ subtaskId: "D", attemptId: "d-1", outcome: "completed" }).started[0]?.subtaskId, "E");
+  assert.equal(memberStatus(rosterOnRefresh()), '<span class="member-status-running">运行中</span>');
 });
 
 test("shows continue instead of stop when the host no longer owns the Loop+ run", () => {

@@ -1,5 +1,6 @@
 import { resolveLoopSchedulingMode, type LoopTaskRecord } from "./loopTaskStore";
 import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusReviewItem, type LoopPlusSchedulerPhase } from "./loopPlusScheduler";
+import { getLoopSubtaskDisplayTitle } from "./loopConversationPresentation";
 import type { LoopPlusPanelProjection } from "./webview/loopGroupChatPanelTypes";
 
 export function projectLoopPlusPanel(
@@ -41,6 +42,17 @@ export function projectLoopPlusPanel(
         ? { interrupted: true }
         : {}),
     }));
+    const blockingLabelsByAttempt = new Map<string, string[]>();
+    if (view.dependencyBlocks?.length) {
+      const subtaskNumbers = new Map(task.subTasks?.map((subtask, index) => [subtask.id, index]));
+      for (const { attemptId, dependencyId } of view.dependencyBlocks) {
+        const index = subtaskNumbers.get(dependencyId);
+        const label = index === undefined ? `任务 ID ${dependencyId}` : getLoopSubtaskDisplayTitle(index, { title: "" });
+        const labels = blockingLabelsByAttempt.get(attemptId);
+        if (labels) labels.push(label);
+        else blockingLabelsByAttempt.set(attemptId, [label]);
+      }
+    }
     return {
       ok: true,
       schedulingMode: "event_driven",
@@ -54,7 +66,13 @@ export function projectLoopPlusPanel(
       reviewQueueCount,
       visibleReviewCount: view.visibleReviewCount,
       running,
-      pending: view.pending.map(copyLoopPlusExecutionItem),
+      pending: view.pending.map((item) => {
+        const blockingDependencyLabels = blockingLabelsByAttempt.get(item.attemptId);
+        return {
+          ...copyLoopPlusExecutionItem(item),
+          ...(blockingDependencyLabels ? { blockingDependencyLabels } : {}),
+        };
+      }),
       runningCount: running.filter((item) => !item.interrupted).length,
       pendingCount: view.pending.length,
       seenAttempts: snapshot.seenAttempts.map((item) => {

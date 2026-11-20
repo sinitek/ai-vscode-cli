@@ -2014,9 +2014,16 @@ function renderRosterPanel(
     return "";
   }
   const rosterParticipants = collectRosterParticipants(state.rounds);
+  const blockingLabelsBySubtask = new Map(state.loopPlus?.ok
+    ? state.loopPlus.pending.map((item) => [item.subtaskId, item.blockingDependencyLabels] as const)
+    : []);
   const participants = rosterParticipants.map((participant) => {
     const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
     const opensConversation = participant.role === "subtask" && participant.status === "running";
+    const blockingLabels = participant.role === "subtask" && participant.status === "pending"
+      ? blockingLabelsBySubtask.get(participant.id)
+      : undefined;
+    const dependencyStatus = blockingLabels?.length ? ` 依赖[${escapeHtml(blockingLabels.join("、"))}]` : "";
     const openTag = opensConversation
       ? `<button class="member member-conversation-link" type="button" data-action="openSubtaskConversation" data-subtask-id="${escapeAttribute(participant.id)}" title="在 AI 对话面板打开此子任务" aria-label="${escapeAttribute(participant.title)}：在 AI 对话面板打开此子任务">`
       : anchor
@@ -2026,7 +2033,7 @@ function renderRosterPanel(
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
-      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${dependencyStatus}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
   ${opensConversation || anchor ? "</button>" : "</div>"}`;

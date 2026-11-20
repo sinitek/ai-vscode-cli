@@ -252,6 +252,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - 状态：`active`（2026-11-11）。经典 Loop 群聊的主任务、子任务成员状态统一显示中文：运行中、待启动、已完成、已跳过、已阻塞、待复核、执行失败、已停止；首次渲染与实时刷新保持一致。
 - 复用 Loop+ 的 VS Code 主题语义色：运行中为蓝色，已完成为绿色，待启动、已阻塞、待复核及执行失败为橙色，已停止、已跳过使用主题次要文字色；不硬编码色值。Loop+ 的“已收口”“正在验收”“验收成功”“验收失败”等文案保留。
 - 仅调整状态展示，不改变任务状态、调度、验收或权限语义，无需更新 ontology。实现：`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopGroupChatPanel.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
+- 普通 Loop+ 群聊的「待启动」后显示当前未满足的直接依赖，例如「待启动 依赖[子任务 2、子任务 5]」。编号与成员列表一致，依赖满足后刷新即移除；仅因并发或写入冲突排队时不显示依赖。经典 Loop 和产研部群聊不变。依赖判断复用[调度快照](../design-docs/loop-plus-scheduling.md#阻塞观测与恢复)，不改变调度。
 
 ## Loop / Loop+ 总体进度
 

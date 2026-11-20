@@ -88,6 +88,7 @@ export type LoopPlusPanelExecutionItem = {
   title: string | null;
   state: "running" | "pending";
   interrupted?: boolean;
+  blockingDependencyLabels?: string[];
 };
 
 export type LoopPlusPanelReviewItem = {

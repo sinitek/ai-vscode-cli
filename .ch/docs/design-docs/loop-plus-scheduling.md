@@ -106,6 +106,8 @@ Loop+ 区分执行事实与验收判断。子任务明确汇报的测试、构�
 
 scheduler 导出 `LoopPlusDependencyBlock`，字段为 `subtaskId`、`attemptId`、`dependencyId`、`dependencyAttemptId: string | null` 和 `reason`。`getDependencyBlocks()` 为每个 pending 任务的每条未满足依赖返回独立副本；view 与 dispatch decision 仅在非空时携带可选 `dependencyBlocks`，不替换既有冲突 `block`、`conflict` 或 `concurrencyBlocked`。
 
+普通 Loop+ 群聊从同一 view 读取 `dependencyBlocks`，按排队 attempt 展示未满足的直接前置，并按父任务子任务顺序映射现有成员编号。成员记录缺失时显示逻辑任务 ID，不编造编号。初次打开和增量刷新共用状态渲染，不重新判断依赖是否满足。
+
 | reason | 最新前置 attempt 状态 |
 | --- | --- |
 | `execution_pending` | 开放执行或排队，等待执行完成 |
