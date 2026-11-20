@@ -314,7 +314,7 @@ export const WEBVIEW_STRINGS = {
     toolSettingsLoopGroupChatMessageLimitLabel: "Loop / Loop+ 群聊气泡上限",
     toolSettingsLoopGroupChatMessageLimitSaveError: "群聊气泡上限保存失败，请重试。",
     toolSettingsLoopGroupChatMessageLimitNote:
-      `全局设置，默认 ${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT}，范围 1–10000。达到上限时移除最旧的 25% 气泡（向上取整，默认 ${Math.ceil(LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT / 4)} 个），仅显示最新消息；至少保留最新一条。只影响群聊页面，不删除聊天记录或任务数据。`,
+      `全局设置，默认 ${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT}，范围 1–10000。达到上限时移除最旧的 25% 普通气泡（向上取整，默认 ${Math.ceil(LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT / 4)} 个），保留任务发起提示词和全部补充需求；至少保留最新一条。只影响群聊页面，不删除聊天记录或任务数据。`,
     toolSettingsHideInstructionBubblesLabel: "隐藏指令气泡",
     toolSettingsHideInstructionBubblesToggle: "启用",
     toolSettingsHideInstructionBubblesNote: "默认关闭。开启后隐藏 AI 对话面板中的所有指令类型气泡，取消勾选后恢复显示；不影响指令执行。",

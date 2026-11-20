@@ -972,11 +972,13 @@ test("group chat initial HTML and content patches render only the newest bounded
   const state = createLongChatState(499);
   const patch = buildLoopGroupChatPanelContentPatch(state, 1);
   assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 375);
-  assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0124|任务发起/u);
-  assert.match(patch.timelineHtml, /群聊消息编号0125/u);
+  assert.match(patch.timelineHtml, /<span class="tag">任务发起<\/span>/u);
+  assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0125/u);
+  assert.match(patch.timelineHtml, /群聊消息编号0126/u);
   assert.match(patch.timelineHtml, /群聊消息编号0499/u);
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
   assert.equal((html.match(/<article class="message /g) ?? []).length, 375);
+  assert.match(html, /data-markdown-source="Review the implementation &amp; escape &lt;tags&gt;\./u);
   assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(498), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 499);
   assert.equal((buildLoopGroupChatPanelContentPatch(createLongChatState(1000), 1).timelineHtml.match(/<article class="message /g) ?? []).length, 376);
   assert.equal(state.chatMarkdown.match(/## 主任务发言/g)?.length, 499);
@@ -988,10 +990,12 @@ test("group chat counts live thinking bubbles and does not restore the pruned pr
   const window = { start: 0 };
   const running = buildLoopGroupChatPanelContentPatch(state, 1, window);
   assert.equal((running.timelineHtml.match(/<article class="message /g) ?? []).length, 150);
+  assert.match(running.timelineHtml, /data-markdown-source="Review the implementation &amp; escape &lt;tags&gt;\./u);
   assert.match(running.timelineHtml, /data-thinking-kind="main"/u);
   state.task.status = "completed";
   const completed = buildLoopGroupChatPanelContentPatch(state, 2, window);
   assert.equal((completed.timelineHtml.match(/<article class="message /g) ?? []).length, 149);
+  assert.match(completed.timelineHtml, /data-markdown-source="Review the implementation &amp; escape &lt;tags&gt;\./u);
   assert.doesNotMatch(completed.timelineHtml, /群聊消息编号0049/u);
   state.messageLimit = 400;
   assert.match(buildLoopGroupChatPanelContentPatch(state, 3, window).timelineHtml, /群聊消息编号0001/u);
@@ -1005,7 +1009,8 @@ test("group chat applies custom and minimum limits to Loop+ as well as classic L
     assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 7);
     state.messageLimit = 1;
     const minimum = buildLoopGroupChatPanelContentPatch(state, 2);
-    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 1);
+    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 2);
+    assert.match(minimum.timelineHtml, /<span class="tag">任务发起<\/span>/u);
     assert.match(minimum.timelineHtml, /群聊消息编号0009/u);
   }
 });
@@ -1041,10 +1046,11 @@ test("Loop and Loop+ preserve supplemental requirements in initial HTML and incr
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
 
     for (const content of [html, patch.timelineHtml]) {
+      assert.match(content, /data-markdown-source="Review the implementation &amp; escape &lt;tags&gt;\./u);
       assert.match(content, /请保留早期补充需求。/u);
       assert.match(content, /请保留最新补充需求。/u);
-      assert.doesNotMatch(content, /任务发起|群聊消息编号0002/u);
-      assert.ok(content.indexOf('data-markdown-source="请保留早期补充需求。"') < content.indexOf('data-markdown-source="群聊消息编号0003"'));
+      assert.doesNotMatch(content, /群聊消息编号0002/u);
+      assert.ok(content.indexOf('data-markdown-source="请保留早期补充需求。"') < content.indexOf('data-markdown-source="群聊消息编号0004"'));
       assert.equal((content.match(/<article class="message /g) ?? []).length, 9);
     }
 
@@ -1062,7 +1068,8 @@ test("Loop and Loop+ preserve supplemental requirements in initial HTML and incr
     const minimum = buildLoopGroupChatPanelContentPatch(state, 4, window);
     assert.match(minimum.timelineHtml, /请保留早期补充需求。/u);
     assert.match(minimum.timelineHtml, /请保留最新补充需求。/u);
-    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 2);
+    assert.match(minimum.timelineHtml, /data-markdown-source="Review the implementation &amp; escape &lt;tags&gt;\./u);
+    assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 3);
     assert.doesNotMatch(minimum.timelineHtml, /群聊消息编号/u);
   }
 });
