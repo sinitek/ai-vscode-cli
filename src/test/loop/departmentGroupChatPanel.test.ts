@@ -58,13 +58,16 @@ for (const role of ["director", "leader"] as const) {
     }
     assert.match(patch.rosterPanelHtml, /运行中/u);
     if (role === "director") assert.match(patch.rosterPanelHtml, /尚未分配员工/u);
-    for (const action of ["refresh", "supplementTask", "askMainModel", "switchModels", "continueTask"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
+    for (const action of ["supplementTask", "askMainModel", "switchModels", "continueTask"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
     if (role === "director") {
+      assert.doesNotMatch(patch.actionsHtml, /data-action="refresh"/u);
+      assert.match(patch.actionsHtml, /data-action="askMainModel"[^>]*>我要提问<\/button><button[^>]*data-action="allocateEmployees"[^>]*>分配员工<\/button>/u);
       assert.match(patch.actionsHtml, /data-action="acceptancePlan"[^>]*>统一验收方案/u);
       assert.doesNotMatch(patch.rosterPanelHtml, /jumpToAcceptance|返回总监群聊/u);
       assert.match(html, /<div[^>]*id="acceptancePlanOverlay"/u);
       assert.match(html, /id="departmentChatBackdrop"/u);
     } else {
+      assert.match(patch.actionsHtml, /data-action="refresh"/u);
       assert.doesNotMatch(patch.actionsHtml, /data-action="acceptancePlan"/u);
       assert.match(patch.taskPanelHtml, /继承产研部统一验收方案/u);
       assert.doesNotMatch(html, /<div[^>]*id="acceptancePlanOverlay"/u);

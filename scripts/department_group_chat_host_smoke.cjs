@@ -111,14 +111,14 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     if (stopFeedback) {
       const stop = page.locator('[data-action="stopTask"]');
       const continuation = page.locator('[data-action="continueTask"]');
-      const refresh = page.locator('[data-action="refresh"]');
+      const refresh = () => page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:refresh" }));
       assert.equal(await stop.innerText(), "中止");
       assert.equal(await stop.evaluate(el => el.parentElement.className), "progress-controls");
       await stop.click();
       await page.waitForFunction(() => document.querySelector('[data-action="stopTask"]')?.textContent === "正在停止…");
       assert.equal(await stop.isDisabled(), true); assert.equal(stopCalls, 1);
       assert.equal(capacity.leaders.length, 4); assert.equal(await continuation.count(), 0);
-      await refresh.click();
+      await refresh();
       await page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:stopTask" }));
       assert.equal(await stop.isDisabled(), true); assert.equal(stopCalls, 1);
       await page.screenshot({ path: path.join(output, "stop-pending-after-refresh.png"), fullPage: true });
@@ -135,7 +135,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       await page.waitForFunction(() => document.querySelector('[data-action="stopTask"]')?.disabled === true);
       assert.equal(stopCalls, 2);
       assert.equal(capacity.leaders.length, 0); assert.equal(await continuation.count(), 0);
-      await refresh.click();
+      await refresh();
       assert.equal(await stop.isDisabled(), true); assert.equal(stopCalls, 2);
       await page.screenshot({ path: path.join(output, "verify-pending-empty-capacity.png"), fullPage: true });
       // Confirmed cleanup restores Continue only when the existing failure gate allows it.
@@ -144,7 +144,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       await page.waitForFunction(() => !document.querySelector('[data-action="stopTask"]'));
       assert.equal(await continuation.count(), 0);
       data.root.mainAiFailureLimitReached = false;
-      await refresh.click(); await continuation.waitFor();
+      await continuation.waitFor();
       assert.equal(await stop.count(), 0);
       await page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:stopTask" }));
       assert.equal(stopCalls, 2, "confirmed late duplicate is a no-op");

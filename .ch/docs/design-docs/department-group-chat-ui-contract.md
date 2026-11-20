@@ -43,7 +43,7 @@ type DepartmentGroupChatProjection = {
 
 ### 分配员工弹窗
 
-总监群聊的工具栏提供“分配员工”；弹窗消费宿主 `employeeAllocation` 投影，每组仅提供输入框，改动由右下角唯一“保存并关闭”统一提交，不提供“恢复均分”。多个组长额度按顺序写入，并逐项等待宿主持久化回执和递增版本；全部成功后关闭。任一项失败时保持弹窗打开，保留未保存草稿并显示对应组错误以便重试；部分已确认的保存不回滚。右上角复用通用 SVG 关闭图标，关闭或按 Escape 不提交未保存编辑。`contentPatch.employeeAllocationHtml` 独立于成员树刷新，保留打开时的草稿和焦点。写入仍走既有 `updateDepartmentEmployeeLimit` 和版本核验，成功由宿主回执确认，下次派发生效。服务不可用或没有可信组长记录时不能保存；普通 Loop/Loop+、组长群聊和组长消息转发均无此编辑入口。组长群聊保留本组额度的只读状态。
+总监群聊的工具栏移除“刷新”按钮，保留自动刷新。“分配员工”紧接在“我要提问”右侧。弹窗消费宿主 `employeeAllocation` 投影，每组仅提供输入框，改动由右下角唯一“保存并关闭”统一提交，不提供“恢复均分”。多个组长额度按顺序写入，并逐项等待宿主持久化回执和递增版本；全部成功后关闭。任一项失败时保持弹窗打开，保留未保存草稿并显示对应组错误以便重试；部分已确认的保存不回滚。右上角复用通用 SVG 关闭图标，关闭或按 Escape 不提交未保存编辑。`contentPatch.employeeAllocationHtml` 独立于成员树刷新，保留打开时的草稿和焦点。写入仍走既有 `updateDepartmentEmployeeLimit` 和版本核验，成功由宿主回执确认，下次派发生效。服务不可用或没有可信组长记录时不能保存；普通 Loop/Loop+、组长群聊和组长消息转发均无此编辑入口。组长群聊保留本组额度的只读状态。
 
 ```ts
 type DepartmentGroupChatModalTarget = { taskId: string; instanceId: string };

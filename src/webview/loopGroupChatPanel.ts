@@ -1759,8 +1759,7 @@ function renderPanelActions(
   const progressPercent = state.task.progressPercent ?? 0;
   const progressBand = Math.min(4, Math.floor(progressPercent / 20));
   return [
-    state.department ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
-    state.department?.role === "director" ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
+    state.department?.role === "leader" ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
     `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
       ? `${state.task.departmentStopState === "unconfirmed" ? `<span role="status">${escapeHtml(strings.stopUnconfirmed)}</span>` : ""}<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTask)}</button>`
@@ -1772,6 +1771,7 @@ function renderPanelActions(
     state.task.canSupplement
       ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>`
       : "",
+    state.department?.role === "director" ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
     hasGroupAcceptancePlan(state) && state.task.status !== "completed"
       ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(state.department?.role === "director" ? "统一验收方案" : strings.acceptancePlan)}</button>`
       : "",

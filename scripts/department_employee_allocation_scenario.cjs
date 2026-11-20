@@ -16,7 +16,16 @@ async function runAllocationScenario({ page, panel, parentState: state, sent, sh
   const root = state.department.rootTaskId;
   const a = state.department.leaders[0].taskId, b = state.department.leaders[1].taskId;
   const dialog = page.getByRole("dialog", { name: "分配员工" });
-  const opener = page.locator("#panelActions").getByRole("button", { name: "分配员工" });
+  const actions = page.locator("#panelActions");
+  const opener = actions.getByRole("button", { name: "分配员工" });
+  assert.equal(await actions.getByRole("button", { name: "刷新", exact: true }).count(), 0);
+  assert.equal(await actions.locator('[data-action="askMainModel"] + [data-action="allocateEmployees"]').count(), 1);
+  if (page.viewportSize().width > 780) {
+    const questionButton = await actions.getByRole("button", { name: "我要提问" }).boundingBox();
+    const allocationButton = await opener.boundingBox();
+    assert.ok(questionButton && allocationButton && allocationButton.x >= questionButton.x + questionButton.width);
+    assert.equal(allocationButton.y, questionButton.y);
+  }
   const row = (id = a) => dialog.locator('[data-allocation-leader="' + id + '"]');
   const input = (id = a) => row(id).locator("input");
   const save = dialog.locator("#departmentAllocationSave");
