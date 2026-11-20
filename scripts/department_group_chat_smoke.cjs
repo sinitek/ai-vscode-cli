@@ -347,7 +347,10 @@ function theme(dark) {
         await showMembers(frame);
         assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案.*\n产研部统一规则 <严格>/u);
         await showMembers(frame);
-        const spacing = await frame.locator(".department-employees").first().evaluate((element) => ({ indent: getComputedStyle(element).marginInlineStart, border: getComputedStyle(element).borderInlineStartWidth, gap: getComputedStyle(document.querySelector(".department-tree")).rowGap, avatar: getComputedStyle(document.querySelector(".department-group > .member > .avatar")).width, memberGap: getComputedStyle(document.querySelector(".department-group > .member")).columnGap, padding: getComputedStyle(document.querySelector(".department-group > .member")).padding }));
+        const spacing = await frame.locator(".department-employees").first().evaluate((element) => {
+          const member = document.querySelector(".department-group-header > .member");
+          return { indent: getComputedStyle(element).marginInlineStart, border: getComputedStyle(element).borderInlineStartWidth, gap: getComputedStyle(document.querySelector(".department-tree")).rowGap, avatar: getComputedStyle(member.querySelector(".avatar")).width, memberGap: getComputedStyle(member).columnGap, padding: getComputedStyle(member).padding };
+        });
         assert.deepEqual(spacing, { indent: "16px", border: "1px", gap: "8px", avatar: "28px", memberGap: "8px", padding: "4px" });
         if (width === 280) await frame.locator("#sidebarToggle").click();
         await frame.locator('[data-action="supplementTask"]').click();

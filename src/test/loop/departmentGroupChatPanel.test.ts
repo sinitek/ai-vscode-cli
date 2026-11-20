@@ -76,6 +76,22 @@ for (const role of ["director", "leader"] as const) {
   });
 }
 
+test("completed department groups start with employees hidden and a usable disclosure button", () => {
+  for (const role of ["director", "leader"] as const) {
+    const state = departmentState(role);
+    const leader = state.department!.leaders[0];
+    leader.participant.status = "completed";
+    const html = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
+    assert.ok(html.includes(`aria-controls="department-employees-${leader.taskId}" aria-expanded="false"`));
+    assert.match(html, /<ul class="department-employees"[^>]+ hidden><li>/u);
+    assert.match(html, />组长 · 同名模块<\/div>/u);
+    if (role === "director") {
+      assert.ok(html.includes('aria-controls="department-employees-department-20261113-leader-222222" aria-expanded="true"'));
+      assert.equal((html.match(/data-action="toggleDepartmentEmployees"/gu) ?? []).length, 2);
+    }
+  }
+});
+
 test("leader chat titles use their module number even when earlier groups are absent", () => {
   const state = departmentState("leader");
   assert.equal(buildLoopGroupChatPanelTitle(state, getStrings()), "组长1");
