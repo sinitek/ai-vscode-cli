@@ -2,7 +2,7 @@ import { ZcodeInteractiveRunner } from "../interactive/zcodeRunner";
 import { isZcodeSessionId } from "../interactive/zcodeAppServerProtocol";
 import { normalizeRawStreamContent } from "../promptRunState";
 import type { ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
-import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
+import { resolveInteractiveTurnMappedSessionId, type InteractiveTurnAttemptPort, type InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 function isRealTokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -18,9 +18,7 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const cwd = port.cwd ?? process.cwd();
       const uiSessionIdAtStart = port.uiSessionId;
       const previousSessionId = uiSessionIdAtStart;
-      const mappedSessionId = uiSessionIdAtStart
-        ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
-        : null;
+      const mappedSessionId = resolveInteractiveTurnMappedSessionId(port);
       const resumeSessionId = isZcodeSessionId(mappedSessionId) ? mappedSessionId : null;
       const model = port.zcodeModelWire ?? launch.modelRef;
       const runner = uiSessionIdAtStart

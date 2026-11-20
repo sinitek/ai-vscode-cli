@@ -185,6 +185,23 @@ test("classic Loop counts every admitted batch member and repeat dispatch, but c
   }).status, "completed");
 });
 
+test("classic Loop additive dispatch keeps existing active subtask identities", () => {
+  const task = createTask({
+    activeSubtaskId: "sub-a",
+    activeSubtaskIds: ["sub-a"],
+    subTasks: [createSubtask({ id: "sub-a", status: "running" })],
+  });
+  const result = transitionLoopMainDecision({
+    task,
+    decision: { status: "continue", subtasks: [{ id: "sub-b", title: "补充实现", prompt: "实现独立补充需求" }] },
+    now: NOW,
+    subtaskRoundLimit: 20,
+  });
+  assert.deepEqual(result.patch.activeSubtaskIds, ["sub-a", "sub-b"]);
+  assert.equal(result.patch.subTasks?.find((item) => item.id === "sub-a")?.status, "running");
+  assert.equal(result.subtasks?.map((item) => item.id).join(","), "sub-b");
+});
+
 test("classic Loop estimates legacy dispatches from historical round identities without counting retries", () => {
   const run = { round: 1, role: "subtask" as const, subtaskId: "sub-a", status: "error" as const, startedAt: 1, endedAt: 2 };
   const task = createTask({
@@ -352,8 +369,8 @@ test("keeps clarify open under the limit and blocks once the limit is reached", 
   assert.equal(underLimit.patch.clarificationCount, ORCHESTRATOR_CLARIFICATION_LIMIT);
   assert.equal(underLimit.patch.finalSummary, "还差一个选择");
   assert.equal(underLimit.patch.estimatedRemainingRounds, 2);
-  assert.equal(underLimit.patch.activeSubtaskId, null);
-  assert.deepEqual(underLimit.patch.activeSubtaskIds, []);
+  assert.equal(hasOwn(underLimit.patch, "activeSubtaskId"), false);
+  assert.equal(hasOwn(underLimit.patch, "activeSubtaskIds"), false);
 
   const fresh = decide(createTask(), {
     status: "clarify",
@@ -427,7 +444,7 @@ test("a director-only waiting decision cannot dispatch work through the classic 
   assert.deepEqual(result.patch.activeSubtaskIds, []);
 });
 
-test("continues a single legacy subtask and replaces the active subtask ids", () => {
+test("continues a single legacy subtask and preserves other active subtask ids", () => {
   const task = createTask({
     activeSubtaskId: "old",
     activeSubtaskIds: ["old"],
@@ -443,8 +460,8 @@ test("continues a single legacy subtask and replaces the active subtask ids", ()
   assert.equal(result.status, "continue");
   assert.equal(result.appendDecisionMessages, true);
   assert.equal(result.patch.status, "running");
-  assert.equal(result.patch.activeSubtaskId, "new");
-  assert.deepEqual(result.patch.activeSubtaskIds, ["new"]);
+  assert.equal(result.patch.activeSubtaskId, "old");
+  assert.deepEqual(result.patch.activeSubtaskIds, ["old", "new"]);
   assert.equal(result.patch.estimatedRemainingRounds, 3);
   assert.deepEqual(result.subtasks?.map((item) => item.id), ["new"]);
   assert.equal(result.patch.subTasks?.find((item) => item.id === "old")?.status, "running");
@@ -480,7 +497,7 @@ test("continues a batch with duplicate ids and a generated id for a missing subt
   assert.deepEqual(result.subtasks?.map((item) => item.id), ["dup", "dup", "dup", generatedId]);
   assert.deepEqual(result.subtasks?.map((item) => item.title), ["第一遍", "空白编号", "第二遍", "缺失编号"]);
   assert.equal(result.patch.activeSubtaskId, "dup");
-  assert.deepEqual(result.patch.activeSubtaskIds, ["dup", "dup", "dup", generatedId]);
+  assert.deepEqual(result.patch.activeSubtaskIds, ["dup", generatedId]);
   assert.deepEqual(stored.map((item) => item.id), ["keep", "dup", generatedId]);
   assert.equal(duplicate?.status, "completed");
   assert.equal(duplicate?.title, "第二遍");

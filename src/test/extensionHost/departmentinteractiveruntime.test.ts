@@ -59,6 +59,17 @@ test("department transport selection covers every existing Loop CLI", () => {
   assert.equal(usesDepartmentInteractiveRuntime("unknown"), false);
 });
 
+test("leader resume session comes only from the current durable native binding", async t => {
+  const h = await harness(t, "claude");
+  assert.equal(h.runtime.resolveLeaderResumeSession("leader", "local_leader"), null);
+  await h.run("first");
+  assert.equal(h.runtime.resolveLeaderResumeSession("leader", "local_leader"), "native-leader");
+  assert.throws(() => h.runtime.resolveLeaderResumeSession("leader", "other-local-session"), /leader-session-invalid/);
+  const task = h.read("leader")!;
+  h.tasks.set("leader", { ...task, executionSession: { cli: "claude", sessionId: "untrusted-native", configId: "profile" } });
+  assert.throws(() => h.runtime.resolveLeaderResumeSession("leader", "local_leader"), /binding-conflict/);
+});
+
 for (const cli of CLI_LIST.filter(usesDepartmentInteractiveRuntime)) test(`${cli} leader binds native session, runs twice and closes the original generation`, { timeout: 15000 }, async t => {
   const h = await harness(t, cli, cli, true);
   let disposed = 0; const runner = {}, drained = gate();
@@ -147,6 +158,7 @@ for (const cli of CLI_LIST.filter(usesDepartmentInteractiveRuntime)) test(`${cli
   continued.value.runtime.leaders[0].status = "running";
   assert.equal(h.store.write(continued.value).ok, true);
   await h.producer.openContinuedLeader("leader", 2);
+  assert.equal(h.runtime.resolveLeaderResumeSession("leader", "local_leader"), "native-leader");
   await h.run("continued", execute);
   assert.equal(h.read("leader")?.sessionId, "local_leader");
   assert.deepEqual(h.read("leader")?.executionSession, { cli, sessionId: "native-leader", configId: "profile" });

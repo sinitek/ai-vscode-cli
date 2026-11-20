@@ -282,7 +282,13 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
     // The trusted Owner prepares/resumes and durably binds its native thread.
     // Its local transcript key is not a shared-runner resume credential.
-    const resolvedSessionId = executionOptions.requireOriginalSession || (cli === "codex" && executionOptions.departmentCodexRun)
+    const hasDepartmentLeaderSession = executionOptions.departmentLeaderSession !== undefined;
+    if (hasDepartmentLeaderSession && (!executionOptions.departmentInteractiveRunner || input.taskRole !== "main"
+      || executionOptions.departmentLeaderSession?.localSessionId !== target.sessionId)) {
+      throw new Error("部门组长原生会话证明与当前本地会话不匹配。");
+    }
+    const resolvedSessionId = executionOptions.requireOriginalSession || hasDepartmentLeaderSession
+      || (cli === "codex" && executionOptions.departmentCodexRun)
       ? target.sessionId
       : await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
     if (resolvedSessionId === undefined) {
@@ -1530,6 +1536,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           handleStructuredHumanInteractionRequest,
           canHandleStructuredHumanInteractionRequest,
           resolveInteractiveMappedId,
+          departmentLeaderSession: executionOptions.departmentLeaderSession,
           departmentCodexRun: executionOptions.departmentCodexRun,
           departmentInteractiveRunner: executionOptions.departmentInteractiveRunner,
           originalCodexThreadTurn: runRegistered ? undefined : prepareOriginalTurn,

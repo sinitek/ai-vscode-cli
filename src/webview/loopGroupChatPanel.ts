@@ -1433,6 +1433,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
           }
           return;
         }
+        if (action === "cancelDepartmentLeader") {
+          vscode.postMessage({ type: "loopGroupChatChat:cancelDepartmentLeader", leaderTaskId: target.getAttribute("data-leader-task-id") ?? undefined });
+          return;
+        }
         if (action === "refresh") {
           requestRefresh();
           return;
@@ -1443,6 +1447,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          saveScrollState();
 	          setSidebarOpen(false);
 	          vscode.postMessage({ type: "loopGroupChatChat:openSubtaskConversation", subtaskId });
+	          return;
+	        }
+	        if (action === "cancelSubtask") {
+	          vscode.postMessage({ type: "loopGroupChatChat:cancelSubtask", subtaskId: target.getAttribute("data-subtask-id") ?? undefined });
 	          return;
 	        }
 	        if (action === "jumpToAcceptance") {
@@ -2001,14 +2009,16 @@ function renderRosterPanel(
       : anchor
       ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(participant.title)}：查看最近一次验收结果">`
       : '<div class="member">';
-    return `${openTag}
+    const cancelButton = participant.role === "subtask" && ["running", "blocked", "error", "failed"].includes(participant.status) && !state.department && !state.loopPlus
+      ? `<button class="button" type="button" data-action="cancelSubtask" data-subtask-id="${escapeAttribute(participant.id)}" title="取消子任务" aria-label="取消${escapeAttribute(participant.title)}">取消</button>` : "";
+    return `<div class="roster-member-row">${openTag}
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
       <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${dependencyStatus}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
-  ${opensConversation || anchor ? "</button>" : "</div>"}`;
+  ${opensConversation || anchor ? "</button>" : "</div>"}${cancelButton}</div>`;
   }).join("");
   return `<section class="panel">
     <h2>${escapeHtml(strings.participants)}</h2>
@@ -2030,7 +2040,7 @@ function renderDepartmentRosterPanel(
 ): string {
   const department = state.department!;
   const member = (participant: LoopGroupChatPanelParticipant, role: DepartmentRole, leaderCode = "", navigation = "", anchor?: string, progressPercent?: number): string => {
-    const label = formatDepartmentMemberTitle(role, participant.title, leaderCode, participant.employeeNumber);
+    const label = formatDepartmentMemberTitle(role, participant.title, leaderCode, participant.employeeName);
     const avatarLabel = { director: "总", leader: "组", employee: "员" }[role];
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>
@@ -2051,7 +2061,7 @@ function renderDepartmentRosterPanel(
       ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, leaderChatTitle)
       : "";
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
-    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", leaderCode, "",
+    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", "", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
     const employeeStatusCounts = department.role === "director" ? [
       ["运行中", leader.employees.filter((employee) => employee.status === "running").length],
@@ -2059,9 +2069,11 @@ function renderDepartmentRosterPanel(
       ["待验收", leader.employees.filter((employee) => employee.status === "queued_review").length],
     ].map(([label, count]) => `<span class="department-status-tag">${label} ${count}</span>`).join("") : "";
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
+    const cancelLeader = department.role === "director" && leader.taskId && ["running", "failed"].includes(leader.participant.status)
+      ? `<button class="button" type="button" data-action="cancelDepartmentLeader" data-leader-task-id="${escapeAttribute(leader.taskId)}" title="取消此组长任务" aria-label="取消${escapeAttribute(leader.participant.title)}">取消</button>` : "";
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
-        ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
+        ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary + cancelLeader, undefined, progressPercent)}
       </div>
       ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusCounts}</div>`
         : `<ul class="department-employees" aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>`}

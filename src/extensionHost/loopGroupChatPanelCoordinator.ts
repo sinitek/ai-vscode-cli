@@ -105,6 +105,7 @@ export type DepartmentOrganizationControl = {
   continue(root: LoopTaskRecord, prompt?: string): Promise<void>;
   stop(root: LoopTaskRecord): Promise<void>;
   complete(root: LoopTaskRecord): Promise<void>;
+  cancelLeader?(root: LoopTaskRecord, leaderTaskId: string): Promise<boolean>;
 };
 
 /** Integration installs a durable CAS writer. This seam never writes a task or starts work. */
@@ -184,6 +185,8 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   showWarningMessage: (message: string) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
+  cancelClassicSubtask?: (taskId: string, subtaskId: string) => Promise<boolean>;
+  wakeClassicLoop?: (taskId: string) => void;
   resumeLoopSubtasks?: (taskId: string, resumeMain: () => void) => boolean | void;
   readLoopPlusAcceptancePlans?: () => LoopPlusAcceptancePlan[];
   readLoopPlusAcceptancePlanSelection?: () => string;
@@ -846,6 +849,8 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     deps.recordPromptHistory(supplementalRequirement, task.cli);
     if (resolveLoopSchedulingMode(task.schedulingMode) === "event_driven") {
       deps.notifyLoopPlusUserMessage?.(task.id, supplementalRequirement);
+    } else if (task.status === "running") {
+      deps.wakeClassicLoop?.(task.id);
     }
     await deps.postPanelState();
     await refresh(normalizedTaskId);
@@ -1316,6 +1321,30 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     }
     if (message.type === "loopGroupChatChat:openSubtaskConversation") {
       await openSubtaskConversation(taskId, message.subtaskId);
+      return;
+    }
+    if (message.type === "loopGroupChatChat:cancelSubtask") {
+      const task = deps.readTaskRecord(taskId);
+      const subtaskId = typeof message.subtaskId === "string" ? message.subtaskId : "";
+      if (!task || task.department || task.departmentInvalid || task.schedulingMode === "event_driven"
+        || !(deps.getActiveSubtaskIds?.(task) ?? []).includes(subtaskId)
+        || !task.subTasks.some((item) => item.id === subtaskId && ["running", "blocked"].includes(item.status))) return;
+      if (!await deps.cancelClassicSubtask?.(taskId, subtaskId)) {
+        deps.showInformationMessage("该子任务当前无法取消，请刷新群聊后重试。");
+      }
+      await refresh(taskId);
+      return;
+    }
+    if (message.type === "loopGroupChatChat:cancelDepartmentLeader") {
+      const task = deps.readTaskRecord(taskId), leaderTaskId = typeof message.leaderTaskId === "string" ? message.leaderTaskId : "";
+      const root = task && task.department?.role === "director" ? resolveDepartmentRoot(task, deps) : null;
+      const leader = deps.readDepartmentLeaderTaskIds && root?.subTasks.some((module) =>
+        deps.readDepartmentLeaderTaskIds!(root.id, module.id)?.includes(leaderTaskId)) ? leaderTaskId : "";
+      if (!root || !leader || !deps.departmentOrganizationControl?.cancelLeader
+        || !await deps.departmentOrganizationControl.cancelLeader(root, leader)) {
+        deps.showInformationMessage("组长任务取消未确认，原占用仍受保护；请刷新群聊后重试。");
+      }
+      await refresh(taskId);
       return;
     }
     if (message.type === "loopGroupChatChat:continueTask") {

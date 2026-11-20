@@ -80,8 +80,13 @@ test("projects an employee only when message identity and a unique execution ses
   leader.subTasks.unshift({ id: "employee-undispatched", title: "尚未派发", status: "pending" });
   const result = projectDepartmentEmployeeConversationTab(tab("employee-tab", leader.id, "subtask", "employee-session"), leader, employeeMessages, port);
   assert.deepEqual(result.departmentPresentation, { role: "employee", rootTaskId: "department-root-abcdef", taskId: leader.id,
-    moduleTitle: "共享模块名", employeeSubtaskId: "employee-subtask-789abc" });
-  assert.equal(result.taskSummary, "员工 A2 · 员工真实会话");
+    moduleTitle: "共享模块名", employeeSubtaskId: "employee-subtask-789abc", employeeName: "陈静" });
+  assert.equal(result.taskSummary, "陈静 · 员工真实会话");
+  const employee = leader.subTasks[1];
+  employee.executionSession = { ...employee.executionSession!, sessionId: "retry-session" };
+  const retry = projectDepartmentEmployeeConversationTab(tab("retry-tab", leader.id, "subtask", "retry-session"), leader, employeeMessages, port);
+  assert.equal(retry.taskSummary, result.taskSummary);
+  employee.executionSession = { ...employee.executionSession, sessionId: "employee-session" };
 
   assert.equal(projectDepartmentEmployeeConversationTab(tab("wrong-message", leader.id, "subtask", "employee-session"), leader,
     [{ ...employeeMessages[0], loopTaskId: "other-task" }], port).departmentPresentation, undefined);
@@ -152,7 +157,7 @@ test("host projection reads only known task ids and reuses a root read within on
   assert.deepEqual(membershipReads, [`${root.id}:module-ui`, `${root.id}:module-ui`]);
   assert.equal(state.tabs[0].taskSummary, "实现账号与报表功能");
   assert.equal(state.tabs[1].taskSummary, "组长A · 共享模块名");
-  assert.equal(state.tabs[2].taskSummary, "员工 A1 · 员工真实会话");
+  assert.equal(state.tabs[2].taskSummary, "王磊 · 员工真实会话");
   assert.equal(state.tabs[3].departmentPresentation, undefined);
 });
 

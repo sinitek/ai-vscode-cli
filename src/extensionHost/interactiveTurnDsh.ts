@@ -5,7 +5,7 @@ import { normalizeRawStreamContent } from "../promptRunState";
 import { DSH_REASONING_OPTIONS } from "../cli/dshConfigModels";
 import { createLoopSubtaskExecutionRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME } from "../loopSubtaskExecutionRoot";
 import { persistDshSessionHome, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
-import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
+import { resolveInteractiveTurnMappedSessionId, type InteractiveTurnAttemptPort, type InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 const HIDDEN_DSH_REASONING_VALUES = new Set(["off"]);
 
@@ -73,9 +73,7 @@ async function runDshAttempt(
   const uiSessionIdAtStart = port.uiSessionId;
   const runnerWasManaged = Boolean(uiSessionIdAtStart);
   const previousSessionId = uiSessionIdAtStart;
-  const mappedSessionId = uiSessionIdAtStart
-    ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
-    : null;
+  const mappedSessionId = resolveInteractiveTurnMappedSessionId(port);
   const resumeSessionId = resolveDshHostResumeId(uiSessionIdAtStart, mappedSessionId);
   const requireResume = resumeSessionId !== null;
   port.observedDshFinalAnswer = false;

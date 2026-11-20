@@ -12,6 +12,8 @@ export type PromptRunExecutionOptions = {
   registerQuestionRun?: (runId: string) => void;
   /** Original Loop+ runner capability, captured before its first native start. */
   departmentInteractiveRunner?: (runner: object, release: () => Promise<void>) => (nativeSessionId: string) => Promise<void>;
+  /** Native session proven by the current department leader generation; null means its first unbound turn. */
+  departmentLeaderSession?: { localSessionId: string; nativeSessionId: string | null };
   /** Trusted per-invocation process transport; never serialized into task/model input. */
   departmentProcessStream?: typeof import("../cli/commandRunner").runCliStream;
   /** Trusted leader mapping: preserve its durable local tab/session key. */

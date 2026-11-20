@@ -9,6 +9,7 @@ export type LoopParallelCandidate = {
   title?: string;
   conflictGroup?: string;
   writeFiles?: string[];
+  continueFromSubtaskId?: string;
 };
 
 export type LoopParallelConflictReason = "conflictGroup" | "writeFiles";
@@ -27,6 +28,20 @@ export type LoopSubtaskExecutionPlan<T extends LoopParallelCandidate> = {
 
 export function normalizeLoopWriteFiles(value: unknown): string[] {
   return normalizeWriteFiles(value);
+}
+
+export function findLoopLiveDispatchConflict(
+  active: readonly LoopParallelCandidate[],
+  candidates: readonly LoopParallelCandidate[],
+): { activeId: string; candidateId: string } | null {
+  for (const candidate of candidates) {
+    const source = candidate.continueFromSubtaskId ?? candidate.id;
+    const conflict = active.find((item) => item.id === candidate.id || item.id === source
+      || item.continueFromSubtaskId === candidate.id || item.continueFromSubtaskId === source
+      || getLoopSubtaskConflict(item, candidate) !== null);
+    if (conflict) return { activeId: conflict.id, candidateId: candidate.id };
+  }
+  return null;
 }
 
 export function buildLoopSubtaskExecutionPlan<T extends LoopParallelCandidate>(

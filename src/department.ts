@@ -19,11 +19,10 @@ export function formatDepartmentLeaderLabel(leaderCode = ""): string {
   return `组长${leaderCode}`;
 }
 
-export function formatDepartmentMemberTitle(role: DepartmentRole, title: string, leaderCode = "", employeeNumber?: number): string {
+export function formatDepartmentMemberTitle(role: DepartmentRole, title: string, leaderCode = "", employeeName?: string): string {
   if (role === "director") return "总监";
   if (role === "leader") return `${formatDepartmentLeaderLabel(leaderCode)} · ${title}`;
-  const label = employeeNumber === undefined ? "员工" : `员工 ${leaderCode}${employeeNumber}`;
-  return `${label} · ${title}`;
+  return employeeName ? `${employeeName} · ${title}` : title;
 }
 /** Department roles reuse the same CLI capabilities as Loop and Loop+. */
 export const DEPARTMENT_EXECUTION_CLIS = CLI_LIST;

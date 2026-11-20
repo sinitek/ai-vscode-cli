@@ -5,8 +5,10 @@ import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationS
 import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
+import { findLoopLiveDispatchConflict } from "../loopParallel";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
 import { normalizeLoopProgressPercent, resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopDecisionSubtasks } from "./loopTaskStateMachine";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
@@ -324,6 +326,24 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       deps.report(task.id, summary);
       return { status: "needs-review", task: paused, decision };
     }
+    if (decision.status === "continue") {
+      const snapshot = host.runtimeSnapshot(task.id);
+      const activeModules = new Set([
+        ...(snapshot?.startingModules ?? []),
+        ...(snapshot?.leaders.filter((member) => ["starting", "running", "stopping", "blocked"].includes(member.status))
+          .map((member) => member.leaderSubtaskId) ?? []),
+      ]);
+      const active = task.subTasks.filter((module) => activeModules.has(module.id) && module.status === "running");
+      const candidates = getLoopDecisionSubtasks(decision).filter((candidate): candidate is typeof candidate & { id: string } => typeof candidate.id === "string");
+      const conflict = findLoopLiveDispatchConflict(active, candidates);
+      const rebound = candidates.find((candidate) => task.subTasks.some((module) => module.id === candidate.id));
+      if (conflict || rebound) {
+        deps.report(task.id, conflict
+          ? `暂未增派 ${conflict.candidateId}：与运行中的组长模块 ${conflict.activeId} 冲突，待其结束后重新判断。`
+          : `拒绝覆盖已登记的组长模块 ${rebound!.id}，请使用新的模块 ID 重新派发。`);
+        return { status: "pending-requirements", task };
+      }
+    }
     const applied = deps.applyClassicDecision(task.id, decision);
     if (decision.status === "clarify") return { status: "awaiting-input", task: applied.task, decision };
     for (const module of applied.subtasks ?? []) {
@@ -502,6 +522,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       await continueDepartmentPrompt({ displayPrompt: prompt ?? "继续部门任务", modelPrompt: prompt ?? "继续部门任务", contextTags: [], targetTabId: target.tabId, cli: target.cli });
     },
     stop,
+    cancelLeader: async (root: LoopTaskRecord, leaderTaskId: string) => {
+      ensure(root);
+      const result = await host.cancelLeader(root.id, leaderTaskId);
+      if (result) wake(root.id);
+      return result;
+    },
     complete: async (root: LoopTaskRecord) => { ensure(root); const result = host.confirmRootComplete(root.id, root.finalSummary || "按组长汇报确认整体完成"); if (!result.ok) throw new Error(`整体完成被拒绝：${result.reason}`); },
   };
   return { host, capacity, readDepartmentEmployeeAllocation: allocation.readDepartmentEmployeeAllocation,

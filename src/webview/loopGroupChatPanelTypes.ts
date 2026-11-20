@@ -5,7 +5,7 @@ export type LoopGroupChatPanelParticipant = {
   id: string;
   /** Actual Loop+ subtask identity when id identifies one employee attempt. */
   subtaskId?: string;
-  employeeNumber?: number;
+  employeeName?: string;
   title: string;
   role: string;
   status: string;
@@ -198,6 +198,8 @@ export type LoopGroupChatPanelBaseMessage =
   | ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit" } & DepartmentEmployeeLimitRequest)
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:openSubtaskConversation"; subtaskId?: string }
+  | { type: "loopGroupChatChat:cancelSubtask"; subtaskId?: string }
+  | { type: "loopGroupChatChat:cancelDepartmentLeader"; leaderTaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string }

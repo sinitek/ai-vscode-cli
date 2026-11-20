@@ -89,7 +89,7 @@ async function seedPrivateFixture({ root, home, workspace }) {
   ]);
   const now = Date.now();
   const taskSummaries = ["统筹部门模块并完成交付", `组长A · ${fixture.ids.moduleTitle}`, `组长B · ${fixture.ids.moduleTitle}`,
-    `员工 A1 · ${fixture.leaderOne.subTasks[0].title}`];
+    `王磊 · ${fixture.leaderOne.subTasks[0].title}`];
   const sessionRecord = (id, label) => ({ id, label, firstPrompt: label, createdAt: now, lastUsedAt: now });
   const sessionStore = Object.fromEntries(["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"].map((cli) => [cli, { currentId: null, sessions: [] }]));
   const sessionIds = [fixture.ids.directorSessionId, fixture.ids.leaderOneSessionId, fixture.ids.leaderTwoSessionId, fixture.ids.employeeSessionId, fixture.ids.ordinarySessionId];
@@ -254,7 +254,7 @@ async function verifyWebview(root, port, fixture, report) {
     await workbenchPage.screenshot({ path: path.join(root, name), fullPage: true });
   };
   await waitFor("document.querySelectorAll('.conversation-tab').length > 0", "tab renderer");
-  const expectedLabels = ["☀️ Codex", "🌛 Codex2", "🌛 Codex3", "⭐️ Codex4", "Codex5"];
+  const expectedLabels = ["☀️ Codex", "🌛 Codex2", "🌛 Codex3", "⭐️ 王磊 · Codex4", "Codex5"];
   const currentTabIndex = async () => evaluate(`(() => { const label=document.querySelector('.conversation-tab-label')?.textContent.trim() || ''; return ${JSON.stringify(expectedLabels)}.indexOf(label); })()`);
   const goToTab = async (index) => {
     for (let attempt = 0; attempt < 8; attempt++) {

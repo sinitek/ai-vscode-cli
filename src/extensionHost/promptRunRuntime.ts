@@ -950,6 +950,7 @@ function markLoopSubtaskRunFinished(
     return;
   }
   const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
+  if (!subtaskRecord || subtaskRecord.status === "skipped") return;
   const now = Date.now();
   const executionFailure = runStatus === "error" ? normalizeLoopSubtaskFailure(failureDetail) : undefined;
   const summary = buildLoopSubtaskCompletionSummary(executionFailure ?? assistantContent);

@@ -37,7 +37,7 @@ const messages = [{ id: "employee-message", role: "user", content: "work", taskR
   loopTaskId: leaderId, loopSubtaskId: employeeId, loopRound: 1 }];
 const ownershipPort = { readTaskRecord: (id) => tasksById.get(id) ?? null,
   readDepartmentLeaderTaskIds: (root, module) => root === rootId && module === "module-smoke" ? [leaderId] : [] };
-const expectedSummaries = ["统筹模块交付与验收", `组长A · ${longModule}`, "员工 A1 · 员工真实会话"];
+const expectedSummaries = ["统筹模块交付与验收", `组长A · ${longModule}`, "王磊 · 员工真实会话"];
 const projectedTabs = [
   projectDepartmentConversationTab({ id: "director-tab", cli: "codex", sessionId: `${rootId}-session`, createdAt: 1, loopTaskRole: "main", loopTaskId: rootId,
     taskSummary: expectedSummaries[0] }, rootTask, [], ownershipPort),
@@ -89,7 +89,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
         loopTaskRole: role, loopTaskId: `${mode}-task`, loopSchedulingMode: mode,
       })))];
       const originalTabs = JSON.stringify(iconTabs);
-      const expected = ["☀️ Codex", "🌛 Codex2", "⭐️ Codex3", "Codex4", "🌛 Codex5", "⭐️ Codex6", "🌛 Codex7", "⭐️ Codex8"];
+      const expected = ["☀️ Codex", "🌛 Codex2", "⭐️ 王磊 · Codex3", "Codex4", "🌛 Codex5", "⭐️ Codex6", "🌛 Codex7", "⭐️ Codex8"];
       const modes = ["department", "loop_plus", "coding", "coding", "loop", "coding", "loop_plus", "coding"];
       const inputs = [__filename, ...["webview/viewContent.js", "webview/viewContentScript.js", "webview/viewContentScript/messageRendering.js",
         "webview/viewContentStrings.js", "extensionHost/departmentConversationTabs.js"].map((file) => path.join(dist, file))];
@@ -138,7 +138,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
       assert.deepEqual(errors, []);
       assert.deepEqual(await page.evaluate(() => window.__postedMessages.filter((message) => message.type === "webviewError")), []);
       const result = { status: "passed", mode: "role-icons-only", results, serverPort: server.address().port,
-        checks: ["department role takes precedence over ordinary main/subtask", "original Codex through Codex8 labels", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "director summary and exact member title tooltips", "department leader hides bubble group-chat links; other roles and ordinary Loop retain links", "1440 dark and280 light no tab/root overflow"],
+        checks: ["department role takes precedence over ordinary main/subtask", "employee name appears alongside the existing Codex session label", "ordinary session has no icon", "classic and event-driven main moon/subtask star", "director summary and exact member title tooltips", "department leader hides bubble group-chat links; other roles and ordinary Loop retain links", "1440 dark and280 light no tab/root overflow"],
         boundary: "Generated full Webview and production role projection with fixture state; not real EH or CLI evidence" };
       fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
       console.log(JSON.stringify(result)); return;
@@ -184,11 +184,11 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     await page.evaluate(() => window.postMessage({ type: "runStatus", status: "start", tabId: "employee-tab" }, "*"));
     await page.waitForTimeout(400);
     assert.equal(await page.locator(".conversation-tab").count(), 4);
-    const expectedRoleLabels = ["☀️ Codex", "🌛 Codex2", "⭐️ Codex3"];
+    const expectedRoleLabels = ["☀️ Codex", "🌛 Codex2", "⭐️ 王磊 · Codex3"];
     for (const [index, expected] of expectedRoleLabels.entries()) {
       const visibleLabel = await page.locator(".conversation-tab-label").nth(index).textContent();
       assert.equal(visibleLabel, expected,
-        "department role decorates the existing CLI session label only");
+        "department role and employee name decorate the existing CLI session label");
       assert.doesNotMatch(visibleLabel, /总监|组长|员工|abcdef01|12345678|87654321/u,
         "role names and task IDs stay out of the visible label");
     }
@@ -264,7 +264,7 @@ const css = `:root{--vscode-editor-background:#1f1f1f;--vscode-editor-foreground
     assert.deepEqual(webviewErrors, []);
     assert.deepEqual(errors, []);
     const result = { status: "passed", mode: "full-existing-smoke", viewportChecks: [1280, 280], themes: ["dark", "light"], screenshots: fs.readdirSync(output).filter((name) => name.endsWith(".png")),
-      checks: ["role icons decorate unchanged Codex/Codex2/Codex3 labels", "role names and task IDs stay out of visible labels", "long module truncation", "director summary and full member title tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "leader mouse and keyboard selection stays in conversation", "director selection opens group chat", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
+      checks: ["department employee name and role icons decorate existing CLI session labels", "role names and task IDs stay out of visible labels", "long module truncation", "director summary and full member title tooltips", "ordinary tab label", "department/Loop+/coding mode switching with enabled modes", "leader mouse and keyboard selection stays in conversation", "director selection opens group chat", "same-tab role update", "keyboard focus and selection", "close/run lock", "horizontal overflow"],
       errors, webviewErrors, boundary: "Generated full webview runtime with a fixture PanelState and VS Code API bridge; does not verify real CLI organization startup" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));

@@ -7,7 +7,7 @@ import {
 } from "../interactive/claudeRunner";
 import { getErrorInfo, type ErrorInfo } from "../promptRetry";
 import { normalizeRawStreamContent } from "../promptRunState";
-import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
+import { resolveInteractiveTurnMappedSessionId, type InteractiveTurnAttemptPort, type InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 function isClaudeSessionNotFoundErrorInfo(info: ErrorInfo): boolean {
   const combined = `${String(info.code ?? "")} ${String(info.message ?? "")}`.toLowerCase();
@@ -19,9 +19,7 @@ export function createClaudeInteractiveTurnStrategy(): InteractiveTurnStrategy {
   return {
     async runAttempt(port: InteractiveTurnAttemptPort) {
       const uiSessionIdAtStart = port.uiSessionId;
-      const mappedSessionId = uiSessionIdAtStart
-        ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
-        : null;
+      const mappedSessionId = resolveInteractiveTurnMappedSessionId(port);
       const runnerWasManaged = Boolean(uiSessionIdAtStart);
       let runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateClaudeRunner({

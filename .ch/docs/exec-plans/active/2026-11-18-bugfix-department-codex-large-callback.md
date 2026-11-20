@@ -64,3 +64,9 @@
 ### 本次 attempt 收尾
 
 六个本轮 TS 与最终隔离输入 SHA-256 全匹配（`large-callback-source-fingerprints.json`）。最终有效证据为 56 项受影响测试加仍有效的 16 项未改协议/invocation，不声称它们是一次 72 项运行。构建后只写本计划和 attempt 报告，无行为变更。最后对上述十个文件和报告执行明确路径空白检查通过。本地编码及验证完成；active 状态仅保留父任务长输出 EH 集成/主审待办，不推断父任务或后继完成。
+
+### 2026-11-20 关联发现：交互式组长本地键续接失败
+
+此问题与本计划的大型 Codex 回调目标相互独立，不改变上述范围或验收状态；按用户要求在现有部门计划记录本次执行，避免新建重复计划。根因为通用交互续接预检只读取 session-meta 映射，而非 Codex/OpenCode 组长将 native session 单独保存在任务与部门账本中。实现从当前有效 Owner binding 或 producer 已核验的代次续接证明传递 native session；普通聊天、员工和未证明的历史仍拒绝续接。
+
+本次新增回归位于 `src/test/extensionHost/departmentinteractiveruntime.test.ts` 与 `src/test/extensionHost/promptInteractiveRuntime.test.ts`：核验账本 binding、首轮 unbound、代次续接和缺失通用映射的组长路径，并确认普通本地历史仍只读。最终复验 `npm run build` 通过；`node --test dist/test/extensionHost/departmentinteractiveruntime.test.js dist/test/extensionHost/promptInteractiveRuntime.test.js` 为 95/95；Ontology `--validate`、`git diff --check` 和所有本次变更文件的空白检查通过。全仓无参数空白检查另报未修改的 `AGENTS.md:8`，不属于本次变更。未运行真实 VS Code Extension Host 或用户任务；原计划仍等待大型输出 EH 集成与主审，不改变其状态。

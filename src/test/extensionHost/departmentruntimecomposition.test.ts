@@ -155,6 +155,19 @@ test("director waiting does not block or redispatch while a leader is running", 
   await h.fixture.adapter.waitForTaskIdle(held.leaderId);
 });
 
+test("cancels one confirmed leader cleanup and preserves the root for a new module", async (t) => {
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  const h = harness({ stopLeader: async () => { held?.releaseLeader.resolve(); } });
+  t.after(() => { held?.releaseLeader.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-cancel");
+  assert.equal(h.composition.readCapacity(held.root.id)?.leaders.length, 1);
+  assert.equal(await h.composition.host.cancelLeader(held.root.id, held.leaderId), true);
+  assert.equal(h.fixture.readTask(held.root.id)?.subTasks.find((module) => module.id === "module-cancel")?.status, "skipped");
+  assert.deepEqual(h.composition.readCapacity(held.root.id)?.leaders, []);
+  assert.equal(h.composition.host.runtimeSnapshot(held.root.id)?.leaders.some((member) => member.taskId === held!.leaderId), false);
+  assert.equal(h.fixture.readTask(held.root.id)?.status, "running");
+});
+
 test("director blocked with a valid diagnosis pauses review without releasing live ownership", async (t) => {
   const h = harness();
   let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;

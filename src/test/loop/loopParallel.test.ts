@@ -3,8 +3,20 @@ import assert = require("node:assert/strict");
 
 import {
   buildLoopSubtaskExecutionPlan,
+  findLoopLiveDispatchConflict,
   normalizeLoopWriteFiles,
 } from "../../loopParallel";
+
+test("allows independent supplemental work but blocks overlapping writes and live session reuse", () => {
+  const active = [{ id: "active", conflictGroup: "api", writeFiles: ["src/api"] }];
+  assert.equal(findLoopLiveDispatchConflict(active, [{ id: "docs", writeFiles: ["docs"] }]), null);
+  assert.deepEqual(findLoopLiveDispatchConflict(active, [{ id: "api-extra", writeFiles: ["src/api/routes.ts"] }]), {
+    activeId: "active", candidateId: "api-extra",
+  });
+  assert.deepEqual(findLoopLiveDispatchConflict([{ id: "source" }], [{ id: "follow-up", continueFromSubtaskId: "source" }]), {
+    activeId: "source", candidateId: "follow-up",
+  });
+});
 
 test("keeps independent write files in one parallel group", () => {
   const plan = buildLoopSubtaskExecutionPlan([

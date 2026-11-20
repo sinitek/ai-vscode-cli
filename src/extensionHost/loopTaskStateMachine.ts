@@ -238,7 +238,6 @@ function applyClarifyLoopMainDecision(context: LoopMainDecisionContext): LoopMai
     appendDecisionMessages: true,
     patch: {
       status: "running",
-      ...clearedActiveSubtasks(),
       pendingClarification: context.decision.clarification,
       clarificationCount: count + 1,
       ...(context.decision.finalSummary ? { finalSummary: context.decision.finalSummary } : {}),
@@ -295,7 +294,9 @@ function applyContinueLoopMainDecision(context: LoopMainDecisionContext): LoopMa
     };
   }
   const batch = upsertLoopTransitionSubtasks(context.task, decisionSubtasks, context.now);
-  const activeSubtaskIds = batch.records.map((item) => item.id);
+  const persistedActive = getActiveLoopSubtaskIds(context.task).filter((id) => context.task.subTasks.some((item) =>
+    item.id === id && (item.status === "running" || item.status === "blocked")));
+  const activeSubtaskIds = [...new Set([...persistedActive, ...batch.records.map((item) => item.id)])];
   return {
     status: "continue",
     appendDecisionMessages: true,

@@ -6,9 +6,9 @@ import { bindLoopSubtaskSession } from "../loopSubtaskSession";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { DepartmentExecutionOwnerServer, type ExecutionTerminalEvidence } from "../runtime/departmentexecutionowner";
 import { DepartmentExecutionOwnerClient } from "../runtime/departmentexecutionownerclient";
-import { fingerprintDepartmentExecutionSelection, type CleanupRequirements, type DepartmentExecutionIdentity,
+import { fingerprintDepartmentExecutionSelection, sameExecution, type CleanupRequirements, type DepartmentExecutionIdentity,
   type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
-import { DepartmentLeaderExecutionLedger, leaderExecutionScopeKey } from "./departmentleaderexecutionledger";
+import { DepartmentLeaderExecutionLedger, leaderExecutionScopeKey, responsibilityMatchesBinding } from "./departmentleaderexecutionledger";
 import type { DepartmentExecutionProducerHost } from "./departmentexecutionproducer";
 import { departmentCleanupErrorCode } from "./departmentlifecyclediagnostics";
 import type { DepartmentExecutionBinding } from "./departmentruntimestate";
@@ -92,6 +92,49 @@ export function createDepartmentInteractiveRuntime(deps: {
       configId: route.configId, revision: input.expected.revision, model: route.model ?? null,
       thinkingMode: route.thinkingMode ?? null, openCodeVariant: route.openCodeVariant ?? null };
     return { task, scope, selection };
+  }
+  function resolveLeaderResumeSession(taskId: string, localSessionId: string | null): string | null {
+    const scope = deps.producer.scope(taskId), task = deps.readTask(taskId), route = task?.department?.routes.leader;
+    if (!localSessionId || !task || task.departmentInvalid || task.executionSessionInvalid || task.department?.role !== "leader"
+      || task.cli !== route?.cli || task.sessionId !== localSessionId || !route?.configId || !usesDepartmentInteractiveRuntime(route.cli)) {
+      throw new Error("department-interactive-leader-session-invalid");
+    }
+    const id = key(taskId, "leader", String(scope.generation)), entry = entries.get(id);
+    const continuation = deps.producer.continuationSession(taskId);
+    const taskSession = task.executionSession;
+    if (entry?.sealed || entry && entry.localSessionId !== localSessionId) throw new Error("department-interactive-leader-owner-unavailable");
+    if (!entry?.binding) {
+      if (!continuation && !taskSession) return null;
+      if (!continuation || !taskSession || taskSession.cli !== continuation.cli || taskSession.sessionId !== continuation.sessionId
+        || taskSession.configId !== continuation.configId
+        || continuation.cli !== route.cli || continuation.configId !== route.configId) {
+        throw new Error("department-interactive-leader-continuation-unverified");
+      }
+      return continuation.sessionId;
+    }
+    const binding = entry.binding;
+    if (!taskSession || binding.identity.session.state !== "bound" || taskSession.cli !== route.cli
+      || taskSession.sessionId !== binding.identity.session.id || taskSession.configId !== route.configId
+      || binding.identity.role !== "leader" || leaderExecutionScopeKey(binding.identity) !== leaderExecutionScopeKey(scope)
+      || binding.selection.cli !== route.cli || binding.selection.role !== "leader" || binding.selection.configId !== route.configId
+      || binding.selection.model !== (route.model ?? null)
+      || binding.selection.thinkingMode !== (route.thinkingMode ?? null)
+      || binding.selection.openCodeVariant !== (route.openCodeVariant ?? null)) {
+      throw new Error("department-interactive-leader-binding-conflict");
+    }
+    const saved = deps.store.readLeaderExecutionSet(scope);
+    const storedBindings = saved.ok && saved.value
+      ? saved.value.bindings.filter(value => sameExecution(value.identity, binding.identity)
+        && JSON.stringify(value.selection) === JSON.stringify(binding.selection)
+        && JSON.stringify(value.requirements) === JSON.stringify(binding.requirements)) : [];
+    const responsibility = saved.ok && saved.value
+      ? saved.value.set.entries.filter(value => value.executionId === binding.identity.executionId
+        && responsibilityMatchesBinding(scope, value.responsibility, binding)) : [];
+    if (!saved.ok || !saved.value || saved.value.set.state !== "open" || saved.value.set.producerId !== deps.producer.producer.producerId
+      || storedBindings.length !== 1 || responsibility.length !== 1) {
+      throw new Error("department-interactive-leader-binding-unverified");
+    }
+    return binding.identity.session.id;
   }
   function releaseRunner(resource: { release: () => Promise<void>; work?: Promise<void> }): Promise<void> {
     resource.work ??= Promise.resolve().then(resource.release);
@@ -182,6 +225,7 @@ export function createDepartmentInteractiveRuntime(deps: {
     return entry;
   }
   return {
+    resolveLeaderResumeSession,
     authorizeAttempt(task: string, subtask: string, attempt: string): void {
       if (authorized.size >= 256 && !authorized.has(key(task, subtask, attempt))) throw new Error("department-interactive-admission-capacity");
       authorized.add(key(task, subtask, attempt));

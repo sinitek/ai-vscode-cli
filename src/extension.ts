@@ -1714,6 +1714,7 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   isTabRunActive,
   getActiveConversationTabId,
   hasActiveSubtasks: hasActiveLoopSubtasks,
+  cancelSubtaskInvocation: (tabId) => cancelLoopPlusInvocation(tabId),
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
   subtaskRoundLimit: () => modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),
   getActiveConfigIdForCli,
@@ -3064,6 +3065,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     continue: (root, prompt) => getDepartmentRuntimeComposition().organizationControl.continue(root, prompt),
     stop: (root) => getDepartmentRuntimeComposition().organizationControl.stop(root),
     complete: (root) => getDepartmentRuntimeComposition().organizationControl.complete(root),
+    cancelLeader: (root, leaderTaskId) => getDepartmentRuntimeComposition().organizationControl.cancelLeader(root, leaderTaskId),
   },
   recordPromptHistory,
 
@@ -3151,6 +3153,12 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   stopRunsForTask: stopLoopRunsForTask,
   markTaskStoppedByUser: markLoopTaskStoppedByUser,
   notifyLoopPlusUserMessage: (taskId, text) => getLoopPlusOrchestrationHost().submitUserMessage(taskId, text),
+  cancelClassicSubtask: (taskId, subtaskId) => requireLoopOrchestrationHost().cancelClassicSubtask(taskId, subtaskId),
+  wakeClassicLoop: (taskId) => {
+    const task = readLoopTaskRecord(taskId);
+    if (task?.department?.role === "director") getDepartmentRuntimeComposition().wakeDirector(taskId);
+    else requireLoopOrchestrationHost().wakeClassicLoop(taskId);
+  },
   readLoopPlusAcceptancePlans: () => buildLoopPlusAcceptancePlansPanelValue(workspaceSettings),
   readLoopPlusAcceptancePlanSelection: () => buildLoopPlusAcceptancePlanSelectionPanelValue(workspaceSettings),
   saveLoopPlusAcceptancePlan: (input) => saveLoopPlusAcceptancePlan(createAcceptancePlanSettingsHost(), input),
@@ -5052,6 +5060,11 @@ async function runLoopPromptOrchestration(
   await postPanelState();
   void openLoopGroupChatPanel(task.id);
 
+  const orchestration = requireLoopOrchestrationHost();
+  const observation = orchestration.observeClassicLoop(task.id);
+  const settledBatches: Array<Awaited<ReturnType<typeof runLoopSubtasksBatchWithRetry>>> = [];
+  const taskId = task.id;
+  try {
   while (true) {
     const latest: LoopTaskRecord = readLoopTaskRecord(task.id) ?? task;
     task = latest;
@@ -5061,6 +5074,18 @@ async function runLoopPromptOrchestration(
     }
     if (latest.status === "needs-review" || latest.status === "error" || latest.status === "stopped") {
       return;
+    }
+    for (const subtaskResults of settledBatches.splice(0)) {
+      const interrupted = subtaskResults.find((result) => (result.status === "error" || result.status === "stopped")
+        && !result.watchdogRecovered && latest.subTasks.find((item) => item.id === result.subtask.id)?.status !== "skipped");
+      if (interrupted) {
+        appendSystemMessageForLoop(target, interrupted.status === "stopped"
+          ? t("run.loopSubtaskStoppedAwaitingCompletion", { title: interrupted.subtask.title })
+          : t("run.loopSubtaskFailedAwaitingCompletion", { title: interrupted.subtask.title }));
+        return;
+      }
+      const finished = subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask);
+      if (finished.length) appendSystemMessageForLoop(target, buildLoopMainResumeText(taskId, round, finished));
     }
     if (latest.pendingClarification) {
       const continued = await waitForLoopTaskClarification(latest, target);
@@ -5099,6 +5124,7 @@ async function runLoopPromptOrchestration(
       continue;
     }
 
+    const revision = observation.revision();
     let decisionRunResult: Awaited<ReturnType<LoopOrchestrationHost["runClassicLoopMainDecision"]>>;
     try {
       decisionRunResult = await runClassicLoopMainDecision({
@@ -5148,35 +5174,34 @@ async function runLoopPromptOrchestration(
     if (decisionRunResult.status === "awaiting-input") {
       continue;
     }
+    if (decisionRunResult.status === "waiting") {
+      removeLoopMainDecisionMessage(target, taskId, round);
+      round += 1;
+      await observation.wait(revision);
+      continue;
+    }
 
     const subtasks = decisionRunResult.subtasks;
     showLoopSubtaskDecisionMarkdown(target, decisionRunResult.task, round, subtasks, decisionRunResult.decision);
-    const subtaskResults = await runLoopSubtasksBatchWithRetry({
+    void runLoopSubtasksBatchWithRetry({
       input,
       target,
       task: decisionRunResult.task,
       round,
       subtasks,
+    }).then((results) => {
+      settledBatches.push(results);
+    }, (error) => {
+      void logError("loop-subtask-batch-error", { taskId, error: errorToMessage(error) });
+      settledBatches.push(subtasks.map((subtask) => ({ subtask, status: "error" })));
+    }).finally(() => {
+      orchestration.wakeClassicLoop(taskId);
     });
-    const interrupted = subtaskResults.find((result) => result.status === "error" || result.status === "stopped");
-    if (interrupted && !interrupted.watchdogRecovered) {
-      appendSystemMessageForLoop(
-        target,
-        interrupted.status === "stopped"
-          ? t("run.loopSubtaskStoppedAwaitingCompletion", { title: interrupted.subtask.title })
-          : t("run.loopSubtaskFailedAwaitingCompletion", { title: interrupted.subtask.title }),
-      );
-      return;
-    }
-
-    const nextMainRound = round + 1;
-    if (subtaskResults.some((result) => result.status === "end")) {
-      appendSystemMessageForLoop(
-        target,
-        buildLoopMainResumeText(decisionRunResult.task.id, nextMainRound, subtaskResults.filter((result) => result.status === "end").map((result) => result.subtask))
-      );
-    }
-    round = nextMainRound;
+    round += 1;
+    await observation.wait(revision);
+  }
+  } finally {
+    observation.dispose();
   }
 
 }
@@ -5626,7 +5651,10 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
     const target = resolvePromptRunTarget(options.targetTabId ?? null);
     const expected = target && { configId: fixed.executionProfile?.configId ?? null, revision: "department-role" };
     if (!fixed.loopTaskId || !target || !expected) throw new Error("部门任务执行配置或会话缺失。");
-    await getDepartmentInteractiveRuntime().run({
+    const interactiveRuntime = getDepartmentInteractiveRuntime();
+    const departmentLeaderNativeSessionId = fixed.taskRole === "main"
+      ? interactiveRuntime.resolveLeaderResumeSession(fixed.loopTaskId, target.sessionId) : undefined;
+    await interactiveRuntime.run({
       taskId: fixed.loopTaskId, role: fixed.taskRole === "subtask" ? "employee" : "leader",
       invocationId: options.invocationId ?? fixed.loopAttemptId ?? "", sessionId: target.sessionId,
       ...(fixed.taskRole === "subtask" && !target.sessionId ? { initializeLocalSession: () => {
@@ -5640,7 +5668,10 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
       subtaskId: fixed.loopSubtaskId, attemptId: fixed.loopAttemptId, expected,
       grokExecutionRootId: fixed.grokLoopExecutionRootId,
       cancel: () => cancelLoopPlusInvocation(target.tabId),
-      execute: (capture) => runPromptWithDepartmentAdmission(fixed, { ...options, departmentInteractiveRunner: capture }),
+      execute: (capture) => runPromptWithDepartmentAdmission(fixed, { ...options, departmentInteractiveRunner: capture,
+        ...(fixed.taskRole === "main" ? { departmentLeaderSession: {
+          localSessionId: target.sessionId!, nativeSessionId: departmentLeaderNativeSessionId ?? null,
+        } } : {}) }),
     });
   } catch (error) { failure = error; throw error; }
   finally {
@@ -5653,6 +5684,7 @@ type RunPromptOptions = { targetTabId?: string | null; isAborted?: () => boolean
   performanceTrace?: PerformanceTrace;
   registerQuestionRun?: (runId: string) => void;
   departmentInteractiveRunner?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"];
+  departmentLeaderSession?: import("./extensionHost/promptExecutionShared").PromptRunExecutionOptions["departmentLeaderSession"];
   firstMainExecution?: FirstLoopMainExecution };
 
 async function runPrompt(
@@ -5850,6 +5882,7 @@ async function runPromptNow(
   try {
     const executionOptions = {
       departmentInteractiveRunner: options.departmentInteractiveRunner,
+      departmentLeaderSession: options.departmentLeaderSession,
       registerQuestionRun: options.registerQuestionRun,
       requireOriginalSession: firstMainExecution !== undefined,
       isAborted: () => firstMainExecution?.admitted

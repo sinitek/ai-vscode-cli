@@ -21,7 +21,7 @@ function getFunction(name: string, dependencies: string[] = [], values: unknown[
 
 const valid = { role: "director", rootTaskId: "root-long-abcdef01", taskId: "root-long-abcdef01", moduleTitle: "产研部" };
 
-test("department tab labels add only the role icon and preserve the ordinary tab name", () => {
+test("department tabs add the role icon and an available employee name to session labels", () => {
   const getPresentation = getFunction("getDepartmentConversationTabPresentation") as (tab: unknown) => unknown;
   const format = getFunction("formatConversationTabLabel", ["getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary"],
     [getPresentation, (tab: any) => tab.loopTaskRole ? { taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId } : null]) as (tab: unknown, base: string) => string;
@@ -30,6 +30,8 @@ test("department tab labels add only the role icon and preserve the ordinary tab
     "🌛 Codex");
   assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "root-long-abcdef01", departmentPresentation: { ...valid, role: "employee", employeeSubtaskId: "employee-87654321" } }, "Codex"),
     "⭐️ Codex");
+  assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "root-long-abcdef01", departmentPresentation: { ...valid, role: "employee", employeeSubtaskId: "employee-87654321", employeeName: "王磊" } }, "Codex"),
+    "⭐️ 王磊 · Codex");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "leader-id-12345678", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id-12345678" } }, "Codex2"),
     "🌛 Codex2");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "task" }, "Codex"), "🌛 Codex");

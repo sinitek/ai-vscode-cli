@@ -6,7 +6,7 @@ import {
 import { KimiInteractiveRunner } from "../interactive/kimiRunner";
 import { normalizeRawStreamContent } from "../promptRunState";
 import type { KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
-import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
+import { resolveInteractiveTurnMappedSessionId, type InteractiveTurnAttemptPort, type InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 function isRealTokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -23,9 +23,7 @@ export function createKimiCodeInteractiveTurnStrategy(): InteractiveTurnStrategy
       const uiSessionIdAtStart = port.uiSessionId;
       const runnerWasManaged = Boolean(uiSessionIdAtStart);
       const previousSessionId = uiSessionIdAtStart;
-      const mappedSessionId = uiSessionIdAtStart
-        ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
-        : null;
+      const mappedSessionId = resolveInteractiveTurnMappedSessionId(port);
       const resumeSessionId = resolveKimiHostResumeId(uiSessionIdAtStart, mappedSessionId);
       const confirmedSessionId = { value: resumeSessionId };
       const requireResume = resumeSessionId !== null;

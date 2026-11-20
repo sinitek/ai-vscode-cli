@@ -308,6 +308,7 @@ export type DepartmentConversationTabPresentation = {
   readonly taskId: string;
   readonly moduleTitle: string;
   readonly employeeSubtaskId?: string;
+  readonly employeeName?: string;
 };
 
 export type PromptHistoryItem = {

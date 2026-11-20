@@ -31,7 +31,7 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
   }));
   assert.deepEqual(rows.map((row) => row.avatar), role === "director" ? ["总", "组", "组", "组"] : ["组", "员"]);
   const expectedLabels = role === "director" ? ["总监", "组长A", "组长B", "组长C"]
-    : leaderTaskId === "department-20261113-leader-111111" ? ["组长A", "员工 A112"] : ["组长B", "员工 B1"];
+    : leaderTaskId === "department-20261113-leader-111111" ? ["组长A", "魏强"] : ["组长B", "李娜"];
   assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), expectedLabels);
   for (const row of rows) {
     assert.doesNotMatch(row.title, /[☀🌛⭐]/u);
@@ -99,7 +99,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await captureRoster(frame, "leader-patched");
   // Existing employee acceptance and return controls retain their accessible names and routes.
   const employee = frame.locator('.department-employees .member-acceptance-link').first();
-  assert.equal(await employee.getAttribute("aria-label"), "员工 A112 · 同名模块：查看最近一次验收结果");
+  assert.equal(await employee.getAttribute("aria-label"), "魏强 · 同名模块：查看最近一次验收结果");
   await employee.click(); await settle();
   assert.equal(await frame.locator("#loop-plus-acceptance-0").evaluate((element) => document.activeElement === element), true);
   await showMembers(frame);
@@ -141,7 +141,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await captureRoster(page, "director-completed-summary");
   directorLeader.employees[0].title = "完成后仍隐藏";
   panel.update(structuredClone(parentState));
-  assert.equal(await directorGroup.getByText("员工 A112 · 完成后仍隐藏", { exact: true }).count(), 0);
+  assert.equal(await directorGroup.getByText("魏强 · 完成后仍隐藏", { exact: true }).count(), 0);
   directorLeader.participant.status = "running";
   directorLeader.progressPercent = 40;
   panel.update(structuredClone(parentState));

@@ -225,6 +225,8 @@ node scripts/count_effective_loc.js --json
 - `department-session-mapping-attempted` 记录产研部组长尝试写入本地会话与原生会话的映射。核对同时间段是否出现 `session-meta-write-error`。
 - `session-local-promoted` 记录迁移来源和受影响的 `updatedTabIds`。如果随后出现 `department-session-route-rejected`，对照 `taskSessionId` 与 `tabSessionId` 判断任务与 Tab 是否在迁移后仍指向同一会话。
 
+非 Codex/OpenCode 产研部组长续接从当前 Owner binding 或 producer 续接证明恢复 native session，不依赖 session-meta 映射；普通对话和员工仍受 `interactive-session-resume-blocked` 保护。组长仍报“只能查看”时，检查同任务是否有有效运行代次、`executionSession` 是否与当前原生 binding 一致，以及账本集合是否为 open；不要手工补写映射或重建会话来绕过 Owner/代次校验。
+
 ### Webview 调试
 
 在 VS Code 或开发主机中执行：

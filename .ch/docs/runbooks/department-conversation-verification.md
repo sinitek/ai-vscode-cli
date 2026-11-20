@@ -39,7 +39,7 @@ node scripts/verify_department_conversation_host.js
 
 标签检查确认总监、组长、员工仅在原 CLI 标签前增加 `👴🏻`、`👨🏻`、`👶🏻` 图标，原名如 `Codex2` 不变；宿主退出后还会读取隔离生产 session store，断言原始五个标签未被装饰文本覆盖。两个同名模块组长的标签仍保留各自既有会话名称；完整层级与身份由 tooltip 区分。窄屏检查通过拖动编辑区分隔条缩窄实际 Webview surface，并记录工作台几何和 Webview `innerWidth`；旧的仅缩小整个工作台截图（`webview-narrow.png`）中 Explorer 遮挡目标面板，不作为窄 Webview 可见性证据。
 
-`scripts/department_conversation_tabs_smoke.cjs` 是生成完整 Webview runtime 的浏览器回归夹具，使用生产角色投影函数和明确声明为可用的模式状态，但通过 fixture `PanelState` 与 VS Code API bridge 驱动，不属于真实 Extension Host 证据。它断言可见标签严格保留原 `Codex`、`Codex2`、`Codex3` 名称并只增加对应角色图标；角色中文名、模块及完整 root/task/employee 身份只在 tooltip 中断言。窄视口同样检查原名和 tooltip，不要求短任务 ID 出现在标签。运行时应将 `DEPARTMENT_TABS_DIST` 指向本次独立源码构建的 `dist`，并设置 `DEPARTMENT_TABS_EVIDENCE` 与 `PLAYWRIGHT_MODULE` 指向隔离证据目录和 Playwright 安装；不要用共享 `dist` 作为本次源码证据。
+`scripts/department_conversation_tabs_smoke.cjs` 使用生产角色投影函数生成完整 Webview，通过 fixture `PanelState` 与 VS Code API bridge 驱动。断言可见标签 `☀️ Codex`、`🌛 Codex2`、`⭐️ 王磊 · Codex3`，并检查窄视口的标签、悬停标题及页面溢出。运行时将 `DEPARTMENT_TABS_DIST` 指向本次独立源码构建的 `dist`，将 `DEPARTMENT_TABS_EVIDENCE` 和 `PLAYWRIGHT_MODULE` 指向隔离证据目录及 Playwright 安装。
 
 组长弹窗检查等待加载状态结束、嵌入式 sandbox `about:srcdoc` frame 建立 execution context，再核对该 frame 的精确 leader task ID、模块、Loop+ 状态和适用于已完成历史的操作栏。关闭后核对打开按钮焦点和阅读位置恢复。仅看到 backdrop 或共同模块标题不算加载完成证据。
 

@@ -1,7 +1,7 @@
 import { isGrokCompletedStopReason, resolveGrokResumeSessionId } from "../interactive/grokAppServerProtocol";
 import { GrokInteractiveRunner } from "../interactive/grokRunner";
 import { normalizeRawStreamContent } from "../promptRunState";
-import type { InteractiveTurnAttemptPort, InteractiveTurnStrategy } from "./interactiveTurnStrategy";
+import { resolveInteractiveTurnMappedSessionId, type InteractiveTurnAttemptPort, type InteractiveTurnStrategy } from "./interactiveTurnStrategy";
 
 export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
   return {
@@ -10,14 +10,12 @@ export function createGrokInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const uiSessionIdAtStart = port.uiSessionId;
       const runnerWasManaged = Boolean(uiSessionIdAtStart);
       const previousSessionId = uiSessionIdAtStart;
-      const mappedSessionId = uiSessionIdAtStart
-        ? port.resolveInteractiveMappedId(port.cli, uiSessionIdAtStart)
-        : null;
+      const mappedSessionId = resolveInteractiveTurnMappedSessionId(port);
       const isLoopPlusGrokAttempt = port.grokLoopResumeSessionId !== undefined;
       const resumeSessionId = isLoopPlusGrokAttempt
         ? port.grokLoopResumeSessionId ?? null
         : resolveGrokResumeSessionId(uiSessionIdAtStart, mappedSessionId);
-      const requireResume = isLoopPlusGrokAttempt && resumeSessionId !== null;
+      const requireResume = (isLoopPlusGrokAttempt || port.departmentLeaderSession !== undefined) && resumeSessionId !== null;
       port.observedGrokFinalAnswer = false;
       const runner = uiSessionIdAtStart
         ? port.interactiveRunnerManager.getOrCreateGrokRunner({

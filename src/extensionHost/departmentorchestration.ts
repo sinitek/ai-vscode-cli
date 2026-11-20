@@ -66,6 +66,7 @@ type Employee = { taskId: string; attemptId: string; subtaskId: string; release(
 type EmployeeRequest = Pick<LoopPlusAttemptRequest, "taskId" | "attemptId" | "subtaskId"> & Partial<Pick<LoopPlusAttemptRequest, "targetCli" | "execution">>;
 type Root = { id: string; workspaceKey: string; metadata: DepartmentMetadata; plan: LoopPlusAcceptancePlanSnapshot;
   snapshot: DepartmentRuntimeSnapshot; members: Map<string, Member>; modules: Map<string, string>;
+  cancellations: Map<string, Promise<boolean>>;
   reservations: Map<string, Promise<unknown> | null>; employees: Map<string, Employee>; pending: Map<string, { subtaskId: string; promise: Promise<Employee | null> }>;
   abort: AbortController; persistenceError: boolean; stopping: Promise<boolean> | null; continuing: boolean; completing: boolean; stopDiagnosed?: boolean; persistenceDiagnosed?: boolean };
 const text = (v: unknown): v is string => typeof v === "string" && Boolean(v.trim());
@@ -103,7 +104,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
   function makeRoot(task: LoopTaskRecord, metadata: DepartmentMetadata, plan: LoopPlusAcceptancePlanSnapshot): Root {
     return { id: task.id, workspaceKey: task.workspaceKey, metadata: clone(metadata), plan: clone(normalizeLoopPlusAcceptancePlanSnapshot(plan)),
       snapshot: createDepartmentRuntimeSnapshot(task.id), members: new Map(), modules: new Map(), reservations: new Map(), employees: new Map(),
-      pending: new Map(), abort: new AbortController(), persistenceError: false, stopping: null, continuing: false, completing: false };
+      pending: new Map(), cancellations: new Map(), abort: new AbortController(), persistenceError: false, stopping: null, continuing: false, completing: false };
   }
   function currentRoot(root: Root): LoopTaskRecord | null {
     const task = deps.readTask(root.id);
@@ -277,7 +278,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     continuation?: { assertCurrent(): void; admitted(): void }): Promise<DepartmentRecoveryResult> {
     const root = roots.get(rootTaskId);
     const rootTask = root && currentRoot(root);
-    if (!root || deps.canExecuteRoot?.(rootTaskId) === false || root.stopping || root.continuing || !rootTask || rootTask.status === "completed" || root.completing || root.reservations.size) return { ok: false, reason: "root-not-ready" };
+    if (!root || deps.canExecuteRoot?.(rootTaskId) === false || root.stopping || root.continuing || !rootTask || rootTask.status === "completed" || root.completing || root.reservations.size || root.cancellations.size) return { ok: false, reason: "root-not-ready" };
     // A settled/rejected recovery observation never authorizes a new generation.
     if ([...root.members.values()].some((member) => member.status === "blocked")) {
       return { ok: false, reason: "execution-cleanup-unverified" };
@@ -448,6 +449,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     root.abort.abort(); root.snapshot.stopping = true; persist(root);
     try { deps.updateTask(root.id, { status: "stopped" }); } catch { root.persistenceError = true; if (diagnoseStop) diagnostic("department-lifecycle-persistence-failed", { rootTaskId: root.id, stage: "root-stop", result: "unconfirmed", reason: "persistence-failed" }); }
     const stopping = (async () => {
+      await Promise.allSettled([...root.cancellations.values()]);
       await Promise.allSettled([...root.reservations.values()].filter((v): v is Promise<unknown> => !!v));
       let confirmed = 0, unconfirmed = 0;
       const results = await Promise.allSettled([...root.members.values()].map(async (member) => {
@@ -489,6 +491,53 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     root.stopping = stopping;
     void stopping.then(() => { if (root.stopping === stopping) root.stopping = null; }, () => { root.stopping = null; });
     return stopping;
+  }
+  async function cancelLeader(rootTaskId: string, leaderTaskId: string): Promise<boolean> {
+    const root = roots.get(rootTaskId), member = root?.members.get(leaderTaskId);
+    const existing = root?.cancellations.get(leaderTaskId);
+    if (existing) return existing;
+    const settledFailure = member?.status === "failed" && !member.run && !member.lease;
+    if (!root || !member || root.stopping || root.continuing || root.completing || root.abort.signal.aborted
+      || root.persistenceError || member.status === "blocked" || (!member.lease && !settledFailure) || !currentRoot(root)) return false;
+    const operation = cancelLeaderOnce(root, member, settledFailure);
+    root.cancellations.set(leaderTaskId, operation);
+    try { return await operation; }
+    finally { if (root.cancellations.get(leaderTaskId) === operation) root.cancellations.delete(leaderTaskId); }
+  }
+  async function cancelLeaderOnce(root: Root, member: Member, settledFailure: boolean): Promise<boolean> {
+    const leaderTaskId = member.taskId;
+    const generation = member.generation;
+    try {
+      if (!settledFailure) {
+        member.status = "stopping";
+        if (!persist(root)) return false;
+        deps.runtime.host().stopParent(leaderTaskId);
+        await deps.stopLeader(leaderTaskId);
+        await deps.runtime.waitForTaskIdle(leaderTaskId);
+        await Promise.all([...root.employees.values()].filter((employee) => employee.taskId === leaderTaskId).map((employee) => employee.done));
+        await member.run;
+      }
+      if (root.stopping || root.continuing || root.abort.signal.aborted || root.members.get(leaderTaskId) !== member
+        || member.generation !== generation || member.lease || (member.status as DepartmentLeaderStatus) === "blocked") return false;
+      const task = currentRoot(root), module = task?.subTasks.find((item) => item.id === member.leaderSubtaskId);
+      if (!task || !module || module.status === "completed") return false;
+      const savedTask = deps.updateTask(root.id, { subTasks: task.subTasks.map((item) => item.id === module.id
+        ? { ...item, status: "skipped", summary: "用户已取消该组长任务，未视为完成。", updatedAt: Date.now() } : item), updatedAt: Date.now() });
+      if (!savedTask) return false;
+      root.members.delete(leaderTaskId);
+      root.modules.delete(member.leaderSubtaskId);
+      if (!persist(root)) {
+        root.members.set(leaderTaskId, member);
+        root.modules.set(member.leaderSubtaskId, leaderTaskId);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      member.status = "blocked";
+      persist(root);
+      memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained", error);
+      return false;
+    }
   }
   function recoverRoot(task: LoopTaskRecord, value: unknown, plan: LoopPlusAcceptancePlanSnapshot, saved: unknown, snapshots: DepartmentCapacitySnapshot[]): DepartmentRecoveryResult {
     try {
@@ -612,7 +661,8 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     if (!root || !task || deps.canExecuteRoot?.(rootTaskId) === false || root.abort.signal.aborted || task.status !== "running" || root.persistenceError || root.stopping || root.completing
       || root.continuing || root.reservations.size || root.pending.size || root.employees.size || task.pendingClarification
       || !equal(task.supplementalRequirements ?? [], root.snapshot.acknowledgedRootRequirements ?? [])) return false;
-    if (!task.subTasks.length || root.modules.size !== task.subTasks.length || task.subTasks.some((module) => {
+    const requiredModules = task.subTasks.filter((module) => module.status !== "skipped");
+    if (!requiredModules.length || root.modules.size !== requiredModules.length || requiredModules.some((module) => {
       const memberId = root.modules.get(module.id), member = memberId && root.members.get(memberId);
       const leader = member ? leaderTask(root, member) : null;
       return !member || member.status !== "completed" || member.run || member.lease || !completed(leader)
@@ -702,7 +752,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       ? deps.readEmployeeCapacity ? deps.readEmployeeCapacity(rootTaskId, leaderTaskId) : deps.capacity.getEmployeeCapacity(rootTaskId, leaderTaskId) : null;
   });
   return { registerRoot, recoverRoot, startLeader, continueRoot, stopRoot, acquireAttemptExecution, coordinateCollaboration,
-    processDirectorCollaboration, acknowledgeRootRequirements, canCompleteRoot, confirmRootComplete, runtimeSnapshot, directorCoordinationContext };
+    processDirectorCollaboration, acknowledgeRootRequirements, canCompleteRoot, confirmRootComplete, cancelLeader, runtimeSnapshot, directorCoordinationContext };
 }
 function schedulerSnapshot(task: LoopTaskRecord | null): LoopPlusSchedulerSnapshot | null {
   try { return task?.loopPlus ? createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot() : null; } catch { return null; }

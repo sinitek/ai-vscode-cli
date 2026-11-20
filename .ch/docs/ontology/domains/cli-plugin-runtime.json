@@ -2187,7 +2187,7 @@
     {
       "id": "plugin.rule.loop_tab_member_title_tooltip",
       "name": "Loop 标签提示复用群聊成员标题",
-      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，沿用群聊成员的编号和完整标题。组长字母由模块顺序按组长上限循环映射，上限为 4 时只使用 A 至 D。员工编号由组长字母和员工在所属组长任务 subTasks 中的一基顺序组成。普通主任务和产研部总监展示归纳后的 AI 摘要。",
+      "description": "普通 Loop/Loop+ 子任务 Tab 悬停提示显示群聊成员的子任务编号和完整标题。编号取同一任务 subTasks 顺序。新派发 Tab 可使用运行时携带的父任务和子任务身份。历史 Tab 优先按当前消息身份定位，无消息身份时可由同 CLI 和 session 的 executionSession 绑定恢复。产研部角色已经匹配可信任务和会话时，沿用群聊成员的完整标题。组长字母由模块顺序按组长上限循环映射，上限为 4 时只使用 A 至 D。员工显示姓名由 100 个两字中文姓名组成的固定名单按组长席位与组内 subTasks 顺序投影，名单用完后复用。群聊和会话悬停统一显示姓名及任务标题，员工 Tab 标签也显示姓名，同一子任务的多次尝试沿用同一姓名。普通主任务和产研部总监展示归纳后的 AI 摘要。",
       "status": "active",
       "applies_to": [
         "plugin.conversation_task_summary",
@@ -2198,6 +2198,10 @@
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
           "anchor": "AI 对话 Tab 任务摘要"
+        },
+        {
+          "path": "src/departmentEmployeeNames.ts",
+          "anchor": "getDepartmentEmployeeName"
         },
         {
           "path": ".ch/docs/design-docs/vscode-cli-extension-runtime.md",
@@ -5251,6 +5255,37 @@
       ]
     },
     {
+      "id": "plugin.rule.classic_loop_live_dispatch_and_child_cancel",
+      "name": "经典 Loop 运行中增派与部门组长单独取消",
+      "description": "经典 Loop 子任务批次运行期间，补充需求持久化后唤醒同一串行主循环；现有批次继续受后台 Promise 和失联巡检管理。主任务仅在新任务写入范围、冲突组及连续来源均不与活动任务冲突时增量派发；completed、waiting、blocked 不能绕过在途任务收尾。群聊可取消单个活动子任务，宿主先取消目标 CLI 并等待真实运行退出，再标记 skipped；迟到完成回调不得覆盖 skipped，取消不影响兄弟任务或 Loop+ roster。产研部总监补充需求唤醒总监专属协调器；活动组长冲突时延后重新判断，不覆盖已登记模块。总监群聊单独取消运行或已确认失败的组长；仅在 Owner 清理、任务 idle 和容量释放确认后跳过旧模块，清理不明时保留原组织占用。",
+      "status": "active",
+      "applies_to": [
+        "plugin.loop_task",
+        "plugin.chat_panel",
+        "plugin.department_task"
+      ],
+      "source_refs": [
+        {
+          "path": "src/extensionHost/loopOrchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/loopTaskStateMachine.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentorchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
+        },
+        {
+          "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
+        },
+        {
+          "path": "src/webview/loopGroupChatPanel.ts"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.loop_main_model_question",
       "name": "Loop 群聊向当前主模型会话提问",
       "description": "Loop 与 Loop+ 群聊的“补充需求”写入任务补充要求，Loop+ 沿用用户消息调度；“我要提问”不写入补充需求或验收事件。主模型忙碌仍可连续提交问题，提示“主模型正在处理，你的问题会放入队列。”。每条问题在提交时写入提问历史并立即进入主任务 Tab 共享队列，与实际主模型调用按入队顺序串行执行；运行中的调用不被抢占，后来发起的验收、补充需求处理或收口调用不插队，编排器待办不预占会话。排队中的每条用户气泡下方显示三点动画与“排队中，等待主模型空闲”，开始回答即移除对应提示，后续排队问题仍保留；回答动画仅在真正回答后显示。关闭弹窗或 Webview 页面不可见时暂停排队动画，减少动态效果时保留静态提示；完成、失败、中止和重启恢复不遗留排队标记；取消排队不停止主任务，停止正在回答时清空后续问题。停止信号覆盖配置、会话及运行时异步准备，取消后不再启动回答或 CLI 进程；准备资源须释放，Codex 等待就绪不能漏掉立即停止；停止优先于已保存的部分回答。失败不丢弃后续问题，多个 Tab 独立；宿主重启后未完成提问标记停止，不自动重放。",
@@ -7883,7 +7918,7 @@
     {
       "id": "plugin.rule.department_execution_cli_admission",
       "name": "部门执行角色复用全部 CLI 能力",
-      "description": "产研部总监、组长和员工共用 CLI_LIST 的全部七种 CLI，沿用 Loop/Loop+ 的配置和执行能力，不另设角色白名单。提示词完整传递，不设置部门长度上限或截断；Codex/OpenCode 组长精确 invocation 数据帧与员工准备消息的提示词不套用控制/配置大小预算。Codex/OpenCode 保留专用 Owner，其余五种复用原交互 runner 并接入同一责任账本、代次 authority、真实 native session 绑定及清理观察。新建交互员工 Tab 可先建立仅用于 UI/消息定位的本地 session 键；CLI 握手返回的 native session 仍独立绑定，已有会话续接不重绑。组长本地键与 executionSession 分离；员工等待原 runner/输出排空、adapter 资源清理后归还容量。员工提示要求临时构建及测试产物存放在当前工作目录之外，隔离目录中未登记的内容保留现场。已启用 CLI、有效档案、模型及原代身份继续核验；未知 Owner 和旧任务不自动改写。",
+      "description": "产研部总监、组长和员工共用 CLI_LIST 的全部七种 CLI，沿用 Loop/Loop+ 的配置和执行能力，不另设角色白名单。提示词完整传递，不设置部门长度上限或截断；Codex/OpenCode 组长精确 invocation 数据帧与员工准备消息的提示词不套用控制/配置大小预算。Codex/OpenCode 保留专用 Owner，其余五种复用原交互 runner 并接入同一责任账本、代次 authority、真实 native session 绑定及清理观察。新建交互员工 Tab 可先建立仅用于 UI/消息定位的本地 session 键；CLI 握手返回的 native session 仍独立绑定，已有会话续接不重绑。组长本地键与 executionSession 分离；非 Codex/OpenCode 组长续接只接受当前交互 Owner 的精确账本 binding 或 producer 已核验的代次续接证明，首次未绑定代次显式新建，缺失/冲突/关闭代次拒绝；普通对话和员工的本地历史只读校验不变。员工等待原 runner/输出排空、adapter 资源清理后归还容量。员工提示要求临时构建及测试产物存放在当前工作目录之外，隔离目录中未登记的内容保留现场。已启用 CLI、有效档案、模型及原代身份继续核验；未知 Owner 和旧任务不自动改写。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -7933,6 +7968,10 @@
         {
           "path": ".ch/docs/design-docs/department-mode.md",
           "anchor": "执行角色 CLI 能力准入（2026-11-17）"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md",
+          "anchor": "角色与模型配置"
         },
         {
           "path": "src/test/core/departmentconfiguration.test.ts"

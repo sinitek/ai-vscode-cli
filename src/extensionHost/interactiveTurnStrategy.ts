@@ -38,6 +38,7 @@ export type InteractiveAssistantChunkOptions = {
 
 export type InteractiveTurnAttemptPort = {
   readonly departmentInteractiveRunner?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentInteractiveRunner"];
+  readonly departmentLeaderSession?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentLeaderSession"];
   readonly departmentCodexRun?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentCodexRun"];
   readonly cancelDepartmentCodexPreparation?: () => void;
   readonly originalCodexThreadTurn?: import("../interactive/codexRunner").OriginalCodexThreadTurn;
@@ -117,6 +118,11 @@ export type InteractiveTurnAttemptPort = {
   logInfo(message: string, data?: unknown): void;
   t(key: I18nKey, params?: Record<string, string | number | boolean>): string;
 };
+
+export function resolveInteractiveTurnMappedSessionId(port: InteractiveTurnAttemptPort): string | null {
+  if (port.departmentLeaderSession !== undefined) return port.departmentLeaderSession.nativeSessionId;
+  return port.uiSessionId ? port.resolveInteractiveMappedId(port.cli, port.uiSessionId) : null;
+}
 
 export type InteractiveTurnStrategy = {
   runAttempt(port: InteractiveTurnAttemptPort): Promise<InteractiveAttemptDisposition>;

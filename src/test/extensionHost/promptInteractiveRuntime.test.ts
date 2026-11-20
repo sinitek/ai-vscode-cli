@@ -97,6 +97,7 @@ function createInteractiveRuntimeHarness(options: {
   let claudeStopCalls = 0;
   let codexThreadId: string | null = null;
   let claudeSessionId: string | null = null;
+  const claudeMappedSessionIds: Array<string | null> = [];
 
   const codexRunner = {
     getThreadId: () => codexThreadId,
@@ -142,6 +143,7 @@ function createInteractiveRuntimeHarness(options: {
     },
     getOrCreateClaudeRunner: (input: Parameters<InteractiveRunnerManager["getOrCreateClaudeRunner"]>[0]) => {
       runnerFingerprints.push(input.configFingerprint);
+      claudeMappedSessionIds.push(input.mappedSessionId ?? null);
       claudeRunnerCreateCalls += 1;
       return claudeRunner;
     },
@@ -301,6 +303,7 @@ function createInteractiveRuntimeHarness(options: {
     get claudeRunnerCreateCalls() {
       return claudeRunnerCreateCalls;
     },
+    claudeMappedSessionIds,
     get codexStopCalls() {
       return codexStopCalls;
     },
@@ -2132,4 +2135,50 @@ for (const role of ["main", "subtask"] as const) test(`department interactive ${
   }
   assert.equal(harness.mappingUpserts.at(-1)?.mappedId, "claude-session-default");
   assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+});
+
+test("department leader uses its proven native session without the ordinary metaStore resume mapping", async () => {
+  let resumeChecks = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
+  } });
+  await harness.host.runPromptInteractive(
+    createPromptInput({ taskRole: "main", loopTaskId: "leader-task" }),
+    createTarget({ cli: "claude", sessionId: "local_leader" }),
+    {
+      departmentInteractiveRunner: () => async () => {},
+      departmentLeaderSession: { localSessionId: "local_leader", nativeSessionId: "native-ledger-session" },
+    },
+  );
+  assert.equal(resumeChecks, 0);
+  assert.deepEqual(harness.claudeMappedSessionIds, ["native-ledger-session"]);
+  assert.equal(harness.runStatusEvents.at(-1)?.status, "end");
+});
+
+test("department leader's first unbound turn bypasses local-history resume while employees do not", async () => {
+  let resumeChecks = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
+  } });
+  await harness.host.runPromptInteractive(
+    createPromptInput({ taskRole: "main", loopTaskId: "leader-task" }),
+    createTarget({ cli: "claude", sessionId: "local_leader" }),
+    {
+      departmentInteractiveRunner: () => async () => {},
+      departmentLeaderSession: { localSessionId: "local_leader", nativeSessionId: null },
+    },
+  );
+  assert.equal(resumeChecks, 0);
+  assert.deepEqual(harness.claudeMappedSessionIds, [null]);
+
+  const employee = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
+  } });
+  await employee.host.runPromptInteractive(
+    createPromptInput({ taskRole: "subtask", loopTaskId: "leader-task", loopSubtaskId: "employee" }),
+    createTarget({ cli: "claude", sessionId: "local_employee" }),
+    { departmentInteractiveRunner: () => async () => {} },
+  );
+  assert.equal(resumeChecks, 1);
+  assert.equal(employee.claudeRunnerCreateCalls, 0);
 });

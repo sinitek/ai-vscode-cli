@@ -1,4 +1,5 @@
 import { normalizeDepartmentMetadata } from "../department";
+import { getDepartmentEmployeeName } from "../departmentEmployeeNames";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
@@ -124,7 +125,8 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
     sessionId: task.sessionId, summary: task.finalSummary, updatedAt: task.updatedAt };
 }
 
-function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>): LoopGroupChatPanelParticipant[] {
+function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>,
+  leaderNumber: number, maxLeaders: number): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
   return projection.seenAttempts.flatMap((attempt) => {
     const subtaskIndex = task.subTasks.findIndex((item) => item.id === attempt.subtaskId);
@@ -132,7 +134,8 @@ function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLo
     if (!spec) return [];
     const execution = [...projection.running, ...projection.pending].find((item) => item.attemptId === attempt.attemptId);
     const review = [projection.currentReview, ...projection.reviewQueue].find((item) => item?.attemptId === attempt.attemptId);
-    return [{ id: attempt.attemptId, subtaskId: spec.id, employeeNumber: subtaskIndex + 1, title: spec.title, role: "employee",
+    return [{ id: attempt.attemptId, subtaskId: spec.id,
+      employeeName: getDepartmentEmployeeName(leaderNumber, maxLeaders, subtaskIndex + 1), title: spec.title, role: "employee",
       status: execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
         : review ? "queued_review" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"
@@ -204,7 +207,8 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     leaders: leaders.map(({ record, leaderNumber }) => {
       const loopPlus = projectLoopPlusPanel(record);
       return { taskId: record.id, leaderNumber, participant: participant(record, "leader"),
-        progressPercent: resolveLoopPanelProgressPercent(record, loopPlus), employees: employees(record, loopPlus) };
+        progressPercent: resolveLoopPanelProgressPercent(record, loopPlus),
+        employees: employees(record, loopPlus, leaderNumber, rootMeta.limits.maxLeaders) };
     }),
     maxLeaders: valid ? capacity!.maxLeaders : rootMeta.limits.maxLeaders,
     maxEmployees: valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees,

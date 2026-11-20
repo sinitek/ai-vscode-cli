@@ -22,7 +22,9 @@ import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWa
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 import { appendLoopSubtaskFailureEvidence, describeLoopSubtaskError, getLoopSubtaskFailureLines } from "../loopSubtaskFailure";
 import { getErrorInfo } from "../promptRetry";
-import { getClassicLoopSubtaskDispatchCount } from "./loopTaskStateMachine";
+import { findLoopLiveDispatchConflict } from "../loopParallel";
+import { getClassicLoopSubtaskDispatchCount, getLoopDecisionSubtasks, upsertLoopTransitionSubtasks } from "./loopTaskStateMachine";
+import { setTimeout as delay } from "node:timers/promises";
 
 export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 1000;
 export const LOOP_SUBTASK_RETRY_MAX_RETRIES = 5;
@@ -114,6 +116,7 @@ type LoopOrchestrationRequiredHostDeps =
     isTabRunActive?: (tabId: string) => boolean;
     getLatestLoopRoundRunRecord?: PromptRunRuntimeHostApi["getLatestLoopRoundRunRecord"];
     hasActiveSubtasks?: (taskId: string) => boolean;
+    cancelSubtaskInvocation?: (tabId: string) => boolean;
     buildSubagentProgressLabels: () => SubagentProgressLabels;
     buildLoopSubtaskRetryText: (taskId: string, subtaskId: string, retryCount: number) => string;
     closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
@@ -151,6 +154,7 @@ export type ClassicLoopDecisionResult =
     | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
     | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "pending-requirements"; task: LoopTaskRecord }
+    | { status: "waiting"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 export type DepartmentDirectorDecisionRequest = {
@@ -184,6 +188,7 @@ export async function resolveLoopTaskAtCreationBoundary<T>(options: {
 }
 
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
+  const subtaskCancellations = new Map<string, AbortController>();
   const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
   const subtaskExecutions = new Map<string, { taskId: string; tabId: string | null; startedAt: number | null }>();
   const waitingBatches = new Map<string, {
@@ -192,6 +197,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     subtasks: LoopSubtaskRecord[];
     recover: (recovered: boolean) => void;
   }>();
+  const wakeListeners = new Map<string, () => void>();
+  const batchKey = (taskId: string, round: number) => JSON.stringify([taskId, round]);
+  const subtaskKey = (taskId: string, subtaskId: string) => JSON.stringify([taskId, subtaskId]);
   const requiredDeps = deps as LoopOrchestrationRequiredHostDeps;
   const {
     appendLoopRound,
@@ -252,6 +260,23 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     updateLoopTaskRecord,
   } = requiredDeps;
 
+  function wakeClassicLoop(taskId: string): void {
+    wakeListeners.get(taskId)?.();
+  }
+
+  function observeClassicLoop(taskId: string) {
+    let revision = 0;
+    let resolveWait: (() => void) | undefined;
+    const wake = () => { revision++; resolveWait?.(); resolveWait = undefined; };
+    wakeListeners.set(taskId, wake);
+    return {
+      revision: () => revision,
+      wait: (previous: number) => previous === revision
+        ? new Promise<void>((resolve) => { resolveWait = resolve; }) : Promise.resolve(),
+      dispose: () => { if (wakeListeners.get(taskId) === wake) wakeListeners.delete(taskId); },
+    };
+  }
+
   async function runClassicLoopMainDecision(options: {
     input: PromptRunInput;
     target: PromptRunTarget;
@@ -303,6 +328,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
     const mainContent = getLastLoopAssistantContent(target, task.id, round, "main");
     let decision = parseLoopMainDecision(mainContent);
+    const latestAfterRun = readLoopTaskRecord(task.id) ?? task;
+    if (latestAfterRun.status !== "running") return { status: "interrupted", task: latestAfterRun, runStatus: "stopped" };
     if (!decision) {
       void logError("loop-main-decision-invalid", {
         taskId: task.id,
@@ -313,8 +340,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       });
       const failedRecord = updateLoopTaskRecord(task.id, {
         status: "needs-review",
-        activeSubtaskId: null,
-        activeSubtaskIds: [],
         updatedAt: Date.now(),
         finalSummary: options.blockedDiagnostic
           ? buildLoopBlockerDiagnosticFailure(options.blockedDiagnostic.summary, "补充请求仍未返回有效的 Loop 决策 JSON。")
@@ -340,12 +365,11 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       };
     }
 
-    if (decision.status === "completed") {
-      const latest = readLoopTaskRecord(task.id) ?? task;
-      const requirements = latest.supplementalRequirements ?? [];
+    {
+      const requirements = latestAfterRun.supplementalRequirements ?? [];
       if (requirements.length !== requirementsAtStart.length
         || requirements.some((requirement, index) => requirement !== requirementsAtStart[index])) {
-        return { status: "pending-requirements", task: latest };
+        return { status: "pending-requirements", task: latestAfterRun };
       }
     }
 
@@ -359,6 +383,25 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         refreshOpenLoopGroupChatPanelForTask(task.id);
       }
       return result;
+    }
+    const activeIds = new Set(getActiveLoopSubtaskIds(latestAfterRun));
+    const active = latestAfterRun.subTasks.filter((item) => (activeIds.has(item.id) && item.status === "running")
+      || subtaskRuns.has(subtaskKey(task.id, item.id)) || subtaskCancellations.has(subtaskKey(task.id, item.id)));
+    const hasWaitingBatch = [...waitingBatches.values()].some((batch) => batch.taskId === task.id);
+    if (decision.status === "continue" && active.length) {
+      const candidates = upsertLoopTransitionSubtasks(latestAfterRun, getLoopDecisionSubtasks(decision), Date.now()).records;
+      const conflict = findLoopLiveDispatchConflict(active, candidates);
+      if (conflict) {
+        appendSystemMessageForLoop(target, `暂未增派 ${conflict.candidateId}：与尚未退出的子任务 ${conflict.activeId} 冲突，待结算后重新判断。`);
+        return { status: "waiting", task: latestAfterRun, decision };
+      }
+    }
+    if ((active.length || hasWaitingBatch) && (decision.status === "waiting" || decision.status === "completed" || decision.status === "blocked")) {
+      return { status: "waiting", task: latestAfterRun, decision };
+    }
+    if (decision.status === "waiting") {
+      const paused = updateLoopTaskRecord(task.id, { status: "needs-review", finalSummary: "当前没有可等待的活动子任务，请复核后继续。" });
+      return { status: "needs-review", task: paused ?? latestAfterRun, decision };
     }
     return applyLoopMainDecisionForRun(task.id, decision);
   }
@@ -589,6 +632,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     subtask: LoopSubtaskRecord;
     switchVisible?: boolean;
     signal?: AbortSignal;
+    cancelSignal?: AbortSignal;
   };
 
   type LoopSubtaskBatchOptions = {
@@ -615,6 +659,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       return executeLoopSubtasksBatchWithRetry(options);
     }
     const controller = new AbortController();
+    const key = batchKey(options.task.id, options.round);
     let resolveRecovery!: (results: LoopSubtaskRunResult[]) => void;
     const recovery = new Promise<LoopSubtaskRunResult[]>((resolve) => { resolveRecovery = resolve; });
     const waiting = {
@@ -622,9 +667,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       target: options.target,
       subtasks: options.subtasks,
       recover: (recovered: boolean): void => {
-        if (waitingBatches.get(options.task.id) !== waiting) return;
+        if (waitingBatches.get(key) !== waiting) return;
         const task = readLoopTaskRecord(options.task.id);
-        waitingBatches.delete(options.task.id);
+        waitingBatches.delete(key);
         controller.abort();
         resolveRecovery(options.subtasks.map((subtask) => ({
           subtask,
@@ -633,32 +678,34 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         })));
       },
     };
-    waitingBatches.set(options.task.id, waiting);
+    waitingBatches.set(key, waiting);
     try {
       const batch = executeLoopSubtasksBatchWithRetry({ ...options, signal: controller.signal }).then((results) => (
-        results.some((result) => result.status === "error" || result.status === "stopped")
+        results.some((result) => (result.status === "error" || result.status === "stopped")
+          && readLoopTaskRecord(options.task.id)?.subTasks.some((item) => item.id === result.subtask.id && item.status !== "skipped"))
           && readLoopTaskRecord(options.task.id)?.status === "running"
           ? recovery
           : results
-      ));
+      )).finally(() => controller.abort());
       return await Promise.race([batch, recovery]);
     } finally {
-      if (waitingBatches.get(options.task.id) === waiting) waitingBatches.delete(options.task.id);
+      if (waitingBatches.get(key) === waiting) waitingBatches.delete(key);
       controller.abort();
     }
   }
 
   function checkWaitingTasks(): void {
-    for (const waiting of waitingBatches.values()) {
+    for (const waiting of [...waitingBatches.values()]) {
       try {
         const task = readLoopTaskRecord(waiting.taskId);
         if (task?.status === "stopped" && task.runtimeInterrupted === true) continue;
-        if (!task || task.status !== "running" || task.pendingClarification
+        if (!task || task.status !== "running"
           || isLoopMainAiFailureLimitReached(task)) {
           waiting.recover(false);
           continue;
         }
-        if (deps.hasActiveSubtasks?.(task.id) || deps.isTabRunActive?.(waiting.target.tabId)) continue;
+        if (task.pendingClarification || deps.hasActiveSubtasks?.(task.id) || deps.isTabRunActive?.(waiting.target.tabId)) continue;
+        if (waiting.subtasks.some((subtask) => subtaskCancellations.get(subtaskKey(task.id, subtask.id))?.signal.aborted)) continue;
         const active = [...subtaskExecutions.values()].some((execution) => execution.taskId === task.id
           && (execution.startedAt === null || Date.now() - execution.startedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS
             || (execution.tabId !== null && deps.isTabRunActive?.(execution.tabId))));
@@ -689,12 +736,45 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   }
 
   function resumeWaitingBatch(taskId: string): boolean {
-    const waiting = waitingBatches.get(taskId);
+    const waiting = [...waitingBatches.values()].filter((batch) => batch.taskId === taskId);
     const task = readLoopTaskRecord(taskId);
-    if (!waiting || !task || task.status !== "running" || task.pendingClarification
+    if (!waiting.length || !task || task.status !== "running" || task.pendingClarification
       || isLoopMainAiFailureLimitReached(task) || getActiveLoopSubtaskIds(task).length > 0
-      || !waiting.subtasks.every((subtask) => task.subTasks.some((item) => item.id === subtask.id && item.status === "completed"))) return false;
-    waiting.recover(true);
+      || !waiting.every((batch) => batch.subtasks.every((subtask) => task.subTasks.some((item) => item.id === subtask.id && (item.status === "completed" || item.status === "skipped"))))) return false;
+    waiting.forEach((batch) => batch.recover(true));
+    return true;
+  }
+
+  async function cancelClassicSubtask(taskId: string, subtaskId: string): Promise<boolean> {
+    const task = readLoopTaskRecord(taskId);
+    const subtask = task?.subTasks.find((item) => item.id === subtaskId);
+    const key = subtaskKey(taskId, subtaskId);
+    if (!task || task.status !== "running" || task.department || task.departmentInvalid || task.schedulingMode === "event_driven"
+      || !subtask || !["running", "blocked"].includes(subtask.status)
+      || !getActiveLoopSubtaskIds(task).includes(subtaskId)) return false;
+    const controller = subtaskCancellations.get(key);
+    const execution = subtaskExecutions.get(key);
+    if (controller?.signal.aborted) return false;
+    if (controller) {
+      controller.abort();
+      if (execution?.tabId) deps.cancelSubtaskInvocation?.(execution.tabId);
+      while (execution?.tabId && deps.isTabRunActive?.(execution.tabId)) await delay(50);
+      await subtaskRuns.get(key);
+    }
+    const latest = readLoopTaskRecord(taskId);
+    const current = latest?.subTasks.find((item) => item.id === subtaskId);
+    if (!latest || latest.status !== "running" || !current || current.status === "completed") return false;
+    const ids = getActiveLoopSubtaskIds(latest).filter((id) => id !== subtaskId);
+    const saved = updateLoopTaskRecord(taskId, {
+      activeSubtaskId: ids[0] ?? null, activeSubtaskIds: ids,
+      subTasks: latest.subTasks.map((item) => item.id === subtaskId ? { ...item, status: "skipped",
+        summary: "用户已取消该子任务，未视为完成。", updatedAt: Date.now() } : item),
+      updatedAt: Date.now(),
+    });
+    if (!saved) return false;
+    resumeWaitingBatch(taskId);
+    wakeClassicLoop(taskId);
+    refreshOpenLoopGroupChatPanelForTask(taskId);
     return true;
   }
 
@@ -804,7 +884,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         await restoreMainTabIfActive();
         return results;
       }
-      if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
+      if (groupResults.some((result) => (result.status === "error" || result.status === "stopped")
+        && readLoopTaskRecord(task.id)?.subTasks.some((item) => item.id === result.subtask.id && item.status !== "skipped")
+        && !subtaskCancellations.get(subtaskKey(task.id, result.subtask.id))?.signal.aborted)) {
         markUndispatchedLoopSubtasksSkipped(task, executionPlan.groups.slice(groupIndex + 1));
         await restoreMainTabIfActive();
         return results;
@@ -813,11 +895,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
     await restoreMainTabIfActive();
     if (results.every((result) => result.status === "end")) {
-      updateLoopTaskRecord(task.id, {
-        activeSubtaskId: null,
-        activeSubtaskIds: [],
-        updatedAt: Date.now(),
-      });
       refreshOpenLoopGroupChatPanelForTask(task.id);
       appendSystemMessageForLoop(target, buildLoopSubtaskBatchCompletedText(task.id, round, subtasks));
       const latest = (readLoopTaskRecord(task.id) as LoopTaskRecord | null) ?? task;
@@ -864,15 +941,19 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   }
 
   async function runLoopSubtaskWithRetry(options: LoopSubtaskRetryOptions): Promise<TaskRunStatus> {
-    const key = `${options.task.id}:${options.subtask.id}`;
+    const key = subtaskKey(options.task.id, options.subtask.id);
     const existing = subtaskRuns.get(key);
     if (existing) return existing;
+    if (readLoopTaskRecord(options.task.id)?.subTasks.find((item) => item.id === options.subtask.id)?.status === "skipped") return "stopped";
+    const cancellation = new AbortController();
+    subtaskCancellations.set(key, cancellation);
     const execution = { taskId: options.task.id, tabId: null as string | null, startedAt: null as number | null };
     subtaskExecutions.set(key, execution);
-    const run = executeLoopSubtaskWithRetry(options, execution).finally(() => {
+    const run = executeLoopSubtaskWithRetry({ ...options, cancelSignal: cancellation.signal }, execution).finally(() => {
       if (subtaskRuns.get(key) === run) {
         subtaskRuns.delete(key);
         subtaskExecutions.delete(key);
+        subtaskCancellations.delete(key);
       }
     });
     subtaskRuns.set(key, run);
@@ -965,7 +1046,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     let subtaskTarget: PromptRunTarget | null = null;
     try {
       while (true) {
-        if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
+        if (options.signal?.aborted || options.cancelSignal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
           terminalProgressStatus = "interrupted";
           return "stopped";
         }
@@ -1015,7 +1096,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         let failureDetail: string | undefined;
         try {
           status = await withLoopSubtaskSession(subtaskTarget.cli, subtaskTarget.sessionId, async () => {
-            if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
+            if (options.signal?.aborted || options.cancelSignal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
               return "stopped";
             }
             return runLoopRound({
@@ -1038,12 +1119,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               boundSubtaskModel: execution.model,
               boundThinkingMode: execution.thinkingMode,
               crossCli: execution.crossCli,
-              signal: options.signal,
+              signal: options.cancelSignal ?? options.signal,
               onStarted: () => { invocationStarted = true; executionState.startedAt = Date.now(); },
               onFailure: (detail) => { failureDetail = detail; },
             });
-          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.signal });
-          if (options.signal?.aborted) return "stopped";
+          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.cancelSignal ?? options.signal });
+          if (options.signal?.aborted || options.cancelSignal?.aborted) return "stopped";
           executionState.startedAt = null;
           const sessionId = resolvePromptRunTargetSessionId(subtaskTarget);
           if (sessionId) {
@@ -1053,7 +1134,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, subtask.id, { cli: execution.cli, sessionId, configId }) });
           }
         } catch (error) {
-          if (options.signal?.aborted) return "stopped";
+          if (options.signal?.aborted || options.cancelSignal?.aborted) return "stopped";
           executionState.startedAt = null;
           status = "error";
           failureDetail ??= describeLoopSubtaskError(getErrorInfo(error));
@@ -1099,7 +1180,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         sendPanelMessage({
           type: "runStatus",
           tabId: subtaskTarget.tabId,
-          status: options.signal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
+          status: options.signal?.aborted || options.cancelSignal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
         });
       }
       progressMonitor.finish(terminalProgressStatus ?? "interrupted");
@@ -1140,7 +1221,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     }
     const roundStartedAt = Date.now();
     const activeSubtaskPatch = role === "main"
-      ? { activeSubtaskId: null, activeSubtaskIds: [] }
+      ? {}
       : buildLoopActiveSubtaskPatch(task.id, subtaskId);
     const latestTask = readLoopTaskRecord(task.id) ?? task;
     const subTasks = role === "subtask" && subtaskId
@@ -1150,7 +1231,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       : undefined;
     updateLoopTaskRecord(task.id, {
       status: "running",
-      currentRound: round,
+      currentRound: Math.max(round, latestTask.currentRound),
       ...activeSubtaskPatch,
       ...(subTasks ? { subTasks } : {}),
       updatedAt: roundStartedAt,
@@ -1306,7 +1387,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "Loop 模式原理（必须遵守）：",
       "1. 主任务先判断是否适用简单任务直办；不适用时负责拆分和派发，不直接做具体实现。每轮最终只输出一个 JSON 决策。",
       `2. ${dispatchInstruction}`,
-      "3. 只有同一批次所有子任务都结束后，程序才会回到当前主任务会话并唤醒你根据汇报继续决策。",
+      "3. 子任务运行期间收到用户补充需求时，当前批次可继续运行，程序会唤醒主任务会话评估新增工作；可独立且与所有活动子任务写入范围、冲突组、连续来源均不冲突时，可立即增派并行子任务。无法确认无冲突时，等待现有子任务结束后再派发。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
       `6. ${LOOP_MAIN_STALE_TASK_LIST_RULE_ZH}`,
@@ -1425,6 +1506,9 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     runClassicLoopMainDecision,
     runLoopSubtasksBatchWithRetry,
     runLoopSubtaskWithRetry,
+    cancelClassicSubtask,
+    wakeClassicLoop,
+    observeClassicLoop,
     isSubtaskRunning: (taskId: string, subtaskId: string) => subtaskRuns.has(`${taskId}:${subtaskId}`),
     writeTextFileEnsuringDir,
   };

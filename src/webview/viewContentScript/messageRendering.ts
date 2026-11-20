@@ -1596,7 +1596,9 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (department) {
           const roleIcon = department.role === "director" ? "☀️"
             : department.role === "leader" ? "🌛" : "⭐️";
-          return roleIcon + " " + baseLabel;
+          const employeeName = department.role === "employee" && typeof department.employeeName === "string"
+            ? department.employeeName.trim() : "";
+          return roleIcon + " " + (employeeName ? employeeName + " · " : "") + baseLabel;
         }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
