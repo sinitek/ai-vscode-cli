@@ -214,6 +214,7 @@ import {
   resolveCliSessionIdForResume,
   type ProcessTitleState,
   type SessionLifecycleController,
+  type SessionPromotionOptions,
 } from "./sessionLifecycle";
 import { countStoreModels, createEmptyModelSelectionStoreState, getManagedModelOptionsForConfigFromStore, getLoopModelOptionsForCliFromStore, getModelOptionsForConfigFromStore, getOpenCodeRoleVariantFromStore, normalizeCliModelName, summarizeModelStoreByConfigId, type CliModelStore } from "./modelSelectionStore";
 import {
@@ -498,7 +499,7 @@ let openCodeThinkingRequestId = 0;
 let codexImageSupportStatus: CodexImageSupportStatus | null = null;
 const codexImageSupportWarningKeys = new Set<string>();
 let historyArtifactRetentionCleanupPromise: Promise<void> | null = null;
-function initializeSessionControllers(): void {
+function initializeSessionControllers(loggerReady: Promise<void>): void {
   sessionTabsController = createSessionTabsController({
     state: conversationTabStore,
     pendingDrafts: pendingSessionDrafts,
@@ -621,10 +622,12 @@ function initializeSessionControllers(): void {
     t,
     logDebug: (event, payload) => void logDebug(event, payload),
     logInfo: (event, payload) => void logInfo(event, payload),
+    logEssential: (event, payload) => loggerReady.then(() => logEssential(event, payload)),
     logError: (event, payload) => void logError(event, payload),
   });
 }
 export function activate(context: vscode.ExtensionContext): void {
+  const loggerReady = initLogger();
   try { getDepartmentOwnershipIndex(); }
   catch (error) { void logError("department-source-initialization-refused", { error: errorToMessage(error) }); }
   context.subscriptions.push({ dispose: () => { void departmentOwnershipIndex?.close().catch((error) => logError("department-owner-dispose-failed", { error: errorToMessage(error) })); } });
@@ -642,7 +645,7 @@ export function activate(context: vscode.ExtensionContext): void {
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
   migrateLegacyToolSettingsFromVsCodeConfig();
   beginCliCommandAutoRepair(autoRepairUnresolvedCliCommands());
-  initializeSessionControllers();
+  initializeSessionControllers(loggerReady);
   sessionStore = loadSessionStore();
   promptHistoryStore = loadPromptHistoryStore();
   workspaceSettings = loadWorkspaceSettings();
@@ -651,12 +654,12 @@ export function activate(context: vscode.ExtensionContext): void {
   currentCli = workspaceSettings.currentCli || getDefaultCli();
   modelStore = loadModelStore();
   initializeConversationTabsFromWorkspaceSettings();
-  repairSupersededLocalSessions({ notifyPanel: false });
+  repairSupersededLocalSessions({ notifyPanel: false, source: "activation" });
   syncCurrentSessionWithActiveTab();
   ensureCurrentCliIsEnabled();
-  void initLogger().then(() => {
+  void loggerReady.then(() => {
     scheduleLogRetentionCleanup();
-  });
+  }).catch(() => undefined);
   setDebugLogging(getDebugLogging());
   configManagerPanel = new ConfigManagerPanel(extensionUri, {
     onConfigChanged: () => postPanelState(),
@@ -2096,7 +2099,7 @@ function applyWorkspaceSessionStore(workspaceKey: string): void {
   conversationTabStore.activeTabId = null;
   conversationTabStore.tabs = [];
   initializeConversationTabsFromWorkspaceSettings();
-  repairSupersededLocalSessions({ notifyPanel: false });
+  repairSupersededLocalSessions({ notifyPanel: false, source: "workspace-switch" });
   syncCurrentSessionWithActiveTab();
   ensureCurrentCliIsEnabled();
   scheduledTaskScheduler?.notifyChanged();
@@ -4116,14 +4119,42 @@ function departmentOwnerResources(taskId: string, cli: CliName): boolean {
 let departmentRuntimeComposition: ReturnType<typeof createDepartmentRuntimeComposition> | null = null;
 let departmentOwnershipIndex: ReturnType<typeof createDepartmentProductionTaskStoreForHost> | null = null;
 const departmentValidatedRoutes = new Set<string>();
+const departmentRouteRejections = new Map<string, string>();
 
 function departmentTaskForTab(tabId: string | null): LoopTaskRecord | null {
   const tab = tabId ? getConversationTabById(tabId) : null;
   if (!tab) return null;
   const context = resolveConversationTabLoopContext(tab);
   const task = context.taskRole === "main" && context.loopTaskId ? readLoopTaskRecord(context.loopTaskId) : null;
-  return task && task.workspaceKey === activeWorkspaceKey && task.cli === tab.cli
-    && task.sessionId === getConversationTabSessionIdForCli(tab, tab.cli) ? task : null;
+  if (!task) return null;
+  const tabSessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+  const workspaceMatches = task.workspaceKey === activeWorkspaceKey;
+  const cliMatches = task.cli === tab.cli;
+  const sessionMatches = task.sessionId === tabSessionId;
+  const rejectionKey = `${task.id}\0${tab.id}`;
+  if (workspaceMatches && cliMatches && sessionMatches) {
+    departmentRouteRejections.delete(rejectionKey);
+    return task;
+  }
+  if (task.department || task.departmentInvalid) {
+    const rejection = JSON.stringify([tab.cli, task.cli, tabSessionId, task.sessionId, workspaceMatches, cliMatches, sessionMatches]);
+    if (departmentRouteRejections.get(rejectionKey) !== rejection) {
+      departmentRouteRejections.set(rejectionKey, rejection);
+      void logEssential("department-session-route-rejected", {
+        tabId: tab.id,
+        loopTaskId: task.id,
+        departmentRole: task.department?.role ?? null,
+        cli: tab.cli,
+        taskCli: task.cli,
+        tabSessionId,
+        taskSessionId: task.sessionId,
+        workspaceMatches,
+        cliMatches,
+        sessionMatches,
+      }).catch(() => undefined);
+    }
+  }
+  return null;
 }
 function validateDepartmentRoutes(routes: DepartmentMetadata["routes"]): boolean {
   if (departmentRoleCliIssue("leader", routes.leader.cli) || departmentRoleCliIssue("employee", routes.employee.cli)) return false;
@@ -6277,20 +6308,20 @@ async function resolveInteractiveSessionForResume(
   if (!sessionId) {
     return sessionId;
   }
-  const repairedSessionId = repairSupersededLocalSession(cli, sessionId);
+  const repairedSessionId = repairSupersededLocalSession(cli, sessionId, { source: "resume" });
   if (repairedSessionId !== sessionId) {
     return repairedSessionId;
   }
   const mappedId = resolveInteractiveMappedId(cli, repairedSessionId);
   if (isLocalSessionId(repairedSessionId) && !mappedId) {
     const detail = t("session.resumeUnavailableNoRemote");
-    await showErrorWithActions(t("session.resumeUnavailableTitle"), detail);
-    void logInfo("interactive-session-resume-blocked", {
+    void logEssential("interactive-session-resume-blocked", {
       cli,
       sessionId: repairedSessionId,
       tabId,
       reason: "missing-remote-id",
-    });
+    }).catch(() => undefined);
+    await showErrorWithActions(t("session.resumeUnavailableTitle"), detail);
     return undefined;
   }
   return repairedSessionId;
@@ -7068,11 +7099,11 @@ function findSupersedingLocalSessionTarget(cli: CliName, sessionId: string): str
   return sessionLifecycleController.findSupersedingLocalSessionTarget(cli, sessionId);
 }
 
-function repairSupersededLocalSession(cli: CliName, sessionId: string, options: { notifyPanel?: boolean } = {}): string {
+function repairSupersededLocalSession(cli: CliName, sessionId: string, options: SessionPromotionOptions = {}): string {
   return sessionLifecycleController.repairSupersededLocalSession(cli, sessionId, options);
 }
 
-function repairSupersededLocalSessions(options: { notifyPanel?: boolean } = {}): void {
+function repairSupersededLocalSessions(options: SessionPromotionOptions = {}): void {
   sessionLifecycleController.repairSupersededLocalSessions(options);
 }
 

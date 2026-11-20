@@ -47,7 +47,7 @@ type LifecycleHarness = {
     panelStates: number;
     panelMessages: Record<string, unknown>[];
     surfacedLoadErrors: string[];
-    logs: Array<{ level: "debug" | "info" | "error"; event: string; payload?: unknown }>;
+    logs: Array<{ level: "debug" | "info" | "essential" | "error"; event: string; payload?: unknown }>;
   };
   paths: {
     root: string;
@@ -125,7 +125,7 @@ function createLifecycleHarness(options: { messageDirIsFile?: boolean } = {}): L
     state.drafts.set(key, draft);
     return draft;
   };
-  const log = (level: "debug" | "info" | "error") => (event: string, payload?: unknown): void => {
+  const log = (level: "debug" | "info" | "essential" | "error") => (event: string, payload?: unknown): void => {
     calls.logs.push({ level, event, payload });
   };
 
@@ -216,6 +216,7 @@ function createLifecycleHarness(options: { messageDirIsFile?: boolean } = {}): L
     t: (key) => key === "session.loadFailedTitle" ? "Session load failed" : "Unnamed",
     logDebug: log("debug"),
     logInfo: log("info"),
+    logEssential: log("essential"),
     logError: log("error"),
   };
 
@@ -1005,6 +1006,32 @@ test("manages session artifacts, draft adoption, retention, and process title th
     process.title = originalTitle;
     harness.cleanup();
   }
+});
+
+test("records local session promotion source and tab references without changing repair behavior", () => {
+  const harness = createLifecycleHarness();
+  harness.state.store.codex.sessions.push(createRecord("local_department", "Department"), createRecord("native-thread", "Native"));
+  harness.state.tabs[0].sessionId = "local_department";
+  harness.state.tabs[0].sessionIdByCli = { codex: "local_department" };
+  harness.controller.upsertInteractiveMapping("codex", "local_department", "native-thread");
+
+  assert.equal(harness.controller.repairSupersededLocalSession("codex", "local_department", {
+    notifyPanel: false,
+    source: "activation",
+  }), "native-thread");
+
+  assert.equal(harness.state.tabs[0].sessionIdByCli?.codex, "native-thread");
+  assert.equal(harness.state.store.codex.sessions.some((session) => session.id === "local_department"), false);
+  const promotion = harness.calls.logs.find((entry) => entry.event === "session-local-promoted");
+  assert.equal(promotion?.level, "essential");
+  assert.deepEqual(promotion?.payload, {
+    cli: "codex",
+    localSessionId: "local_department",
+    targetSessionId: "native-thread",
+    source: "activation",
+    updatedTabIds: ["tab-1"],
+    mergedMessageCount: 0,
+  });
 });
 
 test("cleans expired workspace artifacts and contains malformed session-message data", async () => {

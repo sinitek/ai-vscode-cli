@@ -216,6 +216,15 @@ node scripts/count_effective_loc.js --json
 
 性能排查查看 `~/.sinitek_cli/logs/sinitek-cli.performance.*.log`。记录包含执行模式、阶段、结果和耗时，通过 Trace ID 关联同次调用；该日志不依赖 debug 开关，并按 `historyRetentionDays` 自动清理。
 
+### 本地临时会话无法续接
+
+在 `~/.sinitek_cli/logs/sinitek-cli.*.log` 中搜索以下事件，按时间和 `tabId` 或会话 ID 串联。以下事件无需开启调试日志。
+
+- `interactive-cli-command-start-failed` 记录 CLI 命令未找到，`departmentRun` 表示是否使用产研部专用执行路径。
+- `interactive-session-resume-blocked` 记录续接时缺少原生会话 ID 的本地历史记录。
+- `department-session-mapping-attempted` 记录产研部组长尝试写入本地会话与原生会话的映射。核对同时间段是否出现 `session-meta-write-error`。
+- `session-local-promoted` 记录迁移来源和受影响的 `updatedTabIds`。如果随后出现 `department-session-route-rejected`，对照 `taskSessionId` 与 `tabSessionId` 判断任务与 Tab 是否在迁移后仍指向同一会话。
+
 ### Webview 调试
 
 在 VS Code 或开发主机中执行：

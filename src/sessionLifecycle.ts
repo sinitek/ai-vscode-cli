@@ -117,6 +117,11 @@ function getSessionIdPatterns(cli: CliName): RegExp[] {
   return base;
 }
 
+export type SessionPromotionOptions = {
+  notifyPanel?: boolean;
+  source?: "activation" | "workspace-switch" | "resume" | "history-repair" | "session-adoption";
+};
+
 export function createSessionLifecycleController(deps: {
   activeWorkspaceKey: () => string;
   workspaceKeyFallback: string;
@@ -166,6 +171,7 @@ export function createSessionLifecycleController(deps: {
   t: (key: "session.loadFailedTitle" | "session.unnamed") => string;
   logDebug: (event: string, payload?: unknown) => void;
   logInfo: (event: string, payload?: unknown) => void;
+  logEssential: (event: string, payload?: unknown) => void | Promise<void>;
   logError: (event: string, payload?: unknown) => void;
 }): {
   adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
@@ -181,9 +187,9 @@ export function createSessionLifecycleController(deps: {
   loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[];
   loadSessionStore: () => SessionStore;
   cleanupSessionRetentionAcrossWorkspaces: () => Promise<void>;
-  migrateLocalSessionToTargetSession: (cli: CliName, localSessionId: string, targetSessionId: string, options?: { notifyPanel?: boolean }) => void;
-  repairSupersededLocalSession: (cli: CliName, sessionId: string, options?: { notifyPanel?: boolean }) => string;
-  repairSupersededLocalSessions: (options?: { notifyPanel?: boolean }) => void;
+  migrateLocalSessionToTargetSession: (cli: CliName, localSessionId: string, targetSessionId: string, options?: SessionPromotionOptions) => void;
+  repairSupersededLocalSession: (cli: CliName, sessionId: string, options?: SessionPromotionOptions) => string;
+  repairSupersededLocalSessions: (options?: SessionPromotionOptions) => void;
   persistActiveMessages: () => void;
   prepareSessionForPromptRun: (cli: CliName, sessionId: string | null, tabId: string, options?: { forceNewSession?: boolean }) => string | null;
   replaceConversationTabSessionReferences: (cli: CliName, fromSessionId: string, toSessionId: string) => void;
@@ -487,16 +493,18 @@ export function createSessionLifecycleController(deps: {
     deleteMapping(cli, sessionId);
   };
 
-  const replaceTabSessionReferences = (cli: CliName, fromSessionId: string, toSessionId: string): void => {
-    let changed = false;
+  const replaceTabSessionReferences = (cli: CliName, fromSessionId: string, toSessionId: string): string[] => {
+    const updatedTabIds: string[] = [];
     deps.getConversationTabs().forEach((tab) => {
-      if (getConversationTabSessionIdForCli(tab, cli) === fromSessionId) {
-        changed = setConversationTabSessionIdForCli(tab, cli, toSessionId) || changed;
+      if (getConversationTabSessionIdForCli(tab, cli) === fromSessionId
+        && setConversationTabSessionIdForCli(tab, cli, toSessionId)) {
+        updatedTabIds.push(tab.id);
       }
     });
-    if (changed) {
+    if (updatedTabIds.length) {
       deps.persistConversationTabsToWorkspaceSettings();
     }
+    return updatedTabIds;
   };
 
   const replaceRuntimeSessionReferences = (cli: CliName, fromSessionId: string, toSessionId: string): void => {
@@ -798,19 +806,21 @@ export function createSessionLifecycleController(deps: {
         deps.setCurrentSession(cli, targetSessionId, { syncConversationTab: false });
       }
 
-      replaceTabSessionReferences(cli, localSessionId, targetSessionId);
+      const updatedTabIds = replaceTabSessionReferences(cli, localSessionId, targetSessionId);
       replaceRuntimeSessionReferences(cli, localSessionId, targetSessionId);
       deleteArtifacts(cli, localSessionId);
       deps.persistSessionStore(store);
       if (options.notifyPanel !== false) {
         void deps.postPanelState();
       }
-      deps.logInfo("session-local-promoted", {
+      void Promise.resolve(deps.logEssential("session-local-promoted", {
         cli,
         localSessionId,
         targetSessionId,
+        source: options.source ?? "session-adoption",
+        updatedTabIds,
         mergedMessageCount: mergedMessages.length,
-      });
+      })).catch(() => undefined);
     },
     repairSupersededLocalSession: (cli, sessionId, options = {}) => {
       const controller = createSessionLifecycleController(deps);
@@ -818,7 +828,10 @@ export function createSessionLifecycleController(deps: {
       if (!targetSessionId || targetSessionId === sessionId) {
         return sessionId;
       }
-      controller.migrateLocalSessionToTargetSession(cli, sessionId, targetSessionId, options);
+      controller.migrateLocalSessionToTargetSession(cli, sessionId, targetSessionId, {
+        ...options,
+        source: options.source ?? "history-repair",
+      });
       return targetSessionId;
     },
     repairSupersededLocalSessions: (options = {}) => {

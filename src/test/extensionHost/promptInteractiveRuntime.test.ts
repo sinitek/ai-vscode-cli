@@ -18,6 +18,7 @@ import { t as translate } from "../../i18n";
 import { buildTaskRunCompletionText } from "../../promptRunState";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import type { ConversationTabRecord } from "../../sessionTabs";
+import * as logger from "../../logger";
 
 
 installVscodeMock();
@@ -1802,8 +1803,13 @@ test("interactive runtime host stops when Codex human interaction is rejected", 
   assert.equal(messages.some((message) => message.content === "[final_answer] should not render"), false);
 });
 
-test("interactive runtime host finalizes runner failures", async () => {
-  const spawnError = Object.assign(new Error("spawn codex ENOENT"), { code: "ENOENT" });
+test("interactive runtime host logs command-not-found diagnostics before surfacing runner failures", async (t) => {
+  const diagnosticLogs: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logEssential", (event: string, data?: unknown) => {
+    diagnosticLogs.push({ event, data });
+    return Promise.resolve();
+  });
+  const spawnError = new Error("Codex app-server 异常退出（code 127）：codex: command not found");
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async () => {
       throw spawnError;
@@ -1812,10 +1818,10 @@ test("interactive runtime host finalizes runner failures", async () => {
 
   await assert.rejects(
     harness.host.runPromptInteractive(
-      createPromptInput({ displayPrompt: "fail interactive", modelPrompt: "fail interactive" }),
+      createPromptInput({ displayPrompt: "fail interactive", modelPrompt: "fail interactive", cliCommandRepairAttempted: true }),
       createTarget({ tabId: "tab-error", sessionId: "session-error" }),
     ),
-    /spawn codex ENOENT/,
+    /command not found/,
   );
 
   const messages = harness.messagesBySession.get("session-error") ?? [];
@@ -1823,8 +1829,30 @@ test("interactive runtime host finalizes runner failures", async () => {
   assert.deepEqual(harness.taskRecords.map((record) => record.status), ["error"]);
   assert.deepEqual(harness.memoryPersistStatuses, ["error"]);
   assert.equal(harness.activeRunsByTabId.size, 0);
-  assert.ok(messages.some((message) => message.role === "system" && message.content.includes("spawn codex ENOENT")));
+  assert.ok(messages.some((message) => message.role === "system" && message.content.includes("command not found")));
   assert.ok(harness.persistedMessages.some((item) => item.sessionId === "session-error"));
+  const commandFailure = diagnosticLogs.find((entry) => entry.event === "interactive-cli-command-start-failed");
+  assert.equal((commandFailure?.data as Record<string, unknown>)?.reason, "command-not-found");
+  assert.equal((commandFailure?.data as Record<string, unknown>)?.departmentRun, false);
+});
+
+test("command-not-found diagnostics identify department execution", async (t) => {
+  const diagnosticLogs: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logEssential", (event: string, data?: unknown) => {
+    diagnosticLogs.push({ event, data });
+    return Promise.resolve();
+  });
+  const harness = createInteractiveRuntimeHarness();
+
+  await assert.rejects(harness.host.runPromptInteractive(
+    createPromptInput({ taskRole: "main", loopTaskId: "leader-task" }),
+    createTarget({ tabId: "department-tab", sessionId: "local_department" }),
+    { departmentCodexRun: async () => { throw new Error("Codex app-server 异常退出（code 127）：codex: command not found"); } },
+  ), /command not found/);
+
+  const commandFailure = diagnosticLogs.find((entry) => entry.event === "interactive-cli-command-start-failed");
+  assert.equal((commandFailure?.data as Record<string, unknown>)?.departmentRun, true);
+  assert.equal((commandFailure?.data as Record<string, unknown>)?.loopTaskId, "leader-task");
 });
 
 test("interactive runtime host stops an active runner and persists the stopped turn", async () => {
@@ -1914,7 +1942,12 @@ test("department Codex uses the injected interactive Owner port and existing ses
   assert.equal(harness.mappingUpserts[0].mappedId, "native-owned-thread");
 });
 
-test("department native main keeps its local task session while mapping two rounds to the original thread", async () => {
+test("department native main keeps its local task session while mapping two rounds to the original thread", async (t) => {
+  const diagnosticLogs: Array<{ event: string; data: unknown }> = [];
+  t.mock.method(logger, "logEssential", (event: string, data?: unknown) => {
+    diagnosticLogs.push({ event, data });
+    return Promise.resolve();
+  });
   let resumeChecks = 0;
   const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
     resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
@@ -1936,6 +1969,16 @@ test("department native main keeps its local task session while mapping two roun
     [["local_leader", "native-owned-thread"], ["local_leader", "native-owned-thread"]]);
   assert.ok(harness.taskRecords.every((record) => record.sessionId === "local_leader"));
   assert.ok(harness.persistedMessages.every((record) => record.sessionId === "local_leader"));
+  const mappingAttempts = diagnosticLogs.filter((entry) => entry.event === "department-session-mapping-attempted");
+  assert.equal(mappingAttempts.length, 2);
+  assert.deepEqual(mappingAttempts.map(({ data }) => {
+    const fields = data as Record<string, unknown>;
+    return { cli: fields.cli, tabId: fields.tabId, loopTaskId: fields.loopTaskId,
+      sessionId: fields.sessionId, mappedSessionId: fields.mappedSessionId };
+  }), [
+    { cli: "codex", tabId: "tab-1", loopTaskId: "leader-task", sessionId: "local_leader", mappedSessionId: "native-owned-thread" },
+    { cli: "codex", tabId: "tab-1", loopTaskId: "leader-task", sessionId: "local_leader", mappedSessionId: "native-owned-thread" },
+  ]);
 });
 
 test("ordinary local-only Codex history still requires the shared resume check", async () => {

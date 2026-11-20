@@ -4,6 +4,7 @@ import type { CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIde
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
 import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
+import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
 import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand, getZcodeCommand } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
@@ -31,7 +32,7 @@ import type { CodexRunSelection } from "../interactive/codexThreadSelection";
 import type { InteractiveRunnerManager } from "../interactive/manager";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
 import type { I18nKey } from "../i18n";
-import { logCliInteractiveOutput, logCliInteractiveStart, logCliRaw, logError, logInfo, sanitizeEnv } from "../logger";
+import { logCliInteractiveOutput, logCliInteractiveStart, logCliRaw, logError, logEssential, logInfo, sanitizeEnv } from "../logger";
 import {
   buildHiddenRetryLimitMessage,
   buildHiddenRetryQueuedMessage,
@@ -443,6 +444,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const userMessageId = input.preloadedUserMessageId ?? createMessageId();
     const userCreatedAt = Date.now();
     const runId = createMessageId();
+    const departmentRun = Boolean(executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner);
     const startedAt = Date.now();
     const processSessionId = uiSessionId ?? runId;
 
@@ -1121,8 +1123,16 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       // The department main task owns a stable local tab key. Its native
       // thread has already passed the dedicated durable executionSession
       // gates; a display callback may map it, but must not rebind that key.
-      if ((executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner) && input.taskRole === "main" && input.loopTaskId) {
+      if (departmentRun && input.taskRole === "main" && input.loopTaskId) {
         if (!uiSessionId) throw new Error("部门组长缺少本地会话关联。");
+        void logEssential("department-session-mapping-attempted", {
+          cli,
+          tabId,
+          runId,
+          loopTaskId: input.loopTaskId,
+          sessionId: uiSessionId,
+          mappedSessionId: newId,
+        }).catch(() => undefined);
         upsertInteractiveMapping(cli, uiSessionId, newId, { codexSelection: options.codexSelection });
         return;
       }
@@ -1535,6 +1545,17 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         }
         return;
       } catch (error) {
+        if (isCliCommandRepairableError(error)) {
+          void logEssential("interactive-cli-command-start-failed", {
+            cli,
+            tabId,
+            runId,
+            sessionId: uiSessionId,
+            loopTaskId: input.loopTaskId ?? null,
+            departmentRun,
+            reason: "command-not-found",
+          }).catch(() => undefined);
+        }
         if (!runRegistered) throw error;
         const entry = interactiveRunsByTabId.get(tabId);
         if (!entry || entry.runId !== runId) {
