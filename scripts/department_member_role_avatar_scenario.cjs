@@ -29,8 +29,8 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
       centerOffset: Math.abs((glyph.left + glyph.width / 2) - (rect.left + rect.width / 2)),
       background: style.backgroundColor, foreground: style.color };
   }));
-  assert.deepEqual(rows.map((row) => row.avatar), role === "director" ? ["总", "组", "员", "组", "员", "组"] : ["组", "员"]);
-  const expectedLabels = role === "director" ? ["总监", "组长A", "员工 A112", "组长B", "员工 B1", "组长C"]
+  assert.deepEqual(rows.map((row) => row.avatar), role === "director" ? ["总", "组", "组", "组"] : ["组", "员"]);
+  const expectedLabels = role === "director" ? ["总监", "组长A", "组长B", "组长C"]
     : leaderTaskId === "department-20261113-leader-111111" ? ["组长A", "员工 A112"] : ["组长B", "员工 B1"];
   assert.deepEqual(rows.map((row) => row.title.split(" · ")[0]), expectedLabels);
   for (const row of rows) {
@@ -43,6 +43,8 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
   }
   if (role === "director") {
     assert.equal(rows[0].title, "总监");
+    assert.equal(await context.locator(".department-status-tag").count(), 9);
+    assert.equal(await context.locator(".department-employees").count(), 0);
     assert.equal(await context.locator('.department-group[data-department-leader-task-id="department-20261113-leader-111111"] .department-leader-progress').innerText(), "25%");
     const pending = context.locator('.department-group[data-department-leader-task-id=""]');
     assert.equal(await pending.locator(".department-leader-progress").count(), 0);
@@ -61,10 +63,6 @@ async function inspectRoster(context, role = "director", leaderTaskId) {
 }
 
 async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembers, overflow, settle, targetReady, inject, output, name }) {
-  const checkExpansion = async (group, expanded) => {
-    await group.locator(`.department-employees-toggle[aria-expanded="${expanded}"]`).waitFor();
-    assert.equal(await group.locator(".department-employees").isVisible(), expanded);
-  };
   const captureRoster = async (context, label) => {
     await context.locator(".department-tree").evaluate((element) => element.scrollIntoView({ block: "start" }));
     await settle();
@@ -74,7 +72,9 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await page.title(), "产研部群聊");
   await showMembers(page); await overflow(page);
   const directorInitial = await inspectRoster(page);
-  assert.equal(directorInitial.rows[2].title, "员工 A112 · ");
+  assert.equal(directorInitial.rows[2].title, "组长B · 同名模块");
+  assert.equal(await page.locator(".department-status-tag").count(), 9);
+  assert.equal(await page.locator(".department-employees").count(), 0);
   await captureRoster(page, "director-initial");
   const open = page.locator('.department-group').first().getByRole("button", { name: "打开组长群聊", exact: true });
   await open.click();
@@ -104,14 +104,11 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   assert.equal(await frame.locator("#loop-plus-acceptance-0").evaluate((element) => document.activeElement === element), true);
   await showMembers(frame);
   const childGroup = frame.locator(".department-group");
-  const childToggle = childGroup.getByRole("button", { name: "组长A员工列表", exact: true });
   await employee.focus();
   state.department.leaders[0].participant.status = "completed";
   assert.equal(panel.setDepartmentModalState(target, structuredClone(state)), true);
-  await checkExpansion(childGroup, false);
-  assert.equal(await childToggle.evaluate((element) => document.activeElement === element), true);
-  await childToggle.press("Enter");
-  await checkExpansion(childGroup, true);
+  assert.equal(await childGroup.locator(".department-employees").isVisible(), true);
+  assert.equal(await childGroup.locator('[data-action="toggleDepartmentEmployees"]').count(), 0);
   await frame.getByRole("button", { name: "返回总监群聊", exact: true }).click();
   await page.waitForFunction(() => !document.getElementById("departmentChatBackdrop").classList.contains("visible"));
   assert.equal(panel.getDepartmentModalTarget(), undefined);
@@ -126,39 +123,30 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   fs.writeFileSync(path.join(output, `${name}-director-patched.html`), await page.content());
   await captureRoster(page, "director-patched");
   const directorGroup = page.locator(".department-group").first();
-  const directorToggle = directorGroup.getByRole("button", { name: "组长A员工列表", exact: true });
   const secondGroup = page.locator(".department-group").nth(1);
-  await directorToggle.press("Enter");
-  await checkExpansion(directorGroup, false);
-  await checkExpansion(secondGroup, true);
+  assert.equal(await directorGroup.locator(".department-status-tag").count(), 3);
+  assert.equal(await secondGroup.locator(".department-status-tag").count(), 3);
+  assert.equal(await directorGroup.locator(".department-employees").count(), 0);
+  assert.equal(await directorGroup.getByRole("button", { name: "打开组长群聊", exact: true }).count(), 1);
   const directorLeader = parentState.department.leaders[0];
   directorLeader.progressPercent = 35;
   panel.update(structuredClone(parentState));
   await directorGroup.getByText("35%", { exact: true }).waitFor();
-  await checkExpansion(directorGroup, false);
-  assert.equal(await directorToggle.evaluate((element) => document.activeElement === element), true);
-  await directorToggle.press("Space");
-  await checkExpansion(directorGroup, true);
+  assert.equal(await directorGroup.locator(".department-status-tag").count(), 3);
   directorLeader.participant.status = "completed";
   directorLeader.progressPercent = 100;
   panel.update(structuredClone(parentState));
   await directorGroup.getByText("100%", { exact: true }).waitFor();
-  await checkExpansion(directorGroup, false);
-  await checkExpansion(secondGroup, true);
-  await captureRoster(page, "director-completed-collapsed");
-  await directorToggle.click();
-  await checkExpansion(directorGroup, true);
-  directorLeader.employees[0].title = "完成后仍可查看";
+  assert.equal(await directorGroup.locator(".department-status-tag").count(), 3);
+  await captureRoster(page, "director-completed-summary");
+  directorLeader.employees[0].title = "完成后仍隐藏";
   panel.update(structuredClone(parentState));
-  await directorGroup.getByText("员工 A112 · 完成后仍可查看", { exact: true }).waitFor();
-  await checkExpansion(directorGroup, true);
-  await directorToggle.click();
-  await checkExpansion(directorGroup, false);
+  assert.equal(await directorGroup.getByText("员工 A112 · 完成后仍隐藏", { exact: true }).count(), 0);
   directorLeader.participant.status = "running";
   directorLeader.progressPercent = 40;
   panel.update(structuredClone(parentState));
   await directorGroup.getByText("40%", { exact: true }).waitFor();
-  await checkExpansion(directorGroup, true);
+  assert.equal(await directorGroup.locator(".department-employees").count(), 0);
   await page.locator('.department-group').nth(1).getByRole("button", { name: "打开组长群聊", exact: true }).click();
   const secondTarget = await targetReady();
   assert.notEqual(secondTarget.taskId, target.taskId);
@@ -169,7 +157,7 @@ async function runRoleAvatarScenario({ page, panel, parentState, sent, showMembe
   await overflow(secondFrame);
   await page.locator("#departmentChatClose").click();
   assert.equal(sent.filter((message) => message.type === "loopGroupChatChat:updateDepartmentEmployeeLimit").length, 0);
-  return { checks: ["text-only role labels and tooltips on initial HTML and patch", "explicit hierarchy roles independent of main/subtask and empty/duplicate/arbitrary titles", "director and opaque leader iframe initial HTML", "same-document real contentPatch on both surfaces", "28px circle, 12px centered glyph, 8px gap, 4px padding", "narrow root/sidebar/iframe overflow", "leader navigation, employee acceptance and return focus", "per-group mouse and keyboard disclosure, auto-collapse on completion, refresh and resume"],
+  return { checks: ["text-only role labels and tooltips on initial HTML and patch", "director hides employee details and shows three status tags", "explicit hierarchy roles independent of main/subtask and empty/duplicate/arbitrary titles", "director and opaque leader iframe initial HTML", "same-document real contentPatch on both surfaces", "28px circle, 12px centered glyph, 8px gap, 4px padding", "narrow root/sidebar/iframe overflow", "leader navigation, employee acceptance and return focus", "leader employee list stays visible without disclosure controls"],
     target, directorInitial, leaderInitial, directorPatched, leaderPatched };
 }
 module.exports = { roleAvatarFixture, runRoleAvatarScenario };

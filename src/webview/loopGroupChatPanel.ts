@@ -1319,36 +1319,13 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        renderedSlotHtml.set(slot, { source: html });
 	      }
 
-      function setDepartmentEmployeesExpanded(toggle, expanded) {
-        const employees = document.getElementById(toggle.getAttribute("aria-controls"));
-        if (!employees) return;
-        toggle.setAttribute("aria-expanded", String(expanded));
-        employees.hidden = !expanded;
-      }
-
 	      function replaceRosterHtml(html) {
         const slot = document.getElementById("rosterPanelSlot");
         const focused = document.activeElement;
         const focusKey = slot && focused && slot.contains(focused)
           ? focused.getAttribute("data-department-nav-key") : null;
-        const focusedEmployeesId = focused?.closest(".department-employees")?.id;
-        const toggleSelector = '[data-action="toggleDepartmentEmployees"]';
-        const previousToggles = new Map(Array.from(slot?.querySelectorAll(toggleSelector) ?? [],
-          (toggle) => [toggle.getAttribute("aria-controls"), toggle]));
         const sidebarTop = sidebarElement ? sidebarElement.scrollTop : 0;
         replaceHtml(slot, html);
-        for (const toggle of slot?.querySelectorAll(toggleSelector) ?? []) {
-          const employeesId = toggle.getAttribute("aria-controls");
-          const previous = previousToggles.get(employeesId);
-          if (!previous || previous === toggle) continue;
-          const completedMarker = "data-department-leader-completed";
-          if (previous.hasAttribute(completedMarker) === toggle.hasAttribute(completedMarker)) {
-            setDepartmentEmployeesExpanded(toggle, previous.getAttribute("aria-expanded") === "true");
-          }
-          if (previous === focused || (focusedEmployeesId === employeesId && toggle.getAttribute("aria-expanded") === "false")) {
-            toggle.focus({ preventScroll: true });
-          }
-        }
         if (focusKey && slot) {
           const replacement = Array.from(slot.querySelectorAll("[data-department-nav-key]"))
             .find((element) => element.getAttribute("data-department-nav-key") === focusKey && !element.disabled);
@@ -1445,10 +1422,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
         const action = target.getAttribute("data-action");
         if (action === "allocateEmployees") {
           departmentEmployeeAllocation?.open();
-          return;
-        }
-        if (action === "toggleDepartmentEmployees") {
-          setDepartmentEmployeesExpanded(target, target.getAttribute("aria-expanded") !== "true");
           return;
         }
         if (action === "openDepartmentTask") {
@@ -2080,19 +2053,18 @@ function renderDepartmentRosterPanel(
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
     const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", leaderCode, "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
+    const employeeStatusCounts = department.role === "director" ? [
+      ["运行中", leader.employees.filter((employee) => employee.status === "running").length],
+      ["验收中", leader.employees.filter((employee) => employee.status === "reviewing").length],
+      ["待验收", leader.employees.filter((employee) => employee.status === "queued_review").length],
+    ].map(([label, count]) => `<span class="department-status-tag">${label} ${count}</span>`).join("") : "";
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
-    const canToggle = Boolean(leader.taskId && employees);
-    const collapsed = canToggle && leader.participant.status === "completed";
-    const employeesId = escapeAttribute(`department-employees-${leader.taskId}`);
-    const employeesLabel = escapeAttribute(`${leaderChatTitle}员工列表`);
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
         ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
-        ${canToggle ? `<button class="button department-employees-toggle" type="button" data-action="toggleDepartmentEmployees" aria-label="${employeesLabel}" title="展开或收起员工列表" aria-controls="${employeesId}" aria-expanded="${!collapsed}"${collapsed ? " data-department-leader-completed" : ""}>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19" /></svg>
-        </button>` : ""}
       </div>
-      <ul class="department-employees"${canToggle ? ` id="${employeesId}"` : ""} aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}"${collapsed ? " hidden" : ""}>${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>
+      ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusCounts}</div>`
+        : `<ul class="department-employees" aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>`}
     </li>`;
   }).join("");
   const departmentTree = department.role === "director"

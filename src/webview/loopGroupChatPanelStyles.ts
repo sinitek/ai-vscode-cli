@@ -565,19 +565,23 @@ ${DIALOG_SHELL_STYLES}
         align-items: flex-start;
       }
       .department-group-header > .member { flex: 1; min-width: 0; }
-      .department-employees-toggle {
-        display: grid;
-        place-items: center;
-        flex: 0 0 24px;
-        height: 24px;
-        margin-block-start: 4px;
-        padding: 0;
-      }
-      .department-employees-toggle svg { width: 14px; height: 14px; }
-      .department-employees-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
       .department-tree .department-employees {
         margin-inline-start: 16px;
         border-inline-start: 1px solid var(--vscode-widget-border);
+      }
+      .department-status-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 8px 36px;
+      }
+      .department-status-tag {
+        border-radius: 3px;
+        padding: 1px 6px;
+        color: var(--vscode-badge-foreground);
+        background: var(--vscode-badge-background);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
       }
       .department-empty { padding: 4px; }
       .department-occupancy { margin: 8px 0; }
@@ -591,8 +595,7 @@ ${DIALOG_SHELL_STYLES}
       }
       .department-navigation:hover:not(:disabled),
       .department-roster .member:hover { background: var(--vscode-list-hoverBackground); }
-      .department-navigation:focus-visible,
-      .department-employees-toggle:focus-visible {
+      .department-navigation:focus-visible {
         outline: 2px solid var(--vscode-focusBorder);
         outline-offset: 2px;
       }

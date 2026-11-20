@@ -219,9 +219,10 @@ function theme(dark) {
         await showMembers(page);
         const groups = page.locator(".department-group");
         assert.equal(await groups.count(), 3);
-        assert.match(await groups.nth(0).locator(".department-employees").innerText(), /员工甲/u);
-        assert.doesNotMatch(await groups.nth(0).locator(".department-employees").innerText(), /员工乙/u);
-        assert.match(await groups.nth(1).locator(".department-employees").innerText(), /员工乙/u);
+        assert.equal(await groups.nth(0).locator(".department-employees").count(), 0);
+        assert.equal(await groups.nth(1).locator(".department-employees").count(), 0);
+        assert.equal(await groups.nth(0).locator(".department-status-tag").count(), 3);
+        assert.equal(await groups.nth(1).locator(".department-status-tag").count(), 3);
         assert.equal(await groups.nth(2).locator('[data-action="openDepartmentTask"]').isDisabled(), true);
         await page.locator(".main").evaluate((element) => { element.scrollTop = 140; });
         const parentTop = await page.locator(".main").evaluate((element) => element.scrollTop);
