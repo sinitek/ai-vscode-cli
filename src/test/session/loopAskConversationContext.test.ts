@@ -6,6 +6,7 @@ installVscodeMock();
 
 import {
   buildUserChatMessage,
+  buildVibeModeTransitionPrompt,
   resolveLoopConversationTabContextFromMessages,
   resolveLoopSubtaskConversationContextFromMessages,
 } from "../../panelStateBuilder";
@@ -46,6 +47,42 @@ test("still treats a later plain user message as leaving the loop task", () => {
   ]);
 
   assert.deepEqual(context, { taskRole: null, loopTaskId: null });
+});
+
+test("resets the orchestration instructions on the first Vibe prompt in a reused session", () => {
+  const input = {
+    displayPrompt: "直接修复这个问题",
+    modelPrompt: "直接修复这个问题\n附加文件上下文",
+    preloadedUserMessageId: "vibe-request",
+  };
+  const current = buildUserChatMessage({ ...input, contextTags: [] }, 10, input.preloadedUserMessageId);
+  for (const loopTaskId of ["loop-task", "loop-plus-task", "department-task"]) {
+    const history = [
+      message({ id: "old-request", role: "user", content: "原需求" }),
+      message({ id: "old-result", role: "assistant", content: '{"action":"done"}', loopTaskId, taskRole: "main" }),
+      message({ id: "ask", role: "user", content: "这个结果是什么？", loopAsk: true }),
+      current,
+      message({ id: "later-request", role: "user", content: "另一个请求" }),
+    ];
+
+    const modelPrompt = buildVibeModeTransitionPrompt(input, history);
+    assert.ok(modelPrompt.startsWith(input.modelPrompt));
+    assert.match(modelPrompt, /当前执行模式是 Vibe/);
+    assert.match(modelPrompt, /亲自完成本次任务.*不要派发子任务/);
+    assert.match(modelPrompt, /不要返回旧模式.*JSON/);
+    assert.equal(current.content, input.displayPrompt);
+    assert.equal(buildVibeModeTransitionPrompt({ ...input, preloadedUserMessageId: "later-request" }, history), input.modelPrompt);
+  }
+});
+
+test("uses the existing prompt for an empty history or a previous Vibe turn", () => {
+  const input = { displayPrompt: "继续", modelPrompt: "" };
+  const loopResult = message({ id: "old", role: "assistant", content: "旧编排结果", loopTaskId: "loop-task", taskRole: "main" });
+  const priorVibe = message({ id: "vibe", role: "user", content: "上一轮 Vibe" });
+
+  assert.equal(buildVibeModeTransitionPrompt(input, []), input.displayPrompt);
+  assert.equal(buildVibeModeTransitionPrompt(input, [loopResult, priorVibe]), input.displayPrompt);
+  assert.match(buildVibeModeTransitionPrompt(input, [loopResult]), /^继续\n\n当前执行模式是 Vibe/);
 });
 
 test("does not let a loop ask clear subtask conversation context", () => {

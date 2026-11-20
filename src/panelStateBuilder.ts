@@ -11,6 +11,7 @@ import { CLI_LIST, CliName, MacTaskShell } from "./cli/types";
 import { type LoopTaskRole } from "./promptRunState";
 import {
   buildPromptWithAutoContextFromEditor,
+  buildRuntimeModelPrompt,
   maybeInjectLongTermMemoryForPromptWithDeps,
   type ActiveEditorPromptContext,
   type PromptContextBuildResult,
@@ -637,6 +638,25 @@ export function resolveLoopConversationTabContextFromMessages(
     taskRole: null,
     loopTaskId: null,
   };
+}
+
+export function buildVibeModeTransitionPrompt(
+  input: { displayPrompt: string; modelPrompt: string; preloadedUserMessageId?: string },
+  messages: readonly ChatMessage[],
+): string {
+  const currentMessageIndex = input.preloadedUserMessageId
+    ? messages.findIndex((message) => message.role === "user" && message.id === input.preloadedUserMessageId)
+    : -1;
+  const priorMessages = currentMessageIndex === -1 ? messages : messages.slice(0, currentMessageIndex);
+  const modelPrompt = buildRuntimeModelPrompt(input);
+  if (!resolveLoopConversationTabContextFromMessages(priorMessages).loopTaskId) {
+    return modelPrompt;
+  }
+  return [
+    modelPrompt,
+    "当前执行模式是 Vibe。请亲自完成本次任务的所有步骤，不要派发子任务或委派给其他代理。",
+    "历史会话中的 Loop、Loop+ 或产研部角色和编排指令已结束。不要返回旧模式的派发、决策或验收 JSON，直接向用户交付本次任务的结果。",
+  ].join("\n\n");
 }
 
 export function resolveLoopRunConversationTabContext(

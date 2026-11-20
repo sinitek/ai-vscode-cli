@@ -18,6 +18,12 @@ import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecut
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
 import type { ConversationTabRecord } from "../../sessionTabs";
+import type { ChatMessage } from "../../webview/types";
+import { installVscodeMock } from "../vscodeMock";
+
+installVscodeMock();
+
+const { buildVibeModeTransitionPrompt } = require("../../panelStateBuilder") as typeof import("../../panelStateBuilder");
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
@@ -59,6 +65,7 @@ function createHarness(options: {
   preflightMessage?: string;
   loopSessionId?: string;
   loopModelRouting?: LoopTaskModelRouting;
+  sessionMessages?: ChatMessage[];
 }) {
   const tab: ConversationTabRecord = { id: "target-tab", cli: options.cli, sessionId: "previous-session",
     sessionIdByCli: { [options.cli]: "previous-session" }, createdAt: 1 };
@@ -88,6 +95,10 @@ function createHarness(options: {
     departmentCodexPreparation: null,
     departmentOwnerResources: () => null,
     activeWorkspaceKey: "test-workspace",
+    createPerformanceTrace: () => ({
+      start: () => () => undefined,
+      measure: (_phase: string, operation: () => unknown) => operation(),
+    }),
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
     isCliShellCommandNotFoundError,
@@ -179,6 +190,12 @@ function createHarness(options: {
     },
     postPanelState: async () => { events.push("panel-state"); },
     scheduleLogRetentionCleanup: () => undefined,
+    buildVibeModeTransitionPrompt,
+    loadSessionMessages: (cli: CliName, sessionId: string) => {
+      assert.equal(cli, tab.cli);
+      assert.equal(sessionId, tab.sessionId);
+      return options.sessionMessages ?? [];
+    },
     preloadUserMessageForPrompt: (input: PromptRunInput, target: PromptRunTarget) => {
       assert.equal(target.sessionId, tab.sessionId);
       events.push("preload");
@@ -195,6 +212,39 @@ function createHarness(options: {
     questionQueue,
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
+
+test("dispatches a Vibe mode transition in the model prompt for every runtime reusing an orchestrated session", async () => {
+  const input = { displayPrompt: "继续完成", modelPrompt: "继续完成并检查附加上下文", contextTags: [], preloadedUserMessageId: "current" };
+  const sessionMessages: ChatMessage[] = [
+    { id: "previous", role: "assistant", content: '{"action":"done"}', taskRole: "main", loopTaskId: "previous-task" },
+    { id: "current", role: "user", content: input.displayPrompt },
+  ];
+  for (const runtime of ["interactive", "parallel", "one-shot"] as const) {
+    const harness = createHarness({ cli: runtime === "interactive" ? "codex" : "opencode", health: "normal", runtime, sessionMessages });
+    await harness.runPrompt(input);
+
+    assert.equal(harness.dispatched.length, 1);
+    assert.equal(harness.dispatched[0].target.sessionId, "previous-session");
+    assert.equal(harness.dispatched[0].input.displayPrompt, input.displayPrompt);
+    assert.ok(harness.dispatched[0].input.modelPrompt.startsWith(input.modelPrompt));
+    assert.match(harness.dispatched[0].input.modelPrompt, /当前执行模式是 Vibe/);
+  }
+});
+
+test("preserves the original prompt for replacement sessions and Loop questions", async () => {
+  const input = { displayPrompt: "继续", modelPrompt: "继续", contextTags: [] };
+  const sessionMessages: ChatMessage[] = [
+    { id: "previous", role: "assistant", content: "编排结果", taskRole: "main", loopTaskId: "previous-task" },
+  ];
+  const replacement = createHarness({ cli: "codex", health: "abnormal", runtime: "interactive", sessionMessages });
+  await replacement.runPrompt(input);
+  assert.equal(replacement.dispatched[0]?.target.sessionId, null);
+  assert.equal(replacement.dispatched[0]?.input.modelPrompt, input.modelPrompt);
+
+  const question = createHarness({ cli: "codex", health: "normal", runtime: "interactive", sessionMessages });
+  await question.runPrompt({ ...input, loopAsk: true });
+  assert.equal(question.dispatched[0]?.input.modelPrompt, input.modelPrompt);
+});
 
 test("cancelling main work queued behind a question prevents a late CLI start", async () => {
   const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", loopSessionId: "main-session" });

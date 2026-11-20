@@ -1573,7 +1573,7 @@
     {
       "id": "plugin.rule.explicit_conversation_mode_selection",
       "name": "当前 Tab 显式执行模式优先于历史任务推断",
-      "description": "页面存续期间，每个 Tab 按当前 CLI 保存显式模式选择；同 CLI 的迟到面板快照和返回 Tab 的自动推断均不能覆盖用户选择。未手动选择的 Tab 继续按历史主任务恢复 Loop 或 Loop+，CLI 改变时不使用其它 CLI 的选择，关闭 Tab 清理。发送到当前 Tab 不重新激活，已完成 Loop 或 Loop+ 会话切到 Vibe 后复用原会话走普通执行，不重启历史编排；不扩展持久化格式。",
+      "description": "页面存续期间，每个 Tab 按当前 CLI 保存显式模式选择。同 CLI 的迟到面板快照和返回 Tab 的自动推断均不能覆盖用户选择。未手动选择的 Tab 继续按历史主任务恢复 Loop 或 Loop+，CLI 改变时不使用其它 CLI 的选择，关闭 Tab 清理。发送到当前 Tab 不重新激活。已完成 Loop、Loop+ 或产研部会话切到 Vibe 后复用原会话走普通执行，首条请求按当前用户消息之前的会话历史向模型补充 Vibe 独立执行说明并结束旧 JSON 编排协议。沿用现有持久化格式。",
       "status": "active",
       "applies_to": [
         "plugin.chat_panel",
@@ -1587,7 +1587,7 @@
         },
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-          "anchor": "Loop+ 发送后即时等待反馈"
+          "anchor": "同一会话切换到 Vibe"
         },
         {
           "path": "src/webview/viewContentScript/modelManager.ts"
@@ -1602,6 +1602,17 @@
         {
           "path": "src/sessionMessageActions.ts",
           "anchor": "executeSendPromptMessage"
+        },
+        {
+          "path": "src/extension.ts",
+          "anchor": "runPromptNow"
+        },
+        {
+          "path": "src/panelStateBuilder.ts",
+          "anchor": "buildVibeModeTransitionPrompt"
+        },
+        {
+          "path": "src/test/extensionHost/promptSessionHealth.test.ts"
         },
         {
           "path": "src/test/webview/clipagescriptruntimecoverage.test.ts"

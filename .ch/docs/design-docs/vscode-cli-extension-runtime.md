@@ -41,6 +41,8 @@ Webview 每次打开工具设置时发送 `refreshToolSettings`，宿主绕过�
 
 ## Tab 运行状态与配置协调
 
+- 普通 `runPrompt` 在会话接管和健康检查后读取复用会话的消息，使用当前预加载用户消息之前的历史判断上一任务是否为 Loop、Loop+ 或产研部。切换时仅在 `modelPrompt` 末尾补充 Vibe 模式说明，原始用户消息照常展示。新会话、连续 Vibe、Loop 问答和带 Loop 任务归属的调用沿用各自的提示词。
+
 - Webview 为每个 Tab 保留当前 CLI 的显式 `interactiveModeSelection`，模式下拉变更时更新；同 CLI 的后续状态快照和自动历史推断优先使用该选择。未选择的 Tab 保持原有主任务 Loop / Loop+、其它 coding 的推断。CLI 不同的旧选择不复用，关闭 Tab 随运行态清除；该字段只存在于当前页面，不扩展持久化格式。发送处理器不重新激活当前 Tab，已完成 Loop / Loop+ 选择 Vibe 后复用原会话走普通 `runPrompt`。
 - 普通发送与 Loop 系列共用即时提示词预览和等待反馈，细节见[发送与启动反馈](loop-plus-scheduling.md#发送与启动反馈)。完整面板配置/模型刷新仅在后台展示，真实用户消息先发布；配置校验、会话交接与压缩仍按实际状态等待。
 
