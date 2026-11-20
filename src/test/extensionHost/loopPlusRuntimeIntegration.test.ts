@@ -2617,7 +2617,7 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
       status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "a.ts"), subtask("B", "b.ts"), subtask("C", "c.ts"),
         { ...subtask("successor", "successor.ts"), dependsOn: ["A"] }] }),
     }));
-    runs.push(fixture.adapter.runEventDriven(prompt("Verify A, B and C; dependent work needs their approval"), { schedulingMode: "event_driven" }, fixture.target));
+    runs.push(fixture.adapter.runEventDriven(prompt("Verify A, B and C, then deliver the successor to A"), { schedulingMode: "event_driven" }, fixture.target));
     await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 3, "original child runners");
     taskId = fixture.createdTaskIds[0];
     const original = fixture.readTask(taskId)!;
@@ -2629,6 +2629,9 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
       fixture.finishParked(child, { status: "end", content: `finished ${child}` });
       await waitForLoopPlus(() => !snapshot().running.some((attempt) => attempt.subtaskId === child), `${child} finish persisted`);
     }
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("successor"), "successor starts with A still awaiting review");
+    fixture.finishParked("successor", { status: "end", content: "finished successor" });
+    await waitForLoopPlus(() => !snapshot().running.length, "successor finish persisted");
     firstReview.resolve();
     await runs[0];
     const paused = fixture.readTask(taskId)!;
@@ -2640,10 +2643,9 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     assert.equal(paused.mainAiLastFailureCode, RUNTIME_CONFIG_LOCK_TIMEOUT);
     assert.equal(normalizeLoopTaskRecord(JSON.parse(JSON.stringify(paused)))?.mainAiLastFailureCode, RUNTIME_CONFIG_LOCK_TIMEOUT);
     assert.equal(pausedSnapshot.currentReview?.subtaskId, "A");
-    assert.deepEqual(pausedSnapshot.reviewQueue.map((review) => review.subtaskId), ["B", "C"]);
+    assert.deepEqual(pausedSnapshot.reviewQueue.map((review) => review.subtaskId), ["B", "C", "successor"]);
     assert.equal(pausedSnapshot.version, 1);
-    assert.deepEqual(pausedSnapshot.pending.map(({ subtaskId, dependsOn }) => ({ subtaskId, dependsOn })),
-      [{ subtaskId: "successor", dependsOn: ["A"] }]);
+    assert.deepEqual(pausedSnapshot.pending, []);
 
     type CoordinatorDeps = Parameters<typeof createLoopGroupChatPanelCoordinator>[0];
     type Panel = NonNullable<ReturnType<CoordinatorDeps["panelsByTaskId"]["get"]>>;
@@ -2779,7 +2781,7 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     assert.equal(queued.dispatch([parkedAttempt]).started.length, 1);
     assert.equal(queued.releaseUnstarted([parkedAttempt.attemptId]).released.length, 1);
     fixture.saveTask({ ...paused, loopPlus: queued.snapshot() });
-    assert.equal(snapshot().pending.length, 2);
+    assert.equal(snapshot().pending.length, 1);
     fixture.saveTask(paused);
     for (const change of ["session", "busy"] as const) {
       const entered = createDeferred();
@@ -2797,7 +2799,7 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
       assert.equal(warnings.length, warningCount + 1);
       assert.deepEqual(fixture.readTask(taskId), before);
       assert.equal(fixture.mainCalls.length, 1);
-      assert.equal(fixture.attemptCalls.length, 3);
+      assert.equal(fixture.attemptCalls.length, 4);
       busy = false;
       targetSession = fixture.target.sessionId;
     }
@@ -2851,26 +2853,16 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     assert.deepEqual(fixture.readTask(taskId)?.modelRouting, paused.modelRouting);
     assert.deepEqual(snapshot().currentReview, pausedSnapshot.currentReview);
     assert.deepEqual(snapshot().reviewQueue, pausedSnapshot.reviewQueue);
-    assert.deepEqual(snapshot().pending, pausedSnapshot.pending);
-    const successorStarted = createDeferred();
-    const finishSuccessor = createDeferred();
-    fixture.setAttemptAction(async (input) => {
-      assert.equal(input.loopSubtaskId, "successor");
-      successorStarted.resolve();
-      await finishSuccessor.promise;
-    });
-    runReview.resolve();
+    assert.deepEqual(snapshot().pending, []);
     try {
-      await Promise.race([successorStarted.promise, resumed.then(() => {
-        assert.fail(`accepted predecessor did not release successor: ${JSON.stringify(fixture.logs.slice(-8))}`);
-      })]);
+      runReview.resolve();
+      await waitForLoopPlus(() => snapshot().currentReview?.subtaskId === "B", "next review starts after accepting A");
       const advanced = snapshot();
       assert.deepEqual(advanced.seenAttempts.filter((item) => item.disposition === "reviewed").map((item) => item.subtaskId), ["A"]);
       assert.deepEqual([advanced.currentReview, ...advanced.reviewQueue].filter(Boolean), pausedSnapshot.reviewQueue);
       assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), ["A", "B", "C", "successor"]);
     } finally {
       fixture.adapter.host().stopParent(taskId);
-      finishSuccessor.resolve();
       finishNextReview.resolve();
     }
     await resumed;
@@ -3029,7 +3021,7 @@ test("combined accept registers the new prerequisite before filling slots freed 
   let running: Promise<unknown> | undefined;
   try {
     fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
-      status: "end", content: decision({ status: "dispatch", subtasks: [subtask("P", "p.ts"), subtask("X", "x.ts"),
+      status: "end", content: decision({ status: "dispatch", subtasks: [subtask("P", "p.ts"), subtask("X", "b.ts"),
         { ...subtask("B", "b.ts"), dependsOn: ["P"] }, subtask("C", "c.ts")] }),
     }));
     fixture.queueMain((input, tabId) => {
@@ -3057,7 +3049,7 @@ test("combined accept registers the new prerequisite before filling slots freed 
     assert.equal(snapshot().seenAttempts.find(item => item.attemptId === oldAttemptId)?.acceptance, "passed");
     assert.equal(fixture.parkedSubtaskIds().includes("B"), false);
     fixture.finishParked("P", { status: "end", content: "new P complete" });
-    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("B"), "B starts after latest P passes");
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("B"), "B starts after latest P finishes");
     assert.deepEqual(snapshot().running.map(item => item.subtaskId).sort(), ["B", "C"]);
     assert.equal(snapshot().pending.length, 0);
   } finally {

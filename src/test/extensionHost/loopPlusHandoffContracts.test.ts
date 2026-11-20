@@ -187,8 +187,8 @@ test("original group chat resume atomically commits after exact thread receipt a
     scheduler.dispatch(opened);
     for (const attempt of opened) scheduler.finish({ ...attempt, outcome: "completed", detail: attempt.attemptId });
     const ready = { subtaskId: "X", attemptId: "independent" };
-    const blocked = { subtaskId: "B", attemptId: "dependent", dependsOn: ["P"] };
-    scheduler.dispatch([ready, blocked], { deferPromotion: true });
+    const successor = { subtaskId: "B", attemptId: "dependent", dependsOn: ["P"] };
+    scheduler.dispatch([ready, successor], { deferPromotion: true });
     const paused = scheduler.snapshot();
     const taskStoreFile = store.buildLoopTaskStoreFile("codex", "workspace", "session", taskId);
     const task: LoopTaskRecord = {
@@ -198,7 +198,7 @@ test("original group chat resume atomically commits after exact thread receipt a
       mainAiLastFailureMessage: RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE, finalSummary: "原暂停",
       originProfile: { configId }, modelRouting: { main: { cli: "codex", model: "main-model" }, subtask: { model: "sub-model" } },
       createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 4, currentRound: 1, activeSubtaskId: null, activeSubtaskIds: [],
-      subTasks: [...opened, ready, blocked].map((attempt) => ({ id: attempt.subtaskId, title: attempt.subtaskId,
+      subTasks: [...opened, ready, successor].map((attempt) => ({ id: attempt.subtaskId, title: attempt.subtaskId,
         status: opened.some((item) => item.subtaskId === attempt.subtaskId) ? "completed" : "pending", updatedAt: Date.now() })),
       communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
       rounds: [], supplementalRequirements: ["原说明"], completionRoundSummaries: [], completionRequirementCoverage: [],
@@ -260,13 +260,13 @@ test("original group chat resume atomically commits after exact thread receipt a
     fixture.queueMain(async () => { mainEntered.resolve(); await finishMain.promise; });
     retry = click();
     await Promise.race([mainEntered.promise, retry.then(() => assert.fail(`retry did not start: ${warnings.at(-1)}`))]);
-    await waitForLoopPlus(() => fixture.attemptCalls.length === 1, "independent committed reservation");
+    await waitForLoopPlus(() => fixture.attemptCalls.length === 2, "committed independent and dependent reservations");
     assert.equal(turns().length, 1);
     const firstTurn = turns()[0].message.params!;
     assert.equal(firstTurn.threadId, threadId);
     assert.ok((firstTurn.input as Array<{ text?: string }>).some(({ text }) => text?.includes(instruction)));
     assert.equal(native.wire.some(({ message }) => message.method === "thread/start"), false);
-    assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), [ready.subtaskId]);
+    assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), [ready.subtaskId, successor.subtaskId]);
     const commit = staged[1];
     assert.equal(commit.status, "running");
     assert.equal(commit.mainAiFailureCount, 0);
@@ -275,8 +275,8 @@ test("original group chat resume atomically commits after exact thread receipt a
     assert.deepEqual(resumed.currentReview, paused.currentReview);
     assert.deepEqual(resumed.reviewQueue, paused.reviewQueue);
     assert.deepEqual(resumed.reportQueue, paused.reportQueue);
-    assert.deepEqual(resumed.pending, paused.pending.filter((item) => item.subtaskId === blocked.subtaskId));
-    assert.equal(resumed.running[0]?.attemptId, ready.attemptId);
+    assert.deepEqual(resumed.pending, []);
+    assert.deepEqual(resumed.running.map((item) => item.attemptId), [ready.attemptId, successor.attemptId]);
     assert.equal(fixture.mainCalls[0].loopTaskId, taskId);
   } finally {
     fixture.adapter.host().stopParent(taskId);

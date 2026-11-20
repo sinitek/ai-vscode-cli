@@ -5309,7 +5309,7 @@ function attemptEvent(call: AttemptCall): string {
   return buildLoopPlusFinishEventId(call.request.subtaskId, call.request.attemptId);
 }
 
-test("dependencies wait for acceptance while independent work and frozen later reviews keep moving", async () => {
+test("successor starts before acceptance while independent work and frozen reviews keep moving", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "显式依赖与独立任务" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -5324,8 +5324,8 @@ test("dependencies wait for acceptance while independent work and frozen later r
   const frozen = env.mains[1];
   assert.deepEqual(frozen.request.reviewEventIds, [attemptEvent(env.attempts[0])]);
   assert.match(frozen.request.prompt, /One-time dispatch-first check/);
-  assert.match(frozen.request.prompt, /reason=review_pending/);
-  assert.equal(env.attempts.length, 2, "execution completion alone must not start successor");
+  assert.deepEqual(env.attempts.map((a) => a.request.subtaskId), ["prerequisite", "independent", "successor"]);
+  assert.doesNotMatch(frozen.request.prompt, /reason=review_pending/);
   env.attempts[1].resolve({ outcome: "completed", detail: "later independent completion" });
   await flush();
   assert.deepEqual(frozen.request.reviewEventIds, [attemptEvent(env.attempts[0])]);
@@ -5345,7 +5345,7 @@ test("dependencies wait for acceptance while independent work and frozen later r
 });
 
 for (const status of ["wait", "dispatch", "completed"] as const) {
-  test(`report acknowledgement through ${status} releases dependencies after the whole decision`, async () => {
+  test(`a successor starts before the prerequisite report is acknowledged through ${status}`, async () => {
     const env = harness();
     const run = env.host.tryRun({ displayPrompt: "报告确认释放依赖" }, env.target, { schedulingMode: "event_driven" });
     await flush();
@@ -5355,8 +5355,8 @@ for (const status of ["wait", "dispatch", "completed"] as const) {
     await flush();
     env.attempts[0].resolve({ outcome: "completed", detail: "report evidence" });
     await flush();
-    assert.equal(env.attempts.length, 1);
-    assert.match(env.mains[1].request.prompt, /reason=report_pending/);
+    assert.deepEqual(env.attempts.map((a) => a.request.subtaskId), ["report-source", "report-child"]);
+    assert.equal(snapshotOf(env.tasks.get(run.taskId!)).reportQueue?.length, 1);
     const confirmation = { reportEventIds: [attemptEvent(env.attempts[0])] };
     env.mains[1].resolve(status === "completed" ? completedDecision(confirmation) : decisionJson({
       status, ...confirmation, ...(status === "dispatch" ? { subtasks: [dependentSubtask("extra", [])] } : {}),
@@ -5370,12 +5370,13 @@ for (const status of ["wait", "dispatch", "completed"] as const) {
   });
 }
 
-test("accept then unrelated control and same-id prerequisite redispatch never admits the successor early", async () => {
+test("a conflict-blocked successor considers the latest prerequisite after the whole review decision", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "整份决策后再准入" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
-    dependentSubtask("source", []), dependentSubtask("child", ["source"]), dependentSubtask("other", []),
+    dependentSubtask("source", []), dependentSubtask("child", ["source"]),
+    { ...dependentSubtask("other", []), writeFiles: ["src/child.ts"] },
   ] }));
   await flush();
   env.attempts[0].resolve({ outcome: "completed", detail: "first source" });
@@ -5383,7 +5384,7 @@ test("accept then unrelated control and same-id prerequisite redispatch never ad
   env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[0]),
     reviews: [{ reviewEventId: attemptEvent(env.attempts[0]), acceptance: "passed", reason: "first attempt passed" }],
     independentSubtaskIds: ["source"], subtasks: [dependentSubtask("source", [])],
-    controls: [{ id: "other", action: "reprompt", title: "调整独立任务", prompt: longPrompt("other", ["src/other.ts"]) }],
+    controls: [{ id: "other", action: "close" }],
   }));
   await flush();
   assert.equal(env.attempts.some((a) => a.request.subtaskId === "child"), false);
@@ -5391,8 +5392,6 @@ test("accept then unrelated control and same-id prerequisite redispatch never ad
   assert.notEqual(latestSource.request.attemptId, env.attempts[0].request.attemptId);
   assert.equal(snapshotOf(env.tasks.get(run.taskId!)).pending.some((a) => a.subtaskId === "child"), true);
   latestSource.resolve({ outcome: "completed", detail: "latest source" });
-  await flush();
-  env.mains[2].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(latestSource), subtasks: [] }));
   await flush();
   assert.equal(env.attempts.filter((a) => a.request.subtaskId === "child").length, 1);
   env.host.stopParent(run.taskId!);
@@ -5511,15 +5510,13 @@ test("immediate resume after dependency promotion failure preserves its lifecycl
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [dependentSubtask("source", []), dependentSubtask("child", ["source"])] }));
   await flush();
   const childId = snapshotOf(env.tasks.get(run.taskId!)).pending[0].attemptId;
-  env.attempts[0].resolve({ outcome: "completed", detail: "source passed" });
-  await flush();
   rejectPromotion = true;
-  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[0]), subtasks: [] }));
+  env.attempts[0].resolve({ outcome: "completed", detail: "source finished" });
   await run.done;
   const saved = snapshotOf(env.tasks.get(run.taskId!));
   assert.deepEqual(saved.pending.map((a) => a.attemptId), [childId]);
   assert.deepEqual(saved.running, []);
-  assert.equal(saved.seenAttempts.find((a) => a.subtaskId === "source")?.acceptance, "passed");
+  assert.equal(saved.currentReview?.eventId, attemptEvent(env.attempts[0]));
   assert.equal(env.attempts.length, 1);
   // Do not flush the failed consumer before resuming and queuing the next wake.
   const resumed = env.host.tryRun({ displayPrompt: "立即恢复" }, env.target, { resumeTaskId: run.taskId, resumeRequested: true });
@@ -5528,13 +5525,18 @@ test("immediate resume after dependency promotion failure preserves its lifecycl
   assert.equal(env.attempts.length, 2);
   assert.equal(env.attempts[1].request.attemptId, childId);
   assert.deepEqual(env.attempts[1].request.dependsOn, ["source"]);
-  assert.equal(env.mains.length, 3);
-  assert.equal(env.mains[2].request.kind, "user");
-  assert.match(env.mains[2].request.prompt, /恢复后仅消费一次的消息/);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1].request.kind, "review");
+  assert.deepEqual(env.mains[1].request.reviewEventIds, [attemptEvent(env.attempts[0])]);
   assert.equal(env.maxMains(), 1);
   assert.equal(await isSettled(resumed.done), false);
   assert.equal(env.tasks.get(run.taskId!)?.status, "running");
   assert.deepEqual(snapshotOf(env.tasks.get(run.taskId!)).seenAttempts, saved.seenAttempts);
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[0]), subtasks: [] }));
+  await flush();
+  assert.equal(env.mains.length, 3);
+  assert.equal(env.mains[2].request.kind, "user");
+  assert.match(env.mains[2].request.prompt, /恢复后仅消费一次的消息/);
   env.mains[2].resolve(decisionJson({ status: "wait" }));
   await flush();
   assert.equal(env.mains.length, 3);
@@ -5557,16 +5559,14 @@ test("failed persistence of dependency promotion rolls back reservations and rel
   await flush();
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [dependentSubtask("source", []), dependentSubtask("child", ["source"])] }));
   await flush();
-  env.attempts[0].resolve({ outcome: "completed", detail: "source passed" });
-  await flush();
   rejectPromotion = true;
-  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[0]), subtasks: [] }));
+  env.attempts[0].resolve({ outcome: "completed", detail: "source finished" });
   await run.done;
   await flush();
   const saved = snapshotOf(env.tasks.get(run.taskId!));
   assert.equal(saved.running.length, 0);
   assert.deepEqual(saved.pending.map((a) => a.subtaskId), ["child"]);
-  assert.equal(saved.seenAttempts.find((a) => a.subtaskId === "source")?.acceptance, "passed");
+  assert.equal(saved.currentReview?.eventId, attemptEvent(env.attempts[0]));
   assert.equal(env.attempts.length, 1);
   const reloaded = env.reloadHost();
   const resumed = reloaded.tryRun({ displayPrompt: "重试落盘" }, env.target, { resumeTaskId: run.taskId, resumeRequested: true });
@@ -5601,7 +5601,7 @@ test("cold dependency-only snapshot wakes planning and watchdog preserves a live
 });
 
 
-test("acknowledging a report and redispatching its logical id keeps successors pending", async () => {
+test("acknowledging a report and redispatching its logical id only blocks newly queued successors", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "报告与重派同一决策" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -5609,15 +5609,15 @@ test("acknowledging a report and redispatching its logical id keeps successors p
   await flush();
   env.attempts[0].resolve({ outcome: "completed", detail: "first report" });
   await flush();
-  env.mains[1].resolve(decisionJson({ status: "dispatch", reportEventIds: [attemptEvent(env.attempts[0])], subtasks: [dependentSubtask("source", [], false)] }));
+  env.mains[1].resolve(decisionJson({ status: "dispatch", reportEventIds: [attemptEvent(env.attempts[0])],
+    subtasks: [dependentSubtask("late-child", ["source"]), dependentSubtask("source", [], false)],
+  }));
   await flush();
-  assert.deepEqual(env.attempts.map((a) => a.request.subtaskId), ["source", "source"]);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).pending[0].subtaskId, "child");
-  env.attempts[1].resolve({ outcome: "completed", detail: "latest report" });
+  assert.deepEqual(env.attempts.map((a) => a.request.subtaskId), ["source", "child", "source"]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).pending[0].subtaskId, "late-child");
+  env.attempts[2].resolve({ outcome: "completed", detail: "latest report" });
   await flush();
-  env.mains[2].resolve(decisionJson({ status: "wait", reportEventIds: [attemptEvent(env.attempts[1])] }));
-  await flush();
-  assert.equal(env.attempts[2].request.subtaskId, "child");
+  assert.equal(env.attempts[3].request.subtaskId, "late-child");
   env.host.stopParent(run.taskId!);
   await run.done;
 });

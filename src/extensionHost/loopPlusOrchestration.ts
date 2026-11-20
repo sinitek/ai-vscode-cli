@@ -39,11 +39,13 @@ import type { HumanInteractionHistoryRecorder } from "../humanInteraction";
 import {
   buildLoopPlusFinishEventId,
   createLoopPlusScheduler,
+  requiresLoopPlusAcceptedDependencies,
   type LoopPlusDependencyBlock,
   type LoopPlusControlCommand,
   type LoopPlusExecutionOutcome,
   type LoopPlusExecutionRecord,
   type LoopPlusScheduler,
+  type LoopPlusSchedulerOptions,
   type LoopPlusSchedulerSnapshot,
 } from "../loopPlusScheduler";
 import type { CliName, ThinkingMode } from "../cli/types";
@@ -300,6 +302,7 @@ type ParentRuntime = {
   target: LoopPlusPromptTarget;
   prompt: LoopPlusRunInput;
   scheduler: LoopPlusScheduler;
+  createScheduler: (options: LoopPlusSchedulerOptions) => LoopPlusScheduler;
   meta: Map<string, SubtaskMeta>;
   attempts: Map<string, InFlightAttempt>;
   attemptSeq: number;
@@ -671,13 +674,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (existing) {
       existing.target = target;
       existing.prompt = input;
-      existing.scheduler = createLoopPlusScheduler({
+      existing.scheduler = existing.createScheduler({
         snapshot: existing.scheduler.snapshot(),
         maxConcurrency: maxConcurrency(),
       });
       return existing;
     }
-    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() });
+    const scheduler = createLoopPlusScheduler({
+      snapshot: task.loopPlus,
+      maxConcurrency: maxConcurrency(),
+      requireAcceptedDependencies: requiresLoopPlusAcceptedDependencies(task),
+    });
     const runtime = buildRuntime(task, target, input, scheduler);
     if (!scheduler.snapshot().parentStopped) {
       scheduler.snapshot().running.forEach((attempt) => {
@@ -735,12 +742,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           : {}),
       });
     });
+    const requireAcceptedDependencies = requiresLoopPlusAcceptedDependencies(task);
     return {
       taskId: task.id,
       cli: task.cli,
       target,
       prompt: input,
       scheduler,
+      createScheduler: (options) => createLoopPlusScheduler({ ...options, requireAcceptedDependencies }),
       meta,
       attempts: new Map(),
       attemptSeq: nextAttemptSequence(scheduler.snapshot()),
@@ -889,7 +898,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       // These reservations have not launched. Preserve pending attempts and the
       // parent gate instead of later reconciling them as lost running processes.
       // The snapshot is taken after reconciliation, retaining earlier finishes.
-      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      runtime.scheduler = runtime.createScheduler({ snapshot: before });
       runtime.autoPaused = true;
       runtime.pauseStatus = "error";
       runtime.forcePrompt = false;
@@ -1093,7 +1102,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         execution.prepareMain = (task) => {
           const draft: ParentRuntime = {
             ...runtime,
-            scheduler: createLoopPlusScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() }),
+            scheduler: runtime.createScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() }),
             autoPaused: false,
             protocolRetries: 0,
             decisionCount: 1,
@@ -1336,7 +1345,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         : runtime.reviewStep;
       return { step, dependencyBlocks: prepared.dependencyBlocks };
     } catch (error) {
-      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      runtime.scheduler = runtime.createScheduler({ snapshot: before });
       runtime.reviewStep = previousStep;
       throw error;
     }
@@ -1413,7 +1422,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           }
           return true;
         } catch (error) {
-          runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+          runtime.scheduler = runtime.createScheduler({ snapshot: before });
           throw error;
         }
       },
@@ -1472,7 +1481,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           try {
             persist(runtime, { loopPlusBlockReview: undefined });
           } catch (error) {
-            runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+            runtime.scheduler = runtime.createScheduler({ snapshot: before });
             throw error;
           }
           runtime.reviewStep = null;
@@ -1843,7 +1852,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return { decisions: [], rejected: [] };
     }
     if (reviewPlan) {
-      const preflight = createLoopPlusScheduler({ snapshot: before });
+      const preflight = runtime.createScheduler({ snapshot: before });
       if (reportEventIds.length > 0 && !preflight.acknowledgeReports(reportEventIds)) {
         return { decisions: [], rejected: [] };
       }
@@ -1859,7 +1868,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const dispatched = runtime.scheduler.dispatch(specs, { deferPromotion: !reviewPlan });
     if (reviewPlan && (dispatched.rejected.length > 0 || dispatched.decisions.length !== specs.length
       || dispatched.decisions.some((item) => item.admission !== "started"))) {
-      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      runtime.scheduler = runtime.createScheduler({ snapshot: before });
       return { decisions: [], rejected: [] };
     }
     runtime.attemptSeq += built.length;
@@ -1896,7 +1905,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
     } catch (error) {
       runtime.meta = previousMeta;
-      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      runtime.scheduler = runtime.createScheduler({ snapshot: before });
       // No work launches after an unconfirmed commit. Remove only this request's provenance;
       // preserve the reservation/history if storage remains unavailable.
       if (repairSources.size) {
@@ -2968,7 +2977,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     try {
       persist(runtime, { status: runtime.scheduler.snapshot().parentStopped ? "stopped" : "running" });
     } catch (error) {
-      runtime.scheduler = createLoopPlusScheduler({ snapshot: before });
+      runtime.scheduler = runtime.createScheduler({ snapshot: before });
       runtime.meta = metaBefore;
       runtime.attemptSeq = seqBefore;
       throw error;
@@ -3227,7 +3236,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (!updated) throw new Error("Loop+ supplemental requirement persistence failed");
     } catch (error) {
       // Roll back the uncommitted queue append. It has not been exposed to the consumer yet.
-      runtime.scheduler = createLoopPlusScheduler({ snapshot });
+      runtime.scheduler = runtime.createScheduler({ snapshot });
       throw error;
     }
     if (runtime.currentMain) {

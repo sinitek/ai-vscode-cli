@@ -153,7 +153,12 @@ export type LoopPlusSchedulerHostContract = {
 export type LoopPlusSchedulerOptions = {
   maxConcurrency?: number;
   snapshot?: unknown;
+  requireAcceptedDependencies?: boolean;
 };
+
+export function requiresLoopPlusAcceptedDependencies(task: { department?: unknown; departmentInvalid?: boolean }): boolean {
+  return task.department !== undefined || task.departmentInvalid === true;
+}
 
 export type LoopPlusDispatchRejectionReason =
   | "invalid_spec"
@@ -967,6 +972,13 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       const attempt = latest.get(id);
       return !!attempt && isDependencySatisfied(attempt);
     });
+  }
+
+  function isDependencySatisfied(attempt: LoopPlusSeenAttempt): boolean {
+    if (attempt.outcome !== "completed" || attempt.disposition === "closed") return false;
+    if (!options.requireAcceptedDependencies) return true;
+    return (attempt.disposition === "reviewed" && attempt.acceptance === "passed")
+      || (attempt.requiresAcceptance === false && attempt.disposition === "reported");
   }
 
   function latchWake(): boolean {
@@ -1803,12 +1815,6 @@ class StableIndexHeap {
     this.values[index] = last;
     return first;
   }
-}
-
-function isDependencySatisfied(attempt: LoopPlusSeenAttempt): boolean {
-  return attempt.outcome === "completed"
-    && ((attempt.disposition === "reviewed" && attempt.acceptance === "passed")
-      || (attempt.requiresAcceptance === false && attempt.disposition === "reported"));
 }
 
 function dependencyBlockReason(attempt: LoopPlusSeenAttempt): LoopPlusDependencyBlock["reason"] {

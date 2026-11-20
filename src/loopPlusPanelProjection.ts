@@ -1,10 +1,10 @@
 import { resolveLoopSchedulingMode, type LoopTaskRecord } from "./loopTaskStore";
-import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusReviewItem, type LoopPlusSchedulerPhase } from "./loopPlusScheduler";
+import { createLoopPlusScheduler, requiresLoopPlusAcceptedDependencies, type LoopPlusExecutionRecord, type LoopPlusReviewItem, type LoopPlusSchedulerPhase } from "./loopPlusScheduler";
 import { getLoopSubtaskDisplayTitle } from "./loopConversationPresentation";
 import type { LoopPlusPanelProjection } from "./webview/loopGroupChatPanelTypes";
 
 export function projectLoopPlusPanel(
-  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "loopPlusMainPhase"> & {
+  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "loopPlusMainPhase" | "department" | "departmentInvalid"> & {
     subTasks?: LoopTaskRecord["subTasks"];
   },
   activeReviewEventIds: readonly string[] = [],
@@ -17,7 +17,7 @@ export function projectLoopPlusPanel(
     return invalidLoopPlusProjection("missing");
   }
   try {
-    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus });
+    const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, requireAcceptedDependencies: requiresLoopPlusAcceptedDependencies(task) });
     const snapshot = scheduler.snapshot();
     const view = scheduler.wait().view;
     const currentReview = view.currentReview ? copyLoopPlusReviewItem(view.currentReview) : null;

@@ -19,7 +19,7 @@ function json(value: unknown): string {
 
 const input = { displayPrompt: "交付显式依赖任务", modelPrompt: "交付显式依赖任务", contextTags: [], loopSubtaskMode: "fullstack" as const };
 
-test("runtime adapter persists dependencies and admits a successor only after reviewed evidence", { timeout: 4000 }, async () => {
+test("runtime adapter persists dependencies and starts a successor while prerequisite acceptance is held", { timeout: 4000 }, async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
     fixture.queueMain((request, tabId) => fixture.publish(request, tabId, { status: "end", content: json({
@@ -37,11 +37,9 @@ test("runtime adapter persists dependencies and admits a successor only after re
     assert.deepEqual(fixture.readTask(taskId)!.subTasks.find((item) => item.id === "dependent")!.dependsOn, ["source"]);
     fixture.finishParked("source", { status: "end", content: "source evidence" });
     await waitForLoopPlus(() => fixture.mainCalls.length === 2, "source review held");
-    assert.equal(fixture.attemptCalls.length, 1);
-    assert.match(fixture.mainCalls[1].modelPrompt!, /reason=review_pending/);
-    fixture.releaseHeldMain();
-    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("dependent"), "accepted dependency starts");
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("dependent"), "successor starts before acceptance");
     const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+    assert.equal(snapshot.currentReview?.subtaskId, "source");
     assert.deepEqual(snapshot.running.find((item) => item.subtaskId === "dependent")!.dependsOn, ["source"]);
     assert.deepEqual(snapshot.seenAttempts.find((item) => item.subtaskId === "dependent")!.dependsOn, ["source"]);
     assert.match(fixture.attemptCalls[1].modelPrompt!, /dependsOn.*source/);
@@ -53,6 +51,7 @@ test("runtime adapter persists dependencies and admits a successor only after re
       }) });
     });
     fixture.finishParked("dependent", { status: "end", content: "dependent evidence" });
+    fixture.releaseHeldMain();
     await running;
     assert.equal(fixture.readTask(taskId)!.status, "completed");
     assert.equal(fixture.attemptCalls.length, 2);

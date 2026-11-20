@@ -39,14 +39,14 @@ test("promotes a diamond only after each prerequisite reaches its own success bo
     task("base"),
     task("left", "left-1", ["base"]),
   ]);
-  scheduler.finish({ subtaskId: "base", attemptId: "base-1", outcome: "completed" });
-  assert.deepEqual(scheduler.promotePending().started, []);
-  scheduler.submitReviewBatch([event("base")], "passed");
-  assert.deepEqual(scheduler.promotePending().started.map((item) => item.subtaskId), ["right", "left"]);
-  scheduler.finish({ subtaskId: "right", attemptId: "right-1", outcome: "completed" });
-  scheduler.finish({ subtaskId: "left", attemptId: "left-1", outcome: "completed" });
-  scheduler.submitReviewBatch([event("right"), event("left")], "passed");
-  assert.deepEqual(scheduler.promotePending().started.map((item) => item.subtaskId), ["tip"]);
+  const base = scheduler.finish({ subtaskId: "base", attemptId: "base-1", outcome: "completed" });
+  assert.deepEqual(base.started.map((item) => item.subtaskId), ["right", "left"]);
+  const right = scheduler.finish({ subtaskId: "right", attemptId: "right-1", outcome: "completed" });
+  assert.deepEqual(right.started, []);
+  const left = scheduler.finish({ subtaskId: "left", attemptId: "left-1", outcome: "completed" });
+  assert.deepEqual(left.started.map((item) => item.subtaskId), ["tip"]);
+  scheduler.finish({ subtaskId: "tip", attemptId: "tip-1", outcome: "completed" });
+  assert.deepEqual(scheduler.prepareReviewBatch(4).items.map((item) => item.subtaskId), ["base", "right", "left", "tip"]);
 });
 
 test("keeps dependents pending when their prerequisite is closed", () => {
@@ -58,13 +58,18 @@ test("keeps dependents pending when their prerequisite is closed", () => {
   assert.deepEqual(scheduler.getDependencyBlocks().map((item) => item.reason), ["closed"]);
 });
 
-test("requires successful review or explicit report acknowledgement and uses the newest logical attempt", () => {
-  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
+test("department admission still requires successful review or explicit report acknowledgement", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4, requireAcceptedDependencies: true });
   scheduler.dispatch([task("reviewed"), task("reported", "reported-1", [], false), task("next", "next-1", ["reviewed", "reported"])]);
   scheduler.finish({ subtaskId: "reviewed", attemptId: "reviewed-1", outcome: "completed" });
   scheduler.finish({ subtaskId: "reported", attemptId: "reported-1", outcome: "completed" });
   assert.equal(scheduler.snapshot().pending.some((item) => item.subtaskId === "next"), true);
   assert.deepEqual(scheduler.getDependencyBlocks().map((item) => item.reason), ["review_pending", "report_pending"]);
+  const restored = createLoopPlusScheduler({ snapshot: scheduler.snapshot() });
+  assert.deepEqual(restored.getDependencyBlocks(), []);
+  assert.deepEqual(restored.promotePending().started.map((item) => item.subtaskId), ["next"]);
+  assert.equal(restored.snapshot().reportQueue?.length, 1);
+  assert.equal(restored.snapshot().currentReview?.subtaskId, "reviewed");
   scheduler.submitReviewBatch([event("reviewed")], "passed");
   assert.equal(scheduler.acknowledgeReports([event("reported")]), true);
   assert.equal(scheduler.promotePending().started.some((item) => item.subtaskId === "next"), true);
@@ -77,6 +82,18 @@ test("requires successful review or explicit report acknowledgement and uses the
   scheduler.submitReviewBatch([event("reviewed", "reviewed-2")], "failed");
   scheduler.dispatch([task("after-failure", "after-failure-1", ["reviewed"])]);
   assert.equal(scheduler.getDependencyBlocks().some((item) => item.subtaskId === "after-failure" && item.reason === "failed"), true);
+});
+
+test("ordinary admission uses execution outcomes even after an acceptance verdict", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([task("source")]);
+  scheduler.finish({ subtaskId: "source", attemptId: "source-1", outcome: "completed" });
+  scheduler.submitReviewBatch([event("source")], "failed");
+  assert.deepEqual(scheduler.dispatch([task("successor", "successor-1", ["source"])]).started.map((item) => item.subtaskId), ["successor"]);
+  scheduler.dispatch([task("source", "source-2")]);
+  scheduler.finish({ subtaskId: "source", attemptId: "source-2", outcome: "stopped" });
+  assert.deepEqual(scheduler.dispatch([task("waiting", "waiting-1", ["source"])]).started, []);
+  assert.deepEqual(scheduler.getDependencyBlocks().map((item) => [item.dependencyAttemptId, item.reason]), [["source-2", "failed"]]);
 });
 
 test("rejects unknown dependencies and cycles atomically without changing scheduler state", () => {
