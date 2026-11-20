@@ -13,7 +13,7 @@ import type { DepartmentExecutionObservation } from "../../extensionHost/departm
 import type { LoopPlusRuntimeAdapter } from "../../extensionHost/loopPlusRuntimeAdapter";
 import { DepartmentCapacityPool } from "../../departmentcapacity";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
-import { createLoopPlusScheduler } from "../../loopPlusScheduler";
+import { buildLoopPlusFinishEventId, createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 const { createDepartmentOrchestrationHost } = require("../../extensionHost/departmentorchestration") as typeof import("../../extensionHost/departmentorchestration");
 const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
@@ -231,6 +231,36 @@ test("frozen plan is isolated, live edits rejected, root completion rechecks uns
   assert.equal(h.host.confirmRootComplete("root", "done").ok, false, "old readiness is not authorization");
   assert.equal(h.host.acknowledgeRootRequirements("root", ["新增报表要求"]), true);
   assert.equal(h.host.confirmRootComplete("root", "总监依据组长汇报确认完成").ok, true);
+});
+
+test("department recovery corrects a released report-only leader without upgrading a blocked leader", async (t) => {
+  const h = harness(); t.after(() => h.fixture.dispose());
+  const root = h.register("root", ["accounts"]);
+  h.finish();
+  const leader = await h.host.startLeader(root.id, request("accounts"));
+  assert.ok(leader.ok);
+  await leader.done;
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "verify", attemptId: "verify-attempt", requiresAcceptance: false }]);
+  scheduler.finish({ subtaskId: "verify", attemptId: "verify-attempt", outcome: "completed" });
+  scheduler.acknowledgeReports([buildLoopPlusFinishEventId("verify", "verify-attempt")]);
+  assert.equal(scheduler.complete().ok, true);
+  h.update(leader.taskId, { loopPlus: scheduler.snapshot(), subTasks: [{ id: "verify", title: "验证", prompt: "汇报结果", status: "completed", requiresAcceptance: false }] });
+
+  const original = h.host.runtimeSnapshot(root.id)!;
+  const capacity = { rootTaskId: root.id, ...root.department!.limits, leaders: [], employees: [] };
+  for (const status of ["failed", "blocked"] as const) {
+    const recovery = createDepartmentOrchestrationHost({ ...h.deps, capacity: new DepartmentCapacityPool(root.department!.limits) });
+    const saved = { ...original, leaders: original.leaders.map((member) => ({ ...member, status })) };
+    const rootTask = h.read(root.id)!;
+    assert.deepEqual(recovery.recoverRoot(rootTask, rootTask.department, rootTask.loopPlusAcceptancePlan!, saved,
+      [{ ...capacity, leaders: ["accounts"] }]), { ok: false, reason: "leader-occupancy-mismatch" });
+    assert.deepEqual(recovery.recoverRoot(rootTask, rootTask.department, rootTask.loopPlusAcceptancePlan!, saved, [capacity]), { ok: true });
+    const expected = status === "failed" ? "completed" : "blocked";
+    assert.equal(h.snapshots.get(root.id)?.leaders[0].status, expected);
+    assert.match(recovery.directorCoordinationContext(root.id), new RegExp(`"organizationStatus": "${expected}"`));
+    assert.equal(recovery.canCompleteRoot(root.id), status === "failed");
+  }
 });
 
 test("per-root live recovery observes real adapter cleanup, preserves another root, and never restarts live attempts", async (t) => {

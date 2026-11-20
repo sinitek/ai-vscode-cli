@@ -1007,6 +1007,8 @@ Loop 的缺失诊断自动补充一次；Loop+ 复用一次剩余工作复核与
 
 非 Codex/OpenCode 的交互式员工由原 Loop+ runner 执行。新员工 Tab 尚无 transcript session 时，宿主先为该 Tab 创建本地会话键，再准备 runner；CLI 握手回传的 native session 仍单独绑定到账本。未启动的 attempt 返回原始失败并记录安全阶段、attempt 和错误码，未知清理仍保留容量。
 
+组长确认免验收子任务的成功汇报后，该子任务计入组长完成。总监在组长结算后收到该组已完成的状态，并继续协调其余运行中的组。已释放占用的旧误判记录可在通过现有组织恢复核验后校正。
+
 ## 2026-11-19 产研部 Codex 员工大工具输出
 
 Codex 员工的工具输出走原 Owner 私有通道的有界分片传输；兼容转换后超过单帧限制的合法工具事件仍完整、按序交付，不因单帧超限中断子任务。真正超出回调预算、通道丢失或未确认消费仍按原门禁保留责任和容量，不自动重跑。见[生产启动设计](../design-docs/department-codex-production-bootstrap.md#消费和资源事实)及 `src/test/runtime/departmentcodexbootstrap.test.ts`。

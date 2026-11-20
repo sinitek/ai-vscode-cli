@@ -10,7 +10,7 @@ function completed(task: LoopTaskRecord | null): boolean {
   const snapshot = task?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
   if (snapshot) createLoopPlusScheduler({ snapshot });
   if (!task || task.status !== "completed" || !snapshot?.completed || snapshot.parentStopped
-    || snapshot.running.length || snapshot.pending.length || snapshot.reviewQueue.length || snapshot.currentReview
+    || snapshot.running.length || snapshot.pending.length || snapshot.reportQueue?.length || snapshot.reviewQueue.length || snapshot.currentReview
     || snapshot.userMessageQueue.length || task.pendingClarification
     || !task.completionRequirementCoverage.length || !task.completionRequirementCoverage.every((item) => item.passed === true)) return false;
   const tasks = new Map(task.subTasks.map((item) => [item.id, item]));
@@ -39,9 +39,16 @@ function completed(task: LoopTaskRecord | null): boolean {
   // Map insertion order follows first attempts, so explicitly use latest chronological order.
   const ordered = [...latest.entries()].sort((a, b) => b[1].index - a[1].index);
   for (const [id, { attempt }] of ordered) {
+    const subtask = tasks.get(id)!;
+    if (attempt.disposition === "reported") {
+      if (attempt.requiresAcceptance !== false || subtask.requiresAcceptance !== false || subtask.repairSource
+        || attempt.outcome !== "completed" || subtask.status !== "completed") return false;
+      settled.add(id);
+      continue;
+    }
     if (attempt.disposition !== "reviewed") return false;
     if (attempt.acceptance === "passed") {
-      if (attempt.outcome !== "completed" || tasks.get(id)!.status !== "completed") return false;
+      if (attempt.outcome !== "completed" || subtask.status !== "completed") return false;
       settled.add(id);
     } else {
       const repairs = children.get(id);

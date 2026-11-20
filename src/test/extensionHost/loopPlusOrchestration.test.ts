@@ -350,6 +350,8 @@ test("no-acceptance completion wakes the main task to read its report and contin
   await run.done;
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.every((item) => item.disposition === "reported"), true);
+  const { isDepartmentLeaderCompleted } = require("../../loopPlusCompletion") as typeof import("../../loopPlusCompletion");
+  assert.equal(isDepartmentLeaderCompleted(env.tasks.get(run.taskId!)!), true);
   assert.equal(env.acceptanceFeedback.length, 0);
 });
 

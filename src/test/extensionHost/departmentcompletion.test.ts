@@ -5,7 +5,7 @@ import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSched
 import type { LoopTaskRecord } from "../../loopTaskStore";
 
 type CompletedTask = LoopTaskRecord & { loopPlus: LoopPlusSchedulerSnapshot };
-function task(): CompletedTask {
+function task(report?: { acknowledged: boolean }): CompletedTask {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 6 });
   scheduler.dispatch([{ subtaskId: "source", attemptId: "a1" }]);
   scheduler.finish({ subtaskId: "source", attemptId: "a1", outcome: "stopped" });
@@ -15,16 +15,44 @@ function task(): CompletedTask {
   scheduler.finish({ subtaskId: "repair", attemptId: "a2", outcome: "completed" });
   scheduler.claimNextReview();
   scheduler.submitReviewBatch([buildLoopPlusFinishEventId("repair", "a2")], "passed");
+  if (report) {
+    scheduler.dispatch([{ subtaskId: "verify", attemptId: "a3", requiresAcceptance: false, dependsOn: ["repair"] }]);
+    scheduler.finish({ subtaskId: "verify", attemptId: "a3", outcome: "completed" });
+    if (report.acknowledged) scheduler.acknowledgeReports([buildLoopPlusFinishEventId("verify", "a3")]);
+  }
   scheduler.complete();
   return { status: "completed", completionRequirementCoverage: [{ name: "scope", passed: true }],
     subTasks: [{ id: "source", title: "source", status: "completed" },
-      { id: "repair", title: "repair", status: "completed", repairSource: { subtaskId: "source", attemptId: "a1", finishEventId: buildLoopPlusFinishEventId("source", "a1") } }],
+      { id: "repair", title: "repair", status: "completed", repairSource: { subtaskId: "source", attemptId: "a1", finishEventId: buildLoopPlusFinishEventId("source", "a1") } },
+      ...(report ? [{ id: "verify", title: "verify", status: "completed", requiresAcceptance: false, dependsOn: ["repair"] }] : [])],
     loopPlus: scheduler.snapshot() } as CompletedTask;
 }
 test("department settlement accepts proven repair without erasing stopped history", () => {
   const value = task(); assert.equal(isDepartmentLeaderCompleted(value), true);
   assert.equal(value.loopPlus!.seenAttempts[0].acceptance, "failed");
   assert.equal(value.loopPlus!.seenAttempts[0].outcome, "stopped");
+});
+test("department settlement accepts a report-only verification after its report is acknowledged", () => {
+  const value = task({ acknowledged: true });
+  assert.equal(value.loopPlus.seenAttempts.at(-1)?.disposition, "reported");
+  assert.equal(isDepartmentLeaderCompleted(value), true);
+
+  value.subTasks[2].status = "blocked";
+  assert.equal(isDepartmentLeaderCompleted(value), false);
+  value.subTasks[2].status = "completed";
+  value.subTasks[2].requiresAcceptance = true;
+  assert.equal(isDepartmentLeaderCompleted(value), false);
+});
+test("department settlement rejects a pending report even if the task and snapshot say completed", () => {
+  const value = task({ acknowledged: false });
+  value.loopPlus.completed = true;
+  assert.equal(isDepartmentLeaderCompleted(value), false);
+});
+test("department settlement requires formal acceptance for repairs of failed reviews", () => {
+  const value = task({ acknowledged: true });
+  value.loopPlus.seenAttempts[1].acceptance = "failed";
+  value.subTasks[2].repairSource = { subtaskId: "repair", attemptId: "a2", finishEventId: buildLoopPlusFinishEventId("repair", "a2") };
+  assert.equal(isDepartmentLeaderCompleted(value), false);
 });
 for (const [name, change] of Object.entries<(value: CompletedTask) => void>({
   "session reuse alone": (v) => { delete v.subTasks[1].repairSource; v.subTasks[1].continueFromSubtaskId = "source"; },

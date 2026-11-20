@@ -7714,6 +7714,19 @@
       ]
     },
     {
+      "id": "plugin.rule.department_report_only_settlement",
+      "name": "已确认的免验收汇报计入组长交付结算",
+      "description": "组长任务终结时，免验收子任务与最新 attempt 均明确免验收，执行成功且汇报已确认（reported），可计入组长完成。修复链仍需正式验收，组长保留最终需求覆盖门禁。已标失败且无活跃执行和容量占用的旧记录，在既有组织身份与恢复门禁通过后可重新校验交付结算。Owner 清理和容量释放使用独立凭证。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.loop_task"],
+      "source_refs": [
+        { "path": "src/loopPlusCompletion.ts" },
+        { "path": "src/extensionHost/departmentorchestration.ts" },
+        { "path": "src/test/extensionHost/departmentcompletion.test.ts" },
+        { "path": ".ch/docs/design-docs/department-mode.md" }
+      ]
+    },
+    {
       "id": "plugin.rule.department_modal_authorization",
       "name": "部门弹窗绑定与执行生命周期分离",
       "description": "总监页内组长弹窗复用完整 Loop+ 操作和根只读方案；动作及 await 后副作用/回包重核真实记录、唯一模块归属、workspace 和当前 taskId/instanceId。普通内容更新与 modal 共用精确同源 VS Code shell 的 active-frame 归属判定；opaque child 仍须精确 source、null origin、channel、task/instance 和 allow-scripts sandbox，宿主授权不放宽。关闭仅释放展示/提问/资源订阅，不停止已提交执行，恢复原入口焦点及阅读位置；根控制缺失拒绝，不回落普通任务。tab 原名/编号/重命名及持久化保持，仅装饰 👴🏻/👨🏻/👶🏻，完整身份在 tooltip。隔离 macOS 深色真实 EH 已验证精确组长历史 srcdoc/适用操作栏、单次 load/close 无 stop、120→120、可见 275px/完整 tooltip/无溢出及正常退出无残留/owner marker；失败中间运行仍属失败，未证明运行态操作栏、跨主题 EH、模型或冷恢复。",

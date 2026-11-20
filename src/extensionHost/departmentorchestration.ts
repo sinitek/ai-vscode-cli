@@ -501,11 +501,13 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       if (!equal({ maxLeaders: capacity.maxLeaders, maxEmployees: capacity.maxEmployees }, metadata.limits)) return { ok: false, reason: "capacity-mismatch" };
       const observations = new Map<string, DepartmentExecutionObservation>();
       const sessionIdentities = new Set<string>();
+      const occupiedModules = new Set(capacity.leaders);
       for (const item of saved.leaders) {
         if (owners.has(item.taskId) || !task.subTasks.some((module) => module.id === item.leaderSubtaskId)) return { ok: false, reason: "invalid-member" };
         const storedTask = leaderTask(root, item), storedMetadata = expected(root, item.leaderSubtaskId);
         const storedIdentity = storedTask && storedMetadata && deps.verifyStoredLeaderIdentity?.(clone(storedTask), clone(storedMetadata), item.generation ?? 0);
-        if (!storedTask || !schedulerSnapshot(storedTask) || (deps.verifyStoredLeaderIdentity && !storedIdentity))
+        const scheduler = schedulerSnapshot(storedTask);
+        if (!storedTask || !scheduler || (deps.verifyStoredLeaderIdentity && !storedIdentity))
           return { ok: false, reason: "unverified-leader-session-or-plan" };
         const verified = inspect(root, item);
         // A durable identity permits only this read-only refusal. It cannot
@@ -516,6 +518,8 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         if (sessionIdentities.has(sessionKey)) return { ok: false, reason: "duplicate-leader-session" };
         sessionIdentities.add(sessionKey);
         const member: Member = { ...item, generation: item.generation ?? 0, lease: null, run: null, target: verified.target };
+        if (member.status === "failed" && !verified.live && !occupiedModules.has(member.leaderSubtaskId)
+          && scheduler.seenAttempts.some((attempt) => attempt.disposition === "reported") && completed(storedTask)) member.status = "completed";
         root.members.set(member.taskId, member); root.modules.set(member.leaderSubtaskId, member.taskId);
         if (verified.live) observations.set(member.taskId, verified.live);
         if (deps.readTask(member.taskId)?.status === "running" && !verified.live) return { ok: false, reason: "live-leader-unverifiable" };

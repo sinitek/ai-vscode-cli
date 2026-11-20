@@ -3061,3 +3061,8 @@ rm -r "$result_directory"
 - 清理：捕获真实 runner，并等待原 child `close` 或 Claude SDK iterator 排空；DSH/Kimi 重复清理观察不能取消仍在等待的信号升级。使用 adapter 资源管理的部门员工也要等原 Owner 观察成功，再清理目录/Tab 和归还名额。
 - 验证：`departmentinteractiveruntime.test.ts` 覆盖全部通用组长、多轮、混合员工、停止、失败及真实免费 Grok ACP 子进程；配置/Webview 覆盖七种可选，Claude 回归检查 UUID 授权先于 SDK 启动。验证不修改用户旧任务或 Owner/容量文件；当前安装版须另行加载源码构建结果。
 - 记录：本方案取代早先只允许两种 CLI 的临时处理，见[修复计划](../exec-plans/completed/2026-11/2026-11-17-bugfix-department-all-cli-execution.md)。
+
+## 组长完成但总监汇报组织状态失败
+
+- 排查时对读组长任务的 `status`、最新子任务尝试的 `disposition`、最终需求覆盖、组织成员状态和容量占用。成功且已确认的免验收汇报在调度器中使用 `reported`，正式验收使用 `reviewed`。
+- 完成判定应覆盖两种合法终态。保持修复链的正式验收要求，并独立核对 Owner 清理和容量。旧误判由通过核验的组织恢复修正，历史总监消息继续作为原始记录。
