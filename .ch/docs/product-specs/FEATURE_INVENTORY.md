@@ -242,7 +242,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 - 子任务标签创建后立即显示运行中，首次页面刷新即可看到运行反馈，涵盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时及时显示停止或错误。
 - 两种模式共用子任务启动间隔为 1 秒，首个子任务无需等待；调度并发、冲突排队与实际执行时间沿用现有规则。
-- 实现：`src/extensionHost/sessionTabs.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归覆盖新建/续接会话、跨 CLI 标签、准备取消/失败及一秒间隔。
+- 经典 Loop 派发后台子任务时，仅当所属主任务仍为活动标签才临时切换到子任务；用户切换到其他 Loop / Loop+ 主任务后，子任务完成、失败及并行组收尾都不抢回焦点。两种模式的后台状态快照携带标签选择版本，迟到的旧快照不能覆盖用户最近选择的主任务标签；Loop+ 调度行为不变。
+- 实现：`src/extension.ts`、`src/extensionHost/sessionTabs.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/panelMessageHandlers/session.ts`、`src/panelStateBuilder.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/historyPanels.ts`；回归覆盖新建/续接会话、跨 CLI 标签、后台快照选择版本、准备取消/失败及一秒间隔。
 
 ## Loop 群聊成员状态
 

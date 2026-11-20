@@ -1169,7 +1169,7 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   mainTab.click();
   assert.deepEqual(postedTabActions(posted, beforeMain), [
     { type: "openLoopGroupChat", taskId: "task-main" },
-    { type: "selectConversationTab", tabId: "main-tab", cli: "codex" },
+    { type: "selectConversationTab", tabId: "main-tab", cli: "codex", selectionRevision: 1 },
   ]);
 
   window.dispatchMessage({
@@ -1193,9 +1193,9 @@ test("opens the Loop group chat when the main task tab is clicked", () => {
   conversationTabByLabel(document, "Claude")?.click();
   conversationTabByLabel(document, "Codex3")?.click();
   assert.deepEqual(postedTabActions(posted, beforeOthers), [
-    { type: "selectConversationTab", tabId: "sub-tab", cli: "codex" },
-    { type: "selectConversationTab", tabId: "plain-tab", cli: "claude" },
-    { type: "selectConversationTab", tabId: "blank-main-tab", cli: "codex" },
+    { type: "selectConversationTab", tabId: "sub-tab", cli: "codex", selectionRevision: 2 },
+    { type: "selectConversationTab", tabId: "plain-tab", cli: "claude", selectionRevision: 3 },
+    { type: "selectConversationTab", tabId: "blank-main-tab", cli: "codex", selectionRevision: 4 },
   ]);
 
   window.dispatchMessage({
@@ -1231,7 +1231,7 @@ test("selects a department leader conversation without opening its group chat", 
   selectedLeader.dispatchEvent({ type: "keydown", key: "Enter" });
   selectedLeader.dispatchEvent({ type: "keydown", key: " " });
   assert.deepEqual(postedTabActions(posted, beforeLeader), [
-    { type: "selectConversationTab", tabId: "leader-tab", cli: "codex" },
+    { type: "selectConversationTab", tabId: "leader-tab", cli: "codex", selectionRevision: 1 },
   ]);
 
   const beforeDirector = posted.length;
@@ -1240,7 +1240,7 @@ test("selects a department leader conversation without opening its group chat", 
   directorTab.click();
   assert.deepEqual(postedTabActions(posted, beforeDirector), [
     { type: "openLoopGroupChat", taskId: "director-task" },
-    { type: "selectConversationTab", tabId: "director-tab", cli: "codex" },
+    { type: "selectConversationTab", tabId: "director-tab", cli: "codex", selectionRevision: 2 },
   ]);
   assert.equal(posted.some(message => message.type === "webviewError"), false);
 });
@@ -2628,6 +2628,41 @@ test("默认过滤子任务并保留主任务、普通及旧会话，取消勾�
   assert.equal(list.children.length, 3);
 });
 
+test("history selects an open conversation tab with the next selection revision", () => {
+  const { document, window, posted } = createRuntimeHarness();
+  const tabs = [
+    { id: "main-a", cli: "codex", loopTaskRole: "main", loopTaskId: "task-a" },
+    { id: "main-b", cli: "codex", loopTaskRole: "main", loopTaskId: "task-b" },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    sessionState: {
+      currentSessionId: "history-session",
+      sessions: [{
+        id: "history-session",
+        cli: "codex",
+        label: "历史主任务",
+        firstPrompt: "恢复任务",
+        createdAt: 1,
+        isLoopSession: true,
+        isOpenInConversationTabs: true,
+        openConversationTabId: "main-a",
+        taskRole: "main",
+      }],
+    },
+    conversationTabs: { activeTabId: "main-b", selectionRevision: 4, tabs },
+  }) });
+  document.getElementById("historyButton").click();
+  document.getElementById("historyTabSessions").click();
+  const loadButton = document.getElementById("sessionList").children[0]
+    .querySelectorAll("button")
+    .find((button: FakeElement) => button.textContent === WEBVIEW_STRINGS.sessionLoadLabel);
+  assert.ok(loadButton);
+  loadButton.click();
+  assert.deepEqual(posted.at(-1), {
+    type: "selectConversationTab", tabId: "main-a", cli: "codex", selectionRevision: 5,
+  });
+});
+
 test("子任务过滤叠加关键词搜索且不影响历史提示词", () => {
   const { document, window } = createRuntimeHarness();
   window.dispatchMessage({ type: "state", payload: createPanelState({
@@ -3763,6 +3798,45 @@ test("closing the active tab immediately selects its neighbor without overriding
   assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
   window.dispatchMessage({ type: "conversationTabClosed", tabId: "tab-2", activeTabId: "tab-1" });
   assert.equal(api.state.conversationTabs.activeTabId, "tab-3");
+});
+
+test("Loop+ background tab snapshots cannot override a newer main-task tab selection", () => {
+  const { api, document, window, posted } = createRuntimeHarness(undefined, undefined, [...CLI_LIST]);
+  const tabs = [
+    { id: "main-a", cli: "codex", loopTaskRole: "main", loopTaskId: "task-a" },
+    { id: "main-b", cli: "claude", loopTaskRole: "main", loopTaskId: "task-b" },
+  ];
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "main-a", selectionRevision: 0, tabs },
+  }) });
+
+  document.getElementById("conversationTabs").querySelectorAll(".conversation-tab")[1].click();
+  assert.equal(api.state.conversationTabs.activeTabId, "main-b");
+  assert.deepEqual(posted.find((message) => message.type === "selectConversationTab"), {
+    type: "selectConversationTab", tabId: "main-b", cli: "claude", selectionRevision: 1,
+  });
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    interactiveMode: "loop_plus",
+    conversationTabs: {
+      activeTabId: "main-a",
+      selectionRevision: 0,
+      tabs: [...tabs, { id: "loopplus-subtask", cli: "codex", loopTaskRole: "subtask", loopTaskId: "task-a" }],
+    },
+  }) });
+  assert.equal(api.state.conversationTabs.activeTabId, "main-b");
+  assert.ok(api.state.conversationTabs.tabs.some((tab: { id: string }) => tab.id === "loopplus-subtask"));
+
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "main-b", selectionRevision: 1, tabs: [...tabs] },
+  }) });
+  window.dispatchMessage({ type: "state", payload: createPanelState({
+    interactiveMode: "loop_plus",
+    conversationTabs: { activeTabId: "main-a", selectionRevision: 0, tabs: [...tabs] },
+  }) });
+  assert.equal(api.state.conversationTabs.activeTabId, "main-b");
 });
 
 test("failed creation removes the placeholder and unblocks another attempt", () => {

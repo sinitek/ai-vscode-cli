@@ -641,6 +641,32 @@ test("tab selection does not publish stale panel state after another tab becomes
   assert.deepEqual(events, ["messages"]);
 });
 
+test("tab selection ignores an older selection revision", async (t) => {
+  const harness = createHarness();
+  t.after(harness.restore);
+  let selectionRevision = 0;
+  harness.deps.getConversationTabSelectionRevision = () => selectionRevision;
+  harness.deps.setConversationTabSelectionRevision = (revision) => { selectionRevision = revision; };
+  harness.state.tabs.set("tab-claude", {
+    id: "tab-claude",
+    cli: "claude",
+    sessionId: "claude-session",
+    sessionIdByCli: { claude: "claude-session" },
+    createdAt: 2,
+  });
+
+  await handlePanelMessageWithDeps({
+    type: "selectConversationTab", cli: "claude", tabId: "tab-claude", selectionRevision: 2,
+  }, harness.deps);
+  await handlePanelMessageWithDeps({
+    type: "selectConversationTab", cli: "codex", tabId: "tab-codex", selectionRevision: 1,
+  }, harness.deps);
+
+  assert.equal(harness.state.activeTabId, "tab-claude");
+  assert.equal(selectionRevision, 2);
+  assert.deepEqual(harness.calls.sessionMessages, [{ cli: "claude", sessionId: "claude-session", tabId: "tab-claude" }]);
+});
+
 test("opening a history session restores its execution configuration but choosing a CLI group does not", async (t) => {
   const harness = createHarness();
   t.after(harness.restore);

@@ -15,6 +15,7 @@ import { withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../../loopDirectExecutionPolicy";
+import { buildLoopSubtaskExecutionPlan } from "../../loopParallel";
 
 installVscodeMock();
 
@@ -300,11 +301,17 @@ test(`Loop+ ${mainCli} directly handles initial and supplemental work without ch
 for (const subtaskCli of CLI_LIST) {
 for (const mainCli of [subtaskCli, subtaskCli === "codex" ? "grok" : "codex"] as const) {
   const sameCli = subtaskCli === mainCli;
-for (const reuseSession of [false, true]) {
-test(`classic Loop ${reuseSession ? "restores a continuous task session" : "creates a fresh task session"} from ${mainCli} on ${subtaskCli}`, async () => {
+const focusScenarios = subtaskCli === "codex" && mainCli === "codex"
+  ? ["background", "switch-before-subtask", "switch-during-subtask", "parallel-switch-during-subtask", "foreground"] as const
+  : ["background", "switch-before-subtask", "switch-during-subtask", "foreground"] as const;
+for (const focusScenario of focusScenarios) {
+for (const reuseSession of focusScenario === "parallel-switch-during-subtask" ? [false] : [false, true]) {
+test(`classic Loop ${focusScenario} focus while ${reuseSession ? "restoring a continuous task session" : "creating a fresh task session"} from ${mainCli} on ${subtaskCli}`, async () => {
   const created: PromptRunTarget[] = [];
   const systemMessages: Array<{ tabId: string; content: string }> = [];
   const prompts: Array<{ input: PromptRunInput; targetTabId?: string }> = [];
+  const visibleTabSwitches: string[] = [];
+  let activeTabId = focusScenario === "background" ? "other-main-tab" : "main-tab";
   const parent: PromptRunTarget = { tabId: "main-tab", cli: mainCli, sessionId: "main-session" };
   const task = loopTask({
     cli: mainCli,
@@ -334,16 +341,28 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
       created.push(target);
       return target;
     },
-    prepareLoopSubtaskCommunicationFile: () => "/tmp/loop-comm/sub.md",
+    prepareLoopSubtaskCommunicationFile: () => {
+      if (focusScenario === "switch-before-subtask") activeTabId = "other-main-tab";
+      return "/tmp/loop-comm/sub.md";
+    },
     buildLoopSubtaskStartedText: () => "started",
     appendLoopMainSubChatSubtaskStarted: () => undefined,
     getLoopSubtaskDisplayTitle: (_index: number, subtask: { title?: string }) => subtask.title ?? "subtask",
+    getLoopMainSubChatMainTitle: () => "Loop",
+    buildLoopSubtaskExecutionPlan,
+    buildLoopSubtaskBatchStartedText: () => "batch started",
+    buildLoopSubtaskBatchCompletedText: () => "batch completed",
     formatLoopGroupChatMemberName: (title: string) => title,
     ensureLoopMainSubChatTranscript: () => "/tmp/loop-comm/main.md",
     appendTextFileEnsuringDir: () => undefined,
     getLastLoopAssistantContent: () => "done",
     mapLoopRunStatusToSubagentStatus: () => "completed",
-    switchVisibleConversationTabForLoop: async () => undefined,
+    getActiveConversationTabId: () => activeTabId,
+    switchVisibleConversationTabForLoop: async (tabId: string) => {
+      activeTabId = tabId;
+      visibleTabSwitches.push(tabId);
+      return { cli: mainCli, sessionId: "main-session" };
+    },
     isLoopTaskExecutionInterrupted: () => false,
     readLoopTaskRecord: () => task,
     getActiveLoopSubtaskIds: () => [],
@@ -353,6 +372,9 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
     resolvePromptRunThinkingModeForRole: (input: PromptRunInput) => input.loopSubtaskThinkingMode,
     runPrompt: async (input: PromptRunInput, options: { targetTabId?: string }) => {
       prompts.push({ input, targetTabId: options.targetTabId });
+      if (focusScenario === "switch-during-subtask" || focusScenario === "parallel-switch-during-subtask") {
+        activeTabId = "other-main-tab";
+      }
     },
     getLoopRoundRunStatus: () => "end",
     appendLoopRound: () => undefined,
@@ -362,12 +384,15 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   } as never);
 
   const subtask = { ...(reuseSession ? { continueFromSubtaskId: "previous" } : {}), id: "sub-1", title: "Implement", prompt: "do the work", status: "pending" as const };
+  const subtasks = focusScenario === "parallel-switch-during-subtask"
+    ? [subtask, { ...subtask, id: "sub-2", title: "Review" }]
+    : [subtask];
   const runOptions: Parameters<typeof host.runLoopSubtasksBatchWithRetry>[0] = {
     input: { displayPrompt: "ship it", modelPrompt: "ship it", contextTags: [], model: "gpt-6.1-sol", loopSubtaskModel: "stale-subtask-model", loopSubtaskThinkingMode: "low" },
     target: parent,
     task,
     round: 1,
-    subtasks: [subtask],
+    subtasks,
   };
   const pending = host.runLoopSubtasksBatchWithRetry(runOptions);
   assert.equal(host.isSubtaskRunning(task.id, subtask.id), true);
@@ -377,10 +402,15 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   assert.equal(status[0]?.status, "end");
   assert.equal(resumedStatus, "end");
   assert.equal(host.isSubtaskRunning(task.id, subtask.id), false);
-  assert.equal(prompts.length, 1);
+  assert.equal(prompts.length, subtasks.length);
   assert.equal(parent.cli, mainCli);
   assert.equal(parent.sessionId, "main-session");
-  assert.equal(created.length, 1);
+  assert.equal(created.length, subtasks.length);
+  const expectedTabSwitches = focusScenario === "foreground"
+    ? [`sub-${subtaskCli}`, "main-tab"]
+    : focusScenario === "switch-during-subtask" ? [`sub-${subtaskCli}`] : [];
+  assert.equal(activeTabId, focusScenario === "foreground" ? "main-tab" : "other-main-tab");
+  assert.deepEqual(visibleTabSwitches, expectedTabSwitches);
   assert.equal(created[0]?.cli, subtaskCli);
   assert.equal(created[0]?.sessionId, reuseSession ? "claude-previous" : null);
   assert.equal(created[0]?.tabId, `sub-${subtaskCli}`);
@@ -408,6 +438,7 @@ test(`classic Loop ${reuseSession ? "restores a continuous task session" : "crea
   assert.equal(systemMessages.some((message) => message.tabId === created[0]?.tabId), false);
 });
 
+}
 }
 }
 }

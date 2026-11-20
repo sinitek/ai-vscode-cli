@@ -36,6 +36,8 @@ type SessionPanelMessageDeps = Pick<
   | "repairSupersededLocalSession"
   | "findConversationTabIdBySession"
   | "setActiveConversationTab"
+  | "getConversationTabSelectionRevision"
+  | "setConversationTabSelectionRevision"
   | "restoreConversationTabConfiguration"
   | "getActiveConversationTabId"
   | "updateStatusBar"
@@ -239,6 +241,15 @@ export function createSessionPanelMessageHandlers(
       if (!deps.getConversationTabById(message.tabId)) {
         return;
       }
+      const currentSelectionRevision = deps.getConversationTabSelectionRevision?.() ?? 0;
+      const requestedSelectionRevision = typeof message.selectionRevision === "number"
+        && Number.isSafeInteger(message.selectionRevision)
+        ? message.selectionRevision
+        : currentSelectionRevision + 1;
+      if (requestedSelectionRevision <= currentSelectionRevision) {
+        return;
+      }
+      deps.setConversationTabSelectionRevision?.(requestedSelectionRevision);
       const previousCli = deps.getCurrentCli();
       if (!deps.hasAnyTaskRunning()) {
         deps.disposeAllInteractiveRunners();

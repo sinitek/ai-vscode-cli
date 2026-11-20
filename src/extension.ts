@@ -282,6 +282,7 @@ import { buildCliCommandNotFoundMessage, buildCodexImageSupportWarningKey, build
 import { type PromptHistoryStore } from "./promptHistoryStore";
 import { appendAssistantChunkToStore, appendMessageToStore, buildTaskRunCompletionText as buildTaskRunCompletionTextWithLabels, cleanupTaskStoreRetention as cleanupTaskStoreRetentionWithDeps, isInteractiveMode, isLoopTaskRole, isMacTaskShell, isThinkingMode, isLoopTaskCompleted, normalizeVisibleInteractiveMode, normalizeRawStreamContent, readTaskStore as readTaskStoreWithDeps, sendPanelMessageWithActiveTab, writeTaskStore as writeTaskStoreWithDeps, type LoopTaskRole, type RunActivity, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "./promptRunState";
 let currentCli: CliName;
+let conversationTabSelectionRevision = 0;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let extensionUri: vscode.Uri;
 let viewProvider: CliBridgeViewProvider | undefined;
@@ -1190,6 +1191,8 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     repairSupersededLocalSession,
     findConversationTabIdBySession,
     setActiveConversationTab,
+    getConversationTabSelectionRevision: () => conversationTabSelectionRevision,
+    setConversationTabSelectionRevision: (revision) => { conversationTabSelectionRevision = revision; },
     restoreConversationTabConfiguration,
     updateStatusBar,
     getWorkspaceSettings: () => workspaceSettings,
@@ -1381,6 +1384,7 @@ async function buildPanelState(): Promise<PanelState> {
 async function buildPanelStateWithConfigState(
   configState?: PanelState["configState"]
 ): Promise<PanelState> {
+  const selectionRevision = conversationTabSelectionRevision;
   ensureWorkspaceSessionStore();
   const states = await loadConfigStateByCli(
     loadConfigState,
@@ -1390,12 +1394,13 @@ async function buildPanelStateWithConfigState(
   await modelSettingsHost.refreshConfigModels(states);
   await refreshOpenCodeThinkingState(states[currentCli]);
   await refreshLoopSubtaskOpenCodeModels(states.opencode);
-  return buildPanelStateFromConfigState(states[currentCli], states);
+  return buildPanelStateFromConfigState(states[currentCli], states, selectionRevision);
 }
 
 function buildPanelStateFromConfigState(
   configState: PanelState["configState"],
   configStateByCli: PanelState["configStateByCli"],
+  selectionRevision: number,
 ): PanelState {
   return buildPanelStateWithDeps({
     currentCli,
@@ -1439,7 +1444,7 @@ function buildPanelStateFromConfigState(
     isInteractiveSupported,
     getProjectRulePaths,
     buildSessionState,
-    buildConversationTabsState,
+    buildConversationTabsState: () => ({ ...buildConversationTabsState(), selectionRevision }),
     buildPromptHistoryState,
     buildHumanInteractionHistoryState: () => readHumanInteractionHistory(getHumanInteractionHistoryOptions()),
     buildScheduledTasksState,
@@ -1701,6 +1706,7 @@ const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionS
 loopOrchestrationHost = createLoopOrchestrationHost({
   handleDepartmentDecision: (request) => getDepartmentRuntimeComposition().handleDirectorDecision(request),
   isTabRunActive,
+  getActiveConversationTabId,
   hasActiveSubtasks: hasActiveLoopSubtasks,
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
   subtaskRoundLimit: () => modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),

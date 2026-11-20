@@ -2226,6 +2226,17 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       let pendingConversationCreate = null;
       const requestedConversationTabCloses = new Map();
+      let latestConversationTabSelectionRevision = Number.isSafeInteger(state.conversationTabs?.selectionRevision)
+        ? state.conversationTabs.selectionRevision
+        : 0;
+
+      function nextConversationTabSelectionRevision() {
+        latestConversationTabSelectionRevision += 1;
+        if (state.conversationTabs) {
+          state.conversationTabs.selectionRevision = latestConversationTabSelectionRevision;
+        }
+        return latestConversationTabSelectionRevision;
+      }
 
       function isCreatingConversationTab(tabId) {
         return Boolean(pendingConversationCreate && pendingConversationCreate.tab.id === tabId);
@@ -2240,7 +2251,12 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function reconcileConversationTabMutations(snapshot, previousActiveTabId) {
-        if (!pendingConversationCreate && !requestedConversationTabCloses.size) return snapshot;
+        const snapshotRevision = Number.isSafeInteger(snapshot.selectionRevision) ? snapshot.selectionRevision : 0;
+        const preserveNewerLocalSelection = snapshotRevision < latestConversationTabSelectionRevision;
+        if (!preserveNewerLocalSelection) {
+          latestConversationTabSelectionRevision = snapshotRevision;
+        }
+        if (!preserveNewerLocalSelection && !pendingConversationCreate && !requestedConversationTabCloses.size) return snapshot;
         const incomingIds = new Set(snapshot.tabs.map((tab) => tab.id));
         for (const [tabId, request] of requestedConversationTabCloses) {
           if (request.closed && !incomingIds.has(tabId)) requestedConversationTabCloses.delete(tabId);
@@ -2250,7 +2266,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (creatingTab && !incomingIds.has(creatingTab.id) && !requestedConversationTabCloses.has(creatingTab.id)) {
           tabs.push(creatingTab);
         }
-        const preferLocalSelection = creatingTab || requestedConversationTabCloses.has(snapshot.activeTabId);
+        const preferLocalSelection = preserveNewerLocalSelection || creatingTab || requestedConversationTabCloses.has(snapshot.activeTabId);
         const activeTabId = preferLocalSelection && tabs.some((tab) => tab.id === previousActiveTabId)
           ? previousActiveTabId
           : tabs.some((tab) => tab.id === snapshot.activeTabId) ? snapshot.activeTabId : (tabs[0]?.id ?? null);
@@ -2464,6 +2480,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           const selectTab = () => {
             const opensGroupChat = openLoopGroupChatForMainTaskTab(tab);
             if (tab.id !== activeTabId) {
+              const selectionRevision = nextConversationTabSelectionRevision();
               applyAutoInteractiveModeForTab(tab);
               if (state.conversationTabs) {
                 state.conversationTabs.activeTabId = tab.id;
@@ -2475,7 +2492,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
                 updateContextTokenUsage();
               }
               armPromptContextForConversationStart();
-              vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli });
+              vscode.postMessage({ type: "selectConversationTab", tabId: tab.id, cli: tab.cli, selectionRevision });
             }
           };
 

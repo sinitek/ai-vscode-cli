@@ -116,7 +116,7 @@ export type PanelStateBuilderDeps = {
   isInteractiveSupported: typeof isInteractiveSupported;
   getProjectRulePaths: () => Record<CliName, string | null>;
   buildSessionState: (cli: CliName) => { currentSessionId: string | null; sessions: SessionSummary[] };
-  buildConversationTabsState: () => { activeTabId: string | null; tabs: ConversationTabSummary[] };
+  buildConversationTabsState: () => { activeTabId: string | null; selectionRevision?: number; tabs: ConversationTabSummary[] };
   buildPromptHistoryState: () => PromptHistoryItem[];
   buildHumanInteractionHistoryState?: () => PanelState["humanInteractionHistory"];
   buildScheduledTasksState?: () => ScheduledTaskSummary[];

@@ -4710,7 +4710,7 @@
     {
       "id": "plugin.rule.conversation_tab_message_loading",
       "name": "标签消息加载反馈与可取消分批渲染",
-      "description": "手动新建先插入加载标签，宿主验证 tabId 并创建真实标签；目标快照与初始化完成回执返回前不向该标签发送提示词，切换和关闭继续可用。切换标签的消息快照先于配置恢复与全量状态发送。Webview 区分尚未加载与已加载空会话，等待首个快照或长历史渲染时显示主题化中文加载状态；减少动态效果时不旋转。长历史每批最多创建 48 条消息，连续指令跨批保持同一折叠组。切换、筛选或新快照使旧渲染代际失效，旧批次不能覆盖当前内容，未完成视图不缓存；消息完整性与现有清理规则保留。",
+      "description": "手动新建先插入加载标签，宿主验证 tabId 并创建真实标签；目标快照与初始化完成回执返回前不向该标签发送提示词，切换和关闭继续可用。切换标签的消息快照先于配置恢复与全量状态发送。AI 对话标签选择携带单调 selectionRevision，宿主拒绝迟到的旧选择；完整面板状态携带生成时版本，Webview 不以低版本快照覆盖更新的用户选择，避免 Loop 与 Loop+ 后台刷新抢占主任务标签焦点。Webview 区分尚未加载与已加载空会话，等待首个快照或长历史渲染时显示主题化中文加载状态；减少动态效果时不旋转。长历史每批最多创建 48 条消息，连续指令跨批保持同一折叠组。切换、筛选或新快照使旧渲染代际失效，旧批次不能覆盖当前内容，未完成视图不缓存；消息完整性与现有清理规则保留。",
       "status": "active",
       "applies_to": [
         "plugin.cli_session",
@@ -4718,7 +4718,19 @@
       ],
       "source_refs": [
         {
+          "path": "src/extension.ts",
+          "anchor": "buildPanelStateWithConfigState"
+        },
+        {
           "path": "src/panelMessageHandlers/session.ts"
+        },
+        {
+          "path": "src/panelStateBuilder.ts",
+          "anchor": "buildConversationTabsState"
+        },
+        {
+          "path": "src/sessionMessageHandlers.ts",
+          "anchor": "getConversationTabSelectionRevision"
         },
         {
           "path": "src/extensionHost/sessionTabs.ts"
@@ -4730,10 +4742,16 @@
           "path": "src/webview/viewContentScript/messageRendering.ts"
         },
         {
+          "path": "src/webview/viewContentScript/historyPanels.ts"
+        },
+        {
           "path": "src/webview/viewContentStyles/chatArea.ts"
         },
         {
           "path": "src/test/webview/clipagescriptruntimecoverage.test.ts"
+        },
+        {
+          "path": "src/test/session/sessionMessageHandlersCoreCoverage.test.ts"
         },
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",

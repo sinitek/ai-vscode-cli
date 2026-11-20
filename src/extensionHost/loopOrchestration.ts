@@ -122,6 +122,7 @@ type LoopOrchestrationRequiredHostDeps =
     createSubagentProgressController: typeof import("../subagentProgress").createSubagentProgressController;
     ensureLoopMainSubChatTranscript: (task: LoopTaskRecord) => string;
     errorToMessage: (error: unknown) => string;
+    getActiveConversationTabId?: () => string | null;
     getActiveConfigIdForCli: (cli: CliName) => string | null;
     logError: (event: string, payload?: unknown) => void | Promise<void>;
     normalizeLoopContinuePromptForPrompt: (value: unknown) => string | null;
@@ -701,6 +702,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     options: LoopSubtaskBatchOptions,
   ): Promise<LoopSubtaskRunResult[]> {
     const { input, target, task, round, subtasks } = options;
+    const restoreMainTabIfActive = async (): Promise<void> => {
+      if (deps.getActiveConversationTabId && deps.getActiveConversationTabId() !== target.tabId) {
+        return;
+      }
+      await switchVisibleConversationTabForLoop(target.tabId);
+    };
     if (subtasks.length <= 1) {
       const subtask = subtasks[0];
       if (!subtask) {
@@ -794,17 +801,17 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       results.push(...groupResults);
       if (undispatchedGroups) {
         markUndispatchedLoopSubtasksSkipped(task, undispatchedGroups);
-        await switchVisibleConversationTabForLoop(target.tabId);
+        await restoreMainTabIfActive();
         return results;
       }
       if (groupResults.some((result) => result.status === "error" || result.status === "stopped")) {
         markUndispatchedLoopSubtasksSkipped(task, executionPlan.groups.slice(groupIndex + 1));
-        await switchVisibleConversationTabForLoop(target.tabId);
+        await restoreMainTabIfActive();
         return results;
       }
     }
 
-    await switchVisibleConversationTabForLoop(target.tabId);
+    await restoreMainTabIfActive();
     if (results.every((result) => result.status === "end")) {
       updateLoopTaskRecord(task.id, {
         activeSubtaskId: null,
@@ -891,8 +898,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       markLoopSubtaskRunFinished(task.id, subtask.id, "error", null, execution.unavailableReason);
       return "error";
     }
-    const shouldSwitchVisible = options.switchVisible !== false;
     const mainTabId = target.tabId;
+    const shouldSwitchVisible = options.switchVisible !== false;
     const progressId = `${task.id}:${round}:${subtask.id}`;
     let currentSubtaskTarget: PromptRunTarget | null = null;
     let terminalProgressStatus: "completed" | "failed" | "interrupted" | null = null;
@@ -1000,7 +1007,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           buildLoopSubtaskStartedText(task.id, subtask, round, communicationFile, retryCount)
         );
         appendLoopMainSubChatSubtaskStarted(task, subtask, round, communicationFile, retryCount);
-        if (shouldSwitchVisible) {
+        if (shouldSwitchVisible && (!deps.getActiveConversationTabId || deps.getActiveConversationTabId() === mainTabId)) {
           await switchVisibleConversationTabForLoop(subtaskTarget.tabId);
         }
 
@@ -1059,7 +1066,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           });
         } finally {
           if (!options.signal?.aborted) progressMonitor.sync();
-          if (shouldSwitchVisible && !options.signal?.aborted) {
+          if (shouldSwitchVisible && !options.signal?.aborted && currentSubtaskTarget
+            && (!deps.getActiveConversationTabId || deps.getActiveConversationTabId() === currentSubtaskTarget.tabId)) {
             await switchVisibleConversationTabForLoop(mainTabId);
           }
         }

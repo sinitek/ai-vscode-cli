@@ -48,7 +48,7 @@ export type PanelMessage =
   | { type: "moveCliModel"; cli: CliName; model: string; direction: "up" | "down"; configId?: string | null }
   | { type: "inspectModelManager"; cli: CliName; configId?: string | null; visibleModelCount?: number; visibleManagedModelCount?: number; selectedModel?: string | null }
   | { type: "selectSession"; sessionId: string | null; cli: CliName }
-  | { type: "selectConversationTab"; tabId: string; cli: CliName }
+  | { type: "selectConversationTab"; tabId: string; cli: CliName; selectionRevision?: number }
   | { type: "closeConversationTab"; tabId: string; cli: CliName }
   | { type: "newSession"; tabId?: string }
   | { type: "queryCodexLongConnectionCount"; token?: number }
@@ -456,6 +456,7 @@ export type PanelState = {
   };
   conversationTabs: {
     activeTabId: string | null;
+    selectionRevision?: number;
     tabs: ConversationTabSummary[];
   };
   promptHistory: PromptHistoryItem[];

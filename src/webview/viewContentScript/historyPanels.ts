@@ -359,10 +359,12 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
             closeHistory();
             armPromptContextForConversationStart();
             if (session.openConversationTabId) {
+              const selectionRevision = nextConversationTabSelectionRevision();
               vscode.postMessage({
                 type: "selectConversationTab",
                 tabId: session.openConversationTabId,
                 cli: session.cli,
+                selectionRevision,
               });
               return;
             }
