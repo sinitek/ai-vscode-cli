@@ -298,15 +298,21 @@ test("renders only the frozen review prefix as active while counting the full FI
   assert.equal((page.match(/<div class="member-meta">待验收<\/div>/gu) ?? []).length, 2);
   assert.equal((page.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 2);
   assert.equal(countValue(page, "queue"), "2");
+  assert.match(page, /待验收<\/span> <strong>2<\/strong>/u);
+  assert.match(page, /验收中<\/span> <strong>1<\/strong>/u);
 
   const twoItemBatchIds = [frozenIds[0], snapshot.reviewQueue[0]?.eventId]
     .filter((id): id is string => Boolean(id));
-  const twoItemBatch = html(build(snapshot, {}, twoItemBatchIds));
+  const twoItemState = build(snapshot, {}, twoItemBatchIds);
+  const twoItemBatch = html(twoItemState);
   assert.deepEqual(twoItemBatchIds, [frozenIds[0], snapshot.reviewQueue[0]?.eventId]);
   assert.match(twoItemBatch, /正在验收 子任务 1：Alpha、子任务 2：Bravo。/u);
   assert.doesNotMatch(twoItemBatch, /正在验收 子任务 3：Charlie/u);
   assert.equal((twoItemBatch.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 3);
   assert.equal((twoItemBatch.match(/<div class="member-meta">待验收<\/div>/gu) ?? []).length, 1);
+  const patch = buildLoopGroupChatPanelContentPatch(twoItemState, 2);
+  assert.match(patch.statusBarHtml, /待验收<\/span> <strong>1<\/strong>/u);
+  assert.match(patch.statusBarHtml, /验收中<\/span> <strong>2<\/strong>/u);
 });
 
 test("renders waiting, a non-empty queue with zero running work, and a damaged snapshot", () => {
@@ -351,6 +357,7 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.match(damaged, /快照缺失或损坏/u);
   assert.match(damaged, /不能把该任务显示成空队列或已完成/u);
   assert.doesNotMatch(damaged, /data-loop-plus-count=|已全部收口|正在验收/u);
+  assert.equal(buildLoopGroupChatPanelContentPatch(build({ version: 1 }), 1).statusBarHtml, "");
 });
 
 test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
@@ -542,6 +549,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assertLoopPlusDetailCardsHidden(passedPage);
   assert.match(passedPage, /子任务 1：Alpha/u);
   assert.match(passedPage, /<span class="member-status-passed">验收成功<\/span>/u);
+  assert.match(passedPage, /已验收<\/span> <strong>1<\/strong>/u);
   assert.doesNotMatch(passedPage, /子任务 1：Alpha · 验收成功/u);
   assert.doesNotMatch(passedPage, /尝试|已验收尝试/u);
 
@@ -561,6 +569,7 @@ test("shows acceptance passed or failed instead of reviewed attempts", () => {
   assertLoopPlusDetailCardsHidden(failedPage);
   assert.match(failedPage, /子任务 2：Bravo/u);
   assert.match(failedPage, /<span class="member-status-failed">验收失败<\/span>/u);
+  assert.match(failedPage, /已验收<\/span> <strong>1<\/strong>/u);
   assert.doesNotMatch(failedPage, /子任务 2：Bravo · 验收失败/u);
   assert.doesNotMatch(failedPage, /验收成功|尝试/u);
 
@@ -616,6 +625,7 @@ test("shows no-acceptance status as soon as a marked successful attempt finishes
     subTasks: [{ id: "report-only", title: "测试报告", status: "completed", updatedAt: 21 }],
   }));
   assert.match(page, /<span class="member-status-inactive">无需验收<\/span>/u);
+  assert.match(page, /已验收<\/span> <strong>0<\/strong>/u);
   assert.doesNotMatch(page, /验收成功/u);
 });
 
@@ -843,6 +853,7 @@ test("群聊显示验收已撤销和已关闭，并可定位撤销原因", () =>
   const state = buildWithChat(scheduler.snapshot(), {}, `# Loop chat\n\n## ${section.heading}\n\n${section.body}\n`);
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
   assert.match(html, /验收已撤销/u);
+  assert.match(html, /已验收<\/span> <strong>0<\/strong>/u);
   assert.match(html, /已关闭/u);
   assert.match(html, /用户取消旧需求/u);
   assert.match(html, /data-action="jumpToAcceptance"/u);

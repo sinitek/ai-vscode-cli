@@ -21,6 +21,8 @@ for (const role of ["director", "leader"] as const) {
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.rosterPanelHtml));
     assert.ok(html.includes(patch.actionsHtml));
+    assert.equal(patch.statusBarHtml, "");
+    assert.doesNotMatch(html, /<footer id="statusBarSlot"/u);
     assert.equal(patch.headingText, role === "director" ? "产研部群聊" : "组长A");
     assert.equal(patch.tabTitle, patch.headingText);
     assert.ok(html.includes(`<title>${patch.headingText}</title>`));

@@ -142,7 +142,7 @@ test("does not render removed automatic wake controls for review tasks", () => {
   assert.match(html, /<button[^>]*data-action="continueTask"/u);
   assert.match(html, /data-action="switchModels"[^>]*>切模型<\/button>/u);
   assert.doesNotMatch(html, /name="continueModelSource"/u);
-  assert.match(html, /loopGroupChatChat:continueTask", prompt \}/u);
+  assert.match(html, /loopGroupChatChat:continueTask", prompt, requestId: continueRequestId \}/u);
 });
 
 test("hides the continue model choice when speaking in Loop and Loop+ group chat", () => {
@@ -186,13 +186,13 @@ test("hides the continue model choice when speaking in Loop and Loop+ group chat
     html.indexOf("function closeAskDialog"),
   );
   assert.doesNotMatch(askDialog, /setContinueModelChoiceVisible\(/);
-  assert.match(html, /loopGroupChatChat:askMainModel", prompt: prompt \}/);
+  assert.match(html, /loopGroupChatChat:askMainModel", prompt: prompt, requestId \}/);
   assert.match(html, /id="askChatBackdrop"/);
   assert.match(html, /loopGroupChatChat:abortMainModelQuestion/);
   assert.match(html, /ask-chat-message waiting/);
   assert.match(html, /ask-chat-waiting/);
   assert.doesNotMatch(html, /ask-chat-message thinking/);
-  assert.match(html, /loopGroupChatChat:continueTask", prompt \}/);
+  assert.match(html, /loopGroupChatChat:continueTask", prompt, requestId: continueRequestId \}/);
 });
 
 test("restores the supplement dialog before a main-task refresh can mark it closed", () => {
@@ -383,9 +383,16 @@ test("resizing restores the desktop sidebar and collapses it on reentering narro
 function createSupplementDialogHarness() {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const source = html.slice(html.indexOf("function closeContinueDialog"), html.indexOf("const ASK_WAITING_LABEL"));
-  const button = { disabled: false };
+  const spinner = { hidden: true };
+  const button = {
+    disabled: false,
+    querySelector: () => spinner,
+    setAttribute: () => undefined,
+    hasAttribute: () => false,
+    removeAttribute: () => undefined,
+  };
   const input = { value: "", focus: () => undefined, select: () => undefined };
-  const messages: { type: string; prompt: string }[] = [];
+  const messages: { type: string; prompt: string; requestId?: string }[] = [];
   const errors: string[] = [];
   const context: any = {
     continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
@@ -393,6 +400,9 @@ function createSupplementDialogHarness() {
     continueDialogConfirm: { dataset: {} },
     continueDialogOpen: false,
     continueRequestPending: false,
+    continueRequestId: null,
+    requestSessionId: "session",
+    requestSequence: 0,
     continueDialogMode: undefined as string | undefined,
     continueDialogOpener: null as { isConnected?: boolean; focus?: () => void } | null,
     setContinueDialogError: (error: string) => errors.push(error),
@@ -410,9 +420,9 @@ function createSupplementDialogHarness() {
     submitSupplementDialog: () => void;
     closeContinueDialog: () => void;
     submitContinueDialog: () => void;
-    applyContinueTaskSettled: (message: { canContinue: boolean }) => void;
+    applyContinueTaskSettled: (message: { type: string; requestId?: string; canContinue?: boolean }) => void;
   };
-  return { ...actions, button, input, messages, errors, context };
+  return { ...actions, button, spinner, input, messages, errors, context };
 }
 
 test("continuation settlement restores a locally disabled button even when the action HTML is unchanged", () => {
@@ -422,18 +432,23 @@ test("continuation settlement restores a locally disabled button even when the a
   harness.input.value = "继续原任务";
   harness.submitContinueDialog();
   assert.equal(harness.button.disabled, true);
+  assert.equal(harness.spinner.hidden, false);
   assert.equal(harness.context.continueRequestPending, true);
   harness.submitContinueDialog();
   assert.equal(harness.messages.length, 1);
-  harness.applyContinueTaskSettled({ canContinue: true });
+  harness.applyContinueTaskSettled({ type: "loopGroupChatChat:continueTaskSettled", requestId: "other", canContinue: true });
+  assert.equal(harness.spinner.hidden, false);
+  harness.applyContinueTaskSettled({ type: "loopGroupChatChat:continueTaskSettled", requestId: harness.messages[0].requestId, canContinue: true });
   assert.equal(harness.button.disabled, false);
+  assert.equal(harness.spinner.hidden, true);
   assert.equal(harness.context.continueRequestPending, false);
   harness.context.continueDialogOpen = true;
   harness.context.continueDialogMode = "continue";
   harness.submitContinueDialog();
   assert.equal(harness.messages.length, 2);
-  harness.applyContinueTaskSettled({ canContinue: false });
+  harness.applyContinueTaskSettled({ type: "loopGroupChatChat:continueTaskStarted", requestId: harness.messages[1].requestId });
   assert.equal(harness.button.disabled, true);
+  assert.equal(harness.spinner.hidden, true);
 });
 
 test("ignores continuation confirmation while its dialog is closed or showing supplemental requirements", () => {
@@ -959,6 +974,32 @@ test("escapes unknown member statuses and omits an empty roster", () => {
   assert.equal(buildLoopGroupChatPanelContentPatch(createState({ rounds: [] }), 1).rosterPanelHtml, "");
 });
 
+test("summarizes classic Loop subtasks by latest roster state in the bottom bar", () => {
+  const state = createState();
+  const [round] = state.rounds;
+  round.participants.push(
+    { id: "pending", role: "subtask", title: "待启动任务", status: "pending" },
+    { id: "blocked", role: "subtask", title: "阻塞任务", status: "blocked" },
+  );
+  const initial = buildLoopGroupChatPanelContentPatch(state, 1).statusBarHtml;
+  assert.match(initial, /运行中<\/span> <strong>1<\/strong>/u);
+  assert.match(initial, /待启动<\/span> <strong>1<\/strong>/u);
+  assert.match(initial, /已完成<\/span> <strong>0<\/strong>/u);
+  assert.doesNotMatch(initial, /验收/u);
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.ok(html.includes(`<footer id="statusBarSlot" class="chat-status-bar" role="group" aria-label="子任务状态汇总">${initial}</footer>`));
+
+  state.rounds.push({
+    ...round,
+    key: "execution-3",
+    participants: [{ ...round.participants[1], status: "completed", updatedAt: 3 }],
+  });
+  const updated = buildLoopGroupChatPanelContentPatch(state, 2).statusBarHtml;
+  assert.match(updated, /运行中<\/span> <strong>0<\/strong>/u);
+  assert.match(updated, /已完成<\/span> <strong>1<\/strong>/u);
+  assert.equal(buildLoopGroupChatPanelContentPatch({ ...state, error: "加载失败" }, 3).statusBarHtml, "");
+});
+
 function createLongChatState(count: number, overrides: any = {}) {
   const state = createState(overrides);
   return {
@@ -1482,9 +1523,9 @@ test("ask queue animations follow page visibility and retain narrow text wrappin
   assert.match(html, /document\.addEventListener\("visibilitychange", \(\) => \{\s*updateAskAnimationVisibility\(\);/u);
   assert.match(html, /updateAskAnimationVisibility\(\);/u);
   assert.match(html, /startAutoRefresh\(\);/u);
-  assert.match(html, /\.ask-chat-backdrop \.ask-chat-queued \.typing-dots span\s*\{\s*animation-play-state: paused;/u);
-  assert.match(html, /\.ask-chat-backdrop\.visible:not\(\.page-hidden\) \.ask-chat-queued \.typing-dots span\s*\{\s*animation-play-state: running;/u);
-  assert.match(html, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.ask-chat-backdrop \.ask-chat-queued \.typing-dots span\s*\{\s*animation: none;/u);
+  assert.match(html, /\.ask-chat-backdrop \.typing-dots span\s*\{\s*animation-play-state: paused;/u);
+  assert.match(html, /\.ask-chat-backdrop\.visible:not\(\.page-hidden\) \.typing-dots span\s*\{\s*animation-play-state: running;/u);
+  assert.match(html, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.ask-chat-backdrop \.typing-dots span,\s*\.continue-loading\.typing-dots span\s*\{\s*animation: none;/u);
   assert.match(html, /\.ask-chat-queued > span:last-child\s*\{[^}]*min-width: 0;[^}]*overflow-wrap: anywhere;/u);
   assert.match(html, /\.ask-chat-message\.user\s*\{[^}]*align-items: flex-end;/u);
   assert.match(html, /\.ask-chat-queued\s*\{[^}]*color: var\(--vscode-descriptionForeground\);/u);
@@ -1501,6 +1542,8 @@ test("scrolls new ask bubbles and reopened dialogs to the bottom without disturb
     askChatMessages: log,
     askDialogOpen: true,
     askThread: { messages: [], running: false },
+    pendingAskTurns: new Map(),
+    askSubmissionError: "",
     ASK_WAITING_LABEL: "等待回复",
     ASK_EMPTY_LABEL: "暂无消息",
     renderedSlotHtml,
@@ -1571,14 +1614,19 @@ test("scrolls new ask bubbles and reopened dialogs to the bottom without disturb
 
 test("live busy patches and an active question still allow consecutive queued submissions", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
-  const availability = html.slice(html.indexOf("function updateAskAvailability"), html.indexOf("function applyAskThread"));
+  const availability = html.slice(html.indexOf("function updateAskAvailability"), html.indexOf("function getStoredAskDialogState"));
   const submit = html.slice(html.indexOf("function submitAskChat"), html.indexOf("function restoreAskDialogState"));
   const patch = html.slice(html.indexOf("function applyContentPatch"), html.indexOf("function startAutoRefresh"));
-  const sent: unknown[] = [];
+  const sent: Array<{ type: string; prompt: string; requestId: string }> = [];
+  const pendingAskTurns = new Map();
   const context = vm.createContext({
     mainModelBusy: false,
     continueRequestPending: false,
     askThread: { running: false },
+    pendingAskTurns,
+    askSubmissionError: "",
+    nextRequestId: () => `ask-client-fixture-${sent.length + 1}`,
+    renderAskThread: () => vm.runInContext("updateAskAvailability()", context),
     askChatInput: { disabled: false, value: "  请检查结果  ", focus: () => undefined },
     askChatSend: {
       disabled: false,
@@ -1597,12 +1645,12 @@ test("live busy patches and an active question still allow consecutive queued su
     applyClarificationPatch: () => undefined,
     replaceContinueModelChoice: () => undefined,
     saveAskDialogState: () => undefined,
-    vscode: { postMessage: (message: unknown) => sent.push(message) },
+    vscode: { postMessage: (message: typeof sent[number]) => sent.push(message) },
   });
   vm.runInContext(`${availability}\n${submit}\n${patch}`, context);
   vm.runInContext('applyContentPatch({ type: "loopGroupChatChat:contentPatch", generation: 2, mainModelBusy: true }); submitAskChat();', context);
   assert.equal(context.askChatSend.disabled, false);
-  assert.equal(context.askChatBusy.hidden, false);
+  assert.equal(context.askChatBusy.hidden, true);
   assert.equal(context.askChatInput.disabled, false);
   assert.equal(context.askChatInput.value, "");
   assert.equal(sent.length, 1);
@@ -1612,13 +1660,20 @@ test("live busy patches and an active question still allow consecutive queued su
   assert.equal(context.askChatSend.disabled, false);
   assert.equal(context.askChatBusy.hidden, true);
   assert.equal(context.askChatInput.value, "");
-  assert.equal(JSON.stringify(sent), JSON.stringify([{ type: "loopGroupChatChat:askMainModel", prompt: "请检查结果" }]));
+  assert.equal(sent[0].prompt, "请检查结果");
+  assert.equal(pendingAskTurns.get(sent[0].requestId).content, "请检查结果");
   vm.runInContext('mainModelBusy = true; askThread.running = true; askChatInput.value = "下一问"; updateAskAvailability(); submitAskChat();', context);
   assert.equal(context.askChatInput.disabled, false);
   assert.equal(context.askChatSend.disabled, false);
   assert.equal(context.askChatBusy.hidden, true);
   assert.equal(context.askChatAbort.hidden, false);
   assert.equal(sent.length, 2);
+  vm.runInContext('applyAskThread({ messages: [{ id: "ask-client-fixture-1", role: "user", content: "请检查结果" }], running: true, queued: true });', context);
+  assert.deepEqual([...pendingAskTurns.keys()], [sent[1].requestId]);
+  vm.runInContext('rejectAskSubmission({ requestId: "ask-client-fixture-2", error: "提问暂不可用" });', context);
+  assert.equal(pendingAskTurns.size, 0);
+  assert.equal(context.askChatInput.value, "下一问");
+  assert.equal(context.askSubmissionError, "提问暂不可用");
   vm.runInContext('askThread.queued = true; updateAskAvailability();', context);
   assert.equal(context.askChatBusy.hidden, true);
   vm.runInContext('mainModelBusy = false; updateAskAvailability();', context);

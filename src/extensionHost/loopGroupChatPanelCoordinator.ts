@@ -78,6 +78,7 @@ type LoopPromptRunOptions = {
   preserveLoopOrigin?: boolean;
   configLockRecovery?: ConfigLockResumeRequest;
   schedulingMode?: "classic" | "event_driven";
+  onTaskStarted?: () => void;
 };
 
 export type ConfigLockResumeRequest = {
@@ -570,7 +571,13 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     }
   };
 
-  type ContinuationOptions = { resumeIdle?: boolean; resumeSubtasks?: boolean; panel?: LoopGroupChatPanel };
+  type ContinuationOptions = {
+    resumeIdle?: boolean;
+    resumeSubtasks?: boolean;
+    panel?: LoopGroupChatPanel;
+    requestId?: string;
+    onTaskStarted?: () => void;
+  };
   const runContinuation = async (taskId: string, prompt: unknown, options: ContinuationOptions): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
@@ -679,6 +686,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         targetTabId: restored.target.tabId,
         resumeTaskId: task.id,
         resumeRequested: true,
+        onTaskStarted: options.onTaskStarted,
         ...(task.schedulingMode === "event_driven" ? { resumeUserMessage: resumePrompt } : {}),
         preserveLoopOrigin: true,
         ...(configLockRecovery && recoveryBinding ? { configLockRecovery: {
@@ -732,6 +740,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       targetTabId: target.tabId,
       resumeTaskId: task.id,
       resumeRequested: true,
+      onTaskStarted: options.onTaskStarted,
       ...(task.schedulingMode === "event_driven" ? { resumeUserMessage: resumePrompt } : {}),
       ...(task.schedulingMode === "event_driven" ? { schedulingMode: "event_driven" as const } : {}),
     });
@@ -743,11 +752,20 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id)
       ?? taskId;
     if (continuingTaskIds.has(normalizedTaskId)) {
+      if (options.requestId) postToPanel(normalizedTaskId, {
+        type: "loopGroupChatChat:continueTaskSettled", requestId: options.requestId, canContinue: false,
+      });
       return;
     }
     continuingTaskIds.add(normalizedTaskId);
     try {
-      await runContinuation(normalizedTaskId, prompt, options);
+      await runContinuation(normalizedTaskId, prompt, {
+        ...options,
+        ...(options.requestId ? { onTaskStarted: () => {
+          postToPanel(normalizedTaskId, { type: "loopGroupChatChat:continueTaskStarted", requestId: options.requestId });
+          void refresh(normalizedTaskId).catch(warnRefreshFailure);
+        } } : {}),
+      });
     } catch (error) {
       if (error !== obsoleteRequest) deps.showWarningMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -758,6 +776,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         const task = deps.readTaskRecord(normalizedTaskId);
         postToPanel(normalizedTaskId, {
           type: "loopGroupChatChat:continueTaskSettled",
+          ...(options.requestId ? { requestId: options.requestId } : {}),
           canContinue: task ? canContinueLoopTaskWithDeps(task, deps) : false,
         });
       }
@@ -856,22 +875,35 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     await refresh(normalizedTaskId);
   };
 
-  const askMainModel = async (taskId: string, prompt?: unknown): Promise<void> => {
+  const askMainModel = async (taskId: string, prompt?: unknown, requestId?: string): Promise<void> => {
     const normalizedTaskId = deps.normalizeTaskId(taskId)
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id);
+    const rejectSubmission = (error: string): void => {
+      if (requestId) postToPanel(normalizedTaskId ?? taskId, {
+        type: "loopGroupChatChat:askSubmissionRejected", requestId, error,
+      });
+    };
     if (!normalizedTaskId) {
-      deps.showInformationMessage(deps.t("loopGroupChatChat.noTask"));
+      const error = deps.t("loopGroupChatChat.noTask");
+      rejectSubmission(error);
+      deps.showInformationMessage(error);
       return;
     }
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
-      deps.showWarningMessage(deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId }));
+      const error = deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId });
+      rejectSubmission(error);
+      deps.showWarningMessage(error);
       return;
     }
     const question = deps.normalizeSupplementalRequirement(prompt);
     const current = ensureAskThread(task);
     if (!question || !deps.askMainModel) {
       const error = deps.t("loopGroupChatChat.askUnavailable");
+      if (requestId) {
+        rejectSubmission(error);
+        return;
+      }
       if (!deps.panelsByTaskId.get(task.id) && !requestScope.getStore()) {
         deps.showInformationMessage(error);
         return;
@@ -883,10 +915,16 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       }), "render");
       return;
     }
-    const turnId = `ask-${Date.now().toString(36)}-${askSerial += 1}`;
+    const turnId = requestId ?? `ask-${Date.now().toString(36)}-${askSerial += 1}`;
     const existingRun = askRuns.get(task.id);
     if (existingRun && existingRun.owner !== requestScope.getStore()) {
-      deps.showInformationMessage("该组长已有其他窗口提问正在处理，请稍后重试。");
+      const error = "该组长已有其他窗口提问正在处理，请稍后重试。";
+      rejectSubmission(error);
+      if (!requestId) deps.showInformationMessage(error);
+      return;
+    }
+    if (current.messages.some((message) => message.id === turnId)) {
+      syncAskThread(task, current, "publish");
       return;
     }
     const run = existingRun ?? { owner: requestScope.getStore(), controller: new AbortController(), pendingTurnIds: new Set<string>() };
@@ -1349,7 +1387,10 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     }
     if (message.type === "loopGroupChatChat:continueTask") {
       const panel = !requestScope.getStore() && deps.panelsByTaskId.get(taskId) === sourcePanel ? sourcePanel : undefined;
-      await continueTask(taskId, message.prompt, undefined, { panel: panel?.getState()?.task.id === taskId ? panel : undefined });
+      await continueTask(taskId, message.prompt, undefined, {
+        panel: panel?.getState()?.task.id === taskId ? panel : undefined,
+        requestId: message.requestId,
+      });
       return;
     }
     if (message.type === "loopGroupChatChat:switchModels") {
@@ -1361,7 +1402,9 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
     if (message.type === "loopGroupChatChat:askMainModel") {
-      await askMainModel(taskId, message.prompt);
+      const requestId = typeof message.requestId === "string" && /^ask-client-[a-z0-9-]{1,80}$/u.test(message.requestId)
+        ? message.requestId : undefined;
+      await askMainModel(taskId, message.prompt, requestId);
       return;
     }
     if (message.type === "loopGroupChatChat:abortMainModelQuestion") {

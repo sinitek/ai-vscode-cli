@@ -546,6 +546,48 @@ test("failed original-runtime restoration settles continuation and allows a seco
   assert.equal(harness.messages.length, 2);
 });
 
+for (const schedulingMode of ["classic", "event_driven"] as const) {
+  test(`reports continuation start before the ${schedulingMode} run settles`, async () => {
+    const harness = createContinuationRecoveryHarness();
+    harness.task.schedulingMode = schedulingMode;
+    let admit!: () => void;
+    let finish!: () => void;
+    let reportStarted!: () => void;
+    const admission = new Promise<void>((resolve) => { admit = resolve; });
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    const started = new Promise<void>((resolve) => { reportStarted = resolve; });
+    harness.deps.runLoopPrompt = async (_input, options) => {
+      await admission;
+      options.onTaskStarted?.();
+      reportStarted();
+      await finished;
+    };
+    const requestId = "continue-client-test-1";
+    const continuing = harness.coordinator.handleMessage(harness.task.id, {
+      type: "loopGroupChatChat:continueTask", requestId, prompt: "继续执行",
+    });
+    await delay(0);
+    assert.equal(harness.messages.length, 0);
+    admit();
+    await started;
+    assert.deepEqual(harness.messages, [{ type: "loopGroupChatChat:continueTaskStarted", requestId }]);
+    finish();
+    await continuing;
+    assert.equal(harness.messages[1].type, "loopGroupChatChat:continueTaskSettled");
+  });
+}
+
+test("rejects an unavailable question with the original request ID", async () => {
+  const harness = createContinuationRecoveryHarness();
+  const requestId = "ask-client-test-1";
+  await harness.coordinator.handleMessage(harness.task.id, {
+    type: "loopGroupChatChat:askMainModel", requestId, prompt: "哪里需要确认？",
+  });
+  assert.deepEqual(harness.messages, [{
+    type: "loopGroupChatChat:askSubmissionRejected", requestId, error: "loopGroupChatChat.askUnavailable",
+  }]);
+});
+
 for (const failureStage of ["restore", "run"] as const) {
   test(`unexpected ${failureStage} errors settle continuation and remain retryable`, async () => {
     const harness = createContinuationRecoveryHarness();
@@ -1291,14 +1333,15 @@ test("asks the current main model session and shows the answer without supplemen
     assert.doesNotMatch(installedHtml, /id="askChatSend"[^>]*disabled/u);
     messageHandler?.({ type: "loopGroupChatChat:domReady", generation: 1 });
     const savedCount = savedThreads.length;
-    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  " });
-    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "再确认当前进度" });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "  可以合并吗  ", requestId: "ask-client-test-1" });
+    messageHandler?.({ type: "loopGroupChatChat:askMainModel", prompt: "再确认当前进度", requestId: "ask-client-test-2" });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(questions.length, 0);
     assert.ok(savedThreads.length > savedCount);
     const panelWhileBusy = deps.panelsByTaskId.get(task.id);
     assert.equal(panelWhileBusy?.getState()?.mainModelBusy, true);
     assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.content), ["上次的问题", "可以合并吗", "再确认当前进度"]);
+    assert.deepEqual(panelWhileBusy?.getAskThread().messages.map((message) => message.id), ["old", "ask-client-test-1", "ask-client-test-2"]);
     assert.equal(panelWhileBusy?.getAskThread().running, true);
     assert.equal(panelWhileBusy?.getAskThread().queued, true);
     assert.deepEqual(panelWhileBusy?.getAskThread().messages.filter((message) => message.queued).map((message) => message.content), ["可以合并吗", "再确认当前进度"]);

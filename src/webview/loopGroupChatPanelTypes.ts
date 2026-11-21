@@ -202,10 +202,10 @@ export type LoopGroupChatPanelBaseMessage =
   | { type: "loopGroupChatChat:cancelDepartmentLeader"; leaderTaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
-  | { type: "loopGroupChatChat:continueTask"; prompt?: string }
+  | { type: "loopGroupChatChat:continueTask"; prompt?: string; requestId?: string }
   | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string>; thinkingModes?: Record<string, string> }
   | { type: "loopGroupChatChat:supplementTask"; prompt?: string }
-  | { type: "loopGroupChatChat:askMainModel"; prompt?: string }
+  | { type: "loopGroupChatChat:askMainModel"; prompt?: string; requestId?: string }
   | { type: "loopGroupChatChat:abortMainModelQuestion" }
   | { type: "loopGroupChatChat:openAskDialog" }
   | { type: "loopGroupChatChat:closeAskDialog" }

@@ -285,6 +285,12 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - Loop+ 状态卡片仅在「状态」行展示当前状态，不在卡片底部重复说明；移除「当前项」和「验收结果」计数，保留其他汇总计数。
 - 实现：`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelStyles.ts`；回归：`src/test/loop/loopPlusPanelState.test.ts`、`src/test/loop/loopPlusGroupChatPanel.test.ts`。
 
+## Loop / Loop+ 群聊底部状态栏
+
+- 普通 Loop / Loop+ 群聊底部常驻 25px 状态栏，不遮挡聊天记录或窄屏成员抽屉。计数随群聊刷新更新，按子任务最新成员状态去重，不计入主任务。
+- 经典 Loop 显示「运行中」「待启动」「已完成」。Loop+ 显示「运行中」「待验收」「验收中」「已验收」；暂停的验收归入「待验收」，验收通过或失败均归入「已验收」，撤销与免验收不计入。
+- 无有效快照时不显示误导性的零值；产研部群聊维持原样。不改变调度、验收流程或持久化规则。
+
 ## Loop / Loop+ 切模型弹窗
 
 - 状态：`active`（2026-11-12）。每个角色独占一行，左侧选择模型，右侧选择对应思考力度；覆盖经典 Loop 主/子模型、Loop+ 主/全栈以及主/后端/前端模式。
@@ -877,6 +883,12 @@ Loop / Loop+ 宿主崩溃恢复修复：重新打开后核对真实运行所有�
 Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回答真正开始时，若调度快照仍为 idle、waiting 或 review_pending，主任务状态改为“运行中”，活动说明与主任务思考气泡同步更新；并行运行的子任务继续显示各自的思考气泡。排队提问不会提前显示运行中；分解、验收、暂停、停止、完成及无效快照保持原优先级，经典 Loop 不变。
 
 实现：`src/loopPlusPanelProjection.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`；验证：`npm run build`；`node --test --test-reporter=dot dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanelState.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 140 加载真实群聊 HTML 并接收运行态 `contentPatch`，检查 waiting → running、主/子思考气泡及 480px 无横向溢出。
+
+## 2026-11-21 Loop / Loop+ 提交等待反馈
+
+群聊确认“继续执行”后，按钮立即禁用并显示三点加载。续跑启动后结束加载，由任务的当前运行状态决定按钮可用性。启动失败时结束加载并恢复到宿主返回的可用状态。
+
+“向主模型提问”点击发送后，问题气泡与等待动画立即出现在弹窗中。宿主接收后接续对应的排队或回答动画，同一条问题只显示一次。收到最终答复、失败提示或中止时清理该问题的等待状态。宿主未接收问题时显示错误，输入框为空则恢复原问题。减少动态效果时保留静态提示。
 
 ## 2026-11-14 主模型提问气泡排队动画
 

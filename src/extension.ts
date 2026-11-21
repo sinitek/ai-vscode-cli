@@ -4781,7 +4781,7 @@ function loopPlusHostMessage(message: string, taskId: string): string {
 
 type LoopPromptOptions = { targetTabId?: string | null; resumeTaskId?: string | null; resumeRequested?: boolean;
   resumeUserMessage?: string; preserveLoopOrigin?: boolean; schedulingMode?: "classic" | "event_driven";
-  configLockRecovery?: ConfigLockResumeRequest };
+  configLockRecovery?: ConfigLockResumeRequest; onTaskStarted?: () => void };
 
 async function runEventDrivenLoopPrompt(
   input: PromptRunInput,
@@ -4810,6 +4810,7 @@ async function runLoopPrompt(
       ownership.taskId = taskId;
       ownership.target = target;
       ownership.release = loopOrchestrationOwnership.acquire(taskId);
+      options.onTaskStarted?.();
     });
   } catch (error) {
     if (options.configLockRecovery && !ownership.taskId) throw error;

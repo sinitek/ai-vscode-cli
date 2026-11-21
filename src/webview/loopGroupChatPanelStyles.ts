@@ -219,17 +219,18 @@ ${DIALOG_SHELL_STYLES}
         min-width: 0;
         overflow-wrap: anywhere;
       }
-      .ask-chat-backdrop .ask-chat-queued .typing-dots span {
+      .ask-chat-backdrop .typing-dots span {
         animation-play-state: paused;
       }
-      .ask-chat-backdrop.visible:not(.page-hidden) .ask-chat-queued .typing-dots span {
+      .ask-chat-backdrop.visible:not(.page-hidden) .typing-dots span {
         animation-play-state: running;
       }
       .ask-chat-queued .typing-dots {
         flex-shrink: 0;
       }
       @media (prefers-reduced-motion: reduce) {
-        .ask-chat-backdrop .ask-chat-queued .typing-dots span {
+        .ask-chat-backdrop .typing-dots span,
+        .continue-loading.typing-dots span {
           animation: none;
         }
       }
@@ -426,6 +427,69 @@ ${DIALOG_SHELL_STYLES}
         min-height: 0;
         flex: 1 1 auto;
         overflow: hidden;
+      }
+      .chat-status-bar {
+        display: flex;
+        align-items: center;
+        flex: 0 0 25px;
+        height: 25px;
+        padding-inline: 6px;
+        overflow: auto hidden;
+        scrollbar-width: none;
+        border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+        background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+        color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+        font-size: 11px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      .chat-status-bar:empty {
+        display: none;
+      }
+      .chat-status-item {
+        display: inline-flex;
+        align-items: center;
+        flex: none;
+        gap: 4px;
+        padding-inline: 9px;
+      }
+      .chat-status-item + .chat-status-item {
+        border-inline-start: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+      }
+      .chat-status-item::before {
+        content: "";
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: var(--status-dot, currentColor);
+      }
+      .chat-status-item strong {
+        min-width: 2ch;
+        color: var(--vscode-editor-foreground);
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+      }
+      .chat-status-running {
+        --status-dot: var(--vscode-charts-blue, var(--vscode-textLink-foreground));
+      }
+      .chat-status-pending {
+        --status-dot: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground));
+      }
+      .chat-status-reviewing {
+        --status-dot: var(--vscode-charts-purple, var(--vscode-charts-blue));
+      }
+      .chat-status-completed {
+        --status-dot: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+      }
+      @media (max-width: 400px) {
+        .chat-status-bar {
+          padding-inline: 4px;
+          font-size: 10px;
+        }
+        .chat-status-item {
+          gap: 3px;
+          padding-inline: 3px;
+        }
       }
       .sidebar {
         min-width: 0;
@@ -816,6 +880,10 @@ ${DIALOG_SHELL_STYLES}
 	        display: inline-flex;
 	        align-items: center;
 	        gap: 3px;
+	      }
+	      .continue-loading {
+	        margin-inline-start: 6px;
+	        vertical-align: middle;
 	      }
 	      .typing-dots span {
 	        width: 4px;
