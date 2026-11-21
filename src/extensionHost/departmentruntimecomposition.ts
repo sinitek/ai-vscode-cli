@@ -340,6 +340,10 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       }
     }
     const applied = deps.applyClassicDecision(task.id, decision);
+    if (applied.task.status === "needs-review") {
+      if (applied.task.finalSummary) deps.report(task.id, applied.task.finalSummary);
+      return { status: "needs-review", task: applied.task, decision };
+    }
     if (decision.status === "clarify") return { status: "awaiting-input", task: applied.task, decision };
     for (const module of applied.subtasks ?? []) {
       const saved = host.runtimeSnapshot(task.id)!;

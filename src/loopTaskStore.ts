@@ -155,6 +155,7 @@ export type LoopSubtaskRecord = {
   id: string;
   title: string;
   prompt?: string;
+  progressWeightPercent?: number;
   conflictGroup?: string;
   writeFiles?: string[];
   /** Loop+ 实施分类。缺失表示旧记录，启动时走后端/原子模型路由。 */
@@ -198,6 +199,7 @@ export type LoopSubtaskDecision = {
   id?: string;
   title: string;
   prompt: string;
+  progressWeightPercent?: number;
   conflictGroup?: string;
   writeFiles?: string[];
   taskType?: LoopPlusTaskType;
@@ -211,6 +213,7 @@ export type LoopMainDecision = {
   status: "completed" | "continue" | "waiting" | "blocked" | "clarify";
   directorCollaborations?: Array<{ id: string; action: "deliver" | "dismiss" }>;
   directorCollaborationIssue?: "invalid-format";
+  directorProgressWeights?: Array<{ moduleId: string; progressWeightPercent: number }>;
   progressPercent?: number;
   answerConclusion?: string;
   finalSummary?: string;
@@ -1475,11 +1478,13 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
     : undefined;
   const continueFromSubtaskId = readLoopContinuationSource(raw.continueFromSubtaskId);
   const executionSession = normalizeLoopSubtaskSession(raw.executionSession);
+  const progressWeightPercent = normalizeLoopSubtaskProgressWeightPercent(raw.progressWeightPercent);
   return {
     id: raw.id,
     title: raw.title,
     ...(Object.prototype.hasOwnProperty.call(raw, "dependsOn") ? { dependsOn } : {}),
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
+    ...(progressWeightPercent !== undefined ? { progressWeightPercent } : {}),
     ...(continueFromSubtaskId ? { continueFromSubtaskId } : {}),
     ...(executionSession ? { executionSession } : {}),
     ...(Object.prototype.hasOwnProperty.call(raw, "repairSource")
@@ -1507,6 +1512,12 @@ export function normalizeLoopPlusProgressPercent(value: unknown): number | undef
 
 export function normalizeLoopProgressPercent(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100
+    ? value
+    : undefined;
+}
+
+export function normalizeLoopSubtaskProgressWeightPercent(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 100
     ? value
     : undefined;
 }

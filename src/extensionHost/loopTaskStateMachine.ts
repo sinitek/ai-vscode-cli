@@ -7,7 +7,7 @@ import {
   type LoopMainAiFailureState,
 } from "../loopMainFailure";
 import { ORCHESTRATOR_CLARIFICATION_LIMIT } from "../orchestratorClarification";
-import { normalizeLoopProgressPercent } from "../loopTaskStore";
+import { normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent } from "../loopTaskStore";
 import { resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
 import type {
   LoopMainDecision,
@@ -143,6 +143,8 @@ export function upsertLoopTransitionSubtask(
     id,
     title: subtask.title,
     prompt: subtask.prompt,
+    ...(task.department?.role === "director" && subtask.progressWeightPercent !== undefined
+      ? { progressWeightPercent: subtask.progressWeightPercent } : {}),
     continueFromSubtaskId: subtask.continueFromSubtaskId,
     conflictGroup: subtask.conflictGroup,
     writeFiles: subtask.writeFiles,
@@ -294,6 +296,41 @@ function applyContinueLoopMainDecision(context: LoopMainDecisionContext): LoopMa
     };
   }
   const batch = upsertLoopTransitionSubtasks(context.task, decisionSubtasks, context.now);
+  if (context.task.department?.role === "director") {
+    const existingIds = new Set(context.task.subTasks.map((module) => module.id));
+    const updates = new Map<string, number>();
+    let weightIssue: string | undefined;
+    for (const { moduleId, progressWeightPercent } of context.decision.directorProgressWeights ?? []) {
+      if (!existingIds.has(moduleId) || updates.has(moduleId)
+        || normalizeLoopSubtaskProgressWeightPercent(progressWeightPercent) === undefined) {
+        weightIssue = "模块权重调整须使用已登记且互不重复的模块 ID，权重须为 1–100 的整数。";
+        break;
+      }
+      updates.set(moduleId, progressWeightPercent);
+    }
+    let totalWeight = 0;
+    for (const module of batch.nextSubtasks) {
+      const updatedWeight = updates.get(module.id);
+      const weight = updatedWeight ?? module.progressWeightPercent;
+      if (weight !== undefined && normalizeLoopSubtaskProgressWeightPercent(weight) === undefined) {
+        weightIssue ??= "模块权重须为 1–100 的整数。";
+        break;
+      }
+      totalWeight += weight ?? 0;
+    }
+    if (totalWeight > 100) weightIssue ??= "组长模块进度权重合计超过 100%。";
+    if (weightIssue) {
+      return {
+        status: "blocked",
+        appendDecisionMessages: false,
+        patch: { status: "needs-review", finalSummary: `${weightIssue}本轮未派发，请调整权重后继续。`, updatedAt: context.now },
+      };
+    }
+    batch.nextSubtasks = batch.nextSubtasks.map((module) => {
+      const progressWeightPercent = updates.get(module.id);
+      return progressWeightPercent === undefined ? module : { ...module, progressWeightPercent };
+    });
+  }
   const persistedActive = getActiveLoopSubtaskIds(context.task).filter((id) => context.task.subTasks.some((item) =>
     item.id === id && (item.status === "running" || item.status === "blocked")));
   const activeSubtaskIds = [...new Set([...persistedActive, ...batch.records.map((item) => item.id)])];

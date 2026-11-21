@@ -151,6 +151,7 @@ test("a settled leader frees the next batch and director JSON refreshes group ch
   await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("accounts-0"), "first leader started");
   await waitForLoopPlus(() => h.directorPrompts.some((input) => input.modelPrompt.includes("组长可用名额：0 / 1")), "held leader slot in director prompt");
   assert.match(h.directorPrompts[0].modelPrompt, /subtasks 只列本轮要启动的模块/u);
+  assert.match(h.directorPrompts[0].modelPrompt, /progressWeightPercent/u);
   assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：1 \/ 1/u);
   assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["accounts"]);
 
@@ -180,6 +181,17 @@ test("a settled leader frees the next batch and director JSON refreshes group ch
   await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "director completed after both batches");
   assert.equal(h.fixture.readTask(h.rootTaskId)?.loopProgressPercent, 100);
   assert.ok(h.directorProgressRefreshes.includes(100));
+});
+
+test("department director refuses dispatch when module progress weights exceed the whole-task budget", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.decide({ status: "continue", subtasks: [
+    { ...modulePrompt("accounts"), progressWeightPercent: 60 },
+    { ...modulePrompt("reports"), progressWeightPercent: 50 },
+  ] });
+  await h.start();
+  await waitForLoopPlus(() => h.notices.some((message) => message.includes("权重合计超过 100%")), "invalid module weight report");
+  assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks, []);
 });
 
 test("production director can finish a cohesive single-group task with spare leader slots", async (t) => {

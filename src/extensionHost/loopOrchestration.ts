@@ -379,7 +379,8 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       }
       const current = readLoopTaskRecord(task.id) ?? task;
       const result = await deps.handleDepartmentDecision({ task: current, decision, requirements: requirementsAtStart });
-      if (result.status === "completed" || result.task.loopProgressPercent !== current.loopProgressPercent) {
+      if (result.task.status !== current.status || result.task.loopProgressPercent !== current.loopProgressPercent
+        || decision.status === "continue") {
         refreshOpenLoopGroupChatPanelForTask(task.id);
       }
       return result;
@@ -1351,9 +1352,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       `任务 ID：${task.id}；轮次：${round}`,
       `当前总体进度：${task.loopProgressPercent ?? 0}%`,
       "使用经典 Loop JSON 决策。continue 的 subtasks 只列本轮要启动的模块。参考可信协调上下文的组长可用名额，把本轮可并行的模块放进同一个 subtasks 数组。只有一个合适模块时只填一项。",
-      `每个新模块用稳定 ID，prompt 至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符，写明本轮目标、范围边界和预期交付结果。各模块的实施由唯一真实 Loop+ 组长负责。`,
-      "每次返回 JSON 都提供 progressPercent。根据全部需求、已收到的组长汇报和剩余工作估算，首次拆分从 0 开始。未完成时为 0–99 的整数，只有整体完成时使用 100。",
-      '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","prompt":"自包含模块需求"}]}',
+      `每个新模块用稳定 ID，prompt 至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符，写明本轮目标、范围边界和预期交付结果，并提供 progressWeightPercent（1–100 的整数，表示占原始整体目标的绝对份额）。各模块的实施由唯一真实 Loop+ 组长负责。`,
+      "本轮新模块权重与已登记模块权重合计不得超过 100，不对权重重新归一化。剩余权重留给后续工作。范围改变或需要补派时，可在 continue 决策附带 directorProgressWeights:[{\"moduleId\":\"已登记模块ID\",\"progressWeightPercent\":40}] 调整已有模块权重。只列需要调整或补填权重的已登记模块，subtasks 仍只列新模块。",
+      "每次返回 JSON 都提供 progressPercent，作为无模块权重历史任务的兼容估算。根据全部需求、已收到的组长汇报和剩余工作估算，首次拆分从 0 开始。未完成时为 0–99 的整数，只有整体完成时使用 100；有模块权重时总监群聊按可信组长进度实时计算加权总进度。",
+      '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","progressWeightPercent":20,"prompt":"自包含模块需求"}]}',
       '仍有组长处于 starting/running 且只需等待其汇报时，返回 {"status":"waiting","progressPercent":40,"finalSummary":"等待组长汇报"}，其中百分比按实际工作估算。waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
       '确有用户疑问使用标准 clarify 表单。',
       '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',

@@ -88,14 +88,23 @@ test("round-trips classic Loop progress separately from Loop+ and discards malfo
   try {
     for (const progressPercent of [0, 42, 99, 100]) {
       const task = createTask({ loopProgressPercent: progressPercent, loopPlusProgressPercent: 23 });
+      task.subTasks[0].progressWeightPercent = 20;
       loopTaskStore.writeLoopTaskStore(filePath, { tasks: [task] });
       const stored = readPersistedTask(filePath, task.id);
       assert.equal(stored.loopProgressPercent, progressPercent);
       assert.equal(stored.loopPlusProgressPercent, 23);
+      assert.equal(stored.subTasks[0].progressWeightPercent, 20);
     }
     for (const value of [undefined, null, "42", -1, 42.5, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
       assert.equal(loopTaskStore.normalizeLoopProgressPercent(value), undefined);
       assert.equal(loopTaskStore.normalizeLoopTaskRecord({ ...createTask(), loopProgressPercent: value })?.loopProgressPercent, undefined);
+    }
+    for (const value of [undefined, null, 0, "20", -1, 20.5, 101]) {
+      assert.equal(loopTaskStore.normalizeLoopSubtaskProgressWeightPercent(value), undefined);
+      assert.equal(loopTaskStore.normalizeLoopTaskRecord({
+        ...createTask(),
+        subTasks: [{ ...createTask().subTasks[0], progressWeightPercent: value }],
+      })?.subTasks[0].progressWeightPercent, undefined);
     }
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });

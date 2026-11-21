@@ -158,6 +158,26 @@ test("updates classic progress only after a finished batch and reserves 100 for 
   }
 });
 
+test("department dispatch saves adjusted weights together with new modules", () => {
+  const task = createTask({ subTasks: [], department: {
+    version: 1, role: "director", rootTaskId: "loop-1", parentTaskId: null, leaderSubtaskId: null,
+    moduleTitle: "总监", routes: { director: {}, leader: {}, employee: {} }, limits: { maxLeaders: 4, maxEmployees: 16 },
+  } });
+  const first = transitionLoopMainDecision({ task, decision: { status: "continue", subtasks: [{
+    id: "weighted-module", title: "加权模块", prompt: "完成模块目标并汇报结果。", progressWeightPercent: 100,
+  }] }, now: NOW });
+  const dispatchedTask = clone({ ...task, ...first.patch });
+  const next: LoopMainDecision = { status: "continue", subtasks: [{
+    id: "additional-module", title: "补充模块", prompt: "完成补充目标并汇报结果。", progressWeightPercent: 80,
+  }] };
+  assert.equal(decide(dispatchedTask, next).patch.status, "needs-review");
+  assert.equal(decide(dispatchedTask, { ...next, directorProgressWeights: [{ moduleId: "unknown", progressWeightPercent: 20 }] }).patch.subTasks, undefined);
+  const adjusted = decide(dispatchedTask, { ...next, directorProgressWeights: [{ moduleId: "weighted-module", progressWeightPercent: 20 }] });
+  assert.deepEqual(adjusted.patch.subTasks?.map((module) => module.progressWeightPercent), [20, 80]);
+  assert.equal(dispatchedTask.subTasks[0].progressWeightPercent, 100);
+  assert.deepEqual(adjusted.subtasks?.map((module) => module.id), ["additional-module"]);
+});
+
 test("classic Loop counts every admitted batch member and repeat dispatch, but can complete at the limit", () => {
   const task = createTask({ classicSubtaskDispatchCount: 47 });
   const batch: LoopMainDecision = { status: "continue", subtasks: [

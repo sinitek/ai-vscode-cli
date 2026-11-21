@@ -153,6 +153,29 @@ test("parses classic Loop progress without requiring acceptance and rejects inva
   }))?.progressPercent, 100);
 });
 
+test("parses valid module progress weights and rejects malformed weights", () => {
+  const host = createRuntimeHost();
+  const subtask = { title: "模块", prompt: "完成模块目标并向主任务汇报实际结果。".repeat(8) };
+  for (const progressWeightPercent of [1, 20, 100]) {
+    const parsed = host.parseLoopMainDecision(JSON.stringify({ status: "continue", subtasks: [{
+      ...subtask, progressWeightPercent,
+    }] }));
+    assert.equal(parsed?.subtasks?.[0].progressWeightPercent, progressWeightPercent);
+  }
+  for (const progressWeightPercent of [null, "20", 0, -1, 20.5, 101]) {
+    assert.equal(host.parseLoopMainDecision(JSON.stringify({ status: "continue", subtasks: [{
+      ...subtask, progressWeightPercent,
+    }] })), null);
+  }
+  const updates = [{ moduleId: "existing", progressWeightPercent: 20 }];
+  assert.deepEqual(host.parseLoopMainDecision(JSON.stringify({
+    status: "continue", subtasks: [subtask], directorProgressWeights: updates,
+  }))?.directorProgressWeights, updates);
+  assert.equal(host.parseLoopMainDecision(JSON.stringify({
+    status: "continue", subtasks: [subtask], directorProgressWeights: [...updates, ...updates],
+  })), null);
+});
+
 
 function createNeedsReviewTask(): LoopTaskRecord {
   return {

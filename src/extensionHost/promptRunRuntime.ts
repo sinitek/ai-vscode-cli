@@ -30,7 +30,7 @@ import {
 import { resolveLoopAnswerConclusion } from "../loopGroupChat";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
-import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
@@ -583,9 +583,12 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
   if (!subtasks || subtasks.length === 0) {
     return null;
   }
+  const directorProgressWeights = normalizeDirectorProgressWeights(raw.directorProgressWeights);
+  if (directorProgressWeights === null) return null;
   const acceptance = normalizeLoopAcceptance((raw as { acceptance?: unknown }).acceptance);
   return {
     status: "continue",
+    ...(directorProgressWeights ? { directorProgressWeights } : {}),
     ...(progressPercent !== undefined ? { progressPercent } : {}),
     ...(acceptance ? { acceptance } : {}),
     subtask: subtasks[0],
@@ -595,6 +598,21 @@ function normalizeLoopMainDecision(value: unknown): LoopMainDecision | null {
       : undefined,
     estimatedRemainingRounds,
   };
+}
+
+function normalizeDirectorProgressWeights(value: unknown): LoopMainDecision["directorProgressWeights"] | null {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const weights: NonNullable<LoopMainDecision["directorProgressWeights"]> = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const moduleId = typeof item?.moduleId === "string" ? item.moduleId.trim() : "";
+    const progressWeightPercent = normalizeLoopSubtaskProgressWeightPercent(item?.progressWeightPercent);
+    if (!moduleId || seen.has(moduleId) || progressWeightPercent === undefined) return null;
+    seen.add(moduleId);
+    weights.push({ moduleId, progressWeightPercent });
+  }
+  return weights;
 }
 
 function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
@@ -643,6 +661,7 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
     writeFiles?: unknown;
     skillIds?: unknown;
     continueFromSubtaskId?: unknown;
+    progressWeightPercent?: unknown;
   };
   const title = typeof subtask.title === "string" ? subtask.title.trim() : "";
   const prompt = typeof subtask.prompt === "string" ? subtask.prompt.trim() : "";
@@ -659,6 +678,10 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
   if (continueFromSubtaskId === null) {
     return null;
   }
+  const progressWeightPercent = normalizeLoopSubtaskProgressWeightPercent(subtask.progressWeightPercent);
+  if (Object.prototype.hasOwnProperty.call(subtask, "progressWeightPercent") && progressWeightPercent === undefined) {
+    return null;
+  }
   const writeFiles = normalizeLoopWriteFiles(subtask.writeFiles);
   const skillIds = Array.isArray(subtask.skillIds)
     ? subtask.skillIds
@@ -670,6 +693,7 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
     id,
     title,
     prompt,
+    ...(progressWeightPercent !== undefined ? { progressWeightPercent } : {}),
     conflictGroup,
     writeFiles: writeFiles.length > 0 ? writeFiles : undefined,
     ...(skillIds.length > 0 ? { skillIds } : {}),
