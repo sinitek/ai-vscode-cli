@@ -85,6 +85,12 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       },
       continue: async root => effects.push(["organization-continue", root.id]), complete: async () => {},
     };
+  } else {
+    data.root.schedulingMode = "classic";
+    delete data.root.loopPlus;
+    data.root.subTasks[0].progressWeightPercent = 20;
+    data.root.subTasks[1].progressWeightPercent = 80;
+    data.leader.loopPlusProgressPercent = 50;
   }
   const coordinator = createLoopGroupChatPanelCoordinator(deps);
   await withTimeout(coordinator.open(data.root.id), "loadingReady handshake");
@@ -165,6 +171,10 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
       return;
     }
+    await page.locator('#panelActions [role="progressbar"][aria-valuenow="10"]').waitFor();
+    data.leader.loopPlusProgressPercent = 65;
+    coordinator.refreshOpenPanelForTask(data.leader.id);
+    await page.locator('#panelActions [role="progressbar"][aria-valuenow="13"]').waitFor();
     assert.match(await page.locator(".department-occupancy").innerText(), /组长 未知\/4 · 员工 未知\/20/);
     assert.equal(await page.locator('[data-action="acceptancePlan"]').count(), 0);
     assert.doesNotMatch(await page.locator("#taskPanelSlot").innerText(), /统一验收方案（只读）|根固化快照/u);
@@ -199,9 +209,12 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     assert.equal(await opener.evaluate((element) => document.activeElement === element), true);
     assert.ok(!effects.some(([action]) => action === "stop"));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true);
+    data.root.status = "completed";
+    coordinator.refreshOpenPanelForTask(data.root.id);
+    await page.locator('#panelActions [role="progressbar"][aria-valuenow="100"]').waitFor();
     assert.deepEqual(errors, []);
     const result = { scenario: "coordinator-record-fixtures", status: "passed", binding, parentScroll, effects, warnings, errors,
-      checks: ["unknown-capacity", "director-plan-panel-removed", "leader-inherited-plan", "record-hierarchy", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
+      checks: ["weighted-progress-initial", "weighted-progress-live", "weighted-progress-completed", "unknown-capacity", "director-plan-panel-removed", "leader-inherited-plan", "record-hierarchy", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
       boundary: "Mock VS Code and task record ports; not a real Extension Development Host or organization launch" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
   } catch (error) {

@@ -111,8 +111,20 @@ test("department host projection uses validated records, actual attempts and rea
   const projection = buildDepartmentGroupChatProjection(root, port)!;
   assert.equal(projection.leaders.length, 2);
   assert.deepEqual(projection.leaders.map(({ taskId, leaderNumber }) => [taskId, leaderNumber]), [[leader.id, 1], [other.id, 2]]);
+  root.subTasks[0].progressWeightPercent = 20;
+  root.subTasks[1].progressWeightPercent = 40;
+  leader.loopPlusProgressPercent = 50;
+  assert.equal(buildDepartmentGroupChatProjection(root, port)!.overallProgressPercent, 10);
+  other.loopPlusProgressPercent = 25;
+  assert.equal(buildDepartmentGroupChatProjection(root, port)!.overallProgressPercent, 20);
+  other.loopPlusProgressPercent = undefined;
   leader.loopPlusProgressPercent = 25;
-  assert.equal(buildDepartmentGroupChatProjection(root, port)!.leaders[0].progressPercent, 25);
+  const weightedProjection = buildDepartmentGroupChatProjection(root, port)!;
+  assert.equal(weightedProjection.leaders[0].progressPercent, 25);
+  assert.equal(weightedProjection.overallProgressPercent, 5);
+  root.subTasks[1].progressWeightPercent = undefined;
+  assert.equal(buildDepartmentGroupChatProjection(root, port)!.overallProgressPercent, undefined);
+  root.subTasks[1].progressWeightPercent = 40;
   assert.deepEqual(buildDepartmentGroupChatProjection(other, {
     ...port, readLeaderTaskIds: (rootId, moduleId) => moduleId === leader.department!.leaderSubtaskId ? [] : port.readLeaderTaskIds(rootId, moduleId),
   })!.leaders.map(({ taskId, leaderNumber }) => [taskId, leaderNumber]), [[other.id, 2]]);
@@ -125,6 +137,38 @@ test("department host projection uses validated records, actual attempts and rea
   assert.equal(buildDepartmentGroupChatProjection(root, { ...port, readCapacity: () => ({ ...capacity, rootTaskId: "other" }) })!.activeLeaders, null);
   other.department!.leaderSubtaskId = leader.department!.leaderSubtaskId;
   assert.deepEqual(buildDepartmentGroupChatProjection(root, port)!.leaders, []); // ambiguous ownership fails closed
+});
+
+test("director group chat refreshes its overall progress from weighted leader progress", async () => {
+  const h = harness();
+  h.root.status = "running";
+  h.root.schedulingMode = "classic";
+  delete h.root.loopPlus;
+  h.root.loopProgressPercent = 64;
+  h.root.subTasks[0].progressWeightPercent = 20;
+  h.root.subTasks[1].progressWeightPercent = 80;
+  h.leader.loopPlusProgressPercent = 50;
+  try {
+    await h.coordinator.open(h.root.id);
+    await h.domReady;
+    assert.equal(h.panel().getState()?.task.progressPercent, 10);
+    assert.match(h.panel().getState()?.rounds[0].participants[0].title ?? "", /10%/u);
+
+    h.leader.loopPlusProgressPercent = 65;
+    h.coordinator.refreshOpenPanelForTask(h.leader.id);
+    await tick();
+    assert.equal(h.panel().getState()?.task.progressPercent, 13);
+    assert.match(h.panel().getState()?.rounds[0].participants[0].title ?? "", /13%/u);
+    assert.ok(h.posted.some((item) => item.type === "loopGroupChatChat:contentPatch"
+      && item.actionsHtml?.includes('aria-valuenow="13"')));
+
+    h.root.status = "completed";
+    h.coordinator.refreshOpenPanelForTask(h.root.id);
+    await tick();
+    assert.equal(h.panel().getState()?.task.progressPercent, 100);
+    assert.ok(h.posted.some((item) => item.type === "loopGroupChatChat:contentPatch"
+      && item.actionsHtml?.includes('aria-valuenow="100"')));
+  } finally { h.restore(); }
 });
 
 test("department host rejects cross-department, bad root, metadata, workspace and classic leader records", async () => {

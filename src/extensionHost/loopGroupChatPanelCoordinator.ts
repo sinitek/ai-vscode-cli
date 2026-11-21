@@ -231,7 +231,14 @@ export function buildLoopGroupChatPanelState(
     ?? (organization?.needsCleanup && displayTask.status !== "running" ? "unconfirmed" : undefined);
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
-  const state = buildLoopGroupChatPanelStateWithDeps(displayTask, {
+  const department = buildDepartmentGroupChatProjection(displayTask, {
+    readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
+    readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
+  });
+  const panelTask = department?.role === "director" && department.overallProgressPercent !== undefined
+    ? { ...displayTask, loopProgressPercent: department.overallProgressPercent }
+    : displayTask;
+  const state = buildLoopGroupChatPanelStateWithDeps(panelTask, {
     collectRunningLoopTaskIds: deps.collectRunningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
     fileExists: deps.fileExists,
@@ -241,10 +248,6 @@ export function buildLoopGroupChatPanelState(
     mainModelRunning: mainModelBusy,
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
-  });
-  const department = buildDepartmentGroupChatProjection(displayTask, {
-    readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
-    readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
   });
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {

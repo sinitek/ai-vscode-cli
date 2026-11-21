@@ -54,6 +54,7 @@ export type DepartmentGroupChatProjection = {
     progressPercent?: number;
     employees: LoopGroupChatPanelParticipant[];
   }>;
+  overallProgressPercent?: number;
   maxLeaders: number;
   maxEmployees: number;
   activeLeaders: number | null;

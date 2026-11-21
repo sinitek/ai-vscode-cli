@@ -3,7 +3,7 @@ import { getDepartmentEmployeeName } from "../departmentEmployeeNames";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
-import type { LoopTaskRecord } from "../loopTaskStore";
+import { normalizeLoopSubtaskProgressWeightPercent, type LoopTaskRecord } from "../loopTaskStore";
 import type { DepartmentEmployeeAllocationProjection, DepartmentGroupChatProjection, LoopGroupChatPanelParticipant } from "../webview/loopGroupChatPanelTypes";
 
 export type DepartmentGroupChatReadPort = {
@@ -181,7 +181,15 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
       }
     }
   } catch { return undefined; }
-  const leaders = [...byId.values()];
+  const progressByModuleId = new Map<string, number>();
+  const leaders = [...byId.values()].map(({ record, leaderNumber }) => {
+    const loopPlus = projectLoopPlusPanel(record);
+    const progressPercent = resolveLoopPanelProgressPercent(record, loopPlus);
+    progressByModuleId.set(root.subTasks[leaderNumber - 1].id, progressPercent);
+    return { taskId: record.id, leaderNumber, participant: participant(record, "leader"), progressPercent,
+      employees: employees(record, loopPlus, leaderNumber, rootMeta.limits.maxLeaders) };
+  });
+  const overallProgressPercent = meta.role === "director" ? resolveDepartmentWeightedProgress(root, progressByModuleId) : undefined;
   let capacity: DepartmentCapacitySnapshot | null = null;
   try { capacity = port.readCapacity?.(root.id) ?? null; } catch { /* Unknown is explicit. */ }
   const valid = capacity && capacity.rootTaskId === root.id
@@ -200,15 +208,29 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     role: meta.role as "director" | "leader", rootTaskId: root.id,
     ...(meta.parentTaskId ? { parentTaskId: meta.parentTaskId } : {}), title: meta.moduleTitle,
     director: participant(root, "director"),
-    leaders: leaders.map(({ record, leaderNumber }) => {
-      const loopPlus = projectLoopPlusPanel(record);
-      return { taskId: record.id, leaderNumber, participant: participant(record, "leader"),
-        progressPercent: resolveLoopPanelProgressPercent(record, loopPlus),
-        employees: employees(record, loopPlus, leaderNumber, rootMeta.limits.maxLeaders) };
-    }),
+    leaders,
+    ...(overallProgressPercent !== undefined ? { overallProgressPercent } : {}),
     maxLeaders: valid ? capacity!.maxLeaders : rootMeta.limits.maxLeaders,
     maxEmployees: valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees,
     activeLeaders: valid ? capacity!.leaders.length : null,
     activeEmployees: valid ? capacity!.employees.length : null,
   };
+}
+
+function resolveDepartmentWeightedProgress(
+  root: LoopTaskRecord,
+  progressByModuleId: ReadonlyMap<string, number>,
+): number | undefined {
+  if (root.status === "completed") return 100;
+  if (root.subTasks.length === 0) return undefined;
+  let totalWeight = 0;
+  let weightedProgress = 0;
+  for (const module of root.subTasks) {
+    const weight = normalizeLoopSubtaskProgressWeightPercent(module.progressWeightPercent);
+    if (weight === undefined) return undefined;
+    totalWeight += weight;
+    weightedProgress += weight * (progressByModuleId.get(module.id) ?? 0);
+  }
+  if (totalWeight > 100) return undefined;
+  return Math.min(99, Math.round(weightedProgress / 100));
 }
