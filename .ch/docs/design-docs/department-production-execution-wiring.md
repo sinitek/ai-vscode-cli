@@ -67,6 +67,12 @@ Round-222 的多轮 Owner 25 项、员工 82 个不同 bootstrap 用例、交互
 
 冲突登记、活动/替换 Tab、session 漂移、失败消费者和已请求 release 不覆盖、不洗净、不驱逐；保留 256 登记及 64 消费者限额。正常 release 仍等待原消费者、核对精确 identity、关闭和回读，未知责任保留占用。真实第二 EH 组合结果见冷恢复专属 runbook 与本轮报告，不由组件通过外推。
 
+## 原代次中止回包与多组控制
+
+代次协调 IPC 为完整回包提供独立于单条请求的字节上限，详见[代次协调协议](department-generation-authority.md)。单代累积票据过多时，旧 worker 会静默断开，即使 endpoint 仍在监听。新版宿主读取旧 worker 发出的短回包，旧 worker 已加载的回包限制持续到该进程退出。
+
+重开群聊中止时，总监停止与原代次控制同时发起。初始化已通过共同身份预检后，各组独立发起原控制及轮询，响应中断的一组仍报告其原错误。只有全部原代次确认后，冷宿主才登记恢复 Tab 并完成组织停止结算。缺少原 Owner 清理凭证的执行保留原占用。
+
 ## Round-674：OpenCode 原代启动输入与跨 EH 退出观察
 
 原多轮 OpenCode Owner 的继承 EH 环境是首次创建输入。生产入口通过 `captureOpenCodeEnvironment(taskId)` 按精确 scope/generation 保留首次快照，再用于每轮不可变 launch 比对。返回副本防止调用者改写，最多128项；未知/失败准备保留，正常完整清理后的 `release` 删除。显式 environment、envOverrides、命令、argv、overlay、selection、native session 和 generation 仍按原门禁核对，不能借环境快照重用旧 grant。busy、重复 invocation、selection、上限、launch 和 native session 拒绝现在仅附安全类别，不输出启动内容或私有凭据。

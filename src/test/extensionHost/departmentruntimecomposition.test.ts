@@ -584,7 +584,7 @@ test("route preparation stop stays revoked when controller-free recovery fails",
   release.resolve(); await rejected;
   assert.equal(reads, readsBeforeStop + 1, "invalidated request must not even enter ensure/recovery");
   assert.equal(resumes, 0); assert.equal(cold.host.runtimeSnapshot(root.id), null);
-  assert.equal(h.fixture.readTask(root.id)?.status, "running", "failed cold stop does not change the persisted record");
+  assert.equal(h.fixture.readTask(root.id)?.status, "stopped", "cold stop intent survives failed cleanup");
 });
 
 for (const cold of [false, true]) {
@@ -762,25 +762,25 @@ test("cold stop reaches exact live-leader refusal after trusted preparation and 
   const root = h.fixture.readTask("root-1")!;
   const before = h.store.read(root.id, root.workspaceKey);
   h.composition.dispose();
-  let prepared = false, stops = 0, launches = 0;
+  let prepared = false, directorStops = 0, leaderStops = 0, launches = 0;
   const cold = createDepartmentRuntimeComposition({ ...h.deps,
     prepareRoutes: async () => { prepared = true; }, validateRoutes: () => prepared,
     inspectLeaderSession: (task) => ({ target: [...h.targets.values()].find((v) => v.sessionId === task.sessionId)!, live: null }),
-    stopDirector: () => { stops++; }, stopLeader: async () => { stops++; },
+    stopDirector: () => { directorStops++; }, stopLeader: async () => { leaderStops++; },
     runtime: { ...h.deps.runtime, runEventDriven: (...args) => { launches++; return h.deps.runtime.runEventDriven(...args); } },
     runDirectorDecision: async () => { launches++; throw new Error("cold-stop-must-not-prompt"); },
   }); t.after(cold.dispose);
   await assert.rejects(cold.organizationControl.stop(root), /^Error: 部门恢复核验阻塞：live-leader-unverifiable。保留原占用，不能重新派发。$/);
-  assert.equal(prepared, true); assert.equal(stops, 0);
+  assert.equal(prepared, true); assert.equal(directorStops, 1); assert.equal(leaderStops, 0);
   assert.deepEqual(h.store.read(root.id, root.workspaceKey), before);
-  assert.equal(h.fixture.readTask(root.id)?.status, "running");
+  assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
   assert.equal(launches, 0);
   assert.equal(cold.host.runtimeSnapshot(root.id), null);
 });
 
 
 for (const change of ["workspace", "routes", "session", "cli", "status", "plan", "missing", "configuration", "dispose"] as const) {
-  test(`cold stop rejects expired preparation before recovery: ${change}`, async (t) => {
+  test(`cold stop rejects expired recovery before settlement: ${change}`, async (t) => {
     const entered = latch(), release = latch();
     const h = harness(); t.after(() => { release.resolve(); h.dispose(); });
     await h.start(); const root = h.fixture.readTask("root-1")!;
@@ -809,7 +809,7 @@ for (const change of ["workspace", "routes", "session", "cli", "status", "plan",
     if (change === "dispose") cold.dispose();
     release.resolve(); await rejected;
     assert.equal(reads, 0, "stale request must not read recovery state or install an organization");
-    assert.equal(controls, 0); assert.equal(cold.host.runtimeSnapshot(root.id), null);
+    assert.equal(controls, 1); assert.equal(cold.host.runtimeSnapshot(root.id), null);
   });
 }
 
@@ -825,9 +825,10 @@ test("cold stop fences concurrent continue and duplicate stop until preparation 
   const stopping = cold.organizationControl.stop(root);
   await entered.promise;
   await assert.rejects(cold.organizationControl.continue(root), /正在停止/);
-  await assert.rejects(cold.organizationControl.stop(root), /正在停止/);
+  const duplicate = cold.organizationControl.stop(root);
+  assert.equal(duplicate, stopping, "the second stop joins the original request");
   assert.equal(prepares, 1);
-  assert.equal(h.fixture.readTask(root.id)?.status, "running");
+  assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
   release.resolve(); await stopping;
   assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
   assert.equal(h.directorPrompts.length, 1);
@@ -838,14 +839,15 @@ test("cold stop failed preparation retains state and permits an explicit later s
   await h.start(); const root = h.fixture.readTask("root-1")!;
   h.composition.dispose();
   const before = h.store.read(root.id, root.workspaceKey);
-  let prepares = 0;
+  let prepares = 0, directorStops = 0, memberStops = 0;
   const cold = createDepartmentRuntimeComposition({ ...h.deps, prepareRoutes: async () => {
     if (++prepares === 1) throw new Error("trusted-route-refusal");
-  } }); t.after(cold.dispose);
+  }, stopDirector: () => { directorStops++; }, prepareColdRecovery: async () => { memberStops++; } }); t.after(cold.dispose);
   await assert.rejects(cold.organizationControl.stop(root), /trusted-route-refusal/);
   assert.equal(cold.host.runtimeSnapshot(root.id), null);
   assert.deepEqual(h.store.read(root.id, root.workspaceKey), before);
-  assert.equal(h.fixture.readTask(root.id)?.status, "running");
+  assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
+  assert.equal(directorStops, 1); assert.equal(memberStops, 1);
   await cold.organizationControl.stop(root);
   assert.equal(prepares, 2); assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
 });
@@ -1081,7 +1083,7 @@ for (const change of ["missing", "root", "file", "workspace", "active-workspace"
   });
 }
 
-test("cold stopped director with empty capacity cannot resume until a matching verification, and its successor cannot reuse it", async (t) => {
+test("persisted stopped director resumes from a fresh host without asking the user to stop again", async (t) => {
   const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) });
   t.after(h.dispose);
   await h.start();
@@ -1095,27 +1097,13 @@ test("cold stopped director with empty capacity cannot resume until a matching v
   });
   t.after(cold.dispose);
   const stopped = h.fixture.readTask(root.id)!;
-  const before = h.store.read(root.id, root.workspaceKey);
   assert.deepEqual(cold.readCapacity(root.id)?.leaders, []);
   assert.deepEqual(cold.readCapacity(root.id)?.employees, []);
-  await assert.rejects(cold.organizationControl.continue(stopped), /停止未确认/);
-  await assert.rejects(cold.continueDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt: "旧请求", modelPrompt: "旧请求", contextTags: [] }), /停止未确认/);
-  assert.deepEqual([prepares, targets, controls], [0, 0, 0]);
-  assert.deepEqual(h.fixture.readTask(root.id), stopped);
-  assert.deepEqual(h.store.read(root.id, root.workspaceKey), before);
-  assert.equal(cold.host.runtimeSnapshot(root.id), null);
-
-  await cold.organizationControl.stop(stopped);
-  assert.equal(cold.readOrganizationStopState(root.id), "confirmed");
-  await cold.organizationControl.continue(h.fixture.readTask(root.id)!, "已核验后继续");
+  await cold.organizationControl.continue(stopped, "直接继续");
   assert.equal(h.fixture.readTask(root.id)?.status, "running");
-  assert.deepEqual(h.fixture.readTask(root.id)?.supplementalRequirements, ["已核验后继续"]);
+  assert.deepEqual(h.fixture.readTask(root.id)?.supplementalRequirements, ["直接继续"]);
   assert.equal(cold.readOrganizationStopState(root.id), undefined);
-
-  h.deps.updateTask(root.id, { status: "stopped" });
-  const beforeSuccessor = [prepares, targets, controls];
-  await assert.rejects(cold.organizationControl.continue(h.fixture.readTask(root.id)!), /停止未确认/);
-  assert.deepEqual([prepares, targets, controls], beforeSuccessor);
+  assert.deepEqual([prepares, targets, controls], [1, 1, 0]);
 });
 
 test("a newer stop during leader continuation preparation prevents the old handoff from starting execution", async (t) => {
@@ -1145,28 +1133,28 @@ test("a newer stop during leader continuation preparation prevents the old hando
   assert.equal(h.composition.readOrganizationStopState(id), "confirmed", "late handoff cannot consume the newer receipt");
 });
 
-test("late successful stop cannot clear a newer unconfirmed organization stop", async (t) => {
-  const firstEntered = latch(), firstRelease = latch(), secondEntered = latch(), secondRelease = latch();
+test("duplicate organization stop shares the result and permits a later stop after failure", async (t) => {
+  const firstEntered = latch(), firstRelease = latch();
   let calls = 0, reads = 0;
   const h = harness({ stopDirector: async () => {
     const call = ++calls;
-    if (call === 1) { firstEntered.resolve(); await firstRelease.promise; }
-    if (call === 2) { secondEntered.resolve(); await secondRelease.promise; throw new Error("second-stop-unverified"); }
+    if (call === 1) { firstEntered.resolve(); await firstRelease.promise; throw new Error("stop-cleanup-failed"); }
   } });
-  t.after(() => { firstRelease.resolve(); secondRelease.resolve(); h.dispose(); });
+  t.after(() => { firstRelease.resolve(); h.dispose(); });
   await h.start(); const root = h.fixture.readTask("root-1")!;
   h.deps.readOrganizationRoot = (id) => { reads++; return h.fixture.readTask(id); };
   const first = h.composition.organizationControl.stop(root); await firstEntered.promise;
   const second = h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
-  const secondResult = second.then(() => null, error => error); await secondEntered.promise;
-  firstRelease.resolve(); await first;
-  assert.equal(reads, 0, "superseded stop cannot perform the authoritative read for the newer request");
+  assert.equal(first, second);
+  assert.equal(calls, 1);
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
   assert.equal(h.composition.readOrganizationStopState(root.id), "stopping");
-  secondRelease.resolve(); assert.ok(await secondResult);
+  firstRelease.resolve(); await assert.rejects(first, /尚未完成全部执行清理/);
+  assert.equal(reads, 0, "failed stop cannot report success");
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
   assert.equal(h.composition.readOrganizationStopState(root.id), "unconfirmed");
   await h.composition.organizationControl.stop(h.fixture.readTask(root.id)!);
+  assert.equal(calls, 2);
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), false);
   assert.equal(reads, 1);
 });

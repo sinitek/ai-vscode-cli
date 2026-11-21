@@ -505,6 +505,34 @@ test("failed real stop observation blocks continue without releasing live occupa
   assert.equal(h.capacity.snapshot("root")[0].employees.length, 0);
 });
 
+test("root stop reaches other Loop+ leaders and employees while an individual stop is still draining", async (t) => {
+  const h = harness();
+  const cancelled = deferred(), release = deferred();
+  t.after(() => { release.resolve(); h.fixture.dispose(); });
+  h.register();
+  h.dispatch("first");
+  const first = await h.host.startLeader("root", request("accounts"));
+  assert.ok(first.ok);
+  h.dispatch("second");
+  const second = await h.host.startLeader("root", request("reports"));
+  assert.ok(second.ok);
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "both Loop+ employees are running");
+  h.deps.stopLeader = async (taskId) => {
+    if (taskId === first.taskId) { cancelled.resolve(); await release.promise; }
+  };
+  const memberStop = h.host.cancelLeader("root", first.taskId);
+  await cancelled.promise;
+  const rootStop = h.host.stopRoot("root");
+  try {
+    await waitForLoopPlus(() => h.read(second.taskId)?.status === "stopped"
+      && !h.fixture.parkedSubtaskIds().includes("second-0"), "second Loop+ leader and employee stopped while first drains");
+  } finally {
+    release.resolve();
+    await memberStop;
+    assert.equal(await rootStop, true);
+  }
+});
+
 for (const failure of ["employee", "leader"] as const) test(`lost ${failure} observation fences new and delayed employee admission without releasing live occupancy`, async (t) => {
   const h = harness();
   const releaseLateGrant = deferred();
@@ -593,6 +621,14 @@ for (const failure of ["employee", "leader"] as const) test(`lost ${failure} obs
   assert.equal(pool.snapshot("root")[0].leaders.length, 2);
   assert.equal(h.fixture.rootsCreated.length, resources); assert.equal(h.fixture.createdSubtaskTargets.length, targets);
 
+  const stop = host.stopRoot("root");
+  try {
+    await waitForLoopPlus(() => h.read(source.taskId)?.status === "stopped" && h.read(healthy.taskId)?.status === "stopped",
+      "root stop reaches both blocked and healthy Loop+ parents");
+  } finally {
+    h.fixture.releaseHeldMain();
+    assert.equal(await stop, false, "missing original cleanup evidence remains unresolved");
+  }
 });
 
 // Cleanup proof regressions: real host, adapter, scheduler, pool and persisted task fixture;
@@ -659,13 +695,11 @@ for (const failure of ["unlink", "root-replaced", "unknown", "rmdir", "async-dis
     assert.equal((await h.host.continueRoot("root")).ok, false);
     h.fixture.setCloseSubtaskTabError(null);
     assert.equal(await h.host.stopRoot("root"), false);
+    assert.equal(h.fixture.parkedSubtaskIds().includes("cleanup-0"), false, "stop also cancels the sibling employee of a blocked leader");
     assert.ok(h.fixture.adapter.observeAttempt!(started.taskId, parked.subtaskId, attemptId), "failed observation survives business settlement");
     assert.equal(fs.readFileSync(path.join(workspace, "source.txt"), "utf8"), "source must survive");
     if (failure === "unknown") assert.equal(fs.readFileSync(path.join(roots[1].cwd, "unknown"), "utf8"), "preserved unknown");
     if (failure === "root-replaced") assert.equal(fs.readFileSync(path.join(roots[1].cwd, "keep"), "utf8"), "preserved replacement");
-    // A still-live sibling's eventual cleanup may return its own slot, never the quarantined overflow.
-    h.fixture.setCloseSubtaskTabError(null);
-    h.fixture.finishParked("cleanup-0", { status: "stopped" });
     await waitForLoopPlus(() => h.fixture.rootsDisposed.length >= (failure === "termination" || failure === "unobservable" ? 0 : 1), "remaining runner cleanup");
     await assert.rejects(h.fixture.adapter.waitForTaskIdle(started.taskId).then(() => { throw new Error("must reject cleanup fence"); }), /cleanup|清理|runner|unlink|busy|dispose|tab|身份|链接|目录|not empty|ENOTEMPTY/);
     assert.ok(h.fixture.adapter.hasTaskExecution(started.taskId), "retained cleanup is not idle");

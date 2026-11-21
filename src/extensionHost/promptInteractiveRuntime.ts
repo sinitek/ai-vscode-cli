@@ -279,7 +279,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (!executionOptions.departmentCodexRun) applyThinkingWorkspaceFiles(cli, thinkingMode, cwd);
 
     const tabId = target.tabId;
-    const shouldAutoCompactAfterRun = shouldAutoCompactContextAfterRunForTarget(target);
+    const departmentRun = Boolean(executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner);
+    const shouldAutoCompactAfterRun = !(departmentRun && input.taskRole === "main")
+      && shouldAutoCompactContextAfterRunForTarget(target);
     // The trusted Owner prepares/resumes and durably binds its native thread.
     // Its local transcript key is not a shared-runner resume credential.
     const hasDepartmentLeaderSession = executionOptions.departmentLeaderSession !== undefined;
@@ -450,7 +452,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const userMessageId = input.preloadedUserMessageId ?? createMessageId();
     const userCreatedAt = Date.now();
     const runId = createMessageId();
-    const departmentRun = Boolean(executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner);
     const startedAt = Date.now();
     const processSessionId = uiSessionId ?? runId;
 

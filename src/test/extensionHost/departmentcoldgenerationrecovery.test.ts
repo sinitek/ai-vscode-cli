@@ -6,6 +6,7 @@ import * as path from "path";
 import { spawn } from "child_process";
 import { productionWiring, until } from "./fixtures/departmentproductionwiringfixture";
 import { DepartmentGenerationAuthorityClient } from "../../runtime/departmentgenerationauthorityclient";
+import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
 import { departmentGenerationAuthorityDirectory } from "../../runtime/departmentgenerationauthority";
 import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { loopBlockerFixture } from "../loopBlockerFixture";
@@ -119,7 +120,7 @@ scenario("cold production repository authenticates original complete generation 
   assert.equal(successorAuthority.child.exitCode, 0); assert.equal(successorAuthority.child.signalCode, null);
 });
 
-import { DepartmentColdGenerationRecovery } from "../../extensionHost/departmentcoldgenerationrecovery";
+import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "../../extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "../../extensionHost/departmentleaderstoredidentity";
 import { resolveLoopConversationTabContextFromMessages } from "../../panelStateBuilder";
 import { gate } from "./fixtures/departmentproductionwiringfixture";
@@ -139,7 +140,7 @@ function observerFor(h: Awaited<ReturnType<typeof productionWiring>>, options: {
       return task?.cli === cli && task.sessionId === id ? context : { taskRole: null, loopTaskId: null };
     } });
   const recovery = new DepartmentColdGenerationRecovery({ store: h.store, authorityDirectory: options.authorityDirectory ?? h.file("authorities"),
-    workspaceKey: () => "workspace", readTask, verifyStoredIdentity: identity,
+    ownerDirectory: h.file("owners"), workspaceKey: () => "workspace", readTask, verifyStoredIdentity: identity,
     registerRestoredTarget() { assert.fail("negative-test-registration"); },
     restoreTarget() { targets++; throw new Error("negative-test-must-not-create-target"); }, acceptRetirement() { assert.fail("negative-test-retirement"); } });
   return { recovery, get targets() { return targets; } };
@@ -221,7 +222,7 @@ scenario("cold durable capacity failure blocks successor and retains the origina
   const write = cold.store.write.bind(cold.store);
   t.mock.method(cold.store, "write", (value: Parameters<typeof write>[0]) => value.capacity.leaders.length === 0
     ? { ok: false as const, error: "injected-capacity-persistence-failure" } : write(value));
-  await assert.rejects(cold.composition.organizationControl.stop(cold.read("root")!), /尚未核验全部执行清理/);
+  await assert.rejects(cold.composition.organizationControl.stop(cold.read("root")!), /尚未完成全部执行清理/);
   const saved = cold.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
   assert.equal(saved.value.capacity.leaders.length, 1); assert.equal(saved.value.leaderExecutionSets![0].state, "closed");
   assert.equal(cold.producer.canContinueLeader(launch.taskId), false); assert.equal(cold.runs, 0);
@@ -241,22 +242,26 @@ scenario("cold original endpoint loss retains complete durable set and forbids a
   const exited = new Promise<void>(resolve => worker.child.once("exit", () => resolve())); worker.child.kill(); await exited; // Fault injection only.
   const probe = observerFor(h);
   await assert.rejects(probe.recovery.prepare(h.read("root")!, () => {}), /authority-unreachable|authority-disconnected/);
-  assert.equal(probe.targets, 0); assert.deepEqual(h.store.read("root", "workspace"), before);
+  assert.equal(probe.targets, 0);
+  const after = h.store.read("root", "workspace"); assert.ok(after.ok && after.value);
+  assert.deepEqual(after.value.capacity, before.value.capacity);
+  assert.deepEqual(after.value.leaderExecutionSets, before.value.leaderExecutionSets);
+  assert.deepEqual(after.value.executionBindings, before.value.executionBindings);
   const failed = await h.producer.close(launch.taskId); assert.equal(failed.ok, false);
   const retained = h.store.read("root", "workspace"); assert.ok(retained.ok && retained.value);
   assert.equal(retained.value.leaderExecutionSets![0].state, "open"); assert.equal(retained.value.capacity.leaders.length, 1);
 });
 
-scenario("cold asynchronous authority observation rechecks the authoritative task", async t => {
+scenario("cold asynchronous stop rechecks the authoritative task before cleanup settlement", async t => {
   const h = await productionWiring(t, "codex", true, false, 1, undefined, "codex", true, true);
   const held = gate(); let firstOutput = true; h.beforeLeaderCallback(async () => { if (firstOutput) firstOutput = false; else await held.promise; }); t.after(() => held.resolve());
   h.answer(1, { status: "blocked", finalSummary: "保留身份" });
   const launch = await h.start(); assert.ok(launch.ok); await until(() => !!h.read(launch.taskId)?.executionSession);
   await until(() => h.fixture.getMessages("leader-tab").length > 0 && h.mainInvocations.length >= 2);
   const entered = gate(), release = gate();
-  const observe = DepartmentGenerationAuthorityClient.prototype.observe;
-  const observation = t.mock.method(DepartmentGenerationAuthorityClient.prototype, "observe", async function (this: DepartmentGenerationAuthorityClient) {
-    const result = await observe.call(this);
+  const control = DepartmentGenerationAuthorityClient.prototype.control;
+  const cancellation = t.mock.method(DepartmentGenerationAuthorityClient.prototype, "control", async function (this: DepartmentGenerationAuthorityClient, controlId: string) {
+    const result = await control.call(this, controlId);
     entered.resolve(); await release.promise;
     return result;
   });
@@ -264,13 +269,85 @@ scenario("cold asynchronous authority observation rechecks the authoritative tas
   const preparing = probe.recovery.prepare(h.read("root")!, () => {}); const rejected = assert.rejects(preparing, /changed-during-control/);
   await entered.promise;
   assert.ok(h.update(launch.taskId, { supplementalRequirements: ["在等待期间变更的真实要求"] }));
-  release.resolve(); await rejected; observation.mock.restore();
+  release.resolve(); await rejected; cancellation.mock.restore();
   assert.equal(probe.targets, 0); const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
   const set = saved.value.leaderExecutionSets![0];
   const client = new DepartmentGenerationAuthorityClient(departmentGenerationAuthorityDirectory(h.file("authorities"), set.scope), set.scope, set.producerId);
-  assert.equal((await client.observe()).state, "open", "invalidated preflight cannot acquire control or launch");
+  assert.equal((await client.observe()).state, "sealed", "accepted cancellation survives a later identity change");
   assert.equal(saved.value.capacity.leaders.length, 1); held.resolve();
 });
+
+for (const failure of ["initial-disconnect", "poll-disconnect", "existing-control", "cleanup-unverified"] as const) {
+scenario(`public cold stop controls the other original authority after ${failure}`, async t => {
+  const h = await productionWiring(t, "codex", true, false, 2, { maxEmployees: 20 }, "codex", true, true);
+  for (let round = 1; round <= 4; round++) h.answer(round, { status: "wait", finalSummary: "等待公开中止" });
+  const first = await h.start(); assert.ok(first.ok);
+  await until(() => !!h.read(first.taskId)?.executionSession);
+  const second = await h.start("module-1"); assert.ok(second.ok);
+  await until(() => !!h.read(second.taskId)?.executionSession);
+  const original = h.store.read("root", "workspace"); assert.ok(original.ok && original.value);
+  const [offline, reachable] = [first, second].map(member => original.value!.leaderExecutionSets!.find(set => set.scope.leaderTaskId === member.taskId)!);
+  const clients = [offline, reachable].map(set => new DepartmentGenerationAuthorityClient(
+    departmentGenerationAuthorityDirectory(h.file("authorities"), set.scope), set.scope, set.producerId));
+  await until(async () => (await clients[0].observe()).tickets[0]?.state === "started" && (await clients[1].observe()).tickets[0]?.state === "started");
+  for (const [index, member] of [first, second].entries()) {
+    await h.fixture.adapter.waitForTaskIdle(member.taskId);
+    const task = h.read(member.taskId)!;
+    fs.writeFileSync(h.file(`transcript-codex-${task.sessionId}.json`), JSON.stringify(h.fixture.getMessages(`leader-tab-${index + 1}`)));
+  }
+  assert.equal(await h.source.close(), true);
+  const cold = await coldGenerationHost(t, h.directory);
+  const observe = DepartmentGenerationAuthorityClient.prototype.observe;
+  const control = DepartmentGenerationAuthorityClient.prototype.control;
+  const recovery = DepartmentGenerationAuthorityClient.prototype.recovery;
+  if (failure === "existing-control") await clients[0].control("original-stop-request");
+  const controlled: string[] = [];
+  const ownerStops: string[] = [];
+  const seal = DepartmentExecutionOwnerClient.prototype.sealExecution;
+  t.mock.method(DepartmentExecutionOwnerClient.prototype, "sealExecution", function (this: DepartmentExecutionOwnerClient, identity: Parameters<typeof seal>[0]) {
+    ownerStops.push(identity.leaderTaskId);
+    return seal.call(this, identity);
+  });
+  t.mock.method(DepartmentGenerationAuthorityClient.prototype, "control", async function (this: DepartmentGenerationAuthorityClient, controlId: string) {
+    const { scope } = await observe.call(this);
+    if (scope.leaderTaskId === first.taskId && failure === "initial-disconnect") throw new Error("department-generation-authority-disconnected");
+    const result = await control.call(this, controlId);
+    controlled.push(scope.leaderTaskId);
+    if (scope.leaderTaskId === second.taskId || failure === "cleanup-unverified") return { ...result, state: "unknown", closure: null, nativeSources: [] };
+    if (scope.leaderTaskId === first.taskId && failure === "poll-disconnect") return { ...result, state: "draining", closure: null, nativeSources: [] };
+    return result;
+  });
+  t.mock.method(DepartmentGenerationAuthorityClient.prototype, "recovery", async function (this: DepartmentGenerationAuthorityClient, controlId: string) {
+    if (failure === "poll-disconnect" && (await observe.call(this)).scope.leaderTaskId === first.taskId)
+      throw new Error("department-generation-authority-disconnected");
+    return recovery.call(this, controlId);
+  });
+  const expectedReason = failure === "existing-control" || failure === "cleanup-unverified" ? failure : "authority-connection";
+  await assert.rejects(cold.composition.organizationControl.stop(cold.read("root")!), (error: unknown) => {
+    const summary = describeDepartmentColdStopFailure(error);
+    assert.deepEqual(summary.reasons, [...new Set([expectedReason, "cleanup-unverified"])]);
+    assert.match(summary.message, /原执行退出尚未确认/);
+    assert.match(summary.message, /产研部中止尚未全部确认。.+。原占用已保留。/);
+    return true;
+  });
+  assert.deepEqual(new Set(controlled), new Set(failure === "poll-disconnect" || failure === "cleanup-unverified" ? [first.taskId, second.taskId] : [second.taskId]));
+  assert.ok(ownerStops.includes(first.taskId));
+  const firstResult = cold.stopDiagnostics.find(event => event.leaderTaskId === first.taskId);
+  assert.equal(firstResult?.result, "unconfirmed");
+  assert.equal(firstResult.reason, expectedReason);
+  assert.ok(firstResult.ownerStop);
+  assert.equal(firstResult.ownerStop.acknowledged + firstResult.ownerStop.unreachable + firstResult.ownerStop.unconfirmed, 1);
+  assert.equal(firstResult.ownerStop.unbound, 0);
+  assert.equal(cold.stopDiagnostics.find(event => event.leaderTaskId === second.taskId)?.reason, "cleanup-unverified");
+  assert.equal(cold.read("root")?.status, "stopped");
+  assert.equal((await observe.call(clients[1])).state, "sealed");
+  assert.equal(cold.restored, 0);
+  assert.equal(cold.runs, 0);
+  const retained = cold.store.read("root", "workspace"); assert.ok(retained.ok && retained.value);
+  assert.deepEqual(retained.value.capacity, original.value.capacity);
+  assert.deepEqual(retained.value.executionBindings, original.value.executionBindings);
+});
+}
 
 scenario("OpenCode cold original directory capability survives host loss and retires before unique native successor", async t => {
   const h = await productionWiring(t, "codex", true, true, 1, undefined, "opencode", true, true);

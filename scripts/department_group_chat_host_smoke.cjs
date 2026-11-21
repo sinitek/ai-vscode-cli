@@ -80,9 +80,6 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       stop: async root => {
         assert.equal(root.id, data.root.id); stopCalls++; stopResult = "stopping";
         effects.push(["organization-stop", root.id]); data.root.status = "stopped";
-        // First refusal retains all four responsibilities, matching the reported symptom.
-        // The verification request then tests empty capacity before its receipt settles.
-        if (stopCalls > 1) capacity.leaders = [];
         try { await new Promise((resolve, reject) => { finishStop = { resolve, reject }; }); stopResult = "confirmed"; }
         catch (error) { stopResult = "unconfirmed"; throw error; }
       },
@@ -122,43 +119,55 @@ function withTimeout(promise, label, timeoutMs = 5000) {
       await page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:stopTask" }));
       assert.equal(await stop.isDisabled(), true); assert.equal(stopCalls, 1);
       await page.screenshot({ path: path.join(output, "stop-pending-after-refresh.png"), fullPage: true });
-      finishStop.reject(new Error("部门停止尚未核验全部执行清理；未核验占用继续保留。"));
-      await page.waitForFunction(() => document.querySelector('[data-action="stopTask"]')?.textContent === "核验停止");
-      assert.match(await page.locator(".progress-controls").innerText(), /停止未确认/);
-      assert.equal(await stop.isDisabled(), false); assert.equal(await continuation.count(), 0);
-      assert.ok(warnings.includes("部门停止尚未核验全部执行清理；未核验占用继续保留。"));
+      const occupiedLeaders = capacity.leaders;
+      capacity.leaders = [];
+      await refresh();
+      assert.equal(await stop.isDisabled(), true); assert.equal(await continuation.count(), 0);
+      capacity.leaders = occupiedLeaders;
+      const cleanupError = "部门停止尚未完成全部执行清理；原执行记录继续保留。";
+      finishStop.reject(new Error(cleanupError));
+      await continuation.waitFor();
+      assert.equal(await stop.count(), 0); assert.equal(await continuation.isDisabled(), true);
+      assert.match(await page.locator("#taskPanelSlot").textContent(), /已中止/);
+      assert.match(await page.locator("#departmentContinueBlocked").innerText(), /仍有原执行退出未确认/);
+      assert.ok(warnings.includes(cleanupError));
+      await refresh();
+      await page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:stopTask" }));
+      assert.equal(stopCalls, 1); assert.equal(await continuation.isDisabled(), true);
       await page.setViewportSize({ width: 280, height: 720 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true);
       await page.screenshot({ path: path.join(output, "stop-unconfirmed-narrow.png"), fullPage: true });
       await page.setViewportSize({ width: 1440, height: 960 });
-      await stop.click();
-      await page.waitForFunction(() => document.querySelector('[data-action="stopTask"]')?.disabled === true);
-      assert.equal(stopCalls, 2);
-      assert.equal(capacity.leaders.length, 0); assert.equal(await continuation.count(), 0);
-      await refresh();
-      assert.equal(await stop.isDisabled(), true); assert.equal(stopCalls, 2);
-      await page.screenshot({ path: path.join(output, "verify-pending-empty-capacity.png"), fullPage: true });
-      // Confirmed cleanup restores Continue only when the existing failure gate allows it.
+      capacity.leaders = [];
+      stopResult = "confirmed";
       data.root.mainAiFailureLimitReached = true;
-      finishStop.resolve();
-      await page.waitForFunction(() => !document.querySelector('[data-action="stopTask"]'));
+      await refresh();
+      await continuation.waitFor({ state: "detached" });
       assert.equal(await continuation.count(), 0);
       data.root.mainAiFailureLimitReached = false;
+      await refresh();
       await continuation.waitFor();
+      assert.equal(await continuation.isEnabled(), true);
+      assert.equal(await page.locator("#departmentContinueBlocked").count(), 0);
       assert.equal(await stop.count(), 0);
       await page.evaluate(() => window.fixtureHostMessage({ type: "loopGroupChatChat:stopTask" }));
-      assert.equal(stopCalls, 2, "confirmed late duplicate is a no-op");
+      assert.equal(stopCalls, 1, "confirmed late duplicate is a no-op");
       await page.screenshot({ path: path.join(output, "stop-confirmed-continue.png"), fullPage: true });
+      await continuation.click();
+      await page.locator("#continueDialogInput").fill("继续产研部夹具任务");
+      await page.locator("#continueDialogConfirm").click();
+      await page.waitForFunction(() => document.querySelector('[data-action="continueTask"]')?.getAttribute("aria-busy") === "false");
+      assert.deepEqual(effects, [["organization-stop", data.root.id], ["organization-continue", data.root.id]]);
       assert.deepEqual(errors, []);
       const result = { scenario: "director-stop-feedback", status: "passed", stopCalls, effects, warnings, errors,
-        checks: ["four-blocked-open-leader-fixture", "actual-stop-click", "empty-capacity-still-pending", "refresh-keeps-disabled", "duplicate-inflight-noop", "rejection-retry-entry-and-chinese-error", "280px-no-overflow", "actual-verify-click", "confirmed-removes-stop", "existing-continue-failure-gate", "late-duplicate-noop"],
+        checks: ["four-blocked-open-leader-fixture", "actual-stop-click", "empty-capacity-still-pending", "refresh-keeps-disabled", "duplicate-inflight-noop", "stopped-with-retained-leases", "disabled-continue-reason", "280px-no-overflow", "no-stop-after-persisted-stop", "cleanup-restores-continue", "existing-continue-failure-gate", "late-duplicate-noop", "actual-continue-click"],
         boundary: "Headless Chromium + real coordinator/renderer/trusted projection, synthetic records and organization stop port; reuses round-366 real stop/cleanup/continue evidence" };
       fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
       return;
     }
     assert.match(await page.locator(".department-occupancy").innerText(), /组长 未知\/4 · 员工 未知\/20/);
     assert.equal(await page.locator('[data-action="acceptancePlan"]').count(), 0);
-    assert.match(await page.locator("#taskPanelSlot").innerText(), /统一验收方案（只读）/);
+    assert.doesNotMatch(await page.locator("#taskPanelSlot").innerText(), /统一验收方案（只读）|根固化快照/u);
     const parentScroll = await page.locator(".main").evaluate((element) => { element.scrollTop = 120; return element.scrollTop; });
     const opener = page.locator(`[data-department-task-id="${data.leader.id}"]`).first();
     await opener.click();
@@ -192,7 +201,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true);
     assert.deepEqual(errors, []);
     const result = { scenario: "coordinator-record-fixtures", status: "passed", binding, parentScroll, effects, warnings, errors,
-      checks: ["unknown-capacity", "read-only-root-plan", "record-hierarchy", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
+      checks: ["unknown-capacity", "director-plan-panel-removed", "leader-inherited-plan", "record-hierarchy", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
       boundary: "Mock VS Code and task record ports; not a real Extension Development Host or organization launch" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
   } catch (error) {

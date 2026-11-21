@@ -228,7 +228,7 @@ scenario("production root stop before binding fences late preparation and retain
   await assert.rejects(bounded(h.continue(), "unbound pending continue", h.diagnostic), /部门正在停止/);
   assert.equal(stop.state.status, "pending"); assert.deepEqual(h.counts(), counts);
   release.resolve(); await bounded(stop.done, "failed original preparation settlement", h.diagnostic);
-  assert.equal(stop.state.status, "rejected"); assert.match(String(stop.state.error), /尚未核验全部执行清理/);
+  assert.equal(stop.state.status, "rejected"); assert.match(String(stop.state.error), /尚未完成全部执行清理/);
   assert.equal(h.wire().filter((v) => v.method === "turn/start").length, 0, "late prepare never sends a task prompt");
   assert.deepEqual(h.entries(), [original], "the original null responsibility is never cleared or adopted");
   assert.deepEqual(h.composition.readCapacity("root"), capacity);

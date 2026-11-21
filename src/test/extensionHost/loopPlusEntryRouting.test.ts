@@ -77,6 +77,7 @@ test("production ask uses Tab occupancy and shared FIFO rather than pending deci
     getConversationTabById: () => null,
     loadSessionMessages: () => messages,
     getActiveConversationTabId: () => target.tabId,
+    createPerformanceTrace: () => ({ start: () => () => undefined, measure: (_phase: string, work: () => unknown) => work() }),
     prepareDepartmentInvocation: async (input: unknown) => input,
     runPromptNow: async (input: { displayPrompt: string; loopAsk?: boolean }) => {
       events.push(input.displayPrompt);
@@ -130,7 +131,8 @@ function gate() {
 for (const cli of ["codex", "opencode"] as const) {
   test(`production ${cli} leader and ask share FIFO through preparation and consumer cleanup`, async () => {
     const task = { id: "leader", status: "running", cli, workspaceKey: "fixture", taskStoreFile: "/fixture/tasks.json",
-      sessionId: "leader-session", department: { role: "leader", routes: { leader: { cli, model: "fixture-model" } } } };
+      sessionId: "local_leader-session", executionSession: { cli, sessionId: "native-leader", configId: null },
+      department: { role: "leader", routes: { leader: { cli, model: "fixture-model" } } } };
     const tab = { id: "leader-tab" };
     const target = { tabId: tab.id, cli, sessionId: task.sessionId };
     const scope = { rootTaskId: "director", workspace: task.workspaceKey, leaderTaskId: task.id, moduleId: "module", generation: 1 };
@@ -141,7 +143,20 @@ for (const cli of ["codex", "opencode"] as const) {
     const runs = cli === "codex" ? interactiveRunsByTabId : parallelRunsByTabId;
     const prep = gate(), consumer = gate();
     let answerGate = gate();
-    const native = async () => { events.push("owner"); };
+    let invocationId = 0;
+    const native = async (taskId: string, _id: string, prompt: string) => {
+      assert.equal(taskId, task.id);
+      events.push(`owner:${prompt}`);
+    };
+    const consume = async (input: PromptRunInput, runOptions: { registerQuestionRun?: (id: string) => void }) => {
+      if (!input.loopAsk) return consumer.promise;
+      const questionGate = answerGate;
+      runs.set(tab.id, { runId: input.displayPrompt, stop: () => { events.push(`stop:${input.displayPrompt}`); questionGate.release(); } });
+      runOptions.registerQuestionRun?.(input.displayPrompt);
+      await questionGate.promise;
+      runs.delete(tab.id);
+      messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
+    };
     const runtime = vm.runInNewContext(productionLoopMainEntries(), {
       AbortController,
       isExtensionDeactivating: false,
@@ -152,6 +167,7 @@ for (const cli of ["codex", "opencode"] as const) {
       getConversationTabById: () => tab,
       getConversationTabSessionIdForCli: () => target.sessionId,
       getActiveConversationTabId: () => tab.id,
+      createMessageId: () => `question-${++invocationId}`,
       loadSessionMessages: () => messages,
       isTabRunActive: () => runs.has(tab.id),
       loopMainQuestionQueue: createLoopMainQuestionQueue({ pollIntervalMs: 1 }),
@@ -171,13 +187,18 @@ for (const cli of ["codex", "opencode"] as const) {
       splitConfiguredCliCommand: () => [cli],
       DEPARTMENT_CONFIG_PATHS: { [cli]: { config: "/fixture/config" } },
       getDepartmentExecutionResources: () => ({ beginConsumer: () => ({ target, finish: () => events.push("cleanup") }) }),
-      runPromptInteractive: async (_input: unknown, _target: unknown, options: { departmentCodexRun: (prompt: string, handlers: object) => Promise<void> }) => {
-        await options.departmentCodexRun("leader", {});
-        await consumer.promise;
+      runPromptInteractive: async (input: PromptRunInput, _target: unknown, options: {
+        departmentCodexRun: (prompt: string, handlers: object) => Promise<void>; registerQuestionRun?: (id: string) => void;
+      }) => {
+        await options.departmentCodexRun(input.modelPrompt, {});
+        await consume(input, options);
       },
-      runPromptParallel: async (_input: unknown, _target: unknown, options: { departmentProcessStream: (cli: string, prompt: string, handlers: object, settings: object) => unknown }) => {
-        await options.departmentProcessStream(cli, "leader", {}, { model: "fixture-model", openCodeConfigContent: "{}", environment: {} });
-        await consumer.promise;
+      runPromptParallel: async (input: PromptRunInput, _target: unknown, options: {
+        departmentProcessStream: (cli: string, prompt: string, handlers: object, settings: object) => unknown;
+        registerQuestionRun?: (id: string) => void;
+      }) => {
+        await options.departmentProcessStream(cli, input.modelPrompt, {}, { model: "fixture-model", openCodeConfigContent: "{}", environment: {} });
+        await consume(input, options);
       },
       createDepartmentLeaderNativeSessionValidator: () => undefined,
       getDepartmentLeaderProductionHost: () => ({ run: native, runOpenCode: native }),
@@ -187,16 +208,8 @@ for (const cli of ["codex", "opencode"] as const) {
       parallelRunsByTabId,
       stopParallelRunForTab: (tabId: string) => parallelRunsByTabId.get(tabId)?.stop(),
       getPrimaryRunTabId: () => null,
-      runPromptNow: async (input: PromptRunInput, options: { registerQuestionRun?: (id: string) => void }) => {
-        const questionGate = answerGate;
-        events.push(input.displayPrompt);
-        runs.set(tab.id, { runId: input.displayPrompt, stop: () => { events.push(`stop:${input.displayPrompt}`); questionGate.release(); } });
-        options.registerQuestionRun?.(input.displayPrompt);
-        await questionGate.promise;
-        runs.delete(tab.id);
-        messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
-      },
-      t: (key: string) => key,
+      runPromptNow: async () => assert.fail("department asks must not use ordinary prompt execution"),
+      t: (key: string, values?: { question?: string }) => values?.question ?? key,
     }) as {
       ask: (record: typeof task, question: string, hooks?: { signal?: AbortSignal }) => ReturnType<typeof askLoopMainModelSession>;
       runDepartmentLeaderPrompt: (input: PromptRunInput, options: { targetTabId: string; invocationId: string; signal?: AbortSignal; isAborted: () => boolean }) => Promise<void>;
@@ -215,11 +228,11 @@ for (const cli of ["codex", "opencode"] as const) {
     assert.equal((await cancelled).status, "stopped");
     prep.release();
     await tick();
-    assert.deepEqual(events, ["prepare", "owner"]);
+    assert.deepEqual(events, ["prepare", "owner:leader"]);
     consumer.release();
     await leader;
     await tick();
-    assert.deepEqual(events, ["prepare", "owner", "cleanup", "after leader"]);
+    assert.deepEqual(events, ["prepare", "owner:leader", "cleanup", "prepare", "owner:after leader"]);
     answerGate.release();
     assert.equal((await queuedQuestion).status, "ready");
     await tick();
@@ -228,41 +241,48 @@ for (const cli of ["codex", "opencode"] as const) {
     answerGate = gate();
     const questionAbort = new AbortController();
     const first = runtime.ask(task, "before leader", { signal: questionAbort.signal });
+    await tick();
     const queuedAbort = new AbortController();
     const cancelledLeader = startLeader(queuedAbort.signal);
     const laterLeader = startLeader();
-    assert.deepEqual(events, ["before leader"]);
+    assert.deepEqual(events, ["prepare", "owner:before leader"]);
     queuedAbort.abort();
     await cancelledLeader;
-    assert.deepEqual(events, ["before leader"]);
+    assert.deepEqual(events, ["prepare", "owner:before leader"]);
     questionAbort.abort();
     assert.equal((await first).status, "stopped");
     await laterLeader;
-    assert.deepEqual(events, ["before leader", "stop:before leader", "prepare", "owner", "cleanup"]);
+    assert.deepEqual(events, ["prepare", "owner:before leader", "stop:before leader", "cleanup", "prepare", "owner:leader", "cleanup"]);
 
     events.length = 0;
     answerGate = gate();
     const staleAbort = new AbortController();
     const active = runtime.ask(task, "original question", { signal: staleAbort.signal });
+    await tick();
     const staleLeader = startLeader();
     target.sessionId = "replacement-session";
     runs.set(tab.id, { runId: "replacement", stop: () => events.push("unexpected stop") });
     staleAbort.abort();
-    assert.deepEqual(events, ["original question"]);
+    assert.deepEqual(events, ["prepare", "owner:original question"]);
     answerGate.release();
     assert.equal((await active).status, "stopped");
     await assert.rejects(staleLeader, /会话已变化/u);
-    assert.deepEqual(events, ["original question"]);
+    assert.deepEqual(events, ["prepare", "owner:original question", "cleanup"]);
 
     target.sessionId = task.sessionId;
     answerGate = gate();
     const beforeReplacement = runtime.ask(task, "before generation change");
+    await tick();
     const staleGeneration = startLeader();
     scope.generation += 1;
     answerGate.release();
     await beforeReplacement;
     await assert.rejects(staleGeneration, /归属或会话已变化/u);
-    assert.deepEqual(events, ["original question", "before generation change"]);
+    assert.deepEqual(events, ["prepare", "owner:original question", "cleanup", "prepare", "owner:before generation change", "cleanup"]);
+    const eventCount = events.length;
+    task.status = "stopped";
+    assert.equal((await runtime.ask(task, "stopped leader")).status, "error");
+    assert.equal(events.length, eventCount);
   });
 }
 

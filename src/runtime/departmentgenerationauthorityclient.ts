@@ -4,11 +4,11 @@ import * as fs from "fs";
 import * as path from "path";
 import { exactKeys, isDepartmentExecutionIdentity, record, sameExecution,
   type CleanupRequirements, type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "./departmentexecutionidentity";
-import { departmentGenerationAuthorityEndpoint, isDepartmentGenerationAuthoritySnapshot, readDepartmentGenerationAuthority,
+import { DEPARTMENT_GENERATION_REQUEST_MAX_BYTES, DEPARTMENT_GENERATION_RESPONSE_MAX_BYTES,
+  departmentGenerationAuthorityEndpoint, isDepartmentGenerationAuthoritySnapshot, readDepartmentGenerationAuthority,
   type DepartmentGenerationRecovery, type DepartmentGenerationAuthoritySnapshot, type DepartmentGenerationTicket } from "./departmentgenerationauthority";
 import { isProducerClosure, isLeaderExecutionScope, leaderExecutionScopeKey, type DepartmentLeaderExecutionScope } from "../extensionHost/departmentleaderexecutionledger";
 
-const MAX_BYTES = 64 * 1024;
 const TIMEOUT_MS = 3_000;
 type Operation = "observe" | "claim" | "ticket" | "bind" | "grant" | "consume" | "release" | "unknown" | "seal" | "native-source" | "native-stopped" | "witness" | "control" | "recovery" | "retire";
 type Response = { version: 2; requestId: string; result: { ok: true; claim: string; snapshot: DepartmentGenerationAuthoritySnapshot; recovery?: DepartmentGenerationRecovery }
@@ -90,16 +90,23 @@ export class DepartmentGenerationAuthorityClient {
     const requestId = randomUUID();
     const wire = JSON.stringify({ version: 2, requestId, token: this.token, scope: this.scope, expectedClaim, operation,
       ...(ticket ? { ticket } : {}), ...(producerProof ? { producerProof } : {}), ...(controlId ? { controlId } : {}), ...(nativeDirectory ? { nativeDirectory } : {}) }) + "\n";
-    if (Buffer.byteLength(wire) > MAX_BYTES) throw new Error("department-generation-authority-frame-too-large");
+    if (Buffer.byteLength(wire) > DEPARTMENT_GENERATION_REQUEST_MAX_BYTES) throw new Error("department-generation-authority-frame-too-large");
     const raw = await new Promise<unknown>((resolve, reject) => {
       const socket = net.createConnection(departmentGenerationAuthorityEndpoint(this.directory));
-      let buffer = Buffer.alloc(0), settled = false;
+      const chunks: Buffer[] = [];
+      let received = 0, settled = false;
       const finish = (error?: Error, value?: unknown) => { if (settled) return; settled = true; clearTimeout(timer); socket.destroy(); error ? reject(error) : resolve(value); };
       const timer = setTimeout(() => finish(new Error("department-generation-authority-timeout")), timeout);
       socket.on("connect", () => socket.write(wire));
-      socket.on("data", chunk => { buffer = Buffer.concat([buffer, chunk]); if (buffer.length > MAX_BYTES) return finish(new Error("department-generation-authority-response-too-large"));
-        const newline = buffer.indexOf(10); if (newline < 0) return; if (newline !== buffer.length - 1) return finish(new Error("department-generation-authority-response-framing"));
-        try { finish(undefined, JSON.parse(buffer.subarray(0, newline).toString("utf8"))); } catch { finish(new Error("department-generation-authority-invalid-response")); }
+      socket.on("data", chunk => {
+        received += chunk.length;
+        if (received > DEPARTMENT_GENERATION_RESPONSE_MAX_BYTES) return finish(new Error("department-generation-authority-response-too-large"));
+        const newline = chunk.indexOf(10);
+        if (newline >= 0 && newline !== chunk.length - 1) return finish(new Error("department-generation-authority-response-framing"));
+        chunks.push(chunk);
+        if (newline < 0) return;
+        try { finish(undefined, JSON.parse(Buffer.concat(chunks, received).toString("utf8", 0, received - 1))); }
+        catch { finish(new Error("department-generation-authority-invalid-response")); }
       });
       socket.on("error", () => finish(new Error("department-generation-authority-unreachable")));
       socket.on("close", () => { if (!settled) finish(new Error("department-generation-authority-disconnected")); });

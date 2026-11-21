@@ -133,6 +133,11 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
       .button.primary:hover {
         background: var(--vscode-button-hoverBackground);
       }
+      .button.primary[aria-describedby="departmentContinueBlocked"]:disabled {
+        color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
+        background: var(--vscode-button-secondaryBackground);
+        cursor: default;
+      }
       .button.danger {
         border-color: var(--vscode-inputValidation-errorBorder, var(--vscode-errorForeground));
         color: var(--vscode-statusBarItem-errorForeground, var(--vscode-button-foreground));

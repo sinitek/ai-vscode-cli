@@ -1,12 +1,14 @@
 import * as assert from "node:assert/strict";
 import { fork, type ChildProcess } from "child_process";
 import * as fs from "fs";
+import type { Server } from "net";
 import * as os from "os";
 import * as path from "path";
 import { test } from "node:test";
 import { randomUUID } from "crypto";
 import { DepartmentGenerationAuthorityClient } from "../../runtime/departmentgenerationauthorityclient";
-import { readDepartmentGenerationAuthority, type DepartmentGenerationTicket } from "../../runtime/departmentgenerationauthority";
+import { DepartmentGenerationAuthorityServer, readDepartmentGenerationAuthority, type DepartmentGenerationTicket } from "../../runtime/departmentgenerationauthority";
+import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
 import { fingerprintDepartmentExecutionSelection, type DepartmentExecutionIdentity } from "../../runtime/departmentexecutionidentity";
 
 const scope = { rootTaskId: "root-authority", workspace: "/tmp/workspace-authority", leaderTaskId: "leader-authority", moduleId: "module-authority", generation: 1 };
@@ -75,6 +77,92 @@ test("generation authority rejects wrong scope and wrong original producer", { t
   await waitUntil(() => fs.existsSync(readyFile));
   assert.throws(() => new DepartmentGenerationAuthorityClient(directory, { ...scope, generation: 2 }, "producer-authority"), /unavailable/);
   assert.throws(() => new DepartmentGenerationAuthorityClient(directory, scope, "replacement-producer"), /unavailable/);
+});
+
+test("original authority accepts stop control and returns a full generation larger than a request frame", { timeout: 20000 }, async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-generation-large-response-"));
+  const readyFile = path.join(directory, "ready.json");
+  const child = fork(path.join(__dirname, "../../runtime/departmentgenerationauthorityworker.js"), [], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"], execArgv: [], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+  });
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+      child.kill(); await exited;
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  let producerProof: string | undefined;
+  child.on("message", value => {
+    if (value && typeof value === "object" && "producerProof" in value && typeof value.producerProof === "string") producerProof = value.producerProof;
+  });
+  child.send({ directory, readyFile, ownerDirectory: path.join(directory, "owners"), producerId: "producer-authority", scope });
+  await waitUntil(() => !!producerProof);
+  const original = new DepartmentGenerationAuthorityClient(directory, scope, "producer-authority", producerProof);
+  const wideSelection = { ...selection, model: "模".repeat(256), configId: "配".repeat(256), openCodeVariant: "路".repeat(256) };
+  const ticketTotal = 256;
+  const createTicket = (index: number): DepartmentGenerationTicket => ({
+    id: randomUUID(), registrationId: `registration-${index}`,
+    target: { role: "employee", subtaskId: `task-${index}`, attemptId: `attempt-${index}` },
+    selection: wideSelection, requirements, localSessionId: "local-transcript", nativeSessionId: null, identity: null, state: "preparing",
+  });
+  const registrations = Array.from({ length: ticketTotal }, (_, index) => createTicket(index));
+  for (const ticket of registrations) await original.registerTicket(ticket);
+  await assert.rejects(original.registerTicket(createTicket(ticketTotal)), /department-generation-authority-capacity/);
+  const cold = new DepartmentGenerationAuthorityClient(directory, scope, "producer-authority");
+  const beforeStop = await cold.observe();
+  assert.ok(Buffer.byteLength(JSON.stringify(beforeStop)) > 64 * 1024);
+  assert.deepEqual(beforeStop.tickets, registrations);
+  const controlId = randomUUID();
+  assert.equal((await cold.control(controlId)).state, "draining");
+  assert.equal((await cold.recovery(controlId)).closure, null);
+  const stopped = await cold.observe();
+  assert.equal(stopped.state, "sealed");
+  assert.deepEqual(stopped.tickets, registrations.map(ticket => ({ ...ticket, state: "unknown" })));
+  await assert.rejects(original.registerTicket(createTicket(ticketTotal)), /department-generation-authority-sealed/);
+});
+
+test("disconnected authority stops reachable original Owners despite incomplete tickets and Owner failures", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-generation-partial-stop-"));
+  const server = new DepartmentGenerationAuthorityServer(directory, scope, "producer-authority", undefined,
+    { ownerDirectory: path.join(directory, "owners"), drain() {}, originalConnected: () => false });
+  const endpoint = await server.listen();
+  t.after(async () => {
+    const listener = (server as unknown as { server: Server }).server;
+    await new Promise<void>(resolve => listener.close(() => resolve()));
+    if (process.platform !== "win32") fs.rmSync(endpoint, { force: true });
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  const original = new DepartmentGenerationAuthorityClient(directory, scope, "producer-authority", server.producerProofForBootstrap());
+  const ownerStops: string[] = [];
+  t.mock.method(DepartmentExecutionOwnerClient.prototype, "sealExecution", async (identity: DepartmentExecutionIdentity) => {
+    ownerStops.push(identity.ownerId);
+    if (identity.ownerId === "owner-offline") throw new Error("injected-owner-disconnect");
+    return { status: "unknown", identity, reason: "injected-no-cleanup-receipt" };
+  });
+  for (const suffix of ["unbound", "offline", "reachable"]) {
+    const ticket: DepartmentGenerationTicket = { id: randomUUID(), registrationId: `registration-${suffix}`,
+      target: { role: "employee", subtaskId: `subtask-${suffix}`, attemptId: `attempt-${suffix}` }, selection, requirements,
+      localSessionId: "local-transcript-session", nativeSessionId: null, identity: null, state: "preparing" };
+    await original.registerTicket(ticket);
+    if (suffix === "unbound") continue;
+    const nativeSessionId = `ses_${suffix}`;
+    const identity: DepartmentExecutionIdentity = { ...scope, version: 1, role: "employee", cli: "opencode",
+      ...fingerprintDepartmentExecutionSelection(selection), session: { state: "bound", id: nativeSessionId },
+      ownerId: `owner-${suffix}`, executionId: `execution-${suffix}`, subtaskId: `subtask-${suffix}`, attemptId: `attempt-${suffix}` };
+    ticket.nativeSessionId = nativeSessionId;
+    await original.bindTicket(ticket, identity);
+    await original.grant(ticket);
+    await original.consume(ticket);
+  }
+  const cold = new DepartmentGenerationAuthorityClient(directory, scope, "producer-authority");
+  const result = await cold.control(randomUUID());
+  assert.deepEqual(ownerStops, ["owner-offline", "owner-reachable"]);
+  assert.equal(result.closure, null);
+  const stopped = await cold.observe();
+  assert.equal(stopped.state, "sealed");
+  assert.deepEqual(stopped.tickets.map(ticket => ticket.state), ["unknown", "started", "started"]);
+  await assert.rejects(server.close(), /responsibility-open/);
 });
 
 test("generation authority rejects persisted snapshot schema extensions", t => {

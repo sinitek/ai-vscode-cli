@@ -15,7 +15,8 @@ import type { DepartmentExecutionReceipt } from "./departmentexecutionreceiptsto
 export type DepartmentGenerationRecovery = { id: string; state: "draining" | "closed" | "unknown";
   closure: DepartmentLeaderProducerClosure | null; nativeSources: (DepartmentOpenCodeRetiredSession & { localSessionId: string })[] };
 const VERSION = 2;
-const MAX_BYTES = 64 * 1024;
+export const DEPARTMENT_GENERATION_REQUEST_MAX_BYTES = 64 * 1024;
+export const DEPARTMENT_GENERATION_RESPONSE_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_CONNECTIONS = 32;
 const MAX_TICKETS = 256;
 const REQUEST_TIMEOUT_MS = 3_000;
@@ -261,7 +262,7 @@ export class DepartmentGenerationAuthorityServer {
   private accept(socket: net.Socket): void {
     let buffer = Buffer.alloc(0), handled = false;
     socket.on("data", chunk => {
-      if (handled || buffer.length + chunk.length > MAX_BYTES) { socket.destroy(); return; }
+      if (handled || buffer.length + chunk.length > DEPARTMENT_GENERATION_REQUEST_MAX_BYTES) { socket.destroy(); return; }
       buffer = Buffer.concat([buffer, chunk]); const newline = buffer.indexOf(10); if (newline < 0) return;
       if (newline !== buffer.length - 1) { socket.destroy(); return; }
       handled = true;
@@ -277,7 +278,10 @@ export class DepartmentGenerationAuthorityServer {
   private respond(socket: net.Socket, requestId: string, result: Response["result"]): void {
     if (socket.destroyed) return;
     const wire = Buffer.from(JSON.stringify({ version: VERSION, requestId, result }) + "\n", "utf8");
-    if (wire.length > MAX_BYTES) { socket.destroy(); return; }
+    if (wire.length > DEPARTMENT_GENERATION_RESPONSE_MAX_BYTES) {
+      socket.end(JSON.stringify({ version: VERSION, requestId, result: { ok: false, reason: "department-generation-authority-response-too-large" } }) + "\n");
+      return;
+    }
     socket.end(wire);
   }
 
@@ -362,7 +366,7 @@ export class DepartmentGenerationAuthorityServer {
         this.recovery = { id: input.controlId!, state: "draining", closure: null, nativeSources: [] };
         try { if (!this.originalDrained) this.recoveryPorts.drain(this.recovery.id); } catch { /* Original Owner observations below remain authoritative. */ }
       }
-      if (!this.recoveryWork && this.recovery.state !== "closed" && !this.originalDrainFailed) {
+      if (!this.recoveryWork && this.recovery.state !== "closed") {
         this.recoveryWork = this.refreshRecovery().finally(() => { this.recoveryWork = undefined; });
         void this.recoveryWork.catch(() => { if (this.recovery) this.recovery.state = "unknown"; });
       }
@@ -433,16 +437,18 @@ export class DepartmentGenerationAuthorityServer {
   private async refreshRecovery(): Promise<void> {
     const recovery = this.recovery!;
     const tickets = structuredClone(this.snapshot.tickets);
+    const disconnected = this.recoveryPorts?.originalConnected?.() === false;
+    if (disconnected) {
+      await Promise.allSettled(tickets.map(async ticket => {
+        if (ticket.identity?.session.state !== "bound" || this.receipts.has(ticket.id)) return;
+        const client = new DepartmentExecutionOwnerClient(path.join(this.recoveryPorts!.ownerDirectory, ticket.identity.ownerId));
+        await client.sealExecution(ticket.identity);
+      }));
+    }
+    if (this.originalDrainFailed) return;
     if (!tickets.length || tickets.filter(t => t.target.role === "leader").length !== 1
       || tickets.some(t => !t.identity || !["started", "released"].includes(t.state))) return;
-    const disconnected = this.recoveryPorts?.originalConnected?.() === false;
     for (const ticket of tickets) {
-      if (disconnected && !this.receipts.has(ticket.id)) {
-        // Stop only the exact original runtime's installed native port. This
-        // cannot release an unprovable tab, consumer, root or preparation.
-        const client = new DepartmentExecutionOwnerClient(path.join(this.recoveryPorts!.ownerDirectory, ticket.identity!.ownerId));
-        await client.sealExecution(ticket.identity!);
-      }
       try { await this.observeOriginalReceipt(ticket); } catch { return; }
     }
     // On host loss the original independent authority plus the complete original

@@ -178,15 +178,15 @@ wiringTest("actual adapter cancellation during preparation never sends a task or
   assert.equal(h.wire().length, 0); assert.equal(h.localRuns, 0);
 });
 
-wiringTest("allocation production lifecycle applies saved zero at next adapter refusal and releases only after original cleanup", { timeout: 25000 }, async (t) => {
+wiringTest("allocation production lifecycle tracks dispatch at zero and releases only after original cleanup", { timeout: 25000 }, async (t) => {
   const h = await productionWiring(t, "codex", true, true), entered = gate(), release = gate();
+  let consumers = 0;
   t.after(() => release.resolve());
-  h.beforeEmployeeConsumerFinish(async () => { entered.resolve(); await release.promise; });
+  h.beforeEmployeeConsumerFinish(async () => { consumers++; entered.resolve(); await release.promise; });
   h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this complete independent requirement and verify the result. Report all changed files and meaningful test evidence to the leader." }] });
-  h.answer(2, { status: "dispatch", subtasks: [{ id: "refused", title: "refused", taskType: "backend", writeFiles: [],
+  h.answer(2, { status: "dispatch", subtasks: [{ id: "additional", title: "additional", taskType: "backend", writeFiles: [],
     prompt: "Implement another independent requirement with complete source changes and meaningful verification. Report the actual changed paths and results." }] });
-  h.answer(3, { status: "blocked", finalSummary: "本组常规额度为零，等待总监调整" });
   const started = await h.start(); assert.ok(started.ok); await entered.promise;
   const root = h.read("root")!, before = h.composition.readDepartmentEmployeeAllocation("root")!;
   assert.equal(before.defaultLimit, 5); assert.equal(before.leaders[0].activeEmployees, 1);
@@ -196,17 +196,19 @@ wiringTest("allocation production lifecycle applies saved zero at next adapter r
   assert.equal(result.allocation.leaders[0].pending, true);
   const confirmed = h.store.read("root", "workspace"); assert.ok(confirmed.ok && confirmed.value?.employeeAllocation);
   assert.equal(confirmed.value.employeeAllocation.leaders[0].manualLimit, 0);
-  assert.equal(h.fixture.adapter.host().submitUserMessage(started.taskId, "下一次派发必须使用总监已保存的额度"), true);
+  assert.equal(h.fixture.adapter.host().submitUserMessage(started.taskId, "参考额度为零，继续派发独立任务"), true);
   await until(() => h.composition.readDepartmentEmployeeAllocation("root")?.leaders[0].appliedLimit === 0);
-  await until(() => fs.existsSync(h.file("eof-3")));
-  assert.equal(h.employeeBuilders, 1, "the second attempt is refused before native preparation");
-  assert.equal(h.fixture.createdSubtaskTargets.length, 1, "refused attempt creates no new target");
-  assert.equal(h.composition.readCapacity("root")!.employees.length, 1, "saving zero never releases the held consumer");
+  await until(() => consumers === 2 && h.employeeBuilders === 2 && h.fixture.createdSubtaskTargets.length === 2);
+  await until(() => {
+    const saved = h.store.read("root", "workspace");
+    return saved.ok && saved.value?.executionBindings?.length === 3;
+  });
+  assert.equal(h.composition.readCapacity("root")!.employees.length, 2, "both consumers remain held");
   const pending = h.store.read("root", "workspace"); assert.ok(pending.ok && pending.value);
-  assert.equal(pending.value.executionBindings!.length, 2, "only original coordinator/employee responsibility exists");
+  assert.equal(pending.value.executionBindings!.length, 3);
   const stopping = h.composition.host.stopRoot("root");
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(h.composition.readCapacity("root")!.employees.length, 1, "stop does not bypass original cleanup");
+  assert.equal(h.composition.readCapacity("root")!.employees.length, 2, "stop waits for both original consumers");
   release.resolve(); assert.equal(await stopping, true); await started.done;
   const final = h.store.read("root", "workspace"); assert.ok(final.ok && final.value?.employeeAllocation);
   assert.equal(final.value.capacity.employees.length, 0); assert.equal(final.value.capacity.leaders.length, 0);

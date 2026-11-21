@@ -78,6 +78,7 @@ function harness() {
     resolveMainPromptTarget: (task) => ({ tabId: task.id, cli: "codex" }), revealPanelView: async () => {}, switchVisibleConversationTabForLoop: async () => {},
     isTabRunActive: () => false, getActiveConfigIdForCli: () => "config", getSelectedCliModel: () => "model",
     runLoopPrompt: async (_input, options) => { effects.push(["continue", options.resumeTaskId]); },
+    continueDepartmentLeader: async (task, _prompt, assertCurrent) => { assertCurrent(); effects.push(["continue-leader", task.id]); },
     stopRunsForTask: (id) => { effects.push(["stop", id]); }, markTaskStoppedByUser: (id) => data.records.get(id) ?? null,
     postPanelState: async () => {}, getActiveConversationTaskId: () => data.root.id,
     showInformationMessage: (message) => { warnings.push(message); }, showWarningMessage: (message) => { warnings.push(message); },
@@ -165,7 +166,8 @@ test("department host loads in-page leader and routes actions, ask thread, previ
     assert.match(content.html, /id="askChatSend"[^>]*type="button"/);
     assert.equal(h.panel().getState()?.department?.activeEmployees, null);
     const patch = buildLoopGroupChatPanelContentPatch(h.panel().getState()!, 1);
-    assert.match(patch.rosterPanelHtml, /员工 未知\/20/); assert.match(patch.taskPanelHtml, /统一验收方案（只读）/);
+    assert.match(patch.rosterPanelHtml, /员工 未知\/20/);
+    assert.doesNotMatch(patch.taskPanelHtml, /统一验收方案（只读）|根固化快照/u);
     assert.doesNotMatch(patch.actionsHtml, /data-action="acceptancePlan"/);
     h.receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, message: { type: "loopGroupChatChat:domReady", generation: 1 } });
     await h.send(target, { type: "loopGroupChatChat:supplementTask", taskId: h.root.id, prompt: "组长补充" });
@@ -178,7 +180,8 @@ test("department host loads in-page leader and routes actions, ask thread, previ
     await h.send(target, { type: "loopGroupChatChat:openCommunicationFile", requestId: "preview-deny", path: __filename });
     assert.equal(h.posted.at(-1).message.ok, false);
     await h.send(target, { type: "loopGroupChatChat:continueTask", taskId: h.root.id, prompt: "继续组长" });
-    assert.ok(h.effects.some(([action, id]) => action === "continue" && id === h.leader.id));
+    assert.ok(h.effects.some(([action, id]) => action === "continue-leader" && id === h.leader.id));
+    assert.ok(h.effects.every(([action]) => action !== "continue"));
     h.leader.status = "running"; h.deps.collectRunningTaskIds = () => new Set([h.leader.id]);
     await h.send(target, { type: "loopGroupChatChat:stopTask", taskId: h.root.id });
     assert.ok(h.effects.some(([action, id]) => action === "stop" && id === h.leader.id));
@@ -323,7 +326,12 @@ test("department continuation waiting on runtime cannot launch after binding rev
   const h = harness();
   try {
     h.leader.originProfile = { configId: "original" }; h.leader.modelRouting = { main: { model: "main" }, subtask: { model: "sub" } };
-    const gate = deferred(); h.deps.restoreOriginalLoopRuntime = async () => { await gate.promise; return { ok: true, target: { tabId: h.leader.id, cli: "codex" } }; };
+    const gate = deferred();
+    h.deps.continueDepartmentLeader = async (task, _prompt, assertCurrent) => {
+      await gate.promise;
+      assertCurrent();
+      h.effects.push(["continue-leader", task.id]);
+    };
     await h.coordinator.open(h.root.id); const target = await h.load();
     h.receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, message: { type: "loopGroupChatChat:continueTask" } }); await tick();
     h.receive({ type: "loopGroupChatChat:departmentModal", ...target, action: "close" });
@@ -507,7 +515,12 @@ test("department ownership port unavailable, duplicate modules and changed owner
     let pendingContinue: Promise<void> | undefined;
     try {
       h.leader.originProfile = { configId: "original" }; h.leader.modelRouting = { main: { model: "main" }, subtask: { model: "sub" } };
-      h.deps.restoreOriginalLoopRuntime = async () => { restoreEntered.resolve(); await gate.promise; return { ok: true, target: { tabId: h.leader.id, cli: "codex" } }; };
+      h.deps.continueDepartmentLeader = async (task, _prompt, assertCurrent) => {
+        restoreEntered.resolve();
+        await gate.promise;
+        assertCurrent();
+        h.effects.push(["continue-leader", task.id]);
+      };
       h.deps.notifyLoopPlusUserMessage = (id) => { h.effects.push(["notify", id]); };
       h.deps.resumeLoopSubtasks = (id) => { h.effects.push(["resume", id]); return false; };
       h.deps.recordPromptHistory = () => { h.effects.push(["history", h.leader.id]); };
@@ -867,11 +880,12 @@ test("allocation duplicate cannot prematurely settle an in-flight request after 
   } finally { gate.resolve(); h.restore(); }
 });
 
-for (const status of ["running", "stopped"] as const) {
-  test(`cold organization stop remains public without a local runner: ${status}`, async () => {
+for (const status of ["running", "stopped", "interrupted"] as const) {
+  test(`cold organization controls distinguish task status from remaining leases: ${status}`, async () => {
     const h = harness();
     try {
-      h.root.status = status; h.root.runtimeInterrupted = status === "stopped" ? true : undefined;
+      h.root.status = status === "stopped" ? "stopped" : "running";
+      h.root.runtimeInterrupted = status === "interrupted" ? true : undefined;
       const capacity = { rootTaskId: h.root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["module-A"], employees: [] as string[] };
       h.deps.readDepartmentOrganizationControlState = task => readDepartmentOrganizationControlState(task, "workspace-A", {
         readTaskRecord: h.deps.readTaskRecord, readCapacity: () => capacity,
@@ -881,14 +895,23 @@ for (const status of ["running", "stopped"] as const) {
       // Ordinary reconciliation has already happened before the delayed Webview handshake.
       assert.equal(h.deps.collectRunningTaskIds().size, 0);
       const state = buildLoopGroupChatPanelState(h.root, h.deps);
-      assert.equal(state.task.canStop, true); assert.equal(state.task.canContinue, false);
-      assert.match(buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml, /data-action="stopTask"/);
-      assert.doesNotMatch(buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml, /data-action="continueTask"/);
+      assert.equal(state.task.status, status === "running" ? "running" : "stopped");
+      assert.equal(state.department?.director.status, state.task.status);
+      assert.equal(state.task.canStop, status === "running"); assert.equal(state.task.canContinue, false);
+      const actions = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
+      if (status === "running") {
+        assert.match(actions, /data-action="stopTask"/);
+        assert.doesNotMatch(actions, /data-action="continueTask"/);
+      } else {
+        assert.doesNotMatch(actions, /data-action="stopTask"/);
+        assert.match(actions, /data-action="continueTask"[^>]*disabled/);
+      }
       await h.coordinator.open(h.root.id);
       h.receive({ type: "loopGroupChatChat:stopTask" }); await tick();
-      assert.equal(stops, 1); assert.equal(h.effects.length, 0, "never dispatch a single-task runner or ordinary stop");
+      assert.equal(stops, status === "running" ? 1 : 0);
+      assert.equal(h.effects.length, 0, "never dispatch a single-task runner or ordinary stop");
       capacity.leaders = [];
-      h.root.status = "stopped";
+      if (status === "running") h.root.status = "stopped";
       const cleaned = buildLoopGroupChatPanelState(h.root, h.deps);
       assert.equal(cleaned.task.canStop, false); assert.equal(cleaned.task.canContinue, true);
     } finally { h.restore(); }
@@ -929,20 +952,21 @@ test("a refused continuation settlement cannot re-enable continue while organiza
     const settled = h.posted.filter(message => message.type === "loopGroupChatChat:continueTaskSettled").at(-1);
     assert.equal(settled?.canContinue, false);
     assert.equal(h.panel().getState()?.task.canContinue, false);
-    assert.equal(h.panel().getState()?.task.canStop, true);
+    assert.equal(h.panel().getState()?.task.canStop, false);
+    assert.match(buildLoopGroupChatPanelContentPatch(h.panel().getState()!, 1).actionsHtml, /data-action="continueTask"[^>]*disabled/);
     assert.equal(h.effects.length, 0);
   } finally { h.restore(); }
 });
 
 
-test("stop feedback requires both a matching receipt and a trusted empty root capacity", () => {
+test("stop feedback uses trusted cleanup state without requiring a local stop receipt", () => {
   const { root, records } = departmentRecords();
   const empty = { rootTaskId: root.id, maxLeaders: 4, maxEmployees: 20, leaders: [] as string[], employees: [] as string[] };
   const port = { readTaskRecord: (id: string) => records.get(id) ?? null, readCapacity: () => empty };
-  assert.deepEqual(readDepartmentOrganizationStopFeedback(root, "workspace-A", port), { needsCleanup: true, stopState: "unconfirmed" }, "cold empty capacity is no receipt");
+  assert.deepEqual(readDepartmentOrganizationStopFeedback(root, "workspace-A", port), { needsCleanup: false, stopState: undefined });
   for (const result of ["stopping", "unconfirmed"] as const) {
     const control = readDepartmentOrganizationStopFeedback(root, "workspace-A", port, result)!;
-    assert.deepEqual(control, { needsCleanup: true, stopState: result });
+    assert.deepEqual(control, { needsCleanup: false, stopState: result });
   }
   assert.deepEqual(readDepartmentOrganizationStopFeedback(root, "workspace-A", port, "confirmed"), { needsCleanup: false, stopState: "confirmed" });
   for (const readCapacity of [() => null, () => ({ ...empty, leaders: ["module-A"] }), () => ({ ...empty, rootTaskId: "other-root" })]) {
@@ -951,7 +975,7 @@ test("stop feedback requires both a matching receipt and a trusted empty root ca
   assert.equal(readDepartmentOrganizationStopFeedback(root, "workspace-B", port, "confirmed"), null);
   root.status = "running";
   assert.equal(readDepartmentOrganizationStopFeedback(root, "workspace-A", port, "confirmed")?.stopState, undefined, "a resumed root shows its normal stop action");
-  assert.deepEqual(readDepartmentOrganizationStopFeedback(root, "workspace-A", { ...port, readCapacity: () => null }), { needsCleanup: true, stopState: "unconfirmed" }, "cold unknown capacity is never normal running evidence");
+  assert.deepEqual(readDepartmentOrganizationStopFeedback(root, "workspace-A", { ...port, readCapacity: () => null }), { needsCleanup: true, stopState: "unconfirmed" });
 });
 
 for (const reject of [false, true]) {
@@ -980,22 +1004,23 @@ for (const reject of [false, true]) {
       if (reject) {
         const refused = h.panel().getState()!;
         assert.equal(refused.task.canContinue, false);
-        assert.match(buildLoopGroupChatPanelContentPatch(refused, 2).actionsHtml, /停止未确认[\s\S]*data-action="stopTask"[^>]*>核验停止/);
+        const patch = buildLoopGroupChatPanelContentPatch(refused, 2);
+        assert.doesNotMatch(patch.actionsHtml, /核验停止|data-action="stopTask"/);
+        assert.match(patch.actionsHtml, /data-action="continueTask"[^>]*disabled/);
+        assert.match(patch.taskPanelHtml, /已中止/);
         assert.ok(h.warnings.includes("停止核验拒绝：保留原占用"));
         h.receive({ type: "loopGroupChatChat:continueTask" }); await tick();
         assert.equal(resumes, 0); assert.ok(h.warnings.some((message) => /部门停止未确认/.test(message)));
         h.receive({ type: "loopGroupChatChat:stopTask" }); await tick(); await tick();
-        assert.equal(calls, 2);
+        assert.equal(calls, 1);
+        return;
       }
       assert.equal(h.panel().getState()?.task.canStop, false);
       assert.equal(h.panel().getState()?.task.canContinue, true);
       h.receive({ type: "loopGroupChatChat:stopTask" }); await tick();
-      assert.equal(calls, reject ? 2 : 1, "late duplicate after confirmed stop has no effect");
+      assert.equal(calls, 1, "late duplicate after completed stop has no effect");
       h.receive({ type: "loopGroupChatChat:continueTask" }); await tick();
       assert.equal(resumes, 1);
-      h.root.status = "stopped";
-      h.receive({ type: "loopGroupChatChat:continueTask" }); await tick();
-      assert.equal(resumes, 1, "a later run cannot use the page's old confirmation");
     } finally { gate.resolve(); h.dispose(); h.restore(); }
   });
 }
@@ -1028,6 +1053,7 @@ test("director clarification saves an answer without waking a waiter or resuming
 test("stop rejection still refreshes and its original error survives a refresh failure", async () => {
   const h = harness(); let stopping = false;
   try {
+    h.root.status = "running";
     h.deps.readDepartmentOrganizationControlState = () => ({ needsCleanup: true });
     h.deps.departmentOrganizationControl = { stop: async () => { stopping = true; throw new Error("原停止错误"); }, continue: async () => {}, complete: async () => {} };
     await h.coordinator.open(h.root.id);
@@ -1042,6 +1068,7 @@ test("stop rejection still refreshes and its original error survives a refresh f
 test("late root stop completion cannot update another root or replace a reopened view", async () => {
   const h = harness(), gate = deferred();
   try {
+    h.root.status = "running";
     h.deps.readDepartmentOrganizationControlState = () => ({ needsCleanup: true });
     h.deps.departmentOrganizationControl = { stop: async () => { await gate.promise; }, continue: async () => {}, complete: async () => {} };
     await h.coordinator.open(h.root.id);
@@ -1050,7 +1077,7 @@ test("late root stop completion cannot update another root or replace a reopened
     // Reopening uses the same root fence; it must not send another stop.
     await h.coordinator.open(h.root.id);
     assert.equal(h.panel().getState()?.task.departmentStopState, "stopping");
-    const other = structuredClone(h.root); other.id = "other-director"; other.department!.rootTaskId = other.id;
+    const other = structuredClone(h.root); other.id = "other-director"; other.department!.rootTaskId = other.id; other.status = "stopped";
     h.records.set(other.id, other);
     await h.coordinator.open(other.id);
     const otherPanel = h.deps.panelsByTaskId.get(other.id)!;

@@ -1,10 +1,12 @@
 import type { DepartmentOpenCodeRetiredSession } from "../runtime/departmentopencodesessionpreparation";
 import { randomUUID } from "crypto";
+import * as path from "path";
 import { normalizeDepartmentMetadata, type DepartmentMetadata } from "../department";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 import { createLoopPlusScheduler } from "../loopPlusScheduler";
 import type { LoopTaskRecord } from "../loopTaskStore";
 import { DepartmentGenerationAuthorityClient } from "../runtime/departmentgenerationauthorityclient";
+import { DepartmentExecutionOwnerClient } from "../runtime/departmentexecutionownerclient";
 import { departmentGenerationAuthorityDirectory, type DepartmentGenerationAuthoritySnapshot } from "../runtime/departmentgenerationauthority";
 import { leaderExecutionScopeKey, responsibilityKey, responsibilityMatchesBinding, leaderExecutionSetFingerprint,
   type DepartmentLeaderExecutionScope } from "./departmentleaderexecutionledger";
@@ -41,6 +43,72 @@ type Prepared = { task: PreparedTask; routeSignature: string; nativeSources: Dep
   target: DepartmentLeaderTarget; tabGate: { retired: boolean }; fingerprint: string; client: DepartmentGenerationAuthorityClient; controlId: string; released: boolean; releasing?: Promise<void>; lifecycle: Promise<void>; stopped(): void };
 const clone = <T>(v: T): T => structuredClone(v);
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+function departmentColdStopReason(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  switch (message) {
+    case "department-generation-authority-disconnected":
+    case "department-generation-authority-unreachable":
+    case "department-generation-authority-timeout":
+    case "department-generation-authority-response-too-large":
+      return "authority-connection";
+    case "department-generation-authority-control-conflict":
+      return "existing-control";
+    case "department-generation-authority-unavailable":
+    case "department-generation-authority-recovery-unavailable":
+      return "authority-unavailable";
+    case "department-cold-generation-deadline":
+      return "cleanup-timeout";
+    case "department-cold-generation-original-drain-unverifiable":
+    case "department-cold-generation-closure-unverifiable":
+      return "cleanup-unverified";
+    case "department-cold-generation-identity-conflict":
+    case "department-cold-generation-session-or-selection-conflict":
+    case "department-cold-generation-changed-during-control":
+    case "department-cold-generation-authority-set-conflict":
+      return "identity-conflict";
+    case "department-cold-generation-member-missing":
+    case "department-cold-generation-responsibility-incomplete":
+    case "department-cold-generation-capacity-conflict":
+    case "department-cold-generation-runtime-unavailable":
+      return "records-unavailable";
+    default:
+      return "unexpected-failure";
+  }
+}
+
+type DepartmentColdStopReason = ReturnType<typeof departmentColdStopReason>;
+const coldStopReasonLabels: Record<DepartmentColdStopReason, string> = {
+  "authority-connection": "原协调端点连接异常",
+  "existing-control": "原代次已有中止请求",
+  "authority-unavailable": "原协调端点不可用",
+  "cleanup-timeout": "等待原执行退出超时",
+  "cleanup-unverified": "原执行退出尚未确认",
+  "identity-conflict": "原执行归属校验未通过",
+  "records-unavailable": "原执行记录不完整",
+  "unexpected-failure": "中止状态保存或确认异常",
+};
+
+class DepartmentColdStopFailure extends Error {
+  constructor(readonly reasons: DepartmentColdStopReason[], primary: unknown) {
+    super(primary instanceof Error ? primary.message : "department-cold-generation-stop-unconfirmed");
+  }
+}
+
+export function describeDepartmentColdStopFailure(error: unknown) {
+  const reasons: DepartmentColdStopReason[] = error instanceof DepartmentColdStopFailure ? error.reasons : [departmentColdStopReason(error)];
+  const labels = reasons.map(reason => coldStopReasonLabels[reason]);
+  return { reasons, message: `产研部中止尚未全部确认。${labels.join("、")}。原占用已保留。` };
+}
+
+export type DepartmentColdStopDiagnostic = {
+  rootTaskId: string;
+  leaderTaskId: string;
+  generation: number;
+  result: "closure-confirmed" | "unconfirmed";
+  reason: DepartmentColdStopReason | "none";
+  ownerStop?: { acknowledged: number; unreachable: number; unconfirmed: number; unbound: number };
+};
+
 function taskIdentity(task: LoopTaskRecord | null) {
   if (!task) return null;
   const { updatedAt: _, ...value } = task; return value;
@@ -58,12 +126,13 @@ export class DepartmentColdGenerationRecovery {
     return { prepared: this.prepared.size, controls: this.controls.size, preparing: this.preparing.size };
   }
   constructor(private readonly deps: {
-    store: DepartmentRuntimeStore; authorityDirectory: string; workspaceKey(): string;
+    store: DepartmentRuntimeStore; authorityDirectory: string; ownerDirectory: string; workspaceKey(): string;
     readTask(id: string): LoopTaskRecord | null;
     verifyStoredIdentity(task: LoopTaskRecord, expected: DepartmentMetadata, generation: number): boolean;
     restoreTarget(task: LoopTaskRecord): (DepartmentLeaderTarget & { restoredTab: DepartmentRestoredTabObject }) | null;
     registerRestoredTarget(capability: DepartmentColdRestoredTab): void;
     acceptRetirement(capability: DepartmentColdRetirement): void;
+    logMemberStop?(event: DepartmentColdStopDiagnostic): void;
   }) {}
 
   private snapshot(task: LoopTaskRecord, scope: DepartmentLeaderExecutionScope) {
@@ -140,52 +209,88 @@ export class DepartmentColdGenerationRecovery {
     if (!saved.ok || !saved.value) throw new Error("department-cold-generation-runtime-unavailable");
     const deadline = Date.now() + timeoutMs;
     const candidates = saved.value.runtime.leaders.filter(m => saved.value!.capacity.leaders.includes(m.leaderSubtaskId));
-    const phases = candidates.map(member => {
+    const phases = candidates.map(async member => {
       const task = this.deps.readTask(member.taskId);
       if (!task) throw new Error("department-cold-generation-member-missing");
       const scope = { rootTaskId: root.id, workspace: root.workspaceKey, leaderTaskId: task.id, moduleId: member.leaderSubtaskId, generation: member.generation ?? 0 };
       const phase = this.snapshot(task, scope);
       return { scope, phase };
     });
-    const recheck = () => {
+    const recheckMember = ({ phase, scope }: Awaited<(typeof phases)[number]>, checkDeadline = true) => {
       assertCurrent();
-      if (Date.now() >= deadline) throw new Error("department-cold-generation-deadline");
-      for (const { phase, scope } of phases) {
-        const now = this.snapshot(phase.task, scope);
-        if (!same(taskIdentity(now.task), taskIdentity(phase.task)) || !same(taskIdentity(now.root), taskIdentity(phase.root))
-          || !same(now.capacity, phase.capacity) || !same(now.set.entries, phase.set.entries) || !same(now.bindings, phase.bindings)
-          || now.set.producerId !== phase.set.producerId) throw new Error("department-cold-generation-changed-during-control");
-      }
+      if (checkDeadline && Date.now() >= deadline) throw new Error("department-cold-generation-deadline");
+      const now = this.snapshot(phase.task, scope);
+      if (!same(taskIdentity(now.task), taskIdentity(phase.task)) || !same(taskIdentity(now.root), taskIdentity(phase.root))
+        || !same(now.capacity, phase.capacity) || !same(now.set.entries, phase.set.entries) || !same(now.bindings, phase.bindings)
+        || now.set.producerId !== phase.set.producerId) throw new Error("department-cold-generation-changed-during-control");
     };
-    const completed: Prepared[] = [];
-    for (const { scope, phase } of phases) {
+    const controlMember = async (pending: (typeof phases)[number], diagnostic: DepartmentColdStopDiagnostic) => {
+      const candidate = await pending;
+      const { scope, phase } = candidate;
+      const recheck = () => recheckMember(candidate);
       recheck();
       const directory = departmentGenerationAuthorityDirectory(this.deps.authorityDirectory, scope);
       const client = new DepartmentGenerationAuthorityClient(directory, scope, phase.set.producerId, undefined, deadline);
-      this.exactTickets(await client.observe(), phase); recheck();
       const key = leaderExecutionScopeKey(scope);
       const existing = this.prepared.get(phase.task.id);
       if (existing) {
         if (leaderExecutionScopeKey(existing.scope) !== key || !this.inspect(phase.task))
           throw new Error("department-cold-generation-prepared-conflict");
-        continue;
+        return;
       }
       if (!this.controls.has(key) && this.controls.size >= this.maxPendingControls)
         throw new Error("department-cold-generation-control-capacity");
       const id = this.controls.get(key) ?? randomUUID(); this.controls.set(key, id);
-      let control = await client.control(id); recheck();
-      while (control.state !== "closed") {
-        if (control.state === "unknown") throw new Error("department-cold-generation-original-drain-unverifiable");
-        await new Promise<void>(resolve => setTimeout(resolve, Math.min(50, Math.max(1, deadline - Date.now()))));
-        recheck(); control = await client.recovery(id); recheck();
-      }
+      const control = await (async () => {
+        let result = await client.control(id);
+        recheck();
+        while (result.state !== "closed") {
+          if (result.state === "unknown") throw new Error("department-cold-generation-original-drain-unverifiable");
+          await new Promise<void>(resolve => setTimeout(resolve, Math.min(50, Math.max(1, deadline - Date.now()))));
+          recheck(); result = await client.recovery(id); recheck();
+        }
+        return result;
+      })().catch(async (error: unknown) => {
+        const reason = departmentColdStopReason(error);
+        if (reason === "authority-connection" || reason === "existing-control" || reason === "cleanup-timeout" || reason === "cleanup-unverified") {
+          recheckMember(candidate, false);
+          const results = await Promise.allSettled(phase.bindings.map(({ identity }) => new DepartmentExecutionOwnerClient(
+            path.join(this.deps.ownerDirectory, identity.ownerId)).sealExecution(identity)));
+          const acknowledged = results.filter(result => result.status === "fulfilled"
+            && result.value.status !== "unknown" && result.value.status !== "conflict").length;
+          const unreachable = results.filter(result => result.status === "fulfilled" && result.value.status === "unknown"
+            && result.value.reason === "owner-unreachable").length;
+          diagnostic.ownerStop = { acknowledged, unreachable, unconfirmed: results.length - acknowledged - unreachable,
+            unbound: phase.set.entries.length - results.length };
+        }
+        throw error;
+      });
       const snapshot = await client.observe(); this.exactTickets(snapshot, phase); recheck();
       if (snapshot.state !== "sealed" || snapshot.tickets.some(t => t.state !== "released") || !control.closure)
         throw new Error("department-cold-generation-closure-unverifiable");
+      return { ...candidate, directory, id, closure: control.closure, nativeSources: control.nativeSources };
+    };
+    const controls = await Promise.allSettled(phases.map(async (pending, index) => {
+      const member = candidates[index];
+      const diagnostic: DepartmentColdStopDiagnostic = { rootTaskId: root.id, leaderTaskId: member.taskId,
+        generation: member.generation ?? 0, result: "closure-confirmed", reason: "none" };
+      try { return await controlMember(pending, diagnostic); }
+      catch (error) { diagnostic.result = "unconfirmed"; diagnostic.reason = departmentColdStopReason(error); throw error; }
+      finally { try { this.deps.logMemberStop?.(diagnostic); } catch { /* Diagnostics are best effort. */ } }
+    }));
+    const failures = controls.filter(result => result.status === "rejected").map(result => result.reason as unknown);
+    if (failures.length) throw new DepartmentColdStopFailure([...new Set(failures.map(departmentColdStopReason))], failures[0]);
+    const confirmed = controls.flatMap(result => result.status === "fulfilled" && result.value ? [result.value] : []);
+    const candidatesForSettlement = await Promise.all(phases);
+    const recheck = () => { for (const candidate of candidatesForSettlement) recheckMember(candidate); };
+    const completed: Prepared[] = [];
+    for (const retirement of confirmed) {
+      const { scope, phase, directory, id, closure, nativeSources } = retirement;
+      recheck();
       const latest = this.deps.store.readLeaderExecutionSet(scope);
       if (!latest.ok || !latest.value) throw new Error("department-cold-generation-ledger-unavailable");
       if (latest.value.set.state !== "closed") {
-        const closed = this.deps.store.closeLeaderExecutionSet(scope, control.closure);
+        const closed = this.deps.store.closeLeaderExecutionSet(scope, closure);
         if (!closed.ok) throw new Error(closed.error);
       }
       recheck();
@@ -208,7 +313,7 @@ export class DepartmentColdGenerationRecovery {
       const m = normalizeDepartmentMetadata(department)!, rm = normalizeDepartmentMetadata(phase.root.department)!;
       completed.push({ lifecycle, stopped, tabGate, task: clone({ id: taskId, workspaceKey, cli, sessionId, executionSession, department }),
         routeSignature: JSON.stringify([m, rm, phase.task.cli, phase.task.originProfile, phase.task.modelRouting]),
-        nativeSources: clone(control.nativeSources), scope, target, client: new DepartmentGenerationAuthorityClient(directory, scope, phase.set.producerId), controlId: id, released: false,
+        nativeSources: clone(nativeSources), scope, target, client: new DepartmentGenerationAuthorityClient(directory, scope, phase.set.producerId), controlId: id, released: false,
         fingerprint: leaderExecutionSetFingerprint(final.value.set, final.value.bindings) });
     }
     recheck();

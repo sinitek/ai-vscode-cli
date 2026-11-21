@@ -5,7 +5,7 @@ import type test = require("node:test");
 import { createDepartmentProductionTaskStore } from "../../../extensionHost/departmentProductionTaskStore";
 import { DepartmentRuntimeStore } from "../../../extensionHost/departmentruntimestore";
 import { createDepartmentExecutionProducer } from "../../../extensionHost/departmentexecutionproducer";
-import { DepartmentColdGenerationRecovery } from "../../../extensionHost/departmentcoldgenerationrecovery";
+import { DepartmentColdGenerationRecovery, type DepartmentColdStopDiagnostic } from "../../../extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "../../../extensionHost/departmentleaderstoredidentity";
 import { createDepartmentRuntimeComposition } from "../../../extensionHost/departmentruntimecomposition";
 import { createDepartmentLeaderProductionHost } from "../../../extensionHost/departmentleaderproductionhost";
@@ -24,6 +24,7 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
   resources: ReturnType<typeof createDepartmentExecutionResources>, tab: { id: string; cli: string; sessionId: string | null }) => void) {
   const file = (name: string) => path.join(directory, name);
   const diagnostics: string[] = [];
+  const stopDiagnostics: DepartmentColdStopDiagnostic[] = [];
   const diagnosed = async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
     try { return await work(); }
     catch (error) { diagnostics.push(stage + ": " + (error instanceof Error ? error.message : String(error))); throw error; }
@@ -60,8 +61,9 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
     return target;
   };
   let restored = 0;
-  const recovery = new DepartmentColdGenerationRecovery({ store, authorityDirectory: file("authorities"), workspaceKey: () => "workspace", readTask: read,
+  const recovery = new DepartmentColdGenerationRecovery({ store, authorityDirectory: file("authorities"), ownerDirectory: file("owners"), workspaceKey: () => "workspace", readTask: read,
     verifyStoredIdentity: identity,
+    logMemberStop(event) { stopDiagnostics.push(event); },
     restoreTarget(task) { restored++; const target = restore(task); return target && { ...target, restoredTab: tabs.get(target.tabId)! }; },
     registerRestoredTarget(capability) { if (registration) registration(capability, resources, [...tabs.values()][0]); else resources.recordRestored(capability); }, acceptRetirement(cap) { producer.acceptColdRetirement(cap); } });
   let runs = 0;
@@ -115,5 +117,5 @@ export async function coldGenerationHost(t: test.TestContext, directory: string,
     log(message, error) { diagnostics.push(message + ": " + (error instanceof Error ? error.message : String(error))); }, createMessageId: () => "cold-message",
   });
   t.after(async () => { producer.closeAll(); composition.dispose(); fixture.dispose(); await source.close(); });
-  return { source, store, read, producer, recovery, composition, fixture, diagnostics, resources, tabs, get restored() { return restored; }, get runs() { return runs; } };
+  return { source, store, read, producer, recovery, composition, fixture, diagnostics, stopDiagnostics, resources, tabs, get restored() { return restored; }, get runs() { return runs; } };
 }

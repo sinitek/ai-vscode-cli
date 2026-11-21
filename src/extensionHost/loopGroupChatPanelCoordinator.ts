@@ -106,7 +106,6 @@ export type DepartmentOrganizationControl = {
   continue(root: LoopTaskRecord, prompt?: string): Promise<void>;
   stop(root: LoopTaskRecord): Promise<void>;
   complete(root: LoopTaskRecord): Promise<void>;
-  cancelLeader?(root: LoopTaskRecord, leaderTaskId: string): Promise<boolean>;
 };
 
 /** Integration installs a durable CAS writer. This seam never writes a task or starts work. */
@@ -119,6 +118,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   readDepartmentCapacity?: (rootTaskId: string) => DepartmentCapacitySnapshot | null;
   readDepartmentLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   departmentOrganizationControl?: DepartmentOrganizationControl;
+  continueDepartmentLeader?: (task: LoopTaskRecord, prompt: string, assertCurrent: () => void) => Promise<void>;
   /** Validates the fresh root against the trusted source and active workspace. */
   readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean; stopState?: DepartmentOrganizationStopState } | null;
   prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
@@ -223,9 +223,15 @@ export function buildLoopGroupChatPanelState(
   task: LoopTaskRecord,
   deps: LoopGroupChatPanelDeps,
 ): LoopGroupChatPanelState {
+  const departmentRoot = resolveDepartmentRoot(task, deps);
+  const isDirector = departmentRoot?.id === task.id;
+  const displayTask = isDirector ? projectInterruptedDirector(task) : task;
+  const organization = isDirector ? deps.readDepartmentOrganizationControlState?.(task) : undefined;
+  const stopState = organization?.stopState
+    ?? (organization?.needsCleanup && displayTask.status !== "running" ? "unconfirmed" : undefined);
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
-  const state = buildLoopGroupChatPanelStateWithDeps(task, {
+  const state = buildLoopGroupChatPanelStateWithDeps(displayTask, {
     collectRunningLoopTaskIds: deps.collectRunningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
     fileExists: deps.fileExists,
@@ -236,16 +242,10 @@ export function buildLoopGroupChatPanelState(
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
-  const department = buildDepartmentGroupChatProjection(task, {
+  const department = buildDepartmentGroupChatProjection(displayTask, {
     readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
     readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
   });
-  const departmentRoot = resolveDepartmentRoot(task, deps);
-  const organization = deps.readDepartmentOrganizationControlState?.(task);
-  const isDirector = departmentRoot?.id === task.id;
-  const stopState = isDirector ? organization?.stopState
-    ?? (organization?.needsCleanup && task.status !== "running" ? "unconfirmed" : undefined) : undefined;
-  const needsOrganizationStop = Boolean(isDirector && (organization?.needsCleanup || stopState === "stopping" || stopState === "unconfirmed"));
   const acceptancePlanState = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
     ? {
       acceptancePlans: deps.readLoopPlusAcceptancePlans?.() ?? [],
@@ -257,9 +257,11 @@ export function buildLoopGroupChatPanelState(
     ...state,
     task: {
       ...state.task,
-      canContinue: canContinueLoopTaskWithDeps(task, deps, needsOrganizationStop),
-      ...(isDirector && organization ? { departmentStopState: stopState,
-        canStop: stopState === "confirmed" && !needsOrganizationStop ? false : needsOrganizationStop || state.task.canStop } : {}),
+      canContinue: canContinueLoopTaskWithDeps(displayTask, deps, organization),
+      ...(isDirector ? {
+        departmentStopState: stopState,
+        canStop: stopState === "stopping" || displayTask.status === "running",
+      } : {}),
     },
     ...acceptancePlanState,
     ...(departmentRoot ? { ...(department ? { department } : {}), acceptancePlan: departmentRoot?.loopPlusAcceptancePlan ?? null, acceptancePlans: [], acceptancePlanReadOnly: true } : {}),
@@ -313,10 +315,14 @@ function canStopLoopTaskWithRunningTaskIds(
   return resolveLoopTaskRunControlState(task, runningTaskIds).canStop;
 }
 
+function projectInterruptedDirector(task: LoopTaskRecord): LoopTaskRecord {
+  return task.status === "running" && task.runtimeInterrupted ? { ...task, status: "stopped" } : task;
+}
+
 function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps,
-  needsOrganizationStop = Boolean(deps.readDepartmentOrganizationControlState?.(task)?.needsCleanup)): boolean {
-  const stopState = deps.readDepartmentOrganizationControlState?.(task)?.stopState;
-  if (needsOrganizationStop || stopState === "stopping" || stopState === "unconfirmed") return false;
+  organization = deps.readDepartmentOrganizationControlState?.(task)): boolean {
+  if (organization?.needsCleanup || organization?.stopState === "stopping" || organization?.stopState === "unconfirmed") return false;
+  if (departmentMetadata(task)?.role === "director") task = projectInterruptedDirector(task);
   if (isLoopMainAiFailureLimitReached(task)) return canResumeLoopPlusConfigLockPause(task, deps);
   if (resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue) {
     return true;
@@ -401,7 +407,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         const result = trusted?.stopState === "stopping" ? "stopping"
           : local.state === "stopping" ? "stopping" : trusted?.stopState ?? local.state;
         const stopState = result === "confirmed" && trusted?.needsCleanup !== false ? "unconfirmed" : result;
-        return { needsCleanup: trusted?.needsCleanup !== false || stopState !== "confirmed", stopState };
+        return { needsCleanup: trusted?.needsCleanup !== false, stopState };
       };
       if (typeof value !== "function" || !guardedPorts.has(key)) return value;
       return (...args: unknown[]) => {
@@ -599,6 +605,16 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         await continueDirector(root, typeof prompt === "string" ? prompt : undefined);
         return;
       }
+      if (!deps.continueDepartmentLeader) throw new Error("组长继续入口不可用，请从总监继续产研部。");
+      const assertCurrent = () => {
+        if (!scopeValid()) throw obsoleteRequest;
+        const current = deps.readTaskRecord(task.id);
+        if (!current || resolveDepartmentRoot(current, deps)?.id !== root.id) throw obsoleteRequest;
+      };
+      assertCurrent();
+      await deps.continueDepartmentLeader(task, deps.normalizeSupplementalRequirement(prompt) ?? "继续组长任务", assertCurrent);
+      options.onTaskStarted?.();
+      return;
     }
     const runningTaskIds = deps.collectRunningTaskIds();
     const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
@@ -1369,18 +1385,6 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         || !task.subTasks.some((item) => item.id === subtaskId && ["running", "blocked"].includes(item.status))) return;
       if (!await deps.cancelClassicSubtask?.(taskId, subtaskId)) {
         deps.showInformationMessage("该子任务当前无法取消，请刷新群聊后重试。");
-      }
-      await refresh(taskId);
-      return;
-    }
-    if (message.type === "loopGroupChatChat:cancelDepartmentLeader") {
-      const task = deps.readTaskRecord(taskId), leaderTaskId = typeof message.leaderTaskId === "string" ? message.leaderTaskId : "";
-      const root = task && task.department?.role === "director" ? resolveDepartmentRoot(task, deps) : null;
-      const leader = deps.readDepartmentLeaderTaskIds && root?.subTasks.some((module) =>
-        deps.readDepartmentLeaderTaskIds!(root.id, module.id)?.includes(leaderTaskId)) ? leaderTaskId : "";
-      if (!root || !leader || !deps.departmentOrganizationControl?.cancelLeader
-        || !await deps.departmentOrganizationControl.cancelLeader(root, leader)) {
-        deps.showInformationMessage("组长任务取消未确认，原占用仍受保护；请刷新群聊后重试。");
       }
       await refresh(taskId);
       return;

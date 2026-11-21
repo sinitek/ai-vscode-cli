@@ -56,10 +56,13 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   report(taskId: string, message: string): void;
   completed?(task: LoopTaskRecord, decision: LoopMainDecision, target: PromptRunTarget): void;
   stopDirector(taskId: string): void | Promise<void>;
+  logOrganizationStop?(event: { rootTaskId: string; path: "live" | "cold";
+    result: "started" | "confirmed" | "unconfirmed"; stage: OrganizationStopStage }): void;
   waitForDirectorClarification?(task: LoopTaskRecord, target: PromptRunTarget): Promise<boolean>;
 };
 type Controller = { target: PromptRunTarget; input: PromptRunInput; revision: number; wake: (() => void) | null; run: Promise<void> | null; stopped: boolean;
   stopRevision: number };
+type OrganizationStopStage = "request" | "save" | "cancel" | "cleanup";
 const clone = <T>(v: T): T => structuredClone(v);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -80,6 +83,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   const unconfirmedStops = new Map<string, object>();
   type StopRequest = { identity: string; state: "stopping" | "unconfirmed" | "confirmed" };
   const stopRequests = new Map<string, StopRequest>();
+  const activeStops = new Map<string, Promise<void>>();
   const rootIdentity = (task: LoopTaskRecord) => JSON.stringify([task.id, task.workspaceKey, task.taskStoreFile,
     task.cli, task.sessionId, task.department, task.departmentInvalid]);
   const readOrganizationRoot = (id: string) => deps.readOrganizationRoot ? deps.readOrganizationRoot(id) : deps.readTask(id);
@@ -359,7 +363,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const task = clone(found), target = clone(resolved), m = metadata(task), foundRoot = deps.readTask(m.rootTaskId);
     if (!foundRoot) throw new Error("部门根任务不存在。");
     const root = clone(foundRoot), prompt = request.displayPrompt;
-    if (coldStops.has(root.id)) throw new Error("部门正在停止，请等待当前停止核验完成。");
+    if (activeStops.has(root.id)) throw new Error("部门正在停止，请稍候。");
     if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
     const director = m.role === "director" && root.id === task.id;
     if (director) assertStopGate(task);
@@ -441,13 +445,29 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       if (continuations.get(root.id) === continuation) continuations.delete(root.id);
     }
   }
-  async function stop(root: LoopTaskRecord): Promise<void> {
-    if (coldStops.has(root.id)) throw new Error("部门正在停止，请等待当前停止核验完成。");
+  function stop(root: LoopTaskRecord): Promise<void> {
+    const current = deps.readTask(root.id);
+    if (!current || current.workspaceKey !== deps.workspaceKey() || rootIdentity(current) !== rootIdentity(root)) {
+      return Promise.reject(new Error("部门停止归属或状态已变化。"));
+    }
+    const active = activeStops.get(root.id);
+    if (active) return active;
+    const operation = stopOnce(current).finally(() => activeStops.delete(root.id));
+    activeStops.set(root.id, operation);
+    return operation;
+  }
+  async function stopOnce(root: LoopTaskRecord): Promise<void> {
     const request: StopRequest = { identity: rootIdentity(root), state: "stopping" };
     stopRequests.set(root.id, request);
     unconfirmedStops.set(root.id, request);
+    const path = host.runtimeSnapshot(root.id) ? "live" : "cold";
+    const diagnostic = (result: "started" | "confirmed" | "unconfirmed", stage: OrganizationStopStage) => {
+      try { deps.logOrganizationStop?.({ rootTaskId: root.id, path, result, stage }); } catch { /* Diagnostics are best effort. */ }
+    };
+    let stage: OrganizationStopStage = "request";
+    diagnostic("started", stage);
     try {
-      await stopOrganization(root);
+      await stopOrganization(root, (currentStage) => { stage = currentStage; });
       if (stopRequests.get(root.id) !== request) return;
       // Member cleanup and director retirement can finish even when the root stop write did not land.
       const current = readOrganizationRoot(root.id);
@@ -455,17 +475,20 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         || rootIdentity(current) !== request.identity) throw new Error("部门停止归属或状态已变化。");
       request.state = "confirmed";
       if (unconfirmedStops.get(root.id) === request) unconfirmedStops.delete(root.id);
+      diagnostic("confirmed", "cleanup");
     } catch (error) {
       if (stopRequests.get(root.id) === request) request.state = "unconfirmed";
+      diagnostic("unconfirmed", stage);
       throw error;
     }
   }
-  async function stopOrganization(root: LoopTaskRecord): Promise<void> {
+  async function stopOrganization(root: LoopTaskRecord, setStage: (stage: OrganizationStopStage) => void): Promise<void> {
     // Revoke even when recovery/ensure fails: a pending request must never adopt
     // this stop as its new baseline after preparation returns.
     continuations.delete(root.id);
     const c = controllers.get(root.id); if (c) { c.stopRevision++; c.stopped = true; wake(root.id); }
     if (disposed) throw new Error("部门运行入口已释放。");
+    let directorStop: Promise<void> | undefined;
     if (!host.runtimeSnapshot(root.id)) {
       const frozen = clone(root), m = metadata(frozen), request = {};
       if (m.role !== "director" || m.rootTaskId !== frozen.id) throw new Error("部门停止根任务身份无效。");
@@ -475,7 +498,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         workspaceKey: task.workspaceKey, department: task.department, departmentInvalid: task.departmentInvalid,
         status: task.status, schedulingMode: task.schedulingMode, modelRouting: task.modelRouting,
         loopPlusAcceptancePlan: task.loopPlusAcceptancePlan, subTasks: task.subTasks, currentRound: task.currentRound });
-      const expected = clone(identity(frozen));
+      let expected = clone(identity(frozen));
       const assertStop = () => {
         if (disposed || coldStops.get(frozen.id) !== request) throw new Error("部门停止请求已失效。");
         if (deps.workspaceKey() !== frozen.workspaceKey || !same(expected, identity(deps.readTask(frozen.id)))
@@ -484,21 +507,37 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       coldStops.set(frozen.id, request);
       try {
         assertStop();
+        setStage("save");
+        if (frozen.status !== "stopped") {
+          try { deps.updateTask(frozen.id, { status: "stopped" }); } catch { /* Still request cancellation. */ }
+          if (deps.readTask(frozen.id)?.status === "stopped") {
+            frozen.status = "stopped";
+            expected = clone(identity(frozen));
+          }
+        }
+        assertStop();
+        setStage("cancel");
+        directorStop = Promise.resolve().then(() => deps.stopDirector(frozen.id));
+        const [preparation] = await Promise.allSettled([
+          Promise.resolve().then(() => deps.prepareColdRecovery?.(clone(frozen), assertStop)), directorStop,
+        ]);
+        if (preparation.status === "rejected") throw preparation.reason;
+        assertStop();
+        setStage("cleanup");
         await deps.prepareRoutes(clone(m.routes));
         assertStop();
-        if (!deps.validateRoutes(m.routes)) throw new Error("部门角色配置在停止核验期间发生变化。");
-        await deps.prepareColdRecovery?.(clone(frozen), assertStop);
-        assertStop();
+        if (!deps.validateRoutes(m.routes)) throw new Error("部门角色配置在停止期间发生变化。");
         ensure(deps.readTask(frozen.id)!);
       } finally {
         if (coldStops.get(frozen.id) === request) coldStops.delete(frozen.id);
       }
     }
     // Close admission before awaiting director cancellation; failure must not skip child cleanup.
+    setStage("cleanup");
     const stopping = host.stopRoot(root.id);
-    const results = await Promise.allSettled([stopping, Promise.resolve().then(() => deps.stopDirector(root.id))]);
+    const results = await Promise.allSettled([stopping, directorStop ?? Promise.resolve().then(() => deps.stopDirector(root.id))]);
     if (results.some((result) => result.status === "rejected") || results[0].status !== "fulfilled" || !results[0].value) {
-      throw new Error("部门停止尚未核验全部执行清理；未核验占用继续保留。");
+      throw new Error("部门停止尚未完成全部执行清理；原执行记录继续保留。");
     }
     await c?.run;
   }
@@ -513,12 +552,6 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       await continueDepartmentPrompt({ displayPrompt: prompt ?? "继续部门任务", modelPrompt: prompt ?? "继续部门任务", contextTags: [], targetTabId: target.tabId, cli: target.cli });
     },
     stop,
-    cancelLeader: async (root: LoopTaskRecord, leaderTaskId: string) => {
-      ensure(root);
-      const result = await host.cancelLeader(root.id, leaderTaskId);
-      if (result) wake(root.id);
-      return result;
-    },
     complete: async (root: LoopTaskRecord) => { ensure(root); const result = host.confirmRootComplete(root.id, root.finalSummary || "按组长汇报确认整体完成"); if (!result.ok) throw new Error(`整体完成被拒绝：${result.reason}`); },
   };
   return { host, capacity, readDepartmentEmployeeAllocation: allocation.readDepartmentEmployeeAllocation,

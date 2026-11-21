@@ -179,7 +179,7 @@ import {
 import { DepartmentConfigurationSaveBarrier, getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, validateDepartmentRoleCandidate } from "./departmentConfiguration";
 import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata } from "./department";
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
-import { DepartmentColdGenerationRecovery } from "./extensionHost/departmentcoldgenerationrecovery";
+import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
 import { DepartmentRuntimeStore } from "./extensionHost/departmentruntimestore";
 import { DepartmentExecutionRecovery } from "./extensionHost/departmentexecutionrecovery";
@@ -3065,7 +3065,15 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     continue: (root, prompt) => getDepartmentRuntimeComposition().organizationControl.continue(root, prompt),
     stop: (root) => getDepartmentRuntimeComposition().organizationControl.stop(root),
     complete: (root) => getDepartmentRuntimeComposition().organizationControl.complete(root),
-    cancelLeader: (root, leaderTaskId) => getDepartmentRuntimeComposition().organizationControl.cancelLeader(root, leaderTaskId),
+  },
+  continueDepartmentLeader: (task, prompt, assertCurrent) => {
+    const target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
+    if (!target || departmentTaskForTab(target.tabId)?.id !== task.id) {
+      throw new Error("组长执行会话当前不可用，请从总监继续产研部。");
+    }
+    return getDepartmentRuntimeComposition().continueDepartmentPrompt({
+      targetTabId: target.tabId, cli: target.cli, displayPrompt: prompt, modelPrompt: prompt, contextTags: [], assertCurrent,
+    });
   },
   recordPromptHistory,
 
@@ -3189,12 +3197,20 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
         return getPendingSessionDraft(promptTarget.tabId, promptTarget.cli).messages;
       },
       runPrompt: async (input, options) => {
-        if (!signal) return runPrompt(input, options);
+        const execute = (runOptions: RunPromptOptions) => {
+          if (task.departmentInvalid) throw new Error("部门任务关联无效，无法提问。");
+          if (task.department?.role !== "leader") return runPrompt(input, runOptions);
+          return runDepartmentLeaderPrompt({ ...input, taskRole: "main", loopTaskId: task.id }, {
+            targetTabId: options.targetTabId, invocationId: createMessageId(), isAborted, signal,
+            registerQuestionRun: runOptions.registerQuestionRun,
+          });
+        };
+        if (!signal) return execute(options);
         let stop: (() => void) | undefined;
         const abort = () => stop?.();
         signal.addEventListener("abort", abort, { once: true });
         try {
-          await runPrompt(input, {
+          await execute({
             ...options,
             registerQuestionRun: (runId) => {
               const tabId = options.targetTabId;
@@ -3228,6 +3244,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
         const latest = readLoopTaskRecord(task.id);
         const currentTarget = latest ? resolveLoopMainPromptTarget(latest, { createIfMissing: false }) : null;
         if (!latest || latest.id !== task.id || latest.workspaceKey !== task.workspaceKey || latest.taskStoreFile !== task.taskStoreFile
+          || latest.department?.role !== task.department?.role || latest.departmentInvalid !== task.departmentInvalid
           || !currentTarget || currentTarget.tabId !== target.tabId || currentTarget.cli !== target.cli
           || (target.sessionId && currentTarget.sessionId !== target.sessionId)) {
           throw new Error(t("loopGroupChatChat.askUnavailable"));
@@ -4228,6 +4245,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
   });
   const coldRecovery = new DepartmentColdGenerationRecovery({
     store: runtimeStore, authorityDirectory: path.join(DATA_DIR, "department-generation-authorities"),
+    ownerDirectory: path.join(DATA_DIR, "department-execution-owners"),
     workspaceKey: () => activeWorkspaceKey, readTask: readLoopTaskRecord, verifyStoredIdentity: storedLeaderIdentity,
     restoreTarget(task) {
       // Existing session manager restores the verified local transcript, never a new task/native session.
@@ -4240,18 +4258,19 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     },
     registerRestoredTarget: capability => getDepartmentExecutionResources().recordRestored(capability),
     acceptRetirement: capability => getDepartmentExecutionProducer().acceptColdRetirement(capability),
+    logMemberStop: event => { void logEssential("department-cold-member-stop", event).catch(() => undefined); },
   });
   departmentRuntimeComposition = createDepartmentRuntimeComposition({
     runtime,
     async prepareColdRecovery(root, assertCurrent) {
       try { await coldRecovery.prepare(root, assertCurrent); }
       catch (error) {
-        // Missing/old capabilities continue through the existing exact safety refusal.
-        const message = error instanceof Error ? error.message : "";
-        if (/authority-unavailable|recovery-unavailable|native-provenance-unavailable/.test(message)) return;
-        throw new Error(`部门恢复核验阻塞：live-leader-unverifiable。保留原占用，不能重新派发。（${message}）`);
+        const { reasons, message } = describeDepartmentColdStopFailure(error);
+        void logEssential("department-cold-stop-unconfirmed", { rootTaskId: root.id, reasons }).catch(() => undefined);
+        throw new Error(message);
       }
     },
+    logOrganizationStop: (event) => { void logEssential("department-organization-stop", event).catch(() => undefined); },
     store: runtimeStore,
     readOrganizationRoot: (id) => getDepartmentOwnershipIndex().readTaskRecord(id),
     readLeaderTaskIds: (root, module) => getDepartmentOwnershipIndex().readDepartmentLeaderTaskIds(root, module),
@@ -5495,10 +5514,15 @@ async function closeLoopSubtaskTabAndRefreshPanel(tabId: string): Promise<void> 
  * and run records, while its transport is the independent multi-turn Owner. */
 async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
   targetTabId: string; invocationId: string; isAborted: () => boolean; signal?: AbortSignal; onStarted?: () => void;
+  registerQuestionRun?: RunPromptOptions["registerQuestionRun"];
 }): Promise<void> {
   const taskId = input.loopTaskId;
   if (!taskId || input.taskRole !== "main") throw new Error("部门组长调用身份缺失。");
   const originalTask = readLoopTaskRecord(taskId);
+  if (input.loopAsk && (originalTask?.status !== "running" || originalTask.departmentInvalid
+    || originalTask.department?.role !== "leader" || !originalTask.executionSession || originalTask.executionSessionInvalid)) {
+    throw new Error("组长当前没有可提问的原生会话，请在组长运行后重试。");
+  }
   if (usesDepartmentInteractiveRuntime(originalTask?.cli)) {
     return getDepartmentExecutionProducer().track(taskId, () => runDepartmentInteractivePrompt(input, options));
   }
@@ -5533,7 +5557,7 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
       throw new Error("部门组长执行归属或会话已变化，任务未启动。");
     }
   };
-  await loopMainQuestionQueue.runMain(tabId, () => producer.track(taskId, async () => {
+  const execute = () => producer.track(taskId, async () => {
     const abort = new AbortController();
     const cancel = () => abort.abort();
     options.signal?.addEventListener("abort", cancel, { once: true });
@@ -5566,6 +5590,7 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
           // Each leader owns its tab-scoped consumer; primary state is shared.
           await runPromptParallel(fixed, target, {
             isAborted: options.isAborted, cwd: workspaceDirectory, isolateProjectInstructions: true,
+            registerQuestionRun: options.registerQuestionRun,
             departmentLeaderNativeSession: createDepartmentLeaderNativeSessionValidator({
               localSessionId: target.sessionId, configId: expected.configId,
               readExecutionSession: () => readLoopTaskRecord(taskId)?.executionSession,
@@ -5616,6 +5641,7 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
       try {
       await runPromptInteractive(fixed, target, {
         isAborted: options.isAborted, isolateProjectInstructions: true,
+        registerQuestionRun: options.registerQuestionRun,
         cancelDepartmentCodexPreparation: cancel,
         departmentCodexRun: async (prompt, handlers) => {
           if (invoked) throw new Error("部门组长本次调用不能重试或重放。");
@@ -5633,7 +5659,9 @@ async function runDepartmentLeaderPrompt(input: PromptRunInput, options: {
       consumed = true;
       } finally { tabConsumer.finish(consumed); }
     } finally { options.signal?.removeEventListener("abort", cancel); }
-  }), {
+  });
+  if (input.loopAsk) return execute();
+  await loopMainQuestionQueue.runMain(tabId, execute, {
     isAborted,
     signal: options.signal,
     canRun: () => {
@@ -6390,6 +6418,12 @@ async function runContextCompaction(
   options: ContextCompactionOptions = {},
   isolatedRun = false,
 ): Promise<boolean> {
+  const tabId = options.tabId ?? getActiveConversationTabId();
+  const departmentTask = departmentTaskForTab(tabId);
+  if (departmentTask?.department?.role === "leader") {
+    if (!options.silent) appendSystemMessageForCli(departmentTask.cli, departmentTask.sessionId ?? null, "组长会话由产研部管理，不支持手动压缩。");
+    return false;
+  }
   const deps: ContextCompactionRunDeps = {
     getCurrentCli: () => currentCli,
     getActiveConversationTabId,

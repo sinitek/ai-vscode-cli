@@ -445,17 +445,20 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     root.abort.abort(); root.snapshot.stopping = true; persist(root);
     try { deps.updateTask(root.id, { status: "stopped" }); } catch { root.persistenceError = true; if (diagnoseStop) diagnostic("department-lifecycle-persistence-failed", { rootTaskId: root.id, stage: "root-stop", result: "unconfirmed", reason: "persistence-failed" }); }
     const stopping = (async () => {
-      await Promise.allSettled([...root.cancellations.values()]);
-      await Promise.allSettled([...root.reservations.values()].filter((v): v is Promise<unknown> => !!v));
       let confirmed = 0, unconfirmed = 0;
-      const results = await Promise.allSettled([...root.members.values()].map(async (member) => {
+      const stoppedMembers = new Set<Member>();
+      const stopMember = async (member: Member): Promise<void> => {
+        stoppedMembers.add(member);
         const generation = member.generation;
         try {
         if (member.status === "completed" && !member.run && !member.lease) return;
-        if (member.status === "blocked") throw new Error("execution-cleanup-unverified");
-        member.status = "stopping";
-        deps.runtime.host().stopParent(member.taskId);
-        await deps.stopLeader(member.taskId);
+        if (member.status !== "blocked") member.status = "stopping";
+        const signals = await Promise.allSettled([
+          Promise.resolve().then(() => deps.runtime.host().stopParent(member.taskId)),
+          Promise.resolve().then(() => deps.stopLeader(member.taskId)),
+        ]);
+        const failure = signals.find(result => result.status === "rejected");
+        if (failure) throw failure.reason;
         await deps.runtime.waitForTaskIdle(member.taskId);
         await Promise.all([...root.employees.values()].filter((item) => item.taskId === member.taskId).map((item) => item.done));
         await member.run;
@@ -475,7 +478,13 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
           if (diagnoseStop) memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained");
           throw error;
         } finally { if (member.cleanupConfirmedGeneration === generation) confirmed++; else unconfirmed++; }
-      }));
+      };
+      const activeStops = Promise.allSettled([...root.members.values()]
+        .filter(member => !root.cancellations.has(member.taskId)).map(stopMember));
+      await Promise.allSettled([...root.cancellations.values(), ...root.reservations.values()]);
+      const remainingStops = await Promise.allSettled([...root.members.values()]
+        .filter(member => !stoppedMembers.has(member)).map(stopMember));
+      const results = [...await activeStops, ...remainingStops];
       persist(root);
       const ok = results.every((item) => item.status === "fulfilled");
       const retained = [...root.members.values()].filter((member) => member.lease !== null).length;

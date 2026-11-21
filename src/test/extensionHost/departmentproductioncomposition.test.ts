@@ -349,7 +349,7 @@ test("production stop closes admission before an asynchronous director cancellat
   assert.equal(h.composition.readCapacity(h.rootTaskId)?.employees.length, 1);
   h.fixture.finishParked("accounts-0", { status: "stopped" });
   rejectStop(new Error("director cancellation failure"));
-  await assert.rejects(stopping, /未核验/);
+  await assert.rejects(stopping, /部门停止尚未完成全部执行清理/);
   assert.equal(h.composition.readCapacity(h.rootTaskId)?.employees.length, 0);
   assert.equal(h.composition.readCapacity(h.rootTaskId)?.leaders.length, 0);
 });

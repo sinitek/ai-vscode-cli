@@ -84,28 +84,24 @@ function readDepartmentOrganizationControl(task: LoopTaskRecord, workspaceKey: s
   return { needsCleanup: !valid || capacity!.leaders.length > 0 || capacity!.employees.length > 0, capacityKnown: Boolean(valid), status: current.status, interrupted: current.runtimeInterrupted === true };
 }
 
-/** Combine a trusted current root/lease read with this host's matching stop receipt.
- * Persistent runtime.stopping and an idle tab deliberately supply no receipt. */
 export function readDepartmentOrganizationStopFeedback(task: LoopTaskRecord, workspaceKey: string,
   port: Pick<DepartmentGroupChatReadPort, "readTaskRecord" | "readCapacity">,
   result?: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState) {
   const state = readDepartmentOrganizationControl(task, workspaceKey, port);
   if (!state) return null;
   const stopState: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState | undefined = result === "stopping" ? "stopping"
-    : result === "unconfirmed" || !state.capacityKnown ? "unconfirmed"
-    : state.needsCleanup ? (state.status === "running" && !state.interrupted ? undefined : "unconfirmed")
+    : result === "unconfirmed" || !state.capacityKnown || (state.needsCleanup && (state.status !== "running" || state.interrupted)) ? "unconfirmed"
     : result === "confirmed" && (state.status !== "running" || state.interrupted) ? "confirmed"
-    : state.status === "stopped" || state.interrupted ? "unconfirmed" : undefined;
-  return { needsCleanup: state.needsCleanup || stopState === "stopping" || stopState === "unconfirmed", stopState };
+    : undefined;
+  return { needsCleanup: state.needsCleanup, stopState };
 }
 
 export function assertDepartmentOrganizationContinuation(task: LoopTaskRecord,
   state: { needsCleanup: boolean; stopState?: import("../webview/loopGroupChatPanelTypes").DepartmentOrganizationStopState } | null | undefined): void {
   if (!state) throw new Error("部门续接归属已变化。");
-  if (state.stopState === "stopping") throw new Error("部门正在停止，请等待当前停止核验完成。");
-  if (state.stopState === "unconfirmed" || ((task.status !== "running" || task.runtimeInterrupted)
-    && (state.needsCleanup || ((task.status === "stopped" || task.runtimeInterrupted) && state.stopState !== "confirmed")))) {
-    throw new Error("部门停止未确认，请先核验停止再继续。");
+  if (state.stopState === "stopping") throw new Error("部门正在停止，请稍候。");
+  if (state.stopState === "unconfirmed" || ((task.status !== "running" || task.runtimeInterrupted) && state.needsCleanup)) {
+    throw new Error("部门停止未确认，仍有执行清理或状态保存未完成。");
   }
 }
 

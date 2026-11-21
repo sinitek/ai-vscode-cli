@@ -199,7 +199,6 @@ export type LoopGroupChatPanelBaseMessage =
   | { type: "loopGroupChatChat:refresh" }
   | { type: "loopGroupChatChat:openSubtaskConversation"; subtaskId?: string }
   | { type: "loopGroupChatChat:cancelSubtask"; subtaskId?: string }
-  | { type: "loopGroupChatChat:cancelDepartmentLeader"; leaderTaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string; requestId?: string }

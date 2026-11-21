@@ -5256,8 +5256,8 @@
     },
     {
       "id": "plugin.rule.classic_loop_live_dispatch_and_child_cancel",
-      "name": "经典 Loop 运行中增派与部门组长单独取消",
-      "description": "经典 Loop 子任务批次运行期间，补充需求持久化后唤醒同一串行主循环；现有批次继续受后台 Promise 和失联巡检管理。主任务仅在新任务写入范围、冲突组及连续来源均不与活动任务冲突时增量派发；completed、waiting、blocked 不能绕过在途任务收尾。群聊可取消单个活动子任务，宿主先取消目标 CLI 并等待真实运行退出，再标记 skipped；迟到完成回调不得覆盖 skipped，取消不影响兄弟任务或 Loop+ roster。产研部总监补充需求唤醒总监专属协调器；活动组长冲突时延后重新判断，不覆盖已登记模块。总监群聊单独取消运行或已确认失败的组长；仅在 Owner 清理、任务 idle 和容量释放确认后跳过旧模块，清理不明时保留原组织占用。",
+      "name": "经典 Loop 运行中增派与组长群聊中止",
+      "description": "经典 Loop 子任务批次运行期间，补充需求持久化后唤醒同一串行主循环；现有批次继续受后台 Promise 和失联巡检管理。主任务仅在新任务写入范围、冲突组及连续来源均不与活动任务冲突时增量派发；completed、waiting、blocked 不能绕过在途任务收尾。群聊可取消单个活动子任务，宿主先取消目标 CLI 并等待真实运行退出，再标记 skipped；迟到完成回调不得覆盖 skipped，取消不影响兄弟任务或 Loop+ roster。产研部总监补充需求唤醒总监专属协调器；活动组长冲突时延后重新判断，不覆盖已登记模块。通过总监成员面板进入组长群聊后，从组长群聊发起中止，宿主按当前组长任务处理。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -8048,6 +8048,50 @@
       ]
     },
     {
+      "id": "plugin.rule.department_generation_stop_control",
+      "name": "原代次回包和并行中止",
+      "description": "代次协调协议 v2 单条请求上限为 64 KiB，含完整票据与原 OpenCode 来源的响应上限为 16 MiB，超限返回固定错误码。冷中止核对组织身份并保存总监停止状态，按各组原代次身份并行取消总监和原执行。首次请求或轮询通信失败、已有控制冲突或退出未确认时，对复核后的精确绑定原 Owner 转发中止。单张未绑定票据或个别 Owner 失联时仍向其它原 Owner 发出中止。按代次记录固定失败分类和转发结果，群聊汇总未确认原因。全部原代次清理证据齐全后才登记恢复 Tab 并结算组织中止。清理证据缺失时保留原占用并禁止继续。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_generation_authority",
+        "plugin.department_task"
+      ],
+      "source_refs": [
+        {
+          "path": "src/runtime/departmentgenerationauthority.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentcoldgenerationrecovery.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-generation-authority.md"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_group_chat_stop_state",
+      "name": "总监群聊状态与原执行清理反馈",
+      "description": "总监群聊按可信根任务状态显示中止入口。停止请求在途时按钮禁用。根任务已中止后移除中止入口，原执行退出待确认时显示禁用的继续执行和原因。清理确认后按原有恢复门槛开放继续。带 runtimeInterrupted 的历史运行记录投影为已中止。原占用只参与清理反馈与恢复检查。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task"
+      ],
+      "source_refs": [
+        {
+          "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md"
+        },
+        {
+          "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
+        },
+        {
+          "path": "src/webview/loopGroupChatPanel.ts"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.department_cold_worker_exit_evidence",
       "name": "冷恢复业务凭证与真实worker退出分别核验",
       "description": "冷恢复harness保持完整原required receipts、CLOSED及持久容量移除门禁，并独立核验原authority与后继Owner/authority的真实退出事件。macOS限定观察通过实际fork初始化身份与PID绑定独立kqueue NOTE_EXITSTATUS，跨越首EH退出，要求code0且无signal；endpoint移除、retired响应、PID缺席、EH退出或清理凭证均不代替此事件。被动观察不改变业务IPC、ref、授权或清理顺序，不向业务进程发信号，也不创建receipt；其它平台不外推。",
@@ -8556,6 +8600,42 @@
         {
           "path": ".ch/docs/design-docs/department-codex-production-bootstrap.md",
           "anchor": "消费和资源事实"
+        }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_leader_group_chat_session",
+      "name": "组长群聊沿用组织执行会话",
+      "description": "组长群聊提问与调度回合同用按 Tab 排队的执行入口，校验运行状态、持久原生会话及可执行代次后由原 Owner 回答。群聊继续向通过组织归属校验的当前组长调度器提交需求。已停止的组长经总监的组织继续入口恢复。组长回合跳过普通会话压缩。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.chat_panel"],
+      "source_refs": [
+        { "path": "src/extension.ts" },
+        { "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts" },
+        { "path": "src/extensionHost/promptInteractiveRuntime.ts" },
+        { "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md" }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_producer_observation_diagnostics",
+      "name": "组长 producer 观察拒绝使用固定原因日志",
+      "kind": "business_rule",
+      "description": "producer 观察拒绝记录固定 reason，启动校验拒绝记录固定 phase 与 reason，均关联 rootTaskId、leaderTaskId 和 generation。组长 bootstrap 会话持久化或绑定失败附加 sessionBindingStep。已封闭执行的回执依赖原持久身份与原客户端，活动 Tab 可以已释放。日志用于定位，不提供接管、自动重跑或清理授权。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.extension_host"
+      ],
+      "source_refs": [
+        {
+          "path": "src/extensionHost/departmentexecutionproducer.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentinteractiveruntime.test.ts"
+        },
+        {
+          "path": ".ch/docs/runbooks/local-development.md",
+          "anchor": "产研部 Codex 组长回调故障"
         }
       ]
     }

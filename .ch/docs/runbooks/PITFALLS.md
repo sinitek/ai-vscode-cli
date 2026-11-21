@@ -21,6 +21,11 @@
 
 历史复盘（已修复、已废弃、仅历史版本有效）先放在 [PITFALLS_HISTORY.md](./PITFALLS_HISTORY.md)。
 
+## 组长会话的本地键用于定位对话
+
+- 现象：组长的回合已经成功，通用自动压缩或群聊提问仍报 `interactive-session-resume-blocked` 和 `missing-remote-id`。
+- 排查：先核对同一组长任务是否有 `executionSession`。本地 Tab 键用于定位消息，原生会话受部门 Owner 与代次管理。调度回合和提问共用原 Owner，组长跳过通用自动压缩。
+
 ## Loop+ 成功提交不能与展示刷新共用失败契约
 
 - 现象：store 吞掉 write 错误、上层只检查异常或忽略 null 时，磁盘仍 running 却已通知完成并释放；反过来，把提交后面板刷新异常继续抛出，会将已提交事件当成未提交，造成重放。只测会抛异常的 updateTask 替身检不出真实 store 接口矛盾。

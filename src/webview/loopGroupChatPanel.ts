@@ -1495,10 +1495,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
           }
           return;
         }
-        if (action === "cancelDepartmentLeader") {
-          vscode.postMessage({ type: "loopGroupChatChat:cancelDepartmentLeader", leaderTaskId: target.getAttribute("data-leader-task-id") ?? undefined });
-          return;
-        }
         if (action === "refresh") {
           requestRefresh();
           return;
@@ -1804,11 +1800,13 @@ function renderPanelActions(
 ): string {
   const progressPercent = state.task.progressPercent ?? 0;
   const progressBand = Math.min(4, Math.floor(progressPercent / 20));
+  const continueBlocked = state.department?.role === "director" && !state.task.canContinue
+    && state.task.status !== "running" && state.task.status !== "completed" && state.task.departmentStopState === "unconfirmed";
   return [
     state.department?.role === "leader" ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
     `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
-      ? `${state.task.departmentStopState === "unconfirmed" ? `<span role="status">${escapeHtml(strings.stopUnconfirmed)}</span>` : ""}<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : state.task.departmentStopState === "unconfirmed" ? strings.verifyStop : strings.stopTask)}</button>`
+      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.department?.role === "director" ? strings.stopDepartmentTitle : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : strings.stopTask)}</button>`
       : "",
     "</div>",
     state.task.canSupplement
@@ -1824,9 +1822,10 @@ function renderPanelActions(
     state.task.status !== "completed"
       ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
       : "",
-    state.task.canContinue
-      ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}">${escapeHtml(strings.continueTask)}</button>`
+    state.task.canContinue || continueBlocked
+      ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}"${continueBlocked ? ' disabled aria-describedby="departmentContinueBlocked"' : ""}>${escapeHtml(strings.continueTask)}<span class="continue-loading typing-dots" role="status" aria-label="${escapeAttribute(strings.continueTaskStarting)}" hidden><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></span></button>`
       : "",
+    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
   ].join("");
 }
 
@@ -1837,16 +1836,16 @@ function renderTaskPanel(
   const currentRound = state.loopPlus
     ? ""
     : renderMetaRow(strings.currentRound, String(state.task.currentRound));
+  const status = state.department?.role === "director" && state.task.status === "stopped" ? "已中止" : state.task.status;
   return `<section class="panel">
     <h2>${escapeHtml(strings.task)}</h2>
     <div class="meta-grid">
-      ${renderMetaRow(strings.status, state.task.status)}
+      ${renderMetaRow(strings.status, status)}
       ${renderMetaRow(strings.cli, state.task.cli)}
       ${currentRound}
       ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt))}
     </div>
   </section>
-  ${state.department?.role === "director" && state.acceptancePlanReadOnly ? `<section class="panel"><h2>统一验收方案（只读）</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
   ${state.department?.role === "leader" ? `<section class="panel"><h2>继承产研部统一验收方案</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
   ${renderLoopPlusPanels(state, strings)}`;
 }
@@ -2163,11 +2162,9 @@ function renderDepartmentRosterPanel(
       ["待验收", leader.employees.filter((employee) => employee.status === "queued_review").length],
     ].map(([label, count]) => `<span class="department-status-tag">${label} ${count}</span>`).join("") : "";
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
-    const cancelLeader = department.role === "director" && leader.taskId && ["running", "failed"].includes(leader.participant.status)
-      ? `<button class="button" type="button" data-action="cancelDepartmentLeader" data-leader-task-id="${escapeAttribute(leader.taskId)}" title="取消此组长任务" aria-label="取消${escapeAttribute(leader.participant.title)}">取消</button>` : "";
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
-        ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary + cancelLeader, undefined, progressPercent)}
+        ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
       </div>
       ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusCounts}</div>`
         : `<ul class="department-employees" aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>`}

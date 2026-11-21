@@ -1952,8 +1952,10 @@ test("department native main keeps its local task session while mapping two roun
     return Promise.resolve();
   });
   let resumeChecks = 0;
-  const harness = createInteractiveRuntimeHarness({ runtimeDeps: {
+  let compactions = 0;
+  const harness = createInteractiveRuntimeHarness({ autoCompactAfterRun: true, runtimeDeps: {
     resolveInteractiveSessionForResume: async () => { resumeChecks++; return undefined; },
+    maybeAutoCompactContextAfterPromptSuccess: async () => { compactions++; },
   } }); let calls = 0;
   const input = createPromptInput({ taskRole: "main", loopTaskId: "leader-task", loopRound: 1 });
   const target = createTarget({ sessionId: "local_leader" });
@@ -1967,6 +1969,7 @@ test("department native main keeps its local task session while mapping two roun
   }
   assert.equal(calls, 2); assert.equal(harness.codexRunnerCreateCalls, 0);
   assert.equal(resumeChecks, 0, "a local transcript key must reach the trusted native preparation port");
+  assert.equal(compactions, 0, "department rounds must not open a shared runner for compaction");
   assert.deepEqual(harness.adoptedSessions, []); assert.deepEqual(harness.migratedSessions, []);
   assert.deepEqual(harness.mappingUpserts.map(({ sessionId, mappedId }) => [sessionId, mappedId]),
     [["local_leader", "native-owned-thread"], ["local_leader", "native-owned-thread"]]);

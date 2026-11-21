@@ -1025,6 +1025,7 @@ async function drivePublicEntry(root, port, prompt, report, input) {
 async function driveContinuation({ root, port, report, scenario, readTasks, inspectCleanup, readRuntime, healthy }) {
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  let group;
   const wait = async (label, check) => {
     const until = Date.now() + Math.min(timeoutMs, 60000);
     while (Date.now() < until) {
@@ -1047,23 +1048,10 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     assert.equal(originalBindings.length, 2, "stop must see both actual original Owner bindings");
     assert.ok(originalBindings.some(({ identity }) => identity.role === "employee" && identity.subtaskId === held.subtaskId && identity.attemptId === held.attemptId));
     report.continuationEvidence = { rootId, originalRoot, originalLeader, originalBindings, originalRuntime: original };
-    const pages = () => browser.contexts().flatMap((context) => context.pages());
-    const frames = () => pages().flatMap((page) => page.frames());
-    let group = await wait("director group chat or public open button", async () => {
-      for (const frame of frames()) {
-        if (await frame.locator('#panelActions [data-action="stopTask"]').isVisible().catch(() => false)) {
-          const text = await frame.locator("body").innerText();
-          if (text.includes("产研部群聊") && text.includes(rootId)) return frame;
-        }
-      }
-      for (const frame of frames()) {
-        if (await frame.locator("#openCurrentLoopGroupChat").isVisible().catch(() => false)) {
-          await frame.locator("#openCurrentLoopGroupChat").click(); break;
-        }
-      }
-      return null;
-    });
-    assert.ok((await group.locator("body").innerText()).includes(rootId), "stop control belongs to actual root");
+    const view = await createDepartmentWebviewAdapter(browser, "webviewView");
+    try { await view.locator("#openCurrentLoopGroupChat").click(); }
+    finally { await view.close(); }
+    group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId });
     await group.locator('#panelActions [data-action="stopTask"]').click();
     report.continuationEvidence.stopClickedAt = new Date().toISOString();
     // Wait for the PUBLIC action to persist cancellation, then unblock the local
@@ -1079,6 +1067,8 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     assert.deepEqual(cleanup.saved.executionBindings, originalBindings, "stopping changed original bindings");
     report.continuationEvidence.stoppedCleanup = cleanup;
     report.stages.stoppedCleanup = "passed";
+    const continueControl = group.locator('#panelActions [data-action="continueTask"]');
+    await wait("public stop settlement", async () => continueControl.isEnabled().catch(() => false));
     const before = JSON.stringify(readRuntime(rootId));
     const requestCount = scenario.history.length;
     await sleep(1000); healthy();
@@ -1088,8 +1078,7 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     report.continuationEvidence.noAutomaticRevival = { durationMs: 1000, requestCount, unchanged: true };
     report.activePhase = "publicContinue"; report.stages.publicContinue = "running";
     const prompt = scenario.beginContinue(cleanup);
-    await wait("public continue control", async () => group.locator('#panelActions [data-action="continueTask"]').isEnabled().catch(() => false));
-    await group.locator('#panelActions [data-action="continueTask"]').click();
+    await continueControl.click();
     await group.locator("#continueDialogInput").fill(prompt);
     await group.locator("#continueDialogConfirm").click();
     report.continuationEvidence.continueClickedAt = new Date().toISOString();
@@ -1104,7 +1093,11 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     assert.equal(currentTasks.find((task) => task.id === held.leaderTaskId)?.sessionId, originalLeader.sessionId);
     assert.deepEqual(currentTasks.find((task) => task.id === held.leaderTaskId)?.department, originalLeader.department);
     report.stages.publicContinue = "passed"; report.activePhase = "successorCompletion";
-  } finally { scenario.releaseEmployee(); await browser.close(); }
+  } finally {
+    scenario.releaseEmployee();
+    try { await group?.close(); }
+    finally { await browser.close(); }
+  }
 }
 
 // Cold successors may contain only the continued leader. Compare the exact

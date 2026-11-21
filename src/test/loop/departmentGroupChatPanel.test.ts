@@ -97,11 +97,17 @@ test("director roster summarizes employee statuses without exposing employees or
   assert.match(html, /data-department-title="组长A" data-department-task-id="department-20261113-leader-111111"/u);
 });
 
-test("director roster exposes an individual cancel action for a running leader", () => {
-  const state = departmentState("director");
-  const html = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
-  assert.match(html, /data-action="cancelDepartmentLeader" data-leader-task-id="department-20261113-leader-111111"/u);
-  assert.match(html, /title="取消此组长任务"/u);
+test("director roster opens the leader chat where its task can be stopped", () => {
+  const director = departmentState("director");
+  director.department!.leaders[1].participant.status = "failed";
+  const roster = buildLoopGroupChatPanelContentPatch(director, 2).rosterPanelHtml;
+  assert.match(roster, /data-department-title="组长A" data-department-task-id="department-20261113-leader-111111"/u);
+  assert.doesNotMatch(roster, /cancelDepartmentLeader|取消此组长任务/u);
+
+  const leader = departmentState("leader");
+  leader.task.canStop = true;
+  const actions = buildLoopGroupChatPanelContentPatch(leader, 2).actionsHtml;
+  assert.match(actions, /data-action="stopTask"[^>]*>中止<\/button>/u);
 });
 
 test("leader roster always shows its own employees without disclosure controls", () => {
@@ -434,16 +440,17 @@ test("director stop feedback keeps the progress action slot and incumbent button
   assert.match(normal, /class="progress-controls"[\s\S]*class="button danger"[^>]*data-action="stopTask"[^>]*>中止/);
   for (const feedback of ["stopping", "unconfirmed", "confirmed"] as const) {
     state.task.departmentStopState = feedback;
-    state.task.canStop = feedback !== "confirmed";
+    state.task.status = "stopped";
+    state.task.canStop = feedback === "stopping";
     state.task.canContinue = feedback === "confirmed";
     const patch = buildLoopGroupChatPanelContentPatch(state, 1);
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.actionsHtml));
     if (feedback === "stopping") assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*disabled[^>]*>正在停止…/);
     if (feedback === "unconfirmed") {
-      assert.match(patch.actionsHtml, /role="status">停止未确认/);
-      assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*>核验停止/);
-      assert.doesNotMatch(patch.actionsHtml, /disabled|data-action="continueTask"/);
+      assert.doesNotMatch(patch.actionsHtml, /核验停止|data-action="stopTask"/);
+      assert.match(patch.actionsHtml, /data-action="continueTask"[^>]*disabled/);
+      assert.match(patch.actionsHtml, /仍有原执行退出未确认，暂不能继续/);
     }
     if (feedback === "confirmed") {
       assert.doesNotMatch(patch.actionsHtml, /data-action="stopTask"|停止未确认/);
