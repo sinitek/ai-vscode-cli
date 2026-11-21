@@ -2090,7 +2090,11 @@ function renderRosterPanel(
   const blockingLabelsBySubtask = new Map(state.loopPlus?.ok
     ? state.loopPlus.pending.map((item) => [item.subtaskId, item.blockingDependencyLabels] as const)
     : []);
-  const participants = roster.map((participant) => {
+  const orderedRoster = [
+    ...roster.filter((participant) => participant.role !== "subtask"),
+    ...roster.filter((participant) => participant.role === "subtask").reverse(),
+  ];
+  const participants = orderedRoster.map((participant) => {
     const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
     const opensConversation = participant.role === "subtask" && participant.status === "running";
     const blockingLabels = participant.role === "subtask" && participant.status === "pending"
@@ -2146,7 +2150,7 @@ function renderDepartmentRosterPanel(
   };
   const visibleLeaders = department.role === "leader"
     ? department.leaders.filter((leader) => Boolean(state.task.id) && leader.taskId === state.task.id)
-    : department.leaders;
+    : [...department.leaders].reverse();
   const leaders = visibleLeaders.map((leader) => {
     const leaderCode = getDepartmentLeaderCode(leader.leaderNumber, department.maxLeaders);
     const leaderChatTitle = formatDepartmentLeaderLabel(leaderCode);
@@ -2154,19 +2158,27 @@ function renderDepartmentRosterPanel(
       ? renderDepartmentNavigation(leader.taskId, "打开组长群聊", `leader:${leader.taskId || leader.participant.id}`, leaderChatTitle)
       : "";
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
-    const employees = leader.employees.map((employee) => `<li>${member(employee, "employee", "", "",
+    const employees = [...leader.employees].reverse().map((employee) => `<li>${member(employee, "employee", "", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
-    const employeeStatusCounts = department.role === "director" ? [
-      ["运行中", leader.employees.filter((employee) => employee.status === "running").length],
-      ["验收中", leader.employees.filter((employee) => employee.status === "reviewing").length],
-      ["待验收", leader.employees.filter((employee) => employee.status === "queued_review").length],
-    ].map(([label, count]) => `<span class="department-status-tag">${label} ${count}</span>`).join("") : "";
+    const employeeStatusCounts = new Map<string, number>();
+    for (const employee of leader.employees) {
+      employeeStatusCounts.set(employee.status, (employeeStatusCounts.get(employee.status) ?? 0) + 1);
+    }
+    const count = (status: string) => employeeStatusCounts.get(status) ?? 0;
+    const employeeStatusTags = department.role === "director" ? [
+      [strings.loopPlusStatusRunning, count("running")],
+      ["验收中", count("reviewing")],
+      [strings.loopPlusStatusQueued, count("queued_review")],
+      [strings.loopPlusStatusPending, count("pending")],
+      [strings.participantStatusBlocked, count("blocked")],
+      [strings.participantStatusCompleted, count("completed") + count("acceptance_passed") + count("acceptance_failed") + count("no_acceptance")],
+    ].map(([label, total]) => `<span class="department-status-tag">${escapeHtml(String(label))} ${total}</span>`).join("") : "";
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
         ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
       </div>
-      ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusCounts}</div>`
+      ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusTags}</div>`
         : `<ul class="department-employees" aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>`}
     </li>`;
   }).join("");

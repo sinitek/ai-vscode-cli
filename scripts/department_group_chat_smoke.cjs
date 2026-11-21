@@ -14,6 +14,7 @@ const { allocationFixture, runAllocationScenario } = require("./department_emplo
 const themeOnly = process.env.DEPARTMENT_UI_THEME_ONLY === "1";
 const deltaOnly = process.env.DEPARTMENT_UI_DELTA_ONLY === "1";
 const focusLifecycleOnly = process.env.DEPARTMENT_UI_FOCUS_LIFECYCLE_ONLY === "1";
+const rosterStatusOnly = process.env.DEPARTMENT_UI_ROSTER_STATUS_ONLY === "1";
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
 require(path.join(compiled, "test/vscodeMock.js")).installVscodeMock();
 const vscode = require("vscode");
@@ -219,15 +220,30 @@ function theme(dark) {
         await showMembers(page);
         const groups = page.locator(".department-group");
         assert.equal(await groups.count(), 3);
-        assert.equal(await groups.nth(0).locator(".department-employees").count(), 0);
-        assert.equal(await groups.nth(1).locator(".department-employees").count(), 0);
-        assert.equal(await groups.nth(0).locator(".department-status-tag").count(), 3);
-        assert.equal(await groups.nth(1).locator(".department-status-tag").count(), 3);
-        assert.equal(await groups.nth(2).locator('[data-action="openDepartmentTask"]').isDisabled(), true);
+        const groupFor = (taskId) => page.locator(`.department-group[data-department-leader-task-id="${taskId}"]`);
+        const [leaderA, leaderB] = parentState.department.leaders;
+        const tagsFor = (leader) => groupFor(leader.taskId).locator(".department-status-tag");
+        assert.equal(await groups.locator(".department-employees").count(), 0);
+        assert.deepEqual(await tagsFor(leaderA).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 0", "已阻塞 0", "已完成 1"]);
+        assert.deepEqual(await tagsFor(leaderB).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 1", "已阻塞 0", "已完成 0"]);
+        leaderB.employees[0].status = "blocked";
+        panel.update(parentState);
+        await tagsFor(leaderB).filter({ hasText: "已阻塞 1" }).waitFor();
+        leaderB.employees[0].status = "no_acceptance";
+        panel.update(parentState);
+        await tagsFor(leaderB).filter({ hasText: "已完成 1" }).waitFor();
+        assert.deepEqual(await tagsFor(leaderB).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 0", "已阻塞 0", "已完成 1"]);
+        assert.equal(await groupFor("").locator('[data-action="openDepartmentTask"]').isDisabled(), true);
+        await overflow(page);
         await page.locator(".main").evaluate((element) => { element.scrollTop = 140; });
         const parentTop = await page.locator(".main").evaluate((element) => element.scrollTop);
         await page.screenshot({ path: path.join(output, `${name}-tree.png`) });
-        const openA = groups.nth(0).locator('[data-action="openDepartmentTask"]');
+        if (rosterStatusOnly) {
+          assert.deepEqual(errors, []);
+          results.push({ name, result: "passed", leaderBTags: await tagsFor(leaderB).allTextContents(), browserErrors: errors });
+          continue;
+        }
+        const openA = groupFor(leaderA.taskId).locator('[data-action="openDepartmentTask"]');
         await openA.press("Enter");
         const loading = await targetReady();
         assert.equal(await page.locator("#departmentChatStatus").innerText(), "正在加载组长群聊…");
@@ -538,7 +554,7 @@ function theme(dark) {
         await page.waitForFunction(() => !document.getElementById("departmentChatBackdrop").classList.contains("visible"));
         assert.equal(await openA.evaluate((element) => document.activeElement === element), true,
           "returning to the director restores the current group's opener");
-        const openB = page.locator('.department-group').nth(1).locator('[data-action="openDepartmentTask"]');
+        const openB = groupFor(leaderB.taskId).locator('[data-action="openDepartmentTask"]');
         await openB.click();
         const b = await targetReady(); assert.notEqual(b.taskId, a.taskId);
         assert.equal(panel.setDepartmentModalState(a, state), false);
@@ -563,7 +579,7 @@ function theme(dark) {
         assert.equal(await page.locator("#departmentChatBackdrop").getAttribute("aria-hidden"), "true");
         assert.equal(await page.locator(".main").evaluate((element) => element.scrollTop), parentTop);
         assert.equal(await page.evaluate(() => document.activeElement.getAttribute("data-department-task-id")), b.taskId);
-        await page.locator('.department-group').nth(0).locator('[data-action="openDepartmentTask"]').press("Space");
+        await openA.press("Space");
         const reopened = await targetReady();
         ({ frame } = await inject(reopened));
         assert.equal(await frame.locator("#askChatInput").inputValue(), "只属于A的草稿", "the restored draft belongs to A only");
@@ -584,7 +600,7 @@ function theme(dark) {
       } finally { await page.close(); }
     }
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: roleAvatarOnly ? "department-member-role-avatar-only" : allocationOnly ? "employee-allocation-ui-only" : focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
+  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: rosterStatusOnly ? "roster-status-only" : roleAvatarOnly ? "department-member-role-avatar-only" : allocationOnly ? "employee-allocation-ui-only" : focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
   if (results.some((result) => result.result !== "passed")) process.exitCode = 1;
 })().catch((error) => { console.error(error); process.exitCode = 1; });

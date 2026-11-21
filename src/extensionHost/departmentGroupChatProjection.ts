@@ -130,10 +130,13 @@ function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLo
     if (!spec) return [];
     const execution = [...projection.running, ...projection.pending].find((item) => item.attemptId === attempt.attemptId);
     const review = [projection.currentReview, ...projection.reviewQueue].find((item) => item?.attemptId === attempt.attemptId);
+    const interrupted = execution && "interrupted" in execution && execution.interrupted;
+    const completedWithoutAcceptance = attempt.requiresAcceptance === false && attempt.outcome === "completed"
+      && (attempt.disposition === "finished" || attempt.disposition === "reported");
     return [{ id: attempt.attemptId, subtaskId: spec.id,
       employeeName: getDepartmentEmployeeName(leaderNumber, maxLeaders, subtaskIndex + 1), title: spec.title, role: "employee",
-      status: execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
-        : review ? "queued_review" : attempt.outcome === "completed" ? "execution_completed"
+      status: interrupted ? "blocked" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
+        : review ? "queued_review" : completedWithoutAcceptance ? "no_acceptance" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"
             : attempt.outcome === "stopped" || attempt.disposition === "closed" ? "stopped" : "not_in_snapshot"),
       summary: review?.detail ?? spec.summary, updatedAt: spec.updatedAt }];

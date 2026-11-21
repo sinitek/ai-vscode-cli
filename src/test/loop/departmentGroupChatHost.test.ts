@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { installVscodeMock } from "../vscodeMock";
 import { departmentRecords, fixtureDepartmentLeaderTaskIds } from "./departmentGroupChatHost.fixture";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { waitForOrchestratorClarification, abortOrchestratorClarification, loopClarificationScope } from "../../orchestratorClarification";
 import { readDepartmentOrganizationStopFeedback, readDepartmentOrganizationControlState, buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
 
@@ -137,6 +138,33 @@ test("department host projection uses validated records, actual attempts and rea
   assert.equal(buildDepartmentGroupChatProjection(root, { ...port, readCapacity: () => ({ ...capacity, rootTaskId: "other" }) })!.activeLeaders, null);
   other.department!.leaderSubtaskId = leader.department!.leaderSubtaskId;
   assert.deepEqual(buildDepartmentGroupChatProjection(root, port)!.leaders, []); // ambiguous ownership fails closed
+});
+
+test("department roster projects blocked running attempts and successful attempts that need no acceptance", () => {
+  const { root, leader, records } = departmentRecords();
+  const port = { readTaskRecord: (id: string) => records.get(id) ?? null, readLeaderTaskIds: (rootId: string, moduleId: string) => fixtureDepartmentLeaderTaskIds(records, rootId, moduleId) };
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([
+    { subtaskId: "employee-A", attemptId: "attempt-A", requiresAcceptance: false },
+    { subtaskId: "employee-B", attemptId: "attempt-B" },
+  ]);
+  leader.subTasks[0].status = "blocked";
+  leader.subTasks.push({ id: "employee-B", title: "等待启动的员工", status: "pending" });
+  const statuses = () => {
+    leader.loopPlus = scheduler.snapshot();
+    return buildDepartmentGroupChatProjection(root, port)!.leaders[0].employees.map((employee) => employee.status);
+  };
+  assert.deepEqual(statuses(), ["blocked", "pending"]);
+  const report = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-A", outcome: "completed" });
+  assert.ok(report.applied && report.eventId);
+  assert.deepEqual(statuses(), ["no_acceptance", "running"]);
+  assert.equal(scheduler.acknowledgeReports([report.eventId]), true);
+  assert.deepEqual(statuses(), ["no_acceptance", "running"]);
+  const review = scheduler.finish({ subtaskId: "employee-B", attemptId: "attempt-B", outcome: "completed" });
+  assert.ok(review.applied && review.eventId);
+  assert.deepEqual(statuses(), ["no_acceptance", "queued_review"]);
+  assert.equal(scheduler.submitReviewBatch([review.eventId], "passed").ok, true);
+  assert.deepEqual(statuses(), ["no_acceptance", "acceptance_passed"]);
 });
 
 test("director group chat refreshes its overall progress from weighted leader progress", async () => {

@@ -935,6 +935,25 @@ for (const { status, label, statusClass } of [
   });
 }
 
+for (const mode of ["Loop", "Loop+"] as const) {
+  test(`${mode}: roster keeps the main task first and displays newest subtasks next`, () => {
+    const state: Parameters<typeof buildLoopGroupChatPanelContentPatch>[0] = createState(mode === "Loop+" ? {
+      loopPlus: { ok: false, schedulingMode: "event_driven", activity: "invalid", phase: "invalid", error: "missing" },
+    } : {});
+    const participants = state.rounds[0].participants;
+    const firstSubtask = participants[1];
+    participants.push({ ...firstSubtask, id: "subtask-2", title: "子任务 2", status: "pending", updatedAt: 1 });
+    const initialRoster = buildLoopGroupChatPanelContentPatch(state, 1).rosterPanelHtml;
+    assert.match(initialRoster, />主任务<\/div>[\s\S]*>子任务 2<\/div>[\s\S]*>子任务 1<\/div>/u);
+    assert.ok(buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state).includes(initialRoster));
+
+    participants.push({ ...firstSubtask, id: "subtask-3", title: "子任务 3", status: "pending" });
+    const refreshedRoster = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
+    assert.match(refreshedRoster, />主任务<\/div>[\s\S]*>子任务 3<\/div>[\s\S]*>子任务 2<\/div>[\s\S]*>子任务 1<\/div>/u);
+    assert.deepEqual(participants.map((participant) => participant.id), ["main", "subtask-1", "subtask-2", "subtask-3"]);
+  });
+}
+
 test("aligns clickable and static roster members with shared spacing and centered avatars", () => {
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, createState());
   const memberStyles = html.match(/\.member \{([^}]+)\}/u)?.[1] ?? "";
