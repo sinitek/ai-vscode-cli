@@ -5,7 +5,7 @@ import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 const { getWebviewHtml } = require("../../webview/viewContent") as typeof import("../../webview/viewContent");
 
-test("task mode controls retain labels and department performance guidance belongs to employee capacity settings", () => {
+test("task mode controls retain labels and employee capacity settings explain the shared dispatch budget", () => {
   const html = getWebviewHtml({ cspSource: "self" });
   const cliCard = html.indexOf('id="cliEnabledCard"');
   const modesCard = html.indexOf('id="taskModesCard"');
@@ -19,6 +19,6 @@ test("task mode controls retain labels and department performance guidance belon
   assert.doesNotMatch(html, /department-performance-warning|警告：本机必须具备/);
   for (const id of ["departmentMaxEmployeesNote", "workspaceDepartmentMaxEmployeesNote"]) {
     const note = html.match(new RegExp(`<div id="${id}"[^>]*>([^<]+)</div>`))?.[1];
-    assert.match(note || "", /所有组长合计计算.*根据本机性能设置.*默认 16 人.*16 个员工 CLI/);
+    assert.match(note || "", /全产研部共享.*并发预算.*默认 16 人.*派发数量由 AI 根据任务决定/);
   }
 });

@@ -160,6 +160,7 @@ function buildFormatConversationTabLabel(): (tab: TabSummary | null, baseLabel: 
 
 function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => string {
   const functionSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "resolveAutoInteractiveModeForTab");
+  const explicitModeSource = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "getExplicitInteractiveModeForTab");
   const getLoopMetaForTabSummary = (
     tab: TabSummary | null,
   ): { taskRole: string; loopTaskId: string } | null => {
@@ -175,8 +176,9 @@ function buildWebviewAutoInteractiveModeResolver(): (tab: TabSummary | null) => 
   return new Function(
     "getLoopMetaForTabSummary",
     "getDepartmentConversationTabPresentation",
-    `${functionSource}; return resolveAutoInteractiveModeForTab;`,
-  )(getLoopMetaForTabSummary, () => null) as (tab: TabSummary | null) => string;
+    "getConversationRuntimeState",
+    `${explicitModeSource}; ${functionSource}; return resolveAutoInteractiveModeForTab;`,
+  )(getLoopMetaForTabSummary, () => null, () => null) as (tab: TabSummary | null) => string;
 }
 
 function buildResetConversationTabSessionRequest(

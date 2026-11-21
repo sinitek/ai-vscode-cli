@@ -1009,6 +1009,7 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         const promptPayload = payload;
         if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(payload, tabId)) return "failed";
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
+        if (isCreatingConversationTab(targetTabId)) return "blocked";
         if (isLoopMainConversationTabRunning(targetTabId)) {
           showToast(t("toastLoopMainBusy"));
           return "blocked";
@@ -1030,8 +1031,9 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (!prompt) {
           return;
         }
-        const promptPayload = buildPromptPayload(prompt);
         const activeTabId = getActiveConversationTabId();
+        if (isCreatingConversationTab(activeTabId)) return;
+        const promptPayload = buildPromptPayload(prompt);
         if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(promptPayload, activeTabId)) return;
         // 仅新建 Loop+ 根任务需要先确认验收方案；续跑/恢复/补充与其它模式保持原样。
         if (

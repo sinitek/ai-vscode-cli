@@ -11,6 +11,14 @@ type Fields = { rootTaskId: string; leaderTaskId?: string; generation?: number;
   reason: DepartmentLifecycleReason; errorCode?: string; elapsedMs?: number; confirmed?: number; unconfirmed?: number; retained?: number };
 const id = (value: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : "invalid-id";
 const count = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(2147483647, Math.floor(value))) : 0;
+const departmentDiagnosticErrorCodes = new Set([
+  "department-producer-no-live-generation",
+  "department-interactive-local-session-unavailable",
+  "department-interactive-native-session-conflict",
+  "department-interactive-owner-start-failed",
+  "department-interactive-session-write-failed",
+  "EACCES", "EBUSY", "ENOENT", "ENOSPC", "EPERM", "EROFS", "EIO",
+]);
 
 /** Telemetry only: never awaited, never used as execution/receipt authority.
  * Explicit field projection prevents errors, sessions and arbitrary payloads escaping. */
@@ -36,8 +44,7 @@ export function departmentCleanupErrorCode(error: unknown): string | undefined {
 }
 
 function safeDepartmentErrorCode(value: unknown): string | undefined {
-  return typeof value === "string" && value.length <= 112
-    && /^(?:[A-Z][A-Z0-9_]{2,63}|department-[a-z0-9-]{1,96})$/.test(value) ? value : undefined;
+  return typeof value === "string" && departmentDiagnosticErrorCodes.has(value) ? value : undefined;
 }
 
 /** Exact internal reasons only; unknown exceptions never contribute their text. */

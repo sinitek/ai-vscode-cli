@@ -21,6 +21,8 @@ test("independent process writes essential bounded diagnostics with debug off an
         const extra = { error: 'SYNTHETIC_SENSITIVE_ERROR', stack: 'SYNTHETIC_SENSITIVE_STACK', path: '/SYNTHETIC_SENSITIVE_PATH',
           session: 'SYNTHETIC_SENSITIVE_SESSION', body: 'SYNTHETIC_SENSITIVE_BODY', command: 'SYNTHETIC_SENSITIVE_COMMAND',
           tool: 'SYNTHETIC_SENSITIVE_TOOL', credential: 'SYNTHETIC_SENSITIVE_CREDENTIAL' };
+        if (errorCode(new Error(extra.error)) || errorCode(new Error('department-synthetic-sensitive'))
+          || errorCode({code:extra.error}) || errorCode({code:'EACCES'}) !== 'EACCES') throw Error('invalid error code projection');
         record('department-leader-cleanup', {...extra, rootTaskId:'msg_root', leaderTaskId:'msg_leader', generation:3,
           stage:'owner-receipts', result:'unconfirmed', reason:reason(new Error(extra.error)),
           errorCode:errorCode(new Error('department-producer-no-live-generation')), elapsedMs:9});

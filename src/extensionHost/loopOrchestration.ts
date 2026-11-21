@@ -633,7 +633,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     subtask: LoopSubtaskRecord;
     switchVisible?: boolean;
     signal?: AbortSignal;
-    cancelSignal?: AbortSignal;
   };
 
   type LoopSubtaskBatchOptions = {
@@ -948,9 +947,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     if (readLoopTaskRecord(options.task.id)?.subTasks.find((item) => item.id === options.subtask.id)?.status === "skipped") return "stopped";
     const cancellation = new AbortController();
     subtaskCancellations.set(key, cancellation);
+    const signal = options.signal ? AbortSignal.any([options.signal, cancellation.signal]) : cancellation.signal;
     const execution = { taskId: options.task.id, tabId: null as string | null, startedAt: null as number | null };
     subtaskExecutions.set(key, execution);
-    const run = executeLoopSubtaskWithRetry({ ...options, cancelSignal: cancellation.signal }, execution).finally(() => {
+    const run = executeLoopSubtaskWithRetry({ ...options, signal }, execution).finally(() => {
       if (subtaskRuns.get(key) === run) {
         subtaskRuns.delete(key);
         subtaskExecutions.delete(key);
@@ -1047,7 +1047,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     let subtaskTarget: PromptRunTarget | null = null;
     try {
       while (true) {
-        if (options.signal?.aborted || options.cancelSignal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
+        if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
           terminalProgressStatus = "interrupted";
           return "stopped";
         }
@@ -1097,7 +1097,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         let failureDetail: string | undefined;
         try {
           status = await withLoopSubtaskSession(subtaskTarget.cli, subtaskTarget.sessionId, async () => {
-            if (options.signal?.aborted || options.cancelSignal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
+            if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
               return "stopped";
             }
             return runLoopRound({
@@ -1120,12 +1120,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
               boundSubtaskModel: execution.model,
               boundThinkingMode: execution.thinkingMode,
               crossCli: execution.crossCli,
-              signal: options.cancelSignal ?? options.signal,
+              signal: options.signal,
               onStarted: () => { invocationStarted = true; executionState.startedAt = Date.now(); },
               onFailure: (detail) => { failureDetail = detail; },
             });
-          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.cancelSignal ?? options.signal });
-          if (options.signal?.aborted || options.cancelSignal?.aborted) return "stopped";
+          }, { taskId: task.id, subtaskId: subtask.id, sourceSubtaskId: subtask.continueFromSubtaskId, signal: options.signal });
+          if (options.signal?.aborted) return "stopped";
           executionState.startedAt = null;
           const sessionId = resolvePromptRunTargetSessionId(subtaskTarget);
           if (sessionId) {
@@ -1135,7 +1135,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             updateLoopTaskRecord(task.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, subtask.id, { cli: execution.cli, sessionId, configId }) });
           }
         } catch (error) {
-          if (options.signal?.aborted || options.cancelSignal?.aborted) return "stopped";
+          if (options.signal?.aborted) return "stopped";
           executionState.startedAt = null;
           status = "error";
           failureDetail ??= describeLoopSubtaskError(getErrorInfo(error));
@@ -1181,7 +1181,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         sendPanelMessage({
           type: "runStatus",
           tabId: subtaskTarget.tabId,
-          status: options.signal?.aborted || options.cancelSignal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
+          status: options.signal?.aborted || terminalProgressStatus === "interrupted" ? "stopped" : "error",
         });
       }
       progressMonitor.finish(terminalProgressStatus ?? "interrupted");
@@ -1511,7 +1511,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     cancelClassicSubtask,
     wakeClassicLoop,
     observeClassicLoop,
-    isSubtaskRunning: (taskId: string, subtaskId: string) => subtaskRuns.has(`${taskId}:${subtaskId}`),
+    isSubtaskRunning: (taskId: string, subtaskId: string) => subtaskRuns.has(subtaskKey(taskId, subtaskId)),
     writeTextFileEnsuringDir,
   };
 }

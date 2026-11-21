@@ -1,5 +1,10 @@
 # 避坑指南索引
 
+## 部门启动竞态夹具与诊断错误码
+
+- 测试组长 Owner 在就绪前关闭时，延迟原始 IPC 准备消息，然后放行真实 Worker。跨窗口配置锁已移除，持锁无法控制就绪顺序。回归见 `src/test/extensionHost/departmentleaderprocessbootstrap.test.ts`。
+- 同样符合错误码格式的文本也可能含有敏感信息。生命周期日志只保留已登记的确切错误码。回归见 `src/test/extensionHost/departmentlifecyclediagnostics.test.ts` 和 `src/test/extensionHost/departmentproductioncleanupperformance.test.ts`。
+
 ## 开发构建清空 dist 会中断新员工准备
 
 - 开发宿主会按磁盘路径启动员工 Worker。源码仓构建先删 `dist/` 时，已在内存运行的宿主可能正常接收组长决定，却在员工绑定前报 `department-codex-owner-channel-unobservable`。先核对准备记录是否仍未绑定，再对照构建时间和 Worker 文件，区分会话启动后的 IPC 大回调失联。

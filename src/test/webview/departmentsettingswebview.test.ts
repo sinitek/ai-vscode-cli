@@ -24,8 +24,8 @@ test("department capacity settings render as associated numeric controls with de
   assert.match(html, /for="departmentMaxLeaders"/u);
   assert.match(html, /id="departmentMaxLeaders"[^>]*min="1" step="1" value="4"/u);
   assert.match(html, /id="departmentMaxEmployees"[^>]*min="1" step="1" value="16"/u);
-  assert.match(html, /同时运行的组长上限，任务结束后释放名额。/u);
-  assert.match(html, /全产研部共享的员工并发上限，所有组长合计计算。/u);
+  assert.match(html, /向总监提供并发预算和当前占用，派发数量由 AI 决定。/u);
+  assert.match(html, /全产研部共享的员工并发预算，默认 16 人。派发数量由 AI 根据任务决定。/u);
   assert.match(html, /id="workspaceDepartmentMaxEmployees"[^>]*placeholder="全局：16"/u);
 });
 

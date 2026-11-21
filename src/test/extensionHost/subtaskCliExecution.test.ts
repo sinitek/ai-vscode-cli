@@ -75,6 +75,7 @@ test("classic Loop automatically requests one complete diagnosis and can continu
       buildLoopMainSubChatTranscriptFile: () => "chat.md",
       isLoopTaskExecutionInterrupted: () => false,
       readLoopTaskRecord: () => stored,
+      getActiveLoopSubtaskIds: (record: LoopTaskRecord) => record.activeSubtaskIds ?? [],
       updateLoopTaskRecord: (_id: string, patch: Partial<LoopTaskRecord>) => (stored = { ...stored, ...patch }),
       refreshOpenLoopGroupChatPanelForTask: () => undefined,
       resolvePromptRunModelForRole: () => undefined,
@@ -131,6 +132,7 @@ for (const mutateInPlace of [false, true]) {
       buildLoopMainSubChatTranscriptFile: () => "/tmp/loop-comm/chat.md",
       isLoopTaskExecutionInterrupted: () => false,
       readLoopTaskRecord: () => stored,
+      getActiveLoopSubtaskIds: (record: LoopTaskRecord) => record.activeSubtaskIds ?? [],
       updateLoopTaskRecord: (_taskId: string, patch: Partial<LoopTaskRecord>) => {
         stored = mutateInPlace ? Object.assign(stored, patch) : { ...stored, ...patch };
         return stored;

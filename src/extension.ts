@@ -682,6 +682,7 @@ export function activate(context: vscode.ExtensionContext): void {
   updateStatusBar();
   statusBarItem.show();
   viewProvider = new CliBridgeViewProvider(extensionUri, {
+    onResetRuntimeState: () => { hasPendingPromptQueue = false; },
     onMessage: async (message) => {
       await handlePanelMessage(message);
     },
@@ -1148,6 +1149,7 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
 
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
   await handlePanelMessageWithDeps(message, {
+    updatePendingPromptQueueState: (hasPendingPrompts) => { hasPendingPromptQueue = hasPendingPrompts; },
     updateNotificationSetting: (key, enabled) => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).update(key, enabled, vscode.ConfigurationTarget.Global),
     ensureWorkspaceSessionStore,
     postPanelState,
@@ -1507,6 +1509,7 @@ type PendingHumanInteraction = {
 const pendingHumanInteractionsById = new Map<string, PendingHumanInteraction>();
 const pendingHumanInteractionIdsByTabId = new Map<string, Set<string>>();
 let humanInteractionAttention: ReturnType<typeof createHumanInteractionAttentionHost> | undefined;
+let hasPendingPromptQueue = false;
 
 function waitForOrchestratorClarificationWithAttention(
   ...args: Parameters<typeof waitForOrchestratorClarification>
@@ -7052,7 +7055,7 @@ function appendTaskRun(record: TaskRunRecord, options: { notifyCompletion?: bool
   store.runs.push(record);
   writeTaskStore(store);
   if (options.notifyCompletion !== false) {
-    notifyTaskRunCompletion(humanInteractionAttention, record);
+    notifyTaskRunCompletion(humanInteractionAttention, record, hasPendingPromptQueue);
   }
 }
 

@@ -235,6 +235,13 @@ test("经典 Loop 巡检不会复活停止、暂停、完成和澄清中的父�
     else if (state === "failure-limit") env.setTask({ mainAiFailureLimitReached: true });
     else env.setTask({ status: state });
     env.host.checkWaitingTasks();
+    if (state === "clarification") {
+      assert.equal(env.calls[0].isAborted(), false);
+      assert.equal(env.task().status, "running");
+      assert.equal(env.messages.some((message) => message.includes("定时检查")), false);
+      env.setTask({ status: "stopped", pendingClarification: undefined });
+      env.host.checkWaitingTasks();
+    }
     const results = await pending;
     assert.equal(results[0].watchdogRecovered, undefined, state);
     assert.equal(env.messages.some((message) => message.includes("定时检查")), false, state);

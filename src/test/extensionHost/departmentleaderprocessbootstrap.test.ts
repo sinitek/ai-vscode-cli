@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import childProcess = require("node:child_process");
 import { SharedRuntimeConfig } from "../../config/sharedRuntimeConfig";
 import { createDepartmentLeaderProcessBootstrap } from "../../extensionHost/departmentleaderprocessbootstrap";
 import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
@@ -148,8 +149,8 @@ test("disconnect during resource receipt collection rejects close instead of wai
 test("close racing worker readiness sends one seal and shares one close promise", { timeout: 20000 }, async (t) => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-leader-process-ready-close-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
-  const configDirectory = path.join(directory, "configuration"), config = new SharedRuntimeConfig(configDirectory);
-  const shared = await config.change(async () => ({ configId: "profile", profileDigest: null }));
+  const configDirectory = path.join(directory, "configuration");
+  const shared = await new SharedRuntimeConfig(configDirectory).change(async () => ({ configId: "profile", profileDigest: null }));
   const selection: DepartmentExecutionSelection = { version: 1, cli: "opencode", role: "leader", configId: "profile", revision: shared.revision,
     model: null, thinkingMode: "medium", openCodeVariant: null };
   const identity: DepartmentExecutionIdentity = { version: 1, workspace: directory, rootTaskId: "root", leaderTaskId: "leader", moduleId: "module",
@@ -162,13 +163,22 @@ test("close racing worker readiness sends one seal and shares one close promise"
   const preparation: Omit<DepartmentLeaderProcessPreparation, "token"> = { version: 1, identity, selection,
     ownerDirectory: path.join(directory, "owner"), configurationDirectory: configDirectory,
     launch: { command, baseArgs: [], cwd: directory, sessionId: "ses_bound123" } };
-  let releaseLock!: () => void, enteredLock!: () => void;
-  const lockEntered = new Promise<void>((resolve) => { enteredLock = resolve; });
-  const lockGate = new Promise<void>((resolve) => { releaseLock = resolve; });
-  const heldEdit = config.edit("unrelated-profile", async () => { enteredLock(); await lockGate; }, async () => null);
-  await within("host-lock-held", lockEntered);
+  let releasePreparation: (() => void) | undefined;
+  let seals = 0;
+  const fork = childProcess.fork;
+  t.mock.method(childProcess, "fork", (...args: Parameters<typeof fork>) => {
+    const child = Reflect.apply(fork, childProcess, args) as childProcess.ChildProcess;
+    const send = child.send;
+    t.mock.method(child, "send", (message: { operation?: string }, ...sendArgs: unknown[]) => {
+      if (message.operation === "seal") seals++;
+      if (message.operation) return Reflect.apply(send, child, [message, ...sendArgs]);
+      releasePreparation = () => { Reflect.apply(send, child, [message, ...sendArgs]); };
+      return true;
+    });
+    return child;
+  });
   const port = createDepartmentLeaderProcessBootstrap(preparation, {
-    async authorizeStart() {},
+    async authorizeStart() { assert.fail("closed invocation must not launch"); },
     assertCurrent() {}, onOutput() {}, drainConsumers() { return true; },
     async releaseTab() { return { status: "confirmed", evidence: "closed" }; },
   });
@@ -176,22 +186,16 @@ test("close racing worker readiness sends one seal and shares one close promise"
     const invocation = port.invoke({ invocationId: "close-before-ready", prompt: "must-not-run" });
     const closing = port.closeAdmissionsAndDrain();
     assert.strictEqual(port.closeAdmissionsAndDrain(), closing);
-    await within("worker-waits-for-config-lock", (async () => {
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline) {
-        const candidates = (await fs.promises.readdir(configDirectory)).filter((name) => name.startsWith("owner-"));
-        if (candidates.length >= 2) return;
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      throw new Error("bootstrap-test-timeout:worker-waits-for-config-lock");
-    })());
-    releaseLock();
-    await heldEdit;
-    await assert.rejects(within("cancelled-before-ready-invocation", invocation), /cancelled/);
+    assert.ok(releasePreparation);
+    assert.equal(seals, 0);
+    const cancelled = assert.rejects(within("cancelled-before-ready-invocation", invocation), /cancelled/);
+    releasePreparation();
+    await cancelled;
     const cleanup = await within("close-after-ready-race", closing);
     assert.equal(cleanup.tab.status, "confirmed");
+    assert.equal(seals, 1);
     assert.equal((await port.observe()).status, "cleaned");
-  } finally { releaseLock(); }
+  } finally { port.disconnect(); }
 });
 
 test("disconnect after receipt read but before stopped keeps bootstrap observation unknown", { timeout: 20000 }, async (t) => {

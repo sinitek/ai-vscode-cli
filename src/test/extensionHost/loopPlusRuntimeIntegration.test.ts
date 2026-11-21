@@ -2809,14 +2809,23 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     const rejectedAdmissions = admissionAttempts;
 
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as Parameters<typeof buildLoopGroupChatPanelHtml>[0], state);
-    assert.match(html, /<button class="button primary"[^>]*data-action="continueTask"[^>]*>继续执行<\/button>/u);
-    const button = { disabled: false };
+    assert.match(html, /<button class="button primary"[^>]*data-action="continueTask"[^>]*>继续执行<span[^>]*role="status"[^>]*hidden>/u);
+    const loading = { hidden: true };
+    const attributes = new Map<string, string>();
+    const button = {
+      disabled: false,
+      querySelector: () => loading,
+      setAttribute: (key: string, value: string) => { attributes.set(key, value); },
+      hasAttribute: (key: string) => attributes.has(key),
+      removeAttribute: (key: string) => { attributes.delete(key); },
+    };
     const input = { value: "", focus: () => undefined, select: () => undefined };
     const source = html.slice(html.indexOf("function openContinueDialog"), html.indexOf("function submitSupplementDialog"));
     const actions = vm.runInNewContext(`${source}\n({openContinueDialog, submitContinueDialog, applyContinueTaskSettled})`, {
       continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
       continueDialogInput: input, continueDialogConfirm: { dataset: {} }, continueDialogOpen: false,
       continueDialogMode: undefined, continueDialogOpener: null, continueRequestPending: false,
+      continueRequestId: null, requestSessionId: "fixture", requestSequence: 0,
       actionButton: () => button, window: {}, document: { activeElement: button },
       setContinueDialogError: () => undefined, saveDialogState: () => undefined, requestRefresh: () => undefined,
       clearDialogState: () => undefined,
@@ -2841,6 +2850,7 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     actions.submitContinueDialog();
     actions.submitContinueDialog();
     assert.equal(button.disabled, true);
+    assert.equal(loading.hidden, false);
     const resumed = runs.at(-1)!;
     await coordinator.handleMessage(taskId, message, panel);
     await Promise.race([reviewStarted.promise, resumed.then(() => {

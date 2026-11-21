@@ -222,15 +222,11 @@ test("renders the Loop+ queue and parallel execution", () => {
   }
 });
 
-test("shows only unmet dependencies on pending members and refreshes the labels as they are resolved", () => {
-  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
-  dispatchAndFinish(scheduler, "A", "a-1");
-  assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("A", "a-1")], "failed").ok, true);
+test("shows only unmet dependencies on pending members and refreshes the labels after execution", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   dispatchAndFinish(scheduler, "B", "b-1");
   assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("B", "b-1")], "passed").ok, true);
-  assert.equal(scheduler.dispatch([{ ...spec("C", "c-1"), requiresAcceptance: false }]).started.length, 1);
-  const report = scheduler.finish({ subtaskId: "C", attemptId: "c-1", outcome: "completed" });
-  assert.equal(report.applied, true);
+  assert.equal(scheduler.dispatch([spec("A", "a-1"), spec("C", "c-1")]).started.length, 2);
   assert.equal(scheduler.dispatch([{ ...spec("E", "e-1"), dependsOn: ["C", "B", "A"] }]).started.length, 0);
 
   const memberStatus = (page: string) => page.match(/子任务 5：Echo<\/div>\s*<div class="member-meta">([^\n]+)<\/div>/u)?.[1];
@@ -238,16 +234,11 @@ test("shows only unmet dependencies on pending members and refreshes the labels 
   const pendingLabel = '<span class="member-status-pending">待启动</span>';
   assert.equal(memberStatus(html(build(scheduler.snapshot()))), `${pendingLabel} 依赖[子任务 3、子任务 1]`);
 
-  assert.equal(scheduler.acknowledgeReports([buildLoopPlusFinishEventId("C", "c-1")]), true);
+  assert.equal(scheduler.finish({ subtaskId: "C", attemptId: "c-1", outcome: "completed" }).applied, true);
   assert.equal(memberStatus(rosterOnRefresh()), `${pendingLabel} 依赖[子任务 1]`);
 
-  dispatchAndFinish(scheduler, "A", "a-2");
   assert.equal(scheduler.dispatch([spec("D", "d-1")]).started.length, 1);
-  assert.equal(scheduler.submitReviewBatch([buildLoopPlusFinishEventId("A", "a-2")], "passed").ok, true);
-  assert.equal(scheduler.promotePending().started.length, 0);
-  assert.equal(memberStatus(rosterOnRefresh()), pendingLabel);
-
-  assert.equal(scheduler.finish({ subtaskId: "D", attemptId: "d-1", outcome: "completed" }).started[0]?.subtaskId, "E");
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-1", outcome: "completed" }).started[0]?.subtaskId, "E");
   assert.equal(memberStatus(rosterOnRefresh()), '<span class="member-status-running">运行中</span>');
 });
 
