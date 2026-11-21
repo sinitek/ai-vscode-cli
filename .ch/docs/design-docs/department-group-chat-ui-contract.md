@@ -12,6 +12,7 @@ type DepartmentGroupChatProjection = {
   rootTaskId: string;
   parentTaskId?: string;
   title: string;
+  overallProgressPercent?: number;
   director: LoopGroupChatPanelParticipant;
   leaders: Array<{
     taskId: string;
@@ -39,7 +40,9 @@ type DepartmentGroupChatProjection = {
 
 总监群聊在已创建的组长状态文案右侧显示 `progressPercent`。宿主从可信组长记录复用组长群聊的总体进度计算；组长状态更新后，已打开的总监页接收 `contentPatch`，无需打开组长弹窗。未创建的组长不显示百分比。
 
-总监群聊工具栏展示总监任务自己的 `loopProgressPercent`。组长结算会唤醒总监，总监根据收到的汇报提交新决策。宿主接受并保存决策里的新进度后，向已打开的群聊推送 `contentPatch`。有效的 `waiting` 决策也能更新总体进度，组织完成门禁通过后显示 100%。
+总监群聊工具栏在全部已登记模块都有有效权重时，按 `Σ(模块权重 × 可信组长进度) / 100` 实时计算总体进度。权重是整体目标的绝对份额，尚未取得可信组长进度的模块贡献 0。结果四舍五入为整数，整体仍在进行时最高显示 99%，完成门禁通过后显示 100%。
+
+总监用 `subtasks[*].progressWeightPercent` 为新模块指定 1–100 的整数权重。范围变化时，`continue` 决策可通过 `directorProgressWeights` 和已登记模块 ID 调整既有权重，调整与新派工一并保存。总权重超过 100 或模块 ID 无效时暂停本轮派工。缺少有效模块权重时，工具栏沿用根任务的 `loopProgressPercent`。组长进度变化时，已打开的总监群聊通过 `contentPatch` 刷新工具栏。
 
 ## 浏览器到宿主
 

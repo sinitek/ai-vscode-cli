@@ -8560,17 +8560,27 @@
     },
     {
       "id": "plugin.rule.department_director_decision_progress",
-      "name": "产研部总监按决策更新总体进度",
+      "name": "产研部总进度按组长权重实时投影",
       "kind": "business_rule",
-      "description": "组长结算唤醒总监。总监根据需求、已收到的组长汇报及剩余工作在决策 JSON 中估算 progressPercent。宿主在有效决策提交时保存到根任务的 loopProgressPercent，含仍有组长在执行的 waiting 决策。缺字段保留上次值，组织完成门禁通过后才置为 100%。保存新进度后刷新已打开的总监群聊工具栏。",
+      "description": "总监派发的新组长模块提供 1–100 整数 progressWeightPercent。增派时可按已登记模块 ID 提交 directorProgressWeights，与本轮派工一并保存，调整后的总权重不超过 100。全部模块都有有效权重时，群聊按可信组长总体进度计算 Σ(模块权重 × 组长进度)/100。权重代表整体目标的绝对份额，缺少可信组长进度的模块贡献 0。历史模块缺权重时沿用已保存的 loopProgressPercent。组长记录更新后重建已打开的总监群聊投影，组织完成门禁通过后固定显示 100%。",
       "status": "active",
       "applies_to": ["plugin.department_task", "plugin.chat_panel", "plugin.extension_host"],
       "source_refs": [
         { "path": "src/extensionHost/loopOrchestration.ts" },
+        { "path": "src/extensionHost/departmentorchestration.ts" },
         { "path": "src/extensionHost/departmentruntimecomposition.ts" },
+        { "path": "src/extensionHost/departmentGroupChatProjection.ts" },
+        { "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts" },
         { "path": "src/extensionHost/loopTaskStateMachine.ts" },
+        { "path": "src/extensionHost/promptRunRuntime.ts" },
+        { "path": "src/loopTaskStore.ts" },
         { "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md" },
-        { "path": "src/test/extensionHost/departmentproductioncomposition.test.ts" }
+        { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "总监群聊按组长权重实时计算总体进度" },
+        { "path": "src/test/extensionHost/departmentproductioncomposition.test.ts" },
+        { "path": "src/test/loop/departmentGroupChatHost.test.ts" },
+        { "path": "src/test/extensionHost/loopMainDecisionParsing.test.ts" },
+        { "path": "src/test/extensionHost/loopTaskStateMachine.test.ts" },
+        { "path": "src/test/loop/loopTaskStoreCoreCoverage.test.ts" }
       ]
     },
     {
