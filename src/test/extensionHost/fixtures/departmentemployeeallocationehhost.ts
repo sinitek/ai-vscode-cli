@@ -46,17 +46,6 @@ exports.run = async () => {
   const diagnostic = error => fs.appendFileSync(path.join(allocationRoot, 'allocation-observer-errors.ndjson'), JSON.stringify({ error: String(error) }) + '\n', { mode: 0o600 });
   restores.push((${observeAllocationWorkerExits.toString()})(require('node:child_process'), record, diagnostic));
   const extension = vscode.extensions.getExtension('sinitek.sinitek-cli-tools');
-  const { DepartmentRuntimeStore } = require(path.join(extension.extensionPath, 'dist/extensionHost/departmentruntimestore.js'));
-  const tasks = () => {
-    const dir = path.join(process.env.HOME, '.sinitek_cli/department-tasks-v1');
-    return fs.existsSync(dir) ? fs.readdirSync(dir).filter(n => n.endsWith('.json') && !n.startsWith('.'))
-      .flatMap(n => JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')).tasks) : [];
-  };
-  restores.push((${observeAllocationMethod.toString()})(DepartmentRuntimeStore.prototype, 'beginEmployeeAdmission', (args, result) => {
-    const [workspace, occupancy] = args;
-    const saved = new DepartmentRuntimeStore(path.join(process.env.HOME, '.sinitek_cli/department-runtime')).read(occupancy.rootTaskId, workspace);
-    record({ event: 'admission', occupancy, result, saved, tasks: tasks(), at: Date.now() });
-  }, diagnostic));
   // Observe original composition readers; never invoke them on behalf of production.
   const allocationModule = require(path.join(extension.extensionPath, 'dist/extensionHost/departmentemployeeallocationhost.js'));
   restores.push((${observeAllocationMethod.toString()})(allocationModule, 'createDepartmentEmployeeAllocationHost', (args, host) => {

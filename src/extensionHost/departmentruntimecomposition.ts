@@ -12,7 +12,6 @@ import { getLoopDecisionSubtasks } from "./loopTaskStateMachine";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
 import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
-import { extractJsonObjectTexts } from "../shared/jsonObjectText";
 import { createDepartmentOrchestrationHost, type DepartmentOrchestrationDeps } from "./departmentorchestration";
 import type { ClassicLoopDecisionResult, DepartmentDirectorDecisionRequest } from "./loopOrchestration";
 import { DepartmentRuntimeStore } from "./departmentruntimestore";
@@ -32,7 +31,7 @@ export function freezeDepartmentThinkingDefaults(configuration: DepartmentConfig
 }
 
 export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
-  "capacity" | "persistRuntime" | "notifyDirector" | "buildLeaderInput" | "validateRoutes" | "canExecuteRoot" | "leaderSettled" | "beginEmployeeAdmission" | "readEmployeeCapacity"> & {
+  "capacity" | "persistRuntime" | "notifyDirector" | "buildLeaderInput" | "validateRoutes" | "canExecuteRoot" | "leaderSettled" | "applyEmployeeAllocation" | "readEmployeeCapacity"> & {
   store: DepartmentRuntimeStore;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   /** The department repository is authoritative for director control in production. */
@@ -125,10 +124,9 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   const allocation = createDepartmentEmployeeAllocationHost({ ...deps, capacity,
     runtimeSnapshot: (root) => host.runtimeSnapshot(root),
     current: (root) => !disposed && !failed.has(root) && host.runtimeSnapshot(root) !== null,
-    persistenceFailed: (root) => { failed.add(root); },
   });
   const host = createDepartmentOrchestrationHost({ ...deps, capacity,
-    beginEmployeeAdmission: allocation.beginEmployeeAdmission,
+    applyEmployeeAllocation: allocation.applyEmployeeAllocation,
     readEmployeeCapacity: allocation.readEmployeeCapacity,
     canExecuteRoot: (root) => !disposed && !failed.has(root) && deps.readTask(root)?.workspaceKey === deps.workspaceKey(),
     persistRuntime: (snapshot, releaseLeaderModuleId) => { snapshots.set(snapshot.rootTaskId, clone(snapshot)); save(snapshot.rootTaskId, releaseLeaderModuleId); },
@@ -279,22 +277,15 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const task = deps.readTask(request.task.id), decision = request.decision;
     if (!task || task.status !== "running" || controllers.get(task.id)?.stopped || disposed
       || metadata(task).role !== "director" || !host.runtimeSnapshot(task.id) || failed.has(task.id)) throw new Error("部门组织状态不可执行。");
-    // Explicit director actions are parsed from the same actual model response, identities stay host-bound.
-    for (const text of extractJsonObjectTexts(request.content ?? "")) {
-      const raw = JSON.parse(text) as Record<string, unknown>;
-      if (raw.status !== decision.status || raw.directorCollaborations === undefined) continue;
-      if (!Array.isArray(raw.directorCollaborations)) throw new Error("总监协作决策格式无效。");
-      for (const action of raw.directorCollaborations) {
-        if (!action || typeof action.id !== "string" || !["deliver", "dismiss"].includes(action.action)) throw new Error("总监协作决策无效。");
-        const result = host.processDirectorCollaboration(task.id, action.id, action.action);
-        if (!result.ok) deps.report(task.id, `协作处置失败：${action.id}，${result.reason}`);
-      }
-      break;
-    }
     if (!host.acknowledgeRootRequirements(task.id, request.requirements)) return { status: "pending-requirements", task: deps.readTask(task.id)! };
+    if (decision.directorCollaborationIssue) deps.report(task.id, "协作处置格式无效，请用 directorCollaborations 提交稳定消息 ID 和 deliver 或 dismiss。");
+    for (const action of decision.directorCollaborations ?? []) {
+      const result = host.processDirectorCollaboration(task.id, action.id, action.action);
+      if (!result.ok) deps.report(task.id, `协作处置失败：${action.id}，${result.reason}`);
+    }
     if (decision.status === "completed") {
       const result = host.confirmRootComplete(task.id, { ...decision, status: "completed" });
-      if (!result.ok) { deps.report(task.id, `整体完成被组织门禁拒绝：${result.reason}`); return { status: "pending-requirements", task: deps.readTask(task.id)! }; }
+      if (!result.ok) { deps.report(task.id, `暂未写入整体完成：${result.reason}`); return { status: "pending-requirements", task: deps.readTask(task.id)! }; }
       return { status: "completed", task: deps.readTask(task.id)!, decision };
     }
     const progressPercent = normalizeLoopProgressPercent(decision.progressPercent);

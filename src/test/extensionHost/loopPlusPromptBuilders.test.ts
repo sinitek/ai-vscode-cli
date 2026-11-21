@@ -78,11 +78,11 @@ test("department leaders receive a validated live employee balance for every mai
     assert.match(prompt, /Active employees in this department across all leaders, including overflow employees: 3/);
     assert.match(prompt, /Available regular employee balance: 1/);
     assert.match(prompt, /This leader group already has an overflow employee: no/);
-    assert.match(prompt, /This leader may acquire an overflow employee now: no/);
+    assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now/);
     assert.match(prompt, /shared by all leaders within this department/);
     assert.match(prompt, /departments with different root task ids have separate balances/);
     assert.doesNotMatch(prompt, /across all departments/);
-    assert.match(prompt, /host must atomically recheck before launch/);
+    assert.match(prompt, /Department capacity figures are advisory/);
   }
 });
 
@@ -135,11 +135,10 @@ test("leader allocation prompt reports trusted default and manual limits without
   assert.match(pendingManualPrompt, /Allocation source: manual/);
   assert.match(pendingManualPrompt, /Applied group limit: 5/);
   assert.match(pendingManualPrompt, /Host reports this allocation pending: yes/);
-  assert.match(pendingManualPrompt, /Saving a changed limit does not interrupt employees that have already started/);
-  assert.match(pendingManualPrompt, /next real employee admission attempt/);
-  assert.match(pendingManualPrompt, /If active group occupancy exceeds the desired limit, wait for real execution cleanup/);
+  assert.match(pendingManualPrompt, /The desired value is the latest reference for planning/);
+  assert.match(pendingManualPrompt, /Applied records the reference at the latest real dispatch attempt/);
   assert.match(pendingManualPrompt, /Available regular employee balance: 10/);
-  assert.match(pendingManualPrompt, /does not permit overflow while department-wide regular balance remains/);
+  assert.match(pendingManualPrompt, /Choose how many employees to dispatch based on the work/);
 });
 
 test("unknown group allocation preserves valid global balance and never invents a default", () => {
@@ -208,7 +207,7 @@ test("unknown group allocation preserves valid global balance and never invents 
   }
 });
 
-test("group-local exhaustion does not expand the original zero-balance overflow exception", () => {
+test("group-local exhaustion is advisory while department balance remains", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
     departmentEmployeeCapacity: {
       rootTaskId: "root-task",
@@ -236,11 +235,11 @@ test("group-local exhaustion does not expand the original zero-balance overflow 
   }));
   assert.match(prompt, /Available regular employee balance: 2/);
   assert.match(prompt, /Regular employee balance available to this leader's next dispatch: 0/);
-  assert.match(prompt, /This leader may acquire an overflow employee now: no/);
-  assert.match(prompt, /does not permit overflow while department-wide regular balance remains/);
+  assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now/);
+  assert.match(prompt, /Department capacity figures are advisory/);
 });
 
-test("group allocation counts an existing overflow while preserving its global-zero exception state", () => {
+test("group allocation counts a legacy overflow as actual occupancy", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
     departmentEmployeeCapacity: {
       rootTaskId: "root-task",
@@ -268,12 +267,12 @@ test("group allocation counts an existing overflow while preserving its global-z
   }));
   assert.match(prompt, /Available regular employee balance: 0/);
   assert.match(prompt, /This leader group already has an overflow employee: yes/);
-  assert.match(prompt, /This leader may acquire an overflow employee now: no/);
+  assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now/);
   assert.match(prompt, /Active employees in this leader group, including overflow employees: 2/);
   assert.match(prompt, /Regular employee balance available to this leader's next dispatch: 0/);
 });
 
-test("department balance zero permits only one leader overflow and invalid or missing data stays unknown", () => {
+test("zero and unknown department balances both leave dispatch count to the model", () => {
   const base = {
     rootTaskId: "root-task",
     leaderTaskId: "leader-task",
@@ -305,7 +304,7 @@ test("department balance zero permits only one leader overflow and invalid or mi
   });
   assert.match(open, /Available regular employee balance: 0/);
   assert.match(open, /Department-wide regular employee balance is zero: yes/);
-  assert.match(open, /This leader may acquire an overflow employee now: yes/);
+  assert.match(open, /Choose how many employees to dispatch based on the work, including when the balance is zero or unknown/);
 
   const validAllocation = {
     revision: 1,
@@ -333,8 +332,8 @@ test("department balance zero permits only one leader overflow and invalid or mi
     const prompt = promptFor(candidate);
     assert.match(prompt, /Available regular employee balance: 0/);
     assert.match(prompt, /Department-wide regular employee balance is zero: yes/);
-    assert.match(prompt, /This leader group's employee allocation: unknown; regular\/overflow admission eligibility is also unknown/);
-    assert.match(prompt, /host must obtain a valid current allocation snapshot and recheck before launch/);
+    assert.match(prompt, /This leader group's employee allocation: unknown/);
+    assert.match(prompt, /Department capacity figures are advisory/);
     assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now: yes/);
     assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now: no/);
   }
@@ -363,7 +362,7 @@ test("department balance zero permits only one leader overflow and invalid or mi
   for (const candidate of unknownSnapshots) {
     const prompt = promptFor(candidate);
     assert.match(prompt, /employee balance unknown/);
-    assert.match(prompt, /Do not treat unknown as zero balance or as permission to use an overflow exception/);
+    assert.match(prompt, /Choose how many employees to dispatch based on the work, including when the balance is zero or unknown/);
     assert.doesNotMatch(prompt, /Available regular employee balance: 0/);
     assert.doesNotMatch(prompt, /This leader may acquire an overflow employee now: yes/);
   }
@@ -377,7 +376,7 @@ test("department balance zero permits only one leader overflow and invalid or mi
   assert.match(atLimitWithOverflow, /Regular employee total: 2/);
   assert.match(atLimitWithOverflow, /Available regular employee balance: 0/);
   assert.match(atLimitWithOverflow, /This leader group already has an overflow employee: yes/);
-  assert.match(atLimitWithOverflow, /This leader may acquire an overflow employee now: no/);
+  assert.doesNotMatch(atLimitWithOverflow, /This leader may acquire an overflow employee now/);
 
   const expandedCapacityWithOutstandingOverflow = promptFor({
     ...base,
@@ -391,7 +390,7 @@ test("department balance zero permits only one leader overflow and invalid or mi
   assert.match(expandedCapacityWithOutstandingOverflow, /Regular employee total: 4/);
   assert.match(expandedCapacityWithOutstandingOverflow, /Available regular employee balance: 1/);
   assert.match(expandedCapacityWithOutstandingOverflow, /This leader group already has an overflow employee: yes/);
-  assert.match(expandedCapacityWithOutstandingOverflow, /This leader may acquire an overflow employee now: no/);
+  assert.doesNotMatch(expandedCapacityWithOutstandingOverflow, /This leader may acquire an overflow employee now/);
 
   const overflowPrompt = buildLoopPlusMainModelPrompt(mainContext({
     departmentEmployeeCapacity: {
@@ -408,7 +407,7 @@ test("department balance zero permits only one leader overflow and invalid or mi
     },
   }));
   assert.match(overflowPrompt, /This leader group already has an overflow employee: yes/);
-  assert.match(overflowPrompt, /This leader may acquire an overflow employee now: no/);
+  assert.doesNotMatch(overflowPrompt, /This leader may acquire an overflow employee now/);
 });
 
 test("ordinary Loop+ prompt contract omits department capacity context", () => {

@@ -118,7 +118,7 @@ test("production source + central composition + real Loop+ adapter persist compl
     assert.equal(source.readDepartmentLeaderTaskIds(root.id, "accounts")?.length, 1);
     assert.equal(source.listTaskStoreFiles().length, 3);
     assert.equal(composition.readCapacity(root.id)!.employees.length, 3);
-    assert.equal(composition.readCapacity(root.id)!.employeeOverflow?.length, 2);
+    assert.deepEqual(composition.readCapacity(root.id)!.employeeOverflow ?? [], []);
     assert.equal(fixture.rootsCreated.length, 3, "waiting attempts have no execution resources");
     assert.ok(fixture.attemptCalls.every((input) => input.model === "employee"));
     const [a, b] = members;

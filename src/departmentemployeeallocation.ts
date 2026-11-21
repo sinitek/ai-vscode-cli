@@ -33,19 +33,12 @@ export type DepartmentEmployeeAllocationCounts = {
   leaders: { leaderTaskId: string; activeEmployees: number | null }[];
 };
 /** Supplied by the authoritative host, including all regular AND overflow employees. */
-export type DepartmentEmployeeAdmissionOccupancy = {
+export type DepartmentEmployeeOccupancy = {
   rootTaskId: string;
   leaderTaskId: string;
   globalActiveEmployees: number | null;
   activeEmployees: number | null;
   leaderOverflowActive: boolean | null;
-};
-export type DepartmentEmployeeAdmissionEvaluation = {
-  eligible: boolean;
-  kind: "regular" | "overflow" | null;
-  reason: "regular" | "overflow" | "unknown-occupancy" | "not-applied" | "group-limit" | "overflow-active";
-  /** Regular balance only; null means occupancy is unknown. */
-  availableEmployees: number | null;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -176,35 +169,6 @@ export function activateDepartmentEmployeeAllocation(value: DepartmentEmployeeAl
   nextRevision(state);
   leader.appliedLimit = limit;
   return state;
-}
-
-/** Advisory evaluation, NOT an atomic grant. Host must recheck AND reserve in the existing synchronous grant path. */
-export function evaluateDepartmentEmployeeAllocation(value: DepartmentEmployeeAllocationState, occupancy: DepartmentEmployeeAdmissionOccupancy): DepartmentEmployeeAdmissionEvaluation {
-  const state = normalizeDepartmentEmployeeAllocation(value, occupancy.rootTaskId);
-  const leader = member(state, occupancy.leaderTaskId);
-  count(occupancy.globalActiveEmployees); count(occupancy.activeEmployees);
-  if (occupancy.leaderOverflowActive !== null && typeof occupancy.leaderOverflowActive !== "boolean") throw new TypeError("Invalid employee overflow occupancy");
-  const { globalActiveEmployees: global, activeEmployees: active, leaderOverflowActive: overflow } = occupancy;
-  const denied = (reason: DepartmentEmployeeAdmissionEvaluation["reason"], availableEmployees: number | null): DepartmentEmployeeAdmissionEvaluation =>
-    ({ eligible: false, kind: null, reason, availableEmployees });
-  if (global === null || active === null || overflow === null) return denied("unknown-occupancy", null);
-  if (active > global || (overflow && active === 0)) throw new RangeError("Inconsistent employee occupancy");
-  if (leader.appliedLimit === null) return denied("not-applied", null);
-  const globalAvailable = Math.max(0, state.maxEmployees - global);
-  const availableEmployees = Math.min(globalAvailable, Math.max(0, leader.appliedLimit - active));
-  if (availableEmployees > 0) return { eligible: true, kind: "regular", reason: "regular", availableEmployees };
-  // Only exhausted GLOBAL balance enables the existing exception, including a regular limit of zero.
-  if (globalAvailable === 0 && !overflow) return { eligible: true, kind: "overflow", reason: "overflow", availableEmployees: 0 };
-  return denied(globalAvailable === 0 ? "overflow-active" : "group-limit", availableEmployees);
-}
-
-/** Attempt boundary helper: activation survives an unknown-count or over-limit refusal.
- * Returning eligible is never proof of reservation, execution or cleanup. */
-export function beginDepartmentEmployeeAdmission(value: DepartmentEmployeeAllocationState, occupancy: DepartmentEmployeeAdmissionOccupancy): {
-  state: DepartmentEmployeeAllocationState; evaluation: DepartmentEmployeeAdmissionEvaluation;
-} {
-  const state = activateDepartmentEmployeeAllocation(value, occupancy.rootTaskId, occupancy.leaderTaskId);
-  return { state, evaluation: evaluateDepartmentEmployeeAllocation(state, occupancy) };
 }
 
 /** Read-only projection. Missing counts stay unknown, never inferred from chat or from shared balance. */

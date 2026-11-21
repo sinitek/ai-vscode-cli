@@ -1,7 +1,6 @@
 import * as path from "node:path";
 import type { LoopTaskRecord } from "../../../loopTaskStore";
 import type { DepartmentMetadata } from "../../../department";
-import type { LoopPlusReviewItem } from "../../../loopPlusScheduler";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -35,7 +34,6 @@ export async function runDepartmentAdmissionRegression(): Promise<void> {
   const { prepareDepartmentTaskRecord } = require("../../../extensionHost/departmentOwnedTaskRepository") as typeof import("../../../extensionHost/departmentOwnedTaskRepository");
   const taskStore = require("../../../loopTaskStore") as typeof import("../../../loopTaskStore");
   const { DepartmentCapacityPool } = require("../../../departmentcapacity") as typeof import("../../../departmentcapacity");
-  const { createLoopPlusScheduler, buildLoopPlusFinishEventId } = require("../../../loopPlusScheduler") as typeof import("../../../loopPlusScheduler");
   const { buildSystemLoopPlusAcceptancePlanSnapshot } = require("../../../loopPlusAcceptancePlan") as typeof import("../../../loopPlusAcceptancePlan");
   const { createLoopPlusRuntimeFixture } = require("./loopPlusRuntimeFixture") as typeof import("./loopPlusRuntimeFixture");
   const { createDepartmentOrchestrationHost } = require("../../../extensionHost/departmentorchestration") as typeof import("../../../extensionHost/departmentorchestration");
@@ -117,7 +115,6 @@ export async function runDepartmentAdmissionRegression(): Promise<void> {
   });
   let taskId: string | null = null;
   const lifecycles: Promise<void>[] = [];
-  const releaseReview = deferred<void>();
   let failure: unknown;
   try {
     const first = await settleWithin(host.startLeader("root", {
@@ -147,54 +144,28 @@ export async function runDepartmentAdmissionRegression(): Promise<void> {
     if (capacity.getEmployeeCapacity("root", taskId)?.availableEmployees !== 0) throw new Error("host did not publish the exhausted current balance");
 
     releaseInitialDecision.resolve();
-    await waitFor(() => fixture.parkedSubtaskIds().includes("first-employee"), "first leader rechecked against current occupancy");
-    const overflow = capacity.snapshot("root")[0].employeeOverflow ?? [];
-    if (overflow.length !== 1 || JSON.parse(overflow[0])[0] !== taskId) {
-      throw new Error("host did not atomically recheck the stale positive prompt and issue the leader's single overflow lease");
-    }
+    await waitFor(() => fixture.parkedSubtaskIds().includes("first-employee"), "first leader dispatches after balance reaches zero");
 
     if (fixture.mainCalls[0].displayPrompt !== issuedPrompt) throw new Error("issued positive prompt was mutated");
     const rootsBefore = fixture.rootsCreated.length;
     const tabsBefore = fixture.createdSubtaskTargets.length;
     const attemptsBefore = fixture.attemptCalls.length;
     fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: JSON.stringify({ status: "dispatch", subtasks: [{
-      id: "second-overflow", title: "second overflow", prompt: "Implement this additional employee task completely, verify its behavior, and report concrete results and remaining risks to the leader.", writeFiles: [], taskType: "general",
+      id: "second-employee", title: "second employee", prompt: "Implement this additional employee task completely, verify its behavior, and report concrete results and remaining risks to the leader.", writeFiles: [], taskType: "general",
     }] }) }));
-    let review: LoopPlusReviewItem | undefined;
-    let reviewStarted = false;
-    fixture.queueMain(async (input) => {
-      const snapshot = createLoopPlusScheduler({ snapshot: taskStore.readLoopTaskRecord(taskId!)?.loopPlus }).snapshot();
-      const exactReview = [snapshot?.currentReview, ...(snapshot?.reviewQueue ?? [])].find((item) => item?.subtaskId === "second-overflow");
-      if (!exactReview || !input.displayPrompt.includes(exactReview.eventId)) throw new Error("denial review did not receive the exact finish event");
-      reviewStarted = true;
-      await releaseReview.promise;
-    });
     if (!fixture.adapter.host().submitUserMessage(taskId, "增加一个补充员工")) throw new Error("fresh same-group decision was rejected");
-    await waitFor(() => {
-      const snapshot = createLoopPlusScheduler({ snapshot: taskStore.readLoopTaskRecord(taskId!)?.loopPlus }).snapshot();
-      review = [snapshot?.currentReview, ...(snapshot?.reviewQueue ?? [])].find((item): item is LoopPlusReviewItem => !!item && item.subtaskId === "second-overflow");
-      return !!review;
-    }, "exact second-overflow finish event", () => ({ snapshot: taskStore.readLoopTaskRecord(taskId!)?.loopPlus, logs: fixture.logs }));
-    const current = taskStore.readLoopTaskRecord(taskId)!;
-    const state = createLoopPlusScheduler({ snapshot: current.loopPlus }).snapshot();
-    const seen = state.seenAttempts.find((item) => item.subtaskId === "second-overflow" && item.attemptId === review!.attemptId);
-    if (!review || review.outcome !== "failed" || review.eventId !== buildLoopPlusFinishEventId("second-overflow", review.attemptId)
-      || !seen || seen.outcome !== "failed" || seen.disposition !== "finished"
-      || state.running.some((item) => item.attemptId === review!.attemptId)
-      || state.pending.some((item) => item.attemptId === review!.attemptId)) {
-      throw new Error(`second overflow did not settle precisely into failed review: ${JSON.stringify({ review, seen, state })}`);
-    }
-    await waitFor(() => reviewStarted, "exact denial review invocation");
-    if (JSON.stringify(capacity.snapshot("root")[0].employeeOverflow ?? []) !== JSON.stringify(overflow)
-      || fixture.rootsCreated.length !== rootsBefore || fixture.createdSubtaskTargets.length !== tabsBefore
-      || fixture.attemptCalls.length !== attemptsBefore) {
-      throw new Error("a second overflow created an execution root, tab or worker, or changed the outstanding overflow lease");
+    await waitFor(() => fixture.parkedSubtaskIds().includes("second-employee"), "same leader dispatches another employee at zero balance");
+    const snapshot = capacity.snapshot("root")[0];
+    if (snapshot.employees.filter((identity) => JSON.parse(identity)[0] === taskId).length !== 2
+      || (snapshot.employeeOverflow?.length ?? 0) !== 0
+      || fixture.rootsCreated.length !== rootsBefore + 1 || fixture.createdSubtaskTargets.length !== tabsBefore + 1
+      || fixture.attemptCalls.length !== attemptsBefore + 1) {
+      throw new Error("the second dispatch did not start one execution and record both occupied attempts");
     }
   } catch (error) { failure = error;
   } finally {
     const cleanupFailures: string[] = [];
     releaseInitialDecision.resolve();
-    releaseReview.resolve();
     for (const id of fixture.parkedSubtaskIds()) fixture.finishParked(id, { status: "stopped" });
     try { if (!await settleWithin(host.stopRoot("root"), "bounded controlled host teardown")) throw new Error("controlled host teardown refused"); }
     catch (error) { cleanupFailures.push(String(error)); }

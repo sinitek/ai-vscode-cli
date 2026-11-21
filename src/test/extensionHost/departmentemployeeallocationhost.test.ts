@@ -20,8 +20,7 @@ function setup(t: test.TestContext) {
   let workspace = data.root.workspaceKey, index = true;
   const host = createDepartmentEmployeeAllocationHost({ store, capacity, workspaceKey: () => workspace,
     readTask: (id) => data.records.get(id) ?? null, runtimeSnapshot: () => runtime, current: () => true,
-    readLeaderTaskIds: (root, module) => index ? fixtureDepartmentLeaderTaskIds(data.records, root, module) : null,
-    persistenceFailed: () => undefined });
+    readLeaderTaskIds: (root, module) => index ? fixtureDepartmentLeaderTaskIds(data.records, root, module) : null });
   return { ...data, store, capacity, runtime, host,
     workspace: (value: string) => { workspace = value; }, index: (value: boolean) => { index = value; } };
 }
@@ -29,7 +28,6 @@ function setup(t: test.TestContext) {
 test("allocation reader never migrates legacy policy or treats absent live leases as zero", async (t) => {
   const h = setup(t);
   assert.equal(h.host.readDepartmentEmployeeAllocation(h.root.id), null);
-  assert.equal(h.host.beginEmployeeAdmission(h.root.id, h.leader.id), false);
   const old = h.store.read(h.root.id, h.root.workspaceKey); assert.ok(old.ok && old.value);
   assert.equal(old.value.employeeAllocation, undefined);
   assert.equal(h.store.synchronizeEmployeeAllocation(h.root.id, h.root.workspaceKey).ok, true);

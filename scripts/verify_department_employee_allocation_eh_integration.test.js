@@ -31,11 +31,12 @@ test("save evidence requires revision-only desired transition and matching actua
   assert.throws(() => assertSettled(events.slice(0, 1), "root", "leader", 2, 0, 3), /settled/);
 });
 test("cleanup checker rejects task-status-only completion without original responsibility/receipt proof", () => {
-  assert.throws(() => assertCleanup({ runtime: { status: "completed" }, capacity: { employees: [], leaders: [] } }, [], [], {}, {}), /leader and three/);
+  assert.throws(() => assertCleanup({ runtime: { status: "completed" }, capacity: { employees: [], leaders: [] } }, [], [], {}, {}, [], 5), /original execution bindings/);
 });
 
 test("cleanup requires all original policies, CLOSED entries and natural exit, without requiring Electron close", () => {
-  const bindings = Array.from({ length: 4 }, (_, i) => ({ identity: { executionId: `exec-${i}`, ownerId: `owner-${i}` }, selection: { cli: "codex" }, requirements: { streams: true } }));
+  const expectedExecutions = 5;
+  const bindings = Array.from({ length: expectedExecutions }, (_, index) => ({ identity: { executionId: `exec-${index}`, ownerId: `owner-${index}` }, selection: { cli: "codex" }, requirements: { streams: true } }));
   const saved = { executionBindings: bindings, leaderExecutionSets: [{ state: "closed", scope: { rootTaskId: "root" }, producerId: "producer",
     closure: { scope: { rootTaskId: "root" }, producerId: "producer" }, entries: bindings.map(b => ({ executionId: b.identity.executionId, responsibility: { selection: b.selection, requirements: b.requirements } })) }],
     capacity: { leaders: [], employees: [] } };
@@ -45,14 +46,14 @@ test("cleanup requires all original policies, CLOSED entries and natural exit, w
   const workers = bindings.map((b, i) => ({ event: "worker-exit", pid: i + 1, code: 0, signal: null }));
   const identityApi = { sameExecution: (a, b) => a.executionId === b.executionId, cleanupComplete: (c, r) => r.streams && c.streams === "confirmed" };
   const receiptApi = { isDepartmentExecutionReceipt: r => !!r.identity };
-  assert.equal(assertCleanup(saved, observations, protocol, identityApi, receiptApi, workers).complete, true);
+  assert.equal(assertCleanup(saved, observations, protocol, identityApi, receiptApi, workers, expectedExecutions).complete, true);
   for (const signal of ["SIGTERM", "SIGKILL"]) {
     const bad = structuredClone(workers); bad[0].signal = signal;
-    assert.throws(() => assertCleanup(saved, observations, protocol, identityApi, receiptApi, bad), /naturally/);
+    assert.throws(() => assertCleanup(saved, observations, protocol, identityApi, receiptApi, bad, expectedExecutions), /naturally/);
   }
-  assert.throws(() => assertCleanup(saved, observations.slice(1), protocol, identityApi, receiptApi, workers));
+  assert.throws(() => assertCleanup(saved, observations.slice(1), protocol, identityApi, receiptApi, workers, expectedExecutions));
   const partial = structuredClone(observations); partial[0].receipt.cleanup.streams = "unknown";
-  assert.throws(() => assertCleanup(saved, partial, protocol, identityApi, receiptApi, workers), /incomplete/);
+  assert.throws(() => assertCleanup(saved, partial, protocol, identityApi, receiptApi, workers, expectedExecutions), /incomplete/);
 });
 
 test("workspace UI proof rejects unmatched scope/request, missing durable save and global mutation", () => {

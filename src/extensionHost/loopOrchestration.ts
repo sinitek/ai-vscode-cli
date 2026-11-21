@@ -158,7 +158,7 @@ export type ClassicLoopDecisionResult =
     | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
 export type DepartmentDirectorDecisionRequest = {
-  task: LoopTaskRecord; decision: LoopMainDecision; content: string | null; requirements: string[];
+  task: LoopTaskRecord; decision: LoopMainDecision; requirements: string[];
 };
 export type LoopOrchestrationHostDeps = Partial<LoopOrchestrationRequiredHostDeps> & {
   handleDepartmentDecision?: (request: DepartmentDirectorDecisionRequest) => ClassicLoopDecisionResult | Promise<ClassicLoopDecisionResult>;
@@ -378,7 +378,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         throw new Error("部门总监组织入口不可用，任务不会退化为普通 Loop。");
       }
       const current = readLoopTaskRecord(task.id) ?? task;
-      const result = await deps.handleDepartmentDecision({ task: current, decision, content: mainContent, requirements: requirementsAtStart });
+      const result = await deps.handleDepartmentDecision({ task: current, decision, requirements: requirementsAtStart });
       if (result.status === "completed" || result.task.loopProgressPercent !== current.loopProgressPercent) {
         refreshOpenLoopGroupChatPanelForTask(task.id);
       }
@@ -1357,7 +1357,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       '仍有组长处于 starting/running 且只需等待其汇报时，返回 {"status":"waiting","progressPercent":40,"finalSummary":"等待组长汇报"}，其中百分比按实际工作估算。waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
       '确有用户疑问使用标准 clarify 表单。',
       '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
-      '完成使用 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}；宿主检查全组织门禁后才会写入完成。',
+      '整体目标已经满足时返回 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}。根据原始目标与组长汇报判断业务完成情况，并在结论中交代遗留事项。',
       "组长汇报、协作和补充会及时唤醒你，无需等待所有组长结束。不得检查代码或验收。",
       ...buildLoopSupplementalRequirementsLines(task),
       "原始目标：", rootPrompt, continuePrompt ?? "",

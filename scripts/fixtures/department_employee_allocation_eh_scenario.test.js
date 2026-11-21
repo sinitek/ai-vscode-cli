@@ -6,7 +6,8 @@ const saved = { employeeAllocation: { revision: 4, maxEmployees: 20, maxLeaders:
 const lines = ["Regular employee total: 20", "Active employees in this department across all leaders, including overflow employees: 1",
   "Available regular employee balance: 19", "Allocation source: manual", "Desired regular employee limit for this group: 0", "Applied group limit: 5",
   "Active employees in this leader group, including overflow employees: 1", "Regular employee balance available to this leader's next dispatch: 0",
-  "Host allocation revision: 4", "Host reports this allocation pending: yes", "This leader may acquire an overflow employee now: no"];
+  "Host allocation revision: 4", "Host reports this allocation pending: yes",
+  "Department capacity figures are advisory. Choose how many employees to dispatch based on the work, including when the balance is zero or unknown."];
 test("captured provider prompt must match durable nested desired/applied/revision and live occupancy", () => {
   const text = lines.join("\n") + "\n";
   assert.equal(assertAllocationPrompt(text, saved, "leader").pending, true);
@@ -39,7 +40,7 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
       `Desired regular employee limit for this group: ${desired}`, `Applied group limit: ${row.appliedLimit === null ? "not yet applied" : row.appliedLimit}`,
       `Active employees in this leader group, including overflow employees: ${active}`, `Regular employee balance available to this leader's next dispatch: ${Math.max(0, desired-active)}`,
       `Host allocation revision: ${current.employeeAllocation.revision}`, `Host reports this allocation pending: ${row.appliedLimit !== desired ? "yes" : "no"}`,
-      "This leader may acquire an overflow employee now: no", ""].join("\n");
+      "Department capacity figures are advisory. Choose how many employees to dispatch based on the work, including when the balance is zero or unknown.", ""].join("\n");
   };
   await ask("使用经典 Loop JSON 决策。\n任务 ID：root；轮次：1");
   const parse = text => {
@@ -51,11 +52,11 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
   current.capacity.employees = [JSON.stringify(["leader", "held"])];
   leader.loopPlus.currentReview = { eventId: "pulse-event", subtaskId: "allocation-pulse", outcome: "completed" };
   const zero = parse(await ask(promptFor("review", "pulse-event")));
-  assert.deepEqual(zero.independentSubtaskIds, ["allocation-denied"]);
+  assert.deepEqual(zero.independentSubtaskIds, ["allocation-zero"]);
   current.employeeAllocation.revision = 4; current.employeeAllocation.leaders[0].appliedLimit = 0;
-  leader.loopPlus.currentReview = { eventId: "denied-event", subtaskId: "allocation-denied", outcome: "failed" };
+  leader.loopPlus.currentReview = { eventId: "zero-event", subtaskId: "allocation-zero", outcome: "completed" };
   let resolved = false;
-  const pending = ask(promptFor("review", "denied-event")).then(text => { resolved = true; return text; });
+  const pending = ask(promptFor("review", "zero-event")).then(text => { resolved = true; return text; });
   await new Promise(resolve => setImmediate(resolve)); assert.equal(resolved, false);
   scenario.release("restore-saved"); const restore = parse(await pending);
   assert.deepEqual(restore.reviews[0].subtaskIds, ["allocation-restored"]); scenario.releaseAll();

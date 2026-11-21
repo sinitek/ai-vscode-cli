@@ -12,6 +12,8 @@ producer 的新代来源是专用任务仓储唯一 CREATE 的实际返回值，
 
 ## 逐轮与员工准入
 
+组长与员工的生产派发使用 `trackLeader` 和 `trackEmployee` 登记实际占用。额度、余额和分组参考值随提示词提供给模型，派发数量由模型决定。producer 继续核验真实任务、路线、会话、代次及账本授权。
+
 同一组长使用原多轮原生 Owner 端口，同一 identity v1、scope、selection、slot 和 thread。每次真实 scheduler main 调用固定 invocationId 和 prompt；每轮仍是独立不可变 CodexOwnedExecution、transport、终态和消费者责任。首轮真实 thread/start，后续只精确 resume 原 native thread；不重复 execute 同一对象。
 
 宿主使用原配置队列、角色配置固化、SharedRuntimeConfig 执行租约和可信配置 builder。组长仍经既有 `runPromptInteractive` 消息、日志、工具请求、用户交互和运行记录消费者；传输由 departmentCodexRun 交给独立原生 Owner，单次调用保护及无隐藏重试合同保持。原生 main 抛错会令真实 scheduler 一次暂停；普通任务保留原五次错误门槛。已完整执行但协议格式需修复的后续协调调用仍由既有 scheduler 决策，不把未知送达包装为可重试任务。

@@ -1238,7 +1238,7 @@ test("leader capacity is read per decision while an issued invocation keeps its 
   assert.equal(env.host.submitUserMessage(run.taskId ?? "", "add one more requirement"), true);
   assert.equal(reads.length, 1, "queuing a message does not change the already-issued invocation");
   assert.match(env.mains[0].invocationPrompt, /Available regular employee balance: 1/);
-  assert.match(env.mains[0].invocationPrompt, /This leader may acquire an overflow employee now: no/);
+  assert.match(env.mains[0].invocationPrompt, /Department capacity figures are advisory/);
   assert.match(env.mains[0].invocationModelPrompt, /Available regular employee balance: 1/);
 
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
@@ -1246,7 +1246,7 @@ test("leader capacity is read per decision while an issued invocation keeps its 
   const userRequest = env.mains.find((call) => call.request.kind === "user");
   assert.ok(userRequest);
   assert.match(userRequest?.invocationPrompt ?? "", /Available regular employee balance: 0/);
-  assert.match(userRequest?.invocationPrompt ?? "", /This leader may acquire an overflow employee now: yes/);
+  assert.match(userRequest?.invocationPrompt ?? "", /Choose how many employees to dispatch based on the work, including when the balance is zero or unknown/);
   assert.equal(reads.length, 4, "refreshes and the supplemental decision each read current capacity");
   assert.ok(reads.every(([root, leader]) => root === "department-root" && leader === run.taskId));
 

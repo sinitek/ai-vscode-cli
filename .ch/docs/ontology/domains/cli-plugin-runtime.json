@@ -549,7 +549,7 @@
     {
       "id": "plugin.department_task",
       "name": "产研部组织任务",
-      "description": "开发中三层组织：总监经典 Loop 仅派发/协调及依据汇报完成，不验收代码；真实 Loop+ 组长保留统一根方案和全部验收，员工可跨 CLI。中央 composition/组织容量 host/adapter/生产来源 store 已装配。新建时没有有效工作区或全局配置的项目回退为最多 4 名组长、全部门共享 16 名常规并发员工；已有任务沿用启动时保存的额度。零余额每组最多一个未释放超额；每次决策新余额仅参考，启动原子重判，未知留责。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 已接受三角色全 OpenCode 默认模型公开新建 EH，范围是两模块、四原 Owner 完整凭证、两个精确 CLOSED、容量归还后第二实际派发及总监汇报；不证明跨代续接、冷恢复、全部 CLI/平台或远程模型质量。冷宿主缺原 producer provenance/完整聚合时仍不接管 running leader。round-376 managed-main 工具交互是单独的 headless one-shot 证据，不构成 Department Owner/容量证明。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
+      "description": "开发中三层组织：总监经典 Loop 仅派发/协调及依据汇报完成，不验收代码；真实 Loop+ 组长保留统一根方案和全部验收，员工可跨 CLI。中央 composition/组织容量 host/adapter/生产来源 store 已装配。新建时按工作区、全局和默认值逐项采用参考额度，默认 4 名组长及 16 名员工。模型按目标决定派发数量，宿主按实际身份登记占用并确认清理。组长按普通 Loop+ 完成结果结算，总监依据目标和汇报作出经典 Loop 完成决策。已接受 round-350 macOS 安装版 EH/真实 Codex 0.167.2 binary 新建（四原 receipt、自然清理、容量归还后再派发），round-366 Codex 公开 stop→continue（六原 receipt、三代 CLOSED、总监后续派发/最终汇报），round-369/372 Codex 总监/员工＋OpenCode 1.19.5 组长明确/默认模型混合公开新建。均为本机确定性 provider/精确快照，非所有 CLI/平台或远程模型质量保证。round-353/359/362/364 及首次默认模型失败保持历史。round-375 已接受三角色全 OpenCode 默认模型公开新建 EH，范围是两模块、四原 Owner 完整凭证、两个精确 CLOSED、容量归还后第二实际派发及总监汇报；不证明跨代续接、冷恢复、全部 CLI/平台或远程模型质量。冷宿主缺原 producer provenance/完整聚合时仍不接管 running leader。round-376 managed-main 工具交互是单独的 headless one-shot 证据，不构成 Department Owner/容量证明。未覆盖整树控制、冷恢复、必要平台、最终 Git 同步合理合并及合并后全量回归仍开放；已有主题/窄屏证据按未变范围复用，不新增付费模型质量或无限平台门禁。",
       "status": "active",
       "kind": "aggregate",
       "aliases": [
@@ -7351,8 +7351,8 @@
     },
     {
       "id": "plugin.rule.department_shared_capacity",
-      "name": "部门共享常规额度与每组限量超额",
-      "description": "新建产研部逐项按有效工作区值、有效全局值、默认值取用：默认同时最多 4 名组长无例外、全部门共享 16 名常规并发员工，非累计或每组数量。已有任务及恢复沿用启动时保存的额度。全部实际员工含超额占用，余额=max(0,常规额度-实际占用)；零余额每位组长最多一个未释放超额，身份/恢复标记保留至真实执行结束且清理完成后释放。等待不占执行额，降低额度不强杀；扩容/余额回正不改标或抹去超额，取消/重复/迟到及根局部恢复隔离租约，不承诺跨 VS Code 宿主共享。 同部门余额为零且已有本组未释放超额时，不同新 attempt 经 tryAcquireEmployeeWithOverflow 的同一同步授予边界明确拒绝，不保留新 waiter；host 前后校验当前权威身份，adapter 将明确部门拒绝作为 failed finish 送验收而不启动 root/tab/worker。原等待 API 与同身份 held/pending 幂等保留，冲突身份拒绝；余额回正仍可获常规名额且不抹去原超额。受控宿主回归不构成真实原生资源或整组释放验收。 round-436 额度接线候选：每组默认 ceil(maxEmployees/maxLeaders)，分母为配置值，maxLeaders=0 时为0；手动额度不是预留或新增容量，各组上限和可超过共享总额。常规准入同时要求本组和全局余额；仅本组满且全局有余不触发 overflow，常规额度0保留既有全局零例外。权威额度在同根 RuntimeStore 原子快照由单 EH 同步 CAS 端口维护，旧 controller 不覆盖，损坏拒绝、只读不迁移；可信组织生命周期登记成员/同步配置及 manual clamp，保留历史 applied。总监保存只改变 desired，下一次真实新 attempt 持久应用后再经原同步授予路径保留，即使拒绝也生效；持久失败不启动，既有 live/unknown 租约不因额度调整释放。计数来自 held leases 含 overflow，未知不当零；extension 安装总监端口和 Loop+ 精确 leaderAllocation reader，pending 按本组 desired/applied。候选未合入返修冷恢复及提示 Git 后继，不认证跨进程 CAS、第二 EH 或最终组合。",
+      "name": "部门参考额度与真实占用",
+      "description": "新根保存工作区、全局或默认参考额度。默认参考 4 名组长和 16 名员工，分组默认按配置向上取整均分。零余额、未知余额或超过参考额度时由模型决定派发。可信宿主按根、组长及 attempt 身份跟踪实际占用，等待清理确认后释放。旧快照和历史超额标记可恢复。逐组参考额度以 CAS 保存，下一次实际派发记录应用值，读取时不初始化。",
       "status": "active",
       "applies_to": [
         "plugin.department_task"
@@ -7725,8 +7725,8 @@
     },
     {
       "id": "plugin.rule.department_director_collaboration_completion",
-      "name": "运行中协作经总监转发并阻塞未清根完成",
-      "description": "组织 host 保存来源/目标/正文/stable ID 与 pending/awaiting-director，可信总监端口批准后向同部门真实运行 Loop+ 提交补充需求；不可用目标及失败可观察，显式 dismiss 留痕。departmentDeliveries 随目标队列保存，同 ID 同文幂等、冲突拒绝，delivered 只代表入队。根完成需全部组长 Loop+ 门禁通过、无开放工作/澄清/未确认补充需求/未处置协作及占用；总监生产控制、协调及完成确认入口已在中央 composition 装配，round-350 真实 Codex binary/确定性 Responses 新建 EH 只覆盖其限定流程，不扩大总监职责或完整恢复验收。 交付结算与清理独立：仅成功提交当前 failed review 后按 reviews[].subtaskIds 派发并持久回读的新子任务保存宿主 repairSource（源 subtask/attempt/finish event），会话 continueFrom 不证明替代。保留失败历史，精确源当前 attempt 的全部后继最新 reviewed/completed/passed 才可结算；关系缺失/伪造/重复/循环、源新失败、无关失败或未通过后继继续拒绝。task/scheduler 终态、非空通过最终需求覆盖和无开放工作门禁同时成立；多级有界解析，普通同子任务新 attempt 不建边。此规则不授权清理、容量释放或冷恢复。 新建/显式续接各代组长由统一 track 收尾幂等通知真实状态并唤醒总监；blocked 不代表完成或容量释放。总监 run 包含错误收尾与 ownership 释放，显式继续持有自身责任等待旧 run 完成，再复核请求/stopRevision/归属并移交；旧代迟到结果不完成或停止新代，模型调用期间 wake revision 不丢失，同根仅一个循环。首次本地占位 session 原生绑定须模型返回、持久任务、真实 tab 一致；已绑定变化拒绝。 round-366 macOS 安装版 VS Code/Codex 公开 stop-continue 在免费本机 Responses 下完整通过：后继组长结算唤醒总监，六原 Owner 完整 receipt、三代集合 CLOSED、持久容量移除后下一模块实际执行及总监最终汇报；不外推冷恢复、真实 OpenCode、其它平台、真实模型质量或合并后全量回归。",
+      "name": "运行中 JSON 协作与部门完成",
+      "description": "组织 host 保存来源/目标/正文/stable ID 与 pending/awaiting-director，可信总监端口批准后向同部门真实运行 Loop+ 提交补充需求；不可用目标及失败可观察，显式 dismiss 留痕。departmentDeliveries 随目标队列保存，同 ID 同文幂等、冲突拒绝，delivered 只代表入队。组长可在正常 Loop+ 决策附带 departmentCollaborations，总监从同一选中的经典 Loop JSON 读取 directorCollaborations。格式或投递错误单独记录。组长按普通 Loop+ 的持久完成状态结算，总监按目标和汇报决定业务完成。自动完成核对活动执行、待清理责任、持久化、澄清和当前用户补充需求，人工确认继续核对组长汇报及协作处置；总监生产控制、协调及完成确认入口已在中央 composition 装配，round-350 真实 Codex binary/确定性 Responses 新建 EH 只覆盖其限定流程，不扩大总监职责或完整恢复验收。 历史验收修复证据与清理独立。仅成功提交当前 failed review 后按 reviews[].subtaskIds 派发并持久回读的新子任务保存宿主 repairSource（源 subtask/attempt/finish event），会话 continueFrom 不证明替代。保留失败历史，精确源当前 attempt 的全部后继最新 reviewed/completed/passed 才可结算；关系缺失/伪造/重复/循环、源新失败、无关失败或未通过后继继续拒绝。task/scheduler 终态、非空通过最终需求覆盖和无开放工作门禁同时成立；多级有界解析，普通同子任务新 attempt 不建边。此规则不授权清理、容量释放或冷恢复。 新建/显式续接各代组长由统一 track 收尾幂等通知真实状态并唤醒总监；blocked 不代表完成或容量释放。总监 run 包含错误收尾与 ownership 释放，显式继续持有自身责任等待旧 run 完成，再复核请求/stopRevision/归属并移交；旧代迟到结果不完成或停止新代，模型调用期间 wake revision 不丢失，同根仅一个循环。首次本地占位 session 原生绑定须模型返回、持久任务、真实 tab 一致；已绑定变化拒绝。 round-366 macOS 安装版 VS Code/Codex 公开 stop-continue 在免费本机 Responses 下完整通过：后继组长结算唤醒总监，六原 Owner 完整 receipt、三代集合 CLOSED、持久容量移除后下一模块实际执行及总监最终汇报；不外推冷恢复、真实 OpenCode、其它平台、真实模型质量或合并后全量回归。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -8076,7 +8076,7 @@
     {
       "id": "plugin.rule.department_workspace_capacity",
       "name": "工作区人数逐项覆盖及新根快照边界",
-      "description": "性能指导仅放在全局/工作区员工最多人数说明，面板及模式开关不展示黄色警告。工具设置－工作区使用 optional departmentMaxLeaders/departmentMaxEmployees；空输入删除单项覆盖，逐项按有效工作区值、有效全局值、默认 4 名组长及全部门共享 16 名常规并发员工的顺序取用。公共归一化只接受数字或非空数字字符串，正数向下取整后须为safe integer；损坏读取不产生默认覆盖，非空非法保存中文拒绝。PanelState保留原全局字段并增加workspace前缀number/null投影。保存复制最新设置，校验宿主scope/requestId，经完整临时文件替换成功后更新内存；失败保留已保存值，迟到消息不写入或显示到新工作区。生产modelSettings读取实际工作区有效值；只用于新根配置快照，已有任务及其恢复沿用启动时保存的额度，不迁移活跃组织或释放未知租约。浏览器fixture与host测试不等于真实EH/CLI或最终全量回归。",
+      "description": "性能指导仅放在全局/工作区员工最多人数说明，面板及模式开关不展示黄色警告。工具设置－工作区使用 optional departmentMaxLeaders/departmentMaxEmployees；空输入删除单项覆盖，逐项按有效工作区值、有效全局值、默认参考 4 名组长及 16 名员工的顺序取用。公共归一化只接受数字或非空数字字符串，正数向下取整后须为safe integer；损坏读取不产生默认覆盖，非空非法保存中文拒绝。PanelState保留原全局字段并增加workspace前缀number/null投影。保存复制最新设置，校验宿主scope/requestId，经完整临时文件替换成功后更新内存；失败保留已保存值，迟到消息不写入或显示到新工作区。生产modelSettings读取实际工作区有效值；只用于新根配置快照，已建任务及其恢复沿用启动时保存的参考额度，不迁移活跃组织或释放未知租约。浏览器fixture与host测试不等于真实EH/CLI或最终全量回归。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",

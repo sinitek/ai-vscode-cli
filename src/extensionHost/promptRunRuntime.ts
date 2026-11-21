@@ -483,6 +483,17 @@ function parseLoopMainDecision(content: string | null): LoopMainDecision | null 
       const parsed = JSON.parse(jsonText);
       const decision = normalizeLoopMainDecision(parsed);
       if (decision) {
+        const actions: unknown = parsed.directorCollaborations;
+        if (actions !== undefined) {
+          if (Array.isArray(actions) && actions.every((action) => action
+            && typeof action.id === "string" && action.id.trim()
+            && (action.action === "deliver" || action.action === "dismiss"))
+            && new Set(actions.map((action) => action.id)).size === actions.length) {
+            decision.directorCollaborations = actions.map(({ id, action }) => ({ id, action }));
+          } else {
+            decision.directorCollaborationIssue = "invalid-format";
+          }
+        }
         return decision;
       }
     } catch {

@@ -1,4 +1,4 @@
-import type { DepartmentEmployeeAdmissionOccupancy } from "./departmentemployeeallocation";
+import type { DepartmentEmployeeOccupancy } from "./departmentemployeeallocation";
 export type DepartmentCapacityLease = { rootTaskId: string; kind: "leader" | "employee"; identity: string };
 export type DepartmentCapacitySnapshot = { rootTaskId: string; maxLeaders: number; maxEmployees: number; leaders: string[]; employees: string[]; employeeOverflow?: string[] };
 export type DepartmentCapacityLimits = { maxLeaders: number; maxEmployees: number };
@@ -39,6 +39,15 @@ export class DepartmentCapacityPool {
     return this.acquire(rootTaskId, "leader", leaderTaskId, limits, signal);
   }
 
+  trackLeader(rootTaskId: string, moduleId: string, limits?: DepartmentCapacityLimits, signal?: AbortSignal) {
+    return this.track(rootTaskId, "leader", moduleId, limits, signal);
+  }
+
+  trackEmployee(rootTaskId: string, leaderTaskId: string, attempt: string, signal?: AbortSignal) {
+    if (!validText(leaderTaskId) || !validText(attempt)) return Promise.resolve(null);
+    return this.track(rootTaskId, "employee", JSON.stringify([leaderTaskId, attempt]), undefined, signal);
+  }
+
   acquireEmployee(rootTaskId: string, leaderTaskId: string, attempt: string, limits?: DepartmentCapacityLimits, signal?: AbortSignal) {
     if (!validText(leaderTaskId) || !validText(attempt)) return Promise.resolve(null);
     return this.acquire(rootTaskId, "employee", JSON.stringify([leaderTaskId, attempt]), limits, signal);
@@ -67,7 +76,7 @@ export class DepartmentCapacityPool {
   }
 
   /** Authoritative per-group occupancy from actual held leases, including overflow. Never task history. */
-  getEmployeeAllocationOccupancy(rootTaskId: string, leaderTaskId: string): DepartmentEmployeeAdmissionOccupancy | null {
+  getEmployeeAllocationOccupancy(rootTaskId: string, leaderTaskId: string): DepartmentEmployeeOccupancy | null {
     const pool = this.pools.get(rootTaskId);
     if (!pool || !validText(leaderTaskId)) return null;
     let activeEmployees = 0;
@@ -185,6 +194,27 @@ export class DepartmentCapacityPool {
     return result;
   }
 
+  private async track(root: string, kind: "leader" | "employee", identity: string, limits?: DepartmentCapacityLimits, signal?: AbortSignal): Promise<CapacityLease | null> {
+    if (!validText(root) || !validText(identity) || signal?.aborted) return null;
+    if (limits) this.assertLimits(limits);
+    const pool = this.getPool(root, limits);
+    const key = this.leaseKey(kind, identity);
+    const held = pool.leases.get(key);
+    if (held) return this.lease(pool, key, held);
+    return this.hold(root, pool, kind, identity);
+  }
+
+  private hold(root: string, pool: Pool, kind: "leader" | "employee", identity: string, overflow = false): CapacityLease {
+    const key = this.leaseKey(kind, identity);
+    const lease = { rootTaskId: root, kind, identity };
+    pool.leases.set(key, lease);
+    if (kind === "leader") pool.leaderCount += 1;
+    else pool.employeeCount += 1;
+    if (overflow) pool.overflowEmployees.add(identity);
+    this.changed(root);
+    return this.lease(pool, key, lease);
+  }
+
   private getPool(root: string, limits?: DepartmentCapacityLimits): Pool {
     let pool = this.pools.get(root);
     if (!pool) {
@@ -220,16 +250,10 @@ export class DepartmentCapacityPool {
         continue;
       }
       pool.waiters.splice(index, 1);
-      const lease = { rootTaskId: root, kind: waiter.kind, identity: waiter.identity } as DepartmentCapacityLease;
-      pool.leases.set(waiter.key, lease);
-      if (waiter.kind === "leader") pool.leaderCount += 1;
-      else pool.employeeCount += 1;
-      if (overflowAllowed) pool.overflowEmployees.add(waiter.identity);
       waiter.settled = true;
       pool.pending.delete(waiter.key);
       waiter.signal?.removeEventListener("abort", waiter.abort!);
-      this.changed(root);
-      waiter.resolve(this.lease(pool, waiter.key, lease));
+      waiter.resolve(this.hold(root, pool, waiter.kind, waiter.identity, overflowAllowed));
     }
   }
 

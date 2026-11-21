@@ -130,12 +130,9 @@ scenario("production root stop drains two original groups before explicit contin
   const otherCapacity = h.composition.readCapacity("other-root");
   const before = h.composition.readCapacity("root")!;
   assert.equal(before.leaders.length, 2); assert.equal(before.employees.length, 2);
-  assert.equal(before.employeeOverflow?.length, 1);
-  const overflow = before.employeeOverflow![0];
-  const [overflowLeader, overflowAttempt] = JSON.parse(overflow) as [string, string];
-  assert.equal(overflowLeader, b.taskId, "the second group owns the overflow");
-  assert.ok(h.snapshot(b.taskId).running.some((v) => v.subtaskId === "employee" && v.attemptId === overflowAttempt),
-    "the original overflow names the exact live employee attempt");
+  const employee = h.snapshot(b.taskId).running.find((item) => item.subtaskId === "employee");
+  assert.ok(employee);
+  assert.ok(before.employees.includes(JSON.stringify([b.taskId, employee.attemptId])));
   const original = [a.taskId, b.taskId].map((id) => {
     const phase = h.producer.observationSnapshot(id, 1);
     const read = h.store.readLeaderExecutionSet(phase.scope); assert.ok(read.ok && read.value);
@@ -151,7 +148,6 @@ scenario("production root stop drains two original groups before explicit contin
   assert.equal(stop.state.status, "pending", "explicit consumer latches still own the stop lifecycle");
   assert.deepEqual(h.counts(), counts);
   assert.deepEqual(h.composition.readCapacity("root")!.employees, before.employees);
-  assert.deepEqual(h.composition.readCapacity("root")!.employeeOverflow, [overflow]);
   assert.deepEqual(h.composition.readCapacity("root")!.leaders, before.leaders);
   const refused = await bounded(h.start("module-2"), "late new dispatch", h.diagnostic);
   assert.equal(refused.ok, false);

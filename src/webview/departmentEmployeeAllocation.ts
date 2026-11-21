@@ -7,7 +7,7 @@ type EscapeHtml = (text: string) => string;
 
 function describeAllocation(row?: AllocationRow): string {
   return row
-    ? `${row.source === "manual" ? "手动" : "默认均分"} · 期望上限 ${row.desiredLimit} · 实际占用 ${row.activeEmployees ?? "未知"} · ${row.appliedLimit === null ? "待首次派发" : `已应用上限 ${row.appliedLimit}`}${row.pending ? " · 已保存，下次派发生效" : ""}`
+    ? `${row.source === "manual" ? "手动" : "默认均分"} · 员工参考额度 ${row.desiredLimit} · 实际占用 ${row.activeEmployees ?? "未知"} · ${row.appliedLimit === null ? "待首次派发" : `上次派发参考 ${row.appliedLimit}`}${row.pending ? " · 新参考值已保存" : ""}`
     : "员工额度未知，额度服务不可用，暂不可编辑。";
 }
 
@@ -34,7 +34,7 @@ export function renderDepartmentEmployeeAllocationRows(department: DepartmentGro
       <div class="member-meta">${escapeHtml(leaderTaskId ? describeAllocation(row) : "组长尚未创建，暂不可编辑。")}</div>
       ${row && !editable ? '<div class="member-meta">额度写入服务不可用，暂不可编辑。</div>' : ""}
       <div class="department-allocation-controls">
-        <label>员工上限 <input class="department-allocation-input" type="number" min="0" max="${department.maxEmployees}" step="1" aria-label="员工上限：${title}" value="${row?.desiredLimit ?? ""}"${editable ? "" : " disabled"}></label>
+        <label>员工参考额度 <input class="department-allocation-input" type="number" min="0" max="${department.maxEmployees}" step="1" aria-label="员工参考额度：${title}" value="${row?.desiredLimit ?? ""}"${editable ? "" : " disabled"}></label>
       </div>
       <div class="member-meta department-allocation-feedback" role="status" aria-live="polite"></div>
     </li>`;

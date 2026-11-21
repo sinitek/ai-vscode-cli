@@ -132,7 +132,7 @@ async function startHeldLeader(h: ReturnType<typeof harness>, moduleId: string) 
   });
   await h.composition.handleDirectorDecision({ task: root, decision: { status: "continue", estimatedRemainingRounds: 1,
     subtasks: [{ id: moduleId, title: "模块", prompt: "Implement the module and report its result.", taskType: "general", writeFiles: [] }] },
-  content: '{"status":"continue"}', requirements: [] });
+  requirements: [] });
   await leaderStarted.promise;
   const leaderId = [...h.fixture.createdTaskIds].find((id) => h.fixture.readTask(id)?.department?.leaderSubtaskId === moduleId);
   assert.ok(leaderId);
@@ -146,7 +146,7 @@ test("director waiting does not block or redispatch while a leader is running", 
   held = await startHeldLeader(h, "module-wait");
   const leaderIds = [...h.fixture.createdTaskIds].filter((id) => h.fixture.readTask(id)?.department?.role === "leader");
   const result = await h.composition.handleDirectorDecision({ task: h.fixture.readTask(held.root.id)!,
-    decision: { status: "waiting", finalSummary: "等待组长汇报" }, content: '{"status":"waiting"}', requirements: [] });
+    decision: { status: "waiting", finalSummary: "等待组长汇报" }, requirements: [] });
   assert.equal(result.status, "pending-requirements");
   assert.equal(h.fixture.readTask(held.root.id)?.status, "running");
   assert.deepEqual([...h.fixture.createdTaskIds].filter((id) => h.fixture.readTask(id)?.department?.role === "leader"), leaderIds);
@@ -176,7 +176,7 @@ test("director blocked with a valid diagnosis pauses review without releasing li
   const decision: LoopMainDecision = { status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE,
     finalSummary: "已核实的执行阻塞" };
   const result = await h.composition.handleDirectorDecision({ task: held.root, decision,
-    content: JSON.stringify({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE }), requirements: [] });
+    requirements: [] });
   assert.equal(result.status, "needs-review");
   assert.equal(h.fixture.readTask(held.root.id)?.status, "needs-review");
   assert.equal(h.composition.host.runtimeSnapshot(held.root.id)?.leaders[0]?.status, "running");
@@ -190,7 +190,7 @@ test("director waiting without a live leader pauses review instead of sleeping i
   const root = h.fixture.readTask("root-1")!;
   const decision: LoopMainDecision = { status: "waiting", finalSummary: "等待组长汇报" };
   const result = await h.composition.handleDirectorDecision({ task: root, decision,
-    content: JSON.stringify(decision), requirements: [] });
+    requirements: [] });
   assert.equal(result.status, "needs-review");
   assert.equal(h.fixture.readTask(root.id)?.status, "needs-review");
   assert.match(h.fixture.readTask(root.id)?.finalSummary ?? "", /没有正在运行的组长/);
@@ -370,7 +370,7 @@ test("leader ownership is acquired before its first orphan projection and releas
   });
   await h.composition.handleDirectorDecision({ task: root, decision: { status: "continue", estimatedRemainingRounds: 1,
     subtasks: [{ id: "module-1", title: "模块", prompt: "Implement the isolated module and report its result.", taskType: "general", writeFiles: [] }] },
-    content: "{\"status\":\"continue\"}", requirements: [] });
+    requirements: [] });
   await leaderStarted.promise;
   const leader = [...h.fixture.createdTaskIds].map((id) => h.fixture.readTask(id)).find((task) => task?.department?.role === "leader");
   assert.ok(leader);
@@ -486,7 +486,7 @@ for (const invalid of ["stopped", "foreign-workspace", "invalid-metadata"] as co
     const h = harness(); t.after(h.dispose); await h.start();
     const task = h.fixture.readTask("root-1")!;
     h.deps.updateTask(task.id, invalid === "stopped" ? { status: "stopped" } : invalid === "foreign-workspace" ? { workspaceKey: "foreign" } : { departmentInvalid: true });
-    await assert.rejects(h.composition.handleDirectorDecision({ task, decision: { status: "blocked" }, content: '{"status":"blocked"}', requirements: [] }), /部门/);
+    await assert.rejects(h.composition.handleDirectorDecision({ task, decision: { status: "blocked" }, requirements: [] }), /部门/);
   });
 }
 
@@ -898,7 +898,7 @@ function allocationAttempt(h: ReturnType<typeof harness>, taskId: string, id: st
   return { taskId, subtaskId: id, attemptId: id };
 }
 
-test("allocation production ports enforce default five from live leases, save CAS and apply even on refusal", async (t) => {
+test("allocation production ports report live leases and apply advisory changes with CAS", async (t) => {
   const h = harness(); t.after(() => disposeAllocationHarness(h)); h.configuration.limits.maxEmployees = 20; await h.start();
   const leader = await allocationLeader(h, "allocation-a");
   const root = h.fixture.readTask("root-1")!;
@@ -909,22 +909,23 @@ test("allocation production ports enforce default five from live leases, save CA
     const lease = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, `held-${i}`), new AbortController().signal);
     assert.ok(lease, JSON.stringify({task:h.fixture.readTask(leader), runtime:h.composition.host.runtimeSnapshot(root.id), policy:h.composition.readDepartmentEmployeeAllocation(root.id), logs:h.fixture.logs})); leases.push(lease);
   }
-  const denied = allocationAttempt(h, leader, "group-full");
-  assert.equal(await h.composition.host.acquireAttemptExecution(denied, new AbortController().signal), null);
-  assert.equal(h.composition.readCapacity(root.id)!.employees.length, 5);
+  const extra = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "group-full"), new AbortController().signal);
+  assert.ok(extra); leases.push(extra);
+  assert.equal(h.composition.readCapacity(root.id)!.employees.length, 6);
   const latest = h.composition.readDepartmentEmployeeAllocation(root.id)!;
   const request = { requestId: "save-a", leaderTaskId: leader, employeeLimit: 2, expectedRevision: latest.revision };
   const saved = h.composition.updateDepartmentEmployeeLimit(root, request); assert.ok(saved.ok);
   assert.equal(h.composition.updateDepartmentEmployeeLimit(root, { ...request, requestId: "competitor", employeeLimit: 3 }).ok, false);
   assert.equal(saved.allocation.leaders[0].appliedLimit, 5); assert.equal(saved.allocation.leaders[0].pending, true);
-  assert.equal(saved.allocation.leaders[0].activeEmployees, 5);
+  assert.equal(saved.allocation.leaders[0].activeEmployees, 6);
   const repeated = { taskId: leader, subtaskId: "held-0", attemptId: "held-0" };
   assert.equal(await h.composition.host.acquireAttemptExecution(repeated, new AbortController().signal), leases[0]);
   assert.equal(h.composition.readDepartmentEmployeeAllocation(root.id)!.leaders[0].appliedLimit, 5, "held identity is not a new attempt");
-  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "lowered"), new AbortController().signal), null);
+  const lowered = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, leader, "lowered"), new AbortController().signal);
+  assert.ok(lowered); leases.push(lowered);
   const applied = h.composition.readDepartmentEmployeeAllocation(root.id)!;
   assert.equal(applied.leaders[0].appliedLimit, 2); assert.equal(applied.leaders[0].pending, false);
-  assert.equal(applied.leaders[0].activeEmployees, 5, "saving and refusal never release prior employees");
+  assert.equal(applied.leaders[0].activeEmployees, 7);
   assert.equal(h.composition.readEmployeeCapacity(root.id, leader)!.leaderAllocation!.availableEmployees, 0);
   assert.equal(h.composition.updateDepartmentEmployeeLimit(h.fixture.readTask(leader)!, { ...request, expectedRevision: applied.revision }).ok, false);
   assert.equal(h.composition.updateDepartmentEmployeeLimit(root, { ...request, leaderTaskId: "foreign", expectedRevision: applied.revision }).ok, false);
@@ -951,20 +952,19 @@ test("allocation persistence failure blocks the next attempt without releasing e
   held.release();
 });
 
-test("allocation simultaneous group competition shares total and preserves one overflow per leader only at global zero", async (t) => {
+test("simultaneous dispatches across groups are tracked even at zero advisory balance", async (t) => {
   const h = harness(); t.after(() => disposeAllocationHarness(h)); h.configuration.limits.maxEmployees = 1; await h.start();
   const a = await allocationLeader(h, "allocation-a"), b = await allocationLeader(h, "allocation-b");
   const signal = new AbortController().signal;
-  const first = h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-first"), signal);
-  const second = h.composition.host.acquireAttemptExecution(allocationAttempt(h, b, "b-first"), signal);
-  const [regular, overflowB] = await Promise.all([first, second]); assert.ok(regular); assert.ok(overflowB);
-  const overflowA = await h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-overflow"), signal); assert.ok(overflowA);
-  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, a, "a-refused"), signal), null);
-  assert.equal(await h.composition.host.acquireAttemptExecution(allocationAttempt(h, b, "b-refused"), signal), null);
+  const attempts = [[a, "a-first"], [b, "b-first"], [a, "a-second"], [a, "a-third"], [b, "b-second"]]
+    .map(([leader, attempt]) => allocationAttempt(h, leader, attempt));
+  const leases = await Promise.all(attempts.map((attempt) => h.composition.host.acquireAttemptExecution(attempt, signal)));
   const occupancy = h.composition.readCapacity("root-1")!;
-  assert.equal(occupancy.employees.length, 3); assert.equal(occupancy.employeeOverflow!.length, 2);
-  assert.equal(h.composition.readEmployeeCapacity("root-1", a)!.leaderAllocation!.activeEmployees, 2);
-  regular.release(); overflowA.release(); overflowB.release();
+  assert.equal(occupancy.employees.length, 5); assert.equal(occupancy.employeeOverflow, undefined);
+  const reference = h.composition.readEmployeeCapacity("root-1", a)!;
+  assert.equal(reference.availableEmployees, 0);
+  assert.equal(reference.leaderAllocation!.activeEmployees, 3);
+  for (const lease of leases) { assert.ok(lease); lease.release(); }
   assert.equal(h.composition.readCapacity("root-1")!.employees.length, 0);
 });
 

@@ -192,14 +192,12 @@ test("allocation shrink clamps manual desired, retains historical applied and re
     old.runtime.leaders.push({ taskId: "leader", leaderSubtaskId: "module", status: "running", generation: 1 });
     assert.equal(store.write(old).ok, true); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
     assert.equal(store.saveEmployeeLimit("root", "workspace", { leaderTaskId: "leader", employeeLimit: 12, expectedRevision: 1 }).ok, true);
-    const before = { rootTaskId: "root", leaderTaskId: "leader", globalActiveEmployees: 0, activeEmployees: 0, leaderOverflowActive: false };
-    assert.equal(store.beginEmployeeAdmission("workspace", before).ok, true);
+    assert.equal(store.applyEmployeeAllocation("root", "workspace", "leader").ok, true);
     old.capacity.maxEmployees = 6;
     assert.equal(store.write(old).ok, true); assert.equal(store.synchronizeEmployeeAllocation("root", "workspace").ok, true);
     const shrunk = store.read("root", "workspace"); assert.ok(shrunk.ok && shrunk.value?.employeeAllocation);
     assert.deepEqual(shrunk.value.employeeAllocation.leaders[0], { leaderTaskId: "leader", manualLimit: 6, appliedLimit: 12 });
-    const refused = store.beginEmployeeAdmission("workspace", { ...before, activeEmployees: 6, globalActiveEmployees: 6, leaderOverflowActive: true });
-    assert.ok(refused.ok && !refused.evaluation.eligible);
+    assert.equal(store.applyEmployeeAllocation("root", "workspace", "leader").ok, true);
     const after = store.read("root", "workspace"); assert.ok(after.ok && after.value?.employeeAllocation);
     assert.equal(after.value.employeeAllocation.leaders[0].appliedLimit, 6);
     const file = path.join(dir, Buffer.from("root").toString("hex") + ".json");

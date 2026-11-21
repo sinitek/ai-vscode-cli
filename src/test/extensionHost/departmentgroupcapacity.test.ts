@@ -281,7 +281,7 @@ scenario("cancelled group observation detaches while the original producer retai
   assert.equal(h.composition.readCapacity("root")!.leaders.length, 1);
 });
 
-scenario("two production leaders share twenty employee leases and retain one unresolved overflow per group", async (t) => {
+scenario("production leaders dispatch beyond advisory capacity and retain every unresolved employee", async (t) => {
   const h = await productionWiring(t, "codex", true, true, 2), release = gate();
   const firstEntered = gate(), firstRelease = gate(), secondEntered = gate(), secondRelease = gate();
   h.beforeEmployeeBuilder(async () => { await release.promise; throw new Error("controlled-no-native-employee-preparation"); });
@@ -291,7 +291,7 @@ scenario("two production leaders share twenty employee leases and retain one unr
     id: prefix + n, title: prefix + n, taskType: "backend", writeFiles: [prefix + n + ".ts"],
     prompt: "Implement this complete isolated backend requirement with meaningful source verification and report actual changed paths and results.",
   })) });
-  const wakeMessage = "全部门余额为零时核对本组唯一应急准入";
+  const wakeMessage = "全部门余额为零时再派两个员工";
   const authorize = (leaderTaskId: string) => {
     const root = h.read("root")!, projection = h.composition.readDepartmentEmployeeAllocation(root.id)!;
     assert.deepEqual(root.department!.limits, { maxLeaders: 4, maxEmployees: 20 });
@@ -319,48 +319,42 @@ scenario("two production leaders share twenty employee leases and retain one unr
     h.beforeBuilder(async () => { secondEntered.resolve(); await secondRelease.promise; });
     const second = await h.start("module-1"); assert.ok(second.ok); await secondEntered.promise;
     authorize(second.taskId); secondRelease.resolve();
-    await until(() => h.employeeBuilders === 21 && fs.existsSync(h.file("eof-3")));
+    await until(() => h.employeeBuilders === 22 && fs.existsSync(h.file("eof-2")));
     const shared = h.composition.readCapacity("root")!;
-    assert.equal(shared.maxEmployees, 20); assert.equal(shared.employees.length, 21);
-    assert.equal(shared.employeeOverflow?.length, 1);
-    assert.equal(JSON.parse(shared.employeeOverflow![0])[0], second.taskId, "the second group used the final nine regular slots then one emergency slot");
-    assert.equal(shared.employees.filter((id) => !shared.employeeOverflow!.includes(id)).length, 20);
+    assert.equal(shared.maxEmployees, 20); assert.equal(shared.employees.length, 22);
+    assert.equal(shared.employeeOverflow, undefined);
 
-    // With global balance zero the first group can also request one emergency
-    // employee, while both groups' further requests must be refused.
     assert.equal(h.fixture.adapter.host().submitUserMessage(first.taskId, wakeMessage), true);
-    await until(() => h.employeeBuilders === 22 && fs.existsSync(h.file("answer-by-prompt-eof")));
+    await until(() => h.employeeBuilders === 24 && fs.existsSync(h.file("answer-by-prompt-eof")));
     assert.equal(h.mainInvocations.find(({ prompt }) => prompt.includes(wakeMessage))?.taskId, first.taskId);
     const capacity = h.composition.readCapacity("root")!;
-    assert.equal(capacity.employees.length, 22); assert.equal(capacity.employeeOverflow?.length, 2);
-    assert.deepEqual(capacity.employeeOverflow!.map((id) => JSON.parse(id)[0]).sort(), [first.taskId, second.taskId].sort());
-    assert.deepEqual(capacity.employees.filter((id) => !capacity.employeeOverflow!.includes(id)),
-      shared.employees.filter((id) => !shared.employeeOverflow!.includes(id)), "the same twenty regular leases remain held");
-    for (const [leaderTaskId, activeEmployees] of [[first.taskId, 12], [second.taskId, 10]] as const) {
+    assert.equal(capacity.employees.length, 24); assert.equal(capacity.employeeOverflow, undefined);
+    assert.ok(shared.employees.every((identity) => capacity.employees.includes(identity)));
+    for (const [leaderTaskId, activeEmployees] of [[first.taskId, 13], [second.taskId, 11]] as const) {
       const current = h.composition.readEmployeeCapacity("root", leaderTaskId); assert.ok(current?.leaderAllocation);
-      assert.equal(current.availableEmployees, 0); assert.equal(current.leaderOverflowActive, true); assert.equal(current.canAcquireOverflow, false);
+      assert.equal(current.availableEmployees, 0);
       assert.equal(current.leaderAllocation.activeEmployees, activeEmployees);
       assert.equal(current.leaderAllocation.appliedLimit, 20); assert.equal(current.leaderAllocation.pending, false);
     }
     const before = h.store.read("root", "workspace"); assert.ok(before.ok && before.value);
     const responsibilities = before.value.leaderExecutionSets!.flatMap((set) => set.entries)
       .filter((entry) => entry.responsibility.target.role === "employee");
-    assert.equal(responsibilities.length, 22, "refused attempts create no preparation responsibility");
+    assert.equal(responsibilities.length, 24);
     assert.ok(responsibilities.every((entry) => entry.executionId === null), "all admitted preparations remain unconfirmed");
     assert.equal(before.value.executionBindings!.filter((binding) => binding.identity.role === "employee").length, 0);
     assert.deepEqual(before.value.capacity.employees, capacity.employees);
     let stopped = false; const stopping = h.composition.host.stopRoot("root").then((v) => { stopped = true; return v; });
     await new Promise((r) => setImmediate(r)); assert.equal(stopped, false);
-    assert.deepEqual(h.composition.readCapacity("root")!, capacity, "stop retains every pending regular, overflow and leader lease");
+    assert.deepEqual(h.composition.readCapacity("root")!, capacity, "stop retains every pending employee and leader lease");
     release.resolve(); assert.equal(await stopping, false);
     await Promise.all([first.done, second.done]);
-    assert.deepEqual(h.composition.readCapacity("root")!, capacity, "failed preparations keep every regular and overflow responsibility");
+    assert.deepEqual(h.composition.readCapacity("root")!, capacity, "failed preparations keep every responsibility");
     assert.equal(capacity.leaders.length, 2);
     const failed = h.store.read("root", "workspace"); assert.ok(failed.ok && failed.value);
     assert.deepEqual(failed.value.capacity, before.value.capacity);
     assert.deepEqual(failed.value.leaderExecutionSets!.flatMap((set) => set.entries)
       .filter((entry) => entry.responsibility.target.role === "employee"), responsibilities);
-    assert.equal(h.employeeBuilders, 22, "neither group's second emergency request reached preparation");
+    assert.equal(h.employeeBuilders, 24);
     assert.equal(h.wire(h.file("employee")).length, 0, "failed preparation emitted no native employee request");
   } finally { release.resolve(); firstRelease.resolve(); secondRelease.resolve(); }
 });

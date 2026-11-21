@@ -1359,8 +1359,26 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return { kind, eventId: null, eventIds: [], reportEventIds, userMessageCount };
   }
 
-  function createDecisionPort(runtime: ParentRuntime, response: string | null, step: MainStep): LoopPlusDecisionStrategyPort {
+  function createDecisionPort(runtime: ParentRuntime, response: string | null, step: MainStep, decision: LoopPlusDecision): LoopPlusDecisionStrategyPort {
     const controlPlans = new WeakMap<LoopPlusDecisionControlPlan, ControlPlan>();
+    let collaborationSubmitted = false;
+    const submitCollaboration = () => {
+      if (collaborationSubmitted) return;
+      collaborationSubmitted = true;
+      if (!decision.departmentCollaborations?.length && !decision.departmentCollaborationIssue) return;
+      const task = deps.readTask(runtime.taskId);
+      if (task?.departmentInvalid || task?.department?.role !== "leader") return;
+      const logRejected = (reason: string) => deps.log?.("department-leader-collaboration-rejected", { taskId: runtime.taskId, reason });
+      if (decision.departmentCollaborationIssue) logRejected(decision.departmentCollaborationIssue);
+      for (const message of decision.departmentCollaborations ?? []) {
+        try {
+          const result = deps.submitDepartmentCollaboration?.(runtime.taskId, message);
+          if (!result?.ok) logRejected(result?.reason ?? "unavailable");
+        } catch {
+          logRejected("submission-failed");
+        }
+      }
+    };
     return {
       queueView() {
         const snapshot = runtime.scheduler.snapshot();
@@ -1387,12 +1405,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         return protocolMiss(runtime, held, reason, response);
       },
       markDecisionAccepted() {
+        submitCollaboration();
         runtime.protocolRetries = 0;
         runtime.protocolRepair = null;
         runtime.decomposing = false;
         resetMainFailure(runtime);
       },
       clearProtocolRetries() {
+        submitCollaboration();
         runtime.protocolRetries = 0;
         runtime.protocolRepair = null;
       },
@@ -1663,16 +1683,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!sameLoopPlusReportIds(decision.reportEventIds ?? [], step.reportEventIds)) {
       return protocolMiss(runtime, Boolean(held), "reportEventIds 必须逐项确认当前提示中的无需验收报告，且不能跳过或重排。");
     }
-    if (decision.departmentCollaborations?.length) {
-      const task = deps.readTask(runtime.taskId);
-      if (held || snapshot.reviewQueue.length || step.eventIds.length || task?.departmentInvalid || task?.department?.role !== "leader") {
-        return protocolMiss(runtime, Boolean(held), "协作请求必须在处理整批待审事件后由部门组长提交。", response);
-      }
-      for (const message of decision.departmentCollaborations) {
-        const result = deps.submitDepartmentCollaboration?.(runtime.taskId, message);
-        if (!result?.ok) return protocolMiss(runtime, false, result?.reason ?? "部门协作入口不可用。", response);
-      }
-    }
     const blockReview = deps.readTask(runtime.taskId)?.loopPlusBlockReview;
     if (blockReview?.state === "pending") {
       updateTask(runtime.taskId, {
@@ -1708,7 +1718,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       ), response);
     }
     const outcome = loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
-      createDecisionPort(runtime, response, step),
+      createDecisionPort(runtime, response, step, decision),
       step,
       inheritLoopPlusRepairSessions(decision, [snapshot.currentReview, ...snapshot.reviewQueue].filter((event): event is LoopPlusReviewItem => event !== null)),
     );
@@ -1730,7 +1740,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (dispatched.decisions.length === 0) {
       return protocolMiss(runtime, true, "验收前只允许在剩余轮次和空槽内立即启动独立任务，不能依赖待确认结果、复用已有任务或与待验收交付冲突。请继续验收冻结批次。", response);
     }
-    const port = createDecisionPort(runtime, response, step);
+    const port = createDecisionPort(runtime, response, step, decision);
     port.persistEstimatedRounds(decision);
     port.markDecisionAccepted();
     promotePendingAndLaunch(runtime);

@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const { latestUserText } = require("./department_full_eh_scenario");
 
-function assertAllocationPrompt(text, saved, leaderId) {
+function assertAllocationPrompt(text, saved, leaderId, legacy = false) {
   const allocation = saved.employeeAllocation;
   const row = allocation.leaders.find(r => r.leaderTaskId === leaderId);
   assert.ok(row, "decision lacks durable allocation membership");
@@ -21,7 +21,8 @@ function assertAllocationPrompt(text, saved, leaderId) {
     `Regular employee balance available to this leader's next dispatch: ${available}`,
     `Host allocation revision: ${allocation.revision}`,
     `Host reports this allocation pending: ${row.appliedLimit !== desired ? "yes" : "no"}`,
-    "This leader may acquire an overflow employee now: no",
+    legacy ? "This leader may acquire an overflow employee now: no"
+      : "Department capacity figures are advisory. Choose how many employees to dispatch based on the work, including when the balance is zero or unknown.",
   ];
   for (const line of lines) assert.ok(text.includes(line + "\n"), `production prompt mismatch: ${line}`);
   assert.doesNotMatch(text, /allocation: unknown|employee balance unknown/);
@@ -98,16 +99,15 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
       } else {
         assert.ok(event && text.includes(`Current review eventId: ${event.eventId}\n`), "real event required");
         assert.equal(Number(text.match(/^Acceptance batch count: (\d+)/m)?.[1]), 1);
-        const denied = event.subtaskId === "allocation-denied";
-        assert.equal(event.outcome, denied ? "failed" : "completed");
+        assert.equal(event.outcome, "completed");
         answer = { status: "accept", reviewEventId: event.eventId, progressPercent: 30,
-          reviews: [{ reviewEventId: event.eventId, acceptance: denied ? "failed" : "passed", reason: denied ? "常规本组上限0，真实准入拒绝且未启动" : "真实员工答复已到达事件" }],
-          acceptance: { passed: !denied, checks: checks.map(c => denied && c.name === "dispatched work" ? { ...c, passed: false } : c) } };
+          reviews: [{ reviewEventId: event.eventId, acceptance: "passed", reason: "真实员工答复已到达事件" }],
+          acceptance: { passed: true, checks } };
         if (event.subtaskId === "allocation-pulse") {
           assert.equal(zeroDispatched, false); zeroDispatched = true;
           assert.equal(projection.desiredLimit, 0); assert.equal(projection.appliedLimit, Math.ceil(snapshot.employeeAllocation.maxEmployees / snapshot.employeeAllocation.maxLeaders)); assert.equal(projection.pending, true);
-          stage = "leader-zero-pending"; answer.subtasks = [work("allocation-denied")]; answer.independentSubtaskIds = ["allocation-denied"];
-        } else if (denied) {
+          stage = "leader-zero-pending"; answer.subtasks = [work("allocation-zero")]; answer.independentSubtaskIds = ["allocation-zero"];
+        } else if (event.subtaskId === "allocation-zero") {
           assert.equal(restoreDispatched, false); restoreDispatched = true;
           assert.equal(projection.desiredLimit, 0); assert.equal(projection.appliedLimit, 0); assert.equal(projection.pending, false);
           stage = "leader-zero-applied"; wait = "restore-saved";
@@ -119,7 +119,7 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
       const leader = readTasks().find(t => t.id === leaderId);
       const subtask = leader?.subTasks.find(s => s.communicationFile === file); assert.ok(subtask);
       const attempts = leader.loopPlus.running.filter(a => a.subtaskId === subtask.id); assert.equal(attempts.length, 1);
-      assert.ok(["allocation-held", "allocation-pulse", "allocation-restored"].includes(subtask.id), "denied employee must never reach provider");
+      assert.ok(["allocation-held", "allocation-pulse", "allocation-zero", "allocation-restored"].includes(subtask.id));
       identity = { leaderTaskId: leaderId, subtaskId: subtask.id, attemptId: attempts[0].attemptId };
       assert.ok(!employees.some(e => e.attemptId === identity.attemptId), "duplicate employee identity"); employees.push(identity);
       held.set(subtask.id, identity); stage = subtask.id; wait = subtask.id;

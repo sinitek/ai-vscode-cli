@@ -16,7 +16,6 @@ export function createDepartmentEmployeeAllocationHost(deps: {
   runtimeSnapshot(root: string): DepartmentRuntimeSnapshot | null;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   current(root: string): boolean;
-  persistenceFailed(root: string): void;
 }) {
   function rootTask(id: string): LoopTaskRecord | null {
     const task = deps.readTask(id), meta = task && !task.departmentInvalid && normalizeDepartmentMetadata(task.department);
@@ -59,15 +58,9 @@ export function createDepartmentEmployeeAllocationHost(deps: {
     const allocation = readDepartmentEmployeeAllocation(root.id);
     return allocation ? { ok: true, allocation } : { ok: false, error: "员工额度确认读取失败，请刷新后重试。" };
   }
-  /** Called synchronously after identity/idempotence checks, immediately before the original pool grant. */
-  function beginEmployeeAdmission(rootId: string, leaderTaskId: string): boolean {
+  function applyEmployeeAllocation(rootId: string, leaderTaskId: string): void {
     const root = rootTask(rootId);
-    if (!root || !deps.current(rootId) || !leader(root, leaderTaskId)) return false;
-    const occupancy = deps.capacity.getEmployeeAllocationOccupancy(rootId, leaderTaskId);
-    if (!occupancy) return false;
-    const result = deps.store.beginEmployeeAdmission(root.workspaceKey, occupancy);
-    if (!result.ok) { deps.persistenceFailed(rootId); return false; }
-    return result.evaluation.eligible;
+    if (root && deps.current(rootId) && leader(root, leaderTaskId)) deps.store.applyEmployeeAllocation(rootId, root.workspaceKey, leaderTaskId);
   }
   function readEmployeeCapacity(rootId: string, leaderTaskId: string): DepartmentEmployeeCapacity | null {
     const root = rootTask(rootId);
@@ -82,5 +75,5 @@ export function createDepartmentEmployeeAllocationHost(deps: {
       appliedLimit: row.appliedLimit, activeEmployees: row.activeEmployees,
       availableEmployees: Math.min(global.availableEmployees, Math.max(0, row.desiredLimit - row.activeEmployees)), pending: row.pending } };
   }
-  return { readDepartmentEmployeeAllocation, updateDepartmentEmployeeLimit, beginEmployeeAdmission, readEmployeeCapacity };
+  return { readDepartmentEmployeeAllocation, updateDepartmentEmployeeLimit, applyEmployeeAllocation, readEmployeeCapacity };
 }

@@ -212,30 +212,28 @@ test("role prompts preserve director boundaries and live collaboration path", ()
   assert.match(director, /无需等所有其他组长结束/u);
   assert.match(leader, /任务未结束时/u);
   assert.match(director, /根任务统一的验收方案快照/u);
-  assert.match(director, /协作请求尚未处理/u);
+  assert.match(director, /待处理协作是否影响目标/u);
   assert.match(leader, /真实.*Loop\+/u);
-  assert.match(leader, /读取最新容量余额/u);
-  assert.match(leader, /宿主原子裁决/u);
+  assert.match(leader, /参考额度、实际占用/u);
+  assert.match(leader, /附带 departmentCollaborations/u);
   assert.match(director, /maxEmployees 与 maxLeaders 均分预算/u);
   assert.match(director, /向上取整/u);
   assert.match(director, /20 名员工、4 名组长时每组默认额度为 5/u);
-  assert.match(director, /可信数字额度控制/u);
-  assert.match(director, /文字要求中提出不同人数不会改变宿主额度/u);
-  assert.match(leader, /本组下一次常规派发额度/u);
-  assert.match(leader, /本组余额为零但部门仍有常规余额时，不得申请超额例外/u);
-  assert.match(leader, /额度快照缺失或无效时，本组额度未知/u);
+  assert.match(director, /组长预算和余额仅供参考/u);
+  assert.match(leader, /余额为零时仍可按任务需要派发/u);
+  assert.match(leader, /快照缺失时，仍可根据任务需要/u);
   assert.doesNotMatch(employee, /部门员工额度|宿主限额/u);
 });
 
 test("director prefers useful same-round parallelism and retains cohesive single-group tasks", () => {
   const director = buildDepartmentRolePrompt("director");
-  assert.match(director, /多个目标若已就绪、可以独立交付和验收、写入范围互不冲突.*在组长可用名额内同轮派给多个组长/u);
+  assert.match(director, /多个目标若已就绪、可以独立交付和验收、写入范围互不冲突.*同轮派给多个组长/u);
   assert.match(director, /每位组长负责一个内聚、可独立验收的目标/u);
   assert.match(director, /强耦合或需要共同修改同一文件或契约的工作适合留在一组/u);
   assert.match(director, /必须先后完成的工作按依赖分轮。只有一个合适目标时就派一组/u);
   assert.match(director, /预计实现与验证工作量.*尽量均衡各组/u);
-  assert.match(director, /有空位时补派新就绪且不冲突的目标/u);
-  assert.match(director, /尚有未派发工作.*不得宣告部门整体完成/u);
+  assert.match(director, /按需补派新就绪且不冲突的目标/u);
+  assert.match(director, /在整体结论中交代遗留事项/u);
 });
 
 test("employee prompt keeps temporary build output outside the execution directory", () => {

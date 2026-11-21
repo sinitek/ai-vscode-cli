@@ -46,7 +46,7 @@ async function runAllocationScenario({ page, panel, parentState: state, sent, sh
   await showMembers(page);
   const roster = page.locator("#rosterPanelSlot");
   assert.equal(await roster.locator("input, [data-allocation-action], [data-action='allocateEmployees']").count(), 0);
-  assert.doesNotMatch(await roster.innerText(), /员工上限|期望上限|恢复均分/u);
+  assert.doesNotMatch(await roster.innerText(), /员工参考额度|恢复均分/u);
   assert.equal(await dialog.isVisible(), false);
   await opener.press("Enter"); await dialog.waitFor();
   assert.equal(await dialog.locator("button").count(), 2);
@@ -55,7 +55,7 @@ async function runAllocationScenario({ page, panel, parentState: state, sent, sh
   assert.notEqual(await input().getAttribute("aria-label"), await input(b).getAttribute("aria-label"));
   assert.equal(await input().inputValue(), "5");
   assert.match(await row().innerText(), /默认均分.*待首次派发/u);
-  assert.doesNotMatch(await row().innerText(), /已应用上限 0/u);
+  assert.doesNotMatch(await row().innerText(), /上次派发参考 0/u);
   assert.equal(await row("").locator("input").isDisabled(), true);
   await input().fill("6");
   await page.keyboard.press("Escape"); await dialog.waitFor({ state: "hidden" });
@@ -96,7 +96,7 @@ async function runAllocationScenario({ page, panel, parentState: state, sent, sh
   assert.equal(requests().length, 2);
   assert.equal(await dialog.isVisible(), true, "stays open until all saves are confirmed");
   assert.equal(await input().inputValue(), "7");
-  assert.match(await row().innerText(), /手动.*实际占用 1.*待首次派发.*已保存，下次派发生效/u);
+  assert.match(await row().innerText(), /手动.*实际占用 1.*待首次派发.*新参考值已保存/u);
   const failed = requests().at(-1);
   assert.equal(failed.employeeLimit, 0); assert.equal(failed.leaderTaskId, b); assert.equal(failed.expectedRevision, 4);
   await receipt(first); assert.equal(await input(b).isDisabled(), true, "old receipt cannot settle the next group");
@@ -114,7 +114,7 @@ async function runAllocationScenario({ page, panel, parentState: state, sent, sh
   await opener.click();
   assert.equal(await input().inputValue(), "7"); assert.equal(await input(b).inputValue(), "0");
   snapshot().leaders[0].appliedLimit = 7; snapshot().leaders[0].pending = false; await patch();
-  assert.match(await row().innerText(), /已应用上限 7/u);
+  assert.match(await row().innerText(), /上次派发参考 7/u);
   await input().fill("12"); await input(b).fill("8"); await patch();
   assert.equal(await input().inputValue(), "12"); assert.equal(await input(b).inputValue(), "8");
   assert.equal(await input(b).evaluate((element) => document.activeElement === element), true);

@@ -2,9 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
   activateDepartmentEmployeeAllocation as activate,
-  beginDepartmentEmployeeAdmission as begin,
   createDepartmentEmployeeAllocation as create,
-  evaluateDepartmentEmployeeAllocation as evaluate,
   getDepartmentDefaultEmployeeLimit as defaultLimit,
   normalizeDepartmentEmployeeAllocation as normalize,
   projectDepartmentEmployeeAllocation as project,
@@ -12,13 +10,9 @@ import {
   saveDepartmentEmployeeLimit as save,
   updateDepartmentEmployeeAllocationLimits as configure,
   type DepartmentEmployeeAllocationState as State,
-  type DepartmentEmployeeAdmissionOccupancy as Occupancy,
 } from "../departmentemployeeallocation";
 
 const initial = (maxEmployees = 20, maxLeaders = 4) => create("root", { maxLeaders, maxEmployees }, ["a", "b"]);
-const occupancy = (activeEmployees: number | null = 0, globalActiveEmployees: number | null = activeEmployees,
-  leaderOverflowActive: boolean | null = false, leaderTaskId = "a"): Occupancy =>
-  ({ rootTaskId: "root", leaderTaskId, activeEmployees, globalActiveEmployees, leaderOverflowActive });
 const edit = (state: State, employeeLimit: unknown, leaderTaskId = "a") =>
   save(state, { rootTaskId: "root", leaderTaskId, employeeLimit, expectedRevision: state.revision });
 const row = (state: State, leaderTaskId = "a") => project(state, "root").leaders.find((item) => item.leaderTaskId === leaderTaskId)!;
@@ -28,34 +22,23 @@ test("20/4 defaults to five even with only two registered leaders; first applied
   assert.equal(defaultLimit(state), 5);
   assert.deepEqual(project(state, "root"), { rootTaskId: "root", revision: 0, defaultLimit: 5, leaders: ["a", "b"].map((leaderTaskId) =>
     ({ leaderTaskId, source: "default", desiredLimit: 5, appliedLimit: null, activeEmployees: null, pending: true })) });
-  assert.equal(evaluate(state, occupancy()).reason, "not-applied");
-  const attempt = begin(state, occupancy(4, 4));
-  assert.equal(attempt.evaluation.availableEmployees, 1);
-  assert.equal(attempt.evaluation.kind, "regular");
-  assert.equal(row(attempt.state).appliedLimit, 5);
-  assert.equal(row(state).appliedLimit, null, "pure attempt does not mutate its input");
+  const applied = activate(state, "root", "a");
+  assert.equal(row(applied).appliedLimit, 5);
+  assert.equal(row(state).appliedLimit, null, "activation does not mutate its input");
 });
 
-test("nondivisible budgets round up but regular eligibility still needs shared capacity", () => {
+test("nondivisible reference budgets round up", () => {
   const state = initial(10, 3);
   assert.equal(defaultLimit(state), 4);
-  assert.equal(begin(state, occupancy(3, 9)).evaluation.availableEmployees, 1);
-  assert.equal(begin(state, occupancy(4, 9)).evaluation.reason, "group-limit");
-  assert.equal(begin(state, occupancy(3, 10)).evaluation.kind, "overflow");
-  assert.equal(begin(state, occupancy(3, 10, true)).evaluation.reason, "overflow-active");
   assert.equal(defaultLimit({ maxEmployees: Number.MAX_SAFE_INTEGER, maxLeaders: 1 }), Number.MAX_SAFE_INTEGER);
 });
 
-test("zero is a regular quota, and zero global balance retains the explicit overflow exception", () => {
+test("reference quotas can be zero", () => {
   assert.equal(defaultLimit({ maxEmployees: 20, maxLeaders: 0 }), 0);
   assert.equal(defaultLimit({ maxEmployees: 0, maxLeaders: 4 }), 0);
-  assert.equal(begin(initial(20, 0), occupancy()).evaluation.reason, "group-limit");
   const zero = edit(initial(), 0);
   assert.equal(row(zero).source, "manual");
-  assert.equal(begin(zero, occupancy()).evaluation.reason, "group-limit");
-  assert.equal(begin(zero, occupancy(0, 20)).evaluation.kind, "overflow");
-  assert.equal(begin(initial(0), occupancy()).evaluation.kind, "overflow");
-  assert.equal(begin(initial(0), occupancy(1, 1, true)).evaluation.reason, "overflow-active");
+  assert.equal(row(activate(zero, "root", "a")).appliedLimit, 0);
 });
 
 test("save and restore default affect desired only, are idempotent, and use CAS", () => {
@@ -64,31 +47,26 @@ test("save and restore default affect desired only, are idempotent, and use CAS"
   assert.deepEqual(row(manual), { leaderTaskId: "a", source: "manual", desiredLimit: 8, appliedLimit: 5, activeEmployees: null, pending: true });
   assert.deepEqual(edit(manual, 8), manual);
   assert.throws(() => save(manual, { rootTaskId: "root", leaderTaskId: "a", employeeLimit: 8, expectedRevision: applied.revision }), /revision conflict/);
-  const attempted = begin(manual, occupancy(6, 6));
-  assert.equal(attempted.evaluation.availableEmployees, 2);
-  const restored = edit(attempted.state, null);
+  const restored = edit(activate(manual, "root", "a"), null);
   assert.equal(row(restored).source, "default");
   assert.equal(row(restored).desiredLimit, 5);
   assert.equal(row(restored).appliedLimit, 8);
   assert.equal(row(restored).pending, true);
   assert.deepEqual(edit(restored, null), restored);
-  assert.equal(row(begin(restored, occupancy(6, 6)).state).appliedLimit, 5);
+  assert.equal(row(activate(restored, "root", "a")).appliedLimit, 5);
 });
 
-test("lowering applies at the next refused attempt and retains all trusted active counts including overflow", () => {
+test("lowering the reference value preserves the actual active count", () => {
   const state = edit(activate(initial(), "root", "a"), 2);
   const counts = { rootTaskId: "root", leaders: [{ leaderTaskId: "a", activeEmployees: 6 }] };
   const before = JSON.stringify(state);
   assert.equal(project(state, "root", counts).leaders[0].appliedLimit, 5);
   assert.equal(JSON.stringify(state), before, "reading does not activate");
-  const attempted = begin(state, occupancy(6, 10, true));
-  assert.equal(attempted.evaluation.reason, "group-limit");
-  assert.equal(row(attempted.state).appliedLimit, 2);
-  assert.equal(row(attempted.state).pending, false, "refusal still applies the saved limit");
-  assert.equal(project(attempted.state, "root", counts).leaders[0].activeEmployees, 6);
+  const applied = activate(state, "root", "a");
+  assert.equal(row(applied).appliedLimit, 2);
+  assert.equal(row(applied).pending, false);
+  assert.equal(project(applied, "root", counts).leaders[0].activeEmployees, 6);
   assert.deepEqual(counts.leaders, [{ leaderTaskId: "a", activeEmployees: 6 }]);
-  assert.equal(begin(attempted.state, occupancy(1, 10, true)).evaluation.kind, "regular", "unreleased overflow counts but does not block positive regular balance");
-  assert.equal(begin(attempted.state, occupancy(6, 20, false)).evaluation.kind, "overflow", "the global-zero exception is preserved even over the group quota");
 });
 
 test("editing A cannot mark unchanged B pending through a global revision", () => {
@@ -113,7 +91,6 @@ test("configuration changes recompute defaults and cap manual desired values wit
   assert.equal(row(changed).appliedLimit, 12);
   assert.equal(row(changed, "b").desiredLimit, 2);
   assert.equal(row(changed, "b").appliedLimit, 5);
-  assert.equal(begin(changed, occupancy(6, 6, true)).evaluation.eligible, false);
   const larger = configure(changed, { rootTaskId: "root", expectedRevision: changed.revision, maxEmployees: 24, maxLeaders: 4 });
   assert.equal(row(larger, "b").desiredLimit, 6);
   assert.equal(row(larger).desiredLimit, 6, "a capped manual value remains explicit until edited/restored");
@@ -121,22 +98,14 @@ test("configuration changes recompute defaults and cap manual desired values wit
   assert.deepEqual(normalize(JSON.parse(JSON.stringify(changed)), "root"), changed, "historical applied limit above the new total remains valid");
 });
 
-test("manual quotas are per-group ceilings rather than reservations; their sum may exceed total", () => {
+test("per-group reference quotas can sum to more than the department quota", () => {
   const state = edit(edit(initial(), 20), 20, "b");
   assert.equal(project(state, "root").leaders.reduce((sum, leader) => sum + leader.desiredLimit, 0), 40);
-  assert.equal(begin(state, occupancy(10, 19)).evaluation.availableEmployees, 1);
-  assert.equal(begin(state, occupancy(10, 20, true)).evaluation.eligible, false);
 });
 
-test("unknown occupancy refuses both regular and overflow while still activating the latest desired limit", () => {
-  const state = edit(initial(), 3);
-  for (const counts of [occupancy(null, 20), occupancy(0, null), occupancy(0, 20, null)]) {
-    const attempted = begin(state, counts);
-    assert.equal(attempted.evaluation.reason, "unknown-occupancy");
-    assert.equal(attempted.evaluation.eligible, false);
-    assert.equal(attempted.evaluation.availableEmployees, null);
-    assert.equal(row(attempted.state).appliedLimit, 3);
-  }
+test("unknown occupancy remains unknown after the latest reference quota is applied", () => {
+  const state = activate(edit(initial(), 3), "root", "a");
+  assert.equal(row(state).appliedLimit, 3);
   assert.equal(project(state, "root", { rootTaskId: "root", leaders: [] }).leaders[0].activeEmployees, null);
 });
 
@@ -175,21 +144,15 @@ test("strict boundaries reject invalid manual values, roots, members, schemas an
   assert.throws(() => register(state, "other", "c"));
   assert.throws(() => register(state, "root", "root"));
   assert.throws(() => activate(state, "other", "a"));
-  assert.throws(() => begin(state, { ...occupancy(), rootTaskId: "other" }));
-  assert.throws(() => begin(state, occupancy(0, 0, false, "missing")));
+  assert.throws(() => activate(state, "root", "missing"));
   assert.throws(() => configure(state, { rootTaskId: "root", expectedRevision: 0, maxLeaders: 4, maxEmployees: NaN }));
 });
 
-test("occupancy rejects coercion, duplicate or mismatched members and inconsistent trusted counts", () => {
+test("occupancy display rejects coercion and duplicate or mismatched members", () => {
   const state = initial();
   for (const invalid of ["0", undefined, NaN, Infinity, -1, 0.5]) {
-    assert.throws(() => begin(state, { ...occupancy(0, 20), activeEmployees: invalid as number }));
-    assert.throws(() => begin(state, { ...occupancy(0, 20), globalActiveEmployees: invalid as number }));
     assert.throws(() => project(state, "root", { rootTaskId: "root", leaders: [{ leaderTaskId: "a", activeEmployees: invalid as number }] }));
   }
-  assert.throws(() => begin(state, occupancy(2, 1)));
-  assert.throws(() => begin(state, occupancy(0, 20, true)));
-  assert.throws(() => begin(state, occupancy(0, 20, "false" as unknown as boolean)));
   assert.throws(() => project(state, "root", { rootTaskId: "other", leaders: [] }));
   assert.throws(() => project(state, "root", { rootTaskId: "root", leaders: [{ leaderTaskId: "a", activeEmployees: 1 }, { leaderTaskId: "a", activeEmployees: 1 }] }));
   assert.throws(() => project(state, "root", { rootTaskId: "root", leaders: [{ leaderTaskId: "missing", activeEmployees: 1 }] }));

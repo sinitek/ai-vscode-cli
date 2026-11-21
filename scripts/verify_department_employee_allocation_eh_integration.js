@@ -56,9 +56,9 @@ function assertSettled(events, rootId, leaderId, beforeRevision, value, revision
     leaderTaskId: leaderId, requestId: request.requestId, ok: true, revision, desiredLimit: value ?? defaultLimit });
   return { request, settled: replies[0].message };
 }
-function assertCleanup(saved, observations, protocol, identityApi, receiptApi, workerEvents) {
+function assertCleanup(saved, observations, protocol, identityApi, receiptApi, workerEvents, executionCount) {
   const bindings = saved.executionBindings ?? [], sets = saved.leaderExecutionSets ?? [];
-  assert.equal(bindings.length, 4, "one leader and three admitted employees required");
+  assert.equal(bindings.length, executionCount, "expected original execution bindings for every owner");
   assert.equal(sets.length, 1); const set = sets[0];
   assert.equal(set.state, "closed"); assert.ok(set.closure); assert.equal(set.entries.length, bindings.length);
   assert.deepEqual(set.closure.scope, set.scope); assert.equal(set.closure.producerId, set.producerId);
@@ -262,35 +262,34 @@ async function main(argv = process.argv.slice(2)) {
     await row.locator("input").fill("0"); await group.locator("#departmentAllocationSave").click();
     await wait("zero durable settled and UI readback", async () => {
       const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === 0
-        && await row.getAttribute("aria-busy") === "false" && (await row.innerText()).includes("已保存，下次派发生效") && s;
+        && await row.getAttribute("aria-busy") === "false" && (await row.innerText()).includes("新参考值已保存") && s;
     });
     const zeroSaved = readRuntime(rootId); assertSavedTransition(before, zeroSaved, leaderId, 0);
     report.zeroSaved = { saved: zeroSaved, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, before.employeeAllocation.revision, 0, zeroSaved.employeeAllocation.revision) };
     report.stages.saveZero = "passed";
     scenario.release("allocation-pulse");
-    await wait("new attempt refused after zero activation", () => scenario.history.some(h => h.stage === "leader-zero-applied"));
-    const denied = readRuntime(rootId), leader = readTasks().find(t => t.id === leaderId), failed = leader.loopPlus.currentReview;
-    assert.equal(failed.subtaskId, "allocation-denied"); assert.equal(failed.outcome, "failed");
-    assert.notEqual(failed.attemptId, held.held["allocation-held"].attemptId);
-    assert.equal(denied.employeeAllocation.leaders[0].appliedLimit, 0); assert.equal(denied.capacity.employees.length, 1);
-    assert.ok(denied.capacity.employees.includes(JSON.stringify([leaderId, held.held["allocation-held"].attemptId])));
-    assert.ok(!denied.capacity.employees.includes(JSON.stringify([leaderId, failed.attemptId])));
-    assert.ok(!denied.executionBindings.some(b => b.identity.subtaskId === failed.subtaskId || b.identity.attemptId === failed.attemptId));
-    assert.ok(!denied.leaderExecutionSets.some(s => s.entries.some(e => e.responsibility.target.subtaskId === failed.subtaskId)));
-    const refusal = events().filter(e => e.event === "admission" && e.result.ok && !e.result.evaluation.eligible);
-    assert.equal(refusal.length, 1); assert.equal(refusal[0].result.evaluation.reason, "group-limit");
-    assert.equal(refusal[0].occupancy.globalActiveEmployees, 1); assert.equal(refusal[0].occupancy.activeEmployees, 1);
-    assert.equal(refusal[0].saved.value.employeeAllocation.leaders[0].appliedLimit, 0);
-    report.zeroApplied = { saved: denied, failed, refusal: refusal[0], tasks: readTasks() }; report.stages.refuseZero = "passed";
-    await wait("zero applied UI", async () => (await row.innerText()).includes("已应用上限 0"));
+    const atZero = await wait("new attempt runs at zero reference", () => scenario.snapshot().held["allocation-zero"]);
+    const runningAtZero = readRuntime(rootId);
+    assert.equal(runningAtZero.employeeAllocation.leaders[0].appliedLimit, 0);
+    assert.equal(runningAtZero.capacity.employees.length, 2);
+    for (const attempt of [held.held["allocation-held"], atZero]) {
+      assert.ok(runningAtZero.capacity.employees.includes(JSON.stringify([leaderId, attempt.attemptId])));
+      assert.ok(runningAtZero.executionBindings.some(b => b.identity.subtaskId === attempt.subtaskId && b.identity.attemptId === attempt.attemptId));
+    }
+    scenario.release("allocation-zero");
+    await wait("zero reference review", () => scenario.history.some(h => h.stage === "leader-zero-applied"));
+    const applied = readRuntime(rootId);
+    assert.equal(applied.capacity.employees.length, 1);
+    report.zeroApplied = { saved: applied, running: runningAtZero, attempt: atZero }; report.stages.dispatchAtZero = "passed";
+    await wait("zero applied UI", async () => (await row.innerText()).includes("上次派发参考 0"));
     await group.locator('#panelActions [data-action="allocateEmployees"]').click();
     await row.locator("input").fill(String(defaultLimit)); await group.locator("#departmentAllocationSave").click();
     const restored = await wait("restore durable settled and UI readback", async () => {
       const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === defaultLimit && await row.getAttribute("aria-busy") === "false"
-        && (await row.innerText()).includes("已保存，下次派发生效") && await row.locator("input").inputValue() === String(defaultLimit) && s;
+        && (await row.innerText()).includes("新参考值已保存") && await row.locator("input").inputValue() === String(defaultLimit) && s;
     });
-    assertSavedTransition(denied, restored, leaderId, defaultLimit);
-    report.restoreSaved = { mode: "manual", saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, denied.employeeAllocation.revision, defaultLimit, restored.employeeAllocation.revision, defaultLimit) };
+    assertSavedTransition(applied, restored, leaderId, defaultLimit);
+    report.restoreSaved = { mode: "manual", saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, applied.employeeAllocation.revision, defaultLimit, restored.employeeAllocation.revision, defaultLimit) };
     report.stages.restoreSave = "passed"; scenario.release("restore-saved");
     await wait("new restored employee admitted", () => scenario.snapshot().held["allocation-restored"]);
     const admitted = readRuntime(rootId), next = scenario.snapshot().held["allocation-restored"];
@@ -312,8 +311,9 @@ async function main(argv = process.argv.slice(2)) {
       if (saved.capacity.employees.length || saved.capacity.leaders.length || !saved.leaderExecutionSets?.every(s => s.state === "closed")) return null;
       const protocol = readEvents(path.join(root, "original-owner-protocol.ndjson"));
       const observations = readEvents(path.join(root, "original-owner-observations.ndjson"));
-      if (observations.length < 4 || events().filter(e => e.event === "worker-exit" && e.code === 0 && !e.signal).length < 4) return null;
-      return { saved, result: assertCleanup(saved, observations, protocol, identityApi, receiptApi, events()), observations, workers: events().filter(e => e.event.startsWith("worker-")) };
+      const executionCount = 5;
+      if (observations.length < executionCount || events().filter(e => e.event === "worker-exit" && e.code === 0 && !e.signal).length < executionCount) return null;
+      return { saved, result: assertCleanup(saved, observations, protocol, identityApi, receiptApi, events(), executionCount), observations, workers: events().filter(e => e.event.startsWith("worker-")) };
     });
     report.stages.cleanup = "passed";
     responses.assertHealthy(); report.result = "passed";
@@ -396,7 +396,7 @@ function verifyCapturedRun(reportFile) {
       : stage === "leader-zero-pending" ? { ...report.zeroSaved.saved, capacity: report.zeroApplied.saved.capacity }
       : stage === "leader-zero-applied" ? report.zeroApplied.saved
       : { ...report.restoreApplied, capacity: { ...report.restoreApplied.capacity, employees: report.zeroApplied.saved.capacity.employees } };
-    require("./fixtures/department_employee_allocation_eh_scenario").assertAllocationPrompt(requests[0].prompt, snapshot, leaderId);
+    require("./fixtures/department_employee_allocation_eh_scenario").assertAllocationPrompt(requests[0].prompt, snapshot, leaderId, true);
   }
   const { DepartmentRuntimeStore } = require(path.join(report.product, "dist/extensionHost/departmentruntimestore.js"));
   const read = new DepartmentRuntimeStore(path.join(report.root, "home/.sinitek_cli/department-runtime")).read(rootId, baseline.workspaceKey);
@@ -408,7 +408,7 @@ function verifyCapturedRun(reportFile) {
   assert.equal(fs.existsSync(path.join(report.root, "original-owner-observation-errors.ndjson")), false);
   const result = assertCleanup(read.value, observations, protocol,
     require(path.join(report.product, "dist/runtime/departmentexecutionidentity.js")),
-    require(path.join(report.product, "dist/runtime/departmentexecutionreceiptstore.js")), events);
+    require(path.join(report.product, "dist/runtime/departmentexecutionreceiptstore.js")), events, 4);
   assert.equal(report.hostExit.code, 0); assert.equal(report.hostExit.signal, null);
   const workerExits = events.filter(e => e.event === "worker-exit"); assert.equal(workerExits.length, 4);
   const finishSignalAt = fs.statSync(path.join(report.root, "host-finish.signal")).mtimeMs;

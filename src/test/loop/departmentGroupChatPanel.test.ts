@@ -384,7 +384,7 @@ test("allocation UI is director-only editable, honest when unavailable and escap
   projection.leaders[0].participant.title = '<组长 "甲">';
   const unavailable = buildLoopGroupChatPanelContentPatch(state, 1);
   assert.match(unavailable.actionsHtml, /data-action="allocateEmployees"[^>]*>分配员工/);
-  assert.doesNotMatch(unavailable.rosterPanelHtml, /data-allocation|员工上限|额度未知|>分配员工</);
+  assert.doesNotMatch(unavailable.rosterPanelHtml, /data-allocation|员工参考额度|额度未知|>分配员工</);
   assert.match(unavailable.employeeAllocationHtml, /员工额度未知，额度服务不可用/);
   assert.match(unavailable.employeeAllocationHtml, /class="department-allocation-input"[^>]*disabled/);
   projection.employeeAllocation = { rootTaskId: projection.rootTaskId, revision: 3, defaultLimit: 5,
@@ -393,9 +393,9 @@ test("allocation UI is director-only editable, honest when unavailable and escap
   projection.employeeAllocationEditable = true;
   const director = buildLoopGroupChatPanelContentPatch(state, 3);
   const html = director.employeeAllocationHtml;
-  assert.doesNotMatch(director.rosterPanelHtml, /data-allocation|期望上限|员工上限|恢复均分/);
-  assert.match(html, /aria-label="员工上限：组长A · &lt;组长 &quot;甲&quot;&gt;"/);
-  assert.match(html, /实际占用 2 · 待首次派发 · 已保存，下次派发生效/);
+  assert.doesNotMatch(director.rosterPanelHtml, /data-allocation|员工参考额度|恢复均分/);
+  assert.match(html, /aria-label="员工参考额度：组长A · &lt;组长 &quot;甲&quot;&gt;"/);
+  assert.match(html, /实际占用 2 · 待首次派发 · 新参考值已保存/);
   assert.match(html, /type="number"[^>]*min="0"[^>]*max="20"[^>]*step="1"/);
   assert.doesNotMatch(html, /<button\b|恢复均分/);
   assert.match(html, /aria-live="polite"/);
@@ -413,7 +413,7 @@ test("allocation UI is director-only editable, honest when unavailable and escap
   assert.doesNotMatch(leader.actionsHtml, /allocateEmployees/);
   assert.equal(leader.employeeAllocationHtml, "");
   assert.doesNotMatch(leader.rosterPanelHtml, /data-allocation-action|class="department-allocation-input"/);
-  assert.match(leader.rosterPanelHtml, /期望上限 0 · 实际占用 2/);
+  assert.match(leader.rosterPanelHtml, /员工参考额度 0 · 实际占用 2/);
 });
 
 test("allocation writes are explicitly absent from child forwarding contracts", () => {

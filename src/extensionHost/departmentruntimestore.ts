@@ -1,7 +1,6 @@
-import { beginDepartmentEmployeeAdmission, createDepartmentEmployeeAllocation, normalizeDepartmentEmployeeAllocation,
+import { activateDepartmentEmployeeAllocation, createDepartmentEmployeeAllocation, normalizeDepartmentEmployeeAllocation,
   registerDepartmentEmployeeAllocationLeader, saveDepartmentEmployeeLimit, updateDepartmentEmployeeAllocationLimits,
-  type DepartmentEmployeeAllocationState, type DepartmentEmployeeAdmissionOccupancy,
-  type DepartmentEmployeeAdmissionEvaluation } from "../departmentemployeeallocation";
+  type DepartmentEmployeeAllocationState } from "../departmentemployeeallocation";
 import * as fs from "fs";
 import * as path from "path";
 import { randomUUID } from "crypto";
@@ -229,23 +228,18 @@ export class DepartmentRuntimeStore {
       return this.commitValidated(value);
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   }
-  /** Occupancy comes from live leases at the synchronous grant boundary, never disk history. */
-  beginEmployeeAdmission(workspace: string, occupancy: DepartmentEmployeeAdmissionOccupancy):
-    { ok: true; evaluation: DepartmentEmployeeAdmissionEvaluation } | { ok: false; error: string } {
+  applyEmployeeAllocation(root: string, workspace: string, leaderTaskId: string): DepartmentRuntimeWriteResult {
     try {
-      const read = this.readSnapshot(occupancy.rootTaskId, workspace);
-      if (!read.ok || !read.snapshot?.value.employeeAllocation) throw new Error(read.ok ? "部门员工额度尚未初始化。" : read.error);
-      const value = read.snapshot.value;
-      if (!value.runtime.leaders.some((member) => member.taskId === occupancy.leaderTaskId)) throw new Error("部门组长身份无效。");
-      if (value.employeeAllocation!.maxEmployees !== value.capacity.maxEmployees
-        || value.employeeAllocation!.maxLeaders !== value.capacity.maxLeaders) throw new Error("部门额度配置尚未同步。");
-      const result = beginDepartmentEmployeeAdmission(value.employeeAllocation!, occupancy);
-      if (JSON.stringify(result.state) !== JSON.stringify(value.employeeAllocation)) {
-        value.employeeAllocation = result.state;
-        const commit = this.commitValidated(value);
-        if (!commit.ok) return commit;
+      const read = this.readSnapshot(root, workspace);
+      if (!read.ok) return read;
+      const value = read.snapshot?.value;
+      if (!value?.employeeAllocation || !value.runtime.leaders.some((member) => member.taskId === leaderTaskId)) {
+        return { ok: false, error: "部门员工参考额度或组长身份不可用。" };
       }
-      return { ok: true, evaluation: result.evaluation };
+      const state = activateDepartmentEmployeeAllocation(value.employeeAllocation, root, leaderTaskId);
+      if (state.revision === value.employeeAllocation.revision) return { ok: true };
+      value.employeeAllocation = state;
+      return this.commitValidated(value);
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   }
 

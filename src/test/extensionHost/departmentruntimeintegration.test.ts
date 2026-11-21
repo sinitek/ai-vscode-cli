@@ -9,7 +9,7 @@ installVscodeMock();
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { DepartmentMetadata } from "../../department";
 import type { DepartmentRuntimeSnapshot } from "../../extensionHost/departmentruntimestate";
-import type { DepartmentExecutionObservation } from "../../extensionHost/departmentorchestration";
+import type { DepartmentExecutionObservation, DepartmentOrchestrationDeps } from "../../extensionHost/departmentorchestration";
 import type { LoopPlusRuntimeAdapter } from "../../extensionHost/loopPlusRuntimeAdapter";
 import { DepartmentCapacityPool } from "../../departmentcapacity";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
@@ -53,7 +53,7 @@ function harness(options: Parameters<typeof createLoopPlusRuntimeFixture>[0] & {
   let next = 0;
   const read = fixture.readTask;
   const update = (id: string, patch: Partial<LoopTaskRecord>) => { const task = read(id); if (!task) return null; fixture.saveTask({ ...task, ...patch }); return read(id); };
-  const deps = {
+  const deps: DepartmentOrchestrationDeps = {
     capacity, readTask: read, updateTask: update, runtime: fixture.adapter,
     createLeaderTarget: () => { const target = { tabId: `leader-tab-${++next}`, cli: "codex" as const, sessionId: `leader-session-${next}` }; sessions.set(target.sessionId, target); return target; },
     buildLeaderInput: (_route: unknown, req: ReturnType<typeof request>) => ({ displayPrompt: req.prompt, modelPrompt: req.prompt, contextTags: [], loopSubtaskMode: "fullstack" as const }),
@@ -99,43 +99,39 @@ for (const legacy of [false, true]) test(`installed department hook delegates or
   assert.equal(h.fixture.attemptCalls.length, 1);
 });
 
-test("real host/adapter/pool reserves modules once, shares employees and preserves overflow until actual cleanup", async (t) => {
+test("real host/adapter/pool tracks all requested employees until actual cleanup", async (t) => {
   const h = harness(); t.after(() => h.fixture.dispose()); h.register();
   assert.equal(h.host.canCompleteRoot("root"), false);
   assert.equal((await h.host.startLeader("root", request("unknown"))).ok, false);
-  const releaseReviews = deferred(); t.after(() => releaseReviews.resolve());
   h.dispatch("accounts", 3);
-  h.fixture.queueMain(() => releaseReviews.promise);
   const firstPending = h.host.startLeader("root", request("accounts"));
   assert.equal((await h.host.startLeader("root", request("accounts"))).ok, false);
   const first = await firstPending; assert.equal(first.ok, true); if (!first.ok) return;
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "one normal employee and one overflow");
-  assert.equal(h.capacity.snapshot("root")[0].employees.length, 2);
-  assert.equal(h.capacity.getEmployeeCapacity("root", first.taskId)!.leaderOverflowActive, true);
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 3, "all first-group employees start");
+  assert.equal(h.capacity.snapshot("root")[0].employees.length, 3);
+  assert.equal(h.capacity.getEmployeeCapacity("root", first.taskId)!.availableEmployees, 0);
   h.dispatch("reports", 2);
-  h.fixture.queueMain(() => releaseReviews.promise);
   const second = await h.host.startLeader("root", request("reports")); assert.equal(second.ok, true); if (!second.ok) return;
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 3, "other leader has one overflow");
-  assert.equal(h.capacity.snapshot("root")[0].employeeOverflow!.length, 2);
-  assert.equal(h.fixture.rootsCreated.length, 3, "capacity denials create no execution root or tab");
-  assert.equal(h.fixture.createdSubtaskTargets.length, 3);
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 5, "other leader can dispatch at zero balance");
+  assert.deepEqual(h.capacity.snapshot("root")[0].employeeOverflow ?? [], []);
+  assert.equal(h.fixture.rootsCreated.length, 5);
+  assert.equal(h.fixture.createdSubtaskTargets.length, 5);
   const identity = h.capacity.snapshot("root")[0].employees[0];
   const [taskId, attemptId] = JSON.parse(identity);
   const running = (h.read(taskId)!.loopPlus as ReturnType<ReturnType<typeof createLoopPlusScheduler>["snapshot"]>).running.find((a) => a.attemptId === attemptId)!;
   const sameLease = await h.host.acquireAttemptExecution({ taskId, attemptId, subtaskId: running.subtaskId }, new AbortController().signal);
   assert.ok(sameLease);
-  assert.equal(h.capacity.snapshot("root")[0].employees.length, 3, "duplicate identity does not count twice");
+  assert.equal(h.capacity.snapshot("root")[0].employees.length, 5, "duplicate identity does not count twice");
   h.fixture.setHoldAbort(true);
   const stopping = h.host.stopRoot("root");
-  await waitForLoopPlus(() => h.fixture.cancelledTabs.length >= 3, "stop requests actual CLI cancellation");
+  await waitForLoopPlus(() => h.fixture.cancelledTabs.length >= 5, "stop requests actual CLI cancellation");
   assert.equal(h.capacity.snapshot("root")[0].leaders.length, 2);
-  assert.equal(h.capacity.snapshot("root")[0].employees.length, 3);
-  releaseReviews.resolve();
+  assert.equal(h.capacity.snapshot("root")[0].employees.length, 5);
   for (const id of [...h.fixture.parkedSubtaskIds()]) h.fixture.finishParked(id, { status: "stopped" });
   assert.equal(await stopping, true);
   assert.equal(h.capacity.snapshot("root")[0].employees.length, 0);
   assert.equal(h.capacity.snapshot("root")[0].leaders.length, 0);
-  assert.equal(h.fixture.rootsDisposed.length, 3);
+  assert.equal(h.fixture.rootsDisposed.length, 5);
   assert.equal(h.host.canCompleteRoot("root"), false);
 });
 
@@ -304,8 +300,8 @@ test("persistence failure during completion cannot prevent released employee and
 for (const invalidation of ["parent-identity", "cancel"] as const) test(`employee admission rechecks ${invalidation} after a real pool grant and preserves pending identity`, async (t) => {
   const h = harness(); t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
   const granted = deferred(), releaseGrant = deferred(); t.after(() => releaseGrant.resolve());
-  const acquire = h.capacity.tryAcquireEmployeeWithOverflow.bind(h.capacity);
-  h.capacity.tryAcquireEmployeeWithOverflow = (...args) => {
+  const acquire = h.capacity.trackEmployee.bind(h.capacity);
+  h.capacity.trackEmployee = (...args) => {
     const result = acquire(...args);
     granted.resolve();
     return result.then(async (lease) => { await releaseGrant.promise; return lease; });
@@ -390,27 +386,25 @@ test("non-default root plan is deep-copied through leader prompts, and recovery 
   assert.equal(fresh.recoverRoot(h.read("custom")!, root.department, root.loopPlusAcceptancePlan, saved, h.capacity.snapshot("custom")).ok, false);
 });
 
-test("expansion and ordinary completion keep an unreleased overflow owned by its original leader", async (t) => {
+test("a reference adjustment and one employee finishing preserve all other live occupancy", async (t) => {
   const h = harness(); t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
   h.dispatch("balance", 2); const started = await h.host.startLeader("root", request("accounts")); assert.ok(started.ok); if (!started.ok) return;
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "normal plus overflow started");
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "both employees started");
   const initial = h.capacity.snapshot("root")[0];
-  const overflowIdentity = initial.employeeOverflow![0];
-  const [leaderId, overflowAttempt] = JSON.parse(overflowIdentity);
+  const retainedIdentity = initial.employees[0];
+  const [leaderId, retainedAttempt] = JSON.parse(retainedIdentity);
   const task = h.read(leaderId)!;
   const running = (task.loopPlus as { running: Array<{ attemptId: string; subtaskId: string }> }).running;
-  const overflowSubtask = running.find((a) => a.attemptId === overflowAttempt)!.subtaskId;
-  const regularSubtask = h.fixture.parkedSubtaskIds().find((id) => id !== overflowSubtask)!;
-  // Existing duplicate leader admission updates limits atomically without replacing its lease.
-  await h.capacity.acquireLeader("root", "accounts", { maxLeaders: 4, maxEmployees: 4 });
+  const retainedSubtask = running.find((item) => item.attemptId === retainedAttempt)!.subtaskId;
+  const completedSubtask = h.fixture.parkedSubtaskIds().find((id) => id !== retainedSubtask)!;
+  await h.capacity.trackLeader("root", "accounts", { maxLeaders: 4, maxEmployees: 4 });
   h.dispatch("expanded");
   assert.equal(h.fixture.adapter.host().submitUserMessage(started.taskId, "余额回正后开始新的常规员工"), true);
   await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("expanded-0"), "fresh decision uses restored regular balance");
-  assert.deepEqual(h.capacity.snapshot("root")[0].employeeOverflow, [overflowIdentity]);
-  h.pause(); h.fixture.finishParked(regularSubtask, { status: "end", content: "regular employee completed" });
-  await waitForLoopPlus(() => h.capacity.snapshot("root")[0].employees.length === 2, "regular cleanup released");
-  assert.equal(h.capacity.getEmployeeCapacity("root", started.taskId)!.leaderOverflowActive, true);
-  assert.deepEqual(h.capacity.snapshot("root")[0].employeeOverflow, [overflowIdentity]);
+  assert.ok(h.capacity.snapshot("root")[0].employees.includes(retainedIdentity));
+  h.pause(); h.fixture.finishParked(completedSubtask, { status: "end", content: "employee completed" });
+  await waitForLoopPlus(() => h.capacity.snapshot("root")[0].employees.length === 2, "finished employee cleaned up");
+  assert.ok(h.capacity.snapshot("root")[0].employees.includes(retainedIdentity));
   await h.host.stopRoot("root");
 });
 
@@ -475,7 +469,7 @@ test("leader capacity spans actual Loop+ acceptance and root completion waits fo
   assert.equal((await h.host.continueRoot("root")).ok, false, "completed organization is never implicitly reopened");
 });
 
-test("leader prompts are decision snapshots and the real host rechecks an outstanding overflow lease", async (t) => {
+test("leader prompts are decision snapshots and zero balance permits multiple later employees", async (t) => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "department-admission-isolated-home-"));
   try {
     const fixturePath = path.resolve(__dirname, "fixtures", "departmentAdmissionRegressionFixture.js");
@@ -540,10 +534,10 @@ for (const failure of ["employee", "leader"] as const) test(`lost ${failure} obs
   const installReader = h.fixture.adapter.setDepartmentEmployeeCapacityReader!;
   h.fixture.adapter.setDepartmentEmployeeCapacityReader = (reader) => { readCapacity = reader; installReader(reader); };
   const pool = new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 20 });
-  const tryAcquire = pool.tryAcquireEmployeeWithOverflow.bind(pool);
+  const track = pool.trackEmployee.bind(pool);
   let delayedIdentity: string | undefined;
-  pool.tryAcquireEmployeeWithOverflow = (...args) => {
-    const result = tryAcquire(...args); // Real pool decides and grants before this test-only return gate.
+  pool.trackEmployee = (...args) => {
+    const result = track(...args);
     const running = createLoopPlusScheduler({ snapshot: h.read(args[1])?.loopPlus }).snapshot().running;
     if (running.some((item) => item.attemptId === args[2] && item.subtaskId === "queued-before-loss-1")) {
       delayedIdentity = JSON.stringify([args[1], args[2]]);
@@ -554,8 +548,6 @@ for (const failure of ["employee", "leader"] as const) test(`lost ${failure} obs
   const host = createDepartmentOrchestrationHost({ ...h.deps, capacity: pool });
   assert.equal(host.recoverRoot(root, root.department, root.loopPlusAcceptancePlan!, h.host.runtimeSnapshot("root"), h.capacity.snapshot("root")).ok, true);
   assert.notEqual(readCapacity("root", source.taskId), null);
-  // Permit two actual regular grants, then hold only the second return across the authority change.
-  await pool.acquireLeader("root", "accounts", { maxLeaders: 4, maxEmployees: 4 });
   h.dispatch("queued-before-loss", 2);
   assert.equal(h.fixture.adapter.host().submitUserMessage(source.taskId, "继续派发两个真实员工"), true);
   await waitForLoopPlus(() => admissions.length === 2 && h.fixture.parkedSubtaskIds().length === 3, "one real grant executes and the next granted return is held");
@@ -628,7 +620,7 @@ for (const failure of ["unlink", "root-replaced", "unknown", "rmdir", "async-dis
     t.after(() => { h.fixture.dispose(); for (const root of roots) fs.rmSync(root.cwd, { recursive: true, force: true }); fs.rmSync(workspace, { recursive: true, force: true }); });
     h.register("root", ["accounts"]); h.dispatch("cleanup", 2); h.pause();
     const starting = h.host.startLeader("root", request("accounts"));
-    await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "normal and overflow started");
+    await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "both employees started");
     const started = await starting; assert.ok(started.ok); if (!started.ok) return;
     const parked = h.fixture.parkedAttempts()[1];
     const snapshot = createLoopPlusScheduler({ snapshot: h.read(started.taskId)!.loopPlus }).snapshot();
@@ -660,12 +652,12 @@ for (const failure of ["unlink", "root-replaced", "unknown", "rmdir", "async-dis
     await rejection;
     await waitForLoopPlus(() => h.host.runtimeSnapshot("root")!.leaders[0].status === "blocked", "cleanup failure blocks owner");
     assert.equal(h.capacity.snapshot("root")[0].employees.length, 2);
-    assert.equal(h.capacity.snapshot("root")[0].employeeOverflow?.length, 1);
-    assert.equal(h.capacity.getEmployeeCapacity("root", started.taskId)!.leaderOverflowActive, true);
+    const quarantinedIdentity = JSON.stringify([started.taskId, attemptId]);
+    assert.ok(h.capacity.snapshot("root")[0].employees.includes(quarantinedIdentity));
     assert.equal(h.capacity.snapshot("root")[0].leaders.length, 1);
-    assert.equal(h.capacity.getEmployeeCapacity("root", started.taskId)!.canAcquireOverflow, false);
     assert.equal(h.host.canCompleteRoot("root"), false);
     assert.equal((await h.host.continueRoot("root")).ok, false);
+    h.fixture.setCloseSubtaskTabError(null);
     assert.equal(await h.host.stopRoot("root"), false);
     assert.ok(h.fixture.adapter.observeAttempt!(started.taskId, parked.subtaskId, attemptId), "failed observation survives business settlement");
     assert.equal(fs.readFileSync(path.join(workspace, "source.txt"), "utf8"), "source must survive");
@@ -679,7 +671,7 @@ for (const failure of ["unlink", "root-replaced", "unknown", "rmdir", "async-dis
     assert.ok(h.fixture.adapter.hasTaskExecution(started.taskId), "retained cleanup is not idle");
     for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
     assert.ok(h.capacity.snapshot("root")[0].employees.length >= 1);
-    assert.equal(h.capacity.getEmployeeCapacity("root", started.taskId)!.leaderOverflowActive, true);
+    assert.ok(h.capacity.snapshot("root")[0].employees.includes(quarantinedIdentity));
     // Failure of this department cannot quarantine a different healthy root.
     h.register("healthy", ["reports"]); h.dispatch("healthy");
     const healthy = await h.host.startLeader("healthy", request("reports")); assert.ok(healthy.ok);

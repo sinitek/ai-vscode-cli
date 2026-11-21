@@ -154,11 +154,12 @@ function departmentEmployeeCapacityLines(
   context: LoopPlusMainPromptContext["departmentEmployeeCapacity"],
 ): string[] {
   if (!context) return [];
+  const advisory = "Department capacity figures are advisory. Choose how many employees to dispatch based on the work, including when the balance is zero or unknown.";
   const unknownGlobal = [
     "Department-wide employee capacity: employee balance unknown (the latest host snapshot is unavailable or invalid).",
-    "Do not treat unknown as zero balance or as permission to use an overflow exception.",
+    advisory,
   ];
-  const unknownLeader = "This leader group's employee allocation: unknown; regular/overflow admission eligibility is also unknown (the host did not provide a valid allocation snapshot). Do not infer that this leader may dispatch or acquire overflow; the host must obtain a valid current allocation snapshot and recheck before launch.";
+  const unknownLeader = "This leader group's employee allocation: unknown (the host did not provide a valid allocation snapshot).";
   try {
     const snapshot = context.snapshot;
     if (!snapshot || typeof snapshot !== "object") return [...unknownGlobal, unknownLeader];
@@ -185,10 +186,8 @@ function departmentEmployeeCapacityLines(
       `- This leader group already has an overflow employee: ${snapshot.leaderOverflowActive ? "yes" : "no"}`,
       `- Department-wide regular employee balance is zero: ${snapshot.availableEmployees === 0 ? "yes" : "no"}`,
       "- Regular employee capacity is shared by all leaders within this department; departments with different root task ids have separate balances. Every active employee in this department, including overflow employees, counts as occupied.",
-      "- Only a zero department-wide regular balance can permit the existing one-unreleased-overflow-per-leader exception. A full local allocation does not permit overflow while department-wide regular balance remains.",
-      "- An existing overflow lease remains active after capacity expansion and cannot be stacked.",
       "- The director model does not consume employee capacity.",
-      "- This is an advisory decision-time snapshot. The host must atomically recheck before launch; another leader in this department may consume positive balance concurrently.",
+      `- ${advisory}`,
       "- Local concurrency, file conflicts, pause, cancellation, and acceptance gates remain in force.",
     ];
 
@@ -212,7 +211,7 @@ function departmentEmployeeCapacityLines(
         && typeof allocation.pending === "boolean";
       if (!validAllocation) return [...lines, unknownLeader];
       lines.push(
-        "This leader group's employee allocation (host-provided, for the next admission decision):",
+        "This leader group's employee allocation (advisory):",
         `- Allocation source: ${allocation.source}`,
         `- Desired regular employee limit for this group: ${allocation.desiredLimit}`,
         `- Applied group limit: ${allocation.appliedLimit === null ? "not yet applied" : allocation.appliedLimit}`,
@@ -220,10 +219,8 @@ function departmentEmployeeCapacityLines(
         `- Regular employee balance available to this leader's next dispatch: ${allocation.availableEmployees}`,
         `- Host allocation revision: ${allocation.revision}`,
         `- Host reports this allocation pending: ${allocation.pending ? "yes" : "no"}`,
-        `- This leader may acquire an overflow employee now: ${snapshot.canAcquireOverflow ? "yes" : "no"}`,
         "- Pending status comes from the host allocation snapshot; do not infer it from department-wide capacity changes.",
-        "- Saving a changed limit does not interrupt employees that have already started. The latest desired limit applies at the next real employee admission attempt.",
-        "- If active group occupancy exceeds the desired limit, wait for real execution cleanup to release employees before normal dispatch resumes.",
+        "- The desired value is the latest reference for planning. Applied records the reference at the latest real dispatch attempt.",
       );
     } catch {
       lines.push(unknownLeader);

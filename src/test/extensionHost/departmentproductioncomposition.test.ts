@@ -51,7 +51,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     limits: { maxLeaders: 4, maxEmployees: 1 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
   const update = (id: string, patch: Partial<LoopTaskRecord>) => updateLoopTaskRecord(id, patch);
   let sequence = 0, workspace = "workspace", prepares: (() => void) | null = null;
-  let decision: LoopMainDecision & { directorCollaborations?: Array<{ id: string; action: string }> } = { status: "blocked", finalSummary: "等待汇报" };
+  let decision: LoopMainDecision | string = { status: "blocked", finalSummary: "等待汇报" };
   let composition: ReturnType<typeof createDepartmentRuntimeComposition>;
   const parser = createPromptRunRuntimeHost({ getActiveWorkspaceKey: () => workspace } as Parameters<typeof createPromptRunRuntimeHost>[0]);
   let lastDirectorOutput = "";
@@ -66,7 +66,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     },
     resolvePromptRunModelForRole: (input) => input.loopMainModel,
     resolvePromptRunThinkingModeForRole: () => undefined,
-    runPrompt: async (input) => { directorPrompts.push(input); lastDirectorOutput = JSON.stringify(decision); decision = { status: "blocked", finalSummary: "等待汇报" }; },
+    runPrompt: async (input) => { directorPrompts.push(input); lastDirectorOutput = typeof decision === "string" ? decision : JSON.stringify(decision); decision = { status: "blocked", finalSummary: "等待汇报" }; },
     resolveLoopTaskSessionId: (target) => target.sessionId,
     bindLoopTaskToSession: (id, sessionId) => update(id, { sessionId }),
     getLoopRoundRunStatus: () => "end",
@@ -122,11 +122,11 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
   const start = (displayPrompt = "实现账号和报表模块") => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt, modelPrompt: "实现目标", contextTags: [], departmentConfiguration: configuration });
   const dispatch = (prefix: string, count = 1) => fixture.queueMain((input, tab) => fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "dispatch",
     subtasks: Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i}`, title: `${prefix}-${i}`, prompt: `Implement ${prefix}-${i}, report all changes and relevant verification evidence to the real department leader.`, taskType: "general", writeFiles: [] })) }) }));
-  const finish = () => fixture.queueMain((input, tab) => {
+  const finish = (departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>) => fixture.queueMain((input, tab) => {
     const event = input.displayPrompt.match(/Current review eventId: (\S+)/)?.[1];
     fixture.publish(input, tab, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "completed", progressPercent: 100,
       ...(event && event !== "(none)" ? { reviewEventId: event } : {}), finalSummary: "模块已完成", answerConclusion: "完成",
-      acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "module", passed: true }] })) });
+      acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "module", passed: true }], departmentCollaborations })) });
   });
   return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, directorProgressRefreshes, configuration, start, dispatch, finish,
     decide: (next: typeof decision) => { decision = next; }, prepare: (next: () => void) => { prepares = next; }, workspace: (value: string) => { workspace = value; },
@@ -202,17 +202,18 @@ test("production director can finish a cohesive single-group task with spare lea
 
 test("production composition starts classic director and two real Loop+ leaders with shared persisted employee capacity and cleanup", async (t) => {
   const h = harness(); t.after(h.dispose);
+  h.configuration.limits.maxLeaders = 1;
   h.decide({ status: "continue", subtasks: [modulePrompt("accounts"), modulePrompt("reports")] });
   h.dispatch("accounts", 3); h.dispatch("reports", 2);
   await h.start();
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 3, "two real leaders sharing one regular slot and one overflow each");
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 5, "two leaders and five employees exceed the advisory capacity");
   assert.match(h.directorPrompts[0].modelPrompt, /把本轮可并行的模块放进同一个 subtasks 数组/u);
-  assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：4 \/ 4/u);
+  assert.match(h.directorPrompts[0].modelPrompt, /组长可用名额：1 \/ 1.*派发数量由你决定/u);
   const snapshot = h.composition.host.runtimeSnapshot(h.rootTaskId)!;
   assert.equal(snapshot.leaders.length, 2);
   const capacity = h.composition.readCapacity(h.rootTaskId)!;
-  assert.equal(capacity.leaders.length, 2); assert.equal(capacity.employees.length, 3); assert.equal(capacity.employeeOverflow?.length, 2);
-  assert.equal(h.fixture.rootsCreated.length, 3, "waiting attempts create no execution resources");
+  assert.equal(capacity.leaders.length, 2); assert.equal(capacity.employees.length, 5); assert.equal(capacity.employeeOverflow, undefined);
+  assert.equal(h.fixture.rootsCreated.length, 5);
   for (const member of snapshot.leaders) {
     const task = h.fixture.readTask(member.taskId)!;
     assert.equal(task.schedulingMode, "event_driven"); assert.notEqual(task.sessionId, "director-session");
@@ -224,12 +225,12 @@ test("production composition starts classic director and two real Loop+ leaders 
   assert.ok(h.fixture.attemptCalls.every((input) => input.model === "employee" && input.modelPrompt.includes("产研部员工")));
   assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
   h.decide({ status: "completed", finalSummary: "过早完成" }); h.composition.wakeDirector(h.rootTaskId);
-  await waitForLoopPlus(() => h.notices.some((n) => n.includes("完成被组织门禁拒绝")), "pre-commit organization completion gate");
+  await waitForLoopPlus(() => h.notices.some((n) => n.includes("暂未写入整体完成")), "pre-commit organization completion gate");
   assert.equal(h.fixture.readTask(h.rootTaskId)?.status, "running");
   h.fixture.setHoldAbort(true);
   const stopped = h.composition.organizationControl.stop(h.fixture.readTask(h.rootTaskId)!);
-  await waitForLoopPlus(() => h.fixture.cancelledTabs.length === 3, "real cancellation requested");
-  assert.equal(h.composition.readCapacity(h.rootTaskId)?.employees.length, 3);
+  await waitForLoopPlus(() => h.fixture.cancelledTabs.length === 5, "real cancellation requested");
+  assert.equal(h.composition.readCapacity(h.rootTaskId)?.employees.length, 5);
   for (const id of [...h.fixture.parkedSubtaskIds()]) h.fixture.finishParked(id, { status: "stopped" });
   await stopped;
   assert.equal(h.composition.readCapacity(h.rootTaskId)?.employees.length, 0);
@@ -416,16 +417,30 @@ test("production freezes omitted thinking defaults once and preserves explicit C
   assert.equal(frozen.routes.director.model, "director"); assert.equal(h.configuration.routes.director.thinkingMode, undefined);
 });
 
-test("department collaboration intent keeps normal wait parsing and cannot authorize review or completion", () => {
+test("department collaboration is optional on ordinary decisions and cannot authorize review or completion", () => {
   const { normalizeLoopPlusDecision } = require("../../loopPlusDecision") as typeof import("../../loopPlusDecision");
   const message = { id: "stable", targetLeaderTaskId: "leader-target", body: "协调需求" };
   assert.deepEqual(normalizeLoopPlusDecision({ status: "wait", departmentCollaborations: [message] })?.departmentCollaborations, [message]);
   for (const invalid of [null, {}, { ...message, body: [] }, { ...message, id: " " }, { ...message, targetLeaderTaskId: null }]) {
-    assert.equal(normalizeLoopPlusDecision({ status: "wait", departmentCollaborations: [invalid] }), null);
+    assert.equal(normalizeLoopPlusDecision({ status: "wait", departmentCollaborations: [invalid] })?.departmentCollaborationIssue, "invalid-format");
   }
-  assert.equal(normalizeLoopPlusDecision({ status: "wait", departmentCollaborations: [message, message] }), null);
-  assert.equal(normalizeLoopPlusDecision({ status: "blocked", departmentCollaborations: [message] }), null);
+  assert.equal(normalizeLoopPlusDecision({ status: "wait", departmentCollaborations: [message, message] })?.departmentCollaborationIssue, "invalid-format");
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "blocked", departmentCollaborations: [message] })?.departmentCollaborations, [message]);
   assert.equal(normalizeLoopPlusDecision({ status: "wait", reviewEventId: "unreviewed", departmentCollaborations: [message] }), null);
+});
+
+test("leader can coordinate in a review decision and a foreign target does not undo completion", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.decide({ status: "continue", subtasks: [modulePrompt("accounts"), modulePrompt("reports")] });
+  h.dispatch("accounts"); h.dispatch("reports"); await h.start();
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "running employees");
+  const [source, target] = h.composition.host.runtimeSnapshot(h.rootTaskId)!.leaders;
+  h.finish([{ id: "foreign", targetLeaderTaskId: "foreign", body: "拒绝外部目标" },
+    { id: "review-coordination", targetLeaderTaskId: target.taskId, body: "验收时请求配合" }]);
+  h.fixture.finishParked("accounts-0", { status: "end", content: "账户完成" });
+  await waitForLoopPlus(() => h.composition.host.runtimeSnapshot(h.rootTaskId)?.leaders.find((member) => member.taskId === source.taskId)?.status === "completed", "ordinary Loop+ completion");
+  assert.deepEqual(h.composition.host.runtimeSnapshot(h.rootTaskId)?.collaborations.map((item) => item.id), ["review-coordination"]);
+  await h.composition.organizationControl.stop(h.fixture.readTask(h.rootTaskId)!);
 });
 
 test("central stop and continuation preserve the real leader task and frozen routing despite changed new-root choices", async (t) => {
@@ -481,11 +496,11 @@ test("director real prompt discloses failed, missing and invalid reports and uns
   let prompt = h.directorPrompts[h.directorPrompts.length - 1].modelPrompt;
   assert.ok(prompt.includes("数据库依赖失败，需要协调")); assert.ok(prompt.includes("失败或阻塞"));
   assert.ok(prompt.includes('"taskStatus": "error"')); assert.ok(prompt.includes('"moduleId": "unstarted"'));
-  assert.ok(prompt.includes("模块尚未启动，不得整体完成"));
+  assert.ok(prompt.includes("模块尚未启动"));
   updateLoopTaskRecord(member.taskId, { finalSummary: undefined });
   count = h.directorPrompts.length; h.composition.wakeDirector(h.rootTaskId);
   await waitForLoopPlus(() => h.directorPrompts.length > count, "missing report in actual prompt");
-  assert.ok(h.directorPrompts[h.directorPrompts.length - 1].modelPrompt.includes("实际汇报不可用，不得视为完成"));
+  assert.ok(h.directorPrompts[h.directorPrompts.length - 1].modelPrompt.includes("实际汇报不可用"));
   const memberFile = h.taskFile(member.taskId);
   const savedMemberFile = fs.readFileSync(memberFile, "utf8");
   const savedMemberStore = JSON.parse(savedMemberFile);
@@ -494,7 +509,7 @@ test("director real prompt discloses failed, missing and invalid reports and uns
   count = h.directorPrompts.length; h.composition.wakeDirector(h.rootTaskId);
   await waitForLoopPlus(() => h.directorPrompts.length > count, "invalid association not report evidence");
   prompt = h.directorPrompts[h.directorPrompts.length - 1].modelPrompt;
-  assert.ok(prompt.includes("真实身份或记录不可核验")); assert.equal(prompt.includes("不得泄漏的异部门汇报"), false);
+  assert.ok(prompt.includes("组长身份或记录不可核验")); assert.equal(prompt.includes("不得泄漏的异部门汇报"), false);
   assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
   fs.writeFileSync(memberFile, savedMemberFile);
   // A genuinely missing disk record also stays unavailable, without scanning other tasks.
@@ -502,7 +517,7 @@ test("director real prompt discloses failed, missing and invalid reports and uns
   fs.writeFileSync(memberFile, JSON.stringify({ ...disk, tasks: disk.tasks.filter((task: LoopTaskRecord) => task.id !== member.taskId) }));
   count = h.directorPrompts.length; h.composition.wakeDirector(h.rootTaskId);
   await waitForLoopPlus(() => h.directorPrompts.length > count, "missing record in actual prompt");
-  assert.ok(h.directorPrompts[h.directorPrompts.length - 1].modelPrompt.includes("真实身份或记录不可核验"));
+  assert.ok(h.directorPrompts[h.directorPrompts.length - 1].modelPrompt.includes("组长身份或记录不可核验"));
   fs.writeFileSync(memberFile, savedMemberFile);
   await h.composition.organizationControl.stop(h.fixture.readTask(h.rootTaskId)!);
 });
@@ -521,6 +536,34 @@ test("director summaries stay bounded and explicitly count pending work beyond t
   assert.match(prompt, /长度限制未展开：模块=\d+；待处理协作=[1-9]\d*/);
   assert.ok(prompt.includes("未展开不代表已处理")); assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
   await h.composition.organizationControl.stop(h.fixture.readTask(h.rootTaskId)!);
+});
+
+test("ordinary Loop+ direct completion is reported as a settled department leader", async (t) => {
+  const h = harness(); t.after(h.dispose);
+  h.decide({ status: "continue", subtasks: [modulePrompt("accounts")] });
+  h.fixture.queueMain((input, tab) => h.fixture.publish(input, tab, { status: "end", content: JSON.stringify({
+    status: "completed", directCompletion: true, answerConclusion: "已有结果满足目标", finalSummary: "直接完成模块。",
+  }) }));
+  await h.start();
+  await waitForLoopPlus(() => h.composition.host.runtimeSnapshot(h.rootTaskId)?.leaders[0]?.status === "completed", "direct completion settles the real leader");
+  assert.equal(h.fixture.parkedSubtaskIds().length, 0);
+  assert.match(h.composition.host.directorCoordinationContext(h.rootTaskId), /直接完成模块/u);
+});
+
+test("director completes against original goals and uses only the selected JSON candidate for coordination", async (t) => {
+  const h = harness(); t.after(h.dispose); await readyForDirectorCompletion(h);
+  const task = h.fixture.readTask(h.rootTaskId)!;
+  updateLoopTaskRecord(task.id, { subTasks: [...task.subTasks, { id: "optional", title: "可选模块", status: "pending" }] });
+  assert.equal(h.composition.host.canCompleteRoot(task.id), false);
+  h.decide([
+    '```json\n{"status":"completed","directorCollaborations":[{"id":"wrong-candidate","action":"deliver"}]}\n```',
+    '```json\n{"status":"completed","finalSummary":"原始目标已满足，可选模块未启动。","directorCollaborations":{"action":"invalid"}}\n```',
+  ].join("\n\n"));
+  h.composition.wakeDirector(task.id);
+  await waitForLoopPlus(() => h.fixture.readTask(task.id)?.status === "completed", "director completion without optional module");
+  assert.equal(h.fixture.readTask(task.id)?.finalSummary, "原始目标已满足，可选模块未启动。");
+  assert.ok(h.notices.some((notice) => notice.includes("协作处置格式无效")));
+  assert.equal(h.notices.some((notice) => notice.includes("wrong-candidate")), false);
 });
 
 test("manual organization complete preserves classic fields without inventing a model answer and rechecks gates", async (t) => {

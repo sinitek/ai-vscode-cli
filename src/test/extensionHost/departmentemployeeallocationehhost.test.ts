@@ -49,7 +49,7 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
     capacity: capacity.snapshot(data.root.id)[0] }).ok, true);
   assert.equal(store.synchronizeEmployeeAllocation(data.root.id, data.root.workspaceKey).ok, true);
   const host = createDepartmentEmployeeAllocationHost({ store, capacity, workspaceKey: () => data.root.workspaceKey,
-    readTask: id => data.records.get(id) ?? null, runtimeSnapshot: () => runtime, current: () => true, persistenceFailed: () => assert.fail("unexpected persistence failure") });
+    readTask: id => data.records.get(id) ?? null, runtimeSnapshot: () => runtime, current: () => true });
   const prompt = () => {
     const snapshot = host.readEmployeeCapacity(data.root.id, data.leader.id); assert.ok(snapshot?.leaderAllocation);
     const value = buildLoopPlusMainModelPrompt({ taskId: data.leader.id, rootPrompt: "composition", taskStoreFile: "/fixture/tasks.json",
@@ -60,22 +60,24 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
     return { snapshot, value };
   };
   assert.match(prompt().value, /Applied group limit: not yet applied/);
-  assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), true);
-  const employee = await capacity.tryAcquireEmployeeWithOverflow(data.root.id, data.leader.id, "live"); assert.ok(employee);
+  host.applyEmployeeAllocation(data.root.id, data.leader.id);
+  const employee = await capacity.trackEmployee(data.root.id, data.leader.id, "live"); assert.ok(employee);
   t.after(() => employee.release());
   const current = prompt(); assert.equal(current.snapshot.leaderAllocation!.desiredLimit, defaultLimit);
   const saved = host.updateDepartmentEmployeeLimit(data.root, { requestId: "zero", leaderTaskId: data.leader.id, employeeLimit: 0, expectedRevision: current.snapshot.leaderAllocation!.revision }); assert.ok(saved.ok);
   const pending = prompt(); assert.match(pending.value, /Desired regular employee limit for this group: 0/);
   assert.ok(pending.value.includes(`Applied group limit: ${defaultLimit}`)); assert.match(pending.value, /pending: yes/);
-  assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), false);
-  const denied = prompt(); assert.match(denied.value, /Applied group limit: 0/); assert.match(denied.value, /pending: no/);
-  assert.equal(denied.snapshot.activeEmployees, 1); assert.equal(denied.snapshot.availableEmployees, limits.maxEmployees - 1);
-  assert.match(denied.value, /This leader may acquire an overflow employee now: no/);
+  host.applyEmployeeAllocation(data.root.id, data.leader.id);
+  const additional = await capacity.trackEmployee(data.root.id, data.leader.id, "additional"); assert.ok(additional);
+  t.after(() => additional.release());
+  const applied = prompt(); assert.match(applied.value, /Applied group limit: 0/); assert.match(applied.value, /pending: no/);
+  assert.equal(applied.snapshot.activeEmployees, 2); assert.equal(applied.snapshot.availableEmployees, limits.maxEmployees - 2);
+  assert.match(applied.value, /Department capacity figures are advisory/);
   assert.ok(host.updateDepartmentEmployeeLimit(data.root, { requestId: "default", leaderTaskId: data.leader.id, employeeLimit: null,
-    expectedRevision: denied.snapshot.leaderAllocation!.revision }).ok);
-  assert.match(prompt().value, /pending: yes/); assert.equal(host.beginEmployeeAdmission(data.root.id, data.leader.id), true);
+    expectedRevision: applied.snapshot.leaderAllocation!.revision }).ok);
+  assert.match(prompt().value, /pending: yes/); host.applyEmployeeAllocation(data.root.id, data.leader.id);
   const restored = prompt(); assert.ok(restored.value.includes(`Applied group limit: ${defaultLimit}`)); assert.match(restored.value, /pending: no/);
-  assert.equal(restored.snapshot.activeEmployees, 1, "quota updates retain existing live lease");
+  assert.equal(restored.snapshot.activeEmployees, 2, "reference updates retain existing live leases");
 });
 
 test("allocation EH wrapper observes the actual product panel instance without replacing message handlers", async () => {
@@ -86,7 +88,6 @@ test("allocation EH wrapper observes the actual product panel instance without r
     show() { /* The original product show installs its real webview. */ }
     post(message: unknown) { forwarded++; return message; }
   }
-  class Store { beginEmployeeAdmission() { return false; } }
   class Provider {
     resolveWebviewView(_view: unknown) { forwarded++; }
     postMessage(message: unknown) { forwarded++; return message; }
@@ -113,7 +114,7 @@ test("allocation EH wrapper observes the actual product panel instance without r
   new vm.Script(entry.slice(entry.indexOf("const allocationBaseRun"))).runInNewContext({
     exports: module, fs: { appendFileSync(_file: string, line: string) { recorded.push(JSON.parse(line)); }, existsSync: () => false }, path,
     vscode: { extensions: { getExtension: () => ({ extensionPath: "/fixture" }) } },
-    require: (file: string) => file === "node:child_process" ? { fork() { throw Error("no worker expected"); } } : file.endsWith("departmentruntimestore.js") ? { DepartmentRuntimeStore: Store } : file.endsWith("departmentemployeeallocationhost.js") ? allocationModule : file.endsWith("viewProvider.js") ? { CliBridgeViewProvider: Provider } : { LoopGroupChatPanel: Panel },
+    require: (file: string) => file === "node:child_process" ? { fork() { throw Error("no worker expected"); } } : file.endsWith("departmentemployeeallocationhost.js") ? allocationModule : file.endsWith("viewProvider.js") ? { CliBridgeViewProvider: Provider } : { LoopGroupChatPanel: Panel },
     process: { env: { HOME: "/isolated/home" } }, Date, WeakSet, Reflect,
   });
   await module.run();

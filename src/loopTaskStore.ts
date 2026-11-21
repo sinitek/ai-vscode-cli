@@ -209,6 +209,8 @@ export type LoopSubtaskDecision = {
 
 export type LoopMainDecision = {
   status: "completed" | "continue" | "waiting" | "blocked" | "clarify";
+  directorCollaborations?: Array<{ id: string; action: "deliver" | "dismiss" }>;
+  directorCollaborationIssue?: "invalid-format";
   progressPercent?: number;
   answerConclusion?: string;
   finalSummary?: string;
