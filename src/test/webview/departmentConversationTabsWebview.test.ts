@@ -21,17 +21,17 @@ function getFunction(name: string, dependencies: string[] = [], values: unknown[
 
 const valid = { role: "director", rootTaskId: "root-long-abcdef01", taskId: "root-long-abcdef01", moduleTitle: "产研部" };
 
-test("department tabs add the role icon and an available employee name to session labels", () => {
+test("department main tabs keep their role icons and subtasks use the ordinary Loop+ label", () => {
   const getPresentation = getFunction("getDepartmentConversationTabPresentation") as (tab: unknown) => unknown;
   const format = getFunction("formatConversationTabLabel", ["getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary"],
     [getPresentation, (tab: any) => tab.loopTaskRole ? { taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId } : null]) as (tab: unknown, base: string) => string;
   assert.equal(format({ loopTaskRole: "main", loopTaskId: valid.taskId, departmentPresentation: valid }, "Codex"), "☀️ Codex");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "leader-id-12345678", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id-12345678", moduleTitle: "同名模块" } }, "Codex"),
     "🌛 Codex");
-  assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "root-long-abcdef01", departmentPresentation: { ...valid, role: "employee", employeeSubtaskId: "employee-87654321" } }, "Codex"),
+  assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "leader-id-12345678", loopSchedulingMode: "event_driven" }, "Codex"),
     "⭐️ Codex");
   assert.equal(format({ loopTaskRole: "subtask", loopTaskId: "root-long-abcdef01", departmentPresentation: { ...valid, role: "employee", employeeSubtaskId: "employee-87654321", employeeName: "王磊" } }, "Codex"),
-    "⭐️ 王磊 · Codex");
+    "⭐️ Codex");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "leader-id-12345678", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id-12345678" } }, "Codex2"),
     "🌛 Codex2");
   assert.equal(format({ loopTaskRole: "main", loopTaskId: "task" }, "Codex"), "🌛 Codex");
@@ -45,15 +45,15 @@ test("department tabs add the role icon and an available employee name to sessio
 
 test("trusted department projection drives the expected mode and role changes alter the auto-mode key", () => {
   const getPresentation = getFunction("getDepartmentConversationTabPresentation") as (tab: unknown) => typeof valid | null;
-  const resolveRuntime = new Function("getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary",
+  const resolveRuntime = new Function("getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary", "getConversationRuntimeState",
     `${VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("function resolveAutoInteractiveModeForTab("), VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("function autoInteractiveModeTabKey("))}; return resolveAutoInteractiveModeForTab;`)(
-      getPresentation, () => null) as (tab: unknown) => string;
+      getPresentation, (tab: any) => ({ taskRole: tab.loopTaskRole, loopTaskId: tab.loopTaskId }), () => null) as (tab: unknown) => string;
   const keySource = VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.slice(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("function autoInteractiveModeTabKey("), VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING.indexOf("function syncAutoInteractiveModeForActiveTab("));
   const keyRuntime = new Function("getDepartmentConversationTabPresentation", "getLoopMetaForTabSummary", `${keySource}; return autoInteractiveModeTabKey;`)(getPresentation, () => null) as (tab: unknown) => string;
   const tab = { id: "same-tab", loopTaskRole: "main", loopTaskId: valid.taskId, departmentPresentation: valid };
   assert.equal(resolveRuntime(tab), "department");
   assert.equal(resolveRuntime({ ...tab, loopTaskId: "leader-id", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id" } }), "loop_plus");
-  assert.equal(resolveRuntime({ ...tab, loopTaskRole: "subtask", loopTaskId: "leader-id", departmentPresentation: { ...valid, role: "employee", taskId: "leader-id", employeeSubtaskId: "sub-12345678" } }), "coding");
+  assert.equal(resolveRuntime({ id: tab.id, loopTaskRole: "subtask", loopTaskId: "leader-id", loopSchedulingMode: "event_driven" }), "coding");
   const directorKey = keyRuntime(tab);
   const leaderKey = keyRuntime({ ...tab, loopTaskId: "leader-id", departmentPresentation: { ...valid, role: "leader", taskId: "leader-id" } });
   assert.notEqual(directorKey, leaderKey);

@@ -32,7 +32,7 @@ for (const role of ["director", "leader"] as const) {
     );
     assert.doesNotMatch(patch.rosterPanelHtml, /[☀🌛⭐]/u);
     assert.match(patch.rosterPanelHtml, /class="member-name" title="组长A · 同名模块">组长A · 同名模块<\/div>/u);
-    if (role === "leader") assert.match(patch.rosterPanelHtml, /class="member-name" title="(魏强 · 员工甲[^"]*)">\1<\/div>/u);
+    if (role === "leader") assert.match(patch.rosterPanelHtml, /class="member-name" title="(子任务 1：导出接口[^"]*)">\1<\/div>/u);
     assert.equal(patch.subtitleText, role === "director" ? state.task.id : `${projection.title} · ${state.task.id}`);
     if (role === "director") {
       assert.ok(html.includes(`<p id="panelSubtitle" title="${state.task.id}">${state.task.id}</p>`));
@@ -52,12 +52,12 @@ for (const role of ["director", "leader"] as const) {
       assert.match(patch.rosterPanelHtml, /data-department-title="组长B" data-department-task-id="department-20261113-leader-222222"/u);
       assert.match(patch.rosterPanelHtml, /class="member-name" title="组长B · 同名模块">组长B · 同名模块<\/div>/u);
       assert.match(patch.rosterPanelHtml, /员工状态汇总"><span class="department-status-tag">运行中 0<\/span><span class="department-status-tag">验收中 0<\/span><span class="department-status-tag">待验收 0<\/span>/u);
-      assert.doesNotMatch(patch.rosterPanelHtml, /员工甲|员工乙/u);
+      assert.doesNotMatch(patch.rosterPanelHtml, /导出接口|报表接口/u);
       assert.match(patch.rosterPanelHtml, /data-department-task-id=""[^>]*disabled[^>]*>打开组长群聊<\/button><div class="member-meta">群聊尚未创建/u);
     } else {
       assert.doesNotMatch(patch.rosterPanelHtml, /department-leader-progress/u);
-      assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"[\s\S]*魏强 · 员工甲/u);
-      assert.doesNotMatch(patch.rosterPanelHtml, /leader-222222|员工乙|打开组长群聊/u);
+      assert.match(patch.rosterPanelHtml, /data-department-leader-task-id="department-20261113-leader-111111"[\s\S]*子任务 1：导出接口/u);
+      assert.doesNotMatch(patch.rosterPanelHtml, /leader-222222|报表接口|打开组长群聊/u);
     }
     assert.match(patch.rosterPanelHtml, /运行中/u);
     for (const action of ["supplementTask", "askMainModel", "switchModels", "continueTask"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
@@ -129,7 +129,7 @@ test("director roster keeps the director first and displays newer leader modules
 test("leader roster always shows its own employees without disclosure controls", () => {
   const state = departmentState("leader");
   const html = buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml;
-  assert.match(html, /魏强 · 员工甲/u);
+  assert.match(html, /子任务 1：导出接口/u);
   assert.doesNotMatch(html, /department-status-tag|toggleDepartmentEmployees/u);
 });
 
@@ -143,15 +143,15 @@ test("leader chat titles use their module number even when earlier groups are ab
   assert.equal(buildLoopGroupChatPanelTitle(state, getStrings()), "组长");
 });
 
-test("leader roster keeps the leader first and displays newer employees with distinct names", () => {
+test("leader roster keeps the leader first and reverses display order without renumbering subtasks", () => {
   const state = departmentState("leader");
   const department = state.department!;
   const template = department.leaders[0];
-  department.leaders = [{ ...template, employees: ["王磊", "陈静"].map((employeeName) => ({
-    ...template.employees[0], title: "子任务", employeeName,
+  department.leaders = [{ ...template, employees: [1, 2].map((number) => ({
+    ...template.employees[0], id: `subtask-${number}`, title: `子任务 ${number}：接口`,
   })) }];
   assert.match(buildLoopGroupChatPanelContentPatch(state, 2).rosterPanelHtml,
-    />组长A · 同名模块<\/div>[\s\S]*>陈静 · 子任务<\/div>[\s\S]*>王磊 · 子任务<\/div>/u);
+    />组长A · 同名模块<\/div>[\s\S]*>子任务 2：接口<\/div>[\s\S]*>子任务 1：接口<\/div>/u);
 });
 
 test("modal refresh does not force iframe focus and keeps the opaque child bridge bound", () => {

@@ -1594,11 +1594,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       function formatConversationTabLabel(tab, baseLabel) {
         const department = getDepartmentConversationTabPresentation(tab);
         if (department) {
-          const roleIcon = department.role === "director" ? "☀️"
-            : department.role === "leader" ? "🌛" : "⭐️";
-          const employeeName = department.role === "employee" && typeof department.employeeName === "string"
-            ? department.employeeName.trim() : "";
-          return roleIcon + " " + (employeeName ? employeeName + " · " : "") + baseLabel;
+          return (department.role === "director" ? "☀️ " : "🌛 ") + baseLabel;
         }
         const meta = getLoopMetaForTabSummary(tab);
         if (meta) {
@@ -1614,17 +1610,14 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
 
       function getDepartmentConversationTabPresentation(tab) {
         const value = tab && tab.departmentPresentation;
-        if (!value || (value.role !== "director" && value.role !== "leader" && value.role !== "employee")
+        if (!value || (value.role !== "director" && value.role !== "leader")
           || typeof value.rootTaskId !== "string" || !value.rootTaskId.trim()
           || typeof value.taskId !== "string" || !value.taskId.trim()
-          || typeof value.moduleTitle !== "string" || !value.moduleTitle.trim()
-          || (value.role === "employee" && (typeof value.employeeSubtaskId !== "string" || !value.employeeSubtaskId.trim()))) {
+          || typeof value.moduleTitle !== "string" || !value.moduleTitle.trim()) {
           return null;
         }
-        if (value.taskId !== tab.loopTaskId
-          || (value.role === "director" && (tab.loopTaskRole !== "main" || value.taskId !== value.rootTaskId))
-          || (value.role === "leader" && tab.loopTaskRole !== "main")
-          || (value.role === "employee" && tab.loopTaskRole !== "subtask")) {
+        if (value.taskId !== tab.loopTaskId || tab.loopTaskRole !== "main"
+          || (value.role === "director" && value.taskId !== value.rootTaskId)) {
           return null;
         }
         return value;
@@ -1633,8 +1626,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       function resolveAutoInteractiveModeForTab(tab) {
         const department = getDepartmentConversationTabPresentation(tab);
         if (department) {
-          return department.role === "director" ? "department"
-            : department.role === "leader" ? "loop_plus" : "coding";
+          return department.role === "director" ? "department" : "loop_plus";
         }
         const selectedMode = getExplicitInteractiveModeForTab(tab);
         if (selectedMode) {
@@ -1676,7 +1668,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
           department ? department.rootTaskId : "",
           department ? department.taskId : "",
           department ? department.moduleTitle : "",
-          department && department.role === "employee" ? department.employeeSubtaskId : "",
         ].join("|");
       }
 

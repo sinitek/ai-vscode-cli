@@ -4,7 +4,7 @@ import { buildLoopPlusFinishEventId } from "../../loopPlusScheduler";
 
 /** Display-only fixture: it does not represent a created organization or host navigation. */
 export function departmentState(role: DepartmentGroupChatProjection["role"] = "director"): LoopGroupChatPanelState {
-  const employee = { id: "employee-a", title: "员工甲 / API <契约> & 长名字".repeat(3), role: "subtask", status: "acceptance_passed", employeeName: "魏强" };
+  const employee = { id: "employee-a", title: "子任务 1：" + "导出接口 / API <契约> & 长标题".repeat(3), role: "subtask", status: "acceptance_passed" };
   const feedback = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: [employee.title],
     reviews: [{ eventId: buildLoopPlusFinishEventId(employee.id, "attempt-a"), acceptance: "passed", reason: "展示夹具的验收反馈" }],
@@ -22,7 +22,7 @@ export function departmentState(role: DepartmentGroupChatProjection["role"] = "d
       director: { id: "director", title: "部门总监", role: "main", status: "running" },
       leaders: [
         { taskId: "department-20261113-leader-111111", leaderNumber: 1, participant: { id: "leader-a", title: "同名模块", role: "main", status: "running" }, employees: [employee] },
-        { taskId: "department-20261113-leader-222222", leaderNumber: 2, participant: { id: "leader-b", title: "同名模块", role: "main", status: "paused" }, employees: [{ id: "employee-b", title: "员工乙", role: "subtask", status: "pending", employeeName: "李娜" }] },
+        { taskId: "department-20261113-leader-222222", leaderNumber: 2, participant: { id: "leader-b", title: "同名模块", role: "main", status: "paused" }, employees: [{ id: "employee-b", title: "子任务 1：报表接口", role: "subtask", status: "pending" }] },
         { taskId: "", leaderNumber: 3, participant: { id: "leader-pending", title: "尚未创建的模块", role: "main", status: "pending" }, employees: [] },
       ],
       maxLeaders: 4, maxEmployees: 20, activeLeaders: 2, activeEmployees: 1,

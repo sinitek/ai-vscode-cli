@@ -2137,7 +2137,7 @@ function renderDepartmentRosterPanel(
 ): string {
   const department = state.department!;
   const member = (participant: LoopGroupChatPanelParticipant, role: DepartmentRole, leaderCode = "", navigation = "", anchor?: string, progressPercent?: number): string => {
-    const label = formatDepartmentMemberTitle(role, participant.title, leaderCode, participant.employeeName);
+    const label = formatDepartmentMemberTitle(role, participant.title, leaderCode);
     const avatarLabel = { director: "总", leader: "组", employee: "员" }[role];
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>

@@ -303,12 +303,10 @@ export type ConversationTabSummary = {
 };
 
 export type DepartmentConversationTabPresentation = {
-  readonly role: "director" | "leader" | "employee";
+  readonly role: "director" | "leader";
   readonly rootTaskId: string;
   readonly taskId: string;
   readonly moduleTitle: string;
-  readonly employeeSubtaskId?: string;
-  readonly employeeName?: string;
 };
 
 export type PromptHistoryItem = {

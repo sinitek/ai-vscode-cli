@@ -184,7 +184,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     const frameHandle = await page.locator("#departmentChatContent iframe").elementHandle({ timeout: 10000 });
     const frame = await frameHandle.contentFrame(); await frame.locator(".department-roster").waitFor();
     assert.equal(await frame.locator("#panelHeading").innerText(), "组长A");
-    assert.match(await frame.locator(".department-roster").innerText(), /真实员工/);
+    assert.equal(await frame.locator(".department-roster .member-name").last().innerText(), "子任务 1：真实员工");
     assert.match(await frame.locator("#taskPanelSlot").innerText(), /继承产研部统一验收方案[\s\S]*根固化快照/);
     assert.equal(await frame.locator('[data-action="acceptancePlan"]').count(), 0);
     const binding = deps.panelsByTaskId.get(data.root.id).getDepartmentModalTarget();
@@ -214,7 +214,7 @@ function withTimeout(promise, label, timeoutMs = 5000) {
     await page.locator('#panelActions [role="progressbar"][aria-valuenow="100"]').waitFor();
     assert.deepEqual(errors, []);
     const result = { scenario: "coordinator-record-fixtures", status: "passed", binding, parentScroll, effects, warnings, errors,
-      checks: ["weighted-progress-initial", "weighted-progress-live", "weighted-progress-completed", "unknown-capacity", "director-plan-panel-removed", "leader-inherited-plan", "record-hierarchy", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
+      checks: ["weighted-progress-initial", "weighted-progress-live", "weighted-progress-completed", "unknown-capacity", "director-plan-panel-removed", "leader-inherited-plan", "record-hierarchy", "loop-plus-subtask-title", "bound-leader-ask", "leader-refresh-without-panel", "return-closes-only", "parent-scroll-and-focus"],
       boundary: "Mock VS Code and task record ports; not a real Extension Development Host or organization launch" };
     fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2)); console.log(JSON.stringify(result));
   } catch (error) {

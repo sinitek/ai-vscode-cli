@@ -1,9 +1,7 @@
 import type { ChatMessage, ConversationTabSummary, DepartmentConversationTabPresentation } from "../webview/types";
 import type { LoopTaskRecord } from "../loopTaskStore";
-import { resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
 import { departmentMetadata, isDepartmentLeader } from "./departmentGroupChatProjection";
 import { formatDepartmentMemberTitle, getDepartmentLeaderCode } from "../department";
-import { getDepartmentEmployeeName } from "../departmentEmployeeNames";
 
 export type DepartmentConversationTabReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
@@ -22,15 +20,8 @@ function presentation(
   rootTaskId: string,
   taskId: string,
   moduleTitle: string,
-  employee?: { subtaskId: string; name: string },
 ): DepartmentConversationTabPresentation {
-  return {
-    role,
-    rootTaskId,
-    taskId,
-    moduleTitle,
-    ...(employee ? { employeeSubtaskId: employee.subtaskId, employeeName: employee.name } : {}),
-  };
+  return { role, rootTaskId, taskId, moduleTitle };
 }
 
 function hasUniqueModuleRelationship(root: LoopTaskRecord, leader: LoopTaskRecord, port: DepartmentConversationTabReadPort): boolean {
@@ -82,44 +73,6 @@ export function projectDepartmentConversationTab(
     departmentMetadata(root)!.limits.maxLeaders);
   const projected = presentation("leader", root.id, task.id, meta.moduleTitle);
   return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("leader", meta.moduleTitle, leaderCode) };
-}
-
-export function projectDepartmentEmployeeConversationTab(
-  summary: ConversationTabSummary,
-  leader: LoopTaskRecord | null,
-  messages: readonly ChatMessage[],
-  port: DepartmentConversationTabReadPort,
-): ConversationTabSummary {
-  if (!leader || leader.departmentInvalid || summary.loopTaskRole !== "subtask"
-    || summary.loopTaskId !== leader.id || !summary.sessionId) return summary;
-
-  let ownedLeader: LoopTaskRecord | null = null;
-  try { ownedLeader = port.readTaskRecord(leader.id); } catch { return summary; }
-  if (!ownedLeader || ownedLeader.id !== leader.id) return summary;
-  leader = ownedLeader;
-  const meta = departmentMetadata(leader);
-  if (!meta || meta.role !== "leader" || leader.schedulingMode !== "event_driven") return summary;
-
-  let root: LoopTaskRecord | null = null;
-  try { root = port.readTaskRecord(meta.rootTaskId); } catch { return summary; }
-  if (!root || root.id !== meta.rootTaskId || !sameWorkspace(root, leader) || !hasUniqueRootIdentity(root, port)
-    || !hasUniqueModuleRelationship(root, leader, port)) return summary;
-  const context = resolveLoopSubtaskConversationContextFromMessages(messages);
-  if (!context || context.taskId !== leader.id) return summary;
-
-  const matches = leader.subTasks.filter((subtask) => subtask.id === context.subtaskId
-    && subtask.executionSession?.cli === summary.cli
-    && subtask.executionSession.sessionId === summary.sessionId);
-  const sessionMatches = leader.subTasks.filter((subtask) => subtask.executionSession?.cli === summary.cli
-    && subtask.executionSession.sessionId === summary.sessionId);
-  if (matches.length !== 1 || sessionMatches.length !== 1) return summary;
-
-  const subtask = matches[0];
-  const leaderNumber = root.subTasks.findIndex((item) => item.id === meta.leaderSubtaskId) + 1;
-  const employeeName = getDepartmentEmployeeName(leaderNumber, departmentMetadata(root)!.limits.maxLeaders,
-    leader.subTasks.indexOf(subtask) + 1);
-  const projected = presentation("employee", root.id, leader.id, meta.moduleTitle, { subtaskId: subtask.id, name: employeeName });
-  return { ...summary, departmentPresentation: projected, taskSummary: formatDepartmentMemberTitle("employee", subtask.title, "", employeeName) };
 }
 
 function sameWorkspace(root: LoopTaskRecord, task: LoopTaskRecord): boolean {

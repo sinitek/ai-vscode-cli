@@ -3,7 +3,7 @@ import assert = require("node:assert/strict");
 import type { DepartmentMetadata } from "../../department";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { ChatMessage, ConversationTabSummary } from "../../webview/types";
-import { projectDepartmentConversationTab, projectDepartmentEmployeeConversationTab } from "../../extensionHost/departmentConversationTabs";
+import { projectDepartmentConversationTab } from "../../extensionHost/departmentConversationTabs";
 
 function metadata(rootTaskId: string, role: DepartmentMetadata["role"], moduleId: string | null, title: string): DepartmentMetadata {
   return { version: 1, rootTaskId, parentTaskId: role === "director" ? null : rootTaskId,
@@ -75,32 +75,6 @@ test("same module titles remain distinct by actual leader task id and reject dup
   assert.equal(projectDepartmentConversationTab(tab("ambiguous-module", leader.id), leader, [], port).departmentPresentation, undefined);
 });
 
-test("projects an employee only when message identity and a unique execution session agree", () => {
-  const { leader, port } = fixture();
-  leader.subTasks.unshift({ id: "employee-undispatched", title: "尚未派发", status: "pending" });
-  const result = projectDepartmentEmployeeConversationTab(tab("employee-tab", leader.id, "subtask", "employee-session"), leader, employeeMessages, port);
-  assert.deepEqual(result.departmentPresentation, { role: "employee", rootTaskId: "department-root-abcdef", taskId: leader.id,
-    moduleTitle: "共享模块名", employeeSubtaskId: "employee-subtask-789abc", employeeName: "陈静" });
-  assert.equal(result.taskSummary, "陈静 · 员工真实会话");
-  const employee = leader.subTasks[1];
-  employee.executionSession = { ...employee.executionSession!, sessionId: "retry-session" };
-  const retry = projectDepartmentEmployeeConversationTab(tab("retry-tab", leader.id, "subtask", "retry-session"), leader, employeeMessages, port);
-  assert.equal(retry.taskSummary, result.taskSummary);
-  employee.executionSession = { ...employee.executionSession, sessionId: "employee-session" };
-
-  assert.equal(projectDepartmentEmployeeConversationTab(tab("wrong-message", leader.id, "subtask", "employee-session"), leader,
-    [{ ...employeeMessages[0], loopTaskId: "other-task" }], port).departmentPresentation, undefined);
-  assert.equal(projectDepartmentEmployeeConversationTab(tab("wrong-session", leader.id, "subtask", "other-session"), leader,
-    employeeMessages, port).departmentPresentation, undefined);
-  assert.equal(projectDepartmentEmployeeConversationTab(tab("no-message", leader.id, "subtask", "employee-session"), leader,
-    [], port).departmentPresentation, undefined);
-
-  leader.subTasks.push({ id: "duplicate-session", title: "ambiguous", status: "running",
-    executionSession: { cli: "codex", sessionId: "employee-session", configId: null } });
-  assert.equal(projectDepartmentEmployeeConversationTab(tab("ambiguous", leader.id, "subtask", "employee-session"), leader,
-    employeeMessages, port).departmentPresentation, undefined);
-});
-
 test("invalid department records and root/workspace conflicts fall back to ordinary Loop tabs", () => {
   const { root, leader, records, port } = fixture();
   const summary = tab("leader-tab", leader.id);
@@ -122,19 +96,23 @@ test("invalid department records and root/workspace conflicts fall back to ordin
   assert.equal(projectDepartmentConversationTab(summary, leader, [], port).departmentPresentation, undefined);
 });
 
-test("host projection reads only known task ids and reuses a root read within one state build", () => {
+test("host reuses root reads and projects live and restored department subtasks as ordinary Loop+ tabs", () => {
   const { root, leader } = fixture();
   root.sessionId = `${root.id}-session`;
   leader.sessionId = `${leader.id}-session`;
+  leader.subTasks.unshift({ id: "employee-undispatched", title: "尚未派发", status: "pending" });
   const records = new Map([[root.id, root], [leader.id, leader]]);
   const { installVscodeMock } = require("../vscodeMock") as typeof import("../vscodeMock");
   installVscodeMock();
   const hostModule = require("../../extensionHost/sessionTabs") as typeof import("../../extensionHost/sessionTabs");
   const summaries = [{ ...tab("director-tab", root.id), taskSummary: "实现账号与报表功能" }, tab("leader-tab", leader.id),
-    tab("employee-tab", leader.id, "subtask", "employee-session"), tab("ordinary", "missing-task")];
+    tab("employee-tab", leader.id, "subtask", "employee-session"), tab("ordinary", "missing-task"),
+    { ...tab("live-subtask", leader.id, "subtask", "live-session"), loopSubtaskId: leader.subTasks[1].id },
+    tab("restored-from-binding", leader.id, "subtask", "employee-session")];
   const ordinaryReadIds: string[] = [];
   const ownershipReadIds: string[] = [];
   const membershipReads: string[] = [];
+  const messageReads: string[] = [];
   type HostDeps = Parameters<typeof hostModule.createExtensionSessionTabsHost>[0];
   const host = hostModule.createExtensionSessionTabsHost({
     readOrdinaryConversationTabTaskRecord: (id: string) => { ordinaryReadIds.push(id); return records.get(id) ?? null; },
@@ -145,20 +123,26 @@ test("host projection reads only known task ids and reuses a root read within on
     },
     getSessionTabsController: () => ({ buildConversationTabsState: () => ({ activeTabId: "director-tab", tabs: summaries }) }),
     getSessionLifecycleController: () => ({}), getSessionStore: () => ({}), getCurrentCli: () => "codex", getActiveWorkspaceKey: () => "workspace-a",
-    getWorkspaceSettings: () => ({}), getActiveTaskRun: () => null, getLiveMessagesForTab: () => employeeMessages,
+    getWorkspaceSettings: () => ({}), getActiveTaskRun: () => null, getLiveMessagesForTab: (id: string) => {
+      messageReads.push(id);
+      return id === "employee-tab" ? employeeMessages : null;
+    },
     isTabRunActive: () => false,
-    loadSessionMessages: () => employeeMessages, getPendingSessionDraft: () => ({ messages: employeeMessages }),
+    loadSessionMessages: () => [], getPendingSessionDraft: () => ({ messages: [] }),
     setSessionStore: () => undefined, setCurrentCli: () => undefined, activeData: {},
   } as unknown as HostDeps);
   const state = host.buildConversationTabsState();
-  assert.deepEqual(state.tabs.map((item) => item.departmentPresentation?.role), ["director", "leader", "employee", undefined]);
+  assert.deepEqual(state.tabs.map((item) => item.departmentPresentation?.role), ["director", "leader", undefined, undefined, undefined, undefined]);
   assert.deepEqual(ordinaryReadIds, ["missing-task"]);
   assert.deepEqual(ownershipReadIds, [root.id, leader.id, "missing-task"]);
-  assert.deepEqual(membershipReads, [`${root.id}:module-ui`, `${root.id}:module-ui`]);
+  assert.deepEqual(membershipReads, [`${root.id}:module-ui`]);
+  assert.deepEqual(messageReads, ["employee-tab", "restored-from-binding"]);
   assert.equal(state.tabs[0].taskSummary, "实现账号与报表功能");
   assert.equal(state.tabs[1].taskSummary, "组长A · 共享模块名");
-  assert.equal(state.tabs[2].taskSummary, "王磊 · 员工真实会话");
+  assert.equal(state.tabs[2].taskSummary, "子任务 2：员工真实会话");
   assert.equal(state.tabs[3].departmentPresentation, undefined);
+  assert.equal(state.tabs[4].taskSummary, state.tabs[2].taskSummary);
+  assert.equal(state.tabs[5].taskSummary, state.tabs[2].taskSummary);
 });
 
 test("ownership ambiguity or unavailable readers fail closed for department projection", () => {

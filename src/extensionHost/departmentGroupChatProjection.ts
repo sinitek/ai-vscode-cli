@@ -1,6 +1,6 @@
 import { normalizeDepartmentMetadata } from "../department";
-import { getDepartmentEmployeeName } from "../departmentEmployeeNames";
 import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
 import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
 import { normalizeLoopSubtaskProgressWeightPercent, type LoopTaskRecord } from "../loopTaskStore";
@@ -121,8 +121,7 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
     sessionId: task.sessionId, summary: task.finalSummary, updatedAt: task.updatedAt };
 }
 
-function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>,
-  leaderNumber: number, maxLeaders: number): LoopGroupChatPanelParticipant[] {
+function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
   return projection.seenAttempts.flatMap((attempt) => {
     const subtaskIndex = task.subTasks.findIndex((item) => item.id === attempt.subtaskId);
@@ -134,7 +133,7 @@ function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLo
     const completedWithoutAcceptance = attempt.requiresAcceptance === false && attempt.outcome === "completed"
       && (attempt.disposition === "finished" || attempt.disposition === "reported");
     return [{ id: attempt.attemptId, subtaskId: spec.id,
-      employeeName: getDepartmentEmployeeName(leaderNumber, maxLeaders, subtaskIndex + 1), title: spec.title, role: "employee",
+      title: getLoopSubtaskDisplayTitle(subtaskIndex, spec), role: "employee",
       status: interrupted ? "blocked" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
         : review ? "queued_review" : completedWithoutAcceptance ? "no_acceptance" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"
@@ -190,7 +189,7 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     const progressPercent = resolveLoopPanelProgressPercent(record, loopPlus);
     progressByModuleId.set(root.subTasks[leaderNumber - 1].id, progressPercent);
     return { taskId: record.id, leaderNumber, participant: participant(record, "leader"), progressPercent,
-      employees: employees(record, loopPlus, leaderNumber, rootMeta.limits.maxLeaders) };
+      employees: employees(record, loopPlus) };
   });
   const overallProgressPercent = meta.role === "director" ? resolveDepartmentWeightedProgress(root, progressByModuleId) : undefined;
   let capacity: DepartmentCapacitySnapshot | null = null;

@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, type LoopTaskRecord } from "../loopTaskStore";
 import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
-import { projectDepartmentConversationTab, projectDepartmentEmployeeConversationTab } from "./departmentConversationTabs";
+import { projectDepartmentConversationTab } from "./departmentConversationTabs";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
 
@@ -210,8 +210,7 @@ function buildConversationTabsState(): {
           task?.schedulingMode,
         )
         : summary;
-      const needsEmployeeEvidence = task?.department?.role === "leader" && Boolean(summary.sessionId);
-      const messages = summary.loopTaskRole === "subtask" && (!summary.loopSubtaskId || needsEmployeeEvidence)
+      const messages = summary.loopTaskRole === "subtask" && !summary.loopSubtaskId
         ? getLiveMessagesForTab(summary.id) ?? (summary.sessionId
           ? loadSessionMessages(summary.cli, summary.sessionId)
           : deps.getPendingSessionDraft(summary.id, summary.cli).messages)
@@ -220,7 +219,7 @@ function buildConversationTabsState(): {
         ? { ...withSchedulingMode, loopSubtaskRunning: isTabRunActive(summary.id) }
         : withSchedulingMode, task, messages);
       return summary.loopTaskRole === "subtask"
-        ? projectDepartmentEmployeeConversationTab(withMemberTitle, task, messages, readPort)
+        ? withMemberTitle
         : projectDepartmentConversationTab(withMemberTitle, task, messages, readPort);
     }),
   };
