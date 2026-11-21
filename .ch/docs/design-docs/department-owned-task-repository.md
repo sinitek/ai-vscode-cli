@@ -56,7 +56,7 @@ ID 已存在、唯一索引不可用、已有普通记录、重复模块、已�
 
 全局普通/部门唯一身份目录由 `loopTaskIdentityCatalog.ts` 实际持久化到 `~/.sinitek_cli/loop-task-identities/catalog.json`。首次在共享 writer gate 下严格完整初始化（含普通/legacy 的过期身份），后续 locate 仅读身份目录，不扫描目录、不读取所有任务记录。所有本版本普通 write/delete 与 owner commit 使用同一 wx 事务锁；先撤销目录 ready，再执行磁盘操作，最后同步发布完整位置贡献。owner 闭包实际调用 controller.commitSync，身份目录和内部索引均发布后才能返回成功。普通重复贡献保留歧义，任何涉及部门的重复 ID 拒绝；其他当前版本 Node 进程也受普通 writer 检查约束。append 不增加一轮全量受控读取。
 
-身份目录锁定、损坏或无法解析均拒绝，不按 PID/mtime/年龄清锁。对结构有效但 `ready=false` 的未发布目录，仅当每个已登记来源根都已消失、待注册来源为空且不重叠时，生产首次装配可在共享 writer gate 下重建完整目录；保留旧 roots、owned 删除墓碑及普通迁移记录，不能据此恢复旧任务。任一已登记根仍存在、目录内容未知或新来源含业务文件时继续拒绝。此限定恢复不提供通用管理恢复入口。未知直接文件写者、旧版绕过协议的 writer 不在证明范围；受控 import/restore/move 在公开变化前须 revokeBeforeExternalChange，当前这些写入不获授权。不能凭目录存在或 watcher 授予权威。
+身份目录的归属查询遇到共享 `transaction.lock` 时，最多等待 100ms 让本版本同步事务发布完成，再重读并复核锁；这是短时竞争等待，不是锁恢复。锁持续存在、目录损坏/未提交、超时或任何读错误仍拒绝，不按 PID/mtime/年龄清锁，也不在查询时扫描或修改任务目录。对结构有效但 `ready=false` 的未发布目录，仅当每个已登记来源根都已消失、待注册来源为空且不重叠时，生产首次装配可在共享 writer gate 下重建完整目录；保留旧 roots、owned 删除墓碑及普通迁移记录，不能据此恢复旧任务。任一已登记根仍存在、目录内容未知或新来源含业务文件时继续拒绝。此限定恢复不提供通用管理恢复入口。未知直接文件写者、旧版绕过协议的 writer 不在证明范围；受控 import/restore/move 在公开变化前须 revokeBeforeExternalChange，当前这些写入不获授权。不能凭目录存在或 watcher 授予权威。
 
 组合测试覆盖实际生产来源/仓储/controller/身份目录、中央 runtime composition、真实 Loop+ adapter/host 与共享 pool，仅替换模型输出和底层 runner。另一个真实 Node 进程验证普通 writer 不可复用部门 ID，并同步发布普通身份。它不证明 VS Code activate 已在真实扩展进程执行，也不证明实际 CLI、旧版本跨进程写者或冷重启完成。
 

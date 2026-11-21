@@ -332,3 +332,32 @@ test("unregistered hosts retain department communications and tombstones; unavai
   try { assert.equal(result.status, 0, result.stdout + result.stderr); }
   finally { fs.rmSync(childHome, { recursive: true, force: true }); }
 });
+
+test("production task reads tolerate a released shared identity transaction but reject a held lock", () => {
+  const childHome = fs.mkdtempSync(path.join(os.tmpdir(), "department-catalog-contention-home-"));
+  const result = spawnSync(process.execPath, ["-e", `
+    const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+    const {createDepartmentProductionTaskStore}=require(${JSON.stringify(require.resolve("../../extensionHost/departmentProductionTaskStore"))});
+    const {prepareDepartmentTaskRecord}=require(${JSON.stringify(require.resolve("../../extensionHost/departmentOwnedTaskRepository"))});
+    const {departmentRecords}=require(${JSON.stringify(require.resolve("../loop/departmentGroupChatHost.fixture"))});
+    const store=require(${JSON.stringify(require.resolve("../../loopTaskStore"))});
+    const source=createDepartmentProductionTaskStore(path.join(process.env.HOME,'owned'));
+    const task=departmentRecords().root; task.createdAt=task.updatedAt=Date.now(); task.subTasks=[];
+    task.department.routes={director:{cli:'codex'},leader:{cli:'codex'},employee:{cli:'claude',thinkingMode:'off'}};
+    const record=source.create(prepareDepartmentTaskRecord(task,task.department,task.loopPlusAcceptancePlan));
+    const lock=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities','transaction.lock');
+    const ready=path.join(process.env.HOME,'writer-ready');
+    fs.writeFileSync(lock,'simulated supported writer');
+    cp.spawn(process.execPath,['-e',\`const fs=require('node:fs');fs.writeFileSync(process.argv[2],'ready');setTimeout(()=>fs.unlinkSync(process.argv[1]),25)\`,lock,ready],{stdio:'ignore'});
+    const deadline=Date.now()+1000;
+    while(!fs.existsSync(ready)&&Date.now()<deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,2);
+    assert.equal(fs.existsSync(ready),true,'the competing writer started before the read');
+    assert.equal(store.readLoopTaskRecord(record.id)?.id,record.id,'a brief catalog publication must not hide a valid owned task');
+    assert.equal(fs.existsSync(lock),false,'the competing writer released its lock');
+    fs.writeFileSync(lock,'unknown persistent writer');
+    assert.equal(store.readLoopTaskRecord(record.id),null,'a lock held beyond the bounded wait still fails closed');
+    assert.equal(fs.readFileSync(lock,'utf8'),'unknown persistent writer','readers never remove or replace an unknown lock');
+  `], { env: { ...process.env, HOME: childHome }, encoding: "utf8" });
+  try { assert.equal(result.status, 0, result.stdout + result.stderr); }
+  finally { fs.rmSync(childHome, { recursive: true, force: true }); }
+});

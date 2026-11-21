@@ -8,7 +8,19 @@ type Snapshot = { version: 1; ready: boolean; roots: string[]; owned: Record<str
 const directory = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities");
 const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
+const readLockWaitMs = 100;
 const inside = (root: string, file: string) => file === root || file.startsWith(`${root}${path.sep}`);
+
+function waitForTransactionLock(): boolean {
+  const deadline = Date.now() + readLockWaitMs;
+  const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  while (fs.existsSync(lockFile)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    Atomics.wait(pause, 0, 0, Math.min(5, remaining));
+  }
+  return true;
+}
 
 function read(allowUnready = false): Snapshot | null {
   try {
@@ -147,7 +159,7 @@ export type LoopTaskIdentityLocations = { available: false } | {
  */
 export function locateLoopTaskIdentities(taskIds: readonly string[]): LoopTaskIdentityLocations {
   try {
-    if (fs.existsSync(lockFile)) return { available: false };
+    if (!waitForTransactionLock()) return { available: false };
     const snapshot = read();
     if (!snapshot) return { available: false };
     const locations = new Map<string, string[]>(taskIds.map((id) => [id, []]));
@@ -157,7 +169,7 @@ export function locateLoopTaskIdentities(taskIds: readonly string[]): LoopTaskId
     for (const [id, files] of locations) {
       if (!files.length && Object.prototype.hasOwnProperty.call(snapshot.owned, id)) files.push(snapshot.owned[id]);
     }
-    return fs.existsSync(lockFile) ? { available: false } : { available: true, locations };
+    return waitForTransactionLock() ? { available: true, locations } : { available: false };
   } catch { return { available: false }; }
 }
 
