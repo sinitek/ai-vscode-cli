@@ -91,6 +91,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   commitConfigLockResume?: LoopPlusRuntimeAdapterDeps["updateTask"];
   appendHostMessage: LoopPlusOrchestrationDeps["appendMessage"];
+  removeClarificationResponse?: LoopPlusOrchestrationDeps["removeClarificationResponse"];
   appendCompletionMessages?: LoopPlusOrchestrationDeps["appendCompletionMessages"];
   onMainActivityChange?: (taskId: string) => void;
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
@@ -1029,6 +1030,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         updateTask: (taskId, patch) => deps.updateTask(taskId, patch),
         commitConfigLockResume: deps.commitConfigLockResume,
         appendMessage: deps.appendHostMessage,
+        removeClarificationResponse: deps.removeClarificationResponse,
         appendCompletionMessages: deps.appendCompletionMessages,
         onTaskCompleted: deps.onTaskCompleted,
         appendSubtaskChat: deps.appendSubtaskChat,

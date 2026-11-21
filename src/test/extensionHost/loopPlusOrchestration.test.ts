@@ -995,6 +995,7 @@ function harness(options: {
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   recordAttempt?: LoopPlusOrchestrationDeps["recordAttempt"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
+  removeClarificationResponse?: LoopPlusOrchestrationDeps["removeClarificationResponse"];
   beforeReadTask?: () => void;
   beforeUpdateTask?: (patch: Partial<LoopTaskRecord>) => void;
   adaptMain?: (request: LoopPlusMainRequest, callIndex: number) => LoopPlusMainHandle | undefined;
@@ -1073,6 +1074,7 @@ function harness(options: {
     appendMessage: options.appendMessage ?? ((_target, message) => {
       messages.push(message);
     }),
+    removeClarificationResponse: options.removeClarificationResponse,
     runMain: (request) => {
       mainCalls += 1;
       if (options.adaptMain) {
@@ -4903,7 +4905,10 @@ function clarificationDecision(): string {
 }
 
 test("continues Loop+ after the user submits the main-task clarification form", async () => {
-  const env = harness();
+  const removedResponses: Array<{ target: LoopPlusPromptTarget; taskId: string; response: string }> = [];
+  const env = harness({
+    removeClarificationResponse: (target, taskId, response) => removedResponses.push({ target, taskId, response }),
+  });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   const taskId = run.taskId ?? "";
@@ -4913,6 +4918,7 @@ test("continues Loop+ after the user submits the main-task clarification form", 
   assert.equal(waiting?.status, "running");
   assert.equal(waiting?.clarificationCount, 1);
   assert.equal(waiting?.pendingClarification?.formFields[0]?.id, "scope");
+  assert.deepEqual(removedResponses, [{ target: env.target, taskId, response: clarificationDecision() }]);
   assert.equal(env.mains.length, 1);
   const delivered = submitOrchestratorClarification(
     loopClarificationScope(taskId),

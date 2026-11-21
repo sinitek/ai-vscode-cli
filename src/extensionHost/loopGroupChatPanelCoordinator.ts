@@ -1619,7 +1619,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     return deps.pickTask(recentTasks);
   };
 
-  const open = async (arg?: unknown): Promise<void> => {
+  const open = async (arg?: unknown, options: { focus?: boolean } = {}): Promise<void> => {
     const task = await resolveTask(arg);
     if (!task) {
       deps.showInformationMessage(deps.t("loopGroupChatChat.noTask"));
@@ -1649,7 +1649,11 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       deps.panelsByTaskId.set(task.id, panel);
     }
     const targetPanel = panel;
-    const ready = targetPanel.showLoading(task.id, resolveLoopSchedulingMode(task.schedulingMode) === "event_driven");
+    const ready = targetPanel.showLoading(
+      task.id,
+      resolveLoopSchedulingMode(task.schedulingMode) === "event_driven",
+      options.focus !== true,
+    );
     const pending = openingPanels.get(targetPanel);
     if (pending) return pending;
     const loading = (async () => {

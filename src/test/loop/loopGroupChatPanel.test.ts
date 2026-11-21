@@ -854,6 +854,8 @@ test("loading shell waits for the first paint handshake and reveals existing con
   assert.equal(await panel.showLoading("task-1", true), true);
   assert.equal(harness.panel.webview.html, html);
   assert.deepEqual(harness.reveal, { column: -1, preserveFocus: true });
+  assert.equal(await panel.showLoading("task-1", true, false), true);
+  assert.deepEqual(harness.reveal, { column: -1, preserveFocus: false });
 });
 
 test("closing a loading shell releases the waiter and ignores an old page after reopening", async () => {

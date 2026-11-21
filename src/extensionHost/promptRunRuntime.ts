@@ -1467,6 +1467,24 @@ function removeLoopMainDecisionMessage(
   }
 }
 
+function removeLoopPlusClarificationResponse(
+  target: PromptRunTarget,
+  taskId: string,
+  response: string,
+): void {
+  const messages = getLoopMessagesForTarget(target);
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant" && message.taskRole === "main"
+      && message.loopTaskId === taskId && message.content === response) {
+      messages.splice(index, 1);
+      persistLoopMessagesForTarget(target, messages);
+      sendPanelMessage({ type: "removeMessage", id: message.id, tabId: target.tabId });
+      return;
+    }
+  }
+}
+
 function replaceLoopMainDecisionMessageWithMarkdown(
   target: PromptRunTarget,
   taskId: string,
@@ -1732,6 +1750,7 @@ return {
   getLoopTargetSessionId: wrap(getLoopTargetSessionId),
   persistLoopMessagesForTarget: wrap(persistLoopMessagesForTarget),
   removeLoopMainDecisionMessage: wrap(removeLoopMainDecisionMessage),
+  removeLoopPlusClarificationResponse: wrap(removeLoopPlusClarificationResponse),
   replaceLoopMainDecisionMessageWithMarkdown: wrap(replaceLoopMainDecisionMessageWithMarkdown),
   showLoopSubtaskDecisionMarkdown: wrap(showLoopSubtaskDecisionMarkdown),
   hasCompleteLoopCompletionMessagesForTask: wrap(hasCompleteLoopCompletionMessagesForTask),

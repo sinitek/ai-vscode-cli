@@ -1017,6 +1017,34 @@ test("parses clarify without subtasks and rejects a form that cannot be shown", 
   assert.equal(parsed?.subtasks, undefined);
   assert.equal(parsed?.controls, undefined);
 
+  const reported = parseLoopPlusDecision(JSON.stringify({
+    status: "clarify",
+    finalSummary: "图片替换的处理方式已明确。当前审计还显示，候选页的版式和原文授权也未解决。",
+    clarification: {
+      title: "确认无授权页面的处理方式",
+      instruction: "图片可以按你的新指示换成许可明确、尺寸与槽位匹配的替代素材，无需重复确认。请只确认版式或原文也未获授权时如何处理。",
+      submitLabel: "提交选择",
+      cancelLabel: "暂不继续",
+      formFields: [{
+        id: "unlicensed_page_scope",
+        label: "版式或原文未获授权时",
+        type: "radio",
+        required: true,
+        options: [
+          { label: "只替换独立素材", value: "replace-media-only", description: "保留技能中的原页面。" },
+          { label: "整体替换页面", value: "replace-unlicensed-page", description: "改用许可明确的页面。" },
+        ],
+      }],
+    },
+  }));
+  assert.equal(reported?.status, "clarify");
+  assert.equal(reported?.clarification?.title, "确认无授权页面的处理方式");
+  assert.equal(reported?.clarification?.formFields[0]?.id, "unlicensed_page_scope");
+  assert.deepEqual(reported?.clarification?.formFields[0]?.options?.map((option) => option.value), [
+    "replace-media-only",
+    "replace-unlicensed-page",
+  ]);
+
   assert.equal(parseLoopPlusDecision(JSON.stringify({
     status: "clarify",
     subtasks: [subtask("alpha")],

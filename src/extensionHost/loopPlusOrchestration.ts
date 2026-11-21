@@ -232,6 +232,7 @@ export type LoopPlusOrchestrationDeps = {
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
   commitConfigLockResume?: LoopPlusOrchestrationDeps["updateTask"];
   appendMessage: (target: LoopPlusPromptTarget, message: string, taskId: string) => void;
+  removeClarificationResponse?: (target: LoopPlusPromptTarget, taskId: string, response: string) => void;
   appendCompletionMessages?: (target: LoopPlusPromptTarget, task: LoopTaskRecord) => void;
   onTaskCompleted?: (taskId: string) => void;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
@@ -1216,7 +1217,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const decision = parsed.decision;
       if (decision?.status === "clarify") {
         runtime.protocolRepair = null;
-        const outcome = await waitForLoopPlusClarification(runtime, decision);
+        const outcome = await waitForLoopPlusClarification(runtime, decision, content ?? "");
         if (outcome === "stop") {
           return;
         }
@@ -1748,7 +1749,11 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
 
-  async function waitForLoopPlusClarification(runtime: ParentRuntime, decision: LoopPlusDecision): Promise<LoopPlusDecisionOutcome> {
+  async function waitForLoopPlusClarification(
+    runtime: ParentRuntime,
+    decision: LoopPlusDecision,
+    response: string,
+  ): Promise<LoopPlusDecisionOutcome> {
     const request = decision.clarification;
     const task = deps.readTask(runtime.taskId);
     const count = task?.clarificationCount ?? 0;
@@ -1756,6 +1761,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       pause(runtime, "needs-review", "loop-plus-clarification-limit", decision.finalSummary);
       return "stop";
     }
+    deps.removeClarificationResponse?.(runtime.target, runtime.taskId, response);
     updateTask(runtime.taskId, {
       pendingClarification: request,
       clarificationCount: count + 1,

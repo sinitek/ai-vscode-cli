@@ -90,7 +90,7 @@ export class LoopGroupChatPanel {
     private readonly handlers: LoopGroupChatPanelHandlers,
   ) {}
 
-  private revealOrCreate(title: string): void {
+  private revealOrCreate(title: string, preserveFocus = true): void {
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
         "sinitek-cli-tools.loopGroupChatChat",
@@ -162,13 +162,13 @@ export class LoopGroupChatPanel {
         this.handlers.onDispose?.();
       });
     } else {
-      this.panel.reveal(vscode.ViewColumn.Active, true);
+      this.panel.reveal(vscode.ViewColumn.Active, preserveFocus);
     }
   }
 
-  public showLoading(taskId: string, loopPlus: boolean): Promise<boolean> {
+  public showLoading(taskId: string, loopPlus: boolean, preserveFocus = true): Promise<boolean> {
     const title = loopPlus ? getStrings().titleLoopPlus : getStrings().title;
-    this.revealOrCreate(`${title}: ${taskId.slice(0, 12)}`);
+    this.revealOrCreate(`${title}: ${taskId.slice(0, 12)}`, preserveFocus);
     if (this.htmlInstalled) return Promise.resolve(true);
     if (!this.loadingReady) {
       this.loadingReady = new Promise((resolve) => { this.resolveLoadingReady = resolve; });
