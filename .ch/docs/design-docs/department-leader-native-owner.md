@@ -92,13 +92,15 @@ tab 等待原交互消费者完成，异常结算保留未知，再核对 worksp
 
 带 `id` 的 JSON-RPC `onRequest` 是需要独立答复的交互请求，不加入 notification consumer barrier；继续由原 request 路径消费结果和处理取消/解决通知。worker 将 `onRequest` 与通知消费者分开追踪。共享 Codex transport 不提供 `waitForNotificationConsumers` 端口，因此不启用该暂停行为。实现位置：`src/interactive/codexAppServerPoolCore.ts` 的 readLoop/dispatch 后 barrier，`src/interactive/codexRuntimePorts.ts` 的可选可信端口，以及 `src/runtime/departmentleadercodexownerworker.ts` 的消费者集合与 wait 实现。
 
-worker 首次失败会在断开私有通道前尽力发送一个固定阶段标记。宿主仍先验证原 token、identity、严格递增 sequence、帧大小、字段集合与阶段白名单，然后以 `department-leader-native-failed` 写入现有 Extension Host 错误日志。阶段只表达 preparation、private command/phase/channel/send、callback capacity/message/ACK、invocation 或 grant 类别，不携带 prompt、callback 参数、环境、原始错误或 token。发送失败或阶段帧无法观察时仍为 unknown；诊断不是执行授权、grant、终态或清理证据。对应实现见 `src/runtime/departmentleadercodexcontract.ts`、`src/runtime/departmentleadercodexownerworker.ts` 和 `src/extensionHost/departmentleadercodexbootstrap.ts`。
+worker 首次失败会在断开私有通道前尽力发送一个固定阶段标记。宿主仍先验证原 token、identity、严格递增 sequence、帧大小、字段集合与阶段白名单，然后以 `department-leader-native-failed` 写入现有 Extension Host 错误日志。阶段只表达 preparation、private command/phase/channel/send、callback capacity/message/ACK、invocation 或 grant 类别，不携带 prompt、callback 参数、环境、原始错误或 token。callback 相关失败可附带白名单回调名称及逻辑 `callbackSequence`；消费者拒绝另记录 `callbackRejectionReason`，仅对代次变化、消费者缺失和来源不可观察等固定错误码分类，其余异常统一记为 `unknown`。不得记录回调参数、异常正文或堆栈。发送失败或阶段帧无法观察时仍为 unknown；诊断不是执行授权、grant、终态或清理证据。对应实现见 `src/runtime/departmentleadercodexcontract.ts`、`src/runtime/departmentleadercodexownerworker.ts` 和 `src/extensionHost/departmentleadercodexbootstrap.ts`。
 
 以上节流用于遵守既有最多 32 个未确认 worker callback 的合同；并未扩大窗口或丢弃/重试通知。token、identity、序号、单次 grant、原 Owner receipt、原清理和容量规则仍然 fail closed。`drained` 私有事件只用于推进原 receipt 观察，不取代 receipt。
 
 2026-11-18 日志确认四个组长 tab 在 bootstrap 的 callback ACK send failure 阶段失败；本次受控连续通知用例稳定复现 worker callback-capacity 溢出及后续通道断开。历史运行没有保留 worker 首个内部 failure stage，因此历史四次失败的 worker 首因仍未知，不能据本次复现宣称四次历史故障都由 callback-capacity 导致。此合同和回归不要求也不包含重跑或接管历史任务。
 
 本轮复用隔离副本既有 `npm run build` 与相关 Node 测试 296/296 通过结果，不重复执行代码检查；本轮只更新本设计文档。
+
+2026-11-20 本机 Extension Host 日志记录一次已授权组长调用在 `callback-consumer-rejected` 阶段失败，调用栈指向宿主 callback 消费 Promise 拒绝。旧日志没有记录 callback 名称或异常，无法确定具体 handler 的根因；相邻组长的 lifecycle/evidence 日志不证明与此故障存在因果关系。随后根任务及相关 Loop 记录进入停止态，但检查时原 Owner worker 仍持有锁和 socket；只读 `observeExecution` 返回 `unknown`，持久 Owner 状态为 `cleanup-failed` 且无 receipt，不能据 Loop 停止态认定原生执行已清理。没有杀进程、清锁或接管历史任务。回归验证拒绝日志带 callback 名称、逻辑序号和固定分类；未知异常正文不进入日志，原 fail-closed 合同不变。
 
 ## 2026-11-18 大型流数据回调修复（本轮源码合同）
 

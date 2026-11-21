@@ -15,7 +15,8 @@ import { createDepartmentProductionCleanup } from "../../extensionHost/departmen
 import { GrokInteractiveRunner } from "../../interactive/grokRunner";
 
 function gate() { let resolve!: () => void; const promise = new Promise<void>(yes => { resolve = yes; }); return { promise, resolve }; }
-async function harness(t: test.TestContext, leader: CliName, employee: CliName = leader, authority = false) {
+async function harness(t: test.TestContext, leader: CliName, employee: CliName = leader, authority = false,
+  logError?: (message: string, data?: unknown) => void | Promise<void>) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-cli-"));
   const routes = { director: { cli: "codex" as const, configId: "profile" }, leader: { cli: leader, configId: "profile" }, employee: { cli: employee, configId: "profile" } };
   const metadata = { version: 1 as const, rootTaskId: "root", parentTaskId: "root", leaderSubtaskId: "module", role: "leader" as const,
@@ -35,7 +36,8 @@ async function harness(t: test.TestContext, leader: CliName, employee: CliName =
     runtime: { version: 1, rootTaskId: "root", stopping: false, collaborations: [], leaders: [{ taskId: "leader", leaderSubtaskId: "module", status: "running", generation: 1 }] },
     capacity: { rootTaskId: "root", maxLeaders: 4, maxEmployees: 20, leaders: ["module"], employees: [] } }).ok, true);
   const producer = createDepartmentExecutionProducer({ store, readTask: read, workspaceKey: () => "workspace", validateRoutes: () => true,
-    processOverlay: "absent", ownerDirectory: path.join(directory, "owners"), ...(authority ? { authorityDirectory: path.join(directory, "authority") } : {}) });
+    processOverlay: "absent", ownerDirectory: path.join(directory, "owners"), logError,
+    ...(authority ? { authorityDirectory: path.join(directory, "authority") } : {}) });
   producer.recordNewLeader(task);
   await producer.openNewLeader("leader", 1);
   const runtime = createDepartmentInteractiveRuntime({ producer, store, ownerDirectory: path.join(directory, "owners"), readTask: read, updateTask: update });
@@ -57,6 +59,35 @@ test("department transport selection covers every existing Loop CLI", () => {
   assert.equal(CLI_LIST.length, 7);
   for (const cli of CLI_LIST) assert.equal(usesDepartmentInteractiveRuntime(cli), cli !== "codex" && cli !== "opencode");
   assert.equal(usesDepartmentInteractiveRuntime("unknown"), false);
+});
+
+test("producer observation rejection logs fixed reasons without changing the denial", async t => {
+  const events: Array<{ message: string; data: Record<string, unknown> }> = [];
+  const h = await harness(t, "codex", "codex", false, (message, data) => {
+    events.push({ message, data: data as Record<string, unknown> });
+  });
+  assert.deepEqual(h.producer.observationScope("leader", 1), h.producer.scope("leader"));
+  assert.deepEqual(events, []);
+  const scope = h.producer.scope("leader");
+
+  assert.throws(() => h.producer.observationScope("leader", 2), /department-producer-observation-scope-unavailable/);
+  assert.deepEqual(events.at(-1), { message: "department-producer-observation-scope-rejected",
+    data: { rootTaskId: "root", leaderTaskId: "leader", generation: 2, reason: "generation-mismatch" } });
+
+  h.update("leader", { sessionId: "changed-local-session" });
+  assert.throws(() => h.producer.observationScope("leader", 1), /department-producer-observation-scope-unavailable/);
+  assert.deepEqual(events.at(-1), { message: "department-producer-observation-scope-rejected",
+    data: { rootTaskId: "root", leaderTaskId: "leader", generation: 1, reason: "local-session-changed" } });
+  assert.equal(h.producer.producer.isCurrent(scope), false);
+  assert.deepEqual(events.at(-1), { message: "department-producer-validation-rejected",
+    data: { rootTaskId: "root", leaderTaskId: "leader", generation: 1, phase: "current", reason: "local-session-changed" } });
+
+  h.update("leader", { sessionId: "local_leader" });
+  h.update("root", { status: "error" });
+  assert.equal(h.producer.producer.canLaunch?.(scope), false);
+  assert.deepEqual(events.at(-1), { message: "department-producer-validation-rejected",
+    data: { rootTaskId: "root", leaderTaskId: "leader", generation: 1, phase: "launch", reason: "root-not-running" } });
+  assert.equal(JSON.stringify(events).includes("changed-local-session"), false);
 });
 
 test("leader resume session comes only from the current durable native binding", async t => {

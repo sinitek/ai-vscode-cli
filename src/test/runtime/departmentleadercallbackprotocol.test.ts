@@ -102,7 +102,7 @@ for (const corruption of ["duplicate", "missing-first", "order", "digest", "meta
 
 /** In-process fake child tests host authentication/order/ACK only. It provides no
  * native execution or cleanup evidence; those use the real fixed worker suite. */
-async function hostProtocol(t: test.TestContext) {
+async function hostProtocol(t: test.TestContext, options: { failAck?: boolean } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "leader-callback-host-"));
   const h = await leaderFixture(directory), cp = require("child_process");
   const child: any = new EventEmitter(), sent: any[] = [], logs: any[] = [];
@@ -111,8 +111,8 @@ async function hostProtocol(t: test.TestContext) {
   child.disconnect = () => { child.connected = false; queueMicrotask(() => child.emit("disconnect")); };
   const emit = (event: Record<string, unknown>) => child.emit("message", { version: 1, token: input.token,
     identity: input.identity, sequence: ++outgoing, ...event });
-  child.send = (message: any, callback?: (error: null) => void) => {
-    sent.push(message); callback?.(null);
+  child.send = (message: any, callback?: (error: Error | null) => void) => {
+    sent.push(message); callback?.(options.failAck && message.operation === "ack" ? new Error("fixture-sensitive-send-error") : null);
     queueMicrotask(() => {
       if (!message.operation) { input = message; emit({ type: "ready", requirements: LEADER_REQUIREMENTS }); }
       if (message.operation === "invoke") emit({ type: "session", invocationId: "invoke", session: { threadId: "native", connectionId: 1,
@@ -144,6 +144,17 @@ test("host invokes complete large callback once and ACKs original sequence only 
   const acks = h.sent.filter((v) => v.operation === "ack");
   assert.equal(acks.length, 1); assert.equal(acks[0].callbackSequence, h.encoded.frames[0].sequence);
   assert.equal(acks[0].result, null);
+});
+
+test("host diagnoses callback ACK send failure with safe callback context", async (t) => {
+  const h = await hostProtocol(t, { failAck: true });
+  for (const frame of h.encoded.frames) h.frame(frame);
+  await tick(); assert.deepEqual(h.seen, [large]);
+  h.release(); await assert.rejects(h.launch.completion, /channel-or-delivery-unknown/);
+  assert.deepEqual(h.logs, [{ stage: "callback-ack-send-failed", callbackName: "onNotification",
+    callbackSequence: h.encoded.frames[0].sequence, phase: "granted", rootTaskId: h.h.identity.rootTaskId,
+    leaderTaskId: h.h.identity.leaderTaskId, executionId: h.h.identity.executionId, generation: h.h.identity.generation }]);
+  assert.equal(JSON.stringify(h.logs).includes("fixture-sensitive-send-error"), false);
 });
 
 for (const violation of ["token", "identity", "sequence", "invocation", "incomplete-settled", "incomplete-disconnect", "corrupt"])

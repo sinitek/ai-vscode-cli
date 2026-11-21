@@ -53,6 +53,43 @@ test("leader native notification burst drains ACKs without overflowing the callb
   assert.deepEqual(saved.value.capacity.leaders, ["module"], "receipt alone does not release organizational capacity");
 });
 
+for (const ledgerAvailable of [true, false]) test(`leader observes the original receipt with an unavailable task session only if the ledger is available (${ledgerAvailable})`, { timeout: 15000 }, async (t) => {
+  const h = await setup(t);
+  const ownedTab = { id: "tab", cli: "codex", sessionId: "local" };
+  let tab: typeof ownedTab | null = ownedTab;
+  const resources = createDepartmentExecutionResources({
+    workspace: () => "workspace", readTab: () => tab, isActive: () => false,
+    owns: (identity) => h.admission.entries().some((entry) => entry.executionId === identity.executionId),
+    async close() { tab = null; },
+  });
+  resources.recordCreated(ownedTab.id);
+  const consumer = resources.beginConsumer(ownedTab.id);
+  h.host.tab = bindDepartmentExecutionTab(consumer.target, h.identity);
+  const readSession = h.host.readSession;
+  h.host.readSession = () => tab ? readSession() : null;
+  const readLedger = h.store.readLeaderExecutionSet.bind(h.store);
+  h.store.readLeaderExecutionSet = (scope) => tab || ledgerAvailable ? readLedger(scope) : { ok: true, value: null };
+  let original: { client: DepartmentExecutionOwnerClient; binding: Parameters<NonNullable<typeof h.host.retainOriginalClient>>[0] } | undefined;
+  h.host.retainOriginalClient = (binding, client) => { original = { binding, client }; };
+  const port = h.port();
+  const launch = await port.invoke(first);
+  assert.equal((await launch.completion).streams.status, "confirmed");
+  consumer.finish();
+  if (!ledgerAvailable) {
+    await assert.rejects(port.closeAdmissionsAndDrain(), /leader-owner-channel-or-delivery-unknown/);
+    await assert.rejects(port.invoke(second));
+    assert.equal(h.count("turn/start"), 1);
+    return;
+  }
+  assert.equal((await port.closeAdmissionsAndDrain()).tab.status, "confirmed");
+  assert.ok(original);
+  const receipt = await original.client.waitForCleanup(original.binding.identity, original.binding.requirements);
+  assert.deepEqual(receipt.identity, launch.identity);
+  const saved = h.store.read("root", "workspace");
+  assert.ok(saved.ok && saved.value);
+  assert.deepEqual(saved.value.capacity.leaders, ["module"]);
+});
+
 test("leader notification pacing leaves interactive requests outside the ACK barrier", { timeout: 15000 }, async (t) => {
   const h = await setup(t), delta = deferred(); let requests = 0;
   h.flag("request");
@@ -211,6 +248,8 @@ test("leader notification ACK excludes oversized async handler return values", {
 for (const kind of ["persist-failure", "bind-failure", "readback-conflict", "revoke-after-owner-bind", "cancel-after-owner-bind", "close-after-owner-bind", "cancel-persistence", "close-persistence"] as const)
   test(`leader ${kind} never grants or sends a task and retains responsibility`, { timeout: 15000 }, async (t) => {
     const h = await setup(t), abort = new AbortController(), entered = deferred(), release = deferred();
+    const logs: unknown[] = [];
+    h.host.logError = (event, data) => { if (event === "department-leader-native-failed") logs.push(data); };
     const persist = h.host.persistSession;
     h.host.persistSession = async (s) => {
       assert.equal(h.count("turn/start"), 0); entered.resolve();
@@ -248,6 +287,10 @@ for (const kind of ["persist-failure", "bind-failure", "readback-conflict", "rev
     }
     await until(() => h.active === 0); await tick();
     assert.equal(h.count("turn/start"), 0); assert.equal(h.admission.entries().length, 1);
+    const step = kind === "persist-failure" ? "persist-task-session" : kind === "bind-failure" ? "bind-execution"
+      : kind === "readback-conflict" ? "verify-task-session" : undefined;
+    if (step) assert.deepEqual(logs, [{ stage: "session-persistence-or-binding-failed", sessionBindingStep: step, phase: "persisting",
+      rootTaskId: h.identity.rootTaskId, leaderTaskId: h.identity.leaderTaskId, executionId: h.identity.executionId, generation: h.identity.generation }]);
   });
 
 test("leader cancellation during raw native preparation cannot revive late response", { timeout: 15000 }, async (t) => {
@@ -280,7 +323,12 @@ for (const kind of ["consumer", "pipe"] as const) test(`leader held ${kind} prev
   assert.equal((await a.completion).streams.status, "confirmed"); await close;
 });
 
-test("leader callback rejection preserves unknown and refuses later invocation", { timeout: 15000 }, async (t) => {
+for (const { name, error, reason } of [
+  { name: "未知异常脱敏", error: "fixture-sensitive-consumer-detail", reason: "unknown" },
+  { name: "代次冲突分类", error: "department-leader-generation-changed", reason: "department-leader-generation-changed" },
+  { name: "消费者缺失分类", error: "department-leader-consumer-missing", reason: "department-leader-consumer-missing" },
+  { name: "来源不可观察分类", error: "department-producer-observation-scope-unavailable", reason: "department-producer-observation-scope-unavailable" },
+]) test(`leader callback rejection logs safe context for ${name} and refuses later invocation`, { timeout: 15000 }, async (t) => {
   const h = await setup(t), diagnostics: string[] = [], applicationLogs: unknown[] = [], originalError = console.error;
   console.error = (message?: unknown) => { diagnostics.push(String(message)); };
   t.after(() => { console.error = originalError; });
@@ -288,12 +336,17 @@ test("leader callback rejection preserves unknown and refuses later invocation",
     applicationLogs.push({ message, data });
     return Promise.reject(new Error("fixture-diagnostic-consumer-rejected"));
   };
-  h.host.handlers.onAssistantDelta = async () => { throw new Error("fixture-consumer-failure"); };
+  h.host.handlers.onAssistantDelta = async () => { throw new Error(error); };
   const p = h.port(), a = await p.invoke(first); await assert.rejects(a.completion, /channel-or-delivery-unknown/);
   await assert.rejects(p.invoke(second)); assert.equal(h.count("turn/start"), 1);
-  assert.deepEqual(diagnostics, ["[department-leader-native] stage=callback-consumer-rejected"]);
+  assert.equal(diagnostics.length, 1);
+  const loggedSequence = diagnostics[0].match(/callbackSequence=([1-9]\d*)/u);
+  assert.ok(loggedSequence, "the rejected callback is identified by a positive sequence");
+  const callbackSequence = Number(loggedSequence[1]);
+  assert.equal(diagnostics[0], `[department-leader-native] stage=callback-consumer-rejected callback=onAssistantDelta callbackSequence=${callbackSequence} callbackRejectionReason=${reason}`);
   assert.deepEqual(applicationLogs, [{ message: "department-leader-native-failed", data: {
-    stage: "callback-consumer-rejected", phase: "granted", rootTaskId: h.identity.rootTaskId,
+    stage: "callback-consumer-rejected", callbackName: "onAssistantDelta", callbackSequence, callbackRejectionReason: reason,
+    phase: "granted", rootTaskId: h.identity.rootTaskId,
     leaderTaskId: h.identity.leaderTaskId, executionId: h.identity.executionId, generation: h.identity.generation,
   } }]);
 });

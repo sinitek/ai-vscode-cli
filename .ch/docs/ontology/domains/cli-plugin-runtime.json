@@ -8407,7 +8407,7 @@
     {
       "id": "plugin.rule.department_codex_leader_callback_fragments",
       "name": "Codex组长流数据回调有界分片与完整消费确认",
-      "description": "仅白名单流数据回调超出64KiB时可在原继承私有IPC分片；物理帧上限不变，JSON args单项8MiB、未完成及未确认累计16MiB、32个逻辑槽、每片24KiB原始字节、每回调最多342片。原token/identity/全局sequence/当前invocation先认证，再核对片序、数量、长度、摘要、base64及UTF-8/JSON完整性；按初始到达顺序调用原消费者，完成消费后仅对首片序号ACK一次。小回调沿原路径，onRequest、日志及控制回调不豁免，onRequest不加入通知barrier。坏片/缺片/超限/序列化或断连不升级终态或清理，固定诊断不记录正文或凭据；单次grant、原Owner receipt及容量门禁不变。此为本轮源码合同，安装版EH长输出待集成验收；历史前三组ACK失败首因未证实。",
+      "description": "仅白名单流数据回调超出64KiB时可在原继承私有IPC分片；物理帧上限不变，JSON args单项8MiB、未完成及未确认累计16MiB、32个逻辑槽、每片24KiB原始字节、每回调最多342片。原token/identity/全局sequence/当前invocation先认证，再核对片序、数量、长度、摘要、base64及UTF-8/JSON完整性；按初始到达顺序调用原消费者，完成消费后仅对首片序号ACK一次。小回调沿原路径，onRequest、日志及控制回调不豁免，onRequest不加入通知barrier。坏片/缺片/超限/序列化或断连不升级终态或清理；回调失败诊断只记录白名单名称、逻辑序号和固定原因分类，未知异常统一记为unknown，不记录回调参数、异常正文或凭据；单次grant、原Owner receipt及容量门禁不变。此为本轮源码合同，安装版EH长输出待集成验收；历史前三组ACK失败首因未证实。",
       "status": "active",
       "applies_to": [
         "plugin.department_task"

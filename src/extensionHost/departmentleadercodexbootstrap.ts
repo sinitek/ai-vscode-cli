@@ -2,6 +2,7 @@ import { DepartmentExecutionOwnerClient } from "../runtime/departmentexecutionow
 import { fork, type ChildProcess } from "child_process";
 import * as path from "path";
 import { createHash, randomBytes } from "crypto";
+import { types as utilTypes } from "util";
 import { canonicalIdentity, exactKeys, fingerprintDepartmentExecutionSelection, isDepartmentExecutionIdentity, isExecutionCleanup, record, sameExecution,
   type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../runtime/departmentexecutionidentity";
 import { boundedCodexMessage, isCodexOwnedSession } from "../runtime/departmentcodexpreparationcontract";
@@ -51,6 +52,32 @@ function callbackAckResult(name: string, result: unknown): unknown {
   return name === "onRequest" ? result ?? null : null;
 }
 
+type CallbackRejectionReason = "department-producer-observation-scope-unavailable" | "department-leader-generation-changed"
+  | "department-leader-consumer-missing" | "unknown";
+
+function callbackRejectionReason(error: unknown): CallbackRejectionReason {
+  const message: unknown = utilTypes.isNativeError(error) ? Object.getOwnPropertyDescriptor(error, "message")?.value : undefined;
+  switch (message) {
+    case "department-producer-observation-scope-unavailable":
+      return "department-producer-observation-scope-unavailable";
+    case "department-leader-generation-changed":
+      return "department-leader-generation-changed";
+    case "department-leader-consumer-missing":
+      return "department-leader-consumer-missing";
+    default:
+      return "unknown";
+  }
+}
+
+type LeaderCallbackDiagnostic = {
+  callbackName: string;
+  callbackSequence: number;
+  callbackRejectionReason?: CallbackRejectionReason;
+};
+type SessionBindingStep = "validate-admission" | "validate-native-thread" | "persist-task-session" | "verify-task-session"
+  | "bind-execution" | "verify-binding" | "retain-original-client" | "acknowledge-persistence";
+type LeaderFailureDiagnostic = LeaderCallbackDiagnostic | { sessionBindingStep: SessionBindingStep };
+
 /** Host-only factory; never constructed from task/UI/model input. Does not open
  * a generation or implement producer closure. Future composition root supplies
  * the actual producer and authoritative task/session writers. */
@@ -84,12 +111,17 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   const preparations = new Set<Promise<void>>();
   let consumerFailed = false, tabRequested = false, failureDiagnosed = false;
   const logFailure = host.logError?.bind(host);
-  const diagnose = (stage: string): void => {
+  const diagnose = (stage: string, detail?: LeaderFailureDiagnostic): void => {
     if (failureDiagnosed) return;
     failureDiagnosed = true;
-    try { console.error(`[department-leader-native] stage=${stage}`); } catch { /* diagnostics cannot affect execution */ }
+    const callback = detail && "callbackName" in detail ? detail : undefined;
+    const callbackContext = callback ? ` callback=${callback.callbackName} callbackSequence=${callback.callbackSequence}`
+      + (callback.callbackRejectionReason ? ` callbackRejectionReason=${callback.callbackRejectionReason}` : "") : "";
+    const bindingContext = detail && "sessionBindingStep" in detail ? ` sessionBindingStep=${detail.sessionBindingStep}` : "";
+    try { console.error(`[department-leader-native] stage=${stage}${callbackContext}${bindingContext}`); } catch { /* diagnostics cannot affect execution */ }
     try { void Promise.resolve(logFailure?.("department-leader-native-failed", {
-      stage, phase: active?.phase ?? "idle", rootTaskId: identity.rootTaskId, leaderTaskId: identity.leaderTaskId,
+      stage, ...detail, phase: active?.phase ?? "idle",
+      rootTaskId: identity.rootTaskId, leaderTaskId: identity.leaderTaskId,
       executionId: identity.executionId, generation: identity.generation,
     })).catch(() => undefined); } catch { /* diagnostic consumer is independent of callback ACKs */ }
   };
@@ -106,27 +138,30 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
     const s = readSession();
     if (!s || s.cli !== "codex" || s.sessionId !== id || s.configId !== selection.configId) throw new Error("leader-session-readback-conflict");
   };
-  const verifyBinding = () => {
-    if (!binding) throw new Error("leader-binding-missing");
-    exactSession(binding.identity.session.state === "bound" ? binding.identity.session.id : "");
+  const verifyStoredBinding = (binding: DepartmentExecutionBinding) => {
     const read = store.readLeaderExecutionSet(scope);
     const saved = read.ok && read.value?.bindings.find((b) => b.identity.executionId === identity.executionId);
     const entry = read.ok && read.value?.set.entries.find((e) => e.responsibility.registrationId === responsibility.registrationId);
     if (!saved || !entry || entry.executionId !== identity.executionId || !sameExecution(saved.identity, binding.identity)
       || JSON.stringify(saved) !== JSON.stringify(binding) || responsibilityKey(entry.responsibility) !== responsibilityKey(responsibility)) throw new Error("leader-binding-readback-conflict");
   };
+  const verifyBinding = () => {
+    if (!binding || binding.identity.session.state !== "bound") throw new Error("leader-binding-missing");
+    exactSession(binding.identity.session.id);
+    verifyStoredBinding(binding);
+  };
   const disconnect = () => { if (child?.connected) child.disconnect(); };
-  const fail = (stage = "channel-or-delivery-unknown") => {
-    if (failed) return; failed = true; sealed = true; diagnose(stage);
+  const fail = (stage = "channel-or-delivery-unknown", detail?: LeaderFailureDiagnostic) => {
+    if (failed) return; failed = true; sealed = true; diagnose(stage, detail);
     callbackAssembler.clear();
     const e = new Error("leader-owner-channel-or-delivery-unknown"); ready.reject(e); drain.reject(e);
     for (const r of records.values()) { r.launch.reject(e); r.completion.reject(e); }
     disconnect();
   };
-  const send = (operation: string, extra: Record<string, unknown> = {}, failureStage = "channel-or-delivery-unknown") => {
+  const send = (operation: string, extra: Record<string, unknown> = {}, failureStage = "channel-or-delivery-unknown", detail?: LeaderFailureDiagnostic) => {
     const v = { version: 1, token: input!.token, identity, sequence: ++sequence, operation, ...extra };
     if (!child?.connected || !isDepartmentLeaderPrivateCommand(v)) throw new Error("leader-owner-channel-unobservable");
-    child.send(v, (e) => { if (e) fail(failureStage); });
+    child.send(v, (e) => { if (e) fail(failureStage, detail); });
   };
   const close = () => {
     if (!sealed) { sealed = true;
@@ -136,22 +171,24 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   };
   const deliverCallback = (event: LeaderCallback): void => {
     const callback = handlers[event.name as keyof typeof handlers], seq = event.sequence;
+    const diagnostic = { callbackName: event.name, callbackSequence: seq };
     const task = Promise.resolve().then(() => {
       if (failed) return null;
       return typeof callback === "function" ? Reflect.apply(callback, handlers, event.args) : null;
     }).then((result) => {
       if (failed) return;
       try {
-        send("ack", { callbackSequence: seq, ok: true, result: callbackAckResult(event.name, result) }, "callback-ack-send-failed");
+        send("ack", { callbackSequence: seq, ok: true, result: callbackAckResult(event.name, result) }, "callback-ack-send-failed", diagnostic);
         callbackAssembler.release(seq);
-      } catch { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); }
-    }, () => {
+      } catch { consumerFailed = true; fail("callback-ack-serialization-or-send-failed", diagnostic); }
+    }, (error: unknown) => {
       if (failed) return;
       consumerFailed = true;
-      try { send("ack", { callbackSequence: seq, ok: false, result: null }, "callback-rejection-ack-send-failed"); }
-      catch { fail("callback-rejection-ack-send-failed"); return; }
-      fail("callback-consumer-rejected");
-    }).catch(() => { consumerFailed = true; fail("callback-ack-serialization-or-send-failed"); });
+      const rejection = { ...diagnostic, callbackRejectionReason: callbackRejectionReason(error) };
+      try { send("ack", { callbackSequence: seq, ok: false, result: null }, "callback-rejection-ack-send-failed", rejection); }
+      catch { fail("callback-rejection-ack-send-failed", rejection); return; }
+      fail("callback-consumer-rejected", rejection);
+    }).catch(() => { consumerFailed = true; fail("callback-ack-serialization-or-send-failed", diagnostic); });
     callbacks.add(task); void task.then(() => callbacks.delete(task));
   };
   const onMessage = (v: unknown) => {
@@ -177,7 +214,7 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
       void (async () => {
         await Promise.allSettled([...callbacks]);
         if (consumerFailed || !binding) throw new Error("leader-original-cleanup-unobservable");
-        verifyBinding();
+        verifyStoredBinding(binding);
         // drained is pacing only: observe the original socket's actual receipt
         // before disconnecting the private worker channel/server.
         await client.waitForCleanup(binding.identity, binding.requirements).catch(() => undefined);
@@ -209,27 +246,51 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
     if (v.type === "session" && a.phase === "preparing" && exactKeys(v, [...base, "invocationId", "session"]) && isCodexOwnedSession(v.session)) {
       const session = Object.freeze({ ...v.session, token: Object.freeze({ ...v.session.token }) });
       a.phase = "persisting";
+      let step: SessionBindingStep = "validate-admission";
+      const checkAdmission = () => { step = "validate-admission"; a.assert(); };
       const preparation = (async () => {
-        a.assert();
+        checkAdmission();
+        step = "validate-native-thread";
         if (identity.session.state === "bound" && session.threadId !== identity.session.id) throw new Error("leader-thread-conflict");
         if (binding) {
+          step = "verify-binding";
           verifyBinding();
+          step = "validate-native-thread";
           if (binding.identity.session.state !== "bound" || binding.identity.session.id !== session.threadId) throw new Error("leader-thread-conflict");
           // A later round has its own Ledger admission. Verify and bind the same
           // immutable responsibility before consuming this round's grant.
-          a.bind(binding); verifyBinding();
+          step = "bind-execution";
+          a.bind(binding);
+          step = "verify-binding";
+          verifyBinding();
         }
         else {
-          await persistSession(session); a.assert(); exactSession(session.threadId);
+          step = "persist-task-session";
+          await persistSession(session);
+          checkAdmission();
+          step = "verify-task-session";
+          exactSession(session.threadId);
           const candidate: DepartmentExecutionBinding = { identity: { ...identity, session: { state: "bound", id: session.threadId } }, selection,
             requirements: { ...LEADER_REQUIREMENTS } };
-          a.bind(candidate); binding = candidate; verifyBinding();
+          step = "bind-execution";
+          a.bind(candidate);
+          binding = candidate;
+          step = "verify-binding";
+          verifyBinding();
+          step = "retain-original-client";
           host.retainOriginalClient?.(structuredClone(binding), client);
         }
-        a.assert(); a.phase = "persisted"; send("persisted", { invocationId: a.invocation.invocationId });
+        checkAdmission();
+        step = "acknowledge-persistence";
+        a.phase = "persisted";
+        send("persisted", { invocationId: a.invocation.invocationId }, "session-persistence-or-binding-failed", { sessionBindingStep: step });
       })();
       preparations.add(preparation);
-      void preparation.then(() => preparations.delete(preparation), () => { preparations.delete(preparation); fail("session-persistence-or-binding-failed"); }); return;
+      void preparation.then(() => preparations.delete(preparation), () => {
+        preparations.delete(preparation);
+        fail("session-persistence-or-binding-failed", { sessionBindingStep: step });
+      });
+      return;
     }
     if (v.type === "owner-bound" && a.phase === "persisted" && exactKeys(v, [...base, "invocationId"])) {
       a.phase = "grant-sent";

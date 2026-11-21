@@ -4056,6 +4056,7 @@ function getDepartmentExecutionProducer() {
     authorityDirectory: path.join(DATA_DIR, "department-generation-authorities"),
     ownerDirectory: path.join(DATA_DIR, "department-execution-owners"),
     validateRoutes: validateDepartmentRoutes,
+    logError,
     // Existing OpenCode runtime preparation always builds a private config overlay
     // for its fixed model. A missing model is unsupported before any builder.
     processOverlay: (selection) => {

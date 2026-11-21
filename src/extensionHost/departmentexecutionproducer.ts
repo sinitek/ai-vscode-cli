@@ -36,6 +36,24 @@ type Generation = {
   authorityClose?: () => Promise<void>;
   authorityConfirmDrain?: () => void;
 };
+type ObservationRejectionReason = "generation-not-found" | "generation-mismatch" | "generation-not-current" | "leader-task-unavailable"
+  | "leader-task-metadata-invalid" | "leader-task-identity-invalid" | "leader-workspace-mismatch"
+  | "leader-scheduling-mode-invalid" | "leader-local-session-missing" | "leader-cli-invalid"
+  | "leader-role-route-mismatch" | "employee-cli-invalid" | "root-task-unavailable" | "root-task-metadata-invalid"
+  | "root-identity-mismatch" | "root-workspace-mismatch" | "module-binding-invalid" | "department-routes-changed"
+  | "department-limits-changed" | "runtime-snapshot-unavailable" | "leader-member-generation-mismatch"
+  | "leader-capacity-lease-missing" | "leader-not-running" | "root-not-running" | "module-not-running"
+  | "leader-member-not-running" | "runtime-stopping" | "department-routes-invalid" | "scope-identity-mismatch"
+  | "route-signature-changed" | "local-session-changed" | "authority-directory-unavailable"
+  | "authority-unavailable" | "authority-producer-mismatch" | "authority-claim-mismatch" | "authority-not-open"
+  | "ledger-unreadable" | "ledger-set-missing" | "ledger-producer-mismatch" | "producer-validation-failed";
+type ProducerValidationPhase = "current" | "launch";
+class DepartmentProducerFactsError extends Error {
+  constructor(readonly rejectionReason: ObservationRejectionReason, message: string) { super(message); }
+}
+function rejectProducerFacts(reason: ObservationRejectionReason, message: string): never {
+  throw new DepartmentProducerFactsError(reason, message);
+}
 export type DepartmentExecutionProducerDeps = {
   store: DepartmentRuntimeStore; workspaceKey(): string;
   readTask(id: string): LoopTaskRecord | null;
@@ -43,6 +61,7 @@ export type DepartmentExecutionProducerDeps = {
   processOverlay: Parameters<typeof createDepartmentEmployeeExecutionAdmission>[2]["processOverlay"];
   authorityDirectory?: string;
   ownerDirectory?: string;
+  logError?: (message: string, data?: unknown) => void | Promise<void>;
 };
 
 /** One host capability for actual, newly created Loop+ coordinator generations.
@@ -62,42 +81,99 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
   // unrelated task is created or retired.
   function facts(taskId: string, generation: number, launching: boolean) {
     const task = deps.readTask(taskId), m = normalizeDepartmentMetadata(task?.department);
-    if (!task || task.departmentInvalid || m?.role !== "leader" || !m.leaderSubtaskId || m.parentTaskId !== m.rootTaskId
-      || task.workspaceKey !== deps.workspaceKey() || task.schedulingMode !== "event_driven" || !task.sessionId
-      || !isDepartmentExecutionCli(task.cli) || m.routes.leader.cli !== task.cli
-      || !isDepartmentExecutionCli(m.routes.employee.cli)) throw new Error("department-producer-role-or-task-invalid");
+    if (!task) rejectProducerFacts("leader-task-unavailable", "department-producer-role-or-task-invalid");
+    if (task.departmentInvalid || m?.role !== "leader") rejectProducerFacts("leader-task-metadata-invalid", "department-producer-role-or-task-invalid");
+    if (!m.leaderSubtaskId || m.parentTaskId !== m.rootTaskId) rejectProducerFacts("leader-task-identity-invalid", "department-producer-role-or-task-invalid");
+    if (task.workspaceKey !== deps.workspaceKey()) rejectProducerFacts("leader-workspace-mismatch", "department-producer-role-or-task-invalid");
+    if (task.schedulingMode !== "event_driven") rejectProducerFacts("leader-scheduling-mode-invalid", "department-producer-role-or-task-invalid");
+    if (!task.sessionId) rejectProducerFacts("leader-local-session-missing", "department-producer-role-or-task-invalid");
+    if (!isDepartmentExecutionCli(task.cli)) rejectProducerFacts("leader-cli-invalid", "department-producer-role-or-task-invalid");
+    if (m.routes.leader.cli !== task.cli) rejectProducerFacts("leader-role-route-mismatch", "department-producer-role-or-task-invalid");
+    if (!isDepartmentExecutionCli(m.routes.employee.cli)) rejectProducerFacts("employee-cli-invalid", "department-producer-role-or-task-invalid");
     const root = deps.readTask(m.rootTaskId), rm = normalizeDepartmentMetadata(root?.department);
     const modules = root?.subTasks.filter((s) => s.id === m.leaderSubtaskId) ?? [];
     const read = deps.store.read(m.rootTaskId, task.workspaceKey);
     const members = read.ok && read.value?.runtime.leaders.filter((l) => l.taskId === taskId && l.leaderSubtaskId === m.leaderSubtaskId);
-    if (!root || root.departmentInvalid || rm?.role !== "director" || root.workspaceKey !== task.workspaceKey
-      || rm.rootTaskId !== root.id || modules.length !== 1 || modules[0].title !== m.moduleTitle
-      || JSON.stringify(rm.routes) !== JSON.stringify(m.routes) || JSON.stringify(rm.limits) !== JSON.stringify(m.limits)
-      || !read.ok || !read.value || !members || members.length !== 1 || members[0].generation !== generation
-      || !read.value.capacity.leaders.includes(m.leaderSubtaskId)) throw new Error("department-producer-scope-or-lease-invalid");
-    if (launching && (task.status !== "running" || root.status !== "running" || modules[0].status !== "running"
-      || members[0].status !== "running" || read.value.runtime.stopping || !deps.validateRoutes(m.routes))) throw new Error("department-producer-authority-revoked");
+    if (!root) rejectProducerFacts("root-task-unavailable", "department-producer-scope-or-lease-invalid");
+    if (root.departmentInvalid || rm?.role !== "director") rejectProducerFacts("root-task-metadata-invalid", "department-producer-scope-or-lease-invalid");
+    if (rm.rootTaskId !== root.id) rejectProducerFacts("root-identity-mismatch", "department-producer-scope-or-lease-invalid");
+    if (root.workspaceKey !== task.workspaceKey) rejectProducerFacts("root-workspace-mismatch", "department-producer-scope-or-lease-invalid");
+    if (modules.length !== 1 || modules[0].title !== m.moduleTitle) rejectProducerFacts("module-binding-invalid", "department-producer-scope-or-lease-invalid");
+    if (JSON.stringify(rm.routes) !== JSON.stringify(m.routes)) rejectProducerFacts("department-routes-changed", "department-producer-scope-or-lease-invalid");
+    if (JSON.stringify(rm.limits) !== JSON.stringify(m.limits)) rejectProducerFacts("department-limits-changed", "department-producer-scope-or-lease-invalid");
+    if (!read.ok || !read.value) rejectProducerFacts("runtime-snapshot-unavailable", "department-producer-scope-or-lease-invalid");
+    if (!members || members.length !== 1 || members[0].generation !== generation)
+      rejectProducerFacts("leader-member-generation-mismatch", "department-producer-scope-or-lease-invalid");
+    if (!read.value.capacity.leaders.includes(m.leaderSubtaskId)) rejectProducerFacts("leader-capacity-lease-missing", "department-producer-scope-or-lease-invalid");
+    if (launching && task.status !== "running") rejectProducerFacts("leader-not-running", "department-producer-authority-revoked");
+    if (launching && root.status !== "running") rejectProducerFacts("root-not-running", "department-producer-authority-revoked");
+    if (launching && modules[0].status !== "running") rejectProducerFacts("module-not-running", "department-producer-authority-revoked");
+    if (launching && members[0].status !== "running") rejectProducerFacts("leader-member-not-running", "department-producer-authority-revoked");
+    if (launching && read.value.runtime.stopping) rejectProducerFacts("runtime-stopping", "department-producer-authority-revoked");
+    if (launching && !deps.validateRoutes(m.routes)) rejectProducerFacts("department-routes-invalid", "department-producer-authority-revoked");
     const scope = { rootTaskId: root.id, workspace: task.workspaceKey, leaderTaskId: task.id, moduleId: m.leaderSubtaskId, generation };
     const routeSignature = JSON.stringify([m, rm, task.cli, task.originProfile, task.modelRouting]);
     return { task, scope, routeSignature, saved: read.value };
   }
-  function matches(g: Generation, launch: boolean): boolean {
-    try {
-      const f = facts(g.scope.leaderTaskId, g.scope.generation, launch);
-      const authority = g.authority && deps.authorityDirectory
-        ? readDepartmentGenerationAuthority(departmentGenerationAuthorityDirectory(deps.authorityDirectory, g.scope)) : null;
-      return leaderExecutionScopeKey(f.scope) === leaderExecutionScopeKey(g.scope) && f.routeSignature === g.routeSignature
-        && f.task.sessionId === g.localSession && (!g.authority || Boolean(authority
-          && authority.snapshot.producerId === producerId && authority.snapshot.claim === g.authority.claim
-          && (!launch || authority.snapshot.state === "open")));
-    } catch { return false; }
+  function matchesRejection(g: Generation, launch: boolean): ObservationRejectionReason | undefined {
+    let f: ReturnType<typeof facts>;
+    try { f = facts(g.scope.leaderTaskId, g.scope.generation, launch); }
+    catch (error) {
+      return error instanceof DepartmentProducerFactsError ? error.rejectionReason : "producer-validation-failed";
+    }
+    if (leaderExecutionScopeKey(f.scope) !== leaderExecutionScopeKey(g.scope)) return "scope-identity-mismatch";
+    if (f.routeSignature !== g.routeSignature) return "route-signature-changed";
+    if (f.task.sessionId !== g.localSession) return "local-session-changed";
+    if (g.authority && !deps.authorityDirectory) return "authority-directory-unavailable";
+    if (g.authority && deps.authorityDirectory) {
+      let authority: DepartmentGenerationAuthoritySnapshot | null;
+      try { authority = readDepartmentGenerationAuthority(departmentGenerationAuthorityDirectory(deps.authorityDirectory, g.scope))?.snapshot ?? null; }
+      catch { return "authority-unavailable"; }
+      if (!authority) return "authority-unavailable";
+      if (authority.producerId !== producerId) return "authority-producer-mismatch";
+      if (authority.claim !== g.authority.claim) return "authority-claim-mismatch";
+      if (launch && authority.state !== "open") return "authority-not-open";
+    }
+    return undefined;
   }
-  function current(scope: DepartmentLeaderExecutionScope): Generation | undefined {
-    const g = generations.get(leaderExecutionScopeKey(scope));
-    if (!g || !matches(g, false)) return undefined;
-    if (g.state !== "opening") {
+  function matches(g: Generation, launch: boolean): boolean {
+    try { return matchesRejection(g, launch) === undefined; }
+    catch { return false; }
+  }
+  function observationRejection(g: Generation): ObservationRejectionReason | undefined {
+    if (generations.get(leaderExecutionScopeKey(g.scope)) !== g) return "generation-not-current";
+    let match: ObservationRejectionReason | undefined;
+    try { match = matchesRejection(g, false); }
+    catch { return "producer-validation-failed"; }
+    if (match) return match;
+    if (g.state === "opening") return undefined;
+    try {
       const saved = deps.store.readLeaderExecutionSet(g.scope);
-      if (!saved.ok || !saved.value || saved.value.set.producerId !== producerId) return undefined;
+      if (!saved.ok) return "ledger-unreadable";
+      if (!saved.value) return "ledger-set-missing";
+      if (saved.value.set.producerId !== producerId) return "ledger-producer-mismatch";
+      return undefined;
+    } catch { return "ledger-unreadable"; }
+  }
+  function rejectObservationScope(taskId: string, generation: number, g: Generation | undefined,
+    reason: ObservationRejectionReason): never {
+    try { void Promise.resolve(deps.logError?.("department-producer-observation-scope-rejected", {
+      rootTaskId: g?.scope.rootTaskId, leaderTaskId: taskId, generation, reason,
+    })).catch(() => undefined); } catch { /* Diagnostics never change observation authorization. */ }
+    throw new Error("department-producer-observation-scope-unavailable");
+  }
+  function logValidationRejection(scope: DepartmentLeaderExecutionScope, phase: ProducerValidationPhase, reason: ObservationRejectionReason): void {
+    try { void Promise.resolve(deps.logError?.("department-producer-validation-rejected", {
+      rootTaskId: scope.rootTaskId, leaderTaskId: scope.leaderTaskId, generation: scope.generation, phase, reason,
+    })).catch(() => undefined); } catch { /* Diagnostics never change validation. */ }
+  }
+  function current(scope: DepartmentLeaderExecutionScope, phase?: ProducerValidationPhase): Generation | undefined {
+    const g = generations.get(leaderExecutionScopeKey(scope));
+    if (!g) return undefined;
+    const rejection = observationRejection(g);
+    if (rejection) {
+      if (phase) logValidationRejection(g.scope, phase, rejection);
+      return undefined;
     }
     return g;
   }
@@ -118,8 +194,16 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
     producerId,
     requiresGenerationAuthority: Boolean(deps.authorityDirectory),
     beginTracking(scope) { const g = current(scope); return g?.state === "opening"; },
-    isCurrent(scope) { return !!current(scope); },
-    canLaunch(scope) { const g = current(scope); return !!g && g.state === "open" && matches(g, true); },
+    isCurrent(scope) { return !!current(scope, "current"); },
+    canLaunch(scope) {
+      const g = current(scope, "launch");
+      if (!g || g.state !== "open") return false;
+      let rejection: ObservationRejectionReason | undefined;
+      try { rejection = matchesRejection(g, true); }
+      catch { rejection = "producer-validation-failed"; }
+      if (rejection) logValidationRejection(g.scope, "launch", rejection);
+      return !rejection;
+    },
     withAdmission<T>(scope: DepartmentLeaderExecutionScope, work: () => Promise<T>): Promise<T> {
       const g = current(scope);
       if (!g || !producer.canLaunch!(scope)) return Promise.reject(new Error("department-producer-admission-sealed"));
@@ -386,7 +470,10 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
     },
     observationScope(taskId: string, generation: number): DepartmentLeaderExecutionScope {
       const g = byTask.get(taskId);
-      if (!g || g.scope.generation !== generation || !current(g.scope)) throw new Error("department-producer-observation-scope-unavailable");
+      if (!g) rejectObservationScope(taskId, generation, g, "generation-not-found");
+      if (g.scope.generation !== generation) rejectObservationScope(taskId, generation, g, "generation-mismatch");
+      const reason = observationRejection(g);
+      if (reason) rejectObservationScope(taskId, generation, g, reason);
       return structuredClone(g.scope);
     },
     /** Read-only, observation-phase snapshot. Its clients are capabilities from

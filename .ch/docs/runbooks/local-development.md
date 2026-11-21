@@ -227,6 +227,14 @@ node scripts/count_effective_loc.js --json
 
 非 Codex/OpenCode 产研部组长续接从当前 Owner binding 或 producer 续接证明恢复 native session，不依赖 session-meta 映射；普通对话和员工仍受 `interactive-session-resume-blocked` 保护。组长仍报“只能查看”时，检查同任务是否有有效运行代次、`executionSession` 是否与当前原生 binding 一致，以及账本集合是否为 open；不要手工补写映射或重建会话来绕过 Owner/代次校验。
 
+### 产研部 Codex 组长回调故障
+
+在 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 搜索 `department-leader-native-failed`，并按 `rootTaskId`、`leaderTaskId`、`executionId` 和 `generation` 定位同一代。`stage=callback-consumer-rejected` 时查看 `callbackName` 和 `callbackSequence`；`callbackRejectionReason` 仅允许 `department-leader-generation-changed`、`department-leader-consumer-missing`、`department-producer-observation-scope-unavailable` 或 `unknown`，不包含异常正文。producer 观察校验拒绝时另记 `department-producer-observation-scope-rejected`，查看固定枚举字段 `reason`，可区分任务/根任务/模块、workspace/路线/session、authority 和 ledger 校验失败；不记录异常正文或任务内容。`callback-ack-send-failed` 也会记录对应回调上下文。日志用于定位 handler，不构成 Owner 清理凭证；即使任务状态已停止，也必须继续通过原 Owner 的只读观察和 receipt 流程确认清理，不能据日志重试、杀进程或释放容量。
+
+若拒绝原因为 `leader-task-unavailable` 或 `root-task-unavailable`，这仅表示当次权威任务读取不可用，不代表记录已删除。共享身份目录的受支持读者对事务锁等待最多 100ms；仍超时则保持拒绝。检查同时间是否有其它 VS Code 宿主正在提交任务更新，以及目录锁是否长期存在；不要手动删锁、强制接管、重放调用或清理 Owner/容量。短锁之后代码会重新读取并核验来源与身份，不沿用旧快照。
+
+`session-persistence-or-binding-failed` 进一步查看固定字段 `sessionBindingStep`。producer 的启动校验拒绝记录 `department-producer-validation-rejected`，用固定 `phase` 与 `reason` 区分阶段及拒绝原因。`original-receipt-observation-failed` 则检查原代 ExecutionSet 的绑定和原客户端回执。停止后活动 tab 可能已清理，回执读取依赖持久绑定和原通道。
+
 ### Webview 调试
 
 在 VS Code 或开发主机中执行：
