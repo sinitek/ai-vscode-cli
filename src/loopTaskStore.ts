@@ -25,7 +25,6 @@ import {
 } from "./loopPlusAcceptancePlan";
 import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
-import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
@@ -249,8 +248,6 @@ export type LoopTaskRecord = {
   taskKind?: LoopTaskKind;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
-  loopPlusSubtaskMaxRounds?: number;
-  classicSubtaskDispatchCount?: number;
   /** Department data is optional for legacy tasks; invalid data is explicit so execution can refuse it. */
   department?: DepartmentMetadata;
   departmentInvalid?: boolean;
@@ -1245,10 +1242,6 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
-  const loopPlusSubtaskMaxRounds = normalizeStoredLoopPlusSubtaskMaxRounds(
-    (raw as { loopPlusSubtaskMaxRounds?: unknown }).loopPlusSubtaskMaxRounds,
-  );
-  const classicSubtaskDispatchCount = raw.classicSubtaskDispatchCount;
   const legacyMaxRounds = parseLoopMaxRoundsValue(raw.maxRounds);
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
@@ -1284,9 +1277,6 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(taskKind ? { taskKind } : {}),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
-    ...(loopPlusSubtaskMaxRounds !== undefined ? { loopPlusSubtaskMaxRounds } : {}),
-    ...(typeof classicSubtaskDispatchCount === "number" && Number.isSafeInteger(classicSubtaskDispatchCount)
-      && classicSubtaskDispatchCount >= 0 ? { classicSubtaskDispatchCount } : {}),
     ...(departmentField.metadata ? { department: departmentField.metadata } : {}),
     ...(departmentField.invalid ? { departmentInvalid: true } : {}),
     ...(raw.departmentDeliveries && typeof raw.departmentDeliveries === "object" && !Array.isArray(raw.departmentDeliveries)
@@ -1524,12 +1514,6 @@ export function normalizeLoopSubtaskProgressWeightPercent(value: unknown): numbe
 
 function normalizeLoopPlusMainPhase(value: unknown): LoopPlusMainPhase | undefined {
   return value === "decomposing" ? "decomposing" : undefined;
-}
-
-function normalizeStoredLoopPlusSubtaskMaxRounds(value: unknown): number | undefined {
-  if (typeof value !== "number" && typeof value !== "string") return undefined;
-  const numeric = typeof value === "number" ? value : (value.trim() ? Number(value) : Number.NaN);
-  return Number.isFinite(numeric) ? resolveLoopPlusSubtaskMaxRounds(numeric) : undefined;
 }
 
 function findInvalidLoopSubtaskDependsOnIndex(record: unknown): number | null {

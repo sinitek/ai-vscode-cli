@@ -523,13 +523,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       if (elements.humanInteractionTimeoutMinutes) {
         const commitHumanInteractionTimeoutMinutes = () => {
           const nextValue = normalizeHumanInteractionTimeoutMinutes(elements.humanInteractionTimeoutMinutes.value);
+          const changed = state.humanInteractionTimeoutMinutes !== nextValue;
           state.humanInteractionTimeoutMinutes = nextValue;
           elements.humanInteractionTimeoutMinutes.value = String(nextValue);
-          vscode.postMessage({
-            type: "updateSetting",
-            key: "humanInteractionTimeoutMinutes",
-            value: nextValue,
-          });
+          if (changed) vscode.postMessage({ type: "updateSetting", key: "humanInteractionTimeoutMinutes", value: nextValue });
         };
         elements.humanInteractionTimeoutMinutes.addEventListener("change", commitHumanInteractionTimeoutMinutes);
         elements.humanInteractionTimeoutMinutes.addEventListener("blur", commitHumanInteractionTimeoutMinutes);
@@ -550,7 +547,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
           if (changed) {
             renderMessages({ incremental: true });
           }
-          vscode.postMessage({ type: "updateSetting", key: "chatMessageLimit", value: nextValue });
+          if (changed) vscode.postMessage({ type: "updateSetting", key: "chatMessageLimit", value: nextValue });
         };
         elements.chatMessageLimit.addEventListener("change", commitChatMessageLimit);
         elements.chatMessageLimit.addEventListener("blur", commitChatMessageLimit);
@@ -567,22 +564,13 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       if (elements.loopGroupChatMessageLimit) {
         const commitLoopGroupChatMessageLimit = () => {
           const nextValue = normalizeChatMessageLimit(elements.loopGroupChatMessageLimit.value, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
+          const changed = state.loopGroupChatMessageLimit !== nextValue;
           state.loopGroupChatMessageLimit = nextValue;
           elements.loopGroupChatMessageLimit.value = String(nextValue);
-          vscode.postMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value: nextValue });
+          if (changed) vscode.postMessage({ type: "updateSetting", key: "loopGroupChatMessageLimit", value: nextValue });
         };
         elements.loopGroupChatMessageLimit.addEventListener("change", commitLoopGroupChatMessageLimit);
         elements.loopGroupChatMessageLimit.addEventListener("blur", commitLoopGroupChatMessageLimit);
-      }
-      if (elements.loopPlusSubtaskMaxRounds) {
-        const commitLoopPlusSubtaskMaxRounds = () => {
-          const nextValue = normalizeLoopPlusSubtaskMaxRounds(elements.loopPlusSubtaskMaxRounds.value);
-          state.loopPlusSubtaskMaxRounds = nextValue;
-          elements.loopPlusSubtaskMaxRounds.value = String(nextValue);
-          vscode.postMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: nextValue });
-        };
-        elements.loopPlusSubtaskMaxRounds.addEventListener("change", commitLoopPlusSubtaskMaxRounds);
-        elements.loopPlusSubtaskMaxRounds.addEventListener("blur", commitLoopPlusSubtaskMaxRounds);
       }
       ["departmentMaxLeaders", "departmentMaxEmployees"].forEach((key) => {
         const input = elements[key];
@@ -592,8 +580,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
       if (elements.loopPlusDecisionSubtaskMax) {
         const commitLoopPlusDecisionSubtaskMax = () => {
           const nextValue = normalizeLoopPlusDecisionSubtaskMax(elements.loopPlusDecisionSubtaskMax.value);
+          const changed = state.loopPlusDecisionSubtaskMax !== nextValue;
           state.loopPlusDecisionSubtaskMax = nextValue;
           elements.loopPlusDecisionSubtaskMax.value = String(nextValue);
+          if (!changed) return;
           vscode.postMessage({
             type: "updateSetting",
             key: "loopPlusDecisionSubtaskMax",
@@ -607,6 +597,8 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         const commitWorkspaceLoopPlusDecisionSubtaskMax = () => {
           const raw = elements.workspaceLoopPlusDecisionSubtaskMax.value.trim();
           const nextValue = raw ? normalizeLoopPlusDecisionSubtaskMax(raw) : null;
+          if ((state.workspaceLoopPlusDecisionSubtaskMax ?? null) === nextValue) return;
+          state.workspaceLoopPlusDecisionSubtaskMax = nextValue;
           elements.workspaceLoopPlusDecisionSubtaskMax.value = nextValue === null ? "" : String(nextValue);
           vscode.postMessage({
             type: "updateSetting",
@@ -621,9 +613,10 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         const commitHistoryRetentionDays = () => {
           const raw = Number(elements.historyRetentionDays.value);
           const nextValue = Number.isFinite(raw) ? Math.min(Math.max(Math.floor(raw), 1), 3650) : 30;
+          const changed = state.historyRetentionDays !== nextValue;
           state.historyRetentionDays = nextValue;
           elements.historyRetentionDays.value = String(nextValue);
-          vscode.postMessage({ type: "updateSetting", key: "historyRetentionDays", value: nextValue });
+          if (changed) vscode.postMessage({ type: "updateSetting", key: "historyRetentionDays", value: nextValue });
         };
         elements.historyRetentionDays.addEventListener("change", commitHistoryRetentionDays);
         elements.historyRetentionDays.addEventListener("blur", commitHistoryRetentionDays);

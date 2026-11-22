@@ -3,7 +3,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, CliName } from "./types";
-import { getConfiguredCliCommandParts, resolveCliCommand, type ResolvedCliCommand } from "./commandResolution";
+import {
+  getConfiguredCliCommandParts,
+  getWindowsCommandCandidates,
+  resolveCliCommand,
+  type ResolvedCliCommand,
+} from "./commandResolution";
 import { expandHomePath } from "../shared/userHomePaths";
 
 const REGISTRY_PATH_SEPARATOR = "---SINITEK-PATH---";
@@ -50,19 +55,24 @@ export function inspectUnresolvedCliCommands(
   platform: NodeJS.Platform = process.platform,
 ): CliCommandRepairIssue[] {
   return CLI_LIST.flatMap((cli) => {
-    const configured = String(commands[cli] ?? cli).trim() || cli;
-    const executable = getConfiguredCliCommandParts(configured, cli)[0] ?? cli;
-    const resolved = resolveCliCommand(executable);
-    if (resolved && isUsableCommandFile(resolved.command, platform)) {
-      return [];
-    }
-    const leaf = path.basename(executable).trim() || cli;
-    return [{
-      cli,
-      command: executable,
-      summary: `spawn ${leaf} ENOENT`,
-    }];
+    const issue = inspectCliCommand(cli, commands[cli], platform);
+    return issue ? [issue] : [];
   });
+}
+
+function inspectCliCommand(
+  cli: CliName,
+  configuredCommand: string | undefined,
+  platform: NodeJS.Platform,
+): CliCommandRepairIssue | null {
+  const configured = String(configuredCommand ?? cli).trim() || cli;
+  const executable = getConfiguredCliCommandParts(configured, cli)[0] ?? cli;
+  const resolved = resolveCliCommand(executable);
+  if (resolved && isUsableCommandFile(resolved.command, platform)) {
+    return null;
+  }
+  const leaf = path.basename(executable).trim() || cli;
+  return { cli, command: executable, summary: `spawn ${leaf} ENOENT` };
 }
 
 export function buildRepairedCliCommand(
@@ -86,9 +96,8 @@ export function shouldAwaitCliCommandAutoRepair(
   commands: Partial<Record<CliName, string>>,
   platform: NodeJS.Platform = process.platform,
 ): boolean {
-  return inspectUnresolvedCliCommands(commands, platform).some((issue) => (
-    issue.cli === cli && isBareCommandToken(issue.command)
-  ));
+  const issue = inspectCliCommand(cli, commands[cli], platform);
+  return issue !== null && isBareCommandToken(issue.command);
 }
 
 export async function planUnresolvedCliCommandRepairs(
@@ -288,7 +297,8 @@ function findFirstExecutable(
 ): string | null {
   for (const directory of directories) {
     for (const name of names) {
-      for (const candidateName of commandCandidateNames(name, platform, env)) {
+      const candidates = platform === "win32" ? getWindowsCommandCandidates(name, env, "allow-bare") : [name];
+      for (const candidateName of candidates) {
         const candidate = path.join(directory, candidateName);
         if (isUsableCommandFile(candidate, platform)) {
           return candidate;
@@ -297,26 +307,6 @@ function findFirstExecutable(
     }
   }
   return null;
-}
-
-function commandCandidateNames(
-  command: string,
-  platform: NodeJS.Platform,
-  env: NodeJS.ProcessEnv,
-): string[] {
-  if (platform !== "win32" || path.extname(command)) {
-    return [command];
-  }
-  return [...windowsPathExtensions(env).map((extension) => `${command}${extension}`), command];
-}
-
-function windowsPathExtensions(env: NodeJS.ProcessEnv): string[] {
-  const pathExt = env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
-  return pathExt
-    .split(";")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
 }
 
 function isUsableCommandFile(targetPath: string, platform: NodeJS.Platform): boolean {

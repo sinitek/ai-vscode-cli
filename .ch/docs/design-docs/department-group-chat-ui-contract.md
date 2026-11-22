@@ -2,6 +2,10 @@
 
 此文档描述可选 Webview 投影、组长弹窗及记录驱动的协调器授权边界；不表示中央组合、组织任务启动或跨任务持久化已接通。已有 Loop/Loop+ 不提供 `department` 时继续使用原展示。
 
+## 气泡复制
+
+群聊正文和提问气泡可用“复制”按钮复制原文，也可选中已渲染的文字后按 `Ctrl+C` / `Cmd+C`。编辑框选区保持系统默认行为；实时内容更新在气泡选区清除后再替换对应片段。组长 iframe 保持 `allow-scripts` 沙箱，沿用当前 frame、消息通道和 task/instance 校验，将有界纯文本交由 VS Code 宿主写入剪贴板。
+
 ## 只读投影
 
 `src/webview/loopGroupChatPanelTypes.ts` 导出 `DepartmentGroupChatProjection`，并由 `LoopGroupChatPanelState.department?` 引用。字段为：

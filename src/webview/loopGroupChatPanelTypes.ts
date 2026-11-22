@@ -201,6 +201,7 @@ export type LoopGroupChatPanelBaseMessage =
   | { type: "loopGroupChatChat:cancelSubtask"; subtaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }
   | { type: "loopGroupChatChat:loadingReady" }
+  | { type: "loopGroupChatChat:copyText"; text: string }
   | { type: "loopGroupChatChat:continueTask"; prompt?: string; requestId?: string }
   | { type: "loopGroupChatChat:switchModels"; models?: Record<string, string>; thinkingModes?: Record<string, string> }
   | { type: "loopGroupChatChat:supplementTask"; prompt?: string }
@@ -241,6 +242,7 @@ export type LoopGroupChatPanelMessage = LoopGroupChatPanelBaseMessage
 /** Presentation allowlist only. Host must independently authorize task, binding and payload. */
 export const DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "loopGroupChatChat:domReady", "loopGroupChatChat:refresh", "loopGroupChatChat:continueTask",
+  "loopGroupChatChat:copyText",
   "loopGroupChatChat:switchModels", "loopGroupChatChat:supplementTask", "loopGroupChatChat:askMainModel",
   "loopGroupChatChat:abortMainModelQuestion", "loopGroupChatChat:openAskDialog", "loopGroupChatChat:closeAskDialog",
   "loopGroupChatChat:dismissMainModelAnswer", "loopGroupChatChat:stopTask", "loopGroupChatChat:openCommunicationFile",

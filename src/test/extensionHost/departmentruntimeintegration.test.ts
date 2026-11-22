@@ -31,7 +31,8 @@ function rootRecord(id: string, modules: string[]): LoopTaskRecord {
     maxRounds: 20, currentRound: 0, communicationDir: "/fixture", mainCommunicationFile: "/fixture/main", sessionId: `director-${id}`,
     subTasks: modules.map((id) => ({ id, title: id, prompt: request(id).prompt, status: "pending" })), rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [] };
 }
-function harness(options: Parameters<typeof createLoopPlusRuntimeFixture>[0] & { maxEmployees?: number;
+function harness(options: Parameters<typeof createLoopPlusRuntimeFixture>[0] & { maxEmployees?: number; executionMode?: DepartmentMetadata["executionMode"];
+  ownerLifecycle?: Pick<DepartmentOrchestrationDeps, "beginLeaderExecution" | "resumeLeaderExecution" | "leaderReleased" | "verifyStoredLeaderIdentity">;
   observeLeaderCleanup?: import("../../extensionHost/departmentorchestration").DepartmentOrchestrationDeps["observeLeaderCleanup"] } = {}) {
   // Auxiliary host/adapter contract cases do not claim controlled-storage provenance.
   // The isolated admission fixture below separately exercises the real production task-store router.
@@ -60,13 +61,16 @@ function harness(options: Parameters<typeof createLoopPlusRuntimeFixture>[0] & {
     validateRoutes: (routes: DepartmentMetadata["routes"]) => Object.values(routes).every((r) => r.cli === "codex" && r.configId === "profile"),
     inspectLeaderSession: (task: LoopTaskRecord) => { const target = sessions.get(task.sessionId!); return target ? { target, live: liveLeaders.get(task.id) ?? null } : null; },
     observeRestoredExecution: (task: LoopTaskRecord, req: { attemptId: string }) => liveEmployees.get(JSON.stringify([task.id, req.attemptId])) ?? null,
+    ...options.ownerLifecycle,
     ...(options.observeLeaderCleanup ? { observeLeaderCleanup: options.observeLeaderCleanup } : {}),
     stopLeader: () => undefined,
     persistRuntime: (snapshot: DepartmentRuntimeSnapshot) => { if (persistenceFails) throw new Error("disk unavailable"); snapshots.set(snapshot.rootTaskId, structuredClone(snapshot)); },
     notifyDirector: (rootId: string) => { notices.push(rootId); }, createMessageId: () => `message-${++next}`,
   };
   const host = createDepartmentOrchestrationHost(deps);
-  function register(id = "root", modules = ["accounts", "reports"]) { const root = rootRecord(id, modules); fixture.saveTask({ ...root, taskStoreFile: fixture.storeFile });
+  function register(id = "root", modules = ["accounts", "reports"]) { const root = rootRecord(id, modules);
+    if (options.executionMode) root.department = { ...root.department!, executionMode: options.executionMode };
+    fixture.saveTask({ ...root, taskStoreFile: fixture.storeFile });
     assert.deepEqual(host.registerRoot(read(id)!, root.department, root.loopPlusAcceptancePlan!), { ok: true }); return read(id)!; }
   function dispatch(prefix: string, count = 1) {
     fixture.queueMain((input, tab) => fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "dispatch", subtasks: Array.from({ length: count }, (_, i) => ({
@@ -135,8 +139,11 @@ test("real host/adapter/pool tracks all requested employees until actual cleanup
   assert.equal(h.host.canCompleteRoot("root"), false);
 });
 
-test("real paused/stopped leaders retain unique tasks and re-acquire slots when continued", async (t) => {
-  const h = harness(); t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
+for (const executionMode of [undefined, "loop-plus"] as const) test(`real paused/stopped leaders retain unique tasks and re-acquire slots when continued (${executionMode ?? "owner"})`, async (t) => {
+  const unexpectedOwnerCalls: string[] = [];
+  const h = harness({ executionMode, ...(executionMode ? { ownerLifecycle: {
+    resumeLeaderExecution: async () => { unexpectedOwnerCalls.push("resume"); },
+  } } : {}) }); t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
   h.pause(); const first = await h.host.startLeader("root", request("accounts")); assert.ok(first.ok); if (!first.ok) return;
   await first.done;
   assert.equal(h.read(first.taskId)!.status, "needs-review");
@@ -149,10 +156,77 @@ test("real paused/stopped leaders retain unique tasks and re-acquire slots when 
   assert.equal(h.capacity.snapshot("root")[0].leaders.length, 1);
   assert.equal(h.host.runtimeSnapshot("root")!.leaders[0].taskId, first.taskId);
   assert.equal((await h.host.startLeader("root", request("accounts"))).ok, false);
-  await h.host.stopRoot("root");
+  assert.equal(await h.host.stopRoot("root"), true);
   h.finish();
   assert.equal((await h.host.continueRoot("root")).ok, true);
   await waitForLoopPlus(() => h.capacity.snapshot("root")[0].leaders.length === 0, "continued stopped leader completes or pauses after cleanup");
+  assert.deepEqual(unexpectedOwnerCalls, []);
+});
+
+test("department Loop+ employees can create and retain a top-level workspace file", async (t) => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "department-workspace-test-"));
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  const h = harness({ executionMode: "loop-plus", executionRootFactory: (grokId, useWorkspaceCwd) => {
+    assert.equal(grokId, undefined);
+    assert.equal(useWorkspaceCwd, true);
+    return { cwd: workspace, isolateProjectInstructions: false, dispose: () => undefined };
+  } });
+  t.after(() => h.fixture.dispose());
+  h.register("root", ["accounts"]);
+  h.dispatch("new-source");
+  h.finish();
+  h.fixture.setAttemptAction((input, tab) => {
+    assert.equal(input.executionCwd, workspace);
+    assert.equal(input.isolateProjectInstructions, false);
+    fs.writeFileSync(path.join(input.executionCwd!, "NewSource.java"), "public final class NewSource {}\n");
+    h.fixture.publish(input, tab, { status: "end", content: "源码已写入工作区" });
+  });
+  const leader = await h.host.startLeader("root", request("accounts"));
+  assert.ok(leader.ok);
+  await leader.done;
+  assert.equal(h.read(leader.taskId)?.status, "completed");
+  assert.equal(fs.readFileSync(path.join(workspace, "NewSource.java"), "utf8"), "public final class NewSource {}\n");
+});
+
+test("department Loop+ uses ordinary turns after an employee failure without requiring Owner receipts", async (t) => {
+  const ownerCalls: string[] = [];
+  const h = harness({ executionMode: "loop-plus", runDepartmentMain: async () => { ownerCalls.push("main"); },
+    closeDepartmentCoordinator: async () => { ownerCalls.push("close"); },
+    ownsDepartmentAttemptResources: () => { ownerCalls.push("resources"); return true; },
+    observeAttemptTermination: () => { ownerCalls.push("termination"); return null; },
+    observeLeaderCleanup: () => { ownerCalls.push("aggregate"); return null; },
+    ownerLifecycle: {
+      beginLeaderExecution: async () => { ownerCalls.push("begin"); },
+      leaderReleased: () => { ownerCalls.push("release"); },
+      verifyStoredLeaderIdentity: () => { ownerCalls.push("recover"); return false; },
+    } });
+  t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
+  h.dispatch("broken");
+  let reviewedFailure = false;
+  h.fixture.queueMain((input, tab) => {
+    const event = input.displayPrompt.match(/Current review eventId: (\S+)/)?.[1];
+    reviewedFailure = Boolean(event && event !== "(none)" && input.displayPrompt.includes("员工进程异常退出 7"));
+    h.fixture.publish(input, tab, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "accept", progressPercent: 50, reviewEventId: event,
+      subtasks: [{ id: "replacement", title: "继续修复模块", prompt: "Resolve the failed implementation and verify the required behavior before reporting the result.", writeFiles: [], taskType: "general" }] })) });
+  });
+  h.finish();
+  const leader = await h.host.startLeader("root", request("accounts")); assert.ok(leader.ok); if (!leader.ok) return;
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("broken-0"), "first employee starting");
+  h.fixture.finishParked("broken-0", { status: "error", failureDetail: "员工进程异常退出 7" });
+  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("replacement"), "employee dispatched after failed attempt review")
+    .catch((error: Error) => { throw new Error(`${error.message}: ${JSON.stringify({ status: h.read(leader.taskId)?.status, reviewedFailure, logs: h.fixture.logs.slice(-12) })}`); });
+  assert.equal(reviewedFailure, true);
+  assert.equal(h.host.runtimeSnapshot("root")!.leaders[0].status, "running");
+  assert.equal(h.capacity.snapshot("root")[0].employees.length, 1);
+  h.fixture.finishParked("replacement", { status: "end", content: "模块已验证完成" });
+  await leader.done;
+  assert.equal(h.read(leader.taskId)?.status, "completed");
+  assert.equal(h.host.canCompleteRoot("root"), true);
+  assert.deepEqual(h.capacity.snapshot("root")[0].employees, []);
+  const recovered = createDepartmentOrchestrationHost({ ...h.deps, capacity: new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 1 }) });
+  const root = h.read("root")!;
+  assert.deepEqual(recovered.recoverRoot(root, root.department, root.loopPlusAcceptancePlan!, h.snapshots.get("root"), h.capacity.snapshot("root")), { ok: true });
+  assert.deepEqual(ownerCalls, []);
 });
 
 for (const proof of ["missing", "rejected", "confirmed"] as const) {

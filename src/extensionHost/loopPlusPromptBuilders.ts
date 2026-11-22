@@ -2,7 +2,6 @@ import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusSubtaskMaxRounds,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -46,9 +45,7 @@ export type LoopPlusMainPromptContext = {
   pendingUserMessages?: readonly string[];
   maxConcurrency: number;
   subtaskMax?: number;
-  subtaskRounds?: number;
   progressPercent?: number;
-  subtaskRoundLimit?: number;
   /** 任务快照上的模式。缺省按 split 描述，避免未传模式的旧调用突然要求全栈。 */
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
@@ -140,14 +137,6 @@ function formatExecution(record: LoopPlusExecutionRecord): string {
 
 function formatReview(item: LoopPlusReviewItem, label: string): string {
   return `- ${label} eventId=${item.eventId} subtask=${item.subtaskId} attempt=${item.attemptId} outcome=${item.outcome} detail=${item.detail ?? ""}`;
-}
-
-function normalizePromptCount(value: unknown): number {
-  const numeric = typeof value === "number" ? value : Number.NaN;
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return 0;
-  }
-  return Math.floor(numeric);
 }
 
 function departmentEmployeeCapacityLines(
@@ -480,8 +469,6 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
   const parallelCapacity = Math.min(subtaskMax, context.maxConcurrency);
   const availableSlots = Math.max(0, context.maxConcurrency - context.view.running.length);
-  const subtaskRounds = normalizePromptCount(context.subtaskRounds);
-  const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(context.subtaskRoundLimit);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
@@ -537,7 +524,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Obviously simple, low-risk edits may skip full acceptance too. Use false when the exact intent and affected scope are clear, the edit is local and directly verifiable, and no material behavior, contract, security, or integration judgment remains. Examples include adding a fixed, non-sensitive diagnostic log with the existing logger or renaming a strictly local variable without changing behavior. The subtask must check the targeted diff, run any required checks, and report the exact changes and results. A one-line change to a shared default or a log that exposes sensitive data is not exempt.",
     "An authorized ordinary Git commit or push with a known scope and target also uses requiresAcceptance=false when it is only a delivery step. Route a standalone Git delivery as backend (the fullstack sub-model in fullstack mode), not read-only general. Keep it separate from implementation that still needs review, and wait until the intended changes are ready; use dependsOn for prerequisite subtasks. Specify the authorized files or commits and the target branch and, for a push, the remote. Do not overlap with work that can alter the commit set or target ref. The attempt checks the scope and destination, then reports the actual commit SHA and push result if applicable. The exemption does not grant permission to commit or push, does not waive review of the contents, and does not cover force-push, history rewriting, or other non-routine Git operations.",
     "The general simple-task rule is separate from requiresAcceptance: when the whole request is clear, local, low-risk and directly verifiable, and neither the user nor project requires tests, builds, delegation or an independent check, the main task may do it directly. Do not delegate a trivial task just to avoid review. Required checks still apply to delegated no-acceptance work; if the scope expands or a check fails, address that in the next decision rather than treating report acknowledgment as approval.",
-    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". The attempt consumes a subtask round whether or not full acceptance is required.`,
+    `Reports marked no-acceptance must be explicitly acknowledged in every valid scheduling decision: reportEventIds=${reportIds.length > 0 ? JSON.stringify(reportIds) : "omit when none"}. Frozen FIFO report prefix:\n${reportBatchText}\nThe main task must read each report at the supplied attempt report path, incorporate its result into remaining-work decisions, then acknowledge the exact list. A clarify decision leaves these reports pending until scheduling resumes. This acknowledgment means "no separate acceptance cycle", not "acceptance passed". The attempt remains tracked for reporting whether or not full acceptance is required.`,
     `Pending no-acceptance reports (oldest first):\n${reports}`,
     "Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check. Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check. Already completed independent checks that remain valid are reusable too. A passing unit suite does not establish untested integration behavior.",
     "Clarify an unclear report using existing output or the source subtask before considering a rerun. Do not demand raw logs or independent reproduction merely to trust a clear execution report. You may run tests or start produced artifacts only to close an identified verification gap under the rules above. Skipping an unnecessary rerun is not a failure; an unmet required check still needs resolution.",
@@ -552,7 +539,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ...(context.allowDispatchBeforeReview ? [
       "One-time dispatch-first check for this newly frozen acceptance batch: first look for genuinely independent unfinished work that can start now without relying on any unreviewed event's result. This is a single dispatch opportunity, not an acceptance decision.",
       "If such work exists, return dispatch with only those self-contained tasks, acknowledge the exact supplied reportEventIds, and include nextStepPlan for the automatic next main decision to review this unchanged frozen batch. Do not include review ids, reviews, or controls. Never include repairs or successors whose scope depends on an acceptance verdict.",
-      "If no independent task can start immediately within the live slot and subtask-round limits, return accept now and review the frozen batch; do not return an empty dispatch or create placeholder work. The host will not offer another dispatch-first opportunity for this batch.",
+      "If no independent task can start immediately within the configured per-decision dispatch limit and live slots, return accept now and review the frozen batch; do not return an empty dispatch or create placeholder work. The host will not offer another dispatch-first opportunity for this batch.",
     ] : []),
     ...(context.blockedReviewSummary !== undefined ? [
       "Bounded blocked review: this is the one remaining-work check before a global pause, not permission to retry a failed execution.",
@@ -594,10 +581,6 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ...(context.view.dependencyBlocks?.length
       ? context.view.dependencyBlocks.map((block) => `- ${block.subtaskId} attempt=${block.attemptId} dependsOn=${block.dependencyId} latestAttempt=${block.dependencyAttemptId ?? "(none)"} reason=${block.reason}`)
       : ["(none)"]),
-    `Subtask rounds used: ${subtaskRounds}`,
-    `Subtask round limit: ${subtaskRoundLimit}`,
-    `Remaining subtask rounds: ${Math.max(0, subtaskRoundLimit - subtaskRounds)}`,
-    "Each newly dispatched or reprompted attempt uses one round, including parallel and acceptance-exempt subtasks. Resuming the same attempt uses no extra round. Stay within the remaining rounds; existing reviews and reports may still be confirmed at the limit.",
     `Snapshot phase: ${context.view.phase}`,
     `Snapshot completion blockers: ${blockers}`,
     `Snapshot says completion is allowed: ${context.view.canComplete ? "yes" : "no"}`,
@@ -693,7 +676,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Do not send confirmedEventIds or acceptedEventIds. Do not send reviewEventIds together with reviewEventId. Any of those forms rejects the whole decision.",
     "- Do not reuse the classic Loop status continue, and do not use roundSummaries as a required field or completion gate.",
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
-    "- Only newly dispatched or reprompted attempts consume subtask rounds. Never exceed the remaining round budget; review and report confirmation remain allowed at the limit.",
+    "- There is no cumulative per-parent subtask dispatch limit. Each dispatch remains subject to the configured per-decision dispatch limit and currently available concurrency slots.",
     `- A continuing decision may optionally include nextStepPlan with a concise objective and up to ${LOOP_PLUS_NEXT_STEP_CRITERIA_MAX_COUNT} short acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.`,
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",

@@ -62,6 +62,7 @@ import type {
   PromptRunExecutionOptions,
 } from "./promptExecutionShared";
 import { runOpenCodePromptTemplate } from "./openCodePromptRunTemplate";
+import { createOpenCodePromptSubagentMonitor } from "./openCodePromptSubagentMonitor";
 
 const OPENCODE_JSONL_PENDING_LINE_MAX_BYTES = 64 * 1024;
 
@@ -899,48 +900,29 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           },
         };
       },
-      createSubagentMonitor: ({ subagentRuntime, attemptNumber, directory }) => {
-        const subagentMonitor = subagentRuntime.connection
-          ? createOpenCodeSubagentMonitor({
-            connection: subagentRuntime.connection,
-            directory,
-            onUpdate: (update) => {
-              if (getActiveRunId() !== runId) {
-                return;
-              }
-              markExternalStartupActivity();
-              subagentProgress?.update(update);
-            },
-            onNoChildren: () => {
-              if (silentProgressNoticeShown || getActiveRunId() !== runId) {
-                return;
-              }
-              silentProgressNoticeShown = true;
-              resetActiveAssistantMessage();
-              appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
-              void logInfo("runPrompt-one-shot-subagent-poll-empty", {
-                cli: runCli,
-                runId,
-                tabId: activeTabId,
-                sessionId: activeSessionId,
-                attempt: attemptNumber,
-                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-              });
-            },
-            onError: (error) => {
-              void logDebug("runPrompt-one-shot-subagent-monitor-error", {
-                cli: runCli,
-                runId,
-                tabId: activeTabId,
-                sessionId: activeSessionId,
-                attempt: attemptNumber,
-                error: error.message,
-              });
-            },
-          })
-          : createDisabledOpenCodeSubagentMonitor();
-        attemptSubagentMonitor = subagentMonitor;
-        return subagentMonitor;
+      createSubagentMonitor: (context) => {
+        attemptSubagentMonitor = createOpenCodePromptSubagentMonitor(context, {
+          kind: "one-shot",
+          createMonitor: createOpenCodeSubagentMonitor,
+          createDisabledMonitor: createDisabledOpenCodeSubagentMonitor,
+          canUpdateProgress: () => getActiveRunId() === runId,
+          canShowEmptyProgressNotice: () => getActiveRunId() === runId,
+          hasShownEmptyProgressNotice: () => silentProgressNoticeShown,
+          markEmptyProgressNoticeShown: () => { silentProgressNoticeShown = true; },
+          updateProgress: (update) => {
+            markExternalStartupActivity();
+            subagentProgress?.update(update);
+          },
+          showEmptyProgressNotice: () => {
+            resetActiveAssistantMessage();
+            appendSystemMessage(t("run.openCodeSubagentPollEmpty"));
+          },
+          getLogContext: () => ({ cli: runCli, runId, tabId: activeTabId, sessionId: activeSessionId }),
+          pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+          logInfo,
+          logDebug,
+        });
+        return attemptSubagentMonitor;
       },
       runCliStream: executionOptions.departmentProcessStream ?? runCliStream,
       buildProcessLabel,

@@ -40,26 +40,35 @@ function fileExists(targetPath: string): boolean {
 }
 
 function resolveExistingCommandPath(command: string, env: NodeJS.ProcessEnv): string | null {
-  if (process.platform === "win32" && !path.extname(command)) {
-    const exts = getWindowsPathExts(env);
-    for (const ext of exts) {
-      const candidate = `${command}${ext}`;
-      if (fileExists(candidate)) {
-        return candidate;
-      }
+  const candidates = process.platform === "win32"
+    ? getWindowsCommandCandidates(command, env, "allow-bare")
+    : [command];
+  for (const candidate of candidates) {
+    if (fileExists(candidate)) {
+      return candidate;
     }
-    return fileExists(command) ? command : null;
   }
-  return fileExists(command) ? command : null;
+  return null;
 }
 
-function getWindowsPathExts(env: NodeJS.ProcessEnv): string[] {
+export function getWindowsCommandCandidates(
+  command: string,
+  env: NodeJS.ProcessEnv,
+  bareFallback: "allow-bare" | "omit-bare",
+): string[] {
+  if (path.extname(command)) {
+    return [command];
+  }
   const pathext = env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM";
-  return pathext
+  const candidates = pathext
     .split(";")
     .map((entry) => entry.trim())
     .filter(Boolean)
-    .map((entry) => (entry.startsWith(".") ? entry : `.${entry}`));
+    .map((entry) => `${command}${entry.startsWith(".") ? entry : `.${entry}`}`);
+  if (bareFallback === "allow-bare") {
+    candidates.push(command);
+  }
+  return candidates;
 }
 
 function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.ProcessEnv): string | null {
@@ -67,24 +76,15 @@ function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.Proce
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-  if (process.platform === "win32") {
-    const hasExt = Boolean(path.extname(command));
-    const exts = hasExt ? [""] : getWindowsPathExts(env);
-    for (const dir of filteredDirs) {
-      for (const ext of exts) {
-        const candidate = path.join(dir, hasExt ? command : `${command}${ext}`);
-        if (fileExists(candidate)) {
-          return candidate;
-        }
-      }
-    }
-    return null;
-  }
-
+  const candidates = process.platform === "win32"
+    ? getWindowsCommandCandidates(command, env, "omit-bare")
+    : [command];
   for (const dir of filteredDirs) {
-    const candidate = path.join(dir, command);
-    if (fileExists(candidate)) {
-      return candidate;
+    for (const candidateName of candidates) {
+      const candidate = path.join(dir, candidateName);
+      if (fileExists(candidate)) {
+        return candidate;
+      }
     }
   }
   return null;

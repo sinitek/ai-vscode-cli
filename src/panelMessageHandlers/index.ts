@@ -17,6 +17,12 @@ import {
 export function createPanelMessageHandlerRegistry(
   deps: PanelMessageHandlerDeps
 ): PanelMessageHandlerRegistry {
+  let settingsQueue = Promise.resolve();
+  const enqueueSettingsAction = (action: () => Promise<void>): Promise<void> => {
+    const result = settingsQueue.then(action, action);
+    settingsQueue = result.catch(() => undefined);
+    return result;
+  };
   const specialHandlers: PanelMessageHandlerRegistry = {};
   const updateOpenCodeVariant = deps.updateOpenCodeVariant;
   if (updateOpenCodeVariant) {
@@ -37,15 +43,16 @@ export function createPanelMessageHandlerRegistry(
     createPromptPanelMessageHandlers(deps),
     createLoopPlusAcceptancePlanPanelMessageHandlers(deps),
     {
-      refreshToolSettings: async () => {
+      refreshToolSettings: () => enqueueSettingsAction(async () => {
         deps.reloadStoredToolSettings();
+        deps.reloadWorkspaceSettings?.();
         await deps.postPanelState();
-      },
-      updateSetting: async (message) => {
+      }),
+      updateSetting: (message) => enqueueSettingsAction(async () => {
         if (message.key) {
           await handleUpdateSettingMessage(message, deps);
         }
-      },
+      }),
       sendPrompt: async (message) => {
         if (typeof message.prompt === "string") {
           await handleSendPromptMessage(message, deps);

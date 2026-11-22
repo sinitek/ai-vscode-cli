@@ -5,7 +5,7 @@ import { parseCodexConfigModel } from "../../cli/codexConfigModel";
 import { parseGrokConfigModels } from "../../cli/grokConfigModels";
 import { createDshExampleDocument, parseDshConfigModels, toDshModelWireValue, DSH_VERIFIED_MODEL_ID } from "../../cli/dshConfigModels";
 import { parseKimiCodeConfigModels } from "../../config/kimiCodeConfig";
-import { createZcodeExampleText, readZcodeConfigModels, resolveZcodeModelWireForRun, ZCODE_EXAMPLE_MODEL_ID } from "../../config/zcodeConfig";
+import { createZcodeExampleText, readZcodeConfigModels, ZCODE_EXAMPLE_MODEL_ID } from "../../config/zcodeConfig";
 import { t } from "../../i18n";
 
 type ConfiguredCli = Parameters<ConfiguredModelReadPort["getCurrentConfig"]>[0];
@@ -309,21 +309,39 @@ test("Kimi execution reads fresh content, uses aliases not provider model names,
   assert.deepEqual(reads, ["current:kimi-code", "current:kimi-code", "identity:after"]);
 });
 
-test("ZCode execution rereads current content and preserves native wire and late identity", async () => {
-  const { repository, current, state, reads } = fixture();
+test("each ZCode run reads current content before identity and parses it once for both cache and wire", async (context) => {
+  const { repository, current, state, reads, errors } = fixture();
   await repository.refreshZcodeConfigModels("before");
+  const previous = repository.getZcodeConfigModels("before");
   const content = zcodeText("synthetic-fresh-model");
   current.zcode = { content, configContent: "must not parse" };
   let activeId = "before";
   state.onRead = () => { activeId = "after"; };
-  const wire = await repository.resolveZcodeModelWireForRun(null, () => {
+  const identity = () => {
     reads.push(`identity:${activeId}`);
     return activeId;
+  };
+  const parseJson = JSON.parse;
+  context.mock.method(JSON, "parse", (...args: Parameters<typeof JSON.parse>) => {
+    if (args[0] === content) reads.push("parse:zcode");
+    return parseJson(...args);
   });
-  assert.equal(wire, resolveZcodeModelWireForRun(content, null));
-  assert.match(wire, /\/synthetic-fresh-model\$/);
-  assert.deepEqual(repository.getZcodeConfigModels("after"), readZcodeConfigModels(content));
-  assert.deepEqual(reads, ["current:zcode", "current:zcode", "identity:after"]);
+
+  const resolving = repository.resolveZcodeModelWireForRun(null, identity);
+  assert.deepEqual(reads, ["current:zcode", "current:zcode"]);
+  assert.equal(await resolving, "local-glm/synthetic-fresh-model$high");
+  assert.strictEqual(repository.getZcodeConfigModels("before"), previous);
+  assert.deepEqual(repository.getZcodeConfigModels("after"), {
+    models: ["local-glm/synthetic-fresh-model"],
+    labels: { "local-glm/synthetic-fresh-model": "synthetic-fresh-model" },
+    defaultModel: "local-glm/synthetic-fresh-model",
+    error: null,
+  });
+  assert.deepEqual(reads, ["current:zcode", "current:zcode", "identity:after", "parse:zcode"]);
+
+  assert.equal(await repository.resolveZcodeModelWireForRun(null, identity), "local-glm/synthetic-fresh-model$high");
+  assert.deepEqual(reads.slice(4), ["current:zcode", "identity:after", "parse:zcode"]);
+  assert.deepEqual(errors, []);
 });
 
 test("runtime parse errors keep Grok/Kimi old caches but replace ZCode before throwing", async () => {

@@ -419,12 +419,16 @@ test("refreshes global tool settings before posting the panel state on every req
   t.after(harness.restore);
   const order: string[] = [];
   harness.deps.reloadStoredToolSettings = () => { order.push("read settings"); };
+  harness.deps.reloadWorkspaceSettings = () => { order.push("read workspace settings"); };
   harness.deps.postPanelState = async () => { order.push("post state"); };
 
   await handlePanelMessageWithDeps({ type: "refreshToolSettings" }, harness.deps);
   await handlePanelMessageWithDeps({ type: "refreshToolSettings" }, harness.deps);
 
-  assert.deepEqual(order, ["read settings", "post state", "read settings", "post state"]);
+  assert.deepEqual(order, [
+    "read settings", "read workspace settings", "post state",
+    "read settings", "read workspace settings", "post state",
+  ]);
   assert.deepEqual(harness.calls.sessionMessages, []);
   assert.deepEqual(harness.calls.savedSettings, []);
 });

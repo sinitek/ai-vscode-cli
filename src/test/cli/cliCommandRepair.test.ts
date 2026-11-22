@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
+import * as commandResolution from "../../cli/commandResolution";
 import { splitConfiguredCliCommand } from "../../cli/commandResolution";
 
 import {
@@ -184,6 +185,30 @@ test("repairs a Windows CLI from the fresh registry PATH and ignores app executi
     restoreEnv();
     await fs.rm(homeDir, { recursive: true, force: true });
   }
+});
+
+test("Windows repair keeps registry directory priority and tries PATHEXT before a usable bare file", async (context) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-repair-pathext-"));
+  context.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const firstDir = path.join(homeDir, "first");
+  const laterDir = path.join(homeDir, "later");
+  const barePath = path.join(firstDir, "codex");
+  const deps = {
+    platform: "win32" as const,
+    homeDir,
+    env: { PATHEXT: " ; cmd ; .exe ; " },
+    readRegistryPath: async () => `${firstDir};${laterDir}`,
+  };
+  await writeCommand(barePath);
+  await writeCommand(`${barePath}.cmd`, "");
+  await writeCommand(path.join(laterDir, "codex.cmd"));
+  assert.equal(await locateCliExecutableForRepair("codex", "codex", deps), barePath);
+
+  await writeCommand(`${barePath}.exe`);
+  await writeCommand(`${barePath}.cmd`);
+  assert.equal(await locateCliExecutableForRepair("codex", "codex", deps), `${barePath}.cmd`);
+  assert.equal(await locateCliExecutableForRepair("codex.exe", "codex", deps), `${barePath}.exe`);
+  assert.equal(await locateCliExecutableForRepair("codex", "codex", { ...deps, env: { PATHEXT: "" } }), barePath);
 });
 
 test("repairs codex from a user bin directory that the normal resolver does not search", async () => {
@@ -375,4 +400,17 @@ test("only waits for startup repair when the selected bare command is unresolved
     restoreEnv();
     await fs.rm(homeDir, { recursive: true, force: true });
   }
+});
+
+test("startup repair waiting reads and probes only the selected CLI", (context) => {
+  const resolve = context.mock.method(commandResolution, "resolveCliCommand", () => null);
+  const commands = {
+    get codex(): string {
+      throw new Error("must not read another CLI configuration");
+    },
+    claude: "custom-claude --profile work",
+  };
+
+  assert.equal(shouldAwaitCliCommandAutoRepair("claude", commands, "win32"), true);
+  assert.deepEqual(resolve.mock.calls.map((call) => call.arguments), [["custom-claude"]]);
 });

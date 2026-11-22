@@ -653,6 +653,7 @@ function createScrollPatchHarness(normalizeHtml: (value: string) => string = (va
   Object.assign(slot, { querySelectorAll: () => descendants(slot) });
   const context = vm.createContext({
     renderedSlotHtml: new WeakMap([[slot, { initial: html }]]),
+    deferredChatCopySlots: new Map(),
     document: { createElement: () => {
       let value = "";
       return {
@@ -894,11 +895,12 @@ test("initial Markdown mounting yields between batches and completes every conne
     getAttribute: () => `内容${index}`,
     removeAttribute: () => undefined,
   }));
-  const mount = new Function("window", "performance", "renderMarkdown", "mountJsonTreeHosts", `${source.slice(0, end)}; return mountGroupChatMarkdown;`)(
+  const mount = new Function("window", "performance", "renderMarkdown", "mountJsonTreeHosts", "chatMarkdownSources", `${source.slice(0, end)}; return mountGroupChatMarkdown;`)(
     { setTimeout: (callback: () => void) => queued.push(callback) },
     { now: () => now++ },
     (text: string) => text,
     () => { mounted += 1; },
+    new WeakMap(),
   );
   mount({ querySelectorAll: () => elements }, () => { completed += 1; });
   assert.ok(mounted > 0 && mounted < 29);
@@ -1472,7 +1474,8 @@ test("mounts ask bubbles through the shared group chat Markdown renderer", () =>
   const source = html.slice(html.indexOf("function askEscape"), html.indexOf("function renderAskWaiting"));
   const { CHAT_MARKDOWN_SCRIPT } = require("../../webview/chatMarkdown");
   const { getMarkedScript } = require("../../webview/markdownAssets");
-  const context = vm.createContext({ TextEncoder });
+  const chatMarkdownSources = new WeakMap();
+  const context = vm.createContext({ TextEncoder, chatMarkdownSources });
   vm.runInContext(`${getMarkedScript()}\n${source}\nconst escapeHtml = askEscape;\n${CHAT_MARKDOWN_SCRIPT}`, context);
   const content = '## 回答\n\n**成功**\n\n- 第一项\n\n| 检查 | 结果 |\n| --- | --- |\n| 构建 | 通过 |\n\n> 说明\n\n```ts\nconst value = "<安全>";\n```';
   for (const role of ["user", "assistant", "system"]) {
@@ -1491,6 +1494,7 @@ test("mounts ask bubbles through the shared group chat Markdown renderer", () =>
     context.root = { querySelectorAll: (selector: string) => selector === "[data-markdown-source]" ? [element] : [] };
     vm.runInContext("mountGroupChatMarkdown(root)", context);
     assert.equal(removedSource, true);
+    assert.equal(chatMarkdownSources.get(element), content);
     for (const tag of ["h2", "strong", "ul", "table", "blockquote", "pre"]) {
       assert.ok(element.innerHTML.includes(`<${tag}`), `${role}: ${tag}`);
     }
@@ -1511,7 +1515,7 @@ test("shows a queue indicator below only queued user bubbles", () => {
       context.message = { role, queued, content: "问题 <script>" };
       const bubble = vm.runInContext("renderAskBubble(message)", context);
       if (role === "user" && queued) {
-        assert.match(bubble, /<\/div><div class="ask-chat-queued" role="status">/u);
+        assert.match(bubble, /<\/button><div class="ask-chat-queued" role="status">/u);
         assert.match(bubble, /排队中，等待主模型空闲/u);
         assert.match(bubble, /class="typing-dots" aria-hidden="true"/u);
       } else {

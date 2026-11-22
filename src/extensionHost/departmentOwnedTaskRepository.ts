@@ -312,6 +312,7 @@ export class DepartmentOwnedTaskRepository {
         const root = records.get(meta.rootTaskId), module = root?.subTasks.find((item) => item.id === meta.leaderSubtaskId);
         if (!root || root.department?.role !== "director" || task.id === root.id || meta.parentTaskId !== root.id || !module
           || module.title !== meta.moduleTitle || root.workspaceKey !== task.workspaceKey || task.schedulingMode !== "event_driven"
+          || root.department.executionMode !== meta.executionMode
           || !equal(root.department.routes, meta.routes) || !equal(root.department.limits, meta.limits)
           || !equal(root.loopPlusAcceptancePlan, task.loopPlusAcceptancePlan)) throw new Error("组长与根模块或统一方案不匹配");
         const key = JSON.stringify([root.id, meta.leaderSubtaskId]);

@@ -423,7 +423,6 @@ export type PanelState = {
   newTaskInteractiveMode: import("../toolSettings").NewTaskInteractiveMode;
   loopPlusDecisionSubtaskMax: number;
   workspaceLoopPlusDecisionSubtaskMax?: number | null;
-  loopPlusSubtaskMaxRounds: number;
   departmentMaxLeaders?: number;
   departmentMaxEmployees?: number;
   workspaceDepartmentMaxLeaders?: number | null;

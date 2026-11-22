@@ -83,7 +83,6 @@ export type ConversationTabRecordForPanel = {
 
 export type PanelMessageHandlerDeps = {
   updatePendingPromptQueueState?: (hasPendingPrompts: boolean) => void;
-  updateNotificationSetting?: (key: "humanInteractionNotifications" | "taskCompletionNotifications" | "humanInteractionWindowAttention" | "taskCompletionWindowAttention", enabled: boolean) => PromiseLike<void>;
   ensureWorkspaceSessionStore: () => void;
   postPanelState: () => Promise<void>;
   reconcileRunningConversationTabs?: () => void;
@@ -194,6 +193,8 @@ export type PanelMessageHandlerDeps = {
   loadModelStore: () => void;
   isCliName: (value: string) => value is CliName;
   reloadStoredToolSettings: () => void;
+  reloadWorkspaceSettings?: () => void;
+  updateWorkspaceSettings?: (update: (settings: WorkspaceSettings) => WorkspaceSettings) => boolean;
   updateStoredToolSettings: (patch: Partial<ToolSettingsState>) => boolean;
   readStoredToolSettings?: () => ToolSettingsState;
   publishCliEnabled?: (cliEnabledByName: CliEnabledByName) => void;

@@ -1163,18 +1163,19 @@ test("wires subagent event monitoring and 60-second polling into both OpenCode r
   const subagentRuntimeSource = readSource("src", "extensionHost", "openCodeSubagentRuntime.ts");
   const promptOneShotRuntimeSource = readSource("src", "extensionHost", "promptOneShotRuntime.ts");
   const promptParallelRuntimeSource = readSource("src", "extensionHost", "promptParallelRuntime.ts");
+  const promptSubagentMonitorSource = readSource("src", "extensionHost", "openCodePromptSubagentMonitor.ts");
   const openCodePromptTemplateSource = readSource("src", "extensionHost", "openCodePromptRunTemplate.ts");
   const combinedOpenCodeRunSources = `${promptOneShotRuntimeSource}\n${promptParallelRuntimeSource}`;
   const connectionFactories = subagentRuntimeSource.match(/deps\.resolveConnection\(deps\.getOpenCodeCliArgs\(\)/g) ?? [];
-  const monitorFactories = combinedOpenCodeRunSources.match(/createOpenCodeSubagentMonitor\(\{/g) ?? [];
+  const monitorFactories = combinedOpenCodeRunSources.match(/createOpenCodePromptSubagentMonitor\(context,/g) ?? [];
   const serverUrls = openCodePromptTemplateSource.match(/openCodeServerUrl: subagentRuntime\.connection\?\.serverUrl/g) ?? [];
-  const progressUpdates = combinedOpenCodeRunSources.match(/subagentProgress\?\.update\(update\)/g) ?? [];
+  const progressUpdates = promptSubagentMonitorSource.match(/ports\.updateProgress\(update\)/g) ?? [];
   const localizedMessages = combinedOpenCodeRunSources.match(/t\("run\.openCodeSubagentPollEmpty"\)/g) ?? [];
 
   assert.equal(connectionFactories.length, 1);
   assert.equal(monitorFactories.length, 2);
   assert.equal(serverUrls.length, 1);
-  assert.equal(progressUpdates.length, 2);
+  assert.equal(progressUpdates.length, 1);
   assert.equal(localizedMessages.length, 2);
   assert.match(extensionSource, /createOpenCodeSubagentRuntimePreparer\(\{/);
   assert.match(extensionSource, /resolveConnection: resolveOpenCodeSubagentConnection/);
@@ -1185,15 +1186,15 @@ test("wires subagent event monitoring and 60-second polling into both OpenCode r
   assert.match(extensionSource, /waitForServerReady: waitForOpenCodeServerReady/);
   assert.match(subagentRuntimeSource, /deps\.startServer\(connection\.serverPort/);
   assert.match(subagentRuntimeSource, /deps\.waitForServerReady\(connection, directory\)/);
-  assert.match(promptParallelRuntimeSource, /runPrompt-parallel-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
-  assert.match(promptOneShotRuntimeSource, /runPrompt-one-shot-subagent-poll-empty[\s\S]*pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS/);
+  assert.match(promptSubagentMonitorSource, /runPrompt-\$\{ports\.kind\}-subagent-poll-empty[\s\S]*pollIntervalMs: ports\.pollIntervalMs/);
+  assert.match(promptParallelRuntimeSource, /canUpdateProgress: \(\) => parallelRunsByTabId\.get\(target\.tabId\)\?\.runId === runId,[\s\S]*canShowEmptyProgressNotice: isParallelRunActive/);
   assert.match(
     promptParallelRuntimeSource,
-    /silentProgressNoticeShown = true;[\s\S]*activeAssistantMessageId: null,[\s\S]*activeAssistantKind: null/,
+    /showEmptyProgressNotice: \(\) => \{[\s\S]*activeAssistantMessageId: null,[\s\S]*activeAssistantKind: null/,
   );
   assert.match(
     promptOneShotRuntimeSource,
-    /silentProgressNoticeShown = true;[\s\S]*resetActiveAssistantMessage\(\);[\s\S]*appendSystemMessage\(t\("run\.openCodeSubagentPollEmpty"\)\)/,
+    /markEmptyProgressNoticeShown: \(\) => \{ silentProgressNoticeShown = true; \},[\s\S]*resetActiveAssistantMessage\(\);[\s\S]*appendSystemMessage\(t\("run\.openCodeSubagentPollEmpty"\)\)/,
   );
 });
 

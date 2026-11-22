@@ -2,11 +2,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CLI_LIST, LOOP_PLUS_INTERACTIVE_MODE, type CliName, type InteractiveMode, MacTaskShell } from "./cli/types";
-import { resolveLoopPlusSubtaskMaxRounds } from "./loopPlusDecision";
 import { migrateLegacyLoopJson } from "./loopLegacyMigration";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { normalizePromptInputHeight } from "./promptInputHeight";
+import { writeFileAtomicallySync } from "./shared/atomicWrite";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -17,11 +17,27 @@ export const HUMAN_INTERACTION_TIMEOUT_MINUTES_MAX = 1440;
 
 export type NewTaskInteractiveMode = Exclude<InteractiveMode, "plan">;
 
+export const NOTIFICATION_SETTING_KEYS = [
+  "humanInteractionNotifications", "taskCompletionNotifications",
+  "humanInteractionWindowAttention", "taskCompletionWindowAttention",
+] as const;
+
+export type NotificationSettings = Record<(typeof NOTIFICATION_SETTING_KEYS)[number], boolean>;
+
+export function resolveNotificationSettings(settings: Partial<NotificationSettings>): NotificationSettings {
+  return {
+    humanInteractionNotifications: settings.humanInteractionNotifications !== false,
+    taskCompletionNotifications: settings.taskCompletionNotifications !== false,
+    humanInteractionWindowAttention: settings.humanInteractionWindowAttention !== false,
+    taskCompletionWindowAttention: settings.taskCompletionWindowAttention !== false,
+  };
+}
+
 export function resolveNewTaskInteractiveMode(value: unknown): NewTaskInteractiveMode {
   return value === "loop" || value === LOOP_PLUS_INTERACTIVE_MODE ? value : "coding";
 }
 
-export type ToolSettingsState = {
+export type ToolSettingsState = Partial<NotificationSettings> & {
   debug?: boolean;
   autoAddEditorContextTags?: boolean;
   autoCompactContextAfterRun?: boolean;
@@ -31,7 +47,6 @@ export type ToolSettingsState = {
   loopPlusEnabled?: boolean;
   departmentEnabled?: boolean;
   loopPlusDecisionSubtaskMax?: number;
-  loopPlusSubtaskMaxRounds?: number;
   departmentMaxLeaders?: number;
   departmentMaxEmployees?: number;
   humanInteractionTimeoutMinutes?: number;
@@ -60,6 +75,7 @@ export type ToolSettingsState = {
 export type CliEnabledByName = Partial<Record<CliName, boolean>>;
 
 const TOOL_SETTINGS_FILE = path.join(os.homedir(), ".sinitek_cli", "settings.json");
+const TOOL_SETTINGS_LOCK_FILE = `${TOOL_SETTINGS_FILE}.lock`;
 
 let cachedToolSettings: ToolSettingsState | null = null;
 
@@ -84,6 +100,9 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
     return normalized;
   }
   const record = migrateLegacyLoopJson(value).value as Record<string, unknown>;
+  for (const key of NOTIFICATION_SETTING_KEYS) {
+    if (typeof record[key] === "boolean") normalized[key] = record[key];
+  }
   if ("newTaskInteractiveMode" in record) {
     normalized.newTaskInteractiveMode = resolveNewTaskInteractiveMode(record.newTaskInteractiveMode);
   }
@@ -132,14 +151,6 @@ export function normalizeToolSettings(value: unknown): ToolSettingsState {
       : (record.loopPlusDecisionSubtaskMax.trim() ? Number(record.loopPlusDecisionSubtaskMax) : Number.NaN);
     if (Number.isFinite(parsed)) {
       normalized.loopPlusDecisionSubtaskMax = Math.floor(parsed);
-    }
-  }
-  if (typeof record.loopPlusSubtaskMaxRounds === "number" || typeof record.loopPlusSubtaskMaxRounds === "string") {
-    const parsed = typeof record.loopPlusSubtaskMaxRounds === "number"
-      ? record.loopPlusSubtaskMaxRounds
-      : (record.loopPlusSubtaskMaxRounds.trim() ? Number(record.loopPlusSubtaskMaxRounds) : Number.NaN);
-    if (Number.isFinite(parsed)) {
-      normalized.loopPlusSubtaskMaxRounds = resolveLoopPlusSubtaskMaxRounds(parsed);
     }
   }
   if ("departmentMaxLeaders" in record) {
@@ -310,24 +321,68 @@ export function readToolSettings(): ToolSettingsState {
 
 export function reloadToolSettings(): ToolSettingsState {
   try {
-    if (!fs.existsSync(TOOL_SETTINGS_FILE)) {
-      cachedToolSettings = {};
-      return {};
-    }
-    const raw = fs.readFileSync(TOOL_SETTINGS_FILE, "utf8");
-    cachedToolSettings = normalizeToolSettings(JSON.parse(raw));
-    return { ...cachedToolSettings };
+    cachedToolSettings = readToolSettingsFromDisk();
   } catch {
     cachedToolSettings = {};
-    return {};
+  }
+  return { ...cachedToolSettings };
+}
+
+function readToolSettingsFromDisk(): ToolSettingsState {
+  try {
+    return normalizeToolSettings(JSON.parse(fs.readFileSync(TOOL_SETTINGS_FILE, "utf8")));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
   }
 }
 
+export function updateToolSettings(patch: Partial<ToolSettingsState>, onlyMissing = false): void {
+  withToolSettingsLock(() => {
+    const current = readToolSettingsFromDisk();
+    const next = onlyMissing ? { ...patch, ...current } : { ...current, ...patch };
+    if (patch.cliEnabledByName && !onlyMissing) {
+      next.cliEnabledByName = { ...current.cliEnabledByName, ...patch.cliEnabledByName };
+    }
+    persistToolSettings(next);
+  });
+}
+
 export function writeToolSettings(next: ToolSettingsState): void {
+  withToolSettingsLock(() => persistToolSettings(next));
+}
+
+function persistToolSettings(next: ToolSettingsState): void {
   const normalized = normalizeToolSettings(next);
-  fs.mkdirSync(path.dirname(TOOL_SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(TOOL_SETTINGS_FILE, JSON.stringify(normalized, null, 2), "utf8");
+  writeFileAtomicallySync(TOOL_SETTINGS_FILE, JSON.stringify(normalized, null, 2));
   cachedToolSettings = normalized;
+}
+
+function withToolSettingsLock<T>(action: () => T): T {
+  fs.mkdirSync(path.dirname(TOOL_SETTINGS_FILE), { recursive: true });
+  const deadline = Date.now() + 1500;
+  const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  let descriptor: number;
+  while (true) {
+    try {
+      descriptor = fs.openSync(TOOL_SETTINGS_LOCK_FILE, "wx", 0o600);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw error;
+      Atomics.wait(pause, 0, 0, 5);
+    }
+  }
+  const identity = fs.fstatSync(descriptor);
+  try {
+    return action();
+  } finally {
+    fs.closeSync(descriptor);
+    const current = fs.lstatSync(TOOL_SETTINGS_LOCK_FILE);
+    if (!current.isFile() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) {
+      throw new Error("全局工具设置锁已替换，拒绝释放未知锁。");
+    }
+    fs.unlinkSync(TOOL_SETTINGS_LOCK_FILE);
+  }
 }
 
 export function getToolSettingsFilePath(): string {

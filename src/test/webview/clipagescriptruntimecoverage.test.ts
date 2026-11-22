@@ -427,6 +427,7 @@ function createFakeDocument(): any {
   const listeners: Record<string, Listener[]> = {};
   const document = {
     body: new FakeElement("body", "body"),
+    activeElement: null,
     documentElement: new FakeElement("html", "html"),
     getElementById(id: string): FakeElement {
       if (!elements.has(id)) {
@@ -721,6 +722,21 @@ test("chat message limit receives saved values, invalid values and old snapshots
   }
 });
 
+test("panel state refresh does not replace a setting value while it is being edited", () => {
+  const { api, document, window } = createRuntimeHarness();
+  const input = document.getElementById("historyRetentionDays");
+  window.dispatchMessage({ type: "state", payload: createPanelState({ historyRetentionDays: 30 }) });
+  document.activeElement = input;
+  input.value = "75";
+  window.dispatchMessage({ type: "state", payload: createPanelState({ historyRetentionDays: 90 }) });
+  assert.equal(input.value, "75");
+  assert.equal(api.state.historyRetentionDays, 30);
+  document.activeElement = null;
+  window.dispatchMessage({ type: "state", payload: createPanelState({ historyRetentionDays: 75 }) });
+  assert.equal(input.value, "75");
+  assert.equal(api.state.historyRetentionDays, 75);
+});
+
 function createPanelState(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     currentCli: "codex",
@@ -785,7 +801,6 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
     longTermMemoryEnabled: true,
     workspaceMemoryEnabled: true,
     autoCompactContextAfterRun: true,
-    loopPlusSubtaskMaxRounds: 175,
     loopSubtaskMaxThinkingMode: "xhigh",
     isMac: true,
     macTaskShell: "bash",
@@ -1422,15 +1437,12 @@ test("builds the split page runtime script with configured literals", () => {
   const script = buildWebviewRuntimeScript({
     i18n: { ok: "OK" },
     cliList: ["codex"],
-    loopPlusSubtaskMaxRoundsDefault: 400,
-    loopPlusSubtaskMaxRoundsMin: 52,
     finalAnswerTextMarker: "<FINAL>",
   });
 
   assert.match(script, /const i18n = \{"ok":"OK"\}/);
   assert.match(script, /const CLI_NAMES = \["codex"\]/);
-  assert.match(script, /loopPlusSubtaskMaxRounds: 400/);
-  assert.match(script, /Math\.max\(Math\.floor\(numeric\), 52\)/);
+  assert.doesNotMatch(script, /loopPlusSubtaskMaxRounds|LOOP_PLUS_SUBTASK_MAX_ROUNDS/);
   assert.match(script, /"medium"/);
   assert.match(script, /"<FINAL>"/);
   assert.doesNotMatch(script, /\$\{JSON\.stringify|\$\{LOOP_|\$\{FINAL_/);
@@ -1759,7 +1771,6 @@ test("boots the runtime and dispatches state, message, stream, history, settings
   assert.deepEqual(posted[0], { type: "requestState" });
   window.dispatchMessage({ type: "state", payload: createPanelState() });
   assert.equal(api.state.currentCli, "codex");
-  assert.equal(api.state.loopPlusSubtaskMaxRounds, 175);
   assert.equal(api.state.macTaskShell, "bash");
   assert.equal(document.getElementById("codexLoopModelGroup").style.display, "");
   assert.equal(document.getElementById("codexLoopMainModelSelect").disabled, false);
@@ -2303,21 +2314,6 @@ test("distinguishes manual and automatic interaction history with accessible SVG
   assert.equal(list.children[3].children[0].innerHTML, manualIcon);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-item\s*\{[^}]*grid-template-columns:\s*20px minmax\(0, 1fr\) auto;/u);
   assert.match(OVERLAYS_MODALS_STYLES, /\.human-interaction-history-icon\.automatic\s*\{[^}]*color:\s*var\(--vscode-charts-blue, var\(--vscode-foreground\)\);/u);
-});
-
-test("normalizes the Loop+ subtask round limit from the AI task settings input", () => {
-  const { document, posted } = createRuntimeHarness();
-  for (const [input, expected] of [["", 200], ["49", 50], ["50", 50], ["200", 200], ["9999", 9999]] as const) {
-    document.getElementById("loopPlusSubtaskMaxRounds").value = input;
-    document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
-    assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: expected });
-  }
-  document.getElementById("loopPlusSubtaskMaxRounds").value = "0";
-  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 50 });
-  document.getElementById("loopPlusSubtaskMaxRounds").value = "10000";
-  document.getElementById("loopPlusSubtaskMaxRounds").dispatchEvent({ type: "change" });
-  assert.deepEqual(posted.at(-1), { type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 9999 });
 });
 
 test("renders prompt history favorites and filters to favorite prompts", () => {

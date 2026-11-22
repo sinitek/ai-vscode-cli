@@ -25,9 +25,6 @@ export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 /** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
 export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4;
-export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT = 200;
-export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN = 50;
-export const LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT = 9999;
 export const LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH = 80;
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
@@ -157,19 +154,6 @@ export function resolveLoopPlusDecisionSubtaskMax(value?: unknown): number {
   return Math.min(
     Math.max(Math.floor(numeric), LOOP_PLUS_DECISION_SUBTASK_MIN),
     LOOP_PLUS_DECISION_SUBTASK_LIMIT,
-  );
-}
-
-export function resolveLoopPlusSubtaskMaxRounds(value?: unknown): number {
-  const numeric = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  if (!Number.isFinite(numeric)) {
-    return LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT;
-  }
-  return Math.min(
-    Math.max(Math.floor(numeric), LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN),
-    LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
   );
 }
 

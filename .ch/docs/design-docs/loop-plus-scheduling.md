@@ -156,7 +156,7 @@ Loop+ 没有 batch barrier 或共享 round gate，宿主持有调度状态。有
 
 #### 新批次依赖优先选序
 
-共享 `LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4` 只限制单次验收事件数，独立于并发、单次派发容量及子任务轮次额度，不新增设置，不等待凑满。宿主仅在没有有效冻结批次、需要领取全新批次时显式调用 `scheduler.prepareReviewBatch(maxItems: number)`；不能在 finish、view、提示刷新、旧 claimNextReview 或 submitReviewBatch 中隐式调用或重排。
+共享 `LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4` 只限制单次验收事件数，独立于并发和单次派发容量；累计子任务派发不设总额度，不新增设置，不等待凑满。宿主仅在没有有效冻结批次、需要领取全新批次时显式调用 `scheduler.prepareReviewBatch(maxItems: number)`；不能在 finish、view、提示刷新、旧 claimNextReview 或 submitReviewBatch 中隐式调用或重排。
 
 内核 API 返回 `{ items: LoopPlusReviewItem[], dependencyBlocks: LoopPlusDependencyBlock[], view: LoopPlusSchedulerView }`，三者保持复制隔离。`maxItems` 必须为正安全整数，无效值在任何变更前抛 `RangeError`；停止/完成时不领取、不改状态。选择使用当前 `currentReview + reviewQueue` 中事件自身 seenAttempt 的 `dependsOn`，并按每个依赖逻辑 ID 的最新 attempt 判断前置状态；使用操作内索引处理稳定拓扑顺序，不深递归或逐事件重扫全部历史。
 
@@ -181,7 +181,7 @@ Loop+ 没有 batch barrier 或共享 round gate，宿主持有调度状态。有
 
 宿主须区分“存在待审事件”与“存在可领取项”。全队列不可领取时不能发空 review 或在同一 consumer 中无限调用模型：先消费可见报告/消息，前置仍有活跃执行时可等待其事件；无活跃工作而依赖死等时回主模型处理具体依赖与真实阻塞，无进展 wait 仍走有界协议纠错。暂停/停止保护保持，不能自动取消后继、绕过依赖或伪造成功。
 
-提交复用 `scheduler.submitReviewBatch`，只消费宿主冻结的实际 currentReview 与 reviewQueue 前缀，校验 ID 顺序并幂等记录 attempt；未选和后到事件不随本批提交。旧批次提交后由后续决策领取下一批，不重验已确认项。报告 FIFO 和显式确认门禁不变；验收不设次数额度，最多四项批次与子任务轮次预算独立。
+提交复用 `scheduler.submitReviewBatch`，只消费宿主冻结的实际 currentReview 与 reviewQueue 前缀，校验 ID 顺序并幂等记录 attempt；未选和后到事件不随本批提交。旧批次提交后由后续决策领取下一批，不重验已确认项。报告 FIFO 和显式确认门禁不变；验收不设总次数额度，每批最多四项，且不设累计子任务派发额度。
 
 `completed` 可以确认本次冻结批次，但最终完成仍受全部未确认验收事件（包括不可领取事件）、报告、用户消息、running、pending 及等待续接结果的开放 attempt 约束。后到需求只留给后续处理，不重审已确认批次。仅最新全局门禁通过并成功持久化后，才能显示父任务整体完成。
 
@@ -209,7 +209,7 @@ Loop / Loop+ 群聊允许主模型忙碌时连续提问，显示“主模型正�
 
 宿主把真实 `maxConcurrency` 传给主模型提示，显示并发上限、当前 `running` 预留后剩余的槽位与单次派发上限。已中断但仍开放的 attempt 继续占槽；pending 不算运行槽位，但已排队工作不得重复派发，且可能优先消耗释放的槽位。
 
-- 最终目标仍需要工作且存在可并行的独立交付边界时，主模型争取达到当前配置容量上限，不把补充契约的每批最多四项验收当作运行、派发或子任务轮次上限；边界不足、前置依赖、配置限制或空槽不足时允许少派或不派，不为凑数拆微任务。
+- 最终目标仍需要工作且存在可并行的独立交付边界时，主模型争取达到当前配置容量上限；每批最多四项验收不限制任务运行或派发数量。边界不足、前置依赖、配置限制或空槽不足时允许少派或不派，不为凑数拆微任务。
 - 按实现、稳定契约下的独立测试、文档、配置、脚本等交付边界拆分，不按模型角色个数拆分。同为后端、前端或全栈的多个独立任务可以并行；全栈模式不等于只能派一个任务，前后端模式不等于最多两个。
 - 每个子任务声明精确的主要 `writeFiles` 和独立验收方式；`conflictGroup` 只表示真实共享可变资源，不以整个功能或角色统一分组。共享只读资料不产生写入冲突，已知共同写入路径必须如实声明，不能为提高并行而隐藏路径或清空冲突组。
 - 共享契约、中心注册点等由一个任务负责，必要时先做小型前置任务，只串行真正相依的部分，其它交付不必一起等待。`dispatch` 和 `accept` 均寻找可回填的独立工作；开放验收批次先整批处理，再通过 `accept` 附带后续任务，不增加全批屏障。
@@ -350,13 +350,9 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 - 回归：`src/test/loop/loopPlusScheduler.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusAcceptancePlanHost.test.ts`、`src/test/webview/loopPlusAcceptancePlanDialog.test.ts`
 - 验证：`npm run build`；`node --test dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/loopPlusAcceptancePlan.test.js dist/test/extensionHost/loopPlusAcceptancePlanHost.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/webview/loopPlusAcceptancePlanDialog.test.js dist/test/loop/loopTaskStore.test.js dist/test/core/workspaceSettingsStore.test.js`
 
-## 子任务轮次预算
+## 累计子任务派发
 
-工具设置“AI任务配置”提供「Loop/Loop+ 子任务轮次上限」，复用全局键 `loopPlusSubtaskMaxRounds`（默认 200，范围 50–9999）。每个父任务独立累计，每次接纳的新派发或重派（含并行、排队和免验收）各计 1 轮，同一次执行的重试、恢复及队列提升不重复计数。最新设置约束下一次派发，超额批次不新增任何子任务并进入 `needs-review`；已有任务及结果保留，已有报告、复核、验收和最终完成不消耗额度。旧 `loopMaxRounds` 和旧验收次数设置不再生效。 经典 Loop 在接纳批次时与子任务记录一起持久化 `classicSubtaskDispatchCount`，旧记录按不同的（子任务 ID、历史主任务轮次）和缺运行历史的子任务估算；`maxRounds` 仅兼容读取，不参与调度或恢复。Loop+ 沿用快照 `seenAttempts` 计数；`dispatch`、`steer` 或 `accept` 的新派发与重派共用剩余额度，关闭不退还轮次，`accept` 已确认的验收继续保留。
-
-实现使用 scheduler 持久化 `seenAttempts.length` 作为已用轮次，避免重启清零或遗漏免验收。整份决策按 `subtasks.length + controls.reprompt.length` 预检；新派发/重派超额时不做控制或执行副作用，`accept` 已提交的本批验收继续保留。旧 `loopPlusMaxAcceptances` 已退役，读取和更新设置时不再使用，不自动迁移成含义不同的轮次预算。
-
-主模型内部决策保护按 `max(200, max(当前上限, 已用轮次) × 3)` 调整，保留无界调度保护并容纳每项派发、验收与单独收尾；不会用固定 200 次调用提前截断较高轮次预算。显式注入的测试保护阈值仍优先。
+经典 Loop 与 Loop+ 不设父任务级累计子任务派发或重派上限。历史全局设置 `loopPlusSubtaskMaxRounds`、任务记录中的同名字段及旧累计计数均不参与调度；历史值即使达到原上限，也不会阻止后续派发。Loop+ 快照 `seenAttempts` 继续用于调度、验收与恢复，不再作为额度判断。单次派发数量和并发容量仍受当前 `loopPlusDecisionSubtaskMax` 限制；依赖、文件冲突、验收顺序和失败保护保持不变。
 
 
 ### 需求变更：撤销验收与关闭子任务

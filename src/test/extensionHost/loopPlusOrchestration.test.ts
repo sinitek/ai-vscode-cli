@@ -984,7 +984,6 @@ function harness(options: {
   hasActiveSubtasks?: (taskId: string) => boolean;
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
-  subtaskRoundLimit?: () => number;
   decisionSafetyLimit?: number;
   launchDelayMs?: (last: number | null, now: number) => number;
   delay?: (ms: number) => Promise<void>;
@@ -1030,7 +1029,6 @@ function harness(options: {
     getDepartmentEmployeeCapacity: options.getDepartmentEmployeeCapacity,
     maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
-    ...(options.subtaskRoundLimit ? { subtaskRoundLimit: options.subtaskRoundLimit } : {}),
     ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
     waitForClarification: options.waitForClarification,
     onTaskCompleted: options.onTaskCompleted,
@@ -2146,9 +2144,9 @@ test("rejects confirmation beyond four and fills configured slots before reviewi
   await run.done;
 });
 
-test("reviews the entire backlog even when existing attempts exceed the new subtask budget", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50 });
-  const task = finishedReviewTask("bounded-budget", 5, 46);
+test("reviews the entire backlog regardless of historical dispatch count", async () => {
+  const env = harness();
+  const task = finishedReviewTask("unlimited-history", 5, 46);
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
     resumeTaskId: task.id, schedulingMode: "event_driven",
@@ -4415,8 +4413,7 @@ test("completed submits a frozen batch once while late events and messages block
 });
 
 test("main failure, protocol pause and explicit resume retain the unconfirmed batch and message prefix", async () => {
-  let limit = 51;
-  const env = harness({ subtaskRoundLimit: () => limit });
+  const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId ?? "";
   await flush();
@@ -4428,7 +4425,6 @@ test("main failure, protocol pause and explicit resume retain the unconfirmed ba
   env.attempts[1].resolve({ outcome: "completed", detail: "beta" });
   env.host.submitUserMessage(taskId, "after frozen prefix");
   await flush();
-  limit = 50;
   first.reject(new Error("temporary main failure"));
   await flush();
   assert.equal(env.tasks.get(taskId)?.mainAiFailureCount, 1);
@@ -4551,8 +4547,8 @@ function twoFinishedReviews(previousRounds = 0): LoopPlusSchedulerSnapshot {
   return scheduler.snapshot();
 }
 
-test("allows completed to confirm an existing batch above the subtask round limit", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50 });
+test("allows completed to confirm an existing batch after many dispatches", async () => {
+  const env = harness();
   const task = baseTask("limited-batch", twoFinishedReviews(49));
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
@@ -4567,11 +4563,9 @@ test("allows completed to confirm an existing batch above the subtask round limi
   assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), false);
 });
 
-test("enforces a lowered Loop+ subtask limit at decision commit without losing completed reviews", async () => {
-  let limit = 60;
-  const env = harness({ subtaskRoundLimit: () => limit });
-  const task = baseTask("lowered-limit", twoFinishedReviews(48));
-  task.loopPlusSubtaskMaxRounds = 60;
+test("dispatches new Loop+ subtasks after many completed historical attempts", async () => {
+  const env = harness();
+  const task = baseTask("unlimited-dispatch", twoFinishedReviews(200));
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
     resumeTaskId: task.id,
@@ -4579,55 +4573,27 @@ test("enforces a lowered Loop+ subtask limit at decision commit without losing c
   });
   await flush();
   const review = env.mains[0];
-  assert.match(review.request.modelPrompt, /Subtask round limit: 60/);
-  limit = 50;
   review.resolve(decisionJson({ status: "accept", reviewEventIds: review.request.reviewEventIds,
     subtasks: [subtask("gamma", ["src/gamma.ts"])] }));
-  await run.done;
+  await flush();
   const snapshot = snapshotOf(env.tasks.get(task.id));
-  assert.equal(snapshot.seenAttempts.length, 50);
-  assert.equal(snapshot.seenAttempts.every((attempt) => attempt.disposition === "reviewed"), true);
-  assert.equal(env.attempts.length, 0);
-  assert.equal(env.tasks.get(task.id)?.loopPlusSubtaskMaxRounds, 50);
-  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
-  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), true);
-});
-
-test("resumes dispatch after raising the subtask round limit without counting restored attempts twice", async () => {
-  let limit = 50;
-  const env = harness({ subtaskRoundLimit: () => limit });
-  const task = baseTask("round-limit-resume", twoFinishedReviews(49));
-  env.tasks.set(task.id, task);
-  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, { resumeTaskId: task.id });
-  await flush();
-  env.mains[0].resolve(decisionJson({ status: "accept", reviewEventIds: env.mains[0].request.reviewEventIds,
-    subtasks: [subtask("gamma", ["src/gamma.ts"])] }));
-  await run.done;
-  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.length, 51);
-  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
-  assert.equal(env.attempts.length, 0);
-  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.every((item) => item.disposition === "reviewed"), true);
-  limit = 52;
-  env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
-  await flush();
-  assert.match(env.mains[1].request.modelPrompt, /Subtask rounds used: 51/);
-  assert.match(env.mains[1].request.modelPrompt, /Remaining subtask rounds: 1/);
-  env.mains[1].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("gamma", ["src/gamma.ts"])] }));
-  await flush();
-  assert.equal(env.tasks.get(task.id)?.loopPlusSubtaskMaxRounds, 52);
+  assert.equal(snapshot.seenAttempts.length, 203);
+  assert.ok(snapshot.seenAttempts.length > 200);
   assert.equal(env.attempts.length, 1);
-  assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.length, 52);
+  assert.equal(env.attempts[0].request.subtaskId, "gamma");
+  assert.equal(env.tasks.get(task.id)?.status, "running");
+  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), false);
   env.host.stopParent(task.id);
+  await run.done;
 });
 
-test("does not dispatch new Loop+ subtasks after the subtask round limit is reached", async () => {
+test("dispatches new Loop+ subtasks when the historical attempt count exceeds the former minimum limit", async () => {
   const scheduler = reviewedRoundsScheduler(49, 1);
   scheduler.dispatch([{ subtaskId: "alpha", attemptId: "a1", title: "alpha", writeFiles: ["src/alpha.ts"] }]);
   scheduler.finish({ subtaskId: "alpha", attemptId: "a1", outcome: "completed", detail: "alpha" });
   assert.equal(scheduler.submitReview(buildLoopPlusFinishEventId("alpha", "a1")).ok, true);
-  const env = harness({ subtaskRoundLimit: () => 50 });
-  const task = baseTask("dispatch-capped", scheduler.snapshot());
-  task.loopPlusSubtaskMaxRounds = 50;
+  const env = harness();
+  const task = baseTask("dispatch-above-former-minimum", scheduler.snapshot());
   env.tasks.set(task.id, task);
   env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
     resumeTaskId: task.id,
@@ -4641,11 +4607,11 @@ test("does not dispatch new Loop+ subtasks after the subtask round limit is reac
     subtasks: [subtask("beta", ["src/beta.ts"])],
   }));
   await flush();
-  assert.equal(env.attempts.length, 0);
-  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), true);
-  assert.equal(env.tasks.get(task.id)?.status, "needs-review");
-  assert.equal(snapshotOf(env.tasks.get(task.id)).pending.length, 0);
-  assert.equal(snapshotOf(env.tasks.get(task.id)).running.length, 0);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.attempts[0].request.subtaskId, "beta");
+  assert.equal(env.messages.includes("loop-plus-subtask-round-limit"), false);
+  assert.equal(env.tasks.get(task.id)?.status, "running");
+  env.host.stopParent(task.id);
 });
 
 test("records each Loop+ subtask's own execution start time", async () => {
@@ -5665,21 +5631,24 @@ test("close preserves the dependency projection of the closed attempt", async ()
 });
 
 
-test("rejects a parallel dispatch that exceeds remaining rounds before any attempt is reserved", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50 });
+test("allows parallel dispatch beyond the former cumulative subtask limit", async () => {
+  const env = harness();
   const task = baseTask("parallel-budget", reviewedRoundsScheduler(49).snapshot());
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: "implement" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
   await flush();
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["a.ts"]), subtask("beta", ["b.ts"])] }));
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta"]);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.length, 51);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  env.host.stopParent(run.taskId ?? "");
   await run.done;
-  assert.equal(env.attempts.length, 0);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.length, 49);
-  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
 });
 
-test("acceptance-exempt attempts and pending reservations consume rounds, close does not refund them", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50, maxConcurrency: 1 });
+test("acceptance-exempt attempts, pending reservations, and reprompts continue past the former limit", async () => {
+  const env = harness({ maxConcurrency: 1 });
   const task = baseTask("pending-budget", reviewedRoundsScheduler(48, 1).snapshot());
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: "implement" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
@@ -5700,15 +5669,17 @@ test("acceptance-exempt attempts and pending reservations consume rounds, close 
   env.host.submitUserMessage(taskId, "reprompt beta");
   await flush();
   env.mains[2].resolve(decisionJson({ status: "steer", controls: [{ id: "beta", action: "reprompt", title: "修正 beta", prompt: longPrompt("beta", ["b.ts"]) }] }));
+  await flush();
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.length, 51);
+  assert.equal(env.attempts.length, 3);
+  assert.notEqual(env.attempts[1].request.attemptId, env.attempts[2].request.attemptId);
+  env.host.stopParent(taskId);
   await run.done;
-  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.length, 50);
-  assert.equal(env.attempts.length, 2);
-  assert.equal(env.abortedAttemptIds.includes(env.attempts[1].request.attemptId), false);
 });
 
-test("reprompt consumes a new round and retains the original attempt in the budget", async () => {
-  const env = harness({ subtaskRoundLimit: () => 50 });
-  const task = baseTask("reprompt-budget", reviewedRoundsScheduler(48).snapshot());
+test("reprompt creates a new attempt beyond the former cumulative subtask limit", async () => {
+  const env = harness();
+  const task = baseTask("reprompt-no-total-limit", reviewedRoundsScheduler(49).snapshot());
   env.tasks.set(task.id, task);
   const run = env.host.tryRun({ displayPrompt: "implement" }, env.target, { resumeTaskId: task.id, resumeRequested: true });
   await flush();
@@ -5720,14 +5691,14 @@ test("reprompt consumes a new round and retains the original attempt in the budg
   await flush();
   assert.equal(env.attempts.length, 2);
   assert.notEqual(env.attempts[0].request.attemptId, env.attempts[1].request.attemptId);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.length, 50);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.length, 51);
   env.host.stopParent(run.taskId ?? "");
   await run.done;
 });
 
 
-test("configured rounds allow more than 100 reviews and 200 main decisions before completion", async () => {
-  const env = harness({ subtaskRoundLimit: () => 101 });
+test("Loop+ completes after more than 100 subtasks and 200 main decisions", async () => {
+  const env = harness();
   const run = env.host.tryRun({ displayPrompt: "implement sequential deliveries" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   for (let round = 0; round < 101; round += 1) {

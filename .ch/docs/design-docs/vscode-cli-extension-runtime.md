@@ -14,7 +14,7 @@
 
 ## 工具设置打开时刷新
 
-Webview 每次打开工具设置时发送 `refreshToolSettings`，宿主绕过缓存读取 `~/.sinitek_cli/settings.json` 并替换缓存，再通过现有 `PanelState` 回传。文件缺失或无效时沿用既有默认值规则；不写回全局设置，工作区覆盖继续独立解析。
+Webview 每次打开工具设置时发送 `refreshToolSettings`，宿主绕过缓存读取 `~/.sinitek_cli/settings.json` 与当前工作区对应的 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`，再通过现有 `PanelState` 回传。刷新不写回配置，工作区覆盖继续独立解析；全局配置保存以磁盘最新文档为基础合并字段，在跨进程锁内原子替换，避免不同 VS Code 窗口的旧缓存覆盖其他字段。工作区偏好更新同样在锁内重读并按字段合并；设置消息按到达顺序完成保存和状态回传。旧 VS Code 应用级通知开关仅在对应全局文件字段缺失时迁移一次。异步状态回包不改写当前聚焦中的设置输入。
 
 ## Loop 任务内模型切换
 
@@ -96,7 +96,7 @@ PDF/Office 在打开前检查已安装扩展的 `contributes.customEditors` 文�
 
 - DSH：宿主在读取前解析激活 configId，以值传入仓储。无激活档案、档案不存在、解析失败、无可执行选择仍失败，不回落其它 CLI 或缓存。解析后先写原 configId 缓存，再校验/resolve；wire 仍由 `readDshModelWireForRun` 验证并编码为原 provider tuple。
 - Grok / Kimi Code：每次执行重新读取当前配置，解析错误先抛出，不修改旧缓存，也不获取缓存身份。成功解析后才调用宿主传入的最小 `getActiveConfigId` 回调并写缓存，然后校验是否有模型。Grok 使用原配置模型 ID；Kimi 的 ACP model 仍是别名，不是 provider model 名。
-- ZCode：每次执行重新读取当前 `content`，读取后才调用身份回调；先将 `readZcodeConfigModels` 结果写缓存，再调用原生 wire resolver，因此解析错误也会更新错误缓存后再抛出。保留原有 wire/reasoning 编码。
+- ZCode：每次执行重新读取当前 `content`，读取成功后才调用身份回调。一次解析同时生成模型摘要和 wire 所需的推理选项；先按档案身份写入摘要，再用同次解析结果编码原生 wire，或抛出原解析错误／无模型错误。不回落 `configContent` 或旧缓存；推理选项不跨次复用，仓储与日志不保留凭据、配置原文或 provider view。`readZcodeConfigModels` 和 `resolveZcodeModelWireForRun` 的文本入口和行为不变。
 - 所有运行读取异常原样传播，不增加刷新日志；不改变 Claude/OpenCode、模型显示名/选择键、Loop 回退、档案隔离或推理力度规则。
 
 ## 可维护性、安全与性能

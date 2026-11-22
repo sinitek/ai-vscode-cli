@@ -1056,7 +1056,13 @@ test("persists CLI availability, moves new selections, and rolls back a failed s
   deps.readStoredToolSettings = () => stored;
   deps.updateStoredToolSettings = (patch) => {
     calls.toolSettingsPatches.push(patch);
-    stored = { ...stored, ...patch };
+    stored = {
+      ...stored,
+      ...patch,
+      ...(patch.cliEnabledByName
+        ? { cliEnabledByName: { ...stored.cliEnabledByName, ...patch.cliEnabledByName } }
+        : {}),
+    };
     return true;
   };
   deps.publishCliEnabled = (map) => {
@@ -1149,20 +1155,17 @@ test("persists human interaction globally", async () => {
   assert.equal(calls.postPanelState, 1);
 });
 
-test("通知开关分别写入既有应用级配置，不修改工具或工作区设置", async () => {
+test("通知开关分别写入全局工具设置，不修改工作区设置", async () => {
   const { deps, calls, state } = createSendPromptHarness();
-  const updates: Array<{ key: string; enabled: boolean }> = [];
-  deps.updateNotificationSetting = async (key, enabled) => { updates.push({ key, enabled }); };
   for (const key of ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"]) {
     await handlePanelMessageWithDeps({ type: "updateSetting", key, value: false }, deps);
   }
-  assert.deepEqual(updates, [
-    { key: "taskCompletionNotifications", enabled: false },
-    { key: "humanInteractionNotifications", enabled: false },
-    { key: "taskCompletionWindowAttention", enabled: false },
-    { key: "humanInteractionWindowAttention", enabled: false },
+  assert.deepEqual(calls.toolSettingsPatches, [
+    { taskCompletionNotifications: false },
+    { humanInteractionNotifications: false },
+    { taskCompletionWindowAttention: false },
+    { humanInteractionWindowAttention: false },
   ]);
-  assert.deepEqual(calls.toolSettingsPatches, []);
   assert.deepEqual(state.workspaceSettings, {});
   assert.deepEqual(calls.savedSettings, []);
   assert.equal(calls.postPanelState, 4);
@@ -1172,7 +1175,7 @@ test("通知配置拒绝非布尔值并在保存失败后报错和回传真实�
   const { deps, calls } = createSendPromptHarness();
   const errors: unknown[] = [];
   let attempts = 0;
-  deps.updateNotificationSetting = async () => { attempts += 1; throw new Error("只读配置"); };
+  deps.updateStoredToolSettings = () => { attempts += 1; return false; };
   deps.showWebviewError = (title, detail) => { errors.push({ title, detail }); };
   const keys = ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"];
   for (const key of keys) {
@@ -1183,7 +1186,7 @@ test("通知配置拒绝非布尔值并在保存失败后报错和回传真实�
     await handlePanelMessageWithDeps({ type: "updateSetting", key, value: false }, deps);
   }
   assert.equal(attempts, keys.length);
-  assert.deepEqual(errors, keys.map(() => ({ title: "通知设置", detail: "保存通知设置失败：只读配置" })));
+  assert.deepEqual(errors, keys.map(() => ({ title: "通知设置", detail: "保存通知设置失败，请重试。" })));
   assert.equal(calls.postPanelState, keys.length * 2);
 });
 

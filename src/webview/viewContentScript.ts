@@ -20,9 +20,6 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 import { CLI_LIST } from "../cli/types";
 import { getCliDisplayName } from "../cli/installer";
@@ -50,9 +47,6 @@ export type BuildWebviewRuntimeScriptInput = {
   loopPlusMaxAcceptancesDefault?: number;
   loopPlusMaxAcceptancesMin?: number;
   loopPlusMaxAcceptancesLimit?: number;
-  loopPlusSubtaskMaxRoundsDefault?: number;
-  loopPlusSubtaskMaxRoundsMin?: number;
-  loopPlusSubtaskMaxRoundsLimit?: number;
   finalAnswerTextMarker: string;
 };
 
@@ -102,9 +96,6 @@ export function buildWebviewRuntimeScript(input: BuildWebviewRuntimeScriptInput)
           ?? Object.fromEntries(CLI_LIST.map((cli) => [cli, getCliDisplayName(cli)])),
       ),
     ],
-    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}", String(input.loopPlusSubtaskMaxRoundsDefault ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT)],
-    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}", String(input.loopPlusSubtaskMaxRoundsMin ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN)],
-    ["${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}", String(input.loopPlusSubtaskMaxRoundsLimit ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT}", String(input.loopPlusDecisionSubtaskMaxDefault ?? LOOP_PLUS_DECISION_SUBTASK_MAX)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_MIN}", String(input.loopPlusDecisionSubtaskMaxMin ?? LOOP_PLUS_DECISION_SUBTASK_MIN)],
     ["${LOOP_PLUS_DECISION_SUBTASK_MAX_LIMIT}", String(input.loopPlusDecisionSubtaskMaxLimit ?? LOOP_PLUS_DECISION_SUBTASK_LIMIT)],

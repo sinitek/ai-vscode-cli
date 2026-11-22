@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { resolveLoopAnswerConclusion } from "../loopFinalSummary";
-import { CLASSIC_LOOP_SUBTASK_LIMIT_SUMMARY_PREFIX, normalizeLoopBlockedSummary } from "../loopBlockedSummary";
+import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import {
   isLoopMainAiFailureLimitReached,
   LOOP_MAIN_AI_FAILURE_LIMIT,
@@ -8,7 +8,6 @@ import {
 } from "../loopMainFailure";
 import { ORCHESTRATOR_CLARIFICATION_LIMIT } from "../orchestratorClarification";
 import { normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent } from "../loopTaskStore";
-import { resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
 import type {
   LoopMainDecision,
   LoopSchedulingMode,
@@ -25,7 +24,6 @@ export type LoopMainDecisionContext = {
   task: LoopTaskRecord;
   decision: LoopMainDecision;
   now: number;
-  subtaskRoundLimit?: number;
 };
 
 export type LoopMainDecisionTransition = {
@@ -104,22 +102,6 @@ export function getLoopDecisionSubtasks(decision: LoopMainDecision): LoopSubtask
     return decision.subtasks;
   }
   return decision.subtask ? [decision.subtask] : [];
-}
-
-export function getClassicLoopSubtaskDispatchCount(task: LoopTaskRecord): number {
-  if (task.classicSubtaskDispatchCount !== undefined) {
-    return task.classicSubtaskDispatchCount;
-  }
-  const roundsBySubtask = new Map<string, Set<number>>();
-  for (const round of task.rounds) {
-    if (round.role !== "subtask" || !round.subtaskId) continue;
-    const rounds = roundsBySubtask.get(round.subtaskId) ?? new Set<number>();
-    rounds.add(round.round);
-    roundsBySubtask.set(round.subtaskId, rounds);
-  }
-  const recordedDispatches = [...roundsBySubtask.values()].reduce((total, rounds) => total + rounds.size, 0);
-  const unrecordedSubtasks = task.subTasks.filter((subtask) => !roundsBySubtask.has(subtask.id));
-  return recordedDispatches + unrecordedSubtasks.length;
 }
 
 export function getActiveLoopSubtaskIds(task: Pick<LoopTaskRecord, "activeSubtaskId" | "activeSubtaskIds">): string[] {
@@ -281,20 +263,6 @@ function applyContinueLoopMainDecision(context: LoopMainDecisionContext): LoopMa
       },
     };
   }
-  const usedRounds = getClassicLoopSubtaskDispatchCount(context.task);
-  const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(context.subtaskRoundLimit);
-  if (usedRounds + decisionSubtasks.length > subtaskRoundLimit) {
-    return {
-      status: "blocked",
-      appendDecisionMessages: false,
-      patch: {
-        status: "needs-review",
-        ...clearedActiveSubtasks(),
-        finalSummary: `${CLASSIC_LOOP_SUBTASK_LIMIT_SUMMARY_PREFIX}（已用 ${usedRounds}/${subtaskRoundLimit}，本次需要 ${decisionSubtasks.length}）。本批未派发；已有结果保留，提高“Loop/Loop+ 子任务轮次上限”后可继续。`,
-        updatedAt: context.now,
-      },
-    };
-  }
   const batch = upsertLoopTransitionSubtasks(context.task, decisionSubtasks, context.now);
   if (context.task.department?.role === "director") {
     const existingIds = new Set(context.task.subTasks.map((module) => module.id));
@@ -343,7 +311,6 @@ function applyContinueLoopMainDecision(context: LoopMainDecisionContext): LoopMa
       activeSubtaskId: activeSubtaskIds[0] ?? null,
       activeSubtaskIds,
       subTasks: batch.nextSubtasks,
-      classicSubtaskDispatchCount: usedRounds + batch.records.length,
       ...(typeof context.decision.estimatedRemainingRounds === "number"
         ? { estimatedRemainingRounds: context.decision.estimatedRemainingRounds }
         : {}),

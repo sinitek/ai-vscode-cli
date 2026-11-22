@@ -382,23 +382,17 @@ test("does not resurrect persisted Loop tasks with missing status as running", (
   assert.equal(persisted.status, "stopped");
 });
 
-test("persists classic subtask dispatch counts without deriving them from legacy maxRounds", () => {
+test("ignores legacy cumulative subtask limits while preserving classic maxRounds compatibility", () => {
   resetLoopStorage();
   const task = createTask({ maxRounds: 20 });
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
 
-  assert.equal(readPersistedTask(task.taskStoreFile, task.id).classicSubtaskDispatchCount, undefined);
-  loopTaskStore.updateLoopTaskRecord(task.id, { classicSubtaskDispatchCount: 49 });
   const decision = { status: "continue" as const, subtask: { id: "next", title: "Next", prompt: "Continue independently." } };
-  const admitted = transitionLoopMainDecision({ task: readPersistedTask(task.taskStoreFile, task.id), decision,
-    subtaskRoundLimit: 50, now: Date.now() });
+  const admitted = transitionLoopMainDecision({ task: readPersistedTask(task.taskStoreFile, task.id), decision, now: Date.now() });
   loopTaskStore.updateLoopTaskRecord(task.id, admitted.patch);
   const committed = readPersistedTask(task.taskStoreFile, task.id);
-  assert.equal(committed.classicSubtaskDispatchCount, 50);
   assert.deepEqual(committed.activeSubtaskIds, ["next"]);
-  const refused = transitionLoopMainDecision({ task: committed, decision, subtaskRoundLimit: 50, now: Date.now() });
-  assert.equal(refused.status, "blocked");
-  assert.equal(refused.subtasks, undefined);
+  assert.equal(transitionLoopMainDecision({ task: committed, decision, now: Date.now() }).status, "continue");
   assert.equal(readPersistedTask(task.taskStoreFile, task.id).maxRounds, 20);
 });
 

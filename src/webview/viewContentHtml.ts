@@ -6,9 +6,6 @@ import { getCliDisplayName } from "../cli/installer";
 import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 import { normalizePromptInputHeight, PROMPT_INPUT_MIN_HEIGHT } from "../promptInputHeight";
 import { WebviewStringKey } from "./viewContentStrings";
@@ -773,24 +770,6 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                   </label>
                 </div>
                 <div id="hideInstructionBubblesNote" class="tool-settings-note">${i18n.toolSettingsHideInstructionBubblesNote}</div>
-              </section>
-              <section class="tool-settings-card">
-                <div class="tool-settings-row">
-                  <label class="tool-settings-label" for="loopPlusSubtaskMaxRounds">${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}</label>
-                  <input
-                    type="number"
-                    id="loopPlusSubtaskMaxRounds"
-                    class="tool-settings-number"
-                    min="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}"
-                    max="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}"
-                    step="1"
-                    value="${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}"
-                    title="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsTitle}"
-                    aria-label="${i18n.toolSettingsLoopPlusSubtaskMaxRoundsLabel}"
-                    aria-describedby="loopPlusSubtaskMaxRoundsNote"
-                  />
-                </div>
-                <div id="loopPlusSubtaskMaxRoundsNote" class="tool-settings-note">默认 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT}，范围 ${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}–${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}。限制单个主任务累计派发的子任务数；达到上限后仍可复核、验收和总结。</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">

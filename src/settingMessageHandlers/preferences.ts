@@ -4,12 +4,13 @@ import { setDebugLogging } from "../logger";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "../departmentSettings";
 import { assertDepartmentConfigBindingsCurrent, captureDepartmentConfigBindings, normalizeDepartmentRolePreference, validateDepartmentRoleCandidate } from "../departmentConfiguration";
 import { departmentRoleCliIssue } from "../department";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { normalizePromptInputHeight } from "../promptInputHeight";
 import type { PanelMessageHandlerDeps } from "../sessionMessageHandlers";
 import { normalizeWorkspaceLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import {
   normalizeHistoryRetentionDays,
+  NOTIFICATION_SETTING_KEYS,
   resolveHumanInteractionTimeoutMinutes,
   resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
@@ -23,10 +24,10 @@ export type PreferenceSettingDeps = Pick<
   | "isCliName"
   | "isInteractiveMode"
   | "setWorkspaceInteractiveModeForCli"
-  | "updateNotificationSetting"
   | "showWebviewError"
   | "updateStoredToolSettings"
   | "saveWorkspaceSettings"
+  | "updateWorkspaceSettings"
   | "isMacTaskShell"
   | "readStoredToolSettings"
   | "getCurrentCli"
@@ -47,10 +48,6 @@ export type PreferenceSettingDeps = Pick<
 
 const command = settingCommand<PreferenceSettingDeps>;
 const prefixCommand = prefixedSettingCommand<PreferenceSettingDeps>;
-const notificationSettingKeys = [
-  "humanInteractionNotifications", "taskCompletionNotifications",
-  "humanInteractionWindowAttention", "taskCompletionWindowAttention",
-] as const;
 
 export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettingDeps>[] = [
   prefixCommand("interactiveMode.", (message, deps) => {
@@ -59,14 +56,9 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
       deps.setWorkspaceInteractiveModeForCli(cliValue, message.value);
     }
   }),
-  command(notificationSettingKeys, async (message, deps) => {
-    try {
-      if (typeof message.value === "boolean" && deps.updateNotificationSetting) {
-        const key = message.key as (typeof notificationSettingKeys)[number];
-        await deps.updateNotificationSetting(key, message.value);
-      }
-    } catch (error) {
-      deps.showWebviewError("通知设置", error instanceof Error ? `保存通知设置失败：${error.message}` : "保存通知设置失败，请重试。");
+  command(NOTIFICATION_SETTING_KEYS, (message, deps) => {
+    if (typeof message.value === "boolean" && !deps.updateStoredToolSettings({ [message.key]: message.value })) {
+      deps.showWebviewError("通知设置", "保存通知设置失败，请重试。");
     }
   }),
   command("humanInteractionEnabled", (message, deps) => {
@@ -95,23 +87,25 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
       deps.saveWorkspaceSettings(workspaceSettings);
     }
   }),
-  command("loopPlusSubtaskMaxRounds", (message, deps) => {
-    const saved = deps.updateStoredToolSettings({ loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(message.value) });
-    if (!saved) deps.showWebviewError(WEBVIEW_STRINGS.toolSettingsTitle, WEBVIEW_STRINGS.taskModesSaveError);
-  }),
   command("loopPlusDecisionSubtaskMax", (message, deps) => {
     deps.updateStoredToolSettings({
       loopPlusDecisionSubtaskMax: resolveLoopPlusDecisionSubtaskMax(message.value),
     });
   }),
   command("workspaceLoopPlusDecisionSubtaskMax", (message, deps, { workspaceSettings }) => {
-    if (message.value === null || (typeof message.value === "string" && !message.value.trim())) {
-      delete workspaceSettings.loopPlusDecisionSubtaskMax;
-    } else {
-      const value = normalizeWorkspaceLoopPlusDecisionSubtaskMax(message.value);
-      if (value === undefined) return;
-      workspaceSettings.loopPlusDecisionSubtaskMax = value;
+    const clear = message.value === null || (typeof message.value === "string" && !message.value.trim());
+    const value = clear ? undefined : normalizeWorkspaceLoopPlusDecisionSubtaskMax(message.value);
+    if (!clear && value === undefined) return;
+    if (deps.updateWorkspaceSettings) {
+      deps.updateWorkspaceSettings((settings) => {
+        if (clear) delete settings.loopPlusDecisionSubtaskMax;
+        else settings.loopPlusDecisionSubtaskMax = value;
+        return settings;
+      });
+      return;
     }
+    if (clear) delete workspaceSettings.loopPlusDecisionSubtaskMax;
+    else workspaceSettings.loopPlusDecisionSubtaskMax = value;
     deps.saveWorkspaceSettings(workspaceSettings);
   }),
   command("departmentMaxLeaders", (message, deps) => {
@@ -140,12 +134,18 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     if (clear) delete next[key];
     else next[key] = value;
     try {
-      if (!deps.setWorkspaceSettings || !deps.saveWorkspaceSettingsWithResult?.(next).ok) {
+      if (deps.updateWorkspaceSettings) {
+        if (!deps.updateWorkspaceSettings((settings) => {
+          if (clear) delete settings[key];
+          else settings[key] = value;
+          return settings;
+        })) { respond(false, "工作区人数设置保存失败，请重试。"); return; }
+      } else if (!deps.setWorkspaceSettings || !deps.saveWorkspaceSettingsWithResult?.(next).ok) {
         respond(false, "工作区人数设置保存失败，请重试。"); return;
       }
     } catch { respond(false, "工作区人数设置保存失败，请重试。"); return; }
     if (scope !== deps.getDepartmentConfigurationScope?.()) { respond(false, "工作区作用域已变化，请重新加载设置。"); return; }
-    deps.setWorkspaceSettings(next);
+    if (!deps.updateWorkspaceSettings) deps.setWorkspaceSettings?.(next);
     respond(true);
   }),
   command("departmentRolePreference", async (message, deps, { currentCli, workspaceSettings }) => {
@@ -291,6 +291,10 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     deps.updateStoredToolSettings({ autoAddEditorContextTags: Boolean(message.value) });
   }),
   command(["workspaceMemoryEnabled", "longTermMemoryEnabled"], (message, deps, { workspaceSettings }) => {
+    if (deps.updateWorkspaceSettings) {
+      deps.updateWorkspaceSettings((settings) => ({ ...settings, workspaceMemoryEnabled: message.value === true }));
+      return;
+    }
     workspaceSettings.workspaceMemoryEnabled = message.value === true;
     deps.saveWorkspaceSettings(workspaceSettings);
   }),
@@ -304,19 +308,10 @@ export const preferenceSettingCommands: readonly SettingCommand<PreferenceSettin
     if (!deps.isCliName(cliValue) || typeof message.value !== "boolean") {
       return;
     }
-    const currentSettings = deps.readStoredToolSettings?.() ?? {};
-    const nextMap: CliEnabledByName = {};
-    const previous = currentSettings.cliEnabledByName;
-    if (previous && typeof previous === "object") {
-      for (const [key, value] of Object.entries(previous)) {
-        if (deps.isCliName(key) && typeof value === "boolean") {
-          nextMap[key] = value;
-        }
-      }
-    }
-    nextMap[cliValue] = message.value;
-    const saved = deps.updateStoredToolSettings({ cliEnabledByName: nextMap });
+    const patch: CliEnabledByName = { [cliValue]: message.value };
+    const saved = deps.updateStoredToolSettings({ cliEnabledByName: patch });
     if (saved) {
+      const nextMap = deps.readStoredToolSettings?.()?.cliEnabledByName ?? patch;
       const nextCli = resolveNextEnabledCli(deps.getCurrentCli(), { cliEnabledByName: nextMap });
       if (nextCli && nextCli !== deps.getCurrentCli()) {
         await deps.setCurrentCli(nextCli);

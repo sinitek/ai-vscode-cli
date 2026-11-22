@@ -169,15 +169,16 @@ import {
   readHumanInteractionTimeoutMs,
   readToolSettings,
   reloadToolSettings,
+  resolveNotificationSettings,
   resolveGlobalAutoCompactContextAfterRun,
   resolveGlobalHumanInteractionEnabled,
   resolveHumanInteractionTimeoutMinutes,
   resolveNextEnabledCli,
   type ToolSettingsState,
-  writeToolSettings,
+  updateToolSettings,
 } from "./toolSettings";
 import { DepartmentConfigurationSaveBarrier, getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, validateDepartmentRoleCandidate } from "./departmentConfiguration";
-import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata } from "./department";
+import { departmentRoleCliIssue, normalizeDepartmentMetadata, usesDepartmentOwner, type DepartmentMetadata } from "./department";
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
 import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
@@ -250,7 +251,7 @@ import type { PromptRunInput, PromptRunTarget } from "./promptRunTypes";
 import { buildLoopPlusPauseText, recordLoopPlusPause } from "./loopPlusPause";
 import { createPromptRunModelsHost } from "./extensionHost/promptRunModels";
 import { createPrimaryPromptRunController } from "./extensionHost/primaryPromptRunController";
-import { trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, type WorkspaceSettings } from "./workspaceSettingsStore";
+import { trySaveWorkspaceSettings as trySaveWorkspaceSettingsToStore, tryUpdateWorkspaceSettings as tryUpdateWorkspaceSettingsToStore, type WorkspaceSettings } from "./workspaceSettingsStore";
 import { normalizeLoopPlusAcceptancePlanSnapshot, normalizeLoopPlusAcceptancePlanSnapshotForStorage } from "./loopPlusAcceptancePlan";
 import {
   buildLoopPlusAcceptancePlanSelectionPanelValue,
@@ -639,7 +640,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channel,
       error: error instanceof Error ? error.message : String(error),
     });
-  }, resolveWorkspaceCwd);
+  }, resolveWorkspaceCwd, () => resolveNotificationSettings(readToolSettings()));
   interactiveRunnerManager = new InteractiveRunnerManager();
   void maybeDisableMarketplaceUpdateCheckInDev(context);
   activeWorkspaceKey = buildWorkspaceKey(resolveWorkspaceCwd());
@@ -1150,7 +1151,6 @@ async function executeScheduledTask(task: ScheduledTaskRecord): Promise<void> {
 async function handlePanelMessage(message: PanelMessage): Promise<void> {
   await handlePanelMessageWithDeps(message, {
     updatePendingPromptQueueState: (hasPendingPrompts) => { hasPendingPromptQueue = hasPendingPrompts; },
-    updateNotificationSetting: (key, enabled) => vscode.workspace.getConfiguration(CONFIG_NAMESPACE).update(key, enabled, vscode.ConfigurationTarget.Global),
     ensureWorkspaceSessionStore,
     postPanelState,
     reconcileRunningConversationTabs,
@@ -1263,7 +1263,21 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
 
     loadModelStore: () => { modelStore = loadModelStore(); },
     isCliName,
-    reloadStoredToolSettings: reloadToolSettings,
+    reloadStoredToolSettings: () => {
+      reloadToolSettings();
+      humanInteractionAttention?.refreshPreferences();
+    },
+    reloadWorkspaceSettings: () => { workspaceSettings = loadWorkspaceSettings(); },
+    updateWorkspaceSettings: (update) => {
+      let updated: WorkspaceSettings | undefined;
+      const result = tryUpdateWorkspaceSettingsToStore((current) => {
+        updated = update(current);
+        return updated;
+      }, getWorkspaceSettingsStoreOptions());
+      if (!result.ok || !updated) return false;
+      workspaceSettings = updated;
+      return true;
+    },
     updateStoredToolSettings,
     readStoredToolSettings: () => readToolSettings(),
     publishCliEnabled: () => {
@@ -1425,6 +1439,7 @@ function buildPanelStateFromConfigState(
     getEffectiveLongTermMemoryEnabled,
     getGlobalAutoCompactContextAfterRun,
     getGlobalHumanInteractionEnabled,
+    getGlobalNotificationSettings: () => resolveNotificationSettings(readToolSettings()),
     getGlobalLoopEnabled: () => readToolSettings().loopEnabled !== false,
     getGlobalLoopPlusEnabled: () => readToolSettings().loopPlusEnabled !== false,
     getGlobalDepartmentEnabled: () => readToolSettings().departmentEnabled === true,
@@ -1720,7 +1735,6 @@ loopOrchestrationHost = createLoopOrchestrationHost({
   hasActiveSubtasks: hasActiveLoopSubtasks,
   cancelSubtaskInvocation: (tabId) => cancelLoopPlusInvocation(tabId),
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
-  subtaskRoundLimit: () => modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),
   getActiveConfigIdForCli,
   appendLoopRound,
   appendMessageToStore,
@@ -2116,27 +2130,25 @@ function getExplicitGlobalConfigValue<T>(key: string): T | undefined {
   return inspected?.globalValue;
 }
 
-function saveStoredToolSettings(next: ToolSettingsState): boolean {
+function updateStoredToolSettings(patch: Partial<ToolSettingsState>): boolean {
   try {
-    writeToolSettings(next);
+    updateToolSettings(patch);
+    if (Object.keys(patch).some((key) => [
+      "humanInteractionNotifications", "taskCompletionNotifications",
+      "humanInteractionWindowAttention", "taskCompletionWindowAttention",
+    ].includes(key))) {
+      humanInteractionAttention?.refreshPreferences();
+    }
+    if ("loopGroupChatMessageLimit" in patch) {
+      for (const taskId of loopGroupChatChatPanelsByTaskId.keys()) {
+        refreshOpenLoopGroupChatPanelForTask(taskId);
+      }
+    }
     return true;
   } catch (error) {
     void logError("tool-settings-write-error", { error: String(error) });
     return false;
   }
-}
-
-function updateStoredToolSettings(patch: Partial<ToolSettingsState>): boolean {
-  const saved = saveStoredToolSettings({
-    ...readToolSettings(),
-    ...patch,
-  });
-  if (saved && "loopGroupChatMessageLimit" in patch) {
-    for (const taskId of loopGroupChatChatPanelsByTaskId.keys()) {
-      refreshOpenLoopGroupChatPanelForTask(taskId);
-    }
-  }
-  return saved;
 }
 
 function retargetDisabledLoopSubtaskSelections(fallbackCli: CliName | null): void {
@@ -2171,32 +2183,35 @@ function migrateLegacyAutoCompactContextAfterRunFromWorkspace(): void {
 
   const globalSettings = readToolSettings();
   if (typeof globalSettings.autoCompactContextAfterRun !== "boolean") {
-    const migrated = saveStoredToolSettings({
-      ...globalSettings,
-      autoCompactContextAfterRun: resolveGlobalAutoCompactContextAfterRun(
-        globalSettings,
-        workspaceSettings,
-      ),
-    });
+    let migrated = true;
+    try {
+      updateToolSettings({
+        autoCompactContextAfterRun: resolveGlobalAutoCompactContextAfterRun(globalSettings, workspaceSettings),
+      }, true);
+    } catch (error) {
+      migrated = false;
+      void logError("tool-settings-write-error", { error: String(error) });
+    }
     if (!migrated) {
       return;
     }
   }
 
-  delete workspaceSettings.autoCompactContextAfterRun;
-  delete workspaceSettings.autoCompactContextBeforeRun;
-  saveWorkspaceSettings(workspaceSettings);
+  const result = tryUpdateWorkspaceSettingsToStore((settings) => {
+    delete settings.autoCompactContextAfterRun;
+    delete settings.autoCompactContextBeforeRun;
+    return settings;
+  }, getWorkspaceSettingsStoreOptions());
+  if (result.ok) workspaceSettings = loadWorkspaceSettings();
 }
 
 function migrateLegacyToolSettingsFromVsCodeConfig(): void {
   const current = readToolSettings();
-  const next: ToolSettingsState = { ...current };
-  let changed = false;
+  const missing: Partial<ToolSettingsState> = {};
 
   const debug = getExplicitGlobalConfigValue<unknown>("debug");
   if (typeof current.debug !== "boolean" && typeof debug === "boolean") {
-    next.debug = debug;
-    changed = true;
+    missing.debug = debug;
   }
 
   const autoAddEditorContextTags = getExplicitGlobalConfigValue<unknown>("autoAddEditorContextTags");
@@ -2204,8 +2219,7 @@ function migrateLegacyToolSettingsFromVsCodeConfig(): void {
     typeof current.autoAddEditorContextTags !== "boolean"
     && typeof autoAddEditorContextTags === "boolean"
   ) {
-    next.autoAddEditorContextTags = autoAddEditorContextTags;
-    changed = true;
+    missing.autoAddEditorContextTags = autoAddEditorContextTags;
   }
 
   const humanInteractionEnabled = getExplicitGlobalConfigValue<unknown>("humanInteractionEnabled");
@@ -2213,18 +2227,31 @@ function migrateLegacyToolSettingsFromVsCodeConfig(): void {
     typeof current.humanInteractionEnabled !== "boolean"
     && typeof humanInteractionEnabled === "boolean"
   ) {
-    next.humanInteractionEnabled = resolveGlobalHumanInteractionEnabled({ humanInteractionEnabled });
-    changed = true;
+    missing.humanInteractionEnabled = resolveGlobalHumanInteractionEnabled({ humanInteractionEnabled });
   }
 
   const macTaskShell = getExplicitGlobalConfigValue<unknown>("macTaskShell");
   if (!current.macTaskShell && isMacTaskShell(macTaskShell)) {
-    next.macTaskShell = macTaskShell;
-    changed = true;
+    missing.macTaskShell = macTaskShell;
   }
 
-  if (changed) {
-    saveStoredToolSettings(next);
+  for (const key of [
+    "humanInteractionNotifications", "taskCompletionNotifications",
+    "humanInteractionWindowAttention", "taskCompletionWindowAttention",
+  ] as const) {
+    const legacy = getExplicitGlobalConfigValue<unknown>(key);
+    if (typeof current[key] !== "boolean" && typeof legacy === "boolean") missing[key] = legacy;
+  }
+
+  if (Object.keys(missing).length > 0) {
+    try {
+      updateToolSettings(missing, true);
+      if (Object.keys(missing).some((key) => [
+        "humanInteractionNotifications", "taskCompletionNotifications",
+        "humanInteractionWindowAttention", "taskCompletionWindowAttention",
+      ].includes(key))) humanInteractionAttention?.refreshPreferences();
+    }
+    catch (error) { void logError("tool-settings-write-error", { error: String(error) }); }
   }
 }
 
@@ -3203,7 +3230,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
       runPrompt: async (input, options) => {
         const execute = (runOptions: RunPromptOptions) => {
           if (task.departmentInvalid) throw new Error("部门任务关联无效，无法提问。");
-          if (task.department?.role !== "leader") return runPrompt(input, runOptions);
+          if (!usesDepartmentOwner(task.department)) return runPrompt(input, runOptions);
           return runDepartmentLeaderPrompt({ ...input, taskRole: "main", loopTaskId: task.id }, {
             targetTabId: options.targetTabId, invocationId: createMessageId(), isAborted, signal,
             registerQuestionRun: runOptions.registerQuestionRun,
@@ -4144,7 +4171,7 @@ function departmentOwnerPreparation(cli: CliName) {
 }
 function departmentOwnerResources(taskId: string, cli: CliName): boolean {
   const task = readLoopTaskRecord(taskId);
-  return (cli === "opencode" || cli === "codex") && normalizeDepartmentMetadata(task?.department)?.role === "leader";
+  return (cli === "opencode" || cli === "codex") && usesDepartmentOwner(normalizeDepartmentMetadata(task?.department) ?? undefined);
 }
 let departmentRuntimeComposition: ReturnType<typeof createDepartmentRuntimeComposition> | null = null;
 let departmentOwnershipIndex: ReturnType<typeof createDepartmentProductionTaskStoreForHost> | null = null;
@@ -4222,7 +4249,7 @@ async function prepareDepartmentInvocation(input: PromptRunInput, tabId: string 
   const target = resolvePromptRunTarget(tabId);
   if (!route.cli || target?.cli !== route.cli) throw new Error("部门执行 CLI 与固化角色不匹配。");
   const before = JSON.stringify(task.department), workspace = activeWorkspaceKey, targetIdentity = JSON.stringify(target);
-  await prepareDepartmentRoutes(m.routes);
+  if (m.executionMode !== "loop-plus") await prepareDepartmentRoutes(m.routes);
   const current = readLoopTaskRecord(task.id);
   if (current?.status !== "running"
     || current.departmentInvalid || JSON.stringify(current.department) !== before || workspace !== activeWorkspaceKey
@@ -4267,6 +4294,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
   departmentRuntimeComposition = createDepartmentRuntimeComposition({
     runtime,
     async prepareColdRecovery(root, assertCurrent) {
+      if (root.department?.executionMode === "loop-plus") return;
       try { await coldRecovery.prepare(root, assertCurrent); }
       catch (error) {
         const { reasons, message } = describeDepartmentColdStopFailure(error);
@@ -4286,7 +4314,8 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     prepareLeaderContinuation: (task, expected) => {
       // Retirement is a same-host capability issued after the original complete
       // Owner aggregate and durable capacity return, never a disk cleaned flag.
-      if (!getDepartmentExecutionProducer().canContinueLeader(task.id) || task.workspaceKey !== activeWorkspaceKey
+      const ownerExecution = usesDepartmentOwner(task.department);
+      if ((ownerExecution && !getDepartmentExecutionProducer().canContinueLeader(task.id)) || task.workspaceKey !== activeWorkspaceKey
         || !validateDepartmentRoutes(expected.routes) || task.cli !== expected.routes.leader.cli
         || task.originProfile?.configId !== expected.routes.leader.configId) return null;
       const existing = task.sessionId && findConversationTabIdBySession(task.cli, task.sessionId);
@@ -4304,8 +4333,8 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       if (context.loopTaskId && (context.loopTaskId !== task.id || context.taskRole !== "main")) return null;
       // The existing trusted API creates the actual session tab; establish its
       // main-task transcript through the normal host writer before inspection.
-      if (!existing) getDepartmentExecutionResources().recordCreated(tab.id);
-      appendSystemMessageForLoop(target, "原代次已完成清理，显式继续同一组长会话。", { taskRole: "main", loopTaskId: task.id, merge: false });
+      if (!existing && ownerExecution) getDepartmentExecutionResources().recordCreated(tab.id);
+      appendSystemMessageForLoop(target, ownerExecution ? "原代次已完成清理，显式继续同一组长会话。" : "继续同一组长会话。", { taskRole: "main", loopTaskId: task.id, merge: false });
       const bound = resolveConversationTabLoopContext(tab);
       return bound.taskRole === "main" && bound.loopTaskId === task.id
         ? { tabId: tab.id, cli: task.cli, sessionId: task.sessionId! } : null;
@@ -4330,7 +4359,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       const source = getDepartmentOwnershipIndex();
       const task = createLoopTaskRecord(target.cli, input.displayPrompt, { sessionId, buildOnly: true });
       const updated = source.create(prepareDepartmentTaskRecord(task, {
-        version: 1, rootTaskId: task.id, parentTaskId: null, leaderSubtaskId: null, role: "director",
+        version: 1, rootTaskId: task.id, parentTaskId: null, leaderSubtaskId: null, role: "director", executionMode: "loop-plus",
         moduleTitle: input.displayPrompt, routes: structuredClone(configuration.routes), limits: { ...configuration.limits },
       }, configuration.loopPlusAcceptancePlan));
       ensureLoopCommunicationFiles(updated.id, updated.rootPrompt);
@@ -4339,13 +4368,13 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
         merge: false, actions: [buildLoopGroupChatMessageAction(task.id)] });
       return updated;
     },
-    createLeaderTarget: (route) => {
+    createLeaderTarget: (route, root) => {
       if (!route.cli) throw new Error("组长 CLI 缺失。");
       const target = createLoopSubtaskRunTarget(route.cli);
       ensureLocalSession(route.cli, target.tabId, true);
       const sessionId = resolveLoopTaskSessionId(target);
       if (!sessionId) throw new Error("组长独立会话创建失败。");
-      if (route.cli === "codex" || route.cli === "opencode") getDepartmentExecutionResources().recordCreated(target.tabId);
+      if (root.department?.executionMode !== "loop-plus" && (route.cli === "codex" || route.cli === "opencode")) getDepartmentExecutionResources().recordCreated(target.tabId);
       return { ...target, sessionId };
     },
     verifyStoredLeaderIdentity: storedLeaderIdentity,
@@ -4353,7 +4382,9 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       const recovered = coldRecovery.inspect(task); if (recovered) return recovered;
       const sessionId = task.sessionId;
       if (typeof sessionId !== "string" || !sessionId.trim()) return null;
-      const tabId = findConversationTabIdBySession(task.cli, sessionId);
+      const tabId = findConversationTabIdBySession(task.cli, sessionId)
+        ?? (task.department?.executionMode === "loop-plus" && task.status !== "running"
+          ? resolveLoopMainPromptTarget(task, { createIfMissing: true })?.tabId : undefined);
       if (!tabId || task.cli !== expected.routes.leader.cli || task.originProfile?.configId !== expected.routes.leader.configId) return null;
       const tab = getConversationTabById(tabId);
       if (!tab || getConversationTabSessionIdForCli(tab, task.cli) !== sessionId) return null;
@@ -4374,6 +4405,11 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       await getDepartmentExecutionProducer().retire(taskId, generation);
     },
     stopLeader: async (taskId) => {
+      if (readLoopTaskRecord(taskId)?.department?.executionMode === "loop-plus") {
+        runtime.host().stopParent(taskId); stopLoopRunsForTask(taskId);
+        await runtime.waitForTaskIdle(taskId);
+        return;
+      }
       if (coldRecovery.owns(taskId)) { await coldRecovery.stop(taskId); return; }
       const closure = getDepartmentExecutionProducer().close(taskId); // fences grants synchronously
       runtime.host().stopParent(taskId); stopLoopRunsForTask(taskId);
@@ -4389,11 +4425,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     openGroupChat: async (taskId) => openLoopGroupChatPanel(taskId),
     acquireDirectorOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
     acquireLeaderOwnership: (taskId) => loopOrchestrationOwnership.acquire(taskId),
-    applyClassicDecision: (taskId, decision) => applyLoopMainDecision(
-      taskId,
-      decision,
-      modelSettingsHost.getGlobalLoopPlusSubtaskMaxRounds(),
-    ),
+    applyClassicDecision: (taskId, decision) => applyLoopMainDecision(taskId, decision),
     report: (taskId, message) => {
       const task = readLoopTaskRecord(taskId), target = task && resolveLoopMainPromptTarget(task, { createIfMissing: false });
       if (target) appendSystemMessageForLoop(target, message, { taskRole: "main", loopTaskId: taskId, merge: false });
@@ -4491,7 +4523,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
             schedulingMode: "event_driven", loopPlus: snapshot, loopPlusMainPhase: "decomposing",
             loopSubtaskMode,
           }, departmentMetadata, acceptancePlan));
-          getDepartmentExecutionProducer().recordNewLeader(task);
+          if (usesDepartmentOwner(task.department)) getDepartmentExecutionProducer().recordNewLeader(task);
           ensureLoopCommunicationFiles(task.id, task.rootPrompt);
           ensureLoopMainSubChatTranscript(task);
           return task;
@@ -4590,7 +4622,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         },
       ),
       ownsDepartmentAttemptResources: (request) => {
-        if (usesDepartmentInteractiveRuntime(request.targetCli) && readLoopTaskRecord(request.taskId)?.department?.role === "leader") {
+        if (usesDepartmentInteractiveRuntime(request.targetCli) && usesDepartmentOwner(readLoopTaskRecord(request.taskId)?.department)) {
           getDepartmentInteractiveRuntime().authorizeAttempt(request.taskId, request.subtaskId, request.attemptId);
           return false; // The existing Loop+ adapter owns its root and tab.
         }
@@ -4598,13 +4630,16 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         departmentOwnerPreparation(request.targetCli).authorizeAttempt(request.taskId, request.subtaskId, request.attemptId);
         return true;
       },
-      observeAttemptTermination: (request) => usesDepartmentInteractiveRuntime(request.targetCli) && readLoopTaskRecord(request.taskId)?.department?.role === "leader"
+      observeAttemptTermination: (request) => usesDepartmentInteractiveRuntime(request.targetCli) && usesDepartmentOwner(readLoopTaskRecord(request.taskId)?.department)
         ? getDepartmentInteractiveRuntime().observe(request.taskId, request.attemptId)
         : departmentOwnerResources(request.taskId, request.targetCli)
           ? departmentOwnerPreparation(request.targetCli).observe(request.taskId, request.attemptId, request.subtaskId) : null,
-      createExecutionRoot: (grokExecutionRootId) => {
+      createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd) => {
         const workspaceCwd = resolveWorkspaceCwd();
-        return workspaceCwd ? createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd, grokExecutionRootId) : null;
+        if (!workspaceCwd) return null;
+        return useWorkspaceCwd
+          ? { cwd: workspaceCwd, isolateProjectInstructions: false, dispose: () => undefined }
+          : createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd, grokExecutionRootId);
       },
       createSubtaskTarget: (cli, options) => createLoopSubtaskRunTarget(cli, options),
       recordDepartmentSubtaskTarget: (target) => {
@@ -5744,7 +5779,7 @@ async function runPrompt(
     if (options.firstMainExecution && (!task || task.department || task.departmentInvalid || input.taskRole !== "main")) {
       throw new Error(t("loopGroupChatChat.originalRuntimeUnavailable"));
     }
-    if (department?.role === "leader") {
+    if (department && usesDepartmentOwner(department)) {
       if (!task) throw new Error("部门运行任务缺失。");
       if (input.taskRole !== "subtask") throw new Error("部门组长必须经真实 Loop+ 原生 Owner 调用，禁止普通执行回退。");
       return getDepartmentExecutionProducer().track(task.id, () => usesDepartmentInteractiveRuntime(department.routes.employee.cli)
@@ -5857,7 +5892,7 @@ async function runPromptNow(
     && currentTab === summarySubmissionTab);
   if (!firstMainExecution) target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
   if (["codex", "opencode"].includes(target.cli) && input.taskRole === "subtask" && input.loopTaskId
-    && readLoopTaskRecord(input.loopTaskId)?.department?.role === "leader") {
+    && usesDepartmentOwner(readLoopTaskRecord(input.loopTaskId)?.department)) {
     getDepartmentExecutionResources().confirmSessionTransition(target.tabId, previousSessionId, target.sessionId);
   }
   preparingSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
@@ -6428,7 +6463,7 @@ async function runContextCompaction(
 ): Promise<boolean> {
   const tabId = options.tabId ?? getActiveConversationTabId();
   const departmentTask = departmentTaskForTab(tabId);
-  if (departmentTask?.department?.role === "leader") {
+  if (usesDepartmentOwner(departmentTask?.department) && departmentTask) {
     if (!options.silent) appendSystemMessageForCli(departmentTask.cli, departmentTask.sessionId ?? null, "组长会话由产研部管理，不支持手动压缩。");
     return false;
   }

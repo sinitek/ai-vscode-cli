@@ -17,7 +17,9 @@ import {
   resolveLongTermMemoryEnabled,
   resolveNewTaskInteractiveMode,
   resolveNextEnabledCli,
+  resolveNotificationSettings,
   normalizeHistoryRetentionDays,
+  updateToolSettings,
   type ToolSettingsState,
 } from "../../toolSettings";
 import { getLegacyLoopPropertyKey } from "../../loopLegacyMigration";
@@ -163,6 +165,39 @@ test("tool settings persist globally without losing other settings", () => {
   } finally {
     fs.rmSync(temporaryHome, { recursive: true, force: true });
   }
+});
+
+test("global setting patches merge disk state across stale window caches", (context) => {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-settings-patch-"));
+  context.after(() => fs.rmSync(temporaryHome, { recursive: true, force: true }));
+  const script = `
+    const assert = require("node:assert/strict");
+    const fs = require("node:fs");
+    require("node:os").homedir = () => ${JSON.stringify(temporaryHome)};
+    const settings = require(${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))});
+    settings.writeToolSettings({ debug: true, historyRetentionDays: 30, cliEnabledByName: { codex: false } });
+    settings.readToolSettings();
+    settings.updateToolSettings({ historyRetentionDays: 90 });
+    settings.updateToolSettings({ debug: false, cliEnabledByName: { claude: false } });
+    const expected = { debug: false, historyRetentionDays: 90, cliEnabledByName: { codex: false, claude: false } };
+    assert.deepEqual(settings.reloadToolSettings(), expected);
+    assert.deepEqual(JSON.parse(fs.readFileSync(settings.getToolSettingsFilePath(), "utf8")), expected);
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test("notification settings share the global tool settings source", () => {
+  assert.deepEqual(normalizeToolSettings({ taskCompletionNotifications: false, debug: true }), {
+    taskCompletionNotifications: false,
+    debug: true,
+  });
+  assert.deepEqual(resolveNotificationSettings({ humanInteractionNotifications: false }), {
+    humanInteractionNotifications: false,
+    taskCompletionNotifications: true,
+    humanInteractionWindowAttention: true,
+    taskCompletionWindowAttention: true,
+  });
 });
 
 test("ignores retired final-answer policy fields", () => {
@@ -333,7 +368,6 @@ test("normalizes global Loop tool settings", () => {
     }),
     {
       loopPlusDecisionSubtaskMax: 8,
-      loopPlusSubtaskMaxRounds: 100,
       humanInteractionTimeoutMinutes: 10,
     },
   );
@@ -390,8 +424,8 @@ test("migrates legacy Loop tool-setting keys and prefers current values", () => 
 });
 
 
-test("clamps subtask rounds and ignores the removed acceptance setting", () => {
-  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), { loopPlusSubtaskMaxRounds: 50 });
-  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 10000 }), { loopPlusSubtaskMaxRounds: 9999 });
+test("ignores retired cumulative Loop subtask settings", () => {
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 0, loopPlusMaxAcceptances: 1 }), {});
+  assert.deepEqual(normalizeToolSettings({ loopPlusSubtaskMaxRounds: 10000 }), {});
   assert.deepEqual(normalizeToolSettings({ loopPlusMaxAcceptances: 1 }), {});
 });

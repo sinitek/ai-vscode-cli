@@ -15,6 +15,7 @@ const themeOnly = process.env.DEPARTMENT_UI_THEME_ONLY === "1";
 const deltaOnly = process.env.DEPARTMENT_UI_DELTA_ONLY === "1";
 const focusLifecycleOnly = process.env.DEPARTMENT_UI_FOCUS_LIFECYCLE_ONLY === "1";
 const rosterStatusOnly = process.env.DEPARTMENT_UI_ROSTER_STATUS_ONLY === "1";
+const clipboardOnly = process.env.DEPARTMENT_UI_CLIPBOARD_ONLY === "1";
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
 require(path.join(compiled, "test/vscodeMock.js")).installVscodeMock();
 const vscode = require("vscode");
@@ -69,6 +70,8 @@ function theme(dark) {
       page.on("response", (response) => { if (response.status() >= 400) errors.push(`HTTP ${response.status()} ${response.url()}`); });
       page.on("requestfailed", (request) => errors.push(request.url() + " " + request.failure()?.errorText));
       const sent = [];
+      const clipboardWrites = [];
+      vscode.env.clipboard = { writeText: async (text) => { clipboardWrites.push(text); } };
       let receive;
       vscode.window.createWebviewPanel = () => ({
         webview: { cspSource: "'self'", set html(value) { currentHtml = value; }, get html() { return currentHtml; },
@@ -122,6 +125,50 @@ function theme(dark) {
       try {
         await page.goto(`http://127.0.0.1:${server.address().port}/`);
         await page.locator("#panelHeading").waitFor();
+        if (clipboardOnly) {
+          page.setDefaultTimeout(6000);
+          const waitForClipboard = async (count) => {
+            for (let retry = 0; clipboardWrites.length < count && retry < 30; retry += 1) await settle();
+            assert.equal(clipboardWrites.length, count);
+          };
+          const parentBubble = page.locator(".timeline .bubble").filter({ has: page.locator(".copy-chat-bubble") }).first();
+          await parentBubble.locator(".copy-chat-bubble").click();
+          await waitForClipboard(1);
+          assert.equal(clipboardWrites[0].trim(), parentState.task.rootPrompt.trim());
+          await showMembers(page);
+          await page.locator(`[data-action="openDepartmentTask"][data-department-task-id="${parentState.department.leaders[0].taskId}"]`).first().click();
+          const target = await targetReady();
+          const { frame } = await inject(target);
+          await frame.locator('[data-action="askMainModel"]').click();
+          const question = "这段 **提问** 能复制吗？";
+          assert.equal(panel.publishDepartmentModalAskThread(target, { version: 1, messages: [{ id: "clipboard-question", role: "user", content: question, createdAt: 1 }], dialogOpen: true, running: false, updatedAt: 1 }), true);
+          const askBubble = frame.locator("#askChatMessages .ask-chat-bubble");
+          await askBubble.waitFor();
+          await frame.locator("#askChatMessages .copy-chat-bubble").click();
+          await waitForClipboard(2);
+          assert.equal(clipboardWrites[1], question);
+          await askBubble.click();
+          await askBubble.evaluate((element) => window.getSelection().selectAllChildren(element));
+          assert.equal(panel.publishDepartmentModalAskThread(target, { version: 1, messages: [{ id: "clipboard-update", role: "assistant", content: "选区清除后显示的更新", createdAt: 2 }], dialogOpen: true, running: false, updatedAt: 2 }), true);
+          await settle();
+          await page.keyboard.press("Control+c");
+          await waitForClipboard(3);
+          assert.equal(clipboardWrites[2].trim(), "这段 提问 能复制吗？");
+          await frame.evaluate(() => window.getSelection().removeAllRanges());
+          await frame.getByText("选区清除后显示的更新", { exact: true }).waitFor();
+          const input = frame.locator("#askChatInput");
+          await input.fill("编辑框仍使用原生复制");
+          await input.selectText();
+          await input.press("Control+c");
+          await receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, instanceId: "stale-clipboard-instance", message: { type: "loopGroupChatChat:copyText", text: "旧弹窗" } });
+          await receive({ type: "loopGroupChatChat:copyText", text: " " });
+          await receive({ type: "loopGroupChatChat:copyText", text: "大".repeat(1024 * 1024 + 1) });
+          await settle();
+          assert.equal(clipboardWrites.length, 3);
+          assert.deepEqual(errors, []);
+          results.push({ name, result: "passed", scope: "group-chat-clipboard", clipboardWrites: clipboardWrites.length, browserErrors: errors });
+          continue;
+        }
         if (roleAvatarOnly) {
           const findings = await runRoleAvatarScenario({ page, panel, parentState, sent, showMembers, overflow, settle, targetReady, inject, output, name });
           assert.deepEqual(errors, []);

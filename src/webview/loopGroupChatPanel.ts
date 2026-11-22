@@ -40,6 +40,19 @@ import type {
   LoopPlusPanelProjection,
   LoopPlusPanelReviewItem,
 } from "./loopGroupChatPanelTypes";
+
+const MAX_GROUP_CHAT_COPY_LENGTH = 1024 * 1024;
+
+async function writeGroupChatClipboard(text: unknown): Promise<void> {
+  if (typeof text !== "string" || text.length > MAX_GROUP_CHAT_COPY_LENGTH || !text.trim()) return;
+  try {
+    await vscode.env.clipboard.writeText(text);
+  } catch {
+    void vscode.window.showErrorMessage("未能写入剪贴板，请重试。");
+  }
+}
+
+const COPY_GROUP_CHAT_BUTTON = `<button class="copy-chat-bubble" type="button" aria-label="复制消息" title="复制消息">复制</button>`;
 export type {
   DepartmentGroupChatProjection,
   DepartmentGroupChatModalTarget,
@@ -120,6 +133,7 @@ export class LoopGroupChatPanel {
         }
         if (message?.type === "loopGroupChatChat:departmentTaskMessage") {
           if (!this.matchesDepartmentModal(message) || !message.message || !DEPARTMENT_GROUP_CHAT_TASK_MESSAGE_TYPES.has(message.message.type)) return;
+          if (message.message.type === "loopGroupChatChat:copyText") return writeGroupChatClipboard(message.message.text);
           if (message.message.type === "loopGroupChatChat:domReady") {
             this.departmentModal!.ready = true;
             this.publishDepartmentModalState();
@@ -128,6 +142,7 @@ export class LoopGroupChatPanel {
           this.handlers.onMessage(message);
           return;
         }
+        if (message?.type === "loopGroupChatChat:copyText") return writeGroupChatClipboard(message.text);
         if (message?.type === "loopGroupChatChat:loadingReady") {
           this.resolveLoadingReady?.(true);
           this.resolveLoadingReady = undefined;
@@ -457,6 +472,16 @@ export function buildLoopGroupChatPanelHtml(
 ${LOOP_GROUP_CHAT_PANEL_STYLES}
 ${getMarkdownStyles(".markdown-body")}
       .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
+      .copy-chat-bubble {
+        margin-inline-start: auto;
+        padding: 2px 6px;
+        color: var(--vscode-descriptionForeground);
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+        user-select: none;
+      }
+      .copy-chat-bubble:hover, .copy-chat-bubble:focus-visible { background: var(--vscode-toolbar-hoverBackground); }
     </style>
   </head>
   <body${state.department ? ' class="department-chat-page"' : ""}>
@@ -556,6 +581,23 @@ ${renderPanelDialog({
 ${DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT}
 ${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
 ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
+	      const chatMarkdownSources = new WeakMap();
+	      function copyChatSelectionToHost(text) {
+	        if (!text.trim()) return false;
+	        if (text.length > ${MAX_GROUP_CHAT_COPY_LENGTH}) return false;
+	        vscode.postMessage({ type: "loopGroupChatChat:copyText", text });
+	        return true;
+	      }
+	      document.addEventListener("keydown", (event) => {
+	        if (event.defaultPrevented || !(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || (event.key || "").toLowerCase() !== "c") return;
+	        if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return;
+	        if (copyChatSelectionToHost(readChatCopyText(window.getSelection()))) event.preventDefault();
+	      });
+	      document.addEventListener("click", (event) => {
+	        const button = event.target instanceof Element && event.target.closest(".copy-chat-bubble");
+	        const body = button && button.closest(".bubble, .ask-chat-message")?.querySelector(".message-text, .ask-chat-bubble");
+	        if (body) copyChatSelectionToHost(chatMarkdownSources.get(body) ?? body.getAttribute("data-markdown-source") ?? body.innerText);
+	      });
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
 	      const SCROLL_BOTTOM_THRESHOLD = 50;
@@ -568,6 +610,10 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      let sidebarOpen = false;
 	      const mainElement = document.querySelector(".main");
 	      const renderedSlotHtml = new WeakMap();
+	      const deferredChatCopySlots = new Map();
+	      document.addEventListener("selectionchange", () => {
+	        for (const [slot, html] of [...deferredChatCopySlots]) replaceHtml(slot, html);
+	      });
 	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot, #statusBarSlot, #departmentAllocationSlot").forEach((slot) => {
 	        renderedSlotHtml.set(slot, { initial: slot.innerHTML });
 	      });
@@ -932,7 +978,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
             function mountElement(element) {
               if (element.isConnected === false) return;
               const links = Array.from(element.querySelectorAll(".communication-file-link"));
-              element.innerHTML = renderMarkdown(element.getAttribute("data-markdown-source") || "");
+              const source = element.getAttribute("data-markdown-source") || "";
+              chatMarkdownSources.set(element, source);
+              element.innerHTML = renderMarkdown(source);
               element.removeAttribute("data-markdown-source");
               links.forEach((link) => {
                 const filePath = link.getAttribute("data-file-path");
@@ -984,7 +1032,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const content = askEscape(message.content || "");
 	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body" data-markdown-source="' + content + '">' +
 	          content +
-	          "</div>" + (role === "user" && message.queued === true
+	          "</div>" + (content ? ${JSON.stringify(COPY_GROUP_CHAT_BUTTON)} : "") + (role === "user" && message.queued === true
 	            ? '<div class="ask-chat-queued" role="status"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>' + askEscape(ASK_QUEUED_LABEL) + '</span></div>'
 	            : "") + "</article>";
 	      }
@@ -1353,6 +1401,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (!slot || typeof html !== "string") {
 	          return;
 	        }
+	        deferredChatCopySlots.delete(slot);
 	        const previous = renderedSlotHtml.get(slot);
 	        if (previous && previous.source === html) {
 	          return;
@@ -1362,6 +1411,13 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          holder.innerHTML = html;
 	          if (holder.innerHTML === previous.initial) {
 	            renderedSlotHtml.set(slot, { source: html });
+	            return;
+	          }
+	        }
+	        if (slot.id === "timelineSlot" || slot.id === "askChatMessages") {
+	          const selection = window.getSelection();
+	          if (selection && !selection.isCollapsed && (slot.contains(selection.anchorNode) || slot.contains(selection.focusNode))) {
+	            deferredChatCopySlots.set(slot, html);
 	            return;
 	          }
 	        }
@@ -2450,6 +2506,7 @@ function renderSegment(
       <header class="bubble-header">
         <span class="speaker">${escapeHtml(speaker)}</span>
         <span class="tag">${escapeHtml(tag)}</span>
+        ${body.trim() ? COPY_GROUP_CHAT_BUTTON : ""}
       </header>
       ${renderMessageBody(body, strings)}
     </section>

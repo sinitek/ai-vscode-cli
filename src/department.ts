@@ -49,6 +49,7 @@ export type DepartmentMetadata = {
   parentTaskId: string | null;
   leaderSubtaskId: string | null;
   role: DepartmentRole;
+  executionMode?: "loop-plus";
   moduleTitle: string;
   routes: { director: DepartmentRoleRoute; leader: DepartmentRoleRoute; employee: DepartmentRoleRoute };
   limits: { maxLeaders: number; maxEmployees: number };
@@ -89,6 +90,7 @@ export function normalizeDepartmentMetadata(value: unknown): DepartmentMetadata 
   if (!object(value) || value.version !== 1 || !text(value.rootTaskId) || !text(value.moduleTitle)) return null;
   if (!(value.parentTaskId === null || text(value.parentTaskId)) || !(value.leaderSubtaskId === null || text(value.leaderSubtaskId))) return null;
   if (!(value.role === "director" || value.role === "leader" || value.role === "employee")) return null;
+  if (value.executionMode !== undefined && value.executionMode !== "loop-plus") return null;
   if (!object(value.routes) || !object(value.limits)) return null;
   const director = route(value.routes.director), leader = route(value.routes.leader), employee = route(value.routes.employee);
   const { maxLeaders, maxEmployees } = value.limits;
@@ -96,7 +98,12 @@ export function normalizeDepartmentMetadata(value: unknown): DepartmentMetadata 
     || (maxLeaders as number) < 0 || (maxEmployees as number) < 0) return null;
   return { version: 1, rootTaskId: value.rootTaskId.trim(), parentTaskId: value.parentTaskId === null ? null : value.parentTaskId.trim(),
     leaderSubtaskId: value.leaderSubtaskId === null ? null : value.leaderSubtaskId.trim(), role: value.role,
+    ...(value.executionMode === "loop-plus" ? { executionMode: value.executionMode } : {}),
     moduleTitle: value.moduleTitle.trim(), routes: { director, leader, employee }, limits: { maxLeaders: maxLeaders as number, maxEmployees: maxEmployees as number } };
+}
+
+export function usesDepartmentOwner(metadata?: DepartmentMetadata): boolean {
+  return metadata?.role === "leader" && metadata.executionMode !== "loop-plus";
 }
 
 export function readDepartmentMetadataField(value: unknown, previouslyInvalid = false): { metadata?: DepartmentMetadata; invalid: boolean } {

@@ -7,7 +7,8 @@ const { args, roleSelection, isolatedEnvironment, assertMixedEvidence, assertCol
   assertColdRestartIdentity, assertColdUiRoot, findDepartmentWebviewTarget, createDepartmentWebviewAdapter, clickPublicControl } = require("./verify_department_full_eh_integration");
 const base = ["--product", "/physical/product", "--report", "/new/report.json"];
 test("default Codex and existing stop-continue arguments remain supported; OpenCode partial continuation stays rejected", () => {
-  assert.equal(args(base).leaderCli, "codex"); assert.equal(args([...base, "--scenario", "stop-continue"]).scenario, "stop-continue");
+  assert.equal(args(base).leaderCli, "codex"); assert.equal(args(base).scenario, "loop-plus");
+  assert.equal(args([...base, "--scenario", "stop-continue"]).scenario, "stop-continue");
   assert.equal(args([...base, "--scenario", "cold-start"]).scenario, "cold-start");
   assert.equal(args([...base, "--scenario", "codex-long-tool-output"]).scenario, "codex-long-tool-output");
   assert.equal(args([...base, "--leader-cli", "opencode"]).leaderCli, "opencode");

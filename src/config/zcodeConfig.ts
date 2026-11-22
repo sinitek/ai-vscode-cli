@@ -343,24 +343,44 @@ export type ZcodeConfigModels = {
   error: string | null;
 };
 
-export function readZcodeConfigModels(text: string): ZcodeConfigModels {
-  if (!text.trim()) {
-    return { models: [], labels: {}, defaultModel: null, error: null };
-  }
+type ParsedZcodeModelConfig = {
+  config: ZcodeConfigModels;
+  reasoningLevelByModel: ReadonlyMap<string, string>;
+};
+
+export function parseZcodeModelConfig(text: string): ParsedZcodeModelConfig {
   const view = parseZcodeProviderConfig(text);
+  const reasoningLevelByModel = new Map<string, string>();
   if (!view) {
-    return { models: [], labels: {}, defaultModel: null, error: "ZCode provider config could not be parsed." };
+    return {
+      config: { models: [], labels: {}, defaultModel: null, error: text.trim() ? "ZCode provider config could not be parsed." : null },
+      reasoningLevelByModel,
+    };
   }
-  const modelEntries = view.providerId
-    ? view.models.map((model) => [`${view.providerId}/${model.id}`, model.id] as const)
-    : [];
-  const models: string[] = modelEntries.map(([model]) => model);
+  const models: string[] = [];
+  const labels: Record<string, string> = {};
+  if (view.providerId) {
+    for (const model of view.models) {
+      const modelRef = `${view.providerId}/${model.id}`;
+      models.push(modelRef);
+      labels[modelRef] = model.id;
+      const reasoningLevel = (view.defaultModel === modelRef ? view.defaultReasoningLevel : null) || model.reasoningLevels[0];
+      if (reasoningLevel) reasoningLevelByModel.set(modelRef, reasoningLevel);
+    }
+  }
   return {
-    models,
-    labels: Object.fromEntries(modelEntries),
-    defaultModel: view.defaultModel && models.includes(view.defaultModel) ? view.defaultModel : models[0] ?? null,
-    error: null,
+    config: {
+      models,
+      labels,
+      defaultModel: view.defaultModel && models.includes(view.defaultModel) ? view.defaultModel : models[0] ?? null,
+      error: null,
+    },
+    reasoningLevelByModel,
   };
+}
+
+export function readZcodeConfigModels(text: string): ZcodeConfigModels {
+  return parseZcodeModelConfig(text).config;
 }
 
 export function resolveZcodeConfigModel(
@@ -377,7 +397,13 @@ export function resolveZcodeConfigModel(
 }
 
 export function resolveZcodeModelWireForRun(text: string, selectedModel: string | null): string {
-  const config = readZcodeConfigModels(text);
+  return resolveParsedZcodeModelWireForRun(parseZcodeModelConfig(text), selectedModel);
+}
+
+export function resolveParsedZcodeModelWireForRun(
+  { config, reasoningLevelByModel }: ParsedZcodeModelConfig,
+  selectedModel: string | null,
+): string {
   if (config.error) {
     throw new Error(config.error);
   }
@@ -385,10 +411,7 @@ export function resolveZcodeModelWireForRun(text: string, selectedModel: string 
   if (!model) {
     throw new Error("请先在 ZCode provider_config.json 中添加模型。");
   }
-  const view = parseZcodeProviderConfig(text);
-  const selected = view?.models.find((item) => `${view.providerId}/${item.id}` === model);
-  const reasoningLevel = (view?.defaultModel === model ? view.defaultReasoningLevel : null)
-    || selected?.reasoningLevels[0];
+  const reasoningLevel = reasoningLevelByModel.get(model);
   return reasoningLevel ? `${model}$${reasoningLevel}` : model;
 }
 

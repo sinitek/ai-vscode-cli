@@ -527,7 +527,7 @@ test("all main prompt modes preserve four frozen ids through refresh and late pr
       for (const latePrerequisite of [false, true]) {
         const prompt = buildLoopPlusMainModelPrompt(mainContext({
           kind, loopSubtaskMode, acceptanceEventIds: frozen, reportEventIds: reports,
-          currentEventId: frozen[0], maxConcurrency: 2, subtaskMax: 1, subtaskRoundLimit: 100,
+          currentEventId: frozen[0], maxConcurrency: 2, subtaskMax: 1,
           view: view({
             currentReview: review(frozen[0], "prerequisite"),
             reviewQueue: [
@@ -561,7 +561,9 @@ test("all main prompt modes preserve four frozen ids through refresh and late pr
         }
         assert.match(prompt, /Scheduler concurrency limit: 2/);
         assert.match(prompt, /Decision subtask limit: 1/);
-        assert.match(prompt, /Subtask round limit: 100/);
+        assert.match(prompt, /There is no cumulative per-parent subtask dispatch limit/);
+        assert.match(prompt, /configured per-decision dispatch limit and currently available concurrency slots/);
+        assert.doesNotMatch(prompt, /Subtask round limit|Remaining subtask rounds|rounds used/);
       }
     }
   }
@@ -972,7 +974,7 @@ test("stripping required completed fields from the generated example is rejected
   });
 });
 
-test("prompt forbids plural confirmation keys, classic continue, and round gates", () => {
+test("prompt forbids plural confirmation keys and classic continue without cumulative dispatch gates", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
     currentEventId: "event-live-42",
     view: view({
@@ -985,11 +987,9 @@ test("prompt forbids plural confirmation keys, classic continue, and round gates
   const limited = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 3 }));
   assert.match(limited, /1 to 3 new self-contained subtasks/);
   assert.match(limited, /0 to 3 new subtasks/);
-  assert.match(prompt, /Subtask rounds used: 0/);
-  assert.match(prompt, /Subtask round limit: 200/);
-  const counted = buildLoopPlusMainModelPrompt(mainContext({ subtaskRounds: 4, subtaskRoundLimit: 50 }));
-  assert.match(counted, /Subtask rounds used: 4/);
-  assert.match(counted, /Subtask round limit: 50/);
+  assert.match(prompt, /There is no cumulative per-parent subtask dispatch limit/);
+  assert.match(prompt, /configured per-decision dispatch limit and currently available concurrency slots/);
+  assert.doesNotMatch(prompt, /Subtask rounds used|Subtask round limit|Remaining subtask rounds/);
   const clamped = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 99 }));
   assert.match(clamped, /1 to 20 new self-contained subtasks/);
   assert.match(prompt, new RegExp(String(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH)));

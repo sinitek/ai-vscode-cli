@@ -16,7 +16,7 @@ import { type GrokConfigModels } from "../cli/grokConfigModels";
 import { changeKimiCodeConfigModelList, type KimiCodeConfigModels, type KimiCodeModelListChange } from "../config/kimiCodeConfig";
 import { ConfiguredModelRepository } from "../config/configuredModelRepository";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../loopMainFailure";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { resolveEffectiveLoopPlusDecisionSubtaskMax } from "../workspaceSettingsStore";
 import { getLongTermMemoryRuntimeDisableReason, isLongTermMemoryRuntimeEnabled, type MemoryRuntimeGateSettings } from "../memory/runtimeGate";
 import { resolveWorkspaceMemoryPaths } from "../memory/memoryPaths";
@@ -903,10 +903,6 @@ function getEffectiveLoopPlusDecisionSubtaskMax(): number {
   );
 }
 
-function getGlobalLoopPlusSubtaskMaxRounds(): number {
-  return resolveLoopPlusSubtaskMaxRounds(readToolSettings().loopPlusSubtaskMaxRounds);
-}
-
 function getModelStoreOptions() {
   return {
     modelStoreFile: MODEL_STORE_FILE,
@@ -1728,7 +1724,6 @@ return {
   getGlobalAutoCompactContextAfterRun: wrap(getGlobalAutoCompactContextAfterRun),
   getGlobalLoopPlusDecisionSubtaskMax: wrap(getGlobalLoopPlusDecisionSubtaskMax),
   getEffectiveLoopPlusDecisionSubtaskMax: wrap(getEffectiveLoopPlusDecisionSubtaskMax),
-  getGlobalLoopPlusSubtaskMaxRounds: wrap(getGlobalLoopPlusSubtaskMaxRounds),
   getModelStoreOptions: wrap(getModelStoreOptions),
   getWorkspaceSettingsStoreOptions: wrap(getWorkspaceSettingsStoreOptions),
   getPromptHistoryStoreOptions: wrap(getPromptHistoryStoreOptions),

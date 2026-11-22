@@ -10,7 +10,6 @@ import {
   LOOP_EVENT_DRIVEN_INTERRUPT_SUMMARY,
   buildLoopSubtaskId,
   getActiveLoopSubtaskIds,
-  getClassicLoopSubtaskDispatchCount,
   getLoopDecisionSubtasks,
   loopInterruptFailureLimitPatch,
   loopTaskTransitionStrategies,
@@ -178,30 +177,23 @@ test("department dispatch saves adjusted weights together with new modules", () 
   assert.deepEqual(adjusted.subtasks?.map((module) => module.id), ["additional-module"]);
 });
 
-test("classic Loop counts every admitted batch member and repeat dispatch, but can complete at the limit", () => {
-  const task = createTask({ classicSubtaskDispatchCount: 47 });
+test("classic Loop continues dispatching after any number of previous subtasks", () => {
+  const task = createTask();
   const batch: LoopMainDecision = { status: "continue", subtasks: [
     { id: "sub-a", title: "继续现有子任务", prompt: "补充剩余工作" },
     { id: "sub-b", title: "并行子任务", prompt: "完成独立工作" },
   ] };
-  const first = transitionLoopMainDecision({ task, decision: batch, now: NOW, subtaskRoundLimit: 50 });
-  assert.equal(first.patch.classicSubtaskDispatchCount, 49);
+  const first = transitionLoopMainDecision({ task, decision: batch, now: NOW });
+  assert.deepEqual(first.subtasks?.map((item) => item.id), ["sub-a", "sub-b"]);
   const afterBatch = { ...task, ...first.patch };
-  const rejected = transitionLoopMainDecision({ task: afterBatch, decision: batch, now: NOW, subtaskRoundLimit: 50 });
-  assert.equal(rejected.patch.status, "needs-review");
-  assert.match(rejected.patch.finalSummary ?? "", /已用 49\/50，本次需要 2/);
-  assert.match(buildLoopBlockedPauseText({ ...afterBatch, ...rejected.patch }), /^Loop 已暂停/);
-  assert.equal(rejected.subtasks, undefined);
-  assert.equal(rejected.patch.classicSubtaskDispatchCount, undefined);
+  const repeated = transitionLoopMainDecision({ task: afterBatch, decision: batch, now: NOW });
+  assert.equal(repeated.status, "continue");
+  assert.deepEqual(repeated.subtasks?.map((item) => item.id), ["sub-a", "sub-b"]);
   const repeat: LoopMainDecision = { status: "continue", subtasks: batch.subtasks?.slice(0, 1) };
-  const last = transitionLoopMainDecision({ task: afterBatch, decision: repeat, now: NOW, subtaskRoundLimit: 50 });
-  assert.equal(last.patch.classicSubtaskDispatchCount, 50);
+  const last = transitionLoopMainDecision({ task: afterBatch, decision: repeat, now: NOW });
   assert.equal(last.patch.subTasks?.length, 2);
-  const atLimit = { ...afterBatch, ...last.patch };
-  assert.equal(transitionLoopMainDecision({ task: atLimit, decision: repeat, now: NOW, subtaskRoundLimit: 50 }).status, "blocked");
-  assert.equal(transitionLoopMainDecision({ task: atLimit, decision: repeat, now: NOW, subtaskRoundLimit: 51 }).patch.classicSubtaskDispatchCount, 51);
   assert.equal(transitionLoopMainDecision({
-    task: atLimit, decision: { status: "completed", finalSummary: "完成" }, now: NOW, subtaskRoundLimit: 50,
+    task: { ...afterBatch, ...last.patch }, decision: { status: "completed", finalSummary: "完成" }, now: NOW,
   }).status, "completed");
 });
 
@@ -215,20 +207,26 @@ test("classic Loop additive dispatch keeps existing active subtask identities", 
     task,
     decision: { status: "continue", subtasks: [{ id: "sub-b", title: "补充实现", prompt: "实现独立补充需求" }] },
     now: NOW,
-    subtaskRoundLimit: 20,
   });
   assert.deepEqual(result.patch.activeSubtaskIds, ["sub-a", "sub-b"]);
   assert.equal(result.patch.subTasks?.find((item) => item.id === "sub-a")?.status, "running");
   assert.equal(result.subtasks?.map((item) => item.id).join(","), "sub-b");
 });
 
-test("classic Loop estimates legacy dispatches from historical round identities without counting retries", () => {
+test("classic Loop keeps historical attempt records without using them as a dispatch budget", () => {
   const run = { round: 1, role: "subtask" as const, subtaskId: "sub-a", status: "error" as const, startedAt: 1, endedAt: 2 };
+  const historicalSubtasks = Array.from({ length: 200 }, (_, index) => createSubtask({
+    id: `previous-${index}`,
+    status: "completed",
+  }));
   const task = createTask({
-    subTasks: [createSubtask(), createSubtask({ id: "sub-b", status: "pending" })],
+    subTasks: [...historicalSubtasks, createSubtask(), createSubtask({ id: "sub-b", status: "pending" })],
     rounds: [run, { ...run, status: "end", startedAt: 3 }, { ...run, round: 2 }, { ...run, role: "main" }],
   });
-  assert.equal(getClassicLoopSubtaskDispatchCount(task), 3);
+  const result = transitionLoopMainDecision({ task, decision: {
+    status: "continue", subtasks: [{ id: "sub-c", title: "继续", prompt: "推进剩余工作" }],
+  }, now: NOW });
+  assert.deepEqual(result.subtasks?.map((item) => item.id), ["sub-c"]);
 });
 
 function createStopTask(status: LoopTaskRecord["status"] = "running"): LoopTaskRecord {

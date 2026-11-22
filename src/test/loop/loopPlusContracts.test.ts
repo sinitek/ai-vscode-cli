@@ -272,19 +272,17 @@ test("round-trips Loop+ scheduling mode and raw snapshots from disk", () => {
   assert.deepEqual(reread.loopPlus, snapshot);
   assert.notEqual(path.resolve(task.taskStoreFile).startsWith(path.resolve(testHome)), false);
 
-  const bounded = writeRawTask("event-acceptance-limit", {
+  const legacyDispatchLimit = writeRawTask("event-legacy-dispatch-limit", {
     schedulingMode: "event_driven",
     loopPlusSubtaskMaxRounds: "120.8",
   });
-  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 120);
-  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusSubtaskMaxRounds: 10000 });
-  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 9999);
-  loopTaskStore.updateLoopTaskRecord(bounded.id, { loopPlusSubtaskMaxRounds: 49 });
-  assert.equal(loopTaskStore.readLoopTaskStore(bounded.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 50);
-  const legacyLowBudget = writeRawTask("event-low-subtask-budget", {
-    schedulingMode: "event_driven", loopPlusSubtaskMaxRounds: "1",
-  });
-  assert.equal(loopTaskStore.readLoopTaskStore(legacyLowBudget.taskStoreFile).tasks[0].loopPlusSubtaskMaxRounds, 50);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      loopTaskStore.readLoopTaskStore(legacyDispatchLimit.taskStoreFile).tasks[0],
+      "loopPlusSubtaskMaxRounds",
+    ),
+    false,
+  );
   const decomposing = writeRawTask("event-decomposing", {
     schedulingMode: "event_driven",
     status: "running",

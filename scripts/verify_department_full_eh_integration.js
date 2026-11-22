@@ -34,7 +34,8 @@ function args(argv) {
     result[field] = value;
   }
   if (!result.product || !result.report) throw new Error("Usage: node scripts/verify_department_full_eh_integration.js --product <isolated-built-extension> --report <new-json-path>");
-  if (result.scenario && !["stop-continue", "successive-stop-continue", "cold-start", "cold-recovery", "codex-long-tool-output"].includes(result.scenario)) throw new Error("Unknown scenario");
+  result.scenario ??= "loop-plus";
+  if (result.scenario && !["loop-plus", "stop-continue", "successive-stop-continue", "cold-start", "cold-recovery", "codex-long-tool-output"].includes(result.scenario)) throw new Error("Unknown scenario");
   for (const field of ["directorCli", "leaderCli", "employeeCli"]) {
     result[field] ??= "codex";
     if (!["codex", "opencode"].includes(result[field])) throw new Error(`Unknown role CLI: ${field}`);
@@ -1177,6 +1178,14 @@ async function main() {
     const saved = read.value;
     if (!saved) return { complete: false, reason: "runtime-missing" };
     const bindings = saved.executionBindings || [], sets = saved.leaderExecutionSets || [];
+    if (input.scenario === "loop-plus") {
+      assert.equal(task.department.executionMode, "loop-plus");
+      assert.deepEqual(bindings, []);
+      assert.deepEqual(sets, []);
+      const complete = saved.runtime.leaders.length > 0 && saved.runtime.leaders.every((member) => member.status === "completed")
+        && saved.capacity.leaders.length === 0 && saved.capacity.employees.length === 0;
+      return { complete, rootId, saved };
+    }
     // Owners may have naturally exited by this director decision. The EH test
     // fixture mirrors only successful returns on the original production client;
     // this is not a receipt-store read or a replacement cold client's assertion.
@@ -1737,13 +1746,31 @@ requires_openai_auth = false
     }
     openCodeProvider?.assertHealthy(); responses.assertHealthy();
     if (!completed) throw new Error(`production root did not complete within the scenario budget; owner receipts and capacity return remain unconfirmed`);
-    report.activePhase = "ownerReceipts";
-    report.stages.ownerReceipts = "running";
+    report.activePhase = input.scenario === "loop-plus" ? "capacityReturn" : "ownerReceipts";
     const snapshot = scenario.snapshot();
     assert.ok(snapshot.rootId && snapshot.moduleCount === 2 && snapshot.leaders.length === 2 && snapshot.employees.length === (2 + continuationRounds(snapshot).length), "both real module executions must be observed");
     const cleanup = await inspectCleanup(snapshot.rootId);
-    assert.equal(cleanup.complete, true, "original Owners, producer drain or capacity is incomplete");
+    assert.equal(cleanup.complete, true, "module settlement or capacity return is incomplete");
     const tasks = readTasks(), rootTask = tasks.find((value) => value.id === snapshot.rootId);
+    if (input.scenario === "loop-plus") {
+      const { createLoopPlusScheduler } = require(path.join(product, "dist/loopPlusScheduler.js"));
+      for (const id of snapshot.leaders) {
+        const leader = tasks.find((value) => value.id === id);
+        assert.equal(leader?.department?.executionMode, "loop-plus");
+        assert.equal(leader.status, "completed");
+        assert.deepEqual(leader.loopPlusAcceptancePlan, rootTask.loopPlusAcceptancePlan);
+        assert.ok(createLoopPlusScheduler({ snapshot: leader.loopPlus }).snapshot().seenAttempts.some((attempt) => attempt.acceptance === "passed"));
+        const employee = snapshot.employees.find((value) => value.leaderTaskId === id);
+        const subtask = leader.subTasks.find((value) => value.id === employee?.subtaskId);
+        assert.ok(subtask?.executionSession?.sessionId, "ordinary Loop+ did not save the employee session");
+        assert.equal(subtask.communicationFile, employee.reportFile);
+      }
+      Object.assign(report.stages, { ownerReceipts: "not-applicable", capacityReturn: "passed", eventAcceptance: "passed",
+        unifiedAcceptancePlan: "passed", directorReport: "passed" });
+      report.cleanupEvidence = cleanup;
+      return;
+    }
+    report.stages.ownerReceipts = "running";
     assert.equal(cleanup.saved.leaderExecutionSets.length, snapshot.leaders.length + continuationRounds(snapshot).length, "unexpected or missing coordinator generation");
     assert.equal(cleanup.saved.executionBindings.length, snapshot.leaders.length + snapshot.employees.length + continuationRounds(snapshot).length, "unobserved original Owner binding");
     for (const id of snapshot.leaders) {
@@ -1876,7 +1903,7 @@ requires_openai_auth = false
     }
     report.forcedTeardown = forced;
     report.finishedAt = new Date().toISOString();
-    if (report.stages.ownerReceipts !== "passed") report.stages.ownerReceipts = "not-confirmed";
+    if (!["passed", "not-applicable"].includes(report.stages.ownerReceipts)) report.stages.ownerReceipts = "not-confirmed";
     if (report.stages.capacityReturn !== "passed") report.stages.capacityReturn = "not-confirmed";
     report.scenario = scenario.snapshot();
     try {
@@ -1898,8 +1925,8 @@ requires_openai_auth = false
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), { flag: "wx" });
     console.log(JSON.stringify({ report: reportPath, result: report.result, stages: report.stages, failures: report.failures }, null, 2));
+    if (report.result !== "passed") process.exitCode = 1;
   }
-  if (report.result !== "passed") process.exitCode = 1;
 }
 
 module.exports = { matchesExpectedCleanupSets, continuationRounds, expectedNativeTurns, assertSuccessiveEvidence, drivePublicSuccessiveContinuation, args, roleSelection, isolatedEnvironment, assertMixedEvidence, readOpenCodeNativeFacts, assertOpenCodeLaunchEvidence,

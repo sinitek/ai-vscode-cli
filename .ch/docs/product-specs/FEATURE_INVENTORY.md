@@ -6,7 +6,7 @@
 
 配置跨窗口不使用文件锁、执行租约或共享选择快照拒绝启动；保留原子替换、同进程按 CLI 应用队列、必要读回和 runner 配置指纹隔离，写入竞争按最后完成者生效。旧条目中描述共享提交锁、租约及启动快照挡板的段落仅作历史证据，不代表现行实现。产研部仍以固定角色路线、有效档案及 Owner 身份/代次/账本/准入/排空/清理归还约束执行，不以配置选择状态代替这些授权。
 
-Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准入且完整决策登记后才提升；先保存预留再启动，验收冻结、报告 FIFO，并按父任务计新派发/重派预算。ce34ecae 免验收规则保持有效。新建和重置采用工具设置的默认模式，非法或缺省回退 Vibe，修改默认值不改变当前任务；输入框从上沿拖动，默认/最小三行，窄视图仅临时限高，确认结束后保存、取消恢复原值并保留草稿与选区。
+Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准入且完整决策登记后才提升；先保存预留再启动，验收冻结、报告 FIFO，快照保留 attempts 供调度与恢复使用，不设父任务累计派发/重派上限。ce34ecae 免验收规则保持有效。新建和重置采用工具设置的默认模式，非法或缺省回退 Vibe，修改默认值不改变当前任务；输入框从上沿拖动，默认/最小三行，窄视图仅临时限高，确认结束后保存、取消恢复原值并保留草稿与选区。
 
 ## 产研部三层协作模式
 
@@ -445,7 +445,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - Vibe 人工交互、经典 Loop 与 Loop+ 主任务澄清等待期间，无论编辑器窗口在前台还是后台，都发送标题为“携宁 CLI 提醒”的中文系统通知；正文为“【目录名 项目】 有一项人机交互等待处理，请返回编辑器中的 AI 对话面板。”。项目名在发送时复用 `resolveWorkspaceCwd` 解析工作目录并取目录名，无法解析时显示“【未命名 项目】”；同一交互只通知一次，焦点变化不重复通知。通知不包含完整项目路径、问题、答案或密码，不抢焦点。
 - 窗口图标提醒仅在后台触发，前台交互尚未结束时切到后台仍可触发。Windows 请求 VS Code 主进程窗口的任务栏闪烁；同主进程多窗口可能一起被提醒。macOS 在扩展 globalStorage 下生成并注册固定身份的“携宁 CLI 提醒”后台应用，通过 `UserNotifications` 发送系统通知；首次需要系统授权，被拒绝后须在“系统设置 → 通知 → 携宁 CLI 提醒”手动允许，不承诺 VS Code Dock 弹跳。Linux 使用已安装的 `notify-send`；X11 且已安装 `wmctrl` 时按主进程 PID 尽力请求窗口提醒，Wayland 不调用 X11 工具。
 - 返回窗口、最后一项交互提交/拒绝/取消/超时、扩展释放时停止图标提醒；若还有未查看的任务完成提醒，交互结束不会提前清除其图标提醒。并发交互不会被单个请求结束提前清除，慢速原生调用结束后补做清理。通知授权等待独立于窗口提醒队列，不延迟图标清理。已投递的系统通知可保留在通知中心，不承诺点击跳转。
-- VS Code 应用级设置 `sinitek-cli-tools.humanInteractionNotifications`、`sinitek-cli-tools.humanInteractionWindowAttention` 默认开启且可独立关闭。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
+- 人工交互系统通知与窗口提醒开关默认开启、彼此独立，统一保存在 `~/.sinitek_cli/settings.json`。旧版 VS Code 应用级显式值仅在全局文件缺少对应字段时迁移一次。远程 workspace 扩展宿主不在远程机器发送桌面提醒；本机 UI 宿主不受此限制。权限、勿扰模式、工具缺失和桌面环境限制只影响尽力提醒，不影响原任务。
 - 实现：`src/humanInteractionAttention.ts`、`src/desktopAttention.ts`、`src/macosDesktopNotifications.ts`、`src/extensionHost/humanInteractionAttentionHost.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`；回归：`src/test/core/humanInteractionAttention.test.ts`、`src/test/core/desktopAttention.test.ts`、`src/test/core/macosDesktopNotifications.test.ts`、`src/test/extensionHost/humanInteractionAttentionHost.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。通知排障见 `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示`。
 
 ## 通知授权与工具设置
@@ -453,8 +453,8 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - 本机 macOS 扩展启动时，只要人工交互或任务完成系统通知任一设置开启，就异步申请未决定的通知权限；后续启用通知设置也会检查。已允许或已拒绝时不重复请求系统授权；拒绝不会弹额外提示或自动打开系统设置，不影响任务执行。
 - 使用说明仅保留模式说明；“工具设置 → 通知设置”以简短说明介绍提醒范围、仅后台图标提醒、全局即时生效和勿扰限制，只显示当前平台的授权操作提示。工具设置页签支持鼠标及方向键、Home/End 切换，窄面板可横向滚动。
 - 工具设置弹窗固定为 Webview 视口高度的 70%，五个页签切换时高度与位置保持一致；标题和页签栏保持可见，超长内容仅在内容区滚动。选中页签（包括“AI任务配置”）显示主题主色下划线，窄面板的页签栏保持完整高度。
-- 每次打开工具设置弹窗都会重新读取全局参数，回显其他 VS Code 窗口已保存至 `~/.sinitek_cli/settings.json` 的修改，无需重载窗口；刷新本身不保存配置，也不覆盖工作区独立设置。
-- 页签提供“任务完成通知”“任务完成图标闪烁”“人机交互通知”“人机交互图标闪烁”四个独立开关，均默认开启；读取并全局保存既有应用级设置 `taskCompletionNotifications` / `taskCompletionWindowAttention` / `humanInteractionNotifications` / `humanInteractionWindowAttention`，保留用户已有选择，保存后立即生效。关闭图标闪烁不影响系统通知，关闭系统通知不影响图标提醒或系统授权；保存失败显示错误并用实际配置恢复界面。Windows 闪烁任务栏，Linux 沿用 X11/wmctrl 图标提醒，macOS 不新增 Dock 弹跳。
+- 每次打开工具设置弹窗都会重新读取 `~/.sinitek_cli/settings.json` 和当前工作区配置文件，回显其他 VS Code 窗口的最新值，无需重载窗口；跨窗口保存按字段合并并原子替换，刷新不写配置、不覆盖工作区独立设置，聚焦输入不被异步回包覆盖。
+- 页签提供“任务完成通知”“任务完成图标闪烁”“人机交互通知”“人机交互图标闪烁”四个独立开关，均默认开启；统一读写全局文件中的 `taskCompletionNotifications` / `taskCompletionWindowAttention` / `humanInteractionNotifications` / `humanInteractionWindowAttention`，保留用户已有选择，保存后立即生效。关闭图标闪烁不影响系统通知，关闭系统通知不影响图标提醒或系统授权；保存失败显示错误并用实际配置恢复界面。Windows 闪烁任务栏，Linux 沿用 X11/wmctrl 图标提醒，macOS 不新增 Dock 弹跳。
 - Mac 页签显示实时授权状态及单独手动说明。“授权通知”对未决定状态直接弹系统授权；已允许、拒绝或关闭横幅时按钮改为“打开系统通知设置”，跳转通知设置后由用户选择“携宁 CLI 提醒”。刷新只查询、不申请、不发送通知；失败和超时可重试。远程扩展宿主不执行本机授权，其他系统不显示 Mac 专属说明；Windows 提供系统设置按钮，Linux 隐藏授权按钮。
 - Windows 查询当前编辑器实际 `ToastNotifier.Setting`，区分允许、应用关闭、用户全局关闭、系统策略限制及安装/查询异常。Windows 提供“打开系统通知设置”和“刷新状态”，查询失败仍可打开设置。Windows 没有 macOS 式授权框，本机任一通知开关开启时首次自动打开 `ms-settings:notifications`；成功打开后记录扩展全局状态，之后启动和配置刷新不重复弹出，失败可重试。用户需检查当前编辑器的通知、横幅及勿扰设置；不自动修改系统设置。刷新只查询、不投递、不打开系统设置；远程 workspace 宿主跳过首次引导。
 - 自动授权、手动授权及实际投递复用固定 bundle ID，助手脚本缓存升级到 `macos-v5`，不重置既有权限；原生调用串行化，避免重复创建或并发授权，查询结果不持久缓存。授权与完成通知共用权限，不新增声音或 Dock 弹跳。
@@ -466,7 +466,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 - 任一对话标签仍有待发送提示词时，Vibe 完成保持静默。队列清空后，后续成功任务恢复系统通知和图标提醒。
 - 复用“携宁 CLI 提醒”系统身份，正文为“【目录名 项目】 任务已完成，请返回编辑器中的 AI 对话面板查看结果。”，项目名来源与人工交互提醒一致，不含任务内容、完整路径或敏感信息。Windows 仅在后台请求任务栏闪烁；macOS 仍是系统通知，不新增 Dock 弹跳。Windows 两类通知使用不同 Tag，不互相覆盖。
 - 完成提醒与人工交互共享窗口状态，不互相清除；多个完成事件可聚合一条通知，最近 512 个事件 ID 去重。完成图标提醒持续到恢复焦点或关闭完成窗口提醒设置；恢复焦点后不重放。前台完成立即通知，之后切后台不补发通知或闪烁；通知派发先于焦点恢复时的完成窗口状态清理，避免排队事件漏发。已投递通知仍可留在通知中心。
-- 新增应用级设置 `sinitek-cli-tools.taskCompletionNotifications` 与 `sinitek-cli-tools.taskCompletionWindowAttention`，默认开启，两者及原有人工交互设置互相独立；远程、本机、权限、工具缺失、不抢焦点和无新增声音的边界与人工交互提醒一致。
+- 全局文件 `~/.sinitek_cli/settings.json` 中的 `taskCompletionNotifications` 与 `taskCompletionWindowAttention` 默认开启，与人工交互设置互相独立；旧版 VS Code 应用级显式值仅在全局文件字段缺失时迁移一次。远程、本机、权限、工具缺失、不抢焦点和无新增声音的边界与人工交互提醒一致。
 - 实现：`src/taskCompletionAttention.ts`、`src/humanInteractionAttention.ts`、`src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/core/taskCompletionAttention.test.ts`、`src/test/extensionHost/taskCompletionAttentionHost.test.ts` 及既有桌面提醒用例。
 
 Loop / Loop+ 的参数隔离覆盖七种 CLI，不只修复 Codex：支持模型选择的 CLI 保存各自角色模型和思考快照；Claude 仍按能力使用默认模型。OpenCode 启动前水合不覆盖已绑定子模型，角色思考力度进入实际 variant，未指定时沿用原角色 variant；xhigh/max/ultra 不被通用归一化降档。DSH 的 medium 与 ZCode 原生档位正确保留。OpenCode、Claude 布局的全栈/前端思考下拉及 OpenCode 全栈模型下拉均响应修改并随任务发送。既有子任务思考上限不变。实现见 `src/extensionHost/promptRunModels.ts`、`src/sessionMessageActions.ts`、`src/extensionHost/modelSettings.ts`、`src/extensionHost/openCodePromptRunTemplate.ts`；回归见 `src/test/extensionHost/loopModelRouting.test.ts`、`src/test/extensionHost/openCodePromptRunTemplate.test.ts`。真实双模型门禁命令为 `npm run build && node scripts/verify_loop_model_routing.js --live`，该命令调用真实模型并产生费用；只有完整任务完成且 session 参数与产物均验证通过才报告成功。
@@ -805,7 +805,6 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 | AI 对话 / Loop / 续跑 | 主任务 Tab 中断后输入续同一任务 | active | 终端用户 | `.ch/docs/references/cli-runtime-reference.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/sessionMessageActions.ts`、`src/extension.ts`、`src/panelDiagnostics.ts` | `npm run build`；`node --test dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/core/panelDiagnostics.test.js` | Loop 主任务 Tab 关联的任务处于 `needs-review`、`error`、`stopped` 或可恢复 `running` 状态时，在该 Tab 下继续发送任意 Loop 输入都会作为本次继续说明复用原 `taskId`，语义等同群聊“继续执行”；只有找不到可恢复任务时才允许新建 Loop 任务。Loop 子任务 Tab 手动输入仍强制走 coding 续跑，不启动新的 Loop 根任务 |
 | AI 对话 / Loop / Loop+ | 编排任务主任务最终完成总结气泡 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/extension.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/traceRendering.ts` | `npm run build`；`node --test dist/test/extensionHost/loopPlusEntryRouting.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/extensionHost/loopPlusOrchestration.test.js` | 经典 Loop 和 Loop+ 完成后，主任务对话追加独立最终 assistant 总结气泡；Loop+ 在完成状态成功落盘后复用回答结论与最终总结消息。消息可持久化且不与普通 assistant 流合并，群聊 保留原有完成状态 |
 | AI 对话 / Loop / Loop+ | 子任务 Tab 运行流水动画校准 | active | 终端用户、扩展运行时 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/conversationTabRunningFlow.ts`、`src/extension.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/windowMessageDispatch.ts` | `npm run build`；`node --test dist/test/session/conversationTabRunningFlow.test.js` | Loop/Loop+ 主任务和子任务 Tab 的流水动画按实际 Loop 运行进程显示；Webview 每 60 秒请求一次运行态校准，宿主通过 `startTabIds` / `stopTabIds` 双向修复实时启动事件遗漏和任务结束后的过期动画；普通 CLI 和无 Loop 运行标识的 Tab 不会被误加动画 |
-| AI 对话 / Loop / Loop+ | 按父任务累计的子任务派发预算 | active | 终端用户、Loop/Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/loopTaskStore.ts`、`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts` | `npm run build`；`node --test dist/test/loop/loopTaskStoreCoreCoverage.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/loop/loopPlusSchedulerDependencies.test.js dist/test/extensionHost/loopPlusOrchestration.test.js` | 全局 `loopPlusSubtaskMaxRounds` 默认 200、范围 50–9999，按父任务累计新派发或重派（含并行、排队和免验收）；同次执行重试、恢复及队列提升不重复计数。最新值约束下一次派发，已有报告、验收、复核和总结不消耗额度；超预算批次不落新任务并进入 review。旧 `loopMaxRounds` 与 `loopPlusMaxAcceptances` 设置不再生效。 |
 | AI 对话 / Loop+ | Loop+ 单次派发子任务上限 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/loopPlusDecision.ts`、`src/toolSettings.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/webview/viewContentHtml.ts`、`src/workspaceSettingsStore.ts`、`src/extensionHost/modelSettings.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/core/toolSettings.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`；`node --test dist/test/core/workspaceSettingsStore.test.js dist/test/extensionHost/workspaceHarnessInitialization.test.js` | 工具设置“AI任务配置”保存全局 `loopPlusDecisionSubtaskMax`；“工作区”Tab 保存当前工作区同名覆盖。工作区值优先于全局，留空继承全局，最终默认 6、范围 1–20。经典 Loop 每批派发提示和解析、Loop+ 单次 dispatch/accept 校验及生产并发容量统一使用生效值。运行中的容量更新沿用调度器既有规则，降低上限不取消已有运行任务。 |
 | AI 对话 / Loop+ | 最新前置尝试准入、冻结验收与 FIFO | active | Loop+ 主智能体、扩展运行时 | `.ch/docs/design-docs/loop-plus-scheduling.md`、`.ch/docs/exec-plans/completed/2026-11/2026-11-17-feature-loop-plus-explicit-dependencies.md` | `src/loopPlusDependencies.ts`、`src/loopPlusScheduler.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusOrchestration.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDependencies.test.js dist/test/loop/loopPlusSchedulerDependencies.test.js dist/test/extensionHost/loopPlusOrchestration.test.js` | 兼容 v1 依赖快照；只在每项最新前置 attempt 满足准入时提升后继。完整决策先登记，再保存启动预留，最后启动；验收采用冻结计划，验收与报告按 FIFO 收敛。旧成功 attempt 的重派决策不能提前释放后继，独立工作仍可填槽；ce34ecae 免验收规则保留。 |
 | AI 对话 / 会话 | 新建与重置任务默认模式 | active | 终端用户 | `.ch/docs/exec-plans/completed/2026-11/2026-11-18-feature-new-task-default-mode.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/toolSettings.ts`、`src/extensionHost/sessionTabs.ts`、`src/webview/viewContentScript/messageRendering.ts`、`src/webview/viewContentScript/modelAndPanelState.ts` | `npm run build`；`node --test dist/test/core/toolSettings.test.js dist/test/session/sessionTabCliSwitch.test.js dist/test/webview/clipagescriptruntimecoverage.test.js` | 新建和重置只对目标新任务应用 Vibe/Loop/Loop+ 默认值；缺失或非法设置回退 Vibe，修改默认值不切换当前任务，也不改变其它已有标签的模式。 |
@@ -1062,6 +1061,14 @@ Codex 员工的工具输出走原 Owner 私有通道的有界分片传输；兼�
 ## 2026-11-21 产研部派发参考额度及原 Owner 回执
 
 组长人数、部门员工人数及分组额度只供模型派发参考。零余额或未知时，模型自行决定数量。群聊显示员工参考额度与上次派发参考，实际占用继续按原 Owner 的执行及清理记录结算。Codex 组长封闭执行后从原客户端按持久绑定读取清理回执。producer 启动拒绝和会话绑定失败提供固定细分日志。
+
+## 2026-11-22 产研部复用普通 Loop+ 与群聊复制
+
+新产研部的组长和员工直接复用普通 Loop+ 执行、会话、失败复核、停止与验收，不再经过独立 Owner 代次和清理回执门禁；员工占用用于统计，不作为派发许可。总监仍负责协调和汇总。历史 Owner 任务不迁移、不自动重跑。群聊正文、组长弹窗、提问气泡支持选区复制和整条复制，嵌入弹窗的沙箱不变。
+
+新产研部员工以真实工作区为执行目录，支持直接新建顶层交付文件。Grok 和 DSH 继续使用各自的会话目录。
+
+见[产研部模式](../design-docs/department-mode.md)与[群聊展示接口](../design-docs/department-group-chat-ui-contract.md)。
 
 ## 2026-11-21 产研部整组中止
 

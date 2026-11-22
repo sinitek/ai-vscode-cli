@@ -162,6 +162,9 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     if (!cleanup) throw new Error("leader-coordination-cleanup-unverifiable");
     await cleanup.done;
   }
+  function usesOwnerCleanup(root: Root): boolean {
+    return root.metadata.executionMode !== "loop-plus";
+  }
   function track(root: Root, member: Member, lifecycle: Promise<unknown>, observation = false): Promise<void> {
     const generation = member.generation;
     const releaseOwnership = member.releaseOwnership;
@@ -177,17 +180,17 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       const task = leaderTask(root, member);
       // A prematurely settled orchestration promise is not permission to release a live task's slot.
       if (!task || task.status === "running") { member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, task ? "task-still-running" : "identity-changed", "task-idle", "retained"); return; }
-      if (!observation && deps.observeLeaderCleanup) {
-        await requireLeaderCleanup(member.taskId, generation);
+      if (!observation && (!usesOwnerCleanup(root) || deps.observeLeaderCleanup)) {
+        if (usesOwnerCleanup(root)) await requireLeaderCleanup(member.taskId, generation);
         member.cleanupConfirmedGeneration = generation;
         if (member.generation !== generation || owners.get(member.taskId) !== root) return;
       }
       member.status = hasCompletedLoopPlus(task) ? "completed" : task.status === "stopped" ? "paused" : "failed";
       const lease = member.lease; member.lease = null;
-      if (!persist(root, member.leaderSubtaskId) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, "persistence-failed", "release-save", "retained"); return; }
+      if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, "persistence-failed", "release-save", "retained"); return; }
       lease?.release();
       if (lease) memberDiagnostic(root, member, generation, "none", "capacity-release", "released");
-      if (lease) await deps.leaderReleased?.(member.taskId, generation);
+      if (lease && usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, generation);
     })().catch((error) => { member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained", error); })
       .finally(() => {
         releaseOwnership?.();
@@ -237,7 +240,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
             // durable snapshot cannot contain a module in both collections.
             root!.reservations.delete(module!.id);
             if (!persist(root!)) throw new Error("persistence-failed");
-            return deps.beginLeaderExecution?.(id, member.generation) ?? Promise.resolve();
+            return usesOwnerCleanup(root!) ? deps.beginLeaderExecution?.(id, member.generation) : undefined;
           });
         // Observe rejection immediately, including validation/persistence failures before ownership callback.
         void lifecycle.catch(() => undefined);
@@ -254,7 +257,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
             deps.runtime.host().stopParent(taskId); await deps.stopLeader(taskId); await deps.runtime.waitForTaskIdle(taskId);
             const stoppedMember = root!.members.get(taskId);
             stoppedMember?.releaseOwnership?.(); stoppedMember && (stoppedMember.releaseOwnership = undefined);
-            await requireLeaderCleanup(taskId, stoppedMember?.generation ?? 1);
+            if (usesOwnerCleanup(root!)) await requireLeaderCleanup(taskId, stoppedMember?.generation ?? 1);
           }
           catch (cleanupError) { // Cleanup is not verified: preserve the member and its lease, and block retries.
             const member = root!.members.get(taskId);
@@ -322,7 +325,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       member.releaseOwnership = deps.acquireLeaderOwnership?.(member.taskId);
       // Open the successor BEFORE the scheduler can pump, with its actual
       // member/lease durably saved. Preserve the stopped scheduler/review history.
-      if (deps.resumeLeaderExecution) {
+      if (usesOwnerCleanup(root) && deps.resumeLeaderExecution) {
         if (!deps.updateTask(member.taskId, { status: "running" }) || !persist(root)) throw new Error("leader-resume-persistence-failed");
         await deps.resumeLeaderExecution(member.taskId, generation);
         if (root.abort.signal.aborted || member.generation !== generation) return { ok: false, reason: "resume-cancelled-or-identity-changed" };
@@ -341,13 +344,13 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
           deps.runtime.waitForTaskIdle(member.taskId),
         ]);
         if (stopped.some((result) => result.status === "rejected")) throw new Error("leader-stop-unverified");
-        try { await requireLeaderCleanup(member.taskId, generation); }
+        try { if (usesOwnerCleanup(root)) await requireLeaderCleanup(member.taskId, generation); }
         catch { member.status = "blocked"; persist(root); return { ok: false, reason: "leader-cleanup-unverified" }; }
         member.status = "failed"; member.lease = null;
-        if (!persist(root, member.leaderSubtaskId) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); return { ok: false, reason: "leader-release-persistence-failed" }; }
+        if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); return { ok: false, reason: "leader-release-persistence-failed" }; }
         lease.release();
         memberDiagnostic(root, member, generation, "none", "capacity-release", "released");
-        await deps.leaderReleased?.(member.taskId, generation);
+        if (usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, generation);
         return { ok: false, reason: reason(error) };
         } catch { member.status = "blocked"; persist(root); return { ok: false, reason: "leader-cleanup-unverified" }; }
         finally { member.releaseOwnership?.(); member.releaseOwnership = undefined; }
@@ -362,6 +365,9 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     const task = deps.readTask(request.taskId);
     if (task && task.department === undefined && task.departmentInvalid !== true) return Promise.resolve(undefined);
     const root = owners.get(request.taskId), member = root?.members.get(request.taskId);
+    if (task?.department?.executionMode === "loop-plus" && task.departmentInvalid !== true) {
+      return root && member ? trackLoopPlusEmployee(root, member, request, signal) : Promise.resolve(undefined);
+    }
     if (!root || !member || !validAttempt(root, member, request)) return Promise.resolve(null);
     const identity = key(request.taskId, request.attemptId), held = root.employees.get(identity);
     if (held) return Promise.resolve(held.subtaskId === request.subtaskId && !held.recovered ? held : null);
@@ -389,6 +395,26 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     const remove = () => { if (root.pending.get(identity)?.promise === admission) root.pending.delete(identity); };
     void admission.then(remove, remove);
     return admission;
+  }
+  async function trackLoopPlusEmployee(root: Root, member: Member, request: EmployeeRequest, signal: AbortSignal): Promise<Employee | undefined> {
+    if (root.abort.signal.aborted || !member.lease) return undefined;
+    const identity = key(request.taskId, request.attemptId), generation = member.generation;
+    try {
+      deps.applyEmployeeAllocation?.(root.id, request.taskId);
+      const lease = await deps.capacity.trackEmployee(root.id, request.taskId, request.attemptId, AbortSignal.any([signal, root.abort.signal]));
+      if (!lease) return undefined;
+      if (signal.aborted || root.abort.signal.aborted || member.generation !== generation || !member.lease) {
+        lease.release();
+        return undefined;
+      }
+      const employee = employeeHandle(root, request, lease, false);
+      root.employees.set(identity, employee);
+      persist(root);
+      return employee;
+    } catch (error) {
+      deps.log?.("department-employee-projection-failed", error);
+      return undefined;
+    }
   }
   function employeeHandle(root: Root, request: { taskId: string; subtaskId: string; attemptId: string }, lease: CapacityLease, recovered: boolean): Employee {
     let releaseDone!: () => void;
@@ -451,7 +477,10 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         stoppedMembers.add(member);
         const generation = member.generation;
         try {
-        if (member.status === "completed" && !member.run && !member.lease) return;
+        if (member.status === "completed" && !member.run && !member.lease) {
+          if (!usesOwnerCleanup(root)) member.cleanupConfirmedGeneration = generation;
+          return;
+        }
         if (member.status !== "blocked") member.status = "stopping";
         const signals = await Promise.allSettled([
           Promise.resolve().then(() => deps.runtime.host().stopParent(member.taskId)),
@@ -463,17 +492,18 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         await Promise.all([...root.employees.values()].filter((item) => item.taskId === member.taskId).map((item) => item.done));
         await member.run;
         if (root.members.get(member.taskId)?.status === "blocked") throw new Error("execution-cleanup-unverified");
-        if (member.lease) {
+        if (!usesOwnerCleanup(root)) member.cleanupConfirmedGeneration = generation;
+        else if (member.lease) {
           await requireLeaderCleanup(member.taskId, generation);
           if (deps.observeLeaderCleanup) member.cleanupConfirmedGeneration = generation;
         }
         const releasedGeneration = member.generation;
         member.generation += 1; member.status = "paused";
         const lease = member.lease; member.lease = null;
-        if (!persist(root, member.leaderSubtaskId) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; throw new Error("leader-release-persistence-failed"); }
+        if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; throw new Error("leader-release-persistence-failed"); }
         lease?.release();
         if (lease) memberDiagnostic(root, member, releasedGeneration, "none", "capacity-release", "released");
-        if (lease) await deps.leaderReleased?.(member.taskId, releasedGeneration);
+        if (lease && usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, releasedGeneration);
         } catch (error) { member.status = "blocked"; persist(root);
           if (diagnoseStop) memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained");
           throw error;
@@ -559,7 +589,8 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       for (const item of saved.leaders) {
         if (owners.has(item.taskId) || !task.subTasks.some((module) => module.id === item.leaderSubtaskId)) return { ok: false, reason: "invalid-member" };
         const storedTask = leaderTask(root, item), storedMetadata = expected(root, item.leaderSubtaskId);
-        const storedIdentity = storedTask && storedMetadata && deps.verifyStoredLeaderIdentity?.(clone(storedTask), clone(storedMetadata), item.generation ?? 0);
+        const storedIdentity = storedTask && storedMetadata && (!usesOwnerCleanup(root)
+          || deps.verifyStoredLeaderIdentity?.(clone(storedTask), clone(storedMetadata), item.generation ?? 0));
         const scheduler = schedulerSnapshot(storedTask);
         if (!storedTask || !scheduler || (deps.verifyStoredLeaderIdentity && !storedIdentity))
           return { ok: false, reason: "unverified-leader-session-or-plan" };

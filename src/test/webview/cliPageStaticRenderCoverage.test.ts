@@ -75,7 +75,7 @@ test("chat message limit reuses the AI task settings card between compact and Lo
   const html = buildHtml();
   const start = html.indexOf('id="chatMessageLimit"');
   assert.ok(start > html.indexOf('id="autoCompactContextAfterRun"'));
-  assert.ok(start < html.indexOf('id="loopPlusSubtaskMaxRounds"'));
+  assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
   assert.equal(countOccurrences(html, 'id="chatMessageLimit"'), 1);
   assert.match(html, /<label class="tool-settings-label" for="chatMessageLimit">每个标签页气泡上限<\/label>/);
   assert.match(html, /<input\s+type="number"\s+id="chatMessageLimit"\s+class="tool-settings-number"\s+min="1"\s+max="10000"\s+step="1"\s+value="500"\s+aria-describedby="chatMessageLimitNote"/);
@@ -90,7 +90,6 @@ test("group chat limit reuses the AI task settings card with its own accessible 
   const start = html.indexOf('id="loopGroupChatMessageLimit"');
   assert.equal(countOccurrences(html, 'id="loopGroupChatMessageLimit"'), 1);
   assert.ok(start > html.indexOf('id="chatMessageLimit"'));
-  assert.ok(start < html.indexOf('id="loopPlusSubtaskMaxRounds"'));
   assert.ok(start > html.indexOf('id="toolSettingsAiTaskPanel"'));
   assert.ok(start < html.indexOf('id="toolSettingsWorkspacePanel"'));
   assert.match(html, /<label class="tool-settings-label" for="loopGroupChatMessageLimit">Loop \/ Loop\+ 群聊气泡上限<\/label>/u);
@@ -349,7 +348,6 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
     'id="codeGraphEnabled"',
     'id="humanInteractionTimeoutMinutes"',
     'id="loopPlusDecisionSubtaskMax"',
-    'id="loopPlusSubtaskMaxRounds"',
     'id="commonCommandsOverlay"',
     'id="addModelOverlay"',
     'id="modelManagerList"',
@@ -640,12 +638,9 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
 });
 
 
-test("Loop+ subtask rounds replace the acceptance limit with an accessible 50–9999 input defaulting to 200", () => {
+test("AI task settings omit the cumulative Loop subtask limit and retain the per-dispatch limit", () => {
   const html = buildHtml();
-  assert.match(html, /for="loopPlusSubtaskMaxRounds">Loop\/Loop\+ 子任务轮次上限</);
-  assert.doesNotMatch(html, /id="loopMaxRounds"|Loop 最大轮次/);
-  assert.match(html, /id="loopPlusSubtaskMaxRounds"[\s\S]*?min="50"[\s\S]*?max="9999"[\s\S]*?value="200"/);
-  assert.match(html, /aria-describedby="loopPlusSubtaskMaxRoundsNote"/);
-  assert.match(html, /默认 200，范围 50–9999/);
-  assert.doesNotMatch(html, /最多验收次数|loopPlusMaxAcceptances/);
+  assert.doesNotMatch(html, /loopPlusSubtaskMaxRounds|Loop\/Loop\+ 子任务轮次上限/);
+  assert.match(html, /id="loopPlusDecisionSubtaskMax"/);
+  assert.match(html, /Loop\/Loop\+ 单次派发上限/);
 });

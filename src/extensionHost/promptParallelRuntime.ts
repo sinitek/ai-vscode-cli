@@ -22,7 +22,7 @@ import type { OpenCodeTabStreamAction } from "../openCodeTabStream";
 import type { CliAttemptResult } from "../promptRetry";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import { normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
-import type { SubagentProgressLabels, SubagentProgressUpdate } from "../subagentProgress";
+import type { SubagentProgressLabels } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
@@ -33,6 +33,7 @@ import type {
   PromptRunExecutionOptions,
 } from "./promptExecutionShared";
 import { runOpenCodePromptTemplate } from "./openCodePromptRunTemplate";
+import { createOpenCodePromptSubagentMonitor, type OpenCodePromptMonitorFactory } from "./openCodePromptSubagentMonitor";
 
 type OpenCodeRunOutput = ReturnType<typeof import("../cli/commandRunner").parseOpenCodeRunOutput>;
 
@@ -92,13 +93,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
   consumeOpenCodeTabStreamChunk: typeof import("../openCodeTabStream").consumeOpenCodeTabStreamChunk;
   createDisabledOpenCodeSubagentMonitor: () => OpenCodeSubagentMonitor;
   createMessageId: () => string;
-  createOpenCodeSubagentMonitor: (options: {
-    connection: NonNullable<PreparedOpenCodeSubagentRuntime["connection"]>;
-    directory: string;
-    onUpdate: (update: SubagentProgressUpdate) => void;
-    onNoChildren?: () => void;
-    onError?: (error: Error) => void;
-  }) => OpenCodeSubagentMonitor;
+  createOpenCodeSubagentMonitor: OpenCodePromptMonitorFactory;
   createOpenCodeTabStreamState: typeof import("../openCodeTabStream").createOpenCodeTabStreamState;
   createSubagentProgressController: typeof import("../subagentProgress").createSubagentProgressController;
   extractSessionId: typeof import("../sessionLifecycle").extractSessionId;
@@ -766,59 +761,37 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         arm: () => {},
         dispose: () => {},
       }),
-      createSubagentMonitor: ({ subagentRuntime, attemptNumber, directory }) => {
-        const subagentMonitor = subagentRuntime.connection
-          ? createOpenCodeSubagentMonitor({
-            connection: subagentRuntime.connection,
-            directory,
-            onUpdate: (update: SubagentProgressUpdate) => {
-              const current = parallelRunsByTabId.get(target.tabId);
-              if (!current || current.runId !== runId) {
-                return;
-              }
-              subagentProgress?.update(update);
-            },
-            onNoChildren: () => {
-              if (silentProgressNoticeShown || !isParallelRunActive()) {
-                return;
-              }
-              silentProgressNoticeShown = true;
-              openCodeTabStreamState = {
-                ...openCodeTabStreamState,
-                activeAssistantMessageId: null,
-                activeAssistantKind: null,
-              };
-              const message: ChatMessage = {
-                id: createMessageId(),
-                role: "system",
-                content: t("run.openCodeSubagentPollEmpty"),
-                createdAt: Date.now(),
-              };
-              appendMessageToStore(resolveParallelMessageTarget(), message);
-              sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
-              void logInfo("runPrompt-parallel-subagent-poll-empty", {
-                cli: runCli,
-                runId,
-                tabId: target.tabId,
-                sessionId,
-                attempt: attemptNumber,
-                pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
-              });
-            },
-            onError: (error: Error) => {
-              void logDebug("runPrompt-parallel-subagent-monitor-error", {
-                cli: runCli,
-                runId,
-                tabId: target.tabId,
-                sessionId,
-                attempt: attemptNumber,
-                error: error.message,
-              });
-            },
-          })
-          : createDisabledOpenCodeSubagentMonitor();
-        attemptSubagentMonitor = subagentMonitor;
-        return subagentMonitor;
+      createSubagentMonitor: (context) => {
+        attemptSubagentMonitor = createOpenCodePromptSubagentMonitor(context, {
+          kind: "parallel",
+          createMonitor: createOpenCodeSubagentMonitor,
+          createDisabledMonitor: createDisabledOpenCodeSubagentMonitor,
+          canUpdateProgress: () => parallelRunsByTabId.get(target.tabId)?.runId === runId,
+          canShowEmptyProgressNotice: isParallelRunActive,
+          hasShownEmptyProgressNotice: () => silentProgressNoticeShown,
+          markEmptyProgressNoticeShown: () => { silentProgressNoticeShown = true; },
+          updateProgress: (update) => subagentProgress?.update(update),
+          showEmptyProgressNotice: () => {
+            openCodeTabStreamState = {
+              ...openCodeTabStreamState,
+              activeAssistantMessageId: null,
+              activeAssistantKind: null,
+            };
+            const message: ChatMessage = {
+              id: createMessageId(),
+              role: "system",
+              content: t("run.openCodeSubagentPollEmpty"),
+              createdAt: Date.now(),
+            };
+            appendMessageToStore(resolveParallelMessageTarget(), message);
+            sendPanelMessage({ type: "appendMessage", message, tabId: target.tabId });
+          },
+          getLogContext: () => ({ cli: runCli, runId, tabId: target.tabId, sessionId }),
+          pollIntervalMs: OPENCODE_SUBAGENT_POLL_INTERVAL_MS,
+          logInfo,
+          logDebug,
+        });
+        return attemptSubagentMonitor;
       },
       runCliStream: executionOptions.departmentProcessStream ?? runCliStream,
       buildProcessLabel,

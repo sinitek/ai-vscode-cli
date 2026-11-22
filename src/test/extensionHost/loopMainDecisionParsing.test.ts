@@ -58,13 +58,11 @@ test("classic blocked decisions preserve diagnostic gaps and render complete str
   assert.equal(host.parseLoopMainDecision(JSON.stringify({ status: "waiting", finalSummary: "等待组长汇报" }))?.status, "waiting");
 });
 
-test("classic Loop main prompt reflects the configured dispatch limit in rules and examples", async () => {
+test("classic Loop main prompt reflects only the configured per-dispatch limit", async () => {
   let maximum = 10;
-  let total = 60;
   const prompts: string[] = [];
   const host = createLoopOrchestrationHost({
     decisionSubtaskMax: () => maximum,
-    subtaskRoundLimit: () => total,
     getLoopCommunicationPaths: () => ({ dir: "comm", mainFile: "main.md", subtasksDir: "subtasks" }),
     normalizeLoopContinuePromptForPrompt: () => null,
     buildLoopSupplementalRequirementsLines: () => [],
@@ -80,7 +78,7 @@ test("classic Loop main prompt reflects the configured dispatch limit in rules a
     appendLoopRound: () => null,
     buildLoopRoundSummary: () => "",
   });
-  const task = { ...createNeedsReviewTask(), classicSubtaskDispatchCount: 50 };
+  const task = createNeedsReviewTask();
   const options = {
     input: { displayPrompt: "完成目标", modelPrompt: "完成目标", contextTags: [] },
     target: { tabId: "tab-limit", cli: "codex" as const, sessionId: null },
@@ -96,16 +94,12 @@ test("classic Loop main prompt reflects the configured dispatch limit in rules a
   await host.runClassicLoopMainDecision(options);
   const limited = prompts[1];
   assert.match(limited, /每批最多 1 个子任务/);
+  assert.doesNotMatch(limited, /子任务轮次：|轮次额度已用尽|已用 \d+\/\d+/);
   const examples = limited.split("\n")
     .filter((line) => line.startsWith('{"status":"continue"'))
     .map((line) => JSON.parse(line) as { subtasks: unknown[] });
   assert.equal(examples.length, 2);
   assert.ok(examples.every((example) => example.subtasks.length <= 1));
-  total = 50;
-  await host.runClassicLoopMainDecision(options);
-  assert.match(prompts[2], /已用 50\/50，剩余 0/);
-  assert.match(prompts[2], /仍应根据已有汇报复核/);
-  assert.doesNotMatch(prompts[2], /\{"status":"continue"/);
 });
 
 test("classic Loop uses the configured dispatch limit instead of a fixed six-task cap", () => {

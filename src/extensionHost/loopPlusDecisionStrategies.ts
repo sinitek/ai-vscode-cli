@@ -49,7 +49,6 @@ export interface LoopPlusDecisionStrategyPort {
   acknowledgeUserMessages(count: number): void;
   acknowledgeReports(eventIds: readonly string[]): boolean;
   captureRemainingUserMessagesForHeldReview(): void;
-  refuseDispatchPastSubtaskRoundLimit(plannedLaunches: number): boolean;
   applyControls(controls: readonly LoopPlusControlDecision[]): boolean;
   planControls(controls: readonly LoopPlusControlDecision[]): LoopPlusDecisionControlPlan | null;
   previewControls(plan: LoopPlusDecisionControlPlan): boolean;
@@ -137,13 +136,6 @@ export function loopPlusAcceptVerdicts(
   return verdicts;
 }
 
-export function plannedLoopPlusLaunchCount(decision: LoopPlusDecision): number {
-  const continues = (decision.controls ?? []).filter((control) => (
-    control.action === "reprompt"
-  )).length;
-  return (decision.subtasks?.length ?? 0) + continues;
-}
-
 function hasPendingDecisionWork(view: LoopPlusDecisionQueueView): boolean {
   return view.hasReview || view.hasReports;
 }
@@ -195,9 +187,6 @@ function applyDispatchDecision(
     return port.protocolMiss(true, "当前有开放验收批次，不能 dispatch；请返回 accept 确认整批，并在同一决策中派发后续任务。");
   }
   const controls = decision.controls ?? [];
-  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
-    return "stop";
-  }
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
   if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
     return port.protocolMiss(false);
@@ -242,9 +231,6 @@ function applySteerDecision(
   const controls = decision.controls ?? [];
   if (controls.length === 0) {
     return port.protocolMiss(false);
-  }
-  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
-    return "stop";
   }
   const controlPlan = port.planControls(controls);
   if (controlPlan === null || !port.previewControls(controlPlan)) {
@@ -301,9 +287,6 @@ function applyAcceptDecision(
   port.acknowledgeUserMessages(step.userMessageCount);
   port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
-  if (port.refuseDispatchPastSubtaskRoundLimit(plannedLoopPlusLaunchCount(decision))) {
-    return "stop";
-  }
   if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
     return port.protocolMiss(false);
   }

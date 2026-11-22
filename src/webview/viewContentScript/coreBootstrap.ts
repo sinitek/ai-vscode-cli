@@ -217,7 +217,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         loopGroupChatMessageLimit: \${LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT},
         hideInstructionBubbles: false,
         newTaskInteractiveMode: "coding",
-        loopPlusSubtaskMaxRounds: \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT},
         loopPlusDecisionSubtaskMax: \${LOOP_PLUS_DECISION_SUBTASK_MAX_DEFAULT},
         departmentMaxLeaders: \${DEPARTMENT_MAX_LEADERS_DEFAULT},
         departmentMaxEmployees: \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT},
@@ -438,7 +437,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
         humanInteractionWindowAttention: document.getElementById("humanInteractionWindowAttention"),
         taskCompletionWindowAttention: document.getElementById("taskCompletionWindowAttention"),
         humanInteractionTimeoutMinutes: document.getElementById("humanInteractionTimeoutMinutes"),
-        loopPlusSubtaskMaxRounds: document.getElementById("loopPlusSubtaskMaxRounds"),
         loopPlusDecisionSubtaskMax: document.getElementById("loopPlusDecisionSubtaskMax"),
         workspaceLoopPlusDecisionSubtaskMax: document.getElementById("workspaceLoopPlusDecisionSubtaskMax"),
         workspaceDepartmentMaxLeaders: document.getElementById("workspaceDepartmentMaxLeaders"),
@@ -643,19 +641,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
           return 15;
         }
         return Math.min(Math.max(Math.floor(numeric), 1), 1440);
-      }
-
-      function normalizeLoopPlusSubtaskMaxRounds(value) {
-        const numeric = typeof value === "number"
-          ? value
-          : (typeof value === "string" && value.trim() ? Number(value) : NaN);
-        if (!Number.isFinite(numeric)) {
-          return \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT};
-        }
-        return Math.min(
-          Math.max(Math.floor(numeric), \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN}),
-          \${LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT}
-        );
       }
 
       function normalizeLoopPlusDecisionSubtaskMax(value) {

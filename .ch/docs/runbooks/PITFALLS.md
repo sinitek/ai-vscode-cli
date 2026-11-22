@@ -950,6 +950,7 @@
 - 链接失败再回退文件 symlink，仍失败则返回可读错误。
 - Loop 临时根必须先按登记身份撤销链接，再非递归删除空目录；不得调用通用的递归 `removePathBestEffort`。Windows junction 使用非递归 `rmdirSync`，文件硬链接和其他符号链接使用 `unlinkSync`。未知内容或身份变化保留现场并记录 `loop-subtask-execution-root-cleanup-skipped`。OpenCode overlay 仍使用原有 best-effort 清理；占用中的路径不得抛出到任务结果。
 - 员工即使已输出结论，在隔离工作目录内留下构建目录仍会让非递归删除返回 `ENOTEMPTY`。排查时将员工 CLI 会话记录的实际 cwd 与原 Owner 的 `cleanup-failed` 记录对照，并只读检查剩余内容。员工提示要求将临时产物放在当前工作目录之外，需验收的证据保存在任务约定的位置。
+- 空工作区真实复跑发现，临时链接根只能转发已有顶层项，相对路径新建的源码会留在临时根。若出现 `ENOTEMPTY` 且验收找不到源码，比较真实工作区和员工 cwd 的顶层文件。新产研部 Loop+ 员工直接以工作区为 cwd，Grok 和 DSH 仍沿用各自的续接目录。
 - 不假设所有 Node/Electron 版本的递归删除都会把 junction 当成不可遍历链接。清理测试必须在销毁源夹具之前断言真实源目录、文件内容和本轮修改仍存在，并覆盖根替换、链接替换、并发根和启动中途失败。
 - 旧版遗留临时根可能仍含指向真实项目的 junction，不要直接递归删除 `.sinitek-loop-tmp`。本次修复不自动迁移或清扫旧残留，也不提供文件恢复功能。
 
@@ -3076,3 +3077,8 @@ rm -r "$result_directory"
 
 - 排查时对读组长任务的 `status`、最新子任务尝试的 `disposition`、最终需求覆盖、组织成员状态和容量占用。成功且已确认的免验收汇报在调度器中使用 `reported`，正式验收使用 `reviewed`。
 - 完成判定应覆盖两种合法终态。保持修复链的正式验收要求，并独立核对 Owner 清理和容量。旧误判由通过核验的组织恢复修正，历史总监消息继续作为原始记录。
+
+## 员工清理观察拒绝在下一轮表现为组长无可执行代次
+
+- 在同一根与组长代次下关联 `department-employee-capacity` 的 `retained/evidence-rejected` 和随后组长 `leader-member-not-running` 事件。`DEPARTMENT_NATIVE_UNKNOWN / department-producer-no-live-generation` 是后果，不一定是本次组长调用的 CLI 故障。
+- Owner 状态 `cleanup-failed` 且无回执只证明清理未确认，不能据此推断哪条清理事实失败或伪造旧任务已可继续。现在新组织复用普通 Loop+；对旧任务保留原记录，不通过补回执或自动重跑解除阻塞。

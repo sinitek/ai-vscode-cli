@@ -148,6 +148,51 @@ test("expands a home-prefixed configured command path", async () => {
   }
 });
 
+test("Windows resolution applies PATHEXT in order but only explicit paths fall back to bare files", async (context) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-windows-resolution-"));
+  context.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  context.after(setPlatform("win32"));
+  const env = { PATH: tempRoot, USERPROFILE: tempRoot, PATHEXT: " ; cmd ; .exe ; " };
+  const barePath = path.join(tempRoot, "probe");
+  await fs.writeFile(barePath, "");
+
+  assert.equal(resolveCliCommand("probe", { env }), null);
+  assert.deepEqual(resolveCliCommand(barePath, { env }), { command: barePath, resolvedFrom: "config" });
+
+  await fs.writeFile(`${barePath}.exe`, "");
+  await fs.writeFile(`${barePath}.cmd`, "");
+  assert.deepEqual(resolveCliCommand("probe", { env }), { command: `${barePath}.cmd`, resolvedFrom: "path" });
+  assert.deepEqual(resolveCliCommand(barePath, { env }), { command: `${barePath}.cmd`, resolvedFrom: "config" });
+
+  assert.deepEqual(resolveCliCommand("probe.exe", { env }), { command: `${barePath}.exe`, resolvedFrom: "path" });
+  assert.deepEqual(resolveCliCommand(`${barePath}.exe`, { env }), {
+    command: `${barePath}.exe`, resolvedFrom: "config",
+  });
+  const missingWithExt = `${barePath}.custom`;
+  await fs.writeFile(`${missingWithExt}.cmd`, "");
+  assert.equal(resolveCliCommand("probe.custom", { env }), null);
+  assert.equal(resolveCliCommand(missingWithExt, { env }), null);
+});
+
+test("Windows resolution defaults PATHEXT only when it is unset", async (context) => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-windows-pathext-"));
+  context.after(() => fs.rm(tempRoot, { recursive: true, force: true }));
+  context.after(setPlatform("win32"));
+  const env = { PATH: tempRoot, USERPROFILE: tempRoot };
+  const barePath = path.join(tempRoot, "probe");
+  await fs.writeFile(barePath, "");
+  await fs.writeFile(`${barePath}.EXE`, "");
+  await fs.writeFile(`${barePath}.CMD`, "");
+
+  assert.deepEqual(resolveCliCommand("probe", { env }), { command: `${barePath}.EXE`, resolvedFrom: "path" });
+  for (const PATHEXT of ["", " ; "]) {
+    const context = { env: { ...env, PATHEXT } };
+    assert.equal(resolveCliCommand("probe", context), null);
+    assert.deepEqual(resolveCliCommand(barePath, context), { command: barePath, resolvedFrom: "config" });
+    assert.deepEqual(resolveCliCommand("probe.CMD", context), { command: `${barePath}.CMD`, resolvedFrom: "path" });
+  }
+});
+
 test("discovers Codex from the Windows official install directory", async () => {
   const restorePlatform = setPlatform("win32");
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-windows-codex-bin-"));

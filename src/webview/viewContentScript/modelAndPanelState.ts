@@ -6,10 +6,15 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
       \${NORMALIZE_DEPARTMENT_CAPACITY}
 
       function syncDepartmentCapacityPanelState(panelState) {
-        state.departmentMaxLeaders = normalizeDepartmentCapacity(panelState.departmentMaxLeaders, \${DEPARTMENT_MAX_LEADERS_DEFAULT});
-        state.departmentMaxEmployees = normalizeDepartmentCapacity(panelState.departmentMaxEmployees, \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT});
-        if (elements.departmentMaxLeaders) elements.departmentMaxLeaders.value = String(state.departmentMaxLeaders);
-        if (elements.departmentMaxEmployees) elements.departmentMaxEmployees.value = String(state.departmentMaxEmployees);
+        if (document.activeElement !== elements.departmentMaxLeaders) state.departmentMaxLeaders = normalizeDepartmentCapacity(panelState.departmentMaxLeaders, \${DEPARTMENT_MAX_LEADERS_DEFAULT});
+        if (document.activeElement !== elements.departmentMaxEmployees) state.departmentMaxEmployees = normalizeDepartmentCapacity(panelState.departmentMaxEmployees, \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT});
+        if (elements.departmentMaxLeaders && document.activeElement !== elements.departmentMaxLeaders) elements.departmentMaxLeaders.value = String(state.departmentMaxLeaders);
+        if (elements.departmentMaxEmployees && document.activeElement !== elements.departmentMaxEmployees) elements.departmentMaxEmployees.value = String(state.departmentMaxEmployees);
+      }
+
+      function settingValueFromPanel(key, elementKey, value) {
+        const input = elements[elementKey];
+        return input && document.activeElement === input ? state[key] : value;
       }
 
       function scheduleAppHeightUpdate() {
@@ -574,11 +579,11 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             updateLoopMetaForTabFromSummary(tab);
           });
         }
-        state.chatMessageLimit = normalizeChatMessageLimit(panelState.chatMessageLimit);
-        state.loopGroupChatMessageLimit = normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT);
-        state.hideInstructionBubbles = panelState.hideInstructionBubbles === true;
-        state.newTaskInteractiveMode = panelState.newTaskInteractiveMode === "loop" || panelState.newTaskInteractiveMode === "loop_plus"
-          ? panelState.newTaskInteractiveMode : "coding";
+        state.chatMessageLimit = settingValueFromPanel("chatMessageLimit", "chatMessageLimit", normalizeChatMessageLimit(panelState.chatMessageLimit));
+        state.loopGroupChatMessageLimit = settingValueFromPanel("loopGroupChatMessageLimit", "loopGroupChatMessageLimit", normalizeChatMessageLimit(panelState.loopGroupChatMessageLimit, LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT));
+        state.hideInstructionBubbles = settingValueFromPanel("hideInstructionBubbles", "hideInstructionBubbles", panelState.hideInstructionBubbles === true);
+        state.newTaskInteractiveMode = settingValueFromPanel("newTaskInteractiveMode", "newTaskInteractiveMode", panelState.newTaskInteractiveMode === "loop" || panelState.newTaskInteractiveMode === "loop_plus"
+          ? panelState.newTaskInteractiveMode : "coding");
         syncActiveMessagesFromRuntime();
         state.promptHistory = Array.isArray(panelState.promptHistory) ? panelState.promptHistory : [];
         applyHumanInteractionHistory(panelState.humanInteractionHistory);
@@ -641,46 +646,42 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
             ? state.newTaskInteractiveMode
             : normalizeInteractiveMode(panelState.interactiveMode));
         const previousAutoAddEditorContextTags = Boolean(state.autoAddEditorContextTags);
-        state.debug = Boolean(panelState.debug);
-        state.autoAddEditorContextTags = Boolean(panelState.autoAddEditorContextTags);
+        state.debug = settingValueFromPanel("debug", "debugMode", Boolean(panelState.debug));
+        state.autoAddEditorContextTags = settingValueFromPanel("autoAddEditorContextTags", "autoAddEditorContextTags", Boolean(panelState.autoAddEditorContextTags));
         state.longTermMemoryEnabled = panelState.longTermMemoryEnabled === true;
         state.workspaceMemoryEnabled = panelState.workspaceMemoryEnabled === true;
         state.workspaceHarnessInstalled = panelState.workspaceHarnessInstalled === true;
         state.codeGraphInstalled = panelState.codeGraphInstalled === true;
         state.codeGraphInstalling = panelState.codeGraphInstalling === true;
-        state.autoCompactContextAfterRun = Boolean(panelState.autoCompactContextAfterRun);
-        state.humanInteractionEnabled = panelState.humanInteractionEnabled !== false;
-        state.loopEnabled = panelState.loopEnabled !== false;
-        state.loopPlusEnabled = panelState.loopPlusEnabled !== false;
-        state.departmentEnabled = panelState.departmentEnabled === true;
+        state.autoCompactContextAfterRun = settingValueFromPanel("autoCompactContextAfterRun", "autoCompactContextAfterRun", Boolean(panelState.autoCompactContextAfterRun));
+        state.humanInteractionEnabled = settingValueFromPanel("humanInteractionEnabled", "humanInteractionEnabled", panelState.humanInteractionEnabled !== false);
+        state.loopEnabled = settingValueFromPanel("loopEnabled", "loopEnabled", panelState.loopEnabled !== false);
+        state.loopPlusEnabled = settingValueFromPanel("loopPlusEnabled", "loopPlusEnabled", panelState.loopPlusEnabled !== false);
+        state.departmentEnabled = settingValueFromPanel("departmentEnabled", "departmentEnabled", panelState.departmentEnabled === true);
         ["loopEnabled", "loopPlusEnabled", "departmentEnabled"].forEach((key) => {
           if (elements[key]) {
-            elements[key].checked = state[key];
+            if (document.activeElement !== elements[key]) elements[key].checked = state[key];
             elements[key].disabled = false;
           }
         });
-        state.humanInteractionNotifications = panelState.humanInteractionNotifications !== false;
-        state.taskCompletionNotifications = panelState.taskCompletionNotifications !== false;
-        state.humanInteractionWindowAttention = panelState.humanInteractionWindowAttention !== false;
-        state.taskCompletionWindowAttention = panelState.taskCompletionWindowAttention !== false;
+        state.humanInteractionNotifications = settingValueFromPanel("humanInteractionNotifications", "humanInteractionNotifications", panelState.humanInteractionNotifications !== false);
+        state.taskCompletionNotifications = settingValueFromPanel("taskCompletionNotifications", "taskCompletionNotifications", panelState.taskCompletionNotifications !== false);
+        state.humanInteractionWindowAttention = settingValueFromPanel("humanInteractionWindowAttention", "humanInteractionWindowAttention", panelState.humanInteractionWindowAttention !== false);
+        state.taskCompletionWindowAttention = settingValueFromPanel("taskCompletionWindowAttention", "taskCompletionWindowAttention", panelState.taskCompletionWindowAttention !== false);
         state.cliEnabledByName = panelState && panelState.cliEnabledByName && typeof panelState.cliEnabledByName === "object"
           ? panelState.cliEnabledByName
           : {};
         if (typeof syncCliEnabledControls === "function") {
           syncCliEnabledControls();
         }
-        state.humanInteractionTimeoutMinutes = normalizeHumanInteractionTimeoutMinutes(
+        state.humanInteractionTimeoutMinutes = settingValueFromPanel("humanInteractionTimeoutMinutes", "humanInteractionTimeoutMinutes", normalizeHumanInteractionTimeoutMinutes(
           panelState.humanInteractionTimeoutMinutes
-        );
-        state.loopPlusDecisionSubtaskMax = normalizeLoopPlusDecisionSubtaskMax(
+        ));
+        state.loopPlusDecisionSubtaskMax = settingValueFromPanel("loopPlusDecisionSubtaskMax", "loopPlusDecisionSubtaskMax", normalizeLoopPlusDecisionSubtaskMax(
           panelState.loopPlusDecisionSubtaskMax
-        );
-        state.loopPlusSubtaskMaxRounds = normalizeLoopPlusSubtaskMaxRounds(
-          panelState.loopPlusSubtaskMaxRounds
-        );
-        if (elements.loopPlusSubtaskMaxRounds) {
-          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
-        }
+        ));
+        state.workspaceLoopPlusDecisionSubtaskMax = settingValueFromPanel("workspaceLoopPlusDecisionSubtaskMax", "workspaceLoopPlusDecisionSubtaskMax", panelState.workspaceLoopPlusDecisionSubtaskMax == null
+          ? null : normalizeLoopPlusDecisionSubtaskMax(panelState.workspaceLoopPlusDecisionSubtaskMax));
         syncDepartmentCapacityPanelState(panelState);
         syncWorkspaceDepartmentCapacityPanelState(panelState);
         if (!state.autoAddEditorContextTags) {
@@ -722,54 +723,51 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
           renderModelManagerList();
           syncModelManageForm();
         }
-        if (elements.debugMode) {
+        if (elements.debugMode && document.activeElement !== elements.debugMode) {
           elements.debugMode.checked = state.debug;
         }
-        if (elements.autoAddEditorContextTags) {
+        if (elements.autoAddEditorContextTags && document.activeElement !== elements.autoAddEditorContextTags) {
           elements.autoAddEditorContextTags.checked = state.autoAddEditorContextTags;
         }
         syncLongTermMemoryWorkspaceControl();
         syncCodeGraphWorkspaceControl();
-        if (elements.autoCompactContextAfterRun) {
+        if (elements.autoCompactContextAfterRun && document.activeElement !== elements.autoCompactContextAfterRun) {
           elements.autoCompactContextAfterRun.checked = state.autoCompactContextAfterRun;
         }
-        if (elements.humanInteractionEnabled) {
+        if (elements.humanInteractionEnabled && document.activeElement !== elements.humanInteractionEnabled) {
           elements.humanInteractionEnabled.checked = state.humanInteractionEnabled;
         }
         ["humanInteractionNotifications", "taskCompletionNotifications", "humanInteractionWindowAttention", "taskCompletionWindowAttention"].forEach((key) => {
-          if (elements[key]) elements[key].checked = state[key];
+          if (elements[key] && document.activeElement !== elements[key]) elements[key].checked = state[key];
         });
-        if (elements.humanInteractionTimeoutMinutes) {
+        if (elements.humanInteractionTimeoutMinutes && document.activeElement !== elements.humanInteractionTimeoutMinutes) {
           elements.humanInteractionTimeoutMinutes.value = String(state.humanInteractionTimeoutMinutes);
         }
-        state.historyRetentionDays = Number.isFinite(Number(panelState.historyRetentionDays))
+        state.historyRetentionDays = settingValueFromPanel("historyRetentionDays", "historyRetentionDays", Number.isFinite(Number(panelState.historyRetentionDays))
           ? Math.min(Math.max(Math.floor(Number(panelState.historyRetentionDays)), 1), 3650)
-          : 30;
-        if (elements.historyRetentionDays) {
+          : 30);
+        if (elements.historyRetentionDays && document.activeElement !== elements.historyRetentionDays) {
           elements.historyRetentionDays.value = String(state.historyRetentionDays);
         }
-        if (elements.chatMessageLimit) {
+        if (elements.chatMessageLimit && document.activeElement !== elements.chatMessageLimit) {
           elements.chatMessageLimit.value = String(state.chatMessageLimit);
         }
-        if (elements.loopGroupChatMessageLimit) {
+        if (elements.loopGroupChatMessageLimit && document.activeElement !== elements.loopGroupChatMessageLimit) {
           elements.loopGroupChatMessageLimit.value = String(state.loopGroupChatMessageLimit);
         }
-        if (elements.hideInstructionBubbles) {
+        if (elements.hideInstructionBubbles && document.activeElement !== elements.hideInstructionBubbles) {
           elements.hideInstructionBubbles.checked = state.hideInstructionBubbles;
         }
-        if (elements.newTaskInteractiveMode) {
+        if (elements.newTaskInteractiveMode && document.activeElement !== elements.newTaskInteractiveMode) {
           elements.newTaskInteractiveMode.value = state.newTaskInteractiveMode;
         }
-        if (elements.loopPlusDecisionSubtaskMax) {
+        if (elements.loopPlusDecisionSubtaskMax && document.activeElement !== elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
         }
-        if (elements.workspaceLoopPlusDecisionSubtaskMax) {
-          elements.workspaceLoopPlusDecisionSubtaskMax.value = panelState.workspaceLoopPlusDecisionSubtaskMax == null
-            ? "" : String(normalizeLoopPlusDecisionSubtaskMax(panelState.workspaceLoopPlusDecisionSubtaskMax));
+        if (elements.workspaceLoopPlusDecisionSubtaskMax && document.activeElement !== elements.workspaceLoopPlusDecisionSubtaskMax) {
+          elements.workspaceLoopPlusDecisionSubtaskMax.value = state.workspaceLoopPlusDecisionSubtaskMax == null
+            ? "" : String(state.workspaceLoopPlusDecisionSubtaskMax);
           elements.workspaceLoopPlusDecisionSubtaskMax.placeholder = "全局：" + state.loopPlusDecisionSubtaskMax;
-        }
-        if (elements.loopPlusSubtaskMaxRounds) {
-          elements.loopPlusSubtaskMaxRounds.value = String(state.loopPlusSubtaskMaxRounds);
         }
         if (elements.macTaskShellRow) {
           elements.macTaskShellRow.style.display = state.isMac ? "flex" : "none";

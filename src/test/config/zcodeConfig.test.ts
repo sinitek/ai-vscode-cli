@@ -132,15 +132,23 @@ test("model labels preserve modelId without the provider prefix or truncating mo
 test("empty or invalid configs do not expose model labels", () => {
   for (const text of ["", "  ", "{not-json"]) {
     const models = readZcodeConfigModels(text);
+    const parseError = text.trim() ? "ZCode provider config could not be parsed." : null;
     assert.deepEqual(models.models, []);
     assert.deepEqual(models.labels, {});
     assert.equal(models.defaultModel, null);
-    assert.equal(Boolean(models.error), Boolean(text.trim()));
+    assert.equal(models.error, parseError);
+    assert.throws(() => resolveZcodeModelWireForRun(text, null), {
+      message: parseError ?? "请先在 ZCode provider_config.json 中添加模型。",
+    });
   }
   const document = JSON.parse(createZcodeExampleText());
   document.config.providerConfigRules.providerRules[0].config.personalModelIds = [];
-  assert.deepEqual(readZcodeConfigModels(JSON.stringify(document)), {
+  const text = JSON.stringify(document);
+  assert.deepEqual(readZcodeConfigModels(text), {
     models: [], labels: {}, defaultModel: null, error: null,
+  });
+  assert.throws(() => resolveZcodeModelWireForRun(text, null), {
+    message: "请先在 ZCode provider_config.json 中添加模型。",
   });
 });
 
@@ -189,6 +197,26 @@ test("explicit default reasoning takes precedence over capability order and is s
   const text = JSON.stringify(document);
   assert.equal(resolveZcodeModelWireForRun(text, null), `local-glm/${ZCODE_EXAMPLE_MODEL_ID}$high`);
   assert.equal(resolveZcodeModelWireForRun(text, `local-glm/${ZCODE_GLM_FLASH_SUB_COCO_MODEL_ID}`), `local-glm/${ZCODE_GLM_FLASH_SUB_COCO_MODEL_ID}$max`);
+});
+
+test("wire resolves a missing selection with one parse and the fallback model's first capability", (context) => {
+  const document = JSON.parse(createZcodeExampleText());
+  document.config.defaultModelSelection.modelId = "missing-default";
+  document.config.providerConfigRules.providerRules[0].config.personalModelIds.unshift("vendor/fallback");
+  document.config.modelConfigRules.providerModelRules.push({
+    providerId: "local-glm", modelId: "vendor/fallback",
+    config: { optionSpecs: { reasoningLevel: { values: ["low", "max"] } } },
+  });
+  const text = JSON.stringify(document);
+  const parseJson = JSON.parse;
+  let parseCount = 0;
+  context.mock.method(JSON, "parse", (...args: Parameters<typeof JSON.parse>) => {
+    if (args[0] === text) parseCount += 1;
+    return parseJson(...args);
+  });
+
+  assert.equal(resolveZcodeModelWireForRun(text, "local-glm/unknown"), "local-glm/vendor/fallback$low");
+  assert.equal(parseCount, 1);
 });
 
 test("simplified config retains the native schema arrays and refuses incomplete documents", () => {

@@ -39,7 +39,7 @@ panelMessageHandlers/index.ts
 - 模型与角色：原 `isCliName`、角色白名单、`parseCliName`、思考力度归一化不变。`selectedLoopThinkingMode` 只支持 codex / grok / claude / dsh / kimi-code，不顺带扩大到 OpenCode 或 ZCode。可选回调缺失时是否仍 reload 模型存储，逐命令保留旧行为。
 - 配置 ID 前缀：继续使用对应前缀 `slice(...).trim()`，ID 中的点保留；CLI/角色键 `selectedLoopModel.*`、`selectedLoopThinkingMode.*` 保留旧 `split(".")` 解析及尾部兼容行为，不通用化 parser。`selectedModel.*`、`interactiveMode.*`、`cliEnabled.*` 仍 slice 且不额外 trim。
 - 布尔值：全局 humanInteractionEnabled / autoCompact / debug / autoAddEditorContextTags 用 `Boolean(value)`；hideInstructionBubbles、workspaceMemoryEnabled/longTermMemoryEnabled 用 `value === true`；通知与 cliEnabled 必须原生 boolean。
-- `autoCompactContextBeforeRun` 是写入全局 `autoCompactContextAfterRun` 的兼容别名；只有全局保存成功，才清除并保存工作区两个旧键。`loopPlusSubtaskMaxRounds` 是 Loop 与 Loop+ 共用的全局总上限；旧 `loopMaxRounds` 及其写入消息忽略。
+- `autoCompactContextBeforeRun` 是写入全局 `autoCompactContextAfterRun` 的兼容别名；只有全局保存成功，才清除并保存工作区两个旧键。旧 `loopPlusSubtaskMaxRounds`、`loopMaxRounds` 与累计子任务上限更新消息均忽略，不保存也不影响调度。
 - `cliEnabled.*` 先检查合法 CLI 和 boolean，复制旧 map 时仅保留合法 CLI/boolean 条目。只有全局保存成功才重新读取当前 CLI，按原次序等待必要的 `setCurrentCli`、重定向子任务选择、发布启停状态，再刷新；全关时仍将 null 传给重定向回调。
 - `loopPlusDecisionSubtaskMax` 只更新全局；`workspaceLoopPlusDecisionSubtaskMax` 写当前工作区同名字段，数字归一化到 1–20，null 或空字符串删除覆盖，非法值不写入。两者正常返回后均由 Router 刷新一次；生效值由运行时按工作区 → 全局 → 默认 6 读取。
 - 限额、历史天数与 shell 继续使用原归一化函数、平台限制、返回值处理与中文错误文案。debug 保存后仍读取实际 debug 配置再更新日志开关。

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import * as path from "path";
 import { randomUUID } from "crypto";
+import { isDeepStrictEqual } from "util";
 import { resolveLoopPlusDecisionSubtaskMax } from "./loopPlusDecision";
 import {
   CLI_LIST,
@@ -89,11 +90,18 @@ export type WorkspaceSettingsStoreOptions = {
   logError?: WorkspaceSettingsStoreLogger;
 };
 
+const loadedWorkspaceSettingsByPath = new Map<string, WorkspaceSettings>();
+
 export function loadWorkspaceSettings(options: WorkspaceSettingsStoreOptions): WorkspaceSettings {
   const filePath = getWorkspaceSettingsFilePath(options);
-  if (!filePath || !fs.existsSync(filePath)) {
-    return {};
-  }
+  if (!filePath) return {};
+  const settings = readWorkspaceSettings(filePath, options);
+  loadedWorkspaceSettingsByPath.set(filePath, cloneWorkspaceSettings(settings));
+  return settings;
+}
+
+function readWorkspaceSettings(filePath: string, options: WorkspaceSettingsStoreOptions): WorkspaceSettings {
+  if (!fs.existsSync(filePath)) return {};
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = migrateLegacyLoopJson(JSON.parse(raw)).value;
@@ -236,18 +244,118 @@ export function trySaveWorkspaceSettings(
   if (!filePath) {
     return { ok: false, error: "当前工作区没有可用的设置存储位置。" };
   }
-  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    // Replace only a complete document: a failed/partial write must preserve the saved configuration.
-    fs.writeFileSync(temporaryPath, JSON.stringify(next, null, 2), { encoding: "utf8", flag: "wx", mode: 0o600 });
-    fs.renameSync(temporaryPath, filePath);
+    withWorkspaceSettingsLock(filePath, () => {
+      const previous = loadedWorkspaceSettingsByPath.get(filePath);
+      const current = readWorkspaceSettings(filePath, options);
+      const merged = previous
+        ? mergeWorkspaceSettingsChanges(previous, next, current)
+        : next;
+      writeWorkspaceSettingsFile(filePath, merged);
+      loadedWorkspaceSettingsByPath.set(filePath, cloneWorkspaceSettings(next));
+    });
     return { ok: true };
   } catch (error) {
     options.logError?.("workspace-settings-write-error", { error: String(error) });
     return { ok: false, error: String(error) };
+  }
+}
+
+export function tryUpdateWorkspaceSettings(
+  update: (current: WorkspaceSettings) => WorkspaceSettings,
+  options: WorkspaceSettingsStoreOptions,
+): SaveWorkspaceSettingsResult {
+  const filePath = getWorkspaceSettingsFilePath(options);
+  if (!filePath) return { ok: false, error: "当前工作区没有可用的设置存储位置。" };
+  try {
+    withWorkspaceSettingsLock(filePath, () => {
+      const current = readWorkspaceSettings(filePath, options);
+      const updated = update(current);
+      writeWorkspaceSettingsFile(filePath, updated);
+      loadedWorkspaceSettingsByPath.set(filePath, cloneWorkspaceSettings(updated));
+    });
+    return { ok: true };
+  } catch (error) {
+    options.logError?.("workspace-settings-write-error", { error: String(error) });
+    return { ok: false, error: String(error) };
+  }
+}
+
+function mergeWorkspaceSettingsChanges(
+  previous: WorkspaceSettings,
+  next: WorkspaceSettings,
+  current: WorkspaceSettings,
+): WorkspaceSettings {
+  return mergeWorkspaceSettingsValue(previous, next, current) as WorkspaceSettings;
+}
+
+function mergeWorkspaceSettingsValue(previous: unknown, next: unknown, current: unknown): unknown {
+  if (!isPlainRecord(next)) return isDeepStrictEqual(previous, next) ? current : next;
+  const previousRecord = isPlainRecord(previous) ? previous : {};
+  const currentRecord = isPlainRecord(current) ? current : {};
+  const merged: Record<string, unknown> = { ...currentRecord };
+  const keys = new Set([...Object.keys(previousRecord), ...Object.keys(next)]);
+  for (const key of keys) {
+    const hadPrevious = Object.prototype.hasOwnProperty.call(previousRecord, key);
+    const hasNext = Object.prototype.hasOwnProperty.call(next, key);
+    if (hadPrevious && !hasNext) {
+      delete merged[key];
+      continue;
+    }
+    if (!hasNext) continue;
+    const previousValue = previousRecord[key];
+    const nextValue = next[key];
+    if (hadPrevious && isDeepStrictEqual(previousValue, nextValue)) continue;
+    if (isPlainRecord(nextValue) && (!hadPrevious || isPlainRecord(previousValue))) {
+      merged[key] = mergeWorkspaceSettingsValue(previousValue, nextValue, currentRecord[key]);
+    } else {
+      merged[key] = nextValue;
+    }
+  }
+  return merged;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function cloneWorkspaceSettings(settings: WorkspaceSettings): WorkspaceSettings {
+  return JSON.parse(JSON.stringify(settings)) as WorkspaceSettings;
+}
+
+function writeWorkspaceSettingsFile(filePath: string, next: WorkspaceSettings): void {
+  const temporaryPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(temporaryPath, JSON.stringify(next, null, 2), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    fs.renameSync(temporaryPath, filePath);
   } finally {
     try { fs.unlinkSync(temporaryPath); } catch { /* Already renamed, or the write never created it. */ }
+  }
+}
+
+function withWorkspaceSettingsLock<T>(filePath: string, action: () => T): T {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const lockPath = `${filePath}.lock`;
+  const deadline = Date.now() + 1500;
+  const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  let descriptor: number;
+  while (true) {
+    try { descriptor = fs.openSync(lockPath, "wx", 0o600); break; }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw error;
+      Atomics.wait(pause, 0, 0, 5);
+    }
+  }
+  const identity = fs.fstatSync(descriptor);
+  try { return action(); }
+  finally {
+    fs.closeSync(descriptor);
+    const current = fs.lstatSync(lockPath);
+    if (!current.isFile() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) {
+      throw new Error("工作区设置锁已替换，拒绝释放未知锁。");
+    }
+    fs.unlinkSync(lockPath);
   }
 }
 

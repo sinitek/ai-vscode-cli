@@ -1,8 +1,19 @@
 # 产研部公开入口 Extension Host 组合验证
 
-本验证目标是从隔离安装版 VS Code Extension Host 的真实 Webview 控件选择“产研部”并提交提示，经过生产根创建、Codex 总监/组长/员工执行、Loop+ `event_driven` 验收、汇报和 Owner receipt，最后确认实际容量归还。公开设置 `departmentEnabled` 必须通过工具设置启用；不能通过直接调用 `startDepartmentPrompt`、预置任务库记录、测试 callback 或内部 composition API 替代用户入口。
+本验证目标是从隔离安装版 VS Code Extension Host 的真实 Webview 控件选择“产研部”并提交提示，验证生产根创建、Codex 总监/组长/员工执行、Loop+ `event_driven` 验收、汇报与容量归还。公开设置 `departmentEnabled` 通过工具设置启用，历史 Owner 场景另验证 Owner 回执。
 
 最新限定混合新建验证见 [round-369](#opencode-组长的限定混合公开场景round-369)；以下各轮历史按各自 CLI、身份与源码范围保留。
+
+## 普通 Loop+ 新建场景（2026-11-22）
+
+从公开产研部入口验证两次派发、两组 Loop+ 员工执行与事件验收、会话持久化、容量归还及总监完成。新建场景使用 `--scenario loop-plus`，也是默认值。历史 Owner 专用场景使用对应历史构建。
+
+```sh
+node scripts/verify_department_full_eh_integration.js --scenario loop-plus \
+  --product /absolute/path/to/isolated-built-extension --report /absolute/path/to/new-report.json
+```
+
+macOS 的真实 VS Code 1.144.0 和 Codex 以隔离 HOME 运行。本机确定性响应服务处理 19 个请求，两个组长均完成验收，最终占用为空，Owner 执行集合和绑定均为空，宿主正常退出。员工失败复核和显式停止续接另由 `departmentruntimeintegration.test.ts` 覆盖。
 
 ## 新建场景状态（round-350；续接最新结果见 round-366）
 

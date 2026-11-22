@@ -47,7 +47,6 @@ export async function routeSettingMessage(
       isCliName: deps.isCliName,
       isInteractiveMode: deps.isInteractiveMode,
       setWorkspaceInteractiveModeForCli: deps.setWorkspaceInteractiveModeForCli,
-      updateNotificationSetting: deps.updateNotificationSetting,
       showWebviewError: deps.showWebviewError,
       updateStoredToolSettings: deps.updateStoredToolSettings,
       saveWorkspaceSettings: deps.saveWorkspaceSettings,

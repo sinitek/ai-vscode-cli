@@ -331,9 +331,6 @@ export const WEBVIEW_STRINGS = {
     toolSettingsHumanInteractionTimeoutLabel: "人工交互超时（分钟）",
     toolSettingsHumanInteractionTimeoutTitle:
       "全局设置。Vibe 人工交互弹窗，以及 Loop、Loop+ 主任务澄清表单，若在此时限内没有提交，则视为超时。AI 会自行选择最佳方案继续，不记为拒绝，也不进入待复核。默认 15 分钟，范围 1–1440 分钟（最长 24 小时）。",
-    toolSettingsLoopPlusSubtaskMaxRoundsLabel: "Loop/Loop+ 子任务轮次上限",
-    toolSettingsLoopPlusSubtaskMaxRoundsTitle:
-      "全局设置。每个父任务累计允许派发的 Loop/Loop+ 子任务数量。每次新派发或重派计一次；运行中的任务、重试、恢复和队列提升不重复计数。默认 200，范围 50–9999。",
     promptInputResizeLabel: "调整对话输入框高度",
     promptInputHeightSaveError: "输入框高度保存失败，重新打开面板时将使用上次保存的高度。",
     toolSettingsNewTaskInteractiveModeSaveError: "默认任务模式保存失败，请重试。",

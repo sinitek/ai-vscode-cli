@@ -4411,7 +4411,7 @@
     {
       "id": "plugin.rule.notification_authorization_guidance",
       "name": "Mac 首次授权与 Windows 首次设置引导及通知管理",
-      "description": "工具设置的通知设置页签复用两类 application 系统通知与图标闪烁共四项开关，默认开启、独立、全局保存并立即生效，保留已有选择，失败回传真实状态；关闭闪烁不关闭系统通知，反之亦然。界面精简说明且仅显示当前平台指引；Windows 任务栏闪烁仅后台触发，Linux 沿用 X11/wmctrl 提醒，Mac 不新增 Dock 弹跳。Mac 在本机启动或通知配置变化且任一通知开启时异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，手动按钮在未决定时申请，否则打开系统通知设置选择携宁 CLI 提醒。Windows 查询当前编辑器身份的 ToastNotifier.Setting，区分允许、应用关闭、用户全局关闭、系统策略及安装或查询异常；查询失败仍能手动打开 ms-settings:notifications。Windows 无 Mac 式授权框，首次启用任一通知时自动打开系统通知设置，成功后记录扩展全局状态，重启不重复，失败可重试，同一宿主并发请求合并。刷新只查询，不申请、不投递、不打开设置；远程 workspace 宿主不操作本机，通知都关闭时不自动引导。用户自行设置系统通知和横幅，不自动修改系统开关；Enabled 或投递成功不代表横幅可见。保留 Mac 稳定身份和串行助手，不持久缓存授权状态，不影响后台窗口提醒或任务执行。",
+      "description": "工具设置的通知设置页签复用两类系统通知与图标闪烁共四项开关，默认开启、独立保存在 ~/.sinitek_cli/settings.json 并立即生效；旧版 VS Code 应用级显式值仅在对应全局字段缺失时迁移一次。保留已有选择，保存失败回传真实状态；关闭闪烁不关闭系统通知，反之亦然。界面精简说明且仅显示当前平台指引；Windows 任务栏闪烁仅后台触发，Linux 沿用 X11/wmctrl 提醒，Mac 不新增 Dock 弹跳。Mac 在本机启动或通知配置变化且任一通知开启时异步申请未决定权限；已允许或拒绝不重复请求、不自动打开设置，手动按钮在未决定时申请，否则打开系统通知设置选择携宁 CLI 提醒。Windows 查询当前编辑器身份的 ToastNotifier.Setting，区分允许、应用关闭、用户全局关闭、系统策略及安装或查询异常；查询失败仍能手动打开 ms-settings:notifications。Windows 无 Mac 式授权框，首次启用任一通知时自动打开系统通知设置，成功后记录扩展全局状态，重启不重复，失败可重试，同一宿主并发请求合并。刷新只查询，不申请、不投递、不打开设置；远程 workspace 宿主不操作本机，通知都关闭时不自动引导。用户自行设置系统通知和横幅，不自动修改系统开关；Enabled 或投递成功不代表横幅可见。保留 Mac 稳定身份和串行助手，不持久缓存授权状态，不影响后台窗口提醒或任务执行。",
       "aliases": [
         "通知授权",
         "通知设置",
@@ -4452,6 +4452,15 @@
         },
         {
           "path": "src/extensionHost/humanInteractionAttentionHost.ts"
+        },
+        {
+          "path": "src/toolSettings.ts"
+        },
+        {
+          "path": "src/workspaceSettingsStore.ts"
+        },
+        {
+          "path": "src/extension.ts"
         },
         {
           "path": "src/sessionMessageActions.ts"
@@ -5736,7 +5745,7 @@
     {
       "id": "plugin.rule.loop_plus_capacity_aware_parallel_delivery",
       "name": "Loop+ 按容量与交付边界合理并行",
-      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；最终目标仍需要工作且存在可并行独立交付边界时争取达到配置容量上限，目标已满足或无可并行工作时不强制派发，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。每次 accept 同时复核全部未完成的原始及补充需求；可用容量内将必要验收修复与安全独立交付同轮派发并尽量补足配置容量，无需等待后续验收批次；验收批次数量独立于运行、派发与子任务轮次额度；历史已验收的三项批次现由 active 规则 plugin.rule.loop_plus_dependency_review_order 的四项上限及新批次依赖选序替换，无需新工作时允许空的 subtasks，不把局部验收缺口作为整体串行屏障。修复关联失败事件并复用来源会话，独立交付通过 independentSubtaskIds 显式声明且不自动继承修复会话；任务须在事件关联或独立列表中恰好归属一次。只派修复或留下可用槽位时在沟通文件记录真实依赖、写入占用、已排队容量或无独立边界的原因。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。scheduler pending 只保留候选 FIFO 顺序，不占槽、不预留写范围或冲突组；候选只与已有 running 和本轮已提升项比较，允许越过仍冲突的 pending 安全回填。冲突释放后最早可运行项优先，人工中断开放 attempt 仍占用资源。",
+      "description": "适用于确需委派而不符合简单直办条件的工作。Loop+ 主模型可见真实并发上限、剩余槽位和单次派发上限；最终目标仍需要工作且存在可并行独立交付边界时争取达到配置容量上限，目标已满足或无可并行工作时不强制派发，不按全栈或前后端角色个数限制任务数量，不为凑数拆微任务。dispatch 与 accept 主动回填但不重复已有 running 或 pending。每次 accept 同时复核全部未完成的原始及补充需求；可用容量内将必要验收修复与安全独立交付同轮派发并尽量补足配置容量，无需等待后续验收批次；验收批次数量独立于并发与单次派发容量；累计子任务派发不设总额度；历史已验收的三项批次现由 active 规则 plugin.rule.loop_plus_dependency_review_order 的四项上限及新批次依赖选序替换，无需新工作时允许空的 subtasks，不把局部验收缺口作为整体串行屏障。修复关联失败事件并复用来源会话，独立交付通过 independentSubtaskIds 显式声明且不自动继承修复会话；任务须在事件关联或独立列表中恰好归属一次。只派修复或留下可用槽位时在沟通文件记录真实依赖、写入占用、已排队容量或无独立边界的原因。任务声明窄写入范围和真实互斥资源，已知共同写入和相同冲突组仍串行；共享只读上下文和极少量可局部协调的附带修改不取消主体并行。编码子任务重读最新文件、保留他人改动并汇报局部协调；同符号或共享契约竞争需主模型重排。默认多任务协议示例共同遵守单次派发和宿主并发限制，提示引导不保证真实模型固定并行数量。scheduler pending 只保留候选 FIFO 顺序，不占槽、不预留写范围或冲突组；候选只与已有 running 和本轮已提升项比较，允许越过仍冲突的 pending 安全回填。冲突释放后最早可运行项优先，人工中断开放 attempt 仍占用资源。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -5817,7 +5826,7 @@
     {
       "id": "plugin.rule.loop_plus_max_acceptances",
       "name": "Loop+ 最多验收次数可配置",
-      "description": "2026-11-17 已移除最多验收次数配置及验收额度门禁。由 plugin.rule.loop_plus_subtask_rounds 的子任务轮次预算替代；旧配置不自动迁移为新预算。",
+      "description": "2026-11-17 已移除最多验收次数配置及验收额度门禁。后续未以累计子任务派发额度替代；Loop+ 不设父任务级总量上限，单次派发和并发容量由现行设置分别约束。",
       "status": "historical",
       "applies_to": [
         "plugin.loop_task",
@@ -6087,7 +6096,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "除需求变更明确撤销的交付（plugin.rule.loop_plus_cancel_acceptance）外，Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。历史行为是在 review 启动时冻结 FIFO 前最多 3 个完成事件；当前已主审合同为新批次依赖优先、最多 4 项且不等凑满，见 active 规则 plugin.rule.loop_plus_dependency_review_order。冻结的有序 eventId 与已见用户消息/报告前缀在当前批次保持，其余已有及后到事件留后续新批次，不 abort、不扩批、不重问。有可领取项即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；子任务轮次预算只限制新 attempt。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
+      "description": "除需求变更明确撤销的交付（plugin.rule.loop_plus_cancel_acceptance）外，Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。历史行为是在 review 启动时冻结 FIFO 前最多 3 个完成事件；当前已主审合同为新批次依赖优先、最多 4 项且不等凑满，见 active 规则 plugin.rule.loop_plus_dependency_review_order。冻结的有序 eventId 与已见用户消息/报告前缀在当前批次保持，其余已有及后到事件留后续新批次，不 abort、不扩批、不重问。有可领取项即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；累计子任务派发不设总预算，单次派发与并发容量仍独立受限。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -7257,8 +7266,8 @@
     {
       "id": "plugin.rule.loop_plus_subtask_rounds",
       "name": "Loop/Loop+ 子任务轮次上限",
-      "description": "工具设置“AI任务配置”提供「Loop/Loop+ 子任务轮次上限」，全局键 loopPlusSubtaskMaxRounds，默认 200、范围 50–9999。每个父任务独立按新派发或重派的子任务累计，包含并行、排队和免验收；重试、恢复同次执行和队列提升不重复计数，关闭不返还额度。经典 Loop 持久化 classicSubtaskDispatchCount，Loop+ 使用 seenAttempts。当前设置约束下一次派发，超额不接纳新批次；保留已有任务、结果及已确认验收，不阻挡已有结果的复核或最终完成。旧 loopMaxRounds 与旧验收次数设置不参与调度。",
-      "status": "active",
+      "description": "已退役的父任务级累计子任务派发上限。历史全局设置 loopPlusSubtaskMaxRounds、任务记录中的同名字段及旧累计计数均被忽略，不再限制经典 Loop 或 Loop+ 派发；单次派发数量和并发容量由现行设置独立约束。",
+      "status": "historical",
       "applies_to": [
         "plugin.loop_task",
         "plugin.chat_panel"
@@ -8264,10 +8273,6 @@
         },
         {
           "path": "src/test/extensionHost/loopPlusOrchestration.test.ts"
-        },
-        {
-          "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",
-          "anchor": "按父任务累计的子任务派发预算"
         }
       ]
     },
@@ -8312,7 +8317,7 @@
     {
       "id": "plugin.rule.refresh_tool_settings_on_open",
       "name": "打开工具设置时重读全局参数",
-      "description": "每次打开工具设置时，Webview 请求扩展宿主重读 ~/.sinitek_cli/settings.json 并替换缓存，通过 PanelState 回显其他窗口已保存的值。刷新不写全局配置，不覆盖工作区独立设置。文件缺失或无效时沿用默认值规则。",
+      "description": "每次打开工具设置时，Webview 请求扩展宿主重读 ~/.sinitek_cli/settings.json 和当前工作区的 ~/.sinitek_cli/workspace-settings/<workspaceKey>.json，并通过 PanelState 回显其他窗口的最新值。全局字段更新及工作区字段更新都在跨进程锁内基于磁盘最新文档合并并原子保存；已加载工作区快照保存时仅应用相对加载基线的字段差异，保留其它窗口的新值与显式删除。刷新不写配置，不覆盖工作区独立设置。通知应用级旧值仅在新全局字段缺失时迁移一次。文件缺失或无效时沿用默认值规则，异步回包不覆盖正在编辑的聚焦输入。",
       "status": "active",
       "aliases": [
         "refreshToolSettings",
@@ -8335,6 +8340,18 @@
         {
           "path": "src/toolSettings.ts",
           "anchor": "reloadToolSettings"
+        },
+        {
+          "path": "src/workspaceSettingsStore.ts",
+          "anchor": "tryUpdateWorkspaceSettings"
+        },
+        {
+          "path": "src/extension.ts",
+          "anchor": "reloadWorkspaceSettings"
+        },
+        {
+          "path": "src/sessionMessageHandlers.ts",
+          "anchor": "refreshToolSettings"
         }
       ]
     },
@@ -8616,13 +8633,39 @@
     {
       "id": "plugin.rule.department_leader_group_chat_session",
       "name": "组长群聊沿用组织执行会话",
-      "description": "组长群聊提问与调度回合同用按 Tab 排队的执行入口，校验运行状态、持久原生会话及可执行代次后由原 Owner 回答。群聊继续向通过组织归属校验的当前组长调度器提交需求。已停止的组长经总监的组织继续入口恢复。组长回合跳过普通会话压缩。",
+      "description": "组长群聊提问与调度回合同用按 Tab 排队的执行入口。新 Loop+ 组长在同一普通会话中处理提问；历史 Owner 组长仍核对原会话和代次并跳过普通压缩。群聊继续向当前组长调度器提交需求，已正常停止的组长经总监组织入口继续。",
       "status": "active",
       "applies_to": ["plugin.department_task", "plugin.chat_panel"],
       "source_refs": [
         { "path": "src/extension.ts" },
         { "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts" },
         { "path": "src/extensionHost/promptInteractiveRuntime.ts" },
+        { "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md" }
+      ]
+    },
+    {
+      "id": "plugin.rule.department_loop_plus_execution",
+      "name": "新产研部组长和员工复用普通 Loop+",
+      "description": "新根固化 executionMode=loop-plus，组长继承且与根一致。主回合、员工执行、停止、失败复核、会话续接和正常验收归普通 Loop+；组织只做编排、占用统计和汇报，不用独立 Owner 账本、清理回执或员工额度准入。员工以真实工作区为执行目录，Grok 和 DSH 沿用原会话目录。历史无标记任务继续遵循 Owner 规则，不迁移或自动重跑。",
+      "status": "active",
+      "applies_to": ["plugin.department_task", "plugin.extension_host"],
+      "source_refs": [
+        { "path": "src/department.ts" },
+        { "path": "src/extension.ts" },
+        { "path": "src/extensionHost/departmentorchestration.ts" },
+        { "path": "src/extensionHost/loopPlusRuntimeAdapter.ts" },
+        { "path": ".ch/docs/design-docs/department-mode.md" }
+      ]
+    },
+    {
+      "id": "plugin.rule.group_chat_bubble_clipboard",
+      "name": "群聊气泡经宿主复制纯文本",
+      "description": "正文及提问气泡支持整条原文复制和选区复制，编辑框不拦截。组长弹窗不放宽沙箱；转发经过现有 frame、通道和 task/instance 校验，宿主仅接收有界非空文本。",
+      "status": "active",
+      "applies_to": ["plugin.chat_panel"],
+      "source_refs": [
+        { "path": "src/webview/loopGroupChatPanel.ts" },
+        { "path": "src/webview/departmentGroupChatModal.ts" },
         { "path": ".ch/docs/design-docs/department-group-chat-ui-contract.md" }
       ]
     },

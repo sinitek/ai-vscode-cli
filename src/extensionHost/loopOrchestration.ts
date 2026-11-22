@@ -17,13 +17,13 @@ import { LOOP_SUBTASK_PROMPT_MIN_LENGTH } from "../loopPromptBuilders";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
-import { resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds } from "../loopPlusDecision";
+import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 import { appendLoopSubtaskFailureEvidence, describeLoopSubtaskError, getLoopSubtaskFailureLines } from "../loopSubtaskFailure";
 import { getErrorInfo } from "../promptRetry";
 import { findLoopLiveDispatchConflict } from "../loopParallel";
-import { getClassicLoopSubtaskDispatchCount, getLoopDecisionSubtasks, upsertLoopTransitionSubtasks } from "./loopTaskStateMachine";
+import { getLoopDecisionSubtasks, upsertLoopTransitionSubtasks } from "./loopTaskStateMachine";
 import { setTimeout as delay } from "node:timers/promises";
 
 export const LOOP_SUBTASK_LAUNCH_INTERVAL_MS = 1000;
@@ -112,7 +112,6 @@ type LoopOrchestrationRequiredHostDeps =
   >
   & {
     decisionSubtaskMax?: () => number;
-    subtaskRoundLimit?: () => number;
     isTabRunActive?: (tabId: string) => boolean;
     getLatestLoopRoundRunRecord?: PromptRunRuntimeHostApi["getLatestLoopRoundRunRecord"];
     hasActiveSubtasks?: (taskId: string) => boolean;
@@ -419,11 +418,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       decision = { ...decision, finalSummary: appendLoopSubtaskFailureEvidence(decision.finalSummary,
         getLoopSubtaskFailureLines(readLoopTaskRecord(taskId)?.subTasks ?? [])) };
     }
-    const decisionResult = applyLoopMainDecision(
-      taskId,
-      decision,
-      resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.()),
-    );
+    const decisionResult = applyLoopMainDecision(taskId, decision);
     if (decisionResult.status === "completed") {
       return { status: "completed", task: decisionResult.task, decision };
     }
@@ -1364,13 +1359,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       ...buildLoopSupplementalRequirementsLines(task),
       "原始目标：", rootPrompt, continuePrompt ?? "",
     ].join("\n");
-    const subtaskRoundLimit = resolveLoopPlusSubtaskMaxRounds(deps.subtaskRoundLimit?.());
-    const usedSubtaskRounds = getClassicLoopSubtaskDispatchCount(task);
-    const remainingSubtaskRounds = Math.max(0, subtaskRoundLimit - usedSubtaskRounds);
-    const subtaskMax = Math.min(remainingSubtaskRounds, resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.()));
-    const dispatchInstruction = subtaskMax > 0
-      ? `当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`
-      : "子任务轮次额度已用尽：不得返回 continue。仍应根据已有汇报复核，任务已完成则正常收尾；仍需派发则说明原因并返回 blocked。";
+    const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
     const taskId = task.id;
     const taskFile = task.taskStoreFile;
     const communication = getLoopCommunicationPaths(taskId);
@@ -1379,7 +1368,6 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "你正在执行 VS Code 插件的 Loop 模式主任务。",
       `Loop 任务 ID：${taskId}`,
       `当前轮次：${round}`,
-      `子任务轮次：已用 ${usedSubtaskRounds}/${subtaskRoundLimit}，剩余 ${remainingSubtaskRounds}。每个新增派发或重派的子任务单独计 1 轮；同次执行的重试或恢复不重复计数。`,
       `当前总体进度：${task.loopProgressPercent ?? 0}%`,
       `任务记录文件：${taskFile}`,
       `沟通目录：${communication.dir}`,
@@ -1388,7 +1376,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "",
       "Loop 模式原理（必须遵守）：",
       "1. 主任务先判断是否适用简单任务直办；不适用时负责拆分和派发，不直接做具体实现。每轮最终只输出一个 JSON 决策。",
-      `2. ${dispatchInstruction}`,
+      `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
       "3. 子任务运行期间收到用户补充需求时，当前批次可继续运行，程序会唤醒主任务会话评估新增工作；可独立且与所有活动子任务写入范围、冲突组、连续来源均不冲突时，可立即增派并行子任务。无法确认无冲突时，等待现有子任务结束后再派发。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
       "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",

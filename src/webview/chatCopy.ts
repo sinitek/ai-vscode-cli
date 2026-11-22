@@ -55,6 +55,10 @@ export const CHAT_COPY_SCRIPT = `
         if (!value) {
           return;
         }
+        if (typeof copyChatSelectionToHost === "function" && selectedText && copyChatSelectionToHost(selectedText)) {
+          event.preventDefault();
+          return;
+        }
         if (event && event.clipboardData && typeof event.clipboardData.setData === "function") {
           try {
             event.clipboardData.setData("text/plain", value);

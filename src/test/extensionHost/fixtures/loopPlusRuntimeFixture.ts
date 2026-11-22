@@ -474,16 +474,17 @@ export function createLoopPlusRuntimeFixture(options: {
       return () => { completionListeners.delete(listener); };
     },
     resolveThinkingMode: options.resolveThinkingMode ?? (() => "low"),
-    createExecutionRoot: (grokExecutionRootId) => {
+    createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd) => {
       if (rootFailure) {
         throw new Error(rootFailure);
       }
       rootSequence += 1;
       const rootId = rootSequence;
       rootsCreated.push(rootId);
-      const root = options.executionRootFactory?.(grokExecutionRootId);
+      const root = options.executionRootFactory?.(grokExecutionRootId, useWorkspaceCwd);
       return {
         cwd: root?.cwd ?? path.join(rootDir, `root-${rootId}`),
+        isolateProjectInstructions: root?.isolateProjectInstructions,
         dispose: async () => {
           const result = root ? await root.dispose() : { ok: true as const, retainedDirectory: false };
           rootsDisposed.push(rootId);

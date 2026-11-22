@@ -10,6 +10,7 @@ import {
   resolveEffectiveLoopPlusDecisionSubtaskMax,
   saveWorkspaceSettings,
   trySaveWorkspaceSettings,
+  tryUpdateWorkspaceSettings,
   type WorkspaceSettingsStoreOptions,
 } from "../../workspaceSettingsStore";
 import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
@@ -38,6 +39,74 @@ function createOptions(workspaceSettingsDir: string): WorkspaceSettingsStoreOpti
     sanitizeConversationTabRecord: () => null,
   };
 }
+
+test("workspace setting patches reload and preserve concurrent fields", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-patch-"));
+  const options = createOptions(directory);
+  try {
+    saveWorkspaceSettings({ workspaceMemoryEnabled: true, loopPlusDecisionSubtaskMax: 4 }, options);
+    assert.equal(tryUpdateWorkspaceSettings((settings) => {
+      settings.loopPlusDecisionSubtaskMax = 9;
+      return settings;
+    }, options).ok, true);
+    assert.equal(tryUpdateWorkspaceSettings((settings) => {
+      settings.departmentMaxEmployees = 22;
+      return settings;
+    }, options).ok, true);
+    assert.deepEqual(loadWorkspaceSettings(options), {
+      workspaceMemoryEnabled: true,
+      loopPlusDecisionSubtaskMax: 9,
+      departmentMaxEmployees: 22,
+    });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("stale workspace snapshots preserve settings saved by another host", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-stale-snapshot-"));
+  const options = createOptions(directory);
+  const filePath = path.join(directory, "workspace.json");
+  try {
+    saveWorkspaceSettings({
+      currentCli: "codex",
+      thinkingMode: "high",
+      interactiveModeByCli: { codex: "coding" },
+      loopPlusDecisionSubtaskMax: 4,
+    }, options);
+    const stale = loadWorkspaceSettings(options);
+
+    fs.writeFileSync(filePath, JSON.stringify({
+      currentCli: "codex",
+      thinkingMode: "medium",
+      interactiveModeByCli: { codex: "coding", claude: "plan" },
+      loopPlusDecisionSubtaskMax: 7,
+      workspaceMemoryEnabled: false,
+    }), "utf8");
+
+    stale.currentCli = "claude";
+    stale.interactiveModeByCli!.codex = "loop";
+    delete stale.loopPlusDecisionSubtaskMax;
+    assert.equal(trySaveWorkspaceSettings(stale, options).ok, true);
+
+    fs.writeFileSync(filePath, JSON.stringify({
+      currentCli: "claude",
+      thinkingMode: "ultra",
+      interactiveModeByCli: { codex: "loop", claude: "plan" },
+      workspaceMemoryEnabled: false,
+    }), "utf8");
+    stale.interactiveModeByCli!.codex = "plan";
+    assert.equal(trySaveWorkspaceSettings(stale, options).ok, true);
+    assert.deepEqual(loadWorkspaceSettings(options), {
+      currentCli: "claude",
+      thinkingMode: "ultra",
+      interactiveModeByCli: { codex: "plan", claude: "plan" },
+      workspaceMemoryEnabled: false,
+    });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("round-trips department mode and role routes scoped to the director profile", () => {
   const workspaceSettingsDir = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-settings-"));

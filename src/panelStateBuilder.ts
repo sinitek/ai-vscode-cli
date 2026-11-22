@@ -56,14 +56,13 @@ import {
 } from "./loopParallel";
 import {
   LOOP_PLUS_DECISION_SUBTASK_MAX,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
   resolveLoopPlusDecisionSubtaskMax,
-  resolveLoopPlusSubtaskMaxRounds,
 } from "./loopPlusDecision";
 import { normalizeCliEnabledByName, resolveHumanInteractionTimeoutMinutes, resolveNewTaskInteractiveMode } from "./toolSettings";
 import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from "./chatMessageLimit";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders, normalizeWorkspaceDepartmentCapacity } from "./departmentSettings";
 import { resolveModeAvailability } from "./modeAvailability";
+import type { NotificationSettings } from "./toolSettings";
 
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
@@ -85,6 +84,7 @@ export type PanelStateBuilderDeps = {
   processPlatform: NodeJS.Platform;
   cliRulePathsGlobal: Record<CliName, string>;
   getWorkspaceConfiguration: () => PanelConfiguration;
+  getGlobalNotificationSettings?: () => NotificationSettings;
   getAutoAddEditorContextTags: typeof getAutoAddEditorContextTags;
   getEffectiveLongTermMemoryEnabled: () => boolean;
   getGlobalAutoCompactContextAfterRun: () => boolean;
@@ -100,7 +100,6 @@ export type PanelStateBuilderDeps = {
   getGlobalHideInstructionBubbles?: () => boolean;
   getNewTaskInteractiveMode?: () => PanelState["newTaskInteractiveMode"];
   getGlobalLoopPlusDecisionSubtaskMax?: () => number;
-  getGlobalLoopPlusSubtaskMaxRounds?: () => number;
   getDepartmentConfigurationScope?: () => string;
   getDepartmentConfigurationIssue?: () => string | null;
   getDepartmentDirector?: () => import("./departmentConfiguration").DepartmentConfiguredRoleRoute | undefined;
@@ -182,6 +181,12 @@ function normalizeOpenCodeModelsForPanelState(
 
 export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState {
   const config = deps.getWorkspaceConfiguration();
+  const notifications = deps.getGlobalNotificationSettings?.() ?? {
+    humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
+    taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
+    humanInteractionWindowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
+    taskCompletionWindowAttention: config.get<boolean>("taskCompletionWindowAttention", true),
+  };
   const currentConfigState = deps.configStateByCli?.[deps.currentCli];
   const modelConfigId = currentConfigState
     ? currentConfigState.activeConfigId
@@ -210,10 +215,7 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     autoCompactContextAfterRun: deps.getGlobalAutoCompactContextAfterRun(),
     humanInteractionEnabled: deps.getGlobalHumanInteractionEnabled(),
     ...resolveModeAvailability({ loopEnabled: deps.getGlobalLoopEnabled?.(), loopPlusEnabled: deps.getGlobalLoopPlusEnabled?.(), departmentEnabled: deps.getGlobalDepartmentEnabled?.() }),
-    humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
-    taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
-    humanInteractionWindowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
-    taskCompletionWindowAttention: config.get<boolean>("taskCompletionWindowAttention", true),
+    ...notifications,
     cliEnabledByName: normalizeCliEnabledByName(deps.getCliEnabledByName?.()) ?? {},
     humanInteractionTimeoutMinutes: resolveHumanInteractionTimeoutMinutes(
       deps.getGlobalHumanInteractionTimeoutMinutes?.(),
@@ -229,9 +231,6 @@ export function buildPanelStateWithDeps(deps: PanelStateBuilderDeps): PanelState
     workspaceLoopPlusDecisionSubtaskMax: normalizeWorkspaceLoopPlusDecisionSubtaskMax(
       deps.workspaceSettings.loopPlusDecisionSubtaskMax,
     ) ?? null,
-    loopPlusSubtaskMaxRounds: resolveLoopPlusSubtaskMaxRounds(
-      deps.getGlobalLoopPlusSubtaskMaxRounds?.() ?? LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
-    ),
     departmentMaxLeaders: normalizeDepartmentMaxLeaders(deps.getGlobalDepartmentMaxLeaders?.()),
     departmentMaxEmployees: normalizeDepartmentMaxEmployees(deps.getGlobalDepartmentMaxEmployees?.()),
     workspaceDepartmentMaxLeaders: normalizeWorkspaceDepartmentCapacity(deps.workspaceSettings.departmentMaxLeaders) ?? null,

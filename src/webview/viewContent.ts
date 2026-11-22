@@ -10,9 +10,6 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MIN,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
-  LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
 } from "../loopPlusDecision";
 
 
@@ -44,9 +41,6 @@ ${neutralizeInlineScriptEndTags(buildWebviewRuntimeScript({
     loopPlusDecisionSubtaskMaxDefault: LOOP_PLUS_DECISION_SUBTASK_MAX,
     loopPlusDecisionSubtaskMaxMin: LOOP_PLUS_DECISION_SUBTASK_MIN,
     loopPlusDecisionSubtaskMaxLimit: LOOP_PLUS_DECISION_SUBTASK_LIMIT,
-    loopPlusSubtaskMaxRoundsDefault: LOOP_PLUS_SUBTASK_MAX_ROUNDS_DEFAULT,
-    loopPlusSubtaskMaxRoundsMin: LOOP_PLUS_SUBTASK_MAX_ROUNDS_MIN,
-    loopPlusSubtaskMaxRoundsLimit: LOOP_PLUS_SUBTASK_MAX_ROUNDS_LIMIT,
     finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   }))}
     </script>

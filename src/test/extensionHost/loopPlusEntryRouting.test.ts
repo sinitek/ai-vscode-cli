@@ -9,6 +9,7 @@ import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { askLoopMainModelSession } from "../../loopMainQuestion";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
 import { leaderExecutionScopeKey } from "../../extensionHost/departmentleaderexecutionledger";
+import { usesDepartmentOwner } from "../../department";
 import type { PromptRunInput } from "../../promptRunTypes";
 import type { ChatMessage } from "../../webview/types";
 
@@ -53,9 +54,9 @@ function productionLoopMainEntries() {
   `, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 }
 
-test("production ask uses Tab occupancy and shared FIFO rather than pending decisions", async () => {
+for (const department of [undefined, { role: "leader", executionMode: "loop-plus" }] as const) test(`production ask uses Tab occupancy and shared FIFO (${department ? "department Loop+" : "ordinary Loop+"})`, async () => {
   const task = { id: "task", cli: "codex", status: "running", sessionId: "original-session", schedulingMode: "event_driven",
-    workspaceKey: "workspace", taskStoreFile: "/fixture/tasks.json", supplementalRequirements: ["待处理补充需求"] };
+    workspaceKey: "workspace", taskStoreFile: "/fixture/tasks.json", supplementalRequirements: ["待处理补充需求"], department };
   const target = { tabId: "main-tab", cli: task.cli, sessionId: task.sessionId };
   const events: string[] = [];
   const messages: ChatMessage[] = [];
@@ -66,6 +67,7 @@ test("production ask uses Tab occupancy and shared FIFO rather than pending deci
   const mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
   const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
   const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+    usesDepartmentOwner,
     isExtensionDeactivating: false,
     readLoopTaskRecord: () => { taskReads += 1; return task; },
     resolveLoopMainPromptTarget: () => ({ ...target }),
@@ -158,6 +160,7 @@ for (const cli of ["codex", "opencode"] as const) {
       messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
     };
     const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+      usesDepartmentOwner,
       AbortController,
       isExtensionDeactivating: false,
       activeWorkspaceKey: task.workspaceKey,

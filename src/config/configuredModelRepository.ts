@@ -3,7 +3,7 @@ import { parseCodexConfigModel } from "../cli/codexConfigModel";
 import { parseGrokConfigModels, resolveGrokConfigModel, type GrokConfigModels } from "../cli/grokConfigModels";
 import { parseDshConfigModels, readDshModelWireForRun, resolveDshConfigModel, type DshConfigModels } from "../cli/dshConfigModels";
 import { parseKimiCodeConfigModels, resolveKimiCodeConfigModel, type KimiCodeConfigModels } from "./kimiCodeConfig";
-import { readZcodeConfigModels, resolveZcodeModelWireForRun, type ZcodeConfigModels } from "./zcodeConfig";
+import { parseZcodeModelConfig, readZcodeConfigModels, resolveParsedZcodeModelWireForRun, type ZcodeConfigModels } from "./zcodeConfig";
 import { t } from "../i18n";
 
 type ConfiguredModelCli = "codex" | "grok" | "dsh" | "kimi-code" | "zcode";
@@ -148,8 +148,10 @@ export class ConfiguredModelRepository {
 
   async resolveZcodeModelWireForRun(selectedModel: string | null, getActiveConfigId: () => string | null): Promise<string> {
     const content = (await this.reader.getCurrentConfig("zcode")).content ?? "";
-    this.zcodeModelsByConfigId.set(getActiveConfigId(), readZcodeConfigModels(content));
-    return resolveZcodeModelWireForRun(content, selectedModel);
+    const configId = getActiveConfigId();
+    const parsed = parseZcodeModelConfig(content);
+    this.zcodeModelsByConfigId.set(configId, parsed.config);
+    return resolveParsedZcodeModelWireForRun(parsed, selectedModel);
   }
 
   private async readDshConfigForRun(configId: string | null): Promise<DshConfigModels> {

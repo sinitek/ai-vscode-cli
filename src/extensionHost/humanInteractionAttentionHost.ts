@@ -5,6 +5,7 @@ import { createDesktopAttentionTransport } from "../desktopAttention";
 import { createHumanInteractionAttentionController } from "../humanInteractionAttention";
 import { CONFIG_NAMESPACE } from "../cli/config";
 import type { DesktopNotificationAuthorization } from "../desktopNotificationAuthorization";
+import type { NotificationSettings } from "../toolSettings";
 
 const WINDOWS_NOTIFICATION_GUIDANCE_KEY = "windowsNotificationSettingsOpened.v1";
 
@@ -12,6 +13,15 @@ export function createHumanInteractionAttentionHost(
   context: vscode.ExtensionContext,
   onError: (channel: "notification" | "window", error: unknown) => void,
   resolveWorkspaceCwd: () => string | undefined,
+  readPreferences: () => NotificationSettings = () => {
+    const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+    return {
+      humanInteractionNotifications: config.get<boolean>("humanInteractionNotifications", true),
+      taskCompletionNotifications: config.get<boolean>("taskCompletionNotifications", true),
+      humanInteractionWindowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
+      taskCompletionWindowAttention: config.get<boolean>("taskCompletionWindowAttention", true),
+    };
+  },
 ) {
   let appUserModelId: string | undefined;
   if (process.platform === "win32") {
@@ -81,8 +91,8 @@ export function createHumanInteractionAttentionHost(
     }
   };
   const initializeAuthorization = () => {
-    const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-    if (!isLocal() || (!config.get<boolean>("humanInteractionNotifications", true) && !config.get<boolean>("taskCompletionNotifications", true))) {
+    const preferences = readPreferences();
+    if (!isLocal() || (!preferences.humanInteractionNotifications && !preferences.taskCompletionNotifications)) {
       return;
     }
     if (process.platform === "darwin") {
@@ -98,19 +108,23 @@ export function createHumanInteractionAttentionHost(
     isFocused: () => vscode.window.state.focused,
     isLocal,
     readSettings: () => {
-      const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
+      const preferences = readPreferences();
       return {
-        notifications: config.get<boolean>("humanInteractionNotifications", true),
-        windowAttention: config.get<boolean>("humanInteractionWindowAttention", true),
+        notifications: preferences.humanInteractionNotifications,
+        windowAttention: preferences.humanInteractionWindowAttention,
         taskCompletion: {
-          notifications: config.get<boolean>("taskCompletionNotifications", true),
-          windowAttention: config.get<boolean>("taskCompletionWindowAttention", true),
+          notifications: preferences.taskCompletionNotifications,
+          windowAttention: preferences.taskCompletionWindowAttention,
         },
       };
     },
     transport,
     onError,
   });
+  const refreshPreferences = () => {
+    void controller.refresh();
+    initializeAuthorization();
+  };
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState(() => { void controller.refresh(); }),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -118,11 +132,10 @@ export function createHumanInteractionAttentionHost(
         || event.affectsConfiguration(`${CONFIG_NAMESPACE}.humanInteractionWindowAttention`)
         || event.affectsConfiguration(`${CONFIG_NAMESPACE}.taskCompletionNotifications`)
         || event.affectsConfiguration(`${CONFIG_NAMESPACE}.taskCompletionWindowAttention`)) {
-        void controller.refresh();
-        initializeAuthorization();
+        refreshPreferences();
       }
     }),
     new vscode.Disposable(() => { void controller.dispose(); }),
   );
-  return { ...controller, notificationAuthorization };
+  return { ...controller, notificationAuthorization, refreshPreferences };
 }

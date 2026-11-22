@@ -18,8 +18,6 @@ export const LOOP_BLOCKED_SUMMARY_INSTRUCTION = [
 ].join("\n");
 
 export const LOOP_BLOCKED_SUMMARY_EXAMPLE = buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE);
-export const CLASSIC_LOOP_SUBTASK_LIMIT_SUMMARY_PREFIX = "Loop 子任务轮次不足";
-
 export function normalizeLoopBlockedSummary(summary: string | null | undefined): string {
   return summary?.trim() || [
     "### 当前结论",
@@ -41,7 +39,6 @@ export function buildLoopBlockedPauseText(task: {
   const isPause = isLoopMainAiFailureLimitReached(task)
     || normalizeLoopMainAiFailureCount(task.mainAiFailureCount) > 0
     || task.finalSummary?.trim().startsWith(LOOP_PLUS_PROTOCOL_PAUSE_HEADING)
-    || task.finalSummary?.trim().startsWith(CLASSIC_LOOP_SUBTASK_LIMIT_SUMMARY_PREFIX)
     || task.finalSummary?.trim() === "Main task did not return a valid loop decision JSON.";
   const headline = isPause
     ? `${mode} 已暂停，整体任务尚未完成。`

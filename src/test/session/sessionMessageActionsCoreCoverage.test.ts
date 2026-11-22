@@ -373,21 +373,6 @@ test("persists the human interaction timeout as a global setting", async () => {
   assert.equal(calls.postPanelState, 4);
 });
 
-test("persists the Loop+ subtask round limit as a global setting", async () => {
-  const { deps, calls } = createSettingHarness();
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: "100.2" }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 0 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: 10000 }, deps);
-  await handleUpdateSettingMessage({ type: "updateSetting", key: "loopPlusSubtaskMaxRounds", value: "nope" }, deps);
-  assert.deepEqual(calls.toolSettings, [
-    { loopPlusSubtaskMaxRounds: 100 },
-    { loopPlusSubtaskMaxRounds: 50 },
-    { loopPlusSubtaskMaxRounds: 9999 },
-    { loopPlusSubtaskMaxRounds: 200 },
-  ]);
-  assert.equal(calls.postPanelState, 4);
-});
-
 test("persists only the normalized global chat message limit and returns panel state", async () => {
   const { deps, calls, state } = createSettingHarness();
   const originalSettings = { ...state.workspaceSettings };
@@ -1004,33 +989,26 @@ test("keeps optional callback fallbacks and their existing model-store reload bo
   }
   assert.deepEqual(calls.selectedLoopModels, []);
   assert.deepEqual(calls.savedSettings, []);
-  assert.deepEqual(calls.toolSettings, []);
+  assert.deepEqual(calls.toolSettings, [{ taskCompletionNotifications: true }]);
 });
 
-test("catches rejected notification saves with the existing Chinese errors and refreshes once", async () => {
+test("reports failed notification setting writes and refreshes once", async () => {
   for (const key of [
     "humanInteractionNotifications", "taskCompletionNotifications",
     "humanInteractionWindowAttention", "taskCompletionWindowAttention",
   ]) {
     const { deps, calls } = createSettingHarness();
     const errors: unknown[][] = [];
-    const updates: unknown[][] = [];
     deps.showWebviewError = (...args) => { errors.push(args); };
-    for (const failure of [new Error("只读配置"), "denied"]) {
-      deps.updateNotificationSetting = async (...args) => { updates.push(args); throw failure; };
-      const refreshes = calls.postPanelState;
-      await handleUpdateSettingMessage({ type: "updateSetting", key, value: false }, deps);
-      assert.equal(calls.postPanelState, refreshes + 1, key);
-    }
+    deps.updateStoredToolSettings = (patch) => { calls.toolSettings.push(patch); return false; };
+    const refreshes = calls.postPanelState;
+    await handleUpdateSettingMessage({ type: "updateSetting", key, value: false }, deps);
+    assert.equal(calls.postPanelState, refreshes + 1, key);
     await handleUpdateSettingMessage({ type: "updateSetting", key, value: "false" }, deps);
-    assert.deepEqual(updates, [[key, false], [key, false]]);
-    assert.deepEqual(errors, [
-      ["通知设置", "保存通知设置失败：只读配置"],
-      ["通知设置", "保存通知设置失败，请重试。"],
-    ]);
-    assert.equal(calls.postPanelState, 3);
+    assert.deepEqual(calls.toolSettings, [{ [key]: false }]);
+    assert.deepEqual(errors, [["通知设置", "保存通知设置失败，请重试。"]]);
+    assert.equal(calls.postPanelState, 2);
     assert.deepEqual(calls.savedSettings, []);
-    assert.deepEqual(calls.toolSettings, []);
   }
 });
 
@@ -1085,7 +1063,7 @@ test("does not switch, retarget, or publish CLI availability when persistence fa
   await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: false }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: "false" }, deps);
   await handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex.extra", value: false }, deps);
-  assert.deepEqual(calls.toolSettings, [{ cliEnabledByName: { codex: false, opencode: false } }]);
+  assert.deepEqual(calls.toolSettings, [{ cliEnabledByName: { codex: false } }]);
   assert.deepEqual(previous, { codex: true, claude: "false", opencode: false, unknown: true });
   assert.deepEqual(sideEffects, []);
   assert.equal(calls.postPanelState, 3);
@@ -1098,9 +1076,20 @@ test("awaits the CLI switch before retargeting, publishing, and refreshing a sav
   let finishSwitch!: () => void;
   const switchGate = new Promise<void>((resolve) => { finishSwitch = resolve; });
   const previous = { codex: true, claude: "false", opencode: false, unknown: true };
+  let stored: ToolSettingsState = { cliEnabledByName: { codex: true, opencode: false } };
   deps.getCurrentCli = () => currentCli;
-  deps.readStoredToolSettings = () => ({ cliEnabledByName: previous as unknown as CliEnabledByName });
-  deps.updateStoredToolSettings = (patch) => { events.push(["save", patch]); return true; };
+  deps.readStoredToolSettings = () => stored;
+  deps.updateStoredToolSettings = (patch) => {
+    events.push(["save", patch]);
+    stored = {
+      ...stored,
+      ...patch,
+      ...(patch.cliEnabledByName
+        ? { cliEnabledByName: { ...stored.cliEnabledByName, ...patch.cliEnabledByName } }
+        : {}),
+    };
+    return true;
+  };
   deps.setCurrentCli = async (cli) => {
     events.push(["switch-start", cli]);
     await switchGate;
@@ -1113,7 +1102,7 @@ test("awaits the CLI switch before retargeting, publishing, and refreshing a sav
   const pending = handleUpdateSettingMessage({ type: "updateSetting", key: "cliEnabled.codex", value: false }, deps);
   try {
     assert.deepEqual(events, [
-      ["save", { cliEnabledByName: { codex: false, opencode: false } }],
+      ["save", { cliEnabledByName: { codex: false } }],
       ["switch-start", "claude"],
     ]);
     assert.equal(currentCli, "codex");
@@ -1122,7 +1111,7 @@ test("awaits the CLI switch before retargeting, publishing, and refreshing a sav
     await pending;
   }
   assert.deepEqual(events, [
-    ["save", { cliEnabledByName: { codex: false, opencode: false } }],
+    ["save", { cliEnabledByName: { codex: false } }],
     ["switch-start", "claude"],
     ["switch-complete", "claude"],
     ["retarget", "claude", "claude"],

@@ -14,7 +14,7 @@ import type { LoopTaskRecord } from "../loopTaskStore";
 import { buildDepartmentRolePrompt } from "../departmentprompts";
 import type { DepartmentMetadata } from "../department";
 import type { DepartmentEmployeeCapacity } from "../departmentcapacity";
-import { isDepartmentExecutionCli, normalizeDepartmentMetadata } from "../department";
+import { isDepartmentExecutionCli, normalizeDepartmentMetadata, usesDepartmentOwner } from "../department";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { FirstLoopMainExecution } from "./promptRunHandoff";
 import type { ConfigLockResumeRequest } from "./loopGroupChatPanelCoordinator";
@@ -79,7 +79,6 @@ export type LoopPlusRuntimeAdapterDeps = {
   getActiveConfigIdForCli?: (cli: LoopPlusPromptTarget["cli"]) => string | null;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
-  subtaskRoundLimit?: LoopPlusOrchestrationDeps["subtaskRoundLimit"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   isInvocationActive?: (tabId: string) => boolean;
@@ -127,7 +126,11 @@ export type LoopPlusRuntimeAdapterDeps = {
     role: "main" | "subtask",
     model: string | undefined,
   ) => ThinkingMode | undefined;
-  createExecutionRoot: (grokExecutionRootId?: string) => { cwd?: string; dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult> } | null;
+  createExecutionRoot: (grokExecutionRootId?: string, useWorkspaceCwd?: boolean) => {
+    cwd?: string;
+    isolateProjectInstructions?: boolean;
+    dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult>;
+  } | null;
   /** Trusted runner observation bound to this invocation, installed before execution.
    * done must prove actual termination (including runner cleanup), never task-end records or runPrompt settlement.
    * Missing observation quarantines department occupancy; ordinary Loop+ retains its legacy behavior.
@@ -456,10 +459,11 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
       if (options.firstMainExecution) {
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
-      } else if (role === "main" && (task?.department?.role === "leader" || task?.departmentInvalid)) {
+      } else if (role === "main" && (usesDepartmentOwner(task?.department) || task?.departmentInvalid)) {
+        if (!task) throw new Error("部门执行任务不存在。");
         if (!deps.runDepartmentMain || !isDepartmentExecutionCli(task.cli)) throw new Error("部门组长原生 Owner 路径未支持，拒绝普通执行回退。");
         await deps.runDepartmentMain(promptInput, { ...options, targetTabId: target.tabId, invocationId: randomUUID() });
-      } else if (role === "subtask" && (task?.department?.role === "leader" || task?.departmentInvalid)) {
+      } else if (role === "subtask" && (usesDepartmentOwner(task?.department) || task?.departmentInvalid)) {
         // Owner termination is the Department cleanup authority. An ordinary
         // lost-promise race must not release its resources or shared capacity.
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
@@ -490,7 +494,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
       return { thrown: false, error: null, completedRun, boundary, promptInput, target };
     } catch (error) {
-      if (role === "main" && !options.firstMainExecution && deps.readTask(promptInput.loopTaskId ?? "")?.department?.role === "leader") {
+      if (role === "main" && !options.firstMainExecution && usesDepartmentOwner(deps.readTask(promptInput.loopTaskId ?? "")?.department)) {
         const unknown = new Error(error instanceof Error ? error.message : String(error)) as Error & { code: string; cause: unknown };
         unknown.code = "DEPARTMENT_NATIVE_UNKNOWN"; unknown.cause = error;
         return { thrown: true, error: unknown, completedRun, boundary, promptInput, target };
@@ -506,7 +510,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const trace = deps.createPerformanceTrace?.("loop_plus", request.target.cli, "main");
     const firstMainExecution = request.firstMainExecution;
     let aborted = false;
-    const departmentMain = deps.readTask(request.taskId)?.department?.role === "leader";
+    const departmentMain = usesDepartmentOwner(deps.readTask(request.taskId)?.department);
     const controller = departmentMain || firstMainExecution ? new AbortController() : undefined;
     let invocationStarted = false;
     if (firstMainExecution) firstMainExecution.claimed = true;
@@ -617,7 +621,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     let settled = false;
     let departmentLease = false;
     let departmentAdmissionDenied = false;
-    const ownerResources = deps.ownsDepartmentAttemptResources?.(request) === true;
+    const ownerResources = task?.department?.executionMode !== "loop-plus" && deps.ownsDepartmentAttemptResources?.(request) === true;
     let cleanupFailure: unknown;
     let cleanupFailed = false;
     let resolveCleaned!: () => void;
@@ -758,7 +762,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         loopTaskId: request.taskId,
         loopSubtaskId: request.subtaskId,
       });
-      if (task?.department?.role === "leader") deps.recordDepartmentSubtaskTarget?.(target);
+      if (usesDepartmentOwner(task?.department)) deps.recordDepartmentSubtaskTarget?.(target);
       return target;
     }
 
@@ -779,7 +783,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       const acquisition = departmentExecutionAdmission
         ? departmentExecutionAdmission(request, controller.signal).then((acquired) => {
           departmentAdmissionDenied = acquired === null;
-          departmentLease = acquired !== null && acquired !== undefined;
+          departmentLease = task?.department?.executionMode !== "loop-plus" && acquired !== null && acquired !== undefined;
           return acquired !== undefined ? acquired
             : controller.signal.aborted ? null : deps.acquireAttemptExecution ? deps.acquireAttemptExecution(request, controller.signal) : undefined;
         })
@@ -813,7 +817,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
 
     function continuationSourceChanged(): boolean {
-      if (task?.department?.role !== "leader" || request.targetCli !== "codex"
+      if (!usesDepartmentOwner(task?.department) || request.targetCli !== "codex"
         || continuation.sourceSubtaskId === request.subtaskId) return false;
       const latest = deps.readTask(request.taskId);
       return !latest || latest.status !== "running"
@@ -822,7 +826,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
 
     function persistSession(sessionId = subtaskTarget ? deps.resolveSessionId(subtaskTarget) : null): void {
-      if (task?.department?.role === "leader" && request.targetCli === "grok") return;
+      if (usesDepartmentOwner(task?.department) && request.targetCli === "grok") return;
       const latest = deps.readTask(request.taskId);
       if (!sessionId || !latest) {
         return;
@@ -830,7 +834,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       const recorded = latest.subTasks.find((item) => item.id === request.subtaskId)?.executionSession;
       // The native Owner coordinator is the sole Department Codex binding writer.
       // A tab target is only a transcript key and must never replace that record.
-      if (task?.department?.role === "leader" && request.targetCli === "codex") {
+      if (usesDepartmentOwner(task?.department) && request.targetCli === "codex") {
         if (!recorded || recorded.cli !== "codex" || recorded.configId !== configId
           || recorded.sessionId !== sessionId || (continuation.sessionId && recorded.sessionId !== continuation.sessionId)) {
           const error = new Error("department-codex-session-writeback-conflict");
@@ -853,7 +857,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (request.targetCli === "grok" && !grokExecutionRootId) {
         throw new Error("旧版 Grok 子任务没有记录原执行目录，无法安全续接；原会话已保留。");
       }
-      if (task?.department?.role === "leader" && request.targetCli === "codex") {
+      if (usesDepartmentOwner(task?.department) && request.targetCli === "codex") {
         const current = deps.readTask(request.taskId);
         const selected = resolveLoopSubtaskSession(current ?? { subTasks: [] },
           { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
@@ -866,17 +870,19 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       let invocationIssued = false;
       let runnerStarted = false;
       let executionFailure: unknown;
+      const useWorkspaceCwd = task?.department?.executionMode === "loop-plus" && request.targetCli !== "grok" && request.targetCli !== "dsh";
       const rootResult = await withLoopPlusExecutionRoot(
         () => {
           if (ownerResources) return { cwd: undefined, dispose: () => ({ ok: true as const, retainedDirectory: false }) };
           let root: ReturnType<LoopPlusRuntimeAdapterDeps["createExecutionRoot"]>;
-          try { root = deps.createExecutionRoot(grokExecutionRootId); }
+          try { root = deps.createExecutionRoot(grokExecutionRootId, useWorkspaceCwd); }
           catch (error) {
             if ((error as { cleanupResult?: LoopSubtaskCleanupResult })?.cleanupResult?.ok === false) failCleanup(error);
             throw error;
           }
           return {
             cwd: root?.cwd,
+            isolateProjectInstructions: root?.isolateProjectInstructions ?? Boolean(root),
             dispose: async () => {
               try {
                 if (departmentLease && invocationIssued && !(aborted && !runnerStarted)) {
@@ -914,7 +920,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
             promptInput.loopSubtaskId = request.subtaskId;
             const root = executionRoot;
             promptInput.executionCwd = root?.cwd;
-            promptInput.isolateProjectInstructions = Boolean(root);
+            promptInput.isolateProjectInstructions = root && "isolateProjectInstructions" in root
+              ? root.isolateProjectInstructions
+              : Boolean(root);
             if (grokExecutionRootId) {
               if (!root?.cwd) throw new Error("Grok 子任务缺少隔离执行目录。");
               promptInput.grokLoopExecutionRootId = grokExecutionRootId;
@@ -1005,7 +1013,6 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
         decisionSubtaskMax: deps.decisionSubtaskMax,
-        subtaskRoundLimit: deps.subtaskRoundLimit,
         delay: deps.delay,
         now,
         hasActiveSubtasks: deps.hasActiveSubtasks,
@@ -1215,7 +1222,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
     if (result.handled) {
       const id = result.taskId;
-      const department = id && deps.readTask(id)?.department?.role === "leader";
+      const department = id && usesDepartmentOwner(deps.readTask(id)?.department);
       const fence = async () => {
         if (id && department) {
           if (!deps.closeDepartmentCoordinator) throw new Error("部门协调代次缺少生产封闭端口。");

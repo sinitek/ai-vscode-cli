@@ -20,7 +20,7 @@ import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
-import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, resolveLoopPlusSubtaskMaxRounds, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
 import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import {
   buildLoopPlusProtocolPauseSummary,
@@ -87,11 +87,10 @@ import { inheritLoopPlusRepairSessions } from "../loopSubtaskSession";
 import type { LoopPlusReviewItem } from "../loopPlusScheduler";
 
 const DECISION_SAFETY_LIMIT = 200;
-// Each subtask can require dispatch, review and a separate closeout decision.
+// Progressing tasks earn more main decisions; stalled loops remain bounded.
 const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const PROTOCOL_RETRY_LIMIT = 2;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
-const LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY = "Loop+ 子任务轮次不足，请提高“Loop/Loop+ 子任务轮次上限”后继续派发。";
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -212,7 +211,6 @@ export type LoopPlusOrchestrationDeps = {
   protocolRetryLimit?: number;
   launchDelayMs?: (lastLaunchAt: number | null, now: number) => number;
   decisionSubtaskMax?: () => number;
-  subtaskRoundLimit?: () => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
   hasActiveSubtasks?: (taskId: string) => boolean;
@@ -376,9 +374,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   const launchDelayMs = deps.launchDelayMs ?? (() => 0);
   const decisionSubtaskMax = () => resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
   const maxConcurrency = () => deps.maxConcurrency ?? decisionSubtaskMax();
-  const configuredSubtaskRoundLimit = () => resolveLoopPlusSubtaskMaxRounds(
-    deps.subtaskRoundLimit?.(),
-  );
 
   function tryRun(input: LoopPlusRunInput, target: LoopPlusPromptTarget, options: LoopPlusRunOptions = {}): LoopPlusRunResult {
     const resumeTaskId = normalizeId(options.resumeTaskId);
@@ -1082,7 +1077,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     while ((firstMainExecution || !runtime.autoPaused) && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped) {
       const decisionSafetyLimit = firstMainExecution ? Infinity : deps.decisionSafetyLimit ?? Math.max(
         DECISION_SAFETY_LIMIT,
-        Math.max(subtaskRoundLimitFor(runtime), runtime.scheduler.snapshot().seenAttempts.length) * MAIN_DECISIONS_PER_SUBTASK_ROUND,
+        runtime.scheduler.snapshot().seenAttempts.length * MAIN_DECISIONS_PER_SUBTASK_ROUND,
       );
       if (runtime.decisionCount >= decisionSafetyLimit) {
         pause(runtime, "needs-review", "loop-plus-safety-limit");
@@ -1121,7 +1116,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             loopPlusBlockReview: undefined,
             runtimeInterrupted: undefined,
             status: "running",
-            loopPlusSubtaskMaxRounds: configuredSubtaskRoundLimit(),
             supplementalRequirements: execution.resumeRequirements?.(task) ?? task.supplementalRequirements,
           };
           const projectedTask = { ...task, ...patch };
@@ -1338,7 +1332,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (persistClaim) persist(runtime);
       const allowDispatchBeforeReview = !previousStep
         && before.running.length < maxConcurrency()
-        && before.seenAttempts.length < configuredSubtaskRoundLimit()
         && !runtime.protocolRepair && !deps.readTask(runtime.taskId)?.loopPlusBlockReview
         && prepared.items.every((item) => !runtime.recoveredReviewEventIds.has(item.eventId));
       const step = runtime.reviewStep && allowDispatchBeforeReview
@@ -1456,9 +1449,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           ...runtime.reviewStep,
           userMessageCount: pendingCount,
         };
-      },
-      refuseDispatchPastSubtaskRoundLimit(plannedLaunches: number) {
-        return refuseDispatchPastSubtaskRoundLimit(runtime, plannedLaunches);
       },
       applyControls(controls: readonly LoopPlusControlDecision[]) {
         return applyLoopPlusControls(runtime, controls);
@@ -1739,7 +1729,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     const dispatched = dispatchDecisions(runtime, subtasks, { reviewPlan: decision.nextStepPlan, reportEventIds: step.reportEventIds });
     if (dispatched.decisions.length === 0) {
-      return protocolMiss(runtime, true, "验收前只允许在剩余轮次和空槽内立即启动独立任务，不能依赖待确认结果、复用已有任务或与待验收交付冲突。请继续验收冻结批次。", response);
+      return protocolMiss(runtime, true, "验收前只允许在单次派发上限和可用空槽内立即启动独立任务，不能依赖待确认结果、复用已有任务或与待验收交付冲突。请继续验收冻结批次。", response);
     }
     const port = createDecisionPort(runtime, response, step, decision);
     port.persistEstimatedRounds(decision);
@@ -1954,7 +1944,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     subtasks: readonly LoopSubtaskDecision[],
   ): boolean {
     if (subtasks.length === 0 || snapshot.running.length >= maxConcurrency()) return false;
-    if (snapshot.seenAttempts.length + subtasks.length > subtaskRoundLimitFor(runtime)) return false;
     const existingIds = new Set(snapshot.seenAttempts.map((attempt) => attempt.subtaskId));
     const unreviewedEvents = [snapshot.currentReview, ...snapshot.reviewQueue]
       .filter((event): event is LoopPlusReviewItem => event !== null);
@@ -2706,9 +2695,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         : [],
       maxConcurrency: runtime.scheduler.snapshot().maxConcurrency,
       subtaskMax: decisionSubtaskMax(),
-      subtaskRounds: runtime.scheduler.snapshot().seenAttempts.length,
       nextStepPlan: task?.loopPlusNextStepPlan,
-      subtaskRoundLimit: preparingTask ? configuredSubtaskRoundLimit() : subtaskRoundLimitFor(runtime),
       progressPercent: normalizeLoopPlusProgressPercent(task?.loopPlusProgressPercent) ?? 0,
       ...(routing.mode ? { loopSubtaskMode: routing.mode } : {}),
       routingSummary: routing.summary,
@@ -2923,19 +2910,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     });
   }
 
-  function subtaskRoundLimitFor(runtime: ParentRuntime): number {
-    const globalLimit = configuredSubtaskRoundLimit();
-    const task = deps.readTask(runtime.taskId);
-    if (task && task.loopPlusSubtaskMaxRounds !== globalLimit) {
-      updateTask(runtime.taskId, {
-        loopPlusSubtaskMaxRounds: globalLimit,
-        schedulingMode: "event_driven",
-        updatedAt: now(),
-      });
-    }
-    return globalLimit;
-  }
-
   function liveAcceptanceEventIds(snapshot: LoopPlusSchedulerSnapshot): string[] {
     const ids: string[] = [];
     if (snapshot.currentReview) {
@@ -2945,10 +2919,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       ids.push(item.eventId);
     });
     return ids;
-  }
-
-  function pauseForSubtaskRoundLimit(runtime: ParentRuntime): void {
-    pause(runtime, "needs-review", "loop-plus-subtask-round-limit", LOOP_PLUS_SUBTASK_ROUND_LIMIT_SUMMARY);
   }
 
   function applyLoopPlusControls(
@@ -3134,17 +3104,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       attemptId: closed.attemptId,
       action,
     });
-  }
-
-  function refuseDispatchPastSubtaskRoundLimit(
-    runtime: ParentRuntime,
-    subtaskCount: number,
-  ): boolean {
-    if (subtaskCount <= 0 || runtime.scheduler.snapshot().seenAttempts.length + subtaskCount <= subtaskRoundLimitFor(runtime)) {
-      return false;
-    }
-    pauseForSubtaskRoundLimit(runtime);
-    return true;
   }
 
   function hasReview(runtime: ParentRuntime): boolean {

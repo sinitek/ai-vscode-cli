@@ -13,7 +13,6 @@ import {
   confirmedLoopPlusReviewIds,
   createLoopPlusDecisionStrategyRegistry,
   loopPlusDecisionStrategyFor,
-  plannedLoopPlusLaunchCount,
   sameLoopPlusReviewIds,
   type LoopPlusDecisionControlPlan,
   type LoopPlusDecisionInFlightView,
@@ -86,7 +85,6 @@ function names(calls: readonly RecordedCall[]): string[] {
 function createPort(options: {
   views?: LoopPlusDecisionQueueView[];
   inFlight?: LoopPlusDecisionInFlightView[];
-  refuse?: boolean[];
   controlsApplied?: boolean;
   controlPlan?: LoopPlusDecisionControlPlan | null;
   preview?: boolean;
@@ -105,10 +103,8 @@ function createPort(options: {
   };
   const views = options.views ?? [view()];
   const inFlight = options.inFlight ?? [{ runningCount: 0, pendingCount: 0 }];
-  const refuse = options.refuse ?? [false];
   let viewIndex = 0;
   let inFlightIndex = 0;
-  let refuseIndex = 0;
   const record = (name: string, args: unknown[] = []) => {
     calls.push({ name, args });
   };
@@ -152,12 +148,6 @@ function createPort(options: {
     },
     captureRemainingUserMessagesForHeldReview() {
       record("captureRemainingUserMessagesForHeldReview");
-    },
-    refuseDispatchPastSubtaskRoundLimit(plannedLaunches) {
-      record("refuseDispatchPastSubtaskRoundLimit", [plannedLaunches]);
-      const refused = next(refuse, refuseIndex);
-      refuseIndex += 1;
-      return refused;
     },
     applyControls(controls) {
       record("applyControls", [controls]);
@@ -244,7 +234,7 @@ test("registry routes every decision status to a distinct strategy", () => {
   );
 });
 
-test("review id helpers keep FIFO order and reprompt launch counts", () => {
+test("review id helpers keep FIFO order", () => {
   assert.deepEqual(confirmedLoopPlusReviewIds(decision("accept")), []);
   assert.deepEqual(confirmedLoopPlusReviewIds(decision("accept", { reviewEventId: "only" })), ["only"]);
   assert.deepEqual(confirmedLoopPlusReviewIds(decision("accept", {
@@ -254,12 +244,6 @@ test("review id helpers keep FIFO order and reprompt launch counts", () => {
   assert.equal(sameLoopPlusReviewIds(["first", "second"], ["first", "second"]), true);
   assert.equal(sameLoopPlusReviewIds(["first", "second"], ["second", "first"]), false);
   assert.equal(sameLoopPlusReviewIds(["first"], ["first", "second"]), false);
-  assert.equal(plannedLoopPlusLaunchCount(decision("dispatch", {
-    subtasks: [subtask, { ...subtask, id: "child-2" }],
-    controls: [repromptControl, closeControl],
-  })), 3);
-  assert.equal(plannedLoopPlusLaunchCount(decision("steer", { controls: [closeControl] })), 0);
-  assert.equal(plannedLoopPlusLaunchCount(decision("wait")), 0);
 });
 
 test("strategy module stays free of runtime, deps, and scheduler value imports", () => {
@@ -322,18 +306,6 @@ test("dispatch refuses a held review before controls or launch", () => {
   assert.deepEqual(calls[1].args, [true]);
 });
 
-test("dispatch stops at the subtask round limit before applying controls", () => {
-  const { port, calls } = createPort({ refuse: [true] });
-  const outcome = createLoopPlusDecisionStrategyRegistry().dispatch(
-    port,
-    decisionStep({ userMessageCount: 2 }),
-    decision("dispatch", { subtasks: [subtask], controls: [repromptControl] }),
-  );
-  assert.equal(outcome, "stop");
-  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit"]);
-  assert.deepEqual(calls[1].args, [2]);
-});
-
 test("dispatch reports a control miss without launching subtasks", () => {
   const { port, calls } = createPort({ preview: false });
   const outcome = createLoopPlusDecisionStrategyRegistry().dispatch(
@@ -342,7 +314,7 @@ test("dispatch reports a control miss without launching subtasks", () => {
     decision("dispatch", { subtasks: [subtask], controls: [closeControl] }),
   );
   assert.equal(outcome, "continue");
-  assert.deepEqual(names(calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit", "planControls", "previewControls", "protocolMiss"]);
+  assert.deepEqual(names(calls), ["queueView", "planControls", "previewControls", "protocolMiss"]);
   assert.deepEqual(calls.at(-1)?.args, [false]);
 });
 
@@ -363,7 +335,6 @@ test("dispatch waits on in-flight work and does not submit review or finish", ()
   assert.equal(outcome, "wait");
   assert.deepEqual(names(calls), [
     "queueView",
-    "refuseDispatchPastSubtaskRoundLimit",
     "planControls",
     "previewControls",
     "commitControls",
@@ -414,7 +385,7 @@ test("dispatch pauses only when the launch leaves no work and no user message", 
   assert.equal(names(calls).includes("armCloseout"), false);
 });
 
-test("steer rejects an open review, empty controls, limit, and failed controls", () => {
+test("steer rejects an open review, empty controls, and failed controls", () => {
   const registry = createLoopPlusDecisionStrategyRegistry();
   const held = createPort({ views: [view({ hasCurrentReview: true })] });
   assert.equal(registry.steer(held.port, decisionStep(), decision("steer", { controls: [closeControl] })), "continue");
@@ -424,11 +395,6 @@ test("steer rejects an open review, empty controls, limit, and failed controls",
   assert.equal(registry.steer(empty.port, decisionStep(), decision("steer")), "continue");
   assert.deepEqual(names(empty.calls), ["queueView", "protocolMiss"]);
   assert.deepEqual(empty.calls[1].args, [false]);
-
-  const limited = createPort({ refuse: [true] });
-  assert.equal(registry.steer(limited.port, decisionStep(), decision("steer", { controls: [repromptControl] })), "stop");
-  assert.deepEqual(names(limited.calls), ["queueView", "refuseDispatchPastSubtaskRoundLimit"]);
-  assert.equal(names(limited.calls).includes("applyControls"), false);
 
   const rejected = createPort({ preview: false });
   assert.equal(registry.steer(rejected.port, decisionStep(), decision("steer", { controls: [closeControl] })), "continue");
@@ -592,7 +558,6 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "submitReviewBatch",
     "acknowledgeUserMessages",
     "persistProgressPercent",
-    "refuseDispatchPastSubtaskRoundLimit",
     "commitControls",
     "dispatchSubtasks",
     "persistEstimatedRounds",
@@ -603,29 +568,15 @@ test("accept marks a follow-up batch failed and commits controls only after subm
   ]);
   assert.deepEqual(calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
   assert.deepEqual(calls.find((call) => call.name === "persistProgressPercent")?.args, [23]);
-  assert.deepEqual(calls.find((call) => call.name === "refuseDispatchPastSubtaskRoundLimit")?.args, [1]);
   assert.deepEqual(calls.find((call) => call.name === "persistEstimatedRounds")?.args, [2]);
   assert.equal(calls.find((call) => call.name === "commitControls")?.args[1], plan);
   assert.equal(names(calls).includes("applyControls"), false);
   assert.equal(names(calls).includes("waitForInFlightWork"), true);
 });
 
-test("accept keeps an already submitted batch when a later launch is refused or controls fail", () => {
+test("accept keeps an already submitted batch when controls fail", () => {
   const registry = createLoopPlusDecisionStrategyRegistry();
   const step = decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1"] });
-  const limited = createPort({ refuse: [true] });
-  assert.equal(registry.accept(limited.port, step, decision("accept", {
-    reviewEventId: "evt-1",
-    subtasks: [subtask],
-  })), "stop");
-  assert.deepEqual(names(limited.calls).slice(0, 5), [
-    "submitReviewBatch",
-    "acknowledgeUserMessages",
-    "persistProgressPercent",
-    "refuseDispatchPastSubtaskRoundLimit",
-  ]);
-  assert.equal(names(limited.calls).includes("dispatchSubtasks"), false);
-
   const rejected = createPort({ commit: false, controlPlan: { sealed: "later" } as unknown as LoopPlusDecisionControlPlan });
   assert.equal(registry.accept(rejected.port, step, decision("accept", {
     reviewEventId: "evt-1",
