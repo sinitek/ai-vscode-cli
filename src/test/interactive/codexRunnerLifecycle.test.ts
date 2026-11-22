@@ -92,8 +92,9 @@ function createFakeChild(pid?: number): FakeChild {
 
 function attachTurnStatusAppServer(
   child: FakeChild,
-  status: string,
+  status: string | null,
   notifications: ReadonlyArray<{ method: string; params?: unknown }> = [],
+  acknowledgeTurnStart = true,
 ): void {
   let input = "";
   const send = (message: Record<string, unknown>): void => {
@@ -123,12 +124,14 @@ function attachTurnStatusAppServer(
         continue;
       }
       if (message.method === "turn/start") {
-        send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        if (acknowledgeTurnStart) {
+          send({ jsonrpc: "2.0", id: message.id, result: { turn: { id: "parent-turn", status: "inProgress" } } });
+        }
         queueMicrotask(() => {
           for (const notification of notifications) {
             send({ jsonrpc: "2.0", ...notification });
           }
-          send({
+          if (status) send({
             jsonrpc: "2.0",
             method: "turn/completed",
             params: {
@@ -881,6 +884,190 @@ test("Codex runner emits primary completed callback only for completed turns", a
     }
   } finally {
     crossSpawn.spawn = originalSpawn;
+  }
+});
+
+const primaryTurn = { threadId: "parent-thread", turnId: "parent-turn" };
+const finalItem = { id: "answer", type: "agent_message", phase: "final_answer", text: "complete answer" };
+const completedFinalItem = { method: "item/completed", params: { ...primaryTurn, item: finalItem } };
+const partialFinalItem = {
+  method: "item/agentMessage/delta",
+  params: { ...primaryTurn, itemId: finalItem.id, phase: finalItem.phase, delta: "partial" },
+};
+const sameTurnActivity = {
+  method: "item/started",
+  params: { ...primaryTurn, item: { id: "next-reasoning", type: "reasoning" } },
+};
+const loopPlusExitCases = [
+  { name: "keeps a completed final answer", notifications: [completedFinalItem], outcome: "completed" },
+  {
+    name: "keeps a completed final answer received after activity",
+    notifications: [
+      { ...partialFinalItem, params: { ...partialFinalItem.params, delta: "complete" } },
+      sameTurnActivity,
+      completedFinalItem,
+    ],
+    outcome: "completed",
+  },
+  {
+    name: "keeps a marker final answer before the start RPC responds",
+    notifications: [
+      { method: "turn/started", params: { threadId: primaryTurn.threadId, turn: { id: primaryTurn.turnId } } },
+      { method: "item/completed", params: { ...primaryTurn, item: { ...finalItem, phase: null, text: "[final_answer] complete answer" } } },
+    ],
+    acknowledgeTurnStart: false,
+    outcome: "completed",
+  },
+  { name: "returns the original thread for an unfinished turn", notifications: [], acknowledgeTurnStart: false, outcome: "interrupted" },
+  { name: "does not treat a final delta alone as completion", notifications: [partialFinalItem], outcome: "interrupted" },
+  {
+    name: "does not treat a final delta followed by same-turn activity as completion",
+    notifications: [partialFinalItem, sameTurnActivity],
+    outcome: "interrupted",
+  },
+  {
+    name: "does not treat another turn's final item or boundary as completion",
+    notifications: [
+      partialFinalItem,
+      { method: "item/completed", params: { ...primaryTurn, turnId: "other-turn", item: finalItem } },
+      { method: "item/started", params: { ...primaryTurn, turnId: "other-turn", item: { type: "reasoning" } } },
+    ],
+    outcome: "interrupted",
+  },
+  {
+    name: "does not treat a child thread's final item as completion",
+    notifications: [
+      { method: "thread/started", params: { thread: { id: "child-thread", parentThreadId: primaryTurn.threadId } } },
+      { method: "item/completed", params: { ...primaryTurn, threadId: "child-thread", item: finalItem } },
+    ],
+    outcome: "interrupted",
+  },
+  { name: "keeps the native failure after a final item", notifications: [completedFinalItem], status: "failed", outcome: "failed" },
+  {
+    name: "keeps the rate limit after a final item",
+    notifications: [completedFinalItem, {
+      method: "error", params: { ...primaryTurn, error: { type: "rate_limit_error", message: "Concurrency limit exceeded" } },
+    }],
+    outcome: "rate-limited",
+  },
+];
+
+for (const fixture of loopPlusExitCases) {
+  test(`Codex Loop+ natural exit ${fixture.name}`, { timeout: 5_000 }, async (t) => {
+    const { CodexInteractiveRunner } = loadCodexRunner();
+    const { CodexUnexpectedTurnExitError } = require("../../interactive/codexRunnerCore") as typeof import("../../interactive/codexRunnerCore");
+    const child = createFakeChild();
+    attachTurnStatusAppServer(child, fixture.status ?? null, fixture.notifications, fixture.acknowledgeTurnStart);
+    t.mock.method(crossSpawn, "spawn", fakeCodexSpawn(() => child));
+    const runner = new CodexInteractiveRunner({
+      command: process.execPath, args: [], thinkingMode: "medium", interactiveMode: "coding", threadId: primaryTurn.threadId,
+    });
+    const chunks: string[] = [];
+    let nativeCompletions = 0;
+    try {
+      const run = runner.runStreamed("task", {
+        ...createHandlers(), loopPlusMain: {},
+        onAssistantDelta: (chunk) => chunks.push(chunk),
+        onTurnCompleted: () => { nativeCompletions += 1; },
+      });
+      if (fixture.outcome === "completed") {
+        await run;
+        assert.match(chunks.join(""), /^(?:\[final_answer\] )?complete answer$/u);
+      } else {
+        await assert.rejects(run, (error: unknown) => {
+          if (fixture.outcome === "interrupted") {
+            assert.ok(error instanceof CodexUnexpectedTurnExitError);
+            assert.equal(error.threadId, primaryTurn.threadId);
+          } else {
+            assert.ok(error instanceof Error && !(error instanceof CodexUnexpectedTurnExitError));
+            if (fixture.outcome === "rate-limited") assert.match(error.message, /Concurrency limit exceeded/u);
+          }
+          return true;
+        });
+      }
+      assert.equal(nativeCompletions, 0);
+    } finally {
+      runner.dispose();
+    }
+  });
+}
+
+test("Codex app-server same-key replacement lets the exited connection drain", { timeout: 5_000 }, async (t) => {
+  const { acquireCodexAppServer } = require("../../interactive/codexAppServerPool") as typeof import("../../interactive/codexAppServerPool");
+  const oldChild = createFakeChild();
+  const newChild = createFakeChild();
+  const oldRequests = new Map<string, number>();
+  for (const child of [oldChild, newChild]) {
+    child.stdin.on("data", (chunk: Buffer) => {
+      const { id, method } = JSON.parse(String(chunk)) as { id?: number; method: string };
+      if (method === "initialize") child.stdout.write(`${JSON.stringify({ id, result: {} })}\n`);
+      else if (child === oldChild && id !== undefined) oldRequests.set(method, id);
+    });
+  }
+  const children = [oldChild, newChild];
+  t.mock.method(crossSpawn, "spawn", fakeCodexSpawn(() => {
+    const child = children.shift();
+    assert.ok(child, "expected the replacement to remain registered");
+    return child;
+  }));
+  const spec = {
+    key: "lifecycle-draining-connection", command: process.execPath, args: [], env: {},
+    codexHomeDir: os.tmpdir(), initializeParams: {},
+  };
+  const oldEvents: string[] = [];
+  const closeEvents: boolean[] = [];
+  const listener = (id: string): Parameters<typeof acquireCodexAppServer>[1] => ({
+    id, isActive: () => true, handleServerRequest: () => null,
+    handleNotification: () => undefined, onClosed: () => undefined,
+  });
+  const oldListener: ReturnType<typeof listener> = {
+    ...listener("old"),
+    handleNotification: (message, source) => {
+      assert.equal(source.connectionId, previous.id);
+      assert.equal(source.listener, oldListener);
+      assert.equal(source.ownedThread, true);
+      assert.equal(source.buffered, false);
+      oldEvents.push(String(message.method));
+    },
+    onClosed: (info) => {
+      closeEvents.push(info.naturalExit);
+      oldEvents.push("closed");
+    },
+  };
+  const previous = acquireCodexAppServer(spec, oldListener);
+  const newListener = listener("new");
+  let replacement: ReturnType<typeof acquireCodexAppServer> | undefined;
+  try {
+    await previous.whenReady();
+    previous.claimThread(primaryTurn.threadId, oldListener.id);
+    const answered = previous.request(oldListener.id, "test/answered", {});
+    const missing = previous.request(oldListener.id, "test/missing", {});
+    const drainedRequests = Promise.allSettled([answered, missing]);
+    await waitForCondition(() => oldRequests.size === 2);
+
+    oldChild.exitCode = 0;
+    oldChild.emit("exit", 0, null);
+    replacement = acquireCodexAppServer(spec, newListener);
+    assert.notEqual(replacement.id, previous.id);
+    assert.deepEqual(closeEvents, []);
+    await replacement.whenReady();
+    previous.release(oldListener.id);
+
+    oldChild.stdout.write(`${JSON.stringify({ method: "item/completed", params: completedFinalItem.params })}\n`);
+    oldChild.stdout.end(`${JSON.stringify({ id: oldRequests.get("test/answered"), result: { drained: true } })}\n`);
+    oldChild.stderr.end();
+    oldChild.emit("close", 0, null);
+
+    const [answerResult, missingResult] = await drainedRequests;
+    assert.deepEqual(answerResult, { status: "fulfilled", value: { drained: true } });
+    assert.equal(missingResult.status, "rejected");
+    assert.deepEqual(oldEvents, ["item/completed", "closed"]);
+    assert.deepEqual(closeEvents, [true]);
+    assert.deepEqual(oldChild.killCalls, []);
+    assert.equal(acquireCodexAppServer(spec, newListener), replacement);
+  } finally {
+    previous.release(oldListener.id);
+    replacement?.release(newListener.id);
   }
 });
 

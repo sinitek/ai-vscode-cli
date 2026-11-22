@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
-import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, inspectLoopTaskIdentityOwnership, isLoopTaskIdentityLockContention, locateOrdinaryLoopTaskMove, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
+import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, inspectLoopTaskIdentityOwnership, locateOrdinaryLoopTaskMove, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, waitForLoopTaskIdentityUpdateRetry, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
 import type { LoopBlocker } from "./loopBlocker";
 import {
   CLI_LIST,
@@ -55,6 +55,8 @@ const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_MAX_SKILL_IDS_PER_SUBTASK = 3;
 const LOOP_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
 const LOOP_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ORDINARY_UPDATE_LOCK_WAIT_MS = 100;
+const ORDINARY_UPDATE_LOCK_RETRIES = 3;
 
 const loopTaskStoreFileCache = new Map<string, string>();
 const CONTROLLED_ROOT_MARKER = ".department-source.json";
@@ -109,6 +111,7 @@ export function registerDepartmentOwnedLoopTaskStoreRoot(rootPath: string, sourc
 
 export type LoopTaskRole = "main" | "subtask";
 export type LoopTaskStatus = "running" | "completed" | "needs-review" | "error" | "stopped";
+export type LoopTaskUserStopSource = "ai-panel" | "group-chat";
 export type LoopRunStatus = "end" | "error" | "stopped";
 export type LoopTaskKind = "development" | "non_development";
 /** Loop+ 子任务实施分类。与 LoopTaskRole、LoopTaskKind 无关。 */
@@ -235,6 +238,12 @@ export type LoopRoundRecord = {
   summary?: string;
 };
 
+export type LoopPlusAttemptCompletionReceipt = {
+  subtaskId: string;
+  attemptId: string;
+  detail: string | null;
+};
+
 export type LoopTaskRecord = {
   id: string;
   cli: CliName;
@@ -244,6 +253,7 @@ export type LoopTaskRecord = {
   taskKind?: LoopTaskKind;
   schedulingMode?: LoopSchedulingMode;
   loopPlus?: unknown;
+  loopPlusAttemptCompletionReceipts?: LoopPlusAttemptCompletionReceipt[];
   /** Department data is optional for legacy tasks; invalid data is explicit so execution can refuse it. */
   department?: DepartmentMetadata;
   departmentInvalid?: boolean;
@@ -254,6 +264,7 @@ export type LoopTaskRecord = {
   loopPlusNextStepPlan?: LoopPlusNextStepPlan;
   loopProgressPercent?: number;
   loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
+  loopPlusMainRecoveryFailureCount?: number;
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
   /** 新建或续跑时绑定的子任务模式。缺失时由迁移规则解释，不随输入区事后改写。 */
@@ -263,6 +274,7 @@ export type LoopTaskRecord = {
   status: LoopTaskStatus;
   /** 宿主已失去运行所有权，保留子任务关联以供手动续跑回报。用户主动停止时清除。 */
   runtimeInterrupted?: boolean;
+  userStopSource?: LoopTaskUserStopSource;
   createdAt: number;
   updatedAt: number;
   maxRounds?: number;
@@ -442,6 +454,12 @@ function logLoopTaskUpdateRejected(stage: string, reason: string): void {
   void logError("loop-task-store-update-rejected", { stage, reason, pid: process.pid }).catch(() => undefined);
 }
 
+class OrdinaryUpdateIdentityLockBusy extends Error {
+  constructor(readonly stage: string) {
+    super("Loop task identity lock is busy before update commit");
+  }
+}
+
 function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   if ("filePath" in request) request = { ...request, filePath: canonicalRouteFile(request.filePath) };
   if (request.type === "retention") throw new Error("Retention must visit each source");
@@ -453,6 +471,7 @@ function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   if (!entry) {
     if ("taskId" in request) {
       const ownership = inspectLoopTaskIdentityOwnership(request.taskId);
+      if (request.type === "update" && ownership === "identity-lock-present") throw new OrdinaryUpdateIdentityLockBusy("host-route");
       if (ownership !== "ordinary") return reject(ownership);
     }
     return { handled: false };
@@ -949,13 +968,37 @@ export function updateLoopTaskRecord(
   patch: Partial<LoopTaskRecord>,
   options: { allowCompletedToRunning?: boolean } = {}
 ): LoopTaskRecord | null {
+  let deadline: number | undefined;
+  for (let retries = 0; ; retries += 1) {
+    try {
+      return updateLoopTaskRecordOnce(taskId, patch, options);
+    } catch (error) {
+      if (!(error instanceof OrdinaryUpdateIdentityLockBusy)) throw error;
+      deadline ??= performance.now() + ORDINARY_UPDATE_LOCK_WAIT_MS;
+      if (retries < ORDINARY_UPDATE_LOCK_RETRIES && waitForLoopTaskIdentityUpdateRetry(deadline)) continue;
+      logLoopTaskUpdateRejected(error.stage, "identity-lock-present");
+      return null;
+    }
+  }
+}
+
+function updateLoopTaskRecordOnce(
+  taskId: string,
+  patch: Partial<LoopTaskRecord>,
+  options: { allowCompletedToRunning?: boolean }
+): LoopTaskRecord | null {
   const routed = routeHostRequest({ type: "update", taskId, patch, options });
   if (routed.handled) return routed.ok ? routed.record ?? null : null;
   const storeFile = resolveLoopTaskStoreFileForTask(taskId, { throwOnError: true },
-    (reason) => logLoopTaskUpdateRejected("store-resolution", reason));
+    (reason) => {
+      if (reason === "identity-lock-present") throw new OrdinaryUpdateIdentityLockBusy("store-resolution");
+      logLoopTaskUpdateRejected("store-resolution", reason);
+    });
   if (!storeFile) {
     return null;
   }
+  const sourceVersion = loopTaskUpdateFileVersion(storeFile);
+  const assertSourceUnchanged = () => assertLoopTaskUpdateFileVersion(storeFile, sourceVersion);
   const read = readLoopTaskStoreResult(storeFile, true, true, false, true);
   if (!read.ok) {
     logLoopTaskUpdateRejected("source-read", "store-read-rejected");
@@ -977,6 +1020,7 @@ export function updateLoopTaskRecord(
   next.updatedAt = Math.max(next.updatedAt, existing.updatedAt + 1);
   const targetStoreFile = next.taskStoreFile;
   if (!isSameLoopTaskStoreFile(targetStoreFile, storeFile)) {
+    const targetVersion = loopTaskUpdateFileVersion(targetStoreFile);
     const targetRead = readLoopTaskStoreResult(targetStoreFile, false, true, false, true);
     if (!targetRead.ok) {
       logLoopTaskUpdateRejected("target-read", "store-read-rejected");
@@ -990,6 +1034,12 @@ export function updateLoopTaskRecord(
     else targetStore.tasks.push(next);
     commitLoopTaskStore(targetStoreFile, targetStore, {
       taskId, sourceFile: storeFile, sourceTasks: store.tasks.filter((task) => task.id !== taskId), targetFile: targetStoreFile,
+    }, {
+      taskId, file: storeFile,
+      assertUnchanged: () => {
+        assertSourceUnchanged();
+        assertLoopTaskUpdateFileVersion(targetStoreFile, targetVersion);
+      },
     });
     loopTaskStoreFileCache.set(taskId, targetStoreFile);
     // Target persistence is the commit. Cleanup failure must not make reads select the old copy.
@@ -1008,7 +1058,7 @@ export function updateLoopTaskRecord(
   // A lexical/case/directory alias still refers to the known physical store.
   next.taskStoreFile = storeFile;
   store.tasks[index] = next;
-  commitLoopTaskStore(storeFile, store);
+  commitLoopTaskStore(storeFile, store, undefined, { taskId, file: storeFile, assertUnchanged: assertSourceUnchanged });
   loopTaskStoreFileCache.set(taskId, storeFile);
   return next;
 }
@@ -1210,6 +1260,20 @@ function preserveLoopPlusSnapshot(value: unknown): unknown {
   }
 }
 
+function normalizeLoopPlusAttemptCompletionReceipts(value: unknown): LoopPlusAttemptCompletionReceipt[] {
+  if (!Array.isArray(value)) return [];
+  const receipts = new Map<string, LoopPlusAttemptCompletionReceipt | null>();
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const { subtaskId, attemptId, detail } = item as Partial<LoopPlusAttemptCompletionReceipt>;
+    if (typeof attemptId !== "string" || !attemptId || attemptId !== attemptId.trim()) continue;
+    const valid = typeof subtaskId === "string" && subtaskId !== "" && subtaskId === subtaskId.trim()
+      && (detail === null || typeof detail === "string");
+    receipts.set(attemptId, !receipts.has(attemptId) && valid ? { subtaskId, attemptId, detail } : null);
+  }
+  return [...receipts.values()].filter((item): item is LoopPlusAttemptCompletionReceipt => item !== null);
+}
+
 export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): LoopTaskRecord | null {
   if (!record || typeof record !== "object") {
     return null;
@@ -1263,6 +1327,8 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const taskKind = normalizeLoopTaskKind((raw as { taskKind?: unknown }).taskKind);
   const schedulingMode = normalizeStoredLoopSchedulingMode((raw as { schedulingMode?: unknown }).schedulingMode);
   const loopPlus = preserveLoopPlusSnapshot((raw as { loopPlus?: unknown }).loopPlus);
+  const completionReceipts = schedulingMode === "event_driven" && status !== "completed"
+    ? normalizeLoopPlusAttemptCompletionReceipts(raw.loopPlusAttemptCompletionReceipts) : [];
   const legacyMaxRounds = parseLoopMaxRoundsValue(raw.maxRounds);
   const loopPlusMainPhase = normalizeLoopPlusMainPhase(
     (raw as { loopPlusMainPhase?: unknown }).loopPlusMainPhase,
@@ -1298,6 +1364,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(taskKind ? { taskKind } : {}),
     ...(schedulingMode ? { schedulingMode } : {}),
     ...(loopPlus !== undefined ? { loopPlus } : {}),
+    ...(completionReceipts.length ? { loopPlusAttemptCompletionReceipts: completionReceipts } : {}),
     ...(departmentField.metadata ? { department: departmentField.metadata } : {}),
     ...(departmentField.invalid ? { departmentInvalid: true } : {}),
     ...(raw.departmentDeliveries && typeof raw.departmentDeliveries === "object" && !Array.isArray(raw.departmentDeliveries)
@@ -1307,11 +1374,15 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopPlusNextStepPlan ? { loopPlusNextStepPlan } : {}),
     ...(loopProgressPercent !== undefined ? { loopProgressPercent } : {}),
     ...(loopPlusBlockReview ? { loopPlusBlockReview } : {}),
+    ...(raw.loopPlusMainRecoveryFailureCount !== undefined ? {
+      loopPlusMainRecoveryFailureCount: normalizeLoopMainAiFailureCount(raw.loopPlusMainRecoveryFailureCount),
+    } : {}),
     ...(loopPlusAcceptancePlan ? { loopPlusAcceptancePlan } : {}),
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
     ...(loopSubtaskMode === null ? { loopSubtaskModeInvalid: true } : {}),
     status,
     ...(raw.runtimeInterrupted === true ? { runtimeInterrupted: true } : {}),
+    ...(raw.userStopSource === "ai-panel" || raw.userStopSource === "group-chat" ? { userStopSource: raw.userStopSource } : {}),
     createdAt,
     updatedAt,
     ...(legacyMaxRounds !== null ? { maxRounds: legacyMaxRounds } : {}),
@@ -1731,7 +1802,8 @@ export function appendLoopTaskRecord(filePath: string, record: LoopTaskRecord): 
 }
 
 function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
-  move?: { taskId: string; sourceFile: string; sourceTasks: readonly LoopTaskRecord[]; targetFile: string }): void {
+  move?: { taskId: string; sourceFile: string; sourceTasks: readonly LoopTaskRecord[]; targetFile: string },
+  updateSource?: { taskId: string; file: string; assertUnchanged(): void }): void {
   let stage = "store-validation";
   let reason: string | undefined;
   try {
@@ -1746,6 +1818,7 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
     for (const task of store.tasks) {
       const ownership = hostRoutes.some((entry) => entry.ids.has(task.id)) ? "department-owned" : inspectLoopTaskIdentityOwnership(task.id);
       if (ownership === "ordinary") continue;
+      if (updateSource && ownership === "identity-lock-present") throw new OrdinaryUpdateIdentityLockBusy(stage);
       reason = ownership;
       throw new Error("Controlled task identities require owner transactions");
     }
@@ -1758,20 +1831,41 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
     if (!commitLoopTaskIdentities(new Map([[filePath, persisted.tasks]]), () => {
       writeLoopTaskStoreBytes(filePath, persisted);
       return true;
-    }, undefined, { atomicWrite: true, move })) throw new Error("Loop task identity commit was not confirmed");
+    }, undefined, {
+      atomicWrite: true, move, updateSource,
+      onLockContention: () => {
+        if (updateSource) throw new OrdinaryUpdateIdentityLockBusy(stage);
+        reason = "identity-lock-contended";
+      },
+    })) throw new Error("Loop task identity commit was not confirmed");
     for (const task of persisted.tasks) loopTaskStoreFileCache.set(task.id, filePath);
     publishLoopTaskStoreChange({ type: "replace", filePath, tasks: persisted.tasks });
     return;
   } catch (error) {
+    if (error instanceof OrdinaryUpdateIdentityLockBusy) throw error;
     publishLoopTaskStoreChange({ type: "invalidate", filePath });
     void logError("loop-task-store-write-error", {
       filePath: path.basename(filePath), stage, pid: process.pid,
-      reason: reason ?? (isLoopTaskIdentityLockContention(error) ? "identity-lock-contended" : "store-write-failed"),
+      reason: reason ?? "store-write-failed",
       errorName: error instanceof Error ? error.name : typeof error,
       errorCode: error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined,
     }).catch(() => undefined);
     throw error;
   }
+}
+
+function loopTaskUpdateFileVersion(file: string): string | null {
+  try {
+    const { dev, ino, size, mtimeNs, ctimeNs } = fs.statSync(file, { bigint: true });
+    return `${dev}:${ino}:${size}:${mtimeNs}:${ctimeNs}`;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function assertLoopTaskUpdateFileVersion(file: string, expected: string | null): void {
+  if (loopTaskUpdateFileVersion(file) !== expected) throw new Error("Loop task update input changed before commit");
 }
 
 // Byte mutation only: callers must hold the identity writer gate until publication.

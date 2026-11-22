@@ -129,6 +129,9 @@ type CodexExecutionObservation = {
 };
 
 export type CodexStreamHandlers = {
+  loopPlusMain?: {
+    recovery?: { threadId: string; canSend: () => boolean; afterSend: () => void };
+  };
   onAssistantDelta: (chunk: string, meta?: CodexAssistantDeltaMeta) => void;
   onSubagentUpdate?: (update: CodexSubagentUpdate) => void;
   onTrace: (content: string, kind?: CodexTraceKind, meta?: CodexTraceMeta) => void;
@@ -148,6 +151,12 @@ export type OriginalCodexThreadTurn = {
   preparePrompt: () => { prompt: string; commit: () => void; afterSend: () => void };
   onStartRejected?: () => void;
 };
+
+export class CodexUnexpectedTurnExitError extends Error {
+  constructor(message: string, readonly threadId: string) {
+    super(message);
+  }
+}
 
 const ORIGINAL_THREAD_PREPARATION_TIMEOUT_MS = 75_000;
 
@@ -225,6 +234,13 @@ type CodexRunnerOperation = {
   observedPrimaryTurnIds: Set<string>;
   sawPrimaryAssistantOutput: boolean;
   settled: boolean;
+  loopPlusSentTurn?: {
+    connectionId: number;
+    threadId: string;
+    requestSequence: number;
+    turnId?: string;
+    completedFinalAnswerTurnId?: string;
+  };
   threadCompacted: boolean;
   finalAnswerItemId?: string;
   finalAnswerCompletionTimer?: ReturnType<typeof setTimeout>;
@@ -238,6 +254,7 @@ type CodexNotificationHandler = (
   operation: CodexRunnerOperation,
   params: Record<string, unknown>,
   method: string,
+  source: CodexAppServerNotificationSource,
 ) => void;
 
 /** Trusted internal mode used by the single-use owned facade, never the EH default. */
@@ -734,8 +751,9 @@ export class CodexInteractiveRunner {
       const opened = originalThreadTurn ? await Promise.race([opening, operation.done.then(() => { throw createAbortError(); })]) : await opening;
       if (executionObservation) executionObservation.connection = opened.connection;
       checkActive();
-      await opened.connection.withThread(this.listenerId, originalThreadTurn?.threadId ?? this.options.threadId, async () => {
-        const loading = this.ensureThreadLoaded(opened.connection, opened.threadOptions, originalThreadTurn?.threadId);
+      const expectedThreadId = originalThreadTurn?.threadId ?? handlers.loopPlusMain?.recovery?.threadId;
+      await opened.connection.withThread(this.listenerId, expectedThreadId ?? this.options.threadId, async () => {
+        const loading = this.ensureThreadLoaded(opened.connection, opened.threadOptions, expectedThreadId);
         if (originalThreadTurn) await Promise.race([loading, operation.done]);
         else await loading;
         if (executionObservation) executionObservation.threadId = String(this.options.threadId || "").trim() || undefined;
@@ -765,7 +783,28 @@ export class CodexInteractiveRunner {
             throw error;
           });
           prepared.afterSend();
+        } else if (handlers.loopPlusMain && !this.ownedMode && this.options.threadId) {
+          const threadId = this.options.threadId;
+          const recovery = handlers.loopPlusMain.recovery;
+          turnStartPromise = opened.connection.startPreparedTurn<Record<string, unknown>>(
+            this.listenerId, buildCodexTurnStartParams(threadId, prompt, opened.imagePaths, opened.threadOptions),
+            () => {
+              checkActive();
+              if (operation.settled || (recovery && (threadId !== recovery.threadId || !recovery.canSend()))) {
+                throw createAbortError();
+              }
+            },
+            () => {
+              operation.loopPlusSentTurn = {
+                connectionId: opened.connection.id,
+                threadId,
+                requestSequence: opened.connection.getNotificationSequence(),
+              };
+            },
+          );
+          if (operation.loopPlusSentTurn) recovery?.afterSend();
         } else {
+          if (handlers.loopPlusMain?.recovery) throw createAbortError();
           turnStartPromise = opened.connection.request<Record<string, unknown>>(
             this.listenerId,
             "turn/start",
@@ -781,7 +820,16 @@ export class CodexInteractiveRunner {
           });
         }
         const turnStartResult = await Promise.race([
-          turnStartPromise.then((result) => ({ settledBeforeStart: false, result })),
+          turnStartPromise.then((result) => {
+            const turnId = String((result?.turn as { id?: unknown } | undefined)?.id || "").trim();
+            if (operation.loopPlusSentTurn && turnId && !this.isSupersededTurn(turnId)) {
+              operation.loopPlusSentTurn.turnId ??= turnId;
+            }
+            return { settledBeforeStart: false, result };
+          }, (error: unknown) => {
+            if (operation.settled) return operation.done.then(() => ({ settledBeforeStart: true, result: null }));
+            throw error;
+          }),
           operation.done.then(() => ({ settledBeforeStart: true, result: null })),
         ]);
         if (turnStartResult.settledBeforeStart) {
@@ -1183,11 +1231,35 @@ export class CodexInteractiveRunner {
     }, CODEX_FINAL_MESSAGE_COMPLETION_GRACE_MS);
   }
 
+  private isLiveLoopPlusTurnNotification(
+    sent: NonNullable<CodexRunnerOperation["loopPlusSentTurn"]>,
+    threadId: string,
+    source: CodexAppServerNotificationSource,
+  ): boolean {
+    return threadId === sent.threadId && threadId === this.options.threadId
+      && sent.connectionId === this.activeConnectionId && source.connectionId === sent.connectionId
+      && source.listener === this.listener && source.ownedThread && !source.buffered
+      && source.sequence > sent.requestSequence;
+  }
+
+  private canUseFinalAnswerEvent(
+    operation: CodexRunnerOperation,
+    params: Record<string, unknown>,
+    source: CodexAppServerNotificationSource,
+  ): boolean {
+    if (!operation.handlers.loopPlusMain || this.ownedMode) return true;
+    const sent = operation.loopPlusSentTurn;
+    const threadId = String(params.threadId || params.thread_id || "").trim();
+    return !!sent?.turnId && extractCodexEventTurnId(params) === sent.turnId
+      && this.isLiveLoopPlusTurnNotification(sent, threadId, source);
+  }
+
   private observeFinalAnswerBoundary(
     operation: CodexRunnerOperation,
     method: string,
     params: Record<string, unknown>,
   ): void {
+    if (operation.handlers.loopPlusMain && !this.ownedMode) return;
     if (operation.kind !== "turn" || operation.finalAnswerCompletionTimer || !operation.finalAnswerItemId) {
       return;
     }
@@ -1266,22 +1338,34 @@ export class CodexInteractiveRunner {
     }
     this.connection = null;
     this.activeConnectionId = null;
-    if (!this.activeOperation || this.activeOperation.settled) {
+    const operation = this.activeOperation;
+    if (!operation || operation.settled) {
       return;
     }
-    if (this.disposeGeneration !== this.activeOperation.disposeGeneration || this.disposed) {
+    if (this.disposeGeneration !== operation.disposeGeneration || this.disposed) {
       this.settleActive(createRunnerDisposedError());
       return;
     }
-    if (this.abortGeneration !== this.activeOperation.abortGeneration) {
+    if (this.abortGeneration !== operation.abortGeneration) {
       this.settleActive(createAbortError());
       return;
     }
     const spawnError = info.spawnError ? normalizeCodexSpawnError(info.spawnError, this.options.command) : null;
-    this.settleActive(spawnError ?? new Error(t("codex.appServerExited", {
+    const sent = operation.loopPlusSentTurn;
+    if (info.naturalExit && !spawnError && sent?.connectionId === info.connectionId
+      && sent.threadId === this.options.threadId && sent.completedFinalAnswerTurnId
+      && sent.completedFinalAnswerTurnId === sent.turnId) {
+      this.captureSupersededTurns();
+      this.settleActive();
+      return;
+    }
+    const message = t("codex.appServerExited", {
       detail: info.signal ? `signal ${info.signal}` : `code ${info.code ?? 1}`,
       stderr: info.stderr || "-",
-    })));
+    });
+    this.settleActive(info.naturalExit && !spawnError && sent?.connectionId === info.connectionId
+      ? new CodexUnexpectedTurnExitError(message, sent.threadId)
+      : spawnError ?? new Error(message));
   }
 
   private handleServerRequest(
@@ -1377,12 +1461,22 @@ export class CodexInteractiveRunner {
     ) {
       return;
     }
+    const sent = operation.loopPlusSentTurn;
+    const eventTurnId = extractCodexEventTurnId(params);
+    if (sent && method === "turn/started" && eventTurnId && this.isLiveLoopPlusTurnNotification(sent, eventThreadId, source)) {
+      sent.turnId ??= eventTurnId;
+    }
     this.observeFinalAnswerBoundary(operation, method, params);
     if (
       operation.finalAnswerCompletionTimer
       && method !== "turn/completed"
       && method !== "thread/tokenUsage/updated"
     ) {
+      if (method === "error" && (!eventThreadId || eventThreadId === this.options.threadId)
+        && (!sent || !eventTurnId || eventTurnId === sent.turnId)) {
+        const rateLimitMessage = detectCodexRateLimitErrorMessage(params);
+        if (rateLimitMessage) this.failVisible(rateLimitMessage);
+      }
       return;
     }
     this.forwardEvent(message);
@@ -1397,7 +1491,7 @@ export class CodexInteractiveRunner {
     if (method !== "turn/completed" && message.params && typeof message.params === "object") {
       this.notePrimaryTurnId(message.params as Record<string, unknown>);
     }
-    this.notificationHandlers.get(method)?.(operation, params, method);
+    this.notificationHandlers.get(method)?.(operation, params, method, source);
   }
 
   private captureExecutionTerminal(message: Record<string, unknown>, source: CodexAppServerNotificationSource): void {
@@ -1544,10 +1638,12 @@ export class CodexInteractiveRunner {
     }
     const bufferKey = isSubagentDelta && itemId ? `${eventThreadId}:${itemId}` : itemId;
     if (bufferKey) {
-      operation.assistantBuffers.set(bufferKey, `${operation.assistantBuffers.get(bufferKey) ?? ""}${delta}`);
-      if (!isSubagentDelta && (isCodexFinalAnswerPhase(params.phase)
-        || containsFinalAnswerTextMarker(operation.assistantBuffers.get(bufferKey)))) {
-        operation.finalAnswerItemId = itemId;
+      const text = `${operation.assistantBuffers.get(bufferKey) ?? ""}${delta}`;
+      operation.assistantBuffers.set(bufferKey, text);
+      if (!isSubagentDelta && (!operation.handlers.loopPlusMain || this.ownedMode)) {
+        if (isCodexFinalAnswerPhase(params.phase) || containsFinalAnswerTextMarker(text)) {
+          operation.finalAnswerItemId = itemId;
+        }
       }
     }
     if (delta && operation.observer) {
@@ -1749,6 +1845,7 @@ export class CodexInteractiveRunner {
     operation: CodexRunnerOperation,
     params: Record<string, unknown>,
     method: string,
+    source: CodexAppServerNotificationSource,
   ): void {
     this.claimItemThreads(params.item);
     if (this.isSupersededTurn(extractCodexEventTurnId(params))) {
@@ -1760,7 +1857,7 @@ export class CodexInteractiveRunner {
     handleCodexItemEvent({
       eventType: method === "item/started" ? "item.started" : "item.completed",
       rawItem: params.item,
-      threadId: String(params.threadId || "").trim(),
+      threadId: String(params.threadId || params.thread_id || "").trim(),
       primaryThreadId: this.options.threadId ?? undefined,
       assistantBuffers: operation.assistantBuffers,
       reasoningBuffers: operation.reasoningBuffers,
@@ -1793,16 +1890,19 @@ export class CodexInteractiveRunner {
       operation.kind === "turn"
       && !operation.settled
       && method === "item/completed"
-      && !isCodexSubagentThreadEvent(String(params.threadId || ""), this.options.threadId)
+      && !isCodexSubagentThreadEvent(String(params.threadId || params.thread_id || ""), this.options.threadId)
+      && this.canUseFinalAnswerEvent(operation, params, source)
       && item
       && normalizeCodexExecItemType(item.type) === "agent_message"
       && finalText.replace(FINAL_ANSWER_TEXT_MARKER, "").trim()
       && (isCodexFinalAnswerAgentMessage(item) || containsFinalAnswerTextMarker(finalText))
     ) {
+      const turnId = extractCodexEventTurnId(params) || operation.activeTurnId;
+      if (operation.loopPlusSentTurn) operation.loopPlusSentTurn.completedFinalAnswerTurnId = turnId;
       this.scheduleFinalAnswerCompletion(
         operation,
-        String(params.threadId || this.options.threadId || "").trim(),
-        extractCodexEventTurnId(params) || operation.activeTurnId,
+        String(params.threadId || params.thread_id || this.options.threadId || "").trim(),
+        turnId,
       );
     }
   }

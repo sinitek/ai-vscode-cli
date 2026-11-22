@@ -337,6 +337,7 @@ export type LoopPlusControlResult = {
 };
 
 export type LoopPlusScheduler = {
+  readonly requireAcceptedDependencies: boolean;
   /** 更新准入容量；不取消已有预留，也不自行启动排队任务。 */
   updateMaxConcurrency: (value: number) => void;
   dispatch: (specs: readonly unknown[], options?: { deferPromotion?: boolean }) => LoopPlusDispatchResult;
@@ -1225,6 +1226,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
   }
 
   return {
+    get requireAcceptedDependencies() { return Boolean(options.requireAcceptedDependencies); },
     updateMaxConcurrency,
     dispatch,
     applyControls,

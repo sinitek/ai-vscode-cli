@@ -17,9 +17,13 @@ import {
   type OpenCodeSubagentRuntimeDeps,
 } from "../../extensionHost/openCodeSubagentRuntime";
 import { createPromptParallelRuntimeHost } from "../../extensionHost/promptParallelRuntime";
+import { shouldCloseLoopPlusParentGateBeforeAbort } from "../../extensionHost/promptRunRuntime";
 import type { OpenCodeRuntimePreparation } from "../../extensionHost/promptExecutionShared";
+import type { LoopPlusPromptTarget } from "../../extensionHost/loopPlusOrchestration";
+import type { LoopTaskUserStopSource } from "../../loopTaskStore";
 import { attachConversationTabLoopSchedulingMode } from "../../sessionTabs";
 import type { ConversationTabSummary } from "../../webview/types";
+import { createLoopPlusRuntimeFixture } from "./fixtures/loopPlusRuntimeFixture";
 
 function readSource(...relativePath: string[]): string {
   return fs.readFileSync(path.join(process.cwd(), ...relativePath), "utf8");
@@ -381,16 +385,62 @@ test("scheduled tasks resolve their interactive mode from the selected task conf
 });
 
 test("keeps a persisted running Loop main task stoppable without a direct runner", () => {
-  const extensionSource = readSource("src", "extension.ts");
+  const parsed = parseTypeScript("extension.ts", readSource("src", "extension.ts"));
+  const stopFunctions = ["stopRunForTab", "resolveLoopPlusParentStopContext", "stopLoopPlusParent", "stopLoopPlusInvocationRunner"];
+  const javascript = ts.transpileModule([
+    ...stopFunctions.map((name) => requireFunction(parsed, name, "extension.ts").getText(parsed)),
+    "stopRunForTab;",
+  ].join("\n"), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const tab = { id: "main-tab" };
+  const taskId = "persisted-main";
 
-  assert.match(
-    extensionSource,
-    /const loopContext = tab \? resolveConversationTabLoopContext\(tab\) : null;[\s\S]*const loopTaskId = loopContext\?\.taskRole === "main"[\s\S]*readLoopTaskRecord\(loopTaskId\)\?\.status === "running"/,
-  );
-  assert.match(
-    extensionSource,
-    /if \(loopTaskId && readLoopTaskRecord\(loopTaskId\)\?\.status === "running"\) \{[\s\S]*stopLoopRunsForTask\(loopTaskId\);[\s\S]*markLoopTaskStoppedByUser\(loopTaskId\);[\s\S]*void postPanelState\(\);/,
-  );
+  for (const schedulingMode of ["event_driven", "classic"] as const) {
+    const effects: string[] = [];
+    const stop = vm.runInNewContext(javascript, {
+      getConversationTabById: (tabId: string) => tabId === tab.id ? tab : null,
+      resolveConversationTabLoopContext: (target: typeof tab) => {
+        assert.equal(target, tab);
+        return { taskRole: "main", loopTaskId: taskId };
+      },
+      readLoopTaskRecord: (id: string) => id === taskId ? { status: "running", schedulingMode } : null,
+      loopPlusRuntimeAdapter: null,
+      loopPlusParentGateDepth: 0,
+      shouldCloseLoopPlusParentGateBeforeAbort,
+      getLoopPlusOrchestrationHost: () => ({ stopParent: (id: string) => effects.push(`close-parent:${id}`) }),
+      stopLoopRunsForTask: (id: string) => effects.push(`stop-task-runs:${id}`),
+      promptAutoRepairController: {
+        isRepairing: () => false,
+        cancel: (tabId: string) => effects.push(`cancel-repair:${tabId}`),
+      },
+      interactiveRunsByTabId: new Map(),
+      stopParallelRunForTab: (tabId: string) => {
+        effects.push(`try-stop-runner:${tabId}`);
+        return false;
+      },
+      getPrimaryRunTabId: () => null,
+      markLoopTaskStoppedByUser: (id: string, source: LoopTaskUserStopSource) => effects.push(`stopped-by-user:${id}:${source}`),
+      postPanelState: () => effects.push("refresh-panel"),
+    }) as (tabId: string, source?: LoopTaskUserStopSource) => void;
+
+    if (schedulingMode === "event_driven") {
+      stop(tab.id, "group-chat");
+      assert.deepEqual(effects, [
+        `close-parent:${taskId}`,
+        `cancel-repair:${tab.id}`,
+        `try-stop-runner:${tab.id}`,
+        `stopped-by-user:${taskId}:group-chat`,
+        "refresh-panel",
+      ]);
+    } else {
+      stop(tab.id);
+      assert.deepEqual(effects, [
+        `cancel-repair:${tab.id}`,
+        `stop-task-runs:${taskId}`,
+        `stopped-by-user:${taskId}:ai-panel`,
+        "refresh-panel",
+      ]);
+    }
+  }
 });
 
 test("OpenCode subagent runtime keeps the host source canonical and the extension as composition root", () => {
@@ -699,7 +749,7 @@ test("conversation tab summaries carry the persisted Loop scheduling mode", () =
   assert.equal(buildTabsStateSource.includes("readLoopTaskRecord(summary.loopTaskId)"), false);
 });
 
-test("fresh Department employee tab registration precedes loop context projection for both native CLIs", () => {
+test("trusted Department Owner tasks register only native employee tabs before loop context projection", async () => {
   const source = readSource("src", "extension.ts");
   const parsed = parseTypeScript("extension.ts", source);
   let initializer: ts.Expression | undefined;
@@ -707,25 +757,101 @@ test("fresh Department employee tab registration precedes loop context projectio
     if (ts.isPropertyAssignment(node) && node.name.getText(parsed) === "recordDepartmentSubtaskTarget") initializer = node.initializer;
     ts.forEachChild(node, visit);
   };
-  visit(parsed);
+  visit(requireFunction(parsed, "getLoopPlusRuntimeAdapter", "extension.ts"));
   assert.ok(initializer);
   const { createDepartmentExecutionResources } = require("../../extensionHost/departmentexecutionresources") as typeof import("../../extensionHost/departmentexecutionresources");
-  const tabs = new Map(["codex", "opencode", "claude"].map(cli => [cli, { id: cli, cli, sessionId: null }]));
-  const resources = createDepartmentExecutionResources({ workspace: () => "workspace", readTab: id => tabs.get(id) ?? null,
-    isActive: () => false, owns: () => false, close: async () => { assert.fail("recording creation cannot authorize close"); } });
   const javascript = ts.transpileModule(`(${initializer.getText(parsed)})`, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
-  const register = vm.runInNewContext(javascript, {
-    getDepartmentExecutionResources: () => resources,
-    resolveConversationTabLoopContext: () => { assert.fail("fresh target has no projected context yet"); },
-  }) as (target: { tabId: string; cli: string }) => void;
-  for (const cli of ["codex", "opencode"]) {
-    register({ tabId: cli, cli });
-    const consumer = resources.beginConsumer(cli);
-    assert.deepEqual(consumer.target, { kind: "department-created-tab" });
-    consumer.finish();
+
+  for (const scenario of [
+    { cli: "codex", ownerMode: true, ownsTab: true },
+    { cli: "opencode", ownerMode: true, ownsTab: true },
+    { cli: "codex", ownerMode: false, ownsTab: false },
+    { cli: "claude", ownerMode: true, ownsTab: false },
+  ] as const) {
+    const { cli, ownerMode, ownsTab } = scenario;
+    const effects: string[] = [];
+    const tabs = new Map<string, { id: string; cli: string; sessionId: string | null }>();
+    const resources = createDepartmentExecutionResources({
+      workspace: () => "workspace",
+      readTab: (tabId) => tabs.get(tabId) ?? null,
+      isActive: () => false,
+      owns: () => false,
+      close: async () => { assert.fail("recording creation cannot authorize close"); },
+    });
+    const register = vm.runInNewContext(javascript, {
+      getDepartmentExecutionResources: () => resources,
+      resolveConversationTabLoopContext: () => { assert.fail("fresh target has no projected context yet"); },
+    }) as (target: LoopPlusPromptTarget) => void;
+    const fixture = createLoopPlusRuntimeFixture({
+      onSubtaskTargetCreated: (target) => {
+        effects.push("create-tab");
+        tabs.set(target.tabId, { id: target.tabId, cli: target.cli, sessionId: target.sessionId });
+      },
+      recordDepartmentSubtaskTarget: (target) => {
+        effects.push("register-target");
+        register(target);
+      },
+    });
+    try {
+      const taskId = "department-leader";
+      fixture.saveTask({
+        id: taskId,
+        cli: "codex",
+        workspaceKey: "workspace",
+        taskStoreFile: fixture.storeFile,
+        rootPrompt: "Department leader",
+        schedulingMode: "event_driven",
+        status: "running",
+        createdAt: 1,
+        updatedAt: 1,
+        maxRounds: 2,
+        currentRound: 1,
+        communicationDir: fixture.rootDir,
+        mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+        sessionId: null,
+        activeSubtaskId: null,
+        subTasks: [],
+        rounds: [],
+        completionRoundSummaries: [],
+        completionRequirementCoverage: [],
+        department: {
+          version: 1,
+          rootTaskId: "department-root",
+          parentTaskId: "department-root",
+          leaderSubtaskId: "module",
+          role: "leader",
+          ...(!ownerMode ? { executionMode: "loop-plus" as const } : {}),
+          moduleTitle: "Module",
+          routes: { director: { cli: "codex" }, leader: { cli: "codex" }, employee: { cli } },
+          limits: { maxLeaders: 1, maxEmployees: 1 },
+        },
+      });
+      fixture.setAttemptAction((input, tabId) => {
+        effects.push("first-prompt");
+        if (ownsTab) {
+          const consumer = resources.beginConsumer(tabId);
+          assert.deepEqual(consumer.target, { kind: "department-created-tab" });
+          consumer.finish();
+        } else {
+          assert.throws(() => resources.beginConsumer(tabId), /not-owned/);
+        }
+        fixture.publish(input, tabId, { status: "end", content: "result" });
+      });
+      const result = await fixture.adapter.startAttempt({
+        taskId,
+        subtaskId: "employee",
+        attemptId: "employee-1",
+        title: "Employee",
+        prompt: "Employee task",
+        modelPrompt: "Employee task",
+        writeFiles: [],
+        round: 1,
+        targetCli: cli,
+      }).promise;
+      assert.deepEqual(result, { outcome: "completed", detail: "result" }, `${cli}, Owner mode: ${ownerMode}`);
+      assert.deepEqual(effects, ["create-tab", ...(ownerMode ? ["register-target"] : []), "first-prompt"]);
+    } finally {
+      fixture.dispose();
+    }
   }
-  register({ tabId: "claude", cli: "claude" });
-  assert.throws(() => resources.beginConsumer("claude"), /not-owned/);
-  // The caller supplies Department identity from its trusted task, not tab context.
-  assert.match(readSource("src", "extensionHost", "loopPlusRuntimeAdapter.ts"), /if \(task\?\.department\?\.role === "leader"\) deps\.recordDepartmentSubtaskTarget\?\.\(target\)/);
 });

@@ -639,9 +639,6 @@ ${DIALOG_SHELL_STYLES}
         border-inline-start: 1px solid var(--vscode-widget-border);
       }
       .department-status-summary {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
         margin: 0 0 8px 36px;
       }
       .loop-plus-activity { margin-bottom: 8px; }
@@ -650,7 +647,6 @@ ${DIALOG_SHELL_STYLES}
         flex-wrap: wrap;
         gap: 6px;
       }
-      .department-status-tag,
       .loop-plus-status-tag {
         border-radius: 3px;
         padding: 1px 6px;
@@ -659,8 +655,22 @@ ${DIALOG_SHELL_STYLES}
         font-size: 11px;
         font-variant-numeric: tabular-nums;
       }
-      .loop-plus-status-tag[data-loop-plus-tone="repairing"] {
-        color: var(--vscode-editorWarning-foreground, var(--vscode-charts-orange, var(--vscode-badge-foreground)));
+      .loop-plus-status-tag[data-loop-plus-tone="pending"] {
+        --loop-plus-status-accent: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground));
+      }
+      .loop-plus-status-tag[data-loop-plus-tone="blocked"] {
+        --loop-plus-status-accent: var(--vscode-charts-red, var(--vscode-errorForeground));
+      }
+      .loop-plus-status-tag[data-loop-plus-tone="completed"] {
+        --loop-plus-status-accent: var(--vscode-charts-green, var(--vscode-testing-iconPassed));
+      }
+      .loop-plus-status-tag[data-loop-plus-tone]:not([data-loop-plus-tone="empty"]) {
+        background: color-mix(in oklch,
+          oklch(from var(--vscode-badge-background) calc(l * 0.95) 0 none) 15%,
+          oklch(from var(--loop-plus-status-accent, var(--vscode-badge-background)) none c h));
+      }
+      .loop-plus-status-tag[data-loop-plus-tone="empty"] {
+        background: oklch(from var(--vscode-badge-background) calc(l * 0.86) 0 0);
       }
       .department-empty { padding: 4px; }
       .department-occupancy { margin: 8px 0; }

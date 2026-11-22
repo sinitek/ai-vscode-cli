@@ -1,5 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import fs = require("node:fs");
+import path = require("node:path");
 import {
   createLoopPlusOrchestrationHost,
   type LoopPlusAttemptRequest,
@@ -10,7 +12,13 @@ import {
   type LoopPlusPromptTarget,
 } from "../../extensionHost/loopPlusOrchestration";
 import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
+import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
+import type { LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopTaskRecord } from "../../loopTaskStore";
+import { installVscodeMock } from "../vscodeMock";
+
+installVscodeMock();
+const { createLoopPlusRuntimeFixture } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
 
@@ -166,3 +174,105 @@ test("failed supplemental completion is corrected, repaired, and remains behind 
   assert.deepEqual(completed, [id]);
   assert.equal(messages.filter((message) => message === "loop-plus-completed").length, 1);
 });
+
+for (const scenario of ["success", "compact-failure", "compact-skipped", "report-failure", "commit-failure"] as const) {
+  test(`Loop+ closes the completed attempt's tab only after committing its event: ${scenario}`, { timeout: 5000 }, async (t) => {
+    const sessionId = `close-before-compact-${scenario}`;
+    const compactGate = deferred<void>();
+    const compactErrors: string[] = [];
+    const logger = require("../../logger") as typeof import("../../logger");
+    t.mock.method(logger, "logError", async (event: string) => { compactErrors.push(event); });
+    let taskId = "";
+    let savedEventId: string | undefined;
+    let tabsAtCommit: string[] | undefined;
+    let commitRejected = false;
+    let observedAtCompact: { eventId: string | undefined; closedTabs: string[] } | undefined;
+    const fixture = createLoopPlusRuntimeFixture({
+      taskPersistenceFactory: (rootDir) => {
+        const storeFile = path.join(rootDir, "isolated-task.json");
+        const read = (): LoopTaskRecord => JSON.parse(fs.readFileSync(storeFile, "utf8"));
+        const save = (task: LoopTaskRecord): void => fs.writeFileSync(storeFile, JSON.stringify(task));
+        return {
+          create: (task) => { save(task); return task; },
+          read: () => fs.existsSync(storeFile) ? read() : null,
+          save,
+          remove: () => fs.rmSync(storeFile, { force: true }),
+          update: (_taskId, patch) => {
+            const next = { ...read(), ...patch };
+            const eventId = (next.loopPlus as LoopPlusSchedulerSnapshot | undefined)?.currentReview?.eventId;
+            if (eventId && !savedEventId && next.status !== "error") {
+              if (scenario === "commit-failure") {
+                commitRejected = true;
+                throw new Error("controlled finish event write failure");
+              }
+              tabsAtCommit = [...fixture.closedSubtaskTabs];
+              save(next);
+              savedEventId = (read().loopPlus as LoopPlusSchedulerSnapshot | undefined)?.currentReview?.eventId;
+            } else {
+              save(next);
+            }
+            return read();
+          },
+        };
+      },
+    });
+
+    try {
+      if (scenario === "report-failure") fixture.setReportFailure("controlled report write failure");
+      fixture.queueMain((input, tabId) => {
+        taskId = input.loopTaskId!;
+        fixture.publish(input, tabId, { status: "end", content: JSON.stringify({
+          status: "dispatch",
+          subtasks: [{
+            id: "write-note", title: "Write a note", writeFiles: ["note.txt"],
+            prompt: "Write a one-line note to note.txt in the isolated workspace and report the content for review.",
+          }],
+        }) });
+      });
+      fixture.queueMain((input, tabId) => {
+        const reviewEventId = (fixture.readTask(taskId)?.loopPlus as LoopPlusSchedulerSnapshot | undefined)?.currentReview?.eventId;
+        const { acceptancePlanResults: _unused, ...response } = acceptance(true, "note verified");
+        fixture.publish(input, tabId, { status: "end", content: JSON.stringify({ ...response, reviewEventId }) });
+      });
+      fixture.setAttemptAction((input, tabId) => {
+        fixture.publish(input, tabId, { status: "end", content: "note.txt written" });
+        loopSubtaskAutoCompactions.defer(input, { cli: "codex", tabId, sessionId }, async () => {
+          observedAtCompact = {
+            eventId: savedEventId,
+            closedTabs: [...fixture.closedSubtaskTabs],
+          };
+          if (scenario === "compact-skipped") return;
+          await compactGate.promise;
+          if (scenario === "compact-failure") throw new Error("controlled compaction failure");
+        });
+      });
+      await fixture.adapter.runEventDriven({
+        displayPrompt: "Write a one-line note", modelPrompt: "Write a one-line note", contextTags: [],
+        loopMainModel: "main-model", loopSubtaskModel: "sub-model",
+      }, { schedulingMode: "event_driven" }, fixture.target);
+
+      if (scenario === "report-failure" || scenario === "commit-failure") {
+        assert.equal(fixture.readTask(taskId)?.status, "error");
+        assert.equal(commitRejected, scenario === "commit-failure");
+        assert.equal(savedEventId, undefined);
+        assert.equal(observedAtCompact, undefined);
+        assert.deepEqual(fixture.closedSubtaskTabs, []);
+      } else {
+        assert.equal(fixture.readTask(taskId)?.status, "completed");
+        const completedTabs = [fixture.createdSubtaskTargets[0].tabId];
+        assert.ok(savedEventId);
+        assert.deepEqual(tabsAtCommit, []);
+        assert.deepEqual(observedAtCompact, { eventId: savedEventId, closedTabs: completedTabs });
+        assert.deepEqual(fixture.closedSubtaskTabs, completedTabs);
+        assert.equal(loopSubtaskAutoCompactions.has("codex", sessionId), scenario !== "compact-skipped");
+      }
+      compactGate.resolve();
+      await loopSubtaskAutoCompactions.wait("codex", sessionId);
+      assert.deepEqual(compactErrors, scenario === "compact-failure" ? ["loop-subtask-auto-compact-failed"] : []);
+    } finally {
+      compactGate.resolve();
+      await loopSubtaskAutoCompactions.wait("codex", sessionId);
+      fixture.dispose();
+    }
+  });
+}

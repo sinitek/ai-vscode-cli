@@ -1,5 +1,43 @@
-/** Generates the second, real Extension Host test entry. It observes durable
- * identities and asks only the original Owner's read-only observe endpoint. */
+import * as assert from "node:assert/strict";
+import type { DepartmentStoredRuntime } from "../../../extensionHost/departmentruntimestore";
+import type { LoopTaskRecord } from "../../../loopTaskStore";
+import type { LoopPlusSchedulerSnapshot } from "../../../loopPlusScheduler";
+
+export type ColdLoopPlusAttempt = { leaderTaskId: string; subtaskId: string; attemptId: string; reportFile: string };
+
+export function readColdLoopPlusAttempt(root: LoopTaskRecord, tasks: LoopTaskRecord[], saved: DepartmentStoredRuntime, held: ColdLoopPlusAttempt) {
+  assert.equal(root.department?.executionMode, "loop-plus");
+  assert.ok(root.department);
+  assert.equal(root.department.role, "director");
+  assert.equal(root.department.rootTaskId, root.id);
+  assert.equal(root.status, "running");
+  assert.equal(saved.rootTaskId, root.id);
+  assert.equal(saved.workspaceKey, root.workspaceKey);
+  assert.equal(saved.runtime.stopping, false);
+  const leader = tasks.find(task => task.id === held.leaderTaskId);
+  assert.ok(leader?.department, "held Loop+ attempt has no persisted department leader");
+  assert.equal(leader.status, "running");
+  assert.equal(leader.workspaceKey, root.workspaceKey);
+  assert.equal(leader.department.executionMode, "loop-plus");
+  assert.equal(leader.department.role, "leader");
+  assert.equal(leader.department.rootTaskId, root.id);
+  assert.equal(leader.department.parentTaskId, root.id);
+  assert.deepEqual(leader.department.routes, root.department.routes);
+  const member = saved.runtime.leaders.find(item => item.taskId === leader.id);
+  assert.ok(member && member.leaderSubtaskId === leader.department.leaderSubtaskId && member.status === "running",
+    "held Loop+ attempt has no matching running runtime member");
+  assert.equal(root.subTasks.find(task => task.id === member.leaderSubtaskId)?.status, "running");
+  const employee = leader.subTasks.find(task => task.id === held.subtaskId);
+  assert.ok(employee?.status === "running" && employee.communicationFile === held.reportFile, "held Loop+ employee record does not match its provider request");
+  const scheduler = leader.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+  const attempts = scheduler?.running.filter(attempt => attempt.subtaskId === held.subtaskId) ?? [];
+  assert.ok(attempts.length === 1 && attempts[0].attemptId === held.attemptId, "held Loop+ attempt does not match the scheduler running set");
+  const capacityKey = JSON.stringify([held.leaderTaskId, held.attemptId]);
+  assert.ok(saved.capacity.leaders.includes(member.leaderSubtaskId), "held Loop+ leader has no matching capacity");
+  assert.ok(saved.capacity.employees.includes(capacityKey), "held Loop+ employee has no matching capacity");
+  return { member, attempt: attempts[0], capacityKey };
+}
+
 export type ColdRecoveryWarning = { message: string; rootTaskId: string | null; actionSequence: number };
 export type ColdDeadlinePlan = { hostDeadline: number; actionDeadline: number; observationDeadline: number;
   evidenceDeadline: number; warningWindowMs: number };
@@ -133,7 +171,8 @@ export async function waitForColdRecoveryWarning(readWarnings: () => readonly Co
   } while (true);
 }
 
-export function createDepartmentColdStartHostTestEntry(options: { root: string; home: string; product: string; rootTaskId: string; timeoutMs?: number; deadlines?: ColdDeadlinePlan }): string {
+export function createDepartmentColdStartHostTestEntry(options: { root: string; home: string; product: string; rootTaskId: string; timeoutMs?: number;
+  deadlines?: ColdDeadlinePlan; loopPlusAttempt?: ColdLoopPlusAttempt }): string {
   const root = JSON.stringify(options.root), home = JSON.stringify(options.home), product = JSON.stringify(options.product);
   const rootTaskId = JSON.stringify(options.rootTaskId);
   const timeout = options.timeoutMs ?? 60000;
@@ -161,6 +200,7 @@ exports.run = async () => {
   const waitForColdRecoveryWarning = (${warningWaiter});
   const waitForColdPublicStopAction = (${stopActionWaiter});
   const expectedRootTaskId = ${rootTaskId};
+  const heldLoopPlusAttempt = ${JSON.stringify(options.loopPlusAttempt ?? null)};
   const deadlines = ${deadlines};
   const remaining = deadline => (${coldRemaining.toString()})(deadline);
   const bounded = async (work, deadline) => {
@@ -186,6 +226,7 @@ exports.run = async () => {
   const { isDepartmentExecutionBinding } = require(path.join(product, 'dist/extensionHost/departmentruntimestate.js'));
   const { sameExecution } = require(path.join(product, 'dist/runtime/departmentexecutionidentity.js'));
   const { DepartmentRuntimeStore } = require(path.join(product, 'dist/extensionHost/departmentruntimestore.js'));
+  const { readColdLoopPlusAttempt } = require(path.join(product, 'dist/test/extensionHost/fixtures/departmentcoldstartproductionhost.js'));
   const { DepartmentExecutionOwnerClient } = require(path.join(product, 'dist/runtime/departmentexecutionownerclient.js'));
   const { installDepartmentFullEhProtocolObserver } = require(path.join(product, 'dist/test/extensionHost/fixtures/departmentfullehproductionhost.js'));
   const protocolEvents = [];
@@ -254,10 +295,15 @@ exports.run = async () => {
       runtime: runtimeStore.read(rootTask.id, rootTask.workspaceKey).value })), observations };
   };
   const beforeActivation = readSnapshot();
-  if (!beforeActivation.roots.length || !beforeActivation.observations.length) throw new Error('cold EH requires real persisted department execution bindings');
-  if (!beforeActivation.roots.some(item => item.id === expectedRootTaskId)) throw new Error('cold EH expected root is missing from the authoritative task source');
-  if (!beforeActivation.observations.some(item => item.identity.rootTaskId === expectedRootTaskId && item.identity.role === 'employee'))
+  const expectedRoot = beforeActivation.roots.find(item => item.id === expectedRootTaskId);
+  if (!expectedRoot) throw new Error('cold EH expected root is missing from the authoritative task source');
+  const rootTaskBeforeActivation = beforeActivation.tasks.find(task => task.id === expectedRootTaskId);
+  const loopPlusAttempt = heldLoopPlusAttempt && readColdLoopPlusAttempt(rootTaskBeforeActivation, beforeActivation.tasks, expectedRoot.runtime, heldLoopPlusAttempt);
+  if (heldLoopPlusAttempt) {
+    if (beforeActivation.observations.length) throw new Error('cold Loop+ fixture unexpectedly has Owner bindings');
+  } else if (!beforeActivation.observations.some(item => item.identity.rootTaskId === expectedRootTaskId && item.identity.role === 'employee')) {
     throw new Error('cold EH expected root has no exact running employee binding');
+  }
   const markersBeforeActivation = { source: readJson(markerPath), owner: readJson(ownerPath), catalog: readJson(catalogPath) };
   phase = 'activating-extension';
   let activationError = null;
@@ -306,7 +352,7 @@ exports.run = async () => {
   fs.writeFileSync(path.join(root, 'cold-public-observer.json'), JSON.stringify({ phase, apiIdentity, ...observer.diagnostics() }, null, 2), { mode: 0o600 });
   const evidence = { phase: 'second-host', vscode: vscode.version, extensionPath: extension.extensionPath, activationError,
     sourceMarker: readJson(markerPath), ownerMarker: readJson(ownerPath), catalog: readJson(catalogPath), markersBeforeActivation, beforeActivation,
-    afterActivation, beforeControl, afterControl: afterRecoveryControl,
+    afterActivation, beforeControl, afterControl: afterRecoveryControl, loopPlusAttempt,
     originalOwnerObservations: beforeActivation.observations.map(item => ({ identity: item.identity, result: item.observation })),
     productionRecovery: { trigger: 'public-department-stop', actionTriggered: true, observed: true,
       outcome: 'blocked', reason: 'live-leader-unverifiable', warning: recoveryWarning, allWarnings: secondHostWarnings, actionObservations, deadlines, observationWindowMs: deadlines.warningWindowMs,

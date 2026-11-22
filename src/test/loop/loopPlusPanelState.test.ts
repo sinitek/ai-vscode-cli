@@ -425,7 +425,7 @@ test("shows stopped and resumed snapshots without treating them as automatic rev
   assert.equal(stoppedProjection.currentReview?.subtaskId, "A");
   assert.deepEqual(stoppedProjection.reviewQueue.map((item) => item.subtaskId), ["B"]);
   assert.equal(stoppedState.rounds[0]?.participants.find((item) => item.id === "main")?.status, "stopped");
-  assert.equal(stoppedState.rounds[0]?.participants.find((item) => item.id === "A")?.status, "held_review");
+  assert.equal(stoppedState.rounds[0]?.participants.find((item) => item.id === "A")?.status, "queued_review");
   assert.equal(stoppedState.rounds[0]?.activeSpeaker, undefined);
 
   const resumedState = buildState(resumed);
@@ -540,12 +540,30 @@ test("shows needs-review and error as a display pause without hiding the kernel 
   assert.equal(held.rounds[0]?.status, "reviewing");
   assert.equal(held.rounds[0]?.activeSpeaker, undefined);
   assert.equal(held.rounds[0]?.participants.find((item) => item.id === "main")?.status, "paused");
-  assert.equal(held.rounds[0]?.participants.find((item) => item.id === "A")?.status, "held_review");
+  assert.equal(held.rounds[0]?.participants.find((item) => item.id === "A")?.status, "queued_review");
   assert.equal(held.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
   assert.equal(held.rounds[0]?.participants.find((item) => item.id === "D")?.status, "running");
   assert.equal(held.rounds[0]?.participants.find((item) => item.id === "E")?.status, "pending");
   assert.equal(held.task.canContinue, true);
   assert.equal(held.task.canStop, false);
+
+  const errored = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, { status: "error" }), deps(writes));
+  assert.equal(errored.task.status, "error");
+  assert.ok(errored.loopPlus?.ok);
+  assert.equal(errored.loopPlus.activity, "paused");
+  assert.equal(errored.loopPlus.currentReview?.subtaskId, "A");
+  assert.deepEqual(errored.loopPlus.reviewQueue.map((item) => item.subtaskId), ["B"]);
+  assert.deepEqual(errored.loopPlus.activeReviewEventIds, [errored.loopPlus.currentReview?.eventId]);
+  assert.equal(errored.rounds[0]?.participants.find((item) => item.id === "main")?.status, "paused");
+  assert.equal(errored.rounds[0]?.participants.find((item) => item.id === "A")?.status, "queued_review");
+  assert.equal(errored.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
+  assert.equal(JSON.stringify(heldSnapshot), heldBefore);
+  assert.equal(writes.count, 0);
+
+  const inactive = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, {}, []), deps());
+  assert.equal(inactive.loopPlus?.activity, "review_pending");
+  assert.equal(inactive.rounds[0]?.participants.find((item) => item.id === "A")?.status, "queued_review");
+  assert.equal(inactive.rounds[0]?.participants.find((item) => item.id === "B")?.status, "queued_review");
 
   const continued = buildLoopGroupChatPanelStateWithDeps(task(heldSnapshot, {
     status: "running",

@@ -53,6 +53,7 @@ function createLocalResponsesServer(options = {}) {
         return;
       }
       requests.push(record);
+      options.onRequest?.(requests.length, record);
       Promise.resolve().then(() => respond(input, { index, responseId, request: record })).then((text) => {
         if (!(typeof text === "string" && text.trim())
           && !(text && typeof text === "object" && text.type === "function_call" && typeof text.name === "string" && text.arguments))

@@ -34,6 +34,40 @@ function functionBody(source: string, name: string): string {
   return declaration.body.getText(file);
 }
 
+test("production main watchdog checks the open original tab and its native thread", () => {
+  const source = readSource("src", "extension.ts");
+  const activation = functionBody(source, "activate");
+  assert.match(activation, /startLoopWaitWatchdog\(\[[\s\S]*checkWaitingTasks\(\)[\s\S]*\], [\s\S]*checkInterruptedMainTasks\(\)/);
+  const sandbox = {
+    isExtensionDeactivating: false,
+    activeWorkspaceKey: "workspace",
+    tab: { id: "tab-main", cli: "codex", sessionId: "local-session" } as object | null,
+    role: "main",
+    loopTaskId: "task",
+    thread: "thread-1",
+    getConversationTabById: (tabId: string) => tabId === "tab-main" ? sandbox.tab : null,
+    resolveConversationTabLoopContext: () => ({ taskRole: sandbox.role, loopTaskId: sandbox.loopTaskId }),
+    resolveInteractiveMappedId: () => sandbox.thread,
+    isLocalSessionId: () => true,
+  };
+  const check = vm.runInNewContext(`(function (task, target, nativeSessionId) ${functionBody(source, "canAutoResumeLoopPlusMain")})`, sandbox);
+  const task = { id: "task", workspaceKey: "workspace" };
+  const target = { tabId: "tab-main", cli: "codex", sessionId: "local-session" };
+  assert.equal(check(task, target, "thread-1"), true);
+  assert.equal(check(task, target, undefined), false);
+  assert.equal(check(task, { ...target, sessionId: "another-session" }, "thread-1"), false);
+  assert.equal(check(task, target, "old-thread"), false);
+  assert.equal(check({ ...task, workspaceKey: "another-workspace" }, target, "thread-1"), false);
+  sandbox.role = "subtask";
+  assert.equal(check(task, target, "thread-1"), false);
+  sandbox.role = "main";
+  sandbox.loopTaskId = "other-task";
+  assert.equal(check(task, target, "thread-1"), false);
+  sandbox.loopTaskId = "task";
+  sandbox.tab = null;
+  assert.equal(check(task, target, "thread-1"), false);
+});
+
 function productionLoopMainEntries() {
   const source = readSource("src", "extension.ts");
   const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true);
@@ -69,6 +103,7 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   const runtime = vm.runInNewContext(productionLoopMainEntries(), {
     usesDepartmentOwner,
     isExtensionDeactivating: false,
+    activeWorkspaceKey: task.workspaceKey,
     readLoopTaskRecord: () => { taskReads += 1; return task; },
     resolveLoopMainPromptTarget: () => ({ ...target }),
     isTabRunActive: () => active,

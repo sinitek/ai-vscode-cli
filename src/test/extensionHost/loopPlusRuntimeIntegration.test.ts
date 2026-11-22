@@ -579,6 +579,7 @@ for (const configId of [null, "active-profile"]) {
 for (const continuationKind of ["repair", "follow-up"] as const) {
   test(`Loop+ ${continuationKind} with ${configId ?? "no profile"} restores the original session after its tab was closed`, async () => {
     const fixture = createLoopPlusRuntimeFixture({ configId });
+    const nextSubtaskId = continuationKind === "repair" ? "A" : "B";
     let taskId = "";
     try {
       fixture.queueMain((input, tabId) => {
@@ -590,8 +591,8 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
         assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "A")?.executionSession?.sessionId, "original-subtask-thread");
         fixture.publish(input, tabId, { status: "end", content: decision({
           status: "accept", reviewEventId: currentEventId(input.displayPrompt),
-          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: continuationKind === "repair" ? "failed" : "passed", subtaskIds: ["B"] }],
-          subtasks: [{ ...subtask("B", "src/a.ts"), ...(continuationKind === "follow-up" ? { continueFromSubtaskId: "A" } : {}) }],
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: continuationKind === "repair" ? "failed" : "passed", subtaskIds: [nextSubtaskId] }],
+          subtasks: [{ ...subtask(nextSubtaskId, "src/a.ts"), ...(continuationKind === "follow-up" ? { continueFromSubtaskId: "A" } : {}) }],
         }) });
       });
       fixture.queueMain((input, tabId) => {
@@ -600,7 +601,7 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
       fixture.setAttemptAction((input, tabId) => {
         const target = fixture.createdSubtaskTargets.find((item) => item.tabId === tabId);
         assert.ok(target);
-        if (input.loopSubtaskId === "A") {
+        if (tabId === fixture.createdSubtaskTargets[0].tabId) {
           assert.equal(target.sessionId, null);
           target.sessionId = "original-subtask-thread";
         } else {
@@ -612,9 +613,12 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
       assert.equal(fixture.readTask(taskId)?.status, "completed");
       assert.equal(fixture.createdSubtaskTargets.length, 2);
       assert.equal(fixture.attemptCalls[1]?.loopSubtaskConfigId ?? null, configId);
-      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "B")?.executionSession?.configId, configId);
+      assert.deepEqual(fixture.attemptCalls.map((input) => input.loopSubtaskId), ["A", nextSubtaskId]);
+      assert.ok(fixture.attemptCalls.every((input) => input.loopAttemptId));
+      assert.notEqual(fixture.attemptCalls[0].loopAttemptId, fixture.attemptCalls[1].loopAttemptId);
+      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === nextSubtaskId)?.executionSession?.configId, configId);
       assert.notEqual(fixture.createdSubtaskTargets[0].tabId, fixture.createdSubtaskTargets[1].tabId);
-      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "B")?.executionSession?.sessionId, "original-subtask-thread");
+      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === nextSubtaskId)?.executionSession?.sessionId, "original-subtask-thread");
     } finally {
       fixture.dispose();
     }
@@ -699,7 +703,7 @@ function prompt(text = "ship the feature") {
 }
 
 for (const compactFails of [false, true]) {
-  test(`Loop+ 先汇报并验收，压缩${compactFails ? "失败" : "成功"}后再关闭子任务标签`, { timeout: 3000 }, async () => {
+  test(`Loop+ 提交汇报及完成事件后、后台压缩${compactFails ? "失败" : "成功"}前关闭子任务标签`, { timeout: 3000 }, async () => {
     const fixture = createLoopPlusRuntimeFixture();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -712,7 +716,6 @@ for (const compactFails of [false, true]) {
         fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
       });
       fixture.queueMain((input, tabId) => {
-        assert.equal(fixture.closedSubtaskTabs.length, 0);
         fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) });
       });
       fixture.setAttemptAction((input, tabId) => {
@@ -721,8 +724,10 @@ for (const compactFails of [false, true]) {
         loopSubtaskAutoCompactions.defer(input, { cli: "codex", tabId, sessionId }, async () => {
           assert.match(reportText(fixture.rootDir), /Attempt result/);
           assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "A")?.status, "completed");
-          assert.equal(fixture.closedSubtaskTabs.length, 0);
           compactStarted = true;
+          assert.deepEqual(fixture.closedSubtaskTabs, [tabId]);
+          const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)?.loopPlus }).snapshot();
+          assert.equal(snapshot.seenAttempts.find((attempt) => attempt.attemptId === input.loopAttemptId)?.outcome, "completed");
           await gate;
           if (compactFails) throw new Error("受控压缩失败");
         });
@@ -730,7 +735,7 @@ for (const compactFails of [false, true]) {
       await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
       assert.equal(fixture.readTask(taskId)?.status, "completed");
       assert.equal(compactStarted, true);
-      assert.equal(fixture.closedSubtaskTabs.length, 0);
+      assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
       release();
       await loopSubtaskAutoCompactions.wait("codex", sessionId);
       assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
@@ -1109,6 +1114,8 @@ test("adapter accepts A by adding C while B keeps running and does not call main
         content: decision({
           status: "accept",
           reviewEventId: currentEventId(input.displayPrompt),
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "passed" }],
+          independentSubtaskIds: ["C"],
           subtasks: [subtask("C", "src/c.ts")],
         }),
       });
@@ -1315,6 +1322,79 @@ for (const departmentMode of [false, true]) {
       assert.equal(fixture.readTask(taskId)?.status, "completed");
       assert.deepEqual(revealed, departmentMode ? [] : [taskId, taskId, taskId]);
     } finally {
+      fixture.dispose();
+    }
+  });
+}
+
+for (const { mode, department, requiresAcceptance } of [
+  { mode: "ordinary execution completion", department: false, requiresAcceptance: true },
+  { mode: "department acceptance", department: true, requiresAcceptance: true },
+  { mode: "department report acknowledgement", department: true, requiresAcceptance: false },
+] as const) {
+  test(`first Loop+ dispatch releases the successor after ${mode}`, async () => {
+    const fixture = createLoopPlusRuntimeFixture({ maxConcurrency: 2 });
+    const departmentMetadata = department ? {
+      version: 1 as const,
+      rootTaskId: "department-root",
+      parentTaskId: "department-root",
+      leaderSubtaskId: "accounts",
+      role: "leader" as const,
+      moduleTitle: "accounts",
+      routes: { director: { cli: "codex" as const }, leader: { cli: "codex" as const }, employee: { cli: "codex" as const } },
+      limits: { maxLeaders: 2, maxEmployees: 20 },
+    } : undefined;
+    let running: Promise<boolean> | undefined;
+    try {
+      fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
+        status: "end", content: decision({ status: "dispatch", subtasks: [
+          { ...subtask("prerequisite", "source.ts"), requiresAcceptance },
+          { ...subtask("successor", "target.ts"), dependsOn: ["prerequisite"] },
+        ] }),
+      }));
+      fixture.queueMain(async (input, tabId) => {
+        await fixture.holdMain();
+        const task = fixture.readTask(input.loopTaskId!)!;
+        const snapshot = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();
+        fixture.publish(input, tabId, { status: "end", content: decision(requiresAcceptance
+          ? { status: "accept", reviewEventId: currentEventId(input.displayPrompt) }
+          : { status: "wait", reportEventIds: snapshot.reportQueue!.map((report) => report.eventId) }) });
+      });
+      running = fixture.adapter.runEventDriven({
+        ...prompt(), loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot(),
+      }, { schedulingMode: "event_driven", departmentMetadata }, fixture.target);
+      await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("prerequisite"), "first prerequisite launched");
+      const [taskId] = fixture.createdTaskIds;
+      const snapshot = () => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
+      assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["successor"]);
+      fixture.finishParked("prerequisite", { status: "end", content: "prerequisite complete" });
+      await waitForLoopPlus(() => fixture.mainCalls.length === 2, "first review or report main decision held open");
+      if (department) {
+        assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["successor"]);
+        assert.equal(fixture.parkedSubtaskIds().includes("successor"), false);
+        const before = snapshot();
+        assert.equal((requiresAcceptance ? before.currentReview : before.reportQueue?.[0])?.subtaskId, "prerequisite");
+        fixture.releaseHeldMain();
+      }
+      await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("successor"), "successor launched");
+      const after = snapshot();
+      const prerequisite = after.seenAttempts.find((item) => item.subtaskId === "prerequisite");
+      if (!department) {
+        assert.equal(after.currentReview?.subtaskId, "prerequisite", "ordinary execution did not wait for acceptance");
+      } else if (requiresAcceptance) {
+        assert.equal(prerequisite?.disposition, "reviewed");
+        assert.equal(prerequisite?.acceptance, "passed");
+      } else {
+        assert.equal(prerequisite?.disposition, "reported");
+        assert.equal(prerequisite?.requiresAcceptance, false);
+      }
+      const gate = department ? /latest attempt completes and passes acceptance/ : /Acceptance or report acknowledgement is not required for execution admission/;
+      assert.match(fixture.mainCalls[0].modelPrompt, gate);
+      assert.match(fixture.peekParked("successor")!.input.modelPrompt, gate);
+    } finally {
+      fixture.adapter.host().stopParent(fixture.createdTaskIds[0] ?? "");
+      fixture.releaseHeldMain();
+      await running;
       fixture.dispose();
     }
   });

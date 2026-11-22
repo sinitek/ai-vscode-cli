@@ -267,25 +267,74 @@ function theme(dark) {
         assert.equal(await groups.count(), 3);
         const groupFor = (taskId) => page.locator(`.department-group[data-department-leader-task-id="${taskId}"]`);
         const [leaderA, leaderB] = parentState.department.leaders;
-        const tagsFor = (leader) => groupFor(leader.taskId).locator(".department-status-tag");
+        const tagsFor = (leader) => groupFor(leader.taskId).locator(".loop-plus-status-tag");
         assert.equal(await groups.locator(".department-employees").count(), 0);
-        assert.deepEqual(await tagsFor(leaderA).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 0", "已阻塞 0", "已完成 1"]);
-        assert.deepEqual(await tagsFor(leaderB).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 1", "已阻塞 0", "已完成 0"]);
-        leaderB.employees[0].status = "blocked";
+        assert.deepEqual(await tagsFor(leaderA).allTextContents(), ["运行中 1", "修复中 0", "验收中 0", "待验收 0", "待启动 0", "验收失败 0", "已阻塞 0", "已完成 1"]);
+        assert.deepEqual(await tagsFor(leaderB).allTextContents(), ["运行中 0", "修复中 0", "验收中 0", "待验收 0", "待启动 1", "验收失败 0", "已阻塞 0", "已完成 0"]);
+        const failureTag = groupFor(leaderB.taskId).locator('[data-loop-plus-count="acceptance_failed"]');
+        if (rosterStatusOnly) await page.evaluate(() => { document.documentElement.dataset.rosterSmokeDocument = "initial"; });
+        leaderB.statusSummary = { running: 1, repairing: 1, reviewing: 1, queue: 0, pending: 1, acceptance_failed: 1, blocked: 1, completed: 1 };
         panel.update(parentState);
         await tagsFor(leaderB).filter({ hasText: "已阻塞 1" }).waitFor();
-        leaderB.employees[0].status = "no_acceptance";
+        const readColors = () => tagsFor(leaderB).evaluateAll((tags) => tags.map((tag) => {
+          const style = getComputedStyle(tag);
+          return { field: tag.dataset.loopPlusCount, foreground: style.color, background: style.backgroundColor };
+        }));
+        const colors = await readColors();
+        assert.equal(new Set(colors.map(({ foreground }) => foreground)).size, 1);
+        assert.deepEqual(colors.slice(0, 3).map(({ background }) => background), [colors[0].background, colors[0].background, colors[0].background]);
+        assert.equal(new Set(colors.map(({ background }) => background)).size, 5);
+        const positiveTags = await tagsFor(leaderB).allTextContents();
+        if (rosterStatusOnly) {
+          assert.deepEqual(positiveTags, ["运行中 1", "修复中 1", "验收中 1", "待验收 0", "待启动 1", "验收失败 1", "已阻塞 1", "已完成 1"]);
+          assert.equal(await failureTag.getAttribute("data-loop-plus-tone"), "blocked");
+          const style = await failureTag.evaluate((tag) => {
+            const summary = tag.parentElement;
+            const blocked = tag.nextElementSibling;
+            const metrics = (element) => {
+              const computed = getComputedStyle(element);
+              return { background: computed.backgroundColor, foreground: computed.color, size: computed.fontSize,
+                radius: computed.borderRadius, padding: computed.padding, lineHeight: computed.lineHeight };
+            };
+            return { tagName: tag.tagName, tabIndex: tag.tabIndex, failure: metrics(tag), blocked: metrics(blocked),
+              previous: tag.previousElementSibling.dataset.loopPlusCount, next: blocked.dataset.loopPlusCount,
+              wrap: getComputedStyle(summary).flexWrap, rows: new Set([...summary.children].map((child) => child.offsetTop)).size,
+              scrollWidth: summary.scrollWidth, clientWidth: summary.clientWidth };
+          });
+          assert.equal(style.tagName, "SPAN");
+          assert.equal(style.tabIndex, -1);
+          assert.equal(style.previous, "pending");
+          assert.equal(style.next, "blocked");
+          assert.deepEqual(style.failure, style.blocked);
+          assert.equal(style.wrap, "wrap");
+          if (width === 280) assert.ok(style.rows > 1, JSON.stringify(style));
+          assert.ok(style.scrollWidth <= style.clientWidth + 1, JSON.stringify(style));
+          await overflow(page);
+          await groupFor(leaderB.taskId).screenshot({ path: path.join(output, `${name}-acceptance-failed.png`) });
+        }
+        leaderB.statusSummary = { running: 0, repairing: 0, reviewing: 0, queue: 0, pending: 0, acceptance_failed: 0, blocked: 0, completed: 2 };
         panel.update(parentState);
-        await tagsFor(leaderB).filter({ hasText: "已完成 1" }).waitFor();
-        assert.deepEqual(await tagsFor(leaderB).allTextContents(), ["运行中 0", "验收中 0", "待验收 0", "待启动 0", "已阻塞 0", "已完成 1"]);
+        await tagsFor(leaderB).filter({ hasText: "已阻塞 0" }).waitFor();
+        const refreshedTags = await tagsFor(leaderB).allTextContents();
+        assert.deepEqual(refreshedTags, ["运行中 0", "修复中 0", "验收中 0", "待验收 0", "待启动 0", "验收失败 0", "已阻塞 0", "已完成 2"]);
         assert.equal(await groupFor("").locator('[data-action="openDepartmentTask"]').isDisabled(), true);
         await overflow(page);
         await page.locator(".main").evaluate((element) => { element.scrollTop = 140; });
         const parentTop = await page.locator(".main").evaluate((element) => element.scrollTop);
         await page.screenshot({ path: path.join(output, `${name}-tree.png`) });
         if (rosterStatusOnly) {
+          assert.equal(await page.locator("html").getAttribute("data-roster-smoke-document"), "initial");
+          assert.equal(await failureTag.getAttribute("data-loop-plus-tone"), "empty");
+          const refreshedColors = await readColors();
+          const failedColor = refreshedColors.find(({ field }) => field === "acceptance_failed");
+          assert.match(failedColor.background, /^oklch\([\d.]+ 0 0\)$/u);
+          assert.equal(failedColor.background, colors.find(({ field }) => field === "queue").background);
+          assert.notEqual(failedColor.background, colors.find(({ field }) => field === "acceptance_failed").background);
+          assert.equal(failedColor.foreground, colors.find(({ field }) => field === "acceptance_failed").foreground);
+          assert.equal(new Set(refreshedColors.map(({ foreground }) => foreground)).size, 1);
+          await groupFor(leaderB.taskId).screenshot({ path: path.join(output, `${name}-acceptance-failed-cleared.png`) });
           assert.deepEqual(errors, []);
-          results.push({ name, result: "passed", leaderBTags: await tagsFor(leaderB).allTextContents(), browserErrors: errors });
+          results.push({ name, result: "passed", positiveTags, positiveColors: colors, refreshedTags, refreshedColors, browserErrors: errors });
           continue;
         }
         const openA = groupFor(leaderA.taskId).locator('[data-action="openDepartmentTask"]');

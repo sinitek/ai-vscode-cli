@@ -1,14 +1,22 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 import { CLI_LIST, type CliName, type InteractiveMode } from "../../cli/types";
 import { createCliRecord } from "../../cli/types";
 import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs";
 import { createSessionTabsController, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft } from "../../sessionTabs";
 import type { SessionStore } from "../../sessionStore";
-import { closeLoopSubtaskConversationTabs, prepareLoopSubtaskConversationTabClose } from "../../extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, prepareLoopSubtaskConversationTabClose } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
+import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
+import type { LoopSubtaskRecord } from "../../loopTaskStore";
+import type { TaskRunRecord } from "../../promptRunState";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
+import { installVscodeMock } from "../vscodeMock";
+
+installVscodeMock();
 import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 
 function createHost(initial: {
@@ -194,6 +202,389 @@ test("closing an active Grok tab publishes the fallback Codex configuration", as
   assert.deepEqual(env.postedTabIds, ["codex-tab"]);
 });
 
+test("completed cleanup replaces the final tab with a same-CLI blank tab before restoring configuration", async () => {
+  const oldTab: ConversationTabRecord = {
+    id: "completed-sub", cli: "claude", sessionId: "finished-session",
+    sessionIdByCli: { claude: "finished-session" }, createdAt: 1,
+  };
+  const state: ConversationTabsState = { activeTabId: oldTab.id, tabs: [oldTab] };
+  let stateWasPublishedBeforeRestore = false;
+  let panelStatePublished = false;
+  const env = createHost({
+    state, currentCli: "claude", modes: { claude: "coding" },
+    onPostPanelState: async () => { panelStatePublished = true; },
+    onRestore: async (tabId) => {
+      const replacement = state.tabs.find((tab) => tab.id === tabId);
+      stateWasPublishedBeforeRestore = panelStatePublished;
+      assert.ok(replacement);
+      assert.notEqual(replacement, oldTab);
+      assert.equal(replacement.cli, "claude");
+      assert.equal(replacement.sessionId, null);
+      assert.equal(replacement.sessionIdByCli.claude, undefined);
+    },
+  });
+
+  await env.host.closeCompletedSubtaskTabAndRefreshPanel(oldTab);
+
+  assert.equal(state.tabs.length, 1);
+  assert.equal(state.tabs[0].id, state.activeTabId);
+  assert.notEqual(state.tabs[0].id, oldTab.id);
+  assert.equal(env.currentCli(), "claude");
+  assert.equal(stateWasPublishedBeforeRestore, true);
+  assert.deepEqual(env.closedTabs, []);
+  assert.deepEqual(env.disposedTabIds, [oldTab.id]);
+});
+
+test("explicit Loop+ continuation closes its captured only tab through the completed host after attempt commit", async () => {
+  const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("../extensionHost/fixtures/loopPlusRuntimeFixture") as typeof import("../extensionHost/fixtures/loopPlusRuntimeFixture");
+  const oldTab: ConversationTabRecord = {
+    id: "continued-subtask", cli: "codex", sessionId: "continued-session",
+    sessionIdByCli: { codex: "continued-session" }, createdAt: 1,
+  };
+  const state: ConversationTabsState = { activeTabId: oldTab.id, tabs: [oldTab] };
+  const context = { taskId: "continued-task", subtaskId: "A", round: 2, attemptId: "resume-attempt" };
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+    scheduler.dispatch([{ subtaskId: context.subtaskId, attemptId: context.attemptId, writeFiles: ["src/a.ts"] }]);
+    const report = path.join(fixture.rootDir, "attempt-report.md");
+    fixture.saveTask({
+      id: context.taskId, workspaceKey: "workspace", taskStoreFile: fixture.storeFile, cli: "codex",
+      rootPrompt: "resume", status: "stopped", runtimeInterrupted: true, schedulingMode: "event_driven", loopPlus: scheduler.snapshot(),
+      createdAt: 1, updatedAt: 1, maxRounds: 20, currentRound: context.round, sessionId: fixture.target.sessionId,
+      communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
+      activeSubtaskId: context.subtaskId, activeSubtaskIds: [context.subtaskId],
+      subTasks: [{ id: context.subtaskId, title: "A", status: "blocked", communicationFile: report }],
+      rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
+    });
+    let persistedAtClose: { report: string; outcome: string | undefined } | undefined;
+    const env = createHost({ state, currentCli: "codex", modes: {}, onPostPanelState: async () => {
+      persistedAtClose ??= {
+        report: fs.readFileSync(report, "utf8"),
+        outcome: createLoopPlusScheduler({ snapshot: fixture.readTask(context.taskId)?.loopPlus }).snapshot().currentReview?.outcome,
+      };
+    } });
+    const cleanup = createCompletedLoopSubtaskTabCleanup({
+      getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
+      closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+    });
+    cleanup.bindPrompt(oldTab, context)?.(oldTab.sessionId);
+    const close = cleanup.prepareClose(oldTab.id, context);
+    const orchestration = fixture.adapter.host();
+    const recovery = { target: fixture.target, input: { displayPrompt: "resume" } };
+    assert.equal(orchestration.notifySubtaskContinuation(context.taskId, "A", "completed", "stale", recovery, close, "obsolete"), false);
+    assert.deepEqual(state.tabs, [oldTab]);
+    fixture.queueMain(() => fixture.holdMain());
+    assert.equal(orchestration.notifySubtaskContinuation(context.taskId, "A", "completed", "resumed", recovery, close, context.attemptId), true);
+    await waitForLoopPlus(() => persistedAtClose !== undefined && env.restoredTabIds.length > 0, "唯一子任务标签完成清理");
+    assert.equal(persistedAtClose?.outcome, "completed");
+    assert.match(persistedAtClose?.report ?? "", /attempt: resume-attempt[\s\S]*resumed/);
+    assert.equal(state.tabs.length, 1);
+    assert.notEqual(state.tabs[0], oldTab);
+    assert.equal(state.tabs[0].cli, "codex");
+    assert.equal(state.tabs[0].sessionId, null);
+    assert.deepEqual(env.disposedTabIds, [oldTab.id]);
+  } finally {
+    fixture.adapter.host().stopParent(context.taskId);
+    fixture.releaseHeldMain();
+    fixture.dispose();
+  }
+});
+
+test("classic completion uses the production snapshot to clean current and eligible older tabs after commit", async () => {
+  const context = { taskId: "task", subtaskId: "A", round: 2 };
+  const makeTab = (id: string): ConversationTabRecord => ({ id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1 });
+  const [older, locked, running, rebound, newerBinding, target, newer] = ["older", "locked", "running", "rebound", "newer-binding", "target", "newer"].map(makeTab);
+  const state: ConversationTabsState = { activeTabId: target.id, tabs: [older, locked, running, rebound, newerBinding, target, newer] };
+  const runningTabIds = new Set([running.id]);
+  let committed = false;
+  const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds, lockedTabIds: new Set([locked.id]),
+    onPostPanelState: async () => { assert.equal(committed, true); },
+  });
+  const cleanup = createCompletedLoopSubtaskTabCleanup({
+    getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: (id) => runningTabIds.has(id),
+    closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+  });
+  for (const tab of [older, locked, running, rebound, newer]) {
+    cleanup.bindPrompt(tab, { ...context, round: 1, attemptId: `previous-${tab.id}` })?.(tab.sessionId);
+  }
+  cleanup.bindPrompt(target, context)?.(target.sessionId);
+  cleanup.bindPrompt(newerBinding, context)?.(newerBinding.sessionId);
+  await finalizeLoopSubtaskRun({ ...context, runStatus: "end", assistantContent: "done", tabId: target.id }, {
+    markSubtaskRunFinished: () => {
+      assert.equal(state.tabs.length, 7);
+      cleanup.bindPrompt(rebound, { ...context, attemptId: "new-queued-attempt" });
+      runningTabIds.clear();
+      committed = true;
+      return "committed";
+    },
+    prepareSubtaskTabClose: (tabId, options) => cleanup.prepareClose(tabId, options!.expected!),
+    closeSubtaskTab: async () => assert.fail("expected completion snapshot"),
+    logSubtaskTabAutoClosed: () => assert.fail("locked candidate must report cleanup failure"),
+  });
+  assert.deepEqual(env.disposedTabIds, [older.id, target.id]);
+  assert.deepEqual(state.tabs, [locked, running, rebound, newerBinding, newer]);
+});
+
+test("completed snapshot recovers a persisted idle tab after host reload and closes it with the current attempt", async () => {
+  const context = { taskId: "task", subtaskId: "A", round: 2, attemptId: "current" };
+  const older: ConversationTabRecord = { id: "persisted-old", cli: "codex", sessionId: "old-session", sessionIdByCli: { codex: "old-session" }, createdAt: 1 };
+  const target: ConversationTabRecord = { id: "current-sub", cli: "codex", sessionId: "current-session", sessionIdByCli: { codex: "current-session" }, createdAt: 1 };
+  const state: ConversationTabsState = { activeTabId: target.id, tabs: [older, target] };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+  const cleanup = createCompletedLoopSubtaskTabCleanup({
+    getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
+    closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+    restoredEvidence: {
+      readMessages: (cli, sessionId) => cli === "codex" && sessionId === "old-session" ? [{
+        id: "old-prompt", role: "user", content: "persisted prompt", createdAt: 100,
+        taskRole: "subtask", loopTaskId: "task", loopSubtaskId: "A", loopRound: 1, loopAttemptId: "previous",
+      }] : [],
+      readRuns: () => [{
+        id: "old-run", cli: "codex", sessionId: "old-session", prompt: "persisted prompt", startedAt: 110,
+        endedAt: 120, durationMs: 10, status: "end", taskRole: "subtask", loopTaskId: "task",
+        loopSubtaskId: "A", loopRound: 1, loopAttemptId: "previous",
+      }, {
+        id: "current-run", cli: "codex", sessionId: "current-session", prompt: "current", startedAt: 200,
+        endedAt: 220, durationMs: 20, status: "end", taskRole: "subtask", loopTaskId: "task",
+        loopSubtaskId: "A", loopRound: 2, loopAttemptId: "current",
+      }],
+      readTask: () => ({
+        workspaceKey: "workspace", schedulingMode: "event_driven", loopPlus: {
+          version: 1, maxConcurrency: 1, phase: "idle", parentStopped: false, completed: false, seq: 0,
+          wakeSeq: 0, wakePending: false, userMessageQueue: [], running: [], pending: [], reportQueue: [],
+          reviewQueue: [], currentReview: null,
+          seenAttempts: [
+            { subtaskId: "A", attemptId: "previous", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+            { subtaskId: "A", attemptId: "current", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+          ],
+        },
+        subTasks: [],
+      }),
+    },
+  });
+  cleanup.rememberRestoredTabs([older]);
+  cleanup.bindPrompt(target, context)?.(target.sessionId);
+  const close = cleanup.prepareClose(target.id, context);
+  await close();
+  assert.deepEqual(env.disposedTabIds, [older.id, target.id]);
+  assert.equal(state.tabs.some((tab) => tab === older || tab === target), false);
+  assert.equal(state.tabs.length, 1);
+  assert.equal(state.tabs[0].cli, "codex");
+  assert.equal(state.tabs[0].sessionId, null);
+});
+
+test("completed snapshot keeps restored tabs with newer, unknown, active, or replaced execution identity", async () => {
+  for (const scenario of ["newer", "unknown", "active", "replaced"] as const) {
+    const context = { taskId: "task", subtaskId: "A", round: 2, attemptId: "current" };
+    const older: ConversationTabRecord = { id: "persisted-old", cli: "codex", sessionId: `old-${scenario}`, sessionIdByCli: { codex: `old-${scenario}` }, createdAt: 1 };
+    const target: ConversationTabRecord = { id: "current-sub", cli: "codex", sessionId: "current-session", sessionIdByCli: { codex: "current-session" }, createdAt: 1 };
+    const state: ConversationTabsState = { activeTabId: target.id, tabs: [older, target] };
+    const active = scenario === "active";
+    const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds: active ? new Set([older.id]) : new Set() });
+    const cleanup = createCompletedLoopSubtaskTabCleanup({
+      getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: (id) => active && id === older.id,
+      closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+      restoredEvidence: {
+        readMessages: (cli, sessionId) => cli === "codex" && sessionId === older.sessionId ? [{
+          id: "old-prompt", role: "user", content: "persisted prompt", createdAt: 100,
+          ...(scenario === "unknown" ? {} : {
+            taskRole: "subtask" as const, loopTaskId: "task", loopSubtaskId: "A",
+            loopRound: scenario === "newer" ? 3 : 1, loopAttemptId: scenario === "newer" ? "newer" : "previous",
+          }),
+        }] : [],
+        readRuns: () => [{
+          id: "old-run", cli: "codex", sessionId: older.sessionId!, prompt: "persisted prompt", startedAt: 110,
+          endedAt: 120, durationMs: 10, status: "end", taskRole: "subtask", loopTaskId: "task",
+          loopSubtaskId: "A", loopRound: scenario === "newer" ? 3 : 1, loopAttemptId: scenario === "newer" ? "newer" : "previous",
+        }, {
+          id: "current-run", cli: "codex", sessionId: "current-session", prompt: "current", startedAt: 200,
+          endedAt: 220, durationMs: 20, status: "end", taskRole: "subtask", loopTaskId: "task",
+          loopSubtaskId: "A", loopRound: 2, loopAttemptId: "current",
+        }],
+        readTask: () => ({
+          workspaceKey: "workspace", schedulingMode: "event_driven", loopPlus: {
+            version: 1, maxConcurrency: 1, phase: "idle", parentStopped: false, completed: false, seq: 0,
+            wakeSeq: 0, wakePending: false, userMessageQueue: [], running: [], pending: [], reportQueue: [],
+            reviewQueue: [], currentReview: null,
+            seenAttempts: [
+              { subtaskId: "A", attemptId: "previous", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+              { subtaskId: "A", attemptId: "current", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+              ...(scenario === "newer" ? [{ subtaskId: "A", attemptId: "newer", disposition: "reported" as const, requiresAcceptance: false, outcome: "completed" as const }] : []),
+            ],
+          },
+          subTasks: [],
+        }),
+      },
+    });
+    cleanup.rememberRestoredTabs([older]);
+    cleanup.bindPrompt(target, context)?.(target.sessionId);
+    const close = cleanup.prepareClose(target.id, context);
+    if (scenario === "replaced") cleanup.bindPrompt(older, { ...context, attemptId: "queued" });
+    await close();
+    assert.equal(state.tabs.includes(older), true, scenario);
+    assert.equal(env.disposedTabIds.includes(older.id), false, scenario);
+    assert.equal(state.tabs.includes(target), false, scenario);
+  }
+});
+
+test("completed snapshot protects restored sessions reserved by open Loop+ attempts", async (t) => {
+  for (const scenario of ["unreserved", "own session", "same-subtask continuation", "earlier successor", "late reservation", "late run", "unknown source"] as const) {
+    await t.test(scenario, async () => {
+      const context = { taskId: "task", subtaskId: "A", round: 2, attemptId: "current" };
+      const makeTab = (id: string): ConversationTabRecord => ({ id, cli: "codex", sessionId: id, sessionIdByCli: { codex: id }, createdAt: 1 });
+      const [older, unreserved, target, first] = ["old-session", "other-old-session", "current-session", "first-close"].map(makeTab);
+      const late = scenario === "late reservation" || scenario === "late run";
+      const state: ConversationTabsState = { activeTabId: late ? first.id : target.id, tabs: [...(late ? [first] : []), older, unreserved, target] };
+      const reservationId = scenario === "own session" || scenario === "same-subtask continuation" ? "A" : "B";
+      const reservation: LoopPlusExecutionRecord = { subtaskId: reservationId, attemptId: "queued", state: "pending", title: null,
+        requiresAcceptance: false, conflictGroup: null, writeFiles: [] };
+      const continuedFrom = scenario === "unknown source" ? "missing" : scenario === "same-subtask continuation" ? "source" : "A";
+      const oldSession = { cli: "codex" as const, sessionId: older.id, configId: null };
+      const subTasks: LoopSubtaskRecord[] = [
+        { id: "A", title: "A", status: reservationId === "A" ? "pending" : "completed",
+          ...(scenario === "same-subtask continuation" ? { continueFromSubtaskId: continuedFrom } : { executionSession: oldSession }) },
+        { id: "source", title: "Source", status: "completed", executionSession: oldSession },
+        { id: "B", title: "B", status: "pending", continueFromSubtaskId: continuedFrom },
+      ];
+      const makeSnapshot = (reserved: boolean): LoopPlusSchedulerSnapshot => {
+        const queued: LoopPlusSchedulerSnapshot["seenAttempts"] = reserved
+          ? [{ subtaskId: reservationId, attemptId: "queued", disposition: "open", requiresAcceptance: false }] : [];
+        const beforeCurrent = scenario === "earlier successor";
+        return createLoopPlusScheduler({ snapshot: {
+          version: 1, maxConcurrency: 1, phase: "idle", parentStopped: false, completed: false, seq: 0,
+          wakeSeq: 0, wakePending: false, userMessageQueue: [], running: [], pending: reserved ? [reservation] : [],
+          reportQueue: [], reviewQueue: [], currentReview: null,
+          seenAttempts: [
+            { subtaskId: "A", attemptId: "previous", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+            { subtaskId: "A", attemptId: "other-old", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+            ...(beforeCurrent ? queued : []),
+            { subtaskId: "A", attemptId: "current", disposition: "reported", requiresAcceptance: false, outcome: "completed" },
+            ...(!beforeCurrent ? queued : []),
+          ],
+        } }).snapshot();
+      };
+      let snapshot = makeSnapshot(!late && scenario !== "unreserved");
+      const runs: TaskRunRecord[] = [
+        { id: "old-run", cli: "codex", sessionId: older.id, prompt: "persisted prompt", startedAt: 110,
+          endedAt: 120, durationMs: 10, status: "end", taskRole: "subtask", loopTaskId: "task",
+          loopSubtaskId: "A", loopRound: 1, loopAttemptId: "previous" },
+        { id: "other-run", cli: "codex", sessionId: unreserved.id, prompt: "persisted prompt", startedAt: 130,
+          endedAt: 140, durationMs: 10, status: "end", taskRole: "subtask", loopTaskId: "task",
+          loopSubtaskId: "A", loopRound: 1, loopAttemptId: "other-old" },
+        { id: "current-run", cli: "codex", sessionId: target.id, prompt: "current", startedAt: 200,
+          endedAt: 220, durationMs: 20, status: "end", taskRole: "subtask", loopTaskId: "task",
+          loopSubtaskId: "A", loopRound: 2, loopAttemptId: "current" },
+      ];
+      let historyReads = 0;
+      let updated = false;
+      const env = createHost({ state, currentCli: "codex", modes: {}, onPostPanelState: async () => {
+        if (!late || updated) return;
+        assert.deepEqual(env.disposedTabIds, [first.id]);
+        await Promise.resolve();
+        if (scenario === "late reservation") snapshot = makeSnapshot(true);
+        if (scenario === "late run") runs.push({ ...runs[0], id: "new-run", loopAttemptId: "new", startedAt: 225, endedAt: 235 });
+        updated = true;
+      } });
+      const cleanup = createCompletedLoopSubtaskTabCleanup({
+        getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
+        closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+        restoredEvidence: {
+          readMessages: (cli, sessionId) => cli === "codex" && [older.id, unreserved.id].includes(sessionId) ? [{
+            id: `prompt-${sessionId}`, role: "user", content: "persisted prompt", createdAt: 100,
+            taskRole: "subtask", loopTaskId: "task", loopSubtaskId: "A", loopRound: 1,
+            loopAttemptId: sessionId === older.id ? "previous" : "other-old",
+          }] : [],
+          readRuns: () => { historyReads += 1; return runs; },
+          readRunsRevision: () => String(runs.length),
+          readTask: () => ({ workspaceKey: "workspace", schedulingMode: "event_driven", loopPlus: snapshot, subTasks }),
+        },
+      });
+      cleanup.rememberRestoredTabs([older, unreserved]);
+      if (late) cleanup.bindPrompt(first, { ...context, round: 1, attemptId: "first" })?.(first.sessionId);
+      cleanup.bindPrompt(target, context)?.(target.sessionId);
+      await cleanup.prepareClose(target.id, context)();
+      assert.deepEqual(env.disposedTabIds, [
+        ...(late ? [first.id] : []), ...(scenario === "unreserved" ? [older.id] : []),
+        ...(scenario === "unknown source" ? [] : [unreserved.id]), target.id,
+      ]);
+      assert.equal(state.tabs.includes(older), scenario !== "unreserved");
+      assert.equal(state.tabs.includes(target), false);
+      assert.equal(historyReads, scenario === "late run" ? 2 : 1);
+    });
+  }
+});
+
+test("completed snapshot rejects same-tab same-session attempt replacement before or after capture", async () => {
+  for (const replaceBeforeCapture of [false, true]) {
+    const context = { taskId: "task", subtaskId: "A", round: 2, attemptId: "old" };
+    const tab: ConversationTabRecord = { id: "sub", cli: "codex", sessionId: "shared", sessionIdByCli: { codex: "shared" }, createdAt: 1 };
+    const state: ConversationTabsState = { activeTabId: tab.id, tabs: [tab] };
+    const env = createHost({ state, currentCli: "codex", modes: {} });
+    const cleanup = createCompletedLoopSubtaskTabCleanup({
+      getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
+      closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+    });
+    const settleOld = cleanup.bindPrompt(tab, context);
+    settleOld?.(tab.sessionId);
+    if (replaceBeforeCapture) cleanup.bindPrompt(tab, { ...context, attemptId: "new" });
+    const close = cleanup.prepareClose(tab.id, context);
+    if (!replaceBeforeCapture) cleanup.bindPrompt(tab, { ...context, attemptId: "new" });
+    settleOld?.(tab.sessionId);
+    await assert.rejects(close(), /执行身份/);
+    assert.deepEqual(state.tabs, [tab]);
+    assert.deepEqual(env.disposedTabIds, []);
+  }
+});
+
+test("completed host refuses to close a captured tab object replaced by a newer target", async () => {
+  const oldTab: ConversationTabRecord = {
+    id: "captured-subtask", cli: "claude", sessionId: "old-session",
+    sessionIdByCli: { claude: "old-session" }, createdAt: 1,
+  };
+  const state: ConversationTabsState = { activeTabId: oldTab.id, tabs: [oldTab] };
+  const env = createHost({ state, currentCli: "claude", modes: {} });
+  state.tabs[0] = { ...oldTab, sessionId: "new-session", sessionIdByCli: { claude: "new-session" } };
+  await assert.rejects(env.host.closeCompletedSubtaskTabAndRefreshPanel(oldTab), /已被替代/);
+  assert.equal(state.tabs[0].sessionId, "new-session");
+  assert.deepEqual(env.disposedTabIds, []);
+});
+
+test("manual close still retains the final tab", async () => {
+  const tab: ConversationTabRecord = {
+    id: "manual-last", cli: "codex", sessionId: "keep-session",
+    sessionIdByCli: { codex: "keep-session" }, createdAt: 1,
+  };
+  const state: ConversationTabsState = { activeTabId: tab.id, tabs: [tab] };
+  const env = createHost({ state, currentCli: "codex", modes: {} });
+
+  await env.host.closeConversationTabAndRefreshPanel(tab.id);
+
+  assert.deepEqual(state.tabs, [tab]);
+  assert.equal(state.activeTabId, tab.id);
+  assert.deepEqual(env.disposedTabIds, []);
+  assert.deepEqual(env.closedTabs, []);
+});
+
+test("completed final-tab cleanup rejects active or locked tabs without success notification", async () => {
+  for (const blocked of ["running", "locked"] as const) {
+    const tab: ConversationTabRecord = {
+      id: `completed-${blocked}`, cli: "codex", sessionId: "finished",
+      sessionIdByCli: { codex: "finished" }, createdAt: 1,
+    };
+    const state: ConversationTabsState = { activeTabId: tab.id, tabs: [tab] };
+    const env = createHost({
+      state, currentCli: "codex", modes: {},
+      ...(blocked === "running" ? { runningTabIds: new Set([tab.id]) } : { lockedTabIds: new Set([tab.id]) }),
+    });
+
+    await assert.rejects(env.host.closeCompletedSubtaskTabAndRefreshPanel(tab), /未执行自动关闭/);
+    assert.deepEqual(state.tabs, [tab]);
+    assert.deepEqual(env.closedTabs, []);
+    assert.deepEqual(env.disposedTabIds, []);
+  }
+});
+
 test("closing a background tab does not restore configuration for the unchanged active tab", async () => {
   const state: ConversationTabsState = {
     activeTabId: "main-tab",
@@ -330,7 +721,7 @@ test("a restarted subtask completion closes its old tabs but preserves unrelated
     await finalizeLoopSubtaskRun({
       ...context, round: 1, runStatus, assistantContent: "子任务结果", tabId: "restarted-sub",
     }, {
-      markSubtaskRunFinished: () => undefined,
+      markSubtaskRunFinished: () => "committed",
       closeSubtaskTab,
       logSubtaskTabAutoClosed: () => undefined,
     });

@@ -457,7 +457,7 @@ test("classic Loop refuses a missing cross-CLI config instead of running the mai
   const host = createLoopOrchestrationHost({
     appendSystemMessageForLoop: (_target: PromptRunTarget, message: string) => { messages.push(message); },
     readLoopTaskRecord: () => task,
-    markLoopSubtaskRunFinished: () => undefined,
+    markLoopSubtaskRunFinished: () => "committed",
     createLoopSubtaskRunTarget: (cli: CliName) => {
       created.push(cli);
       return { tabId: "should-not-run", cli, sessionId: null };

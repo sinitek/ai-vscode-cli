@@ -123,8 +123,10 @@ test("classic completion survives the close-tab refresh gap and concurrent dupli
 test("a manual child completion does not revive an explicitly stopped classic parent", async () => {
   const env = harness();
   env.host.markLoopTaskStoppedAfterRuntimeEnded(env.id);
-  env.host.markLoopTaskStoppedByUser(env.id);
+  assert.equal(env.read().userStopSource, undefined);
+  env.host.markLoopTaskStoppedByUser(env.id, "group-chat");
   assert.equal(env.read().runtimeInterrupted, undefined);
+  assert.equal(env.read().userStopSource, "group-chat");
   await env.finish("alpha");
   assert.equal(env.read().status, "stopped");
   assert.equal(env.wakeups.length, 0);
@@ -195,7 +197,7 @@ test("explicit Loop+ parent continuation retains cold reservations instead of fa
 test("cold Loop+ notifications refuse explicit stops, completed parents, invalid snapshots and closed attempts", () => {
   for (const scenario of ["stopped", "completed", "invalid", "closed", "failure-limit"] as const) {
     const env = harness("event_driven");
-    if (scenario === "stopped") env.host.markLoopTaskStoppedByUser(env.id);
+    if (scenario === "stopped") env.host.markLoopTaskStoppedByUser(env.id, "group-chat");
     if (scenario === "completed") store.updateLoopTaskRecord(env.id, { status: "completed" });
     if (scenario === "invalid") store.updateLoopTaskRecord(env.id, { loopPlus: { version: "invalid" } });
     if (scenario === "failure-limit") store.updateLoopTaskRecord(env.id, { mainAiFailureLimitReached: true });
@@ -277,8 +279,9 @@ for (const mode of ["classic", "event_driven"] as const) {
     env.host.markLoopTaskStoppedAfterRuntimeEnded(env.id);
     assert.equal(checks, 1);
     assert.deepEqual(env.read(), before, "no status, child, scheduler or capacity side effect from a missing local invocation");
-    env.host.markLoopTaskStoppedByUser(env.id);
+    env.host.markLoopTaskStoppedByUser(env.id, "ai-panel");
     assert.equal(env.read().status, "stopped", "explicit user stop retains its ordinary semantics");
     assert.equal(env.read().runtimeInterrupted, undefined);
+    assert.equal(env.read().userStopSource, "ai-panel");
   });
 }

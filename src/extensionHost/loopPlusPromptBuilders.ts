@@ -31,6 +31,7 @@ export type LoopPlusMainPromptContext = {
   mainCommunicationFile: string;
   kind: "initial" | "review" | "closeout" | "continue" | "user";
   allowDispatchBeforeReview?: boolean;
+  requireAcceptedDependencies?: boolean;
   /** 任务记录中固化的验收方案快照；缺失时只使用固定基线检查项。 */
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null;
   allowDirectCompletion?: boolean;
@@ -85,7 +86,14 @@ export type LoopPlusSubtaskPromptContext = {
   communicationFile: string;
   executionRole?: "backend" | "frontend" | "general";
   loopSubtaskMode?: LoopSubtaskMode;
+  requireAcceptedDependencies?: boolean;
 };
+
+function loopPlusDependencyAdmissionCondition(requireAcceptedDependencies: boolean): string {
+  return requireAcceptedDependencies
+    ? "each prerequisite's latest attempt completes and passes acceptance, or completes with requiresAcceptance=false and its report is acknowledged."
+    : "each prerequisite's latest attempt completes successfully (outcome completed) and is not closed. Acceptance or report acknowledgement is not required for execution admission.";
+}
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
   "Implement this self-contained subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
@@ -495,6 +503,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     : "(none)";
   const blockers = context.view.blockers.length > 0 ? context.view.blockers.join(", ") : "(none)";
   const departmentCapacityLines = departmentEmployeeCapacityLines(context.departmentEmployeeCapacity);
+  const requireAcceptedDependencies = context.requireAcceptedDependencies ?? Boolean(context.departmentEmployeeCapacity);
   const batchText = batchIds.length > 0
     ? batchIds.map((eventId, index) => `${index + 1}. ${eventId}`).join("\n")
     : "(none)";
@@ -621,16 +630,16 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- New dispatch is conditional on the final goal still needing that work. If all requirements are satisfied, launch no new subtasks and complete once every host completion gate is clear. If remaining work is already covered by running or pending tasks, or only dependencies or real conflicts prevent useful work, accept without new subtasks and wait or continue the next review batch. Never duplicate work, rerun valid verification, or invent tasks merely to reach the concurrency target.",
     "- Before dispatching only a repair or leaving usable slots idle, record the concrete reason in the main communication file: no other useful delivery boundary is ready, a real prerequisite, conflicting write ownership, or capacity already committed to running or pending work. Do not serialize the whole goal merely because acceptance found a defect. Do not invent filler tasks or hide actual conflicts to increase parallelism.",
     "- Give each subtask concrete, narrow writeFiles and use conflictGroup only for a real shared mutable resource, not for a whole feature or model role. Shared read-only context is not a write conflict. Declare every known shared write path honestly; do not hide overlaps or drop conflictGroup to bypass scheduler protection. Known overlapping writeFiles or conflictGroup remain serialized by the host.",
-    context.departmentEmployeeCapacity
-      ? "- Use dependsOn only for real prerequisites. Each must complete and pass acceptance, or have its no-acceptance report acknowledged."
-      : "- Use dependsOn only for real prerequisites. A queued successor may start as soon as every latest prerequisite attempt completes successfully, before acceptance or report acknowledgement. Acceptance still runs in dependency order. If work explicitly requires accepted results (for example, delivery of reviewed changes), dispatch it only after that acceptance.",
     ...(context.view.dependencyBlocks ?? []).map((block) =>
       `- Dependency pending: ${block.subtaskId} requires ${block.dependencyId} (${block.dependencyAttemptId ?? "unavailable"}: ${block.reason}).`),
     "- Shared contracts, central registration, and tightly coupled edits need one owner or a small prerequisite task; serialize only that part and continue unrelated deliverables. Separate tests or docs can run early against an agreed stable contract, but not when they genuinely depend on unfinished changes. Keep one coding subtask only when useful independent boundaries cannot be isolated.",
     "- Rare small incidental cross-scope edits are acceptable when necessary and locally reconcilable; their mere possibility must not collapse otherwise independent work into one task. Assign primary ownership and tell subtasks to re-read before writing, preserve concurrent changes, reconcile small disjoint edits, and report affected paths. Do not deliberately schedule competing edits to the same symbols or contract; substantial contention needs replanning.",
     ...loopPlusModeRuleLines(context),
     "- dependsOn is an optional array of stable subtask ids under this parent, never attempt or session ids. Ordinary dispatch omission or [] means no dependency; continueFromSubtaskId selects a session and never implies dependsOn. Declare real prerequisites explicitly and retain parallel admission for independent work; there is no whole-batch barrier.",
-    "- For execution admission, a prerequisite is satisfied only by its latest attempt: outcome completed plus reviewed acceptance passed; or requiresAcceptance=false plus outcome completed and acknowledged report (reported). Execution completion alone, pending review/report, failed/stopped attempts and closed tasks do not release successors. A prior passed attempt cannot substitute for a newer failed or open attempt.",
+    `- For execution admission, a successor may start only after ${loopPlusDependencyAdmissionCondition(requireAcceptedDependencies)} Failed/stopped attempts and closed tasks do not release successors. An old attempt cannot substitute for the latest attempt.`,
+    ...(requireAcceptedDependencies ? [] : [
+      "- If work explicitly requires accepted results (for example, delivery of reviewed changes), dispatch it only after that acceptance.",
+    ]),
     "- Review ordering is separate from execution admission. A pending-review prerequisite is selected before its successor; a running or pending prerequisite, or an unacknowledged no-acceptance report, defers only related successors from a new acceptance batch. Independent review, dispatch, and refill continue. Acknowledge reports through the frozen FIFO report prefix first; the host may select their successors in a later decision. Never confirm a report automatically or turn it into a separate acceptance review.",
     "- For reviewing an already delivered successor, the latest prerequisite reviewed (passed or failed), reported, or closed means it has been processed first, not that execution succeeded. Once processed, judge the successor delivery independently. A failed prerequisite does not automatically fail any other event. A selected prerequisite is not yet passed; record every event's true conclusion even when prerequisites and successors share this batch. Only the host selects the batch; never insert a prerequisite yourself.",
     "- The host applies the complete decision, including report acknowledgments, reviews, controls, and new dispatches, before promoting pending work. An old prerequisite success cannot release a successor midway through a decision that creates a newer prerequisite attempt. New reservations are persisted before execution starts.",
@@ -645,7 +654,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- Unless every review is cancelled, accept.acceptance is required and must report the default checks dispatched work, contracts, tests, artifacts, unauthorized changes, and omissions and regressions. Each check has passed and a concise evidence-backed detail no longer than 50 characters; failed checks are allowed while repair work is launched.",
     "- For passed/failed reviews, every accept.reviews reason must briefly summarize the evidence-backed result of the default acceptance checklist for that event, no more than 50 characters. Do not reuse generic filler; name the decisive evidence or failed criterion.",
     "- Write each acceptance reason and check detail in the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory. Keep each within 50 characters, state the decisive evidence, failure, or not-applicable reason, and never invent evidence or use a bare passed/failed claim.",
-    "- When requirements change and a delivery is no longer needed, set that frozen event review acceptance to cancelled and supply a non-empty reason of at most 50 characters. This withdraws only the current delivery from acceptance, persists the reason, and never counts as passed or failed. Do not withdraw an existing reviewed verdict. Keep all frozen ids in their original order, including mixed passed/failed/cancelled batches; do not use controls.close for a delivered event. When every review is cancelled, omit acceptance and acceptancePlanResults instead of inventing check evidence. Remaining-goal dispatch and controls are still allowed. Cancelled prerequisites never release pending successors; explicitly replan remaining requirements and dependencies. Do not cancel a still-required delivery merely to bypass failed checks or completion gates.",
+    "- When requirements change and a delivery is no longer needed, set that frozen event review acceptance to cancelled and supply a non-empty reason of at most 50 characters. This withdraws only the current delivery from acceptance, persists the reason, and never counts as passed or failed. Do not withdraw an existing reviewed verdict. Keep all frozen ids in their original order, including mixed passed/failed/cancelled batches; do not use controls.close for a delivered event. When every review is cancelled, omit acceptance and acceptancePlanResults instead of inventing check evidence. Remaining-goal dispatch and controls are still allowed. If you withdraw a prerequisite's delivery, explicitly replan remaining requirements and dependencies. Do not cancel a still-required delivery merely to bypass failed checks or completion gates.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
     "- When an event launches repairs or related follow-up subtasks, list those ids in that review's subtaskIds. For independent remaining-goal deliveries unrelated to this batch's events, list their ids in accept.independentSubtaskIds instead. Every accept.subtasks id must appear exactly once across reviews[*].subtaskIds and independentSubtaskIds; unknown, duplicate, or missing links are rejected. independentSubtaskIds is optional and allowed only on accept. A passed event may launch related follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt. Never attach independent work to a failed review just to satisfy linkage: that would inherit the repair session.",
     "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
@@ -740,7 +749,7 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     roleLine,
     `Suggested write scope: ${role === "general" ? "(read only)" : files}`,
     `Explicit prerequisite subtask ids (dependsOn): ${JSON.stringify(context.subtask.dependsOn ?? [])}`,
-    "The host admits this attempt only after each prerequisite's latest attempt completes and passes acceptance, or completes with requiresAcceptance=false and its report is acknowledged. Session continuation is separate from dependencies. Report only this attempt; do not infer parent or successor completion.",
+    `The host admits this attempt only after ${loopPlusDependencyAdmissionCondition(context.requireAcceptedDependencies ?? true)} Session continuation is separate from dependencies. Report only this attempt; do not infer parent or successor completion.`,
     role === "general"
       ? "This attempt is analysis only. A prompt instruction is not a sandbox; still do not edit files."
       : "The suggested write scope is a hint, not a hard limit. Edit other workspace files when completing this attempt requires them, and record those paths in the attempt report.",

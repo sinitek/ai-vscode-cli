@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("fs");
 import path = require("path");
+import { buildLoopPlusFinishEventId, type LoopPlusReviewItem, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import { installVscodeMock } from "../vscodeMock";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
@@ -23,6 +24,10 @@ function subtask(id: string) {
   };
 }
 
+function nextSubtaskId(kind: "repair" | "follow-up"): string {
+  return kind === "repair" ? "A" : "B";
+}
+
 const cases = [
   { name: "failed review reuses the loaded connection after delayed compaction", kind: "repair", reject: false, newConnection: false, exit: false },
   { name: "failed review proceeds after compaction rejects without undoing the report", kind: "repair", reject: true, newConnection: false, exit: false },
@@ -40,6 +45,25 @@ for (const scenario of cases) {
     let originalReport = "";
     let reviewCount = 0;
     const decision = (value: unknown) => JSON.stringify(withLoopPlusAcceptReviews(value));
+    const closeEvidence: Array<{ report: string | null; review: LoopPlusReviewItem | undefined; compactStarted: boolean }> = [];
+    const recordClosedTabs = f.closedSubtaskTabs.push.bind(f.closedSubtaskTabs);
+    f.closedSubtaskTabs.push = (...tabIds: string[]) => {
+      if (tabIds.includes(f.createdSubtaskTargets[0]?.tabId)) {
+        const compactStarted = h.events.includes("background-compact");
+        const task = f.readTask(taskId);
+        const snapshot = task?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+        const reportPath = task && path.join(task.communicationDir, "round-1-A.md");
+        const finishEventId = buildLoopPlusFinishEventId("A", f.attemptCalls[0].loopAttemptId!);
+        const review = [snapshot?.currentReview, ...(snapshot?.reviewQueue ?? [])]
+          .find((item) => item?.eventId === finishEventId);
+        closeEvidence.push({
+          report: reportPath && fs.existsSync(reportPath) ? fs.readFileSync(reportPath, "utf8") : null,
+          review: review ?? undefined,
+          compactStarted,
+        });
+      }
+      return recordClosedTabs(...tabIds);
+    };
     try {
       await h.other.runForText("independent thread before dispatch");
       const otherThread = h.other.getThreadId();
@@ -49,11 +73,9 @@ for (const scenario of cases) {
       });
       f.queueMain(async (input, tabId) => {
         reviewCount += 1;
-        const snapshot = f.readTask(taskId)!.loopPlus as import("../../loopPlusScheduler").LoopPlusSchedulerSnapshot;
+        const snapshot = f.readTask(taskId)!.loopPlus as LoopPlusSchedulerSnapshot;
         assert.equal(snapshot.currentReview?.subtaskId, "A");
         assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === "A")!.executionSession?.sessionId, h.originalThread());
-        assert.equal(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId), false,
-          "A stays open until its background compaction settles");
         originalReport = fs.readFileSync(path.join(f.readTask(taskId)!.communicationDir, "round-1-A.md"), "utf8");
         assert.match(originalReport, /outcome: completed/);
         assert.ok(originalReport.includes(`result:${h.originalThread()}:`));
@@ -62,16 +84,13 @@ for (const scenario of cases) {
         h.events.push("review-dispatch");
         f.publish(input, tabId, { status: "end", content: decision({
           status: "accept", progressPercent: 25, reviewEventId: eventId(input.displayPrompt),
-          reviews: [{ reviewEventId: eventId(input.displayPrompt), acceptance: scenario.kind === "repair" ? "failed" : "passed", subtaskIds: ["B"] }],
-          subtasks: [{ ...subtask("B"), ...(scenario.kind === "follow-up" ? { continueFromSubtaskId: "A" } : {}) }],
+          reviews: [{ reviewEventId: eventId(input.displayPrompt), acceptance: scenario.kind === "repair" ? "failed" : "passed", subtaskIds: [nextSubtaskId(scenario.kind)] }],
+          subtasks: [{ ...subtask(nextSubtaskId(scenario.kind)), ...(scenario.kind === "follow-up" ? { continueFromSubtaskId: "A" } : {}) }],
         }) });
       });
       f.queueMain((input, tabId) => {
         reviewCount += 1;
-        assert.equal((f.readTask(taskId)!.loopPlus as import("../../loopPlusScheduler").LoopPlusSchedulerSnapshot).currentReview?.subtaskId, "B");
-        assert.ok(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId),
-          "A is retired after its background compaction settles");
-        // Completion is submitted through the main protocol only after the runner's B result.
+        assert.equal((f.readTask(taskId)!.loopPlus as LoopPlusSchedulerSnapshot).currentReview?.subtaskId, nextSubtaskId(scenario.kind));
         assert.equal(f.attemptCalls.length, 2);
         assert.equal(h.pendingCompact(), false);
         f.publish(input, tabId, { status: "end", content: decision({
@@ -87,13 +106,19 @@ for (const scenario of cases) {
         loopSubtaskMode: "fullstack", loopSubtaskFullstackCli: "codex", loopSubtaskFullstackConfigId: "sub-profile",
         loopSubtaskFullstackModel: "sub-model", loopMainThinkingMode: "low", loopSubtaskThinkingMode: "low",
       }, { schedulingMode: "event_driven" }, f.target);
-      await waitForRepair(() => f.createdSubtaskTargets.length === 2, "review dispatched B while compact is pending");
+      await waitForRepair(() => f.createdSubtaskTargets.length === 2, "review dispatched the successor while compact is pending");
+      assert.ok(f.closedSubtaskTabs.includes(f.createdSubtaskTargets[0].tabId),
+        "the original tab is closed while its background compaction is still pending");
+      assert.equal(closeEvidence[0]?.report, originalReport, "the successful report is already persisted at close");
+      assert.equal(closeEvidence[0]?.review?.outcome, "completed", "the attempt's completion event is already persisted at close");
+      assert.equal(closeEvidence[0]?.compactStarted, false, "the original tab closes before background compaction starts");
       const thread = h.originalThread()!;
       assert.ok(thread.startsWith("protocol-thread-"));
       assert.equal(f.createdSubtaskTargets[1].sessionId, thread);
       assert.notEqual(f.createdSubtaskTargets[0].tabId, f.createdSubtaskTargets[1].tabId);
-      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === "B")!.continueFromSubtaskId, "A");
-      // B's real execution hook has not started: the adapter waits before opening a runner.
+      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === nextSubtaskId(scenario.kind))!.continueFromSubtaskId,
+        "A");
+      // The second attempt is linked to A but waits for A's background compaction.
       assert.equal(f.attemptCalls.length, 1);
       assert.equal(h.children.length, 1);
       assert.equal(h.pendingCompact(), true);
@@ -129,8 +154,10 @@ for (const scenario of cases) {
       assert.equal(f.readTask(taskId)!.status, "completed");
       assert.equal(f.completionMessages.length, 1);
       assert.equal(f.attemptCalls.length, 2);
-      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === "B")!.executionSession?.sessionId, thread);
-      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === "B")!.executionSession?.configId, "sub-profile");
+      assert.deepEqual(f.attemptCalls.map((input) => input.loopSubtaskId), ["A", nextSubtaskId(scenario.kind)]);
+      assert.notEqual(f.attemptCalls[0].loopAttemptId, f.attemptCalls[1].loopAttemptId);
+      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === nextSubtaskId(scenario.kind))!.executionSession?.sessionId, thread);
+      assert.equal(f.readTask(taskId)!.subTasks.find((item) => item.id === nextSubtaskId(scenario.kind))!.executionSession?.configId, "sub-profile");
       assert.equal(fs.readFileSync(path.join(f.readTask(taskId)!.communicationDir, "round-1-A.md"), "utf8"), originalReport);
       assert.equal(h.pendingCompact(), false);
       assert.equal(f.refusals.length, 0);

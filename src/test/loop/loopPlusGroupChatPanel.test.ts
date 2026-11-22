@@ -27,6 +27,7 @@ test.after(() => {
 
 import { installVscodeMock } from "../vscodeMock";
 import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptancePlan";
+import { buildLoopBlockerSummary, LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 
 installVscodeMock();
 
@@ -117,6 +118,7 @@ function buildWithChat(
   chat: string,
   frozenEventIds?: readonly string[],
   runningTaskIds: readonly string[] = ["loop-plus-visible-task"],
+  mainModelRunning = false,
 ): PanelState {
   let snapshot = loopPlus;
   let activeReviewEventIds = frozenEventIds ? [...frozenEventIds] : [];
@@ -145,6 +147,7 @@ function buildWithChat(
       throw new Error("projection must not write");
     },
     getActiveLoopSubtaskIds: () => [],
+    mainModelRunning,
     getActiveReviewEventIds: () => (overrides.status ?? "running") === "running" ? activeReviewEventIds.slice() : [],
     buildLoopCompletedConclusionAndSummaryMarkdown: () => "done",
     t: (key: string) => key,
@@ -200,7 +203,7 @@ test("renders the Loop+ queue and parallel execution", () => {
     assert.equal(countValue(page, "repairing"), "0");
     assert.equal(countValue(page, "pending"), "1");
     assert.deepEqual([...page.matchAll(/class="loop-plus-status-tag"[^>]*>([^<]+)<\/span>/gu)].map((match) => match[1]), [
-      "运行中 1", "修复中 0", "验收中 1", "待验收 2", "待启动 1", "已阻塞 0", "已完成 0",
+      "运行中 1", "修复中 0", "验收中 1", "待验收 2", "待启动 1", "验收失败 0", "已阻塞 0", "已完成 0",
     ]);
     assert.match(page, /class="meta-row loop-plus-activity"[^>]*><div class="meta-label">状态<\/div><div class="meta-value">/u);
     assert.doesNotMatch(loopPlusPanel(page), /data-loop-plus-count="visible"|data-loop-plus-field="(?:mode|phase|wake)"|<div class="meta-label">状态<\/div>[\s\S]*?<div class="meta-label">状态<\/div>/u);
@@ -310,6 +313,7 @@ test("renders only the frozen review prefix as active while counting the full FI
   assert.match(twoItemBatch, /正在验收 子任务 1：Alpha、子任务 2：Bravo。/u);
   assert.doesNotMatch(twoItemBatch, /正在验收 子任务 3：Charlie/u);
   assert.equal((twoItemBatch.match(/<span class="member-status-reviewing">正在验收<\/span>/gu) ?? []).length, 3);
+  assert.equal(countValue(twoItemBatch, "reviewing"), "2");
   assert.equal((twoItemBatch.match(/<div class="member-meta">待验收<\/div>/gu) ?? []).length, 1);
   const patch = buildLoopGroupChatPanelContentPatch(twoItemState, 2);
   assert.match(patch.statusBarHtml, /待验收<\/span> <strong>1<\/strong>/u);
@@ -328,6 +332,8 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.match(waiting, /子任务 4：Delta 思考中/u);
   assert.match(waiting, /typing-dots/u);
   assert.doesNotMatch(waiting, /data-thinking-kind="main"|主任务 0% 思考中|已全部收口|正在验收/u);
+  const mainRunning = buildWithChat(waitingScheduler.snapshot(), {}, "# Loop chat\n", undefined, undefined, true);
+  assert.equal(countValue(buildLoopGroupChatPanelContentPatch(mainRunning, 1).taskPanelHtml, "running"), "2");
 
   const queuedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(queuedScheduler, "A", "a-1");
@@ -340,7 +346,7 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
   assert.match(queued, /data-loop-plus-phase="review_ready"/u);
   assert.match(queued, /data-loop-plus-status="review_pending"/u);
   assert.equal(countValue(queued, "running"), "0");
-  assert.equal(countValue(queued, "queue"), "2");
+  assert.equal(countValue(queued, "queue"), "3");
   assert.equal(countValue(queued, "reviewing"), "0");
   assertLoopPlusDetailCardsHidden(queued);
   assert.match(queued, /已有子任务排队等待验收，当前验收尚未开始。任务不能视为已完成。/u);
@@ -380,9 +386,52 @@ test("renders the Loop+ status tags and keeps continuation waiting out of active
   ];
   const page = html(state);
   assert.deepEqual([...page.matchAll(/class="loop-plus-status-tag"[^>]*>([^<]+)<\/span>/gu)].map((match) => match[1]), [
-    "运行中 1", "修复中 0", "验收中 1", "待验收 0", "待启动 0", "已阻塞 1", "已完成 2",
+    "运行中 1", "修复中 0", "验收中 1", "待验收 0", "待启动 0", "验收失败 1", "已阻塞 1", "已完成 1",
   ]);
   assert.match(page, /class="member-status-pending">已阻塞<\/span>/u);
+
+  const failed = state.rounds[0].participants[3];
+  const main = { id: "main", title: "主任务", role: "main" as const, status: "running" };
+  state.rounds[0].participants.unshift(main);
+  const latestRound = {
+    ...state.rounds[0],
+    participants: [{ ...main, status: "reviewing" }, { ...failed, status: "repairing" }],
+  };
+  state.rounds.push(latestRound);
+  const repairing = html(state);
+  assert.equal(countValue(repairing, "running"), "1");
+  assert.equal(countValue(repairing, "reviewing"), "1");
+  assert.equal(countValue(repairing, "repairing"), "1");
+  assert.equal(countValue(repairing, "completed"), "1");
+  assert.match(repairing, /data-loop-plus-tone="empty" data-loop-plus-count="acceptance_failed">验收失败 0<\/span>/u);
+
+  latestRound.participants[1].status = "acceptance_passed";
+  const passed = html(state);
+  assert.equal(countValue(passed, "repairing"), "0");
+  assert.equal(countValue(passed, "acceptance_failed"), "0");
+  assert.equal(countValue(passed, "completed"), "2");
+});
+
+test("counts the paused main task together with a blocked subtask only after confirmed blockage", () => {
+  const snapshot = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();
+  const finalSummary = buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE);
+  const state = build(snapshot, {
+    status: "needs-review",
+    loopPlusBlockReview: { state: "reviewed" },
+    finalSummary,
+    subTasks: [{ id: "main", title: "Blocked subtask", status: "blocked", updatedAt: 21 }],
+  });
+  assert.match(html(state), /aria-label="任务状态汇总"/u);
+  assert.equal(countValue(html(state), "blocked"), "2");
+
+  for (const overrides of [
+    { status: "needs-review", loopPlusBlockReview: { state: "pending" }, finalSummary },
+    { status: "needs-review", loopPlusBlockReview: { state: "reviewed" }, finalSummary: "协议错误" },
+    { status: "error", loopPlusBlockReview: { state: "reviewed" }, finalSummary },
+    { status: "running", loopPlusBlockReview: { state: "reviewed" }, finalSummary },
+  ] satisfies Array<Partial<LoopTaskRecord>>) {
+    assert.equal(countValue(html(build(snapshot, overrides)), "blocked"), "0");
+  }
 });
 
 test("shows an in-place failed-acceptance repair without creating another member", () => {
@@ -401,6 +450,8 @@ test("shows an in-place failed-acceptance repair without creating another member
   assert.equal(participant[0].status, "repairing");
   const page = html(state);
   assert.match(page, /<span class="member-status-repairing">修复中<\/span>/u);
+  assert.match(page, /class="loop-plus-status-tag" data-loop-plus-count="repairing">修复中 1<\/span>/u);
+  assert.match(page, /class="loop-plus-status-tag" data-loop-plus-tone="empty" data-loop-plus-count="running">运行中 0<\/span>/u);
   assert.equal(countValue(page, "repairing"), "1");
   assert.equal(countValue(page, "running"), "0");
   assert.match(page, /data-action="openSubtaskConversation" data-subtask-id="A"/u);
@@ -416,8 +467,8 @@ test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   assert.match(stoppedPage, /data-loop-plus-status="stopped"/u);
   assert.match(stoppedPage, /不会自动验收/u);
   assertLoopPlusDetailCardsHidden(stoppedPage);
-  assert.match(stoppedPage, /验收已暂停/u);
-  assert.doesNotMatch(stoppedPage, /正在验收|思考中/u);
+  assert.equal((stoppedPage.match(/<div class="member-meta">待验收<\/div>/gu) ?? []).length, 2);
+  assert.doesNotMatch(stoppedPage, /验收已暂停|正在验收|思考中/u);
   assert.match(stoppedPage, /<button[^>]*data-action="continueTask"/u);
   assert.doesNotMatch(stoppedPage, /<button[^>]*data-action="stopTask"/u);
 
@@ -477,6 +528,15 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(heldPage, /data-loop-plus-status="paused"/u);
   assert.match(heldPage, /data-loop-plus-phase="reviewing"/u);
   assert.match(heldPage, /任务已暂停，尚未完成；点击继续执行可恢复。/u);
+  const erroredPage = html(build(snapshot, { status: "error" }));
+  assert.match(erroredPage, /data-loop-plus-status="paused"/u);
+  assert.match(erroredPage, /data-loop-plus-phase="reviewing"/u);
+  assert.match(erroredPage, /自动验收已暂停，需要继续后才会恢复。/u);
+  for (const page of [heldPage, erroredPage]) {
+    assert.match(page, /<div class="member-name">子任务 1：Alpha<\/div>\s*<div class="member-meta">待验收<\/div>/u);
+    assert.match(page, /<div class="member-name">子任务 2：Bravo<\/div>\s*<div class="member-meta">待验收<\/div>/u);
+    assert.doesNotMatch(page, /<div class="member-meta">验收已暂停<\/div>|member-status-reviewing">正在验收/u);
+  }
   assert.equal(countValue(heldPage, "queue"), "2");
   assert.equal(countValue(heldPage, "reviewing"), "0");
   assert.equal(countValue(heldPage, "running"), "1");
@@ -494,6 +554,8 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.match(resumedPage, /data-loop-plus-status="reviewing"/u);
   assert.match(resumedPage, /data-loop-plus-phase="reviewing"/u);
   assert.match(resumedPage, /正在验收 子任务 1：Alpha。/u);
+  assert.match(resumedPage, /<div class="member-name">子任务 1：Alpha<\/div>\s*<div class="member-meta"><span class="member-status-reviewing">正在验收<\/span><\/div>/u);
+  assert.match(resumedPage, /<div class="member-name">子任务 2：Bravo<\/div>\s*<div class="member-meta">待验收<\/div>/u);
   assert.doesNotMatch(resumedPage, /尝试|已验收尝试/u);
   assertLoopPlusDetailCardsHidden(resumedPage);
   assert.match(resumedPage, /子任务 4：Delta 思考中/u);
@@ -541,6 +603,7 @@ test("renders a paused Loop+ review separately from active review and restores i
   assert.equal(completedScheduler.complete().ok, true);
   const completedPage = html(build(completedScheduler.snapshot(), { status: "error" }));
   assert.match(completedPage, /data-loop-plus-status="completed"/u);
+  assert.equal(countValue(completedPage, "completed"), "1");
   assert.match(completedPage, /Loop\+ 已全部收口。/u);
   assert.doesNotMatch(completedPage, /自动验收已暂停|正在验收/u);
 
@@ -838,6 +901,7 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
   assert.match(starting, /<div class="member-name">主任务 0%<\/div>\s*<div class="member-meta">分解子任务<\/div>/u);
   assert.match(starting, /data-thinking-kind="main" data-thinking-id="main"/u);
   assert.match(starting, /主任务 0% 思考中/u);
+  assert.equal(countValue(starting, "running"), "1");
 
   const idle = html(build(snapshot, {
     subTasks: [],
@@ -846,6 +910,7 @@ test("shows the main task as decomposing subtasks while Loop+ is just starting",
   }));
   assert.match(idle, /data-loop-plus-status="idle"/u);
   assert.match(idle, /<div class="member-name">主任务 0%<\/div>\s*<div class="member-meta">空闲<\/div>/u);
+  assert.equal(countValue(idle, "running"), "0");
   assert.doesNotMatch(idle, /分解子任务|data-thinking-kind="main"|主任务 0% 思考中/u);
 
   const stale = html(build(snapshot, { loopPlusMainPhase: "decomposing" }));

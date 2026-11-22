@@ -1,10 +1,255 @@
 import { getConversationTabSessionIdForCli, type ConversationTabRecord } from "../sessionTabs";
+import type { LoopSubtaskConversationContext } from "../loopConversationPresentation";
+import type { LoopTaskRecord } from "../loopTaskStore";
+import { normalizeLoopSubtaskSession } from "../loopSubtaskSession";
+import type { TaskRunRecord } from "../promptRunState";
+import type { ChatMessage } from "../webview/types";
+import { createLoopPlusScheduler, type LoopPlusSeenAttempt } from "../loopPlusScheduler";
 
 type LoopSubtaskTabContext = {
   taskId: string;
   subtaskId: string;
   attemptId?: string;
 };
+
+type RestoredCleanupEvidence = {
+  targetRun: TaskRunRecord;
+  latestRuns: ReadonlyMap<string, TaskRunRecord>;
+  attempts: readonly LoopPlusSeenAttempt[] | null;
+  reservedSessions: ReadonlySet<string>;
+};
+
+function sessionKey(cli: ConversationTabRecord["cli"], sessionId: string | null): string {
+  return JSON.stringify([cli, sessionId]);
+}
+
+export function createCompletedLoopSubtaskTabCleanup(deps: {
+  getWorkspaceKey: () => string;
+  getTabs: () => readonly ConversationTabRecord[];
+  isTabRunActive: (tabId: string) => boolean;
+  closeTab: (tab: ConversationTabRecord) => Promise<void>;
+  restoredEvidence?: {
+    readMessages: (cli: ConversationTabRecord["cli"], sessionId: string, workspace: string) => readonly ChatMessage[];
+    readRuns: () => readonly TaskRunRecord[];
+    readRunsRevision?: () => string;
+    readTask: (taskId: string) => Pick<LoopTaskRecord, "workspaceKey" | "department" | "departmentInvalid" | "schedulingMode" | "loopPlus" | "subTasks"> | null;
+  };
+}) {
+  type Binding = {
+    context: LoopSubtaskConversationContext;
+    workspace: string;
+    cli: ConversationTabRecord["cli"];
+    order: number;
+    idle: { sessionId: string | null } | null;
+  };
+  const bindings = new WeakMap<ConversationTabRecord, Binding>();
+  const restoredTabs = new WeakMap<ConversationTabRecord, {
+    workspace: string;
+    cli: ConversationTabRecord["cli"];
+    sessionId: string;
+    restoredAt: number;
+  }>();
+  let order = 0;
+
+  function rememberRestoredTabs(tabs: readonly ConversationTabRecord[]) {
+    const workspace = deps.getWorkspaceKey();
+    const restoredAt = Date.now();
+    for (const tab of tabs) {
+      const sessionId = getConversationTabSessionIdForCli(tab, tab.cli);
+      if (sessionId) restoredTabs.set(tab, { workspace, cli: tab.cli, sessionId, restoredAt });
+    }
+  }
+
+  function forgetRestoredTab(tab: ConversationTabRecord) {
+    restoredTabs.delete(tab);
+  }
+
+  function bindPrompt(tab: ConversationTabRecord, context: LoopSubtaskConversationContext | null) {
+    forgetRestoredTab(tab);
+    if (!context) {
+      bindings.delete(tab);
+      return undefined;
+    }
+    const binding: Binding = { context: { ...context }, workspace: deps.getWorkspaceKey(), cli: tab.cli, order: ++order, idle: null };
+    bindings.set(tab, binding);
+    return (sessionId: string | null) => {
+      if (bindings.get(tab) === binding && deps.getWorkspaceKey() === binding.workspace
+        && tab.cli === binding.cli && getConversationTabSessionIdForCli(tab, binding.cli) === sessionId) {
+        binding.idle = { sessionId };
+      }
+    };
+  }
+
+  function readIdleBinding(tab: ConversationTabRecord, workspace: string) {
+    const binding = bindings.get(tab);
+    if (!binding?.idle || binding.workspace !== workspace || binding.cli !== tab.cli
+      || binding.idle.sessionId !== getConversationTabSessionIdForCli(tab, tab.cli)
+      || deps.isTabRunActive(tab.id)) return null;
+    return binding;
+  }
+
+  function readRestoredEvidence(
+    tab: ConversationTabRecord,
+    workspace: string,
+    expected: LoopSubtaskConversationContext,
+    tabs: readonly ConversationTabRecord[],
+    readSharedEvidence: () => RestoredCleanupEvidence | null,
+  ) {
+    const restored = restoredTabs.get(tab);
+    const evidence = deps.restoredEvidence;
+    if (!restored || !evidence || restored.workspace !== workspace || restored.cli !== tab.cli
+      || restored.sessionId !== getConversationTabSessionIdForCli(tab, tab.cli) || deps.isTabRunActive(tab.id)
+      || tabs.some((other) => other !== tab && other.cli === restored.cli
+        && getConversationTabSessionIdForCli(other, restored.cli) === restored.sessionId)) return null;
+
+    let messages: readonly ChatMessage[];
+    try {
+      messages = evidence.readMessages(restored.cli, restored.sessionId, workspace);
+    } catch {
+      return null;
+    }
+    let prompt: ChatMessage | undefined;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") {
+        prompt = messages[index];
+        break;
+      }
+    }
+    if (prompt?.taskRole !== "subtask" || prompt.loopAsk === true || !prompt.id
+      || prompt.loopTaskId !== expected.taskId || prompt.loopSubtaskId !== expected.subtaskId
+      || typeof prompt.loopRound !== "number" || !Number.isInteger(prompt.loopRound)
+      || prompt.loopRound < 1 || prompt.loopRound > expected.round
+      || typeof prompt.createdAt !== "number" || !Number.isFinite(prompt.createdAt)
+      || !(tab.createdAt <= prompt.createdAt)) return null;
+
+    const shared = readSharedEvidence();
+    const key = sessionKey(restored.cli, restored.sessionId);
+    if (!shared || shared.reservedSessions.has(key)) return null;
+    const run = shared.latestRuns.get(key);
+    if (run?.status !== "end" || run.taskRole !== "subtask" || run.loopTaskId !== prompt.loopTaskId
+      || run.loopSubtaskId !== prompt.loopSubtaskId || run.loopRound !== prompt.loopRound
+      || run.loopAttemptId !== prompt.loopAttemptId || !(tab.createdAt <= run.startedAt)
+      || !(prompt.createdAt < run.endedAt && run.startedAt <= run.endedAt
+        && run.endedAt < shared.targetRun.startedAt && run.endedAt < restored.restoredAt)) return null;
+
+    const { attempts } = shared;
+    if (attempts) {
+      if (!run.loopAttemptId || !expected.attemptId) return null;
+      const previous = attempts.findIndex((attempt) => attempt.subtaskId === expected.subtaskId && attempt.attemptId === run.loopAttemptId);
+      const completing = attempts.findIndex((attempt) => attempt.subtaskId === expected.subtaskId && attempt.attemptId === expected.attemptId);
+      if (previous < 0 || previous >= completing || attempts[previous].disposition === "open") return null;
+    }
+    return JSON.stringify([restored.cli, restored.sessionId, prompt.id, prompt.createdAt, run.id, run.endedAt, run.loopRound, run.loopAttemptId]);
+  }
+
+  function prepareClose(tabId: string, expected: LoopSubtaskConversationContext): () => Promise<void> {
+    const workspace = deps.getWorkspaceKey();
+    const tabs = deps.getTabs();
+    const index = tabs.findIndex((tab) => tab.id === tabId);
+    const target = index < 0 ? null : readIdleBinding(tabs[index], workspace);
+    if (!target || target.context.taskId !== expected.taskId || target.context.subtaskId !== expected.subtaskId
+      || target.context.round !== expected.round || target.context.attemptId !== expected.attemptId) {
+      return async () => { throw new Error("子任务标签当前执行身份无法核验，未执行自动关闭。"); };
+    }
+    const targetTab = tabs[index];
+    const targetSessionId = getConversationTabSessionIdForCli(targetTab, targetTab.cli);
+    let history: { revision: string | undefined; latestRuns: Map<string, TaskRunRecord>; targetRun: TaskRunRecord | undefined } | undefined;
+
+    function createSharedEvidenceReader(beforeCommit = false) {
+      let shared: RestoredCleanupEvidence | null | undefined;
+      return () => shared === undefined ? (shared = readSharedEvidence(beforeCommit)) : shared;
+    }
+
+    function readSharedEvidence(beforeCommit: boolean): RestoredCleanupEvidence | null {
+      const evidence = deps.restoredEvidence;
+      if (!evidence) return null;
+      try {
+        const revision = evidence.readRunsRevision?.();
+        if (!history || revision === undefined || history.revision !== revision) {
+          const latestRuns = new Map<string, TaskRunRecord>();
+          let targetRun: TaskRunRecord | undefined;
+          for (const run of evidence.readRuns()) {
+            latestRuns.set(sessionKey(run.cli, run.sessionId), run);
+            if (run.cli === targetTab.cli && run.sessionId === targetSessionId && run.status === "end"
+              && run.taskRole === "subtask" && run.loopTaskId === expected.taskId
+              && run.loopSubtaskId === expected.subtaskId && run.loopRound === expected.round
+              && run.loopAttemptId === expected.attemptId) targetRun = run;
+          }
+          if (revision !== evidence.readRunsRevision?.()) return null;
+          history = { revision, latestRuns, targetRun };
+        }
+        const { targetRun, latestRuns } = history;
+        if (!targetRun) return null;
+        const task = evidence.readTask(expected.taskId);
+        if (task?.workspaceKey !== workspace || task.department || task.departmentInvalid) return null;
+        const reservedSessions = new Set<string>();
+        if (task.schedulingMode !== "event_driven") return { targetRun, latestRuns, attempts: null, reservedSessions };
+        const snapshot = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();
+        const subtasks = new Map(task.subTasks.map((subtask) => [subtask.id, subtask]));
+        for (const execution of [...snapshot.pending, ...snapshot.running]) {
+          if (execution.subtaskId === expected.subtaskId && execution.attemptId === expected.attemptId) {
+            if (beforeCommit) continue;
+            return null;
+          }
+          const subtask = subtasks.get(execution.subtaskId);
+          const source = subtasks.get(subtask?.continueFromSubtaskId || execution.subtaskId);
+          if (!subtask || !source) return null;
+          const continuation = normalizeLoopSubtaskSession(source.executionSession);
+          if (continuation) reservedSessions.add(sessionKey(continuation.cli, continuation.sessionId));
+          const runningSession = execution.state === "running" ? normalizeLoopSubtaskSession(subtask.executionSession) : undefined;
+          if (runningSession) reservedSessions.add(sessionKey(runningSession.cli, runningSession.sessionId));
+        }
+        return { targetRun, latestRuns, attempts: snapshot.seenAttempts, reservedSessions };
+      } catch {
+        return null;
+      }
+    }
+
+    const readBeforeCommit = createSharedEvidenceReader(true);
+    const candidates = tabs.slice(0, index + 1).flatMap((tab) => {
+      const binding = tab.id === tabId ? target : readIdleBinding(tab, workspace);
+      if (binding) {
+        if (binding.order > target.order || binding.context.round > expected.round
+          || binding.context.taskId !== expected.taskId || binding.context.subtaskId !== expected.subtaskId) return [];
+        return [{ tab, isCurrent: () => readIdleBinding(tab, workspace) === binding }];
+      }
+      const evidence = readRestoredEvidence(tab, workspace, expected, tabs, readBeforeCommit);
+      return evidence === null ? [] : [{ tab, isCurrent: (currentTabs: readonly ConversationTabRecord[], readCurrent: typeof readBeforeCommit) => (
+        readRestoredEvidence(tab, workspace, expected, currentTabs, readCurrent) === evidence
+      ) }];
+    });
+    return async () => {
+      const failures: string[] = [];
+      let readCurrent = createSharedEvidenceReader();
+      for (const { tab, isCurrent } of candidates) {
+        if (deps.getWorkspaceKey() !== workspace) {
+          failures.push("工作区已切换，忽略原子任务标签清理。");
+          break;
+        }
+        const currentTabs = deps.getTabs();
+        const current = currentTabs.find((item) => item.id === tab.id);
+        if (!current) continue;
+        if (current !== tab || !isCurrent(currentTabs, readCurrent)) {
+          if (tab.id === tabId) failures.push(`${tab.id}: 子任务标签当前执行身份已变化，保留当前标签。`);
+          continue;
+        }
+        try {
+          await deps.closeTab(tab);
+          if (deps.getWorkspaceKey() === workspace && deps.getTabs().includes(tab)) {
+            throw new Error("子任务标签关闭未生效，保留标签以便重试。");
+          }
+        } catch (error) {
+          failures.push(`${tab.id}: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          readCurrent = createSharedEvidenceReader();
+        }
+      }
+      if (failures.length) throw new Error(failures.join("\n"));
+    };
+  }
+
+  return { bindPrompt, rememberRestoredTabs, forgetRestoredTab, prepareClose };
+}
 
 export function findRunningLoopSubtaskConversationTabId(
   context: LoopSubtaskTabContext,

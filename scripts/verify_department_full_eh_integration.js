@@ -407,12 +407,12 @@ function writeExtensionHostEntry(product, root, options = {}) {
   return file;
 }
 
-function writeColdSecondHostEntry(product, root, home, rootTaskId, deadlines) {
+function writeColdSecondHostEntry(product, root, home, rootTaskId, deadlines, loopPlusAttempt) {
   const fixturePath = path.join(product, "dist/test/extensionHost/fixtures/departmentcoldstartproductionhost.js");
   assert.ok(fs.existsSync(fixturePath), `Isolated cold-start fixture is missing: ${fixturePath}`);
   const { createDepartmentColdStartHostTestEntry } = require(fixturePath);
   const file = path.join(root, "cold-second-host-test.js");
-  fs.writeFileSync(file, createDepartmentColdStartHostTestEntry({ root, home, product, timeoutMs, rootTaskId, deadlines }), { flag: "wx" });
+  fs.writeFileSync(file, createDepartmentColdStartHostTestEntry({ root, home, product, timeoutMs, rootTaskId, deadlines, loopPlusAttempt }), { flag: "wx" });
   return file;
 }
 
@@ -841,6 +841,22 @@ async function driveColdProductionRecoveryCheck(port, rootId, root, deadlines, d
     await stop.waitFor({ state: "visible", timeout: coldRemaining(deadlines.actionDeadline) });
     assert.equal(await stop.count(), 1, `department group chat stop action is not available for ${rootId}`);
     assertColdUiRoot(await webview.locator("#panelSubtitle").getAttribute("title"), rootId);
+    const taskPanel = await webview.locator("#taskPanelSlot").innerText();
+    const actions = await webview.locator("#departmentContinueBlocked").innerText();
+    assert.match(taskPanel, /本宿主执行已中断/, "cold director projection did not identify host-local interruption");
+    assert.match(actions, /本宿主执行已中断/, "cold director continuation gate omitted interruption semantics");
+    assert.match(actions, /原执行退出未确认/, "cold director projection omitted the outstanding cleanup gate");
+    assert.equal(await stop.isEnabled(), true, "cold projection must retain the explicit department Stop/reconciliation action");
+    const continueAction = webview.locator('[data-action="continueTask"]');
+    assert.equal(await continueAction.count(), 1, "cold projection must preserve its visible continuation gate");
+    assert.equal(await continueAction.isDisabled(), true, "cold projection must not enable continuation while original execution ownership is unreconciled");
+    const requestEvidence = path.join(root, "cold-provider-requests.ndjson");
+    const requestCountBeforeControl = fs.existsSync(requestEvidence)
+      ? fs.readFileSync(requestEvidence, "utf8").trim().split("\n").filter(Boolean).length : 0;
+    assert.equal(requestCountBeforeControl, dependencies.initialProviderRequestCount ?? 0,
+      "second EH dispatched/replayed a model request before the explicit user control");
+    fs.writeFileSync(path.join(root, "cold-second-host-ui.json"), JSON.stringify({ rootTaskId: rootId,
+      taskPanel, actions, stopEnabled: true, continueDisabled: true, requestCountBeforeControl }), { mode: 0o600 });
     coldRemaining(deadlines.actionDeadline);
     await stop.click();
     coldRemaining(deadlines.actionDeadline);
@@ -1255,7 +1271,10 @@ async function main() {
     fs.mkdirSync(path.join(home, ".sinitek_cli"), { recursive: true }); fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
     fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({
       debug: true, humanInteractionEnabled: false, cliEnabledByName: { codex: true, claude: false, opencode: Object.values(report.roles).includes("opencode"), grok: false, dsh: false, "kimi-code": false, zcode: false } }), { flag: "wx" });
-    responses = createLocalResponsesServer({ maxRequests: 32, respond: scenario.respond, summarizeRequest: scenario.summarizeRequest });
+    const coldRequestEvidence = path.join(root, "cold-provider-requests.ndjson");
+    responses = createLocalResponsesServer({ maxRequests: 32, respond: scenario.respond, summarizeRequest: scenario.summarizeRequest,
+      ...(input.scenario === "cold-start" ? { onRequest: (index, record) => fs.appendFileSync(coldRequestEvidence,
+        JSON.stringify({ index, responseId: record.responseId, at: record.at }) + "\n", { mode: 0o600 }) } : {}) });
     await new Promise((resolve, reject) => responses.server.once("error", reject).listen(0, "127.0.0.1", resolve));
     const providerPort = responses.server.address().port;
     const localConfig = `model = "gpt-5"
@@ -1593,28 +1612,38 @@ requires_openai_auth = false
       const activeRoot = scenario.snapshot().rootId;
       const beforeRestartTasks = readTasks(), rootTask = beforeRestartTasks.find(value => value.id === activeRoot);
       const runtimeBeforeRestart = readRuntime(activeRoot);
-      const exactBinding = runtimeBeforeRestart.executionBindings.find(binding => binding.identity.role === "employee"
-        && binding.identity.leaderTaskId === activeIdentity.leaderTaskId && binding.identity.subtaskId === activeIdentity.subtaskId
-        && binding.identity.attemptId === activeIdentity.attemptId);
-      assert.ok(exactBinding, "real employee attempt has no persisted original binding");
-      assert.equal(exactBinding.identity.session.state, "bound");
-      const activeLeader = beforeRestartTasks.find(value => value.id === exactBinding.identity.leaderTaskId);
-      assert.ok(activeLeader && activeLeader.status === "running", "original bound leader is not running before host exit");
-      assert.deepEqual(rootTask?.department?.routes, activeLeader.department?.routes, "root/leader frozen routes differ before host exit");
-      assert.ok(runtimeBeforeRestart.capacity.employees.includes(JSON.stringify([activeIdentity.leaderTaskId, activeIdentity.attemptId])));
-      const liveOwner = await new DepartmentExecutionOwnerClient(path.join(home, ".sinitek_cli/department-execution-owners", exactBinding.identity.ownerId)).observeExecution(exactBinding.identity);
-      report.coldStart = { trigger: "normal VS Code process exit while the real employee Responses request remains pending",
-        firstHost: { rootTask: rootTask && structuredClone(rootTask), leader: structuredClone(activeLeader),
-        beforeRestart: { rootTask: structuredClone(rootTask), leader: structuredClone(activeLeader), tasks: structuredClone(beforeRestartTasks), binding: structuredClone(exactBinding),
-            runtime: structuredClone(runtimeBeforeRestart) },
-          activeIdentity, binding: exactBinding, ownerEndpointBeforeExit: liveOwner,
+      assert.ok(rootTask && rootTask.department?.executionMode === "loop-plus" && rootTask.department.role === "director"
+        && rootTask.status === "running", "cold-start root is not an active production Loop+ director");
+      const activeLeader = beforeRestartTasks.find(value => value.id === activeIdentity.leaderTaskId);
+      assert.ok(activeLeader?.department?.executionMode === "loop-plus" && activeLeader.department.role === "leader"
+        && activeLeader.department.rootTaskId === activeRoot && activeLeader.status === "running", "held attempt leader is not a running Loop+ child");
+      assert.deepEqual(rootTask.department.routes, activeLeader.department.routes, "root/leader frozen routes differ before host exit");
+      const loopPlusMember = runtimeBeforeRestart.runtime.leaders.find(member => member.taskId === activeLeader.id
+        && member.leaderSubtaskId === activeLeader.department.leaderSubtaskId && member.status === "running");
+      assert.ok(loopPlusMember, "held Loop+ attempt has no matching durable running runtime member");
+      assert.equal(rootTask.subTasks.find(module => module.id === loopPlusMember.leaderSubtaskId)?.status, "running");
+      const activeEmployee = activeLeader.subTasks.find(task => task.id === activeIdentity.subtaskId);
+      assert.ok(activeEmployee?.status === "running" && activeEmployee.communicationFile === activeIdentity.reportFile,
+        "held provider request does not map to its exact running Loop+ employee task");
+      const runningAttempts = activeLeader.loopPlus?.running.filter(attempt => attempt.subtaskId === activeIdentity.subtaskId) ?? [];
+      assert.equal(runningAttempts.length, 1, "held Loop+ scheduler attempt is missing or ambiguous");
+      assert.equal(runningAttempts[0].attemptId, activeIdentity.attemptId, "provider request differs from the persisted Loop+ scheduler attempt");
+      const capacityKey = JSON.stringify([activeLeader.id, activeIdentity.attemptId]);
+      assert.ok(runtimeBeforeRestart.capacity.leaders.includes(loopPlusMember.leaderSubtaskId), "held Loop+ leader has no matching capacity");
+      assert.ok(runtimeBeforeRestart.capacity.employees.includes(capacityKey), "held Loop+ attempt has no matching capacity");
+      assert.deepEqual(runtimeBeforeRestart.capacity.employeeOverflow ?? [], [], "simple held attempt unexpectedly overflows employee capacity");
+      report.coldStart = { trigger: "normal VS Code process exit while the real Loop+ employee Responses request remains pending",
+        firstHost: { rootTask: structuredClone(rootTask), leader: structuredClone(activeLeader),
+        beforeRestart: { rootTask: structuredClone(rootTask), leader: structuredClone(activeLeader), tasks: structuredClone(beforeRestartTasks),
+            runtime: structuredClone(runtimeBeforeRestart), loopPlusAttempt: { leaderTaskId: activeLeader.id, subtaskId: activeIdentity.subtaskId,
+              attemptId: activeIdentity.attemptId, reportFile: activeIdentity.reportFile, member: structuredClone(loopPlusMember),
+              schedulerAttempt: structuredClone(runningAttempts[0]), capacityKey } },
+          activeIdentity,
           sourceMarkerBeforeExit: readJson(path.join(home, ".sinitek_cli/department-tasks-v1/.department-source.json")),
           ownerMarkerBeforeExit: readJson(path.join(home, ".sinitek_cli/department-tasks-v1/.department-owner.json")),
           capacity: runtimeBeforeRestart.capacity, sourceMarker: fs.existsSync(path.join(home, ".sinitek_cli/department-tasks-v1/.department-source.json")),
           ownerMarker: fs.existsSync(path.join(home, ".sinitek_cli/department-tasks-v1/.department-owner.json")),
           providerRequestCount: responses.requests.length, modelRequestStages: scenario.history.map(entry => entry.stage) } };
-      assert.ok(["live", "finalizing"].includes(liveOwner.status), `original Owner was not live before the restart: ${JSON.stringify(liveOwner)}`);
-      assert.equal(exactBinding.identity.role, "employee");
       report.stages.firstHostActiveBinding = "observed";
       fs.writeFileSync(path.join(root, "host-finish.signal"), "cold-restart-trigger\n", { flag: "wx" });
       const firstExitDeadline = Date.now() + timeoutMs;
@@ -1633,7 +1662,8 @@ requires_openai_auth = false
       const { createColdDeadlinePlan } = require(path.join(product, "dist/test/extensionHost/fixtures/departmentcoldstartproductionhost.js"));
       const coldDeadlines = createColdDeadlinePlan(Date.now(), timeoutMs);
       report.coldStart.deadlines = coldDeadlines;
-      const secondPort = await freePort(), secondEntry = writeColdSecondHostEntry(product, root, home, activeRoot, coldDeadlines);
+      const secondPort = await freePort(), secondEntry = writeColdSecondHostEntry(product, root, home, activeRoot, coldDeadlines,
+        report.coldStart.firstHost.beforeRestart.loopPlusAttempt);
       const secondArgs = args.filter(value => !value.startsWith("--remote-debugging-port=") && !value.startsWith("--extensionTestsPath="));
       secondArgs.splice(1, 0, `--remote-debugging-port=${secondPort}`);
       secondArgs.push(`--extensionTestsPath=${secondEntry}`);
@@ -1651,13 +1681,20 @@ requires_openai_auth = false
       assertColdHostObservation(root);
       assert.ok(fs.existsSync(path.join(root, "cold-second-host-ready.json")), `second EH did not reach the public recovery control: ${report.coldStart.secondHostSpawnError || "deadline"}`);
       report.activePhase = "coldSecondHostPublicControl";
-      try { await settleColdPublicControl(() => driveColdProductionRecoveryCheck(secondPort, activeRoot, root, coldDeadlines),
+      try { await settleColdPublicControl(() => driveColdProductionRecoveryCheck(secondPort, activeRoot, root, coldDeadlines,
+        { initialProviderRequestCount: report.coldStart.providerRequestCountAfterExit }),
         () => secondExited, secondDeadline); }
       finally {
         report.coldStart.cdpCleanup = readJson(path.join(root, "cold-cdp-cleanup.json"));
         report.coldStart.secondHostFailure = readJson(path.join(root, "cold-second-host-failure.json"));
         report.coldStart.publicObserver = readJson(path.join(root, "cold-public-observer.json"));
       }
+      report.coldStart.secondHostUi = readJson(path.join(root, "cold-second-host-ui.json"));
+      assert.ok(report.coldStart.secondHostUi, "cold second host did not record its actual Webview projection before Stop");
+      assert.match(report.coldStart.secondHostUi.taskPanel, /本宿主执行已中断/);
+      assert.match(report.coldStart.secondHostUi.actions, /仍有原执行退出未确认/);
+      assert.equal(report.coldStart.secondHostUi.stopEnabled, true);
+      assert.equal(report.coldStart.secondHostUi.continueDisabled, true);
       report.activePhase = "coldSecondHostEvidence";
       while (!secondExited && Date.now() < coldDeadlines.evidenceDeadline && !fs.existsSync(path.join(root, "cold-second-host.json"))) await sleep(100);
       assert.ok(fs.existsSync(path.join(root, "cold-second-host.json")), "second EH did not write its bounded cold recovery observation");
@@ -1667,11 +1704,26 @@ requires_openai_auth = false
       report.coldStart.providerRequestCountAfterSecondHost = responses.requests.length;
       assert.equal(responses.requests.length, report.coldStart.providerRequestCountAfterExit, "second EH replayed or newly dispatched a model request");
       report.coldStart.classification = classifyColdStartRecovery(report.coldStart.secondHost);
-      report.coldStart.crossHostIdentity = assertColdRestartIdentity(report.coldStart.firstHost, report.coldStart.secondHost, sameExecution);
+      const heldLoopPlusAttempt = report.coldStart.firstHost.beforeRestart.loopPlusAttempt;
+      if (heldLoopPlusAttempt) {
+        assert.equal(report.coldStart.secondHost.loopPlusAttempt.attempt.attemptId, heldLoopPlusAttempt.schedulerAttempt.attemptId,
+          "second EH did not read the exact persisted Loop+ scheduler attempt");
+        assert.equal(report.coldStart.secondHost.loopPlusAttempt.capacityKey, heldLoopPlusAttempt.capacityKey);
+        assert.deepEqual(report.coldStart.secondHost.beforeActivation.roots.find(item => item.id === report.coldStart.firstHost.rootTask.id).runtime.capacity,
+          report.coldStart.firstHost.beforeRestart.runtime.capacity, "cold observation changed retained Loop+ capacity");
+        report.coldStart.crossHostLoopPlusAttempt = { schedulerAttempt: report.coldStart.secondHost.loopPlusAttempt.attempt,
+          capacityKey: report.coldStart.secondHost.loopPlusAttempt.capacityKey };
+      } else {
+        report.coldStart.crossHostIdentity = assertColdRestartIdentity(report.coldStart.firstHost, report.coldStart.secondHost, sameExecution);
+      }
       assert.deepEqual(report.coldStart.secondHost.afterActivation.tasks, report.coldStart.secondHost.beforeActivation.tasks,
         "cold observation changed persisted task records");
       assert.deepEqual(report.coldStart.secondHost.afterActivation.roots, report.coldStart.secondHost.beforeActivation.roots,
         "cold observation changed runtime generation/capacity state");
+      assert.deepEqual(report.coldStart.secondHost.afterControl.roots, report.coldStart.secondHost.beforeControl.roots,
+        "explicit cold Stop changed runtime generation/capacity despite unconfirmed cleanup");
+      const explicitlyStoppedRoot = report.coldStart.secondHost.afterControl.tasks.find(task => task.id === activeRoot);
+      assert.equal(explicitlyStoppedRoot?.status, "stopped", "explicit Stop did not persist its user-requested stopped root status");
       report.stages.secondHostObservation = "observed";
       assert.equal(report.coldStart.secondHost.productionRecovery.observed, true, "public organization-control rejection was not observed");
       assert.equal(report.coldStart.secondHost.productionRecovery.reason, "live-leader-unverifiable");

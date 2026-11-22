@@ -18,10 +18,12 @@ import {
   parseLoopPlusDecision,
   type LoopPlusDecision,
 } from "../../loopPlusDecision";
-import type {
-  LoopPlusExecutionRecord,
-  LoopPlusReviewItem,
-  LoopPlusSchedulerView,
+import {
+  createLoopPlusScheduler,
+  requiresLoopPlusAcceptedDependencies,
+  type LoopPlusExecutionRecord,
+  type LoopPlusReviewItem,
+  type LoopPlusSchedulerView,
 } from "../../loopPlusScheduler";
 
 const PROTOCOL_STATUSES = ["dispatch", "accept", "wait", "steer", "blocked", "clarify", "completed"] as const;
@@ -585,9 +587,9 @@ test("dependency-first review rules preserve independent progress, real verdicts
         /judge the successor delivery independently/,
         /A failed prerequisite does not automatically fail any other event/,
         /A selected prerequisite is not yet passed/,
-        /For execution admission.*outcome completed plus reviewed acceptance passed/,
-        /requiresAcceptance=false plus outcome completed and acknowledged report/,
-        /failed\/stopped attempts and closed tasks do not release successors/,
+        /For execution admission.*latest attempt completes successfully/,
+        /Acceptance or report acknowledgement is not required for execution admission/,
+        /Failed\/stopped attempts and closed tasks do not release successors/,
         /complete decision.*before promoting pending work/,
         /New reservations are persisted before execution starts/,
         /no acceptance item is claimable, do not emit an empty review confirmation/,
@@ -1459,7 +1461,7 @@ test("dependency prompts expose latest attempts, success gates, repair semantics
   const dependencyBlocks = [{ subtaskId: "child", attemptId: "child-1", dependencyId: "source", dependencyAttemptId: "source-2", reason: "closed" as const }];
   const prompt = buildLoopPlusMainModelPrompt(mainContext({ view: view({ dependencyBlocks }) }));
   assert.match(prompt, /child attempt=child-1 dependsOn=source latestAttempt=source-2 reason=closed/);
-  for (const clause of [/stable subtask ids/, /continueFromSubtaskId selects a session and never implies dependsOn/, /latest attempt/, /acknowledged report/, /forward-reference/, /Unknown ids/, /cycles/, /already known logical ids/, /omission of dependsOn inherits/, /\[\] clears/, /same logical id/, /wait cannot make progress/, /no whole-batch barrier/]) {
+  for (const clause of [/stable subtask ids/, /continueFromSubtaskId selects a session and never implies dependsOn/, /latest attempt/, /report acknowledgement is not required for execution admission/, /forward-reference/, /Unknown ids/, /cycles/, /already known logical ids/, /omission of dependsOn inherits/, /\[\] clears/, /same logical id/, /wait cannot make progress/, /no whole-batch barrier/]) {
     assert.match(prompt, clause);
   }
   const json = prompt.split("Dependency protocol example (prerequisite-id is an already known logical id): ")[1].split("\n")[0];
@@ -1472,3 +1474,33 @@ test("dependency prompts expose latest attempts, success gates, repair semantics
   assert.match(childPrompt, /latest attempt completes and passes acceptance/);
   assert.match(childPrompt, /Session continuation is separate from dependencies/);
 });
+
+for (const { name, task, acceptanceRequired } of [
+  { name: "ordinary Loop+", task: {}, acceptanceRequired: false },
+  { name: "department Loop+", task: { department: { role: "leader" } }, acceptanceRequired: true },
+] as const) {
+  test(`${name} main and subtask prompts describe the configured dependency admission gate`, () => {
+    const scheduler = createLoopPlusScheduler({
+      maxConcurrency: 2,
+      requireAcceptedDependencies: requiresLoopPlusAcceptedDependencies(task),
+    });
+    const requireAcceptedDependencies = scheduler.requireAcceptedDependencies;
+    assert.equal(requireAcceptedDependencies, acceptanceRequired);
+    const mainPrompt = buildLoopPlusMainModelPrompt(mainContext({ requireAcceptedDependencies }));
+    const subtaskPrompt = buildLoopPlusSubtaskModelPrompt({
+      subtask: { id: "child", title: "child", prompt: "implement dependency", dependsOn: ["source"] },
+      communicationFile: "report.md",
+      requireAcceptedDependencies,
+    });
+    const executionGate = /latest attempt completes successfully \(outcome completed\) and is not closed\. Acceptance or report acknowledgement is not required for execution admission/;
+    const acceptanceGate = /latest attempt completes and passes acceptance, or completes with requiresAcceptance=false and its report is acknowledged/;
+    for (const prompt of [mainPrompt, subtaskPrompt]) {
+      assert.match(prompt, acceptanceRequired ? acceptanceGate : executionGate);
+      assert.doesNotMatch(prompt, acceptanceRequired ? executionGate : acceptanceGate);
+    }
+    assert.match(mainPrompt, /Review ordering is separate from execution admission/);
+    assert.doesNotMatch(mainPrompt, /Cancelled prerequisites never release pending successors/);
+    assert.match(subtaskPrompt, /Explicit prerequisite subtask ids \(dependsOn\): \["source"\]/);
+    assert.match(subtaskPrompt, /Session continuation is separate from dependencies/);
+  });
+}

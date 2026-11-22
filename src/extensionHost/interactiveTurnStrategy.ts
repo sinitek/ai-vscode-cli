@@ -42,6 +42,7 @@ export type InteractiveTurnAttemptPort = {
   readonly departmentCodexRun?: import("./promptExecutionShared").PromptRunExecutionOptions["departmentCodexRun"];
   readonly cancelDepartmentCodexPreparation?: () => void;
   readonly originalCodexThreadTurn?: import("../interactive/codexRunner").OriginalCodexThreadTurn;
+  readonly loopPlusMain?: CodexStreamHandlers["loopPlusMain"];
   readonly cli: InteractiveTurnCli;
   readonly tabId: string;
   readonly runId: string;

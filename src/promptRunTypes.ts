@@ -5,6 +5,14 @@ import type { ConversationExecutionProfile } from "./webview/types";
 import type { LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 
 export type PromptRunInput = {
+  loopPlusMainRuntime?: {
+    onUnexpectedExit: (nativeSessionId: string) => void;
+    recovery?: {
+      target: PromptRunTarget;
+      nativeSessionId: string;
+      canSend: () => boolean;
+    };
+  };
   /** Host-validated root configuration snapshot, captured once by the department start boundary. */
   departmentConfiguration?: import("./departmentConfiguration").DepartmentConfigurationState;
   displayPrompt: string;

@@ -27,6 +27,8 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
           : null,
         nextSelection,
       });
+      const recovery = port.loopPlusMain?.recovery;
+      if (recovery && threadDecision.threadId !== recovery.threadId) return "return";
       if (threadDecision.startedFreshForSelectionChange) {
         void port.logInfo("runPrompt-interactive-codex-selection-new-thread", {
           cli: port.cli,
@@ -73,6 +75,7 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
         port.setStopCurrentTurn(() => runner.stopAndRebuild());
         port.syncInteractiveRunEntry(port.stopFn);
         const handlers: CodexStreamHandlers = {
+          loopPlusMain: port.loopPlusMain,
           onAssistantDelta: (chunk, meta) => {
             if (!port.isCurrentRunActive()) {
               return;

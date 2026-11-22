@@ -53,7 +53,7 @@ import {
   collectLoopCommunicationPreviewRoots,
   readLoopCommunicationFilePreview,
 } from "../loopCommunicationFilePreview";
-import { resolveLoopSchedulingMode, type LoopTaskOriginProfile, type LoopTaskRecord } from "../loopTaskStore";
+import { resolveLoopSchedulingMode, type LoopTaskOriginProfile, type LoopTaskRecord, type LoopTaskUserStopSource } from "../loopTaskStore";
 import { normalizeLoopSubtaskId } from "../loopConversationPresentation";
 
 type LoopPromptRunInput = {
@@ -121,6 +121,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   continueDepartmentLeader?: (task: LoopTaskRecord, prompt: string, assertCurrent: () => void) => Promise<void>;
   /** Validates the fresh root against the trusted source and active workspace. */
   readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean; stopState?: DepartmentOrganizationStopState } | null;
+  hasLocalDepartmentDirectorActivity?(rootTaskId: string): boolean;
   prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
   getExtensionUri: () => vscode.Uri;
   getMessageLimit?: () => number;
@@ -179,7 +180,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   isConfigLockResumeSessionAvailable?: (task: LoopTaskRecord, restoredTabId?: string) => boolean;
   runLoopPrompt: (input: LoopPromptRunInput, options: LoopPromptRunOptions) => Promise<void>;
   stopRunsForTask: (taskId: string) => void;
-  markTaskStoppedByUser: (taskId: string) => LoopTaskRecord | null;
+  markTaskStoppedByUser: (taskId: string, source: LoopTaskUserStopSource) => LoopTaskRecord | null;
   postPanelState: () => Promise<void>;
   getActiveConversationTaskId: () => string | null;
   showInformationMessage: (message: string) => void;
@@ -225,15 +226,23 @@ export function buildLoopGroupChatPanelState(
 ): LoopGroupChatPanelState {
   const departmentRoot = resolveDepartmentRoot(task, deps);
   const isDirector = departmentRoot?.id === task.id;
-  const displayTask = isDirector ? projectInterruptedDirector(task) : task;
   const organization = isDirector ? deps.readDepartmentOrganizationControlState?.(task) : undefined;
+  const localActivity = deps.hasLocalDepartmentDirectorActivity?.(task.id);
+  const locallyInactive = Boolean(organization) && localActivity === false;
+  const directorInterruptedInHost = locallyInactive && task.status === "running";
+  const displayTask = directorInterruptedInHost ? { ...task, status: "stopped" as const }
+    : isDirector ? projectInterruptedDirector(task) : task;
   const stopState = organization?.stopState
     ?? (organization?.needsCleanup && displayTask.status !== "running" ? "unconfirmed" : undefined);
-  const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
-  const mainModelBusy = Boolean(target && deps.isTabRunActive(target.tabId));
+  const isMainModelRunning = (record: LoopTaskRecord): boolean => {
+    const target = deps.resolveMainPromptTarget(record, { createIfMissing: false });
+    return Boolean(target && deps.isTabRunActive(target.tabId));
+  };
+  const mainModelBusy = isMainModelRunning(task);
   const department = buildDepartmentGroupChatProjection(displayTask, {
     readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
     readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
+    ...(isDirector ? { getActiveReviewEventIds: deps.getActiveReviewEventIds, isMainModelRunning } : {}),
   });
   const panelTask = department?.role === "director" && department.overallProgressPercent !== undefined
     ? { ...displayTask, loopProgressPercent: department.overallProgressPercent }
@@ -260,10 +269,12 @@ export function buildLoopGroupChatPanelState(
     ...state,
     task: {
       ...state.task,
-      canContinue: canContinueLoopTaskWithDeps(displayTask, deps, organization),
+      canContinue: !directorInterruptedInHost && canContinueLoopTaskWithDeps(displayTask, deps, organization),
       ...(isDirector ? {
+        ...(directorInterruptedInHost ? { departmentDirectorInterrupted: true } : {}),
         departmentStopState: stopState,
-        canStop: stopState === "stopping" || displayTask.status === "running",
+        canStop: stopState === "stopping" || displayTask.status === "running" || directorInterruptedInHost
+          || (locallyInactive && task.status === "stopped" && stopState === "unconfirmed"),
       } : {}),
     },
     ...acceptancePlanState,
@@ -1046,8 +1057,11 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
 
-    deps.stopRunsForTask(task.id);
-    deps.markTaskStoppedByUser(task.id);
+    try {
+      deps.stopRunsForTask(task.id);
+    } finally {
+      deps.markTaskStoppedByUser(task.id, "group-chat");
+    }
     await deps.postPanelState();
     await refresh(normalizedTaskId);
   };

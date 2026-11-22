@@ -565,6 +565,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     recoverRoot: (root: LoopTaskRecord) => { ensure(root); },
     isOrganizationStopUnconfirmed: (root: string) => unconfirmedStops.has(root),
     readOrganizationStopState,
+    hasLocalDirectorActivity: (root: string) => controllers.has(root) || continuations.has(root),
     readCapacity,
     dispose: () => {
       if (disposed) return;

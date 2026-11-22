@@ -22,6 +22,7 @@ import { formatDepartmentLeaderLabel, formatDepartmentMemberTitle, getDepartment
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
 import { buildLoopGroupChatAcceptanceAnchors, stripLoopGroupChatAcceptanceMetadata } from "../loopGroupChatAcceptance";
+import { summarizeLoopPlusMembers, type LoopPlusStatusSummary } from "../loopPlusStatusSummary";
 import {
   buildLoopGroupChatPanelTitle,
   buildLoopGroupChatPanelHeading,
@@ -1850,6 +1851,8 @@ function hasGroupAcceptancePlan(state: LoopGroupChatPanelState): boolean {
   return state.acceptancePlanReadOnly ? false : state.department ? state.department.role === "director" : Boolean(state.loopPlus);
 }
 
+const DEPARTMENT_DIRECTOR_INTERRUPTED = "本宿主执行已中断";
+
 function renderPanelActions(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
@@ -1881,7 +1884,7 @@ function renderPanelActions(
     state.task.canContinue || continueBlocked
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}"${continueBlocked ? ' disabled aria-describedby="departmentContinueBlocked"' : ""}>${escapeHtml(strings.continueTask)}<span class="continue-loading typing-dots" role="status" aria-label="${escapeAttribute(strings.continueTaskStarting)}" hidden><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></span></button>`
       : "",
-    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
+    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.departmentDirectorInterrupted ? `${DEPARTMENT_DIRECTOR_INTERRUPTED}。` : state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
   ].join("");
 }
 
@@ -1892,7 +1895,8 @@ function renderTaskPanel(
   const currentRound = state.loopPlus
     ? ""
     : renderMetaRow(strings.currentRound, String(state.task.currentRound));
-  const status = state.department?.role === "director" && state.task.status === "stopped" ? "已中止" : state.task.status;
+  const status = state.task.departmentDirectorInterrupted ? DEPARTMENT_DIRECTOR_INTERRUPTED
+    : state.department?.role === "director" && state.task.status === "stopped" ? "已中止" : state.task.status;
   return `<section class="panel">
     <h2>${escapeHtml(strings.task)}</h2>
     <div class="meta-grid">
@@ -1924,43 +1928,28 @@ function renderLoopPlusPanels(
   return `<section class="panel" data-loop-plus-mode="event_driven" data-loop-plus-status="${escapeAttribute(projection.activity)}" data-loop-plus-phase="${escapeAttribute(projection.phase)}">
     <h2>${escapeHtml(strings.titleLoopPlus)}</h2>
     <div class="meta-row loop-plus-activity" data-loop-plus-field="activity"><div class="meta-label">${escapeHtml(strings.status)}</div><div class="meta-value">${escapeHtml(activity)}</div></div>
-    ${renderLoopPlusStatusSummary(state, strings)}
+    ${renderLoopPlusStatusSummary(summarizeLoopPlusMembers(state.rounds.flatMap((round) => round.participants)), strings)}
   </section>`;
 }
 
-function renderLoopPlusStatusSummary(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
-  const counts = new Map<string, number>();
-  const participants = new Map<string, LoopGroupChatPanelParticipant>();
-  for (const round of state.rounds) {
-    for (const participant of round.participants) {
-      if (participant.role === "subtask") participants.set(participant.id, participant);
-    }
-  }
-  const countStatus = (status: string): string | undefined => {
-    if (status === "running") return "running";
-    if (status === "repairing") return "repairing";
-    if (status === "reviewing") return "reviewing";
-    if (status === "queued_review" || status === "held_review") return "queued_review";
-    if (status === "pending") return "pending";
-    if (status === "blocked") return "blocked";
-    if (["completed", "acceptance_passed", "acceptance_failed", "no_acceptance"].includes(status)) return "completed";
-    return undefined;
-  };
-  for (const participant of participants.values()) {
-    const status = countStatus(participant.status);
-    if (status) counts.set(status, (counts.get(status) ?? 0) + 1);
-  }
-  const items: Array<[string, string, string]> = [
-    ["running", "running", strings.loopPlusStatusRunning],
-    ["repairing", "repairing", "修复中"],
-    ["reviewing", "reviewing", "验收中"],
-    ["queue", "queued_review", strings.loopPlusStatusQueued],
-    ["pending", "pending", strings.loopPlusStatusPending],
-    ["blocked", "blocked", strings.participantStatusBlocked],
-    ["completed", "completed", strings.participantStatusCompleted],
+function renderLoopPlusStatusSummary(counts: Partial<LoopPlusStatusSummary> | undefined, strings: LoopGroupChatPanelStrings, departmentLeaderTitle?: string): string {
+  const items: Array<[keyof LoopPlusStatusSummary, string, ("pending" | "blocked" | "completed")?]> = [
+    ["running", strings.loopPlusStatusRunning],
+    ["repairing", "修复中"],
+    ["reviewing", "验收中"],
+    ["queue", strings.loopPlusStatusQueued, "pending"],
+    ["pending", strings.loopPlusStatusPending, "pending"],
+    ["acceptance_failed", "验收失败", "blocked"],
+    ["blocked", strings.participantStatusBlocked, "blocked"],
+    ["completed", strings.participantStatusCompleted, "completed"],
   ];
-  const tags = items.map(([field, status, label]) => `<span class="loop-plus-status-tag"${field === "repairing" ? " data-loop-plus-tone=\"repairing\"" : ""} data-loop-plus-count="${field}">${escapeHtml(label)} ${counts.get(status) ?? 0}</span>`).join("");
-  return `<div class="loop-plus-status-summary" role="group" aria-label="子任务状态汇总">${tags}</div>`;
+  const tags = items.map(([field, label, statusTone]) => {
+    const count = counts?.[field] ?? 0;
+    const tone = count === 0 ? "empty" : statusTone;
+    return `<span class="loop-plus-status-tag"${tone ? ` data-loop-plus-tone="${tone}"` : ""} data-loop-plus-count="${field}">${escapeHtml(label)} ${count}</span>`;
+  }).join("");
+  const groupLabel = departmentLeaderTitle ? `${departmentLeaderTitle}任务状态汇总` : "任务状态汇总";
+  return `<div class="loop-plus-status-summary${departmentLeaderTitle ? " department-status-summary" : ""}" role="group" aria-label="${escapeAttribute(groupLabel)}">${tags}</div>`;
 }
 
 function loopPlusActivityText(
@@ -2236,25 +2225,12 @@ function renderDepartmentRosterPanel(
     const allocationSummary = department.role === "leader" ? renderDepartmentEmployeeAllocationSummary(department, leader.taskId, escapeHtml) : "";
     const employees = [...leader.employees].reverse().map((employee) => `<li>${member(employee, "employee", "", "",
       department.role === "leader" && state.loopPlus ? acceptanceAnchors.get(employee.subtaskId ?? employee.id) : undefined)}</li>`).join("");
-    const employeeStatusCounts = new Map<string, number>();
-    for (const employee of leader.employees) {
-      employeeStatusCounts.set(employee.status, (employeeStatusCounts.get(employee.status) ?? 0) + 1);
-    }
-    const count = (status: string) => employeeStatusCounts.get(status) ?? 0;
-    const employeeStatusTags = department.role === "director" ? [
-      [strings.loopPlusStatusRunning, count("running")],
-      ["验收中", count("reviewing")],
-      [strings.loopPlusStatusQueued, count("queued_review")],
-      [strings.loopPlusStatusPending, count("pending")],
-      [strings.participantStatusBlocked, count("blocked")],
-      [strings.participantStatusCompleted, count("completed") + count("acceptance_passed") + count("acceptance_failed") + count("no_acceptance")],
-    ].map(([label, total]) => `<span class="department-status-tag">${escapeHtml(String(label))} ${total}</span>`).join("") : "";
     const progressPercent = department.role === "director" && leader.taskId ? leader.progressPercent : undefined;
     return `<li class="department-group" data-department-leader-task-id="${escapeAttribute(leader.taskId)}">
       <div class="department-group-header">
         ${member(leader.participant, "leader", leaderCode, navigation + allocationSummary, undefined, progressPercent)}
       </div>
-      ${department.role === "director" ? `<div class="department-status-summary" aria-label="${leaderChatTitle}员工状态汇总">${employeeStatusTags}</div>`
+      ${department.role === "director" ? renderLoopPlusStatusSummary(leader.statusSummary, strings, leaderChatTitle)
         : `<ul class="department-employees" aria-label="${escapeAttribute(`${leaderChatTitle} · ${leader.participant.title}的员工`)}">${employees || '<li class="member-meta department-empty">尚未分配员工</li>'}</ul>`}
     </li>`;
   }).join("");

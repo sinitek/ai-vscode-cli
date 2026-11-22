@@ -54,10 +54,10 @@ function completed(ids: string[] = []) {
     acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "范围", passed: true }] });
 }
 let sequence = 0;
-function harness(options: { refresh?: () => void | Promise<void>; protocolRetryLimit?: number; maxConcurrency?: number } = {}) {
+function harness(options: { refresh?: () => void | Promise<void>; protocolRetryLimit?: number; maxConcurrency?: number; temporaryRequirement?: string } = {}) {
   const id = `handoff-${++sequence}`;
   const target = { cli: "codex" as const, tabId: `main-${id}`, sessionId: id };
-  const input = { displayPrompt: "完成交接契约" };
+  const input = { displayPrompt: options.temporaryRequirement ?? "完成交接契约" };
   const mains: Array<ReturnType<typeof deferred<string | null>> & { request: LoopPlusMainRequest }> = [];
   const attempts: Array<ReturnType<typeof deferred<LoopPlusAttemptResult>> & { request: LoopPlusAttemptRequest }> = [];
   const messages: string[] = [];
@@ -67,11 +67,12 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
   const firstAttemptStarted = deferred<LoopPlusAttemptRequest>();
   const consumerFailed = deferred<void>();
   const events: string[] = [];
+  const finishedChats: string[] = [];
   let cleanups = 0;
   let missingUpdate = false;
   let refreshes = 0;
   const read = () => store.readLoopTaskRecord(id)!;
-  const host = createLoopPlusOrchestrationHost({
+  const createHost = () => createLoopPlusOrchestrationHost({
     maxConcurrency: options.maxConcurrency ?? 4, launchDelayMs: () => 0, protocolRetryLimit: options.protocolRetryLimit,
     readTask: store.readLoopTaskRecord,
     createTask: ({ snapshot }) => {
@@ -80,7 +81,12 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
         rootPrompt: input.displayPrompt, status: "running", createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 20, currentRound: 0,
         communicationDir: communication.dir, mainCommunicationFile: communication.mainFile, sessionId: id,
         activeSubtaskId: null, activeSubtaskIds: [], subTasks: [], rounds: [], supplementalRequirements: [], completionRoundSummaries: [], completionRequirementCoverage: [],
-        schedulingMode: "event_driven", loopPlus: snapshot };
+        schedulingMode: "event_driven", loopPlus: snapshot,
+        ...(options.temporaryRequirement ? {
+          loopSubtaskMode: "fullstack" as const,
+          modelRouting: { main: { model: "review-model" }, subtask: {},
+            subtaskFullstack: { cli: "codex" as const, configId: "fullstack-fixture", model: "coding-model" } },
+        } : {}) };
       assert.ok(task.taskStoreFile.startsWith(isolatedHome + path.sep));
       store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
       return read();
@@ -90,13 +96,20 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
       refreshTaskSurfaces: () => { refreshes += 1; return options.refresh?.(); },
     }),
     appendMessage: (_target, message) => { messages.push(message); },
-    log: (event) => {
+    log: (event, payload) => {
+      if (event === "loop-plus-persist-failed" && payload && typeof payload === "object" && "stage" in payload) {
+        events.push(String(payload.stage));
+      }
       if (event === "loop-plus-consumer-failed") {
         events.push(event);
         consumerFailed.resolve();
       }
     },
+    prepareCommunication: options.temporaryRequirement
+      ? (task, subtask, seq) => store.prepareLoopSubtaskCommunicationFile(task, subtask, 1, seq)
+      : undefined,
     appendAcceptancePlanChat: (_id, section) => { feedback.push(section.body); },
+    appendSubtaskChat: (_target, notice) => { if (notice.phase === "finished") finishedChats.push(notice.subtaskId); },
     onTaskCompleted: (taskId) => { assert.equal(read().status, "completed"); completedNotices.push(taskId); },
     runMain: (request) => {
       const gate = deferred<string | null>();
@@ -110,12 +123,18 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
       return { promise: gate.promise, abort: () => { aborted.push(request.attemptId); }, onCompleted: async () => { cleanups += 1; } };
     },
   });
+  const host = createHost();
   const run = host.tryRun(input, target, { schedulingMode: "event_driven" });
-  return { id, host, run, mains, attempts, messages, feedback, completedNotices, aborted, read, events,
+  return { id, host, run, mains, attempts, messages, feedback, completedNotices, aborted, read, events, finishedChats,
     firstAttemptStarted: firstAttemptStarted.promise, consumerFailed: consumerFailed.promise,
     cleanupCount: () => cleanups, refreshCount: () => refreshes, setMissing: (value: boolean) => { missingUpdate = value; },
     observe: () => host.tryRun(input, target, { resumeTaskId: id }),
-    resume: () => host.tryRun(input, target, { resumeTaskId: id, resumeRequested: true }) };
+    resume: () => host.tryRun(input, target, { resumeTaskId: id, resumeRequested: true }),
+    rebuild: () => {
+      const cold = createHost();
+      return { host: cold, observe: () => cold.tryRun(input, target, { resumeTaskId: id }),
+        resume: () => cold.tryRun(input, target, { resumeTaskId: id, resumeRequested: true }) };
+    } };
 }
 
 // Inject below the actual updater/refresher/orchestrator boundary, including atomic rename.
@@ -355,6 +374,90 @@ test("real subtask commit failure retains the review and tab without compaction;
   assert.equal(env.read().status, "completed");
 });
 
+for (const receiptSurvives of [true, false]) {
+  test(`cold finish recovery ${receiptSurvives ? "replays a host receipt into main acceptance" : "parks an unconfirmed attempt despite a success claim"}`, { timeout: 5000 }, async (context) => {
+    const artifactDir = fs.mkdtempSync(path.join(isolatedHome, "temporary-requirement-"));
+    const artifact = path.join(artifactDir, "release-note.txt");
+    const env = harness({ temporaryRequirement: `创建 ${artifact}，内容为 ready。` });
+    await flush();
+    env.mains[0].resolve(json({ status: "dispatch", subtasks: [{ ...child("note"), writeFiles: ["release-note.txt"] }] }));
+    const attempt = await env.firstAttemptStarted;
+    assert.equal(attempt.execution?.configId, "fullstack-fixture");
+    assert.equal(attempt.execution?.model, "coding-model");
+    assert.ok(attempt.communicationFile);
+    fs.writeFileSync(artifact, "ready\n");
+    fs.appendFileSync(attempt.communicationFile, `\n## Attempt result\n- attempt: ${attempt.attemptId}\n- outcome: completed\n不可信的沟通文件内容\n`);
+    const failures = failDisk(context, "write", env.read().taskStoreFile, (task) => {
+      const scheduler = snapshot(task);
+      return !!scheduler.currentReview || !!scheduler.reviewQueue.length
+        || (!receiptSurvives && !!task.loopPlusAttemptCompletionReceipts?.length);
+    });
+    const detail = "已写入 release-note.txt，内容为 ready。";
+    env.attempts[0].resolve({ outcome: "completed", detail });
+    await env.run.done;
+    assert.equal(failures(), receiptSurvives ? 2 : 3);
+    assert.deepEqual(env.events, receiptSurvives
+      ? ["finish-commit", "finish-pause-commit"] : ["finish-receipt-commit", "finish-commit", "finish-pause-commit"]);
+    assert.equal(snapshot(env.read()).currentReview, null);
+    assert.equal(snapshot(env.read()).running[0]?.attemptId, attempt.attemptId);
+    assert.deepEqual(env.read().loopPlusAttemptCompletionReceipts, receiptSurvives ? [
+      { subtaskId: "note", attemptId: attempt.attemptId, detail },
+    ] : undefined);
+    assert.equal(env.cleanupCount(), 0);
+    assert.deepEqual(env.finishedChats, []);
+    context.mock.restoreAll();
+
+    const cold = env.rebuild();
+    const mainCallsBeforeRecovery = env.mains.length;
+    cold.observe();
+    await flush();
+    assert.equal(env.attempts.length, 1);
+    assert.equal(env.mains.length, mainCallsBeforeRecovery);
+    assert.deepEqual(env.completedNotices, []);
+    const eventId = buildLoopPlusFinishEventId("note", attempt.attemptId);
+    if (!receiptSurvives) {
+      assert.equal(env.read().subTasks[0].status, "blocked");
+      assert.match(env.read().subTasks[0].executionFailure ?? "", /无法确认上次子任务执行结果/);
+      assert.equal(snapshot(env.read()).running[0]?.attemptId, attempt.attemptId);
+      assert.equal(snapshot(env.read()).currentReview, null);
+      assert.deepEqual(snapshot(env.read()).reviewQueue, []);
+      assert.equal(snapshot(env.read()).completed, false);
+    } else {
+      assert.equal(env.read().status, "error");
+      assert.equal(snapshot(env.read()).currentReview?.eventId, eventId);
+      assert.equal(snapshot(env.read()).currentReview?.detail, detail);
+      assert.equal(env.read().loopPlusAttemptCompletionReceipts, undefined);
+    }
+
+    const resumed = cold.resume();
+    await flush();
+    if (!receiptSurvives) {
+      assert.equal(env.attempts.length, 1);
+      assert.equal(env.mains.length, mainCallsBeforeRecovery);
+      assert.equal(cold.host.resumeInterruptedSubtasks(env.id), true);
+      await flush();
+      assert.equal(env.attempts[1]?.request.attemptId, attempt.attemptId);
+      env.attempts[1].resolve({ outcome: "completed", detail });
+      await flush();
+    }
+    assert.equal(env.mains.length, mainCallsBeforeRecovery + 1);
+    const review = env.mains.at(-1)!;
+    assert.equal(review.request.kind, "review");
+    assert.deepEqual(review.request.reviewEventIds, [eventId]);
+    assert.equal(fs.readFileSync(artifact, "utf8"), "ready\n");
+    assert.equal(env.read().status, "running");
+    cold.host.reportAttempt(env.id, { subtaskId: "note", attemptId: attempt.attemptId, outcome: "completed", detail: "重复回调" });
+    review.resolve(completed([eventId]));
+    await resumed.done;
+    assert.equal(env.read().status, "completed");
+    assert.equal(snapshot(env.read()).seenAttempts.find((item) => item.attemptId === attempt.attemptId)?.acceptance, "passed");
+    assert.deepEqual(env.completedNotices, [env.id]);
+    assert.equal(env.attempts.length, receiptSurvives ? 1 : 2);
+    assert.equal(env.cleanupCount(), receiptSurvives ? 0 : 1);
+    assert.deepEqual(env.finishedChats, receiptSurvives ? [] : ["note"]);
+  });
+}
+
 test("a real acceptance commit failure restores the frozen event and does not launch repair", async (t) => {
   const env = harness();
   await flush();
@@ -456,40 +559,54 @@ test("partial accept/dispatch rejection repairs only remaining work with bounded
   await flush();
   env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A"), child("B"), { ...child("report"), requiresAcceptance: false }] }));
   await flush();
+  const [original, active, report] = env.attempts.map(({ request }) => request);
+  const reviewEventId = buildLoopPlusFinishEventId("A", original.attemptId);
+  const reportEventId = buildLoopPlusFinishEventId("report", report.attemptId);
   env.attempts[0].resolve({ outcome: "completed", detail: "A" });
   await flush();
   const review = env.mains.at(-1)!;
+  assert.deepEqual(review.request.reviewEventIds, [reviewEventId]);
   env.host.submitUserMessage(env.id, "只确认一次");
   env.attempts[2].resolve({ outcome: "completed", detail: "免验收报告" });
   await flush();
   review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
-    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: ["repair-C"] }],
-    independentSubtaskIds: ["B"], subtasks: [child("repair-C"), child("B")] }));
+    reviews: [{ reviewEventId, acceptance: "failed", reason: "A needs repair", subtaskIds: ["A"] }],
+    independentSubtaskIds: ["B"], subtasks: [child("A"), child("B")] }));
   await flush();
-  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), ["A", "B", "report", "repair-C"]);
+  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), ["A", "B", "report", "A"]);
+  const repair = env.attempts[3].request;
+  assert.notEqual(repair.attemptId, original.attemptId);
+  assert.deepEqual(snapshot(env.read()).running.map((item) => [item.subtaskId, item.attemptId]), [["B", active.attemptId], ["A", repair.attemptId]]);
   assert.equal(env.feedback.length, 1);
-  const reviewed = () => snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed");
-  assert.equal(reviewed().length, 1);
-  assert.equal(reviewed()[0].acceptance, "failed");
-  assert.match(env.mains.at(-1)!.request.prompt, /active_subtask/);
-  assert.match(env.mains.at(-1)!.request.prompt, /不得重复 accept/);
+  const reviewed = () => snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed")
+    .map(({ subtaskId, attemptId, acceptance }) => ({ subtaskId, attemptId, acceptance }));
+  const failedReview = [{ subtaskId: "A", attemptId: original.attemptId, acceptance: "failed" }];
+  assert.deepEqual(reviewed(), failedReview);
+  const firstCorrection = env.mains.at(-1)!;
+  assert.notEqual(firstCorrection, review);
+  assert.match(firstCorrection.request.prompt, /active_subtask/);
+  assert.match(firstCorrection.request.prompt, /不得重复 accept/);
   assert.equal(env.read().subTasks.find((item) => item.id === "B")?.title, "B");
   // A second partially accepted response must not reset the retry counter.
-  const reportEventIds = env.mains.at(-1)!.request.reportEventIds;
-  assert.equal(reportEventIds?.length, 1);
-  env.mains.at(-1)!.resolve(json({ status: "dispatch", reportEventIds, subtasks: [child("repair-D"), child("B")] }));
+  assert.deepEqual(firstCorrection.request.reportEventIds, [reportEventId]);
+  firstCorrection.resolve(json({ status: "dispatch", reportEventIds: [reportEventId], subtasks: [child("remaining"), child("B")] }));
   await flush();
-  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), ["A", "B", "report", "repair-C", "repair-D"]);
+  const launchedIds = ["A", "B", "report", "A", "remaining"];
+  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), launchedIds);
   assert.deepEqual(snapshot(env.read()).reportQueue ?? [], []);
-  assert.deepEqual(env.mains.at(-1)!.request.reportEventIds, []);
-  env.mains.at(-1)!.resolve(json({ status: "dispatch", subtasks: [child("B")] }));
+  const secondCorrection = env.mains.at(-1)!;
+  assert.notEqual(secondCorrection, firstCorrection);
+  assert.match(secondCorrection.request.prompt, /active_subtask/);
+  assert.deepEqual(secondCorrection.request.reportEventIds, []);
+  secondCorrection.resolve(json({ status: "dispatch", subtasks: [child("B")] }));
   await flush();
+  assert.equal(env.mains.at(-1), secondCorrection, "no correction beyond the retry limit");
   await env.run.done;
   assert.equal(env.read().status, "needs-review");
-  assert.equal(reviewed().length, 1);
-  assert.equal(reviewed()[0].acceptance, "failed");
+  assert.deepEqual(reviewed(), failedReview);
   assert.equal(env.feedback.length, 1);
-  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "B").length, 1);
+  assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), launchedIds);
+  assert.deepEqual(snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reported").map((item) => item.attemptId), [report.attemptId]);
   assert.deepEqual(snapshot(env.read()).userMessageQueue, []);
 });
 

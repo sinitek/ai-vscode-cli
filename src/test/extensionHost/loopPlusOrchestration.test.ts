@@ -20,6 +20,7 @@ import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSched
 import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { loopSubtaskAutoCompactions, scheduleAutoCompactAfterPrompt } from "../../loopSubtaskAutoCompact";
+import { startLoopWaitWatchdog } from "../../loopWaitWatchdog";
 import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 import {
   loopClarificationScope,
@@ -93,6 +94,14 @@ function decisionJson(value: unknown): string {
     return JSON.stringify({ ...enriched, progressPercent: 23 });
   }
   return JSON.stringify(enriched);
+}
+
+function acceptWithIndependentWork(reviewEventIds: readonly string[], subtasks: LoopSubtaskDecision[]): string {
+  return decisionJson({
+    status: "accept", reviewEventIds,
+    reviews: reviewEventIds.map((reviewEventId) => ({ reviewEventId, acceptance: "passed" })),
+    independentSubtaskIds: subtasks.map((item) => item.id), subtasks,
+  });
 }
 
 function completedDecision(extra: Record<string, unknown> = {}): string {
@@ -1008,6 +1017,7 @@ function harness(options: {
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
   onAttemptCompleted?: () => Promise<void>;
+  canAutoResumeMain?: LoopPlusOrchestrationDeps["canAutoResumeMain"];
 } = {}) {
   const tasks = new Map<string, LoopTaskRecord>();
   const mains: MainCall[] = [];
@@ -1025,6 +1035,7 @@ function harness(options: {
   const target: LoopPlusPromptTarget = { tabId: "tab-main", cli: "codex", sessionId: "session" };
   const deps: LoopPlusOrchestrationDeps = {
     hasActiveSubtasks: options.hasActiveSubtasks,
+    canAutoResumeMain: options.canAutoResumeMain,
     closeSubtaskTabs: options.closeSubtaskTabs,
     getDepartmentEmployeeCapacity: options.getDepartmentEmployeeCapacity,
     maxConcurrency: options.maxConcurrency,
@@ -1093,6 +1104,10 @@ function harness(options: {
         abortCount: 0,
         releaseAbort: (value) => gate.resolve(value ?? null),
       };
+      if (request.canSendAutoResumedMain && !request.canSendAutoResumedMain()) {
+        activeMains -= 1;
+        return { promise: Promise.resolve(null), abort: () => undefined };
+      }
       mains.push(call);
       return {
         promise: gate.promise.finally(() => {
@@ -1164,6 +1179,355 @@ function harness(options: {
 function snapshotOf(task: LoopTaskRecord | undefined): LoopPlusSchedulerSnapshot {
   return task?.loopPlus as LoopPlusSchedulerSnapshot;
 }
+
+test("recovers an unexpectedly interrupted main call once with its frozen request", async () => {
+  let allowedChecks = 0;
+  const env = harness({
+    canAutoResumeMain: (task, target) => {
+      allowedChecks += 1;
+      return task.sessionId === target.sessionId && target.tabId === "tab-main";
+    },
+    adaptMain: (_request, callIndex) => callIndex === 1 ? {
+      promise: Promise.resolve("partial output"),
+      abort: () => undefined,
+      hasStarted: () => true,
+      wasUnexpectedlyInterrupted: () => true,
+    } : undefined,
+  });
+  const run = env.host.tryRun({ displayPrompt: "resume the original step" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains.length, 0);
+  env.host.checkInterruptedMainTasks();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.mains[0].request.kind, "initial");
+  assert.equal(allowedChecks, 3);
+  assert.equal(env.mains[0].request.canSendAutoResumedMain?.(), false);
+  env.mains[0].resolve(directCompletionDecision());
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
+  assert.equal(env.mains.length, 1);
+});
+
+function interruptedMainCall(): LoopPlusMainHandle {
+  return {
+    promise: Promise.resolve(null),
+    abort: () => undefined,
+    hasStarted: () => true,
+    wasUnexpectedlyInterrupted: () => true,
+    getInterruptedNativeSessionId: () => "original-thread",
+  };
+}
+
+test("each minute admits one retry and the third interrupted retry persists the circuit break", async (t) => {
+  const frozenPrompts: string[] = [];
+  const env = harness({
+    canAutoResumeMain: (_task, _target, threadId) => threadId === "original-thread",
+    adaptMain: (request) => {
+      if (request.canSendAutoResumedMain) {
+        assert.equal(request.canSendAutoResumedMain(), true);
+        assert.equal(request.canSendAutoResumedMain(), false);
+      }
+      frozenPrompts.push(request.modelPrompt);
+      return interruptedMainCall();
+    },
+  });
+  t.mock.timers.enable({ apis: ["setInterval"] } as never);
+  const dispose = startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, env.host.checkInterruptedMainTasks);
+  t.after(dispose);
+  const run = env.host.tryRun({ displayPrompt: "retry interrupted main turn" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  await flush();
+  assert.equal(env.mainCalls(), 1);
+  assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount ?? 0, 0);
+  for (const count of [1, 2, 3]) {
+    t.mock.timers.tick(59_999);
+    await flush();
+    assert.equal(env.mainCalls(), count);
+    t.mock.timers.tick(1);
+    await flush();
+    assert.equal(env.mainCalls(), count + 1);
+    assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, count);
+    assert.equal(env.tasks.get(taskId)?.status, count === 3 ? "needs-review" : "running");
+  }
+  await run.done;
+  assert.equal(new Set(frozenPrompts).size, 1);
+  assert.equal(env.messages.filter((message) => message === "loop-plus-main-recovery-exhausted").length, 1);
+  t.mock.timers.tick(60_000);
+  await flush();
+  assert.equal(env.mainCalls(), 4);
+});
+
+test("a rebuilt host retains the count without adopting a queued recovery from another host", async () => {
+  const env = harness({
+    canAutoResumeMain: () => true,
+    adaptMain: (request) => {
+      if (request.canSendAutoResumedMain) assert.equal(request.canSendAutoResumedMain(), true);
+      return interruptedMainCall();
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "retain the retry count" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 2);
+
+  const rebuilt = env.reloadHost();
+  rebuilt.checkInterruptedMainTasks();
+  rebuilt.checkWaitingTasks();
+  await flush();
+  assert.equal(rebuilt.hasController(taskId), false);
+  assert.equal(env.mainCalls(), 3);
+  assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 2);
+
+  const continued = rebuilt.tryRun({ displayPrompt: "explicit continue" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 2);
+  rebuilt.checkInterruptedMainTasks();
+  await continued.done;
+  assert.equal(env.mainCalls(), 5);
+  assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 3);
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+});
+
+for (const evidence of ["passed", "failed", "reported"] as const) {
+  test(`main retry count after ${evidence} subtask evidence`, async () => {
+    const env = harness({
+      canAutoResumeMain: () => true,
+      adaptMain: (request, callIndex) => {
+        if (callIndex > 2) return undefined;
+        if (request.canSendAutoResumedMain) assert.equal(request.canSendAutoResumedMain(), true);
+        return interruptedMainCall();
+      },
+    });
+    const run = env.host.tryRun({ displayPrompt: "reset only on confirmed progress" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId!;
+    await flush();
+    env.host.checkInterruptedMainTasks();
+    await flush();
+    env.host.checkInterruptedMainTasks();
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
+      { ...subtask("evidence", []), requiresAcceptance: evidence !== "reported" },
+    ] }));
+    await flush();
+    assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 1);
+    const attempt = env.attempts[0];
+    attempt.resolve({ outcome: "completed", detail: "已交付执行结果" });
+    await flush();
+    assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, 1, "execution alone does not reset the count");
+    const eventId = buildLoopPlusFinishEventId("evidence", attempt.request.attemptId);
+    env.mains[1].resolve(evidence === "reported"
+      ? decisionJson({ status: "wait", reportEventIds: [eventId] })
+      : decisionJson({ status: "accept", reviewEventId: eventId, subtasks: [], reviews: [
+        { reviewEventId: eventId, acceptance: evidence, reason: "已检查执行结果", subtaskIds: [] },
+      ] }));
+    await flush();
+    const committed = snapshotOf(env.tasks.get(taskId)).seenAttempts[0];
+    assert.equal(committed.disposition, evidence === "reported" ? "reported" : "reviewed");
+    assert.equal(committed.acceptance, evidence === "reported" ? undefined : evidence);
+    assert.equal(env.tasks.get(taskId)?.loopPlusMainRecoveryFailureCount, evidence === "failed" ? 1 : 0);
+    env.host.stopParent(taskId);
+    await run.done;
+  });
+}
+
+test("an admitted recovery with an unknown exit cannot retry or add a recovery failure", async () => {
+  const env = harness({
+    canAutoResumeMain: () => true,
+    adaptMain: (request, callIndex) => {
+      if (request.canSendAutoResumedMain) assert.equal(request.canSendAutoResumedMain(), true);
+      return callIndex < 3 ? interruptedMainCall() : { promise: Promise.resolve(null), abort: () => undefined };
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "unknown recovery exit" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await run.done;
+  env.host.checkInterruptedMainTasks();
+  env.host.checkWaitingTasks();
+  await flush();
+  assert.equal(env.mainCalls(), 3);
+  assert.equal(env.tasks.get(run.taskId!)?.loopPlusMainRecoveryFailureCount, 1);
+  assert.equal(env.tasks.get(run.taskId!)?.status, "needs-review");
+});
+
+for (const failedWriteAt of [1, 3]) {
+  test(`a failed recovery count write at ${failedWriteAt} stops this host from sending again`, async () => {
+    const env = harness({
+      canAutoResumeMain: () => true,
+      beforeUpdateTask: (patch) => {
+        if (patch.loopPlusMainRecoveryFailureCount === failedWriteAt) throw new Error("recovery count write failed");
+      },
+      adaptMain: (request) => {
+        if (request.canSendAutoResumedMain) assert.equal(request.canSendAutoResumedMain(), true);
+        return interruptedMainCall();
+      },
+    });
+    const run = env.host.tryRun({ displayPrompt: "fail closed on uncommitted count" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    for (let tick = 0; tick < failedWriteAt; tick += 1) {
+      env.host.checkInterruptedMainTasks();
+      await flush();
+    }
+    await run.done;
+    env.host.checkInterruptedMainTasks();
+    env.host.checkWaitingTasks();
+    await flush();
+    assert.equal(env.mainCalls(), failedWriteAt + 1);
+    assert.equal(env.tasks.get(run.taskId!)?.loopPlusMainRecoveryFailureCount ?? 0, failedWriteAt - 1);
+  });
+}
+
+test("main watchdog denies recovery when the ownership approval callback is absent", async () => {
+  const env = harness({
+    adaptMain: (_request, callIndex) => callIndex === 1 ? {
+      promise: Promise.resolve(null), abort: () => undefined, hasStarted: () => true,
+      wasUnexpectedlyInterrupted: () => true,
+    } : undefined,
+  });
+  const run = env.host.tryRun({ displayPrompt: "approval is required" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  assert.equal(env.mains.length, 0);
+  assert.equal(env.tasks.get(run.taskId!)?.status, "running");
+  assert.equal(env.logs.some(({ event }) => event === "loop-plus-main-recovery-denied"), true);
+  await run.done;
+});
+
+test("main watchdog discards a recovery result that never passed the send gate", async () => {
+  const env = harness({
+    canAutoResumeMain: () => true,
+    adaptMain: (_request, callIndex) => callIndex === 1 ? {
+      ...interruptedMainCall(),
+    } : { promise: Promise.resolve(directCompletionDecision()), abort: () => undefined },
+  });
+  const run = env.host.tryRun({ displayPrompt: "do not accept an unsent recovery" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await run.done;
+  env.host.checkInterruptedMainTasks();
+  assert.equal(env.tasks.get(run.taskId!)?.status, "running");
+  assert.equal(env.logs.filter(({ event }) => event === "loop-plus-main-recovery-denied").length, 1);
+});
+
+test("main watchdog resumes the original frozen review batch without selecting newer events", async () => {
+  const env = harness({
+    canAutoResumeMain: () => true,
+    adaptMain: (_request, callIndex) => callIndex === 2 ? {
+      promise: Promise.resolve(null), abort: () => undefined, hasStarted: () => true,
+      wasUnexpectedlyInterrupted: () => true,
+    } : undefined,
+  });
+  const run = env.host.tryRun({ displayPrompt: "keep the review batch frozen" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("frozen", ["src/frozen.ts"])] }));
+  await flush();
+  const attempt = env.attempts[0];
+  attempt.resolve({ outcome: "completed", detail: "已完成" });
+  await flush();
+  const eventId = buildLoopPlusFinishEventId("frozen", attempt.request.attemptId);
+  assert.deepEqual(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.eventId, eventId);
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  assert.deepEqual(env.mains[1].request.reviewEventIds, [eventId]);
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventIds: [eventId], subtasks: [] }));
+  await flush();
+  assert.equal(env.mains[2].request.kind, "closeout");
+  env.mains[2].resolve(completedDecision());
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
+});
+
+test("a stopped-looking ordinary response does not qualify as an unexpected main interruption", async () => {
+  const env = harness({
+    adaptMain: (_request, callIndex) => callIndex === 1 ? {
+      promise: Promise.resolve("stopped"), abort: () => undefined, hasStarted: () => true,
+    } : undefined,
+  });
+  const run = env.host.tryRun({ displayPrompt: "stopped text is not a signal" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.host.checkInterruptedMainTasks();
+  await flush();
+  assert.equal(env.logs.some(({ event }) => event === "loop-plus-main-interrupted"), false);
+  assert.equal(env.mains.length, 1);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("main watchdog revalidates blocked, stopped and interrupted records after claiming recovery", async () => {
+  const blocks: Array<Partial<LoopTaskRecord>> = [
+    { status: "needs-review" }, { status: "completed" }, { runtimeInterrupted: true },
+    { userStopSource: "ai-panel" }, { userStopSource: "group-chat" }, { mainAiFailureLimitReached: true },
+    { loopPlusMainRecoveryFailureCount: 3 },
+    { pendingClarification: {} as NonNullable<LoopTaskRecord["pendingClarification"]> },
+    { loopPlusBlockReview: {} as NonNullable<LoopTaskRecord["loopPlusBlockReview"]> },
+  ];
+  for (const block of blocks) {
+    const env = harness({
+      canAutoResumeMain: () => true,
+      adaptMain: (_request, index) => index === 1 ? {
+        promise: Promise.resolve(null), abort: () => undefined, hasStarted: () => true,
+        wasUnexpectedlyInterrupted: () => true,
+      } : undefined,
+    });
+    const run = env.host.tryRun({ displayPrompt: "check persisted stop gates" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.host.checkInterruptedMainTasks();
+    Object.assign(env.tasks.get(run.taskId!)!, block);
+    await run.done;
+    assert.equal(env.mains.length, 0, JSON.stringify(block));
+  }
+});
+
+test("main watchdog denies queued and preparing recovery after a user stop even when persistence throws", async () => {
+  for (const stopDuringPreparation of [false, true]) {
+    const prepared = deferred<LoopPlusMainRequest>();
+    const release = deferred<void>();
+    let aborted = false;
+    let sends = 0;
+    const env = harness({
+      canAutoResumeMain: () => true,
+      beforeUpdateTask: (patch) => { if (patch.status === "stopped") throw new Error("stop write failed"); },
+      adaptMain: (request, index) => {
+        if (index === 1) return {
+          promise: Promise.resolve(null), abort: () => undefined, hasStarted: () => true,
+          wasUnexpectedlyInterrupted: () => true,
+        };
+        prepared.resolve(request);
+        return {
+          promise: release.promise.then(() => {
+            if (request.canSendAutoResumedMain?.()) sends += 1;
+            return null;
+          }),
+          abort: () => {
+            aborted = true;
+            assert.equal(request.canSendAutoResumedMain?.(), false);
+          },
+        };
+      },
+    });
+    const run = env.host.tryRun({ displayPrompt: "stop while recovery races" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.host.checkInterruptedMainTasks();
+    if (stopDuringPreparation) await prepared.promise;
+    env.host.stopParent(run.taskId!);
+    release.resolve();
+    await run.done;
+    env.host.checkInterruptedMainTasks();
+    await flush();
+    assert.equal(sends, 0);
+    assert.equal(aborted, stopDuringPreparation);
+    assert.equal(env.tasks.get(run.taskId!)?.status, "running");
+  }
+});
 
 test("new Loop+ task waits for trusted ownership setup before the first scheduler pump", async () => {
   const env = harness();
@@ -1335,25 +1699,24 @@ test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current 
 
 test("Loop+ records completion and starts main review without waiting for subtask compaction", { timeout: 3000 }, async () => {
   for (const viaContinuation of [false, true]) {
+    const closeGate = deferred<void>();
     let closed = false;
-    const close = async () => { closed = true; };
+    const close = async (): Promise<void> => {
+      assert.ok(env.reports.some((report) => report.subtaskId === attempt.subtaskId
+        && report.attemptId === attempt.attemptId && report.outcome === "completed"));
+      const snapshot = snapshotOf(env.tasks.get(attempt.taskId));
+      const reviewEventId = buildLoopPlusFinishEventId(attempt.subtaskId, attempt.attemptId);
+      assert.ok(snapshot.currentReview?.eventId === reviewEventId
+        || snapshot.reviewQueue.some((review) => review.eventId === reviewEventId));
+      await closeGate.promise;
+      closed = true;
+    };
     const env = harness({ onAttemptCompleted: close });
     const run = env.host.tryRun({ displayPrompt: "完成任务" }, env.target, { schedulingMode: "event_driven" });
     await flush();
     env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
     await flush();
     const attempt = env.attempts[0].request;
-    let rejectedCloseCalled = false;
-    assert.equal(env.host.notifySubtaskContinuation(
-      attempt.taskId,
-      "unknown-subtask",
-      "completed",
-      "不应关页",
-      undefined,
-      async () => { rejectedCloseCalled = true; },
-    ), false);
-    await flush();
-    assert.equal(rejectedCloseCalled, false);
     if (viaContinuation) {
       env.attempts[0].resolve({ outcome: "stopped", detail: "等待人工续接" });
       await flush();
@@ -1362,14 +1725,18 @@ test("Loop+ records completion and starts main review without waiting for subtas
     let compactStarted = false;
     const sessionId = viaContinuation ? "continued-session" : "attempt-session";
     await scheduleAutoCompactAfterPrompt({ displayPrompt: "完成子任务", modelPrompt: "完成子任务", contextTags: [], taskRole: "subtask", loopTaskId: attempt.taskId, loopSubtaskId: attempt.subtaskId, loopAttemptId: attempt.attemptId }, { cli: "codex", tabId: "child-tab", sessionId }, async () => {
-      assert.equal(env.reports.some((report) => report.subtaskId === "alpha"), true);
-      assert.ok(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview || snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length > 0);
+      assert.equal(closed, true, "the subtask tab must be closed before compaction starts");
       compactStarted = true;
       await gate.promise;
     });
     assert.equal(compactStarted, false);
+    let rejectedCloseCalled = false;
+    const rejectedClose = async () => { rejectedCloseCalled = true; };
+    assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, "unknown-subtask", "completed", "不应关页", undefined, rejectedClose), false);
+    assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, attempt.subtaskId, "completed", "过期续接", undefined, rejectedClose, "stale-attempt"), false);
     env.host.reportAttempt(attempt.taskId, { subtaskId: attempt.subtaskId, attemptId: "stale-attempt", outcome: "completed", detail: "过期结果" });
     await flush();
+    assert.equal(rejectedCloseCalled, false);
     assert.equal(compactStarted, false);
     if (viaContinuation) {
       assert.equal(env.host.notifySubtaskContinuation(attempt.taskId, attempt.subtaskId, "completed", "已完成续接", undefined, close, attempt.attemptId), true);
@@ -1377,13 +1744,16 @@ test("Loop+ records completion and starts main review without waiting for subtas
       env.attempts[0].resolve({ outcome: "completed", detail: "已完成" });
     }
     await flush();
-    assert.equal(compactStarted, true);
     assert.equal(closed, false);
+    assert.equal(compactStarted, false);
+    closeGate.resolve();
+    await flush();
+    assert.equal(compactStarted, true);
+    assert.equal(loopSubtaskAutoCompactions.has("codex", sessionId), true);
     assert.equal(env.mains.length, 2);
     assert.equal(env.mains[1].request.kind, "review");
     gate.resolve();
     await loopSubtaskAutoCompactions.wait("codex", sessionId);
-    assert.equal(closed, true);
     env.host.stopParent(run.taskId ?? "");
     await run.done;
   }
@@ -1857,10 +2227,7 @@ test("refreshes pending admission on a finish notification while honoring explic
     env.attempts[0].resolve({ outcome: "completed", detail: "done" });
     await flush();
     const review = env.mains.at(-1)!;
-    review.resolve(decisionJson({
-      status: "accept", reviewEventIds: review.request.reviewEventIds,
-      subtasks: [subtask("c", ["src/c.ts"]), subtask("d", ["src/d.ts"])],
-    }));
+    review.resolve(acceptWithIndependentWork(review.request.reviewEventIds!, [subtask("c", ["src/c.ts"]), subtask("d", ["src/d.ts"])]));
     await flush();
     const snapshotBefore = snapshotOf(env.tasks.get(run.taskId ?? ""));
     maximum = 10;
@@ -1895,11 +2262,7 @@ test("lowering the active dispatch limit preserves running work and drains to th
   await flush();
   maximum = 2;
   const review = env.mains.at(-1)!;
-  review.resolve(decisionJson({
-    status: "accept",
-    reviewEventIds: review.request.reviewEventIds,
-    subtasks: [subtask("next-a", ["src/next-a.ts"]), subtask("next-b", ["src/next-b.ts"])],
-  }));
+  review.resolve(acceptWithIndependentWork(review.request.reviewEventIds!, [subtask("next-a", ["src/next-a.ts"]), subtask("next-b", ["src/next-b.ts"])]));
   await flush();
   try {
     assert.equal(env.attempts.length, 6, "do not backfill while already above the new limit");
@@ -2201,11 +2564,9 @@ test("keeps conflict and concurrency limits when new work is added beside a runn
   env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
   await flush();
   const review = env.mains[1];
-  review.resolve(decisionJson({
-    status: "accept",
-    reviewEventId: review.request.reviewEventId,
-    subtasks: [subtask("gamma", ["src/gamma.ts"]), subtask("delta", ["src/delta.ts"]), subtask("epsilon", ["src/epsilon.ts"])],
-  }));
+  review.resolve(acceptWithIndependentWork(review.request.reviewEventIds!, [
+    subtask("gamma", ["src/gamma.ts"]), subtask("delta", ["src/delta.ts"]), subtask("epsilon", ["src/epsilon.ts"]),
+  ]));
   await flush();
   const started = env.attempts.map((item) => item.request.subtaskId);
   assert.deepEqual(started, ["alpha", "beta", "gamma"]);
@@ -2233,14 +2594,10 @@ test("fills six production slots while serializing only a conflicting follow-up"
   await flush();
   const review = env.mains[1];
   assert.match(review.request.modelPrompt, /Available concurrency slots in this snapshot: 1/);
-  review.resolve(decisionJson({
-    status: "accept",
-    reviewEventId: review.request.reviewEventId,
-    subtasks: [
-      subtask("shared-follow-up", ["src\\delivery-1.ts"]),
-      subtask("independent-follow-up", ["src/independent-follow-up.ts"]),
-    ],
-  }));
+  review.resolve(acceptWithIndependentWork(review.request.reviewEventIds!, [
+    subtask("shared-follow-up", ["src\\delivery-1.ts"]),
+    subtask("independent-follow-up", ["src/independent-follow-up.ts"]),
+  ]));
   await flush();
   assert.equal(env.attempts.length, 7);
   assert.equal(env.attempts[6].request.subtaskId, "independent-follow-up");
@@ -2777,13 +3134,10 @@ test("原子任务与句柄已不存在时，显式继续结算残留预留并�
   assert.equal(events.length, 3);
   assert.equal(events[0].detail, "原验收证据");
   assert.deepEqual(events.slice(1).map((item) => [item.outcome, item.detail]), [["stopped", "lost-process"], ["stopped", "lost-process"]]);
-  env.mains[0].resolve(decisionJson({
-    status: "accept", reviewEventIds: events.map((item) => item.eventId),
-    subtasks: [subtask("repair-missing", ["src/b.ts"])],
-  }));
+  env.mains[0].resolve(acceptWithIndependentWork(events.map((item) => item.eventId), [subtask("replacement", ["src/b.ts"])]));
   await flush();
   assert.equal(env.attempts.length, 1);
-  assert.equal(env.attempts[0].request.subtaskId, "repair-missing");
+  assert.equal(env.attempts[0].request.subtaskId, "replacement");
   assert.equal(env.tasks.get(task.id)?.status, "running");
   env.host.stopParent(task.id);
   await flush();
@@ -4579,8 +4933,7 @@ test("dispatches new Loop+ subtasks after many completed historical attempts", a
   });
   await flush();
   const review = env.mains[0];
-  review.resolve(decisionJson({ status: "accept", reviewEventIds: review.request.reviewEventIds,
-    subtasks: [subtask("gamma", ["src/gamma.ts"])] }));
+  review.resolve(acceptWithIndependentWork(review.request.reviewEventIds!, [subtask("gamma", ["src/gamma.ts"])]));
   await flush();
   const snapshot = snapshotOf(env.tasks.get(task.id));
   assert.equal(snapshot.seenAttempts.length, 203);

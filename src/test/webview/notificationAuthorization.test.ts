@@ -2,28 +2,19 @@ import * as assert from "node:assert/strict";
 import { test } from "node:test";
 import * as vm from "node:vm";
 import { getWebviewStrings } from "../../webview/viewContentStrings";
-import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
-import { CLI_LIST } from "../../cli/types";
-import { FINAL_ANSWER_TEXT_MARKER } from "../../finalAnswerProtocol";
-
-// Test the generated script, including substituted department constants, rather
-// than evaluating a template fragment containing unresolved placeholders.
-const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = buildWebviewRuntimeScript({
-  i18n: getWebviewStrings(), cliList: CLI_LIST, loopMaxRoundsDefault: 20,
-  loopMaxRoundsMin: 1, loopMaxRoundsMax: 100, finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
-});
 import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
+import { createCheckbox, createPanelSnapshotRunner, panelRuntimeScript } from "./panelSettingsHarness";
 
 function harness() {
-  const element = () => ({
-    hidden: false, disabled: false, checked: true, textContent: "", tabIndex: 0, focused: false,
+  const document: { activeElement: object | null } = { activeElement: null };
+  const element = () => Object.assign(createCheckbox(true), {
+    hidden: false, disabled: false, textContent: "", tabIndex: 0, focused: false,
     attributes: {} as Record<string, string>,
     listeners: {} as Record<string, (event: any) => void>,
     classList: { toggle: (_name: string, _active: boolean) => undefined },
     setAttribute(name: string, value: string) { this.attributes[name] = value; },
     addEventListener(name: string, listener: (event: any) => void) { this.listeners[name] = listener; },
-    focus() { this.focused = true; },
+    focus() { this.focused = true; document.activeElement = this; },
   });
   const elements = {
     toolSettingsGeneralTab: element(), toolSettingsGeneralPanel: element(),
@@ -43,22 +34,22 @@ function harness() {
   };
   let timeout: (() => void) | undefined;
   const context = vm.createContext({
-    elements, state, i18n: getWebviewStrings(), vscode: { postMessage: (message: typeof messages[number]) => messages.push(message) },
+    elements, state, document, i18n: getWebviewStrings(), vscode: { postMessage: (message: typeof messages[number]) => messages.push(message) },
     requestCliRepairs: () => undefined,
     setTimeout: (callback: () => void) => { timeout = callback; return 1; }, clearTimeout: () => { timeout = undefined; },
   });
-  const start = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("let notificationAuthorizationRequestId");
-  const end = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function openHelp()", start);
-  vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(start, end), context);
-  vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function setToolSettingsTab("), VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("function requestCliRepairs")), context);
-  const bindings = VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("const toolSettingsTabs");
-  vm.runInContext(VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.slice(bindings, VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS.indexOf("if (elements.autoCompactContextAfterRun)", bindings)), context);
+  const start = panelRuntimeScript.indexOf("let notificationAuthorizationRequestId");
+  const end = panelRuntimeScript.indexOf("function openHelp()", start);
+  vm.runInContext(panelRuntimeScript.slice(start, end), context);
+  vm.runInContext(panelRuntimeScript.slice(panelRuntimeScript.indexOf("function setToolSettingsTab("), panelRuntimeScript.indexOf("function requestCliRepairs")), context);
+  const bindings = panelRuntimeScript.indexOf("const toolSettingsTabs");
+  vm.runInContext(panelRuntimeScript.slice(bindings, panelRuntimeScript.indexOf("if (elements.autoCompactContextAfterRun)", bindings)), context);
   const api = vm.runInContext("({requestNotificationAuthorization, applyNotificationAuthorization, setToolSettingsTab})", context) as {
     requestNotificationAuthorization: (request: boolean) => void;
     applyNotificationAuthorization: (data: { requestId: number; payload: Record<string, unknown> }) => void;
     setToolSettingsTab: (scope: string) => void;
   };
-  return { elements, state, messages, api, context, timeout: () => timeout?.() };
+  return { elements, state, messages, api, context, document, timeout: () => timeout?.() };
 }
 
 test("工具设置默认常规配置，仅通知设置页签查询权限", () => {
@@ -132,19 +123,41 @@ test("两个通知开关只发送各自配置更新", () => {
 
 test("通知开关回显真实配置，缺省开启并可恢复保存失败后的状态", () => {
   const env = harness();
-  const source = VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE;
-  const start = source.indexOf("state.humanInteractionNotifications =");
-  const end = source.indexOf("state.cliEnabledByName =", start);
-  const render = source.indexOf('["humanInteractionNotifications", "taskCompletionNotifications", "humanInteractionWindowAttention", "taskCompletionWindowAttention"].forEach');
-  const renderEnd = source.indexOf("});", render) + 3;
   const keys = ["taskCompletionNotifications", "humanInteractionNotifications", "taskCompletionWindowAttention", "humanInteractionWindowAttention"] as const;
+  const applySnapshot = createPanelSnapshotRunner(env.context, [
+    ...keys.map((key) => `state.${key} =`),
+    '"humanInteractionNotifications", "taskCompletionNotifications"',
+  ]);
   const configurations: Partial<Record<typeof keys[number], boolean>>[] = [
     {}, ...keys.map((key) => ({ [key]: false })), Object.fromEntries(keys.map((key) => [key, false])), {},
   ];
   for (const panelState of configurations) {
-    env.context.panelState = panelState;
-    vm.runInContext(source.slice(start, end) + source.slice(render, renderEnd), env.context);
-    for (const key of keys) assert.equal(env.elements[key].checked, panelState[key] !== false);
+    applySnapshot(panelState);
+    for (const key of keys) {
+      assert.equal(env.state[key], panelState[key] !== false, key);
+      assert.equal(env.elements[key].checked, panelState[key] !== false, key);
+    }
+  }
+
+  for (const key of keys) {
+    const checkbox = env.elements[key];
+    checkbox.focus();
+    checkbox.checked = false;
+    checkbox.listeners.change({ target: checkbox });
+    assert.equal(env.state[key], false, key);
+    const writesBeforeSnapshot = checkbox.checkedWrites;
+    const otherKey = keys.find((setting) => setting !== key)!;
+    applySnapshot({ [key]: true, [otherKey]: false });
+    assert.equal(env.state[key], false, key);
+    assert.equal(checkbox.checked, false, key);
+    assert.equal(checkbox.checkedWrites, writesBeforeSnapshot, key);
+    assert.equal(env.state[otherKey], false, otherKey);
+    assert.equal(env.elements[otherKey].checked, false, otherKey);
+
+    env.document.activeElement = null;
+    applySnapshot({ [key]: true });
+    assert.equal(env.state[key], true, key);
+    assert.equal(checkbox.checked, true, key);
   }
 });
 

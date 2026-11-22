@@ -216,9 +216,15 @@ test("cold driver refuses missing evidence before its shared deadline and report
       const command = JSON.parse(params.message);
       if (command.method === "Runtime.enable") setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ method: "Runtime.executionContextCreated", params: { context: { id: 1, auxData: { isDefault: true } } } }) }));
-      const value = command.method === "Runtime.evaluate" ? command.params.expression.includes("#panelSubtitle") ? "root"
-        : command.params.expression.includes("innerText") ? "产研部群聊 root"
-        : command.params.expression.includes("dispatchEvent") ? (clicks += 1, true) : 1 : undefined;
+      const expression = command.params.expression;
+      const value = command.method === "Runtime.evaluate" ? expression.includes("#panelSubtitle") ? "root"
+        : expression.includes("#taskPanelSlot") ? "本宿主执行已中断"
+        : expression.includes("#departmentContinueBlocked") ? "本宿主执行已中断。仍有原执行退出未确认，暂不能继续"
+        : expression.includes("innerText") ? "产研部群聊 root"
+        : expression.includes("dispatchEvent") ? (clicks += 1, true)
+        : expression.includes("data-action") && expression.includes(".length") ? 1
+        : expression.includes(".disabled") ? expression.includes(" || !!") ? expression.includes("continueTask") : expression.includes("stopTask")
+        : 1 : undefined;
       setImmediate(() => cdp.emit("Target.receivedMessageFromTarget", { sessionId: params.sessionId,
         message: JSON.stringify({ id: command.id, result: { result: { value } } }) }));
       return {};
@@ -701,20 +707,38 @@ test('cold driver passes exact root and deadlines to shared panel factory and re
     let clicked = 0, closed = 0;
     for (const fail of [false, true]) {
       const now = Date.now(), deadlines = { actionDeadline: now + 100, evidenceDeadline: now + 150, hostDeadline: now + 200 };
+      fs.writeFileSync(path.join(root, 'cold-provider-requests.ndjson'), '{"index":1}\n{"index":2}\n');
       const running = driveColdProductionRecoveryCheck(1, 'root', root, deadlines, {
         chromium: { connectOverCDP: async () => ({ contexts: () => [{ pages: () => [{ url: () => 'vscode-file://workbench' }] }], close: async () => closed++ }) },
-        signal: () => {}, evidenceExists: () => true,
+        initialProviderRequestCount: 2, signal: () => {}, evidenceExists: () => true,
         webviewFactory: async (_browser, purpose, _ms, options) => {
           assert.equal(purpose, 'webviewPanel'); assert.equal(options.rootId, 'root');
           assert.equal(options.deadline, deadlines.actionDeadline); assert.equal(options.cleanupDeadline, deadlines.hostDeadline);
-          return { locator: selector => ({ waitFor: async () => {}, count: async () => 1, getAttribute: async () => 'root', click: async () => clicked++ }),
+          return { locator: selector => ({ waitFor: async () => {}, count: async () => 1, getAttribute: async () => 'root',
+            innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断' : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+            isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
+            click: async () => clicked++ }),
             close: async () => fail ? [{ operation: 'target detach', status: 'unconfirmed' }] : [] };
         }
       });
       if (fail) await assert.rejects(running, /cold CDP cleanup unconfirmed/); else await running;
       assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cold-cdp-cleanup.json'))).confirmed, !fail);
+      if (!fail) assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'cold-second-host-ui.json'))).requestCountBeforeControl, 2);
     }
     assert.equal(clicked, 2); assert.equal(closed, 2);
+    fs.writeFileSync(path.join(root, 'cold-provider-requests.ndjson'), '{"index":1}\n');
+    const now = Date.now();
+    await assert.rejects(driveColdProductionRecoveryCheck(1, 'root', root,
+      { actionDeadline: now + 100, evidenceDeadline: now + 150, hostDeadline: now + 200 }, {
+        chromium: { connectOverCDP: async () => ({ contexts: () => [{ pages: () => [{ url: () => 'vscode-file://workbench' }] }], close: async () => closed++ }) },
+        initialProviderRequestCount: 0, signal: () => { clicked++; }, evidenceExists: () => true,
+        webviewFactory: async () => ({ locator: selector => ({ waitFor: async () => {}, count: async () => 1,
+          getAttribute: async () => 'root', innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断'
+            : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+          isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
+          click: async () => clicked++ }), close: async () => [] }),
+      }), /dispatched\/replayed a model request/);
+    assert.equal(clicked, 2, 'automatic provider request mismatch was detected only after explicit Stop');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -741,8 +765,11 @@ test('cold driver propagates concrete observer failure and confirms CDP release 
       { actionDeadline: now + 300, evidenceDeadline: now + 500, hostDeadline: now + 700 }, {
         chromium: { connectOverCDP: async () => ({ contexts: () => [{ pages: () => [{ url: () => 'vscode-file://workbench' }] }],
           close: async () => events.push('disconnect') }) },
-        webviewFactory: async () => ({ locator: () => ({ waitFor: async () => {}, count: async () => 1,
-          getAttribute: async () => 'root', click: async () => events.push('click') }), close: async () => events.push('detach') }),
+        webviewFactory: async () => ({ locator: selector => ({ waitFor: async () => {}, count: async () => 1,
+          getAttribute: async () => 'root', innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断'
+            : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+          isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
+          click: async () => events.push('click') }), close: async () => events.push('detach') }),
         signal: () => events.push('signal'), evidenceExists: () => false,
         readFailure: () => ({ phase: 'awaiting-public-stop', error: 'exact original failure' }),
       });

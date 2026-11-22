@@ -6,6 +6,13 @@ import { buildLoopPlusProtocolPauseSummary, LOOP_PLUS_PROTOCOL_PAUSE_HEADING } f
 import type { LoopTaskRecord } from "./loopTaskStore";
 
 export function buildLoopPlusPauseText(task: LoopTaskRecord, message: string): string {
+  if (message === "loop-plus-main-recovery-exhausted") {
+    return [
+      "Loop+ 已暂停，整体任务尚未完成。",
+      task.finalSummary || "主任务自动续跑多次意外中断，自动续跑已停止。",
+      "排查运行错误后，可在群聊点击“继续执行”。",
+    ].join("\n\n");
+  }
   if (message === "loop-plus-protocol-paused") {
     const summary = task.finalSummary?.startsWith(LOOP_PLUS_PROTOCOL_PAUSE_HEADING)
       ? task.finalSummary

@@ -52,8 +52,10 @@ test("subtask compaction starts only after reporting and does not block other se
 test("failed or stopped reporting discards pending compaction and releases the session", async () => {
   const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected compaction failure"));
   compactions.defer(input(), target(), async () => assert.fail("cancelled compaction must not run"));
-  compactions.notify("task", "child", false);
+  let closed = false;
+  compactions.notify("task", "child", false, async () => { closed = true; });
   await compactions.wait("codex", "child-session");
+  assert.equal(closed, false);
   compactions.notify("task", "child", true);
 });
 
@@ -137,7 +139,7 @@ test("missing subtask identity or session keeps the existing synchronous path", 
   assert.deepEqual(options, [{ overlapLoopDispatch: true }, { overlapLoopDispatch: false }]);
 });
 
-test("classic Loop reports completion before background compaction and gates cross-tab continuation", { timeout: 2000 }, async () => {
+test("classic Loop reports completion and closes the old tab before background compaction", { timeout: 2000 }, async () => {
   const events: string[] = [];
   const gate = createDeferred();
   const started = createDeferred();
@@ -150,13 +152,12 @@ test("classic Loop reports completion before background compaction and gates cro
   });
   assert.equal(events.length, 0);
   await finalizeLoopSubtaskRun({ taskId: runInput.loopTaskId!, subtaskId: "child", round: 1, runStatus: "end", assistantContent: "已完成", tabId: "child-tab" }, {
-    markSubtaskRunFinished: () => { events.push("reported"); },
+    markSubtaskRunFinished: () => { events.push("reported"); return "committed"; },
     closeSubtaskTab: async () => { events.push("closed"); },
     logSubtaskTabAutoClosed: () => {},
   });
   await started.promise;
-  assert.ok(events.indexOf("reported") < events.indexOf("compact"));
-  assert.equal(events.includes("closed"), false);
+  assert.deepEqual(events, ["reported", "closed", "compact"]);
   let continued = false;
   const continuation = withLoopSubtaskSession("codex", "child-session", async () => { continued = true; });
   await withLoopSubtaskSession("codex", "another-session", async () => {});
@@ -165,19 +166,20 @@ test("classic Loop reports completion before background compaction and gates cro
   await continuation;
   await loopSubtaskAutoCompactions.wait("codex", "child-session");
   assert.equal(continued, true);
-  assert.deepEqual(events, ["reported", "compact", "closed"]);
 });
 
-test("压缩失败后仍关闭成功标签，关页结束前不放行同会话", async () => {
+test("关页失败仍按顺序压缩，压缩失败不阻止同会话续接", async () => {
   const errors: unknown[] = [];
   const compactions = new LoopSubtaskAutoCompactions((error) => { errors.push(error); });
-  const failure = new Error("压缩超时");
+  const closeFailure = new Error("关页失败");
+  const compactFailure = new Error("压缩超时");
   const closing = createDeferred();
   const started = createDeferred();
-  compactions.defer(input(), target(), async () => { throw failure; });
+  compactions.defer(input(), target(), async () => { throw compactFailure; });
   compactions.notify("task", "child", true, async () => {
     started.resolve();
     await closing.promise;
+    throw closeFailure;
   });
   await started.promise;
   let resumed = false;
@@ -185,34 +187,64 @@ test("压缩失败后仍关闭成功标签，关页结束前不放行同会话",
   await Promise.resolve();
   assert.equal(resumed, false);
   assert.equal(compactions.has("codex", "child-session"), true);
-  assert.deepEqual(errors, [failure]);
+  assert.deepEqual(errors, []);
   closing.resolve();
   await waiter;
   assert.equal(resumed, true);
+  assert.deepEqual(errors, [closeFailure, compactFailure]);
 });
 
 test("failed classic completion reporting cancels compaction and releases its session", async () => {
   const runInput = input({ loopTaskId: "failed-report" });
   await scheduleAutoCompactAfterPrompt(runInput, target(), async () => assert.fail("unreported work must not compact"));
-  await assert.rejects(finalizeLoopSubtaskRun({ taskId: "failed-report", subtaskId: "child", round: 1, runStatus: "end", assistantContent: "已完成", tabId: null }, {
+  let closed = false;
+  await assert.rejects(finalizeLoopSubtaskRun({ taskId: "failed-report", subtaskId: "child", round: 1, runStatus: "end", assistantContent: "已完成", tabId: "child-tab" }, {
     markSubtaskRunFinished: () => { throw new Error("persist failed"); },
-    closeSubtaskTab: async () => {},
+    closeSubtaskTab: async () => { closed = true; },
     logSubtaskTabAutoClosed: () => {},
   }), /persist failed/);
   await loopSubtaskAutoCompactions.wait("codex", "child-session");
+  assert.equal(closed, false);
 });
 
-test("compactions sharing a session remain serialized even when notifications arrive out of order", async () => {
+test("unconfirmed or skipped classic completion retains its tab and cancels compaction", async () => {
+  for (const report of ["unconfirmed", "skipped"] as const) {
+    const runInput = input({ loopTaskId: `not-committed-${report}` });
+    await scheduleAutoCompactAfterPrompt(runInput, target(), async () => assert.fail("uncommitted work must not compact"));
+    const events: string[] = [];
+    await finalizeLoopSubtaskRun({ taskId: runInput.loopTaskId!, subtaskId: "child", round: 1, runStatus: "end", assistantContent: "done", tabId: "child-tab" }, {
+      markSubtaskRunFinished: () => report,
+      closeSubtaskTab: async () => { events.push("closed"); },
+      logSubtaskTabAutoClosed: () => events.push("logged"),
+    });
+    await loopSubtaskAutoCompactions.wait("codex", "child-session");
+    assert.deepEqual(events, []);
+  }
+});
+
+test("same-session compactions stay serialized without delaying a notified tab close", async () => {
   const compactions = new LoopSubtaskAutoCompactions(() => assert.fail("unexpected failure"));
   const events: string[] = [];
-  compactions.defer(input(), target(), async () => { events.push("first"); });
-  compactions.defer(input({ loopSubtaskId: "second" }), target(), async () => { events.push("second"); });
-  compactions.notify("task", "second", true);
-  await Promise.resolve();
-  assert.equal(events.length, 0);
+  const first = createDeferred();
+  const firstStarted = createDeferred();
+  const secondClosed = createDeferred();
+  compactions.defer(input(), target(), async () => {
+    events.push("first");
+    firstStarted.resolve();
+    await first.promise;
+  });
   compactions.notify("task", "child", true);
+  await firstStarted.promise;
+  compactions.defer(input({ loopSubtaskId: "second" }), target(), async () => { events.push("second"); });
+  compactions.notify("task", "second", true, async () => {
+    events.push("closed second");
+    secondClosed.resolve();
+  });
+  await secondClosed.promise;
+  assert.deepEqual(events, ["first", "closed second"]);
+  first.resolve();
   await compactions.wait("codex", "child-session");
-  assert.deepEqual(events, ["first", "second"]);
+  assert.deepEqual(events, ["first", "closed second", "second"]);
 });
 
 test("same-session replacement waits for canceled predecessor while an independent session proceeds", async () => {

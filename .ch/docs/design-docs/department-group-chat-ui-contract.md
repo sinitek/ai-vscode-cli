@@ -23,6 +23,7 @@ type DepartmentGroupChatProjection = {
     leaderNumber: number;
     participant: LoopGroupChatPanelParticipant;
     progressPercent?: number;
+    statusSummary?: LoopPlusStatusSummary;
     employees: LoopGroupChatPanelParticipant[];
   }>;
   maxLeaders: number;
@@ -32,7 +33,9 @@ type DepartmentGroupChatProjection = {
 };
 ```
 
-成员投影直接消费每组 `employees`，不推断归属。总监成员面板只显示总监和组长。每个组长行展示本组执行尝试的“运行中”（`running`）、“验收中”（`reviewing`）、“待验收”（`queued_review`）、“待启动”（`pending`）、“已阻塞”（`blocked`）和“已完成”数量。运行中断且仍留在运行队列的尝试投影为 `blocked`。完成免验收执行的 `finished` 和 `reported` 尝试均投影为 `no_acceptance`。“已完成”合计 `completed`、`acceptance_passed`、`acceptance_failed` 和 `no_acceptance`，其中验收成功和失败沿用 Loop+ 的“已验收”口径。员工明细只在对应组长群聊中展示。组长 `taskId` 留空表示群聊尚未创建，入口禁用；`participant.sessionId` 是 CLI 会话 ID，不是群聊创建证据。新建产研部的额度逐项按有效工作区设置、有效全局设置、默认值取用；默认同时最多 4 名组长（无例外）、全部门共享 16 名常规并发员工。已有任务沿用启动时保存的额度。零余额时每组仍最多持有一个未释放的超额员工，员工实际执行结束且清理完成后才释放额度。成员面板只展示宿主提供的占用与状态，不在成员面板内编辑额度。
+总监成员面板的组长行直接渲染宿主透传的 `statusSummary`。宿主使用组长的 Loop+ 调度快照、活跃验收事件和主模型运行状态，复用群聊的成员状态解析与计数。计数包含组长主任务和本组每个子任务，标签顺序、文案、主题配色及零值样式复用 Loop+ 群聊。缺少有效汇总时各标签显示零。运行队列中的中断执行按 Loop+ 的等待续跑口径计数。
+
+组长群聊的员工明细直接消费本组 `employees`。在这份明细投影中，运行中断且仍留在运行队列的尝试标记为 `blocked`，完成免验收执行的 `finished` 和 `reported` 尝试标记为 `no_acceptance`。组长 `taskId` 留空表示群聊尚未创建，入口禁用；`participant.sessionId` 是 CLI 会话 ID，不是群聊创建证据。新建产研部的额度逐项按有效工作区设置、有效全局设置、默认值取用；默认同时最多 4 名组长（无例外）、全部门共享 16 名常规并发员工。已有任务沿用启动时保存的额度。零余额时每组仍最多持有一个未释放的超额员工，员工实际执行结束且清理完成后才释放额度。成员面板只展示宿主提供的占用与状态，不在成员面板内编辑额度。
 
 组长群聊的子任务复用 `getLoopSubtaskDisplayTitle`，按所属组长的 `subTasks` 位置显示“子任务 N：标题”。同一子任务的多次执行沿用同一编号。子任务 Tab 及悬停提示复用普通 Loop+ 路径，不投影产研部角色或姓名。任务、attempt、验收定位和权限校验继续使用各自的原有 ID。
 
@@ -259,7 +262,7 @@ listLoopTaskStoreFilesStrict(): string[];
 | 总监已停止派发，原执行退出仍待确认 | 隐藏中止，显示已中止及原执行退出待确认 | 可见且禁用，清理确认后按原门槛恢复 |
 | 可信根已停止，且无待清理责任 | 移除停止按钮 | 按原失败上限、状态及运行门槛恢复 |
 
-群聊以可信总监任务状态显示是否已中止。带 `runtimeInterrupted` 的历史运行记录显示为已中止。`task.departmentStopState` 单独反映原执行清理状态。`readDepartmentOrganizationStopFeedback` 结合可信根、工作区、实际执行占用和当前中止结果判断能否继续。占用归零后仍需等在途的清理和状态保存结束。重开群聊、刷新页面和中止回执均沿用同一显示逻辑。
+群聊以可信总监任务状态显示是否已中止。带 `runtimeInterrupted` 的历史运行记录显示为已中止。对于可信、仍为 `running` 的总监根，只有当前 Extension Host 的部门编排控制器/续接登记明确不存在时，才只在群聊只读投影中标记“本宿主执行已中断”；不写任务状态、不释放跨宿主占用。控制器存在（包括正常等待）时不标记；活动读取不可用或可信根校验失败时也不推断中断。`task.departmentStopState` 单独反映原执行清理状态。中断投影仍通过可信容量及原执行核验关闭继续门；资源尚待核验时保留显式整组“中止”对账入口。占用归零后仍需等在途的清理和状态保存结束。重开群聊、刷新页面和中止回执均沿用同一显示逻辑。
 
 “中止”通过 `loopGroupChatChat:stopTask` 调用 `organizationControl.stop`。同一组织的在途停止会合并。一次请求关闭派发并停止总监、所有组长 Loop+ 和其活动员工，原 Owner 清理由宿主处理。正常结束或失败后刷新对应组织，刷新失败时仍显示原停止错误。刷新及迟到结果继续核对根、工作区和物理记录归属。
 

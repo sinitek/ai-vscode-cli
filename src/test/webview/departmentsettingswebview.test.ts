@@ -6,6 +6,7 @@ import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { buildWebviewRuntimeScript } from "../../webview/viewContentScript";
 import { CLI_LIST } from "../../cli/types";
 import { FINAL_ANSWER_TEXT_MARKER } from "../../finalAnswerProtocol";
+import { normalizeDepartmentCapacity as normalizeHostDepartmentCapacity } from "../../departmentSettings";
 
 function buildStaticHtml(): string {
   return buildWebviewStaticHtml({
@@ -50,13 +51,16 @@ test("generated browser normalizer matches host rules for refresh and submitted 
     loopMaxRoundsMin: 1, loopMaxRoundsMax: 100, finalAnswerTextMarker: FINAL_ANSWER_TEXT_MARKER,
   });
   const posted: unknown[] = [];
+  const elements = {
+    departmentMaxLeaders: { value: "" },
+    departmentMaxEmployees: { value: "" },
+  };
+  const document: { activeElement: { value: string } | null } = { activeElement: null };
   const sandbox: Record<string, any> = {
     vscode: { postMessage: (message: unknown) => posted.push(message) },
     state: {},
-    elements: {
-      departmentMaxLeaders: { value: "" },
-      departmentMaxEmployees: { value: "" },
-    },
+    elements,
+    document,
   };
   vm.runInNewContext([
     readFunction(runtime, "normalizeDepartmentCapacity"),
@@ -66,13 +70,18 @@ test("generated browser normalizer matches host rules for refresh and submitted 
   ].join("\n"), sandbox);
 
   const normalize = sandbox.normalizeDepartmentCapacity as (value: unknown, fallback: number) => number;
-  for (const value of [0.5, 0, "  ", "invalid", Infinity, true, {}, []]) {
-    assert.equal(normalize(value, 4), 4);
-    assert.equal(normalize(value, 16), 16);
+  for (const fallback of [4, 16]) {
+    for (const value of [0.5, 0, "  ", "invalid", Infinity, true, {}, [], Number.MAX_SAFE_INTEGER + 1]) {
+      const hostValue = normalizeHostDepartmentCapacity(value, fallback);
+      assert.equal(hostValue, fallback);
+      assert.equal(normalize(value, fallback), hostValue);
+    }
   }
-  assert.equal(normalize("3.8", 4), 3);
-  assert.equal(normalize(6.1, 16), 6);
-  assert.equal(normalize(Number.MAX_SAFE_INTEGER + 1, 4), 4);
+  for (const [value, fallback, expected] of [["3.8", 4, 3], [6.1, 16, 6]] as const) {
+    const hostValue = normalizeHostDepartmentCapacity(value, fallback);
+    assert.equal(hostValue, expected);
+    assert.equal(normalize(value, fallback), hostValue);
+  }
 
   sandbox.syncDepartmentCapacityPanelState({ departmentMaxLeaders: 0.5, departmentMaxEmployees: "7.9" });
   assert.equal(sandbox.state.departmentMaxLeaders, 4);
@@ -83,6 +92,28 @@ test("generated browser normalizer matches host rules for refresh and submitted 
   assert.equal(sandbox.elements.departmentMaxEmployees.value, "16");
   sandbox.syncDepartmentCapacityPanelState({ departmentMaxEmployees: 20 });
   assert.equal(sandbox.elements.departmentMaxEmployees.value, "20");
+
+  const snapshot = { departmentMaxLeaders: 8, departmentMaxEmployees: 9 };
+  for (const [focused, unfocused] of [
+    ["departmentMaxLeaders", "departmentMaxEmployees"],
+    ["departmentMaxEmployees", "departmentMaxLeaders"],
+  ] as const) {
+    sandbox.syncDepartmentCapacityPanelState({});
+    const previous = sandbox.state[focused];
+    const input = elements[focused];
+    input.value = "12.5";
+    document.activeElement = input;
+    sandbox.syncDepartmentCapacityPanelState(snapshot);
+    assert.equal(input.value, "12.5", focused);
+    assert.equal(sandbox.state[focused], previous, focused);
+    assert.equal(elements[unfocused].value, String(snapshot[unfocused]), unfocused);
+
+    document.activeElement = null;
+    sandbox.syncDepartmentCapacityPanelState(snapshot);
+    assert.equal(input.value, String(snapshot[focused]), focused);
+    assert.equal(sandbox.state[focused], snapshot[focused], focused);
+  }
+  assert.equal(posted.length, 0);
 
   const listeners = new Map<string, () => void>();
   const input = {
@@ -102,6 +133,7 @@ test("generated browser normalizer matches host rules for refresh and submitted 
   assert.equal(input.value, "4");
   assert.equal(state.departmentMaxLeaders, 4);
   assert.equal(posted.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(posted[1])), { type: "updateSetting", key: "departmentMaxLeaders", value: 4 });
   listeners.get("blur")?.();
   assert.equal(posted.length, 2);
 });

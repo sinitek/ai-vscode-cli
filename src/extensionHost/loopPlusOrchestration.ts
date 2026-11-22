@@ -58,6 +58,7 @@ import { readHumanInteractionTimeoutMs } from "../toolSettings";
 import {
   normalizeLoopPlusProgressPercent,
   resolveLoopSchedulingMode,
+  type LoopPlusAttemptCompletionReceipt,
   type LoopSchedulingMode,
   type LoopSubtaskDecision,
   type LoopSubtaskRecord,
@@ -90,7 +91,9 @@ const DECISION_SAFETY_LIMIT = 200;
 // Progressing tasks earn more main decisions; stalled loops remain bounded.
 const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const PROTOCOL_RETRY_LIMIT = 2;
+const MAIN_RECOVERY_FAILURE_LIMIT = 3;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
+const UNCONFIRMED_ATTEMPT_RESULT = "宿主重建后无法确认上次子任务执行结果。请核对已有产物，再显式续跑或由主任务处理此开放 attempt。";
 
 export type LoopPlusPromptTarget = {
   tabId: string;
@@ -155,12 +158,16 @@ export type LoopPlusMainRequest = {
   userMessageCount?: number;
   target: LoopPlusPromptTarget;
   firstMainExecution?: FirstLoopMainExecution;
+  canSendAutoResumedMain?: () => boolean;
+  interruptedNativeSessionId?: string;
 };
 
 export type LoopPlusMainHandle = {
   promise: Promise<string | null>;
   abort: () => void;
   hasStarted?: () => boolean;
+  wasUnexpectedlyInterrupted?: () => boolean;
+  getInterruptedNativeSessionId?: () => string | undefined;
 };
 
 export type LoopPlusAttemptRequest = {
@@ -198,7 +205,7 @@ export type LoopPlusAttemptAbortOptions = {
 export type LoopPlusAttemptHandle = {
   promise: Promise<LoopPlusAttemptResult>;
   abort: (options?: LoopPlusAttemptAbortOptions) => void;
-  /** Successful report acknowledged and optional session compaction settled. */
+  /** Called after the successful finish event has been committed, before optional compaction. */
   onCompleted?: () => Promise<void>;
   /** 准备和收尾仍算活动；已启动调用则以宿主执行所有权为准。 */
   isActive?: () => boolean;
@@ -234,6 +241,8 @@ export type LoopPlusOrchestrationDeps = {
   appendCompletionMessages?: (target: LoopPlusPromptTarget, task: LoopTaskRecord) => void;
   onTaskCompleted?: (taskId: string) => void;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
+  readMainRecoveryTask?: (taskId: string) => LoopTaskRecord | null;
+  canAutoResumeMain?: (task: LoopTaskRecord, target: LoopPlusPromptTarget, nativeSessionId: string | undefined) => boolean;
   startAttempt: (request: LoopPlusAttemptRequest) => LoopPlusAttemptHandle;
   closeSubtaskTabs?: (taskId: string, subtaskId: string, attemptId?: string) => Promise<void>;
   prepareCommunication?: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, round: number) => string | null;
@@ -288,6 +297,15 @@ type MainStep = {
   reviewSelection?: { scheduler: LoopPlusScheduler; seq: number };
 };
 
+type InterruptedMain = {
+  step: MainStep;
+  target: LoopPlusPromptTarget;
+  request: LoopPlusMainRequest;
+  nativeSessionId?: string;
+  generation: number;
+  sendAdmitted: boolean;
+};
+
 type Lifecycle = {
   promise: Promise<void>;
   resolve: () => void;
@@ -320,6 +338,8 @@ type ParentRuntime = {
   currentMain: LoopPlusMainHandle | null;
   currentMainRequest: LoopPlusMainRequest | null;
   currentMainStep: MainStep | null;
+  interruptedMain: InterruptedMain | null;
+  claimedMainRecovery: InterruptedMain | null;
   preparingMain?: FirstLoopMainExecution;
   /** 未确认批次的请求快照；重试和暂停恢复不得混入后到事件或消息。 */
   reviewStep: MainStep | null;
@@ -401,6 +421,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       const runtime = ensureRuntime(existing, target, input, Boolean(options.firstMainExecution));
       if (options.firstMainExecution) {
+        supersedeMainRecovery(runtime);
         const execution = options.firstMainExecution;
         pump(runtime, execution, options.resumeUserMessage);
         const preparingConsumer = runtime.consumer;
@@ -557,7 +578,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         updatedAt: now(),
       };
       runtime = ensureRuntime(recovered, recovery.target, recovery.input);
-      persist(runtime, { status: "running", runtimeInterrupted: undefined });
+      persist(runtime, { status: runtime.autoPaused ? runtime.pauseStatus : "running", runtimeInterrupted: undefined });
     }
     if (!runtime || runtime.released || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
       return false;
@@ -591,6 +612,76 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && !runtime.scheduler.snapshot().parentStopped).map((runtime) => runtime.taskId);
   }
 
+  function sameMainBinding(left: LoopPlusPromptTarget, right: LoopPlusPromptTarget): boolean {
+    return left.tabId === right.tabId && left.cli === right.cli && left.sessionId === right.sessionId
+      && left.loopTaskId === right.loopTaskId && left.loopSubtaskId === right.loopSubtaskId;
+  }
+
+  function isLiveMainRecovery(runtime: ParentRuntime, interrupted: InterruptedMain): boolean {
+    const snapshot = runtime.scheduler.snapshot();
+    return runtimes.get(runtime.taskId) === runtime && !runtime.released && !runtime.autoPaused
+      && !runtime.stopRequested && !runtime.stopping && !runtime.lifecycle.settled
+      && !snapshot.parentStopped && !snapshot.completed && !runtime.recoveringWait
+      && interrupted.generation === runtime.mainGeneration
+      && sameMainBinding(runtime.target, interrupted.target);
+  }
+
+  function isRecoverableMainTask(task: LoopTaskRecord | null, target: LoopPlusPromptTarget, taskId: string): task is LoopTaskRecord {
+    const snapshot = task?.loopPlus as Partial<LoopPlusSchedulerSnapshot> | undefined;
+    return !!task && task.id === taskId && task.status === "running" && task.schedulingMode === "event_driven"
+      && task.department === undefined && !task.departmentInvalid && !task.runtimeInterrupted && !task.userStopSource
+      && !task.pendingClarification && !task.loopPlusBlockReview && !isLoopMainAiFailureLimitReached(task)
+      && !!snapshot && !snapshot.parentStopped && !snapshot.completed
+      && !!target.tabId && !!target.sessionId && target.cli === "codex" && task.cli === target.cli && task.sessionId === target.sessionId
+      && !target.loopSubtaskId && (!target.loopTaskId || target.loopTaskId === task.id);
+  }
+
+  function canSendMainRecovery(runtime: ParentRuntime, interrupted: InterruptedMain): boolean {
+    const stillClaimed = () => runtime.claimedMainRecovery === interrupted && isLiveMainRecovery(runtime, interrupted);
+    if (!stillClaimed()) return false;
+    try {
+      const task = (deps.readMainRecoveryTask ?? deps.readTask)(runtime.taskId);
+      return isRecoverableMainTask(task, interrupted.target, runtime.taskId)
+        && (task.loopPlusMainRecoveryFailureCount ?? 0) < MAIN_RECOVERY_FAILURE_LIMIT
+        && deps.canAutoResumeMain?.(task, { ...interrupted.target }, interrupted.nativeSessionId) === true && stillClaimed();
+    } catch (error) {
+      deps.log?.("loop-plus-main-recovery-check-failed", { taskId: runtime.taskId, error: errorText(error) });
+      return false;
+    }
+  }
+
+  function abandonMainRecovery(runtime: ParentRuntime, interrupted: InterruptedMain): void {
+    if (runtime.claimedMainRecovery !== interrupted) return;
+    runtime.claimedMainRecovery = null;
+    if (interrupted.generation !== runtime.mainGeneration || runtime.stopRequested || runtime.released) return;
+    runtime.autoPaused = true;
+    settle(runtime);
+    deps.log?.("loop-plus-main-recovery-denied", { taskId: runtime.taskId });
+  }
+
+  function checkInterruptedMainTasks(): void {
+    for (const runtime of runtimes.values()) {
+      const interrupted = runtime.interruptedMain;
+      if (!interrupted || runtime.claimedMainRecovery || runtime.consumer || runtime.currentMain || runtime.preparingMain || runtime.recoveringWait) continue;
+      runtime.interruptedMain = null;
+      runtime.claimedMainRecovery = interrupted;
+      if (!canSendMainRecovery(runtime, interrupted)) {
+        abandonMainRecovery(runtime, interrupted);
+        continue;
+      }
+      pump(runtime, undefined, undefined, interrupted);
+    }
+  }
+
+  function supersedeMainRecovery(runtime: ParentRuntime): void {
+    runtime.interruptedMain = null;
+    const claimed = runtime.claimedMainRecovery;
+    if (!claimed || claimed.sendAdmitted) return;
+    runtime.claimedMainRecovery = null;
+    runtime.mainGeneration += 1;
+    runtime.currentMain?.abort();
+  }
+
   function checkWaitingTasks(): void {
     for (const runtime of runtimes.values()) {
       try {
@@ -599,6 +690,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         if (!task || task.status !== "running" || task.pendingClarification || isLoopMainAiFailureLimitReached(task)
           || runtime.released || runtime.autoPaused || runtime.stopRequested || runtime.stopping
           || snapshot.completed || snapshot.parentStopped || runtime.currentMain || runtime.consumer
+          || runtime.interruptedMain || runtime.claimedMainRecovery
           || runtime.launching.size > 0 || deps.hasActiveSubtasks?.(runtime.taskId)) continue;
         if (snapshot.running.some((record) => {
           const attempt = runtime.attempts.get(record.attemptId);
@@ -657,15 +749,15 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function createParent(input: LoopPlusRunInput, target: LoopPlusPromptTarget, sessionId: string | null): ParentRuntime {
-    const scheduler = createLoopPlusScheduler({ maxConcurrency: maxConcurrency() });
+    const snapshot = createLoopPlusScheduler({ maxConcurrency: maxConcurrency() }).snapshot();
     const task = deps.createTask({
       cli: target.cli,
       rootPrompt: input.displayPrompt,
       sessionId,
-      snapshot: scheduler.snapshot(),
+      snapshot,
       prompt: input,
     });
-    const runtime = buildRuntime(task, target, input, scheduler);
+    const runtime = buildRuntime(task, target, input, { snapshot });
     runtime.decomposing = true;
     runtimes.set(task.id, runtime);
     persist(runtime, { loopPlusProgressPercent: 0 });
@@ -685,17 +777,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       return existing;
     }
-    const scheduler = createLoopPlusScheduler({
+    const runtime = buildRuntime(task, target, input, {
       snapshot: task.loopPlus,
       maxConcurrency: maxConcurrency(),
-      requireAcceptedDependencies: requiresLoopPlusAcceptedDependencies(task),
     });
-    const runtime = buildRuntime(task, target, input, scheduler);
-    if (!scheduler.snapshot().parentStopped) {
-      scheduler.snapshot().running.forEach((attempt) => {
-        const meta = runtime.meta.get(attempt.subtaskId);
-        if (meta) meta.executionStatus = "blocked";
-      });
+    const { scheduler } = runtime;
+    if (!scheduler.snapshot().parentStopped) parkUnconfirmedColdAttempts(runtime);
+    const hadRunning = scheduler.snapshot().running.length > 0;
+    const recoveredFinish = !preparingResume && restoreCompletionReceipts(runtime, task);
+    if (recoveredFinish && !runtime.stopRequested && !runtime.autoPaused) {
+      runtime.autoPaused = true;
+      runtime.pauseStatus = "error";
     }
     runtime.initialPromptDone = scheduler.snapshot().seenAttempts.length > 0
       || scheduler.snapshot().running.length > 0
@@ -708,19 +800,54 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       && !runtime.stopRequested
       && !scheduler.snapshot().completed
       && !scheduler.snapshot().parentStopped;
-    runtimes.set(task.id, runtime);
-    if (!preparingResume && ((task.loopPlusMainPhase === "decomposing") !== runtime.decomposing || scheduler.snapshot().running.length > 0)) {
-      persist(runtime);
+    if (!preparingResume && ((task.loopPlusMainPhase === "decomposing") !== runtime.decomposing || hadRunning)) {
+      persist(runtime, recoveredFinish && !runtime.stopRequested && !task.finalSummary ? {
+        finalSummary: "已恢复子任务执行回执，继续主任务以进行验收或确认报告。",
+      } : {});
     }
+    if (recoveredFinish && runtime.autoPaused) settle(runtime);
+    runtimes.set(task.id, runtime);
     return runtime;
+  }
+
+  function parkUnconfirmedColdAttempts(runtime: ParentRuntime): void {
+    for (const attempt of runtime.scheduler.snapshot().running) {
+      const meta = runtime.meta.get(attempt.subtaskId);
+      if (!meta) continue;
+      meta.executionStatus = "blocked";
+      meta.executionFailure ??= UNCONFIRMED_ATTEMPT_RESULT;
+    }
+  }
+
+  function restoreCompletionReceipts(runtime: ParentRuntime, task: LoopTaskRecord): boolean {
+    const receipts = task.loopPlusAttemptCompletionReceipts;
+    if (!receipts?.length) return false;
+    let restored = false;
+    for (const attempt of runtime.scheduler.snapshot().running) {
+      const matches = receipts.filter((receipt) => receipt.attemptId === attempt.attemptId);
+      if (matches.length !== 1 || matches[0].subtaskId !== attempt.subtaskId) continue;
+      const receipt = matches[0];
+      const finish = { ...receipt, outcome: "completed" as const };
+      const result = runtime.scheduler.finish(finish);
+      if (!result.applied) continue;
+      setFinishMetadata(runtime, finish);
+      releaseUnstartedReservations(runtime, result.started);
+      if (result.eventId) runtime.recoveredReviewEventIds.add(result.eventId);
+      restored = true;
+    }
+    return restored;
   }
 
   function buildRuntime(
     task: LoopTaskRecord,
     target: LoopPlusPromptTarget,
     input: LoopPlusRunInput,
-    scheduler: LoopPlusScheduler,
+    schedulerOptions: LoopPlusSchedulerOptions,
   ): ParentRuntime {
+    const requireAcceptedDependencies = requiresLoopPlusAcceptedDependencies(task);
+    const createScheduler = (options: LoopPlusSchedulerOptions) =>
+      createLoopPlusScheduler({ ...options, requireAcceptedDependencies });
+    const scheduler = createScheduler(schedulerOptions);
     const snapshot = scheduler.snapshot();
     const meta = new Map<string, SubtaskMeta>();
     const latestDependencies = new Map(snapshot.seenAttempts.map((item) => [item.subtaskId, item.dependsOn ?? []]));
@@ -747,14 +874,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           : {}),
       });
     });
-    const requireAcceptedDependencies = requiresLoopPlusAcceptedDependencies(task);
     return {
       taskId: task.id,
       cli: task.cli,
       target,
       prompt: input,
       scheduler,
-      createScheduler: (options) => createLoopPlusScheduler({ ...options, requireAcceptedDependencies }),
+      createScheduler,
       meta,
       attempts: new Map(),
       attemptSeq: nextAttemptSequence(scheduler.snapshot()),
@@ -774,6 +900,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       currentMain: null,
       currentMainRequest: null,
       currentMainStep: null,
+      interruptedMain: null,
+      claimedMainRecovery: null,
       reviewStep: null,
       recoveredReviewEventIds: new Set(snapshot.currentReview
         ? [snapshot.currentReview, ...snapshot.reviewQueue]
@@ -805,6 +933,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   }
 
   function continueExplicitly(runtime: ParentRuntime): void {
+    supersedeMainRecovery(runtime);
     if (runtime.released || runtime.scheduler.snapshot().completed) {
       releaseCompleted(runtime);
       return;
@@ -895,7 +1024,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     status: "running" | "stopped",
   ): void {
     try {
-      persist(runtime, { status, runtimeInterrupted: undefined });
+      persist(runtime, { status, runtimeInterrupted: undefined, ...(status === "running" ? { userStopSource: undefined } : {}) });
     } catch (error) {
       // These reservations have not launched. Preserve pending attempts and the
       // parent gate instead of later reconciling them as lost running processes.
@@ -996,6 +1125,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.autoPaused = false;
     runtime.decomposing = false;
     runtime.mainGeneration += 1;
+    runtime.interruptedMain = null;
+    runtime.claimedMainRecovery = null;
     runtime.scheduler.stopParent();
     abortOrchestratorClarification(loopClarificationScope(runtime.taskId));
     const main = runtime.currentMain;
@@ -1045,8 +1176,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     pump(runtime);
   }
 
-  function pump(runtime: ParentRuntime, firstMainExecution?: FirstLoopMainExecution, resumeUserMessage?: string): void {
-    if (runtime.released || runtime.consumer || runtime.recoveringWait || (runtime.autoPaused && !firstMainExecution) || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
+  function pump(runtime: ParentRuntime, firstMainExecution?: FirstLoopMainExecution, resumeUserMessage?: string, recovery?: InterruptedMain): void {
+    if (runtime.released || runtime.consumer || runtime.interruptedMain || runtime.claimedMainRecovery !== (recovery ?? null)
+      || runtime.recoveringWait || (runtime.autoPaused && !firstMainExecution) || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
       return;
     }
     runtime.pumpRequested = false;
@@ -1054,7 +1186,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     let ownedLifecycle = runtime.lifecycle;
     const consumer: Promise<void> = runConsumer(runtime, () => {
       ownedLifecycle = runtime.lifecycle;
-    }, firstMainExecution, resumeUserMessage).catch((error: unknown) => {
+    }, firstMainExecution, resumeUserMessage, recovery).catch((error: unknown) => {
       deps.log?.("loop-plus-consumer-failed", {
         taskId: runtime.taskId,
         error: error instanceof Error ? error.message : String(error),
@@ -1069,6 +1201,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       runtime.consumer = null;
       runtime.preparingMain = undefined;
+      if (recovery && runtime.claimedMainRecovery === recovery) runtime.claimedMainRecovery = null;
       const followUp = runtime.pumpRequested || runtime.forcePrompt;
       runtime.pumpRequested = false;
       if (!followUp || runtime.autoPaused || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
@@ -1079,7 +1212,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.consumer = consumer;
   }
 
-  async function runConsumer(runtime: ParentRuntime, adoptCommittedLifecycle: () => void, firstMainExecution?: FirstLoopMainExecution, resumeUserMessage?: string): Promise<void> {
+  async function runConsumer(runtime: ParentRuntime, adoptCommittedLifecycle: () => void, firstMainExecution?: FirstLoopMainExecution, resumeUserMessage?: string, recovery?: InterruptedMain): Promise<void> {
+    if (recovery) await Promise.resolve();
     while ((firstMainExecution || !runtime.autoPaused) && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped) {
       const decisionSafetyLimit = firstMainExecution ? Infinity : deps.decisionSafetyLimit ?? Math.max(
         DECISION_SAFETY_LIMIT,
@@ -1091,11 +1225,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       const execution = firstMainExecution;
       firstMainExecution = undefined;
-      let step = execution ? null : planStep(runtime);
+      const recovering = recovery;
+      recovery = undefined;
+      if (recovering && runtime.claimedMainRecovery !== recovering) return;
+      let step = recovering?.step ?? (execution ? null : planStep(runtime));
       if (!step && !execution) return;
       const generation = runtime.mainGeneration;
       const acceptancePlanEpoch = runtime.acceptancePlanEpoch;
-      const request = step ? buildMainRequest(runtime, step) : {
+      const request = recovering ? { ...recovering.request, target: { ...recovering.target } } : step ? buildMainRequest(runtime, step) : {
         taskId: runtime.taskId, kind: "continue" as const, target: runtime.target,
         prompt: runtime.prompt.displayPrompt, modelPrompt: runtime.prompt.modelPrompt ?? runtime.prompt.displayPrompt,
         reviewEventId: null, firstMainExecution: execution,
@@ -1105,11 +1242,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           const draft: ParentRuntime = {
             ...runtime,
             scheduler: runtime.createScheduler({ snapshot: task.loopPlus, maxConcurrency: maxConcurrency() }),
+            meta: new Map([...runtime.meta].map(([id, meta]) => [id, { ...meta }])),
+            recoveredReviewEventIds: new Set(runtime.recoveredReviewEventIds),
+            launchEpoch: new Map(runtime.launchEpoch),
+            launching: new Set(runtime.launching),
             autoPaused: false,
             protocolRetries: 0,
             decisionCount: 1,
             forcePrompt: true,
           };
+          restoreCompletionReceipts(draft, task);
           const message = resumeUserMessage?.trim();
           if (message) draft.scheduler.enqueueUserMessage(message);
           const promoted = draft.scheduler.promotePending();
@@ -1121,6 +1263,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             finalSummary: undefined,
             loopPlusBlockReview: undefined,
             runtimeInterrupted: undefined,
+            userStopSource: undefined,
             status: "running",
             supplementalRequirements: execution.resumeRequirements?.(task) ?? task.supplementalRequirements,
           };
@@ -1153,8 +1296,24 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       let failed = false;
       let failureMessage = "";
       let failureInfo: ErrorInfo | undefined;
+      let recoverySendDenied = false;
+      const originalTarget = { ...request.target };
       try {
-        if (step?.kind === "user") {
+        if (recovering) {
+          if (!canSendMainRecovery(runtime, recovering)) {
+            abandonMainRecovery(runtime, recovering);
+            return;
+          }
+          request.interruptedNativeSessionId = recovering.nativeSessionId;
+          request.canSendAutoResumedMain = () => {
+            if (recovering.sendAdmitted || recoverySendDenied) return false;
+            const allowed = canSendMainRecovery(runtime, recovering);
+            recovering.sendAdmitted = allowed;
+            recoverySendDenied = !allowed;
+            return allowed;
+          };
+        }
+        if (step?.kind === "user" && !recovering) {
           deps.appendMessage(runtime.target, "loop-plus-user-messages", runtime.taskId);
         }
         handle = deps.runMain(request);
@@ -1173,16 +1332,52 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           runtime.currentMainStep = null;
         }
       }
+      if (recovering && !recovering.sendAdmitted) {
+        abandonMainRecovery(runtime, recovering);
+        return;
+      }
+      if (recovering && runtime.claimedMainRecovery === recovering) runtime.claimedMainRecovery = null;
       if (!step || (execution && !execution.admitted) || runtime.released || runtime.autoPaused || generation !== runtime.mainGeneration || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped || runtime.scheduler.snapshot().completed) {
         return;
       }
-      if (acceptancePlanEpoch !== runtime.acceptancePlanEpoch) {
+      const task = deps.readTask(runtime.taskId);
+      if (!execution && wasMainInterrupted(handle)) {
+        const boundTarget = { ...originalTarget, sessionId: originalTarget.sessionId ?? request.target.sessionId };
+        const interrupted: InterruptedMain = {
+          step, target: boundTarget, request: { ...request, target: boundTarget }, generation, sendAdmitted: false,
+          nativeSessionId: handle?.getInterruptedNativeSessionId?.(),
+        };
+        if (!isLiveMainRecovery(runtime, interrupted) || !isRecoverableMainTask(task, boundTarget, runtime.taskId)) {
+          runtime.autoPaused = true;
+          settle(runtime);
+          return;
+        }
+        const failureCount = (task.loopPlusMainRecoveryFailureCount ?? 0) + Number(!!recovering);
+        if (failureCount >= MAIN_RECOVERY_FAILURE_LIMIT) {
+          pause(runtime, "needs-review", "loop-plus-main-recovery-exhausted",
+            `主任务自动续跑已连续意外中断 ${failureCount} 次，自动续跑已停止。`, true,
+            { loopPlusMainRecoveryFailureCount: failureCount });
+          return;
+        }
+        if (recovering) {
+          updateTask(runtime.taskId, { loopPlusMainRecoveryFailureCount: failureCount, updatedAt: now() });
+        }
+        runtime.decisionCount -= 1;
+        runtime.interruptedMain = interrupted;
+        deps.log?.("loop-plus-main-interrupted", { taskId: runtime.taskId, kind: step.kind, failureCount });
+        return;
+      }
+      const unknownRecoveryExit = !!recovering && (failed || content === null);
+      if (!unknownRecoveryExit && acceptancePlanEpoch !== runtime.acceptancePlanEpoch) {
         runtime.decisionCount -= 1;
         continue;
       }
-      if (failed) {
-        const task = deps.readTask(runtime.taskId);
-        const failure = buildNextLoopMainAiFailureState(task ?? {}, { failureMessage, now: now() });
+      const failure = failed || unknownRecoveryExit ? buildNextLoopMainAiFailureState(task ?? {}, {
+        failureMessage: failureMessage || (unknownRecoveryExit ? "无法确认主任务自动续跑的退出原因。" : ""), now: now(),
+      }) : null;
+      const nonRetryable = unknownRecoveryExit || execution?.startRejected || failureInfo?.code === "DEPARTMENT_NATIVE_UNKNOWN"
+        || failureInfo?.code === "SESSION_RUN_ACTIVE" || isNonRetryableCodexThreadError(failureInfo?.code, failureMessage);
+      if (failure) {
         const code = failureInfo?.code;
         updateTask(runtime.taskId, {
           ...failure,
@@ -1190,8 +1385,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           schedulingMode: "event_driven",
           updatedAt: now(),
         });
-        const nonRetryable = execution?.startRejected || failureInfo?.code === "DEPARTMENT_NATIVE_UNKNOWN" || failureInfo?.code === "SESSION_RUN_ACTIVE"
-          || isNonRetryableCodexThreadError(failureInfo?.code, failureMessage);
         if (nonRetryable || isLoopMainAiFailureLimitReached(failure)) {
           pause(runtime, "needs-review", nonRetryable ? "loop-plus-main-non-retryable" : "loop-plus-main-failure-limit",
             buildLoopMainAiFailureSummary(failure, { nonRetryable, code: failureInfo?.code }));
@@ -1202,7 +1395,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         continue;
       }
-      const task = deps.readTask(runtime.taskId);
       const acceptancePlanKeys = listLoopPlusAcceptancePlanFeedbackItems(task?.loopPlusAcceptancePlan)
         .map((item) => item.key);
       // 用户可在主模型执行期间改设置，提交决策前同步准入容量。
@@ -1233,6 +1425,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         return;
       }
+    }
+  }
+
+  function wasMainInterrupted(handle: LoopPlusMainHandle | null): boolean {
+    try {
+      return handle?.wasUnexpectedlyInterrupted?.() === true && handle.hasStarted?.() === true;
+    } catch {
+      return false;
     }
   }
 
@@ -1433,7 +1633,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         const before = runtime.scheduler.snapshot();
         if (!runtime.scheduler.acknowledgeReports(eventIds)) return false;
         try {
-          persist(runtime);
+          persist(runtime, eventIds.length > 0 ? { loopPlusMainRecoveryFailureCount: 0 } : {});
           if (runtime.reviewStep) {
             runtime.reviewStep = {
               ...runtime.reviewStep,
@@ -1496,7 +1696,13 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         const result = runtime.scheduler.submitReviewBatch(eventIds, acceptance);
         if (result.ok) {
           try {
-            persist(runtime, { loopPlusBlockReview: undefined });
+            const openAttemptIds = new Set([before.currentReview, ...before.reviewQueue].map((item) => item?.attemptId));
+            const newlyPassed = runtime.scheduler.snapshot().seenAttempts.some((item) =>
+              openAttemptIds.has(item.attemptId) && item.disposition === "reviewed" && item.acceptance === "passed");
+            persist(runtime, {
+              loopPlusBlockReview: undefined,
+              ...(newlyPassed ? { loopPlusMainRecoveryFailureCount: 0 } : {}),
+            });
           } catch (error) {
             runtime.scheduler = runtime.createScheduler({ snapshot: before });
             throw error;
@@ -1946,6 +2152,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         status: "running",
         ...(accepted.size > 0 ? { loopPlusBlockReview: undefined } : {}),
         ...(reviewPlan ? { loopPlusNextStepPlan: reviewPlan } : {}),
+        ...(reviewPlan && reportEventIds.length > 0 ? { loopPlusMainRecoveryFailureCount: 0 } : {}),
       });
       if (repairIds.size) {
         const saved = deps.readTask(runtime.taskId);
@@ -2251,6 +2458,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (meta) {
         meta.communicationFile = communicationFile;
         meta.executionStatus = "running";
+        if (meta.executionFailure === UNCONFIRMED_ATTEMPT_RESULT) meta.executionFailure = undefined;
         if (typeof launchedAt === "number" && Number.isFinite(launchedAt)) {
           meta.lastStartedAt = launchedAt;
         }
@@ -2287,6 +2495,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           communicationFile: communicationFile ?? "",
           executionRole,
           loopSubtaskMode: subtaskExecution.mode,
+          requireAcceptedDependencies: runtime.scheduler.requireAcceptedDependencies,
         }),
         writeFiles: record.writeFiles,
         conflictGroup: record.conflictGroup ?? undefined,
@@ -2527,12 +2736,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
       return false;
     }
-    const meta = runtime.meta.get(input.subtaskId);
-    if (meta) {
-      meta.summary = input.detail ?? meta.summary;
-      meta.executionStatus = input.outcome === "completed" ? "completed" : "blocked";
-      meta.executionFailure = input.outcome === "failed" ? input.detail ?? undefined : undefined;
-    }
+    const meta = setFinishMetadata(runtime, input);
     let task: LoopTaskRecord | null = null;
     try {
       task = deps.readTask(runtime.taskId);
@@ -2540,9 +2744,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const detail = errorText(error);
       logPersistenceFailure(runtime.taskId, "finish-read", error, runtime, input.attemptId);
       releaseUnstartedReservations(runtime, result.started);
-      retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
-      notifySubtaskChat(runtime, finishedChatNotice(input, meta));
+      const retained = retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
+      if (retained || input.outcome !== "completed") notifySubtaskChat(runtime, finishedChatNotice(input, meta));
       return false;
+    }
+    if (task && openAttempt && input.outcome === "completed") {
+      checkpointAttemptCompletion(runtime, task, input);
     }
     if (task && deps.recordAttempt) {
       try {
@@ -2563,8 +2770,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           error: detail,
         });
         releaseUnstartedReservations(runtime, result.started);
-        retainFinishFailure(runtime, "loop-plus-report-failed", `Loop+ attempt report failed: ${detail}`);
-        notifySubtaskChat(runtime, finishedChatNotice(input, meta));
+        const retained = retainFinishFailure(runtime, "loop-plus-report-failed", `Loop+ attempt report failed: ${detail}`);
+        if (retained || input.outcome !== "completed") notifySubtaskChat(runtime, finishedChatNotice(input, meta));
         return false;
       }
     }
@@ -2577,8 +2784,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       const detail = errorText(error);
       logPersistenceFailure(runtime.taskId, "finish-commit", error, runtime, input.attemptId);
       releaseUnstartedReservations(runtime, result.started);
-      retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
-      notifySubtaskChat(runtime, finishedChatNotice(input, meta));
+      const retained = retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
+      if (retained || input.outcome !== "completed") notifySubtaskChat(runtime, finishedChatNotice(input, meta));
       return false;
     }
     notifySubtaskChat(runtime, finishedChatNotice(input, meta));
@@ -2598,7 +2805,32 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     return true;
   }
 
-  function retainFinishFailure(runtime: ParentRuntime, message: string, finalSummary: string): void {
+  function setFinishMetadata(runtime: ParentRuntime, input: LoopPlusAttemptCompletionReceipt & { outcome: LoopPlusExecutionOutcome }): SubtaskMeta | undefined {
+    const meta = runtime.meta.get(input.subtaskId);
+    if (meta) {
+      meta.summary = input.detail ?? meta.summary;
+      meta.executionStatus = input.outcome === "completed" ? "completed" : "blocked";
+      meta.executionFailure = input.outcome === "failed" ? input.detail ?? undefined : undefined;
+    }
+    return meta;
+  }
+
+  function checkpointAttemptCompletion(runtime: ParentRuntime, task: LoopTaskRecord, receipt: LoopPlusAttemptCompletionReceipt): void {
+    if (task.status === "completed" || invalidSnapshotReason(task)) return;
+    const durable = runtime.createScheduler({ snapshot: task.loopPlus }).snapshot();
+    if (!durable.running.some((attempt) => attempt.subtaskId === receipt.subtaskId && attempt.attemptId === receipt.attemptId)) return;
+    const previous = task.loopPlusAttemptCompletionReceipts ?? [];
+    if (previous.some((item) => item.attemptId === receipt.attemptId)) return;
+    try {
+      updateTask(task.id, { loopPlusAttemptCompletionReceipts: [...previous, {
+        subtaskId: receipt.subtaskId, attemptId: receipt.attemptId, detail: receipt.detail,
+      }] });
+    } catch (error) {
+      logPersistenceFailure(runtime.taskId, "finish-receipt-commit", error, runtime, receipt.attemptId);
+    }
+  }
+
+  function retainFinishFailure(runtime: ParentRuntime, message: string, finalSummary: string): boolean {
     runtime.autoPaused = true;
     runtime.pauseStatus = "error";
     runtime.decomposing = false;
@@ -2622,8 +2854,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       : snapshot.parentStopped || runtime.stopRequested
         ? "stopped"
         : "error";
+    let retained = false;
     try {
       persist(runtime, { status, finalSummary });
+      retained = true;
     } catch (error) {
       logPersistenceFailure(runtime.taskId, "finish-pause-commit", error, runtime);
     }
@@ -2636,6 +2870,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       });
     }
     settle(runtime);
+    return retained;
   }
 
   function canCompleteDirectly(runtime: ParentRuntime): boolean {
@@ -2693,6 +2928,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       mainCommunicationFile: task?.mainCommunicationFile ?? "",
       kind: step.kind,
       allowDispatchBeforeReview: step.allowDispatchBeforeReview,
+      requireAcceptedDependencies: runtime.scheduler.requireAcceptedDependencies,
       acceptancePlan: task?.loopPlusAcceptancePlan ?? null,
       allowDirectCompletion: canCompleteDirectly(runtime),
       view: {
@@ -2746,8 +2982,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const snapshot = runtime.scheduler.snapshot();
     const runningIds = snapshot.running.map((item) => item.subtaskId);
     const status = patch.status ?? statusFor(runtime, snapshot, task);
+    const receipts = task?.loopPlusAttemptCompletionReceipts;
+    const openReceipts = receipts?.filter((receipt) => snapshot.running.some((attempt) =>
+      attempt.subtaskId === receipt.subtaskId && attempt.attemptId === receipt.attemptId));
     return {
       ...patch,
+      ...(receipts && openReceipts?.length !== receipts.length ? {
+        loopPlusAttemptCompletionReceipts: openReceipts?.length ? openReceipts : undefined,
+      } : {}),
       status,
       schedulingMode: "event_driven",
       loopPlus: snapshot,
@@ -2870,13 +3112,16 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     status: Extract<LoopTaskStatus, "needs-review" | "error">,
     message: string,
     finalSummary?: string,
+    preserveReservations = false,
+    patch: Pick<LoopTaskRecord, "loopPlusMainRecoveryFailureCount"> = {},
   ): void {
     runtime.autoPaused = true;
     runtime.pauseStatus = status;
     runtime.decomposing = false;
-    releaseLaunchingReservations(runtime);
+    if (!preserveReservations) releaseLaunchingReservations(runtime);
     try {
       persist(runtime, {
+        ...patch,
         status,
         ...(finalSummary ? { finalSummary } : {}),
       });
@@ -3233,6 +3478,9 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       runtime.scheduler = runtime.createScheduler({ snapshot });
       throw error;
     }
+    if (runtime.interruptedMain || runtime.claimedMainRecovery) {
+      supersedeMainRecovery(runtime);
+    }
     if (runtime.currentMain) {
       return true;
     }
@@ -3288,6 +3536,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function releaseCompleted(runtime: ParentRuntime): void {
     runtime.released = true;
     runtime.mainGeneration += 1;
+    runtime.interruptedMain = null;
+    runtime.claimedMainRecovery = null;
     const main = runtime.currentMain;
     runtime.currentMain = null;
     runtime.currentMainRequest = null;
@@ -3307,6 +3557,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   return {
     canAdmitConfigLockResume,
     checkWaitingTasks,
+    checkInterruptedMainTasks,
     tryRun,
     stopParent,
     notifySubtaskContinuation,

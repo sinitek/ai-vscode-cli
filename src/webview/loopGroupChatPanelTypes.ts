@@ -1,4 +1,5 @@
 import type { LoopModelSwitchState } from "../loopModelSwitch";
+import type { LoopPlusStatusSummary } from "../loopPlusStatusSummary";
 import type { LoopPlusAcceptancePlan, LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 
 export type LoopGroupChatPanelParticipant = {
@@ -51,6 +52,7 @@ export type DepartmentGroupChatProjection = {
     leaderNumber: number;
     participant: LoopGroupChatPanelParticipant;
     progressPercent?: number;
+    statusSummary?: Partial<LoopPlusStatusSummary>;
     employees: LoopGroupChatPanelParticipant[];
   }>;
   overallProgressPercent?: number;
@@ -179,6 +181,7 @@ export type LoopGroupChatPanelState = {
     canContinue: boolean;
     canStop: boolean;
     departmentStopState?: DepartmentOrganizationStopState;
+    departmentDirectorInterrupted?: boolean;
   };
   rounds: LoopGroupChatPanelRound[];
   chatMarkdown: string;

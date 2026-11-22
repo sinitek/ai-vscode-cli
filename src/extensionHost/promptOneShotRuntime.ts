@@ -292,6 +292,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
     target: PromptRunTarget,
     executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
+    if (input.loopPlusMainRuntime?.recovery) return;
     const runCli = target.cli;
     const prompt = input.displayPrompt;
     const activeTabId = target.tabId;

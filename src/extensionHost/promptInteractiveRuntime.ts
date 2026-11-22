@@ -26,6 +26,7 @@ import {
   resolveCodexAssistantMessageContinuation,
   separateCodexReasoningItemDelta,
 } from "../interactive/codexRunnerRuntime";
+import { CodexUnexpectedTurnExitError } from "../interactive/codexRunner";
 import { prepareGrokThinkingContinuation } from "../interactive/grokThinkingBubbles";
 import { buildGrokHumanInteractionResolution, isGrokUserQuestionMethod, normalizeHumanInteractionRequestFromGrok } from "../interactive/grokUserQuestion";
 import type { CodexRunSelection } from "../interactive/codexThreadSelection";
@@ -221,6 +222,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let prompt = input.displayPrompt;
     let modelPrompt = input.modelPrompt || prompt;
     const prepareOriginalSession = executionOptions.prepareOriginalSession;
+    const loopPlusMainRuntime = input.loopPlusMainRuntime;
+    const recovery = loopPlusMainRuntime?.recovery;
+    if (recovery && (target.cli !== "codex" || !target.sessionId || target.tabId !== recovery.target.tabId
+      || target.cli !== recovery.target.cli || target.sessionId !== recovery.target.sessionId
+      || prepareOriginalSession || executionOptions.departmentCodexRun || executionOptions.departmentInteractiveRunner)) return;
     const contextTags = Array.isArray(input.contextTags)
       ? input.contextTags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
       : [];
@@ -241,7 +247,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (interactiveRunsByTabId.get(target.tabId)?.stopped === false) {
       throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
     }
-    if (!executionOptions.requireOriginalSession && deps.takeOverSessionForTab
+    if (!recovery && !executionOptions.requireOriginalSession && deps.takeOverSessionForTab
       && !await deps.takeOverSessionForTab(target, isPreparationAborted)) {
       return;
     }
@@ -289,14 +295,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       || executionOptions.departmentLeaderSession?.localSessionId !== target.sessionId)) {
       throw new Error("部门组长原生会话证明与当前本地会话不匹配。");
     }
-    const resolvedSessionId = executionOptions.requireOriginalSession || hasDepartmentLeaderSession
+    const resolvedSessionId = recovery || executionOptions.requireOriginalSession || hasDepartmentLeaderSession
       || (cli === "codex" && executionOptions.departmentCodexRun)
       ? target.sessionId
       : await resolveInteractiveSessionForResume(cli, target.sessionId, tabId);
     if (resolvedSessionId === undefined) {
       return;
     }
-    if (!prepareOriginalSession) preparePendingLabel(cli, tabId, prompt);
+    if (!prepareOriginalSession && !recovery) preparePendingLabel(cli, tabId, prompt);
 
     let uiSessionId = resolvedSessionId;
     let messageTarget = uiSessionId
@@ -392,7 +398,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     if (tabOwner && !tabOwner.stopped) {
       throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
     }
-    if (!executionOptions.requireOriginalSession && deps.takeOverSessionForTab
+    if (!recovery && !executionOptions.requireOriginalSession && deps.takeOverSessionForTab
       && !await deps.takeOverSessionForTab({ ...target, sessionId: uiSessionId }, isPreparationAborted)) {
       return;
     }
@@ -422,6 +428,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     const readOriginalThread = () => uiSessionId
       ? resolveInteractiveMappedId(cli, uiSessionId) ?? (isLocalSessionId(uiSessionId) ? null : uiSessionId)
       : null;
+    if (recovery && readOriginalThread() !== recovery.nativeSessionId) return;
     const originalThreadId = prepareOriginalSession ? readOriginalThread() : null;
     if (prepareOriginalSession && (cli !== "codex" || !originalThreadId || executionOptions.departmentCodexRun)) {
       throw new Error("无法确认原 Codex 线程，任务未启动。");
@@ -1220,7 +1227,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       // The department Owner port consumes a single execution. Missing output
       // must settle as an error before queuing or waiting for another attempt.
-      if (executionOptions.departmentCodexRun) {
+      if (executionOptions.departmentCodexRun || recovery) {
         return { action: "error", message: t("run.missingFinalConclusion") };
       }
       const missingConclusionMessage = t("run.missingFinalConclusionRetryReason");
@@ -1296,7 +1303,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       executionOptions.registerQuestionRun?.(runId);
     };
     if (!prepareOriginalSession) {
-      publishRunStart();
+      if (!recovery) publishRunStart();
       registerRun();
     }
     const notifyCommittedRun = (notify: () => void): void => {
@@ -1339,6 +1346,21 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             notifyCommittedRun(() => beginInteractiveAttempt(thinkingPrompt));
           },
         };
+      },
+    } : undefined;
+    let recoverySent = false;
+    const recoveryTurn = recovery ? {
+      threadId: recovery.nativeSessionId,
+      canSend: () => !isPreparationAborted() && isCurrentRunActive() && isExecutionConfigCurrent()
+        && readOriginalThread() === recovery.nativeSessionId
+        && !Array.from(interactiveRunsByTabId.values()).some((run) => !run.stopped && run.runId !== runId
+          && run.cli === cli && run.sessionId === uiSessionId)
+        && recovery.canSend(),
+      afterSend: () => {
+        recoverySent = true;
+        notifyCommittedRun(() => preparePendingLabel(cli, tabId, prompt));
+        notifyCommittedRun(publishRunStart);
+        notifyCommittedRun(() => beginInteractiveAttempt(thinkingPrompt));
       },
     } : undefined;
 
@@ -1397,7 +1419,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         });
       }
 
-      if (runRegistered) beginInteractiveAttempt(attemptPrompt);
+      if (runRegistered && !recovery) beginInteractiveAttempt(attemptPrompt);
 
       try {
         if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode") {
@@ -1541,6 +1563,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           departmentCodexRun: executionOptions.departmentCodexRun,
           departmentInteractiveRunner: executionOptions.departmentInteractiveRunner,
           originalCodexThreadTurn: runRegistered ? undefined : prepareOriginalTurn,
+          loopPlusMain: loopPlusMainRuntime && !departmentRun ? { recovery: recoveryTurn } : undefined,
           cancelDepartmentCodexPreparation: executionOptions.cancelDepartmentCodexPreparation,
           resolveCodexInteractiveSelection,
           getConversationTabById,
@@ -1551,6 +1574,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         if (disposition === "continue") {
           continue;
         }
+        if (recovery && !recoverySent && isCurrentRunActive()) interactiveRunsByTabId.delete(tabId);
         return;
       } catch (error) {
         if (isCliCommandRepairableError(error)) {
@@ -1567,6 +1591,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         if (!runRegistered) throw error;
         const entry = interactiveRunsByTabId.get(tabId);
         if (!entry || entry.runId !== runId) {
+          return;
+        }
+        if (recovery && !recoverySent) {
+          interactiveRunsByTabId.delete(tabId);
           return;
         }
         const info = getErrorInfo(error);
@@ -1587,6 +1615,11 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
             if (interactiveRunsByTabId.get(tabId) === entry) interactiveRunsByTabId.delete(tabId);
             throw error;
           }
+        }
+        if (loopPlusMainRuntime && error instanceof CodexUnexpectedTurnExitError && executionOptions.isAborted?.() !== true) {
+          await cleanupAfterRun("error", error.message);
+          if (executionOptions.isAborted?.() !== true) loopPlusMainRuntime.onUnexpectedExit(error.threadId);
+          throw error;
         }
         subagentProgress.finishRunning("failed");
 
@@ -1609,7 +1642,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
         const canContinueCurrentConversation = Boolean(uiSessionId);
         hiddenRetryCount = resetHiddenRetryCountOnRecoveredReply(hiddenRetryCount, attemptHadNormalReply);
-        const shouldRetry = !executionOptions.departmentCodexRun && canContinueCurrentConversation
+        const shouldRetry = !executionOptions.departmentCodexRun && !recovery && canContinueCurrentConversation
           && !input.cliCommandRepairAttempted
           && hiddenRetryCount < HIDDEN_RETRY_MAX_RETRIES
           && isHiddenRetryEligibleErrorInfo(info);

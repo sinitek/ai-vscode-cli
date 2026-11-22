@@ -200,6 +200,60 @@ test("director group chat refreshes its overall progress from weighted leader pr
   } finally { h.restore(); }
 });
 
+test("director refresh forwards the same Loop+ task tags as the leader chat", async () => {
+  const h = harness();
+  h.leader.status = "running";
+  let mainBusy = false;
+  let reviewEventIds: string[] = [];
+  h.deps.isTabRunActive = (tabId) => tabId === h.leader.id && mainBusy;
+  h.deps.getActiveReviewEventIds = (taskId) => taskId === h.leader.id ? reviewEventIds : [];
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1, snapshot: h.leader.loopPlus });
+  try {
+    await h.coordinator.open(h.root.id);
+    await h.domReady;
+    const assertSharedTags = async (expected: string) => {
+      h.leader.loopPlus = scheduler.snapshot();
+      h.coordinator.refreshOpenPanelForTask(h.leader.id);
+      await tick();
+      const roster = h.posted.filter((item) => item.type === "loopGroupChatChat:contentPatch").at(-1)?.rosterPanelHtml ?? "";
+      const groupTags = /aria-label="组长A任务状态汇总">(.*?)<\/div>/u.exec(roster)?.[1];
+      const taskPanel = buildLoopGroupChatPanelContentPatch(buildLoopGroupChatPanelState(h.leader, h.deps), 2).taskPanelHtml;
+      const leaderTags = /aria-label="任务状态汇总">(.*?)<\/div>/u.exec(taskPanel)?.[1];
+      assert.ok(groupTags && groupTags.includes(`>${expected}</span>`), roster);
+      assert.equal(groupTags, leaderTags);
+      return groupTags;
+    };
+
+    mainBusy = true;
+    await assertSharedTags("运行中 2");
+    mainBusy = false;
+    const review = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-A", outcome: "completed" });
+    assert.ok(review.applied && review.eventId);
+    await assertSharedTags("待验收 2");
+    reviewEventIds = [review.eventId];
+    await assertSharedTags("验收中 1");
+
+    assert.equal(scheduler.submitReviewBatch(reviewEventIds, "failed").ok, true);
+    reviewEventIds = [];
+    const failed = await assertSharedTags("验收失败 1");
+    assert.match(failed, /data-loop-plus-tone="empty" data-loop-plus-count="completed">已完成 0/u);
+    scheduler.dispatch([{ subtaskId: "employee-A", attemptId: "attempt-repair" }]);
+    const repairing = await assertSharedTags("修复中 1");
+    assert.match(repairing, /data-loop-plus-tone="empty" data-loop-plus-count="acceptance_failed">验收失败 0/u);
+
+    h.leader.subTasks[0].status = "blocked";
+    const interrupted = await assertSharedTags("修复中 0");
+    assert.match(interrupted, /data-loop-plus-tone="empty" data-loop-plus-count="blocked">已阻塞 0/u);
+
+    h.leader.subTasks[0].status = "completed";
+    const repairedReview = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-repair", outcome: "completed" });
+    assert.ok(repairedReview.applied && repairedReview.eventId);
+    assert.equal(scheduler.submitReviewBatch([repairedReview.eventId], "passed").ok, true);
+    const passed = await assertSharedTags("已完成 1");
+    assert.match(passed, /data-loop-plus-tone="empty" data-loop-plus-count="acceptance_failed">验收失败 0/u);
+  } finally { h.restore(); }
+});
+
 test("department host rejects cross-department, bad root, metadata, workspace and classic leader records", async () => {
   const h = harness();
   try {
@@ -1011,6 +1065,36 @@ test("organization control projection requires trusted source, exact root/worksp
   for (const readCapacity of [() => null, () => { throw new Error("offline"); }, () => ({ ...port.readCapacity(), rootTaskId: "foreign" })]) {
     assert.deepEqual(readDepartmentOrganizationControlState(root, "workspace-A", { ...port, readCapacity }), { needsCleanup: true });
   }
+});
+
+test("director projection marks only a trusted root without a local controller interrupted and preserves reconciliation controls", async () => {
+  const h = harness();
+  h.root.status = "running";
+  const capacity = { rootTaskId: h.root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["module-A"], employees: [] };
+  h.deps.readDepartmentOrganizationControlState = (task) => readDepartmentOrganizationStopFeedback(task, h.root.workspaceKey!, {
+    readTaskRecord: (id) => h.records.get(id) ?? null, readCapacity: () => capacity,
+  });
+  try {
+    h.deps.hasLocalDepartmentDirectorActivity = () => false;
+    let state = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(state.task.status, "stopped");
+    assert.equal(state.task.departmentDirectorInterrupted, true);
+    assert.equal(state.task.canStop, true);
+    assert.equal(state.task.canContinue, false);
+    let actions = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
+    assert.match(actions, /本宿主执行已中断/u);
+    assert.match(actions, /data-action="stopTask"/u);
+    assert.match(actions, /data-action="continueTask"[^>]*disabled/u);
+
+    h.deps.hasLocalDepartmentDirectorActivity = () => true;
+    state = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(state.task.status, "running");
+    assert.equal(state.task.departmentDirectorInterrupted, undefined);
+
+    delete h.deps.hasLocalDepartmentDirectorActivity;
+    state = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(state.task.status, "running", "an unavailable host-activity reader is not evidence of interruption");
+  } finally { h.restore(); }
 });
 
 test("projection and organization controls agree on valid, empty and unknown capacity", () => {

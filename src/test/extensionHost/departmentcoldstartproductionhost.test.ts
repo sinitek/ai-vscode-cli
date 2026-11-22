@@ -1,6 +1,6 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
-import { createColdDeadlinePlan, createDepartmentColdStartHostTestEntry, coldRemaining, waitForColdPublicStopAction,
+import { createColdDeadlinePlan, createDepartmentColdStartHostTestEntry, readColdLoopPlusAttempt, coldRemaining, waitForColdPublicStopAction,
   waitForColdRecoveryWarning } from "./fixtures/departmentcoldstartproductionhost";
 import { sameExecution } from "../../runtime/departmentexecutionidentity";
 
@@ -33,6 +33,28 @@ test("cold EH fixture reads exact persisted identities and only calls the origin
   assert.match(entry, /module\.status !== 'running'/);
   assert.match(entry, /finally/);
   assert.match(entry, /public recovery action was not triggered before its deadline/);
+});
+
+test("cold Loop+ fixture requires the exact durable scheduler attempt and retained leader/employee capacity", () => {
+  const root: any = { id: "root", workspaceKey: "workspace", status: "running", department: { executionMode: "loop-plus", role: "director",
+    rootTaskId: "root", routes: { leader: "frozen" } }, subTasks: [{ id: "module", status: "running" }] };
+  const held = { leaderTaskId: "leader", subtaskId: "employee", attemptId: "attempt", reportFile: "/attempt-report" };
+  const leader: any = { id: "leader", workspaceKey: "workspace", status: "running", department: { executionMode: "loop-plus", role: "leader",
+    rootTaskId: "root", parentTaskId: "root", leaderSubtaskId: "module", routes: { leader: "frozen" } },
+  subTasks: [{ id: "employee", status: "running", communicationFile: "/attempt-report" }], loopPlus: { running: [{ subtaskId: "employee", attemptId: "attempt" }] } };
+  const saved: any = { rootTaskId: "root", workspaceKey: "workspace", runtime: { stopping: false,
+    leaders: [{ taskId: "leader", leaderSubtaskId: "module", status: "running" }] },
+  capacity: { leaders: ["module"], employees: [JSON.stringify(["leader", "attempt"])] } };
+  assert.deepEqual(readColdLoopPlusAttempt(root, [root, leader], saved, held).capacityKey, JSON.stringify(["leader", "attempt"]));
+  for (const mutate of [
+    (value: any) => { value.leader.loopPlus.running[0].attemptId = "other"; },
+    (value: any) => { value.saved.capacity.employees = []; },
+    (value: any) => { value.saved.capacity.leaders = []; },
+    (value: any) => { value.leader.subTasks[0].communicationFile = "/other"; },
+  ]) {
+    const value = structuredClone({ leader, saved }); mutate(value);
+    assert.throws(() => readColdLoopPlusAttempt(root, [root, value.leader], value.saved, held));
+  }
 });
 
 test("cold EH waits for delayed production warning and rejects missing or unrelated results", async () => {

@@ -254,6 +254,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
     target: PromptRunTarget,
     executionOptions: PromptRunExecutionOptions = {},
   ): Promise<void> {
+    if (input.loopPlusMainRuntime?.recovery) return;
     const runCli = target.cli;
     const prompt = input.displayPrompt;
     let sessionId = target.sessionId;

@@ -120,6 +120,7 @@ export function createLoopPlusRuntimeFixture(options: {
   closeDepartmentCoordinator?: LoopPlusRuntimeAdapterDeps["closeDepartmentCoordinator"];
   assertNewTaskModeAvailable?: LoopPlusRuntimeAdapterDeps["assertNewTaskModeAvailable"];
   onSubtaskTargetCreated?: (target: LoopPlusPromptTarget) => void;
+  recordDepartmentSubtaskTarget?: LoopPlusRuntimeAdapterDeps["recordDepartmentSubtaskTarget"];
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
   taskPersistence?: LoopPlusTaskPersistence;
@@ -504,6 +505,7 @@ export function createLoopPlusRuntimeFixture(options: {
       options.onSubtaskTargetCreated?.(created);
       return created;
     },
+    recordDepartmentSubtaskTarget: options.recordDepartmentSubtaskTarget,
     onSubtaskPreparationFailed: options.onSubtaskPreparationFailed,
     closeSubtaskTab: async (tabId) => {
       closedSubtaskTabs.push(tabId);
@@ -704,6 +706,7 @@ export type LoopPlusExtensionStopHarness = {
   attachPrimary: (tabId: string, spec: { loopTaskId?: string; taskRole?: "main" | "subtask"; onStop?: () => void }) => void;
   stoppedTabs: string[];
   fallbackTaskIds: string[];
+  userStopSources: unknown[];
   parentStopIds: string[];
 };
 
@@ -805,6 +808,7 @@ export function createLoopPlusExtensionStopHarness(options: {
   const extraTasks = new Map<string, LoopPlusNotedTask>();
   const stoppedTabs: string[] = [];
   const fallbackTaskIds: string[] = [];
+  const userStopSources: unknown[] = [];
   const parentStopIds: string[] = [];
   const primary: { tabId: string | null; onStop: (() => void) | null } = { tabId: null, onStop: null };
   const script = [
@@ -841,8 +845,9 @@ export function createLoopPlusExtensionStopHarness(options: {
     "  if (live) return live;",
     "  return extraTasks.get(taskId) || null;",
     "}",
-    "function markLoopTaskStoppedByUser(taskId) {",
+    "function markLoopTaskStoppedByUser(taskId, source) {",
     "  fallbackTaskIds.push(taskId);",
+    "  userStopSources.push(source);",
     "  return null;",
     "}",
     "function postPanelState() { return Promise.resolve(); }",
@@ -904,6 +909,7 @@ export function createLoopPlusExtensionStopHarness(options: {
     loopPlusRuntimeAdapter: null,
     parentStopIds,
     fallbackTaskIds,
+    userStopSources,
     stoppedTabs,
     hostProvider: () => options.getHost(),
     readLiveTask: (taskId: string) => options.readTask?.(taskId) ?? null,
@@ -960,6 +966,7 @@ export function createLoopPlusExtensionStopHarness(options: {
     },
     stoppedTabs,
     fallbackTaskIds,
+    userStopSources,
     parentStopIds,
   };
 }

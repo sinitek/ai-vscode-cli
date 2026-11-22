@@ -70,10 +70,15 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
   };
 }
 
+const LOOP_BLOCKER_SUMMARY_HEADER = "### 当前结论\n子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成。";
+
+export function isLoopBlockerSummary(summary: string | undefined): boolean {
+  return summary?.startsWith(`${LOOP_BLOCKER_SUMMARY_HEADER}\n`) === true;
+}
+
 export function buildLoopBlockerSummary(blocker: LoopBlocker): string {
   return [
-    "### 当前结论",
-    "子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成。",
+    LOOP_BLOCKER_SUMMARY_HEADER,
     ...(blocker.kind === "impossible" ? ["按当前要求无法完成。"] : []),
     "", "### 熔断原因与未完成事项", blocker.cause,
     ...blocker.affectedRequirements.map((item) => `- 未完成：${item}`),

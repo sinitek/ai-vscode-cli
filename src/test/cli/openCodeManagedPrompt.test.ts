@@ -7,14 +7,61 @@ import * as path from "path";
 import { runOpenCodeManagedPrompt } from "../../cli/openCodeManagedPrompt";
 import { parseOpenCodeRunOutput, extractOpenCodeRuntimeSessionId } from "../../cli/openCodeRunOutput";
 
+const setFixtureTimer = setTimeout;
+const clearFixtureTimer = clearTimeout;
+
+async function withFixtureDeadline<Result>(pending: Promise<Result>, action: string): Promise<Result> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setFixtureTimer(() => reject(new Error(`fixture deadline exceeded: ${action}`)), 5_000);
+  });
+  try {
+    return await Promise.race([pending, deadline]);
+  } finally {
+    clearFixtureTimer(timer);
+  }
+}
+
+function waitForFixtureRequest(requested: Promise<void>, result: Promise<Error | null>): Promise<void> {
+  return withFixtureDeadline(Promise.race([
+    requested,
+    result.then(error => { throw new Error(`managed prompt settled before the fixture received the request: ${error?.message ?? "success"}`); }),
+  ]), "receive managed prompt request");
+}
+
+async function listenOnLoopback(context: test.TestContext, server: http.Server, root: string, stop: () => void) {
+  context.after(async () => {
+    try {
+      stop();
+    } finally {
+      try {
+        await new Promise<void>(resolve => {
+          server.close(() => resolve());
+          server.closeAllConnections();
+        });
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+  await withFixtureDeadline(new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolve(); });
+  }), "start loopback listener");
+}
+
 type Mutation = (value: any) => void;
 async function harness(t: test.TestContext, mutate: Mutation = () => {}, delay = false) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "managed-prompt-test-"));
   const directory = fs.realpathSync(root);
   const calls: { method?: string; url: string; body: any }[] = [];
-  let release: (() => void) | undefined;
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
   let entered!: () => void;
   const requested = new Promise<void>(resolve => { entered = resolve; });
+  let markResponseClosed!: () => void;
+  const responseClosed = new Promise<void>(resolve => { markResponseClosed = resolve; });
+  let run: ReturnType<typeof runOpenCodeManagedPrompt> | undefined;
   const server = http.createServer(async (req, res) => {
     let raw = ""; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : null;
@@ -33,22 +80,27 @@ async function harness(t: test.TestContext, mutate: Mutation = () => {}, delay =
       providerID: "local", modelID: "model", path: { cwd: directory }, time: { completed: Date.now() }, finish: "stop" },
       parts: [{ id: "prt_text", type: "text", sessionID: "ses_original", messageID: "msg_answer", text: '{"status":"continue"}' }] };
     mutate(response);
-    entered();
-    if (delay) await new Promise<void>(resolve => { release = resolve; });
-    res.end(JSON.stringify(response));
+    if (delay) {
+      res.once("close", markResponseClosed);
+      entered();
+      await held;
+    }
+    if (!res.destroyed) res.end(JSON.stringify(response));
   });
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => { release?.(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(root, { recursive: true }); });
+  await listenOnLoopback(t, server, root, () => {
+    try { run?.kill(); } finally { release(); }
+  });
   const address = server.address() as { port: number };
   let active = true, stdout = "", sessions: string[] = [];
   let done!: (error: Error | null) => void;
   const result = new Promise<Error | null>(resolve => { done = resolve; });
-  const start = (resume: string | null = null, timeoutMs?: number, maxBytes = 8192) => runOpenCodeManagedPrompt({
+  const start = (resume: string | null = null, timeoutMs?: number, maxBytes = 8192) => run = runOpenCodeManagedPrompt({
     connection: { serverUrl: `http://127.0.0.1:${address.port}`, authorization: "Basic local-only" },
     cwd: root, sessionId: resume, model: "local/model", variant: "high", prompt: "exact current prompt",
     isCurrent: () => active, onSession: id => sessions.push(id), maxBytes, timeoutMs,
   }, { onStdout: chunk => { stdout += chunk; }, onExit: code => { assert.equal(code, 0); done(null); }, onError: done });
-  return { start, result, calls, requested, release: () => release?.(), stale: () => { active = false; }, output: () => stdout, sessions: () => sessions };
+  return { start, result, calls, waitForRequest: () => waitForFixtureRequest(requested, result),
+    responseClosed, release, stale: () => { active = false; }, output: () => stdout, sessions: () => sessions };
 }
 
 test("managed native response is bound to exact request/session/directory and parsed without another execution", async t => {
@@ -78,16 +130,42 @@ for (const [name, mutate] of Object.entries<Mutation>({
   const h = await harness(t, mutate); h.start(); assert.ok(await h.result); assert.equal(h.output(), ""); assert.equal(h.calls.length, 2);
 });
 test("managed cancellation fences late result and does not replay", async t => {
-  const h = await harness(t, undefined, true); const process = h.start(); await h.requested;
+  const h = await harness(t, undefined, true); const process = h.start(); await h.waitForRequest();
   process.kill(); h.release(); assert.match((await h.result)!.message, /cancelled/); assert.equal(h.output(), ""); assert.equal(process.kill(), false);
 });
 test("managed target invalidation fences a late successful response", async t => {
-  const h = await harness(t, undefined, true); h.start(); await h.requested; h.stale(); h.release();
+  const h = await harness(t, undefined, true); h.start(); await h.waitForRequest(); h.stale(); h.release();
   assert.match((await h.result)!.message, /cancelled/); assert.equal(h.output(), "");
 });
 test("managed request has a finite timeout", async t => {
-  const h = await harness(t, undefined, true); h.start(null, 30); await h.requested;
-  assert.match((await h.result)!.message, /timeout/); h.release(); assert.equal(h.output(), "");
+  const fixture = await harness(t, undefined, true);
+  t.mock.timers.enable({ apis: ["setTimeout"] } as never);
+  const run = fixture.start(null, 30);
+  let settled = false;
+  void fixture.result.then(() => { settled = true; });
+  t.mock.timers.tick(20);
+  await fixture.waitForRequest();
+  t.mock.timers.tick(9);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  t.mock.timers.tick(1);
+  const result = await withFixtureDeadline(fixture.result, "settle managed prompt timeout");
+  assert.equal(result?.message, "opencode-managed-timeout");
+  await withFixtureDeadline(fixture.responseClosed, "close withheld HTTP response");
+  assert.equal(fixture.output(), "");
+  assert.deepEqual(fixture.calls.map(call => [call.method, call.url]), [
+    ["POST", "/session"], ["POST", "/session/ses_original/message"],
+  ]);
+  assert.equal(run.kill(), false);
+});
+test("managed fixture reports timeout before the request handshake", async t => {
+  const fixture = await harness(t, undefined, true);
+  t.mock.timers.enable({ apis: ["setTimeout"] } as never);
+  fixture.start(null, 30);
+  t.mock.timers.tick(30);
+  await assert.rejects(fixture.waitForRequest(), /settled before the fixture received the request: opencode-managed-timeout/);
+  assert.deepEqual(fixture.calls, []);
+  assert.equal(fixture.output(), "");
 });
 test("managed response rejects oversized output", async t => {
   const h = await harness(t, value => { value.parts[0].text = "x".repeat(10000); }); h.start(null, 1000, 2048);
@@ -116,13 +194,13 @@ async function eventHarness(t: test.TestContext, args: string[] = []) {
     if (url.pathname === "/session/ses_current/message") { response = res; prompt = body; ready(); return; }
     res.writeHead(404); res.end("false");
   });
-  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); fs.rmSync(root, { recursive: true }); });
-  const run = runOpenCodeManagedPrompt({ connection: { serverUrl: `http://127.0.0.1:${(server.address() as any).port}` },
+  let run: ReturnType<typeof runOpenCodeManagedPrompt> | undefined;
+  await listenOnLoopback(t, server, root, () => { run?.kill(); });
+  run = runOpenCodeManagedPrompt({ connection: { serverUrl: `http://127.0.0.1:${(server.address() as any).port}` },
     cwd: root, sessionId: null, model: "local/model", variant: null, args, prompt: "read only isolated fixture",
     isCurrent: () => active, onSession: id => sessions.push(id), maxBytes: 65536,
   }, { onActivity: () => activities++, onStdout: chunk => { stdout += chunk; }, onExit: () => nativeDone(null), onError: nativeDone });
-  await entered;
+  await waitForFixtureRequest(entered, result);
   const send = (type: string, properties: any) => events.write(`data: ${JSON.stringify({ type, properties })}\n\n`);
   const info = (id = "msg_current", sessionID = "ses_current", parentID = prompt.messageID) => ({ id, sessionID, parentID, role: "assistant",
     providerID: "local", modelID: "model", agent: "restricted", path: { cwd: root }, time: { created: Date.now() } });

@@ -9,24 +9,28 @@ const directory = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities"
 const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
 const readLockWaitMs = 100;
+const lockPollMs = 5;
 const inside = (root: string, file: string) => file === root || file.startsWith(`${root}${path.sep}`);
 type IdentityCatalogUnavailable = "identity-lock-present" | "identity-catalog-unavailable";
 
-export function isLoopTaskIdentityLockContention(error: unknown): boolean {
+function isLoopTaskIdentityLockContention(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const ioError = error as NodeJS.ErrnoException;
   return ioError.code === "EEXIST" && ioError.syscall === "open" && ioError.path === lockFile;
 }
 
-function waitForTransactionLock(): boolean {
-  const deadline = Date.now() + readLockWaitMs;
+function waitForTransactionLock(deadline = performance.now() + readLockWaitMs): boolean {
   const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
   while (fs.existsSync(lockFile)) {
-    const remaining = deadline - Date.now();
+    const remaining = deadline - performance.now();
     if (remaining <= 0) return false;
-    Atomics.wait(pause, 0, 0, Math.min(5, remaining));
+    Atomics.wait(pause, 0, 0, Math.min(lockPollMs, remaining));
   }
   return true;
+}
+
+export function waitForLoopTaskIdentityUpdateRetry(deadline: number): boolean {
+  return waitForTransactionLock(deadline) && performance.now() < deadline;
 }
 
 function read(allowUnready = false): Snapshot | null {
@@ -58,11 +62,17 @@ function publish(value: Snapshot): void {
     fs.renameSync(temp, catalogFile);
   } finally { try { fs.unlinkSync(temp); } catch { /* Published or retained diagnostic. */ } }
 }
-function locked<T>(action: () => T): T {
+function locked<T>(action: () => T, onLockContention?: () => void): T {
   fs.mkdirSync(directory, { recursive: true });
   // All supported ordinary and owned writers use this lock, even before initialization.
   // Unknown/stale locks are never stolen based on PID, mtime or elapsed time.
-  const fd = fs.openSync(lockFile, "wx", 0o600);
+  let fd: number;
+  try {
+    fd = fs.openSync(lockFile, "wx", 0o600);
+  } catch (error) {
+    if (onLockContention && isLoopTaskIdentityLockContention(error)) onLockContention();
+    throw error;
+  }
   const identity = fs.fstatSync(fd);
   try { return action(); }
   finally {
@@ -237,13 +247,17 @@ export function isDepartmentOwnedLoopTaskIdentity(taskId: string): boolean | nul
   return null;
 }
 
+function ownsIdentity(snapshot: Snapshot, taskId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(snapshot.owned, taskId) || Object.entries(snapshot.files).some(([file, ids]) => ids.includes(taskId)
+    && snapshot.roots.some((root) => inside(root, file)));
+}
+
 export function inspectLoopTaskIdentityOwnership(taskId: string): "ordinary" | "department-owned" | IdentityCatalogUnavailable {
   try {
     if (fs.existsSync(lockFile)) return "identity-lock-present";
     const snapshot = read();
     if (!snapshot) return "ordinary";
-    const owned = Object.prototype.hasOwnProperty.call(snapshot.owned, taskId) || Object.entries(snapshot.files).some(([file, ids]) => ids.includes(taskId)
-      && snapshot.roots.some((root) => inside(root, file)));
+    const owned = ownsIdentity(snapshot, taskId);
     if (fs.existsSync(lockFile)) return "identity-lock-present";
     return owned ? "department-owned" : "ordinary";
   } catch { return "identity-catalog-unavailable"; }
@@ -273,9 +287,27 @@ export function commitLoopTaskIdentities(
   updates: ReadonlyMap<string, readonly Identity[]>,
   write: () => boolean,
   ownedRoot?: string,
-  ordinary?: { atomicWrite: true; move?: { taskId: string; sourceFile: string; sourceTasks: readonly Identity[]; targetFile: string } },
+  ordinary?: {
+    atomicWrite: true;
+    move?: { taskId: string; sourceFile: string; sourceTasks: readonly Identity[]; targetFile: string };
+    onLockContention?: () => void;
+    updateSource?: { taskId: string; file: string; assertUnchanged(): void };
+  },
 ): boolean {
-  return locked(() => commitLoopTaskIdentitiesUnderLock(read(), updates, write, ownedRoot, ordinary));
+  return locked(() => {
+    const snapshot = read();
+    const source = ordinary?.updateSource;
+    if (source) {
+      const moved = snapshot?.ordinaryMoves?.[source.taskId]?.file;
+      const file = path.resolve(source.file);
+      if (snapshot && (ownsIdentity(snapshot, source.taskId) || snapshot.roots.some((root) => inside(root, file)))) {
+        throw new Error("Controlled task identities require owner transactions");
+      }
+      if (moved && moved !== file) throw new Error("Loop task update source moved before commit");
+      source.assertUnchanged();
+    }
+    return commitLoopTaskIdentitiesUnderLock(snapshot, updates, write, ownedRoot, ordinary);
+  }, ordinary?.onLockContention);
 }
 
 // The caller owns the non-reentrant writer gate and has read this exact snapshot.

@@ -63,6 +63,7 @@ export type CodexAppServerNotificationSource = Readonly<{
 
 export type CodexAppServerCloseInfo = {
   connectionId: number;
+  naturalExit: boolean;
   code: number | null;
   signal: NodeJS.Signals | null;
   stderr: string;
@@ -143,9 +144,8 @@ export function acquireCodexAppServer(
     existing.retain(listener);
     return existing;
   }
-  if (existing) {
+  if (existing && !existing.isDrainingAfterExit()) {
     existing.shutdown("terminate");
-    connections.delete(spec.key);
   }
   const connection = new CodexAppServerConnection(spec, runtime);
   connections.set(spec.key, connection);
@@ -237,7 +237,12 @@ export class CodexAppServerConnection {
   }
 
   public isAlive(): boolean {
-    return !this.closed && this.child !== null && this.child.exitCode === null && this.child.signalCode === null;
+    return !this.closed && this.child !== null && !this.isDrainingAfterExit();
+  }
+
+  public isDrainingAfterExit(): boolean {
+    return !this.closed && (this.processExited
+      || (this.child !== null && (this.child.exitCode !== null || this.child.signalCode !== null)));
   }
 
   public hasLoadedThread(threadId: string | null | undefined): boolean {
@@ -263,6 +268,7 @@ export class CodexAppServerConnection {
   }
 
   public release(listenerId: string): void {
+    if (this.isDrainingAfterExit()) return;
     this.detachListener(listenerId);
     if (this.listeners.size === 0) {
       this.shutdown("terminate");
@@ -607,11 +613,11 @@ export class CodexAppServerConnection {
     return this.requestInternal<T>(ownerId, method, params, method === "thread/start" || method === "thread/resume", expectedThreadId);
   }
 
-  public startPreparedTurn<T>(ownerId: string, params: Record<string, unknown>, commit: () => void): Promise<T> {
+  public startPreparedTurn<T>(ownerId: string, params: Record<string, unknown>, commit: () => void, onSent?: () => void): Promise<T> {
     if (this.ownedSealed || !this.isAlive() || !this.child?.stdin?.writable) {
       throw new Error(t("codex.appServerStdinUnavailable"));
     }
-    return this.requestInternal<T>(ownerId, "turn/start", params, false, undefined, commit);
+    return this.requestInternal<T>(ownerId, "turn/start", params, false, undefined, commit, onSent);
   }
 
   public notify(method: string, params?: Record<string, unknown>): void {
@@ -672,6 +678,7 @@ export class CodexAppServerConnection {
     this.reader?.close();
     const info: CodexAppServerCloseInfo = {
       connectionId: this.id,
+      naturalExit: this.naturalCloseFinalizing && !this.spawnError && (this.exitCode !== null || this.exitSignal !== null),
       code: this.exitCode,
       signal: this.exitSignal,
       stderr: Buffer.concat(this.stderrChunks).toString("utf8"),
@@ -749,15 +756,14 @@ export class CodexAppServerConnection {
     child.once("close", (code, signal) => {
       onExit(code, signal);
       if (!this.closed) {
-        if (this.spec.ownedExecution) {
-          // Child close may run before the async iterator dispatches its last line.
-          void (async () => {
-            await this.readLoopDone;
+        void (async () => {
+          await this.readLoopDone;
+          if (!this.closed) {
             this.naturalCloseFinalizing = true;
             this.shutdown("terminate");
-            this.resolveNaturalClose?.();
-          })();
-        } else this.shutdown("terminate");
+          }
+          this.resolveNaturalClose?.();
+        })();
       } else this.resolveNaturalClose?.();
     });
     if (!child.stdout) {
@@ -780,6 +786,7 @@ export class CodexAppServerConnection {
   private async initialize(): Promise<void> {
     try {
       await this.requestInternal("connection", "initialize", this.spec.initializeParams, false);
+      if (!this.isAlive()) return;
       this.notify("initialized");
       this.readyResolve?.();
       this.readyResolve = null;
@@ -1096,6 +1103,7 @@ export class CodexAppServerConnection {
     claimThreadFromResult: boolean,
     expectedThreadId?: string,
     commit?: () => void,
+    onSent?: () => void,
   ): Promise<T> {
     const id = this.nextRequestId++;
     const message = { jsonrpc: "2.0", id, method, params };
@@ -1121,6 +1129,7 @@ export class CodexAppServerConnection {
       try {
         if (prepared === undefined) this.send(message);
         else this.sendSerialized(prepared);
+        onSent?.();
       } catch (error) {
         this.pending.delete(id);
         reject(error instanceof Error ? error : new Error(String(error)));

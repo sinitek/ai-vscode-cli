@@ -530,6 +530,87 @@ test("interactive preparation cannot start a closed, replaced or rebound target"
   }
 });
 
+test("Loop+ recovery rechecks its original binding and send lease after async preparation", async () => {
+  for (const change of ["closed", "object", "cli", "session", "mapped-session", "stopped", "owned"] as const) {
+    const preparing = createDeferred();
+    const release = createDeferred();
+    let allowed = true;
+    const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+      resolveInteractiveMappedId: () => "original-thread",
+      readRuntimeConfigFingerprint: async () => { preparing.resolve(); await release.promise; return "identity"; },
+    }, codexRunBehavior: async (_prompt, handlers) => {
+      if (!handlers.loopPlusMain?.recovery?.canSend()) {
+        throw Object.assign(new Error("recovery denied"), { code: "SESSION_RUN_ACTIVE" });
+      }
+    } });
+    const input = createPromptInput({
+      taskRole: "main", loopTaskId: "loop-task",
+      loopPlusMainRuntime: {
+        onUnexpectedExit: () => undefined,
+        recovery: { target: createTarget(), nativeSessionId: "original-thread", canSend: () => allowed },
+      },
+    });
+    const pending = h.host.runPromptInteractive(input, createTarget());
+    await preparing.promise;
+    const tab = h.tabs.get("tab-1")!;
+    if (change === "closed") h.tabs.delete(tab.id);
+    if (change === "object") h.tabs.set(tab.id, { ...tab });
+    if (change === "cli") tab.cli = "claude";
+    if (change === "session") tab.sessionId = "another";
+    if (change === "mapped-session") tab.sessionIdByCli.codex = "another";
+    if (change === "stopped") allowed = false;
+    if (change === "owned") h.activeRunsByTabId.set(tab.id, { runId: "replacement", tabId: tab.id,
+      cli: "codex", sessionId: "session-1", stopped: false } as InteractiveTabRun);
+    release.resolve();
+    if (change === "owned") await assert.rejects(pending, { code: "SESSION_RUN_ACTIVE" });
+    else await pending;
+    assert.equal(h.codexRunnerCreateCalls, change === "stopped" ? 1 : 0, change);
+    assert.deepEqual(h.runStatusEvents, [], change);
+  }
+});
+
+test("Loop+ recovery checks the lease immediately before send and never uses hidden retry", async () => {
+  let allowed = true;
+  let sends = 0;
+  const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+    resolveInteractiveMappedId: () => "original-thread",
+  }, codexRunBehavior: async (_prompt, handlers) => {
+    const recovery = handlers.loopPlusMain?.recovery;
+    if (!recovery?.canSend()) throw new Error("recovery-denied");
+    sends += 1;
+    recovery.afterSend();
+    throw new (require("../../interactive/codexRunner").CodexUnexpectedTurnExitError)("unexpected exit", "original-thread");
+  } });
+  const input = createPromptInput({ taskRole: "main", loopTaskId: "loop-task", loopPlusMainRuntime: {
+    onUnexpectedExit: () => undefined,
+    recovery: { target: createTarget(), nativeSessionId: "original-thread", canSend: () => allowed },
+  } });
+  allowed = false;
+  await h.host.runPromptInteractive(input, createTarget());
+  assert.equal(sends, 0);
+  assert.deepEqual(h.runStatusEvents, []);
+});
+
+test("Loop+ interruption callback accepts only a typed unexpected exit from the current Codex call", async () => {
+  const unexpected = require("../../interactive/codexRunner").CodexUnexpectedTurnExitError;
+  for (const outcome of ["natural", "stopped"] as const) {
+    const exits: string[] = [];
+    const h = createInteractiveRuntimeHarness({ runtimeDeps: {
+      resolveInteractiveMappedId: () => "original-thread",
+    }, codexRunBehavior: async (_prompt, handlers) => {
+      if (outcome === "natural") throw new unexpected("closed", "original-thread");
+      handlers.onTrace("stopped");
+      handlers.onAssistantDelta("[final_answer] normal completion", { codexFinalAnswer: true });
+    } });
+    const input = createPromptInput({ taskRole: "main", loopTaskId: "loop-task", loopPlusMainRuntime: {
+      onUnexpectedExit: (threadId) => exits.push(threadId),
+    } });
+    if (outcome === "natural") await assert.rejects(h.host.runPromptInteractive(input, createTarget()));
+    else await h.host.runPromptInteractive(input, createTarget());
+    assert.deepEqual(exits, outcome === "natural" ? ["original-thread"] : []);
+  }
+});
+
 test("original Codex session admission does not commit after a preparation-time rebind or new owner", async () => {
   for (const drift of ["rebind", "occupied"] as const) {
     const preparing = createDeferred();

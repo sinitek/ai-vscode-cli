@@ -328,6 +328,20 @@ test("normal return commits readable JSON, and only a missing task returns null"
   assertNoTempFiles(task.taskStoreFile);
 });
 
+test("Loop+ recovery failures and their reset survive cold store reads", () => {
+  const task: LoopTaskRecord = { ...createTask(), schedulingMode: "event_driven" };
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  assert.equal(coldStore().readLoopTaskRecord(task.id)?.loopPlusMainRecoveryFailureCount, undefined);
+  store.updateLoopTaskRecord(task.id, { loopPlusMainRecoveryFailureCount: 2 });
+  assert.equal(coldStore().readLoopTaskRecord(task.id)?.loopPlusMainRecoveryFailureCount, 2);
+  store.updateLoopTaskRecord(task.id, { loopPlusMainRecoveryFailureCount: 0 });
+  assert.equal(coldStore().readLoopTaskRecord(task.id)?.loopPlusMainRecoveryFailureCount, 0);
+  store.updateLoopTaskRecord(task.id, { loopPlusMainRecoveryFailureCount: 3, status: "needs-review" });
+  const paused = coldStore().readLoopTaskRecord(task.id);
+  assert.equal(paused?.loopPlusMainRecoveryFailureCount, 3);
+  assert.equal(paused?.status, "needs-review");
+});
+
 test("rejects damaged dependency writes before replacing existing store bytes", () => {
   const task = createTask();
   store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
@@ -693,6 +707,188 @@ test("known ordinary reads follow migration authority across stale host cache an
   `);
 });
 
+for (const contentionStage of ["host-route", "store-resolution", "identity-check", "identity-commit"]) {
+  test(`ordinary update retries ${contentionStage} contention with fresh task and sibling records`, () => {
+    checkOrdinaryAuthority(`
+      const current={...task('contended-update'),schedulingMode:'event_driven'};
+      const sibling=task('sibling',current.taskStoreFile);
+      store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current,sibling]});
+      catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[current.taskStoreFile,[current,sibling]]]));
+      const stage=${JSON.stringify(contentionStage)};
+      const holdLock=()=>fs.writeFileSync(lock,'concurrent writer',{flag:'wx'});
+      const inspect=catalog.inspectLoopTaskIdentityOwnership,locate=catalog.locateOrdinaryLoopTaskMove,open=fs.openSync,wait=Atomics.wait;
+      let inspections=0,releases=0;
+      if(stage==='host-route') holdLock();
+      if(stage==='store-resolution') catalog.locateOrdinaryLoopTaskMove=(...args)=>{
+        catalog.locateOrdinaryLoopTaskMove=locate;
+        holdLock();
+        return locate(...args);
+      };
+      if(stage==='identity-check') catalog.inspectLoopTaskIdentityOwnership=(...args)=>{
+        if(++inspections===2) holdLock();
+        return inspect(...args);
+      };
+      if(stage==='identity-commit') fs.openSync=(file,...args)=>{
+        if(file===lock) {
+          fs.openSync=open;
+          holdLock();
+        }
+        return open(file,...args);
+      };
+      Atomics.wait=()=>{
+        Atomics.wait=wait;
+        assert.equal(fs.readFileSync(lock,'utf8'),'concurrent writer');
+        fs.unlinkSync(lock);
+        releases++;
+        store.writeLoopTaskStore(current.taskStoreFile,{tasks:[{...current,currentRound:2},{...sibling,finalSummary:'sibling update'}]});
+        return 'timed-out';
+      };
+      const result=store.updateLoopTaskRecord(current.id,{status:'completed'});
+      assert.equal(releases,1);
+      assert.equal(result?.status,'completed');
+      assert.equal(result?.currentRound,2);
+      const fresh=store.readLoopTaskRecord(current.id);
+      assert.equal(fresh?.status,'completed');
+      assert.equal(fresh?.currentRound,2);
+      assert.equal(store.readLoopTaskRecord(sibling.id)?.finalSummary,'sibling update');
+      assert.equal(fs.existsSync(lock),false);
+    `);
+  });
+}
+
+test("ordinary update that contends at commit follows the migration published during the wait", () => {
+  checkOrdinaryAuthority(`
+    const current=task('move-during-wait');
+    const source=current.taskStoreFile;
+    const target=store.getLoopTaskStoreSessionFile(current.workspaceKey,'codex','moved');
+    store.writeLoopTaskStore(source,{tasks:[current]});
+    catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[source,[current]]]));
+    const before=fs.readFileSync(source,'utf8');
+    const open=fs.openSync,wait=Atomics.wait;
+    fs.openSync=(file,...args)=>{
+      if(file===lock) {
+        fs.openSync=open;
+        fs.writeFileSync(lock,'moving writer',{flag:'wx'});
+      }
+      return open(file,...args);
+    };
+    Atomics.wait=()=>{
+      Atomics.wait=wait;
+      fs.unlinkSync(lock);
+      const moved={...current,taskStoreFile:target,sessionId:'moved',currentRound:2};
+      assert.equal(catalog.commitLoopTaskIdentities(new Map([[target,[moved]]]),()=>{
+        fs.mkdirSync(path.dirname(target),{recursive:true});
+        fs.writeFileSync(target,JSON.stringify({tasks:[moved]}),{flag:'wx'});
+        return true;
+      },undefined,{atomicWrite:true,move:{taskId:current.id,sourceFile:source,sourceTasks:[],targetFile:target}}),true);
+      return 'timed-out';
+    };
+    const result=store.updateLoopTaskRecord(current.id,{status:'completed'});
+    assert.equal(result?.taskStoreFile,target);
+    assert.equal(result?.currentRound,2);
+    assert.equal(store.readLoopTaskRecord(current.id)?.status,'completed');
+    assert.equal(store.readLoopTaskStore(target).tasks[0].status,'completed');
+    assert.equal(fs.readFileSync(source,'utf8'),before);
+  `);
+});
+
+test("repeated short-lived acquisition contention reaches the retry cap without writing", () => {
+  checkOrdinaryAuthority(`
+    const current=task('retry-cap');
+    store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current]});
+    const before=fs.readFileSync(current.taskStoreFile,'utf8');
+    const timestamp=performance.now();
+    Object.defineProperty(performance,'now',{value:()=>timestamp});
+    const open=fs.openSync;
+    let attempts=0;
+    fs.openSync=(file,...args)=>{
+      if(file!==lock) return open(file,...args);
+      attempts++;
+      fs.closeSync(open(lock,'wx'));
+      try { return open(file,...args); }
+      finally { fs.unlinkSync(lock); }
+    };
+    assert.equal(store.updateLoopTaskRecord(current.id,{status:'completed'}),null);
+    assert.equal(attempts,4);
+    assert.equal(fs.readFileSync(current.taskStoreFile,'utf8'),before);
+  `);
+});
+
+test("ordinary update rejects a stale file snapshot when the competing transaction finishes before lock acquisition", () => {
+  checkOrdinaryAuthority(`
+    const current=task('fast-writer');
+    const sibling=task('sibling',current.taskStoreFile);
+    store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current,sibling]});
+    const open=fs.openSync;
+    fs.openSync=(file,...args)=>{
+      if(file===lock) {
+        fs.openSync=open;
+        store.writeLoopTaskStore(current.taskStoreFile,{tasks:[{...current,currentRound:2},{...sibling,finalSummary:'new sibling state'}]});
+      }
+      return open(file,...args);
+    };
+    assert.throws(()=>store.updateLoopTaskRecord(current.id,{status:'completed'}),/update input changed before commit/);
+    assert.equal(store.readLoopTaskRecord(current.id)?.status,'running');
+    assert.equal(store.readLoopTaskRecord(current.id)?.currentRound,2);
+    assert.equal(store.readLoopTaskRecord(sibling.id)?.finalSummary,'new sibling state');
+  `);
+});
+
+for (const state of ["department-owned", "corrupt", "unready"]) {
+  test(`ordinary update remains rejected when a released lock exposes ${state}`, () => {
+    checkOrdinaryAuthority(`
+      const current=task('refused-update');
+      store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current]});
+      const before=fs.readFileSync(current.taskStoreFile,'utf8');
+      const wait=Atomics.wait;
+      let waits=0;
+      fs.writeFileSync(lock,'concurrent writer',{flag:'wx'});
+      Atomics.wait=()=>{
+        waits++;
+        fs.unlinkSync(lock);
+        const root=path.join(process.env.HOME,'owned');
+        const ownedFile=path.join(root,'loop-tasks.json');
+        const state=${JSON.stringify(state)};
+        catalog.initializeLoopTaskIdentityCatalog(root,()=>new Map([[ownedFile,[current]]]));
+        if(state==='corrupt') fs.writeFileSync(catalogFile,'{broken');
+        if(state==='unready') fs.writeFileSync(catalogFile,JSON.stringify({...JSON.parse(fs.readFileSync(catalogFile,'utf8')),ready:false}));
+        return 'timed-out';
+      };
+      assert.equal(store.updateLoopTaskRecord(current.id,{status:'completed'}),null);
+      assert.equal(store.updateLoopTaskRecord(current.id,{status:'completed'}),null);
+      Atomics.wait=wait;
+      assert.equal(waits,1);
+      assert.equal(fs.readFileSync(current.taskStoreFile,'utf8'),before);
+    `);
+  });
+}
+
+test("ordinary update never replays an uncertain write even when publication throws a lock-shaped error", () => {
+  checkOrdinaryAuthority(`
+    const current=task('uncertain-update');
+    store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current]});
+    catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[current.taskStoreFile,[current]]]));
+    const fault=Object.assign(new Error('publication failed'),{code:'EEXIST',syscall:'open',path:lock});
+    const rename=fs.renameSync,open=fs.openSync;
+    let gateAttempts=0,catalogWrites=0,storeWrites=0;
+    fs.openSync=(file,...args)=>{
+      if(file===lock) gateAttempts++;
+      return open(file,...args);
+    };
+    fs.renameSync=(source,target)=>{
+      if(target===catalogFile && ++catalogWrites===2) throw fault;
+      if(target===current.taskStoreFile) storeWrites++;
+      return rename(source,target);
+    };
+    assert.throws(()=>store.updateLoopTaskRecord(current.id,{status:'completed'}),error=>error===fault);
+    assert.equal(gateAttempts,1);
+    assert.equal(storeWrites,1);
+    assert.equal(JSON.parse(fs.readFileSync(current.taskStoreFile,'utf8')).tasks[0].status,'completed');
+    assert.equal(JSON.parse(fs.readFileSync(catalogFile,'utf8')).ready,false);
+    assert.equal(store.readLoopTaskRecord(current.id),null);
+  `);
+});
+
 test("ordinary task update emits classified identity-lock and owner-transaction failures", async (t) => {
   const logger = require("../../logger") as typeof import("../../logger");
   await logger.initLogger();
@@ -708,7 +904,10 @@ test("ordinary task update emits classified identity-lock and owner-transaction 
 
   const identityDirectory = path.join(testHome, ".sinitek_cli", "loop-task-identities");
   fs.writeFileSync(path.join(identityDirectory, "transaction.lock"), "unknown");
+  const original = fs.readFileSync(task.taskStoreFile, "utf8");
   assert.equal(store.updateLoopTaskRecord(task.id, { finalSummary: "lock" }), null);
+  assert.equal(fs.readFileSync(task.taskStoreFile, "utf8"), original);
+  assert.equal(fs.readFileSync(path.join(identityDirectory, "transaction.lock"), "utf8"), "unknown");
   assert.throws(() => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] }), /Controlled task identities require owner transactions/);
   fs.unlinkSync(path.join(identityDirectory, "transaction.lock"));
 

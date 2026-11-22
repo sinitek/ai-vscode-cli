@@ -25,6 +25,7 @@ function createCompletionHarness(): CompletionHarness {
     deps: {
       markSubtaskRunFinished: (_taskId, _subtaskId, status) => {
         calls.push(`mark:${status}`);
+        return "committed";
       },
       closeSubtaskTab: async (tabId) => {
         calls.push(`close:${tabId}`);
@@ -47,6 +48,12 @@ function extractAsyncFunctionSection(source: string, name: string, nextFunctionN
 
 test("records success and closes the Loop subtask tab when no context compaction was scheduled", async () => {
   const harness = createCompletionHarness();
+  const closeOptions: Parameters<NonNullable<LoopSubtaskCompletionDeps["prepareSubtaskTabClose"]>>[1][] = [];
+  harness.deps.prepareSubtaskTabClose = (tabId, options) => {
+    closeOptions.push(options);
+    harness.calls.push(`capture:${tabId}`);
+    return async () => { harness.calls.push(`prepared-close:${tabId}`); };
+  };
 
   await finalizeLoopSubtaskRun({
     taskId: "task-1",
@@ -58,10 +65,26 @@ test("records success and closes the Loop subtask tab when no context compaction
   }, harness.deps);
 
   assert.deepEqual(harness.calls, [
+    "capture:subtask-tab-1",
     "mark:end",
-    "close:subtask-tab-1",
+    "prepared-close:subtask-tab-1",
     "log:subtask-tab-1",
   ]);
+  assert.deepEqual(closeOptions, [{
+    completed: true, expected: { taskId: "task-1", subtaskId: "subtask-1", round: 2, attemptId: undefined },
+  }]);
+});
+
+test("does not close a tab when persisting the completion report fails", async () => {
+  const harness = createCompletionHarness();
+  harness.deps.markSubtaskRunFinished = () => { throw new Error("report persistence failed"); };
+
+  await assert.rejects(finalizeLoopSubtaskRun({
+    taskId: "task-1", round: 1, subtaskId: "subtask-1", runStatus: "end",
+    assistantContent: "completed result", tabId: "subtask-tab-1",
+  }, harness.deps), /report persistence failed/);
+
+  assert.deepEqual(harness.calls, []);
 });
 
 test("does not automatically close a successful Loop subtask without a tab id", async () => {

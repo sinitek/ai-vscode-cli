@@ -43,16 +43,16 @@ export class LoopSubtaskAutoCompactions {
       start = (completed, onCompleted) => resolve({ completed, onCompleted });
     });
     const flight = notified.then(async ({ completed, onCompleted }) => {
-      await previous;
-      if (completed) {
+      if (completed && onCompleted) {
         try {
-          await run();
+          await onCompleted();
         } catch (error) {
           this.onError(error, origin);
-        } finally {
-          // Keep this session reserved until its completed tab has been retired.
-          await onCompleted?.();
         }
+      }
+      await previous;
+      if (completed) {
+        await run();
       }
     }).catch((error) => this.onError(error, origin)).finally(() => {
       if (this.flights.get(sessionKey) === flight) {

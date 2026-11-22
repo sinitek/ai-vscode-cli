@@ -5,8 +5,8 @@ import { buildWebviewStaticHtml } from "../../webview/viewContentHtml";
 import { getWebviewStrings } from "../../webview/viewContentStrings";
 import { VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP } from "../../webview/viewContentScript/coreBootstrap";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
-import { VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE } from "../../webview/viewContentScript/modelAndPanelState";
 import { VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS } from "../../webview/viewContentScript/settingsAndOverlays";
+import { createCheckbox, createPanelSnapshotRunner } from "./panelSettingsHarness";
 
 type Message = { id: string; role: string; kind?: string; actions?: unknown[]; final?: boolean };
 type Entry = { message: Message; index: number };
@@ -117,16 +117,43 @@ test("checkbox changes immediately rerender and post the global setting", () => 
 });
 
 test("panel snapshots restore checkbox state and safely default old or invalid values to off", () => {
-  const assignment = VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE.match(/state\.hideInstructionBubbles = [^;]+;/);
-  const checkbox = VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE.match(/if \(elements\.hideInstructionBubbles\) \{[^]*?\n        \}/);
-  assert.ok(assignment && checkbox);
-  assert.ok(VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE.indexOf(assignment[0]) < VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE.indexOf("syncActiveMessagesFromRuntime();"));
-  const state = { hideInstructionBubbles: true };
-  const elements = { hideInstructionBubbles: { checked: true } };
-  for (const value of [true, false, undefined, null, "true", "false", 1]) {
-    vm.runInNewContext(`${assignment[0]}\n${checkbox[0]}`, { state, elements, panelState: { hideInstructionBubbles: value } });
-    assert.equal(state.hideInstructionBubbles, value === true);
-    assert.equal(elements.hideInstructionBubbles.checked, value === true);
+  const state = { hideInstructionBubbles: false };
+  const checkbox = createCheckbox(false);
+  const elements: { hideInstructionBubbles?: typeof checkbox } = { hideInstructionBubbles: checkbox };
+  const document: { activeElement: typeof checkbox | null } = { activeElement: null };
+  const syncedValues: boolean[] = [];
+  const context = vm.createContext({
+    state, elements, document,
+    syncActiveMessagesFromRuntime: () => syncedValues.push(state.hideInstructionBubbles),
+  });
+  const applySnapshot = createPanelSnapshotRunner(context, [
+    "state.hideInstructionBubbles =",
+    "syncActiveMessagesFromRuntime();",
+    "elements.hideInstructionBubbles.checked =",
+  ]);
+  const assertSnapshot = (panelState: Record<string, unknown>, expected: boolean) => {
+    const beforeSync = syncedValues.length;
+    applySnapshot(panelState);
+    assert.deepEqual(syncedValues.slice(beforeSync), [expected], "message sync sees the effective setting");
+    assert.equal(state.hideInstructionBubbles, expected);
+    assert.equal(checkbox.checked, expected);
+  };
+
+  assertSnapshot({ hideInstructionBubbles: false }, false);
+  for (const panelState of [{}, ...[undefined, null, "true", "false", 1].map((value) => ({ hideInstructionBubbles: value }))]) {
+    assertSnapshot({ hideInstructionBubbles: true }, true);
+    assertSnapshot(panelState, false);
   }
-  vm.runInNewContext(checkbox[0], { state, elements: {} });
+
+  assertSnapshot({ hideInstructionBubbles: true }, true);
+  document.activeElement = checkbox;
+  const writesBeforeSnapshot = checkbox.checkedWrites;
+  assertSnapshot({ hideInstructionBubbles: false }, true);
+  assert.equal(checkbox.checkedWrites, writesBeforeSnapshot, "a focused checkbox is not rewritten");
+  document.activeElement = null;
+  assertSnapshot({ hideInstructionBubbles: false }, false);
+
+  delete elements.hideInstructionBubbles;
+  applySnapshot({ hideInstructionBubbles: true });
+  assert.equal(state.hideInstructionBubbles, true);
 });

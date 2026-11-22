@@ -99,6 +99,20 @@ function createContinuationRecoveryHarness() {
     get runs() { return runs; }, get refreshes() { return refreshes; } };
 }
 
+test("group chat stop closes execution before recording its user stop source", async () => {
+  const env = createContinuationRecoveryHarness();
+  env.task.status = "running";
+  const effects: unknown[] = [];
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  env.deps.stopRunsForTask = (taskId) => { effects.push(["cancel", taskId]); };
+  env.deps.markTaskStoppedByUser = (taskId, source) => {
+    effects.push(["persist", taskId, source]);
+    return null;
+  };
+  await env.coordinator.handleMessage(env.task.id, { type: "loopGroupChatChat:stopTask" });
+  assert.deepEqual(effects, [["cancel", env.task.id], ["persist", env.task.id, "group-chat"]]);
+});
+
 for (const schedulingMode of ["classic", "event_driven"] as const) {
   test(`running member opens its existing AI conversation tab in ${schedulingMode}`, async () => {
     const env = createContinuationRecoveryHarness();

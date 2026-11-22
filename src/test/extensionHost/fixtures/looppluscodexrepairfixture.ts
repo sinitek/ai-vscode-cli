@@ -159,7 +159,7 @@ export function createLoopPlusCodexRepairFixture(context: TestContext, newConnec
       onTrace: () => undefined, onTaskListUpdate: () => undefined,
     });
     assert.ok(text.startsWith(`result:${current.getThreadId()}:`), "attempt content comes from the running protocol peer");
-    if (input.loopSubtaskId === "A") {
+    if (input.loopAttemptId === fixture.attemptCalls[0]?.loopAttemptId) {
       original = current;
       originalThread = current.getThreadId();
       assert.equal(target.sessionId, originalThread);

@@ -36,8 +36,8 @@ import {
   normalizeSingleLoopRoundSummary,
 } from "../loopCompletionFields";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
-import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
-import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions, type LoopSubtaskReportResult, type LoopSubtaskTabCloseOptions } from "../loopSubtaskLifecycle";
+import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord, type LoopTaskUserStopSource } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
@@ -329,7 +329,7 @@ export type PromptRunRuntimeHostDeps = {
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
   closeConversationTabAndRefreshPanel: (tabId: string) => Promise<void>;
-  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string, options?: LoopSubtaskTabCloseOptions) => () => Promise<void>;
   handleLoopPlusSubtaskContinuation?: (context: LoopSubtaskConversationContext, tabId: string) => Promise<void>;
   resumeWaitingClassicBatch?: (taskId: string) => boolean;
   stopLoopPlusParent?: (taskId: string) => void;
@@ -920,13 +920,12 @@ function markLoopSubtaskRunFinished(
   runStatus: TaskRunStatus,
   assistantContent: string | null,
   failureDetail?: string,
-): void {
+): LoopSubtaskReportResult {
   const task = readLoopTaskRecord(taskId);
-  if (!task) {
-    return;
-  }
+  if (!task) return "missing";
   const subtaskRecord = task.subTasks.find((item) => item.id === subtaskId);
-  if (!subtaskRecord || subtaskRecord.status === "skipped") return;
+  if (!subtaskRecord) return "missing";
+  if (subtaskRecord.status === "skipped") return "skipped";
   const now = Date.now();
   const executionFailure = runStatus === "error" ? normalizeLoopSubtaskFailure(failureDetail) : undefined;
   const summary = buildLoopSubtaskCompletionSummary(executionFailure ?? assistantContent);
@@ -946,18 +945,19 @@ function markLoopSubtaskRunFinished(
   const activeSubtaskIds = runStatus === "end"
     ? getActiveLoopSubtaskIds(task).filter((id) => id !== subtaskId)
     : getActiveLoopSubtaskIds(task);
-  updateLoopTaskRecord(taskId, {
+  const updated = updateLoopTaskRecord(taskId, {
     subTasks,
     activeSubtaskId: activeSubtaskIds[0] ?? null,
     activeSubtaskIds,
     updatedAt: now,
   });
-  appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent, executionFailure);
-  if (subtaskRecord) {
+  const committed = updated?.subTasks.some((item) => item.id === subtaskId && item.status === nextStatus) === true
+    && (runStatus !== "end" || (updated && !getActiveLoopSubtaskIds(updated).includes(subtaskId)));
+  if (committed || runStatus !== "end") {
+    appendLoopSubtaskCompletionAutoLog(task, subtaskRecord, runStatus, summary, assistantContent, executionFailure);
     appendLoopMainSubChatSubtaskFinished(task, subtaskRecord, runStatus, executionFailure ? `CLI 执行错误：${executionFailure}` : assistantContent);
-  } else {
-    refreshOpenLoopGroupChatPanelForTask(taskId);
   }
+  return committed ? "committed" : "unconfirmed";
 }
 
 async function finalizeLoopSubtaskRun(options: LoopSubtaskCompletionOptions): Promise<void> {
@@ -1114,6 +1114,7 @@ function markLoopTaskStopped(
   options: {
     finalSummary?: string;
     subtaskSummary?: string;
+    userStopSource?: LoopTaskUserStopSource;
   } = {},
 ): LoopTaskRecord | null {
   const task = readLoopTaskRecord(taskId);
@@ -1132,17 +1133,23 @@ function markLoopTaskStopped(
   if (transition.abortClarification) {
     abortOrchestratorClarification(loopClarificationScope(taskId));
   }
-  const record = updateLoopTaskRecord(taskId, { ...transition.patch, runtimeInterrupted: undefined });
+  const record = updateLoopTaskRecord(taskId, {
+    ...transition.patch,
+    runtimeInterrupted: undefined,
+    ...(options.userStopSource ? { userStopSource: options.userStopSource } : {}),
+  });
   if (transition.refreshGroupChat) {
     refreshOpenLoopGroupChatPanelForTask(taskId);
   }
   return record;
 }
 
-function markLoopTaskStoppedByUser(taskId: string): LoopTaskRecord | null {
+function markLoopTaskStoppedByUser(taskId: string, source: LoopTaskUserStopSource): LoopTaskRecord | null {
+  const location = source === "ai-panel" ? "AI 面板" : "Loop 群聊";
   return markLoopTaskStopped(taskId, {
-    finalSummary: "用户已从 Loop 群聊中止任务。",
-    subtaskSummary: "用户已从 Loop 群聊中止该子任务。",
+    finalSummary: `用户已从 ${location} 中止任务。`,
+    subtaskSummary: `用户已从 ${location} 中止该子任务。`,
+    userStopSource: source,
   });
 }
 
@@ -1321,6 +1328,7 @@ async function maybeWakeLoopMainAfterSubtaskContinuation(
     taskId: context.taskId,
     round: context.round,
     subtaskId: context.subtaskId,
+    attemptId: context.attemptId,
     runStatus: "end",
     assistantContent: summary,
     tabId: subtaskTarget?.tabId ?? null,

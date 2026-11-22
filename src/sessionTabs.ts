@@ -232,7 +232,7 @@ export function createSessionTabsController(deps: {
   buildOpenConversationTabSessionMap: () => Map<string, string>;
   clearPendingSessionDraft: (tabId: string, cli?: CliName) => void;
   markConversationTabExecutionLocked: (tabId: string, primaryModel?: string | null) => boolean;
-  closeConversationTab: (tabId: string) => ConversationTabSwitchResult | null;
+  closeConversationTab: (tabId: string, options?: { replaceLastTab?: boolean }) => ConversationTabSwitchResult | null;
   createConversationTabId: () => string;
   detachConversationTabsFromSession: (cli: CliName, sessionId: string) => void;
   ensureConversationTabs: () => ConversationTabsState;
@@ -254,6 +254,13 @@ export function createSessionTabsController(deps: {
   updatePendingSessionDraft: (tabId: string, patch: Partial<PendingSessionDraft>, cli?: CliName) => PendingSessionDraft;
 } {
   const createTabId = (): string => createConversationTabId(deps.conversationTabPrefix);
+  const createTab = (cli: CliName, sessionId: string | null, tabId = createTabId()): ConversationTabRecord => ({
+    id: tabId,
+    cli,
+    sessionId,
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
+    createdAt: Date.now(),
+  });
 
   const hasSessionRecord = (cli: CliName, sessionId: string): boolean => {
     const sessionStore = deps.getSessionStore();
@@ -587,13 +594,7 @@ export function createSessionTabsController(deps: {
   return {
     addConversationTab: (cli, sessionId, options = {}) => {
       const state = ensureTabs();
-      const tab: ConversationTabRecord = {
-        id: options.tabId ?? createTabId(),
-        cli,
-        sessionId,
-        sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, cli, sessionId),
-        createdAt: Date.now(),
-      };
+      const tab = createTab(cli, sessionId, options.tabId);
       state.tabs.push(tab);
       state.activeTabId = tab.id;
       if (!options.skipPersist) {
@@ -605,18 +606,17 @@ export function createSessionTabsController(deps: {
     buildConversationTabsState: buildTabsState,
     buildOpenConversationTabSessionMap: buildOpenSessionMap,
     clearPendingSessionDraft: clearDraft,
-    closeConversationTab: (tabId) => {
+    closeConversationTab: (tabId, options) => {
       const state = ensureTabs();
-      if (state.tabs.length <= 1) {
-        const active = getActiveTab();
-        return active ? { cli: active.cli, sessionId: active.sessionId } : null;
-      }
       const index = state.tabs.findIndex((tab) => tab.id === tabId);
-      if (index < 0) {
+      if (index < 0 || (state.tabs.length === 1 && !options?.replaceLastTab)) {
         const active = getActiveTab();
         return active ? { cli: active.cli, sessionId: active.sessionId } : null;
       }
       const previousActiveTabId = state.activeTabId;
+      if (state.tabs.length === 1) {
+        state.tabs.push(createTab(state.tabs[index].cli, null));
+      }
       clearDraft(tabId);
       state.tabs.splice(index, 1);
       if (!state.activeTabId || state.activeTabId === tabId) {

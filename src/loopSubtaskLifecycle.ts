@@ -1,17 +1,19 @@
 import type { TaskRunStatus } from "./promptRunState";
 import type { LoopTaskRecord } from "./loopTaskStore";
+import type { LoopSubtaskConversationContext } from "./loopConversationPresentation";
 import { loopSubtaskAutoCompactions } from "./loopSubtaskAutoCompact";
 import { logError } from "./logger";
 
-export type LoopSubtaskCompletionOptions = {
-  taskId: string;
-  round: number;
-  subtaskId: string;
+export type LoopSubtaskCompletionOptions = LoopSubtaskConversationContext & {
   runStatus: TaskRunStatus;
   assistantContent: string | null;
   failureDetail?: string;
   tabId: string | null;
 };
+
+export type LoopSubtaskReportResult = "committed" | "missing" | "skipped" | "unconfirmed";
+
+export type LoopSubtaskTabCloseOptions = { completed?: boolean; expected?: LoopSubtaskConversationContext };
 
 export type LoopSubtaskTabAutoClosedEvent = {
   taskId: string;
@@ -27,9 +29,9 @@ export type LoopSubtaskCompletionDeps = {
     runStatus: TaskRunStatus,
     assistantContent: string | null,
     failureDetail?: string,
-  ) => void;
+  ) => LoopSubtaskReportResult;
   closeSubtaskTab: (tabId: string) => Promise<void>;
-  prepareSubtaskTabClose?: (tabId: string) => () => Promise<void>;
+  prepareSubtaskTabClose?: (tabId: string, options?: LoopSubtaskTabCloseOptions) => () => Promise<void>;
   logSubtaskTabAutoClosed: (event: LoopSubtaskTabAutoClosedEvent) => void;
 };
 
@@ -57,13 +59,17 @@ export async function finalizeLoopSubtaskRun(
     taskId,
     round,
     subtaskId,
+    attemptId,
     runStatus,
     assistantContent,
     tabId,
   } = options;
   let closeTab: (() => Promise<void>) | undefined;
   try {
-    closeTab = tabId ? deps.prepareSubtaskTabClose?.(tabId) ?? (() => deps.closeSubtaskTab(tabId)) : undefined;
+    if (runStatus === "end" && tabId) {
+      closeTab = deps.prepareSubtaskTabClose?.(tabId, { completed: true, expected: { taskId, round, subtaskId, attemptId } })
+        ?? (() => deps.closeSubtaskTab(tabId));
+    }
   } catch (error) {
     closeTab = async () => { throw error; };
   }
@@ -80,21 +86,17 @@ export async function finalizeLoopSubtaskRun(
   let reported = false;
   let cleanup: Promise<void> | undefined;
   try {
-    if (options.failureDetail) {
-      deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent, options.failureDetail);
-    } else {
-      deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent);
-    }
-    reported = runStatus === "end";
+    const report = deps.markSubtaskRunFinished(taskId, subtaskId, runStatus, assistantContent, options.failureDetail);
+    reported = runStatus === "end" && report === "committed";
   } finally {
-    cleanup = loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported, closeCompletedTab);
+    cleanup = loopSubtaskAutoCompactions.notify(taskId, subtaskId, reported, reported ? closeCompletedTab : undefined);
   }
 
   if (runStatus !== "end" || !tabId) {
     return;
   }
 
-  if (!cleanup) await closeCompletedTab();
+  if (reported && !cleanup) await closeCompletedTab();
 }
 
 export function shouldDelegateSubtaskContinuationToLoopPlus(

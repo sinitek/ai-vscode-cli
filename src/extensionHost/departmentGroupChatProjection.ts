@@ -1,14 +1,17 @@
 import { normalizeDepartmentMetadata } from "../department";
 import { isValidDepartmentCapacitySnapshot, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
-import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
+import { resolveLoopPanelProgressPercent, resolveLoopPlusMainMemberStatus, resolveLoopPlusSubtaskMemberStatus } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
+import { summarizeLoopPlusMembers } from "../loopPlusStatusSummary";
 import { normalizeLoopSubtaskProgressWeightPercent, type LoopTaskRecord } from "../loopTaskStore";
 import type { DepartmentEmployeeAllocationProjection, DepartmentGroupChatProjection, LoopGroupChatPanelParticipant } from "../webview/loopGroupChatPanelTypes";
 
 export type DepartmentGroupChatReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
+  getActiveReviewEventIds?(taskId: string): readonly string[];
+  isMainModelRunning?(task: LoopTaskRecord): boolean;
   /** Read only: absence/failure means unknown, never an empty lease pool. */
   readCapacity?(rootTaskId: string): DepartmentCapacitySnapshot | null;
   readEmployeeAllocation?(rootTaskId: string): DepartmentEmployeeAllocationProjection | null;
@@ -185,11 +188,15 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
   } catch { return undefined; }
   const progressByModuleId = new Map<string, number>();
   const leaders = [...byId.values()].map(({ record, leaderNumber }) => {
-    const loopPlus = projectLoopPlusPanel(record);
+    const loopPlus = projectLoopPlusPanel(record, port.getActiveReviewEventIds?.(record.id), port.isMainModelRunning?.(record));
     const progressPercent = resolveLoopPanelProgressPercent(record, loopPlus);
+    const statusSummary = meta.role === "director" && loopPlus?.ok ? summarizeLoopPlusMembers([
+      { id: "main", role: "main", status: resolveLoopPlusMainMemberStatus(record, loopPlus) },
+      ...record.subTasks.map((subtask) => ({ id: subtask.id, role: "subtask", status: resolveLoopPlusSubtaskMemberStatus(loopPlus, subtask.id, subtask.status) })),
+    ]) : undefined;
     progressByModuleId.set(root.subTasks[leaderNumber - 1].id, progressPercent);
     return { taskId: record.id, leaderNumber, participant: participant(record, "leader"), progressPercent,
-      employees: employees(record, loopPlus) };
+      ...(statusSummary ? { statusSummary } : {}), employees: employees(record, loopPlus) };
   });
   const overallProgressPercent = meta.role === "director" ? resolveDepartmentWeightedProgress(root, progressByModuleId) : undefined;
   const capacity = readDepartmentCapacity(root.id, port);

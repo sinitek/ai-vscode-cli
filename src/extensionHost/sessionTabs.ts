@@ -346,28 +346,34 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
   options: { notifyTabClosed?: boolean; onRejected?: () => void } = {},
-  ownedTarget?: ConversationTabRecord,
+  target?: { tab: ConversationTabRecord; kind: "department" | "completed-subtask" },
 ): Promise<void> {
-  if (ownedTarget && getConversationTabById(tabId) !== ownedTarget) throw new Error("department-owned-tab-target-changed");
-  if (isTabRunActive(tabId) || !ownedTarget && isLoopMainTabCloseLocked(tabId)) {
+  const completedSubtask = target?.kind === "completed-subtask";
+  const closingTab = getConversationTabById(tabId);
+  if (target && closingTab !== target.tab) {
+    throw new Error(completedSubtask ? "子任务标签已被替代或移除，未执行自动关闭。" : "department-owned-tab-target-changed");
+  }
+  if (isTabRunActive(tabId) || (target?.kind !== "department" && isLoopMainTabCloseLocked(tabId))) {
+    if (completedSubtask) throw new Error("子任务标签正在运行或关闭已锁定，未执行自动关闭。");
     await postPanelState();
     options.onRejected?.();
     return;
   }
-  const closingTab = getConversationTabById(tabId);
   if (!closingTab) {
     return;
   }
   const previousActiveTabId = getActiveConversationTabId();
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
-  const next = closeConversationTab(tabId);
+  const replaceLastTab = completedSubtask && ensureConversationTabs().tabs.length === 1;
+  const next = sessionTabsController.closeConversationTab(tabId, { replaceLastTab });
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
+    if (completedSubtask) throw new Error("子任务标签关闭未生效，保留标签以便重试。");
     options.onRejected?.();
     return;
   }
-  if (options.notifyTabClosed !== false) {
+  if (!replaceLastTab && options.notifyTabClosed !== false) {
     deps.postConversationTabClosed(tabId, nextActiveTabId);
   }
   closingBindings.forEach((binding) => {
@@ -377,10 +383,8 @@ async function closeConversationTabAndRefreshPanel(
     return;
   }
   // Keep the active conversation responsive while config and panel state refresh.
-  if (next) {
-    sendSessionMessagesToPanel(next.cli, next.sessionId, nextActiveTabId);
-  } else {
-    sendSessionMessagesToPanel(currentCli, null, nextActiveTabId);
+  if (!replaceLastTab) {
+    sendSessionMessagesToPanel(next?.cli ?? currentCli, next?.sessionId ?? null, nextActiveTabId);
   }
   if (next && currentCli !== next.cli) {
     currentCli = next.cli;
@@ -394,6 +398,10 @@ async function closeConversationTabAndRefreshPanel(
   }
   if (next) {
     setWorkspaceInteractiveModeForCli(next.cli, deps.resolveAutoInteractiveModeForConversationTab(getActiveConversationTab()));
+  }
+  if (replaceLastTab) {
+    await postPanelState();
+    if (getActiveConversationTabId() !== nextActiveTabId) return;
   }
   if (next && nextActiveTabId && nextActiveTabId !== previousActiveTabId) {
     await deps.restoreConversationTabConfiguration?.(nextActiveTabId);
@@ -610,7 +618,8 @@ return {
   closeConversationTab: wrap(closeConversationTab),
   closeConversationTabAndRefreshPanel: wrap(closeConversationTabAndRefreshPanel),
   // In-process host capability only; no UI message route exposes this port.
-  closeOwnedConversationTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, tab)),
+  closeOwnedConversationTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, { tab, kind: "department" })),
+  closeCompletedSubtaskTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, { tab, kind: "completed-subtask" })),
   detachConversationTabsFromSession: wrap(detachConversationTabsFromSession),
   syncCurrentSessionWithActiveTab: wrap(syncCurrentSessionWithActiveTab),
   setCurrentSession: wrap(setCurrentSession),

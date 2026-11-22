@@ -17,6 +17,7 @@ import type { LoopTaskModelRouting } from "../../loopTaskStore";
 import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
+import { createCompletedLoopSubtaskTabCleanup } from "../../extensionHost/loopSubtaskTabs";
 import type { ConversationTabRecord } from "../../sessionTabs";
 import type { ChatMessage } from "../../webview/types";
 import { installVscodeMock } from "../vscodeMock";
@@ -95,6 +96,12 @@ function createHarness(options: {
     departmentCodexPreparation: null,
     departmentOwnerResources: () => null,
     activeWorkspaceKey: "test-workspace",
+    completedLoopSubtaskTabs: createCompletedLoopSubtaskTabCleanup({
+      getWorkspaceKey: () => "test-workspace",
+      getTabs: () => tabs,
+      isTabRunActive: () => false,
+      closeTab: async () => assert.fail("binding a prompt must not close a tab"),
+    }),
     createPerformanceTrace: () => ({
       start: () => () => undefined,
       measure: (_phase: string, operation: () => unknown) => operation(),

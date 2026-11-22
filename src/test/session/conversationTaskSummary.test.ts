@@ -103,6 +103,7 @@ test("extension captures Vibe and Loop main summaries without summarizing intern
   const runtime = vm.runInNewContext(`${script}\n({ preloadUserMessageForPrompt, rememberConversationTaskSummarySubmission });`, {
     activeWorkspaceKey: "workspace",
     pendingConversationTaskSummarySubmissions: submissions,
+    completedLoopSubtaskTabs: { forgetRestoredTab: (restoredTab: typeof tab) => assert.equal(restoredTab, tab) },
     getConversationTabById: () => tab,
     getConversationTabSessionIdForCli: () => "native-session",
     getPendingSessionDraft: () => draft,

@@ -3,10 +3,11 @@ import assert = require("node:assert/strict");
 import fs = require("node:fs");
 import os = require("node:os");
 import path = require("node:path");
+import { performance } from "node:perf_hooks";
 import type { TestContext } from "node:test";
 import { createLoopOrchestrationHost, LOOP_SUBTASK_RETRY_DELAY_MS, LOOP_SUBTASK_RETRY_MAX_RETRIES } from "../../extensionHost/loopOrchestration";
 import type { TaskRunRecord } from "../../promptRunState";
-import { startLoopWaitWatchdog, waitForLoopInvocation, LOOP_WAIT_WATCHDOG_INTERVAL_MS } from "../../loopWaitWatchdog";
+import { startLoopWaitWatchdog, waitForLoopInvocation } from "../../loopWaitWatchdog";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { PromptRunInput } from "../../promptRunTypes";
 
@@ -14,25 +15,135 @@ async function flush(): Promise<void> {
   for (let index = 0; index < 30; index++) await new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-test("宿主每 5 分钟巡检两种模式，单项错误不阻塞后续检查且可释放", (t) => {
+function failOnWatchdogError(error: unknown): never {
+  throw error;
+}
+
+function mockWatchdogClock(t: TestContext) {
   // 当前 @types/node 仍描述旧版参数；运行时使用 Node 24 的对象接口。
   t.mock.timers.enable({ apis: ["setInterval"] } as never);
-  let classic = 0;
-  let plus = 0;
-  let errors = 0;
+  let now = 0;
+  t.mock.method(performance, "now", () => now);
+  return {
+    tick: (elapsedMs: number, timerMs = elapsedMs): void => {
+      now += elapsedMs;
+      t.mock.timers.tick(timerMs);
+    },
+  };
+}
+
+test("Loop+ 主任务每 60 秒巡检，旧等待每 300 秒巡检，释放后均停止", (t) => {
+  const clock = mockWatchdogClock(t);
+  const counts = { main: 0, classic: 0, plusWait: 0 };
   const stop = startLoopWaitWatchdog([
-    () => { classic++; throw new Error("单项巡检失败"); },
-    () => { plus++; },
-  ], () => { errors++; });
-  t.mock.timers.tick(LOOP_WAIT_WATCHDOG_INTERVAL_MS - 1);
-  assert.equal(classic, 0);
-  t.mock.timers.tick(1);
-  assert.deepEqual([classic, plus, errors], [1, 1, 1]);
-  t.mock.timers.tick(LOOP_WAIT_WATCHDOG_INTERVAL_MS);
-  assert.deepEqual([classic, plus, errors], [2, 2, 2]);
+    () => { counts.classic++; },
+    () => { counts.plusWait++; },
+  ], failOnWatchdogError, () => { counts.main++; });
+  assert.deepEqual(counts, { main: 0, classic: 0, plusWait: 0 });
+  clock.tick(59_999);
+  assert.deepEqual(counts, { main: 0, classic: 0, plusWait: 0 });
+  clock.tick(1);
+  assert.deepEqual(counts, { main: 1, classic: 0, plusWait: 0 });
+  for (let minute = 0; minute < 3; minute++) clock.tick(60_000);
+  clock.tick(59_999);
+  assert.deepEqual(counts, { main: 4, classic: 0, plusWait: 0 });
+  clock.tick(1);
+  assert.deepEqual(counts, { main: 5, classic: 1, plusWait: 1 });
+  for (let minute = 0; minute < 5; minute++) clock.tick(60_000);
+  assert.deepEqual(counts, { main: 10, classic: 2, plusWait: 2 });
   stop();
-  t.mock.timers.tick(LOOP_WAIT_WATCHDOG_INTERVAL_MS);
-  assert.equal(classic, 2);
+  clock.tick(300_000);
+  assert.deepEqual(counts, { main: 10, classic: 2, plusWait: 2 });
+});
+
+test("长时间漏拍后首次回调只巡检一次旧等待，并从恢复时重新计时", (t) => {
+  const clock = mockWatchdogClock(t);
+  let main = 0;
+  let wait = 0;
+  const stop = startLoopWaitWatchdog([
+    () => { wait++; },
+  ], failOnWatchdogError, () => { main++; });
+  t.after(stop);
+  clock.tick(60_000);
+  assert.deepEqual([main, wait], [1, 0]);
+  clock.tick(1_020_500, 60_000);
+  assert.deepEqual([main, wait], [2, 1]);
+  for (let minute = 0; minute < 4; minute++) {
+    clock.tick(60_000);
+    assert.deepEqual([main, wait], [3 + minute, 1]);
+  }
+  clock.tick(59_999);
+  assert.deepEqual([main, wait], [6, 1]);
+  clock.tick(1);
+  assert.deepEqual([main, wait], [7, 2]);
+});
+
+test("主任务和旧等待巡检的异常分别上报，其它检查继续执行", (t) => {
+  const clock = mockWatchdogClock(t);
+  const mainError = new Error("主任务巡检失败");
+  const classicError = new Error("经典 Loop 巡检失败");
+  const errors: unknown[] = [];
+  let main = 0;
+  let plusWait = 0;
+  const stop = startLoopWaitWatchdog([
+    () => { throw classicError; },
+    () => { plusWait++; },
+  ], (error) => { errors.push(error); }, () => {
+    if (++main === 5) throw mainError;
+  });
+  t.after(stop);
+  for (let minute = 0; minute < 5; minute++) clock.tick(60_000);
+  assert.equal(errors.length, 2);
+  assert.ok(errors.includes(mainError));
+  assert.ok(errors.includes(classicError));
+  assert.equal(plusWait, 1);
+  clock.tick(60_000);
+  assert.equal(main, 6);
+  assert.equal(errors.length, 2);
+  assert.equal(plusWait, 1);
+});
+
+test("两参数调用仍只在 300 秒边界执行旧等待巡检", (t) => {
+  const clock = mockWatchdogClock(t);
+  const calls: string[] = [];
+  const stop = startLoopWaitWatchdog([
+    () => { calls.push("classic"); },
+    () => { calls.push("plusWait"); },
+  ], failOnWatchdogError);
+  clock.tick(60_000);
+  assert.deepEqual(calls, []);
+  for (let minute = 0; minute < 3; minute++) clock.tick(60_000);
+  clock.tick(59_999);
+  assert.deepEqual(calls, []);
+  clock.tick(1);
+  assert.deepEqual(calls, ["classic", "plusWait"]);
+  stop();
+  clock.tick(300_000);
+  assert.deepEqual(calls, ["classic", "plusWait"]);
+});
+
+test("宿主只注册一个 60 秒 interval 并调用 unref", (t) => {
+  const interval = t.mock.method(globalThis, "setInterval");
+  const stop = startLoopWaitWatchdog([], failOnWatchdogError, assert.fail);
+  try {
+    assert.equal(interval.mock.callCount(), 1);
+    const [call] = interval.mock.calls;
+    assert.equal(call.arguments[1], 60_000);
+    assert.equal(call.result?.hasRef(), false);
+  } finally {
+    stop();
+  }
+});
+
+test("同一拍释放看门狗后不执行余下的检查", (t) => {
+  const clock = mockWatchdogClock(t);
+  let main = 0;
+  const stop = startLoopWaitWatchdog([assert.fail], failOnWatchdogError, () => {
+    if (++main === 5) stop();
+  });
+  for (let minute = 0; minute < 5; minute++) clock.tick(60_000);
+  clock.tick(300_000);
+  assert.equal(main, 5);
 });
 
 test("失联等待可取消并消费迟到的拒绝结果", async () => {
@@ -168,7 +279,11 @@ test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子�
   env.active.clear();
   env.host.checkWaitingTasks(); // 启动瞬间没有 runner 的短暂交接也不能误判。
   assert.equal(env.messages.some((message) => message.includes("定时检查")), false);
-  now += LOOP_WAIT_WATCHDOG_INTERVAL_MS;
+  now += 299_999;
+  env.host.checkWaitingTasks();
+  assert.equal(env.calls[0].isAborted(), false);
+  assert.equal(env.messages.some((message) => message.includes("定时检查")), false);
+  now += 1;
   env.host.checkWaitingTasks();
   env.host.checkWaitingTasks();
   const results = await pending;

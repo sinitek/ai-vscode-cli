@@ -1,5 +1,6 @@
 import { buildLoopGroupChatFinalStatusSection, buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, formatLoopGroupChatMemberName, LOOP_MAIN_SUB_CHAT_ROUND_KEY, latestLoopGroupChatSubtaskStartedAt, resolveLoopTaskRunControlState } from "./loopGroupChat";
 import { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle } from "./loopConversationPresentation";
+import { isLoopBlockerSummary } from "./loopBlocker";
 import { normalizeLoopProgressPercent, type LoopRoundRecord, type LoopTaskRecord } from "./loopTaskStore";
 import { type LoopPlusPanelProjection } from "./webview/loopGroupChatPanelTypes";
 import { projectLoopPlusPanel } from "./loopPlusPanelProjection";
@@ -189,6 +190,7 @@ function buildLoopMainSubChatPanelRound(
   if (loopPlus) {
     const progressPercent = resolveLoopPanelProgressPercent(task, loopPlus);
     const mainTitle = `${getLoopMainSubChatMainTitle()} ${progressPercent}%`;
+    const mainStatus = resolveLoopPlusMainMemberStatus(task, loopPlus);
     return {
       key: LOOP_MAIN_SUB_CHAT_ROUND_KEY,
       kind: "execution",
@@ -203,34 +205,25 @@ function buildLoopMainSubChatPanelRound(
           id: "main",
           title: mainTitle,
           role: "main",
-          status: loopPlusMemberStatus(loopPlus, "main", "main", task.status),
+          status: mainStatus,
           sessionId: task.sessionId ?? null,
           summary: task.finalSummary,
           updatedAt: task.updatedAt,
-          lastStartedAt: resolveLoopMemberLastStartedAt(
-            task,
-            "main",
-            loopPlusMemberStatus(loopPlus, "main", "main", task.status),
-            task.updatedAt,
-          ),
+          lastStartedAt: resolveLoopMemberLastStartedAt(task, "main", mainStatus, task.updatedAt),
         },
-        ...task.subTasks.map((subtask, index) => ({
-          id: subtask.id,
-          title: getLoopSubtaskDisplayTitle(index, subtask),
-          role: "subtask",
-          status: loopPlusMemberStatus(loopPlus, "subtask", subtask.id, subtask.status),
-          sessionId: null,
-          summary: subtask.summary,
-          updatedAt: subtask.updatedAt,
-          lastStartedAt: resolveLoopMemberLastStartedAt(
-            task,
-            "subtask",
-            loopPlusMemberStatus(loopPlus, "subtask", subtask.id, subtask.status),
-            subtask.updatedAt,
-            subtask.id,
-            joinedAtBySubtaskId.get(subtask.id),
-          ),
-        })),
+        ...task.subTasks.map((subtask, index) => {
+          const status = resolveLoopPlusSubtaskMemberStatus(loopPlus, subtask.id, subtask.status);
+          return {
+            id: subtask.id,
+            title: getLoopSubtaskDisplayTitle(index, subtask),
+            role: "subtask",
+            status,
+            sessionId: null,
+            summary: subtask.summary,
+            updatedAt: subtask.updatedAt,
+            lastStartedAt: resolveLoopMemberLastStartedAt(task, "subtask", status, subtask.updatedAt, subtask.id, joinedAtBySubtaskId.get(subtask.id)),
+          };
+        }),
       ],
     };
   }
@@ -322,44 +315,28 @@ function buildLoopMainSubChatActiveSpeaker(
   return undefined;
 }
 
-function loopPlusMemberStatus(
+export function resolveLoopPlusMainMemberStatus(task: LoopTaskRecord, projection: LoopPlusPanelProjection): string {
+  if (!projection.ok) return "invalid";
+  const blocked = projection.activity === "paused" && task.status === "needs-review"
+    && task.loopPlusBlockReview?.state === "reviewed" && isLoopBlockerSummary(task.finalSummary);
+  return blocked ? "blocked" : projection.activity;
+}
+
+export function resolveLoopPlusSubtaskMemberStatus(
   projection: LoopPlusPanelProjection,
-  kind: "main" | "subtask",
   subtaskId: string,
   recordedStatus: string,
 ): string {
   if (!projection.ok) {
     return "invalid";
   }
-  if (kind === "main") {
-    switch (projection.activity) {
-      case "running":
-        return "running";
-      case "waiting":
-        return "waiting";
-      case "review_pending":
-        return "review_pending";
-      case "reviewing":
-        return "reviewing";
-      case "paused":
-        return "paused";
-      case "stopped":
-        return "stopped";
-      case "completed":
-        return "completed";
-      case "idle":
-        return "idle";
-      case "decomposing":
-        return "decomposing";
-    }
-  }
-  const activeEventIds = new Set(projection.activeReviewEventIds ?? []);
-  if (projection.currentReview?.subtaskId === subtaskId) {
-    return projection.activity === "reviewing" && activeEventIds.has(projection.currentReview.eventId) ? "reviewing" : "held_review";
-  }
-  const queued = projection.reviewQueue.find((item) => item.subtaskId === subtaskId);
-  if (queued) {
-    return projection.activity === "reviewing" && activeEventIds.has(queued.eventId) ? "reviewing" : "queued_review";
+  const review = projection.currentReview?.subtaskId === subtaskId
+    ? projection.currentReview
+    : projection.reviewQueue.find((item) => item.subtaskId === subtaskId);
+  if (review) {
+    return projection.activity === "reviewing" && projection.activeReviewEventIds?.includes(review.eventId)
+      ? "reviewing"
+      : "queued_review";
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {

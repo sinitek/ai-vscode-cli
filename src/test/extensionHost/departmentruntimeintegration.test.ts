@@ -202,25 +202,43 @@ test("department Loop+ uses ordinary turns after an employee failure without req
     } });
   t.after(() => h.fixture.dispose()); h.register("root", ["accounts"]);
   h.dispatch("broken");
-  let reviewedFailure = false;
+  const subtaskId = "broken-0";
+  const failureDetail = "员工进程异常退出 7";
+  let failedReviewEventId: string | undefined;
   h.fixture.queueMain((input, tab) => {
     const event = input.displayPrompt.match(/Current review eventId: (\S+)/)?.[1];
-    reviewedFailure = Boolean(event && event !== "(none)" && input.displayPrompt.includes("员工进程异常退出 7"));
+    if (input.displayPrompt.includes(failureDetail)) failedReviewEventId = event;
     h.fixture.publish(input, tab, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "accept", progressPercent: 50, reviewEventId: event,
-      subtasks: [{ id: "replacement", title: "继续修复模块", prompt: "Resolve the failed implementation and verify the required behavior before reporting the result.", writeFiles: [], taskType: "general" }] })) });
+      reviews: [{ reviewEventId: event, acceptance: "failed", reason: failureDetail, subtaskIds: [subtaskId] }],
+      subtasks: [{ id: subtaskId, title: "继续修复模块", prompt: "Resolve the failed implementation and verify the required behavior before reporting the result.", writeFiles: [], taskType: "general" }] })) });
   });
   h.finish();
   const leader = await h.host.startLeader("root", request("accounts")); assert.ok(leader.ok); if (!leader.ok) return;
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("broken-0"), "first employee starting");
-  h.fixture.finishParked("broken-0", { status: "error", failureDetail: "员工进程异常退出 7" });
-  await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().includes("replacement"), "employee dispatched after failed attempt review")
-    .catch((error: Error) => { throw new Error(`${error.message}: ${JSON.stringify({ status: h.read(leader.taskId)?.status, reviewedFailure, logs: h.fixture.logs.slice(-12) })}`); });
-  assert.equal(reviewedFailure, true);
+  await waitForLoopPlus(() => h.fixture.peekParked(subtaskId) !== null, "first employee starting");
+  const originalAttemptId = h.fixture.peekParked(subtaskId)?.input.loopAttemptId;
+  assert.ok(originalAttemptId);
+  h.fixture.finishParked(subtaskId, { status: "error", failureDetail });
+  await waitForLoopPlus(() => {
+    const attemptId = h.fixture.peekParked(subtaskId)?.input.loopAttemptId;
+    return Boolean(attemptId && attemptId !== originalAttemptId);
+  }, "new attempt for the same employee subtask after failed review")
+    .catch((error: Error) => { throw new Error(`${error.message}: ${JSON.stringify({ status: h.read(leader.taskId)?.status, originalAttemptId, failedReviewEventId, logs: h.fixture.logs.slice(-12) })}`); });
+  const repairAttemptId = h.fixture.peekParked(subtaskId)?.input.loopAttemptId;
+  assert.ok(repairAttemptId);
+  assert.notEqual(repairAttemptId, originalAttemptId);
+  assert.equal(failedReviewEventId, buildLoopPlusFinishEventId(subtaskId, originalAttemptId));
   assert.equal(h.host.runtimeSnapshot("root")!.leaders[0].status, "running");
   assert.equal(h.capacity.snapshot("root")[0].employees.length, 1);
-  h.fixture.finishParked("replacement", { status: "end", content: "模块已验证完成" });
+  h.fixture.finishParked(subtaskId, { status: "end", content: "模块已验证完成" });
   await leader.done;
-  assert.equal(h.read(leader.taskId)?.status, "completed");
+  const completedTask = h.read(leader.taskId);
+  assert.equal(completedTask?.status, "completed");
+  assert.deepEqual(completedTask.subTasks.map((item) => item.id), [subtaskId]);
+  const reviewed = createLoopPlusScheduler({ snapshot: completedTask.loopPlus }).snapshot().seenAttempts;
+  assert.deepEqual(reviewed.map(({ subtaskId, attemptId, outcome, disposition, acceptance }) => ({ subtaskId, attemptId, outcome, disposition, acceptance })), [
+    { subtaskId, attemptId: originalAttemptId, outcome: "failed", disposition: "reviewed", acceptance: "failed" },
+    { subtaskId, attemptId: repairAttemptId, outcome: "completed", disposition: "reviewed", acceptance: "passed" },
+  ]);
   assert.equal(h.host.canCompleteRoot("root"), true);
   assert.deepEqual(h.capacity.snapshot("root")[0].employees, []);
   const recovered = createDepartmentOrchestrationHost({ ...h.deps, capacity: new DepartmentCapacityPool({ maxLeaders: 4, maxEmployees: 1 }) });
