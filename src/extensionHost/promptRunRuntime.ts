@@ -15,6 +15,7 @@ import type { ChatMessage, ChatMessageAction } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { t } from "../i18n";
 import { logError, logInfo } from "../logger";
+import { LoopPlusUpdateUnconfirmedError } from "./loopPlusDiagnostics";
 import { normalizeLoopWriteFiles } from "../loopParallel";
 import { buildNextLoopMainAiFailureState } from "../loopMainFailure";
 import {
@@ -74,7 +75,7 @@ export function createLoopPlusPersistedTaskRefresher<TPatch>(deps: {
   return (taskId, patch) => {
     const updated = deps.updateTask(taskId, patch);
     if (!updated) {
-      throw new Error(`Loop+ task update did not commit: ${taskId}`);
+      throw new LoopPlusUpdateUnconfirmedError(taskId);
     }
     // Surface updates are a projection of the committed record, not part of its commit.
     const reportRefreshFailure = (error: unknown) => {

@@ -240,6 +240,7 @@ import {
   resolveLoopTaskAtCreationBoundary,
 } from "./extensionHost/loopOrchestration";
 import { createLoopPlusRuntimeAdapter, selectLoopPlusContinuationDetail } from "./extensionHost/loopPlusRuntimeAdapter";
+import { logLoopPlusRuntimeEvent } from "./extensionHost/loopPlusDiagnostics";
 import {
   buildLoopPlusGroupChatSection,
   buildLoopPlusSubtaskParentMessage,
@@ -4592,7 +4593,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         appendTextFileEnsuringDir(filePath, content);
       },
       log: (event, payload) => {
-        void logInfo(event, payload);
+        logLoopPlusRuntimeEvent(event, payload);
       },
       revealClarification: (taskId) => { void openLoopGroupChatPanel(taskId, { focus: true }); },
       removeClarificationResponse: (target, taskId, response) => {

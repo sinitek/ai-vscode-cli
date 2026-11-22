@@ -10,6 +10,13 @@ const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
 const readLockWaitMs = 100;
 const inside = (root: string, file: string) => file === root || file.startsWith(`${root}${path.sep}`);
+type IdentityCatalogUnavailable = "identity-lock-present" | "identity-catalog-unavailable";
+
+export function isLoopTaskIdentityLockContention(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const ioError = error as NodeJS.ErrnoException;
+  return ioError.code === "EEXIST" && ioError.syscall === "open" && ioError.path === lockFile;
+}
 
 function waitForTransactionLock(): boolean {
   const deadline = Date.now() + readLockWaitMs;
@@ -191,13 +198,17 @@ export function listRegisteredLoopTaskIdentityRoots(): readonly string[] | null 
 /** A committed ordinary destination survives stale source bytes and process restarts.
  * Absence is ordinary compatibility; a locked/damaged catalog is never a fallback permit.
  */
-export function locateOrdinaryLoopTaskMove(taskId: string): { available: false } | { available: true; file?: string } {
+export function locateOrdinaryLoopTaskMove(taskId: string, onUnavailable?: (reason: IdentityCatalogUnavailable) => void): { available: false } | { available: true; file?: string } {
+  let reason: IdentityCatalogUnavailable = "identity-lock-present";
   try {
-    if (fs.existsSync(lockFile)) return { available: false };
-    const snapshot = read();
-    const file = snapshot?.ordinaryMoves?.[taskId]?.file;
-    return fs.existsSync(lockFile) ? { available: false } : { available: true, file };
-  } catch { return { available: false }; }
+    if (!fs.existsSync(lockFile)) {
+      const snapshot = read();
+      const file = snapshot?.ordinaryMoves?.[taskId]?.file;
+      if (!fs.existsSync(lockFile)) return { available: true, file };
+    }
+  } catch { reason = "identity-catalog-unavailable"; }
+  onUnavailable?.(reason);
+  return { available: false };
 }
 
 /** Ordinary communication GC has no authority to delete department artifacts. Hold the
@@ -220,14 +231,22 @@ export function withLoopTaskIdentityRetention(action: (ownedTaskIds: ReadonlySet
  * false also covers a pre-bootstrap ordinary installation; null never authorizes fallback.
  */
 export function isDepartmentOwnedLoopTaskIdentity(taskId: string): boolean | null {
+  const ownership = inspectLoopTaskIdentityOwnership(taskId);
+  if (ownership === "ordinary") return false;
+  if (ownership === "department-owned") return true;
+  return null;
+}
+
+export function inspectLoopTaskIdentityOwnership(taskId: string): "ordinary" | "department-owned" | IdentityCatalogUnavailable {
   try {
-    if (fs.existsSync(lockFile)) return null;
+    if (fs.existsSync(lockFile)) return "identity-lock-present";
     const snapshot = read();
-    if (!snapshot) return false;
+    if (!snapshot) return "ordinary";
     const owned = Object.prototype.hasOwnProperty.call(snapshot.owned, taskId) || Object.entries(snapshot.files).some(([file, ids]) => ids.includes(taskId)
       && snapshot.roots.some((root) => inside(root, file)));
-    return fs.existsSync(lockFile) ? null : owned;
-  } catch { return null; }
+    if (fs.existsSync(lockFile)) return "identity-lock-present";
+    return owned ? "department-owned" : "ordinary";
+  } catch { return "identity-catalog-unavailable"; }
 }
 
 /** Legacy communication moves precede task writes. Refuse unregistered imports and

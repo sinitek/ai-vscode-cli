@@ -693,6 +693,45 @@ test("known ordinary reads follow migration authority across stale host cache an
   `);
 });
 
+test("ordinary task update emits classified identity-lock and owner-transaction failures", async (t) => {
+  const logger = require("../../logger") as typeof import("../../logger");
+  await logger.initLogger();
+  logger.setDebugLogging(false);
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  await store.cleanupLoopTaskStoreRetention();
+  const logFile = path.join(testHome, ".sinitek_cli", "logs", `sinitek-cli.${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}.log`);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const originalError = console.error;
+  t.after(() => { console.error = originalError; });
+  console.error = () => undefined;
+
+  const identityDirectory = path.join(testHome, ".sinitek_cli", "loop-task-identities");
+  fs.writeFileSync(path.join(identityDirectory, "transaction.lock"), "unknown");
+  assert.equal(store.updateLoopTaskRecord(task.id, { finalSummary: "lock" }), null);
+  assert.throws(() => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] }), /Controlled task identities require owner transactions/);
+  fs.unlinkSync(path.join(identityDirectory, "transaction.lock"));
+
+  const departmentRoot = path.join(testHome, ".sinitek_cli", "owned-tasks");
+  fs.mkdirSync(departmentRoot);
+  const identities = require("../../loopTaskIdentityCatalog") as typeof import("../../loopTaskIdentityCatalog");
+  const ownedTaskFile = path.join(departmentRoot, "loop-tasks.json");
+  identities.initializeLoopTaskIdentityCatalog(departmentRoot, () => new Map([[ownedTaskFile, [{ id: task.id }]]]));
+  assert.equal(identities.inspectLoopTaskIdentityOwnership(task.id), "department-owned");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.throws(() => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] }), /Controlled task identities require owner transactions/);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  const entries = fs.readFileSync(logFile, "utf8").split("\n").filter((line) => line.includes(" | "))
+    .map((line) => ({ event: line.split("] ")[2].split(" | ")[0], data: JSON.parse(line.slice(line.indexOf(" | ") + 3)) }));
+  assert.equal(entries.some((entry) => entry.event === "loop-task-store-update-rejected"
+    && entry.data.stage === "host-route" && entry.data.reason === "identity-lock-present"), true);
+  assert.equal(entries.some((entry) => entry.event === "loop-task-store-write-error"
+    && entry.data.stage === "identity-check" && entry.data.reason === "identity-lock-present"), true);
+  assert.equal(entries.some((entry) => entry.event === "loop-task-store-write-error"
+    && entry.data.stage === "identity-check" && entry.data.reason === "department-owned"), true);
+});
+
 test("retention holds the writer gate from authority classification through cleanup and reads one catalog per file batch", () => {
   checkOrdinaryAuthority(`
     const a=task('batch-0');const tasks=Array.from({length:24},(_,i)=>task('batch-'+i,a.taskStoreFile));

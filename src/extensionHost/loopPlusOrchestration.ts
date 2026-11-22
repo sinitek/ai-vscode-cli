@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { isDeepStrictEqual } from "util";
 import type { FirstLoopMainExecution } from "./promptRunHandoff";
+import { LoopPlusUpdateUnconfirmedError } from "./loopPlusDiagnostics";
 import { RUNTIME_CONFIG_LOCK_TIMEOUT } from "../loopMainFailure";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
@@ -356,9 +357,22 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     const write = configLockResume ? deps.commitConfigLockResume ?? deps.updateTask : deps.updateTask;
     const updated = write(taskId, patch);
     if (!updated) {
-      throw new Error(`Loop+ task update did not commit: ${taskId}`);
+      throw new LoopPlusUpdateUnconfirmedError(taskId);
     }
     return updated;
+  }
+
+  function logPersistenceFailure(taskId: string, stage: string, error: unknown, runtime?: ParentRuntime, attemptId?: string): void {
+    const snapshot = runtime?.scheduler.snapshot();
+    deps.log?.("loop-plus-persist-failed", {
+      taskId, attemptId, stage,
+      reason: error instanceof LoopPlusUpdateUnconfirmedError ? "update-unconfirmed" : "exception",
+      phase: snapshot?.phase,
+      schedulerSeq: snapshot?.seq,
+      runningCount: snapshot?.running.length,
+      pendingCount: snapshot?.pending.length,
+      reviewCount: snapshot ? snapshot.reviewQueue.length + Number(snapshot.currentReview !== null) : undefined,
+    });
   }
 
   const runtimes = new Map<string, ParentRuntime>();
@@ -399,10 +413,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             persist(runtime, runtime.completionPatch);
             runtime.completionPatch = null;
           } catch (error) {
-            deps.log?.("loop-plus-persist-failed", {
-              taskId: runtime.taskId,
-              error: errorText(error),
-            });
+            logPersistenceFailure(runtime.taskId, "completion-retry", error, runtime);
             settle(runtime);
             return { handled: true, taskId: runtime.taskId, done: runtime.lifecycle.promise };
           }
@@ -809,10 +820,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         try {
           persist(runtime, { status: "stopped" });
         } catch (error) {
-          deps.log?.("loop-plus-persist-failed", {
-            taskId: runtime.taskId,
-            error: errorText(error),
-          });
+          logPersistenceFailure(runtime.taskId, "resume-blocked", error, runtime);
         }
         try {
           deps.appendMessage(runtime.target, "loop-plus-resume-blocked", runtime.taskId);
@@ -1009,7 +1017,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         pendingClarification: undefined,
       });
     } catch (error) {
-      deps.log?.("loop-plus-persist-failed", { taskId: runtime.taskId, error: errorText(error) });
+      logPersistenceFailure(runtime.taskId, "parent-stop", error, runtime);
     } finally {
       runtime.stopping = false;
       settle(runtime);
@@ -1556,10 +1564,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           persist(runtime, patch);
         } catch (error) {
           runtime.completionPatch = patch;
-          deps.log?.("loop-plus-persist-failed", {
-            taskId: runtime.taskId,
-            error: errorText(error),
-          });
+          logPersistenceFailure(runtime.taskId, "parent-completion", error, runtime);
           settle(runtime);
           return "stop";
         }
@@ -2199,11 +2204,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
           try {
             persist(runtime);
           } catch (error) {
-            deps.log?.("loop-plus-persist-failed", {
-              taskId: runtime.taskId,
-              attemptId: record.attemptId,
-              error: errorText(error),
-            });
+            logPersistenceFailure(runtime.taskId, "release-reservation", error, runtime, record.attemptId);
           }
         }
         return;
@@ -2238,11 +2239,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             try {
               persist(runtime);
             } catch (error) {
-              deps.log?.("loop-plus-persist-failed", {
-                taskId: runtime.taskId,
-                attemptId: record.attemptId,
-                error: errorText(error),
-              });
+              logPersistenceFailure(runtime.taskId, "release-reservation", error, runtime, record.attemptId);
             }
           }
         } else if (runtime.stopRequested || runtime.scheduler.snapshot().parentStopped) {
@@ -2541,11 +2538,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       task = deps.readTask(runtime.taskId);
     } catch (error) {
       const detail = errorText(error);
-      deps.log?.("loop-plus-persist-failed", {
-        taskId: runtime.taskId,
-        attemptId: input.attemptId,
-        error: detail,
-      });
+      logPersistenceFailure(runtime.taskId, "finish-read", error, runtime, input.attemptId);
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
       notifySubtaskChat(runtime, finishedChatNotice(input, meta));
@@ -2582,11 +2575,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       persist(runtime);
     } catch (error) {
       const detail = errorText(error);
-      deps.log?.("loop-plus-persist-failed", {
-        taskId: runtime.taskId,
-        attemptId: input.attemptId,
-        error: detail,
-      });
+      logPersistenceFailure(runtime.taskId, "finish-commit", error, runtime, input.attemptId);
       releaseUnstartedReservations(runtime, result.started);
       retainFinishFailure(runtime, "loop-plus-persist-failed", `Loop+ state persistence failed: ${detail}`);
       notifySubtaskChat(runtime, finishedChatNotice(input, meta));
@@ -2636,10 +2625,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     try {
       persist(runtime, { status, finalSummary });
     } catch (error) {
-      deps.log?.("loop-plus-persist-failed", {
-        taskId: runtime.taskId,
-        error: errorText(error),
-      });
+      logPersistenceFailure(runtime.taskId, "finish-pause-commit", error, runtime);
     }
     try {
       deps.appendMessage(runtime.target, message, runtime.taskId);
@@ -2895,10 +2881,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         ...(finalSummary ? { finalSummary } : {}),
       });
     } catch (error) {
-      deps.log?.("loop-plus-persist-failed", {
-        taskId: runtime.taskId,
-        error: errorText(error),
-      });
+      logPersistenceFailure(runtime.taskId, "pause-commit", error, runtime);
     }
     try {
       deps.appendMessage(runtime.target, message, runtime.taskId);
@@ -3177,7 +3160,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         updatedAt: now(),
       });
     } catch (error) {
-      deps.log?.("loop-plus-persist-failed", { taskId, error: errorText(error) });
+      logPersistenceFailure(taskId, "acceptance-plan-edit", error, runtimes.get(taskId));
       return { ok: false, error: "验收方案更新失败，请稍后重试。" };
     }
     const runtime = runtimes.get(taskId);

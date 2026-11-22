@@ -3473,6 +3473,11 @@ test("pauses recoverably when persisting a finish fails and keeps the completion
   assert.equal(env.messages.filter((item) => item === "loop-plus-completed").length, 0);
   assert.equal(await isSettled(run.done), true);
   assert.equal(env.logs.some((item) => item.event === "loop-plus-persist-failed"), true);
+  const diagnostic = env.logs.find((item) => item.event === "loop-plus-persist-failed")?.payload as Record<string, unknown>;
+  assert.equal(diagnostic.stage, "finish-commit");
+  assert.equal(diagnostic.reason, "exception");
+  assert.equal(diagnostic.runningCount, 0);
+  assert.equal(diagnostic.reviewCount, 1);
   env.host.reportAttempt(run.taskId ?? "", {
     subtaskId: "alpha",
     attemptId: env.attempts[0].request.attemptId,

@@ -227,6 +227,17 @@ node scripts/count_effective_loc.js --json
 
 非 Codex/OpenCode 产研部组长续接从当前 Owner binding 或 producer 续接证明恢复 native session，不依赖 session-meta 映射；普通对话和员工仍受 `interactive-session-resume-blocked` 保护。组长仍报“只能查看”时，检查同任务是否有有效运行代次、`executionSession` 是否与当前原生 binding 一致，以及账本集合是否为 open；不要手工补写映射或重建会话来绕过 Owner/代次校验。
 
+### Loop+ 持久化中断诊断
+
+在 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 搜索 `loop-plus-persist-failed`、`loop-task-store-update-rejected` 和 `loop-task-store-write-error`，无需开启 debug。Loop+ 事件记录 `stage`、固定 `reason`、调度 phase/seq 及运行、待派发、待验收计数；存储事件记录拒绝阶段、身份拒绝分类、进程 PID 和存储文件名。事件不记录原始异常正文、堆栈、会话 ID、任务 ID 或提示词。
+
+- `reason=identity-lock-present` / `identity-lock-contended` 表示任务身份目录事务锁阻止了读取或提交；查看相邻事件的 PID 和时间，不要手动删除锁或绕过 owner 事务。
+- `reason=department-owned` / `controlled-root` 表示普通 writer 命中了受控身份或受控根；这是权限边界拒绝，不等同锁竞争。
+- Loop+ `stage=finish-read` 指向完成回调读取失败；`finish-commit` 指向子任务结果提交失败；`pause-commit` 指向错误/暂停状态写入失败。`reason=update-unconfirmed` 表示更新未获持久化确认，`exception` 表示底层写入抛错；再按相邻存储事件判断具体拒绝点。
+- 无存储层配对事件时，结合同 PID 的 `loop-plus-consumer-failed` 及任务文件现状判断是编排之外异常还是插件宿主被终止；不据日志重试、清锁或重写任务记录。
+
+该诊断从包含改动的扩展运行实例加载后才生效；源码构建或另一窗口加载的版本不能补记既往事件。
+
 ### 产研部 Codex 组长回调故障
 
 在 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 搜索 `department-leader-native-failed`，并按 `rootTaskId`、`leaderTaskId`、`executionId` 和 `generation` 定位同一代。`stage=callback-consumer-rejected` 时查看 `callbackName` 和 `callbackSequence`；`callbackRejectionReason` 仅允许 `department-leader-generation-changed`、`department-leader-consumer-missing`、`department-producer-observation-scope-unavailable` 或 `unknown`，不包含异常正文。producer 观察校验拒绝时另记 `department-producer-observation-scope-rejected`，查看固定枚举字段 `reason`，可区分任务/根任务/模块、workspace/路线/session、authority 和 ledger 校验失败；不记录异常正文或任务内容。`callback-ack-send-failed` 也会记录对应回调上下文。日志用于定位 handler，不构成 Owner 清理凭证；即使任务状态已停止，也必须继续通过原 Owner 的只读观察和 receipt 流程确认清理，不能据日志重试、杀进程或释放容量。
