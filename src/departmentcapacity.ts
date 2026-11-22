@@ -18,6 +18,25 @@ export type CapacityLease = DepartmentCapacityLease & { release(): void };
 
 const validText = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
 
+function validSnapshotLeases(identities: unknown): boolean {
+  if (!Array.isArray(identities)) return false;
+  const seen = new Set<string>();
+  for (let index = 0; index < identities.length; index++) {
+    const identity = identities[index];
+    if (!validText(identity) || seen.has(identity)) return false;
+    seen.add(identity);
+  }
+  return true;
+}
+
+export function isValidDepartmentCapacitySnapshot(snapshot: DepartmentCapacitySnapshot | null,
+  rootTaskId: string): snapshot is DepartmentCapacitySnapshot {
+  return snapshot !== null && snapshot.rootTaskId === rootTaskId
+    && Number.isSafeInteger(snapshot.maxLeaders) && snapshot.maxLeaders >= 0
+    && Number.isSafeInteger(snapshot.maxEmployees) && snapshot.maxEmployees >= 0
+    && validSnapshotLeases(snapshot.leaders) && validSnapshotLeases(snapshot.employees);
+}
+
 export class DepartmentCapacityPool {
   private pools = new Map<string, Pool>();
   private observers = new Set<(rootTaskId: string) => void>();

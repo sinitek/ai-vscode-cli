@@ -8,8 +8,9 @@ import { departmentRecords, fixtureDepartmentLeaderTaskIds } from "./departmentG
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { waitForOrchestratorClarification, abortOrchestratorClarification, loopClarificationScope } from "../../orchestratorClarification";
-import { readDepartmentOrganizationStopFeedback, readDepartmentOrganizationControlState, buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
+import { assertDepartmentOrganizationContinuation, readDepartmentOrganizationStopFeedback, readDepartmentOrganizationControlState, buildDepartmentGroupChatProjection } from "../../extensionHost/departmentGroupChatProjection";
 
+import type { DepartmentCapacitySnapshot } from "../../departmentcapacity";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 installVscodeMock();
 const { buildLoopGroupChatPanelContentPatch } = require("../../webview/loopGroupChatPanel") as typeof import("../../webview/loopGroupChatPanel");
@@ -1009,6 +1010,55 @@ test("organization control projection requires trusted source, exact root/worksp
   }
   for (const readCapacity of [() => null, () => { throw new Error("offline"); }, () => ({ ...port.readCapacity(), rootTaskId: "foreign" })]) {
     assert.deepEqual(readDepartmentOrganizationControlState(root, "workspace-A", { ...port, readCapacity }), { needsCleanup: true });
+  }
+});
+
+test("projection and organization controls agree on valid, empty and unknown capacity", () => {
+  const { root, records } = departmentRecords();
+  const port = { readTaskRecord: (id: string) => records.get(id) ?? null,
+    readLeaderTaskIds: (rootId: string, moduleId: string) => fixtureDepartmentLeaderTaskIds(records, rootId, moduleId) };
+  const empty: DepartmentCapacitySnapshot = { rootTaskId: root.id, maxLeaders: 0, maxEmployees: Number.MAX_SAFE_INTEGER,
+    leaders: [], employees: [], employeeOverflow: ["unused-overflow-metadata"] };
+  const occupied = { ...empty, leaders: ["lease-A"], employees: ["lease-A", "lease-B"] };
+  for (const [capacity, needsCleanup] of [[empty, false], [occupied, true]] as const) {
+    const withCapacity = { ...port, readCapacity: () => capacity };
+    const { maxLeaders, maxEmployees, activeLeaders, activeEmployees } = buildDepartmentGroupChatProjection(root, withCapacity)!;
+    assert.deepEqual([maxLeaders, maxEmployees, activeLeaders, activeEmployees],
+      [capacity.maxLeaders, capacity.maxEmployees, capacity.leaders.length, capacity.employees.length]);
+    const feedback = readDepartmentOrganizationStopFeedback(root, root.workspaceKey!, withCapacity, "confirmed");
+    assert.deepEqual(feedback, { needsCleanup, stopState: needsCleanup ? "unconfirmed" : "confirmed" });
+    if (needsCleanup) assert.throws(() => assertDepartmentOrganizationContinuation(root, feedback), /部门停止未确认/);
+    else assert.doesNotThrow(() => assertDepartmentOrganizationContinuation(root, feedback));
+  }
+
+  const invalid: Array<[string, Partial<Record<keyof DepartmentCapacitySnapshot, unknown>>]> = [
+    ["nonexact root", { rootTaskId: ` ${root.id}` }],
+    ["negative limit", { maxLeaders: -1 }],
+    ["fractional limit", { maxEmployees: 1.5 }],
+    ["unsafe limit", { maxLeaders: Number.MAX_SAFE_INTEGER + 1 }],
+    ["non-numeric limit", { maxEmployees: "1" }],
+    ["missing leader array", { leaders: undefined }],
+    ["non-array employee leases", { employees: "lease-A" }],
+    ["blank leader lease", { leaders: [" "] }],
+    ["non-string employee lease", { employees: [42] }],
+    ["sparse lease array", { leaders: new Array<string>(1) }],
+    ["duplicate leaders", { leaders: ["lease-A", "lease-A"] }],
+    ["duplicate employees", { employees: ["lease-A", "lease-A"] }],
+  ];
+  const unavailable: ReadonlyArray<readonly [string, (() => unknown)?]> = [
+    ["missing reader"],
+    ["missing snapshot", () => null],
+    ["read error", () => { throw new Error("offline"); }],
+    ...invalid.map(([name, fields]) => [name, () => ({ ...empty, ...fields })] as const),
+  ];
+  for (const [name, readCapacity] of unavailable) {
+    const withCapacity = { ...port, readCapacity: readCapacity as (() => DepartmentCapacitySnapshot | null) | undefined };
+    const { maxLeaders, maxEmployees, activeLeaders, activeEmployees } = buildDepartmentGroupChatProjection(root, withCapacity)!;
+    assert.deepEqual([maxLeaders, maxEmployees, activeLeaders, activeEmployees],
+      [root.department!.limits.maxLeaders, root.department!.limits.maxEmployees, null, null], name);
+    const feedback = readDepartmentOrganizationStopFeedback(root, root.workspaceKey!, withCapacity, "confirmed");
+    assert.deepEqual(feedback, { needsCleanup: true, stopState: "unconfirmed" }, name);
+    assert.throws(() => assertDepartmentOrganizationContinuation(root, feedback), /部门停止未确认/, name);
   }
 });
 

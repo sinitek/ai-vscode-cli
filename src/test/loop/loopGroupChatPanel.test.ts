@@ -1302,8 +1302,8 @@ test("keeps a paused Loop+ review from looking active while a running subtask st
     assert.doesNotMatch(page, /data-thinking-kind="main"|Main task 思考中|正在验收/u);
     assert.match(page, /<button[^>]*data-action="continueTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="stopTask"/u);
-    assert.match(page, /自动验收已暂停，需要继续后才会恢复/u);
-    assert.match(page, /验收已暂停/u);
+    assert.match(page, /任务已暂停，尚未完成；点击继续执行可恢复。/u);
+    assert.match(page, /任务已暂停，未完成/u);
   }
 });
 

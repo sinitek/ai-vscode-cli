@@ -363,7 +363,7 @@ function loopPlusMemberStatus(
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {
-    return running.interrupted ? "waiting_continuation" : "running";
+    return running.interrupted ? "waiting_continuation" : running.repairing ? "repairing" : "running";
   }
   if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
     return "pending";
@@ -387,7 +387,10 @@ function loopPlusMemberStatus(
   if (recordedStatus === "completed") {
     return "execution_completed";
   }
-  if (recordedStatus === "blocked" || recordedStatus === "skipped") {
+  if (recordedStatus === "blocked") {
+    return "blocked";
+  }
+  if (recordedStatus === "skipped") {
     return "stopped";
   }
   return "not_in_snapshot";

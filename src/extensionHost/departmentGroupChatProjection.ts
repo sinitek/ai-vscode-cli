@@ -1,5 +1,5 @@
 import { normalizeDepartmentMetadata } from "../department";
-import type { DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { isValidDepartmentCapacitySnapshot, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
 import { resolveLoopPanelProgressPercent } from "../loopGroupChatPanelState";
 import { projectLoopPlusPanel } from "../loopPlusPanelProjection";
@@ -52,6 +52,13 @@ export function resolveDepartmentRoot(task: LoopTaskRecord, port: Pick<Departmen
   return meta.role === "director" || isDepartmentLeader(root, task) ? root : null;
 }
 
+function readDepartmentCapacity(rootTaskId: string, port: Pick<DepartmentGroupChatReadPort, "readCapacity">): DepartmentCapacitySnapshot | null {
+  try {
+    const capacity = port.readCapacity?.(rootTaskId) ?? null;
+    return isValidDepartmentCapacitySnapshot(capacity, rootTaskId) ? capacity : null;
+  } catch { return null; }
+}
+
 /** Read-only organizational control, independent of a host-local model invocation.
  * The reader MUST be the trusted department source, never ordinary task discovery.
  * Unknown capacity retains the stop route; only an exact empty snapshot proves
@@ -71,17 +78,9 @@ function readDepartmentOrganizationControl(task: LoopTaskRecord, workspaceKey: s
     || current.departmentInvalid !== task.departmentInvalid) return null;
   const root = resolveDepartmentRoot(current, port);
   if (!root || root.id !== current.id) return null;
-  let capacity: DepartmentCapacitySnapshot | null = null;
-  try { capacity = port.readCapacity?.(root.id) ?? null; } catch { /* Unknown is not released. */ }
-  const valid = capacity && capacity.rootTaskId === root.id
-    && Number.isSafeInteger(capacity.maxLeaders) && capacity.maxLeaders >= 0
-    && Number.isSafeInteger(capacity.maxEmployees) && capacity.maxEmployees >= 0
-    && Array.isArray(capacity.leaders) && Array.isArray(capacity.employees)
-    && capacity.leaders.every(id => typeof id === "string" && id.trim())
-    && capacity.employees.every(id => typeof id === "string" && id.trim())
-    && new Set(capacity.leaders).size === capacity.leaders.length
-    && new Set(capacity.employees).size === capacity.employees.length;
-  return { needsCleanup: !valid || capacity!.leaders.length > 0 || capacity!.employees.length > 0, capacityKnown: Boolean(valid), status: current.status, interrupted: current.runtimeInterrupted === true };
+  const capacity = readDepartmentCapacity(root.id, port);
+  return { needsCleanup: !capacity || capacity.leaders.length > 0 || capacity.employees.length > 0,
+    capacityKnown: capacity !== null, status: current.status, interrupted: current.runtimeInterrupted === true };
 }
 
 export function readDepartmentOrganizationStopFeedback(task: LoopTaskRecord, workspaceKey: string,
@@ -123,7 +122,8 @@ function participant(task: LoopTaskRecord, role: "director" | "leader"): LoopGro
 
 function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLoopPlusPanel>): LoopGroupChatPanelParticipant[] {
   if (!projection?.ok) return [];
-  return projection.seenAttempts.flatMap((attempt) => {
+  const latestAttempts = new Map(projection.seenAttempts.map((attempt) => [attempt.subtaskId, attempt]));
+  return [...latestAttempts.values()].flatMap((attempt) => {
     const subtaskIndex = task.subTasks.findIndex((item) => item.id === attempt.subtaskId);
     const spec = task.subTasks[subtaskIndex];
     if (!spec) return [];
@@ -134,7 +134,7 @@ function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLo
       && (attempt.disposition === "finished" || attempt.disposition === "reported");
     return [{ id: attempt.attemptId, subtaskId: spec.id,
       title: getLoopSubtaskDisplayTitle(subtaskIndex, spec), role: "employee",
-      status: interrupted ? "blocked" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
+      status: interrupted ? "blocked" : execution?.repairing ? "repairing" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
         : review ? "queued_review" : completedWithoutAcceptance ? "no_acceptance" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"
             : attempt.outcome === "stopped" || attempt.disposition === "closed" ? "stopped" : "not_in_snapshot"),
@@ -192,18 +192,10 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
       employees: employees(record, loopPlus) };
   });
   const overallProgressPercent = meta.role === "director" ? resolveDepartmentWeightedProgress(root, progressByModuleId) : undefined;
-  let capacity: DepartmentCapacitySnapshot | null = null;
-  try { capacity = port.readCapacity?.(root.id) ?? null; } catch { /* Unknown is explicit. */ }
-  const valid = capacity && capacity.rootTaskId === root.id
-    && Number.isSafeInteger(capacity.maxLeaders) && capacity.maxLeaders >= 0
-    && Number.isSafeInteger(capacity.maxEmployees) && capacity.maxEmployees >= 0
-    && Array.isArray(capacity.leaders) && Array.isArray(capacity.employees)
-    && capacity.leaders.every((id) => typeof id === "string" && id.trim())
-    && capacity.employees.every((id) => typeof id === "string" && id.trim())
-    && new Set(capacity.leaders).size === capacity.leaders.length && new Set(capacity.employees).size === capacity.employees.length;
+  const capacity = readDepartmentCapacity(root.id, port);
   let employeeAllocation: DepartmentEmployeeAllocationProjection | undefined;
   try { employeeAllocation = normalizeDepartmentEmployeeAllocation(port.readEmployeeAllocation?.(root.id), root.id,
-    [...byId.keys()], valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees); } catch { /* Unknown, never fabricated. */ }
+    [...byId.keys()], capacity?.maxEmployees ?? rootMeta.limits.maxEmployees); } catch { /* Unknown, never fabricated. */ }
   return {
     ...(employeeAllocation ? { employeeAllocation } : {}),
     employeeAllocationEditable: meta.role === "director" && Boolean(employeeAllocation && port.employeeAllocationWritable),
@@ -212,10 +204,10 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     director: participant(root, "director"),
     leaders,
     ...(overallProgressPercent !== undefined ? { overallProgressPercent } : {}),
-    maxLeaders: valid ? capacity!.maxLeaders : rootMeta.limits.maxLeaders,
-    maxEmployees: valid ? capacity!.maxEmployees : rootMeta.limits.maxEmployees,
-    activeLeaders: valid ? capacity!.leaders.length : null,
-    activeEmployees: valid ? capacity!.employees.length : null,
+    maxLeaders: capacity?.maxLeaders ?? rootMeta.limits.maxLeaders,
+    maxEmployees: capacity?.maxEmployees ?? rootMeta.limits.maxEmployees,
+    activeLeaders: capacity?.leaders.length ?? null,
+    activeEmployees: capacity?.employees.length ?? null,
   };
 }
 

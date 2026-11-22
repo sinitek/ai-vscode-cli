@@ -427,9 +427,13 @@ export function parseOpenCodeVisibleStreamEvents(
 
 function parseOpenCodeJsonOutput(stdout: string): {
   finalText: string | null;
+  ansiFallbackText: string | null;
+  errorText: string | null;
   hasStructuredFinalAnswer: boolean;
 } {
   const chunks: string[] = [];
+  const errors: string[] = [];
+  let ansiFallbackChunks: string[] | null = null;
   const assistantTextMessageIds = new Set<string>();
   const structuredFinalMessageIds = new Set<string>();
   const completedTextMessageIds = new Set<string>();
@@ -438,14 +442,27 @@ function parseOpenCodeJsonOutput(stdout: string): {
   let sawToolCallFinish = false;
   for (const line of stdout.split(/\r?\n/u)) {
     const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) {
+    const jsonLine = trimmed.includes("\x1b") ? stripAnsi(trimmed).trim() : trimmed;
+    if (!jsonLine.startsWith("{")) {
       continue;
     }
     try {
-      const record = JSON.parse(trimmed) as Record<string, unknown>;
-      const messageId = readOpenCodeMessageId(record);
+      const record = JSON.parse(jsonLine) as Record<string, unknown>;
+      const isRawJsonLine = jsonLine === trimmed;
+      if (isRawJsonLine) {
+        collectOpenCodeJsonError(record, errors);
+      }
       const recordChunks = collectOpenCodeJsonText(record);
+      if (!isRawJsonLine) {
+        if (recordChunks.length > 0) {
+          ansiFallbackChunks ??= [...chunks];
+          ansiFallbackChunks.push(...recordChunks);
+        }
+        continue;
+      }
       chunks.push(...recordChunks);
+      ansiFallbackChunks?.push(...recordChunks);
+      const messageId = readOpenCodeMessageId(record);
       const hasAssistantText = splitThinkingTaggedContent(recordChunks.join(""))
         .some((segment) => segment.kind === "assistant" && segment.content.trim().length > 0);
       if (hasAssistantText) {
@@ -484,6 +501,10 @@ function parseOpenCodeJsonOutput(stdout: string): {
   ) && !sawTool && !sawToolCallFinish && !hasConflictingStop;
   return {
     finalText: finalText || null,
+    ansiFallbackText: !finalText && ansiFallbackChunks
+      ? extractAssistantTextWithoutThinkingBlocks(ansiFallbackChunks.join("")).trim() || null
+      : null,
+    errorText: errors.join("\n").trim() || null,
     hasStructuredFinalAnswer: hasScopedStructuredFinalAnswer || hasCompletedTextFinalAnswer,
   };
 }
@@ -701,7 +722,7 @@ export function detectOpenCodeStreamActivity(stdout: string, stderr: string): Op
   return tracker.flush();
 }
 
-function parseOpenCodePlainOutput(stdout: string): string | null {
+function parseOpenCodePlainOutput(stdout: string, ansiFallbackText: string | null): string | null {
   const cleaned = cleanOpenCodeStatusOutput(stdout);
   if (!cleaned) {
     return null;
@@ -713,39 +734,23 @@ function parseOpenCodePlainOutput(stdout: string): string | null {
   if (meaningfulLines.length > 0 && meaningfulLines.every((line) => line.startsWith("{"))) {
     return null;
   }
-  const jsonText = parseOpenCodeJsonOutput(cleaned).finalText;
-  const plainText = extractAssistantTextWithoutThinkingBlocks(cleaned).trim();
-  return jsonText ?? (plainText || null);
+  return ansiFallbackText ?? (extractAssistantTextWithoutThinkingBlocks(cleaned).trim() || null);
 }
 
-function collectOpenCodeJsonErrors(stdout: string): string | null {
-  const errors: string[] = [];
-  for (const line of stdout.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("{")) {
-      continue;
-    }
-    try {
-      const record = JSON.parse(trimmed) as Record<string, unknown>;
-      if (record.type !== "error" || !record.error || typeof record.error !== "object") {
-        continue;
-      }
-      const error = record.error as Record<string, unknown>;
-      const data = error.data && typeof error.data === "object"
-        ? error.data as Record<string, unknown>
-        : {};
-      const details = collectOpenCodeProviderErrorDetails(error, data);
-      if (details.length > 0) {
-        pushUniqueText(errors, details.join("\n"));
-      } else {
-        pushUniqueText(errors, readStringProperty(error, ["message", "name"]));
-      }
-    } catch {
-      // Ignore non-JSON progress lines in default output.
-    }
+function collectOpenCodeJsonError(record: Record<string, unknown>, errors: string[]): void {
+  if (record.type !== "error" || !record.error || typeof record.error !== "object") {
+    return;
   }
-
-  return errors.join("\n").trim() || null;
+  const error = record.error as Record<string, unknown>;
+  const data = error.data && typeof error.data === "object"
+    ? error.data as Record<string, unknown>
+    : {};
+  const details = collectOpenCodeProviderErrorDetails(error, data);
+  if (details.length > 0) {
+    pushUniqueText(errors, details.join("\n"));
+  } else {
+    pushUniqueText(errors, readStringProperty(error, ["message", "name"]));
+  }
 }
 
 const OPENCODE_RUNTIME_SESSION_ID_PATTERN = /(?:\bsession\.id=|\bcreated id=|\bsessionID(?:"\s*:\s*"|=))(ses_[A-Za-z0-9]+)/gu;
@@ -1002,10 +1007,9 @@ export function parseOpenCodeExportStdout(
 
 export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCodeRunOutput {
   const jsonOutput = parseOpenCodeJsonOutput(stdout);
-  const finalText = jsonOutput.finalText ?? parseOpenCodePlainOutput(stdout);
+  const finalText = jsonOutput.finalText ?? parseOpenCodePlainOutput(stdout, jsonOutput.ansiFallbackText);
   const stderrErrorText = cleanOpenCodeStatusOutput(stderr);
   const printLogErrorText = finalText ? null : extractOpenCodePrintLogErrorText(stderr);
-  const jsonErrorText = collectOpenCodeJsonErrors(stdout);
   const statusText = stripAnsi(stderr)
     .split(/\r?\n/u)
     .map((line) => line.trim())
@@ -1015,7 +1019,7 @@ export function parseOpenCodeRunOutput(stdout: string, stderr: string): OpenCode
 
   return {
     finalText,
-    errorText: combineOpenCodeErrorText(jsonErrorText, stderrErrorText, printLogErrorText),
+    errorText: combineOpenCodeErrorText(jsonOutput.errorText, stderrErrorText, printLogErrorText),
     statusText: statusText || null,
     hasStructuredFinalAnswer: jsonOutput.hasStructuredFinalAnswer,
   };

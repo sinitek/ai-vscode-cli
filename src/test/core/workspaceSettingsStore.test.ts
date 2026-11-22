@@ -376,6 +376,34 @@ test("trySaveWorkspaceSettings reports failures instead of silently dropping the
   }
 });
 
+test("workspace updates report and log a replaced lock without removing it", (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-workspace-lock-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, "workspace.json");
+  const lockPath = `${filePath}.lock`;
+  const logs: Array<{ event: string; payload: unknown }> = [];
+  const options: WorkspaceSettingsStoreOptions = {
+    ...createOptions(directory),
+    logError: (event, payload) => logs.push({ event, payload }),
+  };
+  assert.deepEqual(trySaveWorkspaceSettings({ workspaceMemoryEnabled: true }, options), { ok: true });
+  assert.equal(fs.existsSync(lockPath), false);
+
+  const result = tryUpdateWorkspaceSettings((current) => {
+    fs.renameSync(lockPath, `${lockPath}.original`);
+    fs.writeFileSync(lockPath, "replacement", { flag: "wx" });
+    return { ...current, departmentMaxEmployees: 12 };
+  }, options);
+  const error = "Error: 工作区设置锁已替换，拒绝释放未知锁。";
+  assert.deepEqual(result, { ok: false, error });
+  assert.deepEqual(logs, [{ event: "workspace-settings-write-error", payload: { error } }]);
+  assert.equal(fs.readFileSync(lockPath, "utf8"), "replacement");
+  assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), {
+    workspaceMemoryEnabled: true,
+    departmentMaxEmployees: 12,
+  });
+});
+
 test("workspace capacity storage preserves inheritance, partial clears, other settings and isolation", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-workspace-capacity-"));
   const a = { ...createOptions(directory), workspaceKey: "a" }, b = { ...createOptions(directory), workspaceKey: "b" };

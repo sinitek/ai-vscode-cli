@@ -20,6 +20,7 @@ import {
   type LoopPlusAcceptancePlan,
 } from "./loopPlusAcceptancePlan";
 import { normalizeDepartmentRolePreference, type DepartmentConfiguredRoleRoute } from "./departmentConfiguration";
+import { withFileLockSync } from "./shared/fileLock";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   taskSummary?: string;
@@ -335,28 +336,7 @@ function writeWorkspaceSettingsFile(filePath: string, next: WorkspaceSettings): 
 }
 
 function withWorkspaceSettingsLock<T>(filePath: string, action: () => T): T {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const lockPath = `${filePath}.lock`;
-  const deadline = Date.now() + 1500;
-  const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-  let descriptor: number;
-  while (true) {
-    try { descriptor = fs.openSync(lockPath, "wx", 0o600); break; }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw error;
-      Atomics.wait(pause, 0, 0, 5);
-    }
-  }
-  const identity = fs.fstatSync(descriptor);
-  try { return action(); }
-  finally {
-    fs.closeSync(descriptor);
-    const current = fs.lstatSync(lockPath);
-    if (!current.isFile() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) {
-      throw new Error("工作区设置锁已替换，拒绝释放未知锁。");
-    }
-    fs.unlinkSync(lockPath);
-  }
+  return withFileLockSync(`${filePath}.lock`, "工作区设置锁已替换，拒绝释放未知锁。", action);
 }
 
 export function saveWorkspaceSettings(next: WorkspaceSettings, options: WorkspaceSettingsStoreOptions): void {

@@ -427,6 +427,7 @@ Loop+ 决策兼容 v1 依赖快照，只有每项最新前置 attempt 满足准�
 
 ## Loop / Loop+ 中断后继续执行
 
+- Loop+ 主任务因宿主中断而记录为 `stopped` + `runtimeInterrupted`、且调度快照为空闲时，群聊仍显示任务已暂停且未完成，不显示为空闲；用户通过「继续执行」显式恢复，宿主重开不自动运行。
 - 子任务停止或失败时仍保留 Tab；重新执行并成功完成后，自动清理同一父任务、同一子任务的当前及更早闲置 Tab，不删除 CLI 会话和聊天记录，不关闭运行中或更新的替代 Tab。Loop+ 主模型 `close` / `reprompt` 可以升级此前停止请求；恢复后缺少旧 attempt 句柄时仍清理对应旧 Tab。实现：`src/extensionHost/loopSubtaskTabs.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusOrchestration.ts`；回归：`src/test/session/sessionTabCliSwitch.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 - 普通 Loop / Loop+ 续跑在准备时读取配置，并使用原生会话绑定及 runner 指纹匹配会话。部门续跑核验原任务固化的角色档案及持久代次身份。历史的配置锁超时续跑方案见已归档计划。
 - 续跑提前拒绝、原配置恢复失败和启动异常后，宿主发送明确收尾回执并刷新实际任务状态；“继续执行”可再次弹窗，不依赖相同 HTML 补丁重建按钮。同一请求确认只提交一次，同一任务准备续跑时拒绝重复启动。
@@ -896,6 +897,8 @@ Loop / Loop+ 宿主崩溃恢复修复：重新打开后核对真实运行所有�
 Loop+ 群聊读取主任务 Tab 的实际运行态。主模型调用或提问回答真正开始时，若调度快照仍为 idle、waiting 或 review_pending，主任务状态改为“运行中”，活动说明与主任务思考气泡同步更新；并行运行的子任务继续显示各自的思考气泡。排队提问不会提前显示运行中；分解、验收、暂停、停止、完成及无效快照保持原优先级，经典 Loop 不变。
 
 实现：`src/loopPlusPanelProjection.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`、`src/webview/loopGroupChatPanel.ts`、`src/webview/loopGroupChatPanelRenderer.ts`；验证：`npm run build`；`node --test --test-reporter=dot dist/test/loop/loopPlusGroupChatPanel.test.js dist/test/loop/loopGroupChatCoordinator.test.js dist/test/loop/loopGroupChatPanelState.test.js dist/test/loop/loopPlusPanelState.test.js dist/test/loop/loopGroupChatPanel.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js`；headless Chromium 140 加载真实群聊 HTML 并接收运行态 `contentPatch`，检查 waiting → running、主/子思考气泡及 480px 无横向溢出。
+
+Loop+ 群聊状态说明保留原文，子任务状态统计改为与产研部组长面板一致的主题标签，顺序为“运行中”“修复中”“验收中”“待验收”“待启动”“已阻塞”“已完成”。验收失败修复沿用原逻辑子任务 ID 和成员行，新 attempt 独立验收；活动修复以主题橙色显示并独立计数，不计入运行中。暂停或排队的验收计入待验收；已验收成功/失败及免验收完成计入已完成；续跑等待不计为运行中，只有记录阻塞且处于停止/续跑等待的子任务计入已阻塞。不再重复显示阶段、模式和唤醒元数据行。
 
 ## 2026-11-21 Loop / Loop+ 提交等待反馈
 

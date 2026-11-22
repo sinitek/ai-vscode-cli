@@ -1923,17 +1923,44 @@ function renderLoopPlusPanels(
   const activity = loopPlusActivityText(state, projection, strings);
   return `<section class="panel" data-loop-plus-mode="event_driven" data-loop-plus-status="${escapeAttribute(projection.activity)}" data-loop-plus-phase="${escapeAttribute(projection.phase)}">
     <h2>${escapeHtml(strings.titleLoopPlus)}</h2>
-    <div class="meta-grid">
-      ${renderLoopPlusField("mode", strings.loopPlusMode, strings.loopPlusModeValue)}
-      ${renderLoopPlusField("phase", strings.loopPlusPhase, projection.phase)}
-      ${renderLoopPlusField("activity", strings.status, activity)}
-      ${renderLoopPlusField("wake", strings.loopPlusWake, projection.wakePending ? strings.loopPlusWakeYes : strings.loopPlusWakeNo)}
-      ${renderLoopPlusCount("queue", strings.loopPlusQueueCount, projection.reviewQueueCount)}
-      ${renderLoopPlusCount("visible", strings.loopPlusVisibleCount, projection.visibleReviewCount)}
-      ${renderLoopPlusCount("running", strings.loopPlusRunningCount, projection.runningCount)}
-      ${renderLoopPlusCount("pending", strings.loopPlusPendingCount, projection.pendingCount)}
-    </div>
+    <div class="meta-row loop-plus-activity" data-loop-plus-field="activity"><div class="meta-label">${escapeHtml(strings.status)}</div><div class="meta-value">${escapeHtml(activity)}</div></div>
+    ${renderLoopPlusStatusSummary(state, strings)}
   </section>`;
+}
+
+function renderLoopPlusStatusSummary(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
+  const counts = new Map<string, number>();
+  const participants = new Map<string, LoopGroupChatPanelParticipant>();
+  for (const round of state.rounds) {
+    for (const participant of round.participants) {
+      if (participant.role === "subtask") participants.set(participant.id, participant);
+    }
+  }
+  const countStatus = (status: string): string | undefined => {
+    if (status === "running") return "running";
+    if (status === "repairing") return "repairing";
+    if (status === "reviewing") return "reviewing";
+    if (status === "queued_review" || status === "held_review") return "queued_review";
+    if (status === "pending") return "pending";
+    if (status === "blocked") return "blocked";
+    if (["completed", "acceptance_passed", "acceptance_failed", "no_acceptance"].includes(status)) return "completed";
+    return undefined;
+  };
+  for (const participant of participants.values()) {
+    const status = countStatus(participant.status);
+    if (status) counts.set(status, (counts.get(status) ?? 0) + 1);
+  }
+  const items: Array<[string, string, string]> = [
+    ["running", "running", strings.loopPlusStatusRunning],
+    ["repairing", "repairing", "修复中"],
+    ["reviewing", "reviewing", "验收中"],
+    ["queue", "queued_review", strings.loopPlusStatusQueued],
+    ["pending", "pending", strings.loopPlusStatusPending],
+    ["blocked", "blocked", strings.participantStatusBlocked],
+    ["completed", "completed", strings.participantStatusCompleted],
+  ];
+  const tags = items.map(([field, status, label]) => `<span class="loop-plus-status-tag"${field === "repairing" ? " data-loop-plus-tone=\"repairing\"" : ""} data-loop-plus-count="${field}">${escapeHtml(label)} ${counts.get(status) ?? 0}</span>`).join("");
+  return `<div class="loop-plus-status-summary" role="group" aria-label="子任务状态汇总">${tags}</div>`;
 }
 
 function loopPlusActivityText(
@@ -1966,7 +1993,9 @@ function loopPlusActivityText(
     case "decomposing":
       return strings.loopPlusActivityDecomposing;
     case "paused":
-      return strings.loopPlusActivityPaused;
+      return state.task.status === "error"
+        ? strings.loopPlusActivityPaused
+        : strings.loopPlusActivityTaskPaused;
   }
 }
 
@@ -1985,24 +2014,12 @@ function loopPlusSubtaskLabel(state: LoopGroupChatPanelState, subtaskId: string)
   return normalized;
 }
 
-function renderLoopPlusField(field: string, label: string, value: string): string {
-  return `<div class="meta-row" data-loop-plus-field="${escapeAttribute(field)}">
-    <div class="meta-label">${escapeHtml(label)}</div>
-    <div class="meta-value">${escapeHtml(value)}</div>
-  </div>`;
-}
-
-function renderLoopPlusCount(field: string, label: string, value: number): string {
-  return `<div class="meta-row" data-loop-plus-count="${escapeAttribute(field)}">
-    <div class="meta-label">${escapeHtml(label)}</div>
-    <div class="meta-value">${escapeHtml(String(value))}</div>
-  </div>`;
-}
-
 function participantStatusClass(status: string): string {
   switch (status) {
     case "running":
       return "member-status-running";
+    case "repairing":
+      return "member-status-repairing";
     case "reviewing":
       return "member-status-reviewing";
     case "completed":
@@ -2023,6 +2040,7 @@ function participantStatusClass(status: string): string {
       return "member-status-failed";
     case "stopped":
     case "skipped":
+    case "waiting_continuation":
       return "member-status-inactive";
     default:
       return "";
@@ -2050,6 +2068,8 @@ function formatParticipantStatus(
   switch (status) {
     case "running":
       return strings.loopPlusStatusRunning;
+    case "repairing":
+      return "修复中";
     case "pending":
       return strings.loopPlusStatusPending;
     case "reviewing":
@@ -2152,7 +2172,7 @@ function renderRosterPanel(
   ];
   const participants = orderedRoster.map((participant) => {
     const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
-    const opensConversation = participant.role === "subtask" && participant.status === "running";
+    const opensConversation = participant.role === "subtask" && ["running", "repairing"].includes(participant.status);
     const blockingLabels = participant.role === "subtask" && participant.status === "pending"
       ? blockingLabelsBySubtask.get(participant.id)
       : undefined;

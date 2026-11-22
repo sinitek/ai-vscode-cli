@@ -187,6 +187,39 @@ test("global setting patches merge disk state across stale window caches", (cont
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
+test("tool settings report a replaced lock without removing it or rolling back a completed write", (context) => {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-settings-lock-"));
+  context.after(() => fs.rmSync(temporaryHome, { recursive: true, force: true }));
+  const script = `
+    const assert = require("node:assert/strict");
+    const fs = require("node:fs");
+    require("node:os").homedir = () => ${JSON.stringify(temporaryHome)};
+    const settings = require(${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))});
+    const filePath = settings.getToolSettingsFilePath();
+    const lockPath = filePath + ".lock";
+    settings.writeToolSettings({ debug: true });
+    assert.equal(fs.existsSync(lockPath), false);
+
+    const renameSync = fs.renameSync;
+    fs.renameSync = (source, destination) => {
+      renameSync(source, destination);
+      if (destination === filePath) {
+        renameSync(lockPath, lockPath + ".original");
+        fs.writeFileSync(lockPath, "replacement", { flag: "wx" });
+      }
+    };
+    assert.throws(() => settings.updateToolSettings({ historyRetentionDays: 90 }), {
+      message: "全局工具设置锁已替换，拒绝释放未知锁。",
+    });
+    const expected = { debug: true, historyRetentionDays: 90 };
+    assert.deepEqual(settings.readToolSettings(), expected);
+    assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), expected);
+    assert.equal(fs.readFileSync(lockPath, "utf8"), "replacement");
+  `;
+  const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout);
+});
+
 test("notification settings share the global tool settings source", () => {
   assert.deepEqual(normalizeToolSettings({ taskCompletionNotifications: false, debug: true }), {
     taskCompletionNotifications: false,

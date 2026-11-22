@@ -644,13 +644,23 @@ ${DIALOG_SHELL_STYLES}
         gap: 6px;
         margin: 0 0 8px 36px;
       }
-      .department-status-tag {
+      .loop-plus-activity { margin-bottom: 8px; }
+      .loop-plus-status-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .department-status-tag,
+      .loop-plus-status-tag {
         border-radius: 3px;
         padding: 1px 6px;
         color: var(--vscode-badge-foreground);
         background: var(--vscode-badge-background);
         font-size: 11px;
         font-variant-numeric: tabular-nums;
+      }
+      .loop-plus-status-tag[data-loop-plus-tone="repairing"] {
+        color: var(--vscode-editorWarning-foreground, var(--vscode-charts-orange, var(--vscode-badge-foreground)));
       }
       .department-empty { padding: 4px; }
       .department-occupancy { margin: 8px 0; }
@@ -776,6 +786,7 @@ ${DIALOG_SHELL_STYLES}
         color: var(--vscode-charts-green, var(--vscode-testing-iconPassed, var(--vscode-focusBorder)));
       }
       .member-status-pending,
+      .member-status-repairing,
       .member-status-failed {
         color: var(--vscode-charts-orange, var(--vscode-editorWarning-foreground, var(--vscode-focusBorder)));
       }

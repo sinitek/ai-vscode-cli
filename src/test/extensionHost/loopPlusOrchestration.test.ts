@@ -2133,7 +2133,7 @@ test("rejects confirmation beyond four and fills configured slots before reviewi
   await flush();
   const snapshot = snapshotOf(env.tasks.get(task.id));
   assert.equal(snapshot.running.length, 6, "review batch size does not limit dispatch or runtime capacity");
-  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["repair", ...deliveries.map((item) => item.id)]);
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["finished-0", ...deliveries.map((item) => item.id)]);
   assert.equal(env.attempts[0].request.continueFromSubtaskId, "finished-0");
   assert.equal(env.attempts.slice(1).every((item) => item.request.continueFromSubtaskId === undefined), true);
   assert.deepEqual(env.mains.at(-1)!.request.reviewEventIds, allIds.slice(4));
@@ -2254,7 +2254,7 @@ test("fills six production slots while serializing only a conflicting follow-up"
   assert.equal(snapshotOf(task()).pending.length, 0);
 });
 
-test("accept launches a repair and independent remaining-goal deliveries together without sharing the repair source", async () => {
+test("accept repairs the original member beside independent remaining-goal deliveries", async () => {
   const env = harness({ maxConcurrency: 3 });
   const run = env.host.tryRun({ displayPrompt: "修复验收缺口并完成其余独立交付" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId ?? "";
@@ -2272,7 +2272,7 @@ test("accept launches a repair and independent remaining-goal deliveries togethe
     acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture().map((check) => ({ ...check, passed: false })) },
   }));
   await flush();
-  assert.deepEqual(env.attempts.slice(1).map((item) => item.request.subtaskId), ["repair", "feature", "docs"]);
+  assert.deepEqual(env.attempts.slice(1).map((item) => item.request.subtaskId), ["original", "feature", "docs"]);
   assert.equal(env.attempts[1].request.continueFromSubtaskId, "original");
   assert.equal(env.attempts[2].request.continueFromSubtaskId, undefined);
   assert.equal(env.attempts[3].request.continueFromSubtaskId, undefined);
@@ -2284,7 +2284,7 @@ test("accept launches a repair and independent remaining-goal deliveries togethe
   await flush();
   const featureReview = env.mains[2];
   assert.equal(featureReview.request.kind, "review");
-  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).running.map((item) => item.subtaskId), ["repair", "docs"]);
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).running.map((item) => item.subtaskId), ["original", "docs"]);
   featureReview.resolve(completedDecision({ reviewEventId: featureReview.request.reviewEventId }));
   await flush();
   assert.equal(env.tasks.get(taskId)?.status, "running", "live repair and independent work still prevent parent completion");
@@ -2329,7 +2329,7 @@ for (const conflict of ["writeFiles", "conflictGroup", "capacity"] as const) {
     }));
     await flush();
     const snapshot = () => snapshotOf(env.tasks.get(taskId));
-    assert.equal(env.attempts[2].request.subtaskId, "repair");
+    assert.equal(env.attempts[2].request.subtaskId, "original");
     if (conflict === "capacity") {
       assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["reserved", "independent"]);
       assert.equal(snapshot().running.length, 2);
@@ -2341,7 +2341,7 @@ for (const conflict of ["writeFiles", "conflictGroup", "capacity"] as const) {
     env.attempts[1].resolve({ outcome: "completed", detail: "共享资源释放" });
     await flush();
     assert.equal(env.attempts.at(-1)?.request.subtaskId, "reserved");
-    assert.ok(snapshot().running.some((item) => item.subtaskId === "repair"));
+    assert.ok(snapshot().running.some((item) => item.subtaskId === "original"));
     assert.equal(env.tasks.get(taskId)?.status, "running");
     env.host.stopParent(taskId);
     await run.done;
@@ -2386,7 +2386,6 @@ test("records each accept review without failing a successful sibling", async ()
   assert.equal(seen("beta")?.outcome, "completed");
   assert.equal(seen("beta")?.acceptance, undefined);
   assert.equal(seen("follow-up")?.acceptance, undefined);
-  assert.equal(seen("repair")?.acceptance, undefined);
   assert.equal(env.tasks.get(taskId)!.subTasks.some((item) => item.id === "repair"), false, "later queued review cannot authorize a repair early");
   assert.equal(env.tasks.get(taskId)!.subTasks.find((item) => item.id === "follow-up")!.repairSource, undefined);
 
@@ -2407,15 +2406,17 @@ test("records each accept review without failing a successful sibling", async ()
   }));
   await flush();
 
-  assert.deepEqual(env.tasks.get(taskId)!.subTasks.find((item) => item.id === "repair")!.repairSource,
-    { subtaskId: "beta", attemptId: betaAttempt.request.attemptId, finishEventId: betaEventId });
+  assert.equal(env.tasks.get(taskId)!.subTasks.some((item) => item.id === "repair"), false);
+  assert.ok(env.tasks.get(taskId)!.subTasks.some((item) => item.id === "beta"));
 
-  env.attempts.find((item) => item.request.subtaskId === "repair")?.resolve({ outcome: "completed", detail: "repair" });
+  const repairAttempt = env.attempts.find((item) => item.request.subtaskId === "beta" && item.request.attemptId !== betaAttempt.request.attemptId);
+  assert.ok(repairAttempt);
+  repairAttempt.resolve({ outcome: "completed", detail: "repair" });
   await flush();
   const repairReview = reviews().at(-1);
   assert.ok(repairReview);
   assert.notEqual(repairReview, betaReview);
-  assert.deepEqual(repairReview.request.reviewEventIds, [buildLoopPlusFinishEventId("repair", env.attempts.find((item) => item.request.subtaskId === "repair")!.request.attemptId)]);
+  assert.deepEqual(repairReview.request.reviewEventIds, [buildLoopPlusFinishEventId("beta", repairAttempt.request.attemptId)]);
   repairReview.resolve(decisionJson({
     status: "accept",
     reviewEventId: repairReview.request.reviewEventId,
@@ -2426,7 +2427,7 @@ test("records each accept review without failing a successful sibling", async ()
   await flush();
   assert.equal(seen("alpha")?.acceptance, "passed");
   assert.equal(seen("beta")?.acceptance, "failed");
-  assert.equal(seen("repair")?.acceptance, "passed");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.subtaskId === "beta").at(-1)?.acceptance, "passed");
   assert.equal(seen("beta")?.acceptance, "failed");
   assert.equal(reviews().filter((item) => item.request.reviewEventIds?.includes(alphaEventId) === true).length, 1);
   env.host.stopParent(taskId);
@@ -5097,47 +5098,32 @@ test("a task started without an acceptance plan falls back to the fixed baseline
   assert.doesNotMatch(env.mains[0].request.modelPrompt, /Additional acceptance reviews/);
 });
 
-for (const failure of ["none", "save", "readback", "invalid-review", "forged-dispatch"] as const) test(`repair provenance host commit ${failure}`, async () => {
-  let rejectSave = false;
-  const env = harness({ beforeUpdateTask: (patch) => {
-    if (!rejectSave || !patch.subTasks?.some((item) => item.repairSource)) return;
-    if (failure === "save") throw new Error("repair save rejected");
-    if (failure === "readback") patch.subTasks = patch.subTasks.map(({ repairSource: _source, ...rest }) => rest);
-  } });
-  const run = env.host.tryRun({ displayPrompt: "repair interrupted delivery" }, env.target, { schedulingMode: "event_driven" });
-  await flush(); const taskId = run.taskId!;
-  const fake = { subtaskId: "forged", attemptId: "fake", finishEventId: "fake" };
-  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [{ ...subtask("source", []), repairSource: fake }] }));
+test("acceptance repair alias dispatches as a new attempt under the original member ID", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "repair the failed delivery" }, env.target, { schedulingMode: "event_driven" });
   await flush();
-  assert.equal(env.tasks.get(taskId)!.subTasks[0].repairSource, undefined, "model provenance cannot enter the store");
-  env.attempts[0].resolve({ outcome: "completed", detail: "incomplete delivery" }); await flush();
-  const event = env.mains[1].request.reviewEventId!;
-  rejectSave = true;
-  env.mains[1].resolve(decisionJson({ status: failure === "forged-dispatch" ? "dispatch" : "accept",
-    reviewEventId: failure === "invalid-review" ? "wrong-event" : event,
-    reviews: [{ reviewEventId: failure === "invalid-review" ? "wrong-event" : event, acceptance: "failed", subtaskIds: ["repair"] }],
-    subtasks: [{ ...subtask("repair", []), continueFromSubtaskId: "source", repairSource: fake }] }));
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["src/source.ts"])] }));
   await flush();
-  const repair = env.tasks.get(taskId)!.subTasks.find((item) => item.id === "repair");
-  if (failure === "none") {
-    assert.deepEqual(repair!.repairSource, { subtaskId: "source", attemptId: env.attempts[0].request.attemptId, finishEventId: event });
-    assert.equal(env.attempts.length, 2);
-    env.attempts[1].resolve({ outcome: "completed", detail: "repaired" }); await flush();
-    const review = env.mains.at(-1)!;
-    review.resolve(decisionJson({ status: "accept", reviewEventId: review.request.reviewEventId, reviews: [{ reviewEventId: review.request.reviewEventId, acceptance: "passed" }], subtasks: [] }));
-    await flush(); env.mains.at(-1)!.resolve(completedDecision()); await flush(); await run.done;
-    const { isDepartmentLeaderCompleted } = require("../../loopPlusCompletion") as typeof import("../../loopPlusCompletion");
-    assert.equal(isDepartmentLeaderCompleted(env.tasks.get(taskId)!), true);
-    assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts[0].acceptance, "failed");
-  } else {
-    assert.equal(repair?.repairSource, undefined);
-    assert.equal(env.attempts.length, 1, "failed review/dispatch never launches repair");
-    env.host.stopParent(taskId); await flush(); await run.done;
-    assert.equal(env.tasks.get(taskId)!.subTasks.some((item) => item.repairSource), false, "late final persistence cannot restore provenance");
-  }
+  const sourceAttempt = env.attempts[0];
+  sourceAttempt.resolve({ outcome: "completed", detail: "requires a focused repair" });
+  await flush();
+  const failedReview = env.mains.at(-1)!;
+  const failedEventId = failedReview.request.reviewEventId!;
+  failedReview.resolve(decisionJson({ status: "accept", reviewEventId: failedEventId,
+    reviews: [{ reviewEventId: failedEventId, acceptance: "failed", subtaskIds: ["repair-alias"] }],
+    subtasks: [subtask("repair-alias", ["src/source.ts"])],
+  }));
+  await flush();
+  const task = env.tasks.get(run.taskId!)!;
+  assert.deepEqual(task.subTasks.map((item) => item.id), ["source"]);
+  assert.equal(env.attempts[1].request.subtaskId, "source");
+  assert.notEqual(env.attempts[1].request.attemptId, sourceAttempt.request.attemptId);
+  assert.equal(env.attempts[1].request.continueFromSubtaskId, "source");
+  env.host.stopParent(run.taskId!);
+  await run.done;
 });
 
-test("repair provenance preserves ordinary same-subtask retry without replacement metadata", async () => {
+test("same-ID acceptance repair preserves the member row without replacement metadata", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ordinary retry" }, env.target, { schedulingMode: "event_driven" });
   await flush(); env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("same", [])] })); await flush();

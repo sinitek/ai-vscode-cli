@@ -4,7 +4,7 @@ import { getLoopSubtaskDisplayTitle } from "./loopConversationPresentation";
 import type { LoopPlusPanelProjection } from "./webview/loopGroupChatPanelTypes";
 
 export function projectLoopPlusPanel(
-  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "loopPlusMainPhase" | "department" | "departmentInvalid"> & {
+  task: Pick<LoopTaskRecord, "schedulingMode" | "loopPlus" | "status" | "runtimeInterrupted" | "loopPlusMainPhase" | "department" | "departmentInvalid"> & {
     subTasks?: LoopTaskRecord["subTasks"];
   },
   activeReviewEventIds: readonly string[] = [],
@@ -31,16 +31,29 @@ export function projectLoopPlusPanel(
     const activeBatchMatches = activeReviewEventIds.length > 0
       && activeReviewEventIds.every((id, index) => queuedIds[index] === id);
     const activeIds = activeBatchMatches ? [...activeReviewEventIds] : [];
-    let activity = loopPlusActivityForPhase(view.phase, task.status);
+    const runtimeInterrupted = task.status === "stopped"
+      && task.runtimeInterrupted === true
+      && !snapshot.completed
+      && !snapshot.parentStopped;
+    let activity = runtimeInterrupted ? "paused" : loopPlusActivityForPhase(view.phase, task.status);
     if (activity === "reviewing" && activeIds.length === 0) activity = "review_pending";
     if (mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
       activity = "running";
+    }
+    const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
+    const repairAttemptIds = new Set<string>();
+    for (const attempt of snapshot.seenAttempts) {
+      const previous = latestAttempts.get(attempt.subtaskId);
+      if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
+        repairAttemptIds.add(attempt.attemptId);
+      }
+      latestAttempts.set(attempt.subtaskId, attempt);
     }
     const running = view.running.map((item) => ({
       ...copyLoopPlusExecutionItem(item),
       ...(task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
         ? { interrupted: true }
-        : {}),
+        : repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
     }));
     const blockingLabelsByAttempt = new Map<string, string[]>();
     if (view.dependencyBlocks?.length) {

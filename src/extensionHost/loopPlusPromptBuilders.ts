@@ -241,6 +241,7 @@ function acceptanceEventIds(context: LoopPlusMainPromptContext): string[] {
 
 function buildLoopPlusProtocolExamples(
   eventIds: readonly string[],
+  repairSubtaskId: string | undefined,
   dispatchExampleCount: number,
   acceptancePlan?: LoopPlusAcceptancePlanSnapshot | null,
   reportEventIds: readonly string[] = [],
@@ -341,6 +342,7 @@ function buildLoopPlusProtocolExamples(
   const repairExample = eventIds.length > 0;
   const repairSubtask = {
     ...subtask,
+    id: repairSubtaskId ?? subtask.id,
     title: "Example acceptance-failure repair",
     prompt: [
       "Repair the failed validation check in the reviewed backend delivery. Suggested write scope: src/example-backend.ts; record the failed check and the targeted verification result in the attempt report.",
@@ -361,7 +363,7 @@ function buildLoopPlusProtocolExamples(
       reviewEventId,
       acceptance: launchesRepair ? "failed" : "passed",
       reason: launchesRepair ? "用例失败，需先修复断言" : "实现符合需求且验证证据通过",
-      ...(launchesRepair ? { subtaskIds: [subtask.id] } : {}),
+      ...(launchesRepair ? { subtaskIds: [repairSubtask.id] } : {}),
     };
   });
   const reprompt = [
@@ -651,7 +653,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ...acceptancePlanLines,
     "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and link each repair only to its failed event. Also dispatch ready independent remaining-goal work through independentSubtaskIds. If a failed event cannot be repaired by a subtask, check the whole remaining goal before choosing blocked: continue safe independent work with accept, retain the failed verdict, and record its unresolved blocker. Return blocked, confirming nothing, only when no safe independent work or live dependency can advance the goal.",
     "- Decide whether each next subtask continues an earlier subtask. Set continueFromSubtaskId to that earlier subtask id for follow-up work; omit it for independent work. Wait for that source to finish; use controls.reprompt to redirect work that is still running. The host restores only a session recorded under this parent with the same CLI and configuration. Do not run two tasks concurrently on one source session.",
-    "- Repairs linked by failed reviews[*].subtaskIds automatically inherit the failed event's subtask session. Prefer that original session for acceptance-failure fixes, not a fresh context. A new attempt or conversation tab does not imply a new CLI session. Missing sessions or incompatible CLI/configuration are recorded and fall back to a fresh session.",
+    "- For each failed event, put at most one repair in reviews[*].subtaskIds and reuse that event's original subtask ID in subtasks. Do not allocate a new logical subtask ID for a repair, even when dispatching it in a later decision. The repair is a new attempt under the original member number and requires acceptance again. Reuse the original session when the CLI and configuration are compatible; otherwise use a fresh session.",
     "- independentSubtaskIds do not inherit a failed event's session. Omit continueFromSubtaskId for genuinely independent work; only set it when deliberately continuing a different compatible earlier subtask. Independent delivery can run alongside a repair while real write conflicts and per-session serialization remain enforced.",
     "- Unless the delivery is no longer needed and explicitly cancelled with a reason, an attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why in no more than 50 characters. The host also records it failed.",
     "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is a concise evidence-backed reason of no more than 50 characters.",
@@ -682,6 +684,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(
       batchIds,
+      [current, ...queue].find((item) => item?.eventId === batchIds.at(-1))?.subtaskId,
       Math.min(4, parallelCapacity),
       context.acceptancePlan,
       reportIds,

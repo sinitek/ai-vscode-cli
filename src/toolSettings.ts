@@ -7,6 +7,7 @@ import { LOOP_GROUP_CHAT_MESSAGE_LIMIT_DEFAULT, normalizeChatMessageLimit } from
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { normalizePromptInputHeight } from "./promptInputHeight";
 import { writeFileAtomicallySync } from "./shared/atomicWrite";
+import { withFileLockSync } from "./shared/fileLock";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
@@ -359,30 +360,7 @@ function persistToolSettings(next: ToolSettingsState): void {
 }
 
 function withToolSettingsLock<T>(action: () => T): T {
-  fs.mkdirSync(path.dirname(TOOL_SETTINGS_FILE), { recursive: true });
-  const deadline = Date.now() + 1500;
-  const pause = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
-  let descriptor: number;
-  while (true) {
-    try {
-      descriptor = fs.openSync(TOOL_SETTINGS_LOCK_FILE, "wx", 0o600);
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST" || Date.now() >= deadline) throw error;
-      Atomics.wait(pause, 0, 0, 5);
-    }
-  }
-  const identity = fs.fstatSync(descriptor);
-  try {
-    return action();
-  } finally {
-    fs.closeSync(descriptor);
-    const current = fs.lstatSync(TOOL_SETTINGS_LOCK_FILE);
-    if (!current.isFile() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) {
-      throw new Error("全局工具设置锁已替换，拒绝释放未知锁。");
-    }
-    fs.unlinkSync(TOOL_SETTINGS_LOCK_FILE);
-  }
+  return withFileLockSync(TOOL_SETTINGS_LOCK_FILE, "全局工具设置锁已替换，拒绝释放未知锁。", action);
 }
 
 export function getToolSettingsFilePath(): string {

@@ -83,7 +83,6 @@ import {
   type LoopPlusDecisionStrategyPort,
 } from "./loopPlusDecisionStrategies";
 
-import { inheritLoopPlusRepairSessions } from "../loopSubtaskSession";
 import type { LoopPlusReviewItem } from "../loopPlusScheduler";
 
 const DECISION_SAFETY_LIMIT = 200;
@@ -261,7 +260,6 @@ type ControlPlan = {
 };
 
 type SubtaskMeta = {
-  repairSource?: LoopSubtaskRecord["repairSource"];
   decision: LoopSubtaskDecision;
   communicationFile?: string;
   summary?: string;
@@ -1708,12 +1706,67 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         appendLoopSubtaskFailureEvidence(decision.finalSummary || blockReview?.summary, getLoopPlusFailureLines(runtime, step)), decision.blockerIssue,
       ), response);
     }
-    const outcome = loopPlusDecisionStrategyFor(decision.status, decisionStrategies)(
-      createDecisionPort(runtime, response, step, decision),
+    const repairDecision = resolveAcceptanceRepairDecision(runtime, decision, snapshot);
+    if (typeof repairDecision === "string") {
+      return protocolMiss(runtime, Boolean(held), repairDecision, response);
+    }
+    return loopPlusDecisionStrategyFor(repairDecision.status, decisionStrategies)(
+      createDecisionPort(runtime, response, step, repairDecision),
       step,
-      inheritLoopPlusRepairSessions(decision, [snapshot.currentReview, ...snapshot.reviewQueue].filter((event): event is LoopPlusReviewItem => event !== null)),
+      repairDecision,
     );
-    return outcome;
+  }
+
+  function resolveAcceptanceRepairDecision(
+    runtime: ParentRuntime,
+    decision: LoopPlusDecision,
+    snapshot: LoopPlusSchedulerSnapshot,
+  ): LoopPlusDecision | string {
+    if (decision.status !== "accept" || !decision.subtasks?.length) return decision;
+    const existing = new Map(deps.readTask(runtime.taskId)?.subTasks.map((item) => [item.id, item]));
+    const events = [snapshot.currentReview, ...snapshot.reviewQueue];
+    const repairs = new Map<string, LoopSubtaskRecord>();
+    for (const review of decision.reviews ?? []) {
+      if (review.acceptance !== "failed" || !review.subtaskIds?.length) continue;
+      const event = events.find((item) => item?.eventId === review.reviewEventId);
+      const source = event && existing.get(event.subtaskId);
+      if (!source) return "修复必须关联当前验收批次中的原子任务。";
+      const [proposedId] = review.subtaskIds;
+      if (review.subtaskIds.length !== 1 || (proposedId !== source.id && existing.has(proposedId))) {
+        return `验收失败的子任务 ${source.id} 只能关联一项修复，且不能覆盖其它已有子任务 ID。`;
+      }
+      repairs.set(proposedId, source);
+    }
+    if (repairs.size === 0) return decision;
+    const canonicalId = (id: string) => repairs.get(id)?.id ?? id;
+    const resolvedIds = decision.subtasks.map((item) => canonicalId(item.id ?? ""));
+    if (new Set(resolvedIds).size !== resolvedIds.length) {
+      return "修复使用原子任务 ID，不能在同一决策中重复派发该 ID。";
+    }
+    return {
+      ...decision,
+      reviews: decision.reviews?.map((review) => review.subtaskIds
+        ? { ...review, subtaskIds: review.subtaskIds.map(canonicalId) } : review),
+      subtasks: decision.subtasks.map((item) => {
+        const source = item.id ? repairs.get(item.id) : undefined;
+        const dependsOn = item.dependsOn ?? source?.dependsOn;
+        const continuation = source?.id ?? item.continueFromSubtaskId;
+        return {
+          ...item,
+          ...(source ? {
+            id: source.id,
+            title: source.title,
+            requiresAcceptance: true,
+            taskType: item.taskType ?? source.taskType,
+            codingDelivery: item.codingDelivery ?? source.codingDelivery,
+            writeFiles: item.writeFiles ?? source.writeFiles,
+            conflictGroup: item.conflictGroup ?? source.conflictGroup,
+          } : {}),
+          ...(continuation ? { continueFromSubtaskId: canonicalId(continuation) } : {}),
+          ...(dependsOn ? { dependsOn: [...new Set(dependsOn.map(canonicalId))] } : {}),
+        };
+      }),
+    };
   }
 
   function applyDispatchBeforeReview(
@@ -1838,18 +1891,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     const before = runtime.scheduler.snapshot();
     const previousMeta = new Map(runtime.meta);
-    const existing = deps.readTask(runtime.taskId)?.subTasks ?? [];
-    const repairSources = new Map<string, NonNullable<LoopSubtaskRecord["repairSource"]>>();
+    const repairIds = new Set<string>();
     for (const review of reviews ?? []) {
       if (review.acceptance !== "failed") continue;
       const source = before.seenAttempts.find((item) => buildLoopPlusFinishEventId(item.subtaskId, item.attemptId) === review.reviewEventId);
       if (!source || source.disposition !== "reviewed" || source.acceptance !== "failed") throw new Error("Unconfirmed repair review");
-      for (const id of review.subtaskIds ?? []) {
-        // An ordinary retry of the same subtask is settled by its latest attempt, not a replacement edge.
-        if (id === source.subtaskId) continue;
-        if (repairSources.has(id) || existing.some((item) => item.id === id)) throw new Error("Ambiguous repair dispatch");
-        repairSources.set(id, { subtaskId: source.subtaskId, attemptId: source.attemptId, finishEventId: review.reviewEventId });
-      }
+      if (review.subtaskIds?.includes(source.subtaskId)) repairIds.add(source.subtaskId);
     }
     const seqBefore = runtime.attemptSeq;
     const built = subtasks.map((subtask, index) => toSpec(subtask, seqBefore + index + 1));
@@ -1886,7 +1933,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       runtime.meta.set(item.spec.subtaskId, {
         decision: item.decision,
-        repairSource: repairSources.get(item.spec.subtaskId),
         executionStatus: "pending",
       });
     });
@@ -1896,15 +1942,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         ...(accepted.size > 0 ? { loopPlusBlockReview: undefined } : {}),
         ...(reviewPlan ? { loopPlusNextStepPlan: reviewPlan } : {}),
       });
-      if (repairSources.size) {
+      if (repairIds.size) {
         const saved = deps.readTask(runtime.taskId);
+        const savedSnapshot = saved?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
         for (const item of built) {
-          const source = repairSources.get(item.spec.subtaskId);
-          if (!source) continue;
-          const actual = saved?.subTasks.find((subtask) => subtask.id === item.spec.subtaskId)?.repairSource;
-          if (!accepted.has(item.spec.attemptId) || !actual || actual.subtaskId !== source.subtaskId
-            || actual.attemptId !== source.attemptId || actual.finishEventId !== source.finishEventId
-            || !((saved?.loopPlus as LoopPlusSchedulerSnapshot | undefined)?.seenAttempts.some((attempt) => attempt.attemptId === item.spec.attemptId && attempt.subtaskId === item.spec.subtaskId))) {
+          if (!repairIds.has(item.spec.subtaskId) || !accepted.has(item.spec.attemptId)) continue;
+          if (!saved?.subTasks.some((subtask) => subtask.id === item.spec.subtaskId)
+            || ![...(savedSnapshot?.pending ?? []), ...(savedSnapshot?.running ?? [])]
+              .some((attempt) => attempt.attemptId === item.spec.attemptId && attempt.subtaskId === item.spec.subtaskId)) {
             throw new Error("Repair dispatch persistence not confirmed");
           }
         }
@@ -1912,15 +1957,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     } catch (error) {
       runtime.meta = previousMeta;
       runtime.scheduler = runtime.createScheduler({ snapshot: before });
-      // No work launches after an unconfirmed commit. Remove only this request's provenance;
-      // preserve the reservation/history if storage remains unavailable.
-      if (repairSources.size) {
-        const saved = deps.readTask(runtime.taskId);
-        if (saved) deps.updateTask(runtime.taskId, { subTasks: saved.subTasks.map((item) => {
-          if (!repairSources.has(item.id)) return item;
-          const { repairSource: _source, ...rest } = item; return rest;
-        }) });
-      }
       runtime.attemptSeq = seqBefore;
       throw error;
     }
@@ -2815,7 +2851,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         continueFromSubtaskId: meta.decision.continueFromSubtaskId,
         dependsOn: [...(meta.decision.dependsOn ?? [])],
         ...(previous?.executionSession ? { executionSession: previous.executionSession } : {}),
-        ...((meta.repairSource ?? previous?.repairSource) ? { repairSource: meta.repairSource ?? previous?.repairSource } : {}),
+        ...(previous?.repairSource ? { repairSource: previous.repairSource } : {}),
         conflictGroup: meta.decision.conflictGroup,
         writeFiles: meta.decision.writeFiles,
         ...(meta.decision.taskType ? { taskType: meta.decision.taskType } : {}),

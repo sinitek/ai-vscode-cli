@@ -876,7 +876,7 @@ test("generated protocol examples satisfy the current parser and live event id",
   const accept = parseExample(examples, "accept");
   assert.equal(accept.reviewEventId, "event-live-42");
   assert.deepEqual(accept.reviews, [{
-    reviewEventId: "event-live-42", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["example-subtask"],
+    reviewEventId: "event-live-42", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["sub-current"],
   }]);
   assert.ok(accept.acceptance);
   assert.ok(!accept.subtasks || accept.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
@@ -1263,7 +1263,7 @@ test("a multi-event acceptance batch is confirmed in order and includes the user
   assert.deepEqual(parsed?.reviewEventIds, ["event-live-42", "event-queued-7"]);
   assert.deepEqual(parsed?.reviews, [
     { reviewEventId: "event-live-42", acceptance: "passed", reason: "实现符合需求且验证证据通过" },
-    { reviewEventId: "event-queued-7", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["example-subtask"] },
+    { reviewEventId: "event-queued-7", acceptance: "failed", reason: "用例失败，需先修复断言", subtaskIds: ["sub-queued"] },
   ]);
   assert.equal(parseLoopPlusDecision(JSON.stringify({
     ...accept,

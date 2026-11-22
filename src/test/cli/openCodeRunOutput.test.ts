@@ -276,6 +276,69 @@ test("accepts a structured final answer only for the same message stop", () => {
   });
 });
 
+test("decodes each candidate stdout line once while collecting the answer and provider errors", (context) => {
+  const answer = JSON.stringify({
+    type: "message",
+    messageID: "msg_final",
+    message: { role: "assistant", parts: [{ type: "text", text: "Nested answer." }] },
+  });
+  const stop = JSON.stringify({ type: "step_finish", reason: "stop", messageID: "msg_final" });
+  const error = JSON.stringify({ type: "error", error: { name: "APIError", data: { message: "provider detail" } } });
+  const jsonLines = ["{broken", error, answer, error, stop, '{"type":"error"'];
+  const stdout = ["plain progress", ...jsonLines].join("\r\n");
+  const decode = JSON.parse;
+  const decodedLines: string[] = [];
+  const parseMock = context.mock.method(JSON, "parse", (line: string) => {
+    decodedLines.push(line);
+    return decode(line);
+  });
+
+  const output = parseOpenCodeRunOutput(stdout, "provider detail\nextra stderr\n> build · model");
+  parseMock.mock.restore();
+
+  assert.deepEqual(decodedLines, jsonLines);
+  assert.deepEqual(output, {
+    finalText: "Nested answer.",
+    errorText: "APIError\nprovider detail\nextra stderr",
+    statusText: "> build · model",
+    hasStructuredFinalAnswer: true,
+  });
+});
+
+test("keeps ANSI-cleaned JSON in the mixed-output text fallback only", (context) => {
+  const textLine = (text: string, messageID = "msg_final") => JSON.stringify({ type: "text", text, messageID });
+  const thinkingStart = textLine("<thinking>draft", "msg_progress");
+  const thinkingMiddle = textLine("hidden draft", "msg_progress");
+  const thinkingEnd = textLine("</thinking>", "msg_progress");
+  const fallbackText = textLine("Recovered answer.");
+  const rawStop = JSON.stringify({ type: "step_finish", reason: "stop", messageID: "msg_final" });
+  const coloredError = JSON.stringify({ type: "error", error: { message: "fallback-only error" } });
+  const colorize = (line: string) => `\x1b[32m${line}\x1b[0m`;
+  const coloredOutput = [
+    thinkingStart, colorize(thinkingMiddle), thinkingEnd, colorize(fallbackText), rawStop, colorize(coloredError),
+  ].join("\n");
+  const decode = JSON.parse;
+  const decodedLines: string[] = [];
+  const parseMock = context.mock.method(JSON, "parse", (line: string) => {
+    decodedLines.push(line);
+    return decode(line);
+  });
+
+  const output = parseOpenCodeRunOutput(`plain progress\n${coloredOutput}`, "");
+  parseMock.mock.restore();
+
+  assert.deepEqual(decodedLines, [thinkingStart, thinkingMiddle, thinkingEnd, fallbackText, rawStop, coloredError]);
+  assert.deepEqual(output, {
+    finalText: "Recovered answer.",
+    errorText: null,
+    statusText: null,
+    hasStructuredFinalAnswer: false,
+  });
+  assert.equal(parseOpenCodeRunOutput(coloredOutput, "").finalText, null);
+  assert.equal(parseOpenCodeRunOutput(`${coloredOutput}\n${textLine("Raw answer.")}`, "").finalText, "Raw answer.");
+  assert.equal(parseOpenCodeRunOutput(`> build · model\n${colorize("Plain answer.")}`, "").finalText, "Plain answer.");
+});
+
 test("orders provider errors ahead of cleaned stderr and print-log errors", () => {
   const stdout = JSON.stringify({
     type: "error",

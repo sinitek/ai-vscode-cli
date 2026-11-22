@@ -234,6 +234,24 @@ test("keeps snapshot projection read-only while host ownership controls stop and
   assert.equal(writes.count, 0);
 });
 
+test("shows an interrupted idle Loop+ task as paused and resumable", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const source = task(scheduler.snapshot(), {
+    status: "stopped",
+    runtimeInterrupted: true,
+    loopPlusProgressPercent: 92,
+  });
+  const state = buildLoopGroupChatPanelStateWithDeps(source, deps({ count: 0 }, []));
+
+  assert.equal(state.loopPlus?.ok, true);
+  if (!state.loopPlus?.ok) return;
+  assert.equal(state.loopPlus.phase, "idle");
+  assert.equal(state.loopPlus.activity, "paused");
+  assert.equal(state.rounds[0]?.participants.find((participant) => participant.id === "main")?.status, "paused");
+  assert.equal(state.task.progressPercent, 92);
+  assert.equal(state.task.canContinue, true);
+});
+
 test("reprompt shows the corrected title for the same subtask in the group chat", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   scheduler.dispatch([spec("D", "d-1", "原始执行目标")]);
