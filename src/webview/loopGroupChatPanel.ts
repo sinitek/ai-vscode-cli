@@ -595,7 +595,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      });
 	      document.addEventListener("click", (event) => {
 	        const button = event.target instanceof Element && event.target.closest(".copy-chat-bubble");
-	        const body = button && button.closest(".bubble, .ask-chat-message")?.querySelector(".message-text, .ask-chat-bubble");
+	        const body = button && button.closest(".bubble")?.querySelector(".message-text");
 	        if (body) copyChatSelectionToHost(chatMarkdownSources.get(body) ?? body.getAttribute("data-markdown-source") ?? body.innerText);
 	      });
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
@@ -1032,7 +1032,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        const content = askEscape(message.content || "");
 	        return '<article class="ask-chat-message ' + role + '"><div class="ask-chat-bubble markdown-body" data-markdown-source="' + content + '">' +
 	          content +
-	          "</div>" + (content ? ${JSON.stringify(COPY_GROUP_CHAT_BUTTON)} : "") + (role === "user" && message.queued === true
+	          "</div>" + (role === "user" && message.queued === true
 	            ? '<div class="ask-chat-queued" role="status"><span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span><span>' + askEscape(ASK_QUEUED_LABEL) + '</span></div>'
 	            : "") + "</article>";
 	      }

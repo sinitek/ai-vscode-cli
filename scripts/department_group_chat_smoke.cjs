@@ -144,16 +144,14 @@ function theme(dark) {
           assert.equal(panel.publishDepartmentModalAskThread(target, { version: 1, messages: [{ id: "clipboard-question", role: "user", content: question, createdAt: 1 }], dialogOpen: true, running: false, updatedAt: 1 }), true);
           const askBubble = frame.locator("#askChatMessages .ask-chat-bubble");
           await askBubble.waitFor();
-          await frame.locator("#askChatMessages .copy-chat-bubble").click();
-          await waitForClipboard(2);
-          assert.equal(clipboardWrites[1], question);
+          assert.equal(await frame.locator("#askChatMessages .copy-chat-bubble").count(), 0);
           await askBubble.click();
           await askBubble.evaluate((element) => window.getSelection().selectAllChildren(element));
           assert.equal(panel.publishDepartmentModalAskThread(target, { version: 1, messages: [{ id: "clipboard-update", role: "assistant", content: "选区清除后显示的更新", createdAt: 2 }], dialogOpen: true, running: false, updatedAt: 2 }), true);
           await settle();
           await page.keyboard.press("Control+c");
-          await waitForClipboard(3);
-          assert.equal(clipboardWrites[2].trim(), "这段 提问 能复制吗？");
+          await waitForClipboard(2);
+          assert.equal(clipboardWrites[1].trim(), "这段 提问 能复制吗？");
           await frame.evaluate(() => window.getSelection().removeAllRanges());
           await frame.getByText("选区清除后显示的更新", { exact: true }).waitFor();
           const input = frame.locator("#askChatInput");
@@ -164,7 +162,7 @@ function theme(dark) {
           await receive({ type: "loopGroupChatChat:copyText", text: " " });
           await receive({ type: "loopGroupChatChat:copyText", text: "大".repeat(1024 * 1024 + 1) });
           await settle();
-          assert.equal(clipboardWrites.length, 3);
+          assert.equal(clipboardWrites.length, 2);
           assert.deepEqual(errors, []);
           results.push({ name, result: "passed", scope: "group-chat-clipboard", clipboardWrites: clipboardWrites.length, browserErrors: errors });
           continue;

@@ -69,6 +69,7 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
   assert.match(html, /<span class="tag">任务发起<\/span>/u);
   assert.match(html, /<div class="message-text markdown-body" data-markdown-source="完成任务">完成任务<\/div>/u);
   assert.match(html, /<div class="message-text markdown-body" data-markdown-source="请补充提交失败场景。">请补充提交失败场景。<\/div>/u);
+  assert.match(html, /<button class="copy-chat-bubble"[^>]*>复制<\/button>/u);
   assert.ok(
     html.indexOf('data-markdown-source="完成任务">完成任务</div>')
       < html.indexOf('data-markdown-source="请补充提交失败场景。">请补充提交失败场景。</div>'),
@@ -1482,6 +1483,7 @@ test("mounts ask bubbles through the shared group chat Markdown renderer", () =>
     context.message = { role, content };
     const bubble = vm.runInContext("renderAskBubble(message)", context);
     assert.match(bubble, /class="ask-chat-bubble markdown-body" data-markdown-source="/u);
+    assert.doesNotMatch(bubble, /copy-chat-bubble/u);
     assert.match(bubble, /&quot;&lt;安全&gt;&quot;/u);
     assert.doesNotMatch(bubble, /<h2>|<安全>/u);
     let removedSource = false;
@@ -1515,7 +1517,7 @@ test("shows a queue indicator below only queued user bubbles", () => {
       context.message = { role, queued, content: "问题 <script>" };
       const bubble = vm.runInContext("renderAskBubble(message)", context);
       if (role === "user" && queued) {
-        assert.match(bubble, /<\/button><div class="ask-chat-queued" role="status">/u);
+        assert.match(bubble, /<\/div><div class="ask-chat-queued" role="status">/u);
         assert.match(bubble, /排队中，等待主模型空闲/u);
         assert.match(bubble, /class="typing-dots" aria-hidden="true"/u);
       } else {

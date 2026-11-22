@@ -8660,7 +8660,7 @@
     {
       "id": "plugin.rule.group_chat_bubble_clipboard",
       "name": "群聊气泡经宿主复制纯文本",
-      "description": "正文及提问气泡支持整条原文复制和选区复制，编辑框不拦截。组长弹窗不放宽沙箱；转发经过现有 frame、通道和 task/instance 校验，宿主仅接收有界非空文本。",
+      "description": "群聊正文支持整条原文复制和选区复制，提问气泡仅支持选区复制，编辑框不拦截。组长弹窗不放宽沙箱；转发经过现有 frame、通道和 task/instance 校验，宿主仅接收有界非空文本。",
       "status": "active",
       "applies_to": ["plugin.chat_panel"],
       "source_refs": [
