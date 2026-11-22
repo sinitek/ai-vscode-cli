@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const { args, roleSelection, isolatedEnvironment, assertMixedEvidence, assertColdStartActivationSucceeded, classifyColdStartRecovery,
-  assertColdRestartIdentity, assertColdUiRoot, findDepartmentWebviewTarget, createDepartmentWebviewAdapter, clickPublicControl } = require("./verify_department_full_eh_integration");
+  assertColdRestartIdentity, assertColdUiRoot, assertColdUiDepartmentRoster, findDepartmentWebviewTarget,
+  createDepartmentWebviewAdapter, clickPublicControl } = require("./verify_department_full_eh_integration");
 const base = ["--product", "/physical/product", "--report", "/new/report.json"];
 test("default Codex and existing stop-continue arguments remain supported; OpenCode partial continuation stays rejected", () => {
   assert.equal(args(base).leaderCli, "codex"); assert.equal(args(base).scenario, "loop-plus");
@@ -39,6 +40,9 @@ test("cold UI stop is bound to the exact opened root, and cross-host comparison 
   assert.equal(assertColdUiRoot("root-expected", "root-expected"), true);
   assert.throws(() => assertColdUiRoot("root-other", "root-expected"), /does not belong/);
   assert.throws(() => assertColdUiRoot("产研部 · root-expected", "root-expected"), /does not belong/);
+  assert.equal(assertColdUiDepartmentRoster("总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 0"), true);
+  assert.throws(() => assertColdUiDepartmentRoster("总监\n运行中 1"), /director and leader/);
+  assert.throws(() => assertColdUiDepartmentRoster("总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 1"), /stale employee attempts/);
   const identity = { rootTaskId: "root", workspace: "/workspace", moduleId: "module", leaderTaskId: "leader", generation: 3,
     subtaskId: "subtask", attemptId: "attempt", executionId: "execution", ownerId: "owner", role: "employee", cli: "codex",
     session: { state: "bound", id: "session" } };
@@ -219,6 +223,7 @@ test("cold driver refuses missing evidence before its shared deadline and report
       const expression = command.params.expression;
       const value = command.method === "Runtime.evaluate" ? expression.includes("#panelSubtitle") ? "root"
         : expression.includes("#taskPanelSlot") ? "本宿主执行已中断"
+        : expression.includes("#rosterPanelSlot") ? "总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 0"
         : expression.includes("#departmentContinueBlocked") ? "本宿主执行已中断。仍有原执行退出未确认，暂不能继续"
         : expression.includes("innerText") ? "产研部群聊 root"
         : expression.includes("dispatchEvent") ? (clicks += 1, true)
@@ -234,7 +239,7 @@ test("cold driver refuses missing evidence before its shared deadline and report
   cdp.detach = async () => {};
   const browser = { contexts: () => [{ pages: () => [{ url: () => "vscode-file://workbench" }] }],
     newBrowserCDPSession: async () => cdp, isConnected: () => true, close: async () => { browserClosed += 1; } };
-  const base = Date.now(), deadlines = { actionDeadline: base + 500, evidenceDeadline: base + 80, hostDeadline: base + 650 };
+  const base = Date.now(), deadlines = { actionDeadline: base + 500, evidenceDeadline: base + 300, hostDeadline: base + 650 };
   let signalCount = 0;
   try {
     await assert.rejects(driveColdProductionRecoveryCheck(1, "root", root, deadlines, { chromium: { connectOverCDP: async () => browser },
@@ -715,7 +720,9 @@ test('cold driver passes exact root and deadlines to shared panel factory and re
           assert.equal(purpose, 'webviewPanel'); assert.equal(options.rootId, 'root');
           assert.equal(options.deadline, deadlines.actionDeadline); assert.equal(options.cleanupDeadline, deadlines.hostDeadline);
           return { locator: selector => ({ waitFor: async () => {}, count: async () => 1, getAttribute: async () => 'root',
-            innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断' : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+            innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断'
+              : selector === '#rosterPanelSlot' ? '总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 0'
+                : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
             isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
             click: async () => clicked++ }),
             close: async () => fail ? [{ operation: 'target detach', status: 'unconfirmed' }] : [] };
@@ -734,7 +741,8 @@ test('cold driver passes exact root and deadlines to shared panel factory and re
         initialProviderRequestCount: 0, signal: () => { clicked++; }, evidenceExists: () => true,
         webviewFactory: async () => ({ locator: selector => ({ waitFor: async () => {}, count: async () => 1,
           getAttribute: async () => 'root', innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断'
-            : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+            : selector === '#rosterPanelSlot' ? '总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 0'
+              : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
           isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
           click: async () => clicked++ }), close: async () => [] }),
       }), /dispatched\/replayed a model request/);
@@ -767,7 +775,8 @@ test('cold driver propagates concrete observer failure and confirms CDP release 
           close: async () => events.push('disconnect') }) },
         webviewFactory: async () => ({ locator: selector => ({ waitFor: async () => {}, count: async () => 1,
           getAttribute: async () => 'root', innerText: async () => selector === '#taskPanelSlot' ? '本宿主执行已中断'
-            : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
+            : selector === '#rosterPanelSlot' ? '总监\n本宿主执行已中断\n组长A\n本宿主执行已中断\n运行中 0'
+              : '本宿主执行已中断。仍有原执行退出未确认，暂不能继续',
           isEnabled: async () => selector === '[data-action="stopTask"]', isDisabled: async () => selector === '[data-action="continueTask"]',
           click: async () => events.push('click') }), close: async () => events.push('detach') }),
         signal: () => events.push('signal'), evidenceExists: () => false,

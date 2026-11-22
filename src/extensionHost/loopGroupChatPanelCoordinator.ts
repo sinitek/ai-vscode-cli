@@ -226,11 +226,18 @@ export function buildLoopGroupChatPanelState(
 ): LoopGroupChatPanelState {
   const departmentRoot = resolveDepartmentRoot(task, deps);
   const isDirector = departmentRoot?.id === task.id;
-  const organization = isDirector ? deps.readDepartmentOrganizationControlState?.(task) : undefined;
-  const localActivity = deps.hasLocalDepartmentDirectorActivity?.(task.id);
-  const locallyInactive = Boolean(organization) && localActivity === false;
-  const directorInterruptedInHost = locallyInactive && task.status === "running";
-  const displayTask = directorInterruptedInHost ? { ...task, status: "stopped" as const }
+  const rootControl = departmentRoot && deps.readDepartmentOrganizationControlState?.(departmentRoot);
+  const organization = isDirector ? rootControl ?? undefined : undefined;
+  const localDirectorActivity = departmentRoot && rootControl ? deps.hasLocalDepartmentDirectorActivity?.(departmentRoot.id) : undefined;
+  const runningTaskIds = deps.collectRunningTaskIds();
+  const isLocalExecutionInactive = (record: LoopTaskRecord): boolean => {
+    if (localDirectorActivity === undefined) return false;
+    if (record.id === departmentRoot?.id) return !localDirectorActivity && !runningTaskIds.has(record.id);
+    return !runningTaskIds.has(record.id);
+  };
+  const locallyInactive = isLocalExecutionInactive(task);
+  const interruptedInHost = locallyInactive && task.status === "running";
+  const displayTask = interruptedInHost ? { ...task, status: "stopped" as const }
     : isDirector ? projectInterruptedDirector(task) : task;
   const stopState = organization?.stopState
     ?? (organization?.needsCleanup && displayTask.status !== "running" ? "unconfirmed" : undefined);
@@ -238,23 +245,25 @@ export function buildLoopGroupChatPanelState(
     const target = deps.resolveMainPromptTarget(record, { createIfMissing: false });
     return Boolean(target && deps.isTabRunActive(target.tabId));
   };
-  const mainModelBusy = isMainModelRunning(task);
-  const department = buildDepartmentGroupChatProjection(displayTask, {
+  const mainModelBusy = !locallyInactive && isMainModelRunning(task);
+  const department = buildDepartmentGroupChatProjection(task, {
     readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
     readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
+    isLocalExecutionInactive,
     ...(isDirector ? { getActiveReviewEventIds: deps.getActiveReviewEventIds, isMainModelRunning } : {}),
   });
   const panelTask = department?.role === "director" && department.overallProgressPercent !== undefined
     ? { ...displayTask, loopProgressPercent: department.overallProgressPercent }
     : displayTask;
   const state = buildLoopGroupChatPanelStateWithDeps(panelTask, {
-    collectRunningLoopTaskIds: deps.collectRunningTaskIds,
+    collectRunningLoopTaskIds: () => runningTaskIds,
     readTextFileIfNonEmpty: deps.readTextFileIfNonEmpty,
     fileExists: deps.fileExists,
     writeTextFileEnsuringDir: deps.writeTextFileEnsuringDir,
     getActiveLoopSubtaskIds: deps.getActiveSubtaskIds,
     getActiveReviewEventIds: deps.getActiveReviewEventIds ?? (() => []),
     mainModelRunning: mainModelBusy,
+    localExecutionInactive: locallyInactive,
     buildLoopCompletedConclusionAndSummaryMarkdown: deps.buildCompletedConclusionAndSummaryMarkdown,
     t: deps.t,
   });
@@ -269,11 +278,11 @@ export function buildLoopGroupChatPanelState(
     ...state,
     task: {
       ...state.task,
-      canContinue: !directorInterruptedInHost && canContinueLoopTaskWithDeps(displayTask, deps, organization),
-      ...(isDirector ? {
-        ...(directorInterruptedInHost ? { departmentDirectorInterrupted: true } : {}),
+      canContinue: !interruptedInHost && canContinueLoopTaskWithDeps(displayTask, deps, organization),
+      ...(interruptedInHost ? { departmentExecutionInterrupted: true } : {}),
+      ...(departmentRoot ? {
         departmentStopState: stopState,
-        canStop: stopState === "stopping" || displayTask.status === "running" || directorInterruptedInHost
+        canStop: stopState === "stopping" || displayTask.status === "running" || interruptedInHost
           || (locallyInactive && task.status === "stopped" && stopState === "unconfirmed"),
       } : {}),
     },

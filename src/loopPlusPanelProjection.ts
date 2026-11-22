@@ -9,6 +9,7 @@ export function projectLoopPlusPanel(
   },
   activeReviewEventIds: readonly string[] = [],
   mainModelRunning = false,
+  localExecutionInactive = false,
 ): LoopPlusPanelProjection | null {
   if (resolveLoopSchedulingMode(task.schedulingMode) !== "event_driven") {
     return null;
@@ -28,7 +29,7 @@ export function projectLoopPlusPanel(
       return invalidLoopPlusProjection("visibleReviewCount");
     }
     const queuedIds = [currentReview?.eventId, ...reviewQueue.map((item) => item.eventId)].filter((id): id is string => Boolean(id));
-    const activeBatchMatches = activeReviewEventIds.length > 0
+    const activeBatchMatches = !localExecutionInactive && activeReviewEventIds.length > 0
       && activeReviewEventIds.every((id, index) => queuedIds[index] === id);
     const activeIds = activeBatchMatches ? [...activeReviewEventIds] : [];
     const runtimeInterrupted = task.status === "stopped"
@@ -37,7 +38,10 @@ export function projectLoopPlusPanel(
       && !snapshot.parentStopped;
     let activity = runtimeInterrupted ? "paused" : loopPlusActivityForPhase(view.phase, task.status);
     if (activity === "reviewing" && activeIds.length === 0) activity = "review_pending";
-    if (mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
+    if (localExecutionInactive && task.status === "running" && !snapshot.completed && !snapshot.parentStopped) {
+      activity = "paused";
+    }
+    if (!localExecutionInactive && mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
       activity = "running";
     }
     const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
@@ -51,7 +55,7 @@ export function projectLoopPlusPanel(
     }
     const running = view.running.map((item) => ({
       ...copyLoopPlusExecutionItem(item),
-      ...(task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
+      ...(localExecutionInactive || task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
         ? { interrupted: true }
         : repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
     }));

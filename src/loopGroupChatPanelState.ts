@@ -14,6 +14,7 @@ export type LoopGroupChatPanelStateBuilderDeps = {
   getActiveLoopSubtaskIds: (task: LoopTaskRecord) => string[];
   getActiveReviewEventIds?: (taskId: string) => readonly string[];
   mainModelRunning?: boolean;
+  localExecutionInactive?: boolean;
   buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
@@ -38,6 +39,7 @@ export function buildLoopGroupChatPanelStateWithDeps(
     task,
     deps.getActiveReviewEventIds?.(task.id) ?? [],
     deps.mainModelRunning === true,
+    deps.localExecutionInactive,
   );
   const rounds = buildLoopMainSubChatPanelRounds(task, snapshotDeps, loopPlus);
   const chatMarkdown = buildLoopCombinedGroupChatMarkdown(task, rounds, snapshotDeps);
@@ -245,7 +247,7 @@ function buildLoopMainSubChatPanelRound(
     id: subtask.id,
     title: getLoopSubtaskDisplayTitle(index, subtask),
     role: "subtask",
-    status: subtask.status,
+    status: deps.localExecutionInactive && subtask.status === "running" ? "waiting_continuation" : subtask.status,
     sessionId: null,
     summary: subtask.summary,
     updatedAt: subtask.updatedAt,

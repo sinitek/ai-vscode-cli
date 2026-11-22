@@ -1851,7 +1851,7 @@ function hasGroupAcceptancePlan(state: LoopGroupChatPanelState): boolean {
   return state.acceptancePlanReadOnly ? false : state.department ? state.department.role === "director" : Boolean(state.loopPlus);
 }
 
-const DEPARTMENT_DIRECTOR_INTERRUPTED = "本宿主执行已中断";
+const DEPARTMENT_EXECUTION_INTERRUPTED = "本宿主执行已中断";
 
 function renderPanelActions(
   state: LoopGroupChatPanelState,
@@ -1884,7 +1884,7 @@ function renderPanelActions(
     state.task.canContinue || continueBlocked
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}"${continueBlocked ? ' disabled aria-describedby="departmentContinueBlocked"' : ""}>${escapeHtml(strings.continueTask)}<span class="continue-loading typing-dots" role="status" aria-label="${escapeAttribute(strings.continueTaskStarting)}" hidden><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></span></button>`
       : "",
-    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.departmentDirectorInterrupted ? `${DEPARTMENT_DIRECTOR_INTERRUPTED}。` : state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
+    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.departmentExecutionInterrupted ? `${DEPARTMENT_EXECUTION_INTERRUPTED}。` : state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
   ].join("");
 }
 
@@ -1895,7 +1895,7 @@ function renderTaskPanel(
   const currentRound = state.loopPlus
     ? ""
     : renderMetaRow(strings.currentRound, String(state.task.currentRound));
-  const status = state.task.departmentDirectorInterrupted ? DEPARTMENT_DIRECTOR_INTERRUPTED
+  const status = state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED
     : state.department?.role === "director" && state.task.status === "stopped" ? "已中止" : state.task.status;
   return `<section class="panel">
     <h2>${escapeHtml(strings.task)}</h2>
@@ -2082,6 +2082,8 @@ function formatParticipantStatus(
       return strings.loopPlusStatusWaiting;
     case "stopped":
       return strings.loopPlusStatusStopped;
+    case "runtime_interrupted":
+      return DEPARTMENT_EXECUTION_INTERRUPTED;
     case "waiting_continuation":
       return strings.loopPlusStatusAwaitingContinuation;
     case "completed":

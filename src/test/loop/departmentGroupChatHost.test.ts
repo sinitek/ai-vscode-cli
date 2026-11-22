@@ -1078,7 +1078,7 @@ test("director projection marks only a trusted root without a local controller i
     h.deps.hasLocalDepartmentDirectorActivity = () => false;
     let state = buildLoopGroupChatPanelState(h.root, h.deps);
     assert.equal(state.task.status, "stopped");
-    assert.equal(state.task.departmentDirectorInterrupted, true);
+    assert.equal(state.task.departmentExecutionInterrupted, true);
     assert.equal(state.task.canStop, true);
     assert.equal(state.task.canContinue, false);
     let actions = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
@@ -1089,11 +1089,73 @@ test("director projection marks only a trusted root without a local controller i
     h.deps.hasLocalDepartmentDirectorActivity = () => true;
     state = buildLoopGroupChatPanelState(h.root, h.deps);
     assert.equal(state.task.status, "running");
-    assert.equal(state.task.departmentDirectorInterrupted, undefined);
+    assert.equal(state.task.departmentExecutionInterrupted, undefined);
 
     delete h.deps.hasLocalDepartmentDirectorActivity;
     state = buildLoopGroupChatPanelState(h.root, h.deps);
     assert.equal(state.task.status, "running", "an unavailable host-activity reader is not evidence of interruption");
+  } finally { h.restore(); }
+});
+
+test("cold department panels show no stale director, leader or employee work and preserve local activity", () => {
+  const h = harness();
+  try {
+    h.root.status = "running";
+    h.root.schedulingMode = "classic";
+    h.leader.status = "stopped";
+    h.deps.hasLocalDepartmentDirectorActivity = () => false;
+    const runningIds = new Set<string>();
+    h.deps.collectRunningTaskIds = () => runningIds;
+    const persisted = structuredClone([h.root, h.leader]);
+    const originalLeaderLoopPlus = h.leader.loopPlus;
+    const originalLeaderMainPhase = h.leader.loopPlusMainPhase;
+    const originalLeaderSubTasks = h.leader.subTasks;
+
+    const directorState = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(directorState.task.status, "stopped");
+    assert.equal(directorState.department?.director.status, "runtime_interrupted");
+    assert.equal(directorState.rounds[0].participants.find((member) => member.id === "module-A")?.status, "waiting_continuation");
+    assert.equal(directorState.department?.leaders[0].participant.status, "stopped");
+    assert.equal(directorState.department?.leaders[0].statusSummary?.running, 0);
+    assert.equal(directorState.department?.leaders[0].employees[0].status, "blocked");
+    assert.match(buildLoopGroupChatPanelContentPatch(directorState, 1).rosterPanelHtml, /本宿主执行已中断/u);
+
+    h.leader.status = "running";
+    h.leader.loopPlus = createLoopPlusScheduler({ maxConcurrency: 4 }).snapshot();
+    h.leader.loopPlusMainPhase = "decomposing";
+    h.leader.subTasks = [];
+    const staleDecomposition = buildLoopGroupChatPanelState(h.root, h.deps).department?.leaders[0];
+    assert.equal(staleDecomposition?.participant.status, "runtime_interrupted");
+    assert.equal(staleDecomposition?.statusSummary?.running, 0);
+
+    h.leader.status = "stopped";
+    h.leader.loopPlus = originalLeaderLoopPlus;
+    if (originalLeaderMainPhase === undefined) delete h.leader.loopPlusMainPhase;
+    else h.leader.loopPlusMainPhase = originalLeaderMainPhase;
+    h.leader.subTasks = originalLeaderSubTasks;
+    const stoppedLeader = buildLoopGroupChatPanelState(h.leader, h.deps);
+    assert.equal(stoppedLeader.task.status, "stopped");
+    assert.equal(stoppedLeader.loopPlus?.ok && stoppedLeader.loopPlus.runningCount, 0);
+    assert.equal(stoppedLeader.loopPlus?.ok && stoppedLeader.loopPlus.running[0].interrupted, true);
+    assert.equal(stoppedLeader.rounds[0].participants[1].status, "waiting_continuation");
+    assert.deepEqual([h.root, h.leader], persisted);
+    assert.deepEqual(h.effects, []);
+
+    h.leader.status = "running";
+    const interruptedLeader = buildLoopGroupChatPanelState(h.leader, h.deps);
+    assert.equal(interruptedLeader.task.canContinue, false);
+    assert.equal(interruptedLeader.department?.leaders[0].participant.status, "runtime_interrupted");
+    assert.match(buildLoopGroupChatPanelContentPatch(interruptedLeader, 1).taskPanelHtml, /本宿主执行已中断/u);
+
+    runningIds.add(h.leader.id);
+    assert.equal(buildLoopGroupChatPanelState(h.leader, h.deps).task.status, "running");
+    const liveLeader = buildLoopGroupChatPanelState(h.root, h.deps).department?.leaders[0];
+    assert.equal(liveLeader?.statusSummary?.running, 1);
+    assert.equal(liveLeader?.employees[0].status, "running");
+
+    runningIds.clear();
+    h.deps.readDepartmentOrganizationControlState = () => null;
+    assert.equal(buildLoopGroupChatPanelState(h.root, h.deps).task.status, "running", "untrusted roots do not opt into department projection");
   } finally { h.restore(); }
 });
 

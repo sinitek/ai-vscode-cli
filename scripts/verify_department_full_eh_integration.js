@@ -520,6 +520,14 @@ function assertColdUiRoot(subtitleTitle, expectedRootId) {
   return true;
 }
 
+function assertColdUiDepartmentRoster(rosterText) {
+  assert.equal(typeof rosterText, "string", "department roster is unavailable");
+  const interruptedParticipants = rosterText.match(/本宿主执行已中断/g) ?? [];
+  assert.ok(interruptedParticipants.length >= 2, "cold roster must mark the director and leader as interrupted");
+  assert.match(rosterText, /运行中\s+0/, "cold roster must exclude stale employee attempts from running counts");
+  return true;
+}
+
 function isDepartmentWebviewCandidate(info, purpose, options = {}) {
   if (info.type !== "iframe" || options.targetId && info.targetId !== options.targetId) return false;
   try {
@@ -842,8 +850,10 @@ async function driveColdProductionRecoveryCheck(port, rootId, root, deadlines, d
     assert.equal(await stop.count(), 1, `department group chat stop action is not available for ${rootId}`);
     assertColdUiRoot(await webview.locator("#panelSubtitle").getAttribute("title"), rootId);
     const taskPanel = await webview.locator("#taskPanelSlot").innerText();
+    const rosterPanel = await webview.locator("#rosterPanelSlot").innerText();
     const actions = await webview.locator("#departmentContinueBlocked").innerText();
     assert.match(taskPanel, /本宿主执行已中断/, "cold director projection did not identify host-local interruption");
+    assertColdUiDepartmentRoster(rosterPanel);
     assert.match(actions, /本宿主执行已中断/, "cold director continuation gate omitted interruption semantics");
     assert.match(actions, /原执行退出未确认/, "cold director projection omitted the outstanding cleanup gate");
     assert.equal(await stop.isEnabled(), true, "cold projection must retain the explicit department Stop/reconciliation action");
@@ -856,7 +866,7 @@ async function driveColdProductionRecoveryCheck(port, rootId, root, deadlines, d
     assert.equal(requestCountBeforeControl, dependencies.initialProviderRequestCount ?? 0,
       "second EH dispatched/replayed a model request before the explicit user control");
     fs.writeFileSync(path.join(root, "cold-second-host-ui.json"), JSON.stringify({ rootTaskId: rootId,
-      taskPanel, actions, stopEnabled: true, continueDisabled: true, requestCountBeforeControl }), { mode: 0o600 });
+      taskPanel, rosterPanel, actions, stopEnabled: true, continueDisabled: true, requestCountBeforeControl }), { mode: 0o600 });
     coldRemaining(deadlines.actionDeadline);
     await stop.click();
     coldRemaining(deadlines.actionDeadline);
@@ -1692,6 +1702,7 @@ requires_openai_auth = false
       report.coldStart.secondHostUi = readJson(path.join(root, "cold-second-host-ui.json"));
       assert.ok(report.coldStart.secondHostUi, "cold second host did not record its actual Webview projection before Stop");
       assert.match(report.coldStart.secondHostUi.taskPanel, /本宿主执行已中断/);
+      assertColdUiDepartmentRoster(report.coldStart.secondHostUi.rosterPanel);
       assert.match(report.coldStart.secondHostUi.actions, /仍有原执行退出未确认/);
       assert.equal(report.coldStart.secondHostUi.stopEnabled, true);
       assert.equal(report.coldStart.secondHostUi.continueDisabled, true);
@@ -1982,6 +1993,6 @@ requires_openai_auth = false
 }
 
 module.exports = { matchesExpectedCleanupSets, continuationRounds, expectedNativeTurns, assertSuccessiveEvidence, drivePublicSuccessiveContinuation, args, roleSelection, isolatedEnvironment, assertMixedEvidence, readOpenCodeNativeFacts, assertOpenCodeLaunchEvidence,
-  assertColdStartActivationSucceeded, classifyColdStartRecovery, assertColdRestartIdentity, assertColdUiRoot,
+  assertColdStartActivationSucceeded, classifyColdStartRecovery, assertColdRestartIdentity, assertColdUiRoot, assertColdUiDepartmentRoster,
   findDepartmentWebviewTarget, createDepartmentWebviewAdapter, clickPublicControl, driveColdProductionRecoveryCheck, assertColdHostObservation, settleColdPublicControl };
 if (require.main === module) main().catch((error) => { console.error(error); process.exitCode = 1; });

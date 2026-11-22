@@ -181,7 +181,7 @@ export type LoopGroupChatPanelState = {
     canContinue: boolean;
     canStop: boolean;
     departmentStopState?: DepartmentOrganizationStopState;
-    departmentDirectorInterrupted?: boolean;
+    departmentExecutionInterrupted?: boolean;
   };
   rounds: LoopGroupChatPanelRound[];
   chatMarkdown: string;
