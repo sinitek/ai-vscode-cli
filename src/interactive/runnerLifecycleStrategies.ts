@@ -7,9 +7,13 @@ import { ZcodeInteractiveRunner } from "./zcodeRunner";
 import { GrokInteractiveRunner } from "./grokRunner";
 import type {
   CodexRunnerEntry,
+  DshRunnerCreateOptions,
+  DshRunnerEntry,
   RunnerEntry,
   RunnerRelease,
   RunnerLifecycleStrategy,
+  RunnerSetOptions,
+  SetRunnerMetadataInput,
   StrategyForCli,
   StrategyRegistry,
 } from "./runnerLifecycleTypes";
@@ -28,14 +32,6 @@ function sameOrUnspecified(existingValue: string | undefined, nextValue: string 
 
 function emptyGrokSessionError(): Error {
   return Object.assign(new Error("empty grok session"), { reason: "empty" });
-}
-
-function emptyDshSessionError(): Error {
-  return Object.assign(new Error("empty dsh session"), { reason: "empty" });
-}
-
-function emptyKimiCodeSessionError(): Error {
-  return Object.assign(new Error("empty kimi-code session"), { reason: "empty" });
 }
 
 function sameStringList(left: readonly string[], right: readonly string[]): boolean {
@@ -333,22 +329,78 @@ export const grokRunnerLifecycleStrategy: StrategyForCli<"grok"> = {
   },
 };
 
+type LocalRunnerMetadata = Pick<DshRunnerEntry,
+  "thinkingMode" | "interactiveMode" | "model" | "command" | "args" | "cwd" | "localSessionId" | "env">;
+type LocalRunnerSelection = Pick<LocalRunnerMetadata, "thinkingMode" | "interactiveMode" | "model">;
+
+function prepareLocalRunner<TOptions extends Pick<DshRunnerCreateOptions, "sessionId" | "agentArgs" | "localSessionId">>(
+  cli: "dsh" | "kimi-code" | "zcode",
+  options: TOptions,
+): { sessionId: string; options: TOptions } {
+  const sessionId = options.sessionId.trim();
+  if (!sessionId) {
+    throw Object.assign(new Error(`empty ${cli} session`), { reason: "empty" });
+  }
+  return {
+    sessionId,
+    options: {
+      ...options,
+      sessionId,
+      agentArgs: copyArgs(options.agentArgs),
+      localSessionId: options.localSessionId ?? null,
+    },
+  };
+}
+
+function createLocalRunnerMetadata(
+  { thinkingMode, interactiveMode, model }: LocalRunnerSelection,
+  { command, args, cwd, localSessionId, env }: RunnerSetOptions,
+): LocalRunnerMetadata {
+  return {
+    thinkingMode,
+    interactiveMode,
+    model,
+    command: command ?? "",
+    args: copyArgs(args ?? []),
+    cwd,
+    localSessionId: localSessionId ?? null,
+    env,
+  };
+}
+
+function createPreparedLocalRunnerMetadata(options: DshRunnerCreateOptions): LocalRunnerMetadata {
+  return createLocalRunnerMetadata(options, { ...options, args: options.agentArgs });
+}
+
+function applyLocalRunnerSetMetadata(
+  entry: LocalRunnerMetadata & { sessionId: string },
+  { sessionId, thinkingMode, interactiveMode, model, options }: Omit<SetRunnerMetadataInput<unknown>, "runner">,
+): void {
+  entry.sessionId = sessionId;
+  entry.thinkingMode = thinkingMode;
+  entry.interactiveMode = interactiveMode;
+  entry.model = model;
+  if (typeof options.command === "string") {
+    entry.command = options.command;
+  }
+  if (options.args) {
+    entry.args = copyArgs(options.args);
+  }
+  if (options.cwd !== undefined) {
+    entry.cwd = options.cwd;
+  }
+  if (options.localSessionId !== undefined) {
+    entry.localSessionId = options.localSessionId;
+  }
+  if (options.env) {
+    entry.env = options.env;
+  }
+}
+
 export const dshRunnerLifecycleStrategy: StrategyForCli<"dsh"> = {
   cli: "dsh",
   prepare(options) {
-    const sessionId = options.sessionId.trim();
-    if (!sessionId) {
-      throw emptyDshSessionError();
-    }
-    return {
-      sessionId,
-      options: {
-        ...options,
-        sessionId,
-        agentArgs: copyArgs(options.agentArgs),
-        localSessionId: options.localSessionId ?? null,
-      },
-    };
+    return prepareLocalRunner("dsh", options);
   },
   canReuse(entry, prepared) {
     return entry.runner.isReusable()
@@ -360,14 +412,7 @@ export const dshRunnerLifecycleStrategy: StrategyForCli<"dsh"> = {
       && sameStringList(entry.args, prepared.options.agentArgs);
   },
   applyReuse(entry, prepared) {
-    entry.command = prepared.options.command;
-    entry.args = copyArgs(prepared.options.agentArgs);
-    entry.cwd = prepared.options.cwd;
-    entry.interactiveMode = prepared.options.interactiveMode;
-    entry.localSessionId = prepared.options.localSessionId ?? null;
-    entry.env = prepared.options.env;
-    entry.model = prepared.options.model;
-    entry.thinkingMode = prepared.options.thinkingMode;
+    Object.assign(entry, createPreparedLocalRunnerMetadata(prepared.options));
   },
   createRunner(prepared) {
     return new DshInteractiveRunner({
@@ -385,50 +430,18 @@ export const dshRunnerLifecycleStrategy: StrategyForCli<"dsh"> = {
       cli: "dsh",
       sessionId: prepared.sessionId,
       runner,
-      thinkingMode: prepared.options.thinkingMode,
-      interactiveMode: prepared.options.interactiveMode,
-      model: prepared.options.model,
-      command: prepared.options.command,
-      args: copyArgs(prepared.options.agentArgs),
-      cwd: prepared.options.cwd,
-      localSessionId: prepared.options.localSessionId ?? null,
-      env: prepared.options.env,
+      ...createPreparedLocalRunnerMetadata(prepared.options),
     };
   },
   applySetMetadata(entry, input) {
-    entry.sessionId = input.sessionId;
-    entry.thinkingMode = input.thinkingMode;
-    entry.interactiveMode = input.interactiveMode;
-    entry.model = input.model;
-    if (typeof input.options.command === "string") {
-      entry.command = input.options.command;
-    }
-    if (input.options.args) {
-      entry.args = copyArgs(input.options.args);
-    }
-    if (input.options.cwd !== undefined) {
-      entry.cwd = input.options.cwd;
-    }
-    if (input.options.localSessionId !== undefined) {
-      entry.localSessionId = input.options.localSessionId;
-    }
-    if (input.options.env) {
-      entry.env = input.options.env;
-    }
+    applyLocalRunnerSetMetadata(entry, input);
   },
   createSetRegistration(input) {
     return {
       cli: "dsh",
       sessionId: input.sessionId,
       runner: input.runner,
-      thinkingMode: input.thinkingMode,
-      interactiveMode: input.interactiveMode,
-      model: input.model,
-      command: input.options.command ?? "",
-      args: copyArgs(input.options.args ?? []),
-      cwd: input.options.cwd,
-      localSessionId: input.options.localSessionId ?? null,
-      env: input.options.env,
+      ...createLocalRunnerMetadata(input, input.options),
     };
   },
   stop(runner) {
@@ -439,19 +452,7 @@ export const dshRunnerLifecycleStrategy: StrategyForCli<"dsh"> = {
 export const kimiCodeRunnerLifecycleStrategy: StrategyForCli<"kimi-code"> = {
   cli: "kimi-code",
   prepare(options) {
-    const sessionId = options.sessionId.trim();
-    if (!sessionId) {
-      throw emptyKimiCodeSessionError();
-    }
-    return {
-      sessionId,
-      options: {
-        ...options,
-        sessionId,
-        agentArgs: copyArgs(options.agentArgs),
-        localSessionId: options.localSessionId ?? null,
-      },
-    };
+    return prepareLocalRunner("kimi-code", options);
   },
   canReuse(entry, prepared) {
     return entry.runner.isReusable()
@@ -463,14 +464,7 @@ export const kimiCodeRunnerLifecycleStrategy: StrategyForCli<"kimi-code"> = {
       && sameStringList(entry.args, prepared.options.agentArgs);
   },
   applyReuse(entry, prepared) {
-    entry.command = prepared.options.command;
-    entry.args = copyArgs(prepared.options.agentArgs);
-    entry.cwd = prepared.options.cwd;
-    entry.interactiveMode = prepared.options.interactiveMode;
-    entry.localSessionId = prepared.options.localSessionId ?? null;
-    entry.env = prepared.options.env;
-    entry.model = prepared.options.model;
-    entry.thinkingMode = prepared.options.thinkingMode;
+    Object.assign(entry, createPreparedLocalRunnerMetadata(prepared.options));
   },
   createRunner(prepared) {
     return new KimiInteractiveRunner({
@@ -489,50 +483,18 @@ export const kimiCodeRunnerLifecycleStrategy: StrategyForCli<"kimi-code"> = {
       cli: "kimi-code",
       sessionId: prepared.sessionId,
       runner,
-      thinkingMode: prepared.options.thinkingMode,
-      interactiveMode: prepared.options.interactiveMode,
-      model: prepared.options.model,
-      command: prepared.options.command,
-      args: copyArgs(prepared.options.agentArgs),
-      cwd: prepared.options.cwd,
-      localSessionId: prepared.options.localSessionId ?? null,
-      env: prepared.options.env,
+      ...createPreparedLocalRunnerMetadata(prepared.options),
     };
   },
   applySetMetadata(entry, input) {
-    entry.sessionId = input.sessionId;
-    entry.thinkingMode = input.thinkingMode;
-    entry.interactiveMode = input.interactiveMode;
-    entry.model = input.model;
-    if (typeof input.options.command === "string") {
-      entry.command = input.options.command;
-    }
-    if (input.options.args) {
-      entry.args = copyArgs(input.options.args);
-    }
-    if (input.options.cwd !== undefined) {
-      entry.cwd = input.options.cwd;
-    }
-    if (input.options.localSessionId !== undefined) {
-      entry.localSessionId = input.options.localSessionId;
-    }
-    if (input.options.env) {
-      entry.env = input.options.env;
-    }
+    applyLocalRunnerSetMetadata(entry, input);
   },
   createSetRegistration(input) {
     return {
       cli: "kimi-code",
       sessionId: input.sessionId,
       runner: input.runner,
-      thinkingMode: input.thinkingMode,
-      interactiveMode: input.interactiveMode,
-      model: input.model,
-      command: input.options.command ?? "",
-      args: copyArgs(input.options.args ?? []),
-      cwd: input.options.cwd,
-      localSessionId: input.options.localSessionId ?? null,
-      env: input.options.env,
+      ...createLocalRunnerMetadata(input, input.options),
     };
   },
   stop(runner) {
@@ -543,19 +505,7 @@ export const kimiCodeRunnerLifecycleStrategy: StrategyForCli<"kimi-code"> = {
 export const zcodeRunnerLifecycleStrategy: StrategyForCli<"zcode"> = {
   cli: "zcode",
   prepare(options) {
-    const sessionId = options.sessionId.trim();
-    if (!sessionId) {
-      throw Object.assign(new Error("empty zcode session"), { reason: "empty" });
-    }
-    return {
-      sessionId,
-      options: {
-        ...options,
-        sessionId,
-        agentArgs: copyArgs(options.agentArgs),
-        localSessionId: options.localSessionId ?? null,
-      },
-    };
+    return prepareLocalRunner("zcode", options);
   },
   canReuse(entry, prepared) {
     return entry.runner.isReusable()
@@ -566,14 +516,7 @@ export const zcodeRunnerLifecycleStrategy: StrategyForCli<"zcode"> = {
       && sameStringList(entry.args, prepared.options.agentArgs);
   },
   applyReuse(entry, prepared) {
-    entry.command = prepared.options.command;
-    entry.args = copyArgs(prepared.options.agentArgs);
-    entry.cwd = prepared.options.cwd;
-    entry.interactiveMode = prepared.options.interactiveMode;
-    entry.localSessionId = prepared.options.localSessionId ?? null;
-    entry.env = prepared.options.env;
-    entry.model = prepared.options.model;
-    entry.thinkingMode = prepared.options.thinkingMode;
+    Object.assign(entry, createPreparedLocalRunnerMetadata(prepared.options));
   },
   createRunner(prepared) {
     return new ZcodeInteractiveRunner({
@@ -592,50 +535,18 @@ export const zcodeRunnerLifecycleStrategy: StrategyForCli<"zcode"> = {
       cli: "zcode",
       sessionId: prepared.sessionId,
       runner,
-      thinkingMode: prepared.options.thinkingMode,
-      interactiveMode: prepared.options.interactiveMode,
-      model: prepared.options.model,
-      command: prepared.options.command,
-      args: copyArgs(prepared.options.agentArgs),
-      cwd: prepared.options.cwd,
-      localSessionId: prepared.options.localSessionId ?? null,
-      env: prepared.options.env,
+      ...createPreparedLocalRunnerMetadata(prepared.options),
     };
   },
   applySetMetadata(entry, input) {
-    entry.sessionId = input.sessionId;
-    entry.thinkingMode = input.thinkingMode;
-    entry.interactiveMode = input.interactiveMode;
-    entry.model = input.model;
-    if (typeof input.options.command === "string") {
-      entry.command = input.options.command;
-    }
-    if (input.options.args) {
-      entry.args = copyArgs(input.options.args);
-    }
-    if (input.options.cwd !== undefined) {
-      entry.cwd = input.options.cwd;
-    }
-    if (input.options.localSessionId !== undefined) {
-      entry.localSessionId = input.options.localSessionId;
-    }
-    if (input.options.env) {
-      entry.env = input.options.env;
-    }
+    applyLocalRunnerSetMetadata(entry, input);
   },
   createSetRegistration(input) {
     return {
       cli: "zcode",
       sessionId: input.sessionId,
       runner: input.runner,
-      thinkingMode: input.thinkingMode,
-      interactiveMode: input.interactiveMode,
-      model: input.model,
-      command: input.options.command ?? "",
-      args: copyArgs(input.options.args ?? []),
-      cwd: input.options.cwd,
-      localSessionId: input.options.localSessionId ?? null,
-      env: input.options.env,
+      ...createLocalRunnerMetadata(input, input.options),
     };
   },
   stop(runner) {

@@ -13,6 +13,13 @@ import {
 import { isTimestampWithinHistoryRetention } from "./historyRetention";
 import { logError } from "./logger";
 import {
+  normalizeLoopAcceptanceChecks,
+  normalizeLoopEstimatedRemainingRounds,
+  normalizeLoopRoundSummaries,
+  type LoopAcceptanceCheck,
+  type LoopRoundSummary,
+} from "./loopCompletionFields";
+import {
   getLegacyLoopStoragePaths,
   isLegacyLoopTaskStorePath,
   migrateLegacyLoopJson,
@@ -173,23 +180,12 @@ export type LoopSubtaskRecord = {
   lastStartedAt?: number;
 };
 
-export type LoopAcceptanceCheck = {
-  name: string;
-  passed: boolean;
-  detail?: string;
-};
+export type { LoopAcceptanceCheck, LoopRoundSummary } from "./loopCompletionFields";
 
 export type LoopAcceptance = {
   passed: boolean;
   summary?: string;
   checks: LoopAcceptanceCheck[];
-};
-
-export type LoopRoundSummary = {
-  round: number;
-  subtaskId?: string;
-  title: string;
-  summary: string;
 };
 
 export type LoopSubtaskDecision = {
@@ -1219,7 +1215,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ? raw.rounds.map(normalizeLoopRoundRecord).filter((item): item is LoopRoundRecord => Boolean(item))
     : [];
   const completionRoundSummaries = Array.isArray(raw.completionRoundSummaries)
-    ? raw.completionRoundSummaries.map(normalizeSingleLoopRoundSummary).filter((item): item is LoopRoundSummary => Boolean(item))
+    ? normalizeLoopRoundSummaries(raw.completionRoundSummaries)
     : [];
   const completionRequirementCoverage = normalizeLoopAcceptanceChecks(
     (raw as { completionRequirementCoverage?: unknown }).completionRequirementCoverage
@@ -1914,16 +1910,6 @@ export function cleanupLoopCommunicationRetention(): void {
   }
 }
 
-function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
-  const numeric = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  if (!Number.isFinite(numeric)) {
-    return undefined;
-  }
-  return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
-}
-
 export function resolveLegacyLoopMaxRounds(value: unknown): number {
   return parseLoopMaxRoundsValue(value) ?? LOOP_DEFAULT_MAX_ROUNDS;
 }
@@ -1936,54 +1922,6 @@ function parseLoopMaxRoundsValue(value: unknown): number | null {
     return null;
   }
   return Math.min(Math.max(Math.floor(numeric), LOOP_MIN_MAX_ROUNDS), LOOP_MAX_MAX_ROUNDS);
-}
-
-function normalizeSingleLoopRoundSummary(value: unknown): LoopRoundSummary | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const summary = value as {
-    round?: unknown;
-    subtaskId?: unknown;
-    title?: unknown;
-    summary?: unknown;
-  };
-  const round = typeof summary.round === "number" && summary.round > 0
-    ? Math.floor(summary.round)
-    : null;
-  const title = typeof summary.title === "string" ? summary.title.trim() : "";
-  const content = typeof summary.summary === "string" ? summary.summary.trim() : "";
-  if (!round || !title || !content) {
-    return null;
-  }
-  return {
-    round,
-    subtaskId: typeof summary.subtaskId === "string" && summary.subtaskId.trim()
-      ? summary.subtaskId.trim()
-      : undefined,
-    title,
-    summary: content,
-  };
-}
-
-function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item): LoopAcceptanceCheck | null => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const check = item as { name?: unknown; passed?: unknown; detail?: unknown };
-      const name = typeof check.name === "string" && check.name.trim() ? check.name.trim() : "acceptance";
-      return {
-        name,
-        passed: check.passed === true,
-        detail: typeof check.detail === "string" ? check.detail : undefined,
-      };
-    })
-    .filter((item): item is LoopAcceptanceCheck => Boolean(item));
 }
 
 function formatLoopWriteFiles(writeFiles?: string[]): string | null {

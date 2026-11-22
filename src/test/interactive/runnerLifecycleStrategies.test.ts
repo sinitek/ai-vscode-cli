@@ -3,6 +3,7 @@ import assert = require("node:assert/strict");
 import * as fs from "fs";
 import * as path from "path";
 import { PassThrough } from "node:stream";
+import type { RunnerCreateOptionsByCli, RunnerEntryByCli, StrategyForCli } from "../../interactive/runnerLifecycleTypes";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -426,6 +427,14 @@ test("DSH strategy keeps an independent runner and reuses across model changes",
     });
     assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, changed), true);
     assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, dshRunnerLifecycleStrategy.prepare({
+      ...changed.options,
+      env: { DSH_HOME: "/tmp/other" },
+    })), false);
+    assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, dshRunnerLifecycleStrategy.prepare({
+      ...changed.options,
+      env: { DSH_HOME: "/tmp/isolated", KIMI_CODE_HOME: "/tmp/unrelated" },
+    })), true);
+    assert.equal(dshRunnerLifecycleStrategy.canReuse(entry, dshRunnerLifecycleStrategy.prepare({
       ...prepared.options,
       sessionId: "local-session",
       cwd: "/other",
@@ -508,6 +517,100 @@ function makeSetInput(options: {
   };
 }
 
+function testLocalRunnerMetadata(
+  strategy: StrategyForCli<"dsh">,
+  options: RunnerCreateOptionsByCli["dsh"],
+): void {
+  test(`${strategy.cli} snapshots registration args and updates metadata without replacing the runner`, () => {
+    assert.throws(() => strategy.prepare({ ...options, sessionId: " \t " }), {
+      message: `empty ${strategy.cli} session`,
+      reason: "empty",
+    });
+
+    const callerArgs = ["--prepared"];
+    const env = { FIXTURE_HOME: "/tmp/fixture" };
+    const prepared = strategy.prepare({ ...options, sessionId: "  original  ", agentArgs: callerArgs, localSessionId: undefined, env });
+    callerArgs.push("--caller-mutation");
+    assert.equal(prepared.sessionId, "original");
+    assert.equal(prepared.options.sessionId, "original");
+    assert.equal(prepared.options.localSessionId, null);
+    assert.deepEqual(prepared.options.agentArgs, ["--prepared"]);
+
+    const runner = strategy.createRunner(prepared);
+    try {
+      const registered = strategy.createRegistration(prepared, runner);
+      assert.deepEqual(registered, {
+        cli: strategy.cli,
+        sessionId: "original",
+        runner,
+        thinkingMode: options.thinkingMode,
+        interactiveMode: options.interactiveMode,
+        model: options.model,
+        command: options.command,
+        args: ["--prepared"],
+        cwd: options.cwd,
+        localSessionId: null,
+        env,
+      });
+      const entry: RunnerEntryByCli["dsh"] = { ...registered, configFingerprint: "kept", idleTimer: null, lastUsedAt: 42 };
+      const reuse = strategy.prepare({ ...options, sessionId: "unused", agentArgs: ["--reused"], env: undefined });
+      strategy.applyReuse(entry, reuse);
+      prepared.options.agentArgs.push("--registration-mutation");
+      reuse.options.agentArgs.push("--reuse-mutation");
+      assert.deepEqual(registered.args, ["--prepared"]);
+      assert.deepEqual(entry.args, ["--reused"]);
+      assert.equal(entry.sessionId, "original");
+      assert.equal(entry.env, undefined);
+
+      const setInput = { sessionId: "external", runner, thinkingMode: "high", interactiveMode: "plan", model: null } as const;
+      const defaults = strategy.createSetRegistration({ ...setInput, options: {} });
+      assert.deepEqual(defaults, { ...setInput, cli: strategy.cli, runner, command: "", args: [], cwd: undefined, localSessionId: null, env: undefined });
+      const setArgs = ["--external"];
+      const setOptions = { command: "external-cli", args: setArgs, cwd: "/external", localSessionId: "native-id", env };
+      const external = strategy.createSetRegistration({ ...setInput, options: setOptions });
+      strategy.applySetMetadata(entry, { ...setInput, options: setOptions });
+      setArgs.push("--set-mutation");
+      assert.deepEqual(external, { ...defaults, ...setOptions, args: ["--external"] });
+      assert.notEqual(entry.args, external.args);
+
+      strategy.applySetMetadata(entry, { ...setInput, options: {} });
+      assert.deepEqual(entry, { ...external, configFingerprint: "kept", idleTimer: null, lastUsedAt: 42 });
+      assert.equal(entry.runner, runner);
+      assert.equal(entry.env, env);
+
+      const emptyArgs: string[] = [];
+      const emptyEnv = {};
+      strategy.applySetMetadata(entry, { ...setInput, options: { command: "", args: emptyArgs, cwd: "", localSessionId: null, env: emptyEnv } });
+      emptyArgs.push("--empty-mutation");
+      assert.equal(entry.command, "");
+      assert.deepEqual(entry.args, []);
+      assert.equal(entry.cwd, "");
+      assert.equal(entry.localSessionId, null);
+      assert.equal(entry.env, emptyEnv);
+    } finally {
+      void runner.dispose();
+    }
+  });
+}
+
+testLocalRunnerMetadata(dshRunnerLifecycleStrategy, {
+  sessionId: "session-dsh",
+  command: "dsh",
+  agentArgs: [],
+  cwd: "/workspace",
+  thinkingMode: "ultra",
+  interactiveMode: "coding",
+  model: "dsh-model",
+});
+testLocalRunnerMetadata(
+  kimiCodeRunnerLifecycleStrategy as unknown as StrategyForCli<"dsh">,
+  kimiCodeOptions() as unknown as RunnerCreateOptionsByCli["dsh"],
+);
+testLocalRunnerMetadata(
+  zcodeRunnerLifecycleStrategy as unknown as StrategyForCli<"dsh">,
+  zcodeOptions() as unknown as RunnerCreateOptionsByCli["dsh"],
+);
+
 test("strategy registry exposes one entry per supported CLI with matching metadata", () => {
   const expected: Array<[string, string]> = [
     ["codex", "codex"],
@@ -568,22 +671,26 @@ test("Kimi Code strategy trims the session, copies args, and reuses across model
       localSessionId: undefined,
     }));
     assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, reused), true);
-    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare(kimiCodeOptions({
-      sessionId: "spaced",
+    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare({
+      ...reused.options,
       env: { KIMI_CODE_HOME: "/tmp/other" },
-    }))), false);
-    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare(kimiCodeOptions({
-      sessionId: "spaced",
+    })), false);
+    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare({
+      ...reused.options,
+      env: { KIMI_CODE_HOME: "/tmp/kimi-home", DSH_HOME: "/tmp/unrelated" },
+    })), true);
+    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare({
+      ...reused.options,
       localSessionId: "local-kimi-2",
-    }))), false);
-    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare(kimiCodeOptions({
-      sessionId: "spaced",
+    })), false);
+    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare({
+      ...reused.options,
       agentArgs: ["--changed"],
-    }))), false);
-    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare(kimiCodeOptions({
-      sessionId: "spaced",
+    })), false);
+    assert.equal(kimiCodeRunnerLifecycleStrategy.canReuse(entry, kimiCodeRunnerLifecycleStrategy.prepare({
+      ...reused.options,
       cwd: "/other",
-    }))), false);
+    })), false);
     kimiCodeRunnerLifecycleStrategy.applyReuse(entry, reused);
     assert.equal(entry.model, "kimi-next");
     assert.equal(entry.localSessionId, null);

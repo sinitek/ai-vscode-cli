@@ -380,6 +380,82 @@ test("classic Loop preserves optional legacy acceptance fields without making th
   }
 });
 
+test("classic Loop normalizes mixed completion summaries and acceptance checks", () => {
+  const host = createRuntimeHost();
+  const checks = [
+    null,
+    "invalid",
+    { name: " coverage ", passed: true, detail: " evidence " },
+    { name: " ", passed: "true", detail: " missing name " },
+    { passed: 1, detail: 42 },
+  ];
+  const expectedChecks = [
+    { name: "coverage", passed: true, detail: " evidence " },
+    { name: "acceptance", passed: false, detail: " missing name " },
+    { name: "acceptance", passed: false, detail: undefined },
+  ];
+  const parsed = host.parseLoopMainDecision(JSON.stringify({
+    status: "completed",
+    finalSummary: "Summary",
+    estimatedRemainingRounds: 30,
+    roundSummaries: [
+      null,
+      { round: 0, title: "Bad round", summary: "Ignored" },
+      { round: 1.9, title: " Summary title ", summary: " Summary text ", subtaskId: " subtask " },
+      { round: 2, title: "", summary: "Ignored" },
+      { round: 3, title: "Ignored", summary: "" },
+      { round: 4, title: 123, summary: 456 },
+    ],
+    requirementCoverage: checks,
+    acceptance: { passed: "true", summary: " evidence ", checks },
+  }));
+  assert.equal(parsed?.estimatedRemainingRounds, 0);
+  assert.deepEqual(parsed?.roundSummaries, [{
+    round: 1,
+    subtaskId: "subtask",
+    title: "Summary title",
+    summary: "Summary text",
+  }]);
+  assert.deepEqual(parsed?.requirementCoverage, expectedChecks);
+  assert.deepEqual(parsed?.acceptance, { passed: false, summary: " evidence ", checks: expectedChecks });
+});
+
+test("classic Loop completion preserves explicit empty summaries and omits absent or malformed ones", () => {
+  const host = createRuntimeHost();
+  for (const entries of [undefined, null, {}, []]) {
+    const parsed = host.parseLoopMainDecision(JSON.stringify({
+      status: "completed",
+      finalSummary: "Summary",
+      roundSummaries: entries,
+      requirementCoverage: entries,
+    }));
+    assert.deepEqual(parsed, {
+      status: "completed",
+      finalSummary: "Summary",
+      estimatedRemainingRounds: 0,
+      ...(Array.isArray(entries) ? { roundSummaries: [] } : {}),
+    });
+  }
+});
+
+test("classic Loop decisions normalize finite round estimates and reject invalid estimates", () => {
+  const host = createRuntimeHost();
+  const cases = [
+    [undefined, undefined], [null, undefined], [false, undefined],
+    [" ", undefined], ["NaN", undefined], ["Infinity", undefined],
+    [7.9, 7], [" 7.9 ", 7], [-0.1, 0], ["-1", 0], [0, 0],
+    [100, 100], ["101.8", 100], [101.8, 100],
+  ] as const;
+  for (const [input, expected] of cases) {
+    const parsed = host.parseLoopMainDecision(JSON.stringify({
+      ...buildContinueDecision(),
+      estimatedRemainingRounds: input,
+    }));
+    assert.equal(parsed?.status, "continue");
+    assert.equal(parsed.estimatedRemainingRounds, expected, String(input));
+  }
+});
+
 test("classic Loop still rejects completion without a non-empty summary", () => {
   const host = createRuntimeHost();
   for (const finalSummary of [undefined, "", "   "]) {

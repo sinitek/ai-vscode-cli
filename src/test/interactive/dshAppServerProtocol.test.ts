@@ -17,12 +17,16 @@ import {
   DshCompactionUnsupportedError,
   DshProtocolError,
   DSH_ACP_PROTOCOL_VERSION,
+  extractDshText,
   findDshForbiddenWire,
+  parseDshJsonRpcLine,
   parseDshModelWireValue,
   planDshProcessTreeStop,
   projectDshToolUpdate,
   readDshConfigOptions,
+  readDshSessionUpdateBody,
   readDshTokenUsageUpdate,
+  readDshUpdateSessionId,
   redactDshDiagnostic,
   isDshCompletedStopReason,
   resolveDshHostResumeId,
@@ -31,6 +35,51 @@ import {
 
 const FLASH = JSON.stringify(["deepseek-official", "deepseek-v4-flash"]);
 const PRO = JSON.stringify(["deepseek-official", "deepseek-v4-pro"]);
+
+test("DSH distinguishes empty and invalid ACP frames and projects the RPC fields", () => {
+  assert.deepEqual(parseDshJsonRpcLine(" \t\r\n"), { ok: false, reason: "empty", error: "empty" });
+  const malformed = parseDshJsonRpcLine("{");
+  assert.ok(!malformed.ok && malformed.reason === "invalid" && malformed.error);
+  for (const frame of ["null", "[]", "42", '"2.0"']) {
+    assert.deepEqual(parseDshJsonRpcLine(frame), {
+      ok: false, reason: "invalid", error: "ACP frame is not an object",
+    });
+  }
+  for (const frame of ["{}", '{"jsonrpc":2}', '{"jsonrpc":"1.0"}']) {
+    assert.deepEqual(parseDshJsonRpcLine(frame), {
+      ok: false, reason: "invalid", error: "ACP frame is not JSON-RPC 2.0",
+    });
+  }
+  assert.deepEqual(parseDshJsonRpcLine(
+    '{"jsonrpc":"2.0","id":null,"method":42,"params":null,"result":true,"error":null,"extra":1}',
+  ), { ok: true, message: { jsonrpc: "2.0", id: null, method: undefined, params: null, result: true, error: null } });
+});
+
+test("DSH reads nested and flat ACP updates independently of session ID selection", () => {
+  const nested = { sessionId: "inner", sessionUpdate: "agent_message_chunk" };
+  const flat = { sessionId: "outer", sessionUpdate: "agent_thought_chunk" };
+  assert.equal(readDshSessionUpdateBody({ params: { ...flat, update: nested } }), nested);
+  assert.equal(readDshUpdateSessionId({ params: { ...flat, update: nested } }), "outer");
+  assert.equal(readDshSessionUpdateBody({ params: flat }), flat);
+  const fallback = { ...flat, sessionId: "", update: { sessionId: "inner", sessionUpdate: null } };
+  assert.equal(readDshSessionUpdateBody({ params: fallback }), fallback);
+  assert.equal(readDshUpdateSessionId({ params: fallback }), "inner");
+  const emptyKind = { sessionUpdate: "" };
+  assert.equal(readDshSessionUpdateBody({ params: { ...flat, update: emptyKind } }), emptyKind);
+  for (const params of [undefined, null, [], { sessionId: "", update: null }, { update: { sessionUpdate: null } }]) {
+    assert.equal(readDshSessionUpdateBody({ params }), null);
+    assert.equal(readDshUpdateSessionId({ params }), null);
+  }
+});
+
+test("DSH extracts recursive text in order with the existing content precedence", () => {
+  assert.equal(extractDshText([
+    "first ",
+    { content: [{ type: "text", text: "second ", content: "ignored" }, [null, { text: "third" }]], text: "ignored" },
+    { content: null, text: "ignored" },
+  ]), "first second third");
+  assert.equal(extractDshText(null), "");
+});
 
 test("DSH plans use structured task text instead of status markers or tool summaries", () => {
   const items = [
@@ -184,10 +233,13 @@ test("DSH usage ignores missing values and accepts a real zero", () => {
 
 test("DSH text and tool updates do not replay a full snapshot", () => {
   const tracker = new Map<string, string>();
+  assert.equal(acceptDshIncrementalText(tracker, "m1", ""), null);
+  assert.equal(tracker.has("m1"), false);
   assert.equal(acceptDshIncrementalText(tracker, "m1", "hel"), "hel");
   assert.equal(acceptDshIncrementalText(tracker, "m1", "hello"), "lo");
   assert.equal(acceptDshIncrementalText(tracker, "m1", "hello"), null);
   assert.equal(acceptDshIncrementalText(tracker, "m1", "lo"), "lo");
+  assert.equal(tracker.get("m1"), "hellolo");
 
   const first = projectDshToolUpdate(undefined, {
     toolCallId: "tool-1",

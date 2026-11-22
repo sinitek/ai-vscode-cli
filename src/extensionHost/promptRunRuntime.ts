@@ -28,9 +28,15 @@ import {
   upsertLoopTransitionSubtask,
 } from "./loopTaskStateMachine";
 import { resolveLoopAnswerConclusion } from "../loopGroupChat";
+import {
+  normalizeLoopAcceptanceChecks,
+  normalizeLoopEstimatedRemainingRounds,
+  normalizeLoopRoundSummaries as normalizeLoopRoundSummaryEntries,
+  normalizeSingleLoopRoundSummary,
+} from "../loopCompletionFields";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions } from "../loopSubtaskLifecycle";
-import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopAcceptanceCheck, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
+import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
@@ -331,7 +337,6 @@ export type PromptRunRuntimeHostDeps = {
 export function createPromptRunRuntimeHost(deps: PromptRunRuntimeHostDeps) {
 let activeWorkspaceKey = deps.getActiveWorkspaceKey();
 const { getConversationTabById, createConversationTabId, persistConversationTabsToWorkspaceSettings, postPanelState, loadSessionMessages, persistMessagesForTab, getPendingSessionDraft, updatePendingSessionDraft, sendPanelMessage, createMessageId, appendLoopMainSubChatMainDecision, buildLoopGroupChatMessageAction, runLoopPrompt, isTabRunActive, refreshOpenLoopGroupChatPanelForTask, resolveConversationTabLoopContext } = deps;
-const LOOP_MAX_MAX_ROUNDS = 100;
 const readTaskStore = deps.readTaskStore;
 const writeTaskStore = deps.writeTaskStore;
 const resolveLoopTaskSessionId = deps.resolveLoopTaskSessionId;
@@ -615,16 +620,6 @@ function normalizeDirectorProgressWeights(value: unknown): LoopMainDecision["dir
   return weights;
 }
 
-function normalizeLoopEstimatedRemainingRounds(value: unknown): number | undefined {
-  const numeric = typeof value === "number"
-    ? value
-    : (typeof value === "string" && value.trim() ? Number(value) : Number.NaN);
-  if (!Number.isFinite(numeric)) {
-    return undefined;
-  }
-  return Math.min(Math.max(Math.floor(numeric), 0), LOOP_MAX_MAX_ROUNDS);
-}
-
 function normalizeLoopSubtaskDecisions(raw: Partial<LoopMainDecision>): LoopSubtaskDecision[] | null {
   const rawSubtasks = Array.isArray((raw as { subtasks?: unknown }).subtasks)
     ? (raw as { subtasks: unknown[] }).subtasks
@@ -702,40 +697,7 @@ function normalizeSingleLoopSubtaskDecision(value: unknown): LoopSubtaskDecision
 }
 
 function normalizeLoopRoundSummaries(value: unknown): LoopRoundSummary[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  return value
-    .map((item): LoopRoundSummary | null => normalizeSingleLoopRoundSummary(item))
-    .filter((item): item is LoopRoundSummary => Boolean(item));
-}
-
-function normalizeSingleLoopRoundSummary(value: unknown): LoopRoundSummary | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const summary = value as {
-    round?: unknown;
-    subtaskId?: unknown;
-    title?: unknown;
-    summary?: unknown;
-  };
-  const round = typeof summary.round === "number" && summary.round > 0
-    ? Math.floor(summary.round)
-    : null;
-  const title = typeof summary.title === "string" ? summary.title.trim() : "";
-  const content = typeof summary.summary === "string" ? summary.summary.trim() : "";
-  if (!round || !title || !content) {
-    return null;
-  }
-  return {
-    round,
-    subtaskId: typeof summary.subtaskId === "string" && summary.subtaskId.trim()
-      ? summary.subtaskId.trim()
-      : undefined,
-    title,
-    summary: content,
-  };
+  return Array.isArray(value) ? normalizeLoopRoundSummaryEntries(value) : null;
 }
 
 function normalizeLoopAcceptance(value: unknown): LoopAcceptance | null {
@@ -749,26 +711,6 @@ function normalizeLoopAcceptance(value: unknown): LoopAcceptance | null {
     summary: typeof raw.summary === "string" ? raw.summary : undefined,
     checks,
   };
-}
-
-function normalizeLoopAcceptanceChecks(value: unknown): LoopAcceptanceCheck[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((item): LoopAcceptanceCheck | null => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const check = item as { name?: unknown; passed?: unknown; detail?: unknown };
-      const name = typeof check.name === "string" && check.name.trim() ? check.name.trim() : "acceptance";
-      return {
-        name,
-        passed: check.passed === true,
-        detail: typeof check.detail === "string" ? check.detail : undefined,
-      };
-    })
-    .filter((item): item is LoopAcceptanceCheck => Boolean(item));
 }
 
 function applyLoopMainDecision(

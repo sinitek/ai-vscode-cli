@@ -17,6 +17,7 @@ import {
   buildKimiSetModeParams,
   classifyKimiSessionUpdate,
   extractKimiTaskListItems,
+  extractKimiText,
   findKimiForbiddenWire,
   formatKimiRpcError,
   isKimiCompletedStopReason,
@@ -33,7 +34,9 @@ import {
   readKimiPromptError,
   readKimiPromptStopReason,
   readKimiSessionId,
+  readKimiSessionUpdateBody,
   readKimiTokenUsageUpdate,
+  readKimiUpdateSessionId,
   redactKimiDiagnostic,
   resolveKimiHostResumeId,
   resolveKimiPermissionDecision,
@@ -118,12 +121,26 @@ test("kimi rejects unverified wire methods and never sends session/load", () => 
   assert.equal(findKimiForbiddenWire("nope"), null);
 });
 
-test("kimi parses JSON-RPC frames and reports protocol errors", () => {
-  assert.deepEqual(parseKimiJsonRpcLine(""), { ok: false, reason: "empty", error: "empty" });
-  assert.equal(parseKimiJsonRpcLine("{").ok, false);
-  assert.equal(parseKimiJsonRpcLine(JSON.stringify({ id: 1 })).ok, false);
-  const parsed = parseKimiJsonRpcLine(JSON.stringify({ jsonrpc: "2.0", id: 2, result: { ok: true } }));
-  assert.equal(parsed.ok, true);
+test("kimi distinguishes empty and invalid ACP frames and projects the RPC fields", () => {
+  assert.deepEqual(parseKimiJsonRpcLine(" \t\r\n"), { ok: false, reason: "empty", error: "empty" });
+  const malformed = parseKimiJsonRpcLine("{");
+  assert.ok(!malformed.ok && malformed.reason === "invalid" && malformed.error);
+  for (const frame of ["null", "[]", "42", '"2.0"']) {
+    assert.deepEqual(parseKimiJsonRpcLine(frame), {
+      ok: false, reason: "invalid", error: "ACP frame is not an object",
+    });
+  }
+  for (const frame of ["{}", '{"jsonrpc":2}', '{"jsonrpc":"1.0"}']) {
+    assert.deepEqual(parseKimiJsonRpcLine(frame), {
+      ok: false, reason: "invalid", error: "ACP frame is not JSON-RPC 2.0",
+    });
+  }
+  assert.deepEqual(parseKimiJsonRpcLine(
+    '{"jsonrpc":"2.0","id":null,"method":42,"params":null,"result":true,"error":null,"extra":1}',
+  ), { ok: true, message: { jsonrpc: "2.0", id: null, method: undefined, params: null, result: true, error: null } });
+});
+
+test("kimi reads session IDs and stop reasons and formats RPC errors", () => {
   assert.equal(readKimiSessionId({ sessionId: " session_a " }), "session_a");
   assert.equal(readKimiSessionId({}), null);
   assert.equal(readKimiPromptStopReason({ stopReason: "end_turn" }), "end_turn");
@@ -134,6 +151,32 @@ test("kimi parses JSON-RPC frames and reports protocol errors", () => {
   assert.equal(error.code, "turn-failed");
   assert.equal(error.rpcCode, -32000);
   assert.equal(formatKimiRpcError({}).message, "ACP request failed");
+});
+
+test("kimi reads nested and flat ACP updates independently of session ID selection", () => {
+  const nested = { sessionId: "inner", sessionUpdate: "agent_message_chunk" };
+  const flat = { sessionId: "outer", sessionUpdate: "agent_thought_chunk" };
+  assert.equal(readKimiSessionUpdateBody({ params: { ...flat, update: nested } }), nested);
+  assert.equal(readKimiUpdateSessionId({ params: { ...flat, update: nested } }), "outer");
+  assert.equal(readKimiSessionUpdateBody({ params: flat }), flat);
+  const fallback = { ...flat, sessionId: "", update: { sessionId: "inner", sessionUpdate: null } };
+  assert.equal(readKimiSessionUpdateBody({ params: fallback }), fallback);
+  assert.equal(readKimiUpdateSessionId({ params: fallback }), "inner");
+  const emptyKind = { sessionUpdate: "" };
+  assert.equal(readKimiSessionUpdateBody({ params: { ...flat, update: emptyKind } }), emptyKind);
+  for (const params of [undefined, null, [], { sessionId: "", update: null }, { update: { sessionUpdate: null } }]) {
+    assert.equal(readKimiSessionUpdateBody({ params }), null);
+    assert.equal(readKimiUpdateSessionId({ params }), null);
+  }
+});
+
+test("kimi extracts recursive text in order with the existing content precedence", () => {
+  assert.equal(extractKimiText([
+    "first ",
+    { content: [{ type: "text", text: "second ", content: "ignored" }, [null, { text: "third" }]], text: "ignored" },
+    { content: null, text: "ignored" },
+  ]), "first second third");
+  assert.equal(extractKimiText(null), "");
 });
 
 test("kimi preserves nested provider errors and their model-not-found type", () => {
@@ -273,6 +316,7 @@ test("kimi token usage requires real positive context sizes", () => {
 test("kimi incremental text tracker only reports new suffixes", () => {
   const tracker = new Map<string, string>();
   assert.equal(acceptKimiIncrementalText(tracker, "m", ""), null);
+  assert.equal(tracker.has("m"), false);
   assert.equal(acceptKimiIncrementalText(tracker, "m", "he"), "he");
   assert.equal(acceptKimiIncrementalText(tracker, "m", "he"), null);
   assert.equal(acceptKimiIncrementalText(tracker, "m", "hello"), "llo");

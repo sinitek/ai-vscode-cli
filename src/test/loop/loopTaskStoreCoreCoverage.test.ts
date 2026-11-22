@@ -1142,6 +1142,39 @@ test("moves task records between pending and session stores through public bindi
   assert.equal(patched?.completionRequirementCoverage[0]?.passed, true);
 });
 
+test("defaults missing or malformed stored completion entries and normalizes round estimates", () => {
+  const filePath = path.join(testHome, "completion-defaults", "loop-tasks.json");
+  const cases = [
+    [undefined, undefined], [null, undefined], [false, undefined],
+    [" ", undefined], ["NaN", undefined], ["Infinity", undefined],
+    [7.9, 7], [" 7.9 ", 7], [-0.1, 0], ["-1", 0], [0, 0],
+    [100, 100], ["101.8", 100], [101.8, 100],
+  ] as const;
+  const entries = [undefined, null, {}, []];
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify({
+    tasks: cases.map(([input], index) => ({
+      id: `completion-defaults-${index}`,
+      cli: "codex",
+      rootPrompt: "Read historical completion fields.",
+      finalSummary: "Summary",
+      estimatedRemainingRounds: input,
+      completionRoundSummaries: entries[index % entries.length],
+      completionRequirementCoverage: entries[index % entries.length],
+    })),
+  }), "utf8");
+
+  const tasks = loopTaskStore.readLoopTaskStore(filePath).tasks;
+  assert.equal(tasks.length, cases.length);
+  cases.forEach(([, expected], index) => {
+    const task = tasks[index];
+    assert.equal(task.id, `completion-defaults-${index}`);
+    assert.equal(task.estimatedRemainingRounds, expected, String(cases[index][0]));
+    assert.deepEqual(task.completionRoundSummaries, []);
+    assert.deepEqual(task.completionRequirementCoverage, []);
+  });
+});
+
 test("normalizes malformed optional Loop records without preserving invalid details", () => {
   const filePath = path.join(testHome, "optional-normalization", "loop-tasks.json");
   const now = Date.now();
@@ -1181,7 +1214,13 @@ test("normalizes malformed optional Loop records without preserving invalid deta
           { round: 3, title: "Ignored", summary: "" },
           { round: 4, title: 123, summary: 456 },
         ],
-        completionRequirementCoverage: [{ passed: false, detail: "missing name" }],
+        completionRequirementCoverage: [
+          null,
+          "invalid",
+          { name: " coverage ", passed: true, detail: " evidence " },
+          { name: " ", passed: "true", detail: " missing name " },
+          { passed: 1, detail: 42 },
+        ],
       },
       {
         id: "fallback-normalization",
@@ -1219,7 +1258,11 @@ test("normalizes malformed optional Loop records without preserving invalid deta
     title: "Summary title",
     summary: "Summary text",
   }]);
-  assert.deepEqual(task.completionRequirementCoverage, [{ name: "acceptance", passed: false, detail: "missing name" }]);
+  assert.deepEqual(task.completionRequirementCoverage, [
+    { name: "coverage", passed: true, detail: " evidence " },
+    { name: "acceptance", passed: false, detail: " missing name " },
+    { name: "acceptance", passed: false, detail: undefined },
+  ]);
   assert.equal(tasks[1]?.createdAt, tasks[1]?.updatedAt);
   assert.equal("maxRounds" in tasks[1], false);
   assert.equal(tasks.length, 2);

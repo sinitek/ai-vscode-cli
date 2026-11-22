@@ -10,6 +10,15 @@
  * `off|low|medium|high|xhigh|max`). `ultra` is never rewritten to `max`.
  */
 
+import {
+  acceptAcpIncrementalText,
+  AcpJsonRpcMessage,
+  extractAcpText,
+  parseAcpJsonRpcLine,
+  readAcpSessionUpdateBody,
+  readAcpUpdateSessionId,
+} from "./acpSessionProtocol";
+
 export const KIMI_ACP_PROTOCOL_VERSION = 1;
 export const KIMI_ACP_SUBCOMMAND = "acp";
 export const KIMI_DEFAULT_COMMAND = "kimi";
@@ -106,14 +115,7 @@ export class KimiCompactionUnsupportedError extends KimiProtocolError {
   }
 }
 
-export type KimiJsonRpcMessage = {
-  jsonrpc?: unknown;
-  id?: unknown;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-  error?: unknown;
-};
+export type KimiJsonRpcMessage = AcpJsonRpcMessage;
 
 export type KimiConfigOption = {
   id: string;
@@ -167,36 +169,7 @@ export type KimiProcessStopStep =
 export function parseKimiJsonRpcLine(
   line: string,
 ): { ok: true; message: KimiJsonRpcMessage } | { ok: false; reason: "empty" | "invalid"; error: string } {
-  if (line.trim() === "") {
-    return { ok: false, reason: "empty", error: "empty" };
-  }
-  try {
-    const value = JSON.parse(line) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return { ok: false, reason: "invalid", error: "ACP frame is not an object" };
-    }
-    const record = value as Record<string, unknown>;
-    if (record.jsonrpc !== "2.0") {
-      return { ok: false, reason: "invalid", error: "ACP frame is not JSON-RPC 2.0" };
-    }
-    return {
-      ok: true,
-      message: {
-        jsonrpc: record.jsonrpc,
-        id: record.id,
-        method: typeof record.method === "string" ? record.method : undefined,
-        params: record.params,
-        result: record.result,
-        error: record.error,
-      },
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      reason: "invalid",
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return parseAcpJsonRpcLine(line);
 }
 
 /**
@@ -530,43 +503,11 @@ export function readKimiCompactionUpdate(text: string): KimiCompactionUpdate | n
 }
 
 export function acceptKimiIncrementalText(tracker: Map<string, string>, key: string, text: string): string | null {
-  if (!text) {
-    return null;
-  }
-  const previous = tracker.get(key) ?? "";
-  if (text === previous) {
-    return null;
-  }
-  if (previous && text.startsWith(previous)) {
-    const delta = text.slice(previous.length);
-    tracker.set(key, text);
-    return delta || null;
-  }
-  tracker.set(key, previous + text);
-  return text;
+  return acceptAcpIncrementalText(tracker, key, text);
 }
 
 export function extractKimiText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => extractKimiText(item)).join("");
-  }
-  const record = asRecord(value);
-  if (!record) {
-    return "";
-  }
-  if (record.type === "text" && typeof record.text === "string") {
-    return record.text;
-  }
-  if ("content" in record) {
-    return extractKimiText(record.content);
-  }
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  return "";
+  return extractAcpText(value);
 }
 
 export function projectKimiToolUpdate(
@@ -645,33 +586,11 @@ export function extractKimiTaskListItems(value: unknown): KimiTaskListItem[] | n
 }
 
 export function readKimiUpdateSessionId(message: KimiJsonRpcMessage): string | null {
-  const params = asRecord(message.params);
-  if (!params) {
-    return null;
-  }
-  if (typeof params.sessionId === "string" && params.sessionId) {
-    return params.sessionId;
-  }
-  const update = asRecord(params.update);
-  if (update && typeof update.sessionId === "string" && update.sessionId) {
-    return update.sessionId;
-  }
-  return null;
+  return readAcpUpdateSessionId(message);
 }
 
 export function readKimiSessionUpdateBody(message: KimiJsonRpcMessage): Record<string, unknown> | null {
-  const params = asRecord(message.params);
-  if (!params) {
-    return null;
-  }
-  const update = asRecord(params.update);
-  if (update && typeof update.sessionUpdate === "string") {
-    return update;
-  }
-  if (typeof params.sessionUpdate === "string") {
-    return params;
-  }
-  return null;
+  return readAcpSessionUpdateBody(message);
 }
 
 export function classifyKimiSessionUpdate(update: Record<string, unknown>): KimiSessionUpdate {

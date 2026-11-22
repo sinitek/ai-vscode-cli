@@ -7,6 +7,15 @@
  * legal. `ultra` is never rewritten.
  */
 
+import {
+  acceptAcpIncrementalText,
+  AcpJsonRpcMessage,
+  extractAcpText,
+  parseAcpJsonRpcLine,
+  readAcpSessionUpdateBody,
+  readAcpUpdateSessionId,
+} from "./acpSessionProtocol";
+
 export const DSH_ACP_PROTOCOL_VERSION = 1;
 export const DSH_ACP_PROFILE = "acp";
 export const DSH_DEFAULT_COMMAND = "dsh";
@@ -76,14 +85,7 @@ export class DshCompactionUnsupportedError extends DshProtocolError {
   }
 }
 
-export type DshJsonRpcMessage = {
-  jsonrpc?: unknown;
-  id?: unknown;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-  error?: unknown;
-};
+export type DshJsonRpcMessage = AcpJsonRpcMessage;
 
 export type DshConfigOption = {
   id: string;
@@ -132,36 +134,7 @@ export type DshProcessStopStep =
 export function parseDshJsonRpcLine(
   line: string,
 ): { ok: true; message: DshJsonRpcMessage } | { ok: false; reason: "empty" | "invalid"; error: string } {
-  if (line.trim() === "") {
-    return { ok: false, reason: "empty", error: "empty" };
-  }
-  try {
-    const value = JSON.parse(line) as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      return { ok: false, reason: "invalid", error: "ACP frame is not an object" };
-    }
-    const record = value as Record<string, unknown>;
-    if (record.jsonrpc !== "2.0") {
-      return { ok: false, reason: "invalid", error: "ACP frame is not JSON-RPC 2.0" };
-    }
-    return {
-      ok: true,
-      message: {
-        jsonrpc: record.jsonrpc,
-        id: record.id,
-        method: typeof record.method === "string" ? record.method : undefined,
-        params: record.params,
-        result: record.result,
-        error: record.error,
-      },
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      reason: "invalid",
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return parseAcpJsonRpcLine(line);
 }
 
 export function buildDshLaunchArgs(agentArgs: readonly string[] = []): string[] {
@@ -407,43 +380,11 @@ export function readDshConfigOption(options: readonly DshConfigOption[], id: str
 }
 
 export function acceptDshIncrementalText(tracker: Map<string, string>, key: string, text: string): string | null {
-  if (!text) {
-    return null;
-  }
-  const previous = tracker.get(key) ?? "";
-  if (text === previous) {
-    return null;
-  }
-  if (previous && text.startsWith(previous)) {
-    const delta = text.slice(previous.length);
-    tracker.set(key, text);
-    return delta || null;
-  }
-  tracker.set(key, previous + text);
-  return text;
+  return acceptAcpIncrementalText(tracker, key, text);
 }
 
 export function extractDshText(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => extractDshText(item)).join("");
-  }
-  const record = asRecord(value);
-  if (!record) {
-    return "";
-  }
-  if (record.type === "text" && typeof record.text === "string") {
-    return record.text;
-  }
-  if ("content" in record) {
-    return extractDshText(record.content);
-  }
-  if (typeof record.text === "string") {
-    return record.text;
-  }
-  return "";
+  return extractAcpText(value);
 }
 
 export function projectDshToolUpdate(
@@ -513,33 +454,11 @@ export function extractDshTaskListItems(value: unknown): DshTaskListItem[] | nul
 }
 
 export function readDshUpdateSessionId(message: DshJsonRpcMessage): string | null {
-  const params = asRecord(message.params);
-  if (!params) {
-    return null;
-  }
-  if (typeof params.sessionId === "string" && params.sessionId) {
-    return params.sessionId;
-  }
-  const update = asRecord(params.update);
-  if (update && typeof update.sessionId === "string" && update.sessionId) {
-    return update.sessionId;
-  }
-  return null;
+  return readAcpUpdateSessionId(message);
 }
 
 export function readDshSessionUpdateBody(message: DshJsonRpcMessage): Record<string, unknown> | null {
-  const params = asRecord(message.params);
-  if (!params) {
-    return null;
-  }
-  const update = asRecord(params.update);
-  if (update && typeof update.sessionUpdate === "string") {
-    return update;
-  }
-  if (typeof params.sessionUpdate === "string") {
-    return params;
-  }
-  return null;
+  return readAcpSessionUpdateBody(message);
 }
 
 export function classifyDshSessionUpdate(update: Record<string, unknown>): DshSessionUpdate {
