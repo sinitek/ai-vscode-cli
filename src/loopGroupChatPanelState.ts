@@ -336,6 +336,7 @@ export function resolveLoopPlusSubtaskMemberStatus(
     ? projection.currentReview
     : projection.reviewQueue.find((item) => item.subtaskId === subtaskId);
   if (review) {
+    if (review.repairing) return "repairing";
     return projection.activity === "reviewing" && projection.activeReviewEventIds?.includes(review.eventId)
       ? "reviewing"
       : "queued_review";
@@ -344,8 +345,9 @@ export function resolveLoopPlusSubtaskMemberStatus(
   if (running) {
     return running.interrupted ? "waiting_continuation" : running.repairing ? "repairing" : "running";
   }
-  if (projection.pending.some((item) => item.subtaskId === subtaskId)) {
-    return "pending";
+  const pending = projection.pending.find((item) => item.subtaskId === subtaskId);
+  if (pending) {
+    return pending.repairing ? "repairing" : "pending";
   }
   const attemptsForSubtask = projection.seenAttempts.filter((item) => item.subtaskId === subtaskId);
   const latestAttempt = attemptsForSubtask[attemptsForSubtask.length - 1];
@@ -353,6 +355,7 @@ export function resolveLoopPlusSubtaskMemberStatus(
     return "closed";
   }
   if (latestAttempt?.acceptance === "cancelled") return "acceptance_cancelled";
+  if (latestAttempt?.acceptance === "failed" && latestAttempt.noRepairReason) return "acceptance_passed";
   if (latestAttempt?.requiresAcceptance === false
     && latestAttempt.outcome === "completed"
     && (latestAttempt.disposition === "finished" || latestAttempt.disposition === "reported")) {

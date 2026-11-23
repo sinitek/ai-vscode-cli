@@ -21,8 +21,21 @@ export function projectLoopPlusPanel(
     const scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus, requireAcceptedDependencies: requiresLoopPlusAcceptedDependencies(task) });
     const snapshot = scheduler.snapshot();
     const view = scheduler.wait().view;
-    const currentReview = view.currentReview ? copyLoopPlusReviewItem(view.currentReview) : null;
-    const reviewQueue = view.reviewQueue.map(copyLoopPlusReviewItem);
+    const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
+    const repairAttemptIds = new Set<string>();
+    for (const attempt of snapshot.seenAttempts) {
+      const previous = latestAttempts.get(attempt.subtaskId);
+      if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
+        repairAttemptIds.add(attempt.attemptId);
+      }
+      latestAttempts.set(attempt.subtaskId, attempt);
+    }
+    const projectReview = (item: LoopPlusReviewItem) => ({
+      ...copyLoopPlusReviewItem(item),
+      ...(repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
+    });
+    const currentReview = view.currentReview ? projectReview(view.currentReview) : null;
+    const reviewQueue = view.reviewQueue.map(projectReview);
     const currentReviewCount = currentReview ? 1 : 0;
     const reviewQueueCount = reviewQueue.length;
     if (view.visibleReviewCount !== currentReviewCount + reviewQueueCount) {
@@ -43,15 +56,6 @@ export function projectLoopPlusPanel(
     }
     if (!localExecutionInactive && mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
       activity = "running";
-    }
-    const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
-    const repairAttemptIds = new Set<string>();
-    for (const attempt of snapshot.seenAttempts) {
-      const previous = latestAttempts.get(attempt.subtaskId);
-      if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
-        repairAttemptIds.add(attempt.attemptId);
-      }
-      latestAttempts.set(attempt.subtaskId, attempt);
     }
     const running = view.running.map((item) => ({
       ...copyLoopPlusExecutionItem(item),
@@ -87,6 +91,7 @@ export function projectLoopPlusPanel(
         const blockingDependencyLabels = blockingLabelsByAttempt.get(item.attemptId);
         return {
           ...copyLoopPlusExecutionItem(item),
+          ...(repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
           ...(blockingDependencyLabels ? { blockingDependencyLabels } : {}),
         };
       }),
@@ -100,6 +105,7 @@ export function projectLoopPlusPanel(
           ...(item.requiresAcceptance !== undefined ? { requiresAcceptance: item.requiresAcceptance } : {}),
           disposition: item.disposition,
           ...(item.acceptanceReason ? { acceptanceReason: item.acceptanceReason } : {}),
+          ...(item.noRepairReason ? { noRepairReason: item.noRepairReason } : {}),
           ...(item.outcome ? { outcome: item.outcome } : {}),
           ...(item.disposition === "reviewed"
             ? { acceptance: loopPlusReviewedAcceptance(item.outcome, recordedStatus, item.acceptance) }

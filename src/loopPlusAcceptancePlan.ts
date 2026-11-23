@@ -510,6 +510,7 @@ export type LoopPlusAcceptanceFeedbackReview = {
   eventId: string;
   acceptance: "passed" | "failed" | "cancelled";
   reason?: string;
+  noRepairReason?: string;
 };
 
 export type LoopPlusAcceptanceFeedbackCheck = {
@@ -559,7 +560,8 @@ export function buildLoopPlusAcceptanceFeedbackSection(
     const title = reviews.length > 1
       ? `${escapeMarkdownFeedbackText(input.subtaskTitles?.[index] ?? `子任务 ${index + 1}`)}：`
       : "";
-    summaries.push(`${title}${review.acceptance === "cancelled" ? "验收已撤销：" : review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}`);
+    const noRepairReason = review.acceptance === "failed" ? normalizeFeedbackReason(review.noRepairReason) : null;
+    summaries.push(`${title}${review.acceptance === "cancelled" ? "验收已撤销：" : review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}${noRepairReason ? `（无需修复：${escapeMarkdownFeedbackText(noRepairReason)}）` : ""}`);
   }
   for (const check of allCancelled ? [] : input.checks ?? []) {
     const reason = normalizeFeedbackReason(check.detail);

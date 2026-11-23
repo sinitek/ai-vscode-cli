@@ -2157,13 +2157,17 @@ function renderRosterPanel(
   const blockingLabelsBySubtask = new Map(state.loopPlus?.ok
     ? state.loopPlus.pending.map((item) => [item.subtaskId, item.blockingDependencyLabels] as const)
     : []);
+  const activeRepairIds = new Set(state.loopPlus?.ok
+    ? state.loopPlus.running.filter((item) => item.repairing && !item.interrupted).map((item) => item.subtaskId)
+    : []);
   const orderedRoster = [
     ...roster.filter((participant) => participant.role !== "subtask"),
     ...roster.filter((participant) => participant.role === "subtask").reverse(),
   ];
   const participants = orderedRoster.map((participant) => {
     const anchor = participant.role === "subtask" ? acceptanceAnchors.get(participant.id) : undefined;
-    const opensConversation = participant.role === "subtask" && ["running", "repairing"].includes(participant.status);
+    const opensConversation = participant.role === "subtask" && (participant.status === "running"
+      || (participant.status === "repairing" && activeRepairIds.has(participant.id)));
     const blockingLabels = participant.role === "subtask" && participant.status === "pending"
       ? blockingLabelsBySubtask.get(participant.id)
       : undefined;

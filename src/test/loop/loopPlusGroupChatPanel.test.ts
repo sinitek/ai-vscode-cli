@@ -458,6 +458,71 @@ test("shows an in-place failed-acceptance repair without creating another member
   assert.match(page, /\.member-status-repairing[\s\S]*--vscode-editorWarning-foreground/u);
 });
 
+test("keeps repairs in progress through re-review and resolves each failed state", () => {
+  const queuedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(queuedScheduler, "A", "a-1");
+  const failedReview = queuedScheduler.snapshot().currentReview;
+  assert.ok(failedReview);
+  assert.equal(queuedScheduler.submitReviewBatch([failedReview.eventId], "failed").ok, true);
+  assert.equal(queuedScheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  queuedScheduler.dispatch([spec("A", "a-2")]);
+  assert.equal(queuedScheduler.snapshot().pending.length, 1);
+  const queuedPage = html(build(queuedScheduler.snapshot()));
+  assert.match(queuedPage, /子任务 1：Alpha[\s\S]*?<span class="member-status-repairing">修复中<\/span>/u);
+  assert.match(queuedPage, /data-loop-plus-count="repairing">修复中 1/u);
+
+  const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(completedScheduler, "A", "a-1");
+  const current = completedScheduler.snapshot().currentReview;
+  assert.ok(current);
+  assert.equal(completedScheduler.submitReviewBatch([current.eventId], [{
+    eventId: current.eventId,
+    acceptance: "failed",
+    noRepairReason: "替代目标已经交付",
+  }]).ok, true);
+  const completedPage = html(build(completedScheduler.snapshot()));
+  assert.match(completedPage, /<span class="member-status-passed">验收成功<\/span>/u);
+  assert.equal(countValue(completedPage, "completed"), "1");
+  assert.equal(countValue(completedPage, "acceptance_failed"), "0");
+  assert.equal(completedScheduler.snapshot().seenAttempts.at(-1)?.acceptance, "failed");
+  assert.equal(completedScheduler.snapshot().seenAttempts.at(-1)?.noRepairReason, "替代目标已经交付");
+
+  const successfulRepairScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(successfulRepairScheduler, "A", "a-1");
+  const initialSuccessRepairReview = successfulRepairScheduler.snapshot().currentReview;
+  assert.ok(initialSuccessRepairReview);
+  assert.equal(successfulRepairScheduler.submitReviewBatch([initialSuccessRepairReview.eventId], "failed").ok, true);
+  assert.equal(successfulRepairScheduler.dispatch([spec("A", "a-2", "Alpha repair")]).started.length, 1);
+  successfulRepairScheduler.finish({ subtaskId: "A", attemptId: "a-2", outcome: "completed", detail: "修复完成" });
+  const successfulRepairReview = successfulRepairScheduler.snapshot().currentReview;
+  assert.ok(successfulRepairReview);
+  const revalidatingPage = html(build(successfulRepairScheduler.snapshot()));
+  assert.match(revalidatingPage, /<span class="member-status-repairing">修复中<\/span>/u);
+  assert.equal(successfulRepairScheduler.submitReviewBatch([successfulRepairReview.eventId], "passed").ok, true);
+  const successfulRepairPage = html(build(successfulRepairScheduler.snapshot()));
+  assert.match(successfulRepairPage, /<span class="member-status-passed">验收成功<\/span>/u);
+  assert.equal(countValue(successfulRepairPage, "repairing"), "0");
+  assert.equal(countValue(successfulRepairPage, "acceptance_failed"), "0");
+  assert.equal(countValue(successfulRepairPage, "completed"), "1");
+
+  const failedRepairScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(failedRepairScheduler, "A", "a-1");
+  const initialReview = failedRepairScheduler.snapshot().currentReview;
+  assert.ok(initialReview);
+  assert.equal(failedRepairScheduler.submitReviewBatch([initialReview.eventId], "failed").ok, true);
+  assert.equal(failedRepairScheduler.dispatch([spec("A", "a-2", "Alpha repair")]).started.length, 1);
+  failedRepairScheduler.finish({ subtaskId: "A", attemptId: "a-2", outcome: "failed", detail: "repair failed" });
+  const repairReview = failedRepairScheduler.snapshot().currentReview;
+  assert.ok(repairReview);
+  const awaitingRepairReview = html(build(failedRepairScheduler.snapshot()));
+  assert.match(awaitingRepairReview, /<span class="member-status-repairing">修复中<\/span>/u);
+  assert.equal(failedRepairScheduler.submitReviewBatch([repairReview.eventId], "failed").ok, true);
+  const failedRepairPage = html(build(failedRepairScheduler.snapshot()));
+  assert.match(failedRepairPage, /<span class="member-status-failed">验收失败<\/span>/u);
+  assert.equal(countValue(failedRepairPage, "acceptance_failed"), "1");
+  assert.equal(countValue(failedRepairPage, "completed"), "0");
+});
+
 test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(scheduler, "A", "a-1");

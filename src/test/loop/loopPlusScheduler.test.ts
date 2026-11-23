@@ -1367,6 +1367,28 @@ test("records repair acceptance as failed and keeps a clean accept passed", () =
   );
 });
 
+test("persists a no-repair disposition without changing the failed verdict", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("alpha")]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  const review = scheduler.snapshot().currentReview;
+  assert.ok(review);
+  assert.equal(scheduler.submitReviewBatch([review.eventId], [{
+    eventId: review.eventId,
+    acceptance: "failed",
+    noRepairReason: "原交付已被后续需求取代",
+  }]).ok, true);
+  const seen = scheduler.snapshot().seenAttempts[0];
+  assert.equal(seen?.acceptance, "failed");
+  assert.equal(seen?.noRepairReason, "原交付已被后续需求取代");
+  assert.equal(seen?.disposition, "reviewed");
+  assert.equal(createLoopPlusScheduler({ snapshot: scheduler.snapshot() }).snapshot().seenAttempts[0]?.noRepairReason,
+    "原交付已被后续需求取代");
+  const invalid = scheduler.snapshot();
+  invalid.seenAttempts[0]!.noRepairReason = " ";
+  assert.throws(() => createLoopPlusScheduler({ snapshot: invalid }));
+});
+
 test("close frees a concurrency slot and does not create an acceptance event", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   scheduler.dispatch([spec("alpha"), spec("beta")]);

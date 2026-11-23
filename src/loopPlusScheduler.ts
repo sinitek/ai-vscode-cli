@@ -67,6 +67,7 @@ export type LoopPlusReviewVerdict = {
   eventId: string;
   acceptance: LoopPlusReviewAcceptance;
   reason?: string;
+  noRepairReason?: string;
 };
 
 export type LoopPlusSeenAttempt = {
@@ -77,6 +78,7 @@ export type LoopPlusSeenAttempt = {
   outcome?: LoopPlusExecutionOutcome;
   acceptance?: LoopPlusReviewAcceptance;
   acceptanceReason?: string;
+  noRepairReason?: string;
   dependsOn?: string[];
 };
 
@@ -1534,6 +1536,10 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
     if (acceptance === "cancelled" && (!acceptanceReason || Array.from(acceptanceReason).length > 50)) {
       invalidSnapshot(`seenAttempts[${index}].acceptanceReason`);
     }
+    const noRepairReason = typeof item.noRepairReason === "string" ? item.noRepairReason.trim() : undefined;
+    if (item.noRepairReason !== undefined && (acceptance !== "failed" || !noRepairReason || Array.from(noRepairReason).length > 50)) {
+      invalidSnapshot(`seenAttempts[${index}].noRepairReason`);
+    }
     const subtaskId = readRequiredId(item.subtaskId, `seenAttempts[${index}]`);
     const dependsOn = readSnapshotDependsOn(item.dependsOn, subtaskId, `seenAttempts[${index}]`);
     return {
@@ -1544,6 +1550,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       ...(outcome ? { outcome } : {}),
       ...(acceptance ? { acceptance } : {}),
       ...(acceptanceReason ? { acceptanceReason } : {}),
+      ...(noRepairReason ? { noRepairReason } : {}),
       ...(dependsOn !== undefined ? { dependsOn } : {}),
     };
   });
@@ -1930,6 +1937,7 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.outcome ? { outcome: record.outcome } : {}),
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
     ...(record.acceptanceReason ? { acceptanceReason: record.acceptanceReason } : {}),
+    ...(record.noRepairReason ? { noRepairReason: record.noRepairReason } : {}),
     ...(record.dependsOn !== undefined ? { dependsOn: record.dependsOn.slice() } : {}),
   };
 }
@@ -1959,6 +1967,8 @@ function acceptanceByEvent(
     }
     if (verdict.acceptance === "cancelled" && (typeof verdict.reason !== "string"
       || !verdict.reason.trim() || Array.from(verdict.reason.trim()).length > 50)) return null;
+    if (verdict.noRepairReason !== undefined && (verdict.acceptance !== "failed" || typeof verdict.noRepairReason !== "string"
+      || !verdict.noRepairReason.trim() || Array.from(verdict.noRepairReason.trim()).length > 50)) return null;
     verdicts.set(eventId, verdict);
   }
   return verdicts;
@@ -1980,6 +1990,7 @@ function recordReviewedAcceptance(
   }
   const outcomeFailed = seen.outcome === "failed" || seen.outcome === "stopped";
   seen.acceptance = acceptance === "failed" || outcomeFailed ? "failed" : "passed";
+  if (verdict.noRepairReason) seen.noRepairReason = verdict.noRepairReason.trim();
 }
 
 function readSeenAcceptance(value: unknown, field: string): LoopPlusReviewAcceptance | undefined {

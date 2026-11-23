@@ -68,6 +68,7 @@ export type LoopPlusAcceptReview = {
   reviewEventId: string;
   acceptance: "passed" | "failed" | "cancelled";
   reason?: string;
+  noRepairReason?: string;
   subtaskIds?: string[];
 };
 
@@ -870,11 +871,21 @@ function readAcceptReviews(
       reject?.(`reviews[${index}].subtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。`);
       return null;
     }
+    const noRepairReason = readRequiredShortReason(item.noRepairReason);
+    if (hasOwn(item, "noRepairReason") && (item.acceptance !== "failed" || !noRepairReason || subtaskIds.length > 0)) {
+      reject?.(`reviews[${index}].noRepairReason 仅用于不派修的失败项，须填写不超过 50 字的结案原因。`);
+      return null;
+    }
+    if (item.acceptance === "failed" && subtaskIds.length === 0 && !noRepairReason) {
+      reject?.(`reviews[${index}] 验收失败必须关联修复子任务，或填写不超过 50 字的 noRepairReason；未处置的失败不能确认。`);
+      return null;
+    }
     linkedIds.push(...subtaskIds);
     reviews.push({
       reviewEventId,
       acceptance: item.acceptance,
       ...(reason ? { reason } : {}),
+      ...(noRepairReason ? { noRepairReason } : {}),
       ...(subtaskIds.length > 0 ? { subtaskIds } : {}),
     });
   }

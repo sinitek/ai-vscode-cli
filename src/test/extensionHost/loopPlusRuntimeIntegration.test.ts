@@ -196,14 +196,16 @@ test("子任务尚无 CLI 且启动准备未返回时，停止后仍能继续主
     fixture.queueMain(async (input, tabId) => {
       assert.match(input.displayPrompt, /Prompt kind: review/);
       fixture.publish(input, tabId, {
-        status: "end", content: decision({ status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [] }),
+        status: "end", content: decision({ status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [],
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", reason: "启动准备已取消",
+            noRepairReason: "该停止 attempt 无代码产出需要修复" }] }),
       });
     });
     fixture.queueMain(async (input, tabId) => {
-      fixture.publish(input, tabId, { status: "end", content: completedDecision() });
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "blocked", finalSummary: "未启动的交付仍需主任务后续处理" }) });
     });
     await fixture.adapter.runEventDriven(prompt("继续"), { resumeTaskId: taskId, resumeRequested: true }, fixture.target);
-    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.readTask(taskId)?.status, "needs-review");
     assert.equal(fixture.hostMessages.includes("loop-plus-resume-blocked"), false);
     assert.equal(fixture.attemptCalls.length, 0);
     release();
@@ -394,7 +396,8 @@ test("Loop+ passes a returned CLI failure into review and preserves it in the co
       assert.doesNotMatch(input.modelPrompt, /PARTIAL_OUTPUT_IS_NOT_A_CLI_ERROR|synthetic-fixture-value/);
       fixture.publish(input, tabId, { status: "end", content: decision({
         status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [],
-        reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", subtaskIds: [] }],
+        reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", subtaskIds: [],
+          noRepairReason: "需要用户恢复外部会话，当前无代码修复" }],
       }) });
     });
     for (const boundedReview of [false, true]) {
@@ -1155,6 +1158,8 @@ test("adapter accept without new work does not call the main AI while another at
           status: "accept",
           reviewEventId: currentEventId(input.displayPrompt),
           subtasks: [],
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", reason: "父任务停止导致子任务结束",
+            noRepairReason: "执行环境需用户确认，当前不派代码修复" }],
         }),
       });
     });
@@ -1533,6 +1538,8 @@ test("adapter stop keeps resume state, blocks continue while cancellation is liv
           status: "accept",
           reviewEventId: currentEventId(input.displayPrompt),
           subtasks: [],
+          reviews: [{ reviewEventId: currentEventId(input.displayPrompt), acceptance: "failed", reason: "父任务停止导致子任务结束",
+            noRepairReason: "执行环境需用户确认，当前不派代码修复" }],
         }),
       });
     });

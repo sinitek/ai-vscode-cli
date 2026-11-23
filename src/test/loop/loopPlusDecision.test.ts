@@ -29,6 +29,7 @@ test("four-event confirmations retain caller order and independent verdicts with
     reviewEventId,
     acceptance: index === 0 ? "failed" : "passed",
     reason: index === 0 ? "前置用例失败" : "本项交付已独立核对",
+    ...(index === 0 ? { noRepairReason: "旧前置已被独立交付取代" } : {}),
   }));
   const candidate = {
     status: "accept", progressPercent: 50, reviewEventIds: eventIds, reviews,
@@ -344,7 +345,7 @@ test("accepts zero-subtask review and explicit wait without confirming the curre
   const withResults = parseLoopPlusDecision(JSON.stringify({
     status: "accept",
     reviewEventId: "loop-plus-finish:子任务:a:b",
-    reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "failed" }],
+    reviews: [{ reviewEventId: "loop-plus-finish:子任务:a:b", acceptance: "failed", noRepairReason: "目标已由新的补充需求取代" }],
     subtasks: [],
     acceptancePlanResults: [
       { key: "security", passed: false },
@@ -433,6 +434,45 @@ test("accept records each review verdict and the subtasks that review launches",
   rejected.forEach((value) => {
     assert.equal(parseLoopPlusDecision(JSON.stringify(value)), null);
   });
+});
+
+test("failed acceptance requires one linked repair or an explicit no-repair completion reason", () => {
+  const base = {
+    status: "accept",
+    reviewEventId: "event-alpha",
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "failed", reason: "目标交付未达标" }],
+    subtasks: [],
+  };
+  assert.equal(normalizeLoopPlusDecision(base), null);
+  const completed = normalizeLoopPlusDecision({
+    ...base,
+    reviews: [{ ...base.reviews[0], noRepairReason: "原需求已由后续目标覆盖" }],
+  });
+  assert.deepEqual(completed?.reviews, [{
+    reviewEventId: "event-alpha",
+    acceptance: "failed",
+    reason: "目标交付未达标",
+    noRepairReason: "原需求已由后续目标覆盖",
+  }]);
+  assert.equal(normalizeLoopPlusDecision({
+    ...base,
+    reviews: [{ ...base.reviews[0], noRepairReason: "字".repeat(51) }],
+  }), null);
+  assert.equal(normalizeLoopPlusDecision({
+    ...base,
+    reviews: [{ ...base.reviews[0], noRepairReason: "不派修", subtaskIds: ["repair"] }],
+    subtasks: [subtask("repair")],
+  }), null);
+  assert.equal(normalizeLoopPlusDecision({
+    ...base,
+    independentSubtaskIds: ["independent"],
+    subtasks: [subtask("independent")],
+  }), null);
+  assert.ok(normalizeLoopPlusDecision({
+    ...base,
+    reviews: [{ ...base.reviews[0], subtaskIds: ["repair"] }],
+    subtasks: [subtask("repair")],
+  }));
 });
 
 test("accept combines event repairs with explicitly independent remaining-goal work", () => {
@@ -571,7 +611,7 @@ test("strict feedback rejects missing, non-text and overlong reasons for every r
 test("strict feedback requires each default check once but accepts a different order", () => {
   const base = {
     status: "accept", reviewEventId: "event-a",
-    reviews: [{ reviewEventId: "event-a", acceptance: "failed", reason: "回归断言失败" }],
+    reviews: [{ reviewEventId: "event-a", acceptance: "failed", reason: "回归断言失败", noRepairReason: "旧交付已被取代" }],
   };
   const checks = loopPlusAcceptanceChecksFixture();
   const options = { requireAcceptanceFeedback: true };

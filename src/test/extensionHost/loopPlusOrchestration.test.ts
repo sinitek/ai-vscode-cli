@@ -1364,7 +1364,8 @@ for (const evidence of ["passed", "failed", "reported"] as const) {
     env.mains[1].resolve(evidence === "reported"
       ? decisionJson({ status: "wait", reportEventIds: [eventId] })
       : decisionJson({ status: "accept", reviewEventId: eventId, subtasks: [], reviews: [
-        { reviewEventId: eventId, acceptance: evidence, reason: "已检查执行结果", subtaskIds: [] },
+        { reviewEventId: eventId, acceptance: evidence, reason: "已检查执行结果", subtaskIds: [],
+          ...(evidence === "failed" ? { noRepairReason: "此用例仅验证失败验收证据" } : {}) },
       ] }));
     await flush();
     const committed = snapshotOf(env.tasks.get(taskId)).seenAttempts[0];
@@ -1979,7 +1980,9 @@ test("accept feedback requires reasons before commit and shows default and selec
     const decision = {
       status: "accept", reviewEventId: eventId,
       progressPercent: 23,
-      reviews: [{ reviewEventId: eventId, acceptance: passed ? "passed" : "failed", reason: passed ? "回归通过且实现符合需求" : "回归断言失败，尚未满足需求" }],
+      reviews: [{ reviewEventId: eventId, acceptance: passed ? "passed" : "failed",
+        reason: passed ? "回归通过且实现符合需求" : "回归断言失败，尚未满足需求",
+        ...(!passed ? { noRepairReason: "此用例仅验证失败反馈记录" } : {}) }],
       acceptance: { passed, checks },
       acceptancePlanResults: [{ key: "security", passed: true, reason: "输入已校验，日志无敏感信息" }],
     };
@@ -1999,7 +2002,7 @@ test("accept feedback requires reasons before commit and shows default and selec
       : /\| 默认验收·测试验证 \| ❌ 报告中的回归断言失败 \|/);
     assert.match(feedback.body, passed
       ? /\n\n✅ 回归通过且实现符合需求\n\n/
-      : /\n\n❌ 回归断言失败，尚未满足需求\n\n/);
+      : /\n\n❌ 回归断言失败，尚未满足需求（无需修复：此用例仅验证失败反馈记录）\n\n/);
     assert.match(feedback.body, /^\*\*子任务：子任务 1：alpha\*\*\n\n/u);
     assert.ok(feedback.body.includes(`**整体验收结果：${passed ? "✅ 通过" : "❌ 未通过"}**`));
     assert.doesNotMatch(feedback.body, /验收事件|\| 整体验收结果/u);
@@ -2437,6 +2440,10 @@ test("freezes the active acceptance batch and reviews later completions in the n
   second.resolve(decisionJson({
     status: "accept",
     reviewEventIds: [betaEventId, gammaEventId],
+    reviews: [
+      { reviewEventId: betaEventId, acceptance: "passed", reason: "beta completed" },
+      { reviewEventId: gammaEventId, acceptance: "failed", reason: "gamma execution failed", noRepairReason: "此测试只验证批次结算" },
+    ],
     subtasks: [],
   }));
   await flush();
@@ -3174,7 +3181,15 @@ test("原子任务与句柄已不存在时，显式继续结算残留预留并�
   assert.equal(events.length, 3);
   assert.equal(events[0].detail, "原验收证据");
   assert.deepEqual(events.slice(1).map((item) => [item.outcome, item.detail]), [["stopped", "lost-process"], ["stopped", "lost-process"]]);
-  env.mains[0].resolve(acceptWithIndependentWork(events.map((item) => item.eventId), [subtask("replacement", ["src/b.ts"])]));
+  env.mains[0].resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: events.map((item) => item.eventId),
+    reviews: events.map((item) => item.outcome === "completed"
+      ? { reviewEventId: item.eventId, acceptance: "passed", reason: "原验收证据有效" }
+      : { reviewEventId: item.eventId, acceptance: "failed", reason: "原子任务句柄已丢失", noRepairReason: "旧 attempt 无法恢复，后续使用新子任务重新派发" }),
+    independentSubtaskIds: ["replacement"],
+    subtasks: [subtask("replacement", ["src/b.ts"])],
+  }));
   await flush();
   assert.equal(env.attempts.length, 1);
   assert.equal(env.attempts[0].request.subtaskId, "replacement");
@@ -4818,7 +4833,7 @@ test("freezes in-flight review, then confirms the next FIFO batch in its origina
   assert.deepEqual(reviewed().map((item) => item.subtaskId), ["alpha", "beta", "gamma"]);
   assert.deepEqual(reviews()[3].request.reviewEventIds, [id(delta)]);
   reviews()[3].resolve(decisionJson({ status: "accept", reviewEventId: id(delta), subtasks: [], reviews: [
-    { reviewEventId: id(delta), acceptance: "failed", reason: "execution failed", subtaskIds: [] },
+    { reviewEventId: id(delta), acceptance: "failed", reason: "execution failed", subtaskIds: [], noRepairReason: "此测试只验证冻结批次结算" },
   ] }));
   await flush();
   assert.equal(reviewed().length, 4);
@@ -5812,7 +5827,7 @@ test("a conflict-blocked successor considers the latest prerequisite after the w
   await run.done;
 });
 
-test("failed prerequisite preserves independent delivery and wakes planning for same-id repair", async () => {
+test("failed prerequisite dispatches same-id repair while independent delivery remains live", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "失败依赖可修复" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -5824,24 +5839,24 @@ test("failed prerequisite preserves independent delivery and wakes planning for 
   env.attempts[0].resolve({ outcome: "failed", detail: "validation failed" });
   await flush();
   env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[0]),
-    reviews: [{ reviewEventId: attemptEvent(env.attempts[0]), acceptance: "failed", reason: "validation failed" }], subtasks: [],
+    reviews: [{ reviewEventId: attemptEvent(env.attempts[0]), acceptance: "failed", reason: "validation failed", subtaskIds: ["failed-source"] }],
+    subtasks: [dependentSubtask("failed-source", [])],
   }));
   await flush();
   assert.equal(env.mains.length, 2, "independent execution remains live");
+  assert.equal(env.attempts.length, 3);
+  assert.equal(env.attempts[2].request.subtaskId, "failed-source");
   env.attempts[1].resolve({ outcome: "completed", detail: "independent passed" });
   await flush();
-  env.mains[2].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[1]), subtasks: [] }));
+  env.mains[2].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[1]),
+    reviews: [{ reviewEventId: attemptEvent(env.attempts[1]), acceptance: "passed", reason: "independent delivery passed" }], subtasks: [] }));
   await flush();
-  assert.match(env.mains[3].request.prompt, /dependsOn=failed-source latestAttempt=lp1-failed-source reason=failed/);
-  assert.doesNotMatch(env.mains[3].request.prompt, /Protocol correction required/);
-  env.mains[3].resolve(decisionJson({ status: "dispatch", subtasks: [dependentSubtask("failed-source", [])] }));
-  await flush();
-  assert.equal(env.attempts[2].request.subtaskId, "failed-source");
   assert.equal(snapshotOf(env.tasks.get(run.taskId!)).seenAttempts[0].acceptance, "failed");
   assert.equal(env.attempts.some((a) => a.request.subtaskId === "waiting-child"), false);
   env.attempts[2].resolve({ outcome: "completed", detail: "repair passed" });
   await flush();
-  env.mains[4].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[2]), subtasks: [] }));
+  env.mains[3].resolve(decisionJson({ status: "accept", reviewEventId: attemptEvent(env.attempts[2]),
+    reviews: [{ reviewEventId: attemptEvent(env.attempts[2]), acceptance: "passed", reason: "repair passed" }], subtasks: [] }));
   await flush();
   assert.equal(env.attempts[3].request.subtaskId, "waiting-child");
   env.host.stopParent(run.taskId!);
@@ -6359,7 +6374,19 @@ test("review selection survives same-host stop/resume and watchdog continuation"
   const review = env.mains.at(-1)!;
   // Stop records a real stopped prerequisite event; it must precede the successor.
   assert.deepEqual(review.request.reviewEventIds, [env.id(env.source), env.id(env.successor)]);
-  review.resolve(completedDecision({ reviewEventIds: review.request.reviewEventIds }));
+  review.resolve(decisionJson({
+    status: "accept",
+    reviewEventIds: review.request.reviewEventIds,
+    reviews: [
+      { reviewEventId: env.id(env.source), acceptance: "failed", reason: "来源任务已停止", noRepairReason: "后继交付已独立覆盖来源目标" },
+      { reviewEventId: env.id(env.successor), acceptance: "passed", reason: "后继交付已完成" },
+    ],
+    subtasks: [],
+  }));
+  await flush();
+  const closeout = env.mains.at(-1)!;
+  assert.equal(closeout.request.kind, "closeout");
+  closeout.resolve(completedDecision());
   await resumed.done;
 
   const watched = await runningReviewDependency({ inactive: () => active });
@@ -6434,7 +6461,8 @@ test("review selection a failed predecessor can be reviewed before existing succ
   assert.deepEqual(review.request.reviewEventIds, [env.id(env.source), env.id(env.successor)]);
   review.resolve(decisionJson({ status: "accept", reviewEventIds: review.request.reviewEventIds,
     reviews: [
-      { reviewEventId: env.id(env.source), acceptance: "failed", reason: "执行失败，保留真实失败", subtaskIds: [] },
+      { reviewEventId: env.id(env.source), acceptance: "failed", reason: "执行失败，保留真实失败", subtaskIds: [],
+        noRepairReason: "本测试验证前置失败不会放行新依赖" },
       { reviewEventId: env.id(env.successor), acceptance: "passed", reason: "后继已有独立有效交付" },
     ], acceptance: { passed: false, checks: loopPlusAcceptanceChecksFixture().map((item) => ({ ...item, passed: false })) },
     subtasks: [{ ...subtask("new-dependent", ["src/new-dependent.ts"]), dependsOn: ["source"] }],

@@ -131,7 +131,12 @@ export function loopPlusAcceptVerdicts(
       return null;
     }
     if (review.acceptance === "cancelled" && !review.reason?.trim()) return null;
-    verdicts.push({ eventId, acceptance: review.acceptance, ...(review.acceptance === "cancelled" ? { reason: review.reason } : {}) });
+    verdicts.push({
+      eventId,
+      acceptance: review.acceptance,
+      ...(review.acceptance === "cancelled" ? { reason: review.reason } : {}),
+      ...(review.noRepairReason ? { noRepairReason: review.noRepairReason } : {}),
+    });
   }
   return verdicts;
 }

@@ -397,6 +397,18 @@ test("acceptance feedback includes default and per-event reasons within 50 chara
   }), null);
 });
 
+test("acceptance feedback explains when a failed delivery is completed without repair", () => {
+  const section = buildLoopPlusAcceptanceFeedbackSection({
+    reviews: [{
+      eventId: "event-a",
+      acceptance: "failed",
+      reason: "旧路径未交付",
+      noRepairReason: "后续目标已覆盖旧路径",
+    }],
+  });
+  assert.match(section?.body ?? "", /❌ 旧路径未交付（无需修复：后续目标已覆盖旧路径）/u);
+});
+
 test("acceptance feedback preserves the chosen reason language without translation", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "The empty-input regression still fails." }],

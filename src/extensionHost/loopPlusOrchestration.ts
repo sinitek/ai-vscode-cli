@@ -1863,6 +1863,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         eventId: review.reviewEventId,
         acceptance: review.acceptance,
         reason: review.reason,
+        noRepairReason: review.noRepairReason,
       })),
       checks: decision.acceptance?.checks,
       planResults: decision.acceptancePlanResults,
@@ -1927,6 +1928,14 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return protocolMiss(runtime, Boolean(held), parsed.rejectionReason ?? undefined, response, parsed.rejectionKind === "format");
     }
     const decision = parsed.decision;
+    if (step.kind === "review" && (decision.status === "accept" || decision.status === "completed")) {
+      const failedEvents = [snapshot.currentReview, ...snapshot.reviewQueue].filter((event) => event
+        && step.eventIds.includes(event.eventId) && (event.outcome === "failed" || event.outcome === "stopped"));
+      if (failedEvents.some((event) => decision.status === "completed"
+        || decision.reviews?.find((review) => review.reviewEventId === event?.eventId)?.acceptance === "passed")) {
+        return protocolMiss(runtime, Boolean(held), "执行失败或停止的事件不能验收通过。请用 accept 标记失败并派修或说明无需修复；仅在交付已不再需要时才可撤销验收。", response);
+      }
+    }
     if (step.allowDispatchBeforeReview && decision.status === "dispatch") {
       return applyDispatchBeforeReview(runtime, step, decision, response);
     }

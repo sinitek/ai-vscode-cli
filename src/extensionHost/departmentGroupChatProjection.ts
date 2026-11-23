@@ -140,7 +140,7 @@ function employees(task: LoopTaskRecord, projection: ReturnType<typeof projectLo
       && (attempt.disposition === "finished" || attempt.disposition === "reported");
     return [{ id: attempt.attemptId, subtaskId: spec.id,
       title: getLoopSubtaskDisplayTitle(subtaskIndex, spec), role: "employee",
-      status: interrupted ? "blocked" : execution?.repairing ? "repairing" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.acceptance}`
+      status: interrupted ? "blocked" : execution?.repairing || review?.repairing ? "repairing" : execution?.state ?? (attempt.disposition === "reviewed" ? `acceptance_${attempt.noRepairReason ? "passed" : attempt.acceptance}`
         : review ? "queued_review" : completedWithoutAcceptance ? "no_acceptance" : attempt.outcome === "completed" ? "execution_completed"
           : attempt.outcome === "failed" ? "blocked"
             : attempt.outcome === "stopped" || attempt.disposition === "closed" ? "stopped" : "not_in_snapshot"),

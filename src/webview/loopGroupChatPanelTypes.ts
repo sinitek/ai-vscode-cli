@@ -100,6 +100,7 @@ export type LoopPlusPanelReviewItem = {
   attemptId: string;
   outcome: "completed" | "failed" | "stopped";
   detail: string | null;
+  repairing?: boolean;
 };
 
 export type LoopPlusPanelSeenAttempt = {
@@ -110,6 +111,7 @@ export type LoopPlusPanelSeenAttempt = {
   outcome?: "completed" | "failed" | "stopped";
   acceptance?: "passed" | "failed" | "cancelled";
   acceptanceReason?: string;
+  noRepairReason?: string;
 };
 
 export type LoopPlusPanelActivity =
