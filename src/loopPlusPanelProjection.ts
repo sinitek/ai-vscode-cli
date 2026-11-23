@@ -23,10 +23,12 @@ export function projectLoopPlusPanel(
     const view = scheduler.wait().view;
     const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
     const repairAttemptIds = new Set<string>();
+    const repairRoundsBySubtask = new Map<string, number>();
     for (const attempt of snapshot.seenAttempts) {
       const previous = latestAttempts.get(attempt.subtaskId);
       if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
         repairAttemptIds.add(attempt.attemptId);
+        repairRoundsBySubtask.set(attempt.subtaskId, (repairRoundsBySubtask.get(attempt.subtaskId) ?? 0) + 1);
       }
       latestAttempts.set(attempt.subtaskId, attempt);
     }
@@ -97,6 +99,7 @@ export function projectLoopPlusPanel(
       }),
       runningCount: running.filter((item) => !item.interrupted).length,
       pendingCount: view.pending.length,
+      ...(repairRoundsBySubtask.size ? { repairRoundsBySubtask: Object.fromEntries(repairRoundsBySubtask) } : {}),
       seenAttempts: snapshot.seenAttempts.map((item) => {
         const recordedStatus = task.subTasks?.find((subtask) => subtask.id === item.subtaskId)?.status;
         return {

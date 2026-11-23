@@ -248,7 +248,15 @@ test("director refresh forwards the same Loop+ task tags as the leader chat", as
     h.leader.subTasks[0].status = "completed";
     const repairedReview = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-repair", outcome: "completed" });
     assert.ok(repairedReview.applied && repairedReview.eventId);
-    assert.equal(scheduler.submitReviewBatch([repairedReview.eventId], "passed").ok, true);
+    assert.equal(scheduler.submitReviewBatch([repairedReview.eventId], "failed").ok, true);
+    scheduler.dispatch([{ subtaskId: "employee-A", attemptId: "attempt-second-repair" }]);
+    await assertSharedTags("修复中 1");
+    const leaderRoster = buildLoopGroupChatPanelContentPatch(buildLoopGroupChatPanelState(h.leader, h.deps), 3).rosterPanelHtml;
+    assert.match(leaderRoster, /class="member-status-repairing">修复中 x2<\/span>/u);
+
+    const secondReview = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-second-repair", outcome: "completed" });
+    assert.ok(secondReview.applied && secondReview.eventId);
+    assert.equal(scheduler.submitReviewBatch([secondReview.eventId], "passed").ok, true);
     const passed = await assertSharedTags("已完成 1");
     assert.match(passed, /data-loop-plus-tone="empty" data-loop-plus-count="acceptance_failed">验收失败 0/u);
   } finally { h.restore(); }

@@ -2022,10 +2022,16 @@ function participantStatusClass(status: string): string {
 
 function renderParticipantStatus(
   state: LoopGroupChatPanelState,
-  status: string,
+  participant: LoopGroupChatPanelParticipant,
   strings: LoopGroupChatPanelStrings,
 ): string {
-  const label = escapeHtml(formatParticipantStatus(state, status, strings));
+  const { status } = participant;
+  const repairRound = status === "repairing" && state.loopPlus?.ok
+    && (participant.role === "subtask" || participant.role === "employee")
+    ? state.loopPlus.repairRoundsBySubtask?.[participant.subtaskId ?? participant.id] ?? 0
+    : 0;
+  const suffix = repairRound > 1 ? ` x${repairRound}` : "";
+  const label = escapeHtml(`${formatParticipantStatus(state, status, strings)}${suffix}`);
   const statusClass = participantStatusClass(status);
   if (!statusClass) {
     return label;
@@ -2167,7 +2173,7 @@ function renderRosterPanel(
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
     <div>
       <div class="member-name">${escapeHtml(participant.title)}</div>
-      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${dependencyStatus}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant, strings)}${dependencyStatus}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}
     </div>
   ${opensConversation || anchor ? "</button>" : "</div>"}${cancelButton}</div>`;
@@ -2197,7 +2203,7 @@ function renderDepartmentRosterPanel(
     const progress = progressPercent === undefined ? "" : `&nbsp;<span class="department-leader-progress">${escapeHtml(String(progressPercent))}%</span>`;
     const content = `<span class="avatar">${avatarLabel}</span><div>
       <div class="member-name" title="${escapeAttribute(label)}">${escapeHtml(label)}</div>
-      <div class="member-meta">${renderParticipantStatus(state, participant.status, strings)}${progress}</div>
+      <div class="member-meta">${renderParticipantStatus(state, participant, strings)}${progress}</div>
       ${renderMemberLastStarted(memberLastStartedAt(participant), strings)}${navigation}</div>`;
     return anchor
       ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(label)}：查看最近一次验收结果">${content}</button>`

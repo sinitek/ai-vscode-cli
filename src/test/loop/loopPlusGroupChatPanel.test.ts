@@ -523,6 +523,44 @@ test("keeps repairs in progress through re-review and resolves each failed state
   assert.equal(countValue(failedRepairPage, "completed"), "0");
 });
 
+test("shows repeated repair rounds only in the member label and counts the subtask once", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const rejectCurrentReview = () => {
+    const review = scheduler.snapshot().currentReview;
+    assert.equal(review?.subtaskId, "A");
+    assert.ok(review);
+    assert.equal(scheduler.submitReviewBatch([review.eventId], "failed").ok, true);
+  };
+  const assertRepairLabel = (label: string) => {
+    const state = build(scheduler.snapshot());
+    assert.equal(state.rounds[0].participants.find((participant) => participant.id === "A")?.status, "repairing");
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+    assert.deepEqual([...patch.rosterPanelHtml.matchAll(/class="member-status-repairing">([^<]+)<\/span>/gu)]
+      .map((match) => match[1]), [label]);
+    assert.match(patch.taskPanelHtml, /data-loop-plus-count="repairing">修复中 1<\/span>/u);
+  };
+
+  dispatchAndFinish(scheduler, "A", "initial");
+  rejectCurrentReview();
+  dispatchAndFinish(scheduler, "A", "first-repair");
+  assertRepairLabel("修复中");
+  rejectCurrentReview();
+
+  assert.equal(scheduler.dispatch([{ ...spec("B", "unrelated"), requiresAcceptance: false }]).started.length, 1);
+  scheduler.dispatch([spec("A", "second-repair")]);
+  assert.equal(scheduler.snapshot().pending[0]?.attemptId, "second-repair");
+  assertRepairLabel("修复中 x2");
+  assert.equal(scheduler.finish({ subtaskId: "B", attemptId: "unrelated", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "second-repair");
+  assertRepairLabel("修复中 x2");
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "second-repair", outcome: "completed" }).applied, true);
+  assertRepairLabel("修复中 x2");
+  rejectCurrentReview();
+
+  assert.equal(scheduler.dispatch([spec("A", "third-repair")]).started.length, 1);
+  assertRepairLabel("修复中 x3");
+});
+
 test("renders stopped and resumed Loop+ snapshots in the group chat", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(scheduler, "A", "a-1");

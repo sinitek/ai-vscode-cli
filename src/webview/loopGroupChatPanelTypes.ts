@@ -151,6 +151,7 @@ export type LoopPlusPanelProjection = {
   pending: LoopPlusPanelExecutionItem[];
   runningCount: number;
   pendingCount: number;
+  repairRoundsBySubtask?: Readonly<Record<string, number>>;
   seenAttempts: LoopPlusPanelSeenAttempt[];
 } | {
   ok: false;
