@@ -432,6 +432,7 @@ test("model switch can resume paused Loop+ control while a sibling child remains
 test("继续通过面板消息唤醒仍持有控制器但主模型空闲的 Loop+ 任务", async () => {
   const env = createContinuationRecoveryHarness();
   env.task.status = "running";
+  env.task.loopPlus = createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot();
   env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
   let runOptions: Parameters<typeof env.deps.runLoopPrompt>[1] | undefined;
   env.deps.runLoopPrompt = async (_input, options) => { runOptions = options; };
@@ -457,6 +458,7 @@ test("Loop+ 面板只在主模型空闲时显示继续入口，即使后台控�
   assert.equal(idle.mainModelBusy, false);
   assert.equal(idle.loopPlus?.activity, "idle");
   assert.equal(idle.task.canContinue, true);
+  assert.equal(idle.task.canStop, false);
 
   env.deps.isTabRunActive = () => true;
   const busy = buildLoopGroupChatPanelState(env.task, env.deps);
@@ -469,6 +471,42 @@ test("Loop+ 面板只在主模型空闲时显示继续入口，即使后台控�
   env.deps.resolveMainPromptTarget = () => null;
   const inactive = buildLoopGroupChatPanelState(env.task, env.deps);
   assert.equal(inactive.loopPlus?.activity, "idle");
+});
+
+test("Loop+ 继续与中止按钮互斥，活动子任务结束后才恢复 blocked 子任务", async () => {
+  const env = createContinuationRecoveryHarness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([
+    { subtaskId: "A", attemptId: "a-1", writeFiles: ["src/a.ts"] },
+    { subtaskId: "B", attemptId: "b-1", writeFiles: ["src/b.ts"] },
+  ]);
+  env.task.status = "running";
+  env.task.loopPlus = scheduler.snapshot();
+  env.task.subTasks = ["A", "B"].map((id) => ({ id, title: id, status: "running" }));
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+
+  const active = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(active.loopPlus?.activity, "waiting");
+  assert.equal(active.task.canStop, true);
+  assert.equal(active.task.canContinue, false);
+  env.deps.collectRunningTaskIds = () => new Set();
+  assert.equal(buildLoopGroupChatPanelState(env.task, env.deps).task.canContinue, false);
+  await env.coordinator.handleMessage(env.task.id, { type: "loopGroupChatChat:continueTask", prompt: "继续执行" });
+  assert.equal(env.runs, 0);
+  assert.equal(env.messages.at(-1)?.canContinue, false);
+
+  env.task.subTasks[0].status = "blocked";
+  const mixed = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(mixed.task.canStop, true);
+  assert.equal(mixed.task.canContinue, false);
+  await env.coordinator.handleMessage(env.task.id, { type: "loopGroupChatChat:continueTask", prompt: "继续执行" });
+  assert.equal(env.runs, 0);
+  assert.equal(env.messages.at(-1)?.canContinue, false);
+
+  env.task.subTasks[1].status = "blocked";
+  const interrupted = buildLoopGroupChatPanelState(env.task, env.deps);
+  assert.equal(interrupted.task.canStop, false);
+  assert.equal(interrupted.task.canContinue, true);
 });
 
 for (const outcome of ["ready", "error", "stopped"] as const) {

@@ -279,11 +279,15 @@ export function buildLoopGroupChatPanelState(
       acceptancePlan: task.loopPlusAcceptancePlan ?? null,
     }
     : {};
+  const loopPlusActiveSubtasks = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
+    && hasLoopPlusRunningSubtasks(task, "active");
   return {
     ...state,
     task: {
       ...state.task,
       canContinue: !interruptedInHost && canContinueLoopTaskWithDeps(displayTask, deps, organization),
+      ...(task.status === "running" && resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
+        ? { canStop: mainModelBusy || loopPlusActiveSubtasks } : {}),
       ...(interruptedInHost ? { departmentExecutionInterrupted: true } : {}),
       ...(departmentRoot ? {
         departmentStopState: stopState,
@@ -352,6 +356,8 @@ function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPa
   if (organization?.needsCleanup || organization?.stopState === "stopping" || organization?.stopState === "unconfirmed") return false;
   if (departmentMetadata(task)?.role === "director") task = projectInterruptedDirector(task);
   if (isLoopMainAiFailureLimitReached(task)) return canResumeLoopPlusConfigLockPause(task, deps);
+  if (resolveLoopSchedulingMode(task.schedulingMode) === "event_driven"
+    && task.status === "running" && hasLoopPlusRunningSubtasks(task, "active")) return false;
   if (resolveLoopTaskRunControlState(task, deps.collectRunningTaskIds()).canContinue) {
     return true;
   }
@@ -361,6 +367,19 @@ function canContinueLoopTaskWithDeps(task: LoopTaskRecord, deps: LoopGroupChatPa
   }
   const target = deps.resolveMainPromptTarget(task, { createIfMissing: false });
   return !(target && deps.isTabRunActive(target.tabId));
+}
+
+function hasLoopPlusRunningSubtasks(task: LoopTaskRecord, kind: "active" | "interrupted"): boolean {
+  if (!task.loopPlus) return false;
+  try {
+    const running = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot().running;
+    return running.some((attempt) => {
+      const interrupted = task.subTasks.find((subtask) => subtask.id === attempt.subtaskId)?.status === "blocked";
+      return kind === "interrupted" ? interrupted : !interrupted;
+    });
+  } catch {
+    return kind === "active";
+  }
 }
 
 function canResumeLoopPlusConfigLockPause(task: LoopTaskRecord, deps: LoopGroupChatPanelDeps, restoredTabId?: string): boolean {
@@ -662,10 +681,13 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
     const isLoopPlus = resolveLoopSchedulingMode(task.schedulingMode) === "event_driven";
     const failureLimited = isLoopMainAiFailureLimitReached(task);
     const configLockRecovery = failureLimited && Boolean(options.panel) && canResumeLoopPlusConfigLockPause(task, deps);
+    const activeSubtasksBlockContinuation = options.resumeSubtasks !== false && isLoopPlus
+      && task.status === "running" && hasLoopPlusRunningSubtasks(task, "active");
     const canResumeIdle = task.status !== "completed"
       && (isLoopPlus || (options.resumeIdle && !runningTaskIds.has(task.id)))
+      && (options.resumeSubtasks === false || task.status !== "running" || !hasLoopPlusRunningSubtasks(task, "active"))
       && !(availabilityTarget && deps.isTabRunActive(availabilityTarget.tabId));
-    if (failureLimited ? !configLockRecovery : !controlState.canContinue && !canResumeIdle) {
+    if (activeSubtasksBlockContinuation || (failureLimited ? !configLockRecovery : !controlState.canContinue && !canResumeIdle)) {
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
         controlState.isRunning

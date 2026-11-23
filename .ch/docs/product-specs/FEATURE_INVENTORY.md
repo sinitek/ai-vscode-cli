@@ -203,7 +203,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 
 ## Loop+ 遗留运行状态的显式继续
 
-- 状态：`active`（2026-11-15，源码实现）。Loop+ 群聊继续入口按主模型调用忙闲展示和执行，后台控制器仍可等待子任务；继续文本与对话输入一样进入 `userMessageQueue`，由现有调度器唤醒主模型。切模型先更新路由和思考力度再排队继续，确实重启中断子任务时保留其原 attempt；没有可恢复子任务时唤醒主模型。真实主模型忙时不重复启动，完成、无效快照及主模型失败上限仍阻止继续；无控制器时显式重建调度快照。经典 Loop 保持所有权保护。
+- 状态：`active`（2026-11-23，源码实现）。Loop+ 群聊按钮除检查主模型忙闲，还检查开放 attempt：存在活动子任务时隐藏普通“继续执行”、保留“中止”；仅在活动子任务清空后，才可显式续跑 `blocked` 子任务。两按钮互斥，面板与宿主共用门禁，过期续跑消息不能绕过；切模型保留独立的主模型路由更新路径。继续文本与对话输入一样进入 `userMessageQueue`，由现有调度器唤醒主模型；确实重启中断子任务时保留其原 attempt。完成、无效快照及主模型失败上限仍阻止继续；无控制器时显式重建调度快照。经典 Loop 保持所有权保护。
 - 实现：`src/loopGroupChat.ts`、`src/loopGroupChatPanelState.ts`、`src/extensionHost/loopGroupChatPanelCoordinator.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extension.ts`。回归覆盖面板入口、真实 adapter 和磁盘任务存储，断言继续/切模型确实调用主模型、切模型使用新路由且活动子任务不被中断。
 
 
