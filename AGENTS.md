@@ -4,6 +4,8 @@
 
 根级 `AGENTS.md` 只保留稳定规则与导航；详细事实知识放进 `.ch/docs/`、`.agents/skills/` 或更近的局部 `AGENTS.md`。
 
+项目发布：就是修改 package.json 版本号，再执行 scripts/publish_vscode_extension.py，前提是模拟运行时没有任何本插件的报错。
+
 ## 仓库使命与首次进入
 - 任何时候都不要执行 scripts/publish_vscode_extension.py
 - 通过稳定的规则、Ontology、执行计划、记忆热区和可验证的 skills，支撑长周期、跨模块的 AI 开发协作。
