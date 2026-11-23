@@ -242,3 +242,15 @@ test("employee prompt keeps temporary build output outside the execution directo
   assert.match(employee, /将构建和测试的临时输出指向该目录/u);
   assert.match(employee, /验收的证据应放在任务约定的持久位置，并在沟通文件中记录路径/u);
 });
+
+test("all department roles prefer compliant alternatives before reporting a blocker", () => {
+  for (const role of ["director", "leader", "employee"] as const) {
+    const prompt = buildDepartmentRolePrompt(role);
+    assert.match(prompt, /现有授权范围内.*低风险的常规决策.*不为形式性确认暂停任务/u, role);
+    assert.match(prompt, /许可明确且符合用途的免费网络图片.*记录来源及适用许可/u, role);
+    assert.match(prompt, /不得假定宿主管理员已批准实际提权/u, role);
+    assert.match(prompt, /先绕开该步骤推进不依赖它的工作/u, role);
+    assert.match(prompt, /没有合规可行的替代且当前无工作可推进时，才按既有流程报阻塞/u, role);
+    assert.match(prompt, /不虚报完成，不降低验收标准/u, role);
+  }
+});

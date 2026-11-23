@@ -8567,6 +8567,26 @@
       ]
     },
     {
+      "id": "plugin.rule.department_prefer_compliant_continuation",
+      "name": "产研部优先合规替代与继续推进",
+      "description": "总监 Loop 与组长、员工 Loop+ 共用防阻塞提示。授权内可逆低风险事项默认继续；素材授权不明时优先选许可明确且适用的替代并记录来源。真实授权边界不变。先安全修复或推进独立工作，必交目标无合规替代且无工作可推进才按原流程报告阻塞，不改变状态机、重试与验收。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.loop_task"
+      ],
+      "source_refs": [
+        {
+          "path": "src/departmentprompts.ts",
+          "anchor": "buildDepartmentRolePrompt"
+        },
+        {
+          "path": ".ch/docs/design-docs/department-mode.md",
+          "anchor": "防阻塞与真实授权"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.department_director_wait_vs_blocked",
       "name": "产研部总监区分等待汇报与真实阻塞",
       "kind": "business_rule",
