@@ -58,6 +58,9 @@ test("classic Loop automatically requests one complete diagnosis and can continu
     finalSummary: buildLoopBlockerSummary(LOOP_BLOCKER_EXAMPLE),
   };
   for (const correction of [completeBlock,
+    { ...completeBlock, blocker: { ...LOOP_BLOCKER_EXAMPLE, recoveryOptions: [
+      { label: "使用仓库工具", action: "调用已有本地工具。", verification: "在任务环境验证构建。" },
+    ] } },
     { status: "continue", subtasks: [{ id: "repair", title: "修复依赖", prompt: "在已授权范围内修复项目依赖。" }] },
     { status: "blocked", finalSummary: "还是受阻" }, null,
   ] as Array<LoopMainDecision | null>) {
@@ -91,7 +94,7 @@ test("classic Loop automatically requests one complete diagnosis and can continu
       buildResetLoopMainAiFailureState: () => ({}),
       applyLoopMainDecision: (_id: string, decision: LoopMainDecision) => {
         applied = decision;
-        stored = { ...stored, status: decision.status === "continue" ? "running" : "needs-review", finalSummary: decision.finalSummary };
+        stored = { ...stored, status: decision.status === "blocked" ? "needs-review" : "running", finalSummary: decision.finalSummary };
         return { status: decision.status, task: stored, subtasks: decision.subtasks };
       },
     } as never);
@@ -108,6 +111,10 @@ test("classic Loop automatically requests one complete diagnosis and can continu
     if (correction?.status === "continue") {
       assert.equal(result.status, "continue");
       assert.equal(applied?.subtasks?.[0].id, "repair");
+    } else if (correction?.blocker?.recoveryOptions) {
+      assert.equal(result.status, "awaiting-input");
+      assert.equal(applied?.clarification?.formFields[0]?.options?.[0]?.label, "使用仓库工具");
+      assert.equal(stored.status, "running");
     } else if (correction?.blocker) {
       assert.equal(result.status, "needs-review");
       assert.equal(applied?.finalSummary, completeBlock.finalSummary);

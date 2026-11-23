@@ -17,6 +17,8 @@ import { LOOP_SUBTASK_PROMPT_MIN_LENGTH } from "../loopPromptBuilders";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
 import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
+import { buildLoopBlockerRecoveryClarification } from "../loopBlockerRecovery";
+import { ORCHESTRATOR_CLARIFICATION_LIMIT } from "../orchestratorClarification";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
@@ -377,6 +379,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
         throw new Error("部门总监组织入口不可用，任务不会退化为普通 Loop。");
       }
       const current = readLoopTaskRecord(task.id) ?? task;
+      decision = prepareBlockerRecoveryDecision(current, decision);
       const result = await deps.handleDepartmentDecision({ task: current, decision, requirements: requirementsAtStart });
       if (result.task.status !== current.status || result.task.loopProgressPercent !== current.loopProgressPercent
         || decision.status === "continue") {
@@ -403,7 +406,18 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       const paused = updateLoopTaskRecord(task.id, { status: "needs-review", finalSummary: "当前没有可等待的活动子任务，请复核后继续。" });
       return { status: "needs-review", task: paused ?? latestAfterRun, decision };
     }
-    return applyLoopMainDecisionForRun(task.id, decision);
+    return applyLoopMainDecisionForRun(task.id, prepareBlockerRecoveryDecision(latestAfterRun, decision));
+  }
+
+  function prepareBlockerRecoveryDecision(task: LoopTaskRecord, decision: LoopMainDecision): LoopMainDecision {
+    if (decision.status !== "blocked" || !decision.blocker || (task.clarificationCount ?? 0) >= ORCHESTRATOR_CLARIFICATION_LIMIT) return decision;
+    const clarification = buildLoopBlockerRecoveryClarification(decision.blocker, task.supplementalRequirements);
+    return clarification ? {
+      ...decision,
+      status: "clarify",
+      clarification,
+      finalSummary: `等待选择恢复方案：${decision.blocker.cause}`,
+    } : decision;
   }
 
   function applyLoopMainDecisionForRun(
@@ -1353,6 +1367,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","progressWeightPercent":20,"prompt":"自包含模块需求"}]}',
       '仍有组长处于 starting/running 且只需等待其汇报时，返回 {"status":"waiting","progressPercent":40,"finalSummary":"等待组长汇报"}，其中百分比按实际工作估算。waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
       '确有用户疑问使用标准 clarify 表单。',
+      LOOP_BLOCKED_SUMMARY_INSTRUCTION,
       '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
       '整体目标已经满足时返回 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}。根据原始目标与组长汇报判断业务完成情况，并在结论中交代遗留事项。',
       "组长汇报、协作和补充会及时唤醒你，无需等待所有组长结束。不得检查代码或验收。",
@@ -1379,7 +1394,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       `2. 当你返回 status=continue 时，程序会按 subtasks 数组启动 1~${subtaskMax} 个子任务；独立任务新建会话，连续任务续接来源会话。`,
       "3. 子任务运行期间收到用户补充需求时，当前批次可继续运行，程序会唤醒主任务会话评估新增工作；可独立且与所有活动子任务写入范围、冲突组、连续来源均不冲突时，可立即增派并行子任务。无法确认无冲突时，等待现有子任务结束后再派发。",
       "4. 你需要基于任务记录 + 沟通文件再次决策，循环直到你返回 status=completed。",
-      "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；当前没有可执行子任务且需要人工或外部结果时必须返回 blocked。",
+      "5. 任务不会因为子任务都显示 completed 自动结束，只有你返回 completed 才结束；需要人工或外部结果时先判断能否澄清或提出恢复方案。",
       `6. ${LOOP_MAIN_STALE_TASK_LIST_RULE_ZH}`,
       LOOP_DIRECT_EXECUTION_RULE_ZH,
       "",
@@ -1399,7 +1414,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "   汇报不清时优先续接来源子任务补充验证范围、命令或操作及结果说明，不因缺少报告细节直接要求重测。",
       "   只有用户或项目规则明确要求独立验收或交叉复核，且尚无满足该独立要求的有效汇报时，才必须另派相应子任务；已有符合独立要求且仍有效的结果也直接复用。实现后集成验证若未被现有有效结果覆盖，仅补该缺口。",
       "   历史沟通模板或旧派发提示中的默认独立验证要求，不算用户或项目明确要求。",
-      "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；只是等待外部结果且当前没有可执行子任务时返回 blocked。",
+      "10. 子任务沟通文件的 `## 待主任务确认` 若标记为待确认，你必须先处理：能依据现有事实和规则自主确定时，把结论写入后续子任务 prompt；如果缺口是用户需求含糊，或当前方案明显不合理、缺关键取舍，返回 status=clarify 和 clarification 表单，不要猜测，也不要派发子任务；外部前置卡住时按下方恢复方案规则处理。",
       "11. 每次决策预判 estimatedRemainingRounds：从当前决策之后预计还需要多少个子任务批次才能 completed；completed 时为 0。",
       "12. 根据汇报，原始目标以及用户或项目规则要求的验证均已完成，且现有结果仍覆盖当前改动时，返回 completed；有可执行工作时返回 continue，只等待外部结果时返回 blocked。",
       "13. 除符合条件的简单任务直办外，主任务负责拆分、派发、协调和根据汇报判断进度。子任务遵循项目既有规则自主完成工作，不额外强制实施步骤、设计流程或测试流程。",

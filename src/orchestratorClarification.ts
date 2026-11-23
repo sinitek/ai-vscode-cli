@@ -13,6 +13,7 @@ import {
 } from "./humanInteraction";
 
 export const ORCHESTRATOR_CLARIFICATION_LIMIT = 8;
+export const LOOP_RECOVERY_PLAN_FIELD = "loop_recovery_plan";
 const MAX_FIELDS = 8;
 const MAX_OPTIONS = 12;
 
@@ -91,9 +92,15 @@ export function formatOrchestratorClarificationAnswer(
   submission: HumanInteractionSubmission,
   formFields: readonly HumanInteractionFormField[] = [],
 ): string {
+  const recoveryField = formFields.find((field) => field.id === LOOP_RECOVERY_PLAN_FIELD);
+  const plan = recoveryField?.options?.find((option) => option.value === submission.values[LOOP_RECOVERY_PLAN_FIELD]);
+  const recoveryTimedOut = Boolean(plan && submission.timedOut);
   return [
-    "用户已提交主任务澄清表单。请据此继续决策，不要重复询问已回答的问题。",
-    formatHumanInteractionSubmittedText(submission, formFields),
+    recoveryTimedOut
+      ? "主任务澄清超时，宿主已选择推荐恢复方案；这不是用户答复或新增授权。"
+      : "用户已提交主任务澄清表单。请据此继续决策，不要重复询问已回答的问题。",
+    formatHumanInteractionSubmittedText(recoveryTimedOut ? { ...submission, timedOut: false } : submission, formFields),
+    ...(plan?.description ? [plan.description, "仅在现有授权内执行所选方案，在实际任务环境验证，再续跑受影响的工作。未验证通过不得视为已恢复。"] : []),
   ].join("\n");
 }
 
@@ -133,6 +140,9 @@ export function normalizeClarificationSubmission(
     const text = normalizeText(rawValue);
     if (field.required && !text) {
       return { ok: false, issue: { code: "required", label: field.label } };
+    }
+    if (field.id === LOOP_RECOVERY_PLAN_FIELD && !field.options?.some((option) => option.value === text)) {
+      return { ok: false, issue: { code: "invalid-option", label: field.label } };
     }
     normalized[field.id] = text;
   }

@@ -6,9 +6,12 @@ export type LoopBlocker = {
   evidence: string[];
   attempts: string[];
   nextSteps: Array<{ owner: string; action: string; verification: string }>;
+  recoveryOptions?: LoopBlockerRecoveryOption[];
   resumeCondition?: string;
   alternatives?: string;
 };
+
+type LoopBlockerRecoveryOption = { label: string; action: string; verification: string };
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -58,6 +61,7 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
   }
   const resumeCondition = text(raw.resumeCondition);
   const alternatives = text(raw.alternatives);
+  const recoveryOptions = kind === "recoverable" ? readRecoveryOptions(raw.recoveryOptions) : undefined;
   if (kind === "recoverable" && !resumeCondition) issues.push("resumeCondition 必须说明什么结果满足后可继续");
   if (kind === "impossible" && !alternatives) issues.push("alternatives 必须说明可行替代方案或无可行路径的依据");
   if (issues.length > 0) return { issue: `blocker 诊断不完整：${issues.join("；")}。` };
@@ -65,9 +69,25 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
     blocker: {
       kind: kind as LoopBlocker["kind"], cause: cause!, affectedRequirements: affectedRequirements!,
       evidence: evidence!, attempts: attempts!, nextSteps,
+      ...(recoveryOptions ? { recoveryOptions } : {}),
       ...(resumeCondition ? { resumeCondition } : {}), ...(alternatives ? { alternatives } : {}),
     },
   };
+}
+
+function readRecoveryOptions(value: unknown): LoopBlockerRecoveryOption[] | undefined {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 3) return undefined;
+  const options: LoopBlockerRecoveryOption[] = [];
+  for (const candidate of value) {
+    const raw = record(candidate);
+    const label = text(raw?.label);
+    const action = text(raw?.action);
+    const verification = text(raw?.verification);
+    if (!label || label.length > 80 || !action || action.length > 500 || !verification || verification.length > 300
+      || options.some((option) => option.label === label || option.action === action)) return undefined;
+    options.push({ label, action, verification });
+  }
+  return options;
 }
 
 const LOOP_BLOCKER_SUMMARY_HEADER = "### 当前结论\n子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成。";

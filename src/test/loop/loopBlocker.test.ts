@@ -3,6 +3,8 @@ import assert = require("node:assert/strict");
 import { buildLoopBlockerSummary, readLoopBlocker, readLoopBlockedDecisionFields, LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { parseLoopPlusDecision } from "../../loopPlusDecision";
 import { buildLoopBlockedPauseText } from "../../loopBlockedSummary";
+import { buildLoopBlockerRecoveryClarification } from "../../loopBlockerRecovery";
+import { formatOrchestratorClarificationAnswer, LOOP_RECOVERY_PLAN_FIELD } from "../../orchestratorClarification";
 
 test("软件依赖诊断保留具体软件、环境、安装方案、验证和续跑条件", () => {
   const blocker = {
@@ -74,4 +76,20 @@ test("诊断规范化不采信模型伪造的 blockerIssue 或 finalSummary", ()
   assert.equal(parsed?.blockerIssue, undefined);
   assert.match(parsed?.finalSummary ?? "", /实际原因/);
   assert.doesNotMatch(parsed?.finalSummary ?? "", /任务完成/);
+});
+
+test("可恢复阻塞提供有界方案选择并排除已选方案", () => {
+  const blocker = { ...LOOP_BLOCKER_EXAMPLE, recoveryOptions: [
+    { label: "使用项目自带工具", action: "切换到仓库已安装的工具。", verification: "在当前工作区运行版本检查。" },
+    { label: "请求环境维护者", action: "请维护者补齐隔离环境依赖。", verification: "在任务容器运行构建命令。" },
+  ] };
+  const clarification = buildLoopBlockerRecoveryClarification(blocker);
+  assert.ok(clarification);
+  const field = clarification.formFields[0];
+  assert.equal(field.id, LOOP_RECOVERY_PLAN_FIELD);
+  assert.equal(field.defaultValue, "1");
+  const selected = formatOrchestratorClarificationAnswer({ interactionId: "", status: "completed", values: { [field.id]: "1" } }, [field]);
+  assert.deepEqual(buildLoopBlockerRecoveryClarification(blocker, [selected])?.formFields[0]?.options?.map((option) => option.value), ["2"]);
+  assert.equal(buildLoopBlockerRecoveryClarification({ ...blocker, kind: "impossible" }), undefined);
+  assert.equal(readLoopBlocker({ ...blocker, recoveryOptions: [...blocker.recoveryOptions, ...blocker.recoveryOptions] }).blocker?.recoveryOptions, undefined);
 });

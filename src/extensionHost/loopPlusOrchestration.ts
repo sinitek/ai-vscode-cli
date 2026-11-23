@@ -5,6 +5,7 @@ import { LoopPlusUpdateUnconfirmedError } from "./loopPlusDiagnostics";
 import { RUNTIME_CONFIG_LOCK_TIMEOUT } from "../loopMainFailure";
 import { applyLoopModelRoutingToPrompt } from "../loopModelSwitch";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
+import { buildLoopBlockerRecoveryClarification } from "../loopBlockerRecovery";
 import { appendLoopSubtaskFailureEvidence, getLoopSubtaskFailureLines, normalizeLoopSubtaskFailure } from "../loopSubtaskFailure";
 import { getLoopSubtaskDisplayTitle } from "../loopConversationPresentation";
 import { buildLoopSubtaskExecutionPlan } from "../loopParallel";
@@ -1463,7 +1464,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         continue;
       }
-      const applied = applyDecision(runtime, step, parsed, content);
+      const outcome = applyDecision(runtime, step, parsed, content);
+      const applied = typeof outcome === "string" ? outcome : await outcome;
       if (applied === "stop") {
         return;
       }
@@ -1912,7 +1914,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     step: MainStep,
     parsed: LoopPlusDecisionParseResult,
     response: string | null,
-  ): LoopPlusDecisionOutcome {
+  ): LoopPlusDecisionOutcome | Promise<LoopPlusDecisionOutcome> {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
     if (step.kind === "review" && !heldBatchIntact(snapshot, step)) {
@@ -1931,7 +1933,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     if (!sameLoopPlusReportIds(decision.reportEventIds ?? [], step.reportEventIds)) {
       return protocolMiss(runtime, Boolean(held), "reportEventIds 必须逐项确认当前提示中的无需验收报告，且不能跳过或重排。");
     }
-    const blockReview = deps.readTask(runtime.taskId)?.loopPlusBlockReview;
+    const task = deps.readTask(runtime.taskId);
+    const blockReview = task?.loopPlusBlockReview;
     if (blockReview?.state === "pending") {
       updateTask(runtime.taskId, {
         loopPlusBlockReview: { ...blockReview, state: "reviewed" },
@@ -1964,6 +1967,17 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       return protocolMiss(runtime, Boolean(held), buildLoopBlockerDiagnosticFailure(
         appendLoopSubtaskFailureEvidence(decision.finalSummary || blockReview?.summary, getLoopPlusFailureLines(runtime, step)), decision.blockerIssue,
       ), response);
+    }
+    if (decision.status === "blocked" && decision.blocker && blockReview
+      && snapshot.userMessageQueue.length <= step.userMessageCount
+      && (snapshot.reportQueue?.length ?? 0) <= step.reportEventIds.length
+      && (task?.clarificationCount ?? 0) < ORCHESTRATOR_CLARIFICATION_LIMIT) {
+      const clarification = buildLoopBlockerRecoveryClarification(decision.blocker, task?.supplementalRequirements);
+      if (clarification) return waitForLoopPlusClarification(runtime, {
+        status: "clarify",
+        clarification,
+        finalSummary: `等待选择恢复方案：${decision.blocker.cause}`,
+      }, response ?? "", true);
     }
     const repairDecision = resolveAcceptanceRepairDecision(runtime, decision, snapshot);
     if (typeof repairDecision === "string") {
@@ -2055,6 +2069,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime: ParentRuntime,
     decision: LoopPlusDecision,
     response: string,
+    blockerRecovery = false,
   ): Promise<LoopPlusDecisionOutcome> {
     const request = decision.clarification;
     const task = deps.readTask(runtime.taskId);
@@ -2096,6 +2111,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     updateTask(runtime.taskId, {
       supplementalRequirements: requirements,
       pendingClarification: undefined,
+      ...(blockerRecovery ? { loopPlusBlockReview: undefined } : {}),
       schedulingMode: "event_driven",
       updatedAt: now(),
     });

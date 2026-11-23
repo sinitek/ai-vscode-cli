@@ -6109,6 +6109,26 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_recoverable_blocker_plan_clarification",
+      "name": "Loop 可恢复熔断先询问方案并超时续跑",
+      "description": "经典 Loop、Loop+ 和产研部在完成各自剩余工作复核后，可为 recoverable blocker 提供 1 至 3 个结构化恢复方案，每项包含操作与验证。宿主复用主任务澄清表单和现有人机交互超时，优先采用尚未尝试过的首选方案并续跑；已选方案不重复推荐。选择或超时不等同授权、修复成功或验收通过，必须在实际任务环境验证；无新合规方案或真实授权缺失时保持原阻塞暂停。经典 Loop 使用部门总监路由，Loop+ 使用组长路由，员工将环境证据和方案上报组长，不直接取得根任务用户交互权。权限、停止、组织身份和验收门禁不变。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.department_task", "plugin.extension_host"],
+      "source_refs": [
+        { "path": "src/loopBlocker.ts" },
+        { "path": "src/loopBlockerRecovery.ts" },
+        { "path": "src/orchestratorClarification.ts" },
+        { "path": "src/extensionHost/loopOrchestration.ts" },
+        { "path": "src/extensionHost/loopPlusOrchestration.ts" },
+        { "path": "src/departmentprompts.ts" },
+        { "path": "src/test/loop/loopBlocker.test.ts" },
+        { "path": "src/test/extensionHost/loopPlusOrchestration.test.ts" },
+        { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 可恢复熔断方案澄清" },
+        { "path": ".ch/docs/design-docs/loop-plus-scheduling.md" },
+        { "path": ".ch/docs/design-docs/department-mode.md", "anchor": "防阻塞与真实授权" }
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_layered_completion_messages",
       "name": "Loop+ 分层表达调用、子任务与父任务完成",
       "description": "Loop+ 主任务单次调用结束只表示本轮调度结束，子任务调用结束表示等待主任务验收；二者都不代表父任务整体完成。仅父任务完成状态持久化成功后显示整体完成并触发完成提醒。普通对话与经典 Loop 文案保持兼容。任务 write 正常返回即原子替换提交成功，I/O 失败抛错，update 缺失任务 null 同样阻止交接。展示刷新同步异常和异步拒绝独立记录，不撤销提交。最终失败保留控制器和 completionPatch，同宿主恢复仅补交最终结果，不重复通知；子任务回报失败保留事件与标签，不放行成功压缩或关页。dispatch/控制替换先提交再启动或关闭旧 attempt；用户停止先取消。宿主经原有任务更新端口保存成功回执，部门任务服从 Owner 事务。双提交失败后重建只恢复已持久化且仍匹配原运行 attempt 的回执，正常进入验收或报告确认，不重启 attempt 或重放通知、关页及压缩；无可信回执则保留 blocked 开放 attempt，不从 CLI 文本或沟通文件推断结果。存储改绑先比较规范化路径及文件系统身份，不按平台盲目统一大小写；同文件别名只写已知来源而不清理，真正迁移先提交目标再清源，清理失败仍返回真实提交结果。默认只读容错不代表可提交：update/append/bind 的来源、合并目标和当前目录冷查找严格读取，只有 ENOENT 算缺失，其余 I/O 原样抛出，无法可靠归一化的数据在写入和清理前拒绝；其它候选损坏也可保守阻止冷提交。legacy/retention 在维护边界包含错误并保留原文件。legacy 仅在来源 updatedAt 严格较新时覆盖已有目标，相等保留目标；结合 update/append 时间戳不回退及迁移目标严格较新，防止旧来源覆盖 completed、摘要和轮次。同步接口、JSON、completed 防回退、绑定及 retention 不变；详细恢复及保障边界见设计。",

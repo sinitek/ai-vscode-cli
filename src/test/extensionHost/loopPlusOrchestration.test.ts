@@ -24,8 +24,10 @@ import { startLoopWaitWatchdog } from "../../loopWaitWatchdog";
 import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 import {
   loopClarificationScope,
+  LOOP_RECOVERY_PLAN_FIELD,
   submitOrchestratorClarification,
   rejectOrchestratorClarification,
+  waitForOrchestratorClarification,
 } from "../../orchestratorClarification";
 
 type Deferred<T> = {
@@ -739,6 +741,44 @@ test("confirming a global block pauses once and records the actual unfinished wo
   assert.equal(pauses.length, 1);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
 });
+
+for (const autoSelect of [false, true]) {
+  test(`Loop+ resumes recoverable blocker after ${autoSelect ? "configured timeout" : "manual selection"}`, async () => {
+    let waiting: ReturnType<typeof waitForOrchestratorClarification> | undefined;
+    const env = harness({ clarificationTimeoutMs: () => autoSelect ? 30 : 0,
+      waitForClarification: (...args) => (waiting = waitForOrchestratorClarification(...args)) });
+    const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId ?? "";
+    await flush();
+    env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
+    await flush();
+    const blocker = { ...loopBlockerFixture("构建环境缺少项目工具。"), recoveryOptions: [
+      { label: "使用仓库工具", action: "运行仓库声明的本地构建工具。", verification: "检查版本后重新构建。" },
+      { label: "使用已有容器", action: "在项目声明的容器中构建。", verification: "容器构建成功。" },
+    ] };
+    env.mains[1].resolve(decisionJson({ status: "blocked", blocker }));
+    await flush();
+    const request = env.tasks.get(taskId)?.pendingClarification;
+    assert.ok(waiting);
+    if (!autoSelect) {
+      assert.ok(request);
+      const scope = loopClarificationScope(taskId);
+      assert.equal(submitOrchestratorClarification(scope, request.interactionId, { [LOOP_RECOVERY_PLAN_FIELD]: "99" }).ok, false);
+      assert.equal(submitOrchestratorClarification(scope, request.interactionId, { [LOOP_RECOVERY_PLAN_FIELD]: "2" }).ok, true);
+    }
+    const submission = await waiting;
+    assert.equal(Boolean(submission.timedOut), autoSelect);
+    await flush();
+    assert.equal(env.mains.length, 3);
+    if (autoSelect) assert.match(env.mains[2].request.prompt, /主任务澄清超时/);
+    assert.match(env.mains[2].request.prompt, autoSelect ? /运行仓库声明的本地构建工具/ : /在项目声明的容器中构建/);
+    assert.match(env.mains[2].request.prompt, /仅在现有授权内执行所选方案/);
+    assert.equal(env.tasks.get(taskId)?.status, "running");
+    assert.equal(env.tasks.get(taskId)?.pendingClarification, undefined);
+    env.host.stopParent(taskId);
+    await run.done;
+  });
+}
 
 test("incomplete blocker diagnostics are corrected before pause without confirming held events", async () => {
   const env = harness();

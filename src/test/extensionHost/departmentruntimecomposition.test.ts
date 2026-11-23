@@ -200,6 +200,20 @@ test("director waiting without a live leader pauses review instead of sleeping i
   assert.match(h.fixture.readTask(root.id)?.finalSummary ?? "", /没有正在运行的组长/);
 });
 
+test("director routes a simulated recoverable blocker through existing task clarification", async (t) => {
+  const h = harness();
+  t.after(h.dispose);
+  h.decide({ status: "blocked", blocker: { ...LOOP_BLOCKER_EXAMPLE, recoveryOptions: [
+    { label: "使用已有测试环境", action: "在已授权的隔离环境验证组长交付。", verification: "组长确认原验证通过。" },
+  ] } });
+  await h.start();
+  await waitForLoopPlus(() => !!h.fixture.readTask("root-1")?.pendingClarification, "director recovery clarification");
+  const root = h.fixture.readTask("root-1");
+  assert.equal(root?.status, "running");
+  assert.equal(root?.pendingClarification?.formFields[0]?.options?.[0]?.label, "使用已有测试环境");
+  assert.equal(root?.clarificationCount, 1);
+});
+
 test("runtime capacity uses current defaults without rewriting a frozen employee limit", async (t) => {
   const h = harness(); t.after(h.dispose);
   const capacity = h.composition.capacity;
