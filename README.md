@@ -8,8 +8,11 @@
 [https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#](https://www.yuque.com/hunjfang/ul749m/pkxei0ie9gc8bmim?singleDoc#)
 
 ## changelog
-### 1.9.x
+### 1.x.x
 - bugfix & 体验优化
+
+### 1.10.0
+-  新增“产研部”模式，由总监（Loop) 派发组长任务，组长（Loop+）派发子任务完成。好处是多个组长可以分工明确来完成复杂需求，分别做好审核。
 
 ### 1.9.0
 - Loop/Loop+ 支持运行时模型切换
