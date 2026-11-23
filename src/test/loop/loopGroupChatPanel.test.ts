@@ -66,10 +66,10 @@ test("renders the Loop task prompt before submitted supplemental requirements", 
   assert.match(html, /class="message user-message no-avatar"/u);
   assert.match(html, /\.message\.user-message \.bubble \{[^}]*border-color: var\(--vscode-charts-green/u);
   assert.match(html, /<span class="speaker">我<\/span>/u);
-  assert.match(html, /<span class="tag">任务发起<\/span>/u);
+  assert.doesNotMatch(html, /class="tag"/u);
   assert.match(html, /<div class="message-text markdown-body" data-markdown-source="完成任务">完成任务<\/div>/u);
   assert.match(html, /<div class="message-text markdown-body" data-markdown-source="请补充提交失败场景。">请补充提交失败场景。<\/div>/u);
-  assert.match(html, /<button class="copy-chat-bubble"[^>]*>复制<\/button>/u);
+  assert.doesNotMatch(html, /copy-chat-bubble|aria-label="复制消息"/u);
   assert.ok(
     html.indexOf('data-markdown-source="完成任务">完成任务</div>')
       < html.indexOf('data-markdown-source="请补充提交失败场景。">请补充提交失败场景。</div>'),
@@ -99,7 +99,7 @@ test("renders the Loop task prompt before chat records exist", () => {
     },
   );
 
-  assert.match(html, /<span class="tag">任务发起<\/span>/u);
+  assert.doesNotMatch(html, /class="tag"|copy-chat-bubble/u);
   assert.match(html, /data-markdown-source="请先完成任务初始化。">请先完成任务初始化。<\/div>/u);
   assert.match(html, /暂无群聊记录。/u);
   assert.ok(
@@ -1037,7 +1037,7 @@ test("group chat initial HTML and content patches render only the newest bounded
   const state = createLongChatState(499);
   const patch = buildLoopGroupChatPanelContentPatch(state, 1);
   assert.equal((patch.timelineHtml.match(/<article class="message /g) ?? []).length, 375);
-  assert.match(patch.timelineHtml, /<span class="tag">任务发起<\/span>/u);
+  assert.doesNotMatch(patch.timelineHtml, /class="tag"|copy-chat-bubble/u);
   assert.doesNotMatch(patch.timelineHtml, /群聊消息编号0125/u);
   assert.match(patch.timelineHtml, /群聊消息编号0126/u);
   assert.match(patch.timelineHtml, /群聊消息编号0499/u);
@@ -1075,7 +1075,7 @@ test("group chat applies custom and minimum limits to Loop+ as well as classic L
     state.messageLimit = 1;
     const minimum = buildLoopGroupChatPanelContentPatch(state, 2);
     assert.equal((minimum.timelineHtml.match(/<article class="message /g) ?? []).length, 2);
-    assert.match(minimum.timelineHtml, /<span class="tag">任务发起<\/span>/u);
+    assert.doesNotMatch(minimum.timelineHtml, /class="tag"|copy-chat-bubble/u);
     assert.match(minimum.timelineHtml, /群聊消息编号0009/u);
   }
 });

@@ -53,7 +53,6 @@ async function writeGroupChatClipboard(text: unknown): Promise<void> {
   }
 }
 
-const COPY_GROUP_CHAT_BUTTON = `<button class="copy-chat-bubble" type="button" aria-label="复制消息" title="复制消息">复制</button>`;
 export type {
   DepartmentGroupChatProjection,
   DepartmentGroupChatModalTarget,
@@ -473,16 +472,6 @@ export function buildLoopGroupChatPanelHtml(
 ${LOOP_GROUP_CHAT_PANEL_STYLES}
 ${getMarkdownStyles(".markdown-body")}
       .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
-      .copy-chat-bubble {
-        margin-inline-start: auto;
-        padding: 2px 6px;
-        color: var(--vscode-descriptionForeground);
-        background: transparent;
-        border: 0;
-        cursor: pointer;
-        user-select: none;
-      }
-      .copy-chat-bubble:hover, .copy-chat-bubble:focus-visible { background: var(--vscode-toolbar-hoverBackground); }
     </style>
   </head>
   <body${state.department ? ' class="department-chat-page"' : ""}>
@@ -593,11 +582,6 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (event.defaultPrevented || !(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || (event.key || "").toLowerCase() !== "c") return;
 	        if (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable]")) return;
 	        if (copyChatSelectionToHost(readChatCopyText(window.getSelection()))) event.preventDefault();
-	      });
-	      document.addEventListener("click", (event) => {
-	        const button = event.target instanceof Element && event.target.closest(".copy-chat-bubble");
-	        const body = button && button.closest(".bubble")?.querySelector(".message-text");
-	        if (body) copyChatSelectionToHost(chatMarkdownSources.get(body) ?? body.getAttribute("data-markdown-source") ?? body.innerText);
 	      });
 	      const PANEL_GENERATION = ${Math.max(0, Math.floor(generation))};
 	      const AUTO_REFRESH_INTERVAL_MS = 5000;
@@ -2321,7 +2305,7 @@ function renderTimeline(
     return `<div class="timeline"><div class="notice">${escapeHtml(strings.noTranscript)}</div>${retained.map((bubble) => bubble.render()).join("")}</div>`;
   }
   const timelineBubbles = bubbles.concat(segments.map((segment, index) => ({
-    render: () => renderSegment(segment, strings, undefined, acceptanceAnchors.get(index)),
+    render: () => renderSegment(segment, strings, acceptanceAnchors.get(index)),
     preserve: segment.kind === "user-message" || acceptanceAnchors.has(index),
   })), thinkingBubbles);
   const retained = selectLoopGroupChatBubbles(timelineBubbles, state.messageLimit, bubbleWindow, (bubble) => bubble.preserve === true);
@@ -2340,7 +2324,7 @@ function renderInitialTaskPromptBubble(
     heading: strings.initialTaskPrompt,
     body: rootPrompt,
     actorId: "user",
-  }, strings, strings.initialTaskPrompt);
+  }, strings);
 }
 
 type RuntimeThinkingSpeaker = LoopGroupChatPanelActiveSpeaker & {
@@ -2353,7 +2337,6 @@ function renderThinkingBubble(
 ): string {
   const messageKind = speaker.kind === "main" ? "main-turn" : "subtask-turn";
   const layoutClass = "with-avatar";
-  const tag = getThinkingTag(speaker, strings);
   const text = getThinkingText(speaker, strings);
   const avatar = `<span class="avatar">${escapeHtml(getAvatarLabel(speaker.title, speaker.id))}</span>`;
   const attemptAttribute = speaker.attemptId
@@ -2364,7 +2347,6 @@ function renderThinkingBubble(
     <section class="bubble">
       <header class="bubble-header">
         <span class="speaker">${escapeHtml(speaker.title)}</span>
-        <span class="tag">${escapeHtml(tag)}</span>
       </header>
       <div class="message-text thinking-text">
         <span>${escapeHtml(text)}</span>
@@ -2476,10 +2458,6 @@ function getActiveSpeakerFromRound(
   };
 }
 
-function getThinkingTag(speaker: LoopGroupChatPanelActiveSpeaker, strings: LoopGroupChatPanelStrings): string {
-  return speaker.kind === "main" ? strings.mainTask : strings.subtask;
-}
-
 function getThinkingText(speaker: LoopGroupChatPanelActiveSpeaker, strings: LoopGroupChatPanelStrings): string {
   return formatTemplate(strings.thinking, { speaker: speaker.title });
 }
@@ -2487,11 +2465,9 @@ function getThinkingText(speaker: LoopGroupChatPanelActiveSpeaker, strings: Loop
 function renderSegment(
   segment: LoopGroupChatSegment,
   strings: LoopGroupChatPanelStrings,
-  tagOverride?: string,
   acceptanceAnchor?: string,
 ): string {
   const speaker = getSegmentSpeaker(segment, strings);
-  const tag = tagOverride ?? getSegmentTag(segment, strings);
   const hasAvatar = segment.kind === "main-turn"
     || segment.kind === "subtask-joined"
     || segment.kind === "subtask-turn"
@@ -2507,8 +2483,6 @@ function renderSegment(
     <section class="bubble">
       <header class="bubble-header">
         <span class="speaker">${escapeHtml(speaker)}</span>
-        <span class="tag">${escapeHtml(tag)}</span>
-        ${body.trim() ? COPY_GROUP_CHAT_BUTTON : ""}
       </header>
       ${renderMessageBody(body, strings)}
     </section>
@@ -2529,28 +2503,6 @@ function getSegmentSpeaker(segment: LoopGroupChatSegment, strings: LoopGroupChat
     return segment.actorTitle ?? strings.mainTask;
   }
   return segment.heading || strings.system;
-}
-
-function getSegmentTag(segment: LoopGroupChatSegment, strings: LoopGroupChatPanelStrings): string {
-  if (segment.kind === "user-message") {
-    return strings.supplementalRequirement;
-  }
-  if (segment.kind === "main-turn" && typeof segment.dialogueTurn === "number") {
-    return `${strings.mainTask} · ${formatTemplate(strings.roundLabel, { round: segment.dialogueTurn })}`;
-  }
-  if (segment.kind === "subtask-joined") {
-    return strings.subtask;
-  }
-  if (segment.kind === "subtask-turn") {
-    return strings.subtask;
-  }
-  if (segment.kind === "error") {
-    return strings.stopped;
-  }
-  if (segment.kind === "closed") {
-    return strings.transcriptClosed;
-  }
-  return strings.system;
 }
 
 function renderMessageBody(body: string, strings: LoopGroupChatPanelStrings): string {
