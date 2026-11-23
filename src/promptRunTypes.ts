@@ -50,7 +50,10 @@ export type PromptRunInput = {
   loopAttemptId?: string;
   executionCwd?: string;
   grokLoopExecutionRootId?: string;
+  grokLoopExecutionCwd?: string;
   grokLoopResumeSessionId?: string | null;
+  grokLoopRecoveredLegacySessionId?: string;
+  grokLoopLegacySessionFallbackFromSessionId?: string;
   isolateProjectInstructions?: boolean;
   skipLongTermMemoryPersist?: boolean;
   thinkingModeOverride?: ThinkingMode;

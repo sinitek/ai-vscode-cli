@@ -629,11 +629,14 @@ for (const continuationKind of ["repair", "follow-up"] as const) {
 }
 }
 
-test("Grok Loop+ keeps the first native session's isolated cwd across repairs and multi-hop continuations", async () => {
-  const fixture = createLoopPlusRuntimeFixture({ configId: "profile", executionRootFactory: (rootId) => {
+test("Grok Loop+ restores legacy sessions when possible and continues safely when their cwd is missing", async () => {
+  let legacyCwd = "";
+  const fixture = createLoopPlusRuntimeFixture({ configId: "profile",
+    findLegacyGrokExecutionCwd: async (sessionId) => sessionId === "legacy-session" ? legacyCwd : null,
+    executionRootFactory: (rootId, _useWorkspaceCwd, previousCwd) => {
     assert.ok(rootId);
     const workspace = path.join(fixture.rootDir, "workspace");
-    return createLoopSubtaskExecutionRoot(workspace, { persistentCwd: resolveGrokLoopExecutionCwd(workspace, rootId, fixture.rootDir) });
+    return createLoopSubtaskExecutionRoot(workspace, { persistentCwd: previousCwd ?? resolveGrokLoopExecutionCwd(workspace, rootId, fixture.rootDir) });
   } });
   try {
     const workspace = path.join(fixture.rootDir, "workspace");
@@ -644,18 +647,22 @@ test("Grok Loop+ keeps the first native session's isolated cwd across repairs an
       { id: "next", title: "修补", status: "running" },
       { id: "further", title: "续接", status: "running" },
       { id: "independent", title: "独立", status: "running" },
-      { id: "legacy", title: "旧会话", status: "running", executionSession: { cli: "grok", configId: "profile", sessionId: "legacy-session" } },
+      { id: "legacy-found", title: "可恢复旧会话", status: "running", executionSession: { cli: "grok", configId: "profile", sessionId: "legacy-session" } },
+      { id: "legacy-missing", title: "目录缺失旧会话", status: "running", executionSession: { cli: "grok", configId: "profile", sessionId: "legacy-session-missing" } },
     ] } as LoopTaskRecord);
-    const nativeSession = "original-grok-session";
+    legacyCwd = path.join(fixture.rootDir, "sinitek-loop-subtask-Ab12Cd");
+    fs.mkdirSync(legacyCwd);
     const seen: string[] = [];
+    const resumeIds: Array<string | null | undefined> = [];
     fixture.setAttemptAction((input, tabId) => {
       const target = fixture.createdSubtaskTargets.find((value) => value.tabId === tabId)!;
-      assert.equal(input.grokLoopResumeSessionId, target.sessionId);
+      if (input.loopSubtaskId !== "legacy-missing") assert.equal(input.grokLoopResumeSessionId, target.sessionId);
       assert.ok(input.executionCwd);
       assert.equal(fs.existsSync(path.join(input.executionCwd, "AGENTS.md")), false);
       assert.equal(fs.statSync(path.join(input.executionCwd, "src")).isDirectory(), true);
       seen.push(input.executionCwd);
-      target.sessionId ??= input.loopSubtaskId === "independent" ? "independent-session" : nativeSession;
+      resumeIds.push(input.grokLoopResumeSessionId);
+      target.sessionId = input.grokLoopResumeSessionId ?? `${input.loopSubtaskId}-session`;
       fixture.publish(input, tabId, { status: "end", content: "完成" });
     });
     const run = async (subtaskId: string, round: number, continueFromSubtaskId?: string) => {
@@ -677,17 +684,33 @@ test("Grok Loop+ keeps the first native session's isolated cwd across repairs an
     assert.notEqual(seen[4], seen[0]);
     assert.equal(fs.statSync(seen[0], { bigint: true }).ino, initial.ino);
     assert.deepEqual(fs.readdirSync(seen[0]), []);
-    const [first, next, further, independent, legacy] = fixture.readTask("grok-task")!.subTasks;
+    const [first, next, further, independent] = fixture.readTask("grok-task")!.subTasks;
     assert.ok(first.executionSession?.grokExecutionRootId);
     assert.deepEqual(next.executionSession, first.executionSession);
     assert.deepEqual(further.executionSession, first.executionSession);
     assert.notEqual(independent.executionSession?.grokExecutionRootId, first.executionSession.grokExecutionRootId);
-    assert.match((await run("legacy", 6)).detail ?? "", /旧版 Grok 子任务没有记录原执行目录/);
-    assert.equal(seen.length, 5);
-    assert.deepEqual(fixture.readTask("grok-task")!.subTasks[4].executionSession, legacy.executionSession);
+    assert.equal((await run("legacy-found", 6)).outcome, "completed");
+    const foundSession = fixture.readTask("grok-task")!.subTasks[4].executionSession;
+    assert.equal(seen[5], legacyCwd);
+    assert.equal(resumeIds[5], "legacy-session");
+    assert.equal(foundSession?.sessionId, "legacy-session");
+    assert.equal(foundSession?.grokExecutionCwd, legacyCwd);
+    assert.ok(foundSession?.grokExecutionRootId);
+    assert.equal((await run("legacy-missing", 7)).outcome, "completed");
+    const fallbackCwd = seen[6];
+    assert.notEqual(fallbackCwd, legacyCwd);
+    assert.equal(resumeIds[6], null);
+    assert.match(fixture.attemptCalls[6].displayPrompt, /升级兼容/);
+    assert.match(fixture.attemptCalls[6].modelPrompt, /不要假定已继承旧对话/);
+    const fallbackSession = fixture.readTask("grok-task")!.subTasks[5].executionSession;
+    assert.equal(fallbackSession?.sessionId, "legacy-missing-session");
+    assert.ok(fallbackSession?.grokExecutionRootId);
+    assert.equal((await run("legacy-missing", 8)).outcome, "completed");
+    assert.equal(seen[7], fallbackCwd);
+    assert.equal(resumeIds[7], "legacy-missing-session");
     fs.writeFileSync(path.join(seen[0], "unknown.txt"), "preserve");
-    assert.match((await run("first", 7)).detail ?? "", /已保留现场/);
-    assert.equal(seen.length, 5);
+    assert.match((await run("first", 9)).detail ?? "", /已保留现场/);
+    assert.equal(seen.length, 8);
     assert.equal(fs.readFileSync(path.join(seen[0], "unknown.txt"), "utf8"), "preserve");
   } finally { fixture.dispose(); }
 });

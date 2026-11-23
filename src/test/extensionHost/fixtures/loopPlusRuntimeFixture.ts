@@ -109,6 +109,7 @@ export function createLoopPlusRuntimeFixture(options: {
   configId?: string | null;
   resolveThinkingMode?: LoopPlusRuntimeAdapterDeps["resolveThinkingMode"];
   executionRootFactory?: LoopPlusRuntimeAdapterDeps["createExecutionRoot"];
+  findLegacyGrokExecutionCwd?: LoopPlusRuntimeAdapterDeps["findLegacyGrokExecutionCwd"];
   observeAttemptTermination?: LoopPlusRuntimeAdapterDeps["observeAttemptTermination"] | false;
   ownsDepartmentAttemptResources?: LoopPlusRuntimeAdapterDeps["ownsDepartmentAttemptResources"];
   acquireAttemptExecution?: LoopPlusRuntimeAdapterDeps["acquireAttemptExecution"];
@@ -475,14 +476,15 @@ export function createLoopPlusRuntimeFixture(options: {
       return () => { completionListeners.delete(listener); };
     },
     resolveThinkingMode: options.resolveThinkingMode ?? (() => "low"),
-    createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd) => {
+    findLegacyGrokExecutionCwd: options.findLegacyGrokExecutionCwd,
+    createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd, grokExecutionCwd) => {
       if (rootFailure) {
         throw new Error(rootFailure);
       }
       rootSequence += 1;
       const rootId = rootSequence;
       rootsCreated.push(rootId);
-      const root = options.executionRootFactory?.(grokExecutionRootId, useWorkspaceCwd);
+      const root = options.executionRootFactory?.(grokExecutionRootId, useWorkspaceCwd, grokExecutionCwd);
       return {
         cwd: root?.cwd ?? path.join(rootDir, `root-${rootId}`),
         isolateProjectInstructions: root?.isolateProjectInstructions,

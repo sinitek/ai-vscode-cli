@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { CLI_LIST, type CliName } from "./cli/types";
 import type { LoopSubtaskDecision, LoopSubtaskRecord, LoopTaskRecord } from "./loopTaskStore";
 import type { LoopPlusDecision } from "./loopPlusDecision";
@@ -9,6 +10,7 @@ export type LoopSubtaskSession = {
   sessionId: string;
   configId: string | null;
   grokExecutionRootId?: string;
+  grokExecutionCwd?: string;
 };
 
 export function readLoopContinuationSource(value: unknown): string | undefined | null {
@@ -30,6 +32,8 @@ export function normalizeLoopSubtaskSession(value: unknown): LoopSubtaskSession 
   return {
     cli: raw.cli as CliName, sessionId: raw.sessionId.trim(), configId: raw.configId?.trim() || null,
     ...(raw.cli === "grok" && isGrokLoopExecutionRootId(raw.grokExecutionRootId) ? { grokExecutionRootId: raw.grokExecutionRootId } : {}),
+    ...(raw.cli === "grok" && typeof raw.grokExecutionCwd === "string" && path.isAbsolute(raw.grokExecutionCwd)
+      ? { grokExecutionCwd: path.normalize(raw.grokExecutionCwd) } : {}),
   };
 }
 
@@ -38,7 +42,7 @@ export function resolveLoopSubtaskSession(
   subtask: Pick<LoopSubtaskDecision, "id" | "continueFromSubtaskId">,
   cli: CliName,
   configId: string | null | undefined,
-): { sessionId: string | null; sourceSubtaskId: string | null; reason: string; grokExecutionRootId?: string } {
+): { sessionId: string | null; sourceSubtaskId: string | null; reason: string; grokExecutionRootId?: string; grokExecutionCwd?: string } {
   const sourceSubtaskId = subtask.continueFromSubtaskId || subtask.id || null;
   const source = task.subTasks.find((item) => item.id === sourceSubtaskId);
   const binding = normalizeLoopSubtaskSession(source?.executionSession);
@@ -51,6 +55,7 @@ export function resolveLoopSubtaskSession(
   return {
     sessionId: binding.sessionId, sourceSubtaskId, reason: "续接来源子任务会话",
     ...(binding.grokExecutionRootId ? { grokExecutionRootId: binding.grokExecutionRootId } : {}),
+    ...(binding.grokExecutionCwd ? { grokExecutionCwd: binding.grokExecutionCwd } : {}),
   };
 }
 

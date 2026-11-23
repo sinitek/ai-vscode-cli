@@ -122,6 +122,7 @@ import {
   isLoopSubtaskLinkFailedError,
   resolveGrokLoopExecutionCwd,
 } from "./loopSubtaskExecutionRoot";
+import { findLegacyGrokLoopCwd } from "./legacyGrokLoopSession";
 import {
   DSH_WORKSPACE_RULES_FILE_NAME,
   KIMI_CODE_WORKSPACE_RULES_FILE_NAME,
@@ -892,10 +893,10 @@ function normalizeWorkspacePath(value: string): string {
   return value.replace(/\\/g, "/");
 }
 
-function createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd: string, grokExecutionRootId?: string) {
+function createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd: string, grokExecutionRootId?: string, grokExecutionCwd?: string) {
   try {
     return createLoopSubtaskExecutionRoot(workspaceCwd, grokExecutionRootId
-      ? { persistentCwd: resolveGrokLoopExecutionCwd(workspaceCwd, grokExecutionRootId, DATA_DIR) }
+      ? { persistentCwd: resolveGrokLoopExecutionCwd(workspaceCwd, grokExecutionRootId, DATA_DIR, grokExecutionCwd) }
       : {});
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -4665,6 +4666,10 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
           configId: role === "subtask" ? input.loopSubtaskConfigId : undefined,
         },
       ),
+      findLegacyGrokExecutionCwd: async (sessionId) => {
+        const workspaceCwd = resolveWorkspaceCwd();
+        return workspaceCwd ? findLegacyGrokLoopCwd(workspaceCwd, sessionId) : null;
+      },
       ownsDepartmentAttemptResources: (request) => {
         if (usesDepartmentInteractiveRuntime(request.targetCli) && usesDepartmentOwner(readLoopTaskRecord(request.taskId)?.department)) {
           getDepartmentInteractiveRuntime().authorizeAttempt(request.taskId, request.subtaskId, request.attemptId);
@@ -4678,12 +4683,12 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         ? getDepartmentInteractiveRuntime().observe(request.taskId, request.attemptId)
         : departmentOwnerResources(request.taskId, request.targetCli)
           ? departmentOwnerPreparation(request.targetCli).observe(request.taskId, request.attemptId, request.subtaskId) : null,
-      createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd) => {
+      createExecutionRoot: (grokExecutionRootId, useWorkspaceCwd, grokExecutionCwd) => {
         const workspaceCwd = resolveWorkspaceCwd();
         if (!workspaceCwd) return null;
         return useWorkspaceCwd
           ? { cwd: workspaceCwd, isolateProjectInstructions: false, dispose: () => undefined }
-          : createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd, grokExecutionRootId);
+          : createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd, grokExecutionRootId, grokExecutionCwd);
       },
       createSubtaskTarget: (cli, options) => createLoopSubtaskRunTarget(cli, options),
       recordDepartmentSubtaskTarget: (target) => {
@@ -5839,6 +5844,9 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
       } } : {}),
       subtaskId: fixed.loopSubtaskId, attemptId: fixed.loopAttemptId, expected,
       grokExecutionRootId: fixed.grokLoopExecutionRootId,
+      grokExecutionCwd: fixed.grokLoopExecutionCwd,
+      grokRecoveredLegacySessionId: fixed.grokLoopRecoveredLegacySessionId,
+      grokLegacySessionFallbackFromSessionId: fixed.grokLoopLegacySessionFallbackFromSessionId,
       cancel: () => cancelLoopPlusInvocation(target.tabId),
       execute: (capture) => runPromptWithDepartmentAdmission(fixed, { ...options, departmentInteractiveRunner: capture,
         ...(fixed.taskRole === "main" ? { departmentLeaderSession: {

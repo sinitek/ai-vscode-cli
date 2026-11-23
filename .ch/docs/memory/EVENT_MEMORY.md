@@ -41,6 +41,7 @@ starter 默认不预置事件。接入真实项目后，从第一条真正影响
 
 | 日期 | 类型 | 事件 | 结果/原因 | 可复用结论 | 来源 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23 | 失败原因 / 成功方案 | Grok Loop+ 旧任务升级后无法续跑 | Grok `session/load` 依赖原 cwd，而 1.9.x attempt 清理会删除空临时根；升级后的根身份校验因此拒绝旧绑定 | 从原生索引唯一核验旧 cwd 后按原 session 恢复；无法安全确认时显式新建会话继续当前子任务，保留旧会话数据，不能静默假装上下文已继承 | `.ch/docs/exec-plans/completed/2026-11/2026-11-23-bugfix-grok-loop-legacy-resume.md`；`.ch/docs/runbooks/PITFALLS.md` |
 | 2026-11-21 | 失败原因 / 成功方案 | 产研部组长有原生会话却被当成只读历史 | 首轮后的通用自动压缩和群聊提问用本地 Tab 键查普通会话映射，未走部门原生会话入口 | 同一组长的提问和调度共用队列及原 Owner，普通压缩不进入组长会话 | `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-session-continuation.md` |
 | 2026-11-21 | 失败原因 / 成功方案 | 产研部中止未确认 | 冷中止只在首次请求断连时转发，原代次控制冲突和轮询失败跳过原 Owner，默认日志缺少原因 | 扩大原 Owner 中止转发范围，按代次记录固定原因和转发结果，群聊汇总原因 | `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-unconfirmed-feedback.md` |
 | 2026-11-21 | 失败原因 / 成功方案 | 产研部冷中止部分失败 | 原代次通信失败时总监停止状态没有保存。未绑定票据或前一个 Owner 的回执缺失可挡住同组其它执行的取消 | 先保存停止派发，再独立取消各组和原 Owner。完整证明只用于确认退出和释放占用 | `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-partial-drain.md` |

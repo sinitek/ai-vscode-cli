@@ -43,11 +43,14 @@ async function harness(t: test.TestContext, leader: CliName, employee: CliName =
   const runtime = createDepartmentInteractiveRuntime({ producer, store, ownerDirectory: path.join(directory, "owners"), readTask: read, updateTask: update });
   const cleanup = createDepartmentProductionCleanup({ store, producer, ownerDirectory: path.join(directory, "owners"), workspaceKey: () => "workspace", readTask: read,
   });
-  const run = (round = "round-1", execute?: Parameters<typeof runtime.run>[0]["execute"], role: "leader" | "employee" = "leader", cancel = () => {}, grokExecutionRootId?: string) => producer.track("leader", () => runtime.run({
+  const run = (round = "round-1", execute?: Parameters<typeof runtime.run>[0]["execute"], role: "leader" | "employee" = "leader", cancel = () => {}, grokExecutionRootId?: string, grokLegacySessionFallbackFromSessionId?: string, grokExecutionCwd?: string, grokRecoveredLegacySessionId?: string) => producer.track("leader", () => runtime.run({
     taskId: "leader", role, invocationId: round, sessionId: role === "leader" ? "local_leader" : null,
     ...(role === "employee" ? { initializeLocalSession: () => "local_employee" } : {}),
     ...(role === "employee" ? { subtaskId: "employee", attemptId: "attempt" } : {}), expected: { configId: "profile", revision: "revision" }, cancel,
     ...(grokExecutionRootId ? { grokExecutionRootId } : {}),
+    ...(grokExecutionCwd ? { grokExecutionCwd } : {}),
+    ...(grokRecoveredLegacySessionId ? { grokRecoveredLegacySessionId } : {}),
+    ...(grokLegacySessionFallbackFromSessionId ? { grokLegacySessionFallbackFromSessionId } : {}),
     execute: execute ?? (async capture => { await capture({}, async () => {})(`native-${role}`); }),
   }));
   t.after(async () => { await producer.close("leader").catch(() => undefined); producer.closeAll();
@@ -59,6 +62,39 @@ test("department transport selection covers every existing Loop CLI", () => {
   assert.equal(CLI_LIST.length, 7);
   for (const cli of CLI_LIST) assert.equal(usesDepartmentInteractiveRuntime(cli), cli !== "codex" && cli !== "opencode");
   assert.equal(usesDepartmentInteractiveRuntime("unknown"), false);
+});
+
+test("department Grok Owner only replaces an unversioned legacy session with an explicit fallback capability", async t => {
+  const h = await harness(t, "claude", "grok", true); await h.run();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 }); scheduler.dispatch([{ subtaskId: "employee", attemptId: "attempt" }]);
+  const legacySession = { cli: "grok" as const, sessionId: "legacy-session", configId: "profile" };
+  h.update("leader", { subTasks: [{ id: "employee", title: "员工", status: "running", executionSession: legacySession }], loopPlus: scheduler.snapshot() });
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  saved.value.capacity.employees.push(JSON.stringify(["leader", "attempt"])); assert.equal(h.store.write(saved.value).ok, true);
+  h.runtime.authorizeAttempt("leader", "employee", "attempt");
+  const rootId = "0e9f04ab-3ca8-4e41-8f10-876fb954d378";
+  await h.run("attempt", async capture => { await capture({}, async () => {})("replacement-session"); }, "employee", () => {}, rootId, legacySession.sessionId);
+  assert.deepEqual(h.read("leader")?.subTasks[0].executionSession, {
+    cli: "grok", sessionId: "replacement-session", configId: "profile", grokExecutionRootId: rootId,
+  });
+  h.update("leader", { status: "completed" }); await h.producer.retire("leader", 1);
+});
+
+test("department Grok Owner upgrades cwd metadata only when the recovered native session id is unchanged", async t => {
+  const h = await harness(t, "claude", "grok", true); await h.run();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 }); scheduler.dispatch([{ subtaskId: "employee", attemptId: "attempt" }]);
+  const legacySession = { cli: "grok" as const, sessionId: "legacy-session", configId: "profile" };
+  h.update("leader", { subTasks: [{ id: "employee", title: "员工", status: "running", executionSession: legacySession }], loopPlus: scheduler.snapshot() });
+  const saved = h.store.read("root", "workspace"); assert.ok(saved.ok && saved.value);
+  saved.value.capacity.employees.push(JSON.stringify(["leader", "attempt"])); assert.equal(h.store.write(saved.value).ok, true);
+  h.runtime.authorizeAttempt("leader", "employee", "attempt");
+  const rootId = "0e9f04ab-3ca8-4e41-8f10-876fb954d378";
+  const cwd = path.join(os.tmpdir(), "sinitek-loop-subtask-Ab12Cd");
+  await h.run("attempt", async capture => { await capture({}, async () => {})(legacySession.sessionId); }, "employee", () => {}, rootId, undefined, cwd, legacySession.sessionId);
+  assert.deepEqual(h.read("leader")?.subTasks[0].executionSession, {
+    ...legacySession, grokExecutionRootId: rootId, grokExecutionCwd: cwd,
+  });
+  h.update("leader", { status: "completed" }); await h.producer.retire("leader", 1);
 });
 
 test("producer observation rejection logs fixed reasons without changing the denial", async t => {

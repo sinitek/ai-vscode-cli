@@ -6599,7 +6599,7 @@
     {
       "id": "plugin.rule.loop_execution_root_safe_cleanup",
       "name": "Loop 临时执行根仅按登记身份非递归拆链",
-      "description": "Loop+ 隔离子任务的根通过链接写回真实工作区，不能作为目录树递归删除。经典 Loop 不再创建临时隔离根。一般执行根登记链接的设备号、inode、创建时间，清理前用 lstat 校验；Windows junction 只用非递归 rmdir，其他符号链接和仍匹配源文件的硬链接只用 unlink，最后只删除空根。Grok 因 ACP session/load 同时依赖 sessionId 与 cwd，按首次 Grok 执行创建不透明目录标识并与原生子任务会话绑定；同子任务重试及 continueFromSubtaskId 后继复用该根，链接仍每 attempt 刷新。Windows 跨卷时持久根放在工作区隐藏同卷目录，否则放在插件数据目录。未知内容、根或链接身份变化以及占用均保留现场；旧 Grok 会话缺少根标识或原生恢复失败时拒绝改绑/新建替代会话。创建失败和正常收尾共用保留式清理约束，不自动清扫旧残留根。",
+      "description": "Loop+ 隔离子任务的根通过链接写回真实工作区，不能递归删除。一般执行根登记链接身份；清理前校验根和链接，只拆除已登记链接并删除空根，未知内容和身份变化保留现场。Grok ACP 的 session/load 同时依赖 sessionId 与 cwd；稳定根标识随原生子任务会话绑定，同子任务重试和 continueFromSubtaskId 后继复用，链接仍每 attempt 刷新。Windows 跨卷时执行根放在工作区隐藏同卷目录，否则使用插件数据目录。兼容 1.9.x 旧绑定时，仅当 Grok 原生索引对 sessionId 唯一指向受支持的旧版临时根，且原根缺失或为空，才恢复该 cwd 并将其持久化；找不到、歧义或根含未知内容时，可带明确上下文提示创建新会话继续当前子任务，只有精确匹配的无根旧 Grok 绑定允许由 Department Owner 更新。旧 Grok 会话文件保留不删除；已有根标识会话恢复失败仍停止，不静默降级。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6609,7 +6609,22 @@
           "path": "src/loopSubtaskExecutionRoot.ts"
         },
         {
+          "path": "src/legacyGrokLoopSession.ts"
+        },
+        {
+          "path": "src/loopSubtaskSession.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts"
+        },
+        {
           "path": "src/test/loop/loopSubtaskExecutionRoot.test.ts"
+        },
+        {
+          "path": "src/test/loop/legacyGrokLoopSession.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"
         },
         {
           "path": "ARCHITECTURE.md",

@@ -876,7 +876,7 @@
 
 - 现象：Grok 员工首轮成功，续跑可能报 `department-interactive-session-conflict`。同一 session ID 在新 cwd 下会触发 `session/load` 的 `Path not found.`；普通启动回退新建后，部门 Owner 正确拒绝替换原绑定。
 - 排查：先核对同一子任务两轮的原生会话和执行目录。不要关闭 Owner 冲突校验，也不要把恢复失败按新会话成功处理。
-- 规避：Loop+ 将不透明执行目录标识随 Grok 会话持久化，跨轮次与跨子任务续接复用原 cwd，严格恢复失败即停止。旧绑定没有目录标识时保留原记录；需要继续执行时新派任务，不改绑旧会话。
+- 规避：Loop+ 将不透明执行目录标识随 Grok 会话持久化，跨轮次与跨子任务续接复用该根。升级兼容先在 Grok 原生索引内找唯一匹配的旧版临时根；只有受支持生成路径、会话元数据和根状态都能核实时，才沿原 cwd 恢复并持久化该 cwd。找不到、匹配不唯一或根包含未知内容时，用明确标注的新会话继续当前子任务，仅在 Owner 校验原 Grok 会话绑定仍一致后更新绑定；不删除 Grok 历史。已有根标识会话的严格恢复失败仍停止，不降级新会话。
 - 证据：`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`；[真实 Grok 探针和回归记录](../exec-plans/completed/2026-11/2026-11-19-bugfix-grok-loop-session-cwd.md#验证结果)。
 
 ## Windows 不能把 ~/.codex 当作真实路径

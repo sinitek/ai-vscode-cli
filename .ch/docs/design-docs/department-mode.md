@@ -81,7 +81,7 @@ Loop+ 为新员工创建的交互 Tab 初始可以没有本地 transcript sessio
 
 非 Codex/OpenCode 组长续接时，可信部门运行时只从当前有效代次的交互 Owner binding，或 producer 已核验的代次续接证明中取得 native session，并将它单独传给原交互 runner；本地 transcript key 仍用于消息定位。新代尚无原生 binding 时显式按首次会话启动。缺失、冲突、关闭代次或无法回读精确账本 binding 时拒绝执行，不依赖可丢失的通用 session-meta 映射，也不绕过普通会话及员工的本地历史只读校验。
 
-Grok 员工的 ACP `session/load` 需要首次启动的 cwd。部门 Owner 将隔离执行目录标识随原生会话一起持久化；原子任务重试和经 `continueFromSubtaskId` 的多跳续接都沿用该目录。每轮仍由 Loop+ adapter 在 runner 停止后拆除登记链接，保留空目录供以后恢复。恢复失败不创建替代会话，不放宽原绑定冲突校验；不自动改写缺少目录标识的历史会话。
+Grok 员工的 ACP `session/load` 需要首次启动的 cwd。部门 Owner 将隔离执行目录标识以及经核验恢复的旧 cwd 随原生会话一起持久化；原子任务重试和经 `continueFromSubtaskId` 的多跳续接都沿用该目录。每轮仍由 Loop+ adapter 在 runner 停止后拆除登记链接，保留空目录供以后恢复。对缺少目录标识的 1.9.x 历史绑定，只在 Grok 原生索引唯一匹配受支持旧版生成根且旧根可安全恢复时续接原会话；找不到时以显式标记的新会话继续，并仅允许 Owner 替换仍匹配原 CLI、配置和会话 ID 的旧绑定。其它绑定冲突、已有目录标识会话的严格恢复失败仍停止执行，不放宽 Owner 校验；旧 Grok 会话文件不删除。
 
 ### 完整提示词传递（2026-11-17）
 

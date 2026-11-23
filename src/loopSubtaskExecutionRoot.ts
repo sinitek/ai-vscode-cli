@@ -5,7 +5,7 @@ import * as path from "path";
 import { logError, logInfo } from "./logger";
 import { removeEmptyDirBestEffort } from "./shared/fsCleanup";
 
-const EXECUTION_ROOT_PREFIX = "sinitek-loop-subtask-";
+export const LOOP_SUBTASK_EXECUTION_ROOT_PREFIX = "sinitek-loop-subtask-";
 export const LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME = ".sinitek-loop-tmp";
 export const LOOP_SUBTASK_LINK_FAILED_CODE = "LOOP_SUBTASK_LINK_FAILED";
 
@@ -13,12 +13,37 @@ export function isGrokLoopExecutionRootId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export function resolveGrokLoopExecutionCwd(workspaceCwd: string, rootId: string, dataDir: string): string {
+export function resolveGrokLoopExecutionCwd(workspaceCwd: string, rootId: string, dataDir: string, legacyCwd?: string): string {
   if (!isGrokLoopExecutionRootId(rootId)) throw new Error("Grok 子任务执行目录标识无效。");
+  if (legacyCwd !== undefined) {
+    if (path.resolve(legacyCwd) !== legacyCwd || !isLegacyGrokLoopExecutionCwd(workspaceCwd, legacyCwd)) {
+      throw new Error("旧版 Grok 子任务执行目录不在受支持的临时根中。");
+    }
+    return legacyCwd;
+  }
   const base = process.platform === "win32" && !isSameVolumePath(workspaceCwd, dataDir)
     ? path.join(workspaceCwd, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME)
     : path.join(dataDir, "grok-loop-workspaces");
   return path.join(base, `grok-${rootId}`);
+}
+
+export function isLegacyGrokLoopExecutionCwd(workspaceCwd: string, cwd: string): boolean {
+  const workspaceRoot = path.resolve(workspaceCwd);
+  const osTmp = os.tmpdir();
+  const base = process.platform === "win32" && !isSameVolumePath(osTmp, workspaceRoot)
+    ? path.join(workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME)
+    : osTmp;
+  const candidate = path.resolve(cwd);
+  return candidate === cwd && isLegacyGrokLoopCwd(candidate, base);
+}
+
+function isLegacyGrokLoopCwd(cwd: string, base: string): boolean {
+  if (!path.isAbsolute(cwd) || path.normalize(cwd) !== cwd) return false;
+  const parent = path.dirname(cwd);
+  const sameParent = process.platform === "win32" ? parent.toLowerCase() === base.toLowerCase() : parent === base;
+  const name = path.basename(cwd);
+  return sameParent && name.startsWith(LOOP_SUBTASK_EXECUTION_ROOT_PREFIX)
+    && /^[a-zA-Z0-9]{6}$/.test(name.slice(LOOP_SUBTASK_EXECUTION_ROOT_PREFIX.length));
 }
 
 const HIDDEN_ROOT_ENTRIES = new Set([
@@ -126,14 +151,14 @@ function createExecutionRootDir(workspaceRoot: string, persistentCwd?: string): 
   const osTmp = os.tmpdir();
   if (process.platform !== "win32" || isSameVolumePath(osTmp, workspaceRoot)) {
     return {
-      cwd: fs.mkdtempSync(path.join(osTmp, EXECUTION_ROOT_PREFIX)),
+      cwd: fs.mkdtempSync(path.join(osTmp, LOOP_SUBTASK_EXECUTION_ROOT_PREFIX)),
       localTempRoot: null,
     };
   }
   const localTempRoot = path.join(workspaceRoot, LOOP_SUBTASK_SAME_VOLUME_TEMP_DIR_NAME);
   fs.mkdirSync(localTempRoot, { recursive: true });
   return {
-    cwd: fs.mkdtempSync(path.join(localTempRoot, EXECUTION_ROOT_PREFIX)),
+    cwd: fs.mkdtempSync(path.join(localTempRoot, LOOP_SUBTASK_EXECUTION_ROOT_PREFIX)),
     localTempRoot,
   };
 }
@@ -246,7 +271,7 @@ function logCleanupFailure(cwd: string, targetPath: string, error: unknown): voi
   }).catch(() => undefined);
 }
 
-function isSameVolumePath(left: string, right: string): boolean {
+export function isSameVolumePath(left: string, right: string): boolean {
   return path.parse(path.resolve(left)).root.toLowerCase()
     === path.parse(path.resolve(right)).root.toLowerCase();
 }

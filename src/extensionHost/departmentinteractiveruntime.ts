@@ -46,6 +46,9 @@ type Invocation = {
   initializeLocalSession?: () => string | null;
   subtaskId?: string; attemptId?: string; expected: { configId: string | null; revision: string };
   grokExecutionRootId?: string;
+  grokExecutionCwd?: string;
+  grokRecoveredLegacySessionId?: string;
+  grokLegacySessionFallbackFromSessionId?: string;
   cancel(): void; execute(capture: Capture): Promise<void>;
 };
 
@@ -198,11 +201,21 @@ export function createDepartmentInteractiveRuntime(deps: {
       const session = {
         cli: selection.cli, sessionId: nativeId, configId: selection.configId,
         ...(input.role === "employee" && selection.cli === "grok" && input.grokExecutionRootId
-          ? { grokExecutionRootId: input.grokExecutionRootId } : {}),
+          ? { grokExecutionRootId: input.grokExecutionRootId,
+            ...(input.grokExecutionCwd ? { grokExecutionCwd: input.grokExecutionCwd } : {}) } : {}),
       };
       const old = input.role === "leader" ? latest.task.executionSession
         : latest.task.subTasks.find(value => value.id === input.subtaskId)?.executionSession;
-      if (old && JSON.stringify(old) !== JSON.stringify(session)) throw new Error("department-interactive-session-conflict");
+      const allowMissingLegacyGrokSession = input.role === "employee" && old?.cli === "grok"
+        && old.configId === selection.configId && old.sessionId === input.grokLegacySessionFallbackFromSessionId
+        && !old.grokExecutionRootId && !old.grokExecutionCwd;
+      const allowRecoveredLegacyGrokSession = input.role === "employee" && old?.cli === "grok"
+        && old.configId === selection.configId && old.sessionId === input.grokRecoveredLegacySessionId
+        && nativeId === old.sessionId && !old.grokExecutionRootId && !old.grokExecutionCwd;
+      if (old && JSON.stringify(old) !== JSON.stringify(session)
+        && !allowMissingLegacyGrokSession && !allowRecoveredLegacyGrokSession) {
+        throw new Error("department-interactive-session-conflict");
+      }
       const updated = deps.updateTask(task.id, input.role === "leader" ? { executionSession: session }
         : { subTasks: bindLoopSubtaskSession(latest.task.subTasks, input.subtaskId!, session) });
       const reread = deps.readTask(task.id);

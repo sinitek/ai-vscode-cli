@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as path from "node:path";
 import { bindLoopSubtaskSession, inheritLoopPlusRepairSessions, normalizeLoopSubtaskSession, readLoopContinuationSource, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../../loopSubtaskSession";
 import type { LoopSubtaskRecord } from "../../loopTaskStore";
 import type { LoopPlusDecision } from "../../loopPlusDecision";
@@ -22,6 +23,15 @@ test("explicit follow-up and same-id rework restore a persisted session", () => 
     assert.equal(resolveLoopSubtaskSession({ subTasks: [source] }, decision, "codex", "profile").sessionId, "thread-original");
   }
   assert.equal(resolveLoopSubtaskSession({ subTasks: [source] }, { id: "independent" }, "codex", "profile").sessionId, null);
+});
+
+test("legacy Grok cwd stays bound across storage normalization and continuation", () => {
+  const cwd = path.resolve("sinitek-loop-subtask-Ab12Cd");
+  const session = normalizeLoopSubtaskSession({ cli: "grok", configId: "profile", sessionId: "legacy-session",
+    grokExecutionRootId: "0e9f04ab-3ca8-4e41-8f10-876fb954d378", grokExecutionCwd: cwd });
+  assert.equal(session?.grokExecutionCwd, cwd);
+  assert.equal(resolveLoopSubtaskSession({ subTasks: [{ id: "legacy", title: "旧会话", status: "completed", executionSession: session }] },
+    { id: "repair", continueFromSubtaskId: "legacy" }, "grok", "profile").grokExecutionCwd, cwd);
 });
 
 test("missing, cross-parent, cross-CLI and cross-profile sessions are never resumed", () => {

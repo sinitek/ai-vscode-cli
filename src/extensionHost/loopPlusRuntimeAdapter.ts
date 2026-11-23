@@ -129,11 +129,12 @@ export type LoopPlusRuntimeAdapterDeps = {
     role: "main" | "subtask",
     model: string | undefined,
   ) => ThinkingMode | undefined;
-  createExecutionRoot: (grokExecutionRootId?: string, useWorkspaceCwd?: boolean) => {
+  createExecutionRoot: (grokExecutionRootId?: string, useWorkspaceCwd?: boolean, grokExecutionCwd?: string) => {
     cwd?: string;
     isolateProjectInstructions?: boolean;
     dispose: () => void | LoopSubtaskCleanupResult | Promise<void | LoopSubtaskCleanupResult>;
   } | null;
+  findLegacyGrokExecutionCwd?: (sessionId: string) => Promise<string | null>;
   /** Trusted runner observation bound to this invocation, installed before execution.
    * done must prove actual termination (including runner cleanup), never task-end records or runPrompt settlement.
    * Missing observation quarantines department occupancy; ordinary Loop+ retains its legacy behavior.
@@ -625,8 +626,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const configId = request.execution?.configId ?? deps.getActiveConfigIdForCli?.(request.targetCli) ?? null;
     const continuation = resolveLoopSubtaskSession(task ?? { subTasks: [] }, { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
     const grokExecutionRootId = request.targetCli === "grok"
-      ? continuation.sessionId ? continuation.grokExecutionRootId : randomUUID()
+      ? continuation.sessionId ? continuation.grokExecutionRootId ?? randomUUID() : randomUUID()
       : undefined;
+    let grokExecutionCwd = continuation.grokExecutionCwd;
     const sourceSessionSnapshot = JSON.stringify(task?.subTasks.find((v) => v.id === continuation.sourceSubtaskId)?.executionSession ?? null);
     const trace = deps.createPerformanceTrace?.("loop_plus", request.targetCli, "subtask");
     const finishAttempt = trace?.start("attempt");
@@ -876,6 +878,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       deps.updateTask(latest.id, { subTasks: bindLoopSubtaskSession(latest.subTasks, request.subtaskId, {
         cli: request.targetCli, sessionId, configId: recordedConfigId,
         ...(grokExecutionRootId ? { grokExecutionRootId } : {}),
+        ...(grokExecutionCwd ? { grokExecutionCwd } : {}),
       }) });
     }
 
@@ -884,8 +887,20 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (aborted || !target) {
         return { outcome: "stopped", detail: "stopped" };
       }
-      if (request.targetCli === "grok" && !grokExecutionRootId) {
-        throw new Error("旧版 Grok 子任务没有记录原执行目录，无法安全续接；原会话已保留。");
+      let grokResumeSessionId = continuation.sessionId;
+      let grokRecoveredLegacySessionId: string | undefined;
+      let grokLegacySessionFallbackFromSessionId: string | undefined;
+      if (request.targetCli === "grok" && continuation.sessionId && !continuation.grokExecutionRootId && !grokExecutionCwd) {
+        grokExecutionCwd = (await deps.findLegacyGrokExecutionCwd?.(continuation.sessionId)) ?? undefined;
+        if (grokExecutionCwd) {
+          grokRecoveredLegacySessionId = continuation.sessionId;
+        } else {
+          grokResumeSessionId = null;
+          grokLegacySessionFallbackFromSessionId = continuation.sessionId;
+          deps.log?.("loop-subtask-grok-legacy-session-unavailable", {
+            taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId,
+          });
+        }
       }
       if (usesDepartmentOwner(task?.department) && request.targetCli === "codex") {
         const current = deps.readTask(request.taskId);
@@ -905,7 +920,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         () => {
           if (ownerResources) return { cwd: undefined, dispose: () => ({ ok: true as const, retainedDirectory: false }) };
           let root: ReturnType<LoopPlusRuntimeAdapterDeps["createExecutionRoot"]>;
-          try { root = deps.createExecutionRoot(grokExecutionRootId, useWorkspaceCwd); }
+          try { root = deps.createExecutionRoot(grokExecutionRootId, useWorkspaceCwd, grokExecutionCwd); }
           catch (error) {
             if ((error as { cleanupResult?: LoopSubtaskCleanupResult })?.cleanupResult?.ok === false) failCleanup(error);
             throw error;
@@ -940,7 +955,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
               request.execution,
               request.attemptId,
             );
-            if (continuation.sessionId) {
+            if (grokResumeSessionId) {
               promptInput.modelPrompt += "\n本次续接此前子任务会话。只完成本轮新指令并写入本轮沟通文件，不重复旧任务；执行目录以本轮宿主提供的 cwd 为准，不继续使用历史临时目录。";
             }
             if (configId) {
@@ -956,7 +971,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
             if (grokExecutionRootId) {
               if (!root?.cwd) throw new Error("Grok 子任务缺少隔离执行目录。");
               promptInput.grokLoopExecutionRootId = grokExecutionRootId;
-              promptInput.grokLoopResumeSessionId = continuation.sessionId;
+              promptInput.grokLoopExecutionCwd = grokExecutionCwd;
+              promptInput.grokLoopResumeSessionId = grokResumeSessionId;
+              if (grokRecoveredLegacySessionId) promptInput.grokLoopRecoveredLegacySessionId = grokRecoveredLegacySessionId;
+              if (grokLegacySessionFallbackFromSessionId) {
+                promptInput.grokLoopLegacySessionFallbackFromSessionId = grokLegacySessionFallbackFromSessionId;
+                const compatibilityNotice = "【升级兼容】旧版 Grok CLI 会话仍保留，但未能安全找回原执行目录。本轮将使用新会话继续；请以本轮指令和工作区实际状态为准，不要假定已继承旧对话，若缺少必要上下文请先说明。\n\n";
+                promptInput.displayPrompt = compatibilityNotice + promptInput.displayPrompt;
+                promptInput.modelPrompt = compatibilityNotice + promptInput.modelPrompt;
+              }
             }
             try {
               if (departmentLease) {
