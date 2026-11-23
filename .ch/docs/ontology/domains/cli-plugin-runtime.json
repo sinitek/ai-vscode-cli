@@ -6736,7 +6736,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。产研部 Loop+ 组长所辖员工使用同一交接关页规则，专属 Owner 路径按原 Owner 回执关页。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。产研部 Loop+ 组长所辖员工使用同一交接关页规则，专属 Owner 路径按原 Owner 回执关页。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。Loop+ 完成回报提交后若宿主关页异常，可在保留 attempt、会话、工作区和活动运行守卫的前提下有界重试一次；仍失败则保留标签并记录关闭诊断。CLI 终态提示不代表报告已提交或标签已关闭。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6747,7 +6747,7 @@
         },
         {
           "path": "src/extensionHost/loopSubtaskTabs.ts",
-          "symbol": "usesCompletedLoopSubtaskTabCleanup"
+          "symbol": "retryLoopSubtaskTabClose"
         },
         {
           "path": "src/loopSubtaskAutoCompact.ts"
@@ -6762,6 +6762,14 @@
           "path": "src/extensionHost/loopPlusOrchestration.ts"
         },
         {
+          "path": "src/extensionHost/loopPlusRuntimeAdapter.ts",
+          "symbol": "closeLoopPlusSubtaskTab"
+        },
+        {
+          "path": "src/extensionHost/loopPlusDiagnostics.ts",
+          "symbol": "logLoopPlusRuntimeEvent"
+        },
+        {
           "path": "src/contextCompactionRunner.ts"
         },
         {
@@ -6769,6 +6777,12 @@
         },
         {
           "path": "src/test/loop/loopSubtaskAutoCompact.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusRuntimeIntegration.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopSubtaskTabs.test.ts"
         },
         {
           "path": ".ch/docs/design-docs/loop-subtask-session-reuse.md"

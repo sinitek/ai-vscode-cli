@@ -2057,7 +2057,7 @@ test("closes a Loop+ subtask tab only after its completed result is reported", a
     assert.deepEqual(fixture.closedSubtaskTabs, []);
     fixture.setRootFailure(null);
 
-    fixture.setCloseSubtaskTabError("panel refresh failed");
+    fixture.setCloseSubtaskTabError("模拟瞬时宿主关闭失败");
     fixture.setAttemptAction(async (input, tabId) => {
       fixture.publish(input, tabId, { status: "end", content: "kept before close" });
     });
@@ -2068,7 +2068,22 @@ test("closes a Loop+ subtask tab only after its completed result is reported", a
     assert.equal(closed.outcome, "completed");
     assert.equal(closed.detail, "kept before close");
     assert.equal(fixture.closedSubtaskTabs.length, 1);
+    assert.deepEqual(fixture.closeSubtaskTabAttempts, [fixture.closedSubtaskTabs[0], fixture.closedSubtaskTabs[0]]);
+    assert.equal(fixture.logs.filter((item) => item.event === "loop-plus-subtask-tab-auto-close-error").length, 1);
+    assert.equal(fixture.logs.some((item) => item.event === "loop-plus-subtask-tab-auto-closed"
+      && (item.detail as { closeAttempt?: number }).closeAttempt === 2), true);
     assert.equal(fixture.attemptCalls.at(-1)?.loopSubtaskId, "close-me");
+
+    fixture.setCloseSubtaskTabError("模拟持续宿主关闭失败", 2);
+    const retryHandle = fixture.adapter.startAttempt({ ...request, attemptId: "close-retry-after-error" });
+    await retryHandle.promise;
+    await retryHandle.onCompleted?.();
+    assert.equal(fixture.closedSubtaskTabs.length, 1);
+    const failedCloseAttempts = fixture.closeSubtaskTabAttempts.length;
+    fixture.setCloseSubtaskTabError(null);
+    await retryHandle.onCompleted?.();
+    assert.equal(fixture.closedSubtaskTabs.length, 2);
+    assert.equal(fixture.closeSubtaskTabAttempts.length, failedCloseAttempts + 1);
   } finally {
     fixture.dispose();
   }

@@ -28,6 +28,25 @@ function sessionKey(cli: ConversationTabRecord["cli"], sessionId: string | null)
   return JSON.stringify([cli, sessionId]);
 }
 
+export async function retryLoopSubtaskTabClose(
+  close: () => Promise<void>,
+  onFailure: (error: unknown, attempt: number, retrying: boolean) => void,
+  retryDelayMs = 100,
+): Promise<number> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await close();
+      return attempt;
+    } catch (error) {
+      const retrying = attempt < 2;
+      onFailure(error, attempt, retrying);
+      if (!retrying) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+  throw new Error("子任务标签关闭重试未完成。");
+}
+
 export function createCompletedLoopSubtaskTabCleanup(deps: {
   getWorkspaceKey: () => string;
   getTabs: () => readonly ConversationTabRecord[];

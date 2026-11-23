@@ -1,6 +1,6 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
-import { findRunningLoopSubtaskConversationTabId } from "../../extensionHost/loopSubtaskTabs";
+import { findRunningLoopSubtaskConversationTabId, retryLoopSubtaskTabClose } from "../../extensionHost/loopSubtaskTabs";
 import type { ConversationTabRecord } from "../../sessionTabs";
 
 test("finds the newest active tab by parent and subtask identity across CLIs", () => {
@@ -40,4 +40,27 @@ test("does not resolve a finished or missing subtask tab", () => {
   };
   assert.equal(findRunningLoopSubtaskConversationTabId(context, deps), null);
   assert.equal(findRunningLoopSubtaskConversationTabId(context, { ...deps, getTabs: () => [] }), null);
+});
+
+test("retries a failed subtask tab close once and reports whether it will retry", async () => {
+  let closeAttempts = 0;
+  const failures: Array<{ attempt: number; retrying: boolean; error: string }> = [];
+  const successfulAttempt = await retryLoopSubtaskTabClose(async () => {
+    closeAttempts += 1;
+    if (closeAttempts === 1) throw new Error("temporary host failure");
+  }, (error, attempt, retrying) => {
+    failures.push({ attempt, retrying, error: error instanceof Error ? error.message : String(error) });
+  }, 0);
+
+  assert.equal(successfulAttempt, 2);
+  assert.equal(closeAttempts, 2);
+  assert.deepEqual(failures, [{ attempt: 1, retrying: true, error: "temporary host failure" }]);
+});
+
+test("preserves the last subtask tab close failure after the bounded retry", async () => {
+  const failures: Array<{ attempt: number; retrying: boolean }> = [];
+  await assert.rejects(retryLoopSubtaskTabClose(async () => {
+    throw new Error("persistent host failure");
+  }, (_error, attempt, retrying) => failures.push({ attempt, retrying }), 0), /persistent host failure/);
+  assert.deepEqual(failures, [{ attempt: 1, retrying: true }, { attempt: 2, retrying: false }]);
 });

@@ -16,11 +16,23 @@ test("Loop+ persistence errors are logged with debug disabled and do not leak th
       await logger.initLogger(); logger.setDebugLogging(false);
       const secret = 'SYNTHETIC_PRIVATE_ERROR';
       diagnostics.logLoopPlusRuntimeEvent('loop-plus-persist-failed', { taskId: 'msg_test', stage: 'finish-commit', reason: 'exception', error: secret });
+      diagnostics.logLoopPlusRuntimeEvent('loop-plus-report-failed', { taskId: 'report_task', attemptId: 'attempt_test', error: secret });
+      diagnostics.logLoopPlusRuntimeEvent('loop-plus-subtask-tab-auto-close-error', {
+        taskId: 'close_task', subtaskId: 'child_a', attemptId: 'attempt_a', tabId: 'tab_a', closeAttempt: 1,
+        retrying: true, error: 'simulated close rejection',
+      });
+      diagnostics.logLoopPlusRuntimeEvent('loop-plus-subtask-tab-auto-closed', {
+        taskId: 'close_task', subtaskId: 'child_a', attemptId: 'attempt_a', tabId: 'tab_a', closeAttempt: 2,
+      });
       diagnostics.logLoopPlusRuntimeEvent('loop-plus-paused', { taskId: 'msg_test' });
       await logger.logEssential('flush');
       const files = fs.readdirSync(path.join(process.env.HOME, '.sinitek_cli', 'logs'));
       const lines = files.map((file) => fs.readFileSync(path.join(process.env.HOME, '.sinitek_cli', 'logs', file), 'utf8')).join('\\n');
-      if (!lines.includes('loop-plus-persist-failed') || lines.includes(secret) || lines.includes('msg_test')) throw Error('incorrect loop diagnostics');
+      if (!lines.includes('loop-plus-persist-failed') || !lines.includes('loop-plus-report-failed')
+        || !lines.includes('loop-plus-subtask-tab-auto-close-error') || !lines.includes('loop-plus-subtask-tab-auto-closed')
+        || !lines.includes('close_task') || !lines.includes('report_task') || !lines.includes('attempt_test')
+        || !lines.includes('retrying') || lines.includes('loop-plus-paused')
+        || lines.includes(secret) || lines.includes('msg_test')) throw Error('incorrect loop diagnostics');
     })().catch((error) => { console.error(error); process.exitCode = 1; });
   `;
   const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };

@@ -70,8 +70,9 @@ export type LoopPlusRuntimeFixture = {
   parkedAttempts: () => Array<{ subtaskId: string; tabId: string; input: PromptRunInput }>;
   peekParked: (subtaskId: string) => { input: PromptRunInput; tabId: string } | null;
   cancelledTabs: string[];
+  closeSubtaskTabAttempts: string[];
   closedSubtaskTabs: string[];
-  setCloseSubtaskTabError: (message: string | null) => void;
+  setCloseSubtaskTabError: (message: string | null, failureCount?: number) => void;
   finishParked: (subtaskId: string, options?: PublishOptions) => void;
   releaseParked: (subtaskId: string) => void;
   releaseParkedIfPresent: (subtaskId: string) => boolean;
@@ -174,8 +175,10 @@ export function createLoopPlusRuntimeFixture(options: {
   let cancelOverride: ((tabId: string) => void) | null = null;
   const removedTaskIds = new Set<string>();
   const cancelledTabs: string[] = [];
+  const closeSubtaskTabAttempts: string[] = [];
   const closedSubtaskTabs: string[] = [];
   let closeSubtaskTabError: string | null = null;
+  let closeSubtaskTabFailuresRemaining = 0;
 
   function nextId(prefix: string): string {
     sequence += 1;
@@ -510,11 +513,13 @@ export function createLoopPlusRuntimeFixture(options: {
     recordDepartmentSubtaskTarget: options.recordDepartmentSubtaskTarget,
     onSubtaskPreparationFailed: options.onSubtaskPreparationFailed,
     closeSubtaskTab: async (tabId) => {
-      closedSubtaskTabs.push(tabId);
-      messages.delete(tabId);
-      if (closeSubtaskTabError) {
+      closeSubtaskTabAttempts.push(tabId);
+      if (closeSubtaskTabError && closeSubtaskTabFailuresRemaining > 0) {
+        closeSubtaskTabFailuresRemaining -= 1;
         throw new Error(closeSubtaskTabError);
       }
+      closedSubtaskTabs.push(tabId);
+      messages.delete(tabId);
     },
     cancelInvocation: (tabId) => {
       cancelledTabs.push(tabId);
@@ -634,9 +639,11 @@ export function createLoopPlusRuntimeFixture(options: {
       return { input: attempt.input, tabId: attempt.tabId };
     },
     cancelledTabs,
+    closeSubtaskTabAttempts,
     closedSubtaskTabs,
-    setCloseSubtaskTabError: (message) => {
+    setCloseSubtaskTabError: (message, failureCount = 1) => {
       closeSubtaskTabError = message;
+      closeSubtaskTabFailuresRemaining = message ? Math.max(0, Math.floor(failureCount)) : 0;
     },
     finishParked,
     releaseParked,

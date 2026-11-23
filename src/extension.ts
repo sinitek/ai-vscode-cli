@@ -16,7 +16,7 @@ import { CONFIG_PATHS as DEPARTMENT_CONFIG_PATHS } from "./config/configPaths";
 import type { CodexRuntimeConfigEvidence } from "./config/codexRuntimeConfigIdentity";
 import * as vscode from "vscode";
 import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
-import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, usesCompletedLoopSubtaskTabCleanup } from "./extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, retryLoopSubtaskTabClose, usesCompletedLoopSubtaskTabCleanup } from "./extensionHost/loopSubtaskTabs";
 import type { LoopSubtaskTabCloseOptions } from "./loopSubtaskLifecycle";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
@@ -4824,16 +4824,16 @@ async function closeLoopPlusSubtaskTab(
   event: { taskId: string; round: number; subtaskId: string; attemptId?: string; source: "continuation" },
   closeTab: () => Promise<void>,
 ): Promise<void> {
-  try {
-    await closeTab();
-    void logInfo("loop-plus-subtask-tab-auto-closed", { ...event, tabId });
-  } catch (error) {
-    void logError("loop-plus-subtask-tab-auto-close-error", {
+  const closeAttempt = await retryLoopSubtaskTabClose(closeTab, (error, attempt, retrying) => {
+    logLoopPlusRuntimeEvent("loop-plus-subtask-tab-auto-close-error", {
       ...event,
       tabId,
+      closeAttempt: attempt,
+      retrying,
       error: error instanceof Error ? error.message : String(error),
     });
-  }
+  });
+  logLoopPlusRuntimeEvent("loop-plus-subtask-tab-auto-closed", { ...event, tabId, closeAttempt });
 }
 
 function appendLoopPlusSubtaskChat(

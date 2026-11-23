@@ -8,6 +8,7 @@ import type { ThinkingMode } from "../cli/types";
 import { createPerformanceTrace } from "../performanceLog";
 import { applyLoopModelRoutingToPrompt, applyLoopPromptThinkingToOriginProfile } from "../loopModelSwitch";
 import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
+import { retryLoopSubtaskTabClose } from "./loopSubtaskTabs";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
 import type { LoopTaskRecord } from "../loopTaskStore";
@@ -660,10 +661,18 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (!subtaskTarget || ownerResources) {
         return Promise.resolve();
       }
-      tabClosePromise ??= closeLoopPlusSubtaskTab(
-        deps, request, subtaskTarget.tabId, reason,
-        reason === "completed" ? preparedCompletedClose : preparedClose,
-      );
+      if (!tabClosePromise) {
+        const closePromise = closeLoopPlusSubtaskTab(
+          deps, request, subtaskTarget.tabId, reason,
+          reason === "completed" ? preparedCompletedClose : preparedClose,
+        );
+        tabClosePromise = closePromise;
+        void closePromise.catch(() => {
+          if (tabClosePromise === closePromise) {
+            tabClosePromise = null;
+          }
+        });
+      }
       return tabClosePromise;
     };
     const promise = (async (): Promise<LoopPlusAttemptResult> => {
@@ -1340,28 +1349,29 @@ async function closeLoopPlusSubtaskTab(
   reason: "completed" | "main-abort",
   preparedClose?: () => Promise<void>,
 ): Promise<void> {
-  try {
-    await (preparedClose ? preparedClose() : deps.closeSubtaskTab(tabId));
-    deps.log?.("loop-plus-subtask-tab-auto-closed", {
+  const closeAttempt = await retryLoopSubtaskTabClose(
+    () => preparedClose ? preparedClose() : deps.closeSubtaskTab(tabId),
+    (error, attempt, retrying) => deps.log?.("loop-plus-subtask-tab-auto-close-error", {
       taskId: request.taskId,
       round: request.round,
       subtaskId: request.subtaskId,
       attemptId: request.attemptId,
       tabId,
       reason,
-    });
-  } catch (error) {
-    deps.log?.("loop-plus-subtask-tab-auto-close-error", {
-      taskId: request.taskId,
-      round: request.round,
-      subtaskId: request.subtaskId,
-      attemptId: request.attemptId,
-      tabId,
-      reason,
+      closeAttempt: attempt,
+      retrying,
       error: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
+    }),
+  );
+  deps.log?.("loop-plus-subtask-tab-auto-closed", {
+    taskId: request.taskId,
+    round: request.round,
+    subtaskId: request.subtaskId,
+    attemptId: request.attemptId,
+    tabId,
+    reason,
+    closeAttempt,
+  });
 }
 
 function resolveAttemptOutcome(input: {
