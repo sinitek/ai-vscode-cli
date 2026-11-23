@@ -1849,7 +1849,7 @@
     {
       "id": "plugin.rule.loop_plus_protocol_repair",
       "name": "Loop+ 协议矛盾自动请求主模型纠正 JSON",
-      "description": "无效决策、验收关联或批次矛盾及空队列 wait 立即携带具体原因、有限长度旧回复和最新快照再次调用主模型，复用有效证据，纠正后继续派发或合法完成。accept 中所有新任务含补充需求须恰好归属一个 reviews[].subtaskIds 或 independentSubtaskIds，未知、重复或遗漏均拒绝；旧事件关联保持兼容，独立剩余交付不必关联本批事件或继承修复会话。沿用默认两次纠错上限和完成安全门禁；耗尽保存真实协议原因，聊天、群聊、沟通文件一致展示，显式继续可恢复原因及待验收队列。协议错误不作为业务 blocked 或用户澄清。scheduler 派发拒绝同样进入 protocolMiss，复用拒绝类型和最新快照。部分接受保留已提交验收、消息和已接受任务，只纠正剩余派发，不重验或把 failed 改成 passed，不覆盖活动元数据；只有完整交接成功才清零有界纠错次数。",
+      "description": "无 JSON、普通文本或损坏/不完整 JSON 属于格式失败，不因结构化协议纠错上限暂停；连续失败超过两次后按 1 秒起步、最多 30 秒指数退避持续自动重试，直到获得合法决策或达到全局决策安全上限，显式停止会中断退避。可解析 JSON 的字段校验、验收关联或批次矛盾及空队列 wait 携带具体原因、有限长度旧回复和最新快照再次调用主模型，默认最多纠正两次；复用有效证据，纠正后继续派发或合法完成。accept 中所有新任务含补充需求须恰好归属一个 reviews[].subtaskIds 或 independentSubtaskIds，未知、重复或遗漏均拒绝；旧事件关联保持兼容，独立剩余交付不必关联本批事件或继承修复会话。持续结构错误或安全上限耗尽保存真实协议原因，聊天、群聊、沟通文件一致展示，显式继续可恢复原因及待验收队列。协议错误不作为业务 blocked 或用户澄清。scheduler 派发拒绝同样进入 protocolMiss，复用拒绝类型和最新快照。部分接受保留已提交验收、消息和已接受任务，只纠正剩余派发，不重验或把 failed 改成 passed，不覆盖活动元数据；只有完整交接成功才清零结构化协议纠错次数。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -1869,6 +1869,13 @@
         },
         {
           "path": "src/extensionHost/loopPlusOrchestration.ts"
+        },
+        {
+          "path": "src/test/extensionHost/loopPlusOrchestration.test.ts"
+        },
+        {
+          "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
+          "anchor": "协议矛盾后的自动纠错"
         },
         {
           "path": "src/extensionHost/loopPlusDecisionStrategies.ts"
@@ -4557,6 +4564,28 @@
       ]
     },
     {
+      "id": "plugin.rule.department_lifecycle_diagnostics",
+      "name": "产研部生命周期诊断和日志保留",
+      "description": "产研部以根任务 ID 串联冷启动投影、恢复核验、整组中止、组长会话晋升和续接结果。冷投影在宿主内合并重复记录。生命周期诊断只投影允许字段和固定原因码，关闭调试也可查询。日志只用于观察。插件管理的日志及轮转文件以清理时共享工具设置中的历史保留天数为限，启动和定时清理复用公共 logger。",
+      "status": "active",
+      "applies_to": [
+        "plugin.department_task",
+        "plugin.history_retention_settings"
+      ],
+      "source_refs": [
+        {
+          "path": "src/extensionHost/departmentlifecyclediagnostics.ts"
+        },
+        {
+          "path": "src/logger.ts"
+        },
+        {
+          "path": ".ch/docs/runbooks/department-cold-start-verification.md",
+          "anchor": "日常排障日志"
+        }
+      ]
+    },
+    {
       "id": "plugin.rule.config_source_editor_validation",
       "name": "配置源码着色与保存格式校验",
       "description": "配置中心源码模式使用本地 CodeMirror 对 JSON 和 TOML 提供语法着色；Claude、DSH、ZCode 使用严格 JSON，OpenCode 源码支持 JSONC 注释和尾逗号、可视化仍限严格 JSON，Codex、Grok、Kimi Code 使用 TOML，Codex auth.json 使用 JSON。保存前 Webview 与扩展宿主统一校验格式，非法内容通过“配置保存失败”弹窗告知文件、格式和解析位置，不覆盖档案或运行配置；OpenCode 模型读取、运行 overlay、Skills 合并和档案复制同步解析 JSONC，既有 CLI 字段校验继续生效。",
@@ -5216,7 +5245,7 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务等待 activeSubtaskIds 清空；同一批次按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped。正常完成回调在全部活动子任务成功后唤醒主任务复核。当前宿主每 5 分钟巡检真实执行所有权：经典 Loop 取消失联批次调用、保留未完成 blocked 子任务和原等待控制器，并将父任务标记为 stopped + runtimeInterrupted，使群聊“继续”可以续跑；Loop+ 取消失联调用，将有对应任务记录的开放 attempt 置为 blocked 并保留原身份，不立即生成失败验收事件，显式继续时重启子任务，只有本次结果进入验收。无法关联任务记录的残留预留仍作为失败事件处理，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。主动停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复。用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。普通 Loop/Loop+ 宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。产研部仍为 running 的总监在冷宿主只读投影中仅于可信根有效且当前宿主明确没有部门控制器/续接登记时显示本宿主执行中断；正常等待控制器、未知活动状态不误报。原资源占用未核验时保留整组中止对账入口，并继续关闭续接，读取不写任务或释放占用。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。产研部整组中止关闭派发并并行停止总监 Loop、组长 Loop+ 与活动员工。一个成员已阻塞或正单独收尾时，其它成员仍立即收到中止。宿主合并同根并发请求，负责清理原执行和保存停止状态。继续执行时核对可信根、工作区、物理记录和待清理执行。停止任务已持久化且无待清理执行时可直接继续，无需额外核验按钮。读取不启动执行或释放占用，非法身份及跨 workspace 不获得此组织控制。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务等待 activeSubtaskIds 清空；同一批次按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped。正常完成回调在全部活动子任务成功后唤醒主任务复核。当前宿主每 5 分钟巡检真实执行所有权：经典 Loop 取消失联批次调用、保留未完成 blocked 子任务和原等待控制器，并将父任务标记为 stopped + runtimeInterrupted，使群聊“继续”可以续跑；Loop+ 取消失联调用，将有对应任务记录的开放 attempt 置为 blocked 并保留原身份，不立即生成失败验收事件，显式继续时重启子任务，只有本次结果进入验收。无法关联任务记录的残留预留仍作为失败事件处理，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。主动停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复。用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。普通 Loop/Loop+ 宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。产研部仍为 running 的总监在冷宿主只读投影中仅于可信根有效且当前宿主明确没有部门控制器/续接登记时显示本宿主执行中断；正常等待控制器、未知活动状态不误报。原资源占用未核验时保留整组中止对账入口，并继续关闭续接，读取不写任务或释放占用。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。产研部整组中止关闭派发并并行停止总监 Loop、组长 Loop+ 与活动员工。一个成员已阻塞或正单独收尾时，其它成员仍立即收到中止。宿主合并同根并发请求，负责清理原执行和保存停止状态。继续执行时核对可信根、工作区、物理记录和待清理执行。停止任务已持久化且无待清理执行时可直接继续，无需额外核验按钮。读取不启动执行或释放占用，非法身份及跨 workspace 不获得此组织控制。若 Loop+ 冷态恢复仅因组长会话或计划无法验证而失败，后续显式中止仍须独立核对可信任务身份和全部停止回执；只有停止快照及空容量写入读回、根任务最终确认中止后，才解除恢复核验失败栅栏。持久化、身份、容量或活动执行失败仍保持阻断。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6672,7 +6701,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。产研部 Loop+ 组长所辖员工使用同一交接关页规则，专属 Owner 路径按原 Owner 回执关页。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6680,6 +6709,10 @@
       "source_refs": [
         {
           "path": "src/loopMainAutoCompact.ts"
+        },
+        {
+          "path": "src/extensionHost/loopSubtaskTabs.ts",
+          "symbol": "usesCompletedLoopSubtaskTabCleanup"
         },
         {
           "path": "src/loopSubtaskAutoCompact.ts"
@@ -8118,7 +8151,7 @@
     {
       "id": "plugin.rule.department_group_chat_stop_state",
       "name": "总监群聊状态与原执行清理反馈",
-      "description": "总监群聊按可信根任务状态显示中止入口。停止请求在途时按钮禁用。根任务已中止后移除中止入口，原执行退出待确认时显示禁用的继续执行和原因。清理确认后按原有恢复门槛开放继续。带 runtimeInterrupted 的历史运行记录沿用已中止文案。产研部冷启动后，两级群聊依据可信根、宿主总监控制器/续接和组长运行登记显示本宿主执行已中断；历史员工执行占位不计作运行，待验收不计作主动验收。只读投影不改任务或调度状态，不确认整组停止、原执行退出或资源释放，不授权自动恢复。原占用仍只参与清理反馈与显式恢复检查。",
+      "description": "总监群聊按可信根任务状态显示中止入口。停止请求在途时按钮禁用。根任务已中止后移除中止入口，原执行退出待确认时显示禁用的继续执行和原因。清理确认后按原有恢复门槛开放继续。带 runtimeInterrupted 的历史运行记录沿用已中止文案。产研部冷启动后，两级群聊依据可信根、宿主总监控制器/续接和组长运行登记显示本宿主执行已中断；历史员工执行占位不计作运行，待验收不计作主动验收。只读投影不改任务或调度状态，不确认整组停止、原执行退出或资源释放，不授权自动恢复。Loop+ 冷态显式中止必须确认总监取消、根与模块停止状态、全部组长父调度及停止快照/容量读回；任何失败保留原容量与停止栅栏。显式继续恢复经唯一身份/模块/会话核验的原组长任务，不重复创建同模块组长；已完成组长按完成快照核验，不依赖旧聊天标签。Loop+ 组长的会话晋升同步更新部门任务仓储。显式继续时可用最近组长 main 回合及原生转录修复旧本地会话绑定，目标占用冲突或写入读回失败时保持中止。",
       "status": "active",
       "applies_to": [
         "plugin.department_task"
@@ -8133,6 +8166,18 @@
         },
         {
           "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentLeaderSessionPromotion.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentorchestration.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentruntimecomposition.test.ts"
         },
         {
           "path": "src/webview/loopGroupChatPanel.ts"

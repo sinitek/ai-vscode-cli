@@ -71,6 +71,10 @@ isolated("production Codex employee and two-round leader release original resour
   release.resolve();
   assert.deepEqual(await closing, { ok: true });
   await cleaned(h, employee.identity); await cleaned(h, leader.identity);
+  await until(() => {
+    const saved = h.store.read("root", "workspace");
+    return saved.ok && saved.value?.capacity.employees.length === 0;
+  });
   assert.equal(h.wire().filter((m) => m.method === "thread/start").length, 1);
   assert.equal(h.wire().filter((m) => m.method === "thread/resume").length, 1);
   assert.equal(h.wire(h.file("employee")).filter((m) => m.method === "turn/start").length, 1);

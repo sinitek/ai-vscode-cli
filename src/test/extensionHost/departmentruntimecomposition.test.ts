@@ -6,9 +6,11 @@ import path = require("node:path");
 import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 import type { LoopMainDecision, LoopTaskRecord } from "../../loopTaskStore";
+import type { DepartmentMetadata } from "../../department";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
+import { commitDepartmentLeaderSessionPromotion, repairStoppedDepartmentLeaderSession } from "../../extensionHost/departmentLeaderSessionPromotion";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 import { LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
@@ -21,7 +23,8 @@ const { transitionLoopMainDecision } = require("../../extensionHost/loopTaskStat
 const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 import { createLoopOrchestrationOwnershipTracker } from "../../loopOrchestrationOwnership";
 import { isLoopTaskRunOrphaned } from "../../loopGroupChat";
-function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLeaderOwnership?: (taskId: string) => void) {
+function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLeaderOwnership?: (taskId: string) => void,
+  executionMode?: DepartmentMetadata["executionMode"]) {
   const tasks = new Map<string, LoopTaskRecord>();
   const fixture = createLoopPlusRuntimeFixture({ configId: "profile", taskPersistence: {
     create: (task) => { tasks.set(task.id, structuredClone(task)); return structuredClone(task); },
@@ -80,7 +83,8 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLe
         rootPrompt: input.displayPrompt, schedulingMode: "classic", status: "running", createdAt: Date.now(), updatedAt: Date.now(), maxRounds: 20,
         currentRound: 0, communicationDir: fixture.rootDir, mainCommunicationFile: path.join(fixture.rootDir, "main.md"),
         subTasks: [], rounds: [], supplementalRequirements: [], completionRoundSummaries: [], completionRequirementCoverage: [],
-        department: { version: 1, rootTaskId: id, parentTaskId: null, leaderSubtaskId: null, role: "director", moduleTitle: "部门", routes: config.routes, limits: config.limits },
+        department: { version: 1, rootTaskId: id, parentTaskId: null, leaderSubtaskId: null, role: "director", moduleTitle: "部门", routes: config.routes, limits: config.limits,
+          ...(executionMode ? { executionMode } : {}) },
         loopPlusAcceptancePlan: config.loopPlusAcceptancePlan, modelRouting: { main: config.routes.director, subtask: config.routes.employee } };
       fixture.saveTask(task); return fixture.readTask(id)!;
     },
@@ -778,6 +782,195 @@ test("cold stop reaches exact live-leader refusal after trusted preparation and 
   assert.equal(cold.host.runtimeSnapshot(root.id), null);
 });
 
+for (const failure of ["root-write", "director-cancel"] as const) {
+test(`cold Loop+ stop keeps its fence after ${failure} and allows retry`, async (t) => {
+  const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }, undefined, "loop-plus");
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { held?.releaseLeader.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-cold-stop");
+  held.releaseLeader.resolve();
+  await h.fixture.adapter.waitForTaskIdle(held.leaderId);
+  h.composition.dispose();
+  const cold = createDepartmentRuntimeComposition({ ...h.deps, inspectLeaderSession: () => null });
+  t.after(cold.dispose);
+  assert.throws(() => cold.recoverRoot(h.fixture.readTask(held.root.id)!), /部门恢复核验阻塞：unverified-leader-session-or-plan/);
+  await cold.organizationControl.stop(h.fixture.readTask(held.root.id)!);
+
+  const root = h.fixture.readTask(held.root.id)!;
+  const leader = h.fixture.readTask(held.leaderId)!;
+  assert.equal(root.department?.executionMode, "loop-plus");
+  assert.equal(leader.status, "stopped");
+  const scheduler = createLoopPlusScheduler({ snapshot: leader.loopPlus }).snapshot();
+  assert.equal(scheduler.parentStopped, true);
+  assert.equal(scheduler.running.length, 0);
+
+  const stored = h.store.read(root.id, root.workspaceKey);
+  assert.ok(stored.ok && stored.value);
+  assert.ok(stored.value.runtime.leaders.length);
+  const staleRuntime = { ...stored.value.runtime, stopping: true,
+    leaders: stored.value.runtime.leaders.map((member) => ({ ...member, status: "paused" as const })) };
+  const staleCapacity = { ...stored.value.capacity, leaders: [], employees: [], employeeOverflow: [] };
+  assert.deepEqual(h.store.write({ ...stored.value, runtime: staleRuntime, capacity: staleCapacity }), { ok: true });
+  h.deps.updateTask(root.id, { status: "stopped", subTasks: root.subTasks.map((module) =>
+    module.id === "module-cold-stop" ? { ...module, status: "running" as const } : module) });
+  cold.dispose();
+
+  let fail = true, cancellations = 0;
+  const stopDiagnostics: Array<Parameters<NonNullable<typeof h.deps.logOrganizationStop>>[0]> = [];
+  const restarted = createDepartmentRuntimeComposition({ ...h.deps,
+    logOrganizationStop: (event) => stopDiagnostics.push(event),
+    updateTask: (id, patch) => fail && failure === "root-write" && id === root.id && patch.status === "stopped"
+      ? null : h.deps.updateTask(id, patch),
+    stopDirector: () => {
+      cancellations++;
+      if (fail && failure === "director-cancel") throw new Error("director-cancel-not-confirmed");
+    },
+  });
+  t.after(restarted.dispose);
+  await assert.rejects(restarted.organizationControl.stop(h.fixture.readTask(root.id)!));
+  assert.equal(cancellations, 1);
+  assert.equal(restarted.readOrganizationStopState(root.id), "unconfirmed");
+  assert.deepEqual(stopDiagnostics.slice(-1), [{ rootTaskId: root.id, path: "cold", result: "unconfirmed",
+    stage: failure === "root-write" ? "director-readback" : "director-cancel" }]);
+  assert.deepEqual(h.store.read(root.id, root.workspaceKey), { ok: true, value: { ...stored.value, runtime: staleRuntime, capacity: staleCapacity } });
+  fail = false;
+  await restarted.organizationControl.stop(h.fixture.readTask(root.id)!);
+  const repairedStop = h.fixture.readTask(root.id)!;
+  assert.equal(repairedStop.status, "stopped");
+  assert.equal(repairedStop.subTasks.find((module) => module.id === "module-cold-stop")?.status, "pending");
+  const repairedSnapshot = h.store.read(root.id, root.workspaceKey);
+  assert.ok(repairedSnapshot.ok && repairedSnapshot.value);
+  assert.equal(repairedSnapshot.value.runtime.stopping, false);
+  assert.deepEqual(repairedSnapshot.value.capacity.leaders, []);
+  assert.deepEqual(repairedSnapshot.value.capacity.employees, []);
+  assert.deepEqual(stopDiagnostics.slice(-1), [{ rootTaskId: root.id, path: "cold", result: "confirmed", stage: "cleanup" }]);
+
+});
+}
+
+for (const staleSession of [false, true]) {
+test(`confirmed cold Loop+ stop resumes only the stopped leader in its original session (stale binding: ${staleSession})`, { timeout: 10000 }, async (t) => {
+  const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }, undefined, "loop-plus");
+  const nextTurn = latch(), releaseNextTurn = latch();
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { held?.releaseLeader.resolve(); releaseNextTurn.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-cold-stop");
+  const rootId = held.root.id, leaderId = held.leaderId;
+  const completedModule = { id: "completed-before-restart", title: "已完成组长", status: "running" as const,
+    prompt: "Finish this module and preserve its completed session." };
+  h.update(rootId, { subTasks: [...h.fixture.readTask(rootId)!.subTasks, completedModule] });
+  h.finish();
+  const completed = await h.composition.host.startLeader(rootId, { leaderSubtaskId: completedModule.id,
+    moduleTitle: completedModule.title, prompt: completedModule.prompt });
+  assert.ok(completed.ok);
+  await completed.done;
+  assert.equal(h.fixture.readTask(completed.taskId)?.status, "completed");
+  held.releaseLeader.resolve();
+  await h.fixture.adapter.waitForTaskIdle(leaderId);
+  h.composition.dispose();
+
+  const originalLeader = h.fixture.readTask(leaderId)!;
+  assert.ok(originalLeader.sessionId);
+  const nativeSessionId = originalLeader.sessionId;
+  h.fixture.adapter.host().stopParent(leaderId);
+  const legacySession = "local_old-leader-session";
+  if (staleSession) h.update(leaderId, { sessionId: legacySession });
+  const previous = h.store.read(rootId, held.root.workspaceKey);
+  assert.ok(previous.ok && previous.value);
+  const staleRuntime = { ...previous.value.runtime, stopping: true,
+    leaders: previous.value.runtime.leaders.map((member) => ({ ...member, status: member.taskId === leaderId ? "paused" as const : "completed" as const })) };
+  const staleCapacity = { ...previous.value.capacity, leaders: [], employees: [], employeeOverflow: [] };
+  assert.deepEqual(h.store.write({ ...previous.value, runtime: staleRuntime, capacity: staleCapacity }), { ok: true });
+  h.update(rootId, { status: "stopped", subTasks: h.fixture.readTask(rootId)!.subTasks.map((module) => ({ ...module, status: "running" as const })) });
+  for (const [tabId, target] of h.targets) if (target.sessionId === originalLeader.sessionId
+    || target.sessionId === h.fixture.readTask(completed.taskId)?.sessionId) h.targets.delete(tabId);
+  const prepared: string[] = [];
+  let bindFails = staleSession, targetBusy = staleSession;
+  const cold = createDepartmentRuntimeComposition({ ...h.deps,
+    prepareLeaderContinuation: (task) => {
+      prepared.push(task.id);
+      assert.equal(task.id, leaderId);
+      const current = repairStoppedDepartmentLeaderSession(task, {
+        workspaceKey: held!.root.workspaceKey, readTask: h.fixture.readTask,
+        bindTask: (id, sessionId) => bindFails ? null : h.update(id, { sessionId }),
+        readContext: () => ({ taskRole: "main", loopTaskId: leaderId }),
+        isTargetAvailable: () => !targetBusy,
+        readRuns: () => [{ id: "main-turn", cli: task.cli, sessionId: nativeSessionId, taskRole: "main",
+          loopTaskId: task.id, prompt: "原组长回合", startedAt: task.createdAt, endedAt: task.createdAt + 1, durationMs: 1, status: "stopped" },
+        { id: "employee-turn", cli: task.cli, sessionId: "employee-native", taskRole: "subtask", loopTaskId: task.id,
+          prompt: "员工回合", startedAt: task.createdAt + 1, endedAt: task.createdAt + 2, durationMs: 1, status: "end" }],
+      });
+      if (!current) return null;
+      const target = { tabId: "restored-leader", cli: current.cli, sessionId: current.sessionId! };
+      h.targets.set(target.tabId, target);
+      return target;
+    },
+  });
+  t.after(cold.dispose);
+  assert.throws(() => cold.recoverRoot(h.fixture.readTask(rootId)!), /部门停止尚未确认/);
+  await cold.organizationControl.stop(h.fixture.readTask(rootId)!);
+  assert.equal(h.fixture.readTask(rootId)?.status, "stopped");
+  assert.ok(h.fixture.readTask(rootId)?.subTasks.every((module) => module.status === "pending"));
+  assert.equal(h.fixture.readTask(leaderId)?.status, "stopped");
+  assert.equal(h.fixture.readTask(completed.taskId)?.status, "completed");
+  assert.deepEqual(prepared, []);
+  if (staleSession) {
+    await assert.rejects(cold.organizationControl.continue(h.fixture.readTask(rootId)!), /leader-continuation-target-unverified/);
+    targetBusy = false;
+    await assert.rejects(cold.organizationControl.continue(h.fixture.readTask(rootId)!), /leader-continuation-target-unverified/);
+    assert.equal(h.fixture.readTask(leaderId)?.sessionId, legacySession);
+    assert.equal(h.fixture.readTask(rootId)?.status, "stopped");
+    assert.deepEqual(cold.readCapacity(rootId)?.leaders, []);
+    bindFails = false;
+  }
+  h.fixture.queueMain(async (input, tabId) => {
+    assert.equal(input.loopTaskId, leaderId);
+    nextTurn.resolve();
+    await releaseNextTurn.promise;
+    h.fixture.publish(input, tabId, { status: "stopped", content: "stopped again" });
+  });
+  await cold.organizationControl.continue(h.fixture.readTask(rootId)!, "中止后继续临时验收任务");
+  await nextTurn.promise;
+
+  assert.equal(h.fixture.readTask(rootId)?.status, "running");
+  assert.equal(h.fixture.readTask(leaderId)?.sessionId, originalLeader.sessionId);
+  assert.equal(cold.readOrganizationStopState(rootId), undefined);
+  assert.deepEqual(prepared, Array(staleSession ? 3 : 1).fill(leaderId));
+  assert.deepEqual(h.fixture.createdTaskIds, [leaderId, completed.taskId]);
+  const stopping = cold.organizationControl.stop(h.fixture.readTask(rootId)!);
+  releaseNextTurn.resolve();
+  await stopping;
+  assert.equal(h.fixture.readTask(rootId)?.status, "stopped");
+  assert.equal(h.fixture.readTask(leaderId)?.status, "stopped");
+  assert.deepEqual(cold.readCapacity(rootId)?.leaders, []);
+});
+}
+
+test("Loop+ leader promotion preserves task history and requires a durable matching main transcript", async (t) => {
+  const h = harness({}, undefined, "loop-plus");
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { held?.releaseLeader.resolve(); h.dispose(); });
+  held = await startHeldLeader(h, "module-promotion");
+  const taskId = held.leaderId, targetSession = "native-original-leader";
+  const local = h.update(taskId, { sessionId: "local_leader-before-adoption" })!;
+  let role: "subtask" | "main" = "subtask", writeCount = 0;
+  const deps = {
+    workspaceKey: local.workspaceKey, readTask: h.fixture.readTask,
+    readContext: () => ({ taskRole: role, loopTaskId: taskId }),
+    bindTask: (id: string, sessionId: string) => { writeCount++; return h.update(id, { sessionId }); },
+  };
+  assert.equal(commitDepartmentLeaderSessionPromotion(local, targetSession, deps), null);
+  role = "main";
+  assert.equal(commitDepartmentLeaderSessionPromotion(local, targetSession, { ...deps, workspaceKey: "foreign" }), null);
+  assert.equal(commitDepartmentLeaderSessionPromotion(local, targetSession, { ...deps, bindTask: () => local }), null);
+  assert.equal(writeCount, 0);
+  const promoted = commitDepartmentLeaderSessionPromotion(local, targetSession, deps);
+  assert.deepEqual(promoted, { ...local, sessionId: targetSession });
+  assert.equal(writeCount, 1);
+  assert.equal(commitDepartmentLeaderSessionPromotion(local, "another-native-session", deps), null);
+  assert.equal(writeCount, 1);
+});
+
 
 for (const change of ["workspace", "routes", "session", "cli", "status", "plan", "missing", "configuration", "dispose"] as const) {
   test(`cold stop rejects expired recovery before settlement: ${change}`, async (t) => {
@@ -983,7 +1176,11 @@ for (const fail of [false, true]) {
     assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), true);
     assert.equal(h.composition.readOrganizationStopState(root.id), "stopping");
     assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
-    assert.equal(h.composition.readCapacity(root.id)?.leaders.length, 0);
+    assert.equal(h.composition.readCapacity(root.id), null, "a durable stop fence hides stale in-memory capacity claims");
+    const saved = h.store.read(root.id, root.workspaceKey);
+    assert.ok(saved.ok && saved.value);
+    assert.deepEqual(saved.value.capacity.leaders, []);
+    assert.deepEqual(saved.value.capacity.employees, []);
     await assert.rejects(h.composition.organizationControl.continue(root, "停止在途"), /正在停止/);
     release.resolve();
     const error = await outcome;
@@ -1029,7 +1226,7 @@ test("missing root stop write retains the continuation fence after member cleanu
   h.deps.resolveTargetForRoot = (task) => { targets++; return resolveTarget(task); };
   h.deps.prepareRoutes = async () => { prepares++; };
   const stopping = h.composition.organizationControl.stop(h.fixture.readTask(id)!);
-  const refused = assert.rejects(stopping, /部门停止归属或状态已变化/);
+  const refused = assert.rejects(stopping, /部门停止尚未完成全部执行清理|部门停止归属或状态已变化/);
   await leaderReleased.promise;
   assert.equal(cancellations, 1);
   assert.ok(ownerCleanups > 0);
@@ -1039,7 +1236,7 @@ test("missing root stop write retains the continuation fence after member cleanu
   assert.equal(reads, 0, "member cleanup alone must not trigger the confirmation read");
 
   directorDone.resolve(); await refused;
-  assert.equal(reads, 1);
+  assert.equal(reads, 0, "an unconfirmed stop does not read back a successful root stop");
   assert.equal(h.composition.readOrganizationStopState(id), "unconfirmed");
   assert.equal(h.composition.isOrganizationStopUnconfirmed(id), true);
   await assert.rejects(h.composition.organizationControl.continue(h.fixture.readTask(id)!, "不得继续"), /停止未确认/);
@@ -1122,7 +1319,7 @@ test("a newer stop during leader continuation preparation prevents the old hando
 
   const before = h.fixture.mainCalls.length;
   const continuing = h.composition.organizationControl.continue(h.fixture.readTask(id)!, "迟到交接");
-  const rejected = assert.rejects(continuing, /已停止|resume-cancelled/);
+  const rejected = assert.rejects(continuing, /已停止|resume-cancelled|root-not-ready/);
   await preparing.promise;
   assert.equal(h.fixture.readTask(id)?.status, "running");
   assert.equal(h.composition.readOrganizationStopState(id), undefined, "admission consumes the previous receipt before preparation settles");

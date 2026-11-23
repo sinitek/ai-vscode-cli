@@ -35,7 +35,7 @@ function args(argv) {
   }
   if (!result.product || !result.report) throw new Error("Usage: node scripts/verify_department_full_eh_integration.js --product <isolated-built-extension> --report <new-json-path>");
   result.scenario ??= "loop-plus";
-  if (result.scenario && !["loop-plus", "stop-continue", "successive-stop-continue", "cold-start", "cold-recovery", "codex-long-tool-output"].includes(result.scenario)) throw new Error("Unknown scenario");
+  if (!["loop-plus", "loop-plus-stop-continue", "loop-plus-cold-recovery", "stop-continue", "successive-stop-continue", "cold-start", "cold-recovery", "codex-long-tool-output"].includes(result.scenario)) throw new Error("Unknown scenario");
   for (const field of ["directorCli", "leaderCli", "employeeCli"]) {
     result[field] ??= "codex";
     if (!["codex", "opencode"].includes(result[field])) throw new Error(`Unknown role CLI: ${field}`);
@@ -43,6 +43,9 @@ function args(argv) {
   result.leaderModel ??= result.leaderCli === "opencode" ? "explicit" : "default";
   if (!["default", "explicit"].includes(result.leaderModel)
     || result.leaderCli !== "opencode" && result.leaderModel !== "default") throw new Error("Unsupported leader model selection");
+  if (["loop-plus-stop-continue", "loop-plus-cold-recovery"].includes(result.scenario)
+    && [result.directorCli, result.leaderCli, result.employeeCli].some(cli => cli !== "codex"))
+    throw new Error("Loop+ continuation verification requires all Codex roles");
   if (result.scenario === "stop-continue" && [result.directorCli, result.leaderCli, result.employeeCli].includes("opencode")
     && (![result.directorCli, result.leaderCli, result.employeeCli].every(cli => cli === "opencode") || result.leaderModel !== "default"))
     throw new Error("OpenCode continuation requires all three roles and default models");
@@ -1049,10 +1052,9 @@ async function drivePublicEntry(root, port, prompt, report, input) {
   }
 }
 
-async function driveContinuation({ root, port, report, scenario, readTasks, inspectCleanup, readRuntime, healthy }) {
+async function driveContinuation({ port, report, scenario, readTasks, inspectCleanup, readRuntime, readRuns, healthy, ordinary = false, restart }) {
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
-  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-  let group;
+  let browser, group;
   const wait = async (label, check) => {
     const until = Date.now() + Math.min(timeoutMs, 60000);
     while (Date.now() < until) {
@@ -1071,14 +1073,36 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     assert.equal(originalLeader.department.rootTaskId, rootId);
     assert.deepEqual(originalLeader.loopPlusAcceptancePlan, originalRoot.loopPlusAcceptancePlan);
     const original = readRuntime(rootId);
-    const originalBindings = original.executionBindings;
-    assert.equal(originalBindings.length, 2, "stop must see both actual original Owner bindings");
-    assert.ok(originalBindings.some(({ identity }) => identity.role === "employee" && identity.subtaskId === held.subtaskId && identity.attemptId === held.attemptId));
-    report.continuationEvidence = { rootId, originalRoot, originalLeader, originalBindings, originalRuntime: original };
-    const view = await createDepartmentWebviewAdapter(browser, "webviewView");
-    try { await view.locator("#openCurrentLoopGroupChat").click(); }
-    finally { await view.close(); }
+    const originalBindings = original.executionBindings ?? [];
+    let originalNativeSession = originalLeader.sessionId;
+    if (ordinary) {
+      assert.deepEqual(originalBindings, []);
+      assert.equal(originalLeader.department.executionMode, "loop-plus");
+      assert.ok(originalLeader.loopPlus.running.some(attempt => attempt.subtaskId === held.subtaskId && attempt.attemptId === held.attemptId));
+      const leaderRun = readRuns().findLast(run => run.loopTaskId === held.leaderTaskId && run.taskRole === "main" && run.status === "end");
+      assert.match(leaderRun?.sessionId ?? "", /^[\da-f-]{36}$/i, "original leader did not save a native Codex session");
+      originalNativeSession = leaderRun.sessionId;
+    } else {
+      assert.equal(originalBindings.length, 2, "stop must see both actual original Owner bindings");
+      assert.ok(originalBindings.some(({ identity }) => identity.role === "employee" && identity.subtaskId === held.subtaskId && identity.attemptId === held.attemptId));
+    }
+    report.continuationEvidence = { rootId, originalRoot, originalLeader, originalBindings, originalRuntime: original, originalNativeSession };
+    const requestCountBeforeRestart = scenario.history.length;
+    const controlPort = restart ? await restart(rootId) : port;
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${controlPort}`);
+    if (!restart) {
+      const view = await createDepartmentWebviewAdapter(browser, "webviewView");
+      try { await view.locator("#openCurrentLoopGroupChat").click(); }
+      finally { await view.close(); }
+    }
     group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId });
+    if (restart) {
+      await group.locator("#departmentContinueBlocked").waitFor({ state: "visible" });
+      assert.match(await group.locator("#taskPanelSlot").innerText(), /本宿主执行已中断/);
+      assert.equal(await group.locator('[data-action="continueTask"]').isDisabled(), true);
+      assert.equal(scenario.history.length, requestCountBeforeRestart, "cold startup replayed model work");
+      report.stages.coldProjection = "passed";
+    }
     await group.locator('#panelActions [data-action="stopTask"]').click();
     report.continuationEvidence.stopClickedAt = new Date().toISOString();
     // Wait for the PUBLIC action to persist cancellation, then unblock the local
@@ -1091,7 +1115,7 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
       const value = await inspectCleanup(rootId, "stopped");
       return value.complete ? value : null;
     });
-    assert.deepEqual(cleanup.saved.executionBindings, originalBindings, "stopping changed original bindings");
+    assert.deepEqual(cleanup.saved.executionBindings ?? [], originalBindings, "stopping changed original bindings");
     report.continuationEvidence.stoppedCleanup = cleanup;
     report.stages.stoppedCleanup = "passed";
     const continueControl = group.locator('#panelActions [data-action="continueTask"]');
@@ -1111,19 +1135,24 @@ async function driveContinuation({ root, port, report, scenario, readTasks, insp
     report.continuationEvidence.continueClickedAt = new Date().toISOString();
     await wait("same root successor generation", () => {
       const value = readRuntime(rootId);
+      if (ordinary) {
+        const prior = original.runtime.leaders.find(member => member.taskId === held.leaderTaskId);
+        return value.runtime.leaders.some(member => member.taskId === held.leaderTaskId
+          && member.generation > prior.generation && ["running", "completed"].includes(member.status));
+      }
       return value.leaderExecutionSets.some((set) => set.scope.leaderTaskId === held.leaderTaskId
         && !original.leaderExecutionSets.some((old) => old.scope.generation === set.scope.generation && old.scope.leaderTaskId === set.scope.leaderTaskId)) ? value : null;
     });
     const currentTasks = readTasks();
     assert.equal(currentTasks.filter((task) => task.department?.role === "director").length, 1);
     assert.equal(currentTasks.find((task) => task.id === rootId)?.sessionId, originalRoot.sessionId);
-    assert.equal(currentTasks.find((task) => task.id === held.leaderTaskId)?.sessionId, originalLeader.sessionId);
+    assert.equal(currentTasks.find((task) => task.id === held.leaderTaskId)?.sessionId, originalNativeSession);
     assert.deepEqual(currentTasks.find((task) => task.id === held.leaderTaskId)?.department, originalLeader.department);
     report.stages.publicContinue = "passed"; report.activePhase = "successorCompletion";
   } finally {
     scenario.releaseEmployee();
     try { await group?.close(); }
-    finally { await browser.close(); }
+    finally { await browser?.close(); }
   }
 }
 
@@ -1142,6 +1171,8 @@ function matchesExpectedCleanupSets(sets, expected) {
 
 async function main() {
   const input = args(process.argv.slice(2));
+  const ordinaryContinuation = ["loop-plus-stop-continue", "loop-plus-cold-recovery"].includes(input.scenario);
+  const ordinaryLoopPlus = input.scenario === "loop-plus" || ordinaryContinuation;
   const product = path.resolve(input.product);
   const reportPath = path.resolve(input.report);
   assert.equal(fs.existsSync(reportPath), false, "--report must name a new file");
@@ -1204,11 +1235,12 @@ async function main() {
     const saved = read.value;
     if (!saved) return { complete: false, reason: "runtime-missing" };
     const bindings = saved.executionBindings || [], sets = saved.leaderExecutionSets || [];
-    if (input.scenario === "loop-plus") {
+    if (ordinaryLoopPlus) {
       assert.equal(task.department.executionMode, "loop-plus");
       assert.deepEqual(bindings, []);
       assert.deepEqual(sets, []);
-      const complete = saved.runtime.leaders.length > 0 && saved.runtime.leaders.every((member) => member.status === "completed")
+      const complete = (phase !== "stopped" || task.status === "stopped") && !saved.runtime.stopping && saved.runtime.leaders.length > 0
+        && saved.runtime.leaders.every((member) => member.status === (phase === "stopped" ? "paused" : "completed"))
         && saved.capacity.leaders.length === 0 && saved.capacity.employees.length === 0;
       return { complete, rootId, saved };
     }
@@ -1259,8 +1291,8 @@ async function main() {
     const scenarioFactory = input.scenario === "cold-recovery" ? createDepartmentColdRecoveryEhScenario
       : input.scenario === "cold-start" ? createDepartmentColdStartEhScenario
       : input.scenario === "successive-stop-continue" ? createDepartmentSuccessiveContinuationEhScenario
-      : input.scenario === "stop-continue" ? createDepartmentContinuationEhScenario : createDepartmentFullEhScenario;
-    const scenario = scenarioFactory({ prompt, readTasks, inspectCleanup, roles: report.roles,
+      : input.scenario === "stop-continue" || ordinaryContinuation ? createDepartmentContinuationEhScenario : createDepartmentFullEhScenario;
+    const scenario = scenarioFactory({ prompt, readTasks, inspectCleanup, roles: report.roles, ordinaryContinuation,
       ...(longToolFixture ? { longToolOutput: true, readLongToolEvidence,
         readLongToolInvocation: (rootId, leaderId) => {
           const grant = readLongToolGrant(rootId, leaderId);
@@ -1750,7 +1782,45 @@ requires_openai_auth = false
       return;
     }
     if (responses.failures.length) throw new Error(`Responses protocol stopped after root creation: ${JSON.stringify(responses.failures)}`);
-    if (input.scenario === "stop-continue") await driveContinuation({ root, port, report, scenario, readTasks, inspectCleanup, readRuntime,
+    const restart = input.scenario === "loop-plus-cold-recovery" ? async (rootId) => {
+      const secondPort = await freePort();
+      const entry = path.join(root, "loop-plus-second-host.js");
+      fs.writeFileSync(entry, `const fs = require('node:fs');
+const vscode = require('vscode');
+exports.run = async () => {
+  await vscode.extensions.getExtension('sinitek.sinitek-cli-tools').activate();
+  await vscode.commands.executeCommand('sinitek-cli-tools.openLoopGroupChat', ${JSON.stringify(rootId)});
+  fs.writeFileSync(${JSON.stringify(path.join(root, "loop-plus-second-ready"))}, 'ready');
+  const deadline = Date.now() + ${timeoutMs};
+  while (!fs.existsSync(${JSON.stringify(path.join(root, "host-finish.signal"))})) {
+    if (Date.now() >= deadline) throw new Error('second host finish signal timed out');
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+};`);
+      fs.writeFileSync(path.join(root, "host-finish.signal"), "cold restart\n", { flag: "wx" });
+      const exitDeadline = Date.now() + 10000;
+      while (!exited && Date.now() < exitDeadline) await sleep(100);
+      assert.deepEqual(report.hostExit, { exitCode: 0, signal: null }, "first VS Code did not exit normally");
+      report.firstHostExit = report.hostExit;
+      assert.equal(readTasks().find(task => task.id === rootId)?.status, "running", "first host did not leave the historical running record");
+      fs.unlinkSync(path.join(root, "host-finish.signal"));
+      scenario.releaseEmployee();
+      const secondArgs = args.map(arg => arg.startsWith("--remote-debugging-port=") ? `--remote-debugging-port=${secondPort}`
+        : arg.startsWith("--extensionTestsPath=") ? `--extensionTestsPath=${entry}` : arg);
+      const log = fs.openSync(path.join(root, "loop-plus-second-vscode.log"), "wx");
+      exited = false;
+      child = cp.spawn(code, secondArgs, { env, detached: process.platform !== "win32", stdio: ["ignore", log, log], windowsHide: true });
+      fs.closeSync(log);
+      child.once("exit", (exitCode, signal) => { exited = true; report.hostExit = { exitCode, signal }; });
+      child.once("error", (error) => { exited = true; report.hostSpawnError = error.message; });
+      const ready = path.join(root, "loop-plus-second-ready"), readyDeadline = Date.now() + 30000;
+      while (!exited && !fs.existsSync(ready) && Date.now() < readyDeadline) await sleep(100);
+      assert.ok(fs.existsSync(ready), "second VS Code did not open the original group chat");
+      await waitForDebugger(secondPort, readyDeadline);
+      return secondPort;
+    } : undefined;
+    if (input.scenario === "stop-continue" || ordinaryContinuation) await driveContinuation({ port, report, scenario, readTasks, inspectCleanup, readRuntime,
+      ordinary: ordinaryContinuation, restart, readRuns: () => readJson(path.join(home, ".sinitek_cli/tasks.json"))?.runs ?? [],
       healthy: () => { assert.equal(exited, false, "EH exited during stop/continue"); responses.assertHealthy(); } });
     if (input.scenario === "successive-stop-continue") await drivePublicSuccessiveContinuation({ port, product, report, scenario,
       readTasks, inspectCleanup, readRuntime, healthy: () => {
@@ -1809,25 +1879,45 @@ requires_openai_auth = false
     }
     openCodeProvider?.assertHealthy(); responses.assertHealthy();
     if (!completed) throw new Error(`production root did not complete within the scenario budget; owner receipts and capacity return remain unconfirmed`);
-    report.activePhase = input.scenario === "loop-plus" ? "capacityReturn" : "ownerReceipts";
+    report.activePhase = ordinaryLoopPlus ? "capacityReturn" : "ownerReceipts";
     const snapshot = scenario.snapshot();
     assert.ok(snapshot.rootId && snapshot.moduleCount === 2 && snapshot.leaders.length === 2 && snapshot.employees.length === (2 + continuationRounds(snapshot).length), "both real module executions must be observed");
     const cleanup = await inspectCleanup(snapshot.rootId);
     assert.equal(cleanup.complete, true, "module settlement or capacity return is incomplete");
     const tasks = readTasks(), rootTask = tasks.find((value) => value.id === snapshot.rootId);
-    if (input.scenario === "loop-plus") {
+    if (ordinaryLoopPlus) {
       const { createLoopPlusScheduler } = require(path.join(product, "dist/loopPlusScheduler.js"));
+      const employeeSessions = [];
       for (const id of snapshot.leaders) {
         const leader = tasks.find((value) => value.id === id);
         assert.equal(leader?.department?.executionMode, "loop-plus");
         assert.equal(leader.status, "completed");
         assert.deepEqual(leader.loopPlusAcceptancePlan, rootTask.loopPlusAcceptancePlan);
         assert.ok(createLoopPlusScheduler({ snapshot: leader.loopPlus }).snapshot().seenAttempts.some((attempt) => attempt.acceptance === "passed"));
-        const employee = snapshot.employees.find((value) => value.leaderTaskId === id);
-        const subtask = leader.subTasks.find((value) => value.id === employee?.subtaskId);
-        assert.ok(subtask?.executionSession?.sessionId, "ordinary Loop+ did not save the employee session");
-        assert.equal(subtask.communicationFile, employee.reportFile);
+        for (const employee of snapshot.employees.filter(value => value.leaderTaskId === id)) {
+          const subtask = leader.subTasks.find(value => value.id === employee.subtaskId);
+          if (ordinaryContinuation && employee.attemptId === snapshot.continuation.held.attemptId
+            && id === snapshot.continuation.held.leaderTaskId) continue;
+          assert.ok(subtask?.executionSession?.sessionId, "ordinary Loop+ did not save the employee session");
+          assert.equal(subtask.communicationFile, employee.reportFile);
+          employeeSessions.push(subtask.executionSession);
+        }
       }
+      if (ordinaryContinuation) assert.ok(snapshot.continuation.repaired && snapshot.continuation.accepted, "missing resumed event acceptance");
+      const tabsFile = path.join(home, ".sinitek_cli/workspace-settings", `${rootTask.workspaceKey}.json`);
+      const tabs = () => readJson(tabsFile)?.conversationTabs?.tabs;
+      const hasSession = (tab, cli, sessionId) => tab.cli === cli && (tab.sessionIdByCli?.[cli] ?? tab.sessionId) === sessionId;
+      const closeDeadline = Date.now() + 5000;
+      let remaining;
+      do {
+        const currentTabs = tabs();
+        assert.ok(Array.isArray(currentTabs), "persisted conversation tabs unavailable");
+        assert.ok(currentTabs.some((tab) => hasSession(tab, rootTask.cli, rootTask.sessionId)), "director conversation tab disappeared");
+        remaining = employeeSessions.filter(({ cli, sessionId }) => currentTabs.some((tab) => hasSession(tab, cli, sessionId)));
+        if (remaining.length) await sleep(100);
+      } while (remaining.length && Date.now() < closeDeadline);
+      assert.deepEqual(remaining, [], "employee conversation tabs remained after durable handoff");
+      report.employeeTabsClosed = employeeSessions.length;
       Object.assign(report.stages, { ownerReceipts: "not-applicable", capacityReturn: "passed", eventAcceptance: "passed",
         unifiedAcceptancePlan: "passed", directorReport: "passed" });
       report.cleanupEvidence = cleanup;

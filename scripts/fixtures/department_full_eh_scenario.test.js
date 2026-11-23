@@ -169,6 +169,19 @@ test("production summary side request is bounded to this public requirement", as
   await assert.rejects(h.ask(prefix + JSON.stringify({ requirement: "foreign prompt" })), /unrelated/);
 });
 
+test("summary budget adds one slot for an explicit continuation", async () => {
+  for (const continuationPrompt of [undefined, "unique test prompt\ncontinue the original task"]) {
+    const scenario = createDepartmentFullEhScenario({ prompt: "unique test prompt", readTasks: () => [],
+      inspectCleanup: async () => ({ complete: false }), continuationPrompt });
+    const payload = request('你是任务摘要器。只输出摘要\n' + JSON.stringify({ requirement: continuationPrompt ?? "unique test prompt" }));
+    const allowed = continuationPrompt ? 7 : 6;
+    for (let index = 1; index <= allowed; index++) {
+      assert.equal(await scenario.respond(payload, { index, request: {} }), "隔离本机文本协议验收");
+    }
+    await assert.rejects(scenario.respond(payload, { index: allowed + 1, request: {} }), /summary stage budget/);
+  }
+});
+
 test("Chat Completions adapter shares real leader parser/identity and rejects foreign stages and titles", async () => {
   const h = fixture(); await h.ask(director("root-actual", 0));
   const context = () => ({ index: 1, purpose: "task", request: {} });

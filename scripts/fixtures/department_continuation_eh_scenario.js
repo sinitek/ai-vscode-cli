@@ -56,8 +56,11 @@ function createDepartmentContinuationEhScenario(options) {
         }
         if (text.includes("Snapshot says completion is allowed: yes")) {
           assert.equal(accepted, true, "resumed closeout lacks successor event acceptance");
-          assert.equal(leader.subTasks.length, 2, "unexpected resumed work");
-          assert.equal(leader.subTasks.find((subtask) => subtask.id === "text-protocol-continued")?.status, "completed");
+          const successorId = options.ordinaryContinuation ? held.subtaskId : "text-protocol-continued";
+          assert.equal(leader.subTasks.length, options.ordinaryContinuation ? 1 : 2, "unexpected resumed work");
+          assert.equal(leader.subTasks.find((subtask) => subtask.id === successorId)?.status, "completed");
+          assert.ok(leader.loopPlus.seenAttempts.some(attempt => attempt.subtaskId === held.subtaskId
+            && attempt.attemptId === held.attemptId && attempt.outcome === "stopped" && attempt.acceptance === "failed"), "original attempt was not retained");
           return record(context, "leader-report", id, { status: "completed", progressPercent: 100,
             answerConclusion: "ISOLATED PROTOCOL", finalSummary: "公开停止后原组织续接并完成事件验收。",
             acceptance: { passed: true, checks }, requirementCoverage: [{ name: "停止后明确续接文本转换", passed: true }] });

@@ -16,7 +16,7 @@ import { CONFIG_PATHS as DEPARTMENT_CONFIG_PATHS } from "./config/configPaths";
 import type { CodexRuntimeConfigEvidence } from "./config/codexRuntimeConfigIdentity";
 import * as vscode from "vscode";
 import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
-import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose } from "./extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, usesCompletedLoopSubtaskTabCleanup } from "./extensionHost/loopSubtaskTabs";
 import type { LoopSubtaskTabCloseOptions } from "./loopSubtaskLifecycle";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
@@ -183,6 +183,7 @@ import { departmentRoleCliIssue, normalizeDepartmentMetadata, usesDepartmentOwne
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
 import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
+import { canPromoteDepartmentLeaderSession, commitDepartmentLeaderSessionPromotion, isDepartmentLeaderMainContext, repairStoppedDepartmentLeaderSession } from "./extensionHost/departmentLeaderSessionPromotion";
 import { DepartmentRuntimeStore } from "./extensionHost/departmentruntimestore";
 import { DepartmentExecutionRecovery } from "./extensionHost/departmentexecutionrecovery";
 import { createDepartmentProductionTaskStoreForHost } from "./extensionHost/departmentProductionTaskStore";
@@ -4264,6 +4265,15 @@ async function prepareDepartmentInvocation(input: PromptRunInput, tabId: string 
     executionProfile: route.configId ? { configId: route.configId, model: route.model ?? null,
       thinkingMode: route.thinkingMode, openCodeVariant: route.openCodeVariant ?? null } : undefined };
 }
+function departmentLeaderSessionPromotionDeps() {
+  return {
+    workspaceKey: activeWorkspaceKey,
+    readTask: readLoopTaskRecord,
+    bindTask: bindLoopTaskToSession,
+    readContext: (cli: CliName, sessionId: string) => resolveLoopConversationTabContextFromMessages(loadSessionMessages(cli, sessionId)),
+  };
+}
+
 function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRuntimeComposition> {
   if (departmentRuntimeComposition) return departmentRuntimeComposition;
   const runtime = getLoopPlusRuntimeAdapter();
@@ -4322,6 +4332,22 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       if ((ownerExecution && !getDepartmentExecutionProducer().canContinueLeader(task.id)) || task.workspaceKey !== activeWorkspaceKey
         || !validateDepartmentRoutes(expected.routes) || task.cli !== expected.routes.leader.cli
         || task.originProfile?.configId !== expected.routes.leader.configId) return null;
+      if (!ownerExecution && task.sessionId && isLocalSessionId(task.sessionId)) {
+        const repaired = repairStoppedDepartmentLeaderSession(task, {
+          ...departmentLeaderSessionPromotionDeps(), readRuns: () => readTaskStore().runs,
+          isTargetAvailable: (cli, sessionId, taskId) => {
+            const tabs = ensureConversationTabs().tabs.filter((tab) => tab.cli === cli
+              && (getConversationTabSessionIdForCli(tab, cli) === sessionId
+                || isDepartmentLeaderMainContext(resolveConversationTabLoopContext(tab), taskId)));
+            if (tabs.length === 0) return true;
+            const [tab] = tabs;
+            return tabs.length === 1 && !isTabRunActive(tab.id) && getConversationTabSessionIdForCli(tab, cli) === sessionId
+              && isDepartmentLeaderMainContext(resolveConversationTabLoopContext(tab), taskId);
+          },
+        });
+        if (!repaired) return null;
+        task = repaired;
+      }
       const existing = task.sessionId && findConversationTabIdBySession(task.cli, task.sessionId);
       if (existing) {
         const tab = getConversationTabById(existing);
@@ -5845,7 +5871,7 @@ async function runPrompt(
   const role = department?.role === "leader" && input.taskRole === "subtask" ? "employee" : department?.role ?? input.taskRole;
   const tabId = options.targetTabId ?? getActiveConversationTabId();
   const tab = tabId ? getConversationTabById(tabId) : null;
-  const subtask = task && task.workspaceKey === activeWorkspaceKey && !department && !task.departmentInvalid
+  const subtask = task && task.workspaceKey === activeWorkspaceKey && usesCompletedLoopSubtaskTabCleanup(task)
     && input.taskRole === "subtask" && input.loopSubtaskId && input.loopRound
     ? { taskId: task.id, subtaskId: input.loopSubtaskId, round: input.loopRound, attemptId: input.loopAttemptId }
     : null;
@@ -7309,7 +7335,17 @@ function migrateLocalSessionToTargetSession(
   targetSessionId: string,
   options: { notifyPanel?: boolean } = {}
 ): void {
+  const promotion = departmentLeaderSessionPromotionDeps();
+  const context = promotion.readContext(cli, localSessionId);
+  const task = context.taskRole === "main" && context.loopTaskId ? readLoopTaskRecord(context.loopTaskId) : null;
+  const leader = task?.status === "running" && task.cli === cli && task.sessionId === localSessionId
+    && canPromoteDepartmentLeaderSession(task, targetSessionId, promotion.workspaceKey) ? task : null;
+  const targetContext = leader && promotion.readContext(cli, targetSessionId);
   sessionLifecycleController.migrateLocalSessionToTargetSession(cli, localSessionId, targetSessionId, options);
+  if (leader && targetContext && ((targetContext.loopTaskId && !isDepartmentLeaderMainContext(targetContext, leader.id))
+    || !commitDepartmentLeaderSessionPromotion(leader, targetSessionId, promotion))) {
+    void logError("department-leader-session-promotion-unconfirmed", { taskId: leader.id });
+  }
 }
 
 function findSupersedingLocalSessionTarget(cli: CliName, sessionId: string): string | null {

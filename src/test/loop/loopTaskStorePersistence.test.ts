@@ -917,9 +917,8 @@ test("ordinary task update emits classified identity-lock and owner-transaction 
   const ownedTaskFile = path.join(departmentRoot, "loop-tasks.json");
   identities.initializeLoopTaskIdentityCatalog(departmentRoot, () => new Map([[ownedTaskFile, [{ id: task.id }]]]));
   assert.equal(identities.inspectLoopTaskIdentityOwnership(task.id), "department-owned");
-  await new Promise((resolve) => setTimeout(resolve, 30));
   assert.throws(() => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] }), /Controlled task identities require owner transactions/);
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await logger.logEssential("fixture-log-write-barrier");
 
   const entries = fs.readFileSync(logFile, "utf8").split("\n").filter((line) => line.includes(" | "))
     .map((line) => ({ event: line.split("] ")[2].split(" | ")[0], data: JSON.parse(line.slice(line.indexOf(" | ") + 3)) }));

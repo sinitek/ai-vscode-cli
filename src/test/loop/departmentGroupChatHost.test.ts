@@ -1120,6 +1120,12 @@ test("cold department panels show no stale director, leader or employee work and
     assert.equal(directorState.department?.leaders[0].employees[0].status, "blocked");
     assert.match(buildLoopGroupChatPanelContentPatch(directorState, 1).rosterPanelHtml, /本宿主执行已中断/u);
 
+    h.root.status = "stopped";
+    const staleStoppedRoot = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(staleStoppedRoot.task.status, "stopped");
+    assert.equal(staleStoppedRoot.rounds[0].participants.find((member) => member.id === "module-A")?.status, "waiting_continuation");
+
+    h.root.status = "running";
     h.leader.status = "running";
     h.leader.loopPlus = createLoopPlusScheduler({ maxConcurrency: 4 }).snapshot();
     h.leader.loopPlusMainPhase = "decomposing";

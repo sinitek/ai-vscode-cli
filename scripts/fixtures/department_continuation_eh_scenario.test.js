@@ -85,6 +85,9 @@ test("real successor request permits its persisted completed event and final lea
     .replace("subtask=text-protocol attempt=actual-attempt", "subtask=text-protocol-continued attempt=successor-attempt")));
   assert.equal(response.reviewEventId, "successor-event"); assert.equal(response.reviews[0].acceptance, "passed");
   leader.subTasks[1].status = "completed"; leader.loopPlus.running = []; leader.loopPlus.currentReview = null;
+  leader.loopPlus.seenAttempts = [];
+  await assert.rejects(h.ask(initial), /original attempt was not retained/);
+  leader.loopPlus.seenAttempts = [{ subtaskId: "text-protocol", attemptId: "actual-attempt", outcome: "stopped", acceptance: "failed" }];
   assert.equal(JSON.parse(await h.ask(initial)).status, "completed");
   assert.equal(h.scenario.snapshot().continuation.accepted, true);
 });

@@ -5,6 +5,11 @@
 - 测试组长 Owner 在就绪前关闭时，延迟原始 IPC 准备消息，然后放行真实 Worker。跨窗口配置锁已移除，持锁无法控制就绪顺序。回归见 `src/test/extensionHost/departmentleaderprocessbootstrap.test.ts`。
 - 同样符合错误码格式的文本也可能含有敏感信息。生命周期日志只保留已登记的确切错误码。回归见 `src/test/extensionHost/departmentlifecyclediagnostics.test.ts` 和 `src/test/extensionHost/departmentproductioncleanupperformance.test.ts`。
 
+## 部门员工已交接但标签仍保留
+
+- 先核对员工 attempt 的完成事件是否已持久化，再核对执行时绑定的标签身份。普通产研部 Loop+ 员工的完成关页与普通 Loop+ 共用资格判断。独立 Owner 模式按原执行回执关页。
+- 宿主回归要读取持久化标签列表，确认完成的员工标签已移除且总监标签仍在。只检查群聊终态或任务验收结果会漏掉标签残留。端到端入口见[产研部冷启动验证](department-cold-start-verification.md#当前-loop-宿主回归)。
+
 ## 开发构建清空 dist 会中断新员工准备
 
 - 开发宿主会按磁盘路径启动员工 Worker。源码仓构建先删 `dist/` 时，已在内存运行的宿主可能正常接收组长决定，却在员工绑定前报 `department-codex-owner-channel-unobservable`。先核对准备记录是否仍未绑定，再对照构建时间和 Worker 文件，区分会话启动后的 IPC 大回调失联。

@@ -1,7 +1,8 @@
 import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
-import { getHistoryRetentionCutoff, getHistoryRetentionDays } from "./historyRetention";
+import { getHistoryRetentionCutoff } from "./historyRetention";
+import { normalizeHistoryRetentionDays, readToolSettingsFromDisk } from "./toolSettings";
 import type { PerformanceEntry } from "./performanceLog";
 
 let logsDirPath: string | undefined;
@@ -30,7 +31,7 @@ export function scheduleLogRetentionCleanup(): Promise<void> | undefined {
   logRetentionCleanupPromise ??= pruneExpiredLogs(logsDirPath)
     .catch((error) => {
       return appendLog("ERROR", "logs-retention-cleanup-failed", {
-        error: String(error),
+        reason: error instanceof SyntaxError ? "invalid-settings" : "io-error",
       }, { force: true }).catch(() => undefined);
     })
     .finally(() => {
@@ -275,7 +276,8 @@ async function appendLog(
 
 async function pruneExpiredLogs(dirPath: string): Promise<void> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
-  const cutoffMs = getHistoryRetentionCutoff();
+  const retentionDays = normalizeHistoryRetentionDays(readToolSettingsFromDisk().historyRetentionDays);
+  const cutoffMs = getHistoryRetentionCutoff(Date.now(), retentionDays);
   let removed = 0;
 
   await Promise.all(entries.map(async (entry) => {
@@ -297,7 +299,7 @@ async function pruneExpiredLogs(dirPath: string): Promise<void> {
   if (removed > 0) {
     await appendLog("DEBUG", "logs-retention-pruned", {
       removed,
-      retentionDays: getHistoryRetentionDays(),
+      retentionDays,
     });
   }
 }

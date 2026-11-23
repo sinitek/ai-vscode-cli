@@ -114,11 +114,6 @@ export function createDepartmentLeaderCodexBootstrap(identity: DepartmentExecuti
   const diagnose = (stage: string, detail?: LeaderFailureDiagnostic): void => {
     if (failureDiagnosed) return;
     failureDiagnosed = true;
-    const callback = detail && "callbackName" in detail ? detail : undefined;
-    const callbackContext = callback ? ` callback=${callback.callbackName} callbackSequence=${callback.callbackSequence}`
-      + (callback.callbackRejectionReason ? ` callbackRejectionReason=${callback.callbackRejectionReason}` : "") : "";
-    const bindingContext = detail && "sessionBindingStep" in detail ? ` sessionBindingStep=${detail.sessionBindingStep}` : "";
-    try { console.error(`[department-leader-native] stage=${stage}${callbackContext}${bindingContext}`); } catch { /* diagnostics cannot affect execution */ }
     try { void Promise.resolve(logFailure?.("department-leader-native-failed", {
       stage, ...detail, phase: active?.phase ?? "idle",
       rootTaskId: identity.rootTaskId, leaderTaskId: identity.leaderTaskId,

@@ -21,10 +21,11 @@ type Original = { binding: DepartmentExecutionBinding; client: DepartmentExecuti
 type NativeMove = { source: DepartmentExecutionIdentity; target: DepartmentExecutionIdentity };
 type Retired = { scope: DepartmentLeaderExecutionScope; routeSignature: string; localSession: string;
   fingerprint: string; session: NonNullable<LoopTaskRecord["executionSession"]>; originals: Map<string, Omit<Original, "client"> & { client?: DepartmentExecutionOwnerClient }>; moves: Map<string, NativeMove> };
+type PendingAdmission = { promise: Promise<unknown>; started: boolean; fencedBeforeStart: boolean };
 type Generation = {
   scope: DepartmentLeaderExecutionScope; routeSignature: string; localSession: string;
   state: "opening" | "open" | "closing" | "closed";
-  pending: Set<Promise<unknown>>; sealNative?: () => Promise<unknown>;
+  pending: Set<PendingAdmission>; sealNative?: () => Promise<unknown>;
   closing?: Promise<DepartmentLeaderProducerClosure>; closure?: DepartmentLeaderProducerClosure;
   originals: Map<string, Original>;
   tickets: Map<string, { ticket: DepartmentGenerationTicket; responsibility: DepartmentExecutionResponsibility }>;
@@ -209,12 +210,18 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
       if (!g || !producer.canLaunch!(scope)) return Promise.reject(new Error("department-producer-admission-sealed"));
       if (g.pending.size >= 256) return Promise.reject(new Error("department-producer-admission-capacity"));
       // Retain the ORIGINAL promise, including cancelled callers' late work.
+      const admission: PendingAdmission = { promise: Promise.resolve(), started: false, fencedBeforeStart: false };
       const pending = Promise.resolve().then(() => {
-        if (!producer.canLaunch!(scope)) throw new Error("department-producer-admission-sealed");
+        if (!producer.canLaunch!(scope)) {
+          admission.fencedBeforeStart = true;
+          throw new Error("department-producer-admission-sealed");
+        }
+        admission.started = true;
         return work();
       });
-      g.pending.add(pending);
-      void pending.then(() => g.pending.delete(pending), () => g.pending.delete(pending));
+      admission.promise = pending;
+      g.pending.add(admission);
+      void pending.then(() => g.pending.delete(admission), () => g.pending.delete(admission));
       return pending;
     },
     ...(deps.authorityDirectory ? {
@@ -289,12 +296,14 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
       let drained: Promise<unknown>;
       try { drained = g.sealNative ? Promise.resolve(g.sealNative()) : Promise.reject(new Error("department-producer-native-owner-unobservable")); }
       catch (error) { drained = Promise.reject(error); }
-      g.closing = (async () => {
+      const pendingAdmissions = [...g.pending];
+      const closing = (async () => {
         // Start original native sealing even if authority IPC/read/persistence
         // fails. Observe all retained preparations before reporting failure.
         // Neither settlement nor timeout can generate closure or release.
-        const settled = await Promise.allSettled([sealing, drained, ...g.pending]);
-        const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+        const settled = await Promise.allSettled([sealing, drained, ...pendingAdmissions.map((admission) => admission.promise)]);
+        const failed = settled.find((r, index): r is PromiseRejectedResult => r.status === "rejected"
+          && (index < 2 || !pendingAdmissions[index - 2].fencedBeforeStart || pendingAdmissions[index - 2].started));
         if (failed) throw failed.reason;
         if (g.authority && deps.authorityDirectory) {
           const saved = deps.store.readLeaderExecutionSet(g.scope);
@@ -335,7 +344,10 @@ export function createDepartmentExecutionProducer(deps: DepartmentExecutionProdu
         g.closure = { version: 1, scope: structuredClone(g.scope), producerId, admissionFence: randomUUID() };
         return structuredClone(g.closure);
       })();
-      void g.closing.catch(() => undefined); return g.closing;
+      g.closing = closing;
+      void closing.catch(() => { if (g.closing === closing) g.closing = undefined; });
+      void closing.catch(() => undefined);
+      return closing;
     },
   };
   const ledger = new DepartmentLeaderExecutionLedger(deps.store, producer);

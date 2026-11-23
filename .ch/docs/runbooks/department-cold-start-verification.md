@@ -1,6 +1,29 @@
 # 产研部冷启动只读观察验证
 
+## 日常排障日志
+
+在 `~/.sinitek_cli/logs/` 的 `sinitek-cli.*.log` 中搜索根任务 ID。以下生命周期事件在关闭调试日志时仍会记录，只包含任务 ID、代次、阶段、结果、有限原因码及耗时或计数等诊断字段。
+
+| 现象 | 事件及检查项 |
+| --- | --- |
+| 重开后显示中断 | `department-cold-projection` 表示可信历史状态为运行中，而当前宿主无本地执行登记。群聊重复刷新合并记录。 |
+| 恢复核验被拒绝 | `department-root-recovery` 区分身份、快照读取、停止门禁和恢复核验。`errorCode` 可包含 `unverified-leader-session-or-plan`。 |
+| 中止未确认 | `department-organization-stop` 区分冷态和当前宿主执行。冷态阶段可定位总监取消、根任务读回、成员核验、调度停止和容量读回。历史独立 Owner 任务还可查看 `department-cold-member-stop`、`department-leader-cleanup` 及容量事件。 |
+| 继续时原组长目标未通过 | `department-root-continuation` 和 `department-leader-continuation` 记录续接阶段与结果。遇到 `leader-continuation-target-unverified` 时，查看同一组长的 `department-leader-session-promotion`，区分旧回合证据、转录、目标占用和仓储写入读回。 |
+| 独立 Owner 原生回调失败 | `department-leader-native-failed` 记录回调名、序号和固定拒绝原因。 |
+| 员工交接后标签未关闭 | 在 `loop-plus-subtask-tab-auto-close-error` 中按组长任务 ID 和员工 attempt 查找失败原因。先核对交接是否持久化，再核对该标签的会话与执行身份。 |
+
+插件启动及运行期间的定时清理读取工具设置中的「历史保留天数」，按文件最后修改时间清理插件目录内过期的 `.log`，包括轮转文件。VS Code 和外部 CLI 独立管理各自的日志。
+
 本 runbook 记录真实 VS Code Extension Host 重启后的冷观察验证入口。它不新增跨宿主接管协议，也不修改部门 producer、task source 或容量状态。员工 binding 的冷观察只允许经原 Owner endpoint；running leader 缺少原 producer generation provenance 和完整聚合 Owner 时仍应 `live-leader-unverifiable` 并保留容量。只读观察不是 start、handoff、cleanup 或容量释放授权。
+
+Loop+ 用户显式点击中止属于独立的停止核验路径，不先调用完整 `recoverRoot`，因此不要求已关闭的历史组长标签。它仍需核验根/工作区/模块/计划及部门快照，确认总监取消和每个原组长调度停止，随后才可将停止快照与空容量写入并读回。任一写入、取消或执行确认失败都保留原容量和停止栅栏。成功中止后用户显式继续时，恢复原组长任务及其原 session；不得为同一模块新建替代组长。Owner 管理模式继续使用本 runbook 的原 Owner 清理凭据，Loop+ 路径不放宽其门禁。
+
+## 当前 Loop+ 宿主回归
+
+用 `node scripts/verify_department_full_eh_integration.js --product <隔离构建副本> --report <.tmp 下的新报告路径> --scenario <场景>` 运行 `loop-plus`、`loop-plus-stop-continue` 和 `loop-plus-cold-recovery`。三个场景使用真实 VS Code、真实 Codex CLI 和本机确定性模型响应。驱动从持久化会话标签列表逐个确认完成的员工标签已关闭且总监标签仍在。冷恢复场景还验证第二宿主显示中断、用户中止对账、同一组长原生会话续接、原 attempt 留档、后继验收及容量归还。
+
+2026-11-23 三个场景均通过，每个场景确认两个已完成员工标签关闭。旧版独立 Owner 的收尾和 OpenCode 混合租约仍由 Owner 回执专项回归覆盖。
 
 ## 覆盖范围
 

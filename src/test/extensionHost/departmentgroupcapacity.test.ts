@@ -10,6 +10,7 @@ import { DepartmentLeaderExecutionCleanup } from "../../extensionHost/department
 import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
 import { DepartmentExecutionReceiptStore } from "../../runtime/departmentexecutionreceiptstore";
 import { cleanupComplete, sameExecution } from "../../runtime/departmentexecutionidentity";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 
 function scenario(name: string, run: (t: test.TestContext) => Promise<void>) {
   if (process.env.R231_SCENARIO) { if (process.env.R231_SCENARIO === name) test(name, { timeout: 25000 }, run); return; }
@@ -89,11 +90,17 @@ scenario("production OpenCode employee close and drain, owned resources and tab 
   h.beforeEmployeeConsumerFinish(async () => { entered.resolve(); await release.promise; });
   h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend",
     prompt: "Implement the complete controlled employee requirement, verify the result with meaningful checks, and report the actual execution outcome and resource evidence." }] });
-  h.answer(2, completed());
+  h.answer(2, { status: "wait", finalSummary: "等待员工交接" });
+  h.onTaskUpdated((task) => {
+    if (!task.loopPlus) return;
+    const event = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot().currentReview;
+    if (event?.subtaskId === "employee") h.answer(3, { ...completed(), reviewEventId: event.eventId });
+  });
   const started = await h.start(); assert.ok(started.ok); await until(() => h.employeeBuilders === 1); await entered.promise;
   await until(() => fs.existsSync(h.file("employee/started")));
   h.fixture.adapter.host().submitUserMessage(started.taskId, "核对员工执行结果");
   await until(() => h.mainCalls === 2);
+  await until(() => createLoopPlusScheduler({ snapshot: h.read(started.taskId)?.loopPlus }).snapshot().userMessageQueue.length === 0);
   const before = h.store.read("root", "workspace"); assert.ok(before.ok && before.value);
   const employeeBinding = before.value.executionBindings!.find((b) => b.identity.role === "employee");
   assert.ok(employeeBinding); assert.equal(employeeBinding.selection.cli, "opencode");
@@ -108,9 +115,14 @@ scenario("production OpenCode employee close and drain, owned resources and tab 
   const employeeTabId = [...h.tabs.keys()].find((id) => id !== "leader-tab"); assert.ok(employeeTabId);
 
   release.resolve(); await started.done;
+  assert.equal(h.read(started.taskId)?.status, "completed");
   assert.deepEqual(h.employeeProcessLifecycles.at(-1), { processTerminal: "confirmed", streams: "confirmed", temp: "unobservable" });
   await until(() => h.tabCloseAttempts.includes(employeeTabId));
-  await until(() => h.tabs.size === 0);
+  try { await until(() => h.tabs.size === 0); }
+  catch (error) {
+    t.diagnostic(JSON.stringify({ tabs: [...h.tabs.values()], closeAttempts: h.tabCloseAttempts, closedTabs: h.closedTabs }));
+    throw error;
+  }
   await until(() => h.composition.readCapacity("root")!.leaders.length === 0
     && h.composition.readCapacity("root")!.employees.length === 0);
   const employeeRecord = new DepartmentExecutionReceiptStore(h.file("owners/" + employeeBinding.identity.ownerId))

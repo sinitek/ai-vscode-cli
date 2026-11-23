@@ -21,7 +21,7 @@ import {
   buildLoopPlusAcceptanceFeedbackSection,
   listLoopPlusAcceptancePlanFeedbackItems,
 } from "../loopPlusAcceptancePlan";
-import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, type LoopPlusControlDecision, type LoopPlusDecision } from "../loopPlusDecision";
+import { LOOP_PLUS_ACCEPTANCE_BATCH_MAX, parseLoopPlusDecisionWithFeedback, resolveLoopPlusDecisionSubtaskMax, type LoopPlusControlDecision, type LoopPlusDecision, type LoopPlusDecisionParseResult } from "../loopPlusDecision";
 import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import {
   buildLoopPlusProtocolPauseSummary,
@@ -91,6 +91,8 @@ const DECISION_SAFETY_LIMIT = 200;
 // Progressing tasks earn more main decisions; stalled loops remain bounded.
 const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const PROTOCOL_RETRY_LIMIT = 2;
+const PROTOCOL_FORMAT_BACKOFF_INITIAL_MS = 1_000;
+const PROTOCOL_FORMAT_BACKOFF_MAX_MS = 30_000;
 const MAIN_RECOVERY_FAILURE_LIMIT = 3;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
 const UNCONFIRMED_ATTEMPT_RESULT = "宿主重建后无法确认上次子任务执行结果。请核对已有产物，再显式续跑或由主任务处理此开放 attempt。";
@@ -523,14 +525,44 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       if (!stopped.stopped) {
         return;
       }
-      updateTask(task.id, {
+      const lostAttempts = scheduler.snapshot().running.slice();
+      for (const attempt of lostAttempts) {
+        const result = scheduler.finish({ subtaskId: attempt.subtaskId, attemptId: attempt.attemptId,
+          outcome: "stopped", detail: "lost-process" });
+        if (!result.applied) throw new Error(`Loop+ stopped attempt reconciliation failed: ${result.reason}`);
+      }
+      const snapshot = scheduler.snapshot();
+      const lostSubtasks = new Set(lostAttempts.map((attempt) => attempt.subtaskId));
+      const subTasks = task.subTasks.map((subtask) => lostSubtasks.has(subtask.id)
+        ? { ...subtask, status: "blocked" as const, updatedAt: now() }
+        : subtask);
+      const receipts = task.loopPlusAttemptCompletionReceipts?.filter((receipt) => snapshot.running.some((attempt) =>
+        attempt.subtaskId === receipt.subtaskId && attempt.attemptId === receipt.attemptId));
+      const updatedTask = updateTask(task.id, {
         status: "stopped",
         runtimeInterrupted: undefined,
         loopPlusNextStepPlan: undefined,
+        finalSummary: "Loop+ parent scheduling is stopped.",
         schedulingMode: "event_driven",
-        loopPlus: scheduler.snapshot(),
+        loopPlus: snapshot,
+        activeSubtaskId: snapshot.running[0]?.subtaskId ?? null,
+        activeSubtaskIds: snapshot.running.map((attempt) => attempt.subtaskId),
+        subTasks,
+        ...(task.loopPlusAttemptCompletionReceipts ? {
+          loopPlusAttemptCompletionReceipts: receipts?.length ? receipts : undefined,
+        } : {}),
         updatedAt: now(),
       });
+      for (const attempt of lostAttempts) {
+        const subtask = task.subTasks.find((item) => item.id === attempt.subtaskId);
+        if (!subtask || !deps.recordAttempt) continue;
+        try {
+          deps.recordAttempt({ task: updatedTask, subtaskId: attempt.subtaskId, attemptId: attempt.attemptId,
+            outcome: "stopped", detail: "lost-process", communicationFile: subtask.communicationFile });
+        } catch (error) {
+          deps.log?.("loop-plus-report-failed", { taskId: task.id, attemptId: attempt.attemptId, error: errorText(error) });
+        }
+      }
       return;
     }
     stopRuntime(runtime);
@@ -965,6 +997,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     }
     runtime.autoPaused = false;
     runtime.protocolRetries = 0;
+    if (runtime.protocolRepair) runtime.protocolRepair.formatFailures = undefined;
     runtime.decisionCount = 0;
     runtime.forcePrompt = false;
     armLifecycle(runtime);
@@ -1220,8 +1253,23 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         runtime.scheduler.snapshot().seenAttempts.length * MAIN_DECISIONS_PER_SUBTASK_ROUND,
       );
       if (runtime.decisionCount >= decisionSafetyLimit) {
-        pause(runtime, "needs-review", "loop-plus-safety-limit");
+        if (runtime.protocolRepair?.formatFailures) {
+          pause(runtime, "needs-review", "loop-plus-protocol-paused",
+            buildLoopPlusProtocolPauseSummary(runtime.protocolRepair.reason, undefined, true));
+        } else {
+          pause(runtime, "needs-review", "loop-plus-safety-limit");
+        }
         return;
+      }
+      const formatFailures = runtime.protocolRepair?.formatFailures ?? 0;
+      if (!firstMainExecution && !recovery && formatFailures > PROTOCOL_RETRY_LIMIT) {
+        const lifecycle = runtime.lifecycle;
+        const generation = runtime.mainGeneration;
+        const waitMs = Math.min(PROTOCOL_FORMAT_BACKOFF_MAX_MS,
+          PROTOCOL_FORMAT_BACKOFF_INITIAL_MS * 2 ** (formatFailures - PROTOCOL_RETRY_LIMIT - 1));
+        await Promise.race([delay(waitMs), lifecycle.promise]);
+        if (lifecycle.settled || runtime.lifecycle !== lifecycle || runtime.released || runtime.autoPaused
+          || runtime.mainGeneration !== generation || runtime.stopRequested || runtime.scheduler.snapshot().parentStopped) return;
       }
       const execution = firstMainExecution;
       firstMainExecution = undefined;
@@ -1415,7 +1463,7 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         }
         continue;
       }
-      const applied = applyDecision(runtime, step, decision, content, parsed.rejectionReason);
+      const applied = applyDecision(runtime, step, parsed, content);
       if (applied === "stop") {
         return;
       }
@@ -1862,9 +1910,8 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   function applyDecision(
     runtime: ParentRuntime,
     step: MainStep,
-    decision: LoopPlusDecision | null,
+    parsed: LoopPlusDecisionParseResult,
     response: string | null,
-    rejectionReason: string | null,
   ): LoopPlusDecisionOutcome {
     const snapshot = runtime.scheduler.snapshot();
     const held = snapshot.currentReview;
@@ -1874,9 +1921,10 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       }
       return "wait";
     }
-    if (!decision) {
-      return protocolMiss(runtime, Boolean(held), rejectionReason ?? undefined, response);
+    if (!parsed.decision) {
+      return protocolMiss(runtime, Boolean(held), parsed.rejectionReason ?? undefined, response, parsed.rejectionKind === "format");
     }
+    const decision = parsed.decision;
     if (step.allowDispatchBeforeReview && decision.status === "dispatch") {
       return applyDispatchBeforeReview(runtime, step, decision, response);
     }
@@ -2066,16 +2114,19 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     held: boolean,
     reason = "决策与当前调度状态不一致，请核对当前验收批次、运行中及排队任务，并重新返回合法决策。",
     response: string | null = null,
+    formatFailure = false,
   ): "continue" | "stop" {
-    runtime.protocolRetries += 1;
-    runtime.protocolRepair = { reason, response };
+    const formatFailures = formatFailure ? (runtime.protocolRepair?.formatFailures ?? 0) + 1 : 0;
+    if (!formatFailure) runtime.protocolRetries += 1;
+    runtime.protocolRepair = formatFailure ? { reason, response: null, formatFailures } : { reason, response };
     deps.log?.("loop-plus-protocol-miss", {
       taskId: runtime.taskId,
       held,
       protocolRetries: runtime.protocolRetries,
+      formatFailures,
       reason,
     });
-    if (runtime.protocolRetries > protocolRetryLimit) {
+    if (!formatFailure && runtime.protocolRetries > protocolRetryLimit) {
       pause(runtime, "needs-review", "loop-plus-protocol-paused",
         buildLoopPlusProtocolPauseSummary(reason, runtime.protocolRetries - 1));
       return "stop";

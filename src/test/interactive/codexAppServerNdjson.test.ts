@@ -102,6 +102,18 @@ test("codex app-server NDJSON splits only on LF and CRLF", async () => {
   assert.deepEqual(lines.map((line) => JSON.parse(line).id), [1, 2]);
 });
 
+test("codex app-server NDJSON assembles a large fragmented line and split CRLF", async () => {
+  const line = JSON.stringify({ delta: "研发🌛".repeat(100_000) });
+  const encoded = Buffer.from(line, "utf8");
+  const chunks: Array<Buffer | string> = [];
+  const chunkSize = 4093;
+  for (let offset = 0; offset < encoded.length; offset += chunkSize) {
+    chunks.push(encoded.subarray(offset, offset + chunkSize));
+  }
+  chunks.push("\r", "\n\nlast\r");
+  assert.deepEqual(await readLines(chunks), [line, "", "last"]);
+});
+
 test("serializeCodexAppServerMessage escapes unicode line separators", () => {
   const serialized = serializeCodexAppServerMessage({
     text: "A\u2028B\u2029C\"\\",

@@ -509,10 +509,16 @@ test("protocol feedback identifies orphan, unknown and duplicate follow-up links
 
 test("protocol feedback distinguishes empty and incomplete replies and clears earlier candidate errors", () => {
   for (const content of [null, undefined, " "]) {
-    assert.match(parseLoopPlusDecisionWithFeedback(content).rejectionReason ?? "", /未返回决策 JSON/);
+    const parsed = parseLoopPlusDecisionWithFeedback(content);
+    assert.equal(parsed.rejectionKind, "format");
+    assert.match(parsed.rejectionReason ?? "", /未返回决策 JSON/);
   }
-  assert.match(parseLoopPlusDecisionWithFeedback('{"status":').rejectionReason ?? "", /未找到合法/);
-  assert.match(parseLoopPlusDecisionWithFeedback('{"status":"completed"}').rejectionReason ?? "", /requirementCoverage/);
+  const incomplete = parseLoopPlusDecisionWithFeedback('{"status":');
+  assert.equal(incomplete.rejectionKind, "format");
+  assert.match(incomplete.rejectionReason ?? "", /未找到可解析/);
+  const invalid = parseLoopPlusDecisionWithFeedback('{"status":"completed"}');
+  assert.equal(invalid.rejectionKind, "validation");
+  assert.match(invalid.rejectionReason ?? "", /requirementCoverage/);
   assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"accept"}\n{"status":"wait"}'), {
     decision: { status: "wait" }, rejectionReason: null,
   });

@@ -316,6 +316,8 @@ round-382 Codex-only 冷启动真实尝试在公开 UI 发送前因缺少 Playwr
 
 组长交付结算同时识别正式验收通过和免验收汇报确认。免验收子任务的记录与最新 attempt 都要明确 `requiresAcceptance: false`，执行成功且组长实际确认汇报后才可按 `reported` 结算。修复链仍使用正式验收。正常恢复组织时，若原 `failed` 成员通过身份、完成证据和占用核验，且已无活跃执行或容量占用，可修正这类旧误判。整个部门继续按根任务门禁结算。
 
+Loop+ 组长的本地会话晋升到原生会话时，宿主核对组长 `main` 转录并在部门任务仓储同步更新会话绑定。显式继续遇到旧本地绑定时，以同一组长最近持久化的 `main` 回合和原生会话转录核对身份。目标必须无活动执行，且至多有一个相符的聊天标签。仓储确认新绑定后，继续入口重读原任务并执行原有准入检查。原任务文件、子任务和验收记录沿用。证据冲突或绑定无法读回时维持中止。Owner 代次仍走独立的续接核验。
+
 ## OpenCode 组长 canonical 根与限定混合 EH（round-369）
 
 OpenCode 组长每代由原宿主在 Ledger 准入后创建唯一 canonical 隔离根，准备服务和全部原生任务使用同一真实 cwd；准备时核对原生 session directory，任务继续核对固定 executionSession/CLI/config revision/原 binding。固定 worker 仅持原 host root capability，release-root 必须由原代宿主验证并清理，完整原 receipt 与 stopped 双确认后才可能参与 CLOSED 全集聚合。round-369 时跨代 session directory mismatch 会拒绝；round-378 已证明受控同宿主来源移动的单次新目录匹配及后续冷读；round-382 已修复 A→B→C reservation 与自身重试来源识别，实体build、26个不同定向用例及代码合同审查通过，但没有连续公开EH。冷宿主 running leader 仍因缺原 producer provenance/完整 Owner aggregate 而 fail closed。

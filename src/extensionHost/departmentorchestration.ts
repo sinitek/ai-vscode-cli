@@ -60,7 +60,8 @@ export type DepartmentOrchestrationDeps = {
   log?(event: string, error: unknown): void;
 };
 type Member = { taskId: string; leaderSubtaskId: string; status: DepartmentLeaderStatus; generation: number;
-  lease: CapacityLease | null; run: Promise<void> | null; target: DepartmentLeaderTarget; releaseOwnership?: () => void; notifiedGeneration?: number; cleanupConfirmedGeneration?: number };
+  lease: CapacityLease | null; run: Promise<void> | null; target: DepartmentLeaderTarget | null; coldStoppedForResume?: boolean;
+  releaseOwnership?: () => void; notifiedGeneration?: number; cleanupConfirmedGeneration?: number };
 type Employee = { taskId: string; attemptId: string; subtaskId: string; release(): void; cleanupFailed(error: unknown): void; done: Promise<void>; recovered: boolean };
 type EmployeeRequest = Pick<LoopPlusAttemptRequest, "taskId" | "attemptId" | "subtaskId"> & Partial<Pick<LoopPlusAttemptRequest, "targetCli" | "execution">>;
 type Root = { id: string; workspaceKey: string; metadata: DepartmentMetadata; plan: LoopPlusAcceptancePlanSnapshot;
@@ -280,32 +281,64 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     continuation?: { assertCurrent(): void; admitted(): void }): Promise<DepartmentRecoveryResult> {
     const root = roots.get(rootTaskId);
     const rootTask = root && currentRoot(root);
-    if (!root || deps.canExecuteRoot?.(rootTaskId) === false || root.stopping || root.continuing || !rootTask || rootTask.status === "completed" || root.completing || root.reservations.size || root.cancellations.size) return { ok: false, reason: "root-not-ready" };
+    if (!root || deps.canExecuteRoot?.(rootTaskId) === false || root.stopping || root.snapshot.stopping || root.continuing || !rootTask
+      || rootTask.status === "completed" || root.completing || root.reservations.size || root.cancellations.size) return { ok: false, reason: "root-not-ready" };
     // A settled/rejected recovery observation never authorizes a new generation.
     if ([...root.members.values()].some((member) => member.status === "blocked")) {
       return { ok: false, reason: "execution-cleanup-unverified" };
     }
     root.continuing = true;
     try {
-    const resumable = [...root.members.values()].filter((member) => !member.run && member.status !== "completed");
+    const resumable: Member[] = [];
+    for (const member of root.members.values()) {
+      if (member.run || member.status === "completed") continue;
+      if (!member.coldStoppedForResume) { resumable.push(member); continue; }
+      const module = rootTask.subTasks.find((item) => item.id === member.leaderSubtaskId);
+      const task = leaderTask(root, member), scheduler = schedulerSnapshot(task);
+      const capacity = deps.capacity.snapshot(root.id);
+      const employeeLease = capacity.some((snapshot) => snapshot.employees.some((identity) => {
+        try { return JSON.parse(identity)[0] === member.taskId; } catch { return true; }
+      }));
+      if (rootTask.status !== "stopped" || root.snapshot.stopping || member.status !== "paused" || member.lease
+        || !module || module.status === "completed" || module.status === "skipped"
+        || !task || task.status !== "stopped" || !scheduler?.parentStopped || scheduler.completed || scheduler.running.length
+        || capacity.some((snapshot) => snapshot.leaders.includes(member.leaderSubtaskId)) || employeeLease
+        || deps.runtime.hasTaskExecution(member.taskId) || [...root.employees.values()].some((employee) => employee.taskId === member.taskId)) {
+        return { ok: false, reason: "leader-still-active-or-unverified" };
+      }
+      resumable.push(member);
+    }
     for (const member of resumable) {
       if (member.lease || deps.runtime.hasTaskExecution(member.taskId)
         || [...root.employees.values()].some((employee) => employee.taskId === member.taskId)) return { ok: false, reason: "leader-still-active-or-unverified" };
       if (deps.prepareLeaderContinuation) {
         const task = leaderTask(root, member), metadata = expected(root, member.leaderSubtaskId);
         const target = task && metadata && deps.prepareLeaderContinuation(clone(task), clone(metadata));
-        if (!target || target.cli !== task!.cli || target.sessionId !== task!.sessionId || !text(target.tabId))
+        const prepared = target && leaderTask(root, member);
+        if (!target || !prepared || prepared.status !== task!.status || target.cli !== prepared.cli
+          || target.sessionId !== prepared.sessionId || !text(target.tabId)) {
+          diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
+            generation: member.generation, stage: "target-verify", result: "unconfirmed", reason: "evidence-rejected",
+            errorCode: "leader-continuation-target-unverified" });
           return { ok: false, reason: "leader-continuation-target-unverified" };
+        }
         member.target = target;
       }
       const verified = inspect(root, member);
-      if (!verified || verified.live || (deps.prepareLeaderContinuation && !equal(verified.target, member.target)))
+      if (!verified || verified.live || (deps.prepareLeaderContinuation && !equal(verified.target, member.target))) {
+        diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
+          generation: member.generation, stage: "target-verify", result: "unconfirmed",
+          reason: verified?.live ? "task-still-running" : "evidence-rejected", errorCode: "leader-still-active-or-unverified" });
         return { ok: false, reason: "leader-still-active-or-unverified" };
+      }
     }
     continuation?.assertCurrent();
     if (root.abort.signal.aborted) root.abort = new AbortController();
     root.snapshot.stopping = false; root.stopDiagnosed = false;
-    if (!deps.updateTask(root.id, { status: "running", ...(continuation ? { runtimeInterrupted: undefined } : {}) })) return { ok: false, reason: "root-resume-persistence-failed" };
+    const resumedModules = new Set(resumable.map((member) => member.leaderSubtaskId));
+    const subTasks = rootTask.subTasks.map((module) => resumedModules.has(module.id) && module.status !== "skipped"
+      ? { ...module, status: "running" as const, updatedAt: Date.now() } : module);
+    if (!deps.updateTask(root.id, { status: "running", subTasks, ...(continuation ? { runtimeInterrupted: undefined } : {}) })) return { ok: false, reason: "root-resume-persistence-failed" };
     continuation?.admitted();
     for (const member of resumable) {
       const verified = inspect(root, member);
@@ -334,6 +367,8 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       const lifecycle = deps.runtime.runEventDriven(inputFor(root, { leaderSubtaskId: member.leaderSubtaskId, moduleTitle: metadata.moduleTitle,
         prompt: deps.readTask(member.taskId)!.rootPrompt }), { resumeTaskId: member.taskId, resumeRequested: true, preserveLoopOrigin: true, schedulingMode: "event_driven" }, verified.target);
       track(root, member, lifecycle);
+      diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
+        generation, stage: "resume", result: "confirmed", reason: "none" });
       } catch (error) {
         // A synchronous startup failure can still have created a controller.
         // Retain ownership until its real cancellation/idle responsibility ends.
@@ -491,23 +526,36 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         await deps.runtime.waitForTaskIdle(member.taskId);
         await Promise.all([...root.employees.values()].filter((item) => item.taskId === member.taskId).map((item) => item.done));
         await member.run;
-        if (root.members.get(member.taskId)?.status === "blocked") throw new Error("execution-cleanup-unverified");
+        const stoppedTask = leaderTask(root, member), stoppedScheduler = schedulerSnapshot(stoppedTask);
+        if (!stoppedTask || stoppedTask.status === "running" || (stoppedScheduler?.running.length ?? 0) > 0
+          || (root.metadata.executionMode === "loop-plus"
+            && (!stoppedScheduler || (!stoppedScheduler.parentStopped && !stoppedScheduler.completed)))) {
+          throw new Error("execution-cleanup-unverified");
+        }
         if (!usesOwnerCleanup(root)) member.cleanupConfirmedGeneration = generation;
         else if (member.lease) {
           await requireLeaderCleanup(member.taskId, generation);
           if (deps.observeLeaderCleanup) member.cleanupConfirmedGeneration = generation;
         }
+        if (root.members.get(member.taskId)?.status === "blocked" && member.cleanupConfirmedGeneration !== generation) {
+          throw new Error("execution-cleanup-unverified");
+        }
         const releasedGeneration = member.generation;
         member.generation += 1; member.status = "paused";
+        if (!usesOwnerCleanup(root) && member.cleanupConfirmedGeneration === releasedGeneration) member.cleanupConfirmedGeneration = member.generation;
         const lease = member.lease; member.lease = null;
         if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; throw new Error("leader-release-persistence-failed"); }
         lease?.release();
         if (lease) memberDiagnostic(root, member, releasedGeneration, "none", "capacity-release", "released");
         if (lease && usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, releasedGeneration);
-        } catch (error) { member.status = "blocked"; persist(root);
+        } catch (error) {
+          member.status = "blocked"; persist(root);
           if (diagnoseStop) memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained");
           throw error;
-        } finally { if (member.cleanupConfirmedGeneration === generation) confirmed++; else unconfirmed++; }
+        } finally {
+          if (member.cleanupConfirmedGeneration === (usesOwnerCleanup(root) ? generation : member.generation)) confirmed++;
+          else unconfirmed++;
+        }
       };
       const activeStops = Promise.allSettled([...root.members.values()]
         .filter(member => !root.cancellations.has(member.taskId)).map(stopMember));
@@ -516,12 +564,32 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         .filter(member => !stoppedMembers.has(member)).map(stopMember));
       const results = [...await activeStops, ...remainingStops];
       persist(root);
-      const ok = results.every((item) => item.status === "fulfilled");
+      const membersStopped = results.every((item) => item.status === "fulfilled");
       const retained = [...root.members.values()].filter((member) => member.lease !== null).length;
-      if (diagnoseStop) diagnostic("department-root-stop-settled", { rootTaskId: root.id, stage: "root-stop", result: ok && !unconfirmed && !retained && !root.persistenceError ? "confirmed" : "unconfirmed",
-        reason: root.persistenceError ? "persistence-failed" : ok ? "none" : "evidence-rejected", confirmed, unconfirmed,
+      const task = currentRoot(root);
+      if (!task) root.persistenceError = true;
+      else {
+        const subTasks = task.subTasks.map((module) => {
+          if (module.status !== "running") return module;
+          const memberId = root.modules.get(module.id), member = memberId ? root.members.get(memberId) : undefined;
+          if (member?.status === "paused") return { ...module, status: "pending" as const, updatedAt: Date.now() };
+          if (member?.status === "completed") return { ...module, status: "completed" as const, updatedAt: Date.now() };
+          return { ...module, status: "blocked" as const, updatedAt: Date.now() };
+        });
+        const savedTask = deps.updateTask(root.id, { status: "stopped", subTasks, updatedAt: Date.now() });
+        if (!savedTask || savedTask.status !== "stopped") root.persistenceError = true;
+      }
+      const membersConfirmed = membersStopped && unconfirmed === 0 && retained === 0 && !root.persistenceError;
+      const accepted = root.metadata.executionMode === "loop-plus" ? membersConfirmed : membersStopped && retained === 0 && !root.persistenceError;
+      if (accepted) {
+        root.snapshot.stopping = false;
+        if (!persist(root)) root.snapshot.stopping = true;
+      }
+      const confirmedStop = membersConfirmed && !root.snapshot.stopping && !root.persistenceError;
+      if (diagnoseStop) diagnostic("department-root-stop-settled", { rootTaskId: root.id, stage: "root-stop", result: confirmedStop ? "confirmed" : "unconfirmed",
+        reason: root.persistenceError ? "persistence-failed" : membersStopped ? "none" : "evidence-rejected", confirmed, unconfirmed,
         retained, elapsedMs: Date.now() - startedAt });
-      return ok;
+      return root.metadata.executionMode === "loop-plus" ? confirmedStop : accepted && !root.snapshot.stopping;
     })();
     root.stopping = stopping;
     void stopping.then(() => { if (root.stopping === stopping) root.stopping = null; }, () => { root.stopping = null; });
@@ -589,25 +657,35 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       for (const item of saved.leaders) {
         if (owners.has(item.taskId) || !task.subTasks.some((module) => module.id === item.leaderSubtaskId)) return { ok: false, reason: "invalid-member" };
         const storedTask = leaderTask(root, item), storedMetadata = expected(root, item.leaderSubtaskId);
-        const storedIdentity = storedTask && storedMetadata && (!usesOwnerCleanup(root)
+        const ownerCleanup = usesOwnerCleanup(root);
+        const storedIdentity = storedTask && storedMetadata && (!ownerCleanup
           || deps.verifyStoredLeaderIdentity?.(clone(storedTask), clone(storedMetadata), item.generation ?? 0));
         const scheduler = schedulerSnapshot(storedTask);
-        if (!storedTask || !scheduler || (deps.verifyStoredLeaderIdentity && !storedIdentity))
+        if (!storedTask || !scheduler || (ownerCleanup && deps.verifyStoredLeaderIdentity && !storedIdentity))
           return { ok: false, reason: "unverified-leader-session-or-plan" };
-        const verified = inspect(root, item);
+        const hasEmployeeCapacity = capacity.employees.some((identity) => {
+          try { return JSON.parse(identity)[0] === item.taskId; } catch { return true; }
+        });
+        const stoppedLoopPlusMember = !ownerCleanup && task.status === "stopped" && item.status === "paused" && storedTask.status === "stopped"
+          && scheduler.parentStopped && !scheduler.completed && scheduler.running.length === 0
+          && !occupiedModules.has(item.leaderSubtaskId) && !hasEmployeeCapacity;
+        const completedLoopPlusMember = !ownerCleanup && task.status === "stopped" && item.status === "completed" && storedTask.status === "completed"
+          && hasCompletedLoopPlus(storedTask, scheduler) && !occupiedModules.has(item.leaderSubtaskId) && !hasEmployeeCapacity;
+        const verified = stoppedLoopPlusMember || completedLoopPlusMember ? null : inspect(root, item);
         // A durable identity permits only this read-only refusal. It cannot
         // create a member/target, restore occupancy or authorize a continuation.
-        if (!verified) return { ok: false, reason: storedIdentity && storedTask.status === "running"
+        if (!verified && !stoppedLoopPlusMember && !completedLoopPlusMember) return { ok: false, reason: storedIdentity && storedTask.status === "running"
           ? "live-leader-unverifiable" : "unverified-leader-session-or-plan" };
-        const sessionKey = JSON.stringify([verified.target.cli, verified.target.sessionId]);
+        const sessionKey = JSON.stringify([storedTask.cli, storedTask.sessionId]);
         if (sessionIdentities.has(sessionKey)) return { ok: false, reason: "duplicate-leader-session" };
         sessionIdentities.add(sessionKey);
-        const member: Member = { ...item, generation: item.generation ?? 0, lease: null, run: null, target: verified.target };
-        if (member.status === "failed" && !verified.live && !occupiedModules.has(member.leaderSubtaskId)
+        const member: Member = { ...item, generation: item.generation ?? 0, lease: null, run: null, target: verified?.target ?? null,
+          ...(stoppedLoopPlusMember ? { coldStoppedForResume: true } : {}) };
+        if (member.status === "failed" && verified && !verified.live && !occupiedModules.has(member.leaderSubtaskId)
           && scheduler.seenAttempts.some((attempt) => attempt.disposition === "reported") && hasCompletedLoopPlus(storedTask, scheduler)) member.status = "completed";
         root.members.set(member.taskId, member); root.modules.set(member.leaderSubtaskId, member.taskId);
-        if (verified.live) observations.set(member.taskId, verified.live);
-        if (deps.readTask(member.taskId)?.status === "running" && !verified.live) return { ok: false, reason: "live-leader-unverifiable" };
+        if (verified?.live) observations.set(member.taskId, verified.live);
+        if (deps.readTask(member.taskId)?.status === "running" && !verified?.live) return { ok: false, reason: "live-leader-unverifiable" };
       }
       const requiredLeaders = [...root.members.values()].filter((m) => observations.has(m.taskId)).map((m) => m.leaderSubtaskId).sort();
       if (!equal([...capacity.leaders].sort(), requiredLeaders)) return { ok: false, reason: "leader-occupancy-mismatch" };

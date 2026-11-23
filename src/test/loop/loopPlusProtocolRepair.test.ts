@@ -19,3 +19,13 @@ test("empty and oversized rejected responses remain bounded and require a comple
   assert.match(prompt, /旧回复已截断/);
   assert.match(prompt, /重新生成完整 JSON/);
 });
+
+test("format repair asks for JSON without repeating unrelated model prose", () => {
+  const prompt = buildLoopPlusProtocolRepairPrompt({
+    reason: "未找到可解析的 Loop+ 决策 JSON 对象",
+    response: "上次上下文摘要",
+    formatFailures: 3,
+  });
+  assert.match(prompt, /只返回一个完整 JSON 对象/);
+  assert.doesNotMatch(prompt, /上次上下文摘要|Previous rejected response/);
+});

@@ -49,6 +49,7 @@ import {
   buildLoopGroupChatMessageAction,
 } from "../panelStateBuilder";
 import { buildLoopGroupChatPanelStateWithDeps } from "../loopGroupChatPanelState";
+import { departmentLifecycleDiagnostic } from "./departmentlifecyclediagnostics";
 import {
   collectLoopCommunicationPreviewRoots,
   readLoopCommunicationFilePreview,
@@ -122,6 +123,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   /** Validates the fresh root against the trusted source and active workspace. */
   readDepartmentOrganizationControlState?(task: LoopTaskRecord): { needsCleanup: boolean; stopState?: DepartmentOrganizationStopState } | null;
   hasLocalDepartmentDirectorActivity?(rootTaskId: string): boolean;
+  observeDepartmentColdProjection?(rootTaskId: string, interrupted: boolean): void;
   prepareModelSwitchOptions?: (task: LoopTaskRecord) => Promise<void>;
   getExtensionUri: () => vscode.Uri;
   getMessageLimit?: () => number;
@@ -237,6 +239,9 @@ export function buildLoopGroupChatPanelState(
   };
   const locallyInactive = isLocalExecutionInactive(task);
   const interruptedInHost = locallyInactive && task.status === "running";
+  if (isDirector && localDirectorActivity !== undefined) {
+    deps.observeDepartmentColdProjection?.(task.id, interruptedInHost);
+  }
   const displayTask = interruptedInHost ? { ...task, status: "stopped" as const }
     : isDirector ? projectInterruptedDirector(task) : task;
   const stopState = organization?.stopState
@@ -389,6 +394,7 @@ function configLockResumeIdentity(task: LoopTaskRecord) {
 }
 
 export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatPanelDeps) {
+  const interruptedDepartmentProjections = new Set<string>();
   type ModalBinding = DepartmentGroupChatModalTarget & { rootTaskId: string; panel: LoopGroupChatPanel; images?: ChatImageHost };
   const bindings = new Map<string, ModalBinding>();
   const requestScope = new AsyncLocalStorage<ModalBinding>();
@@ -414,6 +420,17 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
   ]);
   const deps = new Proxy(originalDeps, {
     get(target, key: keyof LoopGroupChatPanelDeps) {
+      if (key === "observeDepartmentColdProjection") return (rootTaskId: string, interrupted: boolean) => {
+        if (!interrupted) { interruptedDepartmentProjections.delete(rootTaskId); return; }
+        if (interruptedDepartmentProjections.has(rootTaskId)) return;
+        if (interruptedDepartmentProjections.size >= 256) {
+          const oldest = interruptedDepartmentProjections.values().next();
+          if (!oldest.done) interruptedDepartmentProjections.delete(oldest.value);
+        }
+        interruptedDepartmentProjections.add(rootTaskId);
+        departmentLifecycleDiagnostic("department-cold-projection", { rootTaskId, stage: "projection",
+          result: "confirmed", reason: "evidence-missing" });
+      };
       const value = target[key];
       if (key === "readDepartmentOrganizationControlState") return (task: LoopTaskRecord) => {
         const trusted = target.readDepartmentOrganizationControlState?.(task);

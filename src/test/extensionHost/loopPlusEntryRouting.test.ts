@@ -10,6 +10,7 @@ import { askLoopMainModelSession } from "../../loopMainQuestion";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
 import { leaderExecutionScopeKey } from "../../extensionHost/departmentleaderexecutionledger";
 import { usesDepartmentOwner } from "../../department";
+import { usesCompletedLoopSubtaskTabCleanup } from "../../extensionHost/loopSubtaskTabs";
 import type { PromptRunInput } from "../../promptRunTypes";
 import type { ChatMessage } from "../../webview/types";
 
@@ -102,6 +103,7 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
   const runtime = vm.runInNewContext(productionLoopMainEntries(), {
     usesDepartmentOwner,
+    usesCompletedLoopSubtaskTabCleanup,
     isExtensionDeactivating: false,
     activeWorkspaceKey: task.workspaceKey,
     readLoopTaskRecord: () => { taskReads += 1; return task; },

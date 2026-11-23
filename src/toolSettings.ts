@@ -329,7 +329,7 @@ export function reloadToolSettings(): ToolSettingsState {
   return { ...cachedToolSettings };
 }
 
-function readToolSettingsFromDisk(): ToolSettingsState {
+export function readToolSettingsFromDisk(): ToolSettingsState {
   try {
     return normalizeToolSettings(JSON.parse(fs.readFileSync(TOOL_SETTINGS_FILE, "utf8")));
   } catch (error) {

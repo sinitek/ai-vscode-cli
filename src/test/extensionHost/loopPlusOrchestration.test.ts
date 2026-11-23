@@ -266,7 +266,7 @@ test("invalid main responses and explicit host recovery retain the pending next-
   await flush();
   for (let index = 0; index < 3; index += 1) {
     assert.match(env.mains[index].request.prompt, /Objective: 完成尚未处理的后续交付/);
-    env.mains[index].resolve("invalid protocol");
+    env.mains[index].resolve(decisionJson({ status: "unknown" }));
     await flush();
   }
   await run.done;
@@ -860,11 +860,11 @@ test("new user input rearms one review while malformed answers keep the existing
   assert.equal(env.mains[3].request.userMessageCount, 0);
   const boundedMessageSection = env.mains[3].request.prompt.split("New user messages, oldest first.")[1]?.split("Root request:")[0] ?? "";
   assert.doesNotMatch(boundedMessageSection, /new platform evidence supplied/u);
-  env.mains[3].resolve("invalid protocol");
+  env.mains[3].resolve(decisionJson({ status: "unknown" }));
   await flush();
-  env.mains[4].resolve("invalid protocol again");
+  env.mains[4].resolve(decisionJson({ status: "unknown" }));
   await flush();
-  env.mains[5].resolve("invalid protocol a third time");
+  env.mains[5].resolve(decisionJson({ status: "unknown" }));
   await flush();
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
   assert.equal(env.mains.length, 6);
@@ -4426,13 +4426,13 @@ test("still accepts a finished Loop+ subtask when the chat notice fails", async 
   assert.equal(env.mains.some((item) => item.request.kind === "review"), true);
 });
 
-test("retries invalid Loop+ decisions instead of dispatching them as a status strategy", async () => {
+test("bounds structured Loop+ validation failures instead of dispatching invalid decisions", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   assert.equal(env.mains[0]?.request.kind, "initial");
 
-  env.mains[0].resolve("not a decision");
+  env.mains[0].resolve(decisionJson({ status: "unknown", subtasks: [] }));
   await flush();
   assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
   assert.equal(env.attempts.length, 0);
@@ -4457,6 +4457,62 @@ test("retries invalid Loop+ decisions instead of dispatching them as a status st
   assert.equal(env.messages.includes("loop-plus-completed"), false);
   assert.equal(env.attempts.length, 0);
   assert.equal(await isSettled(run.done), true);
+});
+
+test("keeps retrying missing Loop+ JSON with backoff until a valid decision arrives", async () => {
+  const waits: number[] = [];
+  const env = harness({ delay: async (ms) => { waits.push(ms); } });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve("Codex context summary without a decision object");
+  await flush();
+  assert.match(env.mains[1].request.prompt, /Loop\+ protocol correction required/);
+  assert.doesNotMatch(env.mains[1].request.prompt, /Codex context summary/);
+
+  env.mains[1].resolve("still no JSON");
+  await flush();
+  env.mains[2].resolve('{"status":');
+  await flush();
+  assert.deepEqual(waits, [1_000]);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), false);
+  assert.equal(env.attempts.length, 0);
+
+  env.mains[3].resolve(directCompletionDecision());
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.deepEqual(env.logs.filter((item) => item.event === "loop-plus-protocol-miss")
+    .map((item) => (item.payload as { formatFailures: number }).formatFailures), [1, 2, 3]);
+});
+
+test("format retry backoff can be stopped without launching another main request", async () => {
+  const env = harness({ delay: () => new Promise<void>(() => {}) });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  for (let index = 0; index < 3; index += 1) {
+    env.mains[index].resolve("no decision JSON");
+    await flush();
+  }
+  assert.equal(env.mains.length, 3);
+  env.host.stopParent(run.taskId ?? "");
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "stopped");
+  assert.equal(env.mains.length, 3);
+});
+
+test("format retries remain bounded by the global decision safety limit", async () => {
+  const env = harness({ decisionSafetyLimit: 4 });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  for (let index = 0; index < 4; index += 1) {
+    env.mains[index].resolve("no decision JSON");
+    await flush();
+  }
+  await run.done;
+  assert.equal(env.mains.length, 4);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+  assert.match(env.tasks.get(run.taskId ?? "")?.finalSummary ?? "", /达到主任务决策安全上限/);
+  assert.equal(env.messages.includes("loop-plus-protocol-paused"), true);
 });
 
 test("automatically corrects unlinked supplemental work and dispatches it without consuming review early", async () => {
@@ -4791,7 +4847,7 @@ test("main failure, protocol pause and explicit resume retain the unconfirmed ba
   for (let retry = 2; retry <= 4; retry += 1) {
     assert.deepEqual(env.mains[retry].request.reviewEventIds, first.request.reviewEventIds);
     assert.equal(env.mains[retry].request.userMessageCount, 0);
-    env.mains[retry].resolve("invalid JSON");
+    env.mains[retry].resolve(decisionJson({ status: "unknown" }));
     await flush();
   }
   await run.done;

@@ -329,7 +329,7 @@ for (const { name, error, reason } of [
   { name: "消费者缺失分类", error: "department-leader-consumer-missing", reason: "department-leader-consumer-missing" },
   { name: "来源不可观察分类", error: "department-producer-observation-scope-unavailable", reason: "department-producer-observation-scope-unavailable" },
 ]) test(`leader callback rejection logs safe context for ${name} and refuses later invocation`, { timeout: 15000 }, async (t) => {
-  const h = await setup(t), diagnostics: string[] = [], applicationLogs: unknown[] = [], originalError = console.error;
+  const h = await setup(t), diagnostics: string[] = [], applicationLogs: Array<{ message: string; data: unknown }> = [], originalError = console.error;
   console.error = (message?: unknown) => { diagnostics.push(String(message)); };
   t.after(() => { console.error = originalError; });
   h.host.logError = (message, data) => {
@@ -339,11 +339,10 @@ for (const { name, error, reason } of [
   h.host.handlers.onAssistantDelta = async () => { throw new Error(error); };
   const p = h.port(), a = await p.invoke(first); await assert.rejects(a.completion, /channel-or-delivery-unknown/);
   await assert.rejects(p.invoke(second)); assert.equal(h.count("turn/start"), 1);
-  assert.equal(diagnostics.length, 1);
-  const loggedSequence = diagnostics[0].match(/callbackSequence=([1-9]\d*)/u);
-  assert.ok(loggedSequence, "the rejected callback is identified by a positive sequence");
-  const callbackSequence = Number(loggedSequence[1]);
-  assert.equal(diagnostics[0], `[department-leader-native] stage=callback-consumer-rejected callback=onAssistantDelta callbackSequence=${callbackSequence} callbackRejectionReason=${reason}`);
+  assert.deepEqual(diagnostics, []);
+  assert.equal(applicationLogs.length, 1);
+  const { callbackSequence } = applicationLogs[0].data as { callbackSequence: number };
+  assert.ok(Number.isSafeInteger(callbackSequence) && callbackSequence > 0, "the rejected callback is identified by a positive sequence");
   assert.deepEqual(applicationLogs, [{ message: "department-leader-native-failed", data: {
     stage: "callback-consumer-rejected", callbackName: "onAssistantDelta", callbackSequence, callbackRejectionReason: reason,
     phase: "granted", rootTaskId: h.identity.rootTaskId,

@@ -121,6 +121,7 @@ type LoopPlusDecisionValidationOptions = LoopPlusDecisionOptions & {
 export type LoopPlusDecisionParseResult = {
   decision: LoopPlusDecision | null;
   rejectionReason: string | null;
+  rejectionKind?: "format" | "validation";
 };
 
 type LoopPlusDecisionNormalizer = (
@@ -169,23 +170,29 @@ export function parseLoopPlusDecisionWithFeedback(
   options?: LoopPlusDecisionOptions,
 ): LoopPlusDecisionParseResult {
   if (typeof content !== "string" || !content.trim()) {
-    return { decision: null, rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。" };
+    return { decision: null, rejectionKind: "format", rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。" };
   }
-  let rejectionReason = "未找到合法的 Loop+ 决策 JSON。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
+  let hasJsonObject = false;
+  let rejectionReason = "决策 JSON 未通过协议校验。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
   for (const jsonText of extractJsonObjectTexts(content)) {
+    let candidate: unknown;
     try {
-      const decision = normalizeDecision(JSON.parse(jsonText), {
-        ...options,
-        reject: (reason) => { rejectionReason = reason; },
-      });
-      if (decision) {
-        return { decision, rejectionReason: null };
-      }
+      candidate = JSON.parse(jsonText);
     } catch {
-      // A prompt may contain malformed or illustrative JSON before the decision.
+      continue;
+    }
+    hasJsonObject = true;
+    const decision = normalizeDecision(candidate, {
+      ...options,
+      reject: (reason) => { rejectionReason = reason; },
+    });
+    if (decision) {
+      return { decision, rejectionReason: null };
     }
   }
-  return { decision: null, rejectionReason };
+  return hasJsonObject
+    ? { decision: null, rejectionKind: "validation", rejectionReason }
+    : { decision: null, rejectionKind: "format", rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象，请按当前快照重新输出完整对象。" };
 }
 
 export function normalizeLoopPlusDecision(

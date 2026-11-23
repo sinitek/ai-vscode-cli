@@ -1,9 +1,14 @@
 import { logEssential } from "../logger";
 
 export type DepartmentLifecycleEvent = "department-root-stop-started" | "department-root-stop-settled"
-  | "department-leader-cleanup" | "department-leader-capacity" | "department-employee-capacity" | "department-lifecycle-persistence-failed";
+  | "department-leader-cleanup" | "department-leader-capacity" | "department-employee-capacity" | "department-lifecycle-persistence-failed"
+  | "department-cold-projection" | "department-root-recovery" | "department-root-continuation"
+  | "department-leader-continuation" | "department-leader-session-promotion";
 export type DepartmentLifecycleStage = "root-stop" | "runtime-save" | "lifecycle" | "task-idle"
-  | "producer-close" | "owner-receipts" | "release-save" | "capacity-release";
+  | "producer-close" | "owner-receipts" | "release-save" | "capacity-release"
+  | "projection" | "identity" | "snapshot-read" | "stop-gate" | "recovery-verify"
+  | "target-verify" | "resume" | "run-evidence" | "transcript-verify"
+  | "target-availability" | "binding-write" | "binding-readback";
 export type DepartmentLifecycleReason = "none" | "already-blocked" | "evidence-missing" | "evidence-rejected"
   | "persistence-failed" | "task-still-running" | "identity-changed" | "unexpected-failure";
 type Fields = { rootTaskId: string; leaderTaskId?: string; generation?: number;
@@ -17,6 +22,12 @@ const departmentDiagnosticErrorCodes = new Set([
   "department-interactive-native-session-conflict",
   "department-interactive-owner-start-failed",
   "department-interactive-session-write-failed",
+  "invalid-recovery", "capacity-mismatch", "invalid-member", "unverified-leader-session-or-plan",
+  "live-leader-unverifiable", "duplicate-leader-session", "leader-occupancy-mismatch", "unowned-employee",
+  "employee-cleanup-unverifiable", "missing-employee-occupancy", "root-not-ready", "execution-cleanup-unverified",
+  "leader-still-active-or-unverified", "leader-continuation-target-unverified", "root-resume-persistence-failed",
+  "resume-cancelled-or-identity-changed", "leader-resume-persistence-failed", "leader-cleanup-unverified",
+  "leader-release-persistence-failed",
   "EACCES", "EBUSY", "ENOENT", "ENOSPC", "EPERM", "EROFS", "EIO",
 ]);
 

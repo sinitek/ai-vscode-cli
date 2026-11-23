@@ -13,6 +13,7 @@ import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskRecord } from "../../loopTaskStore";
 import type { TaskRunRecord } from "../../promptRunState";
+import type { DepartmentMetadata } from "../../department";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import { installVscodeMock } from "../vscodeMock";
 
@@ -326,12 +327,18 @@ test("classic completion uses the production snapshot to clean current and eligi
   assert.deepEqual(state.tabs, [locked, running, rebound, newerBinding, newer]);
 });
 
-test("completed snapshot recovers a persisted idle tab after host reload and closes it with the current attempt", async () => {
+for (const mode of ["ordinary", "department-loop-plus", "department-owner"] as const) {
+test(`completed snapshot checks persisted idle tabs after reload in ${mode}`, async () => {
   const context = { taskId: "task", subtaskId: "A", round: 2, attemptId: "current" };
   const older: ConversationTabRecord = { id: "persisted-old", cli: "codex", sessionId: "old-session", sessionIdByCli: { codex: "old-session" }, createdAt: 1 };
   const target: ConversationTabRecord = { id: "current-sub", cli: "codex", sessionId: "current-session", sessionIdByCli: { codex: "current-session" }, createdAt: 1 };
   const state: ConversationTabsState = { activeTabId: target.id, tabs: [older, target] };
   const env = createHost({ state, currentCli: "codex", modes: {} });
+  const department: DepartmentMetadata | undefined = mode === "ordinary" ? undefined : {
+    version: 1, role: "leader", rootTaskId: "root", parentTaskId: "root", leaderSubtaskId: "module", moduleTitle: "模块",
+    routes: { director: {}, leader: {}, employee: {} }, limits: { maxLeaders: 1, maxEmployees: 1 },
+    ...(mode === "department-loop-plus" ? { executionMode: "loop-plus" } : {}),
+  };
   const cleanup = createCompletedLoopSubtaskTabCleanup({
     getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
     closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
@@ -350,7 +357,7 @@ test("completed snapshot recovers a persisted idle tab after host reload and clo
         loopSubtaskId: "A", loopRound: 2, loopAttemptId: "current",
       }],
       readTask: () => ({
-        workspaceKey: "workspace", schedulingMode: "event_driven", loopPlus: {
+        workspaceKey: "workspace", department, schedulingMode: "event_driven", loopPlus: {
           version: 1, maxConcurrency: 1, phase: "idle", parentStopped: false, completed: false, seq: 0,
           wakeSeq: 0, wakePending: false, userMessageQueue: [], running: [], pending: [], reportQueue: [],
           reviewQueue: [], currentReview: null,
@@ -367,12 +374,18 @@ test("completed snapshot recovers a persisted idle tab after host reload and clo
   cleanup.bindPrompt(target, context)?.(target.sessionId);
   const close = cleanup.prepareClose(target.id, context);
   await close();
+  if (mode === "department-owner") {
+    assert.deepEqual(env.disposedTabIds, [target.id]);
+    assert.deepEqual(state.tabs, [older]);
+    return;
+  }
   assert.deepEqual(env.disposedTabIds, [older.id, target.id]);
   assert.equal(state.tabs.some((tab) => tab === older || tab === target), false);
   assert.equal(state.tabs.length, 1);
   assert.equal(state.tabs[0].cli, "codex");
   assert.equal(state.tabs[0].sessionId, null);
 });
+}
 
 test("completed snapshot keeps restored tabs with newer, unknown, active, or replaced execution identity", async () => {
   for (const scenario of ["newer", "unknown", "active", "replaced"] as const) {

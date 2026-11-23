@@ -40,6 +40,7 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
   if (continuationPrompt !== undefined && (typeof continuationPrompt !== "string" || !continuationPrompt.trim())) throw new Error("invalid continuation prompt");
   const acceptedContinuationPrompts = [...new Set([continuationPrompt, ...extraContinuationPrompts].filter(Boolean))];
   if (acceptedContinuationPrompts.length > 2) throw new Error("invalid continuation prompt budget");
+  const summaryRequestLimit = 6 + acceptedContinuationPrompts.length;
   if (roles) for (const role of ["director", "leader", "employee"]) assert.ok(["codex", "opencode"].includes(roles[role]), "unknown scenario role CLI");
   // One native title per root/leader/employee session, plus the two existing
   // director summary captures. Two modules are the fixed scenario contract.
@@ -74,7 +75,7 @@ function createDepartmentFullEhScenario({ prompt, readTasks, inspectCleanup, max
       const data = JSON.parse(text.slice(text.indexOf("\n") + 1));
       assert.deepEqual(Object.keys(data), ["requirement"], "unknown summary input schema");
       assert.ok(typeof data.requirement === "string" && data.requirement.includes(prompt), "summary request is unrelated to this public submission");
-      assert.ok(history.filter((entry) => entry.stage === "task-summary").length < 6, "summary stage budget exceeded");
+      assert.ok(history.filter((entry) => entry.stage === "task-summary").length < summaryRequestLimit, "summary stage budget exceeded");
       stage = "task-summary"; identity = { requirement: data.requirement }; answer = "隔离本机文本协议验收";
     } else if (text.includes("使用经典 Loop JSON 决策。")) {
       identity = text.match(/任务 ID：([^；\s]+)；轮次：\d+/)?.[1];

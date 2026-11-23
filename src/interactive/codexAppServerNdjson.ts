@@ -20,7 +20,7 @@ export function serializeCodexAppServerMessage(message: Record<string, unknown>)
 
 export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServerNdjsonReader {
   const decoder = new StringDecoder("utf8");
-  let buffer = "";
+  const lineParts: string[] = [];
   const pendingLines: string[] = [];
   let streamEnded = false;
   let closed = false;
@@ -36,47 +36,39 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
     resolve?.();
   };
 
-  const enqueue = (flush: boolean): void => {
+  const finishLine = (tail: string): void => {
+    let line = tail;
+    if (lineParts.length > 0) {
+      if (tail.length > 0) lineParts.push(tail);
+      line = lineParts.join("");
+      lineParts.length = 0;
+    }
+    pendingLines.push(line.endsWith("\r") ? line.slice(0, -1) : line);
+  };
+
+  const enqueue = (text: string): void => {
     let start = 0;
-    for (let index = 0; index < buffer.length; index += 1) {
-      if (buffer[index] !== "\n") {
-        continue;
-      }
-      let end = index;
-      if (end > start && buffer[end - 1] === "\r") {
-        end -= 1;
-      }
-      pendingLines.push(buffer.slice(start, end));
+    let index = text.indexOf("\n");
+    while (index !== -1) {
+      finishLine(text.slice(start, index));
       start = index + 1;
+      index = text.indexOf("\n", start);
     }
-    buffer = buffer.slice(start);
-    if (flush) {
-      if (buffer.endsWith("\r")) {
-        pendingLines.push(buffer.slice(0, -1));
-      } else if (buffer.length > 0) {
-        pendingLines.push(buffer);
-      }
-      buffer = "";
-    }
-    if (pendingLines.length > 0 || streamEnded || closed || streamError) {
-      wake();
-    }
+    if (start < text.length) lineParts.push(text.slice(start));
+    if (pendingLines.length > 0) wake();
   };
 
   const onData = (chunk: Buffer | string): void => {
     if (closed) {
       return;
     }
-    buffer += typeof chunk === "string" ? chunk : decoder.write(chunk);
-    enqueue(false);
+    enqueue(typeof chunk === "string" ? chunk : decoder.write(chunk));
   };
 
   const onEnd = (): void => {
     if (!closed) {
-      buffer += decoder.end();
-      streamEnded = true;
-      enqueue(true);
-      return;
+      enqueue(decoder.end());
+      if (lineParts.length > 0) finishLine("");
     }
     streamEnded = true;
     wake();
@@ -110,7 +102,7 @@ export function createCodexAppServerNdjsonReader(stdout: Readable): CodexAppServ
       : consumedToEnd ? { status: "confirmed", evidence: "ndjson-natural-eof-and-queue-drained" }
         : { status: "unobservable", reason: "ndjson-reader-closed-before-drain" });
     streamEnded = true;
-    buffer = "";
+    lineParts.length = 0;
     pendingLines.length = 0;
     stdout.off("close", onClose);
     stdout.off("data", onData);

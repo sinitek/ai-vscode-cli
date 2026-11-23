@@ -19,8 +19,8 @@ export function getHistoryRetentionMs(): number {
 /** @deprecated Prefer getHistoryRetentionMs() for the dynamic global setting. */
 export const HISTORY_RETENTION_MS = HISTORY_RETENTION_DAYS * ONE_DAY_MS;
 
-export function getHistoryRetentionCutoff(now: number = Date.now()): number {
-  return now - getHistoryRetentionMs();
+export function getHistoryRetentionCutoff(now = Date.now(), retentionDays = getHistoryRetentionDays()): number {
+  return now - retentionDays * ONE_DAY_MS;
 }
 
 export function isTimestampWithinHistoryRetention(

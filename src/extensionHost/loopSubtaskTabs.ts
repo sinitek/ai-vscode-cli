@@ -19,6 +19,11 @@ type RestoredCleanupEvidence = {
   reservedSessions: ReadonlySet<string>;
 };
 
+export function usesCompletedLoopSubtaskTabCleanup(task: Pick<LoopTaskRecord, "department" | "departmentInvalid">): boolean {
+  return !task.departmentInvalid && (!task.department
+    || (task.department.role === "leader" && task.department.executionMode === "loop-plus"));
+}
+
 function sessionKey(cli: ConversationTabRecord["cli"], sessionId: string | null): string {
   return JSON.stringify([cli, sessionId]);
 }
@@ -181,7 +186,7 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
         const { targetRun, latestRuns } = history;
         if (!targetRun) return null;
         const task = evidence.readTask(expected.taskId);
-        if (task?.workspaceKey !== workspace || task.department || task.departmentInvalid) return null;
+        if (task?.workspaceKey !== workspace || !usesCompletedLoopSubtaskTabCleanup(task)) return null;
         const reservedSessions = new Set<string>();
         if (task.schedulingMode !== "event_driven") return { targetRun, latestRuns, attempts: null, reservedSessions };
         const snapshot = createLoopPlusScheduler({ snapshot: task.loopPlus }).snapshot();

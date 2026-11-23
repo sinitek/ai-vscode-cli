@@ -1,10 +1,12 @@
 import { createDepartmentEmployeeAllocationHost } from "./departmentemployeeallocationhost";
+import { departmentLifecycleDiagnostic, departmentCleanupErrorCode, type DepartmentLifecycleStage } from "./departmentlifecyclediagnostics";
 import { assertDepartmentOrganizationContinuation, readDepartmentOrganizationStopFeedback, type DepartmentLeaderOwnershipReader } from "./departmentGroupChatProjection";
 import { departmentRoleCliIssue, normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
 import { normalizeDepartmentConfigurationSnapshot, type DepartmentConfigurationState } from "../departmentConfiguration";
-import { DepartmentCapacityPool, type DepartmentCapacitySnapshot } from "../departmentcapacity";
+import { DepartmentCapacityPool, isValidDepartmentCapacitySnapshot, type DepartmentCapacitySnapshot } from "../departmentcapacity";
 import { DEPARTMENT_MAX_EMPLOYEES_DEFAULT, DEPARTMENT_MAX_LEADERS_DEFAULT } from "../departmentSettings";
 import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
+import { createLoopPlusScheduler } from "../loopPlusScheduler";
 import { findLoopLiveDispatchConflict } from "../loopParallel";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
 import { normalizeLoopProgressPercent, resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
@@ -15,7 +17,7 @@ import { isLocalSessionId } from "../interactive/sessionHistoryRepair";
 import { createDepartmentOrchestrationHost, type DepartmentOrchestrationDeps } from "./departmentorchestration";
 import type { ClassicLoopDecisionResult, DepartmentDirectorDecisionRequest } from "./loopOrchestration";
 import { DepartmentRuntimeStore } from "./departmentruntimestore";
-import type { DepartmentRuntimeSnapshot } from "./departmentruntimestate";
+import { isDepartmentRuntimeSnapshot, type DepartmentRuntimeSnapshot } from "./departmentruntimestate";
 import type { CliName, ThinkingMode } from "../cli/types";
 
 /** Resolve an unspecified host thinking preference ONCE, before persisting role routes.
@@ -62,7 +64,8 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
 };
 type Controller = { target: PromptRunTarget; input: PromptRunInput; revision: number; wake: (() => void) | null; run: Promise<void> | null; stopped: boolean;
   stopRevision: number };
-type OrganizationStopStage = "request" | "save" | "cancel" | "cleanup";
+type OrganizationStopStage = "request" | "save" | "cancel" | "director-cancel" | "director-readback" | "cleanup"
+  | "snapshot-read" | "snapshot-fence" | "member-verify" | "capacity-verify" | "member-stop" | "capacity-save" | "capacity-readback";
 const clone = <T>(v: T): T => structuredClone(v);
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -71,6 +74,20 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   const capacity = new DepartmentCapacityPool({ maxLeaders: DEPARTMENT_MAX_LEADERS_DEFAULT, maxEmployees: DEPARTMENT_MAX_EMPLOYEES_DEFAULT });
   const snapshots = new Map<string, DepartmentRuntimeSnapshot>();
   const failed = new Set<string>();
+  const recoveryFailures = new Set<string>();
+  const otherFailures = new Set<string>();
+  function markFailed(root: string, source: "recovery" | "other" = "other"): void {
+    failed.add(root);
+    (source === "recovery" ? recoveryFailures : otherFailures).add(root);
+  }
+  function clearOtherFailures(root: string): void {
+    otherFailures.delete(root);
+    if (!recoveryFailures.has(root)) failed.delete(root);
+  }
+  function clearConfirmedRecoveryFailure(root: string): void {
+    recoveryFailures.delete(root);
+    if (!otherFailures.has(root)) failed.delete(root);
+  }
   const controllers = new Map<string, Controller>();
   // Request identity exists before route preparation, independently of recovered
   // execution controllers. Removing it revokes this request, never grants execution.
@@ -96,7 +113,8 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   function readCapacity(id: string): DepartmentCapacitySnapshot | null {
     const live = capacity.snapshot(id)[0]; if (live) return live;
     const task = deps.readTask(id); if (!task) return null;
-    const saved = deps.store.read(id, task.workspaceKey); return saved.ok ? saved.value?.capacity ?? null : null;
+    const saved = deps.store.read(id, task.workspaceKey);
+    return saved.ok && !saved.value?.runtime.stopping ? saved.value?.capacity ?? null : null;
   }
   function assertStopGate(root: LoopTaskRecord): LoopTaskRecord {
     const current = readOrganizationRoot(root.id);
@@ -113,17 +131,17 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const occupancy = capacity.snapshot(root)[0] ?? { rootTaskId: root, ...task.department!.limits, leaders: [], employees: [] };
     if (releaseLeaderModuleId) occupancy.leaders = occupancy.leaders.filter((id) => id !== releaseLeaderModuleId);
     const result = deps.store.write({ version: 1, rootTaskId: root, workspaceKey: task.workspaceKey, runtime: clone(runtime), capacity: occupancy });
-    if (!result.ok) { failed.add(root); throw new Error(`部门运行状态保存失败：${result.error}`); }
+    if (!result.ok) { markFailed(root); throw new Error(`部门运行状态保存失败：${result.error}`); }
     // Real releases must still be persisted after revocation, but revocation is
     // never permission to migrate/register policy or heal an execution fence.
     const meta = normalizeDepartmentMetadata(task.department);
     if (task.departmentInvalid || !meta || meta.role !== "director" || meta.rootTaskId !== root
       || meta.parentTaskId !== null || meta.leaderSubtaskId !== null || task.workspaceKey !== deps.workspaceKey()
-      || !deps.validateRoutes(meta.routes)) { failed.add(root); return; }
+      || !deps.validateRoutes(meta.routes)) { markFailed(root); return; }
     // Only this verified organization lifecycle migrates/registers allocation state.
     const allocation = deps.store.synchronizeEmployeeAllocation(root, task.workspaceKey);
-    if (!allocation.ok) { failed.add(root); throw new Error(`部门员工额度保存失败：${allocation.error}`); }
-    failed.delete(root);
+    if (!allocation.ok) { markFailed(root); throw new Error(`部门员工额度保存失败：${allocation.error}`); }
+    clearOtherFailures(root);
   }
   const allocation = createDepartmentEmployeeAllocationHost({ ...deps, capacity,
     runtimeSnapshot: (root) => host.runtimeSnapshot(root),
@@ -147,7 +165,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     },
   });
   // Every actual acquire/release is synchronously captured, independently of organization mutations.
-  const capacitySubscription = capacity.subscribe((root) => { if (!snapshots.has(root)) return; try { save(root); } catch (error) { failed.add(root); deps.log?.("department-capacity-persist-failed", error); } });
+  const capacitySubscription = capacity.subscribe((root) => { if (!snapshots.has(root)) return; try { save(root); } catch (error) { markFailed(root); deps.log?.("department-capacity-persist-failed", error); } });
   deps.runtime.setDepartmentCollaborationHandler?.(host.coordinateCollaboration);
   function wake(root: string): void {
     const c = controllers.get(root); if (!c) return;
@@ -160,12 +178,151 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
   }
   function ensure(root: LoopTaskRecord): void {
     if (host.runtimeSnapshot(root.id)) return;
-    const m = metadata(root), saved = deps.store.read(root.id, root.workspaceKey);
-    if (!saved.ok) { failed.add(root.id); throw new Error(saved.error); }
-    if (!saved.value) throw new Error("部门运行快照缺失，不能将既有任务视为空组织。");
-    snapshots.set(root.id, saved.value.runtime);
-    const result = host.recoverRoot(root, m, normalizeLoopPlusAcceptancePlanSnapshot(root.loopPlusAcceptancePlan), saved.value.runtime, [saved.value.capacity]);
-    if (!result.ok) { failed.add(root.id); throw new Error(`部门恢复核验阻塞：${result.reason}。保留原占用，不能重新派发。`); }
+    const startedAt = Date.now();
+    let stage: DepartmentLifecycleStage = "identity";
+    let rejectionCode: string | undefined;
+    try {
+      const metadataSnapshot = metadata(root);
+      stage = "snapshot-read";
+      const saved = deps.store.read(root.id, root.workspaceKey);
+      if (!saved.ok) { markFailed(root.id); throw new Error(saved.error); }
+      if (!saved.value) throw new Error("部门运行快照缺失，不能将既有任务视为空组织。");
+      stage = "stop-gate";
+      if (saved.value.runtime.stopping) throw new Error("部门停止尚未确认，不能恢复或继续执行。");
+      snapshots.set(root.id, saved.value.runtime);
+      stage = "recovery-verify";
+      const result = host.recoverRoot(root, metadataSnapshot, normalizeLoopPlusAcceptancePlanSnapshot(root.loopPlusAcceptancePlan), saved.value.runtime, [saved.value.capacity]);
+      if (!result.ok) {
+        rejectionCode = result.reason;
+        markFailed(root.id, "recovery");
+        throw new Error(`部门恢复核验阻塞：${result.reason}。保留原占用，不能重新派发。`);
+      }
+      departmentLifecycleDiagnostic("department-root-recovery", { rootTaskId: root.id, stage, result: "confirmed",
+        reason: "none", elapsedMs: Date.now() - startedAt });
+    } catch (error) {
+      departmentLifecycleDiagnostic("department-root-recovery", { rootTaskId: root.id, stage, result: "unconfirmed",
+        reason: stage === "stop-gate" ? "already-blocked" : "evidence-rejected", elapsedMs: Date.now() - startedAt,
+        errorCode: rejectionCode ?? departmentCleanupErrorCode(error) });
+      throw error;
+    }
+  }
+  async function stopColdLoopPlusMembers(root: LoopTaskRecord, rootMetadata: DepartmentMetadata, assertCurrent: () => void,
+    setStage: (stage: OrganizationStopStage) => void): Promise<void> {
+    if (rootMetadata.executionMode !== "loop-plus") return;
+    setStage("snapshot-read");
+    const read = deps.store.read(root.id, root.workspaceKey);
+    if (!read.ok || !read.value) throw new Error("Loop+ 部门停止快照不可用，保留原占用。");
+    let stored = read.value;
+    const plan = normalizeLoopPlusAcceptancePlanSnapshot(root.loopPlusAcceptancePlan);
+    if (!plan || !isDepartmentRuntimeSnapshot(stored.runtime, root.id)
+      || !isValidDepartmentCapacitySnapshot(stored.capacity, root.id)
+      || stored.runtime.startingModules?.length
+      || stored.executionBindings?.length || stored.leaderExecutionSets?.length
+      || stored.capacity.maxLeaders !== rootMetadata.limits.maxLeaders
+      || stored.capacity.maxEmployees !== rootMetadata.limits.maxEmployees) {
+      throw new Error("Loop+ 部门停止快照或容量不匹配，保留原占用。");
+    }
+    if (!stored.runtime.stopping) {
+      setStage("snapshot-fence");
+      const fenced = { ...stored, runtime: { ...clone(stored.runtime), stopping: true } };
+      const write = deps.store.write(fenced);
+      if (!write.ok) throw new Error(`Loop+ 部门停止标记保存失败：${write.error}`);
+      assertCurrent();
+      const confirmed = deps.store.read(root.id, root.workspaceKey);
+      if (!confirmed.ok || !confirmed.value || !same(confirmed.value.runtime, fenced.runtime)
+        || !same(confirmed.value.capacity, stored.capacity)) {
+        throw new Error("Loop+ 部门停止标记读回未确认，保留原占用。");
+      }
+      stored = confirmed.value;
+    }
+    setStage("member-verify");
+    const members = stored.runtime.leaders.map((member) => {
+      const module = root.subTasks.find((item) => item.id === member.leaderSubtaskId);
+      const task = deps.readTask(member.taskId);
+      const expectedMetadata = module && normalizeDepartmentMetadata({ ...rootMetadata, role: "leader",
+        parentTaskId: root.id, leaderSubtaskId: member.leaderSubtaskId, moduleTitle: module.title });
+      const actualMetadata = task && normalizeDepartmentMetadata(task.department);
+      let scheduler: ReturnType<typeof createLoopPlusScheduler>;
+      try {
+        if (!task?.loopPlus) throw new Error("missing-loop-plus-snapshot");
+        scheduler = createLoopPlusScheduler({ snapshot: task.loopPlus });
+      } catch {
+        throw new Error("Loop+ 组长调度快照无效，保留原占用。");
+      }
+      if (!module || !task || task.id !== member.taskId || task.workspaceKey !== root.workspaceKey
+        || task.departmentInvalid || task.schedulingMode !== "event_driven"
+        || !expectedMetadata || !same(actualMetadata, expectedMetadata)
+        || task.cli !== rootMetadata.routes.leader.cli
+        || !same(normalizeLoopPlusAcceptancePlanSnapshot(task.loopPlusAcceptancePlan), plan)) {
+        throw new Error("Loop+ 组长任务身份或计划不匹配，保留原占用。");
+      }
+      return { member, task, scheduler };
+    });
+    setStage("capacity-verify");
+    const activeMemberStatuses = new Set(["starting", "running", "stopping", "blocked"]);
+    const expectedLeaderLeases = stored.runtime.leaders.filter((member) => activeMemberStatuses.has(member.status))
+      .map((member) => member.leaderSubtaskId).sort();
+    const knownModules = new Set(stored.runtime.leaders.map((member) => member.leaderSubtaskId));
+    const expectedEmployeeLeases = members.flatMap(({ task, scheduler }) => scheduler.snapshot().running
+      .map((attempt) => JSON.stringify([task.id, attempt.attemptId]))).sort();
+    if (!same(expectedLeaderLeases, [...stored.capacity.leaders].sort())
+      || !same(expectedEmployeeLeases, [...stored.capacity.employees].sort())
+      || stored.capacity.leaders.some((moduleId) => !knownModules.has(moduleId))) {
+      throw new Error("Loop+ 部门占用与组长 attempt 不一致，保留原占用。");
+    }
+    setStage("member-stop");
+    for (const entry of members) {
+      assertCurrent();
+      const { member, task, scheduler } = entry;
+      const before = { id: task.id, workspaceKey: task.workspaceKey, cli: task.cli, sessionId: task.sessionId,
+        taskStoreFile: task.taskStoreFile, department: task.department, departmentInvalid: task.departmentInvalid,
+        schedulingMode: task.schedulingMode, loopPlusAcceptancePlan: task.loopPlusAcceptancePlan };
+      const initial = scheduler.snapshot();
+      if (member.status === "completed") {
+        if (!initial.completed || initial.running.length || task.status !== "completed") {
+          throw new Error("Loop+ 已完成组长仍有活动调度，保留原占用。");
+        }
+        continue;
+      }
+      if (deps.runtime.hasTaskExecution(task.id)) {
+        throw new Error("部门恢复核验阻塞：live-leader-unverifiable。保留原占用，不能重新派发。");
+      }
+      deps.runtime.host().stopParent(task.id);
+      await deps.stopLeader(task.id);
+      await deps.runtime.waitForTaskIdle(task.id);
+      assertCurrent();
+      const current = deps.readTask(task.id), after = current && { id: current.id, workspaceKey: current.workspaceKey,
+        cli: current.cli, sessionId: current.sessionId, taskStoreFile: current.taskStoreFile,
+        department: current.department, departmentInvalid: current.departmentInvalid,
+        schedulingMode: current.schedulingMode, loopPlusAcceptancePlan: current.loopPlusAcceptancePlan };
+      let stoppedScheduler: ReturnType<typeof createLoopPlusScheduler> | null = null;
+      try { if (current?.loopPlus) stoppedScheduler = createLoopPlusScheduler({ snapshot: current.loopPlus }); } catch { /* checked below */ }
+      if (!current || !same(before, after) || current.status !== "stopped" || !stoppedScheduler
+        || !stoppedScheduler.snapshot().parentStopped || stoppedScheduler.snapshot().running.length
+        || deps.runtime.hasTaskExecution(task.id)) {
+        throw new Error("Loop+ 组长停止尚未确认，保留原占用。");
+      }
+    }
+    assertCurrent();
+    const stoppedRoot = deps.readTask(root.id);
+    if (!stoppedRoot || stoppedRoot.status !== "stopped"
+      || members.some(({ member }) => stoppedRoot.subTasks.find((module) => module.id === member.leaderSubtaskId)?.status === "running")) {
+      throw new Error("Loop+ 部门停止状态未写入，保留原占用。");
+    }
+    const runtime: DepartmentRuntimeSnapshot = { ...clone(stored.runtime), stopping: false,
+      leaders: stored.runtime.leaders.map((member) => ({ ...member,
+        status: member.status === "completed" ? "completed" : "paused" })) };
+    const capacity = { ...clone(stored.capacity), leaders: [], employees: [], employeeOverflow: [] };
+    setStage("capacity-save");
+    const write = deps.store.write({ ...stored, runtime, capacity });
+    if (!write.ok) throw new Error(`Loop+ 部门停止占用保存失败：${write.error}`);
+    setStage("capacity-readback");
+    assertCurrent();
+    const confirmed = deps.store.read(root.id, root.workspaceKey);
+    if (!confirmed.ok || !confirmed.value || !same(confirmed.value.runtime, runtime)
+      || !same(confirmed.value.capacity, capacity)) {
+      throw new Error("Loop+ 部门停止占用读回未确认，保留原占用。");
+    }
   }
   async function startDepartmentPrompt(request: DepartmentPromptStartRequest & { departmentConfiguration: DepartmentConfigurationState }): Promise<void> {
     if (disposed) throw new Error("部门运行入口已释放。");
@@ -232,9 +389,9 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       c.stopped = true;
       // A failed model turn is resumable; a failed state write keeps the persistence fence.
       try {
-        if (deps.readTask(root)?.status === "running" && !deps.updateTask(root, { status: "needs-review" })) failed.add(root);
+        if (deps.readTask(root)?.status === "running" && !deps.updateTask(root, { status: "needs-review" })) markFailed(root);
         deps.report(root, `总监协调已暂停：${error instanceof Error ? error.message : String(error)}`);
-      } catch (failure) { failed.add(root); try { deps.log?.("department-director-pause-failed", failure); } catch { /* remain fenced */ } }
+      } catch (failure) { markFailed(root); try { deps.log?.("department-director-pause-failed", failure); } catch { /* remain fenced */ } }
     }).finally(() => { if (c.run === run) c.run = null; release?.(); });
     c.run = run;
     return true;
@@ -423,7 +580,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         admitted = true;
         if (receipt?.state === "confirmed" && stopRequests.get(root.id) === receipt) stopRequests.delete(root.id);
       } });
-      if (!continued.ok) throw new Error(`部门继续被拒绝：${continued.reason}`);
+      if (!continued.ok) throw Object.assign(new Error(`部门继续被拒绝：${continued.reason}`), { code: continued.reason });
       assertContinuation();
       const resumed = deps.readTask(root.id);
       if (disposed || c.stopRevision !== stopRevision || resumed?.status !== "running"
@@ -479,6 +636,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         || rootIdentity(current) !== request.identity) throw new Error("部门停止归属或状态已变化。");
       request.state = "confirmed";
       if (unconfirmedStops.get(root.id) === request) unconfirmedStops.delete(root.id);
+      if (path === "cold" && metadata(current).executionMode === "loop-plus") clearConfirmedRecoveryFailure(root.id);
       diagnostic("confirmed", "cleanup");
     } catch (error) {
       if (stopRequests.get(root.id) === request) request.state = "unconfirmed";
@@ -494,7 +652,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     if (disposed) throw new Error("部门运行入口已释放。");
     let directorStop: Promise<void> | undefined;
     if (!host.runtimeSnapshot(root.id)) {
-      const frozen = clone(root), m = metadata(frozen), request = {};
+      let frozen = clone(root); const m = metadata(frozen), request = {};
       if (m.role !== "director" || m.rootTaskId !== frozen.id) throw new Error("部门停止根任务身份无效。");
       // Freeze the authoritative organization, session and state across route
       // preparation. Unrelated timestamps do not grant or revoke ownership.
@@ -512,25 +670,40 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       try {
         assertStop();
         setStage("save");
-        if (frozen.status !== "stopped") {
-          try { deps.updateTask(frozen.id, { status: "stopped" }); } catch { /* Still request cancellation. */ }
-          if (deps.readTask(frozen.id)?.status === "stopped") {
-            frozen.status = "stopped";
+        const stoppedSubTasks = frozen.subTasks.map((module) => module.status === "running"
+          ? { ...module, status: "pending" as const, updatedAt: Date.now() } : module);
+        if (frozen.status !== "stopped" || !same(frozen.subTasks, stoppedSubTasks)) {
+          try { deps.updateTask(frozen.id, { status: "stopped", subTasks: stoppedSubTasks, updatedAt: Date.now() }); } catch { /* Still request cancellation. */ }
+          const saved = deps.readTask(frozen.id);
+          if (saved?.status === "stopped" && same(saved.subTasks, stoppedSubTasks)) {
+            frozen = clone(saved);
             expected = clone(identity(frozen));
           }
         }
         assertStop();
         setStage("cancel");
         directorStop = Promise.resolve().then(() => deps.stopDirector(frozen.id));
-        const [preparation] = await Promise.allSettled([
+        const [preparation, cancellation] = await Promise.allSettled([
           Promise.resolve().then(() => deps.prepareColdRecovery?.(clone(frozen), assertStop)), directorStop,
         ]);
         if (preparation.status === "rejected") throw preparation.reason;
         assertStop();
+        if (m.executionMode === "loop-plus" && cancellation.status === "rejected") {
+          setStage("director-cancel");
+          throw new Error("总监取消尚未确认，原执行记录继续保留。");
+        }
+        if (m.executionMode === "loop-plus" && (frozen.status !== "stopped" || !same(frozen.subTasks, stoppedSubTasks))) {
+          setStage("director-readback");
+          throw new Error("部门停止状态未写入，保留原占用。");
+        }
         setStage("cleanup");
         await deps.prepareRoutes(clone(m.routes));
         assertStop();
         if (!deps.validateRoutes(m.routes)) throw new Error("部门角色配置在停止期间发生变化。");
+        await stopColdLoopPlusMembers(frozen, m, assertStop, setStage);
+        assertStop();
+        if (!deps.validateRoutes(m.routes)) throw new Error("部门角色配置在停止期间发生变化。");
+        if (m.executionMode === "loop-plus") return;
         ensure(deps.readTask(frozen.id)!);
       } finally {
         if (coldStops.get(frozen.id) === request) coldStops.delete(frozen.id);
@@ -545,15 +718,43 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     }
     await c?.run;
   }
+  async function reconcileColdStopBeforeContinue(root: LoopTaskRecord): Promise<LoopTaskRecord> {
+    const current = readOrganizationRoot(root.id);
+    if (!current || rootIdentity(current) !== rootIdentity(root)) throw new Error("部门续接归属已变化。");
+    if (activeStops.has(root.id)) throw new Error("部门正在停止，请稍候。");
+    if (host.runtimeSnapshot(root.id) || metadata(current).executionMode !== "loop-plus") return current;
+    const saved = deps.store.read(root.id, current.workspaceKey);
+    if (!saved.ok) throw new Error(saved.error);
+    if (!saved.value?.runtime.stopping) return current;
+    await stop(current);
+    const settled = readOrganizationRoot(root.id);
+    if (!settled || rootIdentity(settled) !== rootIdentity(root) || settled.status !== "stopped") {
+      throw new Error("部门停止状态未确认，不能继续执行。");
+    }
+    return settled;
+  }
   const organizationControl = {
     continue: async (root: LoopTaskRecord, prompt?: string) => {
-      if (disposed) throw new Error("部门运行入口已释放。");
-      if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
-      const current = assertStopGate(root);
-      const target = deps.resolveTargetForRoot?.(current);
-      if (!target) throw new Error("总监真实会话不可用。");
-      if (deps.taskForTarget(target.tabId)?.id !== current.id) throw new Error("部门续接会话绑定无效。");
-      await continueDepartmentPrompt({ displayPrompt: prompt ?? "继续部门任务", modelPrompt: prompt ?? "继续部门任务", contextTags: [], targetTabId: target.tabId, cli: target.cli });
+      const startedAt = Date.now();
+      let stage: DepartmentLifecycleStage = "stop-gate";
+      try {
+        if (disposed) throw new Error("部门运行入口已释放。");
+        if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
+        const current = assertStopGate(await reconcileColdStopBeforeContinue(root));
+        stage = "target-verify";
+        const target = deps.resolveTargetForRoot?.(current);
+        if (!target) throw new Error("总监真实会话不可用。");
+        if (deps.taskForTarget(target.tabId)?.id !== current.id) throw new Error("部门续接会话绑定无效。");
+        stage = "resume";
+        await continueDepartmentPrompt({ displayPrompt: prompt ?? "继续部门任务", modelPrompt: prompt ?? "继续部门任务", contextTags: [], targetTabId: target.tabId, cli: target.cli });
+        departmentLifecycleDiagnostic("department-root-continuation", { rootTaskId: root.id, stage, result: "confirmed",
+          reason: "none", elapsedMs: Date.now() - startedAt });
+      } catch (error) {
+        departmentLifecycleDiagnostic("department-root-continuation", { rootTaskId: root.id, stage, result: "unconfirmed",
+          reason: stage === "stop-gate" ? "already-blocked" : "evidence-rejected",
+          elapsedMs: Date.now() - startedAt, errorCode: departmentCleanupErrorCode(error) });
+        throw error;
+      }
     },
     stop,
     complete: async (root: LoopTaskRecord) => { ensure(root); const result = host.confirmRootComplete(root.id, root.finalSummary || "按组长汇报确认整体完成"); if (!result.ok) throw new Error(`整体完成被拒绝：${result.reason}`); },

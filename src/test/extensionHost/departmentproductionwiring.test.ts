@@ -25,6 +25,7 @@ function wiringTest(name: string, options: test.TestOptions, run: (t: test.TestC
 
 import { departmentGenerationAuthorityDirectory, readDepartmentGenerationAuthority } from "../../runtime/departmentgenerationauthority";
 import { productionWiring, until, gate } from "./fixtures/departmentproductionwiringfixture";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { createDepartmentExecutionProducer } from "../../extensionHost/departmentexecutionproducer";
 import { normalizeLoopTaskRecord, mergeLoopTaskRecordPatch } from "../../loopTaskStore";
 
@@ -217,7 +218,10 @@ wiringTest("allocation production lifecycle tracks dispatch at zero and releases
 });
 
 for (const employee of ["codex", "opencode"] as const) wiringTest(`authority production Ledger grants two Codex leader rounds and ${employee} employee then retires after original receipts`, { timeout: 25000 }, async t => {
+  const releaseEmployee = gate();
+  t.after(releaseEmployee.resolve);
   const h = await productionWiring(t, employee, true, true, 1, undefined, "codex", true);
+  h.beforeEmployeeConsumerFinish(() => releaseEmployee.promise);
   h.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
     prompt: "Implement this isolated employee requirement completely, verify the source and report the actual changes and verification evidence." }] });
   h.answer(2, { status: "wait", finalSummary: "等待员工原始清理凭证" });
@@ -225,6 +229,7 @@ for (const employee of ["codex", "opencode"] as const) wiringTest(`authority pro
   await until(() => h.entries().length === 2 && h.entries().every(entry => entry.executionId !== null));
   assert.equal(h.fixture.adapter.host().submitUserMessage(launch.taskId, "核验第二轮仍保留原生会话与原执行责任"), true);
   await until(() => h.wire().filter(message => message.method === "turn/start").length === 2);
+  await until(() => createLoopPlusScheduler({ snapshot: h.read(launch.taskId)?.loopPlus }).snapshot().userMessageQueue.length === 0);
   const snapshot = h.store.read("root", "workspace"); assert.ok(snapshot.ok && snapshot.value);
   const set = snapshot.value.leaderExecutionSets![0];
   const directory = departmentGenerationAuthorityDirectory(h.file("authorities"), set.scope);
@@ -242,7 +247,9 @@ for (const employee of ["codex", "opencode"] as const) wiringTest(`authority pro
   }
   // The real organization stop aggregates original clients and persists lease
   // removal; authority retirement is awaited by leaderReleased.
-  await h.composition.organizationControl.stop(h.read("root")!);
+  const stopping = h.composition.organizationControl.stop(h.read("root")!);
+  releaseEmployee.resolve();
+  await stopping;
   await launch.done;
   const finished = h.store.read("root", "workspace"); assert.ok(finished.ok && finished.value);
   assert.equal(finished.value.leaderExecutionSets![0].state, "closed");
@@ -325,4 +332,46 @@ wiringTest("OpenCode parallel original receipt waiter survives endpoint retireme
   assert.deepEqual(finished.value.capacity.leaders, []); assert.deepEqual(finished.value.capacity.employees, []);
   const worker = h.workers.find(w => w.module.endsWith("departmentgenerationauthorityworker.js"))!;
   assert.equal(worker.child.exitCode, 0); assert.equal(worker.child.signalCode, null);
+});
+
+wiringTest("transient producer close failure retries without releasing or reopening a generation", { timeout: 25000 }, async t => {
+  const h = await productionWiring(t, "codex", true, true, 1, undefined, "codex", true, true);
+  const attachNativeOwner = h.producer.attachNativeOwner.bind(h.producer);
+  let failAfterDrainOnce = true, sealAttempts = 0, successfulDrains = 0;
+  t.mock.method(h.producer, "attachNativeOwner", (taskId: string, sealNative: Parameters<typeof h.producer.attachNativeOwner>[1]) => {
+    attachNativeOwner(taskId, async () => {
+      sealAttempts++;
+      const drained = await sealNative();
+      successfulDrains++;
+      if (failAfterDrainOnce) { failAfterDrainOnce = false; throw new Error("transient-close-confirmation-loss"); }
+      return drained;
+    });
+  });
+  h.answer(1, { status: "wait", finalSummary: "保持同一组长代次，等待显式停止" });
+  h.answer(2, { status: "wait", finalSummary: "保持同一组长代次，等待显式停止" });
+  const launch = await h.start(); assert.ok(launch.ok);
+  await until(() => h.mainCalls > 0 && !!h.read(launch.taskId)?.executionSession);
+  await h.fixture.adapter.waitForTaskIdle(launch.taskId);
+
+  const first = await h.producer.close(launch.taskId);
+  assert.deepEqual(first, { ok: false, error: "transient-close-confirmation-loss" });
+  assert.equal(successfulDrains, 1, "the native owner confirmed its first drain before the injected transient failure");
+  const retained = h.store.read("root", "workspace"); assert.ok(retained.ok && retained.value);
+  assert.deepEqual(retained.value.capacity.leaders, ["module"]);
+  assert.equal(retained.value.leaderExecutionSets![0].state, "open");
+  assert.equal(h.producer.canContinueLeader(launch.taskId), false);
+
+  const retried = await h.producer.close(launch.taskId);
+  assert.deepEqual(retried, { ok: true }, `seal attempts=${sealAttempts}, successful native drains=${successfulDrains}`);
+  const sealed = h.store.read("root", "workspace"); assert.ok(sealed.ok && sealed.value);
+  assert.equal(sealed.value.leaderExecutionSets![0].state, "closed");
+  assert.deepEqual(sealed.value.capacity.leaders, ["module"], "producer close alone cannot release department capacity");
+  assert.equal(h.producer.canContinueLeader(launch.taskId), false, "a closed generation is not an execution grant");
+
+  h.fixture.adapter.host().stopParent(launch.taskId);
+  await h.fixture.adapter.waitForTaskIdle(launch.taskId);
+  await h.composition.organizationControl.stop(h.read("root")!);
+  const finished = h.store.read("root", "workspace"); assert.ok(finished.ok && finished.value);
+  assert.deepEqual(finished.value.capacity.leaders, []);
+  assert.equal(h.producer.canContinueLeader(launch.taskId), true);
 });

@@ -120,6 +120,7 @@ scenario("unknown preparation responsibility remains live and cannot be retired 
 scenario("continued leader owns preparation and coordination until its real stopped generation retires", async (t) => {
   const h = await treeControl(t);
   const entered = h.gate(), release = h.gate();
+  const employeeEntered = h.gate(), employeeRelease = h.gate();
   h.answer(1, { status: "wait", finalSummary: "等待续接测试" });
   const first = await bounded(h.start(), "initial leader", h.diagnostic); assert.ok(first.ok);
   h.track(first.done);
@@ -131,7 +132,9 @@ scenario("continued leader owns preparation and coordination until its real stop
   assert.deepEqual(old.value.capacity.leaders, []);
   assert.equal(old.value.leaderExecutionSets![0].state, "closed");
   h.beforeBuilder(async () => { entered.resolve(); await release.promise; });
-  h.answer(2, { status: "wait", finalSummary: "继续协调等待" });
+  h.beforeEmployeeConsumerFinish(async () => { employeeEntered.resolve(); await employeeRelease.promise; });
+  h.answer(2, { status: "dispatch", subtasks: [{ id: "employee", title: "续接后的员工任务", taskType: "backend",
+    prompt: "Execute the controlled employee requirement in the isolated workspace and report the actual execution outcome." }] });
   let runningProjections = 0;
   h.onTaskUpdated((task, patch) => {
     if (task.id !== first.taskId || patch.status !== "running") return;
@@ -151,14 +154,19 @@ scenario("continued leader owns preparation and coordination until its real stop
   assert.equal(h.wire().filter((m) => m.method === "turn/start").length, 1, "second native task still gated by preparation");
   release.resolve();
   await eventually(() => fs.existsSync(h.file("started-2")), "successor native task", h.diagnostic);
-  await bounded(h.fixture.adapter.waitForTaskIdle(first.taskId), "successor turn consumed", h.diagnostic);
-  assertOwned(); // runEventDriven still owns its real event-driven coordination wait.
-  const stopping = h.stop();
-  await bounded(stopping, "successor cleanup", h.diagnostic);
+  await bounded(employeeEntered.promise, "successor coordinating a real employee", h.diagnostic);
+  assertOwned();
+  assert.equal(h.snapshot(first.taskId).running.length, 1);
+  const stopping = h.track(h.stop());
+  assert.equal(stopping.state.status, "pending");
+  employeeRelease.resolve();
+  await bounded(stopping.done, "successor cleanup", h.diagnostic);
+  assert.equal(stopping.state.status, "fulfilled", String(stopping.state.error));
   await bounded(h.ownership.waitForIdle(first.taskId), "successor ownership release", h.diagnostic);
   assert.equal(h.ownership.getCount(first.taskId), 0);
   assert.equal(h.read(first.taskId)?.status, "stopped");
   assert.deepEqual(h.composition.readCapacity("root")?.leaders, []);
+  assert.deepEqual(h.composition.readCapacity("root")?.employees, []);
 });
 
 scenario("cancelled continued preparation releases orchestration ownership but retains unbound cleanup responsibility", async (t) => {
