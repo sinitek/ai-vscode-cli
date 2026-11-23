@@ -7146,6 +7146,17 @@ function sendRunStatus(
 function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord): string {
   const task = record?.loopTaskId ? readLoopTaskRecord(record.loopTaskId) : undefined;
   const loopPlus = task?.schedulingMode === "event_driven";
+  const activeMessageTarget = primaryPromptRunController.activeMessageTarget;
+  const isLoopPlusSubtaskEnd = loopPlus && record?.taskRole === "subtask" && record.status === "end";
+  const hasFinalResponse = isLoopPlusSubtaskEnd
+    ? Boolean(activeMessageTarget && selectLoopPlusContinuationDetail(activeMessageTarget, record!, {
+      taskId: record.loopTaskId!,
+      round: record.loopRound ?? 1,
+      role: "subtask",
+      subtaskId: record.loopSubtaskId ?? "",
+      attemptId: record.loopAttemptId,
+    })?.trim())
+    : true;
   let requiresAcceptance: boolean | undefined;
   if (loopPlus && record?.taskRole === "subtask" && record.loopAttemptId) {
     try {
@@ -7156,7 +7167,10 @@ function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number |
       // 无法核对本次 attempt 时保留默认验收文案，不沿用其它 attempt 的免验收标记。
     }
   }
-  return buildTaskRunCompletionTextWithLabels(status, durationMs, {
+  const displayStatus = loopPlus && record?.taskRole === "subtask" && status === "end" && !hasFinalResponse
+    ? "error"
+    : status;
+  return buildTaskRunCompletionTextWithLabels(displayStatus, durationMs, {
     failed: t("run.failed"),
     stopped: t("run.stopped"),
     completed: t("run.completed"),
@@ -7169,6 +7183,8 @@ function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number |
     loopSubtaskWithDuration: (duration) => `子任务执行结束，用时 ${duration}，等待主任务验收。`,
     loopSubtaskNoAcceptance: "子任务执行结束，无需验收。",
     loopSubtaskNoAcceptanceWithDuration: (duration) => `子任务执行结束，用时 ${duration}，无需验收。`,
+    loopSubtaskInterrupted: "任务中断，等待主任务重新派发。",
+    loopSubtaskInterruptedWithDuration: (duration) => `任务中断，用时 ${duration}，等待主任务重新派发。`,
   }, { loopPlus, taskRole: record?.taskRole, requiresAcceptance });
 }
 

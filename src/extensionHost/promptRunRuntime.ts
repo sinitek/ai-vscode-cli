@@ -97,11 +97,12 @@ export function resolveLoopPlusAttemptOutcome(input: {
   aborted: boolean;
   thrown: boolean;
   runStatus: TaskRunStatus | null;
+  hasFinalResponse: boolean;
 }): "completed" | "failed" | "stopped" {
   if (input.aborted || input.runStatus === "stopped") {
     return "stopped";
   }
-  if (input.thrown || input.runStatus === "error") {
+  if (input.thrown || input.runStatus === "error" || input.runStatus !== "end" || !input.hasFinalResponse) {
     return "failed";
   }
   return "completed";

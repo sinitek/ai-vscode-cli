@@ -438,6 +438,7 @@ test("maps only loop_plus to event_driven and resumes from the saved mode", () =
     aborted: false,
     thrown: false,
     runStatus: "stopped",
+    hasFinalResponse: false,
   }), "stopped");
   assert.equal(shouldCloseLoopPlusParentGateBeforeAbort({
     schedulingMode: "event_driven",

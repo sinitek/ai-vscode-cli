@@ -1011,6 +1011,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         aborted,
         thrown: rootResult.value.thrown,
         run: invocation.run,
+        hasFinalResponse: Boolean(invocation.content?.trim()),
       });
       if (outcome === "completed") {
         return { outcome, detail: invocation.content };
@@ -1023,7 +1024,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
       return {
         outcome,
-        detail: (rootResult.value.thrown ? describeLoopSubtaskError(getErrorInfo(rootResult.value.error)) : undefined)
+        detail: (!invocation.content?.trim() && invocation.run?.status === "end"
+          ? "任务中断，等待主任务重新派发。"
+          : undefined)
+          ?? (rootResult.value.thrown ? describeLoopSubtaskError(getErrorInfo(rootResult.value.error)) : undefined)
           ?? invocation.run?.failureDetail
           ?? (invocation.run ? "CLI 调用失败，未捕获具体错误。" : "未找到本次 CLI 调用的终态。"),
       };
@@ -1341,6 +1345,7 @@ function resolveAttemptOutcome(input: {
   aborted: boolean;
   thrown: boolean;
   run: TaskRunRecord | null;
+  hasFinalResponse: boolean;
 }): LoopPlusAttemptResult["outcome"] {
   if (!input.run) {
     return input.aborted ? "stopped" : "failed";
@@ -1349,6 +1354,7 @@ function resolveAttemptOutcome(input: {
     aborted: input.aborted,
     thrown: input.thrown,
     runStatus: input.run.status,
+    hasFinalResponse: input.hasFinalResponse,
   });
 }
 

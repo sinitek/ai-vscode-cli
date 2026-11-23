@@ -194,21 +194,31 @@ test("does not treat a locally stopped subtask tab as completed and closes only 
     aborted: false,
     thrown: false,
     runStatus: "stopped",
+    hasFinalResponse: false,
   }), "stopped");
   assert.equal(resolveLoopPlusAttemptOutcome({
     aborted: false,
     thrown: false,
     runStatus: "end",
+    hasFinalResponse: true,
   }), "completed");
+  assert.equal(resolveLoopPlusAttemptOutcome({
+    aborted: false,
+    thrown: false,
+    runStatus: "end",
+    hasFinalResponse: false,
+  }), "failed");
   assert.equal(resolveLoopPlusAttemptOutcome({
     aborted: true,
     thrown: false,
     runStatus: "end",
+    hasFinalResponse: true,
   }), "stopped");
   assert.equal(resolveLoopPlusAttemptOutcome({
     aborted: false,
     thrown: true,
     runStatus: null,
+    hasFinalResponse: false,
   }), "failed");
   assert.equal(shouldCloseLoopPlusParentGateBeforeAbort({
     schedulingMode: "event_driven",
