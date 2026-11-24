@@ -182,13 +182,19 @@ export type LoopPlusRuntimeAdapter = {
   setDepartmentEmployeeCapacityReader?: (reader: NonNullable<LoopPlusRuntimeAdapterDeps["getDepartmentEmployeeCapacity"]>) => void;
   runEventDriven: (
     input: PromptRunInput,
-    options: LoopPlusRunOptions & { targetTabId?: string | null; departmentMetadata?: DepartmentMetadata; resumeUserMessage?: string },
+    options: LoopPlusAdapterRunOptions,
     target: LoopPlusPromptTarget,
     onTaskOwnershipAcquired?: (taskId: string, target: LoopPlusPromptTarget) => void | Promise<void>,
   ) => Promise<boolean>;
   runMain: (request: LoopPlusMainRequest) => LoopPlusMainHandle;
   startAttempt: (request: LoopPlusAttemptRequest) => LoopPlusAttemptHandle;
   getLivePrompt: (taskId: string) => PromptRunInput | null;
+};
+
+type LoopPlusAdapterRunOptions = LoopPlusRunOptions & {
+  targetTabId?: string | null;
+  departmentMetadata?: DepartmentMetadata;
+  onResumeSupplementCommitted?: (done: Promise<void>) => void;
 };
 
 type AttemptExecution = {
@@ -1139,7 +1145,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
 
   async function runEventDriven(
     input: PromptRunInput,
-    options: LoopPlusRunOptions & { departmentMetadata?: DepartmentMetadata; configLockRecovery?: ConfigLockResumeRequest } = {},
+    options: LoopPlusAdapterRunOptions & { configLockRecovery?: ConfigLockResumeRequest } = {},
     target: LoopPlusPromptTarget,
     onTaskOwnershipAcquired?: (taskId: string, target: LoopPlusPromptTarget) => void | Promise<void>,
   ): Promise<boolean> {
@@ -1263,6 +1269,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       creatingDepartment = undefined; departmentOwnership = undefined; departmentTarget = undefined;
       departmentOwnershipReady = undefined; departmentOwnershipTaskId = undefined;
     }
+    if (options.onResumeSupplementCommitted && (!result.resumeSupplementCommitted || result.taskId !== resumeTaskId)) {
+      throw new Error("leader-supplement-delivery-failed");
+    }
     if (firstMainExecution) {
       if (!firstMainExecution.claimed) throw new Error(firstMainExecution.unavailableMessage);
       const admission = await firstMainExecution.admission;
@@ -1301,7 +1310,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         await fence(); throw error;
       });
       if (id) lifecycles.set(id, lifecycle);
-      try { await lifecycle; }
+      try {
+        options.onResumeSupplementCommitted?.(lifecycle);
+        await lifecycle;
+      }
       finally { if (id && lifecycles.get(id) === lifecycle) lifecycles.delete(id); }
     }
     releaseLivePromptIfCompleted(result.taskId);

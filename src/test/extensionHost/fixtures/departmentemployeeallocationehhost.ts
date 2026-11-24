@@ -89,6 +89,11 @@ exports.run = async () => {
     subscriptions.push(webview.onDidReceiveMessage(message => {
       if (message?.type === 'loopGroupChatChat:updateDepartmentEmployeeLimit') {
         try { record({ event: 'webview-request', message, at: Date.now() }); } catch (error) { diagnostic(error); }
+      } else if (message?.type === 'loopGroupChatChat:stopTask') {
+        const state = panel.state;
+        if (state?.department?.role === 'director' && state.task.id === state.department.rootTaskId) {
+          try { record({ event: 'webview-stop', rootTaskId: state.task.id, at: Date.now() }); } catch (error) { diagnostic(error); }
+        }
       }
     }));
   }, diagnostic));

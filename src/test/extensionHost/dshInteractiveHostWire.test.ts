@@ -851,7 +851,7 @@ test("copied DSH example prepares a launch after changing only apiKey and baseUR
   }
 });
 
-test("DSH isolated launch mirrors global skills and AGENTS.md without prompt injection or secrets", async () => {
+test("DSH isolated launch mirrors global skills and AGENTS.md without prompt injection or secrets", async (context) => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "sinitek-dsh-mirror-"));
   const outsideDirectory = path.join(home, "outside-skills");
   const outside = path.join(outsideDirectory, "outside-secret");
@@ -896,6 +896,23 @@ test("DSH isolated launch mirrors global skills and AGENTS.md without prompt inj
     assert.equal(launch.agentArgs.join("\n").includes("global dsh rules"), false);
     await fs.writeFile(path.join(home, "skills", "demo", "marker.txt"), "second\n", "utf8");
     await fs.writeFile(path.join(home, "AGENTS.md"), "updated global rules\n", "utf8");
+    for (const filename of ["acp-patch.yaml", "AGENTS.md"]) {
+      const target = path.join(isolatedHome, filename);
+      const before = await fs.readFile(target);
+      const nativeRename = fs.rename;
+      const rename = context.mock.method(fs, "rename", async (source: string, destination: string) => {
+        if (destination !== target) return nativeRename(source, destination);
+        assert.deepEqual(await fs.readFile(target), before);
+        throw Object.assign(new Error("fixture replacement rejected"), { code: "EPERM" });
+      });
+      try {
+        await assert.rejects(prepareDshIsolatedLaunch({ sessionKey }), /fixture replacement rejected/);
+        assert.deepEqual(await fs.readFile(target), before);
+        assert.equal((await fs.readdir(isolatedHome)).some((name) => name.endsWith(".tmp")), false);
+      } finally {
+        rename.mock.restore();
+      }
+    }
     const again = await prepareDshIsolatedLaunch({ sessionKey });
     assert.equal(again.isolatedHome, isolatedHome);
     assert.equal(await fs.access(path.join(again.isolatedHome, "skills", "escape")).then(() => true, () => false), false);

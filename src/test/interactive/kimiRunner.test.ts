@@ -399,6 +399,84 @@ test("Kimi ACP handshake launches kimi acp and settles only from stopReason", as
   assert.equal(fake.lines.some((line) => line.includes("OPENAI_API_KEY")), false);
 });
 
+function assistantTextUpdate(text: string): Record<string, unknown> {
+  return {
+    jsonrpc: "2.0",
+    method: "session/update",
+    params: {
+      sessionId: SESSION_ID,
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+    },
+  };
+}
+
+test("Kimi preserves UTF-8 split across NDJSON chunks with an adjacent notification", async (t) => {
+  const fake = new FakeKimi();
+  const first = "你好🌙";
+  const second = "，世界！";
+  const frame = Buffer.from(`${JSON.stringify(assistantTextUpdate(first))}\n`, "utf8");
+  const characterStart = frame.indexOf(Buffer.from("🌙", "utf8"));
+  assert.notEqual(characterStart, -1);
+  const split = characterStart + 1;
+  const adjacentFrame = Buffer.from(`${JSON.stringify(assistantTextUpdate(second))}\n`, "utf8");
+  fake.finishPrompt = (message) => {
+    fake.stdout.write(frame.subarray(0, split));
+    fake.stdout.write(Buffer.concat([frame.subarray(split), adjacentFrame]));
+    fake.send({ jsonrpc: "2.0", id: message.id, result: { stopReason: "end_turn" } });
+  };
+
+  const { runner } = createRunner(fake);
+  t.after(() => runner.dispose());
+  await runner.start();
+  const deltas: string[] = [];
+  const result = await runner.prompt("hello", { onAssistantDelta: (text) => deltas.push(text) });
+  assert.deepEqual(result, { stopReason: "end_turn" });
+  assert.deepEqual(deltas, [first, second]);
+});
+
+test("Kimi rejects an active ordinary prompt on child close and ignores its late reply", { timeout: 5000 }, async (t) => {
+  const fake = new FakeKimi();
+  let promptRequest!: Record<string, unknown>;
+  fake.finishPrompt = (message) => {
+    promptRequest = message;
+    fake.send(assistantTextUpdate("before close"));
+  };
+  const { runner } = createRunner(fake);
+  t.after(() => runner.dispose());
+  await runner.start();
+
+  let markFirstDelta!: () => void;
+  const firstDelta = new Promise<void>((resolve) => { markFirstDelta = resolve; });
+  const deltas: string[] = [];
+  const completions: string[] = [];
+  const prompting = runner.prompt("hello", {
+    onAssistantDelta: (text) => {
+      deltas.push(text);
+      markFirstDelta();
+    },
+    onComplete: ({ stopReason }) => completions.push(stopReason),
+  });
+  await Promise.race([firstDelta, prompting.then(() => assert.fail("prompt completed before child close"))]);
+  assert.equal(promptRequest.method, "session/prompt");
+  assert.deepEqual(deltas, ["before close"]);
+
+  const rejected = assert.rejects(prompting, {
+    code: "exited",
+    message: "Kimi Code process exited (1)",
+  });
+  fake.exitCode = 1;
+  fake.emit("close", 1, null);
+  fake.send(assistantTextUpdate("late reply"));
+  fake.send({ jsonrpc: "2.0", id: promptRequest.id, result: { stopReason: "end_turn" } });
+  await rejected;
+  await tick();
+
+  assert.deepEqual(deltas, ["before close"]);
+  assert.deepEqual(completions, []);
+  assert.equal(runner.isReusable(), false);
+  await assert.rejects(runner.prompt("try again"), { code: "exited" });
+});
+
 test("Kimi permission requests auto-approve with an advertised allow option", async () => {
   const fake = new FakeKimi();
   const { runner } = createRunner(fake, { model: MODEL });

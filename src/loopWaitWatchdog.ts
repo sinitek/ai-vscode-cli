@@ -5,9 +5,9 @@ const LOOP_WAIT_WATCHDOG_TICK_MS = 60 * 1000;
 
 /** 每个宿主共用一个巡检时钟；单个任务检查失败不影响其它检查。 */
 export function startLoopWaitWatchdog(
-  checks: readonly (() => void)[],
+  waitChecks: readonly (() => void)[],
   onError: (error: unknown) => void,
-  checkLoopPlusMain?: () => void,
+  minuteChecks: readonly (() => void)[] = [],
 ): () => void {
   let disposed = false;
   let lastWaitCheckAt = performance.now();
@@ -20,11 +20,11 @@ export function startLoopWaitWatchdog(
     }
   };
   const timer = setInterval(() => {
-    if (checkLoopPlusMain) runCheck(checkLoopPlusMain);
+    for (const check of minuteChecks) runCheck(check);
     const now = performance.now();
     if (now - lastWaitCheckAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS) return;
     lastWaitCheckAt = now;
-    for (const check of checks) runCheck(check);
+    for (const check of waitChecks) runCheck(check);
   }, LOOP_WAIT_WATCHDOG_TICK_MS);
   timer.unref();
   return () => {

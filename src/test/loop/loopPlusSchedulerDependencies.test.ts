@@ -110,6 +110,35 @@ test("rejects unknown dependencies and cycles atomically without changing schedu
   }
 });
 
+test("failed review repair obligation survives rejected same-ID attempts and clears only on accepted repair", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([task("A")]);
+  scheduler.finish({ subtaskId: "A", attemptId: "A-1", outcome: "completed" });
+  const failedEvent = event("A", "A-1");
+  assert.equal(scheduler.submitReviewBatch([failedEvent], [{ eventId: failedEvent, acceptance: "failed", repairRequired: true }]).ok, true);
+  const failedSnapshot = scheduler.snapshot();
+  assert.equal(failedSnapshot.seenAttempts[0].repairRequired, true);
+  assert.equal(scheduler.complete().ok, false);
+
+  const rejectedRepair = scheduler.dispatch([
+    task("A", "A-2", ["missing"]), task("independent", "independent-1"),
+  ]);
+  assert.deepEqual(rejectedRepair.rejected.map((item) => item.subtaskId), ["A"]);
+  assert.deepEqual(rejectedRepair.decisions.map((item) => item.subtaskId), ["independent"]);
+  assert.equal(scheduler.snapshot().seenAttempts[0].repairRequired, true);
+
+  const reloaded = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())), maxConcurrency: 2 });
+  const repaired = reloaded.dispatch([task("A", "A-3")]);
+  assert.equal(repaired.rejected.length, 0);
+  assert.equal(reloaded.snapshot().seenAttempts[0].repairRequired, undefined);
+  assert.equal(reloaded.snapshot().running.concat(reloaded.snapshot().pending).some((item) => item.subtaskId === "A"), true);
+
+  const legacy = JSON.parse(JSON.stringify(failedSnapshot)) as ReturnType<typeof scheduler.snapshot>;
+  delete legacy.seenAttempts[0].repairRequired;
+  const restoredLegacy = createLoopPlusScheduler({ snapshot: legacy });
+  assert.equal(restoredLegacy.snapshot().seenAttempts[0].repairRequired, undefined);
+});
+
 test("preflights control replacements before closing attempts and keeps dry runs side-effect free", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
   scheduler.dispatch([task("parent"), task("child", "child-1", ["parent"])]);

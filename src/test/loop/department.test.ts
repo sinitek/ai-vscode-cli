@@ -250,7 +250,7 @@ test("all department roles prefer compliant alternatives before reporting a bloc
     assert.match(prompt, /许可明确且符合用途的免费网络图片.*记录来源及适用许可/u, role);
     assert.match(prompt, /不得假定宿主管理员已批准实际提权/u, role);
     assert.match(prompt, /先绕开该步骤推进不依赖它的工作/u, role);
-    assert.match(prompt, /没有合规可行的替代且当前无工作可推进时，才按既有流程报阻塞/u, role);
+    assert.match(prompt, /没有合规可行方案且当前无工作可推进时，才报告熔断及恢复条件/u, role);
     assert.match(prompt, /不虚报完成，不降低验收标准/u, role);
   }
 });

@@ -28,7 +28,14 @@ node scripts/verify_department_platform.js --product "/srv/department/product bu
 
 两种 scope 都应在对应真实主机分别运行并保留 JSON 报告。入口记录真实 `process.platform`、`process.arch`、Node 版本、执行 argv、退出码/信号、TAP 统计、入口 realpath/hash、产品源码与 dist 哈希，以及覆盖门禁。Owner 固定运行产品编译目录中的 `departmentexecutionowner.test.js`、`departmentexecutionownerclient.test.js` 和 `departmentprocessexecutionlauncher.test.js`；每个文件必须实际注册至少一个成功用例，零用例、跳过、取消、统计缺失/重复、超时或失败均拒绝。每个文件还必须有完整 tracker 记录、已观察直接子进程均关闭或由 POSIX 收尾快照确认其原 PID 已不存在，且没有强制动作。该范围通过真实 Node 进程、IPC 与既有客户端/worker fixture 检查 Owner 核心合同；它不证明 Extension Host 的真实 EH/tab 释放、根资源清理、冷恢复或完整平台验收。
 
-`public-codex` 以新建报告路径调用产品自己的 `verify_department_full_eh_integration.js`，使用其默认全 Codex 公开新建场景、隔离用户目录、本机 loopback provider 和既有宿主退出/回收规则。父入口只有在子进程退出为零、子报告存在且记录 `result: passed`、无失败、无强制 teardown、三角色均为 Codex，且实际阶段状态符合 driver 合同（包括 `rootCreation: observed`、`directorExecution: completed`、`leaderExecution: observed` 和其余必需阶段 `passed`）时才成功。运行会按既有 EH harness 执行，可能需要已安装 VS Code、Codex CLI 和 Playwright；它不是模型质量测试。
+`public-codex` 以新建报告路径调用产品自己的 `verify_department_full_eh_integration.js`，显式传入 `--scenario loop-plus`，并把同一参数列表记入 `execution.argv`。它使用全 Codex 公开 Loop+ 场景、隔离用户目录、本机 loopback provider 和既有宿主退出/回收规则。子进程必须以零退出；子报告须记录 `scenarioName: loop-plus`（不接受已退休的 `new-root`）、`result: passed`、空失败列表、无强制 teardown、三角色均为 Codex，以及匹配的执行入口和产品入口路径与 SHA-256。阶段必须恰好是下列 12 项，不可缺失、跳过或增加：
+
+- `observed`：`rootCreation`、`leaderExecution`。
+- `completed`：`directorExecution`。
+- `not-applicable`：仅 `ownerReceipts`；普通 Loop+ 不生成 Owner receipt，本场景不提供该证据。
+- `passed`：`prerequisites`、`emptyStore`、`extensionHost`、`publicUi`、`capacityReturn`、`eventAcceptance`、`unifiedAcceptancePlan`、`directorReport`。
+
+接受子报告不等于父入口通过；还须满足下文的追踪完整、无强制回收和整树关闭门禁。真实 EH 验证须在后续集成产品上运行，准备已安装的 VS Code、Codex CLI 和 Playwright；它不是模型质量测试。
 
 两个范围分别报告，不能互相代替。报告中的 `execution.cleanup` 分开记录 driver exit/close、追踪完整性、逐文件追踪进程、回收尝试、强制操作、直接子进程 close 事件或有限快照证据及整树关闭确认。Owner 的 tracker 通过 preload 记录测试进程调用的公开 `child_process.spawn` 和 `child_process.fork`；继承本次 `NODE_OPTIONS` 的 Node 子进程也会接入同一事件流。Node 内部不经这些公开 API 的 worker/process 创建、清除 `NODE_OPTIONS` 的后代及其它任意后代不保证可见，故观察集合不能表述为完整进程树。追踪记录必须先出现唯一的 `tracker-ready`；后续 Node preload 使用 `tracker-attached`，不能替代该根记录。文件缺失、损坏、溢出或 preload 写入失败均报告未确认。POSIX 只在原始 PID 与追踪期间记录的启动身份仍匹配时发信号；不会从已关闭/可能复用的根 PID 重新发现进程。若一个已记录直接子进程没有 close 事件，只能在 POSIX 收尾快照观察到其 PID 不存在时单独记录 `closeBySnapshotObserved`；PID 仍在、身份变化或无法读取快照时保持未确认，不向该 PID 发信号。Windows 当前没有安全的 PID 启动身份核验能力，因此不运行 `taskkill`，即使直接子进程均已关闭也不证明整树关闭。报告将 `trackedProcessesCloseConfirmed` 与 `detachedTreeCloseConfirmed` 分开；后者在不能证明任意后代完整关闭时必须为 `unconfirmed`。这会使 `public-codex` 保持失败，直到现有整树关闭门禁有可证明证据；消费成功子报告本身不代替该门禁。任何超时、信号中止、缺失/失败报告、零用例、跳过或强制进程回收一律失败，不得补记 Owner drain、receipt 或容量释放成功。
 

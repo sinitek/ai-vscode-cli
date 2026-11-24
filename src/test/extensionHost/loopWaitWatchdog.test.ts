@@ -38,7 +38,7 @@ test("Loop+ 主任务每 60 秒巡检，旧等待每 300 秒巡检，释放后�
   const stop = startLoopWaitWatchdog([
     () => { counts.classic++; },
     () => { counts.plusWait++; },
-  ], failOnWatchdogError, () => { counts.main++; });
+  ], failOnWatchdogError, [() => { counts.main++; }]);
   assert.deepEqual(counts, { main: 0, classic: 0, plusWait: 0 });
   clock.tick(59_999);
   assert.deepEqual(counts, { main: 0, classic: 0, plusWait: 0 });
@@ -62,7 +62,7 @@ test("长时间漏拍后首次回调只巡检一次旧等待，并从恢复时�
   let wait = 0;
   const stop = startLoopWaitWatchdog([
     () => { wait++; },
-  ], failOnWatchdogError, () => { main++; });
+  ], failOnWatchdogError, [() => { main++; }]);
   t.after(stop);
   clock.tick(60_000);
   assert.deepEqual([main, wait], [1, 0]);
@@ -84,18 +84,20 @@ test("主任务和旧等待巡检的异常分别上报，其它检查继续执�
   const classicError = new Error("经典 Loop 巡检失败");
   const errors: unknown[] = [];
   let main = 0;
+  let reviews = 0;
   let plusWait = 0;
   const stop = startLoopWaitWatchdog([
     () => { throw classicError; },
     () => { plusWait++; },
-  ], (error) => { errors.push(error); }, () => {
+  ], (error) => { errors.push(error); }, [() => {
     if (++main === 5) throw mainError;
-  });
+  }, () => { reviews++; }]);
   t.after(stop);
   for (let minute = 0; minute < 5; minute++) clock.tick(60_000);
   assert.equal(errors.length, 2);
   assert.ok(errors.includes(mainError));
   assert.ok(errors.includes(classicError));
+  assert.equal(reviews, 5);
   assert.equal(plusWait, 1);
   clock.tick(60_000);
   assert.equal(main, 6);
@@ -124,7 +126,7 @@ test("两参数调用仍只在 300 秒边界执行旧等待巡检", (t) => {
 
 test("宿主只注册一个 60 秒 interval 并调用 unref", (t) => {
   const interval = t.mock.method(globalThis, "setInterval");
-  const stop = startLoopWaitWatchdog([], failOnWatchdogError, assert.fail);
+  const stop = startLoopWaitWatchdog([], failOnWatchdogError, [assert.fail]);
   try {
     assert.equal(interval.mock.callCount(), 1);
     const [call] = interval.mock.calls;
@@ -138,12 +140,14 @@ test("宿主只注册一个 60 秒 interval 并调用 unref", (t) => {
 test("同一拍释放看门狗后不执行余下的检查", (t) => {
   const clock = mockWatchdogClock(t);
   let main = 0;
-  const stop = startLoopWaitWatchdog([assert.fail], failOnWatchdogError, () => {
+  let reviews = 0;
+  const stop = startLoopWaitWatchdog([assert.fail], failOnWatchdogError, [() => {
     if (++main === 5) stop();
-  });
+  }, () => { reviews++; }]);
   for (let minute = 0; minute < 5; minute++) clock.tick(60_000);
   clock.tick(300_000);
   assert.equal(main, 5);
+  assert.equal(reviews, 4);
 });
 
 test("失联等待可取消并消费迟到的拒绝结果", async () => {

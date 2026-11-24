@@ -546,6 +546,7 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     decisionStep({ kind: "review", eventId: "evt-1", eventIds: ["evt-1"], userMessageCount: 3 }),
     decision("accept", {
       reviewEventId: "evt-1",
+      reviews: [{ reviewEventId: "evt-1", acceptance: "failed", noRepairReason: "已确认无需返工" }],
       subtasks: [subtask],
       controls: [closeControl],
       estimatedRemainingRounds: 2,
@@ -566,7 +567,7 @@ test("accept marks a follow-up batch failed and commits controls only after subm
     "waitForInFlightWork",
     "queueView",
   ]);
-  assert.deepEqual(calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed" }]]);
+  assert.deepEqual(calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1"], [{ eventId: "evt-1", acceptance: "failed", noRepairReason: "已确认无需返工" }]]);
   assert.deepEqual(calls.find((call) => call.name === "persistProgressPercent")?.args, [23]);
   assert.deepEqual(calls.find((call) => call.name === "persistEstimatedRounds")?.args, [2]);
   assert.equal(calls.find((call) => call.name === "commitControls")?.args[1], plan);
@@ -877,7 +878,7 @@ test("dependency-only wait is a protocol miss before resetting retries; a valid 
   assert.equal(names(blocked.calls).includes("noteWaiting"), false);
   const accepted = createPort({ views: [view({ pendingCount: 1 })], inFlight: [{ runningCount: 0, pendingCount: 1, dependencyBlocks }] });
   assert.equal(registry.accept(accepted.port, decisionStep({ kind: "review", eventIds: ["failed-event"] }), decision("accept", {
-    reviewEventId: "failed-event", reviews: [{ reviewEventId: "failed-event", acceptance: "failed", reason: "failed validation" }],
+    reviewEventId: "failed-event", reviews: [{ reviewEventId: "failed-event", acceptance: "failed", reason: "failed validation", noRepairReason: "验证发现无需重新执行交付" }],
   })), "continue");
   assert.equal(names(accepted.calls).includes("protocolMiss"), false);
   assert.equal(names(accepted.calls).includes("persistRunning"), false);

@@ -4,6 +4,7 @@ import { runOpenCodePromptTemplate } from "../../extensionHost/openCodePromptRun
 import type { OpenCodePromptRunPorts } from "../../extensionHost/openCodePromptRunTemplate";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
+import { createVibeCompactionQueueFixture } from "./fixtures/vibeCompactionQueueFixture";
 
 type RecordedPort = OpenCodePromptRunPorts & {
   events: string[];
@@ -305,30 +306,20 @@ function createTarget(): PromptRunTarget {
   return { tabId: "tab-1", cli: "opencode", sessionId: null };
 }
 
-for (const outcome of ["end", "stopped", "skipped"] as const) test(`OpenCode Vibe queue waits for compaction (${outcome})`, { timeout: 2000 }, async () => {
-  let finish!: () => void;
-  let markStarted!: () => void;
-  const gate = new Promise<void>((resolve) => { finish = resolve; });
-  const started = new Promise<void>((resolve) => { markStarted = resolve; });
+for (const outcome of ["end", "stopped", "skipped"] as const) test(`OpenCode Vibe host compaction queue settlement (${outcome})`, { timeout: 2000 }, async () => {
+  const fixture = createVibeCompactionQueueFixture("opencode");
   const events: string[] = [];
   const ports = createRecordingPorts(events, {
-    maybeAutoCompactContextAfterPromptSuccess: async (_target, _sessionId, _duration, options) => {
-      if (outcome !== "skipped") options?.onStarted?.();
-      markStarted();
-      await gate;
-      if (outcome !== "skipped") events.push(`compact:${outcome}`);
+    onAttemptProcessStarted: () => fixture.publish({ tabId: "tab-1", status: "start" }),
+    finalizeSuccessfulExit: async () => {
+      events.push("finalizeSuccessfulExit");
+      return { sessionId: "session-1", durationMs: fixture.minDuration + (outcome === "skipped" ? 0 : 1) };
     },
+    maybeAutoCompactContextAfterPromptSuccess: fixture.maybeAutoCompactContextAfterPromptSuccess,
+    publishSuccessfulCompletion: () => fixture.publish({ tabId: "tab-1", status: "end" }),
   });
   const run = runOpenCodePromptTemplate(createInput(), createTarget(), {}, ports);
-  await started;
-  try {
-    assert.equal(events.includes("publishSuccessfulCompletion"), false);
-  } finally {
-    finish();
-    await run;
-  }
-  assert.equal(events.filter((event) => event === "publishSuccessfulCompletion").length, outcome === "skipped" ? 1 : 0);
-  assert.equal(events.includes("compact:end"), outcome === "end");
+  await fixture.assertSettlement(outcome, run, () => assert.ok(events.includes("finalizeSuccessfulExit")));
 });
 
 test("OpenCode subtask returns its result before notification starts background compaction", { timeout: 2000 }, async () => {

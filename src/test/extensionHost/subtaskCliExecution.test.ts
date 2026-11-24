@@ -16,6 +16,7 @@ import { buildStructuredSvgSummaryPromptInstruction } from "../../finalAnswerPro
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { LOOP_DIRECT_EXECUTION_RULE_ZH } from "../../loopDirectExecutionPolicy";
 import { buildLoopSubtaskExecutionPlan } from "../../loopParallel";
+import { buildResetLoopMainAiFailureState } from "../../loopMainFailure";
 
 installVscodeMock();
 
@@ -451,6 +452,244 @@ test(`classic Loop ${focusScenario} focus while ${reuseSession ? "restoring a co
 }
 }
 }
+
+test("classic Loop settles interleaved live-dispatch batches without replacing active work", async (context) => {
+  const store = require("../../loopTaskStore") as typeof import("../../loopTaskStore");
+  const { createPromptRunRuntimeHost } = require("../../extensionHost/promptRunRuntime") as typeof import("../../extensionHost/promptRunRuntime");
+  const logger = require("../../logger") as typeof import("../../logger");
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "classic-loop-live-dispatch-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  context.mock.method(logger, "logInfo", async () => undefined);
+
+  let stored = loopTask({
+    taskStoreFile: path.join(directory, "loop-tasks.json"),
+    communicationDir: directory,
+    mainCommunicationFile: path.join(directory, "main.md"),
+    maxRounds: 4,
+  });
+  const readTask: typeof store.readLoopTaskRecord = (taskId) => taskId === stored.id ? stored : null;
+  const updateTask: typeof store.updateLoopTaskRecord = (taskId, patch, options) => {
+    assert.equal(taskId, stored.id);
+    return (stored = store.mergeLoopTaskRecordPatch(stored, patch, options));
+  };
+  context.mock.method(store, "readLoopTaskRecord", readTask);
+  context.mock.method(store, "updateLoopTaskRecord", updateTask);
+
+  function signal() {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => { release = resolve; });
+    return { promise, release };
+  }
+  const events: string[] = [];
+  const errors: unknown[] = [];
+  const logError = (event: string, detail?: unknown): void => { errors.push({ event, detail }); };
+  context.mock.method(logger, "logError", async (event: string, detail?: unknown) => logError(event, detail));
+  const workers = new Map(["a", "b", "c"].map((id) => [id, { started: signal(), exit: signal(), settled: signal() }]));
+  const runningTabs = new Set<string>();
+  const replies = new Map<string, string>();
+  const settlements: Array<[string, string, string | null]> = [];
+  const runtime = createPromptRunRuntimeHost({
+    getActiveWorkspaceKey: () => stored.workspaceKey,
+    appendLoopMainSubChatMainDecision: () => undefined,
+    appendLoopMainSubChatSubtaskFinished: (_task, subtask, status, content) => {
+      settlements.push([subtask.id, status, content]);
+      events.push(`settled:${subtask.id}`);
+      workers.get(subtask.id)?.settled.release();
+    },
+    closeConversationTabAndRefreshPanel: async (tabId) => { replies.delete(tabId); },
+    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+  } as Partial<Parameters<typeof createPromptRunRuntimeHost>[0]> as Parameters<typeof createPromptRunRuntimeHost>[0]);
+
+  const subtask = (id: string) => ({
+    id,
+    title: `Worker ${id}`,
+    prompt: `Implement the independent change in ${id}.ts, verify the affected behavior locally, and report the result in the assigned communication file.`,
+    writeFiles: [`src/${id}.ts`],
+  });
+  const completed: LoopMainDecision = { status: "completed", finalSummary: "All three results accounted for." };
+  const decisions: LoopMainDecision[] = [
+    { status: "continue", subtasks: [subtask("a"), subtask("b")] },
+    { status: "continue", subtasks: [subtask("c")] },
+    completed,
+    completed,
+  ];
+  const target: PromptRunTarget = { tabId: "main-tab", cli: "codex", sessionId: "main-session" };
+  const input: PromptRunInput = { displayPrompt: stored.rootPrompt, modelPrompt: stored.rootPrompt, contextTags: [] };
+  const host = createLoopOrchestrationHost({
+    applyLoopMainDecision: runtime.applyLoopMainDecision,
+    parseLoopMainDecision: runtime.parseLoopMainDecision,
+    finalizeLoopSubtaskRun: runtime.finalizeLoopSubtaskRun,
+    getActiveLoopSubtaskIds: runtime.getActiveLoopSubtaskIds,
+    isLoopTaskExecutionInterrupted: runtime.isLoopTaskExecutionInterrupted,
+    readLoopTaskRecord: readTask,
+    updateLoopTaskRecord: updateTask,
+    appendLoopRound: (taskId, record) => {
+      assert.equal(taskId, stored.id);
+      stored = store.mergeLoopTaskRound(stored, record);
+    },
+    buildResetLoopMainAiFailureState,
+    buildLoopSubtaskExecutionPlan,
+    getLoopCommunicationPaths: () => ({ dir: directory, mainFile: stored.mainCommunicationFile, subtasksDir: directory }),
+    prepareLoopSubtaskCommunicationFile: (_task, item) => path.join(directory, `${item.id}.md`),
+    buildLoopRoundSummary: (_round, role, id) => role === "subtask" ? `result:${id}` : "main decision",
+    normalizeLoopContinuePromptForPrompt: () => null,
+    buildLoopSupplementalRequirementsLines: (task) => task.supplementalRequirements ?? [],
+    getLastLoopAssistantContent: (runTarget) => replies.get(runTarget.tabId) ?? null,
+    getLoopRoundRunStatus: () => "end",
+    createLoopSubtaskRunTarget: (cli, options) => ({ tabId: `worker-${options?.loopSubtaskId}`, cli, sessionId: null }),
+    isTabRunActive: (tabId) => runningTabs.has(tabId ?? ""),
+    runPrompt: async (prompt, options) => {
+      const tabId = options?.targetTabId;
+      assert.ok(tabId);
+      if (prompt.taskRole === "main") {
+        const decision = decisions.shift();
+        assert.ok(decision, "unexpected main invocation");
+        events.push(`decision:${prompt.loopRound}`);
+        replies.set(tabId, JSON.stringify(decision));
+        return;
+      }
+      const id = prompt.loopSubtaskId;
+      const worker = id && workers.get(id);
+      assert.ok(worker, `unexpected worker ${id}`);
+      events.push(`started:${id}`);
+      runningTabs.add(tabId);
+      options.onStarted?.();
+      worker.started.release();
+      try {
+        await worker.exit.promise;
+        events.push(`exited:${id}`);
+        replies.set(tabId, `result:${id}`);
+      } finally {
+        runningTabs.delete(tabId);
+      }
+    },
+    appendSystemMessageForLoop: () => undefined,
+    buildLoopSubtaskStartedText: () => "started",
+    buildLoopSubtaskBatchStartedText: () => "batch started",
+    buildLoopSubtaskBatchCompletedText: () => "batch completed",
+    getLoopSubtaskDisplayTitle: (_index, item) => item.title,
+    formatLoopGroupChatMemberName: (title) => title ?? "worker",
+    ensureLoopMainSubChatTranscript: () => path.join(directory, "chat.md"),
+    createSubagentProgressController: () => ({ getMessage: () => null, update: () => undefined, finishRunning: () => undefined }),
+    buildSubagentProgressLabels: () => ({
+      provider: { loop: "Loop", codex: "Codex", claude: "Claude", opencode: "OpenCode" },
+      subagent: "worker",
+      status: { running: "running", completed: "done", failed: "failed", interrupted: "stopped" },
+      errorPrefix: "error",
+    }),
+    createLoopSubtaskProgressMonitor: () => ({ start: () => undefined, sync: () => undefined, finish: () => undefined, dispose: () => undefined }),
+    getActiveConfigIdForCli: () => null,
+    resolvePromptRunModelForRole: () => undefined,
+    resolvePromptRunThinkingModeForRole: () => undefined,
+    resolveLoopTaskSessionId: () => null,
+    resolvePromptRunTargetSessionId: () => null,
+    switchVisibleConversationTabForLoop: async () => target,
+    refreshOpenLoopGroupChatPanelForTask: () => undefined,
+    sendPanelMessage: () => undefined,
+    mapLoopRunStatusToSubagentStatus: () => "completed",
+    t: (key) => key,
+    errorToMessage: String,
+    logError,
+  });
+
+  const observation = host.observeClassicLoop(stored.id);
+  const batches: Array<ReturnType<typeof host.runLoopSubtasksBatchWithRetry>> = [];
+  const decide = (round: number) => host.runClassicLoopMainDecision({ input, target, task: stored, round });
+  function dispatch(round: number, decision: Awaited<ReturnType<typeof decide>>) {
+    assert.equal(decision.status, "continue");
+    const batch = host.runLoopSubtasksBatchWithRetry({ input, target, round, task: decision.task, subtasks: decision.subtasks })
+      .finally(() => {
+        events.push(`batch-settled:${round}`);
+        host.wakeClassicLoop(stored.id);
+      });
+    batches.push(batch);
+    void batch.catch(() => undefined);
+    return batch;
+  }
+  async function checkpoint<Value>(pending: Promise<Value>, stage: string): Promise<Value> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`${stage} did not finish. Events: ${events.join(", ")}. Errors: ${JSON.stringify(errors)}`)), 5_000);
+      })]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  function assertActive(ids: string[]) {
+    assert.deepEqual(stored.activeSubtaskIds, ids);
+    assert.equal(stored.activeSubtaskId, ids[0] ?? null);
+  }
+
+  const alpha = workers.get("a")!;
+  const beta = workers.get("b")!;
+  const gamma = workers.get("c")!;
+  let finished = false;
+  try {
+    const first = dispatch(1, await decide(1));
+    await checkpoint(Promise.all([alpha.started.promise, beta.started.promise]), "start A and B");
+    assertActive(["a", "b"]);
+
+    beta.exit.release();
+    await checkpoint(beta.settled.promise, "settle B while A runs");
+    assertActive(["a"]);
+    assert.deepEqual(settlements, [["b", "end", "result:b"]]);
+    assert.equal(stored.status, "running");
+    const alphaRecord = stored.subTasks.find((item) => item.id === "a");
+    assert.equal(alphaRecord?.status, "running");
+
+    const revision = observation.revision();
+    const requirement = "Also update the independent C file.";
+    updateTask(stored.id, { supplementalRequirements: host.appendLoopSupplementalRequirement(stored.supplementalRequirements, requirement) });
+    host.wakeClassicLoop(stored.id);
+    await checkpoint(observation.wait(revision), "wake the main decision for C");
+    const second = dispatch(2, await decide(2));
+    await checkpoint(gamma.started.promise, "start C before A exits");
+    assertActive(["a", "c"]);
+    assert.deepEqual(stored.subTasks.find((item) => item.id === "a"), alphaRecord);
+    assert.ok(runningTabs.has("worker-a"));
+    assert.deepEqual(events, ["decision:1", "started:a", "started:b", "exited:b", "settled:b", "decision:2", "started:c"]);
+
+    gamma.exit.release();
+    const secondResults = await checkpoint(second, "settle C before A");
+    assert.deepEqual(secondResults.map(({ subtask: item, status }) => [item.id, status]), [["c", "end"]]);
+    assertActive(["a"]);
+    assert.deepEqual(settlements, [["b", "end", "result:b"], ["c", "end", "result:c"]]);
+    assert.deepEqual(events.slice(7), ["exited:c", "settled:c", "batch-settled:2"]);
+    assert.equal((await decide(3)).status, "waiting");
+    assert.equal(stored.status, "running");
+    assertActive(["a"]);
+
+    alpha.exit.release();
+    const firstResults = await checkpoint(first, "settle the first batch after A exits");
+    assert.deepEqual(firstResults.map(({ subtask: item, status }) => [item.id, status]), [["a", "end"], ["b", "end"]]);
+    assertActive([]);
+    assert.equal(stored.status, "running");
+    assert.deepEqual(settlements, [["b", "end", "result:b"], ["c", "end", "result:c"], ["a", "end", "result:a"]]);
+    assert.deepEqual(stored.subTasks.map(({ id, status, summary }) => [id, status, summary]), [
+      ["a", "completed", "result:a"], ["b", "completed", "result:b"], ["c", "completed", "result:c"],
+    ]);
+    assert.deepEqual(stored.rounds.filter(({ role }) => role === "subtask").map(({ round, subtaskId }) => [round, subtaskId]), [
+      [1, "b"], [2, "c"], [1, "a"],
+    ]);
+    assert.equal((await decide(4)).status, "completed");
+    assert.equal(stored.status, "completed");
+    assert.equal(stored.finalSummary, completed.finalSummary);
+    assertActive([]);
+    assert.equal(runningTabs.size, 0);
+    assert.deepEqual(events.slice(7), ["exited:c", "settled:c", "batch-settled:2", "decision:3", "exited:a", "settled:a", "batch-settled:1", "decision:4"]);
+    assert.deepEqual(errors, []);
+    finished = true;
+  } finally {
+    for (const worker of workers.values()) worker.exit.release();
+    if (!finished) {
+      runtime.markLoopTaskStopped(stored.id);
+      host.checkWaitingTasks();
+    }
+    observation.dispose();
+    await Promise.allSettled(batches);
+  }
+});
 
 test("classic Loop refuses a missing cross-CLI config instead of running the main CLI", async () => {
   const created: CliName[] = [];

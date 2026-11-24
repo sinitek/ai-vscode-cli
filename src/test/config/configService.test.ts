@@ -321,6 +321,64 @@ async function withTempHome<T>(run: (homeDir: string) => Promise<T>): Promise<T>
   }
 }
 
+test("runtime configuration for every CLI preserves the original on a rejected replacement", async (context) => {
+  await withProfileFixture(async ({ service }) => {
+    const { CLI_LIST } = require("../../cli/types") as typeof import("../../cli/types");
+    const { CONFIG_PATHS } = require("../../config/configPaths") as typeof import("../../config/configPaths");
+    const { resolveDshConfigPaths } = require("../../config/dshConfig") as typeof import("../../config/dshConfig");
+    const { createDshExampleProfileText } = require("../../cli/dshConfigModels") as typeof import("../../cli/dshConfigModels");
+    const { createKimiCodeDefaultConfigText } = require("../../config/kimiCodeConfig") as typeof import("../../config/kimiCodeConfig");
+    const { writeZcodeProviderConfigText } = require("../../config/zcodeConfig") as typeof import("../../config/zcodeConfig");
+    const toml = 'model = "fixture"\n';
+    const cases = {
+      claude: [
+        [CONFIG_PATHS.claude.settings, () => service.writeClaudeConfig('{"env":{}}')],
+        [CONFIG_PATHS.claude.mcp, () => service.writeClaudeMcpConfig('{"mcpServers":{}}')],
+      ],
+      codex: [
+        [CONFIG_PATHS.codex.config, () => service.writeCodexConfig(toml)],
+        [CONFIG_PATHS.codex.auth, () => service.writeCodexConfig(toml, "{}")],
+      ],
+      opencode: [[CONFIG_PATHS.opencode.config, () => service.writeOpenCodeConfig('{"provider":{}}')]],
+      grok: [[CONFIG_PATHS.grok.config, () => service.writeGrokConfigText(toml)]],
+      dsh: [
+        [resolveDshConfigPaths().patchPath, () => service.writeDshConfigText(createDshExampleProfileText())],
+        [resolveDshConfigPaths().appliedProfilePath, () => service.writeDshConfigText(createDshExampleProfileText())],
+      ],
+      "kimi-code": [[CONFIG_PATHS["kimi-code"].config, () => service.writeKimiCodeConfigTextToDisk(createKimiCodeDefaultConfigText())]],
+      zcode: [[CONFIG_PATHS.zcode.config, () => writeZcodeProviderConfigText("{}")]],
+    } satisfies Record<CurrentConfigPlatform, ReadonlyArray<readonly [string, () => Promise<void>]>>;
+
+    for (const cli of CLI_LIST) {
+      for (const [target, write] of cases[cli]) {
+        await context.test(`${cli}: ${path.basename(target)}`, async (subtest) => {
+          const original = '{"retained":true}\n';
+          await fs.mkdir(path.dirname(target), { recursive: true });
+          await fs.writeFile(target, original);
+          const rejection = Object.assign(new Error("configuration file is busy"), { code: "EPERM" });
+          const nativeRename = fs.rename;
+          const rename = subtest.mock.method(fs, "rename", async (source: string, destination: string) => {
+            if (destination !== target) return nativeRename(source, destination);
+            assert.equal(path.dirname(source), path.dirname(target));
+            assert.equal(await fs.readFile(target, "utf8"), original);
+            throw rejection;
+          });
+
+          await assert.rejects(write, (error) => error === rejection);
+          assert.equal(await fs.readFile(target, "utf8"), original);
+          assert.equal((await fs.readdir(path.dirname(target))).some((name) => name.endsWith(".tmp")), false);
+          rename.mock.restore();
+
+          await write();
+          const replaced = await fs.readFile(target, "utf8");
+          assert.notEqual(replaced, original);
+          if (target === CONFIG_PATHS.claude.mcp) assert.equal(JSON.parse(replaced).retained, true);
+        });
+      }
+    }
+  });
+});
+
 test("configuration operations proceed without cross-window execution leases", async () => {
   await withTempHome(async () => {
     const first = loadConfigService();

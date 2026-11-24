@@ -370,7 +370,7 @@ test("acceptance feedback lists every selected item only when each verdict is pr
   assert.doesNotMatch(section?.body ?? "", /^- /mu);
 });
 
-test("acceptance feedback includes default and per-event reasons within 50 characters", () => {
+test("acceptance feedback includes full default and per-event evidence", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: ["修复空输入处理"],
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "测试断言失败，需先修复" }],
@@ -391,7 +391,16 @@ test("acceptance feedback includes default and per-event reasons within 50 chara
   assert.match(section?.body ?? "", /\| 安全审查 \| ✅ 未发现输入信任边界问题 \|/);
   const reasons = [...(section?.body.matchAll(/\| [✅❌] ([^|\n]+) \|$/gmu) ?? [])].map((match) => match[1].trim());
   assert.equal(reasons.length, 2);
-  assert.equal(reasons.every((reason) => Array.from(reason).length <= 50), true);
+  const longReason = "证据说明".repeat(30);
+  const longSection = buildLoopPlusAcceptanceFeedbackSection({
+    snapshot: { id: "plan-a", name: "加严", checks: ["security", "performance"], otherText: "", systemDefault: false },
+    planResults: [
+      { key: "performance", passed: true, reason: longReason },
+      { key: "security", passed: false, reason: "安全边界仍有风险" },
+    ],
+  });
+  assert.match(longSection?.body ?? "", new RegExp(longReason));
+  assert.ok((longSection?.body ?? "").indexOf("安全审查") < (longSection?.body ?? "").indexOf("性能审查"));
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "passed" }],
   }), null);
@@ -459,7 +468,7 @@ test("default acceptance feedback works without optional reviews and rejects inv
     });
     assert.match(section?.body ?? "", /\| 默认验收·产物可运行性 \| ✅ 仅调整提示词，无独立可运行产物 \|/);
   }
-  for (const reason of [undefined, "  ", "字".repeat(51)]) {
+  for (const reason of [undefined, "  "]) {
     assert.equal(buildLoopPlusAcceptanceFeedbackSection({
       checks: [{ name: "tests", passed: false, detail: reason }],
     }), null);
@@ -477,7 +486,7 @@ test("feedback never writes a partial bubble or fabricates reasons for selected 
   for (const planResults of [
     undefined,
     [{ key: "security", passed: true, reason: "输入已校验" }],
-    [{ key: "performance", passed: true, reason: "无重复请求" }, { key: "security", passed: true, reason: "输入已校验" }],
+    [{ key: "security", passed: true, reason: "输入已校验" }, { key: "security", passed: false, reason: "结论冲突" }],
     [{ key: "security", passed: true }, { key: "performance", passed: true, reason: "无重复请求" }],
   ]) {
     assert.equal(buildLoopPlusAcceptanceFeedbackSection({ snapshot, checks, planResults }), null);

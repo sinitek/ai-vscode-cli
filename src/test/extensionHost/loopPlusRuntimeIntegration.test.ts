@@ -29,6 +29,7 @@ import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../l
 import { withLoopSubtaskSession } from "../../loopSubtaskSession";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
+import type { LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import { normalizeLoopTaskRecord, type LoopTaskRecord } from "../../loopTaskStore";
 import { isLoopTaskPromptResumeCandidate } from "../../loopTaskMessagePolicy";
 import { LOOP_MAIN_AI_FAILURE_LIMIT } from "../../loopMainFailure";
@@ -318,6 +319,39 @@ function currentEventId(promptText: string): string {
   }
   return match[1];
 }
+
+test("Loop+ 在原主任务中修复验收 JSON，不重复执行已完成子任务", { timeout: 3000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture();
+  try {
+    let taskId = "";
+    let eventId = "";
+    fixture.queueMain((input, tabId) => {
+      taskId = input.loopTaskId!;
+      fixture.publish(input, tabId, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }) });
+    });
+    fixture.setAttemptAction((input, tabId) => fixture.publish(input, tabId, { status: "end", content: "实现完成" }));
+    fixture.queueMain((input, tabId) => {
+      eventId = currentEventId(input.modelPrompt);
+      fixture.publish(input, tabId, { status: "end", content: '{"status":"completed",' });
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.equal(input.loopTaskId, taskId);
+      assert.equal(tabId, fixture.target.tabId);
+      assert.equal(currentEventId(input.modelPrompt), eventId);
+      assert.match(input.modelPrompt, /第 1\/3 次自动纠错/);
+      assert.match(input.modelPrompt, /具体拒绝原因：.*没有完整对象/);
+      assert.equal(fixture.attemptCalls.length, 1);
+      const completed = completedDecision(eventId).slice(1, -1);
+      fixture.publish(input, tabId, { status: "end", content: ["```jsonc", `{/* 实际验收结论 */${completed},}`, "```"].join("\n") });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.mainCalls.length, 3);
+    assert.equal(fixture.attemptCalls.length, 1);
+  } finally {
+    fixture.dispose();
+  }
+});
 
 test("本次完成记录从共享历史丢失后仍进入验收并自动关闭子任务 Tab", async () => {
   const fixture = createLoopPlusRuntimeFixture({ readRuns: () => [] });
@@ -1427,6 +1461,86 @@ for (const { mode, department, requiresAcceptance } of [
     }
   });
 }
+
+test("Loop+ routes an end without a final reply to failure review and keeps its successor pending", { timeout: 5000 }, async () => {
+  const fixture = createLoopPlusRuntimeFixture({
+    maxConcurrency: 2,
+    taskPersistenceFactory: (rootDir) => {
+      const storeFile = path.join(rootDir, "loop-tasks.json");
+      const save = (task: LoopTaskRecord): void => fs.writeFileSync(storeFile, JSON.stringify(task));
+      return {
+        create: (task) => { save(task); return task; },
+        read: (taskId) => {
+          if (!fs.existsSync(storeFile)) return null;
+          const task = JSON.parse(fs.readFileSync(storeFile, "utf8")) as LoopTaskRecord;
+          return task.id === taskId ? task : null;
+        },
+        save,
+        remove: () => fs.rmSync(storeFile, { force: true }),
+      };
+    },
+  });
+  const failure = "任务中断，等待主任务重新派发。";
+  let running: Promise<boolean> | undefined;
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "dispatch", subtasks: [
+        { ...subtask("prerequisite", "source.ts"), requiresAcceptance: false },
+        { ...subtask("successor", "target.ts"), dependsOn: ["prerequisite"] },
+      ] }),
+    }));
+    fixture.queueMain(() => fixture.holdMain());
+    running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+
+    await waitForLoopPlus(() => fixture.peekParked("prerequisite") !== null, "prerequisite invocation parked");
+    const [taskId] = fixture.createdTaskIds;
+    const parked = fixture.peekParked("prerequisite");
+    const attemptId = parked?.input.loopAttemptId;
+    assert.ok(parked && attemptId);
+    assert.equal(parked.input.loopTaskId, taskId);
+    const dispatched = fixture.readTask(taskId)?.loopPlus;
+    assert.ok(dispatched);
+    const before = createLoopPlusScheduler({ snapshot: dispatched }).snapshot();
+    assert.deepEqual(before.running.map((item) => item.attemptId), [attemptId]);
+    assert.equal(before.seenAttempts.find((item) => item.attemptId === attemptId)?.requiresAcceptance, false);
+    assert.deepEqual(before.pending.map((item) => item.subtaskId), ["successor"]);
+
+    fixture.finishParked("prerequisite", { status: "end", attemptId });
+    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "failure review invocation held open");
+
+    const task = fixture.readTask(taskId);
+    assert.ok(task?.loopPlus);
+    const storedTask = JSON.parse(fs.readFileSync(fixture.storeFile, "utf8")) as LoopTaskRecord;
+    assert.equal(storedTask.id, taskId);
+    assert.deepEqual(task, storedTask);
+    const after = storedTask.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+    assert.ok(after);
+    const persisted = after.seenAttempts.find((item) => item.attemptId === attemptId);
+    assert.equal(persisted?.outcome, "failed");
+    assert.equal(persisted.disposition, "finished");
+    assert.equal(persisted.requiresAcceptance, false);
+    const eventId = buildLoopPlusFinishEventId("prerequisite", attemptId);
+    assert.deepEqual(after.currentReview, { eventId, subtaskId: "prerequisite", attemptId, outcome: "failed", detail: failure });
+    assert.equal(currentEventId(fixture.mainCalls[1].displayPrompt), eventId);
+    assert.match(fixture.mainCalls[1].modelPrompt, /outcome=failed detail=任务中断，等待主任务重新派发。/);
+    assert.equal(task.subTasks.find((item) => item.id === "prerequisite")?.status, "blocked");
+    assert.deepEqual(after.reportQueue ?? [], []);
+    assert.deepEqual(after.running, []);
+    assert.deepEqual(after.pending, before.pending);
+    assert.deepEqual(fixture.attemptCalls.map((input) => input.loopAttemptId), [attemptId]);
+    assert.deepEqual(fixture.closeSubtaskTabAttempts, []);
+    assert.deepEqual(fixture.closedSubtaskTabs, []);
+  } finally {
+    fixture.adapter.host().stopParent(fixture.createdTaskIds[0] ?? "");
+    fixture.releaseHeldMain();
+    try {
+      await running;
+      assert.equal(fixture.completionSubscriptionCount(), 0);
+    } finally {
+      fixture.dispose();
+    }
+  }
+});
 
 test("leader model invocation keeps its captured department balance snapshot", async () => {
   const fixture = createLoopPlusRuntimeFixture({

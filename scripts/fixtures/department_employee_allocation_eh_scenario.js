@@ -44,6 +44,40 @@ function assertReaderProjection(reader, projection, saved, rootId, leaderId) {
     activeEmployees: projection.activeEmployees, availableEmployees: projection.availableEmployees });
 }
 
+function readAllocationMember(tasks, saved, rootId, leaderId) {
+  const root = tasks.find(task => task.id === rootId), leader = tasks.find(task => task.id === leaderId);
+  assert.equal(root?.department?.role, "director");
+  assert.equal(root.department.rootTaskId, rootId);
+  assert.equal(root.department.executionMode, "loop-plus", "expected a public Loop+ root");
+  assert.equal(leader?.department?.role, "leader");
+  assert.equal(leader.department.executionMode, "loop-plus");
+  assert.equal(leader.department.rootTaskId, rootId);
+  assert.equal(leader.department.parentTaskId, rootId);
+  assert.equal(leader.workspaceKey, root.workspaceKey);
+  assert.equal(saved.workspaceKey, root.workspaceKey);
+  assert.equal(leader.schedulingMode, "event_driven");
+  const moduleId = leader.department.leaderSubtaskId;
+  assert.ok(moduleId && root.subTasks.some(module => module.id === moduleId), "missing durable director module");
+  assert.equal(saved.runtime.rootTaskId, rootId);
+  const member = saved.runtime.leaders.find(row => row.taskId === leaderId);
+  assert.equal(member?.leaderSubtaskId, moduleId);
+  return { root, leader, member, moduleId };
+}
+
+function readRunningAllocationAttempt(leader, subtaskId) {
+  const logical = leader.subTasks.filter(task => task.id === subtaskId);
+  assert.equal(logical.length, 1, "expected one durable logical employee task");
+  const running = leader.loopPlus.running.filter(attempt => attempt.subtaskId === subtaskId);
+  assert.equal(running.length, 1, "expected one durable running attempt");
+  const { attemptId } = running[0];
+  assert.ok(attemptId && attemptId !== subtaskId);
+  const seen = leader.loopPlus.seenAttempts.filter(attempt => attempt.attemptId === attemptId);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].subtaskId, subtaskId);
+  assert.equal(seen[0].disposition, "open");
+  return { leaderTaskId: leader.id, subtaskId, attemptId };
+}
+
 function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readRuntime, readDecision,
   expectedLimits = { maxLeaders: 4, maxEmployees: 20 }, holdTimeoutMs = 120000 }) {
   const history = [], held = new Map(), released = new Set(), employees = [];
@@ -71,6 +105,8 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
       identity = text.match(/任务 ID：([^；\s]+)；轮次：\d+/)?.[1];
       assert.ok(identity); rootId ??= identity; assert.equal(identity, rootId);
       const root = readTasks().find(t => t.id === rootId); assert.equal(root?.department?.role, "director");
+      assert.equal(root.department.rootTaskId, rootId);
+      assert.equal(root.department.executionMode, "loop-plus");
       assert.deepEqual(root.department.limits, expectedLimits);
       if (!root.subTasks.length) {
         stage = "director-dispatch";
@@ -80,9 +116,8 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
     } else if (text.includes("You are the Loop+ main reviewer.")) {
       identity = text.match(/^Parent task: (\S+)/m)?.[1];
       assert.ok(identity); leaderId ??= identity; assert.equal(identity, leaderId);
-      const leader = readTasks().find(t => t.id === identity);
-      assert.equal(leader?.department?.rootTaskId, rootId); assert.equal(leader?.department?.role, "leader");
       const snapshot = readRuntime(rootId);
+      const { leader } = readAllocationMember(readTasks(), snapshot, rootId, leaderId);
       const projection = assertAllocationPrompt(text, snapshot, leaderId);
       context.request.allocation = projection;
       context.request.saved = snapshot;
@@ -112,16 +147,24 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
           assert.equal(projection.desiredLimit, 0); assert.equal(projection.appliedLimit, 0); assert.equal(projection.pending, false);
           stage = "leader-zero-applied"; wait = "restore-saved";
           const next = work("allocation-restored"); answer.subtasks = [next]; answer.reviews[0].subtaskIds = [next.id];
-        } else { stage = "leader-restored-applied"; }
+        } else {
+          assert.equal(event.subtaskId, "allocation-restored", "unexpected employee review");
+          assert.equal(projection.desiredLimit, Math.ceil(snapshot.employeeAllocation.maxEmployees / snapshot.employeeAllocation.maxLeaders));
+          assert.equal(projection.appliedLimit, projection.desiredLimit);
+          stage = "leader-restored-applied";
+        }
       }
     } else if (text.includes("You are one independent Loop+ execution attempt.")) {
       const file = text.match(/^Attempt report file: (.+)$/m)?.[1]; assert.ok(file);
-      const leader = readTasks().find(t => t.id === leaderId);
-      const subtask = leader?.subTasks.find(s => s.communicationFile === file); assert.ok(subtask);
-      const attempts = leader.loopPlus.running.filter(a => a.subtaskId === subtask.id); assert.equal(attempts.length, 1);
+      const snapshot = readRuntime(rootId);
+      const { leader } = readAllocationMember(readTasks(), snapshot, rootId, leaderId);
+      const matching = leader.subTasks.filter(s => s.communicationFile === file); assert.equal(matching.length, 1);
+      const [subtask] = matching;
       assert.ok(["allocation-held", "allocation-pulse", "allocation-zero", "allocation-restored"].includes(subtask.id));
-      identity = { leaderTaskId: leaderId, subtaskId: subtask.id, attemptId: attempts[0].attemptId };
-      assert.ok(!employees.some(e => e.attemptId === identity.attemptId), "duplicate employee identity"); employees.push(identity);
+      identity = readRunningAllocationAttempt(leader, subtask.id);
+      assert.ok(snapshot.capacity.employees.includes(JSON.stringify([leaderId, identity.attemptId])), "missing exact employee capacity key");
+      assert.ok(!held.has(subtask.id) && !employees.some(e => e.attemptId === identity.attemptId), "duplicate employee dispatch");
+      employees.push(identity);
       held.set(subtask.id, identity); stage = subtask.id; wait = subtask.id;
       answer = "ISOLATED ALLOCATION — 免费本机协议答复，未调用外部模型或修改代码。";
     } else throw Error("unexpected allocation production prompt");
@@ -129,7 +172,7 @@ function createDepartmentEmployeeAllocationEhScenario({ prompt, readTasks, readR
     if (wait) await gate(wait);
     return typeof answer === "string" ? answer : JSON.stringify(answer);
   }
-  return { respond, history, release, releaseAll: () => { for (const name of gates.keys()) release(name); },
+  return { respond, history, release, isHolding: name => gates.has(name), releaseAll: () => { for (const name of gates.keys()) release(name); },
     snapshot: () => ({ rootId, leaderId, initial, zeroDispatched, restoreDispatched, held: Object.fromEntries(held), employees, history }) };
 }
-module.exports = { assertAllocationPrompt, assertReaderProjection, createDepartmentEmployeeAllocationEhScenario };
+module.exports = { assertAllocationPrompt, assertReaderProjection, readAllocationMember, readRunningAllocationAttempt, createDepartmentEmployeeAllocationEhScenario };

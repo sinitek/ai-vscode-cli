@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), os = require("node:os"), cp = require("node:child_process"), crypto = require("node:crypto");
 const { isolatedEnvironment, createDepartmentWebviewAdapter } = require("./verify_department_full_eh_integration");
 const { createLocalResponsesServer } = require("./fixtures/codex_local_responses_server");
-const { createDepartmentEmployeeAllocationEhScenario } = require("./fixtures/department_employee_allocation_eh_scenario");
+const { createDepartmentEmployeeAllocationEhScenario, readAllocationMember, readRunningAllocationAttempt } = require("./fixtures/department_employee_allocation_eh_scenario");
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const readJson = file => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : null;
 // The reused old observer emits literal \\n separators; the new allocation observer emits LF.
@@ -81,6 +81,76 @@ function assertCleanup(saved, observations, protocol, identityApi, receiptApi, w
   assert.ok(!saved.capacity.employeeOverflow?.length);
   return { owners: bindings.length, closedSets: sets.length, complete: true };
 }
+const allocationRow = (saved, leaderId) => {
+  const row = saved.employeeAllocation.leaders.find(value => value.leaderTaskId === leaderId);
+  assert.ok(row, "missing durable allocation row");
+  return row;
+};
+const attemptKey = ({ subtaskId, attemptId }) => JSON.stringify([subtaskId, attemptId]);
+function assertAllocationDispatch(tasks, saved, rootId, leaderId, attempts, appliedLimit) {
+  const { root, leader, member, moduleId } = readAllocationMember(tasks, saved, rootId, leaderId);
+  assert.equal(root.status, "running");
+  assert.equal(member.status, "running");
+  assert.equal(saved.runtime.stopping, false);
+  assert.equal(allocationRow(saved, leaderId).appliedLimit, appliedLimit);
+  assert.deepEqual(saved.capacity.leaders, [moduleId]);
+  const occupied = attempts.map(attempt => {
+    assert.deepEqual(readRunningAllocationAttempt(leader, attempt.subtaskId), attempt);
+    return JSON.stringify([leaderId, attempt.attemptId]);
+  });
+  assert.deepEqual(leader.loopPlus.running.map(attemptKey).sort(), attempts.map(attemptKey).sort(), "unexpected durable running attempt");
+  assert.deepEqual([...saved.capacity.employees].sort(), occupied.sort(), "unexpected exact employee capacity keys");
+  assert.deepEqual(saved.capacity.employeeOverflow ?? [], []);
+  return { root, leader, member, saved };
+}
+function assertAppliedTransition(before, after, leaderId, appliedLimit) {
+  const allocation = before.employeeAllocation;
+  assert.deepEqual(after.employeeAllocation, { ...allocation, revision: allocation.revision + 1,
+    leaders: allocation.leaders.map(row => row.leaderTaskId === leaderId ? { ...row, appliedLimit } : row) });
+}
+function readOrganizationStop(logDir, rootId) {
+  if (!fs.existsSync(logDir)) return [];
+  return fs.readdirSync(logDir).filter(name => /^sinitek-cli\.\d{4}-\d\d-\d\d(?:\.\d+)?\.log$/.test(name))
+    .flatMap(name => fs.readFileSync(path.join(logDir, name), "utf8").split("\n").slice(0, -1).flatMap(line => {
+      const match = /^\[([^\]]+)\] \[INFO\] department-organization-stop \| (.+)$/.exec(line);
+      if (!match) return [];
+      const value = JSON.parse(match[2]);
+      return value.rootTaskId === rootId ? [{ ...value, at: Date.parse(match[1]) }] : [];
+    })).sort((first, second) => first.at - second.at);
+}
+function assertPublicStop(before, tasks, saved, original, dispatched, events, diagnostics) {
+  const rootId = before.root.id, leaderId = before.leader.id;
+  const { root, leader, member } = readAllocationMember(tasks, saved, rootId, leaderId);
+  const actions = events.filter(event => event.event === "webview-stop" && event.rootTaskId === rootId);
+  assert.equal(actions.length, 1, "expected one actual director webview stop request");
+  assert.deepEqual(diagnostics.map(({ path, result, stage }) => [path, result, stage]),
+    [["live", "started", "request"], ["live", "confirmed", "cleanup"]], "live public stop cleanup not confirmed");
+  assert.ok(diagnostics[1].at >= actions[0].at, "cleanup predates the public stop request");
+  assert.equal(root.status, "stopped");
+  assert.equal(leader.status, "stopped");
+  assert.equal(member.status, "paused");
+  assert.equal(saved.runtime.stopping, false, "runtime cleanup remains unconfirmed");
+  assert.deepEqual(saved.runtime.startingModules ?? [], []);
+  assert.deepEqual(saved.employeeAllocation, before.saved.employeeAllocation, "stop changed allocation references");
+  assert.deepEqual(saved.capacity.leaders, []);
+  assert.deepEqual(saved.capacity.employees, []);
+  assert.deepEqual(saved.capacity.employeeOverflow ?? [], []);
+  assert.deepEqual(readRunningAllocationAttempt(before.leader, original.subtaskId), original);
+  assert.equal(leader.loopPlus.parentStopped, true);
+  assert.deepEqual(leader.loopPlus.running, []);
+  assert.deepEqual(leader.loopPlus.pending, []);
+  assert.deepEqual(leader.activeSubtaskIds, []);
+  assert.equal(leader.activeSubtaskId, null);
+  assert.deepEqual(root.subTasks.map(task => task.id), before.root.subTasks.map(task => task.id), "director added new work");
+  assert.deepEqual(leader.subTasks.map(task => task.id), before.leader.subTasks.map(task => task.id), "leader added new work");
+  const inventory = before.leader.loopPlus.seenAttempts.map(attemptKey).sort();
+  assert.deepEqual(leader.loopPlus.seenAttempts.map(attemptKey).sort(), inventory, "durable attempt inventory changed after public stop");
+  assert.deepEqual(dispatched.map(attemptKey).sort(), inventory, "provider dispatches differ from durable attempts");
+  const terminal = leader.loopPlus.seenAttempts.find(attempt => attempt.attemptId === original.attemptId);
+  assert.deepEqual([terminal.subtaskId, terminal.disposition, terminal.outcome], [original.subtaskId, "finished", "stopped"], "original attempt did not durably stop");
+  assert.equal(leader.subTasks.find(task => task.id === original.subtaskId).status, "blocked");
+  return { root, leader, saved, originalAttempt: terminal, stopRequest: actions[0], diagnostics };
+}
 function assertWorkspaceSaved(events, key, value, workspaceKey, durable, globalSettings) {
   const requests = events.filter(e => e.event === "settings-request" && e.message.key === key);
   assert.equal(requests.length, 1, "one actual UI settings request required");
@@ -146,10 +216,12 @@ async function main(argv = process.argv.slice(2)) {
     sha256: Object.fromEntries(["scripts/verify_department_employee_allocation_eh_integration.js", "scripts/fixtures/department_employee_allocation_eh_scenario.js",
       "src/test/extensionHost/fixtures/departmentemployeeallocationehhost.ts", "dist/test/extensionHost/fixtures/departmentemployeeallocationehhost.js",
       "src/extensionHost/departmentruntimestore.ts", "src/extensionHost/departmentemployeeallocationhost.ts", "src/extensionHost/departmentorchestration.ts",
+      "src/extensionHost/departmentruntimecomposition.ts", "src/extensionHost/loopPlusOrchestration.ts", "src/logger.ts",
       "src/extensionHost/loopPlusPromptBuilders.ts", "src/extensionHost/loopPlusRuntimeAdapter.ts", "src/extension.ts", "src/webview/departmentEmployeeAllocation.ts", "scripts/verify_department_full_eh_integration.js",
       "src/extensionHost/modelSettings.ts", "src/workspaceSettingsStore.ts", "src/departmentSettings.ts", "src/settingMessageHandlers/preferences.ts",
       "dist/extension.js", "dist/extensionHost/modelSettings.js", "dist/workspaceSettingsStore.js", "dist/departmentSettings.js",
-      "dist/settingMessageHandlers/preferences.js", "dist/extensionHost/departmentemployeeallocationhost.js", "dist/webview/viewContent.js"]
+      "dist/settingMessageHandlers/preferences.js", "dist/extensionHost/departmentemployeeallocationhost.js", "dist/webview/viewContent.js",
+      "dist/extensionHost/departmentruntimecomposition.js", "dist/extensionHost/loopPlusOrchestration.js", "dist/logger.js"]
       .map(file => [file, crypto.createHash("sha256").update(fs.readFileSync(path.join(product, file))).digest("hex")])) };
   const fixture = require(path.join(product, "dist/test/extensionHost/fixtures/departmentemployeeallocationehhost.js"));
   const { DepartmentRuntimeStore } = require(path.join(product, "dist/extensionHost/departmentruntimestore.js"));
@@ -169,7 +241,7 @@ async function main(argv = process.argv.slice(2)) {
     readDecision: (rootId, leaderId) => events().filter(e => e.event === "capacity-reader" && e.rootTaskId === rootId && e.leaderTaskId === leaderId).at(-1),
     holdTimeoutMs: budget });
   const responses = createLocalResponsesServer({ respond: scenario.respond, maxRequests: 24 });
-  let child, exited = false, browser, view, group;
+  let child, exited = false, browser, view, group, checkStopped;
   const wait = async (label, check) => {
     report.activePhase = label;
     while (Date.now() < deadline) {
@@ -182,6 +254,8 @@ async function main(argv = process.argv.slice(2)) {
     throw Error(`allocation EH deadline: ${label}`);
   };
   const events = () => readEvents(path.join(root, "allocation-host.ndjson"));
+  const stopDiagnostics = rootId => readOrganizationStop(path.join(home, ".sinitek_cli/logs"), rootId);
+  const publicStop = '#panelActions [data-action="stopTask"]';
   try {
     for (const key of ["HOME", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "TMPDIR"])
       fs.mkdirSync(env[key], { recursive: true });
@@ -248,11 +322,13 @@ async function main(argv = process.argv.slice(2)) {
       const s = scenario.snapshot(); return s.held["allocation-held"] && s.held["allocation-pulse"] && s;
     });
     const rootId = held.rootId, leaderId = held.leaderId;
+    const original = held.held["allocation-held"], pulse = held.held["allocation-pulse"];
     const before = readRuntime(rootId); assert.deepEqual([before.capacity.maxLeaders, before.capacity.maxEmployees], [expectedLimits.maxLeaders, expectedLimits.maxEmployees]);
     const defaultLimit = Math.ceil(before.employeeAllocation.maxEmployees / before.employeeAllocation.maxLeaders);
     assert.deepEqual([before.employeeAllocation.maxLeaders, before.employeeAllocation.maxEmployees], [expectedLimits.maxLeaders, expectedLimits.maxEmployees]);
     assert.equal(defaultLimit, input.workspaceCapacity ? 3 : 5);
-    assert.equal(before.capacity.employees.length, 2); assert.equal(before.employeeAllocation.leaders[0].appliedLimit, defaultLimit);
+    assert.equal(allocationRow(before, leaderId).manualLimit, null);
+    report.baselineDispatch = assertAllocationDispatch(readTasks(), before, rootId, leaderId, [original, pulse], defaultLimit);
     report.baseline = before;
     await view.locator("#openCurrentLoopGroupChat").click(); await view.close(); view = null;
     group = await createDepartmentWebviewAdapter(browser, "webviewPanel", 30000, { rootId, deadline, cleanupDeadline: deadline + 15000 });
@@ -260,82 +336,80 @@ async function main(argv = process.argv.slice(2)) {
     const selector = `#departmentAllocationDialog [data-allocation-root="${rootId}"][data-allocation-leader="${leaderId}"]`, row = group.locator(selector);
     await row.waitFor(); assert.equal(await row.locator("input").inputValue(), String(defaultLimit));
     await row.locator("input").fill("0"); await group.locator("#departmentAllocationSave").click();
-    await wait("zero durable settled and UI readback", async () => {
-      const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === 0
-        && await row.getAttribute("aria-busy") === "false" && (await row.innerText()).includes("新参考值已保存") && s;
+    const zeroSaved = await wait("zero durable settled and UI readback", async () => {
+      const saved = readRuntime(rootId), text = await row.innerText();
+      return allocationRow(saved, leaderId).manualLimit === 0 && await row.getAttribute("aria-busy") === "false"
+        && await row.locator("input").inputValue() === "0" && text.includes("新参考值已保存")
+        && text.includes(`上次派发参考 ${defaultLimit}`) && text.includes("实际占用 2") && saved;
     });
-    const zeroSaved = readRuntime(rootId); assertSavedTransition(before, zeroSaved, leaderId, 0);
+    assertSavedTransition(before, zeroSaved, leaderId, 0);
+    assertAllocationDispatch(readTasks(), zeroSaved, rootId, leaderId, [original, pulse], defaultLimit);
     report.zeroSaved = { saved: zeroSaved, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, before.employeeAllocation.revision, 0, zeroSaved.employeeAllocation.revision) };
     report.stages.saveZero = "passed";
     scenario.release("allocation-pulse");
     const atZero = await wait("new attempt runs at zero reference", () => scenario.snapshot().held["allocation-zero"]);
     const runningAtZero = readRuntime(rootId);
-    assert.equal(runningAtZero.employeeAllocation.leaders[0].appliedLimit, 0);
-    assert.equal(runningAtZero.capacity.employees.length, 2);
-    for (const attempt of [held.held["allocation-held"], atZero]) {
-      assert.ok(runningAtZero.capacity.employees.includes(JSON.stringify([leaderId, attempt.attemptId])));
-      assert.ok(runningAtZero.executionBindings.some(b => b.identity.subtaskId === attempt.subtaskId && b.identity.attemptId === attempt.attemptId));
-    }
+    assertAppliedTransition(zeroSaved, runningAtZero, leaderId, 0);
+    const zeroDispatch = assertAllocationDispatch(readTasks(), runningAtZero, rootId, leaderId, [original, atZero], 0);
     scenario.release("allocation-zero");
     await wait("zero reference review", () => scenario.history.some(h => h.stage === "leader-zero-applied"));
     const applied = readRuntime(rootId);
-    assert.equal(applied.capacity.employees.length, 1);
-    report.zeroApplied = { saved: applied, running: runningAtZero, attempt: atZero }; report.stages.dispatchAtZero = "passed";
+    assert.deepEqual(applied.employeeAllocation, runningAtZero.employeeAllocation);
+    assertAllocationDispatch(readTasks(), applied, rootId, leaderId, [original], 0);
+    report.zeroApplied = { saved: applied, running: runningAtZero, dispatch: zeroDispatch, attempt: atZero }; report.stages.dispatchAtZero = "passed";
     await wait("zero applied UI", async () => (await row.innerText()).includes("上次派发参考 0"));
     await group.locator('#panelActions [data-action="allocateEmployees"]').click();
     await row.locator("input").fill(String(defaultLimit)); await group.locator("#departmentAllocationSave").click();
     const restored = await wait("restore durable settled and UI readback", async () => {
-      const s = readRuntime(rootId); return s.employeeAllocation.leaders[0].manualLimit === defaultLimit && await row.getAttribute("aria-busy") === "false"
-        && (await row.innerText()).includes("新参考值已保存") && await row.locator("input").inputValue() === String(defaultLimit) && s;
+      const saved = readRuntime(rootId), text = await row.innerText();
+      return allocationRow(saved, leaderId).manualLimit === defaultLimit && await row.getAttribute("aria-busy") === "false"
+        && text.includes("新参考值已保存") && text.includes("上次派发参考 0") && text.includes("实际占用 1")
+        && await row.locator("input").inputValue() === String(defaultLimit) && saved;
     });
     assertSavedTransition(applied, restored, leaderId, defaultLimit);
+    assertAllocationDispatch(readTasks(), restored, rootId, leaderId, [original], 0);
     report.restoreSaved = { mode: "manual", saved: restored, ui: await row.innerText(), confirmation: assertSettled(events(), rootId, leaderId, applied.employeeAllocation.revision, defaultLimit, restored.employeeAllocation.revision, defaultLimit) };
     report.stages.restoreSave = "passed"; scenario.release("restore-saved");
-    await wait("new restored employee admitted", () => scenario.snapshot().held["allocation-restored"]);
-    const admitted = readRuntime(rootId), next = scenario.snapshot().held["allocation-restored"];
-    assert.equal(admitted.employeeAllocation.leaders[0].appliedLimit, defaultLimit); assert.equal(admitted.capacity.employees.length, 2);
-    assert.ok(admitted.capacity.employees.includes(JSON.stringify([leaderId, next.attemptId])));
-    assert.ok(admitted.executionBindings.some(b => b.identity.subtaskId === next.subtaskId && b.identity.attemptId === next.attemptId));
-    assert.ok(admitted.capacity.employees.includes(JSON.stringify([leaderId, held.held["allocation-held"].attemptId])), "original held lease retained");
-    assert.deepEqual(admitted.executionBindings.find(b => b.identity.attemptId === held.held["allocation-held"].attemptId), before.executionBindings.find(b => b.identity.attemptId === held.held["allocation-held"].attemptId));
-    assert.ok(!admitted.capacity.employeeOverflow?.length); report.restoreApplied = admitted; report.stages.restoreAdmission = "passed";
+    const next = await wait("new restored employee admitted", () => scenario.snapshot().held["allocation-restored"]);
+    const admitted = readRuntime(rootId);
+    assertAppliedTransition(restored, admitted, leaderId, defaultLimit);
+    report.restoreDispatch = assertAllocationDispatch(readTasks(), admitted, rootId, leaderId, [original, next], defaultLimit);
+    report.restoreApplied = admitted; report.stages.restoreAdmission = "passed";
     // A real employee event forces one final decision-time prompt after restored admission.
     scenario.release("allocation-restored");
     await wait("restored prompt captured", () => scenario.history.some(h => h.stage === "leader-restored-applied"));
-    await group.locator('#panelActions [data-action="stopTask"]').click();
-    scenario.releaseAll();
-    const identityApi = require(path.join(product, "dist/runtime/departmentexecutionidentity.js"));
-    const receiptApi = require(path.join(product, "dist/runtime/departmentexecutionreceiptstore.js"));
-    report.cleanup = await wait("original receipts CLOSED returned capacity natural workers", () => {
-      const saved = readRuntime(rootId);
-      if (saved.capacity.employees.length || saved.capacity.leaders.length || !saved.leaderExecutionSets?.every(s => s.state === "closed")) return null;
-      const protocol = readEvents(path.join(root, "original-owner-protocol.ndjson"));
-      const observations = readEvents(path.join(root, "original-owner-observations.ndjson"));
-      const executionCount = 5;
-      if (observations.length < executionCount || events().filter(e => e.event === "worker-exit" && e.code === 0 && !e.signal).length < executionCount) return null;
-      return { saved, result: assertCleanup(saved, observations, protocol, identityApi, receiptApi, events(), executionCount), observations, workers: events().filter(e => e.event.startsWith("worker-")) };
+    report.beforeStop = assertAllocationDispatch(readTasks(), readRuntime(rootId), rootId, leaderId, [original], defaultLimit);
+    checkStopped = (diagnostics = stopDiagnostics(rootId)) => {
+      const originalResponseWithheld = scenario.isHolding("allocation-held");
+      assert.equal(originalResponseWithheld, true, "original employee response must remain withheld");
+      return { ...assertPublicStop(report.beforeStop, readTasks(), readRuntime(rootId), original, scenario.snapshot().employees, events(), diagnostics), originalResponseWithheld };
+    };
+    report.activePhase = "public director stop click";
+    await group.locator(publicStop).click();
+    report.cleanup = await wait("public Loop+ stop, original attempt settlement and returned capacity", () => {
+      const diagnostics = stopDiagnostics(rootId);
+      assert.ok(!diagnostics.some(event => event.result === "unconfirmed"), "production reports unconfirmed public stop cleanup");
+      return diagnostics.some(event => event.result === "confirmed") && checkStopped(diagnostics);
     });
     report.stages.cleanup = "passed";
-    responses.assertHealthy(); report.result = "passed";
   } catch (error) { report.failures.push({ phase: report.activePhase, error: error.stack || String(error) }); }
   finally {
-    scenario.releaseAll();
-    if (report.result !== "passed" && group) {
-      try { const stop = group.locator('#panelActions [data-action="stopTask"]'); if (await stop.isEnabled()) await stop.click(); }
-      catch (error) { report.failureStop = String(error); }
-    }
-    if (report.result !== "passed" && group) {
-      const until = Date.now() + 15000;
-      while (Date.now() < until) {
-        const id = scenario.snapshot().rootId;
-        const saved = id && readRuntime(id);
-        if (saved && saved.capacity.employees.length === 0 && saved.capacity.leaders.length === 0
-          && saved.leaderExecutionSets?.every(set => set.state === "closed")) {
-          report.failureCleanup = { observed: true, saved }; break;
-        }
-        await pause(100);
+    if (!report.cleanup && group) {
+      const id = scenario.snapshot().rootId;
+      try {
+        const stop = group.locator(publicStop);
+        if (!stopDiagnostics(id).length && await stop.isEnabled()) await stop.click();
+        const until = Date.now() + 15000;
+        let diagnostics;
+        do {
+          diagnostics = stopDiagnostics(id);
+          if (diagnostics.some(event => event.result !== "started") || exited) break;
+          await pause(100);
+        } while (Date.now() < until);
+        report.failureCleanup = { confirmed: false, diagnostics, reason: "full public-stop evidence did not pass" };
+      } catch (error) {
+        report.failureCleanup = { confirmed: false, error: String(error) };
       }
-      if (!report.failureCleanup) report.failureCleanup = { observed: false, reason: "public stop cleanup not confirmed; retained state is not cleanup evidence" };
     }
     for (const adapter of [group, view]) if (adapter) {
       try { const diagnostics = await adapter.close(); assert.deepEqual(diagnostics, []); }
@@ -344,10 +418,24 @@ async function main(argv = process.argv.slice(2)) {
     if (browser) await browser.close().catch(error => report.failures.push({ phase: "cdp-disconnect", error: String(error) }));
     if (child && !exited) {
       fs.writeFileSync(path.join(root, "host-finish.signal"), "normal-host-test-return\n", { flag: "wx" });
+      report.normalHostFinishRequested = true;
       const end = Date.now() + 15000; while (!exited && Date.now() < end) await pause(100);
       if (!exited) { report.failures.push({ phase: "host-exit", error: "normal EH exit not observed; no forced kill used" }); child.unref(); }
     }
-    if (report.hostExit?.code !== 0 || report.hostExit?.signal) report.failures.push({ phase: "host-exit", error: JSON.stringify(report.hostExit) });
+    try {
+      assert.equal(report.normalHostFinishRequested, true, "EH did not await the normal finish signal");
+      assert.deepEqual(report.hostExit, { code: 0, signal: null });
+      report.stages.hostExit = "passed";
+      if (report.cleanup) {
+        report.activePhase = "post-exit persisted stop and dispatch inventory";
+        report.afterHostExit = checkStopped();
+        responses.assertHealthy();
+        if (!report.failures.length) report.result = "passed";
+      }
+    } catch (error) {
+      report.failures.push({ phase: report.stages.hostExit ? report.activePhase : "host-exit", error: String(error) });
+    }
+    scenario.releaseAll();
     if (responses.server.listening) { responses.server.closeAllConnections(); await new Promise(resolve => responses.server.close(resolve)); }
     report.scenario = scenario.snapshot(); report.responses = { count: responses.requests.length, failures: responses.failures };
     fs.writeFileSync(path.join(root, "responses-requests.json"), JSON.stringify(responses.requests, null, 2), { flag: "wx" });
@@ -419,5 +507,6 @@ function verifyCapturedRun(reportFile) {
     root: report.root, checkedHashes, evidenceSha256, finishSignalAt, verifierSha256: crypto.createHash("sha256").update(fs.readFileSync(__filename)).digest("hex"), originalFailure: report.failures, repairedAssertion: "actual exit code 0 and null signal; Electron close event is not required",
     cleanup: { ...result, saved: read.value, observations, workerExits }, promptStages: expected.map(([stage]) => stage), verifiedAt: new Date().toISOString() };
 }
-module.exports = { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved, publicDepartmentEntry, verifyCapturedRun, main };
+module.exports = { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertAllocationDispatch, assertAppliedTransition,
+  readOrganizationStop, assertPublicStop, assertWorkspaceSaved, publicDepartmentEntry, verifyCapturedRun, main };
 if (require.main === module) main().then(report => { if (report.result !== "passed") process.exitCode = 1; }).catch(error => { console.error(error); process.exitCode = 1; });

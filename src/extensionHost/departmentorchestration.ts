@@ -61,7 +61,9 @@ export type DepartmentOrchestrationDeps = {
 };
 type Member = { taskId: string; leaderSubtaskId: string; status: DepartmentLeaderStatus; generation: number;
   lease: CapacityLease | null; run: Promise<void> | null; target: DepartmentLeaderTarget | null; coldStoppedForResume?: boolean;
-  releaseOwnership?: () => void; notifiedGeneration?: number; cleanupConfirmedGeneration?: number };
+  releaseOwnership?: () => void; notifiedGeneration?: number; cleanupConfirmedGeneration?: number;
+  settling?: boolean; acquiring?: Promise<void>; opening?: Promise<void> };
+type LeaderResume = { task: LoopTaskRecord; target: DepartmentLeaderTarget; generation: number };
 type Employee = { taskId: string; attemptId: string; subtaskId: string; release(): void; cleanupFailed(error: unknown): void; done: Promise<void>; recovered: boolean };
 type EmployeeRequest = Pick<LoopPlusAttemptRequest, "taskId" | "attemptId" | "subtaskId"> & Partial<Pick<LoopPlusAttemptRequest, "targetCli" | "execution">>;
 type Root = { id: string; workspaceKey: string; metadata: DepartmentMetadata; plan: LoopPlusAcceptancePlanSnapshot;
@@ -169,12 +171,14 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
   function track(root: Root, member: Member, lifecycle: Promise<unknown>, observation = false): Promise<void> {
     const generation = member.generation;
     const releaseOwnership = member.releaseOwnership;
+    member.settling = false;
     const run = (async () => {
       try { await lifecycle; }
       catch (error) {
         memberDiagnostic(root, member, generation, "unexpected-failure", "lifecycle", "retained");
         if (observation) { member.status = "blocked"; persist(root); return; }
       }
+      member.settling = true;
       await deps.runtime.waitForTaskIdle(member.taskId);
       await Promise.all([...root.employees.values()].filter((item) => item.taskId === member.taskId).map((item) => item.done));
       if (member.generation !== generation || owners.get(member.taskId) !== root) return;
@@ -241,7 +245,9 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
             // durable snapshot cannot contain a module in both collections.
             root!.reservations.delete(module!.id);
             if (!persist(root!)) throw new Error("persistence-failed");
-            return usesOwnerCleanup(root!) ? deps.beginLeaderExecution?.(id, member.generation) : undefined;
+            const opening = usesOwnerCleanup(root!) ? deps.beginLeaderExecution?.(id, member.generation) : undefined;
+            member.opening = opening;
+            return opening?.then(() => { if (member.opening === opening) member.opening = undefined; });
           });
         // Observe rejection immediately, including validation/persistence failures before ownership callback.
         void lifecycle.catch(() => undefined);
@@ -308,30 +314,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       }
       resumable.push(member);
     }
-    for (const member of resumable) {
-      if (member.lease || deps.runtime.hasTaskExecution(member.taskId)
-        || [...root.employees.values()].some((employee) => employee.taskId === member.taskId)) return { ok: false, reason: "leader-still-active-or-unverified" };
-      if (deps.prepareLeaderContinuation) {
-        const task = leaderTask(root, member), metadata = expected(root, member.leaderSubtaskId);
-        const target = task && metadata && deps.prepareLeaderContinuation(clone(task), clone(metadata));
-        const prepared = target && leaderTask(root, member);
-        if (!target || !prepared || prepared.status !== task!.status || target.cli !== prepared.cli
-          || target.sessionId !== prepared.sessionId || !text(target.tabId)) {
-          diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
-            generation: member.generation, stage: "target-verify", result: "unconfirmed", reason: "evidence-rejected",
-            errorCode: "leader-continuation-target-unverified" });
-          return { ok: false, reason: "leader-continuation-target-unverified" };
-        }
-        member.target = target;
-      }
-      const verified = inspect(root, member);
-      if (!verified || verified.live || (deps.prepareLeaderContinuation && !equal(verified.target, member.target))) {
-        diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
-          generation: member.generation, stage: "target-verify", result: "unconfirmed",
-          reason: verified?.live ? "task-still-running" : "evidence-rejected", errorCode: "leader-still-active-or-unverified" });
-        return { ok: false, reason: "leader-still-active-or-unverified" };
-      }
-    }
+    const prepared = resumable.map((member) => ({ member, resume: prepareLeaderResume(root, member) }));
     continuation?.assertCurrent();
     if (root.abort.signal.aborted) root.abort = new AbortController();
     root.snapshot.stopping = false; root.stopDiagnosed = false;
@@ -340,61 +323,200 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       ? { ...module, status: "running" as const, updatedAt: Date.now() } : module);
     if (!deps.updateTask(root.id, { status: "running", subTasks, ...(continuation ? { runtimeInterrupted: undefined } : {}) })) return { ok: false, reason: "root-resume-persistence-failed" };
     continuation?.admitted();
-    for (const member of resumable) {
-      const verified = inspect(root, member);
-      if (!verified || verified.live || deps.runtime.hasTaskExecution(member.taskId)
-        || [...root.employees.values()].some((employee) => employee.taskId === member.taskId)) return { ok: false, reason: "leader-still-active-or-unverified" };
-      member.status = "starting"; member.generation += 1;
-      const generation = member.generation;
-      const lease = member.lease ?? await deps.capacity.trackLeader(root.id, member.leaderSubtaskId, undefined, root.abort.signal);
-      if (!lease || deps.canExecuteRoot?.(root.id) === false || root.abort.signal.aborted || generation !== member.generation || !inspect(root, member)) { lease?.release(); return { ok: false, reason: "resume-cancelled-or-identity-changed" }; }
-      member.lease = lease;
-      const metadata = expected(root, member.leaderSubtaskId)!;
-      member.status = "running"; member.target = verified.target;
-      try {
-      continuation?.assertCurrent();
-      // Resume has no creation callback before its first running projection.
-      // Own the same coordinator tracker before reopening the producer/scheduler.
-      member.releaseOwnership = deps.acquireLeaderOwnership?.(member.taskId);
-      // Open the successor BEFORE the scheduler can pump, with its actual
-      // member/lease durably saved. Preserve the stopped scheduler/review history.
-      if (usesOwnerCleanup(root) && deps.resumeLeaderExecution) {
-        if (!deps.updateTask(member.taskId, { status: "running" }) || !persist(root)) throw new Error("leader-resume-persistence-failed");
-        await deps.resumeLeaderExecution(member.taskId, generation);
-        if (root.abort.signal.aborted || member.generation !== generation) return { ok: false, reason: "resume-cancelled-or-identity-changed" };
-        continuation?.assertCurrent();
-      }
-      const lifecycle = deps.runtime.runEventDriven(inputFor(root, { leaderSubtaskId: member.leaderSubtaskId, moduleTitle: metadata.moduleTitle,
-        prompt: deps.readTask(member.taskId)!.rootPrompt }), { resumeTaskId: member.taskId, resumeRequested: true, preserveLoopOrigin: true, schedulingMode: "event_driven" }, verified.target);
-      track(root, member, lifecycle);
-      diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
-        generation, stage: "resume", result: "confirmed", reason: "none" });
-      } catch (error) {
-        // A synchronous startup failure can still have created a controller.
-        // Retain ownership until its real cancellation/idle responsibility ends.
-        try {
-        deps.runtime.host().stopParent(member.taskId);
-        const stopped = await Promise.allSettled([
-          Promise.resolve().then(() => deps.stopLeader(member.taskId)),
-          deps.runtime.waitForTaskIdle(member.taskId),
-        ]);
-        if (stopped.some((result) => result.status === "rejected")) throw new Error("leader-stop-unverified");
-        try { if (usesOwnerCleanup(root)) await requireLeaderCleanup(member.taskId, generation); }
-        catch { member.status = "blocked"; persist(root); return { ok: false, reason: "leader-cleanup-unverified" }; }
-        member.status = "failed"; member.lease = null;
-        if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); return { ok: false, reason: "leader-release-persistence-failed" }; }
-        lease.release();
-        memberDiagnostic(root, member, generation, "none", "capacity-release", "released");
-        if (usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, generation);
-        return { ok: false, reason: reason(error) };
-        } catch { member.status = "blocked"; persist(root); return { ok: false, reason: "leader-cleanup-unverified" }; }
-        finally { member.releaseOwnership?.(); member.releaseOwnership = undefined; }
-      }
-    }
+    for (const { member, resume } of prepared) await resumeLeader(root, member, resume, continuation?.assertCurrent);
     persist(root);
     return { ok: true };
     } catch (error) { return { ok: false, reason: reason(error) }; }
     finally { root.continuing = false; }
+  }
+  function leaderCapacity(root: Root, member: Member): boolean {
+    return deps.capacity.snapshot(root.id).some((pool) => pool.leaders.includes(member.leaderSubtaskId));
+  }
+  function hasLeaderWork(root: Root, member: Member): boolean {
+    const belongs = (identity: string) => (JSON.parse(identity) as [string, string])[0] === member.taskId;
+    return Boolean(member.run || member.opening || deps.runtime.hasTaskExecution(member.taskId)
+      || [...root.employees.keys(), ...root.pending.keys()].some(belongs)
+      || deps.capacity.snapshot(root.id).some((pool) => pool.employees.some(belongs)));
+  }
+  function prepareLeaderResume(root: Root, member: Member, requestedTarget?: DepartmentLeaderTarget): LeaderResume {
+    if (member.lease || leaderCapacity(root, member) || hasLeaderWork(root, member)) throw new Error("leader-still-active-or-unverified");
+    const task = leaderTask(root, member), metadata = expected(root, member.leaderSubtaskId);
+    const target = task && metadata && deps.prepareLeaderContinuation?.(clone(task), clone(metadata));
+    const prepared = leaderTask(root, member), verified = deps.prepareLeaderContinuation && !target ? null : inspect(root, member);
+    if (!task || !prepared || prepared.status !== task.status || !verified || verified.live
+      || (deps.prepareLeaderContinuation && !equal(target, verified.target))
+      || (requestedTarget && !equal(requestedTarget, verified.target))) {
+      const error = deps.prepareLeaderContinuation && !target ? "leader-continuation-target-unverified" : "leader-still-active-or-unverified";
+      diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: member.taskId,
+        generation: member.generation, stage: "target-verify", result: "unconfirmed",
+        reason: verified?.live ? "task-still-running" : "evidence-rejected", errorCode: error });
+      throw new Error(error);
+    }
+    return { task: clone(prepared), target: clone(verified.target), generation: member.generation };
+  }
+  function runningModule(root: Root, member: Member) {
+    const task = currentRoot(root);
+    if (task?.status !== "running" || task.runtimeInterrupted || root.modules.get(member.leaderSubtaskId) !== member.taskId) return undefined;
+    return task.subTasks.find((item) => item.id === member.leaderSubtaskId && item.status !== "completed" && item.status !== "skipped");
+  }
+  function canContinueMember(root: Root, member: Member): boolean {
+    return roots.get(root.id) === root && owners.get(member.taskId) === root && root.members.get(member.taskId) === member
+      && deps.canExecuteRoot?.(root.id) !== false && !root.persistenceError && !root.abort.signal.aborted
+      && !root.stopping && !root.snapshot.stopping && !root.completing && !root.cancellations.has(member.taskId)
+      && Boolean(runningModule(root, member));
+  }
+  async function submitLeaderSupplement(rootTaskId: string, taskId: string, target: DepartmentLeaderTarget, prompt: string,
+    assertCurrent: () => void): Promise<void> {
+    const root = roots.get(rootTaskId), member = root?.members.get(taskId);
+    if (!root || !member || !usesOwnerCleanup(root) || root.continuing || !canContinueMember(root, member) || !text(prompt)) {
+      throw new Error("leader-supplement-unavailable");
+    }
+    assertCurrent();
+    if (member.run && !member.opening && !member.settling && executableMember(root, member) && leaderCapacity(root, member)
+      && runningModule(root, member)?.status === "running" && equal(target, inspect(root, member)?.target)
+      && deps.runtime.host().hasController(taskId) && deps.runtime.host().submitUserMessage(taskId, prompt)) return;
+    const task = leaderTask(root, member), snapshot = schedulerSnapshot(task);
+    if (!deps.prepareLeaderContinuation || !deps.resumeLeaderExecution || !deps.observeLeaderCleanup
+      || member.cleanupConfirmedGeneration !== member.generation || (member.status !== "paused" && member.status !== "failed")
+      || (task?.status !== "needs-review" && task?.status !== "stopped")
+      || !snapshot || snapshot.completed || snapshot.running.length) throw new Error("leader-cleanup-or-admission-unverified");
+    root.continuing = true;
+    try { await resumeLeader(root, member, prepareLeaderResume(root, member, target), assertCurrent, prompt); }
+    finally { root.continuing = false; }
+  }
+  async function resumeLeader(root: Root, member: Member, resume: LeaderResume, assertCurrent?: () => void, supplement?: string): Promise<void> {
+    const { task: original, target, generation: previousGeneration } = resume;
+    const { taskId, leaderSubtaskId } = member;
+    const previousStatus = member.status, signal = root.abort.signal;
+    const generation = previousGeneration + 1;
+    const openOwner = usesOwnerCleanup(root) ? deps.resumeLeaderExecution : undefined;
+    let lease: CapacityLease | null = null, ownerAttempted = false, schedulerAttempted = false, projectedRunning = false;
+    let releaseOwnership: (() => void) | undefined;
+    let acquired!: () => void;
+    const acquiring = new Promise<void>((resolve) => { acquired = resolve; });
+    function finishAcquisition() {
+      if (member.acquiring === acquiring) member.acquiring = undefined;
+      acquired();
+    }
+    const ownsModuleLease = (value: CapacityLease) => value.rootTaskId === root.id && value.kind === "leader" && value.identity === leaderSubtaskId;
+    function currentLeader(status: LoopTaskRecord["status"]) {
+      const task = leaderTask(root, member);
+      return task?.status === status && task.cli === original.cli && task.sessionId === original.sessionId
+        && task.taskStoreFile === original.taskStoreFile && equal(task.originProfile, original.originProfile)
+        && equal(task.executionSession, original.executionSession) && task.executionSessionInvalid === original.executionSessionInvalid ? task : null;
+    }
+    function assertAdmission(admitted: boolean, status: LoopTaskRecord["status"]) {
+      assertCurrent?.();
+      const verified = inspect(root, member);
+      const task = currentLeader(status);
+      if (!canContinueMember(root, member) || signal.aborted || root.abort.signal !== signal
+        || member.generation !== (admitted ? generation : previousGeneration) || member.lease !== (admitted ? lease : null)
+        || (lease ? !ownsModuleLease(lease) || !leaderCapacity(root, member) : leaderCapacity(root, member)) || hasLeaderWork(root, member)
+        || !task || !equal(task.loopPlus, original.loopPlus)
+        || !verified || verified.live || !equal(verified.target, target)
+        || (admitted && (member.status !== "running" || runningModule(root, member)?.status !== "running"))) {
+        throw new Error("resume-cancelled-or-identity-changed");
+      }
+    }
+    try {
+      assertAdmission(false, original.status);
+      member.acquiring = acquiring;
+      lease = await deps.capacity.trackLeader(root.id, leaderSubtaskId, undefined, signal);
+      if (!lease) throw new Error("resume-cancelled-or-identity-changed");
+      assertAdmission(false, original.status);
+      const rootTask = currentRoot(root)!;
+      if (runningModule(root, member)?.status !== "running" && !deps.updateTask(root.id, {
+        subTasks: rootTask.subTasks.map((module) => module.id === leaderSubtaskId ? { ...module, status: "running", updatedAt: Date.now() } : module),
+      })) throw new Error("root-resume-persistence-failed");
+      member.lease = lease;
+      member.generation = generation;
+      member.status = "running";
+      member.target = target;
+      finishAcquisition();
+      member.releaseOwnership = releaseOwnership = deps.acquireLeaderOwnership?.(taskId);
+      if (openOwner) {
+        projectedRunning = Boolean(deps.updateTask(taskId, { status: "running" }));
+        if (!projectedRunning || !persist(root)) throw new Error("leader-resume-persistence-failed");
+        assertAdmission(true, "running");
+        ownerAttempted = true;
+        const opening = member.opening = openOwner(taskId, generation);
+        try { await opening; }
+        finally { if (member.opening === opening) member.opening = undefined; }
+        assertAdmission(true, "running");
+      } else assertAdmission(true, original.status);
+      const input = inputFor(root, { leaderSubtaskId, moduleTitle: expected(root, leaderSubtaskId)!.moduleTitle, prompt: original.rootPrompt });
+      let committed = false;
+      schedulerAttempted = true;
+      const lifecycle = deps.runtime.runEventDriven(supplement ? { ...input, loopContinuePrompt: "" } : input,
+        { resumeTaskId: taskId, resumeRequested: true, preserveLoopOrigin: true, schedulingMode: "event_driven",
+          ...(supplement ? { resumeUserMessage: supplement, onResumeSupplementCommitted: (done) => {
+            committed = true;
+            track(root, member, done);
+          } } : {}) }, target);
+      void lifecycle.catch(() => undefined);
+      if (!supplement) track(root, member, lifecycle);
+      else if (!committed) {
+        await lifecycle;
+        if (!committed) throw new Error("leader-supplement-delivery-failed");
+      }
+      diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: taskId,
+        generation, stage: "resume", result: "confirmed", reason: "none" });
+    } catch (error) {
+      if (lease && member.lease !== lease) { if (ownsModuleLease(lease)) lease.release(); }
+      else if (lease && !signal.aborted) {
+        const held = lease;
+        const drain = (async () => {
+          try {
+            if (ownerAttempted || schedulerAttempted) {
+              const stopped = await Promise.allSettled([
+                Promise.resolve().then(() => deps.runtime.host().stopParent(taskId)),
+                Promise.resolve().then(() => deps.stopLeader(taskId)),
+              ]);
+              if (stopped.some((result) => result.status === "rejected")) throw new Error("leader-stop-unverified");
+              await deps.runtime.waitForTaskIdle(taskId);
+              await Promise.all([...root.employees.values()].filter((employee) => employee.taskId === taskId).map((employee) => employee.done));
+              if (usesOwnerCleanup(root)) await requireLeaderCleanup(taskId, generation);
+              const stoppedTask = leaderTask(root, member);
+              if (!stoppedTask || stoppedTask.status === "running" || !currentLeader(stoppedTask.status)
+                || hasLeaderWork(root, member) || member.generation !== generation || member.lease !== held) throw new Error("leader-cleanup-unverified");
+              if (deps.observeLeaderCleanup) member.cleanupConfirmedGeneration = generation;
+              member.status = "failed";
+            } else {
+              if (projectedRunning && (!currentLeader("running") || !deps.updateTask(taskId, { status: original.status }))) {
+                throw new Error("leader-resume-rollback-unverified");
+              }
+              member.status = previousStatus;
+              member.generation = previousGeneration;
+            }
+            member.lease = null;
+            if (!persist(root, leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) {
+              member.generation = generation;
+              member.lease = held;
+              throw new Error("leader-release-persistence-failed");
+            }
+            held.release();
+            memberDiagnostic(root, member, generation, "none", "capacity-release", "released");
+            if (ownerAttempted) await deps.leaderReleased?.(taskId, generation);
+            return true;
+          } catch (cleanupError) {
+            member.status = "blocked";
+            persist(root);
+            memberDiagnostic(root, member, generation, departmentCleanupReason(cleanupError), "lifecycle", "retained", cleanupError);
+            return false;
+          }
+        })();
+        root.cancellations.set(taskId, drain);
+        try { if (!await drain) throw new Error("leader-cleanup-unverified"); }
+        finally { if (root.cancellations.get(taskId) === drain) root.cancellations.delete(taskId); }
+      }
+      throw error;
+    } finally {
+      finishAcquisition();
+      if (!member.run && member.releaseOwnership === releaseOwnership) {
+        releaseOwnership?.();
+        member.releaseOwnership = undefined;
+      }
+    }
   }
   function acquireAttemptExecution(request: EmployeeRequest, signal: AbortSignal): Promise<Employee | null | undefined> {
     const task = deps.readTask(request.taskId);
@@ -516,10 +638,17 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
           if (!usesOwnerCleanup(root)) member.cleanupConfirmedGeneration = generation;
           return;
         }
+        const alreadyCleaned = usesOwnerCleanup(root) && deps.observeLeaderCleanup && !member.lease
+          && member.cleanupConfirmedGeneration === generation && !hasLeaderWork(root, member);
+        const { acquiring, opening } = member;
         if (member.status !== "blocked") member.status = "stopping";
         const signals = await Promise.allSettled([
           Promise.resolve().then(() => deps.runtime.host().stopParent(member.taskId)),
-          Promise.resolve().then(() => deps.stopLeader(member.taskId)),
+          Promise.resolve().then(async () => {
+            await acquiring;
+            await opening?.catch(() => undefined);
+            if (!alreadyCleaned) await deps.stopLeader(member.taskId);
+          }),
         ]);
         const failure = signals.find(result => result.status === "rejected");
         if (failure) throw failure.reason;
@@ -813,7 +942,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
   }
   /** Fresh host-owned associations and task records only; UI notifications are never report evidence.
    * Field summaries and the whole context are bounded. Omitted work is explicitly counted, never hidden. */
-  function directorCoordinationContext(rootTaskId: string): string {
+  function directorCoordinationContext(rootTaskId: string, maxLength = 22000): string {
     const root = roots.get(rootTaskId);
     let task: LoopTaskRecord | null;
     try { task = root ? currentRoot(root) : null; } catch { task = null; }
@@ -829,14 +958,21 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       `根任务：${summary(task.id, 200)}；真实状态：${task.status}。已登记模块数：${task.subTasks.length}。`,
       `已分配模块进度权重：${assignedProgressWeight}%（按原始整体目标计算，剩余权重为 ${Math.max(0, 100 - assignedProgressWeight)}%）。`,
       `组长可用名额：${availableLeaders} / ${maxLeaders}（已扣除现有组长和启动预留，仅供参考。余额为零也可按任务需要派发，派发数量由你决定）。`];
-    let remaining = 22000, omittedMessages = 0, omittedModules = 0, unstarted = 0, unavailable = 0;
+    const pending = root.snapshot.collaborations.filter((item) => item.status !== "delivered" && item.coordination !== "dismissed");
+    const moduleCount = task.subTasks.length;
+    const counts = (unstarted: number, unavailable: number, omittedModules: number, omittedMessages: number) =>
+      `事项计数：未启动模块=${unstarted}；汇报不可用=${unavailable}；待处理协作=${pending.length}。\n`
+      + `长度限制未展开：模块=${omittedModules}；待处理协作=${omittedMessages}。未展开不代表已处理。请根据原始目标、已有证据和仍需处理的工作判断是否完成。`;
+    let remaining = Math.min(22000, maxLength - sections.join("\n").length - 1
+      - counts(moduleCount, moduleCount, moduleCount, pending.length).length);
+    let omittedMessages = 0, omittedModules = 0, unstarted = 0, unavailable = 0;
     function append(label: string, data: unknown): boolean {
       const line = `${label}\n${JSON.stringify(data, null, 2)}`;
-      if (line.length > remaining) return false;
-      sections.push(line); remaining -= line.length; return true;
+      const length = line.length + 1;
+      if (length > remaining) return false;
+      sections.push(line); remaining -= length; return true;
     }
     // Outstanding coordination comes first; aggregate counts below disclose any budget overflow.
-    const pending = root.snapshot.collaborations.filter((item) => item.status !== "delivered" && item.coordination !== "dismissed");
     for (const message of pending) {
       const source = root.members.get(message.sourceLeaderTaskId), target = root.members.get(message.targetLeaderTaskId);
       let valid = false;
@@ -864,8 +1000,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
             : member.status === "blocked" || member.status === "failed" || leader.status === "error" || leader.status === "needs-review"
               ? "失败或阻塞：依据上述真实状态及汇报协调；未确认清理不能释放占用" : undefined })) omittedModules++;
     }
-    sections.push(`事项计数：未启动模块=${unstarted}；汇报不可用=${unavailable}；待处理协作=${pending.length}。`,
-      `长度限制未展开：模块=${omittedModules}；待处理协作=${omittedMessages}。未展开不代表已处理。请根据原始目标、已有证据和仍需处理的工作判断是否完成。`);
+    sections.push(counts(unstarted, unavailable, omittedModules, omittedMessages));
     return sections.join("\n");
   }
   function runtimeSnapshot(rootTaskId: string): DepartmentRuntimeSnapshot | null { const root = roots.get(rootTaskId); return root ? clone(root.snapshot) : null; }
@@ -875,7 +1010,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     return root?.id === rootTaskId && member && executableMember(root, member)
       ? deps.readEmployeeCapacity ? deps.readEmployeeCapacity(rootTaskId, leaderTaskId) : deps.capacity.getEmployeeCapacity(rootTaskId, leaderTaskId) : null;
   });
-  return { registerRoot, recoverRoot, startLeader, continueRoot, stopRoot, acquireAttemptExecution, coordinateCollaboration,
+  return { registerRoot, recoverRoot, startLeader, continueRoot, submitLeaderSupplement, stopRoot, acquireAttemptExecution, coordinateCollaboration,
     processDirectorCollaboration, acknowledgeRootRequirements, canCompleteRoot, confirmRootComplete, cancelLeader, runtimeSnapshot, directorCoordinationContext };
 }
 function schedulerSnapshot(task: LoopTaskRecord | null): LoopPlusSchedulerSnapshot | null {

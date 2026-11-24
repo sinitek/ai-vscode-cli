@@ -40,14 +40,28 @@ function publicReport(overrides = {}) {
     result: "passed", forcedTeardown: false, failures: [],
     roles: { director: "codex", leader: "codex", employee: "codex" },
     stages: { prerequisites: "passed", emptyStore: "passed", extensionHost: "passed", publicUi: "passed", rootCreation: "observed",
-      directorExecution: "completed", leaderExecution: "observed", ownerReceipts: "passed",
+      directorExecution: "completed", leaderExecution: "observed", ownerReceipts: "not-applicable",
       capacityReturn: "passed", eventAcceptance: "passed", unifiedAcceptancePlan: "passed", directorReport: "passed" },
     ...overrides,
   };
 }
 
-function publicDriver(contents) {
-  return `const fs=require('node:fs');const a=process.argv;const i=a.indexOf('--report');${contents}`;
+function writePublicDriver(fixture, parentReport, report = publicReport(), beforeReport = "") {
+  const childReport = path.join(path.dirname(parentReport), `${path.basename(parentReport, ".json")}.public-eh-child.json`);
+  fs.writeFileSync(fixture.driver, `
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const argv = process.argv.slice(2);
+    assert.deepEqual(argv, ${JSON.stringify(["--product", fs.realpathSync(fixture.product), "--report", childReport, "--scenario", "loop-plus"])});
+    const driver = fs.realpathSync(__filename);
+    const hash = require('node:crypto').createHash('sha256').update(fs.readFileSync(driver)).digest('hex');
+    function writeReport() {
+      const report = { scenarioName: argv[5], driverExecution: { executedPath: driver, executedSha256: hash,
+        productPath: driver, productSha256: hash }, ...${JSON.stringify(report)} };
+      fs.writeFileSync(argv[3], JSON.stringify(report), { flag: 'wx' });
+    }
+    ${beforeReport || "writeReport();"}
+  `);
 }
 
 function trackerFile(t, events) {
@@ -500,23 +514,33 @@ test("owner-core rejects nonzero, zero-test, and skipped subprocess results", as
   assert.ok(result.tests[0].tests.cancelled > 0, JSON.stringify(result.tests[0]));
 });
 
-test("public-codex consumes only a complete all-Codex child report", async (t) => {
+test("public-codex invokes the reported Loop+ argv but direct closes do not confirm the tree", async (t) => {
   const f = fixture(t);
-  fs.writeFileSync(f.driver, publicDriver(`const r=JSON.parse(process.env.FIXTURE_REPORT);const hash=require('node:crypto').createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');const driver=fs.realpathSync(__filename);r.scenarioName='new-root';r.driverExecution={executedPath:driver,executedSha256:hash,productPath:driver,productSha256:hash};fs.writeFileSync(a[i+1],JSON.stringify(r));`));
-  const previous = process.env.FIXTURE_REPORT;
-  process.env.FIXTURE_REPORT = JSON.stringify(publicReport());
-  t.after(() => { if (previous === undefined) delete process.env.FIXTURE_REPORT; else process.env.FIXTURE_REPORT = previous; });
+  writePublicDriver(f, f.report, publicReport(), `
+    const child = require('node:child_process').spawn(process.execPath, ['-e', ''], { stdio: 'ignore' });
+    child.on('close', (code) => { assert.equal(code, 0); writeReport(); });
+  `);
   const result = await run({ product: f.product, report: f.report, scope: "public-codex" }, { timeoutMs: 5000 });
   assert.equal(result.result, "failed");
-  assert.equal(result.execution.argv[1], fs.realpathSync(f.driver));
+  assert.deepEqual(result.execution.argv, [process.execPath, fs.realpathSync(f.driver), "--product", fs.realpathSync(f.product),
+    "--report", result.childReportPath, "--scenario", "loop-plus"]);
+  assert.equal(result.execution.exitCode, 0, result.execution.diagnostics.stderrTail);
+  assert.equal(result.execution.forcedCleanup, false);
+  assert.equal(result.execution.cleanup.recoveryAttempted, false);
+  assert.equal(result.execution.cleanup.driverCloseObserved, true);
+  assert.equal(result.execution.cleanup.trackerIntegrity, "complete");
+  assert.equal(result.execution.cleanup.trackedProcessesCloseConfirmed, true);
+  assert.equal(result.execution.cleanup.detachedChildren.length, 1);
+  assert.equal(result.execution.cleanup.detachedChildren[0].closeObserved, true);
   assert.equal(result.coverageGates.publicEh, "unconfirmed");
   assert.equal(result.coverageGates.realTabAndRootCleanup, "not-covered");
   assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
   assert.match(result.childReportError, /complete detached tree closure is unconfirmed/);
-  assert.equal(result.publicEhSummary.stages.directorExecution, "completed");
+  assert.equal(result.publicEhSummary.scenarioName, "loop-plus");
+  assert.deepEqual(result.publicEhSummary.stages, publicReport().stages);
 });
 
-test("public-codex rejects missing, failed, or incomplete reports even after exit zero", async (t) => {
+test("public-codex rejects unsuccessful exits and missing reports", async (t) => {
   const f = fixture(t);
   fs.writeFileSync(f.driver, "process.exit(7);\n");
   let result = await run({ product: f.product, report: f.report, scope: "public-codex" }, { timeoutMs: 5000 });
@@ -532,31 +556,54 @@ test("public-codex rejects missing, failed, or incomplete reports even after exi
   result = await run({ product: f.product, report: path.join(f.root, "missing.json"), scope: "public-codex" }, { timeoutMs: 5000 });
   assert.equal(result.result, "failed");
   assert.match(result.childReportError, /missing/);
+});
 
-  fs.writeFileSync(f.driver, publicDriver(`fs.writeFileSync(a[i+1],JSON.stringify(${JSON.stringify(publicReport({ result: "failed" }))}));`));
-  result = await run({ product: f.product, report: path.join(f.root, "failed.json"), scope: "public-codex" }, { timeoutMs: 5000 });
-  assert.equal(result.result, "failed");
-  assert.match(result.childReportError, /successful result/);
+test("public-codex rejects retired or invalid report evidence even after exit zero", async (t) => {
+  const f = fixture(t);
+  const stages = publicReport().stages;
+  const missingStage = { ...stages };
+  delete missingStage.ownerReceipts;
+  const cases = [
+    ["failed", { result: "failed" }, /successful result/],
+    ["forced-teardown", { forcedTeardown: true }, /unforced successful result/],
+    ["mixed-roles", { roles: { ...publicReport().roles, employee: "opencode" } }, /all-Codex scope/],
+    ["retired-scenario", { scenarioName: "new-root" }, /not the loop-plus scenario/],
+    ["retired-receipt-status", { stages: { ...stages, ownerReceipts: "passed" } }, /ownerReceipts/],
+    ["wrong-stage-status", { stages: { ...stages, directorExecution: "passed" } }, /directorExecution/],
+    ["skipped-stage", { stages: { ...stages, publicUi: "skipped" } }, /publicUi/],
+    ["other-not-applicable-stage", { stages: { ...stages, capacityReturn: "not-applicable" } }, /capacityReturn/],
+    ["missing-stage", { stages: missingStage }, /ownerReceipts/],
+    ["extra-stage", { stages: { ...stages, coldProjection: "passed" } }, /unknown or missing stage/],
+    ["wrong-hash", { driverExecution: { executedPath: fs.realpathSync(f.driver), executedSha256: "wrong",
+      productPath: fs.realpathSync(f.driver), productSha256: "wrong" } }, /product driver path and hash/],
+  ];
+  for (const [name, overrides, expectedError] of cases) {
+    await t.test(name, async () => {
+      const report = path.join(f.root, `${name}.json`);
+      writePublicDriver(f, report, publicReport(overrides));
+      const result = await run({ product: f.product, report, scope: "public-codex" }, { timeoutMs: 5000 });
+      assert.equal(result.execution.exitCode, 0, result.execution.diagnostics.stderrTail);
+      assert.equal(result.result, "failed");
+      assert.equal(result.publicEhSummary, undefined);
+      assert.match(result.childReportError, expectedError);
+    });
+  }
+});
 
-  const wrongStage = publicReport();
-  wrongStage.stages.directorExecution = "passed";
-  fs.writeFileSync(f.driver, publicDriver(`const r=${JSON.stringify(wrongStage)};const hash=require('node:crypto').createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');const driver=fs.realpathSync(__filename);r.scenarioName='new-root';r.driverExecution={executedPath:driver,executedSha256:hash,productPath:driver,productSha256:hash};fs.writeFileSync(a[i+1],JSON.stringify(r));`));
-  result = await run({ product: f.product, report: path.join(f.root, "wrong-stage.json"), scope: "public-codex" }, { timeoutMs: 5000 });
+test("public-codex rejects a valid zero-exit report when process tracking is incomplete", async (t) => {
+  const f = fixture(t);
+  writePublicDriver(f, f.report, publicReport(), `
+    writeReport();
+    fs.writeFileSync(process.env.DEPARTMENT_PLATFORM_TRACKER_ERROR_FILE, 'fixture write failure');
+  `);
+  const result = await run({ product: f.product, report: f.report, scope: "public-codex" }, { timeoutMs: 5000 });
+  assert.equal(result.execution.exitCode, 0, result.execution.diagnostics.stderrTail);
+  assert.equal(result.execution.cleanup.driverCloseObserved, true);
+  assert.equal(result.execution.cleanup.trackerIntegrity, "write-failed");
+  assert.equal(result.execution.cleanup.detachedTreeCloseConfirmed, "unconfirmed");
+  assert.equal(JSON.parse(fs.readFileSync(result.childReportPath, "utf8")).result, "passed");
+  assert.equal(result.publicEhSummary, undefined);
   assert.equal(result.result, "failed");
-  assert.match(result.childReportError, /directorExecution/);
-
-  const missingStage = publicReport();
-  delete missingStage.stages.ownerReceipts;
-  fs.writeFileSync(f.driver, publicDriver(`const r=${JSON.stringify(missingStage)};const hash=require('node:crypto').createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');const driver=fs.realpathSync(__filename);r.scenarioName='new-root';r.driverExecution={executedPath:driver,executedSha256:hash,productPath:driver,productSha256:hash};fs.writeFileSync(a[i+1],JSON.stringify(r));`));
-  result = await run({ product: f.product, report: path.join(f.root, "missing-stage.json"), scope: "public-codex" }, { timeoutMs: 5000 });
-  assert.equal(result.result, "failed");
-  assert.match(result.childReportError, /ownerReceipts/);
-
-  const wrongHash = publicReport();
-  fs.writeFileSync(f.driver, publicDriver(`const r=${JSON.stringify(wrongHash)};r.scenarioName='new-root';r.driverExecution={executedPath:__filename,executedSha256:'wrong',productPath:__filename,productSha256:'wrong'};fs.writeFileSync(a[i+1],JSON.stringify(r));`));
-  result = await run({ product: f.product, report: path.join(f.root, "wrong-hash.json"), scope: "public-codex" }, { timeoutMs: 5000 });
-  assert.equal(result.result, "failed");
-  assert.match(result.childReportError, /identify the default/);
 });
 
 test("timed out child is terminated and cannot be promoted to a pass", async (t) => {

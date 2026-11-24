@@ -7,6 +7,7 @@ import * as path from "path";
 import { PassThrough } from "stream";
 import { installVscodeMock } from "../vscodeMock";
 import { blockRealProcessSignals, fakeCodexSpawn } from "./codexProcessFixture";
+import type { CodexAppServerListener } from "../../interactive/codexAppServerPoolCore";
 import type { CodexAssistantDeltaMeta } from "../../interactive/codexRunnerRuntime";
 
 installVscodeMock();
@@ -95,6 +96,7 @@ function attachTurnStatusAppServer(
   status: string | null,
   notifications: ReadonlyArray<{ method: string; params?: unknown }> = [],
   acknowledgeTurnStart = true,
+  activeTurn?: { onInterrupt: (params: unknown) => void },
 ): void {
   let input = "";
   const send = (message: Record<string, unknown>): void => {
@@ -139,8 +141,12 @@ function attachTurnStatusAppServer(
               turn: { id: "parent-turn", status },
             },
           });
-          setImmediate(close);
+          if (!activeTurn) setImmediate(close);
         });
+      }
+      if (activeTurn && message.method === "turn/interrupt") {
+        activeTurn.onInterrupt(message.params);
+        send({ jsonrpc: "2.0", id: message.id, result: {} });
       }
     }
   });
@@ -1090,6 +1096,72 @@ test("Codex runner immediate stop cannot be lost while awaiting readiness", asyn
     assert.equal(executed, false);
   } finally {
     runner.dispose();
+  }
+});
+
+test("Codex runner active turn cancellation discards late assistant output and completion", { timeout: 8_000 }, async (t) => {
+  const child = createFakeChild();
+  const firstDelta = {
+    method: "item/agentMessage/delta",
+    params: { ...primaryTurn, itemId: "active-message", delta: "started writing" },
+  };
+  const interrupts: unknown[] = [];
+  attachTurnStatusAppServer(child, null, [firstDelta], true, {
+    onInterrupt: (params) => interrupts.push(params),
+  });
+  t.mock.method(crossSpawn, "spawn", fakeCodexSpawn(() => child));
+  const { CodexInteractiveRunner } = loadCodexRunner();
+  const runner = new CodexInteractiveRunner({
+    command: process.execPath,
+    args: [],
+    thinkingMode: "medium",
+    interactiveMode: "coding",
+    threadId: primaryTurn.threadId,
+  });
+  const notificationBoundary = runner as unknown as Pick<CodexAppServerListener, "handleNotification">;
+  const delivery = t.mock.method(notificationBoundary, "handleNotification");
+  const events: unknown[] = [];
+  const assistant: string[] = [];
+  const completions: unknown[] = [];
+  try {
+    const run = runner.runStreamed("cancel an active turn", {
+      ...createHandlers(events),
+      onAssistantDelta: (chunk) => assistant.push(chunk),
+      onTurnCompleted: (completion) => completions.push(completion),
+    });
+    const rejected = assert.rejects(run, { name: "AbortError" });
+    void rejected.catch(() => undefined);
+    await waitForCondition(() => assistant.length > 0 && events.some(
+      (event) => (event as { type?: string })?.type === "turn.started",
+    ));
+    assert.deepEqual(assistant, [firstDelta.params.delta]);
+    assert.deepEqual(completions, []);
+
+    runner.stopAndRebuild();
+    await rejected;
+    assert.deepEqual(interrupts, [primaryTurn]);
+    assert.equal(child.stdout.writableEnded, false);
+
+    const lateNotifications = [
+      { ...firstDelta, params: { ...firstDelta.params, delta: "late output" } },
+      { method: "turn/completed", params: { threadId: primaryTurn.threadId, turn: { id: primaryTurn.turnId, status: "completed" } } },
+    ].map((notification) => ({ jsonrpc: "2.0", ...notification }));
+    const deliveredBeforeLate = delivery.mock.callCount();
+    for (const notification of lateNotifications) {
+      child.stdout.write(`${JSON.stringify(notification)}\n`);
+    }
+    await waitForCondition(() => delivery.mock.callCount() >= deliveredBeforeLate + lateNotifications.length);
+    const lateDeliveries = delivery.mock.calls.slice(deliveredBeforeLate);
+    assert.deepEqual(lateDeliveries.map(({ arguments: [message] }) => message), lateNotifications);
+    for (const { arguments: [, source] } of lateDeliveries) {
+      assert.equal(source.ownedThread, true);
+      assert.equal(source.buffered, false);
+    }
+    assert.deepEqual(assistant, [firstDelta.params.delta]);
+    assert.deepEqual(completions, []);
+  } finally {
+    runner.dispose();
+    if (child.signalCode === null) child.kill("SIGTERM");
   }
 });
 

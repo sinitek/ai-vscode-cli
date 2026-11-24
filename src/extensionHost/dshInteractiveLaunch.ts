@@ -195,7 +195,7 @@ export async function prepareDshIsolatedLaunch(input: {
   const isolatedHome = await findDshSessionHome(input.sessionKey) ?? requestedHome;
   await fs.mkdir(isolatedHome, { recursive: true });
   const patchPath = path.join(isolatedHome, "acp-patch.yaml");
-  await fs.writeFile(patchPath, patchText, "utf8");
+  await writeFileAtomically(patchPath, patchText, { mode: 0o600 });
   const env = buildDshChildEnv(undefined, parentEnv);
   if (activeProfile?.ok) {
     if (activeProfile.document.apiKey) {
@@ -309,29 +309,7 @@ async function mirrorRulesFile(sourceHome: string, isolatedHome: string): Promis
     await fs.rm(target, { force: true });
     return;
   }
-  const backup = `${target}.sinitek-replacing`;
-  await fs.rm(backup, { force: true });
-  let moved = false;
-  try {
-    await fs.rename(target, backup);
-    moved = true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
-  }
-  try {
-    await fs.copyFile(source, target);
-  } catch (error) {
-    await fs.rm(target, { force: true });
-    if (moved) {
-      await fs.rename(backup, target);
-    }
-    throw error;
-  }
-  if (moved) {
-    await fs.rm(backup, { force: true });
-  }
+  await writeFileAtomically(target, await fs.readFile(source), { mode: sourceStat.mode & 0o777 });
 }
 
 async function replaceCopiedDirectory(source: string, target: string): Promise<void> {

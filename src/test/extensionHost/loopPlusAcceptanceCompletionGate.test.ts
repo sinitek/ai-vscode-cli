@@ -13,12 +13,12 @@ import {
 } from "../../extensionHost/loopPlusOrchestration";
 import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
-import type { LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
+import { buildLoopPlusFinishEventId, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
-const { createLoopPlusRuntimeFixture } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
+const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
 
@@ -174,6 +174,131 @@ test("failed supplemental completion is corrected, repaired, and remains behind 
   assert.deepEqual(completed, [id]);
   assert.equal(messages.filter((message) => message === "loop-plus-completed").length, 1);
 });
+
+for (const outcome of ["failed", "stopped"] as const) {
+  test(`Loop+ rejects passed accept and completed for a frozen ${outcome} attempt`, { timeout: 5000 }, async () => {
+    const fixture = createLoopPlusRuntimeFixture();
+    const subtaskId = "write-note";
+    const prompt = "Write a one-line note and report the result";
+    let running: Promise<boolean> | undefined;
+    try {
+      fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: JSON.stringify({
+        status: "dispatch",
+        subtasks: [{
+          id: subtaskId, title: "Write a note", writeFiles: ["note.txt"],
+          prompt: "Write a one-line note to note.txt in the isolated workspace and report the content for review.",
+        }],
+      }) }));
+      for (const stage of ["review", "accept correction", "completed correction", "closeout"]) {
+        fixture.queueMain((_input, tabId) => {
+          assert.equal(tabId, fixture.target.tabId, stage);
+          return fixture.holdMain();
+        });
+      }
+      running = fixture.adapter.runEventDriven({
+        displayPrompt: prompt, modelPrompt: prompt, contextTags: [],
+        loopMainModel: "main-model", loopSubtaskModel: "sub-model",
+      }, { schedulingMode: "event_driven" }, fixture.target);
+
+      await waitForLoopPlus(() => fixture.peekParked(subtaskId) !== null, "subtask invocation parked");
+      const [taskId] = fixture.createdTaskIds;
+      const attemptId = fixture.peekParked(subtaskId)?.input.loopAttemptId;
+      assert.ok(attemptId);
+      const reviewEventId = buildLoopPlusFinishEventId(subtaskId, attemptId);
+      const detail = outcome === "failed" ? "could not write note.txt" : "lost-process";
+      fixture.finishParked(subtaskId, outcome === "failed"
+        ? { attemptId, status: "error", failureDetail: detail }
+        : { attemptId, status: "stopped" });
+
+      const readRunningSnapshot = () => {
+        const task = fixture.readTask(taskId);
+        const snapshot = task?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+        assert.ok(snapshot);
+        assert.equal(task?.status, "running");
+        assert.equal(snapshot.parentStopped, false);
+        assert.equal(snapshot.completed, false);
+        assert.equal(task?.subTasks.find((item) => item.id === subtaskId)?.status, "blocked");
+        assert.equal(fixture.hostMessages.includes("loop-plus-completed"), false);
+        assert.deepEqual(fixture.completionMessages, []);
+        return snapshot;
+      };
+      if (outcome === "stopped") {
+        await waitForLoopPlus(() => fixture.logs.some(({ event }) => event === "loop-plus-subtask-interrupted"), "stopped execution parked for continuation");
+        const interrupted = readRunningSnapshot();
+        assert.equal(interrupted.currentReview, null);
+        assert.deepEqual(interrupted.running.map((attempt) => attempt.attemptId), [attemptId]);
+        assert.equal(fixture.adapter.host().notifySubtaskContinuation(
+          taskId, subtaskId, outcome, detail, undefined, undefined, attemptId,
+        ), true);
+      }
+      const assertFrozenReview = (mainIndex: number) => {
+        const snapshot = readRunningSnapshot();
+        assert.deepEqual(snapshot.currentReview, { eventId: reviewEventId, subtaskId, attemptId, outcome, detail });
+        assert.deepEqual(snapshot.running, []);
+        assert.deepEqual(snapshot.reviewQueue, []);
+        assert.deepEqual(snapshot.reportQueue ?? [], []);
+        const attempt = snapshot.seenAttempts.find((item) => item.attemptId === attemptId);
+        assert.equal(attempt?.outcome, outcome);
+        assert.equal(attempt.disposition, "finished");
+        assert.equal(attempt.acceptance, undefined);
+        const input = fixture.mainCalls[mainIndex];
+        assert.equal(input.displayPrompt.match(/Current review eventId: (\S+)/)?.[1], reviewEventId);
+        return input;
+      };
+      const reply = (input: (typeof fixture.mainCalls)[number], response: object) => {
+        fixture.publish(input, fixture.target.tabId, { status: "end", content: JSON.stringify(response) });
+        fixture.releaseHeldMain();
+      };
+      const { acceptancePlanResults: _unused, ...completion } = acceptance(true, "note verified");
+      const accept = { status: "accept", reviewEventId, progressPercent: 25, acceptance: completion.acceptance };
+
+      await waitForLoopPlus(() => fixture.mainCalls.length === 2, "initial review requested");
+      reply(assertFrozenReview(1), {
+        ...accept,
+        reviews: [{ reviewEventId, acceptance: "passed", reason: "claimed the note was written" }],
+      });
+      await waitForLoopPlus(() => fixture.mainCalls.length === 3, "passed accept rejected");
+      const acceptCorrection = assertFrozenReview(2);
+      assert.match(acceptCorrection.modelPrompt, /执行失败或停止的事件不能验收通过/);
+      reply(acceptCorrection, { ...completion, reviewEventId });
+
+      await waitForLoopPlus(() => fixture.mainCalls.length === 4, "completed rejected");
+      const completedCorrection = assertFrozenReview(3);
+      assert.match(completedCorrection.modelPrompt, /执行失败或停止的事件不能验收通过/);
+      const reason = "the execution did not write the note";
+      const noRepairReason = "record the failure without retrying this attempt";
+      reply(completedCorrection, {
+        ...accept,
+        reviews: [{ reviewEventId, acceptance: "failed", reason, noRepairReason }],
+        acceptance: {
+          passed: false,
+          checks: loopPlusAcceptanceChecksFixture().map((check, index) => index === 0
+            ? { ...check, passed: false, detail: reason } : check),
+        },
+      });
+
+      await waitForLoopPlus(() => fixture.mainCalls.length === 5, "failed review consumed and closeout held");
+      const reviewed = readRunningSnapshot();
+      assert.equal(reviewed.currentReview, null);
+      assert.deepEqual(reviewed.reviewQueue, []);
+      assert.deepEqual(reviewed.reportQueue ?? [], []);
+      const attempt = reviewed.seenAttempts.find((item) => item.attemptId === attemptId);
+      assert.equal(attempt?.outcome, outcome);
+      assert.equal(attempt.disposition, "reviewed");
+      assert.equal(attempt.acceptance, "failed");
+      assert.equal(attempt.noRepairReason, noRepairReason);
+      assert.deepEqual(fixture.attemptCalls.map((input) => input.loopAttemptId), [attemptId]);
+    } finally {
+      fixture.adapter.host().stopParent(fixture.createdTaskIds[0] ?? "");
+      fixture.releaseHeldMain();
+      try {
+        await running;
+      } finally {
+        fixture.dispose();
+      }
+    }
+  });
+}
 
 for (const scenario of ["success", "compact-failure", "compact-skipped", "report-failure", "commit-failure"] as const) {
   test(`Loop+ closes the completed attempt's tab only after committing its event: ${scenario}`, { timeout: 5000 }, async (t) => {

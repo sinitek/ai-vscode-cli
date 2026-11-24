@@ -119,7 +119,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     ...overrides,
   };
   composition = createDepartmentRuntimeComposition(deps);
-  const start = (displayPrompt = "实现账号和报表模块") => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt, modelPrompt: "实现目标", contextTags: [], departmentConfiguration: configuration });
+  const start = (displayPrompt = "实现账号和报表模块", modelPrompt = "实现目标") => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt, modelPrompt, contextTags: [], departmentConfiguration: configuration });
   const dispatch = (prefix: string, count = 1) => fixture.queueMain((input, tab) => fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "dispatch",
     subtasks: Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i}`, title: `${prefix}-${i}`, prompt: `Implement ${prefix}-${i}, report all changes and relevant verification evidence to the real department leader.`, taskType: "general", writeFiles: [] })) }) }));
   const finish = (departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>) => fixture.queueMain((input, tab) => {
@@ -537,16 +537,48 @@ test("director real prompt discloses failed, missing and invalid reports and uns
 test("director summaries stay bounded and explicitly count pending work beyond the context budget", async (t) => {
   const h = harness(); t.after(h.dispose);
   h.decide({ status: "continue", subtasks: [modulePrompt("accounts"), modulePrompt("reports")] }); h.dispatch("accounts"); h.dispatch("reports");
-  await h.start(); await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "two actual leaders");
+  const objective = "保留原始目标。".repeat(1000);
+  await h.start(undefined, objective); await waitForLoopPlus(() => h.fixture.parkedSubtaskIds().length === 2, "two actual leaders");
+  const activeModules = h.fixture.readTask(h.rootTaskId)!.subTasks;
+  const extraModules = Array.from({ length: 100 }, (_, index) => ({
+    id: `undispatched-${index}`, title: `未启动模块 ${index}`, prompt: "待实现的模块需求。".repeat(100), status: "pending" as const,
+  }));
+  const moduleCount = activeModules.length + extraModules.length;
+  assert.ok(updateLoopTaskRecord(h.rootTaskId, { subTasks: [...activeModules, ...extraModules] }));
   const [source, target] = h.composition.host.runtimeSnapshot(h.rootTaskId)!.leaders;
-  for (let i = 0; i < 35; i++) assert.equal(h.composition.host.coordinateCollaboration(source.taskId,
-    { id: `bounded-${i}`, targetLeaderTaskId: target.taskId, body: "待协调内容".repeat(500) }).ok, true);
-  let count = h.directorPrompts.length; h.composition.wakeDirector(h.rootTaskId);
-  await waitForLoopPlus(() => h.directorPrompts.length > count, "bounded pending context in actual runPrompt");
-  const prompt = h.directorPrompts[h.directorPrompts.length - 1].modelPrompt;
-  assert.ok(prompt.length < 25000); assert.ok(prompt.includes("待处理协作=35"));
-  assert.match(prompt, /长度限制未展开：模块=\d+；待处理协作=[1-9]\d*/);
-  assert.ok(prompt.includes("未展开不代表已处理")); assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId), false);
+  const pendingCount = 35, longBody = "待协调内容".repeat(500);
+  for (let index = 0; index <= pendingCount; index++) assert.equal(h.composition.host.coordinateCollaboration(source.taskId,
+    { id: `bounded-${index}`, targetLeaderTaskId: target.taskId, body: longBody }).ok, true);
+  assert.equal(h.composition.host.processDirectorCollaboration(h.rootTaskId, `bounded-${pendingCount}`, "dismiss").ok, true);
+  const firstOverflowTurn = h.directorPrompts.length;
+  h.decide({ status: "completed", finalSummary: "尝试在组长仍运行时完成根任务" });
+  h.composition.wakeDirector(h.rootTaskId);
+  await waitForLoopPlus(() => h.notices.includes("暂未写入整体完成：organization-not-complete"), "production completion gate rejects premature decision");
+  const prompt = h.directorPrompts[firstOverflowTurn].modelPrompt;
+  const shownModules = [...prompt.matchAll(/^模块及组长汇报\n\{/gmu)].length;
+  const shownMessages = [...prompt.matchAll(/^待处理协作\n\{/gmu)].length;
+  assert.ok(prompt.length < 25000, `final runPrompt length: ${prompt.length}`);
+  assert.ok(prompt.includes(objective));
+  assert.ok(prompt.includes(`已登记模块数：${moduleCount}。`));
+  assert.ok(prompt.includes(`事项计数：未启动模块=${extraModules.length}；汇报不可用=2；待处理协作=${pendingCount}。`));
+  assert.ok(shownModules < moduleCount && shownMessages > 0 && shownMessages < pendingCount);
+  assert.ok(prompt.includes(`长度限制未展开：模块=${moduleCount - shownModules}；待处理协作=${pendingCount - shownMessages}。未展开不代表已处理。`));
+  assert.ok(prompt.includes(`"body": "${longBody.slice(0, 800)}…（已摘要，原文未全部展开）"`));
+  assert.ok(!prompt.includes(`"id": "bounded-${pendingCount}"`));
+  t.diagnostic(`runPrompt=${prompt.length}; omitted modules=${moduleCount - shownModules}; omitted collaborations=${pendingCount - shownMessages}`);
+  assert.equal(h.fixture.readTask(h.rootTaskId)?.status, "running");
+  assert.equal(h.composition.host.canCompleteRoot(h.rootTaskId, false), false);
+
+  assert.ok(updateLoopTaskRecord(h.rootTaskId, { supplementalRequirements: ["超长补充需求。".repeat(4000)] }));
+  const oversizedTurn = h.directorPrompts.length;
+  h.composition.wakeDirector(h.rootTaskId);
+  await waitForLoopPlus(() => h.directorPrompts.length > oversizedTurn, "bounded oversized supplemental requirement in actual runPrompt");
+  const oversizedPrompt = h.directorPrompts[oversizedTurn].modelPrompt;
+  const oversizedShownModules = [...oversizedPrompt.matchAll(/^模块及组长汇报\n\{/gmu)].length;
+  assert.ok(oversizedPrompt.length < 25000, `final runPrompt length: ${oversizedPrompt.length}`);
+  assert.match(oversizedPrompt, /原始目标或补充需求因长度限制未全部展开；未展开不代表已满足/u);
+  assert.ok(oversizedPrompt.includes(`长度限制未展开：模块=${moduleCount - oversizedShownModules}；待处理协作=${pendingCount}。未展开不代表已处理。`));
+  t.diagnostic(`oversized runPrompt=${oversizedPrompt.length}; omitted modules=${moduleCount - oversizedShownModules}; omitted collaborations=${pendingCount}`);
   await h.composition.organizationControl.stop(h.fixture.readTask(h.rootTaskId)!);
 });
 

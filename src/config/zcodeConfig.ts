@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { writeFileAtomically } from "../shared/atomicWrite";
 import {
   ZCODE_API_TYPES,
   ZCODE_GLM_DEFAULT_REASONING_LEVEL,
@@ -443,12 +444,7 @@ export async function writeZcodeProviderConfigText(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const target = resolveZcodeProviderConfigPath(homeDir, env);
-  await fs.promises.mkdir(path.dirname(target), { recursive: true });
-  const temp = `${target}.${process.pid}.tmp`;
-  await fs.promises.writeFile(temp, content, { mode: 0o600 });
-  await fs.promises.chmod(temp, 0o600);
-  await fs.promises.rename(temp, target);
-  await fs.promises.chmod(target, 0o600);
+  await writeFileAtomically(target, content, { mode: 0o600 });
 }
 
 export async function backupZcodeProviderConfig(

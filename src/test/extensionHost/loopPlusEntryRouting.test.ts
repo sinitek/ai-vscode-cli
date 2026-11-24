@@ -38,7 +38,7 @@ function functionBody(source: string, name: string): string {
 test("production main watchdog checks the open original tab and its native thread", () => {
   const source = readSource("src", "extension.ts");
   const activation = functionBody(source, "activate");
-  assert.match(activation, /startLoopWaitWatchdog\(\[[\s\S]*checkWaitingTasks\(\)[\s\S]*\], [\s\S]*checkInterruptedMainTasks\(\)/);
+  assert.match(activation, /startLoopWaitWatchdog\(\[[\s\S]*checkWaitingTasks\(\)[\s\S]*\], [\s\S]*checkInterruptedMainTasks\(\)[\s\S]*checkWaitingReviews\(\)/);
   const sandbox = {
     isExtensionDeactivating: false,
     activeWorkspaceKey: "workspace",

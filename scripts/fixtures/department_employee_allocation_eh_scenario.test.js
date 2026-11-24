@@ -28,8 +28,11 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
   current.employeeAllocation.revision = 1;
   current.employeeAllocation.leaders[0] = { leaderTaskId: "leader", manualLimit: null, appliedLimit: null };
   current.capacity.employees = [];
-  const root = { id: "root", department: { role: "director", limits }, subTasks: [] };
-  const leader = { id: "leader", department: { role: "leader", rootTaskId: "root" }, loopPlus: { currentReview: null } };
+  current.workspaceKey = "workspace";
+  current.runtime = { rootTaskId: "root", leaders: [{ taskId: "leader", leaderSubtaskId: "module" }] };
+  const root = { id: "root", workspaceKey: "workspace", department: { role: "director", rootTaskId: "root", executionMode: "loop-plus", limits }, subTasks: [] };
+  const leader = { id: "leader", workspaceKey: "workspace", schedulingMode: "event_driven", subTasks: [],
+    department: { role: "leader", rootTaskId: "root", parentTaskId: "root", executionMode: "loop-plus", leaderSubtaskId: "module" }, loopPlus: { currentReview: null } };
   const scenario = createDepartmentEmployeeAllocationEhScenario({ prompt: "public request", expectedLimits: limits, readTasks: () => [root, leader], readRuntime: () => current });
   const ask = text => scenario.respond({ input: [{ role: "user", content: text }] }, { request: {} });
   const promptFor = (kind, event) => {
@@ -43,6 +46,7 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
       "Department capacity figures are advisory. Choose how many employees to dispatch based on the work, including when the balance is zero or unknown.", ""].join("\n");
   };
   await ask("使用经典 Loop JSON 决策。\n任务 ID：root；轮次：1");
+  root.subTasks.push({ id: "module" });
   const parse = text => {
     const parsed = parseLoopPlusDecisionWithFeedback(text, { requireAcceptanceFeedback: true, requireProgressPercent: true });
     assert.ok(parsed.decision, parsed.rejectionReason); return parsed.decision;
@@ -60,6 +64,45 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
   await new Promise(resolve => setImmediate(resolve)); assert.equal(resolved, false);
   scenario.release("restore-saved"); const restore = parse(await pending);
   assert.deepEqual(restore.reviews[0].subtaskIds, ["allocation-restored"]); scenario.releaseAll();
+});
+
+test("employee gate requires a matching persisted Loop+ attempt and exact live capacity key, not an Owner binding", async () => {
+  const root = { id: "root", workspaceKey: "workspace", department: { role: "director", rootTaskId: "root", executionMode: "loop-plus",
+    limits: { maxLeaders: 4, maxEmployees: 20 } }, subTasks: [{ id: "module" }] };
+  const leader = { id: "leader", workspaceKey: "workspace", schedulingMode: "event_driven",
+    department: { role: "leader", rootTaskId: "root", parentTaskId: "root", executionMode: "loop-plus", leaderSubtaskId: "module" },
+    subTasks: [{ id: "allocation-held", communicationFile: "/attempt" }], loopPlus: { running: [], seenAttempts: [] } };
+  const current = { ...structuredClone(saved), workspaceKey: "workspace", runtime: { rootTaskId: "root", leaders: [{ taskId: "leader", leaderSubtaskId: "module" }] } };
+  const scenario = createDepartmentEmployeeAllocationEhScenario({ prompt: "public request", readTasks: () => [root, leader], readRuntime: () => current });
+  const ask = text => scenario.respond({ input: [{ role: "user", content: text }] }, { request: {} });
+  await ask("使用经典 Loop JSON 决策。\n任务 ID：root；轮次：1");
+  leader.loopPlus.currentReview = { eventId: "pulse-event", subtaskId: "allocation-pulse", outcome: "completed" };
+  current.employeeAllocation.leaders[0].manualLimit = null;
+  current.employeeAllocation.leaders[0].appliedLimit = null;
+  current.capacity.employees = [];
+  const initialLines = lines.map(line => ({
+    "Active employees in this department across all leaders, including overflow employees: 1": "Active employees in this department across all leaders, including overflow employees: 0",
+    "Available regular employee balance: 19": "Available regular employee balance: 20", "Allocation source: manual": "Allocation source: default",
+    "Desired regular employee limit for this group: 0": "Desired regular employee limit for this group: 5", "Applied group limit: 5": "Applied group limit: not yet applied",
+    "Active employees in this leader group, including overflow employees: 1": "Active employees in this leader group, including overflow employees: 0",
+    "Regular employee balance available to this leader's next dispatch: 0": "Regular employee balance available to this leader's next dispatch: 5",
+  })[line] ?? line);
+  await ask(["You are the Loop+ main reviewer.", "Parent task: leader", "Prompt kind: initial", ...initialLines, ""].join("\n"));
+  const workerPrompt = "You are one independent Loop+ execution attempt.\nAttempt report file: /attempt";
+  await assert.rejects(ask(workerPrompt), /running attempt/);
+  const attempt = { subtaskId: "allocation-held", attemptId: "real-attempt" };
+  leader.loopPlus.running.push(attempt);
+  leader.loopPlus.seenAttempts.push({ ...attempt, disposition: "open" });
+  current.capacity.employees = [JSON.stringify(["leader", attempt.subtaskId])];
+  await assert.rejects(ask(workerPrompt), /exact employee capacity key/);
+  current.capacity.employees = [JSON.stringify(["leader", attempt.attemptId])];
+  const reply = ask(workerPrompt);
+  try {
+    assert.equal(scenario.isHolding("allocation-held"), true);
+    assert.deepEqual(scenario.snapshot().employees, [{ leaderTaskId: "leader", ...attempt }]);
+    await assert.rejects(ask(workerPrompt), /duplicate employee dispatch/);
+  } finally { scenario.releaseAll(); }
+  assert.match(await reply, /ISOLATED ALLOCATION/);
 });
 
 test("decision evidence rejects reader drift in source/revision/limits/live balance", () => {

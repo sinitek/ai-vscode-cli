@@ -4,7 +4,7 @@ import type {
   LoopPlusDecisionStatus,
 } from "../loopPlusDecision";
 import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
-import type { LoopPlusDependencyBlock, LoopPlusDispatchResult } from "../loopPlusScheduler";
+import type { LoopPlusDependencyBlock, LoopPlusDispatchResult, LoopPlusReviewVerdict } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 
 export type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
@@ -32,6 +32,7 @@ export type LoopPlusDecisionQueueView = {
   parentStopped: boolean;
   /** Selection blockers for this main step; raw hasReview still gates completion. */
   reviewDependencyBlocks?: readonly LoopPlusDependencyBlock[];
+  requiredRepairIds?: readonly string[];
 };
 
 export type LoopPlusDecisionInFlightView = {
@@ -47,7 +48,7 @@ export interface LoopPlusDecisionStrategyPort {
   markDecisionAccepted(): void;
   clearProtocolRetries(): void;
   acknowledgeUserMessages(count: number): void;
-  acknowledgeReports(eventIds: readonly string[]): boolean;
+  acknowledgeReports(eventIds: readonly string[], preserveRecoveryFailures?: boolean): boolean;
   captureRemainingUserMessagesForHeldReview(): void;
   applyControls(controls: readonly LoopPlusControlDecision[]): boolean;
   planControls(controls: readonly LoopPlusControlDecision[]): LoopPlusDecisionControlPlan | null;
@@ -58,7 +59,6 @@ export interface LoopPlusDecisionStrategyPort {
   ): boolean;
   dispatchSubtasks(
     subtasks: readonly LoopSubtaskDecision[],
-    reviews?: LoopPlusDecision["reviews"],
   ): Pick<LoopPlusDispatchResult, "decisions" | "rejected">;
   submitReviewBatch(
     eventIds: readonly string[],
@@ -106,11 +106,7 @@ export function sameLoopPlusReviewIds(left: readonly string[], right: readonly s
 
 export const sameLoopPlusReportIds = sameLoopPlusReviewIds;
 
-export type LoopPlusDecisionReviewVerdict = {
-  eventId: string;
-  acceptance: "passed" | "failed" | "cancelled";
-  reason?: string;
-};
+export type LoopPlusDecisionReviewVerdict = LoopPlusReviewVerdict;
 
 export function loopPlusAcceptVerdicts(
   decision: LoopPlusDecision,
@@ -131,11 +127,13 @@ export function loopPlusAcceptVerdicts(
       return null;
     }
     if (review.acceptance === "cancelled" && !review.reason?.trim()) return null;
+    if (review.acceptance === "failed" && (!review.subtaskIds?.length && !review.noRepairReason?.trim())) return null;
     verdicts.push({
       eventId,
       acceptance: review.acceptance,
       ...(review.acceptance === "cancelled" ? { reason: review.reason } : {}),
       ...(review.noRepairReason ? { noRepairReason: review.noRepairReason } : {}),
+      ...(review.acceptance === "failed" && review.subtaskIds?.length ? { repairRequired: true } : {}),
     });
   }
   return verdicts;
@@ -295,7 +293,7 @@ function applyAcceptDecision(
   if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
     return port.protocolMiss(false);
   }
-  const dispatched = port.dispatchSubtasks(decision.subtasks ?? [], decision.reviews);
+  const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
     port.promoteDecisionWork();
     return port.protocolMiss(false, dispatchRejectionReason(dispatched));
@@ -405,6 +403,11 @@ function applyCompletedDecision(
   port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   const pending = port.queueView();
+  if (pending.requiredRepairIds?.length && !hasPendingDecisionWork(pending) && !pending.hasUserMessages
+    && inFlight.runningCount === 0 && (inFlight.pendingCount === 0 || onlyDependencyBlocked(inFlight))) {
+    if (submittedReview) port.recordAcceptancePlanFeedback?.(decision);
+    return port.protocolMiss(false, `尚欠返工 ${JSON.stringify(pending.requiredRepairIds)}。请用原逻辑 ID dispatch 新 attempt 并再次验收；不要重复确认原事件。`);
+  }
   if (
     hasPendingDecisionWork(pending)
     || pending.hasUserMessages
@@ -437,6 +440,10 @@ function applyCompletedDecision(
     }
     port.persistRunning();
     return "wait";
+  }
+  if (pending.requiredRepairIds?.length) {
+    port.recordAcceptancePlanFeedback?.(decision);
+    return port.protocolMiss(false, `尚欠返工 ${JSON.stringify(pending.requiredRepairIds)}。请用原逻辑 ID dispatch 新 attempt 并再次验收；不要重复确认原事件。`);
   }
   if (!port.tryFinishParent()) {
     const latest = port.queueView();

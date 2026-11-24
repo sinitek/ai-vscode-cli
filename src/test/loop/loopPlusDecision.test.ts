@@ -2,7 +2,6 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
-  LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_STATUSES,
   LOOP_PLUS_DECISION_SUBTASK_LIMIT,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
@@ -65,19 +64,21 @@ test("report confirmations retain FIFO input order and reject malformed ids with
   }
 });
 
-test("next-step plans are short, optional on continuing decisions, and rejected on terminal decisions", () => {
-  const acceptanceCriteria = ["目标范围已覆盖", "保留现有验收门禁", "核对后续交付结果", "记录验证证据"];
+test("next-step plans accept long objectives and multiple criteria without relaxing terminal rules", () => {
+  const acceptanceCriteria = ["目标范围已覆盖", "保留现有验收门禁", "核对后续交付结果", "记录验证证据", "验收证据".repeat(40)];
+  const objective = "验收完成后推进剩余交付".repeat(30);
   const nextStepPlan = {
-    objective: "  验收完成后推进剩余交付  ",
+    objective: `  ${objective}  `,
     acceptanceCriteria,
   };
   assert.deepEqual(normalizeLoopPlusDecision({ status: "wait", nextStepPlan }), {
     status: "wait",
     nextStepPlan: {
-      objective: "验收完成后推进剩余交付",
+      objective,
       acceptanceCriteria,
     },
   });
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "wait", nextStepPlan: { objective, acceptanceCriteria: [] } })?.nextStepPlan, { objective });
   assert.deepEqual(normalizeLoopPlusDecision({ status: "wait" }), { status: "wait" });
   for (const status of ["clarify", "blocked", "completed"]) {
     assert.equal(normalizeLoopPlusDecision({ status, nextStepPlan }), null, status);
@@ -86,10 +87,8 @@ test("next-step plans are short, optional on continuing decisions, and rejected 
     null,
     {},
     { objective: " " },
-    { objective: "x".repeat(241) },
-    { objective: "valid", acceptanceCriteria: [] },
-    { objective: "valid", acceptanceCriteria: ["x".repeat(121)] },
-    { objective: "valid", acceptanceCriteria: [...acceptanceCriteria, "第五条标准"] },
+    { objective: "valid", acceptanceCriteria: [" "] },
+    { objective: "valid", acceptanceCriteria: "不是数组" },
   ]) {
     assert.equal(normalizeLoopPlusDecision({ status: "wait", nextStepPlan: plan }), null);
   }
@@ -221,7 +220,6 @@ test("scans past malformed, unknown and rejected candidates and returns the firs
 });
 
 test("parses a dispatch with one through six self-contained Chinese prompts", () => {
-  assert.ok(CHINESE_PROMPT.length >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH);
   const single = parseLoopPlusDecision(JSON.stringify({
     status: "dispatch",
     subtasks: [subtask("alpha")],
@@ -457,7 +455,7 @@ test("failed acceptance requires one linked repair or an explicit no-repair comp
   assert.equal(normalizeLoopPlusDecision({
     ...base,
     reviews: [{ ...base.reviews[0], noRepairReason: "字".repeat(51) }],
-  }), null);
+  })?.reviews?.[0]?.noRepairReason, "字".repeat(51));
   assert.equal(normalizeLoopPlusDecision({
     ...base,
     reviews: [{ ...base.reviews[0], noRepairReason: "不派修", subtaskIds: ["repair"] }],
@@ -556,12 +554,26 @@ test("protocol feedback distinguishes empty and incomplete replies and clears ea
   const incomplete = parseLoopPlusDecisionWithFeedback('{"status":');
   assert.equal(incomplete.rejectionKind, "format");
   assert.match(incomplete.rejectionReason ?? "", /未找到可解析/);
+  assert.match(parseLoopPlusDecisionWithFeedback('{"status": nope}').rejectionReason ?? "", /语法错误/);
+  assert.match(parseLoopPlusDecisionWithFeedback('{"status":"unknown"}').rejectionReason ?? "", /status 缺失或无效/);
   const invalid = parseLoopPlusDecisionWithFeedback('{"status":"completed"}');
   assert.equal(invalid.rejectionKind, "validation");
   assert.match(invalid.rejectionReason ?? "", /requirementCoverage/);
   assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"accept"}\n{"status":"wait"}'), {
     decision: { status: "wait" }, rejectionReason: null,
   });
+});
+
+test("accepts comments and trailing commas around decisions without altering strings or inferring fields", () => {
+  const content = [
+    "[final_answer] 这是调度结果：", "```jsonc", "{", '  // { "注释中的括号和引号"',
+    '  "status": "wait", /* } */', '  "reportEventIds": ["https://host/a,]/*",],', "}", "```",
+  ].join("\n");
+  assert.deepEqual(parseLoopPlusDecision(content), { status: "wait", reportEventIds: ["https://host/a,]/*"] });
+  assert.equal(parseLoopPlusDecisionWithFeedback('{"status":"wait","reportEventIds":[,]}').rejectionKind, "format");
+  assert.equal(parseLoopPlusDecisionWithFeedback('{"status":"wait",,}').rejectionKind, "format");
+  assert.equal(parseLoopPlusDecisionWithFeedback('{"status":"completed", /* 无交付证据 */ }').rejectionKind, "validation");
+  assert.equal(parseLoopPlusDecision('{"__proto__":{"status":"wait"}, /* 不继承字段 */ }'), null);
 });
 
 test("strict acceptance feedback mode parses short reasons and rejects missing reasons", () => {
@@ -586,7 +598,7 @@ test("strict acceptance feedback mode parses short reasons and rejects missing r
   }), { requireAcceptanceFeedback: true }), null);
 });
 
-test("strict feedback rejects missing, non-text and overlong reasons for every result type", () => {
+test("strict feedback rejects missing reasons but preserves long evidence for every result type", () => {
   const checks = loopPlusAcceptanceChecksFixture();
   const base = {
     status: "accept", reviewEventId: "event-a",
@@ -594,7 +606,7 @@ test("strict feedback rejects missing, non-text and overlong reasons for every r
     acceptance: { passed: true, checks },
   };
   const options = { requireAcceptanceFeedback: true };
-  for (const reason of [undefined, "", "  ", 123, "字".repeat(51), "😀".repeat(51)]) {
+  for (const reason of [undefined, "", "  ", 123]) {
     assert.equal(normalizeLoopPlusDecision({ ...base, reviews: [{ ...base.reviews[0], reason }] }, options), null);
     assert.equal(normalizeLoopPlusDecision({
       ...base, acceptance: { passed: true, checks: checks.map((check, index) => index === 0 ? { ...check, detail: reason } : check) },
@@ -603,9 +615,16 @@ test("strict feedback rejects missing, non-text and overlong reasons for every r
       ...base, acceptancePlanResults: [{ key: "security", passed: true, reason }],
     }, { ...options, acceptancePlanKeys: ["security"] }), null);
   }
-  assert.ok(normalizeLoopPlusDecision({
-    ...base, reviews: [{ ...base.reviews[0], reason: "😀".repeat(50) }],
-  }, options));
+  const longReason = "😀".repeat(100);
+  const parsed = normalizeLoopPlusDecision({
+    ...base,
+    reviews: [{ ...base.reviews[0], reason: longReason }],
+    acceptance: { passed: true, checks: checks.map((check) => ({ ...check, detail: longReason })) },
+    acceptancePlanResults: [{ key: "security", passed: true, reason: longReason }],
+  }, { ...options, acceptancePlanKeys: ["security"] });
+  assert.equal(parsed?.reviews?.[0]?.reason, longReason);
+  assert.equal(parsed?.acceptance?.checks[0]?.detail, longReason);
+  assert.equal(parsed?.acceptancePlanResults?.[0]?.reason, longReason);
 });
 
 test("strict feedback requires each default check once but accepts a different order", () => {
@@ -631,13 +650,17 @@ test("strict feedback requires all selected plan results and accepts concise fai
     { key: "security", passed: false, reason: "错误日志仍输出令牌" },
     { key: "performance", passed: true, reason: "未增加重复请求" },
   ];
-  for (const acceptancePlanResults of [undefined, [], results.slice(1), results.slice().reverse(), [results[0], results[0]], [...results, { key: "other", passed: true, reason: "无遗漏" }]]) {
+  for (const acceptancePlanResults of [undefined, [], results.slice(1), [results[0], results[0]]]) {
     assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults }, options), null);
   }
   assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: results }, options)?.acceptancePlanResults?.[0]?.reason, "错误日志仍输出令牌");
-  assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: results }, {
+  const shuffled = [results[1], { key: "other", passed: true, reason: "未勾选" }, results[0]];
+  assert.deepEqual(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: shuffled }, options)?.acceptancePlanResults, results.slice().reverse());
+  const noSelected = normalizeLoopPlusDecision({ ...base, acceptancePlanResults: results }, {
     requireAcceptanceFeedback: true, acceptancePlanKeys: [],
-  }), null);
+  });
+  assert.equal(noSelected?.status, "accept");
+  assert.equal(noSelected?.acceptancePlanResults, undefined);
 });
 
 test("production acceptance requires an integer overall progress below completion", () => {
@@ -659,7 +682,7 @@ test("production acceptance requires an integer overall progress below completio
   assert.equal(parseLoopPlusDecision(JSON.stringify({ ...base, progressPercent: 100 })), null);
 });
 
-test("completed feedback requires short default reasons without truncating requirement coverage", () => {
+test("completed feedback requires non-empty default reasons without truncating long evidence", () => {
   const detail = "需求覆盖证据".repeat(20);
   const base = {
     ...completedFields(),
@@ -668,11 +691,16 @@ test("completed feedback requires short default reasons without truncating requi
   };
   const options = { requireAcceptanceFeedback: true };
   assert.equal(normalizeLoopPlusDecision(base, options)?.requirementCoverage?.[0]?.detail, detail);
-  for (const reason of [undefined, "", "字".repeat(51)]) {
+  for (const reason of [undefined, ""]) {
     assert.equal(normalizeLoopPlusDecision({
       ...base, acceptance: { passed: true, checks: base.acceptance.checks.map((check) => ({ ...check, detail: reason })) },
     }, options), null);
   }
+  const longDetail = "验收证据".repeat(40);
+  assert.equal(normalizeLoopPlusDecision({
+    ...base,
+    acceptance: { passed: true, checks: base.acceptance.checks.map((check) => ({ ...check, detail: longDetail })) },
+  }, options)?.acceptance?.checks[0]?.detail, longDetail);
 });
 
 test("feedback fixtures never overwrite an existing failed check", () => {
@@ -714,7 +742,7 @@ test("rejects malformed JSON, empty event ids, duplicates, overflow, and unknown
   assert.equal(parseLoopPlusDecision(JSON.stringify({ status: "sleeping" })), null);
   assert.equal(parseLoopPlusDecision(JSON.stringify({
     status: "dispatch",
-    subtasks: [subtask("short", "太短")],
+    subtasks: [subtask("blank", " ")],
   })), null);
 });
 
@@ -864,6 +892,8 @@ test("completed requires every selected acceptance-plan result to pass", () => {
     { key: "performance", passed: true, reason: "未增加重复请求" },
   ];
   assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: allPassed }, options)?.status, "completed");
+  const shuffled = [allPassed[1], { key: "other", passed: false, reason: "未选择此项" }, allPassed[0]];
+  assert.deepEqual(normalizeLoopPlusDecision({ ...base, acceptancePlanResults: shuffled }, options)?.acceptancePlanResults, [allPassed[1], allPassed[0]]);
 
   for (const acceptancePlanResults of [
     allPassed.map((result, index) => index === 0 ? { ...result, passed: false } : result),
@@ -875,9 +905,7 @@ test("completed requires every selected acceptance-plan result to pass", () => {
   for (const acceptancePlanResults of [
     undefined,
     [],
-    [allPassed[1], allPassed[0]],
     [allPassed[0]],
-    [allPassed[0], allPassed[1], { key: "other", passed: true, reason: "未遗漏" }],
   ]) {
     assert.equal(normalizeLoopPlusDecision({ ...base, acceptancePlanResults }, options), null);
   }
@@ -985,9 +1013,16 @@ test("reprompt requires a non-empty corrected title on every supported decision"
   }
 });
 
-test("rejects controls that would confirm, overlap, or use a short prompt", () => {
+test("accepts short dispatch and reprompt instructions but rejects blank prompts", () => {
+  const prompt = "修复空输入校验并运行回归。";
+  assert.equal(normalizeLoopPlusDecision({ status: "dispatch", subtasks: [subtask("alpha", prompt)] })?.subtasks?.[0]?.prompt, prompt);
+  const control = { id: "alpha", action: "reprompt", prompt, title: "修正 alpha" };
+  assert.deepEqual(normalizeLoopPlusDecision({ status: "steer", controls: [control] })?.controls, [control]);
+  assert.equal(normalizeLoopPlusDecision({ status: "steer", controls: [{ ...control, prompt: " " }] }), null);
+});
+
+test("rejects controls that would confirm or overlap", () => {
   const rejected = [
-    { status: "steer", controls: [{ id: "alpha", action: "reprompt", prompt: "太短", title: "修正 alpha" }] },
     { status: "steer", controls: [] },
     { status: "steer", subtasks: [subtask("alpha")], controls: [{ id: "beta", action: "close" }] },
     { status: "steer", reviewEventId: "event-1", controls: [{ id: "alpha", action: "close" }] },
@@ -1091,7 +1126,7 @@ test("撤销验收要求原因，全撤销不要求检查，混合批次保留�
   };
   const options = { requireAcceptanceFeedback: true, acceptancePlanKeys: ["security"] };
   assert.equal(normalizeLoopPlusDecision(cancelled, options)?.reviews?.[0].acceptance, "cancelled");
-  for (const reason of [undefined, " ", "原".repeat(51)]) {
+  for (const reason of [undefined, " "]) {
     assert.equal(normalizeLoopPlusDecision({ ...cancelled, reviews: [{ ...cancelled.reviews[0], reason }] }), null);
   }
   const mixed = { ...cancelled, reviewEventId: undefined, reviewEventIds: ["obsolete", "needed"],

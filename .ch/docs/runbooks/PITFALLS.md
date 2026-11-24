@@ -41,6 +41,7 @@
 - 现象：store 吞掉 write 错误、上层只检查异常或忽略 null 时，磁盘仍 running 却已通知完成并释放；反过来，把提交后面板刷新异常继续抛出，会将已提交事件当成未提交，造成重放。只测会抛异常的 updateTask 替身检不出真实 store 接口矛盾。
 - 规避：write 正常返回即原子提交，I/O 原样抛出；update 的 null 在编排/真实 refresher 边界统一拒绝。展示同步异常和异步拒绝独立记录。完成、成功压缩和关闭必须以前置提交为门禁；保留现有 completionPatch、暂停和显式继续路径。
 - 派发拒绝也属于同步交接结果：部分成功不清零纠错次数，不重验已确认事件或重发已接受任务，依据最新快照只纠正剩余派发。控制替换先提交再关闭/启动；用户停止仍先取消。
+- 无法解析和字段/状态拒绝应共用同一纠错额度；为解析失败单独计数会让交替错误变成不可预测的多轮调用。显式续跑（含附带补充说明）从持久暂停摘要恢复拒绝原因，以当前快照和协议为准，不把旧恢复说明当成指令。参见[自动纠错](../design-docs/loop-plus-scheduling.md#协议矛盾后的自动纠错)。
 - 回归与限制：`src/test/extensionHost/loopPlusHandoffContracts.test.ts` 使用真实临时磁盘和底层 write/rename 故障；不证明 Windows 实机、断电 fsync 或真实 VS Code GUI。持续磁盘故障后崩溃只能恢复最后提交快照，不能承诺未落盘内存事件。
 
 ## 执行配置租约释放失败不能改写 CLI 终态
@@ -891,12 +892,12 @@
 ### 触发条件与根因
 - Node `fs` 和 Windows 都不会展开 `~`。文档习惯写法 `~/.codex` 若直接进入 spawn / 读写，会变成当前工作目录下的 `~` 文件夹。
 - 官方 Windows Codex 安装目录是 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`，只搜 npm 全局 bin 会漏检。
-- Windows 上 `fs.rename` 覆盖已有文件可能失败，配置原子写会在已有 `config.toml` 时中断。
+- Windows 上配置文件被占用等情况可能导致 `fs.rename` 失败。旧版先删目标再重试，重试失败会使 `config.toml` 或 `auth.json` 缺失。
 
 ### 长期规避
 - 所有用户级路径先经 `expandHomePath` / `resolveCodexHomeDir` 再进入文件系统。
 - Windows 命令解析必须包含官方 Codex bin 与 npm 全局目录。
-- 配置原子写使用 `src/shared/atomicWrite.ts`，在 Windows 上先删除再 rename。
+- 插件管理的各 CLI 运行配置统一用 `src/shared/atomicWrite.ts`：所有平台只用同目录临时文件进行 `rename` 替换。失败时返回原错误、只清理临时文件，不删除或截断目标；解决占用或权限问题后再重试。不要直接用 `writeFile` 截断原件、使用固定临时文件名或把原件先移走再写入。
 - 不要把 `CODEX_HOME=~/.codex` 原样写入 Windows 用户环境变量。
 
 ### 验证方式

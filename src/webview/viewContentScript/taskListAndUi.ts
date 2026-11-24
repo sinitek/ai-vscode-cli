@@ -696,9 +696,18 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
           elements.promptSubmissionPreview.hidden = !submission || submission.accepted === true;
           elements.promptSubmissionPreviewText.textContent = submission ? submission.prompt : "";
         }
-        node.hidden = !submission;
+        const renderedPrompt = submission && submission.accepted && findRenderedMessageElement(submission.requestId);
+        const bubble = submission && (submission.accepted
+          ? renderedPrompt && renderedPrompt.querySelector(".bubble")
+          : elements.promptSubmissionPreviewBubble);
+        const spinnerParent = bubble || elements.promptSubmissionPreviewBubble;
+        if (node.parentNode !== spinnerParent) {
+          spinnerParent.appendChild(node);
+        }
+        node.hidden = !bubble;
+        let status = "";
         if (submission) {
-          elements.promptSubmissionWaitText.textContent = submission.pausing
+          status = submission.pausing
             ? "正在等待原任务完全暂停"
             : submission.started
             ? "等待模型响应"
@@ -710,6 +719,10 @@ export const VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI = `      function updateTaskLi
             ? "正在准备 Loop 任务"
             : "正在准备 Vibe 任务";
           elements.emptyState.style.display = "none";
+        }
+        if (elements.promptSubmissionWaitText.textContent !== status) {
+          elements.promptSubmissionWaitText.textContent = status;
+          node.title = status;
         }
       }
 

@@ -19,6 +19,7 @@ const SOURCE_DIST_PAIRS = [
 ];
 const MAX_DIAGNOSTIC = 24 * 1024;
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const PUBLIC_CODEX_SCENARIO = "loop-plus";
 
 function parseArgs(argv) {
   const values = {};
@@ -584,24 +585,22 @@ function validatePublicReport(file, productDriver) {
   if (!result.roles || ["director", "leader", "employee"].some((role) => result.roles[role] !== "codex")) {
     throw new Error("Public EH child report is not the all-Codex scope");
   }
-  if (result.scenarioName !== "new-root" || result.driverExecution?.executedPath !== productDriver.path
+  if (result.scenarioName !== PUBLIC_CODEX_SCENARIO) {
+    throw new Error(`Public EH child report is not the ${PUBLIC_CODEX_SCENARIO} scenario`);
+  }
+  if (result.driverExecution?.executedPath !== productDriver.path
     || result.driverExecution?.executedSha256 !== productDriver.sha256
     || result.driverExecution?.productPath !== productDriver.path || result.driverExecution?.productSha256 !== productDriver.sha256) {
-    throw new Error("Public EH child report does not identify the default new-root product driver");
+    throw new Error("Public EH child report does not identify the expected product driver path and hash");
   }
   const requiredStages = { prerequisites: "passed", emptyStore: "passed", extensionHost: "passed", publicUi: "passed",
-    rootCreation: "observed", directorExecution: "completed", leaderExecution: "observed", ownerReceipts: "passed",
+    rootCreation: "observed", directorExecution: "completed", leaderExecution: "observed", ownerReceipts: "not-applicable",
     capacityReturn: "passed", eventAcceptance: "passed", unifiedAcceptancePlan: "passed", directorReport: "passed" };
   for (const [gate, expected] of Object.entries(requiredStages)) {
     if (result.stages?.[gate] !== expected) throw new Error(`Public EH child report has invalid ${gate} status`);
   }
-  if (Object.keys(result.stages).length !== Object.keys(requiredStages).length
-    || Object.keys(result.stages).some((gate) => !Object.hasOwn(requiredStages, gate))) {
+  if (Object.keys(result.stages).some((gate) => !Object.hasOwn(requiredStages, gate))) {
     throw new Error("Public EH child report has an unknown or missing stage");
-  }
-  const terminalStatuses = new Set(["passed", "observed", "completed"]);
-  for (const [gate, status] of Object.entries(result.stages)) {
-    if (!terminalStatuses.has(status)) throw new Error(`Public EH child report has non-terminal or unknown ${gate} status`);
   }
   return result;
 }
@@ -630,7 +629,7 @@ async function run(options, settings = {}) {
   const testPaths = OWNER_TESTS.map((name) => path.join(product.product, "dist/test/runtime", name));
   report.execution.argv = options.scope === "owner-core"
     ? testPaths.map((file) => [process.execPath, "--test", "--test-reporter=tap", file])
-    : [process.execPath, product.publicDriver.path, "--product", product.product, "--report", childReport];
+    : [process.execPath, product.publicDriver.path, "--product", product.product, "--report", childReport, "--scenario", PUBLIC_CODEX_SCENARIO];
   if (options.scope === "owner-core") report.coverageGates.ownerCore = "running";
   else report.coverageGates.publicEh = "running";
   const timeoutMs = settings.timeoutMs ?? Number(process.env.SINITEK_DEPARTMENT_PLATFORM_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
@@ -698,8 +697,7 @@ async function run(options, settings = {}) {
     }
   } else {
     fs.mkdirSync(path.dirname(childReport), { recursive: true });
-    const child = await spawnBounded([product.publicDriver.path, "--product", product.product, "--report", childReport], timeoutMs,
-      { trackSpawnedChildren: true });
+    const child = await spawnBounded(report.execution.argv.slice(1), timeoutMs, { trackSpawnedChildren: true });
     report.execution.exitCode = child.code;
     report.execution.signal = child.signal;
     report.execution.timedOut = child.timedOut;

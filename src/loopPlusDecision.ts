@@ -3,14 +3,12 @@ import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
+import { createScanner, stripComments, SyntaxKind } from "jsonc-parser";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
-import {
-  LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH,
-  LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES,
-} from "./loopPlusAcceptancePlan";
-export { LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH, LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
+import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
+export { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
 import {
   normalizeLoopPlusProgressPercent,
   readLoopPlusTaskTypeField,
@@ -25,7 +23,6 @@ export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 /** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
 export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4;
-export const LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH = 80;
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
   "accept",
@@ -174,12 +171,14 @@ export function parseLoopPlusDecisionWithFeedback(
     return { decision: null, rejectionKind: "format", rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。" };
   }
   let hasJsonObject = false;
+  let hasMalformedObject = false;
   let rejectionReason = "决策 JSON 未通过协议校验。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
-  for (const jsonText of extractJsonObjectTexts(content)) {
+  for (const jsonText of extractJsonObjectTexts(content, { allowComments: true })) {
     let candidate: unknown;
     try {
-      candidate = JSON.parse(jsonText);
+      candidate = parseLoopPlusJsonObject(jsonText);
     } catch {
+      hasMalformedObject = true;
       continue;
     }
     hasJsonObject = true;
@@ -193,7 +192,33 @@ export function parseLoopPlusDecisionWithFeedback(
   }
   return hasJsonObject
     ? { decision: null, rejectionKind: "validation", rejectionReason }
-    : { decision: null, rejectionKind: "format", rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象，请按当前快照重新输出完整对象。" };
+    : { decision: null, rejectionKind: "format", rejectionReason: hasMalformedObject
+      ? "回复中的 JSON 对象存在语法错误。请检查双引号、冒号和括号是否成对，并返回完整对象。"
+      : "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。" };
+}
+
+function parseLoopPlusJsonObject(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const withoutComments = stripComments(text, " ");
+    const scanner = createScanner(withoutComments, true);
+    const parts: string[] = [];
+    let start = 0;
+    let previous = SyntaxKind.Unknown;
+    let trailingComma = -1;
+    for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
+      if (trailingComma >= 0 && (token === SyntaxKind.CloseBraceToken || token === SyntaxKind.CloseBracketToken)) {
+        parts.push(withoutComments.slice(start, trailingComma));
+        start = trailingComma + 1;
+      }
+      trailingComma = token === SyntaxKind.CommaToken && previous !== SyntaxKind.OpenBracketToken
+        && previous !== SyntaxKind.OpenBraceToken && previous !== SyntaxKind.CommaToken ? scanner.getTokenOffset() : -1;
+      previous = token;
+    }
+    parts.push(withoutComments.slice(start));
+    return JSON.parse(parts.join(""));
+  }
 }
 
 export function normalizeLoopPlusDecision(
@@ -211,6 +236,7 @@ function normalizeDecision(
     return null;
   }
   if (hasImplicitQueueConfirmation(value)) {
+    options?.reject?.("请勿使用隐式队列确认字段；只确认本次提示列出的验收事件和报告事件 ID。");
     return null;
   }
   if (hasOwn(value, "independentSubtaskIds") && value.status !== "accept") {
@@ -218,12 +244,14 @@ function normalizeDecision(
     return null;
   }
   if (hasOwn(value, "directCompletion") && (value.status !== "completed" || value.directCompletion !== true)) {
+    options?.reject?.("directCompletion 仅可在宿主允许直接完成时与 completed 一起设为 true，否则请省略。");
     return null;
   }
   const estimatedRemainingRounds = normalizeEstimatedRemainingRounds(value.estimatedRemainingRounds);
   const subtaskMax = resolveLoopPlusDecisionSubtaskMax(options?.subtaskMax);
   const status = value.status;
   if (!isLoopPlusDecisionStatus(status)) {
+    options?.reject?.(`status 缺失或无效，请选择当前快照适用的值：${LOOP_PLUS_DECISION_STATUSES.join("、")}。`);
     return null;
   }
   const nextStepPlan = hasOwn(value, "nextStepPlan") ? normalizeLoopPlusNextStepPlan(value.nextStepPlan) : undefined;
@@ -236,7 +264,10 @@ function normalizeDecision(
   const decision = LOOP_PLUS_DECISION_NORMALIZERS[status](value, estimatedRemainingRounds, subtaskMax, options);
   if (!decision) return null;
   const reportEventIds = readOptionalReportEventIds(value);
-  if (reportEventIds === null) return null;
+  if (reportEventIds === null) {
+    options?.reject?.("reportEventIds 须为数组，元素是按当前提示排列且不重复的非空事件 ID；没有待确认报告时可省略或返回空数组。");
+    return null;
+  }
   const normalized: LoopPlusDecision = {
     ...decision,
     ...(nextStepPlan ? { nextStepPlan } : {}),
@@ -254,16 +285,20 @@ function normalizeDispatchDecision(
   raw: Record<string, unknown>,
   estimatedRemainingRounds: number | undefined,
   subtaskMax: number,
+  options?: LoopPlusDecisionValidationOptions,
 ): LoopPlusDecision | null {
   if (hasReviewEventConfirmation(raw)) {
+    options?.reject?.("dispatch 不确认验收事件；需确认当前验收批次时请用 accept。");
     return null;
   }
   const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length < 1) {
+    options?.reject?.(`dispatch.subtasks 需要 1 至 ${subtaskMax} 个有效任务；检查 ID 是否重复、标题和 prompt 是否为空，以及任务分类和依赖字段。`);
     return null;
   }
   const controls = readControls(raw, subtaskMax);
   if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
+    options?.reject?.("dispatch.controls 格式或任务 ID 冲突；请核对操作字段，避免对同一 ID 同时派发和控制。");
     return null;
   }
   return withEstimatedRemainingRounds({
@@ -294,11 +329,12 @@ function normalizeAcceptDecision(
   }
   const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks) {
-    options?.reject?.(`accept.subtasks 必须包含不超过 ${subtaskMax} 项有效任务；每项须有独立 ID、标题和至少 ${LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH} 字的 prompt，并使用合法的任务分类。`);
+    options?.reject?.(`accept.subtasks 必须包含不超过 ${subtaskMax} 项有效任务；每项须有独立 ID、标题和非空 prompt，并使用合法的任务分类。`);
     return null;
   }
   const controls = readControls(raw, subtaskMax);
   if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
+    options?.reject?.("accept.controls 格式或任务 ID 冲突；请核对操作字段，避免对同一 ID 同时派发和控制。");
     return null;
   }
   const eventIds = reviewEvents.reviewEventIds ?? (
@@ -315,16 +351,16 @@ function normalizeAcceptDecision(
     return null;
   }
   const allCancelled = reviews.every((review) => review.acceptance === "cancelled");
-  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
+  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback, options?.acceptancePlanKeys);
   if (!allCancelled && !matchesAcceptancePlanKeys(acceptancePlanResults, options?.acceptancePlanKeys)) {
-    options?.reject?.(`acceptancePlanResults 必须按顺序覆盖已选项：${options?.acceptancePlanKeys?.join(", ") ?? "当前验收方案"}，并提供不超过 50 字的原因。`);
+    options?.reject?.(`acceptancePlanResults 必须按 key 覆盖每个已选项：${options?.acceptancePlanKeys?.join(", ") ?? "当前验收方案"}，并说明证据或限制。`);
     return null;
   }
   const acceptance = hasOwn(raw, "acceptance")
     ? normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback)
     : undefined;
   if (requireAcceptanceFeedback && !allCancelled && (!acceptance || !hasDefaultAcceptanceChecks(acceptance))) {
-    options?.reject?.(`accept.acceptance 必须包含六项默认检查：${LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.join(", ")}；每项提供 passed 和不超过 50 字的 detail，失败项可以保留并派发修复。`);
+    options?.reject?.(`accept.acceptance 必须包含六项默认检查：${LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.join(", ")}；每项提供 passed 和证据 detail，失败项可以保留并派发修复。`);
     return null;
   }
   return withEstimatedRemainingRounds({
@@ -467,7 +503,7 @@ function normalizeCompletedDecision(
   const requireAcceptanceFeedback = options?.requireAcceptanceFeedback === true;
   const acceptance = normalizeAcceptance(raw.acceptance, requireAcceptanceFeedback);
   const requirementCoverage = normalizeAcceptanceChecks(raw.requirementCoverage);
-  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback);
+  const acceptancePlanResults = readAcceptancePlanResults(raw.acceptancePlanResults, requireAcceptanceFeedback, options?.acceptancePlanKeys);
   if (
     !answerConclusion
     || !finalSummary
@@ -502,22 +538,26 @@ function hasDefaultAcceptanceChecks(acceptance: LoopAcceptance): boolean {
     && LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.every((name) => names.has(name));
 }
 
-function readAcceptancePlanResults(value: unknown, requireReason = false): LoopPlusAcceptancePlanResult[] | null {
-  if (value === undefined) {
-    return null;
-  }
+function readAcceptancePlanResults(
+  value: unknown,
+  requireReason: boolean,
+  expectedKeys?: readonly string[],
+): LoopPlusAcceptancePlanResult[] | null {
   if (!Array.isArray(value) || value.length === 0) {
     return null;
   }
   const results: LoopPlusAcceptancePlanResult[] = [];
   const seen = new Set<string>();
   for (const item of value) {
-    if (!isRecord(item) || typeof item.key !== "string" || typeof item.passed !== "boolean") {
+    const key = isRecord(item) ? readOptionalText(item.key) : undefined;
+    if (expectedKeys && (!key || !expectedKeys.includes(key))) {
+      continue;
+    }
+    if (!key || !isRecord(item) || typeof item.passed !== "boolean" || seen.has(key)) {
       return null;
     }
-    const key = item.key.trim();
-    const reason = requireReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
-    if (!key || seen.has(key) || (requireReason && !reason)) {
+    const reason = readOptionalText(item.reason);
+    if (requireReason && !reason) {
       return null;
     }
     seen.add(key);
@@ -527,7 +567,7 @@ function readAcceptancePlanResults(value: unknown, requireReason = false): LoopP
       ...(reason ? { reason } : {}),
     });
   }
-  return results;
+  return results.length > 0 ? results : null;
 }
 
 function matchesAcceptancePlanKeys(
@@ -542,7 +582,7 @@ function matchesAcceptancePlanKeys(
   }
   return Boolean(results)
     && results?.length === expectedKeys.length
-    && expectedKeys.every((key, index) => results?.[index]?.key === key);
+    && expectedKeys.every((key) => results?.some((result) => result.key === key));
 }
 
 function withEstimatedRemainingRounds(
@@ -602,7 +642,7 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
     return null;
   }
   if (value.action === "close") {
-    const reason = readRequiredShortReason(value.reason);
+    const reason = readOptionalText(value.reason);
     if (hasOwn(value, "reason") && !reason) return null;
     return {
       id,
@@ -616,8 +656,8 @@ function normalizeControl(value: unknown): LoopPlusControlDecision | null {
       ...(Object.prototype.hasOwnProperty.call(value, "dependsOn") ? { dependsOn } : {}),
     };
   }
-  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
-  if (!title || prompt.length < LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH) {
+  const prompt = readOptionalText(value.prompt);
+  if (!title || !prompt) {
     return null;
   }
   return {
@@ -678,8 +718,8 @@ function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
     return null;
   }
   const title = readOptionalText(value.title);
-  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
-  if (!title || prompt.length < LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH) {
+  const prompt = readOptionalText(value.prompt);
+  if (!title || !prompt) {
     return null;
   }
   const id = readOptionalText(value.id) ?? buildLoopPlusSubtaskId(title);
@@ -790,7 +830,7 @@ function normalizeAcceptanceChecks(value: unknown, requireReason = false): LoopA
     if (!name) {
       return null;
     }
-    const detail = requireReason ? readRequiredShortReason(item.detail) : readOptionalText(item.detail);
+    const detail = readOptionalText(item.detail);
     if (requireReason && !detail) {
       return null;
     }
@@ -861,9 +901,9 @@ function readAcceptReviews(
       return null;
     }
     const needsReason = requireReason || item.acceptance === "cancelled";
-    const reason = needsReason ? readRequiredShortReason(item.reason) : readShortReason(item.reason);
+    const reason = readOptionalText(item.reason);
     if (needsReason && !reason) {
-      reject?.(`reviews[${index}].reason 必须是非空且不超过 50 字的验收依据。`);
+      reject?.(`reviews[${index}].reason 必须提供非空验收依据。`);
       return null;
     }
     const subtaskIds = readAcceptSubtaskIds(item);
@@ -871,13 +911,13 @@ function readAcceptReviews(
       reject?.(`reviews[${index}].subtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。`);
       return null;
     }
-    const noRepairReason = readRequiredShortReason(item.noRepairReason);
+    const noRepairReason = readOptionalText(item.noRepairReason);
     if (hasOwn(item, "noRepairReason") && (item.acceptance !== "failed" || !noRepairReason || subtaskIds.length > 0)) {
-      reject?.(`reviews[${index}].noRepairReason 仅用于不派修的失败项，须填写不超过 50 字的结案原因。`);
+      reject?.(`reviews[${index}].noRepairReason 仅用于不派修的失败项，须填写结案原因。`);
       return null;
     }
     if (item.acceptance === "failed" && subtaskIds.length === 0 && !noRepairReason) {
-      reject?.(`reviews[${index}] 验收失败必须关联修复子任务，或填写不超过 50 字的 noRepairReason；未处置的失败不能确认。`);
+      reject?.(`reviews[${index}] 验收失败必须关联修复子任务，或填写 noRepairReason；未处置的失败不能确认。`);
       return null;
     }
     linkedIds.push(...subtaskIds);
@@ -904,22 +944,6 @@ function readAcceptReviews(
     return null;
   }
   return reviews;
-}
-
-function readShortReason(value: unknown): string | undefined {
-  const normalized = readOptionalText(value);
-  if (!normalized) {
-    return undefined;
-  }
-  return Array.from(normalized).slice(0, LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH).join("");
-}
-
-function readRequiredShortReason(value: unknown): string | null {
-  const normalized = readOptionalText(value);
-  if (!normalized || Array.from(normalized).length > LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH) {
-    return null;
-  }
-  return normalized;
 }
 
 function readAcceptSubtaskIds(

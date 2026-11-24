@@ -13,7 +13,6 @@ import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
-  LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   parseLoopPlusDecision,
   type LoopPlusDecision,
@@ -729,6 +728,21 @@ function mainContext(overrides: Partial<LoopPlusMainPromptContext> = {}): LoopPl
   };
 }
 
+test("report-only handoff and outstanding repair prompt remain explicit and scoped", () => {
+  const reportPrompt = buildLoopPlusMainModelPrompt(mainContext({
+    kind: "continue", reportOnly: true,
+    reportEventIds: ["report-1"],
+    reportQueue: [{ eventId: "report-1", subtaskId: "report", attemptId: "report-1", outcome: "completed", detail: "evidence" }],
+    acceptanceEventIds: [],
+  }));
+  assert.match(reportPrompt, /Report-only handoff/);
+  assert.match(reportPrompt, /report-1/);
+  assert.match(reportPrompt, /original frozen acceptance batch resumes/);
+  const repairPrompt = buildLoopPlusMainModelPrompt(mainContext({ requiredRepairIds: ["source"] }));
+  assert.match(repairPrompt, /Outstanding required repairs/);
+  assert.match(repairPrompt, /same subtasks\[\]\.id/);
+});
+
 function extractProtocolExamples(prompt: string): Map<string, string> {
   const examples = new Map<string, string>();
   const pattern = /LOOP_PLUS_PROTOCOL_EXAMPLE ([a-z]+)\n```json\n([\s\S]*?)\n```/g;
@@ -778,7 +792,7 @@ test("acceptance reason language follows the task and conversation instead of fo
   const prompt = buildLoopPlusMainModelPrompt(mainContext({ rootPrompt: "Verify the exported API and regression tests." }));
   assert.match(prompt, /language that best matches the task, evidence, and surrounding conversation/u);
   assert.match(prompt, /Chinese is not mandatory/u);
-  assert.match(prompt, /Keep each within 50 characters/u);
+  assert.doesNotMatch(prompt, /50 characters/u);
   assert.doesNotMatch(prompt, /Write every acceptance reason and check detail in Simplified Chinese/u);
 });
 
@@ -793,7 +807,7 @@ test("previous main decision next-step plan is exposed without overriding curren
   assert.match(prompt, /Objective: 验收成功后安排剩余交付/);
   assert.match(prompt, /1\. 核对最新子任务结果/);
   assert.match(prompt, /never overrides the root request, latest task record, scheduler state/);
-  assert.match(prompt, /up to 4 short acceptanceCriteria/);
+  assert.match(prompt, /an objective and optional acceptanceCriteria/);
   assert.match(prompt, /Do not include nextStepPlan with clarify, blocked, or completed/);
 });
 
@@ -862,7 +876,7 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.ok(dispatch.subtasks.length >= 1 && dispatch.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
   dispatch.subtasks.forEach((subtask) => {
     assert.ok(subtask.title.trim());
-    assert.ok(subtask.prompt.length >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH);
+    assert.ok(subtask.prompt.trim());
     assert.match(subtask.prompt, /write scope/i);
     if (subtask.taskType === "general") {
       assert.equal(subtask.writeFiles, undefined);
@@ -893,7 +907,7 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.equal(steer.controls?.some((control) => control.action === "close"), true);
   assert.equal(steer.controls?.some((control) => (
     control.action === "reprompt" && Boolean(control.title?.trim())
-      && (control.prompt?.length ?? 0) >= LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH
+      && Boolean(control.prompt?.trim())
   )), true);
 
   const blocked = parseExample(examples, "blocked");
@@ -968,7 +982,7 @@ test("stripping required completed fields from the generated example is rejected
     subtasks: [{
       id: "extra-completed-subtask",
       title: "Extra subtask",
-      prompt: "x".repeat(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH),
+      prompt: "分发禁止的子任务。",
     }],
   });
   cases.forEach((value) => {
@@ -994,7 +1008,7 @@ test("prompt forbids plural confirmation keys and classic continue without cumul
   assert.doesNotMatch(prompt, /Subtask rounds used|Subtask round limit|Remaining subtask rounds/);
   const clamped = buildLoopPlusMainModelPrompt(mainContext({ subtaskMax: 99 }));
   assert.match(clamped, /1 to 20 new self-contained subtasks/);
-  assert.match(prompt, new RegExp(String(LOOP_PLUS_DECISION_PROMPT_MIN_LENGTH)));
+  assert.match(prompt, /a non-empty prompt/);
   PLURAL_CONFIRMATION_KEYS.forEach((key) => {
     assert.match(prompt, new RegExp(key));
   });

@@ -58,6 +58,7 @@ export const MESSAGE_BLOCK_STYLES = `      /* Message Blocks */
         margin-bottom: 4px;
       }
       .message.user .bubble {
+        position: relative;
         background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground));
         color: var(--vscode-button-secondaryForeground);
         padding: 10px 14px;

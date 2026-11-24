@@ -3,7 +3,8 @@ import assert = require("node:assert/strict");
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 
 import {
   isCliEnabled,
@@ -185,6 +186,79 @@ test("global setting patches merge disk state across stale window caches", (cont
   `;
   const result = spawnSync(process.execPath, ["-e", script], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test("global tool settings preserve patches from two processes with stale caches", async (context) => {
+  const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-settings-cross-process-"));
+  const filePath = path.join(temporaryHome, ".sinitek_cli", "settings.json");
+  const initial = { debug: true, historyRetentionDays: 30, chatMessageLimit: 650, cliEnabledByName: { codex: false } };
+  const writers: ReturnType<typeof startWriter>[] = [];
+  context.after(async () => {
+    for (const { child } of writers) {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }
+    await Promise.all(writers.map(({ closed }) => closed));
+    fs.rmSync(temporaryHome, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(initial));
+
+  function startWriter(name: string, patch: ToolSettingsState) {
+    const script = `
+      const assert = require("node:assert/strict");
+      assert.equal(require("node:os").homedir(), ${JSON.stringify(temporaryHome)});
+      const settings = require(${JSON.stringify(path.resolve(__dirname, "../../toolSettings.js"))});
+      assert.deepEqual(settings.readToolSettings(), ${JSON.stringify(initial)});
+      process.once("message", (message) => {
+        assert.equal(message, "save");
+        settings.updateToolSettings(${JSON.stringify(patch)});
+        process.disconnect();
+      });
+      process.send("ready");
+    `;
+    const child = spawn(process.execPath, ["-e", script], {
+      env: { ...process.env, HOME: temporaryHome, USERPROFILE: temporaryHome, NODE_OPTIONS: "" },
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+      timeout: 5000,
+      killSignal: "SIGKILL",
+    });
+    let stderr = "";
+    child.stderr?.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    child.on("error", (error) => { stderr += `${error.message}\n`; });
+    const closed = new Promise<{ code: number | null; detail: string }>((resolve) => {
+      child.once("close", (code, signal) => resolve({ code, detail: `${name}: exit ${code}, signal ${signal}\n${stderr}` }));
+    });
+    const ready = Promise.race([
+      once(child, "message").then(([message]) => assert.equal(message, "ready", name)),
+      closed.then(({ detail }) => { throw new Error(`Writer closed before loading baseline: ${detail}`); }),
+    ]);
+    async function save() {
+      await new Promise<void>((resolve, reject) => {
+        child.send("save", (error) => error ? reject(error) : resolve());
+      });
+      const { code, detail } = await closed;
+      assert.equal(code, 0, detail);
+    }
+    return { child, closed, ready, save };
+  }
+
+  function assertPersisted(expected: ToolSettingsState) {
+    assert.deepEqual(JSON.parse(fs.readFileSync(filePath, "utf8")), expected);
+    assert.equal(fs.existsSync(`${filePath}.lock`), false, "settings lock was not released");
+  }
+
+  const writerA = startWriter("writer A", { historyRetentionDays: 90, cliEnabledByName: { claude: false } });
+  writers.push(writerA);
+  const writerB = startWriter("writer B", { debug: false, cliEnabledByName: { opencode: false } });
+  writers.push(writerB);
+  await Promise.all([writerA.ready, writerB.ready]);
+  await writerA.save();
+  assertPersisted({ ...initial, historyRetentionDays: 90, cliEnabledByName: { codex: false, claude: false } });
+  await writerB.save();
+  assertPersisted({
+    ...initial, historyRetentionDays: 90, debug: false,
+    cliEnabledByName: { codex: false, claude: false, opencode: false },
+  });
 });
 
 test("tool settings report a replaced lock without removing it or rolling back a completed write", (context) => {

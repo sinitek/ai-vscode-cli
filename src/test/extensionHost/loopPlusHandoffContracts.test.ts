@@ -610,7 +610,7 @@ test("partial accept/dispatch rejection repairs only remaining work with bounded
   assert.deepEqual(snapshot(env.read()).userMessageQueue, []);
 });
 
-test("rejected repair dispatch is corrected successfully from the latest snapshot without re-accepting A", async () => {
+test("rejected independent dispatch is corrected successfully without re-accepting A", async () => {
   const env = harness();
   await flush();
   env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A"), child("B")] }));
@@ -619,7 +619,7 @@ test("rejected repair dispatch is corrected successfully from the latest snapsho
   await flush();
   const review = env.mains.at(-1)!;
   review.resolve(json({ status: "accept", reviewEventIds: review.request.reviewEventIds,
-    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A needs repair", subtaskIds: [] }],
+    reviews: [{ reviewEventId: review.request.reviewEventIds![0], acceptance: "failed", reason: "A failed", noRepairReason: "该验证不需重新执行来源任务", subtaskIds: [] }],
     independentSubtaskIds: ["B"], subtasks: [child("B")] }));
   await flush();
   const correction = env.mains.at(-1)!;

@@ -681,9 +681,10 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(new vscode.Disposable(startLoopWaitWatchdog([
     () => { if (!isExtensionDeactivating) loopOrchestrationHost?.checkWaitingTasks(); },
     () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingTasks(); },
-  ], (error) => { void logError("loop-wait-watchdog-failed", { error: errorToMessage(error) }); }, () => {
-    if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkInterruptedMainTasks();
-  })));
+  ], (error) => { void logError("loop-wait-watchdog-failed", { error: errorToMessage(error) }); }, [
+    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkInterruptedMainTasks(); },
+    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingReviews(); },
+  ])));
   startConfigHeartbeat(context);
   void refreshCliInstallStatuses();
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -6764,7 +6765,7 @@ function reserveLoopMainAutoCompactRun(
 async function runAutoCompactContextAfterPromptSuccess(
   target: PromptRunTarget,
   sessionId: string,
-  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; isolatedRun?: boolean },
+  request: { allowActiveRun: boolean; onStopReady?: (stop: () => void) => void; onStarted?: () => void; isolatedRun?: boolean },
 ): Promise<void> {
   const compacted = await runContextCompaction({
     silent: true,
@@ -6774,6 +6775,7 @@ async function runAutoCompactContextAfterPromptSuccess(
     timeoutMs: AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS,
     allowActiveRun: request.allowActiveRun,
     onStopReady: request.onStopReady,
+    onStarted: request.onStarted,
   }, request.isolatedRun);
   void logInfo("auto-context-compact-after-run-finished", {
     cli: target.cli,
@@ -6818,6 +6820,7 @@ async function maybeAutoCompactContextAfterPromptSuccess(
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch,
     canOverlap: overlapLoopDispatch && !isPrimaryRunActive(),
+    onStarted: options.onStarted,
     run: (request) => runAutoCompactContextAfterPromptSuccess(target, sessionId, request),
     reserve: () => reserveLoopMainAutoCompactRun(target, sessionId),
     track: (flight) => {

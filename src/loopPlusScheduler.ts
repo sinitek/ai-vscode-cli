@@ -23,6 +23,7 @@ export type LoopPlusCompletionBlocker =
   | "running"
   | "pending"
   | "report_queue"
+  | "repair_required"
   | "review_queue"
   | "current_review"
   | "user_messages"
@@ -68,6 +69,7 @@ export type LoopPlusReviewVerdict = {
   acceptance: LoopPlusReviewAcceptance;
   reason?: string;
   noRepairReason?: string;
+  repairRequired?: true;
 };
 
 export type LoopPlusSeenAttempt = {
@@ -79,6 +81,7 @@ export type LoopPlusSeenAttempt = {
   acceptance?: LoopPlusReviewAcceptance;
   acceptanceReason?: string;
   noRepairReason?: string;
+  repairRequired?: true;
   dependsOn?: string[];
 };
 
@@ -479,13 +482,14 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     }
     const decisions: LoopPlusDispatchDecision[] = [];
     const rejected: LoopPlusDispatchRejection[] = [];
-    const accepted: Array<{ parsed: ParsedSpec; record: LoopPlusExecutionRecord }> = [];
+    let accepted: Array<{ parsed: ParsedSpec; record: LoopPlusExecutionRecord }> = [];
+    const repairs = new Map(seenAttempts.filter((item) => item.repairRequired).map((item) => [item.subtaskId, item]));
     const candidateAttempts = new Set<string>();
     const candidateSubtasks = new Set<string>();
     for (const spec of specs) {
       const ids = rejectionIds(spec);
       const parsed = parseSpec(spec);
-      if (!parsed) {
+      if (!parsed || (repairs.has(parsed.subtaskId) && parsed.requiresAcceptance === false)) {
         rejected.push({ ...ids, reason: "invalid_spec" });
         continue;
       }
@@ -517,13 +521,19 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       return { decisions, rejected, started: [], view: view() };
     }
     const latestAttempts = knownLatestAttempts(seenAttempts);
-    const graphError = validateDependencyGraph(latestAttempts, accepted.map(({ parsed }) => parsed));
-    if (graphError) {
-      for (const { parsed } of accepted) {
+    const allowPartial = accepted.some(({ parsed }) => repairs.has(parsed.subtaskId));
+    while (accepted.length > 0) {
+      const invalid = new Set<string>();
+      const graphError = validateDependencyGraph(latestAttempts, accepted.map(({ parsed }) => parsed), invalid);
+      if (!graphError) break;
+      const invalidCandidates = allowPartial ? accepted.filter(({ parsed }) => invalid.has(parsed.subtaskId)) : [];
+      const refused = new Set(invalidCandidates.length > 0 ? invalidCandidates : accepted);
+      for (const { parsed } of refused) {
         rejected.push({ subtaskId: parsed.subtaskId, attemptId: parsed.attemptId, reason: "invalid_dependencies", detail: graphError });
       }
-      return { decisions, rejected, started: [], view: view() };
+      accepted = accepted.filter((item) => !refused.has(item));
     }
+    if (accepted.length === 0) return { decisions, rejected, started: [], view: view() };
     for (const { parsed, record } of accepted) {
       pending.push(record);
       seenAttempts.push({
@@ -534,6 +544,8 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         ...(parsed.dependsOn !== undefined ? { dependsOn: parsed.dependsOn.slice() } : {}),
       });
       latestAttempts.set(parsed.subtaskId, seenAttempts[seenAttempts.length - 1]);
+      const repair = repairs.get(parsed.subtaskId);
+      if (repair) delete repair.repairRequired;
     }
     const started = options?.deferPromotion ? [] : promote(latestAttempts);
     const startedIds = new Set(started.map((item) => item.attemptId));
@@ -1050,6 +1062,9 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     if (reportQueue.length > 0) {
       blockers.push("report_queue");
     }
+    if (seenAttempts.some((item) => item.repairRequired)) {
+      blockers.push("repair_required");
+    }
     if (reviewQueue.length > 0) {
       blockers.push("review_queue");
     }
@@ -1533,13 +1548,15 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       invalidSnapshot(`seenAttempts[${index}]`);
     }
     const acceptanceReason = typeof item.acceptanceReason === "string" ? item.acceptanceReason.trim() : undefined;
-    if (acceptance === "cancelled" && (!acceptanceReason || Array.from(acceptanceReason).length > 50)) {
+    if (acceptance === "cancelled" && !acceptanceReason) {
       invalidSnapshot(`seenAttempts[${index}].acceptanceReason`);
     }
     const noRepairReason = typeof item.noRepairReason === "string" ? item.noRepairReason.trim() : undefined;
-    if (item.noRepairReason !== undefined && (acceptance !== "failed" || !noRepairReason || Array.from(noRepairReason).length > 50)) {
+    if (item.noRepairReason !== undefined && (acceptance !== "failed" || !noRepairReason)) {
       invalidSnapshot(`seenAttempts[${index}].noRepairReason`);
     }
+    if (item.repairRequired !== undefined && (item.repairRequired !== true || item.disposition !== "reviewed"
+      || acceptance !== "failed" || noRepairReason)) invalidSnapshot(`seenAttempts[${index}].repairRequired`);
     const subtaskId = readRequiredId(item.subtaskId, `seenAttempts[${index}]`);
     const dependsOn = readSnapshotDependsOn(item.dependsOn, subtaskId, `seenAttempts[${index}]`);
     return {
@@ -1551,6 +1568,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       ...(acceptance ? { acceptance } : {}),
       ...(acceptanceReason ? { acceptanceReason } : {}),
       ...(noRepairReason ? { noRepairReason } : {}),
+      ...(item.repairRequired === true ? { repairRequired: true } : {}),
       ...(dependsOn !== undefined ? { dependsOn } : {}),
     };
   });
@@ -1646,12 +1664,17 @@ function validateAttemptGraph(input: {
       invalidSnapshot("seenAttempts");
     }
   }
-  if (validateDependencyGraph(knownLatestAttempts(input.seenAttempts), [])) {
+  const latestAttempts = knownLatestAttempts(input.seenAttempts);
+  if (input.seenAttempts.some((item) => item.repairRequired && latestAttempts.get(item.subtaskId) !== item)) {
+    invalidSnapshot("repairRequired");
+  }
+  if (validateDependencyGraph(latestAttempts, [])) {
     invalidSnapshot("dependsOn");
   }
   const workLeft = input.running.length > 0
     || input.pending.length > 0
     || (input.reportQueue?.length ?? 0) > 0
+    || input.seenAttempts.some((item) => item.repairRequired)
     || input.reviewQueue.length > 0
     || input.currentReview !== null;
   if (input.completed && (workLeft || input.parentStopped)) {
@@ -1838,6 +1861,7 @@ function dependencyBlockReason(attempt: LoopPlusSeenAttempt): LoopPlusDependency
 function validateDependencyGraph(
   historical: Map<string, LoopPlusSeenAttempt>,
   candidates: readonly ParsedSpec[],
+  invalid?: Set<string>,
 ): string | null {
   const graph = new Map<string, readonly string[]>();
   for (const [id, attempt] of historical) {
@@ -1846,7 +1870,10 @@ function validateDependencyGraph(
   for (const candidate of candidates) graph.set(candidate.subtaskId, candidate.dependsOn ?? []);
   for (const [id, dependencies] of graph) {
     for (const dependency of dependencies) {
-      if (!graph.has(dependency)) return `Unknown dependency "${dependency}" referenced by "${id}".`;
+      if (!graph.has(dependency)) {
+        invalid?.add(id);
+        return `Unknown dependency "${dependency}" referenced by "${id}".`;
+      }
     }
   }
   const indegree = new Map<string, number>();
@@ -1872,7 +1899,9 @@ function validateDependencyGraph(
       if (count === 0) ready.push(dependent);
     }
   }
-  return visited === graph.size ? null : "Dependency graph contains a cycle.";
+  if (visited === graph.size) return null;
+  for (const [id, count] of indegree) if (count > 0) invalid?.add(id);
+  return "Dependency graph contains a cycle.";
 }
 
 function sameStringArray(left: readonly string[], right: readonly string[]): boolean {
@@ -1938,6 +1967,7 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.acceptance ? { acceptance: record.acceptance } : {}),
     ...(record.acceptanceReason ? { acceptanceReason: record.acceptanceReason } : {}),
     ...(record.noRepairReason ? { noRepairReason: record.noRepairReason } : {}),
+    ...(record.repairRequired ? { repairRequired: true } : {}),
     ...(record.dependsOn !== undefined ? { dependsOn: record.dependsOn.slice() } : {}),
   };
 }
@@ -1966,9 +1996,11 @@ function acceptanceByEvent(
       return null;
     }
     if (verdict.acceptance === "cancelled" && (typeof verdict.reason !== "string"
-      || !verdict.reason.trim() || Array.from(verdict.reason.trim()).length > 50)) return null;
+      || !verdict.reason.trim())) return null;
     if (verdict.noRepairReason !== undefined && (verdict.acceptance !== "failed" || typeof verdict.noRepairReason !== "string"
-      || !verdict.noRepairReason.trim() || Array.from(verdict.noRepairReason.trim()).length > 50)) return null;
+      || !verdict.noRepairReason.trim())) return null;
+    if (verdict.repairRequired !== undefined && (verdict.repairRequired !== true
+      || verdict.acceptance !== "failed" || verdict.noRepairReason)) return null;
     verdicts.set(eventId, verdict);
   }
   return verdicts;
@@ -1991,6 +2023,7 @@ function recordReviewedAcceptance(
   const outcomeFailed = seen.outcome === "failed" || seen.outcome === "stopped";
   seen.acceptance = acceptance === "failed" || outcomeFailed ? "failed" : "passed";
   if (verdict.noRepairReason) seen.noRepairReason = verdict.noRepairReason.trim();
+  if (verdict.repairRequired) seen.repairRequired = true;
 }
 
 function readSeenAcceptance(value: unknown, field: string): LoopPlusReviewAcceptance | undefined {

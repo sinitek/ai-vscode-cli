@@ -1,6 +1,7 @@
 "use strict";
 const test = require("node:test"), assert = require("node:assert/strict"), fs = require("node:fs"), os = require("node:os"), path = require("node:path");
-const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertWorkspaceSaved, publicDepartmentEntry } = require("./verify_department_employee_allocation_eh_integration");
+const { argumentsFor, readEvents, assertSavedTransition, assertSettled, assertCleanup, assertAllocationDispatch, assertAppliedTransition,
+  readOrganizationStop, assertPublicStop, assertWorkspaceSaved, publicDepartmentEntry } = require("./verify_department_employee_allocation_eh_integration");
 
 test("allocation driver accepts only the dedicated product/report command", () => {
   assert.equal(argumentsFor(["--product", ".", "--report", "report.json"]).product, process.cwd());
@@ -21,7 +22,9 @@ test("save evidence requires revision-only desired transition and matching actua
   const before = { employeeAllocation: { revision: 2, leaders: [{ leaderTaskId: "leader", manualLimit: null, appliedLimit: 5 }] }, capacity: { employees: ["held"] }, executionBindings: ["owner"], leaderExecutionSets: ["responsibility"] };
   const after = structuredClone(before); after.employeeAllocation.revision++; after.employeeAllocation.leaders[0].manualLimit = 0;
   assertSavedTransition(before, after, "leader", 0);
-  after.capacity.employees = []; assert.throws(() => assertSavedTransition(before, after, "leader", 0));
+  const earlyApply = structuredClone(after); earlyApply.employeeAllocation.leaders[0].appliedLimit = 0;
+  assert.throws(() => assertSavedTransition(before, earlyApply, "leader", 0), /save applied early/);
+  after.capacity.employees = []; assert.throws(() => assertSavedTransition(before, after, "leader", 0), /altered live capacity/);
   const events = [{ event: "webview-request", message: { requestId: "req", leaderTaskId: "leader", expectedRevision: 2, employeeLimit: 0 } },
     { event: "webview-settled", message: { type: "loopGroupChatChat:departmentEmployeeLimitSettled", rootTaskId: "root", leaderTaskId: "leader", requestId: "req", ok: true, revision: 3, desiredLimit: 0 } }];
   assertSettled(events, "root", "leader", 2, 0, 3);
@@ -29,6 +32,75 @@ test("save evidence requires revision-only desired transition and matching actua
     const bad = structuredClone(events); bad[1].message[key] = "foreign"; assert.throws(() => assertSettled(bad, "root", "leader", 2, 0, 3));
   }
   assert.throws(() => assertSettled(events.slice(0, 1), "root", "leader", 2, 0, 3), /settled/);
+  assert.throws(() => assertSettled(events, "root", "leader", 1, 0, 3), /exact real host request/);
+});
+
+function loopPlusStopFixture() {
+  const root = { id: "root", workspaceKey: "workspace", status: "running", department: { role: "director", rootTaskId: "root", executionMode: "loop-plus" }, subTasks: [{ id: "module" }] };
+  const original = { leaderTaskId: "leader", subtaskId: "allocation-held", attemptId: "actual-attempt" };
+  const { leaderTaskId, ...attempt } = original;
+  const leader = { id: leaderTaskId, workspaceKey: "workspace", status: "running", schedulingMode: "event_driven",
+    department: { role: "leader", rootTaskId: "root", parentTaskId: "root", executionMode: "loop-plus", leaderSubtaskId: "module" },
+    subTasks: [{ id: attempt.subtaskId, status: "running" }], loopPlus: { running: [attempt], pending: [], seenAttempts: [{ ...attempt, disposition: "open" }] } };
+  const saved = { workspaceKey: "workspace", runtime: { rootTaskId: "root", stopping: false, leaders: [{ taskId: leaderTaskId, leaderSubtaskId: "module", status: "running" }] },
+    employeeAllocation: { revision: 4, leaders: [{ leaderTaskId, manualLimit: 0, appliedLimit: 0 }] }, capacity: { leaders: ["module"], employees: [JSON.stringify([leaderTaskId, attempt.attemptId])] } };
+  const tasks = [root, leader];
+  const stopped = structuredClone({ tasks, saved });
+  Object.assign(stopped.tasks[0], { status: "stopped" });
+  Object.assign(stopped.tasks[1], { status: "stopped", activeSubtaskId: null, activeSubtaskIds: [] });
+  stopped.tasks[1].subTasks[0].status = "blocked";
+  Object.assign(stopped.tasks[1].loopPlus, { parentStopped: true, running: [], seenAttempts: [{ ...attempt, disposition: "finished", outcome: "stopped" }] });
+  stopped.saved.runtime.leaders[0].status = "paused";
+  stopped.saved.capacity = { leaders: [], employees: [] };
+  const events = [{ event: "webview-stop", rootTaskId: "root", at: 1 }];
+  const diagnostics = [{ path: "live", result: "started", stage: "request", at: 1 }, { path: "live", result: "confirmed", stage: "cleanup", at: 2 }];
+  return { tasks, saved, original, stopped, events, diagnostics };
+}
+
+test("Loop+ dispatch at zero requires the observed logical task and attempt, exact occupancy, and no Owner fixtures", () => {
+  const { tasks, saved, original } = loopPlusStopFixture();
+  assertAllocationDispatch(tasks, saved, "root", "leader", [original], 0);
+  const pending = structuredClone(saved); pending.employeeAllocation.revision--; pending.employeeAllocation.leaders[0].appliedLimit = 5;
+  assertAppliedTransition(pending, saved, "leader", 0);
+  assert.throws(() => assertAppliedTransition(saved, saved, "leader", 0));
+  for (const key of [["leader", original.subtaskId], ["module", original.attemptId], ["foreign", original.attemptId]]) {
+    const bad = structuredClone(saved); bad.capacity.employees = [JSON.stringify(key)];
+    assert.throws(() => assertAllocationDispatch(tasks, bad, "root", "leader", [original], 0), /exact employee capacity keys/);
+  }
+  assert.throws(() => assertAllocationDispatch(tasks, saved, "root", "leader", [{ ...original, subtaskId: "wrong" }], 0), /durable logical employee task/);
+  tasks[0].department.executionMode = undefined;
+  assert.throws(() => assertAllocationDispatch(tasks, saved, "root", "leader", [original], 0), /public Loop\+ root/);
+});
+
+test("public Loop+ stop needs a confirmed live stop, durable original settlement, unchanged attempts and returned capacity", () => {
+  const { tasks, saved, original, stopped, events, diagnostics } = loopPlusStopFixture();
+  const before = assertAllocationDispatch(tasks, saved, "root", "leader", [original], 0);
+  const check = ({ tasks, saved }, actions = events, proof = diagnostics) => assertPublicStop(before, tasks, saved, original, [original], actions, proof);
+  assert.equal(check(stopped).originalAttempt.outcome, "stopped");
+  assert.throws(() => check(stopped, []), /actual director webview stop/);
+  assert.throws(() => check(stopped, events, diagnostics.slice(0, 1)), /not confirmed/);
+  assert.throws(() => check(stopped, events, [diagnostics[0], { ...diagnostics[1], result: "unconfirmed" }]), /not confirmed/);
+  for (const mutate of [
+    after => { after.saved.runtime.stopping = true; },
+    after => { after.saved.capacity.employees = saved.capacity.employees; },
+    after => { after.tasks[1].loopPlus.seenAttempts[0].outcome = "completed"; },
+    after => { after.tasks[1].loopPlus.seenAttempts.push({ subtaskId: original.subtaskId, attemptId: "replacement", disposition: "finished", outcome: "stopped" }); },
+    after => { after.tasks[1].loopPlus.seenAttempts = []; },
+    after => { after.tasks[1].loopPlus.running = tasks[1].loopPlus.running; },
+    after => { after.tasks[0].subTasks.push({ id: "new-module" }); },
+  ]) {
+    const bad = structuredClone(stopped); mutate(bad); assert.throws(() => check(bad));
+  }
+});
+
+test("stop log reader joins real logger segments by root and ignores only the unfinished tail", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "allocation-stop-log-test-"));
+  const line = (rootTaskId, result, stage, seconds) => `[2026-11-23T00:00:0${seconds}.000Z] [INFO] department-organization-stop | ${JSON.stringify({ rootTaskId, path: "live", result, stage })}\n`;
+  try {
+    fs.writeFileSync(path.join(dir, "sinitek-cli.2026-11-23.log"), line("root", "started", "request", 1) + line("other", "unconfirmed", "cleanup", 2));
+    fs.writeFileSync(path.join(dir, "sinitek-cli.2026-11-23.1.log"), line("root", "confirmed", "cleanup", 3) + "incomplete");
+    assert.deepEqual(readOrganizationStop(dir, "root").map(event => [event.result, event.stage]), [["started", "request"], ["confirmed", "cleanup"]]);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 test("cleanup checker rejects task-status-only completion without original responsibility/receipt proof", () => {
   assert.throws(() => assertCleanup({ runtime: { status: "completed" }, capacity: { employees: [], leaders: [] } }, [], [], {}, {}, [], 5), /original execution bindings/);

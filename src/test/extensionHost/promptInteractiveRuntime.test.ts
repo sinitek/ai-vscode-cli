@@ -19,6 +19,7 @@ import { buildTaskRunCompletionText } from "../../promptRunState";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import type { ConversationTabRecord } from "../../sessionTabs";
 import * as logger from "../../logger";
+import { createVibeCompactionQueueFixture } from "./fixtures/vibeCompactionQueueFixture";
 
 
 installVscodeMock();
@@ -816,33 +817,26 @@ test("host uses execution cwd for ordinary and Loop turns, reuses semantic ident
   });
 });
 
-for (const outcome of ["end", "stopped", "skipped"] as const) test(`Vibe waits for automatic compaction before releasing its queue (${outcome})`, { timeout: 2000 }, async () => {
-  const compactGate = createDeferred();
-  const started = createDeferred();
+for (const outcome of ["end", "stopped", "skipped"] as const) test(`Interactive Vibe host compaction queue settlement (${outcome})`, { timeout: 2000 }, async (context) => {
+  const fixture = createVibeCompactionQueueFixture("codex");
+  let now = Date.now();
+  context.mock.method(Date, "now", () => now);
   const harness = createInteractiveRuntimeHarness({
     autoCompactAfterRun: true,
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onThreadId("thread-default");
+      handlers.onAssistantDelta("[final_answer] default", { codexFinalAnswer: true });
+      now += fixture.minDuration + (outcome === "skipped" ? 0 : 1);
+    },
     runtimeDeps: {
-      maybeAutoCompactContextAfterPromptSuccess: async (_target, _sessionId, _duration, options) => {
-        if (outcome !== "skipped") {
-          options?.onStarted?.();
-          harness.runStatusEvents.push({ tabId: "tab-1", status: "start" });
-        }
-        started.resolve();
-        await compactGate.promise;
-        if (outcome !== "skipped") harness.runStatusEvents.push({ tabId: "tab-1", status: outcome });
-      },
+      maybeAutoCompactContextAfterPromptSuccess: fixture.maybeAutoCompactContextAfterPromptSuccess,
+      sendRunStatusForTab: (tabId, status, runOptions) => fixture.publish({ tabId, status, ...runOptions }),
     },
   });
   const run = harness.host.runPromptInteractive(createPromptInput(), createTarget());
-  await started.promise;
-  try {
+  await fixture.assertSettlement(outcome, run, () => {
     assert.equal(harness.taskRecords.at(-1)?.status, "end", "model result remains completed");
-    assert.equal(harness.runStatusEvents.some((event) => event.status === "end"), false, "queue must remain blocked during compaction");
-  } finally {
-    compactGate.resolve();
-    await run;
-  }
-  assert.equal(harness.runStatusEvents.filter((event) => event.status === "end").length, outcome === "stopped" ? 0 : 1, "release queue once after completion and keep it paused after stop");
+  });
   assert.equal(harness.codexStopCalls, 0);
 });
 

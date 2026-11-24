@@ -50,7 +50,8 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   captureDirectorTaskSummary?(input: PromptRunInput, target: PromptRunTarget): void;
   /** Show only a successfully registered and bound director; panel loading must not block execution. */
   openGroupChat?(taskId: string): Promise<void>;
-  runDirectorDecision(request: { input: PromptRunInput; target: PromptRunTarget; task: LoopTaskRecord; round: number }): Promise<ClassicLoopDecisionResult>;
+  runDirectorDecision(request: { input: PromptRunInput; target: PromptRunTarget; task: LoopTaskRecord; round: number;
+    renderDirectorContext(maxLength: number): string }): Promise<ClassicLoopDecisionResult>;
   /** Keep the existing orphan detector informed while preparation, clarification,
    * coordination waits and model consumption still belong to this director. */
   acquireDirectorOwnership?(taskId: string): () => void;
@@ -413,9 +414,8 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         return;
       }
       const revision = c.revision;
-      const result = await deps.runDirectorDecision({ input: { ...c.input,
-        modelPrompt: `${c.input.modelPrompt}\n${host.directorCoordinationContext(root)}` },
-        target: c.target, task, round: Math.max(1, task.currentRound + 1) });
+      const result = await deps.runDirectorDecision({ input: { ...c.input }, target: c.target, task, round: Math.max(1, task.currentRound + 1),
+        renderDirectorContext: (maxLength) => host.directorCoordinationContext(root, maxLength) });
       // Late model results cannot complete or wake a successor after stop.
       if (disposed || c.stopped || c.stopRevision !== stopRevision) return;
       const current = deps.readTask(root), bound = deps.resolveTarget(c.target.tabId);
@@ -527,7 +527,10 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     if (activeStops.has(root.id)) throw new Error("部门正在停止，请稍候。");
     if (continuations.has(root.id)) throw new Error("部门正在继续，请等待当前续接完成。");
     const director = m.role === "director" && root.id === task.id;
+    const ownerLeader = m.role === "leader" && m.executionMode !== "loop-plus";
     if (director) assertStopGate(task);
+    if (ownerLeader && (request.cli !== target.cli || root.status !== "running" || root.runtimeInterrupted
+      || unconfirmedStops.has(root.id))) throw new Error("组长当前不可接收补充需求，请先由总监继续组织。");
     const continuation = {};
     let admitted = false;
     continuations.set(root.id, continuation);
@@ -547,6 +550,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         const trusted = assertStopGate(currentRoot);
         if (trusted.status !== (admitted ? "running" : root.status)) throw new Error("部门续接状态已变化。");
       }
+      if (ownerLeader) {
+        const trusted = assertStopGate(currentRoot);
+        if (trusted.status !== "running" || trusted.runtimeInterrupted || unconfirmedStops.has(root.id)) {
+          throw new Error("组长当前不可接收补充需求，请先由总监继续组织。");
+        }
+      }
     };
     let c: Controller | undefined, stopRevision: number | undefined;
     let release: (() => void) | undefined;
@@ -559,7 +568,12 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     assertContinuation();
     if (failed.has(root.id)) throw new Error("部门持久化或恢复核验失败，不能继续派发。");
     if (m.role === "leader") {
-      if (!deps.runtime.host().hasController(task.id) || !deps.runtime.host().submitUserMessage(task.id, prompt)) throw new Error("组长当前不可接收补充需求，请先由总监继续组织。");
+      if (ownerLeader) {
+        try { await host.submitLeaderSupplement(root.id, task.id, target, prompt, assertContinuation); }
+        catch (error) { throw new Error(`组长当前不可接收补充需求：${error instanceof Error ? error.message : String(error)}`); }
+      } else if (!deps.runtime.host().hasController(task.id) || !deps.runtime.host().submitUserMessage(task.id, prompt)) {
+        throw new Error("组长当前不可接收补充需求，请先由总监继续组织。");
+      }
       return;
     }
     if (m.role !== "director" || root.id !== task.id) throw new Error("员工会话不能控制组织。");

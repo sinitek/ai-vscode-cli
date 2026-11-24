@@ -1,5 +1,28 @@
 # 员工额度：局部提示/UI/EH 组合验证
 
+## 当前公开 Loop+ 场景
+
+新根必须由公开 UI 创建，持久化 `executionMode: loop-plus`。默认档沿用隔离全局设置 4/20（每组 5）；`--workspace-capacity` 先通过工作区设置控件保存并读回 2/6（每组 3），全局仍是 4/20。两次额度保存都核对真实请求的 `expectedRevision`、同一请求 ID 的成功 settled、持久 revision 加一及 UI 数值读回。保存只改变期望参考值，不改已有占用或上次派发参考。本用例不主动制造过期 revision 冲突。
+
+第一次派发让 `held`、`pulse` 同时真实占用。保存 0 后放行 `pulse`，下一次真正派发 `allocation-zero`，证明零参考不是禁派；恢复为原数值（手动 5 或 3）后，`allocation-restored` 的真实派发才应用恢复值。每个准入核对持久组长及其总监模块、逻辑任务 ID、scheduler 中的 attempt ID 和精确容量键 `[leaderTaskId, attemptId]`；实际组长决策提示必须与生产 reader 和持久快照一致。
+
+收尾点总监群聊的公开中止；原 `held` 的 provider 答复扣留到宿主退出后。验证真实 Webview stop 消息、生产 `department-organization-stop` 的 live/confirmed 记录、持久原 attempt 的 `finished/stopped`、未新增派发以及组长/员工占用全部归还。最后发送正常宿主结束信号，要求退出码 0、无信号，并在退出后重读持久状态。缺少清理确认、仅见任务停止、或宿主提前/异常退出都不是通过。
+
+在已集成源码与实体构建产物的产品树运行两档（每档用新报告路径）。使用现有隔离 HOME、工作区、VS Code profile 及本机确定性 Responses provider；不连接真实用户会话或外部模型：
+
+```sh
+node --test scripts/verify_department_employee_allocation_eh_integration.test.js scripts/fixtures/department_employee_allocation_eh_scenario.test.js
+build_dir=$(mktemp -d "$PWD/.tmp/allocation-build.XXXXXX")
+npm run build -- --outDir "$build_dir/dist"
+node --test "$build_dir/dist/test/extensionHost/departmentemployeeallocationehhost.test.js"
+node scripts/verify_department_employee_allocation_eh_integration.js --product "$PRODUCT" --report "$PRODUCT/.tmp/allocation-loop-plus-default.json"
+node scripts/verify_department_employee_allocation_eh_integration.js --product "$PRODUCT" --report "$PRODUCT/.tmp/allocation-loop-plus-workspace.json" --workspace-capacity
+```
+
+当前验证器改动仅有脚本和编译后夹具单测证据；两档公开 EH 实测留待集成产品执行。以下是旧 Owner 路径的历史证据；`verifyCapturedRun` 仍严格重评原绑定、原回执、CLOSED 集合和真实 worker 退出，不使用上面的 Loop+ 判据替代。
+
+## 历史 Owner 场景（Round-440）
+
 本手册属于 round-440 局部候选。生产代码采用已审 da47 热点修复和 e613 提示增量，没有导入并行冷恢复或第二 EH 后继，不代表最终产品树、跨进程 CAS 或发布。
 
 ## 来源及物理树

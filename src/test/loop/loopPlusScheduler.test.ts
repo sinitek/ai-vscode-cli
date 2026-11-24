@@ -1373,17 +1373,18 @@ test("persists a no-repair disposition without changing the failed verdict", () 
   scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
   const review = scheduler.snapshot().currentReview;
   assert.ok(review);
+  const noRepairReason = "原交付已被后续需求取代，保留原失败结论但不再重复修复。".repeat(4);
   assert.equal(scheduler.submitReviewBatch([review.eventId], [{
     eventId: review.eventId,
     acceptance: "failed",
-    noRepairReason: "原交付已被后续需求取代",
+    noRepairReason,
   }]).ok, true);
   const seen = scheduler.snapshot().seenAttempts[0];
   assert.equal(seen?.acceptance, "failed");
-  assert.equal(seen?.noRepairReason, "原交付已被后续需求取代");
+  assert.equal(seen?.noRepairReason, noRepairReason);
   assert.equal(seen?.disposition, "reviewed");
   assert.equal(createLoopPlusScheduler({ snapshot: scheduler.snapshot() }).snapshot().seenAttempts[0]?.noRepairReason,
-    "原交付已被后续需求取代");
+    noRepairReason);
   const invalid = scheduler.snapshot();
   invalid.seenAttempts[0]!.noRepairReason = " ";
   assert.throws(() => createLoopPlusScheduler({ snapshot: invalid }));
@@ -1502,15 +1503,16 @@ test("撤销验收持久保存原因、保持批次顺序且不放行依赖", ()
     { eventId: ids[1], acceptance: "passed" },
     { eventId: ids[0], acceptance: "cancelled", reason: "需求已取消" },
   ]).ok, false);
-  for (const reason of [undefined, " ", "原".repeat(51)]) {
+  for (const reason of [undefined, " "]) {
     assert.equal(scheduler.submitReviewBatch(ids, [
       { eventId: ids[0], acceptance: "cancelled", reason },
       { eventId: ids[1], acceptance: "passed" },
     ]).ok, false);
     assert.deepEqual(scheduler.snapshot(), before);
   }
+  const reason = "最新确认的需求已不再包含这次交付。".repeat(5);
   const verdicts = [
-    { eventId: ids[0], acceptance: "cancelled" as const, reason: "需求已取消" },
+    { eventId: ids[0], acceptance: "cancelled" as const, reason },
     { eventId: ids[1], acceptance: "passed" as const },
   ];
   assert.equal(scheduler.submitReviewBatch(ids, verdicts).ok, true);
@@ -1520,7 +1522,7 @@ test("撤销验收持久保存原因、保持批次顺序且不放行依赖", ()
   const restored = createLoopPlusScheduler({ snapshot: JSON.parse(JSON.stringify(scheduler.snapshot())) });
   const old = restored.snapshot().seenAttempts.find((item) => item.subtaskId === "old");
   assert.equal(old?.acceptance, "cancelled");
-  assert.equal(old?.acceptanceReason, "需求已取消");
+  assert.equal(old?.acceptanceReason, reason);
   assert.equal(old?.outcome, "failed");
   assert.equal(restored.complete().ok, false);
   const settled = restored.snapshot();

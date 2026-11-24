@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { buildLoopPlusProtocolRepairPrompt } from "../../loopPlusProtocolRepair";
+import { buildLoopPlusProtocolPauseSummary, buildLoopPlusProtocolRepairPrompt, readLoopPlusProtocolRepairFromSummary } from "../../loopPlusProtocolRepair";
 
 test("correction keeps the rejected JSON as data and reuses evidence instead of business execution", () => {
   const response = '{"status":"accept","subtasks":[]}';
@@ -23,9 +23,16 @@ test("empty and oversized rejected responses remain bounded and require a comple
 test("format repair asks for JSON without repeating unrelated model prose", () => {
   const prompt = buildLoopPlusProtocolRepairPrompt({
     reason: "未找到可解析的 Loop+ 决策 JSON 对象",
-    response: "上次上下文摘要",
-    formatFailures: 3,
-  });
+    response: null,
+    formatFailure: true,
+  }, { number: 3, limit: 3 });
+  assert.match(prompt, /第 3\/3 次自动纠错/);
   assert.match(prompt, /只返回一个完整 JSON 对象/);
   assert.doesNotMatch(prompt, /上次上下文摘要|Previous rejected response/);
+});
+
+test("restores the reason from a persisted pause without replaying stale recovery instructions", () => {
+  const reason = "缺少验收证据\n请核对构建输出";
+  assert.deepEqual(readLoopPlusProtocolRepairFromSummary(buildLoopPlusProtocolPauseSummary(reason, 2)), { reason, response: null });
+  assert.equal(readLoopPlusProtocolRepairFromSummary("其他暂停原因"), null);
 });

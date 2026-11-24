@@ -774,7 +774,7 @@ for (const failure of ["unlink", "root-replaced", "unknown", "rmdir", "async-dis
         rmdir(target);
       });
     }
-    if (failure === "tab") h.fixture.setCloseSubtaskTabError("tab close rejected");
+    if (failure === "tab") h.fixture.setCloseSubtaskTabError("tab close rejected", 2);
     if (failure === "termination") rejectTermination(new Error("runner cleanup rejected"));
     h.fixture.finishParked(parked.subtaskId, { status: "end", content: "Business completed, cleanup is a separate fact" });
     await rejection;
@@ -974,6 +974,114 @@ test("stored leader identity: paused recovery and warm continuation still requir
   assert.equal(h.fixture.mainCalls.length, before);
   assert.deepEqual(h.pool.snapshot(), []);
 });
+
+const ownerCleanupTestName = "production Owner cleanup does not release leader capacity when the removal write fails";
+if (process.env.DEPARTMENT_OWNER_CLEANUP_HOME === undefined) {
+  test(ownerCleanupTestName, { timeout: 30000 }, () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "department-owner-cleanup-home-"));
+    try {
+      const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home,
+        CODEX_HOME: path.join(home, ".codex"), DEPARTMENT_OWNER_CLEANUP_HOME: home };
+      delete env.NODE_TEST_CONTEXT;
+      const child = spawnSync(process.execPath, ["--test", "--test-reporter=tap", "--test-name-pattern", `^${ownerCleanupTestName}$`, __filename], {
+        env, timeout: 25000, encoding: "utf8",
+      });
+      const output = `${child.stdout}\n${child.stderr}`;
+      assert.equal(child.error, undefined, output);
+      assert.equal(child.status, 0, output);
+      assert.match(output, /# tests 1\b/, output);
+      assert.match(output, /# pass 1\b/, output);
+      assert.ok(fs.existsSync(path.join(home, ".sinitek_cli", "loop-task-identities", "catalog.json")), "the child used the isolated identity catalog");
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+} else {
+  test(ownerCleanupTestName, { timeout: 20000 }, runOwnerCleanupWriteFailure);
+}
+
+async function runOwnerCleanupWriteFailure(t: test.TestContext): Promise<void> {
+  assert.equal(os.homedir(), process.env.DEPARTMENT_OWNER_CLEANUP_HOME);
+  const logger = require("../../logger") as typeof import("../../logger");
+  const outcomes: Array<{ leaderTaskId: string; generation: number; stage: string; result: string; reason: string }> = [];
+  let confirmed = false;
+  t.mock.method(logger, "logEssential", async (event: string, data: typeof outcomes[number]) => {
+    if (event === "department-leader-capacity") outcomes.push(data);
+  });
+  const cleanupGate = deferred();
+  const employeeGate = deferred();
+  const employeeEntered = deferred();
+  t.after(() => { cleanupGate.resolve(); employeeGate.resolve(); });
+  const { productionWiring, until } = require("./fixtures/departmentproductionwiringfixture") as typeof import("./fixtures/departmentproductionwiringfixture");
+  const wiring = await productionWiring(t, "codex", true, true, 1, undefined, "codex", true);
+  const { host, readCapacity } = wiring.composition;
+  const observe = wiring.groupCleanup.observe.bind(wiring.groupCleanup);
+  let observationStarted = false;
+  let observationError = "";
+  t.mock.method(wiring.groupCleanup, "observe", (...args: Parameters<typeof observe>) => {
+    const observed = observe(...args);
+    if (!observed) return observed;
+    observationStarted = true;
+    return { done: observed.done.then(() => { confirmed = true; }, (error) => { observationError = String(error); throw error; }) };
+  });
+  let cleanupEntered = false;
+  wiring.beforeLeaderCleanup(() => { cleanupEntered = true; return cleanupGate.promise; });
+  wiring.beforeEmployeeConsumerFinish(async () => { employeeEntered.resolve(); await employeeGate.promise; });
+  wiring.answer(1, { status: "dispatch", subtasks: [{ id: "employee", title: "employee", taskType: "backend", writeFiles: [],
+    prompt: "Implement this complete independent requirement and verify the result. Report actual changed paths and evidence." }] });
+  const first = await wiring.start();
+  assert.ok(first.ok);
+  await employeeEntered.promise;
+  const stopping = host.stopRoot("root");
+  employeeGate.resolve();
+  await until(() => cleanupEntered);
+
+  const readSaved = () => {
+    const saved = wiring.store.read("root", "workspace");
+    assert.ok(saved.ok && saved.value);
+    return saved.value;
+  };
+  const held = readCapacity("root");
+  assert.deepEqual(held?.leaders, ["module"]);
+  assert.deepEqual(readSaved().capacity, held);
+
+  const retire = t.mock.method(wiring.producer, "retire");
+  let rejectedWrites = 0;
+  const write = wiring.store.write.bind(wiring.store);
+  t.mock.method(wiring.store, "write", (value: Parameters<typeof write>[0]): ReturnType<typeof write> => {
+    if (confirmed && value.rootTaskId === "root" && value.workspaceKey === "workspace"
+      && !value.capacity.leaders.includes("module") && readSaved().capacity.leaders.includes("module")) {
+      rejectedWrites++;
+      return { ok: false, error: "EIO" };
+    }
+    return write(value);
+  });
+
+  cleanupGate.resolve();
+  assert.equal(await stopping, false, "stop retains the group after the release write fails");
+  await first.done;
+  assert.equal(observationStarted, true, "the real Owner cleanup observer was entered");
+  assert.equal(confirmed, true, `the original Owner cleanup observation fulfilled: ${observationError}`);
+  assert.ok(rejectedWrites >= 1, "the durable leader removal was rejected");
+  const saved = readSaved();
+  assert.deepEqual(readCapacity("root"), held, "the real pool retains the original lease");
+  assert.deepEqual(saved.capacity, held, "the durable snapshot retains the original lease");
+  assert.equal(retire.mock.callCount(), 0, "no release notification may retire the original generation");
+  const leaderOutcomes = outcomes.filter((event) => event.leaderTaskId === first.taskId && event.generation === 1);
+  assert.ok(leaderOutcomes.some((event) => event.stage === "release-save" && event.result === "retained" && event.reason === "persistence-failed"));
+  assert.equal(leaderOutcomes.some((event) => event.result === "released"), false);
+  const original = wiring.read(first.taskId);
+  assert.equal(original?.status, "stopped");
+  const resume = t.mock.method(wiring.producer, "openContinuedLeader");
+  const target = { tabId: "leader-tab", cli: "codex" as const, sessionId: original.sessionId! };
+  await assert.rejects(host.submitLeaderSupplement("root", first.taskId, target, "继续完成原模块", () => undefined),
+    /leader-supplement-unavailable/);
+  assert.deepEqual(await host.continueRoot("root"), { ok: false, reason: "root-not-ready" });
+  assert.equal(resume.mock.callCount(), 0, "no successor Owner generation was admitted");
+  assert.deepEqual(wiring.read(first.taskId), original);
+  assert.deepEqual(readSaved(), saved);
+  assert.equal(wiring.mainCalls, 1);
+}
 
 // Telemetry cannot stand in for cleanup proof or durable release.
 for (const proof of ["confirmed", "missing", "rejected", "persistence"] as const) {

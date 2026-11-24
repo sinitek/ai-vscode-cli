@@ -8,6 +8,7 @@ export type LoopMainAutoCompactRequest = {
 export type LoopMainAutoCompactRunRequest = {
   allowActiveRun: boolean;
   onStopReady?: (stop: () => void) => void;
+  onStarted?: () => void;
 };
 
 export type LoopMainAutoCompactReservation = {
@@ -63,12 +64,13 @@ export class LoopMainAutoCompactFlights {
 export async function settleAutoCompactAfterPrompt(options: {
   overlapLoopDispatch: boolean;
   canOverlap: boolean;
+  onStarted?: () => void;
   run: (request: LoopMainAutoCompactRunRequest) => Promise<void>;
   reserve: () => LoopMainAutoCompactReservation;
   track: (flight: Promise<void>) => void;
 }): Promise<void> {
   if (!options.overlapLoopDispatch || !options.canOverlap) {
-    await options.run({ allowActiveRun: false });
+    await options.run({ allowActiveRun: false, onStarted: options.onStarted });
     return;
   }
 
@@ -78,6 +80,7 @@ export async function settleAutoCompactAfterPrompt(options: {
     flight = options.run({
       allowActiveRun: true,
       onStopReady: reservation.adoptStop,
+      onStarted: options.onStarted,
     });
   } catch (error) {
     reservation.release();

@@ -277,13 +277,10 @@ export async function readRuntimeConfigFingerprint(
 }
 
 export async function writeClaudeConfig(content: string): Promise<void> {
-  await ensureDir(path.dirname(CONFIG_PATHS.claude.settings));
-  await fs.writeFile(CONFIG_PATHS.claude.settings, content, "utf-8");
+  await writeFileAtomically(CONFIG_PATHS.claude.settings, content, { followSymlinks: true });
 }
 
 export async function writeClaudeMcpConfig(content: string): Promise<void> {
-  await ensureDir(path.dirname(CONFIG_PATHS.claude.mcp));
-
   const incoming = JSON.parse(content);
   if (!isPlainObject(incoming)) {
     throw new Error(t("config.mcpMustBeObject"));
@@ -307,7 +304,7 @@ export async function writeClaudeMcpConfig(content: string): Promise<void> {
     mergedConfig[key] = value;
   });
 
-  await fs.writeFile(CONFIG_PATHS.claude.mcp, JSON.stringify(mergedConfig, null, 2), "utf-8");
+  await writeFileAtomically(CONFIG_PATHS.claude.mcp, JSON.stringify(mergedConfig, null, 2), { followSymlinks: true });
 }
 
 export async function writeCodexConfig(config: string, auth?: string): Promise<void> {
@@ -322,8 +319,7 @@ export async function writeCodexConfig(config: string, auth?: string): Promise<v
 }
 
 export async function writeOpenCodeConfig(config: string, _env?: string): Promise<void> {
-  await ensureDir(path.dirname(CONFIG_PATHS.opencode.config));
-  await fs.writeFile(CONFIG_PATHS.opencode.config, config, "utf-8");
+  await writeFileAtomically(CONFIG_PATHS.opencode.config, config, { followSymlinks: true });
 }
 
 type BackupFileSpec = {
@@ -632,7 +628,7 @@ export async function setConfigOrder(
   const orderPath = getConfigOrderPath(platform);
   await ensureDir(path.dirname(orderPath));
   const normalized = normalizeConfigOrder(order);
-  await fs.writeFile(orderPath, JSON.stringify(normalized, null, 2), "utf-8");
+  await writeFileAtomically(orderPath, JSON.stringify(normalized, null, 2));
 }
 
 function formatJSONString(value: string): string {

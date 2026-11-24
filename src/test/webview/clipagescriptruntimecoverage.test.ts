@@ -816,7 +816,7 @@ function createPanelState(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
-test("Loop+ submission immediately shows a transient waiting bubble through startup and first output", () => {
+test("Loop+ submission immediately shows a transient spinner through startup and first output", () => {
   const { api, document, window, posted } = createRuntimeHarness();
   const panel = createPanelState({
     interactiveMode: "loop_plus",
@@ -853,7 +853,10 @@ test("Vibe, Loop and Loop+ immediately preview the prompt until the matching per
     assert.ok(request.requestId);
     assert.equal(document.getElementById("promptSubmissionPreview").hidden, false);
     assert.equal(document.getElementById("promptSubmissionPreviewText").textContent, prompt);
-    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    const spinner = document.getElementById("promptSubmissionWait");
+    const previewBubble = document.getElementById("promptSubmissionPreviewBubble");
+    assert.equal(spinner.hidden, false);
+    assert.equal(spinner.parentNode, previewBubble);
     assert.equal(document.getElementById("promptSubmissionWaitText").textContent,
       mode === "coding" ? "正在准备 Vibe 任务" : mode === "loop" ? "正在准备 Loop 任务" : "正在准备 Loop+ 任务");
     assert.equal(api.getConversationRuntimeState("tab-1").messages.length, before, "preview is not session history");
@@ -861,15 +864,20 @@ test("Vibe, Loop and Loop+ immediately preview the prompt until the matching per
     window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
       message: { id: "older-submission", role: "user", content: prompt, merge: false } });
     assert.equal(document.getElementById("promptSubmissionPreview").hidden, false, "same text is not an acknowledgement");
+    assert.equal(spinner.parentNode, previewBubble);
     window.dispatchMessage({ type: "appendMessage", tabId: "tab-1",
       message: { id: request.requestId, role: "user", content: prompt, merge: false } });
     assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
-    assert.equal(document.getElementById("promptSubmissionWait").hidden, false);
+    assert.equal(spinner.hidden, false);
+    assert.ok(spinner.parentNode?.classList.contains("bubble"));
+    assert.ok(spinner.parentNode?.parentNode?.classList.contains("user"));
+    assert.equal(spinner.parentNode?.parentNode?.dataset.messageId, request.requestId);
     assert.equal(api.getConversationRuntimeState("tab-1").messages.filter((message: any) => message.id === request.requestId).length, 1);
     window.dispatchMessage({ type: "runStatus", tabId: "tab-1", status: "start" });
     assert.equal(document.getElementById("promptSubmissionWaitText").textContent, "等待模型响应");
     window.dispatchMessage({ type: "assistantDelta", tabId: "tab-1", id: "answer", content: "收到" });
-    assert.equal(document.getElementById("promptSubmissionWait").hidden, true);
+    assert.equal(spinner.hidden, true);
+    assert.equal(spinner.parentNode, previewBubble);
     assert.equal(document.getElementById("promptSubmissionPreview").hidden, true);
   }
 });

@@ -13,7 +13,6 @@ export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID = "system_default";
 export const LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME = "系统默认";
 export const LOOP_PLUS_DEFAULT_ACCEPTANCE_PLAN_NAME = "新建方案";
 const LEGACY_DEFAULT_ACCEPTANCE_PLAN_NAME = "默认方案";
-export const LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH = 50;
 export const LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES = [
   "dispatched work",
   "contracts",
@@ -461,9 +460,9 @@ export function buildLoopPlusAcceptancePlanPromptLines(snapshot: LoopPlusAccepta
   const feedbackItems = listLoopPlusAcceptancePlanFeedbackItems(normalized);
   if (feedbackItems.length > 0) {
     lines.push(
-      "On accept and completed, include acceptancePlanResults for every selected review above. Exception: when all accept.reviews have acceptance=cancelled because the deliveries are no longer needed, omit acceptance and acceptancePlanResults and record the cancellation reasons instead. For all remaining cases it must list exactly these keys in order: "
+      "On accept and completed, include acceptancePlanResults for every selected review above. Exception: when all accept.reviews have acceptance=cancelled because the deliveries are no longer needed, omit acceptance and acceptancePlanResults and record the cancellation reasons instead. For all remaining cases include a result for every selected key: "
       + feedbackItems.map((item) => item.key).join(", ")
-      + ". Include exactly these results even when a review is not applicable or evidence is unavailable. Each object is {\"key\":\"<key>\",\"passed\":true or false,\"reason\":\"short reason\"}. reason must explain the evidence-backed result or limitation in no more than 50 characters. passed is true only when that review passes.",
+      + ". Use any order. Unselected keys are ignored. Include a result even when a selected review is not applicable or evidence is unavailable. Each object is {\"key\":\"<key>\",\"passed\":true or false,\"reason\":\"evidence-backed explanation\"}. passed is true only when that review passes.",
     );
   }
   return lines;
@@ -579,10 +578,13 @@ export function buildLoopPlusAcceptanceFeedbackSection(
     return null;
   }
   if (items.length > 0) {
-    for (let index = 0; index < items.length; index += 1) {
-      const item = items[index];
-      const result = input.planResults?.[index];
-      if (!result || result.key !== item.key || typeof result.passed !== "boolean") {
+    const results = new Map((input.planResults ?? []).map((result) => [result.key, result]));
+    if (results.size !== items.length) {
+      return null;
+    }
+    for (const item of items) {
+      const result = results.get(item.key);
+      if (!result || typeof result.passed !== "boolean") {
         return null;
       }
       const reason = normalizeFeedbackReason(result.reason);
@@ -640,7 +642,7 @@ function escapeMarkdownTableCell(value: string): string {
 
 function normalizeFeedbackReason(value: string | undefined): string | null {
   const normalized = typeof value === "string" ? value.replace(/\s+/gu, " ").trim() : "";
-  if (!normalized || Array.from(normalized).length > LOOP_PLUS_ACCEPTANCE_REASON_MAX_LENGTH) {
+  if (!normalized) {
     return null;
   }
   return normalized;

@@ -175,7 +175,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 
 ## Loop+ 发送后即时等待反馈
 
-- 状态：`active`（2026-11-16，源码实现）。验收方案确认并实际发送后，助手气泡立即显示三点动画与“正在准备 Loop+ 任务”；开始调用后显示“等待模型响应”，首次助手正文/思考输出或调用结束时清除。配置拒绝、提前返回及异常通过请求回执清除；切换 Tab 与迟到回执不会串状态。临时气泡不写入历史，减少动态效果模式保留文字与静态三点；取消弹窗或本地拒绝不产生气泡。
+- 状态：`active`（源码实现）。Vibe、Loop 和 Loop+ 实际发送后，用户消息气泡左侧立即显示小转圈；Loop+ 仍先确认验收方案。转圈从临时预览移到对应的真实用户气泡，不额外添加助手气泡。准备及等待模型响应的文字保留在悬浮提示和无障碍状态中；首次助手正文/思考输出或调用结束时清除。配置拒绝、提前返回及异常通过请求回执清除；切换 Tab 与迟到回执不会串状态。临时预览与转圈不写入历史，减少动态效果模式下显示静态圆环；取消弹窗或本地拒绝不显示转圈。
 - 启动前的完整面板刷新改为后台展示，不再让读取全部 CLI 配置和模型阻塞 Loop+ 编排；真实配置校验、CLI 初始化、会话所有权和压缩等待保留。实现与回归见[发送与启动反馈](../design-docs/loop-plus-scheduling.md#发送与启动反馈)。
 
 ## 同一会话切换到 Vibe
@@ -195,10 +195,11 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 
 ## Loop / Loop+ 等待巡检
 
-- 状态：`active`（2026-11-15，源码实现）。扩展宿主每 5 分钟检查经典 Loop 与 Loop+ 的等待任务；主模型空闲且没有真实活动子任务时，唤醒主任务检查现有产物、未完成要求及后续动作。
+- 状态：`active`（源码实现）。扩展宿主每分钟检查空闲的 Loop+ 主任务；对已入队且符合验收条件的结果补唤醒，不等其它子任务执行完，不绕过依赖，也不抢占已有主调用。
+- 扩展宿主仍每 5 分钟检查经典 Loop 与 Loop+ 的等待任务是否存在失联；主模型空闲且没有真实活动子任务时，唤醒主任务检查现有产物、未完成要求及后续动作。
 - 经典 Loop 覆盖未结束的批次 Promise、子任务停止和重试耗尽后的等待；巡检发现失联后，将父任务标为 `stopped` + `runtimeInterrupted`，保留原等待控制器及 `blocked` 子任务，群聊“继续”续跑后交还原控制器。Loop+ 对应的开放 attempt 保留原身份并置为 `blocked`，不先交主任务验收；显式继续重启子任务，本次完成结果才进入验收。不能关联原任务记录的残留预留仍按失败验收处理，不推断成功；迟到回调不重复回报。
 - 经典 Loop 允许在已有批次运行时接收补充需求并唤醒同一主循环；只有经写入范围、冲突组与连续来源检查无冲突的新子任务才增量并行派发。群聊可单独取消运行中的子任务，等待真实 CLI 退出后记为 `skipped`，迟到完成回调不能覆盖取消状态；普通 Loop+ 的调度与 roster 不受影响。产研部总监复用串行唤醒，活动组长冲突时延后重判。要停止单个组长任务，从总监成员面板打开对应的组长群聊并点击“中止”。
-- 准备启动、会话/来源锁、压缩和重试等待仍算活动；调用刚开始的 5 分钟内保留启动交接宽限，运行中的兄弟或手动续跑子任务也阻止误唤醒。主任务停止、暂停、完成、等待澄清或达到连续失败上限时不自动复活；关闭宿主后仍须按原流程显式恢复。
+- 准备启动、会话/来源锁、压缩和重试等待仍算活动；调用刚开始的 5 分钟内保留启动交接宽限，运行中的兄弟或手动续跑子任务会阻止五分钟失联回收，不阻止已就绪的验收。主任务停止、暂停、完成、等待澄清或达到连续失败上限时不自动复活；关闭宿主后仍须按原流程显式恢复。
 - 实现：`src/loopWaitWatchdog.ts`、`src/extension.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`。回归：巡检时钟、两种模式等待/失联/续跑/迟到回调，以及本机子进程异常退出隔离集成测试。
 
 ## Loop+ 遗留运行状态的显式继续
@@ -212,7 +213,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 ## Loop+ 协议矛盾自动纠错
 
 - 状态：`active`（2026-11-13，源码实现）。决策 JSON 无效、验收关联或事件批次矛盾、空队列返回 `wait` 时，立即把具体错误、旧回复和最新快照交回主模型重新生成完整 JSON，复用有效证据，继续派发或合法完成，无需用户反复点击继续。
-- 可解析但不合规的决策保留默认 2 次自动纠错上限；无 JSON、纯文本和损坏/不完整 JSON 不再因该上限暂停，连续失败超过 2 次后按 1 秒起步、最多 30 秒的指数退避持续重试，直到得到合法决策或达到全局决策安全上限。安全上限暂停时保存真实原因；显式停止中断退避。accept 中所有新任务（含补充需求）恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，未知、重复或遗漏归属均拒绝。事件相关任务可关联通过项而不改写真实结论；独立剩余交付无需挂到验收事件。主聊天、群聊和沟通文件一致展示暂停原因；恢复保留待验收结果和纠错原因。
+- 容许说明文字、代码块、注释与尾逗号；缺失或损坏 JSON、字段、验收关联和调度状态失败共用最多 3 次自动纠错。当前主任务按最新拒绝原因只修正决策，不重跑业务；耗尽或先触发全局决策安全上限时保留队列和真实原因，显式停止会终止当前纠错。accept 中所有新任务（含补充需求）恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，未知、重复或遗漏归属均拒绝。事件相关任务可关联通过项而不改写真实结论；独立剩余交付无需挂到验收事件。主聊天、群聊和沟通文件一致展示暂停原因；恢复保留待验收结果和纠错原因。
 - 实现：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/loopPlusPause.ts`；回归覆盖诊断、纠正后派发/完成、重试上限及跨宿主显式继续。未发布或更新已安装扩展。
 
 ## Loop+ 活跃会话与完成状态隔离
@@ -533,7 +534,7 @@ Loop+ 输入区工具栏最左侧有原生复选框「全栈」，默认勾选�
 
 Loop / Loop+ 群聊按钮栏新增「切模型」，「继续执行」弹窗移除原/新模型来源选择。新弹窗按任务角色绑定的 CLI 与其当前配置复用已有模型选项：经典 Loop 为主/子；Loop+ 全栈为主/子-全栈，分离为主/子-后端/子-前端。不改 CLI、子任务模式、思考力度和全局偏好。提交整体校验并保存任务路由，已在执行的调用不打断，下次主子调用及重试读取新模型；已停止的未完成主子执行自动续跑，运行中的同级任务不重复启动。刷新保留同配置内仍有效的选择和焦点，取消不写入，失败保留输入。实现见 `src/loopModelSwitch.ts`、`src/extensionHost/loopModelSwitchResume.ts`、`src/webview/loopModelSwitchDialog.ts`；回归见 `src/test/loop/loopModelSwitch.test.ts`、`src/test/extensionHost/loopModelSwitchResume.test.ts`、`src/test/loop/loopGroupChatCoordinator.test.ts`。
 
-Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六项默认验收和已选择的附加验收给出不超过 50 字的证据型原因，语言按任务、证据和上下文选择，不强制中文；缺失或超长原因不落地。Loop+ 群聊验收结果气泡用两列表格展示，第一列是审查内容，第二列是审查结果（✅ 表示通过、❌ 表示未通过，符号后直接附原因，不添加“原因：”前缀）。实现见 `src/loopPlusDecision.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`；回归见 `src/test/loop/loopPlusDecision.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
+Loop+ 主模型每次落地验收时，必须为每个完成事件、固定六项默认验收和已选择的附加验收给出完整证据型原因，不限制字数；附加验收结果以 `key` 对应所选项，不要求按选择顺序排列，忽略未选项。缺失必填依据或选项覆盖不全时不落地。Loop+ 群聊验收结果气泡用两列表格展示，第一列是审查内容，第二列是审查结果（✅ 表示通过、❌ 表示未通过，符号后直接附原因，不添加“原因：”前缀）。实现见 `src/loopPlusDecision.ts`、`src/loopPlusAcceptancePlan.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`；回归见 `src/test/loop/loopPlusDecision.test.ts`、`src/test/core/loopPlusAcceptancePlan.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
 
 配置中心显式应用或保存当前配置档案时，同一扩展进程内同一 CLI 的运行时写入按请求顺序串行执行，Codex 的 `config.toml` 与 `auth.json` 配对校验，不同 CLI 分组可独立应用。读回校验按 JSON / TOML 字段值比较，OpenCode 同时支持 JSONC；仅格式、对象键顺序、注释或换行不同不误报，数组顺序、字段值和缺失字段仍严格校验，Claude MCP 保持顶层浅合并语义。仅读回校验冲突会在同一队列操作内最多完整应用 3 次，重试前分别等待 25 / 50 毫秒；DSH 档案激活同样有界恢复。持续冲突仍由配置服务返回“未成功更新配置”，补充 CLI、文件名和排查建议，不展示配置值或凭证；权限、写入和档案格式错误直接失败。配置中心和显式切换不把失败标记为成功。实现见 `src/config/configService.ts`、`src/config/runtimeConfigVerification.ts`、`src/config/dshConfig.ts`；回归见 `src/test/config/configService.test.ts`、`src/test/config/runtimeConfigVerification.test.ts`、`src/test/config/dshConfig.test.ts`。
 
@@ -654,6 +655,8 @@ Loop+ 模型角色右侧的问号帮助在悬停或键盘聚焦时立即显示�
 AI 面板首次打开及配置保存后，并行读取 Codex、Claude、OpenCode、Grok、DSH、KimiCode、ZCode 的本机配置与独立激活身份，统一刷新配置派生模型和 OpenCode 本机子模型元数据。Loop、Loop+ 及共享子模型入口直接使用这份完整状态，无需先切到目标 CLI。包括 ZCode 在内的主 CLI 都可操作共用子模型分组控件；单个配置读取失败只影响对应分组。
 
 配置档案应用后会读回目标运行配置文件进行一致性校验；写入调用未实际覆盖目标文件时，应用请求失败并显示错误，不确认成功或更新激活状态。Claude MCP 保留已有顶层字段时按提交字段校验，DSH 激活同时校验应用档案文件。
+
+Codex、Claude、OpenCode、Grok、DSH、Kimi Code、ZCode 的运行配置由插件统一使用公共原子写入，不按操作系统分支；单个文件替换失败时保留原件。Claude/OpenCode 原有的有效文件符号链接仍写到链接指向的文件，并保留权限。此保证不等于多个文件一起回滚，也不约束 CLI 自身的文件操作。回归见 `src/test/config/configService.test.ts` 和 `src/test/shared/atomicWrite.test.ts`。
 
 配置页各 CLI 统一使用宿主确认的激活身份，不依赖编辑器对保存文本的重复猜测。保存激活档案会应用运行时并等待当前 AI 面板刷新；保存未激活档案只更新列表，不切换档案或主 CLI。Grok、KimiCode 使用原生 TOML 内容匹配，DSH 使用 JSON 结构匹配，ZCode 保持供应商保留式合并语义。没有保存档案时仍读取已有原生模型，但不创建档案、不批量激活、不启动所有 CLI、不发模型请求；跨 CLI 实际派发仍要求可用档案绑定。显式空身份不复用旧心跳模型，已有 Codex／Claude 显式模型选择不被配置加载覆盖。
 
@@ -821,7 +824,7 @@ Kimi Code ACP 收到 `session/prompt` provider 错误时保留服务端消息；
 | AI 对话 / 通用 | 可保存的输入框高度 | active | 终端用户 | `.ch/docs/exec-plans/completed/2026-11/2026-11-18-feature-chat-input-height.md`、`.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/promptInputHeight.ts`、`src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/webview/viewContentStyles/inputControls.ts` | `npm run build`；`node --test dist/test/core/toolSettings.test.js dist/test/session/sessionMessageHandlersCoreCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js` | 输入框上沿拖拽；默认和最小三行；窄视图限高不覆盖保存值；结束调整才持久化，取消恢复原高度且不丢草稿或选区。 |
 | AI 对话 / Loop+ | Loop+ 主模型验收清单 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopTaskStore.ts`、`src/webview/viewContentStrings.ts` | `npm run build`；`node --test dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/loop/loopTaskStore.test.js` | 主模型在 accept 或 completed 前逐事件审查实现完整性、契约一致性、测试结果、产物可运行性、改动合理性与遗漏/回归/边界，并完成已选附加审查。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或“已完成”不替代代码、差异或交付物审查。只补未覆盖、失败、后续改动失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不机械索要原始日志或直接重测。收尾/续跑复用未变化的已验收结果，仍核对最终需求覆盖与开放事件。失败事件仍须在 accept 标为 failed 并关联修复，无法修复则 blocked；六项固定清单、附加结果、批次确认及完成门禁不变。review 请求启动时冻结当前项与当时 FIFO 前缀的有序 eventId 和已见用户消息前缀；后到事件留在 FIFO 下一批，不 abort、不扩批、不重问。首个完成立即验收，其它子任务并行，无全局 barrier 或共享 round gate。blocked 只消费已见消息前缀，后到消息由后续有界决策捕获，无新消息时最终暂停；completed 提交本批后，仍按最新后到事件、用户消息、running、pending 和开放 attempt 限制父任务完成。冻结批次的失败重试、协议修复和同宿主暂停恢复保留未确认前缀，停止、generation 和验收方案 epoch 保护仍有效；验收额度按新确认 attempt 计数。 |
 | AI 对话 / Loop+ | 子任务手动中断后等待续跑通知 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/panelStateBuilder.ts`、`src/webview/loopGroupChatPanel.ts` | Loop+ orchestration、runtime integration、群聊面板回归；Chromium 生产群聊与适配器消息桥交互 | 手动中断保留开放 attempt、并发与写入占用，不生成验收事件、不计验收次数；父任务继续或宿主重建仍等待。子任务成功续跑通知仅生成一次验收事件，其他完成项可独立验收。群聊显示“已中断，等待续跑”，隐藏该项执行动画。真实失败、父任务停止及主模型 close/reprompt 沿用各自处理 |
-| AI 对话 / Loop+ | Loop+ 主任务中断子任务 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/panelStateBuilder.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopPlusPanelState.test.js` | 主任务用和派发相同的 JSON 中断子任务，没有单独按钮。`steer` 以及 `dispatch` / `accept` 上的 `controls` 可对 running 或 pending 子任务 `close` 或 `reprompt`。`close` 中止进程并关闭该次 attempt 的子任务对话 tab，不进验收队列，不计验收次数。`reprompt` 同样关闭被中止 attempt 的 tab，再用至少 80 字的新提示词和必填的非空新标题为同一子任务开新 attempt 和新 tab；新标题用简体中文反映纠正目标，同步更新调度快照、任务记录和群聊成员及启动通知，不再默认沿用旧标题。缺失或无效标题时整份决策拒绝，不停止旧执行；`close` 不要求标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 `steer`。`wait` / `blocked` / `completed` 带 `controls` 整份拒绝。群聊对最新 attempt 为 closed 的子任务显示已停止。 |
+| AI 对话 / Loop+ | Loop+ 主任务中断子任务 | active | 终端用户、Loop+ 主智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/design-docs/loop-plus-scheduling.md` | `src/loopPlusDecision.ts`、`src/loopPlusScheduler.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusRuntimeAdapter.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/panelStateBuilder.ts` | `npm run build`；`node --test dist/test/loop/loopPlusDecision.test.js dist/test/loop/loopPlusScheduler.test.js dist/test/extensionHost/loopPlusOrchestration.test.js dist/test/extensionHost/loopPlusPromptBuilders.test.js dist/test/extensionHost/loopPlusRuntimeIntegration.test.js dist/test/loop/loopPlusPanelState.test.js` | 主任务用和派发相同的 JSON 中断子任务，没有单独按钮。`steer` 以及 `dispatch` / `accept` 上的 `controls` 可对 running 或 pending 子任务 `close` 或 `reprompt`。`close` 中止进程并关闭该次 attempt 的子任务对话 tab，不进验收队列，不计验收次数。`reprompt` 同样关闭被中止 attempt 的 tab，再用非空的新提示词和必填的非空新标题为同一子任务开新 attempt 和新 tab；新标题用简体中文反映纠正目标，同步更新调度快照、任务记录和群聊成员及启动通知，不再默认沿用旧标题。缺失或无效标题时整份决策拒绝，不停止旧执行；`close` 不要求标题。用户停止、父任务停止、失败，以及还没有 tab 的排队子任务不关闭 tab。验收批次开着时不能单独 `steer`。`wait` / `blocked` / `completed` 带 `controls` 整份拒绝。群聊对最新 attempt 为 closed 的子任务显示已停止。 |
 | AI 对话 / Loop | 子任务手动恢复完成收尾一致性 | active | 终端用户 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md` | `src/loopSubtaskLifecycle.ts`、`src/extension.ts` | `npm run build`；`node --test dist/test/loop/loopSubtaskLifecycle.test.js dist/test/session/sessionMessageActions.test.js` | 子任务手动中断后在子任务 Tab 继续，若成功结束则与自动重试成功复用同一状态落盘和自动关标签流程；再次错误或停止时不自动关标签，主任务仅在可恢复且未触发连续失败上限时唤醒 |
 | AI 对话 / Loop | 子任务中断不终止主任务 | active | 终端用户、Loop 主智能体、Loop 子智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/extension.ts`、`src/extensionHost/loopOrchestration.ts`、`src/extensionHost/promptRunRuntime.ts`、`src/loopSubtaskLifecycle.ts`、`src/loopGroupChat.ts` | `npm run build`；`node --test dist/test/loop/loopSubtaskLifecycle.test.js dist/test/loop/loopGroupChat.test.js dist/test/extensionHost/extensionHostExtractionContracts.test.js dist/test/session/sessionMessageActionsCoreCoverage.test.js` | 单个子任务停止或重试耗尽失败只将该子任务保留为待续跑状态，父任务继续保持 `running`，且 `activeSubtaskIds` 保留该子任务；手动续跑成功后只有全部活动子任务均完成才唤醒主任务复核。串行批次中尚未派发的后续子任务会标为 `skipped` 并交由下一轮重新评估。用户从 Loop 群聊停止整个任务时，父子任务仍统一标为 `stopped` |
 | AI 对话 / Loop | 子任务批次错峰启动 | active | 终端用户、Loop 主智能体、Loop 子智能体 | `.ch/docs/product-specs/sinitek-cli-plugin-capabilities.md`、`.ch/docs/references/cli-runtime-reference.md` | `src/extensionHost/loopOrchestration.ts` | `npm run build`；`node --test dist/test/loop/loopSubtaskLifecycle.test.js` | 多个 Loop 子任务按原有冲突组规划执行，但同一批次的子任务按 3 秒间隔逐个启动；已经启动且互不冲突的子任务仍可并行运行，任务中断时尚未启动的子任务标记为 `skipped` |
@@ -1046,7 +1049,7 @@ round-378 整项交付未通过主审的历史保留：永久 reservation 阻断
 
 ## 2026-11-19 Loop+ 主任务按需续跑计划
 
-Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含短目标及可选的最多四条验收标准。首次领取新验收批次时，主任务先判断是否有不依赖待验收结果且能立即启动的独立交付；有则先 `dispatch` 并附带 `nextStepPlan`，下一次主任务调用沿用原冻结批次验收；没有则直接验收。验收修复和依赖后继不得提前派发。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
+Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含非空目标及可选的验收标准，不限制文本字数或条数。首次领取新验收批次时，主任务先判断是否有不依赖待验收结果且能立即启动的独立交付；有则先 `dispatch` 并附带 `nextStepPlan`，下一次主任务调用沿用原冻结批次验收；没有则直接验收。验收修复和依赖后继不得提前派发。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
 
 实现：`src/loopPlusNextStepPlan.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`。回归：`src/test/loop/loopPlusDecision.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/extensionHost/loopPlusDecisionStrategies.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
 
@@ -1054,7 +1057,7 @@ Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`�
 
 最终 `blocked` 增加可校验的 `blocker` 诊断：具体卡点与原因、未完成要求、证据、已尝试处理、按推荐顺序的责任方/操作/验证方式，以及明确恢复条件；确实无法完成时说明限制和替代方案。宿主统一生成中文摘要。缺软件等环境问题需给出具体依赖/版本/平台/运行位置、安装或配置命令或官方入口、验证命令与预期结果，不能只说“环境不支持”。优先安全自主修复或推进独立工作，需用户决策用澄清表单。
 
-Loop 的缺失诊断自动补充一次；Loop+ 复用一次剩余工作复核与最多两次协议纠错。补齐失败后说明诊断缺项并保留模型原说明，不编造原因，不标记完成、不清空未确认事件、不无限重试。既有主聊天、群聊和暂停记录复用该摘要，无新增安装或授权动作。实现：`src/loopBlocker.ts`、`src/loopBlockedSummary.ts` 及两种模式的决策解析/编排；回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`，已纳入跨平台检测入口。
+Loop 的缺失诊断自动补充一次；Loop+ 复用一次剩余工作复核与最多三次协议纠错。补齐失败后说明诊断缺项并保留模型原说明，不编造原因，不标记完成、不清空未确认事件、不无限重试。既有主聊天、群聊和暂停记录复用该摘要，无新增安装或授权动作。实现：`src/loopBlocker.ts`、`src/loopBlockedSummary.ts` 及两种模式的决策解析/编排；回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`，已纳入跨平台检测入口。
 
 业务 `blocked` 的主聊天气泡、群聊摘要和暂停记录统一使用“熔断”，说明“子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成”，并保留具体原因、证据、已尝试动作、推荐解决方案与恢复条件。主模型调用失败和调度协议错误仍说明各自真实原因，不能归因于子任务反复失败。此次称谓调整不新增重试阈值，不改变状态、验收门槛和恢复流程；历史模型原文保留。
 

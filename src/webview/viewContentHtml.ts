@@ -202,14 +202,9 @@ ${webviewStyles}    </style>
         <div id="emptyState" class="empty-state">${i18n.emptyState}</div>
         <div id="messages" class="messages"></div>
         <div id="promptSubmissionPreview" class="message user prompt-submission-preview" hidden>
-          <div id="promptSubmissionPreviewText" class="bubble"></div>
+          <div id="promptSubmissionPreviewBubble" class="bubble"><span id="promptSubmissionPreviewText"></span><span id="promptSubmissionWait" class="conversation-messages-loading-spinner prompt-submission-spinner" aria-hidden="true" hidden></span></div>
         </div>
-        <div id="promptSubmissionWait" class="message assistant prompt-submission-wait" hidden>
-          <div class="bubble" role="status" aria-live="polite" aria-atomic="true">
-            <span class="typing" aria-hidden="true"><span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span></span>
-            <span id="promptSubmissionWaitText"></span>
-          </div>
-        </div>
+        <span id="promptSubmissionWaitText" class="prompt-submission-status" role="status" aria-live="polite" aria-atomic="true"></span>
         <div id="scrollToBottomWrap" class="scroll-to-bottom-wrap" aria-hidden="true">
           <button id="scrollToBottomButton" class="scroll-to-bottom-button" aria-label="${i18n.scrollToBottomAria}" title="${i18n.scrollToBottomAria}" aria-hidden="true">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

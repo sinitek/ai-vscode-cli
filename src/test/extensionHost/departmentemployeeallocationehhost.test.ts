@@ -81,10 +81,11 @@ for (const limits of [{ maxLeaders: 4, maxEmployees: 20 }, { maxLeaders: 2, maxE
 });
 
 test("allocation EH wrapper observes the actual product panel instance without replacing message handlers", async () => {
-  const callbacks: ((message: unknown) => void)[] = [], recorded: { event: string; message?: unknown }[] = [];
+  const callbacks: ((message: unknown) => void)[] = [], recorded: { event: string; message?: unknown; rootTaskId?: string }[] = [];
   let disposed = 0, forwarded = 0;
   class Panel {
     panel = { webview: { onDidReceiveMessage(callback: (message: unknown) => void) { callbacks.push(callback); return { dispose() { disposed++; } }; } } };
+    state = { task: { id: "leader" }, department: { role: "leader", rootTaskId: "root" } };
     show() { /* The original product show installs its real webview. */ }
     post(message: unknown) { forwarded++; return message; }
   }
@@ -99,6 +100,12 @@ test("allocation EH wrapper observes the actual product panel instance without r
   const run = async () => {
     const panel = new Panel(); panel.show(); panel.show(); assert.equal(callbacks.length, 1);
     callbacks[0](request); assert.equal(panel.post(settled), settled);
+    const stop = { type: "loopGroupChatChat:stopTask" };
+    callbacks[0](stop);
+    panel.state.department.role = "director";
+    callbacks[0](stop);
+    panel.state.task.id = "root";
+    callbacks[0](stop);
     const provider = new Provider();
     const webview = { onDidReceiveMessage(callback: (message: unknown) => void) { callbacks.push(callback); return { dispose() { disposed++; } }; } };
     provider.resolveWebviewView({ webview }); provider.resolveWebviewView({ webview });
@@ -118,7 +125,8 @@ test("allocation EH wrapper observes the actual product panel instance without r
     process: { env: { HOME: "/isolated/home" } }, Date, WeakSet, Reflect,
   });
   await module.run();
-  assert.deepEqual(recorded.map(r => r.event), ["webview-request", "webview-settled", "settings-request", "settings-saved", "settings-state", "capacity-reader"]);
+  assert.deepEqual(recorded.map(r => r.event), ["webview-request", "webview-settled", "webview-stop", "settings-request", "settings-saved", "settings-state", "capacity-reader"]);
+  assert.equal(recorded[2].rootTaskId, "root");
   assert.deepEqual(recorded.slice(0, 2).map(r => r.message), [request, settled]); assert.equal(disposed, 2); assert.equal(forwarded, 5);
 });
 
