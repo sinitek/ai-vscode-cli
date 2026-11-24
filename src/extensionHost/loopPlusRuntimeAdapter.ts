@@ -728,8 +728,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           }
         } catch (error) { failCleanup(error); }
         if (cleanupFailed) {
-          result = { outcome: departmentLease ? "failed" : result.outcome,
-            detail: [result.detail, `执行清理未核验：${errorDetail(cleanupFailure)}`].filter(Boolean).join("\n") };
+          if (departmentLease) {
+            result = { outcome: "failed",
+              detail: [result.detail, `执行清理未核验：${errorDetail(cleanupFailure)}`].filter(Boolean).join("\n") };
+          }
           if (departmentLease) {
             cleanupFailures.set(request.taskId, cleanupFailure);
             try { lease?.cleanupFailed?.(cleanupFailure); } catch (error) { observeLateFailure("loop-attempt-cleanup-quarantine-failed", error); }
@@ -1029,6 +1031,16 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (ownerResources && departmentLease && invocationIssued && !ownerTermination) {
         const error = new Error("Owner 执行缺少完整清理观察"); failCleanup(error);
         return { outcome: "failed", detail: error.message };
+      }
+      const rootCleanupError = "cleanupError" in rootResult ? rootResult.cleanupError : undefined;
+      if (rootCleanupError !== undefined) {
+        failCleanup(rootCleanupError);
+        deps.log?.("loop-plus-execution-root-cleanup-failed", {
+          taskId: request.taskId,
+          subtaskId: request.subtaskId,
+          attemptId: request.attemptId,
+          error: errorDetail(rootCleanupError),
+        });
       }
       if (!rootResult.ok) {
         return { outcome: "failed", detail: [...new Set([executionFailure, rootResult.error].filter((error) => error !== undefined)

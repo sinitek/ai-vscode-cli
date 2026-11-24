@@ -27,6 +27,7 @@ installVscodeMock();
 const {
   createPromptInteractiveRuntimeHost,
 } = require("../../extensionHost/promptInteractiveRuntime") as typeof import("../../extensionHost/promptInteractiveRuntime");
+const { selectLoopPlusContinuationDetail } = require("../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../extensionHost/loopPlusRuntimeAdapter");
 
 type PromptInteractiveRuntimeDeps = Parameters<typeof createPromptInteractiveRuntimeHost>[0];
 const originalCodexEvidence = { identity: "original-native-identity", provider: "original-provider" };
@@ -337,6 +338,30 @@ function createTarget(overrides: Partial<PromptRunTarget> = {}): PromptRunTarget
     ...overrides,
   };
 }
+
+test("Loop+ completion text receives the current subtask reply before messages are flushed", async () => {
+  const reply = "[final_answer] 本轮子任务已执行完成";
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta(reply, { codexFinalAnswer: true });
+    },
+    runtimeDeps: {
+      buildTaskRunCompletionText: (status, _duration, record, messages) => {
+        assert.equal(status, "end");
+        assert.ok(record && messages);
+        assert.equal(harness.persistedMessages.some((item) => item.messages.some((message) => message.content === reply)), false);
+        assert.equal(selectLoopPlusContinuationDetail(messages, record, {
+          taskId: "parent", role: "subtask", round: 1, subtaskId: "child", attemptId: "child-1",
+        }), reply);
+        return "子任务执行结束，等待主任务验收。";
+      },
+    },
+  });
+  await harness.host.runPromptInteractive(createPromptInput({
+    taskRole: "subtask", loopTaskId: "parent", loopRound: 1, loopSubtaskId: "child", loopAttemptId: "child-1",
+  }), createTarget());
+  assert.ok(harness.persistedMessages.at(-1)?.messages.some((message) => message.content === "子任务执行结束，等待主任务验收。"));
+});
 
 test("a second tab stops and closes the previous same-session owner before continuing with a new cwd", async () => {
   const started = createDeferred();

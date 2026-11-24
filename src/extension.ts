@@ -7122,7 +7122,7 @@ function appendCompletionMessage(status: TaskRunStatus, options: { notifyComplet
   const message = {
     id: createMessageId(),
     role: "system" as const,
-    content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null, taskRecord ?? undefined),
+    content: buildTaskRunCompletionText(status, taskRecord?.durationMs ?? null, taskRecord ?? undefined, primaryPromptRunController.activeMessageTarget ?? undefined),
     createdAt: Date.now(),
   };
   primaryPromptRunController.activeCompletionSent = true;
@@ -7154,13 +7154,12 @@ function sendRunStatus(
   });
 }
 
-function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord): string {
+function buildTaskRunCompletionText(status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord, messages?: readonly ChatMessage[]): string {
   const task = record?.loopTaskId ? readLoopTaskRecord(record.loopTaskId) : undefined;
   const loopPlus = task?.schedulingMode === "event_driven";
-  const activeMessageTarget = primaryPromptRunController.activeMessageTarget;
   const isLoopPlusSubtaskEnd = loopPlus && record?.taskRole === "subtask" && record.status === "end";
   const hasFinalResponse = isLoopPlusSubtaskEnd
-    ? Boolean(activeMessageTarget && selectLoopPlusContinuationDetail(activeMessageTarget, record!, {
+    ? Boolean(messages && selectLoopPlusContinuationDetail(messages, record!, {
       taskId: record.loopTaskId!,
       round: record.loopRound ?? 1,
       role: "subtask",

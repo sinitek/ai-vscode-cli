@@ -2137,6 +2137,37 @@ test("adapter releases execution roots after success, failure, and creation fail
   }
 });
 
+test("ordinary Loop+ completion survives an execution-root cleanup failure", async () => {
+  let fixture!: ReturnType<typeof createLoopPlusRuntimeFixture>;
+  fixture = createLoopPlusRuntimeFixture({
+    executionRootFactory: () => ({
+      cwd: path.join(fixture.rootDir, "cleanup-failure"),
+      dispose: () => ({ ok: false, reason: "目录仍有内容" }),
+    }),
+  });
+  try {
+    fixture.setAttemptAction(async (input, tabId) => {
+      fixture.publish(input, tabId, { status: "end", content: "最终答复已完成" });
+    });
+    const result = await fixture.adapter.startAttempt({
+      taskId: "task-cleanup-failure",
+      subtaskId: "cleanup",
+      attemptId: "cleanup-1",
+      title: "cleanup",
+      prompt: longPrompt("cleanup", "src/cleanup.ts"),
+      modelPrompt: "model",
+      writeFiles: ["src/cleanup.ts"],
+      round: 1,
+      targetCli: "codex",
+    }).promise;
+    assert.equal(result.outcome, "completed");
+    assert.equal(result.detail, "最终答复已完成");
+    assert.equal(fixture.logs.some(({ event }) => event === "loop-plus-execution-root-cleanup-failed"), true);
+  } finally {
+    fixture.dispose();
+  }
+});
+
 test("closes a Loop+ subtask tab only after its completed result is reported", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {

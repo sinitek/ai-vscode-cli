@@ -343,13 +343,25 @@ test("disposes a Loop+ execution root after success or failure and reports creat
   assert.equal(disposed, 1);
 
   let failedDisposed = 0;
-  await assert.rejects(withLoopPlusExecutionRoot(
+  const failedRun = await withLoopPlusExecutionRoot(
     () => ({ dispose: () => { failedDisposed += 1; } }),
     async () => {
       throw new Error("prompt failed");
     },
-  ));
+  );
   assert.equal(failedDisposed, 1);
+  assert.equal(failedRun.ok, false);
+  if (!failedRun.ok) assert.equal((failedRun.error as Error).message, "prompt failed");
+
+  const cleanupFailed = await withLoopPlusExecutionRoot(
+    () => ({ dispose: () => ({ ok: false as const, reason: "目录仍有内容" }) }),
+    async () => "完成答复",
+  );
+  assert.equal(cleanupFailed.ok, true);
+  if (cleanupFailed.ok) {
+    assert.equal(cleanupFailed.value, "完成答复");
+    assert.match(String(cleanupFailed.cleanupError), /目录仍有内容/);
+  }
 
   let unexpectedDispose = 0;
   const failedCreate = await withLoopPlusExecutionRoot(

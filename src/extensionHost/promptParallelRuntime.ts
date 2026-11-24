@@ -86,7 +86,7 @@ type PromptParallelRuntimeRequiredHostDeps = {
   buildOpenCodeMissingFinalConclusionMessage: (output: OpenCodeRunOutput) => string;
   buildProcessLabel: typeof import("../cli/commandRunner").buildProcessLabel;
   buildSubagentProgressLabels: () => SubagentProgressLabels;
-  buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord) => string;
+  buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord, messages?: readonly ChatMessage[]) => string;
   buildThinkingPrompt: typeof import("../promptRuntime").buildThinkingPrompt;
   buildUserChatMessage: (input: PromptRunInput, createdAt: number, messageId: string) => ChatMessage;
   cancelHumanInteractionForTab: (tabId: string, statusText?: string) => void;
@@ -986,7 +986,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         const completionMessage: ChatMessage = {
           id: createMessageId(),
           role: "system",
-          content: buildTaskRunCompletionText("end", taskRecord.durationMs, taskRecord),
+          content: buildTaskRunCompletionText("end", taskRecord.durationMs, taskRecord, finalMessageTarget),
           createdAt: Date.now(),
         };
         appendMessageToStore(finalMessageTarget, completionMessage);
