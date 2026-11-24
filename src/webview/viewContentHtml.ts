@@ -682,7 +682,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
             </div>
             <div id="toolSettingsAiTaskPanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsAiTaskTab">
-              <section class="tool-settings-card tool-settings-row">
+              <section class="tool-settings-card tool-settings-row" data-mode-requirement="loop-or-loop-plus">
                 <label class="tool-settings-label" for="newTaskInteractiveMode">${i18n.toolSettingsNewTaskInteractiveModeLabel}</label>
                 <select id="newTaskInteractiveMode" class="thinking-select">
                   <option value="coding">${i18n.interactiveModeCoding}</option>
@@ -740,7 +740,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 </div>
                 <div id="chatMessageLimitNote" class="tool-settings-note">${i18n.toolSettingsChatMessageLimitNote}</div>
               </section>
-              <section class="tool-settings-card">
+              <section class="tool-settings-card" data-mode-requirement="loop-or-loop-plus">
                 <div class="tool-settings-row">
                   <label class="tool-settings-label" for="loopGroupChatMessageLimit">${i18n.toolSettingsLoopGroupChatMessageLimitLabel}</label>
                   <input
@@ -766,21 +766,21 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 </div>
                 <div id="hideInstructionBubblesNote" class="tool-settings-note">${i18n.toolSettingsHideInstructionBubblesNote}</div>
               </section>
-              <section class="tool-settings-card">
+              <section class="tool-settings-card" data-mode-requirement="department">
                 <div class="tool-settings-row">
                   <label class="tool-settings-label" for="departmentMaxLeaders">${i18n.departmentMaxLeadersLabel}</label>
                   <input type="number" id="departmentMaxLeaders" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_LEADERS_DEFAULT}" aria-describedby="departmentMaxLeadersNote" />
                 </div>
                 <div id="departmentMaxLeadersNote" class="tool-settings-note">${i18n.departmentMaxLeadersNote}</div>
               </section>
-              <section class="tool-settings-card">
+              <section class="tool-settings-card" data-mode-requirement="department">
                 <div class="tool-settings-row">
                   <label class="tool-settings-label" for="departmentMaxEmployees">${i18n.departmentMaxEmployeesLabel}</label>
                   <input type="number" id="departmentMaxEmployees" class="tool-settings-number" min="1" step="1" value="${DEPARTMENT_MAX_EMPLOYEES_DEFAULT}" aria-describedby="departmentMaxEmployeesNote" />
                 </div>
                 <div id="departmentMaxEmployeesNote" class="tool-settings-note">${i18n.departmentMaxEmployeesNote}</div>
               </section>
-              <section class="tool-settings-card">
+              <section class="tool-settings-card" data-mode-requirement="loop-or-loop-plus">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
                   <input
@@ -797,7 +797,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
               </section>
             </div>
             <div id="toolSettingsWorkspacePanel" class="tool-settings-panel" role="tabpanel" aria-labelledby="toolSettingsWorkspaceTab">
-              <section class="tool-settings-card">
+              <section class="tool-settings-card" data-mode-requirement="loop-or-loop-plus">
                 <div class="tool-settings-row">
                   <div class="tool-settings-label">${i18n.toolSettingsLoopPlusDecisionSubtaskMaxLabel}</div>
                   <input
@@ -813,7 +813,7 @@ ${CLI_LIST.map((cli) => `                <div class="tool-settings-row">
                 </div>
                 <div id="workspaceLoopPlusDecisionSubtaskMaxNote" class="tool-settings-note">${i18n.toolSettingsWorkspaceLoopPlusDecisionSubtaskMaxNote}</div>
               </section>
-              ${[["workspaceDepartmentMaxLeaders", i18n.departmentMaxLeadersLabel, DEPARTMENT_MAX_LEADERS_DEFAULT], ["workspaceDepartmentMaxEmployees", i18n.departmentMaxEmployeesLabel, DEPARTMENT_MAX_EMPLOYEES_DEFAULT]].map(([key, label, fallback]) => `<section class="tool-settings-card">
+              ${[["workspaceDepartmentMaxLeaders", i18n.departmentMaxLeadersLabel, DEPARTMENT_MAX_LEADERS_DEFAULT], ["workspaceDepartmentMaxEmployees", i18n.departmentMaxEmployeesLabel, DEPARTMENT_MAX_EMPLOYEES_DEFAULT]].map(([key, label, fallback]) => `<section class="tool-settings-card" data-mode-requirement="department">
                 <div class="tool-settings-row">
                   <label class="tool-settings-label" for="${key}">${label}</label>
                   <input type="number" id="${key}" class="tool-settings-number" min="1" step="1" placeholder="全局：${fallback}" disabled aria-describedby="${key}Note ${key}Status" />

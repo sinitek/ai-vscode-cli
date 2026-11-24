@@ -16,6 +16,18 @@ test("task mode controls retain labels and employee capacity settings explain th
     assert.match(html, new RegExp(`id="${id}"`));
     assert.ok(html.includes(label));
   }
+  const cardContaining = (id: string) => {
+    const inputIndex = html.indexOf(`id="${id}"`);
+    const cardStart = html.lastIndexOf("<section", inputIndex);
+    const cardEnd = html.indexOf("</section>", inputIndex) + "</section>".length;
+    return html.slice(cardStart, cardEnd);
+  };
+  for (const id of ["departmentMaxLeaders", "departmentMaxEmployees", "workspaceDepartmentMaxLeaders", "workspaceDepartmentMaxEmployees"]) {
+    assert.match(cardContaining(id), /data-mode-requirement="department"/);
+  }
+  for (const id of ["newTaskInteractiveMode", "loopGroupChatMessageLimit", "loopPlusDecisionSubtaskMax", "workspaceLoopPlusDecisionSubtaskMax"]) {
+    assert.match(cardContaining(id), /data-mode-requirement="loop-or-loop-plus"/);
+  }
   assert.doesNotMatch(html, /department-performance-warning|警告：本机必须具备/);
   for (const id of ["departmentMaxEmployeesNote", "workspaceDepartmentMaxEmployeesNote"]) {
     const note = html.match(new RegExp(`<div id="${id}"[^>]*>([^<]+)</div>`))?.[1];

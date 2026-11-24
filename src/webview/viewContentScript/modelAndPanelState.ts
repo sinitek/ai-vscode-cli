@@ -761,6 +761,7 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.newTaskInteractiveMode && document.activeElement !== elements.newTaskInteractiveMode) {
           elements.newTaskInteractiveMode.value = state.newTaskInteractiveMode;
         }
+        syncToolSettingsModeVisibility();
         if (elements.loopPlusDecisionSubtaskMax && document.activeElement !== elements.loopPlusDecisionSubtaskMax) {
           elements.loopPlusDecisionSubtaskMax.value = String(state.loopPlusDecisionSubtaskMax);
         }

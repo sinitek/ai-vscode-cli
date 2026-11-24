@@ -148,6 +148,9 @@ export const TOAST_MISC_STYLES = `      /* Toast */
         border-radius: 8px;
         background: var(--vscode-editor-background);
       }
+      .tool-settings-card[hidden] {
+        display: none;
+      }
       .tool-settings-row {
         display: flex;
         align-items: center;

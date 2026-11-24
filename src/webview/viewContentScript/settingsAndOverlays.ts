@@ -3,6 +3,30 @@ import { PROMPT_INPUT_MIN_HEIGHT } from "../../promptInputHeight";
 
 // Tool settings, modal tabs, rules, history, and prompt input handlers.
 export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOtherChoiceScript()}
+      function syncToolSettingsModeVisibility() {
+        const enabled = {
+          loop: elements.loopEnabled ? elements.loopEnabled.checked : state.loopEnabled !== false,
+          loopPlus: elements.loopPlusEnabled ? elements.loopPlusEnabled.checked : state.loopPlusEnabled !== false,
+          department: elements.departmentEnabled ? elements.departmentEnabled.checked : state.departmentEnabled === true,
+        };
+        document.querySelectorAll("[data-mode-requirement]").forEach((card) => {
+          const requirement = card.getAttribute("data-mode-requirement");
+          card.hidden = requirement === "department"
+            ? !enabled.department
+            : requirement === "loop-or-loop-plus" && !enabled.loop && !enabled.loopPlus;
+        });
+        if (elements.newTaskInteractiveMode) {
+          Array.from(elements.newTaskInteractiveMode.options).forEach((option) => {
+            if (option.value === "loop") option.hidden = !enabled.loop;
+            if (option.value === "loop_plus") option.hidden = !enabled.loopPlus;
+          });
+          if ((elements.newTaskInteractiveMode.value === "loop" && !enabled.loop)
+            || (elements.newTaskInteractiveMode.value === "loop_plus" && !enabled.loopPlus)) {
+            elements.newTaskInteractiveMode.value = "coding";
+          }
+        }
+      }
+
       function commitDepartmentCapacitySetting(input, key, state) {
         const fallback = key === "departmentMaxLeaders" ? \${DEPARTMENT_MAX_LEADERS_DEFAULT} : \${DEPARTMENT_MAX_EMPLOYEES_DEFAULT};
         const nextValue = normalizeDepartmentCapacity(input.value, fallback);
@@ -626,6 +650,7 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         if (!input) return;
         input.addEventListener("change", () => {
           input.disabled = true;
+          syncToolSettingsModeVisibility();
           vscode.postMessage({ type: "updateSetting", key, value: input.checked });
         });
       });

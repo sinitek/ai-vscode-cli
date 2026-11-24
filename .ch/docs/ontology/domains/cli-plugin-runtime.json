@@ -61,7 +61,7 @@
       "id": "plugin.task_mode_availability",
       "name": "任务模式可用性开关",
       "kind": "capability",
-      "description": "全局模式可用性设置以严格布尔值控制用户新建 Loop、Loop+、产研部任务；缺失或非法值回退开、开、关。常规设置卡片提供三项开关及产研部本机并行执行性能警告。宿主在面板新任务和定时任务入口校验并在配置异步屏障后复核；现有任务续接及可信组长 Loop+ 内部派发不由开关中断。round-332 定向测试覆盖持久化、关闭拒绝、异步开关变化与定时入口；隔离 Chromium 设置面板 smoke 通过，部门会话 smoke 因既有角色 Tab fixture 文案断言不匹配而未通过。未证明完整 VS Code 真实 CLI 派发链。",
+      "description": "全局模式可用性设置以严格布尔值控制用户新建 Loop、Loop+、产研部任务；缺失或非法值回退开、开、关。常规设置卡片提供三项开关；产研部容量配置仅在产研部开启时显示，Loop/Loop+ 共用配置在至少一个模式开启时显示。关闭模式只隐藏相关配置，不清除已保存值。宿主在面板新任务和定时任务入口校验并在配置异步屏障后复核；现有任务续接及可信组长 Loop+ 内部派发不由开关中断。round-332 定向测试覆盖持久化、关闭拒绝、异步开关变化与定时入口；隔离 Chromium 设置面板 smoke 通过，部门会话 smoke 因既有角色 Tab fixture 文案断言不匹配而未通过。未证明完整 VS Code 真实 CLI 派发链。",
       "status": "active",
       "implementation_paths": [
         "src/modeAvailability.ts",
@@ -69,7 +69,9 @@
         "src/sessionMessageActions.ts",
         "src/extension.ts",
         "src/settingMessageHandlers/preferences.ts",
-        "src/webview/viewContentHtml.ts"
+        "src/webview/viewContentHtml.ts",
+        "src/webview/viewContentScript/settingsAndOverlays.ts",
+        "src/webview/viewContentScript/modelAndPanelState.ts"
       ],
       "source_refs": [
         {
@@ -83,6 +85,9 @@
         },
         {
           "path": "src/test/webview/modeavailability.test.ts"
+        },
+        {
+          "path": "scripts/department_workspace_capacity_settings_smoke.cjs"
         }
       ]
     },
