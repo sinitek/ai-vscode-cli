@@ -2049,7 +2049,7 @@
     {
       "id": "plugin.rule.history_session_subtask_filter",
       "name": "历史会话默认过滤子任务",
-      "description": "历史记录的历史会话页提供默认勾选的过滤子任务复选框，仅隐藏 taskRole=subtask 的会话；取消勾选恢复展示，可与关键词搜索叠加。Loop+ 内部 reviewer 协议不作为会话标题，旧记录先从同 CLI 对应消息补齐缺失的 firstPrompt，再优先从任务 rootPrompt 或绑定子任务提示词恢复展示标签；内部协议提示不写入首提示缓存。子任务会话按 executionSession 绑定识别，即使对应调用 taskRole=main 也标记为 subtask；普通最新用户提示仍取消 Loop 角色标记。原位追加消息会通过消息数量变化使角色缓存失效，CLI 和主/子任务绑定也参与缓存判定。保留主任务、普通及未标记旧会话，不修改原始消息数据。当前 Webview 内切换页签和重开弹窗保持过滤状态，重新初始化默认勾选。",
+      "description": "历史记录的历史会话页提供默认勾选的过滤子任务复选框，仅隐藏 taskRole=subtask 的会话；取消勾选恢复展示，可与关键词搜索叠加。Loop+ 内部 reviewer 协议不作为会话标题；旧记录先从同 CLI 对应的任务 rootPrompt 或绑定子任务提示词恢复，否则从同会话消息跳过协议提示、loopAsk 和空白用户消息后恢复首条有效用户提示，持久化补齐 firstPrompt，并修复空、未命名或精确协议标签但保留自定义标题。无可用来源时保持未命名且不暴露协议文本；原始消息不变，协议提示不写入首提示或角色缓存。子任务会话按 executionSession 绑定识别，即使对应调用 taskRole=main 也标记为 subtask；普通最新用户提示仍取消 Loop 角色标记。原位追加消息会通过消息数量变化使角色缓存失效，CLI 和主/子任务绑定也参与缓存判定。保留主任务、普通及未标记旧会话，不修改原始消息数据。当前 Webview 内切换页签和重开弹窗保持过滤状态，重新初始化默认勾选。",
       "status": "active",
       "applies_to": [
         "plugin.chat_panel",

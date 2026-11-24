@@ -1,7 +1,7 @@
 import type { CliName } from "../cli/types";
 import { CLI_LIST, type InteractiveMode } from "../cli/types";
 import type { ChatMessage, ConversationTabSummary, SessionSummary } from "../webview/types";
-import { resolveHistorySessionTaskRole } from "../historySessionTaskRole";
+import { isLoopAskChatMessage, resolveHistorySessionTaskRole } from "../historySessionTaskRole";
 import { isHiddenLoopPlusProtocolPrompt } from "../loopPlusProtocolPrompt";
 import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
@@ -92,15 +92,13 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
     const records = sessionStore[item]?.sessions ?? [];
     records.forEach((record) => {
       let firstPrompt = record.firstPrompt;
-      if (!firstPrompt) {
-        const resolved = resolveSessionFirstPrompt(item, record.id);
-        if (resolved) {
-          firstPrompt = resolved;
-          if (!isHiddenLoopPlusProtocolPrompt(resolved)) {
-            record.firstPrompt = resolved;
-            shouldPersist = true;
-          }
-        }
+      const cachedPromptIsHidden = isHiddenLoopPlusProtocolPrompt(firstPrompt);
+      const cachedPromptIsMissing = !String(firstPrompt ?? "").trim();
+      let messages: ChatMessage[] | null = null;
+      if (cachedPromptIsMissing || cachedPromptIsHidden) {
+        messages = loadSessionMessages(item, record.id);
+        firstPrompt = resolveSessionFirstPromptFromMessages(messages)
+          ?? (cachedPromptIsHidden || cachedPromptIsMissing ? undefined : firstPrompt);
       }
       const loopMainTask = loopTasks.find((task) => task.cli === item && task.sessionId === record.id);
       const loopSubtaskOwner = loopTasks.find((task) => task.subTasks.some((subtask) => (
@@ -109,15 +107,25 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
       const loopSubtask = loopSubtaskOwner?.subTasks.find((subtask) => (
         subtask.executionSession?.cli === item && subtask.executionSession.sessionId === record.id
       ));
-      const hasHiddenProtocolPrompt = isHiddenLoopPlusProtocolPrompt(firstPrompt);
+      const hasHiddenProtocolPrompt = cachedPromptIsHidden || Boolean(messages?.some((message) => (
+        message.role === "user" && isHiddenLoopPlusProtocolPrompt(message.content)
+      )));
       if (hasHiddenProtocolPrompt || (!firstPrompt && (loopMainTask || loopSubtask))) {
-        firstPrompt = loopSubtask?.prompt ?? loopMainTask?.rootPrompt ?? firstPrompt;
+        const boundPrompt = [loopSubtask?.prompt, loopMainTask?.rootPrompt].find((prompt) => {
+          const normalized = String(prompt ?? "").trim();
+          return normalized && !isHiddenLoopPlusProtocolPrompt(normalized);
+        });
+        firstPrompt = boundPrompt?.trim() || firstPrompt;
       }
-      if (hasHiddenProtocolPrompt && isHiddenLoopPlusProtocolPrompt(firstPrompt)) {
-        firstPrompt = undefined;
+      if (firstPrompt && record.firstPrompt !== firstPrompt) {
+        record.firstPrompt = firstPrompt;
+        shouldPersist = true;
+      } else if (!firstPrompt && (cachedPromptIsHidden || (cachedPromptIsMissing && record.firstPrompt))) {
+        record.firstPrompt = undefined;
+        shouldPersist = true;
       }
       const fallbackLabel = buildSessionLabelFromPrompt(firstPrompt);
-      if (fallbackLabel && shouldUseFallbackSessionLabel(record.label)) {
+      if (fallbackLabel && (shouldUseFallbackSessionLabel(record.label) || isHiddenLoopPlusProtocolPrompt(record.label))) {
         record.label = fallbackLabel;
         shouldPersist = true;
       }
@@ -156,8 +164,17 @@ function buildSessionState(cli: CliName): { currentSessionId: string | null; ses
 
 function resolveSessionFirstPrompt(cli: CliName, sessionId: string): string | null {
   const messages = loadSessionMessages(cli, sessionId);
-  const first = messages.find((message) => message.role === "user" && message.content.trim());
-  return first ? first.content : null;
+  return resolveSessionFirstPromptFromMessages(messages);
+}
+
+function resolveSessionFirstPromptFromMessages(messages: readonly ChatMessage[]): string | null {
+  const first = messages.find((message) => (
+    message.role === "user"
+    && !isLoopAskChatMessage(message)
+    && message.content.trim()
+    && !isHiddenLoopPlusProtocolPrompt(message.content)
+  ));
+  return first?.content.trim() || null;
 }
 
 function ensureLatestSessionForCli(cli: CliName): void {
