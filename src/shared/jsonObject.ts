@@ -74,7 +74,7 @@ function stripJsonComments(content: string): string {
   return result;
 }
 
-function stripTrailingCommas(content: string): string {
+function stripTrailingCommas(content: string, requireValueBeforeTrailingComma: boolean): string {
   let result = "";
   let inString = false;
   let escaped = false;
@@ -105,7 +105,17 @@ function stripTrailingCommas(content: string): string {
         nextIndex += 1;
       }
       if (content[nextIndex] === "}" || content[nextIndex] === "]") {
-        continue;
+        if (!requireValueBeforeTrailingComma) {
+          continue;
+        }
+        let previousIndex = index - 1;
+        while (previousIndex >= 0 && /\s/.test(content[previousIndex])) {
+          previousIndex -= 1;
+        }
+        const previous = content[previousIndex];
+        if (previous !== "[" && previous !== "{" && previous !== ",") {
+          continue;
+        }
       }
     }
 
@@ -115,10 +125,14 @@ function stripTrailingCommas(content: string): string {
   return result;
 }
 
-export function normalizeJsonObjectText(content: string, mode: JsonObjectParseMode): string {
+export function normalizeJsonObjectText(
+  content: string,
+  mode: JsonObjectParseMode,
+  options?: { requireValueBeforeTrailingComma?: boolean },
+): string {
   const normalized = content.replace(/^\uFEFF/, "").trim();
   return mode === "jsonc"
-    ? stripTrailingCommas(stripJsonComments(normalized))
+    ? stripTrailingCommas(stripJsonComments(normalized), options?.requireValueBeforeTrailingComma === true)
     : normalized;
 }
 

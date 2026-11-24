@@ -3,7 +3,7 @@ import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
-import { createScanner, stripComments, SyntaxKind } from "jsonc-parser";
+import { normalizeJsonObjectText } from "./shared/jsonObject";
 import { extractJsonObjectTexts } from "./shared/jsonObjectText";
 import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
@@ -201,23 +201,7 @@ function parseLoopPlusJsonObject(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    const withoutComments = stripComments(text, " ");
-    const scanner = createScanner(withoutComments, true);
-    const parts: string[] = [];
-    let start = 0;
-    let previous = SyntaxKind.Unknown;
-    let trailingComma = -1;
-    for (let token = scanner.scan(); token !== SyntaxKind.EOF; token = scanner.scan()) {
-      if (trailingComma >= 0 && (token === SyntaxKind.CloseBraceToken || token === SyntaxKind.CloseBracketToken)) {
-        parts.push(withoutComments.slice(start, trailingComma));
-        start = trailingComma + 1;
-      }
-      trailingComma = token === SyntaxKind.CommaToken && previous !== SyntaxKind.OpenBracketToken
-        && previous !== SyntaxKind.OpenBraceToken && previous !== SyntaxKind.CommaToken ? scanner.getTokenOffset() : -1;
-      previous = token;
-    }
-    parts.push(withoutComments.slice(start));
-    return JSON.parse(parts.join(""));
+    return JSON.parse(normalizeJsonObjectText(text, "jsonc", { requireValueBeforeTrailingComma: true }));
   }
 }
 

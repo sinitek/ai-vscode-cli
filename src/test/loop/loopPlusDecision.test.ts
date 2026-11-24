@@ -576,6 +576,41 @@ test("accepts comments and trailing commas around decisions without altering str
   assert.equal(parseLoopPlusDecision('{"__proto__":{"status":"wait"}, /* 不继承字段 */ }'), null);
 });
 
+test("JSONC fallback keeps malformed separators and split tokens as format errors", () => {
+  for (const content of [
+    '{"status":"wait","extra":{/* 无成员 */,}}',
+    '{"status":"wait","extra":[/* 无元素 */, /* 尾注释 */]}',
+    '{"status":"wait","extra":[1, /* 无下一项 */ ,]}',
+    '{"status":"wait","extra":tr/* 不拼接 */ue}',
+  ]) {
+    assert.deepEqual(parseLoopPlusDecisionWithFeedback(content), {
+      decision: null,
+      rejectionKind: "format",
+      rejectionReason: "回复中的 JSON 对象存在语法错误。请检查双引号、冒号和括号是否成对，并返回完整对象。",
+    }, content);
+  }
+  assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"wait", /* 未闭合 }'), {
+    decision: null,
+    rejectionKind: "format",
+    rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
+  });
+});
+
+test("scans BOM-prefixed JSONC candidates without promoting a nested decision", () => {
+  const reportId = 'https://host/a/* 保留 */\\"quoted,]"';
+  const content = [
+    '\uFEFF{"status":"wait","extra":{,}}',
+    '{"status":"unknown", /* 无效状态 */ }',
+    '{"example":{"status":"wait",},}',
+    `{"status":"wait", // 选中首个合法对象\r\n"reportEventIds":[${JSON.stringify(reportId)}, /* } */],}`,
+    '{"status":"wait","reportEventIds":["later"]}',
+  ].join("\n");
+  assert.deepEqual(parseLoopPlusDecisionWithFeedback(content), {
+    decision: { status: "wait", reportEventIds: [reportId] },
+    rejectionReason: null,
+  });
+});
+
 test("strict acceptance feedback mode parses short reasons and rejects missing reasons", () => {
   const accepted = parseLoopPlusDecision(JSON.stringify({
     status: "accept",

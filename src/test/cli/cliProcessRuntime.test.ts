@@ -21,7 +21,12 @@ test("loads and runs the process core in plain Node without a VS Code mock", asy
     CORE_BASE_ONLY: "base-value",
     PWD: "/base/pwd-must-not-win",
   };
-  const envOverrides = { CORE_TEST_VALUE: "from-task-overrides", CORE_TASK_ONLY: "task-value" };
+  const envOverrides = {
+    CORE_TEST_VALUE: "from-task-overrides",
+    CORE_TASK_ONLY: "task-value",
+    CORE_OVERLAY_MARKER: "task-overlay-marker-must-not-win",
+    PWD: "/task/pwd-must-not-win",
+  };
   const baseSnapshot = { ...baseEnvironment };
   const overrideSnapshot = { ...envOverrides };
   try {
@@ -37,7 +42,7 @@ test("loads and runs the process core in plain Node without a VS Code mock", asy
       envOverrides,
       processLabel: "sinitek-core-test",
       overlay: {
-        envOverrides: { CORE_OVERLAY_MARKER: "overlay" },
+        envOverrides: { CORE_OVERLAY_MARKER: "overlay", PWD: "/overlay/pwd-must-not-win" },
         cleanup: () => {
           cleanupCalls += 1;
           return { status: "confirmed", evidence: "owned-overlay-directory-absent" };
@@ -246,13 +251,21 @@ test("unavailable executables fail without claiming a started process", async ()
   Object.defineProperty(process, "platform", { ...platformDescriptor, value: "linux" });
   const errors: Error[] = [];
   const exits: Array<number | null> = [];
+  const calls: string[] = [];
   try {
     const handle = runCliProcess({
       command: "/sinitek-cli-process-runtime-test/missing-command",
       args: [],
+      overlay: {
+        envOverrides: {},
+        cleanup: () => {
+          calls.push("cleanup");
+          return { status: "confirmed", evidence: "owned-overlay-directory-absent" };
+        },
+      },
     }, {
-      onError: (error) => errors.push(error),
-      onExit: (code) => exits.push(code),
+      onError: (error) => { calls.push("error"); errors.push(error); },
+      onExit: (code) => { calls.push("exit"); exits.push(code); },
     });
     assert.equal(handle.pid, undefined);
     assert.equal(handle.resolvedCommand, undefined);
@@ -264,6 +277,7 @@ test("unavailable executables fail without claiming a started process", async ()
       command: "/sinitek-cli-process-runtime-test/missing-command",
       args: [],
     }), { code: "ENOENT" });
+    assert.deepEqual(calls, ["cleanup", "error", "exit"]);
   } finally {
     Object.defineProperty(process, "platform", platformDescriptor!);
   }

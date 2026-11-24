@@ -1,4 +1,3 @@
-import type { SpawnOptions } from "child_process";
 import { spawn } from "cross-spawn";
 import { resolveCliCommand } from "./commandResolution";
 import { isLoginShellCommand, resolveChildArgv0, stripNvmIncompatibleEnv } from "./processArgv";
@@ -91,12 +90,23 @@ function buildSpawnEnvironment(
   return env;
 }
 
-function finalizeSpawnOptions(command: string, options: SpawnOptions, processLabel?: string): SpawnOptions {
-  return {
-    ...options,
-    env: options.env && isLoginShellCommand(command) ? stripNvmIncompatibleEnv(options.env) : options.env,
-    argv0: resolveChildArgv0(command, processLabel),
-  };
+function spawnResolvedCliProcess(
+  { commandToSpawn, argsToSpawn }: ResolvedSpawnCommand,
+  input: Pick<CliProcessRuntimeLaunch, "cwd" | "baseEnvironment" | "envOverrides">,
+  stdin: "pipe" | "ignore",
+  overlayEnvOverrides?: Record<string, string>,
+  processLabel?: string,
+): ReturnType<typeof spawn> {
+  const cwd = input.cwd;
+  const env = buildSpawnEnvironment(cwd, input.baseEnvironment, input.envOverrides, overlayEnvOverrides);
+  return spawn(commandToSpawn, argsToSpawn, {
+    cwd,
+    env: isLoginShellCommand(commandToSpawn) ? stripNvmIncompatibleEnv(env) : env,
+    detached: process.platform !== "win32",
+    windowsHide: true,
+    stdio: [stdin, "pipe", "pipe"],
+    argv0: resolveChildArgv0(commandToSpawn, processLabel),
+  });
 }
 
 function reportMissingCommand(command: string, handlers: CliProcessRuntimeHandlers): void {
@@ -139,17 +149,13 @@ export function runCliProcess(
     return { pid: undefined, resolvedCommand: undefined, kill: () => false };
   }
 
-  const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, finalizeSpawnOptions(
-    spawnCommand.commandToSpawn,
-    {
-      cwd: input.cwd,
-      env: buildSpawnEnvironment(input.cwd, input.baseEnvironment, input.envOverrides, input.overlay?.envOverrides),
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: stdio === "ignore" ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
-    },
+  const child = spawnResolvedCliProcess(
+    spawnCommand,
+    input,
+    stdio === "ignore" ? "ignore" : "pipe",
+    input.overlay?.envOverrides,
     input.processLabel,
-  ));
+  );
 
   const termination = createProcessTerminationController(child);
   let temp: CleanupResult = input.overlay
@@ -190,16 +196,7 @@ export function captureCliProcessOutput(
       reject(error);
       return;
     }
-    const child = spawn(spawnCommand.commandToSpawn, spawnCommand.argsToSpawn, finalizeSpawnOptions(
-      spawnCommand.commandToSpawn,
-      {
-        cwd: input.cwd,
-        env: buildSpawnEnvironment(input.cwd, input.baseEnvironment, input.envOverrides),
-        detached: process.platform !== "win32",
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      },
-    ));
+    const child = spawnResolvedCliProcess(spawnCommand, input, "ignore");
     const termination = createProcessTerminationController(child);
     let stdout = "";
     let stderr = "";
