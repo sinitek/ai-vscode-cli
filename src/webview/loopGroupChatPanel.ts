@@ -1876,22 +1876,29 @@ function renderTaskPanel(
   state: LoopGroupChatPanelState,
   strings: LoopGroupChatPanelStrings,
 ): string {
+  return `${state.department?.role === "director" ? renderDirectorTaskPanel(state, strings) : ""}
+  ${state.department?.role === "leader" ? `<section class="panel"><h2>继承产研部统一验收方案</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
+  ${renderLoopPlusPanels(state, strings)}`.trim();
+}
+
+function renderDirectorTaskPanel(
+  state: LoopGroupChatPanelState,
+  strings: LoopGroupChatPanelStrings,
+): string {
   const currentRound = state.loopPlus
     ? ""
     : renderMetaRow(strings.currentRound, String(state.task.currentRound));
   const status = state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED
-    : state.department?.role === "director" && state.task.status === "stopped" ? "已中止" : state.task.status;
+    : state.task.status === "stopped" ? "已中止" : state.task.status;
   return `<section class="panel">
-    <h2>${escapeHtml(strings.task)}</h2>
+    <h2>${escapeHtml(strings.taskStatusTitle)}</h2>
     <div class="meta-grid">
       ${renderMetaRow(strings.status, status)}
       ${renderMetaRow(strings.cli, state.task.cli)}
       ${currentRound}
       ${renderMetaRow(strings.updatedAt, formatTimestamp(state.task.updatedAt))}
     </div>
-  </section>
-  ${state.department?.role === "leader" ? `<section class="panel"><h2>继承产研部统一验收方案</h2><div class="member-name" title="${escapeAttribute(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}">${escapeHtml(state.acceptancePlan?.name ?? "尚未同步统一验收方案")}</div></section>` : ""}
-  ${renderLoopPlusPanels(state, strings)}`;
+  </section>`;
 }
 
 function renderLoopPlusPanels(
@@ -1902,15 +1909,17 @@ function renderLoopPlusPanels(
   if (!projection) {
     return "";
   }
+  const interruption = state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED : "";
   if (!projection.ok) {
     return `<section class="panel" data-loop-plus-mode="event_driven" data-loop-plus-status="invalid" data-loop-plus-phase="invalid">
-      <h2>${escapeHtml(strings.titleLoopPlus)}</h2>
+      <h2>${escapeHtml(strings.taskStatusTitle)}</h2>
+      ${interruption ? `<div class="notice">${escapeHtml(interruption)}</div>` : ""}
       <div class="notice" data-loop-plus-error="${escapeAttribute(projection.error)}">${escapeHtml(formatTemplate(strings.loopPlusInvalid, { reason: projection.error }))}</div>
     </section>`;
   }
-  const activity = loopPlusActivityText(state, projection, strings);
+  const activity = interruption || loopPlusActivityText(state, projection, strings);
   return `<section class="panel" data-loop-plus-mode="event_driven" data-loop-plus-status="${escapeAttribute(projection.activity)}" data-loop-plus-phase="${escapeAttribute(projection.phase)}">
-    <h2>${escapeHtml(strings.titleLoopPlus)}</h2>
+    <h2>${escapeHtml(strings.taskStatusTitle)}</h2>
     <div class="meta-row loop-plus-activity" data-loop-plus-field="activity"><div class="meta-label">${escapeHtml(strings.status)}</div><div class="meta-value">${escapeHtml(activity)}</div></div>
     ${renderLoopPlusStatusSummary(summarizeLoopPlusMembers(state.rounds.flatMap((round) => round.participants)), strings)}
   </section>`;

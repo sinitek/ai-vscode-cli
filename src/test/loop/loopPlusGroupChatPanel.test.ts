@@ -194,6 +194,12 @@ test("renders the Loop+ queue and parallel execution", () => {
   {
     const page = html(state);
     assert.match(page, /<h1 id="panelHeading">Loop\+ 群聊<\/h1>/u);
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+    assert.equal(patch.headingText, "Loop+ 群聊");
+    assert.match(loopPlusPanel(page), /<h2>任务状态<\/h2>/u);
+    assert.match(patch.taskPanelHtml, /<h2>任务状态<\/h2>/u);
+    assert.doesNotMatch(page, /<h2>任务<\/h2>/u);
+    assert.doesNotMatch(patch.taskPanelHtml, /<h2>任务<\/h2>/u);
     assert.match(page, /最后启动/u);
     assert.match(page, /子任务 1：Alpha/u);
     assert.doesNotMatch(page, /会话：|Session：|无会话|No session/u);
@@ -355,6 +361,8 @@ test("renders waiting, a non-empty queue with zero running work, and a damaged s
 
   const missing = html(build(undefined));
   assert.match(missing, /data-loop-plus-status="invalid"/u);
+  assert.match(loopPlusPanel(missing), /<h2>任务状态<\/h2>/u);
+  assert.doesNotMatch(missing, /<h2>任务<\/h2>/u);
   assert.match(missing, /快照缺失或损坏（missing）/u);
   assert.match(missing, /不能把该任务显示成空队列或已完成/u);
   assert.doesNotMatch(missing, /data-loop-plus-count=/u);

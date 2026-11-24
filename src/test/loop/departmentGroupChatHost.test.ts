@@ -1165,7 +1165,9 @@ test("cold department panels show no stale director, leader or employee work and
     const interruptedLeader = buildLoopGroupChatPanelState(h.leader, h.deps);
     assert.equal(interruptedLeader.task.canContinue, false);
     assert.equal(interruptedLeader.department?.leaders[0].participant.status, "runtime_interrupted");
-    assert.match(buildLoopGroupChatPanelContentPatch(interruptedLeader, 1).taskPanelHtml, /本宿主执行已中断/u);
+    const interruptedPanel = buildLoopGroupChatPanelContentPatch(interruptedLeader, 1).taskPanelHtml;
+    assert.match(interruptedPanel, /<h2>任务状态<\/h2>[\s\S]*本宿主执行已中断/u);
+    assert.doesNotMatch(interruptedPanel, /<h2>任务<\/h2>/u);
 
     runningIds.add(h.leader.id);
     assert.equal(buildLoopGroupChatPanelState(h.leader, h.deps).task.status, "running");
@@ -1295,6 +1297,8 @@ for (const reject of [false, true]) {
         const patch = buildLoopGroupChatPanelContentPatch(refused, 2);
         assert.doesNotMatch(patch.actionsHtml, /核验停止|data-action="stopTask"/);
         assert.match(patch.actionsHtml, /data-action="continueTask"[^>]*disabled/);
+        assert.match(patch.taskPanelHtml, /<h2>任务状态<\/h2>/u);
+        assert.doesNotMatch(patch.taskPanelHtml, /<h2>任务<\/h2>/u);
         assert.match(patch.taskPanelHtml, /已中止/);
         assert.ok(h.warnings.includes("停止核验拒绝：保留原占用"));
         h.receive({ type: "loopGroupChatChat:continueTask" }); await tick();

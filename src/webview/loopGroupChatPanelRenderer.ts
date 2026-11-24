@@ -90,6 +90,7 @@ const STRINGS = {
     thinkingTag: "思考中",
     scrollToBottomAria: "跳转到最新消息",
     titleLoopPlus: "Loop+ 群聊",
+    taskStatusTitle: "任务状态",
     subtitleLoopPlus: "事件驱动逐项验收",
     loopPlusMode: "模式",
     loopPlusModeValue: "Loop+",

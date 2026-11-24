@@ -1005,12 +1005,15 @@ test("summarizes classic Loop subtasks by latest roster state in the bottom bar"
     { id: "pending", role: "subtask", title: "待启动任务", status: "pending" },
     { id: "blocked", role: "subtask", title: "阻塞任务", status: "blocked" },
   );
-  const initial = buildLoopGroupChatPanelContentPatch(state, 1).statusBarHtml;
+  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+  assert.equal(patch.taskPanelHtml, "");
+  const initial = patch.statusBarHtml;
   assert.match(initial, /运行中<\/span> <strong>1<\/strong>/u);
   assert.match(initial, /待启动<\/span> <strong>1<\/strong>/u);
   assert.match(initial, /已完成<\/span> <strong>0<\/strong>/u);
   assert.doesNotMatch(initial, /验收/u);
   const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.doesNotMatch(html, /<h2>任务<\/h2>/u);
   assert.ok(html.includes(`<footer id="statusBarSlot" class="chat-status-bar" role="group" aria-label="子任务状态汇总">${initial}</footer>`));
 
   state.rounds.push({
