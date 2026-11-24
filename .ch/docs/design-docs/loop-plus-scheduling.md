@@ -280,7 +280,7 @@ scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles`
 
 `accept.subtasks` 中每个任务 ID 必须恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，补充需求产生的后续任务也适用。事件相关任务可关联 `passed` 项并保留真实结论；独立任务使用显式独立归属。派发及控制拒绝给出具体原因，控制目标已结束时指出子任务 ID。部分接受保留已提交验收、消息确认及已接受任务，续跑只处理剩余工作；后到事件留待后续新批次。
 
-完整接受的决策清除协议失败状态；部分成功不重置续跑资格。续跑仍被拒绝时进入 `needs-review`，`finalSummary`、主聊天、群聊和沟通文件保留最新真实原因及待验收结果。显式停止会中断当前调用；用户手动继续（包括宿主重建后附带补充需求）可恢复暂停摘要中的原因并按当前快照重新判断。现有全局决策安全上限以及验收、完成和权限门禁继续适用。
+完整接受的决策清除协议失败状态；部分成功不重置续跑资格。续跑仍被拒绝时进入 `needs-review`，`finalSummary`、主聊天、群聊和沟通文件保留最新真实原因及待验收结果。显式停止会中断当前调用；用户手动继续（包括宿主重建后附带补充需求）可恢复暂停摘要中的原因并按当前快照重新判断。验收、完成和权限门禁继续适用。
 
 实现与回归：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
 
@@ -290,7 +290,9 @@ scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles`
 
 主模型返回 `blocked` 不等于所有剩余要求均无法推进。每个无进展阶段首次出现全局阻塞时，宿主先将任务的 `loopPlusBlockReview` 保存为 `pending`，不确认原验收事件，再发起一轮带 `Bounded blocked review` 标记的复核。提示要求逐项核对根需求、补充需求与未完成事项，分辨外部依赖和仍可独立实施的工作；不能以删除门禁、重复失败诊断或编造成功替代推进。
 
-有效复核决策将状态变为 `reviewed`，发现独立工作则沿用原 `dispatch` / `accept` 流程；再次确认 `blocked` 才暂停。待复核与已复核状态均持久化并跨宿主重建保留，新用户输入、成功派发或验收提交会清除状态；显式继续也重新开放一次复核。协议错误与总决策次数继续受已有上限约束，不因等待或加载历史自动无限调用模型。
+业务是否熔断由主模型根据实际结果和剩余工作判断。宿主没有子任务失败次数或累计主决策次数门槛。即使某次修复仍失败，只要出现可核实的部分修复、范围缩小、新证据或可执行的下一步，就继续有针对性地推进。相同失败且没有新信息时应停止重复该路径，先检查安全替代方案、可独立交付的工作、仍能推进的运行中任务及需要澄清的条件。
+
+有效复核决策将状态变为 `reviewed`，仍能推进时沿用原 `dispatch` / `accept` 流程。再次确认 `blocked` 才执行业务暂停。待复核与已复核状态均持久化并跨宿主重建保留，新用户输入、成功派发或验收提交会清除状态。显式继续也重新开放一次复核。协议拒绝、主模型调用失败及自动续跑中断各自使用对应的暂停原因。
 
 最终 `blocked` 还需完整的结构化 `blocker`。`src/loopBlocker.ts` 共享字段校验和中文 Markdown 生成：`kind` 为 `recoverable` 或 `impossible`，`cause` 为因果说明，`affectedRequirements` / `evidence` / `attempts` 为非空字符串数组，`nextSteps` 每项含 `owner`、`action`、`verification`。可恢复时至少一步且必须提供 `resumeCondition`；无法完成时必须提供 `alternatives`（可说明无可行替代的依据），不附带无效继续尾注。数组/字段完整性由宿主校验，证据真实性仍由主模型和实际执行负责。
 

@@ -790,26 +790,50 @@ test("a proposed global block receives one bounded review and can dispatch indep
   env.host.stopParent(run.taskId ?? "");
 });
 
-test("confirming a global block pauses once and records the actual unfinished work", async () => {
+test("the main model confirms a stalled repair and pauses once without accepting the failed attempt", async () => {
   const pauses: Array<{ task: LoopTaskRecord; message: string }> = [];
   const env = harness({ recordPause: (task, message) => { pauses.push({ task, message }); } });
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  const repair = subtask("page-test", ["page.test.ts"]);
   await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [repair] }));
+  await flush();
+  const detail = "隔离环境访问被拒绝，未执行页面测试";
+  env.attempts[0].resolve({ outcome: "failed", detail });
+  await flush();
+  const firstEventId = env.mains[1].request.reviewEventIds![0];
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId: firstEventId,
+    reviews: [{ reviewEventId: firstEventId, acceptance: "failed", reason: detail, subtaskIds: [repair.id] }],
+    subtasks: [repair],
+  }));
+  await flush();
+  env.attempts[1].resolve({ outcome: "failed", detail });
+  await flush();
+  const stalledReview = env.mains[2];
+  assert.match(stalledReview.request.prompt, /隔离环境访问被拒绝/);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(pauses.length, 0);
+  stalledReview.resolve(decisionJson({ status: "blocked", finalSummary: "仍缺隔离环境访问权限，两轮均未能开始验证。" }));
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview?.state, "pending");
+  assert.equal(pauses.length, 0);
+  assert.match(env.mains[3].request.prompt, /Bounded blocked review/);
   const summary = "页面测试未完成；平台维护方补齐隔离证据后点击继续。";
-  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
-  await flush();
-  env.mains[1].resolve(decisionJson({ status: "blocked", finalSummary: summary }));
+  env.mains[3].resolve(decisionJson({ status: "blocked", finalSummary: summary }));
   await flush();
   assert.equal(await isSettled(run.done), true);
-  assert.equal(env.mains.length, 2);
-  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
-  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusBlockReview?.state, "reviewed");
+  assert.equal(env.mains.length, 4);
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview?.state, "reviewed");
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).reviewQueue.map((event) => event.eventId), stalledReview.request.reviewEventIds);
+  assert.equal(env.acceptanceFeedback.length, 1);
   assert.equal(pauses.length, 1);
-  assert.equal(pauses[0].task.finalSummary, buildLoopBlockerSummary(loopBlockerFixture(summary)));
+  assert.ok(pauses[0].task.finalSummary?.includes(buildLoopBlockerSummary(loopBlockerFixture(summary))));
   assert.equal(pauses[0].message, "loop-plus-blocked");
-  env.host.tryRun({ displayPrompt: "show state" }, env.target, { resumeTaskId: run.taskId });
+  env.host.tryRun({ displayPrompt: "show state" }, env.target, { resumeTaskId: taskId });
   await flush();
-  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains.length, 4);
   assert.equal(pauses.length, 1);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
 });
@@ -1103,7 +1127,6 @@ function harness(options: {
   hasActiveSubtasks?: (taskId: string) => boolean;
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
-  decisionSafetyLimit?: number;
   launchDelayMs?: (last: number | null, now: number) => number;
   delay?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -1155,7 +1178,6 @@ function harness(options: {
     waitForClarification: options.waitForClarification,
     onTaskCompleted: options.onTaskCompleted,
     recordPause: options.recordPause,
-    ...(options.decisionSafetyLimit !== undefined ? { decisionSafetyLimit: options.decisionSafetyLimit } : {}),
     launchDelayMs: options.launchDelayMs ?? (() => 0),
     delay: options.delay ?? (async () => undefined),
     ...(options.now ? { now: options.now } : {}),
@@ -3752,29 +3774,54 @@ test("does not treat a delayed launch as a lost process", async () => {
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).currentReview, null);
 });
 
-test("resumes after the decision safety gate instead of pausing again immediately", async () => {
-  const env = harness({ decisionSafetyLimit: 1 });
-  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+test("Loop+ continues a progressing repair of the same subtask past the former main decision limit", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "修复所有复现点", modelPrompt: "修复所有复现点" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  const repair = subtask("repair", ["src/repair.ts"]);
   await flush();
-  env.mains[0].resolve(decisionJson({
-    status: "dispatch",
-    subtasks: [subtask("alpha", ["src/alpha.ts"])],
-  }));
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [repair] }));
   await flush();
-  env.attempts[0].resolve({ outcome: "completed", detail: "alpha" });
+  for (let round = 1; round <= 51; round += 1) {
+    for (const evidence of ["复现条件", "验证方法", "兼容约束"]) {
+      const previousCount = env.mains.length;
+      env.host.submitUserMessage(taskId, `第 ${round} 个复现点的${evidence}已补充。`);
+      await flush();
+      assert.equal(env.tasks.get(taskId)?.status, "running");
+      assert.equal(env.mains.length, previousCount + 1);
+      env.mains.at(-1)!.resolve(decisionJson({ status: "wait" }));
+      await flush();
+    }
+    const attempt = env.attempts.at(-1)!;
+    const detail = `第 ${round} 个复现点已修复并验证，下一个复现点仍失败。`;
+    attempt.resolve({ outcome: "failed", detail });
+    await flush();
+    const review = env.mains.at(-1)!;
+    const reviewEventId = attemptEvent(attempt);
+    assert.deepEqual(review.request.reviewEventIds, [reviewEventId]);
+    assert.ok(review.request.prompt.includes(detail));
+    assert.match(review.request.prompt, /You decide whether the remaining goal is blocked from evidence/);
+    review.resolve(decisionJson({ status: "accept", reviewEventId,
+      reviews: [{ reviewEventId, acceptance: "failed", reason: detail, subtaskIds: [repair.id] }],
+      subtasks: [{ ...repair, prompt: `${repair.prompt} 仅处理第 ${round + 1} 个复现点。` }],
+    }));
+    await flush();
+    assert.equal(env.attempts.length, round + 1);
+  }
+  assert.ok(env.mains.length > 200);
+  const finalAttempt = env.attempts.at(-1)!;
+  finalAttempt.resolve({ outcome: "completed", detail: "全部复现点验证通过" });
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 0);
-  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
-  assert.equal(env.messages.filter((item) => item === "loop-plus-safety-limit").length, 1);
-  env.host.tryRun({ displayPrompt: "continue" }, env.target, {
-    resumeTaskId: run.taskId,
-    resumeRequested: true,
-  });
-  await flush();
-  assert.equal(env.mains.filter((item) => item.request.kind === "review").length, 1);
-  assert.equal(env.messages.filter((item) => item === "loop-plus-safety-limit").length, 1);
-  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
-  assert.equal(env.tasks.get(run.taskId ?? "")?.mainAiFailureCount ?? 0, 0);
+  const finalReview = env.mains.at(-1)!;
+  const finalReviewEventId = attemptEvent(finalAttempt);
+  assert.deepEqual(finalReview.request.reviewEventIds, [finalReviewEventId]);
+  finalReview.resolve(completedDecision({ reviewEventId: finalReviewEventId }));
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  const attempts = snapshotOf(env.tasks.get(taskId)).seenAttempts;
+  assert.equal(attempts.filter((attempt) => attempt.subtaskId === repair.id && attempt.acceptance === "failed").length, 51);
+  assert.equal(attempts.at(-1)?.acceptance, "passed");
+  assert.equal(env.messages.includes("loop-plus-blocked"), false);
 });
 
 test("resumes a blocked review and a main-failure pause without reviving attempts", async () => {
@@ -4819,7 +4866,7 @@ test("persistent malformed output pauses after one automatic continuation", asyn
 });
 
 test("second invalid decision pauses after one automatic continuation with the latest rejection", async () => {
-  const env = harness({ decisionSafetyLimit: 2 });
+  const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve("no decision JSON");
@@ -5116,7 +5163,7 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
 });
 
 test("freezes in-flight review, then confirms the next FIFO batch in its original order", async () => {
-  const env = harness({ decisionSafetyLimit: 5 });
+  const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId ?? "";
   await flush();
@@ -6652,7 +6699,6 @@ test("Loop+ completes after more than 100 subtasks and 200 main decisions", asyn
   await run.done;
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).seenAttempts.filter((item) => item.disposition === "reviewed").length, 101);
-  assert.equal(env.messages.includes("loop-plus-safety-limit"), false);
 });
 
 // Build the dependency history through real host decisions, never by injecting

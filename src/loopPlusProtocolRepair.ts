@@ -20,12 +20,10 @@ export function buildLoopPlusProtocolContinuationPrompt(reason: string): string 
   ].join("\n");
 }
 
-export function buildLoopPlusProtocolPauseSummary(reason: string, outcome?: "continuation-rejected" | "safety-limit-reached"): string {
+export function buildLoopPlusProtocolPauseSummary(reason: string, outcome?: "continuation-rejected"): string {
   return [
     LOOP_PLUS_PROTOCOL_PAUSE_HEADING,
-    outcome === "safety-limit-reached"
-      ? "任务尚未完成。主模型决策未通过校验，且主任务已达到全局决策安全上限，无法自动继续执行。"
-      : outcome === "continuation-rejected"
+    outcome === "continuation-rejected"
       ? "任务尚未完成。主模型决策未通过校验，已自动继续执行一次，续跑后的决策仍未通过校验。"
       : "任务尚未完成。主模型决策未通过协议或调度状态校验。",
     "",

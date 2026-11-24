@@ -338,7 +338,7 @@ test("Loop+ 在原主任务中修复验收 JSON，不重复执行已完成子任
       assert.equal(input.loopTaskId, taskId);
       assert.equal(tabId, fixture.target.tabId);
       assert.equal(currentEventId(input.modelPrompt), eventId);
-      assert.match(input.modelPrompt, /第 1\/3 次自动纠错/);
+      assert.match(input.modelPrompt, /Loop\+ 继续执行/);
       assert.match(input.modelPrompt, /具体拒绝原因：.*没有完整对象/);
       assert.equal(fixture.attemptCalls.length, 1);
       const completed = completedDecision(eventId).slice(1, -1);

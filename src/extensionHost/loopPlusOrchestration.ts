@@ -90,9 +90,6 @@ import {
 
 import type { LoopPlusReviewItem } from "../loopPlusScheduler";
 
-const DECISION_SAFETY_LIMIT = 200;
-// Progressing tasks earn more main decisions; stalled loops remain bounded.
-const MAIN_DECISIONS_PER_SUBTASK_ROUND = 3;
 const MAIN_RECOVERY_FAILURE_LIMIT = 3;
 const LOOP_PLUS_ATTEMPT_ROUND = 1;
 const UNCONFIRMED_ATTEMPT_RESULT = "宿主重建后无法确认上次子任务执行结果。请核对已有产物，再显式续跑或由主任务处理此开放 attempt。";
@@ -218,7 +215,6 @@ export type LoopPlusAttemptHandle = {
 export type LoopPlusOrchestrationDeps = {
   submitDepartmentCollaboration?: (taskId: string, message: unknown) => { ok: boolean; reason?: string };
   maxConcurrency?: number;
-  decisionSafetyLimit?: number;
   launchDelayMs?: (lastLaunchAt: number | null, now: number) => number;
   decisionSubtaskMax?: () => number;
   delay?: (ms: number) => Promise<void>;
@@ -337,7 +333,6 @@ type ParentRuntime = {
   initialPromptDone: boolean;
   forcePrompt: boolean;
   closeoutBudget: number;
-  decisionCount: number;
   protocolFailureCount: number;
   protocolFailureReason: string | null;
   currentMain: LoopPlusMainHandle | null;
@@ -975,7 +970,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
       initialPromptDone: false,
       forcePrompt: false,
       closeoutBudget: 0,
-      decisionCount: 0,
       protocolFailureCount: 0,
       protocolFailureReason: readLoopPlusProtocolFailureFromSummary(task.finalSummary),
       currentMain: null,
@@ -1048,7 +1042,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.autoPaused = false;
     if (source === "manual") {
       runtime.protocolFailureCount = 0;
-      runtime.decisionCount = 0;
     }
     runtime.forcePrompt = false;
     armLifecycle(runtime);
@@ -1136,7 +1129,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
     runtime.autoPaused = false;
     runtime.stopRequested = false;
     runtime.protocolFailureCount = 0;
-    runtime.decisionCount = 0;
     runtime.forcePrompt = false;
     armLifecycle(runtime);
     supersedeMainRecovery(runtime);
@@ -1351,19 +1343,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
   async function runConsumer(runtime: ParentRuntime, adoptCommittedLifecycle: () => void, firstMainExecution?: FirstLoopMainExecution, resumeUserMessage?: string, recovery?: InterruptedMain): Promise<void> {
     if (recovery) await Promise.resolve();
     while ((firstMainExecution || !runtime.autoPaused) && !runtime.stopRequested && !runtime.scheduler.snapshot().parentStopped) {
-      const decisionSafetyLimit = firstMainExecution ? Infinity : deps.decisionSafetyLimit ?? Math.max(
-        DECISION_SAFETY_LIMIT,
-        runtime.scheduler.snapshot().seenAttempts.length * MAIN_DECISIONS_PER_SUBTASK_ROUND,
-      );
-      if (runtime.decisionCount >= decisionSafetyLimit) {
-        if (runtime.protocolFailureReason) {
-          pause(runtime, "needs-review", "loop-plus-protocol-paused",
-            buildLoopPlusProtocolPauseSummary(runtime.protocolFailureReason, "safety-limit-reached"));
-        } else {
-          pause(runtime, "needs-review", "loop-plus-safety-limit");
-        }
-        return;
-      }
       const execution = firstMainExecution;
       firstMainExecution = undefined;
       const recovering = recovery;
@@ -1389,7 +1368,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             launching: new Set(runtime.launching),
             autoPaused: false,
             protocolFailureCount: 0,
-            decisionCount: 1,
             forcePrompt: true,
           };
           restoreCompletionReceipts(draft, task);
@@ -1429,8 +1407,6 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
             },
           };
         };
-      } else {
-        runtime.decisionCount += 1;
       }
       let handle: LoopPlusMainHandle | null = null;
       let content: string | null = null;
@@ -1503,14 +1479,12 @@ export function createLoopPlusOrchestrationHost(deps: LoopPlusOrchestrationDeps)
         if (recovering) {
           updateTask(runtime.taskId, { loopPlusMainRecoveryFailureCount: failureCount, updatedAt: now() });
         }
-        runtime.decisionCount -= 1;
         runtime.interruptedMain = interrupted;
         deps.log?.("loop-plus-main-interrupted", { taskId: runtime.taskId, kind: step.kind, failureCount });
         return;
       }
       const unknownRecoveryExit = !!recovering && (failed || content === null);
       if (!unknownRecoveryExit && acceptancePlanEpoch !== runtime.acceptancePlanEpoch) {
-        runtime.decisionCount -= 1;
         continue;
       }
       const failure = failed || unknownRecoveryExit ? buildNextLoopMainAiFailureState(task ?? {}, {
