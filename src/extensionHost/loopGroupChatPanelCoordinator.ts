@@ -254,8 +254,9 @@ export function buildLoopGroupChatPanelState(
   const department = buildDepartmentGroupChatProjection(task, {
     readTaskRecord: deps.readTaskRecord, readLeaderTaskIds: deps.readDepartmentLeaderTaskIds, readCapacity: deps.readDepartmentCapacity,
     readEmployeeAllocation: deps.readDepartmentEmployeeAllocation, employeeAllocationWritable: typeof deps.updateDepartmentEmployeeLimit === "function",
+    getActiveReviewEventIds: deps.getActiveReviewEventIds,
     isLocalExecutionInactive,
-    ...(isDirector ? { getActiveReviewEventIds: deps.getActiveReviewEventIds, isMainModelRunning } : {}),
+    ...(isDirector ? { isMainModelRunning } : {}),
   });
   const panelTask = department?.role === "director" && department.overallProgressPercent !== undefined
     ? { ...displayTask, loopProgressPercent: department.overallProgressPercent }

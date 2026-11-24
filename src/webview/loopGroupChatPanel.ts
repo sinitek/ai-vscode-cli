@@ -1952,8 +1952,7 @@ function loopPlusActivityText(
       return strings.loopPlusActivityReviewPending;
     case "reviewing":
       return formatTemplate(strings.loopPlusActivityReviewing, {
-        subtask: [projection.currentReview, ...projection.reviewQueue]
-          .filter((item): item is LoopPlusPanelReviewItem => item !== null && (projection.activeReviewEventIds ?? []).includes(item.eventId))
+        subtask: getActiveLoopPlusReviews(projection)
           .map((item) => loopPlusSubtaskLabel(state, item.subtaskId))
           .join("、"),
       });
@@ -1970,6 +1969,11 @@ function loopPlusActivityText(
         ? strings.loopPlusActivityPaused
         : strings.loopPlusActivityTaskPaused;
   }
+}
+
+function getActiveLoopPlusReviews(projection: Extract<LoopPlusPanelProjection, { ok: true }>): LoopPlusPanelReviewItem[] {
+  return [projection.currentReview, ...projection.reviewQueue]
+    .filter((item): item is LoopPlusPanelReviewItem => item !== null && projection.activeReviewEventIds?.includes(item.eventId) === true);
 }
 
 function loopPlusSubtaskLabel(state: LoopGroupChatPanelState, subtaskId: string): string {
@@ -2026,9 +2030,13 @@ function renderParticipantStatus(
   strings: LoopGroupChatPanelStrings,
 ): string {
   const { status } = participant;
-  const repairRound = status === "repairing" && state.loopPlus?.ok
-    && (participant.role === "subtask" || participant.role === "employee")
-    ? state.loopPlus.repairRoundsBySubtask?.[participant.subtaskId ?? participant.id] ?? 0
+  const subtaskId = participant.subtaskId ?? participant.id;
+  const projection = state.loopPlus;
+  const isSubtask = participant.role === "subtask" || participant.role === "employee";
+  const reviewingRepair = isSubtask && status === "reviewing" && projection?.ok
+    && getActiveLoopPlusReviews(projection).some((item) => item.subtaskId === subtaskId && item.repairing);
+  const repairRound = isSubtask && projection?.ok && (status === "repairing" || reviewingRepair)
+    ? projection.repairRoundsBySubtask?.[subtaskId] ?? 0
     : 0;
   const suffix = repairRound > 1 ? ` x${repairRound}` : "";
   const label = escapeHtml(`${formatParticipantStatus(state, status, strings)}${suffix}`);

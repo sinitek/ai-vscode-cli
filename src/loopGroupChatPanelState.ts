@@ -336,10 +336,10 @@ export function resolveLoopPlusSubtaskMemberStatus(
     ? projection.currentReview
     : projection.reviewQueue.find((item) => item.subtaskId === subtaskId);
   if (review) {
-    if (review.repairing) return "repairing";
-    return projection.activity === "reviewing" && projection.activeReviewEventIds?.includes(review.eventId)
-      ? "reviewing"
-      : "queued_review";
+    if (projection.activity === "reviewing" && projection.activeReviewEventIds?.includes(review.eventId)) {
+      return "reviewing";
+    }
+    return review.repairing ? "repairing" : "queued_review";
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {

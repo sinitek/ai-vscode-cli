@@ -97,7 +97,7 @@ Loop+ 区分执行事实与验收判断。子任务明确汇报的测试、构�
 
 最新尝试未完成、执行失败、停止或关闭时，后继继续等待。修复前置优先沿用原逻辑 ID，新尝试的结果用于判断准入。另派不同 ID 时，需要显式更新仍在排队的后继依赖。
 
-验收失败修复必须复用失败事件所属的 `subtaskId`，不能为同一逻辑工作新增成员编号；每个失败事件在一次 `accept` 中最多关联一项修复，修复的新 `attemptId` 仍独立执行和验收。宿主在确认失败事件和关联一致后规范化任务 ID、沿用原成员元数据及兼容执行会话；新验收结果追加在同一逻辑任务的历史之后。群聊将该逻辑任务当前活动 attempt 显示为橙色“修复中”，并从普通“运行中”计数中独立统计。排队、验收中断和普通尚未确认重试不显示为修复中。
+验收失败修复必须复用失败事件所属的 `subtaskId`，不能为同一逻辑工作新增成员编号；每个失败事件在一次 `accept` 中最多关联一项修复，修复的新 `attemptId` 仍独立执行和验收。宿主在确认失败事件和关联一致后规范化任务 ID、沿用原成员元数据及兼容执行会话；新验收结果追加在同一逻辑任务的历史之后。修复 attempt 排队、执行和等待复验时，群聊显示橙色“修复中”并独立计数。主任务验收该 attempt 时，成员显示“验收中”，汇总也归入“验收中”。同一修复轮次的后缀随状态保留。
 
 上述成功条件约束尚未启动的执行准入。已经启动的后继，不因其前置随后重派而自动取消，也不回写既有执行或验收事实。依赖等待的后继保持 `pending`，不占 running 槽、写入范围或冲突组，不生成虚假的完成事件；其它无依赖或依赖已满足且无冲突的任务继续回填。补充需求另为已结束执行的交付规定依赖优先验收顺序；前置已 reviewed（包括失败）、reported 或 closed 仅表示先行处理完成，可审查既有后继，绝不替代本节执行准入的成功条件。
 
@@ -195,7 +195,7 @@ Loop+ 没有 batch barrier 或共享 round gate，宿主持有调度状态。有
 
 `completed` 可以确认本次冻结批次，但最终完成仍受全部未确认验收事件（包括不可领取事件）、报告、用户消息、running、pending 及等待续接结果的开放 attempt 约束。后到需求只留给后续处理，不重审已确认批次。仅最新全局门禁通过并成功持久化后，才能显示父任务整体完成。
 
-群聊按 eventId 只读投影宿主冻结前缀，并核对它与 scheduler currentReview + reviewQueue 的实际提交前缀匹配；选序已在领取时形成该前缀，投影不从原始到达顺序自行排队。元数据缺失、不匹配、暂停、停止或释放时不显示整队列正在验收。批次内成员显示「正在验收」，未选及后到事件显示「等待验收」，等待计数覆盖完整队列。投影不领取、重排或提交事件，不变更 classic Loop、布局、主题或交互。
+群聊按 eventId 只读投影宿主冻结前缀，并核对它与 scheduler currentReview + reviewQueue 的实际提交前缀匹配；选序已在领取时形成该前缀，投影不从原始到达顺序自行排队。批次内成员显示「验收中」。未选及后到的普通验收显示「待验收」，等待复验的修复显示「修复中」。元数据缺失、不匹配，或任务暂停、停止、释放时，成员沿用批次之外的展示规则。等待计数覆盖完整队列。投影不领取、重排或提交事件，不变更 classic Loop、布局、主题或交互。
 
 选序与接线的实际来源为 `src/loopPlusScheduler.ts`、`src/loopPlusDecision.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/loopPlusPanelProjection.ts`；回归入口为 `src/test/loop/loopPlusScheduler.test.ts`、`src/test/loop/loopPlusSchedulerDependencies.test.ts`、`src/test/loop/loopPlusDecision.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusHandoffContracts.test.ts`。实现、选序边界和宿主提示时效均已主审；分组执行与最终 macOS 证据见[归档计划](../exec-plans/completed/2026-11/2026-11-17-feature-loop-plus-explicit-dependencies.md)，不能将旧分组统计相加成一次统一测试。
 

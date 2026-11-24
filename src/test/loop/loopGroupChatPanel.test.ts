@@ -1175,6 +1175,7 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
       outcome: "completed" as const,
       detail: "<i>report</i>",
     },
+    activeReviewEventIds: ["loop-plus-finish#1:A3:a-1"],
     reviewQueue: [{
       eventId: "loop-plus-finish#1:B3:b-1",
       subtaskId: "B",
@@ -1217,7 +1218,7 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
     const loopPlusPanel = page.match(/<section class="panel" data-loop-plus-mode="event_driven"[\s\S]*?<\/section>/u)?.[0] ?? "";
     assert.match(loopPlusPanel, /data-loop-plus-field="activity"/u);
     assert.doesNotMatch(loopPlusPanel, /data-loop-plus-count="(?:current|reviewed)"|>当前项<|>验收结果<|data-loop-plus-activity=/u);
-    assert.equal((loopPlusPanel.match(/正在验收/g) ?? []).length, 1);
+    assert.match(loopPlusPanel, /验收中（A）。/u);
     assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果)<\/h2>/u);
     assert.doesNotMatch(page, /<i>report<\/i>|&lt;i&gt;report&lt;\/i&gt;/u);
     assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
@@ -1300,7 +1301,7 @@ test("keeps a paused Loop+ review from looking active while a running subtask st
     assert.doesNotMatch(page, /<h2>(?:当前验收|待验收队列|仍在运行|待启动|验收结果)<\/h2>/u);
     assert.match(page, /data-thinking-kind="subtask" data-thinking-id="D" data-thinking-attempt="d-1"/u);
     assert.match(page, /Delta 思考中/u);
-    assert.doesNotMatch(page, /data-thinking-kind="main"|Main task 思考中|正在验收/u);
+    assert.doesNotMatch(page, /data-thinking-kind="main"|Main task 思考中|member-status-reviewing">验收中|验收中（/u);
     assert.match(page, /<button[^>]*data-action="continueTask"/u);
     assert.doesNotMatch(page, /<button[^>]*data-action="stopTask"/u);
     assert.match(page, /任务已暂停，尚未完成；点击继续执行可恢复。/u);

@@ -256,7 +256,13 @@ test("director refresh forwards the same Loop+ task tags as the leader chat", as
 
     const secondReview = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-second-repair", outcome: "completed" });
     assert.ok(secondReview.applied && secondReview.eventId);
-    assert.equal(scheduler.submitReviewBatch([secondReview.eventId], "passed").ok, true);
+    reviewEventIds = [secondReview.eventId];
+    const reviewing = await assertSharedTags("验收中 1");
+    assert.match(reviewing, /data-loop-plus-count="repairing">修复中 0<\/span>/u);
+    const reviewingRoster = buildLoopGroupChatPanelContentPatch(buildLoopGroupChatPanelState(h.leader, h.deps), 4).rosterPanelHtml;
+    assert.match(reviewingRoster, /class="member-status-reviewing">验收中 x2<\/span>/u);
+    assert.equal(scheduler.submitReviewBatch(reviewEventIds, "passed").ok, true);
+    reviewEventIds = [];
     const passed = await assertSharedTags("已完成 1");
     assert.match(passed, /data-loop-plus-tone="empty" data-loop-plus-count="acceptance_failed">验收失败 0/u);
   } finally { h.restore(); }
