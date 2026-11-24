@@ -46,17 +46,17 @@ export interface LoopPlusDecisionStrategyPort {
   waitForInFlightWork(): LoopPlusDecisionInFlightView;
   protocolMiss(held: boolean, reason?: string): LoopPlusDecisionOutcome;
   markDecisionAccepted(): void;
-  clearProtocolRetries(): void;
+  clearProtocolFailure(): void;
   acknowledgeUserMessages(count: number): void;
   acknowledgeReports(eventIds: readonly string[], preserveRecoveryFailures?: boolean): boolean;
   captureRemainingUserMessagesForHeldReview(): void;
   applyControls(controls: readonly LoopPlusControlDecision[]): boolean;
   planControls(controls: readonly LoopPlusControlDecision[]): LoopPlusDecisionControlPlan | null;
-  previewControls(plan: LoopPlusDecisionControlPlan): boolean;
+  previewControls(plan: LoopPlusDecisionControlPlan): string | null;
   commitControls(
     controls: readonly LoopPlusControlDecision[],
     plan: LoopPlusDecisionControlPlan,
-  ): boolean;
+  ): string | null;
   dispatchSubtasks(
     subtasks: readonly LoopSubtaskDecision[],
   ): Pick<LoopPlusDispatchResult, "decisions" | "rejected">;
@@ -89,6 +89,8 @@ export type LoopPlusDecisionStrategy = (
 export type LoopPlusDecisionStrategyRegistry = {
   readonly [Status in LoopPlusDecisionStatus]: LoopPlusDecisionStrategy;
 };
+
+const invalidControlPlan = "controls 无法生成控制计划，请核对操作目标及 reprompt 的标题和提示词。";
 
 export function confirmedLoopPlusReviewIds(decision: LoopPlusDecision): string[] {
   if (decision.reviewEventIds && decision.reviewEventIds.length > 0) {
@@ -191,13 +193,11 @@ function applyDispatchDecision(
   }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
-  if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
-    return port.protocolMiss(false);
-  }
+  const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
+  if (previewFailure) return port.protocolMiss(false, previewFailure);
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
-  if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
-    return port.protocolMiss(false);
-  }
+  const commitFailure = controlPlan ? port.commitControls(controls, controlPlan) : null;
+  if (commitFailure) return port.protocolMiss(false, commitFailure);
   port.acknowledgeUserMessages(step.userMessageCount);
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
@@ -236,13 +236,12 @@ function applySteerDecision(
     return port.protocolMiss(false);
   }
   const controlPlan = port.planControls(controls);
-  if (controlPlan === null || !port.previewControls(controlPlan)) {
-    return port.protocolMiss(false);
-  }
+  if (!controlPlan) return port.protocolMiss(false, invalidControlPlan);
+  const previewFailure = port.previewControls(controlPlan);
+  if (previewFailure) return port.protocolMiss(false, previewFailure);
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
-  if (!port.commitControls(controls, controlPlan)) {
-    return port.protocolMiss(false);
-  }
+  const commitFailure = port.commitControls(controls, controlPlan);
+  if (commitFailure) return port.protocolMiss(false, commitFailure);
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
@@ -278,9 +277,8 @@ function applyAcceptDecision(
   }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
-  if (controls.length > 0 && (controlPlan === null || !port.previewControls(controlPlan))) {
-    return port.protocolMiss(true);
-  }
+  const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
+  if (previewFailure) return port.protocolMiss(true, previewFailure);
   const submitted = port.submitReviewBatch(step.eventIds, verdicts);
   if (!submitted.ok) {
     port.persistSnapshot();
@@ -290,9 +288,8 @@ function applyAcceptDecision(
   port.acknowledgeUserMessages(step.userMessageCount);
   port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
-  if (controlPlan !== null && !port.commitControls(controls, controlPlan)) {
-    return port.protocolMiss(false);
-  }
+  const commitFailure = controlPlan ? port.commitControls(controls, controlPlan) : null;
+  if (commitFailure) return port.protocolMiss(false, commitFailure);
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
     port.promoteDecisionWork();
@@ -364,7 +361,7 @@ function applyBlockedDecision(
     port.requeueCurrentReview();
   }
   port.acknowledgeUserMessages(step.userMessageCount);
-  port.clearProtocolRetries();
+  port.clearProtocolFailure();
   const pending = port.queueView();
   if (pending.hasUserMessages || pending.hasReports) {
     port.captureRemainingUserMessagesForHeldReview();
@@ -432,7 +429,7 @@ function applyCompletedDecision(
       port.applyNextStepPlan(undefined);
       port.recordAcceptancePlanFeedback?.(decision);
     } else {
-      port.clearProtocolRetries();
+      port.clearProtocolFailure();
     }
     const latest = port.queueView();
     if (hasPendingDecisionWork(latest) || latest.hasUserMessages) {

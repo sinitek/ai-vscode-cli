@@ -120,7 +120,7 @@ test("failed supplemental completion is corrected, repaired, and remains behind 
   assert.equal(tasks.get(id)?.status, "running");
   assert.equal(completed.length, 0);
   assert.equal(messages.includes("loop-plus-completed"), false);
-  assert.match(mains[2].request.prompt, /Loop\+ protocol correction required/);
+  assert.match(mains[2].request.prompt, /Loop\+ 继续执行/);
   assert.match(mains[2].request.prompt, /附加验收失败/);
   assert.equal(mains[2].request.reviewEventId, firstReview.request.reviewEventId);
 
@@ -262,7 +262,15 @@ for (const outcome of ["failed", "stopped"] as const) {
       assert.match(acceptCorrection.modelPrompt, /执行失败或停止的事件不能验收通过/);
       reply(acceptCorrection, { ...completion, reviewEventId });
 
-      await waitForLoopPlus(() => fixture.mainCalls.length === 4, "completed rejected");
+      await running;
+      assert.equal(fixture.readTask(taskId)?.status, "needs-review");
+      assert.match(fixture.readTask(taskId)?.finalSummary ?? "", /执行失败或停止的事件不能验收通过/);
+      assert.equal(fixture.mainCalls.length, 3);
+      assert.equal((fixture.readTask(taskId)?.loopPlus as LoopPlusSchedulerSnapshot).currentReview?.eventId, reviewEventId);
+      running = fixture.adapter.runEventDriven({ displayPrompt: "继续", modelPrompt: "继续", contextTags: [] }, {
+        schedulingMode: "event_driven", resumeTaskId: taskId, resumeRequested: true,
+      }, fixture.target);
+      await waitForLoopPlus(() => fixture.mainCalls.length === 4, "manual continuation retained the review");
       const completedCorrection = assertFrozenReview(3);
       assert.match(completedCorrection.modelPrompt, /执行失败或停止的事件不能验收通过/);
       const reason = "the execution did not write the note";

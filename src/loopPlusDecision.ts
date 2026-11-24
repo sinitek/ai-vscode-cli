@@ -277,7 +277,7 @@ function normalizeDispatchDecision(
   }
   const subtasks = readSubtasks(raw, subtaskMax);
   if (!subtasks || subtasks.length < 1) {
-    options?.reject?.(`dispatch.subtasks 需要 1 至 ${subtaskMax} 个有效任务；检查 ID 是否重复、标题和 prompt 是否为空，以及任务分类和依赖字段。`);
+    options?.reject?.(`dispatch.subtasks 需要 1 至 ${subtaskMax} 个有效任务；检查 ID 是否重复、标题和 prompt 是否为空，以及任务分类和依赖字段。新任务写入 subtasks，controls 只放针对运行中或排队任务的 close 或 reprompt；无开放验收批次且只需控制任务时使用 steer。`);
     return null;
   }
   const controls = readControls(raw, subtaskMax);

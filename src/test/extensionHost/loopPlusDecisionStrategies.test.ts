@@ -135,8 +135,8 @@ function createPort(options: {
       failure.mainAiFailureCount = 0;
       failure.mainAiFailureLimitReached = false;
     },
-    clearProtocolRetries() {
-      record("clearProtocolRetries");
+    clearProtocolFailure() {
+      record("clearProtocolFailure");
       failure.protocolRetries = 0;
     },
     acknowledgeUserMessages(count) {
@@ -159,11 +159,11 @@ function createPort(options: {
     },
     previewControls(plan) {
       record("previewControls", [plan]);
-      return options.preview ?? true;
+      return options.preview === false ? "控制预检失败" : null;
     },
     commitControls(controls, plan) {
       record("commitControls", [controls, plan]);
-      return options.commit ?? true;
+      return options.commit === false ? "控制提交失败" : null;
     },
     dispatchSubtasks(subtasks) {
       record("dispatchSubtasks", [subtasks]);
@@ -671,7 +671,7 @@ test("blocked requeues a held review and does not reset the main failure state",
     "queueView",
     "requeueCurrentReview",
     "acknowledgeUserMessages",
-    "clearProtocolRetries",
+    "clearProtocolFailure",
     "queueView",
     "applyNextStepPlan",
     "pauseForReview",
@@ -729,14 +729,14 @@ test("completed keeps running work instead of finishing the parent", () => {
   assert.deepEqual(names(review.calls).slice(-3), ["markDecisionAccepted", "applyNextStepPlan", "queueView"]);
   assert.equal(names(review.calls).includes("tryFinishParent"), false);
   assert.equal(names(review.calls).includes("dispatchSubtasks"), false);
-  assert.equal(names(review.calls).includes("clearProtocolRetries"), false);
+  assert.equal(names(review.calls).includes("clearProtocolFailure"), false);
 
   const running = createPort({
     views: [view({ runningCount: 1 }), view()],
   });
   assert.equal(registry.completed(running.port, step, accepted), "wait");
   assert.deepEqual(names(running.calls).slice(-4), ["markDecisionAccepted", "applyNextStepPlan", "queueView", "persistRunning"]);
-  assert.equal(names(running.calls).includes("clearProtocolRetries"), false);
+  assert.equal(names(running.calls).includes("clearProtocolFailure"), false);
   assert.equal(names(running.calls).includes("finishParent"), false);
 
   const message = createPort({
@@ -762,7 +762,7 @@ test("completed clears main failure after a passed review while work remains", (
   assert.equal(running.failure.mainAiFailureLimitReached, false);
   assert.deepEqual(running.calls.find((call) => call.name === "submitReviewBatch")?.args, [["evt-1", "evt-2"], "passed"]);
   assert.equal(names(running.calls).includes("markDecisionAccepted"), true);
-  assert.equal(names(running.calls).includes("clearProtocolRetries"), false);
+  assert.equal(names(running.calls).includes("clearProtocolFailure"), false);
   assert.equal(names(running.calls).includes("tryFinishParent"), false);
   assert.equal(names(running.calls).includes("finishParent"), false);
   assert.equal(names(running.calls).includes("dispatchSubtasks"), false);
@@ -795,7 +795,7 @@ test("completed clears main failure after a passed review while work remains", (
   assert.equal(failedSubmit.failure.mainAiFailureCount, 2);
   assert.equal(failedSubmit.failure.mainAiFailureLimitReached, true);
   assert.equal(names(failedSubmit.calls).includes("markDecisionAccepted"), false);
-  assert.equal(names(failedSubmit.calls).includes("clearProtocolRetries"), false);
+  assert.equal(names(failedSubmit.calls).includes("clearProtocolFailure"), false);
   assert.deepEqual(names(failedSubmit.calls), ["submitReviewBatch", "persistSnapshot"]);
 
   const withoutSubmit = createPort({
@@ -812,7 +812,7 @@ test("completed clears main failure after a passed review while work remains", (
   assert.equal(withoutSubmit.failure.mainAiFailureLimitReached, true);
   assert.equal(names(withoutSubmit.calls).includes("submitReviewBatch"), false);
   assert.equal(names(withoutSubmit.calls).includes("markDecisionAccepted"), false);
-  assert.equal(names(withoutSubmit.calls).includes("clearProtocolRetries"), true);
+  assert.equal(names(withoutSubmit.calls).includes("clearProtocolFailure"), true);
   assert.equal(names(withoutSubmit.calls).includes("tryFinishParent"), false);
 
   const schedulerRefused = createPort({
@@ -829,7 +829,7 @@ test("completed clears main failure after a passed review while work remains", (
   assert.equal(schedulerRefused.failure.mainAiFailureCount, 3);
   assert.equal(schedulerRefused.failure.mainAiFailureLimitReached, true);
   assert.equal(names(schedulerRefused.calls).includes("markDecisionAccepted"), false);
-  assert.equal(names(schedulerRefused.calls).includes("clearProtocolRetries"), false);
+  assert.equal(names(schedulerRefused.calls).includes("clearProtocolFailure"), false);
   assert.equal(names(schedulerRefused.calls).includes("submitReviewBatch"), false);
   assert.equal(names(schedulerRefused.calls).at(-1), "persistRunning");
 });
@@ -903,7 +903,7 @@ test("deferred raw review events keep wait and completed in bounded correction b
     assert.equal(outcome, "continue");
     assert.ok(names(env.calls).includes("protocolMiss"));
     assert.equal(names(env.calls).includes("markDecisionAccepted"), false);
-    assert.equal(names(env.calls).includes("clearProtocolRetries"), false);
+    assert.equal(names(env.calls).includes("clearProtocolFailure"), false);
     assert.equal(names(env.calls).includes("tryFinishParent"), false);
     assert.equal(env.failure.protocolRetries, 1);
   }

@@ -59,11 +59,11 @@ test("missing reasons have a safe fallback while other pause causes cannot reuse
 test("protocol exhaustion records its actual rejection and does not invent a model business block", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-loopplus-protocol-pause-"));
   try {
-    const paused = { ...task(root), finalSummary: buildLoopPlusProtocolPauseSummary("未关联任务：independent-research", 2) };
+    const paused = { ...task(root), finalSummary: buildLoopPlusProtocolPauseSummary("未关联任务：independent-research", "continuation-rejected") };
     recordLoopPlusPause(paused, "loop-plus-protocol-paused");
     for (const file of [paused.mainCommunicationFile, path.join(root, "group-chat.md")]) {
       assert.match(fs.readFileSync(file, "utf8"), /未关联任务：independent-research/);
-      assert.match(fs.readFileSync(file, "utf8"), /已自动请求纠正 2 次/);
+      assert.match(fs.readFileSync(file, "utf8"), /已自动继续执行一次/);
       assert.doesNotMatch(fs.readFileSync(file, "utf8"), /主模型未提供具体熔断原因/);
     }
   } finally {

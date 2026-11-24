@@ -335,6 +335,7 @@ export type LoopPlusControlReason =
 export type LoopPlusControlResult = {
   ok: boolean;
   reason: LoopPlusControlReason;
+  rejectedSubtaskId?: string;
   closed: LoopPlusExecutionRecord[];
   started: LoopPlusExecutionRecord[];
   block: LoopPlusConflictBlock | null;
@@ -1124,9 +1125,11 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     const rejected = (
       reason: LoopPlusControlReason,
       block: LoopPlusConflictBlock | null = null,
+      rejectedSubtaskId?: string,
     ): LoopPlusControlResult => ({
       ok: false,
       reason,
+      ...(rejectedSubtaskId ? { rejectedSubtaskId } : {}),
       closed: [],
       started: [],
       block,
@@ -1149,7 +1152,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
     for (const command of commands) {
       const subtaskId = typeof command?.subtaskId === "string" ? command.subtaskId.trim() : "";
       if (!subtaskId || seenSubtasks.has(subtaskId)) {
-        return rejected(subtaskId ? "duplicate_subtask" : "invalid");
+        return rejected(subtaskId ? "duplicate_subtask" : "invalid", null, subtaskId);
       }
       if (command.action !== "close" && command.action !== "reprompt") {
         return rejected("invalid");
@@ -1160,13 +1163,13 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         item.subtaskId === subtaskId && item.attemptId === open?.attemptId
       ));
       if (!open || !record) {
-        return rejected("not_open");
+        return rejected("not_open", null, subtaskId);
       }
       let replacement: ParsedSpec | null = null;
       if (command.action === "reprompt") {
         replacement = parseSpec(command.replacement);
         if (!replacement || replacement.subtaskId !== subtaskId) {
-          return rejected("invalid");
+          return rejected("invalid", null, subtaskId);
         }
         if (isRecord(command.replacement) && command.replacement.dependsOn === undefined) {
           replacement.dependsOn = open.dependsOn?.slice();
@@ -1174,7 +1177,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         const duplicate = seenAttempts.some((item) => item.attemptId === replacement?.attemptId)
           || planned.some((item) => item.replacement?.attemptId === replacement?.attemptId);
         if (duplicate) {
-          return rejected("duplicate_attempt");
+          return rejected("duplicate_attempt", null, subtaskId);
         }
       }
       planned.push({ attemptId: open.attemptId, replacement });
@@ -1190,7 +1193,7 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
       const others = survivors.concat(admitted.map((spec) => createExecution(spec, "pending")));
       const block = findConflict(candidate, others);
       if (block) {
-        return rejected("conflict", block);
+        return rejected("conflict", block, candidate.subtaskId);
       }
       admitted.push(item.replacement);
     }

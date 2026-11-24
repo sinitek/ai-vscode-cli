@@ -214,11 +214,11 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 
 - 历史配置锁超时的手动续跑（2026-11-18）。原任务群聊可手动续跑符合资格的普通 Codex Loop+ 父任务。现行配置应用采用进程内队列和原子替换。宿主核验原任务和原生线程，在首个 `turn/start` 前一次原子保存任务变更与预留。提交前失败或取消保留原暂停、失败计数、冻结验收、报告与依赖。v1 `dependsOn` 依赖准入按整份决策登记后的最新前置结果判断。独立工作可填充空闲派发槽。详见[恢复契约](../design-docs/loop-crash-recovery.md#启动前共享配置锁超时)。
 
-## Loop+ 协议矛盾自动纠错
+## Loop+ 协议失败自动续跑
 
-- 状态：`active`（2026-11-13，源码实现）。决策 JSON 无效、验收关联或事件批次矛盾、空队列返回 `wait` 时，立即把具体错误、旧回复和最新快照交回主模型重新生成完整 JSON，复用有效证据，继续派发或合法完成，无需用户反复点击继续。
-- 容许说明文字、代码块、注释与尾逗号；缺失或损坏 JSON、字段、验收关联和调度状态失败共用最多 3 次自动纠错。当前主任务按最新拒绝原因只修正决策，不重跑业务；耗尽或先触发全局决策安全上限时保留队列和真实原因，显式停止会终止当前纠错。accept 中所有新任务（含补充需求）恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，未知、重复或遗漏归属均拒绝。事件相关任务可关联通过项而不改写真实结论；独立剩余交付无需挂到验收事件。主聊天、群聊和沟通文件一致展示暂停原因；恢复保留待验收结果和纠错原因。
-- 实现：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/loopPlusPause.ts`；回归覆盖诊断、纠正后派发/完成、重试上限及跨宿主显式继续。未发布或更新已安装扩展。
+- 状态：`active`（2026-11-24，源码实现）。JSON、字段、验收关联或调度状态首次被拒绝后，宿主复用“继续执行”在原主任务会话自动续跑一次，使用当前快照和具体原因，不回灌被拒绝回复。
+- 续跑仍无效时暂停并保留最新原因及未确认验收结果；显式停止中断调用，用户显式继续可从暂停记录恢复原因。全局决策安全上限、验收和完成门禁继续适用。
+- 实现：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`；回归覆盖首次拒绝续跑、再次拒绝暂停、控制目标结束和跨宿主继续。
 
 ## Loop+ 活跃会话与完成状态隔离
 
@@ -426,7 +426,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 ## Loop+ 容量感知并行与轻量冲突协作
 
 - 生产并发容量使用“Loop/Loop+ 单次派发上限”（默认 6、范围 1–20），不再固定为 6；主模型可见真实上限、剩余槽位和单次派发上限。最终目标仍需要工作且存在可并行独立交付时，争取达到当前配置容量上限，不按一个全栈角色或两个前后端角色限制任务数；目标已满足、边界不足、真实依赖或容量不足时允许少派或不派，不为凑数拆分。
-- 主任务每次最多验收 FIFO 前 3 个子任务完成事件，其余已有或后到事件留给下一批；首项完成立即验收，不等待凑满三项。协议重试和同宿主恢复保持冻结批次，宿主重建从持久化 FIFO 重新取最多三项。总验收额度预检只计算本批，超额仍整批暂停；后续未验收事件继续阻止整体完成。该上限不限制同轮派发数或运行并发。
+- 主任务每次最多验收 FIFO 前 3 个子任务完成事件，其余已有或后到事件留给下一批；首项完成立即验收，不等待凑满三项。协议续跑和同宿主恢复保持冻结批次，宿主重建从持久化 FIFO 重新取最多三项。总验收额度预检只计算本批，超额仍整批暂停；后续未验收事件继续阻止整体完成。该上限不限制同轮派发数或运行并发。
 - 按主要写入所有权和可独立验收的实现、测试、文档、配置等边界拆分，`dispatch` / `accept` 主动回填空槽，不重复派发已有 running / pending。默认协议示例展示四个独立交付，并尊重用户单次上限和宿主并发上限。
 - 每次 `accept` 同时复核原始及补充需求的剩余目标：验收修复通过 `reviews[].subtaskIds` 关联失败事件并复用原会话；独立交付通过可选 `independentSubtaskIds` 声明，与修复同轮派发且不自动继承修复会话。需要新工作且可并行时尽量补到配置容量，不等待后续验收批次；已有 running / 可启动 pending 计入容量，不重复派发，真实冲突阻塞的 pending 不预留空槽。不能因出现验收缺口就让整体目标串行等待；只派修复或留空槽时，主模型在沟通文件说明真实依赖、写入占用、已排队容量或没有可推进独立工作的原因。无需新工作时允许空的 subtasks，继续验收、等待或合法完成。不为回填重复有效验证或制造微任务。单事件及批量验收示例均展示修复与独立交付，容量为 1 时仍允许只派修复。
 - 共享只读上下文不构成写冲突，局部附带修改不必让所有工作串行；子任务写入前重读并保留并发改动，小冲突自行协调并汇报。已知同路径写入和相同冲突组仍串行，不允许隐瞒范围；同符号、共享契约或大量竞争修改仍由主模型重排。
@@ -1053,7 +1053,7 @@ round-378 整项交付未通过主审的历史保留：永久 reservation 阻断
 
 ## 2026-11-19 Loop+ 主任务按需续跑计划
 
-Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含非空目标及可选的验收标准，不限制文本字数或条数。首次领取新验收批次时，主任务先判断是否有不依赖待验收结果且能立即启动的独立交付；有则先 `dispatch` 并附带 `nextStepPlan`，下一次主任务调用沿用原冻结批次验收；没有则直接验收。验收修复和依赖后继不得提前派发。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议纠错、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
+Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`，包含非空目标及可选的验收标准，不限制文本字数或条数。首次领取新验收批次时，主任务先判断是否有不依赖待验收结果且能立即启动的独立交付；有则先 `dispatch` 并附带 `nextStepPlan`，下一次主任务调用沿用原冻结批次验收；没有则直接验收。验收修复和依赖后继不得提前派发。宿主持久化后自动沿用现有事件驱动主循环发起下一次主任务决策，并注入待执行计划；下一份有效继续决策可消费或替换计划。无效响应、协议续跑、澄清、非终态暂停和宿主重建保留计划，`blocked`、成功完成及用户停止清除计划。计划只提供上下文，不确认验收、不创建子任务、不改变既有调度与完成门禁。
 
 实现：`src/loopPlusNextStepPlan.ts`、`src/loopPlusDecision.ts`、`src/loopTaskStore.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`。回归：`src/test/loop/loopPlusDecision.test.ts`、`src/test/loop/loopTaskStore.test.ts`、`src/test/extensionHost/loopPlusDecisionStrategies.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`、`src/test/extensionHost/loopPlusPromptBuilders.test.ts`。
 
@@ -1061,7 +1061,7 @@ Loop+ 主任务可在有效继续型 JSON 决策中自愿返回 `nextStepPlan`�
 
 最终 `blocked` 增加可校验的 `blocker` 诊断：具体卡点与原因、未完成要求、证据、已尝试处理、按推荐顺序的责任方/操作/验证方式，以及明确恢复条件；确实无法完成时说明限制和替代方案。宿主统一生成中文摘要。缺软件等环境问题需给出具体依赖/版本/平台/运行位置、安装或配置命令或官方入口、验证命令与预期结果，不能只说“环境不支持”。优先安全自主修复或推进独立工作，需用户决策用澄清表单。
 
-Loop 的缺失诊断自动补充一次；Loop+ 复用一次剩余工作复核与最多三次协议纠错。补齐失败后说明诊断缺项并保留模型原说明，不编造原因，不标记完成、不清空未确认事件、不无限重试。既有主聊天、群聊和暂停记录复用该摘要，无新增安装或授权动作。实现：`src/loopBlocker.ts`、`src/loopBlockedSummary.ts` 及两种模式的决策解析/编排；回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`，已纳入跨平台检测入口。
+Loop 的缺失诊断自动补充一次；Loop+ 先做一次剩余工作复核，若仍缺诊断则自动继续执行一次。补齐失败后说明诊断缺项并保留模型原说明，不编造原因，不标记完成、不清空未确认事件、不无限重试。既有主聊天、群聊和暂停记录复用该摘要，无新增安装或授权动作。实现：`src/loopBlocker.ts`、`src/loopBlockedSummary.ts` 及两种模式的决策解析/编排；回归：`src/test/loop/loopBlocker.test.ts`、`src/test/extensionHost/subtaskCliExecution.test.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`，已纳入跨平台检测入口。
 
 业务 `blocked` 的主聊天气泡、群聊摘要和暂停记录统一使用“熔断”，说明“子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成”，并保留具体原因、证据、已尝试动作、推荐解决方案与恢复条件。主模型调用失败和调度协议错误仍说明各自真实原因，不能归因于子任务反复失败。此次称谓调整不新增重试阈值，不改变状态、验收门槛和恢复流程；历史模型原文保留。
 

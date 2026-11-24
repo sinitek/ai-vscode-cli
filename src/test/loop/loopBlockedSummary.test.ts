@@ -107,7 +107,7 @@ test("legacy main failure pauses rebuild the actual error for group and chat ins
   assert.match(group?.body ?? "", /Loop\+ 事件驱动/);
   assert.doesNotMatch(group?.body ?? "", /当前主任务轮次：0/);
 
-  const protocol = { ...pausedTask(buildLoopPlusProtocolPauseSummary("缺少验收结果", 2), "event_driven") };
+  const protocol = { ...pausedTask(buildLoopPlusProtocolPauseSummary("缺少验收结果", "continuation-rejected"), "event_driven") };
   const protocolGroup = buildLoopGroupChatFinalStatusSection(protocol);
   assert.match(protocolGroup?.body ?? "", /缺少验收结果/);
   assert.doesNotMatch(protocolGroup?.body ?? "", /子任务多次|已熔断/);

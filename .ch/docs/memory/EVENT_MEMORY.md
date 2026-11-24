@@ -41,7 +41,7 @@ starter 默认不预置事件。接入真实项目后，从第一条真正影响
 
 | 日期 | 类型 | 事件 | 结果/原因 | 可复用结论 | 来源 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-11-24 | 失败原因 / 成功方案 | Loop+ 决策 JSON 反复纠错后中断 | 旧代码把格式错误和结构/状态错误分开计数，带补充说明的冷恢复还会丢掉上次拒绝原因 | 无损容错后剩余错误共用三次额度；在原主任务带具体原因修正，不重跑业务，显式续跑恢复历史原因但以当前协议为准 | `.ch/docs/design-docs/loop-plus-scheduling.md#协议矛盾后的自动纠错` |
+| 2026-11-24 | 失败原因 / 关键决策 | Loop+ 决策被拒绝后手动继续成功 | 旧版两次自动纠错中，首答及第一次续答将派发写入 `controls`，最后一次结构合法但目标在主模型调用期间已结束，通用错误掩盖了控制目标变化 | 首次协议失败直接续跑同一任务一次，按当前快照处理，控制拒绝提供目标 ID，二次失败暂停并保留验收 | `.ch/docs/design-docs/loop-plus-scheduling.md#协议失败后的自动续跑` |
 | 2026-11-23 | 失败原因 / 成功方案 | Grok Loop+ 旧任务升级后无法续跑 | Grok `session/load` 依赖原 cwd，而 1.9.x attempt 清理会删除空临时根；升级后的根身份校验因此拒绝旧绑定 | 从原生索引唯一核验旧 cwd 后按原 session 恢复；无法安全确认时显式新建会话继续当前子任务，保留旧会话数据，不能静默假装上下文已继承 | `.ch/docs/exec-plans/completed/2026-11/2026-11-23-bugfix-grok-loop-legacy-resume.md`；`.ch/docs/runbooks/PITFALLS.md` |
 | 2026-11-21 | 失败原因 / 成功方案 | 产研部组长有原生会话却被当成只读历史 | 首轮后的通用自动压缩和群聊提问用本地 Tab 键查普通会话映射，未走部门原生会话入口 | 同一组长的提问和调度共用队列及原 Owner，普通压缩不进入组长会话 | `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-session-continuation.md` |
 | 2026-11-21 | 失败原因 / 成功方案 | 产研部中止未确认 | 冷中止只在首次请求断连时转发，原代次控制冲突和轮询失败跳过原 Owner，默认日志缺少原因 | 扩大原 Owner 中止转发范围，按代次记录固定原因和转发结果，群聊汇总原因 | `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-unconfirmed-feedback.md` |

@@ -54,7 +54,7 @@ function completed(ids: string[] = []) {
     acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "范围", passed: true }] });
 }
 let sequence = 0;
-function harness(options: { refresh?: () => void | Promise<void>; protocolRetryLimit?: number; maxConcurrency?: number; temporaryRequirement?: string } = {}) {
+function harness(options: { refresh?: () => void | Promise<void>; maxConcurrency?: number; temporaryRequirement?: string } = {}) {
   const id = `handoff-${++sequence}`;
   const target = { cli: "codex" as const, tabId: `main-${id}`, sessionId: id };
   const input = { displayPrompt: options.temporaryRequirement ?? "完成交接契约" };
@@ -73,7 +73,7 @@ function harness(options: { refresh?: () => void | Promise<void>; protocolRetryL
   let refreshes = 0;
   const read = () => store.readLoopTaskRecord(id)!;
   const createHost = () => createLoopPlusOrchestrationHost({
-    maxConcurrency: options.maxConcurrency ?? 4, launchDelayMs: () => 0, protocolRetryLimit: options.protocolRetryLimit,
+    maxConcurrency: options.maxConcurrency ?? 4, launchDelayMs: () => 0,
     readTask: store.readLoopTaskRecord,
     createTask: ({ snapshot }) => {
       const communication = store.getLoopCommunicationPaths(id);
@@ -554,8 +554,8 @@ for (const asyncRefresh of [false, true]) {
   });
 }
 
-test("partial accept/dispatch rejection repairs only remaining work with bounded retries and no repeated acceptance", async () => {
-  const env = harness({ protocolRetryLimit: 2 });
+test("partial accept/dispatch rejection continues once without repeating confirmed acceptance", async () => {
+  const env = harness();
   await flush();
   env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A"), child("B"), { ...child("report"), requiresAcceptance: false }] }));
   await flush();
@@ -587,20 +587,15 @@ test("partial accept/dispatch rejection repairs only remaining work with bounded
   assert.match(firstCorrection.request.prompt, /active_subtask/);
   assert.match(firstCorrection.request.prompt, /不得重复 accept/);
   assert.equal(env.read().subTasks.find((item) => item.id === "B")?.title, "B");
-  // A second partially accepted response must not reset the retry counter.
+  // A second partially accepted response must not trigger another continuation.
   assert.deepEqual(firstCorrection.request.reportEventIds, [reportEventId]);
   firstCorrection.resolve(json({ status: "dispatch", reportEventIds: [reportEventId], subtasks: [child("remaining"), child("B")] }));
   await flush();
-  const launchedIds = ["A", "B", "report", "A", "remaining"];
+  const launchedIds = ["A", "B", "report", "A"];
   assert.deepEqual(env.attempts.map(({ request }) => request.subtaskId), launchedIds);
+  assert.deepEqual(snapshot(env.read()).pending.map((item) => item.subtaskId), ["remaining"]);
   assert.deepEqual(snapshot(env.read()).reportQueue ?? [], []);
-  const secondCorrection = env.mains.at(-1)!;
-  assert.notEqual(secondCorrection, firstCorrection);
-  assert.match(secondCorrection.request.prompt, /active_subtask/);
-  assert.deepEqual(secondCorrection.request.reportEventIds, []);
-  secondCorrection.resolve(json({ status: "dispatch", subtasks: [child("B")] }));
-  await flush();
-  assert.equal(env.mains.at(-1), secondCorrection, "no correction beyond the retry limit");
+  assert.equal(env.mains.at(-1), firstCorrection, "a second rejection pauses the task");
   await env.run.done;
   assert.equal(env.read().status, "needs-review");
   assert.deepEqual(reviewed(), failedReview);
