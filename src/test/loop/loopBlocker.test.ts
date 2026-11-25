@@ -6,15 +6,15 @@ import { buildLoopBlockedPauseText } from "../../loopBlockedSummary";
 import { buildLoopBlockerRecoveryClarification } from "../../loopBlockerRecovery";
 import { formatOrchestratorClarificationAnswer, LOOP_RECOVERY_PLAN_FIELD } from "../../orchestratorClarification";
 
-test("软件依赖诊断保留具体软件、环境、安装方案、验证和续跑条件", () => {
+test("软件依赖诊断只展示一条必要操作，并保留证据和续跑条件", () => {
   const blocker = {
     ...LOOP_BLOCKER_EXAMPLE,
     cause: "容器内缺少 Node.js 22，npm 构建无法启动；宿主机可用不能代替容器依赖。",
     affectedRequirements: ["前端构建"],
     evidence: ["子任务在 Linux 容器执行 node --version 返回 command not found；尚未确认包管理器。"],
     attempts: ["已检查容器 PATH，未发现 node；未获授权修改系统镜像，未执行安装。"],
-    nextSteps: [{ owner: "环境维护者", action: "首选在容器镜像中按项目约定加入 Node.js 22，以便环境可复现；使用 Node.js 官方安装说明，先确认镜像与包管理器。", verification: "重新进入同一容器执行 node --version，预期 v22.x；npm --version 应正常返回。" }],
-    resumeCondition: "任务使用的容器内 node 和 npm 可调用，版本满足项目约定。",
+    nextSteps: [{ owner: "环境维护者", action: "在构建容器中安装 Node.js 22。", verification: "在容器内检查 node --version 是否为 v22.x。" }],
+    resumeCondition: "构建容器可以运行 Node.js 22。",
   };
   const parsed = parseLoopPlusDecision(JSON.stringify({ status: "blocked", blocker, finalSummary: "已完成" }));
   assert.deepEqual(parsed?.blocker, blocker);
@@ -24,11 +24,22 @@ test("软件依赖诊断保留具体软件、环境、安装方案、验证和�
     assert.match(shown, /Linux 容器.*command not found/);
     assert.match(shown, /Node.js 22/);
     assert.match(shown, /未执行安装/);
-    assert.match(shown, /1\. 环境维护者：首选/);
-    assert.match(shown, /确认方式：.*node --version.*v22.x/);
-    assert.match(shown, /### 恢复条件/);
+    assert.match(shown, /### 继续前需要解决的事项\n环境维护者：在构建容器中安装 Node\.js 22。\n\n### 恢复条件\n构建容器可以运行 Node\.js 22。/);
+    assert.doesNotMatch(shown, /确认方式|v22\.x/);
     assert.doesNotMatch(shown, /已完成/);
   }
+});
+
+test("多个独立的必要操作按顺序简短列出", () => {
+  const summary = buildLoopBlockerSummary({
+    ...LOOP_BLOCKER_EXAMPLE,
+    nextSteps: [
+      ...LOOP_BLOCKER_EXAMPLE.nextSteps,
+      { owner: "环境管理员", action: "开通测试环境访问权限。", verification: "测试账号可以登录。" },
+    ],
+    resumeCondition: "必填字段已明确，且可以访问测试环境。",
+  });
+  assert.match(summary, /### 继续前需要解决的事项\n1\. 接口负责人：确认接口必填请求字段。\n2\. 环境管理员：开通测试环境访问权限。\n\n### 恢复条件/);
 });
 
 test("拒绝空诊断、错误类型、空白证据和没有验证方式的动作", () => {

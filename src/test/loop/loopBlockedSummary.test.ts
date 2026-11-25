@@ -5,6 +5,7 @@ import * as path from "path";
 import {
   buildLoopBlockedPauseText,
   LOOP_BLOCKED_SUMMARY_EXAMPLE,
+  LOOP_BLOCKED_SUMMARY_INSTRUCTION,
   normalizeLoopBlockedSummary,
 } from "../../loopBlockedSummary";
 import { buildLoopGroupChatFinalStatusSection } from "../../loopFinalSummary";
@@ -36,15 +37,19 @@ function pausedTask(summary?: string, schedulingMode: LoopTaskRecord["scheduling
   };
 }
 
-test("both modes show the actual blocker and ordered recovery prerequisites", () => {
+test("shared blocked instructions require only essential actions and prefer one", () => {
+  assert.match(LOOP_BLOCKED_SUMMARY_INSTRUCTION, /只列不做就无法继续的事项，一条能说清就只写一条/);
+  assert.match(LOOP_BLOCKED_SUMMARY_INSTRUCTION, /不要把备选方案、建议性优化、常规验证或续跑后可做的工作写成前置条件/);
+});
+
+test("both modes show the actual blocker and a single concise recovery prerequisite", () => {
   for (const schedulingMode of [undefined, "classic", "event_driven"] as const) {
     const text = buildLoopBlockedPauseText({ schedulingMode, finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE });
     assert.ok(text.startsWith(`${schedulingMode === "event_driven" ? "Loop+" : "Loop"} 已熔断`));
     assert.match(text, /子任务多次尝试仍无法解决问题/);
     assert.match(text, /### 熔断原因与未完成事项/);
     assert.ok(text.includes(LOOP_BLOCKED_SUMMARY_EXAMPLE));
-    assert.match(text, /1\. 接口负责人：提供/);
-    assert.match(text, /确认方式：主模型根据资料核对缺项/);
+    assert.match(text, /### 继续前需要解决的事项\n接口负责人：确认接口必填请求字段。\n\n### 恢复条件/);
     assert.match(text, /仅点击继续不会解决触发熔断的问题/);
   }
 });
@@ -62,8 +67,7 @@ test("missing summaries explain the uncertainty without inventing a cause or ask
     const text = normalizeLoopBlockedSummary(summary);
     assert.match(text, /无法判断问题能否恢复/);
     assert.match(text, /未提供具体熔断原因/);
-    assert.match(text, /向主模型提问/);
-    assert.match(text, /不建议反复点击/);
+    assert.ok(text.endsWith("### 继续前需要解决的事项\n请用“向主模型提问”确认卡点和继续所需的条件。"));
   }
   assert.equal(normalizeLoopBlockedSummary("  接口返回 403，联调权限不足。\n"), "接口返回 403，联调权限不足。");
 });

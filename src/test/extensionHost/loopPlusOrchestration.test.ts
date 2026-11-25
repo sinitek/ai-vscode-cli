@@ -876,7 +876,8 @@ test("incomplete blocker diagnostics are corrected before pause without confirmi
   const task = env.tasks.get(run.taskId!)!;
   assert.equal(task.status, "needs-review");
   assert.match(task.finalSummary ?? "", /Node.js/);
-  assert.match(task.finalSummary ?? "", /确认方式/);
+  assert.match(task.finalSummary ?? "", /### 继续前需要解决的事项\n[^\n]+\n\n### 恢复条件/);
+  assert.doesNotMatch(task.finalSummary ?? "", /确认方式/);
   assert.equal(snapshotOf(task).reviewQueue.length, 1);
   assert.equal(task.loopPlusProgressPercent ?? 0, 0);
   assert.equal(env.messages.includes("loop-plus-completed"), false);

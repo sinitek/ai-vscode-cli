@@ -294,6 +294,8 @@ scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles`
 
 最终 `blocked` 还需完整的结构化 `blocker`。`src/loopBlocker.ts` 共享字段校验和中文 Markdown 生成：`kind` 为 `recoverable` 或 `impossible`，`cause` 为因果说明，`affectedRequirements` / `evidence` / `attempts` 为非空字符串数组，`nextSteps` 每项含 `owner`、`action`、`verification`。可恢复时至少一步且必须提供 `resumeCondition`；无法完成时必须提供 `alternatives`（可说明无可行替代的依据），不附带无效继续尾注。数组/字段完整性由宿主校验，证据真实性仍由主模型和实际执行负责。
 
+`nextSteps` 只描述不做就无法继续的动作，一句话能说清就只写一项；备选方案、常规验证和续跑后的工作不作为前置条件。摘要只显示 `owner` 和 `action`，仅多项时编号；必须先满足的结果写入 `resumeCondition`，不另展示每项 `verification`。该规则同样适用于经典 Loop 和产研部总监、组长的阻塞说明。
+
 旧回复缺对象或字段不全时，解析器保留 `finalSummary` 并生成内部 `blockerIssue`；第一次 blocked 仍走剩余工作复核。复核后仍缺诊断时按 `protocolMiss` 自动继续执行一次，携带具体缺项和模型原说明，但不附带原始回复；不确认验收、不新增子任务轮次、不清除队列。续跑仍被拒绝时暂停并保留最新协议失败原因；若仍缺诊断，保留“熔断诊断未补齐”说明。完整诊断生成的 Markdown 覆盖模型自由摘要，沿用既有持久化与展示，不新增存储字段。经典 Loop 共用该诊断契约；缺对象时同轮补充一次主模型决策，仍缺失或非法就暂停并保留原说明，不新增子任务轮次或放宽完成/权限门禁。
 
 可恢复 blocker 可附 1–3 项结构化 `recoveryOptions`（方案名、操作、验证），仅在 Loop+ 完成一次有界剩余工作复核后询问。复用主任务澄清表单和人工交互超时；超时采用首个尚未选过的方案，用户提交、超时选择均作为补充上下文续跑。选项不授予权限，必须在实际执行环境验证；无可行新方案或真实授权缺失时沿用原熔断暂停。方案回答持久化在补充需求中，重复尝试不会再次推荐相同操作。

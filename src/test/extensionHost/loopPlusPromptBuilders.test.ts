@@ -665,9 +665,9 @@ test("all main prompt kinds require readable Chinese blockers with recovery or i
       const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, blockedReviewSummary }));
       assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
       assert.match(prompt, /必须用简体中文/);
-      assert.match(prompt, /谁需要提供什么/);
+      assert.match(prompt, /只列不做就无法继续的事项，一条能说清就只写一条/);
       assert.match(prompt, /按当前要求无法完成/);
-      assert.match(prompt, /不把模型可解决的问题推给用户/);
+      assert.match(prompt, /能自行处理的继续执行或派发修复子任务/);
       const blocked = parseExample(extractProtocolExamples(prompt), "blocked");
       assert.equal(blocked.finalSummary, LOOP_BLOCKED_SUMMARY_EXAMPLE);
     }

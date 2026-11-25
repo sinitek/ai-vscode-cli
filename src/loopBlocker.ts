@@ -45,7 +45,7 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
   if (!attempts) issues.push("attempts 必须列出已尝试动作与结果，未尝试须说明原因");
   const nextSteps: LoopBlocker["nextSteps"] = [];
   if (!Array.isArray(raw.nextSteps) || (kind === "recoverable" && raw.nextSteps.length === 0)) {
-    issues.push("nextSteps 必须按推荐顺序列出解决步骤");
+    issues.push("nextSteps 必须列出继续前必须解决的事项");
   } else {
     for (const value of raw.nextSteps) {
       const step = record(value);
@@ -97,6 +97,7 @@ export function isLoopBlockerSummary(summary: string | undefined): boolean {
 }
 
 export function buildLoopBlockerSummary(blocker: LoopBlocker): string {
+  const requiredActions = blocker.nextSteps.map(({ owner, action }) => `${owner}：${action}`);
   return [
     LOOP_BLOCKER_SUMMARY_HEADER,
     ...(blocker.kind === "impossible" ? ["按当前要求无法完成。"] : []),
@@ -104,10 +105,9 @@ export function buildLoopBlockerSummary(blocker: LoopBlocker): string {
     ...blocker.affectedRequirements.map((item) => `- 未完成：${item}`),
     "", "### 已知证据", ...blocker.evidence.map((item) => `- ${item}`),
     "", "### 已尝试的处理", ...blocker.attempts.map((item) => `- ${item}`),
-    ...(blocker.nextSteps.length > 0 ? [
+    ...(requiredActions.length > 0 ? [
       "", "### 继续前需要解决的事项",
-      "优先采用以下方案，按顺序处理：",
-      ...blocker.nextSteps.map((step, index) => `${index + 1}. ${step.owner}：${step.action}\n\n   确认方式：${step.verification}`),
+      ...(requiredActions.length === 1 ? requiredActions : requiredActions.map((action, index) => `${index + 1}. ${action}`)),
     ] : []),
     ...(blocker.kind === "recoverable" ? [
       "", "### 恢复条件", blocker.resumeCondition!,
@@ -142,6 +142,6 @@ export const LOOP_BLOCKER_EXAMPLE: LoopBlocker = {
   affectedRequirements: ["接口联调及用户要求的联调验证"],
   evidence: ["子任务报告指出现有接口文档未定义必填字段；尚缺接口负责人确认。"],
   attempts: ["已查阅现有接口文档，无法从中确定缺失字段；不能自行编造约定。"],
-  nextSteps: [{ owner: "接口负责人", action: "提供已确认的请求、响应字段及测试方式。", verification: "主模型根据资料核对缺项，由子任务继续联调并汇报结果。" }],
-  resumeCondition: "已确认的接口约定覆盖本次联调所需字段，并有可用的测试方式。",
+  nextSteps: [{ owner: "接口负责人", action: "确认接口必填请求字段。", verification: "核对必填字段是否齐全。" }],
+  resumeCondition: "必填字段约定已明确。",
 };
