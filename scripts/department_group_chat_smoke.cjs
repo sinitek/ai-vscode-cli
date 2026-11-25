@@ -375,11 +375,20 @@ function theme(dark) {
           });
           const previewOpener = frame.locator('[data-action="openCommunicationFile"][data-file-path="/display-only/focus-preview.md"]');
           await previewOpener.click();
-          await frame.locator("#filePreviewBackdrop").waitFor({ state: "visible" });
-          await frame.locator("#filePreviewClose").click();
-          assert.equal(await frame.locator("#filePreviewBackdrop").getAttribute("aria-hidden"), "true");
+          const preview = frame.locator("#filePreviewBackdrop");
+          await preview.waitFor({ state: "visible" });
+          assert.equal(await preview.locator("button").count(), 1);
+          const previewClose = preview.locator('.dialog-header').getByRole("button", { name: "关闭", exact: true });
+          assert.ok(await previewClose.locator("svg").isVisible());
+          await previewClose.click();
+          assert.equal(await preview.getAttribute("aria-hidden"), "true");
           assert.equal(await previewOpener.evaluate((element) => element.isConnected && !element.closest("[inert]") && document.activeElement === element), true,
             "file preview close returns focus to a visible, non-inert opener");
+          await previewOpener.click();
+          await previewClose.press("Escape");
+          assert.equal(await preview.getAttribute("aria-hidden"), "true");
+          assert.equal(await previewOpener.evaluate((element) => document.activeElement === element), true,
+            "Escape returns focus to the file preview opener");
 
           await frame.evaluate(() => {
             window.switchModelsOpenerFocuses = 0;

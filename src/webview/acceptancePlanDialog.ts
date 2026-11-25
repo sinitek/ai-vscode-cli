@@ -18,7 +18,6 @@ export type AcceptancePlanDialogLabels = {
   ui: string;
   other: string;
   otherTextPlaceholder: string;
-  cancel: string;
   confirm: string;
   saveNameTitle: string;
   saveNameDesc: string;
@@ -54,7 +53,6 @@ export function renderAcceptancePlanDialogs(labels: AcceptancePlanDialogLabels):
   const ui = escapeHtml(labels.ui);
   const other = escapeHtml(labels.other);
   const otherTextPlaceholder = escapeHtml(labels.otherTextPlaceholder);
-  const cancel = escapeHtml(labels.cancel);
   const confirm = escapeHtml(labels.confirm);
   const saveNameTitle = escapeHtml(labels.saveNameTitle);
   const saveNameDesc = escapeHtml(labels.saveNameDesc);
@@ -115,7 +113,6 @@ export function renderAcceptancePlanDialogs(labels: AcceptancePlanDialogLabels):
             <div id="acceptancePlanToast" class="acceptance-plan-error" role="status" hidden></div>
           </div>`,
     actionsHtml: `<div class="modal-actions acceptance-plan-actions">
-            <button id="cancelAcceptancePlan" type="button" class="secondary action-button">${cancel}</button>
             <button id="confirmAcceptancePlan" type="button" class="action-button">${confirm}</button>
           </div>`,
   })}
@@ -139,7 +136,6 @@ ${renderChatModal({
             <div id="acceptancePlanNameError" class="acceptance-plan-error" role="alert" style="display: none;"></div>
           </div>`,
     actionsHtml: `<div class="modal-actions acceptance-plan-name-actions">
-            <button id="cancelAcceptancePlanName" type="button" class="secondary action-button">${cancel}</button>
             <button id="confirmAcceptancePlanName" type="button" class="action-button">${saveNameConfirm}</button>
           </div>`,
   })}
@@ -158,7 +154,6 @@ ${renderChatModal({
             <p id="acceptancePlanDeleteDesc" class="acceptance-plan-name-desc">${deleteDesc}</p>
           </div>`,
     actionsHtml: `<div class="modal-actions acceptance-plan-name-actions">
-            <button id="cancelAcceptancePlanDelete" type="button" class="secondary action-button">${cancel}</button>
             <button id="confirmAcceptancePlanDelete" type="button" class="action-button">${deleteConfirm}</button>
           </div>`,
   })}`;

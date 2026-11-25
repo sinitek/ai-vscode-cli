@@ -138,7 +138,7 @@ function createDshEditorHarness(options: { active?: boolean; baseURL?: string; c
     aa: "Card",
     xn: "Button",
     AH: "DeleteIcon",
-    xr: { confirm: (options: Record<string, unknown>) => { sandbox.deleteConfirmation = options; } },
+    showConfigConfirmation: (options: Record<string, unknown>) => { sandbox.deleteConfirmation = options; },
     Kt: { error: (value: string) => { sandbox.lastError = value; } },
     Pv: "SaveIcon",
     KD: "ViewIcon",

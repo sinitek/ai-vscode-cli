@@ -277,7 +277,8 @@ test("Kimi Code 可视化渲染函数暴露稳定字段与删除确认", () => {
     be: { jsx, jsxs: jsx },
     xn: "Button",
     AH: "DeleteIcon",
-    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    xr: "modal",
+    showConfigConfirmation: (options: Record<string, any>) => confirmations.push(options),
     renderCodexField: (label: string, value: string, onChange: unknown, placeholder: string, options: Record<string, unknown> = {}) =>
       jsx("Field", { label, value, onChange, placeholder, ...options }),
     renderCodexSelect: (label: string, value: string, onChange: unknown, options: unknown[]) =>

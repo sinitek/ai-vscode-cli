@@ -1,41 +1,33 @@
 export type ModalAttribute = readonly [string, string | null];
 
-export type ModalCloseButtonOptions = {
+type ModalCloseButtonOptions = {
   id: string;
   label: string;
   className?: string;
   title?: string;
-  type?: string;
-  extraAttributes?: readonly ModalAttribute[];
+  wrapperClassName?: string;
 };
 
 export type ModalHeaderOptions = {
   className: string;
   titleHtml: string;
   descriptionHtml?: string;
-  closeHtml?: string;
+  close: ModalCloseButtonOptions;
   titleGroupClassName?: string;
   wrapTitle?: boolean;
 };
 
-export type ModalShellOptions = {
+type ModalShellOptions = {
   backdropId?: string;
   backdropClassName: string;
   backdropAttributes?: readonly ModalAttribute[];
   dialogId?: string;
   dialogClassName: string;
   dialogAttributes?: readonly ModalAttribute[];
-  headerHtml?: string;
+  headerHtml: string;
   afterHeaderHtml?: string;
   bodyHtml?: string;
   actionsHtml?: string;
-};
-
-export type ChatModalCloseOptions = {
-  id: string;
-  label: string;
-  className?: string;
-  wrapperClassName?: string;
 };
 
 export type ChatModalOptions = {
@@ -44,7 +36,7 @@ export type ChatModalOptions = {
   titleHtml: string;
   labelledBy?: string;
   describedBy?: string;
-  close?: ChatModalCloseOptions;
+  close: ModalCloseButtonOptions;
   contentHtml?: string;
   actionsHtml?: string;
   extraDialogAttributes?: readonly ModalAttribute[];
@@ -62,7 +54,7 @@ export type PanelDialogOptions = {
   headerClassName?: string;
   titleHtml: string;
   descriptionHtml?: string;
-  closeHtml?: string;
+  close: ModalCloseButtonOptions;
   titleGroupClassName?: string;
   wrapTitle?: boolean;
   bodyHtml?: string;
@@ -354,17 +346,16 @@ function renderDiv(
   return `<div${parts.length ? ` ${parts.join(" ")}` : ""}>${html}</div>`;
 }
 
-export function renderModalCloseIcon(): string {
-  return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" /></svg>`;
-}
+export const MODAL_CLOSE_ICON_PATH = "M6 6l12 12M18 6 6 18";
 
-export function renderModalCloseButton(options: ModalCloseButtonOptions): string {
+function renderModalCloseButton(options: ModalCloseButtonOptions): string {
   const className = options.className ?? "secondary icon-button";
-  const type = options.type ?? "button";
   const label = escapeHtml(options.label);
   const title = escapeHtml(options.title ?? options.label);
-  const extra = renderAttributes(options.extraAttributes);
-  return `<button id="${escapeHtml(options.id)}" class="${escapeHtml(className)}" type="${escapeHtml(type)}" title="${title}" aria-label="${label}"${extra ? ` ${extra}` : ""}>${renderModalCloseIcon()}</button>`;
+  const button = `<button id="${escapeHtml(options.id)}" class="${escapeHtml(className)}" type="button" title="${title}" aria-label="${label}"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="${MODAL_CLOSE_ICON_PATH}" /></svg></button>`;
+  return options.wrapperClassName
+    ? `<div class="${escapeHtml(options.wrapperClassName)}">${button}</div>`
+    : button;
 }
 
 export function renderModalHeader(options: ModalHeaderOptions): string {
@@ -377,14 +368,14 @@ export function renderModalHeader(options: ModalHeaderOptions): string {
     }
     heading = `<div class="${escapeHtml(classes.join(" "))}">${heading}</div>`;
   }
-  return `<div class="${escapeHtml(options.className)}">${heading}${options.closeHtml ?? ""}</div>`;
+  return `<div class="${escapeHtml(options.className)}">${heading}${renderModalCloseButton(options.close)}</div>`;
 }
 
 export function renderModalActions(className: string, buttonsHtml: string): string {
   return `<div class="${escapeHtml(className)}">${buttonsHtml}</div>`;
 }
 
-export function renderModalShell(options: ModalShellOptions): string {
+function renderModalShell(options: ModalShellOptions): string {
   const inner = [
     options.headerHtml,
     options.afterHeaderHtml,
@@ -417,17 +408,6 @@ function dialogSemantics(
 }
 
 export function renderChatModal(options: ChatModalOptions): string {
-  let closeHtml = "";
-  if (options.close) {
-    closeHtml = renderModalCloseButton({
-      id: options.close.id,
-      label: options.close.label,
-      className: options.close.className,
-    });
-    if (options.close.wrapperClassName) {
-      closeHtml = `<div class="${escapeHtml(options.close.wrapperClassName)}">${closeHtml}</div>`;
-    }
-  }
   return renderModalShell({
     backdropId: options.id,
     backdropClassName: "overlay",
@@ -436,7 +416,7 @@ export function renderChatModal(options: ChatModalOptions): string {
     headerHtml: renderModalHeader({
       className: "modal-header",
       titleHtml: options.titleHtml,
-      closeHtml,
+      close: options.close,
     }),
     bodyHtml: options.contentHtml
       ? `<div class="modal-body">${options.contentHtml}</div>`
@@ -457,7 +437,7 @@ export function renderPanelDialog(options: PanelDialogOptions): string {
       className: options.headerClassName ?? "dialog-header",
       titleHtml: options.titleHtml,
       descriptionHtml: options.descriptionHtml,
-      closeHtml: options.closeHtml,
+      close: options.close,
       titleGroupClassName: options.titleGroupClassName,
       wrapTitle: options.wrapTitle,
     }),

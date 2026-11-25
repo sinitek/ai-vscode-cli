@@ -1174,7 +1174,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_MANAGER = `      let modelManagerTarget =
         let modelInputIsComposing = false;
         let modelInputLastCompositionEndAt = 0;
         elements.closeAddModel.addEventListener("click", hideAddModelDialog);
-        elements.cancelAddModel.addEventListener("click", hideAddModelDialog);
         if (elements.clearModelEdit) {
           elements.clearModelEdit.addEventListener("click", resetModelManageForm);
         }

@@ -180,7 +180,7 @@ round-20 将展示投影与授权分离；round-23 将 `buildDepartmentGroupChat
 
 继续、停止、补充、提问/取消、澄清、切模型复用既有验证和执行路径。组长 askThread、settlement、沟通预览和资源响应通过绑定响应通道投递。没有独立 Webview 的组长仍能由 refresh/refreshOpenPanelForTask 更新当前弹窗。关闭、切换或 dispose 取消展示订阅和该展示的提问队列，不调用任务停止；已经提交给执行端的真实任务不会因关闭展示而停止。旧模型调用可能继续在执行端收尾，但其回答不能写入新实例。
 
-沟通文件预览保留 collectLoopCommunicationPreviewRoots/readLoopCommunicationFilePreview。子页图片与链接也先按该任务许可根做 realpath/目录边界检查；网络 URL 沿用原链接处理。复用的 ChatImageHost/openChatLink 增加可选当前实例与基目录上下文，异步读取/保存对话框返回后失效实例不再执行打开/写入或响应；普通调用不传上下文，行为不变。
+沟通文件预览通过共享标题栏右上角的 SVG 关闭，或者按 Escape 退出。预览关闭后焦点回到打开预览的入口。读取沿用 collectLoopCommunicationPreviewRoots/readLoopCommunicationFilePreview。子页图片与链接也先按该任务许可根做 realpath/目录边界检查；网络 URL 沿用原链接处理。复用的 ChatImageHost/openChatLink 增加可选当前实例与基目录上下文，异步读取/保存对话框返回后失效实例不再执行打开/写入或响应；普通调用不传上下文，行为不变。
 
 round-20 每个有效弹窗绑定只持有一个 ChatImageHost，图片消息和图片链接共用其预览面板；响应闭包显式捕获绑定对象，不依赖调用回调时的 AsyncLocalStorage 是否存在。基目录读取当前记录，许可根/realpath 检查继续逐消息执行。关闭、切换、重试或总监面板 dispose 调用资源宿主 dispose：使预览请求失效并关闭该绑定的图片面板；迟到读取、解析回包及保存对话框返回仍重新核对当前实例，不能打开新面板、污染另一绑定或写文件。普通会话的 invalidate 保持原语义，不自动关闭其预览。
 

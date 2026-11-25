@@ -981,7 +981,9 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         elements.humanInteractionTitle.textContent = dialog.title || t("humanInteractionTitle");
         elements.humanInteractionInstruction.textContent = dialog.instruction || t("humanInteractionDefaultInstruction");
         elements.humanInteractionSubmit.textContent = dialog.submitLabel || t("humanInteractionSubmit");
-        elements.humanInteractionReject.textContent = dialog.cancelLabel || t("humanInteractionReject");
+        const rejectLabel = dialog.cancelLabel || t("humanInteractionReject");
+        elements.closeHumanInteraction.setAttribute("aria-label", rejectLabel);
+        elements.closeHumanInteraction.title = rejectLabel;
         elements.humanInteractionError.textContent = dialog.error || "";
         elements.humanInteractionError.style.display = dialog.error ? "block" : "none";
         elements.humanInteractionForm.innerHTML = "";
@@ -1538,11 +1540,6 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
 
       if (elements.closeHumanInteraction) {
         elements.closeHumanInteraction.addEventListener("click", () => {
-          rejectHumanInteractionDialog();
-        });
-      }
-      if (elements.humanInteractionReject) {
-        elements.humanInteractionReject.addEventListener("click", () => {
           rejectHumanInteractionDialog();
         });
       }

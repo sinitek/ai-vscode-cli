@@ -1,6 +1,6 @@
 import { formatDepartmentMemberTitle, getDepartmentLeaderCode } from "../department";
 import type { DepartmentGroupChatProjection } from "./loopGroupChatPanelTypes";
-import { renderModalActions, renderModalCloseButton, renderModalHeader } from "./modalComponents";
+import { renderModalActions, renderModalHeader } from "./modalComponents";
 
 type AllocationRow = NonNullable<DepartmentGroupChatProjection["employeeAllocation"]>["leaders"][number];
 type EscapeHtml = (text: string) => string;
@@ -47,7 +47,7 @@ export function renderDepartmentEmployeeAllocationDialog(rowsHtml: string): stri
     ${renderModalHeader({
       className: "dialog-header",
       titleHtml: '<h2 id="departmentAllocationTitle" class="dialog-title">分配员工</h2>',
-      closeHtml: renderModalCloseButton({ id: "departmentAllocationClose", label: "关闭", className: "icon-button" }),
+      close: { id: "departmentAllocationClose", label: "关闭", className: "icon-button" },
     })}
     <div id="departmentAllocationSlot" class="dialog-body">${rowsHtml}</div>
     ${renderModalActions("dialog-actions", '<div id="departmentAllocationStatus" class="member-meta department-allocation-error" role="status"></div><button id="departmentAllocationSave" class="button primary" type="button">保存并关闭</button>')}

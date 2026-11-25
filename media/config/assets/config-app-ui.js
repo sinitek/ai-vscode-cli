@@ -648,7 +648,24 @@ const CONFIG_PROVIDER_CARD_MIN_WIDTH_PX = Math.round(
   CONFIG_PROVIDER_CARD_ORIGINAL_MIN_WIDTH_PX * CONFIG_PROVIDER_CARD_WIDTH_SCALE,
 );
 
-const { confirm: uk } = xr;
+const configModalClose = {
+  "aria-label": "关闭",
+  closeIcon: be.jsx("svg", {
+    viewBox: "0 0 24 24",
+    width: "1em",
+    height: "1em",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round",
+    "aria-hidden": true,
+    children: be.jsx("path", { d: configModalCloseIconPath }),
+  }),
+};
+
+function showConfigConfirmation(options) {
+  return xr.confirm({ ...options, closable: configModalClose, okCancel: false, autoFocusButton: null });
+}
 
 const isConfigPlatformEnabled = (platform, enabledByName) => {
   if (!enabledByName || typeof enabledByName !== "object") {
@@ -866,11 +883,10 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       },
       A = (k, L) => {
         (k.stopPropagation(),
-          uk({
+          showConfigConfirmation({
             title: "确认删除",
             content: `确定要删除配置"${L.name}"吗？`,
             okText: "确认",
-            cancelText: "取消",
             okType: "danger",
             onOk: async () => {
               try {
@@ -887,7 +903,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
           .filter((item) => item.platform === L.platform)
           .map((item) => item.name);
         const suggestedName = createCopyName(L.name, existingNames);
-        xr.confirm({
+        showConfigConfirmation({
           title: "复制配置",
           content: be.jsxs("div", {
             style: { display: "flex", flexDirection: "column", gap: "8px" },
@@ -906,7 +922,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
             ],
           }),
           okText: "确认",
-          cancelText: "取消",
           onOk: async () => {
             const raw = document.getElementById("copy-config-name-input")?.value;
             try {
@@ -931,7 +946,7 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
       },
       W = (k, L) => {
         (k.stopPropagation(),
-          xr.confirm({
+          showConfigConfirmation({
             title: "重命名配置",
             content: be.jsx(zi, {
               id: "rename-input",
@@ -1520,7 +1535,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
               be.jsxs("div", {
                 style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
                 children: [
-                  be.jsx(xn, { onClick: () => setExportOpen(!1), children: "取消" }),
                   be.jsx(xn, {
                     type: "primary",
                     disabled: !exportAnySelected,
@@ -1621,14 +1635,6 @@ const ConfigListPanel = ({ onMobileClose } = {}) => {
               be.jsxs("div", {
                 style: { display: "flex", justifyContent: "flex-end", gap: "8px" },
                 children: [
-                  be.jsx(xn, {
-                    onClick: () => {
-                      setImportOpen(!1);
-                      setImportItems(null);
-                      setImportError("");
-                    },
-                    children: "取消",
-                  }),
                   be.jsx(xn, {
                     type: "primary",
                     loading: isImporting,
@@ -2670,11 +2676,10 @@ const SkillsCopyModal = ({ skill, platform, onClose, onCopy }) => {
     onCancel: closeModal,
     onOk: confirmCopy,
     okText: copying ? "复制中..." : copyErrors.length > 0 ? "重试复制" : "复制",
-    cancelText: "取消",
     confirmLoading: copying,
     okButtonProps: { disabled: selectedTargets.length === 0 || copying },
-    cancelButtonProps: { disabled: copying },
-    closable: !copying,
+    footer: (_, { OkBtn }) => be.jsx(OkBtn, {}),
+    closable: { disabled: copying },
     maskClosable: !copying,
     keyboard: !copying,
     children: be.jsxs("div", {
@@ -2812,7 +2817,7 @@ const SkillsMarketModal = ({ onClose }) => {
     rootClassName: "skills-market-modal",
     onCancel: closeModal,
     footer: null,
-    closable: !installing,
+    closable: { disabled: installing },
     maskClosable: !installing,
     keyboard: !installing,
     children: be.jsxs("div", {
@@ -4706,7 +4711,8 @@ function showConfigSaveError(error) {
   xr.error({
     title: "配置保存失败",
     content: be.jsx("pre", { className: "config-save-error", children: error instanceof Error ? error.message : String(error) }),
-    okText: "返回修改",
+    closable: configModalClose,
+    footer: null,
     centered: true,
   });
 }
@@ -6032,11 +6038,10 @@ const renderZcodeVisualEditor = (state, setState, options = {}) => {
                         disabled: controlsDisabled,
                         onClick: (event) => {
                           event.stopPropagation();
-                          xr.confirm({
+                          showConfigConfirmation({
                             title: "删除模型配置",
                             content: `确定删除 ${model.id}？其他模型和未展示字段会保留。`,
                             okText: "删除",
-                            cancelText: "取消",
                             onOk: () => setState((previous) => zcodeVisualDeleteModel(previous, model.id)),
                           });
                         },
@@ -6703,17 +6708,14 @@ const CliExampleImportModal = ({ onClose, onImport, onSkip, platform, exampleKey
     onCancel: () => { if (!submittingRef.current) { invalidateDiscovery(); onClose(); } },
     onOk: submit,
     confirmLoading: submitting,
-    cancelButtonProps: { disabled: submitting },
-    closable: !submitting,
+    closable: { disabled: submitting },
     keyboard: !submitting,
     okText: platform ? "创建配置" : "确认导入",
     okButtonProps: { disabled: confirmBlocked },
-    cancelText: "取消",
     footer: onSkip ? [
-      be.jsx(xn, { disabled: submitting, onClick: () => { invalidateDiscovery(); onClose(); }, children: "取消" }, "cancel"),
       be.jsx(xn, { type: "primary", loading: submitting, disabled: confirmBlocked, onClick: submit, children: "创建配置" }, "submit"),
       be.jsx(xn, { disabled: submitting, onClick: skip, children: "跳过" }, "skip"),
-    ] : void 0,
+    ] : (_, { OkBtn }) => be.jsx(OkBtn, {}),
     maskClosable: !1,
     children: be.jsxs("div", {
       className: "grok-model-dialog-content",
@@ -7257,11 +7259,10 @@ const ModelImportModal = ({ platform, draft, configIdentity, getCurrentDraft, ge
     rootClassName: "model-import-modal",
     destroyOnClose: !0,
     maskClosable: !1,
-    closable: !importing,
+    closable: { disabled: importing },
     keyboard: !importing,
     onCancel: closeModal,
     footer: [
-      be.jsx(xn, { disabled: importing, onClick: closeModal, children: "取消" }, "cancel"),
       be.jsx(xn, { type: "primary", loading: importing, disabled: !resultReady || !hasValidSelection || Boolean(selectedProviderReason) || !selectedProvider, onClick: submit, children: "导入" }, "submit"),
     ],
     children: be.jsxs("div", {
@@ -7638,11 +7639,10 @@ const ConfigEditorPanel = () => {
     };
     const confirmDeleteCliSkill = (skill) => {
       if (!O || !skill) return;
-      uk({
+      showConfigConfirmation({
         title: `删除 ${skill.name}`,
         content: `只删除该 CLI 全局目录中的这个技能文件夹：${skill.name}`,
         okText: "删除",
-        cancelText: "取消",
         onOk: async () => {
           setPendingSkillName(skill.name);
           try {
@@ -7873,6 +7873,7 @@ const ConfigEditorPanel = () => {
           rootClassName: "config-example-drawer",
           title: I?.title || "配置范例",
           width: 560,
+          closable: configModalClose,
           open: !!I,
           onClose: z,
           destroyOnClose: !0,
@@ -8890,11 +8891,10 @@ const ConfigEditorPanel = () => {
       },
       confirmDeleteOpenCodeProvider = (provider = selectedOpenCodeProvider) => {
         if (!provider) return;
-        xr.confirm({
+        showConfigConfirmation({
           title: "删除 Provider",
           content: `确定删除 ${provider.name || provider.id} 及其全部模型吗？`,
           okText: "删除",
-          cancelText: "取消",
           onOk: () =>
             setOpenCodeVisualState((W) =>
               W ? openCodeVisualDeleteProvider(W, provider.id) : W,
@@ -8903,11 +8903,10 @@ const ConfigEditorPanel = () => {
       },
       confirmDeleteOpenCodeModel = (provider = selectedOpenCodeProvider, model = selectedOpenCodeModel) => {
         if (!provider || !model) return;
-        xr.confirm({
+        showConfigConfirmation({
           title: "删除模型",
           content: `确定删除 ${model.name || model.id} 吗？`,
           okText: "删除",
-          cancelText: "取消",
           onOk: () =>
             setOpenCodeVisualState((W) =>
               W ? openCodeVisualDeleteModel(W, provider.id, model.id) : W,
@@ -9375,11 +9374,10 @@ const ConfigEditorPanel = () => {
       },
       confirmDeleteCodexProvider = (provider = selectedCodexProvider) => {
         if (!provider) return;
-        xr.confirm({
+        showConfigConfirmation({
           title: "删除 Provider",
           content: `确定删除 ${provider.name || provider.id} 吗？`,
           okText: "删除",
-          cancelText: "取消",
           onOk: () =>
             setCodexVisualState((W) =>
               W ? codexVisualDeleteProvider(W, provider.id) : W,
@@ -9579,11 +9577,10 @@ const ConfigEditorPanel = () => {
                         disabled: Boolean(grokVisualState.fieldError),
                         onClick: (event) => {
                           event.stopPropagation();
-                          xr.confirm({
+                          showConfigConfirmation({
                             title: claudeText("删除模型配置", "Delete model configuration"),
                             content: claudeText(`确定删除 ${modelId}？其他模型和未展示字段会保留。`, `Delete ${modelId}? Other models and hidden fields are preserved.`),
                             okText: claudeText("删除", "Delete"),
-                            cancelText: claudeText("取消", "Cancel"),
                             onOk: () => setGrokVisualState((previous) => grokVisualDeleteModel(previous, modelId)),
                           });
                         },
@@ -9611,7 +9608,7 @@ const ConfigEditorPanel = () => {
               },
               onOk: addGrokModel,
               okText: claudeText("添加", "Add"),
-              cancelText: claudeText("取消", "Cancel"),
+              footer: (_, { OkBtn }) => be.jsx(OkBtn, {}),
               okButtonProps: { disabled: !grokNewModelId.trim() || Boolean(grokVisualState.fieldError) },
               children: be.jsxs("div", {
                 className: "grok-model-dialog-content",
@@ -9868,11 +9865,10 @@ const ConfigEditorPanel = () => {
                           disabled: Boolean(kimiCodeVisualState.fieldError),
                           onClick: (event) => {
                             event.stopPropagation();
-                            xr.confirm({
+                            showConfigConfirmation({
                               title: "删除模型配置",
                               content: `确定删除 ${modelId}？其他模型和未展示字段会保留。`,
                               okText: "删除",
-                              cancelText: "取消",
                               onOk: () =>
                                 setKimiCodeVisualState((previous) =>
                                   kimiCodeVisualDeleteModel(previous, modelId),
@@ -10005,7 +10001,7 @@ const ConfigEditorPanel = () => {
               },
               onOk: addKimiCodeModel,
               okText: "添加",
-              cancelText: "取消",
+              footer: (_, { OkBtn }) => be.jsx(OkBtn, {}),
               okButtonProps: {
                 disabled: !kimiCodeNewModelAlias.trim() || Boolean(kimiCodeVisualState.fieldError),
               },
@@ -10812,11 +10808,10 @@ const ConfigEditorPanel = () => {
                                       event.stopPropagation();
                                       if (controlsDisabled) return;
                                       const cancelDraft = model.id === "";
-                                      xr.confirm({
+                                      showConfigConfirmation({
                                         title: cancelDraft ? "取消新增模型" : "删除模型",
                                         content: cancelDraft ? "确定放弃尚未填写的模型 id？" : `确定删除模型 ${model.id}？`,
                                         okText: cancelDraft ? "放弃" : "删除",
-                                        cancelText: "取消",
                                         onOk: () => {
                                           const deleted = dshUiDeleteModel(document, model.id);
                                           if (!deleted.ok) {
@@ -12036,7 +12031,7 @@ const ConfigManagerLayout = () => {
               "aria-label": "关闭配置弹窗",
               title: "关闭配置弹窗",
               onClick: closeConfigPanel,
-              children: "×",
+              children: configModalClose.closeIcon,
             }),
           ],
         }),
@@ -12304,6 +12299,7 @@ const ConfigAppRoot = () => {
   return be.jsx(Do, {
     locale: BB,
     theme: configVscodeTheme,
+    modal: { closable: configModalClose },
     children: be.jsx(l$, {
       children: be.jsx(iP, {
         children: be.jsxs(LR, {

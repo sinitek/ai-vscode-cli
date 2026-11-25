@@ -784,13 +784,13 @@ test("保存失败保留模型选择，保存中禁用重复提交与解析", as
 test("跳过不写入草稿、不触发解析请求，取消关闭不导入", async () => {
   const harness = loadHarness({ props: { platform: "codex" } });
   const footer = harness.render().props.footer as EditorNode[];
-  assert.deepEqual(Array.from(footer, (button) => String(button.props.children)), ["取消", "创建配置", "跳过"]);
-  await footer[2].props.onClick();
+  assert.deepEqual(Array.from(footer, (button) => String(button.props.children)), ["创建配置", "跳过"]);
+  await footer[1].props.onClick();
   assert.equal(harness.skipped.length, 1);
   assert.equal(harness.imported.length, 0);
   assert.equal(harness.calls.providers, 0);
   assert.equal(harness.calls.discover, 0);
-  footer[0].props.onClick();
+  harness.render().props.onCancel();
   assert.equal(harness.closed(), 1);
   assert.equal(harness.imported.length, 0);
   assert.equal(harness.skipped.length, 1);

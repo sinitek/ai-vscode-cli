@@ -93,7 +93,8 @@ function createGrokVisualEditorHarness() {
     be: { jsx, jsxs: jsx },
     xn: "Button",
     AH: "DeleteIcon",
-    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    xr: "modal",
+    showConfigConfirmation: (options: Record<string, any>) => confirmations.push(options),
     claudeText: (chinese: string) => chinese,
     renderCodexField: (label: string, value: string, onChange: unknown, placeholder: string, options: Record<string, unknown> = {}) =>
       jsx("Field", { label, value, onChange, placeholder, ...options }),

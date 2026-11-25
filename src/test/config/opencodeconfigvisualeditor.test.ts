@@ -627,7 +627,7 @@ function createOpenCodeListHarness() {
     be: { jsx, jsxs: jsx },
     xn: "Button",
     AH: "DeleteIcon",
-    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    showConfigConfirmation: (options: Record<string, any>) => confirmations.push(options),
     claudeText: (chinese: string) => chinese,
     renderConfigSelect: () => null,
     renderConfigFieldLabel: () => null,
@@ -678,7 +678,6 @@ test("OpenCode provider row deletes its target after confirmation and preserves 
   const confirmation = harness.clickDelete("data-opencode-delete-provider-id", "second");
   assert.equal(confirmation.title, "删除 Provider");
   assert.match(confirmation.content, /Second 及其全部模型/);
-  assert.equal(confirmation.cancelText, "取消");
   assert.equal(JSON.stringify(harness.state.openCodeVisualState), original, "opening or cancelling must not delete");
   confirmation.onOk();
   const state = harness.state.openCodeVisualState;

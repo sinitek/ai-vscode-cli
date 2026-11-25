@@ -6,7 +6,7 @@ import { renderAcceptancePlanDialogs } from "./acceptancePlanDialog";
 import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/acceptancePlan";
 import { getWebviewStrings } from "./viewContentStrings";
 import { LOOP_MODEL_SWITCH_SCRIPT, renderLoopModelSwitchFields } from "./loopModelSwitchDialog";
-import { renderModalActions, renderModalCloseButton, renderPanelDialog } from "./modalComponents";
+import { renderModalActions, renderPanelDialog } from "./modalComponents";
 import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
 import { selectLoopGroupChatBubbles, type LoopGroupChatBubbleWindow } from "./loopGroupChatBubbleRetention";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
@@ -493,8 +493,9 @@ ${renderPanelDialog({
         describedBy: "continueDialogDescription",
         titleHtml: `<h2 id="continueDialogTitle" class="dialog-title">${escapeHtml(strings.continueDialogTitle)}</h2>`,
         descriptionHtml: `<p id="continueDialogDescription" class="dialog-description">${escapeHtml(strings.continueDialogDescription)}</p>`,
+        close: { id: "continueDialogCancel", label: strings.continueCancel, className: "icon-button" },
         bodyHtml: `<div class="dialog-body"><label class="dialog-label" for="continueDialogInput">${escapeHtml(strings.continuePromptLabel)}</label><textarea id="continueDialogInput" class="dialog-textarea" spellcheck="true">${escapeHtml(strings.continuePromptDefault)}</textarea><div id="continueDialogError" class="dialog-error" aria-live="polite"></div></div>`,
-        actionsHtml: renderModalActions("dialog-actions", `<button id="continueDialogCancel" class="button" type="button">${escapeHtml(strings.continueCancel)}</button><button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>`),
+        actionsHtml: renderModalActions("dialog-actions", `<button id="continueDialogConfirm" class="button primary" type="button">${escapeHtml(strings.continueConfirm)}</button>`),
       })}
 ${renderPanelDialog({
         backdropId: "modelSwitchBackdrop",
@@ -502,9 +503,10 @@ ${renderPanelDialog({
         labelledBy: "modelSwitchTitle",
         describedBy: "modelSwitchDescription",
         titleHtml: '<h2 id="modelSwitchTitle" class="dialog-title">切模型</h2>',
+        close: { id: "modelSwitchCancel", label: "取消", className: "icon-button" },
         descriptionHtml: '<p id="modelSwitchDescription" class="dialog-description">在各角色所在 CLI 的当前配置中选择模型和思考力度。提交后，下一次主、子模型执行使用新设置；正在执行的调用不受影响，已暂停的任务直接继续。</p>',
         bodyHtml: `<div class="dialog-body">${patch.modelSwitchHtml}<div id="modelSwitchError" class="dialog-error" aria-live="polite"></div></div>`,
-        actionsHtml: renderModalActions("dialog-actions", '<button id="modelSwitchCancel" class="button" type="button">取消</button><button id="modelSwitchConfirm" class="button primary" type="button">提交</button>'),
+        actionsHtml: renderModalActions("dialog-actions", '<button id="modelSwitchConfirm" class="button primary" type="button">提交</button>'),
       })}
       ${renderPanelDialog({
         backdropId: "askChatBackdrop",
@@ -517,11 +519,11 @@ ${renderPanelDialog({
         titleGroupClassName: "ask-chat-heading",
         titleHtml: `<h2 id="askChatTitle" class="dialog-title">${escapeHtml(strings.askDialogTitle)}</h2>`,
         descriptionHtml: `<p id="askChatDescription" class="dialog-description">${escapeHtml(strings.askDialogDescription)}</p>`,
-        closeHtml: renderModalCloseButton({
+        close: {
           id: "askChatClose",
           label: strings.askAnswerClose,
           className: "icon-button ask-chat-close",
-        }),
+        },
         afterHeaderHtml: `<div id="askChatMessages" class="ask-chat-log" aria-live="polite"></div><form id="askChatForm" class="ask-chat-composer"><label class="dialog-label" for="askChatInput">${escapeHtml(strings.askPromptLabel)}</label><textarea id="askChatInput" class="dialog-textarea" spellcheck="true" placeholder="${escapeAttribute(strings.askChatPlaceholder)}"></textarea><div class="ask-chat-actions"><span id="askChatBusy" class="ask-chat-busy" role="status"${state.mainModelBusy && !askThread.running ? "" : " hidden"}>${escapeHtml(strings.askChatBusy)}</span><button id="askChatAbort" class="icon-button stop-button" type="button" title="${escapeAttribute(strings.askChatAbort)}" aria-label="${escapeAttribute(strings.askChatAbort)}"${askThread.running ? "" : " hidden"}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></button><button id="askChatSend" class="icon-button send-icon-button" type="${options.embedded ? "button" : "submit"}" title="${escapeAttribute(strings.askChatSend)}" aria-label="${escapeAttribute(strings.askChatSend)}"${state.mainModelBusy && !askThread.running ? ' aria-describedby="askChatBusy"' : ""}><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" /></svg></button></div></form>`,
       })}
       <div id="clarificationSlot">${patch.clarificationHtml}</div>
@@ -534,8 +536,8 @@ ${renderPanelDialog({
         labelledBy: "filePreviewTitle",
         titleHtml: `<h2 id="filePreviewTitle" class="dialog-title">${escapeHtml(strings.communicationFileDialogTitle)}</h2>`,
         descriptionHtml: `<p id="filePreviewPath" class="dialog-description"></p>`,
+        close: { id: "filePreviewClose", label: strings.communicationFileClose, className: "icon-button" },
         bodyHtml: `<div class="dialog-body file-preview-body"><div id="filePreviewError" class="dialog-error" aria-live="polite"></div><div id="filePreviewContent" class="markdown-body"></div></div>`,
-        actionsHtml: renderModalActions("dialog-actions", `<button id="filePreviewClose" class="button" type="button">${escapeHtml(strings.communicationFileClose)}</button>`),
       })}
       <div class="layout">
         <button id="sidebarBackdrop" class="sidebar-backdrop" type="button" aria-label="${escapeAttribute(strings.hideSidebar)}" tabindex="-1" hidden></button>
@@ -2601,7 +2603,6 @@ function renderGroupAcceptancePlanDialogs(): string {
     ui: strings.acceptancePlanCheckUiAesthetics,
     other: strings.acceptancePlanOtherLabel,
     otherTextPlaceholder: strings.acceptancePlanOtherTextPlaceholder,
-    cancel: strings.acceptancePlanCancel,
     confirm: strings.acceptancePlanApply,
     saveNameTitle: strings.acceptancePlanSaveNameTitle,
     saveNameDesc: strings.acceptancePlanSaveNameDesc,

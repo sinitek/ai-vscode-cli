@@ -153,7 +153,6 @@ function createHarness(options: {
     "acceptancePlanDeleteOverlay",
     "acceptancePlanDeleteDesc",
     "confirmAcceptancePlanDelete",
-    "cancelAcceptancePlanDelete",
     "closeAcceptancePlanDelete",
     "acceptancePlanNameField",
     "acceptancePlanNameInput",
@@ -165,13 +164,11 @@ function createHarness(options: {
     "acceptancePlanOtherField",
     "acceptancePlanOtherText",
     "acceptancePlanError",
-    "cancelAcceptancePlan",
     "confirmAcceptancePlan",
     "closeAcceptancePlan",
     "acceptancePlanNewName",
     "acceptancePlanNameError",
     "confirmAcceptancePlanName",
-    "cancelAcceptancePlanName",
     "closeAcceptancePlanName",
   ];
   const dom: Record<string, FakeElement> = {};

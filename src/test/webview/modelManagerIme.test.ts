@@ -53,7 +53,6 @@ function createModelInputHarness() {
   const elements = Object.fromEntries([
     "addModelOverlay",
     "closeAddModel",
-    "cancelAddModel",
     "clearModelEdit",
     "confirmAddModel",
     "modelInput",

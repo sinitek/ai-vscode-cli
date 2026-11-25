@@ -16,6 +16,10 @@
 
 Webview 每次打开工具设置时发送 `refreshToolSettings`，宿主绕过缓存读取 `~/.sinitek_cli/settings.json` 与当前工作区对应的 `~/.sinitek_cli/workspace-settings/<workspaceKey>.json`，再通过现有 `PanelState` 回传。刷新不写回配置，工作区覆盖继续独立解析；全局配置保存以磁盘最新文档为基础合并字段，在跨进程锁内原子替换，避免不同 VS Code 窗口的旧缓存覆盖其他字段。工作区偏好更新同样在锁内重读并按字段合并；设置消息按到达顺序完成保存和状态回传。旧 VS Code 应用级通知开关仅在对应全局文件字段缺失时迁移一次。异步状态回包不改写当前聚焦中的设置输入。
 
+## Webview 弹窗关闭控件
+
+`renderChatModal`、`renderPanelDialog` 和原生 `dialog` 使用的 `renderModalHeader` 都要求提供关闭控件的 ID 和读屏名称，由共享标题栏生成右上角按钮及 SVG。CLI 配置管理把同一 SVG 路径接入 Ant Design 的 `ConfigProvider` 和确认弹窗入口。只负责退出的操作由关闭控件统一承接，适用的 Escape、焦点恢复和正在提交时的关闭限制由各弹窗处理。
+
 ## Loop 任务内模型切换
 
 群聊「切模型」是独立于继续执行的任务内路由变更。`src/loopModelSwitch.ts` 按各角色绑定 CLI 当前配置复用现有下拉选项，分别选择模型与思考力度，整体校验后保存 `modelRouting`、配置身份及 `originProfile` 对应角色的 `*ThinkingMode`，不修改全局模型偏好、CLI 或任务模式。力度选项随所选模型更新，DSH 使用配置声明的模型能力，无支持时禁用；旧消息省略 `thinkingModes` 时保留原力度。群聊继续执行仅提交继续说明，沿用任务最新路由；主任务 Tab 直接继续仍接受已有下拉选择，并先更新任务路由与显式提交的角色力度，未提交的角色设置保持不变，避免后续调用读回旧快照。

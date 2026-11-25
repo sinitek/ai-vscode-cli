@@ -72,15 +72,15 @@ test("新增弹窗的跳过按钮位于创建按钮右侧，绕过必填校验�
     return new Promise<void>((resolve) => { resolveSkip = resolve; });
   } });
   const footer = harness.render().props.footer;
-  assert.deepEqual(Array.from(footer, (button: EditorNode) => button.props.children), ["取消", "创建配置", "跳过"]);
-  const pending = footer[2].props.onClick();
+  assert.deepEqual(Array.from(footer, (button: EditorNode) => button.props.children), ["创建配置", "跳过"]);
+  const pending = footer[1].props.onClick();
   assert.equal(skipped, 1);
-  assert.equal(harness.render().props.footer[2].props.disabled, true);
-  await footer[2].props.onClick();
+  assert.equal(harness.render().props.footer[1].props.disabled, true);
+  await footer[1].props.onClick();
   assert.equal(skipped, 1);
   resolveSkip();
   await pending;
-  assert.equal(loadModalHarness({ exampleKey: "codex-config" }).render().props.footer, undefined);
+  assert.equal(loadModalHarness({ exampleKey: "codex-config" }).render().props.footer(null, { OkBtn: "confirm" }).type, "confirm");
 });
 
 function loadModalHarness(props: AnyRecord) {
@@ -500,8 +500,7 @@ test("新增导入弹窗支持名称校验、取消、异步保存失败重试�
   const saving = render().props.onOk();
   assert.equal(submissions, 1);
   assert.equal(render().props.confirmLoading, true);
-  assert.equal(render().props.cancelButtonProps.disabled, true);
-  assert.equal(render().props.closable, false);
+  assert.equal(render().props.closable.disabled, true);
   assert.ok(nodes(render()).filter((node) => node.type === "input").every((node) => node.props.disabled));
   await render().props.onOk();
   render().props.onCancel();
@@ -534,6 +533,7 @@ test("共享抽屉确认导入后统一切换源码页签，仅更新草稿，�
     const { sandbox, utils } = loadUtilities();
     Object.assign(sandbox, {
       S: exampleKey, I: utils.examples[exampleKey], exampleImportOpen: false,
+      configModalClose: { "aria-label": "关闭" },
       CliExampleImportModal: "import-modal",
       setExampleImportOpen: (open: boolean) => { sandbox.exampleImportOpen = open; },
       y: (next: string | null) => { sandbox.S = next; sandbox.I = next ? utils.examples[next] : null; },

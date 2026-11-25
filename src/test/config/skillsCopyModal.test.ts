@@ -177,9 +177,8 @@ test("copy in progress blocks cancellation and duplicate submissions", async () 
   assert.equal(calls, 1);
   assert.equal(harness.closeCount, 0);
   assert.equal(busyModal.props.confirmLoading, true);
-  assert.equal(busyModal.props.cancelButtonProps.disabled, true);
   assert.equal(busyModal.props.okButtonProps.disabled, true);
-  assert.equal(busyModal.props.closable, false);
+  assert.equal(busyModal.props.closable.disabled, true);
   assert.equal(busyModal.props.maskClosable, false);
   assert.equal(busyModal.props.keyboard, false);
   assert.ok(harness.options().every((node) => node.props.children[0].props.disabled));

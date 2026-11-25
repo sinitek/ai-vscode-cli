@@ -31,10 +31,11 @@ export function renderOrchestratorClarificationDialog(
     describedBy: "clarificationDialogDescription",
     titleHtml: `<h2 id="clarificationDialogTitle" class="dialog-title">${escapeHtml(request.title)}</h2>`,
     descriptionHtml: `<p id="clarificationDialogDescription" class="dialog-description">${escapeHtml(request.instruction)}</p>`,
+    close: { id: "clarificationDialogReject", label: request.cancelLabel, className: "icon-button" },
     bodyHtml: `<div class="dialog-body"><form id="clarificationDialogForm">${fields}</form><div id="clarificationDialogError" class="dialog-error" aria-live="polite"></div></div>`,
     actionsHtml: renderModalActions(
       "dialog-actions",
-      `<button id="clarificationDialogReject" class="button" type="button">${escapeHtml(request.cancelLabel)}</button><button id="clarificationDialogSubmit" class="button primary" type="button">${escapeHtml(request.submitLabel)}</button>`,
+      `<button id="clarificationDialogSubmit" class="button primary" type="button">${escapeHtml(request.submitLabel)}</button>`,
     ),
   });
 }

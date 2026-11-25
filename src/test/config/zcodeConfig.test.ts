@@ -51,10 +51,8 @@ function loadZcodeVisualUi() {
       jsx: makeNode,
       jsxs: makeNode,
     },
-    xr: {
-      confirm: (options: AnyRecord) => {
-        confirmation = options;
-      },
+    showConfigConfirmation: (options: AnyRecord) => {
+      confirmation = options;
     },
     renderField: (label: string, value: unknown, onChange: (next: string) => void, placeholder: string, options: AnyRecord) => ({
       type: "field",
@@ -470,6 +468,7 @@ test("ZCode example drawer opens, closes and imports from the shared drawer in b
       aa: "card", xn: "button", Pv: "icon", Ya: "icon", KD: "view-icon", KH: "import-icon", Qa: "textarea", ConfigSourceEditor: "textarea", RE: "drawer",
       O: { id: "zcode-test", name: "ZCode", platform: "zcode" },
       Nk: { "zcode-config": example }, S: null, I: null,
+      configModalClose: { "aria-label": "关闭" },
       exampleImportOpen: false,
       CliExampleImportModal: "import-modal",
       setExampleImportOpen: (open: boolean) => { sandbox.exampleImportOpen = open; },

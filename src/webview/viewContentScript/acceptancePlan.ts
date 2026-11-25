@@ -467,9 +467,9 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         acceptancePlanDialog.deleteDialogOpen = true;
         overlay.classList.add("visible");
         setTimeout(() => {
-          const cancel = getAcceptancePlanElement("cancelAcceptancePlanDelete");
-          if (cancel && typeof cancel.focus === "function") {
-            cancel.focus();
+          const close = getAcceptancePlanElement("closeAcceptancePlanDelete");
+          if (close && typeof close.focus === "function") {
+            close.focus();
           }
         }, 0);
       }
@@ -859,10 +859,6 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
           if (deleteConfirm) {
             deleteConfirm.addEventListener("click", () => confirmAcceptancePlanDeleteDialog());
           }
-          const deleteCancel = getAcceptancePlanElement("cancelAcceptancePlanDelete");
-          if (deleteCancel) {
-            deleteCancel.addEventListener("click", () => closeAcceptancePlanDeleteDialog());
-          }
           const deleteClose = getAcceptancePlanElement("closeAcceptancePlanDelete");
           if (deleteClose) {
             deleteClose.addEventListener("click", () => closeAcceptancePlanDeleteDialog());
@@ -873,10 +869,6 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
             }
           });
           deleteOverlay.addEventListener("keydown", handleAcceptancePlanKeydown);
-        }
-        const cancelButton = getAcceptancePlanElement("cancelAcceptancePlan");
-        if (cancelButton) {
-          cancelButton.addEventListener("click", () => cancelAcceptancePlan());
         }
         const confirmButton = getAcceptancePlanElement("confirmAcceptancePlan");
         if (confirmButton) {
@@ -906,10 +898,6 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
           const nameConfirm = getAcceptancePlanElement("confirmAcceptancePlanName");
           if (nameConfirm) {
             nameConfirm.addEventListener("click", () => confirmAcceptancePlanNameDialog());
-          }
-          const nameCancel = getAcceptancePlanElement("cancelAcceptancePlanName");
-          if (nameCancel) {
-            nameCancel.addEventListener("click", () => closeAcceptancePlanNameDialog());
           }
           const nameClose = getAcceptancePlanElement("closeAcceptancePlanName");
           if (nameClose) {

@@ -410,7 +410,7 @@ function createCodexEditorHarness(content: string) {
   const confirmations: Record<string, any>[] = [];
   const sandbox: Record<string, any> = {
     be: { jsx, jsxs: jsx }, xn: "Button", AH: "DeleteIcon",
-    xr: { confirm: (options: Record<string, any>) => confirmations.push(options) },
+    showConfigConfirmation: (options: Record<string, any>) => confirmations.push(options),
     codexVisualState: utils.createState(content), codexVisualError: "",
     getConfigFieldHelp: (label: string) => label,
     CODEX_VISUAL_REASONING_EFFORT_OPTIONS: ["low", "medium", "high", "xhigh"],

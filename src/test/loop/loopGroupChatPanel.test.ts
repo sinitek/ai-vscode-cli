@@ -1372,7 +1372,12 @@ test("renders communication file paths as preview links and posts markdown previ
     }),
   );
   assert.match(html, new RegExp(`data-action="openCommunicationFile"[^>]*data-file-path="${escapeRegExp(filePath)}"`));
-  assert.match(html, /id="filePreviewBackdrop"/u);
+  const previewStart = html.indexOf('<div id="filePreviewBackdrop"');
+  assert.ok(previewStart >= 0);
+  const preview = html.slice(previewStart, html.indexOf('<div class="layout">', previewStart));
+  assert.match(preview, /class="dialog-header"[\s\S]*id="filePreviewClose"[^>]*aria-label="关闭"><svg/u);
+  assert.equal([...preview.matchAll(/<button\b/gu)].length, 1);
+  assert.doesNotMatch(preview, /class="dialog-actions"/u);
   assert.match(html, /查看沟通文件/u);
   assert.match(html, /loopGroupChatChat:openCommunicationFile/u);
   assert.match(html, /&lt;b&gt;keep&lt;\/b&gt;/u);
@@ -1429,6 +1434,7 @@ test("renders the main-task clarification form in the group chat and pauses auto
   assert.match(html, /需要确认需求/);
   assert.match(html, /data-submit-type="loopGroupChatChat:submitClarification"/);
   assert.match(html, /data-reject-type="loopGroupChatChat:rejectClarification"/);
+  assert.match(html, /id="clarificationDialogReject"[^>]*aria-label="拒绝"><svg/);
   assert.match(html, /请先填写\{label\}/);
   assert.match(html, /clarificationDialogBackdrop/);
   assert.match(html, /var\(--vscode-input-background\)/);

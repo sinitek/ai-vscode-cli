@@ -1,4 +1,4 @@
-import { renderModalCloseButton, renderPanelDialog } from "./modalComponents";
+import { renderPanelDialog } from "./modalComponents";
 import type { DepartmentGroupChatModalTarget } from "./loopGroupChatPanelTypes";
 
 export function renderDepartmentGroupChatModal(): string {
@@ -7,7 +7,7 @@ export function renderDepartmentGroupChatModal(): string {
     backdropAttributes: [["aria-hidden", "true"]], dialogClassName: "dialog department-chat-dialog",
     labelledBy: "departmentChatTitle", extraDialogAttributes: [["tabindex", "-1"]],
     titleHtml: '<h2 id="departmentChatTitle" class="dialog-title">组长群聊</h2>',
-    closeHtml: renderModalCloseButton({ id: "departmentChatClose", label: "关闭组长群聊", className: "icon-button" }),
+    close: { id: "departmentChatClose", label: "关闭组长群聊", className: "icon-button" },
     afterHeaderHtml: '<div id="departmentChatStatus" class="department-chat-status" role="status"></div><button id="departmentChatRetry" class="button" type="button" hidden>重试</button><div id="departmentChatContent" class="department-chat-content"></div>',
   });
 }

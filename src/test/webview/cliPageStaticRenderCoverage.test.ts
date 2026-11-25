@@ -11,7 +11,7 @@ import { HEADER_TABS_STYLES } from "../../webview/viewContentStyles/headerTabs";
 import { INPUT_CONTROLS_STYLES } from "../../webview/viewContentStyles/inputControls";
 import { MARKDOWN_STYLES } from "../../webview/viewContentStyles/markdown";
 import { MESSAGE_BLOCK_STYLES } from "../../webview/viewContentStyles/messages";
-import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES, renderChatModal, renderModalActions, renderModalCloseButton, renderPanelDialog } from "../../webview/modalComponents";
+import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES, renderChatModal, renderModalActions, renderPanelDialog } from "../../webview/modalComponents";
 import { orchestratorClarificationDialogScript } from "../../webview/orchestratorClarificationDialog";
 import { OVERLAYS_MODALS_STYLES } from "../../webview/viewContentStyles/overlaysModals";
 import { SYSTEM_TRACE_STYLES } from "../../webview/viewContentStyles/systemTrace";
@@ -569,7 +569,8 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
   assert.match(html, /class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="historyTitle"/);
   assert.match(html, /id="closeHistory" class="secondary icon-button" type="button"[^>]*aria-label="关闭"/);
   assert.match(html, /id="toolSettingsOverlay"[\s\S]*id="closeToolSettings"/);
-  assert.match(html, /id="humanInteractionReject"[\s\S]*id="humanInteractionSubmit"/);
+  assert.match(html, /id="closeHumanInteraction"[^>]*><svg[\s\S]*id="humanInteractionSubmit"/);
+  assert.doesNotMatch(html, /id="(?:humanInteractionReject|cancelAddModel|cancelAcceptancePlan(?:Name|Delete)?)"/);
   assert.match(html, /id="queuePrompt"[\s\S]*id="pauseAndSend"/);
   assert.match(html, /id="commonCommandsOverlay"[\s\S]*id="commandCompact"/);
   assert.match(html, /适用于 Codex、Claude、OpenCode、Grok/);
@@ -619,13 +620,13 @@ test("shares one modal shell across chat overlays and panel dialogs", () => {
     wrapTitle: true,
     titleHtml: `<h2 id="sampleTitle" class="dialog-title">Title</h2>`,
     descriptionHtml: `<p id="sampleDescription" class="dialog-description">Details</p>`,
-    closeHtml: renderModalCloseButton({ id: "sampleClose", label: "Close", className: "icon-button sample-close" }),
+    close: { id: "sampleClose", label: "Close", className: "icon-button sample-close" },
     bodyHtml: `<div class="dialog-body"></div>`,
     actionsHtml: renderModalActions("dialog-actions", `<button id="sampleCancel"></button><button id="sampleConfirm"></button>`),
   });
   assert.match(panel, /id="sampleBackdrop" class="dialog-backdrop" data-sample aria-hidden="true"/);
   assert.match(panel, /id="sampleDialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="sampleTitle" aria-describedby="sampleDescription"/);
-  assert.match(panel, /id="sampleClose" class="icon-button sample-close"/);
+  assert.match(panel, /id="sampleClose" class="icon-button sample-close"[^>]*aria-label="Close"><svg/);
   assert.match(panel, /class="modal-heading"[\s\S]*id="sampleTitle"[\s\S]*id="sampleDescription"/);
   assert.match(panel, /class="dialog-actions"[\s\S]*id="sampleCancel"[\s\S]*id="sampleConfirm"/);
   assert.match(shell, /class="modal-body"[\s\S]*id="exampleBody"/);

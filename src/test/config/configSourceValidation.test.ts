@@ -63,6 +63,7 @@ function loadBrowserValidation() {
   const dialogs: Array<{ title: string; content: { children: string } }> = [];
   const helpers = vm.runInNewContext(`${source.slice(start, end)}\n({ parseConfigJsonText, validateConfigJsonForSave })`, {
     xr: { error: (dialog: (typeof dialogs)[number]) => dialogs.push(dialog) },
+    configModalClose: { "aria-label": "关闭" },
     be: { jsx: (_tag: string, props: unknown) => props },
   }) as {
     parseConfigJsonText: (source: string, jsonc?: boolean) => unknown;

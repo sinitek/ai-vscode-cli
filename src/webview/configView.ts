@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 import { t } from "../i18n";
 import { getCliInstallCommands } from "../cli/installer";
 import { CLI_LIST } from "../cli/types";
+import { MODAL_CLOSE_ICON_PATH } from "./modalComponents";
 
 const ASSETS_DIR = ["media", "config", "assets"];
 
@@ -230,6 +231,11 @@ body[data-config-host="native-modal"] .config-app-workspace {
   border-color: var(--vscode-button-background, var(--vscode-textLink-foreground)) !important;
 }
 
+.config-example-drawer .ant-drawer-close {
+  order: 1;
+  margin-inline: 12px 0;
+}
+
 .ant-modal-root .ant-modal-content,
 .ant-drawer-root .ant-drawer-content,
 .ant-dropdown,
@@ -380,6 +386,7 @@ export function getConfigViewHtml(
     <div id="root"></div>
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      const configModalCloseIconPath = ${JSON.stringify(MODAL_CLOSE_ICON_PATH)};
       const configBase = ${JSON.stringify(configBaseUri)};
       const downloadsDir = ${JSON.stringify(downloadsDir)};
       window.sinitekCliInstallCommands = ${JSON.stringify(getCliInstallCommands())};

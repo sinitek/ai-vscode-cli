@@ -6333,7 +6333,7 @@ test("Loop and Loop+ reuse model management for the selected role's CLI and prof
     document.getElementById("modelInput").value = "new-test-model";
     document.getElementById("confirmAddModel").dispatchEvent({ type: "click" });
     assert.deepEqual(posted.at(-1), { type: "addCliModel", cli, model: "new-test-model", configId });
-    document.getElementById("cancelAddModel").dispatchEvent({ type: "click" });
+    document.getElementById("closeAddModel").dispatchEvent({ type: "click" });
     assert.equal(overlay.classList.contains("visible"), false);
     assert.equal(select.value, model);
     if (mode === "loop" && id === "codexLoopSubtaskModelSelect") {

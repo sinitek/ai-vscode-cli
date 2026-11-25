@@ -564,7 +564,6 @@ ${renderAcceptancePlanDialogs({
         ui: i18n.acceptancePlanCheckUiAesthetics,
         other: i18n.acceptancePlanOtherLabel,
         otherTextPlaceholder: i18n.acceptancePlanOtherTextPlaceholder,
-        cancel: i18n.acceptancePlanCancel,
         confirm: i18n.acceptancePlanConfirm,
         saveNameTitle: i18n.acceptancePlanSaveNameTitle,
         saveNameDesc: i18n.acceptancePlanSaveNameDesc,
@@ -925,7 +924,6 @@ ${renderChatModal({
 
           </div>`,
         actionsHtml: `<div class="modal-actions human-interaction-actions">
-              <button id="humanInteractionReject" class="secondary action-button">${i18n.humanInteractionReject}</button>
               <button id="humanInteractionSubmit" class="action-button">${i18n.humanInteractionSubmit}</button>
             </div>`,
       })}
@@ -969,7 +967,6 @@ ${renderChatModal({
             <div id="modelAddError" class="add-model-error" style="display: none;"></div>
           </div>`,
         actionsHtml: `<div class="modal-actions add-model-actions">
-            <button id="cancelAddModel" class="secondary action-button">${i18n.historyClose}</button>
             <button id="clearModelEdit" class="secondary action-button" style="display: none;">${i18n.modelManageCancelEdit}</button>
             <button id="confirmAddModel" class="action-button">${i18n.modelAddButton}</button>
           </div>`,

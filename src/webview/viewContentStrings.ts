@@ -215,7 +215,6 @@ export const WEBVIEW_STRINGS = {
     acceptancePlanSaveNameLabel: "方案名称",
     acceptancePlanSaveNamePlaceholder: "例如：上线前安全加严",
     acceptancePlanSaveNameConfirm: "保存",
-    acceptancePlanCancel: "取消",
     acceptancePlanConfirm: "确认并开始",
     acceptancePlanApply: "确认",
     acceptancePlanUpdated: "验收方案已更新，之后的验收会立即使用。",
