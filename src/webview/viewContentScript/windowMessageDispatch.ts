@@ -191,7 +191,7 @@ export const VIEW_CONTENT_SCRIPT_WINDOW_MESSAGE_DISPATCH = `      window.addEven
               startConversationTabRunningFlow(data.startTabIds);
             }
             if (typeof stopConversationTabRunningFlow === "function") {
-              stopConversationTabRunningFlow(data.stopTabIds);
+              stopConversationTabRunningFlow(data.stopTabIds, data.requestedAt);
             }
           }
           if (data.type === "runStatus") {

@@ -23,6 +23,8 @@ export type ConversationTabRunningFlowRun = {
 export type ConversationTabRunningFlowCheck = {
   tabId: string;
   task: ConversationTabRunningFlowTask | null;
+  taskRole?: "main" | "subtask" | null;
+  hasLoopTaskOwner?: boolean;
   activeRun: ConversationTabRunningFlowRun | null;
 };
 
@@ -104,11 +106,11 @@ function hasActiveLoopTaskRun(check: ConversationTabRunningFlowCheck): boolean {
 export function shouldStartConversationTabRunningFlow(
   check: ConversationTabRunningFlowCheck,
 ): boolean {
-  const tabId = check.tabId.trim();
-  if (!tabId || !hasActiveLoopTaskRun(check)) {
+  if (!check.tabId.trim()) {
     return false;
   }
-  return !shouldClearConversationTabRunningFlow(check);
+  return (check.taskRole === "main" && check.task?.status === "running" && check.hasLoopTaskOwner === true)
+    || (hasActiveLoopTaskRun(check) && !shouldClearConversationTabRunningFlow(check));
 }
 
 export function selectActiveConversationTabRunningFlowIds(

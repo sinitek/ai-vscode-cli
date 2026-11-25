@@ -28,8 +28,9 @@ export function createDiagnosticsPanelMessageHandlers(
       );
     },
 
-    reconcileRunningConversationTabs: () => {
-      deps.reconcileRunningConversationTabs?.();
+    reconcileRunningConversationTabs: (message) => {
+      const requestedAt = message.requestedAt;
+      deps.reconcileRunningConversationTabs?.(Number.isSafeInteger(requestedAt) ? requestedAt : undefined);
     },
 
     webviewError: (message) => {

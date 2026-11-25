@@ -48,7 +48,8 @@ Webview 每次打开工具设置时发送 `refreshToolSettings`，宿主绕过�
 
 - 同一 CLI + session 在启动时自动归属当前目标 Tab：公共执行入口先停止其它占用任务并关闭重复 Tab（含空闲旧 Tab），交互宿主在异步配置/会话准备前后再次接管，非交互执行也在启动前复核。实际运行绑定与标签绑定同时参与检查；不同 CLI 或会话保持并行，不删除会话历史。同 Tab 的交互重入仍拒绝；停止或关闭未完成则不启动替代调用，保留 `SESSION_RUN_ACTIVE` 门禁。此接管不替代 Codex 底层 HOME + thread 写锁交接。
 - 接管期间复核工作区、目标标签对象与会话绑定；已取消、换绑或被关闭目标的准备流程不能迟到启动。停止旧任务后重新加载消息，保留旧轮停止记录和新轮输入。回归见 `src/test/extensionHost/sessionTabOwnership.test.ts`、`src/test/extensionHost/promptInteractiveRuntime.test.ts` 和 `src/test/session/sessionTabCliSwitch.test.ts`。
-- 运行收尾及 Codex 的迟到 thread/taskList 回调只操作所属 runId；旧调用不得重绑新会话或覆盖新状态。宿主发布完整面板状态后立即重放现有运行协调消息，恢复仍活跃的 Loop 子任务；不靠历史摘要推断完成。
+- 运行收尾及 Codex 的迟到 thread/taskList 回调只操作所属 runId；旧调用不得重绑新会话或覆盖新状态。宿主发布完整面板状态后立即校准运行态，并响应 Webview 每分钟的复核。运行中的 Loop / Loop+ 主任务按宿主当前运行归属校准，即使在等待子任务或下一轮、该 Tab 暂无 CLI 进程，也能在后台恢复运行显示；子任务仍按本 Tab 执行校准。仍有宿主运行投影的主任务不因旧停止标记而退出复核，不靠点击标签或历史摘要判断终态。
+- 轮询响应回传该次请求的 `requestedAt`，避免过期停止结果清除后来启动的运行；完整面板状态随后的宿主主动校准不继承旧轮询时间戳，可以立即清理真实终态。
 - 历史完成摘要只能从最近用户消息之后恢复；新用户消息立即清空旧摘要，真实活跃信号恢复时清除历史完成状态。正常完成仍由 Loop+ adapter 自动关闭子任务 Tab；失败或中断保留诊断，同会话被新 Tab 接管时关闭旧 Tab，诊断仍保存在会话历史，不通过关页伪装成功。回归见 `src/test/extensionHost/promptInteractiveRuntime.test.ts`、`src/test/webview/tabRunStatus.test.ts`、`src/test/extensionHost/loopPlusRuntimeIntegration.test.ts`。
 - 手动关闭先由 Webview 隐藏标签并屏蔽仍包含该标签的旧快照。宿主接受后发送轻量 `conversationTabClosed`，运行态缓存此时才回收；若拒绝则通过 `conversationTabCloseRejected` 恢复标签。手动关闭把 runner 清理延后到独立事件循环回合，释放时复查引用；自动关闭、所有权接管和重置仍沿用原收尾语义。后台关闭不重选当前会话、不重放正文；活动关闭立即切到回退标签，仍由配置恢复和全量状态校准。运行锁、最后标签保护与磁盘会话保留不变。
 - 手动新建在 Webview 插入加载中的标签，以临时生成的 `tabId` 关联请求。宿主验证标识格式和唯一性，由宿主创建并持久化真实标签，以同一 ID 发送 `state`、目标 `setMessages` 和 `conversationTabCreateSettled`。完成前保留本地选中项并阻止向加载标签发送，旧全量快照不能吞掉占位标签；关闭加载标签后忽略迟到的创建回执。

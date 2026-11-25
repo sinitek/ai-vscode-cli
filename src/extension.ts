@@ -3633,12 +3633,15 @@ function readActiveRunForConversationTabFlow(tabId: string): { loopTaskId?: stri
   return { loopTaskId: null };
 }
 
-function reconcileRunningConversationTabs(): void {
+function reconcileRunningConversationTabs(requestedAt?: number): void {
+  const runningTaskIds = collectRunningLoopTaskIds();
   const checks: ConversationTabRunningFlowCheck[] = ensureConversationTabs().tabs.map((tab) => {
-    const taskId = resolveConversationTabLoopContext(tab).loopTaskId;
+    const { taskRole, loopTaskId: taskId } = resolveConversationTabLoopContext(tab);
     const task = taskId ? readLoopTaskRecord(taskId) : null;
     return {
       tabId: tab.id,
+      taskRole,
+      hasLoopTaskOwner: Boolean(taskId && runningTaskIds.has(taskId)),
       task: task
         ? {
           id: task.id,
@@ -3651,6 +3654,7 @@ function reconcileRunningConversationTabs(): void {
   });
   sendPanelMessage({
     type: "runningConversationTabsReconciled",
+    requestedAt,
     startTabIds: selectActiveConversationTabRunningFlowIds(checks),
     stopTabIds: selectStaleConversationTabRunningFlowIds(checks),
   });

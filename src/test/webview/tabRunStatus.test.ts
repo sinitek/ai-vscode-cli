@@ -1,5 +1,10 @@
 import * as assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  selectActiveConversationTabRunningFlowIds,
+  selectStaleConversationTabRunningFlowIds,
+  type ConversationTabRunningFlowCheck,
+} from "../../conversationTabRunningFlow";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { createRunStatusHarness } from "./tabRunStatusHarness";
 
@@ -33,6 +38,45 @@ test("host reconciliation restores a live subtask without retaining a historical
   assert.equal(harness.tabState("background").running, true);
   assert.equal(harness.runtime("background").lastRunStatus, "start");
   assert.equal(harness.runtime("background").lastRunStatusMessage, "");
+});
+
+test("host reconciliation restores a background main tab between CLI turns without selecting it", () => {
+  const harness = createRunStatusHarness();
+  const task = { id: "loop-task", status: "running" };
+  const checks: ConversationTabRunningFlowCheck[] = [
+    { tabId: "background", task, taskRole: "main", hasLoopTaskOwner: true, activeRun: null },
+    { tabId: "idle-subtask", task, taskRole: "subtask", hasLoopTaskOwner: true, activeRun: null },
+  ];
+  harness.setTabSummary("background", { loopTaskId: task.id, loopTaskRole: "main", loopTaskStatus: "stopped" });
+  harness.setTabSummary("idle-subtask", { loopTaskId: task.id, loopTaskRole: "subtask" });
+  const reconcile = () => harness.send({
+    type: "runningConversationTabsReconciled",
+    startTabIds: selectActiveConversationTabRunningFlowIds(checks),
+    stopTabIds: selectStaleConversationTabRunningFlowIds(checks),
+  });
+
+  task.status = "stopped";
+  reconcile();
+  assert.equal(harness.tabState("background").running, false);
+  task.status = "running";
+  reconcile();
+  assert.equal(harness.tabState("background").running, true);
+  assert.equal(harness.tabState("active").running, false);
+  assert.equal(harness.tabState("idle-subtask").running, false);
+
+  task.status = "completed";
+  reconcile();
+  assert.equal(harness.tabState("background").running, false);
+});
+
+test("a delayed poll cannot stop a newer run but a fresh host push can", () => {
+  const harness = createRunStatusHarness();
+  harness.send({ type: "runStatus", tabId: "background", status: "start", startedAt: 200 });
+  const stop = { type: "runningConversationTabsReconciled", startTabIds: [], stopTabIds: ["background"] };
+  harness.send({ ...stop, requestedAt: 100 });
+  assert.equal(harness.tabState("background").running, true);
+  harness.send(stop);
+  assert.equal(harness.tabState("background").running, false);
 });
 
 function createErrorSync() {

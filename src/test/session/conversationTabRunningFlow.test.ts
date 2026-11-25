@@ -129,6 +129,22 @@ test("selects only active Loop runs for flow recovery", () => {
   ]), ["missing-flow", "new-loop-run"]);
 });
 
+test("a main tab needs current Loop ownership to recover without an active CLI turn", () => {
+  const check = {
+    tabId: "background-main",
+    task: { id: "loop-task", status: "running" },
+    taskRole: "main" as const,
+    activeRun: null,
+  };
+  assert.equal(shouldStartConversationTabRunningFlow(check), false);
+  assert.equal(shouldStartConversationTabRunningFlow({ ...check, hasLoopTaskOwner: true }), true);
+  for (const status of ["completed", "stopped", "error", "needs-review"]) {
+    const finished = { ...check, task: { ...check.task, status }, hasLoopTaskOwner: true };
+    assert.equal(shouldStartConversationTabRunningFlow(finished), false, status);
+    assert.equal(shouldClearConversationTabRunningFlow(finished), true, status);
+  }
+});
+
 test("selects only stale tabs and ignores malformed Loop+ snapshots", () => {
   assert.deepEqual(readConversationTabRunningFlowLoopPlus(null), null);
   assert.deepEqual(readConversationTabRunningFlowLoopPlus({
@@ -173,5 +189,5 @@ test("webview starts a one-minute flow check and stops it after the task is fini
   assert.match(extensionSource, /type: "runningConversationTabsReconciled"/);
   assert.match(extensionSource, /startTabIds: selectActiveConversationTabRunningFlowIds\(checks\)/);
   assert.match(diagnosticsHandlerSource, /reconcileRunningConversationTabs/);
-  assert.match(diagnosticsHandlerSource, /deps\.reconcileRunningConversationTabs\?\.\(\)/);
+  assert.match(diagnosticsHandlerSource, /deps\.reconcileRunningConversationTabs\?\.\(Number\.isSafeInteger\(requestedAt\)/);
 });

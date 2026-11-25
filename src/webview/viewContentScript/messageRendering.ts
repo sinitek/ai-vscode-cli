@@ -1711,7 +1711,6 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       const CONVERSATION_TAB_RUNNING_FLOW_CHECK_MS = 60000;
       const runningFlowStoppedTabIds = new Set();
       let conversationTabRunningFlowTimer = null;
-      let conversationTabRunningFlowCheckStartedAt = 0;
 
       function isTabRunning(tabId) {
         if (!tabId || typeof tabId !== "string") {
@@ -1750,8 +1749,11 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       }
 
       function isConversationTabRunningFlowWatchTarget(tab) {
-        if (!tab || !tab.id || isRunningFlowStopLatched(tab.id)) {
+        if (!tab || !tab.id) {
           return false;
+        }
+        if (isRunningFlowStopLatched(tab.id)) {
+          return tab.loopTaskRole === "main" && tab.loopTaskRunning === true;
         }
         return tab.loopTaskRole === "main"
           || tab.loopTaskRole === "subtask"
@@ -1786,8 +1788,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
             syncConversationTabRunningFlowWatch();
             return;
           }
-          conversationTabRunningFlowCheckStartedAt = Date.now();
-          vscode.postMessage({ type: "reconcileRunningConversationTabs" });
+          vscode.postMessage({ type: "reconcileRunningConversationTabs", requestedAt: Date.now() });
         }, CONVERSATION_TAB_RUNNING_FLOW_CHECK_MS);
       }
 
@@ -1834,9 +1835,8 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         syncConversationTabRunningFlowWatch();
       }
 
-      function stopConversationTabRunningFlow(tabIds) {
+      function stopConversationTabRunningFlow(tabIds, requestedAt = 0) {
         const ids = Array.isArray(tabIds) ? tabIds : [];
-        const requestedAt = conversationTabRunningFlowCheckStartedAt;
         ids.forEach((tabId) => {
           if (!tabId || typeof tabId !== "string") {
             return;

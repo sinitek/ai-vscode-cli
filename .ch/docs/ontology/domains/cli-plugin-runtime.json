@@ -1982,7 +1982,7 @@
     {
       "id": "plugin.rule.chat_tab_running_status_priority",
       "name": "Tab 运行状态优先于中间错误",
-      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；新派发 Loop 子任务的完整首次标签状态直接投影宿主活动执行，准备阶段在完整状态发布后补发启动事件，避免新标签登记前清理运行标记。运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。完成摘要只从最近用户消息之后恢复，新用户轮次和宿主恢复的活跃信号清除旧完成摘要；完整面板状态后立即协调活跃 Loop 子任务。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
+      "description": "AI 对话 Tab 有真实运行信号时优先显示运行态；新派发 Loop 子任务的完整首次标签状态直接投影宿主活动执行，准备阶段在完整状态发布后补发启动事件，避免新标签登记前清理运行标记。运行中 trace/system 中间错误保留消息但不直接标记任务失败。每 Tab 内存记录最新 runStatus，明确成功 end 后，迟到的新增/替换错误消息、trace 片段及自动重试排队提示不得重新标红；新用户消息、新运行或会话重置释放上一轮成功保护，关闭和工作区切换回收。完成摘要只从最近用户消息之后恢复，新用户轮次和宿主恢复的活跃信号清除旧完成摘要。完整面板状态后立即校准运行态，Webview 定期复核；当前宿主持有的运行中 Loop 主任务无需该 Tab 存在直接 CLI 执行即可恢复运行态，子任务仍要求本 Tab 有活动执行。旧停止标记不会让仍有活动投影的主任务退出复核。明确 runStatus:error 仍保留终态失败，未成功结束的空闲错误仍可见，新运行和恢复输出沿用原有清理逻辑。前台与后台 Tab 隔离，不改变磁盘会话格式。",
       "status": "active",
       "applies_to": [
         "plugin.chat_panel",
@@ -2009,6 +2009,10 @@
         },
         {
           "path": "src/test/webview/tabRunStatus.test.ts"
+        },
+        {
+          "path": "src/conversationTabRunningFlow.ts",
+          "anchor": "shouldStartConversationTabRunningFlow"
         },
         {
           "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md",

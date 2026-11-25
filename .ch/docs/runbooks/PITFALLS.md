@@ -531,6 +531,7 @@
 - 只要还有 Tab 处于流水状态，Webview 每 60 秒请求宿主复核。
 - 宿主确认任务已结束且没有新的无关运行后，清掉本地流水标记；没有任何流水后停止这轮检测。
 - 不要在任务仍是 `running` / `pending`，或当前 Tab 正在执行不带该任务 ID 的新提示时清掉流水。
+- 主任务没有直接 CLI 进程不等于已停止。等待子任务或下一轮期间，复用宿主的活动任务归属恢复主任务标签；不要用父任务归属点亮空闲子任务，也不要让旧停止标记切断仍有活动投影的主任务复核。
 
 ### 验证方式
 - `node --test dist/test/session/conversationTabRunningFlow.test.js dist/test/session/conversationTabLock.test.js`

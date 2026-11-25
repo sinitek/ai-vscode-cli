@@ -36,7 +36,7 @@ export type PanelMessage =
   | { type: "previewChatImage"; source: string; alt?: string }
   | { type: "resolveChatImage"; source: string }
   | { type: "downloadChatImage"; source: string; alt?: string }
-  | { type: "reconcileRunningConversationTabs" }
+  | { type: "reconcileRunningConversationTabs"; requestedAt?: number }
   | { type: "pendingPromptQueueChanged"; hasPendingPrompts: boolean }
   | { type: "selectCli"; cli: CliName }
   | { type: "selectCliModel"; cli: CliName; model: string | null; configId?: string | null }

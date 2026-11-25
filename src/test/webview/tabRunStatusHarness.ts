@@ -88,7 +88,7 @@ export function createRunStatusHarness() {
       "isErrorMessage", "syncTabErrorFromMessage", "isTabRunning", "isConversationTabRunning", "setTabErrored", "isTabErrored",
       "isHiddenRetryQueuedMessage", "isHiddenRetryStartedMessage", "getTabRunStartedAt", "shouldHandleTabScopedEvent",
       "normalizeLoopTaskRole", "normalizeLoopTaskId", "getLoopMetaForTabSummary", "isLoopMainTab",
-      "startConversationTabRunningFlow", "syncRunningStateForActiveTab",
+      "startConversationTabRunningFlow", "stopConversationTabRunningFlow", "syncRunningStateForActiveTab",
     ]],
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, [
       "updateRunningState", "updateRunWait", "syncPromptSubmissionWait", "settlePromptSubmission",
