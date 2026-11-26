@@ -135,6 +135,46 @@ test("passes AbortController to Claude SDK query and aborts active runs", async 
   await assert.rejects(runPromise, { name: "AbortError" });
 });
 
+test("Claude SDK custom spawn uses shared environment policy and keeps AbortSignal", async (t) => {
+  const originalDynamicImport = dynamicImportModule.dynamicImport;
+  let resolveCaptured: ((value: { spawn: Function; signal: AbortSignal; includePartialMessages?: boolean }) => void) | undefined;
+  const captured = new Promise<{ spawn: Function; signal: AbortSignal; includePartialMessages?: boolean }>((resolve) => { resolveCaptured = resolve; });
+  dynamicImportModule.dynamicImport = async () => ({
+    query: ({ options }: { options: { abortController: AbortController; spawnClaudeCodeProcess: Function; includePartialMessages?: boolean } }) => {
+      resolveCaptured?.({ spawn: options.spawnClaudeCodeProcess, signal: options.abortController.signal, includePartialMessages: options.includePartialMessages });
+      return (async function* stream() {
+        await new Promise<void>((_resolve, reject) => options.abortController.signal.addEventListener("abort", () => {
+          const error = new Error("aborted"); error.name = "AbortError"; reject(error);
+        }, { once: true }));
+      })();
+    },
+  }) as any;
+  t.after(() => { dynamicImportModule.dynamicImport = originalDynamicImport; });
+  const runner = new ClaudeInteractiveRunner({
+    command: "claude", args: [], thinkingMode: "off", interactiveMode: "coding", sessionId: null,
+    env: { PATH: process.env.PATH ?? "", CLAUDE_POLICY_SENTINEL: "preserved" },
+  });
+  const run = runner.runStreamed("test", { onAssistantDelta: () => {}, onTrace: () => {}, onTaskListUpdate: () => {}, onSessionId: () => {} });
+  const runtime = await captured;
+  assert.equal(runtime.includePartialMessages, true);
+  const child = runtime.spawn({
+    command: process.execPath,
+    args: ["-e", "process.stdout.write(process.env.CLAUDE_POLICY_SENTINEL || '')"],
+    cwd: process.cwd(),
+    env: { PATH: process.env.PATH ?? "", CLAUDE_POLICY_SENTINEL: "preserved" },
+    signal: runtime.signal,
+  }) as import("child_process").ChildProcess;
+  let output = "";
+  child.stdout?.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+  await new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", () => resolve());
+  });
+  assert.equal(output, "preserved");
+  runner.stopAndRebuild();
+  await assert.rejects(run, { name: "AbortError" });
+});
+
 test("keeps user Claude tools available when project instructions are isolated", async (t) => {
   const originalDynamicImport = dynamicImportModule.dynamicImport;
   const capturedOptions: { value: { permissionMode?: string; allowDangerouslySkipPermissions?: boolean; allowedTools?: string[]; settingSources?: string[] } | null } = { value: null };
@@ -582,7 +622,7 @@ test("dispatches one Claude turn by message type and keeps callback order", asyn
           id: "stream-1",
           delta: { type: "text_delta", text: "Hel" },
           message: {
-            id: "stream-msg",
+            id: "asst-1",
             content: [
               { type: "thinking", thinking: "   " },
               { type: "thinking", thinking: "plan the answer" },
@@ -661,7 +701,7 @@ test("dispatches one Claude turn by message type and keeps callback order", asyn
       "trace:thinking:false:thinking plan the answer",
       "trace:tool-use:false:tool: Read",
       "event:assistant",
-      "delta:Hello",
+      "delta:lo",
       "trace:thinking:false:thinking plan the answer",
       "event:assistant",
       "delta: world",
@@ -686,6 +726,203 @@ test("dispatches one Claude turn by message type and keeps callback order", asyn
   } finally {
     runner.dispose();
   }
+});
+
+test("reconciles streamed Claude text with snapshots by message and preserves result fallback", async (t) => {
+  const root = { session_id: "stream-main", parent_tool_use_id: null };
+  installScriptedClaudeQuery(t, {
+    streamed: [
+      { ...root, type: "stream_event", event: { type: "message_start", message: { id: "message-1" } } },
+      { ...root, type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "CLAUDE_" } } },
+      { ...root, type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "USAGE_OK" } } },
+      { ...root, type: "assistant", message: { id: "message-1", content: [{ type: "text", text: "CLAUDE_USAGE_OK" }] } },
+      { ...root, type: "assistant", message: { id: "message-2", content: [{ type: "text", text: "CLAUDE_USAGE_OK" }] } },
+      { ...root, type: "result", subtype: "success", result: "ignored-result-fallback" },
+    ],
+    fallback: [{ ...root, type: "result", subtype: "success", result: "non-streaming-result" }],
+  });
+  const runner = createClaudeEventRunner();
+  try {
+    const streamed = createClaudeTurnRecorder();
+    await expectSoon(runner.runStreamed("streamed", streamed.handlers), "stream and snapshot reconciliation");
+    assert.deepEqual(streamed.log.filter(({kind}) => kind === "delta"), [
+      { kind: "delta", text: "CLAUDE_" },
+      { kind: "delta", text: "USAGE_OK" },
+      { kind: "delta", text: "CLAUDE_USAGE_OK" },
+    ]);
+    const fallback = createClaudeTurnRecorder();
+    await expectSoon(runner.runStreamed("fallback", fallback.handlers), "non-streaming result fallback");
+    assert.deepEqual(fallback.log.filter(({kind}) => kind === "delta"), [
+      { kind: "delta", text: "non-streaming-result" },
+    ]);
+  } finally {
+    runner.dispose();
+  }
+});
+
+test("does not allocate text progress for non-text Claude block indexes", async (t) => {
+  const stream = (event: object) => ({ type: "stream_event", event });
+  const events = [
+    stream({ type: "message_start", message: { id: "message" } }),
+    stream({ type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "" } }),
+    stream({ type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "reasoning" } }),
+    stream({ type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "tool", name: "Read", input: {} } }),
+    stream({ type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: "{\\\"path\\\":" } }),
+    stream({ type: "content_block_start", index: 2, content_block: { type: "image", source: { type: "base64", data: "synthetic" } } }),
+    stream({ type: "content_block_delta", index: 3, delta: { type: "text_delta", text: "visible" } }),
+    stream({ type: "content_block_start", index: 4, content_block: { type: "tool_use", id: "other-tool", name: "Read", input: {} } }),
+    { type: "assistant", message: { id: "message", content: [{ type: "text", text: "visible" }] } },
+    { type: "result", subtype: "success" },
+  ];
+  installScriptedClaudeQuery(t, { "non-text indexes": events });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("non-text indexes", recorded.handlers), "non-text block indexes");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "delta" ? [entry.text] : []), ["visible"]);
+});
+
+test("keeps single-block Claude frames separate and also accepts cumulative snapshots", async (t) => {
+  const stream = (event: object) => ({ type: "stream_event", event });
+  const text = (value: string) => ({ type: "text", text: value });
+  const snapshot = (id: string, ...content: object[]) => ({ type: "assistant", message: { id, content } });
+  const streamedBlock = (index: number, value: string) => [
+    stream({ type: "content_block_start", index, content_block: text("") }),
+    stream({ type: "content_block_delta", index, delta: { type: "text_delta", text: value } }),
+    snapshot("first-message", text(value)),
+    stream({ type: "content_block_stop", index }),
+  ];
+  const events = [
+    stream({ type: "message_start", message: { id: "first-message" } }),
+    ...streamedBlock(0, "A"),
+    ...streamedBlock(1, "B"),
+    ...streamedBlock(2, "B"),
+    snapshot("first-message", text("A"), text("B"), text("B!")),
+    stream({ type: "message_stop" }),
+    snapshot("next-message", text("B")),
+    { type: "result", subtype: "success", result: "should-not-fallback" },
+  ];
+  installScriptedClaudeQuery(t, { blocks: events });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("blocks", recorded.handlers), "multi-block Claude text");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "delta" ? [entry.text] : []), ["A", "B", "B", "!", "B"]);
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "event" ? [entry.event] : []), events);
+});
+
+test("releases only the stopped Claude parent message and retains dedupe through assistant snapshots", async (t) => {
+  const stream = (parent: string, event: object, apiMessageId?: string) => ({
+    type: "stream_event",
+    parent_tool_use_id: parent,
+    ...(apiMessageId ? { api_message_id: apiMessageId } : {}),
+    event,
+  });
+  const delta = (index: number, value: string) => ({
+    type: "content_block_delta",
+    index,
+    delta: { type: "text_delta", text: value },
+  });
+  const snapshot = (id: string, value: string) => ({
+    type: "assistant",
+    message: { id, content: [{ type: "text", text: value }] },
+  });
+  const events = [
+    stream("parent-a", { type: "message_start", message: { id: "message-a" } }, "message-a"),
+    stream("parent-b", { type: "message_start", message: { id: "message-b" } }, "message-b"),
+    stream("parent-a", delta(0, "A"), "message-a"),
+    stream("parent-b", delta(0, "B"), "message-b"),
+    stream("parent-a", { type: "message_stop" }, "message-a"),
+    stream("parent-a", { type: "message_start", message: { id: "message-a-next" } }, "message-a-next"),
+    stream("parent-a", { type: "message_stop" }, "message-a"),
+    stream("parent-a", delta(0, "C")),
+    stream("parent-b", delta(0, "!"), "message-b"),
+    snapshot("message-a-next", "C"),
+    snapshot("message-a", "A"),
+    snapshot("message-b", "B!"),
+    stream("parent-a", { type: "message_stop" }, "message-a-next"),
+    stream("parent-b", { type: "message_stop" }, "message-b"),
+    { type: "result", subtype: "success" },
+  ];
+  installScriptedClaudeQuery(t, { "parent message stops": events });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("parent message stops", recorded.handlers), "interleaved Claude parents");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "delta" ? [entry.text] : []), ["A", "B", "C", "!"]);
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "event" ? [entry.event] : []), events);
+});
+
+test("retains Claude text progress for every message until the turn result", async (t) => {
+  const snapshots = Array.from({ length: 10 }, (_, index) => ({
+    type: "assistant",
+    message: { id: `message-${index}`, content: [{ type: "text", text: `text-${index}` }] },
+  }));
+  installScriptedClaudeQuery(t, {
+    "unbounded turn messages": [...snapshots, snapshots[0], { type: "result", subtype: "success" }],
+  });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("unbounded turn messages", recorded.handlers), "ten Claude messages");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "delta" ? [entry.text] : []),
+    snapshots.map(({ message }) => message.content[0].text));
+});
+
+test("does not rewind Claude block progress for an older snapshot or replay its suffix via deltas", async (t) => {
+  const stream = (event: object) => ({ type: "stream_event", event });
+  const snapshot = (text: string) => ({
+    type: "assistant", message: { id: "message", content: [{ type: "text", text }] },
+  });
+  const delta = (text: string) => stream({ type: "content_block_delta", index: 1, delta: { type: "text_delta", text } });
+  installScriptedClaudeQuery(t, {
+    stale: [
+      stream({ type: "message_start", message: { id: "message" } }),
+      stream({ type: "content_block_start", index: 1, content_block: { type: "text", text: "" } }),
+      delta("Hello"),
+      snapshot("Hel"),
+      snapshot("Hello world"),
+      delta(" world!"),
+      snapshot("Hello world!"),
+      { type: "result", subtype: "success" },
+    ],
+  });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("stale", recorded.handlers), "stale Claude snapshot");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "delta" ? [entry.text] : []), ["Hello", " world", "!"]);
+});
+
+test("shows one redacted Claude tool trace from the complete assistant input", async (t) => {
+  const tool = { type: "tool_use", id: "edit-tool", name: "Edit" };
+  const args = { file_path: "fake.ts", old_string: "synthetic-old", new_string: "synthetic-new", replace_all: true };
+  const stream = (event: object) => ({ type: "stream_event", event });
+  const assistant = { type: "assistant", message: { id: "message", content: [{ ...tool, input: args }] } };
+  const events = [
+    stream({ type: "message_start", message: { id: "message" } }),
+    stream({ type: "content_block_start", index: 0, content_block: { ...tool, input: {} } }),
+    stream({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"file_path":' } }),
+    stream({ type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '"fake.ts","old_string":"synthetic-old","new_string":"synthetic-new","replace_all":true}' } }),
+    assistant,
+    stream({ type: "content_block_stop", index: 0 }),
+    assistant,
+    { type: "result", subtype: "success" },
+  ];
+  installScriptedClaudeQuery(t, { tool: events });
+  const runner = createClaudeEventRunner();
+  t.after(() => runner.dispose());
+  const recorded = createClaudeTurnRecorder();
+  await expectSoon(runner.runStreamed("tool", recorded.handlers), "Claude tool input");
+  assert.deepEqual(recorded.log.flatMap((entry) => entry.kind === "event" ? [entry.event] : []), events);
+  const traces = recorded.log.filter((entry) => entry.kind === "trace");
+  assert.equal(traces.length, 1);
+  const [trace] = traces;
+  assert.equal(trace.traceKind, "tool-use");
+  assert.match(trace.content, /^tool: Edit\n/);
+  assert.deepEqual(JSON.parse(trace.content.slice(trace.content.indexOf("{"))), { file_path: "fake.ts", replace_all: true });
+  assert.equal(recorded.log[recorded.log.indexOf(trace) - 1]?.kind, "event");
+  assert.deepEqual(recorded.log[recorded.log.indexOf(trace) - 1], { kind: "event", event: assistant });
 });
 
 test("keeps Claude dedupe and result fallback inside the current turn", async (t) => {

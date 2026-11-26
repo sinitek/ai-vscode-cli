@@ -187,6 +187,7 @@ type LoopGroupChatPanelDeps = LoopModelSwitchDeps & {
   getActiveConversationTaskId: () => string | null;
   showInformationMessage: (message: string) => void;
   showWarningMessage: (message: string) => void;
+  logEvent?: (event: string, payload: Record<string, unknown>) => void;
   pickTask: (tasks: LoopTaskRecord[]) => Promise<LoopTaskRecord | null>;
   notifyLoopPlusUserMessage?: (taskId: string, text: string) => void;
   cancelClassicSubtask?: (taskId: string, subtaskId: string) => Promise<boolean>;
@@ -654,9 +655,17 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
 
     const task = deps.readTaskRecord(normalizedTaskId);
     if (!task) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: normalizedTaskId, requestId: options.requestId, reason: "task_missing" });
       deps.showWarningMessage(deps.t("loopGroupChatChat.taskMissing", { taskId: normalizedTaskId }));
       return;
     }
+    deps.logEvent?.("loop-group-chat-continue-evaluated", {
+      taskId: task.id,
+      requestId: options.requestId,
+      status: task.status,
+      schedulingMode: task.schedulingMode,
+      runningTask: deps.collectRunningTaskIds().has(task.id),
+    });
     if (task.department || task.departmentInvalid) {
       const root = resolveDepartmentRoot(task, deps);
       if (!root) throw new Error("部门任务关联无效，无法继续。");
@@ -689,6 +698,17 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       && (options.resumeSubtasks === false || task.status !== "running" || !hasLoopPlusRunningSubtasks(task, "active"))
       && !(availabilityTarget && deps.isTabRunActive(availabilityTarget.tabId));
     if (activeSubtasksBlockContinuation || (failureLimited ? !configLockRecovery : !controlState.canContinue && !canResumeIdle)) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", {
+        taskId: task.id,
+        requestId: options.requestId,
+        reason: activeSubtasksBlockContinuation ? "active_subtasks" : failureLimited ? "failure_limit" : "control_state",
+        taskStatus: task.status,
+        isRunning: controlState.isRunning,
+        canContinue: controlState.canContinue,
+        canResumeIdle,
+        failureLimited,
+        configLockRecovery,
+      });
       await refresh(normalizedTaskId);
       deps.showInformationMessage(
         controlState.isRunning
@@ -730,6 +750,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       }
       const restored = await deps.restoreOriginalLoopRuntime(original, configLockRecovery ? { configLockRecovery: true, originalTabId } : undefined);
       if (!restored.ok || !restored.target?.tabId) {
+        deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "original_runtime_unavailable" });
         deps.showWarningMessage(restored.message || deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
         return;
       }
@@ -741,16 +762,23 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         return;
       }
       if (deps.isTabRunActive(restored.target.tabId)) {
+        deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "restored_tab_active" });
         deps.showInformationMessage(deps.t("loopGroupChatChat.continueAlreadyRunning"));
         return;
       }
       const resumeTask = configLockRecovery ? readRecoveryTask(restored.target.tabId) : task;
       if (!resumeTask?.originProfile || !resumeTask.modelRouting || (configLockRecovery && restored.target.cli !== resumeTask.cli)) {
+        deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "resume_routing_unavailable" });
         deps.showWarningMessage(deps.t("loopGroupChatChat.originalRuntimeUnavailable"));
         return;
       }
-      if (!configLockRecovery && resumeSubtasks()) return;
+      if (!configLockRecovery && resumeSubtasks()) {
+        deps.logEvent?.("loop-group-chat-continue-subtasks-resumed", { taskId: task.id, requestId: options.requestId, path: "original_runtime" });
+        return;
+      }
+      if (!configLockRecovery) deps.logEvent?.("loop-group-chat-continue-subtasks-fallback", { taskId: task.id, requestId: options.requestId, path: "original_runtime" });
       const profile = resumeTask.originProfile;
+      deps.logEvent?.("loop-group-chat-continue-dispatch", { taskId: task.id, requestId: options.requestId, path: "original_runtime", cli: restored.target.cli });
       await deps.runLoopPrompt(applyLoopModelRoutingToPrompt({
         displayPrompt: resumePrompt,
         modelPrompt: resumePrompt,
@@ -781,12 +809,14 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
 
     const target = deps.resolveMainPromptTarget(task, { createIfMissing: true });
     if (!target) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "main_prompt_target_unavailable" });
       deps.showWarningMessage(deps.t("loopGroupChatChat.continueUnavailable"));
       return;
     }
 
     await deps.switchVisibleConversationTabForLoop(target.tabId);
     if (deps.isTabRunActive(target.tabId)) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "main_tab_active" });
       deps.showInformationMessage(deps.t("loopGroupChatChat.continueAlreadyRunning"));
       return;
     }
@@ -805,10 +835,16 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       getActiveConfigIdForCli: deps.getActiveConfigIdForCli,
     });
     if (currentModels.unavailableReason) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: task.id, requestId: options.requestId, reason: "model_unavailable", cli: target.cli });
       deps.showWarningMessage(currentModels.unavailableReason);
       return;
     }
-    if (resumeSubtasks()) return;
+    if (resumeSubtasks()) {
+      deps.logEvent?.("loop-group-chat-continue-subtasks-resumed", { taskId: task.id, requestId: options.requestId, path: "main_target" });
+      return;
+    }
+    deps.logEvent?.("loop-group-chat-continue-subtasks-fallback", { taskId: task.id, requestId: options.requestId, path: "main_target" });
+    deps.logEvent?.("loop-group-chat-continue-dispatch", { taskId: task.id, requestId: options.requestId, path: "main_target", cli: target.cli });
     await deps.runLoopPrompt({
       displayPrompt: resumePrompt,
       modelPrompt: resumePrompt,
@@ -831,21 +867,25 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       ?? deps.normalizeTaskId(deps.panelsByTaskId.get(taskId)?.getState()?.task.id)
       ?? taskId;
     if (continuingTaskIds.has(normalizedTaskId)) {
+      deps.logEvent?.("loop-group-chat-continue-rejected", { taskId: normalizedTaskId, requestId: options.requestId, reason: "continuation_already_active" });
       if (options.requestId) postToPanel(normalizedTaskId, {
         type: "loopGroupChatChat:continueTaskSettled", requestId: options.requestId, canContinue: false,
       });
       return;
     }
+    deps.logEvent?.("loop-group-chat-continue-started", { taskId: normalizedTaskId, requestId: options.requestId, source: "coordinator" });
     continuingTaskIds.add(normalizedTaskId);
     try {
       await runContinuation(normalizedTaskId, prompt, {
         ...options,
         ...(options.requestId ? { onTaskStarted: () => {
+          deps.logEvent?.("loop-group-chat-continue-task-started", { taskId: normalizedTaskId, requestId: options.requestId });
           postToPanel(normalizedTaskId, { type: "loopGroupChatChat:continueTaskStarted", requestId: options.requestId });
           void refresh(normalizedTaskId).catch(warnRefreshFailure);
         } } : {}),
       });
     } catch (error) {
+      deps.logEvent?.("loop-group-chat-continue-failed", { taskId: normalizedTaskId, requestId: options.requestId, errorName: error instanceof Error ? error.name : "UnknownError" });
       if (error !== obsoleteRequest) deps.showWarningMessage(error instanceof Error ? error.message : String(error));
     } finally {
       continuingTaskIds.delete(normalizedTaskId);
@@ -853,6 +893,12 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
         await refresh(normalizedTaskId);
       } finally {
         const task = deps.readTaskRecord(normalizedTaskId);
+        deps.logEvent?.("loop-group-chat-continue-settled", {
+          taskId: normalizedTaskId,
+          requestId: options.requestId,
+          taskStatus: task?.status ?? "missing",
+          canContinue: task ? canContinueLoopTaskWithDeps(task, deps) : false,
+        });
         postToPanel(normalizedTaskId, {
           type: "loopGroupChatChat:continueTaskSettled",
           ...(options.requestId ? { requestId: options.requestId } : {}),
@@ -1456,6 +1502,7 @@ export function createLoopGroupChatPanelCoordinator(originalDeps: LoopGroupChatP
       return;
     }
     if (message.type === "loopGroupChatChat:continueTask") {
+      deps.logEvent?.("loop-group-chat-continue-received", { taskId, requestId: message.requestId, panelMatchesTask: deps.panelsByTaskId.get(taskId) === sourcePanel });
       const panel = !requestScope.getStore() && deps.panelsByTaskId.get(taskId) === sourcePanel ? sourcePanel : undefined;
       await continueTask(taskId, message.prompt, undefined, {
         panel: panel?.getState()?.task.id === taskId ? panel : undefined,

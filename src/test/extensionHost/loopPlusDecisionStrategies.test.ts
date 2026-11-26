@@ -125,8 +125,8 @@ function createPort(options: {
       record("waitForInFlightWork");
       return value;
     },
-    protocolMiss(held) {
-      record("protocolMiss", [held]);
+    protocolMiss(held, reason, diagnostic) {
+      record("protocolMiss", [held, ...(reason === undefined ? [] : [reason]), ...(diagnostic ? [diagnostic] : [])]);
       return options.protocolMiss ?? "continue";
     },
     markDecisionAccepted() {
@@ -303,7 +303,7 @@ test("dispatch refuses a held review before controls or launch", () => {
   );
   assert.equal(outcome, "continue");
   assert.deepEqual(names(calls), ["queueView", "protocolMiss"]);
-  assert.deepEqual(calls[1].args, [true]);
+  assert.equal((calls[1].args[1] as { reasonCode: string }).reasonCode, "state.review_batch_open.dispatch_forbidden");
 });
 
 test("dispatch reports a control miss without launching subtasks", () => {
@@ -315,7 +315,7 @@ test("dispatch reports a control miss without launching subtasks", () => {
   );
   assert.equal(outcome, "continue");
   assert.deepEqual(names(calls), ["queueView", "planControls", "previewControls", "protocolMiss"]);
-  assert.deepEqual(calls.at(-1)?.args, [false]);
+  assert.equal((calls.at(-1)?.args[1] as { reasonCode: string }).reasonCode, "state.controls.unavailable");
 });
 
 test("dispatch waits on in-flight work and does not submit review or finish", () => {
@@ -389,7 +389,7 @@ test("steer rejects an open review, empty controls, and failed controls", () => 
   const registry = createLoopPlusDecisionStrategyRegistry();
   const held = createPort({ views: [view({ hasCurrentReview: true })] });
   assert.equal(registry.steer(held.port, decisionStep(), decision("steer", { controls: [closeControl] })), "continue");
-  assert.deepEqual(held.calls[1].args, [true]);
+  assert.equal((held.calls[1].args[1] as { reasonCode: string }).reasonCode, "state.review_batch_open.steer_forbidden");
 
   const empty = createPort();
   assert.equal(registry.steer(empty.port, decisionStep(), decision("steer")), "continue");
@@ -435,7 +435,7 @@ test("accept misses unless the step is the same FIFO review batch", () => {
     decisionStep({ kind: "continue", eventIds: ["evt-1"] }),
     decision("accept", { reviewEventId: "evt-1" }),
   ), "continue");
-  assert.deepEqual(notReview.calls, [{ name: "protocolMiss", args: [true] }]);
+  assert.equal((notReview.calls[0].args[1] as { reasonCode: string }).reasonCode, "state.review_batch.mismatch");
 
   const empty = createPort();
   assert.equal(registry.accept(
@@ -443,7 +443,7 @@ test("accept misses unless the step is the same FIFO review batch", () => {
     decisionStep({ kind: "user" }),
     decision("accept"),
   ), "continue");
-  assert.deepEqual(empty.calls, [{ name: "protocolMiss", args: [false] }]);
+  assert.equal((empty.calls[0].args[1] as { reasonCode: string }).reasonCode, "state.review_batch.mismatch");
 
   const reversed = createPort();
   assert.equal(registry.accept(
@@ -455,6 +455,22 @@ test("accept misses unless the step is the same FIFO review batch", () => {
   assert.equal(names(reversed.calls).includes("submitReviewBatch"), false);
 });
 
+test("host-state refusals expose stable codes without including snapshot identifiers", () => {
+  const registry = createLoopPlusDecisionStrategyRegistry();
+  const openBatch = createPort({ views: [view({ hasCurrentReview: true })] });
+  assert.equal(registry.dispatch(openBatch.port, decisionStep(), decision("dispatch", { subtasks: [subtask] })), "continue");
+  const dispatchDiagnostic = openBatch.calls.find((call) => call.name === "protocolMiss")?.args[1] as { reasonCode?: string };
+  assert.equal(dispatchDiagnostic.reasonCode, "state.review_batch_open.dispatch_forbidden");
+  assert.doesNotMatch(JSON.stringify(dispatchDiagnostic), /evt-|child-1/);
+  assert.equal(names(openBatch.calls).includes("dispatchSubtasks"), false);
+
+  const idle = createPort({ views: [view()] });
+  assert.equal(registry.wait(idle.port, decisionStep(), decision("wait")), "continue");
+  const waitDiagnostic = idle.calls.find((call) => call.name === "protocolMiss")?.args[1] as { reasonCode?: string };
+  assert.equal(waitDiagnostic.reasonCode, "state.wait.no_work");
+  assert.equal(names(idle.calls).includes("acknowledgeReports"), false);
+});
+
 test("accept previews controls before submit and does not commit a rejected plan", () => {
   const registry = createLoopPlusDecisionStrategyRegistry();
   const missing = createPort({ controlPlan: null });
@@ -464,7 +480,7 @@ test("accept previews controls before submit and does not commit a rejected plan
     decision("accept", { reviewEventId: "evt-1", controls: [repromptControl] }),
   ), "continue");
   assert.deepEqual(names(missing.calls), ["planControls", "protocolMiss"]);
-  assert.deepEqual(missing.calls.at(-1)?.args, [true]);
+  assert.equal((missing.calls.at(-1)?.args[1] as { reasonCode: string }).reasonCode, "state.controls.unavailable");
 
   const rejected = createPort({ preview: false });
   assert.equal(registry.accept(
@@ -506,7 +522,7 @@ test("accept rejects a batch whose reviews do not label every event", () => {
     reviewEventIds: ["evt-1", "evt-2"],
     reviews: [],
   })), "continue");
-  assert.deepEqual(missing.calls, [{ name: "protocolMiss", args: [true] }]);
+  assert.equal((missing.calls[0].args[1] as { reasonCode: string }).reasonCode, "validation.accept.invalid_reviews");
 
   const reversed = createPort();
   assert.equal(registry.accept(reversed.port, step, decision("accept", {
@@ -516,7 +532,7 @@ test("accept rejects a batch whose reviews do not label every event", () => {
       { reviewEventId: "evt-1", acceptance: "passed" },
     ],
   })), "continue");
-  assert.deepEqual(reversed.calls, [{ name: "protocolMiss", args: [true] }]);
+  assert.equal((reversed.calls[0].args[1] as { reasonCode: string }).reasonCode, "validation.accept.invalid_reviews");
 
   const passedWithSubtask = createPort();
   assert.equal(registry.accept(
@@ -584,7 +600,7 @@ test("accept keeps an already submitted batch when controls fail", () => {
     controls: [closeControl],
   })), "continue");
   assert.equal(names(rejected.calls).at(-1), "protocolMiss");
-  assert.deepEqual(rejected.calls.at(-1)?.args, [false]);
+  assert.deepEqual(rejected.calls.at(-1)?.args, [false, "控制提交失败"]);
   assert.equal(names(rejected.calls).includes("dispatchSubtasks"), false);
   assert.equal(names(rejected.calls).includes("submitReviewBatch"), true);
 });
@@ -652,7 +668,7 @@ test("wait uses the post-ack admission view for in-flight work and a later read 
     views: [view({ hasUserMessages: true }), view(), view({ hasUserMessages: false })],
   });
   assert.equal(registry.wait(idle.port, decisionStep(), decision("wait")), "continue");
-  assert.deepEqual(idle.calls.at(-1)?.args, [false]);
+  assert.equal((idle.calls.at(-1)?.args[1] as { reasonCode: string }).reasonCode, "state.wait.no_work");
   assert.equal(names(idle.calls).includes("markDecisionAccepted"), false);
   assert.equal(names(idle.calls).includes("acknowledgeUserMessages"), false);
   assert.equal(names(idle.calls).includes("persistRunning"), false);
@@ -695,7 +711,7 @@ test("completed misses mismatched or unexpected event ids before submit", () => 
     decisionStep({ kind: "review", eventIds: ["evt-1", "evt-2"] }),
     decision("completed", { reviewEventIds: ["evt-2", "evt-1"] }),
   ), "continue");
-  assert.deepEqual(reversed.calls, [{ name: "protocolMiss", args: [true] }]);
+  assert.equal((reversed.calls[0].args[1] as { reasonCode: string }).reasonCode, "state.review_batch.mismatch");
 
   const unexpected = createPort();
   assert.equal(registry.completed(
@@ -703,7 +719,7 @@ test("completed misses mismatched or unexpected event ids before submit", () => 
     decisionStep(),
     decision("completed", { reviewEventId: "evt-1" }),
   ), "continue");
-  assert.deepEqual(unexpected.calls, [{ name: "protocolMiss", args: [false] }]);
+  assert.equal((unexpected.calls[0].args[1] as { reasonCode: string }).reasonCode, "state.review_batch.mismatch");
 });
 
 test("completed stops after a failed submit without asking whether the parent stopped", () => {

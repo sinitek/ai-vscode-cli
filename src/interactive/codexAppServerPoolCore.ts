@@ -12,7 +12,7 @@ import {
   buildAppServerRequestResolution,
   type JsonRpcResolution,
 } from "./codexAppServerProtocol";
-import { resolveChildArgv0 } from "../cli/processArgv";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import { requestChildShutdown } from "./codexRunnerProcessCore";
 import { observeChildProcessLifecycle, type ProcessLifecycleEvidence } from "../cli/processLifecycle";
 import type { CleanupResult } from "../runtime/departmentexecutionidentity";
@@ -713,14 +713,11 @@ export class CodexAppServerConnection {
     void this.runtime.logInfo("codex-app-server-spawn", { connectionId: this.id });
     let child: ChildProcess;
     try {
-      child = spawn(this.spec.command, this.spec.args, {
+      child = spawn(this.spec.command, this.spec.args, createCliProcessPolicy().spawnOptions(this.spec.command, {
         cwd: this.spec.cwd,
-        env: this.spec.env,
-        argv0: resolveChildArgv0(this.spec.command, CODEX_APP_SERVER_PROCESS_LABEL),
-        detached: process.platform !== "win32",
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+        baseEnvironment: this.spec.env,
+        processLabel: CODEX_APP_SERVER_PROCESS_LABEL,
+      }));
     } catch (error) {
       const spawnError = error instanceof Error ? error : new Error(String(error));
       this.spawnError = spawnError;

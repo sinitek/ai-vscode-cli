@@ -199,6 +199,7 @@ test("original group chat resume atomically commits after exact thread receipt a
     },
   });
   let retry: Promise<void> | undefined;
+  const continueEvents: Array<{ event: string; payload: Record<string, unknown> }> = [];
   try {
     const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
     const opened = [{ subtaskId: "P", attemptId: "review-first" }, { subtaskId: "Q", attemptId: "review-next" },
@@ -248,7 +249,9 @@ test("original group chat resume atomically commits after exact thread receipt a
       getActiveConversationTaskId: () => taskId, postPanelState: async () => undefined,
       pickTask: async () => null, readTextFileIfNonEmpty: () => null, fileExists: () => false, writeTextFileEnsuringDir: () => true,
       buildCompletedConclusionAndSummaryMarkdown: () => "", showInformationMessage: () => undefined,
-      showWarningMessage: (message) => { warnings.push(message); }, t: (key) => key,
+      showWarningMessage: (message) => { warnings.push(message); },
+      logEvent: (event, payload) => continueEvents.push({ event, payload }),
+      t: (key) => key,
     };
     const coordinator = createLoopGroupChatPanelCoordinator(deps);
     state = buildLoopGroupChatPanelState(originalRead, deps);
@@ -263,7 +266,10 @@ test("original group chat resume atomically commits after exact thread receipt a
       }
       return rename(from, to);
     });
-    const click = () => coordinator.handleMessage(taskId, { type: "loopGroupChatChat:continueTask", prompt: instruction }, panel);
+    let clickNumber = 0;
+    const click = () => coordinator.handleMessage(taskId, {
+      type: "loopGroupChatChat:continueTask", prompt: instruction, requestId: `continue-test-${++clickNumber}`,
+    }, panel);
     await click();
     assert.match(warnings.at(-1) ?? "", /synthetic atomic replacement denied/u);
     assert.deepEqual(fs.readFileSync(taskStoreFile), originalBytes);
@@ -297,10 +303,13 @@ test("original group chat resume atomically commits after exact thread receipt a
     assert.deepEqual(resumed.pending, []);
     assert.deepEqual(resumed.running.map((item) => item.attemptId), [ready.attemptId, successor.attemptId]);
     assert.equal(fixture.mainCalls[0].loopTaskId, taskId);
+    assert.ok(continueEvents.some(({ event, payload }) => event === "loop-group-chat-continue-received" && payload.requestId === "continue-test-2"));
+    assert.ok(continueEvents.some(({ event, payload }) => event === "loop-group-chat-continue-dispatch" && payload.requestId === "continue-test-2"));
   } finally {
     fixture.adapter.host().stopParent(taskId);
     finishMain.resolve();
     await retry;
+    assert.ok(continueEvents.some(({ event, payload }) => event === "loop-group-chat-continue-settled" && payload.requestId === "continue-test-2"));
     await native.cleanup();
     fixture.dispose();
     if (oldCodexHome === undefined) delete process.env.CODEX_HOME;

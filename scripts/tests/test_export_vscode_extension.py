@@ -73,6 +73,60 @@ class ExportWorkflowTests(unittest.TestCase):
                 self.assertEqual(events, ["package", "readme", "audit"])
 
 
+class DependencyLayoutTests(unittest.TestCase):
+    def make_directory_link(self, link: Path, target: Path) -> None:
+        try:
+            link.symlink_to(target, target_is_directory=True)
+        except OSError as error:
+            if sys.platform == "win32" and getattr(error, "winerror", None) == 1314:
+                self.skipTest("本机无权创建目录符号链接")
+            raise
+
+    def test_package_removes_self_link_before_invoking_vsce(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sinitek self link ") as temporary:
+            root = Path(temporary)
+            node_modules = root / "node_modules"
+            node_modules.mkdir()
+            dependency = node_modules / "fixture-package"
+            dependency.mkdir()
+            link = node_modules / "node_modules"
+            self.make_directory_link(link, node_modules)
+            output = root / "dist" / "fixture.vsix"
+
+            def fake_run(argv: list[str], *, cwd: Path) -> None:
+                self.assertEqual(cwd, root)
+                self.assertFalse(link.is_symlink())
+                self.assertTrue(dependency.is_dir())
+                Path(argv[argv.index("--out") + 1]).write_bytes(b"fixture")
+
+            with patch.object(export_script, "ROOT_DIR", root), \
+                    patch.object(export_script, "resolve_vsce", return_value="vsce"), \
+                    patch.object(export_script, "run_process", side_effect=fake_run):
+                export_script.package_vsix("universal", output, None)
+            self.assertEqual(output.read_bytes(), b"fixture")
+
+    def test_cleanup_preserves_real_nested_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sinitek nested modules ") as temporary:
+            root = Path(temporary)
+            nested = root / "node_modules" / "node_modules"
+            nested.mkdir(parents=True)
+            export_script.remove_self_referencing_node_modules_link(root)
+            self.assertTrue(nested.is_dir())
+
+    def test_cleanup_preserves_link_to_different_directory(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="sinitek other modules ") as temporary:
+            root = Path(temporary)
+            node_modules = root / "node_modules"
+            node_modules.mkdir()
+            other = root / "other"
+            other.mkdir()
+            link = node_modules / "node_modules"
+            self.make_directory_link(link, other)
+            export_script.remove_self_referencing_node_modules_link(root)
+            self.assertTrue(link.is_symlink())
+            self.assertTrue(link.samefile(other))
+
+
 class VsixAuditTests(unittest.TestCase):
     def create_vsix(self, root: Path, entries: list[str], *, readme: str = "# fixture", assets: str = "") -> Path:
         package = root / "fixture.vsix"
@@ -109,8 +163,8 @@ class VsixAuditTests(unittest.TestCase):
                 staged.write_bytes(b"fixture")
                 output.parent.rmdir()
 
-            with patch.object(export_script, "resolve_vsce", return_value="vsce"), \
-                    patch.object(export_script, "workspace_has_pnpm_node_modules", return_value=False), \
+            with patch.object(export_script, "ROOT_DIR", root), \
+                    patch.object(export_script, "resolve_vsce", return_value="vsce"), \
                     patch.object(export_script, "run_process", side_effect=fake_run):
                 export_script.package_vsix("universal", output, None)
             self.assertEqual(output.read_bytes(), b"fixture")

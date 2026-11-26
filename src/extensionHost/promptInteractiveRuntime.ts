@@ -3,9 +3,8 @@ import { buildConversationExecutionProfile } from "../conversationTabConfigurati
 import type { CodexRuntimeConfigEvidence } from "../config/codexRuntimeConfigIdentity";
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
-import { buildCliArgs, resolveCliCommand } from "../cli/commandRunner";
 import { isCliCommandRepairableError } from "../cli/cliCommandRepair";
-import { buildGrokAgentStdioArgs, getCliCommand, getDebugLogging, getDshCommand, getGrokAgentArgs, getGrokCommand, getKimiCommand, getZcodeCommand } from "../cli/config";
+import { getDebugLogging } from "../cli/config";
 import type { OpenCodeTaskListItem } from "../cli/openCodeTaskList";
 import type { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { hasAssistantFinalConclusionAfterMessage } from "../finalConclusion";
@@ -62,10 +61,8 @@ import {
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { InteractiveTabRun, PromptRunExecutionOptions } from "./promptExecutionShared";
-import { prepareDshIsolatedLaunch, type DshInteractiveLaunch } from "./dshInteractiveLaunch";
-import { prepareKimiInteractiveLaunch, type KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
-import { prepareZcodeInteractiveLaunch, type ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
-import { createInteractiveTurnStrategies, type InteractiveAssistantChunkOptions } from "./interactiveTurnStrategy";
+import { createInteractiveLaunchStrategies, isInteractiveLaunchCli, type InteractiveLaunchDeps } from "./interactiveLaunchStrategy";
+import { createInteractiveTurnStrategies, runInteractiveTurn, type InteractiveAssistantChunkOptions } from "./interactiveTurnStrategy";
 
 type TraceMessageOptions = {
   id?: string;
@@ -75,7 +72,7 @@ type TraceMessageOptions = {
   taskListItems?: OpenCodeTaskListItem[];
 };
 
-export type PromptInteractiveRuntimeHostDeps = {
+export type PromptInteractiveRuntimeHostDeps = InteractiveLaunchDeps & {
   AI_TASK_RAW_OUTPUT_MAX_BYTES: number;
   activeRunsByTabId: Map<string, InteractiveTabRun>;
   adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
@@ -89,23 +86,11 @@ export type PromptInteractiveRuntimeHostDeps = {
   getConversationTabById: (tabId: string) => { sessionId?: string | null; cli?: CliName; sessionIdByCli?: Partial<Record<CliName, string>> } | null | undefined;
   getWorkspaceKey?: () => string;
   takeOverSessionForTab?: (target: PromptRunTarget, isAborted?: () => boolean) => Promise<boolean>;
-  getEffectiveCliArgs: (cli: CliName, model: string | null) => string[];
   getEffectiveThinkingMode: (cli: CliName, model?: string | null) => ThinkingMode;
   getGlobalHumanInteractionEnabled: () => boolean;
   getPendingSessionDraft: (tabId: string, cli: CliName) => { messages: ChatMessage[] };
   getSelectedCliModel: (cli: CliName, configId?: string | null) => string | null;
   readRuntimeConfigFingerprint?: (cli: CliName, configId: string | null, workingDirectory?: string, codexEvidence?: CodexRuntimeConfigEvidence) => Promise<string>;
-  resolveGrokModelForRun?: (selectedModel: string | null) => Promise<string>;
-  resolveDshModelWireForRun?: (selectedModel: string | null) => Promise<string>;
-  prepareDshInteractiveLaunch?: (input: { sessionKey: string }) => Promise<Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome">>;
-  resolveKimiModelWireForRun?: (selectedModel: string | null) => Promise<string>;
-  resolveZcodeModelWireForRun?: (selectedModel: string | null) => Promise<string>;
-  prepareZcodeInteractiveLaunch?: typeof prepareZcodeInteractiveLaunch;
-  prepareKimiInteractiveLaunch?: (input: {
-    interactiveMode: InteractiveMode;
-    selectedModel: string | null;
-    thinkingMode: ThinkingMode;
-  }) => Promise<Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue">>;
   getModelDisplayName?: (cli: CliName, model: string | null) => string | null;
   getWorkspaceInteractiveMode: (cli: CliName) => InteractiveMode;
   getInteractiveRunnerManager: () => InteractiveRunnerManager;
@@ -138,7 +123,7 @@ export type PromptInteractiveRuntimeHostDeps = {
   migrateLocalSessionToTargetSession: (cli: CliName, localSessionId: string, targetSessionId: string) => void;
   persistMessagesForTab: (cli: CliName, sessionId: string | null, tabId: string, messages: ChatMessage[]) => void;
   preparePendingLabel: (cli: CliName, tabId: string, prompt: string) => void;
-  resolveClaudeInteractiveEntrypoint: (command: string | undefined) => string | undefined;
+  resolveClaudeInteractiveEntrypoint?: (command: string | undefined) => string | undefined;
   resolveCodexInteractiveSelection: (sessionId: string) => CodexRunSelection | null;
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
   resolveInteractiveSessionForResume: (cli: CliName, sessionId: string | null, tabId: string | null) => Promise<string | null | undefined>;
@@ -172,6 +157,7 @@ export type PromptInteractiveRuntimeHost = {
 };
 
 export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntimeHostDeps): PromptInteractiveRuntimeHost {
+  const launchStrategies = createInteractiveLaunchStrategies(deps);
   const interactiveTurnStrategies = createInteractiveTurnStrategies();
   const {
     AI_TASK_RAW_OUTPUT_MAX_BYTES,
@@ -185,7 +171,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     createMessageId,
     getActiveConfigIdForCli,
     getConversationTabById,
-    getEffectiveCliArgs,
     getEffectiveThinkingMode,
     getGlobalHumanInteractionEnabled,
     getPendingSessionDraft,
@@ -199,7 +184,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     migrateLocalSessionToTargetSession,
     persistMessagesForTab,
     preparePendingLabel,
-    resolveClaudeInteractiveEntrypoint,
     resolveCodexInteractiveSelection,
     resolveInteractiveMappedId,
     resolveInteractiveSessionForResume,
@@ -244,6 +228,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       || preparingTab.sessionIdByCli?.[target.cli] !== preparingCliSessionId
       || deps.getWorkspaceKey?.() !== preparingWorkspace;
     if (isPreparationAborted()) return;
+    const cli = target.cli;
+    if (!isInteractiveLaunchCli(cli, launchStrategies)) throw new Error(`interactive-runner-unsupported:${cli}`);
+    const launchStrategy = launchStrategies[cli];
     if (interactiveRunsByTabId.get(target.tabId)?.stopped === false) {
       throw Object.assign(new Error("当前标签仍有任务运行，请先停止原任务再重试。"), { code: "SESSION_RUN_ACTIVE" });
     }
@@ -255,7 +242,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
     const interactiveRunnerManager = getInteractiveRunnerManager();
 
-    const cli = target.cli;
     const cwd = executionOptions.cwd ?? resolveWorkspaceCwd();
     const activeConfigId = prepareOriginalSession?.configId ?? getActiveConfigIdForCli(cli);
     const isExecutionConfigCurrent = () => prepareOriginalSession
@@ -275,8 +261,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       ? input.executionProfile.model
       : input.model || getSelectedCliModel(cli, activeConfigId);
 
-    const selectedModel = cli === "grok" && deps.resolveGrokModelForRun
-      ? await deps.resolveGrokModelForRun(requestedModel)
+    const selectedModel = launchStrategy.resolveModel
+      ? await launchStrategy.resolveModel(requestedModel)
       : requestedModel;
     const executionModel = deps.getModelDisplayName?.(cli, selectedModel) ?? selectedModel;
     const thinkingMode = input.thinkingModeOverride ?? getEffectiveThinkingMode(cli, selectedModel);
@@ -317,78 +303,18 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       includeFinalAnswerInstruction,
     });
     const debugLogging = getDebugLogging();
-    let dshModelWire: string | null = null;
-    let dshLaunch: Pick<DshInteractiveLaunch, "agentArgs" | "env" | "isolatedHome"> | null = null;
-    if (cli === "dsh") {
-      if (!deps.resolveDshModelWireForRun) {
-        throw new Error("DSH model wire resolver is not configured.");
-      }
-      dshModelWire = await deps.resolveDshModelWireForRun(requestedModel);
-      // Keep the tab home for a new session, then bind its ACP session id so a
-      // later tab can find the same persisted DSH session after reload.
-      dshLaunch = await (deps.prepareDshInteractiveLaunch ?? prepareDshIsolatedLaunch)({
-        sessionKey: uiSessionId && !isLocalSessionId(uiSessionId) ? uiSessionId : tabId,
-      });
-    }
-    let kimiModelWire: string | null = null;
-    let kimiLaunch: Pick<KimiInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelAlias" | "thinkingValue"> | null = null;
-    if (cli === "kimi-code") {
-      if (!deps.resolveKimiModelWireForRun) {
-        throw new Error("Kimi Code model resolver is not configured.");
-      }
-      kimiModelWire = await deps.resolveKimiModelWireForRun(requestedModel);
-      kimiLaunch = await (deps.prepareKimiInteractiveLaunch ?? prepareKimiInteractiveLaunch)({
-        interactiveMode: interactiveMode === "department" ? "coding" : interactiveMode,
-        selectedModel: kimiModelWire,
-        thinkingMode,
-      });
-    }
-    let zcodeModelWire: string | null = null;
-    let zcodeLaunch: Pick<ZcodeInteractiveLaunch, "agentArgs" | "env" | "modeId" | "modelRef" | "thinkingValue"> | null = null;
-    if (cli === "zcode") {
-      if (!deps.resolveZcodeModelWireForRun) {
-        throw new Error("ZCode model resolver is not configured.");
-      }
-      zcodeModelWire = await deps.resolveZcodeModelWireForRun(requestedModel);
-      zcodeLaunch = await (deps.prepareZcodeInteractiveLaunch ?? prepareZcodeInteractiveLaunch)({
-        interactiveMode,
-        selectedModel: zcodeModelWire,
-        thinkingMode,
-      });
-    }
-    const grokAgentArgs = cli === "grok" ? getGrokAgentArgs() : [];
-    const args = cli === "dsh"
-      ? [...(dshLaunch?.agentArgs ?? [])]
-      : cli === "kimi-code"
-      ? [...(kimiLaunch?.agentArgs ?? [])]
-      : cli === "zcode"
-      ? [...(zcodeLaunch?.agentArgs ?? [])]
-      : cli === "grok"
-      ? buildGrokAgentStdioArgs(grokAgentArgs, selectedModel)
-      : cli === "codex" || executionOptions.isolateProjectInstructions
-      ? buildCliArgs(cli, {
-          thinkingMode,
-          model: selectedModel,
-          imagePaths: input.imagePaths,
-          isolateProjectInstructions: executionOptions.isolateProjectInstructions,
-        })
-      : getEffectiveCliArgs(cli, selectedModel);
-    const command = cli === "dsh"
-      ? getDshCommand()
-      : cli === "kimi-code"
-      ? getKimiCommand()
-      : cli === "zcode"
-      ? getZcodeCommand()
-      : cli === "grok"
-      ? getGrokCommand()
-      : getCliCommand(cli);
-    const resolvedCommand = cli === "claude" ? resolveCliCommand(command) : null;
-    const commandForRunner = cli === "claude"
-      ? (resolvedCommand?.command ?? "claude")
-      : command;
-    const claudeEntrypoint = cli === "claude"
-      ? resolveClaudeInteractiveEntrypoint(resolvedCommand?.command ?? commandForRunner)
-      : undefined;
+    const preparation = launchStrategy.prepare({
+      requestedModel,
+      selectedModel,
+      thinkingMode,
+      interactiveMode,
+      imagePaths: input.imagePaths,
+      isolateProjectInstructions: executionOptions.isolateProjectInstructions,
+      sessionId: uiSessionId,
+      tabId,
+    });
+    const launch = preparation instanceof Promise ? await preparation : preparation;
+    const { command, commandForRunner, args } = launch;
 
     if (isPreparationAborted()) {
       return;
@@ -482,6 +408,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let observedDshFinalAnswer = false;
     let observedKimiFinalAnswer = false;
     let observedZcodeFinalAnswer = false;
+    let observedFinalAssistantMessage: ChatMessage | null = null;
+    let latestAssistantMessage: ChatMessage | null = null;
+    let attemptStartedAt = startedAt;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
 
@@ -506,6 +435,21 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       return assistantMessageIndex;
     };
 
+    const captureObservedFinalAssistantMessage = (observed: boolean): void => {
+      if (!observed) {
+        observedFinalAssistantMessage = null;
+        return;
+      }
+      const index = resolveAssistantMessageIndex();
+      const message = index === null ? null : messageTarget[index];
+      observedFinalAssistantMessage = message?.role === "assistant" && message.kind !== "thinking"
+        && !message.subagentId && message.taskRole === input.taskRole
+        && message.loopTaskId === input.loopTaskId && message.loopRound === (input.loopRound ?? 1)
+        && message.loopAttemptId === input.loopAttemptId
+        && typeof message.createdAt === "number" && message.createdAt >= attemptStartedAt
+        ? message : null;
+    };
+
     const isCurrentRunActive = (): boolean => {
       const entry = interactiveRunsByTabId.get(tabId);
       return Boolean(entry && entry.runId === runId && !entry.stopped);
@@ -524,10 +468,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         args,
         cwd,
         stdin: input,
-        resolvedCommand: cli === "claude" ? resolvedCommand?.command : undefined,
-        resolvedFrom: cli === "claude" ? resolvedCommand?.resolvedFrom : undefined,
-        execPath: cli === "claude" ? process.execPath : undefined,
-        entrypoint: claudeEntrypoint,
+        ...launch.startupLog,
       });
     };
 
@@ -590,6 +531,9 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     };
 
     const beginInteractiveAttempt = (input: string): void => {
+      attemptStartedAt = Date.now();
+      observedFinalAssistantMessage = null;
+      latestAssistantMessage = null;
       didLogInteractiveStart = false;
       didLogInteractiveIo = false;
       interactiveInput = input;
@@ -811,6 +755,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (!message || message.role !== "assistant") {
         return;
       }
+      latestAssistantMessage = message;
       if (kind === "thinking" && message.id === previousThinkingMessageId) {
         assistantChunk = separateCodexReasoningItemDelta({
           previousContent: message.content,
@@ -1379,6 +1324,23 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         await cleanupAfterRun("error", finalConclusionState.message);
         return "return";
       }
+      const observedNativeFinal = observedCodexFinalAnswer || observedClaudeFinalAnswer || observedGrokFinalAnswer
+        || observedDshFinalAnswer || observedKimiFinalAnswer || observedZcodeFinalAnswer;
+      if (input.taskRole === "main" && input.loopTaskId && !input.loopAsk
+        && input.loopPlusFinalAssistantHandoff && observedNativeFinal && isCurrentRunActive()) {
+        const finalAssistant = observedFinalAssistantMessage;
+        if (finalAssistant && finalAssistant === latestAssistantMessage && finalAssistant.content.trim()) {
+          input.loopPlusFinalAssistantHandoff({
+            runId,
+            sessionId: uiSessionId,
+            taskId: input.loopTaskId,
+            round: input.loopRound ?? 1,
+            role: "main",
+            attemptId: input.loopAttemptId,
+            content: finalAssistant.content,
+          });
+        }
+      }
       await cleanupAfterRun("end");
       return "return";
     };
@@ -1398,6 +1360,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         observedCodexPrimaryTurnCompleted = false;
       }
       observedClaudeFinalAnswer = false;
+      observedFinalAssistantMessage = null;
 
       if (hiddenRetryCount > 0) {
         const retryNumber = hiddenRetryCount;
@@ -1422,27 +1385,22 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (runRegistered && !recovery) beginInteractiveAttempt(attemptPrompt);
 
       try {
-        if (cli !== "codex" && cli !== "claude" && cli !== "grok" && cli !== "dsh" && cli !== "kimi-code" && cli !== "zcode") {
-          throw new Error(`interactive-runner-unsupported:${cli}`);
-        }
         if (!isExecutionConfigCurrent()) {
           throw new Error("配置选择已变化，任务未启动，请重试。");
         }
-        const disposition = await interactiveTurnStrategies[cli].runAttempt({
-          cli,
+        const disposition = await runInteractiveTurn(interactiveTurnStrategies, {
+          ...launch,
+          grokAgentArgs: launch.cli === "grok" ? launch.grokAgentArgs : [],
+          dshModelWire: launch.cli === "dsh" ? launch.dshModelWire : null,
+          dshLaunch: launch.cli === "dsh" ? launch.dshLaunch : null,
+          kimiModelWire: launch.cli === "kimi-code" ? launch.kimiModelWire : null,
+          kimiLaunch: launch.cli === "kimi-code" ? launch.kimiLaunch : null,
+          zcodeModelWire: launch.cli === "zcode" ? launch.zcodeModelWire : null,
+          zcodeLaunch: launch.cli === "zcode" ? launch.zcodeLaunch : null,
+          claudeEntrypoint: launch.cli === "claude" ? launch.claudeEntrypoint : undefined,
           tabId,
           runId,
           attemptPrompt,
-          command,
-          commandForRunner,
-          args,
-          grokAgentArgs,
-          dshModelWire,
-          dshLaunch,
-          kimiModelWire,
-          kimiLaunch,
-          zcodeModelWire,
-          zcodeLaunch,
           cwd,
           workspaceCwd: executionOptions.isolateProjectInstructions ? resolveWorkspaceCwd() : undefined,
           grokLoopResumeSessionId: input.grokLoopResumeSessionId,
@@ -1451,7 +1409,6 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           selectedModel,
           activeConfigId,
           configFingerprint,
-          claudeEntrypoint,
           isolateProjectInstructions: executionOptions.isolateProjectInstructions,
           originalSessionId: target.sessionId,
           get uiSessionId() {
@@ -1501,6 +1458,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           },
           set observedCodexFinalAnswer(value: boolean) {
             observedCodexFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           get observedCodexPrimaryTurnCompleted() {
             return observedCodexPrimaryTurnCompleted;
@@ -1513,30 +1471,35 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
           },
           set observedClaudeFinalAnswer(value: boolean) {
             observedClaudeFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           get observedGrokFinalAnswer() {
             return observedGrokFinalAnswer;
           },
           set observedGrokFinalAnswer(value: boolean) {
             observedGrokFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           get observedDshFinalAnswer() {
             return observedDshFinalAnswer;
           },
           set observedDshFinalAnswer(value: boolean) {
             observedDshFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           get observedKimiFinalAnswer() {
             return observedKimiFinalAnswer;
           },
           set observedKimiFinalAnswer(value: boolean) {
             observedKimiFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           get observedZcodeFinalAnswer() {
             return observedZcodeFinalAnswer;
           },
           set observedZcodeFinalAnswer(value: boolean) {
             observedZcodeFinalAnswer = value;
+            captureObservedFinalAssistantMessage(value);
           },
           settleInteractiveAttempt,
           appendAssistantChunkForTab,

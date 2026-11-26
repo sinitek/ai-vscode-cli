@@ -426,7 +426,7 @@ test("execution result reuse preserves event-level code review and every selecte
         acceptancePlan: {
           id: "review-all",
           name: "完整审查",
-          checks: ["maintainability", "security", "performance", "ui_aesthetics", "other"],
+          checks: ["maintainability", "performance", "ui_aesthetics", "security", "other"],
           otherText: "需要独立检查的集成路径仍须检查",
           systemDefault: false,
         },
@@ -439,19 +439,49 @@ test("execution result reuse preserves event-level code review and every selecte
       assert.match(prompt, /Apply every selected additional review/);
       assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
       assert.match(prompt, /Do not send completed while any event fails its checklist/);
-      for (const reviewLabel of ["Maintainability", "Security", "Performance", "UI aesthetics"]) {
+      for (const reviewLabel of ["Maintainability", "Performance", "User experience", "Security"]) {
         assert.match(prompt, new RegExp(`${reviewLabel} review:`));
       }
+      assert.ok(prompt.indexOf("User experience review:") < prompt.indexOf("Security review:"));
+      assert.ok(prompt.indexOf("Security review:") < prompt.indexOf("User-supplied review content"));
+      assert.match(prompt, /keyboard operation and focus/);
+      assert.match(prompt, /Explicitly identify any aspects not covered/);
+      assert.equal(prompt.match(/User experience review:/g)?.length, 1);
+      assert.match(prompt, /follow that requirement for the conflicting dimension only/);
+      assert.match(prompt, /Keep reviewing all other applicable dimensions, including keyboard operation, feedback, error recovery, and narrow-width readability/);
+      assert.match(prompt, /For all remaining cases include a result for every selected key: maintainability, performance, ui_aesthetics, security, other\./);
       assert.match(prompt, /需要独立检查的集成路径仍须检查/);
       const completed = parseExample(extractProtocolExamples(prompt), "completed");
       assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), [
         "dispatched work", "contracts", "tests", "artifacts", "unauthorized changes", "omissions and regressions",
       ]);
       assert.deepEqual(completed.acceptancePlanResults?.map((result) => result.key), [
-        "maintainability", "security", "performance", "ui_aesthetics", "other",
+        "maintainability", "performance", "ui_aesthetics", "security", "other",
       ]);
       assert.ok(completed.requirementCoverage?.length);
     }
+  }
+});
+
+test("unselected UX review is omitted even when the user requests a distinctive style", () => {
+  for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({
+      kind,
+      rootPrompt: "做一个风格独特的页面",
+      acceptancePlan: {
+        id: "security-only", name: "安全检查", checks: ["security"], otherText: "", systemDefault: false,
+      },
+      currentEventId: "event-review",
+      view: view({ currentReview: review("event-review", "sub-reviewed"), visibleReviewCount: 1 }),
+    }));
+    assert.match(prompt, /做一个风格独特的页面/);
+    assert.doesNotMatch(prompt, /User experience review:|conflicting dimension only|ui_aesthetics/);
+    assert.match(prompt, /For all remaining cases include a result for every selected key: security\./);
+    const completed = parseExample(extractProtocolExamples(prompt), "completed");
+    assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), [
+      "dispatched work", "contracts", "tests", "artifacts", "unauthorized changes", "omissions and regressions",
+    ]);
+    assert.deepEqual(completed.acceptancePlanResults?.map((result) => result.key), ["security"]);
   }
 });
 
@@ -513,9 +543,9 @@ test("protocol examples acknowledge the frozen report prefix when resuming sched
   const reportEventIds = ["report-event-a", "report-event-b"];
   const prompt = buildLoopPlusMainModelPrompt(mainContext({ reportEventIds }));
   const examples = extractProtocolExamples(prompt);
-  for (const status of PROTOCOL_STATUSES) {
+  for (const status of examples.keys()) {
     const parsed = parseExample(examples, status);
-    assert.deepEqual(parsed.reportEventIds, status === "clarify" ? undefined : reportEventIds);
+    assert.deepEqual(parsed.reportEventIds, reportEventIds);
   }
 });
 
@@ -548,9 +578,13 @@ test("all main prompt modes preserve four frozen ids through refresh and late pr
         assert.match(prompt, /then acknowledge the exact list/);
         assert.doesNotMatch(prompt, /FIFO review queue|Acceptance batch, oldest first|review queue, oldest first/);
         const examples = extractProtocolExamples(prompt);
-        for (const status of PROTOCOL_STATUSES) {
+        assert.equal(examples.has("completed"), !latePrerequisite);
+        assert.equal(examples.has("dispatch"), false);
+        assert.equal(examples.has("wait"), false);
+        assert.equal(examples.has("steer"), false);
+        for (const status of examples.keys()) {
           const parsed = parseExample(examples, status);
-          assert.deepEqual(parsed.reportEventIds, status === "clarify" ? undefined : reports);
+          assert.deepEqual(parsed.reportEventIds, reports);
           if (status === "accept" || status === "completed") {
             assert.deepEqual(parsed.reviewEventIds, frozen);
             assert.equal(parsed.reviewEventId, undefined);
@@ -630,7 +664,7 @@ test("a newly frozen review offers one independent dispatch before acceptance", 
   assert.doesNotMatch(ordinaryReview, /One-time dispatch-first check/);
 });
 
-test("Loop+ subtask reports identify reusable verification scope without claiming to replace main review", () => {
+test("Loop+ subtask prompts require applicable self-checks and evidence for main review", () => {
   for (const loopSubtaskMode of ["fullstack", "split"] as const) {
     for (const executionRole of ["backend", "frontend", "general"] as const) {
       const prompt = buildLoopPlusSubtaskModelPrompt({
@@ -639,6 +673,17 @@ test("Loop+ subtask reports identify reusable verification scope without claimin
         loopSubtaskMode,
         communicationFile: "ATTEMPT_REPORT_TOKEN",
       });
+      assert.match(prompt, /^Loop\+ subtask self-check before reporting$/m);
+      assert.match(prompt, /each requested deliverable meets the original subtask instructions and applicable design constraints/);
+      assert.match(prompt, /Check affected contracts with callers, relevant edge cases, and regressions/);
+      assert.match(prompt, /Run the smallest relevant checks that cover the delivery and any checks required by the task or project/);
+      assert.match(prompt, /Record the exact commands used\. Explicitly identify failed and unverified checks and explain why/);
+      assert.match(prompt, /produces a runnable artifact and startup is applicable, actually start it through its normal entry point/);
+      assert.match(prompt, /Record the startup command and observed result/);
+      assert.match(prompt, /If startup does not apply, record it as not applicable with the reason/);
+      assert.match(prompt, /If applicable startup could not be verified, report it as unverified with the reason/);
+      assert.match(prompt, /If this attempt changes files, review your own diff for unrelated changes/);
+      assert.match(prompt, /Explain each necessary change outside the suggested scope with its path and reason in the attempt report/);
       assert.match(prompt, /Report each performed check's scope, command or action, result, and any untested or skipped areas/);
       assert.match(prompt, /Mention changes made after a check that may invalidate its result/);
       assert.match(prompt, /Do not rerun a still-valid covered check solely to create fresh evidence/);
@@ -649,7 +694,9 @@ test("Loop+ subtask reports identify reusable verification scope without claimin
 
 test("all main prompt kinds require a corrected Chinese title when reprompting", () => {
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
-    const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind }));
+    const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind,
+      view: view({ running: [execution("sub-running", "running")] }),
+    }));
     assert.match(prompt, /reprompt requires a non-empty title/);
     assert.match(prompt, /title describing the corrected task in Simplified Chinese/);
     assert.match(prompt, /Do not reuse the old title/);
@@ -818,9 +865,16 @@ test("all acceptance examples satisfy strict feedback for default and custom pla
   }];
   for (const acceptancePlan of plans) {
     for (const eventIds of [[], ["event-a"], ["event-a", "event-b"]]) {
-      const prompt = buildLoopPlusMainModelPrompt(mainContext({ acceptancePlan, acceptanceEventIds: eventIds }));
+      const prompt = buildLoopPlusMainModelPrompt(mainContext({ acceptancePlan, acceptanceEventIds: eventIds,
+        view: view({ currentReview: eventIds.length ? review(eventIds[0], "source-first") : null,
+          reviewQueue: eventIds.slice(1).map((id) => review(id, "source-last")), visibleReviewCount: eventIds.length }),
+      }));
       const examples = extractProtocolExamples(prompt);
       for (const status of ["accept", "completed"]) {
+        if (status === "accept" && eventIds.length === 0) {
+          assert.equal(examples.has("accept"), false);
+          continue;
+        }
         const parsed = parseLoopPlusDecision(examples.get(status), {
           requireAcceptanceFeedback: true,
           acceptancePlanKeys: acceptancePlan ? ["security", "other"] : [],
@@ -868,9 +922,16 @@ test("generated protocol examples satisfy the current parser and live event id",
     supplementalRequirements: ["SUPPLEMENTAL_TOKEN"],
   }));
   const examples = extractProtocolExamples(prompt);
-  assert.deepEqual([...examples.keys()], [...PROTOCOL_STATUSES]);
+  assert.deepEqual([...examples.keys()], ["accept", "blocked", "clarify"]);
+  const liveExamples = extractProtocolExamples(buildLoopPlusMainModelPrompt(mainContext({
+    view: view({ running: [execution("live-running", "running")], pending: [execution("live-pending", "pending")] }),
+  })));
+  const finalExamples = extractProtocolExamples(buildLoopPlusMainModelPrompt(mainContext({
+    currentEventId: current.eventId,
+    view: view({ currentReview: current, visibleReviewCount: 1 }),
+  })));
 
-  const dispatch = parseExample(examples, "dispatch");
+  const dispatch = parseExample(liveExamples, "dispatch");
   assert.equal(Object.prototype.hasOwnProperty.call(dispatch, "reviewEventId"), false);
   assert.ok(dispatch.subtasks);
   assert.ok(dispatch.subtasks.length >= 1 && dispatch.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
@@ -897,14 +958,14 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.ok(accept.acceptance);
   assert.ok(!accept.subtasks || accept.subtasks.length <= LOOP_PLUS_DECISION_SUBTASK_MAX);
 
-  const waiting = parseExample(examples, "wait");
+  const waiting = parseExample(liveExamples, "wait");
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "reviewEventId"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(waiting, "subtasks"), false);
 
-  const steer = parseExample(examples, "steer");
+  const steer = parseExample(liveExamples, "steer");
   assert.equal(Object.prototype.hasOwnProperty.call(steer, "reviewEventId"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(steer, "subtasks"), false);
-  assert.equal(steer.controls?.some((control) => control.action === "close"), true);
+  assert.equal(steer.controls?.[0].id, "live-running");
   assert.equal(steer.controls?.some((control) => (
     control.action === "reprompt" && Boolean(control.title?.trim())
       && Boolean(control.prompt?.trim())
@@ -923,7 +984,7 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.equal(clarify.clarification?.formFields.length, 1);
   assert.equal(clarify.clarification?.formFields[0]?.type, "radio");
 
-  const completed = parseExample(examples, "completed");
+  const completed = parseExample(finalExamples, "completed");
   assert.equal(completed.reviewEventId, "event-live-42");
   assert.ok(completed.answerConclusion && completed.answerConclusion.trim());
   assert.ok(completed.finalSummary && completed.finalSummary.trim());
@@ -936,14 +997,15 @@ test("generated protocol examples satisfy the current parser and live event id",
   assert.equal(Object.prototype.hasOwnProperty.call(completed, "estimatedRemainingRounds"), false);
   assert.equal(JSON.stringify(completed).includes("roundSummaries"), false);
 
+  const allExamples = new Map([...liveExamples, ...finalExamples, ...examples]);
   PROTOCOL_STATUSES.forEach((status) => {
-    const raw = JSON.parse(examples.get(status) ?? "{}") as Record<string, unknown>;
+    const raw = JSON.parse(allExamples.get(status) ?? "{}") as Record<string, unknown>;
     PLURAL_CONFIRMATION_KEYS.forEach((key) => {
       assert.equal(Object.prototype.hasOwnProperty.call(raw, key), false);
     });
     assert.notEqual(raw.status, "continue");
   });
-  assert.equal(parseLoopPlusDecision(prompt)?.status, "dispatch");
+  assert.equal(parseLoopPlusDecision(`Decision follows.\n\`\`\`json\n${examples.get("accept")}\n\`\`\``)?.status, "accept");
 });
 
 test("stripping required completed fields from the generated example is rejected", () => {
@@ -1041,7 +1103,9 @@ test("prompt forbids plural confirmation keys and classic continue without cumul
   assert.equal(withRounds?.status, "completed");
   assert.equal(withRounds?.estimatedRemainingRounds, 4);
   assert.equal(Object.prototype.hasOwnProperty.call(withRounds, "roundSummaries"), false);
-  const waiting = JSON.parse(examples.get("wait") ?? "{}") as Record<string, unknown>;
+  const waiting = JSON.parse(extractProtocolExamples(buildLoopPlusMainModelPrompt(mainContext({
+    view: view({ running: [execution("running", "running")] }),
+  }))).get("wait") ?? "{}") as Record<string, unknown>;
   const optionalWait = parseLoopPlusDecision(JSON.stringify({ ...waiting, estimatedRemainingRounds: "2" }));
   assert.equal(optionalWait?.status, "wait");
   assert.equal(optionalWait?.estimatedRemainingRounds, 2);
@@ -1099,14 +1163,12 @@ test("omits a live event id when nothing is under review and still parses every 
   assert.match(prompt, /Review queue count: 0/);
   assert.match(prompt, /Visible review count including the current item: 0/);
   assert.match(prompt, /Current attempt report path: \(no current item\)/);
-  assert.match(prompt, /must not be emitted/);
+  assert.match(prompt, /There is no frozen acceptance event/);
   const examples = extractProtocolExamples(prompt);
-  assert.deepEqual([...examples.keys()], [...PROTOCOL_STATUSES]);
-  const completed = parseExample(examples, "completed");
-  assert.equal(Object.prototype.hasOwnProperty.call(completed, "reviewEventId"), false);
-  const accept = parseExample(examples, "accept");
-  assert.ok(accept.reviewEventId && accept.reviewEventId.trim());
-  assert.equal(prompt.includes(`Current review eventId: ${accept.reviewEventId}`), false);
+  assert.deepEqual([...examples.keys()], ["dispatch", "wait", "steer", "blocked", "clarify"]);
+  for (const status of examples.keys()) {
+    assert.equal(parseExample(examples, status).reviewEventId, undefined);
+  }
   assert.equal(parseExample(examples, "wait").status, "wait");
   assert.equal(parseExample(examples, "blocked").status, "blocked");
   const dispatch = parseExample(examples, "dispatch");
@@ -1239,13 +1301,15 @@ test("single and batched accept examples combine a focused repair with independe
     for (const capacity of [1, 2, 3, 6]) {
       const prompt = buildLoopPlusMainModelPrompt(mainContext({
         acceptanceEventIds: eventIds, subtaskMax: capacity, maxConcurrency: capacity,
+        view: view({ currentReview: review(eventIds[0], "example-source-first"),
+          reviewQueue: eventIds.slice(1).map((id) => review(id, "example-source-last")), visibleReviewCount: eventIds.length }),
       }));
       const json = extractProtocolExamples(prompt).get("accept");
       const decision = parseLoopPlusDecision(json, { subtaskMax: capacity, requireAcceptanceFeedback: true, requireProgressPercent: true });
       assert.ok(decision);
       assert.equal(decision.subtasks?.length, Math.min(4, capacity));
       const repairs = decision.reviews?.filter((item) => item.acceptance === "failed").flatMap((item) => item.subtaskIds ?? []);
-      assert.deepEqual(repairs, ["example-subtask"]);
+      assert.deepEqual(repairs, [eventIds.length === 1 ? "example-source-first" : "example-source-last"]);
       assert.match(decision.subtasks![0].prompt, /Repair the failed validation check/);
       assert.deepEqual(decision.independentSubtaskIds ?? [], decision.subtasks!.slice(1).map((item) => item.id));
       assert.equal(new Set(decision.subtasks?.map((item) => item.conflictGroup)).size, decision.subtasks!.length);
@@ -1441,6 +1505,7 @@ test("injects the confirmed acceptance plan into every main prompt kind without 
     }));
     assert.match(prompt, /Additional acceptance reviews from the acceptance plan "上线前加严"/);
     assert.match(prompt, /Security review: defensive code review only/);
+    assert.ok(prompt.indexOf("Security review:") < prompt.indexOf("User-supplied review content"));
     assert.match(prompt, /确认审计日志不写入密钥/);
     assert.doesNotMatch(prompt, /Maintainability review/);
     fixedChecklistNames.forEach((name) => {

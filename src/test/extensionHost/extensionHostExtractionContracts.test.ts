@@ -326,7 +326,7 @@ test("extension delegates Loop, parallel, one-shot, and interactive prompt runti
   );
   assert.match(
     autoRepairExecuteSource,
-    /\} else if \(hasOtherTabRun\(attemptTarget\.tabId\)\) \{\s*await runPromptParallel\(currentAttemptInput, attemptTarget, \{ \.\.\.executionOptions, departmentProcessStream: ownerStream \}\);/,
+    /\} else if \(resolvePromptExecutionMode\(attemptTarget\.cli, hasOtherTabRun\(attemptTarget\.tabId\)\) === "parallel"\) \{\s*await runPromptParallel\(currentAttemptInput, attemptTarget, \{ \.\.\.executionOptions, departmentProcessStream: ownerStream \}\);/,
   );
   assert.match(
     autoRepairExecuteSource,

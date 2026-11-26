@@ -13,6 +13,7 @@ import {
   type LoopPlusDecision,
   type LoopPlusDecisionStatus,
 } from "../../loopPlusDecision";
+import { LOOP_PLUS_TASK_TYPES } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
 const CHINESE_PROMPT = [
@@ -534,9 +535,12 @@ test("protocol feedback identifies orphan, unknown and duplicate follow-up links
   };
   const rejected = parseLoopPlusDecisionWithFeedback(JSON.stringify(candidate));
   assert.equal(rejected.decision, null);
-  assert.match(rejected.rejectionReason ?? "", /未关联任务：independent-research/);
-  assert.match(rejected.rejectionReason ?? "", /不存在的任务：unknown/);
-  assert.match(rejected.rejectionReason ?? "", /重复关联任务：repair/);
+  assert.equal(rejected.rejectionKind, "validation");
+  assert.equal(rejected.formatDiagnostic, undefined);
+  assert.match(rejected.rejectionReason ?? "", /有 1 项任务未关联/);
+  assert.match(rejected.rejectionReason ?? "", /有 1 项关联指向 subtasks 中不存在的任务/);
+  assert.match(rejected.rejectionReason ?? "", /有 1 项任务被重复关联/);
+  assert.doesNotMatch(rejected.rejectionReason ?? "", /independent-research|unknown|repair/);
   candidate.reviews[0].subtaskIds = ["independent-research"];
   candidate.reviews[1].subtaskIds = ["repair"];
   const corrected = parseLoopPlusDecisionWithFeedback(JSON.stringify(candidate));
@@ -545,23 +549,118 @@ test("protocol feedback identifies orphan, unknown and duplicate follow-up links
   assert.equal(corrected.rejectionReason, null);
 });
 
+test("subtask validation feedback identifies controlled field and array index without echoing content", () => {
+  const cases = [
+    { subtasks: "secret title", code: "InvalidSubtaskList", field: "subtasks" },
+    { subtasks: [{ id: "secret-id", title: " ", prompt: "secret prompt" }], code: "MissingSubtaskTitle", field: "title", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt", dependsOn: "secret-path" }], code: "InvalidSubtaskDependencies", field: "dependsOn", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt", dependsOn: ["secret-id"] }], code: "InvalidSubtaskDependencies", field: "dependsOn", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt", codingDelivery: "secret-delivery" }], code: "InvalidCodingDelivery", field: "codingDelivery", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt", requiresAcceptance: "secret-acceptance" }], code: "InvalidRequiresAcceptance", field: "requiresAcceptance", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt", continueFromSubtaskId: ["secret-source"] }], code: "InvalidSubtaskContinuation", field: "continueFromSubtaskId", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title" }], code: "MissingSubtaskPrompt", field: "prompt", index: 0 },
+    { subtasks: [{ id: "secret-id", title: "secret title", prompt: "secret prompt" }, { id: "secret-id", title: "another secret", prompt: "another secret" }], code: "DuplicateSubtaskId", field: "id", index: 1 },
+    { subtasks: Array.from({ length: 7 }, (_, index) => ({ id: `secret-${index}`, title: `secret ${index}`, prompt: "secret prompt" })), code: "InvalidSubtaskCount", field: "subtasks" },
+  ] as const;
+  for (const candidate of cases) {
+    const result = parseLoopPlusDecisionWithFeedback(JSON.stringify({ status: "dispatch", ...candidate }));
+    assert.equal(result.rejectionKind, "validation");
+    assert.deepEqual(result.validationDiagnostic, {
+      code: candidate.code, status: "dispatch", field: candidate.field,
+      ...("index" in candidate ? { index: candidate.index } : {}),
+    });
+    assert.match(result.rejectionReason ?? "", new RegExp(candidate.code));
+    assert.doesNotMatch(result.rejectionReason ?? "", /secret/);
+    assert.equal(result.formatDiagnostic, undefined);
+  }
+  const omitted = parseLoopPlusDecisionWithFeedback(JSON.stringify(withLoopPlusAcceptReviews({
+    status: "accept", progressPercent: 25, reviewEventId: "review",
+  })));
+  assert.equal(omitted.decision?.status, "accept");
+});
+
+test("subtask classification feedback recommends task types that repair the rejected decision", () => {
+  const item = { id: "secret-id", title: "secret title", prompt: "secret prompt" };
+  const cases = [
+    { fields: { taskType: "coding" }, code: "InvalidSubtaskType", field: "taskType", recommended: LOOP_PLUS_TASK_TYPES },
+    { fields: { taskType: 1 }, code: "InvalidSubtaskType", field: "taskType", recommended: LOOP_PLUS_TASK_TYPES },
+    { fields: { taskType: "general", codingDelivery: true }, code: "SubtaskClassificationConflict", field: "codingDelivery", recommended: ["backend", "frontend"] },
+    { fields: { taskType: "general", writeFiles: ["src/secret-path.ts"] }, code: "SubtaskClassificationConflict", field: "writeFiles", recommended: ["backend", "frontend"] },
+  ];
+  for (const status of ["dispatch", "accept"] as const) {
+    const parse = (fields: Record<string, unknown>) => parseLoopPlusDecisionWithFeedback(JSON.stringify(withLoopPlusAcceptReviews({
+      status,
+      subtasks: [{ ...item, ...fields }],
+      ...(status === "accept" ? {
+        progressPercent: 25,
+        reviewEventId: "review",
+        reviews: [{ reviewEventId: "review", acceptance: "passed" }],
+        independentSubtaskIds: [item.id],
+      } : {}),
+    })));
+    for (const { fields, code, field, recommended } of cases) {
+      const rejected = parse(fields);
+      assert.equal(rejected.decision, null);
+      assert.equal(rejected.rejectionKind, "validation");
+      assert.equal(rejected.formatDiagnostic, undefined);
+      assert.deepEqual(rejected.validationDiagnostic, { code, status, field, index: 0 });
+      const reason = rejected.rejectionReason ?? "";
+      assert.match(reason, new RegExp(code));
+      assert.doesNotMatch(reason, /secret/);
+      assert.doesNotMatch(JSON.stringify(rejected.validationDiagnostic), /secret/);
+      const suggestedTypes = /将 taskType 设为 ([^，。]+)[，。]/u.exec(reason)?.[1].split("、") ?? [];
+      assert.deepEqual(suggestedTypes, recommended);
+      for (const taskType of suggestedTypes) {
+        const corrected = parse({ ...fields, taskType });
+        assert.equal(corrected.decision?.status, status);
+        assert.equal(corrected.decision?.subtasks?.[0].taskType, taskType);
+        assert.equal(corrected.rejectionReason, null);
+        assert.equal(corrected.validationDiagnostic, undefined);
+      }
+    }
+    for (const taskType of [undefined, null, "", "  "]) {
+      const legacy = parse({ taskType, writeFiles: ["src/secret-path.ts"] });
+      assert.equal(legacy.decision?.status, status);
+      assert.equal(legacy.decision?.subtasks?.[0].taskType, undefined);
+      assert.equal(legacy.rejectionReason, null);
+    }
+  }
+});
+
 test("protocol feedback distinguishes empty and incomplete replies and clears earlier candidate errors", () => {
   for (const content of [null, undefined, " "]) {
     const parsed = parseLoopPlusDecisionWithFeedback(content);
     assert.equal(parsed.rejectionKind, "format");
+    assert.deepEqual(parsed.formatDiagnostic, { code: "EmptyResponse" });
     assert.match(parsed.rejectionReason ?? "", /未返回决策 JSON/);
   }
+  const missing = parseLoopPlusDecisionWithFeedback("Explanation with no object");
+  assert.equal(missing.rejectionKind, "format");
+  assert.deepEqual(missing.formatDiagnostic, { code: "ObjectNotFound" });
   const incomplete = parseLoopPlusDecisionWithFeedback('{"status":');
   assert.equal(incomplete.rejectionKind, "format");
+  assert.deepEqual(incomplete.formatDiagnostic, { code: "ValueExpected", position: { line: 1, column: 11 } });
   assert.match(incomplete.rejectionReason ?? "", /未找到可解析/);
   assert.match(parseLoopPlusDecisionWithFeedback('{"status": nope}').rejectionReason ?? "", /语法错误/);
-  assert.match(parseLoopPlusDecisionWithFeedback('{"status":"unknown"}').rejectionReason ?? "", /status 缺失或无效/);
+  const invalidStatus = parseLoopPlusDecisionWithFeedback('{"status": nope}\n{"status":"unknown"}');
+  assert.equal(invalidStatus.rejectionKind, "validation");
+  assert.equal(invalidStatus.formatDiagnostic, undefined);
+  assert.match(invalidStatus.rejectionReason ?? "", /status 缺失或无效/);
   const invalid = parseLoopPlusDecisionWithFeedback('{"status":"completed"}');
   assert.equal(invalid.rejectionKind, "validation");
   assert.match(invalid.rejectionReason ?? "", /requirementCoverage/);
   assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"accept"}\n{"status":"wait"}'), {
     decision: { status: "wait" }, rejectionReason: null,
   });
+});
+
+test("reports candidate-relative format coordinates for fenced JSON with CRLF", () => {
+  const content = ['说明', '```json', '{', '  "status" "synthetic-secret"', '}', '```'].join("\r\n");
+  const parsed = parseLoopPlusDecisionWithFeedback(content);
+  assert.equal(parsed.decision, null);
+  assert.equal(parsed.rejectionKind, "format");
+  assert.deepEqual(parsed.formatDiagnostic, { code: "ColonExpected", position: { line: 2, column: 12 } });
+  assert.doesNotMatch(JSON.stringify(parsed), /synthetic-secret/);
 });
 
 test("accepts comments and trailing commas around decisions without altering strings or inferring fields", () => {
@@ -577,23 +676,31 @@ test("accepts comments and trailing commas around decisions without altering str
 });
 
 test("JSONC fallback keeps malformed separators and split tokens as format errors", () => {
-  for (const content of [
-    '{"status":"wait","extra":{/* 无成员 */,}}',
-    '{"status":"wait","extra":[/* 无元素 */, /* 尾注释 */]}',
-    '{"status":"wait","extra":[1, /* 无下一项 */ ,]}',
-    '{"status":"wait","extra":tr/* 不拼接 */ue}',
+  for (const [content, code] of [
+    ['{"status":"wait","extra":{/* 无成员 */,}}', "ValueExpected"],
+    ['{"status":"wait","extra":[/* 无元素 */, /* 尾注释 */]}', "ValueExpected"],
+    ['{"status":"wait","extra":[1, /* 无下一项 */ ,]}', "ValueExpected"],
+    ['{"status":"wait","extra":tr/* 不拼接 */ue}', "InvalidSymbol"],
   ]) {
-    assert.deepEqual(parseLoopPlusDecisionWithFeedback(content), {
-      decision: null,
-      rejectionKind: "format",
-      rejectionReason: "回复中的 JSON 对象存在语法错误。请检查双引号、冒号和括号是否成对，并返回完整对象。",
-    }, content);
+    const parsed = parseLoopPlusDecisionWithFeedback(content);
+    assert.equal(parsed.decision, null, content);
+    assert.equal(parsed.rejectionKind, "format", content);
+    assert.equal(parsed.formatDiagnostic?.code, code, content);
   }
-  assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"wait", /* 未闭合 }'), {
-    decision: null,
-    rejectionKind: "format",
-    rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
+  const unclosedComment = parseLoopPlusDecisionWithFeedback('{"status":"wait", /* 未闭合 }');
+  assert.equal(unclosedComment.decision, null);
+  assert.equal(unclosedComment.rejectionKind, "format");
+  assert.deepEqual(unclosedComment.formatDiagnostic, {
+    code: "UnexpectedEndOfComment", position: { line: 1, column: 19 },
   });
+});
+
+test("retains a format rejection when nested syntax exceeds the diagnostic parser stack", () => {
+  const content = `{"status":"wait","extra":${"[".repeat(12000)}nope${"]".repeat(12000)}}`;
+  const parsed = parseLoopPlusDecisionWithFeedback(content);
+  assert.equal(parsed.decision, null);
+  assert.equal(parsed.rejectionKind, "format");
+  assert.ok(parsed.formatDiagnostic?.code);
 });
 
 test("scans BOM-prefixed JSONC candidates without promoting a nested decision", () => {

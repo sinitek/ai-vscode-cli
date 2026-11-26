@@ -361,3 +361,36 @@ test("production task reads tolerate a released shared identity transaction but 
   try { assert.equal(result.status, 0, result.stdout + result.stderr); }
   finally { fs.rmSync(childHome, { recursive: true, force: true }); }
 });
+
+test("production owner writes retry brief identity lock contention and retain fail-closed behavior", () => {
+  const childHome = fs.mkdtempSync(path.join(os.tmpdir(), "department-owner-write-contention-home-"));
+  const result = spawnSync(process.execPath, ["-e", `
+    const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+    const {createDepartmentProductionTaskStore}=require(${JSON.stringify(require.resolve("../../extensionHost/departmentProductionTaskStore"))});
+    const {prepareDepartmentTaskRecord}=require(${JSON.stringify(require.resolve("../../extensionHost/departmentOwnedTaskRepository"))});
+    const {departmentRecords}=require(${JSON.stringify(require.resolve("../loop/departmentGroupChatHost.fixture"))});
+    const store=require(${JSON.stringify(require.resolve("../../loopTaskStore"))});
+    (async()=>{
+      const source=createDepartmentProductionTaskStore(path.join(process.env.HOME,'owned'));
+      const task=departmentRecords().root;task.createdAt=task.updatedAt=Date.now();task.subTasks=[];
+      task.department.routes={director:{cli:'codex'},leader:{cli:'codex'},employee:{cli:'claude',thinkingMode:'off'}};
+      const record=source.create(prepareDepartmentTaskRecord(task,task.department,task.loopPlusAcceptancePlan));
+      const lock=path.join(process.env.HOME,'.sinitek_cli','loop-task-identities','transaction.lock');
+      const ready=path.join(process.env.HOME,'writer-ready');
+      fs.writeFileSync(lock,'simulated supported writer',{flag:'wx'});
+      cp.spawn(process.execPath,['-e',\`const fs=require('node:fs');fs.writeFileSync(process.argv[2],'ready');setTimeout(()=>fs.unlinkSync(process.argv[1]),25)\`,lock,ready],{stdio:'ignore'});
+      const deadline=Date.now()+1000;
+      while(!fs.existsSync(ready)&&Date.now()<deadline) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,2);
+      assert.equal(fs.existsSync(ready),true,'the competing writer started before the owner update');
+      const updated=store.updateLoopTaskRecord(record.id,{finalSummary:'短暂锁竞争后仍完成提交'});
+      assert.equal(updated?.finalSummary,'短暂锁竞争后仍完成提交');
+      assert.equal(source.readTaskRecord(record.id)?.finalSummary,'短暂锁竞争后仍完成提交');
+      fs.writeFileSync(lock,'unknown persistent writer',{flag:'wx'});
+      const rejected=store.updateLoopTaskRecord(record.id,{finalSummary:'持续锁竞争不得写入'});
+      assert.equal(rejected,null,'a persistent lock must fail closed after the bounded wait');
+      assert.equal(fs.readFileSync(lock,'utf8'),'unknown persistent writer','owner retries never remove an unknown lock');
+    })().catch(error=>{console.error(error);process.exitCode=1});
+  `], { env: { ...process.env, HOME: childHome }, encoding: "utf8" });
+  try { assert.equal(result.status, 0, result.stdout + result.stderr); }
+  finally { fs.rmSync(childHome, { recursive: true, force: true }); }
+});

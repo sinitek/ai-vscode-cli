@@ -1,6 +1,7 @@
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   resolveLoopPlusDecisionSubtaskMax,
+  type LoopPlusDecision,
 } from "../loopPlusDecision";
 import {
   LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
@@ -22,6 +23,7 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshot,
   type LoopPlusAcceptancePlanSnapshot,
 } from "../loopPlusAcceptancePlan";
+import { deriveLoopPlusDecisionContract } from "../loopPlusDecisionContract";
 
 export type LoopPlusMainPromptContext = {
   taskId: string;
@@ -249,6 +251,8 @@ function acceptanceEventIds(context: LoopPlusMainPromptContext): string[] {
 }
 
 function buildLoopPlusProtocolExamples(
+  context: LoopPlusMainPromptContext,
+  contract: ReturnType<typeof deriveLoopPlusDecisionContract>,
   eventIds: readonly string[],
   repairSubtaskId: string | undefined,
   dispatchExampleCount: number,
@@ -258,19 +262,21 @@ function buildLoopPlusProtocolExamples(
 ): string {
   const planReasons = {
     maintainability: "复用既有模块，未引入重复实现",
-    security: "输入和路径均有校验，未泄露敏感信息",
     performance: "未增加无界循环或重复请求",
-    ui_aesthetics: "沿用主题样式，布局无溢出",
+    ui_aesthetics: "验收记录显示两处弹窗术语一致、窄屏可读，键盘确认后焦点正确恢复；未覆盖加载和失败恢复，因测试未触发后台请求。",
     other: "已逐项核对用户审查要求，无遗漏",
+    security: "输入和路径均有校验，未泄露敏感信息",
   };
   const planResults = listLoopPlusAcceptancePlanFeedbackItems(acceptancePlan).map((item) => ({
     key: item.key,
     passed: true,
-    reason: planReasons[item.key],
+    reason: item.key === "ui_aesthetics"
+      ? "示例证据：页面术语与主题用法一致，窄屏渲染及键盘焦点均已核对；本例未触发加载或失败恢复，明确不将其列为已验证。"
+      : planReasons[item.key],
   }));
   const planFeedback = planResults.length > 0 ? { acceptancePlanResults: planResults } : {};
-  const subtask = {
-    id: "example-subtask",
+  const subtask: LoopSubtaskDecision = {
+    id: eventIds.length === 0 ? context.requiredRepairIds?.[0] ?? "example-subtask" : "example-subtask",
     title: "Example backend coding subtask",
     prompt: LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT,
     taskType: "backend",
@@ -279,7 +285,7 @@ function buildLoopPlusProtocolExamples(
     conflictGroup: "example-backend-scope",
     writeFiles: ["src/example-backend.ts"],
   };
-  const parallelFrontendSubtask = {
+  const parallelFrontendSubtask: LoopSubtaskDecision = {
     id: "example-frontend-subtask",
     title: "Example independent frontend coding subtask",
     prompt: [
@@ -292,7 +298,7 @@ function buildLoopPlusProtocolExamples(
     conflictGroup: "example-frontend-scope",
     writeFiles: ["src/example-frontend.ts"],
   };
-  const parallelSupportSubtasks = [
+  const parallelSupportSubtasks: LoopSubtaskDecision[] = [
     {
       id: "example-local-log-subtask",
       title: "Example low-risk local log edit",
@@ -317,7 +323,7 @@ function buildLoopPlusProtocolExamples(
       writeFiles: [],
     },
   ];
-  const completed: Record<string, unknown> = {
+  const completed: LoopPlusDecision = {
     status: "completed",
     answerConclusion: "The main decision and any required work meet the original request.",
     finalSummary: "Every required check passed and no execution remains.",
@@ -344,11 +350,11 @@ function buildLoopPlusProtocolExamples(
   } else if (eventIds.length > 1) {
     completed.reviewEventIds = eventIds.slice();
   }
-  const acceptEventIds = eventIds.length > 0 ? eventIds.slice() : ["example-review-event-id"];
+  const acceptEventIds = eventIds.slice();
   const acceptConfirmation = eventIds.length > 1
     ? { reviewEventIds: acceptEventIds }
     : { reviewEventId: acceptEventIds[0] };
-  const repairExample = eventIds.length > 0;
+  const repairExample = eventIds.length > 0 && repairSubtaskId !== undefined && dispatchExampleCount > 0;
   const repairSubtask = {
     ...subtask,
     id: repairSubtaskId ?? subtask.id,
@@ -365,14 +371,17 @@ function buildLoopPlusProtocolExamples(
   ].slice(0, dispatchExampleCount);
   const independentSubtaskIds = acceptSubtasks
     .filter((item) => !repairExample || item.id !== repairSubtask.id)
-    .map((item) => item.id);
-  const acceptReviews = acceptEventIds.map((reviewEventId, index) => {
+    .map((item) => item.id!);
+  const acceptReviews: NonNullable<LoopPlusDecision["reviews"]> = acceptEventIds.map((reviewEventId, index) => {
     const launchesRepair = repairExample && index === acceptEventIds.length - 1;
+    const executionFailed = [context.view.currentReview, ...context.view.reviewQueue]
+      .some((item) => item?.eventId === reviewEventId && item.outcome !== "completed");
     return {
       reviewEventId,
-      acceptance: launchesRepair ? "failed" : "passed",
-      reason: launchesRepair ? "用例失败，需先修复断言" : "实现符合需求且验证证据通过",
-      ...(launchesRepair ? { subtaskIds: [repairSubtask.id] } : {}),
+      acceptance: launchesRepair || executionFailed ? "failed" : "passed",
+      reason: launchesRepair || executionFailed ? "用例失败，需先修复断言" : "实现符合需求且验证证据通过",
+      ...(launchesRepair ? { subtaskIds: [repairSubtask.id!] } : {}),
+      ...(executionFailed && !launchesRepair ? { noRepairReason: "Explain the evidence-backed reason this failed delivery needs no repair, or attach a targeted repair." } : {}),
     };
   });
   const reprompt = [
@@ -380,27 +389,27 @@ function buildLoopPlusProtocolExamples(
     "Design key point: keep the public function signature stable and replace the failed branch with the corrected check.",
     "Record the command and result in the attempt report.",
   ].join(" ");
-  const examples: Array<{ status: string; value: Record<string, unknown> }> = [
+  const controlTargets = [...context.view.running, ...context.view.pending].map((item) => item.subtaskId);
+  controlTargets.push(...(context.interruptedSubtaskIds ?? []).filter((id) => !controlTargets.includes(id)));
+  const allExamples: Array<{ status: LoopPlusDecision["status"]; value: LoopPlusDecision }> = [
     {
-      status: "dispatch",
-      value: {
+      status: "dispatch", value: {
         status: "dispatch",
         subtasks: [subtask, parallelFrontendSubtask, ...parallelSupportSubtasks].slice(0, dispatchExampleCount),
       },
     },
     {
-      status: "accept",
-      value: {
+      status: "accept", value: {
         status: "accept",
         progressPercent: 23,
         ...acceptConfirmation,
         reviews: acceptReviews,
         acceptance: {
-          passed: !repairExample,
+          passed: acceptReviews.every((item) => item.acceptance === "passed"),
           checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check, index) => ({
             name: check.name,
-            passed: !(repairExample && check.name === "tests"),
-            detail: repairExample && check.name === "tests"
+            passed: !(acceptReviews.some((item) => item.acceptance === "failed") && check.name === "tests"),
+            detail: acceptReviews.some((item) => item.acceptance === "failed") && check.name === "tests"
               ? "当前批次有用例失败，已派发修复任务"
               : LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[index],
           })),
@@ -411,35 +420,29 @@ function buildLoopPlusProtocolExamples(
       },
     },
     {
-      status: "wait",
-      value: {
-        status: "wait",
-      },
+      status: "wait", value: { status: "wait" },
     },
     {
-      status: "steer",
-      value: {
+      status: "steer", value: {
         status: "steer",
         controls: [
-          { id: "example-running-subtask", action: "close" },
-          { id: "example-other-subtask", action: "reprompt", dependsOn: [], title: "修正校验分支并验证", prompt: reprompt },
-        ].slice(0, dispatchExampleCount),
+          { id: controlTargets[0], action: "reprompt", dependsOn: [], title: "修正校验分支并验证", prompt: reprompt },
+        ],
       },
     },
     {
-      status: "blocked",
-      value: {
+      status: "blocked", value: {
         status: "blocked",
         blocker: LOOP_BLOCKER_EXAMPLE,
         finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE,
       },
     },
     {
-      status: "clarify",
-      value: {
+      status: "clarify", value: {
         status: "clarify",
         finalSummary: "The root request is ambiguous, so the user must choose the scope before dispatch.",
         clarification: {
+          interactionId: "example-scope-clarification",
           title: "Confirm the scope",
           instruction: "This choice changes the plan. Submit the form and the main task will continue.",
           submitLabel: "Submit",
@@ -458,10 +461,10 @@ function buildLoopPlusProtocolExamples(
       },
     },
     {
-      status: "completed",
-      value: completed,
+      status: "completed", value: completed,
     },
   ];
+  const examples = contract.statuses.map((status) => allExamples.find((example) => example.status === status)!);
   return examples.map((example) => [
     `LOOP_PLUS_PROTOCOL_EXAMPLE ${example.status}`,
     "```json",
@@ -470,7 +473,7 @@ function buildLoopPlusProtocolExamples(
       ...(includeDispatchNextStepPlan && example.status === "dispatch"
         ? { nextStepPlan: { objective: "下一步验收当前冻结批次" } }
         : {}),
-      ...(reportEventIds.length > 0 && example.status !== "clarify" ? { reportEventIds } : {}),
+      ...(reportEventIds.length > 0 || context.reportOnly ? { reportEventIds } : {}),
     }, null, 2),
     "```",
   ].join("\n")).join("\n");
@@ -483,13 +486,25 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
+  const reportIds = context.reportEventIds?.filter((id) => typeof id === "string" && id.trim()) ?? [];
+  const pendingUserMessages = context.pendingUserMessages ?? [];
+  const decisionContract = deriveLoopPlusDecisionContract({
+    acceptanceEventIds: batchIds,
+    reportEventIds: reportIds,
+    reportOnly: context.reportOnly,
+    allowDispatchBeforeReview: context.allowDispatchBeforeReview,
+    view: context.view,
+    requiredRepairIds: context.requiredRepairIds,
+    pendingUserMessages,
+    interruptedSubtaskIds: context.interruptedSubtaskIds,
+    maxConcurrency: context.maxConcurrency,
+  });
   const liveEventId = batchIds[0] ?? (
     context.acceptanceEventIds ? null : liveReviewEventId(context.currentEventId)
   );
   const requirements = context.supplementalRequirements.length > 0
     ? context.supplementalRequirements.map((item, index) => `${index + 1}. ${item}`).join("\n")
     : "(none)";
-  const pendingUserMessages = context.pendingUserMessages ?? [];
   const pendingUserText = pendingUserMessages.length > 0
     ? pendingUserMessages.map((item, index) => `${index + 1}. ${item}`).join("\n")
     : "(none)";
@@ -508,7 +523,6 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const batchText = batchIds.length > 0
     ? batchIds.map((eventId, index) => `${index + 1}. ${eventId}`).join("\n")
     : "(none)";
-  const reportIds = context.reportEventIds?.filter((id) => typeof id === "string" && id.trim()) ?? [];
   const reportBatchText = reportIds.length > 0 ? reportIds.map((id, index) => `${index + 1}. ${id}`).join("\n") : "(none)";
   const reports = context.reportQueue?.length
     ? context.reportQueue.map((item, index) => `${index + 1}. eventId=${item.eventId} subtask=${item.subtaskId} attempt=${item.attemptId} outcome=${item.outcome} detail=${item.detail ?? ""}`).join("\n")
@@ -517,7 +531,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     ? "- The accept example copies the open acceptance batch in order. Do not replace, drop, or reorder it."
     : batchIds.length === 1
       ? "- The accept example copies the one open acceptance-batch event. Do not replace it."
-      : "- If the accept example uses example-review-event-id, that id is only a shape sample and must not be emitted.";
+      : "- There is no frozen acceptance event in this request.";
   const currentReport = current
     ? `communicationFile of subtask ${current.subtaskId} in the latest task record`
     : "(no current item)";
@@ -685,8 +699,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- dispatch and accept may include controls for other open subtasks. Do not control an id that is also in subtasks. Do not put controls on wait, blocked, or completed. A control for a subtask that is not running or pending is rejected.",
     "- When New user messages is not (none) and the acceptance batch is (none), judge the whole list together and directly handle eligible independent trivial work first. dispatch if remaining non-trivial work can start now. wait when live execution or ready pending work can advance, including after finishing a trivial supplemental request; complete when all requirements are done. Do not dispatch a placeholder just to wait, and do not use wait when Still running and Still pending are both empty.",
     "- When New user messages is not (none) and the acceptance batch is open, read those messages in the same decision and directly handle eligible independent trivial work. Put remaining non-trivial work that can start now on accept; use independentSubtaskIds for independent deliveries or reviews[*].subtaskIds for event-related work. Passed reviews stay passed. If all new work must wait for a still-running or pending execution and no other independent work is ready, accept the batch with no new subtasks. Do not use wait or dispatch while the batch is open.",
-    "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. A blocked execution path is not a global blocker. Dispatch useful independent work, or wait for live work when the acceptance batch is empty. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
-    "- blocked reports an external blocker or an evidence-backed impossibility under the current requirements and confirms no acceptance events. Use it only when no safe independent work remains. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining unfinished requirements and concrete blockers, with either actionable recovery prerequisites and responsible parties or why the task cannot be completed and what alternatives remain. The host performs one bounded remaining-work review before pausing.",
+    "- You decide whether the remaining goal is blocked from evidence, regardless of how many attempts or decisions have run. Compare recent attempt reports and acceptance evidence. If a repair narrows the cause, resolves part of the problem, verifies a new requirement, or reveals an actionable next step, continue with a targeted repair even if the attempt still failed. Stop repeating an approach when it produces the same failure and no new evidence. Try a materially different safe approach when one is available.",
+    "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. Dispatch useful independent work, or wait for live work that can advance the goal when the acceptance batch is empty. Use clarify for a required user decision or authorization. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
+    "- Return blocked only when the evidence shows why the remaining goal cannot advance through any safe repair, new approach, independent work, or live execution. blocked confirms no acceptance events. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining the unfinished requirements, what was tried and why progress has stopped, with actionable recovery prerequisites and responsible parties or the evidence of impossibility and available alternatives. The host performs one bounded remaining-work review before pausing.",
     LOOP_BLOCKED_SUMMARY_INSTRUCTION,
     "- clarify asks the user to fill a form in the group chat and confirms no acceptance events. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
     "- Except for the explicitly permitted directCompletion path above, completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
@@ -698,11 +713,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- There is no cumulative per-parent subtask dispatch limit. Each dispatch remains subject to the configured per-decision dispatch limit and currently available concurrency slots.",
     "- A continuing decision may optionally include nextStepPlan with an objective and optional acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.",
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
+    `Current decision shapes from the read-only host snapshot: ${decisionContract.statuses.join(", ")}. blocked requires evidence that progress cannot continue; clarify requires a user decision. Completion still requires passing evidence for every original and supplemental requirement and the latest host gates.`,
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
     buildLoopPlusProtocolExamples(
+      context,
+      decisionContract,
       batchIds,
       [current, ...queue].find((item) => item?.eventId === batchIds.at(-1))?.subtaskId,
-      Math.min(4, parallelCapacity),
+      Math.min(4, parallelCapacity, decisionContract.availableSlots),
       context.acceptancePlan,
       reportIds,
       context.allowDispatchBeforeReview,
@@ -772,6 +790,12 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
     role === "frontend"
       ? "If the subtask instructions include a UI design, implement that design. Do not redesign layout, color, or interaction."
       : "If the subtask instructions include a UI design, implement that design only when this attempt is the frontend coding task. Do not redesign layout, color, or interaction.",
+    "",
+    "Loop+ subtask self-check before reporting",
+    "- Confirm that each requested deliverable meets the original subtask instructions and applicable design constraints. Check affected contracts with callers, relevant edge cases, and regressions.",
+    "- Run the smallest relevant checks that cover the delivery and any checks required by the task or project. Record the exact commands used. Explicitly identify failed and unverified checks and explain why.",
+    "- When this attempt produces a runnable artifact and startup is applicable, actually start it through its normal entry point and verify the expected startup behavior. Record the startup command and observed result. If startup does not apply, record it as not applicable with the reason. If applicable startup could not be verified, report it as unverified with the reason.",
+    "- If this attempt changes files, review your own diff for unrelated changes. Explain each necessary change outside the suggested scope with its path and reason in the attempt report.",
     "",
     "Subtask instructions:",
     context.subtask.prompt,

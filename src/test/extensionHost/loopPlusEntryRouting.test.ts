@@ -93,27 +93,32 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   const task = { id: "task", cli: "codex", status: "running", sessionId: "original-session", schedulingMode: "event_driven",
     workspaceKey: "workspace", taskStoreFile: "/fixture/tasks.json", supplementalRequirements: ["待处理补充需求"], department };
   const target = { tabId: "main-tab", cli: task.cli, sessionId: task.sessionId };
+  let latestTask = task;
   const events: string[] = [];
   const messages: ChatMessage[] = [];
   let active = false;
   let taskReads = 0;
   let pendingReviewReads = 0;
+  let contextTaskId: string | null = null;
   let releaseMain!: () => void;
-  const mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
+  let mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
   const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
   const runtime = vm.runInNewContext(productionLoopMainEntries(), {
     usesDepartmentOwner,
     usesCompletedLoopSubtaskTabCleanup,
     isExtensionDeactivating: false,
     activeWorkspaceKey: task.workspaceKey,
-    readLoopTaskRecord: () => { taskReads += 1; return task; },
+    readLoopTaskRecord: () => { taskReads += 1; return latestTask; },
     resolveLoopMainPromptTarget: () => ({ ...target }),
+    resolveConversationTabLoopContext: () => ({ taskRole: "main", loopTaskId: contextTaskId }),
     isTabRunActive: () => active,
     loopMainQuestionQueue: queue,
     promptRunHandoff: new PromptRunHandoff(),
+    completedLoopSubtaskTabs: { bindPrompt: () => undefined },
     getLoopPlusOrchestrationHost: () => ({ hasPendingMainWork: () => { pendingReviewReads += 1; return true; } }),
     askLoopMainModelSession,
-    getConversationTabById: () => null,
+    getConversationTabById: () => ({ id: target.tabId, cli: target.cli }),
+    getConversationTabSessionIdForCli: () => target.sessionId,
     loadSessionMessages: () => messages,
     getActiveConversationTabId: () => target.tabId,
     createPerformanceTrace: () => ({ start: () => () => undefined, measure: (_phase: string, work: () => unknown) => work() }),
@@ -126,15 +131,15 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
         await mainGate;
       }
     },
-    t: (key: string) => key,
+    t: (key: string, values?: { detail?: string }) => values?.detail ?? key,
   }) as {
     ask: (input: typeof task, question: string, hooks?: { isAborted: () => boolean }) => Promise<Awaited<ReturnType<typeof askLoopMainModelSession>>>;
     runPrompt: (input: { displayPrompt: string; taskRole: string; loopTaskId: string }) => Promise<void>;
   };
 
   const first = runtime.ask(task, "已有待验收，先提问");
+  assert.deepEqual(await first, { status: "ready", answer: "已回答" });
   assert.deepEqual(events, ["已有待验收，先提问"]);
-  assert.equal((await first).status, "ready");
   assert.equal(pendingReviewReads, 0);
 
   const main = runtime.runPrompt({ displayPrompt: "先入队的验收", taskRole: "main", loopTaskId: task.id });
@@ -145,6 +150,47 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   await main;
   assert.equal((await second).status, "ready");
   assert.deepEqual(events, ["已有待验收，先提问", "先入队的验收", "后入队问题"]);
+
+  mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
+  const resumeMain = runtime.runPrompt({ displayPrompt: "原标签合法续跑", taskRole: "main", loopTaskId: task.id });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const resumed = runtime.ask(task, "续跑后排队提问");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  target.sessionId = "resumed-session";
+  task.sessionId = target.sessionId;
+  task.taskStoreFile = "/fixture/resumed-session/tasks.json";
+  latestTask = { ...task };
+  contextTaskId = task.id;
+  releaseMain();
+  await resumeMain;
+  assert.equal((await resumed).status, "ready");
+  assert.deepEqual(events.slice(-2), ["原标签合法续跑", "续跑后排队提问"]);
+
+  target.sessionId = task.sessionId;
+  task.sessionId = "original-session";
+  task.taskStoreFile = "/fixture/tasks.json";
+  latestTask = task;
+  contextTaskId = null;
+  events.length = 0;
+  active = true;
+  const wrongSession = runtime.ask(task, "不同会话拒绝");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  target.sessionId = "unrelated-session";
+  active = false;
+  const unrelatedDrain = queue.runMain(target.tabId, async () => undefined);
+  await assert.rejects(wrongSession, /loopGroupChatChat\.askUnavailable/u);
+  await unrelatedDrain;
+  assert.deepEqual(events, []);
+
+  active = true;
+  const wrongWorkspace = runtime.ask(task, "异工作区拒绝");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  latestTask = { ...task, workspaceKey: "another-workspace" };
+  active = false;
+  const workspaceDrain = queue.runMain(target.tabId, async () => undefined);
+  await assert.rejects(wrongWorkspace, /loopGroupChatChat\.askUnavailable/u);
+  await workspaceDrain;
+  latestTask = task;
 
   active = true;
   const readsBefore = taskReads;
@@ -158,7 +204,7 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   await assert.rejects(stale, /loopGroupChatChat\.askUnavailable/u);
   clearTimeout(tick);
   await drained;
-  assert.equal(events.length, 3);
+  assert.equal(events.length, 0);
 });
 
 function gate() {
@@ -204,6 +250,7 @@ for (const cli of ["codex", "opencode"] as const) {
       readLoopTaskRecord: () => task,
       resolvePromptRunTarget: () => ({ ...target }),
       resolveLoopMainPromptTarget: () => ({ ...target }),
+      resolveConversationTabLoopContext: () => ({ taskRole: "main", loopTaskId: task.id }),
       getConversationTabById: () => tab,
       getConversationTabSessionIdForCli: () => target.sessionId,
       getActiveConversationTabId: () => tab.id,

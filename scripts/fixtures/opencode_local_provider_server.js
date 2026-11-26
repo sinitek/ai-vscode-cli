@@ -1,11 +1,12 @@
 "use strict";
 const http = require("node:http");
 
-/** OpenAI-compatible chat protocol, NOT the Codex Responses protocol. This
- * provider offers text only; it never issues tools or contacts another host. */
+/** OpenAI-compatible chat protocol, NOT the Codex Responses protocol. */
 function createOpenCodeLocalProvider(options = {}) {
   const requests = [], failures = [];
   if (options.respond !== undefined && typeof options.respond !== "function") throw new Error("invalid-provider-respond");
+  const model = options.model ?? "native-drain";
+  const apiKey = options.apiKey ?? "isolated-free-provider";
   const maxRequests = options.maxRequests ?? 8;
   if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 32) throw new Error("invalid-provider-budget");
   const server = http.createServer((req, res) => {
@@ -15,7 +16,7 @@ function createOpenCodeLocalProvider(options = {}) {
       res.end(JSON.stringify({ error: { message: reason, type: "invalid_request_error" } }));
     };
     if (req.method !== "POST" || req.url !== "/v1/chat/completions") return reject(404, "unexpected-provider-endpoint");
-    if (req.headers.authorization !== "Bearer isolated-free-provider") return reject(401, "unexpected-provider-auth");
+    if (req.headers.authorization !== `Bearer ${apiKey}`) return reject(401, "unexpected-provider-auth");
     let body = "", size = 0, over = false;
     req.setEncoding("utf8");
     req.on("data", chunk => {
@@ -28,7 +29,7 @@ function createOpenCodeLocalProvider(options = {}) {
       if (over) return reject(413, "provider-body-limit");
       let input;
       try { input = JSON.parse(body); } catch { return reject(400, "provider-invalid-json"); }
-      if (!input || input.model !== "native-drain" || !Array.isArray(input.messages) || !input.messages.length
+      if (!input || input.model !== model || !Array.isArray(input.messages) || !input.messages.length
         || !input.messages.every(m => m && ["system", "developer", "user", "assistant", "tool"].includes(m.role))
         || typeof input.stream !== "boolean") return reject(422, "provider-invalid-chat-request");
       if (requests.length >= maxRequests) return reject(429, "provider-request-budget-exceeded");
@@ -44,27 +45,46 @@ function createOpenCodeLocalProvider(options = {}) {
       const record = { index: requests.length + 1, model: input.model, stream: input.stream, purpose: title ? "title" : "task", turn,
         roles: input.messages.map(m => m.role), userMessages: users.length, responseText: text, at: Date.now() };
       requests.push(record);
+      let toolCall;
       if (options.respond) {
-        record.body = input;
+        if (options.recordBody !== false) record.body = input;
         try {
-          text = await options.respond(input, { index: record.index, request: record, purpose: record.purpose });
-          if (typeof text !== "string" || !text.trim()) throw new Error("provider-empty-scripted-response");
-          record.responseText = text;
+          const reply = await options.respond(input, { index: record.index, request: record, purpose: record.purpose });
+          if (typeof reply === "string" && reply.trim()) {
+            text = reply;
+            record.responseText = text;
+          } else if (reply?.type === "function_call" && typeof reply.name === "string"
+            && reply.arguments && typeof reply.arguments === "object" && !Array.isArray(reply.arguments)
+            && input.tools?.some(tool => tool.type === "function" && tool.function?.name === reply.name)) {
+            toolCall = { id: `call_isolated_${record.index}`, type: "function",
+              function: { name: reply.name, arguments: JSON.stringify(reply.arguments) } };
+            record.responseText = null;
+          } else {
+            throw new Error("provider-empty-scripted-response");
+          }
         } catch (error) { return reject(422, `provider-scripted-protocol:${error instanceof Error ? error.message : String(error)}`); }
       }
-      const base = { id, object: "chat.completion.chunk", created: 1, model: "native-drain" };
+      if (res.destroyed) return;
+      const base = { id, object: "chat.completion.chunk", created: 1, model };
+      const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 };
       if (!input.stream) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ...base, object: "chat.completion", choices: [{ index: 0,
-          message: { role: "assistant", content: text }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
+          message: toolCall ? { role: "assistant", content: null, tool_calls: [toolCall] } : { role: "assistant", content: text },
+          finish_reason: toolCall ? "tool_calls" : "stop" }], usage }));
         return;
       }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       const emit = (delta, finish_reason = null) => res.write(`data: ${JSON.stringify({ ...base,
         choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
       emit({ role: "assistant", content: "" });
-      emit({ content: text.slice(0, 10) }); emit({ content: text.slice(10) }); emit({}, "stop");
+      if (toolCall) {
+        emit({ tool_calls: [{ index: 0, ...toolCall }] });
+        emit({}, "tool_calls");
+      } else {
+        emit({ content: text.slice(0, 10) }); emit({ content: text.slice(10) }); emit({}, "stop");
+      }
+      if (input.stream_options?.include_usage) res.write(`data: ${JSON.stringify({ ...base, choices: [], usage })}\n\n`);
       res.end("data: [DONE]\n\n");
     });
   });

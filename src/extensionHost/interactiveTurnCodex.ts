@@ -87,9 +87,6 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               port.appendDebugStdout(chunk);
               return;
             }
-            if (meta?.codexFinalAnswer === true) {
-              port.observedCodexFinalAnswer = true;
-            }
             if (chunk.trim().length > 0) {
               port.attemptHadNormalReply = true;
             }
@@ -97,6 +94,9 @@ export function createCodexInteractiveTurnStrategy(): InteractiveTurnStrategy {
               codexFinalAnswer: meta?.codexFinalAnswer === true,
               assistantItemId: meta?.assistantItemId,
             });
+            if (meta?.codexFinalAnswer === true) {
+              port.observedCodexFinalAnswer = true;
+            }
             port.appendDebugStdout(chunk);
           },
           onSubagentUpdate: (update) => {

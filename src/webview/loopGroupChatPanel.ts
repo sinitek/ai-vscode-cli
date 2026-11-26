@@ -2044,9 +2044,9 @@ function renderParticipantStatus(
   const subtaskId = participant.subtaskId ?? participant.id;
   const projection = state.loopPlus;
   const isSubtask = participant.role === "subtask" || participant.role === "employee";
-  const reviewingRepair = isSubtask && status === "reviewing" && projection?.ok
-    && getActiveLoopPlusReviews(projection).some((item) => item.subtaskId === subtaskId && item.repairing);
-  const repairRound = isSubtask && projection?.ok && (status === "repairing" || reviewingRepair)
+  const repairReview = isSubtask && projection?.ok
+    && [projection.currentReview, ...projection.reviewQueue].some((item) => item?.subtaskId === subtaskId && item.repairing);
+  const repairRound = isSubtask && projection?.ok && (status === "repairing" || repairReview)
     ? projection.repairRoundsBySubtask?.[subtaskId] ?? 0
     : 0;
   const suffix = repairRound > 1 ? ` x${repairRound}` : "";

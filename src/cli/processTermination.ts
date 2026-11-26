@@ -8,7 +8,7 @@ type Signal = NodeJS.Signals | number;
 export type ProcessTerminationPorts = {
   platform: NodeJS.Platform;
   signalProcess: (pid: number, signal: Signal) => void;
-  taskkill: (pid: number) => void;
+  taskkill: (pid: number, onFailure?: () => void) => void;
   setTimer: (callback: () => void, delay: number) => NodeJS.Timeout;
   clearTimer: (timer: NodeJS.Timeout) => void;
 };
@@ -16,14 +16,72 @@ export type ProcessTerminationPorts = {
 const defaultPorts: ProcessTerminationPorts = {
   platform: process.platform,
   signalProcess: (pid, signal) => { process.kill(pid, signal); },
-  taskkill: (pid) => {
-    const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
-    // Dispatch is best effort, never proof of tree cleanup (including ENOENT).
-    killer.on("error", () => undefined);
+  taskkill: (pid, onFailure) => {
+    const killer = spawn("taskkill", taskkillArguments(pid), { windowsHide: true, stdio: "ignore" });
+    killer.once("error", () => onFailure?.());
+    if (onFailure) killer.once("close", (code) => { if (code !== 0) onFailure(); });
   },
   setTimer: (callback, delay) => setTimeout(callback, delay),
   clearTimer: (timer) => clearTimeout(timer),
 };
+
+function taskkillArguments(pid: number): ["/PID", string, "/T", "/F"] {
+  return ["/PID", String(pid), "/T", "/F"];
+}
+
+export function planProcessTreeStop(platform: NodeJS.Platform, pid: number, phase: "initial" | "escalate"):
+  | { kind: "taskkill"; args: ["/PID", string, "/T", "/F"] }
+  | { kind: "signal"; signal: "SIGTERM" | "SIGKILL" }
+  | null {
+  if (!pid) return null;
+  if (platform === "win32") return phase === "initial" ? { kind: "taskkill", args: taskkillArguments(pid) } : null;
+  return { kind: "signal", signal: phase === "initial" ? "SIGTERM" : "SIGKILL" };
+}
+
+type ProcessStopOptions = {
+  processGroup?: boolean;
+  onTaskkillFailure?: () => void;
+};
+
+/** Dispatch only. The return value does not attest to exit, stream drain or release. */
+export function requestProcessTreeStop(child: ChildProcess, signal: Signal, options: ProcessStopOptions & {
+  platform?: NodeJS.Platform;
+} = {}): boolean {
+  return dispatchProcessTreeStop(child, signal, { ...defaultPorts, platform: options.platform ?? process.platform }, options,
+    () => child.exitCode == null && child.signalCode == null);
+}
+
+function dispatchProcessTreeStop(
+  child: ChildProcess,
+  signal: Signal,
+  ports: ProcessTerminationPorts,
+  options: ProcessStopOptions,
+  canSignal: () => boolean,
+): boolean {
+  const pid = child.pid;
+  if (!pid || !canSignal()) return false;
+  const signalChild = (): boolean => {
+    if (!canSignal() || child.pid !== pid) return false;
+    try { return child.kill(signal); }
+    catch { return false; }
+  };
+  if (ports.platform === "win32") {
+    const logFailure = options.onTaskkillFailure;
+    let handledFailure = false;
+    try {
+      ports.taskkill(pid, logFailure && (() => {
+        if (handledFailure || !canSignal() || child.pid !== pid) return;
+        handledFailure = true;
+        logFailure();
+        signalChild();
+      }));
+      return true;
+    } catch { return false; }
+  }
+  if (options.processGroup === false) return signalChild();
+  try { ports.signalProcess(-pid, signal); return true; }
+  catch { return signalChild(); }
+}
 
 /** Create once, immediately after spawn. State belongs to this ChildProcess,
  * never a PID registry. This port requests stops; it supplies no drain evidence.
@@ -63,19 +121,7 @@ export function createProcessTerminationController(
     child.removeListener("exit", stopSignalling);
   });
 
-  const send = (signal: Signal): boolean => {
-    if (terminal || !child.pid) return false;
-    const pid = child.pid;
-    try {
-      if (ports.platform === "win32") ports.taskkill(pid);
-      else ports.signalProcess(-pid, signal);
-      return true;
-    } catch {
-      if (ports.platform === "win32" || terminal) return false;
-      try { return child.kill(signal); }
-      catch { return false; }
-    }
-  };
+  const send = (signal: Signal): boolean => dispatchProcessTreeStop(child, signal, ports, {}, () => !terminal);
 
   return {
     kill: (signal = "SIGTERM") => {

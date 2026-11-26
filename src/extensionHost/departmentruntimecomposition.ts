@@ -19,6 +19,7 @@ import type { ClassicLoopDecisionResult, DepartmentDirectorDecisionRequest } fro
 import { DepartmentRuntimeStore } from "./departmentruntimestore";
 import { isDepartmentRuntimeSnapshot, type DepartmentRuntimeSnapshot } from "./departmentruntimestate";
 import type { CliName, ThinkingMode } from "../cli/types";
+import { logError } from "../logger";
 
 /** Resolve an unspecified host thinking preference ONCE, before persisting role routes.
  * OpenCode keeps its exact variant separately and never inherits a visible thinking selection. */
@@ -126,6 +127,7 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     return current;
   }
   let disposed = false;
+  let disposePromise: Promise<boolean> | null = null;
   function save(root: string, releaseLeaderModuleId?: string): void {
     const runtime = snapshots.get(root), task = deps.readTask(root);
     if (!runtime || !task) throw new Error("部门运行记录不存在，已封闭派发。");
@@ -783,18 +785,27 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     hasLocalDirectorActivity: (root: string) => controllers.has(root) || continuations.has(root),
     readCapacity,
     dispose: () => {
-      if (disposed) return;
+      if (disposePromise) return disposePromise;
       disposed = true;
       continuations.clear();
       coldStops.clear();
       for (const [root, c] of controllers) { c.stopRevision++; c.stopped = true; wake(root); }
       // Keep recording real releases during shutdown; disposal is not evidence of cleanup.
-      const cleanup = [...snapshots].map(([root, snapshot]) => Promise.allSettled([
+      const cleanup = [...snapshots].map(([root, snapshot]) => [
         Promise.resolve().then(() => deps.stopDirector(root)),
-        ...snapshot.leaders.map((member) => deps.runtime.waitForTaskIdle(member.taskId)),
+        ...snapshot.leaders.map((member) => Promise.resolve().then(() => deps.runtime.waitForTaskIdle(member.taskId))),
         controllers.get(root)?.run,
-      ]));
-      void Promise.allSettled(cleanup).then(() => capacitySubscription.dispose());
+      ]);
+      disposePromise = Promise.all(cleanup.map((operations) => Promise.allSettled(operations))).then((results) => {
+        capacitySubscription.dispose();
+        const unconfirmed = results.flat().filter((result) => result.status === "rejected").length;
+        if (unconfirmed > 0) {
+          void logError("department-shutdown-drain-unconfirmed", { unconfirmed }).catch(() => undefined);
+          return false;
+        }
+        return true;
+      });
+      return disposePromise;
     },
   };
 }

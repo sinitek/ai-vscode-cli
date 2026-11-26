@@ -2,13 +2,16 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
+import { logError, logEssential } from "./logger";
 
 type Identity = { id: string };
 type Snapshot = { version: 1; ready: boolean; roots: string[]; owned: Record<string, string>; files: Record<string, string[]>; ordinaryMoves?: Record<string, { file: string; sources: string[] }> };
 const directory = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities");
 const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
-const readLockWaitMs = 100;
+export const LOOP_TASK_IDENTITY_UPDATE_WAIT_MS = 100;
+export const LOOP_TASK_IDENTITY_UPDATE_RETRIES = 3;
+const readLockWaitMs = LOOP_TASK_IDENTITY_UPDATE_WAIT_MS;
 const lockPollMs = 5;
 const inside = (root: string, file: string) => file === root || file.startsWith(`${root}${path.sep}`);
 type IdentityCatalogUnavailable = "identity-lock-present" | "identity-catalog-unavailable";
@@ -294,7 +297,11 @@ export function commitLoopTaskIdentities(
     updateSource?: { taskId: string; file: string; assertUnchanged(): void };
   },
 ): boolean {
-  return locked(() => {
+  let lockContended = false;
+  let retries = 0;
+  const startedAt = performance.now();
+  let deadline: number | undefined;
+  const commit = () => locked(() => {
     const snapshot = read();
     const source = ordinary?.updateSource;
     if (source) {
@@ -307,7 +314,32 @@ export function commitLoopTaskIdentities(
       source.assertUnchanged();
     }
     return commitLoopTaskIdentitiesUnderLock(snapshot, updates, write, ownedRoot, ordinary);
-  }, ordinary?.onLockContention);
+  }, ordinary?.onLockContention ?? (ownedRoot ? () => { lockContended = true; } : undefined));
+
+  if (!ownedRoot) return commit();
+  for (;;) {
+    lockContended = false;
+    try {
+      const result = commit();
+      if (retries > 0) {
+        void logEssential("loop-task-owner-write-contention-resolved", {
+          retries, waitedMs: Math.max(0, Math.floor(performance.now() - startedAt)),
+        }).catch(() => undefined);
+      }
+      return result;
+    } catch (error) {
+      if (!lockContended) throw error;
+      deadline ??= startedAt + LOOP_TASK_IDENTITY_UPDATE_WAIT_MS;
+      if (retries < LOOP_TASK_IDENTITY_UPDATE_RETRIES && waitForLoopTaskIdentityUpdateRetry(deadline)) {
+        retries++;
+        continue;
+      }
+      void logError("loop-task-owner-write-contention-rejected", {
+        retries, waitedMs: Math.max(0, Math.floor(performance.now() - startedAt)),
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
 }
 
 // The caller owns the non-reentrant writer gate and has read this exact snapshot.

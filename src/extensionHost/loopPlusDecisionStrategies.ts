@@ -6,6 +6,7 @@ import type {
 import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import type { LoopPlusDependencyBlock, LoopPlusDispatchResult, LoopPlusReviewVerdict } from "../loopPlusScheduler";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
+import { loopPlusProtocolBranchDiagnostic, type LoopPlusProtocolBranchCode } from "../loopPlusProtocolDiagnostics";
 
 export type LoopPlusDecisionOutcome = "continue" | "wait" | "stop";
 
@@ -44,7 +45,7 @@ export type LoopPlusDecisionInFlightView = {
 export interface LoopPlusDecisionStrategyPort {
   queueView(): LoopPlusDecisionQueueView;
   waitForInFlightWork(): LoopPlusDecisionInFlightView;
-  protocolMiss(held: boolean, reason?: string): LoopPlusDecisionOutcome;
+  protocolMiss(held: boolean, reason?: string, diagnostic?: ReturnType<typeof loopPlusProtocolBranchDiagnostic>): LoopPlusDecisionOutcome;
   markDecisionAccepted(): void;
   clearProtocolFailure(): void;
   acknowledgeUserMessages(count: number): void;
@@ -91,6 +92,10 @@ export type LoopPlusDecisionStrategyRegistry = {
 };
 
 const invalidControlPlan = "controls 无法生成控制计划，请核对操作目标及 reprompt 的标题和提示词。";
+
+function branch(reasonCode: LoopPlusProtocolBranchCode): ReturnType<typeof loopPlusProtocolBranchDiagnostic> {
+  return loopPlusProtocolBranchDiagnostic(reasonCode);
+}
 
 export function confirmedLoopPlusReviewIds(decision: LoopPlusDecision): string[] {
   if (decision.reviewEventIds && decision.reviewEventIds.length > 0) {
@@ -189,12 +194,12 @@ function applyDispatchDecision(
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   if (port.queueView().hasCurrentReview) {
-    return port.protocolMiss(true, "当前有开放验收批次，不能 dispatch；请返回 accept 确认整批，并在同一决策中派发后续任务。");
+    return port.protocolMiss(true, undefined, branch("state.review_batch_open.dispatch_forbidden"));
   }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
   const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
-  if (previewFailure) return port.protocolMiss(false, previewFailure);
+  if (previewFailure) return port.protocolMiss(false, undefined, branch("state.controls.unavailable"));
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   const commitFailure = controlPlan ? port.commitControls(controls, controlPlan) : null;
   if (commitFailure) return port.protocolMiss(false, commitFailure);
@@ -202,7 +207,7 @@ function applyDispatchDecision(
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
     port.promoteDecisionWork();
-    return port.protocolMiss(false, dispatchRejectionReason(dispatched));
+    return port.protocolMiss(false, undefined, branch("state.dispatch.rejected"));
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
@@ -229,7 +234,7 @@ function applySteerDecision(
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   if (port.queueView().hasCurrentReview) {
-    return port.protocolMiss(true);
+    return port.protocolMiss(true, undefined, branch("state.review_batch_open.steer_forbidden"));
   }
   const controls = decision.controls ?? [];
   if (controls.length === 0) {
@@ -241,7 +246,7 @@ function applySteerDecision(
   if (previewFailure) return port.protocolMiss(false, previewFailure);
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   const commitFailure = port.commitControls(controls, controlPlan);
-  if (commitFailure) return port.protocolMiss(false, commitFailure);
+  if (commitFailure) return port.protocolMiss(false, undefined, branch("state.controls.unavailable"));
   port.acknowledgeUserMessages(step.userMessageCount);
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
@@ -268,17 +273,16 @@ function applyAcceptDecision(
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
   if (step.kind !== "review" || !sameLoopPlusReviewIds(confirmedLoopPlusReviewIds(decision), step.eventIds)) {
-    return port.protocolMiss(step.eventIds.length > 0,
-      `accept 确认的事件必须与当前验收批次数量及顺序一致：${JSON.stringify(step.eventIds)}。`);
+    return port.protocolMiss(step.eventIds.length > 0, undefined, branch("state.review_batch.mismatch"));
   }
   const verdicts = loopPlusAcceptVerdicts(decision, step.eventIds);
   if (!verdicts) {
-    return port.protocolMiss(true, "accept.reviews 必须与当前批次逐项对应，且每项保留真实 passed、failed 或 cancelled 结论及撤销原因。");
+    return port.protocolMiss(true, undefined, branch("validation.accept.invalid_reviews"));
   }
   const controls = decision.controls ?? [];
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
   const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
-  if (previewFailure) return port.protocolMiss(true, previewFailure);
+  if (previewFailure) return port.protocolMiss(true, undefined, branch("state.controls.unavailable"));
   const submitted = port.submitReviewBatch(step.eventIds, verdicts);
   if (!submitted.ok) {
     port.persistSnapshot();
@@ -293,7 +297,7 @@ function applyAcceptDecision(
   const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
   if (dispatched.rejected.length > 0) {
     port.promoteDecisionWork();
-    return port.protocolMiss(false, dispatchRejectionReason(dispatched));
+    return port.protocolMiss(false, undefined, branch("state.dispatch.rejected"));
   }
   port.persistEstimatedRounds(decision);
   port.markDecisionAccepted();
@@ -318,10 +322,10 @@ function applyWaitDecision(
 ): LoopPlusDecisionOutcome {
   const snapshot = port.queueView();
   if (snapshot.hasCurrentReview) {
-    return port.protocolMiss(true, "当前有开放验收批次，不能 wait；请返回 accept 确认整批并继续派发剩余工作，或在满足全部完成门禁时返回 completed。");
+    return port.protocolMiss(true, undefined, branch("state.review_batch_open.wait_forbidden"));
   }
   if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview && !snapshot.hasReports) {
-    return port.protocolMiss(false, "当前没有运行中或排队任务，wait 无法推进。请完成满足全部门禁的任务，或用 dispatch 派发未完成工作；不要因这项矛盾请求用户继续。");
+    return port.protocolMiss(false, undefined, branch("state.wait.no_work"));
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
   port.acknowledgeUserMessages(step.userMessageCount);
@@ -335,10 +339,10 @@ function applyWaitDecision(
   }
   const inFlight = port.waitForInFlightWork();
   if (inFlight.runningCount === 0 && afterReports.reviewDependencyBlocks?.length) {
-    return port.protocolMiss(false, reviewDependencyWaitReason(afterReports));
+    return port.protocolMiss(false, undefined, branch("state.wait.review_dependency_blocked"));
   }
   if (onlyDependencyBlocked(inFlight)) {
-    return port.protocolMiss(false, dependencyWaitReason(inFlight));
+    return port.protocolMiss(false, undefined, branch("state.wait.dependency_blocked"));
   }
   port.markDecisionAccepted();
   port.applyNextStepPlan(decision.nextStepPlan);
@@ -382,8 +386,7 @@ function applyCompletedDecision(
   let submittedReview = false;
   if (step.eventIds.length > 0) {
     if (!sameLoopPlusReviewIds(confirmed, step.eventIds)) {
-      return port.protocolMiss(true,
-        `completed 确认的事件必须与当前验收批次数量及顺序一致：${JSON.stringify(step.eventIds)}。`);
+      return port.protocolMiss(true, undefined, branch("state.review_batch.mismatch"));
     }
     const submitted = port.submitReviewBatch(step.eventIds, "passed");
     if (!submitted.ok) {
@@ -392,7 +395,7 @@ function applyCompletedDecision(
     }
     submittedReview = true;
   } else if (confirmed.length > 0) {
-    return port.protocolMiss(false, "当前没有验收事件，completed 不得携带 reviewEventId 或 reviewEventIds。");
+    return port.protocolMiss(false, undefined, branch("state.review_batch.mismatch"));
   }
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(step.eventIds.length > 0);
   port.acknowledgeUserMessages(step.userMessageCount);
@@ -403,7 +406,7 @@ function applyCompletedDecision(
   if (pending.requiredRepairIds?.length && !hasPendingDecisionWork(pending) && !pending.hasUserMessages
     && inFlight.runningCount === 0 && (inFlight.pendingCount === 0 || onlyDependencyBlocked(inFlight))) {
     if (submittedReview) port.recordAcceptancePlanFeedback?.(decision);
-    return port.protocolMiss(false, `尚欠返工 ${JSON.stringify(pending.requiredRepairIds)}。请用原逻辑 ID dispatch 新 attempt 并再次验收；不要重复确认原事件。`);
+    return port.protocolMiss(false, undefined, branch("state.completion.repair_required"));
   }
   if (
     hasPendingDecisionWork(pending)
@@ -418,11 +421,11 @@ function applyCompletedDecision(
         port.recordAcceptancePlanFeedback?.(decision);
         return "continue";
       }
-      return port.protocolMiss(false, dependencyWaitReason(inFlight));
+      return port.protocolMiss(false, undefined, branch("state.wait.dependency_blocked"));
     }
     if (!submittedReview && inFlight.runningCount === 0 && pending.reviewDependencyBlocks?.length
       && !pending.hasReports && !pending.hasUserMessages && !(decision.reportEventIds?.length)) {
-      return port.protocolMiss(false, reviewDependencyWaitReason(pending));
+      return port.protocolMiss(false, undefined, branch("state.wait.review_dependency_blocked"));
     }
     if (submittedReview) {
       port.markDecisionAccepted();
@@ -440,7 +443,7 @@ function applyCompletedDecision(
   }
   if (pending.requiredRepairIds?.length) {
     port.recordAcceptancePlanFeedback?.(decision);
-    return port.protocolMiss(false, `尚欠返工 ${JSON.stringify(pending.requiredRepairIds)}。请用原逻辑 ID dispatch 新 attempt 并再次验收；不要重复确认原事件。`);
+    return port.protocolMiss(false, undefined, branch("state.completion.repair_required"));
   }
   if (!port.tryFinishParent()) {
     const latest = port.queueView();
@@ -455,18 +458,8 @@ function applyCompletedDecision(
   return port.finishParent(decision);
 }
 
-function reviewDependencyWaitReason(view: LoopPlusDecisionQueueView): string {
-  return `当前待审事件被验收依赖阻塞且无活跃执行，wait/completed 无法推进：${JSON.stringify(view.reviewDependencyBlocks)}。`
-    + "请按最新 attempt 修复前置或调整尚未运行后继的依赖；保留未确认事件与真实验收结论，无安全工作时使用既有 blocked 规则。";
-}
-
 function onlyDependencyBlocked(view: LoopPlusDecisionInFlightView): boolean {
   return view.runningCount === 0 && view.pendingCount > 0 && (view.dependencyBlocks?.length ?? 0) > 0;
-}
-
-function dependencyWaitReason(view: LoopPlusDecisionInFlightView): string {
-  return `当前全部 pending 被依赖阻塞，wait 无法推进：${JSON.stringify(view.dependencyBlocks)}。`
-    + "请用原逻辑 ID 重派失败或关闭的前置，或用 controls.reprompt 调整尚未运行后继的 dependsOn；新 ID 不会替代旧前置。保留真实失败结论，无安全工作可推进时按既有 blocked 规则处理。";
 }
 
 function applyClarifyDecision(): LoopPlusDecisionOutcome {
@@ -475,10 +468,4 @@ function applyClarifyDecision(): LoopPlusDecisionOutcome {
 
 function unreachableDecisionStatus(status: never): never {
   throw new Error(`unhandled loop-plus decision status: ${String(status)}`);
-}
-
-function dispatchRejectionReason(result: Pick<LoopPlusDispatchResult, "decisions" | "rejected">): string {
-  return `派发存在拒绝项：${JSON.stringify(result.rejected)}。已接受任务：${JSON.stringify(result.decisions)}。`
-    + "此前验收结论和用户消息确认已经保留；不得重复 accept、改变 failed 结论或重发已接受任务。"
-    + "请依据最新快照使用 dispatch 仅纠正尚未接受的派发，使用不占用活动任务的 ID；后到验收事件仍按当前批次处理。";
 }

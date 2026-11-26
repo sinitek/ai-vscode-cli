@@ -3,6 +3,14 @@ import * as path from "path";
 const LOGIN_SHELL_BASENAMES = new Set(["zsh", "bash", "sh"]);
 const NVM_INCOMPATIBLE_ENV_KEYS = ["npm_config_prefix", "NPM_CONFIG_PREFIX"] as const;
 
+export function escapeShellArg(value: string): string {
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
+export function buildShellCommandLine(command: string, args: readonly string[]): string {
+  return [command, ...args].map(escapeShellArg).join(" ");
+}
+
 export function isLoginShellCommand(command: string): boolean {
   return LOGIN_SHELL_BASENAMES.has(path.basename(command).toLowerCase());
 }

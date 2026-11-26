@@ -863,7 +863,7 @@ test("snapshots the confirmed acceptance plan on the task and normalizes it on r
     loopPlusAcceptancePlan: {
       id: "plan-hardening",
       name: "上线前加严",
-      checks: ["security", "other"],
+      checks: ["other", "security"],
       otherText: "确认审计日志不写入密钥",
       systemDefault: false,
     },
@@ -873,7 +873,7 @@ test("snapshots the confirmed acceptance plan on the task and normalizes it on r
   assert.deepEqual(reloaded.loopPlusAcceptancePlan, {
     id: "plan-hardening",
     name: "上线前加严",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "确认审计日志不写入密钥",
     systemDefault: false,
   });
@@ -885,7 +885,7 @@ test("snapshots the confirmed acceptance plan on the task and normalizes it on r
   assert.deepEqual(persisted.tasks[0].loopPlusAcceptancePlan, {
     id: "plan-hardening",
     name: "上线前加严",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "确认审计日志不写入密钥",
     systemDefault: false,
   });

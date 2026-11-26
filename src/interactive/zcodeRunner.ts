@@ -7,6 +7,7 @@ import {
   type CodexAppServerNdjsonReader,
 } from "./codexAppServerNdjson";
 import { killProcessTree, resolveSpawnCommand } from "./codexRunnerProcess";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import {
   assertAdvertisedZcodeThought,
   buildZcodeChildEnv,
@@ -58,7 +59,7 @@ export type ZcodeChild = {
 export type ZcodeSpawn = (
   command: string,
   args: readonly string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; stdio?: "pipe" },
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; stdio?: "pipe"; windowsHide?: boolean },
 ) => ZcodeChild;
 
 export type ZcodeStreamHandlers = {
@@ -80,6 +81,7 @@ export type ZcodeRunnerOptions = {
   thinkingMode?: string | null;
   modeId?: string | null;
   localSessionId?: string | null;
+  platform?: NodeJS.Platform;
   spawnImpl?: ZcodeSpawn;
   killTreeImpl?: (child: ZcodeChild, signal: NodeJS.Signals) => void;
 };
@@ -165,10 +167,15 @@ export class ZcodeInteractiveRunner {
     const command = this.options.command?.trim() || ZCODE_DEFAULT_COMMAND;
     const args = buildZcodeLaunchArgs(this.options.agentArgs ?? []);
     const spawnImpl = this.options.spawnImpl ?? defaultSpawn;
-    const child = spawnImpl(command, args, {
+    const platform = this.options.platform ?? process.platform;
+    const spawnOptions = createCliProcessPolicy(platform).spawnOptions(command, {
       cwd: this.options.cwd,
-      env: buildZcodeChildEnv(this.options.env ?? process.env),
+      baseEnvironment: buildZcodeChildEnv(this.options.env ?? process.env),
       stdio: "pipe",
+      processGroup: false,
+    });
+    const child = spawnImpl(command, args, {
+      cwd: this.options.cwd, env: spawnOptions.env, stdio: "pipe", windowsHide: true,
     });
     this.child = child;
     child.once("error", (error) => {
@@ -372,7 +379,7 @@ export class ZcodeInteractiveRunner {
       void this.request("session/close", { sessionId: this.sessionId }, true).catch(() => undefined);
     }
     const kill = this.options.killTreeImpl ?? ((target, signal) => {
-      if (!killProcessTree(target as unknown as ChildProcess, signal)) {
+      if (!killProcessTree(target as unknown as ChildProcess, signal, { platform: this.options.platform, processGroup: false })) {
         target.kill(signal);
       }
     });
@@ -623,10 +630,5 @@ export class ZcodeInteractiveRunner {
 
 function defaultSpawn(command: string, args: readonly string[], options: { cwd?: string; env?: NodeJS.ProcessEnv }): ZcodeChild {
   const resolved = resolveSpawnCommand(command, [...args]);
-  return spawn(resolved.command, resolved.args, {
-    cwd: options.cwd,
-    env: options.env,
-    stdio: "pipe",
-    windowsHide: true,
-  }) as unknown as ZcodeChild;
+  return spawn(resolved.command, resolved.args, options as import("child_process").SpawnOptions) as unknown as ZcodeChild;
 }

@@ -209,7 +209,11 @@ function createHarness(options: {
       return input;
     },
     getOpenCodeConfigPreflightMessage: async () => { events.push("preflight"); return options.preflightMessage ?? null; },
-    isInteractiveSupported: () => options.runtime === "interactive",
+    supportsInteractiveLaunch: () => options.runtime === "interactive",
+    resolvePromptExecutionMode: (_cli: CliName, otherTabRunning: boolean) => {
+      if (options.runtime === "interactive") return "interactive";
+      return otherTabRunning ? "parallel" : "one-shot";
+    },
     hasOtherTabRun: () => options.runtime === "parallel",
     runPromptInteractive: dispatch,
     runPromptParallel: dispatch,

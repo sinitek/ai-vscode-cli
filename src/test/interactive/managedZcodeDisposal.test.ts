@@ -61,7 +61,7 @@ for (const disposal of ["disposeIfMatches", "disposeForCli", "disposeAll"] as co
 }
 
 for (const firstToFinish of [0, 1]) {
-  test(`consecutive replacements retain all predecessors when predecessor ${firstToFinish} finishes first`, async () => {
+  test(`consecutive replacements retain all predecessors when predecessor ${firstToFinish} finishes first`, async (context) => {
     const f = fixture();
     const runs: Promise<unknown>[] = [];
     try {
@@ -72,9 +72,22 @@ for (const firstToFinish of [0, 1]) {
       const second = new (require("../../interactive/zcodeRunner").ZcodeInteractiveRunner)({ cwd: process.cwd() });
       await second.start();
       f.manager.setRunner("zcode", "ui-session", second, "off", "coding", null, { configFingerprint: "second" });
-      runs.push(createZcodeInteractiveTurnStrategy().runAttempt(f.port("third").value));
-      runs.push(createZcodeInteractiveTurnStrategy().runAttempt(f.port("fourth").value));
+      const getOrCreate = context.mock.method(f.manager, "getOrCreateZcodeRunner");
+      const superseded = f.port("third").value;
+      const current = f.port("fourth").value;
+      const staleSessionUpdate = context.mock.method(superseded, "updateSessionForNewRun");
+      const stalePanelMessage = context.mock.method(superseded, "sendPanelMessage");
+      const staleSettle = context.mock.method(superseded, "settleInteractiveAttempt");
+      const currentPanelMessage = context.mock.method(current, "sendPanelMessage");
+      const strategy = createZcodeInteractiveTurnStrategy();
+      const staleRun = strategy.runAttempt(superseded);
+      const currentRun = strategy.runAttempt(current);
+      runs.push(staleRun, currentRun);
       runs.forEach((run) => { void run.catch(() => {}); });
+      const candidate = getOrCreate.mock.calls[0].result!;
+      const replacement = getOrCreate.mock.calls[1].result!;
+      assert.notEqual(candidate, replacement);
+      assert.equal(f.manager.hasZcodeRunner("ui-session", replacement), true);
       await tick();
       assert.equal(f.children.length, 2);
       // Neither completion order may drop the other predecessor or the newer record.
@@ -87,32 +100,53 @@ for (const firstToFinish of [0, 1]) {
       await tick();
       assert.equal(f.children.length, 2, "close and EOF still require exit");
       last.emit("exit", 0);
-      await Promise.all(runs);
+      assert.equal(superseded.isCurrentRunActive(), true, "only the candidate runner is superseded");
+      await assert.rejects(staleRun, {
+        code: "RUNNER_DISPOSED",
+        message: "ZCode 启动期间，当前运行已失效或运行器已被替换。",
+      });
+      assert.equal(await currentRun, "return");
       assert.equal(f.children.length, 3, "only the final registered runner resumes");
+      assert.equal(f.children[2].requests[0].method, "session/resume");
+      assert.equal(f.children[2].requests.filter(({ method }) => method === "session/send").length, 1);
+      assert.equal(f.children[2].requests.some(({ method }) => method === "session/close"), false);
       assert.equal(f.manager.hasZcodeRunner("ui-session", first), false);
+      assert.equal(f.manager.hasZcodeRunner("ui-session", candidate), false);
+      assert.equal(f.manager.hasZcodeRunner("ui-session", replacement), true);
+      assert.equal(staleSessionUpdate.mock.callCount(), 0);
+      assert.equal(stalePanelMessage.mock.callCount(), 0);
+      assert.equal(staleSettle.mock.callCount(), 0);
+      assert.ok(currentPanelMessage.mock.calls.some(({ arguments: [message] }) => message.type === "contextTokenUsage"));
     } finally {
       await f.cleanup();
-      await Promise.all(runs);
+      await Promise.allSettled(runs);
     }
   });
 }
 
 for (const cancellation of ["stop", "inactive"] as const) {
-  test(`${cancellation} during release cannot cause a late ZCode start`, async () => {
+  test(`${cancellation} during release ends silently without a late ZCode start`, async (context) => {
     const f = fixture();
     let running: Promise<unknown> | undefined;
     try {
       await f.manager.getOrCreateZcodeRunner(f.options("before")).start();
       const port = f.port("after");
+      const updateSession = context.mock.method(port.value, "updateSessionForNewRun");
+      const panelMessage = context.mock.method(port.value, "sendPanelMessage");
+      const settle = context.mock.method(port.value, "settleInteractiveAttempt");
       running = createZcodeInteractiveTurnStrategy().runAttempt(port.value);
+      void running.catch(() => {});
       await tick();
       if (cancellation === "stop") {
         port.stop();
-        await running; // cancellation settles even while the old process is held
+        assert.equal(await running, "return"); // cancellation settles even while the old process is held
       } else port.deactivate();
       f.release(f.children[0]);
-      await running;
+      assert.equal(await running, "return");
       assert.equal(f.children.length, 1);
+      assert.equal(updateSession.mock.callCount(), 0);
+      assert.equal(panelMessage.mock.callCount(), 0);
+      assert.equal(settle.mock.callCount(), 0);
     } finally {
       await f.cleanup();
       await running;
@@ -138,21 +172,27 @@ test("manager consumes a release rejection and all dependent starts receive it",
   }
 });
 
-test("release rejection after the waiting turn stops is still consumed", async () => {
-  const f = fixture();
-  try {
-    const old = f.manager.getOrCreateZcodeRunner(f.options("before"));
-    let reject!: (error: Error) => void;
-    old.dispose = () => new Promise<void>((_resolve, fail) => { reject = fail; });
-    const port = f.port("after");
-    const running = createZcodeInteractiveTurnStrategy().runAttempt(port.value);
-    port.stop();
-    await running;
-    reject(new Error("late release failure"));
-    await tick();
-    await assert.rejects(f.manager.waitForPendingDisposal("zcode", "ui-session"), /late release failure/);
-    assert.equal(f.children.length, 0);
-  } finally {
-    await f.cleanup();
-  }
-});
+for (const cancellation of ["stop", "inactive"] as const) {
+  test(`release rejection after ${cancellation} is silent for the run but remains in the manager`, async () => {
+    const f = fixture();
+    try {
+      const old = f.manager.getOrCreateZcodeRunner(f.options("before"));
+      let reject!: (error: Error) => void;
+      old.dispose = () => new Promise<void>((_resolve, fail) => { reject = fail; });
+      const port = f.port("after");
+      const running = createZcodeInteractiveTurnStrategy().runAttempt(port.value);
+      if (cancellation === "stop") {
+        port.stop();
+        assert.equal(await running, "return");
+      } else port.deactivate();
+      const failure = new Error("late release failure");
+      reject(failure);
+      assert.equal(await running, "return");
+      await tick();
+      await assert.rejects(f.manager.waitForPendingDisposal("zcode", "ui-session"), (e) => e === failure);
+      assert.equal(f.children.length, 0);
+    } finally {
+      await f.cleanup();
+    }
+  });
+}

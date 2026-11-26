@@ -24,6 +24,9 @@ test("Loop+ persistence errors are logged with debug disabled and do not leak th
       diagnostics.logLoopPlusRuntimeEvent('loop-plus-subtask-tab-auto-closed', {
         taskId: 'close_task', subtaskId: 'child_a', attemptId: 'attempt_a', tabId: 'tab_a', closeAttempt: 2,
       });
+      diagnostics.logLoopPlusRuntimeEvent('loop-plus-invocation-diagnostic', {
+        stage: 'handoff', code: 'identity-rejected', content: secret, prompt: secret, sessionId: secret, path: secret,
+      });
       diagnostics.logLoopPlusRuntimeEvent('loop-plus-paused', { taskId: 'msg_test' });
       await logger.logEssential('flush');
       const files = fs.readdirSync(path.join(process.env.HOME, '.sinitek_cli', 'logs'));
@@ -31,6 +34,7 @@ test("Loop+ persistence errors are logged with debug disabled and do not leak th
       if (!lines.includes('loop-plus-persist-failed') || !lines.includes('loop-plus-report-failed')
         || !lines.includes('loop-plus-subtask-tab-auto-close-error') || !lines.includes('loop-plus-subtask-tab-auto-closed')
         || !lines.includes('close_task') || !lines.includes('report_task') || !lines.includes('attempt_test')
+        || !lines.includes('"stage":"handoff","code":"identity-rejected"')
         || !lines.includes('retrying') || lines.includes('loop-plus-paused')
         || lines.includes(secret) || lines.includes('msg_test')) throw Error('incorrect loop diagnostics');
     })().catch((error) => { console.error(error); process.exitCode = 1; });

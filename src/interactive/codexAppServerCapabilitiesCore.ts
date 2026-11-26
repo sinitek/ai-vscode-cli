@@ -5,7 +5,8 @@ import { createHash } from "crypto";
 import { spawn } from "cross-spawn";
 import { resolveCliCommand, splitConfiguredCliCommand } from "../cli/commandResolution";
 import { freezeCodexRuntimePorts, type CodexRuntimePorts } from "./codexRuntimePorts";
-import { buildShellCommandLine, killProcessTree } from "./codexRunnerProcessCore";
+import { killProcessTree } from "./codexRunnerProcessCore";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 
 export type CodexThreadUnloadCapability = {
   supported: boolean;
@@ -104,18 +105,19 @@ function resolveLaunch(input: CodexCapabilityInput, runtime: CodexRuntimePorts):
     }
     prefix = [path.resolve(input.cwd ?? process.cwd(), parts[1])];
   }
-  const resolved = whole ?? resolveCliCommand(executable, { cwd: input.cwd, env });
-  if (resolved) {
+  const resolved = createCliProcessPolicy().resolve(executable, [...prefix, "--version"], {
+    lookup: { cwd: input.cwd, env }, macTaskShell: runtime.macTaskShell, allowLoginShell: prefix.length === 0,
+  });
+  if (!resolved) return undefined;
+  if (!resolved.usesShell) {
     return {
-      command: path.resolve(resolved.command), args: [...prefix, "--version"],
+      command: path.resolve(resolved.command), args: resolved.args,
       identity: [...launcherIdentity(resolved.command), ...prefix.flatMap(launcherIdentity)],
     };
   }
-  if (process.platform !== "darwin" || prefix.length) { return undefined; }
   // Match the runner's macOS login-shell fallback and argument escaping. Shell-only
   // resolution has no observable executable identity, so it is never cached as supported.
-  const shell = runtime.macTaskShell === "bash" ? "/bin/bash" : "/bin/zsh";
-  return { command: shell, args: ["-lc", buildShellCommandLine(executable, ["--version"])], identity: [] };
+  return { command: resolved.command, args: resolved.args, identity: [] };
 }
 
 async function probe(launch: Launch, env: NodeJS.ProcessEnv, runtime: CodexRuntimePorts): Promise<CodexThreadUnloadCapability> {
@@ -140,10 +142,10 @@ async function probe(launch: Launch, env: NodeJS.ProcessEnv, runtime: CodexRunti
       let output = "";
       let bytes = 0;
       let timer: NodeJS.Timeout | undefined;
-      const child = spawn(launch.command, launch.args, {
-        cwd: temp, env: isolatedEnv, windowsHide: true, detached: process.platform !== "win32",
+      const child = spawn(launch.command, launch.args, createCliProcessPolicy().spawnOptions(launch.command, {
+        cwd: temp, baseEnvironment: isolatedEnv,
         stdio: ["ignore", "pipe", "pipe"],
-      });
+      }));
       ownsChild = true;
       liveProbes += 1;
       const finish = (result: CodexThreadUnloadCapability, terminate = false): void => {

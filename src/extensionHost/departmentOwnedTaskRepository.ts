@@ -5,6 +5,7 @@ import { normalizeDepartmentMetadata, type DepartmentMetadata } from "../departm
 import { normalizeLoopPlusAcceptancePlanSnapshot, type LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 import { createLoopPlusScheduler } from "../loopPlusScheduler";
 import { isTimestampWithinHistoryRetention } from "../historyRetention";
+import { logError } from "../logger";
 import {
   mergeLoopTaskRecordPatch, mergeLoopTaskRound, normalizeLoopTaskRecord,
   registerLoopTaskStoreHostRouter,
@@ -34,6 +35,19 @@ const clone = <T>(value: T): T => structuredClone(value);
 const equal = isDeepStrictEqual;
 const fail = (error: unknown): { ok: false; error: string } => ({ ok: false, error: error instanceof Error ? error.message : String(error) });
 const text = (value: unknown): value is string => typeof value === "string" && Boolean(value.trim());
+
+function routeFailureReason(error: string): string {
+  if (error === "部门任务不存在" || error === "部门任务不存在或已过期") return "task_missing_or_expired";
+  if (error === "部门任务来源不可用，拒绝回退普通存储") return "owner_unavailable";
+  if (error === "部门任务 ID 冲突或索引不可用，禁止提升普通任务") return "identity_conflict_or_index_unavailable";
+  if (error === "部门任务唯一身份索引不可用或冲突") return "identity_index_unavailable";
+  if (error === "部门 owner 事务持久化失败") return "owner_commit_failed";
+  if (error === "部门事务未发布新的可信代次") return "owner_publication_unconfirmed";
+  if (error === "部门事务落盘核验失败") return "owner_readback_mismatch";
+  if (error === "部门事务重入被拒绝") return "reentrant_mutation";
+  if (/EEXIST: file already exists, open .*transaction\.lock/.test(error)) return "identity_lock_contention";
+  return "operation_rejected";
+}
 
 /** Assemble the COMPLETE host-owned record before its first persistence. Does not write or
  * authorize an identity. The repository still validates every field and root relationship.
@@ -220,7 +234,11 @@ export class DepartmentOwnedTaskRepository {
         } catch { return { handled: true, ok: false }; }
       }
     }
-    return result.ok ? { handled: true, ok: true, ...("taskId" in request ? { record: result.value as LoopTaskRecord } : {}) } : { handled: true, ok: false };
+    if (result.ok) return { handled: true, ok: true, ...("taskId" in request ? { record: result.value as LoopTaskRecord } : {}) };
+    const failure = { operation: request.type, reason: routeFailureReason(result.error),
+      ...("taskId" in request ? { taskId: request.taskId } : {}) };
+    void logError("department-task-route-rejected", failure).catch(() => undefined);
+    return { handled: true, ok: false };
   }
 
   private assertCurrent(): void {

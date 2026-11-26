@@ -2,17 +2,22 @@ import assert = require("node:assert/strict");
 import test = require("node:test");
 import type { InteractiveTurnAttemptPort } from "../../extensionHost/interactiveTurnStrategy";
 import type { ZcodeStreamHandlers } from "../../interactive/zcodeRunner";
-import type { ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
+import type { ZcodeContextUsage, ZcodeWireMessage } from "../../interactive/zcodeAppServerProtocol";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
 const { createZcodeInteractiveTurnStrategy } = require("../../extensionHost/interactiveTurnZcode") as typeof import("../../extensionHost/interactiveTurnZcode");
+const { ZcodeInteractiveRunner } = require("../../interactive/zcodeRunner") as typeof import("../../interactive/zcodeRunner");
 
-function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "turn.completed") {
-  let active = true;
+function createReplayHarness(
+  terminalType: "turn.completed" | "turn.failed" = "turn.completed",
+  options: { startupUsage?: ZcodeContextUsage; uiSessionId?: string | null; promoteSession?: boolean } = {},
+) {
+  let uiSessionId = options.uiSessionId === undefined ? "sess_ui" : options.uiSessionId;
   let handlers: ZcodeStreamHandlers = {};
   let stopCurrentTurn = () => {};
+  let onStart = () => {};
   let holdPrompt = false;
   let completePrompt = () => {};
   const runEntry = { runId: "run_zcode", stopped: false };
@@ -25,7 +30,10 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
   ];
   const settings = { model: null, thinking: null, thinkingOptions: [], modeId: "yolo" };
   const runner = {
-    start: async () => ({ sessionId: "sess_test", usage: null }),
+    start: async () => {
+      onStart();
+      return { sessionId: "sess_test", usage: options.startupUsage ?? null };
+    },
     getSettings: () => settings,
     cancelTurn: () => { handlers.onEvent?.(events[0]); },
     prompt: async (_content: string, callbacks: ZcodeStreamHandlers) => {
@@ -42,30 +50,39 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
       return { text: "已完成" };
     },
   };
+  const managedRunners = new Map<string, unknown>();
   const port = {
     cli: "zcode",
     tabId: "tab_zcode",
     runId: "run_zcode",
-    uiSessionId: "sess_test",
+    get uiSessionId() { return uiSessionId; },
     attemptPrompt: "执行任务",
     cwd: process.cwd(),
     zcodeLaunch: { agentArgs: [], env: {}, modeId: "yolo", modelRef: null, thinkingValue: null },
     interactiveRunnerManager: {
-      getOrCreateZcodeRunner: () => runner,
+      getOrCreateZcodeRunner: ({ sessionId }: { sessionId: string }) => {
+        managedRunners.set(sessionId, runner);
+        return runner;
+      },
       waitForPendingDisposal: async () => {},
-      hasZcodeRunner: () => true,
-      setRunner: () => {},
+      hasZcodeRunner: (sessionId: string, candidate: unknown) => managedRunners.get(sessionId) === candidate,
+      setRunner: (_cli: string, sessionId: string, candidate: unknown) => managedRunners.set(sessionId, candidate),
+      detachRunner: (_cli: string, sessionId: string, candidate: unknown) => {
+        if (managedRunners.get(sessionId) === candidate) managedRunners.delete(sessionId);
+      },
     },
     resolveInteractiveMappedId: () => "sess_test",
     interactiveRunsByTabId: runs,
     setStopCurrentTurn: (stop: () => void) => { stopCurrentTurn = stop; },
     syncInteractiveRunEntry: () => {},
-    updateSessionForNewRun: () => {},
+    updateSessionForNewRun: (sessionId: string) => {
+      if (options.promoteSession) uiSessionId = sessionId;
+    },
     sendPanelMessage: (message: Record<string, unknown>) => { messages.push(message); },
     appendDebugEvent: (event: unknown) => { debugEvents.push(event); },
-    isCurrentRunActive: () => active,
+    isCurrentRunActive: () => runs.get("tab_zcode")?.runId === "run_zcode" && !runEntry.stopped,
     settleInteractiveAttempt: async () => {
-      active = false;
+      runs.delete("tab_zcode");
       return "return";
     },
   } as unknown as InteractiveTurnAttemptPort;
@@ -74,8 +91,23 @@ function createReplayHarness(terminalType: "turn.completed" | "turn.failed" = "t
     messages,
     debugEvents,
     events,
+    runner,
     getHandlers: () => handlers,
-    setActive: (value: boolean) => { active = value; },
+    setActive: (value: boolean) => { runEntry.stopped = !value; },
+    duringStart: (callback: () => void) => { onStart = callback; },
+    replaceRunner: () => {
+      assert.ok(uiSessionId);
+      managedRunners.set(uiSessionId, { ...runner });
+    },
+    replaceRunAndSession: () => {
+      const replacementEntry = { runId: "run_replacement", stopped: false };
+      runs.set("tab_zcode", replacementEntry);
+      uiSessionId = "sess_replacement";
+      managedRunners.set(uiSessionId, { ...runner });
+      return replacementEntry;
+    },
+    ownsRunner: () => Boolean(uiSessionId && managedRunners.get(uiSessionId) === runner),
+    usageMessages: () => messages.filter((message) => message.type === "contextTokenUsage"),
     holdPrompt: () => { holdPrompt = true; },
     completePrompt: () => completePrompt(),
     stop: () => stopCurrentTurn(),
@@ -91,6 +123,7 @@ test("ZCode sends task replay events to the current tab and the same debug log s
     type: "rawStreamDelta", tabId: "tab_zcode", stream: "event", content: `${JSON.stringify(event)}\n`,
   })));
   assert.deepEqual(harness.debugEvents, harness.events);
+  assert.deepEqual(harness.usageMessages(), []);
   harness.getHandlers().onEvent?.(harness.events[0]);
   assert.equal(harness.messages.filter((message) => message.type === "rawStreamDelta").length, 2);
   assert.equal(harness.debugEvents.length, 2);
@@ -98,10 +131,22 @@ test("ZCode sends task replay events to the current tab and the same debug log s
 
 test("ZCode does not send replay events or debug records for an inactive run", async () => {
   const harness = createReplayHarness();
-  harness.setActive(false);
-  await createZcodeInteractiveTurnStrategy().runAttempt(harness.port);
-  assert.deepEqual(harness.messages.filter((message) => message.type === "rawStreamDelta"), []);
-  assert.deepEqual(harness.debugEvents, []);
+  harness.holdPrompt();
+  const pending = createZcodeInteractiveTurnStrategy().runAttempt(harness.port);
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const onEvent = harness.getHandlers().onEvent;
+    assert.ok(onEvent);
+    const messagesBefore = harness.messages.slice();
+    assert.deepEqual(harness.debugEvents, harness.events);
+    harness.setActive(false);
+    onEvent(harness.events[0]);
+    assert.deepEqual(harness.messages, messagesBefore);
+    assert.deepEqual(harness.debugEvents, harness.events);
+  } finally {
+    harness.completePrompt();
+    await pending;
+  }
 });
 
 test("ZCode keeps the terminal failure in replay before propagating the runner error", async () => {
@@ -120,7 +165,6 @@ for (const superseded of [false, true]) {
     try {
       await new Promise<void>((resolve) => setImmediate(resolve));
       harness.setActive(false);
-      harness.runEntry.stopped = true;
       if (superseded) harness.runEntry.runId = "run_replacement";
       harness.stop();
       const expected = superseded ? 2 : 3;
@@ -128,6 +172,77 @@ for (const superseded of [false, true]) {
       harness.getHandlers().onEvent?.(harness.events[0]);
       assert.equal(harness.debugEvents.length, expected);
       assert.equal(harness.messages.filter((message) => message.type === "rawStreamDelta").length, expected);
+    } finally {
+      harness.completePrompt();
+      await pending;
+    }
+  });
+}
+
+const startupUsage = { tokensInContextWindow: 0, modelContextWindow: 120_000 };
+const streamedUsage = { tokensInContextWindow: 1_234, modelContextWindow: 128_000 };
+const usageMessage = (usage: ZcodeContextUsage) => ({
+  type: "contextTokenUsage", tabId: "tab_zcode", ...usage, contextWindowSource: "zcode-projection",
+});
+
+for (const session of ["stable UI session", "promoted UI session", "no UI session"] as const) {
+  test(`ZCode publishes startup and streamed usage for the current owner with ${session}`, async (context) => {
+    const harness = createReplayHarness("turn.completed", {
+      startupUsage,
+      uiSessionId: session === "no UI session" ? null : session === "promoted UI session" ? "local_zcode" : "sess_ui",
+      promoteSession: session === "promoted UI session",
+    });
+    if (session === "no UI session") {
+      context.mock.method(ZcodeInteractiveRunner.prototype, "start", harness.runner.start);
+      context.mock.method(ZcodeInteractiveRunner.prototype, "getSettings", harness.runner.getSettings);
+      context.mock.method(ZcodeInteractiveRunner.prototype, "prompt", harness.runner.prompt);
+    }
+    harness.holdPrompt();
+    const pending = createZcodeInteractiveTurnStrategy().runAttempt(harness.port);
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepEqual(harness.usageMessages(), [usageMessage(startupUsage)]);
+      harness.getHandlers().onTokenUsageUpdate!(streamedUsage);
+      assert.deepEqual(harness.usageMessages(), [usageMessage(startupUsage), usageMessage(streamedUsage)]);
+    } finally {
+      harness.completePrompt();
+      await pending;
+    }
+  });
+}
+
+for (const lostOwner of ["run", "runner"] as const) {
+  const supersede = (harness: ReturnType<typeof createReplayHarness>) => {
+    if (lostOwner === "run") harness.runEntry.runId = "run_replacement";
+    else harness.replaceRunner();
+  };
+
+  test(`ZCode rejects startup usage when the ${lostOwner} is superseded during startup`, async () => {
+    const harness = createReplayHarness("turn.completed", { startupUsage });
+    harness.duringStart(() => supersede(harness));
+    await assert.rejects(createZcodeInteractiveTurnStrategy().runAttempt(harness.port), { code: "RUNNER_DISPOSED" });
+    assert.deepEqual(harness.usageMessages(), []);
+    if (lostOwner === "runner") assert.equal(harness.ownsRunner(), false);
+  });
+
+  test(`ZCode rejects streamed usage when the ${lostOwner} is superseded on the same tab`, async () => {
+    const harness = createReplayHarness("turn.completed", { promoteSession: true });
+    harness.holdPrompt();
+    const pending = createZcodeInteractiveTurnStrategy().runAttempt(harness.port);
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(harness.port.uiSessionId, "sess_test");
+      const replacementEntry = lostOwner === "run"
+        ? harness.replaceRunAndSession()
+        : (supersede(harness), harness.runEntry);
+      harness.getHandlers().onTokenUsageUpdate!(streamedUsage);
+      assert.deepEqual(harness.usageMessages(), []);
+      if (lostOwner === "run") {
+        assert.equal(harness.port.interactiveRunsByTabId.get("tab_zcode"), replacementEntry);
+        assert.equal(harness.port.uiSessionId, "sess_replacement");
+      } else {
+        assert.equal(harness.ownsRunner(), false);
+      }
     } finally {
       harness.completePrompt();
       await pending;

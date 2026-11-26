@@ -1,6 +1,6 @@
 import { spawn } from "cross-spawn";
-import { resolveCliCommand } from "./commandResolution";
-import { isLoginShellCommand, resolveChildArgv0, stripNvmIncompatibleEnv } from "./processArgv";
+import { createCliProcessPolicy } from "./cliProcessPolicy";
+import { buildShellCommandLine } from "./processArgv";
 import { observeChildProcessLifecycle, type ProcessLifecycleEvidence } from "./processLifecycle";
 import { createProcessTerminationController } from "./processTermination";
 import type { CleanupResult } from "../runtime/departmentexecutionidentity";
@@ -48,30 +48,17 @@ type ResolvedSpawnCommand = {
   resolvedCommand: string;
 };
 
-function escapeShellArg(value: string): string {
-  if (value === "") return "''";
-  return `'${value.replace(/'/g, "'\"'\"'")}'`;
-}
-
-function buildShellCommandLine(command: string, args: string[]): string {
-  return [command, ...args].map(escapeShellArg).join(" ");
-}
-
 function resolveSpawnCommand(
   command: string,
   args: string[],
   macTaskShell?: "zsh" | "bash",
 ): ResolvedSpawnCommand | null {
-  const resolved = resolveCliCommand(command);
-  if (resolved) {
-    return { commandToSpawn: resolved.command, argsToSpawn: args, resolvedCommand: resolved.command };
-  }
-  if (process.platform !== "darwin") return null;
-  const shell = macTaskShell === "bash" ? "/bin/bash" : "/bin/zsh";
+  const resolved = createCliProcessPolicy(process.platform).resolve(command, args, { macTaskShell });
+  if (!resolved) return null;
   return {
-    commandToSpawn: shell,
-    argsToSpawn: ["-lc", buildShellCommandLine(command, args)],
-    resolvedCommand: command,
+    commandToSpawn: resolved.command,
+    argsToSpawn: resolved.args,
+    resolvedCommand: resolved.usesShell ? command : resolved.command,
   };
 }
 
@@ -81,13 +68,9 @@ function buildSpawnEnvironment(
   envOverrides?: Record<string, string>,
   generatedEnvOverrides?: Record<string, string>,
 ): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {
-    ...(baseEnvironment ?? process.env),
-    ...(envOverrides ?? {}),
-    ...(generatedEnvOverrides ?? {}),
-  };
-  if (cwd) env.PWD = cwd;
-  return env;
+  return createCliProcessPolicy(process.platform).spawnOptions("", {
+    cwd, syncPwd: true, baseEnvironment, envOverrides, overlayEnvOverrides: generatedEnvOverrides,
+  }).env ?? {};
 }
 
 function spawnResolvedCliProcess(
@@ -97,16 +80,11 @@ function spawnResolvedCliProcess(
   overlayEnvOverrides?: Record<string, string>,
   processLabel?: string,
 ): ReturnType<typeof spawn> {
-  const cwd = input.cwd;
-  const env = buildSpawnEnvironment(cwd, input.baseEnvironment, input.envOverrides, overlayEnvOverrides);
-  return spawn(commandToSpawn, argsToSpawn, {
-    cwd,
-    env: isLoginShellCommand(commandToSpawn) ? stripNvmIncompatibleEnv(env) : env,
-    detached: process.platform !== "win32",
-    windowsHide: true,
-    stdio: [stdin, "pipe", "pipe"],
-    argv0: resolveChildArgv0(commandToSpawn, processLabel),
-  });
+  return spawn(commandToSpawn, argsToSpawn, createCliProcessPolicy(process.platform).spawnOptions(commandToSpawn, {
+    cwd: input.cwd, syncPwd: true, baseEnvironment: input.baseEnvironment,
+    envOverrides: input.envOverrides, overlayEnvOverrides,
+    processLabel, stdio: [stdin, "pipe", "pipe"],
+  }));
 }
 
 function reportMissingCommand(command: string, handlers: CliProcessRuntimeHandlers): void {
@@ -117,11 +95,12 @@ function reportMissingCommand(command: string, handlers: CliProcessRuntimeHandle
 }
 
 export function isCliProcessCommandAvailable(command: string, macTaskShell?: "zsh" | "bash"): Promise<boolean> {
-  if (resolveCliCommand(command)) return Promise.resolve(true);
-  if (process.platform !== "darwin") return Promise.resolve(false);
-  const shellPath = macTaskShell === "bash" ? "/bin/bash" : "/bin/zsh";
-  const child = spawn(shellPath, ["-lc", `command -v ${escapeShellArg(command)} >/dev/null 2>&1`], {
-    env: stripNvmIncompatibleEnv(process.env),
+  const policy = createCliProcessPolicy(process.platform);
+  if (policy.resolve(command, [], { macTaskShell, allowLoginShell: false })) return Promise.resolve(true);
+  const shellPath = policy.loginShell(macTaskShell);
+  if (!shellPath) return Promise.resolve(false);
+  const child = spawn(shellPath, ["-lc", `${buildShellCommandLine("command", ["-v", command])} >/dev/null 2>&1`], {
+    env: policy.spawnOptions(shellPath, { baseEnvironment: process.env, stdio: "ignore" }).env,
     stdio: "ignore",
     windowsHide: true,
   });

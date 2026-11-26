@@ -13,6 +13,7 @@ import {
 } from "./codexAppServerNdjson";
 import { requestChildShutdown } from "./codexRunnerProcess";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import { GrokAcpClient, GrokAcpClientError } from "./grokAcpClient";
 import { isHumanInteractionRejectedErrorInfo } from "../humanInteraction";
 import { GROK_USER_QUESTION_METHOD, isGrokUserQuestionMethod, readGrokUserQuestionResponse } from "./grokUserQuestion";
@@ -205,11 +206,12 @@ export class GrokInteractiveRunner {
     const spawnImpl = this.options.spawnImpl ?? defaultGrokSpawn;
     let child: GrokChild;
     try {
-      child = spawnImpl(resolved.command, resolved.args, {
+      const spawnOptions = createCliProcessPolicy().spawnOptions(resolved.command, {
         cwd: this.options.cwd,
-        env: this.options.env ?? process.env,
-        detached: process.platform !== "win32",
-        windowsHide: true,
+        baseEnvironment: this.options.env ?? process.env,
+      });
+      child = spawnImpl(resolved.command, resolved.args, {
+        cwd: this.options.cwd, env: spawnOptions.env, detached: spawnOptions.detached, windowsHide: true,
       });
     } catch (error) {
       const spawnError = error instanceof Error ? error : new Error(String(error));
@@ -601,11 +603,8 @@ function defaultGrokSpawn(
     windowsHide?: boolean;
   },
 ): GrokChild {
-  return spawn(command, [...args], {
-    cwd: options.cwd,
-    env: options.env,
-    detached: options.detached,
-    windowsHide: options.windowsHide,
+  return spawn(command, [...args], createCliProcessPolicy(options.detached === false ? "win32" : undefined).spawnOptions(command, {
+    cwd: options.cwd, baseEnvironment: options.env, processGroup: options.detached,
     stdio: ["pipe", "pipe", "pipe"],
-  }) as GrokChild;
+  })) as GrokChild;
 }

@@ -8,6 +8,7 @@ import type { SubagentProgressUpdate } from "../subagentProgress";
 import type { TraceMessageKind } from "../traceDisplay";
 import type { ChatMessage } from "../webview/types";
 import type { InteractiveTabRun } from "./promptExecutionShared";
+import type { InteractiveLaunchCli } from "./interactiveLaunchStrategy";
 import type { DshInteractiveLaunch } from "./dshInteractiveLaunch";
 import type { KimiInteractiveLaunch } from "./kimiInteractiveLaunch";
 import type { ZcodeInteractiveLaunch } from "./zcodeInteractiveLaunch";
@@ -18,7 +19,7 @@ import { createKimiCodeInteractiveTurnStrategy } from "./interactiveTurnKimi";
 import { createZcodeInteractiveTurnStrategy } from "./interactiveTurnZcode";
 import { createGrokInteractiveTurnStrategy } from "./interactiveTurnGrok";
 
-export type InteractiveTurnCli = "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode";
+export type InteractiveTurnCli = InteractiveLaunchCli;
 
 export type InteractiveAttemptDisposition = "continue" | "return";
 
@@ -129,7 +130,13 @@ export type InteractiveTurnStrategy = {
   runAttempt(port: InteractiveTurnAttemptPort): Promise<InteractiveAttemptDisposition>;
 };
 
-export function createInteractiveTurnStrategies(): Record<InteractiveTurnCli, InteractiveTurnStrategy> {
+type InteractiveTurnRegistry = Record<InteractiveTurnCli, InteractiveTurnStrategy>;
+
+export function runInteractiveTurn(strategies: InteractiveTurnRegistry, port: InteractiveTurnAttemptPort) {
+  return strategies[port.cli].runAttempt(port);
+}
+
+export function createInteractiveTurnStrategies(): InteractiveTurnRegistry {
   return {
     codex: createCodexInteractiveTurnStrategy(),
     claude: createClaudeInteractiveTurnStrategy(),

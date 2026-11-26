@@ -17,9 +17,10 @@ import { buildDepartmentRolePrompt } from "../departmentprompts";
 import type { DepartmentMetadata } from "../department";
 import type { DepartmentEmployeeCapacity } from "../departmentcapacity";
 import { isDepartmentExecutionCli, normalizeDepartmentMetadata, usesDepartmentOwner } from "../department";
-import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
+import type { LoopPlusFinalAssistantHandoff, PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import { FirstLoopMainExecution } from "./promptRunHandoff";
 import type { ConfigLockResumeRequest } from "./loopGroupChatPanelCoordinator";
+import { CodexUnexpectedTurnExitError } from "../interactive/codexRunner";
 import {
   createLoopPlusOrchestrationHost,
   type LoopPlusAttemptHandle,
@@ -204,6 +205,7 @@ type AttemptExecution = {
   boundary: LoopPlusInvocationBoundary;
   promptInput: PromptRunInput;
   target: LoopPlusPromptTarget;
+  finalHandoff: LoopPlusFinalAssistantHandoff | null;
 };
 
 export function selectLoopPlusInvocationRun(
@@ -238,6 +240,9 @@ export function selectLoopPlusInvocationAssistant(
     }
     const message = messages[index];
     if (!isInvocationAssistant(message, boundary, query, run, duplicates)) {
+      continue;
+    }
+    if (message.kind === "thinking" || message.subagentId) {
       continue;
     }
     return message.content;
@@ -422,6 +427,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     role: "main" | "subtask",
     subtaskId?: string,
     completedRun?: TaskRunRecord | null,
+    finalHandoff?: LoopPlusFinalAssistantHandoff | null,
   ): { run: TaskRunRecord | null; content: string | null } {
     const query: LoopPlusInvocationQuery = {
       taskId: promptInput.loopTaskId ?? "",
@@ -433,12 +439,31 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     };
     const run = completedRun ?? selectLoopPlusInvocationRun(deps.readRuns(), boundary, query);
     if (!run) {
+      deps.log?.("loop-plus-invocation-diagnostic", {
+        stage: "run", code: finalHandoff ? "terminal-produced-run-missing" : "unknown",
+      });
       return { run: null, content: null };
     }
-    return {
-      run,
-      content: selectLoopPlusInvocationAssistant(deps.getMessages(target), boundary, query, run),
-    };
+    const handoff = finalHandoff;
+    const handoffContent = handoff && handoff.runId === run.id && handoff.sessionId === run.sessionId
+      && handoff.taskId === query.taskId && handoff.round === query.round && handoff.role === "main"
+      && query.role === "main" && handoff.attemptId === query.attemptId
+      && handoff.content.trim().length > 0 ? handoff.content : null;
+    const projectedContent = handoff ? null : selectLoopPlusInvocationAssistant(deps.getMessages(target), boundary, query, run);
+    if (handoff && handoffContent === null) {
+      deps.log?.("loop-plus-invocation-diagnostic", { stage: "handoff", code: "identity-rejected" });
+    }
+    if (handoffContent !== null) {
+      deps.log?.("loop-plus-invocation-diagnostic", { stage: "projection", code: "authoritative-handoff-used" });
+    } else if (run.status === "end" && projectedContent === null) {
+      deps.log?.("loop-plus-invocation-diagnostic", { stage: "projection", code: "terminal-content-unknown" });
+    }
+    if (run.status !== "end") {
+      deps.log?.("loop-plus-invocation-diagnostic", {
+        stage: "run", code: run.status === "stopped" ? "cancelled" : "run-error-unknown",
+      });
+    }
+    return { run, content: handoff ? handoffContent : projectedContent };
   }
 
   async function runInvocation(
@@ -457,6 +482,14 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       attemptId: promptInput.loopAttemptId,
     };
     let completedRun: TaskRunRecord | null = null;
+    let finalHandoff: LoopPlusFinalAssistantHandoff | null = null;
+    if (role === "main" && promptInput.taskRole === "main" && promptInput.loopTaskId && !promptInput.loopAsk) {
+      promptInput.loopPlusFinalAssistantHandoff = (value) => {
+        if (options.isAborted() || value.taskId !== query.taskId || value.round !== query.round
+          || value.role !== query.role || value.attemptId !== query.attemptId || !value.content.trim()) return;
+        finalHandoff = value;
+      };
+    }
     const unsubscribe = deps.subscribeRunCompletion?.((run) => {
       if (isInvocationRun(run, boundary, { ...query, displayPrompt: promptInput.displayPrompt })) {
         completedRun = run;
@@ -503,15 +536,24 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       } else {
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
       }
-      return { thrown: false, error: null, completedRun, boundary, promptInput, target };
+      return { thrown: false, error: null, completedRun, boundary, promptInput, target, finalHandoff };
     } catch (error) {
+      const errorCode = error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code ?? "") : "";
+      const diagnosticCode = options.isAborted() ? "cancelled"
+        : error instanceof CodexUnexpectedTurnExitError ? "early-exit"
+          : ["ECONNRESET", "EPIPE", "ETIMEDOUT"].includes(errorCode) ? "transport-interrupted" : "unknown";
+      deps.log?.("loop-plus-invocation-diagnostic", {
+        stage: "execution", code: diagnosticCode,
+      });
       if (role === "main" && !options.firstMainExecution && usesDepartmentOwner(deps.readTask(promptInput.loopTaskId ?? "")?.department)) {
         const unknown = new Error(error instanceof Error ? error.message : String(error)) as Error & { code: string; cause: unknown };
         unknown.code = "DEPARTMENT_NATIVE_UNKNOWN"; unknown.cause = error;
-        return { thrown: true, error: unknown, completedRun, boundary, promptInput, target };
+        return { thrown: true, error: unknown, completedRun, boundary, promptInput, target, finalHandoff };
       }
-      return { thrown: true, error, completedRun, boundary, promptInput, target };
+      return { thrown: true, error, completedRun, boundary, promptInput, target, finalHandoff };
     } finally {
+      delete promptInput.loopPlusFinalAssistantHandoff;
       removePreparationAbort?.();
       unsubscribe?.();
     }
@@ -521,6 +563,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const trace = deps.createPerformanceTrace?.("loop_plus", request.target.cli, "main");
     const firstMainExecution = request.firstMainExecution;
     let aborted = false;
+    let cancelled = false;
     const departmentMain = usesDepartmentOwner(deps.readTask(request.taskId)?.department);
     const controller = departmentMain || firstMainExecution || request.canSendAutoResumedMain ? new AbortController() : undefined;
     let invocationStarted = false;
@@ -575,14 +618,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           firstMainExecution.finishBeforeAdmission(aborted, execution.thrown ? execution.error : undefined);
           return null;
         }
-        const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun);
+        const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun, execution.finalHandoff);
+        cancelled = invocation.run?.status === "stopped";
         if (execution.thrown) {
-          if (aborted || invocation.run?.status === "stopped") {
+          if (aborted || cancelled) {
             return null;
           }
           throw execution.error;
         }
-        if (aborted || invocation.run?.status === "stopped" || invocation.run?.status !== "end") {
+        if (aborted || invocation.run?.status !== "end") {
           return null;
         }
         return invocation.content;
@@ -593,7 +637,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       }
     })();
     const measuredInvocation = trace?.measure("main-turn", () => invocation,
-      (result) => result === null ? (aborted ? "stopped" : "failed") : "returned") ?? invocation;
+      (result) => result === null ? (aborted || cancelled ? "stopped" : "failed") : "returned") ?? invocation;
     const promise = firstMainExecution ? measuredInvocation.catch(async (error) => {
       if (firstMainExecution.admitted) throw error;
       firstMainExecution.finishBeforeAdmission(aborted, error);
@@ -607,6 +651,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     return {
       promise,
       hasStarted: () => invocationStarted,
+      wasCancelled: () => aborted || cancelled,
       wasUnexpectedlyInterrupted: () => !aborted && interruptedNativeSessionId !== undefined,
       getInterruptedNativeSessionId: () => aborted ? undefined : interruptedNativeSessionId,
       abort: () => {
@@ -751,9 +796,14 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }
         // Legacy leases retain their old release behavior; department leases require all proofs above.
         if (cleanupFailed && !departmentLease) {
+          let releaseDetail: string | undefined;
           try { lease?.release(); } catch (error) {
             observeLateFailure("loop-attempt-lease-release-failed", error);
-            result = { outcome: "failed", detail: [result.detail, `执行准入租约释放失败：${errorDetail(error)}`].filter(Boolean).join("\n") };
+            releaseDetail = `执行准入租约释放失败：${errorDetail(error)}`;
+          }
+          if (result.outcome === "failed" || releaseDetail !== undefined) {
+            result = { outcome: "failed", detail: [result.detail, `执行清理未核验：${errorDetail(cleanupFailure)}`, releaseDetail]
+              .filter(Boolean).join("\n") };
           }
         }
         settled = true;
@@ -1053,6 +1103,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         "subtask",
         request.subtaskId,
         rootResult.value.completedRun,
+        rootResult.value.finalHandoff,
       );
       if (!aborted) {
         persistSession();

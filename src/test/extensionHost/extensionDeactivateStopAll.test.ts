@@ -27,7 +27,11 @@ test("deactivate routes through stopAllRuns after blocking new runs", () => {
   assert.doesNotMatch(deactivateSource, /loopAutoWakeScheduler/u);
   assert.match(deactivateSource, /stopAllRuns\(\);/u);
   assert.ok(deactivateSource.indexOf("isExtensionDeactivating = true;") < deactivateSource.indexOf("stopAllRuns();"));
-  assert.ok(deactivateSource.indexOf("stopAllRuns();") < deactivateSource.indexOf("await ownerClosed"));
+  assert.ok(deactivateSource.indexOf("departmentRuntimeComposition?.dispose()") < deactivateSource.indexOf("stopAllRuns();"));
+  assert.ok(deactivateSource.indexOf("stopAllRuns();") < deactivateSource.indexOf("await departmentShutdown"));
+  assert.ok(deactivateSource.indexOf("await departmentShutdown") < deactivateSource.indexOf("departmentOwnershipIndex?.close()"));
+  assert.match(deactivateSource, /if \(departmentDrained === false\) \{\s*await logError\("department-owner-close-blocked", \{ reason: "department-shutdown-drain-unconfirmed" \}\);\s*return;/u);
+  assert.ok(deactivateSource.indexOf("departmentOwnershipIndex?.close()") < deactivateSource.indexOf("await ownerClosed"));
 });
 
 test("stopAllRuns covers active, parallel, interactive, and managed runners", () => {

@@ -3,9 +3,47 @@ import { test } from "node:test";
 import * as vm from "node:vm";
 
 import { getWebviewStrings } from "../../webview/viewContentStrings";
+import { renderAcceptancePlanDialogs } from "../../webview/acceptancePlanDialog";
 import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "../../webview/viewContentScript/acceptancePlan";
 import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE } from "../../webview/viewContentScript/runStreamAndQueue";
+
+test("shared acceptance-plan dialog keeps the fixed baseline first and 其它 last after security", () => {
+  const strings = getWebviewStrings();
+  const html = renderAcceptancePlanDialogs({
+    title: strings.acceptancePlanTitle,
+    close: strings.acceptancePlanClose,
+    planAria: strings.acceptancePlanPlanAria,
+    savePlan: strings.acceptancePlanSavePlan,
+    deletePlan: strings.acceptancePlanDeletePlan,
+    deleteTitle: strings.acceptancePlanDeleteTitle,
+    deleteDesc: strings.acceptancePlanDeleteDesc,
+    deleteConfirm: strings.acceptancePlanDeleteConfirm,
+    namePlaceholder: strings.acceptancePlanNamePlaceholder,
+    baselineTitle: strings.acceptancePlanBaselineTitle,
+    baselineHint: strings.acceptancePlanBaselineHint,
+    maintainability: strings.acceptancePlanCheckMaintainability,
+    performance: strings.acceptancePlanCheckPerformance,
+    ui: strings.acceptancePlanCheckUiAesthetics,
+    other: strings.acceptancePlanOtherLabel,
+    otherTextPlaceholder: strings.acceptancePlanOtherTextPlaceholder,
+    security: strings.acceptancePlanCheckSecurity,
+    confirm: strings.acceptancePlanConfirm,
+    saveNameTitle: strings.acceptancePlanSaveNameTitle,
+    saveNameDesc: strings.acceptancePlanSaveNameDesc,
+    saveNameLabel: strings.acceptancePlanSaveNameLabel,
+    saveNamePlaceholder: strings.acceptancePlanSaveNamePlaceholder,
+    saveNameConfirm: strings.acceptancePlanSaveNameConfirm,
+  });
+  const baselineIndex = html.indexOf("acceptancePlanBaselineCheck");
+  const labels = ["acceptancePlanCheckMaintainability", "acceptancePlanCheckPerformance", "acceptancePlanCheckUi", "acceptancePlanCheckSecurity", "acceptancePlanCheckOther"];
+  assert.ok(baselineIndex >= 0 && baselineIndex < html.indexOf(labels[0]));
+  assert.ok(labels.every((label, index) => html.indexOf(label) < (labels[index + 1] ? html.indexOf(labels[index + 1]) : Infinity)));
+  assert.match(html, /data-acceptance-check="ui_aesthetics"[\s\S]*?用户体验审查/);
+  assert.ok(html.indexOf("acceptancePlanOtherField") > html.indexOf("acceptancePlanCheckOther"));
+  assert.ok(html.indexOf("acceptancePlanOtherField") > html.indexOf("acceptancePlanCheckOther"));
+  assert.ok(html.indexOf("acceptancePlanOtherField") < html.indexOf("<div id=\"acceptancePlanError\""));
+});
 
 type FakeClassList = {
   add: (...tokens: string[]) => void;
@@ -653,7 +691,7 @@ test("cancelling the dialog sends nothing and never clears the composer", () => 
   assert.equal(promptInput, null);
 });
 
-test("confirming sends exactly once with the snapshot attached", () => {
+test("confirming sends exactly once with normalized option order and the snapshot attached", () => {
   const harness = createHarness();
   harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
   harness.dom.acceptancePlanCheckSecurity.checked = true;

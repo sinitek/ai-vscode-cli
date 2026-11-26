@@ -207,9 +207,19 @@ def install_staging_node_modules(staging: Path) -> None:
     run_process([npm, "install", "--no-fund", "--no-audit", "--ignore-scripts"], cwd=staging)
 
 
+def remove_self_referencing_node_modules_link(root: Path) -> None:
+    node_modules = root / "node_modules"
+    nested = node_modules / "node_modules"
+    if not nested.is_symlink() or not nested.exists() or not nested.samefile(node_modules):
+        return
+    nested.unlink()
+    print("已移除误建的自引用符号链接 node_modules/node_modules，已安装的依赖未改动。", flush=True)
+
+
 def package_vsix(target: str, out_file: Path, ignore_file: Path | None) -> None:
     out_file.parent.mkdir(parents=True, exist_ok=True)
     print(f"Building VS Code extension and exporting to {out_file} ...", flush=True)
+    remove_self_referencing_node_modules_link(ROOT_DIR)
     if workspace_has_pnpm_node_modules(ROOT_DIR):
         print("当前 node_modules 不是 npm 布局。vsce 会执行 npm list，改为在临时目录安装后再打包。", flush=True)
         with tempfile.TemporaryDirectory(prefix="sinitek-vsix-pack-") as temporary:

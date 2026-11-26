@@ -18,6 +18,7 @@ import {
   readAcpSessionUpdateBody,
   readAcpUpdateSessionId,
 } from "./acpSessionProtocol";
+import { planProcessTreeStop } from "../cli/processTermination";
 
 export const KIMI_ACP_PROTOCOL_VERSION = 1;
 export const KIMI_ACP_SUBCOMMAND = "acp";
@@ -739,13 +740,8 @@ export function planKimiProcessTreeStop(
   pid: number,
   stage: "initial" | "escalate" = "initial",
 ): KimiProcessStopStep | null {
-  if (!Number.isInteger(pid) || pid <= 0) {
-    return null;
-  }
-  if (platform === "win32") {
-    return stage === "initial" ? { kind: "taskkill", args: ["/PID", String(pid), "/T", "/F"] } : null;
-  }
-  return { kind: "signal", signal: stage === "initial" ? "SIGTERM" : "SIGKILL" };
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  return planProcessTreeStop(platform, pid, stage);
 }
 
 export function redactKimiDiagnostic(text: string, env?: NodeJS.ProcessEnv): string {

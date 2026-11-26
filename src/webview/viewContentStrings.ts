@@ -204,7 +204,7 @@ export const WEBVIEW_STRINGS = {
     acceptancePlanCheckMaintainability: "代码可维护性审查",
     acceptancePlanCheckSecurity: "安全审查",
     acceptancePlanCheckPerformance: "性能审查",
-    acceptancePlanCheckUiAesthetics: "UI 美观度审查",
+    acceptancePlanCheckUiAesthetics: "用户体验审查",
     acceptancePlanOtherLabel: "其它",
     acceptancePlanOtherTextPlaceholder: "审查内容",
     acceptancePlanOtherTextRequired: "已勾选“其它”，请填写审查内容。",

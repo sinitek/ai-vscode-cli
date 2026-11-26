@@ -4,12 +4,15 @@ import assert = require("node:assert/strict");
 import {
   type LoopPlusAcceptancePlanSnapshot,
   LOOP_PLUS_ACCEPTANCE_PLAN_MAX_COUNT,
+  LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_KEYS,
+  LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_DEFINITIONS,
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_ID,
   LOOP_PLUS_SYSTEM_ACCEPTANCE_PLAN_NAME,
   buildLoopPlusAcceptancePlanFeedbackSection,
   buildLoopPlusAcceptanceFeedbackSection,
   buildLoopPlusAcceptancePlanPromptLines,
   buildLoopPlusAcceptancePlanPromptSection,
+  listLoopPlusAcceptancePlanFeedbackItems,
   buildSystemLoopPlusAcceptancePlan,
   buildSystemLoopPlusAcceptancePlanSnapshot,
   createLoopPlusAcceptancePlanId,
@@ -52,8 +55,22 @@ test("system default plan is built in, named 系统默认, and carries no option
   });
 });
 
-test("check normalization never adds the fixed baseline and accepts legacy boolean maps", () => {
-  assert.deepEqual(normalizeLoopPlusAcceptancePlanChecks(["security", "other"]), ["security", "other"]);
+test("check normalization preserves legacy selections and follows the six-check review order", () => {
+  assert.deepEqual(LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_KEYS, ["maintainability", "performance", "ui_aesthetics", "security", "other"]);
+  assert.deepEqual(normalizeLoopPlusAcceptancePlanChecks(["security", "other", "ui_aesthetics"]), ["ui_aesthetics", "security", "other"]);
+  assert.deepEqual(normalizeLoopPlusAcceptancePlanChecks({ ui_aesthetics: true, security: true, other: true }), ["ui_aesthetics", "security", "other"]);
+  assert.equal(LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_DEFINITIONS.find(({ key }) => key === "ui_aesthetics")?.label, "用户体验审查");
+  const legacySnapshot = normalizeLoopPlusAcceptancePlanSnapshot({
+    id: "legacy", name: "旧方案", checks: ["security", "ui_aesthetics"], otherText: "", systemDefault: false,
+  });
+  assert.deepEqual(legacySnapshot.checks, ["security", "ui_aesthetics"]);
+  assert.deepEqual(listLoopPlusAcceptancePlanFeedbackItems(legacySnapshot).map(({ key }) => key), ["security", "ui_aesthetics"]);
+  const legacyFeedback = buildLoopPlusAcceptancePlanFeedbackSection(legacySnapshot, [
+    { key: "security", passed: true, reason: "旧安全结论" },
+    { key: "ui_aesthetics", passed: true, reason: "旧体验结论" },
+  ]);
+  assert.ok(legacyFeedback);
+  assert.ok(legacyFeedback.body.indexOf("| 安全审查 |") < legacyFeedback.body.indexOf("| 用户体验审查 |"));
   assert.deepEqual(normalizeLoopPlusAcceptancePlanChecks(["baseline", "unknown"]), []);
   assert.deepEqual(
     normalizeLoopPlusAcceptancePlanChecks({ maintainability: true, security: false, performance: true }),
@@ -118,12 +135,12 @@ test("旧默认方案迁移为新建方案并保留内容、稳定标识及时�
   const legacy = plan({
     id: "plan-legacy",
     name: " 默认方案 ",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "检查鉴权边界",
     updatedAt: 42,
   });
   const migrated = normalizeLoopPlusAcceptancePlans([legacy]);
-  assert.deepEqual(migrated, [{ ...legacy, name: "新建方案" }]);
+  assert.deepEqual(migrated, [{ ...legacy, name: "新建方案", checks: ["other", "security"] }]);
   assert.equal(resolveLoopPlusAcceptancePlanSelectionId(legacy.id, migrated), legacy.id);
   assert.deepEqual(normalizeLoopPlusAcceptancePlans(migrated), migrated);
   assert.equal(legacy.name, " 默认方案 ");
@@ -187,7 +204,7 @@ test("creating a plan needs a unique trimmed name and keeps 其它 validation", 
   const created = upsertLoopPlusAcceptancePlan({
     plans: base,
     name: "  新方案  ",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "  检查鉴权边界  ",
     now: 1234,
   });
@@ -289,13 +306,13 @@ test("snapshots fall back to the baseline when missing, corrupt, or legacy", () 
   const custom = normalizeLoopPlusAcceptancePlanSnapshot({
     id: "plan-a",
     name: "A",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "  review  ",
   });
   assert.deepEqual(custom, {
     id: "plan-a",
     name: "A",
-    checks: ["security", "other"],
+    checks: ["other", "security"],
     otherText: "review",
     systemDefault: false,
   });
@@ -318,7 +335,7 @@ test("empty snapshots add no prompt lines at all", () => {
   assert.equal(buildLoopPlusAcceptancePlanPromptSection(undefined), "");
 });
 
-test("prompt lines inject only selected checks plus valid 其它 content", () => {
+test("prompt lines inject reviews and user content in the shared order", () => {
   const lines = buildLoopPlusAcceptancePlanPromptLines({
     id: "plan-a",
     name: "上线前加严",
@@ -335,9 +352,22 @@ test("prompt lines inject only selected checks plus valid 其它 content", () =>
   assert.match(text, /evidence backed|backed by evidence/);
   assert.match(text, /User-supplied review content/);
   assert.match(text, /确认审计日志不写入密钥/);
+  assert.ok(text.indexOf("Security review:") < text.indexOf("User-supplied review content"));
   assert.doesNotMatch(text, /Maintainability review/);
   assert.doesNotMatch(text, /Performance review/);
-  assert.doesNotMatch(text, /UI aesthetics review/);
+  assert.doesNotMatch(text, /User experience review/);
+  assert.doesNotMatch(text, /conflicting dimension only|ui_aesthetics/);
+});
+
+test("legacy task snapshots retain persisted order in prompts and feedback", () => {
+  const snapshot = normalizeLoopPlusAcceptancePlanSnapshot({
+    id: "legacy-order", name: "旧方案", checks: ["other", "security"],
+    otherText: "历史要求", systemDefault: false,
+  });
+  assert.deepEqual(snapshot.checks, ["other", "security"]);
+  const prompt = buildLoopPlusAcceptancePlanPromptLines(snapshot);
+  assert.ok(prompt.indexOf("User-supplied review content") < prompt.findIndex((line) => line.includes("Security review:")));
+  assert.deepEqual(listLoopPlusAcceptancePlanFeedbackItems(snapshot).map(({ key }) => key), ["other", "security"]);
 });
 
 test("acceptance feedback lists every selected item only when each verdict is present", () => {
@@ -348,6 +378,7 @@ test("acceptance feedback lists every selected item only when each verdict is pr
     otherText: "确认审计日志不写入密钥",
     systemDefault: false,
   };
+  assert.deepEqual(listLoopPlusAcceptancePlanFeedbackItems(snapshot).map(({ key }) => key), ["security", "other"]);
   assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, null), null);
   assert.equal(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, [
     { key: "security", passed: true },
@@ -365,9 +396,30 @@ test("acceptance feedback lists every selected item only when each verdict is pr
   assert.match(section?.body ?? "", /\| 审查内容 \| 审查结果 \|/);
   assert.match(section?.body ?? "", /\| 安全审查 \| ❌ 错误日志仍输出明文令牌 \|/);
   assert.match(section?.body ?? "", /\| 其它 \| ✅ 审计日志已脱敏，未写入密钥 \|/);
+  assert.ok((section?.body ?? "").indexOf("| 安全审查 |") < (section?.body ?? "").indexOf("| 其它 |"));
   assert.doesNotMatch(section?.body ?? "", /审查内容：/);
   assert.doesNotMatch(section?.body ?? "", /代码可维护性审查/);
   assert.doesNotMatch(section?.body ?? "", /^- /mu);
+});
+
+test("legacy ui_aesthetics selection requests evidence and limits exceptions to explicit user intent", () => {
+  const snapshot: LoopPlusAcceptancePlanSnapshot = {
+    id: "legacy", name: "旧方案", checks: ["ui_aesthetics"], otherText: "", systemDefault: false,
+  };
+  const prompt = buildLoopPlusAcceptancePlanPromptLines(snapshot).join("\n");
+  assert.match(prompt, /by default, judge from actual evidence whether visuals and terminology are consistent/);
+  assert.match(prompt, /explicit requirement from the user's original or supplemental request applies to the current delivery and conflicts with a default UX convention/);
+  assert.match(prompt, /follow that requirement for the conflicting dimension only/);
+  assert.match(prompt, /Do not infer authorization from unrelated notes, subtask reports, or vague preferences/);
+  assert.match(prompt, /distinctive page style, do not fail it merely for looking different; judge from actual evidence whether it achieves the requested style/);
+  assert.match(prompt, /Name the exception and explain why it applies/);
+  assert.match(prompt, /Keep reviewing all other applicable dimensions, including keyboard operation, feedback, error recovery, and narrow-width readability/);
+  assert.match(prompt, /evidence-backed conclusion for the selected ui_aesthetics result/);
+  assert.match(prompt, /Explicitly identify any aspects not covered and why; do not treat an exception or missing evidence as verification/);
+  assert.match(prompt, /For all remaining cases include a result for every selected key: ui_aesthetics\./);
+  assert.match(buildLoopPlusAcceptancePlanFeedbackSection(snapshot, [
+    { key: "ui_aesthetics", passed: true, reason: "沿用旧键并有对应检查证据" },
+  ])?.body ?? "", /用户体验审查/);
 });
 
 test("acceptance feedback includes full default and per-event evidence", () => {
@@ -393,14 +445,14 @@ test("acceptance feedback includes full default and per-event evidence", () => {
   assert.equal(reasons.length, 2);
   const longReason = "证据说明".repeat(30);
   const longSection = buildLoopPlusAcceptanceFeedbackSection({
-    snapshot: { id: "plan-a", name: "加严", checks: ["security", "performance"], otherText: "", systemDefault: false },
+    snapshot: { id: "plan-a", name: "加严", checks: ["performance", "security"], otherText: "", systemDefault: false },
     planResults: [
       { key: "performance", passed: true, reason: longReason },
       { key: "security", passed: false, reason: "安全边界仍有风险" },
     ],
   });
   assert.match(longSection?.body ?? "", new RegExp(longReason));
-  assert.ok((longSection?.body ?? "").indexOf("安全审查") < (longSection?.body ?? "").indexOf("性能审查"));
+  assert.ok((longSection?.body ?? "").indexOf("性能审查") < (longSection?.body ?? "").indexOf("安全审查"));
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "passed" }],
   }), null);

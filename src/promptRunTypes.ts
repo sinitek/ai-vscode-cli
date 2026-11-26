@@ -4,7 +4,18 @@ import type { LoopTaskRole } from "./promptRunState";
 import type { ConversationExecutionProfile } from "./webview/types";
 import type { LoopPlusAcceptancePlanSnapshot } from "./loopPlusAcceptancePlan";
 
+export type LoopPlusFinalAssistantHandoff = {
+  runId: string;
+  sessionId: string | null;
+  taskId: string;
+  round: number;
+  role: "main";
+  attemptId?: string;
+  content: string;
+};
+
 export type PromptRunInput = {
+  loopPlusFinalAssistantHandoff?: (handoff: LoopPlusFinalAssistantHandoff) => void;
   loopPlusMainRuntime?: {
     onUnexpectedExit: (nativeSessionId: string) => void;
     recovery?: {

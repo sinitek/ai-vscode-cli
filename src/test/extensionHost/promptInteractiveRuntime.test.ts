@@ -20,6 +20,8 @@ import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import type { ConversationTabRecord } from "../../sessionTabs";
 import * as logger from "../../logger";
 import { createVibeCompactionQueueFixture } from "./fixtures/vibeCompactionQueueFixture";
+import { createLoopPlusRuntimeFixture } from "./fixtures/loopPlusRuntimeFixture";
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 
 
 installVscodeMock();
@@ -637,6 +639,67 @@ test("Loop+ interruption callback accepts only a typed unexpected exit from the 
   }
 });
 
+test("interactive main reports only its completed final assistant as a Loop+ handoff", async () => {
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps,
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta('{"status":"completed"}', { codexFinalAnswer: true });
+    } });
+  const handoffs: unknown[] = [];
+  await harness.host.runPromptInteractive(createPromptInput({ taskRole: "main", loopTaskId: "task-bound",
+    loopRound: 7, loopAttemptId: "attempt-bound", loopPlusFinalAssistantHandoff: (handoff) => handoffs.push(handoff) }), createTarget());
+  assert.equal(handoffs.length, 1);
+  assert.deepEqual(handoffs[0], {
+    runId: harness.taskRecords[0].id,
+    sessionId: "session-1",
+    taskId: "task-bound",
+    round: 7,
+    role: "main",
+    attemptId: "attempt-bound",
+    content: '{"status":"completed"}',
+  });
+});
+
+test("same interactive main call hands its terminal to Loop+ validation without projection or retry", async () => {
+  const terminal = JSON.stringify({ status: "completed", answerConclusion: "same call",
+    finalSummary: "first-pass validation", acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    requirementCoverage: [{ name: "scope", passed: true }] });
+  let calls = 0;
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps,
+    codexRunBehavior: async (_prompt, handlers) => {
+      calls++;
+      handlers.onAssistantDelta(terminal, { codexFinalAnswer: true });
+    } });
+  let taskId = "";
+  const fixture = createLoopPlusRuntimeFixture({ readRuns: () => harness.taskRecords, runPromptOverride: async (input, options) => {
+    taskId = input.loopTaskId!;
+    await harness.host.runPromptInteractive(input, { tabId: options!.targetTabId!, cli: "codex", sessionId: "session" });
+  } });
+  try {
+    assert.equal(await fixture.adapter.runEventDriven({ displayPrompt: "validate the completed work", modelPrompt: "validate the completed work",
+      contextTags: [] }, { schedulingMode: "event_driven" }, fixture.target), true);
+    assert.equal(calls, 1);
+    assert.equal(harness.taskRecords[0]?.status, "end");
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.getMessages(fixture.target.tabId).some((message) => message.role === "assistant"), false);
+    assert.ok(fixture.logs.some((entry) => entry.event === "loop-plus-invocation-diagnostic"
+      && (entry.detail as { code?: string }).code === "authoritative-handoff-used"));
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("interactive Loop+ refuses a native final marker when a later assistant message is selected", async () => {
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps,
+    codexRunBehavior: async (_prompt, handlers) => {
+      handlers.onAssistantDelta('{"status":"completed"}', { codexFinalAnswer: true, assistantItemId: "final-item" });
+      handlers.onAssistantDelta("ordinary later message", { assistantItemId: "later-item" });
+    } });
+  const handoffs: unknown[] = [];
+  await harness.host.runPromptInteractive(createPromptInput({ taskRole: "main", loopTaskId: "task-bound",
+    loopRound: 7, loopAttemptId: "attempt-bound", loopPlusFinalAssistantHandoff: (handoff) => handoffs.push(handoff) }), createTarget());
+  assert.deepEqual(handoffs, []);
+});
+
 test("original Codex session admission does not commit after a preparation-time rebind or new owner", async () => {
   for (const drift of ["rebind", "occupied"] as const) {
     const preparing = createDeferred();
@@ -993,6 +1056,84 @@ test("ZCode default config is resolved before launch and its runner completes th
   assert.ok(harness.panelMessages.some((message) => message.type === "zcodeThinkingOptions" && message.currentValue === "high"));
   assert.equal(harness.activeRunsByTabId.size, 0);
 });
+
+for (const replaceRun of [false, true]) {
+  test(`ZCode startup runner replacement ${replaceRun ? "preserves the new run" : "ends the original run as an error"}`, async (context) => {
+    const starting = createDeferred();
+    const releaseStart = createDeferred();
+    const settings = { model: null, thinkingOptions: [] };
+    const runner = {
+      start: context.mock.fn(async () => {
+        starting.resolve();
+        await releaseStart.promise;
+        return { sessionId: "sess_late", usage: { tokensInContextWindow: 240, modelContextWindow: 128_000 } };
+      }),
+      getSettings: () => settings,
+      setModel: context.mock.fn(async () => {}),
+      cancelTurn: context.mock.fn(),
+      prompt: context.mock.fn(async () => ({ text: "不应发送", usage: null })),
+    };
+    const replacementRunner = { cancelTurn: context.mock.fn() };
+    const target = createTarget({ cli: "zcode", sessionId: "local_zcode" });
+    const runners = new Map<string, unknown>([[target.sessionId!, runner]]);
+    const setRunner = context.mock.fn();
+    const detachRunner = context.mock.fn();
+    const harness = createInteractiveRuntimeHarness({
+      selectedModel: null,
+      runtimeDeps: {
+        resolveZcodeModelWireForRun: async () => "provider/model",
+        prepareZcodeInteractiveLaunch: async () => ({ agentArgs: [], env: {}, modeId: "yolo", modelRef: null, thinkingValue: null }),
+        getInteractiveRunnerManager: () => ({
+          waitForPendingDisposal: async () => {},
+          getOrCreateZcodeRunner: () => runner,
+          hasZcodeRunner: (key: string, candidate: unknown) => runners.get(key) === candidate,
+          setRunner,
+          detachRunner,
+        }) as unknown as InteractiveRunnerManager,
+      },
+    });
+    const pending = harness.host.runPromptInteractive(createPromptInput(), target);
+    await starting.promise;
+    const oldEntry = harness.activeRunsByTabId.get(target.tabId)!;
+    assert.ok(oldEntry);
+    runners.set(target.sessionId!, replacementRunner);
+    const replacementEntry = { ...oldEntry, runId: "replacement-run", sessionId: "sess_replacement", stop: context.mock.fn(), messageTarget: [] };
+    if (replaceRun) {
+      harness.activeRunsByTabId.set(target.tabId, replacementEntry);
+      harness.tabs.get(target.tabId)!.sessionId = replacementEntry.sessionId;
+    }
+    releaseStart.resolve();
+    if (replaceRun) {
+      await pending;
+      assert.equal(harness.activeRunsByTabId.get(target.tabId), replacementEntry);
+      assert.equal(harness.tabs.get(target.tabId)?.sessionId, "sess_replacement");
+      assert.deepEqual(replacementEntry.messageTarget, []);
+      assert.equal(replacementEntry.stop.mock.callCount(), 0);
+      assert.deepEqual(harness.runStatusEvents.map(({ status }) => status), ["start"]);
+      assert.deepEqual(harness.taskRecords, []);
+    } else {
+      await assert.rejects(pending, { code: "RUNNER_DISPOSED" });
+      assert.equal(harness.activeRunsByTabId.has(target.tabId), false);
+      assert.deepEqual(harness.runStatusEvents.map(({ status }) => status), ["start", "error"]);
+      assert.deepEqual(harness.taskRecords.map(({ status }) => status), ["error"]);
+    }
+    assert.equal(harness.panelMessages.some((payload) => {
+      const message = payload.message as ChatMessage | undefined;
+      return payload.type === "appendMessage" && payload.tabId === target.tabId && message?.role === "system"
+        && message.content === "ZCode 启动期间，当前运行已失效或运行器已被替换。";
+    }), !replaceRun);
+    assert.equal(runners.get(target.sessionId!), replacementRunner);
+    assert.equal(runner.start.mock.callCount(), 1);
+    assert.equal(runner.prompt.mock.callCount(), 0);
+    assert.equal(runner.setModel.mock.callCount(), 0);
+    for (const untouched of [runner.cancelTurn, replacementRunner.cancelTurn, setRunner, detachRunner]) {
+      assert.equal(untouched.mock.callCount(), 0);
+    }
+    assert.deepEqual(harness.mappingUpserts, []);
+    assert.deepEqual(harness.adoptedSessions, []);
+    assert.equal(harness.panelMessages.some(({ type }) => type === "contextTokenUsage"), false);
+  });
+}
 
 test("interactive streaming resolves its message by identity after earlier bubbles are deleted", async () => {
   const harness = createInteractiveRuntimeHarness({

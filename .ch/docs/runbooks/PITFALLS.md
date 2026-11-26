@@ -678,6 +678,12 @@
 - `.vscodeignore`
 - `.ch/docs/runbooks/local-development.md`
 
+## npm 布局中的自引用符号链接也会让 VSIX 导出误报缺依赖
+
+- 症状：`npm run build` 成功，随后导出报 `ELSPROBLEMS`，同时出现多个已安装依赖 `missing` 和 `extraneous: node_modules@ .../node_modules/node_modules`。
+- 先确认嵌套的 `node_modules/node_modules` 是否是指回外层 `node_modules` 的符号链接；这与 pnpm 布局不同。导出脚本会在调用 vsce 前只移除这一确认自引用的链接，不删除目录或重装依赖。
+- 最小验证：对照执行 `npm list --production --parseable --depth=99999 --loglevel=error`；如果仍失败，查看剩余 npm 报错，不要跳过生产依赖收集。
+
 ## 不能在 pnpm 的 node_modules 上执行 npm install
 
 - 状态：已规避
@@ -3089,3 +3095,13 @@ rm -r "$result_directory"
 
 - 在同一根与组长代次下关联 `department-employee-capacity` 的 `retained/evidence-rejected` 和随后组长 `leader-member-not-running` 事件。`DEPARTMENT_NATIVE_UNKNOWN / department-producer-no-live-generation` 是后果，不一定是本次组长调用的 CLI 故障。
 - Owner 状态 `cleanup-failed` 且无回执只证明清理未确认，不能据此推断哪条清理事实失败或伪造旧任务已可继续。现在新组织复用普通 Loop+；对旧任务保留原记录，不通过补回执或自动重跑解除阻塞。
+
+## 部门 Owner 共享身份锁短暂争用会使 Loop 任务不可读
+
+- 现象：产研部 Loop 轮次追加失败，随后群聊操作提示“未找到 Loop 任务”；总监或组长任务/容量快照仍显示 `running`，但 Owner 路由已不可用。
+- 根因与边界：普通更新原先对共享 `transaction.lock` 有界重试，部门 Owner 写入在抢锁 `EEXIST` 时立即失败；Owner 仓储会 fail closed，因此瞬时争用可让后续受控读取全部返回空。本次历史日志没有记录第一次 owner commit 的内部失败原因，故不能断言 2026-11-25 的具体追加失败一定由锁争用触发。
+- 修复：Owner 仅对确认的共享锁 `EEXIST` 等待最多 100ms、最多重试三次；持续锁、损坏 catalog、实际写入失败或发布未确认仍拒绝。不会按 PID、mtime 或年龄清锁，也不会自动恢复已经封闭的历史 Owner。
+- 排查：按同一 task ID 和时间关联 `loop-main-round-run-error`、`loop-task-owner-route-rejected`、`department-task-route-rejected`、`loop-task-owner-write-contention-resolved` / `loop-task-owner-write-contention-rejected`、`department-capacity-persist-failed` 与 `department-lifecycle-persistence-failed`。新日志仅包含操作、固定原因类别、重试次数和耗时；不含任务正文、会话或路径。
+- 停机时先停止并等待部门执行器排空，再撤销 Owner 路由。排空无法确认时保留 owner marker，并检查 `department-shutdown-drain-unconfirmed` / `department-owner-close-blocked`；不要把 Owner 关闭当作执行器已结束的证明。
+- 处置：先确认群聊读取失败是“真实不存在”还是 Owner 路由拒绝；再核对 task record、部门 runtime snapshot 与实际执行器/Owner receipt。不要仅凭持久 `running` 状态重派发、释放容量或手工把旧任务改成终态。
+- 回归：`node --test dist/test/extensionHost/departmentProductionTaskStore.test.js` 覆盖短锁释放后成功与未知持续锁下拒绝并保留锁。

@@ -41,7 +41,7 @@ test("real DSH rejects a changed cwd but resumes the same session at its origina
   let isolatedHome: string | null = null;
   context.signal.addEventListener("abort", () => runners.forEach((runner) => runner.dispose()), { once: true });
   context.after(async () => {
-    runners.forEach((runner) => runner.dispose());
+    await Promise.all(runners.map((runner) => runner.disposeAndWait()));
     await fs.rm(root, { recursive: true, force: true });
     if (isolatedHome) {
       await fs.rm(isolatedHome, { recursive: true, force: true });
@@ -64,7 +64,7 @@ test("real DSH rejects a changed cwd but resumes the same session at its origina
   };
   const initial = createRunner(initialCwd);
   const session = await initial.start();
-  initial.dispose();
+  await initial.disposeAndWait();
   const changed = createRunner(repairCwd, session.acpSessionId);
   await assert.rejects(() => changed.start({ requireResume: true }), /session cwd does not match/);
   const restored = await createRunner(initialCwd, session.acpSessionId).start({ requireResume: true });
@@ -89,6 +89,7 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
   const homes = new Set<string>();
   context.after(async () => {
     manager.disposeAll();
+    await Promise.all(runners.map((runner) => runner.disposeAndWait()));
     await Promise.all([...homes].map((home) => fs.rm(home, { recursive: true, force: true })));
     await fs.rm(workspaceCwd, { recursive: true, force: true });
   });
@@ -118,7 +119,10 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
     assert.ok(id && id !== "(none)");
     return id;
   };
-  const subtask = (id: string, prompt: string) => ({ id, title: id, prompt, writeFiles: ["src/value.txt"] });
+  const subtaskId = "draft";
+  const subtask = (prompt: string) => ({
+    id: subtaskId, title: subtaskId, taskType: "backend", requiresAcceptance: true, prompt, writeFiles: ["src/value.txt"],
+  });
   try {
     await fs.mkdir(path.join(workspaceCwd, "src"));
     await fs.writeFile(valueFile, "initial");
@@ -127,21 +131,30 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
       taskId = input.loopTaskId ?? "";
       fixture.publish(input, tabId, { status: "end", content: decision({
         status: "dispatch",
-        subtasks: [subtask("draft", `这是隔离测试。只修改 src/value.txt，写入 draft，不加换行。记住校验码 ${nonce}，不要把校验码写入任何文件，下一轮会用到。必须实际写文件，最终仅回复 draft_written。`)],
+        subtasks: [subtask(`这是隔离测试。只修改 src/value.txt，写入 draft，不加换行。记住校验码 ${nonce}，不要把校验码写入任何文件，下一轮会用到。必须实际写文件，最终仅回复 draft_written。`)],
       }) });
     });
     queueMain(async (input, tabId) => {
       assert.equal(await fs.readFile(valueFile, "utf8"), "draft");
       assert.ok(fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId));
-      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === "draft")?.executionSession?.sessionId, sessions[0]);
+      assert.equal(fixture.readTask(taskId)?.subTasks.find((item) => item.id === subtaskId)?.executionSession?.sessionId, sessions[0]);
       manager.disposeIfMatches("dsh", sessions[0]);
       assert.equal(manager.hasDshRunner(sessions[0], runners[0]), false);
       assert.equal(runners[0].isReusable(), false);
+      await runners[0].disposeAndWait();
+      const reviewEventId = eventId(input.displayPrompt);
       fixture.publish(input, tabId, { status: "end", content: decision({
         status: "accept",
-        reviewEventId: eventId(input.displayPrompt),
-        reviews: [{ reviewEventId: eventId(input.displayPrompt), acceptance: "failed", subtaskIds: ["repair"] }],
-        subtasks: [subtask("repair", "上轮验收失败，需要修复。仅修改 src/value.txt，内容改为 ready: 紧接上一轮会话里让你记住的校验码，不加空格、不加换行。禁止在磁盘搜索校验码，只依据原会话上下文恢复。若不记得校验码，明确失败，不猜测。必须实际写文件，最终仅回复 repair_written。")],
+        progressPercent: 50,
+        reviewEventId,
+        reviews: [{ reviewEventId, acceptance: "failed", reason: "文件仍是 draft，缺少按原会话校验码生成的最终内容。", subtaskIds: [subtaskId] }],
+        acceptance: {
+          passed: false,
+          checks: loopPlusAcceptanceChecksFixture().map((check) => check.name === "artifacts"
+            ? { ...check, passed: false, detail: "已读取文件，当前只有 draft。" }
+            : check),
+        },
+        subtasks: [subtask("上轮验收失败，需要修复。仅修改 src/value.txt，内容改为 ready: 紧接上一轮会话里让你记住的校验码，不加空格、不加换行。禁止在磁盘搜索校验码，只依据原会话上下文恢复。若不记得校验码，明确失败，不猜测。必须实际写文件，最终仅回复 repair_written。")],
       }) });
     });
     queueMain(async (input, tabId) => {
@@ -152,16 +165,22 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
         answerConclusion: "真实修复完成",
         finalSummary: "原会话上下文、进程重建和文件修复均已验证",
         acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
-        requirementCoverage: [{ name: "会话续接修复", passed: true }],
+        requirementCoverage: [{ name: "会话续接修复", passed: true, detail: "重新读取文件，确认内容与首次提示中的随机校验码一致。" }],
       }) });
     });
     fixture.setAttemptAction(async (input, tabId) => {
       const target = fixture.createdSubtaskTargets.find((item) => item.tabId === tabId);
       assert.ok(target);
-      const isRepair = input.loopSubtaskId === "repair";
-      if (isRepair) {
+      assert.equal(input.loopSubtaskId, subtaskId);
+      assert.ok(input.loopAttemptId);
+      if (fixture.attemptCalls.length === 2) {
+        assert.notEqual(input.loopAttemptId, fixture.attemptCalls[0].loopAttemptId);
+        assert.notEqual(tabId, fixture.createdSubtaskTargets[0].tabId);
         assert.equal(target.sessionId, sessions[0]);
         assert.equal(String(input.modelPrompt).includes(nonce), false);
+      } else {
+        assert.equal(fixture.attemptCalls.length, 1);
+        assert.ok(String(input.modelPrompt).includes(nonce));
       }
       const launch = await prepareDshIsolatedLaunch({
         sessionKey: target.sessionId ?? `loop-live-${randomUUID()}`,
@@ -227,11 +246,12 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
       contextTags: [],
       model: "scripted-main",
       loopMainModel: "scripted-main",
-      loopSubtaskCli: "dsh",
-      loopSubtaskConfigId: "dsh-loop-live-profile",
-      loopSubtaskModel: profile.acpModel,
+      loopSubtaskMode: "fullstack",
+      loopSubtaskFullstackCli: "dsh",
+      loopSubtaskFullstackConfigId: "dsh-loop-live-profile",
+      loopSubtaskFullstackModel: profile.acpModel,
       loopMainThinkingMode: "low",
-      loopSubtaskThinkingMode: "low",
+      loopSubtaskFullstackThinkingMode: "low",
     }, { schedulingMode: "event_driven" }, fixture.target);
     const completed = fixture.readTask(taskId);
     assert.equal(completed?.status, "completed", JSON.stringify({
@@ -243,6 +263,8 @@ test("real DSH Loop+ resumes after failed acceptance, tab closure and process di
       mainFailures,
       subtasks: completed?.subTasks.map(({ id, status, summary }) => ({ id, status, summary })),
     }));
+    assert.equal(fixture.attemptCalls.length, 2);
+    assert.deepEqual(completed?.subTasks.map(({ id }) => id), [subtaskId]);
     assert.equal(sessions.length, 2);
     assert.equal(sessions[0], sessions[1]);
     assert.notEqual(runners[0], runners[1]);

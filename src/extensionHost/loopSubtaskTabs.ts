@@ -104,11 +104,11 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     };
   }
 
-  function readIdleBinding(tab: ConversationTabRecord, workspace: string) {
+  function readIdleBinding(tab: ConversationTabRecord, workspace: string, requireInactive = true) {
     const binding = bindings.get(tab);
     if (!binding?.idle || binding.workspace !== workspace || binding.cli !== tab.cli
       || binding.idle.sessionId !== getConversationTabSessionIdForCli(tab, tab.cli)
-      || deps.isTabRunActive(tab.id)) return null;
+      || (requireInactive && deps.isTabRunActive(tab.id))) return null;
     return binding;
   }
 
@@ -170,7 +170,7 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     const workspace = deps.getWorkspaceKey();
     const tabs = deps.getTabs();
     const index = tabs.findIndex((tab) => tab.id === tabId);
-    const target = index < 0 ? null : readIdleBinding(tabs[index], workspace);
+    const target = index < 0 ? null : readIdleBinding(tabs[index], workspace, false);
     if (!target || target.context.taskId !== expected.taskId || target.context.subtaskId !== expected.subtaskId
       || target.context.round !== expected.round || target.context.attemptId !== expected.attemptId) {
       return async () => { throw new Error("子任务标签当前执行身份无法核验，未执行自动关闭。"); };

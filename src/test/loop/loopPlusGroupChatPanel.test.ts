@@ -158,6 +158,23 @@ function html(state: PanelState): string {
   return buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
 }
 
+test("群聊验收方案共享弹窗并将其它及文本域置于最后", () => {
+  const state = buildWithChat(createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot(), {}, "");
+  const page = html(state);
+  const checks = [
+    'data-acceptance-check="maintainability"',
+    'data-acceptance-check="performance"',
+    'data-acceptance-check="ui_aesthetics"',
+    'data-acceptance-check="security"',
+    'data-acceptance-check="other"',
+  ];
+  assert.match(page, /data-acceptance-check="ui_aesthetics"[\s\S]*?用户体验审查/u);
+  assert.ok(checks.every((check, index) => page.indexOf(check) < (checks[index + 1] ? page.indexOf(checks[index + 1]) : Infinity)));
+  assert.ok(page.indexOf("acceptancePlanOtherField") > page.indexOf('data-acceptance-check="other"'));
+  assert.ok(page.indexOf("acceptancePlanOtherField") > page.indexOf('data-acceptance-check="other"'));
+  assert.ok(page.indexOf("acceptancePlanOtherField") < page.indexOf("<div id=\"acceptancePlanError\""));
+});
+
 function countValue(page: string, name: string): string {
   const match = page.match(new RegExp(
     `data-loop-plus-count="${name}">([^<]+)</span>`,
@@ -548,6 +565,14 @@ test("moves a repeated repair into the review count only for its active batch", 
       .map((match) => match[1]), [label]);
     assert.match(patch.taskPanelHtml, /data-loop-plus-count="repairing">修复中 1<\/span>/u);
   };
+  const assertQueuedRepairLabel = (label: string) => {
+    const state = build(scheduler.snapshot());
+    assert.equal(state.rounds[0].participants.find((participant) => participant.id === "A")?.status, "queued_review");
+    const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+    assert.match(patch.rosterPanelHtml, new RegExp(`class="member-meta">${label}<\\/div>`, "u"));
+    assert.match(patch.taskPanelHtml, /data-loop-plus-count="queue">待验收 1<\/span>/u);
+    assert.match(patch.taskPanelHtml, /data-loop-plus-count="repairing">修复中 0<\/span>/u);
+  };
 
   dispatchAndFinish(scheduler, "A", "initial");
   rejectCurrentReview();
@@ -563,7 +588,7 @@ test("moves a repeated repair into the review count only for its active batch", 
   assert.equal(scheduler.snapshot().running[0]?.attemptId, "second-repair");
   assertRepairLabel("修复中 x2");
   assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "second-repair", outcome: "completed" }).applied, true);
-  assertRepairLabel("修复中 x2");
+  assertQueuedRepairLabel("待验收 x2");
 
   const snapshot = scheduler.snapshot();
   assert.ok(snapshot.currentReview);
@@ -579,8 +604,19 @@ test("moves a repeated repair into the review count only for its active batch", 
   assert.equal(scheduler.claimNextReview().item?.eventId, snapshot.reviewQueue[0].eventId);
   rejectCurrentReview();
 
+  dispatchAndFinish(scheduler, "D", "review-ahead-of-third-repair");
   assert.equal(scheduler.dispatch([spec("A", "third-repair")]).started.length, 1);
   assertRepairLabel("修复中 x3");
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "third-repair", outcome: "completed" }).applied, true);
+  const thirdRepairQueued = scheduler.snapshot();
+  assert.equal(thirdRepairQueued.currentReview?.subtaskId, "D");
+  assert.equal(thirdRepairQueued.reviewQueue[0]?.subtaskId, "A");
+  const thirdRepairQueuedState = build(thirdRepairQueued, {}, [thirdRepairQueued.currentReview!.eventId]);
+  assert.equal(thirdRepairQueuedState.rounds[0].participants.find((participant) => participant.id === "A")?.status, "queued_review");
+  const thirdRepairQueuedPatch = buildLoopGroupChatPanelContentPatch(thirdRepairQueuedState, 3);
+  assert.match(thirdRepairQueuedPatch.rosterPanelHtml, /class="member-meta">待验收 x3<\/div>/u);
+  assert.match(thirdRepairQueuedPatch.taskPanelHtml, /data-loop-plus-count="queue">待验收 1<\/span>/u);
+  assert.match(thirdRepairQueuedPatch.taskPanelHtml, /data-loop-plus-count="repairing">修复中 0<\/span>/u);
 });
 
 test("renders stopped and resumed Loop+ snapshots in the group chat", () => {

@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
-import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, inspectLoopTaskIdentityOwnership, locateOrdinaryLoopTaskMove, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, waitForLoopTaskIdentityUpdateRetry, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
+import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, inspectLoopTaskIdentityOwnership, locateOrdinaryLoopTaskMove, LOOP_TASK_IDENTITY_UPDATE_RETRIES, LOOP_TASK_IDENTITY_UPDATE_WAIT_MS, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, waitForLoopTaskIdentityUpdateRetry, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
 import type { LoopBlocker } from "./loopBlocker";
 import {
   CLI_LIST,
@@ -55,8 +55,6 @@ const LOOP_MAX_MAX_ROUNDS = 100;
 const LOOP_MAX_SKILL_IDS_PER_SUBTASK = 3;
 const LOOP_MAX_SKILL_GUIDANCE_LENGTH = 32_000;
 const LOOP_SKILL_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const ORDINARY_UPDATE_LOCK_WAIT_MS = 100;
-const ORDINARY_UPDATE_LOCK_RETRIES = 3;
 
 const loopTaskStoreFileCache = new Map<string, string>();
 const CONTROLLED_ROOT_MARKER = ".department-source.json";
@@ -454,6 +452,16 @@ function logLoopTaskUpdateRejected(stage: string, reason: string): void {
   void logError("loop-task-store-update-rejected", { stage, reason, pid: process.pid }).catch(() => undefined);
 }
 
+function logLoopTaskRouteRejected(request: LoopTaskHostRequest, reason: string): void {
+  const taskId = "taskId" in request && /^[a-zA-Z0-9_-]{1,128}$/.test(request.taskId) ? request.taskId : undefined;
+  void logError("loop-task-owner-route-rejected", {
+    operation: request.type,
+    reason,
+    ...(taskId ? { taskId } : {}),
+    pid: process.pid,
+  }).catch(() => undefined);
+}
+
 class OrdinaryUpdateIdentityLockBusy extends Error {
   constructor(readonly stage: string) {
     super("Loop task identity lock is busy before update commit");
@@ -466,6 +474,7 @@ function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   const entry = hostRoutes.find((route) => "taskId" in request ? route.ids.has(request.taskId) : insideRoute(route.root, request.filePath));
   const reject = (reason: string): LoopTaskHostResult => {
     if (request.type === "update") logLoopTaskUpdateRejected("host-route", reason);
+    logLoopTaskRouteRejected(request, reason);
     return { handled: true, ok: false };
   };
   if (!entry) {
@@ -480,7 +489,8 @@ function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   try {
     const result = entry.route(request);
     if (request.type === "update" && (!result.handled || !result.ok || !result.record)) return reject("owner-update-unconfirmed");
-    return result.handled ? result : { handled: true, ok: false };
+    if (!result.handled) return reject("owner-route-unhandled");
+    return result.ok ? result : reject("owner-operation-unconfirmed");
   } catch { return reject("owner-route-threw"); }
 }
 
@@ -974,8 +984,8 @@ export function updateLoopTaskRecord(
       return updateLoopTaskRecordOnce(taskId, patch, options);
     } catch (error) {
       if (!(error instanceof OrdinaryUpdateIdentityLockBusy)) throw error;
-      deadline ??= performance.now() + ORDINARY_UPDATE_LOCK_WAIT_MS;
-      if (retries < ORDINARY_UPDATE_LOCK_RETRIES && waitForLoopTaskIdentityUpdateRetry(deadline)) continue;
+      deadline ??= performance.now() + LOOP_TASK_IDENTITY_UPDATE_WAIT_MS;
+      if (retries < LOOP_TASK_IDENTITY_UPDATE_RETRIES && waitForLoopTaskIdentityUpdateRetry(deadline)) continue;
       logLoopTaskUpdateRejected(error.stage, "identity-lock-present");
       return null;
     }

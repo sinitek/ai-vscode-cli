@@ -503,8 +503,10 @@ test("handles Mac shell availability checks with only mocked child process event
     toolSettings.readToolSettings = () => ({ ...originalReadToolSettings(), macTaskShell: "bash" });
     assert.equal(await isCliCommandAvailable("sinitek-coverage-mock-command"), true);
     assert.equal(spawnCalls.length, 3);
-    assert.equal(spawnCalls[0]?.[1] instanceof Array, true);
-    assert.match((spawnCalls[0]?.[1] as string[])[1] ?? "", /command -v/u);
+    assert.deepEqual(spawnCalls[0]?.[1], [
+      "-lc",
+      "'command' '-v' 'sinitek-coverage-mock-command' >/dev/null 2>&1",
+    ]);
     assert.equal(spawnCalls[2]?.[0], "/bin/bash");
   } finally {
     crossSpawn.spawn = originalSpawn;

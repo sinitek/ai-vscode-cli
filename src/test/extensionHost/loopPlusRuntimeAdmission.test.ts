@@ -192,6 +192,33 @@ test("directory cleanup and lease errors remain visible alongside the CLI error"
   assert.deepEqual(events, ["dispose", "release"]);
 });
 
+for (const releaseFails of [false, true]) {
+  test(`successful CLI with directory cleanup failure preserves the lease result (release fails=${releaseFails})`, async (t) => {
+    const events: string[] = [];
+    const fixture = createLoopPlusRuntimeFixture({
+      acquireAttemptExecution: async () => ({ release: () => {
+        events.push("release");
+        if (releaseFails) { throw new Error("lease failed"); }
+      } }),
+      executionRootFactory: () => ({ cwd: "isolated", dispose: () => {
+        events.push("dispose");
+        throw new Error("cleanup failed");
+      } }),
+    });
+    t.after(() => fixture.dispose());
+    fixture.setAttemptAction((input, tabId) => fixture.publish(input, tabId, { status: "end", content: "done" }));
+    const result = await fixture.adapter.startAttempt(request()).promise;
+    if (releaseFails) {
+      assert.equal(result.outcome, "failed");
+      assert.match(result.detail!, /done\n.*cleanup failed\n.*lease failed/);
+    } else {
+      assert.deepEqual(result, { outcome: "completed", detail: "done" });
+    }
+    assert.equal(fixture.logs.some(({ event }) => event === "loop-plus-execution-root-cleanup-failed"), true);
+    assert.deepEqual(events, ["dispose", "release"]);
+  });
+}
+
 test("abort and explicit tab close keep a running lease until the CLI promise settles", async (t) => {
   const started = deferred<void>();
   const finish = deferred<void>();

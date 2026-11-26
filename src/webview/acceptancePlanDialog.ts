@@ -90,10 +90,6 @@ export function renderAcceptancePlanDialogs(labels: AcceptancePlanDialogLabels):
                 <label for="acceptancePlanCheckMaintainability">${maintainability}</label>
               </div>
               <div class="acceptance-plan-check">
-                <input id="acceptancePlanCheckSecurity" type="checkbox" data-acceptance-check="security" />
-                <label for="acceptancePlanCheckSecurity">${security}</label>
-              </div>
-              <div class="acceptance-plan-check">
                 <input id="acceptancePlanCheckPerformance" type="checkbox" data-acceptance-check="performance" />
                 <label for="acceptancePlanCheckPerformance">${performance}</label>
               </div>
@@ -102,12 +98,16 @@ export function renderAcceptancePlanDialogs(labels: AcceptancePlanDialogLabels):
                 <label for="acceptancePlanCheckUi">${ui}</label>
               </div>
               <div class="acceptance-plan-check">
+                <input id="acceptancePlanCheckSecurity" type="checkbox" data-acceptance-check="security" />
+                <label for="acceptancePlanCheckSecurity">${security}</label>
+              </div>
+              <div class="acceptance-plan-check">
                 <input id="acceptancePlanCheckOther" type="checkbox" data-acceptance-check="other" aria-controls="acceptancePlanOtherField" aria-expanded="false" />
                 <label for="acceptancePlanCheckOther">${other}</label>
               </div>
-            </div>
-            <div id="acceptancePlanOtherField" class="acceptance-plan-field acceptance-plan-other-field" style="display: none;">
-              <textarea id="acceptancePlanOtherText" class="acceptance-plan-textarea" rows="3" placeholder="${otherTextPlaceholder}" aria-label="${otherTextPlaceholder}"></textarea>
+              <div id="acceptancePlanOtherField" class="acceptance-plan-field acceptance-plan-other-field" style="display: none;">
+                <textarea id="acceptancePlanOtherText" class="acceptance-plan-textarea" rows="3" placeholder="${otherTextPlaceholder}" aria-label="${otherTextPlaceholder}"></textarea>
+              </div>
             </div>
             <div id="acceptancePlanError" class="acceptance-plan-error" role="alert" style="display: none;"></div>
             <div id="acceptancePlanToast" class="acceptance-plan-error" role="status" hidden></div>

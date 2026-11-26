@@ -2,6 +2,7 @@ import * as os from "os";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { randomUUID } from "crypto";
+import { spawn } from "cross-spawn";
 import { CliName, InteractiveMode, ThinkingMode } from "../cli/types";
 import { t } from "../i18n";
 import { dynamicImport } from "./dynamicImport";
@@ -9,6 +10,7 @@ import { buildClaudePromptContent } from "../cli/claudeToolPolicy";
 import { isClaudeCompactBoundaryMessage, isClaudeCompactingStatusMessage } from "./claudeCompaction";
 import { ClaudeContextUsageTracker, type ClaudeContextUsageUpdate } from "./claudeContextUsage";
 import { logInfo } from "../logger";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import { formatClaudeToolResultMessage, formatClaudeToolUseMessage } from "../trace/claudeToolFormat";
 import {
   CLAUDE_TASK_TRACKING_TOOLS,
@@ -144,22 +146,8 @@ function defaultModelFromArgs(args: string[]): string {
   return fromArg ? fromArg : "sonnet";
 }
 
-function extractTextFromMessage(message: any): string {
-  const content = message?.content;
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((block: any) => {
-      if (!block || typeof block !== "object") {
-        return "";
-      }
-      if (block.type === "text" && typeof block.text === "string") {
-        return block.text;
-      }
-      return "";
-    })
-    .join("");
+function readBlockIndex(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function clampThinkingTokens(mode: ThinkingMode): number | null {
@@ -307,13 +295,6 @@ function buildClaudeCompactPrompt(customInstructions?: string): string {
 
 function extractDeltaTextFromStreamEvent(event: any): string {
   if (typeof event?.delta?.text === "string") {
-    return event.delta.text;
-  }
-  if (
-    typeof event?.delta?.type === "string"
-    && event.delta.type === "text_delta"
-    && typeof event.delta.text === "string"
-  ) {
     return event.delta.text;
   }
   if (typeof event?.content_block?.text === "string" && event.type === "content_block_delta") {
@@ -477,8 +458,16 @@ function isTerminalClaudeSessionResult(message: any): boolean {
 
 type ClaudeTurnEventStrategy = (message: any) => boolean;
 
+type ClaudeTextBlockProgress = { streamedLength: number; emittedLength: number };
+type ClaudeMessageTextProgress = {
+  lastStreamBlockIndex?: number;
+  blocks: Map<number, ClaudeTextBlockProgress>;
+};
+
 class ClaudeTurnEventProcessor {
-  private lastAssistantText = "";
+  private readonly assistantTextByMessage = new Map<string | null, ClaudeMessageTextProgress>();
+  private readonly currentStreamMessageIds = new Map<string | null, string | null>();
+  private hasAssistantText = false;
   private readonly seenToolUseTraceIds = new Set<string>();
   private readonly seenToolResultTraceIds = new Set<string>();
   private readonly seenTodoToolUseIds = new Set<string>();
@@ -607,12 +596,18 @@ class ClaudeTurnEventProcessor {
   private processMessageBlocks(
     blocks: Record<string, unknown>[],
     source: string,
-    messageId?: string
+    messageId?: string,
+    provisionalToolInput = false
   ): void {
     blocks.forEach((block, blockIndex) => {
       this.emitThinkingTrace(source, messageId, block, blockIndex);
       const toolUse = extractToolUseEvent(block);
       if (toolUse) {
+        const input = toolUse.input;
+        if (provisionalToolInput && (input == null || input === ""
+          || (typeof input === "object" && Object.keys(input).length === 0))) {
+          return;
+        }
         this.emitToolUseTrace(toolUse);
         return;
       }
@@ -628,9 +623,33 @@ class ClaudeTurnEventProcessor {
       return false;
     }
     const event = message.event as any;
-    const deltaText = extractDeltaTextFromStreamEvent(event);
-    if (deltaText) {
-      this.streamHandlers.onAssistantDelta(deltaText);
+    const parentToolId = typeof message.parent_tool_use_id === "string" ? message.parent_tool_use_id : null;
+    const messageId = typeof message.api_message_id === "string"
+      ? message.api_message_id
+      : typeof event.message?.id === "string" ? event.message.id : null;
+    if (event.type === "message_start") {
+      this.currentStreamMessageIds.set(parentToolId, messageId);
+    } else if (event.type === "message_stop") {
+      const activeMessageId = this.currentStreamMessageIds.get(parentToolId);
+      if (activeMessageId !== undefined && (messageId === null || activeMessageId === messageId)) {
+        this.currentStreamMessageIds.delete(parentToolId);
+      }
+    }
+    const eventIndex = readBlockIndex(event.index);
+    const text = event.type === "content_block_start" && event.content_block?.type === "text"
+      ? event.content_block.text : extractDeltaTextFromStreamEvent(event);
+    if (typeof text === "string" && text) {
+      const progress = this.getMessageTextProgress(messageId ?? this.currentStreamMessageIds.get(parentToolId) ?? null);
+      const blockIndex = eventIndex ?? progress.lastStreamBlockIndex ?? 0;
+      if (eventIndex !== undefined) {
+        progress.lastStreamBlockIndex = eventIndex;
+      }
+      if (typeof text === "string" && text) {
+        const block = this.getTextBlockProgress(progress, blockIndex);
+        const start = block.streamedLength;
+        block.streamedLength += text.length;
+        this.emitUnseenAssistantText(block, text, start);
+      }
     }
     const eventBlocks = extractBlocksFromStreamEvent(event);
     if (eventBlocks.length) {
@@ -640,7 +659,7 @@ class ClaudeTurnEventProcessor {
           : typeof event?.id === "string"
             ? event.id
             : undefined;
-      this.processMessageBlocks(eventBlocks, "stream_event", streamMessageId);
+      this.processMessageBlocks(eventBlocks, "stream_event", streamMessageId, event.type === "content_block_start");
     }
     return false;
   }
@@ -649,22 +668,51 @@ class ClaudeTurnEventProcessor {
     if (!message?.message) {
       return false;
     }
-    const fullText = extractTextFromMessage(message.message);
-    if (fullText) {
-      const delta = fullText.startsWith(this.lastAssistantText)
-        ? fullText.slice(this.lastAssistantText.length)
-        : fullText;
-      if (delta) {
-        this.streamHandlers.onAssistantDelta(delta);
-      }
-      this.lastAssistantText = fullText;
-    }
     const blocks = getMessageContentBlocks(message.message);
     if (blocks.length) {
-      const messageId = typeof message.message?.id === "string" ? message.message.id : undefined;
-      this.processMessageBlocks(blocks, "assistant", messageId);
+      const messageId = typeof message.message.id === "string" ? message.message.id : null;
+      const singletonIndex = blocks.length === 1
+        ? this.assistantTextByMessage.get(messageId)?.lastStreamBlockIndex
+        : undefined;
+      blocks.forEach((block, position) => {
+        if (block.type === "text" && typeof block.text === "string" && block.text) {
+          const index = readBlockIndex(block.index) ?? singletonIndex ?? position;
+          const progress = this.getMessageTextProgress(messageId);
+          this.emitUnseenAssistantText(this.getTextBlockProgress(progress, index), block.text);
+        }
+      });
+      this.processMessageBlocks(blocks, "assistant", messageId ?? undefined);
     }
     return false;
+  }
+
+  private getMessageTextProgress(messageId: string | null): ClaudeMessageTextProgress {
+    let progress = this.assistantTextByMessage.get(messageId);
+    if (!progress) {
+      progress = { blocks: new Map() };
+      this.assistantTextByMessage.set(messageId, progress);
+    }
+    return progress;
+  }
+
+  private getTextBlockProgress(message: ClaudeMessageTextProgress, index: number): ClaudeTextBlockProgress {
+    let block = message.blocks.get(index);
+    if (!block) {
+      block = { streamedLength: 0, emittedLength: 0 };
+      message.blocks.set(index, block);
+    }
+    return block;
+  }
+
+  private emitUnseenAssistantText(block: ClaudeTextBlockProgress, text: string, start = 0): void {
+    const end = start + text.length;
+    if (end <= block.emittedLength) {
+      return;
+    }
+    const unseen = text.slice(Math.max(0, block.emittedLength - start));
+    block.emittedLength = end;
+    this.hasAssistantText = true;
+    this.streamHandlers.onAssistantDelta(unseen);
   }
 
   private handleUser(message: any): boolean {
@@ -728,9 +776,12 @@ class ClaudeTurnEventProcessor {
       throw error;
     }
     const resultText = typeof message.result === "string" ? message.result : "";
-    if (resultText && !this.lastAssistantText) {
+    if (resultText && !this.hasAssistantText) {
       this.streamHandlers.onAssistantDelta(resultText);
+      this.hasAssistantText = true;
     }
+    this.assistantTextByMessage.clear();
+    this.currentStreamMessageIds.clear();
     return true;
   }
 }
@@ -1015,6 +1066,28 @@ export class ClaudeInteractiveRunner {
         ...claudeSettings,
       },
       abortController,
+      includePartialMessages: true,
+      spawnClaudeCodeProcess: (spawnOptions: {
+        command: string;
+        args: string[];
+        cwd?: string;
+        env: NodeJS.ProcessEnv;
+        signal: AbortSignal;
+      }) => {
+        const stderr = spawnOptions.env.DEBUG_CLAUDE_AGENT_SDK ? "pipe" : "ignore";
+        const processPolicy = createCliProcessPolicy();
+        const resolved = processPolicy.resolve(spawnOptions.command, spawnOptions.args, { allowLoginShell: true });
+        if (!resolved) throw Object.assign(new Error(`spawn ${spawnOptions.command} ENOENT`), { code: "ENOENT" });
+        const child = spawn(resolved.command, resolved.args, processPolicy.spawnOptions(resolved.command, {
+          cwd: spawnOptions.cwd,
+          baseEnvironment: spawnOptions.env,
+          signal: spawnOptions.signal,
+          stdio: ["pipe", "pipe", stderr],
+          processGroup: false,
+        }));
+        if (stderr === "pipe") child.stderr?.on("data", () => undefined);
+        return child;
+      },
     };
     if (this.options.textOnly) {
       queryOptions.tools = [];

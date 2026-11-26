@@ -644,10 +644,46 @@ type StrategySelectionOptions = {
   grokCompactSession?: () => Promise<import("../../interactive/grokRunner").GrokCompactionResult>;
 };
 
-test("Grok, Kimi and ZCode participate in the same automatic compaction capability gate as Codex", () => {
+test("automatic compaction candidates preserve OpenCode eligibility and DSH rejection", () => {
   const { isAutoContextCompactionCli } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
   for (const cli of ["codex", "claude", "opencode", "grok", "kimi-code", "zcode"]) assert.equal(isAutoContextCompactionCli(cli), true);
   for (const cli of ["", "gemini", "dsh", "unknown"]) assert.equal(isAutoContextCompactionCli(cli), false);
+});
+
+test("OpenCode automatic compaction remains blocked when the injected host lacks interactive support", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createOpenCodeCompactionDeps();
+  const messages: string[] = [];
+  deps.isInteractiveSupported = () => false;
+  deps.appendSystemMessageForCli = (_cli, _sessionId, content) => messages.push(content);
+  deps.getCliCommand = () => { throw new Error("must not prepare compaction without an interactive host"); };
+  assert.equal(await runContextCompactionWithDeps(deps, { cli: "opencode", sessionId: "session-before" }), false);
+  assert.deepEqual(messages, ["当前 CLI 不支持上下文压缩。"]);
+  assert.deepEqual(calls.runStreamCalls, []);
+});
+
+test("OpenCode silent compaction rejects an unsupported interactive host without a transcript message", async () => {
+  const { runContextCompactionWithDeps } = require("../../contextCompactionRunner") as typeof import("../../contextCompactionRunner");
+  const { deps, calls } = createOpenCodeCompactionDeps();
+  let cliCommandCalls = 0;
+  deps.isInteractiveSupported = (cli) => cli !== "opencode";
+  deps.getCliCommand = () => {
+    cliCommandCalls += 1;
+    return "opencode";
+  };
+
+  const compacted = await runContextCompactionWithDeps(deps, {
+    cli: "opencode",
+    sessionId: "session-before",
+    silent: true,
+  });
+
+  assert.equal(compacted, false);
+  assert.deepEqual(calls.runStreamCalls, []);
+  assert.equal(cliCommandCalls, 0);
+  assert.deepEqual(calls.prepareProfiles, []);
+  assert.deepEqual(calls.appendSystemMessagesForCli, []);
+  assert.deepEqual(calls.appendSystemMessages, []);
 });
 
 for (const silent of [false, true]) {

@@ -8,6 +8,7 @@ import {
   type RunProcess,
 } from "./cli/commandRunner";
 import { GEMINI_NATIVE_COMPACT_PROMPT } from "./cli/geminiCompaction";
+import { canHostContextCompaction, isAutomaticContextCompactionCandidate } from "./cli/cliExecutionPolicy";
 import {
   finalizeGeminiStreamJsonRemainder,
   getGeminiEventDisplay,
@@ -601,9 +602,7 @@ export type ContextCompactionRunDeps = {
   buildOpenCodeRunFailureMessage?: typeof buildOpenCodeRunFailureMessage;
 };
 
-const CONTEXT_COMPACTION_STRATEGY_CLIS = ["codex", "claude", "opencode", "grok", "kimi-code", "zcode"] as const;
-
-type ContextCompactionStrategyCli = (typeof CONTEXT_COMPACTION_STRATEGY_CLIS)[number];
+type ContextCompactionStrategyCli = Exclude<CliName, "dsh">;
 
 type ContextCompactionPreparedRun = {
   cli: CliName;
@@ -640,7 +639,7 @@ type ContextCompactionStrategyRegistry = {
 };
 
 export function isAutoContextCompactionCli(cli: string): cli is ContextCompactionStrategyCli {
-  return (CONTEXT_COMPACTION_STRATEGY_CLIS as readonly string[]).includes(cli);
+  return isAutomaticContextCompactionCandidate(cli);
 }
 
 async function executeGrokContextCompaction(
@@ -1121,7 +1120,7 @@ export async function runContextCompactionWithDeps(
   const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
     ? Math.floor(options.timeoutMs)
     : null;
-  if (!deps.isInteractiveSupported(cli) || cli === "dsh") {
+  if (!canHostContextCompaction(cli, deps.isInteractiveSupported(cli))) {
     if (!silent) {
       deps.appendSystemMessageForCli(cli, deps.getCurrentSessionId(cli), t("rules.compactUnsupported"));
     }

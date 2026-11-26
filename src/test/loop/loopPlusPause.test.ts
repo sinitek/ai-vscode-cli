@@ -63,7 +63,7 @@ test("protocol exhaustion records its actual rejection and does not invent a mod
     recordLoopPlusPause(paused, "loop-plus-protocol-paused");
     for (const file of [paused.mainCommunicationFile, path.join(root, "group-chat.md")]) {
       assert.match(fs.readFileSync(file, "utf8"), /未关联任务：independent-research/);
-      assert.match(fs.readFileSync(file, "utf8"), /已自动继续执行一次/);
+      assert.match(fs.readFileSync(file, "utf8"), /已自动继续执行 3 次/);
       assert.doesNotMatch(fs.readFileSync(file, "utf8"), /主模型未提供具体熔断原因/);
     }
   } finally {

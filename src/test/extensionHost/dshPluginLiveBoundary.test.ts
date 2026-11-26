@@ -83,11 +83,13 @@ async function fileStamp(filePath: string): Promise<string | null> {
   }
 }
 
-async function activateProfile(configHome: string, baseURL: string): Promise<void> {
+async function activateProfile(configHome: string, baseURL: string, apiKey?: string): Promise<void> {
   const previousHome = process.env.DSH_HOME;
   process.env.DSH_HOME = configHome;
   try {
-    const content = serializeDshProfile(createDshExampleDocument(baseURL));
+    const document = createDshExampleDocument(baseURL);
+    if (apiKey !== undefined) document.apiKey = apiKey;
+    const content = serializeDshProfile(document);
     await saveConfig({
       id: "dsh_plugin_profile",
       name: "DSH plugin",
@@ -405,7 +407,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
   const manager = new InteractiveRunnerManager();
   process.env.DSH_HOME = configHome;
   try {
-    await activateProfile(configHome, baseURL);
+    await activateProfile(configHome, baseURL, process.env.SINITEK_DSH_API_KEY);
     process.env.DSH_HOME = configHome;
     const activation = await readDshActivation(resolveDshConfigPaths());
     assert.equal(activation.activeProfileId, "dsh_plugin_profile");
@@ -496,7 +498,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
       cancelStop = cancelled.stopReason;
     }
     assert.equal(cancelStop, "cancelled");
-    runner.dispose();
+    await runner.disposeAndWait();
 
     const resumedRunner = new DshInteractiveRunner({
       command: "dsh",
@@ -517,8 +519,9 @@ test("DSH plugin runner and extension host talk to the configured loopback model
     }), 90000, "resume prompt");
     assert.equal(resumedPrompt.stopReason, "end_turn");
     assert.equal(resumedText.join("").includes("resumed"), true);
-    resumedRunner.dispose();
+    await resumedRunner.disposeAndWait();
 
+    assert.ok(usage.length > 0);
     assert.equal(usage.some((update) => update.tokensInContextWindow === 0 && update.modelContextWindow === 0), false);
     assert.equal(usage.every((update) => Number.isFinite(update.tokensInContextWindow) && update.tokensInContextWindow >= 0), true);
     const fallbackSizes = usage.map((update) => update.modelContextWindow);
@@ -558,7 +561,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
       getActiveConfigIdForCli: () => "dsh_plugin_profile",
       getConversationTabById: (tabId: string) => tabs.get(tabId),
       getEffectiveCliArgs: () => [],
-      getEffectiveThinkingMode: () => "off" as const,
+      getEffectiveThinkingMode: () => "low" as const,
       getGlobalHumanInteractionEnabled: () => false,
       getPendingSessionDraft: () => ({ messages: [] as ChatMessage[] }),
       getSelectedCliModel: () => DSH_VERIFIED_MODEL_ID,
@@ -572,7 +575,9 @@ test("DSH plugin runner and extension host talk to the configured loopback model
               if (typeof options.env?.DSH_HOME === "string") {
                 homes.add(options.env.DSH_HOME);
               }
-              return target.getOrCreateDshRunner(options);
+              const runner = target.getOrCreateDshRunner(options);
+              if (!runners.includes(runner)) runners.push(runner);
+              return runner;
             };
           }
           const value = Reflect.get(target, prop, receiver);
@@ -641,6 +646,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
     );
     assert.deepEqual(adopted, [hostSession]);
     manager.disposeAll();
+    await Promise.all(runners.map((runner) => runner.disposeAndWait()));
     await bounded(
       host.runPromptInteractive(inputFor("Reply with exactly: host-resumed"), targetFor(hostSession ?? null, "tab-live-dsh"), { cwd: workHome }),
       120000,
@@ -653,6 +659,7 @@ test("DSH plugin runner and extension host talk to the configured loopback model
     assert.equal(hostBody.includes("host-pong-2"), true);
     assert.equal(hostBody.includes("host-resumed"), true);
     const hostUsage = panel.filter((message) => message.type === "contextTokenUsage");
+    assert.ok(hostUsage.length > 0);
     assert.equal(hostUsage.every((message) => message.contextWindowSource === "adapter-fallback"), true);
     assert.equal(hostUsage.some((message) => message.tokensInContextWindow === 0 && message.modelContextWindow === 0), false);
     assert.equal(JSON.stringify(hostUsage).includes("服务确认"), false);
@@ -680,14 +687,8 @@ test("DSH plugin runner and extension host talk to the configured loopback model
       adoptedSessions: adopted.length,
     }));
   } finally {
-    for (const runner of runners) {
-      try {
-        runner.dispose();
-      } catch {
-        // The process may already be closed.
-      }
-    }
     manager.disposeAll();
+    await Promise.all(runners.map((runner) => runner.disposeAndWait()));
     if (previousHome === undefined) {
       delete process.env.DSH_HOME;
     } else {

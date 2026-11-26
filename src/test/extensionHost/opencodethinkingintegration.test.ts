@@ -59,7 +59,7 @@ test("does not migrate legacy ThinkingMode values into OpenCode variants", () =>
   assert.deepEqual(normalized.openCodeVariantByConfigAndModel, {});
 });
 
-test("serializes dynamic OpenCode thinking state into PanelState", () => {
+test("serializes dynamic OpenCode thinking state into PanelState", async (context) => {
   const configStateByCli = Object.fromEntries(CLI_LIST.map((cli) => [cli, {
     configs: [] as PanelState["configState"]["configs"],
     activeConfigId: cli === "opencode" ? "config-a" : `${cli}-config`,
@@ -181,6 +181,20 @@ test("serializes dynamic OpenCode thinking state into PanelState", () => {
   deps.getGlobalDepartmentMaxLeaders = () => 10;
   assert.equal(buildPanelStateWithDeps(deps).departmentMaxLeaders, 10);
   for (const cli of CLI_LIST) assert.equal(modelConfigIds[cli], configStateByCli[cli].activeConfigId);
+
+  await context.test("uses the injected interactive capability for the current CLI", () => {
+    for (const [currentCli, supported] of [["opencode", true], ["codex", false]] as const) {
+      const state = buildPanelStateWithDeps({
+        ...deps,
+        currentCli,
+        isInteractiveSupported: (cli) => {
+          assert.equal(cli, currentCli);
+          return supported;
+        },
+      });
+      assert.deepEqual(state.interactive, { supported, enabled: supported }, currentCli);
+    }
+  });
 });
 
 test("refreshes heartbeat snapshots when OpenCode role overrides change", async () => {

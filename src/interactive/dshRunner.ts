@@ -8,6 +8,7 @@ import {
 } from "./codexAppServerNdjson";
 import { killProcessTree } from "./codexRunnerProcess";
 import { resolveSpawnCommand } from "./codexRunnerProcess";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import {
   acceptDshIncrementalText,
   assertAdvertisedDshModel,
@@ -403,17 +404,18 @@ export class DshInteractiveRunner {
       throw new DshProtocolError("DSH command is empty", "empty-command");
     }
     const launchArgs = buildDshLaunchArgs(this.options.agentArgs ?? []);
-    const resolved = resolveSpawnCommand(command, launchArgs);
     const platform = this.options.platform ?? process.platform;
+    const resolved = resolveSpawnCommand(command, launchArgs, platform);
     this.childEnv = buildDshChildEnv(this.options.env, process.env);
     const spawnImpl = this.options.spawnImpl ?? defaultDshSpawn;
     let child: DshChild;
     try {
-      child = spawnImpl(resolved.command, resolved.args, {
+      const spawnOptions = createCliProcessPolicy(platform).spawnOptions(resolved.command, {
         cwd: this.options.cwd,
-        env: this.childEnv,
-        detached: platform !== "win32",
-        windowsHide: true,
+        baseEnvironment: this.childEnv,
+      });
+      child = spawnImpl(resolved.command, resolved.args, {
+        cwd: this.options.cwd, env: spawnOptions.env, detached: spawnOptions.detached, windowsHide: true,
       });
     } catch (error) {
       const spawnError = error instanceof Error ? error : new Error(String(error));
@@ -843,7 +845,7 @@ export class DshInteractiveRunner {
       // Signal escalation still runs when stdin is already closed.
     }
     const platform = this.options.platform ?? process.platform;
-    const killTree = this.options.killTreeImpl ?? ((target, signal) => killProcessTree(target as ChildProcess, signal));
+    const killTree = this.options.killTreeImpl ?? ((target, signal) => killProcessTree(target as ChildProcess, signal, { platform, processGroup: platform !== "win32" }));
     if (isChildSettled(child)) {
       return;
     }
@@ -897,11 +899,8 @@ function defaultDshSpawn(
     windowsHide?: boolean;
   },
 ): DshChild {
-  return spawn(command, [...args], {
-    cwd: options.cwd,
-    env: options.env,
-    detached: options.detached,
-    windowsHide: options.windowsHide,
+  return spawn(command, [...args], createCliProcessPolicy(options.detached === false ? "win32" : undefined).spawnOptions(command, {
+    cwd: options.cwd, baseEnvironment: options.env, processGroup: options.detached,
     stdio: ["pipe", "pipe", "pipe"],
-  }) as DshChild;
+  })) as DshChild;
 }

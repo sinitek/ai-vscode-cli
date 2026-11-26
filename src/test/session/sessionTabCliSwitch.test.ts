@@ -8,7 +8,7 @@ import { createCliRecord } from "../../cli/types";
 import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs";
 import { createSessionTabsController, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft } from "../../sessionTabs";
 import type { SessionStore } from "../../sessionStore";
-import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, prepareLoopSubtaskConversationTabClose } from "../../extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, prepareLoopSubtaskConversationTabClose, retryLoopSubtaskTabClose } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
 import type { LoopSubtaskRecord } from "../../loopTaskStore";
@@ -41,9 +41,10 @@ function createHost(initial: {
   const closedTabs: Array<{ tabId: string; activeTabId: string | null }> = [];
   const selectedSessions: Array<string | null> = [];
   const disposedTabIds: string[] = [];
+  const essentialLogs: Array<{ event: string; payload: Record<string, unknown> }> = [];
   const contextFor = (tab: ConversationTabRecord | null) => {
     const role = tab?.id.includes("main") ? "main" as const : tab?.id.includes("sub") ? "subtask" as const : undefined;
-    return { taskRole: role, loopTaskId: role ? "task-1" : null };
+    return { taskRole: role ?? null, loopTaskId: role ? "task-1" : null };
   };
   const controller = createSessionTabsController({
     state: initial.state,
@@ -127,10 +128,12 @@ function createHost(initial: {
     migrateLocalSessionToTargetSession: () => undefined,
     adoptSessionId: () => undefined,
     getActiveTaskRunMutable: () => null,
+    resolveConversationTabLoopContext: contextFor,
+    logEssential: (event, payload) => { essentialLogs.push({ event, payload: payload as Record<string, unknown> }); },
     logInfo: () => undefined,
     activeData: { WORKSPACE_KEY_FALLBACK: "fallback", LEGACY_SESSION_FILE: "legacy", SESSION_DIR: "sessions", SESSION_BUFFER_LIMIT: 1 },
   });
-  return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, currentCli: () => currentCli };
+  return { host, modes, postedClis, postedTabIds, restoredTabIds, sentTabIds, closedTabs, selectedSessions, disposedTabIds, essentialLogs, currentCli: () => currentCli };
 }
 
 test("Loop/Loop+ 派发新会话或续接会话时，首次刷新前子任务标签已显示运行中", async () => {
@@ -236,7 +239,7 @@ test("completed cleanup replaces the final tab with a same-CLI blank tab before 
   assert.deepEqual(env.disposedTabIds, [oldTab.id]);
 });
 
-test("explicit Loop+ continuation closes its captured only tab through the completed host after attempt commit", async () => {
+test("explicit Loop+ continuation closes its captured only tab after attempt commit and run release, before acceptance", async () => {
   const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("../extensionHost/fixtures/loopPlusRuntimeFixture") as typeof import("../extensionHost/fixtures/loopPlusRuntimeFixture");
   const oldTab: ConversationTabRecord = {
     id: "continued-subtask", cli: "codex", sessionId: "continued-session",
@@ -259,18 +262,32 @@ test("explicit Loop+ continuation closes its captured only tab through the compl
       rounds: [], completionRoundSummaries: [], completionRequirementCoverage: [],
     });
     let persistedAtClose: { report: string; outcome: string | undefined } | undefined;
-    const env = createHost({ state, currentCli: "codex", modes: {}, onPostPanelState: async () => {
+    const runningTabIds = new Set([oldTab.id]);
+    const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds, onPostPanelState: async () => {
       persistedAtClose ??= {
         report: fs.readFileSync(report, "utf8"),
         outcome: createLoopPlusScheduler({ snapshot: fixture.readTask(context.taskId)?.loopPlus }).snapshot().currentReview?.outcome,
       };
     } });
     const cleanup = createCompletedLoopSubtaskTabCleanup({
-      getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: () => false,
+      getWorkspaceKey: () => "workspace", getTabs: () => state.tabs, isTabRunActive: (id) => runningTabIds.has(id),
       closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
     });
     cleanup.bindPrompt(oldTab, context)?.(oldTab.sessionId);
-    const close = cleanup.prepareClose(oldTab.id, context);
+    runningTabIds.add(oldTab.id);
+    const prepared = cleanup.prepareClose(oldTab.id, context);
+    let closeCalls = 0;
+    const closeRetries: boolean[] = [];
+    const close = async () => {
+      closeCalls += 1;
+      await retryLoopSubtaskTabClose(prepared, (error, _attempt, retrying) => {
+        closeRetries.push(retrying);
+        assert.match(error instanceof Error ? error.message : String(error), /执行身份/);
+        assert.equal(fs.existsSync(report), true);
+        assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(context.taskId)?.loopPlus }).snapshot().currentReview?.attemptId, context.attemptId);
+        runningTabIds.delete(oldTab.id);
+      }, 0);
+    };
     const orchestration = fixture.adapter.host();
     const recovery = { target: fixture.target, input: { displayPrompt: "resume" } };
     assert.equal(orchestration.notifySubtaskContinuation(context.taskId, "A", "completed", "stale", recovery, close, "obsolete"), false);
@@ -284,6 +301,9 @@ test("explicit Loop+ continuation closes its captured only tab through the compl
     assert.notEqual(state.tabs[0], oldTab);
     assert.equal(state.tabs[0].cli, "codex");
     assert.equal(state.tabs[0].sessionId, null);
+    assert.equal(orchestration.notifySubtaskContinuation(context.taskId, "A", "completed", "duplicate", recovery, close, context.attemptId), false);
+    assert.equal(closeCalls, 1);
+    assert.deepEqual(closeRetries, [true]);
     assert.deepEqual(env.disposedTabIds, [oldTab.id]);
   } finally {
     fixture.adapter.host().stopParent(context.taskId);
@@ -692,6 +712,47 @@ test("closing protected tabs never acknowledges removal or disposes their runner
     assert.deepEqual(env.closedTabs, [], protection);
     assert.deepEqual(env.disposedTabIds, [], protection);
   }
+});
+
+test("Loop 主任务 Tab 关闭日志记录任务身份、拒绝原因与实际移除结果", async () => {
+  const lockedState: ConversationTabsState = {
+    activeTabId: "main-tab",
+    tabs: [
+      { id: "main-tab", cli: "codex", sessionId: "main-session", sessionIdByCli: { codex: "main-session" }, createdAt: 1 },
+      { id: "other-tab", cli: "codex", sessionId: "other-session", sessionIdByCli: { codex: "other-session" }, createdAt: 2 },
+    ],
+  };
+  const locked = createHost({
+    state: lockedState, currentCli: "codex", modes: {}, lockedTabIds: new Set(["main-tab"]),
+  });
+  await locked.host.closeConversationTabAndRefreshPanel("main-tab");
+  assert.deepEqual(locked.essentialLogs.map(({ event, payload }) => [event, payload.phase, payload.reason]), [
+    ["conversation-tab-close", "requested", undefined],
+    ["conversation-tab-close", "rejected", "loop-main-running"],
+  ]);
+  assert.equal(locked.essentialLogs[0].payload.loopTaskId, "task-1");
+  assert.equal(locked.essentialLogs[0].payload.taskRole, "main");
+  assert.equal(lockedState.tabs.some((tab) => tab.id === "main-tab"), true);
+
+  const closeState = { ...lockedState, tabs: [...lockedState.tabs] };
+  const closed = createHost({ state: closeState, currentCli: "codex", modes: {} });
+  await closed.host.closeConversationTabAndRefreshPanel("main-tab");
+  assert.deepEqual(closed.essentialLogs.map(({ payload }) => payload.phase), ["requested", "closed"]);
+  assert.equal(closed.essentialLogs[1].payload.loopTaskId, "task-1");
+  assert.equal(closeState.tabs.some((tab) => tab.id === "main-tab"), false);
+
+  const ordinaryState: ConversationTabsState = {
+    activeTabId: "ordinary-tab",
+    tabs: [
+      { id: "ordinary-tab", cli: "codex", sessionId: "ordinary-session", sessionIdByCli: { codex: "ordinary-session" }, createdAt: 1 },
+      { id: "fallback-tab", cli: "codex", sessionId: "fallback-session", sessionIdByCli: { codex: "fallback-session" }, createdAt: 2 },
+    ],
+  };
+  const ordinary = createHost({ state: ordinaryState, currentCli: "codex", modes: {} });
+  await ordinary.host.closeConversationTabAndRefreshPanel("ordinary-tab");
+  assert.equal(ordinary.essentialLogs[0].event, "conversation-tab-close");
+  assert.equal(ordinary.essentialLogs[0].payload.taskRole, null);
+  assert.equal(ordinary.essentialLogs[0].payload.loopTaskId, null);
 });
 
 test("repeated and consecutive background closes do not refresh the active conversation", async () => {

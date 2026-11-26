@@ -1,7 +1,35 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { buildClaudePrompt, buildClaudePromptContent } from "../../cli/claudeToolPolicy";
+
+function runSuggestedParserWithFileStdin(input: string) {
+  const parser = buildClaudePrompt("今天上海天气").match(/\| node -e '([^']+)'/);
+  assert.ok(parser);
+  const tmpRoot = path.resolve(__dirname, "../../../.tmp");
+  fs.mkdirSync(tmpRoot, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(tmpRoot, "claude-policy-"));
+  try {
+    const inputPath = path.join(tmpDir, "stdin");
+    fs.writeFileSync(inputPath, input, "utf8");
+    const stdinFd = fs.openSync(inputPath, "r");
+    try {
+      const result = spawnSync(process.execPath, ["-e", parser[1]], {
+        stdio: [stdinFd, "pipe", "pipe"],
+        encoding: "utf8",
+      });
+      assert.ifError(result.error);
+      assert.notEqual(result.status, null, `Parser terminated without an exit code: ${result.signal}`);
+      return result;
+    } finally {
+      fs.closeSync(stdinFd);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
 
 test("keeps the original Claude prompt and adds executable network instructions", () => {
   const prompt = "今天上海天气\n保留原始需求";
@@ -52,8 +80,6 @@ test("adds network instructions to repeated turns without sharing mutable conten
 });
 
 test("the suggested parser retains actual forecast temperatures without oversized payloads", () => {
-  const parser = buildClaudePrompt("今天上海天气").match(/\| node -e '([^']+)'/);
-  assert.ok(parser);
   const forecast = {
     current_condition: [{ temp_C: "26", observation_time: "03:15 AM" }],
     weather: [{
@@ -64,7 +90,7 @@ test("the suggested parser retains actual forecast temperatures without oversize
       hourly: [{ time: "1800", tempC: "23", weatherDesc: [{ value: "Drizzle" }], chanceofrain: "80" }],
     }],
   };
-  const result = spawnSync(process.execPath, ["-e", parser[1]], { input: JSON.stringify(forecast), encoding: "utf8" });
+  const result = runSuggestedParserWithFileStdin(JSON.stringify(forecast));
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.weather[0].date, "2026-10-20");
@@ -78,9 +104,7 @@ test("the suggested parser retains actual forecast temperatures without oversize
 });
 
 test("the suggested parser fails instead of fabricating weather on an invalid response", () => {
-  const parser = buildClaudePrompt("今天上海天气").match(/\| node -e '([^']+)'/);
-  assert.ok(parser);
-  const result = spawnSync(process.execPath, ["-e", parser[1]], { input: "<html>network error</html>", encoding: "utf8" });
+  const result = runSuggestedParserWithFileStdin("<html>network error</html>");
   assert.notEqual(result.status, 0);
   assert.equal(result.stdout.trim(), "");
   assert.match(result.stderr, /SyntaxError/);

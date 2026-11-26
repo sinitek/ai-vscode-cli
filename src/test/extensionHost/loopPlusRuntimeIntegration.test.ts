@@ -338,8 +338,8 @@ test("Loop+ 在原主任务中修复验收 JSON，不重复执行已完成子任
       assert.equal(input.loopTaskId, taskId);
       assert.equal(tabId, fixture.target.tabId);
       assert.equal(currentEventId(input.modelPrompt), eventId);
-      assert.match(input.modelPrompt, /第 1\/3 次自动纠错/);
-      assert.match(input.modelPrompt, /具体拒绝原因：.*没有完整对象/);
+      assert.match(input.modelPrompt, /Loop\+ 继续执行/);
+      assert.match(input.modelPrompt, /^上一次决策被拒绝。拒绝类别：format。原因码：format\.PropertyNameExpected$/m);
       assert.equal(fixture.attemptCalls.length, 1);
       const completed = completedDecision(eventId).slice(1, -1);
       fixture.publish(input, tabId, { status: "end", content: ["```jsonc", `{/* 实际验收结论 */${completed},}`, "```"].join("\n") });
@@ -373,6 +373,78 @@ test("本次完成记录从共享历史丢失后仍进入验收并自动关闭�
     await waitForLoopPlus(() => fixture.closedSubtaskTabs.includes(fixture.createdSubtaskTargets[0].tabId), "成功回报后关闭子任务标签");
     assert.deepEqual(fixture.closedSubtaskTabs, [fixture.createdSubtaskTargets[0].tabId]);
     assert.equal(fixture.completionSubscriptionCount(), 0);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("authoritative main final is validated on its first call when the chat projection is absent", async () => {
+  const runs: import("../../promptRunState").TaskRunRecord[] = [];
+  let invocationCount = 0;
+  const terminal = decision({ status: "completed", answerConclusion: "first terminal", finalSummary: "validated without retry",
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "scope", passed: true }] });
+  const fixture = createLoopPlusRuntimeFixture({ readRuns: () => runs, runPromptOverride: async (input) => {
+    invocationCount += 1;
+    const runId = "main-terminal-call";
+    const startedAt = Date.now();
+    const handoff = input.loopPlusFinalAssistantHandoff;
+    assert.equal(input.taskRole, "main");
+    assert.ok(handoff);
+    runs.push({ id: runId, cli: "codex", sessionId: fixture.target.sessionId, prompt: input.displayPrompt,
+      startedAt, endedAt: startedAt + 1, durationMs: 1, status: "end", taskRole: "main",
+      loopTaskId: input.loopTaskId, loopRound: input.loopRound, loopAttemptId: input.loopAttemptId });
+    handoff({ runId, sessionId: fixture.target.sessionId, taskId: input.loopTaskId!, round: input.loopRound!,
+      role: "main", attemptId: input.loopAttemptId, content: terminal });
+  } });
+  try {
+    assert.equal(await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target), true);
+    assert.equal(invocationCount, 1);
+    assert.equal(fixture.readTask(fixture.createdTaskIds[0])?.status, "completed");
+    assert.equal(fixture.getMessages(fixture.target.tabId).some((message) => message.role === "assistant"), false);
+  } finally {
+    fixture.dispose();
+  }
+});
+
+test("Loop+ invocation diagnostics distinguish evidenced exit and transport failures without raw errors", async () => {
+  const unexpected = require("../../interactive/codexRunner").CodexUnexpectedTurnExitError as new (message: string, threadId: string) => Error;
+  const cases: Array<{ error: Error; expected: string }> = [
+    { error: new unexpected("private detail", "private-session"), expected: "early-exit" },
+    { error: Object.assign(new Error("private detail"), { code: "ECONNRESET" }), expected: "transport-interrupted" },
+    { error: new Error("private detail"), expected: "unknown" },
+  ];
+  for (const [index, item] of cases.entries()) {
+    const fixture = createLoopPlusRuntimeFixture({ runPromptOverride: async () => { throw item.error; } });
+    try {
+      await assert.rejects(fixture.adapter.runMain({ taskId: `diagnostic-${index}`, kind: "review",
+        prompt: "controlled", modelPrompt: "controlled", reviewEventId: `event-${index}`, target: fixture.target }).promise);
+      const diagnostic = fixture.logs.find((entry) => entry.event === "loop-plus-invocation-diagnostic");
+      assert.deepEqual(diagnostic?.detail, { stage: "execution", code: item.expected });
+      assert.equal(JSON.stringify(diagnostic).includes("private detail"), false);
+      assert.equal(JSON.stringify(diagnostic).includes("private-session"), false);
+    } finally {
+      fixture.dispose();
+    }
+  }
+});
+
+test("Loop+ rejects an otherwise complete terminal bound to another session", async () => {
+  const runs: import("../../promptRunState").TaskRunRecord[] = [];
+  const fixture = createLoopPlusRuntimeFixture({ readRuns: () => runs, runPromptOverride: async (input) => {
+    const runId = "session-bound-call";
+    const startedAt = Date.now();
+    runs.push({ id: runId, cli: "codex", sessionId: fixture.target.sessionId, prompt: input.displayPrompt,
+      startedAt, endedAt: startedAt + 1, durationMs: 1, status: "end", taskRole: "main",
+      loopTaskId: input.loopTaskId, loopRound: input.loopRound, loopAttemptId: input.loopAttemptId });
+    input.loopPlusFinalAssistantHandoff?.({ runId, sessionId: "unrelated-session", taskId: input.loopTaskId!,
+      round: input.loopRound!, role: "main", attemptId: input.loopAttemptId, content: "must not be accepted" });
+  } });
+  try {
+    const result = await fixture.adapter.runMain({ taskId: "session-bound-task", kind: "review", prompt: "controlled",
+      modelPrompt: "controlled", reviewEventId: "session-bound-review", target: fixture.target }).promise;
+    assert.equal(result, null);
+    assert.ok(fixture.logs.some((entry) => entry.event === "loop-plus-invocation-diagnostic"
+      && (entry.detail as { code?: string }).code === "identity-rejected"));
   } finally {
     fixture.dispose();
   }
@@ -1426,6 +1498,15 @@ for (const { mode, department, requiresAcceptance } of [
         ...prompt(), loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot(),
       }, { schedulingMode: "event_driven", departmentMetadata }, fixture.target);
       await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("prerequisite"), "first prerequisite launched");
+      const { modelPrompt } = fixture.peekParked("prerequisite")!.input;
+      assert.match(modelPrompt, /^Loop\+ subtask self-check before reporting$/m);
+      assert.match(modelPrompt, /actually start it through its normal entry point/);
+      assert.doesNotMatch(fixture.mainCalls[0].modelPrompt, /^Loop\+ subtask self-check before reporting$/m);
+      if (department) {
+        assert.match(modelPrompt, /^你是产研部员工/);
+      } else {
+        assert.doesNotMatch(modelPrompt, /^你是产研部员工/);
+      }
       const [taskId] = fixture.createdTaskIds;
       const snapshot = () => createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
       assert.deepEqual(snapshot().pending.map((item) => item.subtaskId), ["successor"]);
@@ -2520,6 +2601,14 @@ test("assistant text must fall inside the actual run window and invocation ancho
     content: "FRESH",
     createdAt: 250,
   }], boundary, subtaskQuery, run), "FRESH");
+  assert.equal(selectLoopPlusInvocationAssistant([
+    { ...assistant, id: "decision", content: "COMPLETE_DECISION", createdAt: 250 },
+    { ...assistant, id: "thinking-tail", content: "reasoning projection", createdAt: 260, kind: "thinking" },
+  ], boundary, subtaskQuery, run), "COMPLETE_DECISION");
+  assert.equal(selectLoopPlusInvocationAssistant([
+    { ...assistant, id: "decision", content: "COMPLETE_DECISION", createdAt: 250 },
+    { ...assistant, id: "subagent-tail", content: "delegated output", createdAt: 260, subagentId: "agent-1" },
+  ], boundary, subtaskQuery, run), "COMPLETE_DECISION");
   const identifiedQuery = { ...subtaskQuery, attemptId: "attempt-current" };
   const identifiedRun = { ...run, loopAttemptId: "attempt-current" };
   const identifiedAssistant = { ...assistant, loopAttemptId: "attempt-current" };

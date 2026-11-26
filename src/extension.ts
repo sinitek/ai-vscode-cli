@@ -39,6 +39,7 @@ import {
   recordHumanInteractionHistory,
 } from "./humanInteractionHistory";
 import { CONFIG_NAMESPACE, getAutoOpenPanel, getDefaultCli, getAutoAddEditorContextTags, getDebugLogging, getMacTaskShell, getCliCommand, getCliArgs, isInteractiveSupported, getThinkingWorkspaceFiles } from "./cli/config";
+import { resolveClaudeInteractiveEntrypoint, resolvePromptExecutionMode, supportsInteractiveLaunch } from "./extensionHost/interactiveLaunchStrategy";
 import { buildOpenCodeRunFailureMessage, buildProcessLabel, captureCliOutput, parseOpenCodeRunOutput, runCli, runCliStream, startOpenCodeServer, isCliCommandAvailable, type RunProcess } from "./cli/commandRunner";
 import {
   beginCliCommandAutoRepair,
@@ -763,11 +764,9 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 }
 export async function deactivate(): Promise<void> {
-  departmentExecutionProducer?.closeAll();
   isExtensionDeactivating = true;
-  departmentRuntimeComposition?.dispose();
-  // Revokes the sole synchronous writer before draining it; a failed handoff retains its marker.
-  const ownerClosed = departmentOwnershipIndex?.close();
+  departmentExecutionProducer?.closeAll();
+  const departmentShutdown = departmentRuntimeComposition?.dispose();
   conversationTaskSummaries.dispose();
   void humanInteractionAttention?.dispose();
   humanInteractionAttention = undefined;
@@ -775,6 +774,13 @@ export async function deactivate(): Promise<void> {
   scheduledTaskScheduler?.stop();
   scheduledTaskScheduler = null;
   stopAllRuns();
+  const departmentDrained = await departmentShutdown;
+  if (departmentDrained === false) {
+    await logError("department-owner-close-blocked", { reason: "department-shutdown-drain-unconfirmed" });
+    return;
+  }
+  // Keep the owned task route available until stopped department runners finish persistence.
+  const ownerClosed = departmentOwnershipIndex?.close();
   if (ownerClosed && !await ownerClosed) await logError("department-owner-close-blocked", { reason: "写者静止或事务恢复尚未确认，保留 owner marker" });
 }
 function stopAllRuns(): void {
@@ -909,32 +915,6 @@ function createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd: string, grokExecu
   }
 }
 
-
-function isWindowsCmdCommand(command: string | undefined): boolean {
-  if (!command || process.platform !== "win32") {
-    return false;
-  }
-  const lower = command.toLowerCase();
-  return lower.endsWith(".cmd") || lower.endsWith(".bat");
-}
-
-function resolveBundledClaudeCliPath(): string | undefined {
-  try {
-    return require.resolve("@anthropic-ai/claude-agent-sdk/cli.js");
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveClaudeInteractiveEntrypoint(command: string | undefined): string | undefined {
-  if (!command) {
-    return undefined;
-  }
-  if (isWindowsCmdCommand(command)) {
-    return resolveBundledClaudeCliPath();
-  }
-  return command;
-}
 
 function getScheduledTaskStoreDeps() {
   return {
@@ -1732,6 +1712,8 @@ const sessionTabsHost = createExtensionSessionTabsHost({
   readDepartmentTaskRecord: (taskId) => departmentOwnershipIndex?.readTaskRecord(taskId) ?? null,
   readDepartmentLeaderTaskIds: (rootTaskId, leaderSubtaskId) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(rootTaskId, leaderSubtaskId) ?? null,
   onSubtaskTabCreated: (tabId) => sendRunStatusForTab(tabId, "start"),
+  resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab),
+  logEssential: (event, payload) => { void logEssential(event, payload).catch(() => undefined); },
 
   postConversationTabClosed: (tabId, activeTabId) => sendPanelMessage({ type: "conversationTabClosed", tabId, activeTabId }),
   getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopGroupChatChatPanelCoordinator.listGroupChatTasks(), getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
@@ -3285,10 +3267,17 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
         if (isAborted() || isTabRunActive(target.tabId) || promptRunHandoff.isBusy(target.tabId)) return false;
         const latest = readLoopTaskRecord(task.id);
         const currentTarget = latest ? resolveLoopMainPromptTarget(latest, { createIfMissing: false }) : null;
-        if (!latest || latest.id !== task.id || latest.workspaceKey !== task.workspaceKey || latest.taskStoreFile !== task.taskStoreFile
+        const currentTab = currentTarget?.tabId === target.tabId ? getConversationTabById(target.tabId) : null;
+        const currentContext = currentTab ? resolveConversationTabLoopContext(currentTab) : null;
+        const resumedOnOriginalMainTab = Boolean(latest && currentTarget && currentTab
+          && currentTarget.tabId === target.tabId && currentTarget.cli === target.cli
+          && latest.sessionId && currentTarget.sessionId === latest.sessionId
+          && currentContext?.taskRole === "main" && currentContext.loopTaskId === latest.id);
+        if (!latest || latest.id !== task.id || latest.workspaceKey !== task.workspaceKey || latest.workspaceKey !== activeWorkspaceKey
           || latest.department?.role !== task.department?.role || latest.departmentInvalid !== task.departmentInvalid
           || !currentTarget || currentTarget.tabId !== target.tabId || currentTarget.cli !== target.cli
-          || (target.sessionId && currentTarget.sessionId !== target.sessionId)) {
+          || (latest.taskStoreFile !== task.taskStoreFile && !resumedOnOriginalMainTab)
+          || (target.sessionId && currentTarget.sessionId !== target.sessionId && !resumedOnOriginalMainTab)) {
           throw new Error(t("loopGroupChatChat.askUnavailable"));
         }
         return true;
@@ -3316,6 +3305,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   ),
   showInformationMessage: (message) => { void vscode.window.showInformationMessage(message); },
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
+  logEvent: (event, payload) => { void logEssential(event, payload).catch(() => undefined); },
   pickTask: pickLoopGroupChatTask,
   t,
 });
@@ -6082,7 +6072,7 @@ async function runPromptNow(
         return workspaceCwd ? createWorkspaceLoopSubtaskExecutionRoot(workspaceCwd) : null;
       })()
     : null;
-  const shouldUseInteractive = isInteractiveSupported(target.cli);
+  const shouldUseInteractive = supportsInteractiveLaunch(target.cli);
   try {
     const executionOptions = {
       departmentInteractiveRunner: options.departmentInteractiveRunner,
@@ -6315,7 +6305,7 @@ async function runPromptNow(
             });
           } else if (shouldUseInteractive) {
             await runPromptInteractive(currentAttemptInput, attemptTarget, { ...executionOptions, departmentCodexRun, cancelDepartmentCodexPreparation: abortCodexPreparation });
-          } else if (hasOtherTabRun(attemptTarget.tabId)) {
+          } else if (resolvePromptExecutionMode(attemptTarget.cli, hasOtherTabRun(attemptTarget.tabId)) === "parallel") {
             await runPromptParallel(currentAttemptInput, attemptTarget, { ...executionOptions, departmentProcessStream: ownerStream });
           } else {
             await runPromptOneShot(currentAttemptInput, attemptTarget, { ...executionOptions, departmentProcessStream: ownerStream });

@@ -280,6 +280,7 @@ scenario("cold asynchronous stop rechecks the authoritative task before cleanup 
 for (const failure of ["initial-disconnect", "poll-disconnect", "existing-control", "cleanup-unverified"] as const) {
 scenario(`public cold stop controls the other original authority after ${failure}`, async t => {
   const h = await productionWiring(t, "codex", true, false, 2, { maxEmployees: 20 }, "codex", true, true);
+  fs.writeFileSync(h.file("hold-output"), "hold both original turns until authority startup is observed");
   for (let round = 1; round <= 4; round++) h.answer(round, { status: "wait", finalSummary: "等待公开中止" });
   const first = await h.start(); assert.ok(first.ok);
   await until(() => !!h.read(first.taskId)?.executionSession);
@@ -290,6 +291,7 @@ scenario(`public cold stop controls the other original authority after ${failure
   const clients = [offline, reachable].map(set => new DepartmentGenerationAuthorityClient(
     departmentGenerationAuthorityDirectory(h.file("authorities"), set.scope), set.scope, set.producerId));
   await until(async () => (await clients[0].observe()).tickets[0]?.state === "started" && (await clients[1].observe()).tickets[0]?.state === "started");
+  fs.rmSync(h.file("hold-output"));
   for (const [index, member] of [first, second].entries()) {
     await h.fixture.adapter.waitForTaskIdle(member.taskId);
     const task = h.read(member.taskId)!;

@@ -6,6 +6,7 @@ import { ZCODE_DEFAULT_COMMAND } from "../interactive/zcodeAppServerProtocol";
 import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
 import { readToolSettings } from "../toolSettings";
+import { isInteractiveCli } from "./cliExecutionPolicy";
 
 export const CONFIG_NAMESPACE = "sinitek-cli-tools";
 const MAC_TASK_SHELL_KEY = "macTaskShell";
@@ -100,7 +101,7 @@ export function getMacTaskShell(): MacTaskShell {
 }
 
 export function isInteractiveSupported(cli: CliName): boolean {
-  return cli === "codex" || cli === "claude" || cli === "grok" || cli === "dsh" || cli === "kimi-code" || cli === "zcode";
+  return isInteractiveCli(cli);
 }
 
 export function getThinkingArgs(cli: CliName, mode: ThinkingMode): string[] {

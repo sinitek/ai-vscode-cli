@@ -7,6 +7,7 @@ import { t } from "../i18n";
 import { getLatestSessionIdFromRecords, type SessionStore } from "../sessionStore";
 import { bindLoopTaskToSession, buildLoopSessionIdsByCli, type LoopTaskRecord } from "../loopTaskStore";
 import { getLoopSubtaskDisplayTitle, resolveLoopSubtaskConversationContextFromMessages } from "../loopConversationPresentation";
+import type { LoopConversationTabContext } from "../panelStateBuilder";
 import { projectDepartmentConversationTab } from "./departmentConversationTabs";
 import { attachConversationTabLoopSchedulingMode, buildConversationTabSessionLookupKey, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "../sessionTabs";
 import type { PromptRunTarget } from "../promptRunTypes";
@@ -47,6 +48,8 @@ export type ExtensionSessionTabsHostDeps = {
   getPrimaryRunTabId: () => string | null; getActiveTaskRun: () => { cli?: CliName; loopTaskId?: string; sessionId?: string | null } | null;
   getLiveMessagesForTab: (tabId: string) => ChatMessage[] | null; getPendingSessionDraft: (tabId: string, cli?: CliName) => PendingSessionDraft; getActiveTabIdForRun: () => string | null; getActiveSessionId: () => string | null; persistSessionStore: (store: SessionStore) => Promise<void>; getSessionStoreKey: (workspaceKey?: string) => string; loadSessionMessages: (cli: CliName, sessionId: string) => ChatMessage[]; saveSessionMessages: (cli: CliName, sessionId: string, messages: ChatMessage[]) => void;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null; shouldUseFallbackSessionLabel: (label: string | null | undefined) => boolean;
+  resolveConversationTabLoopContext?: (tab: ConversationTabRecord) => LoopConversationTabContext;
+  logEssential?: (event: string, payload?: unknown) => void | Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean; isLoopMainTabCloseLocked: (tabId: string | null) => boolean; postPanelState: () => Promise<void>; updateStatusBar: () => void; maybePromptInstallOnCliGroupSwitch: (cli: CliName) => Promise<void>; sendSessionMessagesToPanel: (cli: CliName, sessionId: string | null, tabId?: string | null) => void;
   restoreConversationTabConfiguration?: (tabId: string) => Promise<void>;
   onSubtaskTabCreated?: (tabId: string) => void;
@@ -360,6 +363,26 @@ function closeConversationTab(tabId: string): { cli: CliName; sessionId: string 
   return sessionTabsController.closeConversationTab(tabId);
 }
 
+function logConversationTabClose(payload: {
+  phase: "requested" | "skipped" | "rejected" | "closed";
+  tabId: string;
+  loopTaskId: string | null;
+  taskRole: LoopConversationTabContext["taskRole"];
+  closeTarget: "direct" | "department" | "completed-subtask";
+  reason?: "target-changed" | "tab-run-active" | "loop-main-running" | "tab-missing" | "host-close-not-applied";
+}): void {
+  try {
+    const pending = deps.logEssential
+      ? deps.logEssential("conversation-tab-close", payload)
+      : (logInfo("conversation-tab-close", payload), undefined);
+    if (pending && typeof pending.then === "function") {
+      void pending.catch(() => undefined);
+    }
+  } catch {
+    return;
+  }
+}
+
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
   options: { notifyTabClosed?: boolean; onRejected?: () => void } = {},
@@ -367,16 +390,29 @@ async function closeConversationTabAndRefreshPanel(
 ): Promise<void> {
   const completedSubtask = target?.kind === "completed-subtask";
   const closingTab = getConversationTabById(tabId);
+  const loopContext = closingTab ? deps.resolveConversationTabLoopContext?.(closingTab) ?? null : null;
+  const loopTaskId = loopContext?.loopTaskId ?? closingTab?.loopTaskId ?? target?.tab.loopTaskId ?? null;
+  const taskRole = loopContext?.taskRole ?? (closingTab?.loopSubtaskId || target?.tab.loopSubtaskId ? "subtask" : null);
+  const closeTarget = target?.kind ?? "direct";
+  const logClose = (phase: "requested" | "skipped" | "rejected" | "closed", reason?: "target-changed" | "tab-run-active" | "loop-main-running" | "tab-missing" | "host-close-not-applied") => {
+    logConversationTabClose({ phase, tabId, loopTaskId, taskRole, closeTarget, ...(reason ? { reason } : {}) });
+  };
+  logClose("requested");
   if (target && closingTab !== target.tab) {
+    logClose("rejected", "target-changed");
     throw new Error(completedSubtask ? "子任务标签已被替代或移除，未执行自动关闭。" : "department-owned-tab-target-changed");
   }
-  if (isTabRunActive(tabId) || (target?.kind !== "department" && isLoopMainTabCloseLocked(tabId))) {
+  const tabRunActive = isTabRunActive(tabId);
+  const mainTaskCloseLocked = !tabRunActive && target?.kind !== "department" && isLoopMainTabCloseLocked(tabId);
+  if (tabRunActive || mainTaskCloseLocked) {
+    logClose("rejected", tabRunActive ? "tab-run-active" : "loop-main-running");
     if (completedSubtask) throw new Error("子任务标签正在运行或关闭已锁定，未执行自动关闭。");
     await postPanelState();
     options.onRejected?.();
     return;
   }
   if (!closingTab) {
+    logClose("skipped", "tab-missing");
     return;
   }
   const previousActiveTabId = getActiveConversationTabId();
@@ -386,10 +422,12 @@ async function closeConversationTabAndRefreshPanel(
   const next = sessionTabsController.closeConversationTab(tabId, { replaceLastTab });
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
+    logClose("rejected", "host-close-not-applied");
     if (completedSubtask) throw new Error("子任务标签关闭未生效，保留标签以便重试。");
     options.onRejected?.();
     return;
   }
+  logClose("closed");
   if (!replaceLastTab && options.notifyTabClosed !== false) {
     deps.postConversationTabClosed(tabId, nextActiveTabId);
   }

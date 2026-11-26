@@ -8,6 +8,8 @@ export type ResolvedCliCommand = {
   resolvedFrom: "config" | "path" | "windows-npm-bin" | "unix-user-bin";
 };
 
+export type CommandResolutionContext = { cwd?: string; env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform };
+
 export function splitConfiguredCliCommand(command: string): string[] {
   const parts = command.trim().match(/(?:"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\S+)/g) ?? [];
   return parts.map((part) => {
@@ -26,8 +28,8 @@ export function getConfiguredCliCommandParts(command: string, fallbackCommand: s
   return parts.length > 0 ? parts : [fallbackCommand];
 }
 
-function isPathLikeCommand(command: string): boolean {
-  return command.includes(path.sep) || (process.platform === "win32" && command.includes("/"));
+function isPathLikeCommand(command: string, platform: NodeJS.Platform): boolean {
+  return command.includes(path.sep) || (platform === "win32" && command.includes("/"));
 }
 
 function fileExists(targetPath: string): boolean {
@@ -39,8 +41,8 @@ function fileExists(targetPath: string): boolean {
   }
 }
 
-function resolveExistingCommandPath(command: string, env: NodeJS.ProcessEnv): string | null {
-  const candidates = process.platform === "win32"
+function resolveExistingCommandPath(command: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | null {
+  const candidates = platform === "win32"
     ? getWindowsCommandCandidates(command, env, "allow-bare")
     : [command];
   for (const candidate of candidates) {
@@ -71,12 +73,12 @@ export function getWindowsCommandCandidates(
   return candidates;
 }
 
-function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.ProcessEnv): string | null {
+function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | null {
   const filteredDirs = dirs
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-  const candidates = process.platform === "win32"
+  const candidates = platform === "win32"
     ? getWindowsCommandCandidates(command, env, "omit-bare")
     : [command];
   for (const dir of filteredDirs) {
@@ -90,13 +92,13 @@ function resolveCommandInDirs(command: string, dirs: string[], env: NodeJS.Proce
   return null;
 }
 
-function resolveCommandOnPath(command: string, env: NodeJS.ProcessEnv, cwd?: string): string | null {
+function resolveCommandOnPath(command: string, env: NodeJS.ProcessEnv, cwd: string | undefined, platform: NodeJS.Platform): string | null {
   const envPath = env.PATH ?? env.Path ?? "";
   const pathDirs = envPath
     .split(path.delimiter)
     .map((entry) => entry.trim())
     .filter(Boolean);
-  return resolveCommandInDirs(command, pathDirs.map((dir) => cwd ? path.resolve(cwd, dir) : dir), env);
+  return resolveCommandInDirs(command, pathDirs.map((dir) => cwd ? path.resolve(cwd, dir) : dir), env, platform);
 }
 
 function getWindowsUserBinDirs(env: NodeJS.ProcessEnv, homeDir: string): string[] {
@@ -167,31 +169,32 @@ export function normalizeCommandInput(command: string): string {
 
 export function resolveCliCommand(
   command: string,
-  context: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  context: CommandResolutionContext = {},
 ): ResolvedCliCommand | null {
+  const platform = context.platform ?? process.platform;
   const env = context.env ?? process.env;
-  const contextualHome = process.platform === "win32" ? (env.USERPROFILE || env.HOME) : (env.HOME || env.USERPROFILE);
+  const contextualHome = platform === "win32" ? (env.USERPROFILE || env.HOME) : (env.HOME || env.USERPROFILE);
   const homeDir = context.env ? (contextualHome || os.homedir()) : os.homedir();
-  const normalized = expandHomePath(normalizeCommandInput(command), { env, homeDir });
-  const looksLikePath = isPathLikeCommand(normalized);
+  const normalized = expandHomePath(normalizeCommandInput(command), { env, homeDir, platform });
+  const looksLikePath = isPathLikeCommand(normalized, platform);
   if (path.isAbsolute(normalized) || looksLikePath) {
-    const resolved = resolveExistingCommandPath(context.cwd ? path.resolve(context.cwd, normalized) : normalized, env);
+    const resolved = resolveExistingCommandPath(context.cwd ? path.resolve(context.cwd, normalized) : normalized, env, platform);
     return resolved ? { command: resolved, resolvedFrom: "config" } : null;
   }
 
-  if (process.platform === "win32") {
-    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsUserBinDirs(env, homeDir), env);
+  if (platform === "win32") {
+    const resolvedFromNpmBin = resolveCommandInDirs(normalized, getWindowsUserBinDirs(env, homeDir), env, platform);
     if (resolvedFromNpmBin) {
       return { command: resolvedFromNpmBin, resolvedFrom: "windows-npm-bin" };
     }
   } else {
-    const resolvedFromUserBin = resolveCommandInDirs(normalized, getUnixUserBinDirs(env, homeDir), env);
+    const resolvedFromUserBin = resolveCommandInDirs(normalized, getUnixUserBinDirs(env, homeDir), env, platform);
     if (resolvedFromUserBin) {
       return { command: resolvedFromUserBin, resolvedFrom: "unix-user-bin" };
     }
   }
 
-  const resolvedFromPath = resolveCommandOnPath(normalized, env, context.cwd);
+  const resolvedFromPath = resolveCommandOnPath(normalized, env, context.cwd, platform);
   if (resolvedFromPath) {
     return { command: resolvedFromPath, resolvedFrom: "path" };
   }

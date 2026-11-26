@@ -33,32 +33,46 @@ async function withTimeout<T>(promise: Promise<T>, label: string, timeoutMs = 20
 function harness() {
   const data = departmentRecords();
   const posted: Array<any> = [], warnings: string[] = [], effects: Array<[string, string]> = [];
-  let receive!: (message: any) => void;
-  let dispose!: () => void;
+  const webviews: Array<{
+    receive: (message: any) => void;
+    dispose: () => void;
+    reveals: boolean[];
+    documents: string[];
+    onPost?: (message: any) => void;
+  }> = [];
+  const receive = (message: any) => webviews.at(-1)!.receive(message);
   const domReady = deferred();
   const handshakeTimers = new Set<ReturnType<typeof setTimeout>>();
-  const scheduleHandshake = (message: any, onDelivered?: () => void) => {
+  const scheduleHandshake = (receiveMessage: typeof receive, message: any, onDelivered?: () => void) => {
     const timer = setTimeout(() => {
       handshakeTimers.delete(timer);
-      receive(message);
+      receiveMessage(message);
       onDelivered?.();
     }, 0);
     handshakeTimers.add(timer);
   };
   const previous = vscode.window.createWebviewPanel;
   (vscode.window as any).createWebviewPanel = () => {
+    const view: (typeof webviews)[number] = {
+      receive: () => assert.fail("Webview message listener not installed"),
+      dispose: () => assert.fail("Webview dispose listener not installed"),
+      reveals: [], documents: [],
+    };
+    webviews.push(view);
     let html = "";
     return { title: "", webview: { cspSource: "self", get html() { return html; }, set html(value: string) {
       html = value;
+      view.documents.push(value);
       if (value.includes('vscode.postMessage({ type: "loopGroupChatChat:loadingReady" })')) {
-        scheduleHandshake({ type: "loopGroupChatChat:loadingReady" });
+        scheduleHandshake(view.receive, { type: "loopGroupChatChat:loadingReady" });
       }
       const generation = /const PANEL_GENERATION = (\d+)/.exec(value)?.[1];
-      if (generation) scheduleHandshake({ type: "loopGroupChatChat:domReady", generation: Number(generation) }, domReady.resolve);
+      if (generation) scheduleHandshake(view.receive, { type: "loopGroupChatChat:domReady", generation: Number(generation) }, domReady.resolve);
     },
-    onDidReceiveMessage: (handler: typeof receive) => { receive = handler; return { dispose() {} }; },
-    postMessage: (message: any) => { posted.push(structuredClone(message)); return Promise.resolve(true); },
-    }, reveal() {}, onDidDispose: (handler: () => void) => { dispose = handler; return { dispose() {} }; } };
+    onDidReceiveMessage: (handler: typeof receive) => { view.receive = handler; return { dispose() {} }; },
+    postMessage: (message: any) => { posted.push(structuredClone(message)); view.onPost?.(message); return Promise.resolve(true); },
+    }, reveal(_column: unknown, preserveFocus: boolean) { view.reveals.push(preserveFocus); },
+    onDidDispose: (handler: () => void) => { view.dispose = handler; return { dispose() {} }; } };
   };
   const deps: Deps = {
     getExtensionUri: () => ({ fsPath: "/fixture" } as any), panelsByTaskId: new Map(),
@@ -95,16 +109,90 @@ function harness() {
   const send = async (target: { taskId: string; instanceId: string }, message: any) => {
     receive({ type: "loopGroupChatChat:departmentTaskMessage", ...target, message }); await tick();
   };
-  return { ...data, deps, coordinator, effects, posted, warnings, load, send, domReady: domReady.promise,
-    receive: (message: any) => receive(message),
+  return { ...data, deps, coordinator, effects, posted, warnings, load, send, webviews, domReady: domReady.promise,
+    receive,
     panel: () => deps.panelsByTaskId.get(data.root.id)!,
     restore: () => { vscode.window.createWebviewPanel = previous; }, dispose: () => {
       for (const timer of handshakeTimers) clearTimeout(timer);
       handshakeTimers.clear();
-      dispose?.();
+      webviews.at(-1)?.dispose();
     },
   };
 }
+
+test("department continuation messages preserve live panels and isolate replacement from late disposal", async (context) => {
+  const fixture = harness();
+  context.after(() => {
+    fixture.dispose();
+    for (const view of fixture.webviews) view.dispose();
+    fixture.restore();
+  });
+  const { root, leader, deps, coordinator, webviews } = fixture;
+  const taskIdentity = (task: LoopTaskRecord) => ({
+    id: task.id, department: structuredClone(task.department), workspace: task.workspaceKey, cli: task.cli, session: task.sessionId,
+  });
+  root.sessionId = "fixture-director-session";
+  leader.sessionId = "fixture-leader-session";
+  const expected = [taskIdentity(root), taskIdentity(leader)];
+  const dispatched: unknown[] = [];
+  deps.departmentOrganizationControl = {
+    continue: async (task, prompt) => { dispatched.push([taskIdentity(task), prompt]); root.status = "running"; },
+    stop: async () => assert.fail("unexpected stop"), complete: async () => assert.fail("unexpected completion"),
+  };
+  deps.continueDepartmentLeader = async (task, prompt, assertCurrent) => { assertCurrent(); dispatched.push([taskIdentity(task), prompt]); };
+  deps.runLoopPrompt = async () => assert.fail("department continuation fell back to ordinary Loop");
+
+  for (const task of [root, leader]) await withTimeout(coordinator.open(task.id), `open ${task.id}`);
+  const originalPanels = [root, leader].map(task => deps.panelsByTaskId.get(task.id)!);
+  assert.equal(webviews.length, 2);
+  assert.notEqual(originalPanels[0], originalPanels[1]);
+  const originalDocuments = webviews.map(view => [...view.documents]);
+  for (const [index, task] of [root, leader].entries()) {
+    const view = webviews[index];
+    const other = webviews[1 - index];
+    const otherReveals = [...other.reveals];
+    const settled = deferred();
+    const requestId = `continue:${task.id}`;
+    view.onPost = message => {
+      if (message.type === "loopGroupChatChat:continueTaskSettled" && message.requestId === requestId) settled.resolve();
+    };
+    view.receive({ type: "loopGroupChatChat:continueTask", requestId, prompt: task.id });
+    await withTimeout(settled.promise, `settle ${task.id}`);
+    assert.deepEqual(dispatched, expected.slice(0, index + 1).map(identity => [identity, identity.id]));
+    assert.deepEqual(taskIdentity(task), expected[index]);
+    assert.deepEqual(view.reveals, [true], "continuation refresh does not focus either panel");
+    await withTimeout(coordinator.open(task.id, { focus: true }), `reveal ${task.id}`);
+    assert.equal(webviews.length, 2);
+    assert.equal(deps.panelsByTaskId.get(task.id), originalPanels[index]);
+    assert.equal(originalPanels[index].getState()?.task.id, task.id);
+    assert.deepEqual(view.reveals, [true, false, true]);
+    assert.deepEqual(other.reveals, otherReveals);
+    assert.deepEqual(webviews.map(entry => entry.documents), originalDocuments, "reveal and refresh did not reassign webview.html");
+  }
+
+  const oldLeader = webviews[1];
+  oldLeader.dispose();
+  assert.equal(deps.panelsByTaskId.has(leader.id), false);
+  assert.equal(deps.panelsByTaskId.get(root.id), originalPanels[0]);
+  await withTimeout(coordinator.open(leader.id), "reopen disposed leader");
+  const replacement = deps.panelsByTaskId.get(leader.id);
+  assert.ok(replacement);
+  assert.notEqual(replacement, originalPanels[1]);
+  assert.equal(webviews.length, 3);
+  const replacementDocuments = [...webviews[2].documents];
+  oldLeader.dispose();
+  oldLeader.receive({ type: "loopGroupChatChat:continueTask", prompt: "late continuation" });
+  await tick();
+  await withTimeout(coordinator.open(leader.id, { focus: true }), "reveal replacement after stale disposal");
+  assert.equal(webviews.length, 3);
+  assert.equal(deps.panelsByTaskId.get(leader.id), replacement);
+  assert.equal(deps.panelsByTaskId.get(root.id), originalPanels[0]);
+  assert.deepEqual(webviews[2].documents, replacementDocuments);
+  assert.deepEqual(webviews[2].reveals, [true, false, true]);
+  assert.deepEqual(webviews[0].documents, originalDocuments[0]);
+  assert.deepEqual(dispatched, expected.map(identity => [identity, identity.id]));
+  assert.deepEqual(fixture.warnings, []);
+});
 
 test("department host projection uses validated records, actual attempts and read-only lease snapshot", () => {
   const { root, leader, other, records } = departmentRecords();

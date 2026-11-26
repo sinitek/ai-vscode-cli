@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import * as path from "path";
 import { killProcessTree } from "./codexRunnerProcess";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import { readGrokUserQuestionParams, type GrokUserQuestionParams, type GrokUserQuestionResponse } from "./grokUserQuestion";
 
 const DEFAULT_OUTPUT_BYTE_LIMIT = 1024 * 1024;
@@ -97,13 +98,12 @@ export class GrokAcpClient {
     this.nextTerminalId += 1;
     let child: ChildProcess;
     try {
-      child = spawn(command, args, {
+      child = spawn(command, args, createCliProcessPolicy().spawnOptions(command, {
         cwd,
-        env: buildTerminalEnv(record.env),
-        windowsHide: true,
-        detached: process.platform !== "win32",
+        envOverrides: readTerminalEnvOverrides(record.env),
+        preserveShellEnvironment: true,
         stdio: ["ignore", "pipe", "pipe"],
-      });
+      }));
     } catch (error) {
       throw new GrokAcpClientError(error instanceof Error ? error.message : String(error), -32603);
     }
@@ -291,8 +291,8 @@ function readByteLimit(value: unknown): number {
   return Math.max(0, Math.floor(value));
 }
 
-function buildTerminalEnv(value: unknown): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+function readTerminalEnvOverrides(value: unknown): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = Object.create(null);
   if (value === undefined || value === null) {
     return env;
   }

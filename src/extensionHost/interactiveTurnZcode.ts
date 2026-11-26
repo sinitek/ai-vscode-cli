@@ -8,6 +8,10 @@ function isRealTokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function createZcodeRunnerOwnershipError(): Error {
+  return Object.assign(new Error("ZCode 启动期间，当前运行已失效或运行器已被替换。"), { code: "RUNNER_DISPOSED" });
+}
+
 export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
   return {
     async runAttempt(port: InteractiveTurnAttemptPort) {
@@ -69,19 +73,31 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
       const ready = await Promise.race([
         port.interactiveRunnerManager.waitForPendingDisposal("zcode", uiSessionIdAtStart).then(() => true),
         stoppedWhileWaiting,
-      ]);
-      if (!ready || stopped || !port.isCurrentRunActive()
-        || (uiSessionIdAtStart && !port.interactiveRunnerManager.hasZcodeRunner(uiSessionIdAtStart, runner))) {
+      ]).catch((error) => {
+        if (stopped || !port.isCurrentRunActive()) return false;
+        throw error;
+      });
+      if (!ready || stopped || !port.isCurrentRunActive()) {
         return "return";
       }
+      const assertRunAndRunnerOwnership = (): void => {
+        if (!port.isCurrentRunActive()
+          || (uiSessionIdAtStart && !port.interactiveRunnerManager.hasZcodeRunner(uiSessionIdAtStart, runner))) {
+          throw createZcodeRunnerOwnershipError();
+        }
+      };
+      assertRunAndRunnerOwnership();
       const started = await runner.start();
+      assertRunAndRunnerOwnership();
       if (model) {
         await runner.setModel(model, launch.thinkingValue);
       } else if (launch.thinkingValue && runner.getSettings().thinkingOptions.includes(launch.thinkingValue)) {
         await runner.setThoughtLevel(launch.thinkingValue);
       }
+      assertRunAndRunnerOwnership();
       const settings = runner.getSettings();
       await bindDepartmentSession?.(started.sessionId);
+      assertRunAndRunnerOwnership();
       port.updateSessionForNewRun(started.sessionId);
       const uiSessionId = port.uiSessionId;
       if (previousSessionId && previousSessionId !== uiSessionId) {
@@ -105,7 +121,9 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           },
         );
       }
-      if (started.usage && isRealTokenCount(started.usage.tokensInContextWindow)) {
+      const canPublishUsage = (): boolean => port.isCurrentRunActive()
+        && (!port.uiSessionId || port.interactiveRunnerManager.hasZcodeRunner(port.uiSessionId, runner));
+      if (started.usage && isRealTokenCount(started.usage.tokensInContextWindow) && canPublishUsage()) {
         port.sendPanelMessage({
           type: "contextTokenUsage",
           tabId: port.tabId,
@@ -162,6 +180,7 @@ export function createZcodeInteractiveTurnStrategy(): InteractiveTurnStrategy {
           port.appendDebugEvent(event);
         },
         onTokenUsageUpdate: (usage) => {
+          if (!canPublishUsage()) return;
           port.sendPanelMessage({
             type: "contextTokenUsage",
             tabId: port.tabId,

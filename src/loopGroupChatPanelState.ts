@@ -339,7 +339,7 @@ export function resolveLoopPlusSubtaskMemberStatus(
     if (projection.activity === "reviewing" && projection.activeReviewEventIds?.includes(review.eventId)) {
       return "reviewing";
     }
-    return review.repairing ? "repairing" : "queued_review";
+    return "queued_review";
   }
   const running = projection.running.find((item) => item.subtaskId === subtaskId);
   if (running) {

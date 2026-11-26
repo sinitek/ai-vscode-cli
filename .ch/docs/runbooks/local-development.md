@@ -283,7 +283,7 @@ python scripts/export_vscode_extension.py --target win32-x64
 
 `current` 按运行打包脚本的 Node.js 平台/架构解析；支持 `darwin-arm64`、`darwin-x64`、`linux-arm64`、`linux-x64`、`win32-x64`。平台包带 VSIX target 标记，文件名为 `dist/sinitek-cli-tools-<version>-<target>.vsix`，只能分发到对应平台；不要拿 macOS 平台包替代 Windows/Linux 通用发布。SDK 本身不包含 Windows ARM64、Linux ARM32 或 Alpine 专属 ripgrep，本脚本不宣称新增这些平台支持。
 
-建议在目标系统安装完整依赖后打包；跨平台打包必须已经安装目标平台的 sharp/libvips，否则预检失败，不会静默删除图片处理能力。脚本只生成临时 ignore 文件，不修改本机 `node_modules` 或项目 `.vscodeignore`。
+建议在目标系统安装完整依赖后打包；跨平台打包必须已经安装目标平台的 sharp/libvips，否则预检失败，不会静默删除图片处理能力。平台裁剪只生成临时 ignore 文件，不移除本机依赖包，也不修改项目 `.vscodeignore`。
 
 导出脚本会：
 
@@ -293,6 +293,7 @@ python scripts/export_vscode_extension.py --target win32-x64
 - 新增本地 README 图片时，在 `scripts/export_vscode_extension.py` 的 `README_IMAGE_ASSETS` 中登记路径和唯一截图资产类型；审计会拒绝未转换的相对图片、不安全的 HTTP 地址、缺失文件或错误资产登记。外部图片仍应使用可匿名访问的 HTTPS 地址
 - 新资产地址只有发布对应版本后才能访问；已发布版本不能覆盖，应先由维护者升级 `package.json` 版本再运行发布脚本，不能用当前市场旧包验证尚未上传的图片资产
 - 若当前 `node_modules` 是 pnpm 布局，先复制到临时目录安装成 vsce 可识别的 hoist 布局再打包；本机没有 pnpm 时临时目录改走 `npm install`。不要直接对 pnpm 树执行 `vsce package`（它会跑 `npm list` 并 `ELSPROBLEMS`）
+- 若 `node_modules/node_modules` 是指回外层 `node_modules` 的符号链接，导出前只解除这条链接，避免 `npm list` 误报依赖缺失；普通目录、其他链接和已安装依赖不受影响
 - 若工作区还没有 `vsce`，会先按本机布局安装依赖
 - 按 `.vscodeignore` 排除根级 harness、文档、CodeGraph、本地脚本、`.tmp` 截图与页面、测试产物、构建 source map、SDK 类型声明以及所有层级的 Python 缓存；开发构建仍保留 source map
 - 使用 Python 标准库读取 ZIP 清单并审计，若 `.agents/`、`.ch/`、`.codegraph/`、`.tmp/`、`docs/`、`scripts/`、`dist/test/`、构建 source map 等开发态内容误入包内会直接失败；无需安装 unzip

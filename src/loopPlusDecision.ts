@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { printParseErrorCode, visit } from "jsonc-parser";
 import { readLoopBlockedDecisionFields, type LoopBlocker } from "./loopBlocker";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
@@ -10,6 +11,7 @@ import { parseOrchestratorClarification, type OrchestratorClarification } from "
 import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
 export { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
 import {
+  LOOP_PLUS_TASK_TYPES,
   normalizeLoopPlusProgressPercent,
   readLoopPlusTaskTypeField,
   type LoopAcceptance,
@@ -113,13 +115,50 @@ export type LoopPlusDecisionOptions = {
 };
 
 type LoopPlusDecisionValidationOptions = LoopPlusDecisionOptions & {
-  reject?: (reason: string) => void;
+  reject?: (reason: string, diagnostic?: LoopPlusDecisionValidationDiagnostic) => void;
 };
+
+export type LoopPlusDecisionRejectionKind = "format" | "validation" | "state";
+
+export type LoopPlusDecisionFormatDiagnostic = {
+  code: string;
+  position?: { line: number; column: number };
+};
+
+type SubtaskListField = "subtasks" | "subtask";
+type SubtaskField = "id" | "title" | "prompt" | "continueFromSubtaskId" | "taskType"
+  | "codingDelivery" | "writeFiles" | "requiresAcceptance" | "dependsOn";
+
+const SUBTASK_VALIDATION_HINTS = {
+  InvalidSubtaskList: "请使用子任务对象数组。",
+  InvalidSubtaskCount: "请按本轮允许的数量返回子任务。",
+  InvalidSubtaskItem: "请使用包含 title 和 prompt 的子任务对象。",
+  DuplicateSubtaskId: "请使用唯一的子任务 ID；省略 ID 时，相同标题也会生成相同 ID。",
+  MissingSubtaskTitle: "请提供非空字符串标题。",
+  MissingSubtaskPrompt: "请提供非空字符串 prompt。",
+  InvalidSubtaskContinuation: "请省略该字段，或填写非空的来源子任务 ID。",
+  InvalidSubtaskType: `请将 taskType 设为 ${LOOP_PLUS_TASK_TYPES.join("、")}，或省略该字段。`,
+  InvalidCodingDelivery: "请使用布尔值，或省略该字段。",
+  SubtaskClassificationConflict: `general 任务不能声明写入文件或编码交付；请移除冲突声明，或将 taskType 设为 ${LOOP_PLUS_TASK_TYPES.filter((type) => type !== "general").join("、")}。`,
+  InvalidRequiresAcceptance: "请使用布尔值，或省略该字段。",
+  InvalidSubtaskDependencies: "请使用非空 ID 字符串数组，不要重复或依赖自身；无依赖时可省略或用空数组。",
+} as const;
+
+export type LoopPlusDecisionValidationDiagnostic = {
+  code: keyof typeof SUBTASK_VALIDATION_HINTS;
+  status: "accept" | "dispatch";
+  field: SubtaskListField | SubtaskField;
+  index?: number;
+};
+
+type RejectSubtask = (code: LoopPlusDecisionValidationDiagnostic["code"], field?: SubtaskField) => null;
 
 export type LoopPlusDecisionParseResult = {
   decision: LoopPlusDecision | null;
   rejectionReason: string | null;
-  rejectionKind?: "format" | "validation";
+  rejectionKind?: LoopPlusDecisionRejectionKind;
+  formatDiagnostic?: LoopPlusDecisionFormatDiagnostic;
+  validationDiagnostic?: LoopPlusDecisionValidationDiagnostic;
 };
 
 type LoopPlusDecisionNormalizer = (
@@ -168,33 +207,72 @@ export function parseLoopPlusDecisionWithFeedback(
   options?: LoopPlusDecisionOptions,
 ): LoopPlusDecisionParseResult {
   if (typeof content !== "string" || !content.trim()) {
-    return { decision: null, rejectionKind: "format", rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。" };
+    return {
+      decision: null,
+      rejectionKind: "format",
+      rejectionReason: "主模型未返回决策 JSON，请按当前快照返回一份完整的 Loop+ 决策。",
+      formatDiagnostic: { code: "EmptyResponse" },
+    };
   }
   let hasJsonObject = false;
-  let hasMalformedObject = false;
+  let firstMalformedObject: string | undefined;
   let rejectionReason = "决策 JSON 未通过协议校验。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
+  let validationDiagnostic: LoopPlusDecisionValidationDiagnostic | undefined;
   for (const jsonText of extractJsonObjectTexts(content, { allowComments: true })) {
     let candidate: unknown;
     try {
       candidate = parseLoopPlusJsonObject(jsonText);
     } catch {
-      hasMalformedObject = true;
+      firstMalformedObject ??= jsonText;
       continue;
     }
     hasJsonObject = true;
     const decision = normalizeDecision(candidate, {
       ...options,
-      reject: (reason) => { rejectionReason = reason; },
+      reject: (reason, diagnostic) => {
+        rejectionReason = reason;
+        validationDiagnostic = diagnostic;
+      },
     });
     if (decision) {
       return { decision, rejectionReason: null };
     }
   }
-  return hasJsonObject
-    ? { decision: null, rejectionKind: "validation", rejectionReason }
-    : { decision: null, rejectionKind: "format", rejectionReason: hasMalformedObject
-      ? "回复中的 JSON 对象存在语法错误。请检查双引号、冒号和括号是否成对，并返回完整对象。"
-      : "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。" };
+  if (hasJsonObject) {
+    return {
+      decision: null,
+      rejectionKind: "validation",
+      rejectionReason,
+      ...(validationDiagnostic ? { validationDiagnostic } : {}),
+    };
+  }
+  const objectStart = content.indexOf("{");
+  return {
+    decision: null,
+    rejectionKind: "format",
+    rejectionReason: firstMalformedObject !== undefined
+      ? "回复中的 JSON 对象存在语法错误。请按当前快照返回完整对象。"
+      : "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
+    formatDiagnostic: firstMalformedObject !== undefined
+      ? diagnoseLoopPlusJsonFormat(firstMalformedObject, "InvalidJson")
+      : objectStart >= 0
+        ? diagnoseLoopPlusJsonFormat(content.slice(objectStart), "IncompleteObject")
+        : { code: "ObjectNotFound" },
+  };
+}
+
+function diagnoseLoopPlusJsonFormat(text: string, fallbackCode: string): LoopPlusDecisionFormatDiagnostic {
+  let diagnostic: LoopPlusDecisionFormatDiagnostic | undefined;
+  try {
+    visit(text, {
+      onError(error, _offset, _length, line, column) {
+        diagnostic ??= { code: printParseErrorCode(error), position: { line: line + 1, column: column + 1 } };
+      },
+    }, { allowTrailingComma: true });
+  } catch {
+    return diagnostic ?? { code: fallbackCode };
+  }
+  return diagnostic ?? { code: fallbackCode };
 }
 
 function parseLoopPlusJsonObject(text: string): unknown {
@@ -275,11 +353,8 @@ function normalizeDispatchDecision(
     options?.reject?.("dispatch 不确认验收事件；需确认当前验收批次时请用 accept。");
     return null;
   }
-  const subtasks = readSubtasks(raw, subtaskMax);
-  if (!subtasks || subtasks.length < 1) {
-    options?.reject?.(`dispatch.subtasks 需要 1 至 ${subtaskMax} 个有效任务；检查 ID 是否重复、标题和 prompt 是否为空，以及任务分类和依赖字段。新任务写入 subtasks，controls 只放针对运行中或排队任务的 close 或 reprompt；无开放验收批次且只需控制任务时使用 steer。`);
-    return null;
-  }
+  const subtasks = readSubtasks(raw, subtaskMax, "dispatch", options?.reject);
+  if (!subtasks) return null;
   const controls = readControls(raw, subtaskMax);
   if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
     options?.reject?.("dispatch.controls 格式或任务 ID 冲突；请核对操作字段，避免对同一 ID 同时派发和控制。");
@@ -311,11 +386,8 @@ function normalizeAcceptDecision(
     options?.reject?.("accept 必须使用 reviewEventId 或 reviewEventIds 确认当前批次，不能同时填写两者或重复事件。");
     return null;
   }
-  const subtasks = readSubtasks(raw, subtaskMax);
-  if (!subtasks) {
-    options?.reject?.(`accept.subtasks 必须包含不超过 ${subtaskMax} 项有效任务；每项须有独立 ID、标题和非空 prompt，并使用合法的任务分类。`);
-    return null;
-  }
+  const subtasks = readSubtasks(raw, subtaskMax, "accept", options?.reject);
+  if (!subtasks) return null;
   const controls = readControls(raw, subtaskMax);
   if (!controls || controlsOverlapSubtasks(controls, subtasks)) {
     options?.reject?.("accept.controls 格式或任务 ID 冲突；请核对操作字段，避免对同一 ID 同时派发和控制。");
@@ -666,62 +738,78 @@ function controlsOverlapSubtasks(
   return controls.some((control) => ids.has(control.id));
 }
 
-function readSubtasks(raw: Record<string, unknown>, subtaskMax: number): LoopSubtaskDecision[] | null {
-  const items = readRawSubtasks(raw);
-  if (!items || items.length > subtaskMax) {
+function readSubtasks(
+  raw: Record<string, unknown>,
+  subtaskMax: number,
+  status?: LoopPlusDecisionValidationDiagnostic["status"],
+  reject?: LoopPlusDecisionValidationOptions["reject"],
+): LoopSubtaskDecision[] | null {
+  const listField: SubtaskListField = !hasOwn(raw, "subtasks") && hasOwn(raw, "subtask") ? "subtask" : "subtasks";
+  const rejectList = (code: LoopPlusDecisionValidationDiagnostic["code"], hint: string, field?: SubtaskField, index?: number) => {
+    if (status && reject) {
+      const location = `${status}.${listField}${index === undefined ? "" : `[${index}]`}${field ? `.${field}` : ""}`;
+      reject(`${location}（${code}）：${hint}`, { code, status, field: field ?? listField, ...(index === undefined ? {} : { index }) });
+    }
     return null;
+  };
+  let items: unknown[] = [];
+  if (hasOwn(raw, "subtasks")) {
+    if (!Array.isArray(raw.subtasks)) {
+      return rejectList("InvalidSubtaskList", SUBTASK_VALIDATION_HINTS.InvalidSubtaskList);
+    }
+    items = raw.subtasks;
+  } else if (listField === "subtask") {
+    if (!isRecord(raw.subtask)) {
+      return rejectList("InvalidSubtaskList", "请使用单个子任务对象，或改用 subtasks 数组。");
+    }
+    items = [raw.subtask];
+  }
+  if (items.length > subtaskMax) {
+    return rejectList("InvalidSubtaskCount", `请将子任务数量限制在 ${subtaskMax} 项以内。`);
+  }
+  if (status === "dispatch" && items.length === 0) {
+    return rejectList("InvalidSubtaskCount", `请返回 1 至 ${subtaskMax} 个子任务；新任务写入 subtasks，controls 只放针对运行中或排队任务的 close 或 reprompt；无开放验收批次且只需控制任务时请用 steer。`);
   }
   const subtasks: LoopSubtaskDecision[] = [];
   const seenIds = new Set<string>();
-  for (const item of items) {
-    const subtask = normalizeSubtask(item);
-    if (!subtask?.id || seenIds.has(subtask.id)) {
-      return null;
-    }
+  for (const [index, item] of items.entries()) {
+    const rejectItem: RejectSubtask = (code, field) => rejectList(
+      code, SUBTASK_VALIDATION_HINTS[code], field, listField === "subtasks" ? index : undefined,
+    );
+    const subtask = normalizeSubtask(item, rejectItem);
+    if (!subtask?.id) return null;
+    if (seenIds.has(subtask.id)) return rejectItem("DuplicateSubtaskId", "id");
     seenIds.add(subtask.id);
     subtasks.push(subtask);
   }
   return subtasks;
 }
 
-function readRawSubtasks(raw: Record<string, unknown>): unknown[] | null {
-  if (hasOwn(raw, "subtasks")) {
-    return Array.isArray(raw.subtasks) ? raw.subtasks : null;
-  }
-  if (hasOwn(raw, "subtask")) {
-    if (!isRecord(raw.subtask)) {
-      return null;
-    }
-    return [raw.subtask];
-  }
-  return [];
-}
-
-function normalizeSubtask(value: unknown): LoopSubtaskDecision | null {
+function normalizeSubtask(value: unknown, reject: RejectSubtask): LoopSubtaskDecision | null {
   if (!isRecord(value)) {
-    return null;
+    return reject("InvalidSubtaskItem");
   }
   const title = readOptionalText(value.title);
+  if (!title) return reject("MissingSubtaskTitle", "title");
   const prompt = readOptionalText(value.prompt);
-  if (!title || !prompt) {
-    return null;
-  }
+  if (!prompt) return reject("MissingSubtaskPrompt", "prompt");
   const id = readOptionalText(value.id) ?? buildLoopPlusSubtaskId(title);
   const conflictGroup = readOptionalText(value.conflictGroup);
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
   const skillIds = normalizeSkillIds(value.skillIds);
   const continueFromSubtaskId = readLoopContinuationSource(value.continueFromSubtaskId);
   if (continueFromSubtaskId === null) {
-    return null;
+    return reject("InvalidSubtaskContinuation", "continueFromSubtaskId");
   }
-  const classification = readLoopPlusWorkClassification(value);
-  if (classification === null || (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean")) {
-    return null;
+  const classification = readLoopPlusWorkClassification(value, reject);
+  if (classification === null) return null;
+  if (hasOwn(value, "requiresAcceptance") && typeof value.requiresAcceptance !== "boolean") {
+    return reject("InvalidRequiresAcceptance", "requiresAcceptance");
   }
   const requiresAcceptance = value.requiresAcceptance as boolean | undefined;
   const dependsOn = readLoopPlusDependsOn(value.dependsOn, id);
   if (!dependsOn) {
-    return null;
+    return reject("InvalidSubtaskDependencies", "dependsOn");
   }
   return {
     id,
@@ -754,20 +842,21 @@ function readOptionalReportEventIds(value: Record<string, unknown>): string[] | 
 
 function readLoopPlusWorkClassification(
   value: Record<string, unknown>,
+  reject?: RejectSubtask,
 ): { taskType?: LoopPlusTaskType; codingDelivery?: boolean } | null {
   const taskType = hasOwn(value, "taskType")
     ? readLoopPlusTaskTypeField(value.taskType)
     : undefined;
   if (taskType === null) {
-    return null;
+    return reject?.("InvalidSubtaskType", "taskType") ?? null;
   }
   if (hasOwn(value, "codingDelivery") && typeof value.codingDelivery !== "boolean") {
-    return null;
+    return reject?.("InvalidCodingDelivery", "codingDelivery") ?? null;
   }
   const codingDelivery = value.codingDelivery === true;
   const writeFiles = normalizeLoopWriteFiles(value.writeFiles);
-  if (taskType === "general" && (writeFiles.length > 0 || codingDelivery)) {
-    return null;
+  if (taskType === "general" && (writeFiles.length > 0 || hasOwn(value, "codingDelivery"))) {
+    return reject?.("SubtaskClassificationConflict", writeFiles.length > 0 ? "writeFiles" : "codingDelivery") ?? null;
   }
   return {
     ...(taskType ? { taskType } : {}),
@@ -877,7 +966,7 @@ function readAcceptReviews(
     }
     const reviewEventId = readOptionalText(item.reviewEventId);
     if (!reviewEventId || reviewEventId !== eventIds[index]) {
-      reject?.(`reviews[${index}].reviewEventId 必须是 ${eventIds[index]}，不能遗漏或调换顺序。`);
+      reject?.(`reviews[${index}].reviewEventId 必须与本次确认的同序验收事件一致，不能遗漏或调换顺序。`);
       return null;
     }
     if (item.acceptance !== "passed" && item.acceptance !== "failed" && item.acceptance !== "cancelled") {
@@ -920,9 +1009,9 @@ function readAcceptReviews(
     const duplicates = [...new Set(linkedIds.filter((id, index) => linkedIds.indexOf(id) !== index))];
     reject?.([
       "accept.subtasks 中的每个任务 ID 必须恰好归属一个 reviews[].subtaskIds 或 independentSubtaskIds，不能重复。",
-      ...(unlinked.length ? [`未关联任务：${unlinked.join(", ")}。`] : []),
-      ...(unknown.length ? [`关联了不存在的任务：${unknown.join(", ")}。`] : []),
-      ...(duplicates.length ? [`重复关联任务：${duplicates.join(", ")}。`] : []),
+      ...(unlinked.length ? [`有 ${unlinked.length} 项任务未关联。`] : []),
+      ...(unknown.length ? [`有 ${unknown.length} 项关联指向 subtasks 中不存在的任务。`] : []),
+      ...(duplicates.length ? [`有 ${duplicates.length} 项任务被重复关联。`] : []),
       "修复和相关后续任务关联真实验收事件；独立的剩余目标任务列入 independentSubtaskIds，不要为补齐关联而伪造失败或继承无关修复会话。",
     ].join(""));
     return null;

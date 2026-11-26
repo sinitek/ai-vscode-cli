@@ -15,6 +15,7 @@ import {
   readAcpSessionUpdateBody,
   readAcpUpdateSessionId,
 } from "./acpSessionProtocol";
+import { planProcessTreeStop } from "../cli/processTermination";
 
 export const DSH_ACP_PROTOCOL_VERSION = 1;
 export const DSH_ACP_PROFILE = "acp";
@@ -578,16 +579,7 @@ export function planDshProcessTreeStop(
   pid: number | undefined,
   phase: "initial" | "escalate",
 ): DshProcessStopStep | null {
-  if (!pid) {
-    return null;
-  }
-  if (platform === "win32") {
-    if (phase !== "initial") {
-      return null;
-    }
-    return { kind: "taskkill", args: ["/PID", String(pid), "/T", "/F"] };
-  }
-  return { kind: "signal", signal: phase === "initial" ? "SIGTERM" : "SIGKILL" };
+  return planProcessTreeStop(platform, pid ?? 0, phase);
 }
 
 export function redactDshDiagnostic(text: string, env?: NodeJS.ProcessEnv): string {

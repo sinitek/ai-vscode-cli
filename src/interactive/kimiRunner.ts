@@ -7,6 +7,7 @@ import {
   type CodexAppServerNdjsonReader,
 } from "./codexAppServerNdjson";
 import { killProcessTree, resolveSpawnCommand } from "./codexRunnerProcess";
+import { createCliProcessPolicy } from "../cli/cliProcessPolicy";
 import { KimiReplayStream } from "./kimiReplayStream";
 import { getKimiCodeConfigRevision } from "../config/kimiCodeConfig";
 import {
@@ -588,17 +589,18 @@ export class KimiInteractiveRunner {
       throw new KimiProtocolError("Kimi Code command is empty", "empty-command");
     }
     const launchArgs = buildKimiLaunchArgs(this.options.agentArgs ?? []);
-    const resolved = resolveSpawnCommand(command, launchArgs);
     const platform = this.options.platform ?? process.platform;
+    const resolved = resolveSpawnCommand(command, launchArgs, platform);
     this.childEnv = buildKimiChildEnv(this.options.env, process.env);
     const spawnImpl = this.options.spawnImpl ?? defaultKimiSpawn;
     let child: KimiChild;
     try {
-      child = spawnImpl(resolved.command, resolved.args, {
+      const spawnOptions = createCliProcessPolicy(platform).spawnOptions(resolved.command, {
         cwd: this.options.cwd,
-        env: this.childEnv,
-        detached: platform !== "win32",
-        windowsHide: true,
+        baseEnvironment: this.childEnv,
+      });
+      child = spawnImpl(resolved.command, resolved.args, {
+        cwd: this.options.cwd, env: spawnOptions.env, detached: spawnOptions.detached, windowsHide: true,
       });
     } catch (error) {
       const spawnError = error instanceof Error ? error : new Error(String(error));
@@ -1133,7 +1135,7 @@ export class KimiInteractiveRunner {
       // Signal escalation still runs when stdin is already closed.
     }
     const platform = this.options.platform ?? process.platform;
-    const killTree = this.options.killTreeImpl ?? ((target, signal) => killProcessTree(target as ChildProcess, signal));
+    const killTree = this.options.killTreeImpl ?? ((target, signal) => killProcessTree(target as ChildProcess, signal, { platform, processGroup: platform !== "win32" }));
     if (isChildSettled(child)) {
       return;
     }
@@ -1187,11 +1189,8 @@ function defaultKimiSpawn(
     windowsHide?: boolean;
   },
 ): KimiChild {
-  return spawn(command, [...args], {
-    cwd: options.cwd,
-    env: options.env,
-    detached: options.detached,
-    windowsHide: options.windowsHide,
+  return spawn(command, [...args], createCliProcessPolicy(options.detached === false ? "win32" : undefined).spawnOptions(command, {
+    cwd: options.cwd, baseEnvironment: options.env, processGroup: options.detached,
     stdio: ["pipe", "pipe", "pipe"],
-  }) as KimiChild;
+  })) as KimiChild;
 }

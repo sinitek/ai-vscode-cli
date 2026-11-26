@@ -185,11 +185,11 @@ Loop+ 没有 batch barrier 或共享 round gate，宿主持有调度状态。有
 
 宿主优先复用已有有效冻结批次；领取全新批次后先保存选序快照，再按返回 items 构造 MainStep 并请求主模型。落盘失败回滚，不启动或确认任何交付。冻结包含有序 eventIds 与已见用户消息/报告前缀；协议续跑、提示刷新、同宿主暂停续跑均保持它们。晚到事件（包括前置）只留给后续新批次，不 abort、扩批或重排当前请求；模型从最新记录看到其它事件也不得自行排序、加入或替换。`heldBatchIntact` 继续核对该实际 currentReview + reviewQueue 提交前缀，而非原始到达顺序。
 
-冻结身份不冻结依赖原因：实际 MainStep 记录准备结果所属 scheduler 身份和 seq，`currentReviewDependencyBlocks` 仅在二者仍匹配时复用解释；状态变化或 scheduler 替换后丢弃过期解释，由后续调度重算。刷新和失败重试共用原 step，仅更新同一请求的提示，保留 eventIds、顺序及消息/报告前缀，不能为了刷新调用 prepare 重排队列。`buildMainRequest` 捕获一次 `wait().view` 复用，避免重复完整复制和观测。
+冻结身份不冻结依赖原因：实际 MainStep 记录准备结果所属 scheduler 身份和 seq，`currentReviewDependencyBlocks` 仅在二者仍匹配时复用解释；状态变化或 scheduler 替换后丢弃过期解释，由后续调度重算。刷新同一请求时保留 eventIds、顺序及消息/报告前缀，不能为了刷新调用 prepare 重排队列；新协议请求的 step 选择见[协议失败后的自动续跑](#协议失败后的自动续跑)。`buildMainRequest` 捕获一次 `wait().view` 复用，避免重复完整复制和观测。
 
 验收失败、主模型失败重试和协议修复保留未确认批次；blocked 消费消息但不确认事件时只扣除已捕获前缀，不能让后到消息冒充已看消息。父任务停止、runtime generation 或 acceptancePlanEpoch 变化仍使旧答案失效。宿主重建已无存活请求，从持久化事件恢复，在领取全新批次时应用依赖优先规则；不推测已冻结或已确认身份。
 
-宿主须区分“存在待审事件”与“存在可领取项”。全队列不可领取时不能发空 review 或在同一 consumer 中无限调用模型：先消费可见报告/消息，前置仍有活跃执行时可等待其事件；无活跃工作而依赖死等时回主模型处理具体依赖与真实阻塞，无进展 wait 首次拒绝后自动续跑一次，续跑仍被拒绝则暂停。暂停/停止保护保持，不能自动取消后继、绕过依赖或伪造成功。
+宿主须区分“存在待审事件”与“存在可领取项”。全队列不可领取时不能发空 review 或在同一 consumer 中无限调用模型：先消费可见报告/消息，前置仍有活跃执行时可等待其事件；无活跃工作而依赖死等时回主模型处理具体依赖与真实阻塞。无进展 `wait` 被拒绝时适用[同一连续协议拒绝预算](#协议失败后的自动续跑)。暂停/停止保护保持，不能自动取消后继、绕过依赖或伪造成功。
 
 提交复用 `scheduler.submitReviewBatch`，只消费宿主冻结的实际 currentReview 与 reviewQueue 前缀，校验 ID 顺序并幂等记录 attempt；未选和后到事件不随本批提交。旧批次提交后由后续决策领取下一批，不重验已确认项。报告 FIFO 和显式确认门禁不变；验收不设总次数额度，每批最多四项，且不设累计子任务派发额度。
 
@@ -272,17 +272,51 @@ scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles`
 
 已审查源码为 `src/extensionHost/loopPlusOrchestration.ts` 的 pump/runConsumer；真实磁盘回归 `src/test/extensionHost/loopPlusHandoffContracts.test.ts` 覆盖 write/rename 提交失败后直接从 done 恢复，`src/test/extensionHost/loopPlusOrchestration.test.ts` 的 `immediate resume after dependency promotion failure preserves its lifecycle and drains queued wake once` 覆盖原 attempt、已通过前置、新 done、一次消息消费、无重叠主调用及无误 abort。恢复前不加 sleep 或 flush；教训见[避坑指南](../runbooks/PITFALLS.md#loop-的-done-结束不代表旧-consumer-已收尾)。
 
+## 状态感知决策形状
+
+`deriveLoopPlusDecisionContract` 从本次 step 冻结的验收和报告 ID、调度视图、空槽、欠返工及消息前缀只读派生示例。`buildLoopPlusMainModelPrompt` 使用该投影选择 JSON 形状。解析器校验字段和归属，宿主在应用时复核当前批次、依赖、容量和预检结果，调度器持有实际队列和完成门禁。
+
+- 开放验收批次时优先展示 `accept`。单事件使用 `reviewEventId`，多事件按冻结顺序使用 `reviewEventIds`，`reviews` 按相同顺序逐项保留真实结论。`accept.subtasks` 中每项恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，后者适用于独立交付。失败或停止的结果不能标为通过。需返工时沿原逻辑 ID 创建新 attempt，待新结果复验。
+- 只有宿主显式开放一次性验收前窗口且有空槽时才额外展示 `dispatch` 加 `nextStepPlan`。形状省略验收 ID、`reviews` 和 `controls`，附上本步报告 FIFO 回执。整份派发须在单次上限、空槽和轮次额度内，使用新逻辑 ID，无续接、无待确认依赖或交付冲突，并能全部立即启动。预检失败保留报告和批次。成功确认本步报告并保存续验计划，原批次及次序留待下轮，窗口用完即关闭。
+- 仅报告回合只展示 `wait` 加精确的 `reportEventIds`。宿主按冻结的 FIFO 前缀确认这些报告，再恢复原验收。无开放验收时按空槽、可推进工作和可用控制目标展示适用的 `dispatch`、`wait`、`steer`，并保留用于真实阻塞或澄清的 `blocked`、`clarify`。迟到事件和报告留给后续回合。
+- `completed` 示例仅在快照和本步确认足以清空剩余工作时出现。仍运行或排队、欠返工、未覆盖的验收或报告、未消费的用户消息均阻止完成。实际完成须通过宿主与调度器的最新全局门禁并持久化，包含本次对冻结事件与报告的精确确认。
+
 ## 协议失败后的自动续跑
 
-解析容许 Markdown 代码块、解释文字、JSON 注释和尾逗号，只去除无损格式差异。没有 JSON、对象截断、语法错误、字段校验和调度拒绝首次发生时，宿主直接复用“继续执行”的任务恢复入口，在同一 consumer 中串行唤醒原主任务会话一次；不另建任务或要求用户手工修正 JSON。
+解析从代码块或解释文字提取候选对象，先按 JSON 解析，再兼容 JSONC 注释和有效值后的尾逗号。字段必须由模型明确提供，缺值和孤立逗号仍属格式损坏。宿主恢复使用三类受控诊断。
 
-续跑提示使用当前调度快照和具体拒绝原因，不回灌被拒绝的原始回复。冻结验收批次、消息和报告前缀保持不变；复用有效证据，不重复确认事件、重启已启动任务或重跑已有验证。合法决策按原流程确认验收、派发剩余工作或完成。
+- `format` 使用 `format.<解析器错误码>`，可带候选对象中的行列，未知格式码回退到 `format.invalid_json`。
+- `validation` 用于字段和跨字段归属。已定位的 `accept`、`dispatch` 子任务拒绝提供 `validation.subtasks.<校验码>` 及白名单路径，适用时含数组索引。解析器分类提示源自 `LOOP_PLUS_TASK_TYPES`，合法值为 `backend`、`frontend`、`general`。`general` 与写入或编码声明冲突时，解析器和续跑诊断只推荐 `backend`、`frontend` 或移除冲突声明；失败验收提示逐项处理实际失败的 `reviews[i]`，返工沿原逻辑 ID 恰好派发一项，非返工需给出非空 `noRepairReason`。独立剩余工作归属 `independentSubtaskIds`，不限定为失败事件的后续项。旧记录缺省、`null`、空白分类仍兼容。无安全映射的校验原因回退到 `validation.invalid_decision`。
+- `state` 用于与宿主事实冲突的分支，包括冻结批次不符、报告回执不符、窗口门禁、控制目标、依赖阻塞和欠返工。当前枚举示例为 `state.review_batch.mismatch`、`state.report_batch.mismatch`、`state.dispatch_window.preflight_failed`、`state.completion.repair_required`。
 
-`accept.subtasks` 中每个任务 ID 必须恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`，补充需求产生的后续任务也适用。事件相关任务可关联 `passed` 项并保留真实结论；独立任务使用显式独立归属。派发及控制拒绝给出具体原因，控制目标已结束时指出子任务 ID。部分接受保留已提交验收、消息确认及已接受任务，续跑只处理剩余工作；后到事件留待后续新批次。
+连续协议拒绝链最多在原主任务会话自动请求三次新决策。初次拒绝计为第 1 次失败，不占自动请求名额；第 1、2、3 次连续拒绝各可触发一次新请求，第 4 次连续拒绝（初次加三次续跑均被拒绝）暂停，无第四次自动续跑。失败计数按拒绝而非按发起调用递增，不是父任务全程累计决策上限。
 
-完整接受的决策清除协议失败状态；部分成功不重置续跑资格。续跑仍被拒绝时进入 `needs-review`，`finalSummary`、主聊天、群聊和沟通文件保留最新真实原因及待验收结果。显式停止会中断当前调用；用户手动继续（包括宿主重建后附带补充需求）可恢复暂停摘要中的原因并按当前快照重新判断。现有全局决策安全上限以及验收、完成和权限门禁继续适用。
+自动续跑留在串行 consumer，不走可提升 pending 的显式继续入口，也不清零计数、不自动确认验收或消费报告及待处理消息。当前 consumer 对下一请求再次调用 `planStep`；已有验收批次仍有效时沿用其冻结前缀，但不保证复用上一 `MainStep` 或保留一次性派发窗口，窗口按新 step 的宿主标志判断。新请求按允许形状附加受控原因码、适用字段路径或位置及修正提示，不回灌原始回复或自由文本拒绝理由。部分接受保留已提交验收、回执及已接受任务；若后续应用分支仍拒绝，计数不因部分提交清零。完整接受清除协议失败状态。
 
-实现与回归：`src/loopPlusDecision.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`、`src/test/extensionHost/loopPlusOrchestration.test.ts`。
+预算耗尽进入 `needs-review`，以 `loop-plus-protocol-paused` 通知/记录；保留未确认结果、冻结前缀和已保留的调度预留，摘要保存最新受控原因与恢复条件。不宣告完成，也不等同于用户停止。用户显式继续获准后（无论是否附补充说明）清零，按当前快照重新判断；手动请求不占自动名额，其决策若拒绝则计为新链的第 1 次。旧暂停摘要缺少可识别原因码时使用通用安全提示。显式停止、已确认 runner 取消、运行时释放或任务完成后不再发起自动协议续跑；停止后旧调用迟到的回复不作为新拒绝，确认 runner 取消时消费者停止父任务，不把取消当成空回复再解析。冻结验收、真实结论、报告 FIFO、失败返工、权限和完成门禁持续适用。
+
+- `loop-plus-protocol-miss`：`taskId`、`held`、`protocolFailureCount`、`rejectionKind`、白名单 `reasonCode`、可选白名单 `fieldPath`、`dispatchWindow`、`attemptState`（`first` 或 `retry`）。`dispatchWindow` 取自本次 step 的宿主 `allowDispatchBeforeReview`，不是是否存在验收项。
+- `loop-plus-protocol-recovery`：`taskId`、`protocolFailureCount`、`automaticRetryLimit`、`attemptState`（`first`、`retry` 或 `explicit_resume`）、`result`（`continuation_requested`、`recovered`、`paused` 或 `manual_resume`）。`continuation_requested` 不是启动确认；`recovered` 不是父任务完成。无旧计数可清除时不保证记录 `manual_resume`。
+- 两类日志均不记录候选行列、prompt、模型回复、自由文本拒绝理由、凭据或本地路径。灰度和效果指标仍待验证；当前描述的是源码候选，不是发布结论。
+
+实现入口为 `src/loopPlusDecision.ts`、`src/loopPlusDecisionContract.ts`、`src/loopPlusProtocolDiagnostics.ts`、`src/loopPlusProtocolRepair.ts`、`src/extensionHost/loopPlusPromptBuilders.ts`、`src/extensionHost/loopPlusOrchestration.ts`、`src/extensionHost/loopPlusDecisionStrategies.ts`。前置定向检查、剩余源码差异和 macOS 验证状态见[在途计划](../exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md)。
+
+## CLI 输出与会话能力
+
+阶段 3 已接通的是既有独立传输和 Loop+ 文本兼容路径。各 CLI 仍按自己的适配器构造参数、保持会话并提取助手正文，再将正文送入同一决策解析器。下表概括仓库已接线的能力，原生参数及上下文来源见 [CLI 接入参考](../references/cli-runtime-reference.md)及 `src/cli/cliRunArgStrategies.ts`、`src/extensionHost/interactiveLaunchStrategy.ts`、`src/contextCompactionRunner.ts`。
+
+| CLI | 参数、会话与输出传输 | 压缩及上下文 |
+| --- | --- | --- |
+| Codex | app-server 通过 stdio NDJSON 传递 thread/turn 事件，原生 `thread/start`、`thread/resume` 复用 thread，保留独立 one-shot 参数。 | 原生 thread 压缩和按 Tab 展示主线程 `last` 用量。 |
+| Claude | Agent SDK 流事件及原 session 续接，保留一次性命令、模型和权限参数。 | SDK `/compact` 与明确不支持时的兼容回退，展示最近主请求用量。 |
+| OpenCode | one-shot `run --auto` 默认使用 `--format json`，原生 `--session` 续接，JSONL 事件与最终正文分别处理。 | 同会话压缩入口及最新主步骤用量，未知窗口保留未知，缺少可信压缩后测量时等下一主回合。 |
+| Grok | ACP stdio，`session/load` 取决于能力广告及匹配的 session/cwd。 | 在原会话执行 `/compact`，读取原生状态通知的用量。 |
+| DeepSeek Harness | DSH ACP 启动、模式参数及会话恢复按自身契约处理。 | 读取 adapter 用量及其窗口来源，原生压缩入口保持关闭。 |
+| Kimi Code | ACP 参数、配置选模及原生会话加载按自身契约处理。 | 有命令能力时走原生压缩工作流，按会话处理异步 `usage_update` 和配置窗口。 |
+| ZCode | 自有 app-server 参数及 `session/create`、`session/resume`、`session/subscribe`，输出消费原生会话事件。 | `session/compact` 及原生用量快照。 |
+| Gemini | one-shot `--output-format stream-json` 消费传输事件。 | 未接入统一原生压缩策略，Loop+ 会话能力和用量展示按现有路由，暂无本次逐项验证。 |
+
+NDJSON、JSONL、SDK 流及 ACP/RPC 事件是 CLI 传输能力。阶段 3 的原生模型决策 schema 尚未接入。每个适配器仍待核实 schema 支持、调用形态、版本门槛、流式结果及错误语义。能力未知时沿用当前文本提示、对象提取、JSONC 兼容及一次续跑，宿主统一复核调度门禁。
 
 ## 全局阻塞复核与暂停留证
 
@@ -290,7 +324,9 @@ scheduler 的 `dispatch` 返回值把 pending 原因归为运行中 `writeFiles`
 
 主模型返回 `blocked` 不等于所有剩余要求均无法推进。每个无进展阶段首次出现全局阻塞时，宿主先将任务的 `loopPlusBlockReview` 保存为 `pending`，不确认原验收事件，再发起一轮带 `Bounded blocked review` 标记的复核。提示要求逐项核对根需求、补充需求与未完成事项，分辨外部依赖和仍可独立实施的工作；不能以删除门禁、重复失败诊断或编造成功替代推进。
 
-有效复核决策将状态变为 `reviewed`，发现独立工作则沿用原 `dispatch` / `accept` 流程；再次确认 `blocked` 才暂停。待复核与已复核状态均持久化并跨宿主重建保留，新用户输入、成功派发或验收提交会清除状态；显式继续也重新开放一次复核。协议错误与总决策次数继续受已有上限约束，不因等待或加载历史自动无限调用模型。
+业务是否熔断由主模型根据实际结果和剩余工作判断。宿主没有子任务失败次数或累计主决策次数门槛。即使某次修复仍失败，只要出现可核实的部分修复、范围缩小、新证据或可执行的下一步，就继续有针对性地推进。相同失败且没有新信息时应停止重复该路径，先检查安全替代方案、可独立交付的工作、仍能推进的运行中任务及需要澄清的条件。
+
+有效复核决策将状态变为 `reviewed`，仍能推进时沿用原 `dispatch` / `accept` 流程。再次确认 `blocked` 才执行业务暂停。待复核与已复核状态均持久化并跨宿主重建保留，新用户输入、成功派发或验收提交会清除状态。显式继续也重新开放一次复核。协议拒绝、主模型调用失败及自动续跑中断各自使用对应的暂停原因。
 
 最终 `blocked` 还需完整的结构化 `blocker`。`src/loopBlocker.ts` 共享字段校验和中文 Markdown 生成：`kind` 为 `recoverable` 或 `impossible`，`cause` 为因果说明，`affectedRequirements` / `evidence` / `attempts` 为非空字符串数组，`nextSteps` 每项含 `owner`、`action`、`verification`。可恢复时至少一步且必须提供 `resumeCondition`；无法完成时必须提供 `alternatives`（可说明无可行替代的依据），不附带无效继续尾注。数组/字段完整性由宿主校验，证据真实性仍由主模型和实际执行负责。
 
@@ -342,12 +378,17 @@ Loop+ 用单一字段 `loopSubtaskMode` 表示 `fullstack` 或 `split`。新任�
 
 ## 验收方案快照
 
-新建 Loop+ 根任务时，Webview 在 `sendPrompt` 前弹出“主模型验收方案”弹窗，把用户确认的复选项和“其它”审查内容作为 `loopPlusAcceptancePlan` 快照随请求提交。宿主只在该请求属于 `loop_plus` 且不是续跑/恢复/补充需求时接受该字段，归一化后连同 `loopTaskId` 一起写入 `LoopTaskRecord.loopPlusAcceptancePlan`；空基线快照不落盘，读不到的旧任务按固定清单处理。
+实现子任务的自测和报告是主任务验收的证据来源，不替代主任务对交付物的独立审查。主任务仍按冻结验收批次和既定验收方案检查代码、差异、需求覆盖及关联；仅补充尚未覆盖、失败或后续改动已使其失效的验证。报告应列明验证范围、实际命令或操作、结果、未测试/未覆盖项及验证后改动；有效且仍适用的结果可以复用，不因本地自测通过而跳过验收、事件确认或完成门禁。
+
+新建 Loop+ 根任务时，Webview 在 `sendPrompt` 前弹出“主模型验收方案”弹窗，把用户确认的复选项和“其它”审查内容作为 `loopPlusAcceptancePlan` 快照随请求提交。宿主只在该请求属于 `loop_plus` 且不是续跑/恢复/补充需求时接受该字段，归一化后连同 `loopTaskId` 一起写入 `LoopTaskRecord.loopPlusAcceptancePlan`；空基线快照不落盘，读不到附加快照的旧任务按固定清单处理。
+
+- 两个入口共用 `src/webview/acceptancePlanDialog.ts` 的 `renderAcceptancePlanDialogs`：新建根任务的发送前弹窗和 Loop+ 群聊顶部「验收方案」。固定基线之后的附加项依次为「代码可维护性审查」「性能审查」「用户体验审查」「安全审查」「其它」，内置默认和新增方案均不勾选。勾选「其它」才在该项后显示输入框；输入去除首尾空白后不能为空，否则内联报错并阻止保存与确认。取消勾选后隐藏输入，不计入审查。
 
 - 方案下拉第一项是「新增方案」（未保存草稿），其后始终是内置「默认方案」和已保存方案。每次打开使用当前项目最近一次有效选择，明确选回内置默认也会记忆；未保存的新建草稿不覆盖最近选择，无效或已删除选择回退内置默认。方案名称输入框不显示标签，占位文字是「方案名称」：内置默认显示「默认方案」且只读、保存按钮禁用；新增方案预填「新建方案」，自定义方案可以改名和保存。勾选「其它」后的文本域也不显示标签，占位文字是「审查内容」。自定义方案保存时若名称已存在则覆盖那一条，不再新增第二条；「系统默认」和「默认方案」均为保留名称。旧版已保存的「默认方案」在读入时自动改名为「新建方案」，重名时使用「新建方案（2）」等后缀；保留稳定 ID、检查项、其它文本、时间戳及选中关系，后续工作区设置写入会持久化迁移结果，不改既有任务快照。已保存方案可删除，删除前弹出确认；内置方案没有删除按钮。下拉、「保存」和「删除」始终同一行，窄屏时下拉收缩，按钮不换行。
 
 - 快照与模板解耦：弹窗里的方案是可复用模板，任务记录里的是确认时刻的副本。之后修改或删除模板不改变已启动任务；续跑、恢复、补充需求直接读任务记录里的快照。
-- 提示注入：`initial` / `review` / `closeout` / `continue` / `user` 五类主模型提示共用同一份快照，只在固定验收清单之后追加已勾选审查项与有效“其它”文本，要求逐项给出证据或显式“不适用”。固定清单、调度协议和“主模型不得自行实现或修复被派发工作”的约束不变。
+- 提示注入：`initial` / `review` / `closeout` / `continue` / `user` 五类主模型提示共用同一份快照，只在固定验收清单之后追加已勾选审查项与有效“其它”文本，要求逐项给出证据或显式“不适用”。固定六项、既有完成门禁、调度协议和“主模型不得自行实现或修复被派发工作”的约束不变。
+- 附加审查：`src/loopPlusAcceptancePlan.ts` 定义审查要求与结果标签，`src/extensionHost/loopPlusPromptBuilders.ts` 复用同一快照。勾选「用户体验审查」时，默认依据实际证据核对视觉与术语一致性、信息层级、操作是否符合预期及其反馈、空白/加载/禁用/失败等边界状态与恢复、键盘操作与焦点、窄屏可读性以及专业且可执行的文案。仅在用户原始或补充请求中有明确要求、适用于当前交付且与默认体验约定冲突时，才在冲突维度以该要求为准，并说明例外及原因；不得从无关说明、子任务报告或模糊偏好推定授权。例如明确要求页面风格独特时，不因视觉差异本身判失败，而是按实际证据判断是否实现指定风格；键盘操作、反馈、错误恢复、窄屏可读性等其余适用维度仍须审查。选中时仍须给出有证据的审查结论或说明不适用的原因，并说明未覆盖项及原因；不把例外或缺少证据当成已验证。工作区方案、旧任务快照和 `acceptancePlanResults[].key` 继续使用 `ui_aesthetics`；旧快照无需迁移，新反馈显示「用户体验审查」，既有历史反馈不改写。安全审查只做防御性代码审查，不复现漏洞、不制作 PoC、不开展侵入式扫描。
 - 简短验收反馈：`accept` 或 `completed` 真正结束验收后，Loop+ 群聊追加一条「验收结果」气泡。气泡在表格外上方显示真实子任务名、整体验收结果及事件原因；批量确认列出本批所有子任务名和各自结论，共用一张明细表。两列表格仅保留默认及附加检查，第一列是审查内容，第二列是审查结果（通过或未通过，以及证据型原因），不再添加“验收事件”或整体结果首行；原因语言按任务、证据和上下文选择，不强制中文。即使没有附加快照，也必须显示固定六项默认验收：实现完整性、契约一致性、测试验证、产物可运行性、改动合理性、回归与边界检查。「其它」仅展示本次结论和原因，不重复长篇审查要求。
 - 完成门禁：正常 `completed` 要求所有已选 `acceptancePlanResults[].passed` 为 true；任一附加项失败即拒绝并反馈具体原因。`accept` 仍允许失败，保留证据并进入修复；未选附加项和已授权 directCompletion 的既有边界不变。
 

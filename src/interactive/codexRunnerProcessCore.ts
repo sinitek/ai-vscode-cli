@@ -1,6 +1,6 @@
 import type { ChildProcess } from "child_process";
-import { spawn } from "cross-spawn";
-import { resolveCliCommand } from "../cli/commandResolution";
+import { createCliProcessPolicy, type ResolvedProcessCommand } from "../cli/cliProcessPolicy";
+import { requestProcessTreeStop } from "../cli/processTermination";
 import type { CodexRuntimePorts } from "./codexRuntimePorts";
 
 const CODEX_CHILD_SHUTDOWN_GRACE_MS = 300;
@@ -10,47 +10,12 @@ function scheduleShutdownStep(callback: () => void, delayMs: number): void {
   timeout.unref?.();
 }
 
-function escapeShellArg(value: string): string {
-  if (value === "") {
-    return "''";
-  }
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
+export { buildShellCommandLine } from "../cli/processArgv";
+export type ResolvedSpawnCommand = ResolvedProcessCommand;
 
-export function buildShellCommandLine(command: string, args: string[]): string {
-  return [command, ...args].map((segment) => escapeShellArg(segment)).join(" ");
-}
-
-function resolveMacTaskShellExecutable(runtime: CodexRuntimePorts): string {
-  return runtime.macTaskShell === "bash" ? "/bin/bash" : "/bin/zsh";
-}
-
-export type ResolvedSpawnCommand = {
-  command: string;
-  args: string[];
-  usesShell: boolean;
-  resolvedFrom: string;
-};
-
-export function resolveSpawnCommand(command: string, args: string[], runtime: CodexRuntimePorts): ResolvedSpawnCommand {
-  const resolved = resolveCliCommand(command);
-  if (resolved) {
-    return {
-      command: resolved.command,
-      args,
-      usesShell: false,
-      resolvedFrom: resolved.resolvedFrom,
-    };
-  }
-
-  if (process.platform === "darwin") {
-    return {
-      command: resolveMacTaskShellExecutable(runtime),
-      args: ["-lc", buildShellCommandLine(command, args)],
-      usesShell: true,
-      resolvedFrom: "mac-shell-fallback",
-    };
-  }
+export function resolveSpawnCommand(command: string, args: string[], runtime: CodexRuntimePorts, platform?: NodeJS.Platform): ResolvedSpawnCommand {
+  const resolved = createCliProcessPolicy(platform).resolve(command, args, { macTaskShell: runtime.macTaskShell });
+  if (resolved) return resolved;
   const error = new Error(`spawn ${command} ENOENT`) as NodeJS.ErrnoException;
   error.code = "ENOENT";
   throw error;
@@ -59,53 +24,13 @@ export function resolveSpawnCommand(command: string, args: string[], runtime: Co
 export function killProcessTree(
   child: ChildProcess,
   runtime: CodexRuntimePorts,
-  signal: NodeJS.Signals | number = "SIGTERM"
+  signal: NodeJS.Signals | number = "SIGTERM",
+  options: { platform?: NodeJS.Platform; processGroup?: boolean } = {},
 ): boolean {
-  if (!child.pid) {
-    return false;
-  }
-
-  if (process.platform === "win32") {
-    try {
-      const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
-        windowsHide: true,
-        stdio: "ignore",
-      });
-      let failed = false;
-      const onFailure = (): void => {
-        if (failed || child.exitCode !== null || child.signalCode !== null) {
-          return;
-        }
-        failed = true;
-        void runtime.logError("codex-taskkill-failed", { pid: child.pid ?? null });
-        try {
-          child.kill(signal);
-        } catch {
-          return;
-        }
-      };
-      killer.once("error", onFailure);
-      killer.once("close", (code) => {
-        if (code !== 0) {
-          onFailure();
-        }
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-    try {
-      child.kill(signal);
-    } catch {
-      return false;
-    }
-  }
-  return true;
+  return requestProcessTreeStop(child, signal, {
+    ...options,
+    onTaskkillFailure: () => { void runtime.logError("codex-taskkill-failed", { pid: child.pid ?? null }); },
+  });
 }
 
 export function requestChildShutdown(child: ChildProcess, mode: "graceful" | "terminate", runtime: CodexRuntimePorts): void {

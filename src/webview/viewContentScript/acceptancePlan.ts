@@ -1,13 +1,15 @@
+import { LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_KEYS } from "../../loopPlusAcceptancePlan";
+
 // Loop+ 验收方案弹窗：方案选择/保存、复选项、名称编辑与确认启动。
 export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_SYSTEM_ID = "system_default";
       const ACCEPTANCE_PLAN_NEW_ID = "new";
-      const ACCEPTANCE_PLAN_CHECK_KEYS = ["maintainability", "security", "performance", "ui_aesthetics", "other"];
+      const ACCEPTANCE_PLAN_CHECK_KEYS = ${JSON.stringify(LOOP_PLUS_ACCEPTANCE_PLAN_CHECK_KEYS)};
       const ACCEPTANCE_PLAN_CHECK_INPUT_IDS = {
         maintainability: "acceptancePlanCheckMaintainability",
-        security: "acceptancePlanCheckSecurity",
         performance: "acceptancePlanCheckPerformance",
         ui_aesthetics: "acceptancePlanCheckUi",
         other: "acceptancePlanCheckOther",
+        security: "acceptancePlanCheckSecurity",
       };
       const acceptancePlanDialog = {
         open: false,
