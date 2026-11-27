@@ -25,6 +25,21 @@ export const LOOP_PLUS_DECISION_SUBTASK_MIN = 1;
 export const LOOP_PLUS_DECISION_SUBTASK_LIMIT = 20;
 /** 宿主每次冻结的验收事件上限，与运行并发和单次派发上限独立。 */
 export const LOOP_PLUS_ACCEPTANCE_BATCH_MAX = 4;
+/** 验收项诊断只使用这些字段名，不接受模型原文或业务 ID。 */
+export const LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS = [
+  "reviewEventId",
+  "acceptance",
+  "reason",
+  "subtaskIds",
+  "noRepairReason",
+] as const;
+export type LoopPlusReviewDiagnosticField = (typeof LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS)[number];
+export type LoopPlusReviewFieldDiagnostic = {
+  code: "EventOrderMismatch" | "InvalidReviewItem" | "FailedRepairMissing";
+  /** 仅当该下标能映射到本请求捕获的冻结行时出现。 */
+  index?: number;
+  field: LoopPlusReviewDiagnosticField;
+};
 export const LOOP_PLUS_DECISION_STATUSES = [
   "dispatch",
   "accept",
@@ -112,10 +127,13 @@ export type LoopPlusDecisionOptions = {
   acceptancePlanKeys?: readonly string[];
   requireAcceptanceFeedback?: boolean;
   requireProgressPercent?: boolean;
+  /** 本请求捕获的冻结验收事件。省略表示调用方未提供冻结依据，沿用回复声明的批次。 */
+  frozenReviewEventIds?: readonly string[];
 };
 
 type LoopPlusDecisionValidationOptions = LoopPlusDecisionOptions & {
   reject?: (reason: string, diagnostic?: LoopPlusDecisionValidationDiagnostic) => void;
+  rejectReviewField?: (reason: string, diagnostic?: LoopPlusReviewFieldDiagnostic) => void;
 };
 
 export type LoopPlusDecisionRejectionKind = "format" | "validation" | "state";
@@ -159,6 +177,8 @@ export type LoopPlusDecisionParseResult = {
   rejectionKind?: LoopPlusDecisionRejectionKind;
   formatDiagnostic?: LoopPlusDecisionFormatDiagnostic;
   validationDiagnostic?: LoopPlusDecisionValidationDiagnostic;
+  /** 验收项字段诊断。行下标只对应本请求冻结行，不含模型原文。 */
+  reviewFieldDiagnostic?: LoopPlusReviewFieldDiagnostic;
 };
 
 type LoopPlusDecisionNormalizer = (
@@ -202,6 +222,35 @@ export function parseLoopPlusDecision(
   return parseLoopPlusDecisionWithFeedback(content, options).decision;
 }
 
+/** 同一次冻结输入上的解析选项。生成器与宿主都从这里进入协议校验。 */
+export type LoopPlusFrozenParseInput = {
+  subtaskMax?: number;
+  allowDirectCompletion?: boolean;
+  acceptancePlanKeys?: readonly string[];
+  requireAcceptanceFeedback?: boolean;
+  requireProgressPercent?: boolean;
+  /** 本请求捕获的冻结验收事件。生成器与宿主都从这里传入，迟到事件不在其中。 */
+  frozenReviewEventIds?: readonly string[];
+};
+
+export function loopPlusFrozenParseOptions(input: LoopPlusFrozenParseInput): LoopPlusDecisionOptions {
+  return {
+    ...(input.subtaskMax === undefined ? {} : { subtaskMax: input.subtaskMax }),
+    ...(input.allowDirectCompletion === undefined ? {} : { allowDirectCompletion: input.allowDirectCompletion }),
+    ...(input.acceptancePlanKeys === undefined ? {} : { acceptancePlanKeys: input.acceptancePlanKeys }),
+    ...(input.requireAcceptanceFeedback === undefined ? {} : { requireAcceptanceFeedback: input.requireAcceptanceFeedback }),
+    ...(input.requireProgressPercent === undefined ? {} : { requireProgressPercent: input.requireProgressPercent }),
+    ...(input.frozenReviewEventIds === undefined ? {} : { frozenReviewEventIds: [...input.frozenReviewEventIds] }),
+  };
+}
+
+export function parseLoopPlusDecisionForFrozenInput(
+  content: string | null | undefined,
+  input: LoopPlusFrozenParseInput,
+): LoopPlusDecisionParseResult {
+  return parseLoopPlusDecisionWithFeedback(content, loopPlusFrozenParseOptions(input));
+}
+
 export function parseLoopPlusDecisionWithFeedback(
   content: string | null | undefined,
   options?: LoopPlusDecisionOptions,
@@ -218,6 +267,7 @@ export function parseLoopPlusDecisionWithFeedback(
   let firstMalformedObject: string | undefined;
   let rejectionReason = "决策 JSON 未通过协议校验。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
   let validationDiagnostic: LoopPlusDecisionValidationDiagnostic | undefined;
+  let reviewFieldDiagnostic: LoopPlusReviewFieldDiagnostic | undefined;
   for (const jsonText of extractJsonObjectTexts(content, { allowComments: true })) {
     let candidate: unknown;
     try {
@@ -232,6 +282,12 @@ export function parseLoopPlusDecisionWithFeedback(
       reject: (reason, diagnostic) => {
         rejectionReason = reason;
         validationDiagnostic = diagnostic;
+        reviewFieldDiagnostic = undefined;
+      },
+      rejectReviewField: (reason, diagnostic) => {
+        rejectionReason = reason;
+        validationDiagnostic = undefined;
+        reviewFieldDiagnostic = diagnostic;
       },
     });
     if (decision) {
@@ -244,6 +300,7 @@ export function parseLoopPlusDecisionWithFeedback(
       rejectionKind: "validation",
       rejectionReason,
       ...(validationDiagnostic ? { validationDiagnostic } : {}),
+      ...(reviewFieldDiagnostic ? { reviewFieldDiagnostic } : {}),
     };
   }
   const objectStart = content.indexOf("{");
@@ -402,7 +459,15 @@ function normalizeAcceptDecision(
     options?.reject?.("accept.independentSubtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。");
     return null;
   }
-  const reviews = readAcceptReviews(raw, eventIds, subtasks, independentSubtaskIds, requireAcceptanceFeedback, options?.reject);
+  const reviews = readAcceptReviews(
+    raw,
+    eventIds,
+    subtasks,
+    independentSubtaskIds,
+    requireAcceptanceFeedback,
+    options?.rejectReviewField,
+    options?.frozenReviewEventIds,
+  );
   if (!reviews) {
     return null;
   }
@@ -951,7 +1016,8 @@ function readAcceptReviews(
   subtasks: readonly LoopSubtaskDecision[],
   independentSubtaskIds: readonly string[],
   requireReason = false,
-  reject?: (reason: string) => void,
+  reject?: (reason: string, diagnostic?: LoopPlusReviewFieldDiagnostic) => void,
+  frozenEventIds?: readonly string[],
 ): LoopPlusAcceptReview[] | null {
   if (!hasOwn(raw, "reviews") || !Array.isArray(raw.reviews) || raw.reviews.length !== eventIds.length) {
     reject?.("accept.reviews 必须逐项覆盖确认的整个验收批次，数量和顺序与 reviewEventId/reviewEventIds 一致。");
@@ -959,6 +1025,20 @@ function readAcceptReviews(
   }
   const reviews: LoopPlusAcceptReview[] = [];
   const linkedIds: string[] = [...independentSubtaskIds];
+  const rejectReview = (
+    index: number,
+    field: LoopPlusReviewDiagnosticField,
+    code: LoopPlusReviewFieldDiagnostic["code"],
+    message: string,
+    includeFieldInLocation: boolean,
+  ) => {
+    const diagnostic = reviewRowFieldDiagnostic(index, eventIds, frozenEventIds, code, field);
+    const mapped = frozenEventIds === undefined
+      || (index < frozenEventIds.length && eventIds[index] === frozenEventIds[index]);
+    const indexedLocation = includeFieldInLocation ? `reviews[${index}].${field}` : `reviews[${index}]`;
+    const location = mapped ? indexedLocation : "accept.reviews";
+    reject?.(`${location} ${message}`, diagnostic);
+  };
   for (let index = 0; index < raw.reviews.length; index += 1) {
     const item = raw.reviews[index];
     if (!isRecord(item)) {
@@ -966,31 +1046,31 @@ function readAcceptReviews(
     }
     const reviewEventId = readOptionalText(item.reviewEventId);
     if (!reviewEventId || reviewEventId !== eventIds[index]) {
-      reject?.(`reviews[${index}].reviewEventId 必须与本次确认的同序验收事件一致，不能遗漏或调换顺序。`);
+      rejectReview(index, "reviewEventId", "EventOrderMismatch", "必须与本次确认的同序验收事件一致，不能遗漏或调换顺序。", true);
       return null;
     }
     if (item.acceptance !== "passed" && item.acceptance !== "failed" && item.acceptance !== "cancelled") {
-      reject?.(`reviews[${index}].acceptance 只能是 passed、failed 或 cancelled。`);
+      rejectReview(index, "acceptance", "InvalidReviewItem", "只能是 passed、failed 或 cancelled。", true);
       return null;
     }
     const needsReason = requireReason || item.acceptance === "cancelled";
     const reason = readOptionalText(item.reason);
     if (needsReason && !reason) {
-      reject?.(`reviews[${index}].reason 必须提供非空验收依据。`);
+      rejectReview(index, "reason", "InvalidReviewItem", "必须提供非空验收依据。", true);
       return null;
     }
     const subtaskIds = readAcceptSubtaskIds(item);
     if (!subtaskIds) {
-      reject?.(`reviews[${index}].subtaskIds 必须是由非空字符串组成且没有重复 ID 的数组。`);
+      rejectReview(index, "subtaskIds", "InvalidReviewItem", "必须是由非空字符串组成且没有重复 ID 的数组。", true);
       return null;
     }
     const noRepairReason = readOptionalText(item.noRepairReason);
     if (hasOwn(item, "noRepairReason") && (item.acceptance !== "failed" || !noRepairReason || subtaskIds.length > 0)) {
-      reject?.(`reviews[${index}].noRepairReason 仅用于不派修的失败项，须填写结案原因。`);
+      rejectReview(index, "noRepairReason", "InvalidReviewItem", "仅用于不派修的失败项，须填写结案原因。", true);
       return null;
     }
     if (item.acceptance === "failed" && subtaskIds.length === 0 && !noRepairReason) {
-      reject?.(`reviews[${index}] 验收失败必须关联修复子任务，或填写 noRepairReason；未处置的失败不能确认。`);
+      rejectReview(index, "subtaskIds", "FailedRepairMissing", "验收失败必须关联修复子任务，或填写 noRepairReason；未处置的失败不能确认。", false);
       return null;
     }
     linkedIds.push(...subtaskIds);
@@ -1017,6 +1097,54 @@ function readAcceptReviews(
     return null;
   }
   return reviews;
+}
+
+function reviewRowFieldDiagnostic(
+  index: number,
+  replyEventIds: readonly string[],
+  frozenEventIds: readonly string[] | undefined,
+  code: LoopPlusReviewFieldDiagnostic["code"],
+  field: LoopPlusReviewDiagnosticField,
+): LoopPlusReviewFieldDiagnostic | undefined {
+  const bounds = frozenEventIds === undefined ? replyEventIds.length : frozenEventIds.length;
+  const mapsToFrozenRow = frozenEventIds === undefined
+    || (index < frozenEventIds.length && replyEventIds[index] === frozenEventIds[index]);
+  if (!mapsToFrozenRow) {
+    return batchReviewFieldDiagnostic(code, field);
+  }
+  return hostReviewFieldDiagnostic(index, bounds, code, field);
+}
+
+function batchReviewFieldDiagnostic(
+  code: LoopPlusReviewFieldDiagnostic["code"],
+  field: LoopPlusReviewDiagnosticField,
+): LoopPlusReviewFieldDiagnostic | undefined {
+  if (!reviewFieldAllowed(code, field)) return undefined;
+  return { code, field };
+}
+
+function reviewFieldAllowed(
+  code: LoopPlusReviewFieldDiagnostic["code"],
+  field: LoopPlusReviewDiagnosticField,
+): boolean {
+  if (code === "EventOrderMismatch" && field !== "reviewEventId") return false;
+  if (code === "FailedRepairMissing" && field !== "subtaskIds") return false;
+  if (code === "InvalidReviewItem" && field === "reviewEventId") return false;
+  return LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS.includes(field);
+}
+
+function hostReviewFieldDiagnostic(
+  index: number,
+  batchLength: number,
+  code: LoopPlusReviewFieldDiagnostic["code"],
+  field: LoopPlusReviewDiagnosticField,
+): LoopPlusReviewFieldDiagnostic | undefined {
+  if (!reviewFieldAllowed(code, field)) return undefined;
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(batchLength)
+    || index < 0 || index >= batchLength || index >= LOOP_PLUS_ACCEPTANCE_BATCH_MAX) {
+    return undefined;
+  }
+  return { code, index, field };
 }
 
 function readAcceptSubtaskIds(

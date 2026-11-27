@@ -16,9 +16,10 @@ import {
   type LoopPlusPromptTarget,
   type LoopPlusRunResult,
 } from "../../extensionHost/loopPlusOrchestration";
+import { summarizeLoopPlusProtocolRejection } from "../../extensionHost/loopPlusDiagnostics";
 import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
-import type { LoopSubtaskDecision, LoopTaskRecord } from "../../loopTaskStore";
+import { normalizeLoopTaskRecord, type LoopSubtaskDecision, type LoopTaskRecord } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { loopSubtaskAutoCompactions, scheduleAutoCompactAfterPrompt } from "../../loopSubtaskAutoCompact";
 import { startLoopWaitWatchdog } from "../../loopWaitWatchdog";
@@ -1166,6 +1167,7 @@ function harness(options: {
   log?: LoopPlusOrchestrationDeps["log"];
   removeClarificationResponse?: LoopPlusOrchestrationDeps["removeClarificationResponse"];
   beforeReadTask?: () => void;
+  projectReadTask?: (task: LoopTaskRecord | null, taskId: string) => LoopTaskRecord | null;
   beforeUpdateTask?: (patch: Partial<LoopTaskRecord>) => void;
   adaptMain?: (request: LoopPlusMainRequest, callIndex: number) => LoopPlusMainHandle | undefined;
   clarificationTimeoutMs?: () => number;
@@ -1215,7 +1217,8 @@ function harness(options: {
     },
     readTask: (taskId) => {
       options.beforeReadTask?.();
-      return tasks.get(taskId) ?? null;
+      const stored = tasks.get(taskId) ?? null;
+      return options.projectReadTask ? options.projectReadTask(stored, taskId) : stored;
     },
     createTask: (input) => {
       taskSeq += 1;
@@ -2295,6 +2298,180 @@ test("Loop+ persists assessed acceptance progress, retains it after pause, and c
   assert.equal(env.tasks.get(taskId)?.status, "completed");
   assert.equal(env.tasks.get(taskId)?.loopPlusProgressPercent, 100);
 });
+
+test("parent context keeps verified progress, route, reviews, and frozen order when a continuation cannot read", async () => {
+  await assertParentContextContinuation("missing");
+});
+
+test("parent context ignores an identity mismatch and withholds acceptance until the same task is readable", async () => {
+  await assertParentContextContinuation("mismatch");
+});
+
+async function assertParentContextContinuation(fault: "missing" | "mismatch"): Promise<void> {
+  const mode: { fault: "none" | "missing" | "mismatch" } = { fault: "none" };
+  const env = harness({
+    projectReadTask: (task) => {
+      if (mode.fault === "none" || !task) return task;
+      if (mode.fault === "missing") return null;
+      return {
+        ...task,
+        id: "foreign-task",
+        rootPrompt: "FOREIGN_ROOT",
+        supplementalRequirements: [],
+        loopPlusProgressPercent: 0,
+        taskStoreFile: "",
+        mainCommunicationFile: "",
+        loopSubtaskMode: undefined,
+        modelRouting: undefined,
+        loopPlusAcceptancePlan: undefined,
+      };
+    },
+  });
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([
+    { subtaskId: "alpha", attemptId: "alpha-1", title: "alpha", writeFiles: ["a.ts"] },
+    { subtaskId: "beta", attemptId: "beta-1", title: "beta", writeFiles: ["b.ts"] },
+  ]);
+  scheduler.finish({ subtaskId: "alpha", attemptId: "alpha-1", outcome: "completed" });
+  scheduler.finish({ subtaskId: "beta", attemptId: "beta-1", outcome: "completed" });
+  const task = baseTask(`parent-context-${fault}`, scheduler.snapshot());
+  task.status = "running";
+  task.rootPrompt = "root requirement: preserve the public contract";
+  task.supplementalRequirements = ["supplemental requirement: keep four reviews"];
+  task.loopPlusProgressPercent = 78;
+  task.taskStoreFile = "/synthetic/parent/loop-tasks.json";
+  task.communicationDir = "/synthetic/parent";
+  task.mainCommunicationFile = "/synthetic/parent/main.md";
+  task.loopSubtaskMode = "fullstack";
+  task.modelRouting = {
+    main: { cli: "codex", model: "main-model" },
+    subtask: { cli: "grok", model: "legacy-model" },
+    subtaskFullstack: { cli: "grok", model: "full-model" },
+  };
+  task.loopPlusAcceptancePlan = {
+    id: "plan-four",
+    name: "加强方案",
+    checks: ["maintainability", "security", "performance", "ui_aesthetics"],
+    otherText: "",
+    systemDefault: false,
+  };
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, { resumeTaskId: task.id });
+  await flush();
+  const review = env.mains[0];
+  const frozenIds = review.request.reviewEventIds?.slice() ?? [];
+  assert.equal(frozenIds.length, 2);
+  assertParentContextPrompt(review.request.prompt, frozenIds);
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-parent-context"), false);
+
+  mode.fault = fault;
+  review.resolve("{");
+  await flush();
+  const correction = env.mains[1];
+  assert.match(correction.request.prompt, /Loop\+ 继续执行/);
+  assert.deepEqual(correction.request.reviewEventIds, frozenIds);
+  assertParentContextPrompt(correction.request.prompt, frozenIds);
+  assert.doesNotMatch(correction.request.prompt, /FOREIGN_ROOT|legacyAtomic|Last overall progress: 0%/);
+
+  correction.resolve(frozenAccept(frozenIds));
+  await flush();
+  const retried = env.mains[2];
+  assert.deepEqual(retried.request.reviewEventIds, frozenIds);
+  assertParentContextPrompt(retried.request.prompt, frozenIds);
+  assert.equal(env.tasks.get(task.id)?.loopPlusProgressPercent, 78);
+  assert.equal(env.acceptanceFeedback.length, 0);
+  assert.equal(snapshotOf(env.tasks.get(task.id)).currentReview?.eventId, frozenIds[0]);
+  const contextLogs = env.logs.filter((item) => item.event === "loop-plus-parent-context");
+  assert.ok(contextLogs.length > 0);
+  const expectedCode = fault === "missing" ? "record-unreadable" : "identity-mismatch";
+  assert.ok(contextLogs.some((item) => (item.payload as { stage?: string; code?: string }).stage === "parent-context"
+    && (item.payload as { code?: string }).code === expectedCode));
+  assert.ok(contextLogs.some((item) => (item.payload as { stage?: string }).stage === "decision-validation"));
+  const withheld = contextLogs.find((item) => (item.payload as { stage?: string }).stage === "acceptance-submit");
+  assert.ok(withheld);
+  const payload = withheld.payload as {
+    code?: string;
+    taskPresent?: boolean;
+    identityMatched?: boolean;
+    frozenContextPresent?: boolean;
+    frozenPrefixIntact?: boolean;
+    acceptancePlanPresent?: boolean;
+    routePresent?: boolean;
+    progressPresent?: boolean;
+    rootPresent?: boolean;
+    authoritative?: boolean;
+    acceptanceSubmitted?: boolean;
+    fieldKnown?: boolean;
+  };
+  assert.equal(payload.code, expectedCode);
+  assert.equal((withheld.payload as { taskId?: string }).taskId, task.id);
+  assert.equal(payload.taskPresent, fault === "mismatch");
+  assert.equal(payload.identityMatched, false);
+  assert.equal(payload.frozenContextPresent, true);
+  assert.equal(payload.frozenPrefixIntact, true);
+  assert.equal(payload.acceptancePlanPresent, true);
+  assert.equal(payload.routePresent, true);
+  assert.equal(payload.progressPresent, true);
+  assert.equal(payload.rootPresent, true);
+  assert.equal(payload.authoritative, false);
+  assert.equal(payload.acceptanceSubmitted, false);
+  assert.equal(payload.fieldKnown, false);
+  for (const item of contextLogs) {
+    const text = JSON.stringify(item.payload);
+    assert.equal(text.includes("/synthetic"), false);
+    assert.equal(text.includes("FOREIGN_ROOT"), false);
+    assert.equal(text.includes("full-model"), false);
+    assert.equal(text.includes("root requirement"), false);
+    assert.equal(text.includes("78"), false);
+  }
+
+  mode.fault = "none";
+  retried.resolve(frozenAccept(frozenIds));
+  await flush();
+  assert.equal(env.tasks.get(task.id)?.loopPlusProgressPercent, 81);
+  assert.equal(env.acceptanceFeedback.length, 1);
+  assert.equal(snapshotOf(env.tasks.get(task.id)).currentReview, null);
+  env.host.stopParent(task.id);
+  await run.done;
+}
+
+function assertParentContextPrompt(prompt: string, frozenIds: readonly string[]): void {
+  assert.match(prompt, /root requirement: preserve the public contract/);
+  assert.match(prompt, /supplemental requirement: keep four reviews/);
+  assert.match(prompt, /\/synthetic\/parent\/main\.md/);
+  assert.match(prompt, /\/synthetic\/parent\/loop-tasks\.json/);
+  assert.match(prompt, /Last overall progress: 78%/);
+  assert.match(prompt, /mode=fullstack coding=grok \/ full-model analysis=codex \/ main-model/);
+  assert.doesNotMatch(prompt, /legacyAtomic/);
+  assert.match(prompt, /maintainability, security, performance, ui_aesthetics/);
+  assert.match(prompt, /Maintainability review:/);
+  assert.match(prompt, /Performance review:/);
+  assert.match(prompt, /Security review:/);
+  assert.match(prompt, /User experience review:/);
+  const batch = prompt.split("Acceptance batch, frozen host-selected order")[1]?.split("Review queue count")[0] ?? "";
+  const positions = frozenIds.map((id) => batch.indexOf(id));
+  assert.ok(positions[0] >= 0 && positions[1] > positions[0]);
+}
+
+function frozenAccept(reviewEventIds: readonly string[]): string {
+  return decisionJson({
+    status: "accept",
+    reviewEventIds,
+    progressPercent: 81,
+    reviews: reviewEventIds.map((reviewEventId) => ({
+      reviewEventId,
+      acceptance: "passed",
+      reason: "实现与证据均符合要求",
+    })),
+    acceptancePlanResults: [
+      { key: "maintainability", passed: true, reason: "结构保持可读" },
+      { key: "security", passed: true, reason: "没有新增敏感日志" },
+      { key: "performance", passed: true, reason: "没有新增热路径扫描" },
+      { key: "ui_aesthetics", passed: true, reason: "本次无界面变更" },
+    ],
+    subtasks: [],
+  });
+}
 
 test("completed without subtask events only summarizes and never writes an acceptance table", async () => {
   for (const withPlan of [false, true]) {
@@ -3788,6 +3965,8 @@ test("keeps the running task meta when a same-id dispatch is rejected", async ()
   }));
   await flush();
   const taskId = run.taskId ?? "";
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatched").length, 1);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 0);
   const stored = () => env.tasks.get(taskId);
   const beta = stored()?.subTasks.find((item) => item.id === "beta");
   assert.ok(beta);
@@ -3823,11 +4002,237 @@ test("keeps the running task meta when a same-id dispatch is rejected", async ()
     const rejected = (item.payload as { rejected?: Array<{ subtaskId?: string; reason?: string }> } | undefined)?.rejected;
     return item.event === "loop-plus-dispatched" && rejected?.some((entry) => entry.subtaskId === "beta" && entry.reason === "active_subtask");
   }), true);
+  const dispatchRejections = env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+  assert.equal(dispatchRejections.length, 1);
+  assert.deepEqual(dispatchRejections[0]?.payload, {
+    rejectedCount: 1,
+    reasonCounts: { active_subtask: 1 },
+  });
+  const rejectionText = JSON.stringify(dispatchRejections[0]?.payload);
+  assert.equal(rejectionText.includes("beta"), false);
+  assert.equal(rejectionText.includes(taskId), false);
+  assert.equal(rejectionText.includes("src/evil.ts"), false);
+  assert.equal(rejectionText.includes("REJECTED replacement"), false);
   const correction = env.mains.at(-1)!;
   assert.notEqual(correction, review);
   assert.equal(correction.request.kind, "continue");
   assert.match(correction.request.prompt, /state\.dispatch\.rejected/);
   assert.match(correction.request.prompt, /不得重复 accept/);
+});
+
+async function openDispatchFirstReview(env: ReturnType<typeof harness>, subtasks: LoopSubtaskDecision[]) {
+  const run = env.host.tryRun({ displayPrompt: "先派发再验收" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks }));
+  await flush();
+  const finished = env.attempts.find((item) => item.request.subtaskId === subtasks[0]?.id);
+  assert.ok(finished);
+  finished.resolve({ outcome: "completed", detail: "首项完成" });
+  await flush();
+  const review = env.mains.at(-1)!;
+  assert.equal(review.request.kind, "review");
+  assert.match(review.request.prompt, /One-time dispatch-first check/);
+  return { run, taskId, review };
+}
+
+function rejectionPayloadText(env: ReturnType<typeof harness>): string {
+  return JSON.stringify(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").map((item) => item.payload));
+}
+
+test("logs one redacted summary when the temporary scheduler preview rejects", async () => {
+  const env = harness();
+  const opened = await openDispatchFirstReview(env, [subtask("first", ["src/first.ts"])]);
+  const { run, taskId, review } = opened;
+  assert.equal(env.attempts[0].request.attemptId, "lp1-first");
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 0);
+  const before = JSON.stringify(snapshotOf(env.tasks.get(taskId)));
+  const secretId = "preview-secret-child";
+  const secretDependency = "missing-preview-secret";
+  const secretFile = "src/preview-secret-evil.ts";
+  review.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [{
+      ...subtask(secretId, [secretFile]),
+      dependsOn: [secretDependency],
+      prompt: `${longPrompt(secretId, [secretFile])} PROMPT_PREVIEW_SECRET`,
+    }],
+    nextStepPlan: { objective: "预检拒绝后保持冻结批次" },
+  }));
+  await flush();
+  const rejections = env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+  assert.equal(rejections.length, 1);
+  assert.deepEqual(rejections[0]?.payload, {
+    rejectedCount: 1,
+    reasonCounts: { invalid_dependencies: 1 },
+  });
+  const text = rejectionPayloadText(env);
+  assert.equal(text.includes(secretId), false);
+  assert.equal(text.includes(secretDependency), false);
+  assert.equal(text.includes(secretFile), false);
+  assert.equal(text.includes("PROMPT_PREVIEW_SECRET"), false);
+  assert.equal(text.includes(taskId), false);
+  assert.equal(text.includes("lp2-"), false);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatched").length, 1);
+  assert.equal(JSON.stringify(snapshotOf(env.tasks.get(taskId))), before);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(env.tasks.get(taskId)?.subTasks.some((item) => item.id === secretId), false);
+  const miss = env.logs.filter((item) => item.event === "loop-plus-protocol-miss");
+  assert.equal(miss.length, 1);
+  assert.equal((miss[0]?.payload as { reasonCode?: string }).reasonCode, "state.dispatch_window.preflight_failed");
+  assert.equal((miss[0]?.payload as { dispatchWindow?: string }).dispatchWindow, "open");
+  const retry = env.mains.at(-1)!;
+  assert.notEqual(retry, review);
+  const eventIds = retry.request.reviewEventIds ?? [retry.request.reviewEventId ?? ""];
+  retry.resolve(acceptWithIndependentWork(eventIds, [subtask("preview-ok", ["src/preview-ok.ts"])]));
+  await flush();
+  assert.equal(env.attempts.at(-1)?.request.attemptId, "lp2-preview-ok");
+  assert.equal(env.attempts.at(-1)?.request.subtaskId, "preview-ok");
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 1);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("logs one redacted summary when the live scheduler rejects and rolls back", async () => {
+  const schedulerModule = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
+  const originalCreate = schedulerModule.createLoopPlusScheduler;
+  let armed = false;
+  let scriptedCalls = 0;
+  schedulerModule.createLoopPlusScheduler = (options) => {
+    const scheduler = originalCreate(options);
+    const dispatch = scheduler.dispatch.bind(scheduler);
+    scheduler.dispatch = (specs, dispatchOptions) => {
+      if (!armed) return dispatch(specs, dispatchOptions);
+      scriptedCalls += 1;
+      if (scriptedCalls !== 2) return dispatch(specs, dispatchOptions);
+      const idleView = dispatch([], { deferPromotion: true }).view;
+      const list = Array.isArray(specs) ? specs : [];
+      return {
+        decisions: [],
+        started: [],
+        view: idleView,
+        rejected: list.map((spec) => {
+          const record = spec && typeof spec === "object" ? spec as { subtaskId?: unknown; attemptId?: unknown } : {};
+          return {
+            subtaskId: typeof record.subtaskId === "string" ? record.subtaskId : "secret-subtask",
+            attemptId: typeof record.attemptId === "string" ? record.attemptId : "secret-attempt",
+            reason: "active_subtask" as const,
+            detail: "PROMPT_LIVE_SECRET /tmp/live-secret/src/evil.ts",
+          };
+        }),
+      };
+    };
+    return scheduler;
+  };
+  const env = harness();
+  try {
+    const { run, taskId, review } = await openDispatchFirstReview(env, [subtask("first", ["src/first.ts"])]);
+    assert.equal(env.attempts[0].request.attemptId, "lp1-first");
+    assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 0);
+    const before = JSON.stringify(snapshotOf(env.tasks.get(taskId)));
+    const secretId = "live-secret-child";
+    const secretFile = "src/live-secret-evil.ts";
+    armed = true;
+    scriptedCalls = 0;
+    review.resolve(decisionJson({
+      status: "dispatch",
+      subtasks: [{
+        ...subtask(secretId, [secretFile]),
+        prompt: `${longPrompt(secretId, [secretFile])} PROMPT_LIVE_SECRET`,
+      }],
+      nextStepPlan: { objective: "真实调度拒绝后回滚" },
+    }));
+    await flush();
+    armed = false;
+    assert.equal(scriptedCalls, 2);
+    const rejections = env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+    assert.equal(rejections.length, 1);
+    assert.deepEqual(rejections[0]?.payload, {
+      rejectedCount: 1,
+      reasonCounts: { active_subtask: 1 },
+    });
+    const text = rejectionPayloadText(env);
+    assert.equal(text.includes(secretId), false);
+    assert.equal(text.includes(secretFile), false);
+    assert.equal(text.includes("PROMPT_LIVE_SECRET"), false);
+    assert.equal(text.includes("/tmp/live-secret"), false);
+    assert.equal(text.includes(taskId), false);
+    assert.equal(text.includes("lp2-"), false);
+    assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatched").length, 1);
+    assert.equal(JSON.stringify(snapshotOf(env.tasks.get(taskId))), before);
+    assert.equal(env.tasks.get(taskId)?.status, "running");
+    assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined);
+    assert.equal(env.attempts.length, 1);
+    assert.equal(env.tasks.get(taskId)?.subTasks.some((item) => item.id === secretId), false);
+    const miss = env.logs.filter((item) => item.event === "loop-plus-protocol-miss");
+    assert.equal(miss.length, 1);
+    assert.equal((miss[0]?.payload as { reasonCode?: string }).reasonCode, "state.dispatch_window.preflight_failed");
+    const retry = env.mains.at(-1)!;
+    assert.notEqual(retry, review);
+    const eventIds = retry.request.reviewEventIds ?? [retry.request.reviewEventId ?? ""];
+    retry.resolve(acceptWithIndependentWork(eventIds, [subtask("live-ok", ["src/live-ok.ts"])]));
+    await flush();
+    assert.equal(env.attempts.at(-1)?.request.attemptId, "lp2-live-ok");
+    assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 1);
+    assert.equal(env.tasks.get(taskId)?.status, "running");
+    env.host.stopParent(taskId);
+    await run.done;
+  } finally {
+    schedulerModule.createLoopPlusScheduler = originalCreate;
+  }
+});
+
+test("does not invent scheduler rejections when preflight exits without a rejection list", async () => {
+  const cases = [
+    {
+      name: "continuation",
+      maxConcurrency: 1,
+      initial: [subtask("first", ["src/first.ts"])],
+      proposed: [{
+        ...subtask("continued-secret", ["src/continued-secret.ts"]),
+        continueFromSubtaskId: "first",
+        prompt: `${longPrompt("continued-secret", ["src/continued-secret.ts"])} PROMPT_CONTINUE_SECRET`,
+      }],
+    },
+    {
+      name: "capacity",
+      maxConcurrency: 1,
+      initial: [subtask("first", ["src/first.ts"])],
+      proposed: [subtask("slot-secret-a", ["src/slot-secret-a.ts"]), subtask("slot-secret-b", ["src/slot-secret-b.ts"])],
+    },
+    {
+      name: "write-conflict",
+      maxConcurrency: 2,
+      initial: [subtask("first", ["src/first.ts"]), subtask("owner", ["src/shared-secret.ts"])],
+      proposed: [subtask("conflict-secret", ["src/shared-secret.ts"])],
+    },
+  ] as const;
+  for (const item of cases) {
+    const env = harness({ maxConcurrency: item.maxConcurrency });
+    const { run, taskId, review } = await openDispatchFirstReview(env, [...item.initial]);
+    const before = JSON.stringify(snapshotOf(env.tasks.get(taskId)));
+    const attemptsBefore = env.attempts.length;
+    review.resolve(decisionJson({
+      status: "dispatch",
+      subtasks: item.proposed,
+      nextStepPlan: { objective: "只因预检条件退出" },
+    }));
+    await flush();
+    assert.equal(env.logs.filter((entry) => entry.event === "loop-plus-dispatch-rejected").length, 0, item.name);
+    assert.equal(rejectionPayloadText(env).includes("secret"), false, item.name);
+    assert.equal(JSON.stringify(snapshotOf(env.tasks.get(taskId))), before, item.name);
+    assert.equal(env.attempts.length, attemptsBefore, item.name);
+    assert.equal(env.tasks.get(taskId)?.status, "running", item.name);
+    assert.equal(env.tasks.get(taskId)?.loopPlusNextStepPlan, undefined, item.name);
+    const miss = env.logs.filter((entry) => entry.event === "loop-plus-protocol-miss");
+    assert.equal(miss.length, 1, item.name);
+    assert.equal((miss[0]?.payload as { reasonCode?: string }).reasonCode, "state.dispatch_window.preflight_failed", item.name);
+    env.host.stopParent(taskId);
+    await run.done;
+  }
 });
 
 test("does not treat a delayed launch as a lost process", async () => {
@@ -4257,6 +4662,8 @@ test("pauses recoverably when persisting a finish fails and keeps the completion
   const task = env.tasks.get(run.taskId ?? "");
   assert.equal(persistFailures, 1);
   assert.equal(task?.status, "error");
+  assert.equal(task?.loopPlusInterruption?.reason, "persistence-failure");
+  assert.equal(typeof task?.loopPlusInterruption?.phase, "string");
   assert.match(task?.finalSummary ?? "", /persist failed/);
   assert.equal(snapshotOf(task).running.length, 0);
   assert.equal(snapshotOf(task).currentReview?.subtaskId, "alpha");
@@ -4287,6 +4694,7 @@ test("pauses recoverably when persisting a finish fails and keeps the completion
   });
   await flush();
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "running");
+  assert.equal(env.tasks.get(run.taskId ?? "")?.loopPlusInterruption, undefined);
   assert.equal(env.mains[1]?.request.kind, "review");
   assert.equal(env.mains[1]?.request.reviewEventId, buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId));
   assert.equal(env.attempts.length, 1);
@@ -5264,19 +5672,26 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   assert.equal(reviews()[1]?.request.reviewEventId, eventId);
 
   reviews()[1].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(env.attempts.length, 1, "wait during an open review does not dispatch");
+  assert.equal(reviews()[2]?.request.reviewEventId, eventId);
+  reviews()[2].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  assert.equal(reviews()[3]?.request.reviewEventId, eventId);
+  reviews()[3].resolve(decisionJson({ status: "wait" }));
   await run.done;
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
   assert.equal(env.messages.filter((item) => item === "loop-plus-idle-wait").length, 0);
   assert.equal(snapshotOf(env.tasks.get(taskId)).currentReview?.eventId, eventId);
-  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 3);
-  assert.equal(reviews().length, 2);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 5);
+  assert.equal(reviews().length, 4);
   const resumed = env.host.tryRun({ displayPrompt: "继续" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
   await flush();
-  assert.equal(reviews()[2]?.request.reviewEventId, eventId);
+  assert.equal(reviews()[4]?.request.reviewEventId, eventId);
 
-  reviews()[2].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
+  reviews()[4].resolve(decisionJson({ status: "blocked", subtasks: [], finalSummary: "need a person" }));
   await flush();
-  reviews()[3].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
+  reviews()[5].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
   await resumed.done;
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
   assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture("need a person")));
@@ -7218,4 +7633,304 @@ test("需求变更时撤销冻结验收并保留晚到事件，随后可以正�
   await flush();
   await run.done;
   assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
+});
+
+test("consumer failure persists execution-error through pause and a later finish only carries it", async () => {
+  let explode = false;
+  const env = harness({
+    beforeReadTask: () => {
+      if (!explode) return;
+      explode = false;
+      throw new Error("synthetic-consumer-escape");
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  assert.equal(env.attempts.length, 2);
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const review = env.mains.at(-1)!;
+  assert.equal(review.request.kind, "review");
+  explode = true;
+  review.resolve(decisionJson({ status: "wait" }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  const paused = env.tasks.get(taskId);
+  assert.equal(paused?.status, "error");
+  assert.equal(paused?.finalSummary, "execution-error: loop-plus-consumer-failed");
+  assert.equal(paused?.loopPlusInterruption?.reason, "execution-error");
+  assert.equal(typeof paused?.loopPlusInterruption?.phase, "string");
+  assert.equal(env.messages.includes("loop-plus-consumer-failed"), true);
+  assert.equal(JSON.stringify(paused).includes("synthetic-consumer-escape"), false);
+  const transition = env.logs.filter((item) => item.event === "loop-plus-interruption-source"
+    && (item.payload as { carried?: boolean } | undefined)?.carried !== true);
+  assert.ok(transition.length >= 1);
+  assert.deepEqual(transition[0]?.payload, {
+    phase: paused?.loopPlusInterruption?.phase,
+    reason: "execution-error",
+    carried: false,
+  });
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta done" });
+  await flush();
+  const carriedTask = env.tasks.get(taskId);
+  assert.equal(carriedTask?.status, "error");
+  assert.deepEqual(carriedTask?.loopPlusInterruption, paused?.loopPlusInterruption);
+  assert.equal(carriedTask?.finalSummary, paused?.finalSummary);
+  const carried = env.logs.filter((item) => item.event === "loop-plus-interruption-source"
+    && (item.payload as { carried?: boolean } | undefined)?.carried === true);
+  assert.ok(carried.length >= 1);
+  assert.deepEqual(Object.keys(carried.at(-1)?.payload as object).sort(), ["carried", "phase", "reason"]);
+  assert.equal((carried.at(-1)?.payload as { reason?: string }).reason, "execution-error");
+  const normalized = normalizeLoopTaskRecord(carriedTask);
+  assert.deepEqual(normalized?.loopPlusInterruption, carriedTask?.loopPlusInterruption);
+  assert.deepEqual(normalizeLoopTaskRecord({
+    ...carriedTask!,
+    loopPlusInterruption: {
+      phase: "reviewing",
+      reason: "execution-error",
+      taskId: "msg_secret",
+      error: "synthetic-consumer-escape",
+    } as LoopTaskRecord["loopPlusInterruption"],
+  })?.loopPlusInterruption, { phase: "reviewing", reason: "execution-error" });
+  assert.equal(normalizeLoopTaskRecord({
+    ...carriedTask!,
+    loopPlusInterruption: { phase: "nope", reason: "execution-error" } as unknown as LoopTaskRecord["loopPlusInterruption"],
+  })?.loopPlusInterruption, undefined);
+  env.host.stopParent(taskId);
+  const stopped = env.tasks.get(taskId);
+  assert.equal(stopped?.status, "stopped");
+  assert.equal(stopped?.loopPlusInterruption?.reason, "user-stop");
+});
+
+test("an expanded reply does not name reviews[1] when the host froze one event", async (context) => {
+  const env = protocolHarness(context);
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const review = env.mains.at(-1)!;
+  const frozen = review.request.reviewEventIds?.slice() ?? [];
+  assert.deepEqual(frozen, [buildLoopPlusFinishEventId("alpha", env.attempts[0].request.attemptId)]);
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta arrived late" });
+  await flush();
+  const lateId = buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId);
+  const live = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.equal(live.currentReview?.eventId, frozen[0]);
+  assert.ok(live.reviewQueue.some((item) => item.eventId === lateId));
+  assert.deepEqual(review.request.reviewEventIds, frozen);
+  const expanded = decisionJson({
+    status: "accept",
+    reviewEventIds: [frozen[0], lateId],
+    reviews: [
+      { reviewEventId: frozen[0], acceptance: "passed", reason: "第一项符合冻结批次" },
+      { reviewEventId: lateId, acceptance: "maybe", reason: "第二项自报有误" },
+    ],
+  });
+  review.resolve(expanded);
+  await flush();
+  const correction = env.mains.at(-1)!;
+  assert.equal(correction.request.kind, "review");
+  assert.deepEqual(correction.request.reviewEventIds, frozen);
+  assert.match(correction.request.prompt, /修正提示：/);
+  assert.match(correction.request.prompt, /validation\.accept\.invalid_reviews/);
+  assert.doesNotMatch(correction.request.prompt, /reviews\[1\]/);
+  assert.equal((env.logs.find((item) => item.event === "loop-plus-protocol-miss")?.payload as { fieldPath?: string }).fieldPath, "accept.reviews");
+  await exhaustProtocolBudget(env, run, 1, expanded, true);
+  const summary = env.tasks.get(run.taskId ?? "")?.finalSummary ?? "";
+  assert.match(summary, /validation\.accept\.invalid_reviews/);
+  assert.match(summary, /accept\.reviews/);
+  assert.doesNotMatch(summary, /reviews\[1\]/);
+  assert.doesNotMatch(summary, /第二项自报有误|maybe/);
+});
+
+test("a real two-event frozen batch still names the wrong second review field", async (context) => {
+  const env = protocolHarness(context);
+  const task = baseTask("frozen-two-field", twoFinishedReviews());
+  env.tasks.set(task.id, task);
+  const run = env.host.tryRun({ displayPrompt: task.rootPrompt }, env.target, {
+    resumeTaskId: task.id,
+    schedulingMode: "event_driven",
+  });
+  await flush();
+  const review = env.mains[0];
+  const frozen = review.request.reviewEventIds?.slice() ?? [];
+  assert.equal(frozen.length, 2);
+  const wrong = decisionJson({
+    status: "accept",
+    reviewEventIds: frozen,
+    reviews: [
+      { reviewEventId: frozen[0], acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: frozen[1], acceptance: "maybe", reason: "第二项结论无效" },
+    ],
+  });
+  review.resolve(wrong);
+  await flush();
+  const correction = env.mains[1];
+  assert.deepEqual(correction.request.reviewEventIds, frozen);
+  assert.match(correction.request.prompt, /修正提示：/);
+  assert.match(correction.request.prompt, /受控字段：accept\.reviews\[1\]\.acceptance/);
+  await exhaustProtocolBudget(env, run, 0, wrong, true);
+  const summary = env.tasks.get(task.id)?.finalSummary ?? "";
+  assert.match(summary, /accept\.reviews\[1\]\.acceptance/);
+  assert.doesNotMatch(summary, /第二项结论无效|maybe/);
+});
+
+test("a legal decision writes no protocol rejection summary", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "处理一个明确、低风险的简单事项" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(directCompletionDecision());
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "completed");
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.mains.length, 1);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 0);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-rejection").length, 0);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-recovery").length, 0);
+});
+
+test("format, cross-field, and preflight rejections keep one summary and the original recovery contract", async (context) => {
+  const format = protocolHarness(context);
+  const formatRun = format.host.tryRun({ displayPrompt: "ship the feature" }, format.target, { schedulingMode: "event_driven" });
+  await flush();
+  format.mains[0].resolve('{\n  "status" "synthetic-format-secret"\n}');
+  await flush();
+  const formatMiss = format.logs.filter((item) => item.event === "loop-plus-protocol-miss");
+  const formatRejection = format.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  assert.equal(formatMiss.length, 1);
+  assert.equal(formatRejection.length, 1);
+  assert.equal((formatMiss[0]?.payload as { taskId?: string }).taskId, formatRun.taskId);
+  assert.equal("recoveryStage" in (formatMiss[0]?.payload as object), false);
+  assert.doesNotMatch(JSON.stringify(formatRejection[0]?.payload), /synthetic-format-secret|task-/);
+  assert.deepEqual(summarizeLoopPlusProtocolRejection(formatRejection[0]?.payload), {
+    rejectionKind: "format",
+    reasonCode: "format.ColonExpected",
+    protocolFailureCount: 1,
+    recoveryStage: "continuation_requested",
+    dispatchWindow: "closed",
+  });
+  assert.deepEqual(format.logs.filter((item) => item.event === "loop-plus-protocol-recovery").map((item) => item.payload), [{
+    taskId: formatRun.taskId,
+    attemptState: "first",
+    protocolFailureCount: 1,
+    automaticRetryLimit: 3,
+    result: "continuation_requested",
+  }]);
+  assert.equal(format.attempts.length, 0);
+  assert.equal(format.tasks.get(formatRun.taskId ?? "")?.status, "running");
+  format.mains[1].resolve(directCompletionDecision());
+  await formatRun.done;
+  assert.equal(format.logs.filter((item) => item.event === "loop-plus-protocol-rejection").length, 1);
+  assert.deepEqual(format.logs.filter((item) => item.event === "loop-plus-protocol-recovery").map((item) => (item.payload as { result?: string }).result), [
+    "continuation_requested",
+    "recovered",
+  ]);
+  assert.equal(format.tasks.get(formatRun.taskId ?? "")?.status, "completed");
+  assert.equal(format.attempts.length, 0);
+
+  const cross = protocolHarness(context);
+  const crossRun = cross.host.tryRun({ displayPrompt: "ship the feature" }, cross.target, { schedulingMode: "event_driven" });
+  await flush();
+  cross.mains[0].resolve(JSON.stringify({
+    status: "completed",
+    directCompletion: true,
+    nextStepPlan: { objective: "SECRET_CROSS_FIELD" },
+    answerConclusion: "SECRET_CROSS_FIELD",
+    finalSummary: "SECRET_CROSS_FIELD",
+  }));
+  await flush();
+  const crossRejection = cross.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  assert.equal(cross.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(crossRejection.length, 1);
+  assert.deepEqual(summarizeLoopPlusProtocolRejection(crossRejection[0]?.payload), {
+    rejectionKind: "validation",
+    reasonCode: "validation.invalid_decision",
+    protocolFailureCount: 1,
+    recoveryStage: "continuation_requested",
+    dispatchWindow: "closed",
+  });
+  assert.equal(JSON.stringify(crossRejection[0]?.payload).includes("SECRET_CROSS_FIELD"), false);
+  assert.equal(JSON.stringify(crossRejection[0]?.payload).includes(crossRun.taskId ?? "missing-task"), false);
+  assert.equal(cross.attempts.length, 0);
+  assert.equal(cross.tasks.get(crossRun.taskId ?? "")?.status, "running");
+  assert.equal((cross.logs.find((item) => item.event === "loop-plus-protocol-recovery")?.payload as { result?: string }).result, "continuation_requested");
+  cross.host.stopParent(crossRun.taskId ?? "");
+  await crossRun.done;
+
+  const preflight = harness();
+  const opened = await openDispatchFirstReview(preflight, [subtask("first", ["src/first.ts"])]);
+  const before = JSON.stringify(snapshotOf(preflight.tasks.get(opened.taskId)));
+  opened.review.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [{
+      ...subtask("preview-secret-child", ["src/preview-secret-evil.ts"]),
+      dependsOn: ["missing-preview-secret"],
+      prompt: `${longPrompt("preview-secret-child", ["src/preview-secret-evil.ts"])} PROMPT_PREVIEW_SECRET`,
+    }],
+    nextStepPlan: { objective: "预检拒绝后只留下协议摘要" },
+  }));
+  await flush();
+  const preflightRejection = preflight.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  const dispatchRejections = preflight.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+  assert.equal(preflight.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
+  assert.equal(preflightRejection.length, 1);
+  assert.equal(dispatchRejections.length, 1);
+  assert.deepEqual(summarizeLoopPlusProtocolRejection(preflightRejection[0]?.payload), {
+    rejectionKind: "state",
+    reasonCode: "state.dispatch_window.preflight_failed",
+    fieldPath: "subtasks",
+    protocolFailureCount: 1,
+    recoveryStage: "continuation_requested",
+    dispatchWindow: "open",
+  });
+  assert.equal(JSON.stringify(preflightRejection[0]?.payload).includes("reasonCounts"), false);
+  assert.deepEqual(dispatchRejections[0]?.payload, { rejectedCount: 1, reasonCounts: { invalid_dependencies: 1 } });
+  assert.equal(JSON.stringify(snapshotOf(preflight.tasks.get(opened.taskId))), before);
+  assert.equal(preflight.attempts.length, 1);
+  assert.equal(preflight.tasks.get(opened.taskId)?.status, "running");
+  preflight.host.stopParent(opened.taskId);
+  await opened.run.done;
+});
+
+test("protocol rejection stages follow the three automatic continuations and then pause", async (context) => {
+  const env = protocolHarness(context);
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  await exhaustProtocolBudget(env, run, 0, "not json");
+  const summaries = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection")
+    .map((item) => summarizeLoopPlusProtocolRejection(item.payload));
+  assert.deepEqual(summaries.map((item) => item.protocolFailureCount), [1, 2, 3, 4]);
+  assert.deepEqual(summaries.map((item) => item.recoveryStage), [
+    "continuation_requested",
+    "continuation_requested",
+    "continuation_requested",
+    "paused",
+  ]);
+  assert.deepEqual(summaries.map((item) => item.reasonCode), [
+    "format.ObjectNotFound",
+    "format.ObjectNotFound",
+    "format.ObjectNotFound",
+    "format.ObjectNotFound",
+  ]);
+  assert.deepEqual(env.logs.filter((item) => item.event === "loop-plus-protocol-recovery")
+    .map((item) => (item.payload as { result?: string }).result), [
+    "continuation_requested",
+    "continuation_requested",
+    "continuation_requested",
+    "paused",
+  ]);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 4);
+  assert.equal(env.mains.length, 4);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
 });

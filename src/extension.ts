@@ -16,7 +16,7 @@ import { CONFIG_PATHS as DEPARTMENT_CONFIG_PATHS } from "./config/configPaths";
 import type { CodexRuntimeConfigEvidence } from "./config/codexRuntimeConfigIdentity";
 import * as vscode from "vscode";
 import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
-import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, retryLoopSubtaskTabClose, usesCompletedLoopSubtaskTabCleanup } from "./extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, resolveCompletedLoopSubtaskTabBinding, retryLoopSubtaskTabClose } from "./extensionHost/loopSubtaskTabs";
 import type { LoopSubtaskTabCloseOptions } from "./loopSubtaskLifecycle";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
 import { captureConversationTaskSummaryExecution } from "./extensionHost/conversationTaskSummary";
@@ -185,7 +185,7 @@ import { departmentRoleCliIssue, normalizeDepartmentMetadata, usesDepartmentOwne
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
 import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
-import { canPromoteDepartmentLeaderSession, commitDepartmentLeaderSessionPromotion, isDepartmentLeaderMainContext, repairStoppedDepartmentLeaderSession } from "./extensionHost/departmentLeaderSessionPromotion";
+import { canPromoteDepartmentLeaderSession, commitDepartmentLeaderSessionPromotion, isDepartmentLeaderMainContext, repairIdleDepartmentLeaderSession } from "./extensionHost/departmentLeaderSessionPromotion";
 import { DepartmentRuntimeStore } from "./extensionHost/departmentruntimestore";
 import { DepartmentExecutionRecovery } from "./extensionHost/departmentexecutionrecovery";
 import { createDepartmentProductionTaskStoreForHost } from "./extensionHost/departmentProductionTaskStore";
@@ -1202,7 +1202,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     hasAnyTaskRunning,
     disposeAllInteractiveRunners: () => interactiveRunnerManager?.disposeAll(),
     maybePromptInstallOnCliGroupSwitch,
-    closeConversationTabAndRefreshPanel: (tabId, options) => closeConversationTabAndRefreshPanel(tabId, options),
+    closeConversationTabAndRefreshPanel: (tabId, options) => sessionTabsHost.closeConversationTabByUser(tabId, options),
     confirm: async (messageText, confirmLabel) => {
       const confirmed = await vscode.window.showWarningMessage(messageText, { modal: true }, confirmLabel);
       return confirmed === confirmLabel;
@@ -1717,7 +1717,7 @@ const sessionTabsHost = createExtensionSessionTabsHost({
 
   postConversationTabClosed: (tabId, activeTabId) => sendPanelMessage({ type: "conversationTabClosed", tabId, activeTabId }),
   getSessionTabsController: () => sessionTabsController, getSessionLifecycleController: () => sessionLifecycleController, getSessionStore: () => sessionStore, setSessionStore: (store) => { sessionStore = store; }, getCurrentCli: () => currentCli, setCurrentCli: (cli) => { currentCli = cli; }, getActiveWorkspaceKey: () => activeWorkspaceKey, getWorkspaceSettings: () => workspaceSettings, saveWorkspaceSettings: (settings) => saveWorkspaceSettings(settings), getLoopGroupChatTasks: () => loopGroupChatChatPanelCoordinator.listGroupChatTasks(), getPrimaryRunTabId: () => getPrimaryRunTabId(), getActiveTaskRun: () => primaryPromptRunController.activeTaskRun, getLiveMessagesForTab: (tabId) => getLiveMessagesForTab(tabId), getPendingSessionDraft: (tabId, cli) => getPendingSessionDraft(tabId, cli), getActiveTabIdForRun: () => primaryPromptRunController.activeTabIdForRun, getActiveSessionId: () => primaryPromptRunController.activeSessionId, persistSessionStore: persistSessionStoreToStorage, getSessionStoreKey: (workspaceKey) => getSessionStoreKey(workspaceKey), loadSessionMessages: (cli, sessionId) => loadSessionMessages(cli, sessionId), saveSessionMessages: (cli, sessionId, messages) => saveSessionMessages(cli, sessionId, messages), buildSessionLabelFromPrompt: (prompt) => buildSessionLabelFromPrompt(prompt), shouldUseFallbackSessionLabel: (label) => shouldUseFallbackSessionLabel(label), isTabRunActive: (tabId) => isTabRunActive(tabId), isLoopMainTabCloseLocked: (tabId) => isLoopMainTabCloseLocked(tabId), postPanelState: () => postPanelState(), updateStatusBar: () => updateStatusBar(), maybePromptInstallOnCliGroupSwitch: (cli) => maybePromptInstallOnCliGroupSwitch(cli), sendSessionMessagesToPanel: (cli, sessionId, tabId) => sendSessionMessagesToPanel(cli, sessionId, tabId), restoreConversationTabConfiguration: (tabId) => restoreConversationTabConfiguration(tabId), getInteractiveSessionBindingsForTab: (tab) => getInteractiveSessionBindingsForTab(tab), disposeInteractiveRunnerIfUnused: (binding) => disposeInteractiveRunnerIfUnused(binding as InteractiveSessionBinding), setWorkspaceInteractiveModeForCli: (cli, mode) => setWorkspaceInteractiveModeForCli(cli, mode), resolveAutoInteractiveModeForConversationTab, extractSessionId: (cli, buffer) => extractSessionId(cli, buffer) ?? null, isLocalSessionId: (sessionId) => isLocalSessionId(sessionId), migrateLocalSessionToTargetSession: (cli, from, to, options) => migrateLocalSessionToTargetSession(cli, from, to, options), adoptSessionId: (cli, sessionId, tabId) => adoptSessionId(cli, sessionId, tabId), getActiveTaskRunMutable: () => primaryPromptRunController.activeTaskRun, logInfo: (event, payload) => { void logInfo(event, payload); }, activeData: { WORKSPACE_KEY_FALLBACK, LEGACY_SESSION_FILE, SESSION_DIR, SESSION_BUFFER_LIMIT } });
-const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, addConversationTab, closeConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
+const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionState, resolveSessionFirstPrompt, ensureLatestSessionForCli, getLatestSessionId, getCurrentSessionId, buildOpenConversationTabSessionMap, buildConversationTabsState, initializeConversationTabsFromWorkspaceSettings, sanitizeConversationTabRecord, ensureConversationTabs, persistConversationTabsToWorkspaceSettings, getConversationTabById, getActiveConversationTabId, getActiveConversationTab, getActiveConversationSessionId, findConversationTabIdBySession, updateActiveConversationTabSession, setActiveConversationTab, switchVisibleConversationTabForLoop, createLoopSubtaskRunTarget, addConversationTab, closeConversationTabAndRefreshPanel, detachConversationTabsFromSession, syncCurrentSessionWithActiveTab, setCurrentSession, startNewSession, markConversationTabExecutionLocked, resetConversationTabSession, captureSessionFromBuffer, adoptDetectedSessionId, adoptFreshOpenCodeLoopRecoverySession, touchSession, updateSessionBuffer, createConversationTabId, getPendingSessionDraft, updatePendingSessionDraft, clearPendingSessionDraft, ensureLocalSession, preparePendingLabel, assignPendingLabel, persistActiveMessages } = sessionTabsHost;
 
 loopOrchestrationHost = createLoopOrchestrationHost({
   handleDepartmentDecision: (request) => getDepartmentRuntimeComposition().handleDirectorDecision(request),
@@ -4329,7 +4329,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
         || !validateDepartmentRoutes(expected.routes) || task.cli !== expected.routes.leader.cli
         || task.originProfile?.configId !== expected.routes.leader.configId) return null;
       if (!ownerExecution && task.sessionId && isLocalSessionId(task.sessionId)) {
-        const repaired = repairStoppedDepartmentLeaderSession(task, {
+        const repaired = repairIdleDepartmentLeaderSession(task, {
           ...departmentLeaderSessionPromotionDeps(), readRuns: () => readTaskStore().runs,
           isTargetAvailable: (cli, sessionId, taskId) => {
             const tabs = ensureConversationTabs().tabs.filter((tab) => tab.cli === cli
@@ -4388,6 +4388,11 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
         version: 1, rootTaskId: task.id, parentTaskId: null, leaderSubtaskId: null, role: "director", executionMode: "loop-plus",
         moduleTitle: input.displayPrompt, routes: structuredClone(configuration.routes), limits: { ...configuration.limits },
       }, configuration.loopPlusAcceptancePlan));
+      const directorTab = getConversationTabById(target.tabId);
+      if (directorTab) {
+        directorTab.manualCloseOnly = true;
+        persistConversationTabsToWorkspaceSettings();
+      }
       ensureLoopCommunicationFiles(updated.id, updated.rootPrompt);
       ensureLoopMainSubChatTranscript(updated);
       appendSystemMessageForLoop({ ...target, sessionId }, "产研部总监任务已创建。", { taskRole: "main", loopTaskId: task.id,
@@ -5558,6 +5563,7 @@ async function takeOverSessionForTab(target: PromptRunTarget, isAborted?: () => 
       return runs;
     },
     stopTab: (tabId) => stopRunForTab(tabId, null),
+    requiresManualClose: sessionTabsHost.requiresManualClose,
     isTabRunActive,
     closeTab: closeConversationTabAndRefreshPanel,
   }, () => isExtensionDeactivating || isAborted?.() === true);
@@ -5874,11 +5880,8 @@ async function runPrompt(
   const role = department?.role === "leader" && input.taskRole === "subtask" ? "employee" : department?.role ?? input.taskRole;
   const tabId = options.targetTabId ?? getActiveConversationTabId();
   const tab = tabId ? getConversationTabById(tabId) : null;
-  const subtask = task && task.workspaceKey === activeWorkspaceKey && usesCompletedLoopSubtaskTabCleanup(task)
-    && input.taskRole === "subtask" && input.loopSubtaskId && input.loopRound
-    ? { taskId: task.id, subtaskId: input.loopSubtaskId, round: input.loopRound, attemptId: input.loopAttemptId }
-    : null;
-  const settleBinding = tab && completedLoopSubtaskTabs.bindPrompt(tab, subtask);
+  const binding = tab ? resolveCompletedLoopSubtaskTabBinding(task, activeWorkspaceKey, input) : null;
+  const settleBinding = tab && completedLoopSubtaskTabs.bindPrompt(tab, binding?.context ?? null, binding?.provisional ? { provisional: true } : undefined);
   let settledSession: string | null | undefined;
   const trace = createPerformanceTrace(mode, tab?.cli, role);
   const dispatch = trace.start("runner-dispatch");

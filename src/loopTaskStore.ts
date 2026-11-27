@@ -35,6 +35,7 @@ import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
+import { readLoopPlusInterruptionSource, type LoopPlusInterruptionSource } from "./extensionHost/loopPlusDiagnostics";
 import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
@@ -205,10 +206,16 @@ export type LoopSubtaskDecision = {
   skillIds?: string[];
 };
 
+export const DEPARTMENT_LEADER_RECOVERY_INSTRUCTIONS_MAX_LENGTH = 4000;
+
+export type DepartmentLeaderRecovery = { leaderTaskId: string; generation: number; instructions: string };
+
 export type LoopMainDecision = {
   status: "completed" | "continue" | "waiting" | "blocked" | "clarify";
   directorCollaborations?: Array<{ id: string; action: "deliver" | "dismiss" }>;
   directorCollaborationIssue?: "invalid-format";
+  directorLeaderRecovery?: DepartmentLeaderRecovery;
+  directorLeaderRecoveryIssue?: "invalid-format";
   directorProgressWeights?: Array<{ moduleId: string; progressWeightPercent: number }>;
   progressPercent?: number;
   answerConclusion?: string;
@@ -272,6 +279,8 @@ export type LoopTaskRecord = {
   status: LoopTaskStatus;
   /** 宿主已失去运行所有权，保留子任务关联以供手动续跑回报。用户主动停止时清除。 */
   runtimeInterrupted?: boolean;
+  /** Phase and reason of the error/stopped transition. Later persists keep this object. */
+  loopPlusInterruption?: LoopPlusInterruptionSource;
   userStopSource?: LoopTaskUserStopSource;
   createdAt: number;
   updatedAt: number;
@@ -1298,6 +1307,9 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const createdAt = typeof raw.createdAt === "number" ? raw.createdAt : Date.now();
   const updatedAt = typeof raw.updatedAt === "number" ? raw.updatedAt : createdAt;
   const status = normalizeLoopTaskStatus(raw.status);
+  const loopPlusInterruption = readLoopPlusInterruptionSource(
+    (raw as { loopPlusInterruption?: unknown }).loopPlusInterruption,
+  );
   const workspaceKey = typeof raw.workspaceKey === "string" ? raw.workspaceKey : WORKSPACE_KEY_FALLBACK;
   const sessionId = typeof raw.sessionId === "string" ? raw.sessionId : null;
   const normalizedSourceFile = sourceFile && (
@@ -1391,6 +1403,7 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
     ...(loopSubtaskMode ? { loopSubtaskMode } : {}),
     ...(loopSubtaskMode === null ? { loopSubtaskModeInvalid: true } : {}),
     status,
+    ...(loopPlusInterruption ? { loopPlusInterruption } : {}),
     ...(raw.runtimeInterrupted === true ? { runtimeInterrupted: true } : {}),
     ...(raw.userStopSource === "ai-panel" || raw.userStopSource === "group-chat" ? { userStopSource: raw.userStopSource } : {}),
     createdAt,

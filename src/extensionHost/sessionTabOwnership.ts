@@ -8,6 +8,7 @@ export type SessionTabOwnershipDeps = {
   getTabs: () => readonly ConversationTabRecord[];
   getActiveRuns: () => readonly SessionRunOwner[];
   stopTab: (tabId: string) => void;
+  requiresManualClose?: (tab: ConversationTabRecord) => boolean;
   isTabRunActive: (tabId: string) => boolean;
   closeTab: (tabId: string) => Promise<void>;
 };
@@ -69,6 +70,9 @@ export async function takeOverSessionTab(
     }
     if (currentTab && currentTab.cli !== target.cli) {
       throw Object.assign(new Error("原会话运行与标签 CLI 绑定不一致，无法安全接管。"), { code: "SESSION_RUN_ACTIVE" });
+    }
+    if (currentTab && deps.requiresManualClose?.(currentTab)) {
+      throw Object.assign(new Error("此会话由产研部总监标签使用，请返回该标签继续。"), { code: "SESSION_RUN_ACTIVE" });
     }
     deps.stopTab(tabId);
     if (deps.isTabRunActive(tabId)) {

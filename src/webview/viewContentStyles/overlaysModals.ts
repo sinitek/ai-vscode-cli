@@ -105,7 +105,6 @@ export const ACCEPTANCE_PLAN_DIALOG_STYLES = `
       }
       .acceptance-plan-textarea {
         resize: vertical;
-        min-height: 64px;
       }
       .acceptance-plan-checks {
         display: flex;
@@ -861,8 +860,12 @@ ${getMarkdownStyles(".help-section")}
       .history-panel.sessions {
         overflow: hidden;
       }
-      .history-panel.sessions > .prompt-history-toolbar {
-        padding: 12px 16px 0;
+      .history-panel.sessions > .history-session-mode-tabs {
+        display: flex;
+        flex-shrink: 0;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 8px 16px 0;
       }
       .history-panel.loop {
         overflow: hidden;

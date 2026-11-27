@@ -8,10 +8,10 @@ import { createCliRecord } from "../../cli/types";
 import { createExtensionSessionTabsHost } from "../../extensionHost/sessionTabs";
 import { createSessionTabsController, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft } from "../../sessionTabs";
 import type { SessionStore } from "../../sessionStore";
-import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, prepareLoopSubtaskConversationTabClose, retryLoopSubtaskTabClose } from "../../extensionHost/loopSubtaskTabs";
+import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, prepareLoopSubtaskConversationTabClose, resolveCompletedLoopSubtaskTabBinding, retryLoopSubtaskTabClose } from "../../extensionHost/loopSubtaskTabs";
 import { finalizeLoopSubtaskRun } from "../../loopSubtaskLifecycle";
 import { createLoopPlusScheduler, type LoopPlusExecutionRecord, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
-import type { LoopSubtaskRecord } from "../../loopTaskStore";
+import type { LoopSubtaskRecord, LoopTaskRecord } from "../../loopTaskStore";
 import type { TaskRunRecord } from "../../promptRunState";
 import type { DepartmentMetadata } from "../../department";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
@@ -27,6 +27,7 @@ function createHost(initial: {
   onRestore?: (tabId: string) => Promise<void>;
   runningTabIds?: ReadonlySet<string>;
   lockedTabIds?: ReadonlySet<string>;
+  departmentTask?: LoopTaskRecord;
   onPostPanelState?: () => Promise<void>;
   onSubtaskTabCreated?: (tabId: string) => void;
 }) {
@@ -63,7 +64,7 @@ function createHost(initial: {
     resolveAutoInteractiveModeForConversationTab: (tab) => contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
     collectRunningLoopTaskIds: () => new Set(),
     isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => "running",
+    getLoopTaskStatus: () => initial.departmentTask?.status ?? "running",
     getLoopTaskSchedulingMode: () => "event_driven",
     resolveConversationTabLoopContext: contextFor,
     buildSessionLabelFromPrompt: () => null,
@@ -71,7 +72,7 @@ function createHost(initial: {
   const sessionStore = createCliRecord((): SessionStore[CliName] => ({ currentId: null, sessions: [] }));
   const host = createExtensionSessionTabsHost({
     readOrdinaryConversationTabTaskRecord: () => null,
-    readDepartmentTaskRecord: () => null,
+    readDepartmentTaskRecord: (taskId) => initial.departmentTask?.id === taskId ? initial.departmentTask : null,
     readDepartmentLeaderTaskIds: () => null,
     onSubtaskTabCreated: initial.onSubtaskTabCreated,
 
@@ -755,6 +756,52 @@ test("Loop 主任务 Tab 关闭日志记录任务身份、拒绝原因与实际�
   assert.equal(ordinary.essentialLogs[0].payload.loopTaskId, null);
 });
 
+test("历史总监标签在终态和待复核时保留，迟到清理不能关闭，用户仍可手动关闭", async () => {
+  for (const status of ["error", "needs-review", "stopped", "completed"] as const) {
+    const root: LoopTaskRecord = {
+      id: "task-1", cli: "codex", workspaceKey: "workspace", sessionId: "root", taskStoreFile: "tasks.json",
+      rootPrompt: "总监任务", status, createdAt: 1, updatedAt: 1, maxRounds: 3, currentRound: 1,
+      communicationDir: "group", mainCommunicationFile: "main.md", subTasks: [], rounds: [],
+      completionRoundSummaries: [], completionRequirementCoverage: [], department: {
+        version: 1, role: "director", rootTaskId: "task-1", parentTaskId: null, leaderSubtaskId: null, moduleTitle: "部门",
+        limits: { maxLeaders: 1, maxEmployees: 1 }, routes: { director: {}, leader: {}, employee: {} },
+      },
+    };
+    const director: ConversationTabRecord = { id: "main-tab", cli: "codex", sessionId: "root", sessionIdByCli: { codex: "root" }, createdAt: 1 };
+    const employee: ConversationTabRecord = { ...director, id: "sub-tab", sessionId: "worker", sessionIdByCli: { codex: "worker" } };
+    const env = createHost({ state: { activeTabId: director.id, tabs: [director, employee] }, currentCli: "codex", modes: {}, departmentTask: root });
+    await assert.rejects(env.host.closeConversationTabAndRefreshPanel(director.id), /手动关闭/);
+    assert.equal(env.host.buildConversationTabsState().tabs[0].departmentPresentation?.role, "director");
+    assert.equal(director.manualCloseOnly, true);
+    env.host.initializeConversationTabsFromWorkspaceSettings();
+    const restored = env.host.getConversationTabById(director.id)!;
+    assert.equal(restored.manualCloseOnly, true);
+    await assert.rejects(env.host.closeOwnedConversationTabAndRefreshPanel(restored), /手动关闭/);
+    await assert.rejects(env.host.closeCompletedSubtaskTabAndRefreshPanel(restored), /手动关闭/);
+    assert.deepEqual(env.closedTabs, []);
+    assert.deepEqual(env.disposedTabIds, []);
+    await env.host.resetConversationTabSession();
+    assert.ok(env.host.getConversationTabById(director.id));
+    await env.host.closeCompletedSubtaskTabAndRefreshPanel(env.host.getConversationTabById(employee.id)!);
+    await env.host.closeConversationTabByUser(director.id);
+    assert.deepEqual(env.closedTabs.map(({tabId}) => tabId), [employee.id, director.id]);
+    assert.equal(env.essentialLogs.at(-1)?.payload.closeTarget, "user");
+  }
+});
+
+test("重复会话接管在停止总监运行前拒绝，即使此时无法从转录读取角色", async () => {
+  const director: ConversationTabRecord = { id: "director", cli: "codex", sessionId: "native", sessionIdByCli: { codex: "native" }, createdAt: 1, manualCloseOnly: true };
+  const duplicate = { ...director, id: "duplicate", manualCloseOnly: undefined };
+  const tabs = [director, duplicate];
+  const env = createHost({ state: { activeTabId: duplicate.id, tabs }, currentCli: "codex", modes: {} });
+  await assert.rejects(takeOverSessionTab({ tabId: duplicate.id, cli: duplicate.cli, sessionId: duplicate.sessionId }, {
+    getTabs: () => tabs, getWorkspaceKey: () => "workspace", getActiveRuns: () => [], isTabRunActive: () => true,
+    stopTab: () => assert.fail("不应停止总监"), closeTab: env.host.closeConversationTabAndRefreshPanel,
+    requiresManualClose: env.host.requiresManualClose,
+  }), /返回该标签继续/);
+  assert.deepEqual(env.closedTabs, []);
+});
+
 test("repeated and consecutive background closes do not refresh the active conversation", async () => {
   const state: ConversationTabsState = {
     activeTabId: "active-tab",
@@ -954,4 +1001,56 @@ test("a rejected main-tab switch does not change the current CLI or mode", async
   assert.equal(await env.host.switchVisibleConversationTabForLoop("missing-tab"), null);
   assert.equal(env.currentCli(), "claude");
   assert.equal(env.modes.claude, "coding");
+});
+
+test("no-acceptance close uses the completed-tab host after provisional identity and run release", async () => {
+  const target: ConversationTabRecord = {
+    id: "no-accept-sub", cli: "codex", sessionId: "finished-session",
+    sessionIdByCli: { codex: "finished-session" }, createdAt: 1,
+  };
+  const state: ConversationTabsState = { activeTabId: target.id, tabs: [target] };
+  const runningTabIds = new Set([target.id]);
+  const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds });
+  let task: { workspaceKey: string; schedulingMode: "event_driven"; subTasks: [] } | null = null;
+  let reads = 0;
+  const cleanup = createCompletedLoopSubtaskTabCleanup({
+    getWorkspaceKey: () => "workspace",
+    getTabs: () => state.tabs,
+    isTabRunActive: (id) => runningTabIds.has(id),
+    closeTab: env.host.closeCompletedSubtaskTabAndRefreshPanel,
+    restoredEvidence: {
+      readMessages: () => [],
+      readRuns: () => [],
+      readTask: () => { reads += 1; return task; },
+    },
+  });
+  const context = {
+    taskId: "task", subtaskId: "loopplus-post-lp431-macos-full-regression", round: 1,
+    attemptId: "lp487-loopplus-post-lp431-macos-full-regression",
+  };
+  const resolved = resolveCompletedLoopSubtaskTabBinding(null, "workspace", {
+    taskRole: "subtask", loopTaskId: context.taskId, loopSubtaskId: context.subtaskId,
+    loopRound: context.round, loopAttemptId: context.attemptId,
+  });
+  assert.equal(resolved?.provisional, true);
+  const settle = cleanup.bindPrompt(target, resolved!.context, { provisional: true });
+  const prepared = cleanup.prepareClose(target.id, context);
+  const failures: string[] = [];
+  const attempt = await retryLoopSubtaskTabClose(prepared, (error) => {
+    failures.push(error instanceof Error ? error.message : String(error));
+    runningTabIds.delete(target.id);
+    settle?.(target.sessionId);
+    task = { workspaceKey: "workspace", schedulingMode: "event_driven", subTasks: [] };
+  }, 0);
+  assert.equal(attempt, 2);
+  assert.match(failures[0] ?? "", /reason=idle-pending phase=bind/);
+  assert.equal(reads, 1);
+  assert.equal(state.tabs.includes(target), false);
+  assert.equal(state.tabs.length, 1);
+  assert.equal(state.tabs[0].cli, "codex");
+  assert.equal(state.tabs[0].sessionId, null);
+  assert.deepEqual(env.disposedTabIds, [target.id]);
+  await prepared();
+  assert.equal(state.tabs.length, 1);
+  assert.deepEqual(env.disposedTabIds, [target.id]);
 });

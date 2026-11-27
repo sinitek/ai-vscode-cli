@@ -15,6 +15,7 @@ export type LoopPlusFinalAssistantHandoff = {
 };
 
 export type PromptRunInput = {
+  loopPlusNativeFinalObserved?: () => void;
   loopPlusFinalAssistantHandoff?: (handoff: LoopPlusFinalAssistantHandoff) => void;
   loopPlusMainRuntime?: {
     onUnexpectedExit: (nativeSessionId: string) => void;

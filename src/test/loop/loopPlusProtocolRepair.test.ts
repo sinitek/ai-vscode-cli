@@ -2,7 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import { buildLoopPlusProtocolContinuationPrompt, buildLoopPlusProtocolPauseSummary, readLoopPlusProtocolFailureFromSummary, readLoopPlusProtocolRecoveryFromSummary } from "../../loopPlusProtocolRepair";
 import { loopPlusProtocolBranchDiagnostic, loopPlusProtocolDiagnosticHint, loopPlusProtocolParseDiagnostic } from "../../loopPlusProtocolDiagnostics";
-import { parseLoopPlusDecisionWithFeedback } from "../../loopPlusDecision";
+import { parseLoopPlusDecisionForFrozenInput, parseLoopPlusDecisionWithFeedback } from "../../loopPlusDecision";
 
 test("continuation uses bounded controlled diagnostics and the latest snapshot", () => {
   const diagnostic = loopPlusProtocolBranchDiagnostic("state.review_batch_open.dispatch_forbidden");
@@ -45,6 +45,7 @@ test("failed accept repair diagnostic handles each review and preserves independ
   }));
   const diagnostic = loopPlusProtocolParseDiagnostic(parsed);
   assert.equal(diagnostic.reasonCode, "validation.accept.failed_repair_missing");
+  assert.equal(diagnostic.fieldPath, "accept.reviews[0].subtaskIds");
   const hint = loopPlusProtocolDiagnosticHint(diagnostic);
   assert.match(hint, /每个实际失败的 reviews\[i\]/);
   assert.doesNotMatch(hint, /reviews\[0\]/);
@@ -121,4 +122,146 @@ test("restores the reason from a persisted pause without replaying stale recover
   const historical = `### 调度协议校验失败\n已自动请求纠正 2 次\n\n### 具体原因\n${reason}\n\n### 恢复条件\n历史提示`;
   assert.equal(readLoopPlusProtocolFailureFromSummary(historical), reason);
   assert.equal(readLoopPlusProtocolFailureFromSummary("其他暂停原因"), null);
+});
+
+test("second-item review fields survive recovery and the next correction prompt", () => {
+  const misordered = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed" },
+      { reviewEventId: "event-beta-secret", acceptance: "failed", reason: "模型原文" },
+    ],
+  }));
+  const orderDiagnostic = loopPlusProtocolParseDiagnostic(misordered);
+  assert.equal(orderDiagnostic.reasonCode, "validation.accept.invalid_reviews");
+  assert.equal(orderDiagnostic.fieldPath, "accept.reviews[1].reviewEventId");
+  assert.doesNotMatch(JSON.stringify(orderDiagnostic), /event-beta-secret|模型原文/);
+  const orderHint = loopPlusProtocolDiagnosticHint(orderDiagnostic);
+  assert.doesNotMatch(orderHint, /reviews\[1\]|event-beta-secret|请将 acceptance 设为/);
+  const orderSummary = buildLoopPlusProtocolPauseSummary("安全摘要", "continuation-rejected", orderDiagnostic);
+  const orderRecovery = readLoopPlusProtocolRecoveryFromSummary(orderSummary);
+  assert.equal(orderRecovery?.diagnostic.reasonCode, "validation.accept.invalid_reviews");
+  assert.equal(orderRecovery?.diagnostic.fieldPath, "accept.reviews[1].reviewEventId");
+  const orderPrompt = buildLoopPlusProtocolContinuationPrompt("模型原文不应进入纠正提示 event-beta-secret", orderRecovery ?? undefined);
+  assert.match(orderPrompt, /受控字段：accept\.reviews\[1\]\.reviewEventId/);
+  assert.match(orderPrompt, /真实 passed、failed 或 cancelled/);
+  assert.doesNotMatch(orderPrompt, /event-beta-secret|模型原文/);
+
+  const missing = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed" },
+      { reviewEventId: "event-beta", acceptance: "failed" },
+    ],
+  }));
+  const missingDiagnostic = loopPlusProtocolParseDiagnostic(missing);
+  assert.equal(missingDiagnostic.reasonCode, "validation.accept.failed_repair_missing");
+  assert.equal(missingDiagnostic.fieldPath, "accept.reviews[1].subtaskIds");
+  const missingHint = loopPlusProtocolDiagnosticHint(missingDiagnostic);
+  assert.match(missingHint, /每个实际失败的 reviews\[i\]/);
+  assert.match(missingHint, /恰好派发一项同 ID 返工/);
+  assert.match(missingHint, /noRepairReason/);
+  assert.doesNotMatch(missingHint, /reviews\[1\]/);
+  const missingRecovery = readLoopPlusProtocolRecoveryFromSummary(
+    buildLoopPlusProtocolPauseSummary("安全摘要", undefined, missingDiagnostic),
+  );
+  assert.equal(missingRecovery?.diagnostic.fieldPath, "accept.reviews[1].subtaskIds");
+  const missingPrompt = buildLoopPlusProtocolContinuationPrompt("raw model text", missingRecovery ?? undefined);
+  assert.match(missingPrompt, /受控字段：accept\.reviews\[1\]\.subtaskIds/);
+  assert.match(missingPrompt, /同 ID 返工/);
+  assert.match(missingPrompt, /noRepairReason/);
+  assert.doesNotMatch(missingPrompt, /raw model text|event-beta/);
+});
+
+test("old summaries stay readable and uncontrolled review paths are dropped", () => {
+  const legacy = "### 调度协议校验失败\n旧暂停\n\n### 具体原因\n历史原因\n\n### 恢复条件\n历史提示";
+  assert.equal(readLoopPlusProtocolRecoveryFromSummary(legacy)?.diagnostic.reasonCode, "validation.invalid_decision");
+  assert.equal(readLoopPlusProtocolRecoveryFromSummary(legacy)?.diagnostic.fieldPath, undefined);
+  assert.equal(readLoopPlusProtocolFailureFromSummary(legacy), "历史原因");
+
+  const branchOnly = buildLoopPlusProtocolPauseSummary(
+    "安全摘要",
+    undefined,
+    loopPlusProtocolBranchDiagnostic("validation.accept.failed_repair_missing"),
+  );
+  const restored = readLoopPlusProtocolRecoveryFromSummary(branchOnly);
+  assert.equal(restored?.diagnostic.reasonCode, "validation.accept.failed_repair_missing");
+  assert.equal(restored?.diagnostic.fieldPath, undefined);
+  assert.match(restored?.hint ?? "", /reviews\[i\]/);
+  assert.doesNotMatch(restored?.hint ?? "", /reviews\[\d\]/);
+
+  const dirty = buildLoopPlusProtocolPauseSummary("安全摘要", undefined, {
+    rejectionKind: "validation",
+    reasonCode: "validation.accept.failed_repair_missing",
+    fieldPath: "reviews[1].subtaskIds event-beta /tmp/secret.ts",
+  });
+  assert.doesNotMatch(dirty, /event-beta|secret\.ts/);
+  assert.equal(readLoopPlusProtocolRecoveryFromSummary(dirty)?.diagnostic.fieldPath, undefined);
+
+  const handwritten = [
+    "### 调度协议校验失败",
+    "旧摘要",
+    "",
+    "### 协议原因码",
+    "validation.accept.invalid_reviews|field=accept.reviews[4].reviewEventId /tmp/secret.ts",
+    "",
+    "### 具体原因",
+    "历史原因",
+    "",
+    "### 恢复条件",
+    "旧条件",
+  ].join("\n");
+  const outOfBatch = readLoopPlusProtocolRecoveryFromSummary(handwritten);
+  assert.equal(outOfBatch?.diagnostic.reasonCode, "validation.accept.invalid_reviews");
+  assert.equal(outOfBatch?.diagnostic.fieldPath, "accept.reviews");
+  assert.equal(readLoopPlusProtocolFailureFromSummary(handwritten), "历史原因");
+
+  const subtask = loopPlusProtocolParseDiagnostic(parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "dispatch",
+    subtasks: [{ id: "private-id", title: "private title", prompt: "private prompt", dependsOn: "private path" }],
+  })));
+  const subtaskSummary = buildLoopPlusProtocolPauseSummary("安全摘要", undefined, subtask);
+  assert.equal(readLoopPlusProtocolRecoveryFromSummary(subtaskSummary)?.diagnostic.fieldPath, "dispatch.subtasks[0].dependsOn");
+  assert.doesNotMatch(subtaskSummary, /private/);
+});
+
+test("expanded replies keep pause and correction at the captured frozen batch", () => {
+  const expanded = loopPlusProtocolParseDiagnostic(parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-late"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: "event-late", acceptance: "maybe", reason: "模型原文" },
+    ],
+  }), { frozenReviewEventIds: ["event-alpha"] }));
+  assert.equal(expanded.reasonCode, "validation.accept.invalid_reviews");
+  assert.equal(expanded.fieldPath, "accept.reviews");
+  const summary = buildLoopPlusProtocolPauseSummary("安全摘要", "continuation-rejected", expanded);
+  const recovery = readLoopPlusProtocolRecoveryFromSummary(summary);
+  const prompt = buildLoopPlusProtocolContinuationPrompt("模型原文不应进入纠正提示", recovery ?? undefined);
+  assert.doesNotMatch(summary, /reviews\[1\]/);
+  assert.doesNotMatch(prompt, /reviews\[1\]/);
+  assert.match(prompt, /修正提示：/);
+  assert.match(prompt, /真实 passed、failed 或 cancelled/);
+  assert.doesNotMatch(`${summary}\n${prompt}`, /event-late|模型原文/);
+
+  const accurate = loopPlusProtocolParseDiagnostic(parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: "event-beta", acceptance: "maybe", reason: "第二项结论无效" },
+    ],
+  }), { frozenReviewEventIds: ["event-alpha", "event-beta"] }));
+  assert.equal(accurate.fieldPath, "accept.reviews[1].acceptance");
+  const accurateSummary = buildLoopPlusProtocolPauseSummary("安全摘要", "continuation-rejected", accurate);
+  const accuratePrompt = buildLoopPlusProtocolContinuationPrompt(
+    "raw",
+    readLoopPlusProtocolRecoveryFromSummary(accurateSummary) ?? undefined,
+  );
+  assert.match(accurateSummary, /accept\.reviews\[1\]\.acceptance/);
+  assert.match(accuratePrompt, /受控字段：accept\.reviews\[1\]\.acceptance/);
+  assert.doesNotMatch(`${accurateSummary}\n${accuratePrompt}`, /event-beta|第二项结论无效/);
 });

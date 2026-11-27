@@ -114,6 +114,8 @@ test("host reuses root reads and projects live and restored department subtasks 
   const membershipReads: string[] = [];
   const messageReads: string[] = [];
   type HostDeps = Parameters<typeof hostModule.createExtensionSessionTabsHost>[0];
+  const directorTab = { manualCloseOnly: false };
+  let savedTabs = 0;
   const host = hostModule.createExtensionSessionTabsHost({
     readOrdinaryConversationTabTaskRecord: (id: string) => { ordinaryReadIds.push(id); return records.get(id) ?? null; },
     readDepartmentTaskRecord: (id: string) => { ownershipReadIds.push(id); return records.get(id) ?? null; },
@@ -121,7 +123,11 @@ test("host reuses root reads and projects live and restored department subtasks 
       membershipReads.push(`${rootId}:${moduleId}`);
       return rootId === root.id && moduleId === "module-ui" ? [leader.id] : [];
     },
-    getSessionTabsController: () => ({ buildConversationTabsState: () => ({ activeTabId: "director-tab", tabs: summaries }) }),
+    getSessionTabsController: () => ({
+      buildConversationTabsState: () => ({ activeTabId: "director-tab", tabs: summaries }),
+      getConversationTabById: (id: string) => id === "director-tab" ? directorTab : null,
+      persistConversationTabsToWorkspaceSettings: () => { savedTabs++; },
+    }),
     getSessionLifecycleController: () => ({}), getSessionStore: () => ({}), getCurrentCli: () => "codex", getActiveWorkspaceKey: () => "workspace-a",
     getWorkspaceSettings: () => ({}), getActiveTaskRun: () => null, getLiveMessagesForTab: (id: string) => {
       messageReads.push(id);
@@ -143,6 +149,9 @@ test("host reuses root reads and projects live and restored department subtasks 
   assert.equal(state.tabs[3].departmentPresentation, undefined);
   assert.equal(state.tabs[4].taskSummary, state.tabs[2].taskSummary);
   assert.equal(state.tabs[5].taskSummary, state.tabs[2].taskSummary);
+  assert.equal(directorTab.manualCloseOnly, true);
+  host.buildConversationTabsState();
+  assert.equal(savedTabs, 1);
 });
 
 test("ownership ambiguity or unavailable readers fail closed for department projection", () => {

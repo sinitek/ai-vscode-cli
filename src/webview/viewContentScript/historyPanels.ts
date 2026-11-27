@@ -277,21 +277,37 @@ export const VIEW_CONTENT_SCRIPT_HISTORY_PANELS = `      function buildHistorySe
 
       function renderSessionList() {
         elements.sessionList.innerHTML = "";
-        const filterSubtasks = Boolean(state.historySessionFilterSubtasks);
-        if (elements.historySessionFilterSubtasks) {
-          elements.historySessionFilterSubtasks.checked = filterSubtasks;
-        }
+        const selectedMode = state.historySessionMode || "all";
+        [
+          ["all", elements.historySessionModeAll],
+          ["vibe", elements.historySessionModeVibe],
+          ["loop", elements.historySessionModeLoop],
+          ["loop-plus", elements.historySessionModeLoopPlus],
+          ["department", elements.historySessionModeDepartment],
+        ].forEach(([mode, button]) => {
+          if (!button) return;
+          const selected = mode === selectedMode;
+          button.classList.toggle("active", selected);
+          button.setAttribute("aria-selected", String(selected));
+        });
         const allSessions = state.sessionState && Array.isArray(state.sessionState.sessions)
           ? state.sessionState.sessions
           : [];
         const query = getHistorySearchQuery();
-        const sessions = allSessions.filter((session) => (!filterSubtasks || session.taskRole !== "subtask")
-          && historySearchMatches(query, [
+        const sessions = allSessions.filter((session) => {
+          const mode = session.historyMode || (session.isLoopSession ? "loop" : "vibe");
+          const taskRole = session.historyTaskRole ?? session.taskRole ?? null;
+          if (mode === "internal" || taskRole === "subtask") return false;
+          if (selectedMode !== "all" && (mode !== selectedMode || (mode !== "vibe" && taskRole !== "main"))) {
+            return false;
+          }
+          return historySearchMatches(query, [
             session.firstPrompt,
             session.label,
             session.cli,
             session.id,
-          ]));
+          ]);
+        });
         if (!sessions.length) {
           const empty = document.createElement("div");
           empty.className = "empty-state";

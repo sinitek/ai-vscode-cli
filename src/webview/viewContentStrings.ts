@@ -241,7 +241,6 @@ export const WEBVIEW_STRINGS = {
     historySearchPlaceholder: "搜索提示词和会话",
     historySearchAriaLabel: "搜索提示词和会话",
     historyPromptFavoritesOnly: "仅收藏",
-    historySessionFilterSubtasks: "过滤子任务",
     historyPromptFavoriteSummary: "已收藏 {favorite}/{total}",
     historySessionViewLabel: "查看消息",
     historySessionExportLabel: "导出 TXT",

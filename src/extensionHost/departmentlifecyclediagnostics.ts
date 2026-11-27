@@ -3,17 +3,20 @@ import { logEssential } from "../logger";
 export type DepartmentLifecycleEvent = "department-root-stop-started" | "department-root-stop-settled"
   | "department-leader-cleanup" | "department-leader-capacity" | "department-employee-capacity" | "department-lifecycle-persistence-failed"
   | "department-cold-projection" | "department-root-recovery" | "department-root-continuation"
-  | "department-leader-continuation" | "department-leader-session-promotion";
+  | "department-leader-continuation" | "department-leader-session-promotion" | "department-employee-admission";
 export type DepartmentLifecycleStage = "root-stop" | "runtime-save" | "lifecycle" | "task-idle"
   | "producer-close" | "owner-receipts" | "release-save" | "capacity-release"
   | "projection" | "identity" | "snapshot-read" | "stop-gate" | "recovery-verify"
   | "target-verify" | "resume" | "run-evidence" | "transcript-verify"
-  | "target-availability" | "binding-write" | "binding-readback";
+  | "target-availability" | "binding-write" | "binding-readback" | "admission";
 export type DepartmentLifecycleReason = "none" | "already-blocked" | "evidence-missing" | "evidence-rejected"
   | "persistence-failed" | "task-still-running" | "identity-changed" | "unexpected-failure";
-type Fields = { rootTaskId: string; leaderTaskId?: string; generation?: number;
-  stage: DepartmentLifecycleStage; result: "started" | "confirmed" | "unconfirmed" | "released" | "retained";
-  reason: DepartmentLifecycleReason; errorCode?: string; elapsedMs?: number; confirmed?: number; unconfirmed?: number; retained?: number };
+/** Fixed admission decisions. An empty task read stays task-record-unavailable and is never relabeled from a nearby lock. */
+export type DepartmentAdmissionReason = "task-record-unavailable" | "owner-or-member-missing" | "attempt-validation-failed"
+  | "occupancy-conflict" | "capacity-unavailable" | "admission-cancelled" | "persistence-failed" | "identity-changed";
+type Fields = { rootTaskId?: string; leaderTaskId?: string; attemptId?: string; generation?: number;
+  stage: DepartmentLifecycleStage; result: "started" | "confirmed" | "unconfirmed" | "released" | "retained" | "refused";
+  reason: DepartmentLifecycleReason | DepartmentAdmissionReason; errorCode?: string; elapsedMs?: number; confirmed?: number; unconfirmed?: number; retained?: number };
 const id = (value: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : "invalid-id";
 const count = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(2147483647, Math.floor(value))) : 0;
 const departmentDiagnosticErrorCodes = new Set([
@@ -35,8 +38,9 @@ const departmentDiagnosticErrorCodes = new Set([
  * Explicit field projection prevents errors, sessions and arbitrary payloads escaping. */
 export function departmentLifecycleDiagnostic(event: DepartmentLifecycleEvent, fields: Fields): void {
   try {
-    const data = { rootTaskId: id(fields.rootTaskId),
+    const data = { ...(fields.rootTaskId === undefined ? {} : { rootTaskId: id(fields.rootTaskId) }),
       ...(fields.leaderTaskId === undefined ? {} : { leaderTaskId: id(fields.leaderTaskId) }),
+      ...(fields.attemptId === undefined ? {} : { attemptId: id(fields.attemptId) }),
       ...(fields.generation === undefined ? {} : { generation: count(fields.generation) }),
       stage: fields.stage, result: fields.result, reason: fields.reason,
       ...(safeDepartmentErrorCode(fields.errorCode) ? { errorCode: safeDepartmentErrorCode(fields.errorCode) } : {}),

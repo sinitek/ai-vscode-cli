@@ -1,4 +1,10 @@
-import type { LoopPlusDecisionParseResult, LoopPlusDecisionValidationDiagnostic } from "./loopPlusDecision";
+import {
+  LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
+  LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS,
+  type LoopPlusDecisionParseResult,
+  type LoopPlusDecisionValidationDiagnostic,
+  type LoopPlusReviewFieldDiagnostic,
+} from "./loopPlusDecision";
 
 export const FORMAT_ERROR_HINTS: Readonly<Record<string, string>> = {
   EmptyResponse: "请返回一个完整的决策 JSON 对象，不要返回空回复。",
@@ -69,6 +75,11 @@ const BRANCH_DIAGNOSTICS = {
 
 export type LoopPlusProtocolBranchCode = keyof typeof BRANCH_DIAGNOSTICS;
 
+const REVIEW_ITEM_BRANCH_FIELDS: Partial<Record<LoopPlusProtocolBranchCode, ReadonlySet<string>>> = {
+  "validation.accept.invalid_reviews": new Set(LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS),
+  "validation.accept.failed_repair_missing": new Set(["subtaskIds"]),
+};
+
 export type LoopPlusProtocolDiagnostic = {
   rejectionKind: "format" | "validation" | "state";
   reasonCode: string;
@@ -96,6 +107,8 @@ export function loopPlusProtocolParseDiagnostic(parsed: LoopPlusDecisionParseRes
   }
   const diagnostic = parsed.validationDiagnostic;
   if (!diagnostic) {
+    const reviewDiagnostic = reviewProtocolDiagnostic(parsed.reviewFieldDiagnostic);
+    if (reviewDiagnostic) return reviewDiagnostic;
     const reason = parsed.rejectionReason ?? "";
     if (reason.includes("status 缺失或无效")) return loopPlusProtocolBranchDiagnostic("validation.status.invalid");
     if (reason.includes("completed 确认的事件必须") || reason.includes("accept 必须使用 reviewEventId")) {
@@ -125,7 +138,11 @@ export function readLoopPlusProtocolDiagnostic(
   fieldPath?: string,
   position?: LoopPlusProtocolDiagnostic["position"],
 ): LoopPlusProtocolDiagnostic {
-  if (hasOwn(BRANCH_DIAGNOSTICS, reasonCode)) return loopPlusProtocolBranchDiagnostic(reasonCode as LoopPlusProtocolBranchCode);
+  if (hasOwn(BRANCH_DIAGNOSTICS, reasonCode)) {
+    const branch = loopPlusProtocolBranchDiagnostic(reasonCode as LoopPlusProtocolBranchCode);
+    const controlled = controlledReviewFieldPath(reasonCode, fieldPath);
+    return controlled ? { ...branch, fieldPath: controlled } : branch;
+  }
   if (reasonCode.startsWith("format.")) {
     return {
       rejectionKind: "format",
@@ -142,6 +159,36 @@ export function readLoopPlusProtocolDiagnostic(
     };
   }
   return loopPlusProtocolBranchDiagnostic("validation.invalid_decision");
+}
+
+function reviewProtocolDiagnostic(
+  diagnostic: LoopPlusReviewFieldDiagnostic | undefined,
+): LoopPlusProtocolDiagnostic | undefined {
+  if (!diagnostic) return undefined;
+  const reasonCode = diagnostic.code === "FailedRepairMissing"
+    ? "validation.accept.failed_repair_missing"
+    : diagnostic.code === "EventOrderMismatch" || diagnostic.code === "InvalidReviewItem"
+      ? "validation.accept.invalid_reviews"
+      : undefined;
+  if (!reasonCode) return undefined;
+  const indexed = diagnostic.index;
+  const fieldPath = Number.isSafeInteger(indexed)
+    ? controlledReviewFieldPath(reasonCode, `accept.reviews[${indexed}].${diagnostic.field}`)
+    : undefined;
+  return readLoopPlusProtocolDiagnostic(reasonCode, fieldPath);
+}
+
+function controlledReviewFieldPath(reasonCode: string, fieldPath: string | undefined): string | undefined {
+  if (!fieldPath || !hasOwn(REVIEW_ITEM_BRANCH_FIELDS, reasonCode)) return undefined;
+  const allowed = REVIEW_ITEM_BRANCH_FIELDS[reasonCode as keyof typeof REVIEW_ITEM_BRANCH_FIELDS];
+  const match = /^accept\.reviews\[(\d{1,9})\]\.([A-Za-z]+)$/.exec(fieldPath);
+  if (!allowed || !match) return undefined;
+  const index = Number(match[1]);
+  const field = match[2];
+  if (!Number.isSafeInteger(index) || index < 0 || index >= LOOP_PLUS_ACCEPTANCE_BATCH_MAX || !allowed.has(field)) {
+    return undefined;
+  }
+  return `accept.reviews[${index}].${field}`;
 }
 
 export function loopPlusProtocolDiagnosticHint({ reasonCode }: LoopPlusProtocolDiagnostic): string {

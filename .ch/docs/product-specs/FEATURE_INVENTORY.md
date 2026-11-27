@@ -191,6 +191,10 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 - 复用 Loop、Loop+ 或产研部会话执行首个 Vibe 任务时，宿主提醒模型亲自完成任务、停止派发子任务，并直接交付结果。提示词要求退出旧模式的 JSON 编排协议。用户消息仍显示原始输入，连续 Vibe 任务按普通提示词执行。
 - 实现见 `src/extension.ts` 和 `src/panelStateBuilder.ts`。宿主回归覆盖交互、并行及单次执行，以及原会话被替换的情况。
 
+## 按需查阅本地运行记录
+
+- Vibe、Loop、Loop+ 和产研部的执行提示会告知模型本地运行目录 `~/.sinitek_cli/`，包括历史任务、沟通与群聊、会话消息、提示词历史和日志。仅在当前任务需要时定向只读查阅。实现见 `src/promptRuntime.ts`。
+
 ## Loop+ 子任务按需完整验收
 
 - 主任务在派发或 reprompt 新 attempt 时逐项设置 `requiresAcceptance`。每个新 attempt 缺省需要完整验收，`reprompt` 省略标记不继承旧免验收；显式 `false` 仅跳过独立交付审查。只有本轮出现可关联的最终助手回复且 CLI 调用正常结束才算子任务成功，并进入可恢复报告 FIFO；CLI 虽正常结束但没有最终回复时显示“任务中断，等待主任务重新派发。”，保留标签且不进入验收。最终回复从该次运行的 CLI 会话消息读取；普通 Loop+ 执行成功后，执行根清理异常保留独立诊断，不覆盖成功结果，部门 Owner 清理门禁不变。成功结果显示“无需验收”或“等待主任务验收”，提交报告后自动关闭该子任务标签；宿主关页异常在身份守卫不变的前提下有界重试一次，仍失败则保留标签并记录诊断。终态提示不代表报告提交或关页完成；主任务读取报告后确认准确的 FIFO 前缀并继续调度。报告未确认阻止父任务完成，不产生验收通过记录或验收次数；失败/停止仍走原验收。
@@ -222,6 +226,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 
 - 状态为 `active`（源码实现；前置尝试检查不等于最终验收）。`1.10.4` 是旧方案；工作树 `package.json` 的 `1.10.5` 是当前未提交、未发布的候选。主任务独立验收、macOS 全量回归和隔离 Extension Development Host 集成验证仍待完成；Git 提交推送须在验收后审定交付范围、分支和远端。[在途计划](../exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md)
 - 主模型获得由冻结批次和调度状态派生的决策示例。开放批次优先按序 `accept`，仅报告回合按 FIFO 前缀用 `wait` 精确回执，宿主显式开窗时可预检并一次派发全部可立即启动的独立新任务。宿主持有队列和预检权威，保留冻结顺序、真实验收归属、失败返工及全局完成门禁。
+- 主模型和复用同一主提示的产研部组长优先调用扩展安装目录中的 `dist/loopPlusDecisionHelper.js`。先 `template --status`，再 `build --status`；标准输入是一份 UTF-8 JSON，含本次冻结 v1 context、fields 和结论依据。context 含 statuses、按冻结映射顺序排列的 reviews（eventId、subtaskId）、FIFO reportEventIds、subtaskMax、acceptancePlanKeys 和 allowDirectCompletion。刷新与协议纠正沿用该冻结前缀，不并入晚到事件。安装路径含空格时整段引用。字段错误按 stderr 修正后重试，成功后原样提交 stdout。只有当前 CLI 确实不能执行工具时才手写协议。各 CLI 保持现有权限。生成器与宿主通过 `parseLoopPlusDecisionForFrozenInput` 使用同一冻结解析选项，提示层不复制 JSON 检查规则。宿主按最新运行状态复核后再提交。
 - 拒绝分为 `format`、`validation`、`state`。诊断提供受控原因码、适用字段路径或候选对象行列；解析与续跑提示仅推荐合法且兼容的 `backend`、`frontend`、`general`。失败返工逐项对应实际失败 review；独立剩余工作归属 `independentSubtaskIds`。脱敏日志只记录受控诊断及恢复状态，不记录回复正文、prompt、自由文本拒绝理由、凭据或本地路径。
 - 初次协议拒绝计为第 1 次失败，不占自动续跑名额；原主任务会话最多自动请求三次新决策，第四次连续拒绝进入 `needs-review`，保留最新受控原因、未确认结果和调度预留，不宣告完成。自动续跑不清零计数、不提升子任务、不消费报告，并保留冻结队列。完整接受有效决策或用户显式继续获准（可附补充说明）后重置预算；手动请求不占自动名额。部分接受保留已提交结果和计数；旧暂停记录可回退安全通用提示。停止、runner 确认取消、释放或完成后不再发起自动续跑。两类安全日志字段见[调度设计](../design-docs/loop-plus-scheduling.md#协议失败后的自动续跑)。
 - 各 CLI 继续沿用自身参数、会话、压缩、用量及输出传输差异；本次调度和决策投影重构不压平或增强 CLI 能力。阶段 3 原生决策 schema 待逐个适配器核实，当前继续解析各适配器提取的文本。技能沉淀、macOS Extension Development Host 验证和主任务独立验收仍未完成；禁止发布，禁止运行发布脚本。详细形状、适配器边界和诊断来源见[调度设计](../design-docs/loop-plus-scheduling.md#状态感知决策形状)。
@@ -275,7 +280,7 @@ Loop+ 冷态中止还必须确认总监取消、根及模块停止状态读回�
 ## 人机交互其它回答
 
 - 状态：`active`（2026-11-10）。Vibe 人工交互及 Loop/Loop+ 主任务澄清的每道单选、多选、下拉和多选下拉题均提供“其它”，不依赖模型是否声明 `isOther`；已有“其它 / 其他 / Other”选项直接复用。
-- 选中后显示自由输入框；即使该题可选，选中其它但未填写也就地报错，保留已填写内容。切回预设选项后不提交残留文本。单选回传自定义文本，多选保留预设选择并加入自定义文本，不发送内部占位值。
+- 人机交互、主任务澄清和验收方案弹窗中的「其它」均在选中后显示默认三行的多行输入框，提交或保存时保留换行。即使该题可选，选中其它但未填写也就地报错，保留已填写内容。切回预设选项后不提交残留文本。单选回传自定义文本，多选保留预设选择并加入自定义文本，不发送内部占位值。
 - 原本自由输入的文本字段与布尔确认框保持不变；超时继续复用原始选项和默认值，不自动选中临时添加的其它选项。Grok 不再重复显示独立的其它回答字段，旧版答案格式仍兼容。
 - 实现：`src/webview/humanInteractionOtherChoice.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/webview/orchestratorClarificationDialog.ts`、`src/orchestratorClarification.ts`、`src/interactive/grokUserQuestion.ts`；回归：`src/test/webview/humanInteractionOtherChoice.test.ts`、主任务澄清与 Grok 提问测试。
 
@@ -606,6 +611,8 @@ Loop+ 拆分模式兼容已保存前端模型或档案、但省略同 CLI 身份
 
 点击普通 Loop / Loop+ 主任务标签或产研部总监标签会打开对应群聊。标签已经选中时，再次点击或按 Enter / Space 同样打开。产研部组长标签只切换 AI 对话会话，重复点击或按 Enter / Space 不打开群聊。从总监群聊的成员列表可进入组长群聊。子任务标签、普通会话标签和关闭按钮不打开群聊。输入区已有的“打开群聊”按钮仍然可用。实现见 `src/webview/viewContentScript/messageRendering.ts`，回归见 `src/test/webview/clipagescriptruntimecoverage.test.ts`。
 
+产研部 ☀️ 总监标签在任务失败、待复核、停止和完成后继续保留，用户可在关闭按钮可用时手动关闭。工作区重载保留此保护，员工标签仍在成功交接后回收。回归见 `src/test/session/sessionTabCliSwitch.test.ts`。
+
 打开群聊时优先切换页面：首次打开先显示“正在加载群聊…”及动画，首帧绘制后再准备模型选项、读取群聊并构建内容；大量 Markdown 分批挂载，完成后收起加载提示。已打开的群聊立即显示已有内容，连续点击合并加载，关闭页面后丢弃迟到结果。加载失败显示原因并可重试。主任务入口同步标签状态时省去普通聊天的即时重复重绘；每次群聊状态构建对同一 transcript 仅读取一次，下次刷新重新读取。实现与验证边界见 `.ch/docs/design-docs/loop-group-chat-state-boundaries.md`。
 
 ## Kimi 多模型与精简回放
@@ -745,7 +752,7 @@ ZCode 配置页默认使用 JSON：首次打开、切换档案和导入范例均
 
 ## 当前清单
 
-历史会话子任务过滤：“历史记录 → 历史会话”新增默认勾选的“过滤子任务”，按现有 `taskRole=subtask` 隐藏子任务；取消勾选恢复列表，并与关键词搜索叠加。主任务、普通会话及未标记旧记录保留，不改变历史消息。Loop+ reviewer 内部协议提示不作为会话标题；旧记录优先从同 CLI 的任务 `rootPrompt` / 子任务提示词恢复，否则读取同会话消息，跳过内部协议、“我要提问”和空白用户消息，恢复首条有效用户提示并持久化补齐 `firstPrompt` 与空/未命名/协议标签；保留自定义标题，无法恢复时隐藏协议并回退到“未命名会话”。协议提示不进入首提示或角色缓存。角色缓存按 CLI/主子任务身份和消息数量校验，能识别同一消息数组原位追加。当前 Webview 内保持选择，重新初始化默认勾选。实现见 `src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/historyPanels.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/extensionHost/sessionTabs.ts`、`src/historySessionTaskRole.ts`、`src/test/session/historySessionProjection.test.ts`；验证：`npm run build`、`node --test dist/test/session/historySessionProjection.test.js dist/test/session/historySessionLoop.test.js dist/test/session/historySessionTaskRole.test.js dist/test/session/sessionLifecycleCoreCoverage.test.js dist/test/session/sessionTabCliSwitch.test.js dist/test/webview/cliPageStaticRenderCoverage.test.js dist/test/webview/clipagescriptruntimecoverage.test.js`。
+历史会话模式筛选：“历史记录 → 历史会话”按“全部、Vibe、Loop、Loop+、产研部”标签筛选，并可与关键词搜索叠加。分类按同 CLI 的可信会话/任务绑定确定：Loop/Loop+ 标签仅显示各自主任务，产研部标签仅显示总监根任务；全部保留 Vibe 和各模式主任务，隐藏 Loop/Loop+ 子任务及产研部组长、员工等内部任务。未绑定的旧记录保守归入 Vibe，不按标题猜测；模式选择在弹窗内切换页签和重开时保留，重新初始化默认“全部”。Loop+ reviewer 内部协议提示不作为会话标题；旧记录优先从同 CLI 的任务 `rootPrompt` / 子任务提示词恢复，否则读取同会话消息，跳过内部协议、“我要提问”和空白用户消息，恢复首条有效用户提示并持久化补齐 `firstPrompt` 与空/未命名/协议标签；保留自定义标题，无法恢复时隐藏协议并回退到“未命名会话”。协议提示不进入首提示或角色缓存。角色缓存按 CLI/主子任务身份和消息数量校验，能识别同一消息数组原位追加。实现见 `src/historySessionMode.ts`、`src/extensionHost/sessionTabs.ts`、`src/webview/viewContentHtml.ts`、`src/webview/viewContentScript/historyPanels.ts`、`src/webview/viewContentScript/settingsAndOverlays.ts`、`src/test/session/historySessionMode.test.ts`、`src/test/session/historySessionProjection.test.ts`、`src/test/webview/clipagescriptruntimecoverage.test.ts`；验证：`npm run build` 及本计划记录的定向单测。
 
 Claude Loop 子任务使用 `bypassPermissions` 执行；Claude 交互请求显式启用 `TaskCreate`、`TaskUpdate`、`TaskList`、`TaskGet`、`TaskStop`，不依赖默认模型是否开放任务跟踪工具；隔离项目指令时仅屏蔽 `project/local` settings，不屏蔽用户级 MCP 与工具配置。`allowedTools` 表示免审规则和任务工具 opt-in，不是完整工具白名单；实际工具是否可用还取决于 CLI 暴露、服务连接与网络。实现与回归见 `src/interactive/claudeRunner.ts`、`src/interactive/claudeTaskList.ts`、`src/test/interactive/claudeRunner.test.ts`。
 
@@ -1091,7 +1098,7 @@ Loop、Loop+ 和产研部在完成各自的剩余工作复核后，遇到环境�
 
 ## 2026-11-19 产研部总监等待汇报与真实阻塞分流
 
-总监在仍有组长运行且当前只需等待汇报时返回 `status=waiting`；宿主不重派已启动模块，根任务保持运行，并由组长真实结算唤醒后续复核。没有运行组长的 waiting 会转为 `needs-review`，不无限空等。`status=blocked` 保留给有真实阻塞证据的情形；有效 blocker 或失败/blocked 组长暂停总监根的自动协调，但不释放未核验的组长、员工或 Owner 容量。兼容旧版缺 blocker 输出时，只有未发现组长失败才按待汇报处理。生命周期诊断仅记录白名单错误码，不输出异常正文、路径、会话或凭据。
+总监沿用经典 Loop 的决策格式，按部门事件触发协调，达到经典 Loop 轮次上限后仍会继续处理汇报。组长阻塞结算后立即唤醒总监，即使其它组长仍在运行。在途回合返回后，宿主跳过基于旧汇报的决策并串行重读最新状态。总监可推进独立工作，也可在 `waiting` 决策中向同一个组长下发可验证的恢复步骤。宿主核对部门归属、组长代次、原会话和清理状态后，以新代次续跑原 Loop+，沿用原验收方案。没有运行组长且缺少可执行指令时，总监对同一批失败代次自动复核一次。复核后仍无法推进则暂停待审。确有整体阻塞时走澄清或暂停流程。
 
 非 Codex/OpenCode 的交互式员工由原 Loop+ runner 执行。新员工 Tab 尚无 transcript session 时，宿主先为该 Tab 创建本地会话键，再准备 runner；CLI 握手回传的 native session 仍单独绑定到账本。未启动的 attempt 返回原始失败并记录安全阶段、attempt 和错误码，未知清理仍保留容量。
 

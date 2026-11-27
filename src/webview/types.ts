@@ -280,6 +280,8 @@ export type SessionSummary = {
   openConversationTabId: string | null;
   firstPrompt?: string;
   taskRole?: "main" | "subtask" | null;
+  historyMode?: "vibe" | "loop" | "loop-plus" | "department" | "internal";
+  historyTaskRole?: "main" | "subtask" | null;
 };
 
 export type ConversationTabSummary = {

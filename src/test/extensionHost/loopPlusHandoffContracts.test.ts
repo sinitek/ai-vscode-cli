@@ -467,38 +467,85 @@ for (const receiptSurvives of [true, false]) {
   });
 }
 
-test("a real acceptance commit failure restores the frozen event and does not launch repair", async (t) => {
+test("a real acceptance commit failure restores the frozen event and does not launch repair", { timeout: 5000 }, async (t) => {
   const env = harness();
   await flush();
   env.mains[0].resolve(json({ status: "dispatch", subtasks: [child("A")] }));
   await flush();
+  const original = env.attempts[0]?.request;
+  assert.ok(original);
+  assert.equal(original.subtaskId, "A");
+  const expectedEventId = buildLoopPlusFinishEventId("A", original.attemptId);
   env.host.submitUserMessage(env.id, "这条消息只确认一次");
   await flush();
   // Leave the message invocation open; the finish must remain an independently queued review.
   env.attempts[0].resolve({ outcome: "completed", detail: "A" });
   await flush();
-  env.mains.at(-1)!.resolve(json({ status: "wait" }));
+  const userTurn = [...env.mains].reverse().find((item) => item.request.kind === "user");
+  assert.ok(userTurn);
+  userTurn.resolve(json({ status: "wait" }));
   await flush();
-  const review = env.mains.at(-1)!;
-  const ids = review.request.reviewEventIds?.slice() ?? [];
+  const matchesFrozenReview = (item: (typeof env.mains)[number]) => item.request.kind === "review"
+    && item.request.reviewEventId === expectedEventId
+    && item.request.reviewEventIds?.length === 1
+    && item.request.reviewEventIds[0] === expectedEventId;
+  const openingReviews = env.mains.filter(matchesFrozenReview);
+  assert.equal(openingReviews.length, 1);
+  const review = openingReviews[0];
+  assert.equal(review.request.kind, "review");
+  assert.deepEqual(review.request.reviewEventIds, [expectedEventId]);
+  const acceptPayload = { status: "accept", reviewEventIds: [expectedEventId], subtasks: [child("A")] };
+  const generated = JSON.parse(json(acceptPayload)) as {
+    reviews?: Array<{ reviewEventId?: string; acceptance?: string; reason?: string; subtaskIds?: string[] }>;
+  };
+  assert.deepEqual(generated.reviews, [{
+    reviewEventId: expectedEventId, acceptance: "failed", reason: "需要修复失败项", subtaskIds: ["A"],
+  }]);
+  assert.equal(env.attempts.length, 1);
   const failures = failDisk(t, "write", env.read().taskStoreFile,
     (task) => snapshot(task).seenAttempts.some((item) => item.disposition === "reviewed"));
-  review.resolve(json({ status: "accept", reviewEventIds: ids, subtasks: [child("repair")] }));
-  await env.run.done;
-  assert.ok(failures() > 0);
+  const mainsBeforeAccept = env.mains.length;
+  review.resolve(json(acceptPayload));
+  let firstDone = "pending";
+  await env.run.done.then(() => { firstDone = "settled"; }, () => { firstDone = "rejected"; });
+  const failureCount = failures();
+  const requestsAfterAccept = env.mains.slice(mainsBeforeAccept).map((item) => item.request.kind);
+  const frozenEventId = snapshot(env.read()).currentReview?.eventId ?? null;
+  console.log(`LP516 ${JSON.stringify({
+    expectedEventId, frozenEventId, failureCount, firstDone,
+    attempts: env.attempts.length, events: env.events, requestsAfterAccept,
+  })}`);
+  assert.deepEqual(requestsAfterAccept, []);
+  assert.equal(firstDone, "settled");
+  assert.ok(failureCount > 0);
   assert.equal(env.attempts.length, 1);
   assert.equal(env.feedback.length, 0);
-  assert.equal(snapshot(env.read()).currentReview?.eventId, ids[0]);
+  assert.equal(frozenEventId, expectedEventId);
   assert.equal(snapshot(env.read()).seenAttempts.some((item) => item.disposition === "reviewed"), false);
   t.mock.restoreAll();
+  const mainsBeforeResume = env.mains.length;
   const resumed = env.resume();
   await flush();
-  const retried = env.mains.at(-1)!;
-  assert.deepEqual(retried.request.reviewEventIds, ids);
-  retried.resolve(completed(ids));
-  await resumed.done;
+  const recovered = env.mains.slice(mainsBeforeResume).filter(matchesFrozenReview);
+  assert.equal(recovered.length, 1);
+  const retried = recovered[0];
+  assert.ok(env.mains.indexOf(retried) >= mainsBeforeResume);
+  assert.equal(retried.request.kind, "review");
+  assert.deepEqual(retried.request.reviewEventIds, [expectedEventId]);
+  const mainsWhenRecoveryOpened = env.mains.length;
+  retried.resolve(completed([expectedEventId]));
+  let restoredDone = "pending";
+  await resumed.done.then(() => { restoredDone = "settled"; }, () => { restoredDone = "rejected"; });
+  const requestsAfterRecovery = env.mains.slice(mainsWhenRecoveryOpened).map((item) => item.request.kind);
+  const reviewedCount = snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed").length;
+  console.log(`LP516 ${JSON.stringify({
+    restoredDone, reviewedCount, requestsAfterRecovery,
+    userMessageQueue: snapshot(env.read()).userMessageQueue,
+  })}`);
+  assert.deepEqual(requestsAfterRecovery, []);
+  assert.equal(restoredDone, "settled");
   assert.equal(env.read().status, "completed");
-  assert.equal(snapshot(env.read()).seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
+  assert.equal(reviewedCount, 1);
   assert.deepEqual(snapshot(env.read()).userMessageQueue, []);
 });
 

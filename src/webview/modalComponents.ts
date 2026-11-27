@@ -187,6 +187,9 @@ export const DIALOG_SHELL_STYLES = `
         background: var(--vscode-toolbar-hoverBackground);
         opacity: 1;
       }
+      textarea[data-interaction-other-field] {
+        min-height: 0;
+      }
       .modal .icon-button:focus-visible,
       .modal .action-button:focus-visible,
       .modal .secondary:focus-visible,

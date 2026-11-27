@@ -375,6 +375,14 @@ test("renders history, settings, run-status, queue, and help overlays", () => {
 
 test("只渲染固定中文静态页面文案", () => {
   const html = buildHtml();
+  const historyModeTabs = [
+    "historySessionModeAll",
+    "historySessionModeVibe",
+    "historySessionModeLoop",
+    "historySessionModeLoopPlus",
+    "historySessionModeDepartment",
+  ].map((id) => html.indexOf(`id="${id}"`));
+  assert.deepEqual(historyModeTabs, [...historyModeTabs].sort((left, right) => left - right));
   assertIncludesAll(html, [
     '<html lang="zh-CN">',
     "携宁 CLI 助手",
@@ -383,8 +391,12 @@ test("只渲染固定中文静态页面文案", () => {
     "任务列表",
     "打开群聊",
     "历史记录",
-    '<input id="historySessionFilterSubtasks" type="checkbox" checked />',
-    "过滤子任务",
+    'id="historySessionModeAll"',
+    'id="historySessionModeVibe"',
+    'id="historySessionModeLoop"',
+    'id="historySessionModeLoopPlus"',
+    'id="historySessionModeDepartment"',
+    "产研部",
     "工具设置",
     "规则配置",
     "直接执行目标 CLI 任务。",

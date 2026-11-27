@@ -1326,6 +1326,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       }
       const observedNativeFinal = observedCodexFinalAnswer || observedClaudeFinalAnswer || observedGrokFinalAnswer
         || observedDshFinalAnswer || observedKimiFinalAnswer || observedZcodeFinalAnswer;
+      if (input.taskRole === "main" && input.loopTaskId && !input.loopAsk && observedNativeFinal
+        && isCurrentRunActive()) {
+        input.loopPlusNativeFinalObserved?.();
+      }
       if (input.taskRole === "main" && input.loopTaskId && !input.loopAsk
         && input.loopPlusFinalAssistantHandoff && observedNativeFinal && isCurrentRunActive()) {
         const finalAssistant = observedFinalAssistantMessage;

@@ -23,6 +23,7 @@ import { normalizeDepartmentRolePreference, type DepartmentConfiguredRoleRoute }
 import { withFileLockSync } from "./shared/fileLock";
 
 export type ConversationTabRecordForWorkspaceSettings = {
+  manualCloseOnly?: true;
   taskSummary?: string;
   taskSummaryAttempted?: boolean;
   id: string;

@@ -41,7 +41,7 @@ test("shared acceptance-plan dialog keeps the fixed baseline first and 其它 la
   assert.ok(labels.every((label, index) => html.indexOf(label) < (labels[index + 1] ? html.indexOf(labels[index + 1]) : Infinity)));
   assert.match(html, /data-acceptance-check="ui_aesthetics"[\s\S]*?用户体验审查/);
   assert.ok(html.indexOf("acceptancePlanOtherField") > html.indexOf("acceptancePlanCheckOther"));
-  assert.ok(html.indexOf("acceptancePlanOtherField") > html.indexOf("acceptancePlanCheckOther"));
+  assert.match(html, /<textarea id="acceptancePlanOtherText"[^>]*\brows="3"/);
   assert.ok(html.indexOf("acceptancePlanOtherField") < html.indexOf("<div id=\"acceptancePlanError\""));
 });
 
@@ -422,9 +422,9 @@ test("checking 其它 reveals the textarea and blank content blocks confirm", ()
   assert.deepEqual(plain(draft.checks), ["other"]);
   assert.equal(harness.api.validateAcceptancePlanDraft(draft), "已勾选“其它”，请填写审查内容。");
 
-  harness.dom.acceptancePlanOtherText.value = " 检查鉴权 ";
+  harness.dom.acceptancePlanOtherText.value = " 检查鉴权\n检查权限 ";
   const filled = harness.api.readAcceptancePlanDraftFromDom();
-  assert.equal(filled.otherText, "检查鉴权");
+  assert.equal(filled.otherText, "检查鉴权\n检查权限");
   assert.equal(harness.api.validateAcceptancePlanDraft(filled), "");
 });
 

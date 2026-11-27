@@ -10,7 +10,7 @@ import type { DepartmentMetadata } from "../../department";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
-import { commitDepartmentLeaderSessionPromotion, repairStoppedDepartmentLeaderSession } from "../../extensionHost/departmentLeaderSessionPromotion";
+import { commitDepartmentLeaderSessionPromotion, repairIdleDepartmentLeaderSession } from "../../extensionHost/departmentLeaderSessionPromotion";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 import { LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
@@ -25,7 +25,9 @@ import { createLoopOrchestrationOwnershipTracker } from "../../loopOrchestration
 import { isLoopTaskRunOrphaned } from "../../loopGroupChat";
 function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLeaderOwnership?: (taskId: string) => void,
   executionMode?: DepartmentMetadata["executionMode"], owner?: Pick<NonNullable<Parameters<typeof createLoopPlusRuntimeFixture>[0]>,
-    "runDepartmentMain" | "closeDepartmentCoordinator" | "maxConcurrency"> & { beforeTaskSave?: (task: LoopTaskRecord) => void }) {
+    "runDepartmentMain" | "closeDepartmentCoordinator" | "maxConcurrency"> & {
+    beforeTaskSave?: (task: LoopTaskRecord) => void; beforeDirectorReply?: (input: PromptRunInput) => Promise<void>;
+  }) {
   const tasks = new Map<string, LoopTaskRecord>();
   const fixture = createLoopPlusRuntimeFixture({ ...owner, configId: "profile", taskPersistence: {
     create: (task) => { tasks.set(task.id, structuredClone(task)); return structuredClone(task); },
@@ -63,7 +65,13 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLe
     refreshOpenLoopGroupChatPanelForTask: () => undefined,
     resolvePromptRunModelForRole: (input) => input.loopMainModel,
     resolvePromptRunThinkingModeForRole: () => undefined,
-    runPrompt: async (input) => { directorPrompts.push(input); lastDirectorOutput = JSON.stringify(decision); decision = { status: "blocked", finalSummary: "等待汇报" }; },
+    runPrompt: async (input) => {
+      directorPrompts.push(input);
+      const output = JSON.stringify(decision);
+      decision = { status: "blocked", finalSummary: "等待汇报" };
+      if (owner?.beforeDirectorReply) await owner.beforeDirectorReply(input);
+      lastDirectorOutput = output;
+    },
     resolveLoopTaskSessionId: (target) => target.sessionId,
     bindLoopTaskToSession: (id, sessionId) => update(id, { sessionId }),
     getLoopRoundRunStatus: () => "end",
@@ -200,6 +208,9 @@ for (const scenario of ["paused", "stopped-leader", "active", "whole-stop", "cle
       assert.ok(h.fixture.adapter.host().hasController(first.taskId));
       if (scenario === "cleanup-pending") {
         await assert.rejects(submit(), /cleanup-or-admission-unverified/);
+        assert.deepEqual(await h.composition.host.recoverLeaderFromDirector(rootId, {
+          leaderTaskId: first.taskId, generation: 1, instructions: "核对已准备的测试数据并验证结果。",
+        }, () => assert.fail("ineligible recovery reached admission")), { ok: false, reason: "leader-recovery-unverified" });
         assert.deepEqual(h.composition.readCapacity(rootId)?.leaders, [moduleId]);
         assert.deepEqual(releases, []);
         cleanup.resolve(); await first.done;
@@ -480,6 +491,78 @@ test("director waiting does not block or redispatch while a leader is running", 
   await h.fixture.adapter.waitForTaskIdle(held.leaderId);
 });
 
+test("director reviews a settled blocker and recovers the same Loop+ leader from its report", async (t) => {
+  let nativeSessionId: string | null = null;
+  const h = harness({ prepareLeaderContinuation: (task): ReturnType<NonNullable<DepartmentRuntimeCompositionDeps["prepareLeaderContinuation"]>> => {
+    assert.ok(nativeSessionId);
+    const repaired = repairIdleDepartmentLeaderSession(task, {
+      workspaceKey: task.workspaceKey, readTask: h.fixture.readTask, bindTask: (id, sessionId) => h.update(id, { sessionId }),
+      readContext: (_cli, sessionId) => sessionId === nativeSessionId ? { taskRole: "main", loopTaskId: task.id } : {},
+      isTargetAvailable: (_cli, sessionId) => sessionId === nativeSessionId,
+      readRuns: () => [{ id: "settled-main", cli: task.cli, sessionId: nativeSessionId!, taskRole: "main", loopTaskId: task.id,
+        prompt: "原组长回合", startedAt: task.createdAt, endedAt: task.createdAt + 1, durationMs: 1, status: "end" }],
+    });
+    return [...h.targets.values()].find((target) => target.sessionId === repaired?.sessionId) ?? null;
+  } }, undefined, "loop-plus");
+  const resumed = latch(), release = latch();
+  t.after(() => { release.resolve(); h.dispose(); });
+  const moduleId = "module-recover", rootId = "root-1";
+  const instructions = "使用已核实的接口契约，重新联调并验证必填字段。";
+  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: "待确认测试用接口必填字段" };
+  const reportBlocker = () => h.fixture.queueMain((input, tab) => {
+    const target = h.targets.get(tab!);
+    if (nativeSessionId === null && target && input.loopTaskId) {
+      nativeSessionId = target.sessionId;
+      h.update(input.loopTaskId, { sessionId: "local_stale-leader-session" });
+    }
+    h.fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "blocked", blocker }) });
+  });
+  const runDirector = h.deps.runDirectorDecision;
+  let firstFailureReviews = 0;
+  h.deps.runDirectorDecision = (request) => {
+    const member = h.composition.host.runtimeSnapshot(rootId)?.leaders[0];
+    if (member?.status === "failed" && member.generation === 1 && ++firstFailureReviews === 2) {
+      h.decide({ status: "waiting", directorLeaderRecovery: { leaderTaskId: member.taskId, generation: 1, instructions } });
+    }
+    if (member?.generation === 2 && member.status === "failed") return Promise.resolve({ status: "pending-requirements", task: request.task });
+    return runDirector(request);
+  };
+  await h.start();
+  h.update(rootId, { maxRounds: 1 });
+  reportBlocker(); reportBlocker();
+  const consumed: Array<{ taskId?: string; sessionId: string | null; prompt: string }> = [];
+  h.fixture.queueMain(async (input, tab) => {
+    consumed.push({ taskId: input.loopTaskId, sessionId: h.targets.get(tab!)?.sessionId ?? null, prompt: input.modelPrompt });
+    resumed.resolve();
+    await release.promise;
+    h.fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "blocked", blocker }) });
+  });
+  reportBlocker();
+  h.update(rootId, { subTasks: [{ id: moduleId, title: "模块", status: "running" }] });
+  const first = await h.composition.host.startLeader(rootId, { leaderSubtaskId: moduleId, moduleTitle: "模块", prompt: "实现并联调指定接口" });
+  assert.ok(first.ok);
+  const original = h.fixture.readTask(first.taskId)!;
+  await waitForLoopPlus(() => consumed.length === 1, "director recovery reaches the original leader");
+  await resumed.promise;
+  assert.equal(firstFailureReviews, 2);
+  assert.ok(h.directorPrompts.some((input) => input.modelPrompt.includes('"directorRecoveryAvailable": true') && input.modelPrompt.includes(blocker.cause)));
+  assert.equal(h.fixture.readTask(rootId)?.status, "running", JSON.stringify(h.notices));
+  assert.ok(h.fixture.readTask(rootId)!.currentRound > 1, "the director coordinated beyond the configured classic round limit");
+  assert.equal(consumed[0].taskId, original.id);
+  assert.equal(consumed[0].sessionId, nativeSessionId);
+  assert.equal(h.fixture.readTask(original.id)?.sessionId, nativeSessionId);
+  assert.ok(consumed[0].prompt.includes(instructions));
+  assert.deepEqual(h.fixture.readTask(original.id)?.loopPlusAcceptancePlan, original.loopPlusAcceptancePlan);
+  assert.equal(h.composition.host.runtimeSnapshot(rootId)?.leaders[0].generation, 2);
+  assert.deepEqual(h.composition.readCapacity(rootId)?.leaders, [moduleId]);
+  release.resolve();
+  await waitForLoopPlus(() => h.composition.host.runtimeSnapshot(rootId)?.leaders[0].status === "failed", "generation two settles");
+  assert.deepEqual(await h.composition.host.recoverLeaderFromDirector(rootId, { leaderTaskId: original.id, generation: 1, instructions },
+    () => assert.fail("stale decision reached admission")), { ok: false, reason: "leader-recovery-unverified" });
+  assert.deepEqual(h.composition.readCapacity(rootId)?.leaders, []);
+  assert.deepEqual(h.composition.host.runtimeSnapshot(rootId)?.leaders.map((member) => member.taskId), [original.id]);
+});
+
 test("cancels one confirmed leader cleanup and preserves the root for a new module", async (t) => {
   let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
   const h = harness({ stopLeader: async () => { held?.releaseLeader.resolve(); } });
@@ -633,42 +716,6 @@ for (const failure of ["preparation", "registration", "binding"] as const) {
     assert.deepEqual(opened, []);
     assert.deepEqual(captured, []);
     assert.equal(h.directorPrompts.length, 0);
-  });
-}
-
-for (const { label, maxRounds, limit } of [
-  { label: "valid", maxRounds: 3, limit: 3 },
-  { label: "missing", maxRounds: undefined, limit: 20 },
-  { label: "corrupt", maxRounds: Number.POSITIVE_INFINITY, limit: 20 },
-]) {
-  test(`director pauses at the classic round limit with a ${label} legacy maxRounds`, async (t) => {
-    const ownership = createLoopOrchestrationOwnershipTracker();
-    const rounds: number[] = [];
-    const h = harness({ acquireDirectorOwnership: ownership.acquire, runDirectorDecision: async ({ task, round }) => {
-      rounds.push(round);
-      const updated = h.deps.updateTask(task.id, { currentRound: round })!;
-      if (round === limit) h.composition.wakeDirector(task.id);
-      return { status: "pending-requirements", task: updated };
-    } });
-    t.after(h.dispose);
-    const createRoot = h.deps.createRoot;
-    t.mock.method(h.deps, "createRoot", (...args: Parameters<typeof createRoot>) => {
-      const task = createRoot(...args);
-      task.currentRound = limit - 1;
-      if (maxRounds === undefined) delete task.maxRounds;
-      else task.maxRounds = maxRounds;
-      h.fixture.saveTask(task);
-      return task;
-    });
-
-    await h.start();
-    await waitForLoopPlus(() => h.fixture.readTask("root-1")?.status === "needs-review"
-      && ownership.getCount("root-1") === 0, "director round limit and ownership release");
-    const paused = h.fixture.readTask("root-1")!;
-    assert.deepEqual(rounds, [limit]);
-    assert.equal(paused.currentRound, limit);
-    assert.match(paused.finalSummary ?? "", /经典 Loop 轮次上限/);
-    assert.equal(ownership.getCount(paused.id), 0);
   });
 }
 
@@ -1048,6 +1095,40 @@ test("wake during a director model turn is consumed without a second concurrent 
   await h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
 });
 
+test("a leader blocker supersedes an in-flight director decision while a sibling is still running", async (t) => {
+  const reply = latch();
+  const h = harness({}, undefined, "loop-plus", {
+    beforeDirectorReply: async (input) => { if (input.loopRound === 1) await reply.promise; },
+  });
+  let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
+  t.after(() => { reply.resolve(); held?.releaseLeader.resolve(); h.dispose(); });
+  const staleSummary = "阻塞前生成的总监暂停决定";
+  h.decide({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: staleSummary });
+  held = await startHeldLeader(h, "active-sibling");
+  const rootId = held.root.id;
+  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: "新收到的组长阻塞原因" };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    h.fixture.queueMain((input, tab) => h.fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "blocked", blocker }) }));
+  }
+  const root = h.fixture.readTask(rootId)!;
+  h.update(rootId, { maxRounds: 1, subTasks: [...root.subTasks, { id: "blocked-sibling", title: "待恢复模块", status: "running" }] });
+  const blocked = await h.composition.host.startLeader(rootId, { leaderSubtaskId: "blocked-sibling", moduleTitle: "待恢复模块", prompt: "实现待联调模块" });
+  assert.ok(blocked.ok);
+  await waitForLoopPlus(() => h.notices.some((notice) => notice.startsWith("组长汇报：待恢复模块（failed）")), "settled blocker report");
+  assert.equal(h.directorPrompts.length, 1, "the current model turn still owns the session");
+  assert.ok(!h.directorPrompts[0].modelPrompt.includes(blocker.cause));
+
+  h.decide({ status: "waiting" });
+  reply.resolve();
+  await waitForLoopPlus(() => h.directorPrompts.length >= 2, "director processes the blocker after its in-flight turn");
+  assert.ok(h.directorPrompts[1].modelPrompt.includes(blocker.cause));
+  assert.equal(h.fixture.readTask(rootId)?.status, "running");
+  assert.ok(!h.notices.includes(staleSummary));
+  assert.equal(h.composition.host.runtimeSnapshot(rootId)?.leaders.find((leader) => leader.taskId === held!.leaderId)?.status, "running");
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(h.directorPrompts.length, 2, "the director sleeps after handling the event");
+});
+
 
 for (const binding of ["first-native", "established-conflict", "readback-conflict"] as const) {
   test(`director post-turn session check preserves only the trusted initial binding: ${binding}`, async (t) => {
@@ -1225,7 +1306,7 @@ test(`confirmed cold Loop+ stop resumes only the stopped leader in its original 
     prepareLeaderContinuation: (task) => {
       prepared.push(task.id);
       assert.equal(task.id, leaderId);
-      const current = repairStoppedDepartmentLeaderSession(task, {
+      const current = repairIdleDepartmentLeaderSession(task, {
         workspaceKey: held!.root.workspaceKey, readTask: h.fixture.readTask,
         bindTask: (id, sessionId) => bindFails ? null : h.update(id, { sessionId }),
         readContext: () => ({ taskRole: "main", loopTaskId: leaderId }),

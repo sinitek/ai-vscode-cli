@@ -15,6 +15,7 @@ class ChoiceElement {
   type = "";
   name = "";
   value = "";
+  rows = 0;
   checked = false;
   selected = false;
   disabled = false;
@@ -124,6 +125,8 @@ for (const kind of ["radio", "checkbox", "select", "multiselect"]) {
     const { textarea, other, runtime, container } = harness;
     assert.ok(textarea);
     assert.ok(other);
+    assert.equal(textarea.tagName, "textarea");
+    assert.equal(textarea.rows, 3);
     assert.equal(textarea.hidden, true);
     assert.equal(textarea.disabled, true);
     assert.equal(textarea.getAttribute("aria-required"), "true");
@@ -135,11 +138,12 @@ for (const kind of ["radio", "checkbox", "select", "multiselect"]) {
     assert.equal(textarea.focused, true);
     textarea.value = "  ";
     assert.equal(runtime.humanInteractionOtherError(container), "请填写“方案”的其它内容。");
-    textarea.value = "  用户输入 <自己的方案>  ";
+    const answer = "用户输入\n<自己的方案>";
+    textarea.value = `  ${answer}  `;
     const multiple = kind === "checkbox" || kind === "multiselect";
     const values = { question: multiple ? ["preset", other.value] : other.value };
     assert.deepEqual(runtime.collectHumanInteractionOtherValues(container, values), {
-      question: multiple ? ["preset", "用户输入 <自己的方案>"] : "用户输入 <自己的方案>",
+      question: multiple ? ["preset", answer] : answer,
     });
     assert.equal(runtime.humanInteractionOtherError(container), "");
     harness.change(false);
@@ -147,7 +151,7 @@ for (const kind of ["radio", "checkbox", "select", "multiselect"]) {
     assert.equal(textarea.disabled, true);
     assert.deepEqual(runtime.collectHumanInteractionOtherValues(container, { question: "preset" }), { question: "preset" });
     harness.change(true);
-    assert.equal(textarea.value, "  用户输入 <自己的方案>  ");
+    assert.equal(textarea.value, `  ${answer}  `);
     harness.bind();
     assert.equal(container.querySelectorAll("[data-interaction-other-field]").length, 1);
   });

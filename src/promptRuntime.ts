@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { expandHomePath } from "./shared/userHomePaths";
+import { expandHomePath, formatHomeDisplayPath, SINITEK_RUNTIME_DIR_NAME } from "./shared/userHomePaths";
 import { getThinkingPromptPrefix, getThinkingPromptSuffix } from "./cli/config";
 import type { CliName, ThinkingMode } from "./cli/types";
 import { t } from "./i18n";
@@ -136,6 +136,12 @@ export const HUMAN_INTERACTION_PROMPT_INSTRUCTION = [
 
 export const CODEX_HUMAN_INTERACTION_PROMPT_INSTRUCTION = HUMAN_INTERACTION_PROMPT_INSTRUCTION;
 
+export const RUNTIME_HISTORY_PROMPT_INSTRUCTION = [
+  `携宁 CLI 的本地运行数据目录是 \`${formatHomeDisplayPath(SINITEK_RUNTIME_DIR_NAME)}\`。`,
+  "其中有任务记录（`loop-tasks/`，含 Loop、Loop+ 和产研部）、任务沟通与群聊记录（`loop-communications/`）、会话与消息（`sessions/`、`messages/`）、提示词历史（`prompt-history/`）和日志（`logs/`）。",
+  "仅在当前任务需要时，按工作区、任务 ID 或会话 ID 定向只读查阅。当前轮次以任务明确指定的文件为准。",
+].join("\n");
+
 export function buildThinkingPrompt(
   cli: CliName,
   mode: ThinkingMode,
@@ -146,17 +152,16 @@ export function buildThinkingPrompt(
   const includeSuffix = options.includeSuffix !== false;
   const prefix = includePrefix ? getThinkingPromptPrefix(cli, mode) : "";
   const suffix = includeSuffix ? getThinkingPromptSuffix(cli, mode) : "";
-  const promptWithThinkingInstructions = !prefix.trim() && !suffix.trim()
-    ? prompt
-    : mergePromptSections(prefix, prompt, suffix);
+  const promptWithThinkingInstructions = mergePromptSections(prefix, prompt, suffix);
+  const promptWithRuntimeHistoryInstruction = mergePromptSections("", promptWithThinkingInstructions, RUNTIME_HISTORY_PROMPT_INSTRUCTION);
   const taskListInstruction = cli === "codex" ? CODEX_TASK_LIST_PROMPT_INSTRUCTION
     : cli === "grok" ? GROK_TASK_LIST_PROMPT_INSTRUCTION : "";
   const includeTaskListInstruction = Boolean(taskListInstruction)
     && options.includeTaskListInstruction !== false
     && options.includeFinalAnswerInstruction !== false;
   const promptWithTaskListInstruction = includeTaskListInstruction
-    ? mergePromptSections("", promptWithThinkingInstructions, taskListInstruction)
-    : promptWithThinkingInstructions;
+    ? mergePromptSections("", promptWithRuntimeHistoryInstruction, taskListInstruction)
+    : promptWithRuntimeHistoryInstruction;
   const includeHumanInteractionInstruction = options.includeHumanInteractionInstruction === true
     && options.includeFinalAnswerInstruction !== false;
   const promptWithHumanInteractionInstruction = includeHumanInteractionInstruction

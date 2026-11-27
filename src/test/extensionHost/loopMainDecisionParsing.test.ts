@@ -58,6 +58,20 @@ test("classic blocked decisions preserve diagnostic gaps and render complete str
   assert.equal(host.parseLoopMainDecision(JSON.stringify({ status: "waiting", finalSummary: "等待组长汇报" }))?.status, "waiting");
 });
 
+test("classic decision accepts an explicit, bounded director recovery on waiting only", () => {
+  const host = createRuntimeHost();
+  const directorLeaderRecovery = { leaderTaskId: "loop-1", generation: 2, instructions: "核对证据后重新执行验证。" };
+  const parse = (value: unknown, status = "waiting") => host.parseLoopMainDecision(JSON.stringify({ status, directorLeaderRecovery: value }));
+  assert.deepEqual(parse(directorLeaderRecovery)?.directorLeaderRecovery, directorLeaderRecovery);
+  for (const invalid of [null, { ...directorLeaderRecovery, generation: 0 }, { ...directorLeaderRecovery, generation: 1.5 },
+    { ...directorLeaderRecovery, leaderTaskId: " " }, { ...directorLeaderRecovery, instructions: " " },
+    { ...directorLeaderRecovery, instructions: "字".repeat(4001) }]) {
+    assert.equal(parse(invalid)?.directorLeaderRecoveryIssue, "invalid-format");
+    assert.equal(parse(invalid)?.directorLeaderRecovery, undefined);
+  }
+  assert.equal(parse(directorLeaderRecovery, "blocked")?.directorLeaderRecovery, undefined);
+});
+
 test("classic Loop main prompt reflects only the configured per-dispatch limit", async () => {
   let maximum = 10;
   const prompts: string[] = [];

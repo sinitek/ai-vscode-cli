@@ -59,11 +59,11 @@ export function commitDepartmentLeaderSessionPromotion(task: LoopTaskRecord, ses
   return confirmed;
 }
 
-export function repairStoppedDepartmentLeaderSession(task: LoopTaskRecord, deps: PromotionDeps & {
+export function repairIdleDepartmentLeaderSession(task: LoopTaskRecord, deps: PromotionDeps & {
   readRuns: () => readonly TaskRunRecord[];
   isTargetAvailable: (cli: CliName, sessionId: string, taskId: string) => boolean;
 }): LoopTaskRecord | null {
-  if (task.status !== "stopped" || !task.sessionId || !isLocalSessionId(task.sessionId)) return task;
+  if ((task.status !== "stopped" && task.status !== "needs-review") || !task.sessionId || !isLocalSessionId(task.sessionId)) return task;
   const runs = deps.readRuns();
   let run: TaskRunRecord | undefined;
   for (let index = runs.length - 1; index >= 0; index -= 1) {
@@ -74,7 +74,7 @@ export function repairStoppedDepartmentLeaderSession(task: LoopTaskRecord, deps:
     promotionDiagnostic(task, "run-evidence", "evidence-missing");
     return task;
   }
-  if (run.cli !== task.cli || run.startedAt < task.createdAt
+  if (run.cli !== task.cli || run.startedAt < task.createdAt || (task.status === "needs-review" && run.status !== "end")
     || !canPromoteDepartmentLeaderSession(task, run.sessionId, deps.workspaceKey)) {
     promotionDiagnostic(task, "run-evidence", "evidence-rejected");
     return null;

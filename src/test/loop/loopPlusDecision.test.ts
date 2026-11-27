@@ -8,6 +8,7 @@ import {
   LOOP_PLUS_DECISION_SUBTASK_MIN,
   normalizeLoopPlusDecision,
   parseLoopPlusDecision,
+  parseLoopPlusDecisionForFrozenInput,
   parseLoopPlusDecisionWithFeedback,
   resolveLoopPlusDecisionSubtaskMax,
   type LoopPlusDecision,
@@ -1283,4 +1284,155 @@ test("撤销验收要求原因，全撤销不要求检查，混合批次保留�
   const close = normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: "范围调整" }] });
   assert.equal(close?.controls?.[0].reason, "范围调整");
   assert.equal(normalizeLoopPlusDecision({ status: "steer", controls: [{ id: "obsolete", action: "close", reason: " " }] }), null);
+});
+
+test("review diagnostics name the second item and keep legal mixed batches", () => {
+  const repair = subtask("repair-beta");
+  const follow = subtask("follow-up-alpha");
+  const independent = subtask("independent-goal");
+  const mixed = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", subtaskIds: ["follow-up-alpha"] },
+      { reviewEventId: "event-beta", acceptance: "failed", reason: "第二项构建失败", subtaskIds: ["repair-beta"] },
+    ],
+    subtasks: [repair, follow, independent],
+    independentSubtaskIds: ["independent-goal"],
+  }));
+  assert.equal(mixed.decision?.status, "accept");
+  assert.equal(mixed.reviewFieldDiagnostic, undefined);
+  assert.equal(mixed.validationDiagnostic, undefined);
+  assert.deepEqual(mixed.decision?.reviews?.map((review) => review.acceptance), ["passed", "failed"]);
+  assert.deepEqual(mixed.decision?.reviews?.[1].subtaskIds, ["repair-beta"]);
+  assert.deepEqual(mixed.decision?.independentSubtaskIds, ["independent-goal"]);
+
+  const sameId = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-cancel", "event-fail"],
+    reviews: [
+      { reviewEventId: "event-cancel", acceptance: "cancelled", reason: "该项需求已取消" },
+      { reviewEventId: "event-fail", acceptance: "failed", subtaskIds: ["event-fail"] },
+    ],
+    subtasks: [subtask("event-fail")],
+  }));
+  assert.equal(sameId.decision?.reviews?.[0].acceptance, "cancelled");
+  assert.equal(sameId.decision?.reviews?.[1].acceptance, "failed");
+  assert.deepEqual(sameId.decision?.reviews?.[1].subtaskIds, ["event-fail"]);
+  assert.deepEqual(sameId.decision?.subtasks?.map((item) => item.id), ["event-fail"]);
+  assert.equal(sameId.reviewFieldDiagnostic, undefined);
+
+  const swapped = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed" },
+      { reviewEventId: "event-alpha", acceptance: "failed", reason: "模型把第二项写成了第一项" },
+    ],
+  }));
+  assert.equal(swapped.decision, null);
+  assert.deepEqual(swapped.reviewFieldDiagnostic, { code: "EventOrderMismatch", index: 1, field: "reviewEventId" });
+  assert.equal(swapped.validationDiagnostic, undefined);
+  assert.doesNotMatch(JSON.stringify(swapped.reviewFieldDiagnostic), /event-alpha|event-beta|模型/);
+
+  const missing = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed" },
+      { reviewEventId: "event-beta", acceptance: "failed", reason: "第二项缺少返工" },
+    ],
+  }));
+  assert.equal(missing.decision, null);
+  assert.deepEqual(missing.reviewFieldDiagnostic, { code: "FailedRepairMissing", index: 1, field: "subtaskIds" });
+  assert.match(missing.rejectionReason ?? "", /验收失败必须关联修复子任务/);
+  assert.doesNotMatch(JSON.stringify(missing.reviewFieldDiagnostic), /event-beta|第二项|failed/);
+
+  const badField = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed" },
+      { reviewEventId: "event-beta", acceptance: "maybe", reason: "自由文本结论" },
+    ],
+  }));
+  assert.deepEqual(badField.reviewFieldDiagnostic, { code: "InvalidReviewItem", index: 1, field: "acceptance" });
+  assert.doesNotMatch(JSON.stringify(badField.reviewFieldDiagnostic), /maybe|自由文本/);
+
+  const shortBatch = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [{ reviewEventId: "event-alpha", acceptance: "failed" }],
+  }));
+  assert.equal(shortBatch.decision, null);
+  assert.equal(shortBatch.reviewFieldDiagnostic, undefined);
+});
+
+test("frozen review diagnostics name only rows captured for this request", () => {
+  const secondWrong = {
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-late"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: "event-late", acceptance: "maybe", reason: "第二项自报有误" },
+    ],
+  };
+  const expanded = parseLoopPlusDecisionForFrozenInput(JSON.stringify(secondWrong), {
+    frozenReviewEventIds: ["event-alpha"],
+  });
+  assert.equal(expanded.decision, null);
+  assert.deepEqual(expanded.reviewFieldDiagnostic, { code: "InvalidReviewItem", field: "acceptance" });
+  assert.equal(expanded.reviewFieldDiagnostic?.index, undefined);
+  assert.doesNotMatch(expanded.rejectionReason ?? "", /reviews\[1\]/);
+  assert.match(expanded.rejectionReason ?? "", /accept\.reviews/);
+
+  const unclear = parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-other"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: "event-other", acceptance: "failed" },
+    ],
+  }), { frozenReviewEventIds: ["event-alpha", "event-beta"] });
+  assert.deepEqual(unclear.reviewFieldDiagnostic, { code: "FailedRepairMissing", field: "subtaskIds" });
+  assert.doesNotMatch(JSON.stringify(unclear.reviewFieldDiagnostic), /reviews\[1\]|event-other/);
+  assert.doesNotMatch(unclear.rejectionReason ?? "", /reviews\[1\]/);
+
+  const accurate = parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "passed", reason: "第一项符合要求" },
+      { reviewEventId: "event-beta", acceptance: "maybe", reason: "第二项结论无效" },
+    ],
+  }), { frozenReviewEventIds: ["event-alpha", "event-beta"] });
+  assert.deepEqual(accurate.reviewFieldDiagnostic, { code: "InvalidReviewItem", index: 1, field: "acceptance" });
+  assert.doesNotMatch(JSON.stringify(accurate.reviewFieldDiagnostic), /event-beta|第二项|maybe/);
+
+  const mixed = parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-alpha", "event-beta"],
+    reviews: [
+      { reviewEventId: "event-alpha", acceptance: "cancelled", reason: "该项需求已取消" },
+      { reviewEventId: "event-beta", acceptance: "passed", reason: "定向测试通过" },
+    ],
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
+    acceptancePlanResults: [{ key: "security", passed: true, reason: "权限检查通过" }],
+  }), {
+    frozenReviewEventIds: ["event-alpha", "event-beta"],
+    requireAcceptanceFeedback: true,
+    acceptancePlanKeys: ["security"],
+  });
+  assert.deepEqual(mixed.decision?.reviews?.map((review) => review.acceptance), ["cancelled", "passed"]);
+  assert.equal(mixed.reviewFieldDiagnostic, undefined);
+
+  const sameId = parseLoopPlusDecisionForFrozenInput(JSON.stringify({
+    status: "accept",
+    reviewEventIds: ["event-fail"],
+    reviews: [{ reviewEventId: "event-fail", acceptance: "failed", subtaskIds: ["event-fail"] }],
+    subtasks: [subtask("event-fail")],
+  }), { frozenReviewEventIds: ["event-fail"] });
+  assert.equal(sameId.decision?.reviews?.[0].acceptance, "failed");
+  assert.deepEqual(sameId.decision?.subtasks?.map((item) => item.id), ["event-fail"]);
+  assert.equal(sameId.reviewFieldDiagnostic, undefined);
 });

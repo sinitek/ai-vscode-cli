@@ -37,7 +37,7 @@ import {
 } from "../loopCompletionFields";
 import { buildLoopAnswerConclusionMarkdown, buildLoopFinalSummaryMarkdown } from "../loopFinalSummary";
 import { finalizeLoopSubtaskRun as finalizeLoopSubtaskRunWithDeps, shouldDelegateSubtaskContinuationToLoopPlus, shouldWakeLoopMainAfterSubtaskCompletion, type LoopSubtaskCompletionOptions, type LoopSubtaskReportResult, type LoopSubtaskTabCloseOptions } from "../loopSubtaskLifecycle";
-import { getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord, type LoopTaskUserStopSource } from "../loopTaskStore";
+import { DEPARTMENT_LEADER_RECOVERY_INSTRUCTIONS_MAX_LENGTH, getLoopTaskStoreSessionFile, normalizeLoopProgressPercent, normalizeLoopSubtaskProgressWeightPercent, readLoopTaskRecord, readLoopTaskStore, updateLoopTaskRecord, type LoopAcceptance, type LoopMainDecision, type LoopRoundSummary, type LoopSubtaskDecision, type LoopSubtaskRecord, type LoopTaskRecord, type LoopTaskUserStopSource } from "../loopTaskStore";
 import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type TaskRunRecord, type TaskRunStatus, type TaskStore } from "../promptRunState";
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
@@ -513,6 +513,17 @@ function parseLoopMainDecision(content: string | null): LoopMainDecision | null 
             decision.directorCollaborations = actions.map(({ id, action }) => ({ id, action }));
           } else {
             decision.directorCollaborationIssue = "invalid-format";
+          }
+        }
+        if (parsed.directorLeaderRecovery !== undefined) {
+          const recovery = parsed.directorLeaderRecovery;
+          const leaderTaskId = typeof recovery?.leaderTaskId === "string" ? recovery.leaderTaskId.trim() : "";
+          const instructions = typeof recovery?.instructions === "string" ? recovery.instructions.trim() : "";
+          if (decision.status === "waiting" && leaderTaskId && Number.isSafeInteger(recovery.generation) && recovery.generation > 0
+            && instructions && instructions.length <= DEPARTMENT_LEADER_RECOVERY_INSTRUCTIONS_MAX_LENGTH) {
+            decision.directorLeaderRecovery = { leaderTaskId, generation: recovery.generation, instructions };
+          } else {
+            decision.directorLeaderRecoveryIssue = "invalid-format";
           }
         }
         return decision;
@@ -1288,6 +1299,7 @@ function resolveLoopMainPromptTarget(
 
   const newTab: ConversationTabRecord = {
     id: createConversationTabId(),
+    ...(task.department?.role === "director" ? { manualCloseOnly: true } : {}),
     cli: task.cli,
     sessionId: task.sessionId ?? null,
     sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, task.cli, task.sessionId ?? null),

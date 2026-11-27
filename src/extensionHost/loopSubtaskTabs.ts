@@ -24,6 +24,29 @@ export function usesCompletedLoopSubtaskTabCleanup(task: Pick<LoopTaskRecord, "d
     || (task.department.role === "leader" && task.department.executionMode === "loop-plus"));
 }
 
+export function resolveCompletedLoopSubtaskTabBinding(
+  task: Pick<LoopTaskRecord, "id" | "workspaceKey" | "department" | "departmentInvalid"> | null,
+  workspaceKey: string,
+  input: {
+    taskRole?: string;
+    loopTaskId?: string;
+    loopSubtaskId?: string;
+    loopRound?: number;
+    loopAttemptId?: string;
+  },
+): { context: LoopSubtaskConversationContext; provisional: boolean } | null {
+  if (input.taskRole !== "subtask" || !input.loopTaskId || !input.loopSubtaskId || !input.loopRound) return null;
+  const context = {
+    taskId: input.loopTaskId,
+    subtaskId: input.loopSubtaskId,
+    round: input.loopRound,
+    attemptId: input.loopAttemptId,
+  };
+  if (!task) return { context, provisional: true };
+  if (task.workspaceKey !== workspaceKey || task.id !== input.loopTaskId || !usesCompletedLoopSubtaskTabCleanup(task)) return null;
+  return { context, provisional: false };
+}
+
 function sessionKey(cli: ConversationTabRecord["cli"], sessionId: string | null): string {
   return JSON.stringify([cli, sessionId]);
 }
@@ -65,6 +88,7 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     cli: ConversationTabRecord["cli"];
     order: number;
     idle: { sessionId: string | null } | null;
+    provisional: boolean;
   };
   const bindings = new WeakMap<ConversationTabRecord, Binding>();
   const restoredTabs = new WeakMap<ConversationTabRecord, {
@@ -88,13 +112,16 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     restoredTabs.delete(tab);
   }
 
-  function bindPrompt(tab: ConversationTabRecord, context: LoopSubtaskConversationContext | null) {
+  function bindPrompt(tab: ConversationTabRecord, context: LoopSubtaskConversationContext | null, options?: { provisional?: boolean }) {
     forgetRestoredTab(tab);
     if (!context) {
       bindings.delete(tab);
       return undefined;
     }
-    const binding: Binding = { context: { ...context }, workspace: deps.getWorkspaceKey(), cli: tab.cli, order: ++order, idle: null };
+    const binding: Binding = {
+      context: { ...context }, workspace: deps.getWorkspaceKey(), cli: tab.cli, order: ++order, idle: null,
+      provisional: options?.provisional === true,
+    };
     bindings.set(tab, binding);
     return (sessionId: string | null) => {
       if (bindings.get(tab) === binding && deps.getWorkspaceKey() === binding.workspace
@@ -166,16 +193,191 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     return JSON.stringify([restored.cli, restored.sessionId, prompt.id, prompt.createdAt, run.id, run.endedAt, run.loopRound, run.loopAttemptId]);
   }
 
-  function prepareClose(tabId: string, expected: LoopSubtaskConversationContext): () => Promise<void> {
-    const workspace = deps.getWorkspaceKey();
+  type CloseIdentityReason =
+    | "tab-absent"
+    | "workspace-changed"
+    | "binding-absent"
+    | "context-mismatch"
+    | "cli-mismatch"
+    | "session-mismatch"
+    | "idle-pending"
+    | "run-active"
+    | "task-unreadable"
+    | "cleanup-ineligible"
+    | "identity-unknown";
+  type CloseIdentityPhase = "bind" | "release" | "commit" | "close";
+  type CloseIdentityFlags = {
+    tabPresent: boolean;
+    workspaceMatch: boolean;
+    bindingPresent: boolean;
+    contextMatch: boolean;
+    cliMatch: boolean;
+    sessionMatch: boolean;
+    idleSettled: boolean;
+    runReleased: boolean;
+    taskReadable: boolean;
+    cleanupAllowed: boolean;
+  };
+  type ReadyInspection = { ready: true; tab: ConversationTabRecord; binding: Binding; index: number };
+  type FailedInspection = { ready: false; reason: CloseIdentityReason; phase: CloseIdentityPhase; flags: CloseIdentityFlags };
+
+  function blankIdentityFlags(): CloseIdentityFlags {
+    return {
+      tabPresent: false, workspaceMatch: false, bindingPresent: false, contextMatch: false, cliMatch: false,
+      sessionMatch: false, idleSettled: false, runReleased: false, taskReadable: false, cleanupAllowed: false,
+    };
+  }
+
+  function identityBit(value: boolean): "0" | "1" {
+    return value ? "1" : "0";
+  }
+
+  function identityRefusal(inspection: FailedInspection): Error {
+    const { flags } = inspection;
+    const policy = inspection.reason === "task-unreadable" || inspection.reason === "cleanup-ineligible"
+      ? ` taskReadable=${identityBit(flags.taskReadable)} cleanupAllowed=${identityBit(flags.cleanupAllowed)}`
+      : "";
+    const detail = `reason=${inspection.reason} phase=${inspection.phase} tab=${identityBit(flags.tabPresent)} workspace=${identityBit(flags.workspaceMatch)} binding=${identityBit(flags.bindingPresent)} context=${identityBit(flags.contextMatch)} cli=${identityBit(flags.cliMatch)} session=${identityBit(flags.sessionMatch)} idle=${identityBit(flags.idleSettled)} released=${identityBit(flags.runReleased)}${policy}`;
+    if (inspection.reason === "workspace-changed") return new Error(`工作区已切换，忽略原子任务标签清理。 ${detail}`);
+    if (inspection.reason === "context-mismatch" || inspection.reason === "cli-mismatch" || inspection.reason === "session-mismatch"
+      || (inspection.reason === "identity-unknown" && inspection.phase === "bind")) {
+      return new Error(`子任务标签当前执行身份已变化，保留当前标签。 ${detail}`);
+    }
+    return new Error(`子任务标签当前执行身份无法核验，未执行自动关闭。 ${detail}`);
+  }
+
+  function inspectCloseTarget(tabId: string, expected: LoopSubtaskConversationContext, workspace: string, requireInactive: boolean): ReadyInspection | FailedInspection {
+    const flags = blankIdentityFlags();
+    if (deps.getWorkspaceKey() !== workspace) return { ready: false, reason: "workspace-changed", phase: "close", flags };
+    flags.workspaceMatch = true;
     const tabs = deps.getTabs();
     const index = tabs.findIndex((tab) => tab.id === tabId);
-    const target = index < 0 ? null : readIdleBinding(tabs[index], workspace, false);
-    if (!target || target.context.taskId !== expected.taskId || target.context.subtaskId !== expected.subtaskId
-      || target.context.round !== expected.round || target.context.attemptId !== expected.attemptId) {
-      return async () => { throw new Error("子任务标签当前执行身份无法核验，未执行自动关闭。"); };
+    if (index < 0) return { ready: false, reason: "tab-absent", phase: "close", flags };
+    const tab = tabs[index];
+    flags.tabPresent = true;
+    flags.runReleased = !deps.isTabRunActive(tab.id);
+    const binding = bindings.get(tab);
+    if (!binding) return { ready: false, reason: "binding-absent", phase: "bind", flags };
+    flags.bindingPresent = true;
+    flags.contextMatch = binding.context.taskId === expected.taskId && binding.context.subtaskId === expected.subtaskId
+      && binding.context.round === expected.round && binding.context.attemptId === expected.attemptId;
+    flags.cliMatch = binding.cli === tab.cli;
+    if (!flags.contextMatch) return { ready: false, reason: "context-mismatch", phase: "bind", flags };
+    if (binding.workspace !== workspace) {
+      flags.workspaceMatch = false;
+      return { ready: false, reason: "workspace-changed", phase: "close", flags };
     }
-    const targetTab = tabs[index];
+    if (!flags.cliMatch) return { ready: false, reason: "cli-mismatch", phase: "bind", flags };
+    if (!binding.idle) return { ready: false, reason: "idle-pending", phase: "bind", flags };
+    flags.idleSettled = true;
+    flags.sessionMatch = binding.idle.sessionId === getConversationTabSessionIdForCli(tab, tab.cli);
+    if (!flags.sessionMatch) return { ready: false, reason: "session-mismatch", phase: "bind", flags };
+    if (requireInactive && !flags.runReleased) return { ready: false, reason: "run-active", phase: "release", flags };
+    return { ready: true, tab, binding, index };
+  }
+
+  function provisionalPolicy(binding: Binding, workspace: string, expected: LoopSubtaskConversationContext): FailedInspection | null {
+    if (!binding.provisional) return null;
+    const evidence = deps.restoredEvidence;
+    if (!evidence) {
+      const flags = blankIdentityFlags();
+      flags.tabPresent = true;
+      flags.workspaceMatch = binding.workspace === workspace;
+      flags.bindingPresent = true;
+      flags.contextMatch = binding.context.taskId === expected.taskId && binding.context.subtaskId === expected.subtaskId
+        && binding.context.round === expected.round && binding.context.attemptId === expected.attemptId;
+      flags.idleSettled = binding.idle !== null;
+      flags.cliMatch = true;
+      flags.sessionMatch = flags.idleSettled;
+      return { ready: false, reason: "identity-unknown", phase: "commit", flags };
+    }
+    const flags = blankIdentityFlags();
+    flags.tabPresent = true;
+    flags.workspaceMatch = true;
+    flags.bindingPresent = true;
+    flags.contextMatch = true;
+    flags.cliMatch = true;
+    flags.idleSettled = binding.idle !== null;
+    let task: ReturnType<NonNullable<typeof deps.restoredEvidence>["readTask"]> | undefined;
+    try {
+      task = evidence.readTask(expected.taskId);
+    } catch {
+      task = undefined;
+    }
+    const tab = deps.getTabs().find((item) => bindings.get(item) === binding);
+    flags.runReleased = tab ? !deps.isTabRunActive(tab.id) : false;
+    flags.cliMatch = tab ? binding.cli === tab.cli : false;
+    flags.sessionMatch = Boolean(tab && binding.idle && binding.idle.sessionId === getConversationTabSessionIdForCli(tab, tab.cli));
+    if (!task) return { ready: false, reason: "task-unreadable", phase: "commit", flags };
+    flags.taskReadable = true;
+    flags.workspaceMatch = task.workspaceKey === workspace;
+    flags.cleanupAllowed = flags.workspaceMatch && usesCompletedLoopSubtaskTabCleanup(task);
+    if (!flags.cleanupAllowed) return { ready: false, reason: "cleanup-ineligible", phase: "close", flags };
+    return null;
+  }
+
+  function captureIdleAnchor(tabId: string, expected: LoopSubtaskConversationContext, workspace: string): { tab: ConversationTabRecord; binding: Binding; cli: ConversationTabRecord["cli"] } | null {
+    if (deps.getWorkspaceKey() !== workspace) return null;
+    const tab = deps.getTabs().find((item) => item.id === tabId);
+    if (!tab) return null;
+    const binding = bindings.get(tab);
+    if (!binding || binding.workspace !== workspace || binding.cli !== tab.cli || binding.idle) return null;
+    if (binding.context.taskId !== expected.taskId || binding.context.subtaskId !== expected.subtaskId
+      || binding.context.round !== expected.round || binding.context.attemptId !== expected.attemptId) return null;
+    return { tab, binding, cli: binding.cli };
+  }
+
+  function prepareClose(tabId: string, expected: LoopSubtaskConversationContext): () => Promise<void> {
+    const workspace = deps.getWorkspaceKey();
+    const prepared = inspectCloseTarget(tabId, expected, workspace, false);
+    const anchor = captureIdleAnchor(tabId, expected, workspace);
+    if (!prepared.ready) {
+      return async () => {
+        if (deps.getWorkspaceKey() !== workspace) {
+          throw identityRefusal({ ready: false, reason: "workspace-changed", phase: "close", flags: blankIdentityFlags() });
+        }
+        if (!anchor) {
+          const live = inspectCloseTarget(tabId, expected, workspace, true);
+          if (!live.ready) {
+            if (live.reason === "tab-absent" && live.flags.workspaceMatch) return;
+            throw identityRefusal(live);
+          }
+          throw identityRefusal({
+            ready: false, reason: "identity-unknown", phase: "close",
+            flags: { ...blankIdentityFlags(), tabPresent: true, workspaceMatch: true, bindingPresent: true, contextMatch: true, cliMatch: true, sessionMatch: true, idleSettled: true, runReleased: true },
+          });
+        }
+        const tabs = deps.getTabs();
+        if (!tabs.includes(anchor.tab)) return;
+        const current = tabs.find((item) => item.id === anchor.tab.id);
+        const rebound = current !== anchor.tab || bindings.get(anchor.tab) !== anchor.binding || anchor.tab.cli !== anchor.cli;
+        if (rebound) {
+          const replacement = bindings.get(anchor.tab);
+          const flags = blankIdentityFlags();
+          flags.tabPresent = true;
+          flags.workspaceMatch = true;
+          flags.bindingPresent = Boolean(replacement);
+          flags.contextMatch = Boolean(replacement && replacement.context.taskId === expected.taskId
+            && replacement.context.subtaskId === expected.subtaskId && replacement.context.round === expected.round
+            && replacement.context.attemptId === expected.attemptId);
+          flags.cliMatch = anchor.tab.cli === anchor.cli;
+          flags.idleSettled = Boolean(replacement?.idle);
+          flags.sessionMatch = Boolean(replacement?.idle && replacement.idle.sessionId === getConversationTabSessionIdForCli(anchor.tab, anchor.tab.cli));
+          flags.runReleased = !deps.isTabRunActive(anchor.tab.id);
+          throw identityRefusal({ ready: false, reason: "identity-unknown", phase: "bind", flags });
+        }
+        const live = inspectCloseTarget(anchor.tab.id, expected, workspace, true);
+        if (!live.ready) throw identityRefusal(live);
+        await closeVerified(live)();
+      };
+    }
+    return closeVerified(prepared);
+
+    function closeVerified(inspection: ReadyInspection): () => Promise<void> {
+    const target = inspection.binding;
+    const targetTab = inspection.tab;
+    const index = inspection.index;
+    const tabs = deps.getTabs();
     const targetSessionId = getConversationTabSessionIdForCli(targetTab, targetTab.cli);
     let history: { revision: string | undefined; latestRuns: Map<string, TaskRunRecord>; targetRun: TaskRunRecord | undefined } | undefined;
 
@@ -230,22 +432,27 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
     }
 
     const readBeforeCommit = createSharedEvidenceReader(true);
-    const candidates = tabs.slice(0, index + 1).flatMap((tab) => {
+    type CloseCandidate = {
+      tab: ConversationTabRecord;
+      binding: Binding | undefined;
+      isCurrent: (currentTabs: readonly ConversationTabRecord[], readCurrent: () => RestoredCleanupEvidence | null) => boolean;
+    };
+    const candidates: CloseCandidate[] = tabs.slice(0, index + 1).flatMap((tab): CloseCandidate[] => {
       const binding = tab.id === tabId ? target : readIdleBinding(tab, workspace);
       if (binding) {
         if (binding.order > target.order || binding.context.round > expected.round
           || binding.context.taskId !== expected.taskId || binding.context.subtaskId !== expected.subtaskId) return [];
-        return [{ tab, isCurrent: () => readIdleBinding(tab, workspace) === binding }];
+        return [{ tab, binding, isCurrent: () => readIdleBinding(tab, workspace) === binding }];
       }
       const evidence = readRestoredEvidence(tab, workspace, expected, tabs, readBeforeCommit);
-      return evidence === null ? [] : [{ tab, isCurrent: (currentTabs: readonly ConversationTabRecord[], readCurrent: typeof readBeforeCommit) => (
+      return evidence === null ? [] : [{ tab, binding: undefined, isCurrent: (currentTabs, readCurrent) => (
         readRestoredEvidence(tab, workspace, expected, currentTabs, readCurrent) === evidence
       ) }];
     });
     return async () => {
       const failures: string[] = [];
       let readCurrent = createSharedEvidenceReader();
-      for (const { tab, isCurrent } of candidates) {
+      for (const { tab, binding, isCurrent } of candidates) {
         if (deps.getWorkspaceKey() !== workspace) {
           failures.push("工作区已切换，忽略原子任务标签清理。");
           break;
@@ -256,6 +463,13 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
         if (current !== tab || !isCurrent(currentTabs, readCurrent)) {
           if (tab.id === tabId) failures.push(`${tab.id}: 子任务标签当前执行身份已变化，保留当前标签。`);
           continue;
+        }
+        if (binding?.provisional) {
+          const policy = provisionalPolicy(binding, workspace, expected);
+          if (policy) {
+            if (tab.id === tabId) failures.push(identityRefusal(policy).message);
+            continue;
+          }
         }
         try {
           await deps.closeTab(tab);
@@ -270,6 +484,7 @@ export function createCompletedLoopSubtaskTabCleanup(deps: {
       }
       if (failures.length) throw new Error(failures.join("\n"));
     };
+    }
   }
 
   return { bindPrompt, rememberRestoredTabs, forgetRestoredTab, prepareClose };

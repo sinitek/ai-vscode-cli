@@ -35,15 +35,23 @@ test("department lifecycle diagnostics use existing rotation and history retenti
           reason:'evidence-rejected', errorCode:'unverified-leader-session-or-plan'});
         record('department-leader-session-promotion', {...extra, rootTaskId:'msg_root', leaderTaskId:'msg_leader',
           stage:'binding-readback', result:'confirmed', reason:'none'});
+        record('department-employee-admission', {...extra, rootTaskId:'msg_root', leaderTaskId:'msg_leader',
+          attemptId:'/SYNTHETIC_SENSITIVE_PATH/lp275', generation:2, stage:'admission', result:'refused',
+          reason:'task-record-unavailable', errorCode:'identity-lock-present', prompt:'SYNTHETIC_SENSITIVE_PROMPT',
+          exception:new Error('SYNTHETIC_SENSITIVE_ERROR')});
         await logger.logEssential('diagnostic-test-flush');
         const rotatedName = 'sinitek-cli.'+day+'.1.log';
         const names = fs.readdirSync(dir); if (!names.includes(rotatedName)) throw Error('rotation missing');
         const lines = names.map(n=>fs.readFileSync(path.join(dir,n),'utf8')).join('');
-        if(lines.includes('SYNTHETIC_SENSITIVE') || lines.includes('x'.repeat(129))) throw Error('sensitive marker escaped');
+        if(lines.includes('SYNTHETIC_SENSITIVE') || lines.includes('x'.repeat(129)) || lines.includes('identity-lock-present')) throw Error('sensitive marker escaped');
         const events = lines.split('\\n').filter(l=>l.includes(' | ')).map(l=>JSON.parse(l.split(' | ')[1]));
-        if(events.length!==5 || events[0].reason!=='unexpected-failure' || events[0].errorCode!=='department-producer-no-live-generation'
+        const admission = events[5];
+        if(events.length!==6 || events[0].reason!=='unexpected-failure' || events[0].errorCode!=='department-producer-no-live-generation'
           || events[1].retained!==1 || events[2].rootTaskId!=='invalid-id' || events[2].generation!==0 || events[2].errorCode
-          || events[3].errorCode!=='unverified-leader-session-or-plan' || events[4].stage!=='binding-readback')
+          || events[3].errorCode!=='unverified-leader-session-or-plan' || events[4].stage!=='binding-readback'
+          || admission.reason!=='task-record-unavailable' || admission.attemptId!=='invalid-id' || admission.result!=='refused'
+          || admission.stage!=='admission' || admission.errorCode || admission.session || admission.prompt || admission.path
+          || admission.exception || admission.leaderTaskId!=='msg_leader')
           throw Error('invalid bounded event');
         const rotated = path.join(dir, rotatedName), previous = path.join(dir, 'sinitek-cli.2000-01-01.log');
         fs.copyFileSync(path.join(dir, 'sinitek-cli.'+day+'.log'), previous);

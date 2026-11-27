@@ -83,7 +83,7 @@ test("normalizes prompt tags and core prompt text helpers without preserving inv
       includeSuffix: false,
       includeFinalAnswerInstruction: false,
     }),
-    "raw prompt"
+    `raw prompt\n${promptRuntime.RUNTIME_HISTORY_PROMPT_INSTRUCTION}`,
   );
   assert.match(
     promptRuntime.buildThinkingPrompt("codex", "high", "raw prompt"),
@@ -105,7 +105,7 @@ test("uses configured thinking instructions and tolerates a malformed attachment
     });
     assert.equal(
       promptRuntime.buildThinkingPrompt("codex", "high", "body", { includeFinalAnswerInstruction: false }),
-      "prefix\nbody\nsuffix",
+      `prefix\nbody\nsuffix\n${promptRuntime.RUNTIME_HISTORY_PROMPT_INSTRUCTION}`,
     );
     String.prototype.matchAll = (() => [[undefined, undefined, undefined, undefined]][Symbol.iterator]()) as typeof String.prototype.matchAll;
     assert.deepEqual(promptRuntime.collectCodexImagePathsFromPrompt("@malformed", "/tmp"), []);

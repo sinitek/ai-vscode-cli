@@ -69,6 +69,8 @@ function renderSessionTitleBadges(
         isOpenInConversationTabs,
         openConversationTabId: isOpenInConversationTabs ? "tab-1" : null,
         taskRole,
+        historyMode: isLoopSession ? "loop" : "vibe",
+        historyTaskRole: "main",
       }],
     },
   };

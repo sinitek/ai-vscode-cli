@@ -1,4 +1,9 @@
 import { createHash } from "crypto";
+import {
+  classifyLoopPlusInterruption,
+  readLoopPlusInterruptionPhase,
+  type LoopPlusInterruptionReason,
+} from "./loopPlusDiagnostics";
 import { resolveLoopAnswerConclusion } from "../loopFinalSummary";
 import { normalizeLoopBlockedSummary } from "../loopBlockedSummary";
 import {
@@ -382,6 +387,7 @@ function applyClassicLoopStop(context: LoopStopContext): LoopStopTransition {
       pendingClarification: undefined,
       subTasks: activity.subTasks,
       ...(context.finalSummary ? { finalSummary: context.finalSummary } : {}),
+      ...loopPlusInterruptionPatch(context.task, classifyLoopPlusInterruption({ status: "stopped" })),
       updatedAt: context.now,
     },
   };
@@ -402,9 +408,23 @@ function applyEventDrivenLoopStop(context: LoopStopContext): LoopStopTransition 
       schedulingMode: "event_driven",
       pendingClarification: undefined,
       ...(context.finalSummary ? { finalSummary: context.finalSummary } : {}),
+      ...loopPlusInterruptionPatch(context.task, classifyLoopPlusInterruption({ status: "stopped" })),
       updatedAt: context.now,
     },
   };
+}
+
+function loopPlusInterruptionPatch(
+  task: LoopTaskRecord | null,
+  reason: LoopPlusInterruptionReason,
+): Pick<LoopTaskRecord, "loopPlusInterruption"> | Record<string, never> {
+  const snapshot = task?.loopPlus;
+  const phase = readLoopPlusInterruptionPhase(
+    snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+      ? (snapshot as { phase?: unknown }).phase
+      : undefined,
+  );
+  return phase ? { loopPlusInterruption: { phase, reason } } : {};
 }
 
 function ignoredLoopInterrupt(preserveActivitySnapshot: boolean): LoopInterruptTransition {
@@ -430,6 +450,10 @@ function applyClassicLoopInterrupt(context: LoopInterruptContext): LoopInterrupt
       status: context.status,
       ...clearedActiveSubtasks(),
       pendingClarification: undefined,
+      ...loopPlusInterruptionPatch(context.task, classifyLoopPlusInterruption({
+        status: context.status,
+        backgroundSubtaskFailure: context.source === "subtask" && context.status === "error",
+      })),
       updatedAt: context.now,
     },
   };
@@ -449,6 +473,10 @@ function applyEventDrivenLoopInterrupt(context: LoopInterruptContext): LoopInter
       status: "error",
       schedulingMode: "event_driven",
       finalSummary: failureMessage || LOOP_EVENT_DRIVEN_INTERRUPT_SUMMARY,
+      ...loopPlusInterruptionPatch(context.task, classifyLoopPlusInterruption({
+        status: "error",
+        backgroundSubtaskFailure: context.source === "subtask",
+      })),
       updatedAt: context.now,
     },
   };

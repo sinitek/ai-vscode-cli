@@ -82,6 +82,34 @@ function readPersistedTask(filePath: string, taskId: string): LoopTaskRecord {
   return task;
 }
 
+test("round-trips only a known Loop+ interruption phase and reason", () => {
+  const directory = fs.mkdtempSync(path.join(testHome, "loop-interruption-store-"));
+  const filePath = path.join(directory, "loop-tasks.json");
+  try {
+    const task = createTask({
+      status: "error",
+      loopPlusInterruption: { phase: "reviewing", reason: "execution-error" },
+    });
+    loopTaskStore.writeLoopTaskStore(filePath, { tasks: [task] });
+    assert.deepEqual(readPersistedTask(filePath, task.id).loopPlusInterruption, {
+      phase: "reviewing",
+      reason: "execution-error",
+    });
+    const dropped = loopTaskStore.normalizeLoopTaskRecord({
+      ...task,
+      loopPlusInterruption: { phase: "reviewing", reason: "execution-error", taskId: "msg_secret" } as LoopTaskRecord["loopPlusInterruption"],
+    });
+    assert.deepEqual(dropped?.loopPlusInterruption, { phase: "reviewing", reason: "execution-error" });
+    assert.equal(JSON.stringify(dropped).includes("msg_secret"), false);
+    assert.equal(loopTaskStore.normalizeLoopTaskRecord({
+      ...task,
+      loopPlusInterruption: { phase: "nope", reason: "execution-error" } as unknown as LoopTaskRecord["loopPlusInterruption"],
+    })?.loopPlusInterruption, undefined);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("round-trips classic Loop progress separately from Loop+ and discards malformed values", () => {
   const directory = fs.mkdtempSync(path.join(testHome, "loop-progress-store-"));
   const filePath = path.join(directory, "loop-tasks.json");

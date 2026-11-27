@@ -690,6 +690,42 @@ test("preserves the event-driven snapshot when an interrupt forces error", () =>
   assert.equal(classicMissingTask.patch.status, "error");
 });
 
+test("records scheduler phase and interruption reason only when the snapshot phase is known", () => {
+  const snapshot = { phase: "reviewing" };
+  const running = createTask({ schedulingMode: "event_driven", loopPlus: snapshot });
+  const execution = interrupt("event_driven", {
+    task: running,
+    status: "error",
+    source: "main",
+    failureMessage: "scheduler exploded",
+  });
+  const background = interrupt("event_driven", {
+    task: running,
+    status: "error",
+    source: "subtask",
+    failureMessage: "child failed",
+  });
+  const stopped = stop("event_driven", running, { finalSummary: "用户已停止" });
+  const classicBackground = interrupt("classic", {
+    task: createTask({ loopPlus: snapshot }),
+    status: "error",
+    source: "subtask",
+  });
+  const classicStop = stop("classic", createTask({ loopPlus: snapshot }), {});
+  const unphased = interrupt("event_driven", {
+    task: createTask({ schedulingMode: "event_driven" }),
+    status: "error",
+    source: "main",
+  });
+
+  assert.deepEqual(execution.patch.loopPlusInterruption, { phase: "reviewing", reason: "execution-error" });
+  assert.deepEqual(background.patch.loopPlusInterruption, { phase: "reviewing", reason: "background-subtask-failure" });
+  assert.deepEqual(stopped.patch.loopPlusInterruption, { phase: "reviewing", reason: "user-stop" });
+  assert.deepEqual(classicBackground.patch.loopPlusInterruption, { phase: "reviewing", reason: "background-subtask-failure" });
+  assert.deepEqual(classicStop.patch.loopPlusInterruption, { phase: "reviewing", reason: "user-stop" });
+  assert.equal(Object.prototype.hasOwnProperty.call(unphased.patch, "loopPlusInterruption"), false);
+});
+
 test("ignores a classic or event-driven interrupt when the task is no longer running", () => {
   for (const schedulingMode of [undefined, "classic", "event_driven"] as const) {
     for (const status of ["completed", "needs-review", "error", "stopped"] as const) {

@@ -1,7 +1,12 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { spawnSync } from "node:child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 import {
+  buildLoopPlusDecisionHelperPromptContext,
   buildLoopPlusMainModelPrompt,
   buildLoopPlusSubtaskModelPrompt,
   type LoopPlusDepartmentEmployeeCapacitySnapshot,
@@ -11,10 +16,12 @@ import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
 import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../../loopDirectExecutionPolicy";
 import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
+import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES, type LoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_DECISION_SUBTASK_MAX,
   parseLoopPlusDecision,
+  parseLoopPlusDecisionForFrozenInput,
   type LoopPlusDecision,
 } from "../../loopPlusDecision";
 import {
@@ -790,6 +797,35 @@ test("report-only handoff and outstanding repair prompt remain explicit and scop
   assert.match(repairPrompt, /same subtasks\[\]\.id/);
 });
 
+function linkageSection(prompt: string): string {
+  const start = prompt.indexOf("Frozen review linkage from this snapshot, in frozen order.");
+  const end = prompt.indexOf("Valid protocol examples follow.");
+  assert.ok(start >= 0 && end > start);
+  return prompt.slice(start, end);
+}
+
+function frozenReviewItems(section: string): Array<{
+  reviewIndex: number;
+  eventId: string;
+  originalLogicalSubtaskId: string;
+  outcome: string;
+}> {
+  return section.split("\n").flatMap((line) => {
+    const prefix = "Frozen review item: ";
+    if (!line.startsWith(prefix)) return [];
+    return [JSON.parse(line.slice(prefix.length)) as {
+      reviewIndex: number;
+      eventId: string;
+      originalLogicalSubtaskId: string;
+      outcome: string;
+    }];
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function extractProtocolExamples(prompt: string): Map<string, string> {
   const examples = new Map<string, string>();
   const pattern = /LOOP_PLUS_PROTOCOL_EXAMPLE ([a-z]+)\n```json\n([\s\S]*?)\n```/g;
@@ -1319,6 +1355,200 @@ test("single and batched accept examples combine a focused repair with independe
   }
 });
 
+test("frozen review linkage lists every batch item and keeps failed or stopped rules", () => {
+  const batch = [
+    review("event-pass", "sub-pass"),
+    { ...review("event-fail-a", "sub-fail-a"), outcome: "failed" as const },
+    review("event-mid", "sub-mid"),
+    { ...review("event-fail-b", "sub-fail-b"), outcome: "stopped" as const },
+  ];
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    acceptanceEventIds: batch.map((item) => item.eventId),
+    currentEventId: batch[0].eventId,
+    view: view({
+      currentReview: batch[0],
+      reviewQueue: batch.slice(1),
+      visibleReviewCount: batch.length,
+    }),
+  }));
+  const section = linkageSection(prompt);
+  assert.match(section, /This prompt does not choose the verdict/);
+  assert.match(section, /Do not infer a failed review's link from subtasks order/);
+  assert.match(section, /that fill is not the verdict for this snapshot/);
+  assert.match(section, /outcome is failed or stopped is an acceptance failure/);
+  assert.deepEqual(frozenReviewItems(section), batch.map((item, reviewIndex) => ({
+    reviewIndex,
+    eventId: item.eventId,
+    originalLogicalSubtaskId: item.subtaskId,
+    outcome: item.outcome,
+  })));
+  for (const [batchIndex, item] of batch.entries()) {
+    const repairLine = section.split("\n").find((line) => line.startsWith(`If reviews[${batchIndex}] acceptance is failed and this event needs repair:`));
+    const noRepairLine = section.split("\n").find((line) => line.startsWith(`If reviews[${batchIndex}] acceptance is failed and this event needs no repair:`));
+    assert.ok(repairLine && noRepairLine);
+    assert.ok(repairLine.includes(JSON.stringify({
+      reviewEventId: item.eventId,
+      acceptance: "failed",
+      reason: "<evidence-backed reason>",
+      subtaskIds: [item.subtaskId],
+    })));
+    assert.match(repairLine, new RegExp(`exactly one subtasks entry whose id is ${escapeRegExp(JSON.stringify(item.subtaskId))}`));
+    assert.match(repairLine, /only this original logical subtask id/);
+    assert.equal(repairLine.includes("independentSubtaskIds"), false);
+    assert.ok(noRepairLine.includes(JSON.stringify({
+      reviewEventId: item.eventId,
+      acceptance: "failed",
+      reason: "<evidence-backed reason>",
+      noRepairReason: "<non-empty evidence-backed reason that no repair is needed>",
+    })));
+    assert.match(noRepairLine, /Omit subtaskIds/);
+    assert.equal(noRepairLine.includes('"subtaskIds"'), false);
+  }
+  assert.match(section, /Independent remaining-goal work is associated only through accept\.independentSubtaskIds/);
+  assert.match(section, /appears exactly once across reviews\[\*\]\.subtaskIds and independentSubtaskIds/);
+  assert.match(section, /Do not put a repair id in independentSubtaskIds/);
+  assert.match(section, /Do not put an independent id in a failed review's subtaskIds/);
+  assert.equal(parseLoopPlusDecision(extractProtocolExamples(prompt).get("accept"))?.status, "accept");
+});
+
+test("completed executions still offer mixed failed dispositions, and empty or late batches stay out", () => {
+  const doneA = review('event-"a"', 'sub-"a"');
+  const doneB = review("event-b\n}", "sub-b\\id");
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    acceptanceEventIds: [doneA.eventId, doneB.eventId],
+    view: view({
+      currentReview: doneA,
+      reviewQueue: [doneB, { ...review("event-late\n}", "sub-late"), outcome: "failed" }],
+      visibleReviewCount: 3,
+    }),
+  }));
+  const section = linkageSection(prompt);
+  assert.doesNotMatch(section, /outcome is failed or stopped is an acceptance failure/);
+  assert.deepEqual(frozenReviewItems(section), [
+    { reviewIndex: 0, eventId: doneA.eventId, originalLogicalSubtaskId: doneA.subtaskId, outcome: "completed" },
+    { reviewIndex: 1, eventId: doneB.eventId, originalLogicalSubtaskId: doneB.subtaskId, outcome: "completed" },
+  ]);
+  assert.equal(section.includes("event-late"), false);
+  assert.equal(section.includes("sub-late"), false);
+  for (const [batchIndex, item] of [doneA, doneB].entries()) {
+    assert.ok(section.includes(`If reviews[${batchIndex}] acceptance is failed and this event needs repair: ${JSON.stringify({
+      reviewEventId: item.eventId,
+      acceptance: "failed",
+      reason: "<evidence-backed reason>",
+      subtaskIds: [item.subtaskId],
+    })}`));
+    assert.ok(section.includes(`If reviews[${batchIndex}] acceptance is failed and this event needs no repair: ${JSON.stringify({
+      reviewEventId: item.eventId,
+      acceptance: "failed",
+      reason: "<evidence-backed reason>",
+      noRepairReason: "<non-empty evidence-backed reason that no repair is needed>",
+    })}`));
+    assert.ok(section.includes(`whose id is ${JSON.stringify(item.subtaskId)}`));
+  }
+  assert.match(section, /appears exactly once/);
+
+  const empty = buildLoopPlusMainModelPrompt(mainContext({
+    acceptanceEventIds: [],
+    view: view({
+      currentReview: { ...review("event-late", "sub-late"), outcome: "failed" },
+      reviewQueue: [review("event-later", "sub-later")],
+      visibleReviewCount: 2,
+    }),
+  }));
+  assert.equal(empty.includes("Frozen review linkage from this snapshot, in frozen order."), false);
+  assert.match(empty, /eventId=event-late subtask=sub-late/);
+});
+
+test("failed reviews without repair linkage stay rejected, including duplicate independent ids", () => {
+  const reviewEventIds = ["event-pass", "event-fail-a", "event-mid", "event-fail-b"];
+  const subtask = (id: string) => ({ id, title: id, prompt: `Repair or deliver ${id}`, taskType: "backend" as const });
+  const passed = (reviewEventId: string) => ({ reviewEventId, acceptance: "passed" as const, reason: "证据通过" });
+  const base = {
+    status: "accept" as const,
+    progressPercent: 74,
+    reviewEventIds,
+    acceptance: {
+      passed: false,
+      checks: [
+        { name: "dispatched work", passed: true, detail: "已交付" },
+        { name: "contracts", passed: true, detail: "契约保持" },
+        { name: "tests", passed: false, detail: "失败项仍未关联返工" },
+        { name: "artifacts", passed: true, detail: "无新产物" },
+        { name: "unauthorized changes", passed: true, detail: "无无关改动" },
+        { name: "omissions and regressions", passed: false, detail: "两处失败未处置" },
+      ],
+    },
+  };
+  const unlinked = {
+    ...base,
+    reviews: [
+      passed("event-pass"),
+      { reviewEventId: "event-fail-a", acceptance: "failed" as const, reason: "编译失败" },
+      passed("event-mid"),
+      { reviewEventId: "event-fail-b", acceptance: "failed" as const, reason: "终态缺失" },
+    ],
+    subtasks: [subtask("sub-fail-a"), subtask("sub-fail-b"), subtask("sub-independent")],
+    independentSubtaskIds: ["sub-independent"],
+  };
+  assert.equal(parseLoopPlusDecision(JSON.stringify(unlinked), { requireAcceptanceFeedback: true, requireProgressPercent: true }), null);
+
+  const eachRepair = parseLoopPlusDecision(JSON.stringify({
+    ...base,
+    reviews: [
+      passed("event-pass"),
+      { reviewEventId: "event-fail-a", acceptance: "failed", reason: "编译失败", subtaskIds: ["sub-fail-a"] },
+      passed("event-mid"),
+      { reviewEventId: "event-fail-b", acceptance: "failed", reason: "终态缺失", subtaskIds: ["sub-fail-b"] },
+    ],
+    subtasks: [subtask("sub-fail-a"), subtask("sub-fail-b"), subtask("sub-independent")],
+    independentSubtaskIds: ["sub-independent"],
+  }), { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.deepEqual(eachRepair?.reviews?.map((item) => item.subtaskIds ?? item.noRepairReason), [
+    undefined, ["sub-fail-a"], undefined, ["sub-fail-b"],
+  ]);
+  assert.deepEqual(eachRepair?.independentSubtaskIds, ["sub-independent"]);
+
+  const noRepair = parseLoopPlusDecision(JSON.stringify({
+    ...base,
+    reviews: [
+      passed("event-pass"),
+      { reviewEventId: "event-fail-a", acceptance: "failed", reason: "编译失败", noRepairReason: "该失败已由后续独立交付覆盖" },
+      passed("event-mid"),
+      { reviewEventId: "event-fail-b", acceptance: "failed", reason: "终态缺失", subtaskIds: ["sub-fail-b"] },
+    ],
+    subtasks: [subtask("sub-fail-b"), subtask("sub-independent")],
+    independentSubtaskIds: ["sub-independent"],
+  }), { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.equal(noRepair?.reviews?.[1].noRepairReason, "该失败已由后续独立交付覆盖");
+  assert.equal(noRepair?.reviews?.[1].subtaskIds, undefined);
+  assert.deepEqual(noRepair?.independentSubtaskIds, ["sub-independent"]);
+
+  const duplicated = parseLoopPlusDecision(JSON.stringify({
+    ...unlinked,
+    reviews: [
+      passed("event-pass"),
+      { reviewEventId: "event-fail-a", acceptance: "failed", reason: "编译失败", subtaskIds: ["sub-fail-a"] },
+      passed("event-mid"),
+      { reviewEventId: "event-fail-b", acceptance: "failed", reason: "终态缺失", noRepairReason: "不再返工" },
+    ],
+    subtasks: [subtask("sub-fail-a"), subtask("sub-independent")],
+    independentSubtaskIds: ["sub-fail-a", "sub-independent"],
+  }), { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.equal(duplicated, null);
+
+  const bothFields = parseLoopPlusDecision(JSON.stringify({
+    ...base,
+    reviews: [
+      passed("event-pass"),
+      { reviewEventId: "event-fail-a", acceptance: "failed", reason: "编译失败", noRepairReason: "不返工", subtaskIds: ["sub-fail-a"] },
+      passed("event-mid"),
+      { reviewEventId: "event-fail-b", acceptance: "failed", reason: "终态缺失", subtaskIds: ["sub-fail-b"] },
+    ],
+    subtasks: [subtask("sub-fail-a"), subtask("sub-fail-b")],
+  }), { requireAcceptanceFeedback: true, requireProgressPercent: true });
+  assert.equal(bothFields, null);
+});
+
 test("a multi-event acceptance batch is confirmed in order and includes the user messages", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
     currentEventId: "event-live-42",
@@ -1583,3 +1813,206 @@ for (const { name, task, acceptanceRequired } of [
     assert.match(subtaskPrompt, /Session continuation is separate from dependencies/);
   });
 }
+
+function helperContextFromPrompt(prompt: string): ReturnType<typeof buildLoopPlusDecisionHelperPromptContext> {
+  const marker = "LOOP_PLUS_DECISION_HELPER_CONTEXT\n```json\n";
+  const start = prompt.indexOf(marker);
+  assert.ok(start >= 0, "missing decision helper context");
+  const jsonStart = start + marker.length;
+  const jsonEnd = prompt.indexOf("\n```", jsonStart);
+  assert.ok(jsonEnd > jsonStart);
+  return JSON.parse(prompt.slice(jsonStart, jsonEnd)) as ReturnType<typeof buildLoopPlusDecisionHelperPromptContext>;
+}
+
+function decisionHelperSection(prompt: string): string {
+  const start = prompt.indexOf("Decision helper:");
+  const end = prompt.indexOf("Valid protocol examples follow.");
+  assert.ok(start >= 0 && end > start);
+  return prompt.slice(start, end);
+}
+
+test("main and department-leader prompts keep the frozen helper context and exclude late events", () => {
+  const reports = ["report-z-first", "report-a-second"];
+  const frozenReviews = [
+    review("event-z", "sub-z"),
+    review("event-a", "sub-a"),
+    review("event-c", "sub-c"),
+    review("event-b", "sub-b"),
+  ];
+  const late = review("event-late", "sub-late");
+  const acceptancePlan: LoopPlusAcceptancePlanSnapshot = {
+    id: "plan-security",
+    name: "安全审查",
+    checks: ["security"],
+    otherText: "",
+    systemDefault: false,
+  };
+  const frozen = mainContext({
+    acceptanceEventIds: frozenReviews.map((item) => item.eventId),
+    reportEventIds: reports,
+    allowDirectCompletion: false,
+    acceptancePlan,
+    view: view({
+      currentReview: frozenReviews[0],
+      reviewQueue: [...frozenReviews.slice(1), late],
+      visibleReviewCount: frozenReviews.length + 1,
+      reportQueue: [
+        { eventId: reports[0], subtaskId: "report-z", attemptId: "r1", outcome: "completed", detail: "first" },
+        { eventId: reports[1], subtaskId: "report-a", attemptId: "r2", outcome: "completed", detail: "second" },
+        { eventId: "report-late", subtaskId: "report-late", attemptId: "r3", outcome: "completed", detail: "late" },
+      ],
+    }),
+  });
+  const prompt = buildLoopPlusMainModelPrompt(frozen);
+  const embedded = helperContextFromPrompt(prompt);
+  assert.deepEqual(embedded, buildLoopPlusDecisionHelperPromptContext(frozen));
+  assert.equal(embedded.v, 1);
+  assert.deepEqual(embedded.reviews, frozenReviews.map((item) => ({ eventId: item.eventId, subtaskId: item.subtaskId })));
+  assert.equal(embedded.reviews.some((item) => item.eventId === late.eventId), false);
+  assert.deepEqual(embedded.reportEventIds, reports);
+  assert.equal(embedded.reportEventIds.includes("report-late"), false);
+  assert.deepEqual(embedded.acceptancePlanKeys, ["security"]);
+  assert.equal(embedded.allowDirectCompletion, false);
+  assert.equal(embedded.requireAcceptanceFeedback, true);
+  assert.equal(embedded.requireProgressPercent, true);
+  assert.equal(embedded.subtaskMax, LOOP_PLUS_DECISION_SUBTASK_MAX);
+  assert.ok(embedded.statuses.includes("accept"));
+  assert.equal(embedded.statuses.includes("completed"), false);
+  const section = decisionHelperSection(prompt);
+  assert.ok(section.indexOf("template --status") < section.indexOf("build --status"));
+  assert.match(section, /dist\/loopPlusDecisionHelper\.js/);
+  assert.match(section, /node "<extension install directory>\/dist\/loopPlusDecisionHelper\.js" template --status <status>/);
+  assert.match(section, /space in that directory stays inside the path/);
+  assert.match(section, /UTF-8 JSON/);
+  assert.match(section, /Prompt refresh and protocol correction keep this frozen context/);
+  assert.match(section, /Do not add late events/);
+  assert.match(section, /stderr names the field to correct/);
+  assert.match(section, /return that stdout unchanged/);
+  assert.match(section, /cannot execute tools at all/);
+  assert.match(section, /tool permission and capability this CLI already has/);
+  assert.match(section, /Do not copy those JSON checks/);
+  assert.doesNotMatch(section, /须为数组/);
+  assert.match(section, /Department leaders reuse this same helper/);
+  assert.match(section, /The host rechecks the latest runtime state and submits/);
+  const leaderPrompt = buildLoopPlusMainModelPrompt({
+    ...frozen,
+    departmentEmployeeCapacity: {
+      rootTaskId: "root-task",
+      leaderTaskId: "leader-task",
+      maxEmployees: 4,
+    },
+  });
+  assert.deepEqual(helperContextFromPrompt(leaderPrompt), embedded);
+  const refreshed = buildLoopPlusMainModelPrompt({
+    ...frozen,
+    view: view({
+      ...frozen.view,
+      reviewQueue: [...frozenReviews.slice(1), late, review("event-later", "sub-later")],
+      visibleReviewCount: frozenReviews.length + 2,
+    }),
+  });
+  const refreshedContext = helperContextFromPrompt(refreshed);
+  assert.deepEqual(refreshedContext.reviews, embedded.reviews);
+  assert.deepEqual(refreshedContext.reportEventIds, embedded.reportEventIds);
+  assert.equal(refreshedContext.reviews.some((item) => item.eventId === "event-later"), false);
+});
+
+test("the macOS helper entry accepts one mixed batch after a field correction and rejects a bad collaboration", () => {
+  assert.equal(process.platform, "darwin");
+  const entry = path.join(__dirname, "../../loopPlusDecisionHelper.js");
+  assert.equal(fs.existsSync(entry), true);
+  const reports = ["report-z-first", "report-a-second"];
+  const frozenReviews = [
+    review("event-z", "sub-z"),
+    review("event-a", "sub-a"),
+    review("event-c", "sub-c"),
+    review("event-b", "sub-b"),
+  ];
+  const request = mainContext({
+    acceptanceEventIds: frozenReviews.map((item) => item.eventId),
+    reportEventIds: reports,
+    allowDirectCompletion: false,
+    acceptancePlan: {
+      id: "plan-security",
+      name: "安全审查",
+      checks: ["security"],
+      otherText: "",
+      systemDefault: false,
+    },
+    view: view({
+      currentReview: frozenReviews[0],
+      reviewQueue: [...frozenReviews.slice(1), review("event-late", "sub-late")],
+      visibleReviewCount: 5,
+    }),
+  });
+  const helperContext = buildLoopPlusDecisionHelperPromptContext(request);
+  assert.equal(helperContext.reviews.some((item) => item.eventId === "event-late"), false);
+  const checks = LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.map((name) => ({
+    name,
+    passed: name !== "tests",
+    detail: "证据已核对",
+  }));
+  const fields = {
+    progressPercent: 23,
+    reportEventIds: reports,
+    acceptance: { passed: false, checks },
+    acceptancePlanResults: [{ key: "security", passed: true, reason: "未引入新的安全暴露" }],
+    reviews: [
+      { acceptance: "failed", reason: "定向测试失败", repair: { id: "wrong-id", title: "返工", prompt: "按失败断言修复" } },
+      { acceptance: "failed", reason: "失败但无需再改", noRepairReason: "需求已撤回，保留失败结论" },
+      { acceptance: "cancelled", reason: "该交付不再需要验收" },
+      { acceptance: "passed", reason: "实现与契约一致" },
+    ],
+    independentSubtasks: [{ id: "sub-new", title: "独立派发", prompt: "完成剩余交付并记录结果" }],
+    departmentCollaborations: [{ id: "collab-1", targetLeaderTaskId: "leader-other", body: "请配合字段" }],
+  };
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "lp516-decision-helper-"));
+  const invoke = (inputFields: unknown) => spawnSync(process.execPath, [entry, "build", "--status", "accept"], {
+    input: JSON.stringify({ context: helperContext, fields: inputFields }),
+    encoding: "utf8",
+    timeout: 20000,
+    env: { ...process.env, HOME: home, USERPROFILE: home },
+  });
+  try {
+    const rejected = invoke(fields);
+    assert.equal(rejected.status, 1, rejected.stderr);
+    assert.equal(rejected.stdout, "");
+    assert.match(rejected.stderr, /fields\.reviews\[0\]\.repair\.id/);
+    assert.match(rejected.stderr, /sub-z/);
+    const corrected = {
+      ...fields,
+      reviews: fields.reviews.map((item, index) => index === 0
+        ? { ...item, repair: { ...item.repair, id: "sub-z" } }
+        : item),
+    };
+    const accepted = invoke(corrected);
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.equal(accepted.stderr, "");
+    assert.equal(accepted.stdout.trim().split("\n").length, 1);
+    const options = {
+      subtaskMax: helperContext.subtaskMax,
+      acceptancePlanKeys: helperContext.acceptancePlanKeys,
+      allowDirectCompletion: helperContext.allowDirectCompletion,
+      requireAcceptanceFeedback: helperContext.requireAcceptanceFeedback,
+      requireProgressPercent: helperContext.requireProgressPercent,
+    };
+    const decision = JSON.parse(accepted.stdout) as LoopPlusDecision;
+    const again = parseLoopPlusDecisionForFrozenInput(accepted.stdout, options);
+    assert.equal(again.rejectionReason, null);
+    assert.deepEqual(again.decision, decision);
+    assert.deepEqual(decision.reviewEventIds, helperContext.reviews.map((item) => item.eventId));
+    assert.equal(decision.reviewEventIds?.includes("event-late"), false);
+    assert.deepEqual(decision.reportEventIds, reports);
+    assert.deepEqual(decision.reviews?.map((item) => item.acceptance), ["failed", "failed", "cancelled", "passed"]);
+    assert.deepEqual(decision.departmentCollaborations, fields.departmentCollaborations);
+    const badCollaboration = invoke({
+      ...corrected,
+      departmentCollaborations: [{ id: "", targetLeaderTaskId: "leader-other", body: "缺 id" }],
+    });
+    assert.equal(badCollaboration.status, 1, badCollaboration.stderr);
+    assert.equal(badCollaboration.stdout, "");
+    assert.match(badCollaboration.stderr, /fields\.departmentCollaborations/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

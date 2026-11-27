@@ -10,6 +10,7 @@ const {
   HUMAN_INTERACTION_PROMPT_INSTRUCTION,
   CODEX_TASK_LIST_PROMPT_INSTRUCTION,
   GROK_TASK_LIST_PROMPT_INSTRUCTION,
+  RUNTIME_HISTORY_PROMPT_INSTRUCTION,
   resolveRecordedExecutionModel,
 } = require("../../promptRuntime") as typeof import("../../promptRuntime");
 const {
@@ -114,6 +115,18 @@ test("guides final replies to use real Markdown images in ordinary and hidden re
       assert.match(prompt, /先给出清晰的文字结论/u);
       assert.match(prompt, /简单任务、没有图示价值或用户要求纯文字时可以省略/u);
     }
+  }
+});
+
+test("provides targeted local history guidance to Vibe and machine-protocol runs", () => {
+  assert.match(RUNTIME_HISTORY_PROMPT_INSTRUCTION, /\.sinitek_cli/u);
+  assert.match(RUNTIME_HISTORY_PROMPT_INSTRUCTION, /仅在当前任务需要时.*定向只读查阅/u);
+  for (const directory of ["loop-tasks", "loop-communications", "sessions", "messages", "prompt-history", "logs"]) {
+    assert.ok(RUNTIME_HISTORY_PROMPT_INSTRUCTION.includes(`\`${directory}/\``));
+  }
+  for (const includeFinalAnswerInstruction of [true, false]) {
+    const prompt = buildThinkingPrompt("codex", "medium", "本轮任务", { includeFinalAnswerInstruction });
+    assert.equal(prompt.split(RUNTIME_HISTORY_PROMPT_INSTRUCTION).length, 2);
   }
 });
 

@@ -450,6 +450,33 @@ test("Loop+ rejects an otherwise complete terminal bound to another session", as
   }
 });
 
+test("Loop+ never falls back to ordinary assistant projection after observing an unbound native terminal", async () => {
+  for (const mismatch of [false, true]) {
+    const fixture = createLoopPlusRuntimeFixture();
+    try {
+      fixture.queueMain((input, tabId) => {
+        input.loopPlusNativeFinalObserved?.();
+        if (mismatch) input.loopPlusFinalAssistantHandoff?.({ runId: "wrong-run", sessionId: "wrong-session",
+          taskId: input.loopTaskId!, round: input.loopRound!, role: "main", attemptId: input.loopAttemptId,
+          content: "mismatched terminal content" });
+        fixture.publish(input, tabId, {
+          status: "end",
+          content: decision({ status: "completed", finalSummary: "ordinary assistant text is not terminal proof" }),
+        });
+      });
+      const result = await fixture.adapter.runMain({ taskId: "native-terminal-gap", kind: "review",
+        prompt: "controlled", modelPrompt: "controlled", reviewEventId: "native-terminal-review", target: fixture.target }).promise;
+      assert.equal(result, null);
+      assert.equal(fixture.mainCalls.length, 1);
+      assert.ok(fixture.logs.some((entry) => entry.event === "loop-plus-invocation-diagnostic"
+        && (entry.detail as { stage?: string; code?: string }).stage === "projection"
+        && (entry.detail as { code?: string }).code === "terminal-content-unknown"));
+    } finally {
+      fixture.dispose();
+    }
+  }
+});
+
 test("Loop+ records main-turn and attempt lifecycle performance stages", async (context) => {
   const entries: PerformanceEntry[] = [];
   context.mock.method(logger, "writePerformanceLog", async (entry: PerformanceEntry) => {

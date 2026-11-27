@@ -67,6 +67,8 @@ test("projects old Loop+ protocol history using the bound user's root prompt", (
   });
   assert.equal(session.firstPrompt, "用户原始需求：完成发布准备");
   assert.equal(session.label, "用户原始需求：完成发布准备");
+  assert.equal(session.historyMode, "loop");
+  assert.equal(session.historyTaskRole, "main");
   assert.equal(session.taskRole, "main");
 });
 
@@ -88,6 +90,37 @@ test("projects a main-model child execution as a subtask with the dispatched pro
   assert.equal(session.firstPrompt, "整理验收证据并更新报告");
   assert.equal(session.label, "整理验收证据并更新报告");
   assert.equal(session.taskRole, "subtask");
+  assert.equal(session.historyMode, "loop");
+  assert.equal(session.historyTaskRole, "subtask");
+});
+
+test("projects a cross-CLI Loop+ child using the child's execution binding", () => {
+  const session = projectSession({
+    sessionId: "child-session",
+    loopTasks: [{
+      id: "loop-plus", cli: "claude", sessionId: "main-session", schedulingMode: "event_driven",
+      rootPrompt: "父任务", subTasks: [{ id: "child", prompt: "执行子任务", executionSession: { cli: "codex", sessionId: "child-session" } }],
+    }],
+  });
+  assert.equal(session.historyMode, "loop-plus");
+  assert.equal(session.historyTaskRole, "subtask");
+});
+
+test("projects department director and leader sessions without treating leaders as main tasks", () => {
+  for (const [role, sessionId, expected] of [
+    ["director", "director-session", "department"],
+    ["leader", "leader-session", "internal"],
+  ] as const) {
+    const session = projectSession({
+      sessionId,
+      loopTasks: [{
+        id: role === "director" ? "director" : "leader", cli: "codex", sessionId, rootPrompt: "任务", subTasks: [],
+        department: { role, rootTaskId: "director", parentTaskId: role === "director" ? null : "director", leaderSubtaskId: role === "director" ? null : "module" },
+      }],
+    });
+    assert.equal(session.historyMode, expected);
+    assert.equal(session.historyTaskRole, "main");
+  }
 });
 
 for (const missingFirstPrompt of [false, true]) {

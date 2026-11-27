@@ -48,7 +48,107 @@
 
 ### 失败返工关联或 ID 冲突
 
-`reviews` 的失败结论须关联真实失败的逻辑任务；若需修复，派发返工须恰好关联失败项并沿用其原逻辑 ID，若无需返工则使用规则支持的显式理由。返工缺少合法来源、错连其它事件/任务、用新 ID 替代欠返工项或与同决策中的已有项 ID 冲突，通常在解析成功后由跨字段或宿主关联拒绝。**返工关联拒绝不是 JSON 语法错误。**“群聊继续后仍暂停”也可能只是将此类拒绝再次暴露，而不能据此断言按钮请求链路成功或失败。
+`reviews` 的失败结论须关联真实失败的逻辑任务；若需修复，派发返工须恰好关联失败项并沿用其原逻辑 ID，若无需返工则使用规则支持的显式理由。返工缺少合法来源、错连其它事件/任务、用新 ID 替代欠返工项或与同决策中的已有项 ID 冲突，通常在解析成功后由跨字段或宿主关联拒绝。**返工关联拒绝不是 JSON 语法错误。**“群聊继续后仍暂停”也可能只是将此类拒绝再次暴露，而不能据此断言按钮请求链路成功或失败。2026-11-26 09:35 的实例按沟通记录、当日日志和当前源码分层写在下一节。
+
+## 2026-11-26 09:35：`validation.accept.failed_repair_missing`
+
+这一节只分析当日记下的一则失败返工关联通知。观察、推断和未知分开写。当前源码用来说明校验顺序，不用来宣称当时加载的二进制与工作区逐行相同，也不宣称根因已经修复。
+
+### 观察
+
+**暂停通知。** 当前任务主沟通在 2026-11-26T09:42:25.070Z 收录了一则更新时间为 2026-11-26T09:35:19.019Z 的暂停，状态为 needs-review。具体原因以「决策协议校验失败（validation）」起句，原因码是 `validation.accept.failed_repair_missing`，后面是该码的固定提示，没有 `field=`。次数句是「主模型决策未通过校验，已自动继续执行一次，续跑后的决策仍未通过校验」。同一主沟通在 2026-11-26T08:12:05.002Z 的暂停写的是「已自动继续执行 3 次」，与当前 `src/loopPlusProtocolRepair.ts` 在 `LOOP_PLUS_PROTOCOL_AUTOMATIC_RETRY_LIMIT = 3` 时拼出的句子一致。09:35 的次数句则与提交 `a7895ada`（2026-11-25）中 `src/loopPlusProtocolRepair.ts` 的固定句子一致。该原因码的固定提示与提交 `081b33c7`（2026-11-26，提交说明为 version 1.10.5）以及当前工作区 `src/loopPlusProtocolDiagnostics.ts` 的表项一致。`a7895ada` 的树里没有这个原因码；`081b33c7` 的树里没有「已自动继续执行一次」。当前 `dist/loopPlusProtocolDiagnostics.js` 含有该提示，当前暂停构建器不会生成「一次」这句。这则通知因此同时带有两段目前不在同一已核提交里的文字。它证明写出通知的宿主使用了这个原因码和这两段文字。它没有证明加载的是 `a7895ada`、`081b33c7`、当前工作区或某个已发布包。
+
+**决策形状来自派工记录。** 同一主沟通的「2026-11-26｜区分两次拒绝及本次派工边界」写明：09:35:16.496Z 的助手终态是可解析的 `accept`；四项结论依次为通过、失败、通过、失败；第 2、4 项都没有 `subtaskIds` 或 `noRepairReason`；同一响应的 `subtasks` 含返工候选，另有单独的 `independentSubtaskIds`。该记录把第三个候选称为已经正确标成独立工作。暂停正文没有四项结论、行下标或原始对象。本尝试在任务沟通文件里没有找到该原始 JSON，也没有重放解析器。
+
+**当日保留日志。** `src/logger.ts` 把诊断写到用户主目录下的 `.sinitek_cli/logs`。2026-11-26 主日志全文里，`loop-plus-protocol-miss`、`loop-plus-dispatched`、`loop-plus-protocol-recovery`、`failed_repair_missing` 和 `state.dispatch.rejected` 的出现次数都是 0。性能日志在 09:35:18.871Z 至 09:35:18.920Z 有 `mode=loop_plus`、`role=main` 的 runner、invocation 和 main-turn，结果都是 `returned`；main-turn 时长约 1444.6 秒。09:35:16.496Z 不在这两份日志的时间戳中。主日志 09:35:22.087Z 有一条 `loop-group-chat-continue-settled`；本尝试没有解读它的载荷。08:21:32Z 的主日志行是 `conversation-tab-close`（.275Z、.279Z）和 `loop-plus-subtask-tab-auto-closed`（.413Z）。暂停通知上的 08:21:32.130Z 与这些行不是同一条记录。
+
+**当前源码里的三层顺序。** 下面是工作区阅读，不是对 09:35 原文的重放。
+
+1. **JSON 可解析。** `src/loopPlusDecision.ts` 先抽取对象并做 `JSON.parse`，然后才做字段校验。空文本或语法错误走 `format`，其中包括 `EmptyResponse`。09:35 通知的类别是 validation。派工记录称终态是可解析的 `accept`。两者方向一致，原始文本仍未附在沟通文件中。
+2. **跨字段验收协议拒绝。** `readAcceptReviews` 在 `subtasks` 与 `reviews[].subtaskIds`、`independentSubtaskIds` 的集合相等检查之前返回：某一项 `acceptance === "failed"`，且 `subtaskIds` 为空，且没有非空 `noRepairReason`。原因句包含「验收失败必须关联修复子任务」。`loopPlusProtocolParseDiagnostic` 只在原因句包含该句时映射到 `validation.accept.failed_repair_missing`。按当前调用顺序，进入该函数表示 `subtasks` 已通过形状校验，并且 `independentSubtaskIds` 已是合法 ID 数组或被省略为空数组。失败行上的两个处置字段仍要单独出现；写在 `subtasks` 或独立列表里的候选不会填上该行。函数在第一处缺失处返回，后面的 `validation.accept.unlinked_subtasks` 不会再发出。`protocolMiss` 放进暂停的是原因码和固定提示，带 `reviews[index]` 的解析器原因句不进入这段文字。09:35 通知只有固定提示、没有 `reviews[`，与这条当前路径的可见结果相符。这不能反推当时二进制逐行相同。
+3. **后续宿主状态拒绝尚未发生在这则通知里。** `applyAcceptDecision` 在决策解析成功之后才提交验收批次并调用 `dispatchSubtasks`。`state.dispatch.rejected` 来自 `dispatched.rejected.length > 0`。`state.repair.linkage_conflict` 和 `state.repair.source_unavailable` 也是状态码。09:35 的原因码停在校验层，没有记录后续派发结果。沟通记录里即使已经放了返工候选，这则暂停也没有证明宿主会接受那些候选。
+
+### 08:21 的 `state.dispatch.rejected` 仍是未知
+
+主沟通另收录更新时间 2026-11-26T08:21:32.130Z 的暂停。原因码是 `state.dispatch.rejected`，字段是 `subtasks`，次数句同样是「已自动继续执行一次」。这是更早的一条宿主状态通知，原因码与 09:35 不同。它可以用来对照两类暂停。它不提供 09:35 的根因，也没有给出被拒项。
+
+当前 `src/loopPlusScheduler.ts` 的拒绝枚举是 `invalid_spec`、`duplicate_attempt`、`active_subtask`、`parent_stopped`、`completed`、`invalid_dependencies`。`loop-plus-dispatched` 会带上枚举以及子任务和 attempt 标识；`loop-plus-protocol-miss` 会带上 `rejectionKind` 和 `reasonCode`。两者都走 `logInfo`。`appendLog` 在未开启调试、非强制、且级别不是 ERROR 时直接返回，所以这些 INFO 默认不落盘。当日主日志没有这两类事件，既与该实现相容，也与「当时没有调用该日志函数」相容。主沟通把「同 ID 未结清」记为可能原因；这里保持为未证明。`loop-task-owner-route-rejected` 上的短原因 `identity-lock-present` 是另一事件，不能填进 `state.dispatch.rejected`。性能日志里 08:20:43Z 和 08:22:39Z 的主调用 `returned`，以及 08:23:35Z 的 `main-turn` `failed`，都没有原因码，也不能指定被拒项。
+
+### 推断
+
+在派工记录的四项顺序与当前解析器的提前返回同时成立时，第 2 项失败行会先触发缺返工关联；第 4 项即使同样缺字段，也不会出现在同一条拒绝文案里。固定提示中的「恰好一项同 ID 返工」和 `independentSubtaskIds` 是原因码说明，不是这次宿主已经核对过 ID 集合的记录。派工记录里的「正确标为独立工作」是该记录自己的分类。当前解析器要等失败行的处置字段齐备后，才做集合相等检查。
+
+### 未知
+
+- 原始助手文本、冻结批次的事件顺序、返工候选是否与失败项同逻辑 ID，以及独立列表与 `subtasks` 是否集合一致。
+- 写出该通知的扩展构建、提交和发布包。次数句与固定提示目前分属相邻提交，加载身份未核定。
+- 自动续跑的那一次是否同样缺字段。通知只保留最终原因码。
+- 若两行处置字段被补上，宿主派发会不会再拒绝。09:35 的校验失败没有进入派发结果。
+- 08:21 的拒绝枚举和被拒项。
+- 09:35:18.920Z 的性能条目与 09:35:19.019Z 的暂停是否同一次调用。两者时间相邻，没有共享关联字段。本尝试没有用任务标识去对齐。
+
+### 尚未实施的提示与诊断
+
+下面是缩短同类排障的设计观察。本尝试没有改提示或日志，也不表示 09:35 或 08:21 已被解释完毕。
+
+当前 `src/extensionHost/loopPlusPromptBuilders.ts` 已有静态规则：失败项要在该行 `subtaskIds` 放恰好一项原逻辑 ID 返工，或填写 `noRepairReason`；独立剩余工作放 `independentSubtaskIds`。快照示例不能点名「本批哪几行失败且两个处置字段都空」。`buildLoopPlusProtocolContinuationPrompt` 重复原因码和同一段固定提示。对派工记录描述的这次形态，续跑提示可以只列出失败且两个处置字段都空的下标，并写明 `subtasks` 里已有对象仍须由模型写入对应 `reviews[i].subtaskIds`，或改填非空 `noRepairReason`；独立列表保持独立。宿主不宜代填，因为某个候选属于哪一项失败验收仍是验收判断。这个改法针对「候选已写出、行上指针缺失」，不放宽返工、验收或完成门禁。
+
+常驻诊断可以只强制记录 `rejectionKind`、`reasonCode`、review 条数、缺处置的失败下标，以及 `subtasks` 与 `independentSubtaskIds` 的数量。不记录 ID、标题、prompt、reason 原文、路径或令牌。`state.dispatch.rejected` 只常驻各拒绝枚举的计数，不常驻子任务标识，也不把整份 `loop-plus-dispatched` 载荷升为常驻。当日主日志没有原因码，暂停通知又把解析器下标换成固定提示，所以现有材料无法从日志单独还原四项结论。上述摘要若存在，就可以把校验层缺字段和状态层派发枚举分开。当前实现尚未这样记录。
+
+这则 validation 通知也没有提供「某个 CLI 没有返回文本」的证据。空文本仍只对应采集结果里的 `format.EmptyResponse`，见上文因果链。
+
+## 2026-11-26 10:37、10:58 与 12:09
+
+这一节补录三次暂停，并和上一节的 08:21、09:35 对照。上一节正文保持原样。观察、有提交可以复核的推断、以及仍然开着的缺口分开写。本节核对时仓库 `HEAD` 是 `081b33c7`（`package.json` 为 `1.10.5`，提交时间 2026-11-26 07:42 UTC）。上一节把 `a7895ada` 记为当时的当前提交，那一句保留。工作区的 [协议诊断](../src/loopPlusProtocolDiagnostics.ts)、[暂停摘要](../src/loopPlusProtocolRepair.ts) 和 [决策解析器](../src/loopPlusDecision.ts) 与 `081b33c7` 的对应 blob 相同。编排、运行适配器和诊断落盘文件相对该提交还有未提交差异；下面引用的交接日志字段和通用码分支，在该提交里已有同名调用。源码用来说明可见文字能由哪些分支产生，不表示当时加载的二进制与该提交逐行相同。
+
+三次暂停的原因码、`authoritative-handoff-used`，以及「已自动继续执行一次」都不在已核的 1.9.x 节点上。`git show <commit>:package.json` 与 `git grep` 核对过 `65f2bcfe`（`1.9.0`）、`34aade46`（`1.9.3`）、`1b3dfb1f`（`1.9.6`）、`07953676`（`1.9.11`）和 `261519f6`（`1.9.13`）：这些树里没有 `validation.invalid_decision`、`validation.accept.failed_repair_missing` 和 `authoritative-handoff-used`。`git diff e41004e0 65f2bcfe -- src/loopPlusDecision.ts` 为空，与上文基线一致。固定次数句「已自动继续执行一次」在 `4fa4a84b` 与 `a7895ada`（package 均为 `1.10.3`）。`081b33c7` 把该句改成限额插值，并同时放入上述两个原因码和权威交接的常驻 code。该提交早于这三次暂停，只说明仓库里已经有这段源码。
+
+### 10:37：`validation.invalid_decision`
+
+**来源与时间。** 这是当前任务主沟通自己的暂停，时间 2026-11-26T10:37:46.071Z。次数句是「已自动继续执行 3 次」。类别是 validation。原因码是 `validation.invalid_decision`。固定提示是「请按当前决策形状核对 status、必要字段及跨字段关联。」协议原因码一行没有 `field=`，正文也没有 `reviews[`。
+
+**交接。** 2026-11-26 主日志在 10:37:45.975Z 有一条 `loop-plus-invocation-diagnostic`，stage 为 `projection`，code 为 `authoritative-handoff-used`。`081b33c7` 的常驻落盘只保留 stage、code 和进程号。当日这个 code 有 203 条，10:21–10:28 另有五条。性能日志在同一毫秒记下 `mode=loop_plus`、`role=main`、`cli=codex` 的 runner 与 invocation，结果都是 `returned`，二者共用一个 trace；10:37:46.013Z 的 main-turn 也是 `returned`，时长约 954.7 秒，trace 与前两条不同。性能记录的键是 time、traceId、mode、cli、role、phase、outcome、durationMs。交接诊断没有 trace，性能记录没有任务标识。暂停比这条诊断晚 96 毫秒。相邻时间还没有构成同一调用。
+
+**解析、跨字段、宿主提交与恢复。** 通知使用 validation 类别，所以它不是这份通知里的 `format.EmptyResponse`。`081b33c7` 的 `loopPlusProtocolParseDiagnostic` 在缺少 `validationDiagnostic`、且原因句没有命中少数固定片段时，返回 `validation.invalid_decision`。会落到这个码的解析器句子包括逐行的 `reviews[index].reviewEventId`、`acceptance`、`reason`、`subtaskIds` 形状和 `noRepairReason` 用法。顶层句子「accept 必须使用 reviewEventId」命中另一片段，映射到 `state.review_batch.mismatch`。解析成功之后，同一提交的 `resolveAcceptanceRepairDecision` 若返回「修复必须关联当前验收批次中的原子任务。」，编排也把结果收成这个通用码；那是解析已经通过后的宿主关联分支。暂停只保留通用码和固定提示，两条路径的可见文字相同。次数句与该提交在 `LOOP_PLUS_PROTOCOL_AUTOMATIC_RETRY_LIMIT = 3` 时的 continuation-rejected 模板一致。它是超过限额后的摘要句，当日主日志没有对应的 `loop-plus-protocol-miss` 或 `loop-plus-protocol-recovery`。10:37:47.541Z 的 `loop-group-chat-continue-settled` 任务标识与当前沟通一致，状态为 needs-review，载荷没有 requestId。这是暂停之后的继续结算。
+
+**已知事实。** 暂停文字、96 毫秒前的投影 code、性能记录的阶段和结果、以及 `081b33c7` 里能产生同一可见码的多条分支。
+
+**可复核的推断。** 权威交接 code 只表示某次身份匹配且非空的终态正文被选为投影。通用码同时覆盖多条解析期原因和一条解析后的宿主关联句子。在交接诊断与暂停共享任务、attempt 或 trace 之前，不能把 `reviews[index].reviewEventId` 或其它字段写成 10:37 的原因。
+
+**剩余缺口。** 同一调用的原始原因句、字段路径、review 下标、是否已经进入宿主返工解析、各次自动续跑的原因，以及加载的构建。
+
+### 10:58 与 12:09：`validation.accept.failed_repair_missing`
+
+**来源与时间。** 2026-11-26T10:58:04.244Z 写在一份来源任务自己的主沟通里；当前任务主沟通在 2026-11-27T00:51:14.520Z 的补充需求原样转载了它。2026-11-26T12:09:15.877Z 写在另一份来源任务自己的主沟通里；当前任务主沟通在 2026-11-27T00:51:31.414Z 原样转载了它。两则的状态都是 needs-review。次数句都是「主模型决策未通过校验，已自动继续执行一次，续跑后的决策仍未通过校验」。原因码都是 `validation.accept.failed_repair_missing`，后面是与 09:35 相同的固定提示，没有 `field=`，也没有 `reviews[`。
+
+**失败行与缺失关联。** 10:58 的来源沟通在 09:35 那则暂停和这则暂停之间，没有逐项结论、下标或原始对象；对应任务目录是空的，没有可重放的决策。12:09 的来源沟通在暂停前有一节文字，写明工作表原生检查有失败并准备按该失败续修，同时安排其它检查。那一节没有决策对象，没有 review 下标，也没有写下 `subtaskIds` 或 `noRepairReason` 是否出现。12:09 来源任务更早的两则暂停仍把解析器句子直接写入具体原因：2026-11-25T08:32:43.844Z 为 `reviews[1]`，2026-11-25T10:00:57.094Z 为 `reviews[2]`。10:58 来源任务在 2026-11-25T08:01:16.343Z 也有一则 `reviews[1]`。那些下标属于当时的通知正文，不能填进 2026-11-26 这两则固定提示。
+
+在 `081b33c7` 的映射里，这个原因码只在原因句包含「验收失败必须关联修复子任务」时出现。该句由某一失败行的 `subtaskIds` 为空、且没有非空 `noRepairReason` 产生，句子里带有下标；暂停模板留下原因码和固定提示，不留下下标。按这个映射，通知表示校验层至少有一行失败验收缺少这两处处置，并且还没有进入派发。10:58 与 12:09 的次数句却是「一次」，而该提交的暂停模板已经改成限额插值；`a7895ada` 有「一次」，树里没有这个原因码。这一点与上一节对 09:35 的提交核对相同：两段文字不在同一已核提交里。因此「缺的是失败行上的返工关联或免修理由」依赖于当时宿主使用了这个映射。行号、所缺的原逻辑关联，以及 `subtasks` 里是否已经写有候选，两起都没有同一调用的证据。09:35 的四项形状来自上一节引用的派工记录，只属于那一次。
+
+**交接、宿主提交与恢复。** 性能日志在 10:58:04.088Z 有 runner 与 invocation `returned`，10:58:04.140Z 有 main-turn `returned`（时长约 672.6 秒，trace 与 runner 不同）；暂停在 10:58:04.244Z。约 9 秒后还有另一次 main `returned`，同一分钟里还有子任务阶段记录。12:09:15.766Z 有 runner 与 invocation `returned`，12:09:15.801Z 有 main-turn `returned`（时长约 1917.2 秒）；暂停在 12:09:15.877Z。这些性能记录同样没有任务标识。两个时间窗的主日志都没有 `authoritative-handoff-used`。`081b33c7` 的适配器只在身份匹配的非空终态正文上写这个 code；普通投影成功时不写。缺这条记录不能单独说明交接失败，也不能说明使用了权威交接。10:58:06.139Z 与 12:09:18.778Z 的 `loop-group-chat-continue-settled` 任务标识分别与两份来源沟通一致，状态为 needs-review，载荷含 requestId。通知停在 validation 码。按该提交的顺序，这个原因码来自解析失败，验收批次的宿主提交还在解析成功之后。加载构建未核定，所以这是条件性顺序，不是对当时原文的重放。两则都只保留最终原因码。
+
+**已知事实。** 两份来源沟通与当前主沟通转载的暂停文字、固定提示、次数句，以及性能日志里相邻的 main `returned`。12:09 暂停前的文字只记录了续修意图。更早暂停里的 `reviews[1]`、`reviews[2]` 仍留在那些旧通知中。
+
+**可复核的推断。** 在 `081b33c7` 的映射与当时宿主一致时，原因码对应「失败行缺少返工关联和免修理由」这一类，并且停在校验层。行号不在暂停里。次数句与该映射所在提交的暂停模板不一致，所以这个推断保持为条件性的。
+
+**剩余缺口。** 两起各自的失败下标、所缺关联、`subtasks` 与 `independentSubtaskIds` 的形状、自动续跑那一次的原因、性能条目与暂停是否同一次调用，以及写出「一次」和这个原因码的加载构建。
+
+### 与 08:21、09:35 对照：同一改动与独立观察
+
+| 记录 | 已分开的层次 | 可由同一改动覆盖的部分 | 仍需独立观察 |
+| --- | --- | --- | --- |
+| 08:21 `state.dispatch.rejected`，字段 `subtasks` | 宿主派发状态。枚举和被拒项未知 | 保留 review 下标，或为失败行补提示，都不产生派发枚举 | 各拒绝枚举的脱敏计数。上一节已把「同 ID 未结清」保留为未证明 |
+| 09:35 `failed_repair_missing` | 校验层。派工记录写明第 2、4 项失败且两个处置字段都空，`subtasks` 里另有候选 | 受控诊断保留失败下标后，今后同一原因码可以直接看到行。提示改动只针对「候选已写出、行上指针为空」 | 历史原文、续跑那一次、补字段后宿主会不会再拒绝 |
+| 10:37 `invalid_decision`；附近有 `authoritative-handoff-used` | 通用校验码。交接 code 与暂停还没有同一调用证据 | 只有隐藏原因属于被折叠的行级句子时，保留下标才对得上这一次。现有材料没有这句原因 | 同一调用的原因句或字段路径，以及交接与暂停的关联字段 |
+| 10:58、12:09 `failed_repair_missing` | 与 09:35 相同的原因码和固定提示。没有行号，也没有「候选已写出」的记录 | 把解析器下标留在受控诊断里，可以覆盖今后再次出现的这个码。它补不回这两次的历史行 | 各自的失败下标、缺失关联和 `subtasks` 是否已有候选；加载构建 |
+
+对应的回归场景如下。这里只规定可区分这几类故障的检查，本尝试没有添加这些测试。
+
+1. **被折叠的行级字段。** 冻结批次第二项的 `reviews[1].reviewEventId` 与冻结事件不一致，其余字段合法。受控结果应保留下标 1。`081b33c7` 现在把它映射为没有字段路径的 `validation.invalid_decision`。同时填写顶层 `reviewEventId` 与 `reviewEventIds` 的决策仍应得到 `state.review_batch.mismatch`，以免两种 review 事件拒绝合成一个码。这个场景约束诊断映射；它不是对 10:37 历史字段的指认。
+2. **失败返工缺关联且保留下标。** 仅 `reviews[2]` 为 failed，`subtaskIds` 为空，且没有 `noRepairReason`。受控结果应为 `validation.accept.failed_repair_missing` 并带下标 2；同一次调用不再发出 `validation.accept.unlinked_subtasks`。记录不含 ID、标题或原因原文。这覆盖 09:35、10:58、12:09 的原因码类别，不填历史行号。
+3. **执行完成而被主审判失败。** 冻结项的执行结果为 completed、主审结论为 failed 时，续跑提示仍给出同 ID 返工和 `noRepairReason` 两种形状。这只对应 09:35 派工记录里的形态。10:58 与 12:09 没有这份形态记录。
+4. **派发枚举。** 合法 accept 之后，调度器以白名单枚举拒绝派发。结果保持 `state.dispatch.rejected`，并留下脱敏枚举计数，不改写成 validation。这对应 08:21，与前三个场景分开。
+5. **交接与校验分开。** 身份匹配的非空终态正文写下 `authoritative-handoff-used`，随后的校验码单独记录。身份不匹配写下 `identity-rejected`，不能标成已使用权威交接。投影 code 没有任务或 trace 时，不用它命名校验字段。这对应 10:37 的证据边界。
 
 ## 提示、约束与群聊链路
 
@@ -62,7 +162,7 @@
 
 ### 首次终态交接的受控证据
 
-当前候选实现将原生终态观察与当时正在写入的助手消息引用绑定，并要求最终交接仍指向该次调用最后一个有效助手消息；测试证明受控 Codex 事件路径中，同一消息正文首次进入 Loop+ 校验且不触发补偿调用，错配、取消和身份错误拒绝。该结果只验证受控路径与代码契约，不能追认历史 CLI 调用是否产出终态、消息是否曾被投影或为何交接失败。默认诊断新增仅含固定阶段/原因码的常驻事件；没有相应记录或证据不足仍应记未知。真实 CLI 传输和 VS Code Extension Host 尚需按版本独立验证。
+当前实现将原生终态观察状态独立于正文 handoff，并将原生终态观察与当时正在写入的助手消息引用绑定；适配器要求最终交接与调用身份匹配。原生终态已观察但正文/身份 handoff 缺失时，普通助手消息投影不会作为回退；未观察到原生终态的 CLI 仍沿用既有投影策略。测试证明受控 Codex 事件路径中，同一消息正文首次进入 Loop+ 校验且不触发补偿调用，错配、取消和身份错误拒绝。该结果只验证受控路径与代码契约，不能追认历史 CLI 调用是否产出终态、消息是否曾被投影或为何交接失败。默认诊断新增仅含固定阶段/原因码的常驻事件；没有相应记录或证据不足仍应记未知。真实 CLI 传输和 VS Code Extension Host 尚需按版本独立验证。
 
 **已由提交/源码证实的机制**
 

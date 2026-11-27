@@ -57,12 +57,19 @@ export function readLoopPlusProtocolFailureFromSummary(summary?: string): string
   return reason || "历史记录未保存具体协议错误。";
 }
 
+function persistedProtocolField(diagnostic: LoopPlusProtocolDiagnostic): string | undefined {
+  if (!diagnostic.fieldPath) return undefined;
+  const safe = readLoopPlusProtocolDiagnostic(diagnostic.reasonCode, diagnostic.fieldPath, diagnostic.position);
+  return safe.reasonCode === diagnostic.reasonCode ? safe.fieldPath : undefined;
+}
+
 export function buildLoopPlusProtocolContinuationPrompt(_reason: string, recovery?: LoopPlusProtocolRecovery): string {
   const controlled = recovery ?? {
     diagnostic: readLoopPlusProtocolDiagnostic("validation.invalid_decision"),
     hint: "请依据最新调度快照修正决策，并保留现有事件、报告顺序与执行证据。",
   };
-  const path = controlled.diagnostic.fieldPath ? `\n受控字段：${controlled.diagnostic.fieldPath}` : "";
+  const fieldPath = persistedProtocolField(controlled.diagnostic);
+  const path = fieldPath ? `\n受控字段：${fieldPath}` : "";
   const position = controlled.diagnostic.position
     ? `\n候选对象位置：第 ${controlled.diagnostic.position.line} 行第 ${controlled.diagnostic.position.column} 列。` : "";
   return [
@@ -79,6 +86,7 @@ export function buildLoopPlusProtocolPauseSummary(
   outcome?: "continuation-rejected",
   diagnostic?: LoopPlusProtocolDiagnostic,
 ): string {
+  const fieldPath = diagnostic ? persistedProtocolField(diagnostic) : undefined;
   return [
     LOOP_PLUS_PROTOCOL_PAUSE_HEADING,
     outcome === "continuation-rejected"
@@ -88,7 +96,7 @@ export function buildLoopPlusProtocolPauseSummary(
     PROTOCOL_REASON_HEADING,
     reason,
     ...(diagnostic ? ["", PROTOCOL_CODE_HEADING,
-      `${diagnostic.reasonCode}${diagnostic.fieldPath ? `|field=${diagnostic.fieldPath}` : ""}`] : []),
+      `${diagnostic.reasonCode}${fieldPath ? `|field=${fieldPath}` : ""}`] : []),
     "",
     PROTOCOL_RESUME_HEADING,
     "主模型需要按当前验收批次返回完整决策，确认真实验收结论，并继续派发未完成工作；只有全部要求满足完成门禁后才能完成。现有验收队列保留。",

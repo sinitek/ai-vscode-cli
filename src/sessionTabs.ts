@@ -6,6 +6,7 @@ import { normalizeConversationTaskSummary } from "./conversationTaskSummary";
 import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings } from "./workspaceSettingsStore";
 
 export type ConversationTabRecord = {
+  manualCloseOnly?: true;
   loopTaskId?: string;
   loopSubtaskId?: string;
   taskSummary?: string;
@@ -358,6 +359,7 @@ export function createSessionTabsController(deps: {
       sessionId: sessionIdByCli[cli] ?? null,
       sessionIdByCli,
       createdAt,
+      ...(record.manualCloseOnly === true ? { manualCloseOnly: true } : {}),
       ...(normalizeConversationTaskSummary(record.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(record.taskSummary) } : {}),
       ...(record.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
       ...(executionLocked ? {
@@ -400,6 +402,7 @@ export function createSessionTabsController(deps: {
           sessionId: sessionIdByCli[tab.cli] ?? null,
           sessionIdByCli,
           createdAt: tab.createdAt,
+          ...(tab.manualCloseOnly ? { manualCloseOnly: true as const } : {}),
           ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
           ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
           ...(isConversationTabExecutionLocked(tab) ? {
@@ -422,6 +425,7 @@ export function createSessionTabsController(deps: {
         sessionId: tab.sessionId,
         sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
         createdAt: tab.createdAt,
+        ...(tab.manualCloseOnly ? { manualCloseOnly: true as const } : {}),
         ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
         ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
         ...(isConversationTabExecutionLocked(tab) ? {

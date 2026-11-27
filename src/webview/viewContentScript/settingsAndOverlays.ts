@@ -1417,12 +1417,19 @@ export const VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS = `${humanInteractionOthe
         });
       }
 
-      if (elements.historySessionFilterSubtasks) {
-        elements.historySessionFilterSubtasks.addEventListener("change", (event) => {
-          state.historySessionFilterSubtasks = Boolean(event.target.checked);
+      [
+        ["all", elements.historySessionModeAll],
+        ["vibe", elements.historySessionModeVibe],
+        ["loop", elements.historySessionModeLoop],
+        ["loop-plus", elements.historySessionModeLoopPlus],
+        ["department", elements.historySessionModeDepartment],
+      ].forEach(([mode, button]) => {
+        if (!button) return;
+        button.addEventListener("click", () => {
+          state.historySessionMode = mode;
           renderSessionList();
         });
-      }
+      });
 
       if (elements.promptHistoryPrevPage) {
         elements.promptHistoryPrevPage.addEventListener("click", () => {

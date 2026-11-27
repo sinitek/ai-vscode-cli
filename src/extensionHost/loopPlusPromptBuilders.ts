@@ -23,7 +23,8 @@ import {
   normalizeLoopPlusAcceptancePlanSnapshot,
   type LoopPlusAcceptancePlanSnapshot,
 } from "../loopPlusAcceptancePlan";
-import { deriveLoopPlusDecisionContract } from "../loopPlusDecisionContract";
+import { deriveLoopPlusDecisionContract, type LoopPlusDecisionContract } from "../loopPlusDecisionContract";
+import type { LoopPlusDecisionHelperContext } from "../loopPlusDecisionHelper";
 
 export type LoopPlusMainPromptContext = {
   taskId: string;
@@ -248,6 +249,101 @@ function acceptanceEventIds(context: LoopPlusMainPromptContext): string[] {
   }
   const single = liveReviewEventId(context.currentEventId);
   return single ? [single] : [];
+}
+
+function frozenMappedReviews(
+  context: LoopPlusMainPromptContext,
+  batchIds: readonly string[],
+): Array<{ item: LoopPlusReviewItem; batchIndex: number }> {
+  const byEventId = new Map<string, LoopPlusReviewItem>();
+  for (const item of [context.view.currentReview, ...context.view.reviewQueue]) {
+    if (item && !byEventId.has(item.eventId)) byEventId.set(item.eventId, item);
+  }
+  const frozen: Array<{ item: LoopPlusReviewItem; batchIndex: number }> = [];
+  batchIds.forEach((eventId, batchIndex) => {
+    const item = byEventId.get(eventId);
+    if (item) frozen.push({ item, batchIndex });
+  });
+  return frozen;
+}
+
+export function buildLoopPlusDecisionHelperPromptContext(
+  context: LoopPlusMainPromptContext,
+): LoopPlusDecisionHelperContext {
+  const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
+  const batchIds = acceptanceEventIds(context);
+  const reportEventIds = context.reportEventIds?.filter((id) => typeof id === "string" && id.trim()) ?? [];
+  const contract = decisionContractForPrompt(context, batchIds, reportEventIds);
+  return {
+    v: 1,
+    statuses: [...contract.statuses],
+    reviews: frozenMappedReviews(context, batchIds).map(({ item }) => ({
+      eventId: item.eventId,
+      subtaskId: item.subtaskId,
+    })),
+    reportEventIds: [...reportEventIds],
+    subtaskMax,
+    acceptancePlanKeys: listLoopPlusAcceptancePlanFeedbackItems(context.acceptancePlan).map((item) => item.key),
+    allowDirectCompletion: context.allowDirectCompletion === true,
+    requireAcceptanceFeedback: true,
+    requireProgressPercent: true,
+  };
+}
+
+function decisionContractForPrompt(
+  context: LoopPlusMainPromptContext,
+  batchIds: readonly string[],
+  reportEventIds: readonly string[],
+): LoopPlusDecisionContract {
+  return deriveLoopPlusDecisionContract({
+    acceptanceEventIds: batchIds,
+    reportEventIds,
+    reportOnly: context.reportOnly,
+    allowDispatchBeforeReview: context.allowDispatchBeforeReview,
+    view: context.view,
+    requiredRepairIds: context.requiredRepairIds,
+    pendingUserMessages: context.pendingUserMessages ?? [],
+    interruptedSubtaskIds: context.interruptedSubtaskIds,
+    maxConcurrency: context.maxConcurrency,
+  });
+}
+
+function failedFrozenReviewLinkageLines(
+  context: LoopPlusMainPromptContext,
+  batchIds: readonly string[],
+): string[] {
+  const frozen = frozenMappedReviews(context, batchIds);
+  if (frozen.length === 0) return [];
+  const lines = [
+    "Frozen review linkage from this snapshot, in frozen order. You judge each event passed, failed, or cancelled from the evidence. This prompt does not choose the verdict. Do not infer a failed review's link from subtasks order.",
+    "The accept protocol example later in this prompt only illustrates JSON shape. If that example fills noRepairReason or subtaskIds for one of these event ids, that fill is not the verdict for this snapshot.",
+  ];
+  if (frozen.some(({ item }) => item.outcome === "failed" || item.outcome === "stopped")) {
+    lines.push("An event whose outcome is failed or stopped is an acceptance failure unless the delivery is no longer needed and you cancel it with a non-empty reason. That rule does not choose whether the failed event needs a repair.");
+  }
+  for (const { item, batchIndex } of frozen) {
+    const repairReview = {
+      reviewEventId: item.eventId,
+      acceptance: "failed" as const,
+      reason: "<evidence-backed reason>",
+      subtaskIds: [item.subtaskId],
+    };
+    const noRepairReview = {
+      reviewEventId: item.eventId,
+      acceptance: "failed" as const,
+      reason: "<evidence-backed reason>",
+      noRepairReason: "<non-empty evidence-backed reason that no repair is needed>",
+    };
+    lines.push(
+      `Frozen review item: ${JSON.stringify({ reviewIndex: batchIndex, eventId: item.eventId, originalLogicalSubtaskId: item.subtaskId, outcome: item.outcome })}`,
+      `If reviews[${batchIndex}] acceptance is failed and this event needs repair: ${JSON.stringify(repairReview)} Put exactly one subtasks entry whose id is ${JSON.stringify(item.subtaskId)}. That review's subtaskIds contains only this original logical subtask id.`,
+      `If reviews[${batchIndex}] acceptance is failed and this event needs no repair: ${JSON.stringify(noRepairReview)} Omit subtaskIds. noRepairReason must be a non-empty string. Do not also link a repair on this review.`,
+    );
+  }
+  lines.push(
+    "Independent remaining-goal work is associated only through accept.independentSubtaskIds. Every accept.subtasks id appears exactly once across reviews[*].subtaskIds and independentSubtaskIds. Do not put a repair id in independentSubtaskIds. Do not put an independent id in a failed review's subtaskIds.",
+  );
+  return lines;
 }
 
 function buildLoopPlusProtocolExamples(
@@ -479,26 +575,41 @@ function buildLoopPlusProtocolExamples(
   ].join("\n")).join("\n");
 }
 
+function decisionHelperPromptLines(helperContext: LoopPlusDecisionHelperContext): string[] {
+  return [
+    "Decision helper:",
+    "Prefer the decision helper over hand-written protocol JSON. Department leaders reuse this same helper and this same frozen context.",
+    "The helper and the host call parseLoopPlusDecisionForFrozenInput for the same frozen input and parse options. Do not copy those JSON checks into the reply.",
+    "Use dist/loopPlusDecisionHelper.js in the extension install directory. Quote the script path as one argument so a space in that directory stays inside the path.",
+    "Command shape: node \"<extension install directory>/dist/loopPlusDecisionHelper.js\" template --status <status>",
+    "Then run the same command with build --status <status>. Pass one UTF-8 JSON object on stdin: {\"context\":<the frozen context below>,\"fields\":<filled facts>}. template may send an empty fields object. build fields carry the conclusion basis the template lists.",
+    "Call template before build. Keep the same status and the same context object. Prompt refresh and protocol correction keep this frozen context. Do not add late events from the latest task record to reviews or reportEventIds.",
+    "If build exits nonzero, stdout is empty and stderr names the field to correct. Change that field and run build again. A field error is not a reason to hand-write the decision.",
+    "When build exits 0, return that stdout unchanged as the only decision JSON. Do not wrap it, reorder it, or append another object. The host rechecks the latest runtime state and submits. Do not write scheduling state yourself.",
+    "Hand-write one decision only when this CLI cannot execute tools at all. Use the tool permission and capability this CLI already has. Do not request another permission and do not switch CLIs. Protocol examples below are the fallback shape for that case only.",
+    "Department leaders that need another leader put departmentCollaborations in fields. The helper copies that array into the decision before the shared parser. Do not append it after stdout.",
+    "LOOP_PLUS_DECISION_HELPER_CONTEXT",
+    "```json",
+    JSON.stringify(helperContext, null, 2),
+    "```",
+  ];
+}
+
 export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext): string {
-  const subtaskMax = resolveLoopPlusDecisionSubtaskMax(context.subtaskMax);
+  const helperContext = buildLoopPlusDecisionHelperPromptContext(context);
+  const subtaskMax = helperContext.subtaskMax;
   const parallelCapacity = Math.min(subtaskMax, context.maxConcurrency);
   const availableSlots = Math.max(0, context.maxConcurrency - context.view.running.length);
   const current = context.view.currentReview;
   const queue = context.view.reviewQueue;
   const batchIds = acceptanceEventIds(context);
-  const reportIds = context.reportEventIds?.filter((id) => typeof id === "string" && id.trim()) ?? [];
+  const reportIds = helperContext.reportEventIds;
   const pendingUserMessages = context.pendingUserMessages ?? [];
-  const decisionContract = deriveLoopPlusDecisionContract({
-    acceptanceEventIds: batchIds,
-    reportEventIds: reportIds,
-    reportOnly: context.reportOnly,
-    allowDispatchBeforeReview: context.allowDispatchBeforeReview,
-    view: context.view,
-    requiredRepairIds: context.requiredRepairIds,
-    pendingUserMessages,
-    interruptedSubtaskIds: context.interruptedSubtaskIds,
-    maxConcurrency: context.maxConcurrency,
-  });
+  const decisionContract: LoopPlusDecisionContract = {
+    statuses: helperContext.statuses,
+    availableSlots,
+    completionEligible: helperContext.statuses.includes("completed"),
+  };
   const liveEventId = batchIds[0] ?? (
     context.acceptanceEventIds ? null : liveReviewEventId(context.currentEventId)
   );
@@ -712,6 +823,8 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- estimatedRemainingRounds is optional compatibility only, an integer from 0 through 100. It is not required and is not a round gate.",
     "- There is no cumulative per-parent subtask dispatch limit. Each dispatch remains subject to the configured per-decision dispatch limit and currently available concurrency slots.",
     "- A continuing decision may optionally include nextStepPlan with an objective and optional acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.",
+    ...failedFrozenReviewLinkageLines(context, batchIds),
+    ...decisionHelperPromptLines(helperContext),
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     `Current decision shapes from the read-only host snapshot: ${decisionContract.statuses.join(", ")}. blocked requires evidence that progress cannot continue; clarify requires a user decision. Completion still requires passing evidence for every original and supplemental requirement and the latest host gates.`,
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",

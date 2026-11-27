@@ -454,11 +454,12 @@ ${renderChatModal({
             </nav>
           </div>
           <div id="historyPanelSessions" class="history-panel sessions active" role="tabpanel">
-            <div class="prompt-history-toolbar">
-              <label class="prompt-history-filter">
-                <input id="historySessionFilterSubtasks" type="checkbox" checked />
-                <span>${i18n.historySessionFilterSubtasks}</span>
-              </label>
+            <div class="history-session-mode-tabs help-tabs" role="tablist" aria-label="历史会话模式">
+              <button id="historySessionModeAll" class="help-tab active" type="button" role="tab" aria-selected="true" data-history-mode="all">全部</button>
+              <button id="historySessionModeVibe" class="help-tab" type="button" role="tab" aria-selected="false" data-history-mode="vibe">Vibe</button>
+              <button id="historySessionModeLoop" class="help-tab" type="button" role="tab" aria-selected="false" data-history-mode="loop">Loop</button>
+              <button id="historySessionModeLoopPlus" class="help-tab" type="button" role="tab" aria-selected="false" data-history-mode="loop-plus">Loop+</button>
+              <button id="historySessionModeDepartment" class="help-tab" type="button" role="tab" aria-selected="false" data-history-mode="department">产研部</button>
             </div>
             <div id="sessionList" class="session-list"></div>
           </div>

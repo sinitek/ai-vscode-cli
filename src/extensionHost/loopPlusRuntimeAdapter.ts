@@ -206,6 +206,7 @@ type AttemptExecution = {
   promptInput: PromptRunInput;
   target: LoopPlusPromptTarget;
   finalHandoff: LoopPlusFinalAssistantHandoff | null;
+  nativeFinalObserved: boolean;
 };
 
 export function selectLoopPlusInvocationRun(
@@ -428,6 +429,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     subtaskId?: string,
     completedRun?: TaskRunRecord | null,
     finalHandoff?: LoopPlusFinalAssistantHandoff | null,
+    nativeFinalObserved = false,
   ): { run: TaskRunRecord | null; content: string | null } {
     const query: LoopPlusInvocationQuery = {
       taskId: promptInput.loopTaskId ?? "",
@@ -449,7 +451,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       && handoff.taskId === query.taskId && handoff.round === query.round && handoff.role === "main"
       && query.role === "main" && handoff.attemptId === query.attemptId
       && handoff.content.trim().length > 0 ? handoff.content : null;
-    const projectedContent = handoff ? null : selectLoopPlusInvocationAssistant(deps.getMessages(target), boundary, query, run);
+    const projectedContent = handoff || nativeFinalObserved ? null : selectLoopPlusInvocationAssistant(deps.getMessages(target), boundary, query, run);
     if (handoff && handoffContent === null) {
       deps.log?.("loop-plus-invocation-diagnostic", { stage: "handoff", code: "identity-rejected" });
     }
@@ -463,7 +465,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         stage: "run", code: run.status === "stopped" ? "cancelled" : "run-error-unknown",
       });
     }
-    return { run, content: handoff ? handoffContent : projectedContent };
+    return { run, content: nativeFinalObserved ? handoffContent : handoff ? handoffContent : projectedContent };
   }
 
   async function runInvocation(
@@ -483,6 +485,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     };
     let completedRun: TaskRunRecord | null = null;
     let finalHandoff: LoopPlusFinalAssistantHandoff | null = null;
+    let nativeFinalObserved = false;
+    promptInput.loopPlusNativeFinalObserved = () => {
+      if (!options.isAborted()) nativeFinalObserved = true;
+    };
     if (role === "main" && promptInput.taskRole === "main" && promptInput.loopTaskId && !promptInput.loopAsk) {
       promptInput.loopPlusFinalAssistantHandoff = (value) => {
         if (options.isAborted() || value.taskId !== query.taskId || value.round !== query.round
@@ -536,7 +542,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       } else {
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
       }
-      return { thrown: false, error: null, completedRun, boundary, promptInput, target, finalHandoff };
+      return { thrown: false, error: null, completedRun, boundary, promptInput, target, finalHandoff, nativeFinalObserved };
     } catch (error) {
       const errorCode = error && typeof error === "object" && "code" in error
         ? String((error as { code?: unknown }).code ?? "") : "";
@@ -549,11 +555,12 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       if (role === "main" && !options.firstMainExecution && usesDepartmentOwner(deps.readTask(promptInput.loopTaskId ?? "")?.department)) {
         const unknown = new Error(error instanceof Error ? error.message : String(error)) as Error & { code: string; cause: unknown };
         unknown.code = "DEPARTMENT_NATIVE_UNKNOWN"; unknown.cause = error;
-        return { thrown: true, error: unknown, completedRun, boundary, promptInput, target, finalHandoff };
+        return { thrown: true, error: unknown, completedRun, boundary, promptInput, target, finalHandoff, nativeFinalObserved };
       }
-      return { thrown: true, error, completedRun, boundary, promptInput, target, finalHandoff };
+      return { thrown: true, error, completedRun, boundary, promptInput, target, finalHandoff, nativeFinalObserved };
     } finally {
       delete promptInput.loopPlusFinalAssistantHandoff;
+      delete promptInput.loopPlusNativeFinalObserved;
       removePreparationAbort?.();
       unsubscribe?.();
     }
@@ -618,7 +625,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           firstMainExecution.finishBeforeAdmission(aborted, execution.thrown ? execution.error : undefined);
           return null;
         }
-        const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun, execution.finalHandoff);
+        const invocation = readInvocation(request.target, execution.boundary, promptInput, "main", undefined, execution.completedRun, execution.finalHandoff, execution.nativeFinalObserved);
         cancelled = invocation.run?.status === "stopped";
         if (execution.thrown) {
           if (aborted || cancelled) {
@@ -1104,6 +1111,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         request.subtaskId,
         rootResult.value.completedRun,
         rootResult.value.finalHandoff,
+        rootResult.value.nativeFinalObserved,
       );
       if (!aborted) {
         persistSession();

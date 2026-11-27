@@ -9,7 +9,7 @@ import { normalizeLoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePl
 import { createLoopPlusScheduler } from "../loopPlusScheduler";
 import { findLoopLiveDispatchConflict } from "../loopParallel";
 import { buildLoopBlockerDiagnosticFailure } from "../loopBlocker";
-import { normalizeLoopProgressPercent, resolveLegacyLoopMaxRounds, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
+import { normalizeLoopProgressPercent, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
 import { getLoopDecisionSubtasks } from "./loopTaskStateMachine";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
 import type { DepartmentPromptStartRequest } from "../sessionMessageHandlers";
@@ -52,7 +52,7 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   /** Show only a successfully registered and bound director; panel loading must not block execution. */
   openGroupChat?(taskId: string): Promise<void>;
   runDirectorDecision(request: { input: PromptRunInput; target: PromptRunTarget; task: LoopTaskRecord; round: number;
-    renderDirectorContext(maxLength: number): string }): Promise<ClassicLoopDecisionResult>;
+    renderDirectorContext(maxLength: number): string; hasNewLeaderBlocker(): boolean }): Promise<ClassicLoopDecisionResult>;
   /** Keep the existing orphan detector informed while preparation, clarification,
    * coordination waits and model consumption still belong to this director. */
   acquireDirectorOwnership?(taskId: string): () => void;
@@ -65,7 +65,7 @@ export type DepartmentRuntimeCompositionDeps = Omit<DepartmentOrchestrationDeps,
   waitForDirectorClarification?(task: LoopTaskRecord, target: PromptRunTarget): Promise<boolean>;
 };
 type Controller = { target: PromptRunTarget; input: PromptRunInput; revision: number; wake: (() => void) | null; run: Promise<void> | null; stopped: boolean;
-  stopRevision: number };
+  stopRevision: number; leaderBlockerRevision: number; reviewedLeaderFailures?: string };
 type OrganizationStopStage = "request" | "save" | "cancel" | "director-cancel" | "director-readback" | "cleanup"
   | "snapshot-read" | "snapshot-fence" | "member-verify" | "capacity-verify" | "member-stop" | "capacity-save" | "capacity-readback";
 const clone = <T>(v: T): T => structuredClone(v);
@@ -159,8 +159,11 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
       const c = controllers.get(root), task = deps.readTask(root), member = host.runtimeSnapshot(root)?.leaders.find((item) => item.taskId === taskId);
       if (!c || c.stopped || disposed || task?.status !== "running" || task.workspaceKey !== deps.workspaceKey()
         || failed.has(root) || !member || member.generation !== generation || !deps.validateRoutes(metadata(task).routes)) return;
-      deps.report(root, `组长汇报：${deps.readTask(taskId)?.department?.moduleTitle ?? taskId}（${member.status}）\n${deps.readTask(taskId)?.finalSummary ?? "请查看组长任务状态"}`);
+      const blocked = member.status === "blocked" || member.status === "failed";
+      if (blocked) c.leaderBlockerRevision++;
       wake(root);
+      const leader = deps.readTask(taskId);
+      deps.report(root, `组长汇报：${leader?.department?.moduleTitle ?? taskId}（${member.status}）\n${leader?.finalSummary ?? "请查看组长任务状态"}`);
     },
     notifyDirector: (root, message) => { deps.report(root, `组长协作待总监处理：${message.id}\n${message.body}`); wake(root); },
     buildLeaderInput: (route, request, plan, metadata) => {
@@ -378,7 +381,8 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const existing = controllers.get(task.id); if (existing) return existing;
     const m = metadata(task);
     const c: Controller = { target: clone(target), input: input ?? roleInput(task.rootPrompt, task.rootPrompt, m.routes.director, m.routes.employee,
-      normalizeLoopPlusAcceptancePlanSnapshot(task.loopPlusAcceptancePlan)), revision: 0, wake: null, run: null, stopped: false, stopRevision: 0 };
+      normalizeLoopPlusAcceptancePlanSnapshot(task.loopPlusAcceptancePlan)), revision: 0, wake: null, run: null, stopped: false, stopRevision: 0,
+      leaderBlockerRevision: 0 };
     controllers.set(task.id, c); return c;
   }
   function launchDirector(root: string, preparedOwnership?: () => void): boolean {
@@ -411,13 +415,11 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
         if (!deps.waitForDirectorClarification || !await deps.waitForDirectorClarification(task, c.target)) return;
         continue;
       }
-      if (task.currentRound >= resolveLegacyLoopMaxRounds(task.maxRounds)) {
-        if (!deps.updateTask(root, { status: "needs-review", finalSummary: "总监已达到经典 Loop 轮次上限，等待继续。" })) throw new Error("总监暂停状态保存失败。");
-        return;
-      }
       const revision = c.revision;
+      const leaderBlockerRevision = c.leaderBlockerRevision;
       const result = await deps.runDirectorDecision({ input: { ...c.input }, target: c.target, task, round: Math.max(1, task.currentRound + 1),
-        renderDirectorContext: (maxLength) => host.directorCoordinationContext(root, maxLength) });
+        renderDirectorContext: (maxLength) => host.directorCoordinationContext(root, maxLength),
+        hasNewLeaderBlocker: () => c.leaderBlockerRevision !== leaderBlockerRevision });
       // Late model results cannot complete or wake a successor after stop.
       if (disposed || c.stopped || c.stopRevision !== stopRevision) return;
       const current = deps.readTask(root), bound = deps.resolveTarget(c.target.tabId);
@@ -454,27 +456,56 @@ export function createDepartmentRuntimeComposition(deps: DepartmentRuntimeCompos
     const progressPercent = normalizeLoopProgressPercent(decision.progressPercent);
     const progressPatch = progressPercent !== undefined && progressPercent < 100 && progressPercent !== task.loopProgressPercent
       ? { loopProgressPercent: progressPercent } : {};
-    if (decision.status === "waiting") {
-      const leaders = host.runtimeSnapshot(task.id)?.leaders ?? [];
-      if (leaders.some((member) => member.status === "starting" || member.status === "running")) {
-        if (progressPatch.loopProgressPercent === undefined) return { status: "pending-requirements", task };
+    if (decision.directorLeaderRecoveryIssue) deps.report(task.id, "恢复指令格式无效，请在 waiting 决策中提供组长任务 ID、代次和恢复步骤。");
+    const controller = controllers.get(task.id);
+    if (decision.status === "waiting" && decision.directorLeaderRecovery && controller) {
+      const { id: rootId, department } = task;
+      const stopRevision = controller.stopRevision;
+      const assertCurrent = (): LoopTaskRecord => {
+        const current = deps.readTask(rootId);
+        if (disposed || controllers.get(rootId) !== controller || controller.stopped || controller.stopRevision !== stopRevision
+          || failed.has(rootId) || current?.status !== "running" || current.workspaceKey !== deps.workspaceKey()
+          || !same(current.department, department)) throw new Error("director-recovery-revoked");
+        return current;
+      };
+      const outcome = await host.recoverLeaderFromDirector(task.id, decision.directorLeaderRecovery, () => {
+        if (!same(assertCurrent().supplementalRequirements ?? [], request.requirements)) throw new Error("director-requirements-changed");
+      });
+      const current = assertCurrent();
+      if (!same(current.supplementalRequirements ?? [], request.requirements)) return { status: "pending-requirements", task: current };
+      deps.report(task.id, outcome.ok ? "总监已将恢复步骤下发给原组长，等待执行汇报。"
+        : "组长恢复未确认，请核对当前组长代次、会话和执行清理状态。");
+    }
+    if (decision.status === "waiting" || (decision.status === "blocked" && !decision.blocker)) {
+      const snapshot = host.runtimeSnapshot(task.id);
+      const leaders = snapshot?.leaders ?? [];
+      const hasLiveLeader = Boolean(snapshot?.startingModules?.length)
+        || leaders.some((member) => member.status === "starting" || member.status === "running");
+      if (hasLiveLeader) {
+        if (progressPatch.loopProgressPercent === undefined) return { status: "pending-requirements", task: deps.readTask(task.id)! };
         const saved = deps.updateTask(task.id, { ...progressPatch, updatedAt: Date.now() });
         if (!saved) throw new Error("总监进度保存失败。");
         return { status: "pending-requirements", task: saved };
       }
-      const summary = "总监请求等待组长汇报，但当前没有正在运行的组长任务；已暂停自动协调，请复核组织状态后继续。";
-      const paused = deps.updateTask(task.id, { status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
+      const failedLeaders = leaders.filter((member) => member.status === "blocked" || member.status === "failed");
+      const failureKey = JSON.stringify(failedLeaders.map((member) => [member.taskId, member.generation]));
+      if (controller && failedLeaders.length && controller.reviewedLeaderFailures !== failureKey) {
+        controller.reviewedLeaderFailures = failureKey;
+        deps.report(task.id, "当前没有正在运行的组长。请根据组长汇报安排恢复、推进独立目标或说明整体阻塞证据。");
+        wake(task.id);
+        return { status: "pending-requirements", task: deps.readTask(task.id)! };
+      }
+      if (!failedLeaders.length && decision.status === "blocked") return { status: "pending-requirements", task };
+      const summary = decision.status === "waiting"
+        ? "总监请求等待组长汇报，但当前没有正在运行的组长任务。已暂停自动协调，请复核组织状态后继续。"
+        : buildLoopBlockerDiagnosticFailure(decision.finalSummary, decision.blockerIssue);
+      const paused = deps.updateTask(task.id, { ...progressPatch, status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
       if (!paused) throw new Error("总监等待状态保存失败。");
       deps.report(task.id, summary);
       return { status: "needs-review", task: paused, decision };
     }
     if (decision.status === "blocked") {
-      const leaders = host.runtimeSnapshot(task.id)?.leaders ?? [];
-      const hasFailedLeader = leaders.some((member) => member.status === "blocked" || member.status === "failed");
-      if (!decision.blocker && !hasFailedLeader) return { status: "pending-requirements", task };
-      const summary = decision.blocker
-        ? decision.finalSummary ?? "总监报告存在无法推进的阻塞，整体任务尚未完成。"
-        : buildLoopBlockerDiagnosticFailure(decision.finalSummary, decision.blockerIssue);
+      const summary = decision.finalSummary ?? "总监报告存在无法推进的阻塞，整体任务尚未完成。";
       const paused = deps.updateTask(task.id, { ...progressPatch, status: "needs-review", finalSummary: summary, updatedAt: Date.now() });
       if (!paused) throw new Error("总监阻塞状态保存失败。");
       deps.report(task.id, summary);
