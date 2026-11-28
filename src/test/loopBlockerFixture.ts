@@ -1,7 +1,11 @@
 import { LOOP_BLOCKER_EXAMPLE, type LoopBlocker } from "../loopBlocker";
 
 export function loopBlockerFixture(cause?: string): LoopBlocker {
-  return { ...LOOP_BLOCKER_EXAMPLE, cause: cause?.trim() || "测试场景：外部接口约定待确认。" };
+  return {
+    ...LOOP_BLOCKER_EXAMPLE,
+    constraintSource: "交付要求使用外部接口，当前接口尚未公开必填字段。",
+    cause: cause?.trim() || "测试场景：外部接口约定待确认。",
+  };
 }
 
 /** 调度测试默认提供完整诊断；blocker:null 显式模拟模型漏报。 */

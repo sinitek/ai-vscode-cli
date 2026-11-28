@@ -4,8 +4,8 @@
 
 ## Active Plans
 
-- `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md`：Codex 组长大型原生回调私有 IPC 修复 (~1187 tokens)
-- `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md`：Loop+ 启动前配置锁超时后显式继续 (~317 tokens)
+- `.ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md`：CLI 跨平台运行时策略收敛 (~6173 tokens)
+- `.ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md`：Loop+ 主决策 JSON 格式诊断 (~1256 tokens)
 
 ## Pending Items
 

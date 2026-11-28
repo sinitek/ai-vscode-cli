@@ -1,3 +1,9 @@
+import { createHash, randomBytes } from "crypto";
+import {
+  CODEX_THREAD_BUSY,
+  CODEX_THREAD_HANDOFF_FAILED,
+  CODEX_THREAD_WRITER_CONFLICT,
+} from "./interactive/codexThreadErrors";
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   LOOP_PLUS_REVIEW_DIAGNOSTIC_FIELDS,
@@ -5,6 +11,82 @@ import {
   type LoopPlusDecisionValidationDiagnostic,
   type LoopPlusReviewFieldDiagnostic,
 } from "./loopPlusDecision";
+import { LOOP_PLUS_MAIN_FAILURE_CODES, RUNTIME_CONFIG_LOCK_TIMEOUT } from "./loopMainFailure";
+
+/** 冻结验收事件与报告前缀的关联键。只由已有 ID 序列派生，不进入上下文契约。 */
+export function loopPlusFrozenBatchKey(reviewEventIds: readonly string[], reportEventIds: readonly string[] = []): string {
+  const canonical = `v1\nreviews\n${reviewEventIds.join("\n")}\nreports\n${reportEventIds.join("\n")}`;
+  return createHash("sha256").update(canonical, "utf8").digest("hex").slice(0, 12);
+}
+
+export const LOOP_PLUS_RESPONSE_SHAPES = ["absent", "empty", "whitespace", "json_object", "text", "execution_failed"] as const;
+export type LoopPlusResponseShape = (typeof LOOP_PLUS_RESPONSE_SHAPES)[number];
+
+export const LOOP_PLUS_REQUEST_PHASES = ["initial", "continue", "review", "user", "closeout"] as const;
+export type LoopPlusRequestPhase = (typeof LOOP_PLUS_REQUEST_PHASES)[number];
+
+const RESPONSE_SHAPE_SET = new Set<string>(LOOP_PLUS_RESPONSE_SHAPES);
+const REQUEST_PHASE_SET = new Set<string>(LOOP_PLUS_REQUEST_PHASES);
+
+export function isLoopPlusResponseShape(value: unknown): value is LoopPlusResponseShape {
+  return typeof value === "string" && RESPONSE_SHAPE_SET.has(value);
+}
+
+export function isLoopPlusRequestPhase(value: unknown): value is LoopPlusRequestPhase {
+  return typeof value === "string" && REQUEST_PHASE_SET.has(value);
+}
+
+export function readLoopPlusBatchKey(value: unknown): string | undefined {
+  return typeof value === "string" && /^[a-f0-9]{12}$/.test(value) ? value : undefined;
+}
+
+/** 一次宿主主调用的不透明键。只用于把该次终结日志和协议拒绝日志配成一对。 */
+export function loopPlusInvocationKey(): string {
+  return randomBytes(6).toString("hex");
+}
+
+export function readLoopPlusInvocationKey(value: unknown): string | undefined {
+  return typeof value === "string" && /^[a-f0-9]{12}$/.test(value) ? value : undefined;
+}
+
+/** batchKey 只表示冻结验收与报告 ID 序列相同，不表示同一次调用或同一个父任务。 */
+export const LOOP_PLUS_BATCH_EVIDENCE = "frozen_id_sequence" as const;
+
+export function readLoopPlusBatchEvidence(value: unknown): typeof LOOP_PLUS_BATCH_EVIDENCE | undefined {
+  return value === LOOP_PLUS_BATCH_EVIDENCE ? LOOP_PLUS_BATCH_EVIDENCE : undefined;
+}
+
+export const LOOP_PLUS_TERMINAL_REASON_CODES = [
+  ...LOOP_PLUS_MAIN_FAILURE_CODES,
+  "DEPARTMENT_NATIVE_UNKNOWN",
+  "SESSION_RUN_ACTIVE",
+  RUNTIME_CONFIG_LOCK_TIMEOUT,
+  CODEX_THREAD_BUSY,
+  CODEX_THREAD_HANDOFF_FAILED,
+  CODEX_THREAD_WRITER_CONFLICT,
+] as const;
+
+export type LoopPlusTerminalReasonCode = (typeof LOOP_PLUS_TERMINAL_REASON_CODES)[number];
+
+const TERMINAL_REASON_SET = new Set<string>(LOOP_PLUS_TERMINAL_REASON_CODES);
+
+/** getErrorInfo.code 来源开放。只有这份固定枚举可以进入终结观测和持久化摘要。 */
+export function readLoopPlusTerminalReasonCode(value: unknown): LoopPlusTerminalReasonCode | undefined {
+  return typeof value === "string" && TERMINAL_REASON_SET.has(value) ? value as LoopPlusTerminalReasonCode : undefined;
+}
+
+/** 只区分宿主看到的返回形态，不解析协议，也不保留正文。 */
+export function classifyLoopPlusResponse(content: string | null | undefined): {
+  responseShape: Exclude<LoopPlusResponseShape, "execution_failed">;
+  charCount: number;
+} {
+  if (typeof content !== "string") return { responseShape: "absent", charCount: 0 };
+  const charCount = content.length;
+  if (charCount === 0) return { responseShape: "empty", charCount: 0 };
+  if (!content.trim()) return { responseShape: "whitespace", charCount };
+  if (content.trimStart().startsWith("{")) return { responseShape: "json_object", charCount };
+  return { responseShape: "text", charCount };
+}
 
 export const FORMAT_ERROR_HINTS: Readonly<Record<string, string>> = {
   EmptyResponse: "请返回一个完整的决策 JSON 对象，不要返回空回复。",
@@ -51,7 +133,7 @@ const BRANCH_DIAGNOSTICS = {
   "validation.accept.unlinked_subtasks": ["accept.subtasks 中与验收事件有关的任务须只关联至对应 reviews[i].subtaskIds；独立的剩余目标工作须列入 independentSubtaskIds。每个新增任务 ID 必须按合约恰好归属一处，不得把独立工作挂到失败项。", "subtasks"],
   "validation.accept.failed_repair_missing": ["针对每个实际失败的 reviews[i] 分别处理：仅当该项确需修复时，才在该项 subtaskIds 关联快照中的原逻辑 ID，并在 subtasks 恰好派发一项同 ID 返工；若该项无需修复，则不关联返工并填写非空 noRepairReason。独立的剩余目标工作使用 independentSubtaskIds，不要挂到失败项。"],
   "validation.steer.controls_required": ["steer 必须提供实际的控制操作。", "steer.controls"],
-  "validation.blocked.invalid_blocker": ["按当前 blocked 形状补充已发生的阻塞证据、影响及可恢复条件。", "blocked.blocker"],
+  "validation.blocked.invalid_blocker": ["优先执行或派发授权内的可行方案。方案均不可行时把理由写入 attempts 并省略 recoveryOptions，补齐 blocker.constraintSource（具体要求、项目规则、权限拒绝或技术事实）、证据、影响和恢复条件。", "blocked.blocker"],
   "state.review_batch_open.dispatch_forbidden": ["当前有开放验收批次，不能 dispatch；请用 accept 确认整批并在同一决策中派发后续任务。"],
   "state.review_batch_open.wait_forbidden": ["当前有开放验收批次，不能 wait；请用 accept 确认整批，或仅在满足全部完成门禁时使用 completed。"],
   "state.review_batch_open.steer_forbidden": ["先按当前验收形状确认整批；后续控制只能使用当前形状允许的 controls。"],
@@ -60,12 +142,14 @@ const BRANCH_DIAGNOSTICS = {
   "state.review_batch.failed_cannot_pass": ["执行失败或停止的事件不能验收通过；请用 accept 标记失败并派修或说明无需修复，仅在交付不再需要时才撤销验收。", "reviews"],
   "state.report_batch.mismatch": ["按快照所列顺序确认本次提示冻结的全部报告；没有待确认报告时省略该字段或返回空数组。", "reportEventIds"],
   "state.report_batch.wait_required": ["请用 wait 和当前 reportEventIds 仅确认本次报告；原验收批次在报告消费后恢复。", "reportEventIds"],
+  "state.clarification.limit_reached": ["本任务的澄清次数已用尽。请按已有需求和授权继续可行工作。剩余目标确实无法推进时，用 blocked 说明限制的来源、已尝试的方法和恢复条件。", "clarification"],
   "state.dispatch_window.plan_required": ["验收前派发须提供用于续跑本批验收的 nextStepPlan。也可直接继续验收冻结批次。", "nextStepPlan"],
   "state.dispatch_window.controls_forbidden": ["验收前派发不能带 controls；请省略控制操作或直接继续验收冻结批次。", "controls"],
   "state.dispatch_window.preflight_failed": ["验收前只允许在单次派发上限和空槽内立即启动独立新任务；不得等待、续接、依赖待确认结果或与待验收交付冲突。不满足时请继续验收冻结批次。", "subtasks"],
   "state.controls.unavailable": ["请核对 controls 的目标是快照中允许操作的运行中或排队任务；不要重放已应用的操作。", "controls"],
   "state.dispatch.rejected": ["派发存在拒绝项。此前验收结论及已确认消息保留；不得重复 accept、改变 failed 结论或重发已接受任务。按快照仅纠正未接受的派发。", "subtasks"],
   "state.wait.no_work": ["当前没有运行中或排队任务，wait 无法推进。请用 dispatch 派发未完成工作，或在满足全部门禁时使用 completed；不要因这项矛盾请求用户继续。"],
+  "state.wait.interrupted_work": ["主任务须处置“已中断，等待续跑”的子任务。请用 controls.reprompt 沿原 ID 继续，或在派发接替任务时用 controls.close 关闭原预留。后继仍依赖原 ID 时保留原 ID。确需外部输入时说明阻塞。"],
   "state.wait.dependency_blocked": ["当前全部 pending 被依赖阻塞。请用原逻辑 ID 重派失败或关闭的前置，或调整尚未运行后继的 dependsOn；无安全工作时使用既有 blocked 规则。"],
   "state.wait.review_dependency_blocked": ["当前待审事件被验收依赖阻塞且无活跃执行。按最新 attempt 修复前置或调整尚未运行后继的依赖，保留未确认事件及真实验收结论。"],
   "state.completion.repair_required": ["尚欠返工。按快照用原逻辑 ID dispatch 新 attempt 并再次验收；不要重复确认原事件。"],

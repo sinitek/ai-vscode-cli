@@ -7,6 +7,7 @@ import { type ConversationTabRecordForWorkspaceSettings, type WorkspaceSettings 
 
 export type ConversationTabRecord = {
   manualCloseOnly?: true;
+  pendingLoopMainTaskId?: string;
   loopTaskId?: string;
   loopSubtaskId?: string;
   taskSummary?: string;
@@ -76,11 +77,13 @@ export function findConversationTabForLoopResume(
   let sessionFallback: ConversationTabRecord | null = null;
   for (const tab of tabs) {
     const context = resolveLoopContextForCli(tab, task.cli);
+    if (tab.loopSubtaskId || context.taskRole === "subtask" || (context.loopTaskId && context.loopTaskId !== task.id)
+      || (tab.loopTaskId && tab.loopTaskId !== task.id)) continue;
     if (context.taskRole === "main" && context.loopTaskId === task.id) {
       return tab;
     }
     if (
-      !sessionFallback
+      (!sessionFallback || (sessionFallback.cli !== task.cli && tab.cli === task.cli))
       && task.sessionId
       && getConversationTabSessionIdForCli(tab, task.cli) === task.sessionId
     ) {
@@ -176,6 +179,7 @@ export function setConversationTabSessionIdForCli(
     delete tab.sessionIdByCli[cli];
   }
   if (tab.cli === cli && tab.sessionId !== normalizedSessionId) {
+    delete tab.pendingLoopMainTaskId;
     tab.sessionId = normalizedSessionId;
     changed = true;
   }
@@ -196,6 +200,7 @@ export function switchConversationTabCli(
   if (!cliChanged && !sessionChanged) {
     return false;
   }
+  delete tab.pendingLoopMainTaskId;
   tab.cli = cli;
   tab.sessionId = nextSessionId;
   return true;
@@ -222,8 +227,9 @@ export function createSessionTabsController(deps: {
   setWorkspaceInteractiveModeForCli: (cli: CliName, mode: InteractiveMode) => boolean;
   resolveAutoInteractiveModeForConversationTab: (tab: ConversationTabRecord | null) => InteractiveMode;
   collectRunningLoopTaskIds: () => Set<string>;
-  isLoopTaskRunning: (taskId: string, runningTaskIds: ReadonlySet<string>) => boolean;
-  getLoopTaskStatus: (taskId: string) => LoopTaskStatus | null;
+  readLoopTaskRunState: (taskId: string, runningTaskIds: ReadonlySet<string>) => {
+    isRunning: boolean; status: LoopTaskStatus | null; departmentExecutionActivity?: ConversationTabSummary["departmentExecutionActivity"];
+  };
   getLoopTaskSchedulingMode?: (taskId: string) => unknown;
   resolveConversationTabLoopContext: (tab: ConversationTabRecord) => LoopConversationTabContext;
   buildSessionLabelFromPrompt: (prompt: string | null | undefined) => string | null;
@@ -360,6 +366,8 @@ export function createSessionTabsController(deps: {
       sessionIdByCli,
       createdAt,
       ...(record.manualCloseOnly === true ? { manualCloseOnly: true } : {}),
+      ...(!sessionId && typeof record.pendingLoopMainTaskId === "string" && record.pendingLoopMainTaskId.trim()
+        ? { pendingLoopMainTaskId: record.pendingLoopMainTaskId.trim() } : {}),
       ...(normalizeConversationTaskSummary(record.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(record.taskSummary) } : {}),
       ...(record.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
       ...(executionLocked ? {
@@ -403,6 +411,7 @@ export function createSessionTabsController(deps: {
           sessionIdByCli,
           createdAt: tab.createdAt,
           ...(tab.manualCloseOnly ? { manualCloseOnly: true as const } : {}),
+          ...(tab.pendingLoopMainTaskId ? { pendingLoopMainTaskId: tab.pendingLoopMainTaskId } : {}),
           ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
           ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
           ...(isConversationTabExecutionLocked(tab) ? {
@@ -426,6 +435,7 @@ export function createSessionTabsController(deps: {
         sessionIdByCli: sanitizeConversationTabSessionIdMap(tab.sessionIdByCli, tab.cli, tab.sessionId),
         createdAt: tab.createdAt,
         ...(tab.manualCloseOnly ? { manualCloseOnly: true as const } : {}),
+        ...(tab.pendingLoopMainTaskId ? { pendingLoopMainTaskId: tab.pendingLoopMainTaskId } : {}),
         ...(normalizeConversationTaskSummary(tab.taskSummary) ? { taskSummary: normalizeConversationTaskSummary(tab.taskSummary) } : {}),
         ...(tab.taskSummaryAttempted === true ? { taskSummaryAttempted: true } : {}),
         ...(isConversationTabExecutionLocked(tab) ? {
@@ -555,18 +565,15 @@ export function createSessionTabsController(deps: {
   const buildTabsState = (): { activeTabId: string | null; tabs: ConversationTabSummary[] } => {
     const state = ensureTabs();
     const runningLoopTaskIds = deps.collectRunningLoopTaskIds();
+    const taskStates = new Map<string, ReturnType<typeof deps.readLoopTaskRunState>>();
     return {
       activeTabId: state.activeTabId,
       tabs: state.tabs.map((tab) => {
         const loopContext = deps.resolveConversationTabLoopContext(tab);
         const loopTaskId = loopContext.loopTaskId;
-        const loopTaskRunning = (
-          typeof loopTaskId === "string"
-          && deps.isLoopTaskRunning(loopTaskId, runningLoopTaskIds)
-        );
-        const loopTaskStatus = typeof loopTaskId === "string"
-          ? deps.getLoopTaskStatus(loopTaskId)
-          : null;
+        if (loopTaskId && !taskStates.has(loopTaskId)) taskStates.set(loopTaskId, deps.readLoopTaskRunState(loopTaskId, runningLoopTaskIds));
+        const taskState = loopTaskId ? taskStates.get(loopTaskId) : undefined;
+        const loopTaskRunning = taskState?.isRunning === true;
         const loopMainTabCloseLocked = (
           loopContext.taskRole === "main"
           && loopTaskRunning
@@ -584,7 +591,8 @@ export function createSessionTabsController(deps: {
           loopTaskId: loopTaskId ?? undefined,
           loopSubtaskId: loopContext.taskRole === "subtask" ? tab.loopSubtaskId : undefined,
           loopTaskRunning,
-          loopTaskStatus: loopTaskStatus ?? undefined,
+          loopTaskStatus: taskState?.status ?? undefined,
+          ...(taskState?.departmentExecutionActivity ? { departmentExecutionActivity: taskState.departmentExecutionActivity } : {}),
           loopMainTabCloseLocked,
         };
         if (typeof loopTaskId !== "string" || !deps.getLoopTaskSchedulingMode) {
@@ -729,7 +737,8 @@ export function createSessionTabsController(deps: {
       }
       delete activeTab.taskSummary;
       delete activeTab.taskSummaryAttempted;
-      let changed = false;
+      let changed = Boolean(activeTab.pendingLoopMainTaskId);
+      delete activeTab.pendingLoopMainTaskId;
       if (activeTab.cli !== cli) {
         changed = switchConversationTabCli(activeTab, cli) || changed;
       }

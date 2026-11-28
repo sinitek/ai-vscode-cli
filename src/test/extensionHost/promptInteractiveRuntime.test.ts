@@ -1,6 +1,8 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import { installVscodeMock } from "../vscodeMock";
+import { configurePromptRuleIndex } from "../../promptRuleIndex";
+import * as path from "node:path";
 
 import type { CliName } from "../../cli/types";
 import type { CodexInteractiveRunner, CodexStreamHandlers } from "../../interactive/codexRunner";
@@ -365,6 +367,34 @@ test("Loop+ completion text receives the current subtask reply before messages a
   assert.ok(harness.persistedMessages.at(-1)?.messages.some((message) => message.content === "子任务执行结束，等待主任务验收。"));
 });
 
+test("交互子任务开始时群聊可读到当前 attempt，停止后移除运行证据", async () => {
+  const entered = createDeferred();
+  const finish = createDeferred();
+  const starts: string[] = [];
+  const harness = createInteractiveRuntimeHarness({
+    codexRunBehavior: async () => { entered.resolve(); await finish.promise; },
+    runtimeDeps: { onSubtaskRunStarted: taskId => {
+      const active = harness.activeRunsByTabId.get("tab-1");
+      assert.equal(active?.loopTaskId, taskId);
+      assert.equal(active?.loopSubtaskId, "child");
+      starts.push(active?.loopAttemptId ?? "");
+    } },
+  });
+  const running = harness.host.runPromptInteractive(createPromptInput({
+    taskRole: "subtask", loopTaskId: "parent", loopRound: 1, loopSubtaskId: "child", loopAttemptId: "repair-2",
+  }), createTarget());
+  try {
+    await entered.promise;
+    assert.deepEqual(starts, ["repair-2"]);
+    harness.activeRunsByTabId.get("tab-1")!.stop();
+    assert.equal(harness.activeRunsByTabId.has("tab-1"), false);
+  } finally {
+    finish.resolve();
+    await running;
+  }
+  assert.deepEqual(harness.taskRecords.map(record => record.status), ["stopped"]);
+});
+
 test("a second tab stops and closes the previous same-session owner before continuing with a new cwd", async () => {
   const started = createDeferred();
   const finish = createDeferred();
@@ -659,6 +689,26 @@ test("interactive main reports only its completed final assistant as a Loop+ han
   });
 });
 
+test("Vibe responds to a failed rule read once within the current invocation", async (context) => {
+  const root = path.resolve(__dirname, "../../..");
+  assert.ok(configurePromptRuleIndex(root, "indexed"));
+  context.after(() => { configurePromptRuleIndex(root, "full"); });
+  const inputs: string[] = [];
+  const harness = createInteractiveRuntimeHarness({ runtimeDeps: productionConclusionDeps,
+    codexRunBehavior: async (prompt, handlers) => {
+      inputs.push(prompt);
+      const marker = prompt.match(/RULES_UNREADABLE:[a-f0-9]{16}/)?.[0];
+      if (inputs.length === 1) assert.ok(marker);
+      else assert.equal(marker, undefined);
+      handlers.onAssistantDelta(marker ?? "[final_answer] 已完成", { codexFinalAnswer: true });
+    } });
+  await harness.host.runPromptInteractive(createPromptInput(), createTarget());
+  assert.equal(inputs.length, 2);
+  assert.match(inputs[1], /本轮规则正文已附/);
+  assert.match(inputs[1], /run interactive task/);
+  assert.equal(harness.taskRecords.length, 1);
+});
+
 test("same interactive main call hands its terminal to Loop+ validation without projection or retry", async () => {
   const terminal = JSON.stringify({ status: "completed", answerConclusion: "same call",
     finalSummary: "first-pass validation", acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
@@ -903,6 +953,27 @@ test("host uses execution cwd for ordinary and Loop turns, reuses semantic ident
       manager.disposeAll();
     }
   });
+});
+
+for (const cli of ["codex", "opencode"] as const) test(`Loop main queue holds the next invocation until ${cli} compaction settles`, { timeout: 2000 }, async () => {
+  const fixture = createVibeCompactionQueueFixture(cli);
+  const target = { tabId: "tab-1", sessionId: "session-1", cli };
+  let nextStarted = false;
+  const main = fixture.mainQueue.runMain(target.tabId, () => fixture.maybeAutoCompactContextAfterPromptSuccess(
+    target, target.sessionId, fixture.minDuration + 1, { overlapLoopDispatch: true },
+  ));
+  const next = fixture.mainQueue.runMain(target.tabId, async () => { nextStarted = true; });
+  try {
+    await Promise.all([main, fixture.nativeStarted]);
+    assert.equal(nextStarted, false);
+    assert.ok(fixture.mainQueue.getCompaction(target.tabId));
+    await fixture.mainQueue.runMain("independent-tab", async () => undefined);
+    assert.equal(nextStarted, false);
+  } finally {
+    fixture.finishNative();
+  }
+  await next;
+  assert.equal(nextStarted, true);
 });
 
 for (const outcome of ["end", "stopped", "skipped"] as const) test(`Interactive Vibe host compaction queue settlement (${outcome})`, { timeout: 2000 }, async (context) => {
@@ -2047,12 +2118,47 @@ test("interactive runtime host stops when Codex human interaction is rejected", 
   assert.equal(messages.some((message) => message.content === "[final_answer] should not render"), false);
 });
 
-test("interactive runtime host logs command-not-found diagnostics before surfacing runner failures", async (t) => {
+// interactive-cli-command-start-failed is emitted through logError, a separate export from logEssential.
+function captureLoggerErrors(t: test.TestContext): Array<{ event: string; data: unknown }> {
   const diagnosticLogs: Array<{ event: string; data: unknown }> = [];
-  t.mock.method(logger, "logEssential", (event: string, data?: unknown) => {
+  t.mock.method(logger, "logError", (event: string, data?: unknown) => {
     diagnosticLogs.push({ event, data });
     return Promise.resolve();
   });
+  return diagnosticLogs;
+}
+
+function assertCommandNotFoundDiagnostic(
+  diagnosticLogs: Array<{ event: string; data: unknown }>,
+  expected: {
+    departmentRun: boolean;
+    loopTaskId: string | null;
+    tabId: string;
+    sessionId: string;
+    promptText: string;
+  },
+): void {
+  const commandFailure = diagnosticLogs.find((entry) => entry.event === "interactive-cli-command-start-failed");
+  const data = commandFailure?.data as Record<string, unknown> | undefined;
+  assert.ok(data);
+  assert.equal(data.reason, "command-not-found");
+  assert.equal(data.departmentRun, expected.departmentRun);
+  assert.equal(data.loopTaskId, expected.loopTaskId);
+  assert.equal(data.cli, "codex");
+  assert.equal(data.tabId, expected.tabId);
+  assert.equal(data.sessionId, expected.sessionId);
+  assert.equal(typeof data.runId, "string");
+  for (const entry of diagnosticLogs) {
+    const fields = (entry.data ?? {}) as Record<string, unknown>;
+    assert.equal(JSON.stringify(fields).includes(expected.promptText), false, entry.event);
+    for (const key of ["displayPrompt", "modelPrompt", "prompt", "args", "env", "command", "stdin", "capabilities"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(fields, key), false, `${entry.event}.${key}`);
+    }
+  }
+}
+
+test("interactive runtime host logs command-not-found diagnostics before surfacing runner failures", async (t) => {
+  const diagnosticLogs = captureLoggerErrors(t);
   const spawnError = new Error("Codex app-server 异常退出（code 127）：codex: command not found");
   const harness = createInteractiveRuntimeHarness({
     codexRunBehavior: async () => {
@@ -2070,33 +2176,55 @@ test("interactive runtime host logs command-not-found diagnostics before surfaci
 
   const messages = harness.messagesBySession.get("session-error") ?? [];
   assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+  assert.equal(harness.runStatusEvents.at(-1)?.tabId, "tab-error");
   assert.deepEqual(harness.taskRecords.map((record) => record.status), ["error"]);
+  assert.equal(harness.taskRecords.at(-1)?.sessionId, "session-error");
+  assert.equal(harness.taskRecords.at(-1)?.loopTaskId, undefined);
   assert.deepEqual(harness.memoryPersistStatuses, ["error"]);
   assert.equal(harness.activeRunsByTabId.size, 0);
   assert.ok(messages.some((message) => message.role === "system" && message.content.includes("command not found")));
   assert.ok(harness.persistedMessages.some((item) => item.sessionId === "session-error"));
-  const commandFailure = diagnosticLogs.find((entry) => entry.event === "interactive-cli-command-start-failed");
-  assert.equal((commandFailure?.data as Record<string, unknown>)?.reason, "command-not-found");
-  assert.equal((commandFailure?.data as Record<string, unknown>)?.departmentRun, false);
+  assertCommandNotFoundDiagnostic(diagnosticLogs, {
+    departmentRun: false,
+    loopTaskId: null,
+    tabId: "tab-error",
+    sessionId: "session-error",
+    promptText: "fail interactive",
+  });
 });
 
 test("command-not-found diagnostics identify department execution", async (t) => {
-  const diagnosticLogs: Array<{ event: string; data: unknown }> = [];
-  t.mock.method(logger, "logEssential", (event: string, data?: unknown) => {
-    diagnosticLogs.push({ event, data });
-    return Promise.resolve();
-  });
+  const diagnosticLogs = captureLoggerErrors(t);
   const harness = createInteractiveRuntimeHarness();
 
   await assert.rejects(harness.host.runPromptInteractive(
-    createPromptInput({ taskRole: "main", loopTaskId: "leader-task" }),
+    createPromptInput({
+      displayPrompt: "department secret brief",
+      modelPrompt: "department secret brief",
+      taskRole: "main",
+      loopTaskId: "leader-task",
+    }),
     createTarget({ tabId: "department-tab", sessionId: "local_department" }),
     { departmentCodexRun: async () => { throw new Error("Codex app-server 异常退出（code 127）：codex: command not found"); } },
   ), /command not found/);
 
-  const commandFailure = diagnosticLogs.find((entry) => entry.event === "interactive-cli-command-start-failed");
-  assert.equal((commandFailure?.data as Record<string, unknown>)?.departmentRun, true);
-  assert.equal((commandFailure?.data as Record<string, unknown>)?.loopTaskId, "leader-task");
+  const messages = harness.messagesBySession.get("local_department") ?? [];
+  assert.deepEqual(harness.runStatusEvents.map((event) => event.status), ["start", "error"]);
+  assert.equal(harness.runStatusEvents.at(-1)?.tabId, "department-tab");
+  assert.deepEqual(harness.taskRecords.map((record) => record.status), ["error"]);
+  assert.equal(harness.taskRecords.at(-1)?.loopTaskId, "leader-task");
+  assert.equal(harness.taskRecords.at(-1)?.sessionId, "local_department");
+  assert.deepEqual(harness.memoryPersistStatuses, ["error"]);
+  assert.equal(harness.activeRunsByTabId.size, 0);
+  assert.ok(messages.some((message) => message.role === "system" && message.content.includes("command not found")));
+  assert.ok(harness.persistedMessages.some((item) => item.sessionId === "local_department"));
+  assertCommandNotFoundDiagnostic(diagnosticLogs, {
+    departmentRun: true,
+    loopTaskId: "leader-task",
+    tabId: "department-tab",
+    sessionId: "local_department",
+    promptText: "department secret brief",
+  });
 });
 
 test("interactive runtime host stops an active runner and persists the stopped turn", async () => {

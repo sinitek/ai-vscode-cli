@@ -2,46 +2,47 @@
 
 这是 generated-only 的轻量 observation registry。它把热区、开放事项、风险、经验和 active plans 转成可按 ID 召回的结构化条目。
 
-## mem-7525b245ac - Codex 组长大型原生回调私有 IPC 修复
+## mem-8f3107f15f - CLI 跨平台运行时策略收敛
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~74 tokens
-- Source: `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md`
+- Read: ~78 tokens
+- Source: `.ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md`
 - Source kind: `active_plan`
-- Content hash: `7525b245acce85ca9a2092f9ba0f19a7039c95c70f1658ddff99569e0229e8b7`
-- Concepts: `open-loop`, `problem-solution`
-- Files: `src/test/runtime/departmentleadercallbackprotocol.test.ts`
+- Content hash: `8f3107f15f76b52dc181023d06d38199c79338fd95730fc6b124770fcc241dc9`
+- Concepts: `open-loop`, `decision`
+- Files: `../../../../.agents/skills/vscode-extension-host-smoke/SKILL.md`, `.ch/docs/TESTING.md`, `.ch/docs/design-docs/cli-process-runtime.md`, `.ch/docs/product-specs/FEATURE_INVENTORY.md`, `.ch/docs/references/cli-runtime-reference.md`, `scripts/department_workspace_capacity_settings_smoke.cjs`, `scripts/loop_plus_acceptance_navigation_smoke.cjs`, `scripts/verify_codex_owned_native_drain.js --live`, `scripts/verify_zcode_runner_lifecycle.js --live`, `src/cli/cliProcessRuntime.ts`, `src/cli/cliRunArgStrategies.ts`, `src/cli/processArgv.ts`
 
 Subtitle: Active execution plan
 
 Facts:
-- 日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。
-- Modified at: 2026-11-19T04:25:33+00:00
+- 日期：2026-11-24 类型：refactor 关联计划：无 状态：in-progress 负责人：协作 owner： claimed_at： claim_ttl： handoff_to：主任务 CLI 运行时策略收敛实现与验收
+- Modified at: 2026-11-25T08:06:35+00:00
 
 Narrative:
 
-日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。
+日期：2026-11-24 类型：refactor 关联计划：无 状态：in-progress 负责人：协作 owner： claimed_at： claim_ttl： handoff_to：主任务 CLI 运行时策略收敛实现与验收
 
-## mem-52c8a09d98 - Loop+ 启动前配置锁超时后显式继续
+## mem-707183a27e - Loop+ 主决策 JSON 格式诊断
 
 - Type: `plan`
 - Topic: `plan`
-- Read: ~52 tokens
-- Source: `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md`
+- Read: ~117 tokens
+- Source: `.ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md`
 - Source kind: `active_plan`
-- Content hash: `52c8a09d98d32ff277973ae865e12a228765c500ca550f754ed68690bfcd411c`
-- Concepts: `open-loop`, `problem-solution`
+- Content hash: `707183a27ec734a80653633625336d9ce3652f7ebd0acc1b28b030e5fd4bff88`
+- Concepts: `open-loop`, `decision`, `problem-solution`, `source-linked`
+- Files: `../../../../docs/LOOP_PLUS_DECISION_RELIABILITY.md`, `../../design-docs/loop-plus-scheduling.md#cli-输出与会话能力`, `../../design-docs/loop-plus-scheduling.md#协议失败后的自动续跑`, `../../design-docs/loop-plus-scheduling.md#状态感知决策形状`, `../../ontology/domains/cli-plugin-runtime.json`, `../../product-specs/FEATURE_INVENTORY.md#loop-协议失败自动续跑`, `.ch/docs/design-docs/`, `.ch/docs/exec-plans/active/`, `.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`, `.ch/docs/ontology/`, `.ch/docs/product-specs/`, `2026-11-24-refactor-cli-runtime-policy-convergence.md`
 
 Subtitle: Active execution plan
 
 Facts:
-- 日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收
-- Modified at: 2026-11-19T04:25:33+00:00
+- 日期：2026-11-25 类型：bugfix 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任） 状态：in-progress
+- Modified at: 2026-11-27T05:26:19+00:00
 
 Narrative:
 
-日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收
+日期：2026-11-25 类型：bugfix 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任） 状态：in-progress
 
 ## mem-431f2548e1 - 热区记忆面
 

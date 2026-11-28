@@ -179,7 +179,8 @@ test("department classic root keeps explicit baseline plan and atomic collaborat
 
 test("bounded Loop+ block review persists and rejects malformed state", () => {
   const task = createLegacyTask();
-  task.loopPlusBlockReview = { state: "pending", summary: "need independent work check" };
+  task.loopPlusBlockReview = { state: "pending", summary: "need independent work check",
+    recoveryOptions: [{ label: "本地重建", action: "重建测试产物", verification: "校验生成结果" }] };
   loopTaskStore.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
   assert.deepEqual(readSkillTask(task.taskStoreFile).loopPlusBlockReview, task.loopPlusBlockReview);
   const raw = JSON.parse(fs.readFileSync(task.taskStoreFile, "utf8"));

@@ -1,6 +1,7 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as vm from "node:vm";
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -117,24 +118,24 @@ test("Loop+ acceptance feedback renders as a two-column review table", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: ["重构规则表"],
     reviews: [{ eventId: "event-a", acceptance: "passed", reason: "报告完整，代码核对四处重复规则" }],
-    checks: [{ name: "dispatched work", passed: true, detail: "报告已写入，含范围与验证命令" }],
+    checks: loopPlusAcceptanceChecksFixture({ "dispatched work": { detail: "报告已写入，含范围与验证命令" } }),
   });
   assert.ok(section);
   const html = render(section.body);
   assert.match(html, /<th>审查内容<\/th>/u);
   assert.match(html, /<th>审查结果<\/th>/u);
   assert.match(html, /<p><strong>子任务：重构规则表<\/strong><\/p>\s*<p><strong>整体验收结果：✅ 通过<\/strong><\/p>\s*<p>✅ 报告完整，代码核对四处重复规则<\/p>\s*<div class="markdown-table-wrap"><table>/u);
-  assert.match(html, /<td>默认验收·实现完整性<\/td>\s*<td>✅ 报告已写入，含范围与验证命令<\/td>/u);
-  assert.equal((html.match(/<tr>/gu) ?? []).length, 2);
+  assert.match(html, /<td>交付与范围<\/td>\s*<td>✅ 实现完整性：报告已写入，含范围与验证命令/u);
+  assert.equal((html.match(/<tr>/gu) ?? []).length, 4);
   assert.doesNotMatch(html, /<td>(?:验收事件|整体验收结果)/u);
   assert.doesNotMatch(html, /<ul>|<li>/u);
   const piped = buildLoopPlusAcceptanceFeedbackSection({
-    checks: [{ name: "tests", passed: false, detail: "断言含 | 竖线" }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { passed: false, detail: "断言含 | 竖线" } }),
   });
   assert.ok(piped);
   const pipedHtml = render(piped.body);
-  assert.equal((pipedHtml.match(/<td>/gu) ?? []).length, 2);
-  assert.match(pipedHtml, /<td>❌ 断言含 \| 竖线<\/td>/u);
+  assert.equal((pipedHtml.match(/<td>/gu) ?? []).length, 6);
+  assert.match(pipedHtml, /<td>❌ 测试验证未通过：断言含 \| 竖线/u);
 });
 
 test("Loop and Loop+ embed the same renderer as AI chat for initial and patched bubbles", () => {

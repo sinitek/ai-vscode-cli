@@ -114,4 +114,4 @@ worker 首次失败会在断开私有通道前尽力发送一个固定阶段标�
 
 损坏、缺片、重复、跨调用、序号/身份冲突、超预算均关闭本代并保留 unknown。未完成消息不交付任何部分、不 ACK；在终态/drain 前仍有重组或未确认消费者时拒绝成功。静默缺片保持真实等待责任，断连则拒绝完成；没有超时成功。worker 固定诊断区分 `callback-size-limit`、`callback-serialization-failed`、`callback-channel-disconnected` / `private-send-failed`；宿主固定诊断区分 fragment rejection/incomplete、预算、消费者及通道失败，不输出正文、原异常、token 或环境。单次 grant、原始清理凭证和容量门禁不变。
 
-验证包含固定 worker、原 Store/Ledger/配置租约/Owner/client 与模拟 NDJSON CLI 的 51 KiB 原始结果（兼容扩展后超过 64 KiB）、多字节 UTF-8 原始工具结果、交错短回调、挂起消费与原八项 receipt；另有宿主假 child 的认证/唯一 ACK/坏片测试及共享协议边界测试。详细命令和最终结果写入[本轮计划](../exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md)。这些测试不证明安装版 EH 的长工具输出场景，该独立驱动由并行任务交付，父任务需在双方新产物验收后运行；未写共享 dist、未启动/清理历史用户任务。
+验证包含固定 worker、原 Store/Ledger/配置租约/Owner/client 与模拟 NDJSON CLI 的 51 KiB 原始结果（兼容扩展后超过 64 KiB）、多字节 UTF-8 原始工具结果、交错短回调、挂起消费与原八项 receipt；另有宿主假 child 的认证/唯一 ACK/坏片测试及共享协议边界测试。详细命令和最终结果写入[本轮计划](../exec-plans/completed/2026-11/2026-11-18-bugfix-department-codex-large-callback.md)。这些测试不证明安装版 EH 的长工具输出场景，该独立驱动由并行任务交付，父任务需在双方新产物验收后运行；未写共享 dist、未启动/清理历史用户任务。

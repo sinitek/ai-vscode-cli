@@ -1,9 +1,11 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import path = require("node:path");
 import { normalizeDepartmentMetadata, readDepartmentMetadataField } from "../../department";
 import { DepartmentCapacityPool } from "../../departmentcapacity";
 import { validateDepartmentCollaboration } from "../../departmentcollaboration";
 import { buildDepartmentRolePrompt } from "../../departmentprompts";
+import { readPromptRuleLibrary } from "../../promptRuleIndex";
 
 const metadata = {
   version: 1, rootTaskId: "root", parentTaskId: null, leaderSubtaskId: null, role: "director", moduleTitle: "产品",
@@ -225,15 +227,20 @@ test("role prompts preserve director boundaries and live collaboration path", ()
   assert.doesNotMatch(employee, /部门员工额度|宿主限额/u);
 });
 
-test("director prefers useful same-round parallelism and retains cohesive single-group tasks", () => {
-  const director = buildDepartmentRolePrompt("director");
-  assert.match(director, /多个目标若已就绪、可以独立交付和验收、写入范围互不冲突.*同轮派给多个组长/u);
-  assert.match(director, /每位组长负责一个内聚、可独立验收的目标/u);
-  assert.match(director, /强耦合或需要共同修改同一文件或契约的工作适合留在一组/u);
-  assert.match(director, /必须先后完成的工作按依赖分轮。只有一个合适目标时就派一组/u);
-  assert.match(director, /预计实现与验证工作量.*尽量均衡各组/u);
-  assert.match(director, /按需补派新就绪且不冲突的目标/u);
-  assert.match(director, /在整体结论中交代遗留事项/u);
+test("department rule library and fallback distribute acceptance within one module", () => {
+  const { rules } = readPromptRuleLibrary(path.resolve(__dirname, "../../.."));
+  for (const director of [rules.get("department/director")!.body, buildDepartmentRolePrompt("director")]) {
+    assert.match(director, /同一模块.*能分别验收.*同轮派给多位组长/u);
+    assert.match(director, /优先按业务模块分工.*每组负责自己范围内的实现、验收和返工.*同一交付结果及其验收项只归一组/u);
+    assert.match(director, /共享只读材料.*可以并行.*契约就绪后补派/u);
+    assert.match(director, /只剩一项小修或只能一起判定时派一组/u);
+    assert.match(director, /跨组集成.*一位组长只验该缺口/u);
+    assert.match(director, /总监不检查代码、不执行验收/u);
+  }
+  for (const leader of [rules.get("department/leader")!.body, buildDepartmentRolePrompt("leader")]) {
+    assert.match(leader, /本组验收队列.*独立验收，无需等待其他组/u);
+    assert.match(leader, /依据证据判定通过或安排返工复验.*汇报结论、证据位置和剩余缺口/u);
+  }
 });
 
 test("employee prompt keeps temporary build output outside the execution directory", () => {

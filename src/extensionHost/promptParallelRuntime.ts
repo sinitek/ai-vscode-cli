@@ -76,6 +76,8 @@ type PromptParallelRuntimeRequiredHostDeps = {
   appendMessageToStore: typeof import("../promptRunState").appendMessageToStore;
   appendOpenCodeFinalTextToTabStream: typeof import("../openCodeTabStream").appendOpenCodeFinalTextToTabStream;
   appendTaskRun: (record: TaskRunRecord) => void;
+  onSubtaskRunStarted?: (taskId: string) => void;
+  observeSubtaskProcess?: (process: RunProcess) => void;
   applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
   buildHiddenRetryFailureMessage: typeof import("../hiddenRetry").buildHiddenRetryFailureMessage;
   buildHiddenRetryLimitMessage: typeof import("../promptRetry").buildHiddenRetryLimitMessage;
@@ -332,6 +334,10 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
         loopSubtaskId: input.loopSubtaskId,
         loopAttemptId: input.loopAttemptId,
       });
+      if (input.taskRole === "subtask" && input.loopTaskId) {
+        deps.observeSubtaskProcess?.(runProcess);
+        deps.onSubtaskRunStarted?.(input.loopTaskId);
+      }
     };
 
     const appendParallelTrace = (
@@ -633,6 +639,7 @@ export function createPromptParallelRuntimeHost(deps: PromptParallelRuntimeHostD
       },
       createMessageId,
       bindRunIdentityBeforeUserBubble: (_prepared, identity) => {
+        input.loopPlusMainAdmission?.onRunOpened();
         userMessageId = identity.userMessageId;
         userCreatedAt = identity.userCreatedAt;
       },

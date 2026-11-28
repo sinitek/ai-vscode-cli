@@ -1542,6 +1542,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (!meta || meta.taskRole !== "main" || !meta.loopTaskId) {
           return false;
         }
+        if (tab.departmentExecutionActivity && tab.departmentExecutionActivity !== "active") return false;
         if (tab && tab.loopTaskRunning === true) {
           return true;
         }
@@ -1730,6 +1731,7 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
         if (!tab) {
           return false;
         }
+        if (tab.departmentExecutionActivity && tab.departmentExecutionActivity !== "active") return false;
         if (
           typeof runningFlowStoppedTabIds !== "undefined"
           && runningFlowStoppedTabIds
@@ -1856,13 +1858,19 @@ export const VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING = `      ${buildChatBubbleRet
       function isConversationTabBusy(tabId) {
         const tab = getConversationTabSummary(tabId);
         const runtimeState = getConversationRuntimeState(tabId, { create: false });
-        return Boolean(runtimeState && runtimeState.promptSubmission)
-          || isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
+        if (runtimeState && runtimeState.promptSubmission) return true;
+        return isConversationTabRunning(tab) || isLoopMainTabCloseLocked(tab);
       }
 
       function isLoopMainConversationTabRunning(tabId) {
         const tab = getConversationTabSummary(tabId);
-        return isLoopMainTab(tab) && isConversationTabBusy(tabId);
+        if (!isLoopMainTab(tab)) return false;
+        if (typeof tab.loopMainRunActive === "boolean"
+          && (tab.loopTaskStatus === "error" || tab.loopTaskStatus === "needs-review" || tab.loopTaskStatus === "stopped")) {
+          const runtime = getConversationRuntimeState(tabId, { create: false });
+          return tab.loopMainRunActive || Boolean(runtime && runtime.promptSubmission);
+        }
+        return isConversationTabBusy(tabId);
       }
 
       function isTabErrored(tabId) {

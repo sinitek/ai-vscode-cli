@@ -4,6 +4,12 @@
 
 Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通过，但整体目标仍未完成，之后没有新派发。
 
+## 重启后提示父任务归属锁忙
+
+按父任务 ID 找到当次 `department-employee-admission` 日志，再按 `attemptId` 匹配派发。`identity-lock-present` 表示宿主读取父记录时遇到共享归属目录的事务锁。`requesterPid` 标识读取进程，有 `holderPid` 时才能定位已确认的持锁进程。保留锁文件，让宿主按持锁者证据处理。
+
+`retained` 表示原派发仍在等待。普通 Loop+ 的 `launchReservation.state` 为 `waiting` 时，重新加载该父任务后，巡检可以接手同一次派发。`claimed` 或旧记录缺少预留时，先按最新派发的回执和产物核对执行情况。群聊能打开已保存的进度时，执行操作仍需宿主重新确认父任务归属。
+
 ## 必须区分的状态
 
 - **单次 CLI 调用完成**：交互执行正常返回，可能只是生成了验收或阻塞决策，不代表父任务完成。
@@ -49,6 +55,7 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 
 ## 典型误判与后续处理
 
+- 若群聊显示运行中、修复中、验收中均为零，先查看主沟通里的“系统巡检 · 补充需求”和 `loop-plus-idle-supplement` 事件。当前宿主持有任务时，下一次分钟巡检会列出已中断的 attempt。主任务沿原 ID `reprompt` 时可按新 attempt 追踪交付。改由新 ID 接替时，核对同一快照中原 attempt 已关闭且接替任务已登记。若后继仍依赖原 ID，查看原 ID 的续派。验收按实际完成的 attempt 追踪。历史任务需先从群聊继续执行以取得当前宿主控制器。
 - VS Code 崩溃后不能只凭持久化 running / activeSubtaskIds 认定还有进程。新运行核对保留子任务关联并记 `runtimeInterrupted=true`；手动继续原子任务，成功结果会重建 Loop+ 完成回报并通知主任务验收，其余失联子任务仍需继续。不要删除快照、修改 attempt ID 或伪造完成。旧版 stopped 记录若没有中断标记，需显式继续父任务；不得把用户主动停止猜成崩溃。实现与验收边界见 [恢复设计](../design-docs/loop-crash-recovery.md)。
 
 - 子任务全部执行结束且 `phase=reviewing`，不代表验收决策已被接收。读取原主模型 JSON，用 `parseLoopPlusDecisionWithFeedback` 按运行时选项只读回放，核对 `reviewEventId(s)`、`reviews` 和 `subtasks`；新任务须恰好归属一个 `reviews[].subtaskIds` 或 `independentSubtaskIds`。事件相关任务可关联通过项并保留真实结论，独立剩余交付使用独立列表。只派修复时检查沟通文件中的剩余目标、空槽及依赖说明，避免把局部验收缺口当全局屏障。不要直接改持久化任务或替主模型伪造通过。
@@ -77,6 +84,12 @@ Loop+ 聊天出现“任务已完成”，群聊最后若干子任务验收通�
 当前源码还覆盖两个遗漏边界：旧标签关闭或界面刷新失败后继续清理本次成功标签，最终错误汇总包含实际失败标签；压缩期间主标签关闭导致只剩子任务标签时，自动关闭原标签并保留同 CLI 空白对话，在配置恢复前发布新标签状态，避免恢复失败留下旧界面，仍拒绝关闭活动运行和锁定主任务。回归入口为 `src/test/session/sessionTabCliSwitch.test.ts`。检查实例时同时核对运行中的扩展版本与宿主是否已重载；源码、磁盘已安装扩展版本及最后两条系统提示，均不能单独证明该旧实例采用当前关页逻辑。
 
 ## Loop 主任务 Tab 意外消失
+
+重启后先打开原工作区的群聊，核对完整任务 ID，再点「继续执行」。主标签仍在时会切回原标签，缺失时可用已保存会话重建。若出现「选择任务」，从候选的说明中核对完整任务 ID。若出现「重试原任务」，可在另一窗口写入结束后重试。活进程、来源未知和旧版空锁都需要保留，未提交或损坏的任务目录须先核实其状态。
+
+排查首条回复前的中断时，核对原任务 ID、主消息 ID 和实际 CLI 会话。早期 `local_` 会话可以晋升为原生会话，此时原消息会迁入后者。可在隔离环境运行 `node scripts/loop_plus_protocol_regression_smoke.cjs --scenario=group-continue-restart-missing-main`，验证清除主标签记录后，续跑仍进入原 CLI 会话。
+
+macOS 上的 `--scenario=group-continue-crash` 在本地模拟 CLI 正处理首个主请求时对隔离的 VS Code 主进程发送 `SIGKILL`。场景确认旧进程组已排空，重新启动原工作区，通过原任务入口打开群聊，再校验首次手动继续、重复点击、实际 CLI 会话及原消息。
 
 搜索 `conversation-tab-close` 常驻日志，并按 `tabId`、`loopTaskId` 和时间顺序检查 `requested`、`rejected`、`skipped`、`closed`：`rejected` 的 `reason` 区分运行中 Tab、主任务仍运行、目标身份变化及宿主未实际关闭；只有 `closed` 表示宿主复核确认该 Tab 已移除。所有 Tab 关页都会记录；若 `taskRole` 与 `loopTaskId` 均为 `null`，表示当前没有解析出 Loop 身份，应结合 `tabId` 和同时间段运行日志判断是否是 Loop 元数据缺失。日志不含会话 ID 或消息正文。若看见 `closed`，再按相同时间窗口核对主任务终态、子任务交接/压缩关页及扩展停机日志；若没有该事件但 UI 标签消失，应检查面板 Tab 状态投影/刷新，而不是先推断底层会话被删除。
 

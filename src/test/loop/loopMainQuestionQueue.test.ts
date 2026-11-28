@@ -25,6 +25,48 @@ test("busy questions wait for idle and retain FIFO order", async () => {
   assert.deepEqual(calls, ["first", "review", "second"]);
 });
 
+test("the finishing main turn queues compaction before pending questions and reviews on its tab", async () => {
+  const queue = createLoopMainQuestionQueue();
+  const finishTurn = deferred();
+  const compactStarted = deferred();
+  const releaseCompact = deferred();
+  const calls: string[] = [];
+  const main = queue.runMain("main", async () => {
+    await finishTurn.promise;
+    void queue.runCompaction("main", async () => {
+      calls.push("compact");
+      compactStarted.resolve();
+      await releaseCompact.promise;
+    });
+    calls.push("handoff");
+  });
+  const question = queue.runQuestion("main", { canRun: () => true }, async () => { calls.push("question"); });
+  const review = queue.runMain("main", async () => { calls.push("review"); });
+  finishTurn.resolve();
+  await Promise.all([main, compactStarted.promise]);
+  await queue.runMain("child", async () => { calls.push("child"); });
+  assert.deepEqual(calls, ["handoff", "compact", "child"]);
+  releaseCompact.resolve();
+  await Promise.all([question, review]);
+  assert.deepEqual(calls, ["handoff", "compact", "child", "question", "review"]);
+});
+
+test("stopping queued maintenance cancels its continuation and a failed compaction releases the tab", async () => {
+  const queue = createLoopMainQuestionQueue();
+  const active = deferred();
+  const main = queue.runMain("tab", () => active.promise);
+  const skipped = queue.runCompaction("tab", () => assert.fail("cancelled work ran"));
+  const cancelled = queue.getCompaction("tab")!;
+  queue.cancelCompaction("tab");
+  assert.equal(await cancelled.ready, false);
+  const failed = queue.runCompaction("tab", async () => { throw new Error("native compaction failed"); });
+  const next = queue.getCompaction("tab")!;
+  active.resolve();
+  await Promise.all([main, skipped, assert.rejects(failed, /native compaction failed/)]);
+  assert.equal(await next.ready, true);
+  assert.equal(queue.getCompaction("tab"), undefined);
+});
+
 test("main work and questions share arrival order without preempting the active answer", async () => {
   const queue = createLoopMainQuestionQueue();
   const active = deferred();

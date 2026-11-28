@@ -16,6 +16,7 @@ import { CONFIG_PATHS as DEPARTMENT_CONFIG_PATHS } from "./config/configPaths";
 import type { CodexRuntimeConfigEvidence } from "./config/codexRuntimeConfigIdentity";
 import * as vscode from "vscode";
 import { startLoopWaitWatchdog } from "./loopWaitWatchdog";
+import { isLoopSubtaskProcessLost, observeLoopSubtaskProcess } from "./loopSubtaskProcessActivity";
 import { closeLoopSubtaskConversationTabs, createCompletedLoopSubtaskTabCleanup, findRunningLoopSubtaskConversationTabId, prepareLoopSubtaskConversationTabClose, resolveCompletedLoopSubtaskTabBinding, retryLoopSubtaskTabClose } from "./extensionHost/loopSubtaskTabs";
 import type { LoopSubtaskTabCloseOptions } from "./loopSubtaskLifecycle";
 import { createConversationTaskSummaryCoordinator, createConversationTaskSummarySubmissions } from "./conversationTaskSummary";
@@ -100,6 +101,7 @@ import { buildResetLoopMainAiFailureState, isLoopMainStartupConfigLockTimeout } 
 import { normalizeLoopSubtaskFailure } from "./loopSubtaskFailure";
 import { ConfigManagerPanel } from "./webview/configPanel";
 import { LoopGroupChatPanel } from "./webview/loopGroupChatPanel";
+import { LOOP_GROUP_CHAT_VIEW_TYPE, type LoopGroupChatBinding } from "./loopGroupChatBinding";
 import * as configService from "./config/configService";
 import { createConfigApplyQueue, type ConfigApplyResult } from "./config/configApplyQueue";
 import { InteractiveRunnerManager } from "./interactive/manager";
@@ -150,7 +152,7 @@ import {
 } from "./loopAskThread";
 import { askLoopMainModelSession } from "./loopMainQuestion";
 import { createLoopMainQuestionQueue } from "./loopMainQuestionQueue";
-import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, type LoopTaskRecord } from "./loopTaskStore";
+import { appendLoopRound, appendLoopTaskRecord, bindLoopTaskToSession, bindLoopTaskToRuntimeTarget, buildLoopTaskStoreFile, buildLoopSubtaskCommunicationFile, cleanupLoopCommunicationRetention, cleanupLoopTaskStoreRetention, ensureLoopCommunicationFiles, getLoopCommunicationPaths, listLoopTaskStoreFiles, prepareLoopSubtaskCommunicationFile, readLoopTaskRecord, readLoopTaskStore, normalizeLoopTaskOriginProfile, updateLoopTaskRecord, type LoopTaskRecord, type OrdinaryLoopTaskVersion } from "./loopTaskStore";
 import { createLoopPlusScheduler } from "./loopPlusScheduler";
 import { loopModelRoutingFromPromptInput } from "./continueModelChoice";
 import { getSelectedLoopFrontendThinkingFromStore, getSelectedLoopFullstackThinkingFromStore } from "./modelSelectionStore";
@@ -158,7 +160,6 @@ import { readLoopSubtaskModeField } from "./loopPlusSubtaskMode";
 import { parseCliName, planBoundSubtaskConfigApply } from "./subtaskCliRoute";
 import { createLoopOrchestrationOwnershipTracker } from "./loopOrchestrationOwnership";
 import {
-  LoopMainAutoCompactFlights,
   mergeCompactTranscriptIntoLive,
   settleAutoCompactAfterPrompt,
   type LoopMainAutoCompactRequest,
@@ -181,16 +182,19 @@ import {
   updateToolSettings,
 } from "./toolSettings";
 import { DepartmentConfigurationSaveBarrier, getDepartmentSelectionContextRevision, invalidateDepartmentSelectionContext, validateDepartmentRoleCandidate } from "./departmentConfiguration";
-import { departmentRoleCliIssue, normalizeDepartmentMetadata, usesDepartmentOwner, type DepartmentMetadata } from "./department";
+import { departmentRoleCliIssue, normalizeDepartmentMetadata, usesDepartmentOwner, type DepartmentExecutionActivity, type DepartmentMetadata } from "./department";
 import { createDepartmentRuntimeComposition, freezeDepartmentThinkingDefaults } from "./extensionHost/departmentruntimecomposition";
 import { DepartmentColdGenerationRecovery, describeDepartmentColdStopFailure } from "./extensionHost/departmentcoldgenerationrecovery";
 import { createDepartmentStoredLeaderIdentityReader } from "./extensionHost/departmentleaderstoredidentity";
-import { canPromoteDepartmentLeaderSession, commitDepartmentLeaderSessionPromotion, isDepartmentLeaderMainContext, repairIdleDepartmentLeaderSession } from "./extensionHost/departmentLeaderSessionPromotion";
+import { canPromoteDepartmentLeaderSession, canRestoreGroupChatLeaderTab, commitDepartmentLeaderSessionPromotion, isDepartmentLeaderMainContext, repairIdleDepartmentLeaderSession } from "./extensionHost/departmentLeaderSessionPromotion";
 import { DepartmentRuntimeStore } from "./extensionHost/departmentruntimestore";
 import { DepartmentExecutionRecovery } from "./extensionHost/departmentexecutionrecovery";
 import { createDepartmentProductionTaskStoreForHost } from "./extensionHost/departmentProductionTaskStore";
+import { readDepartmentHistoricalLeaderIds, readDepartmentHistoricalTask } from "./extensionHost/departmentHistoricalTaskStore";
+import { observeDepartmentExecution, type DepartmentTaskSourceState } from "./extensionHost/departmentExecutionObservation";
 import { prepareDepartmentTaskRecord } from "./extensionHost/departmentOwnedTaskRepository";
 import { readKnownOrdinaryLoopTaskRecord, type LoopTaskUserStopSource } from "./loopTaskStore";
+import { initializeLoopTaskLockRecovery, inspectLoopTaskIdentityOwnership, retryExitedLoopTaskLock } from "./loopTaskIdentityCatalog";
 import { normalizeDepartmentMaxEmployees, normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { assertModeAvailable } from "./modeAvailability";
 import {
@@ -210,6 +214,7 @@ import {
   runContextCompactionWithDeps,
 } from "./contextCompactionRunner";
 import { buildHiddenRetryPrompt, buildThinkingPrompt, collectCodexImagePathsFromPrompt, resolveRecordedExecutionModel } from "./promptRuntime";
+import { configurePromptRuleIndex, type PromptRuleDelivery } from "./promptRuleIndex";
 import { createTraceLineFilterState, formatCodexExecSegmentForDisplay, formatTraceSegmentForDisplay, getTraceSegmentKind, isTraceSegmentStart, normalizeTraceContentForDisplay, resetTraceLineFilterState, resolveTraceKind, resolveTraceMerge, shouldIgnoreTraceLine, type TraceMessageKind } from "./traceDisplay";
 import { getSessionKey, writeSessionFile, type SessionStore } from "./sessionStore";
 import { createSessionTabsController, getConversationTabSessionIdForCli, isConversationTabExecutionLocked, resolveConversationTabAutoInteractiveMode, switchConversationTabCli, type ConversationTabRecord, type ConversationTabsState, type PendingSessionDraft, type SessionTabsController } from "./sessionTabs";
@@ -379,7 +384,6 @@ const WORKSPACE_KEY_FALLBACK = "no-workspace";
 const WORKSPACE_KEY_HASH_LENGTH = 12;
 const WORKSPACE_NAME_MAX_LENGTH = 32;
 const AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS = 5 * 60 * 1000;
-const loopMainAutoCompactFlights = new LoopMainAutoCompactFlights();
 const AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS = 3 * 60 * 1000;
 const LEGACY_SESSION_FILE = path.join(DATA_DIR, "sessions.json");
 const LEGACY_MESSAGE_DIR = path.join(DATA_DIR, "messages");
@@ -527,8 +531,7 @@ function initializeSessionControllers(loggerReady: Promise<void>): void {
     setWorkspaceInteractiveModeForCli,
     resolveAutoInteractiveModeForConversationTab,
     collectRunningLoopTaskIds,
-    isLoopTaskRunning,
-    getLoopTaskStatus: (taskId) => readLoopTaskRecord(taskId)?.status ?? null,
+    readLoopTaskRunState,
     getLoopTaskSchedulingMode: (taskId) => readLoopTaskRecord(taskId)?.schedulingMode,
     resolveConversationTabLoopContext,
     buildSessionLabelFromPrompt,
@@ -634,13 +637,16 @@ function initializeSessionControllers(loggerReady: Promise<void>): void {
   });
 }
 export function activate(context: vscode.ExtensionContext): void {
+  initializeLoopTaskLockRecovery(vscode.env?.machineId);
   const loggerReady = initLogger();
   try { getDepartmentOwnershipIndex(); }
-  catch (error) { void logError("department-source-initialization-refused", { error: errorToMessage(error) }); }
+  catch (error) { void loggerReady.then(() => logError("department-source-initialization-refused", { error: errorToMessage(error) })).catch(() => undefined); }
   context.subscriptions.push({ dispose: () => { void departmentOwnershipIndex?.close().catch((error) => logError("department-owner-dispose-failed", { error: errorToMessage(error) })); } });
   isExtensionDeactivating = false;
   extensionContext = context;
   extensionUri = context.extensionUri;
+  const ruleDelivery = vscode.workspace.getConfiguration(CONFIG_NAMESPACE).get<PromptRuleDelivery>("promptRuleDelivery", "indexed");
+  configurePromptRuleIndex(context.extensionPath, ruleDelivery === "indexed" && vscode.env.remoteName ? "inline" : ruleDelivery);
   humanInteractionAttention = createHumanInteractionAttentionHost(context, (channel, error) => {
     void logError("humanInteraction-desktop-attention", {
       channel,
@@ -680,11 +686,15 @@ export function activate(context: vscode.ExtensionContext): void {
   startTempCleanup(context);
   startHistoryArtifactRetentionCleanup(context);
   context.subscriptions.push(new vscode.Disposable(startLoopWaitWatchdog([
-    () => { if (!isExtensionDeactivating) loopOrchestrationHost?.checkWaitingTasks(); },
     () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingTasks(); },
-  ], (error) => { void logError("loop-wait-watchdog-failed", { error: errorToMessage(error) }); }, [
+  ], (error) => {
+    void logError("loop-wait-watchdog-failed", { error: errorToMessage(error) });
+  }, [
+    () => { if (!isExtensionDeactivating) loopOrchestrationHost?.checkWaitingTasks(); },
+    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingTasks(false); },
     () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkInterruptedMainTasks(); },
-    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingReviews(); },
+    () => { if (!isExtensionDeactivating) loopPlusRuntimeAdapter?.host().checkWaitingMainTasks(); },
+    () => { if (!isExtensionDeactivating) loopGroupChatChatPanelCoordinator.refreshOpenPanels(); },
   ])));
   startConfigHeartbeat(context);
   void refreshCliInstallStatuses();
@@ -701,6 +711,11 @@ export function activate(context: vscode.ExtensionContext): void {
     onNotificationAuthorization: (request) => humanInteractionAttention!.notificationAuthorization(request),
   });
   context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(LOOP_GROUP_CHAT_VIEW_TYPE, {
+      async deserializeWebviewPanel(panel, state: unknown) {
+        loopGroupChatChatPanelCoordinator.restore(panel, state, activeWorkspaceKey);
+      },
+    }),
     vscode.window.registerWebviewViewProvider(CliBridgeViewProvider.viewId, viewProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     })
@@ -1254,6 +1269,7 @@ async function handlePanelMessage(message: PanelMessage): Promise<void> {
     isCliName,
     reloadStoredToolSettings: () => {
       reloadToolSettings();
+      setDebugLogging(getDebugLogging());
       humanInteractionAttention?.refreshPreferences();
     },
     reloadWorkspaceSettings: () => { workspaceSettings = loadWorkspaceSettings(); },
@@ -1676,7 +1692,7 @@ function cancelHumanInteractionForTab(tabId: string, statusText?: string): void 
 }
 
 const promptRunRuntimeHost = createPromptRunRuntimeHost({
-  isDepartmentOrganizationTask: (task) => readDepartmentRootControl(task) !== null,
+  isDepartmentOrganizationTask: (task) => Boolean(task.department || task.departmentInvalid),
   resumeWaitingClassicBatch: (taskId) => requireLoopOrchestrationHost().resumeWaitingBatch(taskId)
     || loopOrchestrationOwnership.getCount(taskId) > 0,
   decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
@@ -1709,8 +1725,9 @@ async function updateOpenCodeRoleModelForConfig(
 }
 const sessionTabsHost = createExtensionSessionTabsHost({
   readOrdinaryConversationTabTaskRecord: readKnownOrdinaryLoopTaskRecord,
-  readDepartmentTaskRecord: (taskId) => departmentOwnershipIndex?.readTaskRecord(taskId) ?? null,
-  readDepartmentLeaderTaskIds: (rootTaskId, leaderSubtaskId) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(rootTaskId, leaderSubtaskId) ?? null,
+  readDepartmentTaskRecord: readDepartmentTaskRecordAcrossSources,
+  readDepartmentLeaderTaskIds: (rootTaskId, leaderSubtaskId) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(rootTaskId, leaderSubtaskId)
+    ?? readDepartmentHistoricalLeaderIds(rootTaskId, leaderSubtaskId),
   onSubtaskTabCreated: (tabId) => sendRunStatusForTab(tabId, "start"),
   resolveConversationTabLoopContext: (tab) => resolveConversationTabLoopContext(tab),
   logEssential: (event, payload) => { void logEssential(event, payload).catch(() => undefined); },
@@ -1722,6 +1739,8 @@ const { loadSessionStore, cleanupSessionRetentionAcrossWorkspaces, buildSessionS
 loopOrchestrationHost = createLoopOrchestrationHost({
   handleDepartmentDecision: (request) => getDepartmentRuntimeComposition().handleDirectorDecision(request),
   isTabRunActive,
+  isSubtaskInvocationActive: isLoopSubtaskTabRunActive,
+  isSubtaskRunActive: hasActiveLoopSubtask,
   getActiveConversationTabId,
   hasActiveSubtasks: hasActiveLoopSubtasks,
   cancelSubtaskInvocation: (tabId) => cancelLoopPlusInvocation(tabId),
@@ -1798,6 +1817,8 @@ const { runPromptParallel, stopParallelRunForTab } = createPromptParallelRuntime
   appendMessageToStore,
   appendOpenCodeFinalTextToTabStream,
   appendTaskRun,
+  onSubtaskRunStarted: refreshOpenLoopGroupChatPanelForTask,
+  observeSubtaskProcess: observeLoopSubtaskProcess,
   applyThinkingWorkspaceFiles,
   buildHiddenRetryFailureMessage,
   buildHiddenRetryLimitMessage,
@@ -1865,9 +1886,17 @@ const { runPromptInteractive } = createPromptInteractiveRuntimeHost({
   takeOverSessionForTab,
   getWorkspaceKey: () => activeWorkspaceKey,
   adoptSessionId,
+  bindOrdinaryLoopMainSession: (taskId, cli, previousSessionId, sessionId) => {
+    const task = readLoopTaskRecord(taskId);
+    if (!task || task.department || task.departmentInvalid || task.status !== "running" || task.workspaceKey !== activeWorkspaceKey
+      || task.cli !== cli || (task.sessionId && (task.sessionId !== previousSessionId || !isLocalSessionId(task.sessionId)))) return;
+    const bound = updateLoopTaskRecord(taskId, { sessionId, taskStoreFile: buildLoopTaskStoreFile(cli, task.workspaceKey, sessionId, taskId) }, { expectedOrdinaryRun: task });
+    if (!bound || bound.sessionId !== sessionId) throw new Error("主任务会话未能保存，请从原任务群聊重试。");
+  },
   applyProcessTitle,
   applyThinkingWorkspaceFiles,
   appendTaskRun,
+  onSubtaskRunStarted: refreshOpenLoopGroupChatPanelForTask,
   buildSubagentProgressLabels,
   buildTaskRunCompletionText,
   createMessageId,
@@ -1970,6 +1999,11 @@ const { runPromptOneShot } = createPromptOneShotRuntimeHost({
   },
   setActiveProcess: (process) => {
     primaryPromptRunController.activeProcess = process;
+    const run = primaryPromptRunController.activeTaskRun;
+    if (run?.taskRole === "subtask" && run.loopTaskId) {
+      observeLoopSubtaskProcess(process);
+      refreshOpenLoopGroupChatPanelForTask(run.loopTaskId);
+    }
   },
   setActiveRunId: (runId) => {
     primaryPromptRunController.activeRunId = runId;
@@ -2504,11 +2538,6 @@ async function applyConfigById(
       if (!config) {
         throw new Error(t("config.notFound"));
       }
-      void logEssential("apply-config", {
-        workspaceKey: activeWorkspaceKey,
-        cli,
-        configId,
-      });
       await configService.applyConfig(cli, {
         profileId: configId,
         content: config.content,
@@ -2935,7 +2964,7 @@ function isConfigLockResumeSessionAvailable(task: LoopTaskRecord, restoredTabId?
   if (!nativeSessionId || (task.executionSession && task.executionSession.sessionId !== nativeSessionId)) return false;
   const bound = restoredTabId ? resolvePromptRunTarget(restoredTabId) : resolveLoopMainPromptTarget(task, { createIfMissing: false });
   const busy = (tabId: string) => isTabRunActive(tabId) || promptRunHandoff.isBusy(tabId)
-    || loopMainQuestionQueue.isBusy(tabId) || loopMainAutoCompactFlights.has(tabId);
+    || loopMainQuestionQueue.isBusy(tabId);
   const isOriginalSession = (sessionId: string | null) => sessionId !== null && (sessionId === task.sessionId
     || sessionId === nativeSessionId || resolveInteractiveMappedId(task.cli, sessionId) === nativeSessionId);
   if ((!bound && restoredTabId) || (bound && (bound.cli !== task.cli || !bound.tabId
@@ -3079,24 +3108,38 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   appendSupplementalRequirement: appendLoopSupplementalRequirement,
   appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
   readTaskRecord: readDepartmentAwareGroupChatTask,
+  readDisplaySnapshot: (taskId, binding) => {
+    const task = readKnownOrdinaryLoopTaskRecord(taskId, binding, true);
+    return task?.workspaceKey === activeWorkspaceKey ? task : null;
+  },
+  reconcileInterruptedTask: markLoopTaskStoppedAfterRuntimeEnded,
   readDepartmentCapacity: (root) => getDepartmentRuntimeComposition().readCapacity(root),
   readDepartmentOrganizationControlState: readDepartmentRootControl,
-  hasLocalDepartmentDirectorActivity: (root) => departmentRuntimeComposition?.hasLocalDirectorActivity(root) ?? false,
+  hasLocalDepartmentDirectorActivity,
+  getDepartmentTaskSourceState: departmentTaskSourceState,
   readDepartmentEmployeeAllocation: (root) => getDepartmentRuntimeComposition().readDepartmentEmployeeAllocation(root),
   updateDepartmentEmployeeLimit: async (root, request) => getDepartmentRuntimeComposition().updateDepartmentEmployeeLimit(root, request),
-  readDepartmentLeaderTaskIds: (root, module) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(root, module) ?? null,
+  readDepartmentLeaderTaskIds: (root, module) => departmentOwnershipIndex?.readDepartmentLeaderTaskIds(root, module)
+    ?? readDepartmentHistoricalLeaderIds(root, module),
   departmentOrganizationControl: {
-    continue: (root, prompt) => getDepartmentRuntimeComposition().organizationControl.continue(root, prompt),
+    continue: (root, prompt, requestId) => getDepartmentRuntimeComposition().organizationControl.continue(root, prompt, requestId),
     stop: (root) => getDepartmentRuntimeComposition().organizationControl.stop(root),
     complete: (root) => getDepartmentRuntimeComposition().organizationControl.complete(root),
   },
-  continueDepartmentLeader: (task, prompt, assertCurrent) => {
-    const target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
+  continueDepartmentLeader: (task, prompt, assertCurrent, requestId) => {
+    assertCurrent();
+    let target = resolveLoopMainPromptTarget(task, { createIfMissing: false });
+    if (!target && canRestoreGroupChatLeaderTab(task, {
+      workspaceKey: activeWorkspaceKey,
+      hasSessionTab: (cli, sessionId) => ensureConversationTabs().tabs.some((tab) => getConversationTabSessionIdForCli(tab, cli) === sessionId),
+      readContext: (cli, sessionId) => resolveLoopConversationTabContextFromMessages(loadSessionMessages(cli, sessionId)),
+    })) target = resolveLoopMainPromptTarget(task, { createIfMissing: true });
     if (!target || departmentTaskForTab(target.tabId)?.id !== task.id) {
       throw new Error("组长执行会话当前不可用，请从总监继续产研部。");
     }
     return getDepartmentRuntimeComposition().continueDepartmentPrompt({
       targetTabId: target.tabId, cli: target.cli, displayPrompt: prompt, modelPrompt: prompt, contextTags: [], assertCurrent,
+      ...(requestId ? { continueRequestId: requestId } : {}),
     });
   },
   recordPromptHistory,
@@ -3109,6 +3152,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   fileExists: (filePath) => fs.existsSync(filePath),
   writeTextFileEnsuringDir,
   getActiveSubtaskIds: getActiveLoopSubtaskIds,
+  getLiveSubtaskRuns: getLiveLoopSubtaskRuns,
   getActiveReviewEventIds: (taskId) => loopPlusRuntimeAdapter?.host().getActiveReviewEventIds(taskId) ?? [],
   buildCompletedConclusionAndSummaryMarkdown: buildLoopCompletedConclusionAndSummaryMarkdown,
   resolveMainPromptTarget: resolveLoopMainPromptTarget,
@@ -3127,6 +3171,17 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
     }
   },
   isTabRunActive,
+  getMainCompaction: (tabId) => {
+    const flight = loopMainQuestionQueue.getCompaction(tabId);
+    const tab = flight && tabId ? getConversationTabById(tabId) : undefined;
+    if (!flight || !tab || !tabId) return;
+    const workspace = activeWorkspaceKey;
+    const cli = tab.cli;
+    const sessionId = getConversationTabSessionIdForCli(tab, cli);
+    return { ready: flight.ready, isTargetCurrent: () => !isExtensionDeactivating && activeWorkspaceKey === workspace
+      && getConversationTabById(tabId) === tab && tab.cli === cli && getConversationTabSessionIdForCli(tab, cli) === sessionId };
+  },
+  cancelMainCompaction: loopMainQuestionQueue.cancelCompaction,
   getActiveConfigIdForCli,
   getSelectedCliModel,
   getSelectedLoopCliModel,
@@ -3223,7 +3278,7 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
       runPrompt: async (input, options) => {
         const execute = (runOptions: RunPromptOptions) => {
           if (task.departmentInvalid) throw new Error("部门任务关联无效，无法提问。");
-          if (!usesDepartmentOwner(task.department)) return runPrompt(input, runOptions);
+          if (!usesDepartmentOwner(task.department)) return runPrompt(input, { ...runOptions, mainQueueOwned: true });
           return runDepartmentLeaderPrompt({ ...input, taskRole: "main", loopTaskId: task.id }, {
             targetTabId: options.targetTabId, invocationId: createMessageId(), isAborted, signal,
             registerQuestionRun: runOptions.registerQuestionRun,
@@ -3307,6 +3362,17 @@ const loopGroupChatChatPanelCoordinator = createLoopGroupChatPanelCoordinator({
   showWarningMessage: (message) => { void vscode.window.showWarningMessage(message); },
   logEvent: (event, payload) => { void logEssential(event, payload).catch(() => undefined); },
   pickTask: pickLoopGroupChatTask,
+  groupChatRecovery: {
+    workspaceKey: () => activeWorkspaceKey,
+    retryLock: retryExitedLoopTaskLock,
+    confirm: async (message, action) => await vscode.window.showWarningMessage(message, action) === action,
+    readIssue: (taskId) => {
+      const status = inspectLoopTaskIdentityOwnership(taskId);
+      if (status === "identity-lock-present") return "任务目录仍有事务锁。请等待写入完成，或核实持锁窗口后重试。";
+      if (status === "identity-catalog-unavailable") return "任务身份目录尚未提交或无法读取，请核实目录状态后重试。";
+      return "请确认原工作区的任务记录仍然可用。";
+    },
+  },
   t,
 });
 
@@ -3490,11 +3556,43 @@ function isTabRunActive(tabId: string | null): boolean {
   return getPrimaryRunTabId() === tabId;
 }
 
+function isLoopSubtaskTabRunActive(tabId: string): boolean {
+  if (promptAutoRepairController.isRepairing(tabId)) return true;
+  const interactive = interactiveRunsByTabId.get(tabId);
+  if (interactive) return !interactive.stopped && !interactive.terminal;
+  const parallel = parallelRunsByTabId.get(tabId);
+  const primary = getPrimaryRunTabId() === tabId;
+  const process = parallel?.process ?? (primary ? primaryPromptRunController.activeProcess : null);
+  if (!process) return primary;
+  return !parallel?.stopped && !isLoopSubtaskProcessLost(process);
+}
+
+function getLiveLoopSubtaskRuns(taskId: string) {
+  const runs = [...parallelRunsByTabId.values(), ...interactiveRunsByTabId.values()]
+    .filter(run => run.taskRole === "subtask" && run.loopTaskId === taskId && !run.stopped && isLoopSubtaskTabRunActive(run.tabId));
+  const primaryTabId = getPrimaryRunTabId();
+  const primary = primaryPromptRunController.activeTaskRun;
+  return primaryTabId && primary?.taskRole === "subtask" && primary.loopTaskId === taskId && isLoopSubtaskTabRunActive(primaryTabId)
+    ? [primary, ...runs] : runs;
+}
+
 function hasActiveLoopSubtasks(taskId: string): boolean {
+  if (getLiveLoopSubtaskRuns(taskId).length) return true;
   return ensureConversationTabs().tabs.some((tab) => {
-    if (!isTabRunActive(tab.id)) return false;
+    if (!isLoopSubtaskTabRunActive(tab.id)) return false;
     const context = resolveConversationTabLoopContext(tab);
     return context.taskRole === "subtask" && context.loopTaskId === taskId;
+  });
+}
+
+function hasActiveLoopSubtask(taskId: string, subtaskId: string, attemptId?: string): boolean {
+  if (getLiveLoopSubtaskRuns(taskId).some(run => run.loopSubtaskId === subtaskId
+    && (!attemptId || !run.loopAttemptId || run.loopAttemptId === attemptId))) return true;
+  return ensureConversationTabs().tabs.some(tab => {
+    if (!promptAutoRepairController.isRepairing(tab.id)) return false;
+    const context = resolveLoopSubtaskConversationContext(tab.cli, tab.id);
+    return context?.taskId === taskId && context.subtaskId === subtaskId
+      && (!attemptId || !context.attemptId || context.attemptId === attemptId);
   });
 }
 
@@ -3518,7 +3616,11 @@ function resolveConversationTabLoopContextForCli(
   const messages = sessionId
     ? loadSessionMessages(cli, sessionId)
     : getPendingSessionDraft(tab.id, cli).messages;
-  return resolveLoopConversationTabContextFromMessages(messages);
+  const context = resolveLoopConversationTabContextFromMessages(messages);
+  if (!context.taskRole && !sessionId && cli === tab.cli && tab.pendingLoopMainTaskId && !tab.loopSubtaskId) {
+    return { taskRole: "main", loopTaskId: tab.pendingLoopMainTaskId };
+  }
+  return context;
 }
 
 function resolveConversationTabLoopContext(tab: ConversationTabRecord): LoopConversationTabContext {
@@ -3590,19 +3692,24 @@ function collectRunningLoopTaskIds(): Set<string> {
   return runningTaskIds;
 }
 
-function isLoopTaskRunning(
+function readLoopTaskRunState(
   taskId: string,
   runningTaskIds: ReadonlySet<string> = collectRunningLoopTaskIds(),
-): boolean {
-  const task = readLoopTaskRecord(taskId);
+): { isRunning: boolean; status: LoopTaskRecord["status"] | null; departmentExecutionActivity?: DepartmentExecutionActivity } {
+  const task = readLoopTaskRecord(taskId) ?? readDepartmentTaskRecordAcrossSources(taskId);
   if (!task) {
-    return runningTaskIds.has(taskId);
+    return { isRunning: runningTaskIds.has(taskId), status: null };
   }
-  if (isLoopTaskRunOrphaned(task, runningTaskIds) && readDepartmentRootControl(task) === null) {
-    markLoopTaskStoppedAfterRuntimeEnded(taskId);
-    return false;
+  if (task.department || task.departmentInvalid) {
+    const { activity } = observeDepartmentExecution(task, runningTaskIds, departmentTaskSourceState, hasLocalDepartmentDirectorActivity);
+    const status = task.status !== "running" || activity === "active" ? task.status : activity === "inactive" ? "stopped" : null;
+    return { isRunning: status === "running", status, departmentExecutionActivity: activity };
   }
-  return resolveLoopTaskRunControlState(task, runningTaskIds).isRunning;
+  if (isLoopTaskRunOrphaned(task, runningTaskIds)) {
+    const reconciled = markLoopTaskStoppedAfterRuntimeEnded(taskId);
+    return { isRunning: false, status: reconciled?.status ?? null };
+  }
+  return { isRunning: resolveLoopTaskRunControlState(task, runningTaskIds).isRunning, status: task.status };
 }
 
 function readActiveRunForConversationTabFlow(tabId: string): { loopTaskId?: string | null } | null {
@@ -3627,11 +3734,14 @@ function reconcileRunningConversationTabs(requestedAt?: number): void {
   const runningTaskIds = collectRunningLoopTaskIds();
   const checks: ConversationTabRunningFlowCheck[] = ensureConversationTabs().tabs.map((tab) => {
     const { taskRole, loopTaskId: taskId } = resolveConversationTabLoopContext(tab);
-    const task = taskId ? readLoopTaskRecord(taskId) : null;
+    const task = taskId ? readLoopTaskRecord(taskId) ?? readDepartmentTaskRecordAcrossSources(taskId) : null;
+    const observation = task && (task.department || task.departmentInvalid)
+      ? observeDepartmentExecution(task, runningTaskIds, departmentTaskSourceState, hasLocalDepartmentDirectorActivity) : undefined;
     return {
       tabId: tab.id,
       taskRole,
       hasLoopTaskOwner: Boolean(taskId && runningTaskIds.has(taskId)),
+      departmentExecutionActivity: observation?.activity,
       task: task
         ? {
           id: task.id,
@@ -3730,7 +3840,7 @@ function resolveAutoInteractiveModeForConversationTab(
     return readToolSettings().newTaskInteractiveMode ?? "coding";
   }
   const context = resolveConversationTabLoopContext(tab);
-  const actual = context.loopTaskId ? readLoopTaskRecord(context.loopTaskId) : null;
+  const actual = context.loopTaskId ? readDepartmentTaskRecordAcrossSources(context.loopTaskId) ?? readLoopTaskRecord(context.loopTaskId) : null;
   const department = actual && !actual.departmentInvalid ? normalizeDepartmentMetadata(actual.department) : null;
   if (context.taskRole === "main" && department?.role === "director" && actual
     && department.rootTaskId === actual.id && actual.workspaceKey === activeWorkspaceKey && actual.cli === tab.cli
@@ -3738,9 +3848,7 @@ function resolveAutoInteractiveModeForConversationTab(
   return resolveConversationTabAutoInteractiveMode({
     taskRole: context.taskRole,
     loopTaskId: context.loopTaskId,
-    schedulingMode: context.loopTaskId
-      ? readLoopTaskRecord(context.loopTaskId)?.schedulingMode
-      : undefined,
+    schedulingMode: actual?.schedulingMode,
   });
 }
 
@@ -3757,7 +3865,7 @@ function isLoopMainTabCloseLocked(tabId: string | null): boolean {
     return false;
   }
   const runningTaskIds = collectRunningLoopTaskIds();
-  return isLoopTaskRunning(context.loopTaskId, runningTaskIds);
+  return readLoopTaskRunState(context.loopTaskId, runningTaskIds).isRunning;
 }
 
 function hasOtherTabRun(activeTabId: string | null): boolean {
@@ -3996,6 +4104,7 @@ function stopRunForTab(tabId: string | null, source: LoopTaskUserStopSource | nu
   if (!tabId) {
     return;
   }
+  if (source) loopMainQuestionQueue.cancelCompaction(tabId);
   const departmentTask = typeof departmentTaskForTab === "function" ? departmentTaskForTab(tabId) : null;
   if (departmentTask?.department?.role === "director") {
     void getDepartmentRuntimeComposition().organizationControl.stop(departmentTask).catch((error) => {
@@ -4198,7 +4307,7 @@ function departmentTaskForTab(tabId: string | null): LoopTaskRecord | null {
     const rejection = JSON.stringify([tab.cli, task.cli, tabSessionId, task.sessionId, workspaceMatches, cliMatches, sessionMatches]);
     if (departmentRouteRejections.get(rejectionKey) !== rejection) {
       departmentRouteRejections.set(rejectionKey, rejection);
-      void logEssential("department-session-route-rejected", {
+      void logError("department-session-route-rejected", {
         tabId: tab.id,
         loopTaskId: task.id,
         departmentRole: task.department?.role ?? null,
@@ -4299,7 +4408,10 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
     },
     registerRestoredTarget: capability => getDepartmentExecutionResources().recordRestored(capability),
     acceptRetirement: capability => getDepartmentExecutionProducer().acceptColdRetirement(capability),
-    logMemberStop: event => { void logEssential("department-cold-member-stop", event).catch(() => undefined); },
+    logMemberStop: event => {
+      const writeLog = event.result === "unconfirmed" ? logError : logInfo;
+      void writeLog("department-cold-member-stop", event).catch(() => undefined);
+    },
   });
   departmentRuntimeComposition = createDepartmentRuntimeComposition({
     runtime,
@@ -4308,16 +4420,19 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       try { await coldRecovery.prepare(root, assertCurrent); }
       catch (error) {
         const { reasons, message } = describeDepartmentColdStopFailure(error);
-        void logEssential("department-cold-stop-unconfirmed", { rootTaskId: root.id, reasons }).catch(() => undefined);
+        void logError("department-cold-stop-unconfirmed", { rootTaskId: root.id, reasons }).catch(() => undefined);
         throw new Error(message);
       }
     },
-    logOrganizationStop: (event) => { void logEssential("department-organization-stop", event).catch(() => undefined); },
+    logOrganizationStop: (event) => {
+      const writeLog = event.result === "unconfirmed" ? logError : logInfo;
+      void writeLog("department-organization-stop", event).catch(() => undefined);
+    },
     store: runtimeStore,
     readOrganizationRoot: (id) => getDepartmentOwnershipIndex().readTaskRecord(id),
     readLeaderTaskIds: (root, module) => getDepartmentOwnershipIndex().readDepartmentLeaderTaskIds(root, module),
     workspaceKey: () => activeWorkspaceKey,
-    readTask: readLoopTaskRecord,
+    readTask: (taskId, options) => readLoopTaskRecord(taskId, options),
     updateTask: updateLoopTaskRecord,
     beginLeaderExecution: (taskId, generation) => getDepartmentExecutionProducer().openNewLeader(taskId, generation),
     resumeLeaderExecution: (taskId, generation) => getDepartmentExecutionProducer().openContinuedLeader(taskId, generation),
@@ -4408,6 +4523,7 @@ function getDepartmentRuntimeComposition(): ReturnType<typeof createDepartmentRu
       if (root.department?.executionMode !== "loop-plus" && (route.cli === "codex" || route.cli === "opencode")) getDepartmentExecutionResources().recordCreated(target.tabId);
       return { ...target, sessionId };
     },
+    closeCompletedLeaderTab: sessionTabsHost.closeCompletedLeaderTab,
     verifyStoredLeaderIdentity: storedLeaderIdentity,
     inspectLeaderSession: (task, expected) => {
       const recovered = coldRecovery.inspect(task); if (recovered) return recovered;
@@ -4484,27 +4600,45 @@ function readDepartmentRootControl(task: LoopTaskRecord): { needsCleanup: boolea
       const current = departmentOwnershipIndex?.readTaskRecord(id);
       if (!current) return null;
       const stored = getDepartmentExecutionStore().read(id, current.workspaceKey);
-      return stored.ok ? stored.value?.capacity ?? null : null;
+      return stored.ok && !stored.value?.runtime.stopping ? stored.value?.capacity ?? null : null;
     },
   }, departmentRuntimeComposition?.readOrganizationStopState(task.id));
 }
-function readDepartmentAwareGroupChatTask(taskId: string): LoopTaskRecord | null {
+function readDepartmentAwareGroupChatTask(taskId: string, binding?: LoopGroupChatBinding): LoopTaskRecord | null {
+  return readDepartmentTaskRecordAcrossSources(taskId) ?? readKnownOrdinaryLoopTaskRecord(taskId, binding);
+}
+
+function readDepartmentTaskRecordAcrossSources(taskId: string): LoopTaskRecord | null {
   const indexed = departmentOwnershipIndex?.readTaskRecord(taskId) ?? null;
-  if (indexed) return indexed;
-  return readKnownOrdinaryLoopTaskRecord(taskId);
+  const task = indexed ?? readDepartmentHistoricalTask(taskId)?.task;
+  return task?.workspaceKey === activeWorkspaceKey ? task : null;
+}
+
+function hasLocalDepartmentDirectorActivity(rootTaskId: string): boolean {
+  return departmentRuntimeComposition?.hasLocalDirectorActivity(rootTaskId) ?? false;
+}
+
+function departmentTaskSourceState(task: LoopTaskRecord): DepartmentTaskSourceState {
+  if (!task.taskStoreFile || task.workspaceKey !== activeWorkspaceKey) return "unverified";
+  const current = departmentOwnershipIndex?.readTaskRecord(task.id) ?? null;
+  if (current?.taskStoreFile === task.taskStoreFile) return "owned";
+  const historical = readDepartmentHistoricalTask(task.id);
+  if (!historical || historical.task.taskStoreFile !== task.taskStoreFile) return "unverified";
+  return historical.sourceState;
 }
 
 
 let loopPlusRuntimeAdapter: ReturnType<typeof createLoopPlusRuntimeAdapter> | null = null;
 let loopPlusParentGateDepth = 0;
 
-function persistLoopPlusTaskUpdate(taskId: string, patch: Partial<LoopTaskRecord>, deferRefresh?: boolean): LoopTaskRecord | null {
+function persistLoopPlusTaskUpdate(taskId: string, patch: Partial<LoopTaskRecord>, deferRefresh?: boolean,
+  expectedOrdinaryRun?: OrdinaryLoopTaskVersion): LoopTaskRecord | null {
   const refresh = (id: string) => {
     refreshOpenLoopGroupChatPanelForTask(id);
     return postPanelState();
   };
   return createLoopPlusPersistedTaskRefresher<Partial<LoopTaskRecord>>({
-    updateTask: (id, nextPatch) => updateLoopTaskRecord(id, nextPatch),
+    updateTask: (id, nextPatch) => updateLoopTaskRecord(id, nextPatch, { expectedOrdinaryRun, throwOnIdentityLock: !!expectedOrdinaryRun }),
     refreshTaskSurfaces: (id) => deferRefresh ? Promise.resolve().then(() => refresh(id)) : refresh(id),
   })(taskId, patch);
 }
@@ -4525,13 +4659,15 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
   if (!loopPlusRuntimeAdapter) {
     loopPlusRuntimeAdapter = createLoopPlusRuntimeAdapter({
       createPerformanceTrace,
-      isInvocationActive: (tabId) => isTabRunActive(tabId),
+      isInvocationActive: isLoopSubtaskTabRunActive,
       hasActiveSubtasks: hasActiveLoopSubtasks,
+      hasActiveSubtask: hasActiveLoopSubtask,
       getActiveConfigIdForCli,
       assertNewTaskModeAvailable: () => assertModeAvailable("loop_plus", readToolSettings()),
       decisionSubtaskMax: () => getEffectiveLoopPlusDecisionSubtaskMax(),
+      loadedExtensionInstallPath: () => extensionContext.extensionPath,
       launchDelayMs: (lastLaunchAt) => getLoopSubtaskLaunchDelayMs(lastLaunchAt),
-      readTask: (taskId) => readLoopTaskRecord(taskId),
+      readTask: readLoopTaskRecord,
       readMainRecoveryTask: readKnownOrdinaryLoopTaskRecord,
       canAutoResumeMain: canAutoResumeLoopPlusMain,
       createTask: ({ cli, rootPrompt, sessionId, snapshot, prompt, departmentMetadata }) => {
@@ -4596,6 +4732,8 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         return readLoopTaskRecord(task.id) ?? task;
       },
       updateTask: (taskId, patch) => persistLoopPlusTaskUpdate(taskId, patch),
+      commitOrdinaryRun: (expected, patch, retainedStatus) => persistLoopPlusTaskUpdate(expected.id, patch, true,
+        { taskStoreFile: expected.taskStoreFile, updatedAt: expected.updatedAt, retainedStatus }),
       commitConfigLockResume: (taskId, patch) => persistLoopPlusTaskUpdate(taskId, patch, true),
       appendHostMessage: (target, message, taskId) => {
         appendSystemMessageForLoop(target, loopPlusHostMessage(message, taskId), {
@@ -4628,6 +4766,7 @@ function getLoopPlusRuntimeAdapter(): ReturnType<typeof createLoopPlusRuntimeAda
         appendTextFileEnsuringDir(chatFile, `\n## ${section.heading}\n${section.body.trim()}\n`);
         refreshOpenLoopGroupChatPanelForTask(task.id);
       },
+      appendSupplementalRequirementToCommunication: appendLoopSupplementalRequirementToCommunication,
       recordPause: (task, message) => {
         recordLoopPlusPause(task, message);
         refreshOpenLoopGroupChatPanelForTask(task.id);
@@ -4926,6 +5065,11 @@ async function runLoopPrompt(
       ownership.taskId = taskId;
       ownership.target = target;
       ownership.release = loopOrchestrationOwnership.acquire(taskId);
+      const tab = target.tabId && getConversationTabById(target.tabId);
+      if (tab && tab.cli === target.cli && !tab.sessionId && !tab.loopSubtaskId && tab.pendingLoopMainTaskId !== taskId) {
+        tab.pendingLoopMainTaskId = taskId;
+        persistConversationTabsToWorkspaceSettings();
+      }
       options.onTaskStarted?.();
     });
   } catch (error) {
@@ -5511,7 +5655,7 @@ function maybePersistLongTermMemoryFromRun(options: {
     return;
   }
   try {
-    const result = persistPromptRunSummary(paths, {
+    persistPromptRunSummary(paths, {
       prompt: options.prompt,
       assistantResponse,
       cli: options.cli,
@@ -5521,13 +5665,6 @@ function maybePersistLongTermMemoryFromRun(options: {
       loopRound: options.loopRound,
       loopSubtaskId: options.loopSubtaskId,
     });
-    if (!result.skipped) {
-      void logInfo("long-term-memory-persisted", {
-        workspace: paths.workspaceRoot,
-        cli: options.cli,
-        updatedFiles: result.updatedFiles,
-      });
-    }
   } catch (error) {
     void logError("long-term-memory-persist-error", {
       error: String(error),
@@ -5861,6 +5998,7 @@ async function runDepartmentInteractivePrompt(input: PromptRunInput, options: {
 }
 
 type RunPromptOptions = { targetTabId?: string | null; isAborted?: () => boolean; signal?: AbortSignal; onStarted?: () => void;
+  mainQueueOwned?: boolean;
   onLoopSubtaskSessionSettled?: (sessionId: string | null) => void;
   performanceMode?: "vibe" | "loop" | "loop_plus" | "department";
   performanceTrace?: PerformanceTrace;
@@ -5925,8 +6063,10 @@ async function runPromptWithDepartmentAdmission(
       const taskId = input.loopTaskId;
       return loopMainQuestionQueue.runMain(tabId, () => promptRunHandoff.run(tabId, (isAborted) => runPromptNow(input, {
         ...options,
+        mainQueueOwned: true,
         targetTabId: tabId,
-        isAborted: () => isAborted() || options.isAborted?.() === true || readLoopTaskRecord(taskId)?.status !== "running",
+        isAborted: () => isAborted() || options.isAborted?.() === true
+          || (input.loopPlusMainAdmission?.isParentInactive() ?? (readLoopTaskRecord(taskId)?.status !== "running")),
       })));
     }
     if (tabId) {
@@ -5993,7 +6133,7 @@ async function runPromptNow(
   }
 
   if (!firstMainExecution) {
-    await loopMainAutoCompactFlights.wait(target.tabId);
+    if (!options.mainQueueOwned) await loopMainQuestionQueue.getCompaction(target.tabId)?.done;
     if (isPreparationAborted()) return;
     const compactWaitTab = getConversationTabById(target.tabId);
     await loopSubtaskAutoCompactions.wait(target.cli, compactWaitTab ? getConversationTabSessionIdForCli(compactWaitTab, target.cli) : null);
@@ -6014,7 +6154,9 @@ async function runPromptNow(
   const previousSessionId = getConversationTabSessionIdForCli(currentTab, target.cli);
   const currentSummaryTask = Boolean(summarySubmission && activeWorkspaceKey === summarySubmission.workspace
     && currentTab === summarySubmissionTab);
-  if (!requiresOriginalTarget) target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId);
+  if (!requiresOriginalTarget) target.sessionId = sessionLifecycleController.prepareSessionForPromptRun(target.cli, previousSessionId, target.tabId, {
+    loopMainTaskId: input.taskRole === "main" ? input.loopTaskId : undefined,
+  });
   if (["codex", "opencode"].includes(target.cli) && input.taskRole === "subtask" && input.loopTaskId
     && usesDepartmentOwner(readLoopTaskRecord(input.loopTaskId)?.department)) {
     getDepartmentExecutionResources().confirmSessionTransition(target.tabId, previousSessionId, target.sessionId);
@@ -6558,7 +6700,7 @@ async function resolveInteractiveSessionForResume(
   const mappedId = resolveInteractiveMappedId(cli, repairedSessionId);
   if (isLocalSessionId(repairedSessionId) && !mappedId) {
     const detail = t("session.resumeUnavailableNoRemote");
-    void logEssential("interactive-session-resume-blocked", {
+    void logError("interactive-session-resume-blocked", {
       cli,
       sessionId: repairedSessionId,
       tabId,
@@ -6816,12 +6958,18 @@ async function maybeAutoCompactContextAfterPromptSuccess(
   }
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch,
-    canOverlap: overlapLoopDispatch && !isPrimaryRunActive(),
+    canOverlap: () => !isPrimaryRunActive(),
     onStarted: options.onStarted,
     run: (request) => runAutoCompactContextAfterPromptSuccess(target, sessionId, request),
     reserve: () => reserveLoopMainAutoCompactRun(target, sessionId),
-    track: (flight) => {
-      loopMainAutoCompactFlights.track(target.tabId, flight);
+    enqueue: (run) => {
+      const workspace = activeWorkspaceKey;
+      const tab = getConversationTabById(target.tabId);
+      void loopMainQuestionQueue.runCompaction(target.tabId, async () => {
+        if (isExtensionDeactivating || activeWorkspaceKey !== workspace || !tab || getConversationTabById(target.tabId) !== tab
+          || tab.cli !== target.cli || getConversationTabSessionIdForCli(tab, target.cli) !== sessionId) return;
+        await run();
+      }).catch((error) => logError("loop-main-auto-compact-failed", { cli: target.cli, error: errorToMessage(error) }));
     },
   });
 }
@@ -6859,7 +7007,6 @@ async function promptInstallMissingCli(cli: CliName, command: string): Promise<v
     terminal.show();
     terminal.sendText(installCommand);
     cliInstallStatuses[cli] = null;
-    void logInfo("cli-install-triggered", { cli, command, installCommand });
     void vscode.window.showInformationMessage(
       t("cli.install.started", { command: installCommand })
     );
@@ -6953,11 +7100,6 @@ function appendAssistantChunk(chunk: string, kind?: ChatMessage["kind"]): void {
   if (!primaryPromptRunController.activeAssistantMessageId) {
     return;
   }
-  void logDebug("assistant-chunk", {
-    id: primaryPromptRunController.activeAssistantMessageId,
-    size: chunk.length,
-    kind: kind ?? "normal",
-  });
   sendPanelMessage({
     type: "assistantDelta",
     id: primaryPromptRunController.activeAssistantMessageId,
@@ -7237,6 +7379,8 @@ function finalizeTaskRun(runId: string | undefined, status: TaskRunStatus, optio
 }
 
 function appendTaskRun(record: TaskRunRecord, options: { notifyCompletion?: boolean } = {}): void {
+  const taskId = record.loopTaskId;
+  if (record.taskRole === "subtask" && taskId) queueMicrotask(() => refreshOpenLoopGroupChatPanelForTask(taskId));
   taskRunCompletionEmitter.fire(record);
   const store = readTaskStore();
   store.runs.push(record);

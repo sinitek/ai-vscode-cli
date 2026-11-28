@@ -15,6 +15,7 @@ const themeOnly = process.env.DEPARTMENT_UI_THEME_ONLY === "1";
 const deltaOnly = process.env.DEPARTMENT_UI_DELTA_ONLY === "1";
 const focusLifecycleOnly = process.env.DEPARTMENT_UI_FOCUS_LIFECYCLE_ONLY === "1";
 const rosterStatusOnly = process.env.DEPARTMENT_UI_ROSTER_STATUS_ONLY === "1";
+const stopOnly = process.env.DEPARTMENT_UI_STOP_ONLY === "1";
 const clipboardOnly = process.env.DEPARTMENT_UI_CLIPBOARD_ONLY === "1";
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright");
 require(path.join(compiled, "test/vscodeMock.js")).installVscodeMock();
@@ -59,7 +60,7 @@ function theme(dark) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const results = [];
   try {
-    const viewports = focusLifecycleOnly || themeOnly ? [[1440, true]] : (deltaOnly || allocationOnly || roleAvatarOnly ? [[1440, true], [280, false]] : [[1440, true], [1440, false], [280, true], [280, false]]);
+    const viewports = focusLifecycleOnly || themeOnly ? [[1440, true]] : (deltaOnly || allocationOnly || roleAvatarOnly || stopOnly ? [[1440, true], [280, false]] : [[1440, true], [1440, false], [280, true], [280, false]]);
     for (const [width, dark] of viewports) {
       const name = `${width}-${dark ? "dark" : "light"}`;
       const page = await browser.newPage({ viewport: { width, height: 960 } });
@@ -81,6 +82,7 @@ function theme(dark) {
       });
       const panel = new LoopGroupChatPanel({ fsPath: root }, { onMessage: (message) => sent.push(message) });
       const parentState = departmentState();
+      if (stopOnly) { parentState.task.canStop = true; parentState.task.canContinue = false; }
       if (allocationOnly) allocationFixture(parentState);
       if (roleAvatarOnly) roleAvatarFixture(parentState);
       panel.show(parentState);
@@ -125,6 +127,34 @@ function theme(dark) {
       try {
         await page.goto(`http://127.0.0.1:${server.address().port}/`);
         await page.locator("#panelHeading").waitFor();
+        if (stopOnly) {
+          const stop = page.locator('[data-action="stopTask"]');
+          const resume = page.locator('[data-action="continueTask"]');
+          const taskPanel = page.locator("#taskPanelSlot");
+          await showMembers(page);
+          await stop.click();
+          assert.equal(await stop.isDisabled(), true);
+          const publishStop = (departmentStopState) => panel.update({ ...parentState, task: { ...parentState.task,
+            departmentStopState, status: "stopped", canStop: departmentStopState !== "confirmed", canContinue: departmentStopState === "confirmed" } });
+          publishStop("stopping");
+          await taskPanel.getByText("正在中止，等待组长和成员退出", { exact: true }).waitFor({ state: "attached" });
+          assert.equal(await stop.isDisabled(), true);
+          assert.equal(await resume.count(), 0);
+          publishStop("unconfirmed");
+          await page.getByRole("button", { name: "重试中止" }).waitFor();
+          assert.equal(await resume.isDisabled(), true);
+          assert.doesNotMatch(await taskPanel.textContent(), /已中止/);
+          await stop.click();
+          publishStop("confirmed");
+          await taskPanel.getByText("已中止", { exact: true }).waitFor({ state: "attached" });
+          assert.equal(await stop.count(), 0);
+          assert.equal(await resume.isEnabled(), true);
+          assert.equal(sent.filter((message) => message.type === "loopGroupChatChat:stopTask").length, 2);
+          await overflow(page);
+          assert.deepEqual(errors, []);
+          results.push({ name, result: "passed", scope: "department-stop", browserErrors: errors });
+          continue;
+        }
         if (clipboardOnly) {
           page.setDefaultTimeout(6000);
           const waitForClipboard = async (count) => {
@@ -703,7 +733,7 @@ function theme(dark) {
       } finally { await page.close(); }
     }
   } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: rosterStatusOnly ? "roster-status-only" : roleAvatarOnly ? "department-member-role-avatar-only" : allocationOnly ? "employee-allocation-ui-only" : focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
+  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify({ scope: "generated HTML + fixture host API; no organization runtime", mode: stopOnly ? "department-stop" : rosterStatusOnly ? "roster-status-only" : roleAvatarOnly ? "department-member-role-avatar-only" : allocationOnly ? "employee-allocation-ui-only" : focusLifecycleOnly ? "dialog-focus-lifecycle-only" : deltaOnly ? "merged-ui-delta" : "full-existing-smoke", results }, null, 2));
   console.log(JSON.stringify(results, null, 2));
   if (results.some((result) => result.result !== "passed")) process.exitCode = 1;
 })().catch((error) => { console.error(error); process.exitCode = 1; });

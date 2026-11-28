@@ -11,10 +11,9 @@ test("task mode controls retain labels and employee capacity settings explain th
   const modesCard = html.indexOf('id="taskModesCard"');
   const aiTaskPanel = html.indexOf('id="toolSettingsAiTaskPanel"');
   assert.ok(cliCard >= 0 && modesCard > cliCard && aiTaskPanel > modesCard);
-  for (const [id, label] of [["loopEnabled", "开启 Loop"], ["loopPlusEnabled", "开启 Loop+"], ["departmentEnabled", "开启产研部"]]) {
-    assert.match(html, new RegExp(`for="${id}"`));
+  for (const [id, label] of [["loopEnabled", "开启 Loop"], ["loopPlusEnabled", "开启 Loop+"], ["departmentEnabled", "开启产研部 beta"]]) {
+    assert.equal(html.match(new RegExp(`<label [^>]*for="${id}">([^<]+)</label>`))?.[1], label);
     assert.match(html, new RegExp(`id="${id}"`));
-    assert.ok(html.includes(label));
   }
   const cardContaining = (id: string) => {
     const inputIndex = html.indexOf(`id="${id}"`);

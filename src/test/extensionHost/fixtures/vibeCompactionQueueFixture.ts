@@ -6,7 +6,8 @@ import ts = require("typescript");
 import { installVscodeMock } from "../../vscodeMock";
 import type { RunProcess } from "../../../cli/commandRunner";
 import type { ContextCompactionOptions, ContextCompactionRunDeps } from "../../../contextCompactionRunner";
-import { LoopMainAutoCompactFlights, settleAutoCompactAfterPrompt } from "../../../loopMainAutoCompact";
+import { settleAutoCompactAfterPrompt } from "../../../loopMainAutoCompact";
+import { createLoopMainQuestionQueue } from "../../../loopMainQuestionQueue";
 import type { LoopMainAutoCompactRequest } from "../../../loopMainAutoCompact";
 import type { PromptRunTarget } from "../../../promptRunTypes";
 import { VIEW_CONTENT_SCRIPT_CORE_RUNTIME_STATE } from "../../../webview/viewContentScript/coreRuntimeState";
@@ -31,6 +32,7 @@ function declarations(fileName: string, source: string, names: string[]) {
 const hostScript = ts.transpileModule(declarations("extension.ts", fs.readFileSync(path.join(process.cwd(), "src/extension.ts"), "utf8"), [
   "AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS", "AUTO_COMPACT_AFTER_RUN_TIMEOUT_MS",
   "shouldAutoCompactContextAfterRunForTarget", "maybeAutoCompactContextAfterPromptSuccess",
+  "reserveLoopMainAutoCompactRun", "persistAutoCompactMessagesPreservingConcurrentTranscript",
   "runAutoCompactContextAfterPromptSuccess", "runContextCompaction", "sendRunStatus",
 ]), { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 
@@ -51,6 +53,7 @@ type QueueOutcome = "end" | "stopped" | "skipped";
 export function createVibeCompactionQueueFixture(cli: "codex" | "opencode") {
   const tabId = "tab-1";
   const sessionId = "session-1";
+  const tab = { id: tabId, cli };
   const pendingPromptQueue: QueuedPrompt[] = [{ prompt: "first" }, { prompt: "second" }];
   const runtimeState = { pendingPromptQueue, queueEditingIndex: -1, activeRunActivity: "", lastRunStatus: "" };
   const dispatched: string[] = [];
@@ -91,24 +94,28 @@ export function createVibeCompactionQueueFixture(cli: "codex" | "opencode") {
     begin: ({ runId }: { runId: string }) => { controller.activeRunId = runId; },
   };
   let enterNative!: () => void;
+  let failNative!: (error: Error) => void;
   let finishNative!: () => void;
-  const nativeStarted = new Promise<void>((resolve) => { enterNative = resolve; });
+  const nativeStarted = new Promise<void>((resolve, reject) => { enterNative = resolve; failNative = reject; });
   const nativeResult = new Promise<void>((resolve) => { finishNative = resolve; });
+  const mainQueue = createLoopMainQuestionQueue();
   let compactWrites = 0;
   let nativeStops = 0;
   const writeCompactResult = () => { compactWrites += 1; };
   const stopNative = () => { nativeStops += 1; };
 
   const host = vm.runInNewContext(`${hostScript}\n({ maybeAutoCompactContextAfterPromptSuccess, minDuration: AUTO_COMPACT_AFTER_RUN_MIN_DURATION_MS });`, {
-    isAutoContextCompactionCli, settleAutoCompactAfterPrompt, loopMainAutoCompactFlights: new LoopMainAutoCompactFlights(),
+    isAutoContextCompactionCli, settleAutoCompactAfterPrompt, loopMainQuestionQueue: mainQueue,
+    isExtensionDeactivating: false, activeWorkspaceKey: "workspace", getConversationTabSessionIdForCli: () => sessionId,
     isPrimaryRunActive: () => false, getGlobalAutoCompactContextAfterRun: () => true, logInfo: noop,
+    logError: (_event: string, details: { error: string }) => failNative(new Error(details.error)), errorToMessage: String,
     departmentTaskForTab: noop, usesDepartmentOwner: () => false, primaryPromptRunController: controller,
     getActiveConversationTabId: () => tabId, isInteractiveSupported: () => true, getCurrentSessionId: () => sessionId,
     resolveInteractiveSessionForResume: async () => sessionId, resolveWorkspaceCwd: () => process.cwd(),
     getActiveConfigIdForCli: () => null, getSelectedCliModel: () => null, getEffectiveThinkingMode: () => "medium",
     getWorkspaceInteractiveMode: () => "vibe", getEffectiveCliArgs: () => [], getCliCommand: () => cli,
     resolveClaudeInteractiveEntrypoint: noop, applyThinkingWorkspaceFiles: noop, logCliStartup: noop,
-    loadSessionMessages: () => [], createMessageId: () => "compact-run", getConversationTabById: noop,
+    loadSessionMessages: () => [], createMessageId: () => "compact-run", getConversationTabById: () => tab,
     applyProcessTitle: noop, startTaskRun: noop, t: (key: string) => key,
     appendSystemMessageForCli: noop, appendStopMessageToStore: noop, appendCompletionMessage: noop,
     persistActiveMessages: noop, clearActiveRun: () => { controller.activeRunId = undefined; },
@@ -139,6 +146,7 @@ export function createVibeCompactionQueueFixture(cli: "codex" | "opencode") {
 
   return {
     ...host,
+    mainQueue, nativeStarted, finishNative,
     publish,
     async assertSettlement(outcome: QueueOutcome, run: Promise<unknown>, assertModelCompleted: () => void = noop) {
       try {

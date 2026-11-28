@@ -214,24 +214,25 @@ node scripts/count_effective_loc.js --json
 3. 按 `F5` 启动 Extension Development Host
 4. 在新的开发主机窗口中验证侧边栏、命令和 Webview 行为
 
-性能排查查看 `~/.sinitek_cli/logs/sinitek-cli.performance.*.log`。记录包含执行模式、阶段、结果和耗时，通过 Trace ID 关联同次调用；该日志不依赖 debug 开关，并按 `historyRetentionDays` 自动清理。
+性能排查查看 `~/.sinitek_cli/logs/sinitek-cli.performance.*.log`。调试日志默认开启时会记录执行模式、阶段、结果和耗时，可通过 Trace ID 关联同次调用；关闭调试后不写性能日志。错误日志不受该开关影响。日志按 `historyRetentionDays` 自动清理。
 
 ### 本地临时会话无法续接
 
-在 `~/.sinitek_cli/logs/sinitek-cli.*.log` 中搜索以下事件，按时间和 `tabId` 或会话 ID 串联。以下事件无需开启调试日志。
+在 `~/.sinitek_cli/logs/sinitek-cli.*.log` 中搜索以下事件，按时间和 `tabId` 或会话 ID 串联。错误事件无需开启调试日志；成功映射和会话迁移事件仅在调试开启时记录。
 
 - `interactive-cli-command-start-failed` 记录 CLI 命令未找到，`departmentRun` 表示是否使用产研部专用执行路径。
 - `interactive-session-resume-blocked` 记录续接时缺少原生会话 ID 的本地历史记录。
-- `department-session-mapping-attempted` 记录产研部组长尝试写入本地会话与原生会话的映射。核对同时间段是否出现 `session-meta-write-error`。
-- `session-local-promoted` 记录迁移来源和受影响的 `updatedTabIds`。如果随后出现 `department-session-route-rejected`，对照 `taskSessionId` 与 `tabSessionId` 判断任务与 Tab 是否在迁移后仍指向同一会话。
+- `department-session-mapping-attempted`（调试日志开启时）记录产研部组长尝试写入本地会话与原生会话的映射。核对同时间段是否出现 `session-meta-write-error`。
+- `session-local-promoted`（调试日志开启时）记录迁移来源和受影响的 `updatedTabIds`。如果随后出现 `department-session-route-rejected`，对照 `taskSessionId` 与 `tabSessionId` 判断任务与 Tab 是否在迁移后仍指向同一会话。
 
 非 Codex/OpenCode 产研部组长续接从当前 Owner binding 或 producer 续接证明恢复 native session，不依赖 session-meta 映射；普通对话和员工仍受 `interactive-session-resume-blocked` 保护。组长仍报“只能查看”时，检查同任务是否有有效运行代次、`executionSession` 是否与当前原生 binding 一致，以及账本集合是否为 open；不要手工补写映射或重建会话来绕过 Owner/代次校验。
 
 ### Loop+ 持久化中断诊断
 
-在 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 搜索 `loop-plus-persist-failed`、`loop-task-store-update-rejected` 和 `loop-task-store-write-error`，无需开启 debug。Loop+ 事件记录 `stage`、固定 `reason`、调度 phase/seq 及运行、待派发、待验收计数；存储事件记录拒绝阶段、身份拒绝分类、进程 PID 和存储文件名。事件不记录原始异常正文、堆栈、会话 ID、任务 ID 或提示词。
+在 `~/.sinitek_cli/logs/sinitek-cli.YYYY-MM-DD.log` 搜索 `loop-plus-persist-failed`、`loop-task-store-update-rejected` 和 `loop-task-store-write-error`；这些错误日志不依赖调试开关。调试开启时还会记录 Loop+ 决策协议、派发、等待、验收和恢复阶段。Loop+ 事件记录 `stage`、固定 `reason`、调度 phase/seq 及运行、待派发、待验收计数；更新和写入拒绝记录阶段、身份拒绝分类、进程 PID 和存储文件名。候选发现失败只记录固定 `reason`，不记录错误正文、路径或私有标识。事件不记录原始异常堆栈、会话 ID 或提示词；部分经过校验的任务/attempt ID 用于关联同一故障链。
 
-- `reason=identity-lock-present` / `identity-lock-contended` 表示任务身份目录事务锁阻止了读取或提交；查看相邻事件的 PID 和时间，不要手动删除锁或绕过 owner 事务。
+- `loop-task-store-update-rejected` 的 `identity-lock-present` 或 `identity-lock-contended` 只说明该次更新在提交前遇到身份目录锁，不能证明相邻的 `task-record-unavailable` 来自同一次读取。员工准入拒绝在 `department-employee-admission` 的 `readFailure` 记录该次 `readLoopTaskRecord` 的白名单分类；不能区分则为 `unknown`。不要按相邻时间或 PID 猜测，不要为此清锁、补写运行记录或改调度重试。
+- `readFailure=task-not-found` 只表示这一次读取已经扫完候选目录并确认没有该任务。`loop-task-store-readdir-error` 的 `candidate-scan-unavailable` 表示同一次目录扫描遇到非 ENOENT；`loop-task-store-read-error` 的 `store-read-rejected` 表示候选存储没有读成。这两种都不是任务已删除。已提交的迁移目标仍可直接读成功。旧任务目录这次没扫完时，读取不会迁移剩余文件，也不会清理空目录。早先读到的旧文件路径如果在后来的成功迁移中被删掉，下一次读取先核对已提交的新目标并直接返回它，不因为旁边有一个读失败的无关候选而改口，也不能回退到已删除的旧副本。没有缓存的第一次读取也一样：这次发现刚提交的目标要先按任务核对，不要先解析旁边的普通候选。旧目录扫描遇到非 ENOENT 时，普通读取记 `candidate-scan-unavailable`；要求抛错的读取应传出原始扫描异常，而不是 `task-not-found`。这种未完成扫描不会迁移剩余文件，也不会清理空目录。不要用上一次错误、相邻日志或再扫目录来补原因，也不要在发现不完整时采用可能过期的副本。
 - `reason=department-owned` / `controlled-root` 表示普通 writer 命中了受控身份或受控根；这是权限边界拒绝，不等同锁竞争。
 - Loop+ `stage=finish-read` 指向完成回调读取失败；`finish-commit` 指向子任务结果提交失败；`pause-commit` 指向错误/暂停状态写入失败。`reason=update-unconfirmed` 表示更新未获持久化确认，`exception` 表示底层写入抛错；再按相邻存储事件判断具体拒绝点。
 - 无存储层配对事件时，结合同 PID 的 `loop-plus-consumer-failed` 及任务文件现状判断是编排之外异常还是插件宿主被终止；不据日志重试、清锁或重写任务记录。

@@ -149,6 +149,7 @@ test("department continuation messages preserve live panels and isolate replacem
   const originalDocuments = webviews.map(view => [...view.documents]);
   for (const [index, task] of [root, leader].entries()) {
     const view = webviews[index];
+    const initialReveals = [...view.reveals];
     const other = webviews[1 - index];
     const otherReveals = [...other.reveals];
     const settled = deferred();
@@ -160,12 +161,12 @@ test("department continuation messages preserve live panels and isolate replacem
     await withTimeout(settled.promise, `settle ${task.id}`);
     assert.deepEqual(dispatched, expected.slice(0, index + 1).map(identity => [identity, identity.id]));
     assert.deepEqual(taskIdentity(task), expected[index]);
-    assert.deepEqual(view.reveals, [true], "continuation refresh does not focus either panel");
+    assert.deepEqual(view.reveals, initialReveals, "continuation refresh does not focus either panel");
     await withTimeout(coordinator.open(task.id, { focus: true }), `reveal ${task.id}`);
     assert.equal(webviews.length, 2);
     assert.equal(deps.panelsByTaskId.get(task.id), originalPanels[index]);
     assert.equal(originalPanels[index].getState()?.task.id, task.id);
-    assert.deepEqual(view.reveals, [true, false, true]);
+    assert.deepEqual(view.reveals, [...initialReveals, false]);
     assert.deepEqual(other.reveals, otherReveals);
     assert.deepEqual(webviews.map(entry => entry.documents), originalDocuments, "reveal and refresh did not reassign webview.html");
   }
@@ -188,7 +189,7 @@ test("department continuation messages preserve live panels and isolate replacem
   assert.equal(deps.panelsByTaskId.get(leader.id), replacement);
   assert.equal(deps.panelsByTaskId.get(root.id), originalPanels[0]);
   assert.deepEqual(webviews[2].documents, replacementDocuments);
-  assert.deepEqual(webviews[2].reveals, [true, false, true]);
+  assert.deepEqual(webviews[2].reveals, [false]);
   assert.deepEqual(webviews[0].documents, originalDocuments[0]);
   assert.deepEqual(dispatched, expected.map(identity => [identity, identity.id]));
   assert.deepEqual(fixture.warnings, []);
@@ -291,6 +292,7 @@ test("director group chat refreshes its overall progress from weighted leader pr
 test("director refresh forwards the same Loop+ task tags as the leader chat", async () => {
   const h = harness();
   h.leader.status = "running";
+  h.deps.collectRunningTaskIds = () => new Set([h.leader.id]);
   let mainBusy = false;
   let reviewEventIds: string[] = [];
   h.deps.isTabRunActive = (tabId) => tabId === h.leader.id && mainBusy;
@@ -424,6 +426,57 @@ test("department host loads in-page leader and routes actions, ask thread, previ
     assert.ok(h.posted.slice(progressUpdate).some((item) => item.type === "loopGroupChatChat:contentPatch"
       && item.rosterPanelHtml?.includes('class="department-leader-progress">25%</span>')));
   } finally { h.restore(); fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("department refresh publishes only the root record plan to the same leader instance", async (context) => {
+  const h = harness();
+  context.after(() => { h.dispose(); h.restore(); });
+  const originalPlan = h.root.loopPlusAcceptancePlan!;
+  const display = { ...h.root, loopPlusAcceptancePlan: { ...originalPlan, name: "旧的总监展示快照" } };
+  h.deps.readDisplaySnapshot = (id) => id === h.root.id ? display : null;
+  await withTimeout(h.coordinator.open(h.root.id), "open director");
+  const target = await h.load();
+  assert.match(h.posted.find((item) => item.instanceId === target.instanceId && item.html)?.html ?? "", /根固化快照/);
+
+  const childSince = (start: number) => h.posted.slice(start).filter((item) => item.taskId === target.taskId && item.instanceId === target.instanceId);
+  const assertPublication = (start: number, expected: RegExp) => {
+    const child = childSince(start);
+    assert.deepEqual(child.filter((item) => item.message?.type === "loopGroupChatChat:contentPatch" || item.message?.type === "loopGroupChatChat:askThread")
+      .map((item) => item.message.type), ["loopGroupChatChat:contentPatch", "loopGroupChatChat:askThread"]);
+    assert.ok(child.every((item) => !item.html), "keep the existing iframe");
+    assert.match(child[1].message.taskPanelHtml, expected);
+    assert.doesNotMatch(child[1].message.taskPanelHtml, /旧的总监展示快照/);
+    assert.deepEqual(h.panel().getDepartmentModalTarget(), target);
+  };
+  const refresh = async (taskId: string) => { h.coordinator.refreshOpenPanelForTask(taskId); await new Promise<void>((resolve) => setTimeout(resolve, 0)); };
+
+  let start = h.posted.length;
+  h.root.loopPlusAcceptancePlan = { ...originalPlan, name: "首绘前根记录更新" };
+  await refresh(h.root.id);
+  assert.deepEqual(childSince(start), []);
+  await h.send(target, { type: "loopGroupChatChat:domReady", generation: 1 });
+  assertPublication(start, /首绘前根记录更新/);
+
+  start = h.posted.length;
+  h.root.loopPlusAcceptancePlan = { ...originalPlan, name: "常规刷新后的根记录" };
+  await refresh(h.root.id);
+  assert.equal(h.panel().getState()?.acceptancePlan?.name, "旧的总监展示快照");
+  assertPublication(start, /常规刷新后的根记录/);
+
+  start = h.posted.length;
+  delete h.root.loopPlusAcceptancePlan;
+  await refresh(h.root.id);
+  assertPublication(start, /尚未同步统一验收方案/);
+
+  start = h.posted.length;
+  h.deps.prepareModelSwitchOptions = async () => { throw new Error("模型准备失败"); };
+  await refresh(h.root.id);
+  assert.deepEqual(childSince(start), []);
+  assert.ok(h.warnings.some((warning) => warning.includes("模型准备失败")));
+  h.deps.prepareModelSwitchOptions = async () => {};
+  h.root.loopPlusAcceptancePlan = originalPlan;
+  await refresh(h.root.id);
+  assertPublication(start, /根固化快照/);
 });
 
 test("department host rejects plan overrides, stale instances and operations after close, preserves ordinary Loop+ edits", async () => {
@@ -1110,11 +1163,12 @@ test("allocation duplicate cannot prematurely settle an in-flight request after 
 });
 
 for (const status of ["running", "stopped", "interrupted"] as const) {
-  test(`cold organization controls distinguish task status from remaining leases: ${status}`, async () => {
+  test(`organization controls distinguish a waiting director from remaining leases: ${status}`, async () => {
     const h = harness();
     try {
       h.root.status = status === "stopped" ? "stopped" : "running";
       h.root.runtimeInterrupted = status === "interrupted" ? true : undefined;
+      h.deps.hasLocalDepartmentDirectorActivity = () => h.root.status === "running";
       const capacity = { rootTaskId: h.root.id, maxLeaders: 4, maxEmployees: 20, leaders: ["module-A"], employees: [] as string[] };
       h.deps.readDepartmentOrganizationControlState = task => readDepartmentOrganizationControlState(task, "workspace-A", {
         readTaskRecord: h.deps.readTaskRecord, readCapacity: () => capacity,
@@ -1126,18 +1180,18 @@ for (const status of ["running", "stopped", "interrupted"] as const) {
       const state = buildLoopGroupChatPanelState(h.root, h.deps);
       assert.equal(state.task.status, status === "running" ? "running" : "stopped");
       assert.equal(state.department?.director.status, state.task.status);
-      assert.equal(state.task.canStop, status === "running"); assert.equal(state.task.canContinue, false);
-      const actions = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
+      assert.equal(state.task.canStop, true); assert.equal(state.task.canContinue, false);
+      const { actionsHtml, continueAction } = buildLoopGroupChatPanelContentPatch(state, 1);
       if (status === "running") {
-        assert.match(actions, /data-action="stopTask"/);
-        assert.doesNotMatch(actions, /data-action="continueTask"/);
+        assert.match(actionsHtml, /data-action="stopTask"/);
+        assert.equal(continueAction.html, "");
       } else {
-        assert.doesNotMatch(actions, /data-action="stopTask"/);
-        assert.match(actions, /data-action="continueTask"[^>]*disabled/);
+        assert.match(actionsHtml, /data-action="stopTask"[^>]*>重试中止/);
+        assert.match(continueAction.html, /data-action="continueTask"[^>]*disabled/);
       }
       await h.coordinator.open(h.root.id);
       h.receive({ type: "loopGroupChatChat:stopTask" }); await tick();
-      assert.equal(stops, status === "running" ? 1 : 0);
+      assert.equal(stops, 1);
       assert.equal(h.effects.length, 0, "never dispatch a single-task runner or ordinary stop");
       capacity.leaders = [];
       if (status === "running") h.root.status = "stopped";
@@ -1183,10 +1237,10 @@ test("director projection marks only a trusted root without a local controller i
     assert.equal(state.task.departmentExecutionInterrupted, true);
     assert.equal(state.task.canStop, true);
     assert.equal(state.task.canContinue, false);
-    let actions = buildLoopGroupChatPanelContentPatch(state, 1).actionsHtml;
-    assert.match(actions, /本宿主执行已中断/u);
-    assert.match(actions, /data-action="stopTask"/u);
-    assert.match(actions, /data-action="continueTask"[^>]*disabled/u);
+    const { actionsHtml, continueAction } = buildLoopGroupChatPanelContentPatch(state, 1);
+    assert.match(continueAction.html, /本宿主执行已中断/u);
+    assert.match(actionsHtml, /data-action="stopTask"/u);
+    assert.match(continueAction.html, /data-action="continueTask"[^>]*disabled/u);
 
     h.deps.hasLocalDepartmentDirectorActivity = () => true;
     state = buildLoopGroupChatPanelState(h.root, h.deps);
@@ -1196,6 +1250,9 @@ test("director projection marks only a trusted root without a local controller i
     delete h.deps.hasLocalDepartmentDirectorActivity;
     state = buildLoopGroupChatPanelState(h.root, h.deps);
     assert.equal(state.task.status, "running", "an unavailable host-activity reader is not evidence of interruption");
+    assert.equal(state.task.departmentExecutionUnverified, true);
+    assert.equal(state.rounds[0].status, "runtime_unverified");
+    assert.equal(state.rounds[0].activeSpeaker, undefined);
   } finally { h.restore(); }
 });
 
@@ -1266,6 +1323,14 @@ test("cold department panels show no stale director, leader or employee work and
     runningIds.clear();
     h.deps.readDepartmentOrganizationControlState = () => null;
     assert.equal(buildLoopGroupChatPanelState(h.root, h.deps).task.status, "running", "untrusted roots do not opt into department projection");
+    h.deps.getDepartmentTaskSourceState = () => "owned";
+    const reopened = buildLoopGroupChatPanelState(h.root, h.deps);
+    assert.equal(reopened.task.departmentExecutionInterrupted, true, "local liveness is available even when the organization control state is unavailable");
+    assert.equal(reopened.department?.leaders[0].statusSummary?.running, 0);
+    assert.equal(reopened.mainModelBusy, false);
+    assert.match(buildLoopGroupChatPanelContentPatch(reopened, 1).departmentHistoryNoticeHtml, /本宿主执行已中断/u);
+    h.deps.hasLocalDepartmentDirectorActivity = () => true;
+    assert.equal(buildLoopGroupChatPanelState(h.root, h.deps).task.status, "running", "a waiting director still owns the task");
   } finally { h.restore(); }
 });
 
@@ -1318,6 +1383,57 @@ test("projection and organization controls agree on valid, empty and unknown cap
   }
 });
 
+test("cold historical group chat corrects stale transcript status and blocks writes", async () => {
+  const h = harness();
+  try {
+    h.root.status = "running";
+    h.leader.status = "running";
+    h.deps.getDepartmentTaskSourceState = () => "inactive";
+    h.deps.fileExists = () => true;
+    h.deps.readTextFileIfNonEmpty = () => "# 群聊\n\n- 任务状态：运行中\n";
+    await h.coordinator.open(h.root.id);
+
+    const state = h.panel().getState()!;
+    assert.equal(state.task.status, "stopped");
+    assert.equal(state.task.departmentExecutionInterrupted, true);
+    assert.equal(state.task.departmentHistoryReadOnly, true);
+    assert.match(state.chatMarkdown, /- 任务状态：本宿主执行已中断/u);
+    assert.doesNotMatch(state.chatMarkdown, /- 任务状态：运行中/u);
+    assert.equal(state.task.canContinue, false);
+    assert.equal(state.task.canStop, false);
+
+    h.receive({ type: "loopGroupChatChat:continueTask", prompt: "不应继续" });
+    h.receive({ type: "loopGroupChatChat:stopTask" });
+    await tick();
+    assert.deepEqual(h.effects, []);
+  } finally {
+    h.dispose();
+    h.restore();
+  }
+});
+
+test("historical group chat with a possible live owner remains unverified and read-only", async () => {
+  const h = harness();
+  try {
+    h.root.status = "running";
+    h.deps.getDepartmentTaskSourceState = () => "unverified";
+    h.deps.readTextFileIfNonEmpty = () => "# 群聊\n\n- 任务状态：运行中\n";
+    await h.coordinator.open(h.root.id);
+
+    const state = h.panel().getState()!;
+    assert.equal(state.task.status, "running");
+    assert.equal(state.task.departmentExecutionUnverified, true);
+    assert.equal(state.task.departmentExecutionInterrupted, undefined);
+    assert.equal(state.task.departmentHistoryReadOnly, true);
+    assert.match(state.chatMarkdown, /- 任务状态：执行状态待核实/u);
+    assert.equal(state.task.canContinue, false);
+    assert.equal(state.task.canStop, false);
+  } finally {
+    h.dispose();
+    h.restore();
+  }
+});
+
 test("a refused continuation settlement cannot re-enable continue while organization cleanup is unconfirmed", async () => {
   const h = harness();
   try {
@@ -1330,8 +1446,8 @@ test("a refused continuation settlement cannot re-enable continue while organiza
     const settled = h.posted.filter(message => message.type === "loopGroupChatChat:continueTaskSettled").at(-1);
     assert.equal(settled?.canContinue, false);
     assert.equal(h.panel().getState()?.task.canContinue, false);
-    assert.equal(h.panel().getState()?.task.canStop, false);
-    assert.match(buildLoopGroupChatPanelContentPatch(h.panel().getState()!, 1).actionsHtml, /data-action="continueTask"[^>]*disabled/);
+    assert.equal(h.panel().getState()?.task.canStop, true);
+    assert.match(buildLoopGroupChatPanelContentPatch(h.panel().getState()!, 1).continueAction.html, /data-action="continueTask"[^>]*disabled/);
     assert.equal(h.effects.length, 0);
   } finally { h.restore(); }
 });
@@ -1371,6 +1487,8 @@ for (const reject of [false, true]) {
       assert.equal(calls, 1);
       const pending = h.panel().getState()!;
       assert.equal(pending.task.departmentStopState, "stopping"); assert.equal(pending.task.canContinue, false);
+      assert.match(pending.chatMarkdown, /任务状态：正在中止，等待组长和成员退出/);
+      assert.doesNotMatch(pending.chatMarkdown, /任务已停止|## 任务中断/);
       assert.match(buildLoopGroupChatPanelContentPatch(pending, 1).actionsHtml, /data-action="stopTask"[^>]*disabled[^>]*>正在停止…/);
       h.receive({ type: "loopGroupChatChat:refresh" });
       h.receive({ type: "loopGroupChatChat:stopTask" }); await tick();
@@ -1383,16 +1501,18 @@ for (const reject of [false, true]) {
         const refused = h.panel().getState()!;
         assert.equal(refused.task.canContinue, false);
         const patch = buildLoopGroupChatPanelContentPatch(refused, 2);
-        assert.doesNotMatch(patch.actionsHtml, /核验停止|data-action="stopTask"/);
-        assert.match(patch.actionsHtml, /data-action="continueTask"[^>]*disabled/);
+        assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*>重试中止/);
+        assert.match(patch.continueAction.html, /data-action="continueTask"[^>]*disabled/);
         assert.match(patch.taskPanelHtml, /<h2>任务状态<\/h2>/u);
         assert.doesNotMatch(patch.taskPanelHtml, /<h2>任务<\/h2>/u);
-        assert.match(patch.taskPanelHtml, /已中止/);
+        assert.match(patch.taskPanelHtml, /整组中止待确认/);
+        assert.doesNotMatch(patch.taskPanelHtml, /已中止/);
         assert.ok(h.warnings.includes("停止核验拒绝：保留原占用"));
         h.receive({ type: "loopGroupChatChat:continueTask" }); await tick();
         assert.equal(resumes, 0); assert.ok(h.warnings.some((message) => /部门停止未确认/.test(message)));
         h.receive({ type: "loopGroupChatChat:stopTask" }); await tick(); await tick();
-        assert.equal(calls, 1);
+        assert.equal(calls, 2);
+        assert.equal(h.panel().getState()?.task.canContinue, true);
         return;
       }
       assert.equal(h.panel().getState()?.task.canStop, false);
@@ -1484,4 +1604,65 @@ test("trusted root refusal and workspace revocation during start refresh perform
     assert.equal(calls, 0);
     assert.ok(h.warnings.includes("部门停止归属已变化。"));
   } finally { h.dispose(); h.restore(); }
+});
+
+test("department summary counts a running repair and not a pending, interrupted, or historical one", () => {
+  const data = departmentRecords();
+  data.leader.status = "running";
+  data.leader.subTasks.push({ id: "employee-B", title: "其他员工", prompt: "需求", status: "running", updatedAt: 3 });
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1, snapshot: data.leader.loopPlus });
+  const finished = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-A", outcome: "completed" });
+  assert.equal(finished.applied, true);
+  assert.ok(finished.eventId);
+  assert.equal(scheduler.submitReviewBatch([finished.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([{ subtaskId: "employee-B", attemptId: "attempt-B", title: "其他员工" }]).started.length, 1);
+  assert.equal(scheduler.dispatch([{ subtaskId: "employee-A", attemptId: "attempt-repair", title: "返工" }]).started.length, 0);
+  data.leader.loopPlus = scheduler.snapshot();
+  const port = {
+    readTaskRecord: (id: string) => data.records.get(id) ?? null,
+    readLeaderTaskIds: (rootId: string, moduleId: string) => fixtureDepartmentLeaderTaskIds(data.records, rootId, moduleId),
+  };
+  const leaderSummary = () => {
+    const projection = buildDepartmentGroupChatProjection(data.root, port);
+    const leader = projection?.leaders.find((item) => item.taskId === data.leader.id);
+    assert.ok(leader?.statusSummary);
+    return leader;
+  };
+  const pending = leaderSummary();
+  assert.equal(pending.statusSummary?.repairing, 0);
+  assert.equal(pending.statusSummary?.pending, 1);
+  assert.equal(pending.statusSummary?.running, 1);
+  assert.equal(pending.employees.find((item) => item.subtaskId === "employee-A")?.status, "pending");
+  assert.equal(pending.employees.find((item) => item.subtaskId === "employee-B")?.status, "running");
+  assert.equal(pending.progressPercent, data.leader.loopPlusProgressPercent ?? 0);
+
+  assert.equal(scheduler.finish({ subtaskId: "employee-B", attemptId: "attempt-B", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "attempt-repair");
+  data.leader.loopPlus = scheduler.snapshot();
+  const repairing = leaderSummary();
+  assert.equal(repairing.statusSummary?.repairing, 1);
+  assert.equal(repairing.employees.find((item) => item.subtaskId === "employee-A")?.status, "repairing");
+
+  data.leader.subTasks[0].status = "blocked";
+  const interrupted = leaderSummary();
+  assert.equal(interrupted.statusSummary?.repairing, 0);
+  assert.equal(interrupted.statusSummary?.blocked, 0);
+  assert.equal(interrupted.employees.find((item) => item.subtaskId === "employee-A")?.status, "blocked");
+
+  data.leader.subTasks[0].status = "completed";
+  const review = scheduler.finish({ subtaskId: "employee-A", attemptId: "attempt-repair", outcome: "completed" });
+  assert.equal(review.applied, true);
+  const ahead = scheduler.snapshot().currentReview;
+  assert.equal(ahead?.attemptId, "attempt-B");
+  assert.ok(ahead?.eventId);
+  assert.equal(scheduler.submitReviewBatch([ahead.eventId], "passed").ok, true);
+  const repairReview = scheduler.claimNextReview();
+  assert.equal(repairReview.item?.attemptId, "attempt-repair");
+  assert.ok(repairReview.item?.eventId);
+  assert.equal(scheduler.submitReviewBatch([repairReview.item.eventId], "failed").ok, true);
+  data.leader.loopPlus = scheduler.snapshot();
+  const historical = leaderSummary();
+  assert.equal(historical.statusSummary?.repairing, 0);
+  assert.equal(historical.statusSummary?.acceptance_failed, 1);
+  assert.equal(historical.employees.find((item) => item.subtaskId === "employee-A")?.status, "acceptance_failed");
 });

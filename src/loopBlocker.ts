@@ -2,6 +2,7 @@
 export type LoopBlocker = {
   kind: "recoverable" | "impossible";
   cause: string;
+  constraintSource?: string;
   affectedRequirements: string[];
   evidence: string[];
   attempts: string[];
@@ -61,7 +62,8 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
   }
   const resumeCondition = text(raw.resumeCondition);
   const alternatives = text(raw.alternatives);
-  const recoveryOptions = kind === "recoverable" ? readRecoveryOptions(raw.recoveryOptions) : undefined;
+  const recoveryOptions = kind === "recoverable" ? readLoopBlockerRecoveryOptions(raw.recoveryOptions) : undefined;
+  const constraintSource = text(raw.constraintSource);
   if (kind === "recoverable" && !resumeCondition) issues.push("resumeCondition 必须说明什么结果满足后可继续");
   if (kind === "impossible" && !alternatives) issues.push("alternatives 必须说明可行替代方案或无可行路径的依据");
   if (issues.length > 0) return { issue: `blocker 诊断不完整：${issues.join("；")}。` };
@@ -69,13 +71,14 @@ export function readLoopBlocker(value: unknown): { blocker?: LoopBlocker; issue?
     blocker: {
       kind: kind as LoopBlocker["kind"], cause: cause!, affectedRequirements: affectedRequirements!,
       evidence: evidence!, attempts: attempts!, nextSteps,
+      ...(constraintSource ? { constraintSource } : {}),
       ...(recoveryOptions ? { recoveryOptions } : {}),
       ...(resumeCondition ? { resumeCondition } : {}), ...(alternatives ? { alternatives } : {}),
     },
   };
 }
 
-function readRecoveryOptions(value: unknown): LoopBlockerRecoveryOption[] | undefined {
+export function readLoopBlockerRecoveryOptions(value: unknown): LoopBlockerRecoveryOption[] | undefined {
   if (!Array.isArray(value) || value.length === 0 || value.length > 3) return undefined;
   const options: LoopBlockerRecoveryOption[] = [];
   for (const candidate of value) {
@@ -91,17 +94,34 @@ function readRecoveryOptions(value: unknown): LoopBlockerRecoveryOption[] | unde
 }
 
 const LOOP_BLOCKER_SUMMARY_HEADER = "### 当前结论\n子任务多次尝试仍无法解决问题，触发熔断；整体任务尚未完成。";
+const LOOP_PLUS_BLOCKER_SUMMARY_HEADER = "### 当前结论\n整体任务尚未完成。";
 
 export function isLoopBlockerSummary(summary: string | undefined): boolean {
-  return summary?.startsWith(`${LOOP_BLOCKER_SUMMARY_HEADER}\n`) === true;
+  return [LOOP_BLOCKER_SUMMARY_HEADER, LOOP_PLUS_BLOCKER_SUMMARY_HEADER].some((header) => summary?.startsWith(`${header}\n`));
 }
 
-export function buildLoopBlockerSummary(blocker: LoopBlocker): string {
+/** 事件驱动诊断摘要在结论标题后原样保留 cause，直到下一诊断小节；供总监投递完整原因。 */
+export function readDeliveredLoopBlockerCause(summary: string | undefined): string | undefined {
+  const header = `${LOOP_PLUS_BLOCKER_SUMMARY_HEADER}\n`;
+  if (!summary?.startsWith(header)) return undefined;
+  const body = summary.slice(header.length);
+  const heading = body.search(/(^|\n)### /);
+  const region = (heading === -1 ? body : body.slice(0, heading)).replace(/\n+$/, "");
+  const lines = region.length > 0 ? region.split("\n") : [];
+  // 无法完成时，构建器会在模型 cause 之后另起一行追加这句话，它不属于原因。
+  if (heading !== -1 && lines.length > 1 && lines[lines.length - 1] === "按当前要求无法完成。") lines.pop();
+  const cause = lines.join("\n").trim();
+  return cause || undefined;
+}
+
+export function buildLoopBlockerSummary(blocker: LoopBlocker, mode: "classic" | "event_driven" = "classic"): string {
   const requiredActions = blocker.nextSteps.map(({ owner, action }) => `${owner}：${action}`);
   return [
-    LOOP_BLOCKER_SUMMARY_HEADER,
+    mode === "event_driven" ? LOOP_PLUS_BLOCKER_SUMMARY_HEADER : LOOP_BLOCKER_SUMMARY_HEADER,
+    ...(mode === "event_driven" ? [blocker.cause] : []),
     ...(blocker.kind === "impossible" ? ["按当前要求无法完成。"] : []),
-    "", "### 熔断原因与未完成事项", blocker.cause,
+    "", "### 熔断原因与未完成事项", ...(mode === "classic" ? [blocker.cause] : []),
+    ...(mode === "event_driven" && blocker.constraintSource ? [`阻塞依据：${blocker.constraintSource}`] : []),
     ...blocker.affectedRequirements.map((item) => `- 未完成：${item}`),
     "", "### 已知证据", ...blocker.evidence.map((item) => `- ${item}`),
     "", "### 已尝试的处理", ...blocker.attempts.map((item) => `- ${item}`),
@@ -116,12 +136,12 @@ export function buildLoopBlockerSummary(blocker: LoopBlocker): string {
   ].join("\n");
 }
 
-export function readLoopBlockedDecisionFields(raw: { blocker?: unknown; finalSummary?: unknown }): {
+export function readLoopBlockedDecisionFields(raw: { blocker?: unknown; finalSummary?: unknown }, mode: "classic" | "event_driven" = "classic"): {
   blocker?: LoopBlocker; blockerIssue?: string; finalSummary?: string;
 } {
   const { blocker, issue } = readLoopBlocker(raw.blocker);
   return blocker
-    ? { blocker, finalSummary: buildLoopBlockerSummary(blocker) }
+    ? { blocker, finalSummary: buildLoopBlockerSummary(blocker, mode) }
     : { blockerIssue: issue, finalSummary: text(raw.finalSummary) };
 }
 
@@ -144,4 +164,15 @@ export const LOOP_BLOCKER_EXAMPLE: LoopBlocker = {
   attempts: ["已查阅现有接口文档，无法从中确定缺失字段；不能自行编造约定。"],
   nextSteps: [{ owner: "接口负责人", action: "确认接口必填请求字段。", verification: "核对必填字段是否齐全。" }],
   resumeCondition: "必填字段约定已明确。",
+};
+
+export const LOOP_PLUS_BLOCKER_EXAMPLE: LoopBlocker = {
+  kind: "recoverable",
+  cause: "指定测试服务拒绝访问，无法完成用户要求的在线联验。",
+  constraintSource: "用户要求在指定测试服务联验。该服务使用当前测试账号返回 HTTP 403。",
+  affectedRequirements: ["在指定服务验证响应"],
+  evidence: ["已核对目标环境和测试账号，接口返回权限不足。"],
+  attempts: ["本地校验已通过。模拟响应无法验证指定服务的实际权限和响应。"],
+  nextSteps: [{ owner: "测试服务管理员", action: "授予现有测试账号读取权限。", verification: "用该账号读取指定接口。" }],
+  resumeCondition: "指定接口允许该测试账号读取。",
 };

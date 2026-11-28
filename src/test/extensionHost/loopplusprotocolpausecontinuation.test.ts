@@ -139,17 +139,33 @@ test("a bounded linkage rejection preserves the frozen batch through group-chat 
   };
   const checkRequest = (requestId: string, started: boolean, taskStatus: string) => {
     const identity = { taskId, requestId };
+    const stage = (name: string, boundary: "start" | "end", outcome?: { result: string; reason: string }) => ({
+      event: "stage",
+      payload: { ...identity, path: "loop_plus", stage: name, boundary, ...(boundary === "end" ? (outcome ?? { result: "ok", reason: "none" }) : {}) },
+    });
+    const runOutcome = taskStatus === "needs-review" || taskStatus === "error"
+      ? { result: "failed", reason: "task_interrupted" }
+      : { result: "ok", reason: "none" };
     const expected = [
       { event: "received", payload: { ...identity, panelMatchesTask: true } },
       { event: "started", payload: { ...identity, source: "coordinator" } },
       { event: "evaluated", payload: { ...identity, status: "needs-review", schedulingMode: "event_driven", runningTask: false } },
+      stage("reveal_panel", "start"), stage("reveal_panel", "end"),
+      stage("switch_tab", "start"), stage("switch_tab", "end"),
       { event: "subtasks-fallback", payload: { ...identity, path: "main_target" } },
       { event: "dispatch", payload: { ...identity, path: "main_target", cli: "codex" } },
+      stage("run_loop_prompt", "start"),
       ...(started ? [{ event: "task-started", payload: identity }] : []),
+      stage("run_loop_prompt", "end", runOutcome),
+      stage("refresh", "start"), stage("refresh", "end"),
+      stage("settled_refresh", "start"), stage("settled_refresh", "end"),
       { event: "settled", payload: { ...identity, taskStatus, canContinue: true } },
     ];
-    assert.deepEqual(logs.filter((item) => item.payload.requestId === requestId),
-      expected.map(({ event, payload }) => ({ event: `loop-group-chat-continue-${event}`, payload })));
+    assert.deepEqual(logs.filter((item) => item.payload.requestId === requestId).map(({ event, payload }) => {
+      const { elapsedMs, ...rest } = payload;
+      if (elapsedMs !== undefined) assert.ok(typeof elapsedMs === "number" && elapsedMs >= 0);
+      return { event, payload: rest };
+    }), expected.map(({ event, payload }) => ({ event: `loop-group-chat-continue-${event}`, payload })));
     assert.deepEqual(panelMessages.filter((message) => (message as { requestId?: string }).requestId === requestId), [
       ...(started ? [{ type: "loopGroupChatChat:continueTaskStarted", requestId }] : []),
       { type: "loopGroupChatChat:continueTaskSettled", requestId, canContinue: true },

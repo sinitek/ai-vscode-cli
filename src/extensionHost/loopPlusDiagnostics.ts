@@ -1,6 +1,29 @@
 import { logError, logEssential, logInfo } from "../logger";
-import { readLoopPlusProtocolDiagnostic } from "../loopPlusProtocolDiagnostics";
-import type { LoopPlusSchedulerPhase } from "../loopPlusScheduler";
+import {
+  isLoopPlusRequestPhase,
+  isLoopPlusResponseShape,
+  readLoopPlusBatchEvidence,
+  readLoopPlusBatchKey,
+  readLoopPlusInvocationKey,
+  readLoopPlusProtocolDiagnostic,
+  readLoopPlusTerminalReasonCode,
+  type LoopPlusRequestPhase,
+  type LoopPlusResponseShape,
+  type LoopPlusTerminalReasonCode,
+} from "../loopPlusProtocolDiagnostics";
+import { readLoopPlusInterruptionSource } from "../loopPlusInterruptionSource";
+
+export {
+  LOOP_PLUS_INTERRUPTION_PHASES,
+  LOOP_PLUS_INTERRUPTION_REASONS,
+  classifyLoopPlusInterruption,
+  readLoopPlusInterruptionPhase,
+  readLoopPlusInterruptionSource,
+} from "../loopPlusInterruptionSource";
+export type {
+  LoopPlusInterruptionReason,
+  LoopPlusInterruptionSource,
+} from "../loopPlusInterruptionSource";
 
 const ESSENTIAL_LOOP_PLUS_RUNTIME_EVENTS = new Set([
   "loop-plus-finish-ignored",
@@ -15,10 +38,15 @@ const LOOP_PLUS_DISPATCH_REJECTION_REASONS = [
   "invalid_spec",
   "duplicate_attempt",
   "active_subtask",
+  "duplicate_subtask",
   "parent_stopped",
   "completed",
   "invalid_dependencies",
 ] as const;
+
+const LOOP_PLUS_DISPATCH_COLLISION_REASONS = ["active_subtask", "duplicate_subtask"] as const;
+
+type LoopPlusDispatchCollisionReason = typeof LOOP_PLUS_DISPATCH_COLLISION_REASONS[number];
 
 const LOOP_PLUS_DISPATCH_REJECTION_COUNT_KEYS = [
   ...LOOP_PLUS_DISPATCH_REJECTION_REASONS,
@@ -38,63 +66,6 @@ export class LoopPlusUpdateUnconfirmedError extends Error {
   constructor(taskId: string) {
     super(`Loop+ task update did not commit: ${taskId}`);
   }
-}
-
-/** Scheduler phases already used by Loop+. A new phase must be listed here before it can be stored. */
-export const LOOP_PLUS_INTERRUPTION_PHASES = [
-  "idle",
-  "waiting",
-  "review_ready",
-  "reviewing",
-  "stopped",
-  "completed",
-] as const satisfies readonly LoopPlusSchedulerPhase[];
-
-/** Closed classification of the four parent-status write sources. */
-export const LOOP_PLUS_INTERRUPTION_REASONS = [
-  "user-stop",
-  "execution-error",
-  "persistence-failure",
-  "background-subtask-failure",
-] as const;
-
-export type LoopPlusInterruptionReason = typeof LOOP_PLUS_INTERRUPTION_REASONS[number];
-
-export type LoopPlusInterruptionSource = {
-  phase: LoopPlusSchedulerPhase;
-  reason: LoopPlusInterruptionReason;
-};
-
-const LOOP_PLUS_INTERRUPTION_PHASE_SET = new Set<string>(LOOP_PLUS_INTERRUPTION_PHASES);
-const LOOP_PLUS_INTERRUPTION_REASON_SET = new Set<string>(LOOP_PLUS_INTERRUPTION_REASONS);
-
-export function readLoopPlusInterruptionPhase(value: unknown): LoopPlusSchedulerPhase | undefined {
-  return typeof value === "string" && LOOP_PLUS_INTERRUPTION_PHASE_SET.has(value)
-    ? value as LoopPlusSchedulerPhase
-    : undefined;
-}
-
-/** Keeps only phase and reason. Any other field, including identifiers and error text, is dropped. */
-export function readLoopPlusInterruptionSource(value: unknown): LoopPlusInterruptionSource | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const record = value as { phase?: unknown; reason?: unknown };
-  const phase = readLoopPlusInterruptionPhase(record.phase);
-  const reason = typeof record.reason === "string" && LOOP_PLUS_INTERRUPTION_REASON_SET.has(record.reason)
-    ? record.reason as LoopPlusInterruptionReason
-    : undefined;
-  return phase && reason ? { phase, reason } : undefined;
-}
-
-export function classifyLoopPlusInterruption(input: {
-  status: "error" | "stopped";
-  userStopSource?: "ai-panel" | "group-chat";
-  persistenceFailure?: boolean;
-  backgroundSubtaskFailure?: boolean;
-}): LoopPlusInterruptionReason {
-  if (input.persistenceFailure) return "persistence-failure";
-  if (input.status === "stopped" || input.userStopSource) return "user-stop";
-  if (input.backgroundSubtaskFailure) return "background-subtask-failure";
-  return "execution-error";
 }
 
 export function summarizeLoopPlusDispatchRejections(
@@ -148,10 +119,64 @@ export type LoopPlusProtocolRejectionSummary = {
   protocolFailureCount: number;
   recoveryStage: LoopPlusProtocolRecoveryStage;
   dispatchWindow: "open" | "closed";
+  decisionStatus?: "dispatch" | "accept";
+  collisionCounts?: Partial<Record<LoopPlusDispatchCollisionReason, number>>;
+  phase?: "protocol_recovery";
+  batchKey?: string;
+  batchEvidence?: "frozen_id_sequence";
+  invocationKey?: string;
+  requestPhase?: LoopPlusRequestPhase;
+  responseShape?: Exclude<LoopPlusResponseShape, "execution_failed">;
+  charCount?: number;
+  elapsedMs?: number;
+  attempt?: number;
+};
+
+export type LoopPlusMainTerminalSummary = {
+  phase: "main_terminal";
+  requestPhase: LoopPlusRequestPhase;
+  batchKey: string;
+  batchEvidence: "frozen_id_sequence";
+  invocationKey: string;
+  attempt: number;
+  responseShape: LoopPlusResponseShape;
+  charCount: number;
+  elapsedMs: number;
+  reasonCode?: LoopPlusTerminalReasonCode;
 };
 
 function readProtocolFailureCount(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 99 ? value : 0;
+}
+
+function readBoundedInt(value: unknown, min: number, max: number): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max ? value : undefined;
+}
+
+function readProtocolAssociation(detail: Record<string, unknown>): Pick<
+  LoopPlusProtocolRejectionSummary,
+  "phase" | "batchKey" | "batchEvidence" | "invocationKey" | "requestPhase" | "responseShape" | "charCount" | "elapsedMs" | "attempt"
+> {
+  const batchKey = readLoopPlusBatchKey(detail.batchKey);
+  const batchEvidence = readLoopPlusBatchEvidence(detail.batchEvidence);
+  const invocationKey = readLoopPlusInvocationKey(detail.invocationKey);
+  const requestPhase = isLoopPlusRequestPhase(detail.requestPhase) ? detail.requestPhase : undefined;
+  const responseShape = isLoopPlusResponseShape(detail.responseShape) && detail.responseShape !== "execution_failed"
+    ? detail.responseShape : undefined;
+  const charCount = readBoundedInt(detail.charCount, 0, 10_000_000);
+  const elapsedMs = readBoundedInt(detail.elapsedMs, 0, 604_800_000);
+  const attempt = readBoundedInt(detail.attempt, 1, 1_000_000);
+  return {
+    ...(detail.phase === "protocol_recovery" ? { phase: "protocol_recovery" } : {}),
+    ...(batchKey ? { batchKey } : {}),
+    ...(batchKey && batchEvidence ? { batchEvidence } : {}),
+    ...(invocationKey ? { invocationKey } : {}),
+    ...(requestPhase ? { requestPhase } : {}),
+    ...(responseShape ? { responseShape } : {}),
+    ...(charCount !== undefined ? { charCount } : {}),
+    ...(elapsedMs !== undefined ? { elapsedMs } : {}),
+    ...(attempt !== undefined ? { attempt } : {}),
+  };
 }
 
 function readProtocolRecoveryStage(value: unknown): LoopPlusProtocolRecoveryStage {
@@ -163,6 +188,21 @@ function readProtocolDispatchWindow(value: unknown): "open" | "closed" {
   return value === "open" || value === "closed" ? value : "closed";
 }
 
+function readDispatchDecisionStatus(value: unknown): "dispatch" | "accept" | undefined {
+  return value === "dispatch" || value === "accept" ? value : undefined;
+}
+
+function readDispatchCollisionCounts(value: unknown): Partial<Record<LoopPlusDispatchCollisionReason, number>> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const counts: Partial<Record<LoopPlusDispatchCollisionReason, number>> = {};
+  for (const reason of LOOP_PLUS_DISPATCH_COLLISION_REASONS) {
+    const item = source[reason];
+    if (typeof item === "number" && Number.isInteger(item) && item >= 0 && item <= 99) counts[reason] = item;
+  }
+  return Object.keys(counts).length > 0 ? counts : undefined;
+}
+
 /** Rebuilds one disk summary from the diagnostic contract. Identifiers, prompts, and raw errors are not copied. */
 export function summarizeLoopPlusProtocolRejection(payload: unknown): LoopPlusProtocolRejectionSummary {
   const detail = payload && typeof payload === "object" && !Array.isArray(payload)
@@ -171,6 +211,10 @@ export function summarizeLoopPlusProtocolRejection(payload: unknown): LoopPlusPr
     typeof detail.reasonCode === "string" ? detail.reasonCode : "",
     typeof detail.fieldPath === "string" ? detail.fieldPath : undefined,
   );
+  const decisionStatus = diagnostic.reasonCode === "state.dispatch.rejected"
+    ? readDispatchDecisionStatus(detail.decisionStatus) : undefined;
+  const collisionCounts = diagnostic.reasonCode === "state.dispatch.rejected"
+    ? readDispatchCollisionCounts(detail.collisionCounts) : undefined;
   return {
     rejectionKind: diagnostic.rejectionKind,
     reasonCode: diagnostic.reasonCode,
@@ -178,6 +222,40 @@ export function summarizeLoopPlusProtocolRejection(payload: unknown): LoopPlusPr
     protocolFailureCount: readProtocolFailureCount(detail.protocolFailureCount),
     recoveryStage: readProtocolRecoveryStage(detail.recoveryStage),
     dispatchWindow: readProtocolDispatchWindow(detail.dispatchWindow),
+    ...(decisionStatus ? { decisionStatus } : {}),
+    ...(collisionCounts ? { collisionCounts } : {}),
+    ...readProtocolAssociation(detail),
+  };
+}
+
+/** 主模型终结观测。缺任一关联字段则整条丢弃，避免把未白名单的正文写盘。 */
+export function summarizeLoopPlusMainTerminal(payload: unknown): LoopPlusMainTerminalSummary | null {
+  const detail = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? payload as Record<string, unknown> : {};
+  const requestPhase = isLoopPlusRequestPhase(detail.requestPhase) ? detail.requestPhase : undefined;
+  const batchKey = readLoopPlusBatchKey(detail.batchKey);
+  const batchEvidence = readLoopPlusBatchEvidence(detail.batchEvidence);
+  const invocationKey = readLoopPlusInvocationKey(detail.invocationKey);
+  const attempt = readBoundedInt(detail.attempt, 1, 1_000_000);
+  const responseShape = isLoopPlusResponseShape(detail.responseShape) ? detail.responseShape : undefined;
+  const charCount = readBoundedInt(detail.charCount, 0, 10_000_000);
+  const elapsedMs = readBoundedInt(detail.elapsedMs, 0, 604_800_000);
+  if (!requestPhase || !batchKey || !batchEvidence || !invocationKey || attempt === undefined
+    || !responseShape || charCount === undefined || elapsedMs === undefined) {
+    return null;
+  }
+  const reasonCode = responseShape === "execution_failed" ? readLoopPlusTerminalReasonCode(detail.reasonCode) : undefined;
+  return {
+    phase: "main_terminal",
+    requestPhase,
+    batchKey,
+    batchEvidence,
+    invocationKey,
+    attempt,
+    responseShape,
+    charCount,
+    elapsedMs,
+    ...(reasonCode ? { reasonCode } : {}),
   };
 }
 
@@ -192,19 +270,53 @@ export function logLoopPlusRuntimeEvent(event: string, payload?: unknown): void 
     void logEssential(event, { stage, code, pid: process.pid }).catch(() => undefined);
   } else if (event === "loop-plus-dispatch-rejected") {
     const diagnostic = persistentLoopPlusDispatchRejection(payload);
-    if (diagnostic) void logEssential(event, diagnostic).catch(() => undefined);
+    if (diagnostic) void logError(event, diagnostic).catch(() => undefined);
   } else if (event === "loop-plus-protocol-rejection") {
-    void logEssential(event, summarizeLoopPlusProtocolRejection(payload)).catch(() => undefined);
+    void logError(event, summarizeLoopPlusProtocolRejection(payload)).catch(() => undefined);
+  } else if (event === "loop-plus-main-terminal") {
+    const summary = summarizeLoopPlusMainTerminal(payload);
+    if (summary) {
+      const persistent = summary.responseShape === "absent" || summary.responseShape === "empty"
+        || summary.responseShape === "whitespace" || summary.responseShape === "execution_failed";
+      const write = persistent ? logError : logInfo;
+      void write(event, summary).catch(() => undefined);
+    }
   } else if (event === "loop-plus-report-failed" || event === "loop-plus-finish-failed") {
     const detail = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
     const { error: _error, ...diagnostic } = detail;
-    void logEssential(event, { ...diagnostic, pid: process.pid }).catch(() => undefined);
+    void logError(event, { ...diagnostic, pid: process.pid }).catch(() => undefined);
   } else if (ESSENTIAL_LOOP_PLUS_RUNTIME_EVENTS.has(event)) {
-    void logEssential(event, payload).catch(() => undefined);
+    if (event.endsWith("-error") || event.endsWith("-failed")) {
+      void logError(event, payload).catch(() => undefined);
+    } else {
+      void logEssential(event, payload).catch(() => undefined);
+    }
   } else if (event === "loop-plus-persist-failed") {
     const detail = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
     const { taskId: _taskId, attemptId: _attemptId, error: _error, ...diagnostic } = detail;
     void logError(event, { ...diagnostic, pid: process.pid }).catch(() => undefined);
+  } else if (event === "loop-plus-finish-contention") {
+    const detail = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    const batchKey = readLoopPlusBatchKey(detail.batchKey);
+    const { stage, result, reason } = detail;
+    if (!batchKey || typeof stage !== "string" || !["parent-read", "receipt-write", "event-write"].includes(stage)
+      || typeof result !== "string" || !["retry", "waiting-for-watchdog", "committed", "withheld"].includes(result)) return;
+    const write = result === "waiting-for-watchdog" || result === "withheld" ? logError : logInfo;
+    void write(event, { batchKey, stage, result,
+      reason: reason === "identity-lock-present" || reason === "record-version-changed" ? reason : undefined,
+      retry: readBoundedInt(detail.retry, 0, Number.MAX_SAFE_INTEGER),
+      schedulerSeq: readBoundedInt(detail.schedulerSeq, 0, Number.MAX_SAFE_INTEGER),
+      elapsedMs: readBoundedInt(detail.elapsedMs, 0, Number.MAX_SAFE_INTEGER), pid: process.pid }).catch(() => undefined);
+  } else if (event === "loop-plus-completion-commit") {
+    const detail = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    const batchKey = readLoopPlusBatchKey(detail.batchKey);
+    const result = detail.result;
+    const stage = detail.stage;
+    if (!batchKey || typeof result !== "string" || !["retry", "waiting-for-watchdog", "replan", "superseded", "committed", "unconfirmed"].includes(result)
+      || typeof stage !== "string" || !["parent-read", "snapshot-check", "final-write", "host-route", "store-resolution", "identity-check", "identity-commit"].includes(stage)) return;
+    const write = result === "waiting-for-watchdog" || result === "unconfirmed" || result === "superseded" ? logError : logInfo;
+    void write(event, { batchKey, stage, result, attempt: readBoundedInt(detail.attempt, 0, Number.MAX_SAFE_INTEGER),
+      elapsedMs: readBoundedInt(detail.elapsedMs, 0, Number.MAX_SAFE_INTEGER), pid: process.pid }).catch(() => undefined);
   } else if (event === "loop-plus-interruption-source") {
     const detail = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
     const source = readLoopPlusInterruptionSource({ phase: detail.phase, reason: detail.reason });
@@ -212,6 +324,7 @@ export function logLoopPlusRuntimeEvent(event: string, payload?: unknown): void 
       void logEssential(event, { phase: source.phase, reason: source.reason, carried: detail.carried === true }).catch(() => undefined);
     }
   } else {
-    void logInfo(event, payload).catch(() => undefined);
+    const writeLog = event.endsWith("-failed") || event.endsWith("-error") ? logError : logInfo;
+    void writeLog(event, payload).catch(() => undefined);
   }
 }

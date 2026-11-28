@@ -8,6 +8,7 @@ import {
   findConversationTabForLoopResume,
   isConversationTabExecutionLocked,
   resolveAutoInteractiveModeForLoopTask,
+  setConversationTabSessionIdForCli,
   switchConversationTabCli,
   type ConversationTabsState,
 } from "../../sessionTabs";
@@ -287,6 +288,41 @@ test("finds the same Loop main tab after that tab switches to a new CLI group", 
   assert.equal(resolved?.sessionId, "opencode-session");
 });
 
+test("Loop main session fallback excludes child and other tasks sharing the session", () => {
+  const task = { id: "target", cli: "codex" as const, sessionId: "shared" };
+  const tabs = ["child", "other", "unassigned", "main"].map((id) => ({ id, cli: task.cli,
+    sessionId: task.sessionId, sessionIdByCli: { codex: task.sessionId }, createdAt: 1 }));
+  const context = (tab: { id: string }) => tab.id === "child" ? { taskRole: "subtask" as const, loopTaskId: task.id }
+    : tab.id === "other" ? { taskRole: "main" as const, loopTaskId: "another-task" }
+    : tab.id === "main" ? { taskRole: "main" as const, loopTaskId: task.id } : {};
+  assert.equal(findConversationTabForLoopResume(tabs, task, context)?.id, "main");
+  assert.equal(findConversationTabForLoopResume(tabs.slice(0, 3), task, context)?.id, "unassigned");
+  assert.equal(findConversationTabForLoopResume(tabs.slice(0, 2), task, context), null);
+});
+
+test("an unassigned main tab keeps its task across restart and releases it when the session changes", () => {
+  const state: ConversationTabsState = { activeTabId: null, tabs: [] };
+  const settings: WorkspaceSettings = { conversationTabs: { activeTabId: "tab", tabs: [{ id: "tab", cli: "codex", sessionId: null,
+    sessionIdByCli: {}, createdAt: 1, pendingLoopMainTaskId: "waiting-task" }] } };
+  const controller = createSessionTabsController({ state, pendingDrafts: {}, conversationTabPrefix: "tab_",
+    getCurrentCli: () => "codex", setCurrentCli: () => undefined, getDefaultCli: () => "codex", isCliName: (value): value is CliName => value === "codex",
+    getLatestSessionId: () => null, getSessionStore: () => undefined, getWorkspaceSettings: () => settings, saveWorkspaceSettings: () => undefined,
+    setCurrentSession: () => undefined, setWorkspaceInteractiveModeForCli: () => false, resolveAutoInteractiveModeForConversationTab: () => "coding",
+    collectRunningLoopTaskIds: () => new Set(), readLoopTaskRunState: () => ({ isRunning: false, status: null }),
+    resolveConversationTabLoopContext: () => ({}), buildSessionLabelFromPrompt: () => null });
+  controller.initializeConversationTabsFromWorkspaceSettings();
+  const tab = controller.getConversationTabById("tab")!;
+  assert.equal(tab.pendingLoopMainTaskId, "waiting-task");
+  controller.persistConversationTabsToWorkspaceSettings();
+  assert.equal(settings.conversationTabs?.tabs[0].pendingLoopMainTaskId, "waiting-task");
+  setConversationTabSessionIdForCli(tab, "codex", "native-session");
+  assert.equal(tab.pendingLoopMainTaskId, undefined);
+  setConversationTabSessionIdForCli(tab, "codex", null);
+  tab.pendingLoopMainTaskId = "another-task";
+  controller.startNewSession("codex");
+  assert.equal(settings.conversationTabs?.tabs[0].pendingLoopMainTaskId, undefined);
+});
+
 test("persists execution lock and refuses CLI changes after the first task", () => {
   let currentCli: CliName = "codex";
   const state: ConversationTabsState = {
@@ -317,8 +353,7 @@ test("persists execution lock and refuses CLI changes after the first task", () 
     setWorkspaceInteractiveModeForCli: () => false,
     resolveAutoInteractiveModeForConversationTab: () => "coding",
     collectRunningLoopTaskIds: () => new Set(),
-    isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => null,
+    readLoopTaskRunState: () => ({ isRunning: false, status: null }),
     resolveConversationTabLoopContext: () => ({}),
     buildSessionLabelFromPrompt: () => null,
   });
@@ -395,8 +430,7 @@ test("migrates execution locks from any existing session mapped to a legacy Tab"
     setWorkspaceInteractiveModeForCli: () => false,
     resolveAutoInteractiveModeForConversationTab: () => "coding",
     collectRunningLoopTaskIds: () => new Set(),
-    isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => null,
+    readLoopTaskRunState: () => ({ isRunning: false, status: null }),
     resolveConversationTabLoopContext: () => ({}),
     buildSessionLabelFromPrompt: () => null,
   });
@@ -439,11 +473,10 @@ test("rebuilds a Loop tab after its running status has been reconciled", () => {
     setWorkspaceInteractiveModeForCli: () => false,
     resolveAutoInteractiveModeForConversationTab: () => "coding",
     collectRunningLoopTaskIds: () => new Set(),
-    isLoopTaskRunning: () => {
+    readLoopTaskRunState: () => {
       taskStatus = "stopped";
-      return false;
+      return { isRunning: false, status: taskStatus };
     },
-    getLoopTaskStatus: () => taskStatus,
     resolveConversationTabLoopContext: () => ({ taskRole: "main", loopTaskId: "task-1" }),
     buildSessionLabelFromPrompt: () => null,
   });

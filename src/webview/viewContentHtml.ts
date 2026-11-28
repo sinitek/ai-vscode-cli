@@ -639,6 +639,7 @@ ${renderChatModal({
                     <span>${i18n.toolSettingsDebugToggle}</span>
                   </label>
                 </div>
+                <div class="tool-settings-note">${i18n.toolSettingsDebugHint}</div>
               </section>
               <section class="tool-settings-card">
                 <div class="tool-settings-row">

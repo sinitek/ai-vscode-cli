@@ -5,6 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { fork } from "child_process";
 import { once } from "events";
+import { captureDepartmentTestWorkers, stopLeaderFixtureWorkers } from "../extensionHost/fixtures/departmentownedtestworkers";
 import { leaderFixture } from "./fixtures/departmentleadercodexhost";
 import { DepartmentExecutionOwnerClient } from "../../runtime/departmentexecutionownerclient";
 import { isLeaderCodexPreparation, LEADER_INVOCATION_LIMIT } from "../../runtime/departmentleadercodexcontract";
@@ -17,13 +18,16 @@ async function until(check: () => boolean | Promise<boolean>) {
 }
 async function setup(t: test.TestContext, bound = false) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-leader-native-"));
+  captureDepartmentTestWorkers(t);
   const h = await leaderFixture(directory, { bound });
   t.after(async () => {
-    // Test teardown only; SIGTERM/removal is not native cleanup or capacity evidence.
-    const pids = new Set<number>();
-    try { for (const l of fs.readFileSync(h.file("native-pids"), "utf8").trim().split("\n")) pids.add(Number(l)); } catch {}
-    for (const pid of pids) { try { process.kill(pid, "SIGTERM"); } catch {} }
-    await new Promise((r) => setTimeout(r, 20)); fs.rmSync(directory, { recursive: true, force: true });
+    // Test teardown only. Signals are not native cleanup, an Owner receipt, or capacity evidence.
+    // The detached Owner and simulated native process are not this process's handles.
+    try {
+      await stopLeaderFixtureWorkers(directory);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   }); return h;
 }
 const first = { invocationId: "main-1", prompt: "trusted first main invocation" };
@@ -362,7 +366,6 @@ test("leader original granted Owner survives startup host exit", { timeout: 1500
   const h = await setup(t); h.flag("hold-terminal");
   const child = fork(path.join(__dirname, "fixtures", "departmentleadercodexhost.js"), [h.directory], { stdio: ["ignore", "ignore", "pipe", "ipc"], execArgv: [] });
   let stderr = ""; child.stderr!.on("data", (v) => { stderr += String(v); });
-  t.after(() => { if (child.exitCode === null) child.kill(); });
   const [code] = await once(child, "exit"); assert.equal(code, 0, stderr);
   const read = h.store.readLeaderExecutionSet(h.admission.scope); assert.ok(read.ok && read.value); const binding = read.value.bindings[0]; assert.ok(binding);
   const observed = await new DepartmentExecutionOwnerClient(h.file("owner")).observeExecution(binding.identity);
@@ -392,7 +395,6 @@ test("leader worker still rejects callback window overflow without treating it a
   const child = fork(path.join(__dirname, "..", "..", "runtime", "departmentleadercodexownerworker.js"), [], {
     stdio: ["ignore", "ignore", "ignore", "ipc"], execArgv: [], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
   });
-  t.after(() => { if (child.exitCode === null) child.kill(); });
   let sequence = 0, granted = false, held = 0, failure: any;
   const send = (operation: string, extra = {}) => child.send({ version: 1, token: input.token,
     identity: h.identity, sequence: ++sequence, operation, ...extra });
@@ -422,7 +424,6 @@ for (const violation of ["token", "sequence", "identity", "extra-field", "premat
     const child = fork(path.join(__dirname, "..", "..", "runtime", "departmentleadercodexownerworker.js"), [], {
       stdio: ["ignore", "ignore", "ignore", "ipc"], execArgv: [], env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     });
-    t.after(() => { if (child.exitCode === null) child.kill(); });
     const ready = once(child, "message"); child.send(input); const [event] = await ready; assert.equal(event.type, "ready");
     const bad: Record<string, unknown> = { version: 1, token: input.token, identity: h.identity, sequence: 1,
       operation: "invoke", invocation: first };

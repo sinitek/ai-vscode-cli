@@ -7,6 +7,7 @@ import {
 } from "../cli/types";
 import { ConfigPlatform } from "../config/types";
 import type { LoopTaskStatus } from "../loopTaskStore";
+import type { DepartmentExecutionActivity } from "../department";
 import type { HumanInteractionSubmissionStatus } from "../humanInteraction";
 import type { DshReasoningOption } from "../cli/dshConfigModels";
 import type { HumanInteractionHistoryRecord } from "../humanInteractionHistory";
@@ -295,6 +296,8 @@ export type ConversationTabSummary = {
   loopTaskRole?: "main" | "subtask";
   loopTaskId?: string;
   loopTaskRunning?: boolean;
+  loopMainRunActive?: boolean;
+  departmentExecutionActivity?: DepartmentExecutionActivity;
   loopSubtaskRunning?: boolean;
   loopSubtaskId?: string;
   loopTaskStatus?: LoopTaskStatus;

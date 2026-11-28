@@ -16,7 +16,7 @@ import * as configService from "../config/configService";
 import { createConfigProfileRequestHandlers } from "./configRequestHandlers/profiles";
 import { createConfigSkillRequestHandlers } from "./configRequestHandlers/skills";
 import { routeConfigRequest, type ConfigRequestHandlers } from "./configRequestRouter";
-import { logEssential, logInfo } from "../logger";
+import { logError } from "../logger";
 import { t } from "../i18n";
 import { buildErrorDetail, showErrorWithActions } from "../errorDisplay";
 import { expandHomePath } from "../shared/userHomePaths";
@@ -115,7 +115,6 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
         const targetPath = path.join(downloadsDir, targetName);
         await fs.promises.writeFile(targetPath, payload.content, "utf8");
         response.data = { path: targetPath, fileName: targetName, downloadsDir };
-        void logEssential("config-export", { path: targetPath });
       },
       getModelImportProviders: (message, response) => {
         response.data = getModelImportProviders(message.payload);
@@ -219,7 +218,7 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
         }
       } catch (error: unknown) {
         this.nativeModalUnavailable = true;
-        void logInfo("config-native-modal-open-failed", {
+        void logError("config-native-modal-open-failed", {
           command: CONFIG_INTERNAL_OPEN_COMMAND,
           viewType: CONFIG_MANAGER_VIEW_TYPE,
           error: error instanceof Error ? error.message : String(error),
@@ -251,7 +250,7 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
       this.reload();
     }
     void vscode.commands.executeCommand(CONFIG_NEW_WINDOW_COMMAND).then(undefined, (error: unknown) => {
-      void logInfo("config-window-open-failed", {
+      void logError("config-window-open-failed", {
         command: CONFIG_NEW_WINDOW_COMMAND,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -288,7 +287,6 @@ export class ConfigManagerPanel implements vscode.CustomReadonlyEditorProvider {
           return;
         }
         if (message && message.type === "config:debug") {
-          void logInfo("config-view-debug", message.payload ?? {});
           return;
         }
         if (message && message.type === "config:openPath") {

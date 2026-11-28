@@ -2,7 +2,7 @@
 
 - 日期：2026-11-25
 - 类型：bugfix
-- 关联计划：`.ch/docs/exec-plans/active/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任）
+- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任）
 - 状态：in-progress
 - 负责人：Codex / 人类 / 协作
 - owner：

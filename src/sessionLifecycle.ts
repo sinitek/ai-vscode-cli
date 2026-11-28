@@ -41,6 +41,7 @@ import {
 } from "./sessionTabs";
 import { ChatMessage } from "./webview/types";
 import { resolveSessionHealth, type SessionHealth } from "./sessionHealth";
+import { resolveLoopConversationTabContextFromMessages } from "./loopConversationPresentation";
 import type { PanelMessage } from "./webview/types";
 
 type RuntimeSessionReference = {
@@ -191,7 +192,7 @@ export function createSessionLifecycleController(deps: {
   repairSupersededLocalSession: (cli: CliName, sessionId: string, options?: SessionPromotionOptions) => string;
   repairSupersededLocalSessions: (options?: SessionPromotionOptions) => void;
   persistActiveMessages: () => void;
-  prepareSessionForPromptRun: (cli: CliName, sessionId: string | null, tabId: string, options?: { forceNewSession?: boolean }) => string | null;
+  prepareSessionForPromptRun: (cli: CliName, sessionId: string | null, tabId: string, options?: { forceNewSession?: boolean; loopMainTaskId?: string }) => string | null;
   replaceConversationTabSessionReferences: (cli: CliName, fromSessionId: string, toSessionId: string) => void;
   resolveCodexInteractiveSelection: (sessionId: string) => CodexRunSelection | null;
   resolveInteractiveMappedId: (cli: CliName, sessionId: string) => string | null;
@@ -901,6 +902,11 @@ export function createSessionLifecycleController(deps: {
       const tab = deps.getConversationTabById(tabId);
       if (!tab || getConversationTabSessionIdForCli(tab, cli) !== sessionId) {
         return null;
+      }
+      if (!options.forceNewSession && options.loopMainTaskId && !tab.loopSubtaskId
+        && (!isLocalSessionId(sessionId) || getMappedThreadId(deps.readSessionMetaStore(), cli, sessionId))) {
+        const context = resolveLoopConversationTabContextFromMessages(messages);
+        if (context.taskRole === "main" && context.loopTaskId === options.loopMainTaskId) return sessionId;
       }
       saveMessages(cli, sessionId, messages);
       setConversationTabSessionIdForCli(tab, cli, null);

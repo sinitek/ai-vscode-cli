@@ -1887,11 +1887,13 @@ exports.run = async () => {
     const tasks = readTasks(), rootTask = tasks.find((value) => value.id === snapshot.rootId);
     if (ordinaryLoopPlus) {
       const { createLoopPlusScheduler } = require(path.join(product, "dist/loopPlusScheduler.js"));
-      const employeeSessions = [];
+      const employeeSessions = [], leaderSessions = [];
       for (const id of snapshot.leaders) {
         const leader = tasks.find((value) => value.id === id);
         assert.equal(leader?.department?.executionMode, "loop-plus");
         assert.equal(leader.status, "completed");
+        assert.ok(leader.sessionId, "completed leader has no saved conversation");
+        leaderSessions.push({ cli: leader.cli, sessionId: leader.sessionId });
         assert.deepEqual(leader.loopPlusAcceptancePlan, rootTask.loopPlusAcceptancePlan);
         assert.ok(createLoopPlusScheduler({ snapshot: leader.loopPlus }).snapshot().seenAttempts.some((attempt) => attempt.acceptance === "passed"));
         for (const employee of snapshot.employees.filter(value => value.leaderTaskId === id)) {
@@ -1907,17 +1909,19 @@ exports.run = async () => {
       const tabsFile = path.join(home, ".sinitek_cli/workspace-settings", `${rootTask.workspaceKey}.json`);
       const tabs = () => readJson(tabsFile)?.conversationTabs?.tabs;
       const hasSession = (tab, cli, sessionId) => tab.cli === cli && (tab.sessionIdByCli?.[cli] ?? tab.sessionId) === sessionId;
+      const finishedSessions = [...employeeSessions, ...leaderSessions];
       const closeDeadline = Date.now() + 5000;
       let remaining;
       do {
         const currentTabs = tabs();
         assert.ok(Array.isArray(currentTabs), "persisted conversation tabs unavailable");
         assert.ok(currentTabs.some((tab) => hasSession(tab, rootTask.cli, rootTask.sessionId)), "director conversation tab disappeared");
-        remaining = employeeSessions.filter(({ cli, sessionId }) => currentTabs.some((tab) => hasSession(tab, cli, sessionId)));
+        remaining = finishedSessions.filter(({ cli, sessionId }) => currentTabs.some((tab) => hasSession(tab, cli, sessionId)));
         if (remaining.length) await sleep(100);
       } while (remaining.length && Date.now() < closeDeadline);
-      assert.deepEqual(remaining, [], "employee conversation tabs remained after durable handoff");
+      assert.deepEqual(remaining, [], "finished employee or leader conversation tabs remained open");
       report.employeeTabsClosed = employeeSessions.length;
+      report.leaderTabsClosed = leaderSessions.length;
       Object.assign(report.stages, { ownerReceipts: "not-applicable", capacityReturn: "passed", eventAcceptance: "passed",
         unifiedAcceptancePlan: "passed", directorReport: "passed" });
       report.cleanupEvidence = cleanup;

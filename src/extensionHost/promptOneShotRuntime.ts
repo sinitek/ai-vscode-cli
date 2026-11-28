@@ -661,6 +661,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
       bindRunIdentityBeforeUserBubble: (prepared, identity) => {
         userMessageId = identity.userMessageId;
         userCreatedAt = identity.userCreatedAt;
+        input.loopPlusMainAdmission?.onRunOpened();
         runId = createMessageId();
         setActiveRunId(runId);
         applyProcessTitle(runId, runCli, target.sessionId);
@@ -1180,7 +1181,7 @@ export function createPromptOneShotRuntimeHost(deps: PromptOneShotRuntimeHostDep
           sendRunStatus("error", userMessage);
           appendSystemMessage(userMessage);
         } else {
-          void logInfo("runPrompt-exit", { cli: runCli, code: context.attemptResult.code });
+          void logError("runPrompt-exit", { cli: runCli, code: context.attemptResult.code });
           const lastFailureMessage = context.rawStderr.trim()
             ? context.rawStderr.trim()
             : t("run.exitCode", { code: context.attemptResult.code ?? "unknown" });

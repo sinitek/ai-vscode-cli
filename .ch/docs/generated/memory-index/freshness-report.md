@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | `.ch/docs/MEMORY.md` | `active` | `stale` | 2026-07-18 | 2026-11-12T03:15:19+00:00 | ~19 | 这个文件定义：**信息第一次出现时写到哪里，什么时候上提，什么时候清理。** |
 | `.ch/docs/memory/ACTIVE_RISKS.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
-| `.ch/docs/memory/EVENT_MEMORY.md` | `active` | `starter` | 2026-10-24 | 2026-11-13T02:07:54+00:00 | ~18 | starter placeholder |
+| `.ch/docs/memory/EVENT_MEMORY.md` | `active` | `starter` | 2026-10-24 | 2026-11-27T03:08:31+00:00 | ~18 | starter placeholder |
 | `.ch/docs/memory/LESSONS_LEARNED.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PENDING_ITEMS.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~14 | starter placeholder |
 | `.ch/docs/memory/PROJECT_CONTEXT.md` | `active` | `starter` | template-fill-when-adopted | 2026-05-21T02:07:45+00:00 | ~15 | starter placeholder |
@@ -16,5 +16,5 @@
 
 ## Active Plan Activity
 
-- `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md` 最后修改于 2026-11-19T04:25:33+00:00，读取成本约 1187 tokens
-- `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md` 最后修改于 2026-11-19T04:25:33+00:00，读取成本约 317 tokens
+- `.ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md` 最后修改于 2026-11-25T08:06:35+00:00，读取成本约 6173 tokens
+- `.ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md` 最后修改于 2026-11-27T05:26:19+00:00，读取成本约 1256 tokens

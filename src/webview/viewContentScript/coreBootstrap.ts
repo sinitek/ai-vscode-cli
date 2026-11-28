@@ -605,7 +605,6 @@ export const VIEW_CONTENT_SCRIPT_CORE_BOOTSTRAP = `      const vscode = acquireV
       let runWaitTimer = null;
       let runWaitStartAt = 0;
       let runStreamStaleTimer = null;
-      let lastScrollToBottomVisible = false;
       let followLatestMessages = true;
       let suppressScrollButtonUntil = 0;
       const queuePromptPreviewLimit = 200;

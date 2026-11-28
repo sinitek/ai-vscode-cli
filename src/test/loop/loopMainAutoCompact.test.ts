@@ -2,11 +2,11 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
-  LoopMainAutoCompactFlights,
   mergeCompactTranscriptIntoLive,
   settleAutoCompactAfterPrompt,
   shouldOverlapLoopMainContextCompaction,
 } from "../../loopMainAutoCompact";
+import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 
 test("overlaps context compaction only for Loop main sessions", () => {
   assert.equal(shouldOverlapLoopMainContextCompaction({
@@ -34,11 +34,11 @@ test("Loop main compaction starts without blocking other tabs", async () => {
   let runFinished = false;
   let reserved = 0;
   let released = 0;
-  const flights = new LoopMainAutoCompactFlights();
+  const queue = createLoopMainQuestionQueue();
 
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch: true,
-    canOverlap: true,
+    canOverlap: () => true,
     run: async () => {
       await pending;
       runFinished = true;
@@ -52,33 +52,30 @@ test("Loop main compaction starts without blocking other tabs", async () => {
         },
       };
     },
-    track: (flight) => {
-      flights.track("main-tab", flight);
-    },
+    enqueue: (run) => { void queue.runCompaction("main-tab", run); },
   });
 
   assert.equal(runFinished, false);
   assert.equal(reserved, 1);
   assert.equal(released, 0);
-  assert.equal(flights.has("main-tab"), true);
-  await flights.wait("subtask-tab");
+  assert.ok(queue.getCompaction("main-tab"));
+  await queue.runMain("subtask-tab", async () => undefined);
   assert.equal(runFinished, false);
 
   releaseRun();
-  await flights.wait("main-tab");
+  await queue.getCompaction("main-tab")?.done;
   assert.equal(runFinished, true);
   assert.equal(released, 1);
-  assert.equal(flights.has("main-tab"), false);
+  assert.equal(queue.getCompaction("main-tab"), undefined);
 });
 
 test("non-loop compaction still waits before returning", async () => {
   let reserved = 0;
   let runFinished = false;
-  const flights = new LoopMainAutoCompactFlights();
 
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch: false,
-    canOverlap: true,
+    canOverlap: () => true,
     run: async () => {
       runFinished = true;
     },
@@ -86,31 +83,28 @@ test("non-loop compaction still waits before returning", async () => {
       reserved += 1;
       return { adoptStop: () => {}, release: () => {} };
     },
-    track: (flight) => {
-      flights.track("main-tab", flight);
-    },
+    enqueue: () => assert.fail("普通会话压缩在本轮结束前完成"),
   });
 
   assert.equal(runFinished, true);
   assert.equal(reserved, 0);
-  assert.equal(flights.has("main-tab"), false);
 });
 
 test("occupied primary run keeps Loop main compaction serialized", async () => {
   let allowActiveRun: boolean | null = null;
+  const queue = createLoopMainQuestionQueue();
   await settleAutoCompactAfterPrompt({
     overlapLoopDispatch: true,
-    canOverlap: false,
+    canOverlap: () => false,
     run: async (request) => {
       allowActiveRun = request.allowActiveRun;
     },
     reserve: () => {
       throw new Error("reservation should not be created while the primary run is busy");
     },
-    track: () => {
-      throw new Error("busy compaction should not be tracked as an overlap");
-    },
+    enqueue: (run) => { void queue.runCompaction("main-tab", run); },
   });
+  await queue.getCompaction("main-tab")?.done;
   assert.equal(allowActiveRun, false);
 });
 

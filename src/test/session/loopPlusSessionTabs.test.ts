@@ -71,8 +71,7 @@ test("switches classic and Loop+ main tabs from each task record and restores wi
       });
     },
     collectRunningLoopTaskIds: () => new Set<string>(),
-    isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => "running",
+    readLoopTaskRunState: () => ({ isRunning: false, status: "running" }),
     getLoopTaskSchedulingMode: (taskId) => persisted[taskId as keyof typeof persisted],
     resolveConversationTabLoopContext: (tab) => contextFor(tab.id),
     buildSessionLabelFromPrompt: () => null,

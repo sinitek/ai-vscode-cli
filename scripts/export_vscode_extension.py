@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,10 @@ from vscode_extension_process import require_tool, run_process
 
 REQUIRED_ENTRIES = (
     "dist/extension.js",
+    "dist/loopPlusDecisionHelper.js",
+    "dist/promptRuleIndex.js",
+    "dist/prompt-rule-version.json",
+    "media/prompt-rules/manifest.json",
     "package.json",
     "readme.md",
     "media/icon.png",
@@ -242,6 +247,29 @@ def package_vsix(target: str, out_file: Path, ignore_file: Path | None) -> None:
         shutil.move(staged_output, out_file)
 
 
+def validate_prompt_rule_assets(archive: zipfile.ZipFile) -> None:
+    prefix = "extension/media/prompt-rules/"
+    root = ROOT_DIR / "media" / "prompt-rules"
+    manifest = archive.read(prefix + "manifest.json")
+    if manifest != (root / "manifest.json").read_bytes():
+        raise RuntimeError("VSIX 规则清单与当前构建不一致")
+    digest = hashlib.sha256(manifest)
+    names = set(archive.namelist())
+    for rule in json.loads(manifest)["rules"]:
+        rule_id = rule["id"]
+        if not re.fullmatch(r"[a-z][a-z-]*/[a-z][a-z-]*", rule_id):
+            raise RuntimeError("VSIX 规则 ID 无效")
+        relative = rule_id + ".md"
+        if prefix + relative not in names:
+            raise RuntimeError(f"VSIX 缺少规则正文 {relative}")
+        body = archive.read(prefix + relative)
+        if body != (root / relative).read_bytes():
+            raise RuntimeError(f"VSIX 规则正文与当前构建不一致 {relative}")
+        digest.update(b"\0" + rule_id.encode("utf-8") + b"\0" + body)
+    if json.loads(archive.read("extension/dist/prompt-rule-version.json"))["version"] != digest.hexdigest():
+        raise RuntimeError("VSIX 规则版本摘要不匹配")
+
+
 def audit_vsix(out_file: Path, target: str) -> None:
     print("Checking VSIX contents ...", flush=True)
     try:
@@ -257,6 +285,7 @@ def audit_vsix(out_file: Path, target: str) -> None:
     if missing:
         raise RuntimeError("VSIX 缺少必需运行时文件：\n" + "\n".join(missing))
     with zipfile.ZipFile(out_file) as archive:
+        validate_prompt_rule_assets(archive)
         validate_readme_assets(
             archive.read("extension/readme.md").decode("utf-8"),
             json.loads(archive.read("extension/package.json")),

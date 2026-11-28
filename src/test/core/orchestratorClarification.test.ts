@@ -177,7 +177,9 @@ test("times out an unanswered clarification without treating it as rejection", a
   assert.equal(history[0].request, request);
   assert.equal(history[0].submission, submission);
   assert.equal(submission.values.scope, "api");
-  assert.equal(formatOrchestratorClarificationAnswer(submission, request.formFields), `用户已提交主任务澄清表单。请据此继续决策，不要重复询问已回答的问题。\n${HUMAN_INTERACTION_TIMEOUT_TEXT}\n已提交补充信息：\n范围：只改接口`);
+  const answer = formatOrchestratorClarificationAnswer(submission, request.formFields);
+  assert.ok(answer.includes(HUMAN_INTERACTION_TIMEOUT_TEXT));
+  assert.doesNotMatch(answer, /用户已提交|范围：只改接口/);
   assert.equal(submitOrchestratorClarification(scopeId, request.interactionId, { scope: "api" }).ok, false);
 });
 

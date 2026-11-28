@@ -1,5 +1,6 @@
 import assert = require("node:assert/strict");
 import test = require("node:test");
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -173,6 +174,14 @@ test("群聊验收方案共享弹窗并将其它及文本域置于最后", () =>
   assert.ok(page.indexOf("acceptancePlanOtherField") > page.indexOf('data-acceptance-check="other"'));
   assert.ok(page.indexOf("acceptancePlanOtherField") > page.indexOf('data-acceptance-check="other"'));
   assert.ok(page.indexOf("acceptancePlanOtherField") < page.indexOf("<div id=\"acceptancePlanError\""));
+});
+
+test("群聊刷新回传当前任务验收方案，也显式回传清空后的状态", () => {
+  const state = build(createLoopPlusScheduler({ maxConcurrency: 1 }).snapshot());
+  const plan = { id: "release", name: "交付", checks: ["other" as const], otherText: "核对窗口", systemDefault: false };
+  assert.deepEqual(buildLoopGroupChatPanelContentPatch({ ...state, acceptancePlan: plan }, 2).taskAcceptancePlan, plan);
+  assert.equal(buildLoopGroupChatPanelContentPatch(state, 3).taskAcceptancePlan, null);
+  assert.ok(!("taskAcceptancePlan" in buildLoopGroupChatPanelContentPatch({ ...state, acceptancePlanReadOnly: true }, 3)));
 });
 
 function countValue(page: string, name: string): string {
@@ -494,8 +503,9 @@ test("shows active repair reviews and resolves each failed state", () => {
   queuedScheduler.dispatch([spec("A", "a-2")]);
   assert.equal(queuedScheduler.snapshot().pending.length, 1);
   const queuedPage = html(build(queuedScheduler.snapshot()));
-  assert.match(queuedPage, /子任务 1：Alpha[\s\S]*?<span class="member-status-repairing">修复中<\/span>/u);
-  assert.match(queuedPage, /data-loop-plus-count="repairing">修复中 1/u);
+  assert.match(queuedPage, /子任务 1：Alpha[\s\S]*?<span class="member-status-pending">待启动<\/span>/u);
+  assert.equal(countValue(queuedPage, "repairing"), "0");
+  assert.doesNotMatch(queuedPage, /data-action="openSubtaskConversation" data-subtask-id="A"/u);
 
   const completedScheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   dispatchAndFinish(completedScheduler, "A", "a-1");
@@ -583,7 +593,11 @@ test("moves a repeated repair into the review count only for its active batch", 
   assert.equal(scheduler.dispatch([{ ...spec("B", "unrelated"), requiresAcceptance: false }]).started.length, 1);
   scheduler.dispatch([spec("A", "second-repair")]);
   assert.equal(scheduler.snapshot().pending[0]?.attemptId, "second-repair");
-  assertRepairLabel("修复中 x2");
+  const pendingRepair = build(scheduler.snapshot());
+  assert.equal(pendingRepair.rounds[0].participants.find((participant) => participant.id === "A")?.status, "pending");
+  const pendingPatch = buildLoopGroupChatPanelContentPatch(pendingRepair, 1);
+  assert.match(pendingPatch.rosterPanelHtml, /class="member-status-pending">待启动<\/span>/u);
+  assert.match(pendingPatch.taskPanelHtml, /data-loop-plus-count="repairing">修复中 0<\/span>/u);
   assert.equal(scheduler.finish({ subtaskId: "B", attemptId: "unrelated", outcome: "completed" }).applied, true);
   assert.equal(scheduler.snapshot().running[0]?.attemptId, "second-repair");
   assertRepairLabel("修复中 x2");
@@ -814,7 +828,7 @@ test("renders short default and optional acceptance reasons in the group chat bu
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: ["修复空值分支"],
-    checks: [{ name: "tests", passed: false, detail: "新增断言失败，需要修复空值分支" }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { passed: false, detail: "新增断言失败，需要修复空值分支" } }),
     snapshot: { id: "plan-a", name: "安全加严", checks: ["security"], otherText: "", systemDefault: false },
     planResults: [{ key: "security", passed: true, reason: "输入边界已校验，日志不含令牌" }],
   });
@@ -823,10 +837,9 @@ test("renders short default and optional acceptance reasons in the group chat bu
   assert.match(page, /\| 审查内容 \| 审查结果 \|/u);
   assert.match(page, /\*\*子任务：修复空值分支\*\*[\s\S]*\*\*整体验收结果：❌ 未通过\*\*[\s\S]*\| 审查内容/u);
   assert.doesNotMatch(page, /\| 验收事件|\| 整体验收结果/u);
-  assert.match(page, /\| 默认验收·测试验证 \| ❌ 新增断言失败，需要修复空值分支 \|/u);
+  assert.match(page, /\| 验证与运行 \| ❌ 测试验证未通过：新增断言失败，需要修复空值分支/u);
   assert.match(page, /\| 安全审查 \| ✅ 输入边界已校验，日志不含令牌 \|/u);
-  assert.doesNotMatch(page, /默认验收·tests/u);
-  assert.doesNotMatch(page, /默认验收·测试验证：未通过/u);
+  assert.match(page, /\*\*附加审查\*\*/u);
 });
 
 test("shows acceptance passed or failed instead of reviewed attempts", () => {
@@ -1152,4 +1165,72 @@ test("群聊显示验收已撤销和已关闭，并可定位撤销原因", () =>
   assert.match(html, /用户取消旧需求/u);
   assert.match(html, /data-action="jumpToAcceptance"/u);
   assert.doesNotMatch(html, /❌ 未通过/u);
+});
+
+test("counts a reprompted repair only while that replacement is running", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const subTasks = [
+    { id: "A", title: "Alpha", status: "running" as const, updatedAt: 11 },
+    { id: "B", title: "Bravo", status: "running" as const, updatedAt: 12 },
+  ];
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const failed = scheduler.snapshot().currentReview;
+  assert.ok(failed);
+  assert.equal(scheduler.submitReviewBatch([failed.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  assert.equal(scheduler.dispatch([spec("A", "a-2")]).started.length, 0);
+  assert.equal(scheduler.applyControls([{
+    subtaskId: "A",
+    action: "reprompt",
+    replacement: spec("A", "a-3"),
+  }]).ok, true);
+  const queued = html(build(scheduler.snapshot(), { subTasks }));
+  assert.equal(countValue(queued, "repairing"), "0");
+  assert.match(queued, /class="member-status-pending">待启动<\/span>/u);
+
+  assert.equal(scheduler.finish({ subtaskId: "B", attemptId: "b-1", outcome: "completed" }).applied, true);
+  const running = html(build(scheduler.snapshot(), { subTasks }, []));
+  assert.equal(countValue(running, "repairing"), "1");
+  assert.match(running, /class="member-status-repairing">修复中<\/span>/u);
+
+  const interrupted = html(build(scheduler.snapshot(), {
+    subTasks: subTasks.map((item) => item.id === "A" ? { ...item, status: "blocked" as const } : item),
+  }));
+  assert.equal(countValue(interrupted, "repairing"), "0");
+
+  const bravo = scheduler.snapshot().currentReview;
+  assert.equal(bravo?.attemptId, "b-1");
+  assert.ok(bravo);
+  assert.equal(scheduler.submitReviewBatch([bravo.eventId], "passed").ok, true);
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-3", outcome: "completed" }).applied, true);
+  const held = scheduler.snapshot().currentReview;
+  assert.equal(held?.attemptId, "a-3");
+  assert.ok(held);
+  assert.equal(scheduler.submitReviewBatch([held.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("A", "a-4")]).started.length, 1);
+  assert.equal(scheduler.applyControls([{
+    subtaskId: "A",
+    action: "reprompt",
+    replacement: spec("A", "a-5"),
+  }]).ok, true);
+  const second = html(build(scheduler.snapshot(), { subTasks }));
+  assert.equal(countValue(second, "repairing"), "1");
+  assert.match(second, /class="member-status-repairing">修复中 x2<\/span>/u);
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-5", outcome: "completed" }).applied, true);
+  const recheck = html(build(scheduler.snapshot(), { subTasks }, []));
+  assert.equal(countValue(recheck, "repairing"), "0");
+  assert.match(recheck, /待验收 x2/u);
+
+  const ordinary = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(ordinary.dispatch([spec("C", "c-1")]).started.length, 1);
+  assert.equal(ordinary.applyControls([{
+    subtaskId: "C",
+    action: "reprompt",
+    replacement: spec("C", "c-2"),
+  }]).ok, true);
+  const ordinaryPage = html(build(ordinary.snapshot(), {
+    subTasks: [{ id: "C", title: "Charlie", status: "running", updatedAt: 13 }],
+  }));
+  assert.equal(countValue(ordinaryPage, "repairing"), "0");
+  assert.match(ordinaryPage, /class="member-status-running">运行中<\/span>/u);
 });

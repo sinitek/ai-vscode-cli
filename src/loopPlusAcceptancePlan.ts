@@ -22,7 +22,27 @@ export const LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES = [
   "omissions and regressions",
 ] as const;
 
-const DEFAULT_ACCEPTANCE_CHECK_LABELS: Readonly<Record<string, string>> = {
+type DefaultCheckName = (typeof LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES)[number];
+
+export const LOOP_PLUS_DEFAULT_ACCEPTANCE_GROUPS = [
+  {
+    label: "交付与范围",
+    checks: ["dispatched work", "unauthorized changes"],
+    guidance: "Check the diff against all requested work. Every out-of-scope edit must be necessary.",
+  },
+  {
+    label: "契约与回归",
+    checks: ["contracts", "omissions and regressions"],
+    guidance: "Trace affected callers across interface, data and file boundaries. Check compatibility, omissions, regressions and edge cases.",
+  },
+  {
+    label: "验证与运行",
+    checks: ["tests", "artifacts"],
+    guidance: "Use actual test and startup results. Test source alone proves no run. A passing test or build does not prove startup.",
+  },
+] as const satisfies ReadonlyArray<{ label: string; checks: readonly [DefaultCheckName, DefaultCheckName]; guidance: string }>;
+
+const DEFAULT_ACCEPTANCE_CHECK_LABELS: Readonly<Record<DefaultCheckName, string>> = {
   "dispatched work": "实现完整性",
   contracts: "契约一致性",
   tests: "测试验证",
@@ -540,6 +560,30 @@ type AcceptanceFeedbackRow = {
   reason: string;
 };
 
+function groupDefaultAcceptanceFeedback(checks: readonly LoopPlusAcceptanceFeedbackCheck[]): AcceptanceFeedbackRow[] | null {
+  if (checks.length !== LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.length) return null;
+  const byName = new Map(checks.map((check) => [check.name, check]));
+  const rows: AcceptanceFeedbackRow[] = [];
+  for (const group of LOOP_PLUS_DEFAULT_ACCEPTANCE_GROUPS) {
+    const members: AcceptanceFeedbackRow[] = [];
+    for (const name of group.checks) {
+      const check = byName.get(name);
+      const reason = normalizeFeedbackReason(check?.detail);
+      if (typeof check?.passed !== "boolean" || !reason) return null;
+      members.push({ content: DEFAULT_ACCEPTANCE_CHECK_LABELS[name], passed: check.passed, reason });
+    }
+    const [first, second] = members;
+    const mixed = first.passed !== second.passed;
+    if (mixed && first.passed) members.reverse();
+    const reason = !mixed && first.reason === second.reason ? first.reason : members.map((item) => {
+      const verdict = mixed ? (item.passed ? "通过" : "未通过") : "";
+      return `${item.content}${verdict}：${item.reason}`;
+    }).join(" / ");
+    rows.push({ content: group.label, passed: first.passed && second.passed, reason });
+  }
+  return rows;
+}
+
 /**
  * 验收已经结束且每一项都有明确通过/未通过时，生成群聊两列表格。
  * 第一列是审查内容，第二列是审查结果（通过或未通过，以及原因）。
@@ -555,9 +599,12 @@ export function buildLoopPlusAcceptancePlanFeedbackSection(
 export function buildLoopPlusAcceptanceFeedbackSection(
   input: LoopPlusAcceptanceFeedbackInput,
 ): { heading: string; body: string } | null {
-  const rows: AcceptanceFeedbackRow[] = [];
   const reviews = input.reviews ?? [];
   const allCancelled = reviews.length > 0 && reviews.every((review) => review.acceptance === "cancelled");
+  const defaultRows = allCancelled || (input.checks === undefined && reviews.length === 0)
+    ? [] : groupDefaultAcceptanceFeedback(input.checks ?? []);
+  if (!defaultRows) return null;
+  const additionalRows: AcceptanceFeedbackRow[] = [];
   const summaries: string[] = [];
   for (const [index, review] of reviews.entries()) {
     const reason = normalizeFeedbackReason(review.reason);
@@ -569,17 +616,6 @@ export function buildLoopPlusAcceptanceFeedbackSection(
       : "";
     const noRepairReason = review.acceptance === "failed" ? normalizeFeedbackReason(review.noRepairReason) : null;
     summaries.push(`${title}${review.acceptance === "cancelled" ? "验收已撤销：" : review.acceptance === "passed" ? "✅" : "❌"} ${escapeMarkdownFeedbackText(reason)}${noRepairReason ? `（无需修复：${escapeMarkdownFeedbackText(noRepairReason)}）` : ""}`);
-  }
-  for (const check of allCancelled ? [] : input.checks ?? []) {
-    const reason = normalizeFeedbackReason(check.detail);
-    if (!reason) {
-      return null;
-    }
-    rows.push({
-      content: `默认验收·${DEFAULT_ACCEPTANCE_CHECK_LABELS[check.name] ?? check.name}`,
-      passed: check.passed,
-      reason,
-    });
   }
   const items = allCancelled ? [] : listLoopPlusAcceptancePlanFeedbackItems(input.snapshot);
   if (!allCancelled && (input.planResults?.length ?? 0) !== items.length) {
@@ -599,14 +635,14 @@ export function buildLoopPlusAcceptanceFeedbackSection(
       if (!reason) {
         return null;
       }
-      rows.push({ content: item.label, passed: result.passed, reason });
+      additionalRows.push({ content: item.label, passed: result.passed, reason });
     }
   }
-  if (rows.length === 0 && summaries.length === 0) {
+  if (defaultRows.length === 0 && additionalRows.length === 0 && summaries.length === 0) {
     return null;
   }
   const titles = (input.subtaskTitles ?? []).map(escapeMarkdownFeedbackText).filter(Boolean);
-  const passed = rows.every((row) => row.passed) && reviews.every((review) => review.acceptance !== "failed");
+  const passed = [...defaultRows, ...additionalRows].every((row) => row.passed) && reviews.every((review) => review.acceptance !== "failed");
   const result = allCancelled ? "验收已撤销"
     : reviews.some((review) => review.acceptance === "cancelled")
       ? `部分验收已撤销，其余${passed ? "通过" : "未通过"}`
@@ -616,8 +652,11 @@ export function buildLoopPlusAcceptanceFeedbackSection(
     `**整体验收结果：${result}**`,
     ...summaries,
   ];
-  if (rows.length > 0) {
-    sections.push(renderAcceptanceFeedbackTable(rows));
+  if (defaultRows.length > 0) {
+    sections.push(renderAcceptanceFeedbackTable(defaultRows));
+  }
+  if (additionalRows.length > 0) {
+    sections.push("**附加审查**", renderAcceptanceFeedbackTable(additionalRows));
   }
   if (reviews.length > 0) {
     sections.push(buildLoopGroupChatAcceptanceMetadata(reviews.map((review) => review.eventId)));

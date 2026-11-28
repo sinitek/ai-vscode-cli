@@ -32,7 +32,7 @@ test("performance traces record settled stages once without capturing execution 
   assert.equal(new Set(entries.map((entry) => entry.traceId)).size, 1);
 });
 
-test("performance logs persist with debug disabled and follow history retention", () => {
+test("performance logs follow the default-on debug gate and history retention", () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "sinitek-performance-log-"));
   const dataDir = path.join(home, ".sinitek_cli");
   const logsDir = path.join(dataDir, "logs");

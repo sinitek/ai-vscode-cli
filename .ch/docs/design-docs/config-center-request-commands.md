@@ -85,7 +85,7 @@ Webview bridge → ConfigManagerPanel.handleRequest（创建应答、catch、发
 
 | 宿主动作 | 保持的处理边界 |
 | --- | --- |
-| `exportConfigs` | 既有文件名处理、文件系统写入和日志 |
+| `exportConfigs` | 既有文件名处理与文件系统写入；成功响应向调用方返回 `path`、`fileName`、`downloadsDir`；成功导出不发出携带本地路径的 `config-export` 日志 |
 | `getCliEnabled` | 请求时读取 `readToolSettings()`，按既有方式归一，缺省 `{}` |
 | `getModelImportProviders` | 原样传 `message.payload`，使用既有同步服务结果 |
 | `discoverImportModels` | 原样传 `message.payload`，等待既有服务 |
@@ -102,7 +102,7 @@ registry 的类型按 `ConfigAction` 映射到各自消息的 `Extract` handler�
 3. **激活身份**：`getCurrentConfig` 先收原 platform；之后仅 host 收 `normalizeConfigPlatform(message.platform)`，将 host 结果或缺省 `null` 追加为 `activeConfigId`，覆盖 current 同名字段。不得从配置文本、文件路径或缓存猜测，也不得把归一后的值提前替换所有服务参数。
 4. **Skills 取消与错误**：ZIP 两级选择顺序不变；取消写 `null` 且无安装；成功安装的参数顺序、平台数组与返回结果不变。错误只由既有异常边界处理。
 5. **apply 提示**：任何 `apply` 异常（包括通知失败）仍由外层设置失败应答，并 `void showErrorWithActions(t("config.applyFailedTitle"), error, { detailTitle: t("config.applyFailedTitle") })`；其他动作不新增该专用提示。
-6. **导出 IO**：保留现有 payload/content 类型检查，不额外禁止空字符串；文件名先 `path.basename` 再用既有规则替换非法字符，缺省时间戳文件名及大小写敏感的 `.json` 后缀处理不变。递归创建 Downloads 失败才回退 home；UTF-8 写入失败不新增回退或重试；成功后 data 仍为 `{ path, fileName, downloadsDir }`，随后保留 `void logEssential("config-export", { path })`。
+6. **导出 IO**：保留现有 payload/content 类型检查，不额外禁止空字符串；文件名先 `path.basename` 再用既有规则替换非法字符，缺省时间戳文件名及大小写敏感的 `.json` 后缀处理不变。递归创建 Downloads 失败才回退 home；UTF-8 写入失败不新增回退或重试；成功后 data 仍为 `{ path, fileName, downloadsDir }`，并向调用方返回这三项。导出成功不发出携带本地路径的 `config-export` 日志。
 7. **范围隔离**：不改 HTML、CSS、主题、文案、布局、交互、网络策略、路径安全、配置服务校验与持久化契约；不新增重复 IO，不引入用户可见能力或发布动作。
 
 ## 验证契约与交接

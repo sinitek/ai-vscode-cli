@@ -23,11 +23,14 @@ export type LoopPlusDecisionControlPlan = {
   readonly [loopPlusDecisionControlPlanBrand]: true;
 };
 
+export type LoopPlusDecisionWorkResult = Pick<LoopPlusDispatchResult, "decisions" | "rejected"> & { controlFailure?: string };
+
 export type LoopPlusDecisionQueueView = {
   hasCurrentReview: boolean;
   hasReview: boolean;
   hasReports: boolean;
   hasUserMessages: boolean;
+  hasInterruptedWork?: boolean;
   runningCount: number;
   pendingCount: number;
   parentStopped: boolean;
@@ -60,7 +63,8 @@ export interface LoopPlusDecisionStrategyPort {
   ): string | null;
   dispatchSubtasks(
     subtasks: readonly LoopSubtaskDecision[],
-  ): Pick<LoopPlusDispatchResult, "decisions" | "rejected">;
+    controlPlan?: LoopPlusDecisionControlPlan | null,
+  ): LoopPlusDecisionWorkResult;
   submitReviewBatch(
     eventIds: readonly string[],
     acceptance: "passed" | "failed" | readonly LoopPlusDecisionReviewVerdict[],
@@ -201,10 +205,9 @@ function applyDispatchDecision(
   const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
   if (previewFailure) return port.protocolMiss(false, undefined, branch("state.controls.unavailable"));
   if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(false);
-  const commitFailure = controlPlan ? port.commitControls(controls, controlPlan) : null;
-  if (commitFailure) return port.protocolMiss(false, commitFailure);
   port.acknowledgeUserMessages(step.userMessageCount);
-  const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
+  const dispatched = port.dispatchSubtasks(decision.subtasks ?? [], controlPlan);
+  if (dispatched.controlFailure) return port.protocolMiss(false, dispatched.controlFailure);
   if (dispatched.rejected.length > 0) {
     port.promoteDecisionWork();
     return port.protocolMiss(false, undefined, branch("state.dispatch.rejected"));
@@ -272,6 +275,26 @@ function applyAcceptDecision(
   step: LoopPlusDecisionStepView,
   decision: LoopPlusDecision,
 ): LoopPlusDecisionOutcome {
+  const steps = loopPlusAcceptanceSteps(port, step, decision);
+  let next = steps.next();
+  while (!next.done) {
+    next.value();
+    next = steps.next();
+  }
+  return next.value;
+}
+
+function* commitAcceptanceStep<Result>(commit: () => Result): Generator<() => void, Result, void> {
+  let result!: Result;
+  yield () => { result = commit(); };
+  return result;
+}
+
+export function* loopPlusAcceptanceSteps(
+  port: LoopPlusDecisionStrategyPort,
+  step: LoopPlusDecisionStepView,
+  decision: LoopPlusDecision,
+): Generator<() => void, LoopPlusDecisionOutcome, void> {
   if (step.kind !== "review" || !sameLoopPlusReviewIds(confirmedLoopPlusReviewIds(decision), step.eventIds)) {
     return port.protocolMiss(step.eventIds.length > 0, undefined, branch("state.review_batch.mismatch"));
   }
@@ -283,32 +306,31 @@ function applyAcceptDecision(
   const controlPlan = controls.length > 0 ? port.planControls(controls) : null;
   const previewFailure = controlPlan ? port.previewControls(controlPlan) : controls.length > 0 ? invalidControlPlan : null;
   if (previewFailure) return port.protocolMiss(true, undefined, branch("state.controls.unavailable"));
-  const submitted = port.submitReviewBatch(step.eventIds, verdicts);
+  const submitted = yield* commitAcceptanceStep(() => port.submitReviewBatch(step.eventIds, verdicts));
   if (!submitted.ok) {
-    port.persistSnapshot();
+    yield () => port.persistSnapshot();
     return port.queueView().parentStopped ? "stop" : port.protocolMiss(true);
   }
-  if (!acknowledgeDecisionReports(port, decision)) return port.protocolMiss(true);
+  if (!(yield* commitAcceptanceStep(() => acknowledgeDecisionReports(port, decision)))) return port.protocolMiss(true);
   port.acknowledgeUserMessages(step.userMessageCount);
-  port.persistProgressPercent(decision);
+  yield () => port.persistProgressPercent(decision);
   port.recordAcceptancePlanFeedback?.(decision);
-  const commitFailure = controlPlan ? port.commitControls(controls, controlPlan) : null;
-  if (commitFailure) return port.protocolMiss(false, commitFailure);
-  const dispatched = port.dispatchSubtasks(decision.subtasks ?? []);
+  const dispatched = yield* commitAcceptanceStep(() => port.dispatchSubtasks(decision.subtasks ?? [], controlPlan));
+  if (dispatched.controlFailure) return port.protocolMiss(false, dispatched.controlFailure);
   if (dispatched.rejected.length > 0) {
-    port.promoteDecisionWork();
+    yield () => port.promoteDecisionWork();
     return port.protocolMiss(false, undefined, branch("state.dispatch.rejected"));
   }
-  port.persistEstimatedRounds(decision);
-  port.markDecisionAccepted();
-  port.applyNextStepPlan(decision.nextStepPlan);
-  port.promoteDecisionWork();
+  yield () => port.persistEstimatedRounds(decision);
+  yield () => port.markDecisionAccepted();
+  yield () => port.applyNextStepPlan(decision.nextStepPlan);
+  yield () => port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   if (hasPendingDecisionWork(port.queueView()) || onlyDependencyBlocked(inFlight)) {
     return "continue";
   }
   if (inFlight.runningCount > 0 || inFlight.pendingCount > 0) {
-    port.persistRunning();
+    yield () => port.persistRunning();
     return "wait";
   }
   port.armCloseout();
@@ -323,6 +345,9 @@ function applyWaitDecision(
   const snapshot = port.queueView();
   if (snapshot.hasCurrentReview) {
     return port.protocolMiss(true, undefined, branch("state.review_batch_open.wait_forbidden"));
+  }
+  if (snapshot.hasInterruptedWork) {
+    return port.protocolMiss(false, undefined, branch("state.wait.interrupted_work"));
   }
   if (snapshot.runningCount === 0 && snapshot.pendingCount === 0 && !snapshot.hasReview && !snapshot.hasReports) {
     return port.protocolMiss(false, undefined, branch("state.wait.no_work"));
@@ -403,6 +428,9 @@ function applyCompletedDecision(
   port.promoteDecisionWork();
   const inFlight = port.waitForInFlightWork();
   const pending = port.queueView();
+  if (!submittedReview && pending.hasInterruptedWork && !pending.hasUserMessages && !pending.hasReports) {
+    return port.protocolMiss(false, undefined, branch("state.wait.interrupted_work"));
+  }
   if (pending.requiredRepairIds?.length && !hasPendingDecisionWork(pending) && !pending.hasUserMessages
     && inFlight.runningCount === 0 && (inFlight.pendingCount === 0 || onlyDependencyBlocked(inFlight))) {
     if (submittedReview) port.recordAcceptancePlanFeedback?.(decision);

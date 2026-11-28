@@ -22,7 +22,7 @@ const retryHistoryCount = 30;
 const memberA = { id: "member-a", lastStartedAt: Date.UTC(2026, 10, 20, 8) };
 const memberB = { id: "member-b", lastStartedAt: Date.UTC(2026, 10, 20, 9) };
 const initialA = { member: memberA, attemptId: "a-1", acceptance: "failed", marker: "甲的初验：契约检查失败" };
-const initialB = { member: memberB, attemptId: "b-1", acceptance: "passed", marker: "乙的初验：交付符合契约" };
+const initialB = { member: memberB, attemptId: "b-1", acceptance: "passed", marker: "乙的初验：交付符合契约", withSecurity: true };
 const retryA = { member: memberA, attemptId: "a-2", acceptance: "passed", marker: "甲的复验：修复后边界通过" };
 const theme = {
   "font-family": "Arial, sans-serif", "font-size": "13px", "editor-background": "#ffffff", "editor-foreground": "#202020",
@@ -35,13 +35,17 @@ const theme = {
   errorForeground: "#a31515", "icon-foreground": "#202020",
 };
 
-function feedback({ member, attemptId, acceptance, marker }) {
+function feedback({ member, attemptId, acceptance, marker, withSecurity }) {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: [title],
     reviews: [{ eventId: buildLoopPlusFinishEventId(member.id, attemptId), acceptance, reason: marker }],
     checks: LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.map((name) => ({
       name, passed: acceptance === "passed" || name !== "contracts", detail: "按交付证据逐项核对结果。",
     })),
+    ...(withSecurity ? {
+      snapshot: { id: "secure", name: "加严", checks: ["security"], otherText: "", systemDefault: false },
+      planResults: [{ key: "security", passed: true, reason: "输入边界已校验" }],
+    } : {}),
   });
   assert.ok(section, `feedback for ${attemptId}`);
   return `## ${section.heading}\n\n${section.body}\n\n`;
@@ -157,7 +161,16 @@ async function main() {
       assert.equal(await anchors.count(), expected.length, `${name}: exact anchor count`);
       assert.equal(await buttons.count(), expected.length, `${name}: exact button count`);
       assert.deepEqual(await buttons.locator(".member-name").allTextContents(), expected.map(() => title));
-      for (const { marker } of expected) assert.equal(await anchors.filter({ hasText: marker }).count(), 1, `${name}: preserved ${marker}`);
+      for (const { marker, acceptance, withSecurity } of expected) {
+        const anchor = anchors.filter({ hasText: marker });
+        assert.equal(await anchor.count(), 1, `${name}: preserved ${marker}`);
+        const tables = anchor.locator("table");
+        assert.equal(await tables.count(), withSecurity ? 2 : 1);
+        const rows = tables.first().locator("tbody tr");
+        assert.deepEqual(await rows.locator("td:first-child").allTextContents(), ["交付与范围", "契约与回归", "验证与运行"]);
+        assert.match(await rows.nth(1).locator("td").last().innerText(), acceptance === "failed" ? /^❌ 契约一致性未通过/u : /^✅/u);
+        if (withSecurity) assert.deepEqual(await tables.nth(1).locator("tbody td").allTextContents(), ["安全审查", "✅ 输入边界已校验"]);
+      }
     };
     const inspectAnchor = (anchor) => anchor.evaluate((element) => {
       const main = element.closest("main");

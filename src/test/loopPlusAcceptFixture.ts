@@ -2,11 +2,14 @@ import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "../loopPlusAcceptanceP
 
 type AcceptRecord = Record<string, unknown>;
 
-export function loopPlusAcceptanceChecksFixture() {
+export function loopPlusAcceptanceChecksFixture(
+  overrides: Partial<Record<(typeof LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES)[number], { passed?: boolean; detail?: string }>> = {},
+) {
   return LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.map((name) => ({
     name,
     passed: true,
     detail: "已按测试夹具证据完成检查",
+    ...overrides[name],
   }));
 }
 

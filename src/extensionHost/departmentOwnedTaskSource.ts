@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { hostname } from "os";
 import { randomBytes } from "crypto";
 import { normalizeLoopTaskRecord, normalizeLoopTaskStoreForStorage, registerDepartmentOwnedLoopTaskStoreRoot, type LoopTaskRecord, type LoopTaskStoreChange } from "../loopTaskStore";
 import type { DepartmentOwnershipSource, DepartmentOwnershipSourceLifecycle } from "./departmentOwnershipIndex";
@@ -18,7 +19,7 @@ export type DepartmentTaskOwnerCapability = {
   released: boolean;
 };
 
-type OwnerMarker = { version: 1; sourceId: string; token: string; revision: number };
+type OwnerMarker = { version: 1; sourceId: string; token: string; revision: number; hostname?: string; pid?: number };
 type Disposable = { dispose(): void };
 type Store = { tasks: LoopTaskRecord[] };
 type RecoveryItem = { file: string; existed: boolean; content?: string };
@@ -29,6 +30,33 @@ function isInside(root: string, file: string): boolean {
 }
 
 function markerPath(root: string): string { return path.join(root, ".department-owner.json"); }
+
+function serializeOwnerMarker(capability: DepartmentTaskOwnerCapability, revision: number): string {
+  return JSON.stringify({ version: 1, sourceId: capability.sourceId, token: capability.token,
+    revision, hostname: hostname(), pid: process.pid } satisfies OwnerMarker);
+}
+
+export function readHistoricalDepartmentSourceState(root: string, sourceId: string): "inactive" | "unverified" {
+  const file = markerPath(root);
+  try {
+    if (!fs.lstatSync(file).isFile()) return "unverified";
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOENT" ? "inactive" : "unverified";
+  }
+  try {
+    const contents = fs.readFileSync(file, "utf8");
+    const marker = JSON.parse(contents) as Partial<OwnerMarker>;
+    if (marker.version !== 1 || marker.sourceId !== sourceId || marker.hostname !== hostname()
+      || typeof marker.token !== "string" || !/^[a-f0-9]{64}$/u.test(marker.token)
+      || typeof marker.revision !== "number" || !Number.isSafeInteger(marker.revision) || marker.revision < 1
+      || typeof marker.pid !== "number" || !Number.isSafeInteger(marker.pid) || marker.pid <= 0) return "unverified";
+    try { process.kill(marker.pid, 0); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH" && fs.readFileSync(file, "utf8") === contents) return "inactive";
+    }
+  } catch { return "unverified"; }
+  return "unverified";
+}
 
 /** Explicitly registered, isolated store. Existing global Loop writers do not own this root. */
 export class DepartmentOwnedTaskSource implements DepartmentOwnershipSource {
@@ -71,7 +99,7 @@ export class DepartmentOwnedTaskSource implements DepartmentOwnershipSource {
     try { fd = fs.openSync(markerPath(cap.root), "wx", 0o600); }
     catch { return null; }
     try {
-      fs.writeFileSync(fd, JSON.stringify({ version: 1, sourceId: cap.sourceId, token: cap.token, revision: cap.revision } satisfies OwnerMarker));
+      fs.writeFileSync(fd, serializeOwnerMarker(cap, cap.revision));
       fs.fsyncSync(fd);
     } catch (error) {
       fs.closeSync(fd);
@@ -273,7 +301,7 @@ export class DepartmentOwnedTaskSource implements DepartmentOwnershipSource {
 
   private writeMarkerRevision(capability: DepartmentTaskOwnerCapability, revision: number): void {
     const temp = `${markerPath(capability.root)}.${capability.token}.stage`;
-    fs.writeFileSync(temp, JSON.stringify({ version: 1, sourceId: capability.sourceId, token: capability.token, revision }), { flag: "wx", mode: 0o600 });
+    fs.writeFileSync(temp, serializeOwnerMarker(capability, revision), { flag: "wx", mode: 0o600 });
     fs.renameSync(temp, markerPath(capability.root));
   }
 }

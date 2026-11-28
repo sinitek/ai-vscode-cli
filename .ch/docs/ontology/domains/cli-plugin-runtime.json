@@ -33,8 +33,8 @@
       "id": "plugin.extension_host",
       "name": "扩展宿主运行时",
       "kind": "aggregate",
-      "description": "VS Code 扩展入口和 host 组合根，注册命令、装配运行时服务，并把 Webview、CLI、会话和本地状态连接起来。",
       "status": "active",
+      "description": "VS Code 扩展入口和 host 组合根，注册命令、装配运行时服务，并把 Webview、CLI、会话和本地状态连接起来。",
       "aliases": [
         "extension host",
         "extension.ts",
@@ -1463,6 +1463,20 @@
   ],
   "rules": [
     {
+      "id": "plugin.rule.prompt_rule_index",
+      "name": "插件按任务角色和冻结状态提供规则索引",
+      "description": "Vibe、经典 Loop、Loop+ 及产研部从加载的插件安装根使用有版本的规则清单。宿主给出角色、当轮硬约束、必读和条件条目，模型按任务证据补读。支持受限环境内联、整版回退及普通执行单次补发，Loop+ 的冻结动作、验收、调度和部门授权仍由原契约核验。",
+      "status": "active",
+      "applies_to": ["plugin.local_cli", "plugin.loop_task", "plugin.department_task"],
+      "source_refs": [
+        { "path": "src/promptRuleIndex.ts", "anchor": "configurePromptRuleIndex" },
+        { "path": "media/prompt-rules/manifest.json" },
+        { "path": "src/extensionHost/loopPlusPromptBuilders.ts", "anchor": "indexedMainRules" },
+        { "path": "src/test/extensionHost/promptRuleIndex.test.ts" },
+        { "path": ".ch/docs/design-docs/prompt-rule-index.md" }
+      ]
+    },
+    {
       "id": "plugin.rule.runtime_history_prompt_guidance",
       "name": "执行提示指引模型按需查阅本地记录",
       "description": "Vibe、Loop、Loop+ 和产研部共用执行提示中的本地运行目录说明。模型仅在当前任务需要时，按工作区、任务 ID 或会话 ID 定向只读查阅相关记录，当前轮次以任务指定的文件为准。",
@@ -1876,7 +1890,7 @@
     {
       "id": "plugin.rule.loop_plus_protocol_repair",
       "name": "Loop+ 协议失败后的有界自动续跑",
-      "description": "文本解析支持候选提取、JSONC 注释和有效值后的尾逗号，业务字段须明确提供。拒绝分类为 format、validation、state，受控诊断含原因码和适用字段路径；适用格式修正提示可给候选对象位置。解析和续跑提示仅推荐 backend、frontend、general 中合法且与声明兼容的分类；失败验收返工逐项对应实际失败 review，独立剩余工作归属 independentSubtaskIds。同一连续拒绝链最多自动请求三次新决策：初次拒绝计为失败但不占自动名额，第四次连续拒绝暂停。自动续跑本身不清零协议失败计数、不提升待派发项、不确认验收或报告，也不消费待处理消息。部分接受时，后续分支拒绝不回滚此前已提交的验收、已生效的报告回执及已接受的工作，也不因部分提交清零协议失败计数；已确认结果不重新入队，仍有效且未确认的冻结项与待处理事件留待后续处理。完整接受有效决策或用户显式继续获准后重置；手动请求不占自动名额。停止、确认取消、释放或完成后不得续跑。暂停摘要保留最新受控原因；旧摘要回退安全通用提示。协议拒绝日志含任务关联、held、阶段计数、类别、白名单原因码、可选字段路径、dispatchWindow、尝试状态；恢复日志含任务关联、阶段、计数、预算、尝试状态和结果。排除原始回复、提示、自由文本拒绝理由、候选位置、凭据和本地路径。群聊显式继续保留带 requestId 的分阶段观测。冻结验收、报告 FIFO、返工及完成门禁持续适用。",
+      "description": "普通主调用准备期只在确证身份事务锁时有界等待，原父任务仍可运行才恢复同批次。已打开的调用禁止因锁重发。匹配终态和本轮助手文本后才进入协议预算；缺少运行、缺少终态正文及 CLI 错误归入执行故障，尊重等待期间的停止与归属变化。文本解析支持候选提取、JSONC 注释和有效值后的尾逗号，业务字段须明确提供。拒绝分类为 format、validation、state，受控诊断含原因码和适用字段路径；适用格式修正提示可给候选对象位置。解析和续跑提示仅推荐 backend、frontend、general 中合法且与声明兼容的分类；失败验收返工逐项对应实际失败 review，独立剩余工作归属 independentSubtaskIds。同一连续拒绝链最多自动请求三次新决策：初次拒绝计为失败但不占自动名额，第四次连续拒绝暂停。自动续跑本身不清零协议失败计数、不提升待派发项、不确认验收或报告，也不消费待处理消息。部分接受时，后续分支拒绝不回滚此前已提交的验收、已生效的报告回执及已接受的工作，也不因部分提交清零协议失败计数；已确认结果不重新入队，仍有效且未确认的冻结项与待处理事件留待后续处理。完整接受有效决策或用户显式继续获准后重置；手动请求不占自动名额。停止、确认取消、释放或完成后不得续跑。暂停摘要保留最新受控原因；旧摘要回退安全通用提示。协议拒绝日志含任务关联、held、阶段计数、类别、白名单原因码、可选字段路径、dispatchWindow、尝试状态；恢复日志含任务关联、阶段、计数、预算、尝试状态和结果。排除原始回复、提示、自由文本拒绝理由、候选位置、凭据和本地路径。群聊显式继续保留带 requestId 的分阶段观测。冻结验收、报告 FIFO、返工及完成门禁持续适用。同一批 dispatch 在 invalid_spec 与 duplicate_attempt 之后，若逻辑 ID 仍有未结清 attempt，首个有效候选为 active_subtask 并占用本批候选 ID，其后相同逻辑 ID 为 duplicate_subtask；parent_stopped 与 completed 不占用该 ID。loop-plus-dispatch-rejected 只保留 rejectedCount 与白名单 reasonCounts。state.dispatch.rejected 的 loop-plus-protocol-rejection 另可保留 decisionStatus（仅 dispatch 或 accept）和 collisionCounts（active_subtask、duplicate_subtask 的 0 到 99 整数）。继续提示只追加受控来源和这两项计数。这两条持久摘要不复制 subtaskId、attemptId、任务标识、prompt、路径或自由文本 detail。loop-plus-dispatched 仍可记录被拒绝项身份，不属于该脱敏摘要。决策解析仍拒绝同一决策中的重复 ID。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -1911,6 +1925,10 @@
           "anchor": "protocolMiss"
         },
         {
+          "path": "src/extensionHost/loopPlusMainAdmission.ts",
+          "anchor": "withLoopPlusMainAdmission"
+        },
+        {
           "path": "src/test/extensionHost/loopplusprotocolpausecontinuation.test.ts"
         },
         {
@@ -1931,6 +1949,15 @@
         {
           "path": ".ch/docs/design-docs/loop-plus-scheduling.md",
           "anchor": "协议失败后的自动续跑"
+        },
+        {
+          "path": "src/loopPlusScheduler.ts"
+        },
+        {
+          "path": "src/extensionHost/loopPlusDiagnostics.ts"
+        },
+        {
+          "path": "src/test/loop/loopPlusScheduler.test.ts"
         },
         {
           "path": ".ch/docs/runbooks/loop-plus-stop-diagnosis.md"
@@ -1974,7 +2001,7 @@
     {
       "id": "plugin.rule.loop_plus_decision_helper_prompt",
       "name": "Loop+ 主模型优先用决策生成器并在工具不可用时回退",
-      "description": "主模型与复用同一主提示的产研部组长优先调用扩展安装目录中的 dist/loopPlusDecisionHelper.js。先 template --status，再 build --status。UTF-8 标准输入包含本次冻结 v1 context、fields 和结论依据。context 含 statuses、按冻结映射顺序排列的 reviews（eventId 与 subtaskId）、FIFO reportEventIds、subtaskMax、acceptancePlanKeys 和 allowDirectCompletion。刷新与协议纠正沿用该冻结前缀，不并入晚到事件。路径含空格时整段引用。字段错误按 stderr 修正后重试，成功后原样提交 stdout。只有当前 CLI 确实不能执行工具时才手写协议。各 CLI 保持现有权限和能力。生成器与宿主对相同冻结输入和解析选项调用 parseLoopPlusDecisionForFrozenInput，提示层不复制 JSON 检查规则。宿主复核最新运行状态后再提交。",
+      "description": "主模型与复用同一主提示的产研部组长优先调用扩展安装目录中的 dist/loopPlusDecisionHelper.js。先 template --status，再 build --status。UTF-8 标准输入包含本次冻结 v1 context、fields 和结论依据。context 含 statuses、按冻结映射顺序排列的 reviews（eventId 与 subtaskId）、FIFO reportEventIds、subtaskMax、acceptancePlanKeys 和 allowDirectCompletion。刷新与协议纠正沿用该冻结前缀，不并入晚到事件。宿主只从当前已加载扩展的安装位置解析随包脚本，并把该绝对路径作为 argv 的单个参数传给主任务、协议纠正和复用同一提示的产研部组长；不从任务文本、工作区、猜测版本或其它安装取得脚本。路径含空格时仍是这一个参数。字段错误按 stderr 修正后重试，成功后原样提交 stdout。只有当前 CLI 确实不能执行工具时才手写协议。各 CLI 保持现有权限和能力。生成器与宿主对相同冻结输入和解析选项调用 parseLoopPlusDecisionForFrozenInput，提示层不复制 JSON 检查规则。宿主复核最新运行状态后再提交。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -2567,8 +2594,11 @@
         "plugin.cli_session"
       ],
       "status": "active",
-      "description": "Loop+ 适配器提供可选 acquireAttemptExecution(request, signal) 内部端口，backend/frontend/general 子任务均经过准入，主审不消耗租约。等待准入不建 Tab 或执行目录、不持有 session 锁；null 停止，异常形成可观察失败。取消停止等待，迟到租约释放且不启动执行。获准后复用原 session、execution-root、PromptRunInput 和结果归属路径；CLI Promise 及目录清理结束后才释放一次，释放异常保留原错误。已由部门组织 host 安装共享额度/实时余额端口，普通任务 undefined 委托原准入、null 明确拒绝；组织的生产中央注册/恢复仍待验收，不改变嵌套入口校验。",
+      "description": "Loop+ 适配器提供可选 acquireAttemptExecution(request, signal) 内部端口，backend/frontend/general 子任务均经过准入，主审不消耗租约。等待准入不建 Tab 或执行目录、不持有 session 锁；null 停止，异常形成可观察失败。取消停止等待，迟到租约释放且不启动执行。获准后复用原 session、execution-root、PromptRunInput 和结果归属路径；CLI Promise 及目录清理结束后才释放一次，释放异常保留原错误。已由部门组织 host 安装共享额度/实时余额端口，普通任务 undefined 委托原准入、null 明确拒绝；组织的生产中央注册/恢复仍待验收，不改变嵌套入口校验。父记录明确返回 identity-lock-present 时保留派发并异步等待，等待可取消。普通 Loop+ 保存与 attemptId 绑定的启动预留，获准后按父记录版本认领，重启可恢复 waiting 的派发。其余 readTask 返回空时拒绝原因为 task-record-unavailable，并只附带同一次 readLoopTaskRecord 的白名单 readFailure；不能区分则为 unknown。task-not-found 只表示这一次候选发现已经完成并确认缺失。候选目录的非 ENOENT，或候选存储无法读取且身份/迁移契约不能无歧义确认权威记录时，readFailure 为 candidate-scan-unavailable、store-read-rejected 或其他白名单安全类别，不得报成 task-not-found，也不得返回可能过期的副本。已提交的 ordinary move 目标仍成功且不记拒绝。旧任务目录扫描遇到非 ENOENT 时，这次发现记为不完整，并在迁移、空目录清理或其它存储变更之前停止。不保留最后一次错误，不凭相邻 identity-lock-present 日志或时间猜测，不为分类再读盘或扫描日志。成功读取不记拒绝，拒绝不启动。日志只有固定分类，不含路径、原文、异常正文或私有数据。群聊展示读取已提交快照，派发核验最新归属。",
       "source_refs": [
+        {
+          "path": "src/loopPlusLaunchReservation.ts"
+        },
         {
           "path": ".ch/docs/design-docs/loop-subtask-session-reuse.md",
           "anchor": "Loop+ attempt 执行准入端口"
@@ -2578,6 +2608,24 @@
         },
         {
           "path": "src/test/extensionHost/loopPlusRuntimeAdmission.test.ts"
+        },
+        {
+          "path": "src/loopTaskStore.ts"
+        },
+        {
+          "path": "src/extension.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentorchestration.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentlifecyclediagnostics.ts"
+        },
+        {
+          "path": "src/test/loop/loopTaskStorePersistence.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentorchestration.test.ts"
         }
       ]
     },
@@ -3984,7 +4032,7 @@
     {
       "id": "plugin.rule.session_health_gates_reuse",
       "name": "正常气泡决定会话可复用性",
-      "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话、重置草稿元信息并复制原消息到独立草稿，保留发起气泡和错误记录直至新会话接管持久化，连续启动失败也不丢失或重复。释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI；显式 forceNewSession 仍清空草稿后重放请求。",
+      "description": "会话持久化 normal/abnormal 健康状态；出现过任一有效操作、思考或助手回复气泡即为正常，之后失败或消息删减不降级。仅用户、系统、错误/警告、重连日志或空消息的会话为异常，历史记录按消息回填，迁移合并保留正常状态。同一 Loop 主任务已持有原生会话或已映射会话且原消息确认其主角色时，首条助手回复前的中断仍可复用原会话。其余统一任务入口在用户消息预加载与 CLI 分流前拦截异常会话，保留旧存档，仅解绑目标 Tab 的 CLI 会话、重置草稿元信息并复制原消息到独立草稿，保留发起气泡和错误记录直至新会话接管持久化，连续启动失败也不丢失或重复。释放不再使用的 runner，以空会话 ID 自动新建后执行，不影响其它 Tab 或 CLI；显式 forceNewSession 仍清空草稿后重放请求。",
       "status": "active",
       "applies_to": [
         "plugin.cli_session",
@@ -4680,7 +4728,7 @@
     {
       "id": "plugin.rule.department_lifecycle_diagnostics",
       "name": "产研部生命周期诊断和日志保留",
-      "description": "产研部以根任务 ID 串联冷启动投影、恢复核验、整组中止、组长会话晋升和续接结果。冷投影在宿主内合并重复记录。生命周期诊断只投影允许字段和固定原因码，关闭调试也可查询。日志只用于观察。插件管理的日志及轮转文件以清理时共享工具设置中的历史保留天数为限，启动和定时清理复用公共 logger。",
+      "description": "工具设置中的调试日志默认开启；错误日志始终记录，关闭调试后普通诊断与性能日志停止记录。产研部以根任务 ID 串联冷启动投影、恢复核验、整组中止、组长会话晋升和续接结果；冷投影在宿主内合并重复记录，成功阶段诊断受调试开关控制，未确认和持久化失败仍可查询。诊断只投影允许字段和固定原因码，日志只用于观察，不作为执行、回执或容量依据。插件管理的日志及轮转文件以清理时共享工具设置中的历史保留天数为限，启动和定时清理复用公共 logger。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -4692,6 +4740,19 @@
         },
         {
           "path": "src/logger.ts"
+        },
+        {
+          "path": "src/toolSettings.ts"
+        },
+        {
+          "path": "src/cli/config.ts"
+        },
+        {
+          "path": "package.json"
+        },
+        {
+          "path": ".ch/docs/product-specs/sinitek-cli-plugin-capabilities.md",
+          "anchor": "3.9 稳定性与可运维性"
         },
         {
           "path": ".ch/docs/runbooks/department-cold-start-verification.md",
@@ -5112,7 +5173,7 @@
     {
       "id": "plugin.rule.loop_continuation_recovery",
       "name": "Loop 续跑复用就绪原档案并明确收尾请求",
-      "description": "Loop 与 Loop+ 续跑在启动准备阶段读取当前共享档案，不持有跨窗口互斥锁或执行租约，不因档案已切换或旧快照拒绝。显式应用、原生配置写入与读回校验保留各自既有规则。续跑提前拒绝、恢复失败和启动异常都发送 continueTaskSettled 回执，按实际任务状态解除继续按钮临时禁用；不依赖相同内容补丁重建 DOM。前端防止弹窗关闭后的重复确认，宿主按任务去重正在处理的续跑请求。",
+      "description": "Loop 与 Loop+ 续跑在启动准备阶段读取当前共享档案，不持有跨窗口互斥锁或执行租约，不因档案已切换或旧快照拒绝。显式应用、原生配置写入与读回校验保留各自既有规则。重启后，群聊按工作区和完整任务 ID 恢复，继续执行定位原任务主标签。缺少绑定时由用户从当前工作区明确选择。已有绑定但暂不可读时只按原完整 ID 重试。恢复页面后由用户显式执行。普通交互式主任务取得原生会话即持久绑定，首条回复前中断也可重建原会话标签。旧任务会话字段缺失时可交叉核对主执行记录与主消息。缺失的组长标签经原会话、主消息及部门权限核验后重建。续跑提前拒绝、恢复失败和启动异常都发送 continueTaskSettled 回执。群聊进度刷新保留可继续按钮的节点和焦点，按最新可用状态同步按钮。待收尾请求可在刷新时按原 requestId 补收宿主回执。前端防止弹窗关闭后的重复确认，宿主按任务去重正在处理的续跑请求。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -5131,6 +5192,21 @@
         {
           "path": "src/extension.ts",
           "anchor": "restoreOriginalLoopRuntime"
+        },
+        {
+          "path": "src/loopGroupChatBinding.ts",
+          "anchor": "readLoopGroupChatBinding"
+        },
+        {
+          "path": "src/loopTaskIdentityLockRecovery.ts",
+          "anchor": "recoverExitedLoopTaskLock"
+        },
+        {
+          "path": "src/extensionHost/departmentLeaderSessionPromotion.ts",
+          "anchor": "canRestoreGroupChatLeaderTab"
+        },
+        {
+          "path": ".ch/docs/design-docs/loop-crash-recovery.md"
         },
         {
           "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts",
@@ -5371,7 +5447,7 @@
     {
       "id": "plugin.rule.loop_subtask_interruption_isolated",
       "name": "Loop 子任务中断与父任务状态隔离",
-      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务等待 activeSubtaskIds 清空；同一批次按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped。正常完成回调在全部活动子任务成功后唤醒主任务复核。当前宿主每 5 分钟巡检真实执行所有权：经典 Loop 取消失联批次调用、保留未完成 blocked 子任务和原等待控制器，并将父任务标记为 stopped + runtimeInterrupted，使群聊“继续”可以续跑；Loop+ 取消失联调用，将有对应任务记录的开放 attempt 置为 blocked 并保留原身份，不立即生成失败验收事件，显式继续时重启子任务，只有本次结果进入验收。无法关联任务记录的残留预留仍作为失败事件处理，不推断成功。准备、来源/会话锁、压缩、重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。主动停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复。用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。普通 Loop/Loop+ 宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。Loop+ 群聊按钮同时检查主模型忙闲与开放 attempt：父任务仍 running 且有非中断活动子任务时隐藏普通“继续执行”并保留“中止”；仅在没有活动 attempt 且存在 blocked 子任务时允许显式续跑。投影和宿主受理共用此门禁，保证两按钮互斥并拒绝过期消息；切模型保留独立的主模型路由更新路径。产研部仍为 running 的总监在冷宿主只读投影中仅于可信根有效且当前宿主明确没有部门控制器/续接登记时显示本宿主执行中断；正常等待控制器、未知活动状态不误报。原资源占用未核验时保留整组中止对账入口，并继续关闭续接，读取不写任务或释放占用。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。产研部整组中止关闭派发并并行停止总监 Loop、组长 Loop+ 与活动员工。一个成员已阻塞或正单独收尾时，其它成员仍立即收到中止。宿主合并同根并发请求，负责清理原执行和保存停止状态。继续执行时核对可信根、工作区、物理记录和待清理执行。停止任务已持久化且无待清理执行时可直接继续，无需额外核验按钮。读取不启动执行或释放占用，非法身份及跨 workspace 不获得此组织控制。若 Loop+ 冷态恢复仅因组长会话或计划无法验证而失败，后续显式中止仍须独立核对可信任务身份和全部停止回执；只有停止快照及空容量写入读回、根任务最终确认中止后，才解除恢复核验失败栅栏。持久化、身份、容量或活动执行失败仍保持阻断。",
+      "description": "单个子任务停止或失败时只保留该子任务为待续跑状态，父任务等待 activeSubtaskIds 清空；同一批次按 1 秒间隔错峰启动，任务中断期间尚未启动的子任务标记为 skipped。正常完成回调在全部活动子任务成功后唤醒主任务复核。当前宿主每分钟巡检真实执行所有权，等待调度兜底仍每 5 分钟：经典 Loop 取消失联批次调用、保留未完成 blocked 子任务和原等待控制器，并将父任务标记为 stopped + runtimeInterrupted，使群聊“继续”可以续跑；Loop+ 取消失联调用，将有对应任务记录的开放 attempt 置为 blocked 并保留原身份，不立即生成失败验收事件，巡检确认失联后将原 attempt 交回原主任务核对汇报与产物，由其决定验收或沿原身份继续；退出本身不代表成功，迟到回报不能覆盖新 attempt。无法关联任务记录的残留预留仍作为失败事件处理，不推断成功。准备、来源/会话锁、压缩、隐藏重试与收尾保持活动，调用开始后 5 分钟内保留启动交接宽限，活动兄弟和手动续跑阻止误恢复；迟到回调不重复回报。主动停止、暂停、完成、澄清和失败上限不自动复活，冷宿主任务仍须显式恢复。用户从 Loop 群聊或主任务 Tab 停止整个任务时，父任务和活动子任务统一进入 stopped。中止请求绑定点击时的 tabId；经典 Loop 主标签停止先覆盖全部同父任务运行，内部抢占仍只取消当前模型调用。Loop+ 先关闭内存调度门并取消主、子调用，再持久化停止状态，不等待面板刷新。普通 Loop/Loop+ 宿主意外退出的运行核对另以 runtimeInterrupted 标记，保留活动子任务 ID 与 Loop+ 原快照，失去进程的 running 子任务转为 blocked。Loop+ 群聊按钮同时检查主模型忙闲与开放 attempt：父任务仍 running 且有非中断活动子任务时隐藏普通“继续执行”并保留“中止”；仅在没有活动 attempt 且存在 blocked 子任务时允许显式续跑。投影和宿主受理共用此门禁，保证两按钮互斥并拒绝过期消息；切模型保留独立的主模型路由更新路径。产研部仍为 running 的总监在冷宿主只读投影中仅于可信根有效且当前宿主明确没有部门控制器/续接登记时显示本宿主执行中断；正常等待控制器、未知活动状态不误报。原资源占用未核验时保留整组中止对账入口，并继续关闭续接，读取不写任务或释放占用。恢复控制器纳入运行所有权，重复回报不重复启动或验收；主动停止、已完成任务、失败限制和非法快照仍拒绝自动复活。产研部整组中止关闭派发并并行停止总监 Loop、组长 Loop+ 与活动员工。一个成员已阻塞或正单独收尾时，其它成员仍立即收到中止。宿主合并同根并发请求，负责清理原执行和保存停止状态。继续执行时核对可信根、工作区、物理记录和待清理执行。停止任务已持久化且无待清理执行时可直接继续，无需额外核验按钮。读取不启动执行或释放占用，非法身份及跨 workspace 不获得此组织控制。若 Loop+ 冷态恢复仅因组长会话或计划无法验证而失败，后续显式中止仍须独立核对可信任务身份和全部停止回执；只有停止快照及空容量写入读回、根任务最终确认中止后，才解除恢复核验失败栅栏。持久化、身份、容量或活动执行失败仍保持阻断。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -5438,14 +5514,59 @@
       ]
     },
     {
+      "id": "plugin.rule.loop_plus_terminal_commit_recovery",
+      "name": "Loop+ 完成回复在同宿主继续提交",
+      "description": "普通 Loop+ 验证冻结批次和完成门禁后，以原任务的文件、版本和调度事实一次提交验收与终态。任务身份目录在提交前被占用时，同一消费者保留原回复，短时退避后由分钟巡检继续保存。停止撤销本次提交，待处理工作或验收方案变化时重新决策。完成通知以持久化确认为准。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task"],
+      "source_refs": [
+        { "path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "完成回复遇到任务存储锁" },
+        { "path": "src/extensionHost/loopPlusOrchestration.ts" },
+        { "path": "src/loopTaskStore.ts" },
+        { "path": "src/test/extensionHost/loopPlusHandoffContracts.test.ts" }
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_attempt_finish_commit_recovery",
+      "name": "普通 Loop+ 子任务回报的同宿主重试",
+      "description": "父记录读取、成功回执或回报事件在提交前明确遇到身份锁或版本竞争时，宿主保留原 attempt 结果，按退避和分钟巡检重新核验身份与开放预留。确认写入后才发送群聊通知、清理成功标签及派发后继，沟通报告只追加一次。已持久化的本地停止或暂停状态继续生效，外部停止或来源变化阻止旧提交。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.extension_host"],
+      "source_refs": [
+        { "path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "子任务回报遇到存储竞争" },
+        { "path": "src/extensionHost/loopPlusOrchestration.ts" },
+        { "path": "src/extensionHost/loopPlusDiagnostics.ts" },
+        { "path": "src/loopTaskStore.ts" },
+        { "path": "src/test/extensionHost/loopPlusHandoffContracts.test.ts" },
+        { "path": "scripts/loop_plus_protocol_regression_smoke.cjs" }
+      ]
+    },
+    {
+      "id": "plugin.rule.loop_plus_accept_commit_and_pause_resume",
+      "name": "普通 Loop+ 的验收提交与暂停续跑",
+      "description": "验收步骤使用已确认的父记录版本提交。明确的身份锁竞争交给原消费者退避和分钟巡检，重新核验来源、方案与调度快照后续写当前步骤。父任务暂停时结束本次续跑请求，活跃子任务的清理仍单独跟踪。群聊可重新续跑，主 Tab 按父运行与待发请求准入，整个任务的活动仍参与关页保护。",
+      "status": "active",
+      "applies_to": ["plugin.loop_task", "plugin.extension_host", "plugin.chat_panel"],
+      "source_refs": [
+        { "path": ".ch/docs/design-docs/loop-plus-scheduling.md", "anchor": "验收写入和暂停续跑" },
+        { "path": "src/extensionHost/loopPlusOrchestration.ts" },
+        { "path": "src/extensionHost/loopPlusRuntimeAdapter.ts" },
+        { "path": "src/extensionHost/sessionTabs.ts" },
+        { "path": "src/webview/viewContentScript/messageRendering.ts" },
+        { "path": "src/test/extensionHost/loopPlusHandoffContracts.test.ts" }
+      ]
+    },
+    {
       "id": "plugin.rule.loop_plus_waiting_review_watchdog",
-      "name": "Loop+ 空闲主任务的分钟验收兜底",
-      "description": "当前扩展宿主每分钟检查空闲且仍运行的 Loop+ 主任务。已有验收事件但即时唤醒遗漏时，复用串行验收入口，不等待无关同级执行结束，也不绕过前置优先、冻结批次或完成门禁。依赖阻塞且调度快照未变时不重复选批或写盘。停止、暂停、澄清、阻塞复核、完成、连续失败上限、已有主调用或待恢复主回合均不补发。该检查不代替验收、不重启子任务、不扫描历史记录，与五分钟失联巡检及主回合意外退出续跑独立。",
+      "name": "Loop+ 空闲主任务的分钟验收与补充需求",
+      "description": "分钟巡检检查本宿主持有且等待中的普通 Loop+ 的运行、修复、验收三项活动。均为零时按权威快照和版本将巡检补充需求与消息队列同次提交，再唤醒原主任务。中断的开放 attempt 由主任务主动处置。controls.reprompt 沿原 ID 续派，相容会话优先复用，缺少绑定时新开会话。新 ID 接替时关闭与派发同次保存，有后继依赖原 ID 时沿原 ID 续派。活动同级及冻结验收按各自身份推进，提交控制前复核中断状态。任务停止、暂停、澄清、阻塞复核、失败上限和已有主调用按各自门禁处理。历史任务通过显式恢复取得本宿主控制器。",
       "status": "active",
       "applies_to": ["plugin.loop_task"],
       "source_refs": [
         { "path": ".ch/docs/design-docs/loop-crash-recovery.md", "anchor": "宿主仍存活时的等待巡检" },
         { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop / Loop+ 等待巡检" },
+        { "path": "src/loopPlusDecisionContract.ts" },
+        { "path": "media/prompt-rules/loop-plus/controls.md" },
         { "path": "src/extension.ts" },
         { "path": "src/loopWaitWatchdog.ts" },
         { "path": "src/extensionHost/loopPlusOrchestration.ts" }
@@ -5688,7 +5809,7 @@
     {
       "id": "plugin.rule.loop_plus_subtask_chat",
       "name": "Loop+ 子任务完成写入沟通文件消息",
-      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。主模型实际运行或已开始回答提问时，若快照 activity 为 idle、waiting 或 review_pending，则以 running 覆盖展示状态，并同步显示主任务成员运行中、活动说明和思考气泡；仅提问真正开始 CLI 调用后计为运行，排队不计。分解、验收、暂停、停止、完成和无效快照保持优先级。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。主模型实际未运行时，等待或排队尚未开始不把主任务显示成正在生成；暂停、停止和完成仍优先保留原状态。暂停或停止后尚未结束的 running 子任务仍保留执行动画。验收失败修复沿用原逻辑子任务 ID 和成员行，新 attempt 独立验收；修复排队或执行中以主题橙色显示并计入“修复中”；完成后等待复验显示并计入“待验收”。执行中断时显示等待续跑，活动复验则显示和计入“验收中”。普通对话面板的 Loop 子任务 Tab 创建时立即显示运行流水动画，覆盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时清除为停止或错误，实际执行及终态沿用运行时。Loop 主任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。群聊活动验收 ID 取宿主只读副本并校验 currentReview+reviewQueue 的实际提交前缀；新批次依赖选序遵循 active 规则 plugin.rule.loop_plus_dependency_review_order。仅父任务 activity 为 reviewing 且事件属于 activeReviewEventIds 时，成员显示验收中；currentReview 和队列中未进入活动批次的普通验收显示待验收，等待复验的修复显示待验收。说明仅列活跃批次成员，计数仍含完整队列；父任务真实暂停、错误或停止说明不变，classic 和既有视觉设计不变。",
+      "description": "Loop+ 子任务启动时，主任务聊天页显示沟通文件路径，群聊 transcript 追加子任务加入。子任务完成、失败或父任务停止收尾时，群聊追加子任务发言；用户手动中断的开放 attempt 等待续跑结果通知后再追加。成功且已有最终回复时仍附带沟通文件路径，没有回复时沿用经典 Loop 的运行结果和沟通文件说明。主任务聊天页同步留下结束消息；父任务正常完成并成功持久化后，再追加回答结论和整体任务总结 assistant 气泡。群聊时间线在快照仍有 running 子任务时，为每个运行中子任务显示与经典 Loop 相同的思考中气泡；手动中断待续跑的开放项显示已中断、等待续跑，不计运行中数量且不显示思考动画；activity 为 reviewing 时再显示主任务思考中气泡。主模型实际运行或已开始回答提问时，若快照 activity 为 idle、waiting 或 review_pending，则以 running 覆盖展示状态，并同步显示主任务成员运行中、活动说明和思考气泡；仅提问真正开始 CLI 调用后计为运行，排队不计。分解、验收、暂停、停止、完成和无效快照保持优先级。Loop+ 刚启动且持久化 loopPlusMainPhase 为 decomposing、调度快照仍无子任务或验收项时，主任务成员状态显示分解子任务，并显示主任务思考中气泡，不能显示空闲。主模型实际未运行时，等待或排队尚未开始不把主任务显示成正在生成；暂停、停止和完成仍优先保留原状态。暂停或停止后尚未结束的 running 子任务仍保留执行动画。验收失败修复沿用原逻辑子任务 ID 和成员行，新 attempt 独立验收；只有失败验收后新派发、当前真实运行且未中断的返工以主题橙色显示并计入“修复中”。同一返工被 reprompt 替换且仍在真实运行时沿用原轮次并计入；单纯关闭后的独立新工作和普通 reprompt 不计。排队、待验收、已结束、历史失败累计和普通首次执行不计入“修复中”。完成后等待复验显示并计入“待验收”。执行中断时显示等待续跑且不计入“修复中”，活动复验则显示和计入“验收中”。普通对话面板的 Loop 子任务 Tab 创建时立即显示运行流水动画，覆盖会话和配置准备阶段；准备取消或失败且未启动 CLI 时清除为停止或错误，实际执行及终态沿用运行时。Loop 主任务 Tab 由实际 Loop 运行进程决定流水动画；Webview 每 60 秒请求运行态校准，宿主可同时恢复遗漏的启动标记或清除已结束的标记。群聊成员的最后启动时间是该子任务自己最近一次开始执行的时间；尚未真正启动显示未启动，不能使用整批子任务共享的 updatedAt。记录缺少 lastStartedAt 且没有该子任务轮次 startedAt 时，用群聊子任务加入事件里的最近一次时间。同一子任务最近一次已确认验收按该条 reviews.acceptance 显示：passed 且执行结果不是 failed 或 stopped 时显示验收成功；failed，或执行结果是 failed 或 stopped，显示验收失败。同批其它项发起子任务不会把这一条改成失败。验收成功使用主题绿色，验收失败使用主题橙色。群聊活动验收 ID 取宿主只读副本并校验 currentReview+reviewQueue 的实际提交前缀；新批次依赖选序遵循 active 规则 plugin.rule.loop_plus_dependency_review_order。仅父任务 activity 为 reviewing 且事件属于 activeReviewEventIds 时，成员显示验收中；currentReview 和队列中未进入活动批次的普通验收显示待验收，等待复验的修复显示待验收。说明仅列活跃批次成员，计数仍含完整队列；父任务真实暂停、错误或停止说明不变，classic 和既有视觉设计不变。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -6159,8 +6280,8 @@
     },
     {
       "id": "plugin.rule.loop_plus_bounded_block_review",
-      "name": "Loop+ 全局阻塞只做一次有界复核",
-      "description": "业务熔断由主模型依据实际进展、验收证据和安全可行的下一步判断。宿主没有子任务失败次数或累计主决策次数门槛。修复仍有新证据或可行路径时继续推进。主模型首次返回全局 blocked 后，宿主持久化待复核状态并显式复核所有未完成根需求和补充需求；若发现安全且独立的工作则继续派发，否则复核后仍阻塞才进入 needs-review。待复核/已复核状态跨宿主重建保留，无新用户补充、派发或验收进展时不重复复核；复核不得确认或丢弃开放 attempt、验收事件，也不得放宽验收、权限门禁或协议失败后仅续跑一次的限制。暂停原因与恢复条件显示在主聊天，并去重写入主任务沟通文件及群聊 transcript。blocked 只消费该请求已见用户消息前缀并扣除冻结批次中的相应计数，保留未确认事件；后到消息由后续有界决策显式捕获，不重复展示已消费消息，无新消息最终暂停。",
+      "name": "Loop+ 全局阻塞前复核剩余工作",
+      "description": "首次全局 blocked 将当前复核状态持久化。主任务逐项核对原始和最新要求，自行选择既有授权内可逆的修复、替代路径或独立工作，并按原标准验收。暂停前提升可执行工作，等待在途 attempt 的结果。迟到报告先交接，新用户消息和验收事件触发重新决策，保留冻结事件顺序，只确认已见消息和报告前缀。复核仍无任何可行路径且最终诊断带有适用限制的来源时才进入业务 needs-review。主模型失败和协议错误分别处理。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -6200,12 +6321,13 @@
     {
       "id": "plugin.rule.loop_plus_group_chat_status_summary",
       "name": "Loop+ 群聊汇总主任务和子任务状态",
-      "description": "普通 Loop+ 群聊和产研部总监群聊的组长行共用组长群聊的汇总口径与八种主题标签：运行中、修复中、验收中、待验收、待启动、验收失败、已阻塞、已完成。每名成员只按最新展示状态计一次；仅验收中计数排除主任务，活跃验收中的子任务照常计数。acceptance_failed 独立计入验收失败，不计入已完成；验收成功和免验收完成仍计入已完成。失败验收必须关联修复或明确无需修复结案，未处置失败不确认；修复沿用原逻辑子任务 ID，新 attempt 排队或执行时显示并计入修复中，完成后等待复验显示并计入待验收，进入活动复验批次后显示并计入验收中；第二轮起成员在修复执行、等待复验及活动复验时保留 xN 后缀；复验通过显示验收成功，复验失败回到验收失败。无需修复结案显示验收成功，但保留失败验收记录且不放行成功依赖或父任务完成门禁。验收失败位于已阻塞左侧，两者正值沿用主题红色，零值沿用深灰背景。主任务分解归入运行中，等待验收归入待验收；needs-review 暂停在阻塞复核为 reviewed 且保存了宿主生成的熔断说明时归入已阻塞。子任务展示为 blocked 时计入已阻塞，开放执行中断后显示等待续跑。此口径不改变经典 Loop、独立底栏、验收判定、调度或权限。",
+      "description": "普通 Loop+ 群聊和产研部总监群聊的组长行共用组长群聊的汇总口径与八种主题标签：运行中、修复中、验收中、待验收、待启动、验收失败、已阻塞、已完成。每名成员只按最新展示状态计一次；仅验收中计数排除主任务，活跃验收中的子任务照常计数。acceptance_failed 独立计入验收失败，不计入已完成；验收成功和免验收完成仍计入已完成。失败验收必须关联修复或明确无需修复结案，未处置失败不确认；修复沿用原逻辑子任务 ID。只有失败验收后新派发、当前真实运行且未中断的返工显示并计入修复中；同一返工被 reprompt 替换且仍在真实运行时沿用原轮次并计入；单纯关闭后的独立新工作和普通 reprompt 不计。排队、待验收、已结束、历史失败累计、中断运行和普通首次执行不计入修复中。完成后等待复验显示并计入待验收，进入活动复验批次后显示并计入验收中；第二轮起成员在修复执行、等待复验及活动复验时保留 xN 后缀；复验通过显示验收成功，复验失败回到验收失败。无需修复结案显示验收成功，但保留失败验收记录且不放行成功依赖或父任务完成门禁。验收失败位于已阻塞左侧，两者正值沿用主题红色，零值沿用深灰背景。主任务分解归入运行中，等待验收归入待验收；needs-review 暂停在阻塞复核为 reviewed 且保存了宿主生成的熔断说明时归入已阻塞。子任务展示为 blocked 时计入已阻塞，开放执行中断后显示等待续跑。此口径不改变经典 Loop、独立底栏、验收判定、调度或权限。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.chat_panel"],
       "source_refs": [
         { "path": ".ch/docs/product-specs/FEATURE_INVENTORY.md", "anchor": "Loop+ 群聊状态标签" },
         { "path": ".ch/docs/design-docs/loop-group-chat-state-boundaries.md", "anchor": "Loop+ 状态标签" },
+        { "path": "src/loopSubtaskActivity.ts", "anchor": "projectLiveLoopSubtasks" },
         { "path": "src/loopGroupChatPanelState.ts" },
         { "path": "src/loopPlusStatusSummary.ts" },
         { "path": "src/extensionHost/departmentGroupChatProjection.ts" },
@@ -6215,8 +6337,8 @@
     },
     {
       "id": "plugin.rule.loop_blocked_user_explanation",
-      "name": "Loop 熔断说明原因与恢复条件或不可完成理由",
-      "description": "Loop / Loop+ 业务 blocked 的聊天、群聊与暂停说明统一称熔断，说明子任务多次尝试仍无法解决触发熔断、整体任务尚未完成；主模型调用失败与协议错误独立说明，不新增重试阈值或更改业务状态机，历史原文保留。最终 blocked 需结构化 blocker：可恢复/无法完成、具体原因、未完成要求、证据、已尝试动作、必要操作的责任方/操作/验证方式及恢复条件或替代方案。宿主统一生成中文 finalSummary，继续前只显示必须的责任方和动作，能写一条不拆条；必须满足的结果另列为恢复条件。产研部沿用同一规则。缺软件明确依赖、版本与实际环境，区分缺安装、PATH 与版本，不猜平台、包管理器或证据。优先授权内安全修复或独立工作，需用户决策用 clarify。经典 Loop 缺诊断时同轮补充一次，仍缺失/非法暂停留原说明及缺项。Loop+ 在一次剩余工作复核后若仍缺诊断则自动继续执行一次；续跑仍缺诊断则暂停并保留原说明、缺项及未确认事件，不无限复核或标记完成。旧 finalSummary 仍可读，字段完整不代表宿主核验证据。聊天、群聊与暂停文件复用说明。",
+      "name": "Loop 熔断说明实际原因、恢复条件或替代方案",
+      "description": "宿主根据结构化 blocker 生成主聊天、群聊和暂停文件共用的中文说明。Loop+ 先给出具体受阻交付，在 constraintSource 引用适用要求、项目规则、真实权限拒绝或技术事实，再列证据、影响及已尝试的路径。可恢复时只列必需的责任方、动作及恢复条件，无法满足当前要求时说明替代结果或没有可行路径的依据。旧摘要继续可读。宿主核验字段，主模型核实事实。经典 Loop 缺诊断时同轮补充一次，Loop+ 在有界复核后按既有协议预算纠正，耗尽时明确给出协议失败原因并保留未确认事件。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -6271,8 +6393,8 @@
     },
     {
       "id": "plugin.rule.loop_recoverable_blocker_plan_clarification",
-      "name": "Loop 可恢复熔断先询问方案并超时续跑",
-      "description": "经典 Loop、Loop+ 和产研部在完成各自剩余工作复核后，可为 recoverable blocker 提供 1 至 3 个结构化恢复方案，每项包含操作与验证。宿主复用主任务澄清表单和现有人机交互超时，优先采用尚未尝试过的首选方案并续跑；已选方案不重复推荐。选择或超时不等同授权、修复成功或验收通过，必须在实际任务环境验证；无新合规方案或真实授权缺失时保持原阻塞暂停。经典 Loop 使用部门总监路由，Loop+ 使用组长路由，员工将环境证据和方案上报组长，不直接取得根任务用户交互权。权限、停止、组织身份和验收门禁不变。",
+      "name": "Loop 各模式处理可恢复方案与真实澄清",
+      "description": "经典 Loop 和产研部总监可用澄清表单展示 1 至 3 项恢复方案，配置超时可选择尚未尝试的首选方案。Loop+ 及组长将模型提出的操作和验证方法持久化在本次复核中，直接交还主任务选择并执行。选项首次出现在复核回复时追加一次执行决策，重复提议进入既有协议纠正预算。员工将证据和方案上报组长。授权内操作仍须实际验证，额外授权须明确取得。普通澄清超时只记录无人作答，Loop+ 在表单额度用尽时根据已有信息重新决策。",
       "status": "active",
       "applies_to": ["plugin.loop_task", "plugin.department_task", "plugin.extension_host"],
       "source_refs": [
@@ -6341,7 +6463,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_checklist",
       "name": "Loop+ 主模型保留验收审查并复用有效验证结果",
-      "description": "除需求变更明确撤销的交付（plugin.rule.loop_plus_cancel_acceptance）外，Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按固定六项判断实现完整性、契约一致性、测试结果、产物可运行性、改动合理性及遗漏/回归/边界，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。历史行为是在 review 启动时冻结 FIFO 前最多 3 个完成事件；当前已主审合同为新批次依赖优先、最多 4 项且不等凑满，见 active 规则 plugin.rule.loop_plus_dependency_review_order。冻结的有序 eventId 与已见用户消息/报告前缀在当前批次保持，其余已有及后到事件留后续新批次，不 abort、不扩批、不重问。有可领取项即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；累计子任务派发不设总预算，单次派发与并发容量仍独立受限。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
+      "description": "除需求变更明确撤销的交付（plugin.rule.loop_plus_cancel_acceptance）外，Loop+ 主模型在 accept 或正常 completed 确认已派发事件前仍逐事件审查相关代码、差异或交付物，按交付与范围、契约与回归、验证与运行三组共用适用证据，分别判断六项固定检查，并完成已选附加审查，不适用明确说明。采信子任务具体执行结果，仍覆盖当前改动时直接复用，不自行重跑或另派复现；测试通过或全部完成声明不替代验收审查。只补未覆盖、失败、后续改动使结果失效的部分或明确独立要求，先说明已有结果、缺口与最小范围；有效独立结果也复用。汇报不清先补说明，不因缺少原始日志或报告细节直接重测。收尾/续跑复用未变化的已验收结果，保留最终需求覆盖、开放事件及完成门禁，不把一个事件的结果当作无关事件通过。子任务手动中断保留 running 中的开放 attempt、并发槽和写入占用，子任务记录 blocked；中断不进入验收、不计次数、不写 attempt 结束报告。普通父任务继续或宿主重建仍等待；独立切模型提交会自动续跑中断开放项且不打断活跃同级，成功续跑仅生成一次完成事件。其他完成项可独立验收，开放项阻止父任务完成和冲突启动。真实失败、丢失进程和整个父任务停止仍按原终止处理。本批可以同时有成功和失败。失败且能修的事件在同一次 accept 的 reviews 里标为 failed，并用 subtaskIds 指向修复子任务；成功事件标为 passed。无法修复的验收项保留真实失败结论和阻塞证据，有安全独立剩余交付时仍通过 accept.independentSubtaskIds 推进；无安全独立工作及可推进的活动依赖时才 blocked 并不确认本批。宿主只核事件 ID 和 reviews 是否逐条对应，不替主模型判这张清单。简单直办与精简收口遵循 plugin.rule.loop_trivial_direct_execution，不可替代本批验收。历史行为是在 review 启动时冻结 FIFO 前最多 3 个完成事件；当前已主审合同为新批次依赖优先、最多 4 项且不等凑满，见 active 规则 plugin.rule.loop_plus_dependency_review_order。冻结的有序 eventId 与已见用户消息/报告前缀在当前批次保持，其余已有及后到事件留后续新批次，不 abort、不扩批、不重问。有可领取项即验收，其它任务并行，无全局 barrier 或共享 round gate。重试、协议修复和同宿主暂停恢复保留未确认批次，停止、generation 与验收方案 epoch 保护仍有效。completed 提交本批后仍按最新事件、用户消息、running、pending 和开放 attempt 限制父任务完成，验收不设次数额度；累计子任务派发不设总预算，单次派发与并发容量仍独立受限。正常 completed 要求全部已选 acceptancePlanResults[].passed 为 true；任一附加项失败拒绝并反馈具体原因，accept 仍允许真实失败结论及修复；无附加项及已授权 directCompletion 边界保持。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -6450,7 +6572,7 @@
     {
       "id": "plugin.rule.loop_plus_acceptance_plan",
       "name": "Loop+ 启动前验收方案只做附加审查",
-      "description": "新建 Loop+ 根任务在发送前弹出“主模型验收方案”弹窗；固定基线“实现完整性＋契约一致性＋改动合理性＋回归与边界检查”始终勾选且禁用，前端布尔值、旧数据或可选配置都不能关闭。附加项依次为「代码可维护性审查」「性能审查」「用户体验审查」「安全审查」「其它」，内置默认和新增方案均不勾选；“其它”只有勾选且填写内容时才算有效审查要求，勾选后紧随该项显示无标签文本域（占位文字“审查内容”），勾选但留空就地报中文错误并阻止保存与确认。方案下拉第一项是新增方案（名称预填新建方案，未保存时不覆盖最近选择），其后始终是内置默认方案和已保存方案；下拉、「保存」和「删除」始终同一行，窄屏下拉收缩、按钮不换行。方案名称输入框不显示标签，占位文字为“方案名称”，内置默认显示只读的“默认方案”且不能保存，前后端均保护内置 ID。仅新建或已保存的自定义方案可保存，同名自动覆盖，不再新增第二条；“系统默认”和“默认方案”为保留名称，空名也拒绝。旧版已保存的“默认方案”读入时自动改为“新建方案”，重名时使用“（2）”等后缀，保留稳定 ID、检查项、其它文本、时间戳与选中关系，后续设置写入持久化迁移结果，不改已有任务快照。已保存方案可在确认后删除，内置方案不能删除，不提供导入、导出。自定义方案与当前选中项只通过宿主写入工作区设置；每次打开恢复当前项目最近一次有效选择，包括明确选回内置默认，项目间互不影响，无效或已删除选择回退内置默认。取消不建任务、不发请求、不清空输入与附件；确认只发送一次并沿用既有忙碌/排队冲突处理。确认后的复选项与其它文本以任务记录 loopPlusAcceptancePlan 快照持久化，初始/复核/收尾/继续/补充需求五类主模型提示共用同一快照，只追加选中的审查要求并要求逐项给出证据或显式不适用；固定六项验收清单、调度协议、主模型不得自行实现或修复被派发工作的约束不变。勾选「用户体验审查」时，默认依据实际证据核对视觉与术语一致性、信息层级、操作是否符合预期及其反馈、空白/加载/禁用/失败等边界状态与恢复、键盘操作与焦点、窄屏可读性以及专业且可执行的文案。仅在用户原始或补充请求中有明确要求、适用于当前交付且与默认体验约定冲突时，才在冲突维度以该要求为准，并说明例外及原因；不得从无关说明、子任务报告或模糊偏好推定授权。例如明确要求页面风格独特时，不因视觉差异本身判失败，而是按实际证据判断是否实现指定风格；键盘操作、反馈、错误恢复、窄屏可读性等其余适用维度仍须审查。选中时仍须给出有证据的审查结论或说明不适用的原因，并说明未覆盖项及原因；不把例外或缺少证据当成已验证。工作区方案、旧任务快照和 acceptancePlanResults[].key 继续使用 ui_aesthetics；旧快照无需迁移，新反馈显示「用户体验审查」，既有历史反馈不改写。安全审查只做防御性代码审查，不复现漏洞、不制作 PoC、不开展侵入式扫描。不新增自动强制扫描、基准测试或主模型测试执行要求。模板后续修改不影响已启动任务，续跑与恢复使用各自快照，没有附加快照的旧任务回退固定清单。Loop+ 群聊顶部「验收方案」与新建根任务共用同一弹窗，确认后写回该任务快照，下一次验收立即使用；进行中的复核或收尾会中止并按新快照重问。主任务完成后不再显示该按钮。accept 或 completed 结束一轮验收且逐项结论完整时，Loop+ 群聊追加验收结果气泡；真实子任务名、整体验收结果和各事件结论放在表格外上方；批量验收列出全部相关子任务及各自结论，共用一张默认及附加检查明细表，不再添加验收事件或整体结果首行。无新确认事件的 completed 收尾只总结、不展示验收表格，恢复和没有子任务的直接完成同样适用；直接 completed 确认新事件、修复后的新 attempt 仍显示子任务验收，收尾检查与完成条件不变。固定默认验收和附加验收用两列表格展示，第一列是审查内容，第二列是审查结果（通过或未通过，以及不限字数的证据型原因；已选附加项按 key 匹配，顺序不限，未选项忽略）；原因语言按任务、证据和上下文选择，不强制中文，并说明证据、失败点或不适用原因；没有附加快照也显示默认验收。必填原因缺失或所选结果不完整时拒绝验收决策并走协议失败自动续跑，不生成兜底评价或部分气泡。",
+      "description": "新建 Loop+ 根任务在发送前弹出“主模型验收方案”弹窗；固定基线“实现完整性＋契约一致性＋改动合理性＋回归与边界检查”始终勾选且禁用，前端布尔值、旧数据或可选配置都不能关闭。附加项依次为「代码可维护性审查」「性能审查」「用户体验审查」「安全审查」「其它」，内置默认和新增方案均不勾选；“其它”只有勾选且填写内容时才算有效审查要求，勾选后紧随该项显示无标签文本域（占位文字“审查内容”），勾选但留空就地报中文错误并阻止保存与确认。方案下拉第一项是新增方案（名称预填新建方案，未保存时不覆盖最近选择），其后始终是内置默认方案和已保存方案；下拉、「保存」和「删除」始终同一行，窄屏下拉收缩、按钮不换行。方案名称输入框不显示标签，占位文字为“方案名称”，内置默认显示只读的“默认方案”且不能保存，前后端均保护内置 ID。仅新建或已保存的自定义方案可保存，同名自动覆盖，不再新增第二条；“系统默认”和“默认方案”为保留名称，空名也拒绝。旧版已保存的“默认方案”读入时自动改为“新建方案”，重名时使用“（2）”等后缀，保留稳定 ID、检查项、其它文本、时间戳与选中关系，后续设置写入持久化迁移结果，不改已有任务快照。已保存方案可在确认后删除，内置方案不能删除，不提供导入、导出。自定义方案与当前选中项只通过宿主写入工作区设置；每次打开恢复当前项目最近一次有效选择，包括明确选回内置默认，项目间互不影响，无效或已删除选择回退内置默认。取消不建任务、不发请求、不清空输入与附件；确认只发送一次并沿用既有忙碌/排队冲突处理。确认后的复选项与其它文本以任务记录 loopPlusAcceptancePlan 快照持久化，初始/复核/收尾/继续/补充需求五类主模型提示共用同一快照，只追加选中的审查要求并要求逐项给出证据或显式不适用；固定六项验收清单、调度协议、主模型不得自行实现或修复被派发工作的约束不变。勾选「用户体验审查」时，默认依据实际证据核对视觉与术语一致性、信息层级、操作是否符合预期及其反馈、空白/加载/禁用/失败等边界状态与恢复、键盘操作与焦点、窄屏可读性以及专业且可执行的文案。仅在用户原始或补充请求中有明确要求、适用于当前交付且与默认体验约定冲突时，才在冲突维度以该要求为准，并说明例外及原因；不得从无关说明、子任务报告或模糊偏好推定授权。例如明确要求页面风格独特时，不因视觉差异本身判失败，而是按实际证据判断是否实现指定风格；键盘操作、反馈、错误恢复、窄屏可读性等其余适用维度仍须审查。选中时仍须给出有证据的审查结论或说明不适用的原因，并说明未覆盖项及原因；不把例外或缺少证据当成已验证。工作区方案、旧任务快照和 acceptancePlanResults[].key 继续使用 ui_aesthetics；旧快照无需迁移，新反馈显示「用户体验审查」，既有历史反馈不改写。安全审查只做防御性代码审查，不复现漏洞、不制作 PoC、不开展侵入式扫描。不新增自动强制扫描、基准测试或主模型测试执行要求。模板后续修改不影响已启动任务，续跑与恢复使用各自快照，没有附加快照的旧任务回退固定清单。普通 Loop+ 群聊顶部「验收方案」与新建根任务共用弹窗。「保存到当前任务」写回该任务快照。「保存模板并应用」将工作区模板保存结果应用到当前任务，任务写入失败时保留草稿并显示原因。重开与刷新读取当前任务快照，下一次验收立即使用。方案有变化时，只重新发起当前复核或收尾轮次，保留原复核批次。父任务和运行中的子任务继续执行，用户主动停止优先。主任务完成后不再显示该按钮。accept 或 completed 结束一轮验收且逐项结论完整时，Loop+ 群聊追加验收结果气泡；真实子任务名、整体验收结果和各事件结论放在表格外上方；批量验收列出全部相关子任务及各自结论，共用三项默认结论。每组两项均通过才通过，组内结果不同时先显示失败项及证据。已选附加审查另表逐项展示并计入整体结果，历史气泡保留原文。无新确认事件的 completed 收尾只总结、不展示验收表格，恢复和没有子任务的直接完成同样适用；直接 completed 确认新事件、修复后的新 attempt 仍显示子任务验收，收尾检查与完成条件不变。固定默认验收和附加验收用两列表格展示，第一列是审查内容，第二列是审查结果（通过或未通过，以及不限字数的证据型原因；已选附加项按 key 匹配，顺序不限，未选项忽略）；原因语言按任务、证据和上下文选择，不强制中文，并说明证据、失败点或不适用原因；没有附加快照也显示默认验收。必填原因缺失或所选结果不完整时拒绝验收决策并走协议失败自动续跑，不生成兜底评价或部分气泡。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -6919,7 +7041,7 @@
     {
       "id": "plugin.rule.loop_main_compact_overlaps_dispatch",
       "name": "Loop 主任务压缩与子任务派发并行",
-      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；下一次使用同一主任务会话前等待压缩。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。产研部 Loop+ 组长所辖员工使用同一交接关页规则，专属 Owner 路径按原 Owner 回执关页。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。Loop+ 完成回报提交后若宿主关页异常，可在保留 attempt、会话、工作区和活动运行守卫的前提下有界重试一次；仍失败则保留标签并记录关闭诊断。CLI 终态提示不代表报告已提交或标签已关闭。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
+      "description": "Loop 与 Loop+ 主任务成功结束并触发执行后自动压缩时，压缩与独立会话的子任务派发并行；自动压缩作为本轮收尾进入主标签页队列，随后执行该页的提问和主调用。普通 Loop / Loop+ 群聊续跑遇到压缩时保留一次点击，压缩结束后重新核对任务、工作区和会话再续跑；显式中止取消等待。自动执行或显式续跑的子任务成功交接持久化后，先清理完成时捕获且身份仍匹配的旧 Tab，不等同会话前序压缩；随后在独立运行状态中后台压缩，按会话串行。产研部 Loop+ 组长所辖员工使用同一交接关页规则，专属 Owner 路径按原 Owner 回执关页。原 Tab 或新 Tab 续接同一子会话时等待压缩，主任务与独立会话不等待后台压缩。回报或完成事件提交失败保留 Tab，不放行成功压缩。defer 快照保存 loopAttemptId，notify 仅消费身份完全相等的 pending，无身份通知只兼容无身份旧 pending；不匹配或重复通知不消费 pending，也不触发其回调。过期 attempt 不能放行新 attempt 的压缩或标签清理。Loop+ 完成回报提交后若宿主关页异常，可在保留 attempt、会话、工作区和活动运行守卫的前提下有界重试一次；仍失败则保留标签并记录关闭诊断。CLI 终态提示不代表报告已提交或标签已关闭。压缩按启动时读取的当前配置运行，配置档案切换、失败、超时或跳过不撤销已提交结果。成功且超过五分钟的触发条件与普通对话策略不变；三分钟只限制压缩，不限制关页。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task"
@@ -6927,6 +7049,14 @@
       "source_refs": [
         {
           "path": "src/loopMainAutoCompact.ts"
+        },
+        {
+          "path": "src/loopMainQuestionQueue.ts",
+          "symbol": "createLoopMainQuestionQueue"
+        },
+        {
+          "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts",
+          "symbol": "createLoopGroupChatPanelCoordinator"
         },
         {
           "path": "src/extensionHost/loopSubtaskTabs.ts",
@@ -8120,7 +8250,7 @@
     {
       "id": "plugin.rule.department_ownership_source",
       "name": "部门归属按文件贡献及可信来源授权",
-      "description": "文件贡献增量替换，物理重复身份与同模块多任务保留歧义；授权须唯一 ID 且从唯一物理来源重读。new/rebuilding/invalid/disposed 拒绝，失败/未知变更或来源租约撤销使完整性失效，仅显式完整 rebuild 恢复。外部写入公开前同步撤销 isCurrent；异步 watcher、恒真租约、UI 修订或全库扫描回退均不满足生产合同。中央 activate 已使用专用 department-tasks-v1 owner/controller/repository，完整总监与组长首次 owner 创建，readRevision 缓存和同步 commitSync 均实际连接；普通/部门身份目录经共享 wx writer gate 在同步闭包返回前共同发布。目录持久保留已删除部门 ID 的原文件墓碑；未取得来源的宿主也在普通发现和写入前拒绝这些身份，过期输入不能绕过此边界。受控 reader 保留完整过期记录用于关系校验，公开路由仍隐藏过期任务，retention 不孤立有效组长。新宿主仅在确认历史 department-tasks-v1 的独占 claim 冲突后，才尝试其它已登记空来源或创建独立空来源；追加必须在共享 wx writer gate 下证明空目录与非重叠。新来源不接管旧 marker、任务或身份。有效但 ready=false 的目录仅在全部已登记来源根均已消失时可受限重建，并保留旧 roots、owned 墓碑与普通迁移记录；未知 marker/锁、损坏 catalog、仍存在的旧来源或未完成事务继续拒绝。归属读取遇到共享事务锁最多等待 100ms 并重读复核；持续锁、未提交、损坏或超时仍拒绝，不清锁、不接管。close 证明的是已撤销且排空的存储写者，不代表 runner 结束。普通通信 GC 在共享 writer gate 内依据持久部门身份及删除墓碑保留 artifact；catalog 缺失、锁定、损坏或未发布则整次删除拒绝，无 source 的另一宿主也不能删除。仓储以一次当前批量查询校验全部缓存贡献，不逐条重读 catalog，重复贡献及 readRevision 撤销继续生效。早期 macOS 隔离 Extension Host 已观察激活、source/owner marker、ready catalog 及 deactivation owner 释放；该次独立主进程未自行退出，历史 smoke 保持失败。后续 round 103 激活及 round 121 生产历史会话/精确组长弹窗场景各有正常退出证据，后者无残留或 owner marker，不反推真实执行或冷恢复通过。round-351 另接受真实 production source/仓储协作、删除/事务失败与后继 runtime 回归；公共受控writer有具体覆盖，不泛称未装配。旧版或直接外部写者的协调交接、损坏身份目录显式恢复和冷宿主仍无完整接受证据；当前未支持路径写前拒绝。",
+      "description": "文件贡献增量替换，物理重复身份与同模块多任务保留歧义；授权须唯一 ID 且从唯一物理来源重读。new/rebuilding/invalid/disposed 拒绝，失败/未知变更或来源租约撤销使完整性失效，仅显式完整 rebuild 恢复。外部写入公开前同步撤销 isCurrent；异步 watcher、恒真租约、UI 修订或全库扫描回退均不满足生产合同。中央 activate 已使用专用 department-tasks-v1 owner/controller/repository，完整总监与组长首次 owner 创建，readRevision 缓存和同步 commitSync 均实际连接；普通/部门身份目录经共享 wx writer gate 在同步闭包返回前共同发布。目录持久保留已删除部门 ID 的原文件墓碑；未取得来源的宿主也在普通发现和写入前拒绝这些身份，过期输入不能绕过此边界。受控 reader 保留完整过期记录用于关系校验，公开路由仍隐藏过期任务，retention 不孤立有效组长。新宿主仅在确认历史 department-tasks-v1 的独占 claim 冲突后，才尝试其它已登记空来源或创建独立空来源；追加必须在共享 wx writer gate 下证明空目录与非重叠。新来源不接管旧 marker、任务或身份。有效但 ready=false 的目录仅在全部已登记来源根均已消失时可受限重建，并保留旧 roots、owned 墓碑与普通迁移记录；未知 marker/锁、损坏 catalog、仍存在的旧来源或未完成事务继续拒绝。归属读取遇到共享事务锁最多等待 100ms 并重读复核；持续锁、未提交、损坏或超时仍拒绝。启动、写锁竞争或用户显式重试时，只有新格式锁能证明同机原 PID 已退出且二次核对同一代次才可回收。旧锁及未知归属保留。close 证明的是已撤销且排空的存储写者，不代表 runner 结束。普通通信 GC 在共享 writer gate 内依据持久部门身份及删除墓碑保留 artifact；catalog 缺失、锁定、损坏或未发布则整次删除拒绝，无 source 的另一宿主也不能删除。仓储以一次当前批量查询校验全部缓存贡献，不逐条重读 catalog，重复贡献及 readRevision 撤销继续生效。早期 macOS 隔离 Extension Host 已观察激活、source/owner marker、ready catalog 及 deactivation owner 释放；该次独立主进程未自行退出，历史 smoke 保持失败。后续 round 103 激活及 round 121 生产历史会话/精确组长弹窗场景各有正常退出证据，后者无残留或 owner marker，不反推真实执行或冷恢复通过。round-351 另接受真实 production source/仓储协作、删除/事务失败与后继 runtime 回归；公共受控writer有具体覆盖，不泛称未装配。旧版或直接外部写者的协调交接、损坏身份目录显式恢复和冷宿主仍无完整接受证据；当前未支持路径写前拒绝。",
       "status": "active",
       "applies_to": [
         "plugin.department_ownership_index",
@@ -8177,7 +8307,7 @@
     {
       "id": "plugin.rule.loop_store_confirmed_contributions",
       "name": "任务存储确认后发布贡献并保留迁移目标权威",
-      "description": "普通严格 write/update/append 的真实读写失败传播原异常及 errno，void 正常返回表示提交确认；boolean try 未提交返回 false，真实缺失任务保留 null/no-op，身份与输入拒绝不放宽。提交读取拒绝坏 JSON/shape/记录，完整索引不把消失文件当空库；原子替换 rename 前失败保留旧字节并尝试清理 stage，持久写入及 catalog 发布确认后才发布成功贡献/缓存，失败使来源失效。普通迁移完整校验 source/target 并保留兄弟，以目标持久写入及 catalog 发布为 commit；其后源重写/删除失败属于维护失败，保留材料但仍返回已提交身份，不撤销目标权威。可选 ordinaryMoves 保存精确普通目标及旧源链，兼容无字段旧 snapshot，不提升 owned。已知普通读口在同一 writer gate 内服从目标，无 move 才用精确已知来源；目标/目录无法确认即 null，不扫描或回退旧副本，不缓存旧授权。普通 retention 以单文件为批次，在同一 gate/当前 snapshot 内完整校验、分类及提交，每文件一次 catalog 读取；锁未知、目录损坏/未发布整文件保留，不据未知删除，不跨调用缓存或视为全库原子快照。普通 update 仅在确认提交前锁争用时有界重试，重新解析所有权和迁移目标并读取最新记录，在写锁内复核权威来源及文件版本。持续争用返回未提交，写入结果不明继续按失败处理。普通任务更新遭遇身份目录锁、目录不可用、受控身份拒绝或 owner 路由未确认时，默认日志记录固定拒绝阶段与原因、PID 和文件名；Loop+ 持久化失败另记录调度阶段/序号/队列计数，不记录异常正文、任务/会话身份或提示词。真实无 catalog 的首次普通安装兼容，不授权部门通信 GC。普通原子确认及后续维护失败不能套用 owned 多文件事务，owned 未确认仍 ready=false；保留受控根、marker、tombstone、未知身份拒绝、owner 交易、普通不可提升、最终文件 symlink 拒绝、合法目录别名及同文件别名保留已知位置、显式 recover/完整 rebuild 保护。此合同不证明外部 writer、真实多进程/崩溃、冷恢复或全部平台已通过。",
+      "description": "普通严格 write/update/append 的真实读写失败传播原异常及 errno，void 正常返回表示提交确认；boolean try 未提交返回 false，真实缺失任务保留 null/no-op，身份与输入拒绝不放宽。提交读取拒绝坏 JSON/shape/记录，完整索引不把消失文件当空库；原子替换 rename 前失败保留旧字节并尝试清理 stage，持久写入及 catalog 发布确认后才发布成功贡献/缓存，失败使来源失效。普通迁移完整校验 source/target 并保留兄弟，以目标持久写入及 catalog 发布为 commit；其后源重写/删除失败属于维护失败，保留材料但仍返回已提交身份，不撤销目标权威。可选 ordinaryMoves 保存精确普通目标及旧源链，兼容无字段旧 snapshot，不提升 owned。执行读取在同一 writer gate 内服从已提交目标，无 move 才用精确已知来源。群聊展示可以固定已发布的 catalog 文件，在读取已知普通来源后校验目录文件身份与版本。目标或目录无法确认时返回 null。归属与文件内任务 ID 映射相同时，普通内容更新在锁外暂存文件，核对版本后在短写锁内原子替换。普通 retention 以单文件为批次，在同一 gate/当前 snapshot 内完整校验、分类及提交，每文件一次 catalog 读取；锁未知、目录损坏/未发布整文件保留，不据未知删除，不跨调用缓存或视为全库原子快照。普通 update 仅在确认提交前锁争用时有界重试，重新解析所有权和迁移目标并读取最新记录，在写锁内复核权威来源及文件版本。持续争用返回未提交，写入结果不明继续按失败处理。普通任务更新遭遇身份目录锁、目录不可用、受控身份拒绝或 owner 路由未确认时，默认日志记录固定拒绝阶段与原因、PID 和文件名；Loop+ 持久化失败另记录调度阶段/序号/队列计数，不记录异常正文、任务/会话身份或提示词。真实无 catalog 的首次普通安装兼容，不授权部门通信 GC。普通原子确认及后续维护失败不能套用 owned 多文件事务，owned 未确认仍 ready=false；保留受控根、marker、tombstone、未知身份拒绝、owner 交易、普通不可提升、最终文件 symlink 拒绝、合法目录别名及同文件别名保留已知位置、显式 recover/完整 rebuild 保护。此合同不证明外部 writer、真实多进程/崩溃、冷恢复或全部平台已通过。readLoopTaskRecord 只在该次调用返回 null 时，通过该次 options.onUnavailable 同步给出白名单失败分类，无法区分则为 unknown；不跨调用保留最后一次错误，成功不回调。task-not-found 只在同一次候选发现完成且确认缺失时使用。目录扫描的非 ENOENT 记为 candidate-scan-unavailable；候选存储读失败且不能按已提交迁移目标确认时记为 store-read-rejected 或其他白名单安全类别。发现不完整时不返回可能过期的副本。旧任务目录扫描遇到非 ENOENT 时，在迁移、空目录清理或其它存储变更之前停止。缓存命中只复查这次目录发现是否完整；位置仍有效时不为此再解析全部候选存储。若这次发现提交了迁移目标，无论之前有没有缓存，退回普通候选前都用原有迁移记录按 taskId 校验该目标：目标可读且含该任务则直接返回，不解析无关候选；目标不可用则按 committed-move-target-unavailable 拒绝，不回退旧源。没有已确认目标时才使用已完成候选。目录发现不完整时仍保守拒绝。throwOnError 的同一次旧目录扫描传播原始异常，不改报 task-not-found，也不在扫描失败后迁移或清理。日志只有固定分类，不含错误正文、路径或私有标识。",
       "status": "active",
       "applies_to": [
         "plugin.loop_task",
@@ -8410,7 +8540,7 @@
     {
       "id": "plugin.rule.department_group_chat_stop_state",
       "name": "总监群聊状态与原执行清理反馈",
-      "description": "总监群聊按可信根任务状态显示中止入口。停止请求在途时按钮禁用。根任务已中止后移除中止入口，原执行退出待确认时显示禁用的继续执行和原因。清理确认后按原有恢复门槛开放继续。带 runtimeInterrupted 的历史运行记录沿用已中止文案。产研部冷启动后，两级群聊依据可信根、宿主总监控制器/续接和组长运行登记显示本宿主执行已中断；历史员工执行占位不计作运行，待验收不计作主动验收。只读投影不改任务或调度状态，不确认整组停止、原执行退出或资源释放，不授权自动恢复。Loop+ 冷态显式中止必须确认总监取消、根与模块停止状态、全部组长父调度及停止快照/容量读回；任何失败保留原容量与停止栅栏。显式继续恢复经唯一身份/模块/会话核验的原组长任务，不重复创建同模块组长；已完成组长按完成快照核验，不依赖旧聊天标签。Loop+ 组长的会话晋升同步更新部门任务仓储。显式继续时可用最近组长 main 回合及原生转录修复旧本地会话绑定，目标占用冲突或写入读回失败时保持中止。",
+      "description": "总监群聊按整组执行退出进度显示中止状态。停止请求在途时关闭派发并禁用中止按钮，等待总监、组长及其活动员工退出。原执行退出或保存未确认时可重试中止，继续执行保持禁用。全部确认且容量归还后显示已中止，按原有门槛开放继续。带 runtimeInterrupted 的历史运行记录沿用已中止文案。宿主重启后，太阳标签、组长标签、定时巡检和两级群聊按可信来源及当前执行登记判断运行，总监控制器及续接登记也计作活动。历史来源已释放或核实本机原进程已退出时显示本宿主执行已中断。旧版标记、其他宿主或无法核实的来源仅只读显示执行状态待核实。显式任务 ID 缺失不回退到其它活动任务，群聊 Markdown 状态行同步内存投影。此只读投影不改任务或调度状态，不确认整组停止、原执行退出或资源释放，不授权自动恢复。历史员工执行占位不计作运行，待验收不计作主动验收。Loop+ 冷态显式中止必须确认总监取消、根与模块停止状态、全部组长父调度及停止快照/容量读回；任何失败保留原容量与停止栅栏。显式继续恢复经唯一身份/模块/会话核验的原组长任务，不重复创建同模块组长；已完成组长按完成快照核验，不依赖旧聊天标签。Loop+ 组长的会话晋升同步更新部门任务仓储。显式继续时可用最近组长 main 回合及原生转录修复旧本地会话绑定，目标占用冲突或写入读回失败时保持中止。",
       "status": "active",
       "applies_to": [
         "plugin.department_task"
@@ -8427,6 +8557,15 @@
           "path": "src/extensionHost/loopGroupChatPanelCoordinator.ts"
         },
         {
+          "path": "src/extensionHost/departmentHistoricalTaskStore.ts"
+        },
+        {
+          "path": "src/extensionHost/departmentExecutionObservation.ts"
+        },
+        {
+          "path": "src/conversationTabRunningFlow.ts"
+        },
+        {
           "path": "src/extensionHost/departmentLeaderSessionPromotion.ts"
         },
         {
@@ -8437,6 +8576,9 @@
         },
         {
           "path": "src/test/extensionHost/departmentruntimecomposition.test.ts"
+        },
+        {
+          "path": "src/test/extensionHost/departmentHistoricalTaskStore.test.ts"
         },
         {
           "path": "src/webview/loopGroupChatPanel.ts"
@@ -8508,12 +8650,13 @@
     {
       "id": "plugin.rule.department_director_tab_manual_close",
       "name": "总监主会话标签仅由用户关闭",
-      "description": "☀️ 总监标签的关闭保护随工作区标签持久化，失败、停止、待复核及完成后均保留。重复会话接管在停止原运行前检查保护。用户通过可用的关闭按钮关闭标签。",
+      "description": "☀️ 总监标签的关闭保护随工作区标签持久化，失败、停止、待复核及完成后均保留。重复会话接管在停止原运行前检查保护。用户通过可用的关闭按钮关闭标签。🌛 组长成功结算并持久化后，宿主按本代执行标签、工作区和最终主会话绑定关页，暂停、失败或待复核时保留标签和会话。",
       "status": "active",
       "applies_to": ["plugin.department_task", "plugin.chat_panel"],
       "source_refs": [
         { "path": "src/extensionHost/sessionTabs.ts" },
         { "path": "src/test/session/sessionTabCliSwitch.test.ts" },
+        { "path": "src/extensionHost/departmentorchestration.ts" },
         { "path": ".ch/docs/design-docs/department-mode.md" }
       ]
     },
@@ -8853,7 +8996,7 @@
       "id": "plugin.rule.department_director_balanced_round_dispatch",
       "name": "产研部总监均衡分轮派工",
       "kind": "business_rule",
-      "description": "总监每轮检查剩余目标，在组长可用名额内用同一个 continue 批次并行派发多个已就绪、可独立验收、范围不冲突且并行有实际收益的目标。局部或强耦合工作可由一组完成，有先后依赖的工作分轮。各组保持任务内聚并按实现与验证成本尽量均衡。组长结算后复核原始目标、补充要求与依赖，有空位时补派新就绪工作。全部目标覆盖、已登记任务与协作结算后才确认整体完成。",
+      "description": "总监按业务模块或可独立交付的场景划分同一需求。每项交付归一位组长负责实现、验收和返工。就绪且写入相容的模块在单次派发上限内同轮启动，组长人数和余额仅作参考。各组按统一根方案独立并行验收并汇报证据，总监核对目标覆盖并补派新就绪项。只剩一项或真实强耦合时由一组完成。跨组集成缺口归一位组长补验。宿主检查申报的写入和互斥资源，同批冲突在登记前交总监重排。",
       "status": "active",
       "applies_to": [
         "plugin.department_task",
@@ -8862,6 +9005,15 @@
       "source_refs": [
         {
           "path": "src/departmentprompts.ts"
+        },
+        {
+          "path": "media/prompt-rules/department/director.md"
+        },
+        {
+          "path": "media/prompt-rules/department/leader.md"
+        },
+        {
+          "path": "src/extensionHost/departmentruntimecomposition.ts"
         },
         {
           "path": "src/extensionHost/loopOrchestration.ts"

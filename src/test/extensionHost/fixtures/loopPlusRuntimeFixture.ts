@@ -12,6 +12,7 @@ import type { LoopPlusPromptTarget } from "../../../extensionHost/loopPlusOrches
 import type { LoopPlusSchedulerSnapshot } from "../../../loopPlusScheduler";
 import type { LoopPlusRuntimeAdapter, LoopPlusRuntimeAdapterDeps } from "../../../extensionHost/loopPlusRuntimeAdapter";
 import type { FirstLoopMainExecution } from "../../../extensionHost/promptRunHandoff";
+import { createLoopMainQuestionQueue } from "../../../loopMainQuestionQueue";
 
 type PublishOptions = {
   status?: TaskRunStatus | null;
@@ -86,11 +87,19 @@ export type LoopPlusRuntimeFixture = {
 
 type LoopPlusTaskPersistence = {
   create(task: LoopTaskRecord): LoopTaskRecord;
-  read(taskId: string): LoopTaskRecord | null;
+  read: LoopPlusRuntimeAdapterDeps["readTask"];
   save(task: LoopTaskRecord): void;
   update?: LoopPlusRuntimeAdapterDeps["updateTask"];
   remove(taskId: string): void | boolean;
 };
+
+export function seedMainParent(fixture: LoopPlusRuntimeFixture, id: string): void {
+  fixture.saveTask({ id, cli: fixture.target.cli, sessionId: fixture.target.sessionId, workspaceKey: "workspace",
+    taskStoreFile: fixture.storeFile, rootPrompt: "验收交付", schedulingMode: "event_driven", status: "running",
+    createdAt: 1, updatedAt: 1, maxRounds: 10, currentRound: 0, communicationDir: fixture.rootDir,
+    mainCommunicationFile: path.join(fixture.rootDir, "main.md"), subTasks: [], rounds: [],
+    completionRoundSummaries: [], completionRequirementCoverage: [] });
+}
 
 export async function waitForLoopPlus(predicate: () => boolean, label: string): Promise<void> {
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -126,13 +135,18 @@ export function createLoopPlusRuntimeFixture(options: {
   readRuns?: LoopPlusRuntimeAdapterDeps["readRuns"];
   observeRunCompletions?: boolean;
   taskPersistence?: LoopPlusTaskPersistence;
+  commitOrdinaryRun?: LoopPlusRuntimeAdapterDeps["commitOrdinaryRun"];
   taskPersistenceFactory?: (rootDir: string) => LoopPlusTaskPersistence;
   beforeRun?: (input: PromptRunInput) => Promise<void>;
   onSubtaskPreparationFailed?: LoopPlusRuntimeAdapterDeps["onSubtaskPreparationFailed"];
   onMainActivityChange?: LoopPlusRuntimeAdapterDeps["onMainActivityChange"];
+  /** Same seam as the extension's persisted-task surface refresh. Existing callers omit it. */
+  onTaskSurfaceRefresh?: (taskId: string) => void;
   isInvocationActive?: LoopPlusRuntimeAdapterDeps["isInvocationActive"];
   revealClarification?: LoopPlusRuntimeAdapterDeps["revealClarification"];
   waitForClarification?: LoopPlusRuntimeAdapterDeps["waitForClarification"];
+  /** Defaults to the ordinary fixture workspace. Production records use their real key. */
+  activeWorkspaceKey?: () => string;
 
 } = {}): LoopPlusRuntimeFixture {
   const { createLoopPlusRuntimeAdapter } = require("../../../extensionHost/loopPlusRuntimeAdapter") as typeof import("../../../extensionHost/loopPlusRuntimeAdapter");
@@ -204,9 +218,9 @@ export function createLoopPlusRuntimeFixture(options: {
     for (const task of tasks) taskRecords.set(task.id, task);
   }
 
-  function readTask(taskId: string): LoopTaskRecord | null {
+  function readTask(taskId: string, readOptions?: import("../../../loopTaskStore").LoopTaskStoreReadOptions): LoopTaskRecord | null {
     if (removedTaskIds.has(taskId)) return null;
-    return taskPersistence ? taskPersistence.read(taskId) : taskRecords.get(taskId) ?? null;
+    return taskPersistence ? taskPersistence.read(taskId, readOptions) : taskRecords.get(taskId) ?? null;
   }
 
   function saveTask(task: LoopTaskRecord): void {
@@ -396,6 +410,7 @@ export function createLoopPlusRuntimeFixture(options: {
       saveTask(complete);
       return readTask(taskId) ?? complete;
     },
+    commitOrdinaryRun: options.commitOrdinaryRun,
     updateTask: createLoopPlusPersistedTaskRefresher({
       updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => {
         if (taskPersistence?.update) return taskPersistence.update(taskId, patch);
@@ -417,6 +432,7 @@ export function createLoopPlusRuntimeFixture(options: {
           taskId,
           snapshot: task?.loopPlus as LoopPlusSchedulerSnapshot | undefined,
         });
+        options.onTaskSurfaceRefresh?.(taskId);
       },
     }),
     appendHostMessage: (_target, message) => {
@@ -530,7 +546,7 @@ export function createLoopPlusRuntimeFixture(options: {
       releaseInvocation(tabId);
     },
     resolveSessionId: (promptTarget) => promptTarget.sessionId,
-    activeWorkspaceKey: () => "workspace",
+    activeWorkspaceKey: options.activeWorkspaceKey ?? (() => "workspace"),
     isSubtaskConversation: () => subtaskConversation,
     isTaskCompatible: () => compatible,
     bindResumeTarget: (taskId, cli, sessionId) => {
@@ -887,6 +903,7 @@ export function createLoopPlusExtensionStopHarness(options: {
   }).outputText;
   const sandbox = {
     shouldCloseLoopPlusParentGateBeforeAbort,
+    loopMainQuestionQueue: createLoopMainQuestionQueue(),
     normalizeLoopTaskId,
     resolveLoopRunConversationTabContext,
     resolveLoopConversationTabContextFromMessages,

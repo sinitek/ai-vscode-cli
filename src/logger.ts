@@ -2,11 +2,11 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as os from "os";
 import { getHistoryRetentionCutoff } from "./historyRetention";
-import { normalizeHistoryRetentionDays, readToolSettingsFromDisk } from "./toolSettings";
+import { DEBUG_LOGGING_DEFAULT, normalizeHistoryRetentionDays, readToolSettingsFromDisk } from "./toolSettings";
 import type { PerformanceEntry } from "./performanceLog";
 
 let logsDirPath: string | undefined;
-let debugLoggingEnabled = false;
+let debugLoggingEnabled = DEBUG_LOGGING_DEFAULT;
 let logRetentionCleanupPromise: Promise<void> | null = null;
 const logWriteQueues = new Map<string, Promise<void>>();
 
@@ -32,7 +32,7 @@ export function scheduleLogRetentionCleanup(): Promise<void> | undefined {
     .catch((error) => {
       return appendLog("ERROR", "logs-retention-cleanup-failed", {
         reason: error instanceof SyntaxError ? "invalid-settings" : "io-error",
-      }, { force: true }).catch(() => undefined);
+      }).catch(() => undefined);
     })
     .finally(() => {
       logRetentionCleanupPromise = null;
@@ -53,23 +53,23 @@ export function sanitizeEnv(env: Record<string, string | undefined>): Record<str
 }
 
 export async function logInfo(message: string, data?: unknown): Promise<void> {
-  await appendLog("INFO", message, data);
+  await appendLog(isErrorEvent(message) ? "ERROR" : "INFO", message, data);
 }
 
 export async function logDebug(message: string, data?: unknown): Promise<void> {
-  await appendLog("DEBUG", message, data);
+  await appendLog(isErrorEvent(message) ? "ERROR" : "DEBUG", message, data);
 }
 
 export async function logError(message: string, data?: unknown): Promise<void> {
-  await appendLog("ERROR", message, data, { force: true });
+  await appendLog("ERROR", message, data);
 }
 
 export async function logEssential(message: string, data?: unknown): Promise<void> {
-  await appendLog("INFO", message, data, { force: true });
+  await logInfo(message, data);
 }
 
 export async function writePerformanceLog(entry: PerformanceEntry): Promise<void> {
-  if (!logsDirPath) return;
+  if (!logsDirPath || !debugLoggingEnabled) return;
   const now = new Date();
   const { traceId, mode, cli, role, phase, outcome, durationMs } = entry;
   await appendToSegmentedLog(`sinitek-cli.performance.${formatLocalDate(now)}.log`,
@@ -250,20 +250,15 @@ export async function logCliInteractiveOutput(
   await appendToSegmentedLog(filename, `${prefixed}\n`);
 }
 
-type AppendLogOptions = {
-  force?: boolean;
-};
-
 async function appendLog(
   level: "DEBUG" | "INFO" | "ERROR",
   message: string,
-  data?: unknown,
-  options: AppendLogOptions = {}
+  data?: unknown
 ): Promise<void> {
   if (!logsDirPath) {
     return;
   }
-  if (!debugLoggingEnabled && !options.force && level !== "ERROR") {
+  if (!debugLoggingEnabled && level !== "ERROR") {
     return;
   }
   const time = new Date().toISOString();
@@ -274,12 +269,14 @@ async function appendLog(
   await appendToSegmentedLog(filename, line);
 }
 
+function isErrorEvent(message: string): boolean {
+  return /(?:^|[-_])(error|failed|failure|unconfirmed|refused)$/.test(message);
+}
+
 async function pruneExpiredLogs(dirPath: string): Promise<void> {
   const entries = await fs.readdir(dirPath, { withFileTypes: true });
   const retentionDays = normalizeHistoryRetentionDays(readToolSettingsFromDisk().historyRetentionDays);
   const cutoffMs = getHistoryRetentionCutoff(Date.now(), retentionDays);
-  let removed = 0;
-
   await Promise.all(entries.map(async (entry) => {
     if (!entry.isFile() || !entry.name.endsWith(".log")) {
       return;
@@ -289,19 +286,11 @@ async function pruneExpiredLogs(dirPath: string): Promise<void> {
       const stat = await fs.stat(filePath);
       if (stat.mtimeMs < cutoffMs) {
         await fs.unlink(filePath);
-        removed += 1;
       }
     } catch {
       // Ignore races where files are removed between readdir/stat/unlink.
     }
   }));
-
-  if (removed > 0) {
-    await appendLog("DEBUG", "logs-retention-pruned", {
-      removed,
-      retentionDays,
-    });
-  }
 }
 
 async function appendToSegmentedLog(baseFilename: string, content: string): Promise<void> {

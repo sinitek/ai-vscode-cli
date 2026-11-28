@@ -7,6 +7,7 @@ import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptance
 import { buildLoopPlusFinishEventId, type LoopPlusSeenAttempt } from "../../loopPlusScheduler";
 import type { LoopGroupChatPanelState } from "../../webview/loopGroupChatPanelTypes";
 import { installVscodeMock } from "../vscodeMock";
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 
 installVscodeMock();
 
@@ -19,6 +20,7 @@ function reviewed(subtaskId: string, attemptId: string, acceptance: "passed" | "
 function feedback(attempts: readonly LoopPlusSeenAttempt[], titles: string[]): LoopGroupChatSegment {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: titles,
+    checks: loopPlusAcceptanceChecksFixture({ contracts: { passed: attempts.every((attempt) => attempt.acceptance !== "failed") } }),
     reviews: attempts.map((attempt) => ({
       eventId: buildLoopPlusFinishEventId(attempt.subtaskId, attempt.attemptId),
       acceptance: attempt.acceptance ?? "passed",
@@ -49,7 +51,7 @@ for (const acceptance of ["passed", "failed"] as const) {
     assert.equal(anchors.byParticipantId.get(attempt.subtaskId), "loop-plus-acceptance-0");
     const patch = buildLoopGroupChatPanelContentPatch(stateWithFeedback([attempt], [segment]), 1);
     assert.match(patch.rosterPanelHtml, /<button class="member member-acceptance-link"[^>]+data-acceptance-target="loop-plus-acceptance-0"/u);
-    assert.match(patch.timelineHtml, /class="message main-turn with-avatar acceptance-anchor" id="loop-plus-acceptance-0" tabindex="-1"/u);
+    assert.match(patch.timelineHtml, /class="message main-turn with-avatar acceptance-result acceptance-anchor" id="loop-plus-acceptance-0" tabindex="-1"/u);
     assert.doesNotMatch(patch.timelineHtml, /loop-plus-acceptance:|attempt:%|成员--/u);
     assert.match(patch.timelineHtml, acceptance === "passed" ? /回归与交付审查通过/u : /契约断言失败/u);
   });
@@ -95,6 +97,17 @@ test("legacy batch feedback links each uniquely named reviewed member", () => {
   const anchors = buildLoopGroupChatAcceptanceAnchors([segment], [{ id: "A", title: "子任务 1：前端" }, { id: "B", title: "子任务 2：后端" }], attempts);
   assert.equal(anchors.byParticipantId.size, 2);
   assert.equal(anchors.bySegmentIndex.size, 1);
+});
+
+test("a stored six-row conclusion keeps its original evidence and member link", () => {
+  const names = ["实现完整性", "契约一致性", "测试验证", "产物可运行性", "改动合理性", "回归与边界检查"];
+  const originalRows = names.map((name) => `| 默认验收·${name} | ✅ 历史记录中的${name}证据 |`);
+  const transcript = ["## 验收结果", "", "**子任务：任务A**", "", "**整体验收结果：✅ 通过**", "",
+    "| 审查内容 | 审查结果 |", "| --- | --- |", ...originalRows].join("\n");
+  const stored = parseLoopGroupChatTranscript(transcript).segments;
+  const patch = buildLoopGroupChatPanelContentPatch(stateWithFeedback([reviewed("A", "a-1")], stored), 1);
+  for (const row of originalRows) assert.ok(patch.timelineHtml.includes(row));
+  assert.match(patch.rosterPanelHtml, /data-acceptance-target="loop-plus-acceptance-0"/u);
 });
 
 test("malformed metadata, unreviewed members and non-feedback text never produce anchors", () => {

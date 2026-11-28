@@ -31,7 +31,8 @@ test("pause records the same evidence and recovery action once in both communica
       const content = fs.readFileSync(file, "utf8");
       assert.equal((content.match(/## 主任务暂停/g) ?? []).length, 1);
       assert.ok(content.includes(paused.finalSummary ?? ""));
-      assert.match(content, /Loop\+ 已熔断：子任务多次尝试仍无法解决问题/);
+      assert.match(content, /Loop\+ 已熔断，整体任务尚未完成/);
+      assert.doesNotMatch(content, /子任务多次尝试/);
       assert.match(content, /整体任务尚未完成/);
       assert.match(content, /继续执行/);
     }

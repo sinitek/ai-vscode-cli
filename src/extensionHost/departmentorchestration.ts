@@ -1,10 +1,13 @@
-import { departmentLifecycleDiagnostic as diagnostic, departmentCleanupErrorCode, departmentCleanupReason, type DepartmentAdmissionReason, type DepartmentLifecycleReason } from "./departmentlifecyclediagnostics";
+import { setTimeout as delay } from "timers/promises";
+import { departmentLifecycleDiagnostic as diagnostic, departmentCleanupErrorCode, departmentCleanupReason, departmentContinuationWaitReason, type DepartmentAdmissionReason, type DepartmentLifecycleReason, type DepartmentLifecycleStage } from "./departmentlifecyclediagnostics";
 import { isDepartmentLeaderCompleted } from "../loopPlusCompletion";
 import { normalizeDepartmentMetadata, type DepartmentMetadata, type DepartmentRoleRoute } from "../department";
 import type { CapacityLease, DepartmentCapacityPool, DepartmentCapacitySnapshot, DepartmentEmployeeCapacity } from "../departmentcapacity";
 import { normalizeLoopPlusAcceptancePlanSnapshot, type LoopPlusAcceptancePlanSnapshot } from "../loopPlusAcceptancePlan";
 import { createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../loopPlusScheduler";
-import { DEPARTMENT_LEADER_RECOVERY_INSTRUCTIONS_MAX_LENGTH, type DepartmentLeaderRecovery, type LoopMainDecision, type LoopTaskRecord } from "../loopTaskStore";
+import { DEPARTMENT_LEADER_RECOVERY_INSTRUCTIONS_MAX_LENGTH, loopTaskReadUnavailableReason, type DepartmentLeaderRecovery, type LoopMainDecision, type LoopTaskReadUnavailableReason, type LoopTaskRecord } from "../loopTaskStore";
+import { loopPlusIdentityRetryDelaysMs } from "./loopPlusMainAdmission";
+import { readDeliveredLoopBlockerCause } from "../loopBlocker";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 import { transitionLoopMainDecision } from "./loopTaskStateMachine";
 import type { PromptRunInput } from "../promptRunTypes";
@@ -24,7 +27,7 @@ export type DepartmentOrchestrationDeps = {
   applyEmployeeAllocation?(rootTaskId: string, leaderTaskId: string): void;
   readEmployeeCapacity?(rootTaskId: string, leaderTaskId: string): DepartmentEmployeeCapacity | null;
   canExecuteRoot?(rootTaskId: string): boolean;
-  readTask(taskId: string): LoopTaskRecord | null;
+  readTask(taskId: string, options?: { onUnavailable?(reason: LoopTaskReadUnavailableReason): void }): LoopTaskRecord | null;
   updateTask(taskId: string, patch: Partial<LoopTaskRecord>): LoopTaskRecord | null;
   runtime: LoopPlusRuntimeAdapter;
   createLeaderTarget(route: DepartmentRoleRoute, root: LoopTaskRecord): DepartmentLeaderTarget;
@@ -54,6 +57,7 @@ export type DepartmentOrchestrationDeps = {
   /** Optional release identity is persisted before the in-memory lease is released. */
   persistRuntime(snapshot: DepartmentRuntimeSnapshot, releaseLeaderModuleId?: string): void;
   leaderReleased?(taskId: string, generation: number): void | Promise<void>;
+  closeCompletedLeaderTab?(tabId: string, task: LoopTaskRecord): Promise<void>;
   /** Settled coordinator observation, including blocked cleanup; never a drain certificate. */
   leaderSettled?(rootTaskId: string, taskId: string, generation: number): void;
   notifyDirector(rootTaskId: string, message: DepartmentCoordination): void;
@@ -66,6 +70,7 @@ type Member = { taskId: string; leaderSubtaskId: string; status: DepartmentLeade
   settling?: boolean; acquiring?: Promise<void>; opening?: Promise<void> };
 type LeaderResume = { task: LoopTaskRecord; target: DepartmentLeaderTarget; generation: number };
 type Employee = { taskId: string; attemptId: string; subtaskId: string; release(): void; cleanupFailed(error: unknown): void; done: Promise<void>; recovered: boolean };
+type AdmissionAudit = { rereadCount: number; startedAt: number; arrivalGeneration?: number; arrivalLease?: CapacityLease | null; watched?: boolean };
 type EmployeeRequest = Pick<LoopPlusAttemptRequest, "taskId" | "attemptId" | "subtaskId"> & Partial<Pick<LoopPlusAttemptRequest, "targetCli" | "execution">>;
 type Root = { id: string; workspaceKey: string; metadata: DepartmentMetadata; plan: LoopPlusAcceptancePlanSnapshot;
   snapshot: DepartmentRuntimeSnapshot; members: Map<string, Member>; modules: Map<string, string>;
@@ -82,6 +87,7 @@ const reason = (e: unknown) => e instanceof Error ? e.message : String(e);
 export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationDeps) {
   const roots = new Map<string, Root>();
   const owners = new Map<string, Root>();
+  const attemptArrivals = new Map<string, Promise<Employee | null | undefined>>();
 
   function persist(root: Root, releaseLeaderModuleId?: string, reportFailure = true): boolean {
     root.snapshot.leaders = [...root.members.values()].map(({ taskId, leaderSubtaskId, status, generation }) => ({ taskId, leaderSubtaskId, status, generation }));
@@ -171,7 +177,9 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
   }
   function track(root: Root, member: Member, lifecycle: Promise<unknown>, observation = false): Promise<void> {
     const generation = member.generation;
+    const tabId = member.target?.tabId;
     const releaseOwnership = member.releaseOwnership;
+    let completedLeader: LoopTaskRecord | undefined;
     member.settling = false;
     const run = (async () => {
       try { await lifecycle; }
@@ -193,22 +201,28 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       }
       member.status = hasCompletedLoopPlus(task) ? "completed" : task.status === "stopped" ? "paused" : "failed";
       const lease = member.lease; member.lease = null;
-      if (!persist(root, member.leaderSubtaskId) && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, "persistence-failed", "release-save", "retained"); return; }
+      const saved = persist(root, member.leaderSubtaskId);
+      if (!saved && usesOwnerCleanup(root) && deps.observeLeaderCleanup) { member.lease = lease; member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, "persistence-failed", "release-save", "retained"); return; }
       lease?.release();
       if (lease) memberDiagnostic(root, member, generation, "none", "capacity-release", "released");
       if (lease && usesOwnerCleanup(root)) await deps.leaderReleased?.(member.taskId, generation);
+      if (saved && member.status === "completed" && member.cleanupConfirmedGeneration === generation && !observation) completedLeader = task;
     })().catch((error) => { member.status = "blocked"; persist(root); memberDiagnostic(root, member, generation, departmentCleanupReason(error), "lifecycle", "retained", error); })
       .finally(() => {
         releaseOwnership?.();
         if (member.releaseOwnership === releaseOwnership) member.releaseOwnership = undefined;
       });
     member.run = run;
-    void run.then(() => {
+    void run.then(async () => {
       if (member.run === run) member.run = null;
       if (member.generation !== generation || owners.get(member.taskId) !== root || member.notifiedGeneration === generation) return;
       member.notifiedGeneration = generation;
       try { deps.leaderSettled?.(root.id, member.taskId, generation); }
       catch { diagnostic("department-leader-cleanup", { rootTaskId: root.id, leaderTaskId: member.taskId, generation, stage: "lifecycle", result: "unconfirmed", reason: "unexpected-failure" }); }
+      if (completedLeader && tabId && !root.abort.signal.aborted && deps.canExecuteRoot?.(root.id) !== false) {
+        try { await deps.closeCompletedLeaderTab?.(tabId, completedLeader); }
+        catch (error) { deps.log?.("department-leader-tab-auto-close-error", error); }
+      }
     });
     return run;
   }
@@ -285,7 +299,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     }
   }
   async function continueRoot(rootTaskId: string,
-    continuation?: { assertCurrent(): void; admitted(): void }): Promise<DepartmentRecoveryResult> {
+    continuation?: { assertCurrent(): void; admitted(): void; requestId?: string }): Promise<DepartmentRecoveryResult> {
     const root = roots.get(rootTaskId);
     const rootTask = root && currentRoot(root);
     if (!root || deps.canExecuteRoot?.(rootTaskId) === false || root.stopping || root.snapshot.stopping || root.continuing || !rootTask
@@ -324,7 +338,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       ? { ...module, status: "running" as const, updatedAt: Date.now() } : module);
     if (!deps.updateTask(root.id, { status: "running", subTasks, ...(continuation ? { runtimeInterrupted: undefined } : {}) })) return { ok: false, reason: "root-resume-persistence-failed" };
     continuation?.admitted();
-    for (const { member, resume } of prepared) await resumeLeader(root, member, resume, continuation?.assertCurrent);
+    for (const { member, resume } of prepared) await resumeLeader(root, member, resume, continuation?.assertCurrent, undefined, continuation?.requestId);
     persist(root);
     return { ok: true };
     } catch (error) { return { ok: false, reason: reason(error) }; }
@@ -367,7 +381,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       && Boolean(runningModule(root, member));
   }
   async function submitLeaderSupplement(rootTaskId: string, taskId: string, target: DepartmentLeaderTarget, prompt: string,
-    assertCurrent: () => void): Promise<void> {
+    assertCurrent: () => void, requestId?: string): Promise<void> {
     const root = roots.get(rootTaskId), member = root?.members.get(taskId);
     if (!root || !member || !usesOwnerCleanup(root) || root.continuing || !canContinueMember(root, member) || !text(prompt)) {
       throw new Error("leader-supplement-unavailable");
@@ -382,7 +396,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       || (task?.status !== "needs-review" && task?.status !== "stopped")
       || !snapshot || snapshot.completed || snapshot.running.length) throw new Error("leader-cleanup-or-admission-unverified");
     root.continuing = true;
-    try { await resumeLeader(root, member, prepareLeaderResume(root, member, target), assertCurrent, prompt); }
+    try { await resumeLeader(root, member, prepareLeaderResume(root, member, target), assertCurrent, prompt, requestId); }
     finally { root.continuing = false; }
   }
   function eligibleForDirectorRecovery(root: Root, member: Member, task: LoopTaskRecord | null): boolean {
@@ -409,7 +423,21 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       root.continuing = false;
     }
   }
-  async function resumeLeader(root: Root, member: Member, resume: LeaderResume, assertCurrent?: () => void, supplement?: string): Promise<void> {
+  async function traceLeaderWait<T>(stage: DepartmentLifecycleStage, root: Root, member: Member, generation: number, requestId: string | undefined, operation: () => Promise<T>): Promise<T> {
+    const started = Date.now();
+    const fields = { rootTaskId: root.id, leaderTaskId: member.taskId, generation, stage, ...(requestId ? { requestId } : {}) };
+    diagnostic("department-leader-continuation", { ...fields, result: "started", reason: "none" });
+    try {
+      const value = await operation();
+      diagnostic("department-leader-continuation", { ...fields, result: "confirmed", reason: "none", elapsedMs: Date.now() - started });
+      return value;
+    } catch (error) {
+      diagnostic("department-leader-continuation", { ...fields, result: "unconfirmed", reason: departmentContinuationWaitReason(error),
+        elapsedMs: Date.now() - started, errorCode: departmentCleanupErrorCode(error) });
+      throw error;
+    }
+  }
+  async function resumeLeader(root: Root, member: Member, resume: LeaderResume, assertCurrent?: () => void, supplement?: string, requestId?: string): Promise<void> {
     const { task: original, target, generation: previousGeneration } = resume;
     const { taskId, leaderSubtaskId } = member;
     const previousStatus = member.status, signal = root.abort.signal;
@@ -446,7 +474,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     try {
       assertAdmission(false, original.status);
       member.acquiring = acquiring;
-      lease = await deps.capacity.trackLeader(root.id, leaderSubtaskId, undefined, signal);
+      lease = await traceLeaderWait("capacity-acquire", root, member, generation, requestId, () => deps.capacity.trackLeader(root.id, leaderSubtaskId, undefined, signal));
       if (!lease) throw new Error("resume-cancelled-or-identity-changed");
       assertAdmission(false, original.status);
       const rootTask = currentRoot(root)!;
@@ -465,7 +493,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         assertAdmission(true, "running");
         ownerAttempted = true;
         const opening = member.opening = openOwner(taskId, generation);
-        try { await opening; }
+        try { await traceLeaderWait("owner-open", root, member, generation, requestId, () => opening); }
         finally { if (member.opening === opening) member.opening = undefined; }
         assertAdmission(true, "running");
       } else {
@@ -484,7 +512,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       void lifecycle.catch(() => undefined);
       if (!supplement) track(root, member, lifecycle);
       else if (!committed) {
-        await lifecycle;
+        await traceLeaderWait("runner-lifecycle", root, member, generation, requestId, () => lifecycle);
         if (!committed) throw new Error("leader-supplement-delivery-failed");
       }
       diagnostic("department-leader-continuation", { rootTaskId: root.id, leaderTaskId: taskId,
@@ -547,39 +575,103 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     }
   }
   function acquireAttemptExecution(request: EmployeeRequest, signal: AbortSignal): Promise<Employee | null | undefined> {
-    const task = deps.readTask(request.taskId);
-    // Empty read is the whole observation. Do not treat a nearby identity lock as the cause.
-    if (!task) return refuseAttempt(request, "task-record-unavailable");
-    if (task.department === undefined && task.departmentInvalid !== true) return Promise.resolve(undefined);
+    const arrivalKey = JSON.stringify([request.taskId, request.attemptId, request.subtaskId]);
+    const existing = attemptArrivals.get(arrivalKey);
+    if (existing) return existing;
+    let resolveArrival!: (value: Employee | null | undefined) => void;
+    let rejectArrival!: (error: unknown) => void;
+    const arrival = new Promise<Employee | null | undefined>((resolve, reject) => { resolveArrival = resolve; rejectArrival = reject; });
+    attemptArrivals.set(arrivalKey, arrival);
+    void (async () => {
+      try { resolveArrival(await admitAttempt(request, signal)); }
+      catch (error) { rejectArrival(error); }
+      finally { if (attemptArrivals.get(arrivalKey) === arrival) attemptArrivals.delete(arrivalKey); }
+    })();
+    return arrival;
+  }
+  function parentClosed(task: LoopTaskRecord): boolean {
+    return task.status !== "running" || schedulerSnapshot(task)?.parentStopped === true;
+  }
+  /** Generation and leader lease are whatever the wait started with. The re-read task is the parent authority. */
+  function identityMoved(member: Member | undefined, audit: AdmissionAudit): boolean {
+    return audit.watched === true && (member === undefined || member.generation !== audit.arrivalGeneration || member.lease !== audit.arrivalLease);
+  }
+  function postLockReason(task: LoopTaskRecord, member: Member | undefined, audit: AdmissionAudit): DepartmentAdmissionReason {
+    return !parentClosed(task) && identityMoved(member, audit) ? "identity-changed" : "attempt-validation-failed";
+  }
+  async function admitAttempt(request: EmployeeRequest, signal: AbortSignal): Promise<Employee | null | undefined> {
+    const startedAt = Date.now();
+    let rereadCount = 0;
+    let sawIdentityLock = false;
+    const watched = owners.get(request.taskId)?.members.get(request.taskId);
+    const arrivalGeneration = watched?.generation;
+    const arrivalLease = watched ? watched.lease : undefined;
+    for (let attempt = 0; ; attempt++) {
+      let readFailure: unknown;
+      const task = deps.readTask(request.taskId, { onUnavailable: (reason) => { readFailure = reason; } });
+      // Only an explicit identity-lock-present is transient. Every other empty read finishes discovery.
+      if (!task && loopTaskReadUnavailableReason(readFailure) === "identity-lock-present") {
+        sawIdentityLock = true;
+        const audit: AdmissionAudit = { rereadCount, startedAt, arrivalGeneration, arrivalLease, watched: Boolean(watched) };
+        if (signal.aborted) return refuseAttempt(request, "admission-cancelled", undefined, undefined, undefined, audit);
+        if (attempt === loopPlusIdentityRetryDelaysMs.length) {
+          diagnostic("department-employee-admission", { leaderTaskId: request.taskId, attemptId: request.attemptId, stage: "admission",
+            result: "retained", reason: "task-record-unavailable", readFailure, rereadCount, elapsedMs: Date.now() - startedAt });
+        }
+        const wait = loopPlusIdentityRetryDelaysMs[Math.min(attempt, loopPlusIdentityRetryDelaysMs.length - 1)];
+        try { await delay(wait, undefined, { signal }); }
+        catch (error) {
+          if (signal.aborted) return refuseAttempt(request, "admission-cancelled", undefined, undefined, undefined, audit);
+          throw error;
+        }
+        rereadCount += 1;
+        continue;
+      }
+      const audit: AdmissionAudit | undefined = sawIdentityLock
+        ? { rereadCount, startedAt, arrivalGeneration, arrivalLease, watched: Boolean(watched) } : undefined;
+      const value = await decideAttempt(request, signal, task, readFailure, audit);
+      if (audit && value !== null) diagnostic("department-employee-admission", { leaderTaskId: request.taskId, attemptId: request.attemptId,
+        stage: "admission", result: "confirmed", reason: "none", rereadCount: audit.rereadCount, elapsedMs: Math.max(0, Date.now() - startedAt) });
+      return value;
+    }
+  }
+  function decideAttempt(request: EmployeeRequest, signal: AbortSignal, task: LoopTaskRecord | null, readFailure: unknown,
+    audit?: AdmissionAudit): Promise<Employee | null | undefined> {
+    if (!task) return refuseAttempt(request, "task-record-unavailable", undefined, undefined, readFailure, audit);
     const root = owners.get(request.taskId), member = root?.members.get(request.taskId);
+    // Re-read authority: a stopped parent, a watched leader that disappeared, or a moved generation/lease allocates and starts nothing.
+    if (audit && task.departmentInvalid !== true && (parentClosed(task) || identityMoved(member, audit))) {
+      return refuseAttempt(request, postLockReason(task, member, audit), root, member, undefined, audit);
+    }
+    if (task.department === undefined && task.departmentInvalid !== true) return Promise.resolve(undefined);
     if (task.department?.executionMode === "loop-plus" && task.departmentInvalid !== true) {
       return root && member ? trackLoopPlusEmployee(root, member, request, signal) : Promise.resolve(undefined);
     }
-    if (!root || !member) return refuseAttempt(request, "owner-or-member-missing", root, member);
-    if (!validAttempt(root, member, request)) return refuseAttempt(request, "attempt-validation-failed", root, member);
+    if (!root || !member) return refuseAttempt(request, "owner-or-member-missing", root, member, undefined, audit);
+    if (!validAttempt(root, member, request)) return refuseAttempt(request, "attempt-validation-failed", root, member, undefined, audit);
     const identity = key(request.taskId, request.attemptId), held = root.employees.get(identity);
-    if (held) return held.subtaskId === request.subtaskId && !held.recovered ? Promise.resolve(held) : refuseAttempt(request, "occupancy-conflict", root, member);
+    if (held) return held.subtaskId === request.subtaskId && !held.recovered ? Promise.resolve(held) : refuseAttempt(request, "occupancy-conflict", root, member, undefined, audit);
     const pending = root.pending.get(identity);
-    if (pending) return pending.subtaskId === request.subtaskId ? pending.promise : refuseAttempt(request, "occupancy-conflict", root, member);
-    if (signal.aborted || root.abort.signal.aborted) return refuseAttempt(request, "admission-cancelled", root, member);
+    if (pending) return pending.subtaskId === request.subtaskId ? pending.promise : refuseAttempt(request, "occupancy-conflict", root, member, undefined, audit);
+    if (signal.aborted || root.abort.signal.aborted) return refuseAttempt(request, "admission-cancelled", root, member, undefined, audit);
     const generation = member.generation, leaderLease = member.lease;
     deps.applyEmployeeAllocation?.(root.id, request.taskId);
     const admission = (async (): Promise<Employee | null> => {
       const lease = await deps.capacity.trackEmployee(root.id, request.taskId, request.attemptId, AbortSignal.any([signal, root.abort.signal]));
-      if (!lease) return refuseAttempt(request, signal.aborted || root.abort.signal.aborted ? "admission-cancelled" : "capacity-unavailable", root, member);
+      if (!lease) return refuseAttempt(request, signal.aborted || root.abort.signal.aborted ? "admission-cancelled" : "capacity-unavailable", root, member, undefined, audit);
       if (signal.aborted || root.abort.signal.aborted || member.generation !== generation || member.lease !== leaderLease
         || !validAttempt(root, member, request)) {
         lease.release();
         const reason = signal.aborted || root.abort.signal.aborted ? "admission-cancelled"
           : member.generation !== generation || member.lease !== leaderLease ? "identity-changed" : "attempt-validation-failed";
-        return refuseAttempt(request, reason, root, member);
+        return refuseAttempt(request, reason, root, member, undefined, audit);
       }
       const releaseDiagnostic = { release: true };
       const employee = employeeHandle(root, request, lease, false, releaseDiagnostic);
       root.employees.set(identity, employee);
       if (!persist(root, undefined, false)) {
         releaseDiagnostic.release = false;
-        try { refuseAttempt(request, "persistence-failed", root, member); } finally { employee.release(); }
+        try { refuseAttempt(request, "persistence-failed", root, member, undefined, audit); } finally { employee.release(); }
         return null;
       }
       return employee;
@@ -589,29 +681,35 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
     void admission.then(remove, remove);
     return admission;
   }
-  function refuseAttempt(request: EmployeeRequest, reason: DepartmentAdmissionReason, root?: Root, member?: Member): Promise<null> {
+  function refuseAttempt(request: EmployeeRequest, reason: DepartmentAdmissionReason, root?: Root, member?: Member, readFailure?: unknown,
+    audit?: AdmissionAudit): Promise<null> {
     diagnostic("department-employee-admission", { ...(root ? { rootTaskId: root.id } : {}), leaderTaskId: request.taskId,
-      attemptId: request.attemptId, ...(member ? { generation: member.generation } : {}), stage: "admission", result: "refused", reason });
+      attemptId: request.attemptId, ...(member ? { generation: member.generation } : {}), stage: "admission", result: "refused", reason,
+      ...(audit ? { rereadCount: audit.rereadCount, elapsedMs: Math.max(0, Date.now() - audit.startedAt) } : {}),
+      ...(reason === "task-record-unavailable" ? { readFailure } : {}) });
     return Promise.resolve(null);
   }
-  async function trackLoopPlusEmployee(root: Root, member: Member, request: EmployeeRequest, signal: AbortSignal): Promise<Employee | undefined> {
-    if (root.abort.signal.aborted || !member.lease) return undefined;
+  async function trackLoopPlusEmployee(root: Root, member: Member, request: EmployeeRequest, signal: AbortSignal): Promise<Employee | null | undefined> {
+    const admissionSignal = AbortSignal.any([signal, root.abort.signal]);
+    if (admissionSignal.aborted) return null;
+    if (!member.lease) return undefined;
     const identity = key(request.taskId, request.attemptId), generation = member.generation;
     try {
       deps.applyEmployeeAllocation?.(root.id, request.taskId);
-      const lease = await deps.capacity.trackEmployee(root.id, request.taskId, request.attemptId, AbortSignal.any([signal, root.abort.signal]));
-      if (!lease) return undefined;
-      if (signal.aborted || root.abort.signal.aborted || member.generation !== generation || !member.lease) {
-        lease.release();
-        return undefined;
+      const lease = await deps.capacity.trackEmployee(root.id, request.taskId, request.attemptId, admissionSignal);
+      if (admissionSignal.aborted || member.generation !== generation) {
+        lease?.release();
+        return null;
       }
+      if (!lease) return undefined;
+      if (!member.lease) { lease.release(); return undefined; }
       const employee = employeeHandle(root, request, lease, false);
       root.employees.set(identity, employee);
       persist(root);
       return employee;
     } catch (error) {
       deps.log?.("department-employee-projection-failed", error);
-      return undefined;
+      return admissionSignal.aborted ? null : undefined;
     }
   }
   function employeeHandle(root: Root, request: { taskId: string; subtaskId: string; attemptId: string }, lease: CapacityLease, recovered: boolean, diagnostics: { release: boolean } = { release: true }): Employee {
@@ -660,7 +758,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       && task.subTasks.some((item) => item.id === request.subtaskId && item.status === "running")
       && !!snapshot?.running.some((item) => item.subtaskId === request.subtaskId && item.attemptId === request.attemptId);
   }
-  async function stopRoot(rootTaskId: string): Promise<boolean> {
+  async function stopRoot(rootTaskId: string, directorRetirement?: Promise<void>): Promise<boolean> {
     const root = roots.get(rootTaskId); if (!root) return false;
     if (root.stopping) return root.stopping;
     const startedAt = Date.now(), diagnoseStop = !root.stopDiagnosed;
@@ -675,7 +773,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         stoppedMembers.add(member);
         const generation = member.generation;
         try {
-        if (member.status === "completed" && !member.run && !member.lease) {
+        if (member.status === "completed" && !member.lease && !hasLeaderWork(root, member)) {
           if (!usesOwnerCleanup(root)) member.cleanupConfirmedGeneration = generation;
           return;
         }
@@ -735,6 +833,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       const results = [...await activeStops, ...remainingStops];
       persist(root);
       const membersStopped = results.every((item) => item.status === "fulfilled");
+      const directorStopped = !directorRetirement || await directorRetirement.then(() => true, () => false);
       const retained = [...root.members.values()].filter((member) => member.lease !== null).length;
       const task = currentRoot(root);
       if (!task) root.persistenceError = true;
@@ -749,15 +848,16 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         const savedTask = deps.updateTask(root.id, { status: "stopped", subTasks, updatedAt: Date.now() });
         if (!savedTask || savedTask.status !== "stopped") root.persistenceError = true;
       }
-      const membersConfirmed = membersStopped && unconfirmed === 0 && retained === 0 && !root.persistenceError;
-      const accepted = root.metadata.executionMode === "loop-plus" ? membersConfirmed : membersStopped && retained === 0 && !root.persistenceError;
+      const drained = directorStopped && membersStopped && retained === 0 && !root.persistenceError;
+      const membersConfirmed = drained && unconfirmed === 0;
+      const accepted = root.metadata.executionMode === "loop-plus" ? membersConfirmed : drained;
       if (accepted) {
         root.snapshot.stopping = false;
         if (!persist(root)) root.snapshot.stopping = true;
       }
       const confirmedStop = membersConfirmed && !root.snapshot.stopping && !root.persistenceError;
       if (diagnoseStop) diagnostic("department-root-stop-settled", { rootTaskId: root.id, stage: "root-stop", result: confirmedStop ? "confirmed" : "unconfirmed",
-        reason: root.persistenceError ? "persistence-failed" : membersStopped ? "none" : "evidence-rejected", confirmed, unconfirmed,
+        reason: root.persistenceError ? "persistence-failed" : directorStopped && membersStopped ? "none" : "evidence-rejected", confirmed, unconfirmed,
         retained, elapsedMs: Date.now() - startedAt });
       return root.metadata.executionMode === "loop-plus" ? confirmedStop : accepted && !root.snapshot.stopping;
     })();
@@ -839,7 +939,7 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
         const stoppedLoopPlusMember = !ownerCleanup && task.status === "stopped" && item.status === "paused" && storedTask.status === "stopped"
           && scheduler.parentStopped && !scheduler.completed && scheduler.running.length === 0
           && !occupiedModules.has(item.leaderSubtaskId) && !hasEmployeeCapacity;
-        const completedLoopPlusMember = !ownerCleanup && task.status === "stopped" && item.status === "completed" && storedTask.status === "completed"
+        const completedLoopPlusMember = !ownerCleanup && item.status === "completed" && storedTask.status === "completed"
           && hasCompletedLoopPlus(storedTask, scheduler) && !occupiedModules.has(item.leaderSubtaskId) && !hasEmployeeCapacity;
         const verified = stoppedLoopPlusMember || completedLoopPlusMember ? null : inspect(root, item);
         // A durable identity permits only this read-only refusal. It cannot
@@ -1033,10 +1133,14 @@ export function createDepartmentOrchestrationHost(deps: DepartmentOrchestrationD
       if (member && !readable) unavailable++;
       if (!append("模块及组长汇报", { moduleId: summary(module.id, 200), title: summary(module.title, 300),
         progressWeightPercent: module.progressWeightPercent ?? null, requirements: summary(module.prompt, 700),
+        declaredWriteScope: module.writeFiles?.length ? summary(module.writeFiles.join("、"), 400) : undefined,
+        conflictGroup: module.conflictGroup ? summary(module.conflictGroup, 120) : undefined,
         leaderTaskId: id ? summary(id, 200) : null, organizationStatus: member?.status ?? (starting ? "starting" : "未启动"),
         taskStatus: leader?.status ?? "信息不可用（未启动或记录缺失、不可读、身份异常）",
         generation: member?.generation,
         directorRecoveryAvailable: member?.status === "failed" ? eligibleForDirectorRecovery(root, member, leader) : undefined,
+        blockerCause: member?.status === "failed" || member?.status === "blocked"
+          ? readDeliveredLoopBlockerCause(leader?.finalSummary) : undefined,
         answerConclusion: summary(leader?.answerConclusion, 1000), finalReport: summary(leader?.finalSummary, 1800),
         attention: !member ? "模块尚未启动" : !leader ? "组长身份或记录不可核验"
           : !readable ? "实际汇报不可用"

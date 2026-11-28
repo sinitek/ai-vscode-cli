@@ -1010,11 +1010,12 @@ export const VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE = `      function updateCu
         if (typeof guardDepartmentRootDispatch === "function" && !guardDepartmentRootDispatch(payload, tabId)) return "failed";
         const targetTabId = typeof tabId === "string" && tabId ? tabId : getActiveConversationTabId();
         if (isCreatingConversationTab(targetTabId)) return "blocked";
-        if (isLoopMainConversationTabRunning(targetTabId)) {
-          showToast(t("toastLoopMainBusy"));
-          return "blocked";
-        }
-        if (isConversationTabBusy(targetTabId)) {
+        if (isLoopMainTab(getConversationTabSummary(targetTabId))) {
+          if (isLoopMainConversationTabRunning(targetTabId)) {
+            showToast(t("toastLoopMainBusy"));
+            return "blocked";
+          }
+        } else if (isConversationTabBusy(targetTabId)) {
           openRunConflictOverlay(promptPayload);
           return "conflict";
         }

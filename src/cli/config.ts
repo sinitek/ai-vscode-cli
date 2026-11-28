@@ -5,7 +5,7 @@ import { KIMI_DEFAULT_COMMAND, readKimiAcpAgentArgs } from "../interactive/kimiA
 import { ZCODE_DEFAULT_COMMAND } from "../interactive/zcodeAppServerProtocol";
 import { applyModelArg, stripModelArgs } from "./modelArgs";
 import { CLI_LIST, CliName, isOpenCodeCli, MacTaskShell, ThinkingMode, ThinkingWorkspaceFile } from "./types";
-import { readToolSettings } from "../toolSettings";
+import { DEBUG_LOGGING_DEFAULT, readToolSettings } from "../toolSettings";
 import { isInteractiveCli } from "./cliExecutionPolicy";
 
 export const CONFIG_NAMESPACE = "sinitek-cli-tools";
@@ -76,7 +76,7 @@ export function getDebugLogging(): boolean {
     return stored;
   }
   const config = vscode.workspace.getConfiguration(CONFIG_NAMESPACE);
-  return config.get<boolean>("debug", false);
+  return config.get<boolean>("debug", DEBUG_LOGGING_DEFAULT);
 }
 
 export function getMacTaskShell(): MacTaskShell {

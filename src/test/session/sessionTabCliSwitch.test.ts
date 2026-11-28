@@ -63,8 +63,7 @@ function createHost(initial: {
     setWorkspaceInteractiveModeForCli: (cli, mode) => { modes[cli] = mode; return true; },
     resolveAutoInteractiveModeForConversationTab: (tab) => contextFor(tab).taskRole === "main" ? "loop_plus" : "coding",
     collectRunningLoopTaskIds: () => new Set(),
-    isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => initial.departmentTask?.status ?? "running",
+    readLoopTaskRunState: () => ({ isRunning: false, status: initial.departmentTask?.status ?? "running" }),
     getLoopTaskSchedulingMode: () => "event_driven",
     resolveConversationTabLoopContext: contextFor,
     buildSessionLabelFromPrompt: () => null,
@@ -787,6 +786,39 @@ test("历史总监标签在终态和待复核时保留，迟到清理不能关�
     assert.deepEqual(env.closedTabs.map(({tabId}) => tabId), [employee.id, director.id]);
     assert.equal(env.essentialLogs.at(-1)?.payload.closeTarget, "user");
   }
+});
+
+test("组长完成时按原标签和最终会话关页，最后一个标签替换为空会话", async () => {
+  const task: LoopTaskRecord = {
+    id: "task-1", cli: "codex", workspaceKey: "workspace", sessionId: "native-leader", taskStoreFile: "tasks.json",
+    rootPrompt: "组长任务", status: "completed", createdAt: 1, updatedAt: 2, maxRounds: 3, currentRound: 1,
+    communicationDir: "group", mainCommunicationFile: "main.md", subTasks: [], rounds: [], completionRoundSummaries: [],
+    completionRequirementCoverage: [], department: { version: 1, role: "leader", rootTaskId: "director", parentTaskId: "director",
+      leaderSubtaskId: "module", moduleTitle: "模块", limits: { maxLeaders: 1, maxEmployees: 1 }, routes: { director: {}, leader: {}, employee: {} } },
+  };
+  const tab: ConversationTabRecord = { id: "main-leader", cli: "codex", sessionId: task.sessionId!, sessionIdByCli: { codex: task.sessionId! }, createdAt: 1 };
+  const sibling = { ...tab, id: "main-sibling", sessionId: "sibling", sessionIdByCli: { codex: "sibling" } };
+  const reopened = { ...tab, id: "main-reopened" };
+  const state = { activeTabId: sibling.id, tabs: [tab, sibling, reopened] };
+  const runningTabIds = new Set([tab.id]);
+  const env = createHost({ state, currentCli: "codex", modes: {}, runningTabIds });
+  await assert.rejects(env.host.closeCompletedLeaderTab(tab.id, task), /正在运行/);
+  runningTabIds.clear();
+  for (const mismatch of [{ workspaceKey: "other" }, { id: "other-task" }, { sessionId: "another-session" }, { cli: "claude" as const }]) {
+    await env.host.closeCompletedLeaderTab(tab.id, { ...task, ...mismatch });
+  }
+  assert.deepEqual(env.closedTabs, []);
+  await env.host.closeCompletedLeaderTab(tab.id, task);
+  await env.host.closeCompletedLeaderTab(tab.id, task);
+  assert.deepEqual(state.tabs.map((item) => item.id), [sibling.id, reopened.id]);
+  assert.equal(state.activeTabId, sibling.id);
+  assert.deepEqual(env.closedTabs, [{ tabId: tab.id, activeTabId: sibling.id }]);
+
+  const last = createHost({ state: { activeTabId: tab.id, tabs: [tab] }, currentCli: "codex", modes: {} });
+  await last.host.closeCompletedLeaderTab(tab.id, task);
+  assert.equal(last.host.getConversationTabById(tab.id), null);
+  assert.equal(last.host.getActiveConversationTab()?.sessionId, null);
+  assert.notEqual(last.host.getActiveConversationTabId(), tab.id);
 });
 
 test("重复会话接管在停止总监运行前拒绝，即使此时无法从转录读取角色", async () => {

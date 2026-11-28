@@ -72,21 +72,10 @@ export function createConfigHeartbeatCoordinator(deps: ConfigHeartbeatCoordinato
         return;
       }
       const nextSnapshot = buildConfigHeartbeatSnapshot(targetCli, configState, latestModelStore, deps);
-      deps.logDebug("config-heartbeat-tick", {
-        workspaceKey,
-        cli: targetCli,
-        snapshot,
-        next: nextSnapshot,
-      });
       if (!shouldRefreshConfigHeartbeat(snapshot, nextSnapshot)) {
         return;
       }
       snapshot = nextSnapshot;
-      deps.logEssential("config-heartbeat-change", {
-        workspaceKey,
-        cli: targetCli,
-        state: nextSnapshot,
-      });
       const state = await deps.buildPanelStateWithConfigState(configState);
       deps.postState(state);
       deps.syncConfigManagerPanel();

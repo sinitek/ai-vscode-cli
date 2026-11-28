@@ -11,8 +11,10 @@ export type DepartmentGroupChatReadPort = {
   readTaskRecord(taskId: string): LoopTaskRecord | null;
   readLeaderTaskIds?: DepartmentLeaderOwnershipReader;
   getActiveReviewEventIds?(taskId: string): readonly string[];
+  projectSubtasks?(task: LoopTaskRecord): LoopTaskRecord;
   isMainModelRunning?(task: LoopTaskRecord): boolean;
   isLocalExecutionInactive?(task: LoopTaskRecord): boolean;
+  isExecutionUnverified?(task: LoopTaskRecord): boolean;
   /** Read only: absence/failure means unknown, never an empty lease pool. */
   readCapacity?(rootTaskId: string): DepartmentCapacitySnapshot | null;
   readEmployeeAllocation?(rootTaskId: string): DepartmentEmployeeAllocationProjection | null;
@@ -119,8 +121,10 @@ export function isDepartmentLeader(root: LoopTaskRecord, leader: LoopTaskRecord)
     && leader.schedulingMode === "event_driven" && root.workspaceKey && root.workspaceKey === leader.workspaceKey);
 }
 
-function participant(task: LoopTaskRecord, role: "director" | "leader", localExecutionInactive?: boolean): LoopGroupChatPanelParticipant {
-  const status = task.status === "running" && localExecutionInactive ? "runtime_interrupted"
+function participant(task: LoopTaskRecord, role: "director" | "leader", localExecutionInactive?: boolean,
+  executionUnverified?: boolean): LoopGroupChatPanelParticipant {
+  const status = task.status === "running" && executionUnverified ? "runtime_unverified"
+    : task.status === "running" && localExecutionInactive ? "runtime_interrupted"
     : task.status === "running" && role === "director" && task.runtimeInterrupted ? "stopped" : task.status;
   return { id: task.id, title: departmentMetadata(task)!.moduleTitle, role, status,
     sessionId: task.sessionId, summary: task.finalSummary, updatedAt: task.updatedAt };
@@ -191,17 +195,20 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     }
   } catch { return undefined; }
   const progressByModuleId = new Map<string, number>();
-  const leaders = [...byId.values()].map(({ record, leaderNumber }) => {
+  const leaders = [...byId.values()].map(({ record: stored, leaderNumber }) => {
+    const record = port.projectSubtasks?.(stored) ?? stored;
     const localExecutionInactive = port.isLocalExecutionInactive?.(record);
-    const loopPlus = projectLoopPlusPanel(record, port.getActiveReviewEventIds?.(record.id), port.isMainModelRunning?.(record), localExecutionInactive);
+    const executionUnverified = port.isExecutionUnverified?.(record) === true;
+    const loopPlus = executionUnverified ? null
+      : projectLoopPlusPanel(record, port.getActiveReviewEventIds?.(record.id), port.isMainModelRunning?.(record), localExecutionInactive);
     const progressPercent = resolveLoopPanelProgressPercent(record, loopPlus);
-    const statusSummary = meta.role === "director" && loopPlus?.ok ? summarizeLoopPlusMembers([
+    const statusSummary = !executionUnverified && meta.role === "director" && loopPlus?.ok ? summarizeLoopPlusMembers([
       { id: "main", role: "main", status: resolveLoopPlusMainMemberStatus(record, loopPlus) },
       ...record.subTasks.map((subtask) => ({ id: subtask.id, role: "subtask", status: resolveLoopPlusSubtaskMemberStatus(loopPlus, subtask.id, subtask.status) })),
     ]) : undefined;
     progressByModuleId.set(root.subTasks[leaderNumber - 1].id, progressPercent);
-    return { taskId: record.id, leaderNumber, participant: participant(record, "leader", localExecutionInactive), progressPercent,
-      ...(statusSummary ? { statusSummary } : {}), employees: employees(record, loopPlus) };
+    return { taskId: record.id, leaderNumber, participant: participant(record, "leader", localExecutionInactive, executionUnverified), progressPercent,
+      ...(statusSummary && !executionUnverified ? { statusSummary } : {}), employees: employees(record, loopPlus) };
   });
   const overallProgressPercent = meta.role === "director" ? resolveDepartmentWeightedProgress(root, progressByModuleId) : undefined;
   const capacity = readDepartmentCapacity(root.id, port);
@@ -213,7 +220,7 @@ export function buildDepartmentGroupChatProjection(task: LoopTaskRecord, port: D
     employeeAllocationEditable: meta.role === "director" && Boolean(employeeAllocation && port.employeeAllocationWritable),
     role: meta.role as "director" | "leader", rootTaskId: root.id,
     ...(meta.parentTaskId ? { parentTaskId: meta.parentTaskId } : {}), title: meta.moduleTitle,
-    director: participant(root, "director", port.isLocalExecutionInactive?.(root)),
+    director: participant(root, "director", port.isLocalExecutionInactive?.(root), port.isExecutionUnverified?.(root)),
     leaders,
     ...(overallProgressPercent !== undefined ? { overallProgressPercent } : {}),
     maxLeaders: capacity?.maxLeaders ?? rootMeta.limits.maxLeaders,

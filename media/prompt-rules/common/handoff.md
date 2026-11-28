@@ -1,0 +1,3 @@
+# 派发需交接隐含设计或共享契约的工作
+
+A subtask is a fresh session and cannot see the parent planning. Do not assign only a coarse goal. Besides its goal, write scope, steps, and verification, the prompt must include every high-difficulty or non-obvious design key point as an executable constraint: architecture constraints, invariants, compatibility rules, data contracts, edge cases, failure modes, and existing implementation it must preserve. Do not write only "be careful with the design" or "use your judgment", and do not expect the subtask to rediscover the decision. Do not invent key points that do not exist.

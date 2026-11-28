@@ -1,7 +1,7 @@
 import type { LoopSubtaskCleanupResult } from "../loopSubtaskExecutionRoot";
 import { randomUUID } from "crypto";
 import { bindLoopSubtaskSession, resolveLoopSubtaskSession, withLoopSubtaskSession } from "../loopSubtaskSession";
-import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
+import { LOOP_WAIT_WATCHDOG_TICK_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { describeLoopSubtaskError } from "../loopSubtaskFailure";
 import { getErrorInfo } from "../promptRetry";
 import type { ThinkingMode } from "../cli/types";
@@ -11,9 +11,12 @@ import { loopModelRoutingFromPromptInput } from "../continueModelChoice";
 import { retryLoopSubtaskTabClose } from "./loopSubtaskTabs";
 import type { ChatMessage } from "../webview/types";
 import type { LoopTaskRole, TaskRunRecord, TaskRunStatus } from "../promptRunState";
-import type { LoopTaskRecord } from "../loopTaskStore";
+import type { LoopTaskRecord, LoopTaskStoreReadOptions } from "../loopTaskStore";
+import { loopPlusMainFailure } from "../loopMainFailure";
+import { withLoopPlusMainAdmission } from "./loopPlusMainAdmission";
 import type { LoopSubtaskTabCloseOptions } from "../loopSubtaskLifecycle";
 import { buildDepartmentRolePrompt } from "../departmentprompts";
+import { activePromptRuleDelivery } from "../promptRuleIndex";
 import type { DepartmentMetadata } from "../department";
 import type { DepartmentEmployeeCapacity } from "../departmentcapacity";
 import { isDepartmentExecutionCli, normalizeDepartmentMetadata, usesDepartmentOwner } from "../department";
@@ -21,6 +24,7 @@ import type { LoopPlusFinalAssistantHandoff, PromptRunInput, PromptRunTarget } f
 import { FirstLoopMainExecution } from "./promptRunHandoff";
 import type { ConfigLockResumeRequest } from "./loopGroupChatPanelCoordinator";
 import { CodexUnexpectedTurnExitError } from "../interactive/codexRunner";
+import { logError } from "../logger";
 import {
   createLoopPlusOrchestrationHost,
   type LoopPlusAttemptHandle,
@@ -81,16 +85,19 @@ export type LoopPlusRuntimeAdapterDeps = {
   maxConcurrency?: number;
   getActiveConfigIdForCli?: (cli: LoopPlusPromptTarget["cli"]) => string | null;
   launchDelayMs?: LoopPlusOrchestrationDeps["launchDelayMs"];
+  loadedExtensionInstallPath?: LoopPlusOrchestrationDeps["loadedExtensionInstallPath"];
   decisionSubtaskMax?: LoopPlusOrchestrationDeps["decisionSubtaskMax"];
   delay?: LoopPlusOrchestrationDeps["delay"];
   now?: () => number;
   isInvocationActive?: (tabId: string) => boolean;
   hasActiveSubtasks?: (taskId: string) => boolean;
-  readTask: (taskId: string) => LoopTaskRecord | null;
+  hasActiveSubtask?: LoopPlusOrchestrationDeps["hasActiveSubtask"];
+  readTask: (taskId: string, options?: LoopTaskStoreReadOptions) => LoopTaskRecord | null;
   /** Host-only authority check immediately before a user Loop+ root is created. */
   assertNewTaskModeAvailable: () => void;
   createTask: (input: Parameters<LoopPlusOrchestrationDeps["createTask"]>[0] & { departmentMetadata?: DepartmentMetadata }) => LoopTaskRecord;
   updateTask: (taskId: string, patch: Partial<LoopTaskRecord>) => LoopTaskRecord | null;
+  commitOrdinaryRun?: LoopPlusOrchestrationDeps["commitOrdinaryRun"];
   readMainRecoveryTask?: LoopPlusOrchestrationDeps["readMainRecoveryTask"];
   canAutoResumeMain?: LoopPlusOrchestrationDeps["canAutoResumeMain"];
   commitConfigLockResume?: LoopPlusRuntimeAdapterDeps["updateTask"];
@@ -101,6 +108,7 @@ export type LoopPlusRuntimeAdapterDeps = {
   onTaskCompleted?: LoopPlusOrchestrationDeps["onTaskCompleted"];
   appendSubtaskChat?: LoopPlusOrchestrationDeps["appendSubtaskChat"];
   appendAcceptancePlanChat?: LoopPlusOrchestrationDeps["appendAcceptancePlanChat"];
+  appendSupplementalRequirementToCommunication?: LoopPlusOrchestrationDeps["appendSupplementalRequirementToCommunication"];
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   prepareCommunication?: LoopPlusOrchestrationDeps["prepareCommunication"];
   appendAttemptReport: (filePath: string, content: string) => void;
@@ -354,8 +362,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     executionRole?: "backend" | "frontend" | "general",
     execution?: { configId: string | null; model?: string; thinkingMode?: ThinkingMode },
     attemptId?: string,
+    task = deps.readTask(taskId),
   ): PromptRunInput {
-    const task = deps.readTask(taskId);
     const live = livePrompts.get(taskId) ?? null;
     const binding: LoopPlusPromptRoleBinding = resolveLoopPlusPromptRoleBinding({
       role,
@@ -365,7 +373,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     });
     const promptInput: PromptRunInput = {
       displayPrompt,
-      modelPrompt: task?.department?.role === "leader" ? `${buildDepartmentRolePrompt(role === "main" ? "leader" : "employee")}\n\n${modelPrompt}` : modelPrompt,
+      modelPrompt: task?.department?.role === "leader" && activePromptRuleDelivery() === "full"
+        ? `${buildDepartmentRolePrompt(role === "main" ? "leader" : "employee")}\n\n${modelPrompt}` : modelPrompt,
       contextTags: [],
       model: binding.model,
       loopMainModel: binding.loopMainModel,
@@ -472,7 +481,9 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     promptInput: PromptRunInput,
     target: LoopPlusPromptTarget,
     role: "main" | "subtask",
-    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal; lostInvocationSignal?: AbortSignal; firstMainExecution?: FirstLoopMainExecution },
+    options: { isAborted: () => boolean; onStarted?: () => void; signal?: AbortSignal; lostInvocationSignal?: AbortSignal; firstMainExecution?: FirstLoopMainExecution;
+      onObserve?: (read: () => ReturnType<typeof readInvocation>) => void },
+    mainParent?: LoopTaskRecord,
   ): Promise<AttemptExecution> {
     const boundary = captureBoundary(target);
     const query: LoopPlusInvocationQuery = {
@@ -501,9 +512,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         completedRun = run;
       }
     });
+    options.onObserve?.(() => readInvocation(target, boundary, promptInput, role, query.subtaskId, completedRun, finalHandoff, nativeFinalObserved));
     let removePreparationAbort: (() => void) | undefined;
     try {
-      const task = deps.readTask(promptInput.loopTaskId ?? "");
+      const task = mainParent ?? deps.readTask(promptInput.loopTaskId ?? "");
       if (options.firstMainExecution && (!task || task.department || task.departmentInvalid)) {
         throw new Error("原 Loop+ 执行归属已变化，任务未启动。");
       }
@@ -513,9 +525,8 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         if (!task) throw new Error("部门执行任务不存在。");
         if (!deps.runDepartmentMain || !isDepartmentExecutionCli(task.cli)) throw new Error("部门组长原生 Owner 路径未支持，拒绝普通执行回退。");
         await deps.runDepartmentMain(promptInput, { ...options, targetTabId: target.tabId, invocationId: randomUUID() });
-      } else if (role === "subtask" && (usesDepartmentOwner(task?.department) || task?.departmentInvalid)) {
-        // Owner termination is the Department cleanup authority. An ordinary
-        // lost-promise race must not release its resources or shared capacity.
+      } else if (task?.department?.executionMode === "loop-plus"
+        || (role === "subtask" && (usesDepartmentOwner(task?.department) || task?.departmentInvalid))) {
         await deps.runPrompt(promptInput, { ...options, targetTabId: target.tabId });
       } else if (options.signal) {
         const signal = options.signal;
@@ -552,7 +563,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       deps.log?.("loop-plus-invocation-diagnostic", {
         stage: "execution", code: diagnosticCode,
       });
-      if (role === "main" && !options.firstMainExecution && usesDepartmentOwner(deps.readTask(promptInput.loopTaskId ?? "")?.department)) {
+      if (role === "main" && !options.firstMainExecution && usesDepartmentOwner(mainParent?.department)) {
         const unknown = new Error(error instanceof Error ? error.message : String(error)) as Error & { code: string; cause: unknown };
         unknown.code = "DEPARTMENT_NATIVE_UNKNOWN"; unknown.cause = error;
         return { thrown: true, error: unknown, completedRun, boundary, promptInput, target, finalHandoff, nativeFinalObserved };
@@ -571,20 +582,29 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const firstMainExecution = request.firstMainExecution;
     let aborted = false;
     let cancelled = false;
-    const departmentMain = usesDepartmentOwner(deps.readTask(request.taskId)?.department);
-    const controller = departmentMain || firstMainExecution || request.canSendAutoResumedMain ? new AbortController() : undefined;
+    let departmentMain = false;
+    const controller = new AbortController();
     let invocationStarted = false;
+    let runnerActive = false;
     let interruptedNativeSessionId: string | undefined;
     if (firstMainExecution) firstMainExecution.claimed = true;
-    const invocation = (async (): Promise<string | null> => {
+    const invocation = withLoopPlusMainAdmission(request.taskId, deps.readTask, controller.signal, async (task, admission) => {
+      departmentMain = usesDepartmentOwner(task.department);
+      if ((!firstMainExecution && task.status !== "running") || task.workspaceKey !== deps.activeWorkspaceKey()
+        || task.cli !== request.target.cli || (!departmentMain && !deps.isTaskCompatible(task, request.target))) {
+        throw loopPlusMainFailure("LOOP_PLUS_PARENT_UNAVAILABLE");
+      }
       const promptInput = promptForRole(
         request.taskId,
         "main",
         request.prompt,
         request.modelPrompt,
         request.target.cli,
+        undefined, undefined, undefined, task,
       );
-      const task = deps.readTask(request.taskId);
+      if (!departmentMain && !task.departmentInvalid && !firstMainExecution) {
+        promptInput.loopPlusMainAdmission = admission;
+      }
       const observedMain = !firstMainExecution && promptInput.taskRole === "main" && !promptInput.loopSubtaskId
         && task?.schedulingMode === "event_driven"
         && !task.department && !task.departmentInvalid && request.target.cli === "codex";
@@ -614,12 +634,13 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       const execution = await runInvocation(promptInput, request.target, "main", {
         isAborted: () => aborted,
         firstMainExecution,
-        ...(controller ? { signal: controller.signal } : {}),
+        ...(task.department || firstMainExecution || request.canSendAutoResumedMain ? { signal: controller.signal } : {}),
         onStarted: () => {
           invocationStarted = true;
+          runnerActive = true;
           deps.onMainActivityChange?.(request.taskId);
         },
-      });
+      }, task);
       try {
         if (firstMainExecution && !firstMainExecution.admitted) {
           firstMainExecution.finishBeforeAdmission(aborted, execution.thrown ? execution.error : undefined);
@@ -633,16 +654,22 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           }
           throw execution.error;
         }
-        if (aborted || invocation.run?.status !== "end") {
-          return null;
-        }
+        if (aborted || cancelled || interruptedNativeSessionId) return null;
+        if (!invocation.run) throw loopPlusMainFailure(admission.hasOpened() || invocationStarted || execution.finalHandoff || execution.nativeFinalObserved
+          ? "LOOP_PLUS_RUN_UNCONFIRMED" : "LOOP_PLUS_RUN_NOT_STARTED");
+        if (invocation.run.status === "error") throw new Error(invocation.run.failureDetail || "本次主任务的 CLI 执行失败。");
+        if (invocation.content === null) throw loopPlusMainFailure("LOOP_PLUS_FINAL_UNCONFIRMED");
         return invocation.content;
       } finally {
+        runnerActive = false;
         if (invocationStarted && !firstMainExecution) {
           deps.onMainActivityChange?.(request.taskId);
         }
       }
-    })();
+    }).catch((error) => {
+      if (aborted) return null;
+      throw error;
+    });
     const measuredInvocation = trace?.measure("main-turn", () => invocation,
       (result) => result === null ? (aborted || cancelled ? "stopped" : "failed") : "returned") ?? invocation;
     const promise = firstMainExecution ? measuredInvocation.catch(async (error) => {
@@ -666,22 +693,22 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           return;
         }
         aborted = true;
-        controller?.abort();
-        if (invocationStarted && !departmentMain) {
+        controller.abort();
+        if (runnerActive && !departmentMain) {
           deps.cancelInvocation(request.target.tabId);
         }
       },
     };
   }
 
-  function startAttempt(request: LoopPlusAttemptRequest): LoopPlusAttemptHandle {
+  function startAttempt(request: LoopPlusAttemptRequest, confirmedParent?: LoopTaskRecord): LoopPlusAttemptHandle {
     const attemptKey = JSON.stringify([request.taskId, request.attemptId]);
     const existingHandle = attemptHandles.get(attemptKey);
     if (existingHandle) {
       if (existingHandle.subtaskId !== request.subtaskId) throw new Error("Attempt identity conflict");
       return existingHandle.handle;
     }
-    const task = deps.readTask(request.taskId);
+    const task = confirmedParent?.id === request.taskId ? confirmedParent : deps.readTask(request.taskId);
     const configId = request.execution?.configId ?? deps.getActiveConfigIdForCli?.(request.targetCli) ?? null;
     const continuation = resolveLoopSubtaskSession(task ?? { subTasks: [] }, { id: request.subtaskId, continueFromSubtaskId: request.continueFromSubtaskId }, request.targetCli, configId);
     const grokExecutionRootId = request.targetCli === "grok"
@@ -691,13 +718,14 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     const sourceSessionSnapshot = JSON.stringify(task?.subTasks.find((v) => v.id === continuation.sourceSubtaskId)?.executionSession ?? null);
     const trace = deps.createPerformanceTrace?.("loop_plus", request.targetCli, "subtask");
     const finishAttempt = trace?.start("attempt");
-    let subtaskTarget = departmentExecutionAdmission || deps.acquireAttemptExecution ? null : createTarget();
+    let subtaskTarget = departmentExecutionAdmission || deps.acquireAttemptExecution || request.claimExecution ? null : createTarget();
     deps.log?.("loop-subtask-session-selection", { taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, reused: Boolean(continuation.sessionId), reason: continuation.reason });
     let aborted = false;
     const controller = new AbortController();
     let invocationStarted = false;
     let closeTabAfterAbort = false;
     const lostInvocationAbort = new AbortController();
+    const departmentLoopPlus = task?.department?.executionMode === "loop-plus";
     let settled = false;
     let departmentLease = false;
     let departmentAdmissionDenied = false;
@@ -712,6 +740,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     function failCleanup(error: unknown): void { cleanupFailed = true; cleanupFailure = error; }
     let invocationFinished = false;
     let invocationStartedAt: number | null = null;
+    let readInvocationEvidence: (() => ReturnType<typeof readInvocation>) | undefined;
     let tabClosePromise: Promise<void> | null = null;
     let preparedClose: (() => Promise<void>) | undefined;
     let preparedCompletedClose: (() => Promise<void>) | undefined;
@@ -743,6 +772,10 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           ? await trace.measure("attempt-admission", acquire, (value) => value === null ? (aborted ? "stopped" : "denied") : "returned")
           : await acquire();
         if (!aborted && (!(departmentExecutionAdmission || deps.acquireAttemptExecution) || lease !== null)) {
+          if (request.claimExecution && !await request.claimExecution(controller.signal)) {
+            return { outcome: "stopped", detail: "启动预留待核对", reservationUnconfirmed: true };
+          }
+          if (controller.signal.aborted) return { outcome: "stopped", detail: "stopped" };
           subtaskTarget ??= createTarget();
           const execute = () => withLoopSubtaskSession(request.targetCli, continuation.sessionId, runStartedAttempt, {
             taskId: request.taskId, subtaskId: request.subtaskId, sourceSubtaskId: continuation.sourceSubtaskId, signal: controller.signal,
@@ -821,8 +854,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     void promise.then((value) => finishAttempt?.(value.outcome), () => finishAttempt?.("threw"));
     const handle: LoopPlusAttemptHandle = {
       promise,
-      isActive: () => !settled && (departmentLease || invocationStartedAt === null || now() - invocationStartedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS
+      isActive: () => !settled && (departmentLoopPlus || departmentLease || invocationStartedAt === null || now() - invocationStartedAt < LOOP_WAIT_WATCHDOG_TICK_MS
         || invocationFinished || (!subtaskTarget || deps.isInvocationActive?.(subtaskTarget.tabId)) !== false),
+      readLostOutcome: () => {
+        const evidence = readInvocationEvidence?.();
+        if (evidence?.run?.status === "stopped") return { outcome: "stopped", detail: "stopped" };
+        if (evidence?.run?.status === "end" && evidence.content?.trim()) return { outcome: "completed", detail: evidence.content };
+        if (evidence?.run?.failureDetail) return { outcome: "failed", detail: evidence.run.failureDetail };
+        return undefined;
+      },
       onCompleted: async () => {
         try { await closeTab("completed"); }
         catch (error) {
@@ -832,7 +872,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         }
       },
       abort: (options) => {
-        if (!departmentLease && invocationStarted && !invocationFinished && subtaskTarget && deps.isInvocationActive?.(subtaskTarget.tabId) === false) {
+        if (!departmentLoopPlus && !departmentLease && invocationStarted && !invocationFinished && subtaskTarget && deps.isInvocationActive?.(subtaskTarget.tabId) === false) {
           lostInvocationAbort.abort();
         }
         closeTabAfterAbort ||= options?.closeTab === true;
@@ -879,10 +919,15 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           deps.log(kind, detail);
           return;
         }
-      } catch (logError) {
-        console.error("loop-attempt-admission-log-failed", logError);
+      } catch (loggingError) {
+        void logError("loop-attempt-admission-log-failed", {
+          taskId: request.taskId,
+          attemptId: request.attemptId,
+          error: errorDetail(loggingError),
+        }).catch(() => undefined);
+        return;
       }
-      console.error(kind, detail);
+      void logError(kind, detail).catch(() => undefined);
     }
 
     function acquireExecution(): Promise<LoopPlusAttemptExecutionLease | null | undefined> {
@@ -1065,6 +1110,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
                 isAborted: () => aborted || continuationSourceChanged(),
                 signal: controller.signal,
                 lostInvocationSignal: departmentLease ? undefined : lostInvocationAbort.signal,
+                onObserve: (read) => { readInvocationEvidence = read; },
                 onStarted: () => { invocationStarted = true; runnerStarted = true; invocationStartedAt = now(); },
               });
               if (execution.thrown) executionFailure = execution.error;
@@ -1155,10 +1201,12 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
       hostInstance = createLoopPlusOrchestrationHost({
         maxConcurrency: deps.maxConcurrency,
         launchDelayMs: deps.launchDelayMs,
+        loadedExtensionInstallPath: deps.loadedExtensionInstallPath,
         decisionSubtaskMax: deps.decisionSubtaskMax,
         delay: deps.delay,
         now,
         hasActiveSubtasks: deps.hasActiveSubtasks,
+        hasActiveSubtask: deps.hasActiveSubtask,
         readTask: deps.readTask,
         readMainRecoveryTask: deps.readMainRecoveryTask,
         canAutoResumeMain: deps.canAutoResumeMain,
@@ -1180,6 +1228,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
           return deps.readTask(task.id) ?? task;
         },
         updateTask: (taskId, patch) => deps.updateTask(taskId, patch),
+        commitOrdinaryRun: deps.commitOrdinaryRun,
         commitConfigLockResume: deps.commitConfigLockResume,
         appendMessage: deps.appendHostMessage,
         removeClarificationResponse: deps.removeClarificationResponse,
@@ -1187,6 +1236,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         onTaskCompleted: deps.onTaskCompleted,
         appendSubtaskChat: deps.appendSubtaskChat,
         appendAcceptancePlanChat: deps.appendAcceptancePlanChat,
+        appendSupplementalRequirementToCommunication: deps.appendSupplementalRequirementToCommunication,
         recordPause: deps.recordPause,
         runMain,
         startAttempt,
@@ -1370,7 +1420,7 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
     }
     if (result.handled) {
       const id = result.taskId;
-      const department = id && usesDepartmentOwner(deps.readTask(id)?.department);
+      const department = usesDepartmentOwner(requestedDepartment ?? existing?.department);
       const fence = async () => {
         if (id && department) {
           if (!deps.closeDepartmentCoordinator) throw new Error("部门协调代次缺少生产封闭端口。");
@@ -1381,11 +1431,13 @@ export function createLoopPlusRuntimeAdapter(deps: LoopPlusRuntimeAdapterDeps): 
         await fence(); throw error;
       });
       if (id) lifecycles.set(id, lifecycle);
-      try {
-        options.onResumeSupplementCommitted?.(lifecycle);
-        await lifecycle;
-      }
-      finally { if (id && lifecycles.get(id) === lifecycle) lifecycles.delete(id); }
+      const releaseObservation = () => {
+        if (id && lifecycles.get(id) === lifecycle) lifecycles.delete(id);
+      };
+      void lifecycle.then(releaseObservation, releaseObservation);
+      options.onResumeSupplementCommitted?.(lifecycle);
+      if (await result.done === "ordinary-paused") return true;
+      await lifecycle;
     }
     releaseLivePromptIfCompleted(result.taskId);
     return true;
@@ -1519,7 +1571,7 @@ function isInvocationAssistant(
     && message.loopTaskId === query.taskId
     && message.loopRound === query.round
     && (query.role !== "subtask" || message.loopSubtaskId === query.subtaskId)
-    && Boolean(message.content.trim());
+    && (query.role === "main" || Boolean(message.content.trim()));
 }
 
 function findInvocationUserAnchor(

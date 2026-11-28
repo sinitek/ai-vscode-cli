@@ -56,6 +56,8 @@ export type DepartmentPromptStartRequest = {
   targetTabId: string | null;
   cli: CliName;
   acceptancePlanSelectionId?: string;
+  /** Safe continuation correlation only. Never a prompt or session identifier. */
+  continueRequestId?: string;
 };
 
 export type PromptRunTargetForPanel = {

@@ -2,6 +2,7 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import * as vm from "node:vm";
 
+import { buildLoopPlusFinishEventId } from "../../loopPlusScheduler";
 import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
@@ -402,6 +403,9 @@ function createSupplementDialogHarness() {
     continueDialogOpen: false,
     continueRequestPending: false,
     continueRequestId: null,
+    continueActionSlot: {},
+    continueAction: { html: "继续执行", canContinue: true },
+    replaceHtml: () => undefined,
     requestSessionId: "session",
     requestSequence: 0,
     continueDialogMode: undefined as string | undefined,
@@ -838,6 +842,21 @@ function createState(overrides: any = {}) {
   };
 }
 
+test("department history read-only notice stays outside the collapsible sidebar", () => {
+  const state = createState({
+    task: { ...createState().task, departmentHistoryReadOnly: true, departmentExecutionUnverified: true },
+  });
+  const patch = buildLoopGroupChatPanelContentPatch(state, 1);
+  const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as any, state);
+  assert.match(html, /<body data-task-id="task-123456789abcdef" data-department-history-read-only="true">/u);
+  assert.match(patch.departmentHistoryNoticeHtml, /role="status">该任务来自其他受控任务源，当前仅只读查看，不会接管或自动恢复。 执行状态待核实。/u);
+  assert.match(buildLoopGroupChatPanelContentPatch({ ...state, task: { ...state.task, departmentExecutionUnverified: false, departmentExecutionInterrupted: true } }, 2).departmentHistoryNoticeHtml, /本宿主执行已中断/u);
+  assert.doesNotMatch(patch.taskPanelHtml, /只读查看/u);
+  assert.ok(html.indexOf('id="departmentHistoryNoticeSlot"') < html.indexOf('<div class="layout">'));
+  assert.match(html, /<div id="departmentHistoryNoticeSlot"><section class="panel"><div class="notice" role="status">/u);
+  assert.equal(buildLoopGroupChatPanelContentPatch(createState(), 2).departmentHistoryNoticeHtml, "");
+});
+
 test("loading shell waits for the first paint handshake and reveals existing content immediately", async () => {
   const harness = createPanelHarness();
   const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as any, { onMessage: () => undefined });
@@ -1239,9 +1258,10 @@ test("shows Loop-style execution animation for Loop+ runtime work without reusin
         task: { ...createState().task, status: "completed", currentRound: 9, canStop: false, canContinue: false },
       }),
     );
-    assert.doesNotMatch(completedPage, /data-action="acceptancePlan"/u);
+    assert.doesNotMatch(completedPage, /<button[^>]*data-action="acceptancePlan"/u);
     assert.match(page, /id="acceptancePlanOverlay"/u);
-    assert.match(page, /id="confirmAcceptancePlan"[^>]*>确认<\/button>/u);
+    assert.match(page, /id="confirmAcceptancePlan"[^>]*>保存到当前任务<\/button>/u);
+    assert.match(page, /id="saveAcceptancePlan"[^>]*>保存模板并应用<\/button>/u);
     assert.match(page, /id="acceptancePlanBaselineCheck"[^>]*disabled/u);
     assert.match(page, /loopGroupChatChat:updateAcceptancePlan/u);
   }
@@ -1782,4 +1802,58 @@ test("renders a persistent ask chat with a waiting indicator and can publish upd
     thread,
   });
   assert.equal(panel.getAskThread(), thread);
+});
+
+test("acceptance result bubbles scope the review table while ordinary tables stay wide", () => {
+  const longEnglish = "Supercalifragilisticexpialidocious".repeat(8);
+  const longUrl = `https://example.com/${"acceptance-review-path".repeat(6)}`;
+  const longPath = `/Users/fixture/${"loop-plus-group-chat-panel".repeat(4)}/report.ts`;
+  const inlineCode = "`veryLongInlineCodeTokenWithoutSpaces".repeat(3) + "`";
+  const reviewTable = [
+    "| 审查内容 | 审查结果 |",
+    "| --- | --- |",
+    `| 交付与范围 | ❌ 长中文验收依据需要完整留在单元格内，不能把气泡或页面撑出横向滚动。证据链接 ${longUrl}，源码路径 ${longPath}，连续英文 ${longEnglish}，行内代码 ${inlineCode} |`,
+  ].join("\n");
+  const ordinaryTable = [
+    "| 列甲 | 列乙 | 列丙 |",
+    "| --- | --- | --- |",
+    `| 普通对照 | ${longEnglish} | ${longUrl} |`,
+  ].join("\n");
+  const legacy = `## 验收结果\n\n**子任务：合成验收**\n\n**整体验收结果：❌ 未通过**\n\n${reviewTable}\n\n普通 Markdown 对照\n\n${ordinaryTable}`;
+  const anchored = `## 验收结果\n\n**子任务：带锚点验收**\n\n**整体验收结果：✅ 通过**\n\n${reviewTable}\n\n<!-- loop-plus-acceptance:${encodeURIComponent(JSON.stringify([buildLoopPlusFinishEventId("subtask-1", "a-1")]))} -->`;
+  const html = buildLoopGroupChatPanelHtml(
+    { cspSource: "self" } as any,
+    createState({
+      loopPlus: {
+        ok: true, schedulingMode: "event_driven", activity: "completed", phase: "completed", wakePending: false,
+        currentReview: null, reviewQueue: [], currentReviewCount: 0, reviewQueueCount: 0, visibleReviewCount: 0,
+        running: [], pending: [], runningCount: 0, pendingCount: 0,
+        seenAttempts: [{ subtaskId: "subtask-1", attemptId: "a-1", disposition: "reviewed", outcome: "completed", acceptance: "passed" }],
+      },
+      chatMarkdown: `${legacy}\n\n${anchored}`,
+    }),
+  );
+  const patch = buildLoopGroupChatPanelContentPatch(createState({
+    loopPlus: {
+      ok: true, schedulingMode: "event_driven", activity: "completed", phase: "completed", wakePending: false,
+      currentReview: null, reviewQueue: [], currentReviewCount: 0, reviewQueueCount: 0, visibleReviewCount: 0,
+      running: [], pending: [], runningCount: 0, pendingCount: 0,
+      seenAttempts: [{ subtaskId: "subtask-1", attemptId: "a-1", disposition: "reviewed", outcome: "completed", acceptance: "passed" }],
+    },
+    chatMarkdown: `${legacy}\n\n${anchored}`,
+  }), 1);
+  for (const source of [html, patch.timelineHtml]) {
+    assert.equal((source.match(/class="message main-turn with-avatar acceptance-result/gu) ?? []).length, 2);
+    assert.match(source, /class="message main-turn with-avatar acceptance-result"/u);
+    assert.match(source, /class="message main-turn with-avatar acceptance-result acceptance-anchor" id="loop-plus-acceptance-1" tabindex="-1"/u);
+  }
+  assert.match(html, /headers\[0\] !== "审查内容" \|\| headers\[1\] !== "审查结果"/u);
+  assert.match(html, /acceptance-review-table/u);
+  assert.match(html, /\.message\.acceptance-result \.acceptance-review-title \{\s*width: 8em;/u);
+  assert.match(html, /\.message\.acceptance-result \.acceptance-review-table \{\s*width: 100%;\s*min-width: 0;\s*max-width: 100%;\s*table-layout: fixed;/u);
+  assert.match(html, /\.message\.acceptance-result \.acceptance-review-wrap \{\s*max-width: 100%;\s*overflow: visible;/u);
+  assert.match(html, /\.markdown-body \.markdown-table-wrap \{[^}]*overflow-x: auto;/u);
+  assert.match(html, /\.markdown-body table \{[^}]*width: max-content;/u);
+  assert.match(html, /data-markdown-source="[^"]*\| 列甲 \| 列乙 \| 列丙 \|/u);
+  assert.doesNotMatch(html, /loop-plus-acceptance:/u);
 });

@@ -2,6 +2,20 @@ import type { ChatMessage } from "./webview/types";
 import type { LoopSubtaskRecord } from "./loopTaskStore";
 import { isLoopAskChatMessage } from "./historySessionTaskRole";
 
+export type LoopConversationTabContext = { taskRole: "main" | "subtask" | null; loopTaskId: string | null };
+
+export function resolveLoopConversationTabContextFromMessages(messages: readonly ChatMessage[]): LoopConversationTabContext {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (isLoopAskChatMessage(message)) continue;
+    const taskRole = message?.taskRole;
+    const loopTaskId = normalizeLoopTaskId(message?.loopTaskId);
+    if (loopTaskId && (taskRole === "main" || taskRole === "subtask")) return { taskRole, loopTaskId };
+    if (message?.role === "user" && String(message.content || "").trim()) break;
+  }
+  return { taskRole: null, loopTaskId: null };
+}
+
 export type LoopSubtaskConversationContext = {
   taskId: string;
   subtaskId: string;

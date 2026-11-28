@@ -58,6 +58,78 @@ function assertNoTempFiles(filePath: string): void {
   assert.deepEqual(fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp") || name.endsWith(".stage")), []);
 }
 
+test("主任务等待真实事务锁释放后重新读取父记录并打开一次运行", async () => {
+  const { withLoopPlusMainAdmission } = await import("../../extensionHost/loopPlusMainAdmission");
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const lock = path.join(testHome, ".sinitek_cli", "loop-task-identities", "transaction.lock");
+  let preparations = 0;
+  let opened = 0;
+  let release: NodeJS.Timeout | undefined;
+  try {
+    const result = await withLoopPlusMainAdmission(task.id, store.readLoopTaskRecord, new AbortController().signal,
+      async (parent, admission) => {
+        preparations++;
+        if (preparations === 1) {
+          fs.writeFileSync(lock, "fixture writer", { flag: "wx" });
+          release = setTimeout(() => fs.unlinkSync(lock), 125);
+          assert.equal(admission.isParentInactive(), true);
+          return null;
+        }
+        assert.equal(parent.taskStoreFile, task.taskStoreFile);
+        admission.onRunOpened();
+        opened++;
+        return "验收就绪";
+      });
+    assert.equal(result, "验收就绪");
+    assert.equal(preparations, 2);
+    assert.equal(opened, 1);
+    assert.equal(store.readLoopTaskRecord(task.id)?.status, "running");
+  } finally {
+    clearTimeout(release);
+    fs.rmSync(lock, { force: true });
+  }
+});
+
+test("身份读取被取消或运行已打开时保护现有锁和执行次数", async () => {
+  const { withLoopPlusMainAdmission } = await import("../../extensionHost/loopPlusMainAdmission");
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const lock = path.join(testHome, ".sinitek_cli", "loop-task-identities", "transaction.lock");
+  let calls = 0;
+  try {
+    await assert.rejects(withLoopPlusMainAdmission(task.id, store.readLoopTaskRecord, new AbortController().signal,
+      async (_parent, admission) => {
+        admission.onRunOpened();
+        calls++;
+        fs.writeFileSync(lock, "fixture writer", { flag: "wx" });
+        assert.equal(admission.isParentInactive(), true);
+        return null;
+      }), { code: "LOOP_PLUS_RUN_UNCONFIRMED" });
+    const cancellation = new AbortController();
+    const waiting = withLoopPlusMainAdmission(task.id, store.readLoopTaskRecord, cancellation.signal,
+      async () => { calls++; return "unexpected"; });
+    cancellation.abort();
+    await assert.rejects(waiting, { name: "AbortError" });
+    assert.equal(calls, 1);
+    assert.equal(fs.readFileSync(lock, "utf8"), "fixture writer");
+  } finally { fs.rmSync(lock, { force: true }); }
+});
+
+test("延迟暂停提交核对源文件、版本与运行状态", () => {
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const expected = store.readLoopTaskRecord(task.id)!;
+  const patch = { status: "needs-review" as const };
+  assert.equal(store.updateLoopTaskRecord(task.id, patch, { expectedOrdinaryRun: { ...expected, taskStoreFile: "other" } }), null);
+  const changed = store.updateLoopTaskRecord(task.id, { supplementalRequirements: ["新增要求"] })!;
+  assert.equal(store.updateLoopTaskRecord(task.id, patch, { expectedOrdinaryRun: expected }), null);
+  assert.equal(store.updateLoopTaskRecord(task.id, patch, { expectedOrdinaryRun: changed })?.status, "needs-review");
+  const stopped = store.updateLoopTaskRecord(task.id, { status: "stopped" })!;
+  assert.equal(store.updateLoopTaskRecord(task.id, patch, { expectedOrdinaryRun: stopped }), null);
+  assert.equal(store.readLoopTaskRecord(task.id)?.status, "stopped");
+});
+
 for (const withSibling of [false, true]) {
   for (const aliasKind of ["dot", "relative", "absolute"] as const) {
     test(`same file through ${aliasKind} alias preserves the committed task${withSibling ? " and sibling" : ""}`, () => {
@@ -142,14 +214,14 @@ for (const failure of ["EACCES", "syntax", "shape", "record"] as const) {
     const sibling = { ...createTask(), taskStoreFile: target };
     store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
     store.writeLoopTaskStore(target, { tasks: [sibling] });
+    const error = Object.assign(new Error("target read denied"), { code: "EACCES" });
+    const originalRead = fs.readFileSync;
+    // Warm the task location before a corrupt or unreadable merge target exists.
+    assert.equal(store.readLoopTaskRecord(task.id)?.taskStoreFile, task.taskStoreFile);
     if (failure !== "EACCES") fs.writeFileSync(target,
       failure === "syntax" ? "{broken JSON" : failure === "shape" ? '{"tasks":{}}' : '{"tasks":[null]}', "utf8");
     const sourceBytes = fs.readFileSync(task.taskStoreFile, "utf8");
     const targetBytes = fs.readFileSync(target, "utf8");
-    const error = Object.assign(new Error("target read denied"), { code: "EACCES" });
-    const originalRead = fs.readFileSync;
-    // Warm the task location before injecting a failure only on the merge target.
-    assert.equal(store.readLoopTaskRecord(task.id)?.taskStoreFile, task.taskStoreFile);
     if (failure === "EACCES") {
       t.mock.method(fs, "readFileSync", (...args: Parameters<typeof fs.readFileSync>) => {
         if (String(args[0]) === target) throw error;
@@ -447,7 +519,7 @@ for (const failure of ["write", "rename"] as const) {
     if (failure === "write") {
       const originalWrite = fs.writeFileSync;
       t.mock.method(fs, "writeFileSync", (...args: Parameters<typeof fs.writeFileSync>) => {
-        if (String(args[0]).endsWith(".stage")) {
+        if (typeof args[0] === "number" || String(args[0]).endsWith(".stage")) {
           originalWrite(args[0], "partial JSON", "utf8");
           throw error;
         }
@@ -642,6 +714,54 @@ function checkOrdinaryAuthority(body: string): void {
   finally { fs.rmSync(home, { recursive: true, force: true }); }
 }
 
+test("locked parent remains visible and a restarted host and competing host claim the same reservation once", () => {
+  checkOrdinaryAuthority(`
+    const {fork} = require('node:child_process');
+    const {once} = require('node:events');
+    const {createLoopPlusScheduler} = require(${JSON.stringify(require.resolve("../../loopPlusScheduler"))});
+    const modulePath = ${JSON.stringify(require.resolve("./fixtures/loopPlusStorageClaimChild"))};
+    const scheduler = createLoopPlusScheduler({maxConcurrency:1});
+    scheduler.dispatch([{ subtaskId: 'plot', attemptId: 'plot-2' }]);
+    const parent = { ...task('storage-restart'), schedulingMode: 'event_driven', loopPlus: scheduler.snapshot(),
+      subTasks: [{id:'plot', title:'绘图', status:'running', launchReservation:{attemptId:'plot-2', state:'waiting'}}] };
+    store.writeLoopTaskStore(parent.taskStoreFile, {tasks:[parent]});
+    catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'), () => new Map([[parent.taskStoreFile,[parent]]]));
+    const catalogVersion = fs.statSync(catalogFile, {bigint:true}).ino;
+    const children = [];
+    function startHost() {
+      const child = fork(modulePath, [], {stdio:['ignore','ignore','inherit','ipc']});
+      children.push(child);
+      const waiting = once(child, 'message').then(([message]) => message);
+      child.send(parent);
+      return {child, waiting};
+    }
+    (async () => {
+      fs.writeFileSync(lock, 'another host', {flag:'wx'});
+      try {
+        const first = startHost();
+        assert.equal(await first.waiting, 'waiting');
+        const closed = once(first.child, 'exit');
+        first.child.kill();
+        await closed;
+        assert.equal(store.readKnownOrdinaryLoopTaskRecord(parent.id, parent, true).subTasks[0].launchReservation.state, 'waiting');
+        const hosts = [startHost(), startHost()];
+        assert.deepEqual(await Promise.all(hosts.map(host => host.waiting)), ['waiting', 'waiting']);
+        const results = hosts.map(host => once(host.child,'message').then(([message]) => message));
+        const exits = hosts.map(host => once(host.child,'exit'));
+        fs.unlinkSync(lock);
+        assert.deepEqual((await Promise.all(results)).sort(), ['already-claimed', 'started']);
+        assert.deepEqual(await Promise.all(exits), [[0,null],[0,null]]);
+        const saved = store.readLoopTaskRecord(parent.id);
+        assert.equal(saved.subTasks[0].launchReservation.state,'claimed');
+        assert.equal(saved.status,'running');
+        assert.equal(saved.loopPlus.reviewQueue.length,0);
+        assert.equal(fs.statSync(catalogFile,{bigint:true}).ino,catalogVersion);
+        assert.equal(store.updateLoopTaskRecord(parent.id,{subTasks:parent.subTasks}).subTasks[0].launchReservation.state,'claimed');
+      } finally { for(const child of children) if(child.exitCode === null && !child.signalCode) child.kill(); }
+    })().catch(error => {console.error(error);process.exitCode=1});
+  `);
+});
+
 for (const release of ["before-acquire", "after-refusal"]) {
   test(`retention preserves valid tasks and siblings when an unknown writer lock releases ${release}`, () => {
     checkOrdinaryAuthority(`
@@ -669,6 +789,24 @@ for (const release of ["before-acquire", "after-refusal"]) {
   });
 }
 
+test("a cold group chat can recover a pending or established ordinary source without store enumeration", () => {
+  checkOrdinaryAuthority(`
+    const pending = task('pending'), established = task('established');
+    established.sessionId = 'original-session';
+    established.taskStoreFile = store.buildLoopTaskStoreFile(established.cli, established.workspaceKey, established.sessionId, established.id);
+    for (const record of [pending, established]) store.writeLoopTaskStore(record.taskStoreFile, {tasks:[record]});
+    delete require.cache[require.resolve(${JSON.stringify(storeModulePath)})];
+    const cold = require(${JSON.stringify(storeModulePath)});
+    fs.readdirSync = () => assert.fail('no store enumeration');
+    for (const record of [pending, established]) {
+      assert.equal(cold.readKnownOrdinaryLoopTaskRecord(record.id), null);
+      assert.equal(cold.readKnownOrdinaryLoopTaskRecord(record.id, {...record, workspaceKey:'foreign'}), null);
+      assert.equal(cold.readKnownOrdinaryLoopTaskRecord(record.id, record).taskStoreFile, record.taskStoreFile);
+      assert.equal(cold.readKnownOrdinaryLoopTaskRecord(record.id).id, record.id);
+    }
+  `);
+});
+
 test("known ordinary reads follow migration authority across stale host cache and sibling rewrites without enumeration", () => {
   checkOrdinaryAuthority(`
     const a=task('moving'),b=task('sibling',a.taskStoreFile);
@@ -692,6 +830,7 @@ test("known ordinary reads follow migration authority across stale host cache an
     fs.writeFileSync(lock,'unknown');
     assert.equal(store.readKnownOrdinaryLoopTaskRecord(a.id),null);
     assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id),null);
+    assert.equal(other.readKnownOrdinaryLoopTaskRecord(a.id, undefined, true).finalSummary,'committed target');
     fs.unlinkSync(lock);
     const read=fs.readFileSync;
     fs.readFileSync=(file,...args)=>{if(file===target)throw Object.assign(Error('target unavailable'),{code:'EACCES'});return read(file,...args)};
@@ -868,6 +1007,7 @@ test("ordinary update never replays an uncertain write even when publication thr
     const current=task('uncertain-update');
     store.writeLoopTaskStore(current.taskStoreFile,{tasks:[current]});
     catalog.initializeLoopTaskIdentityCatalog(path.join(process.env.HOME,'owned'),()=>new Map([[current.taskStoreFile,[current]]]));
+    const target=store.getLoopTaskStoreSessionFile(current.workspaceKey,'codex','target');
     const fault=Object.assign(new Error('publication failed'),{code:'EEXIST',syscall:'open',path:lock});
     const rename=fs.renameSync,open=fs.openSync;
     let gateAttempts=0,catalogWrites=0,storeWrites=0;
@@ -877,13 +1017,13 @@ test("ordinary update never replays an uncertain write even when publication thr
     };
     fs.renameSync=(source,target)=>{
       if(target===catalogFile && ++catalogWrites===2) throw fault;
-      if(target===current.taskStoreFile) storeWrites++;
+      if(target!==catalogFile) storeWrites++;
       return rename(source,target);
     };
-    assert.throws(()=>store.updateLoopTaskRecord(current.id,{status:'completed'}),error=>error===fault);
+    assert.throws(()=>store.updateLoopTaskRecord(current.id,{status:'completed',taskStoreFile:target,sessionId:'target'}),error=>error===fault);
     assert.equal(gateAttempts,1);
     assert.equal(storeWrites,1);
-    assert.equal(JSON.parse(fs.readFileSync(current.taskStoreFile,'utf8')).tasks[0].status,'completed');
+    assert.equal(JSON.parse(fs.readFileSync(target,'utf8')).tasks[0].status,'completed');
     assert.equal(JSON.parse(fs.readFileSync(catalogFile,'utf8')).ready,false);
     assert.equal(store.readLoopTaskRecord(current.id),null);
   `);
@@ -918,7 +1058,7 @@ test("ordinary task update emits classified identity-lock and owner-transaction 
   identities.initializeLoopTaskIdentityCatalog(departmentRoot, () => new Map([[ownedTaskFile, [{ id: task.id }]]]));
   assert.equal(identities.inspectLoopTaskIdentityOwnership(task.id), "department-owned");
   assert.throws(() => store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] }), /Controlled task identities require owner transactions/);
-  await logger.logEssential("fixture-log-write-barrier");
+  await logger.logError("fixture-log-write-barrier");
 
   const entries = fs.readFileSync(logFile, "utf8").split("\n").filter((line) => line.includes(" | "))
     .map((line) => ({ event: line.split("] ")[2].split(" | ")[0], data: JSON.parse(line.slice(line.indexOf(" | ") + 3)) }));
@@ -975,4 +1115,414 @@ test("撤销验收及原因经过实际文件存储和冷加载后保留", () =>
   assert.equal(restored.wait().view.visibleReviewCount, 0);
   assert.equal(restored.snapshot().seenAttempts[0].acceptance, "cancelled");
   assert.equal(restored.snapshot().seenAttempts[0].acceptanceReason, "用户取消旧需求");
+});
+
+test("per-call read failures do not share causes across interleaved reads", () => {
+  checkOrdinaryAuthority(`
+    const readable = task('readable');
+    store.writeLoopTaskStore(readable.taskStoreFile, { tasks: [readable] });
+    let successNotified = false;
+    const loaded = store.readLoopTaskRecord(readable.id, { onUnavailable() { successNotified = true; } });
+    assert.equal(successNotified, false);
+    assert.equal(loaded.status, 'running');
+
+    const readFile = fs.readFileSync;
+    let reads = 0;
+    fs.readFileSync = (file, ...args) => {
+      if (file === readable.taskStoreFile && ++reads > 1) {
+        const error = new Error('SYNTHETIC_READ_BODY /tmp/secret');
+        error.code = 'EIO';
+        throw error;
+      }
+      return readFile(file, ...args);
+    };
+    let readFailure;
+    try {
+      assert.equal(store.readLoopTaskRecord(readable.id, { onUnavailable(reason) { readFailure = reason; } }), null);
+    } finally { fs.readFileSync = readFile; }
+    assert.equal(readFailure, 'store-read-rejected');
+    assert.equal(String(readFailure).includes('SYNTHETIC'), false);
+
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(lock, 'held');
+    const exists = fs.existsSync;
+    let nestedReason;
+    let outerReason;
+    let armed = true;
+    fs.existsSync = (file) => {
+      const present = exists(file);
+      if (armed && file === lock && present) {
+        armed = false;
+        fs.unlinkSync(lock);
+        store.readLoopTaskRecord('missing-b', { onUnavailable(reason) { nestedReason = reason; } });
+        fs.writeFileSync(lock, 'held');
+        return true;
+      }
+      return exists(file);
+    };
+    try {
+      assert.equal(store.readLoopTaskRecord('missing-a', { onUnavailable(reason) { outerReason = reason; } }), null);
+    } finally { fs.existsSync = exists; }
+    assert.equal(nestedReason, 'task-not-found');
+    assert.equal(outerReason, 'identity-lock-present');
+    fs.unlinkSync(lock);
+
+    const root = path.join(process.env.HOME, 'opaque-root');
+    fs.mkdirSync(root);
+    const registration = store.registerLoopTaskStoreHostRouter({
+      root,
+      knownTaskIds: ['opaque', 'throwing'],
+      route(request) {
+        if (request.type === 'read' && request.taskId === 'throwing') throw new Error('SYNTHETIC_SECRET /tmp/private prompt');
+        if (request.type === 'read' && request.taskId === 'opaque') return { handled: true, ok: true };
+        return { handled: false };
+      },
+    });
+    let opaque;
+    let thrown;
+    assert.equal(store.readLoopTaskRecord('opaque', { onUnavailable(reason) { opaque = reason; } }), null);
+    assert.equal(store.readLoopTaskRecord('throwing', { onUnavailable(reason) { thrown = reason; } }), null);
+    registration.dispose();
+    assert.equal(opaque, 'unknown');
+    assert.equal(thrown, 'owner-route-threw');
+    assert.equal(String(thrown).includes('SYNTHETIC'), false);
+    assert.equal(String(opaque).includes('identity-lock'), false);
+  `);
+});
+
+test("task-not-found requires a finished candidate scan and does not hide a discovery failure", (t) => {
+  const task = createTask();
+  store.writeLoopTaskStore(task.taskStoreFile, { tasks: [task] });
+  const root = path.join(testHome, ".sinitek_cli", "loop-tasks");
+  const blocked = path.join(root, "blocked-candidate");
+  fs.mkdirSync(blocked);
+  const logs: Array<{ event: string; data: unknown }> = [];
+  const logger = require("../../logger") as typeof import("../../logger");
+  t.mock.method(logger, "logError", (event: string, data?: unknown) => {
+    logs.push({ event, data });
+    return Promise.resolve();
+  });
+  const originalReaddir = fs.readdirSync;
+  const originalRead = fs.readFileSync;
+  const readdirMock = t.mock.method(fs, "readdirSync", originalReaddir);
+  const readMock = t.mock.method(fs, "readFileSync", originalRead);
+  const assertSafe = (text: string, extra: string[] = []) => {
+    for (const secret of ["SYNTHETIC", "/tmp", "private", "Error", blocked, task.taskStoreFile, ...extra]) {
+      assert.equal(text.includes(secret), false, secret);
+    }
+  };
+  try {
+    let missingReason: string | undefined;
+    assert.equal(coldStore().readLoopTaskRecord("complete-scan-absent", {
+      onUnavailable(reason) { missingReason = reason; },
+    }), null);
+    assert.equal(missingReason, "task-not-found");
+    assert.equal(logs.some((entry) => entry.event === "loop-task-store-readdir-error"), false);
+
+    const scanError = Object.assign(new Error("SYNTHETIC_SCAN_BODY /tmp/private-scan"), { code: "EACCES" });
+    readdirMock.mock.mockImplementation(((file: fs.PathLike, ...args: unknown[]) => {
+      if (String(file) === blocked) throw scanError;
+      return originalReaddir(file, ...(args as []));
+    }) as typeof fs.readdirSync);
+    logs.length = 0;
+    let scanReason: string | undefined;
+    assert.equal(coldStore().readLoopTaskRecord(task.id, {
+      onUnavailable(reason) { scanReason = reason; },
+    }), null);
+    assert.equal(scanReason, "candidate-scan-unavailable");
+    assert.notEqual(scanReason, "task-not-found");
+    assert.ok(logs.some((entry) => entry.event === "loop-task-store-readdir-error"));
+    assertSafe(JSON.stringify(logs));
+
+    readdirMock.mock.mockImplementation(originalReaddir);
+    const target = store.getLoopTaskStoreSessionFile(task.workspaceKey, task.cli, "authoritative-move");
+    const moved = store.updateLoopTaskRecord(task.id, {
+      taskStoreFile: target, sessionId: "authoritative-move", finalSummary: "committed target",
+    });
+    assert.equal(moved?.taskStoreFile, target);
+    readdirMock.mock.mockImplementation(((file: fs.PathLike, ...args: unknown[]) => {
+      if (String(file) === root || String(file) === blocked) throw scanError;
+      return originalReaddir(file, ...(args as []));
+    }) as typeof fs.readdirSync);
+    logs.length = 0;
+    let moveNotified = false;
+    const loaded = coldStore().readLoopTaskRecord(task.id, { onUnavailable() { moveNotified = true; } });
+    assert.equal(moveNotified, false);
+    assert.equal(loaded?.finalSummary, "committed target");
+    assert.equal(loaded?.taskStoreFile, target);
+    assert.equal(logs.some((entry) => entry.event === "loop-task-store-readdir-error"), false);
+
+    readdirMock.mock.mockImplementation(originalReaddir);
+    const older = createTask();
+    older.updatedAt = 10;
+    const hiddenFile = store.getLoopTaskStoreSessionFile(older.workspaceKey, older.cli, "hidden-candidate");
+    store.writeLoopTaskStore(older.taskStoreFile, { tasks: [older] });
+    const hiddenTask = createTask();
+    hiddenTask.taskStoreFile = hiddenFile;
+    hiddenTask.updatedAt = older.updatedAt + 50;
+    store.writeLoopTaskStore(hiddenFile, { tasks: [hiddenTask] });
+    const storeError = Object.assign(new Error("SYNTHETIC_STORE_BODY /tmp/private-store"), { code: "EIO" });
+    readMock.mock.mockImplementation(((file: fs.PathLike, ...args: unknown[]) => {
+      if (String(file) === hiddenFile) throw storeError;
+      return originalRead(file, ...(args as []));
+    }) as typeof fs.readFileSync);
+    logs.length = 0;
+    let storeReason: string | undefined;
+    assert.equal(coldStore().readLoopTaskRecord(older.id, {
+      onUnavailable(reason) { storeReason = reason; },
+    }), null);
+    assert.equal(storeReason, "store-read-rejected");
+    assert.notEqual(storeReason, "task-not-found");
+    assertSafe(JSON.stringify(logs), [hiddenFile, older.taskStoreFile]);
+  } finally {
+    readdirMock.mock.restore();
+    readMock.mock.restore();
+  }
+});
+
+test("partial legacy scan stops before migration and a cache hit does not reparse stores", (t) => {
+  const { getLegacyLoopStoragePaths } = require("../../loopLegacyMigration") as typeof import("../../loopLegacyMigration");
+  const legacy = getLegacyLoopStoragePaths(path.join(testHome, ".sinitek_cli"));
+  const legacyTask = createTask();
+  const migratedPath = legacyTask.taskStoreFile;
+  const legacyFile = path.join(legacy.taskStoreDir, "kept", "lobster-tasks.json");
+  const emptyDir = path.join(legacy.taskStoreDir, "empty-child");
+  const blocked = path.join(legacy.taskStoreDir, "blocked");
+  const legacyBytes = JSON.stringify({ tasks: [{ ...legacyTask, taskStoreFile: legacyFile }] });
+  fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+  fs.mkdirSync(emptyDir, { recursive: true });
+  fs.mkdirSync(blocked, { recursive: true });
+  fs.writeFileSync(legacyFile, legacyBytes, "utf8");
+  const communicationDir = legacy.communicationDir;
+  fs.mkdirSync(communicationDir, { recursive: true });
+  fs.writeFileSync(path.join(communicationDir, "keep.txt"), "keep", "utf8");
+  const logs: Array<{ event: string; data: unknown }> = [];
+  const logger = require("../../logger") as typeof import("../../logger");
+  t.mock.method(logger, "logError", (event: string, data?: unknown) => {
+    logs.push({ event, data });
+    return Promise.resolve();
+  });
+  const originalReaddir = fs.readdirSync;
+  const originalRead = fs.readFileSync;
+  const originalRmdir = fs.rmdirSync;
+  const scanError = Object.assign(new Error("SYNTHETIC_SCAN_BODY /tmp/private-legacy prompt=secret token=abc"), { code: "EACCES" });
+  let failLegacyScan = true;
+  let allowCleanup = false;
+  const readdirMock = t.mock.method(fs, "readdirSync", ((file: fs.PathLike, ...args: unknown[]) => {
+    if (failLegacyScan && String(file) === blocked) throw scanError;
+    return originalReaddir(file, ...(args as []));
+  }) as typeof fs.readdirSync);
+  const rmdirMock = t.mock.method(fs, "rmdirSync", ((dir: fs.PathLike, ...args: unknown[]) => {
+    if (!allowCleanup && String(dir) === emptyDir) throw new Error("empty legacy directory was cleaned");
+    return originalRmdir(dir, ...(args as []));
+  }) as typeof fs.rmdirSync);
+  const assertSafe = (text: string) => {
+    for (const secret of ["SYNTHETIC", "/tmp", "private", "prompt", "token", "secret", blocked, legacyFile]) {
+      assert.equal(text.includes(secret), false, secret);
+    }
+  };
+  try {
+    logs.length = 0;
+    let partialReason: string | undefined;
+    assert.equal(store.readLoopTaskRecord(legacyTask.id, {
+      onUnavailable(reason) { partialReason = reason; },
+    }), null);
+    assert.equal(partialReason, "candidate-scan-unavailable");
+    assert.notEqual(partialReason, "task-not-found");
+    assert.equal(fs.readFileSync(legacyFile, "utf8"), legacyBytes);
+    assert.equal(fs.existsSync(emptyDir), true);
+    assert.equal(fs.existsSync(path.join(communicationDir, "keep.txt")), true);
+    assert.equal(fs.existsSync(migratedPath), false);
+    assertSafe(JSON.stringify(logs));
+
+    failLegacyScan = false;
+    allowCleanup = true;
+    const migrated = store.readLoopTaskRecord(legacyTask.id);
+    assert.equal(migrated?.taskStoreFile, migratedPath);
+    assert.equal(fs.existsSync(legacyFile), false);
+
+    const movedTask = createTask();
+    store.writeLoopTaskStore(movedTask.taskStoreFile, { tasks: [movedTask] });
+    const movedTarget = store.getLoopTaskStoreSessionFile(movedTask.workspaceKey, movedTask.cli, "committed-legacy-scan");
+    const moved = store.updateLoopTaskRecord(movedTask.id, {
+      taskStoreFile: movedTarget, sessionId: "committed-legacy-scan", finalSummary: "committed target",
+    });
+    assert.equal(moved?.taskStoreFile, movedTarget);
+    fs.mkdirSync(blocked, { recursive: true });
+    const retainedLegacy = path.join(legacy.taskStoreDir, "retained", "lobster-tasks.json");
+    const retainedTask = createTask();
+    const retainedBytes = JSON.stringify({ tasks: [{ ...retainedTask, taskStoreFile: retainedLegacy }] });
+    fs.mkdirSync(path.dirname(retainedLegacy), { recursive: true });
+    fs.writeFileSync(retainedLegacy, retainedBytes, "utf8");
+    failLegacyScan = true;
+    let moveNotified = false;
+    const loaded = store.readLoopTaskRecord(movedTask.id, { onUnavailable() { moveNotified = true; } });
+    assert.equal(moveNotified, false);
+    assert.equal(loaded?.finalSummary, "committed target");
+    assert.equal(loaded?.taskStoreFile, movedTarget);
+    assert.equal(fs.readFileSync(retainedLegacy, "utf8"), retainedBytes);
+
+    const cached = createTask();
+    const sibling = createTask();
+    store.writeLoopTaskStore(cached.taskStoreFile, { tasks: [cached] });
+    store.writeLoopTaskStore(sibling.taskStoreFile, { tasks: [sibling] });
+    let siblingReads = 0;
+    const readMock = t.mock.method(fs, "readFileSync", ((file: fs.PathLike, ...args: unknown[]) => {
+      if (String(file) === sibling.taskStoreFile) siblingReads += 1;
+      return originalRead(file, ...(args as []));
+    }) as typeof fs.readFileSync);
+    logs.length = 0;
+    let cacheReason: string | undefined;
+    assert.equal(store.readLoopTaskRecord(cached.id, {
+      onUnavailable(reason) { cacheReason = reason; },
+    }), null);
+    assert.equal(cacheReason, "candidate-scan-unavailable");
+    assert.equal(siblingReads, 0);
+    assertSafe(JSON.stringify(logs));
+    readMock.mock.restore();
+  } finally {
+    failLegacyScan = false;
+    allowCleanup = true;
+    readdirMock.mock.restore();
+    rmdirMock.mock.restore();
+  }
+});
+
+test("a one-time legacy rename failure still resolves the migrated target on the next read", () => {
+  checkOrdinaryAuthority(`
+    const legacy = require(${JSON.stringify(require.resolve("../../loopLegacyMigration"))});
+    const logger = require(${JSON.stringify(require.resolve("../../logger"))});
+    const logs = [];
+    logger.logError = (event, data) => { logs.push({ event, data }); return Promise.resolve(); };
+    const legacyFile = legacy.getLegacyLoopStoragePaths(path.join(process.env.HOME, ".sinitek_cli")).taskStoreFlatFile;
+    const record = task("legacy-rename-once");
+    const target = record.taskStoreFile;
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    fs.writeFileSync(legacyFile, JSON.stringify({ tasks: [{ ...record, taskStoreFile: legacyFile }] }));
+    const rename = fs.renameSync;
+    let failed = false;
+    fs.renameSync = (from, to) => {
+      if (!failed && String(to) === target) {
+        failed = true;
+        throw Object.assign(new Error("SYNTHETIC_RENAME /tmp/private prompt=secret token=abc"), { code: "EIO" });
+      }
+      return rename(from, to);
+    };
+    let firstReason;
+    const first = store.readLoopTaskRecord(record.id, { onUnavailable(reason) { firstReason = reason; } });
+    assert.equal(firstReason, undefined);
+    assert.equal(first && first.taskStoreFile, legacyFile);
+    assert.equal(fs.existsSync(legacyFile), true);
+    assert.equal(fs.existsSync(target), false);
+    fs.renameSync = rename;
+    const unrelated = task("unrelated-eio");
+    store.writeLoopTaskStore(unrelated.taskStoreFile, { tasks: [unrelated] });
+    const readFile = fs.readFileSync;
+    let unrelatedReads = 0;
+    fs.readFileSync = (file, ...args) => {
+      if (String(file) === unrelated.taskStoreFile) {
+        unrelatedReads += 1;
+        throw Object.assign(new Error("SYNTHETIC_CANDIDATE /tmp/faulty prompt=secret token=abc"), { code: "EIO" });
+      }
+      return readFile(file, ...args);
+    };
+    let secondReason;
+    const second = store.readLoopTaskRecord(record.id, { onUnavailable(reason) { secondReason = reason; } });
+    fs.readFileSync = readFile;
+    assert.equal(secondReason, undefined);
+    assert.equal(unrelatedReads, 0);
+    assert.ok(second);
+    assert.equal(second.taskStoreFile, target);
+    assert.notEqual(secondReason, "task-not-found");
+    assert.equal(fs.existsSync(legacyFile), false);
+    assert.equal(readFile(target, "utf8").includes(record.id), true);
+    const text = JSON.stringify(logs);
+    for (const secret of ["SYNTHETIC", "/tmp", "private", "prompt", "token", "secret", legacyFile, target]) {
+      assert.equal(text.includes(secret), false, secret);
+    }
+  `);
+});
+
+test("a strict legacy directory scan throws the original error and a tolerant read stays unavailable", () => {
+  checkOrdinaryAuthority(`
+    const legacy = require(${JSON.stringify(require.resolve("../../loopLegacyMigration"))});
+    const logger = require(${JSON.stringify(require.resolve("../../logger"))});
+    const logs = [];
+    logger.logError = (event, data) => { logs.push({ event, data }); return Promise.resolve(); };
+    const root = legacy.getLegacyLoopStoragePaths(path.join(process.env.HOME, ".sinitek_cli")).taskStoreDir;
+    const blocked = path.join(root, "blocked");
+    const emptyDir = path.join(root, "empty-child");
+    const legacyFile = path.join(root, "kept", "lobster-tasks.json");
+    const record = task("strict-legacy-scan");
+    const bytes = JSON.stringify({ tasks: [{ ...record, taskStoreFile: legacyFile }] });
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    fs.mkdirSync(emptyDir, { recursive: true });
+    fs.mkdirSync(blocked, { recursive: true });
+    fs.writeFileSync(legacyFile, bytes, "utf8");
+    const original = fs.readdirSync;
+    const scanError = Object.assign(new Error("SYNTHETIC_STRICT_SCAN /tmp/private prompt=secret token=abc"), { code: "EIO" });
+    fs.readdirSync = (file, ...args) => {
+      if (String(file) === blocked) throw scanError;
+      return original(file, ...args);
+    };
+    let strictReason;
+    assert.throws(() => store.readLoopTaskRecord(record.id, {
+      throwOnError: true,
+      onUnavailable(reason) { strictReason = reason; },
+    }), (error) => error === scanError);
+    assert.equal(strictReason, undefined);
+    let ordinaryReason;
+    assert.equal(store.readLoopTaskRecord(record.id, {
+      onUnavailable(reason) { ordinaryReason = reason; },
+    }), null);
+    assert.equal(ordinaryReason, "candidate-scan-unavailable");
+    assert.notEqual(ordinaryReason, "task-not-found");
+    assert.equal(fs.readFileSync(legacyFile, "utf8"), bytes);
+    assert.equal(fs.existsSync(emptyDir), true);
+    assert.equal(fs.existsSync(record.taskStoreFile), false);
+    fs.readdirSync = original;
+    const text = JSON.stringify(logs);
+    for (const secret of ["SYNTHETIC", "/tmp", "private", "prompt", "token", "secret", blocked, legacyFile]) {
+      assert.equal(text.includes(secret), false, secret);
+    }
+  `);
+});
+
+test("a cold read returns a target committed during discovery without parsing an unreadable candidate", () => {
+  checkOrdinaryAuthority(`
+    const legacy = require(${JSON.stringify(require.resolve("../../loopLegacyMigration"))});
+    const logger = require(${JSON.stringify(require.resolve("../../logger"))});
+    const logs = [];
+    logger.logError = (event, data) => { logs.push({ event, data }); return Promise.resolve(); };
+    const legacyFile = legacy.getLegacyLoopStoragePaths(path.join(process.env.HOME, ".sinitek_cli")).taskStoreFlatFile;
+    const record = task("legacy-cold-migrate");
+    const target = record.taskStoreFile;
+    const unrelated = task("unrelated-cold-eio");
+    store.writeLoopTaskStore(unrelated.taskStoreFile, { tasks: [unrelated] });
+    fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
+    fs.writeFileSync(legacyFile, JSON.stringify({ tasks: [{ ...record, taskStoreFile: legacyFile }] }));
+    const readFile = fs.readFileSync;
+    let unrelatedReads = 0;
+    fs.readFileSync = (file, ...args) => {
+      if (String(file) === unrelated.taskStoreFile) {
+        unrelatedReads += 1;
+        throw Object.assign(new Error("SYNTHETIC_COLD /tmp/faulty prompt=secret token=abc"), { code: "EIO" });
+      }
+      return readFile(file, ...args);
+    };
+    let reason;
+    const loaded = store.readLoopTaskRecord(record.id, { onUnavailable(next) { reason = next; } });
+    fs.readFileSync = readFile;
+    assert.equal(reason, undefined);
+    assert.equal(unrelatedReads, 0);
+    assert.ok(loaded);
+    assert.equal(loaded.id, record.id);
+    assert.equal(loaded.taskStoreFile, target);
+    assert.equal(fs.existsSync(legacyFile), false);
+    assert.equal(readFile(target, "utf8").includes(record.id), true);
+    const text = JSON.stringify(logs);
+    for (const secret of ["SYNTHETIC", "/tmp", "faulty", "prompt", "token", "secret", legacyFile, target, unrelated.taskStoreFile]) {
+      assert.equal(text.includes(secret), false, secret);
+    }
+  `);
 });

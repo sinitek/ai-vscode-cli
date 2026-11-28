@@ -14,6 +14,7 @@ import {
   type LoopPlusDecision,
   type LoopPlusDecisionStatus,
 } from "../../loopPlusDecision";
+import { loopPlusProtocolParseDiagnostic } from "../../loopPlusProtocolDiagnostics";
 import { LOOP_PLUS_TASK_TYPES } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 
@@ -647,12 +648,80 @@ test("protocol feedback distinguishes empty and incomplete replies and clears ea
   assert.equal(invalidStatus.rejectionKind, "validation");
   assert.equal(invalidStatus.formatDiagnostic, undefined);
   assert.match(invalidStatus.rejectionReason ?? "", /status 缺失或无效/);
+  const unclosedOuter = '{"status":"accept","reviews":[{"note":"kept"}]';
+  const unclosed = parseLoopPlusDecisionWithFeedback(unclosedOuter);
+  assert.equal(unclosed.decision, null);
+  assert.equal(unclosed.rejectionKind, "format");
+  assert.equal(unclosed.validationDiagnostic, undefined);
+  assert.equal(unclosed.formatDiagnostic?.code, "CloseBraceExpected");
+  assert.equal(unclosed.formatDiagnostic?.position?.line, 1);
+  assert.doesNotMatch(unclosed.rejectionReason ?? "", /status 缺失或无效/);
+  assert.doesNotMatch(JSON.stringify(unclosed), /kept/);
+  assert.deepEqual(loopPlusProtocolParseDiagnostic(unclosed), {
+    rejectionKind: "format",
+    reasonCode: "format.CloseBraceExpected",
+    position: unclosed.formatDiagnostic?.position,
+  });
+  const closedWithoutStatus = parseLoopPlusDecisionWithFeedback('{"reviews":[{"note":"kept"}]}');
+  assert.equal(closedWithoutStatus.rejectionKind, "validation");
+  assert.match(closedWithoutStatus.rejectionReason ?? "", /status 缺失或无效/);
+  assert.equal(parseLoopPlusDecision('说明 {"status":"wait"}')?.status, "wait");
   const invalid = parseLoopPlusDecisionWithFeedback('{"status":"completed"}');
   assert.equal(invalid.rejectionKind, "validation");
   assert.match(invalid.rejectionReason ?? "", /requirementCoverage/);
   assert.deepEqual(parseLoopPlusDecisionWithFeedback('{"status":"accept"}\n{"status":"wait"}'), {
     decision: { status: "wait" }, rejectionReason: null,
   });
+});
+
+test("unclosed outer objects in bare, fenced, and prose wrappers stay format errors", () => {
+  const secret = "synthetic-secret";
+  const bare = `{"status":"accept","reviews":[{"note":"${secret}"}]`;
+  const wrappers = [
+    bare,
+    `说明文字\n${bare}`,
+    ["前言", "```json", bare, "```"].join("\n"),
+    ["前言", "~~~jsonc", bare, "~~~"].join("\n"),
+  ];
+  for (const content of wrappers) {
+    const parsed = parseLoopPlusDecisionWithFeedback(content);
+    assert.equal(parsed.decision, null, content);
+    assert.equal(parsed.rejectionKind, "format", content);
+    assert.equal(parsed.validationDiagnostic, undefined, content);
+    assert.equal(parsed.reviewFieldDiagnostic, undefined, content);
+    assert.equal(parsed.formatDiagnostic?.code, "CloseBraceExpected", content);
+    assert.equal(parsed.formatDiagnostic?.position?.line, 1, content);
+    assert.match(parsed.rejectionReason ?? "", /没有完整对象/);
+    assert.doesNotMatch(parsed.rejectionReason ?? "", /status 缺失或无效/);
+    assert.doesNotMatch(JSON.stringify(parsed), new RegExp(secret));
+    assert.equal(loopPlusProtocolParseDiagnostic(parsed).reasonCode, "format.CloseBraceExpected");
+  }
+  const innerDecision = '{"wrapper":{"status":"wait","reportEventIds":["secret-id"]}';
+  for (const content of [
+    innerDecision,
+    `请看这段说明 ${innerDecision}`,
+    ["```json", innerDecision, "```"].join("\n"),
+  ]) {
+    const parsed = parseLoopPlusDecisionWithFeedback(content);
+    assert.equal(parsed.decision, null, content);
+    assert.equal(parsed.rejectionKind, "format", content);
+    assert.doesNotMatch(JSON.stringify(parsed), /secret-id/);
+    assert.doesNotMatch(parsed.rejectionReason ?? "", /status 缺失或无效/);
+  }
+  assert.deepEqual(parseLoopPlusDecisionWithFeedback([
+    "```json",
+    innerDecision,
+    "```",
+    '{"status":"wait","reportEventIds":["later-event"]}',
+  ].join("\n")), {
+    decision: { status: "wait", reportEventIds: ["later-event"] },
+    rejectionReason: null,
+  });
+  const buried = parseLoopPlusDecisionWithFeedback(`${innerDecision}\n{"status":"wait","reportEventIds":["later-event"]}`);
+  assert.equal(buried.decision, null);
+  assert.equal(buried.rejectionKind, "format");
+  assert.equal(buried.validationDiagnostic, undefined);
+  assert.doesNotMatch(JSON.stringify(buried), /later-event/);
 });
 
 test("reports candidate-relative format coordinates for fenced JSON with CRLF", () => {
@@ -844,6 +913,19 @@ test("completed feedback requires non-empty default reasons without truncating l
     ...base,
     acceptance: { passed: true, checks: base.acceptance.checks.map((check) => ({ ...check, detail: longDetail })) },
   }, options)?.acceptance?.checks[0]?.detail, longDetail);
+});
+
+test("normal completion requires startup evidence independently of passing tests", () => {
+  const options = { requireAcceptanceFeedback: true };
+  const verifyStartup = (passed: boolean) => normalizeLoopPlusDecision({
+    ...completedFields(),
+    acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture({
+      tests: { passed: true, detail: "导出单测通过" },
+      artifacts: { passed, detail: passed ? "启动记录显示服务就绪" : "本次启动尚未验证" },
+    }) },
+  }, options);
+  assert.equal(verifyStartup(false), null);
+  assert.equal(verifyStartup(true)?.status, "completed");
 });
 
 test("feedback fixtures never overwrite an existing failed check", () => {

@@ -1,0 +1,17 @@
+# 存在、发现或调整前后置关系时
+
+- dependsOn is an optional array of stable subtask ids under this parent, never attempt or session ids. Ordinary dispatch omission or [] means no dependency; continueFromSubtaskId selects a session and never implies dependsOn. Declare real prerequisites explicitly and retain parallel admission for independent work; there is no whole-batch barrier.
+
+- If work explicitly requires accepted results (for example, delivery of reviewed changes), dispatch it only after that acceptance.
+
+- Review ordering is separate from execution admission. A pending-review prerequisite is selected before its successor; a running or pending prerequisite, or an unacknowledged no-acceptance report, defers only related successors from a new acceptance batch. Independent review, dispatch, and refill continue. Acknowledge reports through the frozen FIFO report prefix first; the host may select their successors in a later decision. Never confirm a report automatically or turn it into a separate acceptance review.
+
+- For reviewing an already delivered successor, the latest prerequisite reviewed (passed or failed), reported, or closed means it has been processed first, not that execution succeeded. Once processed, judge the successor delivery independently. A failed prerequisite does not automatically fail any other event. A selected prerequisite is not yet passed; record every event's true conclusion even when prerequisites and successors share this batch. Only the host selects the batch; never insert a prerequisite yourself.
+
+- The host applies the complete decision, including report acknowledgments, reviews, controls, and new dispatches, before promoting pending work. An old prerequisite success cannot release a successor midway through a decision that creates a newer prerequisite attempt. New reservations are persisted before execution starts.
+
+- Subtasks in one dispatch may forward-reference another accepted subtask in that same dispatch. Unknown ids, self/duplicate dependencies, and cycles are rejected before graph admission. A rejected candidate cannot serve as a prerequisite. controls.reprompt may reference only already known logical ids, not a new id awaiting dispatch in this decision; its graph is preflighted before any old attempt is aborted.
+
+- controls.reprompt omission of dependsOn inherits the original list; [] clears it and an explicit array replaces it. Omission of requiresAcceptance still resets to true. For failed or closed prerequisites, prefer a new dispatch attempt with the same logical id so waiting successors observe the repair; a different id never replaces the original automatically. Already running successors are not cancelled by a later prerequisite redispatch.
+
+- When no acceptance item is claimable, do not emit an empty review confirmation. Visible events may all be dependency blocked. Read visible reports and messages first. When an active prerequisite can advance, waiting with no frozen acceptance batch is allowed. With no active work and only dependency deadlock, wait cannot make progress, even if review events remain queued; plan how to resolve the blockers instead of waiting indefinitely. Inspect each dependency id, latestAttempt and reason above; repair the prerequisite under the same id, use reprompt to adjust a pending successor, or use the existing blocked protocol when no safe work remains. Preserve failed verdicts; do not cancel successors, bypass dependencies or claim completion.

@@ -8,7 +8,7 @@ import { installVscodeMock } from "../vscodeMock";
 
 installVscodeMock();
 
-const { createLoopPlusRuntimeFixture } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
+const { createLoopPlusRuntimeFixture, seedMainParent } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 const { withLoopSubtaskSession } = require("../../loopSubtaskSession") as typeof import("../../loopSubtaskSession");
 
 function deferred<T>() {
@@ -67,6 +67,7 @@ test("admission wait creates no tab/root/CLI, owns no session lock and does not 
     taskId: request().taskId, subtaskId: "A",
   }), "free");
   fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: "reviewed" }));
+  seedMainParent(fixture, request().taskId);
   assert.equal(await fixture.adapter.runMain({
     taskId: request().taskId, kind: "review", prompt: "review", modelPrompt: "review",
     reviewEventId: "event", target: fixture.target,

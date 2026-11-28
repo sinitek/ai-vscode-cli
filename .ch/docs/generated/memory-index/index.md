@@ -11,7 +11,7 @@
 - Lessons：0
 - Observation entries：4
 - Claim entries：129
-- Estimated read cost：~211 tokens
+- Estimated read cost：~280 tokens
 - Fresh docs：0
 - Stale docs：2
 - Starter docs：7

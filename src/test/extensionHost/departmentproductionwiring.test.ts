@@ -28,6 +28,7 @@ import { productionWiring, until, gate } from "./fixtures/departmentproductionwi
 import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 import { createDepartmentExecutionProducer } from "../../extensionHost/departmentexecutionproducer";
 import { normalizeLoopTaskRecord, mergeLoopTaskRecordPatch } from "../../loopTaskStore";
+import { isLoopPlusMainFailureCode, loopPlusMainFailure } from "../../loopMainFailure";
 
 for (const employee of ["codex", "opencode"] as const) wiringTest(`production composition uses one producer for two native mains and ${employee} employee admission`, { timeout: 20000 }, async (t) => {
   const h = await productionWiring(t, employee);
@@ -175,7 +176,20 @@ wiringTest("actual adapter cancellation during preparation never sends a task or
   const saved = h.read(launch.taskId)!;
   const handle = h.fixture.adapter.runMain({ taskId: saved.id, kind: "initial", prompt: "late explicit continuation",
     modelPrompt: "late explicit continuation", reviewEventId: null, target: { tabId: "leader-tab", cli: "codex", sessionId: saved.sessionId ?? null } });
-  await assert.rejects(handle.promise, /no-live-generation/);
+  // stopParent leaves the parent non-running and this continue has no firstMainExecution,
+  // so runMain rejects at the parent-attribution guard rather than the producer seal.
+  const parentUnavailable = loopPlusMainFailure("LOOP_PLUS_PARENT_UNAVAILABLE");
+  await assert.rejects(handle.promise, (error: unknown) => {
+    assert.ok(error instanceof Error);
+    const code = (error as { code?: string }).code;
+    assert.equal(isLoopPlusMainFailureCode(code), true);
+    assert.equal(code, parentUnavailable.code);
+    assert.equal(error.message, parentUnavailable.message);
+    assert.equal(/no-live-generation/u.test(`${code ?? ""}\n${error.message}`), false);
+    return true;
+  });
+  assert.equal(handle.hasStarted?.(), false);
+  assert.equal(h.entries()[0].executionId, null);
   assert.equal(h.wire().length, 0); assert.equal(h.localRuns, 0);
 });
 

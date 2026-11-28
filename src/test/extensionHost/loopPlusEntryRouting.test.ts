@@ -9,8 +9,8 @@ import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { askLoopMainModelSession } from "../../loopMainQuestion";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
 import { leaderExecutionScopeKey } from "../../extensionHost/departmentleaderexecutionledger";
-import { usesDepartmentOwner } from "../../department";
-import { usesCompletedLoopSubtaskTabCleanup } from "../../extensionHost/loopSubtaskTabs";
+import { normalizeDepartmentMetadata, usesDepartmentOwner } from "../../department";
+import { resolveCompletedLoopSubtaskTabBinding, usesCompletedLoopSubtaskTabCleanup } from "../../extensionHost/loopSubtaskTabs";
 import type { PromptRunInput } from "../../promptRunTypes";
 import type { ChatMessage } from "../../webview/types";
 
@@ -35,10 +35,81 @@ function functionBody(source: string, name: string): string {
   return declaration.body.getText(file);
 }
 
+function importedNames(source: string, modulePath: string): Set<string> {
+  const file = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const names = new Set<string>();
+  for (const statement of file.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== modulePath) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) names.add(element.name.text);
+  }
+  return names;
+}
+
+function realCompletedLoopSubtaskTabBinding(source: string) {
+  if (!importedNames(source, "./extensionHost/loopSubtaskTabs").has("resolveCompletedLoopSubtaskTabBinding")) {
+    throw new Error("产品故障: extension.ts 未从 ./extensionHost/loopSubtaskTabs 导入 resolveCompletedLoopSubtaskTabBinding");
+  }
+  if (typeof resolveCompletedLoopSubtaskTabBinding !== "function") {
+    throw new Error("产品故障: loopSubtaskTabs 未导出可用的 resolveCompletedLoopSubtaskTabBinding");
+  }
+  return resolveCompletedLoopSubtaskTabBinding;
+}
+
+function withRealCompletedLoopSubtaskTabBinding<T extends object>(source: string, sandbox: T): T & {
+  resolveCompletedLoopSubtaskTabBinding: typeof resolveCompletedLoopSubtaskTabBinding;
+} {
+  const provided = (sandbox as { resolveCompletedLoopSubtaskTabBinding?: unknown }).resolveCompletedLoopSubtaskTabBinding;
+  const real = realCompletedLoopSubtaskTabBinding(source);
+  if (provided !== undefined && provided !== real) {
+    throw new Error("夹具故障: resolveCompletedLoopSubtaskTabBinding 不能用恒定返回值替换真实依赖");
+  }
+  return { ...sandbox, resolveCompletedLoopSubtaskTabBinding: real };
+}
+
+function productionPrepareDepartmentInvocation(deps: {
+  readLoopTaskRecord: () => unknown;
+  activeWorkspaceKey: string;
+  resolvePromptRunTarget: (tabId: string | null) => { tabId: string; cli: string; sessionId: string } | null;
+}) {
+  const source = readSource("src", "extension.ts");
+  const javascript = ts.transpileModule(
+    `async function prepareDepartmentInvocation(input, tabId) ${functionBody(source, "prepareDepartmentInvocation")}\nprepareDepartmentInvocation;`,
+    { compilerOptions: { target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+  return vm.runInNewContext(javascript, {
+    readLoopTaskRecord: deps.readLoopTaskRecord,
+    activeWorkspaceKey: deps.activeWorkspaceKey,
+    normalizeDepartmentMetadata,
+    prepareDepartmentRoutes: async () => {
+      throw new Error("产品故障: Loop+ 部门占用不应进入全量路由核验");
+    },
+    resolvePromptRunTarget: deps.resolvePromptRunTarget,
+  }) as (input: PromptRunInput, tabId: string | null) => Promise<PromptRunInput>;
+}
+
+const departmentLoopPlusLeader = {
+  version: 1 as const,
+  rootTaskId: "task",
+  parentTaskId: null,
+  leaderSubtaskId: null,
+  role: "leader" as const,
+  executionMode: "loop-plus" as const,
+  moduleTitle: "部门",
+  routes: {
+    director: { cli: "codex" as const, model: "fixture-model", thinkingMode: "off" as const },
+    leader: { cli: "codex" as const, model: "fixture-model", thinkingMode: "off" as const },
+    employee: { cli: "codex" as const, model: "fixture-model", thinkingMode: "off" as const },
+  },
+  limits: { maxLeaders: 1, maxEmployees: 1 },
+};
+
 test("production main watchdog checks the open original tab and its native thread", () => {
   const source = readSource("src", "extension.ts");
   const activation = functionBody(source, "activate");
-  assert.match(activation, /startLoopWaitWatchdog\(\[[\s\S]*checkWaitingTasks\(\)[\s\S]*\], [\s\S]*checkInterruptedMainTasks\(\)[\s\S]*checkWaitingReviews\(\)/);
+  assert.match(activation, /startLoopWaitWatchdog\(\[[\s\S]*checkWaitingTasks\(\)[\s\S]*\], [\s\S]*checkInterruptedMainTasks\(\)[\s\S]*checkWaitingMainTasks\(\)/);
   const sandbox = {
     isExtensionDeactivating: false,
     activeWorkspaceKey: "workspace",
@@ -89,12 +160,13 @@ function productionLoopMainEntries() {
   `, { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
 }
 
-for (const department of [undefined, { role: "leader", executionMode: "loop-plus" }] as const) test(`production ask uses Tab occupancy and shared FIFO (${department ? "department Loop+" : "ordinary Loop+"})`, async () => {
+for (const department of [undefined, departmentLoopPlusLeader] as const) test(`production ask uses Tab occupancy and shared FIFO (${department ? "department Loop+" : "ordinary Loop+"})`, async () => {
   const task = { id: "task", cli: "codex", status: "running", sessionId: "original-session", schedulingMode: "event_driven",
     workspaceKey: "workspace", taskStoreFile: "/fixture/tasks.json", supplementalRequirements: ["待处理补充需求"], department };
   const target = { tabId: "main-tab", cli: task.cli, sessionId: task.sessionId };
   let latestTask = task;
   const events: string[] = [];
+  const terminalBindings: Array<{ context: unknown; provisional: boolean }> = [];
   const messages: ChatMessage[] = [];
   let active = false;
   let taskReads = 0;
@@ -103,9 +175,12 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   let releaseMain!: () => void;
   let mainGate = new Promise<void>((resolve) => { releaseMain = resolve; });
   const queue = createLoopMainQuestionQueue({ pollIntervalMs: 1 });
-  const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+  const extensionSource = readSource("src", "extension.ts");
+  const runtime = vm.runInNewContext(productionLoopMainEntries(), withRealCompletedLoopSubtaskTabBinding(extensionSource, {
     usesDepartmentOwner,
     usesCompletedLoopSubtaskTabCleanup,
+    departmentProcessPreparation: null,
+    departmentCodexPreparation: null,
     isExtensionDeactivating: false,
     activeWorkspaceKey: task.workspaceKey,
     readLoopTaskRecord: () => { taskReads += 1; return latestTask; },
@@ -114,7 +189,12 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
     isTabRunActive: () => active,
     loopMainQuestionQueue: queue,
     promptRunHandoff: new PromptRunHandoff(),
-    completedLoopSubtaskTabs: { bindPrompt: () => undefined },
+    completedLoopSubtaskTabs: {
+      bindPrompt: (_tab: unknown, context: unknown, options?: { provisional?: boolean }) => {
+        terminalBindings.push({ context: context ?? null, provisional: options?.provisional === true });
+        return undefined;
+      },
+    },
     getLoopPlusOrchestrationHost: () => ({ hasPendingMainWork: () => { pendingReviewReads += 1; return true; } }),
     askLoopMainModelSession,
     getConversationTabById: () => ({ id: target.tabId, cli: target.cli }),
@@ -122,7 +202,13 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
     loadSessionMessages: () => messages,
     getActiveConversationTabId: () => target.tabId,
     createPerformanceTrace: () => ({ start: () => () => undefined, measure: (_phase: string, work: () => unknown) => work() }),
-    prepareDepartmentInvocation: async (input: unknown) => input,
+    prepareDepartmentInvocation: productionPrepareDepartmentInvocation({
+      readLoopTaskRecord: () => latestTask,
+      activeWorkspaceKey: task.workspaceKey,
+      resolvePromptRunTarget: (tabId) => tabId === target.tabId
+        ? { tabId: target.tabId, cli: target.cli, sessionId: target.sessionId }
+        : null,
+    }),
     runPromptNow: async (input: { displayPrompt: string; loopAsk?: boolean }) => {
       events.push(input.displayPrompt);
       if (input.loopAsk) {
@@ -132,9 +218,9 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
       }
     },
     t: (key: string, values?: { detail?: string }) => values?.detail ?? key,
-  }) as {
+  })) as {
     ask: (input: typeof task, question: string, hooks?: { isAborted: () => boolean }) => Promise<Awaited<ReturnType<typeof askLoopMainModelSession>>>;
-    runPrompt: (input: { displayPrompt: string; taskRole: string; loopTaskId: string }) => Promise<void>;
+    runPrompt: (input: { displayPrompt: string; modelPrompt?: string; contextTags?: string[]; taskRole?: string; loopTaskId?: string; loopSubtaskId?: string; loopRound?: number; loopAttemptId?: string }) => Promise<void>;
   };
 
   const first = runtime.ask(task, "已有待验收，先提问");
@@ -205,6 +291,18 @@ for (const department of [undefined, { role: "leader", executionMode: "loop-plus
   clearTimeout(tick);
   await drained;
   assert.equal(events.length, 0);
+  assert.ok(terminalBindings.length > 0);
+  assert.equal(terminalBindings.every((item) => item.context === null && item.provisional === false), true);
+
+  await runtime.runPrompt({
+    displayPrompt: "终态子任务", modelPrompt: "终态子任务", contextTags: [], taskRole: "subtask",
+    loopTaskId: task.id, loopSubtaskId: "child", loopRound: 3, loopAttemptId: "lp-terminal",
+  });
+  assert.deepEqual(terminalBindings.at(-1), {
+    context: { taskId: task.id, subtaskId: "child", round: 3, attemptId: "lp-terminal" },
+    provisional: false,
+  });
+  assert.equal(events.at(-1), "终态子任务");
 });
 
 function gate() {
@@ -242,7 +340,7 @@ for (const cli of ["codex", "opencode"] as const) {
       runs.delete(tab.id);
       messages.push({ id: input.displayPrompt, role: "assistant", content: "已回答", createdAt: 1 });
     };
-    const runtime = vm.runInNewContext(productionLoopMainEntries(), {
+    const runtime = vm.runInNewContext(productionLoopMainEntries(), withRealCompletedLoopSubtaskTabBinding(readSource("src", "extension.ts"), {
       usesDepartmentOwner,
       AbortController,
       isExtensionDeactivating: false,
@@ -297,7 +395,7 @@ for (const cli of ["codex", "opencode"] as const) {
       getPrimaryRunTabId: () => null,
       runPromptNow: async () => assert.fail("department asks must not use ordinary prompt execution"),
       t: (key: string, values?: { question?: string }) => values?.question ?? key,
-    }) as {
+    })) as {
       ask: (record: typeof task, question: string, hooks?: { signal?: AbortSignal }) => ReturnType<typeof askLoopMainModelSession>;
       runDepartmentLeaderPrompt: (input: PromptRunInput, options: { targetTabId: string; invocationId: string; signal?: AbortSignal; isAborted: () => boolean }) => Promise<void>;
     };

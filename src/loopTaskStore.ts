@@ -2,8 +2,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
+import { describeLoopTaskIdentityLock } from "./loopTaskIdentityCatalog";
 import { canMigrateOrdinaryLoopTaskIdentity, commitLoopTaskIdentities, inspectLoopTaskIdentityOwnership, locateOrdinaryLoopTaskMove, LOOP_TASK_IDENTITY_UPDATE_RETRIES, LOOP_TASK_IDENTITY_UPDATE_WAIT_MS, readKnownOrdinaryLoopTaskIdentity, retainOrdinaryLoopTaskIdentities, waitForLoopTaskIdentityUpdateRetry, withLoopTaskIdentityRetention } from "./loopTaskIdentityCatalog";
-import type { LoopBlocker } from "./loopBlocker";
+import { readLoopBlockerRecoveryOptions, type LoopBlocker } from "./loopBlocker";
 import {
   CLI_LIST,
   createCliRecord,
@@ -35,7 +36,7 @@ import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { normalizeLoopWriteFiles } from "./loopParallel";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { sanitizePathSegment } from "./shared/pathSegments";
-import { readLoopPlusInterruptionSource, type LoopPlusInterruptionSource } from "./extensionHost/loopPlusDiagnostics";
+import { readLoopPlusInterruptionSource, type LoopPlusInterruptionSource } from "./loopPlusInterruptionSource";
 import { readLoopSubtaskModeField, type LoopSubtaskMode } from "./loopPlusSubtaskMode";
 import { parseCliNameField } from "./subtaskCliRoute";
 import { INVALID_SUBTASK_CLI_ROUTE } from "./subtaskCliRoute";
@@ -156,6 +157,7 @@ export type LoopSubtaskRepairSource = {
 };
 
 export type LoopSubtaskRecord = {
+  launchReservation?: { attemptId: string; state: "waiting" | "claimed" };
   dependsOn?: string[];
   repairSource?: LoopSubtaskRepairSource;
   continueFromSubtaskId?: string;
@@ -268,7 +270,7 @@ export type LoopTaskRecord = {
   loopPlusProgressPercent?: number;
   loopPlusNextStepPlan?: LoopPlusNextStepPlan;
   loopProgressPercent?: number;
-  loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string };
+  loopPlusBlockReview?: { state: "pending" | "reviewed"; summary?: string; recoveryOptions?: LoopBlocker["recoveryOptions"] };
   loopPlusMainRecoveryFailureCount?: number;
   /** 启动时确认的验收方案快照；缺失时主模型提示词回落到固定基线检查项。 */
   loopPlusAcceptancePlan?: LoopPlusAcceptancePlanSnapshot;
@@ -279,7 +281,6 @@ export type LoopTaskRecord = {
   status: LoopTaskStatus;
   /** 宿主已失去运行所有权，保留子任务关联以供手动续跑回报。用户主动停止时清除。 */
   runtimeInterrupted?: boolean;
-  /** Phase and reason of the error/stopped transition. Later persists keep this object. */
   loopPlusInterruption?: LoopPlusInterruptionSource;
   userStopSource?: LoopTaskUserStopSource;
   createdAt: number;
@@ -407,17 +408,49 @@ export function buildLoopSessionIdsByCli(
   return sessionIdsByCli;
 }
 
+const loopTaskReadUnavailableReasons = [
+  "identity-lock-present",
+  "identity-catalog-unavailable",
+  "department-owned",
+  "owner-route-inactive",
+  "owner-route-unhandled",
+  "owner-operation-unconfirmed",
+  "owner-route-threw",
+  "committed-move-target-unavailable",
+  "task-not-found",
+  "candidate-scan-unavailable",
+  "store-read-rejected",
+  "controlled-root",
+  "unknown",
+] as const;
+/** Fixed classification for one null read. Anything else degrades to unknown. */
+export type LoopTaskReadUnavailableReason = typeof loopTaskReadUnavailableReasons[number];
+const loopTaskReadUnavailableReasonSet = new Set<string>(loopTaskReadUnavailableReasons);
+export function loopTaskReadUnavailableReason(reason: unknown): LoopTaskReadUnavailableReason {
+  return typeof reason === "string" && loopTaskReadUnavailableReasonSet.has(reason) ? reason as LoopTaskReadUnavailableReason : "unknown";
+}
+
+export type OrdinaryLoopTaskVersion = Pick<LoopTaskRecord, "taskStoreFile" | "updatedAt"> & {
+  retainedStatus?: Extract<LoopTaskStatus, "stopped" | "error" | "needs-review">;
+};
+
+type LoopTaskUpdateOptions = {
+  allowCompletedToRunning?: boolean;
+  expectedOrdinaryRun?: OrdinaryLoopTaskVersion;
+  throwOnIdentityLock?: boolean;
+};
+
 /** Trusted host-only routing. A handled failure NEVER delegates to ordinary discovery. */
 export type LoopTaskHostRequest =
   | { type: "read"; taskId: string }
-  | { type: "update"; taskId: string; patch: Partial<LoopTaskRecord>; options: { allowCompletedToRunning?: boolean } }
+  | { type: "update"; taskId: string; patch: Partial<LoopTaskRecord>; options: LoopTaskUpdateOptions }
   | { type: "append"; taskId: string; round: LoopRoundRecord }
   | { type: "rebind"; taskId: string; cli?: CliName; sessionId: string | null }
   | { type: "readFile" | "deleteFile"; filePath: string }
   | { type: "retention" };
 export type LoopTaskHostResult =
   | { handled: false }
-  | { handled: true; ok: false }
+  | { handled: true; ok: false; unavailableReason?: LoopTaskReadUnavailableReason }
   | { handled: true; ok: true; record?: LoopTaskRecord; store?: LoopTaskStore };
 type HostRoute = {
   root: string; ids: Set<string>; active: boolean;
@@ -466,16 +499,19 @@ function logLoopTaskRouteRejected(request: LoopTaskHostRequest, reason: string):
   void logError("loop-task-owner-route-rejected", {
     operation: request.type,
     reason,
+    ...(reason === "identity-lock-present" ? { requesterPid: process.pid, ...describeLoopTaskIdentityLock() } : {}),
     ...(taskId ? { taskId } : {}),
     pid: process.pid,
   }).catch(() => undefined);
 }
 
-class OrdinaryUpdateIdentityLockBusy extends Error {
+export class OrdinaryUpdateIdentityLockBusy extends Error {
   constructor(readonly stage: string) {
     super("Loop task identity lock is busy before update commit");
   }
 }
+
+export class OrdinaryUpdateVersionChanged extends Error {}
 
 function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   if ("filePath" in request) request = { ...request, filePath: canonicalRouteFile(request.filePath) };
@@ -484,7 +520,7 @@ function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
   const reject = (reason: string): LoopTaskHostResult => {
     if (request.type === "update") logLoopTaskUpdateRejected("host-route", reason);
     logLoopTaskRouteRejected(request, reason);
-    return { handled: true, ok: false };
+    return { handled: true, ok: false, unavailableReason: loopTaskReadUnavailableReason(reason) };
   };
   if (!entry) {
     if ("taskId" in request) {
@@ -494,6 +530,7 @@ function routeHostRequest(request: LoopTaskHostRequest): LoopTaskHostResult {
     }
     return { handled: false };
   }
+  if (request.type === "update" && request.options.expectedOrdinaryRun) return reject("department-owned");
   if (!entry.active) return reject("owner-route-inactive");
   try {
     const result = entry.route(request);
@@ -543,10 +580,32 @@ export function buildLoopTaskStoreFile(cli: CliName, workspaceKey: string, sessi
   return getLoopTaskStorePendingFile(workspaceKey, cli, taskId);
 }
 
+type LoopTaskCandidateScan = { unavailableReason?: LoopTaskReadUnavailableReason };
+
+/** Same-call discovery failure. ENOENT is a finished empty branch. The log is only the safe category. */
+function recordCandidateDiscoveryFailure(scan: LoopTaskCandidateScan, error: unknown, options: LoopTaskStoreReadOptions): void {
+  publishLoopTaskStoreChange({ type: "invalidate" });
+  void logError("loop-task-store-readdir-error", { reason: "candidate-scan-unavailable" });
+  if (options.throwOnError) throw error;
+  scan.unavailableReason ??= "candidate-scan-unavailable";
+}
+
+function considerFlatLoopTaskCandidate(file: string, files: string[], scan: LoopTaskCandidateScan, options: LoopTaskStoreReadOptions): void {
+  if (fs.existsSync(file)) {
+    files.push(file);
+    return;
+  }
+  try { fs.lstatSync(file); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") recordCandidateDiscoveryFailure(scan, error, options);
+  }
+}
+
 function collectLoopTaskStoreFilesFromDir(
   dirPath: string,
   filename: string = LOOP_TASK_STORE_FILENAME,
   options: LoopTaskStoreReadOptions = {},
+  scan: LoopTaskCandidateScan = {},
 ): string[] {
   const collected: string[] = [];
   const stack = [dirPath];
@@ -556,14 +615,11 @@ function collectLoopTaskStoreFilesFromDir(
     try {
       entries = fs.readdirSync(current, { withFileTypes: true });
     } catch (error) {
-      publishLoopTaskStoreChange({ type: "invalidate" });
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        publishLoopTaskStoreChange({ type: "invalidate" });
         continue;
       }
-      void logError("loop-task-store-readdir-error", { dirPath: current, error: String(error) });
-      if (options.throwOnError) {
-        throw error;
-      }
+      recordCandidateDiscoveryFailure(scan, error, options);
       continue;
     }
     entries.forEach((entry) => {
@@ -580,24 +636,29 @@ function collectLoopTaskStoreFilesFromDir(
   return collected;
 }
 
-export function listLoopTaskStoreFiles(options: LoopTaskStoreReadOptions = {}): string[] {
-  const unmigratedLegacyFiles = migrateLegacyLoopStorage();
-  const files = collectLoopTaskStoreFilesFromDir(LOOP_TASK_STORE_DIR, LOOP_TASK_STORE_FILENAME, options);
-  if (fs.existsSync(LOOP_TASK_STORE_FLAT_FILE)) {
-    files.push(LOOP_TASK_STORE_FLAT_FILE);
-  }
+function discoverLoopTaskStoreFiles(options: LoopTaskStoreReadOptions = {}): { files: string[]; unavailableReason?: LoopTaskReadUnavailableReason } {
+  const scan: LoopTaskCandidateScan = {};
+  const unmigratedLegacyFiles = migrateLegacyLoopStorage(scan, options);
+  const files = collectLoopTaskStoreFilesFromDir(LOOP_TASK_STORE_DIR, LOOP_TASK_STORE_FILENAME, options, scan);
+  considerFlatLoopTaskCandidate(LOOP_TASK_STORE_FLAT_FILE, files, scan, options);
   files.push(...unmigratedLegacyFiles);
-  return Array.from(new Set(files));
+  return { files: Array.from(new Set(files)), unavailableReason: scan.unavailableReason };
 }
 
-function migrateLegacyLoopStorage(): string[] {
+export function listLoopTaskStoreFiles(options: LoopTaskStoreReadOptions = {}): string[] {
+  return discoverLoopTaskStoreFiles(options).files;
+}
+
+function migrateLegacyLoopStorage(scan: LoopTaskCandidateScan = {}, options: LoopTaskStoreReadOptions = {}): string[] {
   const legacyFiles = collectLoopTaskStoreFilesFromDir(
     LEGACY_LOOP_STORAGE_PATHS.taskStoreDir,
     path.basename(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile),
+    options,
+    scan,
   );
-  if (fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile)) {
-    legacyFiles.push(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile);
-  }
+  considerFlatLoopTaskCandidate(LEGACY_LOOP_STORAGE_PATHS.taskStoreFlatFile, legacyFiles, scan, options);
+  // Partial legacy discovery must not migrate, clean empty directories, or otherwise change storage.
+  if (scan.unavailableReason) return Array.from(new Set(legacyFiles));
   try {
     for (const file of legacyFiles) {
       if (isControlledLoopTaskStorePath(file) || hostRoutes.some((entry) => insideRoute(entry.root, file))) return Array.from(new Set(legacyFiles));
@@ -672,10 +733,7 @@ function migrateLegacyLoopTaskStoreFile(filePath: string): void {
     if (!deleteLoopTaskStoreFile(filePath)) throw new Error("Loop task migration delete failed");
   } catch (error) {
     publishLoopTaskStoreChange({ type: "invalidate", filePath });
-    void logError("loop-legacy-task-store-migration-error", {
-      filePath,
-      error: String(error),
-    });
+    void logError("loop-legacy-task-store-migration-error", { reason: "legacy-migration-unconfirmed" });
   }
 }
 
@@ -820,36 +878,22 @@ function removeEmptyDirectories(rootDir: string): void {
   }
 }
 
-type LoopTaskStoreReadOptions = { throwOnError?: boolean };
+/** onUnavailable runs synchronously and only when this call returns null. It is not remembered. */
+export type LoopTaskStoreReadOptions = {
+  throwOnError?: boolean;
+  onUnavailable?: (reason: LoopTaskReadUnavailableReason) => void;
+};
 
-function resolveLoopTaskStoreFileForTask(taskId: string, options: LoopTaskStoreReadOptions = {}, onUnavailable?: (reason: string) => void): string | null {
-  const moved = locateOrdinaryLoopTaskMove(taskId, onUnavailable);
-  if (!moved.available) return null;
-  if (moved.file) {
-    const read = readLoopTaskStoreResult(moved.file, true, true, false, options.throwOnError);
-    if (read.ok && read.store.tasks.some((task) => task.id === taskId)) {
-      loopTaskStoreFileCache.set(taskId, moved.file);
-      return moved.file;
-    }
-    onUnavailable?.("committed-move-target-unavailable");
-    return null;
-  }
-  const cached = loopTaskStoreFileCache.get(taskId);
-  if (cached) {
-    const cachedStore = readLoopTaskStore(cached, options);
-    if (cachedStore.tasks.some((task) => task.id === taskId)) {
-      return cached;
-    }
-    loopTaskStoreFileCache.delete(taskId);
-  }
-  const candidateFiles = listLoopTaskStoreFiles(options);
+function rememberLatestCandidate(taskId: string, files: readonly string[], options: LoopTaskStoreReadOptions, onUnavailable?: (reason: string) => void): string | null {
   let latest: { filePath: string; updatedAt: number } | undefined;
-  for (const filePath of candidateFiles) {
-    const store = readLoopTaskStore(filePath, options);
-    const task = store.tasks.find((item) => item.id === taskId);
-    if (task && (!latest || task.updatedAt > latest.updatedAt)) {
-      latest = { filePath, updatedAt: task.updatedAt };
+  for (const filePath of files) {
+    const read = readLoopTaskStoreResult(filePath, false, false, false, options.throwOnError);
+    if (!read.ok) {
+      onUnavailable?.(read.unavailableReason ?? "store-read-rejected");
+      return null;
     }
+    const task = read.store.tasks.find((item) => item.id === taskId);
+    if (task && (!latest || task.updatedAt > latest.updatedAt)) latest = { filePath, updatedAt: task.updatedAt };
   }
   if (latest) {
     loopTaskStoreFileCache.set(taskId, latest.filePath);
@@ -857,6 +901,55 @@ function resolveLoopTaskStoreFileForTask(taskId: string, options: LoopTaskStoreR
   }
   onUnavailable?.("task-not-found");
   return null;
+}
+
+/** Existing move check. A missing move continues; an unreadable committed target never falls back. */
+function resolveCommittedOrdinaryMove(taskId: string, options: LoopTaskStoreReadOptions, onUnavailable?: (reason: string) => void): { decided: false } | { decided: true; file: string | null } {
+  const moved = locateOrdinaryLoopTaskMove(taskId, onUnavailable);
+  if (!moved.available) return { decided: true, file: null };
+  if (!moved.file) return { decided: false };
+  const read = readLoopTaskStoreResult(moved.file, true, true, false, options.throwOnError);
+  if (read.ok && read.store.tasks.some((task) => task.id === taskId)) {
+    loopTaskStoreFileCache.set(taskId, moved.file);
+    return { decided: true, file: moved.file };
+  }
+  onUnavailable?.("committed-move-target-unavailable");
+  return { decided: true, file: null };
+}
+
+function resolveLoopTaskStoreFileForTask(taskId: string, options: LoopTaskStoreReadOptions = {}, onUnavailable?: (reason: string) => void): string | null {
+  const committed = resolveCommittedOrdinaryMove(taskId, options, onUnavailable);
+  if (committed.decided) return committed.file;
+  const cached = loopTaskStoreFileCache.get(taskId);
+  if (cached) {
+    const cachedStore = readLoopTaskStore(cached, options);
+    if (cachedStore.tasks.some((task) => task.id === taskId)) {
+      // Updates keep the known file. A reader keeps it only after this scan finishes.
+      // Completeness is the directory scan, not another parse of every store.
+      if (options.throwOnError) return cached;
+      const discovered = discoverLoopTaskStoreFiles(options);
+      if (discovered.unavailableReason) {
+        onUnavailable?.(discovered.unavailableReason);
+        return null;
+      }
+      // Migration may delete this cached legacy file and commit a target during the scan above.
+      // A still-valid cache is not parsed again. A new committed target is checked before other candidates.
+      if (loopTaskStoreFileCache.get(taskId) === cached) return cached;
+      const migrated = resolveCommittedOrdinaryMove(taskId, options, onUnavailable);
+      if (migrated.decided) return migrated.file;
+      return rememberLatestCandidate(taskId, discovered.files, options, onUnavailable);
+    }
+    loopTaskStoreFileCache.delete(taskId);
+  }
+  // Cold start has no cache. Discovery can commit a target before any ordinary candidate is parsed.
+  const discovered = discoverLoopTaskStoreFiles(options);
+  if (!options.throwOnError && discovered.unavailableReason) {
+    onUnavailable?.(discovered.unavailableReason);
+    return null;
+  }
+  const migrated = resolveCommittedOrdinaryMove(taskId, options, onUnavailable);
+  if (migrated.decided) return migrated.file;
+  return rememberLatestCandidate(taskId, discovered.files, options, onUnavailable);
 }
 
 export function getLoopCommunicationPaths(taskId: string): LoopCommunicationPaths {
@@ -952,40 +1045,61 @@ function updateLoopSubtaskCommunicationFile(taskId: string, subtaskId: string, f
 }
 
 export function readLoopTaskRecord(taskId: string, options: LoopTaskStoreReadOptions = {}): LoopTaskRecord | null {
+  let unavailable: LoopTaskReadUnavailableReason | undefined;
+  const note = (reason: unknown) => { unavailable = loopTaskReadUnavailableReason(reason); };
+  const finish = (record: LoopTaskRecord | null): LoopTaskRecord | null => {
+    if (!record) options.onUnavailable?.(unavailable ?? "unknown");
+    return record;
+  };
   const routed = routeHostRequest({ type: "read", taskId });
-  if (routed.handled) return routed.ok ? routed.record ?? null : null;
-  const storeFile = resolveLoopTaskStoreFileForTask(taskId, options);
-  if (!storeFile) {
-    return null;
+  if (routed.handled) {
+    if (routed.ok && routed.record) return routed.record;
+    note(routed.ok ? "unknown" : routed.unavailableReason);
+    return finish(null);
   }
-  const task = readLoopTaskStore(storeFile, options).tasks.find((item) => item.id === taskId) ?? null;
+  const storeFile = resolveLoopTaskStoreFileForTask(taskId, options, note);
+  if (!storeFile) return finish(null);
+  const read = readLoopTaskStoreResult(storeFile, false, false, false, options.throwOnError);
+  if (!read.ok) {
+    note(read.unavailableReason ?? "store-read-rejected");
+    return finish(null);
+  }
+  const task = read.store.tasks.find((item) => item.id === taskId) ?? null;
   if (!task) {
-    return null;
+    note("task-not-found");
+    return finish(null);
   }
-  if (task.taskStoreFile !== storeFile) {
-    return { ...task, taskStoreFile: storeFile };
-  }
+  if (task.taskStoreFile !== storeFile) return { ...task, taskStoreFile: storeFile };
   return task;
 }
 
 /** Ordinary group-chat fallback at an already known physical source. Never discovers stores
  * and never grants department authority when the ownership source is unavailable. */
-export function readKnownOrdinaryLoopTaskRecord(taskId: string): LoopTaskRecord | null {
+export function readKnownOrdinaryLoopTaskRecord(taskId: string, source?: Pick<LoopTaskRecord, "workspaceKey" | "cli" | "sessionId">, displayOnly = false): LoopTaskRecord | null {
   if (hostRoutes.some((entry) => entry.ids.has(taskId))) return null;
-  return readKnownOrdinaryLoopTaskIdentity(taskId, loopTaskStoreFileCache.get(taskId), (file) => {
-    if (hostRoutes.some((entry) => insideRoute(entry.root, file))) return null;
-    const result = readLoopTaskStoreResult(file, true, true);
-    if (!result.ok) return null;
-    const matches = result.store.tasks.filter((task) => task.id === taskId);
+  const knownFile = loopTaskStoreFileCache.get(taskId) ?? (source && buildLoopTaskStoreFile(source.cli, source.workspaceKey, source.sessionId ?? null, taskId));
+  const captured = readKnownOrdinaryLoopTaskIdentity(taskId, knownFile, (file) => {
+    const physicalFile = canonicalRouteFile(file);
+    if (hostRoutes.some((entry) => insideRoute(entry.root, physicalFile)) || isControlledLoopTaskStorePath(physicalFile)) return null;
+    return { file, raw: fs.readFileSync(file, "utf8") };
+  }, displayOnly);
+  if (!captured) return null;
+  try {
+    const matches = parseLoopTaskStoreBytes(captured.file, captured.raw, false, true).tasks.filter((task) => task.id === taskId);
     const task = matches.length === 1 ? matches[0] : null;
-    return task && task.department === undefined && !task.departmentInvalid ? { ...task, taskStoreFile: file } : null;
-  });
+    if (!task || task.department !== undefined || task.departmentInvalid || (source && task.workspaceKey !== source.workspaceKey)) return null;
+    if (source && !displayOnly) loopTaskStoreFileCache.set(taskId, captured.file);
+    return { ...task, taskStoreFile: captured.file };
+  } catch {
+    reportLoopTaskStoreReadFailure(captured.file);
+    return null;
+  }
 }
 
 export function updateLoopTaskRecord(
   taskId: string,
   patch: Partial<LoopTaskRecord>,
-  options: { allowCompletedToRunning?: boolean } = {}
+  options: LoopTaskUpdateOptions = {}
 ): LoopTaskRecord | null {
   let deadline: number | undefined;
   for (let retries = 0; ; retries += 1) {
@@ -996,6 +1110,7 @@ export function updateLoopTaskRecord(
       deadline ??= performance.now() + LOOP_TASK_IDENTITY_UPDATE_WAIT_MS;
       if (retries < LOOP_TASK_IDENTITY_UPDATE_RETRIES && waitForLoopTaskIdentityUpdateRetry(deadline)) continue;
       logLoopTaskUpdateRejected(error.stage, "identity-lock-present");
+      if (options.throwOnIdentityLock) throw error;
       return null;
     }
   }
@@ -1004,7 +1119,7 @@ export function updateLoopTaskRecord(
 function updateLoopTaskRecordOnce(
   taskId: string,
   patch: Partial<LoopTaskRecord>,
-  options: { allowCompletedToRunning?: boolean }
+  options: LoopTaskUpdateOptions
 ): LoopTaskRecord | null {
   const routed = routeHostRequest({ type: "update", taskId, patch, options });
   if (routed.handled) return routed.ok ? routed.record ?? null : null;
@@ -1030,6 +1145,10 @@ function updateLoopTaskRecordOnce(
     return null;
   }
   const existing = store.tasks[index];
+  const expected = options.expectedOrdinaryRun;
+  if (expected && (existing.status !== (expected.retainedStatus ?? "running") || existing.department || existing.departmentInvalid
+    || (expected.retainedStatus && patch.status !== undefined && patch.status !== expected.retainedStatus)
+    || existing.updatedAt !== expected.updatedAt || storeFile !== expected.taskStoreFile)) return null;
   // An ordinary published record cannot be promoted into a trusted department record.
   if (!existing.department && !existing.departmentInvalid && (patch.department !== undefined || patch.departmentInvalid)) {
     logLoopTaskUpdateRejected("patch-validation", "department-promotion-rejected");
@@ -1114,6 +1233,17 @@ export function mergeLoopTaskRecordPatch(existing: LoopTaskRecord, patch: Partia
       : existing.completionRequirementCoverage,
     updatedAt: Math.max(existing.updatedAt, patch.updatedAt ?? Date.now()),
   };
+  if (patch.subTasks && existing.loopPlus) {
+    const previous = new Map(existing.subTasks.map(task => [task.id, task.launchReservation]));
+    next.subTasks = next.subTasks.map(task => {
+      const incoming = task.launchReservation;
+      const original = previous.get(task.id);
+      if (original && (!incoming || (original.attemptId === incoming.attemptId && original.state === "claimed" && incoming.state === "waiting"))) {
+        return { ...task, launchReservation: original };
+      }
+      return task;
+    });
+  }
   if (patch.department !== undefined) {
     const departmentField = readDepartmentMetadataField(patch.department);
     if (departmentField.invalid) next.departmentInvalid = true;
@@ -1360,10 +1490,13 @@ export function normalizeLoopTaskRecord(record: unknown, sourceFile?: string): L
   const loopProgressPercent = normalizeLoopProgressPercent(raw.loopProgressPercent);
   const rawAcceptancePlan = (raw as { loopPlusAcceptancePlan?: unknown }).loopPlusAcceptancePlan;
   const blockReview = (raw as { loopPlusBlockReview?: unknown }).loopPlusBlockReview;
+  const recoveryOptions = blockReview && typeof blockReview === "object" && "recoveryOptions" in blockReview
+    ? readLoopBlockerRecoveryOptions(blockReview.recoveryOptions) : undefined;
   const loopPlusBlockReview = blockReview && typeof blockReview === "object" && !Array.isArray(blockReview)
     && ("state" in blockReview) && (blockReview.state === "pending" || blockReview.state === "reviewed")
     ? {
       state: blockReview.state as "pending" | "reviewed",
+      ...(recoveryOptions ? { recoveryOptions } : {}),
       ...("summary" in blockReview && typeof blockReview.summary === "string" && blockReview.summary.trim()
         ? { summary: blockReview.summary.trim() }
         : {}),
@@ -1584,9 +1717,13 @@ function normalizeLoopSubtaskRecord(record: unknown): LoopSubtaskRecord | null {
   const continueFromSubtaskId = readLoopContinuationSource(raw.continueFromSubtaskId);
   const executionSession = normalizeLoopSubtaskSession(raw.executionSession);
   const progressWeightPercent = normalizeLoopSubtaskProgressWeightPercent(raw.progressWeightPercent);
+  const reservation = raw.launchReservation;
   return {
     id: raw.id,
     title: raw.title,
+    ...(reservation && typeof reservation.attemptId === "string" && reservation.attemptId.trim()
+      && (reservation.state === "waiting" || reservation.state === "claimed")
+      ? { launchReservation: { attemptId: reservation.attemptId, state: reservation.state } } : {}),
     ...(Object.prototype.hasOwnProperty.call(raw, "dependsOn") ? { dependsOn } : {}),
     prompt: typeof raw.prompt === "string" ? raw.prompt : undefined,
     ...(progressWeightPercent !== undefined ? { progressWeightPercent } : {}),
@@ -1778,32 +1915,42 @@ function isSameLoopTaskStoreFile(left: string, right: string): boolean {
   }
 }
 
-export type LoopTaskStoreReadResult = { ok: true; store: LoopTaskStore } | { ok: false };
+export type LoopTaskStoreReadResult = { ok: true; store: LoopTaskStore } | { ok: false; unavailableReason?: LoopTaskReadUnavailableReason };
 /** A missing file is empty only for ordinary create/read; rebuild requires every discovered file. */
+function parseLoopTaskStoreBytes(filePath: string, raw: string, preserveExpired: boolean, strict: boolean): LoopTaskStore {
+  const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR) && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
+  const parsed = migrateLegacyLoopJson(JSON.parse(raw), retainLegacyStoragePaths ? undefined : DATA_DIR).value;
+  if (!parsed || !Array.isArray(parsed.tasks)) throw new Error("Invalid Loop task store");
+  return normalizeLoopTaskStoreForStorage({ tasks: parsed.tasks as LoopTaskRecord[] }, {
+    sourceFile: filePath, preserveExpired, throwOnError: strict,
+  });
+}
+
+function reportLoopTaskStoreReadFailure(filePath: string): void {
+  publishLoopTaskStoreChange({ type: "invalidate", filePath });
+  void logError("loop-task-store-read-error", { reason: "store-read-rejected" });
+}
+
 export function readLoopTaskStoreResult(filePath: string, requireExisting = false, requireComplete = false, preserveExpired = false, throwOnError = false): LoopTaskStoreReadResult {
   const routed = routeHostRequest({ type: "readFile", filePath });
-  if (routed.handled) return routed.ok && routed.store ? { ok: true, store: routed.store } : { ok: false };
+  if (routed.handled) {
+    if (routed.ok && routed.store) return { ok: true, store: routed.store };
+    return { ok: false, unavailableReason: routed.ok ? "unknown" : loopTaskReadUnavailableReason(routed.unavailableReason) };
+  }
   try {
     // Unregistered/aliased controlled files have no ordinary read authority.
-    if (isControlledLoopTaskStorePath(canonicalRouteFile(filePath))) return { ok: false };
+    if (isControlledLoopTaskStorePath(canonicalRouteFile(filePath))) return { ok: false, unavailableReason: "controlled-root" };
     let raw: string;
     try { raw = fs.readFileSync(filePath, "utf8"); }
     catch (error) {
       if (!requireExisting && (error as NodeJS.ErrnoException).code === "ENOENT") return { ok: true, store: { tasks: [] } };
       throw error;
     }
-    const retainLegacyStoragePaths = isLegacyLoopTaskStorePath(filePath, DATA_DIR)
-      && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
-    const parsed = migrateLegacyLoopJson(JSON.parse(raw), retainLegacyStoragePaths ? undefined : DATA_DIR).value;
-    if (!parsed || !Array.isArray(parsed.tasks)) throw new Error("Invalid Loop task store");
-    return { ok: true, store: normalizeLoopTaskStoreForStorage({ tasks: parsed.tasks as LoopTaskRecord[] }, {
-      sourceFile: filePath, preserveExpired, throwOnError: requireComplete || throwOnError,
-    }) };
+    return { ok: true, store: parseLoopTaskStoreBytes(filePath, raw, preserveExpired, requireComplete || throwOnError) };
   } catch (error) {
-    publishLoopTaskStoreChange({ type: "invalidate", filePath });
-    void logError("loop-task-store-read-error", { filePath, error: String(error) });
+    reportLoopTaskStoreReadFailure(filePath);
     if (throwOnError) throw error;
-    return { ok: false };
+    return { ok: false, unavailableReason: "store-read-rejected" };
   }
 }
 
@@ -1829,6 +1976,7 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
   updateSource?: { taskId: string; file: string; assertUnchanged(): void }): void {
   let stage = "store-validation";
   let reason: string | undefined;
+  let staged: string | undefined;
   try {
     if (!store || !Array.isArray(store.tasks)) throw new Error("Invalid Loop task store");
     stage = "root-check";
@@ -1850,9 +1998,15 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
       && fs.existsSync(LEGACY_LOOP_STORAGE_PATHS.communicationDir);
     const migratedStore = migrateLegacyLoopJson(store, retainLegacyStoragePaths ? undefined : DATA_DIR).value;
     const persisted = normalizeLoopTaskStoreForStorage(migratedStore, { sourceFile: filePath, throwOnError: true });
+    const serialized = JSON.stringify(persisted, null, 2);
+    if (updateSource && !move) staged = stageLoopTaskStoreBytes(filePath, serialized);
     stage = "identity-commit";
     if (!commitLoopTaskIdentities(new Map([[filePath, persisted.tasks]]), () => {
-      writeLoopTaskStoreBytes(filePath, persisted);
+      if (staged) {
+        assertWritableLoopTaskFile(filePath);
+        fs.renameSync(staged, filePath);
+        staged = undefined;
+      } else writeLoopTaskStoreBytes(filePath, serialized);
       return true;
     }, undefined, {
       atomicWrite: true, move, updateSource,
@@ -1874,6 +2028,8 @@ function commitLoopTaskStore(filePath: string, store: LoopTaskStore,
       errorCode: error instanceof Error ? (error as NodeJS.ErrnoException).code : undefined,
     }).catch(() => undefined);
     throw error;
+  } finally {
+    if (staged) { try { fs.unlinkSync(staged); } catch {} }
   }
 }
 
@@ -1888,29 +2044,31 @@ function loopTaskUpdateFileVersion(file: string): string | null {
 }
 
 function assertLoopTaskUpdateFileVersion(file: string, expected: string | null): void {
-  if (loopTaskUpdateFileVersion(file) !== expected) throw new Error("Loop task update input changed before commit");
+  if (loopTaskUpdateFileVersion(file) !== expected) throw new OrdinaryUpdateVersionChanged("Loop task update input changed before commit");
 }
 
 // Byte mutation only: callers must hold the identity writer gate until publication.
-function writeLoopTaskStoreBytes(filePath: string, persisted: LoopTaskStore): void {
-  let tempFile: string | undefined;
+function assertWritableLoopTaskFile(filePath: string): void {
+  if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
   try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    if (hostRoutes.some((entry) => insideRoute(entry.root, filePath)) || isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
-    try {
-      const target = fs.lstatSync(filePath);
-      if (!target.isFile()) throw new Error("Loop task store target must be a regular file");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    tempFile = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomBytes(12).toString("hex")}.stage`);
-    fs.writeFileSync(tempFile, JSON.stringify(persisted, null, 2), { encoding: "utf8", flag: "wx" });
-    fs.renameSync(tempFile, filePath);
-    tempFile = undefined;
+    if (!fs.lstatSync(filePath).isFile()) throw new Error("Loop task store target must be a regular file");
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+}
 
-  } finally {
-    if (tempFile) { try { fs.unlinkSync(tempFile); } catch { /* best-effort cleanup */ } }
-  }
+function stageLoopTaskStoreBytes(filePath: string, serialized: string): string {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  assertWritableLoopTaskFile(filePath);
+  const staged = path.join(path.dirname(filePath), `.${path.basename(filePath)}.${randomBytes(12).toString("hex")}.stage`);
+  const descriptor = fs.openSync(staged, "wx", 0o600);
+  try { try { fs.writeFileSync(descriptor, serialized, "utf8"); } finally { fs.closeSync(descriptor); } }
+  catch (error) { try { fs.unlinkSync(staged); } catch {} throw error; }
+  return staged;
+}
+
+function writeLoopTaskStoreBytes(filePath: string, serialized: string): void {
+  const staged = stageLoopTaskStoreBytes(filePath, serialized);
+  try { fs.renameSync(staged, filePath); }
+  catch (error) { try { fs.unlinkSync(staged); } catch {} throw error; }
 }
 
 /** Boolean compatibility port for callers that explicitly handle uncommitted writes. */
@@ -1966,7 +2124,7 @@ export function cleanupLoopTaskStoreRetention(): void {
           }) }, { sourceFile: filePath });
           return { tasks: retained.tasks, write: () => {
             if (isControlledLoopTaskStorePath(filePath)) throw new Error("Controlled Loop task roots require owner transactions");
-            if (retained!.tasks.length) writeLoopTaskStoreBytes(filePath, retained!);
+            if (retained!.tasks.length) writeLoopTaskStoreBytes(filePath, JSON.stringify(retained, null, 2));
             else fs.unlinkSync(filePath);
             return true;
           } };

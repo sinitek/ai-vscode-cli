@@ -4,7 +4,16 @@ import * as path from "path";
 import { createDepartmentProcessPreparation } from "../../../extensionHost/departmentprocesspreparation";
 import { DepartmentRuntimeStore } from "../../../extensionHost/departmentruntimestore";
 import type { LoopTaskRecord } from "../../../loopTaskStore";
+import childProcess = require("child_process");
+import { recordDepartmentWorkerInstance } from "../../extensionHost/fixtures/departmentownedtestworkers";
 const directory = process.argv[2];
+const realFork = childProcess.fork;
+childProcess.fork = ((...args: Parameters<typeof childProcess.fork>) => {
+  const child = realFork.apply(childProcess, args);
+  if (String(args[0]).endsWith("departmentprocessownerworker.js") && child.pid)
+    recordDepartmentWorkerInstance(path.join(directory, "owned-worker-pids"), child.pid);
+  return child;
+}) as typeof childProcess.fork;
 const read = (id: string): LoopTaskRecord | null => {
   try { return JSON.parse(fs.readFileSync(path.join(directory, id + "-task"), "utf8")); } catch { return null; }
 };

@@ -12,6 +12,7 @@ import {
 } from "../../promptHistoryStore";
 
 installVscodeMock();
+require("../../extensionHost/departmentGroupChatProjection");
 
 const { buildLoopGroupChatPanelState, createLoopGroupChatPanelCoordinator } = require("../../panelDiagnostics") as typeof import("../../panelDiagnostics");
 import type { LoopTaskRecord } from "../../loopTaskStore";
@@ -99,6 +100,230 @@ function createContinuationRecoveryHarness() {
     get runs() { return runs; }, get refreshes() { return refreshes; } };
 }
 
+function createCompactionContinuationHarness() {
+  const harness = createContinuationRecoveryHarness();
+  const queue = createLoopMainQuestionQueue();
+  harness.task.status = "error";
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => { finish = resolve; });
+  void queue.runCompaction("main-tab", () => gate);
+  let queued!: () => void;
+  const waiting = new Promise<void>((resolve) => { queued = resolve; });
+  harness.deps.showInformationMessage = (message) => { if (message.includes("已排队")) queued(); };
+  harness.deps.isTabRunActive = (tabId) => Boolean(queue.getCompaction(tabId));
+  harness.deps.getMainCompaction = (tabId) => {
+    const flight = queue.getCompaction(tabId);
+    return flight && { ready: flight.ready, isTargetCurrent: () => true };
+  };
+  harness.deps.cancelMainCompaction = queue.cancelCompaction;
+  const click = (requestId: string) => harness.coordinator.handleMessage(harness.task.id, { type: "loopGroupChatChat:continueTask", requestId });
+  return { harness, queue, finish, waiting, click };
+}
+
+test("one group chat continuation survives main compaction and duplicate clicks dispatch once", async () => {
+  for (const restore of [true, false]) {
+    const { harness, finish, waiting, click } = createCompactionContinuationHarness();
+    if (!restore) harness.deps.restoreOriginalLoopRuntime = undefined;
+    const first = click("continue-first");
+    await waiting;
+    await click("continue-duplicate");
+    assert.equal(harness.runs, 0);
+    finish();
+    await first;
+    assert.equal(harness.runs, 1);
+  }
+});
+
+test("stopping, finishing, or rebinding the task while compaction runs invalidates the queued click", async () => {
+  for (const change of ["group-stop", "panel-stop", "completed", "new-session", "new-tab", "other-work"]) {
+    const { harness, queue, finish, waiting, click } = createCompactionContinuationHarness();
+    const first = click("continue-original");
+    await waiting;
+    if (change === "group-stop") await harness.coordinator.handleMessage(harness.task.id, { type: "loopGroupChatChat:stopTask" });
+    if (change === "panel-stop") queue.cancelCompaction("main-tab");
+    if (change === "completed") harness.task.status = "completed";
+    if (change === "new-session") harness.task.sessionId = "replacement";
+    if (change === "new-tab") harness.deps.resolveMainPromptTarget = () => ({ tabId: "replacement", cli: "codex" });
+    if (change === "other-work") harness.deps.isTabRunActive = () => true;
+    if (change.endsWith("stop")) await first;
+    finish();
+    await first;
+    assert.equal(harness.runs, 0, change);
+  }
+});
+
+function createRestoredEditor() {
+  let receive: (message: unknown) => void = () => undefined;
+  let disposeListener = () => {};
+  const editor = {
+    webview: { html: "", options: {}, cspSource: "self", postMessage: async () => true,
+      onDidReceiveMessage: (listener: typeof receive) => { receive = listener; } },
+    active: false, disposed: false, reveals: 0,
+    reveal: () => { editor.reveals++; },
+    onDidDispose: (listener: typeof disposeListener) => { disposeListener = listener; },
+    dispose: () => { editor.disposed = true; disposeListener(); },
+  };
+  return { editor, native: editor as unknown as import("vscode").WebviewPanel, send: (message: unknown) => receive(message) };
+}
+
+test("a cold Loop+ editor and a simultaneous task tab open share one panel and resume its original main", async () => {
+  const { coordinator, deps, task, warnings } = createContinuationRecoveryHarness();
+  deps.panelsByTaskId.clear();
+  deps.getActiveConversationTaskId = () => assert.fail("restore must not use the active tab");
+  const dispatches: unknown[] = [];
+  deps.runLoopPrompt = async (_input, options) => { dispatches.push([options.targetTabId, options.resumeTaskId]); };
+  const state = { loopGroupChat: { workspaceKey: task.workspaceKey, taskId: task.id, cli: task.cli, sessionId: task.sessionId } };
+  const original = createRestoredEditor();
+  coordinator.restore(original.native, state, task.workspaceKey);
+  assert.equal(original.editor.reveals, 0);
+  assert.match(original.editor.webview.html, /正在加载群聊/u);
+  const current = deps.panelsByTaskId.get(task.id);
+  assert.ok(current);
+  const opening = coordinator.open(task.id);
+  original.send({ type: "loopGroupChatChat:loadingReady" });
+  await opening;
+  assert.equal(current.getState()?.task.id, task.id);
+  assert.equal(original.editor.reveals, 1);
+  const duplicate = createRestoredEditor();
+  coordinator.restore(duplicate.native, state, task.workspaceKey);
+  assert.equal(duplicate.editor.disposed, true);
+  assert.equal(deps.panelsByTaskId.get(task.id), current);
+  assert.deepEqual(dispatches, []);
+  original.send({ type: "loopGroupChatChat:continueTask", requestId: "continue-restart", prompt: "继续" });
+  await delay(0);
+  assert.deepEqual(dispatches, [["main-tab", task.id]]);
+  original.editor.dispose();
+  original.send({ type: "loopGroupChatChat:continueTask" });
+  await delay(0);
+  assert.equal(deps.panelsByTaskId.size, 0);
+  assert.equal(dispatches.length, 1);
+  assert.deepEqual(warnings, []);
+});
+
+test("锁竞争时群聊用原绑定恢复并刷新已提交快照，继续仍须读到权威记录", async () => {
+  const harness = createContinuationRecoveryHarness();
+  const { coordinator, deps, task } = harness;
+  deps.panelsByTaskId.clear();
+  const binding = { workspaceKey: task.workspaceKey, taskId: task.id, cli: task.cli, sessionId: task.sessionId ?? null };
+  let busy = true;
+  let knownSource = false;
+  deps.readTaskRecord = (id, source) => {
+    if (busy || id !== task.id) return null;
+    if (source?.workspaceKey === binding.workspaceKey && source.cli === binding.cli && source.sessionId === binding.sessionId) knownSource = true;
+    return knownSource ? task : null;
+  };
+  deps.readDisplaySnapshot = (id, source) => id === task.id && source?.workspaceKey === binding.workspaceKey
+    && source.cli === binding.cli && source.sessionId === binding.sessionId ? task : null;
+  const original = createRestoredEditor();
+  try {
+    coordinator.restore(original.native, { loopGroupChat: binding }, task.workspaceKey);
+    original.send({ type: "loopGroupChatChat:loadingReady" });
+    await delay(0);
+    const panel = deps.panelsByTaskId.get(task.id);
+    assert.equal(panel?.getState()?.task.id, task.id);
+    task.rootPrompt = "已提交的新进度";
+    await coordinator.refresh(task.id);
+    assert.equal(panel?.getState()?.task.rootPrompt, task.rootPrompt);
+    await coordinator.handleMessage(task.id, { type: "loopGroupChatChat:continueTask", requestId: "busy-continue" });
+    assert.equal(harness.runs, 0);
+    assert.match(harness.warnings.at(-1) ?? "", /暂时无法确认任务归属/);
+    busy = false;
+    await coordinator.handleMessage(task.id, { type: "loopGroupChatChat:continueTask", requestId: "released-continue" });
+    assert.equal(harness.runs, 1);
+  } finally { original.editor.dispose(); }
+});
+
+test("missing, legacy, foreign-workspace and mismatched restore identities cannot bind a different task", () => {
+  const { coordinator, deps, task, warnings } = createContinuationRecoveryHarness();
+  deps.panelsByTaskId.clear();
+  deps.getActiveConversationTaskId = () => assert.fail("no implicit task");
+  const binding = { taskId: task.id, workspaceKey: task.workspaceKey, cli: task.cli, sessionId: null };
+  for (const state of [null, { scroll: { top: 1 } }, { loopGroupChat: { ...binding, workspaceKey: "foreign" } },
+    { loopGroupChat: { ...binding, taskId: "missing" } }, { loopGroupChat: { ...binding, sessionId: ".." } }]) {
+    const { editor, native } = createRestoredEditor();
+    coordinator.restore(native, state, task.workspaceKey);
+    assert.equal(editor.disposed, true);
+  }
+  deps.readTaskRecord = () => null;
+  const missing = createRestoredEditor();
+  coordinator.restore(missing.native, { loopGroupChat: binding }, task.workspaceKey);
+  assert.equal(missing.editor.disposed, true);
+  assert.equal(deps.panelsByTaskId.size, 0);
+  assert.equal(warnings.length, 6);
+});
+
+for (const state of [{ scroll: { top: 1 } }, { loopGroupChat: null }]) {
+test(`群聊绑定${"loopGroupChat" in state ? "为空" : "缺失"}时只展示当前工作区，经用户选定才打开`, async () => {
+  const { coordinator, deps, task } = createContinuationRecoveryHarness();
+  deps.panelsByTaskId.clear();
+  deps.getActiveConversationTaskId = () => assert.fail("不能使用活动标签");
+  deps.listTaskStoreFiles = () => [task.taskStoreFile!];
+  deps.readTaskStoreTasks = () => [{ ...task, workspaceKey: "other", updatedAt: 99 }, task];
+  const actions: string[] = [];
+  deps.groupChatRecovery = { workspaceKey: () => task.workspaceKey, confirm: async (_message, action) => { actions.push(action); return true; } };
+  deps.pickTask = async (tasks) => { assert.deepEqual(tasks, [task]); return tasks[0]; };
+  let dispatches = 0;
+  deps.runLoopPrompt = async (_input, options) => { assert.equal(options.resumeTaskId, task.id); dispatches++; };
+  const restored = createRestoredEditor();
+  coordinator.restore(restored.native, state, task.workspaceKey);
+  await delay(0);
+  restored.send({ type: "loopGroupChatChat:loadingReady" });
+  await delay(0);
+  assert.deepEqual(actions, ["选择任务"]);
+  assert.equal(deps.panelsByTaskId.get(task.id)?.getState()?.task.id, task.id);
+  assert.equal(dispatches, 0);
+  restored.send({ type: "loopGroupChatChat:continueTask", prompt: "继续原任务", requestId: "manual" });
+  await delay(0);
+  assert.equal(dispatches, 1);
+  restored.editor.dispose();
+});
+
+}
+
+test("原任务暂不可读时只重试绑定的完整任务，切换工作区或关闭时终止", async () => {
+  for (const outcome of ["retry", "cancel", "switch", "close"]) {
+    const { coordinator, deps, task } = createContinuationRecoveryHarness();
+    deps.panelsByTaskId.clear();
+    deps.pickTask = async () => assert.fail("已有绑定不能重新选择任务");
+    let workspaceKey = task.workspaceKey;
+    let readable = false;
+    const restored = createRestoredEditor();
+    deps.readTaskRecord = (id) => { assert.equal(id, task.id); return readable ? task : null; };
+    deps.groupChatRecovery = { workspaceKey: () => workspaceKey, confirm: async (_message, action) => {
+      assert.equal(action, "重试原任务");
+      if (outcome === "switch") workspaceKey = "other";
+      if (outcome === "close") restored.editor.dispose();
+      return outcome !== "cancel";
+    }, retryLock: () => { assert.equal(outcome, "retry"); readable = true; } };
+    coordinator.restore(restored.native, { loopGroupChat: { workspaceKey, taskId: task.id, cli: task.cli, sessionId: task.sessionId } }, workspaceKey);
+    await delay(0);
+    assert.equal(deps.panelsByTaskId.has(task.id), outcome === "retry");
+    if (outcome === "retry") {
+      restored.send({ type: "loopGroupChatChat:loadingReady" });
+      await delay(0);
+      restored.editor.dispose();
+    } else assert.equal(restored.editor.disposed, true);
+  }
+});
+
+test("restoring an ordinary editor reconciles only its lost runtime before accepting input", async () => {
+  for (const live of [false, true]) {
+    const { task, deps, coordinator } = createContinuationRecoveryHarness();
+    deps.panelsByTaskId.clear();
+    task.status = "running";
+    deps.collectRunningTaskIds = () => new Set(live ? [task.id] : []);
+    const reconciled: string[] = [];
+    deps.reconcileInterruptedTask = (id) => { reconciled.push(id); task.status = "stopped"; task.runtimeInterrupted = true; return task; };
+    const { editor, native, send } = createRestoredEditor();
+    coordinator.restore(native, { loopGroupChat: { taskId: task.id, workspaceKey: task.workspaceKey, cli: task.cli, sessionId: null } }, task.workspaceKey);
+    send({ type: "loopGroupChatChat:loadingReady" });
+    await delay(0);
+    assert.deepEqual(reconciled, live ? [] : [task.id]);
+    assert.equal(deps.panelsByTaskId.get(task.id)?.getState()?.task.status, live ? "running" : "stopped");
+    editor.dispose();
+  }
+});
+
 test("group chat stop closes execution before recording its user stop source", async () => {
   const env = createContinuationRecoveryHarness();
   env.task.status = "running";
@@ -111,6 +336,44 @@ test("group chat stop closes execution before recording its user stop source", a
   };
   await env.coordinator.handleMessage(env.task.id, { type: "loopGroupChatChat:stopTask" });
   assert.deepEqual(effects, [["cancel", env.task.id], ["persist", env.task.id, "group-chat"]]);
+});
+
+test("saving a Loop+ group chat template applies the stored template to the current task", async () => {
+  const env = createContinuationRecoveryHarness();
+  const old = { id: "release", name: "交付", checks: ["security" as const], otherText: "", systemDefault: false };
+  const saved = { id: old.id, name: old.name, checks: ["other" as const], otherText: "核对变更记录", updatedAt: 3 };
+  const snapshot = { id: saved.id, name: saved.name, checks: saved.checks, otherText: saved.otherText, systemDefault: false };
+  env.task.loopPlusAcceptancePlan = old;
+  env.deps.saveLoopPlusAcceptancePlan = () => ({ ok: true, plan: saved, plans: [saved], selection: saved.id });
+  env.deps.applyLoopPlusAcceptancePlan = (taskId, plan) => {
+    assert.equal(taskId, env.task.id);
+    assert.deepEqual(plan, saved);
+    env.task.loopPlusAcceptancePlan = snapshot;
+    return { ok: true, plan: snapshot };
+  };
+  await env.coordinator.handleMessage(env.task.id, { type: "saveLoopPlusAcceptancePlan", ...saved });
+  assert.deepEqual(buildLoopGroupChatPanelState(env.task, env.deps).acceptancePlan, snapshot);
+  assert.deepEqual(env.messages.at(-1), {
+    type: "loopPlusAcceptancePlanSaved", plan: saved, plans: [saved], selection: saved.id, taskAcceptancePlan: snapshot,
+  });
+});
+
+test("group chat distinguishes a failed template save from a failed task update", async () => {
+  const env = createContinuationRecoveryHarness();
+  const saved = { id: "release", name: "交付", checks: [], otherText: "", updatedAt: 3 };
+  const message = { type: "saveLoopPlusAcceptancePlan" as const, ...saved };
+  let applications = 0;
+  env.deps.applyLoopPlusAcceptancePlan = () => { applications += 1; return { ok: false, error: "任务写入失败" }; };
+  env.deps.saveLoopPlusAcceptancePlan = () => ({ ok: false, error: "模板写入失败" });
+  await env.coordinator.handleMessage(env.task.id, message);
+  assert.equal(applications, 0);
+  assert.deepEqual(env.messages.at(-1), { type: "loopPlusAcceptancePlanSaved", error: "模板写入失败" });
+  env.deps.saveLoopPlusAcceptancePlan = () => ({ ok: true, plan: saved, plans: [saved], selection: saved.id });
+  await env.coordinator.handleMessage(env.task.id, message);
+  assert.equal(applications, 1);
+  assert.deepEqual(env.messages.at(-1), {
+    type: "loopPlusAcceptancePlanSaved", plan: saved, plans: [saved], selection: saved.id, applyError: "模板已保存。任务写入失败",
+  });
 });
 
 for (const schedulingMode of ["classic", "event_driven"] as const) {
@@ -154,6 +417,18 @@ test("member navigation ignores invalid, missing and foreign subtask identities"
     type: "loopGroupChatChat:openSubtaskConversation", subtaskId: "subtask-1",
   });
   assert.deepEqual(env.warnings, []);
+});
+
+test("opening a missing explicit task ID does not fall through to a different recent task", async () => {
+  const env = createContinuationRecoveryHarness();
+  let picks = 0;
+  env.deps.readTaskRecord = () => null;
+  env.deps.getActiveConversationTaskId = () => "another-task";
+  env.deps.pickTask = async () => { picks += 1; return env.task; };
+  await env.coordinator.open(env.task.id);
+  assert.equal(picks, 0);
+  assert.equal(env.warnings[0], "loopGroupChatChat.taskMissing");
+  assert.equal(env.warnings.length, 1);
 });
 
 for (const unavailable of ["missing", "finished", "finished-during-reveal"] as const) {
@@ -314,7 +589,7 @@ test("opening reveals before model preparation, coalesces clicks and reads the l
   const panel = {
     showLoading: () => { events.push("reveal"); return paint; },
     setAskThread: () => undefined,
-    show: (state: import("../../webview/loopGroupChatPanel").LoopGroupChatPanelState) => {
+    update: (state: import("../../webview/loopGroupChatPanel").LoopGroupChatPanelState) => {
       events.push("show"); shownPrompt = state.task.rootPrompt;
     },
   };
@@ -344,7 +619,7 @@ for (const outcome of ["closed-before-paint", "closed-during-models", "failed"] 
       showLoading: async () => outcome !== "closed-before-paint",
       getState: () => undefined,
       setAskThread: () => undefined,
-      show: () => { shown += 1; },
+      update: () => { shown += 1; },
       showLoadingError: () => { failed += 1; },
     };
     env.deps.panelsByTaskId.set(env.task.id, panel as never);
@@ -509,6 +784,93 @@ test("Loop+ 继续与中止按钮互斥，活动子任务结束后才恢复 bloc
   assert.equal(interrupted.task.canContinue, true);
 });
 
+test("Loop+ 子任务对话续跑期间群聊立即切换状态，兄弟和旧尝试保持中断", async () => {
+  const env = createContinuationRecoveryHarness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 2 });
+  scheduler.dispatch([{ subtaskId: "A", attemptId: "a1" }]);
+  scheduler.finish({ subtaskId: "A", attemptId: "a1", outcome: "completed" });
+  const failed = scheduler.snapshot().currentReview!;
+  scheduler.submitReviewBatch([failed.eventId], "failed");
+  scheduler.dispatch([{ subtaskId: "A", attemptId: "a2" }, { subtaskId: "B", attemptId: "b1" }]);
+  env.task.status = "running";
+  env.task.loopPlus = scheduler.snapshot();
+  env.task.subTasks = ["A", "B"].map(id => ({ id, title: id, status: "blocked", updatedAt: 12 }));
+  const run = (subtaskId: string, attemptId?: string, stopped = false) => ({ taskRole: "subtask" as const, loopTaskId: env.task.id,
+    loopSubtaskId: subtaskId, loopAttemptId: attemptId, loopRound: 1, startedAt: 20, stopped });
+  const live = [run("A", "a1"), run("A"), run("A", "a2", true)];
+  env.deps.getLiveSubtaskRuns = () => live;
+  const render = () => buildLoopGroupChatPanelState(env.task, env.deps);
+  const statuses = () => render().rounds[0].participants.filter(member => member.role === "subtask").map(member => member.status);
+  assert.deepEqual(statuses(), ["waiting_continuation", "waiting_continuation"]);
+  live.push(run("B"));
+  assert.deepEqual(statuses(), ["waiting_continuation", "running"]);
+  live.pop();
+  live.push(run("B", "b1"));
+  assert.deepEqual(statuses(), ["waiting_continuation", "running"]);
+  live.push(run("A", "a2"));
+  assert.deepEqual(statuses(), ["repairing", "running"]);
+  const active = render();
+  assert.ok(active.loopPlus?.ok);
+  assert.equal(active.loopPlus.runningCount, 2);
+  assert.equal(active.task.canContinue, false);
+  await env.coordinator.handleMessage(env.task.id, { type: "loopGroupChatChat:continueTask", prompt: "继续执行" });
+  assert.equal(env.runs, 0);
+  assert.equal(env.messages.at(-1)?.canContinue, false);
+  live.splice(-2);
+  assert.deepEqual(statuses(), ["waiting_continuation", "waiting_continuation"]);
+  assert.equal(render().task.canContinue, true);
+  assert.deepEqual(env.task.subTasks.map(member => member.status), ["blocked", "blocked"]);
+  scheduler.finish({ subtaskId: "B", attemptId: "b1", outcome: "completed" });
+  env.task.loopPlus = scheduler.snapshot();
+  live.push(run("B", "b1"));
+  assert.deepEqual(statuses(), ["waiting_continuation", "queued_review"]);
+});
+
+test("群聊巡检重读错过通知的续跑与失联状态", async () => {
+  const env = createContinuationRecoveryHarness();
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([{ subtaskId: "A", attemptId: "a1" }]);
+  env.task.status = "running";
+  env.task.loopPlus = scheduler.snapshot();
+  env.task.subTasks = [{ id: "A", title: "A", status: "blocked" }];
+  env.deps.collectRunningTaskIds = () => new Set([env.task.id]);
+  const live = [{ taskRole: "subtask" as const, loopTaskId: env.task.id, loopSubtaskId: "A", loopAttemptId: "a1", loopRound: 1, startedAt: 20 }];
+  env.deps.getLiveSubtaskRuns = () => live;
+  const statuses: string[] = [];
+  env.deps.panelsByTaskId.get(env.task.id)!.update = (state) => {
+    statuses.push(state.rounds[0].participants.find(member => member.id === "A")?.status ?? "missing");
+  };
+  env.coordinator.refreshOpenPanels();
+  await new Promise(resolve => setImmediate(resolve));
+  live.pop();
+  scheduler.finish({ subtaskId: "A", attemptId: "a1", outcome: "unconfirmed" });
+  env.task.loopPlus = scheduler.snapshot();
+  env.coordinator.refreshOpenPanels();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(statuses, ["running", "queued_review"]);
+});
+
+test("经典 Loop 只展示活动批次中当前轮次的真实续跑，停止后恢复等待", () => {
+  const env = createContinuationRecoveryHarness();
+  Object.assign(env.task, { schedulingMode: "classic", status: "stopped", runtimeInterrupted: true, activeSubtaskIds: ["A", "B"] });
+  env.task.subTasks = ["A", "B", "C"].map(id => ({ id, title: id, status: "blocked" }));
+  env.deps.getActiveSubtaskIds = () => ["A", "B"];
+  const run = { taskRole: "subtask" as const, loopTaskId: env.task.id, loopSubtaskId: "A", loopRound: env.task.currentRound, startedAt: 20 };
+  const live = [{ ...run, loopRound: run.loopRound - 1 }, { ...run, loopTaskId: "另一任务" }, { ...run, loopSubtaskId: "C" }];
+  env.deps.getLiveSubtaskRuns = () => live;
+  const render = () => buildLoopGroupChatPanelState(env.task, env.deps);
+  const members = () => render().rounds[0].participants.filter(member => member.role === "subtask");
+  assert.deepEqual(members().map(member => member.status), ["waiting_continuation", "waiting_continuation", "blocked"]);
+  live.push(run);
+  assert.deepEqual(members().map(member => member.status), ["running", "waiting_continuation", "blocked"]);
+  assert.equal(members()[0].lastStartedAt, 20);
+  assert.equal(render().task.canContinue, false);
+  live.pop();
+  assert.equal(members()[0].status, "waiting_continuation");
+  assert.equal(render().task.canContinue, true);
+  assert.equal(env.task.subTasks[0].status, "blocked");
+});
+
 for (const outcome of ["ready", "error", "stopped"] as const) {
   test(`Loop+ 提问开始立即更新主任务活动，${outcome} 后恢复空闲`, async () => {
     const env = createContinuationRecoveryHarness();
@@ -619,13 +981,18 @@ for (const schedulingMode of ["classic", "event_driven"] as const) {
       type: "loopGroupChatChat:continueTask", requestId, prompt: "继续执行",
     });
     await delay(0);
+    const refreshPending = () => harness.coordinator.handleMessage(harness.task.id, { type: "loopGroupChatChat:refresh", continueRequestId: requestId });
+    await refreshPending();
     assert.equal(harness.messages.length, 0);
     admit();
     await started;
+    await refreshPending();
     assert.deepEqual(harness.messages, [{ type: "loopGroupChatChat:continueTaskStarted", requestId }]);
     finish();
     await continuing;
     assert.equal(harness.messages[1].type, "loopGroupChatChat:continueTaskSettled");
+    await refreshPending();
+    assert.deepEqual(harness.messages[2], harness.messages[1]);
   });
 }
 
@@ -702,6 +1069,141 @@ test("duplicate continuation requests cannot start a task twice while original r
   await first;
   assert.equal(harness.runs, 1);
   assert.equal(harness.messages.length, 1);
+});
+
+test("continuation stages identify an open loop wait, a rejected restore, and a failed leader handoff", async () => {
+  const logs: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const remember = (env: ReturnType<typeof createContinuationRecoveryHarness>) => {
+    env.deps.logEvent = (event, payload) => logs.push({ event, payload });
+  };
+  const stages = (requestId: string) => logs.filter((item) => item.event === "loop-group-chat-continue-stage" && item.payload.requestId === requestId);
+  const classic = createContinuationRecoveryHarness();
+  remember(classic);
+  classic.task.schedulingMode = "classic";
+  delete classic.task.originProfile;
+  let releaseRun!: () => void;
+  const running = new Promise<void>((resolve) => { releaseRun = resolve; });
+  classic.deps.runLoopPrompt = async () => { await running; };
+  const classicRequest = classic.coordinator.handleMessage(classic.task.id, {
+    type: "loopGroupChatChat:continueTask", requestId: "continue-loop-1", prompt: "SECRET_PROMPT",
+  });
+  await delay(0);
+  assert.deepEqual(stages("continue-loop-1").filter((item) => item.payload.stage === "run_loop_prompt").map((item) => item.payload.boundary), ["start"]);
+  assert.equal(stages("continue-loop-1").some((item) => item.payload.stage === "settled_refresh"), false);
+  assert.equal(stages("continue-loop-1").every((item) => item.payload.path === "loop"), true);
+  releaseRun();
+  await classicRequest;
+  const classicEnd = stages("continue-loop-1").find((item) => item.payload.stage === "run_loop_prompt" && item.payload.boundary === "end");
+  assert.equal(classicEnd?.payload.result, "ok");
+  assert.equal(typeof classicEnd?.payload.elapsedMs, "number");
+  assert.equal(stages("continue-loop-1").some((item) => item.payload.stage === "settled_refresh" && item.payload.boundary === "end"), true);
+
+  const restored = createContinuationRecoveryHarness();
+  remember(restored);
+  let releaseRestore!: (value: { ok: false; message: string }) => void;
+  const restoration = new Promise<{ ok: false; message: string }>((resolve) => { releaseRestore = resolve; });
+  restored.deps.restoreOriginalLoopRuntime = () => restoration;
+  const unsafeRequest = restored.coordinator.handleMessage(restored.task.id, {
+    type: "loopGroupChatChat:continueTask", requestId: "continue bad id", prompt: "SECRET_PROMPT",
+  });
+  await delay(0);
+  assert.equal(stages("invalid-id").some((item) => item.payload.stage === "restore_original_runtime" && item.payload.boundary === "start" && item.payload.path === "loop_plus"), true);
+  assert.equal(stages("invalid-id").some((item) => item.payload.stage === "restore_original_runtime" && item.payload.boundary === "end"), false);
+  assert.equal(stages("invalid-id").some((item) => item.payload.stage === "settled_refresh"), false);
+  releaseRestore({ ok: false, message: "执行中的任务尚未结束" });
+  await unsafeRequest;
+  assert.equal(stages("invalid-id").find((item) => item.payload.stage === "restore_original_runtime" && item.payload.boundary === "end")?.payload.result, "rejected");
+  assert.equal(JSON.stringify(logs).includes("SECRET_PROMPT"), false);
+  assert.equal(JSON.stringify(logs).includes("continue bad id"), false);
+
+  const route = { cli: "codex" as const };
+  const limits = { maxLeaders: 1, maxEmployees: 1 };
+  const routes = { director: route, leader: route, employee: route };
+  const leader = createContinuationRecoveryHarness();
+  remember(leader);
+  const root = createStoppedTask();
+  root.id = "root-1";
+  root.subTasks = [{ id: "module-1", title: "module", status: "running" }];
+  root.department = { version: 1, role: "director", rootTaskId: root.id, parentTaskId: null, leaderSubtaskId: null, moduleTitle: "root", routes, limits };
+  leader.task.id = "leader-1";
+  leader.task.department = { version: 1, role: "leader", rootTaskId: root.id, parentTaskId: root.id, leaderSubtaskId: "module-1", moduleTitle: "module", routes, limits };
+  const panel = leader.deps.panelsByTaskId.get("task-1");
+  leader.deps.panelsByTaskId.set(leader.task.id, panel as never);
+  leader.deps.readTaskRecord = (taskId) => taskId === root.id ? root : taskId === leader.task.id ? leader.task : null;
+  leader.deps.continueDepartmentLeader = async () => { throw new Error("SYNTHETIC_SECRET_STACK"); };
+  await leader.coordinator.handleMessage(leader.task.id, { type: "loopGroupChatChat:continueTask", requestId: "continue-leader-1", prompt: "SECRET_PROMPT" });
+  const leaderEnd = stages("continue-leader-1").find((item) => item.payload.stage === "leader_continue" && item.payload.boundary === "end");
+  assert.equal(leaderEnd?.payload.path, "leader");
+  assert.equal(leaderEnd?.payload.result, "failed");
+  assert.equal(leaderEnd?.payload.reason, "unexpected_failure");
+  assert.equal(JSON.stringify(logs).includes("SYNTHETIC_SECRET_STACK"), false);
+  assert.equal(leader.warnings.includes("SYNTHETIC_SECRET_STACK"), true);
+
+  const director = createContinuationRecoveryHarness();
+  remember(director);
+  director.task.department = { version: 1, role: "director", rootTaskId: director.task.id, parentTaskId: null, leaderSubtaskId: null, moduleTitle: "root", routes, limits };
+  director.deps.readDepartmentOrganizationControlState = () => ({ needsCleanup: false });
+  let releaseDirector!: () => void;
+  const directorGate = new Promise<void>((resolve) => { releaseDirector = resolve; });
+  director.deps.departmentOrganizationControl = { continue: async (_root, _prompt, requestId) => {
+    assert.equal(requestId, "continue-director-1");
+    await directorGate;
+  }, stop: async () => undefined, complete: async () => undefined };
+  const directorRequest = director.coordinator.handleMessage(director.task.id, {
+    type: "loopGroupChatChat:continueTask", requestId: "continue-director-1", prompt: "SECRET_PROMPT",
+  });
+  await delay(0);
+  assert.deepEqual(stages("continue-director-1").filter((item) => item.payload.stage === "director_continue").map((item) => item.payload.boundary), ["start"]);
+  releaseDirector();
+  await directorRequest;
+  assert.equal(stages("continue-director-1").find((item) => item.payload.stage === "director_continue" && item.payload.boundary === "end")?.payload.result, "ok");
+  assert.equal(stages("continue-director-1").some((item) => item.payload.stage === "settled_refresh" && item.payload.boundary === "end" && item.payload.path === "director"), true);
+});
+
+test("a resolved runLoopPrompt that leaves the task interrupted or needing review is not a successful handoff", async () => {
+  const logs: Array<{ event: string; payload: Record<string, unknown> }> = [];
+  const stageEnd = (requestId: string) => logs.find((item) => item.event === "loop-group-chat-continue-stage"
+    && item.payload.requestId === requestId && item.payload.stage === "run_loop_prompt" && item.payload.boundary === "end");
+  const continueWith = async (requestId: string, apply: (task: ReturnType<typeof createStoppedTask>) => void) => {
+    const env = createContinuationRecoveryHarness();
+    env.deps.logEvent = (event, payload) => logs.push({ event, payload });
+    env.task.schedulingMode = "classic";
+    delete env.task.originProfile;
+    env.deps.runLoopPrompt = async () => { apply(env.task); };
+    await env.coordinator.handleMessage(env.task.id, {
+      type: "loopGroupChatChat:continueTask", requestId, prompt: "SECRET_PROMPT",
+    });
+    return stageEnd(requestId)?.payload;
+  };
+
+  const interrupted = await continueWith("continue-interrupted-1", (task) => {
+    task.status = "needs-review";
+    task.runtimeInterrupted = true;
+    task.finalSummary = "SECRET_FAILURE_TEXT";
+    task.sessionId = "SECRET_SESSION";
+  });
+  const errored = await continueWith("continue-error-1", (task) => {
+    task.status = "error";
+    task.loopPlusInterruption = { phase: "reviewing", reason: "execution-error" };
+    task.finalSummary = "SECRET_FAILURE_TEXT";
+  });
+  const running = await continueWith("continue-running-1", (task) => {
+    task.status = "running";
+    task.runtimeInterrupted = undefined;
+    task.loopPlusInterruption = undefined;
+  });
+
+  assert.equal(interrupted?.result, "failed");
+  assert.equal(interrupted?.reason, "task_interrupted");
+  assert.equal(interrupted?.path, "loop");
+  assert.equal(errored?.result, "failed");
+  assert.equal(errored?.reason, "task_interrupted");
+  assert.notEqual(interrupted?.result, running?.result);
+  assert.equal(running?.result, "ok");
+  assert.equal(running?.reason, "none");
+  assert.equal(JSON.stringify(logs).includes("SECRET_PROMPT"), false);
+  assert.equal(JSON.stringify(logs).includes("SECRET_FAILURE_TEXT"), false);
+  assert.equal(JSON.stringify(logs).includes("SECRET_SESSION"), false);
 });
 
 test("does not recreate a closed main tab while rendering a terminal Loop panel", () => {

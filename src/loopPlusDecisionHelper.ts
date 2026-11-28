@@ -20,8 +20,10 @@ import {
   type LoopPlusDecisionStatus,
 } from "./loopPlusDecision";
 import { sameLoopPlusReportIds } from "./extensionHost/loopPlusDecisionStrategies";
-import { initLogger, logError, logEssential, scheduleLogRetentionCleanup } from "./logger";
-import { normalizeLoopWriteFiles } from "./loopParallel";
+import { randomBytes } from "crypto";
+import { initLogger, logError, logInfo, scheduleLogRetentionCleanup, setDebugLogging } from "./logger";
+import { loopPlusFrozenBatchKey } from "./loopPlusProtocolDiagnostics";
+import { DEBUG_LOGGING_DEFAULT, readToolSettings } from "./toolSettings";
 import { LOOP_PLUS_TASK_TYPES, type LoopPlusTaskType } from "./loopTaskStore";
 
 export const LOOP_PLUS_DECISION_HELPER_CONTEXT_VERSION = 1;
@@ -70,8 +72,8 @@ type FieldSpec = {
   description: string;
 };
 
-const TASK_TYPE_TEXT = "taskType 必须是 backend、frontend 或 general；general 不能带 writeFiles 或 codingDelivery。";
-const CONTROLS_TEXT = "可选。对其它运行中或排队任务填写 close 或 reprompt，不要控制本次派发中的同一任务 ID；省略表示不控制。";
+const TASK_TYPE_TEXT = "taskType 必须是 backend、frontend 或 general。general 只要出现 writeFiles 或 codingDelivery 就拒绝，包括 [] 和 false。";
+const CONTROLS_TEXT = "对开放任务填写 close 或 reprompt。中断时用 reprompt 沿原 ID 续派，或用 close 与本轮新 ID 的接替任务共同提交。有后继依赖原 ID 时优先续派。控制项和本轮新任务使用各自的 ID。";
 
 const STATUS_FIELDS: Record<LoopPlusDecisionStatus, readonly string[]> = {
   dispatch: ["subtasks", "nextStepPlan", "controls", "reportEventIds", "departmentCollaborations", "estimatedRemainingRounds"],
@@ -96,6 +98,14 @@ type RunIo = {
   stdout?: (text: string) => void;
   stderr?: (text: string) => void;
   argv?: readonly string[];
+};
+
+type HelperInputShape = "unused" | "empty" | "whitespace" | "invalid_json" | "non_object" | "too_large" | "object";
+
+type HelperObservation = {
+  inputShape: HelperInputShape;
+  charCount: number;
+  batchKey?: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -256,10 +266,11 @@ function templateFields(context: LoopPlusDecisionHelperContext, status: LoopPlus
         { path: `reviews[${index}].acceptance`, required: true, description: `事件 ${review.eventId} 只能填 passed、failed 或 cancelled。` },
         { path: `reviews[${index}].reason`, required: context.requireAcceptanceFeedback === true, description: "填写该事件的验收依据；cancelled 始终必填。" },
         { path: `reviews[${index}].repair`, required: false, description: `失败且需要返工时填写同 ID ${review.subtaskId} 的 title、prompt 和 taskType。${TASK_TYPE_TEXT} 无需返工改填 noRepairReason。` },
+        { path: `reviews[${index}].followUps`, required: false, description: `仅当事件 ${review.eventId} 为 passed 时填写相关后续任务数组。每项使用新的 id、title、prompt 和 taskType。${TASK_TYPE_TEXT} 这些任务写入该事件的 subtaskIds 和顶层 subtasks，不要放入 independentSubtasks。` },
       ]),
       ...checks,
       ...plan,
-      { path: "independentSubtasks", required: false, description: `只放与本批事件无关的新任务，每项含 id、title、prompt 和 taskType。${TASK_TYPE_TEXT}` },
+      { path: "independentSubtasks", required: false, description: `只放与本批事件和 followUps 都无关的新任务，每项含 id、title、prompt 和 taskType。${TASK_TYPE_TEXT}` },
       { path: "controls", required: false, description: CONTROLS_TEXT },
       { path: "nextStepPlan", required: false, description: "可选，含 objective 和非空 acceptanceCriteria 数组。" },
       compatibilityField(),
@@ -305,7 +316,7 @@ function templateFields(context: LoopPlusDecisionHelperContext, status: LoopPlus
   }
   if (status === "blocked") {
     return [
-      { path: "blocker", required: true, description: "填写 kind、cause、affectedRequirements、evidence、attempts、nextSteps，以及恢复条件或替代方案。" },
+      { path: "blocker", required: true, description: "填写 kind、cause、constraintSource（用户要求、项目规则、实际拒绝或技术事实）、affectedRequirements、evidence、attempts、nextSteps，以及恢复条件或替代方案。能自行处理的方案直接执行或派发。" },
       { path: "finalSummary", required: true, description: "填写非空熔断说明，并与 blocker 一并提交。" },
       compatibilityField(),
       ...reports,
@@ -313,7 +324,7 @@ function templateFields(context: LoopPlusDecisionHelperContext, status: LoopPlus
   }
   if (status === "steer") {
     return [
-      { path: "controls", required: true, description: "填写针对运行中或排队任务的 close 或 reprompt。" },
+      { path: "controls", required: true, description: "填写针对运行中、排队或已中断任务的 close 或 reprompt。中断续跑使用原 ID，填写标题、接续范围和验证方法。" },
       { path: "nextStepPlan", required: false, description: "可选，含 objective。" },
       compatibilityField(),
       ...reports,
@@ -370,13 +381,13 @@ function assertAuthorTaskType(task: Record<string, unknown>, path: string): void
     )]);
   }
   if (taskType !== "general") return;
-  const writeFiles = normalizeLoopWriteFiles(task.writeFiles);
+  const declaresWriteFiles = Object.prototype.hasOwnProperty.call(task, "writeFiles");
   const declaresCodingDelivery = Object.prototype.hasOwnProperty.call(task, "codingDelivery");
-  if (writeFiles.length === 0 && !declaresCodingDelivery) return;
+  if (!declaresWriteFiles && !declaresCodingDelivery) return;
   fail(REASON.contradiction, [issue(
-    writeFiles.length > 0 ? `${path}.writeFiles` : `${path}.codingDelivery`,
-    "general 任务不能声明写入文件或编码交付。",
-    "移除 writeFiles 和 codingDelivery，或把 taskType 改为 backend 或 frontend。",
+    declaresWriteFiles ? `${path}.writeFiles` : `${path}.codingDelivery`,
+    "general 任务不能声明 writeFiles 或 codingDelivery。",
+    "删除这两个字段，空数组和 false 也算声明；或把 taskType 改为 backend 或 frontend。",
   )]);
 }
 
@@ -420,6 +431,25 @@ function readTask(value: unknown, path: string): Record<string, unknown> {
   return value;
 }
 
+function readPassedFollowUps(value: unknown, path: string, frozenIds: ReadonlySet<string>, frozenSubtaskId: string): Record<string, unknown>[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    fail(REASON.shape, [issue(path, "必须是任务数组。", "每个相关后续任务填写新的 id、title、prompt 和 taskType；没有则省略 followUps。")]);
+  }
+  return value.map((item, index) => {
+    const taskPath = `${path}[${index}]`;
+    const task = readTask(item, taskPath);
+    if (frozenIds.has(text(task.id)!)) {
+      fail(REASON.contradiction, [issue(
+        `${taskPath}.id`,
+        "相关后续任务使用了本批验收的原子 ID。",
+        `改为新 ID。同 ID 返工只放在失败项的 repair；当前事件的原子 ID 是 ${frozenSubtaskId}。`,
+      )]);
+    }
+    return task;
+  });
+}
+
 function buildAccept(context: LoopPlusDecisionHelperContext, fields: Record<string, unknown>): Record<string, unknown> {
   if (context.reviews.length === 0) {
     fail(REASON.status, [issue("--status", "当前没有可确认的冻结验收批次。", "改用 context.statuses 里不依赖验收批次的状态。")]);
@@ -429,6 +459,18 @@ function buildAccept(context: LoopPlusDecisionHelperContext, fields: Record<stri
     fail(REASON.missing, [issue("fields.reviews", "必须逐项覆盖冻结批次。", `按顺序提供 ${context.reviews.length} 项结论。`)]);
   }
   const subtasks: Record<string, unknown>[] = [];
+  const seenIds = new Map<string, string>();
+  const frozenIds = new Set(context.reviews.map((review) => review.subtaskId));
+  const claimTask = (id: string, path: string) => {
+    const previous = seenIds.get(id);
+    if (previous) {
+      fail(REASON.contradiction, [issue(path, `任务 ID ${id} 已经写在 ${previous}。`, "每个任务只归属一个失败项 repair、一个 passed 事件的 followUps，或 independentSubtasks。")]);
+    }
+    if (seenIds.size >= context.subtaskMax) {
+      fail(REASON.contradiction, [issue(path, `新任务超过单次上限 ${context.subtaskMax}。`, "减少 repair、followUps 和 independentSubtasks，使总数不超过 context.subtaskMax。")]);
+    }
+    seenIds.set(id, path);
+  };
   const reviews = context.reviews.map((frozen, index) => {
     const raw = reviewInputs[index];
     const path = `fields.reviews[${index}]`;
@@ -444,6 +486,9 @@ function buildAccept(context: LoopPlusDecisionHelperContext, fields: Record<stri
       ...(text(raw.reason) ? { reason: text(raw.reason) } : {}),
     };
     if (raw.acceptance === "failed") {
+      if (raw.followUps !== undefined) {
+        fail(REASON.contradiction, [issue(`${path}.followUps`, "失败项不能填写相关后续任务。", "删除 followUps。返工只填 repair，不返工只填 noRepairReason。")]);
+      }
       const hasRepair = raw.repair !== undefined;
       const hasNoRepair = text(raw.noRepairReason) !== undefined;
       if (hasRepair === hasNoRepair) {
@@ -459,26 +504,41 @@ function buildAccept(context: LoopPlusDecisionHelperContext, fields: Record<stri
         if (repair.requiresAcceptance === false) {
           fail(REASON.contradiction, [issue(`${path}.repair.requiresAcceptance`, "同 ID 返工必须再次验收。", "省略该字段或设为 true。")]);
         }
+        claimTask(frozen.subtaskId, `${path}.repair.id`);
         subtasks.push({ ...repair, id: frozen.subtaskId, requiresAcceptance: true });
         review.subtaskIds = [frozen.subtaskId];
       }
     } else if (raw.repair !== undefined || raw.noRepairReason !== undefined) {
       fail(REASON.contradiction, [issue(path, "只有失败项才能携带返工或无须返工原因。", "删除 repair 和 noRepairReason。")]);
+    } else if (raw.acceptance === "passed") {
+      const followUps = readPassedFollowUps(raw.followUps, `${path}.followUps`, frozenIds, frozen.subtaskId);
+      followUps.forEach((task, followIndex) => claimTask(text(task.id)!, `${path}.followUps[${followIndex}].id`));
+      if (followUps.length > 0) {
+        subtasks.push(...followUps);
+        review.subtaskIds = followUps.map((task) => text(task.id)!);
+      }
+    } else if (raw.followUps !== undefined) {
+      fail(REASON.contradiction, [issue(`${path}.followUps`, "cancelled 事件不能填写相关后续任务。", "删除 followUps。相关后续任务只放在 passed 事件。")]);
     }
     return review;
   });
   if (fields.independentSubtasks !== undefined && !Array.isArray(fields.independentSubtasks)) {
-    fail(REASON.shape, [issue("fields.independentSubtasks", "必须是任务数组。", "每个独立任务填写 id、title 和 prompt；没有则省略该字段。")]);
+    fail(REASON.shape, [issue("fields.independentSubtasks", "必须是任务数组。", "每个独立任务填写 id、title、prompt 和 taskType；没有则省略该字段。")]);
   }
   const independent = Array.isArray(fields.independentSubtasks) ? fields.independentSubtasks : [];
-  const independentIds = independent.map((item, index) => text(readTask(item, `fields.independentSubtasks[${index}]`).id)!);
-  const repairIds = subtasks.map((item) => text(item.id)).filter((id): id is string => Boolean(id));
-  if (new Set(repairIds).size !== repairIds.length || repairIds.some((id) => independentIds.includes(id))) {
-    fail(REASON.contradiction, [issue("fields.reviews", "返工和独立派发的任务 ID 冲突。", "每个任务 ID 只能归属一个失败项或 independentSubtasks。")]);
-  }
-  if (independentIds.some((id) => context.reviews.some((review) => review.subtaskId === id))) {
-    fail(REASON.contradiction, [issue("fields.independentSubtasks", "独立任务使用了本批验收的原子 ID。", "独立派发使用新 ID；同 ID 返工只放在对应失败项的 repair。")]);
-  }
+  const independentIds = independent.map((item, index) => {
+    const task = readTask(item, `fields.independentSubtasks[${index}]`);
+    const id = text(task.id)!;
+    if (frozenIds.has(id)) {
+      fail(REASON.contradiction, [issue(
+        `fields.independentSubtasks[${index}].id`,
+        "独立任务使用了本批验收的原子 ID。",
+        "独立派发使用新 ID。同 ID 返工只放在失败项的 repair，相关后续任务放在 passed 事件的 followUps。",
+      )]);
+    }
+    claimTask(id, `fields.independentSubtasks[${index}].id`);
+    return id;
+  });
   const decision: Record<string, unknown> = {
     status: "accept",
     ...(context.reviews.length === 1
@@ -577,35 +637,73 @@ function rejectionField(status: LoopPlusDecisionStatus, parsed: LoopPlusDecision
   return "fields.decision";
 }
 
-function parseEnvelope(raw: string): { context: LoopPlusDecisionHelperContext; fields: Record<string, unknown> } {
+function parseEnvelope(raw: string, observation: HelperObservation): { context: LoopPlusDecisionHelperContext; fields: Record<string, unknown> } {
+  observation.charCount = raw.length;
+  if (!raw.trim()) {
+    observation.inputShape = raw.length === 0 ? "empty" : "whitespace";
+    fail(REASON.json, [issue("stdin", "不是 UTF-8 JSON 对象。", "标准输入只放一个 JSON 对象，包含 context 和 fields。")]);
+  }
   if (Buffer.byteLength(raw, "utf8") > MAX_INPUT_BYTES) {
+    observation.inputShape = "too_large";
     fail(REASON.size, [issue("stdin", `输入超过 ${MAX_INPUT_BYTES} 字节。`, "只提交当前 context 和 fields，不要粘贴报告正文或会话内容。")]);
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
+    observation.inputShape = "invalid_json";
     fail(REASON.json, [issue("stdin", "不是 UTF-8 JSON 对象。", "标准输入只放一个 JSON 对象，包含 context 和 fields。")]);
   }
   if (!isRecord(parsed)) {
+    observation.inputShape = "non_object";
     fail(REASON.shape, [issue("stdin", "顶层必须是对象。", "不要使用数组或字符串包裹。")]);
   }
   if (depthOf(parsed) > MAX_NESTING_DEPTH || collectionTooLarge(parsed)) {
+    observation.inputShape = "too_large";
     fail(REASON.size, [issue("stdin", "对象嵌套或集合过大。", `嵌套不超过 ${MAX_NESTING_DEPTH} 层，每层集合不超过 ${MAX_COLLECTION_ITEMS} 项。`)]);
   }
+  observation.inputShape = "object";
   const context = parseContext(parsed.context);
+  observation.batchKey = loopPlusFrozenBatchKey(context.reviews.map((review) => review.eventId), context.reportEventIds);
   if (!isRecord(parsed.fields)) {
     fail(REASON.shape, [issue("fields", "必须是对象。", "模型填写的结论放在 fields；template 可传空对象。")]);
   }
   return { context, fields: parsed.fields };
 }
 
-async function record(operation: string, status: string, outcome: "ok" | "error", reason: ReasonCode): Promise<void> {
-  const entry = { operation, status, outcome, reason };
+function loggedStatus(status: string): string {
+  if (!status) return "";
+  return LOOP_PLUS_DECISION_STATUSES.includes(status as LoopPlusDecisionStatus) ? status : "invalid";
+}
+
+async function record(entry: {
+  operation: string;
+  status: string;
+  outcome: "ok" | "error";
+  reason: ReasonCode;
+  inputShape: HelperInputShape;
+  charCount: number;
+  elapsedMs: number;
+  callKey: string;
+  batchKey?: string;
+}): Promise<void> {
+  const payload = {
+    phase: "helper_script",
+    operation: entry.operation,
+    status: loggedStatus(entry.status),
+    outcome: entry.outcome,
+    reason: entry.reason,
+    inputShape: entry.inputShape,
+    charCount: entry.charCount,
+    elapsedMs: entry.elapsedMs,
+    callKey: entry.callKey,
+    ...(entry.batchKey ? { batchKey: entry.batchKey } : {}),
+  };
   try {
+    setDebugLogging(readToolSettings().debug ?? DEBUG_LOGGING_DEFAULT);
     await initLogger();
-    if (outcome === "ok") await logEssential("loop-plus-decision-helper", entry);
-    else await logError("loop-plus-decision-helper", entry);
+    if (entry.outcome === "ok") await logInfo("loop-plus-decision-helper", payload);
+    else await logError("loop-plus-decision-helper", payload);
     await scheduleLogRetentionCleanup();
   } catch {
     // 日志失败不能改变生成结果或退出码。
@@ -617,19 +715,33 @@ export async function runLoopPlusDecisionHelper(io: RunIo = {}): Promise<number>
   const stdout = io.stdout ?? ((text) => { process.stdout.write(text); });
   const stderr = io.stderr ?? ((text) => { process.stderr.write(text); });
   const readInput = io.readInput ?? (() => Promise.resolve(fs.readFileSync(0, "utf8")));
+  const callKey = randomBytes(6).toString("hex");
+  const started = Date.now();
+  const observation: HelperObservation = { inputShape: "unused", charCount: 0 };
+  const finish = (operation: string, status: string, outcome: "ok" | "error", reason: ReasonCode) => record({
+    operation,
+    status,
+    outcome,
+    reason,
+    inputShape: observation.inputShape,
+    charCount: observation.charCount,
+    elapsedMs: Math.max(0, Date.now() - started),
+    callKey,
+    ...(observation.batchKey ? { batchKey: observation.batchKey } : {}),
+  });
   const [command, statusFlag, status = ""] = argv;
   if (!COMMANDS.includes(command as HelperCommand) || statusFlag !== "--status" || argv.length !== 3) {
     const failure = new HelperError(REASON.usage, [issue("argv", "命令无效。", "使用 template --status <status> 或 build --status <status>，并从标准输入读取 JSON。")]);
     stderr(`${failure.message}\n`);
-    await record("usage", "", "error", failure.reason);
+    await finish("usage", "", "error", failure.reason);
     return 2;
   }
   try {
-    const input = parseEnvelope(await readInput());
+    const input = parseEnvelope(await readInput(), observation);
     assertAllowed(input.context, status);
     if (command === "template") {
       stdout(`${JSON.stringify({ status, fields: templateFields(input.context, status) }, null, 2)}\n`);
-      await record(command, status, "ok", REASON.ok);
+      await finish(command, status, "ok", REASON.ok);
       return 0;
     }
     const candidate = buildFromFields(input.context, status, input.fields);
@@ -641,15 +753,18 @@ export async function runLoopPlusDecisionHelper(io: RunIo = {}): Promise<number>
     if (parsed.decision.departmentCollaborationIssue) {
       fail(REASON.rejected, [issue("fields.departmentCollaborations", "协作请求没有通过共享协议校验。", "每项填写互不重复的非空 id、targetLeaderTaskId 和 body，或省略该字段。")]);
     }
+    if (parsed.decision.status === "blocked" && !parsed.decision.blocker?.constraintSource) {
+      fail(REASON.rejected, [issue("fields.blocker.constraintSource", "缺少阻塞依据。", "引用适用要求、项目规则、权限拒绝或实际技术限制。若能自行推进，请改用继续型决策。")]);
+    }
     stdout(`${JSON.stringify(parsed.decision)}\n`);
-    await record(command, status, "ok", REASON.ok);
+    await finish(command, status, "ok", REASON.ok);
     return 0;
   } catch (error) {
     const failure = error instanceof HelperError
       ? error
       : new HelperError(REASON.shape, [issue("helper", "生成过程出现内部错误。", "检查 JSON 字段类型后重试；不要改为手写最终协议。")]);
     stderr(`${failure.message}\n`);
-    await record(command, status, "error", failure.reason);
+    await finish(command, status, "error", failure.reason);
     return 1;
   }
 }

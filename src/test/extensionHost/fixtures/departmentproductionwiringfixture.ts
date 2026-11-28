@@ -1,4 +1,4 @@
-import { captureDepartmentTestWorkers } from "./departmentownedtestworkers";
+import { captureDepartmentTestWorkers, stopDepartmentFixtureWorkers } from "./departmentownedtestworkers";
 import { createDepartmentProductionCleanup } from "../../../extensionHost/departmentproductioncleanup";
 import * as fs from "fs";
 import * as os from "os";
@@ -288,14 +288,22 @@ else{fs.writeFileSync(${JSON.stringify(file("employee/started"))},'yes');process
     try { await Promise.race([closing.catch(() => undefined), new Promise<void>((r) => { timeout = setTimeout(r, 500); })]); }
     finally { clearTimeout(timeout); }
     // Fixture-only process teardown; never resource release/capacity evidence.
-    for (const root of [directory, file("employee")]) {
-      try { for (const id of fs.readFileSync(path.join(root, "native-pids"), "utf8").trim().split("\n")) { try { process.kill(Number(id), "SIGTERM"); } catch {} } } catch {}
+    for (const worker of workers) {
+      worker.child.removeAllListeners("exit");
+      worker.child.removeAllListeners("error");
+      worker.child.removeAllListeners("disconnect");
     }
-    await new Promise((r) => setTimeout(r, 30));
-    composition.dispose(); fixture.dispose(); await source.close();
-    // A killed worker can still finish an atomic write. Retry test-directory
-    // deletion only; no receipt/capacity assertion uses teardown as evidence.
-    await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+    try {
+      await stopDepartmentFixtureWorkers({
+        pidFiles: [path.join(directory, "native-instances"), path.join(file("employee"), "native-instances")],
+        handles: workers.map((worker) => ({ handle: worker.child, identity: worker.identity })),
+      });
+    } finally {
+      composition.dispose(); fixture.dispose(); await source.close();
+      // A killed worker can still finish an atomic write. Retry test-directory
+      // deletion only; no receipt/capacity assertion uses teardown as evidence.
+      await fs.promises.rm(directory, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+    }
   });
   return { workers, file, directory, source, store, producer, leaderHost, fixture, composition, ownership, groupCleanup, read, update, expected, entries, wire, description, mainInvocations, controlTargets, resources,
     setOpenCodeMain(run: OpenCodeMain) { openCodeMain = run; },

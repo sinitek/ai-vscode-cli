@@ -1,12 +1,14 @@
 import type { DepartmentGroupChatProjection, LoopGroupChatPanelState } from "../../webview/loopGroupChatPanelTypes";
 import { buildLoopPlusAcceptanceFeedbackSection } from "../../loopPlusAcceptancePlan";
 import { buildLoopPlusFinishEventId } from "../../loopPlusScheduler";
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 
 /** Display-only fixture: it does not represent a created organization or host navigation. */
 export function departmentState(role: DepartmentGroupChatProjection["role"] = "director"): LoopGroupChatPanelState {
   const employee = { id: "employee-a", title: "子任务 1：" + "导出接口 / API <契约> & 长标题".repeat(3), role: "subtask", status: "acceptance_passed" };
   const feedback = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: [employee.title],
+    checks: loopPlusAcceptanceChecksFixture(),
     reviews: [{ eventId: buildLoopPlusFinishEventId(employee.id, "attempt-a"), acceptance: "passed", reason: "展示夹具的验收反馈" }],
   })!;
   return {

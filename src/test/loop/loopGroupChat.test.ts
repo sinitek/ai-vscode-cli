@@ -5,6 +5,7 @@ import {
     } from "../../cli/types";
 import { buildLoopAnswerConclusionMarkdown, buildLoopMainSubChatTranscriptFile, buildLoopMainSubSubtaskTurnBody, buildLoopFinalSummaryMarkdown, buildLoopGroupChatFinalStatusSection, formatLoopGroupChatMemberName, isLoopTaskRunOrphaned, latestLoopGroupChatSubtaskStartedAt, parseLoopGroupChatTranscript, resolveLoopTaskRunControlState } from "../../loopGroupChat";
 import { getStrings } from "../../webview/loopGroupChatPanelRenderer";
+import { createLoopPlusScheduler } from "../../loopPlusScheduler";
 
 test("uses requirement and question labels for Loop group chat actions", () => {
   assert.equal(getStrings().supplementTask, "补充需求");
@@ -175,6 +176,29 @@ test("builds terminal loop group chat status sections", () => {
   assert.match(interrupted?.body ?? "", /用户已中止任务/u);
 
   assert.equal(buildLoopGroupChatFinalStatusSection({ id: "task-3", status: "running" }), null);
+});
+
+test("群聊中断说明优先展示当前失败的派发及宿主详情，再列出历史摘要", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const old = { subtaskId: "plot", attemptId: "lp1-plot", writeFiles: ["plot.ts"] };
+  const retry = { ...old, attemptId: "lp2-plot" };
+  scheduler.dispatch([old]);
+  scheduler.finish({ ...old, outcome: "failed", detail: "旧准入拒绝" });
+  const firstReview = scheduler.claimNextReview().item!;
+  scheduler.submitReview(firstReview.eventId);
+  scheduler.dispatch([retry]);
+  scheduler.finish({ ...retry, outcome: "failed", detail: "父任务更新未提交" });
+  const task = { id: "parent", status: "error", schedulingMode: "event_driven" as const, finalSummary: "旧准入拒绝" };
+  const body = buildLoopGroupChatFinalStatusSection({ ...task, loopPlus: scheduler.snapshot() })?.body ?? "";
+  assert.match(body, /lp2-plot：父任务更新未提交[\s\S]+### 上次保存的中断说明\n旧准入拒绝/);
+  assert.doesNotMatch(body, /lp1-plot/);
+  scheduler.submitReview(scheduler.claimNextReview().item!.eventId);
+  const success = { ...old, attemptId: "lp3-plot" };
+  scheduler.dispatch([success]);
+  scheduler.finish({ ...success, outcome: "completed" });
+  const recovered = buildLoopGroupChatFinalStatusSection({ ...task, loopPlus: scheduler.snapshot() })?.body ?? "";
+  assert.match(recovered, /此前失败的子任务已有后续派发/);
+  assert.doesNotMatch(recovered, /lp2-plot|父任务更新未提交/);
 });
 
 test("builds loop final summary with question conclusion and overall summary", () => {

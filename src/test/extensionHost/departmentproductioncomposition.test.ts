@@ -13,6 +13,7 @@ import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
+import { readPromptRuleLibrary } from "../../promptRuleIndex";
 import { resolveLoopPanelProgressPercent } from "../../loopGroupChatPanelState";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 const { createDepartmentRuntimeComposition } = require("../../extensionHost/departmentruntimecomposition") as typeof import("../../extensionHost/departmentruntimecomposition");
@@ -51,7 +52,7 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     limits: { maxLeaders: 4, maxEmployees: 1 }, loopPlusAcceptancePlan: buildSystemLoopPlusAcceptancePlanSnapshot() };
   const update = (id: string, patch: Partial<LoopTaskRecord>) => updateLoopTaskRecord(id, patch);
   let sequence = 0, workspace = "workspace", prepares: (() => void) | null = null;
-  let decision: LoopMainDecision | string = { status: "blocked", finalSummary: "等待汇报" };
+  const decisions: Array<LoopMainDecision | string> = [];
   let composition: ReturnType<typeof createDepartmentRuntimeComposition>;
   const parser = createPromptRunRuntimeHost({ getActiveWorkspaceKey: () => workspace } as Parameters<typeof createPromptRunRuntimeHost>[0]);
   let lastDirectorOutput = "";
@@ -66,7 +67,11 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
     },
     resolvePromptRunModelForRole: (input) => input.loopMainModel,
     resolvePromptRunThinkingModeForRole: () => undefined,
-    runPrompt: async (input) => { directorPrompts.push(input); lastDirectorOutput = typeof decision === "string" ? decision : JSON.stringify(decision); decision = { status: "blocked", finalSummary: "等待汇报" }; },
+    runPrompt: async (input) => {
+      directorPrompts.push(input);
+      const decision = decisions.shift() ?? { status: "blocked", finalSummary: "等待汇报" };
+      lastDirectorOutput = typeof decision === "string" ? decision : JSON.stringify(decision);
+    },
     resolveLoopTaskSessionId: (target) => target.sessionId,
     bindLoopTaskToSession: (id, sessionId) => update(id, { sessionId }),
     getLoopRoundRunStatus: () => "end",
@@ -122,14 +127,16 @@ function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}) {
   const start = (displayPrompt = "实现账号和报表模块", modelPrompt = "实现目标") => composition.startDepartmentPrompt({ targetTabId: "director", cli: "codex", displayPrompt, modelPrompt, contextTags: [], departmentConfiguration: configuration });
   const dispatch = (prefix: string, count = 1) => fixture.queueMain((input, tab) => fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "dispatch",
     subtasks: Array.from({ length: count }, (_, i) => ({ id: `${prefix}-${i}`, title: `${prefix}-${i}`, prompt: `Implement ${prefix}-${i}, report all changes and relevant verification evidence to the real department leader.`, taskType: "general", writeFiles: [] })) }) }));
-  const finish = (departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>) => fixture.queueMain((input, tab) => {
+  const finish = (departmentCollaborations?: Array<{ id: string; targetLeaderTaskId: string; body: string }>,
+    beforeDecision?: (input: PromptRunInput) => Promise<void>) => fixture.queueMain(async (input, tab) => {
     const event = input.displayPrompt.match(/Current review eventId: (\S+)/)?.[1];
+    if (beforeDecision) await beforeDecision(input);
     fixture.publish(input, tab, { status: "end", content: JSON.stringify(withLoopPlusAcceptReviews({ status: "completed", progressPercent: 100,
       ...(event && event !== "(none)" ? { reviewEventId: event } : {}), finalSummary: "模块已完成", answerConclusion: "完成",
       acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() }, requirementCoverage: [{ name: "module", passed: true }], departmentCollaborations })) });
   });
   return { fixture, composition, deps, store, directory, targets, notices, directorPrompts, directorProgressRefreshes, configuration, start, dispatch, finish,
-    decide: (next: typeof decision) => { decision = next; }, prepare: (next: () => void) => { prepares = next; }, workspace: (value: string) => { workspace = value; },
+    decide: (...next: Array<LoopMainDecision | string>) => { decisions.splice(0, decisions.length, ...next); }, prepare: (next: () => void) => { prepares = next; }, workspace: (value: string) => { workspace = value; },
     taskSource,
     rootTaskId,
     initialTaskFileCount,
@@ -210,6 +217,116 @@ test("production director can finish a cohesive single-group task with spare lea
   h.fixture.finishParked("account-validation-0", { status: "end", content: "修复及验证完成" });
   await waitForLoopPlus(() => h.fixture.readTask(h.rootTaskId)?.status === "completed", "single group settled");
   assert.deepEqual(h.fixture.readTask(h.rootTaskId)?.subTasks.map((module) => module.id), ["account-validation"]);
+});
+
+test("two leaders accept independent parts of one export while the first review is still open", async (context) => {
+  const department = harness();
+  context.after(department.dispose);
+  const { rules } = readPromptRuleLibrary(path.resolve(__dirname, "../../.."));
+  const example = rules.get("examples/coordination")!.body.match(/```json\n([\s\S]+?)\n```/u)?.[1];
+  assert.ok(example);
+  department.decide(example);
+  department.dispatch("rows");
+  department.dispatch("amounts");
+  await department.start("按所选范围导出报表，并按约定精度显示金额");
+  await waitForLoopPlus(() => department.fixture.parkedAttempts().length === 2, "both leaders dispatch their own work");
+  const [first, second] = department.fixture.parkedAttempts();
+  const firstLeader = first.input.loopTaskId!;
+  const secondLeader = second.input.loopTaskId!;
+  assert.notEqual(firstLeader, secondLeader);
+  const modules = department.fixture.readTask(department.rootTaskId)!.subTasks;
+  assert.deepEqual(modules.map((item) => item.id), ["export-rows", "export-amounts"]);
+  await waitForLoopPlus(() => department.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes('"declaredWriteScope": "src/export/rows.ts')), "director sees registered module ownership");
+  for (const leaderId of [firstLeader, secondLeader]) {
+    const leader = department.fixture.readTask(leaderId)!;
+    assert.equal(leader.rootPrompt, modules.find((item) => item.id === leader.department?.leaderSubtaskId)?.prompt);
+    assert.deepEqual(leader.loopPlusAcceptancePlan, department.configuration.loopPlusAcceptancePlan);
+  }
+
+  let releaseReview!: () => void;
+  const holdReview = new Promise<void>((resolve) => { releaseReview = resolve; });
+  let firstReviewStarted = false;
+  department.finish(undefined, async (input) => {
+    assert.equal(input.loopTaskId, firstLeader);
+    assert.match(input.displayPrompt, /Current review eventId: (?!\(none\))\S+/u);
+    firstReviewStarted = true;
+    await holdReview;
+  });
+  try {
+    department.fixture.finishParked(first.subtaskId, { status: "end", content: "第一项验收样例已交付" });
+    await waitForLoopPlus(() => firstReviewStarted, "first leader starts its acceptance turn");
+    department.finish();
+    department.fixture.finishParked(second.subtaskId, { status: "end", content: "第二项验收样例已交付" });
+    await waitForLoopPlus(() => department.fixture.readTask(secondLeader)?.status === "completed", "second leader completes during first review");
+    assert.ok(department.fixture.mainCalls.some((input) => input.loopTaskId === secondLeader
+      && /Current review eventId: (?!\(none\))\S+/u.test(input.displayPrompt)));
+    assert.equal(department.fixture.readTask(firstLeader)?.status, "running");
+    assert.equal(department.composition.host.canCompleteRoot(department.rootTaskId), false);
+  } finally {
+    releaseReview();
+  }
+  await waitForLoopPlus(() => department.composition.host.canCompleteRoot(department.rootTaskId), "both leader reports available");
+  department.decide({ status: "completed", finalSummary: "两组分别确认导出范围和金额精度符合要求" });
+  department.composition.wakeDirector(department.rootTaskId);
+  await waitForLoopPlus(() => department.fixture.readTask(department.rootTaskId)?.status === "completed", "director closes from both reports");
+});
+
+test("director corrects overlapping writes before registering either new leader", async (context) => {
+  const department = harness();
+  context.after(department.dispose);
+  const shared = { ...modulePrompt("shared"), writeFiles: ["src/shared"], progressWeightPercent: 60 };
+  const overlap = { ...modulePrompt("duplicate"), writeFiles: ["SRC\\shared\\index.ts"], progressWeightPercent: 40 };
+  const independent = { ...modulePrompt("reports"), writeFiles: ["src/reports.ts"], progressWeightPercent: 40 };
+  department.decide({ status: "continue", subtasks: [shared, overlap] }, { status: "continue", subtasks: [shared, independent] });
+  department.dispatch("shared");
+  department.dispatch("reports");
+  const request = "按所属模块实现和验收。".repeat(3000);
+  await department.start(request, request);
+  await waitForLoopPlus(() => department.fixture.parkedAttempts().length === 2, "corrected batch runs in parallel");
+  assert.deepEqual(department.fixture.readTask(department.rootTaskId)!.subTasks.map((module) => module.id), ["shared", "reports"]);
+  assert.match(department.directorPrompts[1].modelPrompt, /本批尚未派发.*"modules":\["shared","duplicate"\].*writeFiles/u);
+  assert.match(department.directorPrompts[1].modelPrompt, /已登记模块数：0/u);
+  assert.ok(department.directorPrompts[1].modelPrompt.length <= 24999);
+});
+
+test("conflicting supplementary proposals leave an independent leader running and able to report", async (context) => {
+  const department = harness();
+  context.after(department.dispose);
+  department.decide({ status: "continue", subtasks: [modulePrompt("existing")] });
+  department.dispatch("existing");
+  await department.start();
+  await waitForLoopPlus(() => department.fixture.parkedAttempts().length === 1 && department.directorPrompts.some(({ modelPrompt }) => modelPrompt.includes('"organizationStatus": "running"')), "director waits for existing leader");
+  const first = { ...modulePrompt("shared"), conflictGroup: "export-format" };
+  const conflict: LoopMainDecision = { status: "continue", subtasks: [first, { ...modulePrompt("duplicate"), conflictGroup: "export-format" }] };
+  department.decide(conflict, conflict);
+  department.composition.wakeDirector(department.rootTaskId);
+  await waitForLoopPlus(() => department.notices.some((message) => message.includes("调整后仍有同批派单冲突")), "repeated conflict reported");
+  assert.equal(department.fixture.readTask(department.rootTaskId)?.status, "running");
+  assert.deepEqual(department.fixture.parkedSubtaskIds(), ["existing-0"]);
+
+  department.decide({ status: "continue", subtasks: [first] });
+  department.finish();
+  department.dispatch("shared");
+  department.fixture.finishParked("existing-0", { status: "end", content: "已有模块完成" });
+  await waitForLoopPlus(() => department.fixture.parkedSubtaskIds().includes("shared-0"), "existing leader settlement wakes the director");
+  assert.deepEqual(department.fixture.readTask(department.rootTaskId)?.subTasks.map((module) => module.id), ["existing", "shared"]);
+});
+
+test("a repeated same-resource proposal records the conflict without starting duplicate work", async (context) => {
+  const department = harness();
+  context.after(department.dispose);
+  const decision: LoopMainDecision = { status: "continue", subtasks: [
+    { ...modulePrompt("first"), conflictGroup: "Shared contract" },
+    { ...modulePrompt("second"), conflictGroup: "shared contract" },
+  ] };
+  department.decide(decision, decision);
+  await department.start();
+  await waitForLoopPlus(() => department.fixture.readTask(department.rootTaskId)?.status === "needs-review", "unresolved duplicate ownership recorded");
+  const task = department.fixture.readTask(department.rootTaskId)!;
+  assert.equal(department.directorPrompts.length, 2);
+  assert.match(task.finalSummary!, /conflictGroup.*shared contract/u);
+  assert.deepEqual(task.subTasks, []);
+  assert.equal(department.fixture.mainCalls.length, 0);
 });
 
 test("production composition starts classic director and two real Loop+ leaders with shared persisted employee capacity and cleanup", async (t) => {

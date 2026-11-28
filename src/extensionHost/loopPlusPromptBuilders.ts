@@ -1,3 +1,4 @@
+import * as path from "path";
 import {
   LOOP_PLUS_ACCEPTANCE_BATCH_MAX,
   resolveLoopPlusDecisionSubtaskMax,
@@ -11,13 +12,15 @@ import { LOOP_MAIN_STALE_TASK_LIST_RULE_EN } from "../loopMainTaskListPolicy";
 import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../loopDirectExecutionPolicy";
 import { SUBTASK_DESIGN_KEY_POINT_RULE_EN } from "../subtaskDesignBriefPolicy";
 import { buildStructuredSvgSummaryPromptInstruction } from "../finalAnswerProtocol";
-import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
-import { LOOP_BLOCKER_EXAMPLE } from "../loopBlocker";
+import { LOOP_PLUS_BLOCKED_SUMMARY_INSTRUCTION } from "../loopBlockedSummary";
+import { buildLoopBlockerSummary, LOOP_PLUS_BLOCKER_EXAMPLE, type LoopBlocker } from "../loopBlocker";
 import type { LoopPlusExecutionRecord, LoopPlusReviewItem, LoopPlusSchedulerView } from "../loopPlusScheduler";
 import type { LoopPlusNextStepPlan } from "../loopPlusNextStepPlan";
 import type { LoopSubtaskMode } from "../loopPlusSubtaskMode";
 import type { LoopSubtaskDecision } from "../loopTaskStore";
 import {
+  LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES,
+  LOOP_PLUS_DEFAULT_ACCEPTANCE_GROUPS,
   buildLoopPlusAcceptancePlanPromptLines,
   listLoopPlusAcceptancePlanFeedbackItems,
   normalizeLoopPlusAcceptancePlanSnapshot,
@@ -25,6 +28,7 @@ import {
 } from "../loopPlusAcceptancePlan";
 import { deriveLoopPlusDecisionContract, type LoopPlusDecisionContract } from "../loopPlusDecisionContract";
 import type { LoopPlusDecisionHelperContext } from "../loopPlusDecisionHelper";
+import { activePromptRuleDelivery, renderPromptRuleIndex } from "../promptRuleIndex";
 
 export type LoopPlusMainPromptContext = {
   taskId: string;
@@ -42,6 +46,7 @@ export type LoopPlusMainPromptContext = {
   acceptanceEventIds?: readonly string[];
   reportEventIds?: readonly string[];
   reportOnly?: boolean;
+  inlineRules?: boolean;
   requiredRepairIds?: readonly string[];
   reportQueue?: readonly LoopPlusReviewItem[];
   priorSubtaskFailures?: readonly string[];
@@ -55,7 +60,13 @@ export type LoopPlusMainPromptContext = {
   loopSubtaskMode?: LoopSubtaskMode;
   routingSummary?: string;
   blockedReviewSummary?: string;
+  recoveryOptions?: LoopBlocker["recoveryOptions"];
   nextStepPlan?: LoopPlusNextStepPlan;
+  /**
+   * Absolute dist/loopPlusDecisionHelper.js from the loaded extension install.
+   * The builder does not search the workspace, task text, or other installs.
+   */
+  decisionHelperScriptPath?: string | null;
   /** Validated department leader scope and the latest host-provided read-only capacity snapshot. */
   departmentEmployeeCapacity?: {
     rootTaskId: string;
@@ -87,6 +98,7 @@ export type LoopPlusDepartmentEmployeeCapacitySnapshot = {
 
 export type LoopPlusSubtaskPromptContext = {
   subtask: LoopSubtaskDecision;
+  departmentEmployee?: boolean;
   communicationFile: string;
   executionRole?: "backend" | "frontend" | "general";
   loopSubtaskMode?: LoopSubtaskMode;
@@ -100,46 +112,19 @@ function loopPlusDependencyAdmissionCondition(requireAcceptedDependencies: boole
 }
 
 const LOOP_PLUS_EXAMPLE_SUBTASK_PROMPT = [
-  "Implement this self-contained subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
-  "Design key point: keep the public function signature stable and route the new branch through the existing validator; do not add a parallel code path.",
-  "Record the command and result in the attempt report.",
+  "Implement this independent change; preserve the agreed contract.",
+  "Suggested scope: src/example-backend.ts, not a hard limit; explain necessary edits elsewhere.",
+  "Run relevant checks and report changes, results, and gaps.",
 ].join(" ");
 
-const LOOP_PLUS_ACCEPTANCE_CHECKS: Array<{ name: string; detail: string }> = [
-  {
-    name: "dispatched work",
-    detail: "Every task arranged for this batch is implemented.",
-  },
-  {
-    name: "contracts",
-    detail: "Interfaces, data structures, and file boundaries match the agreed contract, or none apply.",
-  },
-  {
-    name: "tests",
-    detail: "Included tests pass, or no tests apply.",
-  },
-  {
-    name: "artifacts",
-    detail: "Produced artifacts run, or no runnable artifact applies.",
-  },
-  {
-    name: "unauthorized changes",
-    detail: "Files outside the suggested write scope changed only because the task required them. Unrelated edits are absent.",
-  },
-  {
-    name: "omissions and regressions",
-    detail: "No omission, regression, or boundary error remains.",
-  },
-];
-
-const LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES = [
-  "需求中的新增分支均已实现，代码见任务报告",
-  "导出接口与约定一致，未改变调用方参数",
-  "报告中的新增及回归用例全部通过",
-  "产物启动成功，启动结果见任务报告",
-  "范围外改动仅为接入新接口，无无关修改",
-  "空值与失败分支均有覆盖，未发现回归",
-];
+const LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES: Record<(typeof LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES)[number], string> = {
+  "dispatched work": "差异中已实现导出分支",
+  "unauthorized changes": "差异仅涉及导出模块和用例",
+  contracts: "调用方仍按原格式读取导出结果",
+  "omissions and regressions": "空输入返回约定的空列表",
+  tests: "报告记录导出用例通过",
+  artifacts: "启动记录显示服务已就绪",
+};
 
 function formatExecution(record: LoopPlusExecutionRecord): string {
   const files = record.writeFiles.length > 0 ? record.writeFiles.join(", ") : "(none)";
@@ -303,7 +288,7 @@ function decisionContractForPrompt(
     view: context.view,
     requiredRepairIds: context.requiredRepairIds,
     pendingUserMessages: context.pendingUserMessages ?? [],
-    interruptedSubtaskIds: context.interruptedSubtaskIds,
+    interruptedSubtaskIds: context.departmentEmployeeCapacity ? undefined : context.interruptedSubtaskIds,
     maxConcurrency: context.maxConcurrency,
   });
 }
@@ -357,17 +342,17 @@ function buildLoopPlusProtocolExamples(
   includeDispatchNextStepPlan = false,
 ): string {
   const planReasons = {
-    maintainability: "复用既有模块，未引入重复实现",
-    performance: "未增加无界循环或重复请求",
-    ui_aesthetics: "验收记录显示两处弹窗术语一致、窄屏可读，键盘确认后焦点正确恢复；未覆盖加载和失败恢复，因测试未触发后台请求。",
-    other: "已逐项核对用户审查要求，无遗漏",
-    security: "输入和路径均有校验，未泄露敏感信息",
+    maintainability: "沿用现有模块，无重复实现",
+    performance: "未引入无界或重复工作",
+    ui_aesthetics: "术语、窄屏和键盘焦点已核对；未测加载与失败恢复",
+    other: "用户要求已逐项核对",
+    security: "输入与路径已校验，无敏感信息泄露",
   };
   const planResults = listLoopPlusAcceptancePlanFeedbackItems(acceptancePlan).map((item) => ({
     key: item.key,
     passed: true,
     reason: item.key === "ui_aesthetics"
-      ? "示例证据：页面术语与主题用法一致，窄屏渲染及键盘焦点均已核对；本例未触发加载或失败恢复，明确不将其列为已验证。"
+      ? "术语、窄屏和焦点有核对记录；加载及失败恢复未验证。"
       : planReasons[item.key],
   }));
   const planFeedback = planResults.length > 0 ? { acceptancePlanResults: planResults } : {};
@@ -385,9 +370,8 @@ function buildLoopPlusProtocolExamples(
     id: "example-frontend-subtask",
     title: "Example independent frontend coding subtask",
     prompt: [
-      "Implement this self-contained frontend subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
-      "Design key point: keep the public UI contract stable and reuse the existing component boundary; do not modify the backend example scope.",
-      "Record the command and result in the attempt report.",
+      "Implement this independent frontend change; preserve the UI contract and avoid the backend scope.",
+      "Suggested scope: src/example-frontend.ts, not a hard limit; explain necessary edits elsewhere and report check results.",
     ].join(" "),
     taskType: "frontend",
     requiresAcceptance: true,
@@ -398,10 +382,7 @@ function buildLoopPlusProtocolExamples(
     {
       id: "example-local-log-subtask",
       title: "Example low-risk local log edit",
-      prompt: [
-        "Add the requested fixed debug message to the named success branch using the existing logger. Suggested write scope: src/example-worker.ts. Do not log payloads or change control flow.",
-        "Check the targeted diff and perform required verification. Report the exact edit and check results in the attempt report.",
-      ].join(" "),
+      prompt: "Add the fixed, non-sensitive message with the existing logger in src/example-worker.ts; don't log payloads or change control flow. Check the diff and report verification.",
       taskType: "backend",
       requiresAcceptance: false,
       conflictGroup: "example-worker-scope",
@@ -410,9 +391,7 @@ function buildLoopPlusProtocolExamples(
     {
       id: "example-verification-report-subtask",
       title: "Example bounded verification report",
-      prompt: [
-        "Run only the named, bounded verification command against the existing delivery. Write scope: none. Do not edit source or test files. In the attempt report, state the exact command, covered scope, result, and uncovered cases so the main task can decide the next step directly.",
-      ].join(" "),
+      prompt: "Run the named check only; don't edit files. Report the command, scope, result, and gaps.",
       taskType: "general",
       requiresAcceptance: false,
       conflictGroup: "example-report-scope",
@@ -426,10 +405,10 @@ function buildLoopPlusProtocolExamples(
     acceptance: {
       passed: true,
       summary: "All acceptance checks passed.",
-      checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check, index) => ({
-        name: check.name,
+      checks: LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.map((name) => ({
+        name,
         passed: true,
-        detail: LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[index],
+        detail: LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[name],
       })),
     },
     requirementCoverage: [
@@ -455,23 +434,21 @@ function buildLoopPlusProtocolExamples(
     ...subtask,
     id: repairSubtaskId ?? subtask.id,
     title: "Example acceptance-failure repair",
-    prompt: [
-      "Repair the failed validation check in the reviewed backend delivery. Suggested write scope: src/example-backend.ts; record the failed check and the targeted verification result in the attempt report.",
-      "Design key point: correct the existing validator while preserving its agreed public contract. This repair does not block the independent frontend, configuration, or documentation deliverables.",
-    ].join(" "),
+    prompt: "Repair the failed check in src/example-backend.ts, preserving its contract; report the targeted verification. Independent work may continue.",
   };
+  const acceptExampleCount = Math.min(2, dispatchExampleCount);
   const acceptSubtasks = [
     repairExample ? repairSubtask : subtask,
     parallelFrontendSubtask,
     ...parallelSupportSubtasks,
-  ].slice(0, dispatchExampleCount);
+  ].slice(0, acceptExampleCount);
   const independentSubtaskIds = acceptSubtasks
     .filter((item) => !repairExample || item.id !== repairSubtask.id)
     .map((item) => item.id!);
   const acceptReviews: NonNullable<LoopPlusDecision["reviews"]> = acceptEventIds.map((reviewEventId, index) => {
     const launchesRepair = repairExample && index === acceptEventIds.length - 1;
     const executionFailed = [context.view.currentReview, ...context.view.reviewQueue]
-      .some((item) => item?.eventId === reviewEventId && item.outcome !== "completed");
+      .some((item) => item?.eventId === reviewEventId && (item.outcome === "failed" || item.outcome === "stopped"));
     return {
       reviewEventId,
       acceptance: launchesRepair || executionFailed ? "failed" : "passed",
@@ -480,18 +457,20 @@ function buildLoopPlusProtocolExamples(
       ...(executionFailed && !launchesRepair ? { noRepairReason: "Explain the evidence-backed reason this failed delivery needs no repair, or attach a targeted repair." } : {}),
     };
   });
-  const reprompt = [
-    "Continue this self-contained subtask. The suggested write scope is not a hard limit; edit other workspace files when the task requires them and record why.",
-    "Design key point: keep the public function signature stable and replace the failed branch with the corrected check.",
-    "Record the command and result in the attempt report.",
-  ].join(" ");
-  const controlTargets = [...context.view.running, ...context.view.pending].map((item) => item.subtaskId);
-  controlTargets.push(...(context.interruptedSubtaskIds ?? []).filter((id) => !controlTargets.includes(id)));
+  const hasFailedReview = acceptReviews.some((item) => item.acceptance === "failed");
+  const interruptedId = context.interruptedSubtaskIds?.[0];
+  const reprompt = interruptedId
+    ? "核对上次 attempt 的报告和已有产物，从最后确认的进度继续剩余交付。运行针对性检查，在沟通文件记录产物和验收证据。"
+    : "Fix the failed branch without changing the public contract; run the targeted check and report the result.";
+  const controlTarget = interruptedId ?? context.view.running[0]?.subtaskId ?? context.view.pending[0]?.subtaskId;
+  const replacement = !eventIds.length && dispatchExampleCount === 0 ? context.view.running.find(record => record.subtaskId === interruptedId) : undefined;
   const allExamples: Array<{ status: LoopPlusDecision["status"]; value: LoopPlusDecision }> = [
     {
       status: "dispatch", value: {
         status: "dispatch",
-        subtasks: [subtask, parallelFrontendSubtask, ...parallelSupportSubtasks].slice(0, dispatchExampleCount),
+        subtasks: replacement ? [{ ...subtask, id: `${replacement.subtaskId}-replacement`, dependsOn: [...(replacement.dependsOn ?? [])] }]
+          : [subtask, parallelFrontendSubtask, ...parallelSupportSubtasks].slice(0, dispatchExampleCount),
+        ...(replacement ? { controls: [{ id: replacement.subtaskId, action: "close", reason: "已核对后继依赖，本轮新任务接替剩余交付。" }] } : {}),
       },
     },
     {
@@ -501,13 +480,11 @@ function buildLoopPlusProtocolExamples(
         ...acceptConfirmation,
         reviews: acceptReviews,
         acceptance: {
-          passed: acceptReviews.every((item) => item.acceptance === "passed"),
-          checks: LOOP_PLUS_ACCEPTANCE_CHECKS.map((check, index) => ({
-            name: check.name,
-            passed: !(acceptReviews.some((item) => item.acceptance === "failed") && check.name === "tests"),
-            detail: acceptReviews.some((item) => item.acceptance === "failed") && check.name === "tests"
-              ? "当前批次有用例失败，已派发修复任务"
-              : LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[index],
+          passed: !hasFailedReview,
+          checks: LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES.map((name) => ({
+            name,
+            passed: !(hasFailedReview && name === "tests"),
+            detail: hasFailedReview && name === "tests" ? "导出用例断言失败" : LOOP_PLUS_ACCEPTANCE_REASON_EXAMPLES[name],
           })),
         },
         ...planFeedback,
@@ -522,15 +499,15 @@ function buildLoopPlusProtocolExamples(
       status: "steer", value: {
         status: "steer",
         controls: [
-          { id: controlTargets[0], action: "reprompt", dependsOn: [], title: "修正校验分支并验证", prompt: reprompt },
+          { id: controlTarget!, action: "reprompt", title: "接续未完成的工作并验证", prompt: reprompt },
         ],
       },
     },
     {
       status: "blocked", value: {
         status: "blocked",
-        blocker: LOOP_BLOCKER_EXAMPLE,
-        finalSummary: LOOP_BLOCKED_SUMMARY_EXAMPLE,
+        blocker: LOOP_PLUS_BLOCKER_EXAMPLE,
+        finalSummary: buildLoopBlockerSummary(LOOP_PLUS_BLOCKER_EXAMPLE, "event_driven"),
       },
     },
     {
@@ -570,19 +547,59 @@ function buildLoopPlusProtocolExamples(
         ? { nextStepPlan: { objective: "下一步验收当前冻结批次" } }
         : {}),
       ...(reportEventIds.length > 0 || context.reportOnly ? { reportEventIds } : {}),
-    }, null, 2),
+    }),
     "```",
   ].join("\n")).join("\n");
 }
 
-function decisionHelperPromptLines(helperContext: LoopPlusDecisionHelperContext): string[] {
+export const LOOP_PLUS_DECISION_HELPER_SCRIPT_NAME = "loopPlusDecisionHelper.js";
+
+function decisionHelperBundlePath(extensionInstallPath: string): string {
+  return path.join(path.resolve(extensionInstallPath), "dist", LOOP_PLUS_DECISION_HELPER_SCRIPT_NAME);
+}
+
+/** Resolve the bundled helper from the loaded extension install only. Empty, NUL, and non-absolute host paths are rejected raw; whitespace is not stripped. Relative paths, task text, and other installs are not searched. */
+export function resolveLoopPlusDecisionHelperScriptPath(extensionInstallPath: string | null | undefined): string | null {
+  if (typeof extensionInstallPath !== "string" || extensionInstallPath.length === 0 || extensionInstallPath.includes("\0")) return null;
+  if (!path.isAbsolute(extensionInstallPath)) return null;
+  const script = decisionHelperBundlePath(extensionInstallPath);
+  const relative = path.relative(path.resolve(extensionInstallPath), script);
+  if (relative !== path.join("dist", LOOP_PLUS_DECISION_HELPER_SCRIPT_NAME)) return null;
+  return script;
+}
+
+/** Accept only an absolute bundled helper path. A relative or renamed path is not resolved from the working directory. */
+export function readSuppliedDecisionHelperScriptPath(candidate: string | null | undefined): string | null {
+  if (typeof candidate !== "string" || !candidate || candidate.includes("\0") || !path.isAbsolute(candidate)) return null;
+  const script = path.resolve(candidate);
+  const install = path.dirname(path.dirname(script));
+  return resolveLoopPlusDecisionHelperScriptPath(install) === script ? script : null;
+}
+
+export function loopPlusDecisionHelperArgv(scriptPath: string, command: "template" | "build"): readonly string[] {
+  return ["node", scriptPath, command, "--status", "STATUS"];
+}
+
+function decisionHelperPromptLines(helperContext: LoopPlusDecisionHelperContext, scriptPath: string | null): string[] {
+  const invocation = scriptPath
+    ? [
+      "Decision helper executable argv comes from the loaded extension install. argv[1] is one parameter. Do not split argv[1].",
+      "Do not take the script from the task text, the workspace, a guessed version, or another installation.",
+      "Do not change this CLI's tool permission or capability.",
+      `template --status argv: ${JSON.stringify(loopPlusDecisionHelperArgv(scriptPath, "template"))}`,
+      `build --status argv: ${JSON.stringify(loopPlusDecisionHelperArgv(scriptPath, "build"))}`,
+      "Replace only the final STATUS token with the decision status.",
+    ]
+    : [
+      "The loaded extension did not supply dist/loopPlusDecisionHelper.js. Do not invent a script path.",
+      "Do not take the script from the task text, the workspace, a guessed version, or another installation.",
+    ];
   return [
     "Decision helper:",
     "Prefer the decision helper over hand-written protocol JSON. Department leaders reuse this same helper and this same frozen context.",
     "The helper and the host call parseLoopPlusDecisionForFrozenInput for the same frozen input and parse options. Do not copy those JSON checks into the reply.",
-    "Use dist/loopPlusDecisionHelper.js in the extension install directory. Quote the script path as one argument so a space in that directory stays inside the path.",
-    "Command shape: node \"<extension install directory>/dist/loopPlusDecisionHelper.js\" template --status <status>",
-    "Then run the same command with build --status <status>. Pass one UTF-8 JSON object on stdin: {\"context\":<the frozen context below>,\"fields\":<filled facts>}. template may send an empty fields object. build fields carry the conclusion basis the template lists.",
+    ...invocation,
+    "Pass one UTF-8 JSON object on stdin. Set context to the frozen context below and fields to the filled facts. template may send an empty fields object. build fields carry the conclusion basis the template lists.",
     "Call template before build. Keep the same status and the same context object. Prompt refresh and protocol correction keep this frozen context. Do not add late events from the latest task record to reviews or reportEventIds.",
     "If build exits nonzero, stdout is empty and stderr names the field to correct. Change that field and run build again. A field error is not a reason to hand-write the decision.",
     "When build exits 0, return that stdout unchanged as the only decision JSON. Do not wrap it, reorder it, or append another object. The host rechecks the latest runtime state and submits. Do not write scheduling state yourself.",
@@ -593,6 +610,74 @@ function decisionHelperPromptLines(helperContext: LoopPlusDecisionHelperContext)
     JSON.stringify(helperContext, null, 2),
     "```",
   ];
+}
+
+function indexedMainRules(context: LoopPlusMainPromptContext, helper: LoopPlusDecisionHelperContext): string | null {
+  const leader = Boolean(context.departmentEmployeeCapacity);
+  const role = leader ? "产研部组长" : "Loop+ 主审";
+  if (context.reportOnly) {
+    const index = renderPromptRuleIndex(`${role} · 纯报告`, [], ["loop-plus/report"], context.inlineRules);
+    return index && [index, "只读本轮 FIFO 前缀中各 attempt 的报告，评估对剩余工作的影响。即使无运行项也仅返回 wait 和原序全部 reportEventIds。回执只表示已读。原冻结验收批次保留到后续决策。"].join("\n");
+  }
+  const batch = frozenMappedReviews(context, acceptanceEventIds(context));
+  const reviewing = helper.reviews.length > 0;
+  const canDispatch = helper.statuses.includes("dispatch");
+  const canComplete = helper.statuses.includes("completed");
+  const needsRepair = Boolean(context.requiredRepairIds?.length || batch.some(({ item }) => item.outcome !== "completed"));
+  const required: string[] = [];
+  const conditional: string[] = ["common/direct", "loop-plus/blocked"];
+  if (leader) {
+    required.push("department/leader");
+    conditional.push("department/continuity", "department/collaboration", "topics/asset-license");
+  }
+  if (reviewing) required.push("loop-plus/review");
+  if (needsRepair) required.push("loop-plus/repair");
+  else if (reviewing) conditional.push("loop-plus/repair");
+  if (context.view.dependencyBlocks?.length) required.push("loop-plus/dependencies");
+  if (context.blockedReviewSummary !== undefined || context.recoveryOptions?.length) required.push("loop-plus/blocked");
+  if (canDispatch || reviewing) conditional.push("loop-plus/dispatch", "loop-plus/dependencies", "topics/ui-handoff", "topics/git-delivery");
+  if (helper.reportEventIds.length) required.push("loop-plus/report");
+  if (context.interruptedSubtaskIds?.length) required.push("loop-plus/controls");
+  else if (context.view.running.length || context.view.pending.length) conditional.push("loop-plus/controls");
+  if (canComplete) conditional.push("loop-plus/closeout", "topics/summary-svg");
+  if (batch.length > 1) conditional.push("examples/mixed-review");
+  const index = renderPromptRuleIndex(`${role} · ${context.kind}`, required, conditional, context.inlineRules);
+  if (!index) return null;
+  return [
+    index,
+    `只返回一个决策 JSON。许可动作 ${helper.statuses.join(" / ")}。宿主负责调度、写记录与最终门禁。先读当前 attempt 报告、主沟通文件、最新任务记录。以需求、已完成交付和当前有效证据判断进度，历史任务列表仅供参考。`,
+    "主任务做计划与普通调查。符合直办条件的独立小事可直接处理，简式完成仍需宿主许可。其余实现、验证及有实质风险的事项派发。独立可交付的工作按写入边界并行，扣除已占槽位与即将启动的 pending。只派返工或留有空槽，在主沟通文件记录原因。每个新会话收到自包含的目标、范围、设计约束与验证方法。",
+    `编码路由 ${context.loopSubtaskMode === "fullstack" ? "fullstack，所有编码使用全栈子模型" : "split，前端用前端子模型，其余编码用后端子模型"}。taskType 为 backend、frontend 或 general。general 只读，省略 writeFiles、codingDelivery，仅派给能明显受益于并行的至少两个独立大型分析方向。每次派发或 reprompt 重新判断 requiresAcceptance，缺省 true。`,
+    `执行依赖准入：${loopPlusDependencyAdmissionCondition(context.requireAcceptedDependencies ?? leader)} 只看最新 attempt，验收选序由宿主另行决定。`,
+    "读取快照中的全部新消息和报告。调度回执严格匹配冻结 FIFO，clarify 保留回执。重试、刷新和交接保持原冻结顺序，晚到事件留待后续。CLI 错误和执行报告作为证据处理。",
+    ...(reviewing ? [
+      "按冻结顺序独立检查每项真实交付。自报完成或测试通过仍需对照全部需求。非全撤销时，每个有效事件执行六项基线及所有已选专项；适用但未核实的检查标 false。失败或停止仅可判失败或有据撤销。全撤销省略 acceptance 和 acceptancePlanResults。",
+      ...(batch.some(({ item }) => item.outcome === "unconfirmed") ? ["unconfirmed 表示子任务失联、执行结果待确认。检查原有报告与实际产物，证据充分可验收通过，未完成则沿用原逻辑 ID 派发续接。"] : []),
+      "验收失败需要返工时，每个失败事件恰好关联一个原逻辑 ID 并重新验收；确实无需返工时给 noRepairReason 并保留失败。其余独立交付用 independentSubtaskIds。accept 给 0–99 整数 progressPercent。",
+      context.allowDispatchBeforeReview && canDispatch
+        ? "本批有一次验收前派发窗口。即使有新消息，也只派可立即启动且与验收结论无关的独立工作；dispatch 附 nextStepPlan 并确认报告，保留本批，不带 controls 或 review IDs。无此类工作立即验收。"
+        : "本批验收前派发窗口已关闭。新增就绪工作随 accept 提交，保留逐项结论。",
+    ] : []),
+    "本轮不打印历史 Tasklist，不调用待办或计划工具。需要在后续主决策处理不同目标时，可在继续调度的动作中附 nextStepPlan.objective 和可选 acceptanceCriteria。clarify、blocked、completed 省略该字段。",
+    ...(canComplete ? [`允许简式收尾 ${helper.allowDirectCompletion ? "是" : "否"}。先逐项覆盖原始及补充需求并通过全部门禁。普通 completed 必须给 answerConclusion、finalSummary、全部通过的基线/专项和 requirementCoverage。`] : []),
+    ...(leader ? ["组长独立验收本组交付，继承根验收方案；部门和本组额度为参考，余额零或未知仍由任务需要决定。跨组协调在正常决策的 fields 提交 departmentCollaborations。"] : []),
+  ].join("\n");
+}
+
+const INTERRUPTED_WORK_INSTRUCTION = [
+  "“已中断，等待续跑”是主任务须主动处置的异常。按当前 attempt 核对最后报告、已有产物、剩余工作和验收要求。",
+  "优先用 controls.reprompt 沿原逻辑 ID 创建新 attempt，写清从哪里继续和如何验证。宿主优先续接相容的原会话，缺少可复用绑定时启用新会话。",
+  "需要新子任务接替时，同轮用 controls.close 关闭旧预留并在 subtasks 派新 ID，交接已有成果、剩余范围和适用的 dependsOn。有后继依赖原 ID 时用原 ID 续派。",
+  "无冻结批次时，单独续派用 steer，新 ID 接替用 dispatch。已有冻结批次时随 accept 提交 controls，批次之外的接替 ID 归入 independentSubtaskIds。保留仍在执行的同级任务，接续结果按正常流程验收或确认报告。",
+].join("\n");
+
+export function buildLoopPlusIdleSupplement(interrupted: readonly { subtaskId: string; attemptId: string }[]): string {
+  const instructions = ["【系统巡检 · 补充需求】运行中 0、修复中 0、验收中 0。请继续主任务，核对当前调度快照、已有报告和剩余交付。"];
+  if (interrupted.length) {
+    instructions.push(`巡检时已中断的子任务 ${JSON.stringify(interrupted.map(({ subtaskId, attemptId }) => ({ subtaskId, attemptId })))}。仅处置当前仍中断的 attempt，已恢复或结算的按最新状态推进。`, INTERRUPTED_WORK_INSTRUCTION);
+  }
+  instructions.push("优先处理当前可验收的交付和待确认报告，再推进剩余工作。仅在实际执行能够推进时等待，满足全部验收条件后结案。确需外部输入时说明具体阻塞。");
+  return instructions.join("\n");
 }
 
 export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext): string {
@@ -619,9 +704,14 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const pendingUserText = pendingUserMessages.length > 0
     ? pendingUserMessages.map((item, index) => `${index + 1}. ${item}`).join("\n")
     : "(none)";
-  const running = context.view.running.length > 0
-    ? context.view.running.map(formatExecution).join("\n")
-    : "(none)";
+  const interruptedIds = new Set(context.interruptedSubtaskIds);
+  const executing = context.view.running.filter(record => !interruptedIds.has(record.subtaskId));
+  const running = executing.map(formatExecution).join("\n") || "(none)";
+  const interrupted = context.view.running.filter(record => interruptedIds.has(record.subtaskId));
+  const interruptionLines = interrupted.length ? [
+    `中断待处置 ${JSON.stringify(interrupted.map(({ subtaskId, attemptId }) => ({ subtaskId, attemptId })))}`,
+    context.departmentEmployeeCapacity ? "组长可按原逻辑 ID 用 controls.reprompt 续派中断的成员，结果进入本组验收。" : INTERRUPTED_WORK_INSTRUCTION,
+  ] : [];
   const pending = context.view.pending.length > 0
     ? context.view.pending.map(formatExecution).join("\n")
     : "(none)";
@@ -650,12 +740,54 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
   const acceptancePlanLines = context.acceptancePlan
     ? buildLoopPlusAcceptancePlanPromptLines(normalizeLoopPlusAcceptancePlanSnapshot(context.acceptancePlan))
     : [];
+  const indexed = indexedMainRules(context, helperContext);
+  if (indexed) {
+    const helperPath = readSuppliedDecisionHelperScriptPath(context.decisionHelperScriptPath);
+    const includeShapes = !helperPath || context.inlineRules || activePromptRuleDelivery() === "inline";
+    return [
+      LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX,
+      `Parent task: ${context.taskId}\nRoot request:\n${context.rootPrompt}\nSupplemental requirements:\n${requirements}`,
+      `主沟通文件 ${context.mainCommunicationFile}\n任务记录 ${context.taskStoreFile}。按记录中对应 subtask 和 attempt 的 communicationFile 读报告。`,
+      `本轮待确认报告 ${JSON.stringify(reportIds)}\n${reports}`,
+      ...(context.reportOnly ? [] : [
+        `冻结验收（按序） ${JSON.stringify(frozenMappedReviews(context, batchIds).map(({ item }) => ({ eventId: item.eventId, subtaskId: item.subtaskId, attemptId: item.attemptId, outcome: item.outcome, detail: item.detail })))}`,
+        `本轮新消息（按序）\n${pendingUserText}\n当前进度 ${context.progressPercent ?? 0}%`,
+        `阶段 ${context.view.phase}；宿主阻止完成的原因 ${blockers}；可见待审 ${context.view.visibleReviewCount}；冻结批次上限 ${LOOP_PLUS_ACCEPTANCE_BATCH_MAX}`,
+        `running:\n${running}\npending:\n${pending}\n等候验收队列:\n${queued}`,
+        `并发上限 ${context.maxConcurrency}；可用槽位 ${availableSlots}；单次派发上限 ${subtaskMax}`,
+        ...(context.view.dependencyBlocks?.length ? [`依赖阻塞 ${JSON.stringify(context.view.dependencyBlocks)}`] : []),
+        ...(context.requiredRepairIds?.length ? [`必须按原逻辑 ID 返工并复验 ${JSON.stringify(context.requiredRepairIds)}`] : []),
+        ...interruptionLines,
+        ...(context.priorSubtaskFailures ?? []),
+        ...(context.blockedReviewSummary !== undefined ? [`宿主要求复核阻塞，逐项核对未完成需求和安全替代。之前的建议 ${context.blockedReviewSummary}`] : []),
+        ...(context.recoveryOptions?.length ? [`在现有授权内选择并验证恢复方案 ${JSON.stringify(context.recoveryOptions)}。若都不可行，在 blocker.attempts 记录依据。`] : []),
+        ...(context.routingSummary ? [context.routingSummary] : []),
+        ...(context.nextStepPlan ? [`前轮计划 ${JSON.stringify(context.nextStepPlan)}，以本轮指令与宿主门禁为准。`] : []),
+        ...departmentCapacityLines,
+      ]),
+      "Rules:", indexed,
+      ...(!context.reportOnly ? [
+        ...LOOP_PLUS_DEFAULT_ACCEPTANCE_GROUPS.map(({ checks, guidance }) => `${checks.join(" + ")}: ${guidance}`),
+        ...acceptancePlanLines,
+      ] : []),
+      "Decision helper:",
+      ...(helperPath ? [
+        `从已加载插件运行。argv 路径为单个参数：${JSON.stringify(loopPlusDecisionHelperArgv(helperPath, "template"))}。先 template，再用相同 argv 将 template 换成 build，STATUS 替换为许可动作。`,
+        "stdin 传 {context,fields} UTF-8 JSON；template 的 fields 可为空。按模板填真实结论。build 非零按 stderr 修正原字段；成功只回 stdout 原文。工具不可用时手写同一协议，不改变权限。",
+      ] : ["助手不可用，使用本轮协议形状。"]),
+      "LOOP_PLUS_DECISION_HELPER_CONTEXT", "```json", JSON.stringify(helperContext), "```",
+      ...(includeShapes ? [buildLoopPlusProtocolExamples(context, decisionContract, batchIds, helperContext.reviews.at(-1)?.subtaskId,
+        Math.min(4, parallelCapacity, availableSlots), context.acceptancePlan, reportIds, context.allowDispatchBeforeReview)] : []),
+    ].join("\n");
+  }
   return [
     `${LOOP_PLUS_MAIN_PROTOCOL_PROMPT_PREFIX} Loop+ has no batch barrier and no shared round gate.`,
     "Execution finishing is not review completion. The host owns scheduling state.",
     "Before deciding, read these sources, in order: the current attempt report, the main communication file, and the latest task record.",
-    "Trust the attempt report's concrete execution facts, including test, build, and startup results. Reuse reported checks that cover the current changes and remain valid. Do not rerun them yourself or dispatch another attempt solely to reproduce those results.",
-    "Before accepting an event, inspect its relevant code, diff, or other deliverables and judge implementation completeness, agreed contracts, change relevance, omissions, regression risks, and boundary handling. Apply every selected additional review. Passing tests or an overall done claim is not a substitute for acceptance review. Do not implement or repair that dispatched work yourself.",
+    "Reuse reported test, build, startup, and review results only while they cover unchanged deliverables; do not rerun or redispatch solely to reproduce them.",
+    "Run or delegate checks only for uncovered, failed, invalidated, or explicitly required items; state existing evidence, the concrete gap, and the smallest scope.",
+    "Clarify an unclear report: inspect its output or ask its source task first; do not demand raw logs or independent reproduction just to trust a clear execution report. Reuse valid completed independent checks too. A passing unit suite does not establish untested integration behavior.",
+    "Independently inspect each delivered artifact and apply the checklist and selected reviews below before acceptance. Passing tests or a done claim alone is not acceptance. Do not implement or repair that dispatched work yourself.",
     "For every dispatched subtask, decide requiresAcceptance at dispatch time. Omission means true for compatibility and safety. Reassess every reprompt as a new attempt: omission resets to true instead of inheriting the previous attempt's exemption. Use false for the cases below when the main task can rely on the subtask's concrete execution evidence without independently judging a deliverable. Keep true if the result is unclear, needs quality or failure-triage judgment, affects a shared contract, carries material security, privacy, or integration risk, or the user or project requires independent review. Neither task type, diff size, nor model capability alone decides it. A test is not automatically exempt, and a document is not automatically exempt.",
     "Report-only work may skip full acceptance: a bounded test/build run with no unrelated edits that reports exact command, scope, result and uncovered cases; read-only fact collection with sources; mechanical report generation from named inputs; or isolated diagnostics with clear findings.",
     "Obviously simple, low-risk edits may skip full acceptance too. Use false when the exact intent and affected scope are clear, the edit is local and directly verifiable, and no material behavior, contract, security, or integration judgment remains. Examples include adding a fixed, non-sensitive diagnostic log with the existing logger or renaming a strictly local variable without changing behavior. The subtask must check the targeted diff, run any required checks, and report the exact changes and results. A one-line change to a shared default or a log that exposes sensitive data is not exempt.",
@@ -669,9 +801,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       `Outstanding required repairs (logical IDs): ${JSON.stringify(context.requiredRepairIds)}. Parent completion is blocked. Without an open acceptance batch, use dispatch with the same subtasks[].id, a new repair prompt, and requiresAcceptance=true. If reviewing another batch, include the same-ID repair as eligible follow-up work in accept. Reuse the compatible original session; never repeat the old acceptance or substitute a different ID.`,
     ] : []),
     `Pending no-acceptance reports (oldest first):\n${reports}`,
-    "Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check. Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check. Already completed independent checks that remain valid are reusable too. A passing unit suite does not establish untested integration behavior.",
-    "Clarify an unclear report using existing output or the source subtask before considering a rerun. Do not demand raw logs or independent reproduction merely to trust a clear execution report. You may run tests or start produced artifacts only to close an identified verification gap under the rules above. Skipping an unnecessary rerun is not a failure; an unmet required check still needs resolution.",
-    "At closeout or continuation, reuse unchanged accepted execution and review results. Focus review on new or changed requirements, affected deliverables, and unresolved cross-task integration. Keep final requirement coverage and all open-event completion gates. A result from one event does not prove an unrelated event passes.",
+    "At closeout or continuation, reuse unchanged accepted results; review new or changed requirements, affected deliverables, and unresolved cross-task integration. Keep final requirement coverage and all open-event completion gates; one event's result does not prove another.",
     "Do not edit scheduling state, active ids, the loopPlus snapshot, or the task record.",
     `Parent task: ${context.taskId}`,
     `Prompt kind: ${context.kind}`,
@@ -685,15 +815,18 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
       "If no independent task can start immediately within the configured per-decision dispatch limit and live slots, return accept now and review the frozen batch; do not return an empty dispatch or create placeholder work. The host will not offer another dispatch-first opportunity for this batch.",
     ] : []),
     ...(context.blockedReviewSummary !== undefined ? [
-      "Bounded blocked review: this is the one remaining-work check before a global pause, not permission to retry a failed execution.",
+      "Bounded blocked review: independently reassess whether the goal itself is unreachable. Treat the previous conclusion as a proposal. Repeating an unchanged failed operation adds no evidence.",
       `Previous proposed blockage: ${context.blockedReviewSummary || "(no reason supplied)"}`,
       "Re-read every unfinished root and supplemental requirement. Separate safe independent work, work awaiting a live attempt, and work requiring external input. Dispatch independent work; wait for live dependencies only when no acceptance batch is open; preserve and judge the entire acceptance batch otherwise. A blocked path does not block unrelated deliverables.",
+      "Trace each proposed prerequisite to the latest user requirements, an applicable project rule, an actual permission denial or a reproducible technical constraint. Drop prerequisites introduced only by the plan or a subtask. Check whether a different implementation satisfies the same goal. For example, regenerate scoped test outputs from repository templates and verify them when in scope. Preserve other assets and enforce any actual release permissions separately.",
       "Only return blocked if no safe independent work remains. Its non-empty finalSummary must name unfinished requirements and evidence-backed blockers, then explain either who must provide what and the condition/action for continuing, or why the current requirements cannot be met and which alternatives remain. Do not remove safety gates, invent evidence, or dispatch placeholder work.",
     ] : []),
-    `Record file: ${context.taskStoreFile}`,
-    `Main communication file: ${context.mainCommunicationFile}`,
-    `Main communication report path: ${context.mainCommunicationFile}`,
-    `Latest task record path: ${context.taskStoreFile}`,
+    ...(context.recoveryOptions?.length ? [
+      `Previously proposed recovery options, in preference order: ${JSON.stringify(context.recoveryOptions)}`,
+      "Choose and execute or dispatch a feasible option within existing authority now. Verify its result before claiming recovery. If all options are infeasible, omit recoveryOptions and explain the evidence for each in blocker.attempts. These suggestions confer no authorization.",
+    ] : []),
+    `Main communication report path (communication file): ${context.mainCommunicationFile}`,
+    `Latest task record path (record file): ${context.taskStoreFile}`,
     `Current attempt report path: ${currentReport}`,
     "Queued attempt report paths: read each queued subtask communicationFile from the latest task record.",
     "Main communication and task record paths above are the supplied snapshot values. Attempt report paths are the communicationFile values stored in that record. Do not invent or hardcode a machine path.",
@@ -708,15 +841,15 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     `Visible review count including the current item: ${context.view.visibleReviewCount}`,
     "Review queue in host order (dependency-first selection applies only to a new batch):",
     queued,
-    `Still running count: ${context.view.running.length}`,
+    `Still running count: ${executing.length}`,
     `Scheduler concurrency limit: ${context.maxConcurrency}`,
     `Available concurrency slots in this snapshot: ${availableSlots}`,
     `Decision subtask limit: ${subtaskMax}`,
     `Target running count when enough necessary independent work is ready: ${context.maxConcurrency}`,
-    "Still running (open reservations, including interrupted subtasks):",
+    "Still running:",
     running,
     `Interrupted subtasks awaiting continuation: ${context.interruptedSubtaskIds?.join(", ") || "(none)"}`,
-    "An interrupted subtask stays open until its continuation reports a result. Wait for its notification before reviewing that subtask. Other events in the acceptance batch can be reviewed independently.",
+    ...interruptionLines,
     `Still pending count: ${context.view.pending.length}`,
     "Still pending launch:",
     pending,
@@ -783,22 +916,22 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- " + SUBTASK_DESIGN_KEY_POINT_RULE_EN,
     "- accept confirms the whole acceptance batch and may append 0 to " + subtaskMax + " new subtasks. Do not send accept when the acceptance batch is (none).",
     "- accept.reviews is required: one object per confirmed event, in the same order as the confirmed event ids. Each object has reviewEventId, acceptance (exactly passed, failed or cancelled), and an evidence-backed reason.",
-    "- Unless every review is cancelled, accept.acceptance is required and must report the default checks dispatched work, contracts, tests, artifacts, unauthorized changes, and omissions and regressions. Each check has passed and an evidence-backed detail; failed checks are allowed while repair work is launched.",
-    "- For passed/failed reviews, every accept.reviews reason must summarize the evidence-backed result of the default acceptance checklist for that event. Do not reuse generic filler; name the decisive evidence or failed criterion.",
-    "- Write each acceptance reason and check detail in the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory. State the decisive evidence, failure, or not-applicable reason, and never invent evidence or use a bare passed/failed claim.",
+    "- Give the decisive evidence or failed criterion in each event's reason. Use the language that best matches the task, evidence, and surrounding conversation; Chinese is not mandatory.",
     "- When requirements change and a delivery is no longer needed, set that frozen event review acceptance to cancelled and supply a non-empty reason. This withdraws only the current delivery from acceptance, persists the reason, and never counts as passed or failed. Do not withdraw an existing reviewed verdict. Keep all frozen ids in their original order, including mixed passed/failed/cancelled batches; do not use controls.close for a delivered event. When every review is cancelled, omit acceptance and acceptancePlanResults instead of inventing check evidence. Remaining-goal dispatch and controls are still allowed. If you withdraw a prerequisite's delivery, explicitly replan remaining requirements and dependencies. Do not cancel a still-required delivery merely to bypass failed checks or completion gates.",
     "- acceptance passed records that event as successful. acceptance failed records that event as failed. Do not mark a successful event failed because another event fails or launches a subtask.",
-    "- Resolve every failed acceptance in this accept decision: dispatch one repair linked to its failed event using the same logical subtask id, or set noRepairReason to an evidence-based reason that no repair is needed. A failed event with neither choice is rejected. noRepairReason preserves the failed verdict and is not a passed result: unmet requirements still block successful dependencies and parent completion. A dispatched repair immediately shows the same member as repairing, including while queued, and must be accepted again after it finishes.",
+    "- Resolve every failed acceptance in this accept decision: dispatch one repair linked to its failed event using the same logical subtask id, or set noRepairReason to an evidence-based reason that no repair is needed. A failed event with neither choice is rejected. noRepairReason preserves the failed verdict and is not a passed result: unmet requirements still block successful dependencies and parent completion. A dispatched repair shows the same member as repairing only while that new attempt is actually running and not interrupted. Pending, queued acceptance, finished, historical failures, interrupted runs, and ordinary first executions are not repairing. The repair must be accepted again after it finishes.",
     "- When an event launches repairs or related follow-up subtasks, list those ids in that review's subtaskIds. For independent remaining-goal deliveries unrelated to this batch's events, list their ids in accept.independentSubtaskIds instead. Every accept.subtasks id must appear exactly once across reviews[*].subtaskIds and independentSubtaskIds; unknown, duplicate, or missing links are rejected. independentSubtaskIds is optional and allowed only on accept. A passed event may launch related follow-up work and stays passed. A failed event that can be repaired lists its repair ids and names the failed check in that subtask prompt. Never attach independent work to a failed review just to satisfy linkage: that would inherit the repair session.",
-    "- Acceptance checklist, applied to every event in the batch: dispatched work is actually implemented; any interface, data structure, or file boundary matches the agreed contract; included tests pass; produced runnable artifacts run; files outside the suggested write scope changed only because the task required them, with no unrelated edits; no omission, regression, or boundary error remains. The host confirms the event ids and does not grade this checklist.",
-    "- A checklist item that does not apply still has to be judged. Say not applicable. Do not mark a required test or artifact run as passed without evidence of execution in the attempt report or an identified targeted check. Reported execution results are sufficient evidence for checks that still cover the current changes. The presence of test code alone does not establish a passing execution. Keep every fixed and selected review; reusing execution facts does not remove any review item.",
+    "- For each non-cancelled event, review these three pairs. Read shared evidence once and cite it for each check it covers:",
+    ...LOOP_PLUS_DEFAULT_ACCEPTANCE_GROUPS.map(({ checks, guidance }) => `  - ${checks.join(" + ")}: ${guidance}`),
+    "- For accept (unless all reviews are cancelled) and normal completed, return one acceptance.checks array for the batch: all six named checks, each with its own passed and brief evidence-backed detail. Explain genuine non-applicability. Mark applicable but unverified checks false. You judge the evidence.",
     ...acceptancePlanLines,
     "- Do not send completed while any event fails its checklist. Accept the batch instead: mark the failed events failed, mark the successful events passed, and link each repair only to its failed event. Also dispatch ready independent remaining-goal work through independentSubtaskIds. If a failed event cannot be repaired by a subtask, check the whole remaining goal before choosing blocked: continue safe independent work with accept, retain the failed verdict, and record its unresolved blocker. Return blocked, confirming nothing, only when no safe independent work or live dependency can advance the goal.",
     "- Decide whether each next subtask continues an earlier subtask. Set continueFromSubtaskId to that earlier subtask id for follow-up work; omit it for independent work. Wait for that source to finish; use controls.reprompt to redirect work that is still running. The host restores only a session recorded under this parent with the same CLI and configuration. Do not run two tasks concurrently on one source session.",
     "- For each failed event that needs repair, put exactly one repair in reviews[*].subtaskIds and reuse that event's original subtask ID in subtasks. For a failed event that needs no repair, provide noRepairReason and no linked subtask. Do not allocate a new logical subtask ID for a repair, even when dispatching it in a later decision. The repair is a new attempt under the original member number and requires acceptance again. Reuse the original session when the CLI and configuration are compatible; otherwise use a fresh session.",
     "- independentSubtaskIds do not inherit a failed event's session. Omit continueFromSubtaskId for genuinely independent work; only set it when deliberately continuing a different compatible earlier subtask. Independent delivery can run alongside a repair while real write conflicts and per-session serialization remain enforced.",
     "- Unless the delivery is no longer needed and explicitly cancelled with a reason, an attempt whose outcome is failed or stopped is an acceptance failure. Mark that review failed and explain why. The host also records it failed.",
-    "- completed.acceptance.checks must include one passed check for each name: dispatched work, contracts, tests, artifacts, unauthorized changes, omissions and regressions. Every check detail is an evidence-backed reason.",
+    ...(frozenMappedReviews(context, acceptanceEventIds(context)).some(({ item }) => item.outcome === "unconfirmed")
+      ? ["- For an unconfirmed outcome, inspect the existing report and artifacts. Pass the review if the evidence supports it; otherwise continue the unfinished work under the original subtask ID."] : []),
     "- When the acceptance batch has one event, copy it into reviewEventId and do not send reviewEventIds.",
     "- When the acceptance batch has more than one event, copy every id in order into reviewEventIds and do not send reviewEventId. A missing, extra, or reordered id is rejected.",
     acceptExampleRule,
@@ -813,8 +946,9 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- You decide whether the remaining goal is blocked from evidence, regardless of how many attempts or decisions have run. Compare recent attempt reports and acceptance evidence. If a repair narrows the cause, resolves part of the problem, verifies a new requirement, or reveals an actionable next step, continue with a targeted repair even if the attempt still failed. Stop repeating an approach when it produces the same failure and no new evidence. Try a materially different safe approach when one is available.",
     "- Before blocked, check every unfinished root and supplemental requirement for safe independent work. Dispatch useful independent work, or wait for live work that can advance the goal when the acceptance batch is empty. Use clarify for a required user decision or authorization. Never repeat unchanged diagnostics or invent tasks just to stay busy.",
     "- Return blocked only when the evidence shows why the remaining goal cannot advance through any safe repair, new approach, independent work, or live execution. blocked confirms no acceptance events. Do not include reviewEventId, reviewEventIds, or subtasks. Supply a non-empty finalSummary explaining the unfinished requirements, what was tried and why progress has stopped, with actionable recovery prerequisites and responsible parties or the evidence of impossibility and available alternatives. The host performs one bounded remaining-work review before pausing.",
-    LOOP_BLOCKED_SUMMARY_INSTRUCTION,
-    "- clarify asks the user to fill a form in the group chat and confirms no acceptance events. Use it when the root request is ambiguous or the plan would be materially incomplete without a user decision. Do not guess, and do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields. The host pauses until the user submits or rejects.",
+    LOOP_PLUS_BLOCKED_SUMMARY_INSTRUCTION,
+    "- Own routine implementation choices, including when the user has not suggested an alternative. Try a reversible in-scope method using available project sources and tools, verify it, and continue. A missing receipt for one method, a subtask's precaution, an empty queue or an unanswered form is insufficient to establish a global blocker.",
+    "- clarify asks the user to fill a form in the group chat and confirms no acceptance events. Reserve it for a material choice only the user can make or an actual missing authorization after available independent work. After a timeout, make the best in-scope choice using existing authority. Do not ask again for the same implementation choice or treat a default as permission. Do not include reviewEventId, reviewEventIds, subtasks, or controls. clarification.formFields must contain 1 to 8 fields.",
     "- Except for the explicitly permitted directCompletion path above, completed requires non-empty answerConclusion and finalSummary, acceptance.passed true, a non-empty acceptance.checks array in which every passed value is true, and a non-empty requirementCoverage array in which every passed value is true. Do not include subtasks or reviews. Use accept when any event failed.",
     buildStructuredSvgSummaryPromptInstruction("finalSummary"),
     "- When the acceptance batch has one event, completed must include that reviewEventId. When it has more than one, completed must include reviewEventIds in that order and must not include reviewEventId. When the acceptance batch is (none), omit both. A completed object missing any required field, or containing a failed check, is rejected.",
@@ -824,7 +958,7 @@ export function buildLoopPlusMainModelPrompt(context: LoopPlusMainPromptContext)
     "- There is no cumulative per-parent subtask dispatch limit. Each dispatch remains subject to the configured per-decision dispatch limit and currently available concurrency slots.",
     "- A continuing decision may optionally include nextStepPlan with an objective and optional acceptanceCriteria for meaningful remaining work you want handled in a later main decision. You decide whether a plan is useful; do not duplicate the current decision, task snapshot, or completed work. Omit it when no distinct follow-up is useful. Do not include nextStepPlan with clarify, blocked, or completed. A plan never confirms acceptance, creates subtasks, or bypasses any host gate.",
     ...failedFrozenReviewLinkageLines(context, batchIds),
-    ...decisionHelperPromptLines(helperContext),
+    ...decisionHelperPromptLines(helperContext, readSuppliedDecisionHelperScriptPath(context.decisionHelperScriptPath)),
     "Valid protocol examples follow. Return exactly one JSON object and do not repeat these examples.",
     `Current decision shapes from the read-only host snapshot: ${decisionContract.statuses.join(", ")}. blocked requires evidence that progress cannot continue; clarify requires a user decision. Completion still requires passing evidence for every original and supplemental requirement and the latest host gates.`,
     "Protocol examples illustrate JSON shape, not actual review verdicts, a fixed task count, or a role quota. The accept example combines a hypothetical repair with independent remaining-goal deliveries when capacity permits; judge real events from evidence. Size real work using the rules and live capacity above.",
@@ -882,11 +1016,27 @@ export function buildLoopPlusSubtaskModelPrompt(context: LoopPlusSubtaskPromptCo
       : role === "frontend"
         ? "Execution role: frontend. Implement the requested UI or client code with the frontend sub-model configuration. Do not switch to another role."
         : "Execution role: backend. Implement the requested code with the backend sub-model configuration. Do not switch to another role.";
+  const readOnly = role === "general" || context.subtask.taskType === "general";
+  const index = renderPromptRuleIndex(context.departmentEmployee ? "产研部员工" : "Loop+ 执行子任务",
+    ["loop-plus/attempt", ...(context.departmentEmployee ? ["department/employee"] : [])],
+    [...(readOnly ? [] : ["topics/git-delivery", "topics/ui-handoff"]),
+      ...(context.departmentEmployee ? ["department/continuity", "topics/asset-license"] : [])]);
+  if (index) return [
+    `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Complete only this attempt and write its report.`,
+    readOnly ? "Execution role: general. 仅调查和汇报证据，需改动时交主任务派发编码。" : roleLine, index,
+    `Attempt report file: ${context.communicationFile}`,
+    `Suggested write scope: ${readOnly ? "(read only)" : files}`,
+    `dependsOn=${JSON.stringify(context.subtask.dependsOn ?? [])}. ${loopPlusDependencyAdmissionCondition(context.requireAcceptedDependencies ?? true)}`,
+    readOnly ? "只做只读调查，除指定的本次报告外不写文件。" : "重读最新文件，保留并发修改。建议写入范围可按需扩展，在报告说明原因。界面实现遵循派发的设计。",
+    "只写本次报告，调度和其它任务归宿主管理。记录实际修改、命令、结果与未验证项。遇到障碍时尝试授权范围内的替代并验证。",
+    "Subtask instructions:", context.subtask.prompt,
+  ].join("\n");
   return [
     `${LOOP_PLUS_SUBTASK_PROTOCOL_PROMPT_PREFIX} Complete only this attempt and write its report.`,
     `Attempt report file: ${context.communicationFile}`,
     roleLine,
     `Suggested write scope: ${role === "general" ? "(read only)" : files}`,
+    "When an approach fails, try a safe in-scope alternative consistent with this assignment and verify its result. If you cannot proceed, report the specific constraint, its source and the alternatives considered to the main task.",
     `Explicit prerequisite subtask ids (dependsOn): ${JSON.stringify(context.subtask.dependsOn ?? [])}`,
     `The host admits this attempt only after ${loopPlusDependencyAdmissionCondition(context.requireAcceptedDependencies ?? true)} Session continuation is separate from dependencies. Report only this attempt; do not infer parent or successor completion.`,
     role === "general"

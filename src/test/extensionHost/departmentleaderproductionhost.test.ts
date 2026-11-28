@@ -340,7 +340,17 @@ scenario("OpenCode production optional thinking projection matches the fixed cle
 
 for (const cancel of [false, true]) scenario(`OpenCode production existing Loop+ leader injection ${cancel ? "cancels preparation" : "runs same-session rounds"}`, async (t) => {
   const h = await setup(t); let calls = 0;
-  const fixture = createLoopPlusRuntimeFixture({ cli: "opencode", taskPersistence: {
+  const leader = h.readTask("leader")!, root = h.readTask("root")!;
+  assert.equal(leader.department?.parentTaskId, root.id);
+  assert.equal(leader.workspaceKey, root.workspaceKey);
+  assert.equal(leader.workspaceKey, h.workspace);
+  assert.equal(leader.status, "running");
+  assert.equal(leader.cli, "opencode");
+  assert.equal(leader.sessionId, "local_leader");
+  assert.equal(root.sessionId, "local_director");
+  assert.equal(leader.executionSession, undefined);
+  let activeWorkspace = leader.workspaceKey;
+  const fixture = createLoopPlusRuntimeFixture({ cli: "opencode", activeWorkspaceKey: () => activeWorkspace, taskPersistence: {
     create() { throw new Error("adapter must use the existing authoritative leader"); }, read: h.readTask,
     save(task) { assert.ok(updateLoopTaskRecord(task.id, task)); }, remove() { assert.fail("adapter cannot remove history"); },
   }, runPromptOverride: async () => { assert.fail("department main must never fall back to ordinary prompt execution"); },
@@ -353,22 +363,58 @@ for (const cancel of [false, true]) scenario(`OpenCode production existing Loop+
     }),
   });
   t.after(() => fixture.dispose());
-  Object.assign(fixture.target, { tabId: "leader-tab", sessionId: h.readTask("leader")!.sessionId });
+  Object.assign(fixture.target, { tabId: "leader-tab", sessionId: leader.sessionId });
+  const cliCalls = () => h.events().filter(v => v === "session-created" || v === "task-run").length;
+  const runInjected = (kind: "initial" | "user", cli: "opencode" | "codex" = "opencode", sessionId = fixture.target.sessionId) =>
+    fixture.adapter.runMain({ taskId: "leader", kind, prompt: "controlled prompt", modelPrompt: "controlled prompt",
+      reviewEventId: null, target: { tabId: fixture.target.tabId, cli, sessionId } });
+  let ownerId = "", executionId = "";
   if (cancel) fs.writeFileSync(h.file("hold-create"), "gate");
   for (const kind of (cancel ? ["initial"] : ["initial", "user"]) as Array<"initial" | "user">) {
-    const execution = fixture.adapter.runMain({ taskId: "leader", kind, prompt: "controlled prompt", modelPrompt: "controlled prompt",
-      reviewEventId: null, target: { tabId: fixture.target.tabId, cli: "opencode", sessionId: fixture.target.sessionId } });
+    const execution = runInjected(kind);
     if (cancel) {
       await until(() => h.events().includes("session-created")); execution.abort(); fs.unlinkSync(h.file("hold-create"));
       assert.equal(await execution.promise, null);
       assert.equal(h.events().filter(v => v === "task-run").length, 0); assert.equal(h.rows().set.entries[0].executionId, null);
-    } else assert.equal(await execution.promise, "answer");
+    } else {
+      assert.equal(await execution.promise, "answer");
+      const binding = h.rows().bindings[0];
+      assert.equal(binding.identity.session.state, "bound");
+      assert.equal(binding.identity.session.state === "bound" ? binding.identity.session.id : "", h.sessionId);
+      assert.deepEqual(h.readTask("leader")!.executionSession, { cli: "opencode", sessionId: h.sessionId, configId: "profile" });
+      if (!ownerId) { ownerId = binding.identity.ownerId; executionId = binding.identity.executionId; }
+      else { assert.equal(binding.identity.ownerId, ownerId); assert.equal(binding.identity.executionId, executionId); }
+    }
   }
   assert.equal(calls, cancel ? 1 : 2);
+  if (cancel) {
+    const beforeLate = cliCalls();
+    assert.equal(h.events().filter(v => v === "session-created").length, 1);
+    await assert.rejects(runInjected("user").promise);
+    assert.equal(cliCalls(), beforeLate);
+    assert.equal(h.events().filter(v => v === "task-run").length, 0);
+    assert.equal(h.rows().set.entries[0].executionId, null);
+  }
   if (!cancel) {
+    const beforeReject = cliCalls(), callsBefore = calls;
+    const rejectOwnership = async (cli: "opencode" | "codex", workspace: string) => {
+      activeWorkspace = workspace;
+      await assert.rejects(runInjected("user", cli).promise, (error: unknown) => {
+        assert.equal((error as { code?: string }).code, "LOOP_PLUS_PARENT_UNAVAILABLE");
+        return true;
+      });
+    };
+    await rejectOwnership("opencode", h.workspace + "-foreign");
+    await rejectOwnership("codex", h.workspace);
+    activeWorkspace = h.workspace;
+    assert.equal(calls, callsBefore);
+    assert.equal(cliCalls(), beforeReject);
+    assert.equal(h.rows().bindings[0].identity.ownerId, ownerId);
+    assert.equal(h.rows().bindings[0].identity.executionId, executionId);
     const observation = h.groupCleanup.observe(h.readTask("leader")!, 1); assert.ok(observation); await observation.done;
     assert.equal(h.rows().bindings.length, 1); assert.equal(h.rows().set.state, "closed");
     assert.equal(h.events().filter(v => v === "session-created").length, 1);
+    assert.equal(h.readTask("leader")!.executionSession!.sessionId, h.sessionId);
   }
 });
 

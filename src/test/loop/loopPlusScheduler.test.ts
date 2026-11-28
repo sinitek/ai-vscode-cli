@@ -333,6 +333,109 @@ test("ignores duplicate notifications and stale attempts without touching the ne
   assert.deepEqual(attemptIds(scheduler.snapshot().pending), ["beta-1"]);
 });
 
+test("separates an unsettled logical id from a duplicate candidate and does not replay accepted work", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 8 });
+  const clean = scheduler.dispatch([spec("alpha"), spec("beta")]);
+  assert.deepEqual(clean.rejected, []);
+  assert.deepEqual(attemptIds(clean.started).sort(), ["alpha-1", "beta-1"]);
+
+  const collided = scheduler.dispatch([
+    { ...spec("alpha"), attemptId: "alpha-2" },
+    { ...spec("gamma"), attemptId: "gamma-1" },
+    { ...spec("gamma"), attemptId: "gamma-2" },
+    { ...spec("delta"), attemptId: "delta-1" },
+  ]);
+  assert.deepEqual(collided.rejected.map((item) => [item.attemptId, item.reason]), [
+    ["alpha-2", "active_subtask"],
+    ["gamma-2", "duplicate_subtask"],
+  ]);
+  assert.deepEqual(attemptIds(collided.started).sort(), ["delta-1", "gamma-1"]);
+  assert.equal(scheduler.snapshot().seenAttempts.filter((item) => item.subtaskId === "alpha").length, 1);
+  assert.equal(scheduler.snapshot().seenAttempts.filter((item) => item.attemptId === "gamma-1").length, 1);
+  assert.equal(scheduler.snapshot().seenAttempts.some((item) => item.attemptId === "alpha-2" || item.attemptId === "gamma-2"), false);
+
+  const replay = scheduler.dispatch([
+    { ...spec("alpha"), attemptId: "alpha-3" },
+    { ...spec("gamma"), attemptId: "gamma-3" },
+    { ...spec("delta"), attemptId: "delta-2" },
+  ]);
+  assert.deepEqual(replay.rejected.map((item) => item.reason), ["active_subtask", "active_subtask", "active_subtask"]);
+  assert.deepEqual(replay.started, []);
+  assert.deepEqual(replay.decisions, []);
+
+  const correction = scheduler.dispatch([{ ...spec("epsilon"), attemptId: "epsilon-1" }]);
+  assert.deepEqual(correction.rejected, []);
+  assert.deepEqual(attemptIds(correction.started), ["epsilon-1"]);
+  assert.deepEqual(
+    scheduler.snapshot().seenAttempts.map((item) => item.attemptId).sort(),
+    ["alpha-1", "beta-1", "delta-1", "epsilon-1", "gamma-1"],
+  );
+});
+
+test("an unsettled logical id occupies the batch so a later copy is a duplicate", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 8 });
+  const initial = scheduler.dispatch([spec("alpha"), spec("beta")]);
+  assert.deepEqual(attemptIds(initial.started).sort(), ["alpha-1", "beta-1"]);
+  const seenBefore = scheduler.snapshot().seenAttempts.map((item) => item.attemptId).sort();
+
+  const mixed = scheduler.dispatch([
+    { subtaskId: "alpha" },
+    { ...spec("alpha"), attemptId: "alpha-1" },
+    { ...spec("alpha"), attemptId: "alpha-2" },
+    { ...spec("alpha"), attemptId: "alpha-3" },
+    { ...spec("alpha"), attemptId: "alpha-2" },
+    { ...spec("gamma"), attemptId: "gamma-1" },
+    { ...spec("gamma"), attemptId: "gamma-2" },
+  ]);
+  assert.deepEqual(mixed.rejected.map((item) => [item.attemptId, item.reason]), [
+    ["", "invalid_spec"],
+    ["alpha-1", "duplicate_attempt"],
+    ["alpha-2", "active_subtask"],
+    ["alpha-3", "duplicate_subtask"],
+    ["alpha-2", "duplicate_subtask"],
+    ["gamma-2", "duplicate_subtask"],
+  ]);
+  assert.deepEqual(attemptIds(mixed.started), ["gamma-1"]);
+  assert.deepEqual(mixed.decisions.map((item) => item.attemptId), ["gamma-1"]);
+  assert.deepEqual(
+    scheduler.snapshot().seenAttempts.map((item) => item.attemptId).sort(),
+    [...seenBefore, "gamma-1"].sort(),
+  );
+  assert.equal(scheduler.snapshot().seenAttempts.some((item) => item.attemptId === "alpha-2" || item.attemptId === "alpha-3"), false);
+
+  const replay = scheduler.dispatch([
+    { ...spec("alpha"), attemptId: "alpha-4" },
+    { ...spec("gamma"), attemptId: "gamma-3" },
+    { ...spec("beta"), attemptId: "beta-2" },
+  ]);
+  assert.deepEqual(replay.rejected.map((item) => [item.attemptId, item.reason]), [
+    ["alpha-4", "active_subtask"],
+    ["gamma-3", "active_subtask"],
+    ["beta-2", "active_subtask"],
+  ]);
+  assert.deepEqual(replay.started, []);
+  assert.deepEqual(replay.decisions, []);
+  assert.deepEqual(
+    scheduler.snapshot().seenAttempts.map((item) => item.attemptId).sort(),
+    [...seenBefore, "gamma-1"].sort(),
+  );
+
+  const stopped = createLoopPlusScheduler({ maxConcurrency: 2 });
+  stopped.stopParent();
+  const stoppedBatch = stopped.dispatch([spec("delta"), { ...spec("delta"), attemptId: "delta-2" }]);
+  assert.deepEqual(stoppedBatch.rejected.map((item) => [item.attemptId, item.reason]), [
+    ["delta-1", "parent_stopped"],
+    ["delta-2", "parent_stopped"],
+  ]);
+  assert.deepEqual(stopped.snapshot().seenAttempts, []);
+
+  const finished = createLoopPlusScheduler({ maxConcurrency: 2 });
+  assert.equal(finished.complete().ok, true);
+  const completedBatch = finished.dispatch([spec("delta"), { ...spec("delta"), attemptId: "delta-2" }]);
+  assert.deepEqual(completedBatch.rejected.map((item) => item.reason), ["completed", "completed"]);
+  assert.deepEqual(finished.snapshot().seenAttempts, []);
+});
+
 test("can dispatch after a review while an older task is still running", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 3 });
   scheduler.dispatch([spec("alpha"), spec("beta")]);
@@ -1533,4 +1636,51 @@ test("撤销验收持久保存原因、保持批次顺序且不放行依赖", ()
   assert.throws(() => createLoopPlusScheduler({ snapshot: invalid }), /Invalid Loop\+ scheduler snapshot/);
   assert.equal(restored.applyControls([{ subtaskId: "next", action: "close" }]).ok, true);
   assert.equal(restored.complete().ok, true);
+});
+
+test("reprompt records the replaced attempt and still loads a snapshot without that link", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("alpha"), spec("beta")]);
+  assert.equal(scheduler.applyControls([{ subtaskId: "beta", action: "close" }]).ok, true);
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "beta-1")?.replacesAttemptId, undefined);
+  const replacement = (attemptId: string, writeFiles: string[]) => ({
+    subtaskId: "alpha",
+    attemptId,
+    title: "alpha",
+    writeFiles,
+  });
+  assert.equal(scheduler.applyControls([{
+    subtaskId: "alpha",
+    action: "reprompt",
+    replacement: replacement("alpha-2", ["src/alpha-2.ts"]),
+  }]).ok, true);
+  assert.equal(scheduler.applyControls([{
+    subtaskId: "alpha",
+    action: "reprompt",
+    replacement: replacement("alpha-3", ["src/alpha-3.ts"]),
+  }]).ok, true);
+  const seen = (attemptId: string) => scheduler.snapshot().seenAttempts.find((item) => item.attemptId === attemptId);
+  assert.equal(seen("alpha-1")?.disposition, "closed");
+  assert.equal(seen("alpha-1")?.replacesAttemptId, undefined);
+  assert.equal(seen("alpha-2")?.replacesAttemptId, "alpha-1");
+  assert.equal(seen("alpha-2")?.disposition, "closed");
+  assert.equal(seen("alpha-3")?.replacesAttemptId, "alpha-2");
+  assert.equal(seen("alpha-3")?.disposition, "open");
+  const saved = JSON.parse(JSON.stringify(scheduler.snapshot()));
+  assert.equal(createLoopPlusScheduler({ snapshot: saved }).snapshot().seenAttempts
+    .find((item) => item.attemptId === "alpha-3")?.replacesAttemptId, "alpha-2");
+
+  const legacy = JSON.parse(JSON.stringify(saved));
+  delete legacy.seenAttempts.find((item: { attemptId: string }) => item.attemptId === "alpha-3").replacesAttemptId;
+  assert.equal(createLoopPlusScheduler({ snapshot: legacy }).snapshot().seenAttempts
+    .find((item) => item.attemptId === "alpha-3")?.replacesAttemptId, undefined);
+
+  for (const sourceId of ["missing", "beta-1", "alpha-1", "alpha-3", " "]) {
+    const invalid = JSON.parse(JSON.stringify(saved));
+    invalid.seenAttempts.find((item: { attemptId: string }) => item.attemptId === "alpha-3").replacesAttemptId = sourceId;
+    assert.throws(
+      () => createLoopPlusScheduler({ snapshot: invalid }),
+      /seenAttempts\[\d+\]\.replacesAttemptId/,
+    );
+  }
 });

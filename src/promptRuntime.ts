@@ -11,6 +11,7 @@ import type { MemoryRuntimeGateSettings } from "./memory/runtimeGate";
 import { isMemoryRuntimeOperationAllowed } from "./memory/runtimeGate";
 import type { ChatMessage, PromptContextOptions } from "./webview/types";
 import { FINAL_ANSWER_PROMPT_INSTRUCTION } from "./finalAnswerProtocol";
+import { renderPromptRuleIndex } from "./promptRuleIndex";
 
 const CODEX_IMAGE_EXTENSIONS = new Set([
   ".png",
@@ -154,6 +155,20 @@ export function buildThinkingPrompt(
   const suffix = includeSuffix ? getThinkingPromptSuffix(cli, mode) : "";
   const promptWithThinkingInstructions = mergePromptSections(prefix, prompt, suffix);
   const promptWithRuntimeHistoryInstruction = mergePromptSections("", promptWithThinkingInstructions, RUNTIME_HISTORY_PROMPT_INSTRUCTION);
+  if (options.includeFinalAnswerInstruction !== false) {
+    const track = options.includeTaskListInstruction !== false && (cli === "codex" || cli === "grok");
+    const interact = options.includeHumanInteractionInstruction === true;
+    const index = renderPromptRuleIndex("Vibe", [], [
+      ...(track ? ["vibe/progress"] : []), ...(interact ? ["vibe/interaction"] : []), "topics/ui-handoff", "topics/summary-svg",
+    ]);
+    if (index) return [promptWithRuntimeHistoryInstruction, index,
+      ...(track ? [cli === "codex"
+        ? "任务状态有实质变化时用独立的 Tasklist: 标题，每项单行 - [pending]、- [in_progress] 或 - [completed] 加空格和简体中文事项，保留代码名。"
+        : "多步任务用原生 todo_write，稳定 id、pending/in_progress/completed 和简体中文事项。"] : []),
+      ...(interact ? ["确需用户决策时调用结构化 user-input / elicitation 并等待回复。每次最多三题，候选互斥，推荐项在首位。"] : []),
+      "任务完成时最终答复从 [final_answer] 开始，进度更新中省略该标记。图片引用实际存在的路径或 URL。",
+    ].join("\n");
+  }
   const taskListInstruction = cli === "codex" ? CODEX_TASK_LIST_PROMPT_INSTRUCTION
     : cli === "grok" ? GROK_TASK_LIST_PROMPT_INSTRUCTION : "";
   const includeTaskListInstruction = Boolean(taskListInstruction)

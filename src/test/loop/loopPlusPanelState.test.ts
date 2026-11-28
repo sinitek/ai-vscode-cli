@@ -784,3 +784,226 @@ test("撤销验收在恢复后仍显示独立状态和撤销原因", () => {
   assert.equal(state.loopPlus.seenAttempts[0].acceptanceReason, "需求变更，不再交付");
   assert.equal(state.rounds[0]?.participants.find((item) => item.id === "A")?.status, "acceptance_cancelled");
 });
+
+test("counts only a live uninterrupted repair and keeps other phases out of repairing", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const subTasks: LoopTaskRecord["subTasks"] = [
+    { id: "A", title: "Alpha", status: "running", updatedAt: 11 },
+    { id: "B", title: "Bravo", status: "running", updatedAt: 12 },
+    { id: "C", title: "Charlie", status: "pending", updatedAt: 13 },
+  ];
+  const statusOf = (state: ReturnType<typeof buildLoopGroupChatPanelStateWithDeps>, id: string) => (
+    state.rounds[0]?.participants.find((item) => item.id === id)?.status
+  );
+  const project = (snapshot = scheduler.snapshot(), tasks = subTasks, localExecutionInactive = false) => {
+    const state = buildLoopGroupChatPanelStateWithDeps(task(snapshot, { subTasks: tasks }, []), {
+      ...deps(),
+      ...(localExecutionInactive ? { localExecutionInactive: true } : {}),
+    });
+    assert.equal(state.loopPlus?.ok, true);
+    if (!state.loopPlus?.ok) throw new Error("expected a valid Loop+ projection");
+    return { state, projection: state.loopPlus };
+  };
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const firstReview = scheduler.snapshot().currentReview;
+  assert.ok(firstReview);
+  assert.equal(scheduler.submitReviewBatch([firstReview.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  assert.equal(scheduler.dispatch([spec("A", "a-2")]).started.length, 0);
+  assert.equal(scheduler.dispatch([spec("C", "c-1")]).started.length, 0);
+
+  const pending = project();
+  assert.equal(pending.projection.running.find((item) => item.attemptId === "b-1")?.repairing, undefined);
+  assert.equal(pending.projection.pending.find((item) => item.attemptId === "a-2")?.repairing, undefined);
+  assert.equal(pending.projection.pending.find((item) => item.attemptId === "c-1")?.repairing, undefined);
+  assert.equal(pending.projection.currentReview, null);
+  assert.equal(pending.projection.reviewQueue.every((item) => item.repairRound === undefined), true);
+  assert.equal(statusOf(pending.state, "A"), "pending");
+  assert.equal(statusOf(pending.state, "B"), "running");
+  assert.equal(statusOf(pending.state, "C"), "pending");
+
+  assert.equal(scheduler.finish({ subtaskId: "B", attemptId: "b-1", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "a-2");
+  const running = project();
+  assert.equal(running.projection.running.find((item) => item.attemptId === "a-2")?.repairing, true);
+  assert.equal(running.projection.running.find((item) => item.attemptId === "a-2")?.interrupted, undefined);
+  assert.equal(running.projection.pending.find((item) => item.attemptId === "c-1")?.repairing, undefined);
+  assert.equal(running.projection.repairRoundsBySubtask?.A, 1);
+  assert.equal(statusOf(running.state, "A"), "repairing");
+  assert.equal(statusOf(running.state, "B"), "queued_review");
+  assert.equal(statusOf(running.state, "C"), "pending");
+  const bravoReview = [running.projection.currentReview, ...running.projection.reviewQueue]
+    .find((item) => item?.subtaskId === "B");
+  assert.equal(bravoReview?.repairRound, undefined);
+
+  const blocked = subTasks.map((item) => item.id === "A" ? { ...item, status: "blocked" as const } : item);
+  const interrupted = project(scheduler.snapshot(), blocked);
+  assert.equal(interrupted.projection.running.find((item) => item.attemptId === "a-2")?.interrupted, true);
+  assert.equal(interrupted.projection.running.find((item) => item.attemptId === "a-2")?.repairing, undefined);
+  assert.equal(statusOf(interrupted.state, "A"), "waiting_continuation");
+
+  const inactive = project(scheduler.snapshot(), subTasks, true);
+  assert.equal(inactive.projection.running.every((item) => item.repairing !== true && item.interrupted === true), true);
+  assert.equal(statusOf(inactive.state, "A"), "waiting_continuation");
+
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-2", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "c-1");
+  const awaiting = project();
+  assert.equal(awaiting.projection.running.some((item) => item.repairing), false);
+  assert.equal(awaiting.projection.pending.some((item) => item.repairing), false);
+  const repairReview = [awaiting.projection.currentReview, ...awaiting.projection.reviewQueue]
+    .find((item) => item?.attemptId === "a-2");
+  assert.equal(repairReview?.repairRound, 1);
+  assert.equal(statusOf(awaiting.state, "A"), "queued_review");
+  assert.equal(statusOf(awaiting.state, "C"), "running");
+
+  const ahead = scheduler.snapshot().currentReview;
+  assert.equal(ahead?.subtaskId, "B");
+  assert.ok(ahead);
+  assert.equal(scheduler.submitReviewBatch([ahead.eventId], "passed").ok, true);
+  const claimed = scheduler.claimNextReview();
+  assert.equal(claimed.item?.attemptId, "a-2");
+  assert.equal(scheduler.submitReviewBatch([claimed.item!.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("A", "a-3")]).started.length, 0);
+  const stillQueued = project();
+  assert.equal(stillQueued.projection.pending.find((item) => item.attemptId === "a-3")?.repairing, undefined);
+  assert.equal(statusOf(stillQueued.state, "A"), "pending");
+  assert.equal(statusOf(stillQueued.state, "C"), "running");
+
+  assert.equal(scheduler.finish({ subtaskId: "C", attemptId: "c-1", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "a-3");
+  const charlie = scheduler.snapshot().currentReview;
+  assert.equal(charlie?.attemptId, "c-1");
+  assert.ok(charlie);
+  assert.equal(scheduler.submitReviewBatch([charlie.eventId], "passed").ok, true);
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-3", outcome: "failed" }).applied, true);
+  const second = scheduler.claimNextReview();
+  assert.equal(second.item?.attemptId, "a-3");
+  assert.equal(scheduler.submitReviewBatch([second.item!.eventId], "failed").ok, true);
+  const historical = project();
+  assert.equal(historical.projection.running.some((item) => item.repairing), false);
+  assert.equal(historical.projection.pending.some((item) => item.repairing), false);
+  assert.equal(historical.projection.repairRoundsBySubtask?.A, 2);
+  assert.equal(statusOf(historical.state, "A"), "acceptance_failed");
+  assert.equal([historical.projection.currentReview, ...historical.projection.reviewQueue]
+    .every((item) => item?.repairRound === undefined || item.attemptId !== "a-1"), true);
+  assert.equal(historical.projection.currentReview?.attemptId === "a-3"
+    || historical.projection.reviewQueue.some((item) => item.attemptId === "a-3"), false);
+});
+
+test("keeps a reprompted repair in the same round and ignores ordinary or closed replacements", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  const subTasks: LoopTaskRecord["subTasks"] = [
+    { id: "A", title: "Alpha", status: "running", updatedAt: 11 },
+    { id: "B", title: "Bravo", status: "running", updatedAt: 12 },
+  ];
+  const project = (tasks: LoopTaskRecord["subTasks"] = subTasks, localExecutionInactive = false) => {
+    const state = buildLoopGroupChatPanelStateWithDeps(task(scheduler.snapshot(), { subTasks: tasks }, []), {
+      ...deps(),
+      ...(localExecutionInactive ? { localExecutionInactive: true } : {}),
+    });
+    assert.equal(state.loopPlus?.ok, true);
+    if (!state.loopPlus?.ok) throw new Error("expected a valid Loop+ projection");
+    return {
+      projection: state.loopPlus,
+      status: (id: string) => state.rounds[0]?.participants.find((item) => item.id === id)?.status,
+    };
+  };
+  const reprompt = (subtaskId: string, attemptId: string) => scheduler.applyControls([{
+    subtaskId,
+    action: "reprompt",
+    replacement: spec(subtaskId, attemptId),
+  }]);
+
+  dispatchAndFinish(scheduler, "A", "a-1");
+  const failed = scheduler.snapshot().currentReview;
+  assert.ok(failed);
+  assert.equal(scheduler.submitReviewBatch([failed.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("B", "b-1")]).started.length, 1);
+  assert.equal(scheduler.dispatch([spec("A", "a-2")]).started.length, 0);
+  assert.equal(reprompt("A", "a-3").ok, true);
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "a-3")?.replacesAttemptId, "a-2");
+  const queued = project();
+  assert.equal(queued.projection.pending.find((item) => item.attemptId === "a-3")?.repairing, undefined);
+  assert.equal(queued.status("A"), "pending");
+  assert.equal(queued.status("B"), "running");
+
+  assert.equal(scheduler.finish({ subtaskId: "B", attemptId: "b-1", outcome: "completed" }).applied, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "a-3");
+  const running = project();
+  assert.equal(running.projection.running.find((item) => item.attemptId === "a-3")?.repairing, true);
+  assert.equal(running.projection.repairRoundsBySubtask?.A, 1);
+  assert.equal(running.status("A"), "repairing");
+
+  const blocked = subTasks.map((item) => item.id === "A" ? { ...item, status: "blocked" as const } : item);
+  const interrupted = project(blocked);
+  assert.equal(interrupted.projection.running.find((item) => item.attemptId === "a-3")?.repairing, undefined);
+  assert.equal(interrupted.projection.running.find((item) => item.attemptId === "a-3")?.interrupted, true);
+  assert.equal(interrupted.status("A"), "waiting_continuation");
+  const inactive = project(subTasks, true);
+  assert.equal(inactive.projection.running.find((item) => item.attemptId === "a-3")?.repairing, undefined);
+  assert.equal(inactive.status("A"), "waiting_continuation");
+
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-3", outcome: "completed" }).applied, true);
+  const awaiting = project();
+  const repairReview = [awaiting.projection.currentReview, ...awaiting.projection.reviewQueue]
+    .find((item) => item?.attemptId === "a-3");
+  assert.equal(repairReview?.repairRound, 1);
+  assert.equal(awaiting.status("A"), "queued_review");
+  assert.equal(awaiting.projection.running.some((item) => item.repairing), false);
+
+  const ahead = scheduler.snapshot().currentReview;
+  assert.equal(ahead?.attemptId, "b-1");
+  assert.ok(ahead);
+  assert.equal(scheduler.submitReviewBatch([ahead.eventId], "passed").ok, true);
+  const claimed = scheduler.claimNextReview();
+  assert.equal(claimed.item?.attemptId, "a-3");
+  assert.equal(scheduler.submitReviewBatch([claimed.item!.eventId], "failed").ok, true);
+  assert.equal(scheduler.dispatch([spec("A", "a-4")]).started.length, 1);
+  assert.equal(reprompt("A", "a-5").ok, true);
+  assert.equal(scheduler.snapshot().running[0]?.attemptId, "a-5");
+  assert.equal(scheduler.snapshot().seenAttempts.find((item) => item.attemptId === "a-5")?.replacesAttemptId, "a-4");
+  const second = project();
+  assert.equal(second.projection.running.find((item) => item.attemptId === "a-5")?.repairing, true);
+  assert.equal(second.projection.repairRoundsBySubtask?.A, 2);
+  assert.equal(second.status("A"), "repairing");
+  assert.equal(scheduler.finish({ subtaskId: "A", attemptId: "a-5", outcome: "completed" }).applied, true);
+  const recheck = project();
+  assert.equal([recheck.projection.currentReview, ...recheck.projection.reviewQueue]
+    .find((item) => item?.attemptId === "a-5")?.repairRound, 2);
+  assert.equal(recheck.status("A"), "queued_review");
+
+  const ordinary = createLoopPlusScheduler({ maxConcurrency: 1 });
+  assert.equal(ordinary.dispatch([spec("C", "c-1")]).started.length, 1);
+  assert.equal(ordinary.applyControls([{
+    subtaskId: "C",
+    action: "reprompt",
+    replacement: spec("C", "c-2"),
+  }]).ok, true);
+  const ordinaryState = buildLoopGroupChatPanelStateWithDeps(task(ordinary.snapshot(), {
+    subTasks: [{ id: "C", title: "Charlie", status: "running", updatedAt: 13 }],
+  }, []), deps());
+  assert.equal(ordinaryState.loopPlus?.ok, true);
+  if (!ordinaryState.loopPlus?.ok) return;
+  assert.equal(ordinaryState.loopPlus.running[0]?.repairing, undefined);
+  assert.equal(ordinaryState.loopPlus.repairRoundsBySubtask, undefined);
+  assert.equal(ordinaryState.rounds[0]?.participants.find((item) => item.id === "C")?.status, "running");
+
+  const closed = createLoopPlusScheduler({ maxConcurrency: 1 });
+  dispatchAndFinish(closed, "A", "a-1");
+  const closedReview = closed.snapshot().currentReview;
+  assert.ok(closedReview);
+  assert.equal(closed.submitReviewBatch([closedReview.eventId], "failed").ok, true);
+  assert.equal(closed.dispatch([spec("A", "a-2")]).started.length, 1);
+  assert.equal(closed.applyControls([{ subtaskId: "A", action: "close" }]).ok, true);
+  assert.equal(closed.dispatch([spec("A", "a-4")]).started.length, 1);
+  assert.equal(closed.snapshot().seenAttempts.find((item) => item.attemptId === "a-4")?.replacesAttemptId, undefined);
+  const independent = buildLoopGroupChatPanelStateWithDeps(task(closed.snapshot(), {
+    subTasks: [{ id: "A", title: "Alpha", status: "running", updatedAt: 14 }],
+  }, []), deps());
+  assert.equal(independent.loopPlus?.ok, true);
+  if (!independent.loopPlus?.ok) return;
+  assert.equal(independent.loopPlus.running[0]?.attemptId, "a-4");
+  assert.equal(independent.loopPlus.running[0]?.repairing, undefined);
+  assert.equal(independent.rounds[0]?.participants.find((item) => item.id === "A")?.status, "running");
+});

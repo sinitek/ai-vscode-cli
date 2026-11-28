@@ -678,6 +678,25 @@ test("a save failure surfaces the Chinese error and keeps the draft", () => {
   assert.equal(harness.posted.length, 0);
 });
 
+test("a partial group save keeps the assigned template and the edited checks for retry", () => {
+  const harness = createHarness();
+  harness.api.openAcceptancePlanDialog(sendPromptPayload(), "tab-1");
+  harness.api.loadAcceptancePlanDraft("new");
+  harness.dom.acceptancePlanCheckOther.checked = true;
+  harness.dom.acceptancePlanOtherText.value = "核对变更记录";
+  harness.api.saveAcceptancePlanFromDialog();
+  const saved = planDraft({ name: "新建方案", checks: ["other"], otherText: "核对变更记录" });
+  const applyError = "模板已保存。当前任务更新失败。";
+  harness.api.handleAcceptancePlanSavedMessage({ plan: saved, plans: [saved], selection: saved.id, applyError });
+  assert.equal(harness.dom.acceptancePlanError.textContent, applyError);
+  assert.equal(harness.dom.acceptancePlanSelect.value, saved.id);
+  assert.equal(harness.dom.acceptancePlanCheckOther.checked, true);
+  assert.equal(harness.dom.acceptancePlanOtherText.value, saved.otherText);
+  assert.equal(harness.dom.confirmAcceptancePlan.disabled, false);
+  harness.api.saveAcceptancePlanFromDialog();
+  assert.equal(harness.posted.at(-1)?.planId, saved.id);
+});
+
 test("cancelling the dialog sends nothing and never clears the composer", () => {
   const harness = createHarness();
   const promptInput = (harness.api as any) && null;

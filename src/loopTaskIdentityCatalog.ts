@@ -3,12 +3,21 @@ import * as os from "os";
 import * as path from "path";
 import { randomBytes } from "crypto";
 import { logError, logEssential } from "./logger";
+import { configureLoopTaskLockHost, describeLoopTaskLock, recordLoopTaskLockOwner, recoverExitedLoopTaskLock } from "./loopTaskIdentityLockRecovery";
 
 type Identity = { id: string };
 type Snapshot = { version: 1; ready: boolean; roots: string[]; owned: Record<string, string>; files: Record<string, string[]>; ordinaryMoves?: Record<string, { file: string; sources: string[] }> };
 const directory = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities");
 const catalogFile = path.join(directory, "catalog.json");
 const lockFile = path.join(directory, "transaction.lock");
+export const describeLoopTaskIdentityLock = () => describeLoopTaskLock(lockFile);
+export function initializeLoopTaskLockRecovery(machineId: string | undefined): void {
+  configureLoopTaskLockHost(machineId);
+  retryExitedLoopTaskLock();
+}
+export function retryExitedLoopTaskLock(): boolean {
+  return recoverExitedLoopTaskLock(lockFile);
+}
 export const LOOP_TASK_IDENTITY_UPDATE_WAIT_MS = 100;
 export const LOOP_TASK_IDENTITY_UPDATE_RETRIES = 3;
 const readLockWaitMs = LOOP_TASK_IDENTITY_UPDATE_WAIT_MS;
@@ -36,9 +45,9 @@ export function waitForLoopTaskIdentityUpdateRetry(deadline: number): boolean {
   return waitForTransactionLock(deadline) && performance.now() < deadline;
 }
 
-function read(allowUnready = false): Snapshot | null {
+function read(allowUnready = false, source: string | number = catalogFile): Snapshot | null {
   try {
-    const value = JSON.parse(fs.readFileSync(catalogFile, "utf8")) as Snapshot;
+    const value = JSON.parse(fs.readFileSync(source, "utf8")) as Snapshot;
     if (value.version !== 1 || typeof value.ready !== "boolean" || (!allowUnready && !value.ready) || !Array.isArray(value.roots)
       || value.roots.some((root) => typeof root !== "string" || !path.isAbsolute(root))
       || !value.owned || typeof value.owned !== "object" || Array.isArray(value.owned)
@@ -68,16 +77,23 @@ function publish(value: Snapshot): void {
 function locked<T>(action: () => T, onLockContention?: () => void): T {
   fs.mkdirSync(directory, { recursive: true });
   // All supported ordinary and owned writers use this lock, even before initialization.
-  // Unknown/stale locks are never stolen based on PID, mtime or elapsed time.
   let fd: number;
+  const acquire = () => fs.openSync(lockFile, "wx", 0o600);
   try {
-    fd = fs.openSync(lockFile, "wx", 0o600);
+    try { fd = acquire(); }
+    catch (error) {
+      if (!isLoopTaskIdentityLockContention(error) || !recoverExitedLoopTaskLock(lockFile)) throw error;
+      fd = acquire();
+    }
   } catch (error) {
     if (onLockContention && isLoopTaskIdentityLockContention(error)) onLockContention();
     throw error;
   }
   const identity = fs.fstatSync(fd);
-  try { return action(); }
+  try {
+    recordLoopTaskLockOwner(fd);
+    return action();
+  }
   finally {
     fs.closeSync(fd);
     const current = fs.lstatSync(lockFile);
@@ -208,6 +224,19 @@ export function listRegisteredLoopTaskIdentityRoots(): readonly string[] | null 
   } catch { return null; }
 }
 
+/** Whether the committed catalog proves a source root has no task identities. */
+export function hasLoopTaskIdentitiesUnderRoot(rootPath: string): boolean | null {
+  try {
+    if (!waitForTransactionLock()) return null;
+    const snapshot = read();
+    if (!snapshot) return null;
+    const root = path.resolve(rootPath);
+    const hasIdentity = (file: string) => inside(root, path.resolve(file));
+    return Object.keys(snapshot.files).some(hasIdentity)
+      || Object.values(snapshot.owned).some(hasIdentity);
+  } catch { return null; }
+}
+
 /** A committed ordinary destination survives stale source bytes and process restarts.
  * Absence is ordinary compatibility; a locked/damaged catalog is never a fallback permit.
  */
@@ -312,6 +341,12 @@ export function commitLoopTaskIdentities(
       }
       if (moved && moved !== file) throw new Error("Loop task update source moved before commit");
       source.assertUnchanged();
+      const registered = snapshot?.files[file];
+      const tasks = updates.get(file);
+      if (snapshot && !ownedRoot && !ordinary?.move && registered && tasks && updates.size === 1
+        && registered.length === tasks.length && tasks.every((task, index) => task.id === registered[index] && !ownsIdentity(snapshot, task.id))) {
+        return write();
+      }
     }
     return commitLoopTaskIdentitiesUnderLock(snapshot, updates, write, ownedRoot, ordinary);
   }, ordinary?.onLockContention ?? (ownedRoot ? () => { lockContended = true; } : undefined));
@@ -430,16 +465,26 @@ export function retainOrdinaryLoopTaskIdentities(
  */
 export function readKnownOrdinaryLoopTaskIdentity<T>(
   taskId: string, knownFile: string | undefined, readFile: (file: string) => T | null,
+  displayOnly = false,
 ): T | null {
+  const capture = (snapshot: Snapshot | null): T | null => {
+    const file = snapshot?.ordinaryMoves?.[taskId]?.file ?? knownFile;
+    if (!file || (snapshot && (ownsIdentity(snapshot, taskId) || snapshot.roots.some(root => inside(root, path.resolve(file)))))) return null;
+    return readFile(file);
+  };
   try {
-    return locked(() => {
-      const snapshot = read();
-      const file = snapshot?.ordinaryMoves?.[taskId]?.file ?? knownFile;
-      if (!file || (snapshot && (Object.prototype.hasOwnProperty.call(snapshot.owned, taskId)
-        || snapshot.roots.some((root) => inside(root, path.resolve(file)))
-        || Object.entries(snapshot.files).some(([source, ids]) => ids.includes(taskId)
-          && snapshot.roots.some((root) => inside(root, source)))))) return null;
-      return readFile(file);
-    });
+    if (displayOnly && fs.existsSync(catalogFile)) {
+      const fd = fs.openSync(catalogFile, "r");
+      try {
+        const before = fs.fstatSync(fd, { bigint: true });
+        const snapshot = read(false, fd);
+        if (!snapshot) return null;
+        const captured = capture(snapshot);
+        const after = fs.statSync(catalogFile, { bigint: true });
+        return before.ino !== 0n && before.dev === after.dev && before.ino === after.ino
+          && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs ? captured : null;
+      } finally { fs.closeSync(fd); }
+    }
+    return locked(() => capture(read()));
   } catch { return null; }
 }

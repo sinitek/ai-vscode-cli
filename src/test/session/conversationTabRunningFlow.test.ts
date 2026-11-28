@@ -129,6 +129,19 @@ test("selects only active Loop runs for flow recovery", () => {
   ]), ["missing-flow", "new-loop-run"]);
 });
 
+test("a restored department flow clears stale attempts but keeps an unrelated live run", () => {
+  const task = { id: "leader", status: "running", loopPlus: { running: [{}], wakePending: true } };
+  for (const activity of ["inactive", "unverified"] as const) {
+    const restored = { tabId: "leader-tab", task, taskRole: "main" as const, activeRun: null, departmentExecutionActivity: activity };
+    assert.deepEqual(selectStaleConversationTabRunningFlowIds([restored]), [restored.tabId]);
+    assert.deepEqual(selectActiveConversationTabRunningFlowIds([restored]), []);
+    assert.equal(shouldClearConversationTabRunningFlow({ ...restored, activeRun: { loopTaskId: "another-task" } }), false);
+  }
+  const waiting = { tabId: "director-tab", task, taskRole: "main" as const, activeRun: null, hasLoopTaskOwner: true, departmentExecutionActivity: "active" as const };
+  assert.equal(shouldStartConversationTabRunningFlow(waiting), true);
+  assert.equal(shouldClearConversationTabRunningFlow(waiting), false);
+});
+
 test("a main tab needs current Loop ownership to recover without an active CLI turn", () => {
   const check = {
     tabId: "background-main",

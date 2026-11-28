@@ -213,11 +213,10 @@ export function createPanelDiagnosticsInspector(deps: PanelDiagnosticsDeps) {
       };
 
       if (reasons.length === 0) {
-        deps.logDebug("model-manager-state-ok", payload);
         return;
       }
 
-      deps.logEssential("model-manager-state-inconsistent", payload);
+      deps.logError("model-manager-state-inconsistent", payload);
       await deps.showErrorWithActions(
         deps.t("model.diagnostics.title"),
         deps.t("model.diagnostics.message"),

@@ -4,6 +4,7 @@ import test = require("node:test");
 const {
   buildLoopGroupChatPanelStateWithDeps,
   ensureLoopMainSubChatTranscriptWithDeps,
+  resolveLoopPlusSubtaskMemberStatus,
 } = require("../../loopGroupChatPanelState") as typeof import("../../loopGroupChatPanelState");
 const { projectLoopPlusPanel } = require("../../loopPlusPanelProjection") as typeof import("../../loopPlusPanelProjection");
 const { createLoopPlusScheduler } = require("../../loopPlusScheduler") as typeof import("../../loopPlusScheduler");
@@ -101,6 +102,14 @@ test("direct group chat state creates the initial transcript and reports a missi
   assert.equal(missing.writes.length, 1);
   assert.match(missing.writes[0]!.content, /^# Loop 主从群聊记录/mu);
   assert.match(state.error ?? "", /loopGroupChatChat\.transcriptMissing/u);
+
+  const readOnly = dependencies(false, null);
+  const readOnlyState = buildLoopGroupChatPanelStateWithDeps(task(undefined), {
+    ...readOnly.deps,
+    readOnlyTranscript: true,
+  });
+  assert.equal(readOnly.writes.length, 0);
+  assert.match(readOnlyState.error ?? "", /loopGroupChatChat\.transcriptMissing/u);
 });
 
 test("one state build reads each transcript once while a later refresh sees updated content", () => {
@@ -119,4 +128,58 @@ test("one state build reads each transcript once while a later refresh sees upda
   const missing = buildLoopGroupChatPanelStateWithDeps(source, env.deps);
   assert.match(missing.error ?? "", /transcriptMissing/u);
   assert.equal(reads, 3);
+});
+
+test("repairing member status follows the live phase instead of pending or historical flags", () => {
+  const projection = {
+    ok: true as const,
+    schedulingMode: "event_driven" as const,
+    activity: "idle" as const,
+    phase: "idle" as const,
+    wakePending: false,
+    currentReview: {
+      eventId: "review-d",
+      subtaskId: "D",
+      attemptId: "d-2",
+      outcome: "completed" as const,
+      detail: null,
+      repairRound: 2,
+    },
+    reviewQueue: [],
+    activeReviewEventIds: [] as string[],
+    currentReviewCount: 1,
+    reviewQueueCount: 0,
+    visibleReviewCount: 1,
+    running: [
+      { subtaskId: "A", attemptId: "a-2", title: "返工", state: "running" as const, repairing: true },
+      { subtaskId: "E", attemptId: "e-1", title: "首次", state: "running" as const },
+      { subtaskId: "F", attemptId: "f-2", title: "中断返工", state: "running" as const, interrupted: true, repairing: true },
+    ],
+    pending: [
+      { subtaskId: "B", attemptId: "b-2", title: "排队返工", state: "pending" as const, repairing: true },
+    ],
+    runningCount: 2,
+    pendingCount: 1,
+    repairRoundsBySubtask: { A: 1, B: 2, D: 2, F: 1, H: 3 },
+    seenAttempts: [
+      { subtaskId: "C", attemptId: "c-1", disposition: "reviewed" as const, outcome: "completed" as const, acceptance: "failed" as const },
+      { subtaskId: "H", attemptId: "h-4", disposition: "reviewed" as const, outcome: "failed" as const, acceptance: "failed" as const },
+    ],
+  };
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "A", "running"), "repairing");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "B", "pending"), "pending");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "C", "completed"), "acceptance_failed");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "D", "completed"), "queued_review");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "E", "running"), "running");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "F", "running"), "waiting_continuation");
+  assert.equal(resolveLoopPlusSubtaskMemberStatus(projection, "H", "blocked"), "acceptance_failed");
+
+  const classic = task(undefined);
+  classic.schedulingMode = "classic";
+  classic.loopPlus = undefined;
+  classic.subTasks = [{ id: "classic-child", title: "经典", status: "running", updatedAt: 30 }];
+  const { deps } = dependencies();
+  const state = buildLoopGroupChatPanelStateWithDeps(classic, deps);
+  assert.equal(state.loopPlus, undefined);
+  assert.equal(state.rounds[0]?.participants.find((item) => item.id === "classic-child")?.status, "running");
 });

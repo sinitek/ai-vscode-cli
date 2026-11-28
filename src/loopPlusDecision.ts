@@ -5,7 +5,7 @@ import { normalizeLoopWriteFiles } from "./loopParallel";
 import { readLoopPlusDependsOn } from "./loopPlusDependencies";
 import { readLoopContinuationSource } from "./loopSubtaskSession";
 import { normalizeJsonObjectText } from "./shared/jsonObject";
-import { extractJsonObjectTexts } from "./shared/jsonObjectText";
+import { collectJsonObjectCandidates } from "./shared/jsonObjectText";
 import { normalizeLoopPlusNextStepPlan, type LoopPlusNextStepPlan } from "./loopPlusNextStepPlan";
 import { parseOrchestratorClarification, type OrchestratorClarification } from "./orchestratorClarification";
 import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "./loopPlusAcceptancePlan";
@@ -265,10 +265,17 @@ export function parseLoopPlusDecisionWithFeedback(
   }
   let hasJsonObject = false;
   let firstMalformedObject: string | undefined;
+  let firstUnclosedObject: string | undefined;
   let rejectionReason = "决策 JSON 未通过协议校验。请核对 status、验收事件、子任务字段、验收反馈及完成条件。";
   let validationDiagnostic: LoopPlusDecisionValidationDiagnostic | undefined;
   let reviewFieldDiagnostic: LoopPlusReviewFieldDiagnostic | undefined;
-  for (const jsonText of extractJsonObjectTexts(content, { allowComments: true })) {
+  // 只按外层边界取一次候选。未闭合对象不解析、不提升内层，也不和区域外的文本拼成对象。
+  for (const candidateText of collectJsonObjectCandidates(content, { allowComments: true })) {
+    if (!candidateText.closed) {
+      firstUnclosedObject ??= candidateText.text;
+      continue;
+    }
+    const jsonText = candidateText.text;
     let candidate: unknown;
     try {
       candidate = parseLoopPlusJsonObject(jsonText);
@@ -303,18 +310,27 @@ export function parseLoopPlusDecisionWithFeedback(
       ...(reviewFieldDiagnostic ? { reviewFieldDiagnostic } : {}),
     };
   }
-  const objectStart = content.indexOf("{");
+  if (firstMalformedObject !== undefined) {
+    return {
+      decision: null,
+      rejectionKind: "format",
+      rejectionReason: "回复中的 JSON 对象存在语法错误。请按当前快照返回完整对象。",
+      formatDiagnostic: diagnoseLoopPlusJsonFormat(firstMalformedObject, "InvalidJson"),
+    };
+  }
+  if (firstUnclosedObject !== undefined) {
+    return {
+      decision: null,
+      rejectionKind: "format",
+      rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
+      formatDiagnostic: diagnoseLoopPlusJsonFormat(firstUnclosedObject, "IncompleteObject"),
+    };
+  }
   return {
     decision: null,
     rejectionKind: "format",
-    rejectionReason: firstMalformedObject !== undefined
-      ? "回复中的 JSON 对象存在语法错误。请按当前快照返回完整对象。"
-      : "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
-    formatDiagnostic: firstMalformedObject !== undefined
-      ? diagnoseLoopPlusJsonFormat(firstMalformedObject, "InvalidJson")
-      : objectStart >= 0
-        ? diagnoseLoopPlusJsonFormat(content.slice(objectStart), "IncompleteObject")
-        : { code: "ObjectNotFound" },
+    rejectionReason: "未找到可解析的 Loop+ 决策 JSON 对象：回复没有完整对象。请按当前快照返回完整对象。",
+    formatDiagnostic: { code: "ObjectNotFound" },
   };
 }
 
@@ -573,7 +589,7 @@ function normalizeBlockedDecision(
   }
   return withEstimatedRemainingRounds({
     status: "blocked",
-    ...readLoopBlockedDecisionFields(raw),
+    ...readLoopBlockedDecisionFields(raw, "event_driven"),
   }, estimatedRemainingRounds);
 }
 

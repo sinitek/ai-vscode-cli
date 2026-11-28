@@ -15,6 +15,7 @@ const { buildLoopPlusFinishEventId } = require("../../loopPlusScheduler") as typ
 const {
   createLoopPlusRuntimeFixture,
   createLoopPlusExtensionStopHarness,
+  seedMainParent,
   waitForLoopPlus,
 } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 const {
@@ -48,6 +49,13 @@ function createDeferred<T = void>(): { promise: Promise<T>; resolve: (value: T |
 function createMemoryTaskPersistence() {
   const records = new Map<string, LoopTaskRecord>();
   return {
+    commitOrdinaryRun: (expected: LoopTaskRecord, patch: Partial<LoopTaskRecord>) => {
+      const current = records.get(expected.id);
+      if (current?.status !== "running" || current.updatedAt !== expected.updatedAt) return null;
+      const saved = { ...current, ...patch, updatedAt: current.updatedAt + 1 };
+      records.set(current.id, saved);
+      return saved;
+    },
     create: (task: LoopTaskRecord) => { records.set(task.id, task); return task; },
     read: (taskId: string) => records.get(taskId) ?? null,
     save: (task: LoopTaskRecord) => { records.set(task.id, task); },
@@ -132,6 +140,84 @@ function completedDecision(reviewEventId?: string | null): string {
     finalSummary: "everything passed",
     acceptance: { passed: true, checks: loopPlusAcceptanceChecksFixture() },
     requirementCoverage: [{ name: "scope", passed: true }],
+  });
+}
+
+test("普通 Loop+ 新派发先保存 waiting，准入后只认领并启动一次", { timeout: 5000 }, async () => {
+  const records = createMemoryTaskPersistence();
+  const admission = createDeferred();
+  const release = createDeferred();
+  const claimed: string[] = [];
+  const fixture = createLoopPlusRuntimeFixture({
+    taskPersistence: records,
+    acquireAttemptExecution: async () => {
+      admission.resolve();
+      await release.promise;
+      return { release: () => undefined };
+    },
+    commitOrdinaryRun: (expected, patch) => {
+      const before = expected.subTasks[0]?.launchReservation;
+      const saved = records.commitOrdinaryRun(expected, patch);
+      const after = saved?.subTasks[0]?.launchReservation;
+      if (before?.state === "waiting" && after?.state === "claimed") claimed.push(after.attemptId);
+      return saved;
+    },
+  });
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end",
+      content: decision({ status: "dispatch", subtasks: [subtask("plot", "src/plot.ts")] }) }));
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: completedDecision(currentEventId(input.displayPrompt)) }));
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await admission.promise;
+    const taskId = fixture.createdTaskIds[0];
+    const waiting = records.read(taskId)!;
+    const attemptId = createLoopPlusScheduler({ snapshot: waiting.loopPlus }).snapshot().running[0].attemptId;
+    assert.deepEqual(waiting.subTasks[0].launchReservation, { attemptId, state: "waiting" });
+    fixture.adapter.host().checkWaitingTasks();
+    assert.deepEqual(claimed, []);
+    assert.equal(fixture.createdSubtaskTargets.length, 0);
+    release.resolve();
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("plot"), "已放行的子任务");
+    assert.deepEqual(records.read(taskId)?.subTasks[0].launchReservation, { attemptId, state: "claimed" });
+    assert.deepEqual(claimed, [attemptId]);
+    assert.deepEqual(fixture.attemptCalls.map(call => call.loopAttemptId), [attemptId]);
+    fixture.finishParked("plot", { status: "end", content: "交付已完成" });
+    await running;
+    assert.equal(records.read(taskId)?.status, "completed");
+  } finally { release.resolve(); fixture.dispose(); }
+});
+
+for (const state of ["waiting", "claimed", "legacy"] as const) {
+  test(`宿主重建后巡检按 ${state} 记录决定能否自动启动`, { timeout: 5000 }, async () => {
+    const records = createMemoryTaskPersistence();
+    const fixture = createLoopPlusRuntimeFixture({ taskPersistence: records, commitOrdinaryRun: records.commitOrdinaryRun });
+    const taskId = `restart-${state}`;
+    const host = fixture.adapter.host();
+    try {
+      seedMainParent(fixture, taskId);
+      const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+      const attemptId = "lp1-plot";
+      scheduler.dispatch([{ subtaskId: "plot", attemptId, writeFiles: ["src/plot.ts"] }]);
+      records.save({ ...records.read(taskId)!, loopPlus: scheduler.snapshot(), subTasks: [{ id: "plot", title: "修复主图", status: "running",
+        ...(state === "legacy" ? {} : { launchReservation: { attemptId, state } }) }] });
+      host.tryRun(prompt(), fixture.target, { resumeTaskId: taskId });
+      await new Promise(resolve => setImmediate(resolve));
+      host.checkWaitingTasks(false);
+      if (state === "waiting") {
+        await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("plot"), "巡检接手等待中的派发");
+        assert.deepEqual(records.read(taskId)?.subTasks[0].launchReservation, { attemptId, state: "claimed" });
+        assert.deepEqual(fixture.attemptCalls.map(call => call.loopAttemptId), [attemptId]);
+      } else {
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(fixture.attemptCalls.length, 0);
+        assert.match(records.read(taskId)?.subTasks[0].executionFailure ?? "", /无法确认/);
+      }
+    } finally {
+      host.stopParent(taskId);
+      if (fixture.parkedSubtaskIds().includes("plot")) fixture.finishParked("plot", { status: "stopped" });
+      await new Promise(resolve => setImmediate(resolve));
+      fixture.dispose();
+    }
   });
 }
 
@@ -406,6 +492,170 @@ test("authoritative main final is validated on its first call when the chat proj
   }
 });
 
+test("冻结验收遇到身份锁后异步等待，在原批次只执行一次验收并完成", async () => {
+  const records = createMemoryTaskPersistence();
+  let deniedReads = 0;
+  let busy = false;
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: { ...records, read: (id, options) => {
+    if (busy && options?.onUnavailable && deniedReads < 4) {
+      deniedReads++;
+      options.onUnavailable("identity-lock-present");
+      return null;
+    }
+    return records.read(id);
+  } } });
+  try {
+    let frozenEvent: string | null = null;
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end",
+      content: decision({ status: "dispatch", subtasks: [subtask("deliver", "src/deliver.ts")] }) }));
+    fixture.setAttemptAction((input, tabId) => fixture.publish(input, tabId, { status: "end", content: "交付及检查结果已就绪" }));
+    fixture.queueMain((input) => {
+      frozenEvent = currentEventId(input.displayPrompt);
+      busy = true;
+      assert.equal(input.loopPlusMainAdmission!.isParentInactive(), true);
+    });
+    fixture.queueMain((input, tabId) => {
+      assert.ok(frozenEvent);
+      assert.equal(currentEventId(input.displayPrompt), frozenEvent);
+      input.loopPlusMainAdmission!.onRunOpened();
+      fixture.publish(input, tabId, { status: "end", content: completedDecision(frozenEvent) });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    const task = fixture.readTask(fixture.createdTaskIds[0]);
+    assert.equal(deniedReads, 4);
+    assert.equal(task?.status, "completed");
+    assert.equal(task?.loopPlusProgressPercent, 100);
+    assert.equal(task?.sessionId, fixture.target.sessionId);
+    assert.equal(fixture.attemptCalls.length, 1);
+    assert.equal(fixture.completionMessages.length, 1);
+    assert.equal(fixture.logs.some((entry) => entry.event === "loop-plus-protocol-miss"), false);
+  } finally { fixture.dispose(); }
+});
+
+test("持续身份锁释放后补记一次执行暂停，复用原验收完成", async () => {
+  const records = createMemoryTaskPersistence();
+  let busy = false;
+  let eventId = "";
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: { ...records, read: (id, options) => {
+    if (!busy) return records.read(id);
+    options?.onUnavailable?.("identity-lock-present");
+    return null;
+  } } });
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end",
+      content: decision({ status: "dispatch", subtasks: [subtask("deliver", "src/deliver.ts")] }) }));
+    fixture.setAttemptAction((input, tabId) => fixture.publish(input, tabId, { status: "end", content: "交付已就绪" }));
+    fixture.queueMain((input) => {
+      eventId = currentEventId(input.displayPrompt);
+      busy = true;
+      assert.equal(input.loopPlusMainAdmission!.isParentInactive(), true);
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    const id = fixture.createdTaskIds[0];
+    assert.equal(records.read(id)?.status, "running");
+    assert.equal(fixture.logs.some((entry) => entry.event === "loop-plus-consumer-failed" || entry.event === "loop-plus-protocol-miss"), false);
+    busy = false;
+    fixture.adapter.host().checkWaitingTasks();
+    fixture.adapter.host().checkWaitingTasks();
+    const paused = records.read(id)!;
+    assert.equal(paused.status, "needs-review");
+    assert.equal(paused.mainAiLastFailureCode, "LOOP_PLUS_IDENTITY_BUSY");
+    assert.equal(paused.mainAiFailureCount, 1);
+    assert.equal((paused.loopPlus as LoopPlusSchedulerSnapshot).currentReview?.eventId, eventId);
+    assert.equal(fixture.hostMessages.filter((message) => message === "loop-plus-main-non-retryable").length, 1);
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: completedDecision(eventId) }));
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven", resumeTaskId: id, resumeRequested: true }, fixture.target);
+    assert.equal(records.read(id)?.status, "completed");
+    assert.equal(records.read(id)?.loopPlusProgressPercent, 100);
+    assert.equal(fixture.attemptCalls.length, 1);
+  } finally { fixture.dispose(); }
+});
+
+for (const change of ["stop", "owner"] as const) {
+  test(`准备等待期间发生 ${change} 时旧调用不能再次发送或改写父任务`, async () => {
+    const records = createMemoryTaskPersistence();
+    let refuseOnce = false;
+    const fixture = createLoopPlusRuntimeFixture({ taskPersistence: { ...records, read: (id, options) => {
+      if (refuseOnce && options?.onUnavailable) {
+        refuseOnce = false;
+        const parent = records.read(id)!;
+        records.save(change === "stop" ? { ...parent, status: "stopped" } : { ...parent, sessionId: "different-session" });
+        options.onUnavailable("identity-lock-present");
+        return null;
+      }
+      return records.read(id);
+    } } });
+    try {
+      fixture.queueMain((input) => { refuseOnce = true; assert.equal(input.loopPlusMainAdmission!.isParentInactive(), true); });
+      await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+      fixture.adapter.host().checkWaitingTasks();
+      const parent = records.read(fixture.createdTaskIds[0])!;
+      assert.equal(parent.status, change === "stop" ? "stopped" : "running");
+      assert.equal(parent.mainAiLastFailureCode, undefined);
+      assert.equal(fixture.mainCalls.length, 1);
+      assert.equal(fixture.hostMessages.includes("loop-plus-main-non-retryable"), false);
+    } finally { fixture.dispose(); }
+  });
+}
+
+test("运行打开后锁触发的 stopped 回执保留为待核对执行，不能转成用户停止", async () => {
+  const records = createMemoryTaskPersistence();
+  let busy = false;
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: { ...records, read: (id, options) => {
+    if (!busy) return records.read(id);
+    options?.onUnavailable?.("identity-lock-present");
+    return null;
+  } } });
+  try {
+    fixture.queueMain((input, tabId) => {
+      input.loopPlusMainAdmission!.onRunOpened();
+      busy = true;
+      assert.equal(input.loopPlusMainAdmission!.isParentInactive(), true);
+      busy = false;
+      fixture.publish(input, tabId, { status: "stopped" });
+    });
+    await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    const task = records.read(fixture.createdTaskIds[0])!;
+    assert.equal(task.mainAiLastFailureCode, "LOOP_PLUS_RUN_UNCONFIRMED");
+    assert.equal(task.status, "needs-review");
+    assert.equal(fixture.mainCalls.length, 1);
+    assert.equal(fixture.hostMessages.includes("loop-plus-stopped"), false);
+  } finally { fixture.dispose(); }
+});
+
+for (const stage of ["before-start", "opened", "error", "missing-final"] as const) {
+  test(`主调用 ${stage} 按运行证据结算并保留冻结验收`, async () => {
+    let dispatched = false;
+    const fixture = createLoopPlusRuntimeFixture({ runPromptOverride: async (input, options) => {
+      const tab = options!.targetTabId!;
+      if (input.taskRole === "subtask") {
+        fixture.publish(input, tab, { status: "end", content: "交付结果" });
+      } else if (!dispatched) {
+        dispatched = true;
+        fixture.publish(input, tab, { status: "end", content: decision({ status: "dispatch", subtasks: [subtask("deliver", "src/deliver.ts")] }) });
+      } else {
+        if (stage === "opened") input.loopPlusMainAdmission!.onRunOpened();
+        else if (stage !== "before-start") options!.onStarted?.();
+        if (stage === "error") fixture.publish(input, tab, { status: "error", failureDetail: "CLI 执行失败" });
+        if (stage === "missing-final") fixture.publish(input, tab, { status: "end" });
+      }
+    } });
+    try {
+      await fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+      const task = fixture.readTask(fixture.createdTaskIds[0])!;
+      const snapshot = task.loopPlus as LoopPlusSchedulerSnapshot;
+      assert.equal(task.status, "needs-review");
+      assert.equal(snapshot.currentReview?.subtaskId, "deliver");
+      assert.equal(snapshot.seenAttempts.length, 1);
+      assert.equal(fixture.completionMessages.length, 0);
+      assert.equal(fixture.logs.some((entry) => entry.event === "loop-plus-protocol-miss"), false);
+      if (stage === "error") assert.match(task.finalSummary!, /CLI 执行失败/);
+      else assert.equal(task.mainAiLastFailureCode, { "before-start": "LOOP_PLUS_RUN_NOT_STARTED",
+        "opened": "LOOP_PLUS_RUN_UNCONFIRMED", "missing-final": "LOOP_PLUS_FINAL_UNCONFIRMED" }[stage]);
+    } finally { fixture.dispose(); }
+  });
+}
+
 test("Loop+ invocation diagnostics distinguish evidenced exit and transport failures without raw errors", async () => {
   const unexpected = require("../../interactive/codexRunner").CodexUnexpectedTurnExitError as new (message: string, threadId: string) => Error;
   const cases: Array<{ error: Error; expected: string }> = [
@@ -416,6 +666,7 @@ test("Loop+ invocation diagnostics distinguish evidenced exit and transport fail
   for (const [index, item] of cases.entries()) {
     const fixture = createLoopPlusRuntimeFixture({ runPromptOverride: async () => { throw item.error; } });
     try {
+      seedMainParent(fixture, `diagnostic-${index}`);
       await assert.rejects(fixture.adapter.runMain({ taskId: `diagnostic-${index}`, kind: "review",
         prompt: "controlled", modelPrompt: "controlled", reviewEventId: `event-${index}`, target: fixture.target }).promise);
       const diagnostic = fixture.logs.find((entry) => entry.event === "loop-plus-invocation-diagnostic");
@@ -440,9 +691,9 @@ test("Loop+ rejects an otherwise complete terminal bound to another session", as
       round: input.loopRound!, role: "main", attemptId: input.loopAttemptId, content: "must not be accepted" });
   } });
   try {
-    const result = await fixture.adapter.runMain({ taskId: "session-bound-task", kind: "review", prompt: "controlled",
-      modelPrompt: "controlled", reviewEventId: "session-bound-review", target: fixture.target }).promise;
-    assert.equal(result, null);
+    seedMainParent(fixture, "session-bound-task");
+    await assert.rejects(fixture.adapter.runMain({ taskId: "session-bound-task", kind: "review", prompt: "controlled",
+      modelPrompt: "controlled", reviewEventId: "session-bound-review", target: fixture.target }).promise, { code: "LOOP_PLUS_FINAL_UNCONFIRMED" });
     assert.ok(fixture.logs.some((entry) => entry.event === "loop-plus-invocation-diagnostic"
       && (entry.detail as { code?: string }).code === "identity-rejected"));
   } finally {
@@ -464,9 +715,9 @@ test("Loop+ never falls back to ordinary assistant projection after observing an
           content: decision({ status: "completed", finalSummary: "ordinary assistant text is not terminal proof" }),
         });
       });
-      const result = await fixture.adapter.runMain({ taskId: "native-terminal-gap", kind: "review",
-        prompt: "controlled", modelPrompt: "controlled", reviewEventId: "native-terminal-review", target: fixture.target }).promise;
-      assert.equal(result, null);
+      seedMainParent(fixture, "native-terminal-gap");
+      await assert.rejects(fixture.adapter.runMain({ taskId: "native-terminal-gap", kind: "review",
+        prompt: "controlled", modelPrompt: "controlled", reviewEventId: "native-terminal-review", target: fixture.target }).promise, { code: "LOOP_PLUS_FINAL_UNCONFIRMED" });
       assert.equal(fixture.mainCalls.length, 1);
       assert.ok(fixture.logs.some((entry) => entry.event === "loop-plus-invocation-diagnostic"
         && (entry.detail as { stage?: string; code?: string }).stage === "projection"
@@ -1721,6 +1972,45 @@ test("leader model invocation keeps its captured department balance snapshot", a
   }
 });
 
+test("applying a plan during review and closeout restarts only those turns and completes the same Loop+ task", async () => {
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: createMemoryTaskPersistence() });
+  try {
+    fixture.queueMain(async (input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "dispatch", subtasks: [subtask("A", "src/a.ts")] }),
+    }));
+    fixture.queueMain(() => fixture.holdMain());
+    fixture.queueMain(async (input, tabId) => fixture.publish(input, tabId, {
+      status: "end", content: decision({ status: "accept", reviewEventId: currentEventId(input.displayPrompt), subtasks: [],
+        acceptancePlanResults: [{ key: "performance", passed: true, reason: "已核对耗时" }] }),
+    }));
+    fixture.queueMain(() => fixture.holdMain());
+    fixture.queueMain(async (input, tabId) => fixture.publish(input, tabId, { status: "end", content: completedDecision() }));
+    const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "active subtask");
+    const taskId = fixture.mainCalls[0].loopTaskId!;
+    fixture.finishParked("A", { status: "end", content: "交付完成" });
+    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "first review");
+    const plan = { id: "perf", name: "性能", checks: ["performance"], otherText: "", systemDefault: false };
+    const host = fixture.adapter.host();
+    assert.equal(host.applyAcceptancePlan(taskId, plan).ok, true);
+    await waitForLoopPlus(() => fixture.mainCalls.length === 4 || fixture.readTask(taskId)?.status === "stopped", "review restart and closeout");
+    assert.equal(fixture.readTask(taskId)?.status, "running");
+    assert.equal(currentEventId(fixture.mainCalls[2].displayPrompt), currentEventId(fixture.mainCalls[1].displayPrompt));
+    assert.match(fixture.mainCalls[2].modelPrompt!, /Performance review:/);
+    assert.match(fixture.mainCalls[3].displayPrompt, /Prompt kind: closeout/);
+    assert.equal(host.applyAcceptancePlan(taskId, plan).ok, true);
+    assert.deepEqual(fixture.cancelledTabs, [fixture.target.tabId]);
+    assert.equal(host.applyAcceptancePlan(taskId, null).ok, true);
+    assert.equal(await running, true);
+    assert.match(fixture.mainCalls[4].displayPrompt, /Prompt kind: closeout/);
+    assert.doesNotMatch(fixture.mainCalls[4].modelPrompt!, /Performance review:/);
+    assert.deepEqual(fixture.cancelledTabs, [fixture.target.tabId, fixture.target.tabId]);
+    assert.deepEqual(fixture.createdTaskIds, [taskId]);
+    assert.equal(fixture.attemptCalls.length, 1);
+    assert.equal(fixture.readTask(taskId)?.status, "completed");
+  } finally { fixture.dispose(); }
+});
+
 test("adapter stop keeps resume state, blocks continue while cancellation is live, then reviews explicitly", async () => {
   const fixture = createLoopPlusRuntimeFixture({ taskPersistence: createMemoryTaskPersistence() });
   let taskId = "";
@@ -2020,21 +2310,21 @@ test("adapter isolates this invocation from old, missing, failed, retried, and l
       loopTaskId: "task-main",
       loopRound: 1,
     };
+    seedMainParent(fixture, "task-main");
     fixture.seedHistory(oldMain, mainTarget.tabId, {
       content: decision({ status: "dispatch", subtasks: [subtask("OLD", "src/old.ts")] }),
       status: "end",
       prompt: "previous main decision",
     });
     fixture.queueMain(async () => undefined);
-    const early = await fixture.adapter.runMain({
+    await assert.rejects(fixture.adapter.runMain({
       taskId: "task-main",
       kind: "review",
       prompt: "review the new event",
       modelPrompt: "review the new event",
       reviewEventId: "event-new",
       target: mainTarget,
-    }).promise;
-    assert.equal(early, null);
+    }).promise, { code: "LOOP_PLUS_RUN_UNCONFIRMED" });
 
     fixture.queueMain(async () => {
       throw new Error("main failed");
@@ -2069,15 +2359,14 @@ test("adapter isolates this invocation from old, missing, failed, retried, and l
         prompt: input.displayPrompt,
       });
     });
-    const late = await fixture.adapter.runMain({
+    await assert.rejects(fixture.adapter.runMain({
       taskId: "task-main",
       kind: "review",
       prompt: "review while old output arrives",
       modelPrompt: "review while old output arrives",
       reviewEventId: "event-late",
       target: mainTarget,
-    }).promise;
-    assert.equal(late, null);
+    }).promise, { code: "LOOP_PLUS_RUN_UNCONFIRMED" });
 
     fixture.queueMain(async (input, tabId) => {
       fixture.publish(input, tabId, { status: "end", content: "NEW_MAIN_DECISION" });
@@ -2756,6 +3045,7 @@ test("assistant text must fall inside the actual run window and invocation ancho
 test("main and attempt reads reject text outside the run, missing text, and reused ids", async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
+    seedMainParent(fixture, "task-main");
     const mainTarget = fixture.target;
     const mainRequest = {
       taskId: "task-main",
@@ -2776,7 +3066,7 @@ test("main and attempt reads reject text outside the run, missing text, and reus
         runEndedAt: now + 2_000,
       });
     });
-    assert.equal(await fixture.adapter.runMain(mainRequest).promise, null);
+    await assert.rejects(fixture.adapter.runMain(mainRequest).promise, { code: "LOOP_PLUS_FINAL_UNCONFIRMED" });
 
     fixture.queueMain(async (input, tabId) => {
       const now = Date.now();
@@ -2789,10 +3079,10 @@ test("main and attempt reads reject text outside the run, missing text, and reus
         runEndedAt: now + 1_000,
       });
     });
-    assert.equal(await fixture.adapter.runMain({ ...mainRequest, prompt: "review after the run" }).promise, null);
+    await assert.rejects(fixture.adapter.runMain({ ...mainRequest, prompt: "review after the run" }).promise, { code: "LOOP_PLUS_FINAL_UNCONFIRMED" });
 
     fixture.queueMain(async () => undefined);
-    assert.equal(await fixture.adapter.runMain({ ...mainRequest, prompt: "review without text" }).promise, null);
+    await assert.rejects(fixture.adapter.runMain({ ...mainRequest, prompt: "review without text" }).promise, { code: "LOOP_PLUS_RUN_UNCONFIRMED" });
 
     fixture.queueMain(async (input, tabId) => {
       const now = Date.now();
@@ -2825,7 +3115,7 @@ test("main and attempt reads reject text outside the run, missing text, and reus
         assistantId: "reused-main",
       });
     });
-    assert.equal(await fixture.adapter.runMain({ ...mainRequest, prompt: "review with a reused id" }).promise, null);
+    await assert.rejects(fixture.adapter.runMain({ ...mainRequest, prompt: "review with a reused id" }).promise, { code: "LOOP_PLUS_FINAL_UNCONFIRMED" });
 
     const attempt = {
       taskId: "task-main",
@@ -3211,6 +3501,7 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
       continueDialogBackdrop: { classList: { add: () => undefined, remove: () => undefined }, setAttribute: () => undefined },
       continueDialogInput: input, continueDialogConfirm: { dataset: {} }, continueDialogOpen: false,
       continueDialogMode: undefined, continueDialogOpener: null, continueRequestPending: false,
+      continueActionSlot: {}, continueAction: { html: "继续执行", canContinue: true }, replaceHtml: () => undefined,
       continueRequestId: null, requestSessionId: "fixture", requestSequence: 0,
       actionButton: () => button, window: {}, document: { activeElement: button },
       setContinueDialogError: () => undefined, saveDialogState: () => undefined, requestRefresh: () => undefined,
@@ -3269,6 +3560,76 @@ test("群聊按钮在五次启动前配置锁超时后只续跑原 Loop+ 并保�
     runReview.resolve();
     finishNextReview.resolve();
     await Promise.allSettled(runs);
+    fixture.dispose();
+  }
+});
+
+test("普通 Loop+ 暂停时交还续跑请求，读盘暂不可用仍持续观察活动子任务", { timeout: 5000 }, async () => {
+  const records = createMemoryTaskPersistence();
+  let failProgress = true;
+  let hidePaused = true;
+  let refusedCommits = 0;
+  const fixture = createLoopPlusRuntimeFixture({ taskPersistence: { ...records,
+    read: (id, options) => {
+      const task = records.read(id);
+      if (hidePaused && task?.status === "error") {
+        options?.onUnavailable?.("identity-lock-present");
+        return null;
+      }
+      return task;
+    },
+    update: (id, patch) => {
+      const current = records.read(id);
+      if (!current) return null;
+      const saved = { ...current, ...patch, updatedAt: current.updatedAt + 1 };
+      records.save(saved);
+      return saved;
+    },
+  }, commitOrdinaryRun: (expected, patch) => {
+    const current = records.read(expected.id);
+    if (current?.status !== "running" || current.updatedAt !== expected.updatedAt) return null;
+    if (failProgress && patch.loopPlusProgressPercent === 37) {
+      refusedCommits++;
+      return null;
+    }
+    const saved = { ...current, ...patch, updatedAt: current.updatedAt + 1 };
+    records.save(saved);
+    return saved;
+  } });
+  let taskId = "";
+  try {
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end",
+      content: decision({ status: "dispatch", subtasks: [subtask("A", "a.ts"), subtask("B", "b.ts")] }) }));
+    fixture.queueMain((input, tabId) => fixture.publish(input, tabId, { status: "end", content: decision({
+      status: "accept", reviewEventId: buildLoopPlusFinishEventId("A", "lp1-A"), progressPercent: 37,
+    }) }));
+    const first = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
+    await waitForLoopPlus(() => fixture.parkedSubtaskIds().length === 2, "两个子任务就绪");
+    taskId = fixture.createdTaskIds[0];
+    const observation = fixture.adapter.observeTask!(taskId)!;
+    let drained = false;
+    void observation.done.then(() => { drained = true; });
+    fixture.finishParked("A", { status: "end", content: "A 已交付" });
+    assert.equal(await first, true);
+    assert.equal(refusedCommits, 1);
+    assert.equal(records.read(taskId)?.status, "error");
+    assert.equal(drained, false);
+    assert.deepEqual(fixture.parkedSubtaskIds(), ["B"]);
+    hidePaused = false;
+    failProgress = false;
+    fixture.queueMain(async () => { await fixture.holdMain(); });
+    const second = fixture.adapter.runEventDriven(prompt("继续"), {
+      resumeTaskId: taskId, resumeRequested: true, resumeUserMessage: "继续", preserveLoopOrigin: true,
+    }, fixture.target);
+    await waitForLoopPlus(() => fixture.mainCalls.length === 3, "暂停后接收下一次续跑");
+    assert.equal(fixture.mainCalls.at(-1)?.loopTaskId, taskId);
+    assert.deepEqual(fixture.attemptCalls.map(input => input.loopSubtaskId), ["A", "B"]);
+    fixture.adapter.host().stopParent(taskId);
+    await Promise.all([second, observation.done]);
+    assert.equal(drained, true);
+  } finally {
+    hidePaused = false;
+    if (taskId) fixture.adapter.host().stopParent(taskId);
     fixture.dispose();
   }
 });
@@ -3451,7 +3812,7 @@ test("combined accept registers the new prerequisite before filling slots freed 
   }
 });
 
-test("main reprompt closes an interrupted tab, resumes its session and closes the replacement on completion", async () => {
+for (const hasBinding of [true, false]) test(`main reprompt closes an interrupted tab and ${hasBinding ? "resumes its session" : "opens a fresh session"} for the same logical task`, async () => {
   const fixture = createLoopPlusRuntimeFixture();
   try {
     fixture.queueMain((input, tabId) => {
@@ -3472,21 +3833,23 @@ test("main reprompt closes an interrupted tab, resumes its session and closes th
     const running = fixture.adapter.runEventDriven(prompt(), { schedulingMode: "event_driven" }, fixture.target);
     await waitForLoopPlus(() => fixture.parkedSubtaskIds().includes("A"), "original attempt started");
     const original = fixture.createdSubtaskTargets[0];
-    original.sessionId = "control-resume-session";
+    original.sessionId = hasBinding ? "control-resume-session" : null;
     const taskId = fixture.peekParked("A")?.input.loopTaskId ?? "";
     fixture.finishParked("A", { status: "stopped", content: "等待纠正" });
     await waitForLoopPlus(() => fixture.readTask(taskId)?.subTasks[0]?.status === "blocked", "original attempt interrupted");
     assert.deepEqual(fixture.closedSubtaskTabs, []);
-    assert.equal(fixture.adapter.host().submitUserMessage(taskId, "请纠正后重新执行 A"), true);
+    fixture.adapter.host().checkWaitingMainTasks();
     await waitForLoopPlus(() => fixture.createdSubtaskTargets.length === 2 && fixture.parkedSubtaskIds().includes("A"), "replacement started");
     const replacement = fixture.createdSubtaskTargets[1];
     assert.notEqual(replacement.tabId, original.tabId);
     assert.equal(replacement.sessionId, original.sessionId);
+    if (!hasBinding) replacement.sessionId = "fresh-subtask-session";
     assert.deepEqual(fixture.closedSubtaskTabs, [original.tabId]);
     fixture.finishParked("A", { status: "end", content: "纠正完成" });
     await running;
     assert.deepEqual(fixture.closedSubtaskTabs, [original.tabId, replacement.tabId]);
     assert.equal(fixture.readTask(taskId)?.status, "completed");
+    assert.equal(fixture.readTask(taskId)?.subTasks[0].executionSession?.sessionId, replacement.sessionId);
   } finally {
     fixture.dispose();
   }
@@ -3572,7 +3935,7 @@ for (const conflict of [false, true]) test(`Department Codex writeback ${conflic
   } finally { fixture.dispose(); }
 });
 
-test("本机子进程异常退出且完成 Promise 丢失时，巡检保留子任务供显式续跑", { timeout: 5000 }, async (t) => {
+test("本机子进程异常退出且完成 Promise 丢失时，分钟巡检交回原主任务", { timeout: 5000 }, async (t) => {
   let now = 1000;
   t.mock.method(Date, "now", () => now);
   const { spawn } = require("node:child_process") as typeof import("node:child_process");
@@ -3612,28 +3975,26 @@ test("本机子进程异常退出且完成 Promise 丢失时，巡检保留子�
     const taskId = fixture.mainCalls[0].loopTaskId!;
     fixture.adapter.host().checkWaitingTasks();
     assert.equal(fixture.mainCalls.length, 1);
-    now += 5 * 60 * 1000;
+    now += 59_999;
+    fixture.adapter.host().checkWaitingTasks();
+    assert.equal(fixture.mainCalls.length, 1);
+    now++;
     fixture.adapter.host().checkWaitingTasks();
     await waitForLoopPlus(() => fixture.rootsDisposed.length === 1, "失联调用释放执行根");
+    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "原主任务验收失联子任务");
     const snapshot = createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot();
-    assert.equal(snapshot.currentReview, null);
-    assert.equal(snapshot.running.length, 1);
+    assert.equal(snapshot.currentReview?.outcome, "unconfirmed");
+    assert.equal(snapshot.running.length, 0);
     assert.equal(fixture.readTask(taskId)?.subTasks[0]?.status, "blocked");
-    assert.equal(fixture.mainCalls.length, 1);
-    assert.equal(fixture.completionSubscriptionCount(), 0);
+    assert.equal(fixture.mainCalls.length, 2);
+    assert.equal(fixture.completionSubscriptionCount(), 1);
     await withLoopSubtaskSession("codex", null, async () => undefined, { taskId, subtaskId: "crashed" });
     const communicationFile = fixture.readTask(taskId)!.subTasks[0].communicationFile!;
-    assert.doesNotMatch(fs.readFileSync(communicationFile, "utf8"), /outcome: failed/);
-    const attemptId = snapshot.running[0]!.attemptId;
-    assert.equal(fixture.adapter.host().notifySubtaskContinuation(
-      taskId, "crashed", "completed", "显式续跑后完成", undefined, undefined, attemptId,
-    ), true);
-    await waitForLoopPlus(() => fixture.mainCalls.length === 2, "续跑完成后进入子任务验收");
-    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "completed");
+    assert.match(fs.readFileSync(communicationFile, "utf8"), /outcome: unconfirmed/);
     releaseLate();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(fixture.mainCalls.length, 2);
-    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "completed");
+    assert.equal(createLoopPlusScheduler({ snapshot: fixture.readTask(taskId)!.loopPlus }).snapshot().currentReview?.outcome, "unconfirmed");
     fixture.adapter.host().stopParent(taskId);
     await running;
   } finally {

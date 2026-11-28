@@ -7,7 +7,8 @@
  * 再调用生产适配器 runEventDriven。这是插件的事件驱动正常入口，但不是 Extension Host 进程。
  * success-baseline-extension-host 复用部门激活烟测的隔离启动方式，在真实 Extension Host 里
  * 跑同一条成功基线。关页身份由 lp495 负责，本入口只记录关页尝试，不把它当失败。
- * 最终候选的完整宿主验收不在本入口。
+ * group-continue-panel 只在显式 --scenario=group-continue-panel 时启动。它复制当前候选，
+ * 不使用共享 dist，并在真实群聊页操作继续执行。最终候选的完整宿主验收不在本入口。
  */
 
 const assert = require("node:assert/strict");
@@ -96,12 +97,60 @@ const SCENARIOS = [
     failure: "超时、提前完成、丢失 beta、合法收口后未完成，或完成消息不是一条。",
   },
   {
+    id: "idle-supplement-extension-host",
+    lane: "extension-host",
+    timeoutMs: 150000,
+    input: "在隔离的扩展宿主运行普通 Loop+，最后一个子任务中断后等待真实分钟巡检。",
+    expected: "主任务收到已保存的补充需求，按原逻辑 ID 续派一次，收到新报告后验收完成。",
+    failure: "漏发或重复唤醒、续派身份变化、验收未完成或宿主异常退出。",
+  },
+  {
     id: "success-baseline-extension-host",
     lane: "extension-host",
     timeoutMs: 180000,
     input: "用隔离 HOME、user-data 和 extensions 启动已安装的 VS Code，--extensionTestsPath 指向本次生成的测试入口。入口确认产品由 onStartupFinished 激活后，执行与成功基线相同的合成输入。",
-    expected: "Extension Host 进程退出码 0。激活的是当前产品，HOME 被隔离。成功基线断言通过。",
+    expected: "子任务回报首次写事件遇锁，重试后只有一份执行报告。主任务准入遇锁四次，末次验收的完成写入也遇锁一次。宿主重试后进度达到 100，退出码为 0。",
     failure: "超时、退出码非 0、激活路径或 HOME 不符，或宿主内成功基线断言失败。",
+  },
+  {
+    id: "group-continue-panel",
+    lane: "group-continue-host",
+    timeoutMs: 210000,
+    input: "把当前候选复制到独立目录，用隔离 HOME、user-data、extensions 和工作区启动 macOS Extension Development Host。本地 JSON-RPC 替身把合成 Loop+ 任务停在可继续状态。在实际群聊页打开继续执行，并在同一次请求仍活跃时再次操作。",
+    expected: "仍是原群聊页和原任务。群聊页数保持 1。首次请求显示正在启动续跑，主调用只增加一次。重复操作不再增加主调用。宿主插件错误为空。",
+    failure: "超时、候选仍指向共享 dist、任务或群聊身份变化、页数变化、重复操作增加主调用、宿主插件报错，或进程组没有排空。",
+  },
+  {
+    id: "group-continue-reload",
+    lane: "group-continue-host",
+    timeoutMs: 210000,
+    input: "在合成 Loop+ 任务的群聊里中止任务，重载 VS Code 窗口，直接在恢复的编辑器中继续执行。",
+    expected: "新宿主恢复同一任务，续跑沿用原主任务标签和会话。从标签再打开时复用同一编辑器。",
+    failure: "窗口重载、任务归属、续跑次数或编辑器复用断言失败。",
+  },
+  {
+    id: "group-continue-restart",
+    lane: "group-continue-host",
+    timeoutMs: 210000,
+    input: "在合成 Loop+ 群聊中止任务，选中另一对话，退出 VS Code，再启动相同工作区和用户配置。",
+    expected: "首个应用进程正常退出。新进程从原群聊继续同一主会话，任务标签复用原群聊，重复操作只启动一次。",
+    failure: "应用退出或恢复、主会话归属、续跑次数或编辑器复用断言失败。",
+  },
+  {
+    id: "group-continue-restart-missing-main",
+    lane: "group-continue-host",
+    timeoutMs: 210000,
+    input: "原生会话已创建且主模型还未回复。在隔离 VS Code 完全退出后移除主任务的标签记录，保留另一对话和群聊。",
+    expected: "群聊恢复后等待用户继续，在原生会话重建主标签，保留原消息和另一对话，只发起一次续跑。",
+    failure: "无法重建标签、借用另一标签、CLI 会话改变、消息丢失或重复续跑。",
+  },
+  {
+    id: "group-continue-crash",
+    lane: "group-continue-host",
+    timeoutMs: 210000,
+    input: "主调用仍在执行时强制终止已核实的隔离 VS Code 应用进程，再启动同一工作区并打开原任务群聊。",
+    expected: "原任务恢复为可继续状态。点击后只向原 CLI 会话发出一次续跑。",
+    failure: "原进程归属或退出未确认、其它进程仍存活、任务或会话变化、自动启动或重复派发。",
   },
 ];
 
@@ -168,8 +217,8 @@ function completedDecision(extra = {}) {
   };
 }
 
-function createSession() {
-  const fx = loadRuntime().createLoopPlusRuntimeFixture({ maxConcurrency: 5, decisionSubtaskMax: () => 5 });
+function createSession(options) {
+  const fx = loadRuntime().createLoopPlusRuntimeFixture({ maxConcurrency: 5, decisionSubtaskMax: () => 5, ...options });
   const session = {
     fixture: fx,
     running: undefined,
@@ -284,25 +333,33 @@ async function waitParked(session, ids) {
   await waitUntil(() => ids.every((id) => session.fixture.peekParked(id)), `parked ${ids.join(",")}`);
 }
 
-async function successBaseline(session) {
+async function successBaseline(session, blockFirstReview, finishInReview = false) {
   const initial = session.arm("success initial");
   const running = session.start();
   const first = await initial();
+  if (blockFirstReview) session.fixture.queueMain(blockFirstReview);
   const review = session.arm("success review");
   first.reply({ status: "dispatch", subtasks: [child("baseline")] });
   await waitParked(session, ["baseline"]);
   assert.deepEqual(session.fixture.attemptCalls.map((call) => call.model), ["sub-model"]);
   const delivery = finishDelivery(session, "baseline");
   const reviewTurn = await review();
-  const closeout = session.arm("success closeout");
-  reviewTurn.reply({
-    status: "accept",
-    reviewEventId: delivery.eventId,
-    progressPercent: 30,
-    reviews: [{ reviewEventId: delivery.eventId, acceptance: "passed", reason: "基线交付与证据符合要求" }],
-  });
-  const closeTurn = await closeout();
-  closeTurn.reply(completedDecision());
+  const compactBatch = /^冻结验收（按序） (\[.*\])$/mu.exec(reviewTurn.input.modelPrompt);
+  if (compactBatch) assert.deepEqual(JSON.parse(compactBatch[1]).map(item => item.eventId), [delivery.eventId]);
+  else assert.match(reviewTurn.input.modelPrompt, new RegExp(`\\n1\\. ${escapeRegExp(delivery.eventId)}\\n`));
+  if (finishInReview) {
+    reviewTurn.reply(completedDecision({ reviewEventId: delivery.eventId }));
+  } else {
+    const closeout = session.arm("success closeout");
+    reviewTurn.reply({
+      status: "accept",
+      reviewEventId: delivery.eventId,
+      progressPercent: 30,
+      reviews: [{ reviewEventId: delivery.eventId, acceptance: "passed", reason: "基线交付与证据符合要求" }],
+    });
+    const closeTurn = await closeout();
+    closeTurn.reply(completedDecision());
+  }
   await running;
   const task = taskRecord(session);
   assert.equal(task.status, "completed");
@@ -647,6 +704,7 @@ function printCatalog() {
 function selectedScenarios(options) {
   return SCENARIOS.filter((scenario) => {
     if (options.ids.size > 0 && !options.ids.has(scenario.id)) return false;
+    if (scenario.lane === "group-continue-host" && !options.ids.has(scenario.id)) return false;
     if (options.fixtureOnly && scenario.lane !== "deterministic-fixture") return false;
     if (options.extensionHostOnly && scenario.lane !== "extension-host") return false;
     if (!options.extensionHostOnly && !options.includeExtensionHost && scenario.lane === "extension-host") return false;
@@ -772,7 +830,7 @@ exports.run = async () => {
       throw new Error("Extension Host HOME was not isolated");
     }
     const smoke = require(process.env.LOOP_PLUS_PROTOCOL_SMOKE);
-    const scenarioResult = await smoke.runExtensionHostScenario();
+    const scenarioResult = await smoke.runExtensionHostScenario(${JSON.stringify(scenario.id)});
     write({ ok: true, scenario: scenarioResult, vscode: vscode.version, extensionPath: extension.extensionPath });
   } catch (error) {
     write({ ok: false, error: error && error.stack ? error.stack : String(error) });
@@ -878,19 +936,163 @@ exports.run = async () => {
   return report.outcome;
 }
 
-async function runExtensionHostScenario() {
-  const session = createSession();
+async function launchGroupContinueHost(scenario) {
+  const started = Date.now();
+  console.log(`[loop-plus-protocol-regression] START scenario=${scenario.id} lane=${scenario.lane} timeoutMs=${scenario.timeoutMs}`);
+  const { runGroupContinueHost } = require("./fixtures/loop_plus_group_continue_ui.cjs");
+  let report;
   try {
-    await successBaseline(session);
+    report = await runGroupContinueHost({
+      product,
+      reloadWindow: scenario.id === "group-continue-reload",
+      restartApplication: ["group-continue-restart", "group-continue-restart-missing-main", "group-continue-crash"].includes(scenario.id),
+      crashApplication: scenario.id === "group-continue-crash",
+      dropMainTab: scenario.id === "group-continue-restart-missing-main",
+      timeoutMs: scenario.timeoutMs,
+      evidenceDir: path.join(product, ".tmp/loop-plus-protocol-regression"),
+    });
+    if (!report.ok) throw new Error(report.error || report.pluginError || report.cleanup?.reason || "group continue observation failed");
+    const elapsedMs = Date.now() - started;
+    console.log(`[loop-plus-protocol-regression] PASS scenario=${scenario.id} lane=${scenario.lane} elapsedMs=${elapsedMs} sha256=${report.fingerprint?.sha256 || ""} exit=${report.exit?.exitCode}`);
+    return {
+      id: scenario.id,
+      lane: scenario.lane,
+      result: "pass",
+      elapsedMs,
+      fingerprint: report.fingerprint,
+      exit: report.exit,
+      assertions: report.assertions,
+      host: report.host,
+      cli: report.cli,
+    };
+  } catch (error) {
+    const elapsedMs = Date.now() - started;
+    console.error(`[loop-plus-protocol-regression] FAIL scenario=${scenario.id} lane=${scenario.lane} timeoutMs=${scenario.timeoutMs} elapsedMs=${elapsedMs}`);
+    console.error(`[loop-plus-protocol-regression] failureCriterion=${scenario.failure}`);
+    console.error(error && error.stack ? error.stack : String(error));
+    if (report?.problems?.length) console.error(`[loop-plus-protocol-regression] problems=${JSON.stringify(report.problems)}`);
+    return { id: scenario.id, lane: scenario.lane, result: "fail", elapsedMs, error: error && error.stack ? error.stack : String(error) };
+  }
+}
+
+async function verifyIdleSupplement(session) {
+  const host = session.fixture.adapter.host();
+  const initial = session.arm("首次拆分");
+  const running = session.start();
+  (await initial()).reply({ status: "dispatch", subtasks: [child("delivery")] });
+  await waitParked(session, ["delivery"]);
+  const original = captureFinish(session, "delivery");
+  session.fixture.finishParked("delivery", { status: "stopped", content: "已中断，准备续跑" });
+  await waitUntil(() => taskRecord(session).subTasks[0]?.status === "blocked", "中断已保存");
+  const supplement = session.arm("分钟补充需求");
+  const { startLoopWaitWatchdog } = require(path.join(dist, "loopWaitWatchdog.js"));
+  let dispose;
+  try {
+    await new Promise((resolve, reject) => {
+      dispose = startLoopWaitWatchdog([host.checkWaitingTasks], reject, [() => {
+        host.checkWaitingTasks(false);
+        host.checkInterruptedMainTasks();
+        host.checkWaitingMainTasks();
+        resolve();
+      }]);
+    });
+  } finally { dispose?.(); }
+  const turn = await supplement();
+  const parent = taskRecord(session);
+  const text = snapshotOf(session).userMessageQueue[0];
+  assert.ok(text.includes(original.attemptId) && text.includes("controls.reprompt"));
+  assert.match(text, /主任务须主动处置的异常/);
+  assert.ok(text.includes("controls.close") && text.includes("接替"));
+  assert.ok(turn.input.modelPrompt.includes(text));
+  assert.deepEqual(parent.supplementalRequirements, [text]);
+  host.checkWaitingMainTasks();
+  assert.equal(session.fixture.mainCalls.length, 2);
+  const review = session.arm("续派结果验收");
+  turn.reply({ status: "steer", controls: [{ id: "delivery", action: "reprompt", title: "续写交付报告", prompt: child("delivery").prompt }] });
+  await waitParked(session, ["delivery"]);
+  const resumed = finishDelivery(session, "delivery");
+  assert.notEqual(resumed.attemptId, original.attemptId);
+  (await review()).reply(completedDecision({ reviewEventId: resumed.eventId }));
+  await running;
+  assert.equal(taskRecord(session).status, "completed");
+  assert.equal(session.fixture.attemptCalls.length, 2);
+  assert.equal(session.fixture.mainCalls.length, 3);
+  return { id: "idle-supplement-extension-host", lane: "extension-host", result: "pass", mainTurns: 3, attempts: 2, supplements: 1 };
+}
+
+async function runExtensionHostScenario(scenarioId = "success-baseline-extension-host") {
+  assert.equal(process.env.LOOP_PLUS_PROTOCOL_REGRESSION_INSIDE_HOST, "1");
+  assert.equal(fs.realpathSync(os.homedir()), fs.realpathSync(process.env.LOOP_PLUS_PROTOCOL_HOME));
+  const store = require(path.join(dist, "loopTaskStore.js"));
+  const lock = path.join(os.homedir(), ".sinitek_cli", "loop-task-identities", "transaction.lock");
+  const marker = `synthetic-${process.pid}`;
+  let deniedReads = 0;
+  let finishWrites = 0;
+  let completionWrites = 0;
+  let frozenPrompt;
+  const release = () => {
+    assert.equal(fs.readFileSync(lock, "utf8"), marker);
+    fs.unlinkSync(lock);
+  };
+  const session = createSession({ commitOrdinaryRun: (parent, patch, retainedStatus) => {
+    const finishing = parent.loopPlus.running.some(item => item.subtaskId === "baseline")
+      && patch.loopPlus?.seenAttempts.some(item => item.subtaskId === "baseline" && item.outcome === "completed");
+    if (scenarioId === "success-baseline-extension-host" && ((finishing && ++finishWrites === 1) || (patch.status === "completed" && ++completionWrites === 1))) {
+      fs.writeFileSync(lock, marker, { flag: "wx" });
+    }
+    try {
+      return store.updateLoopTaskRecord(parent.id, patch, { expectedOrdinaryRun: { ...parent, retainedStatus }, throwOnIdentityLock: true });
+    } catch (error) {
+      assert.ok(error instanceof store.OrdinaryUpdateIdentityLockBusy);
+      release();
+      throw error;
+    }
+  }, taskPersistence: {
+    create: (task) => {
+      const file = store.buildLoopTaskStoreFile(task.cli, task.workspaceKey, task.sessionId, task.id);
+      store.appendLoopTaskRecord(file, { ...task, taskStoreFile: file });
+      return store.readLoopTaskRecord(task.id);
+    },
+    read: (id, options) => store.readLoopTaskRecord(id, { ...options, onUnavailable: (reason) => {
+      if (options?.onUnavailable && reason === "identity-lock-present") {
+        options.onUnavailable(reason);
+        if (++deniedReads === 4) release();
+      } else options?.onUnavailable?.(reason);
+    } }),
+    update: store.updateLoopTaskRecord,
+    save: (task) => store.updateLoopTaskRecord(task.id, task),
+  } });
+  try {
+    if (scenarioId === "idle-supplement-extension-host") return await verifyIdleSupplement(session);
+    await successBaseline(session, (input) => {
+      frozenPrompt = input.modelPrompt;
+      fs.writeFileSync(lock, marker, { flag: "wx" });
+      assert.equal(input.loopPlusMainAdmission.isParentInactive(), true);
+    }, true);
+    assert.equal(deniedReads, 4);
+    assert.equal(finishWrites, 2);
+    assert.equal(completionWrites, 2);
+    const finishLog = session.fixture.logs.filter(item => item.event === "loop-plus-finish-contention");
+    assert.deepEqual(finishLog.map(({ detail }) => [detail.stage, detail.result]), [["event-write", "retry"], ["event-write", "committed"]]);
+    const reportFile = taskRecord(session).subTasks.find(item => item.id === "baseline").communicationFile;
+    const reports = fs.readFileSync(reportFile, "utf8").match(/^## Attempt result$/gm) || [];
+    assert.equal(reports.length, 1);
+    assert.equal(session.fixture.mainCalls.filter((input) => input.modelPrompt === frozenPrompt).length, 2);
     return {
       id: "success-baseline-extension-host",
       lane: "extension-host",
       result: "pass",
+      deniedReads,
+      finishWrites,
+      attemptReports: reports.length,
+      completionWrites,
+      completedProgress: taskRecord(session).loopPlusProgressPercent,
       tabCloseAttempts: session.fixture.closeSubtaskTabAttempts.length,
       closedTabs: session.fixture.closedSubtaskTabs.length,
       tabCloseOwnedBy: "lp495",
     };
   } finally {
+    if (fs.existsSync(lock) && fs.readFileSync(lock, "utf8") === marker) release();
     await settle(session);
   }
 }
@@ -918,7 +1120,8 @@ async function main() {
   if (chosen.length === 0) throw new Error("没有选中的场景。");
   const results = [];
   for (const scenario of chosen) {
-    if (scenario.lane === "extension-host") results.push(await launchExtensionHost(scenario));
+    if (scenario.lane === "group-continue-host") results.push(await launchGroupContinueHost(scenario));
+    else if (scenario.lane === "extension-host") results.push(await launchExtensionHost(scenario));
     else {
       const result = await runFixtureScenario(scenario);
       results.push(result);

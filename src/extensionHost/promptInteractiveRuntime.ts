@@ -45,6 +45,7 @@ import {
 } from "../promptRetry";
 import { buildUserChatMessage } from "../panelStateBuilder";
 import { buildHiddenRetryPrompt, buildThinkingPrompt } from "../promptRuntime";
+import { inlineSingleSendRules, promptRuleSupplement } from "../promptRuleIndex";
 import {
   appendMessageToStore,
   type LoopTaskRole,
@@ -76,9 +77,11 @@ export type PromptInteractiveRuntimeHostDeps = InteractiveLaunchDeps & {
   AI_TASK_RAW_OUTPUT_MAX_BYTES: number;
   activeRunsByTabId: Map<string, InteractiveTabRun>;
   adoptSessionId: (cli: CliName, sessionId: string, tabId?: string | null) => void;
+  bindOrdinaryLoopMainSession?: (taskId: string, cli: CliName, previousSessionId: string | null, sessionId: string) => void;
   applyProcessTitle: (runId: string, cli: CliName, sessionId: string | null) => void;
   applyThinkingWorkspaceFiles: (cli: CliName, thinkingMode: ThinkingMode, cwd?: string) => void;
   appendTaskRun: (record: TaskRunRecord) => void;
+  onSubtaskRunStarted?: (taskId: string) => void;
   buildSubagentProgressLabels: () => SubagentProgressLabels;
   buildTaskRunCompletionText: (status: TaskRunStatus, durationMs?: number | null, record?: TaskRunRecord, messages?: readonly ChatMessage[]) => string;
   createMessageId: () => string;
@@ -350,7 +353,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       includeFinalAnswerInstruction,
       includeHumanInteractionInstruction: humanInteractionEnabledForVibeRun,
     });
-    let thinkingPrompt = buildTurnPrompt();
+    let thinkingPrompt = buildTurnPrompt(departmentRun && input.taskRole === "subtask" ? inlineSingleSendRules(modelPrompt) : modelPrompt);
     const readOriginalThread = () => uiSessionId
       ? resolveInteractiveMappedId(cli, uiSessionId) ?? (isLocalSessionId(uiSessionId) ? null : uiSessionId)
       : null;
@@ -384,6 +387,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
 
     const userMessageId = input.preloadedUserMessageId ?? createMessageId();
     const userCreatedAt = Date.now();
+    input.loopPlusMainAdmission?.onRunOpened();
     const runId = createMessageId();
     const startedAt = Date.now();
     const processSessionId = uiSessionId ?? runId;
@@ -413,6 +417,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     let attemptStartedAt = startedAt;
     let naturalLanguageHumanInteractionCount = 0;
     let pendingHumanInteractionContinuationPrompt: string | null = null;
+    let ruleSupplementSent = false;
 
     const syncInteractiveRunEntry = (stop?: () => void): void => {
       const entry = interactiveRunsByTabId.get(tabId);
@@ -1033,6 +1038,8 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
       if (!isCurrentRunActive()) {
         return;
       }
+      const entry = interactiveRunsByTabId.get(tabId);
+      if (entry?.runId === runId) entry.terminal = true;
       subagentProgress.finishRunning(status === "end" ? "completed" : "failed");
       void logInfo("runPrompt-interactive-end", {
         cli,
@@ -1107,6 +1114,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         });
         if (localSessionIdToPromote && localSessionIdToPromote !== newId) {
           migrateLocalSessionToTargetSession(cli, localSessionIdToPromote, newId);
+        }
+        if (input.taskRole === "main" && input.loopTaskId && !departmentRun && !isLocalSessionId(newId)
+          && deps.getWorkspaceKey?.() === preparingWorkspace && getConversationTabById(tabId) === preparingTab) {
+          deps.bindOrdinaryLoopMainSession?.(input.loopTaskId, cli, localSessionIdToPromote, newId);
         }
         uiSessionId = newId;
         refreshMessageTargetFromSession();
@@ -1243,8 +1254,10 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         loopTaskId: input.loopTaskId,
         loopRound: input.loopRound,
         loopSubtaskId: input.loopSubtaskId,
+        loopAttemptId: input.loopAttemptId,
       });
       runRegistered = true;
+      if (input.taskRole === "subtask" && input.loopTaskId) deps.onSubtaskRunStarted?.(input.loopTaskId);
       executionOptions.registerQuestionRun?.(runId);
     };
     if (!prepareOriginalSession) {
@@ -1310,6 +1323,14 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
     } : undefined;
 
     const settleInteractiveAttempt = async (cli: "codex" | "claude" | "grok" | "dsh" | "kimi-code" | "zcode"): Promise<"continue" | "return"> => {
+      const supplement = !ruleSupplementSent && !departmentRun && !recovery && !prepareOriginalSession && isCurrentRunActive()
+        && promptRuleSupplement(interactiveInput, latestAssistantMessage?.content ?? "");
+      if (supplement) {
+        ruleSupplementSent = true;
+        pendingHumanInteractionContinuationPrompt = supplement;
+        removeCurrentAssistantMessageForTab();
+        return "continue";
+      }
       if (await maybeHandleNaturalLanguageHumanInteraction()) {
         return "continue";
       }
@@ -1545,7 +1566,7 @@ export function createPromptInteractiveRuntimeHost(deps: PromptInteractiveRuntim
         return;
       } catch (error) {
         if (isCliCommandRepairableError(error)) {
-          void logEssential("interactive-cli-command-start-failed", {
+          void logError("interactive-cli-command-start-failed", {
             cli,
             tabId,
             runId,

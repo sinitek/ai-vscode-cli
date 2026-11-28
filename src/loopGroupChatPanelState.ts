@@ -15,6 +15,10 @@ export type LoopGroupChatPanelStateBuilderDeps = {
   getActiveReviewEventIds?: (taskId: string) => readonly string[];
   mainModelRunning?: boolean;
   localExecutionInactive?: boolean;
+  executionUnverified?: boolean;
+  readOnlyTranscript?: boolean;
+  taskStatusLabel?: string;
+  pendingOrganizationStop?: boolean;
   buildLoopCompletedConclusionAndSummaryMarkdown: (task: LoopTaskRecord) => string;
   t: (key: any, params?: any) => string;
 };
@@ -35,7 +39,7 @@ export function buildLoopGroupChatPanelStateWithDeps(
   };
   const runningTaskIds = deps.collectRunningLoopTaskIds();
   const controlState = resolveLoopTaskRunControlState(task, runningTaskIds);
-  const loopPlus = projectLoopPlusPanel(
+  const loopPlus = deps.executionUnverified ? null : projectLoopPlusPanel(
     task,
     deps.getActiveReviewEventIds?.(task.id) ?? [],
     deps.mainModelRunning === true,
@@ -64,6 +68,7 @@ export function buildLoopGroupChatPanelStateWithDeps(
       canSupplement: controlState.canSupplement,
       canContinue: controlState.canContinue,
       canStop: controlState.canStop,
+      ...(deps.executionUnverified ? { departmentExecutionUnverified: true } : {}),
     },
     rounds,
     chatMarkdown,
@@ -78,28 +83,34 @@ function buildLoopCombinedGroupChatMarkdown(
   deps: LoopGroupChatPanelStateBuilderDeps,
 ): string {
   const content = rounds[0]?.chatFile ? deps.readTextFileIfNonEmpty(rounds[0].chatFile) : null;
+  if (deps.pendingOrganizationStop) {
+    const statusLine = `- 任务状态：${deps.taskStatusLabel}`;
+    return content && /^- 任务状态：.*$/mu.test(content)
+      ? content.replace(/^- 任务状态：.*$/mu, statusLine) : `${content ?? ""}\n## 当前状态\n${statusLine}\n`;
+  }
   return content
-    ? appendLoopGroupChatFinalStatusMarkdown(content, task)
-    : renderLoopGroupChatFinalStatusMarkdown(task);
+    ? appendLoopGroupChatFinalStatusMarkdown(content, task, deps.taskStatusLabel ?? task.status)
+    : renderLoopGroupChatFinalStatusMarkdown(task, deps.taskStatusLabel ?? task.status);
 }
 
-function renderLoopGroupChatFinalStatusMarkdown(task: LoopTaskRecord): string {
+function renderLoopGroupChatFinalStatusMarkdown(task: LoopTaskRecord, statusLabel: string): string {
   const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
   if (!finalStatusSection) {
-    return "";
+    return statusLabel === "执行状态待核实" ? `## 当前状态\n- 任务状态：${statusLabel}\n` : "";
   }
   return `## ${finalStatusSection.heading}\n${finalStatusSection.body}\n`;
 }
 
-function appendLoopGroupChatFinalStatusMarkdown(markdown: string, task: LoopTaskRecord): string {
+function appendLoopGroupChatFinalStatusMarkdown(markdown: string, task: LoopTaskRecord, statusLabel: string): string {
+  const currentMarkdown = markdown.replace(/^- 任务状态：.*$/mu, `- 任务状态：${statusLabel}`);
   const finalStatusSection = buildLoopGroupChatFinalStatusSection(task);
   if (!finalStatusSection) {
-    return markdown;
+    return currentMarkdown;
   }
-  if (hasLoopGroupChatFinalStatusSection(markdown, finalStatusSection.heading)) {
-    return markdown.endsWith("\n") ? markdown : `${markdown}\n`;
+  if (hasLoopGroupChatFinalStatusSection(currentMarkdown, finalStatusSection.heading)) {
+    return currentMarkdown.endsWith("\n") ? currentMarkdown : `${currentMarkdown}\n`;
   }
-  const prefix = markdown.trimEnd();
+  const prefix = currentMarkdown.trimEnd();
   const section = `## ${finalStatusSection.heading}\n${finalStatusSection.body}`;
   return prefix ? `${prefix}\n\n${section}\n` : `${section}\n`;
 }
@@ -221,7 +232,8 @@ function buildLoopMainSubChatPanelRound(
             role: "subtask",
             status,
             sessionId: null,
-            summary: subtask.summary,
+            summary: loopPlus.ok && loopPlus.running.some(item => item.subtaskId === subtask.id && item.waitingForStorage)
+              ? "等待任务存储确认启动" : subtask.summary,
             updatedAt: subtask.updatedAt,
             lastStartedAt: resolveLoopMemberLastStartedAt(task, "subtask", status, subtask.updatedAt, subtask.id, joinedAtBySubtaskId.get(subtask.id)),
           };
@@ -230,9 +242,9 @@ function buildLoopMainSubChatPanelRound(
     };
   }
   const activeSubtaskIds = deps.getActiveLoopSubtaskIds(task);
-  const mainRunning = task.status === "running" && activeSubtaskIds.length === 0;
+  const mainRunning = !deps.executionUnverified && task.status === "running" && activeSubtaskIds.length === 0;
   const mainTitle = `${getLoopMainSubChatMainTitle()} ${resolveLoopPanelProgressPercent(task)}%`;
-  const mainStatus = mainRunning ? "running" : task.status;
+  const mainStatus = deps.executionUnverified ? "runtime_unverified" : mainRunning ? "running" : task.status;
   const mainParticipant: LoopGroupChatPanelRound["participants"][number] = {
     id: "main",
     title: mainTitle,
@@ -243,11 +255,17 @@ function buildLoopMainSubChatPanelRound(
     updatedAt: task.updatedAt,
     lastStartedAt: resolveLoopMemberLastStartedAt(task, "main", mainStatus, task.updatedAt),
   };
+  const classicSubtaskStatus = (subtask: LoopTaskRecord["subTasks"][number]): string => {
+    if (deps.executionUnverified) return subtask.status === "running" ? "runtime_unverified" : subtask.status;
+    const interrupted = (subtask.status === "running" && deps.localExecutionInactive)
+      || (subtask.status === "blocked" && activeSubtaskIds.includes(subtask.id));
+    return interrupted ? "waiting_continuation" : subtask.status;
+  };
   const subtaskParticipants = task.subTasks.map((subtask, index) => ({
     id: subtask.id,
     title: getLoopSubtaskDisplayTitle(index, subtask),
     role: "subtask",
-    status: deps.localExecutionInactive && subtask.status === "running" ? "waiting_continuation" : subtask.status,
+    status: classicSubtaskStatus(subtask),
     sessionId: null,
     summary: subtask.summary,
     updatedAt: subtask.updatedAt,
@@ -265,9 +283,9 @@ function buildLoopMainSubChatPanelRound(
     kind: "execution",
     label,
     loopRound: Math.max(1, task.currentRound || 1),
-    status: task.status,
+    status: deps.executionUnverified ? "runtime_unverified" : task.status,
     chatFile,
-    activeSpeaker: buildLoopMainSubChatActiveSpeaker(task, deps),
+    activeSpeaker: deps.executionUnverified || deps.localExecutionInactive ? undefined : buildLoopMainSubChatActiveSpeaker(task, deps),
     startedAt: task.createdAt,
     completedAt: task.status === "completed" ? task.updatedAt : undefined,
     participants: [mainParticipant, ...subtaskParticipants],
@@ -347,7 +365,7 @@ export function resolveLoopPlusSubtaskMemberStatus(
   }
   const pending = projection.pending.find((item) => item.subtaskId === subtaskId);
   if (pending) {
-    return pending.repairing ? "repairing" : "pending";
+    return "pending";
   }
   const attemptsForSubtask = projection.seenAttempts.filter((item) => item.subtaskId === subtaskId);
   const latestAttempt = attemptsForSubtask[attemptsForSubtask.length - 1];
@@ -386,7 +404,9 @@ export function ensureLoopMainSubChatTranscriptWithDeps(
   if (deps.fileExists(chatFile)) {
     return chatFile;
   }
-  deps.writeTextFileEnsuringDir(chatFile, buildInitialLoopMainSubChatTranscript(task, deps));
+  if (!deps.readOnlyTranscript) {
+    deps.writeTextFileEnsuringDir(chatFile, buildInitialLoopMainSubChatTranscript(task, deps));
+  }
   return chatFile;
 }
 
@@ -400,7 +420,7 @@ function buildInitialLoopMainSubChatTranscript(
     "",
     `- 任务 ID：${task.id}`,
     `- CLI：${task.cli}`,
-    `- 任务状态：${task.status}`,
+    `- 任务状态：${deps.taskStatusLabel ?? task.status}`,
     `- 创建时间：${new Date(task.createdAt).toISOString()}`,
     `- 任务记录：${task.taskStoreFile}`,
     `- 主任务沟通文件：${task.mainCommunicationFile}`,

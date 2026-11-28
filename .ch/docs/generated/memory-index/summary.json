@@ -1,24 +1,57 @@
 {
   "active_plans": [
     {
-      "modified_at": "2026-11-19T04:25:33+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md",
+      "modified_at": "2026-11-25T08:06:35+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 1187,
+      "read_tokens": 6173,
       "references": [
-        "src/test/runtime/departmentleadercallbackprotocol.test.ts"
+        "../../../../.agents/skills/vscode-extension-host-smoke/SKILL.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/design-docs/cli-process-runtime.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/references/cli-runtime-reference.md",
+        "scripts/department_workspace_capacity_settings_smoke.cjs",
+        "scripts/loop_plus_acceptance_navigation_smoke.cjs",
+        "scripts/verify_codex_owned_native_drain.js --live",
+        "scripts/verify_zcode_runner_lifecycle.js --live",
+        "src/cli/cliProcessRuntime.ts",
+        "src/cli/cliRunArgStrategies.ts",
+        "src/cli/processArgv.ts",
+        "src/cli/processTermination.ts",
+        "src/extension.ts",
+        "src/extensionHost/interactiveTurnStrategy.ts",
+        "src/extensionHost/promptInteractiveRuntime.ts",
+        "src/interactive/*Runner.ts",
+        "src/test/",
+        "src/test/cli/",
+        "src/test/extensionHost/",
+        "src/test/interactive/"
       ],
-      "summary": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
-      "title": "Codex 组长大型原生回调私有 IPC 修复"
+      "summary": "日期：2026-11-24 类型：refactor 关联计划：无 状态：in-progress 负责人：协作 owner： claimed_at： claim_ttl： handoff_to：主任务 CLI 运行时策略收敛实现与验收",
+      "title": "CLI 跨平台运行时策略收敛"
     },
     {
-      "modified_at": "2026-11-19T04:25:33+00:00",
-      "path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md",
+      "modified_at": "2026-11-27T05:26:19+00:00",
+      "path": ".ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md",
       "privacy_stripped_count": 0,
-      "read_tokens": 317,
-      "references": [],
-      "summary": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
-      "title": "Loop+ 启动前配置锁超时后显式继续"
+      "read_tokens": 1256,
+      "references": [
+        "../../../../docs/LOOP_PLUS_DECISION_RELIABILITY.md",
+        "../../design-docs/loop-plus-scheduling.md#cli-输出与会话能力",
+        "../../design-docs/loop-plus-scheduling.md#协议失败后的自动续跑",
+        "../../design-docs/loop-plus-scheduling.md#状态感知决策形状",
+        "../../ontology/domains/cli-plugin-runtime.json",
+        "../../product-specs/FEATURE_INVENTORY.md#loop-协议失败自动续跑",
+        ".ch/docs/design-docs/",
+        ".ch/docs/exec-plans/active/",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md",
+        ".ch/docs/ontology/",
+        ".ch/docs/product-specs/",
+        "2026-11-24-refactor-cli-runtime-policy-convergence.md"
+      ],
+      "summary": "日期：2026-11-25 类型：bugfix 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任） 状态：in-progress",
+      "title": "Loop+ 主决策 JSON 格式诊断"
     }
   ],
   "claim_count": 129,
@@ -1847,7 +1880,7 @@
       "text": "被隐私标签包裹的内容会被脚本剥离；不要在摘要、事实或来源字段中重新写入敏感内容。"
     }
   ],
-  "generated_at": "2026-11-19T04:25:33+00:00",
+  "generated_at": "2026-11-27T05:26:19+00:00",
   "generator": "memory-indexer",
   "lessons": [],
   "memory_docs": [
@@ -1919,18 +1952,31 @@
       ],
       "last_verified_at": "2026-10-24",
       "memory_type": "event_memory",
-      "modified_at": "2026-11-13T02:07:54+00:00",
+      "modified_at": "2026-11-27T03:08:31+00:00",
       "path": ".ch/docs/memory/EVENT_MEMORY.md",
       "privacy_stripped_count": 0,
       "pyramid_level": "L2 event_memory",
       "read_tokens": 18,
       "references": [
+        ".ch/docs/design-docs/loop-plus-scheduling.md#协议失败后的自动续跑",
         ".ch/docs/design-docs/loop-subtask-session-reuse.md",
         ".ch/docs/design-docs/vscode-cli-extension-runtime.md#Tab-运行状态与配置协调",
         ".ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准",
         ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复",
         ".ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论",
         ".ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-19-bugfix-employee-worker-build-gap.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-20-bugfix-department-report-settlement.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-generation-response-size.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-receipt-observation.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-session-continuation.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-single-stop.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-partial-drain.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-unconfirmed-feedback.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-21-feature-department-advisory-capacity.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-23-bugfix-grok-loop-legacy-resume.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-27-bugfix-department-director-event-wakeup.md",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-27-bugfix-department-leader-blocker-recovery.md",
         ".ch/docs/runbooks/PITFALLS.md",
         ".ch/docs/runbooks/PITFALLS.md#loop-假完成必须核对轮次与会话所有权",
         ".ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示",
@@ -2116,52 +2162,78 @@
     {
       "concepts": [
         "open-loop",
-        "problem-solution"
+        "decision"
       ],
-      "content_hash": "7525b245acce85ca9a2092f9ba0f19a7039c95c70f1658ddff99569e0229e8b7",
+      "content_hash": "8f3107f15f76b52dc181023d06d38199c79338fd95730fc6b124770fcc241dc9",
       "facts": [
-        "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
-        "Modified at: 2026-11-19T04:25:33+00:00"
+        "日期：2026-11-24 类型：refactor 关联计划：无 状态：in-progress 负责人：协作 owner： claimed_at： claim_ttl： handoff_to：主任务 CLI 运行时策略收敛实现与验收",
+        "Modified at: 2026-11-25T08:06:35+00:00"
       ],
       "files": [
-        "src/test/runtime/departmentleadercallbackprotocol.test.ts"
+        "../../../../.agents/skills/vscode-extension-host-smoke/SKILL.md",
+        ".ch/docs/TESTING.md",
+        ".ch/docs/design-docs/cli-process-runtime.md",
+        ".ch/docs/product-specs/FEATURE_INVENTORY.md",
+        ".ch/docs/references/cli-runtime-reference.md",
+        "scripts/department_workspace_capacity_settings_smoke.cjs",
+        "scripts/loop_plus_acceptance_navigation_smoke.cjs",
+        "scripts/verify_codex_owned_native_drain.js --live",
+        "scripts/verify_zcode_runner_lifecycle.js --live",
+        "src/cli/cliProcessRuntime.ts",
+        "src/cli/cliRunArgStrategies.ts",
+        "src/cli/processArgv.ts"
       ],
-      "id": "mem-7525b245ac",
-      "modified_at": "2026-11-19T04:25:33+00:00",
-      "narrative": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Loop+ round-2 coding attempt 关联计划：无；父任务本轮另有独立 scripts 宿主验证交付。",
+      "id": "mem-8f3107f15f",
+      "modified_at": "2026-11-25T08:06:35+00:00",
+      "narrative": "日期：2026-11-24 类型：refactor 关联计划：无 状态：in-progress 负责人：协作 owner： claimed_at： claim_ttl： handoff_to：主任务 CLI 运行时策略收敛实现与验收",
       "private_stripped": false,
-      "read_tokens": 74,
-      "source_anchor": "Codex 组长大型原生回调私有 IPC 修复",
+      "read_tokens": 78,
+      "source_anchor": "CLI 跨平台运行时策略收敛",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md",
-      "source_title": "Codex 组长大型原生回调私有 IPC 修复",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md",
+      "source_title": "CLI 跨平台运行时策略收敛",
       "subtitle": "Active execution plan",
-      "title": "Codex 组长大型原生回调私有 IPC 修复",
+      "title": "CLI 跨平台运行时策略收敛",
       "topic": "plan",
       "type": "plan"
     },
     {
       "concepts": [
         "open-loop",
-        "problem-solution"
+        "decision",
+        "problem-solution",
+        "source-linked"
       ],
-      "content_hash": "52c8a09d98d32ff277973ae865e12a228765c500ca550f754ed68690bfcd411c",
+      "content_hash": "707183a27ec734a80653633625336d9ce3652f7ebd0acc1b28b030e5fd4bff88",
       "facts": [
-        "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
-        "Modified at: 2026-11-19T04:25:33+00:00"
+        "日期：2026-11-25 类型：bugfix 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任） 状态：in-progress",
+        "Modified at: 2026-11-27T05:26:19+00:00"
       ],
-      "files": [],
-      "id": "mem-52c8a09d98",
-      "modified_at": "2026-11-19T04:25:33+00:00",
-      "narrative": "日期：2026-11-18 类型：bugfix 状态：in-progress 负责人：Codex（本次执行）；主任务负责验收",
+      "files": [
+        "../../../../docs/LOOP_PLUS_DECISION_RELIABILITY.md",
+        "../../design-docs/loop-plus-scheduling.md#cli-输出与会话能力",
+        "../../design-docs/loop-plus-scheduling.md#协议失败后的自动续跑",
+        "../../design-docs/loop-plus-scheduling.md#状态感知决策形状",
+        "../../ontology/domains/cli-plugin-runtime.json",
+        "../../product-specs/FEATURE_INVENTORY.md#loop-协议失败自动续跑",
+        ".ch/docs/design-docs/",
+        ".ch/docs/exec-plans/active/",
+        ".ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md",
+        ".ch/docs/ontology/",
+        ".ch/docs/product-specs/",
+        "2026-11-24-refactor-cli-runtime-policy-convergence.md"
+      ],
+      "id": "mem-707183a27e",
+      "modified_at": "2026-11-27T05:26:19+00:00",
+      "narrative": "日期：2026-11-25 类型：bugfix 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md`（共同背景为 Loop+ 决策与交付可靠性；本计划区分拒绝类别并留存安全诊断，不更改独立验收责任） 状态：in-progress",
       "private_stripped": false,
-      "read_tokens": 52,
-      "source_anchor": "Loop+ 启动前配置锁超时后显式继续",
+      "read_tokens": 117,
+      "source_anchor": "Loop+ 主决策 JSON 格式诊断",
       "source_kind": "active_plan",
-      "source_path": ".ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md",
-      "source_title": "Loop+ 启动前配置锁超时后显式继续",
+      "source_path": ".ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md",
+      "source_title": "Loop+ 主决策 JSON 格式诊断",
       "subtitle": "Active execution plan",
-      "title": "Loop+ 启动前配置锁超时后显式继续",
+      "title": "Loop+ 主决策 JSON 格式诊断",
       "topic": "plan",
       "type": "plan"
     },
@@ -2254,10 +2326,10 @@
     "plan": {
       "count": 2,
       "ids": [
-        "mem-7525b245ac",
-        "mem-52c8a09d98"
+        "mem-8f3107f15f",
+        "mem-707183a27e"
       ],
-      "read_tokens": 126
+      "read_tokens": 195
     },
     "rule": {
       "count": 1,
@@ -2267,6 +2339,6 @@
       "read_tokens": 39
     }
   },
-  "total_read_tokens": 211,
+  "total_read_tokens": 280,
   "version": "0.2.0"
 }

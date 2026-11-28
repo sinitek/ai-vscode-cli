@@ -13,10 +13,14 @@ import { createDepartmentExecutionProducer } from "../../extensionHost/departmen
 import { createDepartmentInteractiveRuntime, usesDepartmentInteractiveRuntime } from "../../extensionHost/departmentinteractiveruntime";
 import { createDepartmentProductionCleanup } from "../../extensionHost/departmentproductioncleanup";
 import { GrokInteractiveRunner } from "../../interactive/grokRunner";
+import { captureDepartmentTestWorkers } from "./fixtures/departmentownedtestworkers";
 
 function gate() { let resolve!: () => void; const promise = new Promise<void>(yes => { resolve = yes; }); return { promise, resolve }; }
 async function harness(t: test.TestContext, leader: CliName, employee: CliName = leader, authority = false,
   logError?: (message: string, data?: unknown) => void | Promise<void>) {
+  // openNewLeader detaches the generation authority. producer.close fences the
+  // generation and does not reap that process; this hook does, on pass and failure.
+  captureDepartmentTestWorkers(t);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-cli-"));
   const routes = { director: { cli: "codex" as const, configId: "profile" }, leader: { cli: leader, configId: "profile" }, employee: { cli: employee, configId: "profile" } };
   const metadata = { version: 1 as const, rootTaskId: "root", parentTaskId: "root", leaderSubtaskId: "module", role: "leader" as const,

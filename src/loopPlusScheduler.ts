@@ -16,7 +16,7 @@ export type LoopPlusSchedulerPhase =
   | "stopped"
   | "completed";
 
-export type LoopPlusExecutionOutcome = "completed" | "failed" | "stopped";
+export type LoopPlusExecutionOutcome = "completed" | "failed" | "stopped" | "unconfirmed";
 export type LoopPlusExecutionState = "pending" | "running";
 export type LoopPlusAttemptDisposition = "open" | "finished" | "reviewed" | "reported" | "closed";
 export type LoopPlusCompletionBlocker =
@@ -83,6 +83,8 @@ export type LoopPlusSeenAttempt = {
   noRepairReason?: string;
   repairRequired?: true;
   dependsOn?: string[];
+  /** Present only when reprompt created this attempt in place of that closed attempt. */
+  replacesAttemptId?: string;
 };
 
 export type LoopPlusDependencyBlock = {
@@ -169,6 +171,7 @@ export type LoopPlusDispatchRejectionReason =
   | "invalid_spec"
   | "duplicate_attempt"
   | "active_subtask"
+  | "duplicate_subtask"
   | "parent_stopped"
   | "completed"
   | "invalid_dependencies";
@@ -384,7 +387,7 @@ type ParsedSpec = {
   dependsOn?: string[];
 };
 
-const EXECUTION_OUTCOMES: readonly LoopPlusExecutionOutcome[] = ["completed", "failed", "stopped"];
+const EXECUTION_OUTCOMES: readonly LoopPlusExecutionOutcome[] = ["completed", "failed", "stopped", "unconfirmed"];
 
 const LOOP_PLUS_FINISH_EVENT_PREFIX = "loop-plus-finish#";
 
@@ -499,10 +502,16 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         rejected.push({ ...ids, reason: "duplicate_attempt" });
         continue;
       }
+      if (candidateSubtasks.has(parsed.subtaskId)) {
+        rejected.push({ ...ids, reason: "duplicate_subtask" });
+        continue;
+      }
       const active = seenAttempts.find((item) => (
         item.subtaskId === parsed.subtaskId && !isSettledLoopPlusAttempt(item.disposition)
       ));
-      if (active || candidateSubtasks.has(parsed.subtaskId)) {
+      if (active) {
+        // 旧活动拒绝也占用本批逻辑 ID，同批后续相同 ID 才能记成 duplicate_subtask。
+        candidateSubtasks.add(parsed.subtaskId);
         rejected.push({ ...ids, reason: "active_subtask" });
         continue;
       }
@@ -1223,14 +1232,19 @@ export function createLoopPlusScheduler(options: LoopPlusSchedulerOptions = {}):
         seen.outcome = "stopped";
       }
     }
+    const replacedAttemptIdByReplacement = new Map(planned.flatMap((item) => (
+      item.replacement ? [[item.replacement.attemptId, item.attemptId] as const] : []
+    )));
     for (const spec of admitted) {
       pending.push(createExecution(spec, "pending"));
+      const replacesAttemptId = replacedAttemptIdByReplacement.get(spec.attemptId);
       seenAttempts.push({
         subtaskId: spec.subtaskId,
         attemptId: spec.attemptId,
         disposition: "open",
         ...(spec.requiresAcceptance !== undefined ? { requiresAcceptance: spec.requiresAcceptance } : {}),
         ...(spec.dependsOn !== undefined ? { dependsOn: spec.dependsOn.slice() } : {}),
+        ...(replacesAttemptId ? { replacesAttemptId } : {}),
       });
     }
     const started = options?.deferPromotion ? [] : promote();
@@ -1562,6 +1576,9 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       || acceptance !== "failed" || noRepairReason)) invalidSnapshot(`seenAttempts[${index}].repairRequired`);
     const subtaskId = readRequiredId(item.subtaskId, `seenAttempts[${index}]`);
     const dependsOn = readSnapshotDependsOn(item.dependsOn, subtaskId, `seenAttempts[${index}]`);
+    const replacesAttemptId = item.replacesAttemptId === undefined
+      ? undefined
+      : readRequiredId(item.replacesAttemptId, `seenAttempts[${index}].replacesAttemptId`);
     return {
       subtaskId,
       attemptId: readRequiredId(item.attemptId, `seenAttempts[${index}]`),
@@ -1573,6 +1590,7 @@ function readSeenAttempts(value: unknown): LoopPlusSeenAttempt[] {
       ...(noRepairReason ? { noRepairReason } : {}),
       ...(item.repairRequired === true ? { repairRequired: true } : {}),
       ...(dependsOn !== undefined ? { dependsOn } : {}),
+      ...(replacesAttemptId ? { replacesAttemptId } : {}),
     };
   });
 }
@@ -1667,6 +1685,7 @@ function validateAttemptGraph(input: {
       invalidSnapshot("seenAttempts");
     }
   }
+  validateReplacementLinks(input.seenAttempts);
   const latestAttempts = knownLatestAttempts(input.seenAttempts);
   if (input.seenAttempts.some((item) => item.repairRequired && latestAttempts.get(item.subtaskId) !== item)) {
     invalidSnapshot("repairRequired");
@@ -1960,6 +1979,25 @@ function copyReview(record: LoopPlusReviewItem): LoopPlusReviewItem {
   };
 }
 
+function validateReplacementLinks(seenAttempts: readonly LoopPlusSeenAttempt[]): void {
+  const byId = new Map<string, LoopPlusSeenAttempt>();
+  const previousBySubtask = new Map<string, LoopPlusSeenAttempt>();
+  const replaced = new Set<string>();
+  for (const [index, attempt] of seenAttempts.entries()) {
+    const sourceId = attempt.replacesAttemptId;
+    if (sourceId) {
+      const source = byId.get(sourceId);
+      if (!source || source.subtaskId !== attempt.subtaskId || source.disposition !== "closed"
+        || previousBySubtask.get(attempt.subtaskId) !== source || replaced.has(sourceId)) {
+        invalidSnapshot(`seenAttempts[${index}].replacesAttemptId`);
+      }
+      replaced.add(sourceId);
+    }
+    byId.set(attempt.attemptId, attempt);
+    previousBySubtask.set(attempt.subtaskId, attempt);
+  }
+}
+
 function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
   return {
     subtaskId: record.subtaskId,
@@ -1972,6 +2010,7 @@ function copySeen(record: LoopPlusSeenAttempt): LoopPlusSeenAttempt {
     ...(record.noRepairReason ? { noRepairReason: record.noRepairReason } : {}),
     ...(record.repairRequired ? { repairRequired: true } : {}),
     ...(record.dependsOn !== undefined ? { dependsOn: record.dependsOn.slice() } : {}),
+    ...(record.replacesAttemptId ? { replacesAttemptId: record.replacesAttemptId } : {}),
   };
 }
 
@@ -2025,6 +2064,7 @@ function recordReviewedAcceptance(
   }
   const outcomeFailed = seen.outcome === "failed" || seen.outcome === "stopped";
   seen.acceptance = acceptance === "failed" || outcomeFailed ? "failed" : "passed";
+  if (seen.outcome === "unconfirmed" && seen.acceptance === "passed") seen.outcome = "completed";
   if (verdict.noRepairReason) seen.noRepairReason = verdict.noRepairReason.trim();
   if (verdict.repairRequired) seen.repairRequired = true;
 }

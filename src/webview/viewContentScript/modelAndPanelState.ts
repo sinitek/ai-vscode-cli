@@ -1180,22 +1180,6 @@ export const VIEW_CONTENT_SCRIPT_MODEL_AND_PANEL_STATE = `      function updateA
         if (elements.scrollToBottomWrap) {
           elements.scrollToBottomWrap.setAttribute("aria-hidden", String(!shouldShow));
         }
-        if (state.debug && shouldShow !== lastScrollToBottomVisible) {
-          const debugPayload = {
-            visible: shouldShow,
-            forceHide,
-            buttonSuppressed,
-            followLatestMessages,
-            distanceToBottom,
-            scrollTop: elements.chatArea.scrollTop,
-            scrollHeight: elements.chatArea.scrollHeight,
-            clientHeight: elements.chatArea.clientHeight,
-            threshold: CHAT_BOTTOM_THRESHOLD_PX,
-          };
-          console.debug("[scroll-to-bottom]", debugPayload);
-          postWebviewDebug("scroll-to-bottom-visibility", debugPayload);
-        }
-        lastScrollToBottomVisible = shouldShow;
       }
 
 `;

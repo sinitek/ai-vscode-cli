@@ -3,7 +3,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { t } from "../i18n";
-import { logError, logEssential } from "../logger";
+import { logError } from "../logger";
 import type { CliName } from "../cli/types";
 import type {
   ChatMessage,
@@ -399,13 +399,6 @@ export async function exportRunStreamRecordsToJsonl(
     exportedAt,
   });
   await fs.promises.writeFile(targetPath, content, "utf8");
-  void logEssential("run-stream-export", {
-    path: targetPath,
-    fileName,
-    recordCount: normalizedRecords.length,
-    cli: options.cli,
-    tabId: options.tabId ?? null,
-  });
   return {
     path: targetPath,
     fileName,
@@ -494,13 +487,6 @@ export async function exportSessionHistoryMessagesToTxt(
     exportedAt,
   });
   await fs.promises.writeFile(targetPath, content, "utf8");
-  void logEssential("session-history-export", {
-    path: targetPath,
-    fileName,
-    messageCount: normalizedMessages.length,
-    cli: options.cli,
-    sessionId: options.sessionId,
-  });
   return {
     path: targetPath,
     fileName,

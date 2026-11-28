@@ -4,7 +4,7 @@
 - 类型：bugfix
 - 状态：completed
 - 当前阶段：三个交付范围均已实现并经主任务验收；最终集成单测复测完成，于 2026-11-24 归档。
-- 关联计划：`.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md`（同属恢复边界；不更改其工作）
+- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-18-bugfix-loop-plus-config-lock-resume.md`（同属恢复边界；不更改其工作）
 - 负责人：协作
 
 ## 收尾验收与最终集成复测

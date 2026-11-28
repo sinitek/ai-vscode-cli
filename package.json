@@ -2,7 +2,7 @@
   "name": "sinitek-cli-tools",
   "displayName": "携宁 CLI 助手",
   "description": "在 VS Code 中运行 Codex、Claude、OpenCode、Grok 和 DeepSeek Harness CLI 的扩展。",
-  "version": "1.10.6",
+  "version": "1.10.7",
   "publisher": "sinitek",
   "icon": "media/icon.png",
   "repository": {
@@ -25,6 +25,7 @@
     "onCommand:sinitek-cli-tools.addToCliReference",
     "onCommand:sinitek-cli-tools.openLoopGroupChat",
     "onView:sinitek-cli-tools.panelView",
+    "onWebviewPanel:sinitek-cli-tools.loopGroupChatChat",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
@@ -89,6 +90,13 @@
     "configuration": {
       "title": "CLI Bridge",
       "properties": {
+        "sinitek-cli-tools.promptRuleDelivery": {
+          "type": "string",
+          "enum": ["indexed", "inline", "full"],
+          "default": "indexed",
+          "scope": "machine",
+          "description": "提示词规则传递方式，重载窗口后生效。indexed 按角色提供安装目录索引，远程窗口使用正文。inline 直接附上本轮适用正文，适合限制文件读取的 CLI。full 使用原完整提示词。"
+        },
         "sinitek-cli-tools.defaultCli": {
           "type": "string",
           "enum": [
@@ -254,8 +262,8 @@
         },
         "sinitek-cli-tools.debug": {
           "type": "boolean",
-          "default": false,
-          "description": "启用 CLI stdin/stdout/stderr 的调试日志。"
+          "default": true,
+          "description": "记录任务诊断、性能和 CLI 原始日志（可能包含输入和输出）。关闭后仅记录错误日志。"
         },
         "sinitek-cli-tools.macTaskShell": {
           "type": "string",
@@ -1150,7 +1158,7 @@
   },
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "tsc -p ./ --noEmitOnError",
+    "build": "tsc -p ./ --noEmitOnError && node scripts/build_prompt_rule_lock.cjs",
     "verify:loop-plus": "node scripts/verify_loop_plus_fix.js --live",
     "compile": "npm run build",
     "test": "npm run test:unit",

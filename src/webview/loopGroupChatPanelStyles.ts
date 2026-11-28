@@ -1,5 +1,33 @@
 import { CLARIFICATION_DIALOG_STYLES, DIALOG_SHELL_STYLES } from "./modalComponents";
 import { ACCEPTANCE_PLAN_DIALOG_STYLES } from "./viewContentStyles/overlaysModals";
+
+/** 放在通用 Markdown 表格规则之后，避免验收表继续使用宽表横向滚动。 */
+export const ACCEPTANCE_REVIEW_TABLE_STYLES = `
+      .message.acceptance-result .acceptance-review-wrap {
+        max-width: 100%;
+        overflow: visible;
+      }
+      .message.acceptance-result .acceptance-review-table {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        table-layout: fixed;
+      }
+      .message.acceptance-result .acceptance-review-title {
+        width: 8em;
+      }
+      .message.acceptance-result .acceptance-review-table th,
+      .message.acceptance-result .acceptance-review-table td,
+      .message.acceptance-result .acceptance-review-table a,
+      .message.acceptance-result .acceptance-review-table code {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .message.acceptance-result .acceptance-review-table :not(pre) > code {
+        white-space: pre-wrap;
+      }
+`;
 export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         --radius: 8px;
         --gap: 12px;
@@ -81,6 +109,9 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
         gap: 8px;
         justify-content: flex-end;
       }
+      .action-slot {
+        display: contents;
+      }
       .button {
         border: 1px solid var(--vscode-button-border, var(--vscode-widget-border));
         border-radius: 4px;
@@ -133,7 +164,7 @@ export const LOOP_GROUP_CHAT_PANEL_STYLES = `      :root {
       .button.primary:hover {
         background: var(--vscode-button-hoverBackground);
       }
-      .button.primary[aria-describedby="departmentContinueBlocked"]:disabled {
+      #continueActionSlot .button:disabled {
         color: var(--vscode-disabledForeground, var(--vscode-descriptionForeground));
         background: var(--vscode-button-secondaryBackground);
         cursor: default;

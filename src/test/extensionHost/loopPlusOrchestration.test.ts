@@ -2,12 +2,17 @@ import { withLoopBlockerFixture, loopBlockerFixture } from "../loopBlockerFixtur
 import { buildLoopBlockerSummary } from "../../loopBlocker";
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { createLoopMainQuestionQueue } from "../../loopMainQuestionQueue";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
   createLoopPlusOrchestrationHost,
+  LOOP_PLUS_CONSUMER_FAILURE_SUMMARY,
   resolveLoopPlusEntry,
+  resolveLoopPlusPauseFinalSummary,
   type LoopPlusAttemptRequest,
   type LoopPlusAttemptResult,
   type LoopPlusMainHandle,
@@ -16,20 +21,20 @@ import {
   type LoopPlusPromptTarget,
   type LoopPlusRunResult,
 } from "../../extensionHost/loopPlusOrchestration";
-import { summarizeLoopPlusProtocolRejection } from "../../extensionHost/loopPlusDiagnostics";
+import { LoopPlusUpdateUnconfirmedError, summarizeLoopPlusProtocolRejection } from "../../extensionHost/loopPlusDiagnostics";
+import { loopPlusFrozenBatchKey } from "../../loopPlusProtocolDiagnostics";
+import { buildLoopGroupChatFinalStatusSection } from "../../loopFinalSummary";
 import type { LoopPlusSubtaskChatNotice } from "../../extensionHost/loopPlusSubtaskChat";
 import { buildLoopPlusFinishEventId, createLoopPlusScheduler, type LoopPlusSchedulerSnapshot } from "../../loopPlusScheduler";
-import { normalizeLoopTaskRecord, type LoopSubtaskDecision, type LoopTaskRecord } from "../../loopTaskStore";
+import { normalizeLoopTaskRecord, OrdinaryUpdateIdentityLockBusy, type LoopSubtaskDecision, type LoopTaskRecord } from "../../loopTaskStore";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
 import { loopSubtaskAutoCompactions, scheduleAutoCompactAfterPrompt } from "../../loopSubtaskAutoCompact";
 import { startLoopWaitWatchdog } from "../../loopWaitWatchdog";
 import { createRunStatusHarness } from "../webview/tabRunStatusHarness";
 import {
   loopClarificationScope,
-  LOOP_RECOVERY_PLAN_FIELD,
   submitOrchestratorClarification,
   rejectOrchestratorClarification,
-  waitForOrchestratorClarification,
 } from "../../orchestratorClarification";
 
 type Deferred<T> = {
@@ -829,6 +834,28 @@ test("a proposed global block receives one bounded review and can dispatch indep
   env.host.stopParent(run.taskId ?? "");
 });
 
+test("Loop+ blocked review carries an authorized local replacement into continued dispatch", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "补齐两套预览" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId ?? "";
+  await flush();
+  const replacement = "这两套本地测试预览可以用仓库现有模板重新生成，只替换这两套预览。";
+  env.host.submitUserMessage(taskId, replacement);
+
+  env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "两份预览缺少历史发布凭据。" }));
+  await flush();
+
+  const reviewPrompt = env.mains[1].request.prompt;
+  assert.ok(reviewPrompt.includes(replacement));
+  env.mains[1].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("regenerate-previews", ["previews/"])] }));
+  await flush();
+
+  assert.equal(env.attempts[0].request.subtaskId, "regenerate-previews");
+  assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview, undefined);
+  assert.equal(env.messages.includes("loop-plus-blocked"), false);
+  env.host.stopParent(taskId);
+});
+
 test("the main model confirms a stalled repair and pauses once without accepting the failed attempt", async () => {
   const pauses: Array<{ task: LoopTaskRecord; message: string }> = [];
   const env = harness({ recordPause: (task, message) => { pauses.push({ task, message }); } });
@@ -868,7 +895,7 @@ test("the main model confirms a stalled repair and pauses once without accepting
   assert.deepEqual(snapshotOf(env.tasks.get(taskId)).reviewQueue.map((event) => event.eventId), stalledReview.request.reviewEventIds);
   assert.equal(env.acceptanceFeedback.length, 1);
   assert.equal(pauses.length, 1);
-  assert.ok(pauses[0].task.finalSummary?.includes(buildLoopBlockerSummary(loopBlockerFixture(summary))));
+  assert.ok(pauses[0].task.finalSummary?.includes(buildLoopBlockerSummary(loopBlockerFixture(summary), "event_driven")));
   assert.equal(pauses[0].message, "loop-plus-blocked");
   env.host.tryRun({ displayPrompt: "show state" }, env.target, { resumeTaskId: taskId });
   await flush();
@@ -877,39 +904,61 @@ test("the main model confirms a stalled repair and pauses once without accepting
   assert.equal(env.messages.includes("loop-plus-completed"), false);
 });
 
-for (const autoSelect of [false, true]) {
-  test(`Loop+ resumes recoverable blocker after ${autoSelect ? "configured timeout" : "manual selection"}`, async () => {
-    let waiting: ReturnType<typeof waitForOrchestratorClarification> | undefined;
-    const env = harness({ clarificationTimeoutMs: () => autoSelect ? 30 : 0,
-      waitForClarification: (...args) => (waiting = waitForOrchestratorClarification(...args)) });
+for (const optionsOnFirstDecision of [true, false]) {
+  test(`Loop+ autonomously uses recovery options first seen ${optionsOnFirstDecision ? "before" : "during"} bounded review`, async () => {
+    const env = harness({ waitForClarification: () => assert.fail("reversible recovery must not open a form") });
     const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
     const taskId = run.taskId ?? "";
     await flush();
-    env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "need evidence" }));
-    await flush();
+    const requirements = env.tasks.get(taskId)?.supplementalRequirements?.slice();
     const blocker = { ...loopBlockerFixture("构建环境缺少项目工具。"), recoveryOptions: [
       { label: "使用仓库工具", action: "运行仓库声明的本地构建工具。", verification: "检查版本后重新构建。" },
       { label: "使用已有容器", action: "在项目声明的容器中构建。", verification: "容器构建成功。" },
     ] };
-    env.mains[1].resolve(decisionJson({ status: "blocked", blocker }));
-    await flush();
-    const request = env.tasks.get(taskId)?.pendingClarification;
-    assert.ok(waiting);
-    if (!autoSelect) {
-      assert.ok(request);
-      const scope = loopClarificationScope(taskId);
-      assert.equal(submitOrchestratorClarification(scope, request.interactionId, { [LOOP_RECOVERY_PLAN_FIELD]: "99" }).ok, false);
-      assert.equal(submitOrchestratorClarification(scope, request.interactionId, { [LOOP_RECOVERY_PLAN_FIELD]: "2" }).ok, true);
+    if (!optionsOnFirstDecision) {
+      env.mains[0].resolve(decisionJson({ status: "blocked", finalSummary: "原构建方式缺少工具" }));
+      await flush();
     }
-    const submission = await waiting;
-    assert.equal(Boolean(submission.timedOut), autoSelect);
+    env.mains.at(-1)!.resolve(decisionJson({ status: "blocked", blocker }));
     await flush();
-    assert.equal(env.mains.length, 3);
-    if (autoSelect) assert.match(env.mains[2].request.prompt, /主任务澄清超时/);
-    assert.match(env.mains[2].request.prompt, autoSelect ? /运行仓库声明的本地构建工具/ : /在项目声明的容器中构建/);
-    assert.match(env.mains[2].request.prompt, /仅在现有授权内执行所选方案/);
+    const followUp = env.mains.at(-1)!;
+    assert.match(followUp.request.prompt, /运行仓库声明的本地构建工具/);
+    assert.match(followUp.request.prompt, /检查版本后重新构建/);
+    assert.equal(env.tasks.get(taskId)?.clarificationCount ?? 0, 0);
+    assert.deepEqual(env.tasks.get(taskId)?.supplementalRequirements, requirements);
+    followUp.resolve(decisionJson({ status: "dispatch", subtasks: [subtask("local-build", ["build/"])] }));
+    await flush();
+    assert.equal(env.attempts[0].request.subtaskId, "local-build");
+    assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview, undefined);
     assert.equal(env.tasks.get(taskId)?.status, "running");
     assert.equal(env.tasks.get(taskId)?.pendingClarification, undefined);
+    env.host.stopParent(taskId);
+    await run.done;
+  });
+}
+
+for (const issue of ["missing constraint source", "repeated recovery options"]) {
+  test(`Loop+ corrects ${issue} and dispatches without pausing or opening a form`, async () => {
+    const env = harness({ waitForClarification: () => assert.fail("no user choice required") });
+    const run = env.host.tryRun({ displayPrompt: "生成本地预览" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId!;
+    await flush();
+    const blocker = issue === "missing constraint source"
+      ? { ...loopBlockerFixture(), constraintSource: undefined }
+      : { ...loopBlockerFixture(), recoveryOptions: [{ label: "本地重建", action: "从仓库模板生成预览。", verification: "读取并校验预览。" }] };
+    const proposed = decisionJson({ status: "blocked", blocker });
+    env.mains[0].resolve(proposed);
+    await flush();
+    assert.match(env.mains[1].request.prompt, /Bounded blocked review/);
+    env.mains[1].resolve(proposed);
+    await flush();
+    assert.match(env.mains[2].request.prompt, /validation\.blocked\.invalid_blocker/);
+    assert.equal(env.tasks.get(taskId)?.status, "running");
+    assert.equal(env.messages.filter((key) => key === "loop-plus-block-review").length, 1);
+    env.mains[2].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("preview", ["preview/"])] }));
+    await flush();
+    assert.equal(env.attempts[0].request.subtaskId, "preview");
+    assert.equal(env.tasks.get(taskId)?.loopPlusBlockReview, undefined);
     env.host.stopParent(taskId);
     await run.done;
   });
@@ -959,7 +1008,7 @@ test("diagnostic correction exhaustion is bounded and does not reuse a stale bus
   assert.match(paused.finalSummary ?? "", /已自动继续执行 3 次/);
   assert.match(paused.finalSummary ?? "", /validation\.blocked\.invalid_blocker/);
   assert.doesNotMatch(paused.finalSummary ?? "", /容器缺少构建工具/);
-  assert.match(paused.finalSummary ?? "", /按当前 blocked 形状补充/);
+  assert.match(paused.finalSummary ?? "", /blocker\.constraintSource/);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
 });
 
@@ -1046,7 +1095,7 @@ test("user input received without a live host rearms the persisted block review"
   assert.equal(env.mains.length, 0);
 });
 
-test("blocked review preserves its event and later completions for resumed FIFO review", async () => {
+test("a late completion invalidates a blocked decision and preserves the frozen FIFO review", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -1067,10 +1116,21 @@ test("blocked review preserves its event and later completions for resumed FIFO 
     eventId,
     buildLoopPlusFinishEventId("b", env.attempts[1].request.attemptId),
   ]);
-  assert.equal(env.mains.length, 3, "new queued work starts a bounded follow-up decision after the blocked review");
+  assert.equal(env.mains.length, 3);
   assert.deepEqual(env.mains[2].request.reviewEventIds, [eventId]);
   assert.equal(env.mains[2].request.userMessageCount, 0);
-  env.host.stopParent(run.taskId ?? "");
+  env.mains[2].resolve(decisionJson({ status: "blocked", finalSummary: "原路径仍被阻塞" }));
+  await flush();
+  const fresh = env.mains[3];
+  assert.deepEqual(fresh.request.reviewEventIds, [eventId]);
+  assert.match(fresh.request.prompt, /Visible review count including the current item: 2/);
+  assert.equal(env.messages.includes("loop-plus-blocked"), false);
+  fresh.resolve(decisionJson({ status: "accept", reviewEventIds: fresh.request.reviewEventIds }));
+  await flush();
+  assert.deepEqual(env.mains[4].request.reviewEventIds, [buildLoopPlusFinishEventId("b", env.attempts[1].request.attemptId)]);
+  env.mains[4].resolve(completedDecision({ reviewEventIds: env.mains[4].request.reviewEventIds }));
+  await run.done;
+  assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
 });
 
 test("blocked frozen review exposes messages arriving after its captured prefix exactly once", async () => {
@@ -1151,7 +1211,8 @@ function baseTask(id: string, snapshot?: LoopPlusSchedulerSnapshot): LoopTaskRec
 }
 
 function harness(options: {
-  isAttemptActive?: () => boolean;
+  isAttemptActive?: (request: LoopPlusAttemptRequest) => boolean;
+  readLostOutcome?: (request: LoopPlusAttemptRequest) => LoopPlusAttemptResult | undefined;
   hasActiveSubtasks?: (taskId: string) => boolean;
   maxConcurrency?: number;
   decisionSubtaskMax?: () => number;
@@ -1177,6 +1238,7 @@ function harness(options: {
   department?: LoopTaskRecord["department"];
   departmentInvalid?: boolean;
   getDepartmentEmployeeCapacity?: LoopPlusOrchestrationDeps["getDepartmentEmployeeCapacity"];
+  loadedExtensionInstallPath?: LoopPlusOrchestrationDeps["loadedExtensionInstallPath"];
   recordPause?: LoopPlusOrchestrationDeps["recordPause"];
   closeSubtaskTabs?: LoopPlusOrchestrationDeps["closeSubtaskTabs"];
   onAttemptCompleted?: () => Promise<void>;
@@ -1201,6 +1263,7 @@ function harness(options: {
     canAutoResumeMain: options.canAutoResumeMain,
     closeSubtaskTabs: options.closeSubtaskTabs,
     getDepartmentEmployeeCapacity: options.getDepartmentEmployeeCapacity,
+    loadedExtensionInstallPath: options.loadedExtensionInstallPath,
     maxConcurrency: options.maxConcurrency,
     ...(options.decisionSubtaskMax ? { decisionSubtaskMax: options.decisionSubtaskMax } : {}),
     ...(options.clarificationTimeoutMs ? { clarificationTimeoutMs: options.clarificationTimeoutMs } : {}),
@@ -1294,7 +1357,8 @@ function harness(options: {
       return {
         promise: gate.promise,
         onCompleted: options.onAttemptCompleted,
-        isActive: options.isAttemptActive,
+        isActive: options.isAttemptActive ? () => options.isAttemptActive!(request) : undefined,
+        readLostOutcome: () => options.readLostOutcome?.(request),
         abort: (abortOptions) => {
           abortedAttemptIds.push(request.attemptId);
           if (abortOptions?.closeTab === true) {
@@ -1461,7 +1525,7 @@ test("each minute admits one retry and the third interrupted retry persists the 
     },
   });
   t.mock.timers.enable({ apis: ["setInterval"] } as never);
-  const dispose = startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, [env.host.checkInterruptedMainTasks, env.host.checkWaitingReviews]);
+  const dispose = startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, [env.host.checkInterruptedMainTasks, env.host.checkWaitingMainTasks]);
   t.after(dispose);
   const run = env.host.tryRun({ displayPrompt: "retry interrupted main turn" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId!;
@@ -1500,7 +1564,7 @@ test("分钟巡检补唤醒已入队但漏通知的验收，不等运行中的�
     },
   });
   t.mock.timers.enable({ apis: ["setInterval"] } as never);
-  t.after(startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, [env.host.checkWaitingReviews]));
+  t.after(startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, [env.host.checkWaitingMainTasks]));
   const run = env.host.tryRun({ displayPrompt: "等待两项交付" }, env.target, { schedulingMode: "event_driven" });
   const taskId = run.taskId!;
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [
@@ -1534,6 +1598,293 @@ test("分钟巡检补唤醒已入队但漏通知的验收，不等运行中的�
   await run.done;
   t.mock.timers.tick(60_000);
   assert.equal(env.mainCalls(), 2);
+});
+
+test("分钟巡检将三项为零作为补充需求提交，主任务按原 ID 续派并验收", async (context) => {
+  const env = harness();
+  context.mock.timers.enable({ apis: ["setInterval"] } as never);
+  context.after(startLoopWaitWatchdog([env.host.checkWaitingTasks], (error) => { throw error; }, [
+    () => env.host.checkWaitingTasks(false), env.host.checkInterruptedMainTasks, env.host.checkWaitingMainTasks,
+  ]));
+  const run = env.host.tryRun({ displayPrompt: "完成交付报告" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("report", ["report.md"])] }));
+  await flush();
+  const original = env.attempts[0];
+  original.resolve({ outcome: "stopped", detail: "已中断，准备续跑" });
+  await flush();
+  const parent = env.tasks.get(taskId)!;
+  env.tasks.set(taskId, { ...parent, runtimeInterrupted: true, supplementalRequirements: ["保留历史报告"] });
+  context.mock.timers.tick(59_999);
+  assert.equal(env.mainCalls(), 1);
+  context.mock.timers.tick(1);
+  await flush();
+  assert.equal(env.mainCalls(), 2);
+  const saved = env.tasks.get(taskId)!;
+  const [requirement] = snapshotOf(saved).userMessageQueue;
+  assert.match(requirement, /运行中 0、修复中 0、验收中 0/u);
+  assert.match(requirement, /report/u);
+  assert.match(requirement, /reprompt/u);
+  assert.deepEqual(saved.supplementalRequirements, ["保留历史报告", requirement]);
+  assert.equal(saved.runtimeInterrupted, undefined);
+  assert.equal(env.mains[1].request.kind, "user");
+  assert.ok(env.mains[1].invocationModelPrompt.includes(requirement));
+  context.mock.timers.tick(60_000);
+  assert.equal(env.mainCalls(), 2);
+  assert.equal(env.attempts.length, 1);
+  env.mains[1].resolve(decisionJson({ status: "steer", controls: [
+    { id: "report", action: "reprompt", title: "续写交付报告", prompt: longPrompt("续写报告", ["report.md"]) },
+  ] }));
+  await flush();
+  const resumed = env.attempts[1];
+  assert.equal(resumed.request.subtaskId, "report");
+  assert.notEqual(resumed.request.attemptId, original.request.attemptId);
+  assert.equal(resumed.request.continueFromSubtaskId, "report");
+  context.mock.timers.tick(60_000);
+  assert.equal(env.mainCalls(), 2);
+  resumed.resolve({ outcome: "completed", detail: "已生成报告" });
+  await flush();
+  const review = env.mains[2];
+  assert.deepEqual(review.request.reviewEventIds, [buildLoopPlusFinishEventId("report", resumed.request.attemptId)]);
+  context.mock.timers.tick(60_000);
+  assert.equal(env.mainCalls(), 3);
+  review.resolve(completedDecision({ reviewEventIds: review.request.reviewEventIds }));
+  await run.done;
+  context.mock.timers.tick(60_000);
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.supplementalRequirements?.length, 2);
+  assert.equal(env.maxMains(), 1);
+});
+
+test("分钟补充也能唤醒没有开放子任务的主任务完成收尾", async () => {
+  const env = harness();
+  const parent = baseTask("idle-after-review", reviewedRoundsScheduler(1).snapshot());
+  env.tasks.set(parent.id, parent);
+  const run = env.host.tryRun({ displayPrompt: "收尾" }, env.target, { resumeTaskId: parent.id });
+  await flush();
+  assert.equal(env.mainCalls(), 0);
+  env.host.checkWaitingMainTasks();
+  assert.equal(env.mains[0].request.kind, "user");
+  const [message] = snapshotOf(env.tasks.get(parent.id)).userMessageQueue;
+  assert.match(message, /验收中 0/u);
+  assert.ok(env.mains[0].invocationModelPrompt.includes(message));
+  assert.doesNotMatch(message, /reprompt/u);
+  env.mains[0].resolve(completedDecision());
+  await run.done;
+  assert.equal(env.tasks.get(parent.id)?.status, "completed");
+});
+
+test("满槽中断可派新 ID 接替，接替被拒或写入失败时原 attempt 仍开放", async () => {
+  for (const failure of ["invalid", "write"] as const) {
+    let failSave = failure === "write";
+    const env = harness({ maxConcurrency: 1, beforeUpdateTask(patch) {
+      const snapshot = patch.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+      if (!snapshot?.seenAttempts.some(item => item.subtaskId === "old" && item.disposition === "closed")) return;
+      assert.ok(snapshot.seenAttempts.some(item => item.subtaskId === "new"));
+      if (failSave) { failSave = false; throw new Error("接替写入失败"); }
+    } });
+    const run = env.host.tryRun({ displayPrompt: "补齐交付" }, env.target, { schedulingMode: "event_driven" });
+    const taskId = run.taskId!;
+    env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("old", ["report.md"])] }));
+    await flush();
+    const original = env.attempts[0];
+    original.resolve({ outcome: "stopped", detail: "已中断" });
+    await flush();
+    env.host.checkWaitingMainTasks();
+    const replacement = subtask("new", ["report.md"]);
+    const controls = [{ id: "old", action: "close", reason: "接替剩余报告" }];
+    env.mains[1].resolve(decisionJson({ status: "dispatch", controls, subtasks: [failure === "invalid"
+      ? { ...replacement, dependsOn: ["unknown"] } : replacement] }));
+    await flush();
+    const preserved = snapshotOf(env.tasks.get(taskId));
+    assert.deepEqual(preserved.seenAttempts.map(item => [item.attemptId, item.disposition]), [[original.request.attemptId, "open"]]);
+    assert.deepEqual(env.closeTabAttemptIds, []);
+    if (failure === "write") { await run.done; continue; }
+    env.mains[2].resolve(decisionJson({ status: "dispatch", controls, subtasks: [replacement] }));
+    await flush();
+    assert.deepEqual(env.attempts.map(item => item.request.subtaskId), ["old", "new"]);
+    env.host.reportAttempt(taskId, { subtaskId: "old", attemptId: original.request.attemptId, outcome: "completed" });
+    env.attempts[1].resolve({ outcome: "completed", detail: "接替交付已验证" });
+    await flush();
+    const review = env.mains[3];
+    assert.deepEqual(review.request.reviewEventIds, [buildLoopPlusFinishEventId("new", env.attempts[1].request.attemptId)]);
+    review.resolve(completedDecision({ reviewEventIds: review.request.reviewEventIds }));
+    await run.done;
+    assert.equal(env.tasks.get(taskId)?.status, "completed");
+  }
+});
+
+test("冻结验收后主任务处置中断前置，原 ID 推进后继，活动同级保持原 attempt", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "补齐有依赖的交付" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["a"]), subtask("live", ["b"]),
+    subtask("review", ["c"]), { ...subtask("dependent", ["d"]), dependsOn: ["source"] }] }));
+  await flush();
+  const [source, live, independent] = env.attempts;
+  source.resolve({ outcome: "stopped", detail: "等待续跑" });
+  await flush();
+  env.host.checkWaitingMainTasks();
+  assert.equal(env.mains.length, 1);
+  independent.resolve({ outcome: "completed", detail: "独立交付" });
+  await flush();
+  const review = env.mains[1];
+  const reviewEventId = buildLoopPlusFinishEventId("review", independent.request.attemptId);
+  assert.deepEqual(review.request.reviewEventIds, [reviewEventId]);
+  assert.match(review.request.modelPrompt, /主任务须主动处置的异常/);
+  review.resolve(decisionJson({ status: "accept", reviewEventId, reviews: [{ reviewEventId, acceptance: "passed" }],
+    controls: [{ id: "source", action: "close", reason: "新任务接替" }], independentSubtaskIds: ["replacement"], subtasks: [subtask("replacement", ["a"])] }));
+  await flush();
+  const snapshot = snapshotOf(env.tasks.get(taskId));
+  assert.equal(snapshot.seenAttempts.find(item => item.subtaskId === "review")?.acceptance, "passed");
+  assert.equal(snapshot.seenAttempts.some(item => item.subtaskId === "replacement"), false);
+  assert.deepEqual(snapshot.running.map(item => item.attemptId), [source.request.attemptId, live.request.attemptId]);
+  env.mains[2].resolve(decisionJson({ status: "wait" }));
+  await flush();
+  env.mains[3].resolve(decisionJson({ status: "steer", controls: [{ id: "source", action: "reprompt", title: "续接前置", prompt: longPrompt("source", ["a"]) }] }));
+  await flush();
+  const resumed = env.attempts[3];
+  assert.equal(resumed.request.continueFromSubtaskId, "source");
+  resumed.resolve({ outcome: "completed", detail: "前置交付完成" });
+  await flush();
+  assert.equal(env.attempts[4].request.subtaskId, "dependent");
+  assert.ok(snapshotOf(env.tasks.get(taskId)).running.some(item => item.attemptId === live.request.attemptId));
+  assert.deepEqual(env.closeTabAttemptIds, [source.request.attemptId]);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("主任务收到中断提示后成员已手动续跑，迟到的接替指令不能关闭它", async () => {
+  let manual = false;
+  const env = harness({ hasActiveSubtasks: () => manual });
+  const run = env.host.tryRun({ displayPrompt: "继续交付" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["a"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "stopped", detail: "等待续跑" });
+  await flush();
+  env.host.checkWaitingMainTasks();
+  manual = true;
+  env.mains[1].resolve(decisionJson({ status: "dispatch", controls: [{ id: "source", action: "close", reason: "接替" }], subtasks: [subtask("new", ["a"])] }));
+  await flush();
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).seenAttempts.map(item => item.disposition), ["open"]);
+  assert.equal(env.attempts.length, 1);
+  assert.deepEqual(env.closeTabAttemptIds, []);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("主任务可在同级验收中派新 ID 接替中断任务，两次交付分别验收", async () => {
+  const env = harness({ maxConcurrency: 2 });
+  const run = env.host.tryRun({ displayPrompt: "分别完成两项交付" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("old", ["a"]), subtask("ready", ["b"])] }));
+  await flush();
+  const [old, ready] = env.attempts;
+  old.resolve({ outcome: "stopped", detail: "等待续跑" });
+  await flush();
+  ready.resolve({ outcome: "completed", detail: "独立交付完成" });
+  await flush();
+  const reviewEventId = buildLoopPlusFinishEventId("ready", ready.request.attemptId);
+  assert.deepEqual(env.mains[1].request.reviewEventIds, [reviewEventId]);
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId, reviews: [{ reviewEventId, acceptance: "passed" }],
+    controls: [{ id: "old", action: "close", reason: "新成员接替剩余交付" }], independentSubtaskIds: ["replacement"],
+    subtasks: [subtask("replacement", ["a"])] }));
+  await flush();
+  const replacement = env.attempts[2];
+  assert.equal(replacement.request.subtaskId, "replacement");
+  replacement.resolve({ outcome: "completed", detail: "接替交付完成" });
+  await flush();
+  const replacementEvent = buildLoopPlusFinishEventId("replacement", replacement.request.attemptId);
+  assert.deepEqual(env.mains[2].request.reviewEventIds, [replacementEvent]);
+  env.mains[2].resolve(completedDecision({ reviewEventId: replacementEvent }));
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.deepEqual(snapshotOf(env.tasks.get(taskId)).seenAttempts.map(item => [item.subtaskId, item.disposition]),
+    [["old", "closed"], ["ready", "reviewed"], ["replacement", "reviewed"]]);
+});
+
+test("验收等待的前置返工中断后，分钟巡检唤醒处置并保留后继验收", async () => {
+  const env = harness();
+  const run = env.host.tryRun({ displayPrompt: "先完成前置，再验证后继" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["a"]), subtask("live", ["b"]),
+    { ...subtask("dependent", ["c"]), dependsOn: ["source"] }] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "初版" });
+  await flush();
+  const reviewEventId = env.mains[1].request.reviewEventId!;
+  env.mains[1].resolve(decisionJson({ status: "accept", reviewEventId,
+    reviews: [{ reviewEventId, acceptance: "failed", reason: "遗漏边界", subtaskIds: ["source"] }], subtasks: [subtask("source", ["a"])] }));
+  await flush();
+  const dependent = env.attempts.find(item => item.request.subtaskId === "dependent")!;
+  const repair = env.attempts.filter(item => item.request.subtaskId === "source")[1];
+  const requirements = env.tasks.get(taskId)?.supplementalRequirements;
+  dependent.resolve({ outcome: "completed", detail: "后继已交付" });
+  await flush();
+  env.host.checkWaitingMainTasks();
+  assert.equal(env.mains.length, 2);
+  repair.resolve({ outcome: "stopped", detail: "返工中断" });
+  await flush();
+  env.host.checkWaitingMainTasks();
+  await flush();
+  const recovery = env.mains[2];
+  assert.equal(recovery.request.kind, "continue");
+  assert.deepEqual(recovery.request.reviewEventIds, []);
+  assert.ok(recovery.request.modelPrompt.includes(repair.request.attemptId));
+  assert.deepEqual(env.tasks.get(taskId)?.supplementalRequirements, requirements);
+  recovery.resolve(decisionJson({ status: "steer", controls: [{ id: "source", action: "reprompt", title: "继续修复前置", prompt: longPrompt("repair", ["a"]) }] }));
+  await flush();
+  const resumed = env.attempts.at(-1)!;
+  assert.notEqual(resumed.request.attemptId, repair.request.attemptId);
+  resumed.resolve({ outcome: "completed", detail: "返工已验证" });
+  await flush();
+  assert.deepEqual(env.mains[3].request.reviewEventIds, [buildLoopPlusFinishEventId("source", resumed.request.attemptId),
+    buildLoopPlusFinishEventId("dependent", dependent.request.attemptId)]);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("分钟补充核对主任务归属、停止状态和活动子任务，等待失去进展后进入有界纠正", async () => {
+  let manualRun = false;
+  const env = harness({ hasActiveSubtasks: () => manualRun });
+  const run = env.host.tryRun({ displayPrompt: "检查交付" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("first", ["a"]), subtask("second", ["b"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "stopped", detail: "已中断" });
+  await flush();
+  env.host.checkWaitingMainTasks();
+  assert.equal(env.mainCalls(), 1);
+  env.attempts[1].resolve({ outcome: "stopped", detail: "已中断" });
+  await flush();
+  const parent = env.tasks.get(taskId)!;
+  manualRun = true;
+  env.host.checkWaitingMainTasks();
+  manualRun = false;
+  env.reloadHost().checkWaitingMainTasks();
+  const changed = createLoopPlusScheduler({ snapshot: parent.loopPlus });
+  changed.enqueueUserMessage("另一宿主已写入补充");
+  const protections: Partial<LoopTaskRecord>[] = [
+    { status: "stopped", runtimeInterrupted: true }, { status: "needs-review" }, { status: "error" }, { status: "completed" },
+    { userStopSource: "group-chat" }, { userStopSource: "ai-panel" }, { mainAiFailureLimitReached: true },
+    { pendingClarification: { interactionId: "user" } as never }, { loopPlusBlockReview: { state: "pending" } },
+    { taskStoreFile: `${parent.taskStoreFile}.other` }, { departmentInvalid: true }, { loopPlus: changed.snapshot() },
+  ];
+  for (const protection of protections) {
+    const protectedParent = { ...parent, ...protection };
+    env.tasks.set(taskId, protectedParent);
+    env.host.checkWaitingMainTasks();
+    assert.equal(env.tasks.get(taskId), protectedParent);
+    assert.equal(env.mainCalls(), 1);
+  }
+  env.tasks.set(taskId, parent);
+  env.host.checkWaitingMainTasks();
+  await exhaustProtocolBudget(env, run, 1, decisionJson({ status: "wait" }));
+  env.host.checkWaitingMainTasks();
+  assert.equal(env.tasks.get(taskId)?.supplementalRequirements?.length, (parent.supplementalRequirements?.length ?? 0) + 1);
+  assert.equal(env.attempts.length, 2);
+  assert.equal(env.mainCalls(), 5);
 });
 
 test("a rebuilt host retains the count without adopting a queued recovery from another host", async () => {
@@ -1722,6 +2073,50 @@ test("main watchdog resumes the original frozen review batch without selecting n
   env.mains[2].resolve(completedDecision());
   await run.done;
   assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
+});
+
+test("a changed acceptance plan keeps the original review and send gate across automatic recovery", async (context) => {
+  for (const timing of ["waiting", "before-send", "after-send"]) {
+    await context.test(timing, async () => {
+      const gate = deferred<string | null>();
+      let cancelled = false;
+      const env = harness({
+        canAutoResumeMain: () => true,
+        adaptMain: (request, callIndex) => {
+          if (callIndex === 2) return interruptedMainCall();
+          if (callIndex !== 3 || timing === "waiting") return undefined;
+          if (timing === "after-send") assert.equal(request.canSendAutoResumedMain?.(), true);
+          return { promise: gate.promise, wasCancelled: () => cancelled, abort: () => { cancelled = true; gate.resolve(null); } };
+        },
+      });
+      const run = env.host.tryRun({ displayPrompt: "验收交付" }, env.target, { schedulingMode: "event_driven" });
+      await flush();
+      env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+      await flush();
+      const attempt = env.attempts[0];
+      attempt.resolve({ outcome: "completed", detail: "alpha done" });
+      await flush();
+      if (timing !== "waiting") {
+        env.host.checkInterruptedMainTasks();
+        await flush();
+      }
+      assert.equal(env.host.applyAcceptancePlan(run.taskId!, {
+        id: "perf", name: "性能", checks: ["performance"], otherText: "", systemDefault: false,
+      }).ok, true);
+      if (timing === "waiting") env.host.checkInterruptedMainTasks();
+      await flush();
+      assert.equal(cancelled, timing !== "waiting");
+      const review = env.mains[1].request;
+      assert.deepEqual(review.reviewEventIds, [buildLoopPlusFinishEventId("alpha", attempt.request.attemptId)]);
+      assert.equal(review.interruptedNativeSessionId, "original-thread");
+      assert.equal(typeof review.canSendAutoResumedMain, "function");
+      assert.match(review.modelPrompt, /Performance review:/);
+      assert.equal(env.tasks.get(run.taskId!)?.status, "running");
+      assert.deepEqual(env.abortedAttemptIds, []);
+      env.host.stopParent(run.taskId!);
+      await run.done;
+    });
+  }
 });
 
 test("a stopped-looking ordinary response does not qualify as an unexpected main interruption", async () => {
@@ -1964,6 +2359,168 @@ test("missing department capacity provider renders unknown for a validated leade
   assert.equal(env.mains.length, 1);
   assert.match(env.mains[0].request.prompt, /employee balance unknown/);
   env.host.stopParent(run.taskId ?? "");
+});
+
+function helperArgvFromPrompt(prompt: string, label: string): string[] {
+  const line = prompt.split("\n").find((item) => item.startsWith(label));
+  assert.ok(line, label);
+  const argv = JSON.parse(line.slice(label.length)) as unknown;
+  assert.ok(Array.isArray(argv) && argv.length === 5 && argv.every((item) => typeof item === "string"));
+  return argv as string[];
+}
+
+function directoryIfNamePreserved(parent: string, name: string): string | null {
+  const target = path.join(parent, name);
+  try {
+    fs.mkdirSync(target);
+  } catch {
+    return null;
+  }
+  try {
+    return fs.readdirSync(parent).includes(name) ? target : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeInstallMarker(installDir: string, marker: string): string {
+  const script = path.join(installDir, "dist", "loopPlusDecisionHelper.js");
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.writeFileSync(script, marker);
+  return script;
+}
+
+function distinctDirectories(left: string, right: string): boolean {
+  try {
+    return fs.realpathSync(left) !== fs.realpathSync(right);
+  } catch {
+    return false;
+  }
+}
+
+test("host prompts pass the loaded extension helper as one argv to main, leader, refresh, and protocol correction", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lp-helper-host-"));
+  const portable = directoryIfNamePreserved(root, "Ext Install");
+  const nextInstall = directoryIfNamePreserved(root, "Next Ext Install");
+  assert.ok(portable, "portable install directory");
+  assert.ok(nextInstall, "portable refresh install directory");
+  const plainTwin = directoryIfNamePreserved(root, "Twin Install");
+  const trailingTwin = plainTwin ? directoryIfNamePreserved(root, "Twin Install ") : null;
+  const trailing = plainTwin && trailingTwin && distinctDirectories(plainTwin, trailingTwin) ? trailingTwin : null;
+  const plainScript = plainTwin ? writeInstallMarker(plainTwin, "plain-marker\n") : null;
+  const selectedInstall = trailing ?? portable;
+  const script = writeInstallMarker(selectedInstall, trailing ? "trailing-marker\n" : "portable-marker\n");
+  const nextScript = writeInstallMarker(nextInstall, "next-marker\n");
+  const sibling = path.join(root, "sinitek.sinitek-cli-tools-9.9.9", "dist", "loopPlusDecisionHelper.js");
+  const workspaceScript = path.join(root, "workspace", "dist", "loopPlusDecisionHelper.js");
+  const work = path.join(root, "other work");
+  for (const file of [sibling, workspaceScript]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "not-the-loaded-extension");
+  }
+  fs.mkdirSync(work);
+  const previous = process.cwd();
+  let currentInstall = selectedInstall;
+  const department = {
+    version: 1 as const,
+    rootTaskId: "department-root",
+    parentTaskId: null,
+    leaderSubtaskId: null,
+    role: "leader" as const,
+    moduleTitle: "module",
+    routes: { director: {}, leader: {}, employee: {} },
+    limits: { maxLeaders: 2, maxEmployees: 3 },
+  };
+  try {
+    process.chdir(selectedInstall);
+    const relative = harness({ loadedExtensionInstallPath: () => "." });
+    const relativeRun = relative.host.tryRun({ displayPrompt: "relative install" }, relative.target, { schedulingMode: "event_driven" });
+    await flush();
+    assert.match(relative.mains[0].request.prompt, /did not supply dist\/loopPlusDecisionHelper\.js/);
+    assert.doesNotMatch(relative.mains[0].request.prompt, /template --status argv:/);
+    assert.equal(relative.mains[0].request.prompt.includes(script), false);
+    relative.host.stopParent(relativeRun.taskId ?? "");
+    await relativeRun.done;
+    process.chdir(work);
+    const decoy = `use ${workspaceScript} or ${sibling}`;
+    for (const rawInstall of ["", ` ${selectedInstall}`, `\t${selectedInstall}`, `${selectedInstall}\0`]) {
+      const rejected = harness({ loadedExtensionInstallPath: () => rawInstall });
+      const rejectedRun = rejected.host.tryRun({ displayPrompt: decoy }, rejected.target, { schedulingMode: "event_driven" });
+      await flush();
+      assert.match(rejected.mains[0].request.prompt, /did not supply dist\/loopPlusDecisionHelper\.js/);
+      assert.doesNotMatch(rejected.mains[0].request.prompt, /template --status argv:/);
+      assert.equal(rejected.mains[0].request.prompt.includes(script), false);
+      if (plainScript) assert.equal(rejected.mains[0].request.prompt.includes(plainScript), false);
+      rejected.host.stopParent(rejectedRun.taskId ?? "");
+      await rejectedRun.done;
+    }
+    const ordinary = harness({ loadedExtensionInstallPath: () => currentInstall });
+    const run = ordinary.host.tryRun({ displayPrompt: decoy }, ordinary.target, { schedulingMode: "event_driven" });
+    await flush();
+    const first = helperArgvFromPrompt(ordinary.mains[0].request.prompt, "template --status argv: ");
+    assert.deepEqual(first, ["node", script, "template", "--status", "STATUS"]);
+    assert.equal(fs.readFileSync(first[1], "utf8"), fs.readFileSync(script, "utf8"));
+    assert.equal(fs.realpathSync(first[1]), fs.realpathSync(script));
+    if (trailing && plainScript) {
+      assert.equal(first[1], script);
+      assert.notEqual(first[1], plainScript);
+      assert.equal(fs.readFileSync(first[1], "utf8"), "trailing-marker\n");
+      assert.equal(fs.readFileSync(plainScript, "utf8"), "plain-marker\n");
+    }
+    assert.doesNotMatch(ordinary.mains[0].request.prompt, /<extension install directory>/);
+    const helperSection = ordinary.mains[0].request.prompt.slice(
+      ordinary.mains[0].request.prompt.indexOf("Decision helper:"),
+      ordinary.mains[0].request.prompt.indexOf("Valid protocol examples follow."),
+    );
+    assert.equal(helperSection.includes(workspaceScript), false);
+    assert.equal(helperSection.includes(sibling), false);
+    if (plainScript) assert.equal(helperSection.includes(plainScript), false);
+    ordinary.mains[0].resolve("{");
+    await flush();
+    assert.match(ordinary.mains[1].request.prompt, /Loop\+ 继续执行/);
+    assert.deepEqual(helperArgvFromPrompt(ordinary.mains[1].request.prompt, "template --status argv: "), first);
+    const correctionLine = ordinary.mains[1].request.prompt.split("\n").find((item) => item.startsWith("Protocol correction uses this same helper argv: "));
+    assert.ok(correctionLine);
+    assert.deepEqual(JSON.parse(correctionLine.slice("Protocol correction uses this same helper argv: ".length)), first);
+    ordinary.host.stopParent(run.taskId ?? "");
+    await run.done;
+
+    const leader = harness({
+      loadedExtensionInstallPath: () => currentInstall,
+      department,
+      getDepartmentEmployeeCapacity: () => null,
+    });
+    const leaderRun = leader.host.tryRun({ displayPrompt: decoy }, leader.target, { schedulingMode: "event_driven" });
+    await flush();
+    assert.deepEqual(helperArgvFromPrompt(leader.mains[0].request.prompt, "template --status argv: "), first);
+    assert.match(leader.mains[0].request.prompt, /employee balance unknown/);
+    currentInstall = nextInstall;
+    const task = leader.tasks.get(leaderRun.taskId ?? "");
+    assert.ok(task);
+    task.rootPrompt = decoy;
+    assert.equal(leader.host.submitUserMessage(leaderRun.taskId ?? "", "refresh after the install path changes"), true);
+    leader.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("feature", ["src/feature.ts"])] }));
+    await flush();
+    const userRequest = leader.mains.find((call) => call.request.kind === "user");
+    assert.ok(userRequest);
+    const refreshed = helperArgvFromPrompt(userRequest.request.prompt, "build --status argv: ");
+    assert.deepEqual(refreshed, ["node", nextScript, "build", "--status", "STATUS"]);
+    assert.equal(fs.readFileSync(refreshed[1], "utf8"), "next-marker\n");
+    assert.equal(fs.realpathSync(refreshed[1]), fs.realpathSync(nextScript));
+    const refreshedSection = userRequest.request.prompt.slice(
+      userRequest.request.prompt.indexOf("Decision helper:"),
+      userRequest.request.prompt.indexOf("Valid protocol examples follow."),
+    );
+    assert.equal(refreshedSection.includes(workspaceScript), false);
+    assert.equal(refreshedSection.includes(sibling), false);
+    if (plainScript) assert.equal(refreshedSection.includes(plainScript), false);
+    assert.doesNotMatch(userRequest.request.prompt, /<extension install directory>/);
+    leader.host.stopParent(leaderRun.taskId ?? "");
+    await leaderRun.done;
+  } finally {
+    process.chdir(previous);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("resolveLoopPlusEntry keeps the saved scheduling mode ahead of the current dropdown", () => {
@@ -2240,8 +2797,8 @@ test("accept feedback requires evidence but commits long and unordered selected 
     assert.equal(feedback.taskId, run.taskId);
     assert.equal(feedback.heading, "验收结果");
     assert.match(feedback.body, passed
-      ? /\| 默认验收·测试验证 \| ✅ 报告中的回归用例全部通过 \|/
-      : /\| 默认验收·测试验证 \| ❌ 报告中的回归断言失败 \|/);
+      ? /\| 验证与运行 \| ✅ 测试验证：报告中的回归用例全部通过/u
+      : /\| 验证与运行 \| ❌ 测试验证未通过：报告中的回归断言失败/u);
     assert.match(feedback.body, passed
       ? /\n\n✅ 回归通过且实现符合需求\n\n/
       : /\n\n❌ 回归断言失败，尚未满足需求（无需修复：此用例仅验证失败反馈记录）\n\n/);
@@ -2252,7 +2809,9 @@ test("accept feedback requires evidence but commits long and unordered selected 
     assert.ok(feedback.body.includes(`| 性能审查 | ✅ ${performanceReason} |`));
     assert.doesNotMatch(feedback.body, /不属于验收方案/u);
     assert.match(feedback.body, /\| 审查内容 \| 审查结果 \|/);
-    assert.equal((feedback.body.match(/默认验收·/gu) ?? []).length, 6);
+    const [defaultFeedback, additionalFeedback] = feedback.body.split("**附加审查**");
+    assert.equal((defaultFeedback.match(/^\| [^\n]+ \| [✅❌]/gmu) ?? []).length, 3);
+    assert.equal((additionalFeedback.match(/^\| [^\n]+ \| [✅❌]/gmu) ?? []).length, 2);
     const metadata = feedback.body.match(/<!-- loop-plus-acceptance:([^\n]*?) -->/u);
     assert.ok(metadata);
     assert.deepEqual(JSON.parse(decodeURIComponent(metadata[1])), [eventId]);
@@ -3567,12 +4126,14 @@ test("restored interrupted reservations survive reconciliation and allow indepen
     subtasks: [],
   }));
   await flush();
-  assert.equal(env.mains.length, 1);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.mains[1].request.kind, "continue");
   assert.equal(snapshotOf(env.tasks.get(task.id)).seenAttempts.find((item) => item.subtaskId === "alpha")?.disposition, "open");
   restored.notifySubtaskContinuation(task.id, "alpha", "completed", "continued after restore");
+  env.mains[1].resolve(decisionJson({ status: "wait" }));
   await flush();
-  assert.equal(env.mains.length, 2);
-  assert.equal(env.mains[1].request.reviewEventId, buildLoopPlusFinishEventId("alpha", "alpha-1"));
+  assert.equal(env.mains.length, 3);
+  assert.equal(env.mains[2].request.reviewEventId, buildLoopPlusFinishEventId("alpha", "alpha-1"));
 });
 
 for (const requiresAcceptance of [true, false]) {
@@ -3757,7 +4318,7 @@ test("does not let a subtask continuation revive a finished attempt", async () =
   assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).running.length, 0);
 });
 
-async function isSettled(promise: Promise<void>): Promise<boolean> {
+async function isSettled(promise: Promise<unknown>): Promise<boolean> {
   let settled = false;
   void promise.then(() => {
     settled = true;
@@ -4018,6 +4579,208 @@ test("keeps the running task meta when a same-id dispatch is rejected", async ()
   assert.equal(correction.request.kind, "continue");
   assert.match(correction.request.prompt, /state\.dispatch\.rejected/);
   assert.match(correction.request.prompt, /不得重复 accept/);
+  assert.match(correction.request.prompt, /受控来源：accept/);
+  assert.match(correction.request.prompt, /active_subtask=1/);
+  assert.match(correction.request.prompt, /duplicate_subtask=0/);
+  const protocolRejections = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  assert.equal(protocolRejections.length, 1);
+  const protocolPayload = protocolRejections[0]?.payload as Record<string, unknown>;
+  const {
+    phase, batchKey, batchEvidence, invocationKey, requestPhase, responseShape, charCount, elapsedMs, attempt,
+    ...protocolContract
+  } = protocolPayload;
+  assert.deepEqual(protocolContract, {
+    rejectionKind: "state",
+    reasonCode: "state.dispatch.rejected",
+    fieldPath: "subtasks",
+    protocolFailureCount: 1,
+    recoveryStage: "continuation_requested",
+    dispatchWindow: "open",
+    decisionStatus: "accept",
+    collisionCounts: { active_subtask: 1, duplicate_subtask: 0 },
+  });
+  assert.equal(phase, "protocol_recovery");
+  assert.equal(batchEvidence, "frozen_id_sequence");
+  assert.match(String(invocationKey), /^[a-f0-9]{12}$/);
+  assert.equal(requestPhase, "review");
+  assert.equal(responseShape, "json_object");
+  assert.equal(typeof charCount, "number");
+  assert.equal((charCount as number) > 0, true);
+  assert.equal(typeof elapsedMs, "number");
+  assert.equal((elapsedMs as number) >= 0, true);
+  assert.equal(typeof attempt, "number");
+  assert.equal((attempt as number) > 0, true);
+  assert.equal(typeof batchKey, "string");
+  assert.match(batchKey as string, /^[a-f0-9]{12}$/);
+  const protocolText = JSON.stringify(protocolRejections[0]?.payload);
+  assert.equal(protocolText.includes("beta"), false);
+  assert.equal(protocolText.includes(taskId), false);
+  assert.equal(protocolText.includes("src/evil.ts"), false);
+});
+
+test("normal dispatch stays silent and a partial collision only starts the unaccepted correction", async () => {
+  const env = harness({ maxConcurrency: 8 });
+  const run = env.host.tryRun({ displayPrompt: "ship independent slices" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  const taskId = run.taskId ?? "";
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 0);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-rejection").length, 0);
+  assert.equal(env.attempts.map((item) => item.request.subtaskId).join(","), "alpha");
+
+  env.host.submitUserMessage(taskId, "补充一项不冲突的后续工作");
+  await flush();
+  const followUp = env.mains.at(-1)!;
+  assert.notEqual(followUp, env.mains[0]);
+  followUp.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [
+      subtask("beta", ["src/beta.ts"]),
+      subtask("alpha", ["src/alpha-replay.ts"]),
+      subtask("gamma", ["src/gamma.ts"]),
+    ],
+  }));
+  await flush();
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta", "gamma"]);
+  const dispatchRejections = env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+  assert.deepEqual(dispatchRejections.map((item) => item.payload), [{
+    rejectedCount: 1,
+    reasonCounts: { active_subtask: 1 },
+  }]);
+  const protocolRejections = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  assert.equal(protocolRejections.length, 1);
+  const protocolPayload = protocolRejections[0]?.payload as {
+    decisionStatus?: string;
+    collisionCounts?: { active_subtask: number; duplicate_subtask: number };
+    reasonCode?: string;
+  };
+  assert.equal(protocolPayload.reasonCode, "state.dispatch.rejected");
+  assert.equal(protocolPayload.decisionStatus, "dispatch");
+  assert.deepEqual(protocolPayload.collisionCounts, { active_subtask: 1, duplicate_subtask: 0 });
+  const rejectionText = JSON.stringify(dispatchRejections[0]?.payload) + JSON.stringify(protocolPayload);
+  assert.equal(rejectionText.includes(taskId), false);
+  assert.equal(rejectionText.includes("alpha"), false);
+  assert.equal(rejectionText.includes("beta"), false);
+  assert.equal(rejectionText.includes("src/"), false);
+  const correction = env.mains.at(-1)!;
+  assert.notEqual(correction, followUp);
+  assert.match(correction.request.prompt, /受控来源：dispatch/);
+  assert.match(correction.request.prompt, /active_subtask=1，duplicate_subtask=0/);
+  const beforeAttempts = env.attempts.map((item) => item.request.attemptId);
+  correction.resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("epsilon", ["src/epsilon.ts"])],
+  }));
+  await flush();
+  assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta", "gamma", "epsilon"]);
+  assert.deepEqual(env.attempts.slice(0, 3).map((item) => item.request.attemptId), beforeAttempts);
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 1);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("counts one active collision and one same-batch duplicate without replaying the running attempt", async () => {
+  const decisionModule = require("../../loopPlusDecision") as typeof import("../../loopPlusDecision");
+  const originalParse = decisionModule.parseLoopPlusDecisionForFrozenInput;
+  const marker = "BATCH_ACTIVE_DUPLICATE";
+  decisionModule.parseLoopPlusDecisionForFrozenInput = (content, input) => {
+    const parsed = originalParse(content, input);
+    const decision = parsed.decision;
+    if (!content?.includes(marker) || decision?.status !== "dispatch" || !decision.subtasks) return parsed;
+    const subtasks = decision.subtasks;
+    const active = subtasks.find((item) => item.id === "alpha");
+    const alreadyDuplicated = subtasks.some((item, index) => subtasks.findIndex((other) => other.id === item.id) !== index);
+    if (!active || alreadyDuplicated) return parsed;
+    return {
+      ...parsed,
+      decision: {
+        ...decision,
+        subtasks: [active, { ...active }, ...subtasks.filter((item) => item.id !== "alpha")],
+      },
+    };
+  };
+  const env = harness({ maxConcurrency: 8 });
+  try {
+    const run = env.host.tryRun({ displayPrompt: "ship independent slices" }, env.target, { schedulingMode: "event_driven" });
+    await flush();
+    env.mains[0].resolve(decisionJson({
+      status: "dispatch",
+      subtasks: [subtask("alpha", ["src/alpha.ts"])],
+    }));
+    await flush();
+    const taskId = run.taskId ?? "";
+    const originalAttemptId = env.attempts[0]?.request.attemptId;
+    assert.equal(originalAttemptId, "lp1-alpha");
+    assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 0);
+
+    env.host.submitUserMessage(taskId, "补充一项不冲突的后续工作");
+    await flush();
+    const followUp = env.mains.at(-1)!;
+    assert.notEqual(followUp, env.mains[0]);
+    const active = subtask("alpha", ["src/alpha-replay.ts"]);
+    followUp.resolve(decisionJson({
+      status: "dispatch",
+      subtasks: [
+        { ...active, prompt: `${active.prompt} ${marker}` },
+        subtask("beta", ["src/beta.ts"]),
+      ],
+    }));
+    await flush();
+    const beta = env.attempts.find((item) => item.request.subtaskId === "beta");
+    assert.ok(beta);
+    assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta"]);
+    assert.equal(env.attempts.filter((item) => item.request.subtaskId === "alpha").length, 1);
+    assert.equal(env.attempts[0]?.request.attemptId, originalAttemptId);
+    const seenAttemptIds = snapshotOf(env.tasks.get(taskId)).seenAttempts.map((item) => item.attemptId);
+    assert.deepEqual(seenAttemptIds.filter((item) => item.includes("alpha")), [originalAttemptId]);
+    assert.equal(seenAttemptIds.includes(beta.request.attemptId), true);
+    assert.equal(seenAttemptIds.some((item) => item.includes("alpha-replay") || item.endsWith("-alpha") && item !== originalAttemptId), false);
+
+    const dispatchRejections = env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected");
+    assert.deepEqual(dispatchRejections.map((item) => item.payload), [{
+      rejectedCount: 2,
+      reasonCounts: { active_subtask: 1, duplicate_subtask: 1 },
+    }]);
+    const protocolRejections = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+    assert.equal(protocolRejections.length, 1);
+    const protocolPayload = protocolRejections[0]?.payload as {
+      decisionStatus?: string;
+      collisionCounts?: { active_subtask: number; duplicate_subtask: number };
+      reasonCode?: string;
+    };
+    assert.equal(protocolPayload.reasonCode, "state.dispatch.rejected");
+    assert.equal(protocolPayload.decisionStatus, "dispatch");
+    assert.deepEqual(protocolPayload.collisionCounts, { active_subtask: 1, duplicate_subtask: 1 });
+    const rejectionText = JSON.stringify(dispatchRejections[0]?.payload) + JSON.stringify(protocolPayload);
+    assert.equal(rejectionText.includes(taskId), false);
+    assert.equal(rejectionText.includes("alpha"), false);
+    assert.equal(rejectionText.includes("beta"), false);
+    assert.equal(rejectionText.includes(originalAttemptId ?? ""), false);
+    assert.equal(rejectionText.includes(beta.request.attemptId), false);
+    assert.equal(rejectionText.includes(marker), false);
+    assert.equal(rejectionText.includes("src/"), false);
+    const correction = env.mains.at(-1)!;
+    assert.notEqual(correction, followUp);
+    assert.match(correction.request.prompt, /受控来源：dispatch/);
+    assert.match(correction.request.prompt, /active_subtask=1，duplicate_subtask=1/);
+    const beforeAttempts = env.attempts.map((item) => item.request.attemptId);
+    correction.resolve(decisionJson({
+      status: "dispatch",
+      subtasks: [subtask("epsilon", ["src/epsilon.ts"])],
+    }));
+    await flush();
+    assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta", "epsilon"]);
+    assert.deepEqual(env.attempts.slice(0, 2).map((item) => item.request.attemptId), beforeAttempts);
+    assert.equal(env.logs.filter((item) => item.event === "loop-plus-dispatch-rejected").length, 1);
+    env.host.stopParent(taskId);
+    await run.done;
+  } finally {
+    decisionModule.parseLoopPlusDecisionForFrozenInput = originalParse;
+  }
 });
 
 async function openDispatchFirstReview(env: ReturnType<typeof harness>, subtasks: LoopSubtaskDecision[]) {
@@ -4946,7 +5709,7 @@ test("parks a pending successor when persisting a finish fails", async () => {
   assert.equal(env.messages.filter((item) => item === "loop-plus-completed").length, 0);
 });
 
-test("does not let a delayed reservation cross a needs-review pause", async () => {
+test("a proposed block waits for a delayed runnable attempt and preserves the frozen review", async () => {
   const gates: Array<() => void> = [];
   const env = harness({
     maxConcurrency: 2,
@@ -4979,42 +5742,27 @@ test("does not let a delayed reservation cross a needs-review pause", async () =
   await flush();
   const taskId = run.taskId ?? "";
   const stored = () => env.tasks.get(taskId);
-  assert.equal(await isSettled(run.done), true);
-  assert.equal(stored()?.status, "needs-review");
-  assert.equal(env.attempts.length, 1);
-  assert.deepEqual(snapshotOf(stored()).pending.map((item) => item.attemptId), [parkedId]);
-  assert.deepEqual(snapshotOf(stored()).running, []);
-  gates.shift()?.();
+  assert.equal(await isSettled(run.done), false);
+  assert.equal(stored()?.status, "running");
+  assert.equal(stored()?.loopPlusBlockReview, undefined);
+  assert.deepEqual(snapshotOf(stored()).running.map((item) => item.attemptId), [parkedId]);
+  assert.equal(snapshotOf(stored()).currentReview?.eventId, review.request.reviewEventId);
+  env.host.checkWaitingMainTasks();
   await flush();
-  assert.equal(env.attempts.length, 1);
-  assert.equal(stored()?.status, "needs-review");
-  assert.deepEqual(snapshotOf(stored()).pending.map((item) => item.attemptId), [parkedId]);
-  assert.equal(stored()?.mainAiFailureCount ?? 0, 0);
-  const continued = env.host.tryRun({ displayPrompt: "continue" }, env.target, {
-    resumeTaskId: taskId,
-    resumeRequested: true,
-  });
-  await flush();
-  assert.equal(env.attempts.length, 1);
-  assert.equal(gates.length, 1);
+  assert.equal(env.mains.length, 3);
   gates.shift()?.();
   await flush();
   assert.deepEqual(env.attempts.map((item) => item.request.subtaskId), ["alpha", "beta"]);
   assert.equal(env.attempts[1]?.request.attemptId, parkedId);
-  assert.equal(stored()?.status, "running");
-  const resumedReview = env.mains.filter((item) => item.request.kind === "review");
-  assert.equal(resumedReview.length, 3);
-  assert.equal(resumedReview[2]?.request.reviewEventId, review.request.reviewEventId);
-  assert.equal(await isSettled(continued.done), false);
-  resumedReview[2]?.resolve(decisionJson({
-    status: "accept",
-    reviewEventId: resumedReview[2]?.request.reviewEventId,
-    subtasks: [],
-  }));
+  env.attempts[1].resolve({ outcome: "completed", detail: "beta done" });
   await flush();
-  assert.equal(env.mains.filter((item) => item.request.reviewEventId === review.request.reviewEventId).length, 3);
-  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "beta").length, 1);
-  assert.equal(stored()?.mainAiFailureCount ?? 0, 0);
+  assert.deepEqual(env.mains[3].request.reviewEventIds, review.request.reviewEventIds);
+  env.mains[3].resolve(decisionJson({ status: "accept", reviewEventId: review.request.reviewEventId, subtasks: [] }));
+  await flush();
+  assert.deepEqual(env.mains[4].request.reviewEventIds, [attemptEvent(env.attempts[1])]);
+  env.mains[4].resolve(completedDecision({ reviewEventId: attemptEvent(env.attempts[1]) }));
+  await run.done;
+  assert.equal(stored()?.status, "completed");
 });
 
 test("does not start a paused reservation when continue races its launch delay", async () => {
@@ -5694,7 +6442,7 @@ test("routes wait, dispatch, and blocked decisions through separate strategies",
   reviews()[5].resolve(decisionJson({ status: "blocked", finalSummary: "need a person" }));
   await resumed.done;
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
-  assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture("need a person")));
+  assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture("need a person"), "event_driven"));
   assert.equal(env.tasks.get(taskId)?.estimatedRemainingRounds, 3);
   assert.equal(env.messages.includes("loop-plus-blocked"), true);
   assert.equal(env.messages.includes("loop-plus-completed"), false);
@@ -5816,7 +6564,7 @@ test("main failure, protocol pause and explicit resume retain the unconfirmed ba
   first.reject(new Error("temporary main failure"));
   await flush();
   assert.equal(env.tasks.get(taskId)?.mainAiFailureCount, 1);
-  for (let retry = 2; retry <= 3; retry += 1) {
+  for (let retry = 2; retry <= 5; retry += 1) {
     assert.deepEqual(env.mains[retry].request.reviewEventIds, first.request.reviewEventIds);
     assert.equal(env.mains[retry].request.userMessageCount, 0);
     env.mains[retry].resolve(retry % 2 ? '{"status":' : decisionJson({ status: "unknown" }));
@@ -5824,17 +6572,18 @@ test("main failure, protocol pause and explicit resume retain the unconfirmed ba
   }
   await run.done;
   assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 4);
   assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed").length, 0);
   const resumed = env.host.tryRun({ displayPrompt: "continue" }, env.target, { resumeTaskId: taskId, resumeRequested: true });
   await flush();
-  const retry = env.mains[4];
+  const retry = env.mains[6];
   assert.deepEqual(retry.request.reviewEventIds, first.request.reviewEventIds);
   assert.equal(retry.request.userMessageCount, 0);
   retry.resolve(decisionJson({ status: "accept", reviewEventId: retry.request.reviewEventId, subtasks: [] }));
   await flush();
   assert.equal(snapshotOf(env.tasks.get(taskId)).seenAttempts.filter((item) => item.disposition === "reviewed").length, 1);
   assert.deepEqual(snapshotOf(env.tasks.get(taskId)).userMessageQueue, ["after frozen prefix"]);
-  const last = env.mains[5];
+  const last = env.mains[7];
   assert.deepEqual(last.request.reviewEventIds, [buildLoopPlusFinishEventId("beta", env.attempts[1].request.attemptId)]);
   assert.equal(last.request.userMessageCount, 1);
   last.resolve(completedDecision({ reviewEventId: last.request.reviewEventId }));
@@ -6308,22 +7057,44 @@ test("Loop+ routes main-task clarification through the injected desktop-attentio
   env.host.stopParent(run.taskId ?? "");
 });
 
-test("continues Loop+ with the best plan when clarification times out", async () => {
+test("an unanswered form and missing historical receipts can lead to verified local preview delivery", async () => {
   const env = harness({ clarificationTimeoutMs: () => 20 });
-  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const run = env.host.tryRun({ displayPrompt: "交付和核验两套本地预览" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   const taskId = run.taskId ?? "";
-  env.mains[0].resolve(clarificationDecision());
+  env.mains[0].resolve(decisionJson({ status: "clarify", clarification: {
+    title: "确认预览来源", instruction: "选择原计划的来源", formFields: [{
+      id: "loop_recovery_plan", label: "来源", type: "radio", required: true,
+      options: [{ label: "等待旧发布回执", value: "old" }, { label: "使用其他来源", value: "other" }],
+    }],
+  } }));
   await new Promise((resolve) => setTimeout(resolve, 40));
   await flush();
   const continued = env.tasks.get(taskId);
   assert.equal(continued?.pendingClarification, undefined);
   assert.equal(continued?.status, "running");
-  assert.match(continued?.supplementalRequirements?.join("\n") ?? "", /未在时限内回答/);
+  const notices = continued?.supplementalRequirements?.join("\n") ?? "";
+  assert.match(notices, /未在时限内回答/);
+  assert.doesNotMatch(notices, /用户已提交|等待旧发布回执|已选择推荐恢复方案/);
   assert.equal(env.messages.includes("loop-plus-clarification-rejected"), false);
   assert.equal(env.mains.length, 2);
   assert.equal(env.mains[1]?.request.kind, "continue");
   assert.match(env.mains[1]?.request.prompt ?? "", /未在时限内回答/);
+  env.mains[1].resolve(JSON.stringify({ status: "blocked", finalSummary: "找不到两套预览的旧发布回执。" }));
+  await flush();
+  assert.match(env.mains[2].request.prompt, /regenerate scoped test outputs from repository templates/);
+  env.mains[2].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("local-previews", ["previews/one/", "previews/two/"])] }));
+  await flush();
+  assert.equal(env.attempts[0].request.subtaskId, "local-previews");
+  env.attempts[0].resolve({ outcome: "completed", detail: "两套本地预览已按仓库模板重建，读回校验通过。" });
+  await flush();
+  const reviewEventIds = env.mains[3].request.reviewEventIds;
+  assert.deepEqual(reviewEventIds, [buildLoopPlusFinishEventId("local-previews", env.attempts[0].request.attemptId)]);
+  env.mains[3].resolve(completedDecision({ reviewEventIds, requirementCoverage: [{ name: "两套本地预览", passed: true }] }));
+  await run.done;
+  assert.equal(env.tasks.get(taskId)?.status, "completed");
+  assert.equal(env.tasks.get(taskId)?.clarificationCount, 1);
+  assert.equal(env.messages.includes("loop-plus-blocked"), false);
 });
 
 test("pauses Loop+ when the user rejects main-task clarification", async () => {
@@ -6346,7 +7117,24 @@ test("pauses Loop+ when the user rejects main-task clarification", async () => {
   assert.equal(env.messages.includes("loop-plus-clarification-rejected"), true);
 });
 
-test("does not open another clarification form after the limit", async () => {
+test("rechecks new user input before opening a stale clarification form", async () => {
+  const env = harness({ waitForClarification: () => assert.fail("reread the new answer first") });
+  const run = env.host.tryRun({ displayPrompt: "生成预览" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  await flush();
+  env.host.submitUserMessage(taskId, "只需本地预览");
+  env.mains[0].resolve(clarificationDecision());
+  await flush();
+  assert.match(env.mains[1].request.prompt, /只需本地预览/);
+  assert.equal(env.tasks.get(taskId)?.clarificationCount ?? 0, 0);
+  env.mains[1].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("preview", ["preview/"])] }));
+  await flush();
+  assert.equal(env.attempts[0].request.subtaskId, "preview");
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("reuses existing requirements after the clarification limit and continues without another form", async () => {
   const env = harness();
   const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
   await flush();
@@ -6356,11 +7144,16 @@ test("does not open another clarification form after the limit", async () => {
   task.clarificationCount = 8;
   env.mains[0].resolve(clarificationDecision());
   await flush();
-  const paused = env.tasks.get(taskId);
-  assert.equal(paused?.status, "needs-review");
-  assert.equal(paused?.pendingClarification, undefined);
-  assert.equal(paused?.clarificationCount, 8);
-  assert.equal(env.mains.length, 1);
+  const current = env.tasks.get(taskId);
+  assert.equal(current?.status, "running");
+  assert.equal(current?.pendingClarification, undefined);
+  assert.equal(current?.clarificationCount, 8);
+  assert.match(env.mains[1].request.prompt, /state\.clarification\.limit_reached/);
+  env.mains[1].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("local", ["local/"])] }));
+  await flush();
+  assert.equal(env.attempts[0].request.subtaskId, "local");
+  env.host.stopParent(taskId);
+  await run.done;
 });
 
 test("clears a pending Loop+ clarification form when the parent stops", async () => {
@@ -6455,6 +7248,7 @@ test("a group-chat acceptance plan change restarts the in-flight review with the
   });
   assert.equal(applied.ok, true);
   assert.equal(firstReview.abortCount, 1);
+  assert.deepEqual(env.abortedAttemptIds, []);
   env.attempts[1].resolve({ outcome: "completed", detail: "beta arrived after the frozen batch" });
   firstReview.releaseAbort(completedDecision({ reviewEventId: firstReview.request.reviewEventId }));
   await flush();
@@ -6475,6 +7269,32 @@ test("a group-chat acceptance plan change restarts the in-flight review with the
     otherText: "",
     systemDefault: false,
   });
+});
+
+test("explicit parent stop wins while an obsolete acceptance review is settling", async () => {
+  const env = harness({ deferMainAbort: true });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  const taskId = run.taskId!;
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  env.attempts[0].resolve({ outcome: "completed", detail: "alpha done" });
+  await flush();
+  const review = env.mains[1];
+  assert.equal(review.request.kind, "review");
+  const applied = env.host.applyAcceptancePlan(taskId, {
+    id: "perf", name: "性能", checks: ["performance"], otherText: "", systemDefault: false,
+  });
+  assert.equal(applied.ok, true);
+  assert.equal(review.abortCount, 1);
+  env.host.stopParent(taskId);
+  review.releaseAbort(completedDecision({ reviewEventId: review.request.reviewEventId }));
+  await run.done;
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "stopped");
+  assert.equal(snapshotOf(env.tasks.get(taskId)).parentStopped, true);
+  assert.equal(env.mains.length, 2);
+  assert.equal(env.acceptanceFeedback.length, 0);
 });
 
 test("a task started without an acceptance plan falls back to the fixed baseline", async () => {
@@ -6535,7 +7355,7 @@ test("same-ID acceptance repair preserves the member row without replacement met
   assert.equal(isDepartmentLeaderCompleted(env.tasks.get(run.taskId!)!), true);
 });
 
-test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后续跑并验收新结果", async () => {
+test("Loop+ 在子任务失联后唤醒原主任务，且只提交一次结果", async () => {
   let active = true;
   const env = harness({ isAttemptActive: () => active, deferAttemptAbort: true });
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
@@ -6549,32 +7369,27 @@ test("巡检等待中的 Loop+：真实子任务活动时不唤醒，失联后�
   env.host.checkWaitingTasks();
   env.host.checkWaitingTasks();
   await flush();
-  assert.equal(env.mains.length, 1);
+  assert.equal(env.mains.length, 2);
   const snapshot = snapshotOf(env.tasks.get(run.taskId!));
-  assert.equal(snapshot.running.length, 1);
-  assert.equal(snapshot.currentReview, null);
-  assert.equal(env.reports.length, 0);
-  assert.equal(env.host.resumeInterruptedSubtasks(run.taskId!), true);
-  await flush();
-  assert.equal(env.attempts.length, 2);
-  assert.equal(env.attempts[1].request.attemptId, env.attempts[0].request.attemptId);
-  env.attempts[1].resolve({ outcome: "completed", detail: "续跑完成" });
-  await flush();
+  assert.equal(snapshot.running.length, 0);
+  assert.equal(snapshot.currentReview?.outcome, "unconfirmed");
+  assert.match(env.mains[1].request.prompt, /检查已有报告和产物/);
   assert.equal(env.mains[1].request.kind, "review");
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "completed");
   assert.equal(env.reports.length, 1);
   env.attempts[0].resolve({ outcome: "completed", detail: "迟到的旧结果" });
   await flush();
   assert.equal(env.reports.length, 1);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "completed");
+  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).currentReview?.outcome, "unconfirmed");
   assert.equal(env.maxMains(), 1);
-  env.host.stopParent(run.taskId!);
+  env.mains[1].resolve(completedDecision({ reviewEventId: attemptEvent(env.attempts[0]) }));
   await run.done;
+  assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
+  assert.equal(env.tasks.get(run.taskId!)?.subTasks[0].status, "completed");
 });
 
-test("Loop+ 巡检保留失联 attempt，继续时重启子任务而非先交主任务验收", async () => {
+test("Loop+ 巡检保留有主动停止证据的 attempt，显式继续后验收", async () => {
   let active = true;
-  const env = harness({ isAttemptActive: () => active });
+  const env = harness({ isAttemptActive: () => active, readLostOutcome: () => ({ outcome: "stopped", detail: "stopped" }) });
   const run = env.host.tryRun({ displayPrompt: "实现功能" }, env.target, { schedulingMode: "event_driven" });
   await flush();
   env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("stopped", ["src/a.ts"])] }));
@@ -6624,28 +7439,22 @@ test("Loop+ 巡检不复活暂停、等待澄清、失败上限和已完成任�
   }
 });
 
-test("Loop+ 同次巡检保留多个失联子任务，续跑完成后合并验收", async () => {
-  const env = harness({ isAttemptActive: () => false, deferAttemptAbort: true });
+test("Loop+ 巡检合并已完成证据和失联结果，保留活动同级", async () => {
+  const env = harness({ isAttemptActive: (request) => request.subtaskId === "C", deferAttemptAbort: true,
+    readLostOutcome: (request) => request.subtaskId === "A" ? { outcome: "completed", detail: "已有最终报告" } : undefined });
   const run = env.host.tryRun({ displayPrompt: "并行实现功能" }, env.target, { schedulingMode: "event_driven" });
   await flush();
-  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("A", ["src/a.ts"]), subtask("B", ["src/b.ts"])] }));
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("A", ["src/a.ts"]), subtask("B", ["src/b.ts"]), subtask("C", ["src/c.ts"])] }));
   await flush();
   env.host.checkWaitingTasks();
   await flush();
-  assert.equal(env.mains.length, 1);
-  assert.equal(snapshotOf(env.tasks.get(run.taskId!)).running.length, 2);
-  assert.equal(env.reports.length, 0);
-  assert.equal(env.host.resumeInterruptedSubtasks(run.taskId!), true);
-  await flush();
-  assert.equal(env.attempts.length, 4);
-  assert.deepEqual(env.attempts.slice(2).map((item) => item.request.attemptId), env.attempts.slice(0, 2).map((item) => item.request.attemptId));
-  env.attempts.slice(2).forEach((attempt) => attempt.resolve({ outcome: "completed", detail: "续跑完成" }));
-  await flush();
   assert.equal(env.mains[1].request.kind, "review");
   const finished = snapshotOf(env.tasks.get(run.taskId!));
+  assert.deepEqual(finished.running.map(item => item.subtaskId), ["C"]);
   const events = [finished.currentReview, ...finished.reviewQueue].filter(Boolean);
   assert.equal(events.length, 2);
-  assert.equal(events.every((event) => event?.outcome === "completed"), true);
+  assert.equal(events.find(event => event?.subtaskId === "A")?.outcome, "completed");
+  assert.equal(events.find(event => event?.subtaskId === "B")?.outcome, "unconfirmed");
   assert.equal(env.reports.length, 2);
   assert.equal(env.maxMains(), 1);
   env.host.stopParent(run.taskId!);
@@ -6812,13 +7621,25 @@ test("rejected failed repair preserves obligation and independent admissions; a 
   assert.equal(env.attempts.some((item) => item.request.subtaskId === "source" && item.request.attemptId !== env.attempts[0].request.attemptId), false);
   const correction = env.mains[2];
   assert.match(correction.request.prompt, /Outstanding required repairs.*source/);
-  correction.resolve(decisionJson({ status: "completed", finalSummary: "全部完成" }));
+  const blockedCompletion = decisionJson({ status: "completed", finalSummary: "全部完成" });
+  correction.resolve(blockedCompletion);
+  await flush();
+  for (let index = 3; index <= 4; index += 1) {
+    assert.match(env.mains[index].request.prompt, /Outstanding required repairs.*source/);
+    const held = snapshotOf(env.tasks.get(run.taskId!));
+    assert.equal(held.seenAttempts[0].repairRequired, true);
+    assert.equal(held.running.some((item) => item.subtaskId === "independent"), true);
+    assert.equal(env.attempts.some((item) => item.request.subtaskId === "source" && item.request.attemptId !== env.attempts[0].request.attemptId), false);
+    env.mains[index].resolve(blockedCompletion);
+    await flush();
+  }
   await run.done;
   assert.equal(env.tasks.get(run.taskId!)?.status, "needs-review");
+  assert.equal(env.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 4);
   const resumed = env.host.tryRun({ displayPrompt: "继续返工" }, env.target, { resumeTaskId: run.taskId, resumeRequested: true });
   await flush();
-  assert.match(env.mains[3].request.prompt, /Outstanding required repairs.*source/);
-  env.mains[3].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["source.ts"])] }));
+  assert.match(env.mains[5].request.prompt, /Outstanding required repairs.*source/);
+  env.mains[5].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("source", ["source.ts"])] }));
   await flush();
   snapshot = snapshotOf(env.tasks.get(run.taskId!));
   assert.equal(snapshot.seenAttempts.some((item) => item.repairRequired), false);
@@ -6890,7 +7711,7 @@ test("late no-acceptance report handoff waits after accept and wakes on the next
 });
 
 test("late no-acceptance report handoff still allows a real blocker to trigger review and pause", async () => {
-  const { env, run, taskId, snapshot, resumed, frozenIds } = await resumeFrozenReviewAfterLateReport();
+  const { env, run, taskId, snapshot, resumed, frozenIds, inFlight } = await resumeFrozenReviewAfterLateReport();
   const cause = "外部接口契约仍需负责人确认";
   const blocked = decisionJson({ status: "blocked", finalSummary: cause });
   resumed.resolve(blocked);
@@ -6902,12 +7723,20 @@ test("late no-acceptance report handoff still allows a real blocker to trigger r
   assert.deepEqual(recheck.request.reportEventIds, []);
   recheck.resolve(blocked);
   await flush();
-  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
-  assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture(cause)));
-  assert.equal(env.messages.filter((item) => item === "loop-plus-block-review").length, 1);
-  assert.equal(env.messages.filter((item) => item === "loop-plus-blocked").length, 1);
-  assert.deepEqual(snapshot().reviewQueue.map((item) => item.eventId), frozenIds);
+  assert.equal(env.tasks.get(taskId)?.status, "running");
   assert.equal(env.mains.length, 5);
+  inFlight.resolve({ outcome: "failed", detail: "测试账号无权访问接口" });
+  await flush();
+  env.mains[5].resolve(blocked);
+  await flush();
+  env.mains[6].resolve(blocked);
+  await flush();
+  assert.equal(env.tasks.get(taskId)?.status, "needs-review");
+  assert.equal(env.tasks.get(taskId)?.finalSummary, buildLoopBlockerSummary(loopBlockerFixture(cause), "event_driven"));
+  assert.equal(env.messages.filter((item) => item === "loop-plus-block-review").length, 2);
+  assert.equal(env.messages.filter((item) => item === "loop-plus-blocked").length, 1);
+  assert.deepEqual(snapshot().reviewQueue.map((item) => item.eventId), [...frozenIds, attemptEvent(inFlight)]);
+  assert.equal(env.mains.length, 7);
   await run.done;
 });
 
@@ -6987,17 +7816,19 @@ test("closed prerequisite wakes dependency planning, impossible wait uses bounde
   env.mains[1].resolve(decisionJson({ status: "steer", controls: [{ id: "source", action: "close" }] }));
   await flush();
   assert.match(env.mains[2].request.prompt, /reason=closed/);
-  for (let index = 2; index < 4; index += 1) {
+  for (let index = 2; index < 6; index += 1) {
+    assert.match(env.mains[index].request.prompt, /reason=closed/);
     env.mains[index].resolve(decisionJson({ status: "wait" }));
     await flush();
   }
   await run.done;
   assert.equal(env.tasks.get(run.taskId!)?.status, "needs-review");
-  assert.equal(env.logs.filter((l) => l.event === "loop-plus-protocol-miss").length, 2);
+  assert.equal(env.logs.filter((l) => l.event === "loop-plus-protocol-miss").length, 4);
+  assert.equal(env.attempts.some((item) => item.request.subtaskId === "child"), false);
   const resumed = env.host.tryRun({ displayPrompt: "恢复依赖" }, env.target, { resumeTaskId: run.taskId, resumeRequested: true });
   await flush();
-  assert.match(env.mains[4].request.prompt, /reason=closed/);
-  env.mains[4].resolve(decisionJson({ status: "steer", controls: [{ id: "child", action: "reprompt", title: "独立执行后继", prompt: longPrompt("child", []), dependsOn: [] }] }));
+  assert.match(env.mains[6].request.prompt, /reason=closed/);
+  env.mains[6].resolve(decisionJson({ status: "steer", controls: [{ id: "child", action: "reprompt", title: "独立执行后继", prompt: longPrompt("child", []), dependsOn: [] }] }));
   await flush();
   assert.equal(env.attempts[1].request.subtaskId, "child");
   env.host.stopParent(run.taskId!);
@@ -7291,8 +8122,8 @@ test("review selection defers only a running prerequisite's successor, then orde
   assert.equal(env.mains.length, 3);
   assert.equal(env.tasks.get(env.taskId)?.status, "running");
   const dependencyWait = env.tasks.get(env.taskId);
-  env.host.checkWaitingReviews();
-  env.host.checkWaitingReviews();
+  env.host.checkWaitingMainTasks();
+  env.host.checkWaitingMainTasks();
   assert.equal(env.tasks.get(env.taskId), dependencyWait, "unchanged dependency wait does not persist the same batch on every tick");
   env.host.checkWaitingTasks();
   await flush();
@@ -7441,7 +8272,7 @@ test("review selection consumes an unconfirmed prerequisite report FIFO before s
   await env.run.done;
 });
 
-test("review selection survives same-host stop/resume and watchdog continuation", async (t) => {
+test("review selection survives same-host stop/resume and watchdog recovery", async (t) => {
   let now = 1_000;
   t.mock.method(Date, "now", () => now);
   let active = true;
@@ -7474,20 +8305,14 @@ test("review selection survives same-host stop/resume and watchdog continuation"
   watched.successor.resolve({ outcome: "completed", detail: null });
   await flush();
   active = false;
-  now += 5 * 60 * 1000;
+  now += 60_000;
   watched.host.checkWaitingTasks();
   await flush();
-  assert.equal(watched.mains.length, 3);
-  assert.equal(snapshotOf(watched.tasks.get(watched.taskId)).currentReview, null);
-  assert.equal(watched.host.resumeInterruptedSubtasks(watched.taskId), true);
-  await flush();
-  const restartedSource = watched.attempts.filter((item) => item.request.subtaskId === "source").at(-1)!;
-  restartedSource.resolve({ outcome: "completed", detail: "续跑后完成" });
-  await flush();
-  const reviews = [snapshotOf(watched.tasks.get(watched.taskId)).currentReview,
-    ...snapshotOf(watched.tasks.get(watched.taskId)).reviewQueue].filter(Boolean);
-  assert.equal(reviews.length, 2);
-  assert.equal(reviews.every((event) => event?.outcome === "completed"), true);
+  assert.equal(watched.mains.length, 4);
+  assert.deepEqual(watched.mains.at(-1)?.request.reviewEventIds, [watched.id(watched.source), watched.id(watched.successor)]);
+  const recovered = snapshotOf(watched.tasks.get(watched.taskId));
+  assert.equal(recovered.currentReview?.outcome, "unconfirmed");
+  assert.equal(recovered.reviewQueue[0].outcome, "completed");
   watched.host.stopParent(watched.taskId);
   await watched.run.done;
 });
@@ -7635,6 +8460,34 @@ test("需求变更时撤销冻结验收并保留晚到事件，随后可以正�
   assert.equal(env.tasks.get(run.taskId!)?.status, "completed");
 });
 
+test("consumer failure summary is Chinese and an explicit summary stays ahead of it", () => {
+  const explicit = "请先恢复隔离环境后再继续验收。";
+  assert.equal(resolveLoopPlusPauseFinalSummary("error", "loop-plus-consumer-failed", explicit), explicit);
+  assert.equal(resolveLoopPlusPauseFinalSummary("error", "loop-plus-consumer-failed"), LOOP_PLUS_CONSUMER_FAILURE_SUMMARY);
+  assert.equal(resolveLoopPlusPauseFinalSummary("error", "loop-plus-consumer-failed", ""), "");
+  assert.equal(resolveLoopPlusPauseFinalSummary("needs-review", "loop-plus-protocol-paused"), undefined);
+  const fallback = buildLoopGroupChatFinalStatusSection({
+    id: "task-consumer",
+    status: "error",
+    schedulingMode: "event_driven",
+    updatedAt: 0,
+    finalSummary: LOOP_PLUS_CONSUMER_FAILURE_SUMMARY,
+  });
+  assert.equal(fallback?.heading, "任务中断");
+  assert.match(fallback?.body ?? "", /### 中断说明\n主任务执行意外中断/);
+  assert.match(fallback?.body ?? "", /点击“继续执行”/);
+  assert.doesNotMatch(fallback?.body ?? "", /execution-error|loop-plus-consumer-failed/);
+  const preferred = buildLoopGroupChatFinalStatusSection({
+    id: "task-consumer",
+    status: "error",
+    schedulingMode: "event_driven",
+    updatedAt: 0,
+    finalSummary: explicit,
+  });
+  assert.match(preferred?.body ?? "", /请先恢复隔离环境后再继续验收/);
+  assert.doesNotMatch(preferred?.body ?? "", /execution-error|loop-plus-consumer-failed|主任务执行意外中断/);
+});
+
 test("consumer failure persists execution-error through pause and a later finish only carries it", async () => {
   let explode = false;
   const env = harness({
@@ -7662,7 +8515,13 @@ test("consumer failure persists execution-error through pause and a later finish
   const taskId = run.taskId ?? "";
   const paused = env.tasks.get(taskId);
   assert.equal(paused?.status, "error");
-  assert.equal(paused?.finalSummary, "execution-error: loop-plus-consumer-failed");
+  assert.equal(paused?.finalSummary, LOOP_PLUS_CONSUMER_FAILURE_SUMMARY);
+  const projected = buildLoopGroupChatFinalStatusSection(paused!);
+  assert.equal(projected?.heading, "任务中断");
+  assert.equal(projected?.terminalStatus, "interrupted");
+  assert.match(projected?.body ?? "", /### 中断说明\n主任务执行意外中断，已完成的子任务结果仍保留/);
+  assert.match(projected?.body ?? "", /点击“继续执行”/);
+  assert.doesNotMatch(projected?.body ?? "", /execution-error|loop-plus-consumer-failed|synthetic-consumer-escape/);
   assert.equal(paused?.loopPlusInterruption?.reason, "execution-error");
   assert.equal(typeof paused?.loopPlusInterruption?.phase, "string");
   assert.equal(env.messages.includes("loop-plus-consumer-failed"), true);
@@ -7812,13 +8671,28 @@ test("format, cross-field, and preflight rejections keep one summary and the ori
   assert.equal((formatMiss[0]?.payload as { taskId?: string }).taskId, formatRun.taskId);
   assert.equal("recoveryStage" in (formatMiss[0]?.payload as object), false);
   assert.doesNotMatch(JSON.stringify(formatRejection[0]?.payload), /synthetic-format-secret|task-/);
-  assert.deepEqual(summarizeLoopPlusProtocolRejection(formatRejection[0]?.payload), {
+  const formatSummary = summarizeLoopPlusProtocolRejection(formatRejection[0]?.payload);
+  const {
+    phase: formatPhase, batchKey: formatBatch, batchEvidence: formatEvidence, invocationKey: formatInvocation,
+    requestPhase: formatRequestPhase, responseShape: formatShape,
+    charCount: formatChars, elapsedMs: formatElapsed, attempt: formatAttempt, ...formatContract
+  } = formatSummary;
+  assert.deepEqual(formatContract, {
     rejectionKind: "format",
     reasonCode: "format.ColonExpected",
     protocolFailureCount: 1,
     recoveryStage: "continuation_requested",
     dispatchWindow: "closed",
   });
+  assert.equal(formatPhase, "protocol_recovery");
+  assert.equal(formatEvidence, "frozen_id_sequence");
+  assert.match(formatInvocation ?? "", /^[a-f0-9]{12}$/);
+  assert.equal(formatRequestPhase, "initial");
+  assert.equal(formatShape, "json_object");
+  assert.equal(formatChars, '{\n  "status" "synthetic-format-secret"\n}'.length);
+  assert.equal(formatAttempt, 1);
+  assert.equal(formatBatch, loopPlusFrozenBatchKey([], []));
+  assert.equal(Number.isSafeInteger(formatElapsed) && (formatElapsed ?? -1) >= 0, true);
   assert.deepEqual(format.logs.filter((item) => item.event === "loop-plus-protocol-recovery").map((item) => item.payload), [{
     taskId: formatRun.taskId,
     attemptState: "first",
@@ -7852,13 +8726,28 @@ test("format, cross-field, and preflight rejections keep one summary and the ori
   const crossRejection = cross.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
   assert.equal(cross.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
   assert.equal(crossRejection.length, 1);
-  assert.deepEqual(summarizeLoopPlusProtocolRejection(crossRejection[0]?.payload), {
+  const crossSummary = summarizeLoopPlusProtocolRejection(crossRejection[0]?.payload);
+  const {
+    phase: crossPhase, batchKey: crossBatch, batchEvidence: crossEvidence, invocationKey: crossInvocation,
+    requestPhase: crossRequestPhase, responseShape: crossShape,
+    charCount: crossChars, elapsedMs: crossElapsed, attempt: crossAttempt, ...crossContract
+  } = crossSummary;
+  assert.deepEqual(crossContract, {
     rejectionKind: "validation",
     reasonCode: "validation.invalid_decision",
     protocolFailureCount: 1,
     recoveryStage: "continuation_requested",
     dispatchWindow: "closed",
   });
+  assert.equal(crossPhase, "protocol_recovery");
+  assert.equal(crossEvidence, "frozen_id_sequence");
+  assert.match(crossInvocation ?? "", /^[a-f0-9]{12}$/);
+  assert.equal(crossRequestPhase, "initial");
+  assert.equal(crossShape, "json_object");
+  assert.equal(crossAttempt, 1);
+  assert.equal(crossBatch, loopPlusFrozenBatchKey([], []));
+  assert.equal(typeof crossChars === "number" && crossChars > 0, true);
+  assert.equal(Number.isSafeInteger(crossElapsed) && (crossElapsed ?? -1) >= 0, true);
   assert.equal(JSON.stringify(crossRejection[0]?.payload).includes("SECRET_CROSS_FIELD"), false);
   assert.equal(JSON.stringify(crossRejection[0]?.payload).includes(crossRun.taskId ?? "missing-task"), false);
   assert.equal(cross.attempts.length, 0);
@@ -7885,7 +8774,13 @@ test("format, cross-field, and preflight rejections keep one summary and the ori
   assert.equal(preflight.logs.filter((item) => item.event === "loop-plus-protocol-miss").length, 1);
   assert.equal(preflightRejection.length, 1);
   assert.equal(dispatchRejections.length, 1);
-  assert.deepEqual(summarizeLoopPlusProtocolRejection(preflightRejection[0]?.payload), {
+  const preflightSummary = summarizeLoopPlusProtocolRejection(preflightRejection[0]?.payload);
+  const {
+    phase: preflightPhase, batchKey: preflightBatch, batchEvidence: preflightEvidence, invocationKey: preflightInvocation,
+    requestPhase: preflightRequestPhase, responseShape: preflightShape,
+    charCount: preflightChars, elapsedMs: preflightElapsed, attempt: preflightAttempt, ...preflightContract
+  } = preflightSummary;
+  assert.deepEqual(preflightContract, {
     rejectionKind: "state",
     reasonCode: "state.dispatch_window.preflight_failed",
     fieldPath: "subtasks",
@@ -7893,6 +8788,18 @@ test("format, cross-field, and preflight rejections keep one summary and the ori
     recoveryStage: "continuation_requested",
     dispatchWindow: "open",
   });
+  assert.equal(preflightPhase, "protocol_recovery");
+  assert.equal(preflightEvidence, "frozen_id_sequence");
+  assert.match(preflightInvocation ?? "", /^[a-f0-9]{12}$/);
+  assert.equal(preflightRequestPhase, "review");
+  assert.equal(preflightShape, "json_object");
+  assert.equal(preflightBatch, loopPlusFrozenBatchKey(
+    opened.review.request.reviewEventIds ?? [],
+    opened.review.request.reportEventIds ?? [],
+  ));
+  assert.equal(typeof preflightChars === "number" && preflightChars > 0, true);
+  assert.equal(Number.isSafeInteger(preflightAttempt) && (preflightAttempt ?? 0) > 0, true);
+  assert.equal(Number.isSafeInteger(preflightElapsed) && (preflightElapsed ?? -1) >= 0, true);
   assert.equal(JSON.stringify(preflightRejection[0]?.payload).includes("reasonCounts"), false);
   assert.deepEqual(dispatchRejections[0]?.payload, { rejectedCount: 1, reasonCounts: { invalid_dependencies: 1 } });
   assert.equal(JSON.stringify(snapshotOf(preflight.tasks.get(opened.taskId))), before);
@@ -7933,4 +8840,752 @@ test("protocol rejection stages follow the three automatic continuations and the
   assert.equal(env.mains.length, 4);
   assert.equal(env.attempts.length, 0);
   assert.equal(env.tasks.get(run.taskId ?? "")?.status, "needs-review");
+});
+
+test("empty and whitespace replies share one frozen batch and keep retries distinct", async () => {
+  const env = harness();
+  const secret = "SECRET_RESPONSE_BODY_do_not_log";
+  const run = env.host.tryRun({ displayPrompt: `ship ${secret}` }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  const emptyBatch = loopPlusFrozenBatchKey([], []);
+  env.mains[0].resolve("");
+  await flush();
+  env.mains[1].resolve("");
+  await flush();
+  env.mains[2].resolve(" \n\t");
+  await flush();
+  env.mains[3].resolve(secret);
+  await flush();
+  env.host.stopParent(run.taskId ?? "");
+  await run.done;
+
+  const terminals = env.logs.filter((item) => item.event === "loop-plus-main-terminal");
+  const rejections = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection");
+  assert.equal(terminals.length, 4);
+  assert.equal(rejections.length, 4);
+  const terminalPayloads = terminals.map((item) => item.payload as {
+    phase?: string; batchKey?: string; batchEvidence?: string; invocationKey?: string; attempt?: number; requestPhase?: string;
+    responseShape?: string; charCount?: number; elapsedMs?: number;
+  });
+  const rejectionPayloads = rejections.map((item) => item.payload as {
+    phase?: string; batchKey?: string; batchEvidence?: string; invocationKey?: string; attempt?: number; requestPhase?: string;
+    responseShape?: string; charCount?: number; protocolFailureCount?: number; reasonCode?: string;
+    recoveryStage?: string;
+  });
+  assert.deepEqual(terminalPayloads.map((item) => item.responseShape), ["empty", "empty", "whitespace", "text"]);
+  assert.deepEqual(terminalPayloads.map((item) => item.charCount), [0, 0, 3, secret.length]);
+  assert.deepEqual(terminalPayloads.map((item) => item.requestPhase), ["initial", "continue", "continue", "continue"]);
+  assert.deepEqual(terminalPayloads.map((item) => item.attempt), [1, 2, 3, 4]);
+  assert.deepEqual(rejectionPayloads.map((item) => item.reasonCode), [
+    "format.EmptyResponse", "format.EmptyResponse", "format.EmptyResponse", "format.ObjectNotFound",
+  ]);
+  assert.deepEqual(rejectionPayloads.map((item) => item.protocolFailureCount), [1, 2, 3, 4]);
+  assert.deepEqual(rejectionPayloads.map((item) => item.recoveryStage), [
+    "continuation_requested", "continuation_requested", "continuation_requested", "paused",
+  ]);
+  for (let index = 0; index < 4; index += 1) {
+    assert.equal(terminalPayloads[index]?.phase, "main_terminal");
+    assert.equal(rejectionPayloads[index]?.phase, "protocol_recovery");
+    assert.equal(terminalPayloads[index]?.batchKey, emptyBatch);
+    assert.equal(terminalPayloads[index]?.batchEvidence, "frozen_id_sequence");
+    assert.equal(rejectionPayloads[index]?.batchEvidence, "frozen_id_sequence");
+    assert.equal(rejectionPayloads[index]?.batchKey, terminalPayloads[index]?.batchKey);
+    assert.match(terminalPayloads[index]?.invocationKey ?? "", /^[a-f0-9]{12}$/);
+    assert.equal(rejectionPayloads[index]?.invocationKey, terminalPayloads[index]?.invocationKey);
+    assert.equal(rejectionPayloads[index]?.attempt, terminalPayloads[index]?.attempt);
+    assert.equal(rejectionPayloads[index]?.requestPhase, terminalPayloads[index]?.requestPhase);
+    assert.equal(rejectionPayloads[index]?.responseShape, terminalPayloads[index]?.responseShape);
+    assert.equal(rejectionPayloads[index]?.charCount, terminalPayloads[index]?.charCount);
+    assert.equal(Number.isSafeInteger(terminalPayloads[index]?.elapsedMs), true);
+  }
+  assert.equal(terminalPayloads[0]?.attempt === terminalPayloads[1]?.attempt, false);
+  assert.equal(new Set(terminalPayloads.map((item) => item.invocationKey)).size, 4);
+  const logged = JSON.stringify(terminals.concat(rejections));
+  assert.equal(logged.includes(secret), false);
+  assert.equal(logged.includes(run.taskId ?? "missing-task"), false);
+  assert.equal(logged.includes("ship "), false);
+
+  const taskId = run.taskId ?? "";
+  const reviewed = harness();
+  const reviewedRun = reviewed.host.tryRun({ displayPrompt: "ship one slice" }, reviewed.target, { schedulingMode: "event_driven" });
+  await flush();
+  reviewed.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  reviewed.attempts[0].resolve({ outcome: "completed", detail: "done" });
+  await flush();
+  const review = reviewed.mains.find((item) => item.request.kind === "review");
+  assert.ok(review?.request.reviewEventId);
+  const frozenKey = loopPlusFrozenBatchKey(review.request.reviewEventIds ?? [], review.request.reportEventIds ?? []);
+  assert.notEqual(frozenKey, emptyBatch);
+  review.resolve("");
+  await flush();
+  const reviewTerminal = reviewed.logs.filter((item) => item.event === "loop-plus-main-terminal").at(-1)?.payload as { batchKey?: string; responseShape?: string; requestPhase?: string };
+  const reviewRejection = reviewed.logs.filter((item) => item.event === "loop-plus-protocol-rejection").at(-1)?.payload as { batchKey?: string; attempt?: number; responseShape?: string };
+  assert.equal(reviewTerminal?.requestPhase, "review");
+  assert.equal(reviewTerminal?.responseShape, "empty");
+  assert.equal(reviewTerminal?.batchKey, frozenKey);
+  assert.equal(reviewRejection?.batchKey, frozenKey);
+  assert.equal(reviewRejection?.responseShape, "empty");
+  reviewed.host.stopParent(reviewedRun.taskId ?? "");
+  await reviewedRun.done;
+  assert.equal(JSON.stringify(reviewTerminal).includes(taskId), false);
+});
+
+test("concurrent empty batches pair by invocation key and unknown execution codes stay out of the log", async () => {
+  const env = harness();
+  const left = env.host.tryRun({ displayPrompt: "left empty batch" }, env.target, { schedulingMode: "event_driven" });
+  const right = env.host.tryRun({ displayPrompt: "right empty batch" }, {
+    tabId: "tab-right", cli: "codex", sessionId: "session-right",
+  }, { schedulingMode: "event_driven" });
+  await flush();
+  assert.equal(env.mains.length, 2);
+  const firstCalls = env.mains.slice();
+  firstCalls[0].resolve("");
+  firstCalls[1].resolve("");
+  await flush();
+  const emptyBatch = loopPlusFrozenBatchKey([], []);
+  const terminals = env.logs.filter((item) => item.event === "loop-plus-main-terminal").map((item) => item.payload as {
+    batchKey?: string; batchEvidence?: string; invocationKey?: string; attempt?: number; responseShape?: string;
+  });
+  const rejections = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection").map((item) => item.payload as {
+    batchKey?: string; invocationKey?: string; attempt?: number; responseShape?: string;
+  });
+  assert.equal(terminals.length, 2);
+  assert.equal(rejections.length, 2);
+  assert.deepEqual(terminals.map((item) => item.batchKey), [emptyBatch, emptyBatch]);
+  assert.deepEqual(terminals.map((item) => item.attempt), [1, 1]);
+  assert.deepEqual(rejections.map((item) => item.attempt), [1, 1]);
+  assert.equal(terminals[0]?.invocationKey === terminals[1]?.invocationKey, false);
+  for (const terminal of terminals) {
+    assert.equal(terminal.batchEvidence, "frozen_id_sequence");
+    assert.equal(terminal.responseShape, "empty");
+    const match = rejections.filter((item) => item.invocationKey === terminal.invocationKey);
+    assert.equal(match.length, 1);
+    assert.equal(match[0]?.batchKey, emptyBatch);
+    assert.equal(match[0]?.responseShape, "empty");
+  }
+  const leftRetry = env.mains.find((item) => item.request.taskId === left.taskId && !firstCalls.includes(item));
+  assert.ok(leftRetry);
+  leftRetry.resolve("");
+  await flush();
+  const retried = env.logs.filter((item) => item.event === "loop-plus-main-terminal"
+    && (item.payload as { attempt?: number }).attempt === 2);
+  assert.equal(retried.length, 1);
+  assert.equal((retried[0]?.payload as { batchKey?: string }).batchKey, emptyBatch);
+  assert.equal((retried[0]?.payload as { batchEvidence?: string }).batchEvidence, "frozen_id_sequence");
+  const retryKey = (retried[0]?.payload as { invocationKey?: string }).invocationKey;
+  assert.match(retryKey ?? "", /^[a-f0-9]{12}$/);
+  assert.equal(terminals.some((item) => item.invocationKey === retryKey), false);
+  const retryRejection = env.logs.filter((item) => item.event === "loop-plus-protocol-rejection"
+    && (item.payload as { invocationKey?: string }).invocationKey === retryKey);
+  assert.equal(retryRejection.length, 1);
+  assert.equal((retryRejection[0]?.payload as { attempt?: number }).attempt, 2);
+  env.host.stopParent(left.taskId ?? "");
+  env.host.stopParent(right.taskId ?? "");
+  await left.done;
+  await right.done;
+
+  const coded = harness();
+  const codedRun = coded.host.tryRun({ displayPrompt: "classify execution codes" }, coded.target, { schedulingMode: "event_driven" });
+  await flush();
+  const synthetic = "PROMPT_SECRET_BODY";
+  coded.mains[0].reject(Object.assign(new Error(`raw ${synthetic}`), { code: synthetic }));
+  await flush();
+  const hidden = coded.logs.filter((item) => item.event === "loop-plus-main-terminal").at(-1)?.payload as {
+    responseShape?: string; reasonCode?: string; invocationKey?: string;
+  };
+  assert.equal(hidden?.responseShape, "execution_failed");
+  assert.equal(hidden?.reasonCode, undefined);
+  assert.equal(JSON.stringify(hidden).includes(synthetic), false);
+  coded.mains[1].reject(Object.assign(new Error("department native detail"), { code: "DEPARTMENT_NATIVE_UNKNOWN" }));
+  await flush();
+  const kept = coded.logs.filter((item) => item.event === "loop-plus-main-terminal").at(-1)?.payload as {
+    responseShape?: string; reasonCode?: string; invocationKey?: string;
+  };
+  assert.equal(kept?.responseShape, "execution_failed");
+  assert.equal(kept?.reasonCode, "DEPARTMENT_NATIVE_UNKNOWN");
+  assert.notEqual(kept?.invocationKey, hidden?.invocationKey);
+  assert.equal(JSON.stringify(kept).includes("department native detail"), false);
+  await codedRun.done;
+});
+
+function launchStartSubtaskId(patch: Partial<LoopTaskRecord>): string | null {
+  const subtask = patch.subTasks?.find((item) => item.status === "running" && typeof item.lastStartedAt === "number");
+  return subtask?.id ?? null;
+}
+
+function launchPersistEntries(logs: ReadonlyArray<{ event: string; payload?: unknown }>): Array<{
+  taskId?: string; attemptId?: string; stage?: string; result?: string; reason?: string; attempt?: number;
+}> {
+  return logs.filter((item) => item.event === "loop-plus-launch-persist").map((item) => item.payload as {
+    taskId?: string; attemptId?: string; stage?: string; result?: string; reason?: string; attempt?: number;
+  });
+}
+
+test("normal Loop+ launch persists the start once and starts one attempt", async () => {
+  let launchWrites = 0;
+  const env = harness({
+    beforeUpdateTask: (patch) => {
+      if (launchStartSubtaskId(patch)) launchWrites += 1;
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const task = env.tasks.get(run.taskId ?? "");
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.taskId, run.taskId);
+  assert.equal(entries[0]?.attemptId, env.attempts[0]?.request.attemptId);
+  assert.equal(entries[0]?.stage, "launch-commit");
+  assert.equal(entries[0]?.result, "committed");
+  assert.equal(entries[0]?.reason, undefined);
+  assert.equal(typeof task?.subTasks.find((item) => item.id === "alpha")?.lastStartedAt, "number");
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-launch-failed"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("a short identity lock during launch commit starts the attempt once", async () => {
+  let launchWrites = 0;
+  let delays = 0;
+  const env = harness({
+    maxConcurrency: 2,
+    delay: async () => { delays += 1; },
+    beforeUpdateTask: (patch) => {
+      const subtaskId = launchStartSubtaskId(patch);
+      if (!subtaskId) return;
+      launchWrites += 1;
+      if (subtaskId === "alpha" && launchWrites === 1) throw new OrdinaryUpdateIdentityLockBusy("host-route");
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const entries = launchPersistEntries(env.logs).filter((item) => item.attemptId?.includes("alpha"));
+  assert.equal(delays, 1);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "alpha").length, 1);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "beta").length, 1);
+  assert.equal(launchWrites, 3);
+  assert.deepEqual(entries.map((item) => item.result), ["retry", "committed"]);
+  assert.equal(entries[0]?.stage, "launch-commit");
+  assert.equal(entries[0]?.reason, "identity-lock-present");
+  assert.equal(entries[0]?.taskId, run.taskId);
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-launch-failed"), false);
+  assert.equal(JSON.stringify(entries).includes("host-route"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("sustained launch contention records a redacted reason and does not start", async () => {
+  let alphaWrites = 0;
+  const secret = "SECRET_LAUNCH_LOCK_BODY";
+  const env = harness({
+    maxConcurrency: 2,
+    beforeUpdateTask: (patch) => {
+      if (launchStartSubtaskId(patch) !== "alpha") return;
+      alphaWrites += 1;
+      throw new LoopPlusUpdateUnconfirmedError(secret);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const task = env.tasks.get(run.taskId ?? "");
+  const entries = launchPersistEntries(env.logs).filter((item) => item.attemptId?.includes("alpha"));
+  assert.equal(alphaWrites, 3);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "alpha").length, 0);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "beta").length, 1);
+  assert.deepEqual(entries.map((item) => item.result), ["retry", "retry", "contended"]);
+  assert.equal(entries.every((item) => item.stage === "launch-commit" && item.reason === "update-unconfirmed" && item.taskId === run.taskId), true);
+  assert.equal(snapshotOf(task).running.some((item) => item.subtaskId === "alpha"), false);
+  assert.equal(snapshotOf(task).pending.some((item) => item.subtaskId === "alpha"), true);
+  assert.equal(snapshotOf(task).currentReview, null);
+  assert.equal(snapshotOf(task).reviewQueue.length, 0);
+  assert.equal(snapshotOf(task).seenAttempts.find((item) => item.subtaskId === "alpha")?.disposition, "open");
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-launch-failed"), false);
+  assert.equal(JSON.stringify(launchPersistEntries(env.logs)).includes(secret), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("cancelling during launch recovery starts nothing", async () => {
+  let releaseDelay: (() => void) | undefined;
+  let launchWrites = 0;
+  const env = harness({
+    delay: () => new Promise((resolve) => { releaseDelay = resolve; }),
+    beforeUpdateTask: (patch) => {
+      if (!launchStartSubtaskId(patch)) return;
+      launchWrites += 1;
+      throw new OrdinaryUpdateIdentityLockBusy("host-route");
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  assert.equal(launchWrites, 1);
+  assert.equal(typeof releaseDelay, "function");
+  env.host.stopParent(run.taskId!);
+  releaseDelay?.();
+  await flush();
+  assert.equal(env.attempts.length, 0);
+  assert.equal(launchWrites, 1);
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(entries.some((item) => item.result === "cancelled" && item.reason === "stopped" && item.stage === "launch-commit"), true);
+  assert.equal(JSON.stringify(entries).includes("identity lock is busy"), false);
+  await run.done;
+});
+
+test("a stale task snapshot during launch recovery does not start or rewrite acceptance", async () => {
+  let releaseDelay: (() => void) | undefined;
+  let launchWrites = 0;
+  const env = harness({
+    delay: () => new Promise((resolve) => { releaseDelay = resolve; }),
+    beforeUpdateTask: (patch) => {
+      if (launchStartSubtaskId(patch) && launchWrites++ === 0) throw new OrdinaryUpdateIdentityLockBusy("host-route");
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const task = env.tasks.get(run.taskId ?? "");
+  const storedSnapshot = task?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+  assert.ok(task && storedSnapshot);
+  task.loopPlus = {
+    ...storedSnapshot,
+    seq: storedSnapshot.seq + 1,
+    userMessageQueue: [...storedSnapshot.userMessageQueue, "existing acceptance"],
+  };
+  releaseDelay?.();
+  await flush();
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 0);
+  const preserved = env.tasks.get(run.taskId ?? "")?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+  assert.equal(preserved?.seq, storedSnapshot.seq + 1);
+  assert.deepEqual(preserved?.userMessageQueue, [...storedSnapshot.userMessageQueue, "existing acceptance"]);
+  const entries = launchPersistEntries(env.logs);
+  assert.deepEqual(entries.map((item) => ({ result: item.result, reason: item.reason, stage: item.stage })), [
+    { result: "retry", reason: "identity-lock-present", stage: "launch-commit" },
+    { result: "unconfirmed", reason: "snapshot-diverged", stage: "launch-commit" },
+  ]);
+  assert.equal(JSON.stringify(entries).includes("existing acceptance"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("an unclear launch write is not repeated and does not start", async () => {
+  let launchWrites = 0;
+  const secret = "SECRET_LAUNCH_PATH";
+  const env = harness({
+    beforeUpdateTask: (patch) => {
+      if (!launchStartSubtaskId(patch)) return;
+      launchWrites += 1;
+      throw Object.assign(new Error(`disk /tmp/${secret}`), { code: "ENOSPC" });
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0]?.result, "unconfirmed");
+  assert.equal(entries[0]?.reason, "write-unconfirmed");
+  assert.equal(entries[0]?.stage, "launch-commit");
+  assert.equal(entries[0]?.taskId, run.taskId);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).running.some((item) => item.subtaskId === "alpha"), true);
+  assert.equal(snapshotOf(env.tasks.get(run.taskId ?? "")).reviewQueue.length, 0);
+  assert.equal(JSON.stringify(entries).includes(secret), false);
+  assert.equal(env.logs.some((item) => item.event === "loop-plus-launch-failed"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("a stored start marker is ignored when the reread parent is already stopped", async () => {
+  let launchWrites = 0;
+  let taskId = "";
+  const notices: Array<{ phase?: string; subtaskId?: string }> = [];
+  const preservedMessages = ["keep acceptance order"];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase, subtaskId: notice.subtaskId });
+    },
+    beforeUpdateTask: (patch) => {
+      if (!launchStartSubtaskId(patch)) return;
+      launchWrites += 1;
+      if (launchWrites > 1) return;
+      const task = env.tasks.get(taskId);
+      assert.ok(task);
+      const stored = task.loopPlus as LoopPlusSchedulerSnapshot;
+      task.subTasks = (patch.subTasks ?? task.subTasks).map((item) => ({ ...item }));
+      task.loopPlus = { ...stored, parentStopped: true, seq: stored.seq, userMessageQueue: preservedMessages.slice() };
+      task.status = "stopped";
+      throw new LoopPlusUpdateUnconfirmedError(task.id);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const stored = env.tasks.get(taskId);
+  const snapshot = snapshotOf(stored);
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(notices.filter((item) => item.phase === "started").length, 0);
+  assert.equal(entries.some((item) => item.result === "cancelled" && item.reason === "stopped" && item.stage === "launch-commit"), true);
+  assert.equal(entries.some((item) => item.result === "committed"), false);
+  assert.equal(stored?.status, "stopped");
+  assert.equal(snapshot.parentStopped, true);
+  assert.deepEqual(snapshot.userMessageQueue, preservedMessages);
+  assert.equal(snapshot.reviewQueue.length, 0);
+  assert.equal(snapshot.currentReview, null);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("a stored start marker is ignored when the reread generation has moved on", async () => {
+  let launchWrites = 0;
+  let taskId = "";
+  const notices: Array<{ phase?: string }> = [];
+  const preservedMessages = ["queued before the stale generation"];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase });
+    },
+    beforeUpdateTask: (patch) => {
+      if (!launchStartSubtaskId(patch)) return;
+      launchWrites += 1;
+      if (launchWrites > 1) return;
+      const task = env.tasks.get(taskId);
+      assert.ok(task);
+      const stored = task.loopPlus as LoopPlusSchedulerSnapshot;
+      task.subTasks = (patch.subTasks ?? task.subTasks).map((item) => ({ ...item }));
+      task.loopPlus = {
+        ...stored,
+        seq: stored.seq + 1,
+        userMessageQueue: preservedMessages.slice(),
+      };
+      if (typeof patch.updatedAt === "number") task.updatedAt = patch.updatedAt;
+      throw new LoopPlusUpdateUnconfirmedError(task.id);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const stored = env.tasks.get(taskId);
+  const snapshot = snapshotOf(stored);
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 0);
+  assert.equal(notices.filter((item) => item.phase === "started").length, 0);
+  assert.equal(entries.some((item) => item.result === "committed"), false);
+  assert.equal(entries.some((item) => item.result === "cancelled" && item.reason === "stale-generation" && item.stage === "launch-commit"), true);
+  assert.equal(snapshot.seq > 0, true);
+  assert.deepEqual(snapshot.userMessageQueue, preservedMessages);
+  assert.equal(snapshot.reviewQueue.length, 0);
+  assert.equal(snapshot.currentReview, null);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("sustained launch contention parks the reservation and resumes it once after the lock clears", async () => {
+  let alphaWrites = 0;
+  let locked = true;
+  const secret = "SECRET_PARKED_LAUNCH";
+  const notices: Array<{ phase?: string; subtaskId?: string }> = [];
+  const env = harness({
+    maxConcurrency: 2,
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase, subtaskId: notice.subtaskId });
+    },
+    beforeUpdateTask: (patch) => {
+      if (launchStartSubtaskId(patch) !== "alpha") return;
+      alphaWrites += 1;
+      if (locked) throw new LoopPlusUpdateUnconfirmedError(secret);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])],
+  }));
+  await flush();
+  const parked = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  const attemptId = parked.pending.find((item) => item.subtaskId === "alpha")?.attemptId;
+  const reservation = env.logs.filter((item) => item.event === "loop-plus-launch-reservation").map((item) => item.payload as {
+    attemptId?: string; slot?: string; recovery?: string;
+  });
+  assert.equal(typeof attemptId, "string");
+  assert.equal(parked.running.some((item) => item.subtaskId === "alpha"), false);
+  assert.equal(parked.running.some((item) => item.subtaskId === "beta"), true);
+  assert.equal(parked.pending.filter((item) => item.attemptId === attemptId).length, 1);
+  assert.equal(parked.seenAttempts.find((item) => item.attemptId === attemptId)?.disposition, "open");
+  assert.equal(parked.reviewQueue.length, 0);
+  assert.equal(parked.currentReview, null);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "alpha").length, 0);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "beta").length, 1);
+  assert.equal(notices.filter((item) => item.phase === "started" && item.subtaskId === "alpha").length, 0);
+  assert.equal(reservation.filter((item) => item.attemptId === attemptId && item.slot === "pending" && item.recovery === "promote-pending").length, 1);
+  const contended = launchPersistEntries(env.logs).filter((item) => item.attemptId === attemptId);
+  assert.deepEqual(contended.map((item) => item.result), ["retry", "retry", "contended"]);
+  assert.equal(JSON.stringify(contended).includes(secret), false);
+  locked = false;
+  env.attempts.find((item) => item.request.subtaskId === "beta")?.resolve({ outcome: "completed", detail: "beta done" });
+  await flush();
+  const resumed = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  const alphaAttempts = env.attempts.filter((item) => item.request.subtaskId === "alpha");
+  assert.equal(alphaAttempts.length, 1);
+  assert.equal(alphaAttempts[0]?.request.attemptId, attemptId);
+  assert.equal(resumed.running.filter((item) => item.attemptId === attemptId).length, 1);
+  assert.equal(resumed.pending.some((item) => item.attemptId === attemptId), false);
+  assert.equal(notices.filter((item) => item.phase === "started" && item.subtaskId === "alpha").length, 1);
+  assert.equal(alphaWrites, 4);
+  assert.equal(resumed.currentReview?.subtaskId, "beta");
+  assert.equal(resumed.reviewQueue.some((item) => item.subtaskId === "alpha"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+test("a committed launch does not start when the reservation is pending at a newer seq", async () => {
+  let taskId = "";
+  let armFinalRead = false;
+  const preservedMessages = ["keep the queued note"];
+  const notices: Array<{ phase?: string; subtaskId?: string }> = [];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase, subtaskId: notice.subtaskId });
+    },
+    beforeUpdateTask: (patch) => {
+      if (launchStartSubtaskId(patch) === "alpha") armFinalRead = true;
+    },
+    beforeReadTask: () => {
+      if (!armFinalRead) return;
+      armFinalRead = false;
+      const task = env.tasks.get(taskId);
+      const stored = task?.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+      assert.ok(task && stored);
+      const moved = stored.running.filter((item) => item.subtaskId === "alpha")
+        .map((item) => ({ ...item, state: "pending" as const }));
+      task.loopPlus = {
+        ...stored,
+        seq: stored.seq + 1,
+        running: stored.running.filter((item) => item.subtaskId !== "alpha"),
+        pending: [...moved, ...stored.pending.filter((item) => item.subtaskId !== "alpha")],
+        userMessageQueue: preservedMessages.slice(),
+      };
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const stored = snapshotOf(env.tasks.get(taskId));
+  assert.equal(env.attempts.length, 0);
+  assert.equal(notices.filter((item) => item.phase === "started").length, 0);
+  assert.equal(launchPersistEntries(env.logs).some((item) => item.result === "committed"), true);
+  assert.equal(stored.pending.filter((item) => item.subtaskId === "alpha").length, 1);
+  assert.equal(stored.running.some((item) => item.subtaskId === "alpha"), false);
+  assert.deepEqual(stored.userMessageQueue, preservedMessages);
+  assert.equal(stored.reviewQueue.length, 0);
+  assert.equal(stored.currentReview, null);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("a committed launch does not start when the final reread is empty", async () => {
+  let taskId = "";
+  let armFinalRead = false;
+  const preservedMessages = ["keep acceptance order"];
+  const notices: Array<{ phase?: string }> = [];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase });
+    },
+    beforeUpdateTask: (patch) => {
+      const snapshot = patch.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+      if (launchStartSubtaskId(patch) !== "alpha" || !snapshot) return;
+      snapshot.userMessageQueue = preservedMessages.slice();
+      armFinalRead = true;
+    },
+    projectReadTask: (task) => {
+      if (!armFinalRead) return task;
+      armFinalRead = false;
+      return null;
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const stored = snapshotOf(env.tasks.get(taskId));
+  assert.equal(env.attempts.length, 0);
+  assert.equal(notices.filter((item) => item.phase === "started").length, 0);
+  assert.equal(launchPersistEntries(env.logs).some((item) => item.result === "committed"), true);
+  assert.deepEqual(stored.userMessageQueue, preservedMessages);
+  assert.equal(stored.reviewQueue.length, 0);
+  assert.equal(stored.currentReview, null);
+  env.host.stopParent(taskId);
+  await run.done;
+});
+
+test("a confirmed running launch starts once and posts one started bubble", async () => {
+  const notices: Array<{ phase?: string; subtaskId?: string }> = [];
+  const env = harness({
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase, subtaskId: notice.subtaskId });
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const stored = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  assert.equal(env.attempts.length, 1);
+  assert.equal(notices.filter((item) => item.phase === "started").length, 1);
+  assert.equal(stored.running.filter((item) => item.attemptId === env.attempts[0]?.request.attemptId).length, 1);
+  assert.equal(stored.pending.length, 0);
+  assert.equal(stored.reviewQueue.length, 0);
+  env.host.stopParent(run.taskId!);
+  await run.done;
+});
+
+async function recoverRejectedPark(withSibling: boolean): Promise<void> {
+  let launchWrites = 0;
+  let parkWrites = 0;
+  let locked = true;
+  const secret = withSibling ? "SECRET_PARK_SIBLING" : "SECRET_PARK_ALONE";
+  const notices: Array<{ phase?: string; subtaskId?: string }> = [];
+  const env = harness({
+    maxConcurrency: 2,
+    appendSubtaskChat: (_target, notice) => {
+      notices.push({ phase: notice.phase, subtaskId: notice.subtaskId });
+    },
+    beforeUpdateTask: (patch) => {
+      if (!locked) return;
+      const snapshot = patch.loopPlus as LoopPlusSchedulerSnapshot | undefined;
+      if (launchStartSubtaskId(patch) === "alpha") {
+        launchWrites += 1;
+        throw new LoopPlusUpdateUnconfirmedError(secret);
+      }
+      if (launchWrites >= 3 && snapshot?.pending.some((item) => item.subtaskId === "alpha")
+        && !snapshot.running.some((item) => item.subtaskId === "alpha")) {
+        parkWrites += 1;
+        throw new LoopPlusUpdateUnconfirmedError(secret);
+      }
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  await flush();
+  env.mains[0].resolve(decisionJson({
+    status: "dispatch",
+    subtasks: withSibling
+      ? [subtask("alpha", ["src/alpha.ts"]), subtask("beta", ["src/beta.ts"])]
+      : [subtask("alpha", ["src/alpha.ts"])],
+  }));
+  await flush();
+  const parked = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  const attemptId = parked.running.find((item) => item.subtaskId === "alpha")?.attemptId;
+  const reservation = env.logs.filter((item) => item.event === "loop-plus-launch-reservation").map((item) => item.payload as {
+    attemptId?: string; slot?: string; recovery?: string;
+  });
+  assert.equal(typeof attemptId, "string");
+  assert.equal(launchWrites, 3);
+  assert.equal(parkWrites, 1);
+  assert.equal(env.attempts.filter((item) => item.request.subtaskId === "alpha").length, 0);
+  assert.equal(notices.filter((item) => item.phase === "started" && item.subtaskId === "alpha").length, 0);
+  assert.equal(parked.running.filter((item) => item.attemptId === attemptId).length, 1);
+  assert.equal(parked.pending.some((item) => item.attemptId === attemptId), false);
+  assert.equal(parked.seenAttempts.find((item) => item.attemptId === attemptId)?.disposition, "open");
+  assert.equal(parked.reviewQueue.length, 0);
+  assert.equal(parked.currentReview, null);
+  assert.equal(reservation.filter((item) => item.slot === "running" && item.recovery === "promote-pending").length, 0);
+  assert.equal(reservation.filter((item) => item.attemptId === attemptId && item.slot === "running" && item.recovery === "resume-interrupted").length, 1);
+  assert.equal(JSON.stringify(launchPersistEntries(env.logs)).includes(secret), false);
+  locked = false;
+  if (withSibling) {
+    env.attempts.find((item) => item.request.subtaskId === "beta")?.resolve({ outcome: "completed", detail: "beta done" });
+  } else {
+    env.host.checkWaitingTasks();
+    if (!env.attempts.some((item) => item.request.subtaskId === "alpha")) {
+      env.host.resumeInterruptedSubtasks(run.taskId ?? "");
+    }
+  }
+  await flush();
+  const resumed = snapshotOf(env.tasks.get(run.taskId ?? ""));
+  const alphaAttempts = env.attempts.filter((item) => item.request.subtaskId === attemptId || item.request.attemptId === attemptId);
+  assert.equal(alphaAttempts.length, 1);
+  assert.equal(alphaAttempts[0]?.request.attemptId, attemptId);
+  assert.equal(notices.filter((item) => item.phase === "started" && item.subtaskId === "alpha").length, 1);
+  assert.equal(resumed.running.filter((item) => item.attemptId === attemptId).length, 1);
+  assert.equal(resumed.pending.some((item) => item.attemptId === attemptId), false);
+  if (withSibling) {
+    assert.equal(resumed.currentReview?.subtaskId, "beta");
+    assert.equal(resumed.reviewQueue.some((item) => item.subtaskId === "alpha"), false);
+  } else {
+    assert.equal(resumed.reviewQueue.length, 0);
+    assert.equal(resumed.currentReview, null);
+  }
+  env.host.stopParent(run.taskId!);
+  await run.done;
+}
+
+test("a rejected pending park resumes the same attempt once when its sibling finishes", async () => {
+  await recoverRejectedPark(true);
+});
+
+test("a rejected pending park resumes the same attempt once without a sibling", async () => {
+  await recoverRejectedPark(false);
+});
+
+test("a launch update that reports unconfirmed after the start is already stored starts once", async () => {
+  let launchWrites = 0;
+  let taskId = "";
+  const env = harness({
+    beforeUpdateTask: (patch) => {
+      if (!launchStartSubtaskId(patch)) return;
+      launchWrites += 1;
+      if (launchWrites > 1) return;
+      const task = env.tasks.get(taskId);
+      assert.ok(task);
+      task.subTasks = (patch.subTasks ?? task.subTasks).map((item) => ({ ...item }));
+      if (patch.loopPlus) task.loopPlus = patch.loopPlus;
+      if (patch.status) task.status = patch.status;
+      if (typeof patch.updatedAt === "number") task.updatedAt = patch.updatedAt;
+      throw new LoopPlusUpdateUnconfirmedError(task.id);
+    },
+  });
+  const run = env.host.tryRun({ displayPrompt: "ship the feature" }, env.target, { schedulingMode: "event_driven" });
+  taskId = run.taskId ?? "";
+  await flush();
+  env.mains[0].resolve(decisionJson({ status: "dispatch", subtasks: [subtask("alpha", ["src/alpha.ts"])] }));
+  await flush();
+  const entries = launchPersistEntries(env.logs);
+  assert.equal(launchWrites, 1);
+  assert.equal(env.attempts.length, 1);
+  assert.equal(entries.some((item) => item.result === "committed" && item.stage === "launch-commit" && item.attemptId === env.attempts[0]?.request.attemptId), true);
+  assert.equal(entries.some((item) => item.result === "retry"), false);
+  env.host.stopParent(run.taskId!);
+  await run.done;
 });

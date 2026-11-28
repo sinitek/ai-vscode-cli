@@ -38,6 +38,10 @@
 
 ## Loop+ 成功提交不能与展示刷新共用失败契约
 
+- 子任务回报后出现 `Loop+ task update did not commit` 时，先看同一宿主 PID、同一时段的 `loop-plus-persist-failed`。`stage=finish-commit` 与相邻的 `identity-lock-present` 指向子任务回报路径。新版用 `loop-plus-finish-contention` 的 `batchKey` 关联同一交付。`parent-read`、`receipt-write`、`event-write` 分别对应读父记录、写成功回执和写调度事件。`waiting-for-watchdog` 表示保留交付等待分钟巡检，`committed` 表示已确认写入，`withheld` 表示本次未放行成功交接。持续等待和阻止交接可在默认日志查看，短暂重试及成功恢复可在调试日志查看。见[子任务回报遇到存储竞争](../design-docs/loop-plus-scheduling.md#子任务回报遇到存储竞争)。
+
+- 看到合法 `completed` 后父任务仍显示 `error`，先按原冻结验收 ID 和方案校验完整助手回复，再用 `loop-plus-main-terminal` 的批次键关联 `loop-plus-completion-commit`。旧版若在同一宿主连续出现 `loop-task-store-update-rejected`（`identity-lock-present`）和 `loop-plus-consumer-failed`，检查验收提交与父任务完成之间的写入。CLI 的 `turn.completed` 只证明模型回合已经结束。恢复规则见[完成回复遇到任务存储锁](../design-docs/loop-plus-scheduling.md#完成回复遇到任务存储锁)。
+
 - 现象：store 吞掉 write 错误、上层只检查异常或忽略 null 时，磁盘仍 running 却已通知完成并释放；反过来，把提交后面板刷新异常继续抛出，会将已提交事件当成未提交，造成重放。只测会抛异常的 updateTask 替身检不出真实 store 接口矛盾。
 - 规避：write 正常返回即原子提交，I/O 原样抛出；update 的 null 在编排/真实 refresher 边界统一拒绝。展示同步异常和异步拒绝独立记录。完成、成功压缩和关闭必须以前置提交为门禁；保留现有 completionPatch、暂停和显式继续路径。
 - 派发部分成功时保留已确认的验收和已接受的任务，续跑只处理剩余派发。控制目标可能在主模型推理期间结束，反馈应指出目标 ID，再根据结果进入验收或读取报告。
@@ -3105,3 +3109,14 @@ rm -r "$result_directory"
 - 停机时先停止并等待部门执行器排空，再撤销 Owner 路由。排空无法确认时保留 owner marker，并检查 `department-shutdown-drain-unconfirmed` / `department-owner-close-blocked`；不要把 Owner 关闭当作执行器已结束的证明。
 - 处置：先确认群聊读取失败是“真实不存在”还是 Owner 路由拒绝；再核对 task record、部门 runtime snapshot 与实际执行器/Owner receipt。不要仅凭持久 `running` 状态重派发、释放容量或手工把旧任务改成终态。
 - 回归：`node --test dist/test/extensionHost/departmentProductionTaskStore.test.js` 覆盖短锁释放后成功与未知持续锁下拒绝并保留锁。
+
+## 普通 Loop+ 验收后暂停且无法继续
+
+按任务和同一时间窗核对 `loop-plus-consumer-failed`、普通存储拒绝原因及目标任务的 `seenAttempts`。若已出现 `reviewed / failed / repairRequired`，验收结论已落盘，待办是同一逻辑子任务的返工。单独的 `identity-lock-present` 日志无法识别持锁方或哪一步写入受阻。
+
+`loop-plus-acceptance-commit-busy` 表示当前消费者仍在等待身份锁。短时退避结束后由分钟巡检唤醒。父任务真正暂停时，群聊和主 Tab 可续跑，运行中的子任务继续独立收尾。针对验收、返工、停止以及快照变化的隔离回归见 `src/test/extensionHost/loopPlusHandoffContracts.test.ts`。
+
+## 产研部重启后太阳标签仍在运行
+
+- 在旧版本中，新宿主重新打开默认来源后，标签能直接读到旧 `running`，读取组长标签还可能触发普通 Loop 的中断写回。只测试已释放的独立历史目录会漏掉这条路径。
+- 使用 `node scripts/verify_department_conversation_host.js --restart-owned` 检查打开群聊前的首屏，再打开总监群聊和组长弹窗。`--restart-abrupt` 让持有默认来源的进程带标记退出。两项都核对显示结果以及任务文件和沟通文件的哈希。

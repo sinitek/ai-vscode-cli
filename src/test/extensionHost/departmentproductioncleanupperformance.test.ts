@@ -77,15 +77,100 @@ for (const [employees, history] of [[0, 0], [0, 128], [3, 128]]) scenario(`produ
     t.mock.restoreAll();
 });
 
+// Unconfirmed, refused and persistence-failed proofs are durable logError events.
+// Confirmed, started and retained outcomes stay on logEssential. Neither channel is capacity authority.
+const SYNTHETIC_MARKER = "SYNTHETIC_SENSITIVE";
+type LifecycleEvent = { event: string; data: any };
+type SensitiveWatch = { seen: boolean };
+
+/** Marker presence only. Payloads are not stored and nothing is written to disk. */
+function mentionsSynthetic(value: unknown, seen: WeakSet<object> = new WeakSet()): boolean {
+  if (typeof value === "string") return value.includes(SYNTHETIC_MARKER);
+  if (value instanceof Error) {
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return mentionsSynthetic(value.message, seen) || mentionsSynthetic(value.name, seen)
+      || mentionsSynthetic((value as { code?: unknown }).code, seen)
+      || mentionsSynthetic((value as { cause?: unknown }).cause, seen);
+  }
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) return value.some((item) => mentionsSynthetic(item, seen));
+  for (const key of Object.keys(value)) {
+    if (key.includes(SYNTHETIC_MARKER) || mentionsSynthetic((value as Record<string, unknown>)[key], seen)) return true;
+  }
+  return false;
+}
+
+function isStructuredLifecycle(data: unknown): data is Record<string, unknown> {
+  return !!data && typeof data === "object" && "stage" in data && "result" in data;
+}
+
+/** Business counts use the structured subset. Every logger argument is still scanned. */
+function recordLifecycle(events: LifecycleEvent[], event: string, data: unknown, watch?: SensitiveWatch): Promise<void> {
+  if (watch && !watch.seen && mentionsSynthetic([event, data])) watch.seen = true;
+  if (isStructuredLifecycle(data)) events.push({ event, data });
+  return Promise.resolve();
+}
+
+if (!process.env.R234_SCENARIO) test("synthetic marker check sees field-less lifecycle logs", () => {
+  const samples: unknown[] = [
+    `${SYNTHETIC_MARKER}_TEXT`,
+    new Error(`${SYNTHETIC_MARKER}_ERROR`),
+    { error: `${SYNTHETIC_MARKER}_CLOSURE` },
+    { nested: { note: `${SYNTHETIC_MARKER}_NESTED` } },
+  ];
+  for (const data of samples) {
+    const events: LifecycleEvent[] = [];
+    const watch: SensitiveWatch = { seen: false };
+    recordLifecycle(events, "department-leader-cleanup", data, watch);
+    assert.equal(watch.seen, true);
+    assert.equal(events.length, 0);
+  }
+  const named: LifecycleEvent[] = [];
+  const namedWatch: SensitiveWatch = { seen: false };
+  recordLifecycle(named, `${SYNTHETIC_MARKER}_EVENT`, undefined, namedWatch);
+  assert.equal(namedWatch.seen, true);
+  assert.equal(named.length, 0);
+  const clean: LifecycleEvent[] = [];
+  const cleanWatch: SensitiveWatch = { seen: false };
+  recordLifecycle(clean, "department-leader-capacity", { stage: "capacity-release", result: "released", reason: "none" }, cleanWatch);
+  assert.equal(cleanWatch.seen, false);
+  assert.equal(clean.length, 1);
+  assert.equal(clean[0].data.result, "released");
+});
+
 scenario("cancelled observers detach synchronously while one original close owns pending preparation", async (t) => {
   const events: { event: string; data: any }[] = [];
   const logger = require("../../logger") as typeof import("../../logger");
-  t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
+  t.mock.method(logger, "logEssential", (event: string, data: unknown) => recordLifecycle(events, event, data));
+  t.mock.method(logger, "logError", (event: string, data: unknown) => recordLifecycle(events, event, data));
   const h = await productionWiring(t, "codex", true, false), entered = gate(), release = gate();
   h.beforeBuilder(async () => { entered.resolve(); await release.promise; });
   const started = await h.start(); assert.ok(started.ok); await entered.promise;
-  const close = h.producer.close.bind(h.producer); let closes = 0;
-  t.mock.method(h.producer, "close", (id: string) => { closes++; return close(id); });
+  const close = h.producer.close.bind(h.producer);
+  const drain = h.producer.producer.closeAdmissionsAndDrain.bind(h.producer.producer);
+  let sharedDrain: Promise<unknown> | undefined;
+  const drainGenerations: number[] = [];
+  t.mock.method(h.producer.producer, "closeAdmissionsAndDrain", (scope: Parameters<typeof drain>[0]) => {
+    const result = drain(scope);
+    if (scope.leaderTaskId !== started.taskId || scope.generation !== 1) throw new Error("generation-close-scope-diverged");
+    if (sharedDrain && result !== sharedDrain) throw new Error("generation-close-operation-diverged");
+    sharedDrain ??= result;
+    drainGenerations.push(scope.generation);
+    return result;
+  });
+  // producer.close counts both the generation's shared cleanup and the adapter
+  // fence. Observer reuse is the cleanup stack plus one drain promise.
+  const closeSources: Array<"shared-cleanup" | "adapter-fence" | "other"> = [];
+  t.mock.method(h.producer, "close", (id: string) => {
+    if (id !== started.taskId) throw new Error("producer-close-task-diverged");
+    const stack = new Error("producer.close").stack ?? "";
+    closeSources.push(/[/\\]departmentproductioncleanup\.(?:js|ts)/.test(stack) ? "shared-cleanup"
+      : stack.includes("closeDepartmentCoordinator") ? "adapter-fence" : "other");
+    return close(id);
+  });
   const task = h.read(started.taskId)!;
   for (let n = 0; n < 3; n++) {
     const abort = new AbortController(), observed = h.groupCleanup.observe(task, 1, abort.signal); assert.ok(observed);
@@ -94,7 +179,10 @@ scenario("cancelled observers detach synchronously while one original close owns
     assert.deepEqual(h.groupCleanup.observationState(), { generations: 1, subscribers: 0 });
     await assert.rejects(observed.done, /cancelled/);
   }
-  const closesBeforeBatch = closes;
+  assert.deepEqual(closeSources.filter((source) => source === "shared-cleanup"), ["shared-cleanup"],
+    "the first observation owns the generation close before reobserve");
+  assert.equal(closeSources.includes("other"), false);
+  assert.deepEqual([...new Set(drainGenerations)], [1]);
   const waiters = Array.from({ length: 128 }, () => {
     const abort = new AbortController(), observed = h.groupCleanup.observe(task, 1, abort.signal); assert.ok(observed);
     return { abort, observed };
@@ -102,7 +190,13 @@ scenario("cancelled observers detach synchronously while one original close owns
   assert.equal(h.groupCleanup.observe(task, 1), null);
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 1, subscribers: 128 });
   for (const w of waiters) { w.abort.abort(); await assert.rejects(w.observed.done, /cancelled/); }
-  assert.equal(closes, closesBeforeBatch, "reobserve/abort retains the same close subscription; adapter close is independent");
+  assert.deepEqual(closeSources.filter((source) => source === "shared-cleanup"), ["shared-cleanup"],
+    "cancelled observers reuse this generation's original close");
+  assert.deepEqual(closeSources.filter((source) => source === "adapter-fence"), ["adapter-fence"],
+    "the other producer.close is the adapter fence for the same task");
+  assert.equal(closeSources.includes("other"), false);
+  assert.deepEqual(drainGenerations, [1, 1], "adapter fence joins the same generation close");
+  assert.ok(sharedDrain);
   assert.deepEqual(h.groupCleanup.observationState(), { generations: 1, subscribers: 0 });
   assert.equal(events.filter((e) => e.event === "department-leader-cleanup" && e.data.stage === "producer-close" && e.data.result === "started").length, 1,
     "abort, subscriptions and overflow cannot repeat shared cleanup diagnostics");
@@ -161,11 +255,13 @@ scenario("pending native consumer keeps shared responsibility after every observ
 for (const mode of ["normal", "evidence-rejected", "persistence", "closure-persistence", "throw", "reject"] as const) {
   scenario(`production diagnostic outcome and original receipt gates: ${mode}`, async (t) => {
     const logger = require("../../logger") as typeof import("../../logger");
-    const events: { event: string; data: any }[] = [];
+    const events: LifecycleEvent[] = [];
+    const sensitive: SensitiveWatch = { seen: false };
+    t.mock.method(logger, "logError", (event: string, data: unknown) => recordLifecycle(events, event, data, sensitive));
     t.mock.method(logger, "logEssential", (event: string, data: unknown) => {
-      events.push({ event, data });
-      if (mode === "throw") throw new Error("SYNTHETIC_SENSITIVE_LOG_ERROR");
-      return mode === "reject" ? Promise.reject(new Error("SYNTHETIC_SENSITIVE_LOG_ERROR")) : Promise.resolve();
+      const recorded = recordLifecycle(events, event, data, sensitive);
+      if (mode === "throw") throw new Error(`${SYNTHETIC_MARKER}_LOG_ERROR`);
+      return mode === "reject" ? Promise.reject(new Error(`${SYNTHETIC_MARKER}_LOG_ERROR`)) : recorded;
     });
     const h = await productionWiring(t, "codex", true, true);
     if (mode === "evidence-rejected") {
@@ -206,7 +302,7 @@ for (const mode of ["normal", "evidence-rejected", "persistence", "closure-persi
     if (mode === "persistence" || mode === "closure-persistence") assert.ok(events.some((e) => e.data.reason === "persistence-failed"));
     if (mode === "closure-persistence") assert.equal(events.filter((e) => e.event === "department-lifecycle-persistence-failed"
       && e.data.stage === "producer-close").length, 1, "original ledger instances share diagnostic suppression");
-    assert.equal(JSON.stringify(events).includes("SYNTHETIC_SENSITIVE"), false);
+    assert.equal(sensitive.seen, false);
   });
 }
 

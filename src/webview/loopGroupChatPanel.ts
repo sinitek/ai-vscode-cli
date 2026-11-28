@@ -7,7 +7,7 @@ import { VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN } from "./viewContentScript/accepta
 import { getWebviewStrings } from "./viewContentStrings";
 import { LOOP_MODEL_SWITCH_SCRIPT, renderLoopModelSwitchFields } from "./loopModelSwitchDialog";
 import { renderModalActions, renderPanelDialog } from "./modalComponents";
-import { LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
+import { ACCEPTANCE_REVIEW_TABLE_STYLES, LOOP_GROUP_CHAT_PANEL_STYLES } from "./loopGroupChatPanelStyles";
 import { selectLoopGroupChatBubbles, type LoopGroupChatBubbleWindow } from "./loopGroupChatBubbleRetention";
 import { CHAT_MARKDOWN_SCRIPT } from "./chatMarkdown";
 import { CHAT_COPY_SCRIPT } from "./chatCopy";
@@ -18,6 +18,7 @@ import { neutralizeInlineScriptEndTags } from "./viewContentHtml";
 import { getMarkdownStyles } from "./viewContentStyles/markdown";
 import { orchestratorClarificationDialogScript, renderOrchestratorClarificationDialog } from "./orchestratorClarificationDialog";
 import { createEmptyLoopAskThread, type LoopAskThread } from "../loopAskThread";
+import { LOOP_GROUP_CHAT_VIEW_TYPE, type LoopGroupChatBinding } from "../loopGroupChatBinding";
 import { formatDepartmentLeaderLabel, formatDepartmentMemberTitle, getDepartmentLeaderCode, type DepartmentRole } from "../department";
 import { renderLoopGroupChatMessageText } from "../loopCommunicationFilePreview";
 import { parseLoopGroupChatTranscript, type LoopGroupChatSegment } from "../loopGroupChat";
@@ -30,6 +31,7 @@ import {
   getStrings,
   type LoopGroupChatPanelStrings,
 } from "./loopGroupChatPanelRenderer";
+import { pendingDepartmentStopLabel } from "./loopGroupChatPanelTypes";
 import type {
   DepartmentGroupChatModalTarget,
   LoopCommunicationFilePreviewMessage,
@@ -101,19 +103,15 @@ export class LoopGroupChatPanel {
   public constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly handlers: LoopGroupChatPanelHandlers,
+    readonly binding?: LoopGroupChatBinding,
   ) {}
 
-  private revealOrCreate(title: string, preserveFocus = true): void {
+  private revealOrCreate(title: string, preserveFocus = true, restoredPanel?: vscode.WebviewPanel): void {
     if (!this.panel) {
-      this.panel = vscode.window.createWebviewPanel(
-        "sinitek-cli-tools.loopGroupChatChat",
-        title,
-        vscode.ViewColumn.Active,
-        {
-          enableScripts: true,
-          retainContextWhenHidden: true,
-          localResourceRoots: [this.extensionUri],
-        },
+      const options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
+      if (restoredPanel) restoredPanel.webview.options = options;
+      this.panel = restoredPanel ?? vscode.window.createWebviewPanel(
+        LOOP_GROUP_CHAT_VIEW_TYPE, title, vscode.ViewColumn.Active, { ...options, retainContextWhenHidden: true },
       );
       const panel = this.panel;
       this.panel.webview.onDidReceiveMessage(async (message: LoopGroupChatPanelMessage) => {
@@ -181,13 +179,13 @@ export class LoopGroupChatPanel {
     }
   }
 
-  public showLoading(taskId: string, loopPlus: boolean, preserveFocus = true): Promise<boolean> {
+  public showLoading(taskId: string, loopPlus: boolean, preserveFocus = true, restoredPanel?: vscode.WebviewPanel): Promise<boolean> {
     const title = loopPlus ? getStrings().titleLoopPlus : getStrings().title;
-    this.revealOrCreate(`${title}: ${taskId.slice(0, 12)}`, preserveFocus);
+    this.revealOrCreate(`${title}: ${taskId.slice(0, 12)}`, preserveFocus, restoredPanel);
     if (this.htmlInstalled) return Promise.resolve(true);
     if (!this.loadingReady) {
       this.loadingReady = new Promise((resolve) => { this.resolveLoadingReady = resolve; });
-      this.panel!.webview.html = buildLoopGroupChatLoadingHtml(this.panel!.webview, taskId, title);
+      this.panel!.webview.html = buildLoopGroupChatLoadingHtml(this.panel!.webview, taskId, title, this.binding);
     }
     return this.loadingReady;
   }
@@ -208,7 +206,7 @@ export class LoopGroupChatPanel {
       this.bubbleWindow.start = 0;
     }
     this.state = state;
-    if (this.departmentModal?.state) {
+    if (this.departmentModal?.state && !this.departmentModal.state.acceptancePlanReadOnly) {
       this.departmentModal.state = { ...this.departmentModal.state, acceptancePlan: state.acceptancePlan };
       this.publishDepartmentModalState();
     }
@@ -224,7 +222,7 @@ export class LoopGroupChatPanel {
         this.askThread,
         this.renderGeneration,
         this.bubbleWindow,
-        { nonce: this.documentNonce },
+        { nonce: this.documentNonce, binding: this.binding },
       );
       this.htmlInstalled = true;
       return;
@@ -365,7 +363,11 @@ function renderGroupChatLoading(): string {
   </div>`;
 }
 
-export function buildLoopGroupChatLoadingHtml(webview: vscode.Webview, taskId: string, title: string): string {
+function persistPanelBindingScript(binding?: LoopGroupChatBinding): string {
+  return binding ? `vscode.setState({ ...vscode.getState(), loopGroupChat: ${embedJson(binding)} });` : "";
+}
+
+export function buildLoopGroupChatLoadingHtml(webview: vscode.Webview, taskId: string, title: string, binding?: LoopGroupChatBinding): string {
   const nonce = getNonce();
   return `<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
@@ -375,6 +377,7 @@ export function buildLoopGroupChatLoadingHtml(webview: vscode.Webview, taskId: s
     ${renderGroupChatLoading()}
     <script nonce="${nonce}">
       const vscode = acquireVsCodeApi();
+      ${persistPanelBindingScript(binding)}
       const retry = document.getElementById("groupChatLoadingRetry");
       window.addEventListener("message", ({ data }) => {
         if (data?.type !== "loopGroupChatChat:loadingError") return;
@@ -397,11 +400,14 @@ export function buildLoopGroupChatLoadingHtml(webview: vscode.Webview, taskId: s
 export type LoopGroupChatPanelContentPatch = {
   type: "loopGroupChatChat:contentPatch";
   mainModelBusy: boolean;
+  taskAcceptancePlan?: LoopGroupChatPanelState["acceptancePlan"];
   generation: number;
   headingText: string;
   tabTitle: string;
   subtitleText: string;
   actionsHtml: string;
+  continueAction: { html: string; canContinue: boolean };
+  departmentHistoryNoticeHtml: string;
   taskPanelHtml: string;
   rosterPanelHtml: string;
   statusBarHtml: string;
@@ -428,11 +434,14 @@ export function buildLoopGroupChatPanelContentPatch(
   return {
     type: "loopGroupChatChat:contentPatch",
     mainModelBusy: state.mainModelBusy === true,
+    ...(hasGroupAcceptancePlan(state) ? { taskAcceptancePlan: state.acceptancePlan ?? null } : {}),
     generation,
     headingText: buildLoopGroupChatPanelHeading(state, strings),
     tabTitle: buildLoopGroupChatPanelTitle(state, strings),
     subtitleText: buildLoopGroupChatPanelSubtitle(state),
     actionsHtml: renderPanelActions(state, strings),
+    continueAction: { html: renderContinueAction(state, strings), canContinue: state.task.canContinue },
+    departmentHistoryNoticeHtml: renderDepartmentHistoryNotice(state),
     taskPanelHtml: renderTaskPanel(state, strings),
     rosterPanelHtml: renderRosterPanel(state, strings, roster, acceptanceAnchors.byParticipantId),
     statusBarHtml: renderStatusBar(state, strings, roster),
@@ -454,7 +463,7 @@ export function buildLoopGroupChatPanelHtml(
   askThread: LoopAskThread = createEmptyLoopAskThread(),
   generation = 0,
   bubbleWindow?: LoopGroupChatBubbleWindow,
-  options: { nonce?: string; embedded?: DepartmentGroupChatModalTarget } = {},
+  options: { nonce?: string; embedded?: DepartmentGroupChatModalTarget; binding?: LoopGroupChatBinding } = {},
 ): string {
   const nonce = options.nonce ?? getNonce();
   const strings = getStrings();
@@ -471,10 +480,11 @@ export function buildLoopGroupChatPanelHtml(
     <style>
 ${LOOP_GROUP_CHAT_PANEL_STYLES}
 ${getMarkdownStyles(".markdown-body")}
+${ACCEPTANCE_REVIEW_TABLE_STYLES}
       .message-text.markdown-body, .ask-chat-bubble.markdown-body { white-space: normal; --radius-md: var(--radius); }
     </style>
   </head>
-  <body${state.department ? ' class="department-chat-page"' : ""}>
+  <body${state.department ? ' class="department-chat-page"' : ""} data-task-id="${escapeAttribute(state.task.id)}" data-department-history-read-only="${state.task.departmentHistoryReadOnly ? "true" : "false"}">
     ${renderGroupChatLoading()}
     <div class="shell">
       <header class="topbar">
@@ -483,9 +493,11 @@ ${getMarkdownStyles(".markdown-body")}
           <p id="panelSubtitle"${state.department ? ` title="${escapeAttribute(patch.subtitleText)}"` : ""}>${escapeHtml(patch.subtitleText)}</p>
         </div>
         <div class="actions" id="panelActions">
-          ${patch.actionsHtml}
+          <div class="action-slot" id="taskActionsSlot">${patch.actionsHtml}</div>
+          <div class="action-slot" id="continueActionSlot">${patch.continueAction.html}</div>
         </div>
       </header>
+      <div id="departmentHistoryNoticeSlot">${patch.departmentHistoryNoticeHtml}</div>
 ${renderPanelDialog({
         backdropId: "continueDialogBackdrop",
         backdropAttributes: [["aria-hidden", "true"]],
@@ -569,6 +581,7 @@ ${renderPanelDialog({
 	    <script nonce="${nonce}">${neutralizeInlineScriptEndTags(getJsonFormatterScript())}</script>
 	    <script nonce="${nonce}">
 	      const vscode = acquireVsCodeApi();
+          ${persistPanelBindingScript(options.binding)}
           const escapeHtml = askEscape;
 ${DEPARTMENT_EMPLOYEE_ALLOCATION_SCRIPT}
 ${neutralizeInlineScriptEndTags(CHAT_MARKDOWN_SCRIPT)}
@@ -601,7 +614,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      document.addEventListener("selectionchange", () => {
 	        for (const [slot, html] of [...deferredChatCopySlots]) replaceHtml(slot, html);
 	      });
-	      document.querySelectorAll("#panelActions, #taskPanelSlot, #rosterPanelSlot, #timelineSlot, #statusBarSlot, #departmentAllocationSlot").forEach((slot) => {
+      document.querySelectorAll("#taskActionsSlot, #continueActionSlot, #departmentHistoryNoticeSlot, #taskPanelSlot, #rosterPanelSlot, #timelineSlot, #statusBarSlot, #departmentAllocationSlot").forEach((slot) => {
 	        renderedSlotHtml.set(slot, { initial: slot.innerHTML });
 	      });
 	      const continueDialogBackdrop = document.getElementById("continueDialogBackdrop");
@@ -609,6 +622,8 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      const continueDialogError = document.getElementById("continueDialogError");
 	      const continueDialogConfirm = document.getElementById("continueDialogConfirm");
 	      const continueDialogCancel = document.getElementById("continueDialogCancel");
+	      const continueActionSlot = document.getElementById("continueActionSlot");
+	      let continueAction = ${embedJson(patch.continueAction)};
 	      let appliedPatchGeneration = PANEL_GENERATION;
 	      function actionButton(action) {
 	        return document.querySelector('[data-action="' + action + '"]');
@@ -803,7 +818,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	      function requestRefresh() {
 	        saveScrollState();
 	        saveDialogState();
-	        vscode.postMessage({ type: "loopGroupChatChat:refresh" });
+	        vscode.postMessage({ type: "loopGroupChatChat:refresh", ...(continueRequestId ? { continueRequestId } : {}) });
 	      }
 
 	      function setContinueDialogError(message) {
@@ -862,6 +877,16 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        button.querySelector(".continue-loading").hidden = !pending;
 	      }
 
+	      function syncContinueAction(requestAllowsContinue = true) {
+	        if (!continueRequestPending || continueAction.html) {
+	          replaceHtml(continueActionSlot, continueAction.html);
+	        }
+	        const button = actionButton("continueTask");
+	        if (!button) return;
+	        button.disabled = continueRequestId !== null || !continueAction.canContinue || !requestAllowsContinue;
+	        setContinueButtonPending(button, continueRequestPending);
+	      }
+
 	      function submitContinueDialog() {
 	        if (!continueDialogInput || !continueDialogOpen || continueDialogMode !== "continue" || continueRequestPending) {
 	          return;
@@ -875,11 +900,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        continueRequestPending = true;
 	        continueRequestId = nextRequestId("continue");
 	        closeContinueDialog();
-	        const liveContinueButton = actionButton("continueTask");
-	        if (liveContinueButton) {
-	          liveContinueButton.disabled = true;
-	          setContinueButtonPending(liveContinueButton, true);
-	        }
+	        syncContinueAction();
 	        vscode.postMessage({ type: "loopGroupChatChat:continueTask", prompt, requestId: continueRequestId });
 	      }
 
@@ -887,16 +908,7 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (!continueRequestId || message.requestId !== continueRequestId) return;
 	        if (message.type === "loopGroupChatChat:continueTaskSettled") continueRequestId = null;
 	        continueRequestPending = false;
-	        const liveContinueButton = actionButton("continueTask");
-	        if (liveContinueButton) {
-	          if (liveContinueButton.hasAttribute("data-continue-fallback") && message.canContinue !== true) {
-	            liveContinueButton.remove();
-	            return;
-	          }
-	          liveContinueButton.removeAttribute("data-continue-fallback");
-	          liveContinueButton.disabled = message.canContinue !== true;
-	          setContinueButtonPending(liveContinueButton, false);
-	        }
+	        syncContinueAction(message.canContinue === true);
 	      }
 
 	      function submitSupplementDialog() {
@@ -991,6 +1003,25 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
                 });
               });
               mountJsonTreeHosts(element);
+              if (typeof element.closest !== "function") return;
+              const message = element.closest("article.message.acceptance-result");
+              if (!message) return;
+              element.querySelectorAll("table").forEach((table) => {
+                const headers = Array.from(table.tHead && table.tHead.rows[0] ? table.tHead.rows[0].cells : [])
+                  .map((cell) => (cell.textContent || "").trim());
+                if (headers.length !== 2 || headers[0] !== "审查内容" || headers[1] !== "审查结果") return;
+                table.classList.add("acceptance-review-table");
+                const wrap = table.parentElement;
+                if (wrap && wrap.classList.contains("markdown-table-wrap")) wrap.classList.add("acceptance-review-wrap");
+                if (table.querySelector("colgroup")) return;
+                const group = document.createElement("colgroup");
+                const title = document.createElement("col");
+                const result = document.createElement("col");
+                title.className = "acceptance-review-title";
+                result.className = "acceptance-review-result";
+                group.append(title, result);
+                table.insertBefore(group, table.firstChild);
+              });
             }
             function mountBatch() {
               const start = onComplete ? performance.now() : 0;
@@ -1458,6 +1489,9 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return true;
 	        }
 	        appliedPatchGeneration = generation;
+	        if (typeof state !== "undefined" && "taskAcceptancePlan" in message) {
+	          state.taskAcceptancePlan = message.taskAcceptancePlan;
+	        }
 	        mainModelBusy = message.mainModelBusy === true;
 	        updateAskAvailability();
 	        const heading = document.getElementById("panelHeading");
@@ -1471,21 +1505,12 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
               subtitle.title = message.subtitleText;
 	        }
 	        if (typeof message.tabTitle === "string") document.title = message.tabTitle;
-	        const panelActions = document.getElementById("panelActions");
-	        const pendingButton = continueRequestPending ? actionButton("continueTask") : null;
-	        replaceHtml(panelActions, message.actionsHtml);
-	        if (continueRequestPending) {
-	          let liveContinueButton = actionButton("continueTask");
-	          if (!liveContinueButton && pendingButton && panelActions) {
-	            pendingButton.setAttribute("data-continue-fallback", "");
-	            panelActions.append(pendingButton);
-	            liveContinueButton = pendingButton;
-	          }
-	          if (liveContinueButton) {
-	            liveContinueButton.disabled = true;
-	            setContinueButtonPending(liveContinueButton, true);
-	          }
+	        replaceHtml(document.getElementById("taskActionsSlot"), message.actionsHtml);
+	        if (message.continueAction) {
+	          continueAction = message.continueAction;
+	          syncContinueAction();
 	        }
+	        replaceHtml(document.getElementById("departmentHistoryNoticeSlot"), message.departmentHistoryNoticeHtml);
 	        replaceHtml(document.getElementById("taskPanelSlot"), message.taskPanelHtml);
 	        replaceRosterHtml(message.rosterPanelHtml);
           departmentEmployeeAllocation?.sync((slot) => replaceHtml(slot, message.employeeAllocationHtml));
@@ -1596,14 +1621,8 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	        if (action === "acceptancePlan") {
 	          saveScrollState();
 	          if (typeof openAcceptancePlanDialog === "function") {
-	            const currentPlan = state.taskAcceptancePlan || {
-	              id: "system_default",
-	              name: acceptancePlanStrings.acceptancePlanSystemDefault,
-	              checks: [],
-	              otherText: "",
-	              systemDefault: true,
-	            };
-	            openAcceptancePlanDialog({ prompt: "验收方案" }, "group-chat", currentPlan);
+	            showToast("");
+	            openAcceptancePlanDialog({ prompt: "验收方案" }, "group-chat", state.taskAcceptancePlan || buildSystemAcceptancePlan());
 	          }
 	          return;
 	        }
@@ -1652,6 +1671,8 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          return;
 	        }
 	        if (message && message.type === "loopPlusAcceptancePlanSaved" && typeof handleAcceptancePlanSavedMessage === "function") {
+	          if ("taskAcceptancePlan" in message) state.taskAcceptancePlan = message.taskAcceptancePlan;
+	          showToast("");
 	          handleAcceptancePlanSavedMessage(message);
 	          return;
 	        }
@@ -1659,12 +1680,14 @@ ${neutralizeInlineScriptEndTags(CHAT_COPY_SCRIPT)}
 	          handleAcceptancePlanSelectedMessage(message);
 	          return;
 	        }
-	        if (message && message.type === "loopGroupChatChat:acceptancePlanUpdated") {
-	          if (typeof state !== "undefined" && state) {
-	            state.taskAcceptancePlan = message.plan || null;
-	          }
-	          if (typeof showToast === "function") {
-	            showToast(message.error || (typeof t === "function" ? t("acceptancePlanUpdated") : ""));
+	        if (message && message.type === "loopGroupChatChat:acceptancePlanUpdated" && typeof state !== "undefined") {
+	          if (message.error) {
+	            acceptancePlanDialog.submitting = false;
+	            setAcceptancePlanSaving(false);
+	            showAcceptancePlanError(message.error);
+	          } else {
+	            state.taskAcceptancePlan = message.plan ?? null;
+	            closeAcceptancePlanDialog();
 	          }
 	          return;
 	        }
@@ -1838,6 +1861,15 @@ function hasGroupAcceptancePlan(state: LoopGroupChatPanelState): boolean {
 }
 
 const DEPARTMENT_EXECUTION_INTERRUPTED = "本宿主执行已中断";
+const DEPARTMENT_EXECUTION_UNVERIFIED = "执行状态待核实";
+
+function renderDepartmentHistoryNotice(state: LoopGroupChatPanelState): string {
+  const executionStatus = state.task.departmentExecutionUnverified ? DEPARTMENT_EXECUTION_UNVERIFIED
+    : state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED : "";
+  if (!state.task.departmentHistoryReadOnly) return executionStatus
+    ? `<section class="panel"><div class="notice" role="status">${executionStatus}。</div></section>` : "";
+  return `<section class="panel"><div class="notice" role="status">该任务来自其他受控任务源，当前仅只读查看，不会接管或自动恢复。${executionStatus ? ` ${executionStatus}。` : ""}</div></section>`;
+}
 
 function renderPanelActions(
   state: LoopGroupChatPanelState,
@@ -1845,13 +1877,11 @@ function renderPanelActions(
 ): string {
   const progressPercent = state.task.progressPercent ?? 0;
   const progressBand = Math.min(4, Math.floor(progressPercent / 20));
-  const continueBlocked = state.department?.role === "director" && !state.task.canContinue
-    && state.task.status !== "running" && state.task.status !== "completed" && state.task.departmentStopState === "unconfirmed";
   return [
     state.department?.role === "leader" ? '<button class="button" type="button" data-action="refresh">刷新</button>' : "",
     `<div class="progress-controls"><span class="task-progress" data-progress-band="${progressBand}" role="progressbar" aria-label="总体进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progressPercent}">${progressPercent}%</span>`,
     state.task.canStop
-      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.department?.role === "director" ? strings.stopDepartmentTitle : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : strings.stopTask)}</button>`
+      ? `<button class="button danger" type="button" data-action="stopTask" title="${escapeAttribute(state.department?.role === "director" ? strings.stopDepartmentTitle : strings.stopTaskTitle)}"${state.task.departmentStopState === "stopping" ? " disabled" : ""}>${escapeHtml(state.task.departmentStopState === "stopping" ? strings.stoppingTask : state.task.departmentStopState === "unconfirmed" ? "重试中止" : strings.stopTask)}</button>`
       : "",
     "</div>",
     state.task.canSupplement
@@ -1860,17 +1890,24 @@ function renderPanelActions(
     state.task.canSupplement
       ? `<button class="button" type="button" data-action="askMainModel" title="${escapeAttribute(strings.askMainModelTitle)}">${escapeHtml(strings.askMainModel)}</button>`
       : "",
-    state.department?.role === "director" ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
-    hasGroupAcceptancePlan(state) && state.task.status !== "completed"
+    state.department?.role === "director" && !state.task.departmentHistoryReadOnly ? '<button class="button" type="button" data-action="allocateEmployees" aria-haspopup="dialog" aria-controls="departmentAllocationDialog">分配员工</button>' : "",
+    !state.task.departmentHistoryReadOnly && hasGroupAcceptancePlan(state) && state.task.status !== "completed"
       ? `<button class="button" type="button" data-action="acceptancePlan" title="${escapeAttribute(strings.acceptancePlanTitle)}">${escapeHtml(state.department?.role === "director" ? "统一验收方案" : strings.acceptancePlan)}</button>`
       : "",
-    state.task.status !== "completed"
+    !state.task.departmentHistoryReadOnly && state.task.status !== "completed"
       ? '<button class="button" type="button" data-action="switchModels" title="切换当前任务的主、子模型">切模型</button>'
       : "",
+  ].join("");
+}
+
+function renderContinueAction(state: LoopGroupChatPanelState, strings: LoopGroupChatPanelStrings): string {
+  const continueBlocked = state.department?.role === "director" && !state.task.canContinue
+    && state.task.status !== "completed" && state.task.departmentStopState === "unconfirmed";
+  return [
     state.task.canContinue || continueBlocked
       ? `<button class="button primary" type="button" data-action="continueTask" title="${escapeAttribute(strings.continueTaskTitle)}"${continueBlocked ? ' disabled aria-describedby="departmentContinueBlocked"' : ""}>${escapeHtml(strings.continueTask)}<span class="continue-loading typing-dots" role="status" aria-label="${escapeAttribute(strings.continueTaskStarting)}" hidden><span aria-hidden="true"></span><span aria-hidden="true"></span><span aria-hidden="true"></span></span></button>`
       : "",
-    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.departmentExecutionInterrupted ? `${DEPARTMENT_EXECUTION_INTERRUPTED}。` : state.task.status === "stopped" ? "已中止。" : ""}仍有原执行退出未确认，暂不能继续</span>` : "",
+    continueBlocked ? `<span id="departmentContinueBlocked" role="status">${state.task.departmentExecutionInterrupted ? `${DEPARTMENT_EXECUTION_INTERRUPTED}。` : ""}整组中止尚未确认，暂不能继续</span>` : "",
   ].join("");
 }
 
@@ -1890,8 +1927,10 @@ function renderDirectorTaskPanel(
   const currentRound = state.loopPlus
     ? ""
     : renderMetaRow(strings.currentRound, String(state.task.currentRound));
-  const status = state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED
-    : state.task.status === "stopped" ? "已中止" : state.task.status;
+  const pendingStop = !state.task.departmentHistoryReadOnly && pendingDepartmentStopLabel(state.task.departmentStopState);
+  const status = pendingStop || (state.task.departmentExecutionUnverified ? DEPARTMENT_EXECUTION_UNVERIFIED
+    : state.task.departmentExecutionInterrupted ? DEPARTMENT_EXECUTION_INTERRUPTED
+    : state.task.status === "stopped" ? "已中止" : state.task.status);
   return `<section class="panel">
     <h2>${escapeHtml(strings.taskStatusTitle)}</h2>
     <div class="meta-grid">
@@ -1952,6 +1991,7 @@ function loopPlusActivityText(
   projection: Extract<LoopPlusPanelProjection, { ok: true }>,
   strings: LoopGroupChatPanelStrings,
 ): string {
+  if (projection.activity === "waiting" && projection.running.some(item => item.waitingForStorage)) return "等待任务存储确认启动";
   switch (projection.activity) {
     case "running":
       return strings.loopPlusActivityRunning;
@@ -2044,11 +2084,18 @@ function renderParticipantStatus(
   const subtaskId = participant.subtaskId ?? participant.id;
   const projection = state.loopPlus;
   const isSubtask = participant.role === "subtask" || participant.role === "employee";
-  const repairReview = isSubtask && projection?.ok
-    && [projection.currentReview, ...projection.reviewQueue].some((item) => item?.subtaskId === subtaskId && item.repairing);
-  const repairRound = isSubtask && projection?.ok && (status === "repairing" || repairReview)
-    ? projection.repairRoundsBySubtask?.[subtaskId] ?? 0
-    : 0;
+  const reviewItem = isSubtask && projection?.ok
+    ? projection.currentReview?.subtaskId === subtaskId
+      ? projection.currentReview
+      : projection.reviewQueue.find((item) => item.subtaskId === subtaskId)
+    : undefined;
+  const repairRound = !isSubtask || !projection?.ok
+    ? 0
+    : status === "repairing"
+      ? projection.repairRoundsBySubtask?.[subtaskId] ?? 0
+      : status === "queued_review" || status === "reviewing"
+        ? reviewItem?.repairRound ?? 0
+        : 0;
   const suffix = repairRound > 1 ? ` x${repairRound}` : "";
   const label = escapeHtml(`${formatParticipantStatus(state, status, strings)}${suffix}`);
   const statusClass = participantStatusClass(status);
@@ -2093,6 +2140,8 @@ function formatParticipantStatus(
       return strings.loopPlusStatusStopped;
     case "runtime_interrupted":
       return DEPARTMENT_EXECUTION_INTERRUPTED;
+    case "runtime_unverified":
+      return DEPARTMENT_EXECUTION_UNVERIFIED;
     case "waiting_continuation":
       return strings.loopPlusStatusAwaitingContinuation;
     case "completed":
@@ -2186,7 +2235,7 @@ function renderRosterPanel(
       : anchor
       ? `<button class="member member-acceptance-link" type="button" data-action="jumpToAcceptance" data-acceptance-target="${escapeAttribute(anchor)}" title="定位到最近一次验收结果" aria-label="${escapeAttribute(participant.title)}：查看最近一次验收结果">`
       : '<div class="member">';
-    const cancelButton = participant.role === "subtask" && ["running", "blocked", "error", "failed"].includes(participant.status) && !state.department && !state.loopPlus
+    const cancelButton = participant.role === "subtask" && ["running", "blocked", "waiting_continuation", "error", "failed"].includes(participant.status) && !state.department && !state.loopPlus
       ? `<button class="button" type="button" data-action="cancelSubtask" data-subtask-id="${escapeAttribute(participant.id)}" title="取消子任务" aria-label="取消${escapeAttribute(participant.title)}">取消</button>` : "";
     return `<div class="roster-member-row">${openTag}
     <span class="avatar">${escapeHtml(getAvatarLabel(participant.title, participant.id))}</span>
@@ -2501,9 +2550,10 @@ function renderSegment(
     ? `<span class="avatar">${escapeHtml(getAvatarLabel(speaker, segment.actorId ?? ""))}</span>`
     : "";
   const layoutClass = hasAvatar ? "with-avatar" : "no-avatar";
+  const acceptanceResult = segment.heading === "验收结果";
   const anchorAttributes = acceptanceAnchor ? ` id="${escapeAttribute(acceptanceAnchor)}" tabindex="-1"` : "";
-  const body = segment.heading === "验收结果" ? stripLoopGroupChatAcceptanceMetadata(segment.body) : segment.body;
-  return `<article class="message ${escapeAttribute(segment.kind)} ${layoutClass}${acceptanceAnchor ? " acceptance-anchor" : ""}"${anchorAttributes}>
+  const body = acceptanceResult ? stripLoopGroupChatAcceptanceMetadata(segment.body) : segment.body;
+  return `<article class="message ${escapeAttribute(segment.kind)} ${layoutClass}${acceptanceResult ? " acceptance-result" : ""}${acceptanceAnchor ? " acceptance-anchor" : ""}"${anchorAttributes}>
     ${avatar}
     <section class="bubble">
       <header class="bubble-header">
@@ -2583,8 +2633,12 @@ function escapeJsString(value: string): string {
   return JSON.stringify(value).slice(1, -1);
 }
 
+function getGroupAcceptancePlanStrings() {
+  return { ...getWebviewStrings(), acceptancePlanSavePlan: "保存模板并应用", acceptancePlanSaved: "模板已保存并应用到当前任务。" };
+}
+
 function renderGroupAcceptancePlanDialogs(): string {
-  const strings = getWebviewStrings();
+  const strings = getGroupAcceptancePlanStrings();
   return renderAcceptancePlanDialogs({
     title: strings.acceptancePlanTitle,
     close: strings.acceptancePlanClose,
@@ -2614,7 +2668,7 @@ function renderGroupAcceptancePlanDialogs(): string {
 
 function renderGroupAcceptancePlanScript(panelState: LoopGroupChatPanelState): string {
   const dictionary = Object.fromEntries(
-    Object.entries(getWebviewStrings()).filter(([key]) => key.startsWith("acceptancePlan")),
+    Object.entries(getGroupAcceptancePlanStrings()).filter(([key]) => key.startsWith("acceptancePlan")),
   );
   return `
       const acceptancePlanStrings = ${embedJson(dictionary)};
@@ -2627,7 +2681,9 @@ function renderGroupAcceptancePlanScript(panelState: LoopGroupChatPanelState): s
       function t(key) {
         return acceptancePlanStrings[key] || key;
       }
-      const elements = { promptInput: { value: "", focus() {} } };
+      const elements = {
+        get promptInput() { return document.querySelector('[data-action="acceptancePlan"]'); }
+      };
       function showToast(message) {
         const toast = document.getElementById("acceptancePlanToast");
         if (!toast) {
@@ -2646,11 +2702,12 @@ function renderGroupAcceptancePlanScript(panelState: LoopGroupChatPanelState): s
         return "loop_plus";
       }
       function sendPromptWithAcceptancePlan(payload) {
+        showToast("");
         vscode.postMessage({
           type: "loopGroupChatChat:updateAcceptancePlan",
           plan: payload && payload.loopPlusAcceptancePlan,
         });
-        return "sent";
+        return "awaitingTaskSave";
       }
 ${VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN}
       bindAcceptancePlanDialogEvents();

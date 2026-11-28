@@ -1,4 +1,5 @@
 import type { RunProcess } from "../cli/commandRunner";
+import { inlineSingleSendRules, promptRuleSupplement } from "../promptRuleIndex";
 import { runOpenCodeManagedPrompt } from "../cli/openCodeManagedPrompt";
 import { buildConversationExecutionProfile } from "../conversationTabConfiguration";
 import type { OpenCodeSubagentMonitor } from "../cli/openCodeSubagentMonitor";
@@ -7,6 +8,7 @@ import type { FinalConclusionCheckOptions } from "../finalConclusion";
 import type { I18nKey } from "../i18n";
 import type { LoopMainAutoCompactRequest } from "../loopMainAutoCompact";
 import { scheduleAutoCompactAfterPrompt } from "../loopSubtaskAutoCompact";
+import { recordLoopSubtaskProcessResult } from "../loopSubtaskProcessActivity";
 import type { LoopTaskRole } from "../promptRunState";
 import type { ChatMessage } from "../webview/types";
 import type { PromptRunInput, PromptRunTarget } from "../promptRunTypes";
@@ -336,7 +338,9 @@ export async function runOpenCodePromptTemplate(
   ports.preparePendingLabel(runCli, target.tabId, prompt);
   const includeFinalAnswerInstruction = !input.loopTaskId;
   const humanInteractionEnabled = !input.loopTaskId && ports.readGlobalHumanInteractionEnabled();
-  const thinkingPrompt = ports.buildThinkingPrompt(runCli, thinkingMode, modelPrompt, {
+  const rulePrompt = executionOptions.departmentProcessStream && input.taskRole === "subtask"
+    ? inlineSingleSendRules(modelPrompt) : modelPrompt;
+  const thinkingPrompt = ports.buildThinkingPrompt(runCli, thinkingMode, rulePrompt, {
     includeFinalAnswerInstruction,
     includeHumanInteractionInstruction: humanInteractionEnabled,
   });
@@ -397,6 +401,8 @@ export async function runOpenCodePromptTemplate(
   let freshSessionRecoveryPending = false;
   let freshSessionRecoveryAttempted = false;
   let monitorUnavailableNoticeShown = false;
+  let ruleContinuation: string | null = null;
+  let ruleSupplementSent = false;
 
   while (true) {
     const isFreshSessionRecoveryAttempt = freshSessionRecoveryPending;
@@ -405,8 +411,9 @@ export async function runOpenCodePromptTemplate(
       freshSessionRecoveryAttempted = true;
     }
     const attemptNumber = hiddenRetryCount + 1;
-    const continuationPrompt = ports.takeContinuationPrompt();
-    const attemptPrompt = continuationPrompt
+    const continuationPrompt = ruleContinuation ?? ports.takeContinuationPrompt();
+    ruleContinuation = null;
+    const attemptPrompt: string = continuationPrompt
       ?? ((isFreshSessionRecoveryAttempt || hiddenRetryCount === 0) ? thinkingPrompt : hiddenRetryPrompt);
     if (hiddenRetryCount > 0) {
       const retryNumber = hiddenRetryCount;
@@ -517,6 +524,13 @@ export async function runOpenCodePromptTemplate(
           stderr: stream.rawStderr,
           cwd,
         });
+      }
+      const supplement = !ruleSupplementSent && !executionOptions.departmentProcessStream
+        && promptRuleSupplement(attemptPrompt, openCodeOutput.finalText ?? "");
+      if (supplement) {
+        ruleSupplementSent = true;
+        ruleContinuation = supplement;
+        continue;
       }
       const finalMessageTarget = ports.appendParsedOutput(openCodeOutput);
       const humanInteractionResult = await ports.maybeHandleNaturalLanguageHumanInteraction(
@@ -693,6 +707,7 @@ async function runOpenCodePromptAttemptStream(options: {
   } = options;
   return await new Promise<OpenCodePromptAttemptResult>((resolve) => {
     let settled = false;
+    let runProcess: RunProcess | undefined;
     let settleAttempt: (result: OpenCodePromptAttemptResult) => void = () => {};
     const watchdog = ports.createStartupWatchdog({
       attemptNumber,
@@ -719,6 +734,7 @@ async function runOpenCodePromptAttemptStream(options: {
       subagentMonitor.finish(result.type === "exit" && result.code === 0 ? "completed" : "failed");
       subagentRuntime.dispose();
       watchdog.dispose();
+      if (runProcess) recordLoopSubtaskProcessResult(runProcess);
       resolve(result);
     };
     settleAttempt = settle;
@@ -753,7 +769,7 @@ async function runOpenCodePromptAttemptStream(options: {
       };
     // Only classic main runs use this managed-server compatibility transport.
     // Owner streams, configured attach and other roles retain their existing ports.
-    const runProcess = managed
+    runProcess = managed
       ? runOpenCodeManagedPrompt({
         connection: options.subagentRuntime.connection!,
         cwd: cwd ?? process.cwd(), sessionId: runtimeSessionId,
@@ -779,6 +795,7 @@ async function runOpenCodePromptAttemptStream(options: {
         processLabel: ports.buildProcessLabel(runCli, runtimeSessionId ?? ports.getRunId()),
       },
     );
+    if (settled) recordLoopSubtaskProcessResult(runProcess);
     ports.onAttemptProcessStarted(runProcess, runtimeSessionId);
   });
 }

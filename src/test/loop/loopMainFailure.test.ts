@@ -2,12 +2,33 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 
 import {
+  buildLoopMainAiFailureSummary,
   buildNextLoopMainAiFailureState,
   buildResetLoopMainAiFailureState,
   isLoopMainAiFailureLimitReached,
+  isLoopMainStartupConfigLockTimeout,
+  isLoopPlusMainFailureCode,
   LOOP_MAIN_AI_FAILURE_LIMIT,
+  LOOP_PLUS_MAIN_FAILURE_CODES,
+  loopPlusMainFailure,
   normalizeLoopMainAiFailureCount,
+  RUNTIME_CONFIG_LOCK_TIMEOUT,
+  RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE,
 } from "../../loopMainFailure";
+
+test("主调用故障保留受控执行原因，兼容历史配置锁记录", () => {
+  for (const code of LOOP_PLUS_MAIN_FAILURE_CODES) {
+    const failure = loopPlusMainFailure(code);
+    assert.equal(isLoopPlusMainFailureCode(failure.code), true);
+    const summary = buildLoopMainAiFailureSummary({ mainAiLastFailureMessage: failure.message }, { nonRetryable: true, code });
+    assert.ok(summary.includes(code) && summary.includes(failure.message));
+  }
+  for (const unknown of ["constructor", undefined]) assert.equal(isLoopPlusMainFailureCode(unknown), false);
+  assert.match(buildLoopMainAiFailureSummary({}), /未记录具体错误/u);
+  assert.equal(isLoopMainStartupConfigLockTimeout({ mainAiLastFailureMessage: RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE }), true);
+  assert.equal(isLoopMainStartupConfigLockTimeout({ mainAiLastFailureCode: RUNTIME_CONFIG_LOCK_TIMEOUT }), true);
+  assert.equal(isLoopMainStartupConfigLockTimeout({ mainAiLastFailureCode: null, mainAiLastFailureMessage: RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE }), false);
+});
 
 test("normalizes invalid loop main AI failure counts to zero", () => {
   for (const value of [undefined, null, "3", true, {}, Number.NaN, Infinity, -Infinity]) {

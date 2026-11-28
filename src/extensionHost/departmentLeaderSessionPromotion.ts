@@ -17,6 +17,13 @@ export function isDepartmentLeaderMainContext(context: SessionContext, taskId: s
   return context.taskRole === "main" && context.loopTaskId === taskId;
 }
 
+export function canRestoreGroupChatLeaderTab(task: LoopTaskRecord, deps: Pick<PromotionDeps, "workspaceKey" | "readContext"> & {
+  hasSessionTab: (cli: CliName, sessionId: string) => boolean;
+}): boolean {
+  if (task.departmentInvalid || task.department?.role !== "leader" || task.workspaceKey !== deps.workspaceKey || !task.sessionId) return false;
+  return !deps.hasSessionTab(task.cli, task.sessionId) && isDepartmentLeaderMainContext(deps.readContext(task.cli, task.sessionId), task.id);
+}
+
 export function canPromoteDepartmentLeaderSession(task: LoopTaskRecord, sessionId: string, workspaceKey: string): boolean {
   const metadata = task.departmentInvalid ? null : normalizeDepartmentMetadata(task.department);
   return metadata?.role === "leader" && metadata.executionMode === "loop-plus"

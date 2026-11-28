@@ -3,6 +3,25 @@ export const RUNTIME_CONFIG_LOCK_TIMEOUT_MESSAGE = "等待其他窗口配置操�
 
 export const LOOP_MAIN_AI_FAILURE_LIMIT = 5;
 
+const loopPlusMainFailureMessages = {
+  LOOP_PLUS_IDENTITY_BUSY: "等待任务身份目录解除占用已超时，请在其他窗口写入结束后继续。",
+  LOOP_PLUS_PARENT_UNAVAILABLE: "无法确认主任务的执行归属，请核对原任务和会话后继续。",
+  LOOP_PLUS_RUN_NOT_STARTED: "主任务在启动前退出，请检查原标签和会话状态后继续。",
+  LOOP_PLUS_RUN_UNCONFIRMED: "缺少本次主调用的终态记录，请核对原会话中的执行结果后继续。",
+  LOOP_PLUS_FINAL_UNCONFIRMED: "主调用已结束，无法确认本轮助手的最终回复。请核对原会话后继续。",
+} as const;
+
+type LoopPlusMainFailureCode = keyof typeof loopPlusMainFailureMessages;
+export const LOOP_PLUS_MAIN_FAILURE_CODES = Object.keys(loopPlusMainFailureMessages) as LoopPlusMainFailureCode[];
+
+export function loopPlusMainFailure(code: LoopPlusMainFailureCode): Error & { code: LoopPlusMainFailureCode } {
+  return Object.assign(new Error(loopPlusMainFailureMessages[code]), { code });
+}
+
+export function isLoopPlusMainFailureCode(code: string | undefined): code is LoopPlusMainFailureCode {
+  return Object.prototype.hasOwnProperty.call(loopPlusMainFailureMessages, code ?? "");
+}
+
 export type LoopMainAiFailureState = {
   mainAiFailureCount?: number;
   mainAiFailureLimitReached?: boolean;

@@ -15,6 +15,7 @@ export type LoopPlusFinalAssistantHandoff = {
 };
 
 export type PromptRunInput = {
+  loopPlusMainAdmission?: { isParentInactive: () => boolean; onRunOpened: () => void };
   loopPlusNativeFinalObserved?: () => void;
   loopPlusFinalAssistantHandoff?: (handoff: LoopPlusFinalAssistantHandoff) => void;
   loopPlusMainRuntime?: {

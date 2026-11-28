@@ -29,6 +29,8 @@ type TabSummary = {
   loopTaskId?: string;
   loopSchedulingMode?: string;
   loopTaskRunning?: boolean;
+  loopTaskStatus?: string;
+  loopMainRunActive?: boolean;
 };
 
 type BrowserState = {
@@ -74,6 +76,8 @@ type PostedMessage = {
 };
 
 type BrowserApi = {
+  sendPrompt(): void;
+  isLoopMainTabCloseLocked(tab: TabSummary): boolean;
   renderMessages(): void;
   renderConversationTabs(): void;
   syncActiveMessagesFromRuntime(): void;
@@ -445,6 +449,9 @@ function browserScript(): string {
     [VIEW_CONTENT_SCRIPT_TASK_LIST_AND_UI, "closeRunConflictOverlay"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "queuePromptForLater"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "canQueuePrompt"],
+    [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "dispatchPromptPayload"],
+    [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "clearPromptInputAfterSend"],
+    [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "sendPrompt"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "saveQueuedPromptEdit"],
     [VIEW_CONTENT_SCRIPT_RUN_STREAM_AND_QUEUE, "flushPendingPromptQueue"],
     [VIEW_CONTENT_SCRIPT_SETTINGS_AND_OVERLAYS, "queueConflictPromptForLater"],
@@ -471,6 +478,7 @@ function browserScript(): string {
     "  return formatTemplate(i18n[key] || key, params);",
     "}",
     "function isTabRunning(tabId) { return runningTabIds.has(tabId); }",
+    "function buildPromptPayload(prompt) { return { prompt, interactiveMode: state.interactiveMode, contextOptions: {} }; }",
     "function syncConversationTabRunningFlowWatch() {}",
     "function hideAddModelDialog() {}",
     "function showToast() {}",
@@ -504,6 +512,7 @@ function browserScript(): string {
     "function resetAutoInteractiveModeMemoryForTest() { lastAutoInteractiveModeTabKey = \"\"; }",
     ...names.map(([source, name]) => extractFunctionSource(source, name)),
     "this.api = {",
+    "  sendPrompt, isLoopMainTabCloseLocked,",
     "  renderMessages: renderMessages,",
     "  renderConversationTabs: renderConversationTabs,",
     "  syncActiveMessagesFromRuntime: syncActiveMessagesFromRuntime,",
@@ -935,6 +944,27 @@ test("keeps Loop+ busy-send payload while classic Loop and Vibe stay unchanged",
   assert.equal(Object.prototype.hasOwnProperty.call(vibe, "loopMainThinkingMode"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(vibe, "loopExecutionMode"), false);
 
+});
+
+test("暂停的主 Tab 可发送继续，活动子 Tab 仍锁定关闭，主调用运行时显示中文提示", () => {
+  const { api, state, elements, runningTabIds, posted, labelCalls, i18n } = loadBrowser("plus-main");
+  const main = state.conversationTabs.tabs.find(tab => tab.id === "plus-main")!;
+  main.loopTaskStatus = "error";
+  main.loopTaskRunning = true;
+  main.loopMainRunActive = true;
+  runningTabIds.add("plus-sub");
+  api.renderConversationTabs();
+  elements.promptInput.value = "继续";
+  api.sendPrompt();
+  assert.ok(labelCalls.some(call => call.key === "toastLoopMainBusy"));
+  assert.match(i18n.toastLoopMainBusy, /主任务正在执行/);
+  assert.equal(posted.some(message => message.type === "sendPrompt"), false);
+  main.loopMainRunActive = false;
+  assert.equal(api.isLoopMainTabCloseLocked(main), true);
+  api.sendPrompt();
+  const sends = posted.filter(message => message.type === "sendPrompt");
+  assert.deepEqual(sends.map(message => [message.tabId, message.prompt, message.interactiveMode]), [[main.id, "继续", "loop_plus"]]);
+  assert.equal(elements.promptInput.value, "");
 });
 
 test("hides Loop+ protocol prompts from message bubbles", () => {

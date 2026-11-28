@@ -9,3 +9,5 @@
 - `loop-crash-recovery.md`：宿主崩溃后的子任务状态、完成回报与主任务恢复。
 - `chat-bubble-retention.md`、`loop-group-chat-bubble-limit.md`：主对话及群聊消息保留。
 - `skill-archive-installation.md`：Skills 归档安装边界。
+
+- 四种任务模式的提示词拆分、角色索引、完整回退和实测记录见[提示词规则索引](prompt-rule-index.md)。

@@ -1,5 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import { loopPlusAcceptanceChecksFixture } from "../loopPlusAcceptFixture";
 
 import {
   type LoopPlusAcceptancePlanSnapshot,
@@ -426,7 +427,7 @@ test("acceptance feedback includes full default and per-event evidence", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: ["修复空输入处理"],
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "测试断言失败，需先修复" }],
-    checks: [{ name: "tests", passed: false, detail: "测试断言失败" }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { passed: false, detail: "测试断言失败" } }),
     snapshot: {
       id: "plan-a",
       name: "上线前加严",
@@ -439,10 +440,11 @@ test("acceptance feedback includes full default and per-event evidence", () => {
   assert.equal(section?.heading, "验收结果");
   assert.match(section?.body ?? "", /^\*\*子任务：修复空输入处理\*\*\n\n\*\*整体验收结果：❌ 未通过\*\*\n\n❌ 测试断言失败，需先修复\n\n\| 审查内容/u);
   assert.doesNotMatch(section?.body ?? "", /验收事件|\| 整体验收结果/u);
-  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ 测试断言失败 \|/);
+  assert.match(section?.body ?? "", /\| 验证与运行 \| ❌ 测试验证未通过：测试断言失败 \/ 产物可运行性通过：/u);
+  assert.match(section?.body ?? "", /\*\*附加审查\*\*\n\n\| 审查内容/u);
   assert.match(section?.body ?? "", /\| 安全审查 \| ✅ 未发现输入信任边界问题 \|/);
   const reasons = [...(section?.body.matchAll(/\| [✅❌] ([^|\n]+) \|$/gmu) ?? [])].map((match) => match[1].trim());
-  assert.equal(reasons.length, 2);
+  assert.equal(reasons.length, 4);
   const longReason = "证据说明".repeat(30);
   const longSection = buildLoopPlusAcceptanceFeedbackSection({
     snapshot: { id: "plan-a", name: "加严", checks: ["performance", "security"], otherText: "", systemDefault: false },
@@ -455,11 +457,13 @@ test("acceptance feedback includes full default and per-event evidence", () => {
   assert.ok((longSection?.body ?? "").indexOf("性能审查") < (longSection?.body ?? "").indexOf("安全审查"));
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "passed" }],
+    checks: loopPlusAcceptanceChecksFixture(),
   }), null);
 });
 
 test("acceptance feedback explains when a failed delivery is completed without repair", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
+    checks: loopPlusAcceptanceChecksFixture(),
     reviews: [{
       eventId: "event-a",
       acceptance: "failed",
@@ -473,10 +477,10 @@ test("acceptance feedback explains when a failed delivery is completed without r
 test("acceptance feedback preserves the chosen reason language without translation", () => {
   const section = buildLoopPlusAcceptanceFeedbackSection({
     reviews: [{ eventId: "event-a", acceptance: "failed", reason: "The empty-input regression still fails." }],
-    checks: [{ name: "tests", passed: false, detail: "Empty-input assertion fails." }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { passed: false, detail: "Empty-input assertion fails." } }),
   });
   assert.match(section?.body ?? "", /\n\n❌ The empty-input regression still fails\.\n\n/u);
-  assert.match(section?.body ?? "", /\| 默认验收·测试验证 \| ❌ Empty-input assertion fails\. \|/u);
+  assert.match(section?.body ?? "", /\| 验证与运行 \| ❌ 测试验证未通过：Empty-input assertion fails\./u);
 });
 
 test("acceptance feedback identifies a batch above one shared table and escapes task titles", () => {
@@ -486,7 +490,7 @@ test("acceptance feedback identifies a batch above one shared table and escapes 
       { eventId: "front", acceptance: "passed", reason: "表单回归通过" },
       { eventId: "back", acceptance: "failed", reason: "契约断言失败" },
     ],
-    checks: [{ name: "tests", passed: false, detail: "后端契约断言失败" }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { passed: false, detail: "后端契约断言失败" } }),
   });
   assert.ok(section);
   const [summary, table] = section.body.split("| 审查内容");
@@ -502,7 +506,7 @@ test("acceptance feedback identifies a batch above one shared table and escapes 
 test("task-only acceptance derives the overall result from default and optional checks", () => {
   for (const passed of [true, false]) {
     const section = buildLoopPlusAcceptanceFeedbackSection({
-      checks: [{ name: "tests", passed: true, detail: "回归通过" }],
+      checks: loopPlusAcceptanceChecksFixture({ tests: { detail: "回归通过" } }),
       snapshot: { id: "security", name: "安全", checks: ["security"], otherText: "", systemDefault: false },
       planResults: [{ key: "security", passed, reason: passed ? "输入边界已校验" : "日志包含敏感信息" }],
     });
@@ -512,21 +516,54 @@ test("task-only acceptance derives the overall result from default and optional 
   assert.equal(buildLoopPlusAcceptanceFeedbackSection({ subtaskTitles: ["无结果"] }), null);
 });
 
+test("three conclusions use stable pairs and expose failure in either member", () => {
+  const pairs = [
+    ["交付与范围", "dispatched work", "unauthorized changes"],
+    ["契约与回归", "contracts", "omissions and regressions"],
+    ["验证与运行", "tests", "artifacts"],
+  ] as const;
+  for (const [group, first, second] of pairs) {
+    for (const failedName of [first, second]) {
+      const checks = loopPlusAcceptanceChecksFixture({ [failedName]: { passed: false, detail: "缺少该项证据" } }).reverse();
+      const section = buildLoopPlusAcceptanceFeedbackSection({ checks });
+      assert.ok(section);
+      const rows = section.body.split("\n").filter((line) => /^\| [^|]+ \| [✅❌]/u.test(line));
+      assert.deepEqual(rows.map((line) => line.split("|")[1].trim()), pairs.map(([label]) => label));
+      assert.equal(rows.filter((line) => line.includes("❌")).length, 1);
+      assert.ok(rows.find((line) => line.startsWith(`| ${group} | ❌`))?.includes("未通过：缺少该项证据 / "));
+      assert.match(section.body, /整体验收结果：❌ 未通过/u);
+    }
+  }
+  const sameEvidence = buildLoopPlusAcceptanceFeedbackSection({ checks: loopPlusAcceptanceChecksFixture({
+    tests: { detail: "这次冒烟覆盖断言和启动" }, artifacts: { detail: "这次冒烟覆盖断言和启动" },
+  }) });
+  assert.match(sameEvidence?.body ?? "", /\| 验证与运行 \| ✅ 这次冒烟覆盖断言和启动 \|/u);
+});
+
+test("incomplete, duplicate or unknown default checks produce no partial conclusion", () => {
+  const checks = loopPlusAcceptanceChecksFixture();
+  const reviews = [{ eventId: "one", acceptance: "passed" as const, reason: "交付通过" }];
+  for (const incomplete of [undefined, [], checks.slice(1), [checks[1], ...checks.slice(1)],
+    [{ ...checks[0], name: "unknown" }, ...checks.slice(1)], [...checks, checks[0]]]) {
+    assert.equal(buildLoopPlusAcceptanceFeedbackSection({ checks: incomplete, reviews }), null);
+  }
+});
+
 test("default acceptance feedback works without optional reviews and rejects invalid reasons", () => {
   for (const snapshot of [undefined, buildSystemLoopPlusAcceptancePlanSnapshot()]) {
     const section = buildLoopPlusAcceptanceFeedbackSection({
       snapshot,
-      checks: [{ name: "artifacts", passed: true, detail: "仅调整提示词，无独立可运行产物" }],
+      checks: loopPlusAcceptanceChecksFixture({ artifacts: { detail: "仅调整提示词，无独立可运行产物" } }),
     });
-    assert.match(section?.body ?? "", /\| 默认验收·产物可运行性 \| ✅ 仅调整提示词，无独立可运行产物 \|/);
+    assert.match(section?.body ?? "", /\| 验证与运行 \| ✅ [^\n]*产物可运行性：仅调整提示词，无独立可运行产物 \|/u);
   }
   for (const reason of [undefined, "  "]) {
     assert.equal(buildLoopPlusAcceptanceFeedbackSection({
-      checks: [{ name: "tests", passed: false, detail: reason }],
+      checks: loopPlusAcceptanceChecksFixture().map((check) => check.name === "tests" ? { ...check, detail: reason } : check),
     }), null);
   }
   assert.ok(buildLoopPlusAcceptanceFeedbackSection({
-    checks: [{ name: "tests", passed: true, detail: "😀".repeat(50) }],
+    checks: loopPlusAcceptanceChecksFixture({ tests: { detail: "😀".repeat(50) } }),
   }));
 });
 
@@ -534,7 +571,7 @@ test("feedback never writes a partial bubble or fabricates reasons for selected 
   const snapshot: LoopPlusAcceptancePlanSnapshot = {
     id: "plan-a", name: "加严", checks: ["security", "performance"], otherText: "", systemDefault: false,
   };
-  const checks = [{ name: "tests", passed: true, detail: "回归用例通过" }];
+  const checks = loopPlusAcceptanceChecksFixture({ tests: { detail: "回归用例通过" } });
   for (const planResults of [
     undefined,
     [{ key: "security", passed: true, reason: "输入已校验" }],
@@ -573,6 +610,7 @@ test("撤销反馈展示原因，不把撤销当作失败或通过", () => {
   assert.doesNotMatch(section.body, /✅|❌|默认验收/u);
   const mixed = buildLoopPlusAcceptanceFeedbackSection({
     subtaskTitles: ["旧交付", "新交付"],
+    checks: loopPlusAcceptanceChecksFixture(),
     reviews: [cancelled, { eventId: "keep", acceptance: "passed", reason: "测试通过" }],
   });
   assert.ok(mixed);

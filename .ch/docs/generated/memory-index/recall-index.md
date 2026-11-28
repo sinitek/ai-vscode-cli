@@ -4,7 +4,7 @@
 
 | ID | Type | Title | Read | Source | Concepts |
 | --- | --- | --- | --- | --- | --- |
-| `mem-7525b245ac` | `plan` | Codex 组长大型原生回调私有 IPC 修复 | ~74 | `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md` | open-loop, problem-solution |
-| `mem-52c8a09d98` | `plan` | Loop+ 启动前配置锁超时后显式继续 | ~52 | `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md` | open-loop, problem-solution |
+| `mem-8f3107f15f` | `plan` | CLI 跨平台运行时策略收敛 | ~78 | `.ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md` | open-loop, decision |
+| `mem-707183a27e` | `plan` | Loop+ 主决策 JSON 格式诊断 | ~117 | `.ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md` | open-loop, decision, problem-solution, source-linked |
 | `mem-431f2548e1` | `rule` | 热区记忆面 | ~46 | `.ch/docs/memory/README.md` | gotcha |
 | `mem-c1d7e714b7` | `rule` | 记忆流转规则 | ~39 | `.ch/docs/MEMORY.md` | general |

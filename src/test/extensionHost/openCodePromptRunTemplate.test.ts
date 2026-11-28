@@ -1,10 +1,12 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
+import * as path from "node:path";
 import { runOpenCodePromptTemplate } from "../../extensionHost/openCodePromptRunTemplate";
 import type { OpenCodePromptRunPorts } from "../../extensionHost/openCodePromptRunTemplate";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import { loopSubtaskAutoCompactions } from "../../loopSubtaskAutoCompact";
 import { createVibeCompactionQueueFixture } from "./fixtures/vibeCompactionQueueFixture";
+import { configurePromptRuleIndex, renderPromptRuleIndex } from "../../promptRuleIndex";
 
 type RecordedPort = OpenCodePromptRunPorts & {
   events: string[];
@@ -305,6 +307,32 @@ function createInput(overrides: Partial<PromptRunInput> = {}): PromptRunInput {
 function createTarget(): PromptRunTarget {
   return { tabId: "tab-1", cli: "opencode", sessionId: null };
 }
+
+test("OpenCode reads the selected rule inline on a single continuation", async (context) => {
+  const root = path.resolve(__dirname, "../../..");
+  assert.ok(configurePromptRuleIndex(root, "indexed"));
+  context.after(() => { configurePromptRuleIndex(root, "full"); });
+  const prompt = renderPromptRuleIndex("Vibe", [], ["vibe/interaction"])!;
+  const marker = prompt.match(/RULES_UNREADABLE:[a-f0-9]{16}/u)![0];
+  const events: string[] = [];
+  const sent: string[] = [];
+  const ports = createRecordingPorts(events, {
+    buildThinkingPrompt: () => prompt,
+    runCliStream: (_cli, text, handlers) => {
+      sent.push(text);
+      handlers.onStdout(sent.length === 1 ? marker : "已交付");
+      handlers.onExit(0);
+      return { kill: () => true };
+    },
+    parseOpenCodeRunOutput: (stdout) => ({ finalText: stdout, errorText: null, statusText: null, hasStructuredFinalAnswer: true }),
+  });
+  await runOpenCodePromptTemplate(createInput(), createTarget(), {}, ports);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1], /本轮规则正文已附/u);
+  assert.doesNotMatch(sent[1], /RULES_UNREADABLE:/u);
+  assert.equal(events.filter((event) => event === "appendUserMessage").length, 1);
+  assert.equal(events.filter((event) => event === "finalizeSuccessfulExit").length, 1);
+});
 
 for (const outcome of ["end", "stopped", "skipped"] as const) test(`OpenCode Vibe host compaction queue settlement (${outcome})`, { timeout: 2000 }, async () => {
   const fixture = createVibeCompactionQueueFixture("opencode");

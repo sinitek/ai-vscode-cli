@@ -58,12 +58,13 @@ export function deriveLoopPlusDecisionContract(
     statuses.push("accept");
     if (input.allowDispatchBeforeReview && availableSlots > 0) statuses.push("dispatch");
   } else {
-    if (availableSlots > 0 && input.view.phase !== "stopped" && input.view.phase !== "completed") statuses.push("dispatch");
+    const hasInterruptedWork = input.view.running.some(record => input.interruptedSubtaskIds?.includes(record.subtaskId));
+    if ((availableSlots > 0 || hasInterruptedWork) && input.view.phase !== "stopped" && input.view.phase !== "completed") statuses.push("dispatch");
     const waitingCanAdvance = input.view.running.length > 0
       || (input.view.pending.length > 0 && !input.view.dependencyBlocks?.length);
     const reportsCanAdvance = input.reportEventIds.length > 0
       && (!input.view.dependencyBlocks?.length || input.view.visibleReviewCount > 0);
-    if (waitingCanAdvance || reportsCanAdvance) {
+    if (!hasInterruptedWork && (waitingCanAdvance || reportsCanAdvance)) {
       statuses.push("wait");
     }
     if (input.view.running.length > 0 || input.view.pending.length > 0 || input.interruptedSubtaskIds?.length) {

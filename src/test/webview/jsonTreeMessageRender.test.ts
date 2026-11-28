@@ -5,6 +5,7 @@ import { Script } from "node:vm";
 
 import { installVscodeMock } from "../vscodeMock";
 import { WEBVIEW_STRINGS } from "../../webview/viewContentStrings";
+import { VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING } from "../../webview/viewContentScript/messageRendering";
 import { VIEW_CONTENT_SCRIPT_TRACE_RENDERING } from "../../webview/viewContentScript/traceRendering";
 
 installVscodeMock();
@@ -330,6 +331,7 @@ type JsonTreeRuntime = {
   parseCompleteJsonContainer: (content: string) => unknown;
   renderMarkdown: (content: string) => string;
   renderAssistantMessageContent: (message: Record<string, unknown>, index: number) => string;
+  renderMessageContent: (message: Record<string, unknown>, index: number) => string;
   mountJsonTreeHosts: (root: MiniElement) => void;
   createJsonTreeElement: (value: unknown) => MiniElement | null;
 };
@@ -349,6 +351,8 @@ function loadJsonTreeRuntime(options: {
     "isAssistantMarkdownRenderPending",
     "renderAssistantStreamingPlainText",
     "renderAssistantMessageContent",
+    "isToolResultLikeMessage",
+    "renderMessageContent",
     "parseJsonContainerText",
     "unwrapSingleMarkdownFence",
     "parseCompleteJsonContainer",
@@ -382,6 +386,14 @@ function loadJsonTreeRuntime(options: {
         .replace(/>/g, "&gt;");
     }
     function getTracePresentation() { return { type: "text" }; }
+    function formatDateTime(value) {
+      if (value === 4) return "2026-11-27 16:12:09";
+      if (value === 5) return "2026-11-27 16:12:49";
+      return "";
+    }
+    function renderUserMessageContent(message) { return escapeHtml(message && message.content || ""); }
+    function renderTraceMessageContent(message) { return escapeHtml(message && message.content || ""); }
+    function renderToolResultLikeMessage() { throw new Error("tool result path"); }
     function isTransparentBubbleMessage() { return false; }
     function isThinkingLikeMessage() { return false; }
     function isCodexReasoningStyleMessage() { return false; }
@@ -390,6 +402,7 @@ function loadJsonTreeRuntime(options: {
       parseCompleteJsonContainer,
       renderMarkdown,
       renderAssistantMessageContent,
+      renderMessageContent,
       mountJsonTreeHosts,
       createJsonTreeElement,
     };`,
@@ -484,6 +497,41 @@ test("renders a complete JSON object or array as an expandable JSON tree host", 
     streaming.renderAssistantMessageContent({ role: "assistant", id: "stream", content: longJson }, 0),
     /assistant-message-content-streaming/,
   );
+});
+
+test("keeps complete JSON in the tree and leaves empty, illegal, and adjacent system notices independent", () => {
+  installMiniDocument();
+  const runtime = loadJsonTreeRuntime();
+  const normalizeMessageOrder = loadNormalizeMessageOrder();
+  const roundEnd = "本轮调度已结束，用时 00:01；整体任务状态以 Loop+ 主任务为准。";
+  const compacted = "Codex 当前线程上下文压缩已完成：synthetic-thread";
+  const legal = '{"ok":true,"nested":{"n":1}}';
+  const illegal = '{"ok":true,"nested":{"n":1}';
+  const ordered = normalizeMessageOrder([
+    { id: "compact", role: "system", sequence: 5, content: compacted, createdAt: 5 },
+    { id: "illegal", role: "assistant", sequence: 3, content: illegal, createdAt: 3 },
+    { id: "round", role: "system", sequence: 4, content: roundEnd, createdAt: 4 },
+    { id: "empty", role: "assistant", sequence: 1, content: "", createdAt: 1 },
+    { id: "legal", role: "assistant", sequence: 2, content: legal, createdAt: 2 },
+  ]);
+  assert.deepEqual(ordered.map((message) => message.id), ["empty", "legal", "illegal", "round", "compact"]);
+
+  const rendered = ordered.map((message, index) => runtime.renderMessageContent(message, index));
+  assert.equal(rendered[0], '<div class="assistant-message-content"></div>');
+  assert.doesNotMatch(rendered[0], /json-tree-host/);
+  assert.match(rendered[1], /json-tree-host/);
+  assert.doesNotMatch(rendered[1], /system-line|synthetic-thread|本轮调度已结束/);
+  assert.deepEqual(scriptPayload(rendered[1]), { ok: true, nested: { n: 1 } });
+  assert.doesNotMatch(rendered[2], /json-tree-host|system-line|synthetic-thread|本轮调度已结束/);
+  assert.match(rendered[2], /<p>\{\"ok\":true,\"nested\":\{\"n\":1\}<\/p>/);
+  assert.match(rendered[3], /class="system-line"/);
+  assert.match(rendered[3], /class="system-text">本轮调度已结束，用时 00:01；整体任务状态以 Loop\+ 主任务为准。<\/span>/);
+  assert.match(rendered[3], /class="system-time">2026-11-27 16:12:09<\/span>/);
+  assert.doesNotMatch(rendered[3], /json-tree-host|synthetic-thread|"ok"/);
+  assert.match(rendered[4], /class="system-line"/);
+  assert.match(rendered[4], /class="system-text">Codex 当前线程上下文压缩已完成：synthetic-thread<\/span>/);
+  assert.match(rendered[4], /class="system-time">2026-11-27 16:12:49<\/span>/);
+  assert.doesNotMatch(rendered[4], /json-tree-host|本轮调度已结束|"ok"/);
 });
 
 test("mounts json-formatter-js with two expanded levels and lets a node collapse", () => {
@@ -587,6 +635,13 @@ test("inlines the JSON formatter runtime into the chat webview", () => {
     delete require.cache[viewContentPath];
   }
 });
+
+function loadNormalizeMessageOrder(): (messages: Array<Record<string, unknown>>) => Array<Record<string, unknown>> {
+  const source = extractFunctionSource(VIEW_CONTENT_SCRIPT_MESSAGE_RENDERING, "normalizeMessageOrder");
+  return new Function(`${source}\nreturn normalizeMessageOrder;`)() as (
+    messages: Array<Record<string, unknown>>,
+  ) => Array<Record<string, unknown>>;
+}
 
 function extractInlineScriptBodies(html: string): string[] {
   const bodies: string[] = [];

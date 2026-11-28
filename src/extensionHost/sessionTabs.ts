@@ -221,13 +221,18 @@ function buildConversationTabsState(): {
     return taskRecords.get(taskId) ?? null;
   };
   const readPort = { readTaskRecord, readDepartmentLeaderTaskIds: deps.readDepartmentLeaderTaskIds };
+  const ordinaryRecords = new Map<string, LoopTaskRecord | null>();
   let backfilledClosePolicy = false;
   const projectedState = {
     ...tabState,
     tabs: tabState.tabs.map((summary) => {
       let task = summary.loopTaskId ? readTaskRecord(summary.loopTaskId) : null;
       if (!task && summary.loopTaskId) {
-        try { task = deps.readOrdinaryConversationTabTaskRecord(summary.loopTaskId); } catch { task = null; }
+        if (!ordinaryRecords.has(summary.loopTaskId)) {
+          try { ordinaryRecords.set(summary.loopTaskId, deps.readOrdinaryConversationTabTaskRecord(summary.loopTaskId)); }
+          catch { ordinaryRecords.set(summary.loopTaskId, null); }
+        }
+        task = ordinaryRecords.get(summary.loopTaskId) ?? null;
       }
       const withSchedulingMode = summary.loopTaskId
         ? attachConversationTabLoopSchedulingMode(
@@ -242,7 +247,9 @@ function buildConversationTabsState(): {
         : [];
       const withMemberTitle = attachConversationTabLoopMemberTitle(summary.loopTaskRole === "subtask"
         ? { ...withSchedulingMode, loopSubtaskRunning: isTabRunActive(summary.id) }
-        : withSchedulingMode, task, messages);
+        : summary.loopTaskRole === "main" && task?.schedulingMode === "event_driven" && !task.department && !task.departmentInvalid
+          ? { ...withSchedulingMode, loopTaskStatus: task.status, loopMainRunActive: isTabRunActive(summary.id) }
+          : withSchedulingMode, task, messages);
       const projected = summary.loopTaskRole === "subtask"
         ? withMemberTitle
         : projectDepartmentConversationTab(withMemberTitle, task, messages, readPort);
@@ -388,7 +395,7 @@ function logConversationTabClose(payload: {
   tabId: string;
   loopTaskId: string | null;
   taskRole: LoopConversationTabContext["taskRole"];
-  closeTarget: "user" | "automatic" | "department" | "completed-subtask";
+  closeTarget: "user" | "automatic" | "department" | "completed-subtask" | "completed-leader";
   reason?: CloseRejection;
 }): void {
   try {
@@ -406,9 +413,9 @@ function logConversationTabClose(payload: {
 async function closeConversationTabAndRefreshPanel(
   tabId: string,
   options: { userInitiated?: true; notifyTabClosed?: boolean; onRejected?: () => void } = {},
-  target?: { tab: ConversationTabRecord; kind: "department" | "completed-subtask" },
+  target?: { tab: ConversationTabRecord; kind: "department" | "completed-subtask" } | { tab: ConversationTabRecord; kind: "completed-leader"; task: LoopTaskRecord },
 ): Promise<void> {
-  const completedSubtask = target?.kind === "completed-subtask";
+  const completedRole = target?.kind === "completed-subtask" ? "子任务" : target?.kind === "completed-leader" ? "组长" : null;
   const closingTab = getConversationTabById(tabId);
   const loopContext = closingTab ? deps.resolveConversationTabLoopContext?.(closingTab) ?? null : null;
   const loopTaskId = loopContext?.loopTaskId ?? closingTab?.loopTaskId ?? target?.tab.loopTaskId ?? null;
@@ -420,7 +427,16 @@ async function closeConversationTabAndRefreshPanel(
   logClose("requested");
   if (target && closingTab !== target.tab) {
     logClose("rejected", "target-changed");
-    throw new Error(completedSubtask ? "子任务标签已被替代或移除，未执行自动关闭。" : "department-owned-tab-target-changed");
+    throw new Error(completedRole ? `${completedRole}标签已被替代或移除，未执行自动关闭。` : "department-owned-tab-target-changed");
+  }
+  if (target?.kind === "completed-leader") {
+    const { task, tab } = target;
+    if (task.department?.role !== "leader" || task.status !== "completed" || task.workspaceKey !== activeWorkspaceKey
+      || tab.cli !== task.cli || !task.sessionId || getConversationTabSessionIdForCli(tab, tab.cli) !== task.sessionId
+      || loopContext?.taskRole !== "main" || loopContext.loopTaskId !== task.id) {
+      logClose("skipped", "target-changed");
+      return;
+    }
   }
   if (closingTab && !options.userInitiated && requiresManualClose(closingTab, loopContext ?? undefined)) {
     logClose("rejected", "manual-close-only");
@@ -430,7 +446,7 @@ async function closeConversationTabAndRefreshPanel(
   const mainTaskCloseLocked = !tabRunActive && target?.kind !== "department" && isLoopMainTabCloseLocked(tabId);
   if (tabRunActive || mainTaskCloseLocked) {
     logClose("rejected", tabRunActive ? "tab-run-active" : "loop-main-running");
-    if (completedSubtask) throw new Error("子任务标签正在运行或关闭已锁定，未执行自动关闭。");
+    if (completedRole) throw new Error(`${completedRole}标签正在运行或关闭已锁定，未执行自动关闭。`);
     await postPanelState();
     options.onRejected?.();
     return;
@@ -442,12 +458,12 @@ async function closeConversationTabAndRefreshPanel(
   const previousActiveTabId = getActiveConversationTabId();
   const previousCli = currentCli;
   const closingBindings = getInteractiveSessionBindingsForTab(closingTab);
-  const replaceLastTab = completedSubtask && ensureConversationTabs().tabs.length === 1;
+  const replaceLastTab = completedRole !== null && ensureConversationTabs().tabs.length === 1;
   const next = sessionTabsController.closeConversationTab(tabId, { replaceLastTab });
   const nextActiveTabId = getActiveConversationTabId();
   if (getConversationTabById(tabId)) {
     logClose("rejected", "host-close-not-applied");
-    if (completedSubtask) throw new Error("子任务标签关闭未生效，保留标签以便重试。");
+    if (completedRole) throw new Error(`${completedRole}标签关闭未生效，保留标签以便重试。`);
     options.onRejected?.();
     return;
   }
@@ -701,6 +717,10 @@ return {
   closeConversationTabAndRefreshPanel: wrap((tabId: string) => closeConversationTabAndRefreshPanel(tabId)),
   // In-process host capability only; no UI message route exposes this port.
   closeOwnedConversationTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, { tab, kind: "department" })),
+  closeCompletedLeaderTab: wrap(async (tabId: string, task: LoopTaskRecord) => {
+    const tab = getConversationTabById(tabId);
+    if (tab) await closeConversationTabAndRefreshPanel(tabId, {}, { tab, kind: "completed-leader", task });
+  }),
   closeCompletedSubtaskTabAndRefreshPanel: wrap((tab: ConversationTabRecord) => closeConversationTabAndRefreshPanel(tab.id, {}, { tab, kind: "completed-subtask" })),
   detachConversationTabsFromSession: wrap(detachConversationTabsFromSession),
   syncCurrentSessionWithActiveTab: wrap(syncCurrentSessionWithActiveTab),

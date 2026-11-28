@@ -11,6 +11,11 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const product = path.resolve(__dirname, "..");
 const timeout = Number(process.env.SINITEK_DEPARTMENT_HOST_TIMEOUT_MS || 90000);
+const abandonedSource = process.argv.includes("--restart-abrupt");
+const historyScenario = abandonedSource || process.argv.includes("--restart-history") || process.argv.includes("--restart-needs-review");
+const reopenedSource = process.argv.includes("--restart-owned");
+const restartScenario = historyScenario || reopenedSource;
+const directorStatus = process.argv.includes("--restart-needs-review") ? "needs-review" : restartScenario ? "running" : "completed";
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function vscodeExecutable() {
@@ -27,11 +32,11 @@ function remainingProcesses(pid, root) {
     const value = JSON.parse(result.stdout);
     return (Array.isArray(value) ? value : [value]).filter((item) => item.CommandLine?.includes(root));
   }
-  const result = cp.spawnSync("ps", ["-axo", "pid=,pgid=,stat=,command="], { encoding: "utf8" });
+  const result = cp.spawnSync("ps", ["-axo", "pid=,ppid=,pgid=,stat=,ucomm="], { encoding: "utf8" });
   if (result.status !== 0) throw new Error(`Cannot verify VS Code process exit: ${result.stderr}`);
   return result.stdout.split("\n").filter((line) => {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/);
-    return match && !match[3].includes("Z") && (Number(match[2]) === pid || match[4].includes(root));
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(\S+)$/);
+    return match && !match[4].includes("Z") && Number(match[3]) === pid;
   });
 }
 
@@ -54,20 +59,31 @@ async function seedPrivateFixture({ root, home, workspace }) {
   const { createDepartmentProductionTaskStore } = require(path.join(product, "dist/extensionHost/departmentProductionTaskStore.js"));
   const { prepareDepartmentTaskRecord } = require(path.join(product, "dist/extensionHost/departmentOwnedTaskRepository.js"));
   const { createLoopPlusScheduler } = require(path.join(product, "dist/loopPlusScheduler.js"));
+  const { buildLoopMainSubChatTranscriptFile } = require(path.join(product, "dist/loopGroupChat.js"));
   const { writeSessionFile, writeMessageFile } = require(path.join(product, "dist/sessionStore.js"));
   const fixtureWorkspaceKey = workspaceKey(workspace);
   const fixture = createDepartmentConversationHostFixture(fixtureWorkspaceKey, crypto.randomBytes(4).toString("hex"));
   const communicationDir = path.join(root, "fixture-communication");
-  const transcript = path.join(communicationDir, `${fixture.ids.rootTaskId}.md`);
+  const transcript = buildLoopMainSubChatTranscriptFile(communicationDir);
   fs.mkdirSync(communicationDir, { recursive: true });
-  fs.writeFileSync(transcript, "# 隔离部门历史\n\n总监和两位组长的已完成验证记录。\n", { flag: "wx" });
+  const historyBody = Array.from({ length: 24 }, (_, index) => `隔离历史消息 ${index + 1}：用于真实群聊滚动位置恢复验证。`).join("\n\n");
+  fs.writeFileSync(transcript, `# 隔离部门历史\n\n- 任务状态：${restartScenario ? "running" : "completed"}\n\n总监和两位组长的验证记录。\n\n${historyBody}\n`, { flag: "wx" });
   for (const task of [fixture.root, fixture.leaderOne, fixture.leaderTwo]) {
     task.communicationDir = communicationDir;
     task.mainCommunicationFile = transcript;
+    if (restartScenario) {
+      task.status = task === fixture.root ? directorStatus : "running";
+      for (const subtask of task.subTasks) subtask.status = "running";
+    }
   }
-  fixture.leaderOne.loopPlus = createLoopPlusScheduler({ maxConcurrency: 4 }).snapshot();
+  const leaderScheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
+  if (restartScenario) leaderScheduler.dispatch([{ subtaskId: fixture.ids.employeeSubtaskId, attemptId: "historical-running-attempt", title: "真实员工执行会话" }]);
+  fixture.leaderOne.loopPlus = leaderScheduler.snapshot();
   fixture.leaderTwo.loopPlus = createLoopPlusScheduler({ maxConcurrency: 4 }).snapshot();
-  const store = createDepartmentProductionTaskStore(path.join(home, ".sinitek_cli", "department-tasks-v1"));
+  const hostSourceRoot = path.join(home, ".sinitek_cli", "department-tasks-v1");
+  const historicalSourceRoot = historyScenario && !abandonedSource ? path.join(home, ".sinitek_cli", "department-history-v1") : hostSourceRoot;
+  const store = createDepartmentProductionTaskStore(historicalSourceRoot);
+  let taskStoreHashes;
   try {
     store.create(prepareDepartmentTaskRecord(fixture.root, fixture.root.department,
       fixture.root.loopPlusAcceptancePlan));
@@ -75,9 +91,9 @@ async function seedPrivateFixture({ root, home, workspace }) {
       fixture.leaderOne.loopPlusAcceptancePlan));
     store.create(prepareDepartmentTaskRecord(fixture.leaderTwo, fixture.leaderTwo.department,
       fixture.leaderTwo.loopPlusAcceptancePlan));
+    taskStoreHashes = store.listTaskStoreFiles().map((file) => ({ file, sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") }));
   } finally {
-    const closed = await store.close();
-    if (!closed) throw new Error("Fixture owner did not release normally");
+    if (!abandonedSource && !await store.close()) throw new Error("Fixture owner did not release normally");
   }
   const messageOptions = { activeWorkspaceKey: fixtureWorkspaceKey, workspaceKeyFallback: "workspace", legacyMessageDir: path.join(home, ".sinitek_cli", "messages"), messageDirRoot: path.join(home, ".sinitek_cli", "messages") };
   const messages = new Map([
@@ -119,7 +135,8 @@ async function seedPrivateFixture({ root, home, workspace }) {
   const workspaceSettingsDir = path.join(dataDir, "workspace-settings");
   fs.mkdirSync(workspaceSettingsDir, { recursive: true });
   fs.writeFileSync(path.join(workspaceSettingsDir, `${fixtureWorkspaceKey}.json`), JSON.stringify(settings, null, 2), { flag: "wx" });
-  return { workspaceKey: fixtureWorkspaceKey, fixture, sessionIds, taskSourceRoot: path.join(dataDir, "department-tasks-v1"),
+  return { workspaceKey: fixtureWorkspaceKey, fixture, sessionIds, historicalSourceRoot, hostSourceRoot, taskStoreHashes,
+    transcript, transcriptSha256: crypto.createHash("sha256").update(fs.readFileSync(transcript)).digest("hex"),
     sessionStorePath: path.join(dataDir, "sessions", `${fixtureWorkspaceKey}.json`), originalSessionLabels, taskSummaries };
 }
 
@@ -146,6 +163,7 @@ exports.run = async () => {
   const until = Date.now() + ${timeout - 15000};
   while (Date.now() < until && !fs.existsSync(path.join(root, 'host-finish.signal'))) await new Promise(resolve => setTimeout(resolve, 100));
   if (!fs.existsSync(path.join(root, 'host-finish.signal'))) throw new Error('Browser verification did not finish');
+  await vscode.commands.executeCommand('workbench.action.quit');
 };
 `);
   return file;
@@ -162,7 +180,7 @@ async function waitForHostDebugger(port, deadline) {
   throw new Error("VS Code Chromium debugging endpoint did not become available");
 }
 
-async function verifyWebview(root, port, fixture, report) {
+async function verifyWebview(root, port, fixture, report, seeded) {
   const playwrightPath = process.env.PLAYWRIGHT_MODULE || "/tmp/zq-playwright-smoke/node_modules/playwright";
   const { chromium } = require(playwrightPath);
   const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
@@ -273,6 +291,8 @@ async function verifyWebview(root, port, fixture, report) {
     const label = await evaluate("document.querySelector('.conversation-tab-label')?.textContent.trim() || ''");
     labels.push(label);
     assert.equal(label, expectedLabels[index], `tab ${index} preserves its original CLI title and only adds the role icon`);
+    if (restartScenario) assert.equal(await evaluate("document.querySelector('.conversation-tab').classList.contains('running')"), false,
+      `restored tab ${label} must be idle on first render before opening group chat`);
     assert.equal(await evaluate("document.querySelector('.conversation-tab').getAttribute('aria-label')"), expectedLabels[index],
       `tab ${index} accessible title preserves the original CLI name`);
   }
@@ -300,14 +320,14 @@ async function verifyWebview(root, port, fixture, report) {
     return;
   }
   const clickTab = async (index) => { await goToTab(index); await evaluate("document.querySelector('.conversation-tab').click()"); };
-  const mode = async () => evaluate("document.querySelector('#interactiveModeSelect')?.value");
-  await clickTab(1); assert.equal(await mode(), "loop_plus");
-  await clickTab(3); assert.equal(await mode(), "coding");
-  await clickTab(0); assert.equal(await mode(), "department");
+  const waitForMode = (mode) => waitFor(`document.querySelector('#interactiveModeSelect')?.value === ${JSON.stringify(mode)} && document.querySelector('.conversation-tab')?.getAttribute('aria-selected') === 'true'`, `selected tab in ${mode} mode`);
+  await clickTab(1); await waitForMode("loop_plus");
+  await clickTab(3); await waitForMode("coding");
+  await clickTab(0); await waitForMode("department");
   await goToTab(2); await evaluate("document.querySelector('.conversation-tab').focus()");
   await workbenchPage.keyboard.press("Enter");
-  assert.equal(await evaluate("document.querySelector('.conversation-tab').getAttribute('aria-selected')"), "true");
-  await clickTab(0); assert.equal(await mode(), "department");
+  await waitFor("document.querySelector('.conversation-tab')?.getAttribute('aria-selected') === 'true' && document.querySelector('#interactiveModeSelect')?.value === 'loop_plus'", "keyboard-selected leader tab");
+  await clickTab(0); await waitForMode("department");
   const attachedWebviews = new Map();
   const inspectWebviewTarget = async (candidate) => {
     let attached = attachedWebviews.get(candidate.id);
@@ -371,6 +391,17 @@ async function verifyWebview(root, port, fixture, report) {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || "Group-chat Webview evaluation failed");
     return result.result?.value;
   };
+  if (directorStatus === "running") {
+    const directorText = await groupEvaluate("document.body?.innerText || ''");
+    report.directorState = directorText;
+    assert.match(directorText, /任务状态：已中止|本宿主执行已中断/u, `released director execution is not shown as running: ${directorText}`);
+    assert.doesNotMatch(directorText, /任务状态：运行中/u, `stale director transcript status is corrected in-memory: ${directorText}`);
+  } else if (directorStatus === "needs-review") {
+    const directorText = await groupEvaluate("document.body?.innerText || ''");
+    report.directorState = directorText;
+    assert.match(directorText, /待复核/u, `needs-review remains distinct from an explicit stop: ${directorText}`);
+    assert.doesNotMatch(directorText, /本宿主执行已中断/u, `needs-review is not relabeled as interrupted running work: ${directorText}`);
+  }
   const groupWaitFor = async (expression, label, ms = 15000) => {
     const deadline = Date.now() + ms;
     while (Date.now() < deadline) { if (await groupEvaluate(expression)) return; await pause(100); }
@@ -423,7 +454,7 @@ async function verifyWebview(root, port, fixture, report) {
     } catch (error) { observationErrors.push(String(error)); }
     finally { await send("Debugger.resume", {}, groupSession); }
   };
-  await groupEvaluate("(() => { window.__departmentHostMessageTrace={incoming:[]}; window.addEventListener('message', event => { const data=event.data; window.__departmentHostMessageTrace.incoming.push({ type:data?.type, taskId:data?.taskId, instanceId:data?.instanceId, htmlLength:data?.html?.length || 0, origin:event.origin, owningShell:isLoopGroupChatHostMessage(event) }); }, true); })()");
+  await groupEvaluate("(() => { window.__departmentHostMessageTrace={incoming:[]}; window.addEventListener('message', event => { const data=event.data; const message=data?.message; const taskPanelHtml=typeof data?.taskPanelHtml==='string' ? data.taskPanelHtml : message?.taskPanelHtml; window.__departmentHostMessageTrace.incoming.push({ type:data?.type, messageType:message?.type, taskId:data?.taskId, instanceId:data?.instanceId, generation:data?.generation ?? message?.generation, htmlLength:data?.html?.length || 0, hasHistoryNotice:(typeof data?.html==='string' && data.html.includes('该任务来自其他受控任务源')) || (typeof taskPanelHtml==='string' && taskPanelHtml.includes('该任务来自其他受控任务源')), origin:event.origin, owningShell:isLoopGroupChatHostMessage(event) }); }, true); })()");
   const beforeDialog = await groupEvaluate(`(() => { const button=document.querySelector(${JSON.stringify(leaderButtonSelector)}); const scroller=document.querySelector('.main') || document.scrollingElement; window.__departmentHostTestOpener=button; return { openerKey: button?.getAttribute('data-department-nav-key'), scrollTop: scroller?.scrollTop ?? 0, scrollHeight: scroller?.scrollHeight ?? 0 }; })()`);
   assert.equal(beforeDialog.openerKey, `leader:${fixture.ids.leaderOneTaskId}`, "the intended leader navigation button is recorded as the modal opener");
   assert.ok(beforeDialog.scrollTop > 0, "the controlled director history is read at a non-zero scroll position");
@@ -479,17 +510,36 @@ async function verifyWebview(root, port, fixture, report) {
   const modalReadyDeadline = Date.now() + 15000;
   let modalDetails;
   while (Date.now() < modalReadyDeadline) {
-    modalDetails = await modalEvaluate("(() => ({ title: document.title, text: document.body?.innerText || '', taskId: document.querySelector('[data-department-task-id]')?.getAttribute('data-department-task-id') || '', role: document.body?.className || '', toolbar: document.querySelector('#panelActions')?.innerText || '', loopPlus: document.querySelector('[data-loop-plus-mode]')?.getAttribute('data-loop-plus-mode') || '', actions: Array.from(document.querySelectorAll('#panelActions [data-action]'), el => ({ action: el.getAttribute('data-action'), disabled: el.disabled })) }))()");
-    if (modalDetails.text.includes(fixture.ids.leaderOneTaskId) && modalDetails.loopPlus === "event_driven") break;
+    modalDetails = await modalEvaluate("(() => { const slot=document.querySelector('#taskPanelSlot'); const sidebar=document.querySelector('#panelSidebar'); const historyNotice=document.querySelector('#departmentHistoryNoticeSlot .notice'); const notices=Array.from(slot?.querySelectorAll('.notice') || [], element => ({ text:element.innerText, display:getComputedStyle(element).display, visibility:getComputedStyle(element).visibility })); const describe=element => element ? { text:element.innerText, textContent:element.textContent, html:element.innerHTML.slice(0,600), display:getComputedStyle(element).display, visibility:getComputedStyle(element).visibility, rect:(() => { const r=element.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height }; })() } : null; return { title:document.title, text:document.body?.innerText || '', taskId:document.body?.getAttribute('data-task-id') || '', historyReadOnly:document.body?.getAttribute('data-department-history-read-only'), loadingHidden:document.querySelector('#groupChatLoading')?.hidden === true, role:document.body?.className || '', toolbar:document.querySelector('#panelActions')?.innerText || '', loopPlus:document.querySelector('[data-loop-plus-mode]')?.getAttribute('data-loop-plus-mode') || '', taskPanelExists:Boolean(slot), taskPanel:describe(slot), sidebar:describe(sidebar), visibleReadOnlyNotice:Boolean(historyNotice && getComputedStyle(historyNotice).display !== 'none' && getComputedStyle(historyNotice).visibility === 'visible' && historyNotice.getClientRects().length > 0), historyNotice:describe(historyNotice), taskPanelHasReadOnlyNotice:slot?.innerText?.includes('只读查看') || false, notices, actions:Array.from(document.querySelectorAll('#panelActions [data-action]'), el => ({ action:el.getAttribute('data-action'), disabled:el.disabled })) }; })()");
+    if (modalDetails.taskId === fixture.ids.leaderOneTaskId && modalDetails.loadingHidden
+      && (!historyScenario || modalDetails.historyReadOnly === "true" && modalDetails.text.includes("只读查看") && modalDetails.visibleReadOnlyNotice)
+      && modalDetails.loopPlus === "event_driven") break;
     await pause(100);
   }
-  assert.ok(modalDetails?.text.includes(fixture.ids.leaderOneTaskId), "embedded group-chat content identifies the exact selected leader task");
+  assert.equal(modalDetails?.taskId, fixture.ids.leaderOneTaskId, "embedded group-chat content identifies the exact selected leader task");
   assert.ok(modalDetails.text.includes("财务模块"), "embedded group-chat content identifies the selected leader module");
   assert.equal(modalDetails.loopPlus, "event_driven", "the selected leader's actual Loop+ projection is rendered");
+  report.leaderModalState = modalDetails;
+  report.modalFrameDiagnostics = { frame: modalFrame.frame, context: { id: modalFrame.contextId, sessionId: modalFrame.sessionId },
+    notices: await modalEvaluate("Array.from(document.querySelectorAll('.notice'), element => ({ text: element.innerText, display: getComputedStyle(element).display, visibility: getComputedStyle(element).visibility }))") };
+  report.runtimeSources = Object.fromEntries([seeded.historicalSourceRoot, seeded.hostSourceRoot].map((sourceRoot) => [sourceRoot, {
+    ownerPresent: fs.existsSync(path.join(sourceRoot, ".department-owner.json")),
+    taskIds: fs.readdirSync(sourceRoot).filter((name) => name.endsWith(".json") && !name.startsWith(".")).flatMap((name) => {
+      try { return JSON.parse(fs.readFileSync(path.join(sourceRoot, name), "utf8")).tasks.map((task) => task.id); }
+      catch { return []; }
+    }),
+  }]));
+  report.modalIncoming = await groupEvaluate("window.__departmentHostMessageTrace.incoming");
   assert.ok(modalDetails.toolbar.length > 0, "the existing panel action bar is rendered in the embedded leader view");
   assert.ok(modalDetails.actions.some((item) => item.action === "refresh"), "the applicable department action remains present");
-  assert.equal(modalDetails.actions.some((item) => item.action === "stopTask" || item.action === "supplementTask" || item.action === "continueTask"), false,
-    "completed historical fixture keeps non-applicable run actions unavailable");
+  if (historyScenario) {
+    assert.ok(modalDetails.text.includes("只读查看"), "the historical leader is explicitly read-only");
+    assert.equal(modalDetails.visibleReadOnlyNotice, true, "the historical leader read-only notice remains visible outside the collapsible sidebar");
+    assert.match(modalDetails.text, /本宿主执行已中断/u, "the released source has no local leader execution");
+  }
+  if (restartScenario) assert.match(modalDetails.text, /本宿主执行已中断/u, "the restored leader has no local execution");
+  if (!reopenedSource) assert.equal(modalDetails.actions.some((item) => item.action === "stopTask" || item.action === "supplementTask" || item.action === "continueTask"), false,
+    "historical fixture exposes no task-write controls");
   const dialogTitle = await groupEvaluate("document.querySelector('#departmentChatTitle')?.textContent || ''");
   assert.equal(dialogTitle, "组长A", "department modal title identifies the selected leader by letter");
   report.modal = { frameUrl: modalFrame.frame.url, leaderTaskId: fixture.ids.leaderOneTaskId, title: dialogTitle,
@@ -602,7 +652,7 @@ async function main() {
   const port = await freePort();
   const report = { root, product, workspace, port, platform: process.platform,
     scope: "Installed production VS Code Extension Host, owned task/session persistence, real panel state and embedded Chromium Webview; no CLI/model execution", webviewErrors: [] };
-  let child, exited = false, forced = false;
+  let child, exited = false;
   console.log(`Artifacts: ${root}`);
   try {
     const code = vscodeExecutable();
@@ -613,7 +663,7 @@ async function main() {
     fs.mkdirSync(workspace, { recursive: true });
     for (const dir of [home, path.join(home, ".sinitek_cli"), path.join(root, "user-data/User"), path.join(root, "extensions")]) fs.mkdirSync(dir, { recursive: true });
     const clis = ["codex", "claude", "opencode", "grok", "dsh", "kimi-code", "zcode"];
-    fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({ humanInteractionEnabled: false,
+    fs.writeFileSync(path.join(home, ".sinitek_cli/settings.json"), JSON.stringify({ humanInteractionEnabled: false, departmentEnabled: true,
       autoCompactContextAfterRun: false, memoryAutoExtractAfterCompact: false, memoryAutoExtractAfterLoopTask: false,
       cliEnabledByName: Object.fromEntries(clis.map((cli) => [cli, false])) }));
     fs.writeFileSync(path.join(root, "user-data/User/settings.json"), JSON.stringify({
@@ -624,14 +674,16 @@ async function main() {
     }));
     const fixtureFile = path.join(root, "seeded-fixture.json");
     const seedEnv = { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: path.join(home, ".codex") };
-    const seededProcess = cp.spawnSync(process.execPath, [__filename, "--seed", root, home, workspace, fixtureFile], {
+    const seededProcess = cp.spawnSync(process.execPath, [__filename, "--seed", root, home, workspace, fixtureFile, ...process.argv.slice(2)], {
       env: seedEnv, encoding: "utf8", timeout: 30000,
     });
     assert.equal(seededProcess.status, 0, `Private production fixture seeding failed: ${seededProcess.stderr || seededProcess.stdout}`);
     const seeded = JSON.parse(fs.readFileSync(fixtureFile, "utf8"));
-    assert.equal(fs.existsSync(path.join(seeded.taskSourceRoot, ".department-owner.json")), false,
-      "preseed repository writer closed and released its owner marker before Extension Host startup");
-    report.fixture = { workspaceKey: seeded.workspaceKey, ids: seeded.fixture.ids, ownerReleasedBeforeHost: true };
+    const oldMarker = path.join(seeded.historicalSourceRoot, ".department-owner.json");
+    assert.equal(fs.existsSync(oldMarker), abandonedSource, "abrupt producer exit leaves its original marker");
+    const oldMarkerContents = abandonedSource ? fs.readFileSync(oldMarker, "utf8") : null;
+    report.fixture = { workspaceKey: seeded.workspaceKey, ids: seeded.fixture.ids, historicalSourceRoot: seeded.historicalSourceRoot,
+      hostSourceRoot: seeded.hostSourceRoot, historicalOwnerReleasedBeforeHost: true };
     const testEntry = extensionTestEntry({ root, manifest, home });
     const env = Object.fromEntries(["SystemRoot", "WINDIR", "ComSpec", "PATHEXT", "PATH", "TEMP", "TMP", "TMPDIR", "LANG", "DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR"]
       .filter((key) => process.env[key]).map((key) => [key, process.env[key]]));
@@ -652,8 +704,14 @@ async function main() {
     assert.ok(fs.existsSync(path.join(root, "host-ready.json")), "Extension test entry did not open the production panel");
     report.host = JSON.parse(fs.readFileSync(path.join(root, "host-ready.json"), "utf8"));
     assert.equal(fs.realpathSync(report.host.extensionPath), fs.realpathSync(product));
+    if (abandonedSource) {
+      const sources = path.join(home, ".sinitek_cli", "department-task-sources-v1");
+      const siblings = fs.readdirSync(sources);
+      assert.equal(siblings.length, 1, "the new host obtains a separate source");
+      report.fixture.hostSourceRoot = seeded.hostSourceRoot = path.join(sources, siblings[0]);
+    }
     await waitForHostDebugger(port, Math.min(deadline, Date.now() + 30000));
-    await verifyWebview(root, port, seeded.fixture, report);
+    await verifyWebview(root, port, seeded.fixture, report, seeded);
     fs.writeFileSync(path.join(root, "host-finish.signal"), "verified\n", { flag: "wx" });
     while (!exited && Date.now() < deadline) await pause(200);
     assert.ok(exited, "VS Code did not shut down after Extension Host tests completed");
@@ -663,9 +721,18 @@ async function main() {
     while (remaining.length && Date.now() < drainUntil) { await pause(200); remaining = remainingProcesses(child.pid, root); }
     report.remaining = remaining;
     assert.deepEqual(remaining, [], "Isolated VS Code processes remain after normal test shutdown");
-    const owner = path.join(seeded.taskSourceRoot, ".department-owner.json");
-    report.ownerMarkerRemaining = fs.existsSync(owner);
-    assert.equal(report.ownerMarkerRemaining, false, "Production owner marker was not released on normal Extension Host exit");
+    const historicalOwner = path.join(seeded.historicalSourceRoot, ".department-owner.json");
+    const hostOwner = path.join(seeded.hostSourceRoot, ".department-owner.json");
+    report.ownerMarkers = { historical: fs.existsSync(historicalOwner), host: fs.existsSync(hostOwner) };
+    assert.deepEqual(report.ownerMarkers, { historical: abandonedSource, host: false });
+    if (abandonedSource) assert.equal(fs.readFileSync(oldMarker, "utf8"), oldMarkerContents);
+    if (restartScenario) for (const { file, sha256 } of seeded.taskStoreHashes) {
+      assert.equal(crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"), sha256,
+        "historical task records remain byte-for-byte unchanged after viewing");
+    }
+    if (restartScenario) assert.equal(crypto.createHash("sha256").update(fs.readFileSync(seeded.transcript)).digest("hex"), seeded.transcriptSha256,
+      "historical transcript status is corrected in memory without rewriting the file");
+    if (restartScenario) report.historicalDataUnchanged = true;
     report.normalExit = true;
     const persistedSessionStore = JSON.parse(fs.readFileSync(seeded.sessionStorePath, "utf8"));
     const persistedLabels = persistedSessionStore.codex.sessions.map((session) => session.label);
@@ -683,21 +750,18 @@ async function main() {
         const shutdownDeadline = Date.now() + 20000;
         while (!exited && Date.now() < shutdownDeadline) await pause(200);
         let remaining = remainingProcesses(child.pid, root);
-        if (!exited || remaining.length) {
-          forced = true;
-          if (process.platform === "win32") cp.spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
-          else process.kill(-child.pid, "SIGTERM");
-          for (let i = 0; i < 50 && remainingProcesses(child.pid, root).length; i++) await pause(100);
-          remaining = remainingProcesses(child.pid, root);
-          if (remaining.length && process.platform !== "win32") process.kill(-child.pid, "SIGKILL");
-          report.remainingAfterCleanup = remainingProcesses(child.pid, root);
-        }
+        if (!exited || remaining.length) report.remainingAfterCleanup = remainingProcesses(child.pid, root);
       } catch (error) { report.cleanupError = String(error); }
     }
-    report.forcedCleanup = forced;
-    if (forced) { report.ok = false; process.exitCode = 1; }
+    report.forcedCleanup = false;
+    if (!exited || report.remainingAfterCleanup?.length) {
+      report.processDrainUnverified = true;
+      report.ok = false;
+      process.exitCode = 1;
+    }
     const ownerPath = path.join(home, ".sinitek_cli/department-tasks-v1/.department-owner.json");
-    report.ownerMarkerAtFinish = fs.existsSync(ownerPath);
+    const historyOwnerPath = path.join(home, ".sinitek_cli/department-history-v1/.department-owner.json");
+    report.ownerMarkerAtFinish = { host: fs.existsSync(ownerPath), historical: fs.existsSync(historyOwnerPath) };
     if (!report.ok && fs.existsSync(path.join(root, "vscode.log"))) report.outputTail = fs.readFileSync(path.join(root, "vscode.log"), "utf8").slice(-12000);
     fs.writeFileSync(path.join(root, "report.json"), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
@@ -706,9 +770,11 @@ async function main() {
 
 if (process.argv[2] === "--seed") {
   seedPrivateFixture({ root: process.argv[3], home: process.argv[4], workspace: process.argv[5] })
-    .then((seeded) => fs.writeFileSync(process.argv[6], JSON.stringify({ workspaceKey: seeded.workspaceKey, fixture: { ids: seeded.fixture.ids, taskSummaries: seeded.taskSummaries },
-      taskSourceRoot: seeded.taskSourceRoot, sessionStorePath: seeded.sessionStorePath, originalSessionLabels: seeded.originalSessionLabels,
-      sessionIds: seeded.sessionIds }, null, 2), { flag: "wx" }))
+    .then((seeded) => fs.writeFileSync(process.argv[6], JSON.stringify({ workspaceKey: seeded.workspaceKey,
+      fixture: { ids: seeded.fixture.ids, taskSummaries: seeded.taskSummaries }, historicalSourceRoot: seeded.historicalSourceRoot,
+      hostSourceRoot: seeded.hostSourceRoot, taskStoreHashes: seeded.taskStoreHashes, transcript: seeded.transcript,
+      transcriptSha256: seeded.transcriptSha256, sessionStorePath: seeded.sessionStorePath,
+      originalSessionLabels: seeded.originalSessionLabels, sessionIds: seeded.sessionIds }, null, 2), { flag: "wx" }))
     .catch((error) => { console.error(error.stack || error); process.exitCode = 1; });
 } else {
   main().catch((error) => { console.error(error); process.exitCode = 1; });

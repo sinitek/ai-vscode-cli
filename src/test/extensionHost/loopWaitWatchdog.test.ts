@@ -8,6 +8,9 @@ import type { TestContext } from "node:test";
 import { createLoopOrchestrationHost, LOOP_SUBTASK_RETRY_DELAY_MS, LOOP_SUBTASK_RETRY_MAX_RETRIES } from "../../extensionHost/loopOrchestration";
 import type { TaskRunRecord } from "../../promptRunState";
 import { startLoopWaitWatchdog, waitForLoopInvocation } from "../../loopWaitWatchdog";
+import { buildLoopSubtaskExecutionPlan } from "../../loopParallel";
+import { isLoopSubtaskProcessLost, observeLoopSubtaskProcess, recordLoopSubtaskProcessResult } from "../../loopSubtaskProcessActivity";
+import type { RunProcess } from "../../cli/commandRunner";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { PromptRunInput } from "../../promptRunTypes";
 
@@ -162,7 +165,24 @@ test("失联等待可取消并消费迟到的拒绝结果", async () => {
   assert.equal(await waitForLoopInvocation(Promise.resolve(7)), 7);
 });
 
-function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null) {
+test("进程退出须等待一轮巡检，已消费退出的 OpenCode 重试不算失联", async (t) => {
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
+  let resolveLifecycle!: (value: NonNullable<RunProcess["lifecycle"]> extends Promise<infer T> ? T : never) => void;
+  const process = { kill: () => undefined, lifecycle: new Promise((resolve) => { resolveLifecycle = resolve; }) } as RunProcess;
+  observeLoopSubtaskProcess(process);
+  resolveLifecycle({ processTerminal: { status: "confirmed", evidence: "child-process-close" },
+    streams: { status: "confirmed", evidence: "owned-stdio-ended-and-closed" },
+    temp: { status: "not-applicable", reason: "none" } });
+  await flush();
+  assert.equal(isLoopSubtaskProcessLost(process), false);
+  now += 60_000;
+  assert.equal(isLoopSubtaskProcessLost(process), true);
+  recordLoopSubtaskProcessResult(process);
+  assert.equal(isLoopSubtaskProcessLost(process), false);
+});
+
+function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null, includeExecutionPlan = false) {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "loop-wait-classic-"));
   t.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
   let task: LoopTaskRecord = {
@@ -187,6 +207,12 @@ function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null) {
     updateLoopTaskRecord: (_id, patch) => { task = { ...task, ...patch }; return task; },
     getActiveLoopSubtaskIds: () => task.activeSubtaskIds ?? [],
     isLoopTaskExecutionInterrupted: () => task.status !== "running",
+    ...(includeExecutionPlan ? {
+      buildLoopSubtaskExecutionPlan,
+      buildLoopSubtaskBatchStartedText: () => "批次启动",
+      buildLoopSubtaskExecutionGroupStartedText: () => "并发组启动",
+      buildLoopSubtaskBatchCompletedText: () => "批次完成",
+    } : {}),
     createMessageId: () => "progress",
     getLoopMessagesForTarget: () => [],
     appendMessageToStore: () => undefined,
@@ -229,9 +255,9 @@ function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null) {
     t: () => "等待",
   });
   // 使用真实编排和临时沟通文件，不访问任何用户任务。
-  const run = () => host.runLoopSubtasksBatchWithRetry({
+  const run = (subtasks: LoopTaskRecord["subTasks"] = [task.subTasks[0]]) => host.runLoopSubtasksBatchWithRetry({
     input: { displayPrompt: task.rootPrompt, modelPrompt: task.rootPrompt, contextTags: [] },
-    target: { tabId: "main", cli: "codex", sessionId: "parent" }, task, round: 1, subtasks: [task.subTasks[0]],
+    target: { tabId: "main", cli: "codex", sessionId: "parent" }, task, round: 1, subtasks,
   });
   return { host, active, calls, messages, statuses, run, task: () => task,
     setTask: (patch: Partial<LoopTaskRecord>) => { task = { ...task, ...patch }; },
@@ -240,7 +266,7 @@ function classicHarness(t: TestContext, readRun?: () => TaskRunRecord | null) {
   };
 }
 
-test("经典 Loop 重试耗尽后用最后一次 CLI 错误解释暂停", async (t) => {
+test("经典 Loop 重试耗尽后将最后一次 CLI 错误交给主任务", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] } as never);
   let latestRun: TaskRunRecord | null = null;
   const env = classicHarness(t, () => latestRun);
@@ -260,14 +286,14 @@ test("经典 Loop 重试耗尽后用最后一次 CLI 错误解释暂停", async 
     if (index < LOOP_SUBTASK_RETRY_MAX_RETRIES) t.mock.timers.tick(LOOP_SUBTASK_RETRY_DELAY_MS);
   }
   env.host.checkWaitingTasks();
-  assert.equal((await pending)[0]?.status, "stopped");
-  assert.equal(env.task().status, "stopped");
-  assert.match(env.task().finalSummary ?? "", /EACCES: CLI 无法读取配置/);
-  assert.doesNotMatch(env.task().finalSummary ?? "", /旧的瞬时错误/);
+  assert.equal((await pending)[0]?.watchdogRecovered, true);
+  assert.equal(env.task().status, "running");
+  assert.match(env.task().subTasks[0].executionFailure ?? "", /EACCES: CLI 无法读取配置/);
+  assert.doesNotMatch(env.task().subTasks[0].executionFailure ?? "", /旧的瞬时错误/);
   assert.ok(env.messages.some((message) => message.includes("EACCES")));
 });
 
-test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子任务交给主任务验收", async (t) => {
+test("经典 Loop 在分钟边界解除失联等待并唤醒原主任务", async (t) => {
   let now = 1000;
   t.mock.method(Date, "now", () => now);
   const env = classicHarness(t);
@@ -283,7 +309,7 @@ test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子�
   env.active.clear();
   env.host.checkWaitingTasks(); // 启动瞬间没有 runner 的短暂交接也不能误判。
   assert.equal(env.messages.some((message) => message.includes("定时检查")), false);
-  now += 299_999;
+  now += 59_999;
   env.host.checkWaitingTasks();
   assert.equal(env.calls[0].isAborted(), false);
   assert.equal(env.messages.some((message) => message.includes("定时检查")), false);
@@ -292,14 +318,14 @@ test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子�
   env.host.checkWaitingTasks();
   const results = await pending;
   await flush();
-  assert.equal(env.task().status, "stopped");
-  assert.equal(env.task().runtimeInterrupted, true);
+  assert.equal(env.task().status, "running");
+  assert.equal(env.task().runtimeInterrupted, undefined);
   assert.equal(env.calls[0].isAborted(), true);
   assert.equal(env.task().subTasks[0].status, "blocked");
   assert.equal(env.task().subTasks[1].status, "pending");
   assert.deepEqual(env.task().activeSubtaskIds, []);
   assert.equal(env.host.isSubtaskRunning(env.task().id, "A"), false);
-  assert.equal(results[0].watchdogRecovered, undefined);
+  assert.equal(results[0].watchdogRecovered, true);
   assert.equal(results[0].status, "stopped");
   assert.equal(env.host.resumeWaitingBatch(env.task().id), false);
   const counts = env.counts();
@@ -307,6 +333,37 @@ test("经典 Loop 失联后保留原等待并开放续跑，不把未完成子�
   await flush();
   assert.deepEqual(env.counts(), counts);
   assert.equal(env.messages.filter((message) => message.includes("定时检查")).length, 1);
+});
+
+test("经典 Loop 只回收同批失联子任务并保留仍运行的兄弟", async (t) => {
+  let now = 1000;
+  t.mock.method(Date, "now", () => now);
+  const env = classicHarness(t, undefined, true);
+  const pending = env.host.runLoopSubtasksBatchWithRetry({
+    input: { displayPrompt: env.task().rootPrompt, modelPrompt: env.task().rootPrompt, contextTags: [] },
+    target: { tabId: "main", cli: "codex", sessionId: "parent" },
+    task: env.task(), round: 1, subtasks: env.task().subTasks,
+  });
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await flush();
+  assert.equal(env.calls.length, 2);
+  env.calls.forEach((call) => call.start());
+  env.active.add("child-1");
+  now += 60_000;
+  env.host.checkWaitingTasks();
+  assert.equal(env.calls[0].isAborted(), true);
+  assert.equal(env.calls[1].isAborted(), false);
+  assert.deepEqual(env.task().activeSubtaskIds, ["B"]);
+  assert.equal(env.task().subTasks.find((item) => item.id === "A")?.status, "blocked");
+  assert.equal(env.messages.filter((message) => message.includes("定时检查")).length, 1);
+  env.active.clear();
+  env.calls[1].finish();
+  await flush();
+  env.host.checkWaitingTasks();
+  const results = await pending;
+  assert.equal(results.find((item) => item.subtask.id === "A")?.watchdogRecovered, true);
+  assert.equal(env.task().status, "running");
 });
 
 test("经典 Loop 在 CLI 启动前停止会清除派发时的运行状态", async (t) => {
@@ -324,7 +381,7 @@ test("经典 Loop 在 CLI 启动前停止会清除派发时的运行状态", asy
   assert.equal(env.statuses.length, 1);
 });
 
-test("经典 Loop 中断批次等待其它活动子任务，随后恢复主任务检查", async (t) => {
+test("经典 Loop 已主动停止的批次等待其它活动子任务，随后保留续跑入口", async (t) => {
   const env = classicHarness(t);
   const pending = env.run();
   await flush();

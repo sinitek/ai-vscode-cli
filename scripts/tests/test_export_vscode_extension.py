@@ -128,12 +128,26 @@ class DependencyLayoutTests(unittest.TestCase):
 
 
 class VsixAuditTests(unittest.TestCase):
-    def create_vsix(self, root: Path, entries: list[str], *, readme: str = "# fixture", assets: str = "") -> Path:
+    def create_vsix(self, root: Path, entries: list[str], *, readme: str = "# fixture", assets: str = "", omit_rule: str = "") -> Path:
         package = root / "fixture.vsix"
         metadata = {
             "package.json": json.dumps({"publisher": "sinitek", "name": "fixture-extension", "version": "2.0.0"}),
             "readme.md": readme,
         }
+        rule_manifest = "media/prompt-rules/manifest.json"
+        if rule_manifest in entries:
+            body = (ROOT_DIR / rule_manifest).read_bytes()
+            metadata[rule_manifest] = body
+            digest = export_script.hashlib.sha256(body)
+            entries = list(entries)
+            for rule in json.loads(body)["rules"]:
+                filename = f"media/prompt-rules/{rule['id']}.md"
+                data = (ROOT_DIR / filename).read_bytes()
+                digest.update(b"\0" + rule["id"].encode() + b"\0" + data)
+                if rule['id'] != omit_rule:
+                    entries.append(filename)
+                    metadata[filename] = data
+            metadata["dist/prompt-rule-version.json"] = json.dumps({"version": digest.hexdigest()})
         with zipfile.ZipFile(package, "w") as archive:
             for entry in entries:
                 archive.writestr(f"extension/{entry}", metadata.get(entry, "fixture"))
@@ -149,6 +163,12 @@ class VsixAuditTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="sinitek export test ") as temporary:
             package = self.create_vsix(Path(temporary), entries)
             with patch.object(export_script.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "通过\n", "")):
+                export_script.audit_vsix(package, "universal")
+
+    def test_rejects_missing_prompt_rule_body(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            package = self.create_vsix(Path(temporary), list(export_script.REQUIRED_ENTRIES), omit_rule="loop-plus/repair")
+            with self.assertRaisesRegex(RuntimeError, "缺少规则正文 loop-plus/repair.md"):
                 export_script.audit_vsix(package, "universal")
 
     def test_package_moves_vsix_into_dist_after_prepublish_clean(self) -> None:

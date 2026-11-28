@@ -28,6 +28,7 @@ function createDepartmentContinuationEhScenario(options) {
       if (id === held.leaderTaskId) {
         const leader = options.readTasks().find((task) => task.id === id);
         assert.ok(leader && leader.department.rootTaskId === base.snapshot().rootId && leader.schedulingMode === "event_driven", "resumed leader identity changed");
+        const successorId = options.ordinaryContinuation ? held.subtaskId : "text-protocol-continued";
         const event = text.match(/^Current review eventId: (\S+)/m)?.[1];
         if (event && event !== "(none)") {
           const current = leader.loopPlus?.currentReview;
@@ -39,7 +40,7 @@ function createDepartmentContinuationEhScenario(options) {
             assert.equal(repaired, false, "duplicate interrupted event");
             assert.equal(current.subtaskId, held.subtaskId); assert.equal(current.attemptId, held.attemptId);
             repaired = true;
-            const next = { id: "text-protocol-continued", title: "完成停止后的文本答复", taskType: "backend", writeFiles: [],
+            const next = { id: successorId, title: "完成停止后的文本答复", taskType: "backend", writeFiles: [],
               continueFromSubtaskId: held.subtaskId,
               prompt: `${continuationPrompt}\n修复检查 omissions and regressions：前次被用户停止，未完成答复。仅将 isolated protocol 转为 ISOLATED PROTOCOL，报告输入、输出和本机协议范围，不改文件、不访问外网、不修改任务或调度状态。` };
             return record(context, "leader-review-stopped", id, { status: "accept", reviewEventId: event,
@@ -56,7 +57,6 @@ function createDepartmentContinuationEhScenario(options) {
         }
         if (text.includes("Snapshot says completion is allowed: yes")) {
           assert.equal(accepted, true, "resumed closeout lacks successor event acceptance");
-          const successorId = options.ordinaryContinuation ? held.subtaskId : "text-protocol-continued";
           assert.equal(leader.subTasks.length, options.ordinaryContinuation ? 1 : 2, "unexpected resumed work");
           assert.equal(leader.subTasks.find((subtask) => subtask.id === successorId)?.status, "completed");
           assert.ok(leader.loopPlus.seenAttempts.some(attempt => attempt.subtaskId === held.subtaskId

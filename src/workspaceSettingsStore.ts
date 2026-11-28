@@ -24,6 +24,7 @@ import { withFileLockSync } from "./shared/fileLock";
 
 export type ConversationTabRecordForWorkspaceSettings = {
   manualCloseOnly?: true;
+  pendingLoopMainTaskId?: string;
   taskSummary?: string;
   taskSummaryAttempted?: boolean;
   id: string;

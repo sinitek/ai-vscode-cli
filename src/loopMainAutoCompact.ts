@@ -25,71 +25,30 @@ export function shouldOverlapLoopMainContextCompaction(input: {
     && input.loopTaskId.trim().length > 0;
 }
 
-/**
- * Tracks an in-flight Loop/Loop+ main-session compaction so the next prompt on
- * that same tab waits, while prompts on other tabs do not.
- */
-export class LoopMainAutoCompactFlights {
-  private readonly flights = new Map<string, Promise<void>>();
-
-  track(tabId: string, flight: Promise<void>): void {
-    const tracked = flight.then(() => undefined, () => undefined).finally(() => {
-      if (this.flights.get(tabId) === tracked) {
-        this.flights.delete(tabId);
-      }
-    });
-    this.flights.set(tabId, tracked);
-  }
-
-  has(tabId: string | null | undefined): boolean {
-    return Boolean(tabId && this.flights.has(tabId));
-  }
-
-  async wait(tabId: string | null | undefined): Promise<void> {
-    if (!tabId) {
-      return;
-    }
-    const flight = this.flights.get(tabId);
-    if (flight) {
-      await flight;
-    }
-  }
-}
-
-/**
- * Loop/Loop+ main compaction only rewrites the main session. Subtask dispatch
- * uses other sessions, so it can start without waiting. The next prompt on the
- * main tab still waits via LoopMainAutoCompactFlights.
- */
 export async function settleAutoCompactAfterPrompt(options: {
   overlapLoopDispatch: boolean;
-  canOverlap: boolean;
+  canOverlap: () => boolean;
   onStarted?: () => void;
   run: (request: LoopMainAutoCompactRunRequest) => Promise<void>;
   reserve: () => LoopMainAutoCompactReservation;
-  track: (flight: Promise<void>) => void;
+  enqueue: (run: () => Promise<void>) => void;
 }): Promise<void> {
-  if (!options.overlapLoopDispatch || !options.canOverlap) {
+  if (!options.overlapLoopDispatch) {
     await options.run({ allowActiveRun: false, onStarted: options.onStarted });
     return;
   }
-
-  const reservation = options.reserve();
-  let flight: Promise<void>;
-  try {
-    flight = options.run({
-      allowActiveRun: true,
-      onStopReady: reservation.adoptStop,
-      onStarted: options.onStarted,
-    });
-  } catch (error) {
-    reservation.release();
-    throw error;
-  }
-  const tracked = flight.finally(() => {
-    reservation.release();
+  options.enqueue(async () => {
+    if (!options.canOverlap()) {
+      await options.run({ allowActiveRun: false, onStarted: options.onStarted });
+      return;
+    }
+    const reservation = options.reserve();
+    try {
+      await options.run({ allowActiveRun: true, onStopReady: reservation.adoptStop, onStarted: options.onStarted });
+    } finally {
+      reservation.release();
+    }
   });
-  options.track(tracked);
 }
 
 export function mergeCompactTranscriptIntoLive<T extends { id: string }>(

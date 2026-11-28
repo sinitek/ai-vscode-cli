@@ -5,10 +5,10 @@
 ## plan
 
 - Entries: 2
-- Estimated read cost: ~126 tokens
+- Estimated read cost: ~195 tokens
 
-- `mem-7525b245ac` `plan` Codex 组长大型原生回调私有 IPC 修复 -> `.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md`
-- `mem-52c8a09d98` `plan` Loop+ 启动前配置锁超时后显式继续 -> `.ch/docs/exec-plans/active/2026-11-18-bugfix-loop-plus-config-lock-resume.md`
+- `mem-8f3107f15f` `plan` CLI 跨平台运行时策略收敛 -> `.ch/docs/exec-plans/active/2026-11-24-refactor-cli-runtime-policy-convergence.md`
+- `mem-707183a27e` `plan` Loop+ 主决策 JSON 格式诊断 -> `.ch/docs/exec-plans/active/2026-11-25-bugfix-loop-plus-decision-json-diagnostics.md`
 
 ## gotcha
 

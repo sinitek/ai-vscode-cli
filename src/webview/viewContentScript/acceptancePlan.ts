@@ -284,6 +284,8 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         if (overlay) {
           overlay.classList.toggle("is-saving", acceptancePlanDialog.saving);
         }
+        const confirmButton = getAcceptancePlanElement("confirmAcceptancePlan");
+        if (confirmButton) confirmButton.disabled = acceptancePlanDialog.saving;
         const saveButton = getAcceptancePlanElement("saveAcceptancePlan");
         if (saveButton) {
           saveButton.disabled = acceptancePlanDialog.saving || acceptancePlanDialog.planId === ACCEPTANCE_PLAN_SYSTEM_ID;
@@ -545,7 +547,12 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
             acceptancePlanDialog.otherText = plan.otherText;
             clearAcceptancePlanError();
             applyAcceptancePlanDraftToDom();
-            showToast(t("acceptancePlanSaved"));
+            if (data.applyError) {
+              showToast("");
+              showAcceptancePlanError(data.applyError);
+            } else {
+              showToast(t("acceptancePlanSaved"));
+            }
             return;
           }
         }
@@ -719,10 +726,14 @@ export const VIEW_CONTENT_SCRIPT_ACCEPTANCE_PLAN = `      const ACCEPTANCE_PLAN_
         });
         // 先加锁再关闭弹窗，确保重复点击只产生一次发送。
         acceptancePlanDialog.submitting = true;
-        closeAcceptancePlanDialog({ restoreFocus: false });
         const outcome = typeof sendPromptWithAcceptancePlan === "function"
           ? sendPromptWithAcceptancePlan(nextPayload, capturedTabId)
           : "failed";
+        if (outcome === "awaitingTaskSave") {
+          setAcceptancePlanSaving(true);
+          return;
+        }
+        closeAcceptancePlanDialog({ restoreFocus: false });
         if (outcome === "failed") {
           showToast(t("acceptancePlanSendFailed"));
         }

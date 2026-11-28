@@ -42,9 +42,10 @@ import { appendMessageToStore, isLoopTaskCompleted, type LoopTaskRole, type Task
 import { buildLoopMainResumeText, buildLoopTaskNeedsReviewText as buildLoopTaskNeedsReviewTextWithLimit, formatLoopEstimatedRemainingRounds, formatLoopWriteFiles, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "../panelStateBuilder";
 import { resolveLoopResumeRound } from "../webviewCommandCoordinator";
 import { collectRecentLoopTaskIdsFromMessages, detectLoopVerificationSignals, formatLoopVerificationState, hasCompleteLoopCompletionMessages, isCompleteLoopFinalSummaryContent, isLoopAnswerConclusionMessageForTask, isLoopFinalSummaryMessageForTask, isLoopTaskPromptResumeCandidate, isLoopTaskSessionCompatible } from "../loopTaskMessagePolicy";
-import { getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
+import { findConversationTabForLoopResume, getConversationTabSessionIdForCli, sanitizeConversationTabSessionIdMap, setConversationTabSessionIdForCli, switchConversationTabCli, type ConversationTabRecord } from "../sessionTabs";
 import { extractJsonObjectText, extractJsonObjectTexts } from "../shared/jsonObjectText";
 import { readLoopContinuationSource } from "../loopSubtaskSession";
+import { resolveLoopConversationTabContextFromMessages } from "../loopConversationPresentation";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
 import { readLoopBlockedDecisionFields } from "../loopBlocker";
 
@@ -339,7 +340,7 @@ export type PromptRunRuntimeHostDeps = {
   runLoopPrompt: (input: PromptRunInput, options?: { targetTabId?: string | null; resumeTaskId?: string; resumeRequested?: boolean; schedulingMode?: "classic" | "event_driven" }) => Promise<void>;
   isTabRunActive: (tabId: string | null) => boolean;
   refreshOpenLoopGroupChatPanelForTask: (taskId: string) => void;
-  resolveConversationTabLoopContext: (tab: ConversationTabRecord) => { taskRole?: string | null; loopTaskId?: string | null };
+  resolveConversationTabLoopContext: (tab: ConversationTabRecord) => { taskRole?: LoopTaskRole | null; loopTaskId?: string | null };
   resolveLoopTaskSessionId: (target: PromptRunTarget) => string | null;
   isLoopTaskBlockedByMainAiFailureLimit: (task: Pick<LoopTaskRecord, "mainAiFailureCount" | "mainAiFailureLimitReached">) => boolean;
   appendLoopMainSubChatSubtaskFinished: (task: LoopTaskRecord, subtask: LoopSubtaskRecord, runStatus: TaskRunStatus, assistantContent: string | null) => void;
@@ -1223,29 +1224,7 @@ function alignConversationTabToLoopTask(tab: ConversationTabRecord, task: LoopTa
 }
 
 function prepareLoopOriginContinuationTarget(task: LoopTaskRecord): PromptRunTarget | null {
-  const tabs = ensureConversationTabs().tabs;
-  let sameCliSessionTab: ConversationTabRecord | null = null;
-  let switchedSessionTab: ConversationTabRecord | null = null;
-  for (const tab of tabs) {
-    const context = resolveConversationTabLoopContext(tab);
-    if (context.taskRole === "main" && context.loopTaskId === task.id) {
-      alignConversationTabToLoopTask(tab, task);
-      persistConversationTabsToWorkspaceSettings();
-      return resolvePromptRunTargetFromConversationTab(tab);
-    }
-    if (context.loopTaskId && context.loopTaskId !== task.id) {
-      continue;
-    }
-    if (!task.sessionId || getConversationTabSessionIdForCli(tab, task.cli) !== task.sessionId) {
-      continue;
-    }
-    if (tab.cli === task.cli && !sameCliSessionTab) {
-      sameCliSessionTab = tab;
-    } else if (!switchedSessionTab) {
-      switchedSessionTab = tab;
-    }
-  }
-  const chosen = sameCliSessionTab ?? switchedSessionTab;
+  const chosen = findConversationTabForLoopResume(ensureConversationTabs().tabs, task, resolveConversationTabLoopContext);
   if (chosen) {
     alignConversationTabToLoopTask(chosen, task);
     persistConversationTabsToWorkspaceSettings();
@@ -1272,37 +1251,37 @@ function resolveLoopMainPromptTarget(
   options: { createIfMissing?: boolean } = {},
 ): PromptRunTarget | null {
   const state = ensureConversationTabs();
-  let sessionFallback: ConversationTabRecord | null = null;
-  for (const tab of state.tabs) {
-    if (tab.cli !== task.cli) {
-      continue;
-    }
-    const context = resolveConversationTabLoopContext(tab);
-    if (context.taskRole === "main" && context.loopTaskId === task.id) {
-      return resolvePromptRunTargetFromConversationTab(tab);
-    }
-    if (
-      !sessionFallback
-      && task.sessionId
-      && getConversationTabSessionIdForCli(tab, tab.cli) === task.sessionId
-    ) {
-      sessionFallback = tab;
-    }
-  }
-  if (sessionFallback) {
-    return resolvePromptRunTargetFromConversationTab(sessionFallback);
-  }
+  const chosen = findConversationTabForLoopResume(state.tabs.filter((tab) => tab.cli === task.cli), task, resolveConversationTabLoopContext);
+  if (chosen) return resolvePromptRunTargetFromConversationTab(chosen);
 
   if (!shouldCreateMissingLoopMainTab(task, options)) {
     return null;
   }
 
+  let sessionId = task.sessionId;
+  if (!sessionId && options.createIfMissing && !task.department && !task.departmentInvalid) {
+    if (task.workspaceKey !== activeWorkspaceKey) return null;
+    const runs = readTaskStore().runs;
+    for (let index = runs.length - 1; index >= 0; index -= 1) {
+      const run = runs[index];
+      if (run.loopTaskId !== task.id || run.taskRole !== "main") continue;
+      if (run.cli !== task.cli || run.startedAt < task.createdAt) return null;
+      if (run.sessionId) {
+        const context = resolveLoopConversationTabContextFromMessages(loadSessionMessages(task.cli, run.sessionId));
+        if (context.taskRole !== "main" || context.loopTaskId !== task.id) return null;
+        sessionId = run.sessionId;
+      }
+      break;
+    }
+  }
+  if (sessionId && state.tabs.some((tab) => getConversationTabSessionIdForCli(tab, task.cli) === sessionId)) return null;
   const newTab: ConversationTabRecord = {
     id: createConversationTabId(),
+    ...(!sessionId ? { pendingLoopMainTaskId: task.id } : {}),
     ...(task.department?.role === "director" ? { manualCloseOnly: true } : {}),
     cli: task.cli,
-    sessionId: task.sessionId ?? null,
-    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, task.cli, task.sessionId ?? null),
+    sessionId: sessionId ?? null,
+    sessionIdByCli: sanitizeConversationTabSessionIdMap(undefined, task.cli, sessionId ?? null),
     createdAt: Date.now(),
   };
   state.tabs.push(newTab);

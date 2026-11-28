@@ -1889,7 +1889,7 @@ test("panel export preserves filenames, empty content, UTF-8, fallback and write
       assert.deepEqual(events.slice(0, 3), [
         ["mkdir", downloads, { recursive: true }],
         ["write", path.join(downloads, "bad_name.JSON.json"), "中文", "utf8"],
-        ["log", "config-export", { path: path.join(downloads, "bad_name.JSON.json") }],
+        ["mkdir", downloads, { recursive: true }],
       ]);
       assert.ok(events.some((entry) => entry[0] === "write" && entry[2] === ""));
       mkdirFails = true;
@@ -1908,6 +1908,7 @@ test("panel export preserves filenames, empty content, UTF-8, fallback and write
         assert.equal(panel.messages.at(-1)?.success, false);
       }
       assert.equal(events.length, beforeInvalid);
+      assert.equal(events.some((entry) => entry[0] === "log" && entry[1] === "config-export"), false);
     });
   } finally {
     fs.rmSync(home, { recursive: true, force: true });

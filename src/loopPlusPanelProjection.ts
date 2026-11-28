@@ -1,5 +1,5 @@
 import { resolveLoopSchedulingMode, type LoopTaskRecord } from "./loopTaskStore";
-import { createLoopPlusScheduler, requiresLoopPlusAcceptedDependencies, type LoopPlusExecutionRecord, type LoopPlusReviewItem, type LoopPlusSchedulerPhase } from "./loopPlusScheduler";
+import { createLoopPlusScheduler, requiresLoopPlusAcceptedDependencies, type LoopPlusExecutionOutcome, type LoopPlusExecutionRecord, type LoopPlusReviewItem, type LoopPlusSchedulerPhase } from "./loopPlusScheduler";
 import { getLoopSubtaskDisplayTitle } from "./loopConversationPresentation";
 import type { LoopPlusPanelProjection } from "./webview/loopGroupChatPanelTypes";
 
@@ -22,20 +22,31 @@ export function projectLoopPlusPanel(
     const snapshot = scheduler.snapshot();
     const view = scheduler.wait().view;
     const latestAttempts = new Map<string, (typeof snapshot.seenAttempts)[number]>();
-    const repairAttemptIds = new Set<string>();
+    const repairRoundByAttempt = new Map<string, number>();
     const repairRoundsBySubtask = new Map<string, number>();
     for (const attempt of snapshot.seenAttempts) {
-      const previous = latestAttempts.get(attempt.subtaskId);
-      if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
-        repairAttemptIds.add(attempt.attemptId);
-        repairRoundsBySubtask.set(attempt.subtaskId, (repairRoundsBySubtask.get(attempt.subtaskId) ?? 0) + 1);
+      const inheritedRound = attempt.replacesAttemptId
+        ? repairRoundByAttempt.get(attempt.replacesAttemptId)
+        : undefined;
+      if (inheritedRound !== undefined) {
+        repairRoundByAttempt.set(attempt.attemptId, inheritedRound);
+      } else if (!attempt.replacesAttemptId) {
+        const previous = latestAttempts.get(attempt.subtaskId);
+        if (previous?.disposition === "reviewed" && previous.acceptance === "failed") {
+          const repairRound = (repairRoundsBySubtask.get(attempt.subtaskId) ?? 0) + 1;
+          repairRoundsBySubtask.set(attempt.subtaskId, repairRound);
+          repairRoundByAttempt.set(attempt.attemptId, repairRound);
+        }
       }
       latestAttempts.set(attempt.subtaskId, attempt);
     }
-    const projectReview = (item: LoopPlusReviewItem) => ({
-      ...copyLoopPlusReviewItem(item),
-      ...(repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
-    });
+    const projectReview = (item: LoopPlusReviewItem) => {
+      const repairRound = repairRoundByAttempt.get(item.attemptId);
+      return {
+        ...copyLoopPlusReviewItem(item),
+        ...(repairRound !== undefined ? { repairRound } : {}),
+      };
+    };
     const currentReview = view.currentReview ? projectReview(view.currentReview) : null;
     const reviewQueue = view.reviewQueue.map(projectReview);
     const currentReviewCount = currentReview ? 1 : 0;
@@ -59,12 +70,17 @@ export function projectLoopPlusPanel(
     if (!localExecutionInactive && mainModelRunning && (activity === "idle" || activity === "waiting" || activity === "review_pending")) {
       activity = "running";
     }
-    const running = view.running.map((item) => ({
-      ...copyLoopPlusExecutionItem(item),
-      ...(localExecutionInactive || task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked")
-        ? { interrupted: true }
-        : repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
-    }));
+    const running = view.running.map((item) => {
+      const reservation = task.subTasks?.find(subtask => subtask.id === item.subtaskId)?.launchReservation;
+      const interrupted = localExecutionInactive
+        || task.subTasks?.some((subtask) => subtask.id === item.subtaskId && subtask.status === "blocked") === true;
+      return {
+        ...copyLoopPlusExecutionItem(item),
+        ...(reservation?.attemptId === item.attemptId && reservation.state === "waiting" ? { waitingForStorage: true } : {}),
+        ...(interrupted ? { interrupted: true } : {}),
+        ...(!interrupted && repairRoundByAttempt.has(item.attemptId) ? { repairing: true } : {}),
+      };
+    });
     const blockingLabelsByAttempt = new Map<string, string[]>();
     if (view.dependencyBlocks?.length) {
       const subtaskNumbers = new Map(task.subTasks?.map((subtask, index) => [subtask.id, index]));
@@ -93,7 +109,6 @@ export function projectLoopPlusPanel(
         const blockingDependencyLabels = blockingLabelsByAttempt.get(item.attemptId);
         return {
           ...copyLoopPlusExecutionItem(item),
-          ...(repairAttemptIds.has(item.attemptId) ? { repairing: true } : {}),
           ...(blockingDependencyLabels ? { blockingDependencyLabels } : {}),
         };
       }),
@@ -177,7 +192,7 @@ function isLoopPlusDisplayPaused(status: string): boolean {
 }
 
 function loopPlusReviewedAcceptance(
-  outcome: "completed" | "failed" | "stopped" | undefined,
+  outcome: LoopPlusExecutionOutcome | undefined,
   recordedStatus: string | undefined,
   recordedAcceptance?: "passed" | "failed" | "cancelled",
 ): "passed" | "failed" | "cancelled" {

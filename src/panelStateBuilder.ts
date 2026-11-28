@@ -47,7 +47,8 @@ import {
   LOOP_MAIN_AI_FAILURE_LIMIT,
   normalizeLoopMainAiFailureCount,
 } from "./loopMainFailure";
-import { isLoopAskChatMessage } from "./historySessionTaskRole";
+import { resolveLoopConversationTabContextFromMessages, type LoopConversationTabContext } from "./loopConversationPresentation";
+export { resolveLoopConversationTabContextFromMessages, type LoopConversationTabContext } from "./loopConversationPresentation";
 import { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, normalizeLoopTaskId } from "./loopConversationPresentation";
 export { getLoopMainSubChatMainTitle, getLoopSubtaskDisplayTitle, normalizeLoopTaskId, normalizeLoopSubtaskId, normalizeLoopRound, resolveLoopSubtaskConversationContextFromMessages, type LoopSubtaskConversationContext } from "./loopConversationPresentation";
 import {
@@ -67,11 +68,6 @@ import type { NotificationSettings } from "./toolSettings";
 type PanelConfiguration = Pick<vscode.WorkspaceConfiguration, "get">;
 
 const SESSION_LABEL_LIMIT = 16;
-
-export type LoopConversationTabContext = {
-  taskRole: LoopTaskRole | null;
-  loopTaskId: string | null;
-};
 
 export type PanelStateBuilderDeps = {
   currentCli: CliName;
@@ -607,36 +603,6 @@ export function shouldUseFallbackSessionLabel(
 
 export function isCliName(value: string): value is CliName {
   return (CLI_LIST as readonly string[]).includes(value);
-}
-
-export function resolveLoopConversationTabContextFromMessages(
-  messages: readonly ChatMessage[],
-): LoopConversationTabContext {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (isLoopAskChatMessage(message)) {
-      continue;
-    }
-    const taskRole = message?.taskRole;
-    const loopTaskId = normalizeLoopTaskId(message?.loopTaskId);
-    if (!loopTaskId || (taskRole !== "main" && taskRole !== "subtask")) {
-      if (message?.role === "user" && String(message.content || "").trim()) {
-        return {
-          taskRole: null,
-          loopTaskId: null,
-        };
-      }
-      continue;
-    }
-    return {
-      taskRole,
-      loopTaskId,
-    };
-  }
-  return {
-    taskRole: null,
-    loopTaskId: null,
-  };
 }
 
 export function buildVibeModeTransitionPrompt(

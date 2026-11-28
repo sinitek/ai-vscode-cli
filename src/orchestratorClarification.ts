@@ -95,6 +95,9 @@ export function formatOrchestratorClarificationAnswer(
   const recoveryField = formFields.find((field) => field.id === LOOP_RECOVERY_PLAN_FIELD);
   const plan = recoveryField?.options?.find((option) => option.value === submission.values[LOOP_RECOVERY_PLAN_FIELD]);
   const recoveryTimedOut = Boolean(plan && submission.timedOut);
+  if (submission.timedOut && !plan) {
+    return `${HUMAN_INTERACTION_TIMEOUT_TEXT}\n沿用已有需求和权限推进可行工作。表单默认值不能作为用户答复、凭据或新增授权。`;
+  }
   return [
     recoveryTimedOut
       ? "主任务澄清超时，宿主已选择推荐恢复方案；这不是用户答复或新增授权。"

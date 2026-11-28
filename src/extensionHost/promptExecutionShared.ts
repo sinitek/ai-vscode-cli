@@ -55,10 +55,12 @@ export type InteractiveTabRun = {
   stop: () => void;
   messageTarget: ChatMessage[];
   stopped: boolean;
+  terminal?: boolean;
   taskRole?: LoopTaskRole;
   loopTaskId?: string;
   loopRound?: number;
   loopSubtaskId?: string;
+  loopAttemptId?: string;
 };
 
 export type OpenCodeRuntimePreparationInput = {

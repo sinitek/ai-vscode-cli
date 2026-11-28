@@ -561,6 +561,11 @@ test("user main-tab stop closes the gate before aborting every Loop+ runner", as
     }
     harness.stopRunForTab(fixture.target.tabId);
     await waitForLoopPlus(() => fixture.readTask(taskId)?.status === "stopped", "user stop");
+    const stopped = fixture.readTask(taskId)!;
+    const mainCalls = fixture.mainCalls.length;
+    fixture.adapter.host().checkWaitingMainTasks();
+    assert.deepEqual(fixture.readTask(taskId)?.supplementalRequirements, stopped.supplementalRequirements);
+    assert.equal(fixture.mainCalls.length, mainCalls);
     assert.deepEqual(harness.parentStopIds, [taskId]);
     assert.deepEqual(harness.userStopSources, ["ai-panel"]);
     assert.equal((fixture.readTask(taskId)?.loopPlus as { parentStopped?: boolean }).parentStopped, true);

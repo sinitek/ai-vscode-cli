@@ -17,6 +17,7 @@ import type {
   PromptRunInputForPanel,
 } from "../../sessionMessageHandlers";
 import type { CliName, InteractiveMode, ThinkingMode } from "../../cli/types";
+import type { LoopTaskRecord } from "../../loopTaskStore";
 import type { CliEnabledByName, ToolSettingsState } from "../../toolSettings";
 import type { WorkspaceSettings } from "../../workspaceSettingsStore";
 
@@ -653,6 +654,28 @@ test("continues an interrupted Loop main task from ordinary main tab input", asy
     resumeTaskId: "interrupted-task",
     resumeRequested: true,
   });
+});
+
+test("主对话发送继续时将原主 Tab 和暂停任务一起交给 Loop+ 调度", async () => {
+  const { deps, calls, tabs } = createPromptHarness("codex");
+  const mainTab = "paused-plus-tab";
+  const settlements: unknown[] = [];
+  deps.isInteractiveMode = (value): value is InteractiveMode => value === "loop_plus";
+  deps.postWebviewMessage = message => { settlements.push(message); };
+  tabs.set(mainTab, { id: mainTab, cli: "codex", sessionId: "paused-plus-session",
+    sessionIdByCli: { codex: "paused-plus-session" }, createdAt: 5 });
+  deps.resolveLoopResumeTaskFromPrompt = (prompt, tabId) => {
+    assert.equal(prompt, "继续");
+    assert.equal(tabId, mainTab);
+    return { id: "paused-plus", status: "error", schedulingMode: "event_driven" } as LoopTaskRecord;
+  };
+  await handleSendPromptMessage({ type: "sendPrompt", requestId: "resume-plus", prompt: "继续",
+    tabId: mainTab, interactiveMode: "loop_plus" }, deps);
+  assert.deepEqual(calls.runLoopPrompt.map(call => call.options), [
+    { targetTabId: mainTab, resumeTaskId: "paused-plus", resumeRequested: true, schedulingMode: "event_driven" },
+  ]);
+  assert.equal(calls.runPrompt.length, 0);
+  assert.deepEqual(settlements, [{ type: "promptSubmissionSettled", requestId: "resume-plus", tabId: mainTab }]);
 });
 
 test("rejects a new Loop when disabled but allows an existing Loop continuation", async () => {

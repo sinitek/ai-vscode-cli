@@ -3,6 +3,7 @@ import { normalizeDepartmentMaxLeaders } from "./departmentSettings";
 import { normalizeRouteThinkingMode, parseCliNameField } from "./subtaskCliRoute";
 
 export type DepartmentRole = "director" | "leader" | "employee";
+export type DepartmentExecutionActivity = "active" | "inactive" | "unverified";
 
 export function getDepartmentLeaderCode(leaderNumber: number, maxLeaders: number): string {
   let slot = (leaderNumber - 1) % normalizeDepartmentMaxLeaders(maxLeaders) + 1;

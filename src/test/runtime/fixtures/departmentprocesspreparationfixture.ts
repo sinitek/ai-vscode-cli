@@ -11,6 +11,7 @@ import { DepartmentRuntimeStore } from "../../../extensionHost/departmentruntime
 import type { DepartmentProcessPreparationHost } from "../../../extensionHost/departmentprocesspreparation";
 import type { LoopTaskRecord } from "../../../loopTaskStore";
 import { fixtureEmployeeAdmission } from "./departmentemployeeadmission";
+import { observeDepartmentWorkerInstance, stopPreparedFixtureWorkers, type DepartmentWorkerInstanceIdentity } from "../../extensionHost/fixtures/departmentownedtestworkers";
 const cli = path.join(__dirname, "departmentprocessproductioncli.js");
 
 export async function until(predicate: () => boolean | Promise<boolean>): Promise<void> {
@@ -20,11 +21,17 @@ export async function until(predicate: () => boolean | Promise<boolean>): Promis
 export async function setup(t: test.TestContext) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "department-process-production-"));
   const workers: childProcess.ChildProcess[] = [];
+  const identities = new Map<childProcess.ChildProcess, DepartmentWorkerInstanceIdentity | null>();
   const children = require("child_process") as typeof childProcess;
   const fork = children.fork;
   t.mock.method(children, "fork", (...args: Parameters<typeof fork>) => {
     const child = fork(...args);
-    if (String(args[0]).endsWith("departmentprocessownerworker.js")) workers.push(child);
+    if (String(args[0]).endsWith("departmentprocessownerworker.js")) {
+      workers.push(child);
+      let identity: DepartmentWorkerInstanceIdentity | null = null;
+      if (child.pid && child.exitCode === null && child.signalCode === null) identity = observeDepartmentWorkerInstance(child.pid);
+      identities.set(child, identity);
+    }
     return child;
   });
   fs.mkdirSync(path.join(directory, "workspace"));
@@ -63,10 +70,18 @@ export async function setup(t: test.TestContext) {
     fs.writeFileSync(path.join(directory, "export-open"), "open");
     fs.writeFileSync(path.join(directory, "create-open"), "open");
     fs.writeFileSync(path.join(directory, "server-close-open"), "open");
-    for (const worker of workers) if (worker.exitCode === null && worker.signalCode === null) worker.kill();
-    await until(() => workers.every(worker => worker.exitCode !== null || worker.signalCode !== null));
-    if (process.env.DEPARTMENT_KEEP_FIXTURE) t.diagnostic(directory);
-    else fs.rmSync(directory, { recursive: true, force: true });
+    // The exited production host's Owner is not in `workers`; records and handles stop together.
+    for (const worker of workers) {
+      worker.removeAllListeners("exit");
+      worker.removeAllListeners("error");
+      worker.removeAllListeners("disconnect");
+    }
+    try {
+      await stopPreparedFixtureWorkers(directory, workers.map((worker) => ({ handle: worker, identity: identities.get(worker) ?? null })));
+    } finally {
+      if (process.env.DEPARTMENT_KEEP_FIXTURE) t.diagnostic(directory);
+      else fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
   return { admission, directory, config, current, expected, host, tasks, leader, root, store, workers };
 }

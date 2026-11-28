@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 
 export const LOOP_WAIT_WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
-const LOOP_WAIT_WATCHDOG_TICK_MS = 60 * 1000;
+export const LOOP_WAIT_WATCHDOG_TICK_MS = 60 * 1000;
 
 /** 每个宿主共用一个巡检时钟；单个任务检查失败不影响其它检查。 */
 export function startLoopWaitWatchdog(

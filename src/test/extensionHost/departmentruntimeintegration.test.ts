@@ -1088,7 +1088,13 @@ for (const proof of ["confirmed", "missing", "rejected", "persistence"] as const
   test(`lifecycle diagnostics retain proof and capacity gates: ${proof}`, async (t) => {
     const logger = require("../../logger") as typeof import("../../logger");
     const events: { event: string; data: any }[] = [];
-    t.mock.method(logger, "logEssential", (event: string, data: unknown) => { events.push({ event, data }); return Promise.resolve(); });
+    // Same split as production cleanup: failure proofs are logError, success and retained outcomes are logEssential.
+    const record = (event: string, data: unknown) => {
+      if (data && typeof data === "object" && "stage" in data && "result" in data) events.push({ event, data });
+      return Promise.resolve();
+    };
+    t.mock.method(logger, "logEssential", record);
+    t.mock.method(logger, "logError", record);
     const cleanup = deferred(); let requested = false;
     const h = harness({ observeLeaderCleanup: () => {
       requested = true;

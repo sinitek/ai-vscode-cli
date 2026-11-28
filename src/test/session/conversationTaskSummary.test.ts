@@ -438,8 +438,8 @@ test("workspace tab normalization, reload and historical reopening preserve summ
     getLatestSessionId: () => null, getSessionStore: () => store, getWorkspaceSettings: () => settings,
     saveWorkspaceSettings: () => undefined, setCurrentSession: () => undefined,
     setWorkspaceInteractiveModeForCli: () => false, resolveAutoInteractiveModeForConversationTab: () => "coding",
-    collectRunningLoopTaskIds: () => new Set(), isLoopTaskRunning: () => false,
-    getLoopTaskStatus: () => null, resolveConversationTabLoopContext: () => ({}), buildSessionLabelFromPrompt: () => "标签",
+    collectRunningLoopTaskIds: () => new Set(), readLoopTaskRunState: () => ({ isRunning: false, status: null }),
+    resolveConversationTabLoopContext: () => ({}), buildSessionLabelFromPrompt: () => "标签",
   });
   controller.initializeConversationTabsFromWorkspaceSettings();
   assert.equal(state.tabs[0].taskSummary, "整理 代码");

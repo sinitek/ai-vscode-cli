@@ -3,6 +3,8 @@ import test = require("node:test");
 import assert = require("node:assert/strict");
 import fs = require("node:fs");
 import path = require("node:path");
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { installVscodeMock } from "../vscodeMock";
 installVscodeMock();
 import type { LoopMainDecision, LoopTaskRecord } from "../../loopTaskStore";
@@ -10,7 +12,7 @@ import type { DepartmentMetadata } from "../../department";
 import type { PromptRunInput, PromptRunTarget } from "../../promptRunTypes";
 import type { DepartmentConfigurationState } from "../../departmentConfiguration";
 import type { DepartmentRuntimeCompositionDeps } from "../../extensionHost/departmentruntimecomposition";
-import { commitDepartmentLeaderSessionPromotion, repairIdleDepartmentLeaderSession } from "../../extensionHost/departmentLeaderSessionPromotion";
+import { canRestoreGroupChatLeaderTab, commitDepartmentLeaderSessionPromotion, repairIdleDepartmentLeaderSession } from "../../extensionHost/departmentLeaderSessionPromotion";
 import { buildSystemLoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 import { LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { loopPlusAcceptanceChecksFixture, withLoopPlusAcceptReviews } from "../loopPlusAcceptFixture";
@@ -23,9 +25,10 @@ const { transitionLoopMainDecision } = require("../../extensionHost/loopTaskStat
 const { createLoopPlusRuntimeFixture, waitForLoopPlus } = require("./fixtures/loopPlusRuntimeFixture") as typeof import("./fixtures/loopPlusRuntimeFixture");
 import { createLoopOrchestrationOwnershipTracker } from "../../loopOrchestrationOwnership";
 import { isLoopTaskRunOrphaned } from "../../loopGroupChat";
+import * as logger from "../../logger";
 function harness(overrides: Partial<DepartmentRuntimeCompositionDeps> = {}, onLeaderOwnership?: (taskId: string) => void,
   executionMode?: DepartmentMetadata["executionMode"], owner?: Pick<NonNullable<Parameters<typeof createLoopPlusRuntimeFixture>[0]>,
-    "runDepartmentMain" | "closeDepartmentCoordinator" | "maxConcurrency"> & {
+    "runDepartmentMain" | "closeDepartmentCoordinator" | "maxConcurrency" | "isInvocationActive"> & {
     beforeTaskSave?: (task: LoopTaskRecord) => void; beforeDirectorReply?: (input: PromptRunInput) => Promise<void>;
   }) {
   const tasks = new Map<string, LoopTaskRecord>();
@@ -491,6 +494,39 @@ test("director waiting does not block or redispatch while a leader is running", 
   await h.fixture.adapter.waitForTaskIdle(held.leaderId);
 });
 
+const TWO_LINE_LEADER_BLOCKER_CAUSE = "接口契约未确认，组长无法继续联调。\n解除条件：billing 模块须由接口负责人确认必填字段后才能继续。";
+
+function deliveredLeaderBlockerCause(prompt: string, moduleId: string): string | undefined {
+  const marker = "模块及组长汇报\n";
+  let from = 0;
+  while (from < prompt.length) {
+    const start = prompt.indexOf(marker, from);
+    if (start < 0) return undefined;
+    const jsonStart = start + marker.length;
+    if (prompt[jsonStart] !== "{") { from = jsonStart; continue; }
+    let depth = 0, inString = false, escaped = false, end = jsonStart;
+    for (; end < prompt.length; end++) {
+      const char = prompt[end];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === "\"") inString = false;
+        continue;
+      }
+      if (char === "\"") inString = true;
+      else if (char === "{") depth++;
+      else if (char === "}") {
+        depth--;
+        if (depth === 0) { end++; break; }
+      }
+    }
+    const report = JSON.parse(prompt.slice(jsonStart, end)) as { moduleId?: string; blockerCause?: string };
+    if (report.moduleId === moduleId) return report.blockerCause;
+    from = end;
+  }
+  return undefined;
+}
+
 test("director reviews a settled blocker and recovers the same Loop+ leader from its report", async (t) => {
   let nativeSessionId: string | null = null;
   const h = harness({ prepareLeaderContinuation: (task): ReturnType<NonNullable<DepartmentRuntimeCompositionDeps["prepareLeaderContinuation"]>> => {
@@ -508,7 +544,7 @@ test("director reviews a settled blocker and recovers the same Loop+ leader from
   t.after(() => { release.resolve(); h.dispose(); });
   const moduleId = "module-recover", rootId = "root-1";
   const instructions = "使用已核实的接口契约，重新联调并验证必填字段。";
-  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: "待确认测试用接口必填字段" };
+  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: TWO_LINE_LEADER_BLOCKER_CAUSE };
   const reportBlocker = () => h.fixture.queueMain((input, tab) => {
     const target = h.targets.get(tab!);
     if (nativeSessionId === null && target && input.loopTaskId) {
@@ -545,7 +581,8 @@ test("director reviews a settled blocker and recovers the same Loop+ leader from
   await waitForLoopPlus(() => consumed.length === 1, "director recovery reaches the original leader");
   await resumed.promise;
   assert.equal(firstFailureReviews, 2);
-  assert.ok(h.directorPrompts.some((input) => input.modelPrompt.includes('"directorRecoveryAvailable": true') && input.modelPrompt.includes(blocker.cause)));
+  assert.ok(h.directorPrompts.some((input) => input.modelPrompt.includes('"directorRecoveryAvailable": true')
+    && deliveredLeaderBlockerCause(input.modelPrompt, moduleId) === blocker.cause));
   assert.equal(h.fixture.readTask(rootId)?.status, "running", JSON.stringify(h.notices));
   assert.ok(h.fixture.readTask(rootId)!.currentRound > 1, "the director coordinated beyond the configured classic round limit");
   assert.equal(consumed[0].taskId, original.id);
@@ -1025,7 +1062,9 @@ for (const cleanup of ["confirmed", "unknown", "stopped"] as const) {
   test(`resumed leader settlement wakes the director once after cleanup: ${cleanup}`, async (t) => {
     const cleanupEntered = latch(), cleanupDone = latch(), firstTurn = latch();
     let resumed = false, decisions = 0;
+    const closedLeaderIds: string[] = [];
     const h = harness({ runDirectorDecision: async ({ task }) => { decisions++; return { status: "pending-requirements", task }; },
+      closeCompletedLeaderTab: async (_tabId, task) => { closedLeaderIds.push(task.id); },
       observeLeaderCleanup: () => {
         if (!resumed) return { done: Promise.resolve() };
         cleanupEntered.resolve(); return cleanup === "unknown" ? null : { done: cleanupDone.promise };
@@ -1042,12 +1081,14 @@ for (const cleanup of ["confirmed", "unknown", "stopped"] as const) {
     await cleanupEntered.promise;
     const before = decisions;
     assert.equal(h.notices.filter((v) => v.startsWith("组长汇报：")).length, 0, "no old-generation or pre-cleanup report");
+    assert.deepEqual(closedLeaderIds, []);
     if (cleanup === "stopped") {
       const stopping = h.composition.organizationControl.stop(h.fixture.readTask("root-1")!);
       cleanupDone.resolve(); await stopping;
     } else cleanupDone.resolve();
     await waitForLoopPlus(() => h.composition.host.runtimeSnapshot("root-1")!.leaders[0].status === (cleanup === "unknown" ? "blocked" : cleanup === "stopped" ? "paused" : "completed"), "resumed settlement");
     await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(closedLeaderIds, cleanup === "confirmed" ? [first.taskId] : []);
     if (cleanup === "stopped") assert.equal(decisions, before, "late settlement cannot revive a stopped root");
     else {
       assert.equal(decisions, before + 1, "settlement wakes the coordination wait exactly once");
@@ -1059,6 +1100,55 @@ for (const cleanup of ["confirmed", "unknown", "stopped"] as const) {
     }
   });
 }
+
+test("组长成功结算后只关闭自己的执行页，其他组长可以继续运行", async (t) => {
+  const closed: string[] = [];
+  const h = harness({
+    runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }),
+    closeCompletedLeaderTab: async (tabId, task) => {
+      assert.equal(h.deps.taskForTarget(tabId)?.id, task.id);
+      const saved = h.store.read(task.department!.rootTaskId, task.workspaceKey);
+      assert.ok(saved.ok && saved.value?.runtime.leaders.some((item) => item.taskId === task.id && item.status === "completed"));
+      closed.push(tabId);
+      h.targets.delete(tabId);
+    },
+  }, undefined, "loop-plus");
+  const held = await startHeldLeader(h, "other-module");
+  t.after(async () => { held.releaseLeader.resolve(); await h.composition.dispose(); h.fixture.dispose(); });
+  const module = { id: "completed-module", title: "已完成的组长", status: "running" as const, prompt: "完成此模块并汇报。" };
+  h.update(held.root.id, { subTasks: [...h.fixture.readTask(held.root.id)!.subTasks, module] });
+  h.finish();
+  const started = await h.composition.host.startLeader(held.root.id, { leaderSubtaskId: module.id, moduleTitle: module.title, prompt: module.prompt });
+  assert.ok(started.ok);
+  await started.done;
+  assert.equal(closed.length, 1);
+  assert.equal(h.deps.resolveTargetForRoot?.(h.fixture.readTask(started.taskId)!), null);
+  assert.ok(h.deps.resolveTargetForRoot?.(h.fixture.readTask(held.leaderId)!));
+  assert.ok(h.targets.has("director"));
+  assert.ok(h.notices.some((message) => message.startsWith("组长汇报：已完成的组长（completed）")));
+});
+
+test("恢复运行中的部门时，已结算组长沿用任务记录，无需重新打开会话页", async (t) => {
+  const h = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }, undefined, "loop-plus");
+  t.after(() => h.dispose());
+  await h.start();
+  const module = { id: "finished", title: "已交付", status: "running" as const, prompt: "完成本模块。" };
+  h.update("root-1", { subTasks: [module] });
+  h.finish();
+  const started = await h.composition.host.startLeader("root-1", { leaderSubtaskId: module.id, moduleTitle: module.title, prompt: module.prompt });
+  assert.ok(started.ok);
+  await started.done;
+  const root = h.fixture.readTask("root-1")!;
+  assert.equal(root.status, "running");
+  await h.composition.dispose();
+  const restored = createDepartmentRuntimeComposition({ ...h.deps,
+    inspectLeaderSession: () => assert.fail("已结算组长应从持久记录恢复"),
+    closeCompletedLeaderTab: () => assert.fail("恢复时不应重放关页"),
+  });
+  t.after(() => restored.dispose());
+  restored.recoverRoot(root);
+  assert.equal(restored.host.runtimeSnapshot(root.id)?.leaders[0].status, "completed");
+});
 
 test("continuation waits for the old director run and transfers ownership without parallel loops", async (t) => {
   const entered = latch(), oldDone = latch(), cancelling = latch(), ownership = createLoopOrchestrationOwnershipTracker();
@@ -1106,7 +1196,7 @@ test("a leader blocker supersedes an in-flight director decision while a sibling
   h.decide({ status: "blocked", blocker: LOOP_BLOCKER_EXAMPLE, finalSummary: staleSummary });
   held = await startHeldLeader(h, "active-sibling");
   const rootId = held.root.id;
-  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: "新收到的组长阻塞原因" };
+  const blocker = { ...LOOP_BLOCKER_EXAMPLE, cause: TWO_LINE_LEADER_BLOCKER_CAUSE };
   for (let attempt = 0; attempt < 2; attempt++) {
     h.fixture.queueMain((input, tab) => h.fixture.publish(input, tab, { status: "end", content: JSON.stringify({ status: "blocked", blocker }) }));
   }
@@ -1116,12 +1206,13 @@ test("a leader blocker supersedes an in-flight director decision while a sibling
   assert.ok(blocked.ok);
   await waitForLoopPlus(() => h.notices.some((notice) => notice.startsWith("组长汇报：待恢复模块（failed）")), "settled blocker report");
   assert.equal(h.directorPrompts.length, 1, "the current model turn still owns the session");
-  assert.ok(!h.directorPrompts[0].modelPrompt.includes(blocker.cause));
+  assert.equal(deliveredLeaderBlockerCause(h.directorPrompts[0].modelPrompt, "blocked-sibling"), undefined);
 
   h.decide({ status: "waiting" });
   reply.resolve();
   await waitForLoopPlus(() => h.directorPrompts.length >= 2, "director processes the blocker after its in-flight turn");
-  assert.ok(h.directorPrompts[1].modelPrompt.includes(blocker.cause));
+  assert.equal(deliveredLeaderBlockerCause(h.directorPrompts[1].modelPrompt, "blocked-sibling"), blocker.cause);
+  assert.equal(deliveredLeaderBlockerCause(h.directorPrompts[1].modelPrompt, "active-sibling"), undefined);
   assert.equal(h.fixture.readTask(rootId)?.status, "running");
   assert.ok(!h.notices.includes(staleSummary));
   assert.equal(h.composition.host.runtimeSnapshot(rootId)?.leaders.find((leader) => leader.taskId === held!.leaderId)?.status, "running");
@@ -1362,6 +1453,28 @@ test(`confirmed cold Loop+ stop resumes only the stopped leader in its original 
 });
 }
 
+test("组长群聊重建缺失标签须核对原工作区、会话和已保存的主任务角色", async (t) => {
+  const fixture = harness({}, undefined, "loop-plus");
+  t.after(() => fixture.dispose());
+  const held = await startHeldLeader(fixture, "group-chat-recovery");
+  t.after(() => held.releaseLeader.resolve());
+  const task = fixture.fixture.readTask(held.leaderId)!;
+  const evidence = {
+    workspaceKey: task.workspaceKey, hasSessionTab: () => false,
+    readContext: (cli: string, sessionId: string) => {
+      assert.equal(cli, task.cli);
+      assert.equal(sessionId, task.sessionId);
+      return { taskRole: "main" as const, loopTaskId: task.id };
+    },
+  };
+  assert.equal(canRestoreGroupChatLeaderTab(task, evidence), true);
+  assert.equal(canRestoreGroupChatLeaderTab(task, { ...evidence, workspaceKey: "foreign" }), false);
+  assert.equal(canRestoreGroupChatLeaderTab(task, { ...evidence, hasSessionTab: () => true }), false);
+  assert.equal(canRestoreGroupChatLeaderTab(task, { ...evidence, readContext: () => ({ taskRole: "subtask", loopTaskId: task.id }) }), false);
+  assert.equal(canRestoreGroupChatLeaderTab(task, { ...evidence, readContext: () => ({ taskRole: "main", loopTaskId: "other" }) }), false);
+  assert.equal(canRestoreGroupChatLeaderTab({ ...task, sessionId: null }, evidence), false);
+});
+
 test("Loop+ leader promotion preserves task history and requires a durable matching main transcript", async (t) => {
   const h = harness({}, undefined, "loop-plus");
   let held: Awaited<ReturnType<typeof startHeldLeader>> | undefined;
@@ -1481,6 +1594,118 @@ test("warm stop closes admission synchronously without route preparation or wait
   assert.equal(h.fixture.readTask(root.id)?.status, "stopped");
 });
 
+async function dispatchStopTestEmployee(harnessState: ReturnType<typeof harness>, rootId: string, moduleId: string) {
+  const task = harnessState.fixture.readTask(rootId)!;
+  const prompt = `Implement and verify the independent ${moduleId} requirement.`;
+  harnessState.update(rootId, { subTasks: [...task.subTasks, { id: moduleId, title: moduleId, prompt, status: "running" }] });
+  harnessState.dispatch(moduleId);
+  const leader = await harnessState.composition.host.startLeader(rootId, { leaderSubtaskId: moduleId, moduleTitle: moduleId, prompt });
+  assert.ok(leader.ok);
+  await waitForLoopPlus(() => harnessState.fixture.attemptCalls.some((input) => input.loopTaskId === leader.taskId), "employee runner started");
+  return leader.taskId;
+}
+
+test("director stop cancels both groups and waits for the last employee runner even after tab activity disappears", { timeout: 10000 }, async (context) => {
+  const stoppedLeaders = new Set<string>();
+  const harnessState = harness({
+    runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }),
+    stopLeader: async (taskId) => {
+      stoppedLeaders.add(taskId);
+      await harnessState.fixture.adapter.waitForTaskIdle(taskId);
+    },
+  }, undefined, "loop-plus", { isInvocationActive: () => false });
+  const { fixture, composition } = harnessState;
+  fixture.setCancelInvocation(() => {});
+  context.after(() => {
+    for (const employee of fixture.parkedSubtaskIds()) fixture.releaseParkedIfPresent(employee);
+    harnessState.dispose();
+  });
+  await harnessState.start();
+  const root = fixture.readTask("root-1")!;
+  const first = await dispatchStopTestEmployee(harnessState, root.id, "filter");
+  const firstEmployee = fixture.peekParked("filter-0")!;
+  const worker = spawn(process.execPath, ["-e", `process.on("message", message => {
+    if (message === "stop") process.send("stopping");
+    if (message === "release") process.exit(0);
+  });`], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  const stoppingWorker = once(worker, "message"), exit = once(worker, "close");
+  context.after(() => { if (worker.exitCode === null) worker.kill(); });
+  let workerTab: string | undefined;
+  fixture.setAttemptAction(async (_input, tabId) => { workerTab = tabId; await exit; });
+  const second = await dispatchStopTestEmployee(harnessState, root.id, "precision");
+  fixture.setAttemptAction(null);
+  fixture.setCancelInvocation((tabId) => { if (tabId === workerTab) worker.send("stop"); });
+  harnessState.targets.set("other-director", { tabId: "other-director", cli: "codex", sessionId: "other-director-session" });
+  await composition.startDepartmentPrompt({ targetTabId: "other-director", cli: "codex", displayPrompt: "另一项需求", modelPrompt: "另一项需求",
+    contextTags: [], departmentConfiguration: harnessState.configuration });
+  const other = harnessState.deps.taskForTarget("other-director")!;
+  const otherLeader = await dispatchStopTestEmployee(harnessState, other.id, "other");
+  let settled = false;
+  const stop = composition.organizationControl.stop(root);
+  void stop.then(() => { settled = true; }, () => { settled = true; });
+  assert.equal(composition.organizationControl.stop(root), stop);
+  assert.deepEqual(await stoppingWorker, ["stopping", undefined]);
+  assert.deepEqual(stoppedLeaders, new Set([first, second]));
+  assert.ok(fixture.cancelledTabs.includes(firstEmployee.tabId));
+  assert.equal(await composition.host.acquireAttemptExecution({ taskId: first, attemptId: "late", subtaskId: "late" }, new AbortController().signal), null);
+  fixture.releaseParked("filter-0");
+  await fixture.adapter.waitForTaskIdle(first);
+  assert.equal(composition.readOrganizationStopState(root.id), "stopping");
+  assert.equal(settled, false);
+  assert.equal(worker.exitCode, null);
+  assert.equal(fixture.adapter.hasTaskExecution(second), true);
+  await assert.rejects(composition.organizationControl.continue(fixture.readTask(root.id)!, "继续"), /正在停止|尚未确认/);
+  worker.send("release");
+  await stop;
+  assert.equal(worker.exitCode, 0);
+  assert.equal(composition.readOrganizationStopState(root.id), "confirmed");
+  assert.deepEqual(composition.readCapacity(root.id)?.employees, []);
+  assert.deepEqual(composition.readCapacity(root.id)?.leaders, []);
+  assert.ok([first, second].every((taskId) => fixture.readTask(taskId)?.status === "stopped" && !fixture.adapter.hasTaskExecution(taskId)));
+  assert.equal(fixture.adapter.hasTaskExecution(otherLeader), true);
+  assert.equal(fixture.readTask(other.id)?.status, "running");
+  assert.equal(fixture.cancelledTabs.includes(fixture.peekParked("other-0")!.tabId), false);
+  fixture.setCancelInvocation(null);
+  await composition.organizationControl.stop(other);
+});
+
+test("cold Loop+ stop signals verified siblings before a slow cancellation settles and retries retained employee leases", { timeout: 10000 }, async (context) => {
+  const harnessState = harness({ runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }) }, undefined, "loop-plus");
+  const { fixture, composition, store, deps } = harnessState;
+  context.after(harnessState.dispose);
+  await harnessState.start();
+  const first = await dispatchStopTestEmployee(harnessState, "root-1", "first");
+  const second = await dispatchStopTestEmployee(harnessState, "root-1", "second");
+  const root = fixture.readTask("root-1")!;
+  const members = [fixture.readTask(first)!, fixture.readTask(second)!];
+  const active = store.read(root.id, root.workspaceKey);
+  assert.ok(active.ok && active.value?.capacity.employees.length === 2);
+  await composition.organizationControl.stop(root);
+  composition.dispose();
+  [root, ...members].forEach((task) => fixture.saveTask(task));
+  assert.ok(store.write(active.value).ok);
+  const cancelled = new Set<string>(), gate = latch();
+  let retry = false;
+  const cold = createDepartmentRuntimeComposition({ ...deps, stopLeader: async (taskId) => {
+    cancelled.add(taskId);
+    if (!retry && taskId === first) { await gate.promise; throw new Error("退出待确认"); }
+  } });
+  context.after(() => { gate.resolve(); cold.dispose(); });
+  const result = assert.rejects(cold.organizationControl.stop(root), /退出待确认/);
+  await waitForLoopPlus(() => cancelled.has(first) && cancelled.has(second), "cold cancellation reached both leaders");
+  assert.equal(cold.readOrganizationStopState(root.id), "stopping");
+  gate.resolve(); await result;
+  assert.equal(cold.readOrganizationStopState(root.id), "unconfirmed");
+  const retained = store.read(root.id, root.workspaceKey);
+  assert.ok(retained.ok && retained.value?.runtime.stopping);
+  assert.deepEqual(retained.value.capacity.employees, active.value.capacity.employees);
+  await assert.rejects(cold.organizationControl.continue(fixture.readTask(root.id)!, "继续"), /停止未确认/);
+  retry = true;
+  await cold.organizationControl.stop(fixture.readTask(root.id)!);
+  assert.equal(cold.readOrganizationStopState(root.id), "confirmed");
+  assert.deepEqual(cold.readCapacity(root.id)?.employees, []);
+});
+
 const allocationMainReleases = new WeakMap<object, Array<() => void>>();
 async function disposeAllocationHarness(h: ReturnType<typeof harness>) {
   for (const taskId of h.fixture.createdTaskIds) h.fixture.adapter.host().stopParent(taskId);
@@ -1595,6 +1820,7 @@ for (const fail of [false, true]) {
     assert.equal(h.composition.readCapacity(root.id), null, "a durable stop fence hides stale in-memory capacity claims");
     const saved = h.store.read(root.id, root.workspaceKey);
     assert.ok(saved.ok && saved.value);
+    assert.equal(saved.value.runtime.stopping, true);
     assert.deepEqual(saved.value.capacity.leaders, []);
     assert.deepEqual(saved.value.capacity.employees, []);
     await assert.rejects(h.composition.organizationControl.continue(root, "停止在途"), /正在停止/);
@@ -1603,6 +1829,9 @@ for (const fail of [false, true]) {
     assert.equal(Boolean(error), fail);
     assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), fail, "failed stop is never a confirmed release");
     assert.equal(h.composition.readOrganizationStopState(root.id), fail ? "unconfirmed" : "confirmed");
+    const settledSnapshot = h.store.read(root.id, root.workspaceKey);
+    assert.ok(settledSnapshot.ok && settledSnapshot.value);
+    assert.equal(settledSnapshot.value.runtime.stopping, fail);
     if (fail) await assert.rejects(h.composition.organizationControl.continue(root, "停止拒绝"), /停止未确认/);
     assert.ok(!h.fixture.readTask(root.id)?.supplementalRequirements?.length);
   });
@@ -1771,4 +2000,71 @@ test("duplicate organization stop shares the result and permits a later stop aft
   assert.equal(calls, 2);
   assert.equal(h.composition.isOrganizationStopUnconfirmed(root.id), false);
   assert.equal(reads, 1);
+});
+
+test("leader continuation records an open owner wait and a failed wait without private text", async (t) => {
+  const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+  const push = (event: string, data: unknown) => {
+    events.push({ event, data: data && typeof data === "object" ? data as Record<string, unknown> : {} });
+    return Promise.resolve();
+  };
+  t.mock.method(logger, "logError", push);
+  t.mock.method(logger, "logEssential", push);
+  const preparing = latch(), prepared = latch();
+  const h = harness({
+    runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }),
+    resumeLeaderExecution: async () => { preparing.resolve(); await prepared.promise; },
+  });
+  t.after(() => { prepared.resolve(); h.dispose(); });
+  await h.start();
+  const id = "root-1";
+  h.deps.updateTask(id, { subTasks: [{ id: "module", title: "module", status: "running", prompt: "SECRET_PROMPT" }] });
+  const firstTurn = latch();
+  h.fixture.queueMain((input, tab) => {
+    h.fixture.publish(input, tab, { status: "end", content: '{"status":"wait","finalSummary":"等待停止"}' });
+    firstTurn.resolve();
+  });
+  assert.ok((await h.composition.host.startLeader(id, { leaderSubtaskId: "module", moduleTitle: "module", prompt: "SECRET_PROMPT" })).ok);
+  await firstTurn.promise;
+  await h.composition.organizationControl.stop(h.fixture.readTask(id)!);
+  const ownerStages = () => events.filter((item) => item.event === "department-leader-continuation" && item.data.stage === "owner-open" && item.data.requestId === "continue-leader-1");
+  const continuing = h.composition.organizationControl.continue(h.fixture.readTask(id)!, "SECRET_PROMPT", "continue-leader-1");
+  await preparing.promise;
+  assert.deepEqual(ownerStages().map((item) => item.data.result), ["started"]);
+  assert.equal(ownerStages().some((item) => item.data.result === "confirmed"), false);
+  prepared.resolve();
+  await continuing;
+  const confirmed = ownerStages().find((item) => item.data.result === "confirmed");
+  assert.ok(confirmed);
+  assert.equal(typeof confirmed?.data.elapsedMs, "number");
+  const continuationEvents = () => events.filter((item) => item.event === "department-leader-continuation" || item.event === "department-root-continuation");
+  assert.equal(JSON.stringify(continuationEvents()).includes("SECRET_PROMPT"), false);
+
+  const failing = latch();
+  const failed = harness({
+    runDirectorDecision: async ({ task }) => ({ status: "pending-requirements", task }),
+    resumeLeaderExecution: async () => { failing.resolve(); throw new Error("SYNTHETIC_SECRET_STACK"); },
+  });
+  t.after(() => failed.dispose());
+  await failed.start();
+  failed.deps.updateTask(id, { subTasks: [{ id: "module", title: "module", status: "running", prompt: "SECRET_PROMPT" }] });
+  const failedTurn = latch();
+  failed.fixture.queueMain((input, tab) => {
+    failed.fixture.publish(input, tab, { status: "end", content: '{"status":"wait","finalSummary":"等待停止"}' });
+    failedTurn.resolve();
+  });
+  assert.ok((await failed.composition.host.startLeader(id, { leaderSubtaskId: "module", moduleTitle: "module", prompt: "SECRET_PROMPT" })).ok);
+  await failedTurn.promise;
+  await failed.composition.organizationControl.stop(failed.fixture.readTask(id)!);
+  const rejected = failed.composition.organizationControl.continue(failed.fixture.readTask(id)!, "SECRET_PROMPT", "continue/leader");
+  await failing.promise;
+  await assert.rejects(rejected);
+  const failedStage = events.filter((item) => item.event === "department-leader-continuation" && item.data.stage === "owner-open" && item.data.requestId === "invalid-id");
+  assert.equal(failedStage.some((item) => item.data.result === "started"), true);
+  assert.deepEqual(failedStage.map((item) => ({ result: item.data.result, reason: item.data.reason, errorCode: item.data.errorCode })), [
+    { result: "started", reason: "none", errorCode: undefined },
+    { result: "unconfirmed", reason: "unexpected-failure", errorCode: undefined },
+  ]);
+  assert.equal(JSON.stringify(continuationEvents()).includes("SYNTHETIC_SECRET_STACK"), false);
+  assert.equal(JSON.stringify(continuationEvents()).includes("SECRET_PROMPT"), false);
 });

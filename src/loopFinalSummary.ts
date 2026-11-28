@@ -1,5 +1,7 @@
 import { resolveLoopNeedsReviewSummary } from "./loopBlockedSummary";
 import type { LoopMainAiFailureState } from "./loopMainFailure";
+import { createLoopPlusScheduler } from "./loopPlusScheduler";
+import { normalizeLoopSubtaskFailure } from "./loopSubtaskFailure";
 
 export type LoopGroupChatFinalStatusSection = {
   heading: "任务成功完成" | "任务中断";
@@ -48,6 +50,7 @@ export function buildLoopGroupChatFinalStatusSection(task: {
   schedulingMode?: "classic" | "event_driven";
   currentRound?: number | null;
   updatedAt?: number | null;
+  loopPlus?: unknown;
   finalSummary?: string | null;
   answerConclusion?: string | null;
   estimatedRemainingRounds?: number | null;
@@ -69,6 +72,9 @@ export function buildLoopGroupChatFinalStatusSection(task: {
     };
   }
   if (status === "needs-review" || status === "error" || status === "stopped") {
+    const summary = status === "needs-review" ? resolveLoopNeedsReviewSummary(task)
+      : normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status));
+    const attempts = status === "error" && task.schedulingMode === "event_driven" && task.loopPlus ? latestLaunchFailures(task.loopPlus) : "";
     return {
       heading: "任务中断",
       terminalStatus: "interrupted",
@@ -76,13 +82,26 @@ export function buildLoopGroupChatFinalStatusSection(task: {
         task,
         status === "needs-review" ? "任务已暂停，整体任务尚未完成。" : "任务已中断，需要人工复核或继续。",
         status === "needs-review" ? "### 暂停说明" : "### 中断说明",
-        status === "needs-review"
-          ? resolveLoopNeedsReviewSummary(task)
-          : normalizeLoopGroupChatFinalSummary(task.finalSummary, getDefaultLoopInterruptedSummary(status)),
+        attempts || summary,
+        attempts && task.finalSummary ? [{ heading: "### 上次保存的中断说明", body: summary }] : [],
       ),
     };
   }
   return null;
+}
+
+function latestLaunchFailures(raw: unknown): string {
+  try {
+    const snapshot = createLoopPlusScheduler({ snapshot: raw }).snapshot();
+    const latest = new Map(snapshot.seenAttempts.map(attempt => [attempt.subtaskId, attempt]));
+    const events = new Map([snapshot.currentReview, ...snapshot.reviewQueue, ...(snapshot.reportQueue ?? [])]
+      .filter(event => event !== null).map(event => [event.attemptId, event]));
+    const failures = [...latest.values()].filter(attempt => attempt.outcome === "failed" && attempt.disposition !== "closed" && attempt.acceptance !== "cancelled")
+      .map(attempt => `- ${attempt.attemptId}：${normalizeLoopSubtaskFailure(events.get(attempt.attemptId)?.detail) ?? "执行失败，等待复核"}`).join("\n");
+    if (failures) return failures;
+    return snapshot.seenAttempts.some(attempt => attempt.outcome === "failed" && latest.get(attempt.subtaskId)?.attemptId !== attempt.attemptId)
+      ? "此前失败的子任务已有后续派发。请按当前派发和验收记录复核。" : "";
+  } catch { return ""; }
 }
 
 function buildLoopGroupChatFinalStatusBody(

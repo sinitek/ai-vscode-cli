@@ -22,6 +22,10 @@ Loop+ 的主、子调用在 `runPrompt` 执行期间订阅宿主直接发布的 
 
 路由未显式指定配置时，以目标 CLI 当前激活配置补齐本轮配置身份，并传给实际执行；不能把未填写的配置当作与真实绑定不兼容。显式路由配置优先，切换到不同配置后不恢复旧配置的会话。执行入口捕获的实际配置优先于适配器缺省值。
 
+## 主会话自动压缩与续跑
+
+主任务使用 `createLoopMainQuestionQueue` 将自动压缩排在当前调用之后、同一标签页等待中的提问和下一轮主调用之前。其他标签页可独立运行。群聊“继续执行”遇到主会话压缩时保留本次请求，等压缩结束后重新读取任务、核对原工作区及标签会话，并再次检查续跑条件。显式中止取消排队中的续跑，宿主重启后由用户重新发起。
+
 ## Loop+ 验收修补与重派
 
 ### 执行尝试身份
@@ -47,6 +51,8 @@ Loop+ 停止时可取消来源预留、后台压缩及 `runPrompt` 启动前的�
 ## 执行边界与验证
 
 ### Loop+ attempt 执行准入端口
+
+父记录的 `identity-lock-present` 保留派发并异步等待，支持取消。其他读失败按本次拒绝原因处理。普通 Loop+ 的新派发获准后以父记录版本认领待启动预留，再创建子任务 Tab 和执行目录。详见[父记录竞争和启动确认](loop-plus-scheduling.md#父记录竞争和启动确认)。
 
 `LoopPlusRuntimeAdapterDeps.acquireAttemptExecution?(request: LoopPlusAttemptRequest, signal: AbortSignal): Promise<LoopPlusAttemptExecutionLease | null>` 是可选的内部注入点；租约仅有 `release(): void`。backend、frontend、general 子任务均经过准入，`runMain` 不调用它。未注入时保持原路由、session 选择与执行路径。本端口尚未接入 extension、部门设置或部门额度池，不增加用户可见功能，也不改变嵌套入口校验。
 

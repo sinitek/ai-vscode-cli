@@ -1,4 +1,5 @@
-import { logEssential } from "../logger";
+import { logError, logEssential } from "../logger";
+import { loopTaskReadUnavailableReason } from "../loopTaskStore";
 
 export type DepartmentLifecycleEvent = "department-root-stop-started" | "department-root-stop-settled"
   | "department-leader-cleanup" | "department-leader-capacity" | "department-employee-capacity" | "department-lifecycle-persistence-failed"
@@ -8,15 +9,19 @@ export type DepartmentLifecycleStage = "root-stop" | "runtime-save" | "lifecycle
   | "producer-close" | "owner-receipts" | "release-save" | "capacity-release"
   | "projection" | "identity" | "snapshot-read" | "stop-gate" | "recovery-verify"
   | "target-verify" | "resume" | "run-evidence" | "transcript-verify"
-  | "target-availability" | "binding-write" | "binding-readback" | "admission";
+  | "target-availability" | "binding-write" | "binding-readback" | "admission"
+  | "route-prepare" | "capacity-acquire" | "owner-open" | "runner-lifecycle" | "leader-resume";
 export type DepartmentLifecycleReason = "none" | "already-blocked" | "evidence-missing" | "evidence-rejected"
   | "persistence-failed" | "task-still-running" | "identity-changed" | "unexpected-failure";
-/** Fixed admission decisions. An empty task read stays task-record-unavailable and is never relabeled from a nearby lock. */
+/** Fixed admission decisions. An empty task read stays task-record-unavailable.
+ * readFailure is that same read's whitelist class, or unknown. A nearby lock log is not evidence.
+ * task-not-found means candidate discovery finished without the record. */
 export type DepartmentAdmissionReason = "task-record-unavailable" | "owner-or-member-missing" | "attempt-validation-failed"
   | "occupancy-conflict" | "capacity-unavailable" | "admission-cancelled" | "persistence-failed" | "identity-changed";
-type Fields = { rootTaskId?: string; leaderTaskId?: string; attemptId?: string; generation?: number;
+type Fields = { rootTaskId?: string; leaderTaskId?: string; attemptId?: string; requestId?: string; generation?: number;
   stage: DepartmentLifecycleStage; result: "started" | "confirmed" | "unconfirmed" | "released" | "retained" | "refused";
-  reason: DepartmentLifecycleReason | DepartmentAdmissionReason; errorCode?: string; elapsedMs?: number; confirmed?: number; unconfirmed?: number; retained?: number };
+  reason: DepartmentLifecycleReason | DepartmentAdmissionReason; readFailure?: unknown;
+  errorCode?: string; elapsedMs?: number; rereadCount?: number; confirmed?: number; unconfirmed?: number; retained?: number };
 const id = (value: string) => /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? value : "invalid-id";
 const count = (value: number) => Number.isFinite(value) ? Math.max(0, Math.min(2147483647, Math.floor(value))) : 0;
 const departmentDiagnosticErrorCodes = new Set([
@@ -41,12 +46,17 @@ export function departmentLifecycleDiagnostic(event: DepartmentLifecycleEvent, f
     const data = { ...(fields.rootTaskId === undefined ? {} : { rootTaskId: id(fields.rootTaskId) }),
       ...(fields.leaderTaskId === undefined ? {} : { leaderTaskId: id(fields.leaderTaskId) }),
       ...(fields.attemptId === undefined ? {} : { attemptId: id(fields.attemptId) }),
+      ...(fields.requestId === undefined ? {} : { requestId: id(fields.requestId) }),
       ...(fields.generation === undefined ? {} : { generation: count(fields.generation) }),
       stage: fields.stage, result: fields.result, reason: fields.reason,
+      ...(fields.reason === "task-record-unavailable" ? { readFailure: loopTaskReadUnavailableReason(fields.readFailure) } : {}),
       ...(safeDepartmentErrorCode(fields.errorCode) ? { errorCode: safeDepartmentErrorCode(fields.errorCode) } : {}),
-      ...Object.fromEntries((["elapsedMs", "confirmed", "unconfirmed", "retained"] as const)
+      ...Object.fromEntries((["elapsedMs", "rereadCount", "confirmed", "unconfirmed", "retained"] as const)
         .filter((key) => fields[key] !== undefined).map((key) => [key, count(fields[key]!)])) };
-    void Promise.resolve(logEssential(event, data)).catch(() => undefined);
+    const writeLog = event === "department-lifecycle-persistence-failed"
+      || fields.result === "unconfirmed" || fields.result === "refused"
+      ? logError : logEssential;
+    void Promise.resolve(writeLog(event, data)).catch(() => undefined);
   } catch { /* Diagnostics cannot change persistence, original receipts or capacity. */ }
 }
 
@@ -78,5 +88,41 @@ export function departmentCleanupReason(error: unknown): DepartmentLifecycleReas
     case "leader-release-persistence-failed": return "persistence-failed";
     case "execution-cleanup-unverified": return "already-blocked";
     default: return "unexpected-failure";
+  }
+}
+
+/** Continuation waits only. Exact internal text is classified, never copied into the log. */
+export function departmentContinuationWaitReason(error: unknown): DepartmentLifecycleReason {
+  const mapped = departmentCleanupReason(error);
+  if (mapped !== "unexpected-failure") return mapped;
+  let message: unknown;
+  try { message = error instanceof Error ? error.message : error; } catch { return "unexpected-failure"; }
+  switch (message) {
+    case "部门正在继续，请等待当前续接完成。":
+    case "部门正在停止，请稍候。":
+    case "部门运行入口已释放。":
+    case "部门停止尚未确认，不能恢复或继续执行。":
+    case "部门停止状态未确认，不能继续执行。":
+      return "already-blocked";
+    case "部门续接已停止或请求已失效。":
+    case "部门续接归属已变化。":
+    case "部门续接状态已变化。":
+    case "部门停止归属或状态已变化。":
+    case "resume-cancelled-or-identity-changed":
+      return "identity-changed";
+    case "部门续接会话绑定无效。":
+    case "总监真实会话不可用。":
+    case "leader-continuation-target-unverified":
+      return "evidence-rejected";
+    case "leader-still-active-or-unverified":
+    case "leader-supplement-unavailable":
+    case "leader-cleanup-or-admission-unverified":
+      return "task-still-running";
+    case "root-resume-persistence-failed":
+    case "leader-resume-persistence-failed":
+    case "leader-supplement-delivery-failed":
+      return "persistence-failed";
+    default:
+      return "unexpected-failure";
   }
 }

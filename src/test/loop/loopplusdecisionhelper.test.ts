@@ -8,6 +8,7 @@ import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES } from "../../loopPlusAcceptan
 import { parseLoopPlusDecisionWithFeedback } from "../../loopPlusDecision";
 import { buildLoopBlockerSummary, type LoopBlocker } from "../../loopBlocker";
 import { sameLoopPlusReportIds } from "../../extensionHost/loopPlusDecisionStrategies";
+import { loopPlusFrozenBatchKey } from "../../loopPlusProtocolDiagnostics";
 
 const entry = path.join(__dirname, "../../loopPlusDecisionHelper.js");
 const secretPrompt = "SECRET_PROMPT_BODY_do_not_log";
@@ -95,6 +96,7 @@ function hostOptions(snapshot: Json): Json {
 function recoverableBlocker(): LoopBlocker {
   return {
     kind: "recoverable",
+    constraintSource: "用户要求通过外部接口的实际联验。",
     cause: "接口联调缺少已确认的请求字段",
     affectedRequirements: ["接口约定"],
     evidence: ["文档没有必填字段"],
@@ -103,6 +105,18 @@ function recoverableBlocker(): LoopBlocker {
     resumeCondition: "字段已经明确",
   };
 }
+
+test("the packaged helper points to the missing constraint source for an otherwise complete blocker", () => {
+  withHome((home) => {
+    const result = invoke(home, ["build", "--status", "blocked"], envelope(context({ reportEventIds: [] }), {
+      finalSummary: "用户要求的接口联验尚缺字段约定。",
+      blocker: { ...recoverableBlocker(), constraintSource: undefined },
+    }));
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /fields\.blocker\.constraintSource/);
+  });
+});
 
 test("the packaged entry starts on macOS and rejects an incomplete command", () => {
   assert.equal(process.platform, "darwin");
@@ -286,6 +300,7 @@ test("direct completion, dispatch, and blocked facts follow the host flags", () 
       blocker: {
         kind: "recoverable",
         cause: "CAUSE_SENTINEL_do_not_log",
+        constraintSource: "用户要求通过外部接口的实际联验。",
         affectedRequirements: ["接口约定"],
         evidence: ["文档没有必填字段"],
         attempts: ["已查阅现有文档"],
@@ -458,7 +473,7 @@ test("blocked template requires finalSummary and build submits it with blocker",
     assert.equal(built.status, 0, built.stderr);
     const decision = reparse(built.stdout, hostOptions(snapshot));
     assert.equal((decision.blocker as Json).kind, "recoverable");
-    assert.equal(decision.finalSummary, buildLoopBlockerSummary(decision.blocker as LoopBlocker));
+    assert.equal(decision.finalSummary, buildLoopBlockerSummary(decision.blocker as LoopBlocker, "event_driven"));
     assert.equal((decision.finalSummary as string).includes("接口联调缺少已确认的请求字段"), true);
   });
 });
@@ -616,5 +631,237 @@ test("unsupported or contradictory fields get a field correction instead of bein
     }));
     assert.equal(tooManyRounds.status, 1, tooManyRounds.stderr);
     assert.match(tooManyRounds.stderr, /fields\.estimatedRemainingRounds/);
+  });
+});
+
+test("passed follow-ups stay on that event and general rejects an existing empty classification field", () => {
+  const frozen = [
+    { eventId: "event-pass", subtaskId: "sub-pass" },
+    { eventId: "event-fail", subtaskId: "sub-fail" },
+    { eventId: "event-none", subtaskId: "sub-none" },
+    { eventId: "event-cancel", subtaskId: "sub-cancel" },
+  ];
+  const snapshot = context({ reviews: frozen, reportEventIds: [], acceptancePlanKeys: [] });
+  const mixedFields = {
+    progressPercent: 30,
+    acceptance: { passed: false, checks: checks(false) },
+    reviews: [
+      {
+        acceptance: "passed",
+        reason: "实现与契约一致",
+        followUps: [
+          { id: "follow-be", title: "补充接口", prompt: "补齐契约", taskType: "backend", writeFiles: [] },
+          { id: "follow-gen", title: "阅读边界", prompt: "只读核对", taskType: "general", requiresAcceptance: false },
+        ],
+      },
+      {
+        acceptance: "failed",
+        reason: "定向测试失败",
+        repair: { id: "sub-fail", title: "返工", prompt: "修正失败分支", taskType: "frontend" },
+      },
+      { acceptance: "failed", reason: "失败但无需再改", noRepairReason: "需求已撤回，保留失败结论" },
+      { acceptance: "cancelled", reason: "该交付不再需要验收" },
+    ],
+    independentSubtasks: [{ id: "ind-gen", title: "独立阅读", prompt: "只读剩余目标", taskType: "general" }],
+  };
+  withHome((home) => {
+    const listed = invoke(home, ["template", "--status", "accept"], envelope(snapshot, {}));
+    assert.equal(listed.status, 0, listed.stderr);
+    const templateFields = JSON.parse(listed.stdout).fields as Array<{ path: string; description: string }>;
+    const followUpField = templateFields.find((field) => field.path === "reviews[0].followUps");
+    assert.match(followUpField?.description ?? "", /subtaskIds/);
+    assert.match(followUpField?.description ?? "", /independentSubtasks/);
+
+    const accepted = invoke(home, ["build", "--status", "accept"], envelope(snapshot, mixedFields));
+    assert.equal(accepted.status, 0, accepted.stderr);
+    assert.equal(accepted.stdout.trim().split("\n").length, 1);
+    const decision = reparse(accepted.stdout, hostOptions(snapshot));
+    assert.deepEqual(decision.reviewEventIds, frozen.map((item) => item.eventId));
+    const decisionReviews = decision.reviews as Array<Json>;
+    assert.deepEqual(decisionReviews.map((item) => item.acceptance), ["passed", "failed", "failed", "cancelled"]);
+    assert.deepEqual(decisionReviews[0]?.subtaskIds, ["follow-be", "follow-gen"]);
+    assert.deepEqual(decisionReviews[1]?.subtaskIds, ["sub-fail"]);
+    assert.equal(decisionReviews[2]?.subtaskIds, undefined);
+    assert.equal(decisionReviews[2]?.noRepairReason, "需求已撤回，保留失败结论");
+    assert.equal(decisionReviews[3]?.subtaskIds, undefined);
+    assert.deepEqual(decision.independentSubtaskIds, ["ind-gen"]);
+    const tasks = decision.subtasks as Array<Json>;
+    assert.deepEqual(tasks.map((item) => item.id), ["follow-be", "follow-gen", "sub-fail", "ind-gen"]);
+    assert.equal(tasks.find((item) => item.id === "follow-be")?.writeFiles, undefined);
+    assert.equal(tasks.find((item) => item.id === "follow-gen")?.taskType, "general");
+    assert.equal(tasks.find((item) => item.id === "follow-gen")?.requiresAcceptance, false);
+    assert.equal(tasks.find((item) => item.id === "sub-fail")?.requiresAcceptance, true);
+    assert.equal((decision.independentSubtaskIds as string[]).includes("follow-gen"), false);
+    assert.equal((decision.independentSubtaskIds as string[]).includes("follow-be"), false);
+
+    const onFailed = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      reviews: mixedFields.reviews.map((review, index) => index === 1
+        ? { ...review, followUps: [{ id: "follow-extra", title: "不该挂在失败项", prompt: "不要关联", taskType: "backend" }] }
+        : review),
+    }));
+    assert.equal(onFailed.status, 1, onFailed.stderr);
+    assert.equal(onFailed.stdout, "");
+    assert.match(onFailed.stderr, /fields\.reviews\[1\]\.followUps/);
+
+    const atomicId = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      reviews: mixedFields.reviews.map((review, index) => index === 0
+        ? { ...review, followUps: [{ id: "sub-pass", title: "误用原子 ID", prompt: "不要复用", taskType: "backend" }] }
+        : review),
+    }));
+    assert.equal(atomicId.status, 1, atomicId.stderr);
+    assert.equal(atomicId.stdout, "");
+    assert.match(atomicId.stderr, /fields\.reviews\[0\]\.followUps\[0\]\.id/);
+
+    const sharedId = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      independentSubtasks: [{ id: "follow-be", title: "重复归属", prompt: "不要两边都放", taskType: "general" }],
+    }));
+    assert.equal(sharedId.status, 1, sharedId.stderr);
+    assert.equal(sharedId.stdout, "");
+    assert.match(sharedId.stderr, /fields\.independentSubtasks\[0\]\.id/);
+    assert.match(sharedId.stderr, /followUps/);
+
+    const cancelled = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      reviews: mixedFields.reviews.map((review, index) => index === 3
+        ? { ...review, followUps: [{ id: "follow-cancel", title: "取消后的任务", prompt: "不要派发", taskType: "backend" }] }
+        : review),
+    }));
+    assert.equal(cancelled.status, 1, cancelled.stderr);
+    assert.equal(cancelled.stdout, "");
+    assert.match(cancelled.stderr, /fields\.reviews\[3\]\.followUps/);
+
+    const limitedSnapshot = context({
+      reviews: [{ eventId: "event-pass", subtaskId: "sub-pass" }],
+      reportEventIds: [],
+      acceptancePlanKeys: [],
+      subtaskMax: 1,
+    });
+    const limited = invoke(home, ["build", "--status", "accept"], envelope(limitedSnapshot, {
+      progressPercent: 10,
+      acceptance: { passed: true, checks: checks(true) },
+      reviews: [{
+        acceptance: "passed",
+        reason: "实现通过",
+        followUps: [
+          { id: "follow-one", title: "第一项", prompt: "完成第一项", taskType: "backend" },
+          { id: "follow-two", title: "第二项", prompt: "完成第二项", taskType: "frontend" },
+        ],
+      }],
+    }));
+    assert.equal(limited.status, 1, limited.stderr);
+    assert.equal(limited.stdout, "");
+    assert.match(limited.stderr, /fields\.reviews\[0\]\.followUps\[1\]\.id/);
+    assert.match(limited.stderr, /上限 1/);
+
+    const emptyWriteFiles = invoke(home, ["build", "--status", "dispatch"], envelope(context({ reportEventIds: [] }), {
+      subtasks: [{ id: "sub-gen", title: "只读", prompt: "分析资料", taskType: "general", writeFiles: [] }],
+    }));
+    assert.equal(emptyWriteFiles.status, 1, emptyWriteFiles.stderr);
+    assert.equal(emptyWriteFiles.stdout, "");
+    assert.match(emptyWriteFiles.stderr, /fields\.subtasks\[0\]\.writeFiles/);
+
+    const falseDelivery = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      reviews: mixedFields.reviews.map((review, index) => index === 0
+        ? {
+          ...review,
+          followUps: [{ id: "follow-gen", title: "阅读边界", prompt: "只读核对", taskType: "general", codingDelivery: false }],
+        }
+        : review),
+    }));
+    assert.equal(falseDelivery.status, 1, falseDelivery.stderr);
+    assert.equal(falseDelivery.stdout, "");
+    assert.match(falseDelivery.stderr, /fields\.reviews\[0\]\.followUps\[0\]\.codingDelivery/);
+
+    const bothFields = invoke(home, ["build", "--status", "accept"], envelope(snapshot, {
+      ...mixedFields,
+      independentSubtasks: [{
+        id: "ind-gen",
+        title: "独立阅读",
+        prompt: "只读剩余目标",
+        taskType: "general",
+        writeFiles: [],
+        codingDelivery: false,
+      }],
+    }));
+    assert.equal(bothFields.status, 1, bothFields.stderr);
+    assert.equal(bothFields.stdout, "");
+    assert.match(bothFields.stderr, /fields\.independentSubtasks\[0\]\.writeFiles/);
+  });
+
+  const historical = parseLoopPlusDecisionWithFeedback(JSON.stringify({
+    status: "dispatch",
+    subtasks: [{ id: "legacy-general", title: "历史只读", prompt: "保持兼容", taskType: "general", writeFiles: [] }],
+  }), { subtaskMax: 6, acceptancePlanKeys: [], frozenReviewEventIds: [] });
+  assert.equal(historical.rejectionReason, null);
+  assert.equal(historical.decision?.subtasks?.[0]?.taskType, "general");
+  assert.equal(historical.decision?.subtasks?.[0]?.writeFiles, undefined);
+});
+
+test("helper calls share a frozen batch key, distinguish retries, and omit field text", () => {
+  const eventId = "EVENT_FROZEN_DO_NOT_LOG";
+  const otherEventId = "EVENT_OTHER_DO_NOT_LOG";
+  const subtaskId = "SUBTASK_DO_NOT_LOG";
+  const reportId = "REPORT_FROZEN_DO_NOT_LOG";
+  const wrongReport = "REPORT_WRONG_DO_NOT_LOG";
+  const secretBody = "SECRET_PROMPT_BODY_do_not_log";
+  const hiddenPath = "/tmp/session/do-not-log-path";
+  const snapshot = context({
+    reviews: [{ eventId, subtaskId }],
+    reportEventIds: [reportId],
+  });
+  const fields = {
+    reportEventIds: [wrongReport],
+    nextStepPlan: { objective: secretBody, note: hiddenPath },
+  };
+  const expectedKey = loopPlusFrozenBatchKey([eventId], [reportId]);
+  withHome((home) => {
+    const first = invoke(home, ["build", "--status", "wait"], envelope(snapshot, fields));
+    const second = invoke(home, ["build", "--status", "wait"], envelope(snapshot, fields));
+    const listed = invoke(home, ["template", "--status", "wait"], envelope(snapshot, {}));
+    const other = invoke(home, ["build", "--status", "wait"], envelope(context({
+      reviews: [{ eventId: otherEventId, subtaskId }],
+      reportEventIds: [reportId],
+    }), fields));
+    const invalid = invoke(home, ["build", "--status", "wait"], ` ${secretBody} ${hiddenPath} `);
+    assert.equal(first.status, 1, first.stderr);
+    assert.equal(second.status, 1, second.stderr);
+    assert.equal(listed.status, 0, listed.stderr);
+    assert.equal(other.status, 1, other.stderr);
+    assert.equal(invalid.status, 1, invalid.stderr);
+    const entries = readLogs(home).split("\n").flatMap((line) => {
+      if (!line.includes("loop-plus-decision-helper")) return [];
+      return [JSON.parse(line.slice(line.indexOf(" | ") + 3)) as Json];
+    });
+    assert.equal(entries.length, 5);
+    const [firstLog, secondLog, templateLog, otherLog, invalidLog] = entries;
+    assert.equal(firstLog?.phase, "helper_script");
+    assert.equal(firstLog?.reason, "input.contradiction");
+    assert.equal(firstLog?.inputShape, "object");
+    assert.equal(firstLog?.batchKey, expectedKey);
+    assert.equal(secondLog?.batchKey, expectedKey);
+    assert.equal(templateLog?.batchKey, expectedKey);
+    assert.equal(templateLog?.outcome, "ok");
+    assert.notEqual(firstLog?.callKey, secondLog?.callKey);
+    assert.notEqual(secondLog?.callKey, templateLog?.callKey);
+    assert.equal(otherLog?.batchKey, loopPlusFrozenBatchKey([otherEventId], [reportId]));
+    assert.notEqual(otherLog?.batchKey, expectedKey);
+    assert.equal(invalidLog?.reason, "input.invalid_json");
+    assert.equal(invalidLog?.inputShape, "invalid_json");
+    assert.equal(invalidLog?.batchKey, undefined);
+    assert.equal(invalidLog?.charCount, ` ${secretBody} ${hiddenPath} `.length);
+    for (const entry of entries) {
+      assert.equal(typeof entry.callKey, "string");
+      assert.match(String(entry.callKey), /^[a-f0-9]{12}$/);
+      assert.equal(Number.isSafeInteger(entry.elapsedMs) && Number(entry.elapsedMs) >= 0, true);
+      assert.equal(Number.isSafeInteger(entry.charCount) && Number(entry.charCount) >= 0, true);
+    }
+    const logged = JSON.stringify(entries);
+    for (const forbidden of [secretBody, hiddenPath, eventId, otherEventId, subtaskId, reportId, wrongReport, "argv"]) {
+      assert.equal(logged.includes(forbidden), false, forbidden);
+    }
   });
 });

@@ -161,6 +161,23 @@ for (const batchSize of [1, 4]) {
   });
 }
 
+test("a full interrupted reservation offers a valid replacement dispatch and a steer that preserves dependencies", () => {
+  const scheduler = createLoopPlusScheduler({ maxConcurrency: 1 });
+  scheduler.dispatch([spec("prior")]);
+  scheduler.finish({ ...spec("prior"), outcome: "completed" });
+  const batch = scheduler.prepareReviewBatch(1);
+  scheduler.submitReviewBatch(batch.items.map(item => item.eventId), "passed");
+  scheduler.dispatch([{ ...spec("old"), dependsOn: ["prior"] }]);
+  const input = inputFor(scheduler, { interruptedSubtaskIds: ["old"] });
+  const examples = examplesFor(input);
+  assert.equal(deriveLoopPlusDecisionContract(input).availableSlots, 0);
+  assert.deepEqual(examples.get("dispatch")?.controls?.map(control => [control.id, control.action]), [["old", "close"]]);
+  assert.deepEqual(examples.get("dispatch")?.subtasks?.[0].dependsOn, ["prior"]);
+  assert.equal(examples.get("steer")?.controls?.[0].id, "old");
+  assert.equal(examples.get("steer")?.controls?.[0].dependsOn, undefined);
+  assert.equal(examples.has("wait"), false);
+});
+
 test("report-only hands off the exact frozen report prefix despite an open batch and later arrivals", () => {
   const scheduler = createLoopPlusScheduler({ maxConcurrency: 4 });
   const tasks = [spec("review"), spec("report-b", false), spec("report-a", false), spec("later", false)];

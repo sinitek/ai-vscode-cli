@@ -1,6 +1,6 @@
 import test = require("node:test");
 import assert = require("node:assert/strict");
-import { buildLoopBlockerSummary, readLoopBlocker, readLoopBlockedDecisionFields, LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
+import { buildLoopBlockerSummary, readDeliveredLoopBlockerCause, readLoopBlocker, readLoopBlockedDecisionFields, LOOP_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { parseLoopPlusDecision } from "../../loopPlusDecision";
 import { buildLoopBlockedPauseText } from "../../loopBlockedSummary";
 import { buildLoopBlockerRecoveryClarification } from "../../loopBlockerRecovery";
@@ -87,6 +87,47 @@ test("诊断规范化不采信模型伪造的 blockerIssue 或 finalSummary", ()
   assert.equal(parsed?.blockerIssue, undefined);
   assert.match(parsed?.finalSummary ?? "", /实际原因/);
   assert.doesNotMatch(parsed?.finalSummary ?? "", /任务完成/);
+});
+
+test("两行 cause 原样投递，单行、经典摘要和协议纠正不混入后续诊断", () => {
+  const cause = "接口契约未确认，组长无法继续联调。\n解除条件：billing 模块须由接口负责人确认必填字段后才能继续。";
+  const accepted = readLoopBlocker({ ...LOOP_BLOCKER_EXAMPLE, cause });
+  assert.equal(accepted.blocker?.cause, cause);
+  const summary = buildLoopBlockerSummary(accepted.blocker!, "event_driven");
+  assert.ok(summary.includes(cause));
+  assert.match(summary, /### 熔断原因与未完成事项/);
+  assert.match(summary, /### 已知证据/);
+  assert.equal(readDeliveredLoopBlockerCause(summary), cause);
+  assert.equal(readDeliveredLoopBlockerCause(summary)?.split("\n")[1], "解除条件：billing 模块须由接口负责人确认必填字段后才能继续。");
+  assert.doesNotMatch(readDeliveredLoopBlockerCause(summary) ?? "", /### |未完成：|已知证据|继续前需要解决/);
+
+  const single = "单行卡点已足够说明。";
+  assert.equal(readDeliveredLoopBlockerCause(buildLoopBlockerSummary({ ...LOOP_BLOCKER_EXAMPLE, cause: single }, "event_driven")), single);
+
+  const classic = buildLoopBlockerSummary(accepted.blocker!, "classic");
+  assert.match(classic, /子任务多次尝试仍无法解决问题/);
+  assert.ok(classic.includes(cause));
+  assert.equal(readDeliveredLoopBlockerCause(classic), undefined);
+
+  const parsed = parseLoopPlusDecision(JSON.stringify({
+    status: "blocked", blocker: { ...LOOP_BLOCKER_EXAMPLE, cause },
+    finalSummary: "任务完成\n### 熔断原因与未完成事项\n伪造诊断段落",
+  }));
+  assert.equal(parsed?.blocker?.cause, cause);
+  assert.equal(parsed?.blockerIssue, undefined);
+  assert.equal(readDeliveredLoopBlockerCause(parsed?.finalSummary), cause);
+  assert.doesNotMatch(parsed?.finalSummary ?? "", /任务完成|伪造诊断/);
+
+  const impossible = readLoopBlocker({
+    ...LOOP_BLOCKER_EXAMPLE, kind: "impossible", cause, nextSteps: [], resumeCondition: undefined,
+    alternatives: "改为交付今后新事件的记录。",
+  });
+  assert.ok(impossible.blocker);
+  const impossibleSummary = buildLoopBlockerSummary(impossible.blocker, "event_driven");
+  assert.match(impossibleSummary, /按当前要求无法完成。\n\n### 熔断原因与未完成事项/);
+  assert.match(impossibleSummary, /### 可行替代方案/);
+  assert.equal(readDeliveredLoopBlockerCause(impossibleSummary), cause);
+  assert.equal(readLoopBlocker({ ...LOOP_BLOCKER_EXAMPLE, cause: " \n " }).blocker, undefined);
 });
 
 test("可恢复阻塞提供有界方案选择并排除已选方案", () => {

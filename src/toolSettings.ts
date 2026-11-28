@@ -10,6 +10,7 @@ import { writeFileAtomicallySync } from "./shared/atomicWrite";
 import { withFileLockSync } from "./shared/fileLock";
 
 export const HISTORY_RETENTION_DAYS_DEFAULT = 30;
+export const DEBUG_LOGGING_DEFAULT = true;
 export const HISTORY_RETENTION_DAYS_MIN = 1;
 export const HISTORY_RETENTION_DAYS_MAX = 3650;
 export const HUMAN_INTERACTION_TIMEOUT_MINUTES_DEFAULT = 15;

@@ -90,6 +90,8 @@ export type LoopPlusPanelExecutionItem = {
   title: string | null;
   state: "running" | "pending";
   interrupted?: boolean;
+  waitingForStorage?: boolean;
+  /** Post-acceptance rework that is in projection.running and not interrupted. */
   repairing?: boolean;
   blockingDependencyLabels?: string[];
 };
@@ -98,9 +100,10 @@ export type LoopPlusPanelReviewItem = {
   eventId: string;
   subtaskId: string;
   attemptId: string;
-  outcome: "completed" | "failed" | "stopped";
+  outcome: "completed" | "failed" | "stopped" | "unconfirmed";
   detail: string | null;
-  repairing?: boolean;
+  /** 1-based rework round of this attempt. It does not count as 修复中. */
+  repairRound?: number;
 };
 
 export type LoopPlusPanelSeenAttempt = {
@@ -108,7 +111,7 @@ export type LoopPlusPanelSeenAttempt = {
   attemptId: string;
   requiresAcceptance?: boolean;
   disposition: "open" | "finished" | "reviewed" | "reported" | "closed";
-  outcome?: "completed" | "failed" | "stopped";
+  outcome?: "completed" | "failed" | "stopped" | "unconfirmed";
   acceptance?: "passed" | "failed" | "cancelled";
   acceptanceReason?: string;
   noRepairReason?: string;
@@ -164,6 +167,12 @@ export type LoopPlusPanelProjection = {
 /** Host request feedback; capacity and persistent stopping flags are not stop receipts. */
 export type DepartmentOrganizationStopState = "stopping" | "unconfirmed" | "confirmed";
 
+export function pendingDepartmentStopLabel(state?: DepartmentOrganizationStopState): string | undefined {
+  if (state === "stopping") return "正在中止，等待组长和成员退出";
+  if (state === "unconfirmed") return "整组中止待确认";
+  return undefined;
+}
+
 export type LoopGroupChatPanelState = {
   department?: DepartmentGroupChatProjection;
   messageLimit?: number;
@@ -185,6 +194,8 @@ export type LoopGroupChatPanelState = {
     canStop: boolean;
     departmentStopState?: DepartmentOrganizationStopState;
     departmentExecutionInterrupted?: boolean;
+    departmentExecutionUnverified?: boolean;
+    departmentHistoryReadOnly?: boolean;
   };
   rounds: LoopGroupChatPanelRound[];
   chatMarkdown: string;
@@ -203,7 +214,7 @@ export type LoopGroupChatPanelBaseMessage =
   /** Target only; the host must validate membership in the same department. */
   | { type: "loopGroupChatChat:openDepartmentTask"; taskId?: unknown }
   | ({ type: "loopGroupChatChat:updateDepartmentEmployeeLimit" } & DepartmentEmployeeLimitRequest)
-  | { type: "loopGroupChatChat:refresh" }
+  | { type: "loopGroupChatChat:refresh"; continueRequestId?: string }
   | { type: "loopGroupChatChat:openSubtaskConversation"; subtaskId?: string }
   | { type: "loopGroupChatChat:cancelSubtask"; subtaskId?: string }
   | { type: "loopGroupChatChat:domReady"; generation?: number }

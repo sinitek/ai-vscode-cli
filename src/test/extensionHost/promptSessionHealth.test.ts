@@ -17,7 +17,8 @@ import type { LoopTaskModelRouting } from "../../loopTaskStore";
 import type { PromptRunExecutionOptions } from "../../extensionHost/promptExecutionShared";
 import { takeOverSessionTab } from "../../extensionHost/sessionTabOwnership";
 import { PromptRunHandoff } from "../../extensionHost/promptRunHandoff";
-import { createCompletedLoopSubtaskTabCleanup } from "../../extensionHost/loopSubtaskTabs";
+import { normalizeDepartmentMetadata, usesDepartmentOwner } from "../../department";
+import { createCompletedLoopSubtaskTabCleanup, resolveCompletedLoopSubtaskTabBinding } from "../../extensionHost/loopSubtaskTabs";
 import type { ConversationTabRecord } from "../../sessionTabs";
 import type { ChatMessage } from "../../webview/types";
 import { installVscodeMock } from "../vscodeMock";
@@ -28,6 +29,28 @@ const { buildVibeModeTransitionPrompt } = require("../../panelStateBuilder") as 
 
 const source = fs.readFileSync(path.join(process.cwd(), "src", "extension.ts"), "utf8");
 const sourceFile = ts.createSourceFile("extension.ts", source, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
+
+function importedNames(modulePath: string): Set<string> {
+  const names = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== modulePath) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) names.add(element.name.text);
+  }
+  return names;
+}
+
+function realCompletedLoopSubtaskTabBinding() {
+  if (!importedNames("./extensionHost/loopSubtaskTabs").has("resolveCompletedLoopSubtaskTabBinding")) {
+    throw new Error("产品故障: extension.ts 未从 ./extensionHost/loopSubtaskTabs 导入 resolveCompletedLoopSubtaskTabBinding");
+  }
+  if (typeof resolveCompletedLoopSubtaskTabBinding !== "function") {
+    throw new Error("产品故障: loopSubtaskTabs 未导出可用的 resolveCompletedLoopSubtaskTabBinding");
+  }
+  return resolveCompletedLoopSubtaskTabBinding;
+}
 const runPromptDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
   ts.isFunctionDeclaration(statement) && statement.name?.text === "runPrompt");
 const admissionDeclaration = sourceFile.statements.find((statement): statement is ts.FunctionDeclaration =>
@@ -67,6 +90,7 @@ function createHarness(options: {
   loopSessionId?: string;
   loopModelRouting?: LoopTaskModelRouting;
   sessionMessages?: ChatMessage[];
+  taskRecord?: object | null;
 }) {
   const tab: ConversationTabRecord = { id: "target-tab", cli: options.cli, sessionId: "previous-session",
     sessionIdByCli: { [options.cli]: "previous-session" }, createdAt: 1 };
@@ -79,6 +103,7 @@ function createHarness(options: {
   const questionQueue = createLoopMainQuestionQueue();
   let activeConfigId = options.activeConfigId === undefined ? "selected-config" : options.activeConfigId;
   const dispatched: Array<{ input: PromptRunInput; target: PromptRunTarget; executionOptions: PromptRunExecutionOptions }> = [];
+  const terminalBindings: Array<{ context: unknown; provisional: boolean }> = [];
   const dispatch = async (input: PromptRunInput, target: PromptRunTarget, executionOptions: PromptRunExecutionOptions): Promise<void> => {
     events.push("dispatch");
     dispatched.push({ input, target: { ...target }, executionOptions });
@@ -87,21 +112,30 @@ function createHarness(options: {
       throw failure;
     }
   };
+  const completedLoopSubtaskTabs = createCompletedLoopSubtaskTabCleanup({
+    getWorkspaceKey: () => "test-workspace",
+    getTabs: () => tabs,
+    isTabRunActive: () => false,
+    closeTab: async () => assert.fail("binding a prompt must not close a tab"),
+  });
+  const bindCompletedLoopSubtaskTab = completedLoopSubtaskTabs.bindPrompt.bind(completedLoopSubtaskTabs);
+  completedLoopSubtaskTabs.bindPrompt = (tab, context, options) => {
+    terminalBindings.push({ context: context ?? null, provisional: options?.provisional === true });
+    return bindCompletedLoopSubtaskTab(tab, context, options);
+  };
   const runPrompt = vm.runInNewContext(`${runPromptScript}\nrunPrompt;`, {
     AbortController,
     isExtensionDeactivating: false,
-    // These cases exercise ordinary prompts. Execute the real admission wrapper
-    // and preparer, whose metadata check keeps them on the ordinary route.
+    // Ordinary and department prompts both execute the real admission wrapper.
+    // The completed-tab binding is the product import, not a constant stub.
     departmentProcessPreparation: null,
     departmentCodexPreparation: null,
     departmentOwnerResources: () => null,
+    usesDepartmentOwner,
+    normalizeDepartmentMetadata,
+    resolveCompletedLoopSubtaskTabBinding: realCompletedLoopSubtaskTabBinding(),
     activeWorkspaceKey: "test-workspace",
-    completedLoopSubtaskTabs: createCompletedLoopSubtaskTabCleanup({
-      getWorkspaceKey: () => "test-workspace",
-      getTabs: () => tabs,
-      isTabRunActive: () => false,
-      closeTab: async () => assert.fail("binding a prompt must not close a tab"),
-    }),
+    completedLoopSubtaskTabs,
     createPerformanceTrace: () => ({
       start: () => () => undefined,
       measure: (_phase: string, operation: () => unknown) => operation(),
@@ -109,13 +143,23 @@ function createHarness(options: {
     rememberConversationTaskSummarySubmission: () => null,
     promptAutoRepairController: createPromptAutoRepairController(),
     isCliShellCommandNotFoundError,
-    loopMainQuestionQueue: questionQueue,
+    loopMainQuestionQueue: { ...questionQueue, getCompaction: (tabId: string) => {
+      if (options.sessionIdAfterWait === undefined) return questionQueue.getCompaction(tabId);
+      const done = Promise.resolve().then(() => {
+        tab.sessionId = options.sessionIdAfterWait ?? null;
+        if (tab.sessionId) tab.sessionIdByCli[tab.cli] = tab.sessionId;
+        else delete tab.sessionIdByCli[tab.cli];
+      });
+      return { done };
+    } },
     promptRunHandoff: new PromptRunHandoff(),
     applyLoopInvocationModelRouting,
     shouldUseClassicLoopProjectInstructions,
-    readLoopTaskRecord: () => options.loopSessionId
-      ? { id: "parent-loop", cli: options.cli, status: "running", subTasks: [], modelRouting: options.loopModelRouting }
-      : null,
+    readLoopTaskRecord: () => "taskRecord" in options
+      ? options.taskRecord ?? null
+      : options.loopSessionId
+        ? { id: "parent-loop", cli: options.cli, status: "running", subTasks: [], modelRouting: options.loopModelRouting }
+        : null,
     resolvePromptRunTargetSessionId: () => options.loopSessionId ?? null,
     bindLoopSubtaskSession: (subTasks: unknown[], _subtaskId: string,
       binding: { cli: CliName; sessionId: string; configId: string | null }) => {
@@ -123,6 +167,7 @@ function createHarness(options: {
       return subTasks;
     },
     updateLoopTaskRecord: () => undefined,
+    getLatestLoopRoundRunRecord: () => null,
     getActiveConversationTabId: () => tab.id,
     resolvePromptRunTarget: () => ({ tabId: tab.id, cli: tab.cli, sessionId: tab.sessionId }),
     getConversationTabById: (tabId: string) => tabs.find((item) => item.id === tabId) ?? null,
@@ -168,13 +213,6 @@ function createHarness(options: {
     logError: (event: string, payload: Record<string, unknown>) => { errorLogs.push({ event, payload }); },
     getErrorInfo: (error: Error & { code?: string }) => ({ message: error.message, name: error.name, code: error.code }),
     isAbortErrorInfo: (info: { name?: string }) => info.name === "AbortError",
-    loopMainAutoCompactFlights: { wait: async () => {
-      if (options.sessionIdAfterWait !== undefined) {
-        tab.sessionId = options.sessionIdAfterWait;
-        if (tab.sessionId) tab.sessionIdByCli[tab.cli] = tab.sessionId;
-        else delete tab.sessionIdByCli[tab.cli];
-      }
-    } },
     loopSubtaskAutoCompactions: { wait: async (cli: CliName, sessionId: string | null) => {
       await options.waitForSubtaskCompact?.(cli, sessionId);
     } },
@@ -220,7 +258,8 @@ function createHarness(options: {
     runPromptOneShot: dispatch,
   }) as (input: PromptRunInput, runOptions?: { isAborted?: () => boolean; onStarted?: () => void }) => Promise<void>;
   return { runPrompt, events, dispatched, systemMessages, statuses, boundConfigs, tabs, errorLogs,
-    questionQueue,
+    questionQueue, terminalBindings,
+    completedLoopSubtaskTabBinding: realCompletedLoopSubtaskTabBinding(),
     selectConfig: (configId: string) => { activeConfigId = configId; } };
 }
 
@@ -480,4 +519,69 @@ test("the current config dispatches across every CLI runtime", async () => {
       assert.equal(harness.dispatched.length, 1);
     }
   }
+});
+
+function departmentMetadata(role: "leader" | "employee", executionMode?: "loop-plus") {
+  const route = { cli: "codex" as const, model: "fixture-model", thinkingMode: "off" as const };
+  return {
+    version: 1 as const,
+    rootTaskId: "parent-loop",
+    parentTaskId: null,
+    leaderSubtaskId: null,
+    role,
+    ...(executionMode ? { executionMode } : {}),
+    moduleTitle: "部门",
+    routes: { director: route, leader: route, employee: route },
+    limits: { maxLeaders: 1, maxEmployees: 1 },
+  };
+}
+
+test("completed subtask tab binding follows ordinary, department, provisional, and invalid records", async () => {
+  const prompt: PromptRunInput = {
+    displayPrompt: "执行子任务", modelPrompt: "执行子任务", contextTags: [],
+    taskRole: "subtask", loopTaskId: "parent-loop", loopSubtaskId: "child", loopRound: 2, loopAttemptId: "attempt-1",
+  };
+  const context = { taskId: "parent-loop", subtaskId: "child", round: 2, attemptId: "attempt-1" };
+  const ordinary = { id: "parent-loop", workspaceKey: "test-workspace", status: "running", schedulingMode: "event_driven" };
+  const cases: Array<{
+    name: string;
+    taskRecord: object | null;
+    input: PromptRunInput;
+    binding: { context: unknown; provisional: boolean };
+    error?: RegExp;
+  }> = [
+    { name: "ordinary", taskRecord: ordinary, input: prompt, binding: { context, provisional: false } },
+    { name: "department-loop-plus", taskRecord: { ...ordinary, department: departmentMetadata("leader", "loop-plus") }, input: prompt, binding: { context, provisional: false } },
+    { name: "department-employee", taskRecord: { ...ordinary, department: departmentMetadata("employee", "loop-plus") }, input: prompt, binding: { context: null, provisional: false } },
+    { name: "missing-record", taskRecord: null, input: prompt, binding: { context, provisional: true } },
+    { name: "workspace-mismatch", taskRecord: { ...ordinary, workspaceKey: "other-workspace" }, input: prompt, binding: { context: null, provisional: false } },
+    { name: "main-role", taskRecord: ordinary, input: { ...prompt, taskRole: "main" }, binding: { context: null, provisional: false } },
+    { name: "missing-round", taskRecord: ordinary, input: { ...prompt, loopRound: 0 }, binding: { context: null, provisional: false } },
+    { name: "department-invalid", taskRecord: { ...ordinary, departmentInvalid: true }, input: prompt, binding: { context: null, provisional: false }, error: /部门执行归属无效/u },
+  ];
+  const seen: string[] = [];
+  for (const item of cases) {
+    const harness = createHarness({ cli: "codex", health: "normal", runtime: "interactive", taskRecord: item.taskRecord });
+    assert.equal(harness.completedLoopSubtaskTabBinding, resolveCompletedLoopSubtaskTabBinding, "夹具故障: 终态标签必须接入真实 resolveCompletedLoopSubtaskTabBinding");
+    const run = harness.runPrompt(item.input);
+    if (item.error) {
+      await assert.rejects(run, (error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : error && typeof error === "object" && "message" in error
+            ? String((error as { message: unknown }).message)
+            : String(error);
+        assert.equal(/is not defined/u.test(message), false, `夹具故障: ${message}`);
+        assert.match(message, item.error ?? /$^/u, item.name);
+        return true;
+      });
+      assert.equal(harness.dispatched.length, 0, item.name);
+    } else {
+      await run;
+      assert.equal(harness.dispatched.length, 1, item.name);
+    }
+    assert.deepEqual(harness.terminalBindings, [item.binding], item.name);
+    seen.push(JSON.stringify(item.binding));
+  }
+  assert.equal(new Set(seen).size >= 3, true);
 });

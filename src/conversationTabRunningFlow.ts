@@ -1,3 +1,5 @@
+import type { DepartmentExecutionActivity } from "./department";
+
 export const CONVERSATION_TAB_RUNNING_FLOW_CHECK_INTERVAL_MS = 60_000;
 
 export type ConversationTabRunningFlowTask = {
@@ -25,6 +27,7 @@ export type ConversationTabRunningFlowCheck = {
   task: ConversationTabRunningFlowTask | null;
   taskRole?: "main" | "subtask" | null;
   hasLoopTaskOwner?: boolean;
+  departmentExecutionActivity?: DepartmentExecutionActivity;
   activeRun: ConversationTabRunningFlowRun | null;
 };
 
@@ -75,6 +78,7 @@ export function shouldClearConversationTabRunningFlow(
   if (!tabId) {
     return false;
   }
+  if (check.departmentExecutionActivity && check.departmentExecutionActivity !== "active") return check.activeRun === null;
   if (!check.task) {
     return check.activeRun == null;
   }
@@ -109,7 +113,8 @@ export function shouldStartConversationTabRunningFlow(
   if (!check.tabId.trim()) {
     return false;
   }
-  return (check.taskRole === "main" && check.task?.status === "running" && check.hasLoopTaskOwner === true)
+  const hasOwner = check.departmentExecutionActivity ? check.departmentExecutionActivity === "active" : check.hasLoopTaskOwner === true;
+  return (check.taskRole === "main" && check.task?.status === "running" && hasOwner)
     || (hasActiveLoopTaskRun(check) && !shouldClearConversationTabRunningFlow(check));
 }
 

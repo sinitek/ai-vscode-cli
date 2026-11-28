@@ -527,6 +527,22 @@ test("retains the original request across repeated failures before the CLI provi
   }
 });
 
+test("主任务中断在首条助手回复前时，只有原主任务能保留异常会话", () => {
+  const harness = createLifecycleHarness();
+  try {
+    const tab = harness.state.tabs[0];
+    const cli = tab.cli;
+    const sessionId = "native-before-first-reply";
+    tab.sessionId = sessionId;
+    tab.sessionIdByCli = { [cli]: sessionId };
+    harness.state.store[cli] = { currentId: sessionId, sessions: [createRecord(sessionId)] };
+    harness.controller.saveSessionMessages(cli, sessionId, [{ ...createMessage("question", "user", "继续"), taskRole: "main", loopTaskId: "original" }]);
+    assert.equal(harness.controller.prepareSessionForPromptRun(cli, sessionId, tab.id, { loopMainTaskId: "original" }), sessionId);
+    assert.equal(tab.sessionId, sessionId);
+    assert.equal(harness.controller.prepareSessionForPromptRun(cli, sessionId, tab.id, { loopMainTaskId: "another" }), null);
+  } finally { harness.cleanup(); }
+});
+
 test("automatic command repair forces a fresh session even when previous history is healthy", () => {
   const harness = createLifecycleHarness();
   try {

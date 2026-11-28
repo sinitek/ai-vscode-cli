@@ -39,7 +39,7 @@
 - 摘要：这个文件是记忆金字塔的 **L2**：从滚动摘要、执行计划和 runbook 中抽取重要事件。
 - Source of truth：`.ch/docs/memory/EVENT_MEMORY.md`
 - 小节：`事件记忆`, `什么时候更新`, `不该写什么`, `维护规则`, `当前事件`
-- 直接引用：`.ch/docs/design-docs/loop-subtask-session-reuse.md`, `.ch/docs/design-docs/vscode-cli-extension-runtime.md#Tab-运行状态与配置协调`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论`, `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果`, `.ch/docs/runbooks/PITFALLS.md`, `.ch/docs/runbooks/PITFALLS.md#loop-假完成必须核对轮次与会话所有权`
+- 直接引用：`.ch/docs/design-docs/loop-plus-scheduling.md#协议失败后的自动续跑`, `.ch/docs/design-docs/loop-subtask-session-reuse.md`, `.ch/docs/design-docs/vscode-cli-extension-runtime.md#Tab-运行状态与配置协调`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复`, `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论`, `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果`, `.ch/docs/exec-plans/completed/2026-11/2026-11-19-bugfix-employee-worker-build-gap.md`
 
 ## 经验教训
 

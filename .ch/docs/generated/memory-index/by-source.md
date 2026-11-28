@@ -2,23 +2,58 @@
 
 列出热区文档或 observation entry 直接引用了哪些事实来源，帮助快速跳回原始文档。
 
+- `../../../../.agents/skills/vscode-extension-host-smoke/SKILL.md` <- `mem-8f3107f15f`
+- `../../../../docs/LOOP_PLUS_DECISION_RELIABILITY.md` <- `mem-707183a27e`
+- `../../design-docs/loop-plus-scheduling.md#cli-输出与会话能力` <- `mem-707183a27e`
+- `../../design-docs/loop-plus-scheduling.md#协议失败后的自动续跑` <- `mem-707183a27e`
+- `../../design-docs/loop-plus-scheduling.md#状态感知决策形状` <- `mem-707183a27e`
+- `../../ontology/domains/cli-plugin-runtime.json` <- `mem-707183a27e`
+- `../../product-specs/FEATURE_INVENTORY.md#loop-协议失败自动续跑` <- `mem-707183a27e`
 - `.ch/docs/MEMORY.md` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
+- `.ch/docs/TESTING.md` <- `mem-8f3107f15f`
+- `.ch/docs/design-docs/` <- `mem-707183a27e`
+- `.ch/docs/design-docs/cli-process-runtime.md` <- `mem-8f3107f15f`
+- `.ch/docs/design-docs/loop-plus-scheduling.md#协议失败后的自动续跑` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/design-docs/loop-subtask-session-reuse.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/design-docs/vscode-cli-extension-runtime.md#Tab-运行状态与配置协调` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/exec-plans/README.md` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
+- `.ch/docs/exec-plans/active/` <- `mem-707183a27e`
 - `.ch/docs/exec-plans/completed/2026-10/2026-10-27-bugfix-kimi-replay-model-selection.md#验收标准` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-config-simplification.md#2026-10-27-思考声明回归修复` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/exec-plans/completed/2026-10/2026-10-27-feature-kimi-model-management.md#当前结论` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/exec-plans/completed/2026-11/2026-11-04-docs-human-interaction-desktop-attention.md#验收与结果` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-19-bugfix-employee-worker-build-gap.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-20-bugfix-department-report-settlement.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-generation-response-size.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-receipt-observation.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-leader-session-continuation.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-single-stop.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-partial-drain.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-bugfix-department-stop-unconfirmed-feedback.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-21-feature-department-advisory-capacity.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-23-bugfix-grok-loop-legacy-resume.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-25-feature-loop-plus-subtask-acceptance-standards.md` <- `mem-707183a27e`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-27-bugfix-department-director-event-wakeup.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `.ch/docs/exec-plans/completed/2026-11/2026-11-27-bugfix-department-leader-blocker-recovery.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/generated/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
 - `.ch/docs/generated/memory-index/` <- `.ch/docs/memory/README.md`, `mem-431f2548e1`
 - `.ch/docs/generated/memory-index/.local/` <- `.ch/docs/MEMORY.md`, `.ch/docs/memory/README.md`, `mem-431f2548e1`, `mem-c1d7e714b7`
-- `.ch/docs/ontology/` <- `.ch/docs/MEMORY.md`, `mem-c1d7e714b7`
+- `.ch/docs/ontology/` <- `.ch/docs/MEMORY.md`, `mem-707183a27e`, `mem-c1d7e714b7`
+- `.ch/docs/product-specs/` <- `mem-707183a27e`
+- `.ch/docs/product-specs/FEATURE_INVENTORY.md` <- `mem-8f3107f15f`
+- `.ch/docs/references/cli-runtime-reference.md` <- `mem-8f3107f15f`
 - `.ch/docs/runbooks/PITFALLS.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/runbooks/PITFALLS.md#loop-假完成必须核对轮次与会话所有权` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/runbooks/PITFALLS.md#macos-通知命令成功不等于实际展示` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `.ch/docs/runbooks/kimi-code-config.md` <- `.ch/docs/memory/EVENT_MEMORY.md`
+- `2026-11-24-refactor-cli-runtime-policy-convergence.md` <- `mem-707183a27e`
+- `scripts/department_workspace_capacity_settings_smoke.cjs` <- `mem-8f3107f15f`
+- `scripts/loop_plus_acceptance_navigation_smoke.cjs` <- `mem-8f3107f15f`
+- `scripts/verify_codex_owned_native_drain.js --live` <- `mem-8f3107f15f`
+- `scripts/verify_zcode_runner_lifecycle.js --live` <- `mem-8f3107f15f`
+- `src/cli/cliProcessRuntime.ts` <- `mem-8f3107f15f`
+- `src/cli/cliRunArgStrategies.ts` <- `mem-8f3107f15f`
+- `src/cli/processArgv.ts` <- `mem-8f3107f15f`
 - `src/interactive/grokAppServerProtocol.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `src/test/extensionHost/dshLoopSessionResumeLive.test.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
 - `src/test/interactive/grokAppServerProtocol.test.ts` <- `.ch/docs/memory/EVENT_MEMORY.md`
-- `src/test/runtime/departmentleadercallbackprotocol.test.ts` <- `mem-7525b245ac`

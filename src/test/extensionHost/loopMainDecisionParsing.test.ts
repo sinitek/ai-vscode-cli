@@ -6,6 +6,7 @@ import path = require("node:path");
 import { installVscodeMock } from "../vscodeMock";
 import type { LoopTaskRecord } from "../../loopTaskStore";
 import { LOOP_BLOCKER_EXAMPLE, buildLoopBlockerSummary } from "../../loopBlocker";
+import { configurePromptRuleIndex } from "../../promptRuleIndex";
 
 installVscodeMock();
 
@@ -114,6 +115,21 @@ test("classic Loop main prompt reflects only the configured per-dispatch limit",
     .map((line) => JSON.parse(line) as { subtasks: unknown[] });
   assert.equal(examples.length, 2);
   assert.ok(examples.every((example) => example.subtasks.length <= 1));
+  const install = path.resolve(__dirname, "../../..");
+  assert.ok(configurePromptRuleIndex(install, "indexed"));
+  try {
+    await host.runClassicLoopMainDecision(options);
+    assert.match(prompts[2], /必读 loop\/main.md/);
+    assert.match(prompts[2], /1–1 个自包含子任务/);
+    assert.doesNotMatch(prompts[2], /loop-plus\/review/);
+    await host.runClassicLoopMainDecision({ ...options, task: { ...task, department: { role: "director" } as LoopTaskRecord["department"] } });
+    assert.match(prompts[3], /必读 department\/director.md/);
+    assert.match(prompts[3], /directorLeaderRecovery/);
+    assert.match(prompts[3], /每位组长独立验收其中一项，本轮最多 1 项/u);
+    assert.match(prompts[3], /本组的交付范围、通过条件及应回报的证据/u);
+    assert.match(prompts[3], /按需 examples\/coordination.md/);
+    assert.doesNotMatch(prompts[3], /loop-plus\/review.md|账号组长/);
+  } finally { configurePromptRuleIndex(install, "full"); }
 });
 
 test("classic Loop uses the configured dispatch limit instead of a fixed six-task cap", () => {
@@ -214,8 +230,8 @@ test("classic Loop resumes at the recorded round even past legacy maxRounds", ()
   assert.equal(resolveLoopResumeRound(createNeedsReviewTask()), 24);
 });
 
-test("terminal Loop tasks do not regain a main tab unless continuation explicitly creates one", () => {
-  const tabs: Array<{ id: string; cli: "codex"; sessionId: string | null; sessionIdByCli: { codex: string }; createdAt: number }> = [];
+function missingMainTabFixture() {
+  const tabs: import("../../sessionTabs").ConversationTabRecord[] = [];
   const deps: Parameters<typeof createPromptRunRuntimeHost>[0] = {
     getActiveWorkspaceKey: () => "workspace",
     getConversationTabById: (tabId) => tabs.find((tab) => tab.id === tabId) ?? null,
@@ -242,6 +258,11 @@ test("terminal Loop tasks do not regain a main tab unless continuation explicitl
     appendLoopMainSubChatSubtaskFinished: () => undefined,
     closeConversationTabAndRefreshPanel: async () => undefined,
   };
+  return { tabs, deps };
+}
+
+test("terminal Loop tasks do not regain a main tab unless continuation explicitly creates one", () => {
+  const { tabs, deps } = missingMainTabFixture();
   const host = createPromptRunRuntimeHost(deps);
   const task = createNeedsReviewTask();
 
@@ -250,6 +271,26 @@ test("terminal Loop tasks do not regain a main tab unless continuation explicitl
 
   const created = host.resolveLoopMainPromptTarget(task, { createIfMissing: true });
   assert.equal(created?.tabId, "reopened-tab");
+  assert.equal(tabs.length, 1);
+});
+
+test("旧任务丢失主标签和会话字段时，根据同一主执行及消息恢复", () => {
+  const task = { ...createNeedsReviewTask(), sessionId: null };
+  const { tabs, deps } = missingMainTabFixture();
+  let messageTaskId = "another";
+  const host = createPromptRunRuntimeHost({
+    ...deps,
+    getActiveWorkspaceKey: () => task.workspaceKey,
+    readTaskStore: () => ({ runs: [{ id: "main-run", prompt: "继续", status: "stopped", endedAt: task.createdAt + 1, durationMs: 1,
+      loopTaskId: task.id, taskRole: "main", cli: task.cli, sessionId: "original-native", startedAt: task.createdAt }] }),
+    loadSessionMessages: () => [{ id: "message", role: "user", content: "继续", taskRole: "main", loopTaskId: messageTaskId }],
+  });
+  assert.equal(host.resolveLoopMainPromptTarget(task, { createIfMissing: true }), null);
+  assert.equal(tabs.length, 0);
+  messageTaskId = task.id;
+  assert.equal(host.resolveLoopMainPromptTarget(task, { createIfMissing: true })?.sessionId, "original-native");
+  tabs[0].loopSubtaskId = "other-subtask";
+  assert.equal(host.resolveLoopMainPromptTarget(task, { createIfMissing: true }), null);
   assert.equal(tabs.length, 1);
 });
 

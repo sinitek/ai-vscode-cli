@@ -9,12 +9,14 @@ import {
   buildLoopPlusDecisionHelperPromptContext,
   buildLoopPlusMainModelPrompt,
   buildLoopPlusSubtaskModelPrompt,
+  resolveLoopPlusDecisionHelperScriptPath,
   type LoopPlusDepartmentEmployeeCapacitySnapshot,
   type LoopPlusMainPromptContext,
 } from "../../extensionHost/loopPlusPromptBuilders";
 import { isHiddenLoopPlusProtocolPrompt } from "../../loopPlusProtocolPrompt";
 import { LOOP_DIRECT_EXECUTION_RULE_EN } from "../../loopDirectExecutionPolicy";
-import { LOOP_BLOCKED_SUMMARY_EXAMPLE, LOOP_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
+import { LOOP_PLUS_BLOCKED_SUMMARY_INSTRUCTION } from "../../loopBlockedSummary";
+import { buildLoopBlockerSummary, LOOP_PLUS_BLOCKER_EXAMPLE } from "../../loopBlocker";
 import { buildStructuredSvgSummaryPromptInstruction, SVG_SUMMARY_PROMPT_INSTRUCTION } from "../../finalAnswerProtocol";
 import { LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES, type LoopPlusAcceptancePlanSnapshot } from "../../loopPlusAcceptancePlan";
 import {
@@ -39,14 +41,14 @@ test("all Loop+ modes and main prompt kinds reuse reported execution without rep
   for (const loopSubtaskMode of ["fullstack", "split"] as const) {
     for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
       const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, loopSubtaskMode }));
-      assert.match(prompt, /Trust the attempt report's concrete execution facts, including test, build, and startup results/);
-      assert.match(prompt, /Do not rerun them yourself or dispatch another attempt solely to reproduce those results/);
-      assert.match(prompt, /Only add a targeted check for an uncovered requirement, a failed check, a later change that invalidates a result, or an explicitly required independent check/);
-      assert.match(prompt, /Name the existing result, concrete gap, and smallest necessary scope before running or dispatching a check/);
-      assert.match(prompt, /Already completed independent checks that remain valid are reusable too/);
-      assert.match(prompt, /Clarify an unclear report using existing output or the source subtask before considering a rerun/);
-      assert.match(prompt, /Do not demand raw logs or independent reproduction merely to trust a clear execution report/);
-      assert.match(prompt, /At closeout or continuation, reuse unchanged accepted execution and review results/);
+      assert.match(prompt, /Reuse reported test, build, startup, and review results only while they cover unchanged deliverables/);
+      assert.match(prompt, /do not rerun or redispatch solely to reproduce them/);
+      assert.match(prompt, /Run or delegate checks only for uncovered, failed, invalidated, or explicitly required items/);
+      assert.match(prompt, /state existing evidence, the concrete gap, and the smallest scope/);
+      assert.match(prompt, /inspect its output or ask its source task first/);
+      assert.match(prompt, /do not demand raw logs or independent reproduction/);
+      assert.match(prompt, /At closeout or continuation, reuse unchanged accepted results/);
+      assert.match(prompt, /one event's result does not prove another/);
       assert.match(prompt, /Keep final requirement coverage and all open-event completion gates/);
       assert.doesNotMatch(prompt, /do not treat the subtask claim as proof/);
     }
@@ -440,10 +442,9 @@ test("execution result reuse preserves event-level code review and every selecte
         currentEventId: "event-review",
         view: view({ currentReview: review("event-review", "sub-reviewed"), visibleReviewCount: 1 }),
       }));
-      assert.match(prompt, /Before accepting an event, inspect its relevant code, diff, or other deliverables/);
-      assert.match(prompt, /Passing tests or an overall done claim is not a substitute for acceptance review/);
+      assert.match(prompt, /Independently inspect each delivered artifact and apply the checklist and selected reviews below/);
+      assert.match(prompt, /Passing tests or a done claim alone is not acceptance/);
       assert.match(prompt, /A passing unit suite does not establish untested integration behavior/);
-      assert.match(prompt, /Apply every selected additional review/);
       assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
       assert.match(prompt, /Do not send completed while any event fails its checklist/);
       for (const reviewLabel of ["Maintainability", "Performance", "User experience", "Security"]) {
@@ -717,15 +718,30 @@ test("all main prompt kinds require readable Chinese blockers with recovery or i
   for (const kind of ["initial", "review", "closeout", "continue", "user"] as const) {
     for (const blockedReviewSummary of [undefined, "缺少联调权限"]) {
       const prompt = buildLoopPlusMainModelPrompt(mainContext({ kind, blockedReviewSummary }));
-      assert.ok(prompt.includes(LOOP_BLOCKED_SUMMARY_INSTRUCTION));
+      assert.ok(prompt.includes(LOOP_PLUS_BLOCKED_SUMMARY_INSTRUCTION));
+      assert.match(prompt, /Own routine implementation choices, including when the user has not suggested an alternative/);
       assert.match(prompt, /必须用简体中文/);
       assert.match(prompt, /只列不做就无法继续的事项，一条能说清就只写一条/);
       assert.match(prompt, /按当前要求无法完成/);
       assert.match(prompt, /能自行处理的继续执行或派发修复子任务/);
       const blocked = parseExample(extractProtocolExamples(prompt), "blocked");
-      assert.equal(blocked.finalSummary, LOOP_BLOCKED_SUMMARY_EXAMPLE);
+      assert.equal(blocked.finalSummary, buildLoopBlockerSummary(LOOP_PLUS_BLOCKER_EXAMPLE, "event_driven"));
     }
   }
+});
+
+test("Loop+ bounded blocked review uses an authorized local replacement instead of stale provenance", () => {
+  const replacement = "这两套本地测试预览可以用仓库现有模板重新生成，只替换这两套预览。";
+  const prompt = buildLoopPlusMainModelPrompt(mainContext({
+    kind: "review",
+    blockedReviewSummary: "两份本地预览缺少历史发布凭据。",
+    supplementalRequirements: [replacement],
+  }));
+
+  assert.ok(prompt.includes(replacement));
+  assert.match(prompt, /Drop prerequisites introduced only by the plan or a subtask/);
+  assert.match(prompt, /regenerate scoped test outputs from repository templates/);
+  assert.match(prompt, /enforce any actual release permissions separately/);
 });
 
 function execution(subtaskId: string, state: LoopPlusExecutionRecord["state"]): LoopPlusExecutionRecord {
@@ -974,15 +990,16 @@ test("generated protocol examples satisfy the current parser and live event id",
   dispatch.subtasks.forEach((subtask) => {
     assert.ok(subtask.title.trim());
     assert.ok(subtask.prompt.trim());
-    assert.match(subtask.prompt, /write scope/i);
     if (subtask.taskType === "general") {
       assert.equal(subtask.writeFiles, undefined);
+      assert.match(subtask.prompt, /don't edit files/i);
       return;
     }
     assert.ok(subtask.writeFiles && subtask.writeFiles.length > 0);
     subtask.writeFiles?.forEach((file) => {
       assert.equal(file.startsWith("/"), false);
       assert.equal(file.includes("Users"), false);
+      assert.equal(subtask.prompt.includes(file), true);
     });
   });
 
@@ -1119,8 +1136,8 @@ test("prompt forbids plural confirmation keys and classic continue without cumul
   assert.doesNotMatch(prompt, /host discards this answer|asks again with every queued event/);
   assert.match(prompt, /host submits this batch first, then checks its latest state/);
   assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
-  assert.match(prompt, /You may run tests or start produced artifacts only to close an identified verification gap/);
-  assert.match(prompt, /Skipping an unnecessary rerun is not a failure/);
+  assert.match(prompt, /Run or delegate checks only for uncovered, failed, invalidated, or explicitly required items/);
+  assert.match(prompt, /do not rerun or redispatch solely to reproduce them/);
   assert.match(prompt, /loopPlus snapshot/);
 
   const examples = extractProtocolExamples(prompt);
@@ -1175,8 +1192,10 @@ test("main prompt shows the current item, queue, visible count, work in flight, 
   assert.match(prompt, /Still pending count: 1/);
   assert.match(prompt, /sub-pending attempt=sub-pending-attempt state=pending/);
   assert.match(prompt, /1\. SUPPLEMENTAL_TOKEN/);
-  assert.match(prompt, /Main communication report path: MAIN_REPORT_TOKEN/);
-  assert.match(prompt, /Latest task record path: TASK_RECORD_TOKEN/);
+  assert.match(prompt, /Main communication report path \(communication file\): MAIN_REPORT_TOKEN/);
+  assert.match(prompt, /Latest task record path \(record file\): TASK_RECORD_TOKEN/);
+  assert.doesNotMatch(prompt, /^Record file:/m);
+  assert.doesNotMatch(prompt, /^Main communication file:/m);
   assert.match(prompt, /Current attempt report path: communicationFile of subtask sub-current/);
   assert.match(prompt, /ROOT_REQUEST_TOKEN/);
   assert.doesNotMatch(prompt, /\/Users\//);
@@ -1343,10 +1362,10 @@ test("single and batched accept examples combine a focused repair with independe
       const json = extractProtocolExamples(prompt).get("accept");
       const decision = parseLoopPlusDecision(json, { subtaskMax: capacity, requireAcceptanceFeedback: true, requireProgressPercent: true });
       assert.ok(decision);
-      assert.equal(decision.subtasks?.length, Math.min(4, capacity));
+      assert.equal(decision.subtasks?.length, Math.min(2, capacity));
       const repairs = decision.reviews?.filter((item) => item.acceptance === "failed").flatMap((item) => item.subtaskIds ?? []);
       assert.deepEqual(repairs, [eventIds.length === 1 ? "example-source-first" : "example-source-last"]);
-      assert.match(decision.subtasks![0].prompt, /Repair the failed validation check/);
+      assert.match(decision.subtasks![0].prompt, /Repair the failed check/);
       assert.deepEqual(decision.independentSubtaskIds ?? [], decision.subtasks!.slice(1).map((item) => item.id));
       assert.equal(new Set(decision.subtasks?.map((item) => item.conflictGroup)).size, decision.subtasks!.length);
       assert.equal(decision.acceptance?.passed, false);
@@ -1667,7 +1686,7 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
   assert.equal(isHiddenLoopPlusProtocolPrompt(mainPrompt), true);
   assert.match(mainPrompt, /Any earlier task list in this thread is stale/);
   assert.match(mainPrompt, /do not expect the subtask to rediscover the decision/);
-  assert.match(mainPrompt, /Design key point: keep the public function signature stable/);
+  assert.match(mainPrompt, /preserve the agreed contract/);
   assert.doesNotMatch(subtaskPrompt, /Any earlier task list in this thread is stale/);
   assert.equal(isHiddenLoopPlusProtocolPrompt(`\n${subtaskPrompt}`), true);
   assert.equal(isHiddenLoopPlusProtocolPrompt("fix the bubble"), false);
@@ -1677,7 +1696,7 @@ test("hides generated Loop+ protocol prompts but not ordinary or mid-sentence te
 });
 
 
-test("requires the main reviewer to confirm the Loop+ acceptance checklist", () => {
+test("reviews three evidence pairs but submits six distinct checks", () => {
   const prompt = buildLoopPlusMainModelPrompt(mainContext({
     currentEventId: "event-live-42",
     view: view({
@@ -1685,30 +1704,15 @@ test("requires the main reviewer to confirm the Loop+ acceptance checklist", () 
       visibleReviewCount: 1,
     }),
   }));
-  const names = [
-    "dispatched work",
-    "contracts",
-    "tests",
-    "artifacts",
-    "unauthorized changes",
-    "omissions and regressions",
-  ];
-  names.forEach((name) => {
-    assert.match(prompt, new RegExp(name));
-  });
-  assert.match(prompt, /interface, data structure, or file boundary/);
-  assert.match(prompt, /included tests pass/);
-  assert.match(prompt, /produced runnable artifacts run/);
-  assert.match(prompt, /suggested write scope/);
-  assert.match(prompt, /omission, regression, or boundary error/);
-  assert.match(prompt, /does not grade this checklist/);
-  assert.match(prompt, /Reported execution results are sufficient evidence for checks that still cover the current changes/);
-  assert.doesNotMatch(prompt, /Do not implement that work yourself/);
+  assert.match(prompt, /For each non-cancelled event, review these three pairs\. Read shared evidence once/);
+  assert.match(prompt, /dispatched work \+ unauthorized changes: .*diff against all requested work.*out-of-scope edit/);
+  assert.match(prompt, /contracts \+ omissions and regressions: .*affected callers.*omissions, regressions and edge cases/);
+  assert.match(prompt, /tests \+ artifacts: .*actual test and startup results.*A passing test or build does not prove startup/);
   assert.match(prompt, /accept\.reviews is required/);
   assert.match(prompt, /Do not mark a successful event failed because another event fails or launches a subtask/);
   assert.match(prompt, /Return blocked, confirming nothing, only when no safe independent work or live dependency can advance the goal/);
   const completed = parseExample(extractProtocolExamples(prompt), "completed");
-  assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), names);
+  assert.deepEqual(completed.acceptance?.checks.map((check) => check.name), LOOP_PLUS_DEFAULT_ACCEPTANCE_CHECK_NAMES);
   assert.equal(completed.acceptance?.checks.every((check) => check.passed === true), true);
 });
 
@@ -1741,8 +1745,8 @@ test("injects the confirmed acceptance plan into every main prompt kind without 
     fixedChecklistNames.forEach((name) => {
       assert.match(prompt, new RegExp(name));
     });
-    assert.match(prompt, /completed\.acceptance\.checks must include one passed check for each name/);
-    assert.match(prompt, /Do not mark a required test or artifact run as passed without evidence/);
+    assert.match(prompt, /all six named checks, each with its own passed and brief evidence-backed detail/);
+    assert.match(prompt, /Explain genuine non-applicability\. Mark applicable but unverified checks false/);
     assert.match(prompt, /Do not implement or repair that dispatched work yourself/);
   }
 });
@@ -1879,10 +1883,9 @@ test("main and department-leader prompts keep the frozen helper context and excl
   assert.ok(embedded.statuses.includes("accept"));
   assert.equal(embedded.statuses.includes("completed"), false);
   const section = decisionHelperSection(prompt);
-  assert.ok(section.indexOf("template --status") < section.indexOf("build --status"));
-  assert.match(section, /dist\/loopPlusDecisionHelper\.js/);
-  assert.match(section, /node "<extension install directory>\/dist\/loopPlusDecisionHelper\.js" template --status <status>/);
-  assert.match(section, /space in that directory stays inside the path/);
+  assert.match(section, /did not supply dist\/loopPlusDecisionHelper\.js/);
+  assert.doesNotMatch(section, /<extension install directory>/);
+  assert.doesNotMatch(section, /template --status argv:/);
   assert.match(section, /UTF-8 JSON/);
   assert.match(section, /Prompt refresh and protocol correction keep this frozen context/);
   assert.match(section, /Do not add late events/);
@@ -1915,6 +1918,171 @@ test("main and department-leader prompts keep the frozen helper context and excl
   assert.deepEqual(refreshedContext.reviews, embedded.reviews);
   assert.deepEqual(refreshedContext.reportEventIds, embedded.reportEventIds);
   assert.equal(refreshedContext.reviews.some((item) => item.eventId === "event-later"), false);
+});
+
+function labeledHelperArgv(prompt: string, label: string): string[] {
+  const line = prompt.split("\n").find((item) => item.startsWith(label));
+  assert.ok(line, label);
+  const argv = JSON.parse(line.slice(label.length)) as unknown;
+  assert.ok(Array.isArray(argv));
+  assert.equal(argv.length, 5);
+  return argv.map((item) => {
+    assert.equal(typeof item, "string");
+    return item;
+  });
+}
+
+function directoryIfNamePreserved(parent: string, name: string): string | null {
+  const target = path.join(parent, name);
+  try {
+    fs.mkdirSync(target);
+  } catch {
+    return null;
+  }
+  try {
+    return fs.readdirSync(parent).includes(name) ? target : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeInstallMarker(installDir: string, marker: string): string {
+  const script = path.join(installDir, "dist", "loopPlusDecisionHelper.js");
+  fs.mkdirSync(path.dirname(script), { recursive: true });
+  fs.writeFileSync(script, marker);
+  return script;
+}
+
+function distinctDirectories(left: string, right: string): boolean {
+  try {
+    return fs.realpathSync(left) !== fs.realpathSync(right);
+  } catch {
+    return false;
+  }
+}
+
+test("main and leader prompts share the loaded extension helper across a spaced path, another cwd, and refresh", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lp-helper-path-"));
+  const portable = directoryIfNamePreserved(root, "Ext Install");
+  assert.ok(portable, "portable install directory");
+  const portableScript = writeInstallMarker(portable, "portable-marker\n");
+  const plainTwin = directoryIfNamePreserved(root, "Twin Install");
+  const trailingTwin = plainTwin ? directoryIfNamePreserved(root, "Twin Install ") : null;
+  const trailing = plainTwin && trailingTwin && distinctDirectories(plainTwin, trailingTwin) ? trailingTwin : null;
+  const plainScript = plainTwin ? writeInstallMarker(plainTwin, "plain-marker\n") : null;
+  const trailingScript = trailing ? writeInstallMarker(trailing, "trailing-marker\n") : null;
+  const install = trailing ?? portable;
+  const script = trailingScript ?? portableScript;
+  const sibling = path.join(root, "sinitek.sinitek-cli-tools-9.9.9", "dist", "loopPlusDecisionHelper.js");
+  const workspaceScript = path.join(root, "workspace", "dist", "loopPlusDecisionHelper.js");
+  const work = path.join(root, "other work");
+  for (const file of [sibling, workspaceScript]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "not-the-loaded-extension");
+  }
+  fs.mkdirSync(work);
+  const previous = process.cwd();
+  const decoy = `${workspaceScript} and ${sibling}`;
+  try {
+    process.chdir(install);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath("."), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(path.join("dist", "loopPlusDecisionHelper.js")), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(install), script);
+    process.chdir(work);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(install), script);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(portable), portableScript);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(""), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath("   "), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(null), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(undefined), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(` ${install}`), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(`\t${install}`), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(`${install}\0`), null);
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(`${install}\0extra`), null);
+    assert.notEqual(resolveLoopPlusDecisionHelperScriptPath(script), script);
+    const missingInstall = path.join(root, "Missing Ext");
+    const missingScript = path.join(missingInstall, "dist", "loopPlusDecisionHelper.js");
+    assert.equal(resolveLoopPlusDecisionHelperScriptPath(missingInstall), missingScript);
+    assert.equal(fs.existsSync(missingScript), false);
+    assert.equal(fs.existsSync(sibling), true);
+    if (trailing && trailingScript && plainScript) {
+      assert.equal(resolveLoopPlusDecisionHelperScriptPath(trailing), trailingScript);
+      assert.equal(resolveLoopPlusDecisionHelperScriptPath(plainTwin), plainScript);
+      assert.notEqual(trailingScript, plainScript);
+      assert.equal(fs.readFileSync(trailingScript, "utf8"), "trailing-marker\n");
+      assert.equal(fs.readFileSync(plainScript, "utf8"), "plain-marker\n");
+      assert.equal(resolveLoopPlusDecisionHelperScriptPath(` ${trailing}`), null);
+    }
+    const quotedInstall = directoryIfNamePreserved(root, "Ext \"Quote\" Install");
+    const quotedScript = quotedInstall ? writeInstallMarker(quotedInstall, "quoted-marker\n") : null;
+    if (quotedInstall && quotedScript) {
+      assert.equal(resolveLoopPlusDecisionHelperScriptPath(quotedInstall), quotedScript);
+    }
+
+    const frozen = mainContext({
+      rootPrompt: `do not run ${decoy}`,
+      taskStoreFile: workspaceScript,
+      decisionHelperScriptPath: script,
+      acceptanceEventIds: ["event-z"],
+      reportEventIds: ["report-z-first"],
+      view: view({ currentReview: review("event-z", "sub-z"), reviewQueue: [review("event-late", "sub-late")] }),
+    });
+    const mainPrompt = buildLoopPlusMainModelPrompt(frozen);
+    const leaderPrompt = buildLoopPlusMainModelPrompt({
+      ...frozen,
+      departmentEmployeeCapacity: { rootTaskId: "root-task", leaderTaskId: "leader-task", maxEmployees: 4 },
+    });
+    const mainArgv = labeledHelperArgv(mainPrompt, "template --status argv: ");
+    const leaderArgv = labeledHelperArgv(leaderPrompt, "template --status argv: ");
+    assert.deepEqual(mainArgv, ["node", script, "template", "--status", "STATUS"]);
+    assert.deepEqual(leaderArgv, mainArgv);
+    assert.deepEqual(labeledHelperArgv(mainPrompt, "build --status argv: "), ["node", script, "build", "--status", "STATUS"]);
+    assert.equal(fs.readFileSync(mainArgv[1], "utf8"), fs.readFileSync(script, "utf8"));
+    assert.equal(fs.realpathSync(mainArgv[1]), fs.realpathSync(script));
+    assert.equal(fs.realpathSync(leaderArgv[1]), fs.realpathSync(script));
+    if (trailingScript && plainScript) {
+      assert.equal(mainArgv[1], trailingScript);
+      assert.notEqual(mainArgv[1], plainScript);
+      assert.equal(fs.readFileSync(mainArgv[1], "utf8"), "trailing-marker\n");
+    }
+    for (const prompt of [mainPrompt, leaderPrompt]) {
+      const section = decisionHelperSection(prompt);
+      assert.doesNotMatch(section, /<extension install directory>/);
+      assert.doesNotMatch(section, /<status>/);
+      assert.equal(section.includes(workspaceScript), false);
+      assert.equal(section.includes(sibling), false);
+      if (plainScript) assert.equal(section.includes(plainScript), false);
+      assert.match(section, /argv\[1\] is one parameter/);
+      assert.match(section, /Do not change this CLI's tool permission or capability/);
+      assert.ok(section.indexOf("template --status") < section.indexOf("build --status"));
+    }
+    if (quotedScript) {
+      const quotedPrompt = buildLoopPlusMainModelPrompt({ ...frozen, decisionHelperScriptPath: quotedScript });
+      assert.equal(labeledHelperArgv(quotedPrompt, "template --status argv: ")[1], quotedScript);
+    }
+    const refreshed = buildLoopPlusMainModelPrompt({
+      ...frozen,
+      rootPrompt: `refresh must ignore ${decoy}`,
+      view: view({
+        currentReview: review("event-z", "sub-z"),
+        reviewQueue: [review("event-late", "sub-late"), review("event-later", "sub-later")],
+      }),
+    });
+    assert.deepEqual(labeledHelperArgv(refreshed, "template --status argv: "), mainArgv);
+    assert.deepEqual(helperContextFromPrompt(refreshed).reviews, helperContextFromPrompt(mainPrompt).reviews);
+    assert.deepEqual(helperContextFromPrompt(refreshed).reportEventIds, ["report-z-first"]);
+    assert.equal(helperContextFromPrompt(refreshed).reviews.some((item) => item.eventId === "event-later"), false);
+    const unavailable = decisionHelperSection(buildLoopPlusMainModelPrompt({
+      ...frozen,
+      decisionHelperScriptPath: path.join("dist", "loopPlusDecisionHelper.js"),
+    }));
+    assert.match(unavailable, /did not supply/);
+    assert.doesNotMatch(unavailable, /template --status argv:/);
+    assert.equal(unavailable.includes(sibling), false);
+  } finally {
+    process.chdir(previous);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the macOS helper entry accepts one mixed batch after a field correction and rejects a bad collaboration", () => {
@@ -1958,12 +2126,12 @@ test("the macOS helper entry accepts one mixed batch after a field correction an
     acceptance: { passed: false, checks },
     acceptancePlanResults: [{ key: "security", passed: true, reason: "未引入新的安全暴露" }],
     reviews: [
-      { acceptance: "failed", reason: "定向测试失败", repair: { id: "wrong-id", title: "返工", prompt: "按失败断言修复" } },
+      { acceptance: "failed", reason: "定向测试失败", repair: { id: "wrong-id", title: "返工", prompt: "按失败断言修复", taskType: "backend" } },
       { acceptance: "failed", reason: "失败但无需再改", noRepairReason: "需求已撤回，保留失败结论" },
       { acceptance: "cancelled", reason: "该交付不再需要验收" },
       { acceptance: "passed", reason: "实现与契约一致" },
     ],
-    independentSubtasks: [{ id: "sub-new", title: "独立派发", prompt: "完成剩余交付并记录结果" }],
+    independentSubtasks: [{ id: "sub-new", title: "独立派发", prompt: "完成剩余交付并记录结果", taskType: "backend" }],
     departmentCollaborations: [{ id: "collab-1", targetLeaderTaskId: "leader-other", body: "请配合字段" }],
   };
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "lp516-decision-helper-"));

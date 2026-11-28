@@ -60,7 +60,9 @@ for (const role of ["director", "leader"] as const) {
       assert.doesNotMatch(patch.rosterPanelHtml, /leader-222222|报表接口|打开组长群聊/u);
     }
     assert.match(patch.rosterPanelHtml, /运行中/u);
-    for (const action of ["supplementTask", "askMainModel", "switchModels", "continueTask"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
+    for (const action of ["supplementTask", "askMainModel", "switchModels"]) assert.ok(patch.actionsHtml.includes(`data-action="${action}"`));
+    assert.match(patch.continueAction.html, /data-action="continueTask"/u);
+    assert.ok(html.includes(patch.continueAction.html));
     if (role === "director") {
       assert.doesNotMatch(patch.actionsHtml, /data-action="refresh"/u);
       assert.match(patch.actionsHtml, /data-action="askMainModel"[^>]*>我要提问<\/button><button[^>]*data-action="allocateEmployees"[^>]*>分配员工<\/button>/u);
@@ -252,7 +254,8 @@ test("modal host API binds state, patches, questions, previews and close to the 
   });
   try {
     const panel = new LoopGroupChatPanel({ fsPath: "/extension" } as never, { onMessage: (message) => handled.push(message) });
-    panel.show(departmentState());
+    const director = departmentState();
+    panel.show(director);
     const a = { taskId: "department-20261113-leader-111111", instanceId: "instance-a" };
     await receive({ type: "loopGroupChatChat:departmentModal", ...a, action: "load" });
     assert.deepEqual(panel.getDepartmentModalTarget(), a);
@@ -263,7 +266,30 @@ test("modal host API binds state, patches, questions, previews and close to the 
     assert.match(content.html, /department-child/u);
     assert.equal(installations, 1);
     await receive({ type: "loopGroupChatChat:departmentTaskMessage", ...a, message: { type: "loopGroupChatChat:domReady" } });
-    assert.ok(sent.some((message) => message.message?.type === "loopGroupChatChat:contentPatch" && message.instanceId === a.instanceId));
+    const childMessagesSince = (start: number) => sent.slice(start).filter((item) => item.taskId === a.taskId && item.instanceId === a.instanceId && item.message).map((item) => item.message);
+    const displayPlan = { ...director.acceptancePlan!, name: "纯展示父页方案" };
+    let start = sent.length;
+    panel.update({ ...director, acceptancePlan: displayPlan });
+    assert.deepEqual(childMessagesSince(start).map((message) => message.type), ["loopGroupChatChat:contentPatch", "loopGroupChatChat:askThread"]);
+    assert.match(childMessagesSince(start)[0].taskPanelHtml, /纯展示父页方案/);
+
+    const readOnlyState = { ...state, acceptancePlanReadOnly: true, acceptancePlan: { ...displayPlan, name: "已注入的根记录方案" } };
+    assert.equal(panel.setDepartmentModalState(a, readOnlyState), true);
+    start = sent.length;
+    panel.update(director);
+    panel.update({ ...director, acceptancePlan: displayPlan });
+    assert.deepEqual(childMessagesSince(start).filter((message) => message.type === "loopGroupChatChat:contentPatch" || message.type === "loopGroupChatChat:askThread"), [],
+      "parent-only updates must not republish a record-driven child");
+
+    for (const acceptancePlan of [{ ...displayPlan, name: "新注入的根记录方案" }, null]) {
+      start = sent.length;
+      assert.equal(panel.setDepartmentModalState(a, { ...readOnlyState, acceptancePlan }), true);
+      const [patch] = childMessagesSince(start);
+      assert.deepEqual(childMessagesSince(start).map((message) => message.type), ["loopGroupChatChat:contentPatch", "loopGroupChatChat:askThread"]);
+      assert.ok(patch.taskPanelHtml.includes(acceptancePlan?.name ?? "尚未同步统一验收方案"));
+      assert.doesNotMatch(patch.taskPanelHtml, /纯展示父页方案|已注入的根记录方案/);
+      assert.ok(sent.slice(start).every((item) => !item.html), "refresh must not reinstall child HTML");
+    }
     const thread = { version: 1 as const, messages: [], running: false, dialogOpen: true, updatedAt: 1 };
     assert.equal(panel.publishDepartmentModalAskThread(a, thread), true);
     assert.equal(sent.at(-1).message.thread, thread);
@@ -449,20 +475,28 @@ test("director stop feedback keeps the progress action slot and incumbent button
   for (const feedback of ["stopping", "unconfirmed", "confirmed"] as const) {
     state.task.departmentStopState = feedback;
     state.task.status = "stopped";
-    state.task.canStop = feedback === "stopping";
+    state.task.canStop = feedback !== "confirmed";
     state.task.canContinue = feedback === "confirmed";
     const patch = buildLoopGroupChatPanelContentPatch(state, 1);
     const html = buildLoopGroupChatPanelHtml({ cspSource: "self" } as never, state);
     assert.ok(html.includes(patch.actionsHtml));
-    if (feedback === "stopping") assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*disabled[^>]*>正在停止…/);
+    if (feedback === "stopping") {
+      assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*disabled[^>]*>正在停止…/);
+      assert.match(patch.taskPanelHtml, /正在中止，等待组长和成员退出/);
+      assert.doesNotMatch(patch.taskPanelHtml, /已中止/);
+    }
     if (feedback === "unconfirmed") {
-      assert.doesNotMatch(patch.actionsHtml, /核验停止|data-action="stopTask"/);
-      assert.match(patch.actionsHtml, /data-action="continueTask"[^>]*disabled/);
-      assert.match(patch.actionsHtml, /仍有原执行退出未确认，暂不能继续/);
+      assert.match(patch.actionsHtml, /data-action="stopTask"[^>]*>重试中止/);
+      assert.match(patch.continueAction.html, /data-action="continueTask"[^>]*disabled/);
+      assert.match(patch.continueAction.html, /整组中止尚未确认，暂不能继续/);
+      assert.doesNotMatch(patch.taskPanelHtml + patch.continueAction.html, /已中止/);
+      assert.equal(patch.continueAction.canContinue, false);
     }
     if (feedback === "confirmed") {
+      assert.match(patch.taskPanelHtml, /已中止/);
       assert.doesNotMatch(patch.actionsHtml, /data-action="stopTask"|停止未确认/);
-      assert.match(patch.actionsHtml, /data-action="continueTask"/);
+      assert.match(patch.continueAction.html, /data-action="continueTask"/);
+      assert.equal(patch.continueAction.canContinue, true);
     }
   }
 });

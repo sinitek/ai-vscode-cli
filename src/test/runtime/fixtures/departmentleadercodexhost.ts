@@ -7,14 +7,17 @@ import { createDepartmentLeaderCodexBootstrap, type DepartmentLeaderCodexHost } 
 import { fingerprintDepartmentExecutionSelection, type DepartmentExecutionIdentity, type DepartmentExecutionSelection } from "../../../runtime/departmentexecutionidentity";
 import { fixtureEmployeeAdmission } from "./departmentemployeeadmission";
 import { waitFile } from "./departmentcodexownerworker";
+import { DEPARTMENT_WORKER_PS_TIMEOUT_MS, recordDepartmentWorkerInstance } from "../../extensionHost/fixtures/departmentownedtestworkers";
 
 /** Free simulated NDJSON app-server; flags deliberately model missing terminal,
  * delayed raw prepare and held stdio. Not an installed Codex/model test. */
-export const SIMULATED_LEADER_CLI = String.raw`
+const SIMULATED_LEADER_CLI_SOURCE = String.raw`
 const fs=require('fs'),path=require('path'),readline=require('readline');
 if(process.argv.includes('--version')){console.log('codex-cli 0.167.0');return;}
 const file=n=>path.join(ROOT,n),exists=n=>fs.existsSync(file(n)),send=v=>process.stdout.write(JSON.stringify(v)+'\n');
 fs.appendFileSync(file('native-pids'),String(process.pid)+'\n');
+const child_process=require('child_process');
+try{const nativePs=child_process.execFileSync('ps',['-p',String(process.pid),'-ww','-o','lstart=,command='],{encoding:'utf8',timeout:__DEPARTMENT_PS_TIMEOUT_MS__,env:Object.assign({},process.env,{LC_ALL:'C',LANG:'C'})});if(String(nativePs).trim())fs.appendFileSync(file('native-instances'),JSON.stringify({pid:process.pid,ps:nativePs})+'\n');else fs.appendFileSync(file('native-instances'),JSON.stringify({pid:process.pid,observationFailed:'department-worker-observation-failed'})+'\n');}catch(error){fs.appendFileSync(file('native-instances'),JSON.stringify({pid:process.pid,observationFailed:error&&error.code==='ETIMEDOUT'?'department-worker-ps-timeout':'department-worker-observation-failed'})+'\n');}
 let native,turn,round,done=false,eof=false,replied=false;
 function step(){
  if(native&&!exists('hold-native')){send({id:native.id,result:{thread:{id:exists('wrong-thread')?'wrong':'native'}}});native=null;}
@@ -43,6 +46,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 });
 process.stdin.on('end',()=>{eof=true;fs.writeFileSync(file('eof-'+(round||0)),'ok');step();});
 `;
+export const SIMULATED_LEADER_CLI = SIMULATED_LEADER_CLI_SOURCE.replace("__DEPARTMENT_PS_TIMEOUT_MS__", String(DEPARTMENT_WORKER_PS_TIMEOUT_MS));
 
 export async function leaderFixture(directory: string, options: { bound?: boolean; existing?: boolean } = {}) {
   const file = (n: string) => path.join(directory, n);
@@ -105,6 +109,14 @@ export async function leaderFixture(directory: string, options: { bound?: boolea
 
 async function main(): Promise<void> {
   const directory = process.argv[2];
+  const childProcess = require("child_process") as typeof import("child_process");
+  const realFork = childProcess.fork;
+  childProcess.fork = ((...args: Parameters<typeof childProcess.fork>) => {
+    const child = realFork.apply(childProcess, args);
+    if (String(args[0]).endsWith("departmentleadercodexownerworker.js") && child.pid)
+      recordDepartmentWorkerInstance(path.join(directory, "owned-worker-pids"), child.pid);
+    return child;
+  }) as typeof childProcess.fork;
   const h = await leaderFixture(directory, { existing: true });
   const port = h.port();
   await port.invoke({ invocationId: "main-1", prompt: "trusted fixture main" });

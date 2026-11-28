@@ -2,7 +2,7 @@
 
 ## 日常排障日志
 
-在 `~/.sinitek_cli/logs/` 的 `sinitek-cli.*.log` 中搜索根任务 ID。以下生命周期事件在关闭调试日志时仍会记录，只包含任务 ID、代次、阶段、结果、有限原因码及耗时或计数等诊断字段。
+在 `~/.sinitek_cli/logs/` 的 `sinitek-cli.*.log` 中搜索根任务 ID。默认开启调试日志时可查看完整生命周期诊断；关闭调试后仍会记录未确认和持久化失败。诊断仅包含任务 ID、代次、阶段、结果、有限原因码及耗时或计数等字段。
 
 | 现象 | 事件及检查项 |
 | --- | --- |
@@ -13,6 +13,14 @@
 | 独立 Owner 原生回调失败 | `department-leader-native-failed` 记录回调名、序号和固定拒绝原因。 |
 | 员工交接后标签未关闭 | 在 `loop-plus-subtask-tab-auto-close-error` 中按组长任务 ID 和员工 attempt 查找失败原因。先核对交接是否持久化，再核对该标签的会话与执行身份。 |
 
+## 历史组长入口与状态
+
+VS Code 重启后从会话 Tab 打开组长群聊失败时，入口必须按 Tab 中明确绑定的部门任务 ID 查找可信任务记录，不要把 CLI session ID 当作 Loop task ID，也不要只查当前宿主可写的任务索引。确认 `loop-task-identities` 中唯一身份与已登记部门来源、workspace、总监根和组长模块关系一致后，历史任务可只读展示。
+
+持久快照中的 `running` 不等同当前仍有进程。历史来源没有 Owner，且任务身份、记录与关系均复核通过时，界面将其投影为“本宿主执行已中断”；Owner 仍存在或核验失败时保持“执行状态待核实”，不接管、不清理 Owner、不重放。`needs-review` 是验收状态而不是活动运行，不因宿主重启改成中止。群聊正文的状态行从已核验任务快照生成，仅改 Webview 展示，不回写历史任务或 Markdown。只读状态与原因固定显示在页头下方，不依赖可折叠侧栏。
+
+不要通过删除任务文件、身份目录、来源 marker 或 Owner marker 来修复“找不到任务”或陈旧状态；未知 Owner/锁必须保持 fail closed。可先用对应 task ID 进行只读核验，再用隔离工作区和 HOME 执行相关 Extension Host 场景验证。
+
 插件启动及运行期间的定时清理读取工具设置中的「历史保留天数」，按文件最后修改时间清理插件目录内过期的 `.log`，包括轮转文件。VS Code 和外部 CLI 独立管理各自的日志。
 
 本 runbook 记录真实 VS Code Extension Host 重启后的冷观察验证入口。它不新增跨宿主接管协议，也不修改部门 producer、task source 或容量状态。员工 binding 的冷观察只允许经原 Owner endpoint；running leader 缺少原 producer generation provenance 和完整聚合 Owner 时仍应 `live-leader-unverifiable` 并保留容量。只读观察不是 start、handoff、cleanup 或容量释放授权。
@@ -21,7 +29,7 @@ Loop+ 用户显式点击中止属于独立的停止核验路径，不先调用�
 
 ## 当前 Loop+ 宿主回归
 
-用 `node scripts/verify_department_full_eh_integration.js --product <隔离构建副本> --report <.tmp 下的新报告路径> --scenario <场景>` 运行 `loop-plus`、`loop-plus-stop-continue` 和 `loop-plus-cold-recovery`。三个场景使用真实 VS Code、真实 Codex CLI 和本机确定性模型响应。驱动从持久化会话标签列表逐个确认完成的员工标签已关闭且总监标签仍在。冷恢复场景还验证第二宿主显示中断、用户中止对账、同一组长原生会话续接、原 attempt 留档、后继验收及容量归还。
+用 `node scripts/verify_department_full_eh_integration.js --product <隔离构建副本> --report <.tmp 下的新报告路径> --scenario <场景>` 运行 `loop-plus`、`loop-plus-stop-continue` 和 `loop-plus-cold-recovery`。三个场景使用真实 VS Code、真实 Codex CLI 和本机确定性模型响应。驱动从持久化会话标签列表逐个确认完成的组长和员工标签已关闭且总监标签仍在。冷恢复场景还验证第二宿主显示中断、用户中止对账、同一组长原生会话续接、原 attempt 留档、后继验收及容量归还。
 
 2026-11-23 三个场景均通过，每个场景确认两个已完成员工标签关闭。旧版独立 Owner 的收尾和 OpenCode 混合租约仍由 Owner 回执专项回归覆盖。
 

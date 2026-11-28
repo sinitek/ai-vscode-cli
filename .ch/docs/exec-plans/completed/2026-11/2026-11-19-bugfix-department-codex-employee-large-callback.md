@@ -2,7 +2,7 @@
 
 - 日期：2026-11-19
 - 类型：bugfix
-- 关联计划：`.ch/docs/exec-plans/active/2026-11-18-bugfix-department-codex-large-callback.md`（复用组长已有分帧与重组协议，不改变该计划的验收状态）
+- 关联计划：`.ch/docs/exec-plans/completed/2026-11/2026-11-18-bugfix-department-codex-large-callback.md`（复用组长已有分帧与重组协议，不改变该计划的验收状态）
 - 状态：completed
 - 负责人：Codex
 

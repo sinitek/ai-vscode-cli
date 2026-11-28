@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { buildDepartmentRolePrompt } from "../departmentprompts";
+import { renderPromptRuleIndex } from "../promptRuleIndex";
 import * as path from "path";
 import type { CliName, ThinkingMode } from "../cli/types";
 import type { I18nKey } from "../i18n";
@@ -20,7 +21,7 @@ import { buildLoopBlockerDiagnosticFailure, LOOP_BLOCKER_EXAMPLE } from "../loop
 import { buildLoopBlockerRecoveryClarification } from "../loopBlockerRecovery";
 import { ORCHESTRATOR_CLARIFICATION_LIMIT } from "../orchestratorClarification";
 import { resolveLoopPlusDecisionSubtaskMax } from "../loopPlusDecision";
-import { LOOP_WAIT_WATCHDOG_INTERVAL_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
+import { LOOP_WAIT_WATCHDOG_TICK_MS, waitForLoopInvocation } from "../loopWaitWatchdog";
 import { isLoopMainAiFailureLimitReached } from "../loopMainFailure";
 import { appendLoopSubtaskFailureEvidence, describeLoopSubtaskError, getLoopSubtaskFailureLines } from "../loopSubtaskFailure";
 import { getErrorInfo } from "../promptRetry";
@@ -117,6 +118,8 @@ type LoopOrchestrationRequiredHostDeps =
   & {
     decisionSubtaskMax?: () => number;
     isTabRunActive?: (tabId: string) => boolean;
+    isSubtaskInvocationActive?: (tabId: string) => boolean;
+    isSubtaskRunActive?: (taskId: string, subtaskId: string) => boolean;
     getLatestLoopRoundRunRecord?: PromptRunRuntimeHostApi["getLatestLoopRoundRunRecord"];
     hasActiveSubtasks?: (taskId: string) => boolean;
     cancelSubtaskInvocation?: (tabId: string) => boolean;
@@ -156,7 +159,7 @@ export type ClassicLoopDecisionResult =
     | { status: "interrupted"; task: LoopTaskRecord; runStatus: "error" | "stopped" }
     | { status: "needs-review"; task: LoopTaskRecord; decision?: LoopMainDecision | null }
     | { status: "completed"; task: LoopTaskRecord; decision: LoopMainDecision }
-    | { status: "pending-requirements"; task: LoopTaskRecord }
+    | { status: "pending-requirements"; task: LoopTaskRecord; directorDispatchIssue?: string }
     | { status: "waiting"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "awaiting-input"; task: LoopTaskRecord; decision: LoopMainDecision }
     | { status: "continue"; task: LoopTaskRecord; decision: LoopMainDecision; subtasks: LoopSubtaskRecord[] };
@@ -193,11 +196,14 @@ export async function resolveLoopTaskAtCreationBoundary<T>(options: {
 export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
   const subtaskCancellations = new Map<string, AbortController>();
   const subtaskRuns = new Map<string, Promise<TaskRunStatus>>();
-  const subtaskExecutions = new Map<string, { taskId: string; tabId: string | null; startedAt: number | null }>();
+  type SubtaskExecution = { tabId: string | null; startedAt: number | null; previousRunId?: string };
+  const subtaskExecutions = new Map<string, SubtaskExecution>();
   const waitingBatches = new Map<string, {
     taskId: string;
+    round: number;
     target: PromptRunTarget;
     subtasks: LoopSubtaskRecord[];
+    watchdogRecovered: boolean;
     recover: (recovered: boolean) => void;
   }>();
   const wakeListeners = new Map<string, () => void>();
@@ -681,8 +687,10 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const recovery = new Promise<LoopSubtaskRunResult[]>((resolve) => { resolveRecovery = resolve; });
     const waiting = {
       taskId: options.task.id,
+      round: options.round,
       target: options.target,
       subtasks: options.subtasks,
+      watchdogRecovered: false,
       recover: (recovered: boolean): void => {
         if (waitingBatches.get(key) !== waiting) return;
         const task = readLoopTaskRecord(options.task.id);
@@ -721,31 +729,65 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
           waiting.recover(false);
           continue;
         }
-        if (task.pendingClarification || deps.hasActiveSubtasks?.(task.id) || deps.isTabRunActive?.(waiting.target.tabId)) continue;
+        if (task.pendingClarification || task.userStopSource || deps.isTabRunActive?.(waiting.target.tabId)
+          || (!deps.isSubtaskRunActive && deps.hasActiveSubtasks?.(task.id))) continue;
         if (waiting.subtasks.some((subtask) => subtaskCancellations.get(subtaskKey(task.id, subtask.id))?.signal.aborted)) continue;
-        const active = [...subtaskExecutions.values()].some((execution) => execution.taskId === task.id
-          && (execution.startedAt === null || Date.now() - execution.startedAt < LOOP_WAIT_WATCHDOG_INTERVAL_MS
-            || (execution.tabId !== null && deps.isTabRunActive?.(execution.tabId))));
-        if (active) continue;
+        const isInvocationActive = deps.isSubtaskInvocationActive ?? deps.isTabRunActive;
+        const lost = new Map<string, { completed: boolean; failure?: string }>();
+        let active = false;
+        for (const subtask of waiting.subtasks) {
+          if (deps.isSubtaskRunActive?.(task.id, subtask.id)) {
+            active = true;
+            continue;
+          }
+          const execution = subtaskExecutions.get(subtaskKey(task.id, subtask.id));
+          if (!execution) continue;
+          if (execution.startedAt === null || Date.now() - execution.startedAt < LOOP_WAIT_WATCHDOG_TICK_MS
+            || !execution.tabId || isInvocationActive?.(execution.tabId) !== false) {
+            active = true;
+            continue;
+          }
+          const latest = deps.getLatestLoopRoundRunRecord?.(task.id, waiting.round, "subtask", subtask.id);
+          const result = latest && latest.id !== execution.previousRunId && latest.startedAt >= execution.startedAt ? latest : undefined;
+          if (result?.status === "stopped") continue;
+          lost.set(subtask.id, { completed: result?.status === "end", failure: result?.failureDetail });
+        }
         const batchIds = new Set(waiting.subtasks.map((item) => item.id));
-        const detail = "定时检查发现已无活动子任务，主任务将检查现有结果；未完成或失联的子任务不视为成功。";
-        const failures = getLoopSubtaskFailureLines(task.subTasks.filter((item) => batchIds.has(item.id)));
+        const ordinary = !task.department && !task.departmentInvalid;
+        if (active && (!ordinary || lost.size === 0)) continue;
+        const recoverMain = ordinary && (waiting.watchdogRecovered || lost.size > 0
+          || task.subTasks.some(item => batchIds.has(item.id) && item.status === "blocked" && item.executionFailure));
+        const affectedIds = active ? new Set(lost.keys()) : batchIds;
+        const detail = recoverMain
+          ? "定时检查发现子任务失联。请检查已有报告与产物，确认是否可以验收，或从原子任务继续未完成工作。"
+          : "定时检查发现本批已无活动子任务。未完成的子任务等待继续。";
+        const failures = getLoopSubtaskFailureLines(task.subTasks.filter((item) => affectedIds.has(item.id)));
         const pauseSummary = appendLoopSubtaskFailureEvidence(detail, failures) ?? detail;
-        const activeIds = getActiveLoopSubtaskIds(task).filter((id) => !batchIds.has(id));
-        updateLoopTaskRecord(task.id, {
-          status: "stopped",
-          runtimeInterrupted: true,
-          ...(failures.length > 0 ? { finalSummary: pauseSummary } : {}),
+        const activeIds = getActiveLoopSubtaskIds(task).filter((id) => !affectedIds.has(id));
+        const saved = updateLoopTaskRecord(task.id, {
+          status: active || recoverMain ? "running" : "stopped",
+          runtimeInterrupted: active || recoverMain ? undefined : true,
+          ...(!recoverMain && failures.length > 0 ? { finalSummary: pauseSummary } : {}),
           activeSubtaskId: activeIds[0] ?? null,
           activeSubtaskIds: activeIds,
-          subTasks: task.subTasks.map((item) => batchIds.has(item.id) && item.status !== "completed" && item.status !== "skipped"
-            ? { ...item, status: "blocked", summary: [item.summary, detail].filter(Boolean).join("\n"), updatedAt: Date.now() }
-            : item),
+          subTasks: task.subTasks.map((item) => {
+            if (!affectedIds.has(item.id) || item.status === "completed" || item.status === "skipped") return item;
+            const evidence = lost.get(item.id);
+            return { ...item, status: recoverMain && evidence?.completed ? "completed" : "blocked",
+              ...(recoverMain && evidence && !evidence.completed ? { executionFailure: evidence.failure ?? detail } : {}),
+              summary: item.summary ?? detail, updatedAt: Date.now() };
+          }),
           updatedAt: Date.now(),
         });
-        appendSystemMessageForLoop(waiting.target, pauseSummary);
+        if (!saved) continue;
+        if (active) {
+          waiting.watchdogRecovered = true;
+          for (const subtaskId of lost.keys()) subtaskCancellations.get(subtaskKey(task.id, subtaskId))?.abort();
+        } else {
+          waiting.recover(recoverMain);
+        }
+        if (lost.size || !waiting.watchdogRecovered) appendSystemMessageForLoop(waiting.target, pauseSummary);
         refreshOpenLoopGroupChatPanelForTask(task.id);
-        waiting.recover(false);
       } catch (error) {
         void logError("loop-wait-watchdog-check-failed", { taskId: waiting.taskId, error: errorToMessage(error) });
       }
@@ -965,7 +1007,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const cancellation = new AbortController();
     subtaskCancellations.set(key, cancellation);
     const signal = options.signal ? AbortSignal.any([options.signal, cancellation.signal]) : cancellation.signal;
-    const execution = { taskId: options.task.id, tabId: null as string | null, startedAt: null as number | null };
+    const execution: SubtaskExecution = { tabId: null, startedAt: null };
     subtaskExecutions.set(key, execution);
     const run = executeLoopSubtaskWithRetry({ ...options, signal }, execution).finally(() => {
       if (subtaskRuns.get(key) === run) {
@@ -980,7 +1022,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
 
   async function executeLoopSubtaskWithRetry(
     options: LoopSubtaskRetryOptions,
-    executionState: { tabId: string | null; startedAt: number | null },
+    executionState: SubtaskExecution,
   ): Promise<TaskRunStatus> {
     const { input, target, task, round, subtask } = options;
     const latestTask = readLoopTaskRecord(task.id) ?? task;
@@ -1117,6 +1159,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
             if (options.signal?.aborted || isLoopTaskExecutionInterrupted(task.id)) {
               return "stopped";
             }
+            executionState.previousRunId = deps.getLatestLoopRoundRunRecord?.(task.id, round, "subtask", subtask.id)?.id;
             return runLoopRound({
               input,
               target: subtaskTarget!,
@@ -1365,20 +1408,23 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     continuePrompt?: string,
     renderDirectorContext?: (maxLength: number) => string,
   ): string {
+    const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
     if (task.department?.role === "director") {
+      const directorIndex = renderPromptRuleIndex("产研部总监", ["department/director"],
+        ["department/collaboration", "department/continuity", "loop/blocked", "topics/asset-license", "examples/coordination"]);
       const instructions = [
-        buildDepartmentRolePrompt("director"),
+        directorIndex ?? buildDepartmentRolePrompt("director"),
         `任务 ID：${task.id.slice(0, 200)}；轮次：${round}`,
         `当前总体进度：${task.loopProgressPercent ?? 0}%`,
-        "使用经典 Loop JSON 决策。你的协调回合由部门事件触发。continue 的 subtasks 只列本轮要启动的模块。参考可信协调上下文的组长可用名额，把本轮可并行的模块放进同一个 subtasks 数组。只有一个合适模块时只填一项。",
-        `每个新模块用稳定 ID，prompt 至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符，写明本轮目标、范围边界和预期交付结果，并提供 progressWeightPercent（1–100 的整数，表示占原始整体目标的绝对份额）。各模块的实施由唯一真实 Loop+ 组长负责。`,
+        `使用经典 Loop JSON 决策。你的协调回合由部门事件触发。continue 的 subtasks 只列本轮要启动的模块。把本轮可并行的模块放进同一个 subtasks 数组，每位组长独立验收其中一项，本轮最多 ${subtaskMax} 项。只有一个合适模块时只填一项。`,
+        `每项提供稳定的 id、title 和自包含的 prompt。prompt 至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符，写清本组的交付范围、通过条件及应回报的证据。同一交付和验收项只指定一位负责组长。writeFiles 列本组预计修改的文件或目录，共享只读资料可省略。争用同一资源时用相同的 conflictGroup 标记。progressWeightPercent 是占原始整体目标的绝对份额，取 1–100 的整数。`,
         "本轮新模块权重与已登记模块权重合计不得超过 100，不对权重重新归一化。剩余权重留给后续工作。范围改变或需要补派时，可在 continue 决策附带 directorProgressWeights:[{\"moduleId\":\"已登记模块ID\",\"progressWeightPercent\":40}] 调整已有模块权重。只列需要调整或补填权重的已登记模块，subtasks 仍只列新模块。",
         "每次返回 JSON 都提供 progressPercent，作为无模块权重历史任务的兼容估算。根据全部需求、已收到的组长汇报和剩余工作估算，首次拆分从 0 开始。未完成时为 0–99 的整数，只有整体完成时使用 100；有模块权重时总监群聊按可信组长进度实时计算加权总进度。",
-        '协议：{"status":"continue","progressPercent":0,"estimatedRemainingRounds":1,"subtasks":[{"id":"module-id","title":"模块标题","progressWeightPercent":20,"prompt":"自包含模块需求"}]}',
+        '派发时返回一个 JSON 对象，填写 status="continue"、progressPercent、estimatedRemainingRounds 和 subtasks。若多项工作目前只能派一组，可用 parallelReason 说明依赖或实际冲突。',
         '仍有组长处于 starting/running 且只需等待其汇报时，返回 {"status":"waiting","progressPercent":40,"finalSummary":"等待组长汇报"}，其中百分比按实际工作估算。waiting 不派发新任务，组长结算会唤醒总监。blocked 仅用于确有证据表明当前无法推进的故障，并必须提供完整 blocker。',
         '即使其它组长仍在运行，也优先分析已阻塞组长的真实汇报。有合规恢复方案且 directorRecoveryAvailable 为 true 时，用 waiting 附带 directorLeaderRecovery:{"leaderTaskId":"真实组长任务ID","generation":1,"instructions":"阻塞原因、恢复步骤、验证方法"}，以可信上下文的实际代次为准。宿主会尝试续跑原组长。也可继续协调其它可推进目标。只有整体目标确实无法推进时才报告 blocked。',
         '确有用户疑问使用标准 clarify 表单。',
-        LOOP_BLOCKED_SUMMARY_INSTRUCTION,
+        directorIndex ? "决定 blocked 前读取 loop/blocked.md，提交带实际证据的完整 blocker。" : LOOP_BLOCKED_SUMMARY_INSTRUCTION,
         '协调可在正常决策附带 directorCollaborations:[{"id":"稳定消息ID","action":"deliver"或"dismiss"}]；由你决定投递或处置，不能自动转发。',
         '整体目标已经满足时返回 {"status":"completed","progressPercent":100,"estimatedRemainingRounds":0,"answerConclusion":"按汇报回答","finalSummary":"整体结论"}。根据原始目标与组长汇报判断业务完成情况，并在结论中交代遗留事项。',
         "组长汇报、协作和补充会及时唤醒你，无需等待所有组长结束。不得检查代码或验收。",
@@ -1395,11 +1441,23 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       if (modelPrompt.length > DIRECTOR_MODEL_PROMPT_LIMIT) throw new Error("总监提示超过长度限制，协调已暂停。");
       return modelPrompt;
     }
-    const subtaskMax = resolveLoopPlusDecisionSubtaskMax(deps.decisionSubtaskMax?.());
     const taskId = task.id;
     const taskFile = task.taskStoreFile;
     const communication = getLoopCommunicationPaths(taskId);
     const normalizedContinuePrompt = normalizeLoopContinuePromptForPrompt(continuePrompt);
+    const index = renderPromptRuleIndex(`经典 Loop 主任务 · 第 ${round} 轮`, ["loop/main"],
+      ["loop/dispatch", "common/direct", "loop/blocked", "topics/summary-svg"]);
+    if (index) return [
+      "你正在执行 VS Code 插件的 Loop 模式主任务。", index,
+      `Loop 任务 ID：${taskId}\n当前轮次：${round}\n当前总体进度：${task.loopProgressPercent ?? 0}%`,
+      `任务记录文件：${taskFile}\n沟通目录：${communication.dir}\n主任务沟通文件：${communication.mainFile}\n子任务沟通目录：${communication.subtasksDir}`,
+      "以当前任务记录与子任务汇报判断完成。定时巡检交回失联子任务时，先核对已有报告与产物，确认验收或派发续接。常规回合依照子任务汇报推进。简单且符合条件的小事可直办。优先并发可独立推进的工作。已有验证仅补缺口；用户或项目明确要求的独立验证必须有对应汇报。",
+      "历史任务列表已过期，省略 Tasklist、todo 与计划工具，只输出本轮决策。",
+      `只回一个 JSON。status=continue 时给 1–${subtaskMax} 个自包含子任务，提供 title 和至少 ${LOOP_SUBTASK_PROMPT_MIN_LENGTH} 个字符的 prompt。按协议更新任务记录和主沟通文件。blocked 给完整 blocker，clarify 给 clarification.formFields。`,
+      "每次给非负整数 estimatedRemainingRounds、整数 progressPercent；首次拆分进度为 0。completed 给进度 100、剩余 0、answerConclusion 和 finalSummary，其余进度 0–99。",
+      ...getLoopSubtaskFailureLines(task.subTasks), ...buildLoopSupplementalRequirementsLines(task),
+      ...(normalizedContinuePrompt ? ["本次继续指令：", normalizedContinuePrompt] : []), "原始目标：", rootPrompt,
+    ].join("\n");
     return [
       "你正在执行 VS Code 插件的 Loop 模式主任务。",
       `Loop 任务 ID：${taskId}`,
@@ -1429,7 +1487,7 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
       "5. 并发优先：只要能确定多个子任务预计写入文件/目录互不重叠、没有先后依赖、不会争抢同一验证环境，就必须放入同一个 subtasks 批次。",
       "6. 串行兜底：只有共享写入同一文件/同一配置、需要基于另一个子任务产物继续修改、或必须独占同一验证环境时，才只返回 1 个子任务。",
       ...(subtaskMax > 0 ? [`7. 每批最多 ${subtaskMax} 个子任务；如果可并发项超过上限，优先选择当前阶段最独立、收益最高的一组。`] : []),
-      "8. 主任务不验收子任务产物，不检查代码、文档或实现细节，不运行或重复运行测试、构建、启动和其它验证；完成判断以子任务汇报为依据。",
+      "8. 常规回合根据子任务汇报判断完成。定时巡检交回失联子任务时，先核对已有报告与产物，确认验收或派发续接。只补必要的验证。",
       "9. 用户明确要求或项目既有规则要求的验证必须完成，但要求测试、构建不等于要求独立验证。子任务已明确汇报通过且覆盖当前改动的验证，直接采信并复用，不再另派重复验证任务。两者都未要求时默认不做，不增加固定验收清单；用户未提但项目规则要求的验证不能遗漏。",
       "   部分覆盖时只补缺失或失败项，后续改动使原结果失效时只补受影响项，不无理由重跑整套验证。",
       "   汇报不清时优先续接来源子任务补充验证范围、命令或操作及结果说明，不因缺少报告细节直接要求重测。",
@@ -1504,6 +1562,12 @@ export function createLoopOrchestrationHost(deps: LoopOrchestrationHostDeps) {
     const writeFiles = Array.isArray(subtask.writeFiles) && subtask.writeFiles.length > 0
       ? subtask.writeFiles.join("、")
       : "未声明；按当前子任务指令修改完成任务所需的工作区文件";
+    const index = renderPromptRuleIndex("经典 Loop 子任务", [], ["loop/worker"]);
+    if (index) return ["你正在执行一个独立的经典 Loop 子任务。", index,
+      `子任务沟通文件：${reportFile}\n建议写入范围：${writeFiles}`,
+      "完成本次指令。在沟通文件写实际操作、验证范围、命令、结果、遗留项及超出建议范围的原因。调度和其它报告保持原状。仅当确需父任务确认时，写入“待主任务确认”并将最终回复限定为“子任务已结束，待主任务确认事项已写入沟通文件。”",
+      "当前子任务：", subtask.prompt ?? subtask.title,
+    ].join("\n");
     return [
       "你正在执行一个独立的经典 Loop 子任务。遵循用户要求和项目既有规则，自主选择完成任务的方法，不需要理解或维护父任务调度。",
       `子任务沟通文件：${reportFile}`,
